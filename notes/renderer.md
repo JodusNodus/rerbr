@@ -572,6 +572,10 @@ splash never shows on a wet stage.
   grey-brown in Britain, grey in Japan, red-brown to tan in the USA. Scan over 86 retail and 52 RSF variants,
   checked against top-down renders of each road. Load +80 ms at most (621, 580). 34 shots: 12 change by 0.1% RMSE or
   more (dusty chases and fly-bys, day Gabiria fly-by 1.3%), snow, tarmac cockpits and night byte-identical or nearly.
+- Spin dust live (2026-11-02, `particles::slip_of_mass`): the spray's slip took the payload's rubber, a slip speed in
+  playback's payloads but 0 to 1 in the game's, so spinning and sliding threw no extra dust live or in replays
+  (El Condor: rubber at most 0.001 while the mass reached 50 sliding). The game's payloads now take the slip from the
+  mass flow (`SLIP_MASS` read backwards); the reference shots build their payloads from the poses and keep the rubber.
 Soft-particle cost (2026-10-26, RX 9060 XT): the effects pass is fill-bound (Sipirkakim II `--at 15000`: 926
 quads, ~400 screens of coverage, 35 ms at 1440p, nearly all `fs_soft`; GPU clocks bimodal). Fixes, frames within
 2/255 of before (lamps' code out of the day's pipeline, fragments under 1/1000 alpha discarded, depth after the
