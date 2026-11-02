@@ -355,7 +355,13 @@
    "clouds": "partly"
   },
   "clock": "05:30",
-  "at": 10480
+  "at": 10480,
+  "args": [
+   "--fov",
+   "60",
+   "--flyby",
+   "16,4,1.2"
+  ]
  },
  {
   "name": "day-pirttikulma-quattro-cockpit",
