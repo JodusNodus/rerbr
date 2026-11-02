@@ -2,7 +2,7 @@
 
 ![The cockpit of an Audi quattro A2 Group B sliding through the rocks of El Condor past the crowd, the dials lit by the low sun](docs/clips/condor-sideways-cockpit.webp)
 
-Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not a repackage, an actual rewrite from scratch. Everything you know and love enhanced with modern graphics. Bring your own game files (an RSF install or any RBR + NGP 7 installation).
+Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not a repackage, an actual rewrite from scratch. Everything you know and love, enhanced. Bring your own game files (an RSF install or any RBR + NGP 7 installation).
 
 ## Why
 
@@ -11,8 +11,8 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 - **The original game around it.** Weather, damage, the service park, the championship and the stage records work
   as in RBR 1.02, checked against recordings of the original.
 - **The community's cars and stages.** Any original file format stage and NGP car works out of the box.
-- **A modern look you can switch off.** A physically based sky and sun, HDR, sun shadows, rain and dust, a lit
-  cockpit, windscreen glass and working mirrors. Each addition has its own switch, so you can drive the original look too.
+- **A modern look.** A physically based sky and sun, HDR, sun shadows, rain and dust, a lit
+  cockpit, windscreen glass and working mirrors.
 
 ## Gallery
 
