@@ -2,20 +2,20 @@
 
 ReRBR is a Rust reimplementation of Richard Burns Rally 1.02 with NGP 7 physics: a standalone program, no original
 code running, that plays the 1.02 stages, the NGP cars and the modded stages with physics and gameplay bit-exact
-against recordings of the original. The original game is the oracle. The C++98 reconstruction, the behaviour
-reference, lives in the separate, frozen rbr-recomp repository, which also keeps every note as of the split under the
-same paths. UI, menus and the 1.02 renderer are not carried over.
+against recordings of the original. The original game is the oracle. Rendering, sound, the HUD and the launcher are
+new; UI, menus and the 1.02 renderer are not carried over.
 
 ## Start here
 
 1. Run `git status --short` and preserve existing changes.
-2. Read `notes/status.md` (current state, open items, decisions) and `docs/development.md` (how it fits together,
-   crates, rules, checks).
+2. Read `notes/status.md` (current state, open items, decisions) and `docs/development.md` (set up, running, code
+   map, rules, checks).
 3. Open the note for your area.
 
 `README.md` is the user-facing overview. Keep this file an index. Put findings in the area's note, briefly: current
 facts and rules with their evidence in one line, no run logs or narratives. Paths under `src/` in comments refer to
-rbr-recomp.
+rbr-recomp, the frozen C++98 reconstruction of the 1.02 binaries, which keeps every note as of the split under the
+same paths.
 
 ## Notes
 
