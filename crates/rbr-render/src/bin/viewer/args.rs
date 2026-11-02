@@ -35,9 +35,13 @@ pub struct Args {
     pub ffb: ffb::Options,
     pub screenshot: Option<PathBuf>,
     /// `--video FILE` renders a replay offline to a video file (the live command runs it with
-    /// `--replay-pace free`, so it needs `--replay`); `--video-fps N` its frames per second.
+    /// `--replay-pace free`, so it needs `--replay`); `--video-fps N` its frames per second. A path ending in
+    /// `.webp` writes an animated WebP clip (no sound); `--video-span FROM,TO` encodes only the game seconds in
+    /// `[FROM, TO]` (no sound either).
     pub video: Option<PathBuf>,
     pub video_fps: f32,
+    /// `--video-span FROM,TO`: only the game seconds in `[FROM, TO]` are encoded (the render stops after TO).
+    pub video_span: Option<(f32, f32)>,
     pub camera: Option<FreeFly>,
     /// `--flyby AHEAD,SIDE,HEIGHT`: the screenshot's camera stands that far ahead of the car, to its right and above it
     /// (m) at each frame, looking at the car.
@@ -218,7 +222,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
               --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages,view
   events:     --birdstrike  --rescue-at STEP  --seed N
-  runs:       --screenshot PNG  --video FILE  --video-fps N  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|end+S
+  runs:       --screenshot PNG  --video FILE[.webp]  --video-fps N  --video-span FROM,TO  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|end+S
   -V, --version  print the version
   -h, --help  print this text";
 
@@ -234,6 +238,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut screenshot = None;
     let mut video = None;
     let mut video_fps = 60.0;
+    let mut video_span = None;
     let mut camera = None;
     let mut flyby = None;
     let mut at_periods = 1;
@@ -343,6 +348,15 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                     .ok()
                     .filter(|r: &f32| r.is_finite() && *r > 0.0)
                     .ok_or_else(|| format!("--video-fps {value}: needs a rate per second"))?;
+            }
+            "--video-span" => {
+                let value = args.next().ok_or("--video-span needs FROM,TO seconds")?;
+                let (from, to) = value.split_once(',').ok_or(format!("--video-span {value}: needs FROM,TO"))?;
+                let parsed = |s: &str| s.parse::<f32>().ok().filter(|n| n.is_finite());
+                match (parsed(from), parsed(to)) {
+                    (Some(from), Some(to)) if from >= 0.0 && to > from => video_span = Some((from, to)),
+                    _ => return Err(format!("--video-span {value}: needs FROM,TO seconds with 0 <= FROM < TO")),
+                }
             }
             "--screenshot" => {
                 let path = args.next().ok_or("--screenshot needs a path")?;
@@ -641,6 +655,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         screenshot,
         video,
         video_fps,
+        video_span,
         camera,
         size,
         fov,
@@ -785,6 +800,24 @@ mod tests {
         assert!(parse("--video out.mp4 --live foo").is_err());
         for bad in ["--video", "--video-fps 0", "--video-fps x", "--video-fps"] {
             assert!(parse(&format!("track-54_E {bad} --live foo --replay d.rrp")).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn video_span_parses() {
+        assert_eq!(parse("track-54_E").unwrap().video_span, None);
+        let args = parse("--video-span 12.5,20").unwrap();
+        assert_eq!(args.video_span, Some((12.5, 20.0)));
+        for bad in [
+            "--video-span 20,12.5",
+            "--video-span 12.5,12.5",
+            "--video-span -1,20",
+            "--video-span 12.5",
+            "--video-span a,b",
+            "--video-span NaN,20",
+            "--video-span",
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
         }
     }
 

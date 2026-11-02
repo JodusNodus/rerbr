@@ -903,6 +903,11 @@ impl Renderer {
         self.dial_draws.extend(draws);
     }
 
+    /// Drops the dials' queued draws without drawing them: frames a video span skips ([`Dials::redraw`] repaints).
+    pub fn drop_dial_draws(&mut self) {
+        self.dial_draws.clear();
+    }
+
     /// Sets the time of day the start board's clock shows, s after midnight (`None`: its placeholder face).
     pub fn set_start_clock(&mut self, seconds: Option<f32>) {
         if let Some(board) = &mut self.start_board {

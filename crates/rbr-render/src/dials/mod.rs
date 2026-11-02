@@ -385,6 +385,11 @@ impl Dials {
         self.mode = self.mode % self.modes + 1;
     }
 
+    /// Repaints the whole faces on the next draw: after frames whose draws were dropped.
+    pub fn redraw(&mut self) {
+        self.faces.iter_mut().for_each(|f| f.drawn = None);
+    }
+
     /// Draws `values` after `dt` seconds (`None`: the needles at their values at once) into the renderer's textures,
     /// where they changed.
     pub fn update(&mut self, values: &Values, dt: Option<f32>, renderer: &mut Renderer) {

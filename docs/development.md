@@ -258,7 +258,10 @@ player's file, and the camera is the default seat, so a shot is the same on any 
 the GPU's and the C library's rounding (a Mac and an AMD desktop: mean difference 2-3 of 255, foliage edges and dust;
 compare renders made on one machine). The
 renders are game content: the PNG renders stay out of the repository; the list and the JPEGs of
-[`docs/shots/`](shots/README.md) (`--previews docs/shots`) are committed.
+[`docs/shots/`](shots/README.md) (`--previews docs/shots`) are committed. A short animated clip for the README comes
+from a replay instead: `viewer --replay FILE --video clip.webp --video-span 290,297 --video-fps 25 --size 1280x720
+--no-hud --view chase --enhance all,grass --detail ultra` (a `.webp` path writes an animated WebP; `--video-span
+FROM,TO` encodes only those game seconds, with no sound).
 
 ## Packaging
 
