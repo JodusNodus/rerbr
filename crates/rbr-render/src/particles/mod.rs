@@ -71,6 +71,13 @@ const CONTACT_SLACK: f32 = 0.12;
 /// slip of the poses on the Tanner damage drive (gravel).
 const SLIP_KEYS: [f32; 11] = [0.0, 0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 7.0, 10.0];
 const SLIP_MASS: [f32; 11] = [0.0, 0.1, 0.16, 0.47, 1.7, 2.6, 4.3, 13.0, 22.0, 33.0, 68.0];
+
+/// A wheel's slip speed, m/s, from the game's payload's mass flow: [`SLIP_MASS`] read backwards (its rubber is 0 to 1,
+/// not a speed; on El Condor at most 0.001 while the mass reached 50 sliding).
+pub(crate) fn slip_of_mass(mass: f32) -> f32 {
+    tyres::table_lerp(&SLIP_MASS, &SLIP_KEYS, mass)
+}
+
 /// Ours: half the contact patch's width, m, for the edges of a playback payload (the skid marks' trail width).
 const TYRE_HALF_WIDTH: f32 = 0.1;
 /// Ours: the exhaust's particles per second at idle and at full throttle, where the frame has no `CSigExhaust`
@@ -417,7 +424,7 @@ impl Particles {
             marks.step(&payloads, from_game);
         }
         match &mut self.wheel_spray {
-            Some(spray) => spray.feed(&mut self.sim, &payloads, &pose, dt),
+            Some(spray) => spray.feed(&mut self.sim, &payloads, &pose, dt, from_game),
             None => {
                 let wheels: Vec<Wheel> = payloads.iter().map(wheel_of_payload).collect();
                 self.tyres.feed(&mut self.sim, &wheels, car_velocity, pose.side, dt);

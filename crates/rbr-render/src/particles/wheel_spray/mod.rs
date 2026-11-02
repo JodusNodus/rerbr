@@ -1,7 +1,7 @@
 //! Ours: the dust and water the tyres throw, in place of the game's tyre handlers, fake smoke, splash and wave when
 //! the renderer draws its own particles (`--enhance particles`; not the game's look). Each wheel on the ground throws
-//! by its surface ([`ground::material`]: kind, wetness, how loose), its slip (`rubber`, +0x80), the car's speed and
-//! the standing water under it:
+//! by its surface ([`ground::material`]: kind, wetness, how loose), its slip, the car's speed and the standing water
+//! under it:
 //!
 //! - dry loose ground: a dust trail that hangs and drifts, in the colour of the stage's loose road ([`dust::of_stage`]),
 //!   more with slip;
@@ -171,8 +171,9 @@ impl WheelSpray {
         self.standing = [0.0; 4];
     }
 
-    /// Throws `dt` seconds of each wheel's spray from its payload.
-    pub fn feed(&mut self, sim: &mut Simulation, payloads: &[TyreParticles], pose: &Pose, dt: f32) {
+    /// Throws `dt` seconds of each wheel's spray from its payload. `game` when the payloads are the game's: their
+    /// rubber is 0 to 1, so the slip comes from the mass flow ([`super::slip_of_mass`]); playback's rubber is the slip.
+    pub fn feed(&mut self, sim: &mut Simulation, payloads: &[TyreParticles], pose: &Pose, dt: f32, game: bool) {
         let speed = pose.velocity.length();
         let forward = pose.velocity.try_normalize().unwrap_or(pose.side.cross(pose.up));
         let grade = pose.up.truncate().length() / pose.up.z.max(1e-3);
@@ -191,7 +192,7 @@ impl WheelSpray {
                 out: if p.wheel % 2 == 0 { pose.side } else { -pose.side },
                 forward,
                 back: -forward,
-                slip: p.rubber,
+                slip: if game { super::slip_of_mass(p.mass) } else { p.rubber },
                 speed,
             };
             let puddle = if self.film && m.wet >= 1.0 && m.kind == Kind::Tarmac {
@@ -616,6 +617,18 @@ mod tests {
     }
 
     #[test]
+    fn the_slip_comes_from_the_mass_flow() {
+        use crate::particles::{slip_of_mass, tyres::table_lerp, SLIP_KEYS, SLIP_MASS};
+        // El Condor live payloads: rubber at most 0.001, mass about 50 spinning off the start and sideways.
+        assert!(slip_of_mass(47.0) >= SPIN[1]);
+        assert!(slip_of_mass(0.26) < SPIN[0]);
+        for slip in [0.0, 0.3, 2.5, 6.0] {
+            let mass = table_lerp(&SLIP_KEYS, &SLIP_MASS, slip);
+            assert!((slip_of_mass(mass) - slip).abs() < 1e-4, "playback's slip {slip} round trips");
+        }
+    }
+
+    #[test]
     fn clean_dry_tarmac_throws_nothing() {
         let rates = rates(&ground::by_name("Tarmac_Fine_Clean_Dry"), &throw(25.0, 10.0), 0.0);
         assert!(rates.iter().all(|&r| r == 0.0), "{rates:?}");
@@ -638,7 +651,7 @@ mod tests {
         let pose =
             Pose { velocity: Vec3::new(0.0, -25.0, 0.0), up: Vec3::Z, side: Vec3::X, engine: None, exhaust: None };
         for _ in 0..100 {
-            spray.feed(&mut sim, &[payload], &pose, 0.01);
+            spray.feed(&mut sim, &[payload], &pose, 0.01, false);
         }
         assert!(sim.count() > 100, "{}", sim.count());
     }
