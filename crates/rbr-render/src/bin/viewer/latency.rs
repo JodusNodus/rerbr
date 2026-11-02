@@ -96,11 +96,12 @@ struct Probe {
 }
 
 /// A drawn frame's times: the surface's texture asked for and had, the input read, the commands submitted and the
-/// frame presented.
+/// frame presented, and the step it shows.
 #[derive(Debug, Clone, Copy)]
 struct Frame {
     acquire: (Instant, Instant),
     read: Instant,
+    step: Option<u32>,
     submitted: Instant,
     presented: Instant,
     /// `presented` on the feedback's clock (`CLOCK_MONOTONIC`), ns.
@@ -226,9 +227,9 @@ impl Latency {
         }
     }
 
-    /// The frame was submitted and presented; whether it is the first to draw the open probe's step (live play
-    /// shows the newest step seen), when the caller calls [`Latency::watch_gpu`].
-    pub fn drawn(&mut self, submitted: Instant) -> bool {
+    /// The frame showing `step` was submitted and presented; whether it is the first to draw the open probe's step
+    /// (live play shows the newest step seen), when the caller calls [`Latency::watch_gpu`].
+    pub fn drawn(&mut self, submitted: Instant, step: Option<u32>) -> bool {
         let presented = Instant::now();
         let presented_ns = shown::now_ns();
         if let Some(shown) = &mut self.shown {
@@ -240,7 +241,8 @@ impl Latency {
             probe.gpu_done = Some(done);
         }
         if self.frames.len() < MOST_FRAMES {
-            self.frames.push(Frame { acquire: self.acquire, read: self.read, submitted, presented, presented_ns });
+            let read = self.read;
+            self.frames.push(Frame { acquire: self.acquire, read, step, submitted, presented, presented_ns });
         }
         match self.probes.last_mut() {
             Some(probe) if probe.submitted.is_none() && probe.taken.is_some() => {
@@ -274,8 +276,8 @@ impl Latency {
     pub fn summary(&self) -> String {
         let ms = |a: Instant, b: Instant| (b.saturating_duration_since(a)).as_secs_f64() * 1000.0;
         let line = |name: &str, values: Vec<f64>| {
-            let (p50, p95, max) = quantiles(values.clone());
-            format!("\n  {name:<34} n {:>5}  p50 {p50:6.2}  p95 {p95:6.2}  max {max:6.2}", values.len())
+            let (p50, p95, p99, max) = quantiles(values.clone());
+            format!("\n  {name:<34} n {:>5}  p50 {p50:6.2}  p95 {p95:6.2}  p99 {p99:6.2}  max {max:6.2}", values.len())
         };
         let done: Vec<&Probe> = self.probes.iter().filter(|p| p.gpu_done.is_some()).collect();
         let from_due = |stage: fn(&Probe) -> Option<Instant>| {
@@ -317,6 +319,15 @@ impl Latency {
         if let Some(base) = frames.first().map(|f| f.read) {
             let timed = (0..frames.len()).map(|i| (ms(base, frames[i].read), self.on_screen(from + i, base)));
             out += &line("any input -> on screen", any_input(&timed.collect::<Vec<_>>()));
+            // The shown step's age on screen: from its step record until the frame showing it went on screen.
+            let aged: Vec<Option<f64>> = (0..frames.len())
+                .map(|i| {
+                    let made = self.step_at(frames[i].step?)?;
+                    Some(self.on_screen(from + i, base)? - ms(base, made))
+                })
+                .collect();
+            out += &line("shown step -> on screen", aged.iter().flatten().copied().collect());
+            out += &line("judder (age change, shown frames)", judder(&aged));
         }
         out += &self.screen_counts();
         out += &self.step_counts();
@@ -325,6 +336,12 @@ impl Latency {
 }
 
 impl Latency {
+    /// When the step record of `step` came, if kept.
+    fn step_at(&self, step: u32) -> Option<Instant> {
+        let i = self.steps.partition_point(|s| s.1 < step);
+        self.steps.get(i).filter(|s| s.1 == step).map(|s| s.0)
+    }
+
     /// Ms from `from` until frame `frame` went on screen, if the compositor said.
     fn on_screen(&self, frame: usize, from: Instant) -> Option<f64> {
         let Some(&shown::Feedback::Shown { at, .. }) = self.feedback.get(&(frame as u64)) else { return None };
@@ -346,7 +363,7 @@ impl Latency {
             f64::from(last.1 - first.1) / seconds,
             self.steps.len() as f64 / seconds,
             per_record.0,
-            per_record.2,
+            per_record.3,
             f64::from(last.1 - first.1) / self.frames.len().max(1) as f64,
             changes as f64 / seconds,
         )
@@ -389,12 +406,19 @@ fn any_input(frames: &[(f64, Option<f64>)]) -> Vec<f64> {
         .collect()
 }
 
-/// The median, 95th percentile and largest of `values` (0 for none).
-fn quantiles(mut values: Vec<f64>) -> (f64, f64, f64) {
+/// How much the shown step's age changes from one frame on screen to the next, ms: 0 when the picture moves on by as
+/// much game time as the screen does. `ages` are each frame's age on screen (`None`: not shown), in order.
+fn judder(ages: &[Option<f64>]) -> Vec<f64> {
+    let shown: Vec<f64> = ages.iter().flatten().copied().collect();
+    shown.windows(2).map(|w| (w[1] - w[0]).abs()).collect()
+}
+
+/// The median, 95th and 99th percentiles and largest of `values` (0 for none).
+fn quantiles(mut values: Vec<f64>) -> (f64, f64, f64, f64) {
     values.sort_by(f64::total_cmp);
     let at =
         |q: f64| values.get(((values.len().saturating_sub(1)) as f64 * q).round() as usize).copied().unwrap_or(0.0);
-    (at(0.5), at(0.95), at(1.0))
+    (at(0.5), at(0.95), at(0.99), at(1.0))
 }
 
 #[cfg(test)]

@@ -756,7 +756,8 @@ impl App {
         running.window.pre_present_notify();
         running.gpu.queue.present(frame);
         if let Some(latency) = &mut self.latency {
-            if latency.drawn(submitted) {
+            let step = self.scene.playback.as_ref().map(|p| p.sample().step);
+            if latency.drawn(submitted, step) {
                 latency.watch_gpu(&running.gpu.device, &running.gpu.queue);
             }
         }
