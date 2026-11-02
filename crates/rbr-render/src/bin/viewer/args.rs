@@ -20,8 +20,9 @@ use std::path::{Path, PathBuf};
 
 pub struct Args {
     pub stage: Option<String>,
-    /// A stage folder's country code and whether it is a snow stage, where the clock places it (`relight::site`).
-    pub stage_place: (Option<String>, bool),
+    /// A stage folder's country code, name and whether it is a snow stage, where the clock places it
+    /// (`relight::site`).
+    pub stage_place: (Option<String>, String, bool),
     pub car: Option<String>,
     /// `--rsf-car`: an RSF car in slot 5, read in place (`rbr_formats::rsf::select`).
     pub rsf_car: Option<String>,
@@ -656,7 +657,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         command.extend(["--replay-pace".to_owned(), "free".to_owned()]);
     }
     // A stage folder (RallySimFans, `rbr_formats::rsf`): its default variant. One it cannot load (encrypted) says why.
-    let mut stage_place = (None, false);
+    let mut stage_place = (None, String::new(), false);
     let stage = match stage {
         Some(dir) if Path::new(&dir).is_dir() => {
             let rsf = rbr_formats::rsf::open(Path::new(&dir))?;
@@ -664,7 +665,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 return Err(format!("RSF stage {}: {problem}", rsf.id));
             }
             let letter = rsf.default_variant().ok_or(format!("{dir}: no stage variant"))?;
-            stage_place = (rsf.country.clone(), rsf.surface == Some(rbr_formats::rsf::Surface::Snow));
+            stage_place = (rsf.country.clone(), rsf.name.clone(), rsf.surface == Some(rbr_formats::rsf::Surface::Snow));
             Some(rsf.stage(letter))
         }
         stage => stage,

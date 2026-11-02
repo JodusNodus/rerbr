@@ -213,9 +213,10 @@ impl Ground {
 /// A stage's place and date: latitude (degrees north), longitude (degrees east, for the moon: [`lunar`]) and day of the
 /// year, for the sun's and the moon's paths (ours, not from the game). The 1.02 rallies by the map's number
 /// (`Maps/Tracks.ini` `Particles`): the real rallies' regions and seasons. Any other stage is a guess: its country's
-/// rally region ([`COUNTRIES`], `country` an ISO code as RallySimFans gives it), on a winter day of its hemisphere
-/// for a `snow` stage, else near an equinox (spring in the north, autumn in the south), where day and night are even.
-pub fn site(map: u32, country: Option<&str>, snow: bool) -> (f32, f32, f32) {
+/// rally region ([`COUNTRIES`], `country` an ISO code as RallySimFans gives it), on a midsummer day of its hemisphere
+/// when its `name` says Summer, a winter day when it says Winter or is a `snow` stage, else near an equinox (spring in
+/// the north, autumn in the south), where day and night are even.
+pub fn site(map: u32, country: Option<&str>, name: &str, snow: bool) -> (f32, f32, f32) {
     match map {
         10..=19 | 93..=98 => return (61.0, 25.0, 40.0), // arctic, February
         20..=29 | 71..=79 | 82..=89 => return (52.0, -3.5, 320.0), // british, November
@@ -227,11 +228,24 @@ pub fn site(map: u32, country: Option<&str>, snow: bool) -> (f32, f32, f32) {
     }
     let place = country.and_then(|code| COUNTRIES.iter().find(|(c, _)| c.eq_ignore_ascii_case(code)));
     let (latitude, longitude) = place.map_or((48.0, 8.0), |&(_, at)| at);
-    let day = match (snow, latitude < 0.0) {
-        (true, false) => 40.0,   // February
-        (true, true) => 200.0,   // July
-        (false, false) => 110.0, // April
-        (false, true) => 290.0,  // October
+    let says = |season: &str| name.split(|c: char| !c.is_alphanumeric()).any(|w| w.eq_ignore_ascii_case(season));
+    let south = latitude < 0.0;
+    let day = if says("summer") {
+        if south {
+            355.0
+        } else {
+            172.0
+        } // December, June
+    } else if says("winter") || snow {
+        if south {
+            200.0
+        } else {
+            40.0
+        } // July, February
+    } else if south {
+        290.0 // October
+    } else {
+        110.0 // April
     };
     (latitude, longitude, day)
 }

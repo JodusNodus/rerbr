@@ -16,7 +16,8 @@ pub type Site = (f32, f32, f32);
 pub fn site(map: &Map) -> Site {
     let rsf = map.rsf.as_ref();
     let snow = rsf.is_some_and(|s| s.surface == Some(rbr_formats::rsf::Surface::Snow));
-    rbr_render::relight::site(map.number, rsf.and_then(|s| s.country.as_deref()), snow)
+    let (country, name) = (rsf.and_then(|s| s.country.as_deref()), rsf.map_or("", |s| s.name.as_str()));
+    rbr_render::relight::site(map.number, country, name, snow)
 }
 
 /// A moment of the day: the sun at an elevation, in the morning or the evening, or at its highest.
@@ -179,11 +180,12 @@ mod tests {
     #[test]
     fn the_moments_follow_the_sun_of_each_site() {
         // One map of each 1.02 rally, and guessed sites: a Finnish snow stage, a Kenyan one, one with no country.
-        let retail = [10, 20, 31, 41, 51, 61].map(|map| relight::site(map, None, false));
+        let retail = [10, 20, 31, 41, 51, 61].map(|map| relight::site(map, None, "", false));
         let guessed = [
-            relight::site(500, Some("fi"), true),
-            relight::site(501, Some("KE"), false),
-            relight::site(502, None, false),
+            relight::site(500, Some("fi"), "", true),
+            relight::site(501, Some("KE"), "", false),
+            relight::site(502, None, "", false),
+            relight::site(503, Some("GB"), "Sherwood Forest I Summer", false),
         ];
         for site in retail.into_iter().chain(guessed) {
             let elevation = |moment: Moment| solar(site.0, site.2, moment.minutes(site) as f32 / 60.0).0;
