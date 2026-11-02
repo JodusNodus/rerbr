@@ -94,6 +94,8 @@ pub struct Args {
     /// `--present`: how the window presents its frames; `--max-fps`: the drawn frames per second, at most.
     pub present: Present,
     pub max_fps: Option<f32>,
+    /// `--pacing on|off`: frames start no faster than the GPU finishes them, for the input latency (`pacer`; on).
+    pub pacing: bool,
     /// `--fullscreen`: the window fills its monitor, borderless (`--size` is then the size it leaves fullscreen at).
     pub fullscreen: bool,
     /// `--title`: what the loading screen names (the launcher's stage and car), else the stage's file name.
@@ -226,7 +228,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --title TEXT  --pause-menu MOVES  --debug-view MODE
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
-              --present mailbox|fifo|immediate  --max-fps N
+              --present mailbox|fifo|immediate  --max-fps N  --pacing on|off
               --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --no-relight
   sound, HUD: --no-sound  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
@@ -274,6 +276,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut render_scale = 1.0;
     let mut present = Present::default();
     let mut max_fps = None;
+    let mut pacing = true;
     let mut particles = true;
     let (mut ghost, mut save_ghost, mut best_ghost, mut ghost_weather) = (None, None, None, Default::default());
     let (mut save_replay, mut replay) = (None, None);
@@ -508,6 +511,13 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let value = args.next().ok_or("--present needs a mode")?;
                 present = Present::parse(&value).ok_or(format!("--present {value}: use mailbox, fifo or immediate"))?;
             }
+            "--pacing" => {
+                pacing = match args.next().as_deref() {
+                    Some("on") => true,
+                    Some("off") => false,
+                    _ => return Err("--pacing needs on or off".into()),
+                };
+            }
             "--max-fps" => {
                 let value = args.next().ok_or("--max-fps needs a rate")?;
                 max_fps = Some(
@@ -690,6 +700,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         render_scale,
         present,
         max_fps,
+        pacing,
         fullscreen,
         title,
         particles,

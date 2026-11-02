@@ -8,6 +8,7 @@ use crate::args::{Args, QuitFrom};
 use crate::draw::{dial_values, draw_car, draw_particles, readout, scripted_camera, start_camera, step_characters};
 use crate::latency::Latency;
 use crate::loading::{Loaded, Loading};
+use crate::pacer::Pacer;
 use crate::scene::{take_damage, Scene};
 use crate::screenshot::SIZE;
 use feed::Feed;
@@ -46,6 +47,8 @@ use winit::window::{Fullscreen, Window, WindowId};
 const LOADING_FRAME: Duration = Duration::from_millis(16);
 /// The least time between frames while the window is hidden ([`rbr_render::present::Acquired::Hidden`]).
 const HIDDEN_FRAME: Duration = Duration::from_millis(16);
+/// How long before a paced frame's start the event loop's timer wakes it; a sleep takes the rest.
+const TIMER_SLACK: Duration = Duration::from_millis(2);
 /// Free-fly speed, metres per second, and the multiplier while Shift is held.
 const WALK_SPEED: f32 = 20.0;
 const FAST_FACTOR: f32 = 5.0;
@@ -319,6 +322,8 @@ pub struct App {
     fov: f32,
     /// `--max-fps`: the shortest time between drawn frames.
     frame_period: Option<Duration>,
+    /// Frames start no faster than the GPU finishes them (`--pacing`).
+    pacer: Option<Pacer>,
     controls: Controls,
     /// The live mode's keys and device inputs (`--bindings`).
     bindings: Bindings,
@@ -421,6 +426,7 @@ impl App {
             shown: Shown::Player(view),
             fov: args.fov,
             frame_period: args.max_fps.map(|fps| Duration::from_secs_f32(1.0 / fps)),
+            pacer: args.pacing.then(|| Pacer::new(&running.gpu.device)),
             controls: Controls::default(),
             bindings: args.bindings.clone(),
             gilrs,
@@ -738,6 +744,9 @@ impl App {
         span.next("submit");
         running.gpu.queue.submit([encoder.finish()]);
         let submitted = Instant::now();
+        if let Some(pacer) = &mut self.pacer {
+            pacer.submitted(&running.gpu.queue, submitted);
+        }
         span.next("GPU timing readback");
         running.renderer.end_frame();
         span.next("present");
@@ -916,21 +925,29 @@ impl ApplicationHandler for App {
             self.finish_ghost();
             event_loop.exit();
         }
-        // Under `--max-fps` the next frame waits for its time.
-        match self.frame_period.map(|period| self.last_frame + period).filter(|due| *due > Instant::now()) {
-            Some(due) => event_loop.set_control_flow(ControlFlow::WaitUntil(due)),
-            // The next frame is drawn now, not on `RedrawRequested`: Wayland compositors send that only after
-            // they took the last frame, which waits for the GPU, so the CPU's half of a frame never overlapped
-            // the GPU's (49 fps against 68 in a cockpit on cachy's Hyprland). Acquiring the surface's texture
-            // holds the loop back instead. macOS keeps the redraw request.
-            None if cfg!(not(target_os = "macos")) => {
-                event_loop.set_control_flow(ControlFlow::Poll);
-                self.frame();
+        // Under `--max-fps` and the pacer the next frame waits for its time: on the event loop's timer (a ms
+        // coarse) until shortly before it, then in a sleep, as the frame's start reads the input.
+        let period = self.frame_period.into_iter().chain(self.pacer.as_mut().map(Pacer::period)).max();
+        let now = Instant::now();
+        let wait = period.and_then(|period| (self.last_frame + period).checked_duration_since(now));
+        match wait {
+            Some(wait) if wait > TIMER_SLACK => {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(now + wait - TIMER_SLACK));
+                return;
             }
-            None => {
-                event_loop.set_control_flow(ControlFlow::Wait);
-                self.running.window.request_redraw();
-            }
+            Some(wait) => std::thread::sleep(wait),
+            None => {}
+        }
+        // The next frame is drawn now, not on `RedrawRequested`: Wayland compositors send that only after they took
+        // the last frame, which waits for the GPU, so the CPU's half of a frame never overlapped the GPU's (49 fps
+        // against 68 in a cockpit on cachy's Hyprland). Acquiring the surface's texture holds the loop back instead.
+        // macOS keeps the redraw request.
+        if cfg!(not(target_os = "macos")) {
+            event_loop.set_control_flow(ControlFlow::Poll);
+            self.frame();
+        } else {
+            event_loop.set_control_flow(ControlFlow::Wait);
+            self.running.window.request_redraw();
         }
     }
 }

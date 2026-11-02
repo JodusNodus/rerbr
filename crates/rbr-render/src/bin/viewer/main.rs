@@ -169,6 +169,7 @@ mod args;
 mod draw;
 mod latency;
 mod loading;
+mod pacer;
 mod perf;
 mod replay;
 mod scene;

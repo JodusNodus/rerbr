@@ -1132,6 +1132,21 @@ compositor shows every second one (about 27 fps on screen); FIFO shows all, even
 `acquire` each frame), latency not measured yet. FIFO's 37 ms from present to screen is the two frames in flight
 (`desired_maximum_frame_latency` 2) of a GPU-bound loop: what a just-in-time frame start would take out.
 
+Frame pacing (`bin/viewer/pacer.rs`, `--pacing on|off`, on): frames start no faster than the GPU finishes them, the
+period moved each frame by a tenth of the gap between the GPU finishing the last frame and this one's submit missing
+0.5 ms (`Queue::on_submitted_work_done`, a thread polling every 0.25 ms); a CPU-bound loop is left unpaced. Same scene
+and sway, one 90 s run each, paced:
+
+| Present | fps | 1% low | pace ms | latency p50 / p95 ms | discarded | present -> on screen p50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| mailbox | 54.2 | 48.1 | 0.14 | 37.9 / 47.5 (81.6 / 102.3 unpaced) | 17 | 18.2 |
+| fifo | 54.1 | 48.1 | 0.14 | 38.0 / 49.4 (63.9 / 74.5) | 0 | 18.2 |
+| immediate | 54.2 | 48.1 | 0.14 | 36.7 / 47.0 (64.7 / 85.7) | 4 | 17.9 |
+
+The rest is the frame: half a period's wait for the next input read (~9 ms), input read to submit ~10 ms (the live
+answers, scene update, encoding), the GPU's 18 ms. Not measured yet: niri, Windows, macOS, refresh-bound loops
+(FIFO above the refresh rate is not paced).
+
 `--frames N --profile` prints per-pass medians. Texture packs (`bin/texture-pack.rs`, never committed):
 `viewer --textures <dir>/pack` reads them, the car's after its dials are made (dial faces keep theirs). The compact
 `realesr-animevideov3` beats `realesrgan-x4plus` on retail liveries and signs (cleaner flat edges, 1024 livery 4.0 vs
