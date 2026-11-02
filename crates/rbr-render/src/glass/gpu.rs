@@ -7,6 +7,7 @@ use glam::Mat4;
 use wgpu::util::DeviceExt;
 
 use crate::atmosphere::Atmosphere;
+use crate::uploads::Uploads;
 
 /// One drop, flake or bug on the glass: its centre and half axes in stage space, its kind (0 water, 1 snow, 2 bug,
 /// 3 mud, 4 a cell of the wet film, 5 mud seen from inside, 6 a cell of the pane itself seen from inside), a seed for its ragged edge (the film's streak length),
@@ -270,7 +271,7 @@ impl Pass {
     }
 
     /// The drops to draw.
-    pub fn set(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, drops: &[Drop]) {
+    pub(crate) fn set(&mut self, device: &wgpu::Device, uploads: &mut Uploads, drops: &[Drop]) {
         if drops.len() > self.capacity {
             self.capacity = drops.len().next_power_of_two();
             let mut all = drops.to_vec();
@@ -281,7 +282,7 @@ impl Pass {
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         } else if !drops.is_empty() {
-            queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(drops));
+            uploads.write(&self.instances, 0, bytemuck::cast_slice(drops));
         }
         self.count = drops.len() as u32;
     }

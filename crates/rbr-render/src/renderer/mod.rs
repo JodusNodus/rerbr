@@ -20,6 +20,7 @@ use crate::stage::{Anchor, Draw, Image, Layer, Lod, Mesh, Stage, TextureRef, Wea
 use crate::start_board::{self, StartBoard, StartLamp};
 use crate::sun::{self, Cascades, SunShadow};
 use crate::terrain_detail;
+use crate::uploads::Uploads;
 use glam::{Mat4, Vec3, Vec4};
 use rbr_formats::dds::{self, Format};
 use std::collections::{BTreeMap, HashMap};
@@ -199,6 +200,8 @@ pub struct Renderer {
     dial_pass: Option<dials::gpu::Pass>,
     /// The cockpit's mirrors ([`Enhance::mirrors`], `crate::mirrors`).
     mirrors: mirrors::Mirrors,
+    /// The large writes, submitted before the frame's first reads ([`Renderer::render`]).
+    uploads: Uploads,
 }
 
 impl Renderer {
@@ -329,6 +332,7 @@ impl Renderer {
 
         let samplers = Samplers::new(&device, if enhance.anisotropy { 16 } else { 1 });
         let mut dial_targets = BTreeMap::new();
+        let mut dial_bases: Vec<(&str, &[u8], wgpu::TextureView)> = Vec::new();
         let mut glows = BTreeMap::new();
         // `RERBR_NO_TERRAIN_DETAIL` leaves the terrain detail out (A/B timing; `terrain_detail`). Its windows over the
         // machine's threads: one after another they took 0.5 s of the load on 580.
@@ -357,14 +361,21 @@ impl Renderer {
                             luminance_texture(&device, &queue, *width, *height, pixels)
                         }
                         Image::Dial { base, glow, .. } => {
-                            let target =
-                                dials::gpu::Target::new(&device, dds_texture(&device, &queue, &dds::parse(base).ok()?));
                             if let Some(mask) = glow.as_deref().and_then(|bytes| dds::parse(bytes).ok()) {
                                 // DXT1 has no alpha to read (its texels are opaque).
                                 let view = dds_texture(&device, &queue, &mask).create_view(&Default::default());
                                 glows.insert(key, Glow { view, alpha: mask.format != dds::Format::Dxt1, day: false });
                             }
+                            // The textures of one file with one base (a face's, each drawn the same) share a target,
+                            // drawn on by the first.
+                            let shared = (dial_bases.iter()).find(|(r, b, _)| *r == texture.request && *b == base);
+                            if let Some((_, _, view)) = shared {
+                                return Some((key, view.clone()));
+                            }
+                            let target =
+                                dials::gpu::Target::new(&device, dds_texture(&device, &queue, &dds::parse(base).ok()?));
                             let view = target.view();
+                            dial_bases.push((&texture.request, base, view.clone()));
                             dial_targets.insert(key, target);
                             return Some((key, view));
                         }
@@ -715,6 +726,7 @@ impl Renderer {
         let motion = taa.then(|| motion::Motion::new(&device, &shader, &shadow_layout, buffers.len()));
         let taa = motion.as_ref().map(|m| crate::taa::Taa::new(&device, depth_size, depth_size, &depth_view, m.view()));
         Renderer {
+            uploads: Uploads::new(&device),
             device,
             queue,
             format: output_format,
@@ -794,8 +806,8 @@ impl Renderer {
             let effects = self.effects.as_ref().map(|effects| &effects.layout);
             particles::gpu::Pass::new(&self.device, &self.queue, SCENE_FORMAT, DEPTH_FORMAT, sprites, effects)
         });
-        pass.set(&self.device, &self.queue, billboards);
-        pass.set_waves(&self.device, &self.queue, waves);
+        pass.set(&self.device, &mut self.uploads, billboards);
+        pass.set_waves(&self.device, &mut self.uploads, waves);
     }
 
     /// The additions drawn.
@@ -809,7 +821,7 @@ impl Renderer {
             let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
             glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map)
         });
-        pass.set(&self.device, &self.queue, drops);
+        pass.set(&self.device, &mut self.uploads, drops);
         pass.set_wipers(wipers);
     }
 
@@ -836,7 +848,7 @@ impl Renderer {
             };
             crate::skidmarks_pass::SkidPass::decal(&self.device, &self.queue, SCENE_FORMAT, &image)
         });
-        shadow.set_corners(&self.device, &self.queue, &corners);
+        shadow.set_corners(&self.device, &mut self.uploads, &corners);
     }
 
     /// Sets the skid marks to draw from `quads`, with `texture` (`skidmarks.dds`) on the first call.
@@ -844,7 +856,7 @@ impl Renderer {
         let marks = self.skid_marks.get_or_insert_with(|| {
             crate::skidmarks_pass::SkidPass::new(&self.device, &self.queue, SCENE_FORMAT, texture)
         });
-        marks.set_quads(&self.device, &self.queue, quads);
+        marks.set_quads(&self.device, &mut self.uploads, quads);
     }
 
     /// Sets our tyre marks to draw from `quads` (`Enhance::marks`, in place of the skid marks).
@@ -852,7 +864,7 @@ impl Renderer {
         let marks = self
             .skid_marks
             .get_or_insert_with(|| crate::skidmarks_pass::SkidPass::tyres(&self.device, &self.queue, SCENE_FORMAT));
-        marks.set_tyre_quads(&self.device, &self.queue, quads);
+        marks.set_tyre_quads(&self.device, &mut self.uploads, quads);
     }
 
     /// Starts measuring each offscreen frame's stages ([`Renderer::profile`]), slowing the frames.
@@ -904,11 +916,11 @@ impl Renderer {
     }
 
     /// Drops the dials' queued draws without drawing them and submits the frame's uploads: frames a video span skips
-    /// ([`Dials::redraw`] repaints). Unsubmitted writes keep their staging memory, which ran the GPU out of memory 6
-    /// minutes into a skipped stretch.
+    /// ([`Dials::redraw`] repaints) and the hidden window's. Unsubmitted writes keep their staging memory, which ran the
+    /// GPU out of memory 6 minutes into a skipped stretch.
     pub fn skip_frame(&mut self) {
         self.dial_draws.clear();
-        self.queue.submit([]);
+        self.queue.submit(self.uploads.take());
         let _ = self.device.poll(wgpu::PollType::Poll);
     }
 

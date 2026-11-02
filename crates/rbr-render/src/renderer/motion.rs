@@ -14,6 +14,7 @@ use super::{Renderer, DEPTH_FORMAT};
 use crate::camera::Frustum;
 use crate::coords::FRONT_FACE;
 use crate::stage::{Anchor, Vertex};
+use crate::uploads::Uploads;
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
 use std::collections::HashMap;
@@ -166,7 +167,7 @@ impl Motion {
     fn prepare(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        uploads: &mut Uploads,
         (meshes, buffers): (&[GpuMesh], &[MeshBuffers]),
         view_projection: Mat4,
         body: Mat4,
@@ -191,11 +192,11 @@ impl Motion {
                     let shown = std::mem::replace(&mut track.shown, given);
                     // A mesh given for the first time was where it is.
                     let was = if shown.len() == track.shown.len() { &shown } else { &track.shown };
-                    queue.write_buffer(previous, offset, bytemuck::cast_slice(was));
+                    uploads.write(previous, offset, bytemuck::cast_slice(was));
                     track.settled = false;
                 }
                 None if !track.settled => {
-                    queue.write_buffer(previous, offset, bytemuck::cast_slice(&track.shown));
+                    uploads.write(previous, offset, bytemuck::cast_slice(&track.shown));
                     track.settled = true;
                 }
                 None => {}
@@ -207,7 +208,7 @@ impl Motion {
             previous_view_projection: previous_view_projection.to_cols_array(),
             previous_body: previous_body.to_cols_array(),
         };
-        queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
+        uploads.write(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         self.last = Some((view_projection, body));
     }
 }
@@ -218,7 +219,7 @@ impl Renderer {
     pub(super) fn prepare_motion(&mut self, view_projection: Mat4) {
         let body = self.car_body.unwrap_or_default();
         if let Some(motion) = &mut self.motion {
-            motion.prepare(&self.device, &self.queue, (&self.meshes, &self.buffers), view_projection, body);
+            motion.prepare(&self.device, &mut self.uploads, (&self.meshes, &self.buffers), view_projection, body);
         }
     }
 

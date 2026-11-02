@@ -578,25 +578,27 @@ impl Face {
         quads
     }
 
-    /// The draw for `values`: the parts of the regions the quads that moved touch (the whole texture the first time),
-    /// or `None` when nothing moved.
+    /// The draw for `values`: the parts of the regions the quads that moved touch (the whole texture, every level, the
+    /// first time), or `None` when nothing moved.
     fn draw(&mut self, values: &Values, at: At, dt: Option<f32>) -> Option<gpu::Draw> {
         let quads = self.quads(values, at, dt);
-        let rects = match &self.drawn {
-            None => vec![[0, 0, self.size.0, self.size.1]],
+        let (rects, span) = match &self.drawn {
+            None => (vec![[0, 0, self.size.0, self.size.1]], None),
             Some(drawn) if *drawn == quads => return None,
             Some(drawn) => {
                 let changed: Vec<[i64; 4]> = (quads.iter().filter(|q| !drawn.contains(q)))
                     .chain(drawn.iter().filter(|q| !quads.contains(q)))
                     .map(Quad::bounds)
                     .collect();
-                touched(&self.regions, &changed)
+                let span = self.regions.iter().map(|[x0, y0, x1, y1]| (x1 - x0).max(y1 - y0)).max();
+                (touched(&self.regions, &changed), span)
             }
         };
         let mut sprites = Vec::with_capacity(quads.len());
         quads.iter().for_each(|q| q.sprites(&self.sprites, &mut sprites));
         self.drawn = Some(quads);
-        Some(gpu::Draw { keys: self.keys.clone(), atlas: Arc::clone(&self.sprites), size: self.size, rects, sprites })
+        let (keys, atlas, size) = (self.keys.clone(), Arc::clone(&self.sprites), self.size);
+        Some(gpu::Draw { keys, atlas, size, rects, span, sprites })
     }
 }
 
