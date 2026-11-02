@@ -8,7 +8,7 @@ differences are in `notes/rust-plan.md` ("Done means"); [Masks](#masks) tells wh
 One Linux x86_64 PC. Copy `dev.env.example` to `dev.env` (gitignored; worktrees read the main checkout's);
 `scripts/dev-env.sh` loads it for the scripts and the harness (`harness/dev_env.py`), filling the folders below
 from `RBR_DEV` (`~/rerbr-dev`). All values are absolute paths. The original runs vanilla 1.02 (retail data plus the
-1.02 patch; [development.md](../docs/development.md#the-original-binaries)), started with Proton's `umu-run`.
+1.02 patch; [below](#the-original-binaries)), started with Proton's `umu-run`.
 
 | Variable | What |
 | --- | --- |
@@ -23,6 +23,15 @@ from `RBR_DEV` (`~/rerbr-dev`). All values are absolute paths. The original runs
 | `RBR_BUSY` | optional `pgrep` pattern other processes `matrix.py` waits for |
 
 `RBR_ORIG_EXE` names the 1.02 exe (default `$RBR_PATCH/RichardBurnsRally_SSE.exe`), `RBR_SNAPS` the snapshots (default `/tmp/rbr-snaps`). `harness/slots.sh [N]` copies the install into parallel slots (default 4).
+
+### The original binaries
+
+| Source | Notes |
+| --- | --- |
+| Retail 1.0 disc | data extracted to `original/retail-1.0/install/`; the disc exe has a copy-protection wrapper and is not used |
+| Official 1.02 patch | InstallShield SFX: `scripts/is_sfx_extract.py`, then `unshield`, into `original/patch-1.02/files/`. The target: `Main_group/RichardBurnsRally_SSE.exe` (game), `HedgeHog3D.dll` (3D engine), `LocoMotion.dll` (driver animation) |
+| RSF install | a player's RallySimFans install: read it, never modify it. Its exe differs from 1.02 only by the large-address flag, the checksum, one code byte at file offset `0xb225` and trailing zeros |
+| Vanilla 1.02 test install | retail data with the 1.02 patch laid over it, ours to run. It needs `trackinfo.dat` in the game root (29 bytes, `"rbr pc version 0.42"`; copy in `original/install-generated/`) |
 
 ## Plugin
 

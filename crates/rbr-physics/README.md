@@ -4,6 +4,24 @@ Bit-exact ports of the 1.02 physics functions, plus NGP 7.4.778's own (precision
 and porting rules: [notes/physics.md](../../notes/physics.md). Vector store and hybrid check:
 [notes/verification.md](../../notes/verification.md).
 
+## Code style
+
+The crate is physics code in its own terms that produces the original's bits, not a transcription of the
+decompile. [`ngp/heat.rs`](src/ngp/heat.rs) is the reference.
+
+- Model code (a subsystem's modules outside `layout`) names physical quantities and roles: `carcass_radius`, `spin`,
+  `slip_ratio`, `heat_flow_to_air`, `TyreShape`, with units in the docs. Inputs that belong together are a type.
+- No addresses, offsets, original function or class names, calling conventions, registers or `st0` in model code or
+  its docs. They live in `layout`/`layout/` (memory), the `rbr-hybrid` bindings (named after the original's
+  functions), `ports.csv`/`bound.csv` (address to Rust item), the tests and the notes.
+- A name says what the evidence shows: a tweak key, the formula's role, units and values. Where the meaning is not
+  known, a neutral role name (`blend_weight`) documented as named by use, never `f_1e8` or `w7c`, and no invented
+  physics.
+- Constants are plain literals or `std` constants (`TAU`, `293.14`, `0.78_f32 as f64`), not bit patterns, where the
+  value is exactly the same.
+- Exactness first: every kept computation keeps its operation order and rounding (`fpu` helpers for the x87 chains,
+  comments for unordered compares like `maxss`). A rename never changes a result; the vectors and the drive prove it.
+
 ## Modules
 
 Raw offsets live only in each module's layout code. Tests are in `tests/`.

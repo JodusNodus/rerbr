@@ -143,15 +143,13 @@ This builds three programs in `target/release/`: `rerbr` (the launcher), `viewer
 
 ## Contributing
 
-The original game is the oracle. We record drives in it, and every Rust port is checked against those recordings,
-inside the original's own step, until it gives the same state bit for bit. NGP's physics is checked the same way
-against the original running NGP. A C++98 reconstruction of the 1.02 binaries, in the separate rbr-recomp
-repository, is how we read what the game computes.
+Start with [docs/development.md](docs/development.md): set up, running it, the code map, the rules and the checks.
+The open work is in [notes/status.md](notes/status.md).
 
-Start with [docs/development.md](docs/development.md): the layout, the rules, the checks. The current state and the
-open work are in [notes/status.md](notes/status.md). The recordings and physics records the tests check against are
-published (`scripts/fetch-test-data.sh`), and CI runs every pull request against them. The snapshots of the original
-are published too, so a new physics port can be checked inside the original's own step on your machine.
+The physics and the gameplay must match the original game bit for bit. We record drives in the original running NGP,
+and the tests replay them against the Rust code. The recordings are published (`scripts/fetch-test-data.sh`), and CI
+runs every pull request against them. The renderer, sound, HUD and launcher are new; they read the physics and never
+change it.
 
 ## Credits
 
