@@ -160,7 +160,7 @@ pub fn render(
                 encoded += 1;
             }
         } else {
-            renderer.drop_dial_draws();
+            renderer.skip_frame();
         }
         frames += 1;
         if last_progress.elapsed() >= PROGRESS_EVERY {

@@ -903,9 +903,13 @@ impl Renderer {
         self.dial_draws.extend(draws);
     }
 
-    /// Drops the dials' queued draws without drawing them: frames a video span skips ([`Dials::redraw`] repaints).
-    pub fn drop_dial_draws(&mut self) {
+    /// Drops the dials' queued draws without drawing them and submits the frame's uploads: frames a video span skips
+    /// ([`Dials::redraw`] repaints). Unsubmitted writes keep their staging memory, which ran the GPU out of memory 6
+    /// minutes into a skipped stretch.
+    pub fn skip_frame(&mut self) {
         self.dial_draws.clear();
+        self.queue.submit([]);
+        let _ = self.device.poll(wgpu::PollType::Poll);
     }
 
     /// Sets the time of day the start board's clock shows, s after midnight (`None`: its placeholder face).
