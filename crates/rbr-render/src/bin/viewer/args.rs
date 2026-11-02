@@ -871,9 +871,9 @@ mod tests {
     }
 
     #[test]
-    fn present_defaults_to_mailbox_uncapped_windowed() {
+    fn present_defaults_to_the_systems_uncapped_windowed() {
         let args = parse("track-54_E").unwrap();
-        assert_eq!((args.present, args.max_fps, args.fullscreen), (Present::Mailbox, None, false));
+        assert_eq!((args.present, args.max_fps, args.fullscreen), (Present::default(), None, false));
         assert!(parse("--fullscreen").unwrap().fullscreen);
         let args = parse("--present immediate --max-fps 144").unwrap();
         assert_eq!((args.present, args.max_fps), (Present::Immediate, Some(144.0)));
