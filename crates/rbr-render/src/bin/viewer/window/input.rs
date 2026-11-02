@@ -112,7 +112,10 @@ impl App {
             Ok(drive) => {
                 playback.reset(drive);
                 self.running.renderer.reset_history();
-                self.results = None;
+                if self.results.take().is_some() {
+                    // The stage result paused them.
+                    self.pause_outputs(false);
+                }
                 self.ended = None;
                 self.controls = Controls::default();
                 if let Some(shifter) = &mut self.shifter {
@@ -158,9 +161,7 @@ impl App {
         if let Some(process) = &mut self.scene.live {
             process.pause();
         }
-        if let Some(sound) = &self.sound {
-            sound.set_paused(true);
-        }
+        self.pause_outputs(true);
         self.paused_at = Some(Instant::now());
     }
 
@@ -173,8 +174,17 @@ impl App {
         if let Some(process) = &mut self.scene.live {
             process.resume();
         }
+        self.pause_outputs(false);
+    }
+
+    /// Stops or restarts the drive's sound where it is and holds the wheel's force at 0 (the pause menu, a paused
+    /// replay, the stage result).
+    pub fn pause_outputs(&self, paused: bool) {
         if let Some(sound) = &self.sound {
-            sound.set_paused(false);
+            sound.set_paused(paused);
+        }
+        if let Some(wheel) = &self.wheel {
+            wheel.set_paused(paused);
         }
     }
 
@@ -189,12 +199,7 @@ impl App {
             CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head()),
         ));
         process.pause();
-        if let Some(sound) = &self.sound {
-            sound.set_paused(true);
-        }
-        if let Some(wheel) = &self.wheel {
-            wheel.set(0.0, 0.0);
-        }
+        self.pause_outputs(true);
         self.paused_at = Some(Instant::now());
     }
 
@@ -209,9 +214,7 @@ impl App {
         if let Some(process) = &mut self.scene.live {
             process.resume();
         }
-        if let Some(sound) = &self.sound {
-            sound.set_paused(false);
-        }
+        self.pause_outputs(false);
         if let Some(at) = self.paused_at.take() {
             self.paused += at.elapsed();
         }

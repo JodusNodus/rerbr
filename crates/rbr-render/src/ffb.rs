@@ -143,6 +143,8 @@ struct Shared {
     magnitude: AtomicI32,
     /// The steering input's bits, for NGP's dead zone.
     steering: AtomicU32,
+    /// The drive is paused: no force, whatever the step records still set.
+    paused: AtomicBool,
     stop: AtomicBool,
 }
 
@@ -178,6 +180,12 @@ impl Wheel {
     pub fn set_magnitude(&self, magnitude: i32, steering: f32) {
         self.shared.magnitude.store(magnitude, Ordering::Relaxed);
         self.shared.steering.store(steering.to_bits(), Ordering::Relaxed);
+    }
+
+    /// Holds the force at 0 while `paused` (the pause menu, the stage result), also against the step records still on
+    /// their way; the latest one's force comes back after.
+    pub fn set_paused(&self, paused: bool) {
+        self.shared.paused.store(paused, Ordering::Relaxed);
     }
 }
 
@@ -235,7 +243,11 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
         let period = Duration::from_secs_f64(1.0 / f64::from(options.rate.clamp(1, 1000)));
         while !shared.stop.load(Ordering::Relaxed) {
             let steering = f32::from_bits(shared.steering.load(Ordering::Relaxed));
-            let m = ffb::dead_zone(shared.magnitude.load(Ordering::Relaxed), steering, &options.settings);
+            let m = if shared.paused.load(Ordering::Relaxed) {
+                0
+            } else {
+                ffb::dead_zone(shared.magnitude.load(Ordering::Relaxed), steering, &options.settings)
+            };
             effect.constant.level = level(m);
             SDL_UpdateHapticEffect(haptic, id, &effect);
             SDL_RunHapticEffect(haptic, id, 1);
