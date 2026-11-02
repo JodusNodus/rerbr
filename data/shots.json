@@ -358,14 +358,14 @@
   "at": 10480
  },
  {
-  "name": "golden-pirttikulma-quattro-cockpit",
+  "name": "day-pirttikulma-quattro-cockpit",
   "stage": 590,
   "car": "Audi quattro A2 GrpB",
   "view": "cockpit",
   "settings": {
-   "clouds": "partly"
+   "clouds": "clear"
   },
-  "clock": "05:30",
+  "clock": "17:30",
   "at": 2220
  }
 ]

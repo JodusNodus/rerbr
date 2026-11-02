@@ -37,6 +37,12 @@ Ford Fiesta Rally2, Luceram Col Saint Roch (RSF 417), cockpit view, 08:30
 
 ![day-luceram-fiesta-cockpit](day-luceram-fiesta-cockpit.jpg)
 
+### day-pirttikulma-quattro-cockpit
+
+Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 17:30
+
+![day-pirttikulma-quattro-cockpit](day-pirttikulma-quattro-cockpit.jpg)
+
 ## Golden hour
 
 ### golden-532-clio-cockpit
@@ -92,12 +98,6 @@ Subaru Impreza GC8 555 GrpA, Odry (RSF 462), chase view, 18:30
 Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 05:30
 
 ![golden-pengonpohja-quattro-flyby](golden-pengonpohja-quattro-flyby.jpg)
-
-### golden-pirttikulma-quattro-cockpit
-
-Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 05:30
-
-![golden-pirttikulma-quattro-cockpit](golden-pirttikulma-quattro-cockpit.jpg)
 
 ## Rain
 
