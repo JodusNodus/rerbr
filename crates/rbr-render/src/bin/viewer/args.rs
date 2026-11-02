@@ -117,8 +117,8 @@ pub struct Args {
     /// `--seed`: the race start's seed of `rand()` and `LuaRandom`.
     pub seed: u32,
     /// `--quit-after S`: the window closes itself after S seconds, as on Escape (unattended runs); counted from the
-    /// race's end with `end+S` (the flag).
-    pub quit_after: Option<(f32, bool)>,
+    /// race's first go with `go+S`, from its end with `end+S`.
+    pub quit_after: Option<(f32, QuitFrom)>,
     /// `--no-fences` clears it.
     pub fences: bool,
     /// The working dials of an RSF car with RBRHUD gauges (`rbr_render::dials`); `--no-dials` clears it. `--gauge-mode N`:
@@ -191,6 +191,17 @@ impl CodriverMod {
     }
 }
 
+/// What `--quit-after`'s seconds count from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum QuitFrom {
+    /// The window's opening (`S`).
+    Open,
+    /// The live race's first go (`go+S`).
+    Go,
+    /// The live race's end (`end+S`).
+    End,
+}
+
 /// Whether the HUD is drawn, its speed unit, and whether it shows the frame rate.
 #[derive(Debug, Clone, Copy)]
 pub struct HudOptions {
@@ -222,7 +233,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
               --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages,view
   events:     --birdstrike  --rescue-at STEP  --seed N
-  runs:       --screenshot PNG  --video FILE[.webp]  --video-fps N  --video-span FROM,TO  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|end+S
+  runs:       --screenshot PNG  --video FILE[.webp]  --video-fps N  --video-span FROM,TO  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|go+S|end+S
   -V, --version  print the version
   -h, --help  print this text";
 
@@ -598,8 +609,12 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--birdstrike" => birdstrike = true,
             "--quit-after" => {
                 let value = args.next().ok_or("--quit-after needs seconds")?;
-                let (seconds, end) = value.strip_prefix("end+").map_or((value.as_str(), false), |s| (s, true));
-                quit_after = Some((seconds.parse().map_err(|e| format!("--quit-after {value}: {e}"))?, end));
+                let (seconds, from) = match value.split_once('+') {
+                    Some(("go", s)) => (s, QuitFrom::Go),
+                    Some(("end", s)) => (s, QuitFrom::End),
+                    _ => (value.as_str(), QuitFrom::Open),
+                };
+                quit_after = Some((seconds.parse().map_err(|e| format!("--quit-after {value}: {e}"))?, from));
             }
             "--seed" => {
                 let value = args.next().ok_or("--seed needs a number")?;
@@ -727,6 +742,15 @@ mod tests {
 
     fn parse(line: &str) -> Result<Args, String> {
         parse_args(line.split_whitespace().map(str::to_owned))
+    }
+
+    #[test]
+    fn quit_after_counts_from_the_opening_the_go_or_the_end() {
+        let quit = |line: &str| parse(line).unwrap().quit_after;
+        assert_eq!(quit("--quit-after 5"), Some((5.0, QuitFrom::Open)));
+        assert_eq!(quit("--quit-after go+90"), Some((90.0, QuitFrom::Go)));
+        assert_eq!(quit("--quit-after end+2.5"), Some((2.5, QuitFrom::End)));
+        assert!(parse("--quit-after start+5").is_err());
     }
 
     #[test]

@@ -124,7 +124,9 @@
 //! returns to the launcher. Restart also resets `--quit-after end+S` to wait for the next result.
 //! `--quit-after S` closes the window after S seconds as the menu's exit does (unattended runs, with
 //! `rbr-standalone --pilot`;
-//! `end+S`: S seconds after the race is over, its result shown), and the live process's end prints the drawn frames, the answers and the steps against the wall time.
+//! `go+S`: S seconds after the race's first go; `end+S`: S seconds after the race is over, its result shown), and the
+//! live process's end prints the drawn frames, the answers and the steps against the wall time. With `--perf-log` the
+//! log's summary counts from the live race's first go (`rbr_render::perf_log::mark`).
 //!
 //! A drive (`--drive`, `--live`) throws the stage's particles (`rbr_render::particles`): tyre spray and dust by surface,
 //! the exhaust, and rain or snow in the wet and damp weathers of the rain and snow presets. A screenshot replays the

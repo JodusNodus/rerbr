@@ -4,7 +4,7 @@ mod feed;
 mod input;
 mod results;
 
-use crate::args::Args;
+use crate::args::{Args, QuitFrom};
 use crate::draw::{dial_values, draw_car, draw_particles, readout, scripted_camera, start_camera, step_characters};
 use crate::latency::Latency;
 use crate::loading::{Loaded, Loading};
@@ -354,7 +354,9 @@ pub struct App {
     clock: f64,
     /// The live drive's sound (`--no-sound` turns it off).
     sound: Option<rbr_render::sound::Player>,
-    quit_after: Option<(f32, bool)>,
+    quit_after: Option<(f32, QuitFrom)>,
+    /// When the live race's go was first seen (`--quit-after go+S`; the performance log's summary counts from it).
+    went: Option<Instant>,
     /// When the live race was first seen over (`--quit-after end+S`).
     ended: Option<Instant>,
     /// The live drive's pause menu, while it is open (the drive is paused).
@@ -438,6 +440,7 @@ impl App {
             started: Instant::now(),
             sound,
             quit_after: args.quit_after,
+            went: None,
             ended: None,
             menu: None,
             results: None,
@@ -611,6 +614,10 @@ impl App {
                     let penalties = process.hud.race.map_or(0.0, |race| race.penalties);
                     ghost.observe(process.splits.as_ref(), penalties, playback.sample().step);
                 }
+            }
+            if self.went.is_none() && process.hud.race.is_some_and(|race| race.countdown <= 0.0) {
+                self.went = Some(now);
+                perf_log::mark("go");
             }
             if process.splits.as_ref().is_some_and(|s| s.over) {
                 self.ended.get_or_insert(now);
@@ -896,7 +903,11 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let since = |(_, end): (f32, bool)| if end { self.ended } else { Some(self.started) };
+        let since = |(_, from): (f32, QuitFrom)| match from {
+            QuitFrom::Open => Some(self.started),
+            QuitFrom::Go => self.went,
+            QuitFrom::End => self.ended,
+        };
         let quit = self.quit_after.is_some_and(|q| since(q).is_some_and(|t| t.elapsed().as_secs_f32() > q.0));
         if quit || self.exit {
             self.finish_ghost();

@@ -1,10 +1,11 @@
 //! The in-game performance log (`viewer --perf-log DIR`; the launcher's "Performance log"): where a player's frame time
 //! goes, in two files named by the session's start (UTC), `perf-<YYYYMMDD-HHMMSS>.log` and `.trace.json`.
 //!
-//! The `.log` is a header (the machine, the GPU, the settings), a line a second and a summary at exit; the trace holds
-//! the last [`RING`] frames for ui.perfetto.dev or chrome://tracing, written at exit (a killed viewer leaves the
-//! `.log` only). Timings come from [`span`]s on the CPU, one track a thread (name a thread with [`name_thread`]), and
-//! from the GPU's timestamps (`profile::Profiler`, a few frames late, never waited for), where the device has them.
+//! The `.log` is a header (the machine, the GPU, the settings), a line a second and a summary at exit (from the
+//! [`mark`], the live race's go, when there is one); the trace holds the last [`RING`] frames for ui.perfetto.dev or
+//! chrome://tracing, written at exit (a killed viewer leaves the `.log` only). Timings come from [`span`]s on the CPU,
+//! one track a thread (name a thread with [`name_thread`]), and from the GPU's timestamps (`profile::Profiler`, a few
+//! frames late, never waited for), where the device has them.
 //!
 //! GPU time is exact; its place on the CPU's timeline is not: the GPU's clock is not the CPU's and wgpu offers no way
 //! to correlate them, so each frame's passes end where its last submission was made (`Profiler::end_frame`). A GPU
@@ -68,6 +69,14 @@ pub fn finish() {
     ON.store(false, Relaxed);
     let Some(mut recorder) = lock().take() else { return };
     recorder.finish();
+}
+
+/// Starts the summary over at `name` (the live race's go), from the next frame on: what came before (the loading, the
+/// start) stays in the lines a second and the trace only.
+pub fn mark(name: &'static str) {
+    if let Some(recorder) = lock().as_mut() {
+        recorder.marked = Some(name);
+    }
 }
 
 /// Starts frame `n` and ends the one before; a window calls it once a loop.
@@ -169,6 +178,11 @@ struct Recorder {
     totals: Vec<(&'static str, u64)>,
     /// The second being counted: when it began and its frames' times in milliseconds.
     second: (u64, Vec<f64>),
+    /// The [`mark`] the next frame starts the summary at.
+    marked: Option<&'static str>,
+    /// Where the summary starts: the mark's name, its time and the frames begun by then (the summary counts the frames
+    /// ended after it).
+    summary_from: Option<(&'static str, u64, u64)>,
     cpu: Table,
     gpu: Table,
     frame_times: Hist,
@@ -186,6 +200,8 @@ impl Recorder {
             frames: 0,
             totals: Vec::new(),
             second: (0, Vec::new()),
+            marked: None,
+            summary_from: None,
             cpu: Table::default(),
             gpu: Table::default(),
             frame_times: Hist::default(),
@@ -277,6 +293,13 @@ impl Recorder {
         if now - self.second.0 >= 1_000_000_000 {
             self.flush_second(now);
         }
+        if let Some(name) = self.marked.take() {
+            self.write(&format!("t={:.1}s {name}: the summary counts from here\n", now as f64 / 1e9));
+            self.summary_from = Some((name, now, self.frames));
+            self.frame_times = Hist::default();
+            self.cpu.reset_hists();
+            self.gpu.reset_hists();
+        }
     }
 
     /// Writes the line of the second that ended at `now` (nanoseconds).
@@ -294,6 +317,10 @@ impl Recorder {
             self.flush_second(now);
         }
         let mut summary = format!("\nSession: {} frames in {:.1} s\n", self.frames, now as f64 / 1e9);
+        if let Some((name, at, before)) = self.summary_from {
+            let (frames, at, measured) = (self.frames - before, at as f64 / 1e9, (now - at) as f64 / 1e9);
+            let _ = writeln!(summary, "Summary from {name} (t={at:.1}s): {frames} frames in {measured:.1} s");
+        }
         summary += &summary_table("frame", &[("frame time", &self.frame_times)]);
         summary += &summary_table("cpu", &self.cpu.hists());
         summary += &summary_table("gpu", &self.gpu.hists());
@@ -362,8 +389,13 @@ impl Table {
         self.0.iter_mut().for_each(|(_, acc, _)| *acc = Acc::default());
     }
 
+    fn reset_hists(&mut self) {
+        self.0.iter_mut().for_each(|(_, _, hist)| *hist = Hist::default());
+    }
+
+    /// The names seen since the summary's start, with their times.
     fn hists(&self) -> Vec<(&'static str, &Hist)> {
-        self.0.iter().map(|(name, _, hist)| (*name, hist)).collect()
+        self.0.iter().filter(|(_, _, hist)| hist.n > 0).map(|(name, _, hist)| (*name, hist)).collect()
     }
 }
 
@@ -486,19 +518,21 @@ fn second_line(
     )
 }
 
-/// A summary's rows: each name's frames and its mean, median, 99th percentile and largest in ms.
+/// A summary's rows: each name's frames and its mean, median, 99th and 99.9th percentile and largest in ms.
 fn summary_table(title: &str, rows: &[(&str, &Hist)]) -> String {
     let width = rows.iter().map(|(name, _)| name.len()).max().unwrap_or(0);
-    let mut text = format!("{title:width$}  {:>8} {:>9} {:>9} {:>9} {:>9}\n", "n", "mean", "p50", "p99", "max");
+    let mut text =
+        format!("{title:width$}  {:>8} {:>9} {:>9} {:>9} {:>9} {:>9}\n", "n", "mean", "p50", "p99", "p99.9", "max");
     for (name, hist) in rows {
         let ms = |ns: f64| ns / 1e6;
         let _ = writeln!(
             text,
-            "{name:width$}  {:>8} {:>9.3} {:>9.3} {:>9.3} {:>9.3}",
+            "{name:width$}  {:>8} {:>9.3} {:>9.3} {:>9.3} {:>9.3} {:>9.3}",
             hist.n,
             ms(hist.mean()),
             ms(hist.quantile(0.5)),
             ms(hist.quantile(0.99)),
+            ms(hist.quantile(0.999)),
             ms(hist.max as f64),
         );
     }
@@ -554,6 +588,29 @@ mod tests {
         let within = |got: f64, want: f64| (got / want - 1.0).abs() < 0.05;
         assert!(within(hist.quantile(0.5), 50e6) && within(hist.quantile(0.99), 99e6));
         assert_eq!((hist.mean(), hist.max), (50.5e6, 100_000_000));
+    }
+
+    #[test]
+    fn the_summary_counts_from_the_frame_after_the_mark() {
+        let mut r = recorder();
+        let start = r.start;
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        for i in 0..10 {
+            r.next_frame(at(i * 100));
+            r.cpu_span(0, "start orbit", at(i * 100), at(i * 100 + 50));
+        }
+        r.marked = Some("go");
+        for i in 0..11 {
+            r.next_frame(at(1000 + i * 10));
+            r.cpu_span(0, "render", at(1000 + i * 10), at(1000 + i * 10 + 4));
+        }
+        // The frame the mark came in (900 to 1000 ms) and its span are before it; ten 10 ms frames after.
+        assert_eq!((r.frame_times.n, r.frame_times.max), (10, 10_000_000));
+        assert_eq!(r.cpu.hists().iter().map(|(name, h)| (*name, h.n)).collect::<Vec<_>>(), [("render", 10)]);
+        assert_eq!(r.summary_from, Some(("go", 1_000_000_000, 11)));
+        let table = summary_table("frame", &[("frame time", &r.frame_times)]);
+        let head: Vec<&str> = table.lines().next().unwrap().split_whitespace().collect();
+        assert_eq!(head, ["frame", "n", "mean", "p50", "p99", "p99.9", "max"]);
     }
 
     #[test]
