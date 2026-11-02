@@ -80,7 +80,6 @@ pub fn render_scale_args(percent: u32) -> Vec<String> {
 /// The `viewer --enhance` list of the additions `graphics` turn on, and those always on.
 pub fn enhance_list(graphics: &Graphics) -> String {
     let on = |name: &str| match name {
-        "asphalt" | "gravel" | "snow" | "ground" => graphics.surfaces,
         "cabin" => graphics.cabin,
         "contact" => graphics.contact,
         "grass" => graphics.grass,
@@ -1207,9 +1206,8 @@ mod tests {
             enhance_list(&DEFAULT_GRAPHICS),
             "anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen"
         );
-        // Ultra with the tyre marks and the scanned surfaces is every addition.
-        let every = Graphics { surfaces: true, ..Quality::Ultra.graphics(true) };
-        assert_eq!(Enhance::parse(&enhance_list(&every)), Enhance::parse("all,grass"));
+        // Ultra with the tyre marks is every addition.
+        assert_eq!(Enhance::parse(&enhance_list(&Quality::Ultra.graphics(true))), Enhance::parse("all,grass"));
         for preset in Quality::ALL {
             assert_eq!(Quality::of(preset.graphics(true)), Some(preset));
         }

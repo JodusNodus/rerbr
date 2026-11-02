@@ -234,7 +234,6 @@ pub struct Settings {
     /// The Quality section's switches ([`Graphics`]), each kept under its name.
     pub lighting: Option<bool>,
     pub particles: Option<bool>,
-    pub surfaces: Option<bool>,
     pub cabin: Option<bool>,
     pub contact: Option<bool>,
     pub grass: Option<bool>,
@@ -539,7 +538,6 @@ impl Settings {
             wipers: launcher.parsed("wipers", Switch::parse),
             lighting: launcher.on_off("lighting"),
             particles: launcher.on_off("particles"),
-            surfaces: launcher.on_off("surfaces"),
             cabin: launcher.on_off("cabin"),
             contact: launcher.on_off("contact"),
             grass: launcher.on_off("grass"),
@@ -652,7 +650,6 @@ impl Settings {
             ("perf_log", on_off_text(self.perf_log)),
             ("lighting", on_off_text(self.lighting)),
             ("particles", on_off_text(self.particles)),
-            ("surfaces", on_off_text(self.surfaces)),
             ("cabin", on_off_text(self.cabin)),
             ("contact", on_off_text(self.contact)),
             ("grass", on_off_text(self.grass)),
@@ -869,7 +866,6 @@ impl Form {
             graphics: Graphics {
                 lighting: settings.lighting.unwrap_or(DEFAULT_GRAPHICS.lighting),
                 particles: settings.particles.unwrap_or(DEFAULT_GRAPHICS.particles),
-                surfaces: settings.surfaces.unwrap_or(DEFAULT_GRAPHICS.surfaces),
                 cabin: settings.cabin.unwrap_or(DEFAULT_GRAPHICS.cabin),
                 contact: settings.contact.unwrap_or(DEFAULT_GRAPHICS.contact),
                 grass: settings.grass.unwrap_or(DEFAULT_GRAPHICS.grass),
@@ -967,7 +963,6 @@ impl Form {
             hud_hide: Some(self.hud.parts),
             lighting: Some(self.graphics.lighting),
             particles: Some(self.graphics.particles),
-            surfaces: Some(self.graphics.surfaces),
             cabin: Some(self.graphics.cabin),
             contact: Some(self.graphics.contact),
             grass: Some(self.graphics.grass),
@@ -1069,7 +1064,6 @@ mod tests {
             wipers: Some(Switch::Intermittent),
             lighting: Some(false),
             particles: Some(false),
-            surfaces: Some(true),
             cabin: Some(false),
             contact: Some(false),
             grass: Some(true),
@@ -1200,7 +1194,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("perf_log = on\nlighting = off\nparticles = off\nsurfaces = on\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\n"),
+            text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\n"),
             "{text}"
         );
         assert!(text.contains("start_time = baked\nperf_log = on\n"), "{text}");
@@ -1338,7 +1332,6 @@ mod tests {
                 "perf_log = on\n",
                 "lighting = off\n",
                 "particles = off\n",
-                "surfaces = on\n",
                 "cabin = off\n",
                 "contact = off\n",
                 "grass = on\n",

@@ -39,7 +39,6 @@ mod offscreen;
 mod pipelines;
 mod probes;
 mod reflection;
-mod road_scan;
 mod shadows;
 mod sun_mask;
 mod textures;
@@ -102,8 +101,6 @@ pub struct Renderer {
     ground_light: Option<bounce::Ground>,
     /// How wet the stage's weather is ([`FrameUniform::wetness`]).
     wetness: f32,
-    /// The stage's ground is snow's ([`Stage::snow_ground`]).
-    snow_ground: bool,
     /// The car's dirt ([`Renderer::set_car_dirt`]).
     car_dirt: crate::dirt::CarDirt,
     /// How much sun gets into the cabin ([`Renderer::set_cabin_sun`]) and the car body's model space to stage space
@@ -264,8 +261,6 @@ impl Renderer {
         let shadow_range = shadows::ShadowRange::new(&device, &shadow_view);
         // The volumetric clouds' shadow map ([`cloud_volume::shadow_target`]), read by every draw.
         let (cloud_shadow_view, cloud_shadow_sampler) = cloud_volume::shadow_target(&device);
-        let (scan_view, scan_sampler) =
-            road_scan::load(&device, &queue, enhance.gravel || enhance.asphalt || enhance.snow || enhance.ground);
         let frames = [(); 3].map(|_| {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("frame"),
@@ -318,8 +313,6 @@ impl Renderer {
                         binding: 20,
                         resource: wgpu::BindingResource::Sampler(&cloud_shadow_sampler),
                     },
-                    wgpu::BindGroupEntry { binding: 21, resource: wgpu::BindingResource::TextureView(&scan_view) },
-                    wgpu::BindGroupEntry { binding: 22, resource: wgpu::BindingResource::Sampler(&scan_sampler) },
                 ],
             });
             FrameBinding { buffer, bind_group }
@@ -434,10 +427,6 @@ impl Renderer {
             vertex: vertex_entry(enhance),
             water_plus: enhance.water || enhance.wet,
             cabin: enhance.cabin,
-            gravel: enhance.gravel,
-            asphalt: enhance.asphalt,
-            snow: enhance.snow,
-            ground: enhance.ground,
             grass: enhance.grass,
             lighting: enhance.lighting,
             debug_view: enhance.debug_view.code(),
@@ -762,7 +751,6 @@ impl Renderer {
             atmosphere: stage.atmosphere.clone(),
             ground_light,
             wetness,
-            snow_ground: stage.snow_ground,
             car_dirt: Default::default(),
             cabin_sun: None,
             car_body: None,

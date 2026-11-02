@@ -86,8 +86,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 
 Form in `rbr-launcher/src/settings.rs`, folder and once-only migrate in `rbr-launcher/src/home.rs`.
 
-- Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `surfaces`, `cabin`, `contact`, `grass`, `windscreen`,
+- Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `cabin`, `contact`, `grass`, `windscreen`,
   `marks`, `wet_roads`, `detail`, `mirrors`; unset takes the High preset. The preset box is not stored: it shows the preset the
-  keys match, else Custom; presets leave `marks` and the render scale alone. `surfaces` is off in every
-  preset until the scanned surfaces suit every stage (user's call, 2026-10-31); a saved `surfaces = on` stays on.
+  keys match, else Custom; presets leave `marks` and the render scale alone. A saved `surfaces` (the removed scanned surfaces) is not read.
 - `perf_log` defaults off; on, the viewer logs with `viewer --perf-log <files folder>/logs` (`home::LOGS`, shown on the Graphics page).

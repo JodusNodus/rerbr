@@ -21,7 +21,7 @@ use rbr_formats::lsp_keys::{Class, KEYS};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-/// [`Vertex::edge`] of the off-road ground's vertices (ours, the ground scan, [`mark_ground`]): the road's edge distance
+/// [`Vertex::edge`] of the off-road ground's vertices (ours, the grass field, [`mark_ground`]): the road's edge distance
 /// is 0 or more, so a negative one marks ground.
 pub(crate) const GROUND_MARK: f32 = -1.0;
 
@@ -246,7 +246,7 @@ const GROUND_REACH: f32 = 0.6;
 
 /// Marks the vertices of the off-road ground of `meshes` ([`Vertex::edge`] [`GROUND_MARK`]): the ground draws' triangles
 /// (`ground`, [`ground_triangles`]) lying on a collision surface that is neither the road's (taking the film) nor snow, and whose vertices [`mark_roads`]
-/// left unmarked. Run after it (the ground scan, `Enhance::ground`). Returns whether the stage is a snow stage.
+/// left unmarked. Run after it (the grass field, `Enhance::grass`). Returns whether the stage is a snow stage.
 pub(crate) fn mark_ground(meshes: &mut [Mesh], ground: &[GroundTriangle]) -> bool {
     let (mut snow_triangles, mut triangles) = (0, 0);
     let mut marked = Vec::new();

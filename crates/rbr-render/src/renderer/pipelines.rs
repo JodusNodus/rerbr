@@ -185,16 +185,8 @@ pub(super) struct Context<'a> {
     pub(super) water_plus: bool,
     /// [`Enhance::cabin`] (`CABIN` in `shader.wgsl`).
     pub(super) cabin: bool,
-    /// [`Enhance::gravel`] (`GRAVEL` in `shader.wgsl`).
-    pub(super) gravel: bool,
-    /// [`Enhance::asphalt`] (`ASPHALT` in `shader.wgsl`).
-    pub(super) asphalt: bool,
-    /// [`Enhance::ground`] (`GROUND` in `shader.wgsl`).
-    pub(super) ground: bool,
     /// [`Enhance::grass`], with the stage's grass field (`GRASS` in `shader.wgsl`).
     pub(super) grass: bool,
-    /// [`Enhance::snow`] (`SNOW` in `shader.wgsl`).
-    pub(super) snow: bool,
     /// [`Enhance::lighting`] (`LIGHTING` in `sky_lut.wgsl`, `shader.wgsl`): the sky's tables, the reflection probes,
     /// and the draws after the prepass reading the sun's shadow and the contact shading from their mask (`SUN_MASK`,
     /// `renderer::sun_mask`).
@@ -313,10 +305,6 @@ impl Context<'_> {
                         ("ALPHA_TEST", f64::from(u8::from(alpha_test))),
                         ("WATER_PLUS", f64::from(u8::from(self.water_plus))),
                         ("CABIN", f64::from(u8::from(self.cabin && key.lit != 0))),
-                        ("GRAVEL", f64::from(u8::from(self.gravel))),
-                        ("ASPHALT", f64::from(u8::from(self.asphalt))),
-                        ("SNOW", f64::from(u8::from(self.snow))),
-                        ("GROUND", f64::from(u8::from(self.ground))),
                         ("GRASS", f64::from(u8::from(self.grass))),
                         ("LIGHTING", f64::from(u8::from(self.lighting))),
                         ("DEBUG_VIEW", f64::from(self.debug_view)),
@@ -582,16 +570,6 @@ pub(super) fn layouts(device: &wgpu::Device) -> [wgpu::BindGroupLayout; 3] {
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
-            // The road scans and their sampler (`renderer::road_scan`).
-            texture_entry(
-                21,
-                wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2Array,
-                    multisampled: false,
-                },
-            ),
-            texture_entry(22, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
         ],
     });
     let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

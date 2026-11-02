@@ -229,7 +229,7 @@ pub struct Stage {
     /// `Textures\start_clock_digits.dds` when a draw shows the start board's clock face ([`crate::start_board`]),
     /// from [`Stage::load_textures`].
     pub start_digits: Option<Vec<u8>>,
-    /// The off-road ground is snow's ([`crate::puddles::mark_ground`]); the far ground's calming leaves it alone.
+    /// The off-road ground is snow's ([`crate::puddles::mark_ground`]); the grass field leaves it bare.
     pub snow_ground: bool,
     /// The collision ground for `selection` (`.col`, and the `.mat` entry for its weather), when marking the surfaces
     /// built it ([`load`] in the wet, [`Stage::mark_surfaces`]), for the particles to take rather than build again
@@ -522,7 +522,7 @@ pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Erro
     // stage, with no depth test, so everything drawn later covers them (`global_clouds`).
     let sky = selection.sky.and_then(|sky| sky.section(name));
     // Ours: in the wet and the damp the roads take the film by their surface ([`crate::puddles::mark_roads`]); dry, only
-    // the road scans need them ([`Stage::mark_surfaces`]).
+    // the grass field needs them ([`Stage::mark_surfaces`]).
     let wet = selection.weather != Weather::Dry;
     let collision = wet.then(|| collision(maps, name, selection)).flatten();
     if wet {
@@ -571,27 +571,20 @@ pub(crate) fn marking(
 }
 
 impl Stage {
-    /// Marks the roads in dry weather too when `roads`, for the road scans (`Enhance::gravel`, `asphalt`, `snow`), which
-    /// take the loose and the paved ones and the snow by [`Vertex::wet`] (in the wet and the damp [`load`] has; kept out
-    /// of the dry load without them: about a second more on the larger stages, 621); then the off-road ground when
-    /// `ground`, for the ground scan (`Enhance::ground`, [`crate::puddles::mark_ground`]). One load of the collision
-    /// ground and one lookup of the surface under each ground triangle for both: each its own took 0.6 s more on 580.
-    pub fn mark_surfaces(&mut self, maps: &Path, roads: bool, ground: bool) {
-        let roads = roads && self.selection.weather == Weather::Dry;
-        if !(roads || ground) {
-            return;
-        }
+    /// Marks the roads in dry weather too (in the wet and the damp [`load`] has; kept out of the dry load without the
+    /// grass: about a second more on the larger stages, 621), then the off-road ground ([`crate::puddles::mark_ground`]),
+    /// for the grass field (`Enhance::grass`, [`crate::grass`]). One load of the collision ground and one lookup of the
+    /// surface under each ground triangle for both: each its own took 0.6 s more on 580.
+    pub fn mark_surfaces(&mut self, maps: &Path) {
         if self.collision.is_none() {
             self.collision = collision(maps, &self.name, self.selection);
         }
         let Some(marking) = marking(self.collision.as_ref(), maps, &self.name, self.selection) else { return };
         let triangles = crate::puddles::ground_triangles(&self.meshes, &marking);
-        if roads {
+        if self.selection.weather == Weather::Dry {
             crate::puddles::mark_roads(&mut self.meshes, &triangles);
         }
-        if ground {
-            self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
-        }
+        self.snow_ground = crate::puddles::mark_ground(&mut self.meshes, &triangles);
     }
 }
 

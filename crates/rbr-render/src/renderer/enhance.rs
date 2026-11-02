@@ -5,10 +5,6 @@
 pub struct Enhance {
     /// 16x anisotropic filtering on the stage textures (the ground at grazing angles stays sharp further out).
     pub anisotropy: bool,
-    /// The paved roads (the ground whose collision surface is tarmac, [`crate::puddles::mark_roads`]) take the fine grain
-    /// and relief of a scanned asphalt surface under the sun, over their own colour (`road_scan` in `shader.wgsl`,
-    /// [`super::road_scan`]; ours).
-    pub asphalt: bool,
     /// The cabin lit by the sky it sees and by the sun through the glass, in the in-car view (`cabin.wgsl`,
     /// [`crate::car::cabin`]; ours), and the car's glass drawn from both sides ([`crate::car::Car::add_inner_glass`]).
     pub cabin: bool,
@@ -19,15 +15,6 @@ pub struct Enhance {
     /// The stage's soft ground decals (the RSF stages' painted skid marks) alpha blended, as the game's object blend
     /// state, in place of the 60/255 cut that turns them solid ([`crate::decals`]).
     pub decals: bool,
-    /// The loose roads (the ground whose collision surface is gravel or dirt, [`crate::puddles::mark_roads`]) take the
-    /// fine grain and relief of a scanned gravel surface under the sun, over their own colour (`road_scan` in
-    /// `shader.wgsl`, [`super::road_scan`]; ours).
-    pub gravel: bool,
-    /// The off-road ground (the ground whose collision surface is neither road nor snow, [`crate::puddles::mark_ground`])
-    /// takes the grain, colour and relief of a scanned grass and earth surface, triplanar and lit by the sun, over its
-    /// own mean colour, and the stage's baked vertex tint is eased (`ground_scan` in `shader.wgsl`,
-    /// [`super::road_scan`]; ours).
-    pub ground: bool,
     /// A grass field over the ground near the road, streamed about the eye ([`crate::grass`]; ours, a proof of concept:
     /// not in `all`).
     pub grass: bool,
@@ -45,10 +32,6 @@ pub struct Enhance {
     /// [`Renderer::set_precipitation`](super::Renderer::set_precipitation) sets the weather), and the car's dirt by
     /// what the surfaces threw ([`CarDirt::look`](crate::dirt::CarDirt::look)).
     pub particles: bool,
-    /// The snow (the ground whose collision surface is snow, [`crate::puddles::mark_roads`]) takes the fine grain and
-    /// relief of a scanned snow surface under the sun, over its own colour (`road_scan` in `shader.wgsl`,
-    /// [`super::road_scan`]; ours).
-    pub snow: bool,
     /// The stage's rivers and lakes flowing along their texture scroll, rippling with time, shaded by their vertex
     /// light and fading into their banks by their vertex alpha (`water_flowing` in `water.wgsl`; ours).
     pub water: bool,
@@ -214,19 +197,15 @@ impl DebugView {
 }
 
 impl Enhance {
-    pub const NAMES: [&str; 15] = [
+    pub const NAMES: [&str; 11] = [
         "anisotropy",
-        "asphalt",
         "cabin",
         "contact",
         "decals",
         "grass",
-        "gravel",
-        "ground",
         "lighting",
         "marks",
         "particles",
-        "snow",
         "water",
         "wet",
         "windscreen",
@@ -240,17 +219,13 @@ impl Enhance {
                 "all" => {
                     enhance = Enhance {
                         anisotropy: true,
-                        asphalt: true,
                         cabin: true,
                         contact: true,
                         decals: true,
-                        gravel: true,
-                        ground: true,
                         grass: enhance.grass,
                         lighting: true,
                         marks: true,
                         particles: true,
-                        snow: true,
                         water: true,
                         wet: true,
                         windscreen: true,
@@ -262,17 +237,13 @@ impl Enhance {
                     }
                 }
                 "anisotropy" => enhance.anisotropy = true,
-                "asphalt" => enhance.asphalt = true,
                 "cabin" => enhance.cabin = true,
                 "contact" => enhance.contact = true,
                 "decals" => enhance.decals = true,
-                "gravel" => enhance.gravel = true,
-                "ground" => enhance.ground = true,
                 "grass" => enhance.grass = true,
                 "lighting" => enhance.lighting = true,
                 "marks" => enhance.marks = true,
                 "particles" => enhance.particles = true,
-                "snow" => enhance.snow = true,
                 "water" => enhance.water = true,
                 "wet" => enhance.wet = true,
                 "windscreen" => enhance.windscreen = true,
