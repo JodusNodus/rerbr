@@ -25,7 +25,7 @@ use crate::catalog::{self, Car, Catalog, TyreChoice, WEARS};
 use crate::controls_page::ControlsPage;
 use crate::ghosts::GhostChoice;
 use crate::graphics_page::{
-    Graphics, HudChoice, WetRoads, DEFAULT_GRAPHICS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES,
+    Graphics, HudChoice, WetRoads, DEFAULT_GRAPHICS, FRAME_CAPS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES,
 };
 use crate::pages::{Choice, Page};
 use crate::rally_page::RallyPage;
@@ -250,6 +250,8 @@ pub struct Settings {
     pub upscale_textures: Option<bool>,
     /// The driving window's frame presentation (`viewer --present`).
     pub present: Option<Present>,
+    /// The driving window's frame cap (`viewer --max-fps`; 0: none), one of [`FRAME_CAPS`].
+    pub max_fps: Option<u32>,
     /// How often the cockpit's mirrors are drawn (`viewer --mirrors`).
     pub mirrors: Option<Rate>,
     /// The driving window fills the monitor (`viewer --fullscreen`).
@@ -550,6 +552,7 @@ impl Settings {
             detail: launcher.choice("detail"),
             upscale_textures: launcher.on_off("upscale_textures"),
             present: launcher.parsed("present", Present::parse),
+            max_fps: launcher.number("max_fps").filter(|v| FRAME_CAPS.contains(v)),
             mirrors: launcher.parsed("mirrors", Rate::parse),
             fullscreen: launcher.on_off("fullscreen"),
             perf_log: launcher.on_off("perf_log"),
@@ -646,6 +649,7 @@ impl Settings {
             ("detail", choice(self.detail)),
             ("upscale_textures", on_off_text(self.upscale_textures)),
             ("present", self.present.map(|v| v.name().to_owned())),
+            ("max_fps", self.max_fps.map(|v| v.to_string())),
             ("mirrors", self.mirrors.map(Rate::name)),
             ("fullscreen", on_off_text(self.fullscreen)),
             ("start_time", self.start_time.map(StartTime::to_text)),
@@ -883,7 +887,8 @@ impl Form {
             upscale_textures: settings.upscale_textures.unwrap_or(false),
             upscaler: rbr_render::upscale::Upscaler::find(&home.join(rbr_render::upscale::DIR)).is_some(),
             upscaler_download: Default::default(),
-            present: settings.present.unwrap_or_default(),
+            present: settings.present.map_or_else(Present::default, Present::offered),
+            max_fps: settings.max_fps.unwrap_or(0),
             fullscreen: settings.fullscreen.unwrap_or(true),
             perf_log: settings.perf_log.unwrap_or(false),
             start_time: settings.start_time.unwrap_or_default(),
@@ -979,6 +984,7 @@ impl Form {
             render_scale: Some(self.render_scale),
             upscale_textures: Some(self.upscale_textures),
             present: Some(self.present),
+            max_fps: Some(self.max_fps),
             fullscreen: Some(self.fullscreen),
             perf_log: Some(self.perf_log),
             start_time: Some(self.start_time),
@@ -1080,6 +1086,7 @@ mod tests {
             detail: Some(Detail::Ultra),
             upscale_textures: Some(true),
             present: Some(Present::Immediate),
+            max_fps: Some(120),
             mirrors: Some(Rate::Every(3)),
             fullscreen: Some(false),
             perf_log: Some(true),
@@ -1220,7 +1227,8 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ndetail = max\n").detail, None);
         assert_eq!(Settings::parse("[launcher]\nwet_roads = medium\n").wet_roads, Some(WetRoads::Medium));
         assert_eq!(Settings::parse("[launcher]\nwet_roads = on\n").wet_roads, None);
-        assert!(text.contains("present = immediate\nmirrors = 3\n"), "{text}");
+        assert!(text.contains("present = immediate\nmax_fps = 120\nmirrors = 3\n"), "{text}");
+        assert_eq!(Settings::parse("[launcher]\nmax_fps = 100\n").max_fps, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = 4\n").mirrors, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = off\n").mirrors, Some(Rate::Off));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 80\n").render_scale, None);
@@ -1332,6 +1340,7 @@ mod tests {
                 "detail = ultra\n",
                 "upscale_textures = on\n",
                 "present = immediate\n",
+                "max_fps = 120\n",
                 "mirrors = 3\n",
                 "fullscreen = off\n",
                 "start_time = baked\n",

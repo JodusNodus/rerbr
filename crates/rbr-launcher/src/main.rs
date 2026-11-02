@@ -525,6 +525,9 @@ struct Form {
     upscaler_download: upscaler::Download,
     /// How the driving window presents its frames (`viewer --present`).
     present: rbr_render::present::Present,
+    /// The driving window's frames a second at most (`viewer --max-fps`; 0: none), one of
+    /// [`graphics_page::FRAME_CAPS`].
+    max_fps: u32,
     /// The driving window fills the monitor (`viewer --fullscreen`); `size` applies when off.
     fullscreen: bool,
     /// The viewer writes a performance log to the player's `logs` folder (`viewer --perf-log`).
