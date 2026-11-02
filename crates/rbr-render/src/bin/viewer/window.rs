@@ -412,7 +412,7 @@ impl App {
             });
         let mut latency = scene.live.as_ref().and_then(|_| Latency::from_env());
         if let Some(latency) = &mut latency {
-            latency.watch_screen(&running.window);
+            latency.watch_screen(&running.window, &running.surface);
         }
         let feed = scene.live.as_ref().filter(|_| !replay).map(|_| {
             let script = latency.as_ref().and_then(Latency::script);

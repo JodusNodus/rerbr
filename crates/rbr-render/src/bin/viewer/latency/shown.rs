@@ -41,7 +41,7 @@ struct State {
 impl Shown {
     /// The feedback for `window`, if it is a Wayland window and the compositor has `wp_presentation` on
     /// `CLOCK_MONOTONIC`.
-    pub fn new(window: &Window) -> Result<Shown, String> {
+    pub fn new(window: &Window, _: &wgpu::Surface) -> Result<Shown, String> {
         let (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(surface)) = (
             window.display_handle().map_err(|e| e.to_string())?.as_raw(),
             window.window_handle().map_err(|e| e.to_string())?.as_raw(),

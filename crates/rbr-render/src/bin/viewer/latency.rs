@@ -5,7 +5,7 @@
 //! `RBR_LATENCY=script` (or `script:MS`) replaces the steering with a square wave of ±[`SCRIPT_STEER`] that flips
 //! every 500 ms (or MS): each flip is due at a known time, as a device event would arrive, so the first stage holds
 //! the wait for the input thread's poll. Any other value times the frames only. On Wayland the compositor's
-//! presentation feedback gives when each frame went on screen ([`shown`]).
+//! presentation feedback gives when each frame went on screen, on macOS the Metal drawable's ([`shown`]).
 //!
 //! The input thread sends the scripted steering (`window::feed`), so a probe's stages are the input sent, its first
 //! step (the reader thread had the step record of a frame that took it), the frame loop seeing that step, and the
@@ -13,8 +13,11 @@
 
 #[cfg(all(unix, not(target_vendor = "apple")))]
 mod shown;
-/// No feedback where the window is not a Wayland one.
-#[cfg(not(all(unix, not(target_vendor = "apple"))))]
+#[cfg(target_os = "macos")]
+#[path = "latency/shown_metal.rs"]
+mod shown;
+/// No feedback where the window is not a Wayland or macOS one.
+#[cfg(not(any(target_os = "macos", all(unix, not(target_vendor = "apple")))))]
 mod shown {
     #[derive(Debug, Clone, Copy, PartialEq)]
     #[allow(dead_code)]
@@ -26,8 +29,8 @@ mod shown {
     pub const ZERO_COPY: u32 = 8;
     pub struct Shown;
     impl Shown {
-        pub fn new(_: &winit::window::Window) -> Result<Shown, String> {
-            Err("not a Wayland window".into())
+        pub fn new(_: &winit::window::Window, _: &wgpu::Surface) -> Result<Shown, String> {
+            Err("not a Wayland or macOS window".into())
         }
         pub fn ask(&mut self, _: u64) {}
         pub fn take(&mut self) -> Vec<(u64, Feedback)> {
@@ -104,7 +107,7 @@ struct Frame {
     step: Option<u32>,
     submitted: Instant,
     presented: Instant,
-    /// `presented` on the feedback's clock (`CLOCK_MONOTONIC`), ns.
+    /// `presented` on the feedback's clock (`CLOCK_MONOTONIC`, macOS's host time), ns.
     presented_ns: u64,
 }
 
@@ -212,9 +215,9 @@ impl Latency {
         }
     }
 
-    /// Asks the compositor when `window`'s frames go on screen (Wayland only).
-    pub fn watch_screen(&mut self, window: &Window) {
-        match shown::Shown::new(window) {
+    /// Asks when the frames of `window` and its `surface` go on screen (Wayland and macOS).
+    pub fn watch_screen(&mut self, window: &Window, surface: &wgpu::Surface) {
+        match shown::Shown::new(window, surface) {
             Ok(shown) => self.shown = Some(shown),
             Err(e) => eprintln!("viewer: no presentation feedback: {e}"),
         }
@@ -375,12 +378,17 @@ impl Latency {
             let count = |test: &dyn Fn(&shown::Feedback) -> bool| self.feedback.values().filter(|f| test(f)).count();
             let flag =
                 |bit| move |f: &shown::Feedback| matches!(f, shown::Feedback::Shown { flags, .. } if flags & bit != 0);
+            // Metal does not say which frames were scanned out directly.
+            let zero_copy = if cfg!(target_os = "macos") {
+                String::new()
+            } else {
+                format!(", {} zero-copy", count(&flag(shown::ZERO_COPY)))
+            };
             return format!(
-                "\n  feedback: {} shown ({} vsync, {} not vsync, {} zero-copy), {} discarded",
+                "\n  feedback: {} shown ({} vsync, {} not vsync{zero_copy}), {} discarded",
                 count(&|f| matches!(f, shown::Feedback::Shown { .. })),
                 count(&flag(shown::VSYNC)),
                 count(&|f| matches!(f, shown::Feedback::Shown { flags, .. } if flags & shown::VSYNC == 0)),
-                count(&flag(shown::ZERO_COPY)),
                 count(&|f| *f == shown::Feedback::Discarded),
             );
         }
