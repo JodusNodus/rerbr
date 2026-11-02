@@ -220,3 +220,19 @@ Renault Clio Rally3, Sardian Night (RSF 126), cockpit view, 23:00
 BMW M3 E30 GrpA, Sardian Night (RSF 126), chase view, 23:00
 
 ![night-sardian-m3-chase](night-sardian-m3-chase.jpg)
+
+## From drives
+
+Frames from replays of real drives; the rest are in [drives](drives/README.md).
+
+### pengonpohja-junction-flyby
+
+Audi quattro A2 GrpB, Pengonpohja (RSF 607), low chase view, 05:30
+
+![pengonpohja-junction-flyby](drives/pengonpohja-junction-flyby.jpg)
+
+### pirttikulma-barn-cockpit
+
+Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 05:30
+
+![pirttikulma-barn-cockpit](drives/pirttikulma-barn-cockpit.jpg)
