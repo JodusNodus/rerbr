@@ -91,7 +91,8 @@ struct Out {
     @location(7) world: vec3<f32>,
     @location(8) @interpolate(flat) axis_u: vec3<f32>,
     @location(9) @interpolate(flat) axis_v: vec3<f32>,
-    @location(10) @interpolate(flat) normal: vec3<f32>,
+    // A pane cell's outward normal (kind 6); a film cell's pane (kind 4, `beads`).
+    @location(10) @interpolate(flat) normal: vec4<f32>,
     // What a pane cell's glass lets through of the light outside (its texture's sun strip), across the cell
     // (`pane_tint`).
     @location(11) @interpolate(flat) tint: vec4<u32>,
@@ -142,7 +143,7 @@ fn vs_main(@builtin(vertex_index) corner: u32, instance: Instance) -> Out {
     out.world = world;
     out.axis_u = normalize(instance.axis_u);
     out.axis_v = normalize(instance.axis_v);
-    out.normal = instance.normal.xyz;
+    out.normal = instance.normal;
     out.tint = instance.tint;
     out.edge = instance.edge;
     return out;
@@ -346,6 +347,14 @@ fn wipe_at(in: Out, t: vec2<f32>) -> vec4<f32> {
     return last_wipe(cell_point(in, t));
 }
 
+// `last_wipe` at `at` on the pane, metres from its film's low corner, as `wipe_at`.
+fn wipe_on(in: Out, at: vec2<f32>) -> vec4<f32> {
+    if (in.seed < 0.0) {
+        return vec4<f32>(NEVER, -1.0, 0.0, 0.0);
+    }
+    return last_wipe(frame.film.xy + at);
+}
+
 // The film where the cells hold `film`: behind a blade, what the rain has built since (`wipe`).
 fn film_after(film: f32, wipe: vec4<f32>) -> f32 {
     return select(film, min(frame.wiping.z, frame.wiping.y * wipe.x), wipe.x < NEVER);
@@ -356,20 +365,28 @@ fn chart_pixels(in: Out, c: vec2<f32>) -> vec2<f32> {
     return in.pixels.xy * (c.x * 2.0 / frame.film.z) + in.pixels.zw * (c.y * 2.0 / frame.film.w);
 }
 
-// The beads (ours): the small drops the film holds, too many to be drops of their own. Each film cell is `squares` a side
-// in two layers, a fine one and a coarser one over it, each square with a bead at a hashed place when a hash is under
-// the layer's share of the film's thickness (`bead_share`), of a hashed size from the layer's range (a share of the
-// square); drawn as small lenses, like the drops. Behind a blade, each stroke lays its own (the hash takes the
-// stroke's number). They gather in patches about `BEAD_PATCH` metres across, from `BEAD_PATCHY.x` to `.y` of that
-// share (ours: the glass wets unevenly).
-const BEADS_FINE: f32 = 5.0;
+// The beads (ours): the small drops the film holds, too many to be drops of their own. Two layers over the pane, each
+// a lattice of squares `BEAD_PITCH` metres a side turned `BEAD_TURN` radians off the pane's chart, so that neither
+// lines up with its edges or the other. A square holds at most one bead, anywhere in it, of a radius from the layer's
+// range (`BEAD_RADIUS_*`, metres, at most half the square, so a pixel finds its bead among the 2 x 2 squares nearest
+// it), mostly small (the cube of a hashed number); it shows when a hash is under the layer's share of the film's
+// thickness (`bead_share`, times `BEAD_FILL_*`). Drawn as small lenses, like the drops. They gather in patches about
+// `BEAD_PATCH` metres across, from `BEAD_PATCHY.x` to `.y` of that share (ours: the glass wets unevenly). Behind a
+// blade each stroke lays its own: the hash takes the stroke's number, and a bead shows where the blade's last pass
+// over its square's middle was the pixel's too (a bead across the edge of a stroke is cut there, as the blade cut it).
+// And they come and go: a bead lasts `BEAD_LIFE` seconds of standing heavy rain on the pane's landing clock
+// (`model::Glass::landed`, faster in heavier rain and at speed), then another lands elsewhere in its square (the drops
+// landing on it merged and ran or blew off). One to a square of 5 x 5 and 2 x 2 a film cell, inside its square, the
+// big ones in its middle and nearly every square filled, they read as a grid, and they never changed.
+const BEAD_PITCH: vec2<f32> = vec2<f32>(0.0055, 0.012);
+const BEAD_TURN: vec2<f32> = vec2<f32>(0.53, -0.97);
+const BEAD_RADIUS_FINE: vec2<f32> = vec2<f32>(0.0008, 0.0025);
+const BEAD_RADIUS_COARSE: vec2<f32> = vec2<f32>(0.0015, 0.005);
+const BEAD_FILL_FINE: f32 = 0.85;
+const BEAD_FILL_COARSE: f32 = 0.6;
 const BEAD_PATCH: f32 = 0.04;
 const BEAD_PATCHY: vec2<f32> = vec2<f32>(0.25, 1.5);
-const BEADS_COARSE: f32 = 2.0;
-const BEAD_SIZE_FINE: vec2<f32> = vec2<f32>(0.18, 0.45);
-const BEAD_SIZE_COARSE: vec2<f32> = vec2<f32>(0.2, 0.42);
-const BEAD_FILL_FINE: f32 = 0.95;
-const BEAD_FILL_COARSE: f32 = 0.45;
+const BEAD_LIFE: vec2<f32> = vec2<f32>(3.0, 9.0);
 // The beads' share of their squares as the film builds, `1 - exp(-film BEAD_BUILD)`; behind a blade no more than
 // land in the time since, `BEAD_LANDING` of the squares per unit of the film's rate a second (0.35 a second in heavy
 // rain), so that continuous wipers keep the glass mostly clear.
@@ -389,40 +406,80 @@ fn hash4(n: u32) -> vec4<f32> {
     return vec4<f32>(v >> vec4<u32>(8u)) / 16777216.0;
 }
 
-// The bead of one layer over this pixel of a film cell, premultiplied; `film` the cells' film here, `per_pixel` the
-// cell's local units per pixel (x and y).
-fn bead_layer(in: Out, film: f32, per_pixel: mat2x2<f32>, squares: f32, sizes: vec2<f32>, fill: f32, salt: u32) -> vec4<f32> {
-    let grid = (in.local * 0.5 + 0.5) * squares;
-    let square = floor(grid);
-    let pane = select(0u, 1u, in.seed < 0.0);
-    // Whole beads: the square's middle says when a blade last passed.
-    let wipe = wipe_at(in, (square + 0.5) / squares);
-    let key = ((u32(in.alpha) * 2u + pane) * 64u + u32(square.y) * 8u + u32(square.x)) * 3u + salt;
-    let h = hash4(key ^ (u32(wipe.y + 1.0) * 0x9e3779b9u));
-    let patchy = mix(BEAD_PATCHY.x, BEAD_PATCHY.y, value_noise(cell_point(in, (square + 0.5) / squares) / BEAD_PATCH, 52u));
-    if (h.x >= bead_share(film, wipe) * fill * patchy) {
-        return vec4<f32>(0.0);
-    }
-    let radius = mix(sizes.x, sizes.y, h.y * h.y);
-    let centre = square + radius + (1.0 - 2.0 * radius) * h.zw;
-    // The pixel's offset from the bead's centre, in pixels (the inverse of the local units per pixel).
-    let to_pixels = inverse2(per_pixel);
-    let local = (grid - centre) * (2.0 / squares);
-    let offset = to_pixels * local;
-    let size = length(to_pixels * vec2<f32>(radius * 2.0 / squares, 0.0));
-    let vary = fract(h.z * 5.3 + h.w);
-    let r = outline((grid - centre) / radius, vary, BEAD_RAGGED);
-    let cover = 1.0 - smoothstep(1.0 - 0.7 / max(size, 0.7), 1.0, r);
-    if (cover <= 0.0) {
-        return vec4<f32>(0.0);
-    }
-    let q = vec2<f32>(offset.x, -offset.y) * (min(r, 1.0) / max(length(offset), 1e-3));
-    return lens(q, offset, offset, size, (in.position.xy - offset) * frame.screen.zw, LENS_MAG, 0.9, 1.0, vary) * cover;
+// A number from `n` (a PCG step), and its four bytes as numbers in [0, 1) (a bead's few numbers, cheaper than `hash4`).
+fn hash1(n: u32) -> u32 {
+    let v = n * 747796405u + 2891336453u;
+    let w = ((v >> ((v >> 28u) + 4u)) ^ v) * 277803737u;
+    return (w >> 22u) ^ w;
 }
 
-fn beads(in: Out, film: f32, per_pixel: mat2x2<f32>) -> vec4<f32> {
-    let fine = bead_layer(in, film, per_pixel, BEADS_FINE, BEAD_SIZE_FINE, BEAD_FILL_FINE, 0u);
-    let coarse = bead_layer(in, film, per_pixel, BEADS_COARSE, BEAD_SIZE_COARSE, BEAD_FILL_COARSE, 1u);
+fn bytes(n: u32) -> vec4<f32> {
+    return (vec4<f32>((vec4<u32>(n) >> vec4<u32>(0u, 8u, 16u, 24u)) & vec4<u32>(255u)) + 0.5) / 256.0;
+}
+
+// `v` turned by the angle whose cosine and sine are `cs`.
+fn turned(v: vec2<f32>, cs: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
+}
+
+// The bead of one layer over this pixel of a film cell, premultiplied; `film` the cells' film here, `at` the pixel on
+// the pane (metres from its film's low corner), `metres` a film cell's size, `wipe` the blade's last pass here.
+fn bead_layer(in: Out, film: f32, at: vec2<f32>, metres: vec2<f32>, wipe: vec4<f32>, pitch: f32, turn: f32, sizes: vec2<f32>, fill: f32, salt: u32) -> vec4<f32> {
+    let cs = vec2<f32>(cos(turn), sin(turn));
+    // The pixel in the lattice's squares.
+    let p = turned(at, vec2<f32>(cs.x, -cs.y)) / pitch;
+    let nearest = floor(p - 0.5);
+    let pane = u32(in.normal.w);
+    // The bead the pixel lies deepest in: its centre (squares), radius (squares) and own number.
+    var deepest = 1.0;
+    var bead = vec4<f32>(0.0);
+    for (var k = 0u; k < 4u; k++) {
+        let square = nearest + vec2<f32>(f32(k & 1u), f32(k >> 1u));
+        let id = vec2<u32>(vec2<i32>(square) + vec2<i32>(32768));
+        let key = (id.x * 73856093u) ^ (id.y * 19349663u) ^ (pane * 83492791u) ^ (salt * 2654435761u);
+        let life = bytes(hash1(key));
+        let generation = floor(in.normal.z / mix(BEAD_LIFE.x, BEAD_LIFE.y, life.x) + life.y);
+        let h = bytes(hash1(key ^ (u32(wipe.y + 1.0) * 0x9e3779b9u) ^ (u32(generation) * 0x85ebca6bu)));
+        let radius = mix(sizes.x, sizes.y, h.y * h.y * h.y) / pitch;
+        let d = (p - square - h.zw) / radius;
+        // `outline` lies within the unit disc.
+        if (dot(d, d) >= 1.0) {
+            continue;
+        }
+        let middle = turned((square + 0.5) * pitch, cs);
+        let own = wipe_on(in, middle);
+        let patchy = mix(BEAD_PATCHY.x, BEAD_PATCHY.y, value_noise(middle / BEAD_PATCH, 52u));
+        if (own.y != wipe.y || h.x >= bead_share(film, own) * fill * patchy) {
+            continue;
+        }
+        let vary = fract(h.z * 5.3 + h.w);
+        let r = outline(d, vary, BEAD_RAGGED);
+        if (r < deepest) {
+            deepest = r;
+            bead = vec4<f32>(square + h.zw, radius, vary);
+        }
+    }
+    if (deepest >= 1.0) {
+        return vec4<f32>(0.0);
+    }
+    // The pixel's offset from the bead's centre, and its radius, in pixels.
+    let from_centre = (at - turned(bead.xy * pitch, cs)) * 2.0 / metres;
+    let offset = in.pixels.xy * from_centre.x + in.pixels.zw * from_centre.y;
+    let size = length(in.pixels.xy) * bead.z * pitch * 2.0 / metres.x;
+    let cover = 1.0 - smoothstep(1.0 - 0.7 / max(size, 0.7), 1.0, deepest);
+    let q = vec2<f32>(offset.x, -offset.y) * (deepest / max(length(offset), 1e-3));
+    return lens(q, offset, offset, size, (in.position.xy - offset) * frame.screen.zw, LENS_MAG, 0.9, 1.0, bead.w) * cover;
+}
+
+// The beads over this pixel of a film cell at `t` across it, where the cells hold `film` and a blade last passed at
+// `wipe`. A film cell carries its pane's cell size (metres), landing clock and number in `normal` (`glass::pane_drops`).
+fn beads(in: Out, film: f32, t: vec2<f32>, wipe: vec4<f32>) -> vec4<f32> {
+    let index = u32(in.alpha);
+    let cell = vec2<f32>(f32(index % u32(FILM_COLUMNS)), f32(index / u32(FILM_COLUMNS)));
+    let metres = in.normal.xy;
+    let at = (cell + t) * metres;
+    let fine = bead_layer(in, film, at, metres, wipe, BEAD_PITCH.x, BEAD_TURN.x, BEAD_RADIUS_FINE, BEAD_FILL_FINE, 0u);
+    let coarse = bead_layer(in, film, at, metres, wipe, BEAD_PITCH.y, BEAD_TURN.y, BEAD_RADIUS_COARSE, BEAD_FILL_COARSE, 1u);
     return vec4<f32>(coarse.rgb + fine.rgb * (1.0 - coarse.a), coarse.a + fine.a * (1.0 - coarse.a));
 }
 
@@ -531,7 +588,7 @@ const FILM_BLUR: f32 = 0.0022;
 const FILM_COVER: f32 = 0.7;
 const SMEAR_COVER: f32 = 0.5;
 
-fn film_cell(in: Out, per_pixel: mat2x2<f32>) -> vec4<f32> {
+fn film_cell(in: Out) -> vec4<f32> {
     let t = in.local * 0.5 + 0.5;
     let cells = mix(mix(in.color.x, in.color.y, t.x), mix(in.color.z, in.color.w, t.x), t.y);
     let wipe = wipe_at(in, t);
@@ -557,7 +614,7 @@ fn film_cell(in: Out, per_pixel: mat2x2<f32>) -> vec4<f32> {
         sum += textureSampleLevel(scene, scene_sampler, clamp(at + offset, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).rgb;
     }
     let colour = sum * 0.25;
-    let bead = beads(in, cells, per_pixel);
+    let bead = beads(in, cells, t, wipe);
     let layer = wet_layer(in, film);
     var under = vec4<f32>(bead.rgb + colour * cover * (1.0 - bead.a), bead.a + cover * (1.0 - bead.a));
     let ridge = blade_water(in, t, film);
@@ -588,11 +645,6 @@ fn screen_up(o: vec2<f32>, r: f32) -> vec2<f32> {
     return vec2<f32>(o.x, -o.y) * (r / max(length(o), 1e-6));
 }
 
-fn inverse2(m: mat2x2<f32>) -> mat2x2<f32> {
-    let d = m[0][0] * m[1][1] - m[1][0] * m[0][1];
-    return mat2x2<f32>(m[1][1], -m[0][1], -m[1][0], m[0][0]) * (1.0 / select(d, 1e-9, abs(d) < 1e-12));
-}
-
 @fragment
 fn fs_main(in: Out) -> @location(0) vec4<f32> {
     // The local units per pixel, before any branch (derivatives need uniform control flow).
@@ -602,7 +654,7 @@ fn fs_main(in: Out) -> @location(0) vec4<f32> {
         return pane(in, per_pixel);
     }
     if (in.kind == 4) {
-        return film_cell(in, per_pixel);
+        return film_cell(in);
     }
     if (in.kind == 7) {
         return ribbon(in);
@@ -870,7 +922,7 @@ fn pane(in: Out, per_pixel: mat2x2<f32>) -> vec4<f32> {
     if (glass <= 0.0) {
         discard;
     }
-    var n = in.normal;
+    var n = in.normal.xyz;
     let view = normalize(in.world - frame.eye.xyz);
     n = select(n, -n, dot(n, view) < 0.0);
     let cos_v = max(dot(view, n), 0.05);

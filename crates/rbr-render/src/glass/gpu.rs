@@ -10,7 +10,8 @@ use crate::atmosphere::Atmosphere;
 
 /// One drop, flake or bug on the glass: its centre and half axes in stage space, its kind (0 water, 1 snow, 2 bug,
 /// 3 mud, 4 a cell of the wet film, 5 mud seen from inside, 6 a cell of the pane itself seen from inside), a seed for its ragged edge (the film's streak length),
-/// its opacity and its colour (snow, bugs and mud; the film's corners), and the pane's outward normal (kind 6). A pane
+/// its opacity and its colour (snow, bugs and mud; the film's corners), and the pane's outward normal (kind 6; a film
+/// cell's: its pane's cell size, landing clock and number, for the beads). A pane
 /// cell's `centre` is its low corner, `axis_u`, `axis_v` and `far` the other corners' offsets from it, `tint` what
 /// its glass lets through at [`PANE_TINTS`] + 1 points a side, row by row from the low corner, 4 bits each from the
 /// low ones up (`pane_tint` in `glass.wgsl`), and `edge` how far inside the glass's outline each corner lies (low,
