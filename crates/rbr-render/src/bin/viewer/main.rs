@@ -119,7 +119,8 @@
 //! result); Retire ends the race retired. `--pause-menu MOVES` (with `--screenshot` and `--live`) draws the menu,
 //! opened and moved through `MOVES` (`u`, `d`, `l`, `r`, `e`, `b`; `-` none). Escape closes the window outside live mode.
 //! Once the live stage ends, result actions appear even with the HUD hidden: Restart stage and Quit to menu in a
-//! quick rally, Continue in a championship. Click one, or choose with arrows/d-pad and Enter/South. Escape/East
+//! quick rally, Continue in a championship. The end page steps the car no more, so the sound stops where it is and the
+//! wheel's force is 0 as in the pause menu. Click one, or choose with arrows/d-pad and Enter/South. Escape/East
 //! returns to the launcher. Restart also resets `--quit-after end+S` to wait for the next result.
 //! `--quit-after S` closes the window after S seconds as the menu's exit does (unattended runs, with
 //! `rbr-standalone --pilot`;

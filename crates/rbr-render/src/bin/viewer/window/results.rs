@@ -13,9 +13,8 @@ impl App {
             self.results = self.scene.live.as_ref().and_then(|process| ResultsMenu::open(process.menu));
             if self.results.is_some() {
                 self.looking = false;
-                if let Some(wheel) = &self.wheel {
-                    wheel.set(0.0, 0.0);
-                }
+                // The end page steps the car no more: its last sound would play on.
+                self.pause_outputs(true);
             }
         }
     }

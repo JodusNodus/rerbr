@@ -545,3 +545,36 @@ fn a_realtime_ngp_drive_steps_once_a_frame_and_replays_through_frames() {
         eprintln!("{line}");
     });
 }
+
+/// A call for help while moving (`CCar::UpdateSeed`'s motion probe: faster than 1.5 m/s) gets `CSigCarProblem`'s kind
+/// 4 (MSG_CARSTOP) on the HUD instead of the assist, and the drive goes on.
+#[test]
+fn a_call_for_help_while_moving_asks_to_stop_and_the_drive_goes_on() {
+    quick_race(|data, stage, race| {
+        let mut live = Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), true).unwrap();
+        live.pace(f64::from(rbr_recording::STEP_SECONDS));
+        let mut pilot = crate::autopilot::Pilot::new("autopilot", stage, &live).unwrap();
+        let mut last = None;
+        let mut driving = 0;
+        while driving < 1000 {
+            let payload = pilot.payload(&live, last.as_deref()).unwrap();
+            last = Some(live.answer(&payload).unwrap());
+            driving += u32::from(!live.game.race_clock().counting_down());
+        }
+        let speed = crate::autopilot::sense(last.as_ref().unwrap(), &live).pose.speed();
+        assert!(speed > 1.5 && live.menu().help, "{speed:.1} m/s, the call for help offered: {}", live.menu().help);
+        let problem = |answer: &[u8]| {
+            let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
+            let records = records::read_records(&mut &rest[..]).unwrap();
+            let (_, body) = records.iter().find(|(tag, _)| *tag == DSH1).unwrap();
+            rbr_recording::dash::Dash::from_bytes(body).unwrap().problem
+        };
+        last = Some(live.answer(&Input { flags: CALL_FOR_HELP, ..Input::default() }.to_bytes()).unwrap());
+        assert_eq!(problem(last.as_ref().unwrap()), Some(4), "MSG_CARSTOP");
+        for _ in 0..100 {
+            let payload = pilot.payload(&live, last.as_deref()).unwrap();
+            last = Some(live.answer(&payload).unwrap());
+        }
+        assert!(!live.stopped, "the run stopped");
+    });
+}

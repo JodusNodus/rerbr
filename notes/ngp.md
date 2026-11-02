@@ -223,6 +223,8 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
   step's own. EFF1's QPC is taken after the call returns (e2e2 step 9466, 16 ms: sends the `x` of step 826 = ours
   at 9456); sessions from the plugin of 2026-10-21 on hold the call's QPC (`qpc_call`).
 - Steering force travels in FFB1 (`rbr_recording::ffb`), not HUD2.
+- Ours: the viewer's pause menu and end page hold the wheel at 0 (`Wheel::set_paused`): a step record already on its
+  way when the process pauses would otherwise set the last driving force again.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only
