@@ -1,6 +1,6 @@
 # Reference shots
 
-JPEGs of the 34 shots of [`data/shots.json`](../../data/shots.json), made by
+JPEGs of the 36 shots of [`data/shots.json`](../../data/shots.json), made by
 `scripts/render-shots.py` (every enhancement on, the autopilot driving). Regenerate them with
 `scripts/render-shots.py --previews docs/shots --gallery docs/shots/README.md`; the graphics workflow is in
 [development.md](../development.md#reference-shots).
@@ -36,6 +36,12 @@ Hyundai i20 Coupe WRC 2020, Comb I (RSF 621), cockpit view, 13:00
 Ford Fiesta Rally2, Luceram Col Saint Roch (RSF 417), cockpit view, 08:30
 
 ![day-luceram-fiesta-cockpit](day-luceram-fiesta-cockpit.jpg)
+
+### day-pirttikulma-quattro-cockpit
+
+Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 17:30
+
+![day-pirttikulma-quattro-cockpit](day-pirttikulma-quattro-cockpit.jpg)
 
 ## Golden hour
 
@@ -86,6 +92,12 @@ Ford Fiesta Rally2, Luceram Col Saint Roch (RSF 417), flyby view, 18:45
 Subaru Impreza GC8 555 GrpA, Odry (RSF 462), chase view, 18:30
 
 ![golden-odry-gc8-chase](golden-odry-gc8-chase.jpg)
+
+### golden-pengonpohja-quattro-flyby
+
+Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 05:30
+
+![golden-pengonpohja-quattro-flyby](golden-pengonpohja-quattro-flyby.jpg)
 
 ## Rain
 
@@ -220,19 +232,3 @@ Renault Clio Rally3, Sardian Night (RSF 126), cockpit view, 23:00
 BMW M3 E30 GrpA, Sardian Night (RSF 126), chase view, 23:00
 
 ![night-sardian-m3-chase](night-sardian-m3-chase.jpg)
-
-## From drives
-
-Frames from replays of real drives; the rest are in [drives](drives/README.md).
-
-### pengonpohja-junction-flyby
-
-Audi quattro A2 GrpB, Pengonpohja (RSF 607), low chase view, 05:30
-
-![pengonpohja-junction-flyby](drives/pengonpohja-junction-flyby.jpg)
-
-### pirttikulma-barn-cockpit
-
-Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 05:30
-
-![pirttikulma-barn-cockpit](drives/pirttikulma-barn-cockpit.jpg)

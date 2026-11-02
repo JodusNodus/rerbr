@@ -237,7 +237,7 @@ Commands and the snapshot set: [verification.md](../notes/verification.md).
 ## Reference shots
 
 `scripts/render-shots.py` (`--out`, `--only`, `--jobs N`, `--list`, `--compare OLD_DIR [--diff DIR]`, `--previews DIR`,
-`--gallery FILE`, `--set`, `--args`, `--cars`, `--rename`, `--save`) renders `data/shots.json`: 32 1080p shots (top-10 cars by RallySimFans use, RSF stages, night, golden hour, fog, snow, cockpit, chase and
+`--gallery FILE`, `--set`, `--args`, `--cars`, `--rename`, `--save`) renders `data/shots.json`: 36 1080p shots (top-10 cars by RallySimFans use, RSF stages, night, golden hour, fog, snow, cockpit, chase and
 fly-by) with every enhancement on, for the README and as the reference for graphics changes. Each entry is a stage, a
 car, the launcher selection, viewer arguments and the drive frame (`at`) the autopilot has reached
 (`viewer --screenshot --at N --at-periods 5 --live ... --pilot autopilot`, `--flyby` for the fly-bys). It needs release
