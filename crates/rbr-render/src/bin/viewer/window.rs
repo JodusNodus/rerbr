@@ -11,6 +11,7 @@ use crate::loading::{Loaded, Loading};
 use crate::pacer::Pacer;
 use crate::scene::{take_damage, Scene};
 use crate::screenshot::SIZE;
+use crate::shown::{self, Feedback};
 use feed::Feed;
 use gilrs::ev::filter::{Filter, Repeat};
 use gilrs::Gilrs;
@@ -322,8 +323,11 @@ pub struct App {
     fov: f32,
     /// `--max-fps`: the shortest time between drawn frames.
     frame_period: Option<Duration>,
-    /// Frames start no faster than the GPU finishes them (`--pacing`).
+    /// Frames start no faster than the GPU finishes them, and under fifo the screen takes them (`--pacing`).
     pacer: Option<Pacer>,
+    /// When the frames went on screen, for the pacer and the latency, and the frames presented so far.
+    feedback: Option<shown::Shown>,
+    presented: u64,
     controls: Controls,
     /// The live mode's keys and device inputs (`--bindings`).
     bindings: Bindings,
@@ -410,9 +414,20 @@ impl App {
                     None
                 }
             });
-        let mut latency = scene.live.as_ref().and_then(|_| Latency::from_env());
-        if let Some(latency) = &mut latency {
-            latency.watch_screen(&running.window, &running.surface);
+        let latency = scene.live.as_ref().and_then(|_| Latency::from_env());
+        // The refresh pacing: Linux only, as a ProMotion display moves its refreshes to follow the frames (macOS
+        // measures the feedback for `RBR_LATENCY` alone, so the Metal layer subclass never runs in normal play).
+        let pace_refresh = args.pacing && !cfg!(target_os = "macos");
+        let feedback = (pace_refresh || latency.is_some())
+            .then(|| shown::Shown::new(&running.window, &running.surface))
+            .and_then(|shown| shown.map_err(|e| eprintln!("viewer: no presentation feedback: {e}")).ok());
+        // The refresh pacing under fifo, with the feedback: the display's refresh, ms.
+        let refresh = (pace_refresh && running.config.present_mode == wgpu::PresentMode::Fifo && feedback.is_some())
+            .then(|| running.window.current_monitor()?.refresh_rate_millihertz())
+            .flatten()
+            .map(|millihertz| 1e6 / f64::from(millihertz));
+        if let Some(refresh) = refresh {
+            eprintln!("viewer: pacing a refresh-bound loop to the display's {:.1} Hz", 1000.0 / refresh);
         }
         let feed = scene.live.as_ref().filter(|_| !replay).map(|_| {
             let script = latency.as_ref().and_then(Latency::script);
@@ -426,7 +441,9 @@ impl App {
             shown: Shown::Player(view),
             fov: args.fov,
             frame_period: args.max_fps.map(|fps| Duration::from_secs_f32(1.0 / fps)),
-            pacer: args.pacing.then(|| Pacer::new(&running.gpu.device)),
+            pacer: args.pacing.then(|| Pacer::new(&running.gpu.device, refresh)),
+            feedback,
+            presented: 0,
             controls: Controls::default(),
             bindings: args.bindings.clone(),
             gilrs,
@@ -748,22 +765,31 @@ impl App {
         running.gpu.queue.submit([encoder.finish()]);
         let submitted = Instant::now();
         if let Some(pacer) = &mut self.pacer {
-            pacer.submitted(&running.gpu.queue, submitted);
+            pacer.submitted(&running.gpu.queue, self.presented, self.last_frame, submitted);
         }
         span.next("GPU timing readback");
         running.renderer.end_frame();
         span.next("present");
-        if let Some(latency) = &mut self.latency {
-            latency.presenting();
+        if let Some(feedback) = &mut self.feedback {
+            feedback.ask(self.presented);
         }
         running.window.pre_present_notify();
         running.gpu.queue.present(frame);
+        let feedback = self.feedback.as_mut().map(shown::Shown::take).unwrap_or_default();
+        if let Some(pacer) = &mut self.pacer {
+            for &(frame, shown) in &feedback {
+                if let Feedback::Shown { at, .. } = shown {
+                    pacer.shown(frame, at);
+                }
+            }
+        }
         if let Some(latency) = &mut self.latency {
             let step = self.scene.playback.as_ref().map(|p| p.shown_step());
-            if latency.drawn(submitted, step) {
+            if latency.drawn(submitted, step, &feedback) {
                 latency.watch_gpu(&running.gpu.device, &running.gpu.queue);
             }
         }
+        self.presented += 1;
     }
 
     /// Writes the live drive's ghost (`--save-ghost`); a replay saves none.
