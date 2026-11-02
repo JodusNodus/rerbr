@@ -609,7 +609,7 @@ not ported.
   ribbon is clear water, not a white cap: it lays 0.85 (0.55 for a ribbon's weight) of a lens over what is drawn behind it
   (replacing the pixel left drops darker than the hazy glass), the frame seen mirrored through its centre 5x its offset,
   a thin dark outline and a small highlight (the lens's up as of the wipers below). Pixel offsets
-  come from the quad's screen axes (`Out::pixels`). Beads: two layers a film cell (5 and 2 squares a side), shown for
+  come from the quad's screen axes (`Out::pixels`). Beads: two layers (laid out as of the 2026-11-02 bullet below), shown for
   `1 - exp(-2.5 film)`; under two pixels a bead has no outline. Film: the frame through a wavy sheet (noise slope, 2 px), 4 taps
   streaked along the airflow, patchy; no flat veil. Sim (as of the bullet on drops at rest below): drops that touch merge
   (volume kept, every 1/60 s, swept by x); drops from 2.2 mm lay a ribbon (kind 7, 2.5 s) every four radii from their own
@@ -657,6 +657,19 @@ not ported.
   in the windscreen at 0.5 (`CABIN_REFLECTED`). The pale shapes high in the GC8's windscreen at Luceram's hairpin are
   the stage (they stay with the pane and the film off). Cost within noise (GC8 Luceram heavy rain, drawn-only 20.38 to
   20.41 ms).
+- Beads at random and drops on the move (ours, 2026-11-02, user: drops "on a grid", "many are just static, sticky";
+  `bead_layer` in `glass.wgsl`; `flow`, `skid` in `model.rs`). Beads were one to a square of 5x5 and 2x2 a film cell,
+  kept inside it (the big ones at its middle), nearly every square filled: a jittered grid, fixed until wiped. Now two
+  lattices in the pane's metres (5.5 and 12 mm, turned 0.53 and -0.97 rad off the chart), a bead anywhere in its
+  square with radius 0.8-2.5 and 1.5-5 mm (cubed), looked up among the 2x2 nearest squares; each lasts 3 to 9 s of
+  standing heavy rain on the pane's landing clock (`Glass::landed`, faster at speed), then another lands in its square.
+  A bead shows only where the pixel's last wipe is its square middle's (cut at a stroke's edge). Model: `AIR` 0.05
+  (0.025 about evened gravity at rally speeds), a landing drop skids along the airflow at 0.002 of the car's speed,
+  `MOBILITY` 0.004 (0.006), grip patches turned 0.6 rad, and past `MOST` the still drops go first (at speed the cap
+  took drops under a second after landing, running or not). Sim (1.06 m2, 4.1 m/s2 along it, heavy rain, wipers off,
+  8 to 12 s): sliding at 15, 25, 35 m/s 0, 0, 7 % to 27, 61, 100 % (skids included), median 1.5 cm/s at 25 and 4.3 at
+  35 (p90 9); standing unchanged. Glass pass (in "screen reflections", GC8 Luceram heavy rain cockpit, 1080p) 3.90 to
+  4.28 ms; the 36 shots: rain ones change, the rest byte-identical or within 1 of 255 on a few pane pixels.
 - Beads (ours, 2026-10-26): the film's cells draw the small drops too many to be drops of their own. The film builds to the rain's amount, less with the airflow, and the wipers clear
   the beads with it (drops alone covered 1.3-2.1% after 12 s; more drops cost ~5 ms a step at 100 km/h). Shows with
   additions off too (user-approved); cockpit heavy 13.1 ms before and after.

@@ -770,7 +770,7 @@ impl Drawn {
         let [across, up, _] = outside.unwrap_or(w).axes.map(|a| to_stage.transform_vector3(a));
         // Seen from inside, the mud behind a sun strip or the black band printed on the glass is hidden.
         let inside = |k: usize| outside.is_none().then(|| &self.corners[k].1[..]);
-        let mut drops = pane_drops(&self.glass, w, outside, to_stage, streak, lit, self.mud, inside(0));
+        let mut drops = pane_drops(&self.glass, w, outside, to_stage, streak, lit, self.mud, inside(0), 0);
         for (k, (side, glass)) in self.car.sides.iter().zip(&self.sides).enumerate() {
             // Outside, on the exterior pane over it, when the car has one.
             let on = match outside {
@@ -778,7 +778,18 @@ impl Drawn {
                 None => Some(None),
             };
             if let Some(on) = on {
-                drops.extend(pane_drops(glass, &side.inside, on, to_stage, -streak, lit, self.mud, inside(k + 1)));
+                let pane = k as u32 + 1;
+                drops.extend(pane_drops(
+                    glass,
+                    &side.inside,
+                    on,
+                    to_stage,
+                    -streak,
+                    lit,
+                    self.mud,
+                    inside(k + 1),
+                    pane,
+                ));
             }
         }
         // The snow each blade carries, along its edge at its angle.
@@ -823,7 +834,7 @@ impl Drawn {
 /// on its chart `w` inside, or on `outside` at the points over `w`'s. `streak` is the film's streak length, up the
 /// pane, or along it when negative. `lit`: the mud seen from inside lets the outside's light through (kind 5). The mud
 /// looks as `mud`; `tints`, inside, what the pane's glass lets through over its film ([`Tints::film_tints`]), which
-/// hides the mud behind its printed bands.
+/// hides the mud behind its printed bands. `pane` numbers the pane for its beads' layout (0 the windscreen).
 #[allow(clippy::too_many_arguments)]
 fn pane_drops(
     glass: &Glass,
@@ -834,6 +845,7 @@ fn pane_drops(
     lit: bool,
     mud: Mud,
     tints: Option<&[f32]>,
+    pane: u32,
 ) -> Vec<gpu::Drop> {
     let place = |at: Vec2, lift: f32| match outside {
         Some(o) => o.point(o.chart(w.point(at, 0.0)), lift),
@@ -877,10 +889,10 @@ fn pane_drops(
             axis_u: ((right + far - low - top) * 0.25).to_array(),
             seed: streak,
             axis_v: ((top + far - low - right) * 0.25).to_array(),
-            // The cell, for its beads' places (`glass.wgsl`).
+            // The cell, and the pane's cell size, landing clock and number, for its beads (`glass.wgsl`).
             alpha: index as f32,
             color,
-            normal: [0.0; 4],
+            normal: [size.x, size.y, glass.landed, pane as f32],
             far: [0.0; 3],
             tint: [0; 4],
             edge: [0; 4],
