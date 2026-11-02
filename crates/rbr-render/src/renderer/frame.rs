@@ -143,9 +143,15 @@ impl Renderer {
         if !self.dial_draws.is_empty() {
             let t = mark(&mut profiler, &mut scene_encoder);
             let pass = self.dial_pass.get_or_insert_with(|| crate::dials::gpu::Pass::new(&self.device));
-            pass.draw(&self.device, &self.queue, &mut scene_encoder, &self.dial_targets, &self.dial_draws);
+            let (targets, draws) = (&self.dial_targets, &self.dial_draws);
+            pass.draw(&self.device, &self.queue, &mut self.uploads, &mut scene_encoder, targets, draws);
             self.dial_draws.clear();
             span(&mut profiler, &mut scene_encoder, "dials", t);
+        }
+        // The large writes so far (the car's moving parts, the grass, the drops, the dials') in a submission of their
+        // own: the sun's maps, the reflection cube and the mirrors read them before the scene.
+        if let Some(uploads) = self.uploads.take() {
+            self.queue.submit([uploads]);
         }
         let casting = self.sun.as_ref().map(|sun| Casting {
             meshes: &self.meshes,

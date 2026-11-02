@@ -1,15 +1,20 @@
 //! The dials' drawing on the GPU. Each dial texture is an `RGBA8` render target with the mip levels of its base (the
 //! config's `remapped` copy, kept as a texture of its own). A draw restores its rects from the base and draws the
-//! sprites over them, alpha blended, in every mip level, with the sprites scaled to the level.
+//! sprites over them, alpha blended, in every mip level, with the sprites scaled to the level. A face's later draws
+//! leave out the levels its largest region is under [`SMALLEST`] texels across in, which keep its last whole draw.
 
 use super::Rgba;
 use crate::stage::TextureRef;
+use crate::uploads::Uploads;
 use bytemuck::{Pod, Zeroable};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+/// The fewest texels across a face's largest region in a level its later draws redraw: a level with fewer is sampled
+/// for a gauge a few pixels across on screen.
+const SMALLEST: u32 = 8;
 pub(crate) const SHADER: &str = include_str!("dials.wgsl");
 
 /// An atlas sprite placed on the texture: its corners in texels of the texture's top level and in the atlas
@@ -21,14 +26,16 @@ pub struct Sprite {
     pub colour: [f32; 4],
 }
 
-/// One face's redraw: the textures it draws on, its atlas, the texel rects (x0, y0, x1, y1) restored and redrawn, and
-/// all its sprites. Rects and sprites are in texels of the face's base as the dials loaded it (`size`); a target
-/// upscaled since ([`crate::upscale`]) takes them scaled to its own size.
+/// One face's redraw: the textures it draws on, its atlas, the texel rects (x0, y0, x1, y1) restored and redrawn, the
+/// larger side of its largest region (`None`: a whole draw, into every level), and all its sprites. Rects, span and
+/// sprites are in texels of the face's base as the dials loaded it (`size`); a target upscaled since
+/// ([`crate::upscale`]) takes them scaled to its own size.
 pub struct Draw {
     pub keys: Vec<TextureRef>,
     pub atlas: Arc<Rgba>,
     pub size: (u32, u32),
     pub rects: Vec<[u32; 4]>,
+    pub span: Option<u32>,
     pub sprites: Vec<Sprite>,
 }
 
@@ -188,6 +195,7 @@ impl Pass {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        uploads: &mut Uploads,
         encoder: &mut wgpu::CommandEncoder,
         targets: &BTreeMap<TextureRef, Target>,
         draws: &[Draw],
@@ -221,7 +229,11 @@ impl Pass {
                 });
                 let size = target.texture.size();
                 let scale = [size.width as f32 / draw.size.0 as f32, size.height as f32 / draw.size.1 as f32];
+                let span = draw.span.map(|span| (span as f32 * scale[0].max(scale[1])) as u32);
                 for level in 0..target.texture.mip_level_count() {
+                    if level > 0 && span.is_some_and(|span| span >> level < SMALLEST) {
+                        break;
+                    }
                     let (w, h) = ((size.width >> level).max(1), (size.height >> level).max(1));
                     let ndc =
                         |[x, y]: [f32; 2]| [2.0 * x / draw.size.0 as f32 - 1.0, 1.0 - 2.0 * y / draw.size.1 as f32];
@@ -268,7 +280,7 @@ impl Pass {
             }));
         }
         let buffer = self.vertices.as_ref().expect("made above");
-        queue.write_buffer(buffer, 0, bytes);
+        uploads.write(buffer, 0, bytes);
         for (target, level, group, first, sprites, scissors) in passes {
             if scissors.is_empty() {
                 continue;

@@ -142,6 +142,13 @@ cachy, 4K 60 Hz, scripted flip, 3 runs each, p50 (p95) ms from the flip: before,
 taken 25 (33-45), submitted 41 (49-62), GPU done 51 (58-71); after: 9 (16), 11 (16-32), 18 (21-49), 28 (30-58).
 On screen 41 (46) with direct scan-out, 61 (61) composited; `play.sh` sets `MANGOHUD=0` (it added p95 tail).
 
+Uploads (2026-11-02, M3 Pro, `scripts/bench.py` fullscreen, GPU-bound at ~51 ms): the large writes (the car's moving
+parts, grass, drops, particles, marks, motion, dials; ~6.5 MB in ~37 writes a frame) go through `uploads.rs`
+(`StagingBelt`, 4 MB chunks), submitted on their own before the sun's maps, reflection cube and mirrors read them;
+`Queue::write_buffer` made a staging buffer a write and filled fresh pages. Hidden and skipped frames submit them
+(`Renderer::skip_frame`; unsubmitted writes kept their memory). With the dials below, 3 runs each: render 3.94 to
+3.12 ms, scene update 2.19 to 1.62, finish scene commands 1.68 to 1.22; 19.3 to 19.5 fps.
+
 Live (`rbr-standalone --live`, the only live mode; the viewer has no pacing of its own): a frame per physics step on
 its own clock (a late wake's frame takes the missed steps, cut at 0.1 s), each with the newest input; the input thread
 (`window/feed.rs`) polls the devices every 1 ms (50 ms keepalive, one-shot flags ORed until a frame takes them); an
@@ -1194,6 +1201,10 @@ gets the base's mip chain (+21 MB at 4096, the dials redrawn into every level: a
 0.60, `--profile` with the dials redrawn each frame).
 A pack's base without mip levels (139 of RSF's 150) gets a chain at load, as the car's own textures do: one level
 aliased over the whole cockpit where the upscaler did not replace it (2026-11-01).
+Past a face's first draw, the levels its largest region is under 8 texels in keep its last whole draw (`SMALLEST`); a
+face's textures with one file and one base share a target: the Fiat 131's redraw 26 passes to 8 (dials span 0.081 to
+0.024 ms, 2026-11-02). A Fiat 131 cockpit `--sequence 4` (redraws past the first) byte-identical; 6 reference shots
+as before (the M3 E30 cockpit, rain and snow ones vary run to run with either build).
 In a frame at least 1800 high (`--size` times the render scale) the in-car view's textures go to 8192, not 4096
 (`upscale::INTERIOR_MAX`, user's call 2026-11-01): at 4K the Fiat 131 Grp4's 4096 dash is about 0.8 texels a pixel,
 at 8192 its gauges and dash fabric are sharp; its 4096 pack base is upscaled 2x (4x, halved). Cached in a folder per

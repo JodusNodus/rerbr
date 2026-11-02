@@ -14,6 +14,7 @@ use rbr_formats::dds::Dds;
 use crate::renderer::{LampUniform, DEPTH_FORMAT, MAX_LAMPS};
 use crate::skidmarks::Quad;
 use crate::tyre_marks;
+use crate::uploads::Uploads;
 
 /// The texture's cells, by the texture index of the skid record: `skidmarks.dds` is 256 by 64 texels, eight 32-texel
 /// strips side by side, each a trail running down the texture (the retail records use indices 0 to 7). An index past
@@ -207,34 +208,39 @@ impl SkidPass {
     }
 
     /// Replaces the marks drawn: each quad is two triangles, in stage coordinates (the physics z-up axes swapped).
-    pub fn set_quads(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, quads: &[Quad]) {
+    pub(crate) fn set_quads(&mut self, device: &wgpu::Device, uploads: &mut Uploads, quads: &[Quad]) {
         let vertices: Vec<Vertex> = quads.iter().flat_map(quad_vertices).collect();
-        self.set_vertices(device, queue, &vertices);
+        self.set_vertices(device, uploads, &vertices);
     }
 
     /// Replaces the tyre marks drawn ([`SkidPass::tyres`]).
-    pub fn set_tyre_quads(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, quads: &[tyre_marks::Quad]) {
+    pub(crate) fn set_tyre_quads(&mut self, device: &wgpu::Device, uploads: &mut Uploads, quads: &[tyre_marks::Quad]) {
         let vertices: Vec<Vertex> = quads.iter().flat_map(tyre_vertices).collect();
-        self.set_vertices(device, queue, &vertices);
+        self.set_vertices(device, uploads, &vertices);
     }
 
     /// Replaces the shadow triangles drawn ([`SkidPass::decal`]): three corners each, in stage coordinates.
-    pub fn set_corners(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, corners: &[crate::car_shadow::Corner]) {
+    pub(crate) fn set_corners(
+        &mut self,
+        device: &wgpu::Device,
+        uploads: &mut Uploads,
+        corners: &[crate::car_shadow::Corner],
+    ) {
         let cell = [0.0, 0.0, 1.0, 1.0];
         let vertices: Vec<Vertex> = corners
             .iter()
             .map(|c| Vertex { pos: c.position, uv: c.uv, cell, rgba: [1.0, 1.0, 1.0, c.alpha] })
             .collect();
-        self.set_vertices(device, queue, &vertices);
+        self.set_vertices(device, uploads, &vertices);
     }
 
-    fn set_vertices(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, vertices: &[Vertex]) {
+    fn set_vertices(&mut self, device: &wgpu::Device, uploads: &mut Uploads, vertices: &[Vertex]) {
         let count = vertices.len() as u32;
         if count > self.capacity {
             self.capacity = count.next_power_of_two();
             self.vertices = vertex_buffer(device, self.capacity);
         }
-        queue.write_buffer(&self.vertices, 0, bytemuck::cast_slice(vertices));
+        uploads.write(&self.vertices, 0, bytemuck::cast_slice(vertices));
         self.count = count;
     }
 

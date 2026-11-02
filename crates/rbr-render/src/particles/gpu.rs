@@ -14,6 +14,7 @@ use wgpu::util::DeviceExt;
 use super::sim::Billboard;
 use super::wave::WaveVertex;
 use crate::atmosphere::Atmosphere;
+use crate::uploads::Uploads;
 
 /// Every sprite is resampled to this square, the size most of them have.
 pub const SPRITE_SIZE: u32 = 64;
@@ -285,7 +286,7 @@ const FIRST_CAPACITY: usize = 4096;
 /// Writes `items` into `buffer`, which is replaced by a larger one (of `capacity` items) when they do not fit.
 fn upload<T: bytemuck::Pod>(
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
+    uploads: &mut Uploads,
     buffer: &mut wgpu::Buffer,
     capacity: &mut usize,
     items: &[T],
@@ -300,7 +301,7 @@ fn upload<T: bytemuck::Pod>(
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         });
     } else if !items.is_empty() {
-        queue.write_buffer(buffer, 0, bytemuck::cast_slice(items));
+        uploads.write(buffer, 0, bytemuck::cast_slice(items));
     }
 }
 
@@ -544,14 +545,14 @@ impl Pass {
     }
 
     /// The billboards to draw, back to front.
-    pub fn set(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, billboards: &[Billboard]) {
-        upload(device, queue, &mut self.instances, &mut self.capacity, billboards);
+    pub(crate) fn set(&mut self, device: &wgpu::Device, uploads: &mut Uploads, billboards: &[Billboard]) {
+        upload(device, uploads, &mut self.instances, &mut self.capacity, billboards);
         self.count = billboards.len() as u32;
     }
 
     /// The water waves' triangles to draw first.
-    pub fn set_waves(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, waves: &[WaveVertex]) {
-        upload(device, queue, &mut self.waves, &mut self.wave_capacity, waves);
+    pub(crate) fn set_waves(&mut self, device: &wgpu::Device, uploads: &mut Uploads, waves: &[WaveVertex]) {
+        upload(device, uploads, &mut self.waves, &mut self.wave_capacity, waves);
         self.wave_count = waves.len() as u32;
     }
 

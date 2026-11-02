@@ -66,6 +66,7 @@ mod sun;
 mod taa;
 mod terrain_detail;
 pub mod tyre_marks;
+mod uploads;
 pub mod upscale;
 pub mod views;
 pub mod visibility;

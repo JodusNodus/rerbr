@@ -252,11 +252,7 @@ impl Renderer {
             return;
         };
         let mesh = &mut self.meshes[*slot];
-        self.queue.write_buffer(
-            &self.buffers[mesh.slot.buffer].vertices,
-            vertex_offset(mesh.slot),
-            cast_slice(vertices),
-        );
+        self.uploads.write(&self.buffers[mesh.slot.buffer].vertices, vertex_offset(mesh.slot), cast_slice(vertices));
         mesh.bounds = bounds.map(|b| (b.center, b.half_extent));
         mesh.in_car = None;
         if let Some(motion) = &mut self.motion {
@@ -272,11 +268,7 @@ impl Renderer {
             return;
         };
         let mesh = &mut self.meshes[*slot];
-        self.queue.write_buffer(
-            &self.buffers[mesh.slot.buffer].vertices,
-            vertex_offset(mesh.slot),
-            cast_slice(vertices),
-        );
+        self.uploads.write(&self.buffers[mesh.slot.buffer].vertices, vertex_offset(mesh.slot), cast_slice(vertices));
         // An empty part draws nothing wherever it is.
         mesh.in_car = bounds.map(|b| (b.center, b.half_extent));
         mesh.bounds = mesh.in_car.map(|model| placed_box(self.car_body.unwrap_or_default(), model));
@@ -298,7 +290,7 @@ impl Renderer {
                 }
                 let vertices = transformed_vertices(&base.local_mesh.vertices, Mat4::from_cols_array(&base.placement));
                 let buffer = &self.buffers[mesh.slot.buffer].vertices;
-                self.queue.write_buffer(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
+                self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
                 mesh.bounds = mesh_bounds(&vertices).map(|b| (b.center, b.half_extent));
                 if let Some(motion) = &mut self.motion {
                     motion.given(slot, &vertices);
@@ -329,7 +321,7 @@ impl Renderer {
             let (position, orientation) = physics_pose_to_stage(physics_position, physics_orientation);
             let matrix = interactive_pose_matrix(base.placement, position, orientation);
             let vertices = transformed_vertices(&base.local_mesh.vertices, matrix);
-            self.queue.write_buffer(
+            self.uploads.write(
                 &self.buffers[mesh.slot.buffer].vertices,
                 vertex_offset(mesh.slot),
                 cast_slice(&vertices),
@@ -442,7 +434,7 @@ impl Renderer {
             let mesh = &mut self.meshes[index];
             if !vertices.is_empty() {
                 let buffer = &self.buffers[mesh.slot.buffer].vertices;
-                self.queue.write_buffer(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
+                self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
             }
             mesh.bounds = Some((bounds.center, bounds.half_extent));
             // Only the tile's cards are drawn: past them the mesh holds an earlier tile's.

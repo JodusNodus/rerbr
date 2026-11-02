@@ -713,6 +713,7 @@ impl App {
             drawn.draw(&mut running.renderer, playback, view_projection);
         }
         let Some(frame) = frame else {
+            running.renderer.skip_frame();
             return;
         };
         let view = frame.texture.create_view(&Default::default());
