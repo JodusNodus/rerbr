@@ -200,20 +200,47 @@ fn mirrors_label(rate: Rate) -> &'static str {
     }
 }
 
-/// Each frame presentation's label and hover tip (`viewer --present`), by [`Present::ALL`].
-const PRESENT_LABELS: [(&str, &str); Present::ALL.len()] = [
-    (
-        "Fast, no tearing (recommended)",
-        "Shows the newest frame at each refresh: no tearing, and no wait for the refresh (where the system has no such \
-         mode, as on macOS, this is vsync)",
-    ),
-    ("Vsync", "Each frame waits for the display's refresh: a frame just too slow for one refresh waits for two"),
-    (
-        "Uncapped (may tear)",
-        "Shows each frame as soon as it is drawn: the lowest lag, but it tears where the compositor allows tearing \
-         (Hyprland with an immediate window rule); elsewhere it shows like the fast mode",
-    ),
-];
+/// A frame presentation's label and hover tip (`viewer --present`). macOS offers vsync and uncapped only
+/// ([`Present::OFFERED`]), vsync the default.
+fn present_label(present: Present) -> (&'static str, &'static str) {
+    let mac = cfg!(target_os = "macos");
+    match present {
+        Present::Mailbox => (
+            "Fast, no tearing (recommended)",
+            "Shows the newest frame at each refresh: no tearing, and no wait for the refresh (where the system has no \
+             such mode, this is vsync)",
+        ),
+        Present::Fifo if mac => (
+            "Vsync (recommended)",
+            "Each frame waits for the display's refresh: no tearing, and no more frames drawn than the display shows \
+             (macOS has no tear-free mode without the wait)",
+        ),
+        Present::Fifo => {
+            ("Vsync", "Each frame waits for the display's refresh: a frame just too slow for one refresh waits for two")
+        }
+        Present::Immediate if mac => (
+            "Uncapped",
+            "Shows each frame as soon as it is drawn: the lowest lag, with the GPU drawing as many frames as it can \
+             (the frame cap holds it to the display's rate); fullscreen, it may tear",
+        ),
+        Present::Immediate => (
+            "Uncapped (may tear)",
+            "Shows each frame as soon as it is drawn: the lowest lag, but it tears where the compositor allows tearing \
+             (Hyprland with an immediate window rule); elsewhere it shows like the fast mode",
+        ),
+    }
+}
+
+/// The frame caps offered, frames a second (`viewer --max-fps`); 0, the first, is none.
+pub const FRAME_CAPS: [u32; 7] = [0, 30, 60, 90, 120, 144, 240];
+
+/// A frame cap's label.
+fn cap_label(fps: u32) -> String {
+    match fps {
+        0 => "Off".into(),
+        fps => format!("{fps} fps"),
+    }
+}
 
 /// The HUD's options (`viewer --no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide`), and the
 /// cockpit's working dials (`--no-dials`) and its steering wheel (`--hide-wheel`).
@@ -332,18 +359,25 @@ impl Form {
             }
             ui.end_row();
 
-            let (label, tip) = PRESENT_LABELS[Present::ALL.iter().position(|&p| p == self.present).unwrap_or(0)];
+            let (label, tip) = present_label(self.present);
             ui.label("Frame presentation").on_hover_text(tip);
             ComboBox::from_id_salt("present")
                 .width(FIELD)
                 .selected_text(label)
                 .show_ui(ui, |ui| {
-                    for (present, (label, tip)) in Present::ALL.into_iter().zip(PRESENT_LABELS) {
+                    for &present in Present::OFFERED {
+                        let (label, tip) = present_label(present);
                         ui.selectable_value(&mut self.present, present, label).on_hover_text(tip);
                     }
                 })
                 .response
                 .on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "The most frames a second the driving window draws. Uncapped with the display's refresh rate \
+                       here keeps the lowest lag without the GPU drawing frames the display never shows";
+            ui.label("Frame cap").on_hover_text(tip);
+            combo(ui, "frame cap", QUALITY_FIELD, &mut self.max_fps, &FRAME_CAPS, cap_label).on_hover_text(tip);
             ui.end_row();
 
             ui.label("FPS counter");

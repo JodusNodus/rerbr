@@ -91,3 +91,6 @@ Form in `rbr-launcher/src/settings.rs`, folder and once-only migrate in `rbr-lau
   keys match, else Custom; presets leave `marks` and the render scale alone. `surfaces` is off in every
   preset until the scanned surfaces suit every stage (user's call, 2026-10-31); a saved `surfaces = on` stays on.
 - `perf_log` defaults off; on, the viewer logs with `viewer --perf-log <files folder>/logs` (`home::LOGS`, shown on the Graphics page).
+- `present` (`viewer --present`) defaults to mailbox, vsync on macOS: Metal has vsync or immediate only, so the launcher
+  offers those two there (`Present::OFFERED`) and shows a saved mailbox as vsync (2026-11-02). `max_fps` (`viewer
+  --max-fps`, one of `FRAME_CAPS`, 0 none) is the Frame cap: uncapped held at the display's rate.

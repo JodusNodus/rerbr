@@ -1,11 +1,10 @@
 //! How the viewer's window presents its frames (`viewer --present`, the launcher's "Frame presentation"; ours).
 
 /// The presentation the window asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Present {
     /// The newest frame at each refresh, with no tearing and no wait for it: the frame rate is not tied to the
-    /// display's (the default).
-    #[default]
+    /// display's (the default, but on macOS).
     Mailbox,
     /// Vsync: each frame waits for a refresh, so a frame just over one refresh waits two.
     Fifo,
@@ -13,8 +12,31 @@ pub enum Present {
     Immediate,
 }
 
+/// Mailbox, and vsync on macOS, whose Metal has no mailbox.
+impl Default for Present {
+    fn default() -> Present {
+        if cfg!(target_os = "macos") {
+            Present::Fifo
+        } else {
+            Present::Mailbox
+        }
+    }
+}
+
 impl Present {
     pub const ALL: [Present; 3] = [Present::Mailbox, Present::Fifo, Present::Immediate];
+    /// The modes the launcher offers: on macOS vsync or not, as Metal has them.
+    pub const OFFERED: &[Present] =
+        if cfg!(target_os = "macos") { &[Present::Fifo, Present::Immediate] } else { &Present::ALL };
+
+    /// This mode where it is offered, else the default (a mailbox saved on macOS).
+    pub fn offered(self) -> Present {
+        if Present::OFFERED.contains(&self) {
+            self
+        } else {
+            Present::default()
+        }
+    }
 
     /// The name in the launcher's settings and `viewer --present`.
     pub fn name(self) -> &'static str {
@@ -96,6 +118,13 @@ pub fn acquire(surface: &wgpu::Surface<'_>) -> Acquired {
 mod tests {
     use super::*;
     use wgpu::PresentMode::{Fifo, Immediate, Mailbox};
+
+    #[test]
+    fn the_default_is_offered_and_a_mode_not_offered_falls_back_to_it() {
+        assert!(Present::OFFERED.contains(&Present::default()));
+        assert!(Present::ALL.into_iter().all(|p| Present::OFFERED.contains(&p.offered())));
+        assert_eq!(Present::Immediate.offered(), Present::Immediate);
+    }
 
     #[test]
     fn names_round_trip() {
