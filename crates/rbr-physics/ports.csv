@@ -159,6 +159,7 @@ addr,module,rust_item,test,status
 0x4e8770,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
 0x4e88f0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
 0x4e89b0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
+0x4e8a70,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,partial
 0x4e8b30,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
 0x4e8bf0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,checked
 0x4e8cb0,car_body/emit.rs,car_body::emit::emit,car_body_vectors::emit_matches_original_calls,partial

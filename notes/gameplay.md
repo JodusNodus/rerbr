@@ -94,6 +94,9 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 `-retire-impreza00-45` (checks in `rbr-gameplay/tests/race_clock_peek.rs`,
 `rbr-render/tests/scripted_data.rs`).
 
+- A call for help while moving (the motion probe: faster than 1.5 m/s) emits `CSigCarProblem` kind 4 (MSG_CARSTOP)
+  instead of the assist. Its emit (0x4e8a70) is bound for the pure step; no recording reaches it (live boot check:
+  `a_call_for_help_while_moving_asks_to_stop_and_the_drive_goes_on`, 14.7 m/s on track-11_O).
 - The flip spectators are five `load_car_flipN.lua`, cosmetic; `run_car_flip.lua` never runs.
 - Bird strike feeds only the sound. Crash-site scripts are unused in retail.
 

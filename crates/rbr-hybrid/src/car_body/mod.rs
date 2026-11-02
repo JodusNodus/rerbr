@@ -45,7 +45,7 @@ const fn bind(addr: u32, name: &'static str, run: crate::BindingFn) -> Binding {
     crate::bind("car_body", addr, name, run)
 }
 
-pub static BINDINGS: [Binding; 116] = [
+pub static BINDINGS: [Binding; 117] = [
     bind(0x4e58f0, "CCar::Clear480", clear480),
     bind(0x4e6000, "CCar::Collide6000", collide6000),
     bind(0x4e6dd0, "CCar::Vf98x", run_countdown),
@@ -113,6 +113,7 @@ pub static BINDINGS: [Binding; 116] = [
     bind(0x4e8fa0, "E34_RetireA", retire_a),
     bind(0x4e8770, "CSigRetireCar emit", emit::<0x738708>),
     bind(0x4e89b0, "CSigOutsideAssistance emit", emit::<0x738860>),
+    bind(0x4e8a70, "CSigCarProblem emit", emit::<0x7388e0>),
     bind(0x5665f0, "E60Flow::M5665f0", flow_m566640),
     bind(0x499900, "E19IsState2", replay_is_state2),
     bind(0x4ec0d0, "CCarDamageHandler::Test3B20", damage_test),
