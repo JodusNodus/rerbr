@@ -244,7 +244,9 @@ const HOLD_SPEED: f32 = 0.004;
 /// Seconds a flake takes to melt into a drop, and the drop's radius over the flake's.
 const MELT: f32 = 14.0;
 const MELT_SHRINK: f32 = 0.55;
-/// Most drops kept on the glass; the oldest still ones go first.
+/// Most drops kept on a square metre of glass, and on a larger pane; the oldest still ones go first. A smaller pane
+/// keeps its area's share (ours: at 2500 a pane, the side windows, which no blade clears, held three to four times the
+/// windscreen's drops a square metre, and four of them, 10 000 drops, took most of the glass's frame time).
 pub const MOST: usize = 2500;
 /// Bugs (`[Effect Bug Splash]`): life and fade-out, seconds, radius (its `Size` 0.02 is a screen fraction; ours: 6
 /// to 10 mm), and the car speeds of `[Particle System]` (km/h): none below the minimum, the rate grows to the medium.
@@ -302,7 +304,7 @@ pub const RIBBON_LIFE: f32 = 2.5;
 const BEAD_CHANCE: f32 = 0.5;
 const BEAD_RADIUS: [f32; 2] = [0.2, 0.45];
 pub const TRAIL_LIFE: f32 = 5.0;
-/// Most trail droplets kept, apart from [`MOST`].
+/// Most trail droplets kept, apart from [`MOST`] and, as it, by area.
 const TRAIL_MOST: usize = 3500;
 /// Drops grip the glass by this much more or less than the mean (the pin's factor), a running drop's pin falls to
 /// [`RUNNING_PIN`] of it, and drops under [`TOO_SMALL`] metres are gone.
@@ -310,10 +312,9 @@ const GRIP: [f32; 2] = [0.7, 1.5];
 const RUNNING_PIN: f32 = 0.85;
 const TOO_SMALL: f32 = 0.0004;
 /// Drops touch when their centres are closer than this share of their radii's sum, checked every [`MERGE_EVERY`]
-/// seconds; [`MOST_RADIUS`] the largest radius a drop reaches to look for one.
+/// seconds.
 const TOUCH: f32 = 0.92;
 const MERGE_EVERY: f32 = 1.0 / 60.0;
-const MOST_RADIUS: f32 = 0.02;
 /// The wet film (ours): a grid of [`FILM_CELLS`] over the glass's chart, each 0 (dry) to 1. Rain wets it at
 /// [`FILM_WETS`] a second at full intensity, it dries at [`FILM_DRIES`] a second, and a blade clears what it swept.
 /// The airflow thins it with speed: it holds at most `1 / (1 + speed / FILM_AIRFLOW)` (0.45 at 24 m/s), losing
@@ -532,11 +533,13 @@ impl Glass {
         self.wipe(dt, phase, c.rain > 0.0 || c.snow > 0.0, &inside);
         // Past the most kept, the oldest still ones go first (they are in spawn order, merges aside), then the oldest
         // running ones; trails count apart.
+        let share = self.area.min(1.0);
         let trails = self.drops.iter().filter(|d| d.kind == Kind::Trail).count();
         let still = self.drops.iter().filter(|d| d.kind != Kind::Trail && d.velocity == Vec2::ZERO).count();
-        let extra = (self.drops.len() - trails).saturating_sub(MOST);
+        let extra = (self.drops.len() - trails).saturating_sub((MOST as f32 * share) as usize);
         // Still drops, running ones, trails.
-        let mut out = [extra.min(still), extra.saturating_sub(still), trails.saturating_sub(TRAIL_MOST)];
+        let trail_extra = trails.saturating_sub((TRAIL_MOST as f32 * share) as usize);
+        let mut out = [extra.min(still), extra.saturating_sub(still), trail_extra];
         if out != [0; 3] {
             self.drops.retain(|d| {
                 let k = match d.kind {
@@ -779,24 +782,34 @@ impl Glass {
             return;
         }
         self.merge_clock = 0.0;
-        let mut order: Vec<usize> = (0..self.drops.len()).filter(|&i| self.drops[i].kind == Kind::Water).collect();
-        order.sort_unstable_by(|&a, &b| self.drops[a].at.x.total_cmp(&self.drops[b].at.x));
+        let mut order: Vec<(f32, u32)> = self
+            .drops
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.kind == Kind::Water)
+            .map(|(i, d)| (d.at.x, i as u32))
+            .collect();
+        order.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
+        // A drop looks as far across as it and the largest other could touch.
+        let reach = order.iter().map(|&(_, i)| self.drops[i as usize].radius).fold(0.0, f32::max);
         let mut gone = vec![false; self.drops.len()];
-        for (k, &i) in order.iter().enumerate() {
+        for (k, &(_, i)) in order.iter().enumerate() {
+            let i = i as usize;
             if gone[i] {
                 continue;
             }
-            for &j in &order[k + 1..] {
-                let (a, b) = (self.drops[i], self.drops[j]);
-                if b.at.x - a.at.x > a.radius + MOST_RADIUS {
+            let mut a = self.drops[i];
+            for &(x, j) in &order[k + 1..] {
+                if x - a.at.x > a.radius + reach {
                     break;
                 }
+                let (j, b) = (j as usize, self.drops[j as usize]);
                 if gone[j] || a.at.distance(b.at) >= (a.radius + b.radius) * TOUCH {
                     continue;
                 }
                 let (va, vb) = (a.radius.powi(3), b.radius.powi(3));
                 let bigger = if va >= vb { a } else { b };
-                self.drops[i] = Drop {
+                a = Drop {
                     at: (a.at * va + b.at * vb) / (va + vb),
                     radius: (va + vb).cbrt(),
                     velocity: bigger.velocity,
@@ -805,6 +818,7 @@ impl Glass {
                 };
                 gone[j] = true;
             }
+            self.drops[i] = a;
         }
         let mut k = 0;
         self.drops.retain(|_| {

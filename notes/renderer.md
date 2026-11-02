@@ -670,6 +670,15 @@ not ported.
   8 to 12 s): sliding at 15, 25, 35 m/s 0, 0, 7 % to 27, 61, 100 % (skids included), median 1.5 cm/s at 25 and 4.3 at
   35 (p90 9); standing unchanged. Glass pass (in "screen reflections", GC8 Luceram heavy rain cockpit, 1080p) 3.90 to
   4.28 ms; the 36 shots: rain ones change, the rest byte-identical or within 1 of 255 on a few pane pixels.
+- Glass CPU (ours, 2026-11-02, user: "the cpu latency it added"; `Drawn::draw`, `Glass::merge`, `pane_drops`). samply
+  of `Drawn::draw`, GC8 Luceram heavy rain cockpit, live frames of 5 periods: one drive frame a frame drawn 2.2 to
+  1.0-1.15 ms, twelve 6.0 to 2.75 ms. `MOST` and `TRAIL_MOST` are per square metre now (a side window held 3-4x the
+  windscreen's density; four of them about 1800 drops each, was up to 6000); the panes' cells seen from inside made
+  once, model space; the film's corners once each (were four times a cell); one instance buffer kept; the merge
+  sweep over an (x, index) copy reaching the largest radius, not 2 cm (3x faster); the drive's frames stepped
+  together up to 1/60 s, ending where the wipers turn and at the frame shown (a seek's 8 s warm-up in ~480 steps, was
+  1142). Drop counts and the blades unchanged. Left: the upload (18k instances of 112 bytes, ~0.2 ms) and a step
+  (~0.5 ms: merge, flow, wipe).
 - Beads (ours, 2026-10-26): the film's cells draw the small drops too many to be drops of their own. The film builds to the rain's amount, less with the airflow, and the wipers clear
   the beads with it (drops alone covered 1.3-2.1% after 12 s; more drops cost ~5 ms a step at 100 km/h). Shows with
   additions off too (user-approved); cockpit heavy 13.1 ms before and after.

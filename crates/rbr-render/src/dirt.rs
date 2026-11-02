@@ -73,7 +73,7 @@ impl Thrown {
         Thrown { mud: self.mud * k, snow: self.snow * k, water: self.water * k }
     }
 
-    fn plus(self, o: Thrown) -> Thrown {
+    pub(crate) fn plus(self, o: Thrown) -> Thrown {
         Thrown { mud: self.mud + o.mud, snow: self.snow + o.snow, water: self.water + o.water }
     }
 
