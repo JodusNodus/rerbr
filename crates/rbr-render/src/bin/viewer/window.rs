@@ -612,6 +612,8 @@ impl App {
                     live_failed = true;
                 }
             }
+            // The car drawn at the physics' newest step, between the answers (`playback::lead`).
+            playback.lead_to(process.newest_step().filter(|_| !self.replay).map(|step| step.step));
             span.next("live state and sound");
             running.renderer.set_interactive_poses(&process.interactive_poses);
             take_damage(playback, process);
@@ -756,7 +758,7 @@ impl App {
         running.window.pre_present_notify();
         running.gpu.queue.present(frame);
         if let Some(latency) = &mut self.latency {
-            let step = self.scene.playback.as_ref().map(|p| p.sample().step);
+            let step = self.scene.playback.as_ref().map(|p| p.shown_step());
             if latency.drawn(submitted, step) {
                 latency.watch_gpu(&running.gpu.device, &running.gpu.queue);
             }

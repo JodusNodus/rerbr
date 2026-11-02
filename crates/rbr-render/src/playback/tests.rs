@@ -64,6 +64,7 @@ fn playback(frames: &[Vec<u8>]) -> Playback {
         probe: None,
         shadow: None,
         mirrors: Vec::new(),
+        lead: None,
     }
 }
 
@@ -164,6 +165,20 @@ fn advance_follows_the_rate_and_stops_when_paused() {
     p.paused = true;
     p.advance(1.0);
     assert_eq!(p.index(), 0);
+}
+
+#[test]
+fn the_car_is_drawn_at_the_newest_step_until_the_frame_changes() {
+    let mut p = playback(&[frame(10, 1, 0.0), frame(15, 1, 1.0)]);
+    p.drive.samples[1].car.velocity = [10.0, 0.0, 0.0];
+    p.step(1);
+    p.lead_to(Some(16));
+    assert_eq!(p.shown_step(), 16);
+    assert!((p.position().x - (1.0 + 10.0 * p.step_clock().step)).abs() < 1e-5, "{}", p.position());
+    p.step(-1);
+    assert_eq!((p.shown_step(), p.position().x), (10, 0.0));
+    p.lead_to(Some(9));
+    assert_eq!(p.shown_step(), 10);
 }
 
 #[test]

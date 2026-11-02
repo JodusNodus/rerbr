@@ -1169,6 +1169,14 @@ The rest is the frame: half a period's wait for the next input read (~9 ms), inp
 answers, scene update, encoding), the GPU's 18 ms. Not measured yet: niri, Windows, macOS, refresh-bound loops
 (FIFO above the refresh rate is not paced).
 
+Judder (`RBR_LATENCY`'s "judder": how much the shown step's age on screen changes from one shown frame to the next): an
+answer comes every 7 ms of game time, so drawn at its answers the car moved on by 0 to 7 ms more or less than the
+screen did (up to 19 cm at 100 km/h); the pacer changed none of it (p50 2.8 ms on and off). Live play draws the car at
+the physics' newest step (`playback/lead.rs`): the answer's pose moved on by its velocity and turned at its last turn
+rate, at most 15 ms; the body, wheels, shadow, glass, mounted views and the chase's shift take it, the particles, tyre
+marks, fences and sound keep the answers. Same scene, sway, FIFO, paced, 30 s: judder p50 / p95 / max 2.73 / 5.23 /
+7.65 to 0.59 / 1.65 / 4.80 ms, the shown step 30.1 to 26.9 ms old on screen (p50).
+
 `--frames N --profile` prints per-pass medians. Texture packs (`bin/texture-pack.rs`, never committed):
 `viewer --textures <dir>/pack` reads them, the car's after its dials are made (dial faces keep theirs). The compact
 `realesr-animevideov3` beats `realesrgan-x4plus` on retail liveries and signs (cleaner flat edges, 1024 livery 4.0 vs

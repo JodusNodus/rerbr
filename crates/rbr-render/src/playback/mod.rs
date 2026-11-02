@@ -35,6 +35,7 @@ use std::cell::Cell;
 
 mod drive;
 mod frames;
+mod lead;
 
 pub use drive::{Drive, Sample, CAMERA_SHAKE};
 pub(crate) use frames::model_path;
@@ -199,6 +200,8 @@ pub struct Playback {
     shadow: Option<rbr_formats::tga::Image>,
     /// The cockpit's mirrors' glass ([`Playback::set_mirrors`]).
     mirrors: Vec<crate::mirrors::Glass>,
+    /// The car drawn at the physics' newest step ([`Playback::lead_to`]): the frame it moves on, the step and the pose.
+    lead: Option<(usize, u32, CarPose)>,
 }
 
 impl Playback {
@@ -256,6 +259,7 @@ impl Playback {
                 .and_then(|path| std::fs::read(path).ok())
                 .and_then(|bytes| rbr_formats::tga::parse(&bytes).ok()),
             mirrors: Vec::new(),
+            lead: None,
         };
         playback.cracks = Cracks::new(playback.windows());
         Ok(playback)
@@ -479,16 +483,43 @@ impl Playback {
         }
     }
 
+    /// Draws the current frame's car at the physics' `newest` step (live play: the step records' newest, see
+    /// [`lead`]), or at the frame with `None`. It holds until the frame changes.
+    pub fn lead_to(&mut self, newest: Option<u32>) {
+        let index = self.index();
+        let samples = &self.drive.samples;
+        let now = (samples[index].step, samples[index].car);
+        self.lead = newest.and_then(|newest| newest.checked_sub(now.0)).filter(|&steps| steps > 0).map(|steps| {
+            let before = index.checked_sub(1).map(|i| (samples[i].step, samples[i].car));
+            (index, now.0 + steps, lead::lead(before, now, steps, self.drive.clock.step))
+        });
+    }
+
+    /// The current frame's lead ([`Playback::lead_to`]): its step and pose.
+    fn led(&self) -> Option<(u32, CarPose)> {
+        self.lead.filter(|&(index, ..)| index == self.index()).map(|(_, step, car)| (step, car))
+    }
+
+    /// The car's pose as drawn: the current frame's, at the physics' newest step in live play.
+    pub fn car(&self) -> CarPose {
+        self.led().map_or(self.sample().car, |(_, car)| car)
+    }
+
+    /// The step the car is drawn at.
+    pub fn shown_step(&self) -> u32 {
+        self.led().map_or(self.sample().step, |(step, _)| step)
+    }
+
     /// The body's position in stage space, m.
     pub fn position(&self) -> Vec3 {
-        physics_to_stage().transform_point3(Vec3::from(self.sample().car.position))
+        physics_to_stage().transform_point3(Vec3::from(self.car().position))
     }
 
     /// A camera `ahead` m in front of the body along its heading, `side` m to its right and `height` m above it,
     /// looking at the body's middle (ours: `--flyby`).
     pub fn flyby(&self, [ahead, side, height]: [f32; 3]) -> FreeFly {
         let position = self.position();
-        let forward = physics_to_stage().transform_vector3(Vec3::from(self.sample().car.forward()));
+        let forward = physics_to_stage().transform_vector3(Vec3::from(self.car().forward()));
         let flat = Vec3::new(forward.x, 0.0, forward.z).normalize_or(Vec3::Z);
         let eye = position + flat * ahead + flat.cross(Vec3::Y) * side + Vec3::Y * height;
         let target = position + Vec3::Y * CHASE_TARGET_HEIGHT;
@@ -498,7 +529,7 @@ impl Playback {
     /// The chase camera behind the body, looking at its middle, turned around it by `look`.
     pub fn camera(&self, look: ChaseLook) -> FreeFly {
         let position = self.position();
-        let forward = physics_to_stage().transform_vector3(Vec3::from(self.sample().car.forward()));
+        let forward = physics_to_stage().transform_vector3(Vec3::from(self.car().forward()));
         let target = position + Vec3::Y * CHASE_TARGET_HEIGHT;
         let offset = -forward * CHASE_DISTANCE + Vec3::Y * (CHASE_HEIGHT - CHASE_TARGET_HEIGHT);
         let eye = target + look.apply(offset);
@@ -537,6 +568,9 @@ impl Playback {
             Some(mount) => self.mounted(&mount, fov),
             None => match self.game_chase.lens() {
                 Some(lens) => {
+                    // The chase follows the frames; it moves on with the car drawn at the newest step.
+                    let lead = Vec3::from(self.car().position) - Vec3::from(self.sample().car.position);
+                    let lens = Lens { eye: lens.eye + physics_to_stage().transform_vector3(lead), ..lens };
                     let target = lens.eye + lens.forward;
                     let eye = target + look.apply(lens.eye - target);
                     Lens { eye, forward: (target - eye).normalize(), ..lens }
@@ -582,9 +616,9 @@ impl Playback {
         Mat4::from_translation(self.offset) * model_to_body()
     }
 
-    /// Model space to stage space for the body meshes at the current frame.
+    /// Model space to stage space for the body meshes as drawn ([`Playback::car`]).
     pub fn body(&self) -> Mat4 {
-        self.model_to_stage(&self.sample().car)
+        self.model_to_stage(&self.car())
     }
 
     /// Model space to stage space for the body meshes at `car`'s pose.
@@ -596,7 +630,7 @@ impl Playback {
     /// ([`Playback::interior`]), the crack overlays not projected and the lamp parts not in their lamp's state. The
     /// hidden set moves too, so the car's bounds stay the car's whichever set is drawn.
     pub fn apply(&self, renderer: &mut Renderer) {
-        let sample = self.sample();
+        let (sample, car) = (self.sample(), self.car());
         let body = self.body();
         let index = self.index();
         let inputs = self.inputs(index);
@@ -627,7 +661,7 @@ impl Playback {
                 Some((k, centre)) => {
                     let wheel = sample.wheels[k];
                     physics_to_stage()
-                        * physics_pose(&sample.car)
+                        * physics_pose(&car)
                         * Mat4::from_translation(Vec3::from(wheel.centre()))
                         * model_to_body()
                         * Mat4::from_axis_angle(WHEEL_ROLL_AXIS, wheel.roll)
@@ -660,7 +694,7 @@ impl Playback {
         let mirrors: Vec<_> = self.mirrors.iter().filter(|_| self.interior).map(|glass| glass.placed(body)).collect();
         renderer.set_mirrors(&mirrors);
         if let (Some(texture), Some(probe)) = (&self.shadow, &self.probe) {
-            renderer.set_car_shadow(texture, probe, physics_pose(&sample.car));
+            renderer.set_car_shadow(texture, probe, physics_pose(&car));
         }
     }
 }

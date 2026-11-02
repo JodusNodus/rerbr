@@ -769,7 +769,7 @@ impl Drawn {
         renderer.set_glass(&drops, wipers);
         self.instances = drops;
         // The cabin reflected in the windscreen's pane.
-        let to_stage = coords::physics_to_stage() * playback.model_to_physics(playback.sample());
+        let to_stage = playback.body();
         renderer.set_windscreen_mirror((interior && effects).then(|| self.car.windscreen.mirror(to_stage)));
     }
 
@@ -796,7 +796,7 @@ impl Drawn {
         lit: bool,
         effects: bool,
     ) {
-        let to_stage = coords::physics_to_stage() * playback.model_to_physics(playback.sample());
+        let to_stage = playback.body();
         let w = &self.car.windscreen;
         let place = |at: Vec2, lift: f32| match outside {
             Some(o) => o.point(o.chart(w.point(at, 0.0)), lift),
