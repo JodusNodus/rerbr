@@ -251,13 +251,6 @@ def contact_sheet(out, name, variants):
 GROUPS = [('day', 'Day'), ('golden', 'Golden hour'), ('rain', 'Rain'), ('fog', 'Fog'), ('snow', 'Snow'), ('night', 'Night')]
 
 
-# Frames from real drives the page shows after the shots (docs/shots/drives; not rendered here): name, caption.
-DRIVES = [
-    ('pengonpohja-junction-flyby', 'Audi quattro A2 GrpB, Pengonpohja (RSF 607), low chase view, 05:30'),
-    ('pirttikulma-barn-cockpit', 'Audi quattro A2 GrpB, Pirttikulma (RSF 590), cockpit view, 05:30'),
-]
-
-
 RETAIL = {52: 'Sipirkakim'}  # the retail stages the list uses; the Maps folder names only the RSF ones
 
 
@@ -287,9 +280,6 @@ def gallery(shots, names, dest):
             clock = f", {s['clock']}" if 'clock' in s else ''
             lines.append(f"### {s['name']}\n\n{s['car']}, {stage} ({kind} {s['stage']}), {s['view'].split('-')[0]} view{clock}\n\n"
                          f"![{s['name']}]({s['name']}.jpg)\n")
-    lines.append('## From drives\n\nFrames from replays of real drives; the rest are in [drives](drives/README.md).\n')
-    for name, caption in DRIVES:
-        lines.append(f'### {name}\n\n{caption}\n\n![{name}](drives/{name}.jpg)\n')
     dest.write_text('\n'.join(lines))
 
 
