@@ -345,5 +345,33 @@
    "weather": "bad"
   },
   "at": 5700
+ },
+ {
+  "name": "golden-pengonpohja-quattro-flyby",
+  "stage": 607,
+  "car": "Audi quattro A2 GrpB",
+  "view": "flyby",
+  "settings": {
+   "clouds": "partly"
+  },
+  "clock": "05:30",
+  "at": 10480,
+  "args": [
+   "--fov",
+   "60",
+   "--flyby",
+   "16,4,1.2"
+  ]
+ },
+ {
+  "name": "day-pirttikulma-quattro-cockpit",
+  "stage": 590,
+  "car": "Audi quattro A2 GrpB",
+  "view": "cockpit",
+  "settings": {
+   "clouds": "clear"
+  },
+  "clock": "17:30",
+  "at": 2220
  }
 ]
