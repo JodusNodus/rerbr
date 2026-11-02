@@ -210,20 +210,74 @@ impl Ground {
     }
 }
 
-/// A rally's latitude (degrees north), longitude (degrees east, for the moon: [`lunar`]) and day of the year, for the
-/// sun's and the moon's paths (ours: the real rallies' regions and seasons, not from the game), by the map's number
-/// (`Maps/Tracks.ini` `Particles`).
-pub fn rally_of(map: u32) -> (f32, f32, f32) {
+/// A stage's place and date: latitude (degrees north), longitude (degrees east, for the moon: [`lunar`]) and day of the
+/// year, for the sun's and the moon's paths (ours, not from the game). The 1.02 rallies by the map's number
+/// (`Maps/Tracks.ini` `Particles`): the real rallies' regions and seasons. Any other stage is a guess: its country's
+/// rally region ([`COUNTRIES`], `country` an ISO code as RallySimFans gives it), on a winter day of its hemisphere
+/// for a `snow` stage, else near an equinox (spring in the north, autumn in the south), where day and night are even.
+pub fn site(map: u32, country: Option<&str>, snow: bool) -> (f32, f32, f32) {
     match map {
-        10..=19 | 93..=98 => (61.0, 25.0, 40.0),            // arctic, February
-        20..=29 | 71..=79 | 82..=89 => (52.0, -3.5, 320.0), // british, November
-        31..=39 => (-32.0, 116.0, 260.0),                   // Australia, September
-        41..=49 | 80 | 81 => (46.0, 6.9, 280.0),            // Mont Blanc, October
-        51..=59 => (43.0, 143.0, 260.0),                    // Japan (Hokkaido), September
-        61..=69 => (45.0, -88.0, 300.0),                    // USA, late October
-        _ => (50.0, 10.0, 170.0),
+        10..=19 | 93..=98 => return (61.0, 25.0, 40.0), // arctic, February
+        20..=29 | 71..=79 | 82..=89 => return (52.0, -3.5, 320.0), // british, November
+        31..=39 => return (-32.0, 116.0, 260.0),        // Australia, September
+        41..=49 | 80 | 81 => return (46.0, 6.9, 280.0), // Mont Blanc, October
+        51..=59 => return (43.0, 143.0, 260.0),         // Japan (Hokkaido), September
+        61..=69 => return (45.0, -88.0, 300.0),         // USA, late October
+        _ => {}
     }
+    let place = country.and_then(|code| COUNTRIES.iter().find(|(c, _)| c.eq_ignore_ascii_case(code)));
+    let (latitude, longitude) = place.map_or((48.0, 8.0), |&(_, at)| at);
+    let day = match (snow, latitude < 0.0) {
+        (true, false) => 40.0,   // February
+        (true, true) => 200.0,   // July
+        (false, false) => 110.0, // April
+        (false, true) => 290.0,  // October
+    };
+    (latitude, longitude, day)
 }
+
+/// The rally region of each country RallySimFans gives its stages, by ISO code: latitude and longitude (ours, rounded).
+const COUNTRIES: [(&str, (f32, f32)); 39] = [
+    ("AR", (-31.4, -64.2)), // Córdoba
+    ("AT", (47.3, 13.3)),
+    ("AU", (-32.0, 116.0)), // Western Australia
+    ("BE", (50.4, 5.5)),    // the Ardennes
+    ("BR", (-23.5, -46.6)),
+    ("CA", (46.0, -75.0)),
+    ("CH", (46.8, 8.2)),
+    ("CN", (30.0, 110.0)),
+    ("CY", (34.9, 33.0)),
+    ("CZ", (49.3, 17.6)), // Zlín
+    ("DE", (49.8, 6.9)),  // the Mosel
+    ("EE", (58.4, 26.7)),
+    ("ES", (41.2, 1.0)),  // Catalonia
+    ("FI", (62.2, 25.7)), // Jyväskylä
+    ("FR", (46.0, 5.0)),
+    ("GB", (52.5, -3.5)), // Wales
+    ("GR", (38.5, 22.5)), // the Acropolis
+    ("HU", (47.5, 19.0)),
+    ("IE", (54.0, -7.5)),
+    ("IT", (44.0, 10.5)),
+    ("JP", (35.0, 137.0)),
+    ("KE", (-0.7, 36.4)), // Naivasha
+    ("LB", (33.9, 35.7)),
+    ("LT", (55.2, 23.9)),
+    ("LV", (57.0, 23.0)),
+    ("MC", (43.9, 7.3)), // the Monte Carlo cols
+    ("MG", (-18.9, 47.5)),
+    ("MX", (21.0, -101.3)), // Guanajuato
+    ("NL", (52.0, 5.5)),
+    ("NZ", (-37.8, 175.3)),
+    ("PL", (53.8, 21.5)), // Masuria
+    ("PT", (41.3, -8.0)),
+    ("RO", (45.8, 24.5)),
+    ("SE", (60.3, 13.0)), // Värmland
+    ("SI", (46.1, 14.8)),
+    ("SK", (48.7, 19.7)),
+    ("SM", (43.9, 12.4)),
+    ("UA", (49.0, 31.0)),
+    ("US", (45.0, -88.0)),
+];
 
 /// The year of the rallies' dates, for the moon's phase ([`lunar`]): RBR's release (ours).
 const MOON_YEAR_JD: f64 = 2_453_005.5; // 2004-01-01 0h UT
@@ -336,7 +390,7 @@ pub const NIGHT: f32 = -7.0;
 pub const PHYSICAL_NIGHT: f32 = -18.0;
 pub const MOON_FROM: f32 = -1.0;
 
-/// A stage's clock: its rally's sun path (`rally_of`, [`solar`]) anchored to the bake, and the atmosphere it lights.
+/// A stage's clock: its rally's sun path ([`site`], [`solar`]) anchored to the bake, and the atmosphere it lights.
 /// The moon follows its own path from the same anchor ([`lunar`]). Stage north is not known, so the bake's hour is where the path reaches the bake's elevation, in the morning for the
 /// `M` variants, the afternoon for `E` and nearest noon otherwise (the letter is the section's: `54O_E` is `E`), and
 /// the sun turns from the bake's direction as the compass azimuth turns from that hour. Started without a time, the
@@ -373,9 +427,16 @@ impl Clock {
         Clock { physical, ..self }
     }
 
-    /// The clock from `start` (local solar hour; `None` for the bake's sun).
-    pub fn new(base: Atmosphere, bake: Relight, map: u32, letter: char, start: Option<f32>, relight: bool) -> Clock {
-        let (latitude, longitude, day) = rally_of(map);
+    /// The clock at `site` ([`site`]) from `start` (local solar hour; `None` for the bake's sun).
+    pub fn new(
+        base: Atmosphere,
+        bake: Relight,
+        site: (f32, f32, f32),
+        letter: char,
+        start: Option<f32>,
+        relight: bool,
+    ) -> Clock {
+        let (latitude, longitude, day) = site;
         let bake_elevation = bake.bake_sun.y.asin().to_degrees();
         let side = |h: &f32| match letter {
             'M' => *h <= 12.0,

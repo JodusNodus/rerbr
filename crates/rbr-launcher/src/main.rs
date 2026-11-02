@@ -51,8 +51,10 @@
 //! at the highest (user decision).
 //! The Time of day box draws a quick race's stage at a start time on its rally's date (`viewer --clock`, `start_time`
 //! in the settings): the sun, its light and shadows, dusk and night lit by the car's lamps; the start board shows it
-//! (`rbr-standalone --start-time`). The default is the sun the stage was baked with (the viewer gives the start board
-//! its hour), and a championship stage always has it, with the season's start clock.
+//! (`rbr-standalone --start-time`). The choice is a moment of the day solved on the rally's date (`time_of_day`, with the
+//! sun's path drawn under the box), golden hour by default (user decision), or an exact clock; As baked is the sun the
+//! stage was baked with (the viewer gives the start board its hour), and a championship stage always has it, with the
+//! season's start clock.
 //! The Wipers box is the wiper switch at the start (`viewer --wipers`: off, intermittent, continuous, or auto by the
 //! weather and the mud on the glass); the wiper key (I by default, in the Controls section) steps it while driving.
 //! The headlight key (L by default) switches the headlights and tail lights off and on.
@@ -155,6 +157,7 @@ mod settings_page;
 mod setup_page;
 mod stage_browser;
 mod stage_releases;
+mod time_of_day;
 mod upscaler;
 mod window;
 
@@ -526,8 +529,8 @@ struct Form {
     fullscreen: bool,
     /// The viewer writes a performance log to the player's `logs` folder (`viewer --perf-log`).
     perf_log: bool,
-    /// The start time, minutes past midnight (`viewer --clock`); none for the stage's own light.
-    start_time: Option<u32>,
+    /// The Custom weather's start time (`viewer --clock`).
+    start_time: time_of_day::StartTime,
     /// The wiper switch at the start (`viewer --wipers`).
     wipers: Switch,
     /// The RBR install folder's field, and what the form was loaded from (`install`).

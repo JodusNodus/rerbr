@@ -11,15 +11,10 @@ use crate::car_browser::{self, Target};
 use crate::catalog::{self, TyreChoice};
 use crate::ghosts::{self, GhostChoice};
 use crate::pages::{combo, fields, section, Choice, ACCENT, DRIVE_FIELDS, FIELD, WARN};
-use crate::settings::{clock_text, or_folder, Clouds, Fog, Precipitation, SEQUENTIAL};
+use crate::settings::{or_folder, Clouds, Fog, Precipitation, SEQUENTIAL};
 use crate::stage_browser::{self, Action, Collection, StageRow};
+use crate::time_of_day::{self, StartTime};
 use crate::Form;
-
-/// The start times the Drive page offers (`viewer --clock`), minutes past midnight: every half hour from 05:00 to 22:30.
-/// None is the bake's sun (the viewer relights the stage under it, at its hour; `relight::Clock::new`).
-pub fn start_times() -> impl Iterator<Item = u32> {
-    (10..46).map(|half_hours| half_hours * 30)
-}
 
 /// The Weather combo's choice: a game preset, or one season row of the map (its section).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,9 +81,10 @@ impl Form {
         self.catalog.maps[self.map].surface() == 2
     }
 
-    /// For the screenshots: the Custom weather on the Rain look, and with `adjust` its controls open on an own mix.
+    /// For the screenshots: the Custom weather on the Rain look at the default time of day, and with `adjust` its controls open on an own mix.
     pub(crate) fn screenshot_custom_weather(&mut self, adjust: bool) {
         self.apply_look(LOOKS[5]);
+        self.start_time = StartTime::default();
         self.weather_adjust = adjust;
         if adjust {
             self.precipitation = Some(Precipitation::Light);
@@ -102,21 +98,6 @@ impl Form {
         combo(ui, "fog", FIELD, &mut self.fog, &Fog::ALL.map(Some), |fog| fog.unwrap_or(Fog::Off).label());
         ui.end_row();
     }
-}
-
-/// A start time on map `map` as the Drive page shows it: the time and where the sun is on that rally's date
-/// (`rbr_render::relight::solar`).
-pub fn start_time_label(map: u32, start: Option<u32>) -> String {
-    let Some(minutes) = start else { return "As baked".into() };
-    let (latitude, _, day) = rbr_render::relight::rally_of(map);
-    let hour = minutes as f32 / 60.0;
-    let elevation = rbr_render::relight::solar(latitude, day, hour).0;
-    let sun = match elevation {
-        e if e < -6.0 => "night".to_owned(),
-        e if e < 0.0 => (if hour < 12.0 { "dawn" } else { "dusk" }).to_owned(),
-        e => format!("sun {e:.0}° up"),
-    };
-    format!("{} — {sun}", clock_text(minutes))
 }
 
 impl Form {
@@ -314,21 +295,15 @@ impl Form {
             }
 
             if custom {
-                let tip = "Ours: relights the stage at this local time on its rally's date: the sun, its light and \
-                           shadows, and dusk and night lit by the car's lamps. As baked is the sun the stage's light \
-                           was baked with";
+                let tip = "Ours: relights the stage at a moment of its rally's day, solved from where the sun stands on \
+                           that date: the sun, its light and shadows, and dusk and night lit by the car's lamps. As baked \
+                           is the sun the stage's light was baked with";
                 ui.label("Time of day").on_hover_text(tip);
-                let map = self.catalog.maps[self.map].number;
-                ComboBox::from_id_salt("time of day")
-                    .width(FIELD)
-                    .selected_text(start_time_label(map, self.start_time))
-                    .show_ui(ui, |ui| {
-                        for start in std::iter::once(None).chain(start_times().map(Some)) {
-                            ui.selectable_value(&mut self.start_time, start, start_time_label(map, start));
-                        }
-                    })
-                    .response
-                    .on_hover_text(tip);
+                self.time_of_day_box(ui).on_hover_text(tip);
+                ui.end_row();
+                ui.label("");
+                let site = time_of_day::site(&self.catalog.maps[self.map]);
+                time_of_day::sun_arc(ui, FIELD, site, self.start_time.minutes(site));
                 ui.end_row();
             }
         });
@@ -663,4 +638,19 @@ const TYRES: [TyreChoice; 8] = [
 fn weather_label(weather: &Weather) -> String {
     let (wear, wetness) = weather.mat_words();
     format!("{}, {wetness}, {wear} wear", weather.stage())
+}
+
+impl Form {
+    /// The Time of day box: the moments, then the bake's sun.
+    fn time_of_day_box(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        ComboBox::from_id_salt("time of day")
+            .width(FIELD)
+            .selected_text(self.start_time.label())
+            .show_ui(ui, |ui| {
+                for start in StartTime::all() {
+                    ui.selectable_value(&mut self.start_time, start, start.label());
+                }
+            })
+            .response
+    }
 }

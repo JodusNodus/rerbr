@@ -18,7 +18,7 @@ use rbr_sound::mixer::Volumes;
 use crate::catalog::{self, Car, Stage, TyreChoice};
 use crate::graphics_page::{Graphics, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
-use crate::{pages::Choice, rally_page, Form};
+use crate::{pages::Choice, rally_page, time_of_day, Form};
 
 /// The viewer's `--clock` arguments for a start time, none for the stage's own light.
 pub fn clock_args(start: Option<u32>) -> Vec<String> {
@@ -461,7 +461,8 @@ impl Form {
         // The Custom weather's Time of day is the quick race's: the stage is drawn at it and the start board shows
         // it. The Stage weather and a championship stage keep the stage's own light and the season's start clock.
         let custom = self.custom();
-        let start_time = self.start_time.filter(|_| custom);
+        let site = self.catalog.map(stage.map).map(time_of_day::site);
+        let start_time = site.and_then(|site| self.start_time.minutes(site)).filter(|_| custom);
         if let Some(m) = start_time {
             extra.extend(["--start-time".to_owned(), format!("{}:{:02}", m / 60, m % 60)]);
         }
@@ -797,7 +798,7 @@ mod tests {
              size = 1920x1080\nfov = 72.5\nvolume = 0.75\ncodriver = off\nhud = off\nunits = mph\nfps = on\n\
              pace_stack = 2\npace_3d = on\nwipers = intermittent\ncallout_distance = 0.5\nmarker_threshold = 12.5\n\
              damage = realistic\nauto_gears = on\ngear_guard = off\nneutral_lock = on\nclutch_help = off\n\
-             ghost = best\nrender_scale = 75\nreflections = off\npresent = immediate\nfullscreen = off\nstart_time = 16:30\n",
+             ghost = best\nrender_scale = 75\nreflections = off\npresent = immediate\nfullscreen = off\nstart_time = dusk\n",
         ),
         (
             "random weather, advanced shifter",
@@ -1141,7 +1142,7 @@ mod tests {
         form.wetness = Some(2);
         form.fog = Some(Fog::Heavy);
         form.precipitation = Some(Precipitation::Heavy);
-        form.start_time = Some(16 * 60 + 30);
+        form.start_time = time_of_day::StartTime::Moment(time_of_day::Moment::Dusk);
         form.wear = 1;
         let split = |args: Vec<String>| {
             let live = args.iter().position(|a| a == "--live").unwrap();
@@ -1172,7 +1173,8 @@ mod tests {
         let (viewer, _) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("moderate"));
         form.precipitation = Some(Precipitation::Heavy);
-        assert_eq!(value(&viewer, "--clock").as_deref(), Some("16:30"));
+        let dusk = time_of_day::Moment::Dusk.minutes(time_of_day::site(&form.catalog.maps[form.map]));
+        assert_eq!(value(&viewer, "--clock"), Some(clock_text(dusk)));
         assert_eq!(value(&viewer, "--weather").as_deref(), Some("wet"));
         assert_eq!(value(&standalone, "--wetness").as_deref(), Some("wet"));
         assert_eq!(value(&standalone, "--weather").as_deref(), Some("2"));
@@ -1237,13 +1239,14 @@ mod tests {
             return;
         };
         let here = crate::test_dir("command-clock");
-        let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nclouds = partly\nstart_time = 20:30\n";
+        let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nclouds = partly\nstart_time = night\n";
         let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
         let mut form = load(&start, Settings::parse(text)).unwrap();
         form.read_only = true;
         let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
-        assert_eq!(value(&quick, "--clock").as_deref(), Some("20:30"));
-        assert_eq!(value(&quick, "--start-time").as_deref(), Some("20:30"));
+        let night = time_of_day::Moment::Night.minutes(time_of_day::site(&form.catalog.maps[form.map]));
+        assert_eq!(value(&quick, "--clock"), Some(clock_text(night)));
+        assert_eq!(value(&quick, "--start-time"), Some(format!("{}:{:02}", night / 60, night % 60)));
         let (stage, weather) = form.selection().unwrap();
         let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
         let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();

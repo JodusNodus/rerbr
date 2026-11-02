@@ -30,6 +30,7 @@ use crate::graphics_page::{
 use crate::pages::{Choice, Page};
 use crate::rally_page::RallyPage;
 use crate::setup_page::SetupPage;
+use crate::time_of_day::StartTime;
 use crate::{install, preview, Form, Paths, Start};
 
 const DEFAULT_SIZE: (u32, u32) = (1280, 720);
@@ -37,13 +38,6 @@ const DEFAULT_SIZE: (u32, u32) = (1280, 720);
 /// `minutes` past midnight as `HH:MM`.
 pub fn clock_text(minutes: u32) -> String {
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
-}
-
-/// `HH:MM` as minutes past midnight.
-pub fn parse_clock(text: &str) -> Option<u32> {
-    let (h, m) = text.split_once(':')?;
-    let (h, m) = (h.parse::<u32>().ok()?, m.parse::<u32>().ok()?);
-    (h < 24 && m < 60).then_some(h * 60 + m)
 }
 
 /// Parses `WxH`.
@@ -262,8 +256,8 @@ pub struct Settings {
     pub fullscreen: Option<bool>,
     /// The viewer writes a performance log (`viewer --perf-log`, in the player's `logs` folder).
     pub perf_log: Option<bool>,
-    /// The start time, minutes past midnight (`viewer --clock`); none for the stage's own light.
-    pub start_time: Option<u32>,
+    /// The Custom weather's start time (`viewer --clock`).
+    pub start_time: Option<StartTime>,
     pub callout_distance: Option<f32>,
     pub marker_threshold: Option<f32>,
     /// The Car setup page's named setup (`Physics/<car>/Setups/<name>.lsp`); none for the default.
@@ -559,7 +553,7 @@ impl Settings {
             mirrors: launcher.parsed("mirrors", Rate::parse),
             fullscreen: launcher.on_off("fullscreen"),
             perf_log: launcher.on_off("perf_log"),
-            start_time: launcher.parsed("start_time", parse_clock),
+            start_time: launcher.parsed("start_time", StartTime::parse),
             callout_distance: launcher.number("callout_distance"),
             marker_threshold: launcher.number("marker_threshold"),
             setup: launcher.word("setup"),
@@ -654,7 +648,7 @@ impl Settings {
             ("present", self.present.map(|v| v.name().to_owned())),
             ("mirrors", self.mirrors.map(Rate::name)),
             ("fullscreen", on_off_text(self.fullscreen)),
-            ("start_time", self.start_time.map(clock_text)),
+            ("start_time", self.start_time.map(StartTime::to_text)),
             ("perf_log", on_off_text(self.perf_log)),
             ("lighting", on_off_text(self.lighting)),
             ("particles", on_off_text(self.particles)),
@@ -892,7 +886,7 @@ impl Form {
             present: settings.present.unwrap_or_default(),
             fullscreen: settings.fullscreen.unwrap_or(true),
             perf_log: settings.perf_log.unwrap_or(false),
-            start_time: settings.start_time,
+            start_time: settings.start_time.unwrap_or_default(),
             wipers: settings.wipers.unwrap_or_default(),
             install_folder: settings.install_folder.clone().unwrap_or_default(),
             folder,
@@ -987,7 +981,7 @@ impl Form {
             present: Some(self.present),
             fullscreen: Some(self.fullscreen),
             perf_log: Some(self.perf_log),
-            start_time: self.start_time,
+            start_time: Some(self.start_time),
             wipers: Some(self.wipers),
             callout_distance: Some(self.marker.callout_distance),
             marker_threshold: Some(self.marker.marker_threshold),
@@ -1089,7 +1083,7 @@ mod tests {
             mirrors: Some(Rate::Every(3)),
             fullscreen: Some(false),
             perf_log: Some(true),
-            start_time: Some(16 * 60 + 30),
+            start_time: Some(StartTime::Baked),
             callout_distance: Some(0.5),
             marker_threshold: Some(12.5),
             setup: Some("gravel fast".into()),
@@ -1209,10 +1203,15 @@ mod tests {
             text.contains("perf_log = on\nlighting = off\nparticles = off\nsurfaces = on\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\n"),
             "{text}"
         );
-        assert!(text.contains("start_time = 16:30\nperf_log = on\n"), "{text}");
+        assert!(text.contains("start_time = baked\nperf_log = on\n"), "{text}");
         assert_eq!(Settings::parse("[launcher]\nperf_log = maybe\n").perf_log, None);
         assert_eq!(Settings::parse("").perf_log, None);
-        assert_eq!(Settings::parse("[launcher]\nstart_time = 24:00\n").start_time, None);
+        assert_eq!(Settings::parse("[launcher]\nstart_time = 16:30\n").start_time, None);
+        assert_eq!(
+            Settings::parse("[launcher]\nstart_time = golden\n").start_time,
+            Some(StartTime::Moment(crate::time_of_day::Moment::Golden))
+        );
+        assert_eq!(Settings::parse("[launcher]\nstart_time = baked\n").start_time, Some(StartTime::Baked));
         assert_eq!(clock_args(Some(5 * 60)), ["--clock", "05:00"]);
         assert!(clock_args(None).is_empty());
         assert_eq!(Settings::parse("[launcher]\nwipers = fast\n").wipers, None);
@@ -1335,7 +1334,7 @@ mod tests {
                 "present = immediate\n",
                 "mirrors = 3\n",
                 "fullscreen = off\n",
-                "start_time = 16:30\n",
+                "start_time = baked\n",
                 "perf_log = on\n",
                 "lighting = off\n",
                 "particles = off\n",
@@ -1513,11 +1512,5 @@ mod tests {
         // The weather: empty keeps the default, any other unknown word is a season row.
         assert_eq!(Settings::parse("[launcher]\nweather = \n").weather, None);
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
-        // The clock pads the hour; midnight and the last minute parse.
-        assert_eq!(Settings::parse("[launcher]\nstart_time = 0:00\n").start_time, Some(0));
-        assert_eq!(Settings::parse("[launcher]\nstart_time = 23:59\n").start_time, Some(23 * 60 + 59));
-        assert!(Settings { start_time: Some(5 * 60 + 5), ..Default::default() }
-            .to_text()
-            .contains("start_time = 05:05\n"));
     }
 }
