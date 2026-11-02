@@ -119,7 +119,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 
 | Path | What |
 | --- | --- |
-| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
+| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
 | `harness/` | records and replays the original game for the physics checks ([README](../harness/README.md)) |
 | `data/` | test data hashes and file lists, the reference shot list, generator inputs |
 | `docs/` | this guide, the install guide, the reference shots and clips |
@@ -221,6 +221,15 @@ the JPEGs in [`docs/shots/`](shots/README.md) are committed.
 A README clip comes from a replay: `viewer --replay FILE --video clip.webp --video-span 290,297 --video-fps 25 --size
 1280x720 --no-hud --view chase --enhance all,grass --detail ultra`. A `.webp` path writes an animated WebP, and
 `--video-span FROM,TO` encodes only those game seconds, without sound.
+
+## Benchmark
+
+`scripts/bench.py` measures the frame rate of the worst case we know: the autopilot drives Gabiria in heavy rain from
+the cockpit of the Fiat 131, fullscreen, every graphics option at its most and the frame rate uncapped, and the
+viewer's performance log times 90 s from the go. It prints average fps, the 1% and 0.1% lows, frame time percentiles,
+hitches and the costliest GPU passes and CPU spans, the median of 3 runs. The same release builds and install as the
+reference shots, and a display; the window takes the screen for a few minutes. `--out NEW --compare BASE` compares two
+results. The scene's choice and a baseline are in [renderer.md](../notes/renderer.md#benchmark-2026-11-02).
 
 ## Packaging
 

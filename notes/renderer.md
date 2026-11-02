@@ -1101,6 +1101,20 @@ exit, so a killed viewer leaves only the `.log`).
   byte-identical with it on (1080p `--enhance all` screenshot `cmp`). Overhead median +0.08 ms a frame (45O, 7 runs,
   640x360 and 1440p). Untested without a display: the window path (`App::frame` spans, `Renderer::end_frame`
   after the present's submit).
+- Live, the summary counts from the race's first go (`perf_log::mark`, a `t=…s go` line): the loading, the start
+  orbit and the countdown stay in the lines a second only. The summary has p99.9 beside p99.
+
+### Benchmark (2026-11-02)
+
+`scripts/bench.py`: the autopilot drives the worst case live, fullscreen, every option at its most, frame rate
+uncapped, force feedback off; the perf log times 90 s from the go (`viewer --quit-after go+90`); median of 3 runs,
+`--compare OLD_DIR`. The scene was chosen on cachy (RX 9060 XT, radv, 4K): offscreen `--frames 60` cockpit mid-drive at
+1440p, Gabiria (450) in heavy rain 11.97 ms drawn, Helette (580) rain 11.43, 580 day 9.82, 417 night rain 9.23, 621
+rain 7.57, 417 rain 7.25, 417 day 6.24, Peklo (133) snow 5.82. Live, one run each: 450 rain 54.7 fps (1% low 42.2),
+580 rain 56.2 (44.1); 580 costs more CPU (scene update 8.1 against 6.1 ms), 450 more GPU (screen reflections 6.3 ms).
+Cars on 450 rain at 4K: Fiat 131 19.37 ms, Clio Rally3 18.08, GC8 18.14, Fiesta Rally2 17.77, Yaris 17.72, i20 WRC
+16.94. So: 450, heavy rain, 10:00, Fiat 131 Abarth, cockpit. Baseline (cachy, 3840x2160, Mailbox: radv on niri offers
+no Immediate): 54.7 fps, 1% low 42.2, 0.1% low 35.5, p50 18.26 ms, GPU 17.93 ms (GPU-bound), 1535 m driven.
 
 `--frames N --profile` prints per-pass medians. Texture packs (`bin/texture-pack.rs`, never committed):
 `viewer --textures <dir>/pack` reads them, the car's after its dials are made (dial faces keep theirs). The compact

@@ -91,14 +91,19 @@ def launcher_command(build, home, shot, size):
     return tmp, done.stdout.splitlines()
 
 
-def shot_command(build, lines, shot, out, size):
-    """(environment, viewer command) from the launcher's lines: its variables, the viewer's arguments with the
-    screenshot's changes, then the live process's, driven by the autopilot."""
+def split_command(lines):
+    """(environment, command) of the launcher's lines: its variables, then the program and its arguments."""
     env, i = dict(os.environ), 0
     while '=' in lines[i] and not lines[i].startswith('/'):
         k, v = lines[i].split('=', 1)
         env[k], i = v, i + 1
-    argv = lines[i:]
+    return env, lines[i:]
+
+
+def shot_command(build, lines, shot, out, size):
+    """(environment, viewer command) from the launcher's lines: its variables, the viewer's arguments with the
+    screenshot's changes, then the live process's, driven by the autopilot."""
+    env, argv = split_command(lines)
     live = argv.index('--live')
     viewer, rest = argv[:live], argv[live:]
     command, j = [str(build / 'viewer')], 1
