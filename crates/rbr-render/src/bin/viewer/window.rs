@@ -415,15 +415,18 @@ impl App {
                 }
             });
         let latency = scene.live.as_ref().and_then(|_| Latency::from_env());
-        let feedback = (args.pacing || latency.is_some())
+        // The refresh pacing: Linux only, as a ProMotion display moves its refreshes to follow the frames (macOS
+        // measures the feedback for `RBR_LATENCY` alone, so the Metal layer subclass never runs in normal play).
+        let pace_refresh = args.pacing && !cfg!(target_os = "macos");
+        let feedback = (pace_refresh || latency.is_some())
             .then(|| shown::Shown::new(&running.window, &running.surface))
             .and_then(|shown| shown.map_err(|e| eprintln!("viewer: no presentation feedback: {e}")).ok());
         // The refresh pacing under fifo, with the feedback: the display's refresh, ms.
-        let refresh = (running.config.present_mode == wgpu::PresentMode::Fifo && feedback.is_some())
+        let refresh = (pace_refresh && running.config.present_mode == wgpu::PresentMode::Fifo && feedback.is_some())
             .then(|| running.window.current_monitor()?.refresh_rate_millihertz())
             .flatten()
             .map(|millihertz| 1e6 / f64::from(millihertz));
-        if let Some(refresh) = refresh.filter(|_| args.pacing) {
+        if let Some(refresh) = refresh {
             eprintln!("viewer: pacing a refresh-bound loop to the display's {:.1} Hz", 1000.0 / refresh);
         }
         let feed = scene.live.as_ref().filter(|_| !replay).map(|_| {

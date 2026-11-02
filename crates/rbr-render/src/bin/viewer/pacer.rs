@@ -36,6 +36,8 @@ const POLL: Duration = Duration::from_micros(250);
 const KEEP: usize = 60;
 /// How much the refresh pacing's allowance for the compositor falls a frame on time, ms.
 const DECAY: f64 = 0.001;
+/// How far from a whole number of refreshes apart two frames on screen show a variable refresh, ms.
+const OFF_GRID: f64 = 1.0;
 
 pub struct Pacer {
     /// The least time between frame starts, ms (0: unpaced).
@@ -117,7 +119,8 @@ impl Pacer {
         let gpu = Duration::from_secs_f64(self.period / 1000.0);
         let Some(refresh) = &mut self.refresh else { return gpu };
         if self.period > 0.0 {
-            refresh.plan = None;
+            // A skip asked for under the GPU's pace does not hold when the refreshes take over.
+            (refresh.plan, refresh.skip) = (None, false);
             return gpu;
         }
         match (refresh.start(Instant::now()), self.started) {
@@ -127,19 +130,22 @@ impl Pacer {
     }
 }
 
-/// Pacing a refresh-bound loop under fifo: frames locked to the refreshes they go on screen at, one a cadence (the
-/// refreshes the CPU's and the GPU's times fit in), each started so its GPU work is done [`IDLE`] and `extra` before
-/// the refresh it aims at. A frame on screen later than its refresh that started late (its surface texture waited:
-/// the swapchain was full) or found the one before in its place (the swapchain's queue) makes the next skip a
-/// cadence; one later with its place free (the compositor's time) adds a quarter refresh to `extra`, which falls by
-/// [`DECAY`] a frame on time.
+/// Pacing a refresh-bound loop under fifo: frames locked to the refreshes they go on screen at, one a refresh, each
+/// started so its GPU work is done [`IDLE`] and `extra` before the refresh it aims at. A frame on screen later than its
+/// refresh that started late (its surface texture waited: the swapchain was full) or found the one before in its place
+/// (the swapchain's queue) makes the next skip a refresh; one later with its place free (the compositor's time) adds a
+/// quarter refresh to `extra`, which falls by [`DECAY`] a frame on time. It stands aside while the CPU's or the GPU's
+/// time does not fit in a refresh (locked to every other one, the GPU would idle and the GPU's pace never take over),
+/// and for good once two frames in a row go on screen over [`OFF_GRID`] from whole refreshes apart (a variable refresh,
+/// which follows the frames: sway's adaptive sync, up to 8 ms off, against 0.4 at most with a fixed refresh).
 struct Refresh {
     /// The display's refresh, ms.
     tick: f64,
     /// Frames submitted and not yet done on the GPU (number, start, submit), and the last done (number, when).
     pending: VecDeque<(u64, Instant, Instant)>,
     last_done: Option<(u64, Instant)>,
-    /// The last [`KEEP`] frames' CPU (start to submit), GPU and start to GPU done times, ms.
+    /// The last [`KEEP`] frames' CPU (start to submit), GPU and both times, ms: the start to GPU done of a frame the
+    /// GPU takes at once, as it does once paced (a GPU-bound frame's wait behind the last does not count).
     cpu: VecDeque<f64>,
     gpu: VecDeque<f64>,
     lead: VecDeque<f64>,
@@ -148,6 +154,8 @@ struct Refresh {
     targets: VecDeque<(u64, Instant, bool)>,
     screen: VecDeque<(u64, Instant)>,
     anchor: Option<Instant>,
+    /// The display's refresh varies: no grid to lock to.
+    variable: bool,
     extra: f64,
     skip: bool,
     /// The first frame planned after the last correction: the feedback of those before it does not count.
@@ -171,6 +179,7 @@ impl Refresh {
             targets,
             screen,
             anchor: None,
+            variable: false,
             extra: 0.0,
             skip: false,
             settle: 0,
@@ -200,15 +209,22 @@ impl Refresh {
                 Some((last, when)) if last + 1 == frame => submitted.max(when),
                 _ => submitted,
             };
-            keep(&mut self.cpu, ms_between(started, submitted));
-            keep(&mut self.gpu, ms_between(free, at));
-            keep(&mut self.lead, ms_between(started, at));
+            let (cpu, gpu) = (ms_between(started, submitted), ms_between(free, at));
+            keep(&mut self.cpu, cpu);
+            keep(&mut self.gpu, gpu);
+            keep(&mut self.lead, cpu + gpu);
         }
         self.last_done = Some((frame, at));
     }
 
     fn shown(&mut self, frame: u64, at: Instant) {
         let before = self.screen.iter().find(|s| s.0 + 1 == frame).map(|s| s.1);
+        if let Some(gap) = before.map(|before| ms_between(before, at)).filter(|_| !self.variable) {
+            if (gap - self.tick * (gap / self.tick).round()).abs() > OFF_GRID {
+                eprintln!("viewer: the display's refresh varies (frames {gap:.2} ms apart): refresh pacing off");
+                self.variable = true;
+            }
+        }
         keep(&mut self.screen, (frame, at));
         self.anchor = Some(self.anchor.map_or(at, |anchor| anchor.max(at)));
         let Some(&(_, target, started_late)) = self.targets.iter().find(|t| t.0 == frame) else { return };
@@ -229,22 +245,22 @@ impl Refresh {
     }
 
     /// When the next frame starts: early enough before its target refresh, the first on the grid it can make after
-    /// the last frame's (one more after a frame queued). None before the first feedback.
+    /// the last frame's (one more after a frame queued). None before the first feedback, with a variable refresh, or
+    /// while a frame's CPU or GPU time does not fit in a refresh.
     fn start(&mut self, now: Instant) -> Option<Instant> {
-        let anchor = self.anchor?;
-        if self.lead.is_empty() {
+        let anchor = self.anchor.filter(|_| !self.variable)?;
+        let tick = self.tick;
+        if self.lead.is_empty() || quantile(&self.cpu, 0.95).max(quantile(&self.gpu, 0.95)) + IDLE > tick {
+            self.plan = None;
             return None;
         }
         let ahead = quantile(&self.lead, 0.95) + IDLE + self.extra;
         if self.plan.is_none() {
-            // The grid is the frames' own: whole cadences from the newest on screen (a ProMotion display at 60 Hz
-            // has no refresh between them), the first a frame can make, half a cadence or more after the last's.
-            let tick = self.tick;
-            let slowest = quantile(&self.cpu, 0.95).max(quantile(&self.gpu, 0.95));
-            let cadence = tick * ((slowest + IDLE) / tick).ceil().max(1.0);
-            let after_last = self.last.map_or(f64::MIN, |last| ms_between(anchor, last) + cadence / 2.0);
-            let slots = ((ms_between(anchor, now) + ahead).max(after_last) / cadence).ceil().max(0.0);
-            let target = anchor + ms(cadence * (slots + if std::mem::take(&mut self.skip) { 1.0 } else { 0.0 }));
+            // The grid: whole refreshes from the newest frame on screen, the first a frame can make, half a refresh or
+            // more after the last's.
+            let after_last = self.last.map_or(f64::MIN, |last| ms_between(anchor, last) + tick / 2.0);
+            let slots = ((ms_between(anchor, now) + ahead).max(after_last) / tick).ceil().max(0.0);
+            let target = anchor + ms(tick * (slots + if std::mem::take(&mut self.skip) { 1.0 } else { 0.0 }));
             self.plan = Some((target, target - ms(ahead)));
         }
         self.plan.map(|(_, start)| start)
@@ -337,7 +353,7 @@ mod tests {
         assert_eq!(start, t0 + ms(16.0 - 10.5));
         assert_eq!(refresh.start(t0 + ms(3.0)), Some(start), "planned once");
         refresh.submitted(3, start, start + ms(4.0));
-        // The next a cadence (one refresh) on, even when it could start sooner.
+        // The next a refresh on, even when it could start sooner.
         assert_eq!(refresh.start(t0 + ms(6.0)), Some(t0 + ms(32.0 - 10.5)));
     }
 
@@ -365,6 +381,18 @@ mod tests {
         refresh.targets.push_back((4, t0 + ms(32.0), false));
         refresh.shown(4, t0 + ms(48.0));
         assert_eq!(refresh.extra, 4.0);
+    }
+
+    #[test]
+    fn it_stands_aside_for_a_frame_over_a_refresh_and_a_variable_refresh() {
+        let t0 = Instant::now();
+        let mut refresh = refresh_at(t0);
+        refresh.gpu.push_back(20.0);
+        refresh.gpu.push_back(20.0);
+        assert_eq!(refresh.start(t0 + ms(1.0)), None, "the GPU's p95 over a refresh");
+        let mut refresh = refresh_at(t0);
+        refresh.shown(3, t0 + ms(17.5));
+        assert_eq!(refresh.start(t0 + ms(18.0)), None, "1.5 ms off the grid");
     }
 
     #[test]

@@ -1118,9 +1118,31 @@ drive: `--render-scale 0.25 --weather dry`, reflections, mirrors and AA off; GPU
 (the GPU idles) and frames queue: acquire wait 12.7 ms, present -> on screen 29.6, any input -> on screen 42.6;
 `--max-fps 60` takes the queue out (acquire 0, 18.8, 32.0, judder p95 8.2 to 5.5 ms). Fullscreen ProMotion adapts its
 refresh: unpaced frames land on the 120 Hz grid, capped ones on a 4.17 ms one (12.5 and 20.8 ms gaps), so pacing to a
-fixed refresh grid does not hold there. Open: pacing refresh-bound fifo; a grid-locked pacer on the presentation
-feedback (frames a whole number of refreshes apart, the GPU done just before the targeted one, a slot skipped when one
-queued) took a modelled 60 Hz fifo loop from 33 to 14-24 ms at the same rate but here only to 37-42 ms; not merged.
+fixed refresh grid does not hold there (the refresh pacing below got 37-42 ms): it is off on macOS.
+
+Refresh pacing (`Refresh` in `pacer.rs`; Linux, fifo, Wayland's presentation feedback, while the GPU's period is 0):
+frame starts locked to the refreshes they go on screen at, whole refreshes from the newest frame on screen, each
+started so its CPU and GPU time (p95) ends 0.5 ms and a learned `extra` before the refresh it aims at (sway settles at
+6-10 ms, its compositing deadline). A late frame behind the last skips a refresh, one late alone adds a quarter refresh
+to `extra`. It stands aside while a frame's CPU or GPU p95 does not fit in a refresh (locked to every other refresh the
+GPU would idle and its period never take over), and for good on a variable refresh: two frames on screen over 1 ms
+from whole refreshes apart (sway's adaptive sync up to 8 ms; a fixed refresh 0.4 at most). Sway, 60 Hz, VRR off, a
+light drive (`--present fifo --render-scale 0.5 --reflections off --mirrors off --anti-aliasing off --detail high
+--weather dry --no-particles`, GPU ~7 ms), 3 runs of 90 s, median:
+
+| | fps | 0.1% low | latency p50 / p95 ms | present -> on screen p50 | judder p95 / max | acquire wait |
+| --- | --- | --- | --- | --- | --- | --- |
+| unpaced | 59.7 | 59.7 | 58.5 / 66.0 | 33.6 | 1.40 / 2.0 | 0.03 |
+| paced, before refresh pacing | 59.7 | 59.7 | 58.5 / 66.0 | 33.6 | 1.40 / 1.9 | 0.03 |
+| refresh pacing | 59.6 | 57.2 | 27.8 / 35.7 | 14.5 | 1.38 / 17.9 | 0.03 |
+| unpaced, `--max-fps 60` | 59.2 | 59.7 | 29.7 / 41.4 | 15.7 | 1.40 / 18.0 | 0.03 |
+
+No frames discarded. The cost: a frame repeated every minute or two (a GPU or CPU spike past the margin, which the
+unpaced queue hides). The bench scene (GPU-bound, fifo, paced, 3 x 90 s): 54.7 fps, 1% low 48.1, latency 43.9 / 58.1
+ms, as before (54.8, 46.1, 44.2 / 58.2); the handovers to the GPU's period need the frame's own CPU and GPU time, not
+its start to GPU done (which counts the wait behind the last: a 48-82 ms frame at each). VRR on (30 s): stands down, as
+before (58.2 / 65.8 ms); without the stand-down 58.0 fps, 1% low 54.8 against 59.7 (the frames chase their own grid),
+latency 21.7. Not measured: niri, a display over 60 Hz.
 
 Judder (`RBR_LATENCY`'s "judder": how much the shown step's age on screen changes from one shown frame to the next): an
 answer comes every 7 ms of game time, so drawn at its answers the car moved on by 0 to 7 ms more or less than the
