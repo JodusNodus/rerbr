@@ -122,6 +122,8 @@ pub struct Latency {
     /// This frame's times so far.
     acquire: (Instant, Instant),
     read: Instant,
+    /// The first frame of the frames' summary: the race's go ([`Latency::go`]), else the first.
+    from: usize,
 }
 
 impl Latency {
@@ -144,7 +146,13 @@ impl Latency {
             feedback: HashMap::new(),
             acquire: (now, now),
             read: now,
+            from: 0,
         })
+    }
+
+    /// The race's go: the frames' summary starts at the next frame (the loading and the start left out).
+    pub fn go(&mut self) {
+        self.from = self.frames.len();
     }
 
     /// A frame began by asking for the surface's texture at `start` and had it at `had`.
@@ -293,8 +301,9 @@ impl Latency {
             out += &line("submitted -> presented", between(|p| p.submitted, |p| p.presented));
             out += &line("submitted -> GPU done", between(|p| p.submitted, |p| p.gpu_done));
         }
-        let frames = &self.frames;
-        out += &format!("\n frames ({}), ms:", frames.len());
+        let (from, frames) = (self.from, &self.frames[self.from..]);
+        let since = if from > 0 { " from the go" } else { "" };
+        out += &format!("\n frames ({}{since}), ms:", frames.len());
         out += &line("period", frames.windows(2).map(|w| ms(w[0].acquire.0, w[1].acquire.0)).collect());
         out += &line("acquire wait", frames.iter().map(|f| ms(f.acquire.0, f.acquire.1)).collect());
         out += &line("acquired -> input read", frames.iter().map(|f| ms(f.acquire.1, f.read)).collect());
@@ -303,8 +312,12 @@ impl Latency {
         out += &line("input read -> presented", frames.iter().map(|f| ms(f.read, f.presented)).collect());
         out += &line(
             "presented -> on screen",
-            (0..frames.len()).filter_map(|i| self.on_screen(i, frames[i].presented)).collect(),
+            (0..frames.len()).filter_map(|i| self.on_screen(from + i, frames[i].presented)).collect(),
         );
+        if let Some(base) = frames.first().map(|f| f.read) {
+            let timed = (0..frames.len()).map(|i| (ms(base, frames[i].read), self.on_screen(from + i, base)));
+            out += &line("any input -> on screen", any_input(&timed.collect::<Vec<_>>()));
+        }
         out += &self.screen_counts();
         out += &self.step_counts();
         out
@@ -358,10 +371,42 @@ impl Latency {
     }
 }
 
+/// The picture's latency for an input at any moment: from each whole ms of `frames`' span until the first frame that
+/// read its input after it went on screen. `frames` are each frame's input read and when it went on screen (`None`:
+/// not shown), ms on one clock, in order.
+fn any_input(frames: &[(f64, Option<f64>)]) -> Vec<f64> {
+    let shown: Vec<(f64, f64)> = frames.iter().filter_map(|&(read, screen)| Some((read, screen?))).collect();
+    let (Some(first), Some(last)) = (shown.first(), shown.last()) else { return Vec::new() };
+    let mut next = shown.iter().peekable();
+    (first.0.ceil() as u64..=last.0.floor() as u64)
+        .map(|t| t as f64)
+        .filter_map(|t| {
+            while next.peek().is_some_and(|(read, _)| *read < t) {
+                next.next();
+            }
+            next.peek().map(|(_, screen)| screen - t)
+        })
+        .collect()
+}
+
 /// The median, 95th percentile and largest of `values` (0 for none).
 fn quantiles(mut values: Vec<f64>) -> (f64, f64, f64) {
     values.sort_by(f64::total_cmp);
     let at =
         |q: f64| values.get(((values.len().saturating_sub(1)) as f64 * q).round() as usize).copied().unwrap_or(0.0);
     (at(0.5), at(0.95), at(1.0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_input_waits_for_the_next_frame_shown() {
+        // Frames read at 0, 10 (discarded) and 20 ms, on screen at 30 and 45 ms.
+        let latency = any_input(&[(0.0, Some(30.0)), (10.0, None), (20.0, Some(45.0))]);
+        assert_eq!(latency.len(), 21);
+        assert_eq!((latency[0], latency[1], latency[10], latency[20]), (30.0, 44.0, 35.0, 25.0));
+        assert!(any_input(&[(0.0, None)]).is_empty());
+    }
 }

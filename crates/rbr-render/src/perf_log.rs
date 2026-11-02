@@ -186,6 +186,9 @@ struct Recorder {
     cpu: Table,
     gpu: Table,
     frame_times: Hist,
+    /// How much each frame's time differs from the one before (the pacing), and the last frame's time, ns.
+    frame_changes: Hist,
+    last_frame: Option<u64>,
 }
 
 impl Recorder {
@@ -205,6 +208,8 @@ impl Recorder {
             cpu: Table::default(),
             gpu: Table::default(),
             frame_times: Hist::default(),
+            frame_changes: Hist::default(),
+            last_frame: None,
         }
     }
 
@@ -273,6 +278,9 @@ impl Recorder {
                 open.events.push(Event { track, name: "frame", start: open.start, dur });
                 self.second.1.push(dur as f64 / 1e6);
                 self.frame_times.add(dur);
+                if let Some(last) = self.last_frame.replace(dur) {
+                    self.frame_changes.add(dur.abs_diff(last));
+                }
                 for (name, ns) in std::mem::take(&mut self.totals) {
                     self.cpu.add(name, ns);
                 }
@@ -296,7 +304,7 @@ impl Recorder {
         if let Some(name) = self.marked.take() {
             self.write(&format!("t={:.1}s {name}: the summary counts from here\n", now as f64 / 1e9));
             self.summary_from = Some((name, now, self.frames));
-            self.frame_times = Hist::default();
+            (self.frame_times, self.frame_changes) = (Hist::default(), Hist::default());
             self.cpu.reset_hists();
             self.gpu.reset_hists();
         }
@@ -321,7 +329,7 @@ impl Recorder {
             let (frames, at, measured) = (self.frames - before, at as f64 / 1e9, (now - at) as f64 / 1e9);
             let _ = writeln!(summary, "Summary from {name} (t={at:.1}s): {frames} frames in {measured:.1} s");
         }
-        summary += &summary_table("frame", &[("frame time", &self.frame_times)]);
+        summary += &summary_table("frame", &[("frame time", &self.frame_times), ("frame change", &self.frame_changes)]);
         summary += &summary_table("cpu", &self.cpu.hists());
         summary += &summary_table("gpu", &self.gpu.hists());
         self.write(&summary);
@@ -604,8 +612,10 @@ mod tests {
             r.next_frame(at(1000 + i * 10));
             r.cpu_span(0, "render", at(1000 + i * 10), at(1000 + i * 10 + 4));
         }
-        // The frame the mark came in (900 to 1000 ms) and its span are before it; ten 10 ms frames after.
+        // The frame the mark came in (900 to 1000 ms) and its span are before it; ten 10 ms frames after, the first
+        // 90 ms shorter than the one before.
         assert_eq!((r.frame_times.n, r.frame_times.max), (10, 10_000_000));
+        assert_eq!((r.frame_changes.n, r.frame_changes.max), (10, 90_000_000));
         assert_eq!(r.cpu.hists().iter().map(|(name, h)| (*name, h.n)).collect::<Vec<_>>(), [("render", 10)]);
         assert_eq!(r.summary_from, Some(("go", 1_000_000_000, 11)));
         let table = summary_table("frame", &[("frame time", &r.frame_times)]);

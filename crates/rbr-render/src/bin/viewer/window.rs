@@ -618,6 +618,9 @@ impl App {
             if self.went.is_none() && process.hud.race.is_some_and(|race| race.countdown <= 0.0) {
                 self.went = Some(now);
                 perf_log::mark("go");
+                if let Some(latency) = &mut self.latency {
+                    latency.go();
+                }
             }
             if process.splits.as_ref().is_some_and(|s| s.over) {
                 self.ended.get_or_insert(now);

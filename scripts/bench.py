@@ -9,8 +9,11 @@ Each run is the launcher's Start command for SCENE, its settings fixed in a temp
 does and the wheel's force feedback off, with `--view`, `--perf-log`, `--quit-after go+S`, the replay saved in the
 run's folder and `rbr-standalone --pilot autopilot`. Fullscreen at the display's size unless --size asks for a window.
 Prints each run and the median over the runs: average fps, the 1% and 0.1% lows (fps at the 99th and 99.9th
-percentile frame time), frame time p50, p99 and largest, hitches (`rbr_render::perf_log`), the GPU's frame time (below
+percentile frame time), frame time p50, p99 and largest, hitches (`rbr_render::perf_log`), the pacing (the mean change
+of the frame time from one frame to the next), the latency (`RBR_LATENCY`: ms from an input at any moment until a frame
+that read it is on screen, p50 and p95; Wayland's presentation feedback, so `-` elsewhere), the GPU's frame time (below
 the frame time when the CPU is the limit), the costliest GPU passes and CPU spans, and how far the autopilot drove.
+MangoHud stays off.
 Writes DIR/run-<n>/ (the perf log, its .trace.json of the last 600 frames for ui.perfetto.dev, the replay, the
 viewer's output) and DIR/result.json; `--compare OLD_DIR` prints this result against an earlier one.
 
@@ -97,16 +100,21 @@ def parse_log(path):
 
 
 def figures(log, output):
-    """A run's numbers: frame rate and times, GPU frame, passes, spans, and the autopilot's last distance."""
+    """A run's numbers: frame rate, times and pacing, the latency, GPU frame, passes, spans, and the autopilot's last
+    distance."""
     frame = log['frame']['frame time']
     gpu = log.get('gpu', {})
     drove = re.findall(r'^pilot: step \d+: at ([\d.]+) of ([\d.]+) m', output, re.M)
+    latency = re.search(r'any input -> on screen +n +\d+ +p50 +([\d.]+) +p95 +([\d.]+)', output)
     return {
         'fps': log['frames'] / log['seconds'],
         'low1': 1000 / frame['p99'],
         'low01': 1000 / frame['p999'],
         'p50': frame['p50'], 'p99': frame['p99'], 'max': frame['max'],
         'hitches': log['hitches'],
+        'pace': log['frame']['frame change']['mean'],
+        'lat50': float(latency[1]) if latency else None,
+        'lat95': float(latency[2]) if latency else None,
         'gpu_frame': gpu.get('GPU frame', {}).get('mean'),
         'gpu': {k: v['mean'] for k, v in gpu.items() if k != 'GPU frame'},
         'cpu': {k: v['mean'] for k, v in log.get('cpu', {}).items()},
@@ -116,7 +124,8 @@ def figures(log, output):
 
 COLUMNS = [('fps', 'avg fps', '{:.1f}'), ('low1', '1% low', '{:.1f}'), ('low01', '0.1% low', '{:.1f}'),
            ('p50', 'p50 ms', '{:.2f}'), ('p99', 'p99 ms', '{:.2f}'), ('max', 'max ms', '{:.1f}'),
-           ('hitches', 'hitches', '{:.0f}'), ('gpu_frame', 'GPU ms', '{:.2f}')]
+           ('hitches', 'hitches', '{:.0f}'), ('pace', 'pace ms', '{:.2f}'), ('lat50', 'lat p50', '{:.1f}'),
+           ('lat95', 'lat p95', '{:.1f}'), ('gpu_frame', 'GPU ms', '{:.2f}')]
 
 
 def row(label, f):
@@ -173,6 +182,8 @@ def run_once(a, home, run_dir, extra):
             print(shlex.join(command))
             return None
         began = time.time()
+        # The viewer times its frames to the screen (`RBR_LATENCY`), without MangoHud's overlay (play.sh's reason).
+        env.update(RBR_LATENCY='frames', MANGOHUD='0')
         done = subprocess.run(command, env=env, capture_output=True, text=True)
         output = done.stderr + done.stdout
         (run_dir / 'viewer.log').write_text(shlex.join(command) + '\n\n' + output)

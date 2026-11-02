@@ -1115,6 +1115,22 @@ rain 7.57, 417 rain 7.25, 417 day 6.24, Peklo (133) snow 5.82. Live, one run eac
 Cars on 450 rain at 4K: Fiat 131 19.37 ms, Clio Rally3 18.08, GC8 18.14, Fiesta Rally2 17.77, Yaris 17.72, i20 WRC
 16.94. So: 450, heavy rain, 10:00, Fiat 131 Abarth, cockpit. Baseline (cachy, 3840x2160, Mailbox: radv on niri offers
 no Immediate): 54.7 fps, 1% low 42.2, 0.1% low 35.5, p50 18.26 ms, GPU 17.93 ms (GPU-bound), 1535 m driven.
+Pacing and latency (2026-11-02): the perf log's `frame change` row (each frame's time against the one before) and
+`RBR_LATENCY=frames`' "any input -> on screen" (from every ms of the drive from the go until the first frame that read
+input after it was on screen, by Wayland's presentation feedback). SwayFX 0.6 (sway 1.12), same machine and scene, one
+90 s run each:
+
+| Present | fps | 1% low | pace ms | latency p50 / p95 ms | shown / discarded | present -> on screen p50 |
+| --- | --- | --- | --- | --- | --- | --- |
+| mailbox | 54.7 | 35.5 | 11.05 | 81.6 / 102.3 | 2735 / 2739 | 51.0 |
+| fifo | 54.6 | 48.1 | 0.64 | 63.9 / 74.5 | 5465 / 0 | 36.7 |
+| immediate | 54.6 | 35.5 | 11.24 | 64.7 / 85.7 | 2769 / 2701 | 34.0 |
+
+Under sway, Mailbox and Immediate alternate 10 and 23 ms frames (`vkQueuePresent` blocks every second frame) and the
+compositor shows every second one (about 27 fps on screen); FIFO shows all, evenly, with the lowest latency. Off
+(30 s runs): VRR and SwayFX's blur and corners changed nothing. Under niri, Mailbox paced evenly (2.1 ms; the wait in
+`acquire` each frame), latency not measured yet. FIFO's 37 ms from present to screen is the two frames in flight
+(`desired_maximum_frame_latency` 2) of a GPU-bound loop: what a just-in-time frame start would take out.
 
 `--frames N --profile` prints per-pass medians. Texture packs (`bin/texture-pack.rs`, never committed):
 `viewer --textures <dir>/pack` reads them, the car's after its dials are made (dial faces keep theirs). The compact
