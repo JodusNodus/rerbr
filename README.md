@@ -1,5 +1,7 @@
 # ReRBR (WIP)
 
+![The cockpit of an Audi quattro A2 Group B sliding through the rocks of El Condor past the crowd, the dials lit by the low sun](docs/clips/condor-sideways-cockpit.webp)
+
 Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not a repackage, an actual rewrite from scratch. Everything you know and love enhanced with modern graphics. Bring your own game files (an RSF install or any RBR + NGP 7 installation).
 
 ## Why
@@ -26,8 +28,6 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 | Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Gabiria Legazpi (stage by Jan Kaderabek & Lorenzo Clerici) | Subaru Impreza GC8 555 Group A (model by gonzo_kool), Sipirkakim, Japan |
 | ![A Toyota GR Yaris Rally2 throwing up dust in the evening sun on Comb I](docs/shots/golden-621-yaris-flyby.jpg) | ![The cockpit of a Renault Clio Rally3 on Wythop I in the evening sun, the road seen through the windscreen](docs/shots/golden-532-clio-cockpit.jpg) |
 | Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) | Renault Clio Rally3 (model by DMRally74), Wythop I (stage by Edd Hartley) |
-| ![A Renault Clio Rally3 sliding through a corner on Sipirkakim, Japan](docs/shots/day-sipirkakim-clio-flyby.jpg) | ![A Peugeot 208 Rally4 on Helette under evening clouds](docs/shots/golden-580-208-chase.jpg) |
-| Renault Clio Rally3 (model by DMRally74), Sipirkakim, Japan | Peugeot 208 Rally4 (model by DMRally74), Helette (stage by MonkeyZy) |
 | ![The cockpit of a Subaru Impreza GC8 555 in fog on Alpes Rally, the road fading into the haze](docs/shots/fog-alpes-gc8-cockpit.jpg) | ![A Toyota GR Yaris Rally2 on the snow of Peklo Snow](docs/shots/snow-peklo-yaris-chase.jpg) |
 | Subaru Impreza GC8 555 Group A (model by gonzo_kool), Alpes Rally (stage by DmRally) | Toyota GR Yaris Rally2 (model by Ha3aP), Peklo Snow (stage by Miro Kurek) |
 | ![The cockpit of a Fiat 131 Abarth Group 4 at night in the rain on Luceram Col Saint Roch, its dials lit red](docs/shots/night-luceram-131-cockpit.jpg) | ![A Renault Clio Rally3 in the low evening sun on Komarov Snow](docs/shots/golden-komarov-clio-chase.jpg) |

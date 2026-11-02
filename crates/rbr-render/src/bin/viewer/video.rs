@@ -1,7 +1,10 @@
-//! Renders a replay to a video file offline (`--video OUT.mp4`): the live command runs the replay's frames back
-//! to back (`--replay-pace free`), each output frame waits for the answers' game time to reach it, and ffmpeg encodes
-//! the frames while the sound renders offline to a WAV that is muxed in at the end. No window opens; the mouse does
-//! nothing.
+//! Renders a replay to a video file offline (`--video OUT.mp4`, or `OUT.webp` for an animated WebP clip): the
+//! live command runs the replay's frames back to back (`--replay-pace free`), each output frame waits for the
+//! answers' game time to reach it, and ffmpeg encodes the frames while the sound renders offline to a WAV that is
+//! muxed in at the end. No window opens; the mouse does nothing. A `.webp` path writes an animated WebP (no sound).
+//! `--video-span FROM,TO` encodes only the game seconds in `[FROM, TO]` (no sound either): earlier frames still run
+//! the scene update, the second before FROM is rendered but not encoded (TAA and probe warm-up), and the loop stops
+//! after TO.
 
 use crate::args::Args;
 use crate::draw::{dial_values, draw_car, draw_particles, readout, scripted_camera, step_characters};
@@ -51,8 +54,11 @@ pub fn render(
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = scene.renderer(&gpu, format, args.enhance, args.render_scale, &mut |_| {});
     let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
-    // The live drive's sound with no device, rendered into a WAV that is muxed in at the end (`Encoder`).
-    let player = crate::start_sound(args, data, fmod_bank, scene.precipitation, Some(RATE));
+    // The live drive's sound with no device, rendered into a WAV that is muxed in at the end (`Encoder`); a WebP
+    // clip and a `--video-span` carry no sound.
+    let silent = is_webp(path) || args.video_span.is_some();
+    let player =
+        (!silent).then(|| crate::start_sound(args, data, fmod_bank, scene.precipitation, Some(RATE))).flatten();
     let wav_path =
         player.as_ref().map(|_| std::env::temp_dir().join(format!("rerbr-video-{}.wav", std::process::id())));
     let mut audio = match (player, &wav_path) {
@@ -73,6 +79,7 @@ pub fn render(
             crate::scene::use_custom_hud(live, args, data, command);
         }
     }
+    let span = args.video_span;
     let mut encoder = Encoder::start(size, fps, path, wav_path.as_deref())?;
     if let Some(live) = &mut scene.live {
         live.resume();
@@ -81,12 +88,19 @@ pub fn render(
     let mut game_time = 0.0;
     let mut periods = 0u64;
     let mut frames = 0u64;
-    let mut pending = Vec::new();
+    let mut encoded = 0u64;
+    // Without sound the answers' records are dropped, not kept.
+    let mut pending = audio.is_some().then(Vec::new);
     let mut probed = false;
+    let mut rendered_yet = false;
     let started = Instant::now();
     let mut last_progress = started;
     loop {
         let t = frames as f32 / fps;
+        // A span stops after TO (its process ends with the drop, not `wait`: the drive runs on).
+        if span.is_some_and(|(_, to)| t > to) {
+            break;
+        }
         let mut ended = false;
         while game_time < f64::from(t) {
             let next = scene.live.as_mut().and_then(|live| live.next_answer());
@@ -94,42 +108,60 @@ pub fn render(
                 ended = true;
                 break;
             };
-            take_answer(scene, &mut pending, frame)?;
+            take_answer(scene, pending.as_mut(), frame)?;
             game_time += f64::from(answered) * f64::from(STEP_SECONDS);
             periods += u64::from(answered);
         }
         if ended {
             break;
         }
-        let events = draw_frame(scene, args, &mut renderer, size, t, &mut shown);
-        let (view, sky) = views(scene, args, shown, size);
-        // Bake the reflection probes after the first frame's sky and shadows, as the window's load does.
-        if !probed {
-            probed = true;
-            if renderer.has_probes() {
-                renderer.render_offscreen(size, view, sky)?;
-                renderer.bake_probes();
+        // Before the span every frame still runs the scene update below, but only the second before FROM is
+        // rendered (TAA and probe warm-up); only `[FROM, TO]` is encoded.
+        let rendered = span.is_none_or(|(from, _)| t >= from - 1.0);
+        let in_span = span.is_none_or(|(from, to)| t >= from && t <= to);
+        if rendered && !rendered_yet {
+            // The skipped frames' dial draws were dropped: repaint the whole faces, as the first frame does.
+            rendered_yet = true;
+            if let Some(dials) = &mut scene.dials {
+                dials.redraw();
             }
         }
-        // The frame's scene hears the sound stepped since the last frame, and the samples it fills.
-        if let Some(audio) = &mut audio {
-            let helicopter = scene.characters.as_ref().and_then(|c| c.rescue_position());
-            audio.step(audio_scene(scene, args, shown), &mut pending, &rbr_render::sound::events(&events, helicopter));
-            audio.samples(periods)?;
+        let events = draw_frame(scene, args, &mut renderer, size, t, &mut shown);
+        if rendered {
+            let (view, sky) = views(scene, args, shown, size);
+            // Bake the reflection probes after the first rendered frame's sky and shadows.
+            if !probed {
+                probed = true;
+                if renderer.has_probes() {
+                    renderer.render_offscreen(size, view, sky)?;
+                    renderer.bake_probes();
+                }
+            }
+            // The frame's scene hears the sound stepped since the last frame, and the samples it fills.
+            if let (Some(audio), Some(pending)) = (&mut audio, &mut pending) {
+                let helicopter = scene.characters.as_ref().and_then(|c| c.rescue_position());
+                audio.step(audio_scene(scene, args, shown), pending, &rbr_render::sound::events(&events, helicopter));
+                audio.samples(periods)?;
+            }
+            let readout = scene
+                .playback
+                .as_ref()
+                .filter(|_| scene.hud.show)
+                .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
+            let results = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu));
+            let (_, pixels) = renderer.render_offscreen_with(size, view, sky, |encoder, target| {
+                overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, size, |ctx, hud| {
+                    readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
+                    results.iter().for_each(|m| results::paint(ctx, m));
+                });
+            })?;
+            if in_span {
+                encoder.video(&pixels)?;
+                encoded += 1;
+            }
+        } else {
+            renderer.skip_frame();
         }
-        let readout = scene
-            .playback
-            .as_ref()
-            .filter(|_| scene.hud.show)
-            .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
-        let results = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu));
-        let (_, pixels) = renderer.render_offscreen_with(size, view, sky, |encoder, target| {
-            overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, size, |ctx, hud| {
-                readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
-                results.iter().for_each(|m| results::paint(ctx, m));
-            });
-        })?;
-        encoder.video(&pixels)?;
         frames += 1;
         if last_progress.elapsed() >= PROGRESS_EVERY {
             last_progress = Instant::now();
@@ -140,23 +172,29 @@ pub fn render(
         }
     }
     let wall = started.elapsed().as_secs_f64();
+    // A span encodes a subset of the frames it steps through.
+    let done = if span.is_some() { encoded } else { frames };
     eprintln!(
-        "video: {frames} frames ({:.1} s) from {game_time:.2} s of game time in {wall:.0} s wall ({:.1} fps render)",
-        frames as f64 / f64::from(fps),
-        frames as f64 / wall.max(1e-9)
+        "video: {done} frames ({:.1} s) from {game_time:.2} s of game time in {wall:.0} s wall ({:.1} fps render)",
+        done as f64 / f64::from(fps),
+        done as f64 / wall.max(1e-9)
     );
     // The WAV's header is written when it closes: finalize it before the mux reads it.
     if let Some(audio) = audio {
         audio.wav.finalize()?;
     }
     encoder.finish()?;
+    if span.is_some() {
+        // Stopping after TO is the point; the live process ends with the drop.
+        return Ok(());
+    }
     // A replay that stopped early (a frame that differs from the drive's) leaves the video short.
     scene.live.as_mut().map_or(Ok(()), |live| live.wait()).map_err(|e| format!("{e}: the video ends early").into())
 }
 
 /// What one live answer does, as the window's live branch does per pump: the drive grows, the car dents and loses
-/// parts, the ghost watches, and the answer's sound records wait for the output frame's scene.
-fn take_answer(scene: &mut Scene, pending: &mut Vec<rbr_sound::Inputs>, frame: Vec<u8>) -> Result<(), String> {
+/// parts, the ghost watches, and the answer's sound records wait for the output frame's scene (`None`: dropped).
+fn take_answer(scene: &mut Scene, pending: Option<&mut Vec<rbr_sound::Inputs>>, frame: Vec<u8>) -> Result<(), String> {
     let live = scene.live.as_mut().ok_or("the live process ended")?;
     let drive = live.parse(&frame)?;
     let playback = scene.playback.as_mut().ok_or("the live process ended")?;
@@ -175,7 +213,10 @@ fn take_answer(scene: &mut Scene, pending: &mut Vec<rbr_sound::Inputs>, frame: V
             characters.call_rescue();
         }
     }
-    pending.extend(live.take_sounds());
+    let sounds = live.take_sounds();
+    if let Some(pending) = pending {
+        pending.extend(sounds);
+    }
     Ok(())
 }
 
@@ -296,7 +337,12 @@ fn audio_scene(scene: &Scene, args: &Args, shown: Shown) -> AudioScene {
     }
 }
 
-/// The video file's encoder: ffmpeg reads raw RGB frames on stdin, then the WAV is muxed in.
+/// Whether `out` names an animated WebP clip (case-insensitive).
+fn is_webp(out: &Path) -> bool {
+    out.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("webp"))
+}
+
+/// The video file's encoder: ffmpeg reads raw RGB frames on stdin, then the WAV is muxed in (a WebP needs none).
 struct Encoder {
     video_in: Option<std::process::ChildStdin>,
     child: Option<std::process::Child>,
@@ -308,8 +354,9 @@ struct Encoder {
 }
 
 impl Encoder {
-    /// Starts ffmpeg writing `out` (`wav`: muxed in at the end).
+    /// Starts ffmpeg writing `out` (`wav`: muxed in at the end); a `.webp` path writes an animated WebP itself.
     fn start(size: (u32, u32), fps: f32, out: &Path, wav: Option<&Path>) -> Result<Encoder, Box<dyn Error>> {
+        let webp = is_webp(out);
         let tmp_video = wav.map(|_| std::env::temp_dir().join(format!("rerbr-video-{}.mp4", std::process::id())));
         let mut command = Command::new("ffmpeg");
         command.args([
@@ -327,15 +374,25 @@ impl Encoder {
             &fps.to_string(),
             "-i",
             "-",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
         ]);
+        if webp {
+            command.args([
+                "-c:v",
+                "libwebp_anim",
+                "-lossless",
+                "0",
+                "-quality",
+                "75",
+                "-compression_level",
+                "6",
+                "-loop",
+                "0",
+                "-pix_fmt",
+                "yuv420p",
+            ]);
+        } else {
+            command.args(["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"]);
+        }
         command.arg(tmp_video.as_deref().unwrap_or(out));
         let mut child = command
             .stdin(Stdio::piped())
