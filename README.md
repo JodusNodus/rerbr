@@ -1,5 +1,7 @@
 # ReRBR (WIP)
 
+![The cockpit of an Audi quattro A2 Group B sliding through the rocks of El Condor past the crowd, the dials lit by the low sun](docs/clips/condor-sideways-cockpit.webp)
+
 Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not a repackage, an actual rewrite from scratch. Everything you know and love enhanced with modern graphics. Bring your own game files (an RSF install or any RBR + NGP 7 installation).
 
 ## Why
