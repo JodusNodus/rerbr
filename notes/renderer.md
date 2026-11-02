@@ -762,12 +762,11 @@ needles and displays from RBRHUD's gauges, drawn into the dial textures from the
 
 `renderer::Enhance`, `--enhance a,b` or `all`; each off (but for the always-on HDR and TAA) leaves the frame as the
 game draws it. The launcher's Quality section (`graphics_page::Graphics`, user decisions 2026-10-29) sets them by
-preset (Low, Medium, High by default, Ultra) or one by one: `anisotropy`, `decals` and `water` always on (free), the
-four scans as one "Surfaces" switch, `wet` with `--reflections` as "Wet roads" (off; low: no screen-space rays;
+preset (Low, Medium, High by default, Ultra) or one by one: `anisotropy`, `decals` and `water` always on (free), `wet` with `--reflections` as "Wet roads" (off; low: no screen-space rays;
 medium; high), `grass` as "Dense grass" on High and Ultra (user decision 2026-10-30: a half-density, shorter
 field cost more frame time than the full one at 4K, so no middle setting), `windscreen` as "Windscreen" on High and
 Ultra (user decision 2026-10-30: one switch for the pane and its reflection). Removed: `lens`; `ao`, `msaa`, `taa`,
-`wind` (user decision 2026-10-19); `hdr` (2026-10-26: float targets, bloom, exposure and AgX are always on). Older settings and names are
+`wind` (user decision 2026-10-19); `hdr` (2026-10-26: float targets, bloom, exposure and AgX are always on); `asphalt`, `gravel`, `snow`, `ground` (2026-11-02, below). Older settings and names are
 not read (user decision). The launcher's render scale is 100 % (native) by default, else 87, 75, 67 or 50 %, which the
 TAA upscales (user, 2026-11-01: at least 50 %; 75 kept, older settings hold it). The launcher offers no
 anti-aliasing choice (user, 2026-11-01): the TAA either resolves or upscales; a saved `anti_aliasing` is not read, and
@@ -780,81 +779,18 @@ byte-identical before and after (chase, cockpit, heavy rain, 1920x1080).
 | `cabin` | cockpit lit by its baked sky share, sun only through glass, interior set clear of the stage fog; with the day's light the interior set takes it as the lit draws outside do (45O Xsara and RSF Evo IX, dry, wet, fog; scene pass within noise; additions off byte-identical, 2026-10-25); the car's glass drawn from both sides, so the far window seen through the near one tints too (the game culls it) |
 | `contact` | soft contact shadow in place of the decal |
 | `decals` | soft ground decals blended after the stage instead of cut at 60/255 (`decals.rs` documents the rule: RSF 129, 369, 370 skid marks and 129 sand patches; no retail draw; the factory's blend switch untraced). Upright soft cut-outs keep the cut: blended, the wire mesh vanishes |
-| `asphalt` | the paved roads (`Vertex::wet` 1, `puddles.rs`) take the asphalt scan (Poly Haven Asphalt Track, CC0, 1024 packed, layer 1, every 2 m; the same strengths). Launcher "Surfaces", default on |
-| `gravel` | the loose roads (`Vertex::wet` 0.5, `puddles::mark_roads`, dry too) take a scanned gravel surface (Poly Haven Gravel Ground 01, CC0, 1024 packed, embedded; `renderer/road_scan.rs` layer 0) tiled flat every 3 m; the road's mean brightness and colour stay (below). Launcher "Surfaces", default on |
 | `lighting` | our lighting in place of the game's look (2026-10-27: one flag for the former `sky`, `sun`, `occlusion` and `clouds`; the half-on looks, the 2D cloud layer and its cloud-face lighting went): the physically based sky with aerial perspective, height fog, light shafts and volumetric clouds with their shadows; sun shadow cascades and sunlit foliage in place of the baked light maps; ambient occlusion and bounced light computed at load; reflection probes; the day's exposure. Details below |
 | ~~`hdr`~~ (always on) | float targets, bloom, histogram exposure, AgX (`post.rs`); the exposure's limits follow the clock's light, heavy rain or snow a fifth darker, heavy cloud 15% more saturated. Local exposure: where the bloom blur is over 2 stops above middle grey, 0.6 off, so the night beam keeps the road's texture (45O cockpit 23:00: 24% clipped, now none); post pass 2.91-2.94 ms; additions off byte-identical (2026-10-25). Tried and dropped: a 97th-percentile cap (blacked out everything around the beam). Daytime exposure under our sun lighting (`Enhance::lighting`, 2026-10-27; `post::SUN_EXPOSURE` 1.5, `DayLight::sun_share`): 41M chase noon lit grass (188 207 141) to (166 184 124), road 190 to 137; 45O noon grass green 165 to 121, road 178 to 115. 1.5 keeps sunlit grass above a photo's 120-140 green; 2 crushes the shadows (31 to 24). AgX contrast follows the adapting light (Stevens effect): day p95/p99 up ~10 levels, p5 down ~6; post pass 3.34 to 3.35 ms; additions off byte-identical |
 | `marks` | our tyre marks in place of the skid marks (Skid marks; launcher default off) |
 | `particles` | GPU rain and snow, rain rings, lit soft particles, chimney smoke, wheel spray. The rain or snow is decided once (`Scene::precipitation` in the viewer; `Rain::of_weather`, `Precipitation::of`): `--precipitation`, else with `particles` ours by the road, else the game's by the preset. Rings only in standing water, gone past 60 m over the view's cosine (2026-10-25). Rain looks (2026-10-26): 196000 faint streaks at full rain in place of 56000 bright needles, plus a fullscreen rain mist (a fifth of the lamps' light at night); no drop falls inside the cabin; zero without rain or `particles`, so additions off stay byte-identical. Streak look (2026-10-28): `--flyby`/`--camera` eyes take zero eye velocity (they took the car's ~25 m/s, slanting streaks ~40 degrees); `SHUTTER` 1/30 to 1/60 s; dry and damp shots byte-identical. About +0.5 to 1 ms on 45O chase wet, the denser drops another +1 ms on heavy; 30 chase frames without flicker. Drizzle (2026-10-31): `Precipitation::shower()`, the intensity squared, sets the streak count and the glass rates (light rain 0.25, heavy 1). In-car rain (2026-10-31, `IN_CAR_CLEAR`): none within 6 m of the eye, fading in by 10 m (the cabin alone left long bright streaks across the windscreen; clearing 3 m took a sixth of them, 6 m half, GC8 Luceram heavy); the far rain and the rain in the headlights stay; snow keeps the cabin's 2 m; outside views and the game's own rain unchanged |
-| `snow` | the snow (`Vertex::wet` -1, `puddles::SNOW_MARK`, takes no film) takes the snow scan the same way (Poly Haven Snow 02, CC0, 1024 packed, layer 2, every 2 m; the factor no darker than 0.88). Launcher "Surfaces", default on |
-| `ground` | the off-road ground (`puddles::mark_ground`, `Vertex::edge` -1) takes a scanned grass-and-earth ground (Poly Haven Grass Ground, CC0, 1024 packed, layers 3 and 4 of the road scans; `ground_scan` in `shader.wgsl`) triplanar at 1.7 m and a 5.1 m tiling turned 30 degrees; bright grey ground takes only brightness, no darker than 0.88. Round 2 (2026-10-29): `ground_patches` adds earth and grass in patches 2 to 6 m across and stones of 0.3 and 0.9 m cells. Launcher "Surfaces", default on |
 | `grass` | not in `all` (launcher "Dense grass", default off; the reference shots take it): crossed cards of drawn grass blades over the green and straw ground within 20 m of the driveline (`grass.rs`), streamed by 8 m tile about the eye into 550 fixed tile meshes in 9 pools by card count (a tile takes the smallest free one holding its cards, bare ground none), drawn within 118 m (`Lod::Close`), full within 50 m then halving every 25 m, flattened into the ground from 100 to 110 m; each tile holds 1.5x its density (by its nearest point) on 24 steps and the vertex shader shrinks each card by its rank against the density where it stands (`GRASS_THIN`), so the field glides instead of popping; swayed by the wind in the vertex shader (`grass_sway`). Tiles are made on a worker thread (the near 24 m on the frame itself, uploads capped; tiles ahead of the motion built early). Lit as a dense canopy (`GRASS_*` in `shader.wgsl`): tighter wrap, sky and sun shut out down the blades, a low sun more; the ground's computed sky occlusion, sky direction and bounce read back once at load (`Renderer::grass_light`). 580 chase 1080p scene 5.05 to 5.14 ms (+39k triangles), Gabiria fly-by 3.76 to 3.62 ms (-77k triangles); ~280 MB video memory (2026-10-30; ~540 MB since the reach below). Look (2026-10-30): cards 0.07 to 0.14 m (were 0.1 to 0.2), their foot lighter (`GRASS_BASE` 0.6, `GRASS_SUN_BASE` 0.4 to 0.6), so the field reads as a low meadow, not dark fur; the retail tufts toned to sit with it (`TUFT_TRANSMIT` 0.35). Snow shots unchanged (RMSE under 0.005). Retail tufts lit as our grass (2026-10-30): the stage's tufts and ferns take our grass's light (`GRASS_*`: wrap 0.3, sun and sky shut out down them, no warm tips), keep 0.4 of the sky's colour (`TUFT_SKY_TINT`: their grey-green textures read bluish), no dark-leaf lift, green leaves at most 0.09 linear (`TUFT_GREEN_MOST`, was 0.15; 580's lime ferns read as lit card). Their luma over our grass's in the same 48-pixel tiles: 580 Evo chase 2.4-2.5 to 1.2-1.3, 580 shot 3.7 to 1.5, 532 1.34 to 0.89, Gabiria's pale straw 2.1 to 1.9 (its texels sit in the snow test's range: a straw cap missed them, and moving the range changed Pian's snow tufts). Snow shots RMSE under 0.0035, night Sardian identical. The tile meshes not yet given a tile (no bounds, zeroed cards: 306 of 560 at the Luceram shot) drew their whole capacity in the main view and the mirrors until skipped (2026-10-31): scene 0.5-0.7 ms less (580 chase 5.09 to 4.59, Luceram rain fly-by 3.83 to 3.18), mirrors 0.45-1.0 ms less in the cockpit, the 34 shots byte-identical. Their zeroed vertices no longer go through the load's vertex prep (2026-10-31): all in one place, they made `foliage::with_plants`'s tree grouping quadratic; 580 load 28 to 22 s, the 34 shots 594 to 441 s, byte-identical. Tried and dropped: lighting our blades as upright on banks (no visible change; 580's dark bank is the hill's own shadow). Thatch (2026-10-30): with a field (`GRASS`) the ground under the grass is darker (0.82) and fuller in colour (1.1) by the grass's own test, slope and density by the eye's distance (`thatch` in `shader.wgsl`; not the 20 m band, so the near ground past it is thatched too), so its pale and pink texels no longer show between the blades; the blades brighter (`SHADE` 0.62 to 0.9), less saturated (`SATURATION` 1.15 to 0.85, `LUSH_SHARE` 0.25 to 0.15: lit, 580's came out at blue over green 0.26 against the ground's 0.63, now 0.37 against 0.57) and fuller (240, 180, 180, 140 blades a picture, were 170, 130, 130, 100; the same cards). Blades over the ground between them (median of 32 px tiles): 580 Evo chase 0.51 to 1.12 and 0.31 to 0.86, Gabiria fly-by 0.79 to 1.29, 532 0.48 to 0.90; the field's mean brightness 580 Evo +0.5% and -14%, 580 shot +8%, Gabiria +4%, 532 -8%. Snow shots unchanged; scene pass 580 19.8 ms and 532 11.8 ms both before and after. Reach (2026-10-31): full to 50 m (was 14), halving every 25 m (was 10), to 110 m (was 100); the tile meshes sized by their cards (a full 6400-card mesh for every tile in reach would be ~1.2 GB; sized on 580, 621, 532, 450, 417, 176 and 52, a few of the farthest at Odry 462's densest spot go without). Meshes never filled drew their whole capacity of zero-area cards (no bounds: never culled), about 0.5 to 2.4 M triangles a frame before: now they draw nothing until filled. Full density to 100 m measured 580 chase 29.4 to 39.0 ms a frame, 621 cockpit 12.5 to 29.4 ms (with the empty meshes still drawn); this reach, after the fix: scene pass 580 chase 20.1 to 21.0 ms, 621 cockpit 7.8 to 8.4, Odry chase 10.8 to 8.7, Gabiria fly-by 11.4 both |
 | `water` | water flowing by its scroll (`water.wgsl`), fading into banks |
 | `windscreen` | the windscreen seen from inside as glass: the pane (Fresnel loss, dust, specks, wiper scratches, water spots) and the cabin reflected in it, a mirror pass of its own every 2nd frame whatever `--mirrors` says (held with the car between) ("Windscreen and wipers" above). Off: the frame as before |
 | `wet` | the wet road, in wet and damp weather: a film and puddles over the ground whose `.col` surface takes them (tarmac 1, gravel and dirt 0.5), retail and RSF alike (user decision 2026-10-25; `puddles.rs`). Screen-space reflections on the wet roads: +12 to 17 ms at 1080p; film alone +0.9 to 1.7 ms; load +0.2 s. Wet film (2026-10-28): the rays missed the car, so the film halves back to any crossing and `reach` judges it (`film` in `trace`); the far road takes the sky, the near road stays dark. 41O chase screen reflections 1.32 to 1.50 ms at 1080p. Loose roads (2026-10-28): the half-film road's film was a pale even sheet; its reflection now falls with the film's share, so the stones show through and puddles stand out (tarmac and dry byte-identical; 52O/21O chase screen reflections 1.46/1.67 to 1.14/1.37 ms). The rings were never on the film: they were in the puddles. Damp is a drying road: no puddles, rings or screen-space reflections, the film 0.4 of the wet one's, the ground soaked by half (41M dry 101, damp 68, wet 59 at 13:00; 460M 147 to 131; 45O 140 to 118). 41M +0.9 ms, 45O within noise; wet and additions off unchanged byte for byte (2026-10-26). Wet road edge (2026-10-28): the reflection and glint fade over the outer 0.1 to 0.8 m, frayed by noise (puddles and the road's darkness stay); mean distance 1.2 m on 41M, 0.3 m on RSF Gabiria; damp and dry byte-identical. By texture (2026-10-28): a film triangle takes the share most film triangles of its texture have (RSF Bois de Bie tags stretches of tarmac as gravel: 46000 `Gravel_Fine_Shallow_Wet` against 139000 `Tarmac_Coarse_Clean_Wet`); retail Fraizer Wells byte for byte, damp Gabiria RMSE 0.0003. Wet road look (2026-10-28, tarmac first): the film alone is darker and its reflection takes the asphalt's grain, its normal tilted by microrelief and rain's impacts, fading to the mean between 4 and 25 m. Tried and dropped: a 0.12 tilt (white sky blobs over the near road). Gravel nearly unchanged; dry, snow, night byte-identical. Flyby 1080p scene 1.72 to 1.80 ms, screen reflections 1.58 to 1.85 ms; cockpit within noise. Tarmac's even film (2026-10-28, user decision): where the film share is 1 there are no random puddles and only the hollows hold water, so the bumper and plate read in the road near the car. Rain rings on tarmac only in the hollows' water; the film shows fine splash specks instead. Round 2 roughens the normal at the grain in place of the 5 and 2 cm waves. The near road's olive cast is the green bank's reflection, kept. Gravel and dirt keep the film and puddles (52O chase RMSE 0.0000022); dry, damp, snow and night-dry byte-identical; Luceram fly-by within compiler noise (RMSE 0.00015). Puddles at the edge (2026-10-28): puddles now end 0.05 to 0.2 m from the edge, frayed as the film is; 52O chase RMSE 0.017, dry byte-identical. Wheel tracks (2026-10-28, loose roads only): the water lies in two tracks 1.5 m in from the road's edge, rims frayed by 7 cm stone noise; damp keeps its old spray. 52O chase scene 2.54 to 2.65 ms, screen reflections 1.69 to 1.74 ms; dry, damp, snow, night byte-identical, Luceram within compiler noise (RMSE 0.00015) |
 
-Gravel scan (2026-10-28): procedural stones read as cobbles or coins, so a scanned surface's detail over the
-stage's own colour reads as gravel (`renderer/road_scan.rs`). `pack-scan.py` decodes the sRGB-encoded normal/height
-PNGs by the normal's mean. Parallax looked the same in stills (off 5.04 ms, +1.39/+0.65/+0.43 at 1440p); none kept
-(+0.08). Off, frames byte-identical to before (Clio damp, 621 dry, Sipirkakim wet, Gabiria tarmac); on, a dry stage
-loads about 1 s longer. 1024 against 2048: the same grain at 4K (road std 19.48 against 19.45). Open: some RSF stages
-tag stretches of tarmac as gravel (Gabiria's road edge takes the scan, faintly); Semetin and Sardian show no change.
-
-Asphalt scan (2026-10-28): Poly Haven Asphalt 01, 06 and Track tried on Gabiria, Luceram and Helette; Track (fine
-aggregate, brightness varying 29% about a dark mean) gave Luceram's smooth tarmac crisp aggregate. Road mean within
-1.3%; on the wet road it shows faintly under the film. Scene pass at 1440p, Luceram fly-by: off 4.57 ms, on 4.66.
-Both off, and gravel alone, frames byte-identical to before (Clio damp, Gabiria, Luceram wet, 621 dry); the
-derivatives stay `dpdx(world / tile)` per layer (`dpdx(world) / tile` moved up to 8/255 on 1754 pixels of the Clio
-fly-by).
-
-Asphalt look (2026-10-29; `albedo_remap` and `ground_scan` in `shader.wgsl`): the scratchy tarmac at Gabiria was
-`albedo_remap`, not the stage texture's flecks (road std 18 of 119 on a flat patch, scan off too). With `asphalt`, a
-paved road takes the cut of its local mean with its own variation over it, reads its texture blurrier where magnified
-(painted lines stay crisp), and gives up the stage's high pass; the scan carries the grain. Road patch mean 119 to
-97, lines, patches and shadows kept; gravel and snow shots byte-identical. Tried and dropped: a noise-broken road
-edge (only frayed the shoulder's flattening). The local mean is the texture's mip itself, read 6 levels past the
-footprint: quads stretching the texture differently read different mips and 45's road showed light and dark blocks
-(gone; Gabiria 79.2 to 79.4, 45 and 417 within 0.4; the whole texture's mean also removed them but lightened
-Gabiria's road 79 to 91). Blur by distance (2026-10-30): the texture is read no finer than 4 cm a pixel
-(`ASPHALT_FINEST`, widened gradients) in place of the blur by magnification, which was decided per quad and left a
-blotchy band ahead of the car that snapped sharp (RSF Fintele 523); the road is even, a little blander mid-distance.
-
-Snow scan (2026-10-28; `SCAN_FLOOR`): Poly Haven Snow 02 on Komarov, Peklo, Pian and Sturec. Its dark marks read as
-dirt streaks on Peklo's banks, so the factor is held at 0.88 or brighter (0 for gravel and asphalt, which stay
-byte-identical). Road mean within 0.3%. Scene pass at 1440p, Peklo fly-by: off 3.26 ms, on 3.34. Off, the snow
-stages' frames byte-identical to before (Komarov, Peklo, Pian).
-
-Ground scan (2026-10-28; `ground_scan` in `shader.wgsl`): the hillside's blue sheen and the verge's blue-grey band
-were the stage's baked vertex tint, not specular, sky ambient, fog or the film (each off alone: RMSE 0.004 to 0.02,
-the sheen stayed). It keeps 0.3 of itself on every near ground draw. Hill mean colour within 1 of 255 per channel
-(96,100,76 to 97,98,79), as the scan keeps the stage's mean. Cost: scene pass at 1080p, Gabiria fly-by, 2.7 to 3.5
-ms on, 3.0 ms off (GPU noise larger than the effect); memory +11 MB, load unchanged. Ground off, every other
-addition on: byte-identical (Gabiria, Komarov snow, Sipirkakim). Tried and dropped: the scan at 2048 (no visible
-difference at a 1.7 m tile). Open: at grazing views the scan's detail stretches along the view (physically right),
-and the target's brightness (146,131,98 against ours 97,98,79) is the light's, not the ground's.
-
-Rock keeps its hue (2026-10-29; `ground_rock`, `ground_scan`): rock, stone walls and concrete take the ground
-scan's and the earth patches' brightness only, so cuttings and parapets keep their own colour; a flat grey verge
-(gravel) keeps the tint. Rock to grey: rock gives up 0.85 of its lit colour for grey on softer steepness.
-
-Calmer verge (2026-10-29; `ground_pale_ease`): the verge's pale texels past 1.1 of the texture's local mean are
-eased, within 12 to 30 m of the eye. Tried and dropped: a dirt-and-gravel strip on the paved mesh's non-grey band (on
-some stages that band is the whole grass verge and bank).
-Shoulders as ground (2026-10-29; `SHOULDER_WALL` in `shader.wgsl`): the paved mesh's grass and earth shoulders take the
-ground's treatment, so no seam shows beside the terrain (580's straight dark strip; its bank turns mossy earth). RMSE 580
-3.6%, Luceram 2.1%, Gabiria 1.2%, Semetin 0.6%, gravel and snow stages and additions off identical; 580 4K scene pass
-8.40 to 8.92 ms.
-Grey test at a fixed mip (2026-10-30; `ASPHALT_BLUR`): read 3 levels past the footprint, the test reached 580's verge
-(painted beside the road in its texture) from about 8 m out (footprint mip 1), so the far road took the ground scan as a
-shoulder: green and pink patches moving with the car (Evo chase replay; gone with asphalt or ground off). It reads mip 3
-at any distance, the near road's level before. 580 road patch chroma std 6.4 to 2.9; shots RMSE 580 0.0034, Gabiria up
-to 0.0042 (its dirt strip on the paved mesh reads as road further out), Luceram up to 0.0033, Sardian up to 0.0044
-(calmer curb streaks), Sturec snow 0.0052 (the wall top takes the shoulder's earth, as near the car), the rest under
-0.001 or identical.
-Far hillside (2026-10-29; `ground_far`, `ground_clumps` in `shader.wgsl`): from 8 to 18 m out the ground texture
-is read blurrier, its pale texels eased, the scan's chroma and grain eased, and grass clumps added (value noise at
-1.5, 0.7 and 0.32 m; snow stages left alone). The speckle on the hill is mostly the stage texture's own (there with
-the scan off).
+Scanned surfaces removed (user decision 2026-11-02): `asphalt`, `gravel`, `snow` and `ground` (Poly Haven scans over
+the roads, snow and off-road ground; launcher "Surfaces") did not look right on every stage. The road and ground marks
+stay for the grass field (`Stage::mark_surfaces`).
 
 Lighting, in pieces (all with `lighting`; each measured on its own before the merge):
 
@@ -1081,9 +1017,8 @@ chase and cockpit, 126 night, 413 snow. Repeats within 0.5 %.
 | `grass` | +3.5-4.2 ms; most in the cascades (+2.3) and the surroundings cube (+0.8), waiting profile |
 | `--mirrors 1` | 0.1-0.3 ms dry cockpit, 2.9 heavy rain (the rain drawn in them ~2.2); every 2nd/3rd by the rate |
 | `cabin` | 1.0-1.4 ms in the cockpit |
-| `asphalt`, `ground`, `contact` | 0.5-1.0, 0.4-0.7, 0.1-0.8 ms |
+| `contact` | 0.1-0.8 ms |
 | `--anti-aliasing off` | -0.5 to -0.75 ms |
-| `gravel`, `snow` | 0.1-0.2 ms |
 | `anisotropy`, `decals`, `water`, `marks` | within noise |
 
 Presets 1080p (native 3024x1964 on 580, 450, 417 x2): Low 5.7-8.8 ms (8.0-13.3), Medium 7.2-13.6 (13.1-32.1, measured

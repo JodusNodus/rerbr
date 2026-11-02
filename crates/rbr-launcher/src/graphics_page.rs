@@ -18,9 +18,6 @@ pub struct Graphics {
     pub lighting: bool,
     /// Our rain, snow and particles (`particles`).
     pub particles: bool,
-    /// The scanned asphalt, gravel, snow and ground (`asphalt`, `gravel`, `snow`, `ground`), one switch. Off in every
-    /// preset until it looks right on every stage.
-    pub surfaces: bool,
     pub cabin: bool,
     pub contact: bool,
     pub grass: bool,
@@ -126,7 +123,6 @@ impl Quality {
         let high = Graphics {
             lighting: true,
             particles: true,
-            surfaces: false,
             cabin: true,
             contact: true,
             grass: true,
@@ -509,13 +505,6 @@ impl Form {
                        Each step up costs more frame time in the rain";
             ui.label("Wet roads").on_hover_text(tip);
             combo(ui, "wet roads", QUALITY_FIELD, &mut g.wet_roads, &WetRoads::ALL, WetRoads::label).on_hover_text(tip);
-            ui.end_row();
-
-            let tip = "Asphalt, gravel, snow and the off-road ground get the fine grain and relief of scanned \
-                       surfaces, lit by the sun, over the stage's own colours; the ground loses the baked tint that \
-                       turns it blue and over-green. Costs little. Off in every preset: not right on every stage yet";
-            ui.label("Surfaces").on_hover_text(tip);
-            ui.checkbox(&mut g.surfaces, "scanned").on_hover_text(tip);
             ui.end_row();
 
             let tip = "In the cockpit: the sun only through the glass, with the roof, pillars and dash shading each \
