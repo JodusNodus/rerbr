@@ -126,7 +126,9 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
 ## Live frame loop and input latency
 
 `bin/viewer/window.rs`, `live/mod.rs`; measured with `RBR_LATENCY=script` (`bin/viewer/latency.rs`: a ±0.5 steering
-flip every 500 ms, ms from the flip being due to each stage, summary at exit). Ours, per frame, in this order:
+flip every 500 ms, ms from the flip being due to each stage, summary at exit; on screen by Wayland's presentation
+feedback, or on macOS the Metal drawable's `presentedTime`: wgpu keeps the drawable, so `latency/shown_metal.rs` makes
+the layer a run-time subclass of its class whose `nextDrawable` keeps it). Ours, per frame, in this order:
 
 - acquire the surface's texture (the loop's wait: a free image, the refresh under fifo; `desired_maximum_frame_latency`
   2, `window.rs`);
@@ -1108,8 +1110,17 @@ and sway, one 90 s run each, paced:
 | immediate | 54.2 | 48.1 | 0.14 | 36.7 / 47.0 (64.7 / 85.7) | 4 | 17.9 |
 
 The rest is the frame: half a period's wait for the next input read (~9 ms), input read to submit ~10 ms (the live
-answers, scene update, encoding), the GPU's 18 ms. Not measured yet: niri, Windows, macOS, refresh-bound loops
-(FIFO above the refresh rate is not paced).
+answers, scene update, encoding), the GPU's 18 ms. Not measured yet: niri, Windows.
+
+macOS (2026-11-02, M3 Pro, 120 Hz ProMotion, fullscreen, fifo, one 15 s run each): the bench scene, GPU-bound, 18.5 fps
+unpaced, 18.1 paced; present -> on screen p50 101 to 56 ms, any input -> on screen 133 to 91. Refresh-bound (a light
+drive: `--render-scale 0.25 --weather dry`, reflections, mirrors and AA off; GPU ~14 ms, 57 fps): the pacer leaves it
+(the GPU idles) and frames queue: acquire wait 12.7 ms, present -> on screen 29.6, any input -> on screen 42.6;
+`--max-fps 60` takes the queue out (acquire 0, 18.8, 32.0, judder p95 8.2 to 5.5 ms). Fullscreen ProMotion adapts its
+refresh: unpaced frames land on the 120 Hz grid, capped ones on a 4.17 ms one (12.5 and 20.8 ms gaps), so pacing to a
+fixed refresh grid does not hold there. Open: pacing refresh-bound fifo; a grid-locked pacer on the presentation
+feedback (frames a whole number of refreshes apart, the GPU done just before the targeted one, a slot skipped when one
+queued) took a modelled 60 Hz fifo loop from 33 to 14-24 ms at the same rate but here only to 37-42 ms; not merged.
 
 Judder (`RBR_LATENCY`'s "judder": how much the shown step's age on screen changes from one shown frame to the next): an
 answer comes every 7 ms of game time, so drawn at its answers the car moved on by 0 to 7 ms more or less than the

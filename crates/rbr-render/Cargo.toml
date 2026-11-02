@@ -54,6 +54,13 @@ libc = "0.2"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client"] }
 
+# The viewer's `RBR_LATENCY` on macOS: the Metal drawable's presented time (the versions wgpu-hal uses).
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-metal = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-core-foundation", "MTLDrawable"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "objc2-metal", "CABase", "CALayer", "CAMetalLayer"] }
+
 [target.'cfg(windows)'.build-dependencies]
 winresource = { version = "0.1", default-features = false }
 
