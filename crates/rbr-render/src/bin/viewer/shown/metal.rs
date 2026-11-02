@@ -1,4 +1,4 @@
-//! When each presented frame went on screen (the Metal drawable's presented handler), for `RBR_LATENCY`. wgpu keeps
+//! When each presented frame went on screen (the Metal drawable's presented handler). wgpu keeps
 //! the drawable to itself, so the surface's layer becomes a subclass of its class whose `nextDrawable` keeps the one
 //! it gives for [`Shown::ask`]. The handler's time is the host time [`now_ns`] reads too (`CACurrentMediaTime`).
 
@@ -14,12 +14,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::OnceLock;
 use winit::window::Window;
 
-/// One frame's feedback: on screen at `at` (ns, host time) with the flags, or discarded (never shown).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Feedback {
-    Shown { at: u64, flags: u32 },
-    Discarded,
-}
+use super::Feedback;
 
 /// The flags: vsync when the layer syncs to the display (fifo). Metal does not say whether a frame was scanned out
 /// directly, so `ZERO_COPY` is never set.
@@ -83,8 +78,11 @@ impl Shown {
         let handler = RcBlock::new(move |drawable: NonNull<ProtocolObject<dyn MTLDrawable>>| {
             // Safety: Metal passes the presented drawable.
             let at = unsafe { drawable.as_ref() }.presentedTime();
-            let feedback =
-                if at > 0.0 { Feedback::Shown { at: (at * 1e9) as u64, flags } } else { Feedback::Discarded };
+            let feedback = if at > 0.0 {
+                Feedback::Shown { at: super::instant((at * 1e9) as u64, now_ns()), flags }
+            } else {
+                Feedback::Discarded
+            };
             let _ = send.send((frame, feedback));
         });
         // Safety: Metal copies the block, which only sends on a channel.
@@ -98,6 +96,6 @@ impl Shown {
 }
 
 /// The host time now, ns.
-pub fn now_ns() -> u64 {
+fn now_ns() -> u64 {
     (CACurrentMediaTime() * 1e9) as u64
 }

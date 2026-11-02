@@ -1,5 +1,5 @@
 //! When the compositor put each presented frame on screen (Wayland's `wp_presentation` feedback on the window's
-//! surface), for `RBR_LATENCY`. The feedback's clock is checked to be `CLOCK_MONOTONIC`, which [`now_ns`] reads too.
+//! surface). The feedback's clock is checked to be `CLOCK_MONOTONIC`, which [`now_ns`] reads too.
 
 use std::os::raw::c_void;
 use wayland_client::backend::{Backend, ObjectId};
@@ -11,12 +11,7 @@ use wayland_protocols::wp::presentation_time::client::wp_presentation_feedback::
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use winit::window::Window;
 
-/// One frame's feedback: on screen at `at` (ns, `CLOCK_MONOTONIC`) with the feedback's flags, or discarded.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Feedback {
-    Shown { at: u64, flags: u32 },
-    Discarded,
-}
+use super::Feedback;
 
 /// The feedback flags (`wp_presentation_feedback.kind`).
 pub const VSYNC: u32 = 1;
@@ -92,7 +87,7 @@ impl Shown {
 const CLOCK_MONOTONIC: u32 = 1;
 
 /// `CLOCK_MONOTONIC` now, ns.
-pub fn now_ns() -> u64 {
+fn now_ns() -> u64 {
     let mut time = libc::timespec { tv_sec: 0, tv_nsec: 0 };
     // Safety: a valid timespec out pointer.
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) };
@@ -147,7 +142,7 @@ impl Dispatch<WpPresentationFeedback, u64> for State {
                     wayland_client::WEnum::Value(kind) => kind.bits(),
                     wayland_client::WEnum::Unknown(bits) => bits,
                 };
-                Feedback::Shown { at: seconds * 1_000_000_000 + u64::from(tv_nsec), flags }
+                Feedback::Shown { at: super::instant(seconds * 1_000_000_000 + u64::from(tv_nsec), now_ns()), flags }
             }
             wp_presentation_feedback::Event::Discarded => Feedback::Discarded,
             _ => return,

@@ -127,7 +127,7 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
 
 `bin/viewer/window.rs`, `live/mod.rs`; measured with `RBR_LATENCY=script` (`bin/viewer/latency.rs`: a ±0.5 steering
 flip every 500 ms, ms from the flip being due to each stage, summary at exit; on screen by Wayland's presentation
-feedback, or on macOS the Metal drawable's `presentedTime`: wgpu keeps the drawable, so `latency/shown_metal.rs` makes
+feedback, or on macOS the Metal drawable's `presentedTime`: wgpu keeps the drawable, so `shown/metal.rs` makes
 the layer a run-time subclass of its class whose `nextDrawable` keeps it). Ours, per frame, in this order:
 
 - acquire the surface's texture (the loop's wait: a free image, the refresh under fifo; `desired_maximum_frame_latency`

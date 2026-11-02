@@ -174,6 +174,7 @@ mod perf;
 mod replay;
 mod scene;
 mod screenshot;
+mod shown;
 mod video;
 mod window;
 
