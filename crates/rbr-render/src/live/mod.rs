@@ -134,6 +134,8 @@ pub struct Hud {
     pub speed: f32,
     /// The force the game sends the wheel, [-1, 1] before the player's settings (`rbr_gameplay::ffb`).
     pub force: Option<f32>,
+    /// The surface NGP's car took its force-feedback sensitivity by (FFB1): 0 gravel, 1 tarmac, 2 snow.
+    pub ffb_surface: Option<u32>,
     pub race: Option<RaceHud>,
     /// The camera's mode and start orbit (`rbr-standalone`'s CAM1).
     pub camera: Option<Camera>,

@@ -2,9 +2,11 @@
 //! the moment (the live process's MNU1 record), moved through with the keys or the gamepad, and the game's confirm box
 //! before an item that ends or leaves the race. The texts are 1.02's English string table's (`bstrings.eng`); the
 //! panels' look is ours, as the rest of the HUD's. Ours too: the Camera item after Resume, which opens the Camera
-//! page ([`super::camera_page`]).
+//! page ([`super::camera_page`]), and with the wheel's force feedback on, the Force feedback item after it
+//! ([`super::ffb_page`]).
 
 use super::camera_page::{self, CameraPage, Moved};
+use super::ffb_page::{self, FfbPage};
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 use gilrs::Button;
 use rbr_gameplay::flow::Mode;
@@ -64,11 +66,12 @@ impl Nav {
     }
 }
 
-/// A row of the menu's first page: the game's item, or ours, the Camera page.
+/// A row of the menu's first page: the game's item, or ours, the Camera and Force feedback pages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Entry {
     Game(Item),
     Camera,
+    ForceFeedback,
 }
 
 /// What a move in the menu did.
@@ -78,6 +81,8 @@ pub enum Outcome {
     Chosen(Item),
     /// The Camera page changed the view or a nudge ([`PauseMenu::camera`]): show and keep it.
     Camera,
+    /// The Force feedback page changed the car's sensitivity ([`PauseMenu::ffb`]): apply and keep it.
+    ForceFeedback,
 }
 
 /// The open menu: its rows, the selected one, the confirm box that is up and the Camera page.
@@ -90,33 +95,48 @@ pub struct PauseMenu {
     /// The item asking, and whether its box has Yes selected.
     confirm: Option<(Item, bool)>,
     camera: CameraPage,
-    /// The Camera page is open.
-    on_camera: bool,
+    ffb: Option<FfbPage>,
+    /// The page open, of the Camera and Force feedback ones.
+    on: Option<Entry>,
 }
 
 impl PauseMenu {
-    /// The menu as the race stands (the last MNU1), its Camera page starting from `camera`.
-    pub fn open(record: Record, camera: CameraPage) -> PauseMenu {
+    /// The menu as the race stands (the last MNU1), its Camera page starting from `camera`, and a Force feedback page
+    /// starting from `ffb` when there is one.
+    pub fn open(record: Record, camera: CameraPage, ffb: Option<FfbPage>) -> PauseMenu {
         let state =
             MenuState { mode: Mode(record.mode), driving: record.driving, help: record.help, over: record.over };
         let mut items: Vec<_> =
             pause_menu::items(state).into_iter().map(|(item, on)| (Entry::Game(item), on)).collect();
         items.insert(1, (Entry::Camera, true));
-        PauseMenu { mode: state.mode, over: state.over, items, selected: 0, confirm: None, camera, on_camera: false }
+        if ffb.is_some() {
+            items.insert(2, (Entry::ForceFeedback, true));
+        }
+        PauseMenu { mode: state.mode, over: state.over, items, selected: 0, confirm: None, camera, ffb, on: None }
     }
 
     /// The Camera page while it is open.
     pub fn camera(&self) -> Option<&CameraPage> {
-        self.on_camera.then_some(&self.camera)
+        (self.on == Some(Entry::Camera)).then_some(&self.camera)
+    }
+
+    /// The Force feedback page while it is open.
+    pub fn ffb(&self) -> Option<&FfbPage> {
+        self.ffb.as_ref().filter(|_| self.on == Some(Entry::ForceFeedback))
     }
 
     /// Takes one move.
     pub fn nav(&mut self, nav: Nav) -> Option<Outcome> {
-        if self.on_camera {
-            return match self.camera.nav(nav)? {
-                Moved::Changed => Some(Outcome::Camera),
+        let page = match self.on {
+            Some(Entry::Camera) => Some((self.camera.nav(nav), Outcome::Camera)),
+            Some(Entry::ForceFeedback) => self.ffb.as_mut().map(|p| (p.nav(nav), Outcome::ForceFeedback)),
+            _ => None,
+        };
+        if let Some((moved, outcome)) = page {
+            return match moved? {
+                Moved::Changed => Some(outcome),
                 Moved::Left => {
-                    self.on_camera = false;
+                    self.on = None;
                     None
                 }
             };
@@ -139,7 +159,7 @@ impl PauseMenu {
             Nav::Left | Nav::Right => {}
             Nav::Back => return Some(Outcome::Chosen(Item::Resume)),
             Nav::Select => match self.items[self.selected].0 {
-                Entry::Camera => self.on_camera = true,
+                entry @ (Entry::Camera | Entry::ForceFeedback) => self.on = Some(entry),
                 Entry::Game(item) => match item.confirm(self.mode, self.over) {
                     Some(_) => self.confirm = Some((item, true)),
                     None => return Some(Outcome::Chosen(item)),
@@ -162,6 +182,7 @@ pub fn text(key: &str) -> &'static str {
         "CONTINUE" => "Continue",
         // Ours: not in the table.
         "CAMERA" => "Camera",
+        "FORCE_FEEDBACK" => "Force feedback",
         "YES" => "Yes",
         "NO" => "No",
         "MSG_RESTART" => "Are you sure you want to restart the stage?",
@@ -179,6 +200,10 @@ pub fn text(key: &str) -> &'static str {
 pub fn paint(ctx: &egui::Context, menu: &PauseMenu) {
     if let Some(page) = menu.camera() {
         camera_page::paint(ctx, page);
+        return;
+    }
+    if let Some(page) = menu.ffb() {
+        ffb_page::paint(ctx, page);
         return;
     }
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("pause")));
@@ -203,6 +228,7 @@ pub fn paint(ctx: &egui::Context, menu: &PauseMenu) {
         let key = match item {
             Entry::Game(item) => item.key(),
             Entry::Camera => "CAMERA",
+            Entry::ForceFeedback => "FORCE_FEEDBACK",
         };
         painter.text(row.center(), Align2::CENTER_CENTER, text(key), FontId::proportional(20.0), colour);
         at.y += ROW;
@@ -242,7 +268,7 @@ mod tests {
     use crate::views::CarView;
 
     fn open(record: Record) -> PauseMenu {
-        PauseMenu::open(record, CameraPage::new(CarView::Cockpit, Default::default(), true))
+        PauseMenu::open(record, CameraPage::new(CarView::Cockpit, Default::default(), true), None)
     }
 
     fn quick(driving: bool) -> PauseMenu {
@@ -298,6 +324,23 @@ mod tests {
         menu.nav(Nav::Up);
         assert_eq!(menu.nav(Nav::Select), None, "Done");
         assert_eq!(menu.nav(Nav::Back), chosen(Item::Resume));
+    }
+
+    #[test]
+    fn the_force_feedback_item_is_there_with_a_page_and_changes_it() {
+        let record = Record { mode: 1, driving: true, help: true, over: false };
+        let page = FfbPage::new(1, 250, false, 250);
+        let mut menu = PauseMenu::open(record, CameraPage::new(CarView::Cockpit, Default::default(), true), Some(page));
+        assert_eq!(menu.items[2], (Entry::ForceFeedback, true));
+        menu.nav(Nav::Down);
+        menu.nav(Nav::Down);
+        assert_eq!((menu.nav(Nav::Select), menu.camera()), (None, None));
+        assert_eq!(menu.nav(Nav::Left), Some(Outcome::ForceFeedback));
+        assert_eq!(menu.ffb().map(|p| (p.value, p.own)), Some((245, true)));
+        assert_eq!(menu.nav(Nav::Back), None);
+        assert!(menu.ffb().is_none());
+        assert_eq!(menu.items[menu.selected].0, Entry::ForceFeedback);
+        assert!(!quick(true).items.iter().any(|(e, _)| *e == Entry::ForceFeedback));
     }
 
     #[test]

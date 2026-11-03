@@ -22,6 +22,7 @@ use rbr_recording::splits::Splits;
 use crate::live::RaceHud;
 
 pub mod camera_page;
+pub mod ffb_page;
 pub mod model;
 pub mod pace;
 pub mod pause;

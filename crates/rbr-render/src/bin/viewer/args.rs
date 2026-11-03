@@ -36,6 +36,8 @@ pub struct Args {
     pub bindings: Bindings,
     /// The wheel's force feedback in live mode (the `--bindings` file's `[ffb]` section).
     pub ffb: ffb::Options,
+    /// The `--bindings` file, which also keeps each car's force-feedback sensitivities (`ffb::CarSensitivity`).
+    pub bindings_file: Option<PathBuf>,
     pub screenshot: Option<PathBuf>,
     /// `--video FILE` renders a replay offline to a video file (the live command runs it with
     /// `--replay-pace free`, so it needs `--replay`); `--video-fps N` its frames per second. A path ending in
@@ -251,6 +253,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut live: Option<Vec<String>> = None;
     let mut bindings = Bindings::default();
     let mut ffb_options = ffb::Options::default();
+    let mut bindings_file = None;
     let mut screenshot = None;
     let mut video = None;
     let mut video_fps = 60.0;
@@ -435,6 +438,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
                 bindings = Bindings::parse(&text);
                 ffb_options = ffb::Options::parse(&text);
+                bindings_file = Some(PathBuf::from(path));
             }
             "--car-gearbox" => {
                 let value = args.next().ok_or("--car-gearbox needs synchro, dog or sequential")?;
@@ -683,6 +687,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         live,
         bindings,
         ffb: ffb_options,
+        bindings_file,
         screenshot,
         video,
         video_fps,

@@ -45,6 +45,8 @@ pub struct Scene {
     pub mounts: Option<Mounts>,
     /// The player's camera choices for the car.
     pub cameras: camera_prefs::Session,
+    /// The car's force-feedback sensitivities, which the pause menu sets.
+    pub ffb: rbr_render::ffb::Session,
     /// The particles a drive throws.
     pub particles: Option<particles::Drawn>,
     /// The stage's characters (`rbr_render::characters`).
@@ -162,6 +164,9 @@ fn load_scene<'scope, 'env>(
 ) -> Result<Scene, String> {
     let error = |e: car::Error| e.to_string();
     let car_key = args.car.as_deref().map(|car| camera_prefs::car_key(car, args.rsf_car_id));
+    let started = args.live.as_deref().map_or([100; 3], rbr_render::ffb::started);
+    let ffb =
+        rbr_render::ffb::Session::load(args.bindings_file.as_deref(), car_key.clone(), args.ffb.sensitivity, started);
     let cameras = camera_prefs::Session::load(args.cameras.as_deref(), car_key);
     if (args.drive.is_some() || args.live.is_some()) && (args.stage.is_none() || args.car.is_none()) {
         return Err("--drive and --live need a stage and --car".to_owned());
@@ -199,6 +204,7 @@ fn load_scene<'scope, 'env>(
                 live: None,
                 mounts: None,
                 cameras: camera_prefs::Session::default(),
+                ffb: Default::default(),
                 particles: None,
                 characters: None,
                 crew: None,
@@ -435,6 +441,7 @@ fn load_scene<'scope, 'env>(
                 live,
                 mounts,
                 cameras,
+                ffb,
                 particles,
                 characters,
                 crew,

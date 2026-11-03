@@ -11,6 +11,7 @@
 
 use std::collections::BTreeMap;
 use std::ffi::CStr;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
@@ -182,6 +183,69 @@ impl CarSensitivity {
     }
 }
 
+/// The pause menu's force-feedback choices for one drive (`crate::hud::ffb_page`): the settings file the car's own
+/// sensitivities live in (`viewer --bindings`), the car's key, every car's and the ones NGP's car started with.
+#[derive(Debug, Clone, Default)]
+pub struct Session {
+    path: Option<PathBuf>,
+    car: Option<String>,
+    pub cars: CarSensitivity,
+    /// [`Options::sensitivity`].
+    pub global: [i32; 3],
+    /// What NGP's car started with ([`started`]).
+    pub started: [i32; 3],
+}
+
+impl Session {
+    /// The choices in `path` (none without it or when it does not read) for car `car`
+    /// (`crate::camera_prefs::car_key`).
+    pub fn load(path: Option<&Path>, car: Option<String>, global: [i32; 3], started: [i32; 3]) -> Session {
+        let text = path.and_then(|p| std::fs::read_to_string(p).ok()).unwrap_or_default();
+        Session { path: path.map(Path::to_owned), car, cars: CarSensitivity::parse(&text), global, started }
+    }
+
+    /// The car's sensitivities now.
+    pub fn now(&self) -> [i32; 3] {
+        self.cars.of(self.car.as_deref(), self.global)
+    }
+
+    /// Whether the car has its own.
+    pub fn own(&self) -> bool {
+        self.car.as_ref().is_some_and(|c| self.cars.cars.contains_key(c))
+    }
+
+    /// Sets the car's sensitivity on `surface` (0 gravel, 1 tarmac, 2 snow), or with `None` drops the car's own, and
+    /// writes it to the file: this car's entry only, into the file as it is now.
+    pub fn set(&mut self, surface: usize, value: Option<i32>) {
+        let Some(car) = self.car.clone() else { return };
+        let change = |cars: &mut CarSensitivity, now: [i32; 3]| match value {
+            Some(value) => {
+                let mut values = now;
+                values[surface.min(2)] = value;
+                cars.cars.insert(car.clone(), values);
+            }
+            None => _ = cars.cars.remove(&car),
+        };
+        let now = self.now();
+        change(&mut self.cars, now);
+        let Some(path) = &self.path else { return };
+        let file = std::fs::read_to_string(path).unwrap_or_default();
+        let mut cars = CarSensitivity::parse(&file);
+        change(&mut cars, now);
+        if let Err(e) = std::fs::write(path, cars.replace_in(&file)) {
+            eprintln!("viewer: {}: {e}", path.display());
+        }
+    }
+}
+
+/// The sensitivities a live command (`viewer --live`'s) starts NGP's car with: its `--ffb-sensitivity G,T,S`, else
+/// 100 each.
+pub fn started(command: &[String]) -> [i32; 3] {
+    let given = command.iter().position(|a| a == "--ffb-sensitivity").and_then(|k| command.get(k + 1));
+    let values = given.and_then(|v| v.split(',').map(|w| w.trim().parse().ok()).collect::<Option<Vec<i32>>>());
+    values.and_then(|v| v.try_into().ok()).unwrap_or([100; 3])
+}
+
 /// The force NGP's curve gives at sensitivity percentage `now` for a force `force` it gave at `was`, both for the
 /// drive's surface (`rbr_physics::ngp::ffb`): its `1 - 0.975^(|T| 100 / S)` with `S` scaled by `now / was`, which
 /// is `1 - (1 - |force|)^(was / now)` with the sign kept. A percentage of 0 or less, or 100, leaves `S` as it is.
@@ -213,6 +277,9 @@ struct Shared {
     /// The drive is paused: no force, whatever the step records still set.
     paused: AtomicBool,
     stop: AtomicBool,
+    /// The sensitivity NGP's car gives the force at and the one it takes now, percent ([`reshape`]; 0 for none).
+    was: AtomicI32,
+    now: AtomicI32,
 }
 
 impl Wheel {
@@ -237,9 +304,17 @@ impl Wheel {
         }
     }
 
-    /// The force for the latest step (`live::Hud::force`) and the steering input now (-1 to 1).
+    /// The force for the latest step (`live::Hud::force`) and the steering input now (-1 to 1), at the sensitivity
+    /// [`Wheel::set_sensitivity`] asked for.
     pub fn set(&self, force: f32, steering: f32) {
-        self.set_magnitude(ffb::magnitude(force, &self.settings), steering);
+        let (was, now) = (self.shared.was.load(Ordering::Relaxed), self.shared.now.load(Ordering::Relaxed));
+        self.set_magnitude(ffb::magnitude(reshape(force, was, now), &self.settings), steering);
+    }
+
+    /// The force at sensitivity `now` rather than `was`, NGP's car's, on the drive's surface ([`reshape`]).
+    pub fn set_sensitivity(&self, was: i32, now: i32) {
+        self.shared.was.store(was, Ordering::Relaxed);
+        self.shared.now.store(now, Ordering::Relaxed);
     }
 
     /// A magnitude (-10000 to 10000) as the game passes it to DirectInput, and the steering input now (public for
@@ -412,6 +487,30 @@ mod tests {
         assert!(text.starts_with("[ffb]\nstrength = 1\n\n") && text.contains("[camera]\nview = bonnet\n"), "{text}");
         assert!(!text.contains("sensitivity_car") && !text.contains("COROLLA"), "{text}");
         assert_eq!(Options::parse(&text).settings.strength, 1.0);
+    }
+
+    #[test]
+    fn the_session_keeps_the_cars_own_in_the_file() {
+        let dir = std::env::temp_dir().join(format!("rerbr-ffb-session-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("launcher-settings.ini");
+        std::fs::write(&path, "[ffb]\nsensitivity_gravel = 280\n\n[camera]\nview = chase\n").unwrap();
+        let mut session = super::Session::load(Some(&path), Some("rsf-107".into()), [280, 250, 280], [280, 250, 280]);
+        assert_eq!((session.now(), session.own()), ([280, 250, 280], false));
+        // Another writer's car meanwhile is kept.
+        let other = std::fs::read_to_string(&path).unwrap() + "\n[ffb_cars]\nrsf-67 = 300,300,300\n";
+        std::fs::write(&path, other).unwrap();
+        session.set(0, Some(350));
+        assert_eq!((session.now(), session.own()), ([350, 250, 280], true));
+        let text = std::fs::read_to_string(&path).unwrap();
+        let cars = CarSensitivity::parse(&text).cars;
+        assert_eq!((cars.get("rsf-107"), cars.get("rsf-67")), (Some(&[350, 250, 280]), Some(&[300; 3])));
+        assert!(text.contains("[camera]\nview = chase\n"), "{text}");
+        session.set(0, None);
+        assert!(!CarSensitivity::parse(&std::fs::read_to_string(&path).unwrap()).cars.contains_key("rsf-107"));
+        std::fs::remove_dir_all(&dir).unwrap();
+        let live = ["rbr-standalone", "--ffb-sensitivity", "280,250,300", "--boot"].map(String::from);
+        assert_eq!((super::started(&live), super::started(&live[..1])), ([280, 250, 300], [100; 3]));
     }
 
     #[test]

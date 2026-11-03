@@ -575,6 +575,7 @@ impl App {
         if !self.replay {
             self.sync_results();
         }
+        self.wheel_sensitivity();
         let running = &mut self.running;
         let speed = WALK_SPEED * if self.held.contains(&KeyCode::ShiftLeft) { FAST_FACTOR } else { 1.0 };
         let movement = movement(&self.held);

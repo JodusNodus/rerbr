@@ -101,7 +101,8 @@ fn a_paced_ngp_live_boot_runs_frames_of_several_steps_at_real_speed() {
 }
 
 /// NGP's force-feedback sensitivity (`Race::ffb_sensitivity`, `--ffb-sensitivity`) at 50 % halves the car's `S`:
-/// the same drive, frame for frame, with each steering force `1 - (1 - f)^2` of the force `f` at 100 %.
+/// the same drive, frame for frame, with each steering force `1 - (1 - f)^2` of the force `f` at 100 %. Only the snow
+/// percentage is set: map 11 is snow, which FFB1 says.
 #[test]
 fn ngp_ffb_sensitivity_reshapes_the_force_and_nothing_else() {
     quick_race(|data, stage, race| {
@@ -118,14 +119,16 @@ fn ngp_ffb_sensitivity_reshapes_the_force_and_nothing_else() {
                 let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
                 let records = records::read_records(&mut &rest[..]).unwrap();
                 let (_, force) = records.iter().find(|(tag, _)| *tag == rbr_recording::ffb::FFB1).unwrap();
-                let force = rbr_recording::ffb::Steering::from_payload(force).unwrap().force;
+                let steering = rbr_recording::ffb::Steering::from_payload(force).unwrap();
+                assert_eq!(steering.surface, 2, "snow");
+                let force = steering.force;
                 out.push((answer[..FRAME_BYTES].to_vec(), force));
                 last = Some(answer);
             }
             out
         };
         let base = drive(&race);
-        let half = drive(&boot::Race { ffb_sensitivity: [50; 3], ..race.clone() });
+        let half = drive(&boot::Race { ffb_sensitivity: [100, 100, 50], ..race.clone() });
         let mut felt = 0;
         for (k, ((frame, f), (half_frame, h))) in base.iter().zip(&half).enumerate() {
             assert!(frame == half_frame, "frame {k}: the physics differs");

@@ -675,10 +675,16 @@ fn wheel_of_payload(p: &TyreParticles) -> Wheel {
 /// game takes `_LOW` with `ParticleQuality = low`, and for every map from 0x48 but 0x4a, 0x4f and 0x50 at any quality;
 /// `CPC_TrackState`, `RBR_E09_TrackHead.cpp:436`). The name is matched without case.
 fn particle_file(data: &Data, maps: &Path, stage: &str) -> Result<Option<std::path::PathBuf>, String> {
-    // A stage folder's `Tracks<id>.ini` (RallySimFans): the full file (ours: the exe's map-number rule is retail's). A
-    // BTB stage's folder plays as map 41, with its particles (`notes/btb.md` "Playing").
-    if let Some(folder) = stage_files::folder(stage).filter(|f| rbr_btb::stage::source(f).is_none()) {
-        return Ok(rsf::open(folder)?.particle_file(data, false));
+    // A stage folder's `Tracks<id>.ini` (RallySimFans): the full file (ours: the exe's map-number rule is retail's).
+    if let Some(folder) = stage_files::folder(stage) {
+        match rbr_btb::stage::source(folder) {
+            None => return Ok(rsf::open(folder)?.particle_file(data, false)),
+            Some(btb) => {
+                if let Some(path) = btb_particles(maps, &btb)? {
+                    return Ok(Some(path));
+                }
+            }
+        }
     }
     let Some(number) = map_number(stage) else { return Ok(None) };
     let text = std::fs::read(maps.join("Tracks.ini")).map_err(|e| format!("Tracks.ini: {e}"))?;
@@ -687,7 +693,30 @@ fn particle_file(data: &Data, maps: &Path, stage: &str) -> Result<Option<std::pa
     else {
         return Ok(None);
     };
-    let stem = value.trim_matches('"').rsplit('\\').next().unwrap_or("").to_ascii_lowercase();
+    in_maps(maps, value)
+}
+
+/// A BTB stage's particle file (ours; `notes/btb.md` "Particles"): its `track.ini` `particles=`, else on gravel the
+/// British one (`PS_British`) and on snow RallySimFans's `PS_BTBSnow`; `None` for map 41's, Mont Blanc's, which throws
+/// tarmac's and grass's but nothing on gravel. RallySimFans's `PS_BTBTarmac` does not read: 112 material aliases
+/// declared, 116 listed.
+fn btb_particles(maps: &Path, btb: &Path) -> Result<Option<std::path::PathBuf>, String> {
+    let Ok(track) = rbr_btb::track::Track::open(btb) else { return Ok(None) };
+    let own = track.info.entries.iter().find(|(k, _)| k.eq_ignore_ascii_case("particles")).map(|(_, v)| v.as_str());
+    if let Some(path) = own.map(|own| in_maps(maps, own)).transpose()?.flatten() {
+        return Ok(Some(path));
+    }
+    match track.info.physics() {
+        Some(rbr_btb::track::Physics::Tarmac) => Ok(None),
+        Some(rbr_btb::track::Physics::Snow) => in_maps(maps, "PS_BTBSnow"),
+        _ => in_maps(maps, "PS_British"),
+    }
+}
+
+/// The `Maps` file a `Particles` value names (`"Maps\\ps_montblanc"`, quotes and folder dropped), `.ini` added,
+/// matched without case.
+fn in_maps(maps: &Path, value: &str) -> Result<Option<std::path::PathBuf>, String> {
+    let stem = value.trim_matches('"').rsplit(['\\', '/']).next().unwrap_or("").to_ascii_lowercase();
     let wanted = format!("{stem}.ini");
     let entries = std::fs::read_dir(maps).map_err(|e| format!("{}: {e}", maps.display()))?;
     Ok(entries
@@ -823,5 +852,34 @@ mod tests {
         // `--precipitation` over the game's rule; without it the preset's.
         assert_eq!(Precipitation::resolve(Some(Rain::None), Some("54E_heavyrain"), true, true), None);
         assert_eq!(Precipitation::resolve(None, Some("54E_heavyrain"), true, true), rain(1.0));
+    }
+}
+
+#[cfg(test)]
+mod btb_tests {
+    use super::btb_particles;
+    use rbr_formats::pss;
+
+    /// Every BTB folder of `RBR_RSF` but tarmac's takes a particle file that reads, and on gravel one whose spray
+    /// handles its gravel (Mont Blanc's, map 41's, handles none: Kuohu threw no dust, 2026-11-03).
+    #[test]
+    fn btb_stages_throw_their_surfaces() {
+        let Some(root) = std::env::var_os("RBR_RSF").map(std::path::PathBuf::from) else {
+            eprintln!("skipping: RBR_RSF not set");
+            return;
+        };
+        let maps = root.join("Maps");
+        for track in rbr_btb::track::scan(&root).iter().flatten() {
+            let Some(path) = btb_particles(&maps, &track.folder).unwrap() else {
+                assert_eq!(track.info.physics(), Some(rbr_btb::track::Physics::Tarmac), "{}", track.name);
+                continue;
+            };
+            let file = pss::parse(&String::from_utf8_lossy(&std::fs::read(&path).unwrap())).unwrap();
+            if track.info.physics().is_none_or(|p| p == rbr_btb::track::Physics::Gravel) {
+                // Gravel_Coarse_Shallow_Dry, Kuohu's most.
+                let handled = file.handled_material(0x31);
+                assert!(file.handlers.iter().any(|h| h.material == handled), "{}: {}", track.name, path.display());
+            }
+        }
     }
 }

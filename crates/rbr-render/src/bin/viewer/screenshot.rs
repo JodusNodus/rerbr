@@ -30,7 +30,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     let menu = match (&scene.live, &args.pause_menu) {
         (Some(live), Some(moves)) => {
             let mut menu =
-                PauseMenu::open(live.menu, CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head()));
+                PauseMenu::open(live.menu, CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head()), None);
             if moves.iter().any(|&nav| matches!(menu.nav(nav), Some(Outcome::Chosen(_)))) {
                 return Err("--pause-menu: the moves close the menu".into());
             }

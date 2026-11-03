@@ -5,6 +5,7 @@ use crate::args::Args;
 use rbr_gameplay::pause_menu::{Item, Page};
 use rbr_render::bindings::Action;
 use rbr_render::hud::camera_page::CameraPage;
+use rbr_render::hud::ffb_page::FfbPage;
 use rbr_render::hud::pause::{Nav, Outcome, PauseMenu};
 use rbr_render::live::{self, Controls, Live};
 use rbr_render::playback::{ChaseLook, Drive};
@@ -194,9 +195,15 @@ impl App {
         let Some(process) = &mut self.scene.live else {
             return;
         };
+        // The Force feedback page with the wheel's force on, once the live process said the car's surface.
+        let ffb = (process.hud.ffb_surface.zip(self.wheel.as_ref())).map(|(surface, _)| {
+            let (session, surface) = (&self.scene.ffb, surface.min(2) as usize);
+            FfbPage::new(surface, session.now()[surface], session.own(), session.global[surface])
+        });
         self.menu = Some(PauseMenu::open(
             process.menu,
             CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head()),
+            ffb,
         ));
         process.pause();
         self.pause_outputs(true);
@@ -208,6 +215,7 @@ impl App {
         let item = match self.menu.as_mut().and_then(|menu| menu.nav(nav)) {
             None => return,
             Some(Outcome::Camera) => return self.camera_changed(),
+            Some(Outcome::ForceFeedback) => return self.ffb_changed(),
             Some(Outcome::Chosen(item)) => item,
         };
         self.menu = None;
@@ -230,6 +238,24 @@ impl App {
             Item::Restart => self.restart_live(),
             Item::Exit | Item::Continue => self.exit = true,
         }
+    }
+
+    /// Keeps the sensitivity the Force feedback page set for the car (or drops the car's own) and writes it to the
+    /// file; the wheel takes it with the next frame ([`Self::wheel_sensitivity`]).
+    fn ffb_changed(&mut self) {
+        let Some(page) = self.menu.as_ref().and_then(PauseMenu::ffb) else {
+            return;
+        };
+        let (surface, value) = (page.surface, page.own.then_some(page.value));
+        self.scene.ffb.set(surface, value);
+    }
+
+    /// Points the wheel's force at the car's sensitivity now on the drive's surface, from the one NGP's car started
+    /// with (`ffb::reshape`).
+    pub fn wheel_sensitivity(&self) {
+        let (Some(wheel), Some(process)) = (&self.wheel, &self.scene.live) else { return };
+        let Some(surface) = process.hud.ffb_surface.map(|s| s.min(2) as usize) else { return };
+        wheel.set_sensitivity(self.scene.ffb.started[surface], self.scene.ffb.now()[surface]);
     }
 
     /// Shows the view, the car's nudges and the head the Camera page set, and writes them to the file.
