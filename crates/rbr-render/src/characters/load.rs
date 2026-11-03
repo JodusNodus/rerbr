@@ -154,7 +154,7 @@ pub struct Loaded {
     pub cells: Vec<super::cells::Cell>,
 }
 
-/// The scripts archive (the 1.02 patch's when present), by lowercase path.
+/// The scripts archive (the 1.02 patch's when present, else the retail one patched as 1.02), by lowercase path.
 pub(super) struct Scripts {
     files: HashMap<String, Vec<u8>>,
     parsed: HashMap<String, Option<Arc<Chunk>>>,
@@ -172,6 +172,10 @@ impl Scripts {
             let mut bytes = Vec::new();
             entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
             files.insert(name.replace('\\', "/"), bytes);
+        }
+        // The 1.02 patch's one script change: the `1a` can loads the `1b` model (the retail disc has both).
+        if let Some(bytes) = files.get_mut("scripts/load_sp_redbull_can1a.lua") {
+            *bytes = String::from_utf8_lossy(bytes).replace("REDBULL_CAN1a_01", "REDBULL_CAN1b_01").into_bytes();
         }
         Ok(Scripts { files, parsed: HashMap::new() })
     }
