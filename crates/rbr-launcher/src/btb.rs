@@ -77,7 +77,7 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),
             rsf_root: root.to_owned(),
-            problem: stage::problem(&track),
+            problem: None,
             folder: track.folder.clone(),
         };
         let stage = Stage { name: format!("{}/{}", btb.folder.display(), stage::TRACK), map: number, letter: 'M' };

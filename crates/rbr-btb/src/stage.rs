@@ -4,7 +4,6 @@
 //! folder stage, the other files of map 41 coming from the install's `Maps/` (`rbr_formats::stage_files`).
 
 use crate::classic;
-use crate::ksh::Math;
 use crate::track::{Physics, Track};
 use rbr_formats::{ini, stage_files};
 use std::path::{Path, PathBuf};
@@ -26,18 +25,11 @@ pub fn prepare(track: &Track, rsf_root: &Path, out: &Path) -> Result<String, Str
     write("lbs", classic::lbs(&track.spawn()?))?;
     write("dls", classic::dls(&track.pace_notes()?.notes))?;
     write("mat", classic::mat(&track.surface_maps()?.maps))?;
-    write("trk", classic::trk_from(track, Math::Native)?)?;
-    write("col", col(track)?)?;
+    write("trk", classic::trk_from(track, crate::D3dx::Windows)?)?;
+    write("col", crate::col::build(track)?)?;
     let source = format!("[BTB]\nfolder={}\nrsf={}\n", track.folder.display(), rsf_root.display());
     std::fs::write(out.join(SOURCE_FILE), source).map_err(|e| format!("{SOURCE_FILE}: {e}"))?;
     Ok(format!("{}/{TRACK}", out.display()))
-}
-
-/// The `.col` of the stage. Until `rbr_btb::col` is merged this is the folder's cached `CACHE/col.col`.
-fn col(track: &Track) -> Result<Vec<u8>, String> {
-    let cached = stage_files::in_dir(&track.folder, "CACHE\\col.col")
-        .ok_or_else(|| format!("{}: no CACHE/col.col (the collision builder is not merged yet)", track.name))?;
-    std::fs::read(&cached).map_err(|e| format!("{}: {e}", cached.display()))
 }
 
 /// The BTB folder a prepared stage folder (`<out>`, or the stage name's folder) was built from; `None` when it has no
@@ -47,13 +39,6 @@ pub fn source(stage_folder: &Path) -> Option<PathBuf> {
     let sections = ini::parse(&String::from_utf8_lossy(&text)).ok()?;
     let folder = crate::track::find_entry(crate::track::find_section(&sections, "BTB")?, "folder")?;
     Some(PathBuf::from(folder)).filter(|f| f.is_dir())
-}
-
-/// Why the stage cannot be prepared, when it is known without building it.
-pub fn problem(track: &Track) -> Option<String> {
-    stage_files::in_dir(&track.folder, "CACHE\\col.col")
-        .is_none()
-        .then(|| "no CACHE/col.col (collision builder not merged)".to_owned())
 }
 
 /// The `--surface` argument of the stage's physics: `track.ini` `physics=`; the plugin's `E14_4a1330` override.
