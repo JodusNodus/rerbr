@@ -22,12 +22,11 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   `SpecularPower`/`SpecularColor` with decimal commas, texture paths (absolute author paths the game never reads).
 - `mat.ini` `[MAPS]` count and `[MAP<i>]` `data0..data15` rows of 16 cells (values fit `u8`).
 - `pacenotes.ini` `[PACENOTES]` count and `[P<i>]` type, distance, flag; five folders hold more `[P<i>]` than `count`.
-- Numbers use the author's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`);
-  parsed by `track::decimal_floats`. The plugin itself reads `colBox` and `sunDirection` with `sscanf("%f, %f, %f")` and
-  `LODIn`/`LODOut`/`distance` with `sscanf("%f")` (`FUN_10008bc0`, C locale): commas separate there, so `colBox=0,15, 1, 0,15` is
-  (0, 15, 1) (`track::scan_col_box`, `Object::col_box`) and `LODOut=2679,576` reads 2679 in the plugin (the renderer keeps the
-  decimal comma, 2679.576: a `LODOut` difference of under 1 m matters little). `materials.ini` colours are not read by that
-  function (the effect loader's parser was not found; unknown).
+- Numbers are written with the author's locale (`LODOut=2679,576`, `SpecularColor=0,4235294,...`), but the plugin
+  reads them in the C locale (`FUN_10008bc0`): `colBox` and `sunDirection` with `sscanf("%f, %f, %f")`, `LODIn`,
+  `LODOut` and `distance` with `sscanf("%f")`, so commas separate: `colBox=0,15, 1, 0,15` is (0, 15, 1)
+  (`track::scan_col_box`) and `LODOut=2679,576` is 2679 (`track::scan_float`). How the effect loader reads the
+  `materials.ini` colours is not known; `track::decimal_floats` reads them with decimal commas.
 - Text files are bytes decoded lossy (non-UTF-8 `track.ini` names exist), sections/keys first-match
   case-insensitive, headers only at line starts: `rbr_formats::ini` gives Windows-identical sections here (no
   indented headers or comments in any folder).

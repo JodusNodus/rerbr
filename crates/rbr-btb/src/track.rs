@@ -63,7 +63,7 @@ pub fn decimal_floats(s: &str) -> Vec<f64> {
     out
 }
 
-/// The single number in `s` (`LODOut`, `SpecularPower`): `Some` when it holds exactly one.
+/// The single number in `s` (`SpecularPower`): `Some` when it holds exactly one.
 pub fn decimal_float(s: &str) -> Option<f64> {
     match &decimal_floats(s)[..] {
         [v] => Some(*v),
@@ -372,6 +372,12 @@ pub fn scan_col_box(s: &str) -> Option<[f32; 3]> {
     Some(out)
 }
 
+/// `sscanf(s, "%f")` in the C locale, as the plugin reads `LODIn` and `LODOut`: `2679,576` is 2679.
+pub fn scan_float(s: &str) -> Option<f32> {
+    let s = s.trim_start();
+    s[..float_prefix(s)?].parse().ok()
+}
+
 /// The length of the longest `[+-]digits[.digits][e[+-]digits]` prefix of `s`.
 fn float_prefix(s: &str) -> Option<usize> {
     let b = s.as_bytes();
@@ -415,8 +421,8 @@ impl Object {
             file: find_entry(section, "file").unwrap_or_default().to_owned(),
             xform: find_entry(section, "xform").unwrap_or_default().to_owned(),
             clone_count: find_entry(section, "cloneCount").and_then(|v| v.parse().ok()),
-            lod_in: find_entry(section, "LODIn").and_then(decimal_float),
-            lod_out: find_entry(section, "LODOut").and_then(decimal_float),
+            lod_in: find_entry(section, "LODIn").and_then(scan_float).map(f64::from),
+            lod_out: find_entry(section, "LODOut").and_then(scan_float).map(f64::from),
             visible: Self::flag(section, "Visible"),
             draw_instanced: Self::flag(section, "DrawInstanced"),
             moveable: Self::flag(section, "Moveable"),
@@ -595,6 +601,8 @@ mod tests {
         assert_eq!(decimal_float("2679,576"), Some(2679.576));
         assert_eq!(decimal_float("2"), Some(2.0));
         assert_eq!(decimal_float("0,15, 1"), None);
+        assert_eq!(scan_float("2679,576"), Some(2679.0));
+        assert_eq!(scan_float(" 12.5"), Some(12.5));
     }
 
     #[test]
