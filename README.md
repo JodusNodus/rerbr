@@ -71,35 +71,23 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
 
 ## Install
 
-### 1. Download ReRBR
-
 ReRBR is in alpha: expect bugs, and please [report them](https://github.com/JodusNodus/rerbr/issues/new/choose).
-Download the latest release from the [releases page](https://github.com/JodusNodus/rerbr/releases). Nothing else
-needs installing.
+Development happens mostly on macOS and Linux, so Windows may have more bugs for now.
 
-**macOS** (Apple silicon, macOS 11 or later): `ReRBR-<version>-macos.dmg`. Open it and drag ReRBR to Applications.
-ReRBR isn't signed with an Apple Developer ID, so macOS refuses to open it the first time:
-1. Open ReRBR. macOS says it cannot verify it: press **Done**.
-2. Open **System Settings**, then **Privacy & Security**. Below Security it says "ReRBR was blocked…": press
-   **Open Anyway** and confirm with your password.
+1. **Download** your system's file from the newest [release](https://github.com/JodusNodus/rerbr/releases).
+   Nothing else needs installing, and none of it is signed:
+   - **Windows** 10 or later, x86_64: extract the `.zip` and start `rerbr.exe`. At "Windows protected your PC",
+     press **More info**, then **Run anyway**.
+   - **macOS** 11 or later, Apple silicon: drag ReRBR from the `.dmg` to Applications. The first time macOS blocks
+     it: press **Done**, then **Open Anyway** in System Settings → Privacy & Security.
+   - **Linux** x86_64: `chmod +x` the `.AppImage` and start it. It needs FUSE 2 or 3; without it, add
+     `--appimage-extract-and-run`.
+2. **Choose your game folder** at the first start: Richard Burns Rally 1.02 with NGP, a RallySimFans install being
+   the easiest ([below](#your-game-with-ngp)).
+3. **Get NGP 7.4.778** if Settings asks for it: press **Download NGP 7.4.778…**.
+4. Press **Start**.
 
-After that it opens normally. (In Terminal, `xattr -dr com.apple.quarantine /Applications/ReRBR.app` does the same.)
-
-**Linux** (x86_64): `ReRBR-<version>-x86_64.AppImage`. Make it executable and start it:
-
-```sh
-chmod +x ReRBR-*.AppImage
-./ReRBR-*.AppImage
-```
-
-It needs FUSE 2 or 3, which most desktops have. Without it, start it with `./ReRBR-*.AppImage
---appimage-extract-and-run`.
-
-**Windows** (x86_64, Windows 10 or later): `ReRBR-<version>-windows-x86_64.zip`. Extract it anywhere and start
-`rerbr.exe` in the ReRBR folder. ReRBR isn't signed, so the first time Windows says "Windows protected your PC": press
-**More info**, then **Run anyway**.
-
-### 2. Your game, with NGP
+### Your game, with NGP
 
 ReRBR plays your own copy of Richard Burns Rally 1.02 with NGP 7. At the first start it asks for your game folder.
 It looks in the usual places and offers the first install with NGP it finds. The folder can be:
