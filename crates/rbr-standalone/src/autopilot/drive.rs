@@ -190,6 +190,7 @@ pub fn drive(
         let sense = sense(&answer, &live);
         let speed = sense.pose.speed();
         let off = sub(sense.pose.position, point(driver.track, sense.parameter));
+        let height = off[2];
         let off = off[0].hypot(off[1]);
         off_road = if off > OFF_ROAD { off_road + 1 } else { 0 };
         if let Some(why) = &driver.gave_up {
@@ -224,13 +225,16 @@ pub fn drive(
         last = Some((answer[..FRAME_BYTES].to_vec(), q));
         if k % 500 == 0 {
             eprintln!(
-                "autopilot: step {step}: at {:.1} of {:.1} m, {off:.1} m off the driveline, {speed:.1} m/s (target {:.1}), gear {}, engine {:.0} rad/s, steering {}",
+                "autopilot: step {step}: at {:.1} of {:.1} m, {off:.1} m off the driveline, {speed:.1} m/s (target {:.1}), gear {}, engine {:.0} rad/s, steering {}, {height:.1} m above the driveline, at {:.0},{:.0},{:.1}",
                 distance(&driver.values, sense.parameter),
                 driver.values.last().unwrap(),
                 driver.target_speed(distance(&driver.values, sense.parameter)),
                 sense.gear,
                 sense.engine,
-                q.steering
+                q.steering,
+                sense.pose.position[0],
+                sense.pose.position[1],
+                sense.pose.position[2]
             );
         }
         control = payload(&q.car_control(), word6);

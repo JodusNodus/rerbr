@@ -205,7 +205,7 @@ content (rsfdata/, Maps/<id>-<name>/, Cars/).
                             patch files)
   --viewer PATH             the viewer (default: next to the launcher)
   --standalone PATH         rbr-standalone (default: next to the launcher)
-  --list                    print the startable maps, the unavailable maps and cars, and what the install lacks, and exit
+  --list                    print the startable maps and cars, the unavailable maps and cars, and what the install lacks, and exit
   --command                 print the viewer command Start runs with the saved selection (RBR_DATA= and RBR_PATCH=,
                             the program, one argument a line), and exit
   --screenshot DIR          draw the pages to PNGs in DIR, and exit
@@ -313,8 +313,9 @@ fn run() -> Result<(), String> {
         let (catalog, season) = (&form.catalog, &form.season);
         println!("Startable maps: {}/{}", catalog.startable_maps(season).len(), catalog.maps.len());
         for map in &catalog.maps {
-            if let Err(reason) = catalog.availability(season, map) {
-                println!("Unavailable: {} — {reason}", catalog::map_label(map));
+            match catalog.availability(season, map) {
+                Ok(_) => println!("Startable: {}", catalog::map_label(map)),
+                Err(reason) => println!("Unavailable: {} — {reason}", catalog::map_label(map)),
             }
         }
         form.log_missing_programs();
@@ -322,6 +323,9 @@ fn run() -> Result<(), String> {
             println!("{issue}");
         }
         for car in &catalog.cars {
+            if car.unavailable().is_none() {
+                println!("Startable car: {}", catalog::car_label(car));
+            }
             if let Some(reason) = car.unavailable() {
                 println!("Unavailable car: {} — {reason}", catalog::car_label(car));
             } else if let Some(rsf) = car.rsf.as_ref().filter(|r| r.added) {
