@@ -17,8 +17,8 @@
 //! of a line: in `Kinamba Yala` and `Olocau Gatova` a `data15` line is missing its newline (`... 69[MAP1]`), so that
 //! `[MAPn]` is not a section and its map reads all zeros, and the trailing `69[MAP1]` token reads 69 (`atoi`).
 //!
-//! Numbers with BTB's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`,
-//! `colBox=0,15, 1, 0,15`) parse through [`decimal_floats`].
+//! Numbers with BTB's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`) parse through
+//! [`decimal_floats`]; `colBox` is read as the plugin's `sscanf` reads it ([`scan_col_box`]).
 
 use rbr_formats::{ini, stage_files};
 use std::path::{Path, PathBuf};
@@ -63,7 +63,7 @@ pub fn decimal_floats(s: &str) -> Vec<f64> {
     out
 }
 
-/// The single number in `s` (`LODOut`, `SpecularPower`): `Some` when it holds exactly one.
+/// The single number in `s` (`SpecularPower`): `Some` when it holds exactly one.
 pub fn decimal_float(s: &str) -> Option<f64> {
     match &decimal_floats(s)[..] {
         [v] => Some(*v),
@@ -348,10 +348,61 @@ pub struct Object {
     pub shadow_caster: Option<bool>,
     /// `CollisionModel`: 0 none, -1 unknown, 2 collision (one `(3,0x16)` mesh per such object in `trk.trk`).
     pub collision_model: Option<i32>,
-    /// `colBox`: three extents, decimal commas or points (`0,15, 1, 0,15` reads 0.15, 1, 0.15).
-    pub col_box: Option<[f64; 3]>,
+    /// `colBox` as the plugin reads it ([`scan_col_box`]): `0,15, 1, 0,15` is (0, 15, 1).
+    pub col_box: Option<[f32; 3]>,
     /// The whole section, so unknown keys stay accessible.
     pub entries: RawEntries,
+}
+
+/// `sscanf(value, "%f, %f, %f")` in the C locale: three numbers, each followed by a comma right after it, white
+/// space free. `colBox=0,15, 1, 0,15` therefore reads (0, 15, 1) - the decimal commas are separators. `None` when
+/// fewer than three read (the plugin then takes the mesh's bounding box).
+pub fn scan_col_box(s: &str) -> Option<[f32; 3]> {
+    let mut rest = s;
+    let mut out = [0.0f32; 3];
+    for (i, slot) in out.iter_mut().enumerate() {
+        if i > 0 {
+            rest = rest.strip_prefix(',')?;
+        }
+        let rest_trimmed = rest.trim_start();
+        let end = float_prefix(rest_trimmed)?;
+        *slot = rest_trimmed[..end].parse().ok()?;
+        rest = &rest_trimmed[end..];
+    }
+    Some(out)
+}
+
+/// `sscanf(s, "%f")` in the C locale, as the plugin reads `LODIn` and `LODOut`: `2679,576` is 2679.
+pub fn scan_float(s: &str) -> Option<f32> {
+    let s = s.trim_start();
+    s[..float_prefix(s)?].parse().ok()
+}
+
+/// The length of the longest `[+-]digits[.digits][e[+-]digits]` prefix of `s`.
+fn float_prefix(s: &str) -> Option<usize> {
+    let b = s.as_bytes();
+    let digits = |from: usize| b[from.min(b.len())..].iter().take_while(|c| c.is_ascii_digit()).count();
+    let mut i = usize::from(matches!(b.first(), Some(b'+' | b'-')));
+    let int = digits(i);
+    i += int;
+    let mut frac = 0;
+    if b.get(i) == Some(&b'.') {
+        frac = digits(i + 1);
+        if int > 0 || frac > 0 {
+            i += 1 + frac;
+        }
+    }
+    if int + frac == 0 {
+        return None;
+    }
+    if matches!(b.get(i), Some(b'e' | b'E')) {
+        let sign = usize::from(matches!(b.get(i + 1), Some(b'+' | b'-')));
+        let exp = digits(i + 1 + sign);
+        if exp > 0 {
+            i += 1 + sign + exp;
+        }
+    }
+    Some(i)
 }
 
 impl Object {
@@ -364,17 +415,14 @@ impl Object {
     }
 
     fn parse(index: usize, section: &ini::Section) -> Object {
-        let col_box = find_entry(section, "colBox").and_then(|v| match &decimal_floats(v)[..] {
-            &[a, b, c] => Some([a, b, c]),
-            _ => None,
-        });
+        let col_box = find_entry(section, "colBox").and_then(scan_col_box);
         Object {
             index,
             file: find_entry(section, "file").unwrap_or_default().to_owned(),
             xform: find_entry(section, "xform").unwrap_or_default().to_owned(),
             clone_count: find_entry(section, "cloneCount").and_then(|v| v.parse().ok()),
-            lod_in: find_entry(section, "LODIn").and_then(decimal_float),
-            lod_out: find_entry(section, "LODOut").and_then(decimal_float),
+            lod_in: find_entry(section, "LODIn").and_then(scan_float).map(f64::from),
+            lod_out: find_entry(section, "LODOut").and_then(scan_float).map(f64::from),
             visible: Self::flag(section, "Visible"),
             draw_instanced: Self::flag(section, "DrawInstanced"),
             moveable: Self::flag(section, "Moveable"),
@@ -551,7 +599,6 @@ mod tests {
     fn decimal_commas_and_points_read_as_floats() {
         assert_eq!(decimal_floats("2679,576"), vec![2679.576]);
         assert_eq!(decimal_floats("0,4235294,0,4078431,0,2156863"), vec![0.4235294, 0.4078431, 0.2156863]);
-        assert_eq!(decimal_floats("0,15, 1, 0,15"), vec![0.15, 1.0, 0.15]);
         assert_eq!(decimal_floats("-0.843359,-0.503774,0.186968"), vec![-0.843359, -0.503774, 0.186968]);
         assert_eq!(decimal_floats("2,7"), vec![2.7]);
         assert_eq!(decimal_floats("16"), vec![16.0]);
@@ -559,6 +606,8 @@ mod tests {
         assert_eq!(decimal_float("2679,576"), Some(2679.576));
         assert_eq!(decimal_float("2"), Some(2.0));
         assert_eq!(decimal_float("0,15, 1"), None);
+        assert_eq!(scan_float("2679,576"), Some(2679.0));
+        assert_eq!(scan_float(" 12.5"), Some(12.5));
     }
 
     #[test]
@@ -612,11 +661,13 @@ mod tests {
     }
 
     #[test]
-    fn col_box_reads_both_locales() {
+    fn col_box_reads_like_sscanf() {
+        assert_eq!(scan_col_box("0,15, 1, 0,15"), Some([0.0, 15.0, 1.0]));
+        assert_eq!(scan_col_box("0.3, 3, 0.3"), Some([0.3, 3.0, 0.3]));
+        assert_eq!(scan_col_box("1e1, 2 , 3"), None);
+        assert_eq!(scan_col_box("1, 2"), None);
         let section =
             ini::Section { name: "Object_0".into(), entries: vec![("colBox".into(), "0,15, 1, 0,15".into())] };
-        assert_eq!(Object::parse(0, &section).col_box, Some([0.15, 1.0, 0.15]));
-        let section = ini::Section { name: "Object_0".into(), entries: vec![("colBox".into(), "0.3, 3, 0.3".into())] };
-        assert_eq!(Object::parse(0, &section).col_box, Some([0.3, 3.0, 0.3]));
+        assert_eq!(Object::parse(0, &section).col_box, Some([0.0, 15.0, 1.0]));
     }
 }

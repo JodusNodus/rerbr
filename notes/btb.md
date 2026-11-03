@@ -2,7 +2,7 @@
 
 BTB (Bob's Track Builder) stages as RallySimFans installs them (`RX_CONTENT/Tracks/<folder>/`) and its `rbr_rx.dll`
 plugin plays them. Code: `crates/rbr-btb` (`track` the folder readers, `classic` the `trk`/`mat`/`dls`/`lbs`
-builders, `ids` the RSF stage ids, `xfile`/`xform` the meshes; tests `crates/rbr-btb/tests/`). Facts with their evidence, one line each.
+builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` the meshes; tests `crates/rbr-btb/tests/`). Facts with their evidence, one line each.
 
 ## Sources
 
@@ -22,8 +22,11 @@ builders, `ids` the RSF stage ids, `xfile`/`xform` the meshes; tests `crates/rbr
   `SpecularPower`/`SpecularColor` with decimal commas, texture paths (absolute author paths the game never reads).
 - `mat.ini` `[MAPS]` count and `[MAP<i>]` `data0..data15` rows of 16 cells (values fit `u8`).
 - `pacenotes.ini` `[PACENOTES]` count and `[P<i>]` type, distance, flag; five folders hold more `[P<i>]` than `count`.
-- Numbers use the author's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`,
-  `colBox=0,15, 1, 0,15` in either locale); parsed by `track::decimal_floats`.
+- Numbers are written with the author's locale (`LODOut=2679,576`, `SpecularColor=0,4235294,...`), but the plugin
+  reads them in the C locale (`FUN_10008bc0`): `colBox` and `sunDirection` with `sscanf("%f, %f, %f")`, `LODIn`,
+  `LODOut` and `distance` with `sscanf("%f")`, so commas separate: `colBox=0,15, 1, 0,15` is (0, 15, 1)
+  (`track::scan_col_box`) and `LODOut=2679,576` is 2679 (`track::scan_float`). How the effect loader reads the
+  `materials.ini` colours is not known; `track::decimal_floats` reads them with decimal commas.
 - Text files are bytes decoded lossy (non-UTF-8 `track.ini` names exist), sections/keys first-match
   case-insensitive, headers only at line starts: `rbr_formats::ini` gives Windows-identical sections here (no
   indented headers or comments in any folder).
@@ -35,9 +38,7 @@ builders, `ids` the RSF stage ids, `xfile`/`xform` the meshes; tests `crates/rbr
   return bytes identical to every cached file (`tests/tracks.rs`).
 - `.trk`: one `(3,0x14)` driveline chunk (first seven `K` values as `f32`, the `u16`s zero) plus one `(3,0x16)`
   chunk (a `u32` mesh count plus the `ksh.ksh` mesh bytes; four cached folders build it empty).
-- One `(3,0x16)` mesh per `CollisionModel=2` object (mesh count equals their count in all 19 caches) and one
-  placement per clone (counts equal the `cloneCount` sums); mesh faces identical, all named `.ksh`: geometry and
-  placements come from the `.x` meshes; until that is built, the builder takes the `ksh` bytes as input.
+- `(3,0x16)` is `ksh.ksh` verbatim after the mesh count ([Collision meshes](#collision-meshes-ksh)); `classic::trk_from` builds the whole `.trk` from the track alone.
 - `.mat`: nine entries (`dry`/`damp`/`wet` by `new`/`normal`/`worn`, 11 space-padded characters) with identical
   runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order, no tail.
 - `.dls`: a fixed 299-byte `MINAATAD` template (version 18, constant trigger-data/channel/trigger/camera words,
@@ -107,6 +108,51 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
   also 560.
 - 70 of 72 folders match; unmatched: `BikolTardos12` (the json's `Bikol Tardos`, 1002) and `Myttaala Gravel` (the
   json's `Myttäälä`, 1059).
+## Collision meshes (ksh)
+
+`rbr_btb::ksh::build(track, Math)` rebuilds `CACHE/ksh.ksh` (`WriteKSH` 0x1001dee0 of `rbr_rx.dll`), the `(3,0x16)` mesh bytes of
+`trk.trk`; `classic::trk_from` wraps it. `tests/ksh.rs`: 19 of 19 cached folders identical in ksh and trk (placement key words masked).
+
+- One mesh per `CollisionModel` 1 or 2 object, in `objectlist.ini` order (counts equal in all 19 caches; no `CollisionModel=1` object
+  exists locally, it only sets the first flag byte); `CollisionModel` 0 and -1 objects go to `col.col`, never here.
+- Mesh: `.ksh\0`, six flag bytes (`CollisionModel == 1`, then zeros), `u32` 0, `u32` 8, 8 corners, `u32` 12, 12 faces (tag byte 0, then
+  `a, c, b` of the fixed box triangle table `FACES`), `u32` clone count, placements `{key, pos, scale, quat}` of 44 bytes.
+- Clones = the `xform` matrix count (file size >> 6, as `ReadClones` 0x1001dc40); a missing xform file is one identity clone. The ini
+  `cloneCount` is not used (equal in all 19 caches anyway).
+- Placement key: the address of the matrix in the plugin's heap (`0x78B5D350`, +64 per clone, other base per run): not reproducible,
+  written as 0, the tests mask it. Nothing reads it (`rbr_formats::trk` skips it); the physics uses
+  a mesh's key only as `host.interactive_handle(object.interactive_id)` for kinds other than 0 and 5 (`stage::wants_handle`), and handles
+  come from the `.lbs` `(1,6)` records, which a BTB `lbs.lbs` lacks, so any key resolves to no handle. The object kind is the first flag
+  byte: 0 (static) for `CollisionModel=2`, 1 (cone) for `CollisionModel=1`: `wants_handle` is false for all local meshes.
+- `colBox` is read by `sscanf("%f, %f, %f")` (`FUN_10008bc0`): `0,1, 3, 0,1` is (0, 1, 3), the commas are separators, not decimal
+  commas (`track::scan_col_box`). Evidence: first corners `(-0, -1.5, -0.05)` of that box.
+- Box corners `(a, b, c)` = colBox: `ex = a*0.5`, `ey = c*0.5`, `ez = b*0.5` (f32), corner bits x:1 y:2 z:4, `x = ∓ex`, `y = ∓ey`,
+  `z = -ez * 0.1f` (corners 0-3) or `ez + ez` (4-7); `-0.0` stays for a zero extent.
+- Without `colBox` (31 objects, La Serra): the `.x` bounding box, positions after the D3DX load shift (nonzero float bits - 1), min/max
+  and `c = 0.5 * (min + max)` in the file frame, corner `i` = `(min|max) - c` by bits x:1 y:2 z:4, written `(x, z, y)`.
+- Placement: position `(m12, m14, m13)`, scale `(|row0|, |row2|, |row1|)` with `|v| = sqrtf((x*x + y*y) + z*z)` in f32 steps (x87
+  at 24-bit precision under Direct3D), quaternion `D3DXQuaternionRotationMatrix` of the raw scaled matrix then
+  `D3DXQuaternionNormalize`, written `(x, z, y, -w)`.
+- Float rules: all arithmetic is f32, no fused ops. Native reproduces all 41804 placements of the other 18 caches, Wine all 3490 of Kutemajarvi.
+- Two D3DX builds produce the caches (cache file times: Windows' 100 ns stamps vs Linux nanoseconds): `ksh::Math::Native`
+  (14 caches, `d3dx9_30.dll` from a Steam prefix, 2388176 bytes) and `Math::Wine` (Kutemajarvi 1994, built 2026-10-15 under Wine's
+  builtin DLL). The tests use whichever reproduces the cache.
+- Native `D3DXQuaternionRotationMatrix` (x87, 0x443258; the CPU variants do not replace it): `trace = (m11 + m00) + m22`; if `trace > 0`:
+  `r = sqrt(trace + 1) * 0.5`, `w = r`, `inv = 0.25 / r`, `x = (m12 - m21) * inv`, `y = (m20 - m02) * inv`, `z = (m01 - m10) * inv`; else
+  with `d = [m00 - m11 - m22, m11 - m00 - m22, m22 - (m11 + m00)]`, `i` = first largest (`d0 < d1` picks 1, then `d[i] < d2` picks 2),
+  `(j, k) = (i+1, i+2) mod 3`: `r = sqrt(d[i] + 1) * 0.5`, `q[i] = r`, `inv = 0.25 / r`, `q[j] = (m_ji + m_ij) * inv`,
+  `q[k] = (m_ki + m_ik) * inv`, `w = (m_jk - m_kj) * inv`.
+- Native `D3DXQuaternionNormalize` (SSE2 variant 0x6117fd, selected when the CPU reports SSE2): `l = (x*x + y*y) + (z*z + w*w)`,
+  `r0 = rsqrtss(l)`, `s = (3 - l*(r0*r0)) * 0.5 * r0`, each component `* s` (the x87 generic one is not what the caches used:
+  18% match). `ksh::rsqrtss` reproduces Intel's instruction: table over exponent parity and the top 10 mantissa bits, entry =
+  `1/sqrt` of the interval centre rounded to 12 mantissa bits (0 differences over all 2048 entries and 200000 random inputs on an
+  i9-13900HX); AMD's table differs, an AMD-built cache would not match.
+- Wine: `trace = m00 + m11 + m22 + 1`; if `trace > 1`: `s = 2*sqrt(trace)`, `x = (m12 - m21)/s`, `y = (m20 - m02)/s`,
+  `z = (m01 - m10)/s`, `w = 0.25*s`, else `Math::Wine`'s `math.c` branches on the largest diagonal; normalise by dividing by
+  `sqrtf(((x*x + y*y) + z*z) + w*w)`. Unverified: the D3DX load shift under Wine (Kutemajarvi has no mesh-bounded box).
+- Open: the sscanf float conversion is assumed correctly rounded to f32 (MSVC's may round via double); `colBox` with fewer than three
+  numbers falls back to the mesh box (no local case); a mesh with several materials or unusual `.x` positions was not seen.
+
 ## Meshes
 
 BTB ("Bob's Track Builder") stages draw from `RX_CONTENT/Tracks/<folder>/Objects.zip` (`Objects/*.x` meshes,

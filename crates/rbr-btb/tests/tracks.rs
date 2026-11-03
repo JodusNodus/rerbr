@@ -1,9 +1,8 @@
 //! The BTB stage folders under `RBR_RSF` (a RallySimFans install, `RX_CONTENT/Tracks/*`): every folder reads, and
 //! every `CACHE/` file the plugin wrote rebuilds byte-identical from the sources. Skipped when `RBR_RSF` is unset.
 //!
-//! The `trk` builder takes the `ksh.ksh` collision-mesh bytes as input (built from the `.x` meshes, another
-//! worker's scope): the test passes the cached ones through, so it checks the driveline encoding and the framing.
-//! Four folders build it empty.
+//! The `trk` builder here takes the cached `ksh.ksh` bytes through, so it checks the driveline encoding and the framing;
+//! `tests/ksh.rs` builds the collision meshes themselves.
 
 use rbr_btb::{classic, ids, track};
 use rbr_formats::{dls, lbs, markers, mat, trk};
