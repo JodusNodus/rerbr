@@ -793,7 +793,7 @@ needles and displays from RBRHUD's gauges, drawn into the dial textures from the
 
 `renderer::Enhance`, `--enhance a,b` or `all`; each off (but for the always-on HDR and TAA) leaves the frame as the
 game draws it. The launcher's Quality section (`graphics_page::Graphics`, user decisions 2026-10-29) sets them by
-preset (Low, Medium, High by default, Ultra) or one by one: `anisotropy`, `decals` and `water` always on (free), `wet` with `--reflections` as "Wet roads" (off; low: no screen-space rays;
+preset (Low, Medium, High, Ultra by default) or one by one: `anisotropy`, `decals` and `water` always on (free), `wet` with `--reflections` as "Wet roads" (off; low: no screen-space rays;
 medium; high), `grass` as "Dense grass" on High and Ultra (user decision 2026-10-30: a half-density, shorter
 field cost more frame time than the full one at 4K, so no middle setting), `windscreen` as "Windscreen" on High and
 Ultra (user decision 2026-10-30: one switch for the pane and its reflection). Removed: `lens`; `ao`, `msaa`, `taa`,

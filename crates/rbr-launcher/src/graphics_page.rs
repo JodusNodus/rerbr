@@ -34,7 +34,7 @@ pub struct Graphics {
 pub const ALWAYS_ON: [&str; 3] = ["anisotropy", "decals", "water"];
 
 /// A new install's choices: the High preset.
-pub const DEFAULT_GRAPHICS: Graphics = Quality::High.graphics(false);
+pub const DEFAULT_GRAPHICS: Graphics = Quality::Ultra.graphics(false);
 
 impl Default for Graphics {
     /// A new install's choices.
