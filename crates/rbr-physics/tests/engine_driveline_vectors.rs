@@ -337,7 +337,12 @@ fn sim_e520_matches_original_calls() {
 #[test]
 fn sim_e660_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
-    common::replay(VARIABLE, SIM_E660, "CEngine::SimE660", |call, mem| {
+    // A NaN `load_d` makes `torque` NaN, whose sign is the host's (`check_windows_nan`).
+    let check = |call: &Call, mem: &rbr_physics::mem::Mem, name: &str| {
+        check_windows_nan(call, mem, name);
+        common::check_after(&call.after, mem, name, call.index);
+    };
+    each_call_with(SIM_E660, "CEngine::SimE660", check, |mem, call| {
         let objects = layout::EngineObjects::at(mem, call.args[0]);
         let def = layout::LoadDef::load(mem, objects.def);
         let options = layout::EngineOptions::load(mem, objects.options);

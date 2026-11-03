@@ -873,7 +873,10 @@ mod tests {
         let run = |i: &Inputs| install(i, &|_| {}, &AtomicBool::new(false));
         assert!(run(&inputs("full")).unwrap_err().contains("is not empty"));
         assert!(run(&Inputs { disc: dir.join("none"), ..inputs("out") }).unwrap_err().ends_with("does not exist"));
-        assert!(run(&inputs("out")).unwrap_err().contains("is not the NGP package"));
+        // A disk short of FREE_BYTES (a small /tmp) refuses before the inputs are read.
+        let short = free_bytes(&dir).is_some_and(|free| free < FREE_BYTES);
+        let err = run(&inputs("out")).unwrap_err();
+        assert!(err.contains(if short { "GB free" } else { "is not the NGP package" }), "{err}");
         let left: Vec<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(left.len(), 2, "{left:?}");
         fs::remove_dir_all(&dir).unwrap();
