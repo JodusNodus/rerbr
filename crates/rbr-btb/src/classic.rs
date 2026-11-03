@@ -4,9 +4,8 @@
 //! `markers`/`dls`, `lbs`).
 //!
 //! - `trk`: one `(3, 0x14)` driveline chunk (the first seven `K<i>` values as `f32`, the two `u16`s zero) and one
-//!   `(3, 0x16)` chunk whose payload is a `u32` mesh count plus the `ksh.ksh` bytes. The `ksh` blob (one mesh per
-//!   `CollisionModel=2` object, one placement per clone, from the `.x` meshes) is not built yet and comes in as
-//!   bytes: four cached folders build it empty (count zero), the rest pass their `CACHE/ksh.ksh` through.
+//!   `(3, 0x16)` chunk whose payload is a `u32` mesh count plus the `ksh.ksh` bytes ([`crate::ksh`]: one mesh per
+//!   `CollisionModel` 1/2 object). [`trk_from`] builds it from the track alone; four cached folders build it empty.
 //! - `mat`: nine entries (`dry`/`damp`/`wet` by `new`/`normal`/`worn`, 11 characters, space padded) with identical
 //!   runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order.
 //! - `dls`: a fixed 299-byte `MINAATAD` template (version 18) holding the first `count` pace notes as the
@@ -14,7 +13,7 @@
 //! - `lbs`: a `(2, 11)` start chunk (identity matrix with the spawn translation, the position twice, `(0, angleZ,
 //!   0)` rotation), then empty `(2, 10)` and `(1, 0)` chunks.
 
-use crate::track::{DrivelinePoint, PaceNote, Spawn};
+use crate::track::{DrivelinePoint, PaceNote, Spawn, Track};
 
 fn put_u16(out: &mut Vec<u8>, v: u16) {
     out.extend_from_slice(&v.to_le_bytes());
@@ -59,6 +58,12 @@ pub fn trk(points: &[DrivelinePoint], ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
     chunk(&mut out, (3, 0x14), &driveline);
     chunk(&mut out, (3, 0x16), &collision);
     out
+}
+
+/// The whole `.trk` of a stage from its own files: the driveline and [`crate::ksh::build`]'s collision meshes.
+pub fn trk_from(track: &Track, math: crate::ksh::Math) -> Result<Vec<u8>, String> {
+    let (count, ksh) = crate::ksh::build(track, math)?;
+    Ok(trk(&track.driveline()?.points, count, &ksh))
 }
 
 /// The 11-character `.mat` entry names, space padded, in file order.
