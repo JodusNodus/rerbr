@@ -130,9 +130,12 @@ The words come from `exe-reads` builds (`cargo build --release -p rbr-standalone
 run with `RBR_EXE_READS=FILE` writes them; `scripts/gen-exe-data.py --reads FILE --write` merges them into
 `data/exe-words.txt`): drive2 attempt 5 and 140 autopilot boots (8 retail cars, 16 stages, weathers, damage, a
 championship stage). A port that reads a word not listed reads 0: rerun the sweep after porting new exe reads. A run reads
-only the virtual-table slots it calls, so the generator takes every table a listed word lies in whole (`whole_vtables`,
-5904 words): CMountedRigidBody's table (0x73e62c) had 9 of its 95 slots, and a mounted part coming off (`StepBig`,
-0x522100, slots 0x48/0x54/0x90) stopped the physics with `unbound 0x0` (El Cubilete, three live drives, 2026-11-03).
+only the virtual-table slots it calls, so the generator takes every virtual table whole (`whole_vtables`): the 937 the
+code installs (their addresses are `.text` operands) and each one a listed word lies in, 13522 words in all.
+CMountedRigidBody's table (0x73e62c) had 9 of its 95 slots and its scratch's (0x73fb6c) none: a mounted part coming off
+(`StepBig`, 0x522100) stopped the physics with `unbound 0x0`, then, with the first table whole, with `E47_Vf54Helper`
+(0x52b6b0) declining the scratch's zero slot 1 (El Cubilete, live drives, 2026-11-03). drive2 attempt 5 stays physics
+PASS 84084/84084.
 Instruction operands are decoded only for captured-memory validation.
 
 ## Store seam
