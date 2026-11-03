@@ -7,22 +7,13 @@
 //!
 //! The plugin computes with D3DX (`d3dx9_30.dll`) in `f32`, and the library is not the same everywhere: a cache built
 //! under Windows uses the native DLL (SSE2 `rsqrtss` quaternion normalisation), one built under Wine uses Wine's
-//! own (plain division). [`Math`] selects which one the placement rotation reproduces.
+//! own (plain division). [`crate::D3dx`] selects which one the placement rotation reproduces.
 
 use crate::track::Track;
+use crate::D3dx;
 use crate::{xfile, xform};
 use rbr_formats::rbz;
 use std::io::Read;
-
-/// Which `d3dx9_30.dll` the cache was built with; only the placement quaternion differs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Math {
-    /// The native Windows DLL: x87 `D3DXQuaternionRotationMatrix`, SSE2 `D3DXQuaternionNormalize` (`rsqrtss` with one
-    /// Newton step). Bit-exact where the CPU's `rsqrtss` is Intel's (see [`rsqrtss`]).
-    Native,
-    /// Wine's builtin DLL: `D3DXQuaternionRotationMatrix` of its `math.c`, normalised by dividing by the length.
-    Wine,
-}
 
 /// The 12 triangles of the box, as indexes into its 8 corners (corner bit 0 is x, bit 1 y, bit 2 z), in the order
 /// the plugin writes them (`DAT_1005e5a8`); each is written `a, c, b` after a zero tag byte.
@@ -45,7 +36,7 @@ const FACES: [[u32; 3]; 12] = [
 ///
 /// The first word of each placement is the address of its matrix in the plugin's heap, different on every run: it is
 /// written as 0 here (the game keeps no use of it, and no byte of the file depends on it).
-pub fn build(track: &Track, math: Math) -> Result<(u32, Vec<u8>), String> {
+pub fn build(track: &Track, d3dx: D3dx) -> Result<(u32, Vec<u8>), String> {
     let objects = track.objects()?;
     let mut zip = None;
     let mut out = Vec::new();
@@ -69,7 +60,7 @@ pub fn build(track: &Track, math: Math) -> Result<(u32, Vec<u8>), String> {
                 mesh_corners(&object.file, &bytes)?
             }
         };
-        mesh(&mut out, object.collision_model == Some(1), &corners, &placements, math);
+        mesh(&mut out, object.collision_model == Some(1), &corners, &placements, d3dx);
         count += 1;
     }
     Ok((count, out))
@@ -139,7 +130,7 @@ fn put_f32s(out: &mut Vec<u8>, values: &[f32]) {
     }
 }
 
-fn mesh(out: &mut Vec<u8>, dynamic: bool, corners: &[[f32; 3]; 8], placements: &[[f32; 16]], math: Math) {
+fn mesh(out: &mut Vec<u8>, dynamic: bool, corners: &[[f32; 3]; 8], placements: &[[f32; 16]], d3dx: D3dx) {
     out.extend_from_slice(b".ksh\0");
     out.extend_from_slice(&[u8::from(dynamic), 0, 0, 0, 0, 0]);
     put_u32(out, 0);
@@ -160,7 +151,7 @@ fn mesh(out: &mut Vec<u8>, dynamic: bool, corners: &[[f32; 3]; 8], placements: &
         // y and z swap: z-up BTB frame to the classic y-up one.
         put_f32s(out, &[m[12], m[14], m[13]]);
         put_f32s(out, &[length(&m[0..3]), length(&m[8..11]), length(&m[4..7])]);
-        let [x, y, z, w] = quaternion(m, math);
+        let [x, y, z, w] = quaternion(m, d3dx);
         put_f32s(out, &[x, z, y, -w]);
     }
 }
@@ -171,10 +162,10 @@ fn length(v: &[f32]) -> f32 {
 }
 
 /// `D3DXQuaternionRotationMatrix` of the row-major matrix (scales not removed) then `D3DXQuaternionNormalize`.
-pub fn quaternion(m: &[f32; 16], math: Math) -> [f32; 4] {
-    match math {
-        Math::Native => normalize_native(rotation_native(m)),
-        Math::Wine => normalize_wine(rotation_wine(m)),
+pub fn quaternion(m: &[f32; 16], d3dx: D3dx) -> [f32; 4] {
+    match d3dx {
+        D3dx::Windows => normalize_native(rotation_native(m)),
+        D3dx::Wine => normalize_wine(rotation_wine(m)),
     }
 }
 

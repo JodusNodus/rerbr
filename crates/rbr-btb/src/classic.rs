@@ -61,8 +61,8 @@ pub fn trk(points: &[DrivelinePoint], ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
 }
 
 /// The whole `.trk` of a stage from its own files: the driveline and [`crate::ksh::build`]'s collision meshes.
-pub fn trk_from(track: &Track, math: crate::ksh::Math) -> Result<Vec<u8>, String> {
-    let (count, ksh) = crate::ksh::build(track, math)?;
+pub fn trk_from(track: &Track, d3dx: crate::D3dx) -> Result<Vec<u8>, String> {
+    let (count, ksh) = crate::ksh::build(track, d3dx)?;
     Ok(trk(&track.driveline()?.points, count, &ksh))
 }
 

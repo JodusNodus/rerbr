@@ -55,6 +55,50 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 - A missing map or row reads zeros (no oracle for the uncached folders with missing rows: `Pirttikulma` MAP14,
   `Sarvana`'s empty second MAP24, `Pirttikulma snow` data12 rows).
 
+## Collision
+
+`rbr_btb::col::build(track)` writes `CACHE/col.col` byte for byte (19 of 19 cached folders, `tests/col.rs`; 0.2 to 1.9 s per
+stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the base 0x10000000; the pipeline is
+`ColSplit` 0x10022c10 (`col.cpp`) -> gather 0x10022770 -> `Split` 0x10025e80 -> `DumpCol` 0x100243a0.
+- Faces: objects with `CollisionModel=0` and `Visible` not 0, in `objectlist.ini` order, clone by clone (gather 0x10022770); the
+  clone count is the `.xform` size / 64 (`ini` `cloneCount` ignored: Crastazza `obj_124_2` has 22 matrices, `cloneCount=5`).
+  `Visible=0` objects are absent (Le barrage des gorges `wall39_*`, bounds differ at the root without this).
+- A mesh whose `VertexDuplicationIndices` point forward or at a non-original vertex (`indices[i] > i` or `indices[indices[i]]
+  != indices[i]`) never loads, so its objects give no faces (Crastazza `VWPassat` cars and `Fence_marshall`; the same files hold
+  `FreeLander`s with valid indices that load). Faces with two equal vertex indices are dropped (Myllylahde, 12 faces in one cell).
+- Vertices (GetMeshFaces 0x10021fa0): record order `(v0, v2, v1)`; UVs likewise, a mesh without UVs reads 0. Windows D3DX hands out every
+  non-zero position one ulp smaller (bits minus one, 34883/34883 on Dylanda, all 18 Windows caches); UVs are exact. An exactly
+  identity matrix (x87 compare, 0x10023340) skips the transform, else `out = (x*A + y*B) + (z*C + D)` over the file matrix
+  columns `A=m[j], B=m[4+j], C=m[8+j], D=m[12+j]` in `f32` (D3DXVec3Transform), then y and z swap.
+- Wine's D3DX (`Kutemajarvi 1994`, cache of 2026-10-15; the other 18 date from 2025 and March 2026): positions are the file's floats,
+  the sum is `((x*A + y*B) + z*C) + D`, and no triangle gets a map index (`D3dx::Wine`).
+- Nodes: bounds are `(centre, half extent)` over the vertices, `f32`, `(min+max)*0.5` and `(max-min)*0.5` (0x10025250). A node with
+  fewer than 9 faces is a leaf. `SortFacesRightLeft` (0x10025650) takes the AABB of the face centroids (`((a+b)+c)/3`), the
+  longest axis (ties lowest) and puts a face right when `centre > centroid`, else left; a side left empty retries axes 0, 1, 2
+  with the same centre.
+- Regions (0x10025b60, 0x10025e00): a split node is a region node when both half extents x and y are below 100, or it holds
+  fewer than 600 faces, or a child is a leaf; its two children are the cells, in preorder. A leaf child has no cell: its
+  faces are not in the file.
+- Main tree (0x100241c0, 0x10025c60): root, then per non-leaf node a child pair `{bounds, count 0, pointer}` in preorder
+  (pointers from the tree root, 0x40 per pair); under a region node the pair are placeholders `{bounds, 0x200000, 0}`.
+  Header `{OC7R, 0x10, cell count, table offset}`, the 0x30 root block `{0x304, 0, 0, 0x30, 0x30, 0, 0, 0x30, 0, 0x30, 0, 0}`,
+  the tree, the cell offset table, the cells.
+- Cell (0x10026860, 0x10026470): `{0x104, graft path, vertex count, 0x14, tree rel}`, three vertices per face (no dedup) in
+  leaf preorder, the root `{bounds, 0x200000, 0x20}`, then each node's child pair followed by the children's subtrees; a
+  leaf holds its 18-byte triangles padded to 4. The graft path is the depth in the top byte and, LSB first, one bit per step
+  from the root (right child 1).
+- Triangle: three `u16` indices of the first table entry with the same position and UV (exact `f32` equality, kept to 16
+  bits: a cell over 65535 vertices wraps), in the order `(rec1, rec0, rec2)`; `0x422f` twice; the map index twice (0 for
+  none); then `nibble[k]` for those entries twice, `nibble = (u8)(int)(u*15) | ((int)(v*15) & 0xf) << 4` (truncating; the
+  low byte of `u` is not masked, so `u*15 >= 16` reaches the high nibble; the entry named by the wrapped 16-bit index
+  supplies the UV).
+- Map index (0x10021fa0): the mesh's first material name -> its `materials.ini` section -> the base name of `diffuseTexture`
+  -> the first `mat.ini` `[MAP<i>]` whose `texture=` base name matches (case-insensitive). The material has no texture
+  when `Textures.zip` lacks the file (Kuri Bush 1 `OBJ_RALLY`, Mattila `Blank_255_255_2555`) or it is a `.png` (Olocau
+  Gatova `texture0.png`, `texture01.png`): then the index is 0.
+- Not reproduced (no case in the 19 caches): the plugin drops a region whose subtree face count differs from the node's
+  (`ColSplit` loop), a split that leaves a side empty, a root that is a leaf or a region.
+
 ## Stage ids
 
 - RSF stage ids (1000 and up) per folder, first evidence wins (`ids::match_ids`): a `<id>_*.png` splash picture in
@@ -66,7 +110,7 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   json's `Myttäälä`, 1059).
 ## Collision meshes (ksh)
 
-`rbr_btb::ksh::build(track, Math)` rebuilds `CACHE/ksh.ksh` (`WriteKSH` 0x1001dee0 of `rbr_rx.dll`), the `(3,0x16)` mesh bytes of
+`rbr_btb::ksh::build(track, D3dx)` rebuilds `CACHE/ksh.ksh` (`WriteKSH` 0x1001dee0 of `rbr_rx.dll`), the `(3,0x16)` mesh bytes of
 `trk.trk`; `classic::trk_from` wraps it. `tests/ksh.rs`: 19 of 19 cached folders identical in ksh and trk (placement key words masked).
 
 - One mesh per `CollisionModel` 1 or 2 object, in `objectlist.ini` order (counts equal in all 19 caches; no `CollisionModel=1` object
@@ -90,8 +134,8 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   at 24-bit precision under Direct3D), quaternion `D3DXQuaternionRotationMatrix` of the raw scaled matrix then
   `D3DXQuaternionNormalize`, written `(x, z, y, -w)`.
 - Float rules: all arithmetic is f32, no fused ops. Native reproduces all 41804 placements of the other 18 caches, Wine all 3490 of Kutemajarvi.
-- Two D3DX builds produce the caches (cache file times: Windows' 100 ns stamps vs Linux nanoseconds): `ksh::Math::Native`
-  (14 caches, `d3dx9_30.dll` from a Steam prefix, 2388176 bytes) and `Math::Wine` (Kutemajarvi 1994, built 2026-10-15 under Wine's
+- Two D3DX builds produce the caches (cache file times: Windows' 100 ns stamps vs Linux nanoseconds): `D3dx::Windows`
+  (14 caches, `d3dx9_30.dll` from a Steam prefix, 2388176 bytes) and `D3dx::Wine` (Kutemajarvi 1994, built 2026-10-15 under Wine's
   builtin DLL). The tests use whichever reproduces the cache.
 - Native `D3DXQuaternionRotationMatrix` (x87, 0x443258; the CPU variants do not replace it): `trace = (m11 + m00) + m22`; if `trace > 0`:
   `r = sqrt(trace + 1) * 0.5`, `w = r`, `inv = 0.25 / r`, `x = (m12 - m21) * inv`, `y = (m20 - m02) * inv`, `z = (m01 - m10) * inv`; else
@@ -104,7 +148,7 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   `1/sqrt` of the interval centre rounded to 12 mantissa bits (0 differences over all 2048 entries and 200000 random inputs on an
   i9-13900HX); AMD's table differs, an AMD-built cache would not match.
 - Wine: `trace = m00 + m11 + m22 + 1`; if `trace > 1`: `s = 2*sqrt(trace)`, `x = (m12 - m21)/s`, `y = (m20 - m02)/s`,
-  `z = (m01 - m10)/s`, `w = 0.25*s`, else `Math::Wine`'s `math.c` branches on the largest diagonal; normalise by dividing by
+  `z = (m01 - m10)/s`, `w = 0.25*s`, else `D3dx::Wine`'s `math.c` branches on the largest diagonal; normalise by dividing by
   `sqrtf(((x*x + y*y) + z*z) + w*w)`. Unverified: the D3DX load shift under Wine (Kutemajarvi has no mesh-bounded box).
 - Open: the sscanf float conversion is assumed correctly rounded to f32 (MSVC's may round via double); `colBox` with fewer than three
   numbers falls back to the mesh box (no local case); a mesh with several materials or unusual `.x` positions was not seen.

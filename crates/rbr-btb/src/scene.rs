@@ -341,7 +341,7 @@ pub fn place_normal(m: &[f32; 16], n: [f32; 3]) -> [f32; 3] {
     }
 }
 
-fn read_entry<R: Read + std::io::Seek>(zip: &mut rbz::ZipArchive<R>, name: &str) -> Result<Vec<u8>, String> {
+pub fn read_entry<R: Read + std::io::Seek>(zip: &mut rbz::ZipArchive<R>, name: &str) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
     rbz::by_name(zip, name)
         .map_err(|e| format!("{name}: {e}"))?
