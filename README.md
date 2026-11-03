@@ -73,8 +73,9 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
 
 ### 1. Download ReRBR
 
-The first release is not out yet: until then, [build from source](#build-from-source). Releases will be on the
-[releases page](https://github.com/JodusNodus/rerbr/releases). Nothing else needs installing.
+ReRBR is in alpha: expect bugs, and please [report them](https://github.com/JodusNodus/rerbr/issues/new/choose).
+Download the latest release from the [releases page](https://github.com/JodusNodus/rerbr/releases). Nothing else
+needs installing.
 
 **macOS** (Apple silicon, macOS 11 or later): `ReRBR-<version>-macos.dmg`. Open it and drag ReRBR to Applications.
 ReRBR isn't signed with an Apple Developer ID, so macOS refuses to open it the first time:

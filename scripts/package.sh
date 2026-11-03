@@ -40,6 +40,7 @@ macos() {
 
     cp "$root/scripts/packaging/icon.icns" "$resources/ReRBR.icns"
 
+    # The bundle's versions are numbers only (0.1.0 of 0.1.0-alpha.1); the dmg's name has the whole version.
     cat >"$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -51,8 +52,8 @@ macos() {
     <key>CFBundleExecutable</key><string>rerbr</string>
     <key>CFBundleIconFile</key><string>ReRBR</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>$version</string>
-    <key>CFBundleVersion</key><string>$version</string>
+    <key>CFBundleShortVersionString</key><string>${version%%-*}</string>
+    <key>CFBundleVersion</key><string>${version%%-*}</string>
     <key>LSMinimumSystemVersion</key><string>$MACOSX_DEPLOYMENT_TARGET</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.racing-games</string>
     <key>NSHighResolutionCapable</key><true/>
