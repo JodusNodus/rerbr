@@ -24,7 +24,6 @@ struct Face {
     pos: [[f32; 3]; 3],
     uv: [[f32; 2]; 3],
     map: i32,
-    dbg: u32,
 }
 
 /// D3DX hands out every non-zero position component one unit in the last place smaller (the bits minus one).
@@ -292,7 +291,7 @@ fn regions<'a>(n: &'a Node, depth: u32, path: u32, out: &mut Vec<(&'a Node, u32)
     let Some(k) = &n.children else { return };
     if n.region() {
         for (i, kid) in k.iter().enumerate() {
-            out.push((kid, depth + 1 << 24 | (path | (i as u32) << depth)));
+            out.push((kid, ((depth + 1) << 24) | path | ((i as u32) << depth)));
         }
     } else {
         for (i, kid) in k.iter().enumerate() {
@@ -368,45 +367,19 @@ fn load_mesh(name: &str, bytes: &[u8], maps: &Maps, d3dx: D3dx) -> Result<Mesh, 
         d.indices.iter().enumerate().all(|(i, &x)| x as usize <= i && d.indices.get(x as usize) == Some(&x))
     });
     Ok(Mesh {
-        positions: mesh.positions.iter().map(|p| p.map(|v| if d3dx == D3dx::Windows { shift_input(v) } else { v })).collect(),
+        positions: mesh
+            .positions
+            .iter()
+            .map(|p| p.map(|v| if d3dx == D3dx::Windows { shift_input(v) } else { v }))
+            .collect(),
         triangles: if !loads {
             Vec::new()
         } else {
             mesh.triangles().into_iter().filter(|t| t[0] != t[1] && t[1] != t[2] && t[0] != t[2]).collect()
         },
-        uvs: pick_uvs(&mesh),
+        uvs: mesh.uv_sets.into_iter().next().unwrap_or_default(),
         map,
     })
-}
-
-fn pick_uvs(mesh: &xfile::Mesh) -> Vec<[f32; 2]> {
-    let want: i32 = std::env::var("COLUV").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-    let base = mesh.uv_sets.first().cloned().unwrap_or_default();
-    if want == 0 {
-        return base;
-    }
-    let n = mesh.positions.len();
-    for d in &mesh.decl {
-        let Some(stride) = d.stride_dwords() else { continue };
-        let mut off = 0;
-        for e in &d.elements {
-            if e.usage == 5 && e.usage_index as i32 == want {
-                return (0..n)
-                    .map(|v| [f32::from_bits(d.data[v * stride + off]), f32::from_bits(d.data[v * stride + off + 1])])
-                    .collect();
-            }
-            off += e.width_dwords().unwrap_or(0);
-        }
-    }
-    for f in &mesh.fvf {
-        if want == 1 {
-            let stride = f.data.len() / n.max(1);
-            return (0..n)
-                .map(|v| [f32::from_bits(f.data[v * stride]), f32::from_bits(f.data[v * stride + 1])])
-                .collect();
-        }
-    }
-    base
 }
 
 /// The faces of every `CollisionModel=0` object, clone by clone, in the order the plugin gathers them.
@@ -456,7 +429,6 @@ fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
                     pos: [place(a), place(c), place(b)],
                     uv: [uv(a), uv(c), uv(b)],
                     map: if d3dx == D3dx::Wine { -1 } else { mesh.map },
-                    dbg: object.index as u32,
                 });
             }
         }
@@ -464,10 +436,10 @@ fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
     Ok(faces)
 }
 
-/// The stage's `col.col`.
 /// Which D3DX the plugin ran against: the caches written on Windows carry its input quirk (every non-zero position
-/// one unit in the last place down, [`shift_input`]), a cache written under Wine's D3DX (`Kutemajarvi 1994`, rebuilt
-/// 2026-10-15) holds the file's floats.
+/// one unit in the last place down, [`shift_input`]); a cache written under Wine's D3DX (`Kutemajarvi 1994`, rebuilt
+/// 2026-10-15) holds the file's floats, sums the transform left to right ([`transform_sequential`]) and has no map
+/// index (every material reads as unmatched).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum D3dx {
     Windows,
@@ -482,70 +454,6 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
 /// The stage's `col.col` under the given D3DX.
 pub fn build_with(track: &Track, d3dx: D3dx) -> Result<Vec<u8>, String> {
     let faces = gather(track, d3dx)?;
-    if std::env::var_os("COLDBG").is_some() {
-        let mut c = std::collections::BTreeMap::new();
-        for f in &faces {
-            *c.entry((f.map, f.dbg)).or_insert(0) += 1;
-        }
-        for (k, v) in c {
-            eprintln!("MAPCOUNT {:?} {}", k, v);
-        }
-    }
-    if let Ok(path) = std::env::var("COLCACHE") {
-        let d = std::fs::read(path).unwrap();
-        let u = |o: usize| u32::from_le_bytes(d[o..o + 4].try_into().unwrap()) as usize;
-        let mut set = std::collections::HashSet::new();
-        for c in 0..u(8) {
-            let o = u(u(12) + 4 * c);
-            for v in 0..u(o + 8) {
-                let b = o + 0x14 + 12 * v;
-                set.insert([u(b) as u32, u(b + 4) as u32, u(b + 8) as u32]);
-            }
-        }
-        let mut h: std::collections::BTreeMap<u32, (u32, u32)> = Default::default();
-        for f in &faces {
-            let e = h.entry(f.dbg).or_default();
-            e.0 += 1;
-            if f.pos.iter().all(|p| set.contains(&p.map(f32::to_bits))) {
-                e.1 += 1;
-            }
-        }
-        for (k, (n, y)) in h {
-            if true {
-                eprintln!(
-                    "MISSING obj {k} {} {}: {y} of {n} faces present",
-                    track.objects().unwrap()[k as usize].file,
-                    track.objects().unwrap()[k as usize].xform
-                );
-            }
-        }
-    }
-    if let Ok(z) = std::env::var("COLZ") {
-        let z: f32 = z.parse().unwrap();
-        let mut h: std::collections::BTreeMap<u32, f32> = Default::default();
-        for f in &faces {
-            for p in f.pos {
-                if p[2] > z {
-                    let e = h.entry(f.dbg).or_insert(p[2]);
-                    if p[2] > *e {
-                        *e = p[2];
-                    }
-                }
-            }
-        }
-        for (k, v) in h {
-            eprintln!(
-                "HIGH obj {k} {} {}: {v}",
-                track.objects().unwrap()[k as usize].file,
-                track.objects().unwrap()[k as usize].xform
-            );
-        }
-    }
-    if std::env::var_os("COLMAX").is_some() {
-        let mut mx = 0f32;
-        for f in &faces { for p in f.pos { for v in p { mx = mx.max(v.abs()); } } }
-        eprintln!("COLMAX {} {mx}", track.name);
-    }
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
     let mut root = Node::new((0..faces.len() as u32).collect());
     root.split(&faces, &cents)?;
@@ -553,20 +461,6 @@ pub fn build_with(track: &Track, d3dx: D3dx) -> Result<Vec<u8>, String> {
         return Err("fewer than nine collision triangles".into());
     }
     let mut list = Vec::new();
-    if let Ok(want) = std::env::var("COLCELL") {
-        let want = u32::from_str_radix(&want, 16).unwrap();
-        let mut all = Vec::new();
-        regions(&root, 0, 0, &mut all);
-        for (n, p) in all.iter().filter(|(_, p)| *p == want) {
-            let mut f = Vec::new();
-            collect(n, &mut f);
-            let mut h = std::collections::BTreeMap::new();
-            for i in f {
-                *h.entry(faces[i as usize].dbg).or_insert(0) += 1;
-            }
-            eprintln!("CELL {p:x} {h:?}");
-        }
-    }
     regions(&root, 0, 0, &mut list);
     let cells =
         list.iter().filter(|(n, _)| !n.leaf).map(|&(n, path)| cell(n, path, &faces)).collect::<Result<Vec<_>, _>>()?;
