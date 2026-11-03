@@ -87,6 +87,11 @@ def command(build, home, name, number, car, size, at):
     with open(tmp / 'launcher-settings.ini', 'a') as ini:
         ini.write('\n[ffb]\nenabled = 0\n')
     env, cmd = shots.shot_command(build, lines, shot, tmp / 'shot.png', size)
+    try:
+        shots.check_car(cmd, shot)  # the launcher takes another car when it lacks this one
+    except SystemExit:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     cmd = [c for c in cmd if c != '--upscale-textures']
     if '--no-sound' not in cmd:
         cmd.insert(1, '--no-sound')
