@@ -110,7 +110,7 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
   json's `Myttäälä`, 1059).
 ## Collision meshes (ksh)
 
-`rbr_btb::ksh::build(track, Math)` rebuilds `CACHE/ksh.ksh` (`WriteKSH` 0x1001dee0 of `rbr_rx.dll`), the `(3,0x16)` mesh bytes of
+`rbr_btb::ksh::build(track, D3dx)` rebuilds `CACHE/ksh.ksh` (`WriteKSH` 0x1001dee0 of `rbr_rx.dll`), the `(3,0x16)` mesh bytes of
 `trk.trk`; `classic::trk_from` wraps it. `tests/ksh.rs`: 19 of 19 cached folders identical in ksh and trk (placement key words masked).
 
 - One mesh per `CollisionModel` 1 or 2 object, in `objectlist.ini` order (counts equal in all 19 caches; no `CollisionModel=1` object
