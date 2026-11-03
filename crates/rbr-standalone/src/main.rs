@@ -141,6 +141,15 @@ mod stage;
 mod twin;
 
 fn main() -> ExitCode {
+    let code = run();
+    // An `exe-reads` build's words read first (`RBR_EXE_READS`, `scripts/gen-exe-data.py`).
+    if let Err(e) = rbr_physics::mem::exe_reads::dump() {
+        eprintln!("RBR_EXE_READS: {e}");
+    }
+    code
+}
+
+fn run() -> ExitCode {
     let mut args = match args::args() {
         Ok(a) => a,
         Err(e) => {

@@ -39,7 +39,7 @@ tests.
 | Variable | What | Where from |
 | --- | --- | --- |
 | `RBR_DATA` | the retail 1.0 install, one folder per installer group (`Root/`, `Cars/`, `Maps/`, ...) | your disc (below): `OUT/retail-install` |
-| `RBR_PATCH` | the official 1.02 patch's `Main_group` | your disc and patch (below): `OUT/Main_group` |
+| `RBR_PATCH` | the official 1.02 patch's `Main_group` (tests, the hybrid check and `scripts/gen-exe-data.py`; the program does not need it) | your disc and patch (below): `OUT/Main_group` |
 | `RBR_RECORDINGS` | drives recorded in the original game (`drive-*.bin`) | `scripts/fetch-test-data.sh` (below) |
 | `RBR_VECTOR_STORE` | per-call physics records of the original | the same script |
 | `RBR_NGP_PHYSICS` | an NGP 7.4.778 `physics.rbz` with NGP cars in slots 2, 4, 5 and 6 | below |

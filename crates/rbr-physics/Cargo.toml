@@ -12,6 +12,8 @@ path = "src/lib.rs"
 [features]
 # Check builds only: `Mem::poison` makes accesses to bytes another storage owns panic (`store.rs`).
 poison = []
+# Tracking builds only: `mem::exe_reads` records the exe's words a run reads first (`scripts/gen-exe-data.py`).
+exe-reads = []
 
 [dependencies]
 rbr-formats = { path = "../rbr-formats" }

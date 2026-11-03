@@ -1,9 +1,8 @@
-//! The RBR install folder the Settings page sets (`install_folder`): RBR 1.02 with NGP (RallySimFans or not), read in
+//! The RBR install folder the Settings page sets (`install_folder`): RBR with NGP (RallySimFans or not), read in
 //! place and never written, but by "Download NGP…" (`gvrc`). At the first start the launcher offers the first usual install place whose `physics.rbz`
 //! is NGP's ([`detect`]). It looks only at fixed places in the folder:
-//! - the game data and the 1.02 patch's files: the folder itself (an installed game holds the extracted layout's
-//!   `Root\` files at its top, `rbr_formats::data`, and the patched exe, scripts and shaders in the retail ones'
-//!   place);
+//! - the game data: the folder itself (an installed game holds the extracted layout's
+//!   `Root\` files at its top, `rbr_formats::data`);
 //! - NGP's physics: `physics.rbz`, when it is NGP's (its `Physics/physics.lsp` sets `PhysicsRevision_NGP`; NGP and
 //!   RallySimFans put it in the retail archive's place);
 //! - RallySimFans: the folder, when it has `rsfdata/` (`rsfdata/cache`, `rsfdata/cars`, `Maps/<id>-<name>/`, `Cars/`).
@@ -19,7 +18,7 @@ use rbr_formats::rbz;
 /// What the install folder gives.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Folder {
-    /// The game data and the 1.02 patch's files.
+    /// The game data.
     pub game: Option<PathBuf>,
     /// NGP's `physics.rbz`.
     pub ngp_physics: Option<PathBuf>,
@@ -51,13 +50,11 @@ pub fn problem(dir: &str) -> String {
         return "There is no such folder.".into();
     }
     if !dir.join("Cars").is_dir() || !dir.join("Maps").is_dir() {
-        return "This is not a Richard Burns Rally folder. Choose the one with RichardBurnsRally_SSE.exe in it, or \
+        return "This is not a Richard Burns Rally folder. Choose the one with Cars and Maps in it, or \
                 set up the game from the disc."
             .into();
     }
-    "ReRBR can't read the game in this folder. It needs Richard Burns Rally with the official 1.02 patch: install \
-     the patch into it, or set up the game from the disc."
-        .into()
+    "ReRBR can't read the game in this folder. Set up the game from the disc, or choose another folder.".into()
 }
 
 /// The folder name RBR and the RallySimFans installer use.
@@ -160,7 +157,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("Cars")).unwrap();
         assert!(text(&dir).starts_with("This is not a Richard Burns Rally folder"));
         std::fs::create_dir_all(dir.join("Maps")).unwrap();
-        assert!(text(&dir).contains("1.02 patch"));
+        assert!(text(&dir).contains("Set up the game from the disc"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 

@@ -14,8 +14,19 @@
 //! at its full level times that path's distance gain (the mixer's `Place::Tire`), both voices at the first's volume. The original's frame-rate updates run here once per
 //! physics step (ours).
 
-use crate::tables::SURFACES;
+use rbr_formats::exe_data;
+
 use crate::voice::{Command, Material, Shot, WheelLoop};
+
+/// The 1.02 exe's surface table (`E31Tire::M5f80`, `exe_data`), one row of six words per surface id: the gain bits
+/// (f32), the first and second material (0 gravel, 1 tarmac, 2 snow), the pitch and the second material's share
+/// (16.16), and a variant word (0, 0x400 or 0x800) the handler reads and then discards.
+const SURFACE_TABLE: u32 = 0x0073_5C80;
+
+/// Surface `id`'s row of [`SURFACE_TABLE`].
+fn surface_row(id: u32) -> [u32; 6] {
+    std::array::from_fn(|k| exe_data::u32(SURFACE_TABLE + 0x18 * (id & 0xff) + 4 * k as u32).unwrap_or_default())
+}
 
 /// The words of the block the handler reads (word 0, the wheel, is the slot the block comes in).
 const MAX: usize = 1;
@@ -132,7 +143,7 @@ pub fn wheel(sig: &[u32; 24], road_surfaces: &[u32]) -> Option<WheelSound> {
     }
     let f = |i: usize| f32::from_bits(sig[i]);
     let surface = if f(SECOND_SHARE) > 0.5 { sig[SECOND_SURFACE] } else { sig[SURFACE] };
-    let row = SURFACES[surface as usize & 0xff];
+    let row = surface_row(surface);
     let first = material(row[1]);
     let grip = f(GRIP_MAX);
     let factor = if f(FACTOR) > FACTOR_FULL { 1.0 } else { f(FACTOR) * FACTOR_SCALE };
@@ -354,12 +365,20 @@ mod tests {
         assert!((s.materials[0].1 - 0.5 * 2000.0 * 1.0 / 4000.0).abs() < 1e-3);
     }
 
+    /// The table's rows as the hand copy that preceded `exe_data` held them (spot checks).
+    #[test]
+    fn surface_rows_are_the_exe_table() {
+        assert_eq!(surface_row(0), [0x3f19999a, 0, 0, 65536, 0, 0]);
+        assert_eq!(surface_row(2), [0x3f19999a, 0, 0, 73728, 0, 1024]);
+        assert_eq!(surface_row(0x100 + 2), surface_row(2));
+    }
+
     #[test]
     fn a_mixed_surface_splits_the_level_and_tarmac_rests_at_half() {
         // Surface 101: tarmac first, gravel second, share 57344 / 65536.
         let s = wheel(&block(101, 1.0, 0.0, 0.0, 20.0)).unwrap();
         assert_eq!((s.materials[0].0, s.materials[1].0), (Material::Snow, Material::Gravel));
-        let tarmac = SURFACES.iter().position(|row| row[1] == 1 && row[4] == 0).unwrap() as u32;
+        let tarmac = (0..256).find(|&id| surface_row(id)[1] == 1 && surface_row(id)[4] == 0).unwrap();
         let t = wheel(&block(tarmac, 0.9, 0.0, 0.0, 20.0)).unwrap();
         assert_eq!(t.materials[0].0, Material::Tarmac);
         // skid share 0.5 at rest on tarmac: 0.5 * 2000 * 1 / 4000.
@@ -426,7 +445,7 @@ mod tests {
                 _ => None,
             });
         // The table's word 0 plus 4 * 0.02 - 0.1.
-        assert!(pitch.is_some_and(|p| (p - (f32::from_bits(SURFACES[1][0]) - 0.02)).abs() < 1e-6));
+        assert!(pitch.is_some_and(|p| (p - (f32::from_bits(surface_row(1)[0]) - 0.02)).abs() < 1e-6));
     }
 
     #[test]
