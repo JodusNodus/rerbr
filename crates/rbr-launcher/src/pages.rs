@@ -165,6 +165,8 @@ pub enum Fix {
     Settings,
     /// The Settings page with NGP 7.4.778's download asked (`Form::ask_download_ngp`).
     DownloadNgp,
+    /// The Settings page with gvrc.de's car list open.
+    DownloadCars,
 }
 
 impl Fix {
@@ -172,6 +174,7 @@ impl Fix {
         match self {
             Fix::Settings => "Open Settings",
             Fix::DownloadNgp => "Download NGP 7.4.778",
+            Fix::DownloadCars => "Download cars…",
         }
     }
 }
@@ -227,7 +230,7 @@ impl Form {
         if let Some(text) = self.ngp_dll.problem(&self.data, &self.rsf()) {
             return Some(Issue { text, fix });
         }
-        self.catalog.cars.is_empty().then(|| Issue { text: NO_CARS.into(), fix: Some(Fix::Settings) })
+        self.catalog.cars.is_empty().then(|| Issue { text: NO_CARS.into(), fix: Some(Fix::DownloadCars) })
     }
 
     /// The page a fresh start opens on: Settings while something is missing, else Drive.
@@ -261,6 +264,17 @@ impl Form {
                 self.page = Page::Settings;
                 self.ask_download_ngp();
             }
+            Fix::DownloadCars => {
+                self.page = Page::Settings;
+                self.open_car_list();
+            }
+        }
+    }
+
+    /// A game with no cars to drive (just set up from the disc, say) opens on the Settings page's car list.
+    pub fn offer_cars(&mut self) {
+        if self.readiness().is_some_and(|issue| issue.fix == Some(Fix::DownloadCars)) {
+            self.apply(Fix::DownloadCars);
         }
     }
 
@@ -771,7 +785,10 @@ mod tests {
         assert_eq!(page(&form(&ngp, false)), (Page::Settings, Some((INCOMPLETE.to_owned(), None))));
         let mut no_cars = form(&ngp, true);
         no_cars.catalog.cars.clear();
-        assert_eq!(page(&no_cars), (Page::Settings, Some((NO_CARS.to_owned(), Some(Fix::Settings)))));
+        assert_eq!(page(&no_cars), (Page::Settings, Some((NO_CARS.to_owned(), Some(Fix::DownloadCars)))));
+        no_cars.page = Page::Drive;
+        no_cars.offer_cars();
+        assert_eq!(no_cars.page, Page::Settings);
         std::fs::remove_dir_all(&here).unwrap();
     }
 }
