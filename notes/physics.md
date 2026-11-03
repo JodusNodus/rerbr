@@ -87,11 +87,11 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
   `solve_forces`, `hold`, `heat_step`, `relax_sector`, `relax`, `friction_curve`, `write_output_block`),
   `car_body_vectors` (`same_word`: `to_quat`, `steering_ffb`), `entities_solve` (`+0x624`), `entities_slip`,
   `spring_damper_vectors` (st0 returns, `check_spring_windows`), `engine_driveline_vectors` (`check_st0`,
-  `check_windows_nan`), `wheel_vectors` (`split_on_sub`, sign only). Recorded st0 NaNs carry no sign
+  `check_windows_nan`, `sim_e660` for `torque`, which a NaN `load_d` makes NaN: x86_64 writes `0xffc00000` where the
+  record holds `0x7fc00000`), `wheel_vectors` (`split_on_sub`, sign only). Recorded st0 NaNs carry no sign
   (`harness/vcu_vectors.py`). `harness/rust_step.py` excludes words NaN in both runs that differ only in bit 31. A
-  new site gets its own entry, never a blanket tolerance. On x86_64 the host makes `0xffc00000` instead, failing
-  `engine_driveline_vectors` `sim_e660` (call 558, window 2's last word holds `0x7fc00000`); vector targets are
-  checked on arm64 (CI's macOS job).
+  new site gets its own entry, never a blanket tolerance. The vector targets pass on arm64 (CI's macOS job) and on
+  x86_64.
 - Stack residue is behaviour. Callees that leave arguments on the stack feed the next call: the slot-12 identity
   getter (0x519c00, `mov eax, ecx; ret`) keeps its pushes for the following `ComposeA`; `MB560` (0x51b560) and
   `ComposeA` (0x51b4c0) are thiscall `ret 0xc` with three arguments, some callers reuse earlier pushes, and
