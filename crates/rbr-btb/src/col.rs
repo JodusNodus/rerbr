@@ -357,13 +357,17 @@ fn load_mesh(name: &str, bytes: &[u8], maps: &Maps) -> Result<Mesh, String> {
     let mesh = xfile::Mesh::decode(root, &file).map_err(fail)?;
     let texture = mesh.materials.as_ref().and_then(|m| m.materials.first()).and_then(|m| m.texture.as_deref());
     let map = maps.index(texture);
+    // D3DX refuses a mesh whose duplication indices point forward or at a non-original vertex: it never loads.
+    let loads = mesh.duplication.as_ref().is_none_or(|d| {
+        d.indices.iter().enumerate().all(|(i, &x)| x as usize <= i && d.indices.get(x as usize) == Some(&x))
+    });
     Ok(Mesh {
         positions: mesh.positions.iter().map(|p| p.map(shift_input)).collect(),
-        triangles: mesh
-            .triangles()
-            .into_iter()
-            .filter(|t| t[0] != t[1] && t[1] != t[2] && t[0] != t[2])
-            .collect(),
+        triangles: if !loads {
+            Vec::new()
+        } else {
+            mesh.triangles().into_iter().filter(|t| t[0] != t[1] && t[1] != t[2] && t[0] != t[2]).collect()
+        },
         uvs: pick_uvs(&mesh),
         map,
     })
@@ -391,7 +395,9 @@ fn pick_uvs(mesh: &xfile::Mesh) -> Vec<[f32; 2]> {
     for f in &mesh.fvf {
         if want == 1 {
             let stride = f.data.len() / n.max(1);
-            return (0..n).map(|v| [f32::from_bits(f.data[v * stride]), f32::from_bits(f.data[v * stride + 1])]).collect();
+            return (0..n)
+                .map(|v| [f32::from_bits(f.data[v * stride]), f32::from_bits(f.data[v * stride + 1])])
+                .collect();
         }
     }
     base
@@ -436,7 +442,12 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
             };
             let uv = |i: u32| mesh.uvs.get(i as usize).copied().unwrap_or([0.0; 2]);
             for &[a, b, c] in &mesh.triangles {
-                faces.push(Face { pos: [place(a), place(c), place(b)], uv: [uv(a), uv(c), uv(b)], map: mesh.map, dbg: object.index as u32 });
+                faces.push(Face {
+                    pos: [place(a), place(c), place(b)],
+                    uv: [uv(a), uv(c), uv(b)],
+                    map: mesh.map,
+                    dbg: object.index as u32,
+                });
             }
         }
     }
@@ -451,7 +462,9 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
         for f in &faces {
             *c.entry((f.map, f.dbg)).or_insert(0) += 1;
         }
-        for (k, v) in c { eprintln!("MAPCOUNT {:?} {}", k, v); }
+        for (k, v) in c {
+            eprintln!("MAPCOUNT {:?} {}", k, v);
+        }
     }
     if let Ok(path) = std::env::var("COLCACHE") {
         let d = std::fs::read(path).unwrap();
@@ -468,17 +481,40 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
         for f in &faces {
             let e = h.entry(f.dbg).or_default();
             e.0 += 1;
-            if f.pos.iter().all(|p| set.contains(&p.map(f32::to_bits))) { e.1 += 1; }
+            if f.pos.iter().all(|p| set.contains(&p.map(f32::to_bits))) {
+                e.1 += 1;
+            }
         }
-        for (k, (n, y)) in h { if true { eprintln!("MISSING obj {k} {} {}: {y} of {n} faces present", track.objects().unwrap()[k as usize].file, track.objects().unwrap()[k as usize].xform); } }
+        for (k, (n, y)) in h {
+            if true {
+                eprintln!(
+                    "MISSING obj {k} {} {}: {y} of {n} faces present",
+                    track.objects().unwrap()[k as usize].file,
+                    track.objects().unwrap()[k as usize].xform
+                );
+            }
+        }
     }
     if let Ok(z) = std::env::var("COLZ") {
         let z: f32 = z.parse().unwrap();
         let mut h: std::collections::BTreeMap<u32, f32> = Default::default();
         for f in &faces {
-            for p in f.pos { if p[2] > z { let e = h.entry(f.dbg).or_insert(p[2]); if p[2] > *e { *e = p[2]; } } }
+            for p in f.pos {
+                if p[2] > z {
+                    let e = h.entry(f.dbg).or_insert(p[2]);
+                    if p[2] > *e {
+                        *e = p[2];
+                    }
+                }
+            }
         }
-        for (k, v) in h { eprintln!("HIGH obj {k} {} {}: {v}", track.objects().unwrap()[k as usize].file, track.objects().unwrap()[k as usize].xform); }
+        for (k, v) in h {
+            eprintln!(
+                "HIGH obj {k} {} {}: {v}",
+                track.objects().unwrap()[k as usize].file,
+                track.objects().unwrap()[k as usize].xform
+            );
+        }
     }
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
     let mut root = Node::new((0..faces.len() as u32).collect());
@@ -495,16 +531,15 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
             let mut f = Vec::new();
             collect(n, &mut f);
             let mut h = std::collections::BTreeMap::new();
-            for i in f { *h.entry(faces[i as usize].dbg).or_insert(0) += 1; }
+            for i in f {
+                *h.entry(faces[i as usize].dbg).or_insert(0) += 1;
+            }
             eprintln!("CELL {p:x} {h:?}");
         }
     }
     regions(&root, 0, 0, &mut list);
-    let cells = list
-        .iter()
-        .filter(|(n, _)| !n.leaf)
-        .map(|&(n, path)| cell(n, path, &faces))
-        .collect::<Result<Vec<_>, _>>()?;
+    let cells =
+        list.iter().filter(|(n, _)| !n.leaf).map(|&(n, path)| cell(n, path, &faces)).collect::<Result<Vec<_>, _>>()?;
 
     let mut tree = Vec::new();
     put_bounds(&mut tree, &root);

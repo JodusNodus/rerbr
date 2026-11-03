@@ -6,14 +6,19 @@ use std::path::PathBuf;
 
 fn tracks() -> Option<Vec<track::Track>> {
     let root = PathBuf::from(std::env::var_os("RBR_RSF")?);
-    let tracks: Vec<_> = track::scan(&root).into_iter().map(|t| t.unwrap_or_else(|(f, e)| panic!("{f:?}: {e}"))).collect();
+    let tracks: Vec<_> =
+        track::scan(&root).into_iter().map(|t| t.unwrap_or_else(|(f, e)| panic!("{f:?}: {e}"))).collect();
     (!tracks.is_empty()).then_some(tracks)
 }
 
 /// The first byte at which the two differ, with the context.
 fn first_difference(got: &[u8], want: &[u8]) -> String {
     match got.iter().zip(want).position(|(a, b)| a != b) {
-        Some(at) => format!("first difference at {at:#x}: got {:02x?}, want {:02x?}", &got[at..(at + 8).min(got.len())], &want[at..(at + 8).min(want.len())]),
+        Some(at) => format!(
+            "first difference at {at:#x}: got {:02x?}, want {:02x?}",
+            &got[at..(at + 8).min(got.len())],
+            &want[at..(at + 8).min(want.len())]
+        ),
         None => format!("one is a prefix of the other (got {} bytes, want {})", got.len(), want.len()),
     }
 }
@@ -44,7 +49,13 @@ fn built_cols_equal_the_plugin_caches() {
                 eprintln!("{}: identical, {} bytes, {:.1?}", track.name, got.len(), start.elapsed());
             }
             Ok(got) => {
-                eprintln!("{}: {} ({} against {} bytes)", track.name, first_difference(&got, &want), got.len(), want.len());
+                eprintln!(
+                    "{}: {} ({} against {} bytes)",
+                    track.name,
+                    first_difference(&got, &want),
+                    got.len(),
+                    want.len()
+                );
                 failures.push(track.name.clone());
             }
             Err(e) => {
