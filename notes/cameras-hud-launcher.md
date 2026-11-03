@@ -66,6 +66,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
 - Stage browser: “Newest” sorts by map number, highest first (RSF numbers maps as it adds them); no hand-kept
   release dates (user decision 2026-11-03).
+- Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive
+  train (`cars_data.json`) from the list's `cat`/`trans` (`RallyN` as `Rally N`, bare `A5`..`A8` as `Group A5`..;
+  `car_packs::backfill`), so the browser classes and drive-filters them like RSF's.
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
