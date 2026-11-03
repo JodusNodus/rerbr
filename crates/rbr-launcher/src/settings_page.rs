@@ -138,7 +138,8 @@ impl Form {
         egui::CollapsingHeader::new("Advanced").show(ui, |ui| {
             self.ngp_dll.ui(ui, &self.data, &rsf, !running);
             ui.add_space(4.0);
-            let hint = |path: &Option<PathBuf>, none: &str| path.as_ref().map_or(none.to_owned(), |p| p.display().to_string());
+            let hint =
+                |path: &Option<PathBuf>, none: &str| path.as_ref().map_or(none.to_owned(), |p| p.display().to_string());
             fields(ui, "overrides", |ui| {
                 ui.label("NGP physics.rbz");
                 let ngp = hint(&self.folder.ngp_physics, "NGP's physics.rbz");
@@ -146,13 +147,15 @@ impl Form {
                 ui.end_row();
                 ui.label("RSF folder");
                 let rsf = hint(&self.folder.rsf_root, "a RallySimFans game folder");
-                ui.add(egui::TextEdit::singleline(&mut self.rsf_root).id(Id::unique(RSF_FIELD)).hint_text(rsf).desired_width(420.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.rsf_root)
+                        .id(Id::unique(RSF_FIELD))
+                        .hint_text(rsf)
+                        .desired_width(420.0),
+                );
                 ui.end_row();
                 ui.label("Game data");
                 ui.label(self.paths.data.display().to_string());
-                ui.end_row();
-                ui.label("1.02 patch files");
-                ui.label(self.paths.patch.as_ref().map_or("none".into(), |p| p.display().to_string()));
                 ui.end_row();
                 for (label, path) in [("Viewer", &self.paths.viewer), ("Physics program", &self.paths.standalone)] {
                     ui.label(label);
@@ -166,8 +169,8 @@ impl Form {
             });
             ui.colored_label(
                 Color32::GRAY,
-                "Empty fields take the game folder's. --data (or RBR_DATA) and RBR_PATCH set the game data and the 1.02 \
-                 patch files. rerbr --help lists the options.",
+                "Empty fields take the game folder's. --data (or RBR_DATA) sets the game data. rerbr --help lists the \
+                 options.",
             );
         });
         ui.add_space(8.0);
