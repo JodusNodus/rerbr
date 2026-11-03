@@ -62,12 +62,9 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
   options, extra lights and other modder options are not applied; the selected skin is. RSF cars and added cars
   share one slot: the same ghosts, named setups and setup slots, and the service park repairs them by that slot's
   rules.
-- **Encrypted RSF stages** are not decrypted; they stay in the list, marked unavailable. A few RSF stages miss
-  textures (for example 384), and many show few spectators.
+- **Encrypted RSF stages** are not decrypted; they stay in the list, marked unavailable.
 - **Force feedback** uses the first device it finds; set `device =` in the `[ffb]` section of
   `launcher-settings.ini` to pick another.
-- **Not compared with the original yet:** RSF stages and cars (NGP physics is checked on retail cars), damage levels
-  Off and Reduced, changed driver aids and changed setups.
 
 ## Install
 
