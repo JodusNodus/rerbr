@@ -17,7 +17,8 @@ rbr-recording = { path = "../rbr-recording" }
 rbr-sound = { path = "../rbr-sound" }
 egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }  # 0.33 had these fonts (text and symbols such as ⚠) by default
 egui-wgpu = { version = "0.37", default-features = false, features = ["winit"] }
-egui-winit = { version = "0.37", default-features = false }
+# The system clipboard (copy and paste with other programs); not its links, which open through `crash::open`.
+egui-winit = { version = "0.37", default-features = false, features = ["clipboard"] }
 wgpu = "30"
 winit = "0.30"
 futures-executor = "0.3"

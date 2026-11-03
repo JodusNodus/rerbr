@@ -117,6 +117,9 @@ impl Watch {
                 if ui.button("Report on GitHub…").clicked() {
                     open(OsStr::new(&report.issue_url()));
                 }
+                if ui.button("Copy report").clicked() {
+                    ui.ctx().copy_text(format!("{}\n{}", report.text(&report.tail), version()));
+                }
                 if ui.button("Open the log folder").clicked() {
                     open(report.log.parent().unwrap_or(Path::new(".")).as_os_str());
                 }
@@ -130,19 +133,24 @@ impl Watch {
 }
 
 impl Report {
+    /// What happened with `tail`, the end of the log: the bug form's first field, and with [`version`] what Copy
+    /// report copies.
+    fn text(&self, tail: &str) -> String {
+        let name = self.log.file_name().unwrap_or_default().to_string_lossy();
+        format!(
+            "{}\n{}\n\nThe end of `{name}`:\n```text\n{tail}\n```\n\nWhat I was doing:\n",
+            self.heading, self.context
+        )
+    }
+
     /// The bug form filled in: the title, what happened with the end of the log, and the version and system.
     fn issue_url(&self) -> String {
         let first = self.context.lines().next().unwrap_or_default();
         let title = if first.is_empty() { self.heading.clone() } else { format!("{}: {first}", self.heading) };
-        let version = format!("{}, {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
-        let name = self.log.file_name().unwrap_or_default().to_string_lossy();
         // The log's first lines go until the link fits.
         let mut tail = self.tail.as_str();
         loop {
-            let what = format!(
-                "{}\n{}\n\nThe end of `{name}`:\n```text\n{tail}\n```\n\nWhat I was doing:\n",
-                self.heading, self.context
-            );
+            let (what, version) = (self.text(tail), version());
             let url =
                 format!("{NEW_ISSUE}&title={}&what={}&version={}", encode(&title), encode(&what), encode(&version));
             match tail.split_once('\n') {
@@ -151,6 +159,11 @@ impl Report {
             }
         }
     }
+}
+
+/// The version and system, for the form's second field.
+fn version() -> String {
+    format!("ReRBR {}, {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH)
 }
 
 /// Whether the exit is a crash (a panic, a signal or a Windows exception) rather than an error the program reported,
@@ -305,7 +318,7 @@ mod tests {
         assert!(url.starts_with(NEW_ISSUE), "{url}");
         assert!(url.contains("&title=The%20drive%20stopped%20with%20an%20error%3A%20Torsby%202018%20%C2%B7%20Fiesta&"));
         assert!(url.contains("drive-1.log") && url.contains("the%20physics%20stopped"), "{url}");
-        assert!(url.contains(&format!("&version={}", encode(env!("CARGO_PKG_VERSION")))), "{url}");
+        assert!(url.contains(&format!("&version={}", encode(&version()))), "{url}");
         // A log of symbols, three bytes each in the link, is cut from its start to fit.
         let lines: String = (0..200).map(|n| format!("{n} ~ <> ()\n")).collect();
         let url = Report { tail: tail(&lines), ..report }.issue_url();
