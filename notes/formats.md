@@ -237,7 +237,8 @@ RGT: 12 of 14 files); the car and stage loaders convert them and add the box-fil
 ## Audio
 
 `Root/audio.dat` (`CHELALIC`, `Audio/`): PCM16 mono `.wav`, `.ogg` (music may start with a 132-byte `INFO` block),
-`.eng`, inis (`audio.rs`; a key missing from the patch's `audio.ini` reads 0). Every car plays `subaru.eng`.
+`.eng`, inis (`audio.rs`; a key missing from the patch's `audio.ini` reads 0; with no `audio.ini`, as on the retail disc,
+the 1.02 amps `Amps::PATCH_1_02`). Every car plays `subaru.eng`.
 
 `.eng` (`CEngine::Vf04` 0x4bc370): `ENGI`, version, bank count, parts per bank, parts `{PART, version, rpm, load,
 unused, WAVE, version, rate, i16 samples (counted), firing positions (counted, 16.16)}`, then for 0x101 two counted
