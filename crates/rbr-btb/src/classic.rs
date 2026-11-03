@@ -5,8 +5,8 @@
 //!
 //! - `trk`: one `(3, 0x14)` driveline chunk (the first seven `K<i>` values as `f32`, the two `u16`s zero) and one
 //!   `(3, 0x16)` chunk whose payload is a `u32` mesh count plus the `ksh.ksh` bytes. The `ksh` blob (one mesh per
-//!   `CollisionModel=2` object, one placement per clone, from the `.x` meshes) is another worker's scope and comes
-//!   in as bytes: four cached folders build it empty (count zero), the rest pass their `CACHE/ksh.ksh` through.
+//!   `CollisionModel=2` object, one placement per clone, from the `.x` meshes) is not built yet and comes in as
+//!   bytes: four cached folders build it empty (count zero), the rest pass their `CACHE/ksh.ksh` through.
 //! - `mat`: nine entries (`dry`/`damp`/`wet` by `new`/`normal`/`worn`, 11 characters, space padded) with identical
 //!   runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order.
 //! - `dls`: a fixed 299-byte `MINAATAD` template (version 18) holding the first `count` pace notes as the

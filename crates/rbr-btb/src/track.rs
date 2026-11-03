@@ -5,7 +5,7 @@
 //! points), `settings.ini` (`[SETTINGS]` sun direction), `objectlist.ini` (`[OBJECTS]` count and `[Object_<i>]`
 //! placements), `materials.ini` (`[MATERIALS]` count, `MAT_<i>` names and one section per material), `mat.ini`
 //! (`[MAPS]` count and `[MAP<i>]` 16x16 surface grids), `pacenotes.ini` (`[PACENOTES]` count and `[P<i>]` notes),
-//! plus `Objects.zip`/`Textures.zip` (the `.x` meshes, read by another worker). Some folders carry a `CACHE/`
+//! plus `Objects.zip`/`Textures.zip` (the `.x` meshes: [`crate::xfile`], [`crate::xform`]). Some folders carry a `CACHE/`
 //! subfolder the RSF plugin `Plugins/rbr_rx.dll` wrote: `trk.trk`, `mat.mat`, `dls.dls` and `lbs.lbs` (the physics
 //! files the game loads), `col.col`, `ksh.ksh` and minimaps. The `CACHE` files are the oracle for [`crate::classic`]:
 //! the builders return bytes identical to the plugin's output. See `notes/btb.md`.
