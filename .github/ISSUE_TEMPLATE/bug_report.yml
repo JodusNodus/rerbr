@@ -1,0 +1,101 @@
+name: Bug report
+description: Something in ReRBR crashes, looks, sounds or drives wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Check [Known limitations](https://github.com/JodusNodus/rerbr#known-limitations) and the
+        features [left out on purpose](https://github.com/JodusNodus/rerbr#status) first.
+
+        **Never attach game files**: no `NGP.dll`, `physics.rbz`, cars, stages or anything from the game folder.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead. If a car drives differently from RallySimFans, give the car, stage and setup.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Drive, Audi quattro A2 GrpB on Harwood Forest, rain
+        2. Press H after the second split
+        3. ...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Crash, or it won't start
+        - Launcher and settings
+        - Driving, physics or damage
+        - Graphics
+        - Sound or co-driver
+        - Wheel, controls or force feedback
+        - Replays or video export
+        - Championship
+        - Downloading cars, stages or NGP
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ReRBR version
+      description: Shown at the bottom of the Settings page.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system and version, graphics card and driver.
+      placeholder: Windows 11 24H2, RTX 3070 driver 576.02
+    validations:
+      required: true
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game files
+      options:
+        - RallySimFans install
+        - RBR 1.02 with NGP 7
+        - Set up from the disc
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Wheel and controllers
+      description: For controls or force feedback problems.
+      placeholder: Logitech G923, Thrustmaster TH8A
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Windows: `rerbr.log` in your files' folder (`%APPDATA%\ReRBR`).
+        Linux: start the AppImage from a terminal. macOS: run `/Applications/ReRBR.app/Contents/MacOS/rerbr` in Terminal.
+        Paste what it prints around the problem.
+      render: text
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots, video or replay
+      description: |
+        Drag files in. A replay is in `replays/` in your files' folder; zip it first (GitHub takes up to 25 MB).
+        Replays hold your file paths, which may include your user name.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues.
+          required: true
+        - label: I attached no game files.
+          required: true

@@ -145,6 +145,8 @@ This builds three programs in `target/release/`: `rerbr` (the launcher), `viewer
 
 ## Contributing
 
+Found a bug? [Open an issue](https://github.com/JodusNodus/rerbr/issues/new?template=bug_report.yml).
+
 Start with [docs/development.md](docs/development.md): set up, running it, the code map, the rules and the checks.
 The open work is in [notes/status.md](notes/status.md).
 
