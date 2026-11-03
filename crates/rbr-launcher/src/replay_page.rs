@@ -120,12 +120,8 @@ impl Replays {
     }
 
     fn select(&mut self, path: Option<PathBuf>, home: &Path) {
-        self.output = path
-            .as_ref()
-            .map(|p| {
-                home.join("videos").join(p.file_name().unwrap_or_default()).with_extension("mp4").display().to_string()
-            })
-            .unwrap_or_default();
+        let title = path.as_ref().and_then(|p| self.entries.iter().find(|e| &e.path == p)).map(|e| e.title.as_str());
+        self.output = title.map(|t| video_path(&home.join("videos"), t).display().to_string()).unwrap_or_default();
         self.selected = path;
     }
 
@@ -143,6 +139,21 @@ impl Replays {
             };
         }
     }
+}
+
+/// A new video's file in `dir` named after the drive's `title` (`Torsby 2018 - Lancer Evo II GrpA.mp4`), numbered
+/// when that name is taken.
+fn video_path(dir: &Path, title: &str) -> PathBuf {
+    let name: String = title
+        .replace(" · ", " - ")
+        .chars()
+        .map(|c| if c.is_control() || r#"<>:"/\|?*"#.contains(c) { '_' } else { c })
+        .collect();
+    let name = name.trim().trim_end_matches('.');
+    (1..)
+        .map(|n| dir.join(if n == 1 { format!("{name}.mp4") } else { format!("{name} ({n}).mp4") }))
+        .find(|p| !p.exists())
+        .unwrap_or_default()
 }
 
 fn log_tail(path: &Path) -> String {
@@ -173,11 +184,6 @@ fn recorded_time(path: &Path) -> Option<SystemTime> {
     } else {
         Duration::from_secs(stamp)
     })
-}
-
-fn recorded_at(time: SystemTime) -> String {
-    let seconds = time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    format!("{} · {:02}:{:02} UTC", age(time), seconds / 3600 % 24, seconds / 60 % 60)
 }
 
 fn result_text(result: Option<&Splits>) -> String {
@@ -285,7 +291,7 @@ impl Form {
                         entry.title,
                         result_text(entry.result.as_ref()),
                         entry.conditions,
-                        recorded_at(entry.modified)
+                        age(entry.modified)
                     );
                     if ui
                         .add(
@@ -310,8 +316,8 @@ impl Form {
                 self.replays.entries.iter().find(|e| Some(&e.path) == self.replays.selected.as_ref()).cloned();
             let Some(entry) = selected else { return };
             egui::ScrollArea::vertical().id_salt("replay-details").show(ui, |ui| {
-                ui.label(RichText::new(&entry.title).size(18.0).strong());
-                ui.weak(entry.path.file_name().unwrap_or_default().to_string_lossy());
+                ui.label(RichText::new(&entry.title).size(18.0).strong())
+                    .on_hover_text(entry.path.file_name().unwrap_or_default().to_string_lossy());
                 if let Some(problem) = &entry.problem {
                     ui.colored_label(WARN, problem);
                 }
@@ -320,7 +326,7 @@ impl Form {
                     for (label, value) in [
                         ("Stage time", result_text(entry.result.as_ref())),
                         ("Conditions", entry.conditions.clone()),
-                        ("Recorded", recorded_at(entry.modified)),
+                        ("Recorded", age(entry.modified)),
                         ("Stage start", entry.start_time.clone().unwrap_or_else(|| "Stage default".into())),
                     ] {
                         ui.weak(label);
@@ -474,6 +480,20 @@ mod tests {
             recorded_time(Path::new("1793268612000000000-stage.rrp"))
         );
         assert!(recorded_time(Path::new("my-drive.rrp")).is_none());
+    }
+
+    #[test]
+    fn a_video_is_named_after_its_drive_and_numbered_when_taken() {
+        let dir = crate::test_dir("replay-video-names");
+        let path = video_path(&dir, "Torsby 2018 · Lancer Evo II GrpA");
+        assert_eq!(path, dir.join("Torsby 2018 - Lancer Evo II GrpA.mp4"));
+        fs::write(&path, b"").unwrap();
+        assert_eq!(
+            video_path(&dir, "Torsby 2018 · Lancer Evo II GrpA"),
+            dir.join("Torsby 2018 - Lancer Evo II GrpA (2).mp4")
+        );
+        assert_eq!(video_path(&dir, "A/B: \"C\"?"), dir.join("A_B_ _C__.mp4"));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

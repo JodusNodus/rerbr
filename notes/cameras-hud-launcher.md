@@ -83,11 +83,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   camera key cycles the views, V resets the mouse look, Esc closes.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
-  malformed and unfinished files stay visible with their error. Rows show the stage time, recorded time in UTC and
+  malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and
   saved road/cloud/precipitation/fog overrides; details include the stage start time and included penalties. A live
   window saves its last SPL1 beside the replay as `.rrp.splits`, distinguishing a finish, DNF and an interrupted drive;
   older replays without it show Time unavailable. Watch uses the saved presentation with the selected
-  camera; Export offers 720p–2160p, 30/60 fps, an MP4 filename, audio and progress from the viewer's log (ffmpeg on
+  camera; Export offers 720p–2160p, 30/60 fps, an MP4 filename (default `<files>/videos/<title>.mp4`, numbered
+  when taken; the replay's file name is on the title's hover), audio and progress from the viewer's log (ffmpeg on
   PATH). Replay exit never advances the championship. Files are kept until removed by the player.
 
 ### `launcher-settings.ini`
@@ -95,7 +96,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 Form in `rbr-launcher/src/settings.rs`, folder and once-only migrate in `rbr-launcher/src/home.rs`.
 
 - Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `cabin`, `contact`, `grass`, `windscreen`,
-  `marks`, `wet_roads`, `detail`, `mirrors`; unset takes the High preset. The preset box is not stored: it shows the preset the
+  `marks`, `wet_roads`, `detail`, `mirrors`; unset takes the Ultra preset. The preset box is not stored: it shows the preset the
   keys match, else Custom; presets leave `marks` and the render scale alone. A saved `surfaces` (the removed scanned surfaces) is not read.
 - `perf_log` defaults off; on, the viewer logs with `viewer --perf-log <files folder>/logs` (`home::LOGS`, shown on the Graphics page).
 - `present` (`viewer --present`) defaults to mailbox, vsync on macOS: Metal has vsync or immediate only, so the launcher

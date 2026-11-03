@@ -23,7 +23,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --sky
 10O_N_hazy_partcloud
 --codriver-mod
@@ -38,6 +38,8 @@ Rbr.ini
 <rsf>/Plugins/NGPCarMenu/MyPacenotes/Kaihuavaara/Kaihuavaara LuppisV3.ini
 --save-replay
 <here>/replays/<time>-track_10_O.rrp
+--detail
+ultra
 --present
 mailbox
 --mirrors
@@ -114,7 +116,7 @@ intermittent
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --best-ghost
 <here>/NGP/GhostCars/Best_54.ghc
 --ghost-weather
@@ -125,8 +127,8 @@ anisotropy,cabin,contact,decals,lighting,particles,water,wet
 <here>/replays/<time>-track_54_O.rrp
 --render-scale
 0.75
---reflections
-off
+--detail
+ultra
 --present
 immediate
 --mirrors
@@ -198,11 +200,13 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --sky
 10O_N_lightsnow_heavycloud
 --car-gearbox
 sequential
+--grind-sound
+<rsf>/Plugins/RBRControls/Shifter_Error.wav.sample
 --codriver-mod
 <rsf>/Plugins/Pacenote
 --codriver-voice
@@ -215,6 +219,8 @@ Rbr.ini
 <rsf>/Plugins/NGPCarMenu/MyPacenotes/Kaihuavaara/Kaihuavaara LuppisV3.ini
 --save-replay
 <here>/replays/<time>-track_10_O.rrp
+--detail
+ultra
 --present
 mailbox
 --mirrors
@@ -289,7 +295,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --sky
 33N_crisp_clear
 --codriver-mod
@@ -304,6 +310,8 @@ Rbr.ini
 <rsf>/Plugins/NGPCarMenu/MyPacenotes/Mineshaft/Mineshaft LuppisV3.ini
 --save-replay
 <here>/replays/<time>-track_33_N.rrp
+--detail
+ultra
 --present
 mailbox
 --mirrors
@@ -374,7 +382,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --best-ghost
 <here>/NGP/GhostCars/Best_54.ghc
 --ghost-weather
@@ -393,6 +401,8 @@ Rbr.ini
 <rsf>/Plugins/NGPCarMenu/MyPacenotes/Tanner/Tanner LuppisV3.ini
 --save-replay
 <here>/replays/<time>-track_54_E.rrp
+--detail
+ultra
 --present
 mailbox
 --mirrors
@@ -465,7 +475,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --best-ghost
 <here>/NGP/GhostCars/Best_129.ghc
 --ghost-weather
@@ -484,6 +494,8 @@ Rbr.ini
 <rsf>/Plugins/NGPCarMenu/MyPacenotes/Peyregrosse Mandagout/Peyregrosse Mandagout LuppisV3.ini
 --save-replay
 <here>/replays/<time>-track_129_M.rrp
+--detail
+ultra
 --present
 mailbox
 --mirrors
@@ -556,7 +568,7 @@ auto
 --cameras
 <here>/launcher-settings.ini
 --enhance
-anisotropy,cabin,contact,decals,lighting,particles,water,wet
+anisotropy,cabin,contact,decals,grass,lighting,particles,water,wet,windscreen
 --sky
 54E_crisp_clear
 --codriver-mod
@@ -571,6 +583,8 @@ Rbr.ini
 <rsf>/Plugins/NGPCarMenu/MyPacenotes/Tanner/Tanner LuppisV3.ini
 --save-replay
 <here>/replays/<time>-track_54_E.rrp
+--detail
+ultra
 --present
 mailbox
 --mirrors

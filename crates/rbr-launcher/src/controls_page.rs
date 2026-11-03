@@ -14,7 +14,7 @@ use egui::{Color32, ComboBox, DragValue, ProgressBar, RichText, Ui};
 use rbr_formats::saves::action_map::Object;
 use rbr_gameplay::poll::Invert;
 use rbr_gameplay::race_options::DriverAids;
-use rbr_render::bindings::{self, Action, Bindings, PadInput};
+use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
 use rbr_render::wheel_rotation::{self, Wheel};
@@ -261,6 +261,11 @@ impl ControlsPage {
         values(self.joysticks.state(k), axes, buttons).find(|(o, _)| *o == pad.object).map(|(_, v)| v)
     }
 
+    /// The joysticks connected and the names their bindings show ([`short_name`]).
+    fn connected(&self) -> Vec<(Device, String)> {
+        (0..self.joysticks.len()).map(|k| (self.joysticks.device(k), short_name(self.joysticks.name(k)))).collect()
+    }
+
     /// The joysticks connected: name and id.
     fn pads(&self) -> Vec<String> {
         (0..self.joysticks.len())
@@ -327,25 +332,34 @@ impl ControlsPage {
 
     /// A section's device rows.
     fn pad_rows<const N: usize>(&mut self, ui: &mut Ui, bindings: &mut Bindings, id: &str, rows: [(Action, &str); N]) {
+        let connected = self.connected();
         egui::Grid::new(id).num_columns(4).min_col_width(ROW_LABEL).spacing([12.0, 4.0]).show(ui, |ui| {
             for (action, label) in rows {
-                self.pad_row(ui, bindings, action, label);
+                self.pad_row(ui, bindings, action, label, &connected);
             }
         });
     }
 
-    /// An action's device row: its input (click to set it), its live value and a clear.
-    fn pad_row(&mut self, ui: &mut Ui, bindings: &mut Bindings, action: Action, label: &str) {
+    /// An action's device row: its input (click to set it; named by `connected`), its live value and a clear.
+    fn pad_row(
+        &mut self,
+        ui: &mut Ui,
+        bindings: &mut Bindings,
+        action: Action,
+        label: &str,
+        connected: &[(Device, String)],
+    ) {
         ui.label(label);
         let binding = bindings.get(action);
         let text = match &self.capture {
             Some(Capture::Pad(a, _)) if *a == action => {
                 if action == Action::SteerLeft { "turn the wheel left…" } else { "move it…" }.to_owned()
             }
-            _ if action == Action::SteerLeft => steering_label(bindings),
-            _ => binding.pad.map_or("-".to_owned(), PadInput::format),
+            _ if action == Action::SteerLeft => steering_label(bindings, connected),
+            _ => binding.pad.map_or("-".to_owned(), |p| pad_label(p, connected)),
         };
-        if ui.add(egui::Button::new(text).min_size(egui::vec2(190.0, 0.0))).clicked() {
+        let button = egui::Button::new(text.clone()).truncate().min_size(egui::vec2(190.0, 0.0));
+        if ui.add_sized([190.0, 18.0], button).on_hover_text(text).clicked() {
             self.capture = Some(Capture::Pad(action, self.pad_rest()));
         }
         match binding.pad.and_then(|p| self.read(p)) {
@@ -454,17 +468,45 @@ fn heading(ui: &mut Ui, title: &str) {
     ui.add_space(2.0);
 }
 
-/// The steering's inputs: the axis once when both are on it, else both.
-fn steering_label(bindings: &Bindings) -> String {
+/// The steering's inputs: the axis once when both are on it, else both ([`pad_label`]).
+fn steering_label(bindings: &Bindings, connected: &[(Device, String)]) -> String {
     let (left, right) = (bindings.get(Action::SteerLeft).pad, bindings.get(Action::SteerRight).pad);
+    let f = |p: Option<PadInput>| p.map_or("-".to_owned(), |p| pad_label(p, connected));
     match (left, right) {
         (None, None) => "-".to_owned(),
-        (Some(l), Some(r)) if r == l => l.format(),
-        (l, r) => {
-            let f = |p: Option<PadInput>| p.map_or("-".to_owned(), PadInput::format);
-            format!("{} / {}", f(l), f(r))
-        }
+        (Some(l), Some(r)) if r == l => f(Some(l)),
+        (l, r) => format!("{} / {}", f(l), f(r)),
     }
+}
+
+/// A device input as the player reads it: the axis or button first, so a cut label keeps it, then its device's name
+/// while connected (`connected`), else its id (`axis 0 · G923 Racing Wheel`).
+fn pad_label(pad: PadInput, connected: &[(Device, String)]) -> String {
+    let id = pad.device.format();
+    let device = connected.iter().find(|(d, _)| *d == pad.device).map_or(id.as_str(), |(_, name)| name);
+    let input = pad.format();
+    format!("{} · {device}", input.strip_prefix(&id).unwrap_or(&input).trim())
+}
+
+/// A device's name without its maker and what it is for: `Logitech G923 Racing Wheel for PlayStation 4 and PC` is
+/// `G923 Racing Wheel`, `Thrustmaster T500 RS Gear Shift` is `T500 RS Gear Shift`.
+fn short_name(name: &str) -> String {
+    let name = name.split(" for ").next().unwrap_or(name).trim();
+    // The T500's shifter calls its maker "Thustmaster".
+    let makers = [
+        "Logitech",
+        "Thrustmaster",
+        "Thustmaster",
+        "Fanatec",
+        "Moza",
+        "Simucube",
+        "Simagic",
+        "Cammus",
+        "Microsoft",
+        "Sony",
+    ];
+    let rest = makers.iter().find_map(|m| name.strip_prefix(m).and_then(|r| r.strip_prefix(' ')));
+    rest.filter(|r| !r.is_empty()).unwrap_or(name).to_owned()
 }
 
 /// What the rotation setting does.
@@ -565,11 +607,23 @@ mod tests {
     #[test]
     fn the_steering_shows_once_for_one_axis() {
         let mut bindings = Bindings::default();
-        assert_eq!(steering_label(&bindings), "-");
+        assert_eq!(steering_label(&bindings, &[]), "-");
         bind(&mut bindings, Action::SteerLeft, moved(Object::Axis(0), true));
-        assert_eq!(steering_label(&bindings), "046d:c266/0 axis 0");
+        assert_eq!(steering_label(&bindings, &[]), "axis 0 · 046d:c266/0");
+        let wheel = bindings.get(Action::SteerLeft).pad.unwrap().device;
+        let connected = [(wheel, short_name("Logitech G923 Racing Wheel for PlayStation 4 and PC"))];
+        assert_eq!(steering_label(&bindings, &connected), "axis 0 · G923 Racing Wheel");
         assert!(bindings.invert.steering);
         bindings.actions[Action::SteerRight as usize].pad = None;
-        assert_eq!(steering_label(&bindings), "046d:c266/0 axis 0 / -");
+        assert_eq!(steering_label(&bindings, &[]), "axis 0 · 046d:c266/0 / -");
+    }
+
+    #[test]
+    fn device_names_drop_the_maker_and_what_they_are_for() {
+        assert_eq!(short_name("Logitech G923 Racing Wheel for PlayStation 4 and PC"), "G923 Racing Wheel");
+        assert_eq!(short_name("Thrustmaster T500 RS Gear Shift"), "T500 RS Gear Shift");
+        assert_eq!(short_name("Thustmaster T500 RS Gear Shift"), "T500 RS Gear Shift");
+        assert_eq!(short_name("Logitech"), "Logitech");
+        assert_eq!(short_name("Generic USB Joystick"), "Generic USB Joystick");
     }
 }
