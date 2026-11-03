@@ -94,6 +94,10 @@ chmod +x ReRBR-*.AppImage
 It needs FUSE 2 or 3, which most desktops have. Without it, start it with `./ReRBR-*.AppImage
 --appimage-extract-and-run`.
 
+**Windows** (x86_64, Windows 10 or later): `ReRBR-<version>-windows-x86_64.zip`. Extract it anywhere and start
+`rerbr.exe` in the ReRBR folder. ReRBR isn't signed, so the first time Windows says "Windows protected your PC": press
+**More info**, then **Run anyway**.
+
 ### 2. Your game, with NGP
 
 ReRBR plays your own copy of Richard Burns Rally 1.02 with NGP 7. At the first start it asks for your game folder.
