@@ -197,7 +197,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - Everything else stays retail map 41's: `track-41_M.fnc` (fences, physical), `.ini`, `_textures.rbz`, `Tracks.ini [Map41]` (particles), `TrackSettings41.ini` and the season rows (weather, sky), ghosts and times by map number (no other hook in `CTimeCard`, ghost or save paths).
 - The surface is `track.ini` `physics=` (`E14_4a1330`, 0x4a1330, hooked to return 0 gravel, 1 tarmac, 2 snow; gravel when `physics` is missing). Retail map 41 is tarmac, so the override matters.
 - Only the M variant is replaced: a map 41 weather row of another variant (the O rows: rain, fog, cloud 2/3) would load retail map 41's O files, so the launcher offers the three M rows (98 crisp clear, 99 hazy clear, 100 crisp part cloud; all dry) and plays its bad weather as the good one.
-- `rbr_btb::stage::prepare(track, rsf_root, out)` writes the five files (`classic` `lbs`/`dls`/`mat`, `trk_from`, the `col`) and `btb.ini` (`[BTB] folder=`, `rsf=`) into `out` (always rebuilt, like the plugin) and returns `<out>/track-41_M`; `out` is `<files>/btb/<folder>/`. `stage::source(folder)` reads `btb.ini` back (the renderer's hook). ReRBR never writes the game folder.
+- `rbr_btb::stage::prepare(track, rsf_root, out)` writes the five files (`classic` `lbs`/`dls`/`mat`, `trk_from`, the `col`) and `btb.ini` (`[BTB] folder=`, `rsf=`) into `out` and returns `<out>/track-41_M`; `out` is `<files>/btb/<folder>/`. The plugin rebuilds them on every load; we keep them while `btb.ini`'s `stamp=` (the build number and the track folder's file names, sizes and times) matches, which saves 0.5 to 2 s a Start. `stage::source(folder)` reads `btb.ini` back (the renderer's hook). ReRBR never writes the game folder.
 - `rbr_formats::stage_files`: a folder stage's file missing from its folder is the install's `Maps\<track>.<ext>`, which gives the prepared stage map 41's `.fnc`, `.ini`, `_textures.rbz`; an RSF stage has none (the launcher lists no RSF stage whose id is a retail map number, `Catalog::set_rsf`).
 - `.col` is `rbr_btb::col::build`; every folder is offered (a build error shows at Start).
 - `lbs::parse` accepts the stub `(1, 0)` chunk (a zero count, no sky word) so the boot reads the start location; `rbr-standalone --surface gravel|tarmac|snow` is the surface override (a stage that plays under another map's files).
@@ -225,18 +225,27 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   `specularTexture * SpecularColor * pow(N.H, SpecularPower)`. UV set order after the diffuse: bump, specular, multiplier,
   additive, lerp (`Effect::uv_slots`; the `DeclData`/`FVFData` patterns agree for every mesh). `Up` techniques light with
   `N = (0, 1, 0)`. `Transparent`: pass 0 alpha blended without depth write, pass 1 alpha test `>= 200` with depth write.
-- Textures: `Textures.zip` holds `.dds` (some uncompressed `X8R8G8B8`), and 1310 `.jpg` and 16 `.png` files that materials
-  name (`tarmac4.jpg`): `scene::TextureFiles::read` decodes them to a plain-texel `.dds`. Materials name textures by author
+- Textures: `Textures.zip` holds `.dds` (some uncompressed `X8R8G8B8`), and 1310 `.jpg`, 16 `.png` and one `.bmp`
+  (Crastazza's ground, 24-bit) that materials name (`tarmac4.jpg`): `scene::TextureFiles::read` decodes them to a
+  plain-texel `.dds`. Materials name textures by author
   paths; the file name matches the archive ignoring case (or the stem with `.dds`).
 - Drawn: diffuse, the lerp (vertex alpha is the weight; the renderer's second texture also multiplies it by the second
-  texture's alpha, which BTB's does not), `Up`, `Transparent` as the two passes, but only for a diffuse texture with a
-  translucent texel (`scene::has_alpha`; otherwise pass 0 and 1 together are one opaque draw), cull none, the vertex
-  colour holding `(0.4 + N.L)` for the unenhanced draw; the renderer's own light, shadows and sky otherwise.
+  texture's alpha, which BTB's does not), `Up`, cull none, the vertex colour holding `(0.4 + N.L)` for the unenhanced
+  draw; the renderer's own light, shadows and sky otherwise. `Transparent` by the diffuse texture's alpha
+  (`scene::alpha`): translucent (part-transparent texels outnumber the clear ones: glass, flags, wire mesh, skid marks)
+  as the two passes; cut out (leaves, grass) as one alpha-tested draw, kept over 127 (ours: blended, the fringe wrote
+  no depth and the temporal anti-aliasing carried it by what lay behind, so plants ghosted; alpha tested, they take the
+  renderer's foliage light); opaque as one solid draw.
+- Sky domes: 43 of the 72 folders' skies are ordinary objects, a box 10 km across with a sky texture (Crastazza, Cueva
+  Santa, Savo, Pirttikulma's `sky16`). A solo placement with faces 50 m over five driveline points is drawn in the sky layer;
+  the renderer's dome test (`sky_dome`, here passing over the driveline: the terrain runs past the dome's edge) then
+  leaves it out of the shadows, the sky's occlusion and, under `Enhance::lighting`, the frame. Drawn as the stage, it
+  roofed it: the ground went black under `lighting`.
   Approximated: `MultiplyAdd` draws its diffuse (the multiplier/additive UV sets cannot share a draw's two texture slots),
   `Specular` has no highlight, `Bump` has no normal map (the renderer's stage draws have neither path). Not drawn:
   `BTB_Sky` meshes (7 in two tracks; the renderer's sky stays), the 139 meshes whose texture name has no
   `materials.ini` section (Cauterets' `vieuxpylone`, one La Serra), invisible objects. Pirttikulma's own sky
-  (`Taivaita\Materials\sky16`, `BTB_Diffuse`) is an ordinary object, drawn as one. No weather, wear, light maps,
+  (`Taivaita\Materials\sky16`, `BTB_Diffuse`) is an ordinary object, a sky dome (below). No weather, wear, light maps,
   characters, fences, grass or collision for a BTB stage (their files are absent there and load as none); the viewer's
   fences and characters report "not loaded".
 - LOD and size: no instancing. Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
@@ -247,5 +256,13 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   triangles in 7070 meshes (peak 0.85 GB in a viewer screenshot); Stoccareddo II 3.79 M vertices, 1.99 M triangles, 1270
   meshes (peak 1.3 GB); Pirttikulma 1.18 M vertices, 0.74 M triangles. Load to the first frame 5 to 9 s on those. A view
   draws 60 to 350 k triangles.
+- Load: the sky's occlusion and the ground's bounce bake 1 km tiles; a BTB stage's terrain runs kilometres past the road
+  (Cueva Santa 221 tiles, a retail stage about 10), so both bake only the tiles within 1 km of the driveline
+  (`sky_occlusion::REACH`; Cueva Santa 31, Crastazza 54 from 121 with its dome out). On a live start at 4K with the
+  textures upscaled the bakes took 10 to 22 s before (2026-11-03). The first load of a stage also upscales its textures
+  once (`upscale`, cached).
+- Pictures: `stage_picture::btb_picture`, RSF's `rsfdata/images/stage_images/<id>.png` for the stage's id, else
+  `track.ini` `splashscreen`, else the folder's first `.jpg`/`.png` (every one of the 72 folders shows one); the
+  launcher's preview, else `driveline.ini` from above; the viewer's loading screen.
 - Open: no tangent-space bump or specular; `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.

@@ -86,10 +86,13 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
     maps
 }
 
-/// A stable number for a BTB folder without an RSF id: above any RSF id, from the folder's name.
+/// The first of the numbers [`synthetic`] gives: above any RSF id.
+pub const SYNTHETIC: u32 = 1_000_000;
+
+/// A stable number for a BTB folder without an RSF id: from [`SYNTHETIC`] up, from the folder's name.
 fn synthetic(name: &str, free: impl Fn(u32) -> bool) -> u32 {
     let hash = name.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
-    let mut number = 1_000_000 + hash % 1_000_000;
+    let mut number = SYNTHETIC + hash % SYNTHETIC;
     while !free(number) {
         number += 1;
     }

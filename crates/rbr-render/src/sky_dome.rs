@@ -3,23 +3,26 @@
 //! 450 Gabiria and its versions, 126, 312, 332, 470, 482, 484, 489, 517, 558, 570, 631, 641; 469 and 473, the Longyou
 //! stages 574 to 577: 39 of the 659 readable variants). As a caster it roofs the whole stage: the sky's occlusion found
 //! every vertex shut in, and the stage went black under `lighting`. A dome is told from terrain by covering
-//! the stage from above: the backdrop's terrain lies under or around the stage, never over its middle. The casters
+//! the stage from above: the backdrop's terrain lies under or around the stage, never over its middle. A BTB stage's
+//! terrain runs kilometres past the road, past its dome's edge (Cueva Santa), so a dome may pass over the driveline
+//! instead. The casters
 //! leave domes out (`renderer::shadows`), and under `Enhance::lighting` the renderer leaves them out altogether: the
 //! physically based sky and its clouds take their place, following the weather (user decision 2026-10-27).
 
 use crate::stage::{Anchor, Layer, Mesh};
 use glam::{Vec2, Vec3, Vec3Swizzles};
 
-/// Where a dome must pass over the stage: the middle of the stage's world meshes' footprint and the corners of its
-/// central half, each above every one of them.
+/// Where a dome must pass over the stage, above every one of its world meshes: the middle of their footprint and the
+/// corners of its central half, or five points along the driveline.
 pub(crate) struct Over {
     points: [Vec2; 5],
+    driveline: Vec<Vec2>,
     above: f32,
 }
 
 impl Over {
-    /// Over the world-anchored meshes with bounds (the stage, not its sky); `None` without any.
-    pub(crate) fn of(meshes: &[Mesh]) -> Option<Over> {
+    /// Over the world-anchored meshes with bounds (the stage, not its sky) and the `driveline`; `None` without any.
+    pub(crate) fn of(meshes: &[Mesh], driveline: &[Vec3]) -> Option<Over> {
         let (low, high) = meshes
             .iter()
             .filter(|m| m.anchor == Anchor::World && m.layer != Layer::Sky)
@@ -28,8 +31,10 @@ impl Over {
             .reduce(|(l, h), (bl, bh)| (l.min(bl), h.max(bh)))?;
         let (centre, quarter) = (((low + high) * 0.5).xz(), ((high - low) * 0.25).xz());
         let corner = |x: f32, z: f32| centre + quarter * Vec2::new(x, z);
+        let step = driveline.len().div_ceil(5).max(1);
         Some(Over {
             points: [centre, corner(-1.0, -1.0), corner(1.0, -1.0), corner(-1.0, 1.0), corner(1.0, 1.0)],
+            driveline: driveline.iter().step_by(step).map(|p| p.xz()).collect(),
             above: high.y,
         })
     }
@@ -42,12 +47,13 @@ impl Over {
         let position = |i: u32| Vec3::from(mesh.vertices[i as usize].position);
         let triangles: Vec<[Vec3; 3]> =
             mesh.indices.chunks_exact(3).map(|t| [position(t[0]), position(t[1]), position(t[2])]).collect();
-        self.points.iter().all(|&p| triangles.iter().any(|t| height_over(t, p).is_some_and(|y| y > self.above)))
+        let over = |p: &Vec2| triangles.iter().any(|t| height_over(t, *p).is_some_and(|y| y > self.above));
+        self.points.iter().all(over) || (!self.driveline.is_empty() && self.driveline.iter().all(over))
     }
 }
 
 /// The height of triangle `t` over the point `p` (stage x and z), if it lies over it.
-fn height_over(t: &[Vec3; 3], p: Vec2) -> Option<f32> {
+pub(crate) fn height_over(t: &[Vec3; 3], p: Vec2) -> Option<f32> {
     let [a, b, c] = t.map(|v| v.xz());
     let area = (b - a).perp_dot(c - a);
     if area.abs() < 1e-6 {
@@ -75,7 +81,7 @@ mod tests {
     #[test]
     fn a_roof_over_the_stage_is_a_dome_and_terrain_around_it_is_not() {
         let stage = mesh(Layer::Solid, &[], Vec::new());
-        let over = Over::of(std::slice::from_ref(&stage)).unwrap();
+        let over = Over::of(std::slice::from_ref(&stage), &[]).unwrap();
         // A square roof 2 km up, 6 km across.
         let roof = mesh(
             Layer::Sky,
@@ -93,6 +99,21 @@ mod tests {
         let hill = mesh(Layer::Sky, &[[2e3, 0.0, -3e3], [3e3, 800.0, 0.0], [2e3, 0.0, 3e3]], vec![0, 1, 2]);
         assert!(!over.roofed_by(&hill));
         // Not a sky face.
-        assert!(!over.roofed_by(&Mesh { layer: Layer::Solid, ..roof }));
+        assert!(!over.roofed_by(&Mesh { layer: Layer::Solid, ..roof.clone() }));
+    }
+
+    #[test]
+    fn a_dome_over_the_driveline_is_one_past_a_wider_terrain() {
+        // Terrain 20 km across: the roof, 6 km across, misses its central half's corners but covers the road.
+        let mut terrain = mesh(Layer::Solid, &[], Vec::new());
+        terrain.bounds = Some(Bounds { center: Vec3::ZERO, half_extent: Vec3::new(1e4, 20.0, 1e4) });
+        let roof = mesh(
+            Layer::Sky,
+            &[[-3e3, 2e3, -3e3], [3e3, 2e3, -3e3], [3e3, 2e3, 3e3], [-3e3, 2e3, 3e3]],
+            vec![0, 1, 2, 0, 2, 3],
+        );
+        assert!(!Over::of(std::slice::from_ref(&terrain), &[]).unwrap().roofed_by(&roof));
+        let road: Vec<Vec3> = (0..20).map(|i| Vec3::new(i as f32 * 100.0 - 1e3, 0.0, 0.0)).collect();
+        assert!(Over::of(std::slice::from_ref(&terrain), &road).unwrap().roofed_by(&roof));
     }
 }

@@ -5,7 +5,8 @@
 //! Where the game has neither (its other maps show the warning sprite 0x4df and 0.0 km), we draw the driveline from
 //! above (`.trk`, `E09_LoadDriveLine`) and take its length (ours; the game's menu draws a 3D map model of the stage,
 //! `FUN_00583cb0`, which is not read). A RallySimFans stage shows its picture (`rsf_picture`), else its driveline, with its own
-//! length, author and country, and the reason it cannot load.
+//! length, author and country, and the reason it cannot load. A BTB stage shows its picture (`btb_picture`), else its
+//! `driveline.ini`, with its length and author.
 //!
 //! The car: its model turning, rendered by `rbr_render` offscreen, as the game's menus show the car in 3D
 //! (`LoadFrontEndCars` in `RichardBurnsRally.ini`, `CPC_Application::vf04` 0x44c890; the menu loads the car with
@@ -22,7 +23,7 @@ use std::time::Duration;
 use egui::{Color32, ColorImage, Stroke, TextureHandle, TextureOptions};
 use rbr_formats::data::Data;
 use rbr_formats::{rsf, stage_files, trk};
-use rbr_render::stage_picture::{picture_sprite, rsf_picture, Pictures, Pixels};
+use rbr_render::stage_picture::{btb_picture, picture_sprite, rsf_picture, Pictures, Pixels};
 
 use crate::catalog::{Car, Map};
 
@@ -348,16 +349,20 @@ impl StagePictures {
     fn preview(&mut self, map: &Map) -> StageData {
         let data = self.data.clone();
         let driveline = || first_driveline(&data, map);
-        let (picture, length) = match &map.rsf {
-            // A BTB stage has no picture here, and its map's `.trk` is map 41's: only its length.
-            None if map.btb.is_some() => (Err(None), map.btb.as_ref().and_then(|b| b.km).map(|km| km * 1000.0)),
-            Some(stage) => {
+        let (picture, length) = match (&map.rsf, &map.btb) {
+            // A BTB stage's map `.trk` is map 41's: its picture, else its own driveline.
+            (None, Some(btb)) => {
+                let id = Some(map.number).filter(|&n| n < crate::btb::SYNTHETIC);
+                let picture = btb_picture(&btb.folder, id);
+                (picture.ok_or_else(|| btb_driveline(&btb.folder)), btb.km.map(|km| km * 1000.0))
+            }
+            (Some(stage), _) => {
                 let picture = rsf_picture(&stage.folder, stage.id);
                 let line = driveline();
                 let length = stage.length.map(|km| km * 1000.0).or(line.as_ref().map(|l| l.1));
                 (picture.ok_or(line.map(|l| l.0)), length)
             }
-            None => {
+            (None, None) => {
                 let picture = picture_sprite(map.number).and_then(|sprite| self.pictures.sprite(sprite));
                 match (picture, game_length(map.number)) {
                     (Some(picture), Some(length)) => (Ok(picture), Some(length)),
@@ -377,6 +382,9 @@ impl StagePictures {
         if let Some(stage) = &map.rsf {
             lines.extend(stage.country.clone());
             lines.extend(stage.author.as_ref().map(|a| format!("by {a}")));
+        }
+        if let Some(btb) = &map.btb {
+            lines.extend(btb.author.as_ref().map(|a| format!("by {a}")));
         }
         let problem =
             map.rsf.as_ref().and_then(|s| s.problem.clone()).or(map.btb.as_ref().and_then(|b| b.problem.clone()));
@@ -408,6 +416,13 @@ fn first_driveline(data: &Data, map: &Map) -> Option<(Vec<[f32; 2]>, f32)> {
     let step = |a: &trk::Vec3, b: &trk::Vec3| ((b.x - a.x).powi(2) + (b.y - a.y).powi(2) + (b.z - a.z).powi(2)).sqrt();
     let length = records.windows(2).map(|w| step(&w[0].vectors[0], &w[1].vectors[0])).sum();
     Some((fit(&points), length))
+}
+
+/// A BTB folder's `driveline.ini` from above, fitted as [`first_driveline`]'s.
+fn btb_driveline(folder: &std::path::Path) -> Option<Vec<[f32; 2]>> {
+    let driveline = rbr_btb::track::Track::open(folder).ok()?.driveline().ok()?;
+    let points: Vec<[f32; 2]> = driveline.points.iter().map(|p| [p.position[0] as f32, p.position[1] as f32]).collect();
+    (!points.is_empty()).then(|| fit(&points))
 }
 
 /// `points` scaled into 0..1 with their aspect kept, centred, y down.

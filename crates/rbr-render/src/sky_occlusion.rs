@@ -7,13 +7,16 @@
 //! baked at all.
 
 use glam::camera::lh::{proj::directx, view};
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3, Vec3Swizzles};
 
 pub(crate) const SHADER: &str = include_str!("sky_occlusion.wgsl");
 /// Directions over the sky, spread evenly over the hemisphere (equal solid angles).
 pub(crate) const DIRECTIONS: usize = 32;
 /// A tile's side, metres, and texels across its depth map.
 pub(crate) const TILE: f32 = 1000.0;
+/// How far from the driveline the tiles are drawn, metres ([`Tiles::near`]): a BTB stage's terrain runs kilometres
+/// past the road (Cueva Santa: 202 tiles, 19 near it), and the bakes' time with it.
+pub(crate) const REACH: f32 = 1000.0;
 pub(crate) const SIZE: u32 = 2048;
 /// How far toward the sky a tile's map reaches past the tile for casters (ridges, trees beside it), metres.
 const BACK: f32 = 600.0;
@@ -77,6 +80,18 @@ impl Tiles {
         Some(Tiles { origin, columns, rows, touched })
     }
 
+    /// The touched tiles within [`REACH`] of any of `points` (x and z), all of them without points; `None` when none is.
+    pub(crate) fn near(mut self, points: &[Vec3]) -> Option<Tiles> {
+        if !points.is_empty() {
+            let (origin, columns) = (self.origin, self.columns);
+            self.touched.retain(|&(index, ..)| {
+                let low = origin + Vec2::new((index % columns) as f32, (index / columns) as f32) * TILE;
+                points.iter().any(|p| p.xz().clamp(low, low + TILE).distance(p.xz()) <= REACH)
+            });
+        }
+        (!self.touched.is_empty()).then_some(self)
+    }
+
     /// The clip matrix of tile `index`'s map along `toward` (toward the sky), with height range `low` to `high`: an
     /// orthographic view down the direction over the tile's box, reaching [`BACK`] metres past it toward the sky; and
     /// its largest texel, metres.
@@ -130,6 +145,11 @@ mod tests {
         let tiles = Tiles::of(boxes.iter().copied()).unwrap();
         assert_eq!((tiles.origin, tiles.columns, tiles.rows), (Vec2::ZERO, 4, 1));
         assert_eq!(tiles.touched, vec![(0, -90.0, 110.0), (2, 30.0, 70.0), (3, 30.0, 70.0)]);
+        // From a point on tile 0's edge, tile 2 starts 1 km away: kept; tile 3 is not.
+        let near = tiles.clone().near(&[Vec3::new(1000.0, 0.0, 500.0)]).unwrap();
+        assert_eq!(near.touched, vec![(0, -90.0, 110.0), (2, 30.0, 70.0)]);
+        assert_eq!(tiles.clone().near(&[]), Some(tiles.clone()));
+        assert_eq!(tiles.near(&[Vec3::new(-5e3, 0.0, 0.0)]), None);
     }
 
     #[test]

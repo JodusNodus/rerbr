@@ -509,7 +509,7 @@ impl Renderer {
         let first_blended = stage.meshes.iter().position(|mesh| mesh.layer == Layer::Blended);
         let (solid, blended) = stage.meshes.split_at(first_blended.unwrap_or(stage.meshes.len()));
         let mut interactive_slots = HashMap::with_capacity(stage.interactive.len());
-        let over = crate::sky_dome::Over::of(&stage.meshes);
+        let over = crate::sky_dome::Over::of(&stage.meshes, &stage.driveline);
         // A stage mesh's vertices as drawn, when they are not its own: the sun's light needs the normals the baked stage
         // draws do not store, the sun's shadows the plants. The grass's tile meshes (`Lod::Close`) have none to light:
         // `Renderer::stream_grass` gives them their cards' vertices. Their zeroed ones, all in one place, made grouping
@@ -646,7 +646,7 @@ impl Renderer {
         let buffers = packing.finish(&device);
         let ground_light = enhance.lighting.then(|| {
             let start = std::time::Instant::now();
-            let tiles = occlusion::bake(&device, &queue, &texture_layout, &meshes, &buffers);
+            let tiles = occlusion::bake(&device, &queue, &texture_layout, &meshes, &buffers, &stage.driveline);
             let _ = device.poll(wgpu::PollType::wait_indefinitely());
             eprintln!("sky occlusion: {tiles} tiles in {:.1} s", start.elapsed().as_secs_f32());
             let toward = -stage.atmosphere.sun_direction;

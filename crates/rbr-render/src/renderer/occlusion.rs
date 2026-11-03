@@ -20,19 +20,21 @@ struct Params {
 }
 
 /// Writes each world-anchored stage vertex's [`Vertex::occlusion`](crate::stage::Vertex::occlusion) into `buffers`
-/// (`meshes`' vertices); the stage textures' bind groups are laid out by `texture_layout`. Returns the tiles drawn.
+/// (`meshes`' vertices) in the tiles near the `driveline` ([`Tiles::near`]); the stage textures' bind groups are laid out
+/// by `texture_layout`. Returns the tiles drawn.
 pub(super) fn bake(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     texture_layout: &wgpu::BindGroupLayout,
     meshes: &[GpuMesh],
     buffers: &[MeshBuffers],
+    driveline: &[Vec3],
 ) -> usize {
     let receivers = meshes
         .iter()
         .filter(|m| m.anchor == Anchor::World && m.layer != Layer::Sky && !m.car && m.in_car.is_none())
         .filter_map(|m| m.bounds);
-    let Some(tiles) = Tiles::of(receivers) else { return 0 };
+    let Some(tiles) = Tiles::of(receivers).and_then(|t| t.near(driveline)) else { return 0 };
     let maps = SunShadow::with_layers(device, texture_layout, SIZE, BATCH);
     let casting = Casting { meshes, buffers, sun: &maps, queue };
 

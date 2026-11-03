@@ -6,7 +6,8 @@
 //! 0x4a1560, the II stages share their base's picture). We read the 1280 bank, the largest pictures, all 384 × 184. A
 //! RallySimFans stage shows the picture RSF's menus show, `rsfdata/images/stage_images/<id>.png`, else the first
 //! `<id>-*.dds` of its folder (its loading poster) when it is readable, the middle of either in the retail pictures'
-//! shape, so both kinds show alike. Its files are never decrypted.
+//! shape, so both kinds show alike. Its files are never decrypted. A BTB stage ([`btb_picture`]) shows RSF's picture for
+//! its id too, else the pictures of its folder.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -63,9 +64,33 @@ pub fn picture_sprite(map: u32) -> Option<usize> {
 pub fn of_stage(data: &Data, stage: &str) -> Option<Pixels> {
     let (map, _) = stage_files::parts(stage)?;
     match stage_files::folder(stage) {
-        Some(folder) => rsf_picture(folder, map),
+        Some(folder) => match rbr_btb::stage::source(folder) {
+            Some(track) => btb_picture(&track, None),
+            None => rsf_picture(folder, map),
+        },
         None => Pictures::new(data.clone()).sprite(picture_sprite(map)?),
     }
+}
+
+/// A BTB track folder's picture in the retail pictures' shape: RSF's for its `id` (else the leading digits of a
+/// `<id>_*` picture in the folder; `rsfdata/images/stage_images/<id>.png` of the install whose
+/// `RX_CONTENT/Tracks/` holds it), else its `track.ini` `splashscreen`, else the folder's first `.jpg` or `.png`.
+pub fn btb_picture(folder: &Path, id: Option<u32>) -> Option<Pixels> {
+    let mut names: Vec<String> = std::fs::read_dir(folder)
+        .ok()?
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| [".jpg", ".png"].iter().any(|ext| n.to_ascii_lowercase().ends_with(ext)))
+        .collect();
+    names.sort();
+    let leading = |n: &String| n.split_once('_').and_then(|(digits, _)| digits.parse().ok());
+    let rsf = id.or_else(|| names.iter().find_map(leading)).and_then(|id| rsf_screenshot(folder.parent()?, id));
+    let splash = rbr_btb::track::Track::open(folder).ok().and_then(|t| t.info.splashscreen);
+    let file = |name: &str| {
+        let (width, height, rgba) =
+            rbr_btb::scene::decode_image(&std::fs::read(stage_files::in_dir(folder, name)?).ok()?)?;
+        Some((width as usize, height as usize, rgba))
+    };
+    rsf.or_else(|| splash.iter().chain(&names).find_map(|name| file(name))).map(|picture| retail_shape(&picture))
 }
 
 /// The menu bank's stage pictures, the bank and its decoded pages read once.
@@ -117,8 +142,8 @@ pub fn rsf_picture(folder: &Path, id: u32) -> Option<Pixels> {
     rsf_screenshot(folder, id).or_else(|| rsf_poster(folder, id)).map(|picture| retail_shape(&picture))
 }
 
-/// `rsfdata/images/stage_images/<id>.png` of the install whose `Maps/` holds the stage `folder`: the picture RSF's
-/// menus show.
+/// `rsfdata/images/stage_images/<id>.png` of the install whose `Maps/` (or `RX_CONTENT/Tracks/`) holds the stage
+/// `folder`: the picture RSF's menus show.
 fn rsf_screenshot(folder: &Path, id: u32) -> Option<Pixels> {
     let root = folder.parent()?.parent()?;
     let (width, height, rgba) =
@@ -200,6 +225,20 @@ mod tests {
         assert_eq!((width, height, rgba.len()), (1024, 490, 1024 * 490 * 4));
         let (width, height, _) = retail_shape(&(1000, 100, vec![0; 1000 * 100 * 4]));
         assert_eq!((width, height), (208, 100));
+    }
+
+    /// Every BTB folder of `RBR_RSF` shows a picture (RSF's, its splash screen or another of its pictures).
+    #[test]
+    fn btb_stages_show_a_picture() {
+        let Some(root) = std::env::var_os("RBR_RSF").map(std::path::PathBuf::from) else {
+            eprintln!("skipping: RBR_RSF not set");
+            return;
+        };
+        let tracks = rbr_btb::track::scan(&root);
+        for track in tracks.iter().flatten() {
+            let (width, height, rgba) = btb_picture(&track.folder, None).unwrap_or_else(|| panic!("{}", track.name));
+            assert!(width > 0 && rgba.len() == width * height * 4, "{}", track.name);
+        }
     }
 
     /// RSF's stage pictures (`RBR_RSF`): every PNG reads, in the retail shape (a few are JPEGs named `.png`; those
