@@ -70,6 +70,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
   (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
   them only on a click). Enter starts a drive only with nothing focused, else it presses the focused control.
+- Errors and crashes (`crash.rs`, user decision 2026-11-03: every error, not only crashes): a drive's viewer and
+  `rbr-standalone` write `<files>/logs/drive-<ns>.log` (last 10 kept), copied to the launcher's stderr; the viewer
+  gets `RUST_BACKTRACE=1`. A viewer exit other than success (not after Stop), drive or replay, opens a panel with the
+  log's end, "Report on GitHub…" (the bug form filled in through its link: `title`, `what`, `version`; nothing sent),
+  Copy report and the log folder. A launcher panic is written to `logs/launcher-crash.log` and shown at the next
+  start. The system clipboard is egui-winit's `clipboard` feature (smithay-clipboard on Wayland, arboard elsewhere;
+  arboard brings the `image` crate, egui-winit asks for its image support); before 2026-11-03 paste from other
+  programs did not work.
 - Stage pictures (Drive page, viewer loading screen; `rbr_render::stage_picture`, 2026-11-03): retail stages show
   the menu bank's (all 384 x 184); RSF stages show `rsfdata/images/stage_images/<id>.png` (what RSF's menus show,
   1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look

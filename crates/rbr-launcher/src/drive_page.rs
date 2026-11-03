@@ -158,6 +158,7 @@ impl Form {
                 {
                     // Our own child: the viewer, which ends its stepping process with it.
                     let _ = child.kill();
+                    self.crash.stopped = true;
                 }
             }
         });

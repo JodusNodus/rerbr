@@ -693,19 +693,30 @@ impl Form {
         if self.paths.patch.is_none() {
             command.env_remove("RBR_PATCH");
         }
+        // A panic's backtrace in the log (`crash`).
+        if std::env::var_os("RUST_BACKTRACE").is_none() {
+            command.env("RUST_BACKTRACE", "1");
+        }
         command
     }
 
     /// Runs the viewer with `args`; whether it started.
     fn spawn(&mut self, args: Vec<String>) -> bool {
         eprintln!("launcher: {} {}", self.paths.viewer.display(), args.join(" "));
-        match self.viewer_command(&args).spawn() {
+        let title = args.iter().position(|a| a == "--title").and_then(|n| args.get(n + 1)).cloned().unwrap_or_default();
+        let mut command = self.viewer_command(&args);
+        match self.crash.start(&self.logs_dir(), &title) {
+            Ok(log) => _ = command.stderr(log),
+            Err(e) => eprintln!("launcher: no drive log: {e}"),
+        }
+        match command.spawn() {
             Ok(child) => {
                 self.status = format!("viewer running (pid {})", child.id());
                 self.child = Some(child);
                 true
             }
             Err(e) => {
+                self.crash.cancel();
                 self.status = format!("{}: {e}", self.paths.viewer.display());
                 false
             }
@@ -719,6 +730,7 @@ impl Form {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     self.status = format!("viewer exited ({status})");
+                    self.crash.finished(status);
                     self.replays.finished(status.success());
                     self.child = None;
                 }

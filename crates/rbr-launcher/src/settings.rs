@@ -918,6 +918,7 @@ impl Form {
             rsf_scanned: settings.rsf_root.clone().unwrap_or_default(),
             marker,
             child: None,
+            crash: Default::default(),
             status: String::new(),
             bindings: settings.bindings.clone(),
             ffb: settings.ffb.clone(),

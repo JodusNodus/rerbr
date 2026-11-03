@@ -438,6 +438,8 @@ impl Form {
         })();
         match result {
             Ok((child, log)) => {
+                let title = self.replays.entries.iter().find(|e| e.path == path).map_or("", |e| e.title.as_str());
+                self.crash.watch(log.clone(), &format!("Replay of {title}"), true);
                 self.child = Some(child);
                 self.status = if export { "Exporting replay video" } else { "Watching replay" }.into();
                 self.replays.message.clear();
