@@ -10,7 +10,8 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 - **NGP 7 physics.** use the latest NGP version (must be provided by you).
 - **The original game around it.** Weather, damage, the service park, the championship and the stage records work
   as in RBR 1.02, checked against recordings of the original.
-- **The community's cars and stages.** Any original file format stage and NGP car works out of the box.
+- **The community's cars and stages.** Any original file format stage and NGP car works out of the box, and the
+  RallySimFans install's BTB stages work experimentally.
 - **A modern look.** A physically based sky and sun, HDR, sun shadows, rain and dust, a lit
   cockpit, windscreen glass and working mirrors.
 
@@ -39,7 +40,7 @@ The whole set of 36: [docs/shots](docs/shots/README.md); frames from real drives
 
 ## Status
 
-Works today: every retail stage, the RallySimFans stages, the quick race and the championship, NGP physics with the
+Works today: every retail stage, the RallySimFans stages (its BTB stages experimentally), the quick race and the championship, NGP physics with the
 RallySimFans cars, the HUD and pace notes, the co-driver, sound, wheels and force feedback. Drives are saved as
 ReRBR replays (`.rrp`), with playback and video export from the Replays tab.
 
