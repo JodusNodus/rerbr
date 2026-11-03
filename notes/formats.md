@@ -30,6 +30,7 @@ Parsers: `crates/rbr-formats/src/`; retail tests: `crates/rbr-formats/tests/` (`
 | ghosts | `.gho`, `.ghc` | `ghost` | `ghost.rs` | yes |
 | reference times | `Misc/times.ini` | `times` | `all_retail_times_ini_parse` | yes |
 | RSF | cars, stages, RBRHUD, Pacenote plugin | `rsf` | `rsf_data.rs` (`RBR_RSF`) | see below |
+| BTB | `RX_CONTENT/Tracks/*` sources, built `trk`/`mat`/`dls`/`lbs`, stage ids | `btb` | `btb_data.rs` (`RBR_RSF`) | yes, `ksh` passed through |
 
 ## Archives
 
@@ -276,6 +277,44 @@ matrices are zero.
 ## RSF ghosts
 
 Not supported (user decision): every race uses the game's own `.ghc` ghosts, by map number.
+
+## BTB stages
+
+`RX_CONTENT/Tracks/<folder>/`: the Bob's Track Builder sources the RSF plugin `Plugins/rbr_rx.dll` builds the
+physics files from, to `CACHE/` beside them (`btb::{scan,build,ids}`, `tests/btb_data.rs`, 72 local folders, 19
+cached). Sources: `track.ini` (`[INFO]` name, physics, author, version, splashscreen, date, comment, length),
+`spawn.ini` (`[SPAWN]` identity matrix, `m12/m13/m14` position, `angleZ`), `driveline.ini` (`[DRIVELINE]` count and
+`K<i>` 8-float points), `settings.ini` (`[SETTINGS]` `sunDirection`), `objectlist.ini` (`[OBJECTS]` count and
+`[Object_<i>]` file, xform, cloneCount, LODIn, `LODOut`, flags, `CollisionModel`, `colBox`), `materials.ini`
+(`[MATERIALS]` count, `MAT_<i>` names, one section per material), `mat.ini` (`[MAPS]` count, `[MAP<i>]`
+`data0..data15` grids), `pacenotes.ini` (`[PACENOTES]` count, `[P<i>]` type, distance, flag), plus `Objects.zip` and
+`Textures.zip`. Numbers use the author's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor` triples,
+`colBox` triples in either locale); `sunDirection` and `ambient` are comma lists.
+
+Built files (byte-identical to every `CACHE/` file): `.trk` is a `(3,0x14)` driveline chunk (the first seven `K`
+values as `f32`, the `u16`s zero; the eighth is zero in every folder) plus a `(3,0x16)` chunk (a `u32` mesh count
+plus the `ksh.ksh` bytes; four folders build it empty). One mesh per `CollisionModel=2` object and one placement
+per clone come from the `.x` meshes, out of scope here. `.mat` is nine entries (`dry`/`damp`/`wet` by
+`new`/`normal`/`worn`) with identical runs: `[MAPS]` count runs of 16x16 cells each. `.dls` is a fixed 299-byte
+`MINAATAD` template (version 18, constant words and the `Driveline\0` + `299 300\0` name block) holding the
+first `count` notes as the `Driveline` set's marker keys (`tag`, `flag`, `f32` distance); surplus `[P<i>]`
+sections past `count` are not notes, and the plugin always reads `pacenotes.ini` (`Pirttikulma snow`'s
+`pacenotes1_*` copy holds a different count, 196 against the cache's 211). `.lbs` is 144 bytes: a `(2,11)` start
+chunk (identity matrix with the spawn translation, the position twice, `(0, angleZ, 0)` rotation), then empty
+`(2,10)` and `(1,0)` stubs the game never dispatches. `CACHE/col.col`, `ksh.ksh`, the meshes and the minimaps
+are other workers' scope.
+
+Ini quirks (Windows `GetPrivateProfileString` semantics: first section wins, first key wins, headers only at
+line starts, `atoi` cells): a missing newline glues `69[MAP1]` onto a `data15` line (`Kinamba Yala`, `Olocau
+Gatova`, four more folders), so that `[MAPn]` is not a section, its trailing token still reads 69, and its map
+reads zeros; duplicate `[MAP<i>]` sections keep the first (`Sagen Sweden 2012`'s cache proves it); a missing map
+or row reads zeros (no oracle for the uncached folders with missing rows).
+
+RSF stage ids (1000 and up) per folder, first evidence wins: a `<id>_*.png` splash picture in the folder, a
+`rallysimfans_personal.ini` `[stage<id>] name=<folder>` entry (older non-BTB stages reuse names: `Makkola` is
+also 549, `Nechanice - Presin` also 560), else a `stages_data.json` name matching the folder after dropping a
+trailing `-`, lowercasing and accent-folding. Unmatched: `BikolTardos12` (the json's `Bikol Tardos`, 1002) and
+`Myttaala Gravel` (the json's `Myttäälä`, 1059).
 
 ## RBRHUD gauges
 
