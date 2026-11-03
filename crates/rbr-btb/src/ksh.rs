@@ -9,7 +9,7 @@
 //! under Windows uses the native DLL (SSE2 `rsqrtss` quaternion normalisation), one built under Wine uses Wine's
 //! own (plain division). [`Math`] selects which one the placement rotation reproduces.
 
-use crate::track::{Object, Track};
+use crate::track::Track;
 use crate::{xfile, xform};
 use rbr_formats::rbz;
 use std::io::Read;
@@ -62,7 +62,7 @@ pub fn build(track: &Track, math: Math) -> Result<(u32, Vec<u8>), String> {
             // `ReadClones`: a missing file is one clone with the identity matrix.
             Err(_) => vec![IDENTITY],
         };
-        let corners = match scan_col_box(object) {
+        let corners = match object.col_box {
             Some(extents) => box_corners(extents),
             None => {
                 let bytes = read(zip, &format!("Objects/{}.x", object.file))?;
@@ -84,56 +84,6 @@ fn read<R: Read + std::io::Seek>(zip: &mut rbz::ZipArchive<R>, name: &str) -> Re
         .read_to_end(&mut bytes)
         .map_err(|e| format!("{name}: {e}"))?;
     Ok(bytes)
-}
-
-/// `sscanf(value, "%f, %f, %f")` in the C locale: three numbers, each followed by a comma right after it, white
-/// space free. `colBox=0,15, 1, 0,15` therefore reads (0, 15, 1) - the decimal commas are separators. `None` when
-/// fewer than three read (the plugin then takes the mesh's bounding box).
-pub fn scan_col_box(object: &Object) -> Option<[f32; 3]> {
-    let (_, value) = object.entries.iter().find(|(k, _)| k.eq_ignore_ascii_case("colBox"))?;
-    scan3(value)
-}
-
-fn scan3(s: &str) -> Option<[f32; 3]> {
-    let mut rest = s;
-    let mut out = [0.0f32; 3];
-    for (i, slot) in out.iter_mut().enumerate() {
-        if i > 0 {
-            rest = rest.strip_prefix(',')?;
-        }
-        let rest_trimmed = rest.trim_start();
-        let end = float_prefix(rest_trimmed)?;
-        *slot = rest_trimmed[..end].parse().ok()?;
-        rest = &rest_trimmed[end..];
-    }
-    Some(out)
-}
-
-/// The length of the longest `[+-]digits[.digits][e[+-]digits]` prefix of `s`.
-fn float_prefix(s: &str) -> Option<usize> {
-    let b = s.as_bytes();
-    let digits = |from: usize| b[from.min(b.len())..].iter().take_while(|c| c.is_ascii_digit()).count();
-    let mut i = usize::from(matches!(b.first(), Some(b'+' | b'-')));
-    let int = digits(i);
-    i += int;
-    let mut frac = 0;
-    if b.get(i) == Some(&b'.') {
-        frac = digits(i + 1);
-        if int > 0 || frac > 0 {
-            i += 1 + frac;
-        }
-    }
-    if int + frac == 0 {
-        return None;
-    }
-    if matches!(b.get(i), Some(b'e' | b'E')) {
-        let sign = usize::from(matches!(b.get(i + 1), Some(b'+' | b'-')));
-        let exp = digits(i + 1 + sign);
-        if exp > 0 {
-            i += 1 + sign + exp;
-        }
-    }
-    Some(i)
 }
 
 /// The eight corners of a `colBox` `(a, b, c)`: half extents `a/2` (x), `c/2` (y) and a z from `-0.1 * b/2` (the

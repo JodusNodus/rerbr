@@ -129,29 +129,10 @@ fn box_corners_follow_the_plugin() {
 
 #[test]
 fn col_box_reads_like_sscanf() {
-    let object = |v: &str| track_object(v);
-    assert_eq!(ksh::scan_col_box(&object("0,1, 3, 0,1")), Some([0.0, 1.0, 3.0]));
-    assert_eq!(ksh::scan_col_box(&object("0.15, 1, 0.15")), Some([0.15, 1.0, 0.15]));
-    assert_eq!(ksh::scan_col_box(&object("1e1, 2 , 3")), None);
-    assert_eq!(ksh::scan_col_box(&object("1, 2")), None);
-}
-
-fn track_object(col_box: &str) -> track::Object {
-    track::Object {
-        index: 0,
-        file: String::new(),
-        xform: String::new(),
-        clone_count: None,
-        lod_in: None,
-        lod_out: None,
-        visible: None,
-        draw_instanced: None,
-        moveable: None,
-        shadow_caster: None,
-        collision_model: Some(2),
-        col_box: None,
-        entries: vec![("colBox".into(), col_box.into())],
-    }
+    assert_eq!(track::scan_col_box("0,1, 3, 0,1"), Some([0.0, 1.0, 3.0]));
+    assert_eq!(track::scan_col_box("0.15, 1, 0.15"), Some([0.15, 1.0, 0.15]));
+    assert_eq!(track::scan_col_box("1e1, 2 , 3"), None);
+    assert_eq!(track::scan_col_box("1, 2"), None);
 }
 
 #[test]

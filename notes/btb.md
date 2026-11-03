@@ -22,8 +22,12 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   `SpecularPower`/`SpecularColor` with decimal commas, texture paths (absolute author paths the game never reads).
 - `mat.ini` `[MAPS]` count and `[MAP<i>]` `data0..data15` rows of 16 cells (values fit `u8`).
 - `pacenotes.ini` `[PACENOTES]` count and `[P<i>]` type, distance, flag; five folders hold more `[P<i>]` than `count`.
-- Numbers use the author's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`,
-  `colBox=0,15, 1, 0,15` in either locale); parsed by `track::decimal_floats`.
+- Numbers use the author's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`);
+  parsed by `track::decimal_floats`. The plugin itself reads `colBox` and `sunDirection` with `sscanf("%f, %f, %f")` and
+  `LODIn`/`LODOut`/`distance` with `sscanf("%f")` (`FUN_10008bc0`, C locale): commas separate there, so `colBox=0,15, 1, 0,15` is
+  (0, 15, 1) (`track::scan_col_box`, `Object::col_box`) and `LODOut=2679,576` reads 2679 in the plugin (the renderer keeps the
+  decimal comma, 2679.576: a `LODOut` difference of under 1 m matters little). `materials.ini` colours are not read by that
+  function (the effect loader's parser was not found; unknown).
 - Text files are bytes decoded lossy (non-UTF-8 `track.ini` names exist), sections/keys first-match
   case-insensitive, headers only at line starts: `rbr_formats::ini` gives Windows-identical sections here (no
   indented headers or comments in any folder).
@@ -73,9 +77,12 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 - Clones = the `xform` matrix count (file size >> 6, as `ReadClones` 0x1001dc40); a missing xform file is one identity clone. The ini
   `cloneCount` is not used (equal in all 19 caches anyway).
 - Placement key: the address of the matrix in the plugin's heap (`0x78B5D350`, +64 per clone, other base per run): not reproducible,
-  written as 0, the tests mask it. Nothing reads it (`rbr_formats::trk` skips it).
+  written as 0, the tests mask it. Nothing reads it (`rbr_formats::trk` skips it); the physics uses
+  a mesh's key only as `host.interactive_handle(object.interactive_id)` for kinds other than 0 and 5 (`stage::wants_handle`), and handles
+  come from the `.lbs` `(1,6)` records, which a BTB `lbs.lbs` lacks, so any key resolves to no handle. The object kind is the first flag
+  byte: 0 (static) for `CollisionModel=2`, 1 (cone) for `CollisionModel=1`: `wants_handle` is false for all local meshes.
 - `colBox` is read by `sscanf("%f, %f, %f")` (`FUN_10008bc0`): `0,1, 3, 0,1` is (0, 1, 3), the commas are separators, not decimal
-  commas (`ksh::scan_col_box`; `track::Object::col_box` reads it differently). Evidence: first corners `(-0, -1.5, -0.05)` of that box.
+  commas (`track::scan_col_box`). Evidence: first corners `(-0, -1.5, -0.05)` of that box.
 - Box corners `(a, b, c)` = colBox: `ex = a*0.5`, `ey = c*0.5`, `ez = b*0.5` (f32), corner bits x:1 y:2 z:4, `x = ∓ex`, `y = ∓ey`,
   `z = -ez * 0.1f` (corners 0-3) or `ez + ez` (4-7); `-0.0` stays for a zero extent.
 - Without `colBox` (31 objects, La Serra): the `.x` bounding box, positions after the D3DX load shift (nonzero float bits - 1), min/max
