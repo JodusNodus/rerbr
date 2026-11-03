@@ -349,6 +349,8 @@ impl StagePictures {
         let data = self.data.clone();
         let driveline = || first_driveline(&data, map);
         let (picture, length) = match &map.rsf {
+            // A BTB stage has no picture here, and its map's `.trk` is map 41's: only its length.
+            None if map.btb.is_some() => (Err(None), map.btb.as_ref().and_then(|b| b.km).map(|km| km * 1000.0)),
             Some(stage) => {
                 let picture = rsf_picture(&stage.folder, stage.id);
                 let line = driveline();
@@ -376,7 +378,9 @@ impl StagePictures {
             lines.extend(stage.country.clone());
             lines.extend(stage.author.as_ref().map(|a| format!("by {a}")));
         }
-        StageData { picture, lines, problem: map.rsf.as_ref().and_then(|s| s.problem.clone()) }
+        let problem =
+            map.rsf.as_ref().and_then(|s| s.problem.clone()).or(map.btb.as_ref().and_then(|b| b.problem.clone()));
+        StageData { picture, lines, problem }
     }
 }
 

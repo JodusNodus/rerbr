@@ -129,11 +129,30 @@ pub struct Map {
     pub stages: Vec<Stage>,
     /// A RallySimFans stage folder's map ([`Catalog::set_rsf`]).
     pub rsf: Option<rsf::Stage>,
+    /// A BTB stage's map ([`crate::btb`]): it plays as retail map 41.
+    pub btb: Option<crate::btb::Btb>,
 }
 
 impl Map {
+    /// The map number its season rows and weathers go by: the number, but a BTB stage's is retail map 41's.
+    pub fn weather_map(&self) -> u32 {
+        if self.btb.is_some() {
+            crate::btb::MAP
+        } else {
+            self.number
+        }
+    }
+
+    /// Why the community or BTB stage cannot start.
+    pub fn problem(&self) -> Option<&String> {
+        self.rsf.as_ref().and_then(|s| s.problem.as_ref()).or(self.btb.as_ref().and_then(|b| b.problem.as_ref()))
+    }
+
     /// The name the menus show: the game's, or the community stage's.
     pub fn name(&self) -> String {
+        if let Some(btb) = &self.btb {
+            return btb.name.clone();
+        }
         match &self.rsf {
             Some(stage) => stage.name.clone(),
             None => title(self.number).map_or_else(|| format!("Map {}", self.number), str::to_owned),
@@ -142,6 +161,9 @@ impl Map {
 
     /// The season that gives the map's weathers: the game's, or a community stage's own (`Season::of_rsf`).
     pub fn season<'a>(&self, season: &'a Season) -> Cow<'a, Season> {
+        if self.btb.is_some() {
+            return Cow::Owned(crate::btb::season(season));
+        }
         match &self.rsf {
             Some(stage) => Cow::Owned(Season::of_rsf(stage, None)),
             None => Cow::Borrowed(season),
@@ -150,6 +172,9 @@ impl Map {
 
     /// The game's surface number of the map (0 gravel, 1 tarmac, 2 snow): [`surface_kind`], or the community stage's.
     pub fn surface(&self) -> u32 {
+        if let Some(btb) = &self.btb {
+            return btb.surface_kind();
+        }
         match self.rsf.as_ref().map(|s| s.surface) {
             Some(Some(rsf::Surface::Gravel)) => 0,
             Some(Some(rsf::Surface::Tarmac)) => 1,
@@ -206,7 +231,7 @@ impl Catalog {
             .into_iter()
             .map(|(number, mut stages)| {
                 stages.sort_by_key(|s| s.letter);
-                Map { number, stages, rsf: None }
+                Map { number, stages, rsf: None, btb: None }
             })
             .collect();
         Ok(Catalog { cars: Vec::new(), all_cars: cars, maps })
@@ -217,7 +242,7 @@ impl Catalog {
     /// reason ([`Catalog::availability`]). A folder whose `Tracks<id>.ini` does not read, or whose id a retail map has,
     /// is reported and left out.
     pub fn set_rsf(&mut self, root: &str) {
-        self.maps.retain(|m| m.rsf.is_none());
+        self.maps.retain(|m| m.rsf.is_none() && m.btb.is_none());
         if root.trim().is_empty() {
             return;
         }
@@ -235,8 +260,10 @@ impl Catalog {
             }
             let stages =
                 stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
-            self.maps.push(Map { number: stage.id, stages, rsf: Some(stage) });
+            self.maps.push(Map { number: stage.id, stages, rsf: Some(stage), btb: None });
         }
+        let taken: Vec<u32> = self.maps.iter().map(|m| m.number).collect();
+        self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
     }
 
     /// Replaces the RSF cars by those of the RSF folder `dir` (none, with the reason on stderr, when it doesn't read;
@@ -297,11 +324,11 @@ impl Catalog {
         draws: weather::Draws,
     ) -> Result<(Stage, Weather), String> {
         let entry = self.map(map);
-        if let Some(problem) = entry.and_then(|m| m.rsf.as_ref()?.problem.as_ref()) {
+        if let Some(problem) = entry.and_then(Map::problem) {
             return Err(problem.clone());
         }
         let season = entry.map_or(Cow::Borrowed(season), |m| m.season(season));
-        let weather = weather::quick_race(&season, map, preset, draws)?;
+        let weather = weather::quick_race(&season, entry.map_or(map, Map::weather_map), preset, draws)?;
         let stage = self.stage_of(map, &weather).ok_or_else(|| {
             format!("{} selected by {} weather has no installed stage file", weather.stage(), weather::name(preset))
         })?;
@@ -318,7 +345,7 @@ impl Catalog {
         words: &rbr_formats::ghost::Weather,
     ) -> Option<(Stage, Weather)> {
         let entry = self.map(map)?;
-        if entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
+        if entry.btb.is_some() || entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
             return None;
         }
         let weather = entry.season(season).ghost_weather(map, words)?;
@@ -481,6 +508,9 @@ pub fn map_label(map: &Map) -> String {
     if let Some(stage) = &map.rsf {
         return format!("{} {} (RSF)", map.number, stage.name);
     }
+    if let Some(btb) = &map.btb {
+        return format!("{} {} (BTB)", map.number, btb.name);
+    }
     match title(map.number) {
         Some(name) => format!("{} {name}", map.number),
         None => map.number.to_string(),
@@ -491,7 +521,7 @@ pub fn map_label(map: &Map) -> String {
 /// test maps (`[HOMEBASE]`, `[RSSTAGE]`, `[RALLYYARD]` and the unnamed ones; user decision: no rally school). They
 /// still start from the viewer's and `rbr-standalone`'s command lines.
 pub fn is_listed(map: &Map) -> bool {
-    map.rsf.is_some() || title(map.number).is_some_and(|name| !name.starts_with('['))
+    map.rsf.is_some() || map.btb.is_some() || title(map.number).is_some_and(|name| !name.starts_with('['))
 }
 
 /// The stage's name in the game: `E52ModeHost::M4a1020` (0x4a1020), queried by map number.
