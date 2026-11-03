@@ -227,21 +227,6 @@ fn json(text: &str) -> String {
     out + "\""
 }
 
-/// gvrc.de's list category as RSF names the car's group (`Rally2` is `Rally 2`, a bare `A8` is `Group A8`);
-/// anything else is kept as named, trimmed. What an added car is listed and filtered by.
-pub(crate) fn normalize_group(cat: &str) -> String {
-    let cat = cat.trim();
-    if let Some(n) = cat.strip_prefix("Rally") {
-        if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) {
-            return format!("Rally {n}");
-        }
-    }
-    match cat {
-        "A5" | "A6" | "A7" | "A8" => format!("Group {cat}"),
-        _ => cat.to_owned(),
-    }
-}
-
 /// Writes the list RSF's reader takes (`rsfdata/cache/cargroups.json`, `cars.json`, `carmodels.json` and
 /// `cars_data.json`), dropping the models no car uses and their folders. Each car keeps its `base_group_id` (one
 /// row per distinct group name, ids of our own) and its `cars_data.json` drive train, so both survive a rewrite.
@@ -320,23 +305,12 @@ pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
     let (mut cars, models) = list(cars_dir);
     let mut changed = false;
     for car in &mut cars {
-        let missing = car.group.as_deref().filter(|g| !g.is_empty()).is_none()
-            || car.drive_train.as_deref().filter(|d| !d.is_empty()).is_none();
-        let Some(entry) = missing.then(|| entries.iter().find(|e| e.pack.eq_ignore_ascii_case(&car.pack))).flatten()
-        else {
+        let Some(entry) = entries.iter().find(|e| e.pack.eq_ignore_ascii_case(&car.pack)) else {
             continue;
         };
-        if car.group.as_deref().filter(|g| !g.is_empty()).is_none() {
-            let group = normalize_group(&entry.cat);
-            if !group.is_empty() {
-                car.group = Some(group);
-                changed = true;
-            }
-        }
-        if car.drive_train.as_deref().filter(|d| !d.is_empty()).is_none() {
-            let drive = entry.trans.trim();
-            if !drive.is_empty() {
-                car.drive_train = Some(drive.to_owned());
+        for (field, value) in [(&mut car.group, entry.group()), (&mut car.drive_train, entry.drive_train())] {
+            if field.as_deref().is_none_or(str::is_empty) && value.is_some() {
+                *field = value;
                 changed = true;
             }
         }
@@ -876,22 +850,6 @@ mod tests {
             !cars.join("AudioFMOD/C2_S1600.bank").exists() && !cars.join("AudioFMOD/C2_S1600.strings.bank").exists()
         );
         fs::remove_dir_all(&root).unwrap();
-    }
-
-    /// gvrc.de's categories as RSF names the groups: `RallyN` takes a space, a bare `A5`..`A8` takes `Group`.
-    #[test]
-    fn groups_are_normalized_to_rsf_names() {
-        assert_eq!(normalize_group("Rally2"), "Rally 2");
-        assert_eq!(normalize_group("Rally5"), "Rally 5");
-        assert_eq!(normalize_group("Rally 2"), "Rally 2");
-        assert_eq!(normalize_group("A5"), "Group A5");
-        assert_eq!(normalize_group("A8"), "Group A8");
-        assert_eq!(normalize_group("Group A8"), "Group A8");
-        assert_eq!(normalize_group("Group B"), "Group B");
-        assert_eq!(normalize_group("WRC 1.6"), "WRC 1.6");
-        assert_eq!(normalize_group("  Group N4  "), "Group N4");
-        assert_eq!(normalize_group("Rally"), "Rally");
-        assert_eq!(normalize_group(""), "");
     }
 
     /// A `write_list` round trip keeps each car's group and drive train, and a second rewrite is byte-identical.
