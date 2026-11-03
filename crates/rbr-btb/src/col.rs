@@ -390,10 +390,17 @@ fn pick_uvs(mesh: &xfile::Mesh) -> Vec<[f32; 2]> {
 /// The faces of every `CollisionModel=0` object, clone by clone, in the order the plugin gathers them.
 fn gather(track: &Track) -> Result<Vec<Face>, String> {
     let objects = track.objects()?;
+    // A material whose diffuse texture `Textures.zip` lacks loads without one: its meshes get no map.
+    let archive = rbr_formats::stage_files::in_dir(&track.folder, "Textures.zip")
+        .ok_or_else(|| format!("{}: no Textures.zip", track.folder.display()))?;
+    let zip = rbz::open(&archive).map_err(|e| format!("{}: {e}", archive.display()))?;
+    let held: std::collections::HashSet<String> =
+        zip.file_names().flatten().map(|n| n.rsplit(['/', '\\']).next().unwrap_or(&n).to_lowercase()).collect();
     let mut diffuse = HashMap::new();
     for m in track.materials()?.sections {
-        if let Some(t) = m.texture("diffuseTexture") {
-            diffuse.entry(m.name.to_lowercase()).or_insert_with(|| basename(t).to_owned());
+        let texture = m.texture("diffuseTexture").map(basename);
+        if let Some(t) = texture.filter(|t| held.contains(&t.to_lowercase())) {
+            diffuse.entry(m.name.to_lowercase()).or_insert_with(|| t.to_owned());
         }
     }
     let maps = Maps { diffuse, textures: track.surface_maps()?.textures };
@@ -429,6 +436,13 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
 /// The stage's `col.col`.
 pub fn build(track: &Track) -> Result<Vec<u8>, String> {
     let faces = gather(track)?;
+    if std::env::var_os("COLDBG").is_some() {
+        let mut c = std::collections::BTreeMap::new();
+        for f in &faces {
+            *c.entry((f.map, f.dbg)).or_insert(0) += 1;
+        }
+        for (k, v) in c { eprintln!("MAPCOUNT {:?} {}", k, v); }
+    }
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
     let mut root = Node::new((0..faces.len() as u32).collect());
     root.split(&faces, &cents)?;
