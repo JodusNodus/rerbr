@@ -8,7 +8,9 @@ The words are listed in data/exe-words.txt, one range a line:
 
 The boot's words come from runs of an `exe-reads` build of rbr-standalone, which writes the words a run reads before
 writing them (`RBR_EXE_READS`, rbr_physics::mem::exe_reads); `--reads FILE...` merges such dumps into the list.
-Nothing is transcribed: every word comes from the binary, whose SHA-256 is checked.
+A run reads only the virtual-table slots it calls, so every table a listed word lies in is taken whole (`whole_vtables`):
+a slot no run had called read zero, and the call through it went to 0 (CMountedRigidBody's 0x73e62c table when a
+mounted part came off, 2026-11-03). Nothing is transcribed: every word comes from the binary, whose SHA-256 is checked.
 
 Run from the repo root:
 
@@ -191,6 +193,28 @@ def words_of(entries, read):
     return {w & ~3 for w in words}
 
 
+def whole_vtables(words, exe, read):
+    """`words` with each virtual table one of them lies in: the run of `.text` pointers around it, after the word
+    pointing into `.rdata` (MSVC's RTTI locator) that comes before every table."""
+    secs = {name: (va, va + size) for name, va, size, _ in sections(exe)}
+    inside = lambda name, v: secs[name][0] <= v < secs[name][1]
+    word = lambda at: struct.unpack("<I", read(at, 4))[0]
+    out = set(words)
+    for w in words:
+        if not inside(b".rdata", w) or not inside(b".text", word(w)):
+            continue
+        start = w
+        while inside(b".text", word(start - 4)):
+            start -= 4
+        if not inside(b".rdata", word(start - 4)):
+            continue
+        end = w + 4
+        while inside(b".text", word(end)):
+            end += 4
+        out.update(range(start, end, 4))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exe", default=EXE)
@@ -210,7 +234,7 @@ def main():
         write_list(LIST, entries)
 
     runs = []
-    for w in sorted(words_of(entries, read)):
+    for w in sorted(whole_vtables(words_of(entries, read), exe, read)):
         if runs and runs[-1][0] + 4 * len(runs[-1][1]) == w:
             runs[-1][1].append(w)
         else:

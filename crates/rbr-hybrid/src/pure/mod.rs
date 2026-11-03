@@ -647,6 +647,12 @@ impl Pure {
         self.frames.borrow().iter().map(|f| f.0).collect()
     }
 
+    /// [`Pure::chain`] after a stop, its frames cleared: the stop's unwind skipped their pops, and a run after it
+    /// (the live drive's restart) would report them again under its own.
+    pub fn take_chain(&self) -> Vec<u32> {
+        self.frames.take().into_iter().map(|f| f.0).collect()
+    }
+
     /// Runs `f` as the code at `addr` entered with `regs` would: host calls in it are placed below `regs.esp` and
     /// name `addr` as their caller (the driver's own emits).
     #[inline(always)]
