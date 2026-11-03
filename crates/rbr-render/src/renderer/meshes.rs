@@ -367,7 +367,8 @@ impl Renderer {
     }
 
     /// The light of the corners of `field`'s ground triangles ([`crate::grass::Light`]), read back from the vertex
-    /// buffers: one copy of each mesh's span of the vertices wanted. Open sky where the read fails.
+    /// buffers: each mesh's span of the vertices wanted, laid end to end and read in parts no larger than the device's
+    /// largest buffer (Aguimes Santa Lucia 2025's spans come to 381 MB). Open sky where a read fails.
     fn grass_light(&self, field: &crate::grass::Field) -> Vec<[crate::grass::Light; 3]> {
         let gpu_mesh = |mesh: usize| self.slots.get(mesh).copied().flatten();
         let mut spans: HashMap<usize, Range<u32>> = HashMap::new();
@@ -377,54 +378,69 @@ impl Renderer {
             let span = spans.entry(gpu).or_insert(*low..*high + 1);
             *span = span.start.min(*low)..span.end.max(*high + 1);
         }
+        // Each mesh's span and its first vertex in the whole read.
+        let mut read = HashMap::new();
+        let mut total = 0;
+        for (&gpu, span) in &spans {
+            read.insert(gpu, (span.clone(), total));
+            total += span.len() as u64;
+        }
+        // Each corner's vertex in the whole read.
+        let wanted: Vec<Option<[u64; 3]>> = field
+            .corners()
+            .map(|(mesh, corners)| {
+                let (span, first) = gpu_mesh(mesh).and_then(|gpu| read.get(&gpu))?;
+                Some(corners.map(|c| first + u64::from(c - span.start)))
+            })
+            .collect();
+        let mut light = vec![<[crate::grass::Light; 3]>::default(); wanted.len()];
+        let size = size_of::<Vertex>() as u64;
+        let part = (self.device.limits().max_buffer_size / size).max(1);
+        for from in (0..total).step_by(part as usize) {
+            let part = from..(from + part).min(total);
+            let Some(vertices) = self.read_vertices(&read, part.clone()) else { return Vec::new() };
+            for (light, wanted) in light.iter_mut().zip(&wanted) {
+                for (light, at) in light.iter_mut().zip(wanted.iter().flatten()) {
+                    if part.contains(at) {
+                        *light = crate::grass::Light::of(&vertices[(at - part.start) as usize]);
+                    }
+                }
+            }
+        }
+        light
+    }
+
+    /// The vertices `part` of the meshes' spans laid end to end (`read`: each mesh's span and its first vertex there),
+    /// read back from the vertex buffers; `None` when the read fails.
+    fn read_vertices(&self, read: &HashMap<usize, (Range<u32>, u64)>, part: Range<u64>) -> Option<Vec<Vertex>> {
         let size = size_of::<Vertex>() as u64;
         let mut encoder =
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("grass light") });
-        // Each mesh's span and its first vertex in the read.
-        let mut read = HashMap::new();
-        let mut at = 0;
-        for (&gpu, span) in &spans {
-            read.insert(gpu, (span.start, at));
-            at += span.len() as u64;
-        }
         let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("grass light"),
-            size: at.max(1) * size,
+            size: (part.end - part.start).max(1) * size,
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        for (gpu, span) in &spans {
+        for (gpu, (span, first)) in read {
+            let (low, high) = (part.start.max(*first), part.end.min(first + span.len() as u64));
+            if low >= high {
+                continue;
+            }
             let slot = self.meshes[*gpu].slot;
-            let source = vertex_offset(slot) + u64::from(span.start) * size;
-            encoder.copy_buffer_to_buffer(
-                &self.buffers[slot.buffer].vertices,
-                source,
-                &readback,
-                read[gpu].1 * size,
-                span.len() as u64 * size,
-            );
+            let source = vertex_offset(slot) + (u64::from(span.start) + low - first) * size;
+            let vertices = &self.buffers[slot.buffer].vertices;
+            encoder.copy_buffer_to_buffer(vertices, source, &readback, (low - part.start) * size, (high - low) * size);
         }
         self.queue.submit([encoder.finish()]);
         let (sender, receiver) = std::sync::mpsc::channel();
         readback.slice(..).map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
-        let mapped =
-            self.device.poll(wgpu::PollType::wait_indefinitely()).ok().and_then(|_| receiver.recv().ok()?.ok());
-        let vertices: Vec<Vertex> = match mapped {
-            Some(()) => bytemuck::pod_collect_to_vec(&readback.slice(..).get_mapped_range().expect("mapped above")),
-            None => return Vec::new(),
-        };
+        self.device.poll(wgpu::PollType::wait_indefinitely()).ok().and_then(|_| receiver.recv().ok()?.ok())?;
+        let vertices = bytemuck::pod_collect_to_vec(&readback.slice(..).get_mapped_range().expect("mapped above"));
         readback.unmap();
-        field
-            .corners()
-            .map(|(mesh, corners)| {
-                let Some(&(start, first)) = gpu_mesh(mesh).and_then(|gpu| read.get(&gpu)) else {
-                    return Default::default();
-                };
-                corners.map(|c| crate::grass::Light::of(&vertices[(first + u64::from(c - start)) as usize]))
-            })
-            .collect()
+        Some(vertices)
     }
 
     /// Fills the grass tile meshes the eye at `eye` now wants ([`crate::grass::Ring::update`]).
