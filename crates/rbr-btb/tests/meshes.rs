@@ -1,9 +1,10 @@
 //! The BTB meshes of an RSF install (`RBR_RSF`): every `.x` and `.xform` in
 //! every `RX_CONTENT/Tracks/*/Objects.zip` parses, and every `objectlist.ini`
 //! `file=`/`xform=` name resolves to a zip entry. Skipped when `RBR_RSF` is
-//! unset. Also see `notes/formats.md` "BTB meshes".
+//! unset. Also see `notes/btb.md` "Meshes".
 
-use rbr_formats::{rbz, xfile, xform};
+use rbr_btb::{xfile, xform};
+use rbr_formats::rbz;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 

@@ -98,5 +98,3 @@ pub mod tga;
 pub mod times;
 mod tokens;
 pub mod trk;
-pub mod xfile;
-pub mod xform;

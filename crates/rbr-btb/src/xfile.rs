@@ -20,10 +20,9 @@
 //! `MeshTextureCoords`, `ColorRGBA`, `ColorRGB`, `Material`,
 //! `MeshMaterialList`, `TextureFilename`, `VertexDuplicationIndices` and, on
 //! some meshes, `VertexElement`/`DeclData` or `FVFData`. Every mesh is a
-//! top-level unnamed `Mesh` with triangles only. See `notes/formats.md`
-//! "BTB meshes".
+//! top-level unnamed `Mesh` with triangles only. See `notes/btb.md`
+//! "Meshes".
 
-use crate::le::{self, Reader, Truncated};
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
@@ -86,10 +85,65 @@ impl From<Truncated> for Error {
     }
 }
 
+/// A bounds failure reading the binary token stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Truncated {
+    offset: usize,
+    needed: usize,
+    len: usize,
+}
+
+/// A read position in the binary token stream. Offsets are absolute; a read
+/// past the end fails as [`Truncated`].
+struct Reader<'a> {
+    bytes: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn at(bytes: &'a [u8], offset: usize) -> Result<Self, Error> {
+        if offset > bytes.len() {
+            return Err(Error::Truncated { offset, needed: 0, len: bytes.len() });
+        }
+        Ok(Reader { bytes, pos: offset })
+    }
+
+    fn truncated(&self, needed: usize) -> Error {
+        Error::Truncated { offset: self.pos, needed, len: self.bytes.len() }
+    }
+
+    fn pos(&self) -> usize {
+        self.pos
+    }
+
+    fn is_empty(&self) -> bool {
+        self.pos == self.bytes.len()
+    }
+
+    fn take(&mut self, n: usize) -> Result<&'a [u8], Error> {
+        let stop = self.pos.checked_add(n).filter(|&stop| stop <= self.bytes.len()).ok_or_else(|| self.truncated(n))?;
+        let slice = self.bytes.get(self.pos..stop).ok_or_else(|| self.truncated(n))?;
+        self.pos = stop;
+        Ok(slice)
+    }
+
+    fn u16(&mut self) -> Result<u16, Error> {
+        let bytes = self.take(2)?;
+        Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
+    fn u32(&mut self) -> Result<u32, Error> {
+        let bytes = self.take(4)?;
+        Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+}
+
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Truncated { offset, needed, len } => le::fmt_truncated(f, *offset, *needed, *len),
+            Error::Truncated { offset, needed, len } => {
+                write!(f, "truncated at offset {offset}: need {needed} bytes but file is {len} bytes")
+            }
             Error::BadHeader(message) | Error::Unexpected(message) | Error::Decode(message) => {
                 write!(f, "{message}")
             }
@@ -379,7 +433,7 @@ fn counted(bytes: &[u8]) -> String {
 }
 
 fn binary_tokens(bytes: &[u8], float_size: FloatSize) -> Result<Vec<Tok>, Error> {
-    let mut r = Reader::<Error>::at(bytes, 16)?;
+    let mut r = Reader::at(bytes, 16)?;
     let mut toks = Vec::new();
     while !r.is_empty() {
         let at = r.pos();
