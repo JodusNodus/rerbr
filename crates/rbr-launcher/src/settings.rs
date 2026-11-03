@@ -291,6 +291,9 @@ pub struct Settings {
     pub head_gasket: Option<i32>,
     pub bindings: Bindings,
     pub ffb: ffb::Options,
+    /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `rbr_render::ffb::CarSensitivity`): the viewer owns
+    /// it while driving, the launcher carries it over and the Controls page edits it.
+    pub ffb_cars: ffb::CarSensitivity,
     /// The viewer's camera choices (`[camera]`, `rbr_render::camera_prefs`): the viewer writes them, the launcher
     /// carries them over and resets a car's.
     pub camera: CameraPrefs,
@@ -574,6 +577,7 @@ impl Settings {
             head_gasket: launcher.number("head_gasket").filter(|v| *v >= 1),
             bindings: Bindings::parse(text),
             ffb: ffb::Options::parse(text),
+            ffb_cars: ffb::CarSensitivity::parse(text),
             camera: CameraPrefs::parse(text),
             season_cars: SeasonCars::parse(&sections),
             gearboxes: Gearboxes::parse(&sections),
@@ -670,6 +674,8 @@ impl Settings {
         out.push_str(&self.bindings.to_text());
         out.push('\n');
         out.push_str(&self.ffb.to_text());
+        out.push('\n');
+        out.push_str(&self.ffb_cars.to_text());
         out.push('\n');
         out.push_str(&self.camera.to_text());
         out.push_str(&self.season_cars.to_text());
@@ -922,6 +928,7 @@ impl Form {
             status: String::new(),
             bindings: settings.bindings.clone(),
             ffb: settings.ffb.clone(),
+            ffb_cars: settings.ffb_cars.clone(),
             head_gasket: settings.head_gasket.unwrap_or(1),
             controls: ControlsPage::new(),
             read_only: false,
@@ -1018,6 +1025,7 @@ impl Form {
             bindings: self.bindings.clone(),
             ffb: self.ffb.clone(),
             // The viewer owns these: carried over from the file as it is now.
+            ffb_cars: read_settings(&self.paths.settings).ffb_cars,
             camera: read_settings(&self.paths.settings).camera,
             season_cars: self.season_cars.clone(),
             gearboxes: self.gearboxes.clone(),
@@ -1141,6 +1149,9 @@ mod tests {
             head_gasket: Some(10),
             bindings: Bindings { input_rate: 500, ..Default::default() },
             ffb: ffb::Options { rate: 500, ..Default::default() },
+            ffb_cars: ffb::CarSensitivity {
+                cars: [("rsf-24".to_owned(), [90, 100, 110]), ("COROLLA".to_owned(), [120, 120, 130])].into(),
+            },
             camera: CameraPrefs::parse("[camera]\nview = bonnet\nrsf-24 chase = 0 0.5 -1\n"),
             season_cars: SeasonCars {
                 last: Some("Skoda Fabia R5".into()),
@@ -1188,13 +1199,19 @@ mod tests {
         let text = settings.to_text();
         assert!(
             text.ends_with(
-                "\n[camera]\nview = bonnet\nrsf-24 chase = 0 0.5 -1\n\n[season]\nlast = Skoda Fabia R5\n\
+                "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[camera]\nview = bonnet\n\
+                 rsf-24 chase = 0 0.5 -1\n\n[season]\nlast = Skoda Fabia R5\n\
                  profile player = Mitsubishi Lancer Evo IX N4\nprofile me = Skoda Fabia R5\n\n\
                  [gearbox]\nFord Escort Mk II = dog\n"
             ),
             "{text}"
         );
         assert_eq!(settings.season_cars.of("me"), Some("Skoda Fabia R5"));
+        // An older `[ffb] sensitivity_car<id>` reads as `rsf-<id>`, losing to the section's own entry.
+        assert_eq!(
+            Settings::parse("[ffb]\nsensitivity_car24 = 1,2,3\n[ffb_cars]\nrsf-24 = 90,100,110\n").ffb_cars.cars,
+            [("rsf-24".to_owned(), [90, 100, 110])].into()
+        );
         let mut seasons = settings.season_cars.clone();
         seasons.set("player", "Skoda Fabia R5");
         assert_eq!(seasons.profiles.len(), 2);
@@ -1454,6 +1471,10 @@ mod tests {
                 "rotation = \n",
                 "rotation_per_car = 0\n",
                 "\n",
+                "[ffb_cars]\n",
+                "COROLLA = 120,120,130\n",
+                "rsf-24 = 90,100,110\n",
+                "\n",
                 "[camera]\n",
                 "view = bonnet\n",
                 "rsf-24 chase = 0 0.5 -1\n",
@@ -1551,5 +1572,44 @@ mod tests {
         // The weather: empty keeps the default, any other unknown word is a season row.
         assert_eq!(Settings::parse("[launcher]\nweather = \n").weather, None);
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
+    }
+
+    /// Saving carries the viewer's `[ffb_cars]` over from the file as it is, leaving the form's own alone.
+    #[test]
+    fn saving_carries_the_viewer_s_ffb_cars_over() {
+        let here = crate::test_dir("settings-ffb-cars-carry");
+        let settings = here.join(crate::SETTINGS_FILE);
+        std::fs::write(&settings, "[launcher]\ncar = COROLLA\n[ffb_cars]\nrsf-24 = 90,100,110\n").unwrap();
+        let catalog = Catalog {
+            cars: vec![Car { name: "COROLLA".into(), ..Default::default() }],
+            all_cars: Vec::new(),
+            maps: vec![catalog::Map {
+                number: 54,
+                stages: vec![catalog::Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
+                rsf: None,
+                btb: None,
+            }],
+        };
+        let paths = Paths {
+            data: here.join("data"),
+            patch: None,
+            viewer: PathBuf::from("/bin/viewer"),
+            standalone: PathBuf::from("/bin/rbr-standalone"),
+            settings: settings.clone(),
+        };
+        let season = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new() };
+        let data = Data::new(here.join("data"), None);
+        let mut form = Form::new(catalog, &read_settings(&settings), paths, data, season, install::Folder::default());
+        assert_eq!(form.ffb_cars.cars, [("rsf-24".to_owned(), [90, 100, 110])].into());
+        assert!(form.save());
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert!(text.contains("[ffb_cars]\nrsf-24 = 90,100,110\n"), "{text}");
+        // The form's own edits do not overwrite the viewer's: the file's section is carried over.
+        form.ffb_cars.cars.insert("COROLLA".into(), [120, 120, 130]);
+        assert!(form.save());
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert!(text.contains("[ffb_cars]\nrsf-24 = 90,100,110\n"), "{text}");
+        assert!(!text.contains("COROLLA"), "{text}");
+        std::fs::remove_dir_all(&here).unwrap();
     }
 }
