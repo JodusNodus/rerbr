@@ -11,3 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 rbr-formats = { path = "../rbr-formats" }
+png = "0.18"
+zune-core = "0.5"
+zune-jpeg = "0.5"

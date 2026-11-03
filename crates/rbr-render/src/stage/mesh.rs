@@ -100,6 +100,11 @@ pub enum Lod {
     Far,
     /// Drawn only under [`CLOSE_DISTANCE`] (ours: the grass, [`crate::grass`]).
     Close,
+    /// Drawn from `near` metres to `far` metres (BTB's `LODIn` and `LODOut`, [`super::btb`]; ours).
+    Band {
+        near: u16,
+        far: u16,
+    },
 }
 
 /// The near-to-far switch distance, metres: `g_renderQuality.m_unk10`, which each quality preset sets
@@ -129,6 +134,7 @@ impl Lod {
             Lod::Near => distance < LOD_DISTANCE,
             Lod::Far => distance > LOD_DISTANCE - LOD_BAND,
             Lod::Close => distance < CLOSE_DISTANCE,
+            Lod::Band { near, far } => distance >= f32::from(near) && distance < f32::from(far),
         }
     }
 }

@@ -23,6 +23,9 @@ impl Stage {
     /// archives (`<track>_textures.rbz`) or loose folders (`<track>_textures\..`). A request that none of those
     /// has is tried last as the stage's base retail track's (`rsf::base_track`).
     pub fn load_textures(&mut self, maps: &Path) -> Result<(), Error> {
+        if super::btb::is_btb(&self.name) {
+            return super::btb::load_textures(self);
+        }
         let map_bytes = read(&maps.join("TextureFilenameMap.dat"))?;
         let mut filename_map = stage_textures::FilenameMap::parse(&map_bytes).map_err(Error::FilenameMap)?;
         let mut dirs = vec![];
@@ -253,7 +256,7 @@ pub(super) fn other_folders(request: &str, own: &str) -> Vec<(Weather, String)> 
 
 /// The image of a texture file's `bytes` if it reads: a `.dds` for stage and cloud textures, the shadow
 /// stream for [`TextureSet::Shadow`].
-fn decode(set: TextureSet, bytes: Vec<u8>) -> Option<Image> {
+pub(super) fn decode(set: TextureSet, bytes: Vec<u8>) -> Option<Image> {
     match set {
         TextureSet::Shadow => shadow_image(bytes),
         TextureSet::WaterStandIn => None,
