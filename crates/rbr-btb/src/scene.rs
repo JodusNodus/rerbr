@@ -245,10 +245,9 @@ impl Scene {
         })
     }
 
-    /// Whether the texture file has any texel that is not opaque (unreadable counts as yes): only then does a
-    /// [`Technique::transparent`] material need its blended pass.
-    pub fn texture_has_alpha(&self, file: &str) -> bool {
-        self.textures.read(file).is_none_or(|bytes| has_alpha(&bytes))
+    /// The texture file's [`Alpha`] (unreadable counts as translucent).
+    pub fn texture_alpha(&self, file: &str) -> Alpha {
+        self.textures.read(file).map_or(Alpha::Translucent, |bytes| alpha(&bytes))
     }
 }
 
@@ -264,64 +263,147 @@ impl TextureFiles {
             .ok_or_else(|| format!("{}: no Textures.zip", folder.display()))
     }
 
-    /// The texture file (a name from a [`Material`]) as a `.dds` file: the archive's own (plain-texel layouts converted to RGBA), or its `.jpg` or `.png`
-    /// decoded to a `.dds` of plain texels (a third of the install's textures are JPEGs). `None` if it is missing
-    /// or does not decode.
+    /// The texture file (a name from a [`Material`]) as a `.dds` file: the archive's own (plain-texel layouts converted
+    /// to RGBA), or its `.jpg`, `.png` or `.bmp` decoded to a `.dds` of plain texels (a third of the install's textures
+    /// are JPEGs; Crastazza's ground is a BMP). `None` if it is missing or does not decode.
     pub fn read(&self, file: &str) -> Option<Vec<u8>> {
         let mut zip = rbz::open(&self.0).ok()?;
         let bytes = read_entry(&mut zip, &format!("Textures/{file}")).ok()?;
-        match bytes.get(..4)? {
-            b"DDS " => Some(dds::to_rgba8(&bytes).unwrap_or(bytes)),
-            [0xff, 0xd8, ..] => {
-                let options = zune_core::options::DecoderOptions::default()
-                    .jpeg_set_out_colorspace(zune_core::colorspace::ColorSpace::RGBA);
-                let mut decoder =
-                    zune_jpeg::JpegDecoder::new_with_options(zune_core::bytestream::ZCursor::new(&bytes), options);
-                let pixels = decoder.decode().ok()?;
-                let (width, height) = decoder.dimensions()?;
-                Some(dds::rgba8_file(width as u32, height as u32, &pixels))
-            }
-            [0x89, b'P', b'N', b'G'] => {
-                let mut decoder = png::Decoder::new(std::io::Cursor::new(&bytes));
-                decoder.set_transformations(png::Transformations::normalize_to_color8());
-                let mut reader = decoder.read_info().ok()?;
-                let mut buffer = vec![0; reader.output_buffer_size()?];
-                let info = reader.next_frame(&mut buffer).ok()?;
-                let pixels: Vec<u8> = match info.color_type {
-                    png::ColorType::Rgba => buffer[..info.buffer_size()].to_vec(),
-                    png::ColorType::Rgb => {
-                        buffer[..info.buffer_size()].chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
-                    }
-                    png::ColorType::GrayscaleAlpha => {
-                        buffer[..info.buffer_size()].chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
-                    }
-                    png::ColorType::Grayscale => {
-                        buffer[..info.buffer_size()].iter().flat_map(|&g| [g, g, g, 255]).collect()
-                    }
-                    png::ColorType::Indexed => return None,
-                };
-                Some(dds::rgba8_file(info.width, info.height, &pixels))
-            }
-            _ => None,
+        if bytes.starts_with(b"DDS ") {
+            return Some(dds::to_rgba8(&bytes).unwrap_or(bytes));
         }
+        let (width, height, pixels) = decode_image(&bytes)?;
+        Some(dds::rgba8_file(width, height, &pixels))
     }
 }
 
-/// Whether the `.dds` `bytes` has a texel with alpha under 255 in its first level; unreadable counts as yes.
-pub fn has_alpha(bytes: &[u8]) -> bool {
-    let Ok(dds) = dds::parse(bytes) else { return true };
-    let Some(level) = dds.levels().into_iter().next() else { return true };
+/// A `.jpg`, `.png` or `.bmp` file's width, height and RGBA texels; `None` for another file or one that does not decode.
+pub fn decode_image(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    match bytes.get(..4)? {
+        [0xff, 0xd8, ..] => {
+            let options = zune_core::options::DecoderOptions::default()
+                .jpeg_set_out_colorspace(zune_core::colorspace::ColorSpace::RGBA);
+            let mut decoder =
+                zune_jpeg::JpegDecoder::new_with_options(zune_core::bytestream::ZCursor::new(bytes), options);
+            let pixels = decoder.decode().ok()?;
+            let (width, height) = decoder.dimensions()?;
+            Some((width as u32, height as u32, pixels))
+        }
+        [0x89, b'P', b'N', b'G'] => {
+            let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+            decoder.set_transformations(png::Transformations::normalize_to_color8());
+            let mut reader = decoder.read_info().ok()?;
+            let mut buffer = vec![0; reader.output_buffer_size()?];
+            let info = reader.next_frame(&mut buffer).ok()?;
+            let pixels: Vec<u8> = match info.color_type {
+                png::ColorType::Rgba => buffer[..info.buffer_size()].to_vec(),
+                png::ColorType::Rgb => {
+                    buffer[..info.buffer_size()].chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
+                }
+                png::ColorType::GrayscaleAlpha => {
+                    buffer[..info.buffer_size()].chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
+                }
+                png::ColorType::Grayscale => {
+                    buffer[..info.buffer_size()].iter().flat_map(|&g| [g, g, g, 255]).collect()
+                }
+                // `normalize_to_color8` expands palettes.
+                png::ColorType::Indexed => return None,
+            };
+            Some((info.width, info.height, pixels))
+        }
+        [b'B', b'M', ..] => bmp(bytes),
+        _ => None,
+    }
+}
+
+/// An uncompressed 24- or 32-bit Windows bitmap's width, height and RGBA texels; `None` for the other layouts.
+fn bmp(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let u16_at = |at: usize| Some(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?));
+    let u32_at = |at: usize| Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?));
+    let (offset, width, height) = (u32_at(10)? as usize, u32_at(18)? as i32, u32_at(22)? as i32);
+    let (bits, compression) = (u16_at(28)?, u32_at(30)?);
+    if width <= 0 || height == 0 || compression != 0 || !matches!(bits, 24 | 32) {
+        return None;
+    }
+    let (width, rows) = (width as usize, height.unsigned_abs() as usize);
+    let texel = usize::from(bits / 8);
+    let stride = (width * texel).div_ceil(4) * 4;
+    let mut pixels = Vec::with_capacity(width * rows * 4);
+    for y in 0..rows {
+        // Bottom-up unless the height is negative.
+        let row = if height > 0 { rows - 1 - y } else { y };
+        let start = offset + row * stride;
+        let line = bytes.get(start..start + width * texel)?;
+        pixels.extend(line.chunks_exact(texel).flat_map(|p| [p[2], p[1], p[0], 255]));
+    }
+    Some((width as u32, rows as u32, pixels))
+}
+
+/// How a texture's alpha covers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alpha {
+    /// Every texel opaque.
+    Opaque,
+    /// Opaque and clear texels with a thin fringe between them: leaves, grass, fences.
+    Cutout,
+    /// Mostly part-transparent texels: glass, smoke, soft decals.
+    Translucent,
+}
+
+/// The [`Alpha`] of the `.dds` `bytes`' first level, from its texels' alpha: translucent where the part-transparent
+/// ones (6 to 249) outnumber the clear ones. Unreadable counts as translucent.
+pub fn alpha(bytes: &[u8]) -> Alpha {
+    let Ok(dds) = dds::parse(bytes) else { return Alpha::Translucent };
+    let Some(level) = dds.levels().into_iter().next() else { return Alpha::Translucent };
+    let (mut clear, mut part) = (0usize, 0usize);
+    let mut count = |a: u8| match a {
+        0..=5 => clear += 1,
+        250..=255 => {}
+        _ => part += 1,
+    };
     match dds.format {
-        dds::Format::Rgba8 => level.data.chunks_exact(4).any(|texel| texel[3] != 255),
-        dds::Format::Dxt3 => level.data.chunks_exact(16).any(|block| block[..8].iter().any(|&b| b != 255)),
-        // Alpha endpoints at 255 interpolate to 255.
-        dds::Format::Dxt5 => level.data.chunks_exact(16).any(|block| block[0] != 255 || block[1] != 255),
+        dds::Format::Rgba8 => level.data.chunks_exact(4).for_each(|texel| count(texel[3])),
+        dds::Format::Dxt3 => {
+            for block in level.data.chunks_exact(16) {
+                block[..8].iter().flat_map(|&b| [b & 15, b >> 4]).for_each(|a| count(a * 17));
+            }
+        }
+        dds::Format::Dxt5 => {
+            for block in level.data.chunks_exact(16) {
+                let (a0, a1) = (u16::from(block[0]), u16::from(block[1]));
+                let palette: [u8; 8] = std::array::from_fn(|i| {
+                    let i = i as u16;
+                    (match i {
+                        0 => a0,
+                        1 => a1,
+                        _ if a0 > a1 => ((8 - i) * a0 + (i - 1) * a1) / 7,
+                        6 => 0,
+                        7 => 255,
+                        _ => ((6 - i) * a0 + (i - 1) * a1) / 5,
+                    }) as u8
+                });
+                let bits = block[2..8].iter().rev().fold(0u64, |bits, &b| bits << 8 | u64::from(b));
+                (0..16).for_each(|t| count(palette[(bits >> (3 * t) & 7) as usize]));
+            }
+        }
         // A block with `c0 <= c1` and an index of 3 is transparent.
-        dds::Format::Dxt1 => level.data.chunks_exact(8).any(|block| {
-            let c0 = u16::from_le_bytes([block[0], block[1]]);
-            let c1 = u16::from_le_bytes([block[2], block[3]]);
-            c0 <= c1 && block[4..8].iter().any(|&b| (0..4).any(|i| (b >> (2 * i)) & 3 == 3))
-        }),
+        dds::Format::Dxt1 => {
+            for block in level.data.chunks_exact(8) {
+                let c0 = u16::from_le_bytes([block[0], block[1]]);
+                let c1 = u16::from_le_bytes([block[2], block[3]]);
+                if c0 <= c1 {
+                    clear +=
+                        block[4..8].iter().map(|&b| (0..4).filter(|i| (b >> (2 * i)) & 3 == 3).count()).sum::<usize>();
+                }
+            }
+        }
+    }
+    if clear + part == 0 {
+        Alpha::Opaque
+    } else if part > clear {
+        Alpha::Translucent
+    } else {
+        Alpha::Cutout
     }
 }
 

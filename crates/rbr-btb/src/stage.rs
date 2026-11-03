@@ -6,17 +6,31 @@
 use crate::classic;
 use crate::track::{Physics, Track};
 use rbr_formats::{ini, stage_files};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 /// The stage name the plugin plays every BTB stage as: retail map 41, variant M.
 pub const TRACK: &str = "track-41_M";
 /// The file naming the BTB folder a prepared folder was built from.
 pub const SOURCE_FILE: &str = "btb.ini";
+/// Raised when the built files change, so that the folders an older build prepared are built again.
+const BUILD: u32 = 1;
 
-/// Writes `<out>/track-41_M.{lbs,dls,col,trk,mat}` and `<out>/btb.ini` for `track` (always rebuilt, as the plugin does
-/// on every load) and returns the stage name `<out>/track-41_M`. `rsf_root` is the RallySimFans install, recorded in
-/// `btb.ini`.
+/// Writes `<out>/track-41_M.{lbs,dls,col,trk,mat}` and `<out>/btb.ini` for `track` and returns the stage name
+/// `<out>/track-41_M`. `rsf_root` is the RallySimFans install, recorded in `btb.ini`. The plugin rebuilds them on every
+/// load; we keep them while `btb.ini` holds the same [`stamp`] of the track folder (half a second to two on each load).
 pub fn prepare(track: &Track, rsf_root: &Path, out: &Path) -> Result<String, String> {
+    let name = format!("{}/{TRACK}", out.display());
+    let source = format!(
+        "[BTB]\nfolder={}\nrsf={}\nstamp={}\n",
+        track.folder.display(),
+        rsf_root.display(),
+        stamp(&track.folder)
+    );
+    let built = ["lbs", "dls", "mat", "trk", "col"].iter().all(|ext| out.join(format!("{TRACK}.{ext}")).is_file());
+    if built && std::fs::read_to_string(out.join(SOURCE_FILE)).is_ok_and(|text| text == source) {
+        return Ok(name);
+    }
     std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
     let write = |ext: &str, bytes: Vec<u8>| {
         let path = out.join(format!("{TRACK}.{ext}"));
@@ -27,9 +41,26 @@ pub fn prepare(track: &Track, rsf_root: &Path, out: &Path) -> Result<String, Str
     write("mat", classic::mat(&track.surface_maps()?.maps))?;
     write("trk", classic::trk_from(track, crate::D3dx::Windows)?)?;
     write("col", crate::col::build(track)?)?;
-    let source = format!("[BTB]\nfolder={}\nrsf={}\n", track.folder.display(), rsf_root.display());
+    // Last: a build cut short is not taken for a finished one.
     std::fs::write(out.join(SOURCE_FILE), source).map_err(|e| format!("{SOURCE_FILE}: {e}"))?;
-    Ok(format!("{}/{TRACK}", out.display()))
+    Ok(name)
+}
+
+/// [`BUILD`] and the names, sizes and modification times of the files in the track `folder`, hashed.
+fn stamp(folder: &Path) -> String {
+    let mut files: Vec<_> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let meta = entry.metadata().ok()?;
+            meta.is_file().then(|| (entry.file_name(), meta.len(), meta.modified().ok()))
+        })
+        .collect();
+    files.sort();
+    let mut hasher = DefaultHasher::new();
+    (BUILD, files).hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 /// The BTB folder a prepared stage folder (`<out>`, or the stage name's folder) was built from; `None` when it has no
@@ -66,6 +97,19 @@ mod tests {
         assert_eq!(source(&out), Some(tracks.clone()));
         std::fs::remove_dir(&tracks).unwrap();
         assert_eq!(source(&out), None);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn the_stamp_follows_the_folders_files() {
+        let root = std::env::temp_dir().join(format!("rbr-btb-stamp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("track.ini"), "a").unwrap();
+        let first = stamp(&root);
+        assert_eq!(stamp(&root), first);
+        std::fs::write(root.join("track.ini"), "ab").unwrap();
+        assert_ne!(stamp(&root), first);
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

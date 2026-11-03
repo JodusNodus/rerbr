@@ -675,8 +675,9 @@ fn wheel_of_payload(p: &TyreParticles) -> Wheel {
 /// game takes `_LOW` with `ParticleQuality = low`, and for every map from 0x48 but 0x4a, 0x4f and 0x50 at any quality;
 /// `CPC_TrackState`, `RBR_E09_TrackHead.cpp:436`). The name is matched without case.
 fn particle_file(data: &Data, maps: &Path, stage: &str) -> Result<Option<std::path::PathBuf>, String> {
-    // A stage folder's `Tracks<id>.ini` (RallySimFans): the full file (ours: the exe's map-number rule is retail's).
-    if let Some(folder) = stage_files::folder(stage) {
+    // A stage folder's `Tracks<id>.ini` (RallySimFans): the full file (ours: the exe's map-number rule is retail's). A
+    // BTB stage's folder plays as map 41, with its particles (`notes/btb.md` "Playing").
+    if let Some(folder) = stage_files::folder(stage).filter(|f| rbr_btb::stage::source(f).is_none()) {
         return Ok(rsf::open(folder)?.particle_file(data, false));
     }
     let Some(number) = map_number(stage) else { return Ok(None) };

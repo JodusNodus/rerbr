@@ -11,8 +11,8 @@ use super::{
     Address, Anchor, Error, LoadReport, Pose, Selection, Stage, StageTexture, TextureName, TextureRef, TextureSet,
 };
 use crate::atmosphere::Atmosphere;
-use glam::Vec3;
-use rbr_btb::scene::{self, Scene};
+use glam::{Vec3, Vec3Swizzles};
+use rbr_btb::scene::{self, Alpha, Scene};
 use rbr_formats::stage_files;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -40,6 +40,14 @@ const STEP: f32 = 50.0;
 /// The alpha test of a transparent material's second pass (`AlphaRef` 200, `GREATEREQUAL`): texels at or under this
 /// are dropped.
 const SOLID_REF: u8 = 199;
+/// The alpha test of a cut-out texture's one draw (ours): the half-covered contour of the original's blended fringe.
+/// Blended, the fringe wrote no depth, and the temporal anti-aliasing carried it by what lay behind: plants ghosted.
+const CUTOUT_REF: u8 = 127;
+/// How far over the driveline an author's own sky dome passes, metres: a mesh with faces that far over each of
+/// [`DOME_POINTS`] points of it is drawn as the sky ([`Layer::Sky`]).
+const DOME_CLEARANCE: f32 = 50.0;
+/// The driveline points a dome must pass over.
+const DOME_POINTS: usize = 5;
 
 /// Loads the BTB stage `name`: geometry, draws, texture names (no textures yet: [`load_textures`]), start, driveline
 /// and sun.
@@ -64,6 +72,7 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
     };
 
     // One plan per mesh: the draws it makes, with their layers.
+    let mut alphas: HashMap<&str, Alpha> = HashMap::new();
     let plans: Vec<Option<Plan>> = scene
         .meshes
         .iter()
@@ -75,10 +84,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let lerp = material.effect.vert_lerp && material.second.is_some() && !mesh.blend.is_empty();
             let first = texture(&material.diffuse);
             let second = if lerp { texture(&material.second) } else { None };
-            // Two passes only where the texture has translucent texels; otherwise the blended pass is the solid
-            // one drawn twice.
-            let two_passes = material.technique.transparent
-                && material.diffuse.as_ref().is_none_or(|file| scene.texture_has_alpha(file));
+            // Two passes only where the texture is translucent; a cut-out one is alpha tested, an opaque one solid.
+            let alpha = match (material.technique.transparent, &material.diffuse) {
+                (false, _) => Alpha::Opaque,
+                (true, None) => Alpha::Translucent,
+                (true, Some(file)) => *alphas.entry(file).or_insert_with(|| scene.texture_alpha(file)),
+            };
             let state = |alpha_ref, blend| DrawState {
                 textures: [first, second],
                 shadow: None,
@@ -93,10 +104,12 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
                 shade: None,
                 specular: None,
             };
-            let draws = if two_passes {
-                vec![(Layer::Blended, state(None, true)), (Layer::Solid, state(Some(SOLID_REF), false))]
-            } else {
-                vec![(Layer::Solid, state(None, false))]
+            let draws = match alpha {
+                Alpha::Translucent => {
+                    vec![(Layer::Blended, state(None, true)), (Layer::Solid, state(Some(SOLID_REF), false))]
+                }
+                Alpha::Cutout => vec![(Layer::Solid, state(Some(CUTOUT_REF), false))],
+                Alpha::Opaque => vec![(Layer::Solid, state(None, false))],
             };
             Some(Plan { draws, lerp, up: material.technique.up, uv_lerp: material.effect.uv_slots().lerp })
         })
@@ -104,6 +117,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
 
     let sun = scene.sun_direction.map_or(Vec3::new(0.6, -0.6, 0.5).normalize(), Vec3::from).normalize_or_zero();
     let to_sun = -sun;
+    let step = scene.driveline.len().div_ceil(DOME_POINTS).max(1);
+    let dome_points: Vec<Vec3> = scene.driveline.iter().step_by(step).map(|&p| Vec3::from(p)).collect();
     let mut groups = Groups::default();
     for object in scene.objects.iter().filter(|o| o.visible) {
         let Some(plan) = &plans[object.mesh] else { continue };
@@ -120,8 +135,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let reach = if solo { half.length() } else { 0.0 };
             let lod = band(object.lod_in, object.lod_out + reach);
             let vertices = world_vertices(mesh, plan, placement, to_sun);
-            for (layer, state) in &plan.draws {
-                groups.add(*layer, cell, lod, *state, &vertices, &mesh.indices, centre - half, centre + half);
+            let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
+            for &(layer, state) in &plan.draws {
+                let layer = if dome { Layer::Sky } else { layer };
+                groups.add(layer, cell, lod, state, &vertices, &mesh.indices, centre - half, centre + half);
             }
         }
     }
@@ -131,8 +148,9 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         (meshes.len(), meshes.iter().flat_map(|m| &m.draws).map(|d| d.indices.len() / 3).sum::<usize>());
     if std::env::var_os("RBR_BTB_STATS").is_some() {
         let vertices: usize = meshes.iter().map(|m| m.vertices.len()).sum();
+        let domes = meshes.iter().filter(|m| m.layer == Layer::Sky).count();
         eprintln!(
-            "btb: {} objects -> {pieces} meshes, {vertices} vertices, {triangles} triangles",
+            "btb: {} objects -> {pieces} meshes ({domes} sky), {vertices} vertices, {triangles} triangles",
             scene.objects.len()
         );
     }
@@ -168,13 +186,16 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
 pub(super) fn load_textures(stage: &mut Stage) -> Result<(), Error> {
     let folder = source(&stage.name).ok_or_else(|| Error::Btb(format!("{}: no BTB folder", stage.name)))?;
     let files = scene::TextureFiles::open(&folder).map_err(Error::Btb)?;
+    let names: Vec<_> = stage.texture_names.iter().map(|(&texture, name)| (texture, name.file_name.clone())).collect();
+    let images = crate::parallel::in_parallel(&names, |(_, file)| {
+        files.read(file).and_then(|bytes| super::textures::decode(TextureSet::Stage, bytes))
+    });
     let mut missing = Vec::new();
-    for (&texture, name) in &stage.texture_names {
-        let image = files.read(&name.file_name).and_then(|bytes| super::textures::decode(TextureSet::Stage, bytes));
+    for ((texture, file), image) in names.into_iter().zip(images) {
         if image.is_none() {
-            missing.push(name.file_name.clone());
+            missing.push(file.clone());
         }
-        stage.textures.insert(texture, StageTexture { request: name.file_name.clone(), image });
+        stage.textures.insert(texture, StageTexture { request: file, image });
     }
     stage.report.missing_textures = missing;
     Ok(())
@@ -218,6 +239,19 @@ fn world_vertices(mesh: &scene::Mesh, plan: &Plan, placement: &[f32; 16], to_sun
             }
         })
         .collect()
+}
+
+/// Whether the triangles pass [`DOME_CLEARANCE`] over each of `points` (stage x and z): an author's sky dome, which,
+/// drawn as the stage, roofed it for the sun's shadows and the sky's occlusion (Cueva Santa, Savo).
+fn roofs(vertices: &[Vertex], indices: &[u32], points: &[Vec3]) -> bool {
+    let at = |i: u32| Vec3::from(vertices[i as usize].position);
+    let over = |p: &Vec3| {
+        indices.chunks_exact(3).any(|t| {
+            crate::sky_dome::height_over(&[at(t[0]), at(t[1]), at(t[2])], p.xz())
+                .is_some_and(|y| y > p.y + DOME_CLEARANCE)
+        })
+    };
+    !points.is_empty() && points.iter().all(over)
 }
 
 fn local_bounds(mesh: &scene::Mesh) -> (Vec3, Vec3) {
@@ -331,13 +365,16 @@ impl Groups {
                     indices.extend(list);
                     draws.push(Draw { indices: first..indices.len(), state, lod: group.lod });
                 }
-                let bounds =
-                    Bounds { center: (group.low + group.high) / 2.0, half_extent: (group.high - group.low) / 2.0 };
+                // The sky has no bounds: always drawn.
+                let bounds = (group.layer != Layer::Sky).then(|| Bounds {
+                    center: (group.low + group.high) / 2.0,
+                    half_extent: (group.high - group.low) / 2.0,
+                });
                 Mesh {
                     layer: group.layer,
                     anchor: Anchor::World,
-                    bounds: Some(bounds),
-                    cell: Some(bounds),
+                    bounds,
+                    cell: bounds,
                     vertices: group.vertices,
                     indices,
                     draws,

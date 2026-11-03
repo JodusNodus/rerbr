@@ -37,13 +37,14 @@ pub(super) struct Ground {
 }
 
 impl Ground {
-    /// The maps over the tiles of `stage`'s world meshes when `on` (the sky's occlusion's, [`Tiles`]) and the device holds
-    /// their layers, else a placeholder that the shader skips.
+    /// The maps over the tiles of `stage`'s world meshes near its driveline when `on` (the sky's occlusion's, [`Tiles`],
+    /// [`Tiles::near`]) and the device holds their layers, else a placeholder that the shader skips.
     pub(super) fn new(device: &wgpu::Device, stage: &Stage, on: bool) -> Ground {
         let receivers = stage.meshes.iter().filter(|m| m.anchor == Anchor::World && m.layer != Layer::Sky);
         let tiles = on
             .then(|| Tiles::of(receivers.filter_map(|m| m.bounds).map(|b| (b.center, b.half_extent))))
             .flatten()
+            .and_then(|t| t.near(&stage.driveline))
             .filter(|t| 2 * t.touched.len() as u32 <= device.limits().max_texture_array_layers);
         let (size, layers) = tiles.as_ref().map_or((1, 1), |t| (GROUND, 2 * t.touched.len() as u32));
         let texture = device.create_texture(&wgpu::TextureDescriptor {
