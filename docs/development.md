@@ -249,8 +249,9 @@ artifacts only.
     'apt-get update && apt-get install -y cmake libasound2-dev libudev-dev && scripts/package.sh'
   ```
 - Windows: `ReRBR-<version>-windows-x86_64.zip`. Run the script in Git Bash with the MSVC toolchain and cmake. The C
-  runtime is linked in, so players need no Visual C++ redistributable. The zip is unsigned; the README says how to
-  get past SmartScreen.
+  runtime is linked in, so players need no Visual C++ redistributable. Microsoft's DXC (`dxcompiler.dll`, pinned
+  release, its licences beside it) goes in next to the programs: wgpu compiles the shaders with it in place of FXC
+  ([renderer.md](../notes/renderer.md#decisions)). The zip is unsigned; the README says how to get past SmartScreen.
 
 The icons are in `scripts/packaging/`. The player's files go to the platform's data folder
 (`crates/rbr-launcher/src/home.rs`, [README](../README.md#your-files)), since an app bundle is read-only.

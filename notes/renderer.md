@@ -20,6 +20,10 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   again next frame), and reports a hidden macOS window as occluded instead of waiting up to a second for a drawable
   (`present::Acquired::Hidden`: the viewer runs the frame undrawn, the live process stepping, at most every 16 ms).
   egui 0.37 has no default features (`default_fonts` named) and draws glyphs a few levels apart from 0.33.
+- Windows ships DXC (`dxcompiler.dll` beside the programs, `scripts/package.sh`): wgpu 30's `Dx12Compiler::Auto`
+  loads it and falls back to FXC without it. Under WARP (Windows 11 26100, a VM without a GPU) FXC's shaders crash the
+  live drive at its first frame, in `d3d10warp!ShaderJIT::ReadPointerOperand` compiling a pixel shader (3 of 3 runs,
+  heap corruption or access violation); with DXC it drives (2026-11-03). Static runs never hit that shader.
 - Highest quality always: the full `PS_*.ini`, the high renderer's LOD and visibility distances.
 - The backdrop `(1,3)` comes in two kinds, and both must look right: low terrain with baked vertex light (retail,
   most RSF stages) and upright photo panorama strips with alpha sky and white vertex colour (many RSF stages, 462

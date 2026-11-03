@@ -2,7 +2,8 @@
 # Builds the player's download into dist/ (docs/development.md, "Packaging"):
 #   macOS: ReRBR.app (the launcher, the viewer and rbr-standalone), ad-hoc signed, in ReRBR-<version>-macos.dmg;
 #   Linux: ReRBR-<version>-<arch>.AppImage;
-#   Windows (Git Bash, MSVC): ReRBR-<version>-windows-x86_64.zip, the three .exe files in a ReRBR folder.
+#   Windows (Git Bash, MSVC): ReRBR-<version>-windows-x86_64.zip, the three .exe files and Microsoft's DXC
+#   (dxcompiler.dll and its licences) in a ReRBR folder.
 # All link SDL3 in, built from source (needs cmake), so nothing else needs installing.
 # The build is `cargo build --profile play` ($CARGO_TARGET_DIR is honoured). The version is the launcher's.
 set -euo pipefail
@@ -77,24 +78,27 @@ EOF
     echo "$dist/ReRBR-$version-macos.dmg"
 }
 
-# appimagetool and its runtime, pinned by hash.
+# appimagetool and its runtime, and Microsoft's DXC for Windows, pinned by hash.
 appimagetool_version=1.9.1
 runtime_version=20251108
+dxc_version=v1.9.2609
+dxc_zip=dxc_2026_09_29.zip
 pinned_sum() {
     case $1 in
         appimagetool-x86_64.AppImage) echo ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0 ;;
         appimagetool-aarch64.AppImage) echo f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158 ;;
         runtime-x86_64) echo 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d ;;
         runtime-aarch64) echo 00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444 ;;
-        *) echo "package.sh: no AppImage tools for $1" >&2; exit 1 ;;
+        "$dxc_zip") echo ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1 ;;
+        *) echo "package.sh: no pinned download for $1" >&2; exit 1 ;;
     esac
 }
 
 fetch() {
-    local name=$1 url=$2 path=$target/appimage/$1 sum
+    local name=$1 url=$2 path=$target/package-downloads/$1 sum
     sum=$(pinned_sum "$name")
     if [[ ! -f $path ]] || ! echo "$sum  $path" | sha256sum -c --quiet - 2>/dev/null; then
-        mkdir -p "$target/appimage"
+        mkdir -p "$target/package-downloads"
         curl -sSfL -o "$path.part" "$url"
         echo "$sum  $path.part" | sha256sum -c --quiet -
         mv "$path.part" "$path"
@@ -154,6 +158,16 @@ windows() {
     mkdir -p "$folder"
     for bin in "${bins[@]}"; do
         cp "$target/play/$bin.exe" "$folder/"
+    done
+    # DXC beside the programs: wgpu takes it over FXC when it finds it, and FXC's shaders crash WARP, the software
+    # D3D12 of a PC or VM without a GPU, in live mode (notes/renderer.md). dxil.dll is not needed.
+    local zip_dxc unpacked=$target/package-downloads/dxc
+    zip_dxc=$(fetch "$dxc_zip" "https://github.com/microsoft/DirectXShaderCompiler/releases/download/$dxc_version/$dxc_zip")
+    rm -rf "$unpacked"
+    powershell -NoProfile -Command "Expand-Archive -Path '$(cygpath -w "$zip_dxc")' -DestinationPath '$(cygpath -w "$unpacked")'"
+    cp "$unpacked/bin/x64/dxcompiler.dll" "$folder/"
+    for licence in LICENSE-LLVM.txt LICENCE-MIT.txt LICENSE-MS.txt; do
+        cp "$unpacked/$licence" "$folder/dxcompiler-$licence"
     done
     (cd "$dist" && powershell -NoProfile -Command "Compress-Archive -Path ReRBR -DestinationPath $zip")
     rm -rf "$folder"
