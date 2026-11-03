@@ -55,14 +55,23 @@ pub struct Keys {
 }
 
 impl Keys {
+    /// The keys, when the list has them: nothing else focused but the search box, and no dropdown open. A focused
+    /// button or filter keeps Enter and the arrows (which move the focus); Esc leaves it first.
     pub fn take(ui: &egui::Ui) -> Keys {
+        // Esc on another control only leaves it (egui drops the focus before this runs): remembered a pass.
+        let elsewhere = egui::Id::unique("browser focus elsewhere");
+        let focused_elsewhere = ui.memory(|m| m.focused()).is_some_and(|id| id != search_id());
+        let left = ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or(elsewhere, false), focused_elsewhere));
+        if !list_has_keys(ui) {
+            return Keys::default();
+        }
         ui.input_mut(|i| Keys {
             down: i.consume_key(Modifiers::NONE, Key::ArrowDown),
             up: i.consume_key(Modifiers::NONE, Key::ArrowUp),
             page_down: i.consume_key(Modifiers::NONE, Key::PageDown),
             page_up: i.consume_key(Modifiers::NONE, Key::PageUp),
             enter: i.consume_key(Modifiers::NONE, Key::Enter),
-            escape: i.consume_key(Modifiers::NONE, Key::Escape),
+            escape: !left && i.consume_key(Modifiers::NONE, Key::Escape),
             favourite: i.consume_key(Modifiers::COMMAND, Key::D),
         })
     }
@@ -75,6 +84,16 @@ impl Keys {
             .map(|(pressed, by)| if pressed { by } else { 0 })
             .sum()
     }
+}
+
+/// The browsers' search box: the list's keys pass through it.
+pub fn search_id() -> egui::Id {
+    egui::Id::unique("browser search")
+}
+
+/// Whether a list's keys are free: nothing focused but the search box, and no dropdown open.
+pub fn list_has_keys(ui: &egui::Ui) -> bool {
+    ui.memory(|m| m.focused()).is_none_or(|id| id == search_id()) && !egui::Popup::is_any_open(ui.ctx())
 }
 
 /// The highlighted row (its position in the browser's rows) and the list's scrolling.
@@ -199,7 +218,7 @@ pub fn top_line(
     focus: &mut bool,
     random: &mut bool,
 ) -> bool {
-    let id = egui::Id::unique(("browser search", title));
+    let id = search_id();
     let mut back = false;
     ui.horizontal(|ui| {
         let button = egui::Button::new(egui::RichText::new("⏴ Back").size(14.5)).min_size(egui::vec2(0.0, 30.0));
@@ -295,11 +314,11 @@ pub fn list_rows(
     ui.label(egui::RichText::new("⏶⏷ move    Enter choose    Ctrl+D favourite    Esc back").size(12.0).color(DIM));
 }
 
-/// A list row's slot: its rect with its click, and the star's click.
+/// A list row's slot: its rect with its click, and the star's click. Not Tab stops: the arrows move through the list.
 pub fn row_slot(ui: &mut egui::Ui, k: usize) -> (Rect, egui::Response, egui::Response) {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW), Sense::CLICK);
     let star_rect = Rect::from_center_size(Pos2::new(rect.left() + 18.0, rect.center().y), egui::vec2(28.0, ROW));
-    let star = ui.interact(star_rect, ui.scope_id().with(("star", k)), Sense::click());
+    let star = ui.interact(star_rect, ui.scope_id().with(("star", k)), Sense::CLICK);
     (rect, response, star)
 }
 
@@ -353,6 +372,8 @@ pub fn side_list(ui: &mut egui::Ui, entries: &[SideEntry], header: (usize, &str)
         }
         if side_row(ui, entry.icon, entry.name, entry.count, entry.selected, entry.grey).clicked() {
             picked = Some(n);
+            // Back to the search box, where the arrows move through the list.
+            ui.memory_mut(|m| m.request_focus(search_id()));
         }
     }
     picked
@@ -366,6 +387,9 @@ pub fn side_row(ui: &mut egui::Ui, icon: &str, name: &str, count: usize, selecte
         painter.rect_filled(rect, 4.0, ui.visuals().selection.bg_fill);
     } else if response.hovered() {
         painter.rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+    }
+    if response.has_focus() {
+        painter.rect_stroke(rect, 4.0, ui.visuals().widgets.active.bg_stroke, egui::StrokeKind::Inside);
     }
     let text = if grey {
         GREY
@@ -471,4 +495,52 @@ pub fn chips(ui: &mut egui::Ui, chips: &[(&str, String, bool)]) -> Option<Pick> 
         }
     });
     picked
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A pass with `key` pressed and `focus` asked for (applied the next pass); the list's keys and the button's id.
+    fn pass(ctx: &egui::Context, key: Option<Key>, focus: Option<egui::Id>) -> (Keys, egui::Id) {
+        let events = key.map(|key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        });
+        let input = egui::RawInput { events: events.into_iter().collect(), ..Default::default() };
+        let (mut keys, mut button) = (Keys::default(), egui::Id::NULL);
+        ctx.run_pass(input, |ctx| {
+            ctx.root_ui(|root| {
+                egui::CentralPanel::default().show(root, |ui| {
+                    keys = Keys::take(ui);
+                    ui.add(egui::TextEdit::singleline(&mut String::new()).id(search_id()));
+                    button = ui.button("4WD").id;
+                    if let Some(id) = focus {
+                        ui.memory_mut(|m| m.request_focus(id));
+                    }
+                })
+            });
+        })
+        .textures_delta
+        .clear();
+        (keys, button)
+    }
+
+    #[test]
+    fn the_list_has_the_keys_unless_another_control_is_focused() {
+        let ctx = egui::Context::default();
+        let (keys, button) = pass(&ctx, Some(Key::ArrowDown), None);
+        assert!(keys.down, "nothing focused");
+        pass(&ctx, None, Some(search_id()));
+        assert!(pass(&ctx, Some(Key::Enter), None).0.enter, "the search box");
+        pass(&ctx, None, Some(button));
+        let (keys, _) = pass(&ctx, Some(Key::Enter), None);
+        assert!(!keys.enter && !keys.down, "a focused filter keeps Enter");
+        // Esc first leaves the filter, then goes back.
+        assert!(!pass(&ctx, Some(Key::Escape), None).0.escape);
+        assert!(pass(&ctx, Some(Key::Escape), None).0.escape);
+    }
 }

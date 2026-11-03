@@ -11,6 +11,7 @@ use rbr_recording::{realtime, replay, splits::Splits};
 
 use crate::settings::{Clouds, Precipitation};
 
+use crate::browser;
 use crate::pages::{combo, section, Choice, WARN};
 use crate::Form;
 
@@ -26,6 +27,13 @@ struct Entry {
 }
 
 impl Entry {
+    /// Whether the search `query` (lowercase) is in its title, file name or conditions.
+    fn matches(&self, query: &str) -> bool {
+        [self.title.to_lowercase(), self.path.to_string_lossy().to_lowercase(), self.conditions.to_lowercase()]
+            .iter()
+            .any(|text| text.contains(query))
+    }
+
     fn read(path: PathBuf) -> Self {
         let modified =
             recorded_time(&path).unwrap_or_else(|| path.metadata().and_then(|m| m.modified()).unwrap_or(UNIX_EPOCH));
@@ -256,11 +264,11 @@ impl Form {
         section(ui, "Past drives");
         ui.horizontal(|ui| {
             ui.label("Search");
-            ui.text_edit_singleline(&mut self.replays.query);
+            ui.add(egui::TextEdit::singleline(&mut self.replays.query).id(browser::search_id()));
             if ui.button("Refresh").clicked() {
                 self.replays.refresh(&home);
             }
-            ui.weak(format!("{} saved drives", self.replays.entries.len()));
+            ui.weak(format!("{} saved drives · ⏶⏷ move · Enter watches", self.replays.entries.len()));
         });
         ui.add_space(8.0);
         if self.replays.entries.is_empty() {
@@ -269,22 +277,23 @@ impl Form {
             ui.label(&self.replays.message);
             return;
         }
-        let mut chosen = None;
+        // The arrow and page keys move through the list, Enter watches.
+        let query = self.replays.query.to_lowercase();
+        let entries = &self.replays.entries;
+        let shown: Vec<usize> = (0..entries.len()).filter(|&k| entries[k].matches(&query)).collect();
+        let keys = browser::Keys::take(ui);
+        let at = shown.iter().position(|&k| Some(&entries[k].path) == self.replays.selected.as_ref());
+        let mut chosen = (keys.movement() != 0 && !shown.is_empty()).then(|| {
+            let last = shown.len() as isize - 1;
+            entries[shown[at.map_or(0, |a| (a as isize + keys.movement()).clamp(0, last)) as usize]].path.clone()
+        });
+        let moved = chosen.is_some();
         let mut watch = false;
         let mut export = false;
         ui.columns(2, |columns| {
-            let query = self.replays.query.to_lowercase();
             egui::ScrollArea::vertical().id_salt("replays-list").show(&mut columns[0], |ui| {
-                let mut matches = 0;
-                for entry in &self.replays.entries {
-                    if !entry.title.to_lowercase().contains(&query)
-                        && !entry.path.to_string_lossy().to_lowercase().contains(&query)
-                        && !entry.conditions.to_lowercase().contains(&query)
-                    {
-                        continue;
-                    }
-                    matches += 1;
-                    let selected = self.replays.selected.as_ref() == Some(&entry.path);
+                for entry in shown.iter().map(|&k| &self.replays.entries[k]) {
+                    let selected = chosen.as_ref().or(self.replays.selected.as_ref()) == Some(&entry.path);
                     let start = entry.start_time.as_ref().map(|t| format!(" · {t} start")).unwrap_or_default();
                     let label = format!(
                         "{}\n{} · {}\n{}{start}",
@@ -293,18 +302,20 @@ impl Form {
                         entry.conditions,
                         age(entry.modified)
                     );
-                    if ui
-                        .add(
-                            egui::Button::selectable(selected, label)
-                                .wrap()
-                                .min_size(egui::vec2(ui.available_width(), 78.0)),
-                        )
-                        .clicked()
-                    {
+                    // Not Tab stops: the arrows move through the list.
+                    let row = egui::Button::selectable(selected, label)
+                        .wrap()
+                        .sense(egui::Sense::CLICK)
+                        .min_size(egui::vec2(ui.available_width(), 78.0));
+                    let row = ui.add(row);
+                    if moved && selected {
+                        row.scroll_to_me(None);
+                    }
+                    if row.clicked() {
                         chosen = Some(entry.path.clone());
                     }
                 }
-                if matches == 0 {
+                if shown.is_empty() {
                     ui.label("No saved drives match this search.");
                 }
             });
@@ -348,7 +359,8 @@ impl Form {
                     });
                 });
                 let ready = self.child.is_none() && entry.problem.is_none() && self.readiness().is_none();
-                watch = ui.add_enabled(ready, egui::Button::new("Watch replay")).clicked();
+                watch = ui.add_enabled(ready, egui::Button::new("Watch replay")).on_hover_text("Enter").clicked()
+                    || (keys.enter && ready);
                 ui.weak("Space pauses · R restarts · Esc closes");
                 section(ui, "Export to video");
                 ui.horizontal(|ui| {
