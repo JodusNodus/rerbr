@@ -1,9 +1,13 @@
 # On a pushed v* tag: the macOS, Linux and Windows packages (scripts/package.sh), attached to a draft GitHub release.
+# Run by hand (Actions, "Run workflow") or nightly on main: the packages as the run's artifacts only, no release.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * *"
 
 jobs:
   macos:
@@ -48,6 +52,7 @@ jobs:
           path: dist/*.zip
 
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [macos, linux, windows]
     runs-on: ubuntu-24.04
     permissions:

@@ -1060,25 +1060,30 @@ mod tests {
         assert_eq!(restarted.state(), state);
     }
 
-    /// The scale of a full RallySimFans install, and more: 500 stages open, list and filter within a frame.
+    /// The scale of a full RallySimFans install, and more: 500 stages open, list and filter within a frame. The
+    /// fastest of a few runs is timed, so a busy CI runner's stall does not fail it and a slowdown still does.
     #[test]
     fn a_big_catalog_opens_and_filters_at_once() {
         let maps: Vec<Map> = (0..500).map(rsf_map).collect();
-        let start = Instant::now();
-        let rows = rows_of(&maps);
-        let built = start.elapsed();
+        let (mut built, mut slowest) = (Duration::MAX, Duration::MAX);
         let mut browser = StageBrowser::default();
-        browser.set_rows(rows);
-        let mut previews = Previews::new(rbr_formats::data::Data::new("/nonexistent", None));
-        let ctx = egui::Context::default();
-        browser.open_on(250, &[105, 110], None);
-        let mut slowest = Duration::ZERO;
-        for query in ["", "s", "sy", "syn", "synthetic 4", "synthetic 4 cz", "zzz", ""] {
-            browser.filter.query = query.into();
-            slowest = slowest.max(frame(&ctx, &mut browser, &maps, &mut previews));
+        for _ in 0..3 {
+            let start = Instant::now();
+            let rows = rows_of(&maps);
+            built = built.min(start.elapsed());
+            browser = StageBrowser::default();
+            browser.set_rows(rows);
+            let mut previews = Previews::new(rbr_formats::data::Data::new("/nonexistent", None));
+            let ctx = egui::Context::default();
+            browser.open_on(250, &[105, 110], None);
+            let mut run = Duration::ZERO;
+            for query in ["", "s", "sy", "syn", "synthetic 4", "synthetic 4 cz", "zzz", ""] {
+                browser.filter.query = query.into();
+                run = run.max(frame(&ctx, &mut browser, &maps, &mut previews));
+            }
+            browser.filter = Filter { surface: Some(2), length: Length::Long, ..Filter::default() };
+            slowest = slowest.min(run.max(frame(&ctx, &mut browser, &maps, &mut previews)));
         }
-        browser.filter = Filter { surface: Some(2), length: Length::Long, ..Filter::default() };
-        slowest = slowest.max(frame(&ctx, &mut browser, &maps, &mut previews));
         eprintln!("stage browser: rows built in {built:?}, slowest frame {slowest:?}");
         // The snowy 10-15 km stages that start.
         let snowy = (0..500).filter(|k| k % 3 == 2 && (8..13).contains(&(k % 25)) && k % 11 >= 4).count();

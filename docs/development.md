@@ -236,7 +236,8 @@ results. The scene's choice and a baseline are in [renderer.md](../notes/rendere
 `scripts/package.sh` builds the players' download into `dist/` with `cargo build --profile play`. The version is the
 launcher's (`crates/rbr-launcher`). SDL3 is built from source and linked in (`rbr-render` feature `sdl-static`, needs
 cmake), so players install nothing else. `.github/workflows/release.yml` runs it on a pushed `v*` tag and attaches
-the packages to a draft release.
+the packages to a draft release; nightly on main and by hand (Actions, "Run workflow") it keeps them as the run's
+artifacts only.
 
 - macOS: `ReRBR-<version>-macos.dmg` with `ReRBR.app`, for Apple silicon and macOS 11 or later. It is ad-hoc signed,
   not notarised.
