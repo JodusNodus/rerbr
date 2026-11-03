@@ -148,7 +148,8 @@ This builds three programs in `target/release/`: `rerbr` (the launcher), `viewer
 
 ## Contributing
 
-Found a bug? [Open an issue](https://github.com/JodusNodus/rerbr/issues/new?template=bug_report.yml).
+Found a bug? [Open an issue](https://github.com/JodusNodus/rerbr/issues/new?template=bug_report.yml). When a drive
+stops with an error, the launcher offers to open one filled in with the end of its log (in `logs/`).
 
 Start with [docs/development.md](docs/development.md): set up, running it, the code map, the rules and the checks.
 The open work is in [notes/status.md](notes/status.md).

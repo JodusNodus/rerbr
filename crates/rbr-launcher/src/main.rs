@@ -138,6 +138,7 @@ mod codriver_packs;
 mod codriver_page;
 mod command;
 mod controls_page;
+mod crash;
 mod disc_install;
 mod drive_page;
 mod ghosts;
@@ -284,10 +285,15 @@ fn run() -> Result<(), String> {
     let (start, list, command, screenshot, rally_damage) = parse_args(std::env::args().skip(1), &here, &home)?;
     let settings = read_settings(&start.settings);
     if !list && !command && screenshot.is_none() {
+        // A panic of the window's is shown at the next start (`crash`).
+        crash::hook(home.join(home::LOGS));
         // The window opens without a game too, to choose its folder.
         let mut form = load(&start, settings.clone()).map_err(|e| eprintln!("launcher: {e}")).ok();
         if let (Some(form), Some(notice)) = (&mut form, &notice) {
             form.status = notice.clone();
+        }
+        if let Some(form) = &mut form {
+            form.crash.report = crash::last_crash(&home.join(home::LOGS));
         }
         let folder = settings.install_folder;
         let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
@@ -563,6 +569,8 @@ struct Form {
     rsf_scanned: String,
     marker: MarkerSettings,
     child: Option<Child>,
+    /// The viewer's log, and the report of a run that failed.
+    crash: crash::Watch,
     status: String,
     bindings: Bindings,
     /// The wheel's force feedback in live mode (the settings file's `[ffb]` section).
