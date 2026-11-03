@@ -134,8 +134,8 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
   at 24-bit precision under Direct3D), quaternion `D3DXQuaternionRotationMatrix` of the raw scaled matrix then
   `D3DXQuaternionNormalize`, written `(x, z, y, -w)`.
 - Float rules: all arithmetic is f32, no fused ops. Native reproduces all 41804 placements of the other 18 caches, Wine all 3490 of Kutemajarvi.
-- Two D3DX builds produce the caches (cache file times: Windows' 100 ns stamps vs Linux nanoseconds): `ksh::Math::Native`
-  (14 caches, `d3dx9_30.dll` from a Steam prefix, 2388176 bytes) and `Math::Wine` (Kutemajarvi 1994, built 2026-10-15 under Wine's
+- Two D3DX builds produce the caches (cache file times: Windows' 100 ns stamps vs Linux nanoseconds): `D3dx::Windows`
+  (14 caches, `d3dx9_30.dll` from a Steam prefix, 2388176 bytes) and `D3dx::Wine` (Kutemajarvi 1994, built 2026-10-15 under Wine's
   builtin DLL). The tests use whichever reproduces the cache.
 - Native `D3DXQuaternionRotationMatrix` (x87, 0x443258; the CPU variants do not replace it): `trace = (m11 + m00) + m22`; if `trace > 0`:
   `r = sqrt(trace + 1) * 0.5`, `w = r`, `inv = 0.25 / r`, `x = (m12 - m21) * inv`, `y = (m20 - m02) * inv`, `z = (m01 - m10) * inv`; else
@@ -148,7 +148,7 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
   `1/sqrt` of the interval centre rounded to 12 mantissa bits (0 differences over all 2048 entries and 200000 random inputs on an
   i9-13900HX); AMD's table differs, an AMD-built cache would not match.
 - Wine: `trace = m00 + m11 + m22 + 1`; if `trace > 1`: `s = 2*sqrt(trace)`, `x = (m12 - m21)/s`, `y = (m20 - m02)/s`,
-  `z = (m01 - m10)/s`, `w = 0.25*s`, else `Math::Wine`'s `math.c` branches on the largest diagonal; normalise by dividing by
+  `z = (m01 - m10)/s`, `w = 0.25*s`, else `D3dx::Wine`'s `math.c` branches on the largest diagonal; normalise by dividing by
   `sqrtf(((x*x + y*y) + z*z) + w*w)`. Unverified: the D3DX load shift under Wine (Kutemajarvi has no mesh-bounded box).
 - Open: the sscanf float conversion is assumed correctly rounded to f32 (MSVC's may round via double); `colBox` with fewer than three
   numbers falls back to the mesh box (no local case); a mesh with several materials or unusual `.x` positions was not seen.

@@ -1,6 +1,6 @@
 //! The collision meshes `rbr_btb::ksh` builds against the plugin's `CACHE/ksh.ksh` and `trk.trk` (`RBR_RSF`, skipped
 //! when unset). The first word of each placement is a heap address in the cache and 0 in the build: both sides are
-//! compared with those words zeroed. A cache is built with one of two D3DX libraries (`ksh::Math`); the one that
+//! compared with those words zeroed. A cache is built with one of two D3DX libraries (`rbr_btb::D3dx`); the one that
 //! reproduces it is used, and every cached folder must match with one of them.
 
 use rbr_btb::{classic, ksh, track};
@@ -72,7 +72,7 @@ fn cached_collision_meshes_rebuild() {
         let want_trk = masked_trk(want_trk);
         let mut report = Vec::new();
         let mut done = None;
-        for math in [ksh::Math::Native, ksh::Math::Wine] {
+        for math in [rbr_btb::D3dx::Windows, rbr_btb::D3dx::Wine] {
             let (count, mut got) = ksh::build(track, math).unwrap_or_else(|e| panic!("{}: {e}", track.name));
             zero_keys(&mut got);
             let trk = classic::trk_from(track, math).unwrap_or_else(|e| panic!("{}: {e}", track.name));
@@ -113,7 +113,7 @@ fn every_folder_builds_a_parsing_trk() {
         return;
     };
     for track in &tracks {
-        let trk = classic::trk_from(track, ksh::Math::Native).unwrap_or_else(|e| panic!("{}: {e}", track.name));
+        let trk = classic::trk_from(track, rbr_btb::D3dx::Windows).unwrap_or_else(|e| panic!("{}: {e}", track.name));
         rbr_formats::trk::parse(&trk).unwrap_or_else(|e| panic!("{}: {e}", track.name));
     }
     eprintln!("{} folders build a parsing trk", tracks.len());
@@ -143,7 +143,7 @@ fn rsqrtss_is_the_intel_table() {
 #[test]
 fn identity_matrix_is_the_identity_quaternion() {
     let m = [1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.];
-    for math in [ksh::Math::Native, ksh::Math::Wine] {
+    for math in [rbr_btb::D3dx::Windows, rbr_btb::D3dx::Wine] {
         let [x, y, z, w] = ksh::quaternion(&m, math);
         assert_eq!([x, y, z], [0.0; 3]);
         assert!((w - 1.0).abs() < 1e-3, "{math:?}: w {w}");

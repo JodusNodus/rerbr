@@ -2,6 +2,7 @@
 //! `rbr_rx.dll` does (`ColSplit` 0x10022c10, `.\col.cpp`). Rules and evidence: `notes/btb.md` "Collision".
 
 use crate::track::Track;
+use crate::D3dx;
 use crate::{scene, xfile, xform};
 use rbr_formats::rbz;
 use std::collections::HashMap;
@@ -434,16 +435,6 @@ fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
         }
     }
     Ok(faces)
-}
-
-/// Which D3DX the plugin ran against: the caches written on Windows carry its input quirk (every non-zero position
-/// one unit in the last place down, [`shift_input`]); a cache written under Wine's D3DX (`Kutemajarvi 1994`, rebuilt
-/// 2026-10-15) holds the file's floats, sums the transform left to right ([`transform_sequential`]) and has no map
-/// index (every material reads as unmatched).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum D3dx {
-    Windows,
-    Wine,
 }
 
 /// The stage's `col.col` as the plugin writes it on Windows.
