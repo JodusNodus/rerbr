@@ -98,3 +98,49 @@ BTB ("Bob's Track Builder") stages draw from `RX_CONTENT/Tracks/<folder>/Objects
   multiple of 64 and every matrix ends in 1.0 (4,671,721 placements in 141,350 files); `xform::parse` errors otherwise.
 - All 140,785 `objectlist.ini` `file=`/`xform=` names resolve to `Objects/<name>.x`/`.xform` case-insensitively.
 
+
+## Drawing
+
+`rbr_btb::scene` (`Scene::load`, no renderer types) turns a folder into meshes, materials and placements; the renderer's
+`stage/btb.rs` builds a `Stage` from it (`stage::load` takes it when the stage's folder passes
+`track::is_track_folder`, i.e. `<RBR_RSF>/RX_CONTENT/Tracks/<folder>/track-41_M`; `load_textures` likewise). Physics and
+launcher are not wired.
+
+- Frame: `.x` vertices, `.xform` matrices and `spawn.ini` are already in the renderer's stage frame (Direct3D, left-handed,
+  y up, placed `p * M`); no transform. The driveline (`z` up) is `(x, z, y)`, as the classic `.trk`'s. Evidence: the
+  placement translations of Pirttikulma span x -384..3578, y 0..165, z -2920..2482 and its driveline `K0`/last point
+  (463.8, -2918.6, 123.7)/(3545.4, 2459.1, 145.0) sit at stage (463.8, 123.7, -2918.6)/(3545.4, 145.0, 2459.1), inside
+  that box; with the driveline points as camera positions the road is under the eye in every shot; the spawn lies ahead of
+  `K0` along its tangent (Ulu Karagita 71 m, Bareyo 100 m, Pirttikulma 610 m) and `angleZ` is the yaw, car facing
+  `(sin yaw, 0, cos yaw)`, the way the driveline runs.
+- Effects (the `FX/*.fx` sources; every `.fx` is `texture * (0.4 + max(0, N.L))`, `L` toward the sun = `-sunDirection`,
+  cull none, no fog): `VertLerp` blends `diffuse` and `secondDiffuse` by the mesh's `BLENDWEIGHT` (the `DeclData` usage 1
+  stream), the second texture on the last UV set; `MultiplyAdd` is `diffuse * multiplier + additive` (UV sets 1 and 2);
+  `Bump` takes the normal from `normalTexture` in the `DeclData` tangent frame; `Specular` adds
+  `specularTexture * SpecularColor * pow(N.H, SpecularPower)`. UV set order after the diffuse: bump, specular, multiplier,
+  additive, lerp (`Effect::uv_slots`; the `DeclData`/`FVFData` patterns agree for every mesh). `Up` techniques light with
+  `N = (0, 1, 0)`. `Transparent`: pass 0 alpha blended without depth write, pass 1 alpha test `>= 200` with depth write.
+- Textures: `Textures.zip` holds `.dds` (some uncompressed `X8R8G8B8`), and 1310 `.jpg` and 16 `.png` files that materials
+  name (`tarmac4.jpg`): `scene::TextureFiles::read` decodes them to a plain-texel `.dds`. Materials name textures by author
+  paths; the file name matches the archive ignoring case (or the stem with `.dds`).
+- Drawn: diffuse, the lerp (vertex alpha is the weight; the renderer's second texture also multiplies it by the second
+  texture's alpha, which BTB's does not), `Up`, `Transparent` as the two passes, but only for a diffuse texture with a
+  translucent texel (`scene::has_alpha`; otherwise pass 0 and 1 together are one opaque draw), cull none, the vertex
+  colour holding `(0.4 + N.L)` for the unenhanced draw; the renderer's own light, shadows and sky otherwise.
+  Approximated: `MultiplyAdd` draws its diffuse (the multiplier/additive UV sets cannot share a draw's two texture slots),
+  `Specular` has no highlight, `Bump` has no normal map (the renderer's stage draws have neither path). Not drawn:
+  `BTB_Sky` meshes (7 in two tracks; the renderer's sky stays), the 139 meshes whose texture name has no
+  `materials.ini` section (Cauterets' `vieuxpylone`, one La Serra), invisible objects. Pirttikulma's own sky
+  (`Taivaita\Materials\sky16`, `BTB_Diffuse`) is an ordinary object, drawn as one. No weather, wear, light maps,
+  characters, fences, grass or collision for a BTB stage (their files are absent there and load as none); the viewer's
+  fences and characters report "not loaded".
+- LOD and size: no instancing. Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
+  128 m cell (a placement over 150 m half extent is a mesh of its own: the terrain tiles) and by `LODIn`/`LODOut` in 50 m
+  steps (`Lod::Band`, the draw's distance from its mesh's bounds centre; a solo placement's `LODOut` counts from its
+  radius too). `LODOut` is under 500 m for 64775 of 140785 objects across the install, so the band matters. Worst
+  expanded tracks (Transparent drawn twice where the texture has alpha): Kaihuavaara 2022 3.38 M vertices, 2.60 M
+  triangles in 7070 meshes (peak 0.85 GB in a viewer screenshot); Stoccareddo II 3.79 M vertices, 1.99 M triangles, 1270
+  meshes (peak 1.3 GB); Pirttikulma 1.18 M vertices, 0.74 M triangles. Load to the first frame 5 to 9 s on those. A view
+  draws 60 to 350 k triangles.
+- Open: no tangent-space bump or specular; `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
+  specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
