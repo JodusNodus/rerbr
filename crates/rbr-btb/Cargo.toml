@@ -1,0 +1,13 @@
+[package]
+name = "rbr-btb"
+version = "0.1.0"
+edition = "2021"
+description = "BTB (Bob's Track Builder) stages as RallySimFans installs them: their files, and the classic stage files they stand for"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "rbr_btb"
+path = "src/lib.rs"
+
+[dependencies]
+rbr-formats = { path = "../rbr-formats" }
