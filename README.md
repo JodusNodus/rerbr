@@ -97,7 +97,7 @@ It looks in the usual places and offers the first install with NGP it finds. The
 - **RBR with the official 1.02 patch and the NGP plugin** from [gvrc.de](https://gvrc.de/NGP.html), copied over the
   same way.
 - **Only the disc, and no Windows at all:** press **Set up from the disc…**. It builds the game folder from the disc
-  image and the 1.02 patch, downloading NGP itself (or taking your copy). See [docs/install-from-disc.md](docs/install-from-disc.md).
+  image, downloading NGP itself (or taking your copy). See [docs/install-from-disc.md](docs/install-from-disc.md).
 
 ReRBR requires NGP 7.4.778, the version its physics is verified against. Settings finds the RSF or game folder's
 `Plugins/NGP.dll` automatically; if it is missing or another version (RallySimFans has 7.5.779), press **Download NGP
