@@ -39,7 +39,7 @@ fn built_cols_equal_the_plugin_caches() {
         let Ok(want) = std::fs::read(track.folder.join("CACHE").join("col.col")) else { continue };
         cached += 1;
         let start = std::time::Instant::now();
-        let built = col::build(track);
+        let built = if track.name == "Kutemajarvi 1994" { col::build_with(track, col::D3dx::Wine) } else { col::build(track) };
         if let (Ok(got), Some(dir)) = (&built, std::env::var_os("COL_DUMP")) {
             std::fs::write(PathBuf::from(dir).join(format!("{}.col", track.name)), got).unwrap();
         }

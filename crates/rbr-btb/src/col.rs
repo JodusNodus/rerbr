@@ -49,6 +49,12 @@ pub fn transform(m: &[f32; 16], p: [f32; 3]) -> [f32; 3] {
     [at(0), at(1), at(2)]
 }
 
+/// Wine's `D3DXVec3Transform`: the sum left to right, `((x*A + y*B) + z*C) + D`.
+pub fn transform_sequential(m: &[f32; 16], p: [f32; 3]) -> [f32; 3] {
+    let at = |j: usize| ((p[0] * m[j] + p[1] * m[4 + j]) + p[2] * m[8 + j]) + m[12 + j];
+    [at(0), at(1), at(2)]
+}
+
 /// The texture coordinate to a nibble byte: `(int)(u * 15)` truncated and cut to a byte (not to a nibble, so a large
 /// `u` sets bits of the high nibble), or-ed with the low nibble of `(int)(v * 15)` shifted up.
 pub fn nibbles(uv: [f32; 2]) -> u8 {
@@ -350,7 +356,7 @@ impl Maps {
     }
 }
 
-fn load_mesh(name: &str, bytes: &[u8], maps: &Maps) -> Result<Mesh, String> {
+fn load_mesh(name: &str, bytes: &[u8], maps: &Maps, d3dx: D3dx) -> Result<Mesh, String> {
     let fail = |e: xfile::Error| format!("{name}.x: {e}");
     let file = xfile::parse(bytes).map_err(fail)?;
     let root = *file.objects_of_type("Mesh").first().ok_or_else(|| format!("{name}.x: no Mesh"))?;
@@ -362,7 +368,7 @@ fn load_mesh(name: &str, bytes: &[u8], maps: &Maps) -> Result<Mesh, String> {
         d.indices.iter().enumerate().all(|(i, &x)| x as usize <= i && d.indices.get(x as usize) == Some(&x))
     });
     Ok(Mesh {
-        positions: mesh.positions.iter().map(|p| p.map(shift_input)).collect(),
+        positions: mesh.positions.iter().map(|p| p.map(|v| if d3dx == D3dx::Windows { shift_input(v) } else { v })).collect(),
         triangles: if !loads {
             Vec::new()
         } else {
@@ -404,7 +410,7 @@ fn pick_uvs(mesh: &xfile::Mesh) -> Vec<[f32; 2]> {
 }
 
 /// The faces of every `CollisionModel=0` object, clone by clone, in the order the plugin gathers them.
-fn gather(track: &Track) -> Result<Vec<Face>, String> {
+fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
     let objects = track.objects()?;
     // A material whose diffuse texture `Textures.zip` lacks loads without one: its meshes get no map.
     let archive = rbr_formats::stage_files::in_dir(&track.folder, "Textures.zip")
@@ -429,7 +435,7 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
         let key = object.file.to_lowercase();
         if !meshes.contains_key(&key) {
             let bytes = scene::read_entry(&mut zip, &format!("Objects/{}.x", object.file))?;
-            meshes.insert(key.clone(), load_mesh(&object.file, &bytes, &maps)?);
+            meshes.insert(key.clone(), load_mesh(&object.file, &bytes, &maps, d3dx)?);
         }
         let mesh = &meshes[&key];
         let bytes = scene::read_entry(&mut zip, &format!("Objects/{}.xform", object.xform))?;
@@ -437,7 +443,11 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
             let identity = is_identity(&m);
             let place = |i: u32| {
                 let p = mesh.positions[i as usize];
-                let p = if identity { p } else { transform(&m, p) };
+                let p = match (identity, d3dx) {
+                    (true, _) => p,
+                    (false, D3dx::Windows) => transform(&m, p),
+                    (false, D3dx::Wine) => transform_sequential(&m, p),
+                };
                 [p[0], p[2], p[1]]
             };
             let uv = |i: u32| mesh.uvs.get(i as usize).copied().unwrap_or([0.0; 2]);
@@ -445,7 +455,7 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
                 faces.push(Face {
                     pos: [place(a), place(c), place(b)],
                     uv: [uv(a), uv(c), uv(b)],
-                    map: mesh.map,
+                    map: if d3dx == D3dx::Wine { -1 } else { mesh.map },
                     dbg: object.index as u32,
                 });
             }
@@ -455,8 +465,23 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
 }
 
 /// The stage's `col.col`.
+/// Which D3DX the plugin ran against: the caches written on Windows carry its input quirk (every non-zero position
+/// one unit in the last place down, [`shift_input`]), a cache written under Wine's D3DX (`Kutemajarvi 1994`, rebuilt
+/// 2026-10-15) holds the file's floats.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum D3dx {
+    Windows,
+    Wine,
+}
+
+/// The stage's `col.col` as the plugin writes it on Windows.
 pub fn build(track: &Track) -> Result<Vec<u8>, String> {
-    let faces = gather(track)?;
+    build_with(track, D3dx::Windows)
+}
+
+/// The stage's `col.col` under the given D3DX.
+pub fn build_with(track: &Track, d3dx: D3dx) -> Result<Vec<u8>, String> {
+    let faces = gather(track, d3dx)?;
     if std::env::var_os("COLDBG").is_some() {
         let mut c = std::collections::BTreeMap::new();
         for f in &faces {
@@ -515,6 +540,11 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
                 track.objects().unwrap()[k as usize].xform
             );
         }
+    }
+    if std::env::var_os("COLMAX").is_some() {
+        let mut mx = 0f32;
+        for f in &faces { for p in f.pos { for v in p { mx = mx.max(v.abs()); } } }
+        eprintln!("COLMAX {} {mx}", track.name);
     }
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
     let mut root = Node::new((0..faces.len() as u32).collect());
