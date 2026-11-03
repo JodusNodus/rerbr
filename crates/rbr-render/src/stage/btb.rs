@@ -1,7 +1,7 @@
-//! BTB (Bob's Track Builder) stages: [`rbr_btb::scene::Scene`] as a [`Stage`]. A stage named
-//! `<RBR_RSF>/RX_CONTENT/Tracks/<folder>/track-41_M` (the RSF plugin plays BTB stages as map 41) loads from the
-//! track folder instead of `Maps/`. What each effect and technique becomes, and what is missing: `notes/btb.md`
-//! "Drawing".
+//! BTB (Bob's Track Builder) stages: [`rbr_btb::scene::Scene`] as a [`Stage`]. A stage prepared by
+//! `rbr_btb::stage::prepare` (its folder's `btb.ini` names the BTB folder), or named `<BTB folder>/track-41_M` directly
+//! (the RSF plugin plays BTB stages as map 41), draws from the track folder instead of `Maps/`. What each effect and
+//! technique becomes, and what is missing: `notes/btb.md` "Drawing".
 //!
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
 //! `LODOut` (a mesh each, drawn between those distances: [`Lod::Band`]) so that the views cull them by their bounds.
@@ -15,11 +15,18 @@ use glam::Vec3;
 use rbr_btb::scene::{self, Scene};
 use rbr_formats::stage_files;
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Whether stage `name` is a BTB track folder's (`<folder>/track-41_M`).
+/// The BTB track folder stage `name` plays: a prepared folder's `btb.ini` source (`rbr_btb::stage::prepare`), or the
+/// track folder itself (`<folder>/track-41_M`, for development).
+fn source(name: &str) -> Option<PathBuf> {
+    let folder = stage_files::folder(name)?;
+    rbr_btb::stage::source(folder).or_else(|| rbr_btb::track::is_track_folder(folder).then(|| folder.to_owned()))
+}
+
+/// Whether stage `name` is a BTB stage's.
 pub(super) fn is_btb(name: &str) -> bool {
-    stage_files::folder(name).is_some_and(rbr_btb::track::is_track_folder)
+    source(name).is_some()
 }
 
 /// The `ambient` of every BTB material (`materials.ini`, 0.4 in all folders): the light's floor.
@@ -37,7 +44,7 @@ const SOLID_REF: u8 = 199;
 /// Loads the BTB stage `name`: geometry, draws, texture names (no textures yet: [`load_textures`]), start, driveline
 /// and sun.
 pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Error> {
-    let folder = stage_files::folder(name).ok_or_else(|| Error::Btb(format!("{name}: no folder")))?;
+    let folder = &source(name).ok_or_else(|| Error::Btb(format!("{name}: no BTB folder")))?;
     let scene = Scene::load(folder).map_err(Error::Btb)?;
     let mut report = LoadReport::default();
 
@@ -159,8 +166,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
 
 /// Reads the textures the draws name from the track's `Textures.zip`.
 pub(super) fn load_textures(stage: &mut Stage) -> Result<(), Error> {
-    let folder = stage_files::folder(&stage.name).ok_or_else(|| Error::Btb(format!("{}: no folder", stage.name)))?;
-    let files = scene::TextureFiles::open(folder).map_err(Error::Btb)?;
+    let folder = source(&stage.name).ok_or_else(|| Error::Btb(format!("{}: no BTB folder", stage.name)))?;
+    let files = scene::TextureFiles::open(&folder).map_err(Error::Btb)?;
     let mut missing = Vec::new();
     for (&texture, name) in &stage.texture_names {
         let image = files.read(&name.file_name).and_then(|bytes| super::textures::decode(TextureSet::Stage, bytes));
