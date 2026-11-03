@@ -1,4 +1,4 @@
-# ReRBR (WIP)
+# reRBR (work in progress)
 
 ![The cockpit of an Audi quattro A2 Group B sliding through the rocks of El Condor past the crowd, the dials lit by the low sun](docs/clips/condor-sideways-cockpit.webp)
 
