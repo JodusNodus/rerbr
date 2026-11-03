@@ -575,6 +575,8 @@ struct Form {
     bindings: Bindings,
     /// The wheel's force feedback in live mode (the settings file's `[ffb]` section).
     ffb: rbr_render::ffb::Options,
+    /// Each car's own force-feedback sensitivity (the settings file's `[ffb_cars]` section).
+    ffb_cars: rbr_render::ffb::CarSensitivity,
     /// NGP's `headGasketDurability` for every drive (1 leaves the engine as it is).
     head_gasket: i32,
     controls: ControlsPage,

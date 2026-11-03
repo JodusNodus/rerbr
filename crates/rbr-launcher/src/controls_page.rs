@@ -8,17 +8,23 @@
 //! keeps the device it came from. A pedal or the steering moving the other way from the game's (a pedal resting at
 //! the other end) sets its channel's invert (`input.ini`'s, `Bindings::invert`).
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use egui::{Color32, ComboBox, DragValue, ProgressBar, RichText, Ui};
+use rbr_formats::rsf::settings::{personal, Sources};
+use rbr_formats::rsf::SLOT;
 use rbr_formats::saves::action_map::Object;
 use rbr_gameplay::poll::Invert;
 use rbr_gameplay::race_options::DriverAids;
 use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
+use rbr_render::camera_prefs;
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
 use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
+
+use crate::catalog::Car;
 
 /// A binding being set: its action, and for a device input every joystick's values when it began.
 enum Capture {
@@ -64,20 +70,136 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options) {
         ui.horizontal(|ui| {
             ui.label("sensitivity %").on_hover_text(SENSITIVITY_HELP);
             for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
-                ui.add(DragValue::new(value).range(10..=300).prefix(format!("{surface} ")))
+                ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
                     .on_hover_text(SENSITIVITY_HELP);
             }
         });
-        if !ffb.car_sensitivity.is_empty() {
-            let n = ffb.car_sensitivity.len();
+    });
+}
+
+/// Each car's own force-feedback sensitivity (`[ffb_cars]`, `ffb::CarSensitivity`): one row per listed car (its
+/// name when a car of `cars` has the key, else the key itself), the Drive page's selected car `car` added with the
+/// global values, and RSF's own per-car sensitivities imported. Every edit is written to the settings file at once
+/// (the pause menu's Force feedback page writes the same section while driving).
+#[allow(clippy::too_many_arguments)]
+fn ffb_cars_ui(
+    ui: &mut Ui,
+    on: bool,
+    global: [i32; 3],
+    ffb_cars: &mut ffb::CarSensitivity,
+    cars: &[Car],
+    car: usize,
+    rsf_root: &str,
+    settings: &Path,
+    read_only: bool,
+    ffb_status: &mut Option<String>,
+) {
+    heading(ui, "Force feedback per car");
+    ui.add_enabled_ui(on && !read_only, |ui| {
+        ui.label(
+            RichText::new(
+                "Cars listed here use their own sensitivities instead of the ones above, and the pause menu's Force \
+                 feedback page sets them while driving.",
+            )
+            .color(Color32::GRAY),
+        );
+        let mut changed = false;
+        let mut remove: Option<String> = None;
+        for (key, values) in ffb_cars.cars.iter_mut() {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{n} RSF cars have their own, from RSF.")).color(Color32::GRAY));
-                if ui.small_button("Use these for every car").clicked() {
-                    ffb.car_sensitivity.clear();
+                ui.label(car_display(key, cars));
+                for (value, surface) in values.iter_mut().zip(ffb::SURFACES) {
+                    changed |= ui
+                        .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
+                        .on_hover_text(SENSITIVITY_HELP)
+                        .changed();
+                }
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(key.clone());
                 }
             });
         }
+        if let Some(key) = remove {
+            ffb_cars.cars.remove(&key);
+            changed = true;
+        }
+        let selected = cars.get(car);
+        let key = selected.map(|c| camera_prefs::car_key(&c.name, c.rsf.as_ref().map(|r| r.id)));
+        let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
+        ui.horizontal(|ui| {
+            let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
+            if ui
+                .add_enabled(!listed, egui::Button::new(format!("Add the selected car ({name})")))
+                .on_hover_text("Lists this car with the sensitivities above")
+                .clicked()
+            {
+                if let Some(key) = key.clone() {
+                    ffb_cars.cars.insert(key, global);
+                    changed = true;
+                }
+            }
+            if ui
+                .add_enabled(!rsf_root.trim().is_empty(), egui::Button::new("Import from RSF"))
+                .on_hover_text(IMPORT_HELP)
+                .clicked()
+            {
+                let n = import_ffb_cars(rsf_root, cars, global, ffb_cars);
+                *ffb_status = Some(match n {
+                    1 => "Imported 1 car from RSF.".to_owned(),
+                    n => format!("Imported {n} cars from RSF."),
+                });
+                changed |= n > 0;
+            }
+        });
+        if let Some(status) = &*ffb_status {
+            ui.label(RichText::new(status).color(Color32::GRAY));
+        }
+        if changed {
+            write_ffb_cars(settings, ffb_cars);
+        }
     });
+}
+
+/// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
+fn car_display(key: &str, cars: &[Car]) -> String {
+    cars.iter()
+        .find(|car| camera_prefs::car_key(&car.name, car.rsf.as_ref().map(|r| r.id)) == key)
+        .map(|car| car.name.clone())
+        .unwrap_or_else(|| key.to_owned())
+}
+
+/// Writes `cars` into the settings file's `[ffb_cars]` section, the rest of the file kept.
+fn write_ffb_cars(settings: &Path, cars: &ffb::CarSensitivity) {
+    let file = std::fs::read_to_string(settings).unwrap_or_default();
+    if let Err(e) = std::fs::write(settings, cars.replace_in(&file)) {
+        eprintln!("launcher: {}: {e}", settings.display());
+    }
+}
+
+/// What the import does.
+const IMPORT_HELP: &str = "Lists every RSF car below with RSF's own sensitivity for it (rallysimfans_personal.ini's \
+     forcefeedbacksensitivity per surface, a surface RSF leaves empty filled from the install's global), replacing \
+     those cars' entries. Only cars that differ from the sensitivities above are added.";
+
+/// RSF's own per-car sensitivities for the RSF cars of `cars`, resolved as the removed import did (a surface RSF
+/// leaves empty filled from the install's global). Adds the cars that differ from `global`, overwriting their
+/// entries, and returns how many were added.
+fn import_ffb_cars(rsf_root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ffb::CarSensitivity) -> usize {
+    let root = Path::new(rsf_root.trim());
+    let sources = Sources::install(root, 0);
+    let personal_ini = std::fs::read(root.join("rallysimfans_personal.ini"))
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
+    let mut imported = 0;
+    for car in cars {
+        let Some(id) = car.rsf.as_ref().map(|rsf| rsf.id) else { continue };
+        let own = Sources { car: personal(&personal_ini, id), ..sources.clone() }.resolve(SLOT).sensitivity;
+        if own != global {
+            ffb_cars.cars.insert(camera_prefs::car_key(&car.name, Some(id)), own);
+            imported += 1;
+        }
+    }
+    imported
 }
 
 /// NGP's force-feedback sensitivity per surface (`ffb::Options::sensitivity`), in its readme's words.
@@ -166,6 +288,8 @@ pub struct ControlsPage {
     scanned: Instant,
     /// The wheels whose rotation can be set, as last read, or why the last set failed.
     wheels: Result<Vec<Wheel>, String>,
+    /// The last "Import from RSF"'s summary.
+    ffb_status: Option<String>,
 }
 
 impl ControlsPage {
@@ -176,6 +300,7 @@ impl ControlsPage {
             joysticks: Joysticks::connected(),
             scanned: Instant::now(),
             wheels: Ok(wheel_rotation::wheels()),
+            ffb_status: None,
         }
     }
 
@@ -273,6 +398,7 @@ impl ControlsPage {
             .collect()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn ui(
         &mut self,
         ui: &mut Ui,
@@ -280,6 +406,12 @@ impl ControlsPage {
         ffb: &mut ffb::Options,
         aids: &mut DriverAids,
         head_gasket: &mut i32,
+        ffb_cars: &mut ffb::CarSensitivity,
+        cars: &[Car],
+        car: usize,
+        rsf_root: &str,
+        settings: &Path,
+        read_only: bool,
     ) {
         let pads = self.pads();
         if pads.is_empty() {
@@ -316,6 +448,20 @@ impl ControlsPage {
                     aids_ui(ui, aids, head_gasket);
                     heading(ui, "Force feedback");
                     ffb_ui(ui, ffb);
+                    let global = ffb.sensitivity;
+                    let on = ffb.settings.enabled;
+                    ffb_cars_ui(
+                        ui,
+                        on,
+                        global,
+                        ffb_cars,
+                        cars,
+                        car,
+                        rsf_root,
+                        settings,
+                        read_only,
+                        &mut self.ffb_status,
+                    );
                 });
             });
             ui.add_space(8.0);
@@ -572,6 +718,7 @@ fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::catalog::RsfCar;
     use rbr_render::bindings::Device;
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };
@@ -616,6 +763,50 @@ mod tests {
         assert!(bindings.invert.steering);
         bindings.actions[Action::SteerRight as usize].pad = None;
         assert_eq!(steering_label(&bindings, &[]), "axis 0 · 046d:c266/0 / -");
+    }
+
+    /// "Import from RSF" takes RSF's per-car sensitivities, filling a surface RSF leaves empty from the install's
+    /// global, and only the cars that differ from the launcher's global ones (overwriting their entries).
+    #[test]
+    fn import_takes_rsf_s_per_car_sensitivities() {
+        let root = std::env::temp_dir().join(format!("ffb-import-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("RichardBurnsRally.ini"),
+            b"[NGP]\nForceFeedbackSensitivityGravel=280\nForceFeedbackSensitivityTarmac=250\n\
+             ForceFeedbackSensitivitySnow=280\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("rallysimfans_personal.ini"),
+            b"[car88]\nforcefeedbacksensitivitygravel=300\nlogin=secret\n[car87]\n\
+             forcefeedbacksensitivitygravel=280\nforcefeedbacksensitivitytarmac=250\nforcefeedbacksensitivitysnow=280\n",
+        )
+        .unwrap();
+        let rsf = |id| {
+            Some(RsfCar {
+                id,
+                added: false,
+                group: None,
+                pack: Ok(root.join("pack")),
+                model: Ok(None),
+                drive_train: None,
+            })
+        };
+        let cars = vec![
+            Car { index: 0, name: "Evo".into(), rsf: rsf(88) },
+            Car { index: 1, name: "Same".into(), rsf: rsf(87) },
+        ];
+        let global = [280, 250, 280];
+        let mut ffb_cars = ffb::CarSensitivity { cars: [("rsf-88".to_owned(), [1, 2, 3])].into() };
+        let n = import_ffb_cars(&root.display().to_string(), &cars, global, &mut ffb_cars);
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(n, 1);
+        // Car 88's gravel is RSF's own, its other surfaces the install's global; car 87 matches the launcher's
+        // global and is left out, and the stale entry is overwritten.
+        assert_eq!(ffb_cars.cars, [("rsf-88".to_owned(), [300, 250, 280])].into());
+        assert_eq!(car_display("rsf-88", &cars), "Evo");
+        assert_eq!(car_display("rsf-1", &cars), "rsf-1");
     }
 
     #[test]

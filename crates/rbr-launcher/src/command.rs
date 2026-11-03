@@ -10,6 +10,7 @@ use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::RaceOptions;
 use rbr_gameplay::weather::{self, Draws, Preset, Weather};
+use rbr_render::camera_prefs;
 use rbr_render::glass::model::Switch;
 use rbr_render::renderer::{Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
@@ -658,7 +659,8 @@ impl Form {
         args.splice(live..live, viewer_extra);
         args.extend(extra);
         args.extend(["--ngp-physics".to_owned(), self.ngp_archive()]);
-        let sensitivity = self.ffb.sensitivity_for(car.rsf.as_ref().map(|r| r.id));
+        let key = camera_prefs::car_key(&car.name, car.rsf.as_ref().map(|r| r.id));
+        let sensitivity = self.ffb_cars.of(Some(&key), self.ffb.sensitivity);
         if sensitivity != [100; 3] {
             let [gravel, tarmac, snow] = sensitivity;
             args.extend(["--ffb-sensitivity".to_owned(), format!("{gravel},{tarmac},{snow}")]);
@@ -748,8 +750,10 @@ impl Form {
                 }
             }
             if self.child.is_none() {
-                // The pause menu's Camera page may have changed it.
-                self.head = !crate::settings::read_settings(&self.paths.settings).camera.head_off;
+                // The pause menu's Camera and Force feedback pages may have changed them.
+                let saved = crate::settings::read_settings(&self.paths.settings);
+                self.head = !saved.camera.head_off;
+                self.ffb_cars = saved.ffb_cars;
                 if !replay {
                     self.rally.stage_closed(&self.here());
                 }
@@ -809,7 +813,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 7] = [
+    const COMMAND_CASES: [(&str, &str); 8] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -839,6 +843,11 @@ mod tests {
             "force feedback sensitivity",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\n\
              sensitivity_gravel = 70\nsensitivity_snow = 130\nsensitivity_car24 = 90,100,110\n",
+        ),
+        (
+            "force feedback per car",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\n\
+             sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n",
         ),
     ];
 
