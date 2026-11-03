@@ -35,7 +35,10 @@ impl Form {
                     self.disc_setup.open |= ui.button("Set up from the disc…").clicked();
                     set = picked || edit.lost_focus();
                 });
-            })
+            });
+            ui.label("");
+            ui.weak(READ_ONLY);
+            ui.end_row();
         });
         if let Some(dir) = ui.add_enabled_ui(!running, |ui| self.disc_setup.ui(ui)).inner {
             self.install_folder = dir;
@@ -185,18 +188,24 @@ fn tick(ui: &mut egui::Ui, label: &str, ok: bool, what: impl FnOnce(&mut egui::U
     ui.end_row();
 }
 
-/// The game folder's field, its Browse button and the disc setup's; whether a folder was set (Enter, the field
-/// left, picked, or set up from the disc).
+/// What ReRBR does with the game folder, under its field.
+const READ_ONLY: &str = "ReRBR only reads your game folder and never writes to it: its settings, saves and downloads \
+                         go to your files' folder.";
+
+/// The game folder's field, its Browse button and the disc setup's, and [`READ_ONLY`]; whether a folder was set
+/// (Enter, the field left, picked, or set up from the disc).
 pub fn folder_row(ui: &mut egui::Ui, folder: &mut String, setup: &mut DiscSetup) -> bool {
-    ui.horizontal(|ui| {
-        ui.label("Game folder");
-        let hint = "the Richard Burns Rally folder, with RichardBurnsRally_SSE.exe";
-        let edit = ui.add(egui::TextEdit::singleline(folder).hint_text(hint).desired_width(420.0));
-        let picked = ui.button("Browse…").clicked()
-            && job::pick_folder("Your Richard Burns Rally folder").map(|dir| *folder = dir).is_some();
-        setup.open |= ui.button("Set up from the disc…").clicked();
-        picked || edit.lost_focus()
-    })
-    .inner
-        | setup.ui(ui).map(|dir| *folder = dir).is_some()
+    let set = ui
+        .horizontal(|ui| {
+            ui.label("Game folder");
+            let hint = "the Richard Burns Rally folder, with RichardBurnsRally_SSE.exe";
+            let edit = ui.add(egui::TextEdit::singleline(folder).hint_text(hint).desired_width(420.0));
+            let picked = ui.button("Browse…").clicked()
+                && job::pick_folder("Your Richard Burns Rally folder").map(|dir| *folder = dir).is_some();
+            setup.open |= ui.button("Set up from the disc…").clicked();
+            picked || edit.lost_focus()
+        })
+        .inner;
+    ui.weak(READ_ONLY);
+    set | setup.ui(ui).map(|dir| *folder = dir).is_some()
 }

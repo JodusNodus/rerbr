@@ -61,7 +61,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
   status line offers the download from every page, and with both NGP paths unset a kept copy is used
-  (`ngp_install::KEPT`; user decision 2026-11-03). `--download-ngp GAME` still installs into `GAME`.
+  (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
+  RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
+  `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
 - Stage browser: “Newest on RSF” uses first native introductions from dated RSF announcements
   (`data/rsf-stage-releases.csv`, coverage from 2024-10-05); new maps precede conversions on a tied date,
   unknown dates follow dated maps, later fixes keep the introduction date (`stage_releases`, 2026-11-01).

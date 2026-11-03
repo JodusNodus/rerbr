@@ -1,5 +1,5 @@
 //! Downloading NGP and cars from gvrc.de, so that a game folder without NGP, or a player without cars, is set up from
-//! the launcher: the Settings page's "Download NGP 7.4.778…" and "Download cars…", `launcher --download-ngp GAME` and
+//! the launcher: the Settings page's "Download NGP 7.4.778…" and "Download cars…", `launcher --download-ngp` and
 //! `launcher --download-cars [NAME…]`.
 //!
 //! The list is gvrc.de's `carList.ini`, the one RBRCIT (the Windows car installer) reads and WorkerBee maintains: `[Plugins]`
@@ -11,9 +11,8 @@
 //!
 //! - NGP's package is downloaded to a temp folder in the player's folder and checked to be NGP 7.4.778; only its
 //!   `NGP.dll` and `physics.rbz` are kept, there (`ngp_install::KEPT`, `ngp_install::add_ngp_to`), and the DLL and
-//!   physics.rbz fields set to them. The game folder, and any NGP in it (RallySimFans', or a version ReRBR does not
-//!   read), is left as it is. `--download-ngp GAME` installs NGP into the game folder `GAME` instead, as NGP's own
-//!   install does (`ngp_install::add_ngp`).
+//!   physics.rbz fields set to them (`--download-ngp` leaves the fields, which then find the copy). The game folder,
+//!   and any NGP in it (RallySimFans', or a version ReRBR does not read), is left as it is.
 //! - A car's downloads go to a temp folder in `cars/` and are added as downloaded packs are (`car_packs::add_downloads`),
 //!   each car with the model its list entry names.
 
@@ -205,20 +204,6 @@ pub fn download_ngp_package(dir: &Path, report: Report<'_>, cancel: &AtomicBool)
     download_package_from(LIST_URL, dir, report, cancel)
 }
 
-/// Downloads NGP's package (named by the list at `list`) and installs it into the game folder `game`
-/// (`ngp_install::add_ngp`); the number of files written.
-fn download_ngp_from(list: &str, game: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<usize, Fail> {
-    ngp_install::check_game_folder(game)?;
-    let temp = Temp::create(game, "downloading")?;
-    let package = download_package_from(list, &temp.0, report, cancel)?;
-    ngp_install::add_ngp(&package, game, report, cancel)
-}
-
-/// Downloads NGP and installs it into the game folder `game`; the number of files written.
-pub fn download_ngp(game: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<usize, Fail> {
-    download_ngp_from(LIST_URL, game, report, cancel)
-}
-
 /// Downloads NGP's package into a temp folder beside `to` and writes only its `NGP.dll` and `physics.rbz` into `to`.
 fn download_ngp_to(to: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<(), Fail> {
     let temp = Temp::create(to.parent().unwrap_or(Path::new(".")), "downloading")?;
@@ -283,11 +268,11 @@ fn find<'a>(catalog: &'a Catalog, word: &str) -> Vec<&'a Entry> {
     }
 }
 
-/// The command line's `--download-ngp GAME`.
-pub fn ngp_cli(args: &[String]) -> Result<(), String> {
-    let [game] = args else {
-        return Err("usage: rerbr --download-ngp GAME_FOLDER".into());
-    };
+/// The command line's `--download-ngp`: into the player's folder `home` ([`ngp_install::KEPT`]).
+pub fn ngp_cli(home: &Path, args: &[String]) -> Result<(), String> {
+    if !args.is_empty() {
+        return Err("usage: rerbr --download-ngp".into());
+    }
     let step = std::sync::Mutex::new("");
     let report = move |p: &Progress| {
         let mut step = step.lock().unwrap();
@@ -296,8 +281,9 @@ pub fn ngp_cli(args: &[String]) -> Result<(), String> {
             println!("{}…", p.step);
         }
     };
-    let files = download_ngp(Path::new(game), &report, &AtomicBool::new(false))?;
-    println!("NGP 7.4.778 installed into {game}: {files} files");
+    let to = home.join(ngp_install::KEPT);
+    download_ngp_to(&to, &report, &AtomicBool::new(false))?;
+    println!("NGP 7.4.778's NGP.dll and physics.rbz saved in {}", to.display());
     Ok(())
 }
 

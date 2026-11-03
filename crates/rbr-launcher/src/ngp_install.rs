@@ -1,7 +1,6 @@
-//! Installing NGP 7.4.778's package into a game folder, as NGP's own install does: `Plugins/` and `AudioFMOD/`,
-//! and `physics.rbz` in place of the retail one (the retail archive kept once as `physics.rbz.bak`). The disc setup
-//! (`disc_install`) and `rerbr --download-ngp GAME` install through [`add_ngp`]. The Settings page's download keeps
-//! only the DLL and the archive, in the player's folder ([`KEPT`], [`add_ngp_to`]), and changes no game folder.
+//! NGP 7.4.778's package: read and checked ([`read_ngp`], for the disc setup, `disc_install`, which writes it into the
+//! new game folder it makes), and its DLL and archive kept in the player's folder ([`KEPT`], [`add_ngp_to`]) for the
+//! Settings page's download and `rerbr --download-ngp`, which change no game folder.
 
 use std::fs;
 use std::io::{Cursor, Read};
@@ -10,7 +9,7 @@ use std::sync::atomic::AtomicBool;
 
 use rbr_formats::rbz;
 
-use crate::archive::{open_seven, safe_path};
+use crate::archive::open_seven;
 use crate::disc_install::{require, with_folders, write_to, Reporter};
 use crate::job::Report;
 
@@ -112,39 +111,6 @@ pub fn check_game_folder(game: &Path) -> Result<(), Fail> {
     }
 }
 
-/// Installs the NGP package at `package` (a `.7z`) into the existing game folder `game`, as NGP's own install does:
-/// `Plugins/` and `AudioFMOD/`, and `physics.rbz` in place of the retail one, which is kept as `physics.rbz.bak`.
-/// Nothing is written unless the package is NGP 7.4.778's (its `NGP.dll` is checked), and `physics.rbz` goes last, so
-/// that an interrupted install does not look like NGP. The number of files written.
-pub fn add_ngp(package: &Path, game: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<usize, Fail> {
-    check_game_folder(game)?;
-    let mut reporter = Reporter::new(report, cancel);
-    reporter.step("Reading NGP")?;
-    let Package { files, dirs, physics } = read_ngp(package)?;
-    supported_dll(&files)?;
-    reporter.total = files.iter().map(|(_, b)| b.len() as u64).sum::<u64>() + physics.len() as u64;
-    reporter.step("Writing NGP")?;
-    let below = |rel: &str| {
-        let parts = safe_path(rel).ok_or_else(|| format!("a bad path in the package: {rel}"))?;
-        Ok::<_, Fail>(parts.iter().fold(game.to_owned(), |p, part| p.join(part)))
-    };
-    for dir in &dirs {
-        let path = below(dir)?;
-        fs::create_dir_all(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    }
-    for (rel, bytes) in &files {
-        write_to(&below(rel)?, bytes, &reporter)?;
-    }
-    let archive = game.join("physics.rbz");
-    let backup = game.join("physics.rbz.bak");
-    let retail = archive.is_file() && !backup.exists() && fs::read(&archive).is_ok_and(|b| !is_ngp_archive(&b));
-    if retail {
-        fs::rename(&archive, &backup).map_err(|e| format!("{}: {e}", archive.display()))?;
-    }
-    write_to(&archive, &physics, &reporter)?;
-    Ok(files.len() + 1)
-}
-
 /// The package's `Plugins/NGP.dll`, when it is NGP 7.4.778's.
 pub(crate) fn supported_dll(files: &[(String, Vec<u8>)]) -> Result<&[u8], Fail> {
     let dll = files.iter().find(|(p, _)| p.eq_ignore_ascii_case("Plugins/NGP.dll")).map_or(&[][..], |(_, b)| b);
@@ -179,7 +145,6 @@ pub(crate) fn is_ngp_archive(bytes: &[u8]) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
-    use std::path::PathBuf;
     use std::sync::Mutex;
 
     use crate::job::Progress;
@@ -205,69 +170,42 @@ mod tests {
         out.finish().unwrap();
     }
 
-    /// A retail game folder with the retail `physics.rbz`.
-    fn retail_game(dir: &Path) -> PathBuf {
-        let game = dir.join("game");
-        fs::create_dir_all(game.join("Cars")).unwrap();
-        fs::create_dir_all(game.join("Maps")).unwrap();
-        fs::write(game.join("physics.rbz"), physics_rbz(false)).unwrap();
-        game
-    }
-
     #[test]
     fn a_package_that_is_not_ngp_778_changes_nothing() {
         let dir = crate::test_dir("ngp-bad");
-        fs::create_dir_all(&dir).unwrap();
-        let game = retail_game(&dir);
         let package = dir.join("ngp.7z");
         ngp_package(&package, b"another NGP.dll");
-        let add = |game: &Path, package: &Path| add_ngp(package, game, &|_| {}, &AtomicBool::new(false));
-        let err = add(&game, &package).unwrap_err();
-        assert!(err.contains("the downloaded NGP: unsupported NGP.dll"), "{err}");
-        assert_eq!(fs::read(game.join("physics.rbz")).unwrap(), physics_rbz(false));
-        assert!(
-            !game.join("Plugins").exists()
-                && !game.join("AudioFMOD").exists()
-                && !game.join("physics.rbz.bak").exists()
-        );
-        assert!(add(&dir, &package).unwrap_err().contains("is not a Richard Burns Rally folder"));
-        assert!(add(&game, &dir.join("none.7z")).is_err());
-        let to = dir.join("player/NGP 7.4.778");
-        let err = add_ngp_to(&package, &to, &|_| {}, &AtomicBool::new(false)).unwrap_err();
-        assert!(err.contains("unsupported NGP.dll") && !to.exists(), "{err}");
+        let to = dir.join("player").join(KEPT);
+        let add = |package: &Path| add_ngp_to(package, &to, &|_| {}, &AtomicBool::new(false));
+        let err = add(&package).unwrap_err();
+        assert!(err.contains("the downloaded NGP: unsupported NGP.dll") && !to.exists(), "{err}");
+        assert!(add(&dir.join("none.7z")).is_err() && !to.exists());
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// With the real NGP 7.4.778 DLL (`RBR_NGP_DLL`, or the data's): installed over a retail folder, the retail archive
-    /// kept once, and installed again over NGP's own; kept in the player's folder, found there while it is 7.4.778's.
+    /// With the real NGP 7.4.778 DLL (`RBR_NGP_DLL`, or the data's): its DLL and archive kept in the player's folder,
+    /// in order, again over a kept copy, and found there while the DLL is 7.4.778's.
     #[test]
-    fn ngp_is_installed_over_a_retail_folder() {
+    fn ngp_is_kept_in_the_players_folder() {
         let data = rbr_formats::data::Data::from_env().unwrap_or_else(|| rbr_formats::data::Data::new("", None));
         let Some(dll) = rbr_formats::ngp::path(&data).and_then(|p| fs::read(p).ok()) else {
             return;
         };
         let dir = crate::test_dir("ngp-ok");
-        fs::create_dir_all(&dir).unwrap();
-        let game = retail_game(&dir);
         let package = dir.join("ngp.7z");
         ngp_package(&package, &dll);
-        let progress = Mutex::new(Vec::new());
-        let report = |p: &Progress| progress.lock().unwrap().push(p.done);
-        assert_eq!(add_ngp(&package, &game, &report, &AtomicBool::new(false)), Ok(3));
-        assert_eq!(fs::read(game.join("Plugins/NGP.dll")).unwrap(), dll);
-        assert_eq!(fs::read(game.join("AudioFMOD/a.bank")).unwrap(), b"bank");
-        assert_eq!(fs::read(game.join("physics.rbz")).unwrap(), physics_rbz(true));
-        assert_eq!(fs::read(game.join("physics.rbz.bak")).unwrap(), physics_rbz(false));
-        assert!(progress.lock().unwrap().windows(2).all(|w| w[0] <= w[1]));
-        assert_eq!(add_ngp(&package, &game, &|_| {}, &AtomicBool::new(false)), Ok(3));
-        assert_eq!(fs::read(game.join("physics.rbz.bak")).unwrap(), physics_rbz(false));
-        assert!(add_ngp(&package, &game, &|_| {}, &AtomicBool::new(true)).unwrap_err().ends_with("cancelled"));
         let player = dir.join("player");
         let to = player.join(KEPT);
         assert_eq!(kept(&player), None);
-        assert_eq!(add_ngp_to(&package, &to, &|_| {}, &AtomicBool::new(false)), Ok(()));
+        let progress = Mutex::new(Vec::new());
+        let report = |p: &Progress| progress.lock().unwrap().push(p.done);
+        assert_eq!(add_ngp_to(&package, &to, &report, &AtomicBool::new(false)), Ok(()));
+        assert!(progress.lock().unwrap().windows(2).all(|w| w[0] <= w[1]));
         assert_eq!(fs::read(to.join("NGP.dll")).unwrap(), dll);
         assert_eq!(fs::read(to.join("physics.rbz")).unwrap(), physics_rbz(true));
+        assert_eq!(fs::read_dir(&to).unwrap().count(), 2, "only the DLL and the archive");
+        assert_eq!(add_ngp_to(&package, &to, &|_| {}, &AtomicBool::new(false)), Ok(()));
+        assert!(add_ngp_to(&package, &to, &|_| {}, &AtomicBool::new(true)).unwrap_err().ends_with("cancelled"));
         assert_eq!(kept(&player), Some((to.join("NGP.dll"), to.join("physics.rbz"))));
         fs::write(to.join("NGP.dll"), b"another version").unwrap();
         assert_eq!(kept(&player), None);
