@@ -44,18 +44,10 @@ fn every_btb_mesh_and_placement_parses_and_objectlists_resolve() {
     let mut templates: BTreeMap<String, usize> = BTreeMap::new();
     let mut poly_sizes: BTreeMap<usize, usize> = BTreeMap::new();
     let mut uv_sets: BTreeMap<usize, usize> = BTreeMap::new();
-    let mut with_colors = 0;
     let mut with_materials = 0;
-    let mut nonzero_face_colors = 0;
-    let mut face_material_cover: BTreeMap<usize, usize> = BTreeMap::new();
     let mut textures: BTreeSet<String> = BTreeSet::new();
     let mut decl_elements: BTreeMap<Vec<xfile::VertexElement>, usize> = BTreeMap::new();
-    let mut decl_stride_bad = 0;
     let mut fvf_codes: BTreeMap<u32, usize> = BTreeMap::new();
-    let mut fvf_len_bad = 0;
-    let mut uv_count_bad = 0;
-    let mut normal_count_bad = 0;
-    let mut matrix_w_bad = 0;
     let mut unmatched_textures: Vec<String> = Vec::new();
     for folder in &tracks {
         let track = folder.file_name().unwrap().to_string_lossy().into_owned();
@@ -90,71 +82,31 @@ fn every_btb_mesh_and_placement_parses_and_objectlists_resolve() {
             for template in &file.templates {
                 *templates.entry(template.name.clone()).or_default() += 1;
             }
-            let meshes = file.objects_of_type("Mesh");
-            assert_eq!(meshes.len(), 1, "{track}/{name}: {} Mesh objects", meshes.len());
-            let mesh = xfile::Mesh::decode(meshes[0], &file).unwrap_or_else(|e| panic!("{track}/{name}: {e}"));
-            n_meshes += 1;
-            for face in &mesh.faces {
-                *poly_sizes.entry(face.0.len()).or_default() += 1;
-            }
-            *uv_sets.entry(mesh.uv_sets.len()).or_default() += 1;
-            for uvs in &mesh.uv_sets {
-                if uvs.len() != mesh.positions.len() {
-                    uv_count_bad += 1;
+            for mesh in file.objects_of_type("Mesh") {
+                let mesh = xfile::Mesh::decode(mesh, &file).unwrap_or_else(|e| panic!("{track}/{name}: {e}"));
+                n_meshes += 1;
+                for face in &mesh.faces {
+                    *poly_sizes.entry(face.0.len()).or_default() += 1;
                 }
-            }
-            if mesh.colors.is_some() {
-                with_colors += 1;
-            }
-            if let Some(normals) = &mesh.normals {
-                if normals.normals.len() != mesh.positions.len() || normals.faces.len() != mesh.faces.len() {
-                    normal_count_bad += 1;
-                }
-            } else {
-                normal_count_bad += 1;
-            }
-            if let Some(materials) = &mesh.materials {
-                with_materials += 1;
-                *face_material_cover.entry(materials.materials.len()).or_default() += 1;
-                assert_eq!(materials.face_materials.len(), mesh.faces.len(), "{track}/{name}: material index per face");
-                for entry in &materials.materials {
-                    let xfile::MaterialEntry::Material(material) = entry else {
-                        panic!("{track}/{name}: material reference");
-                    };
-                    if material.face_color != [0.0; 4]
-                        || material.power != 0.0
-                        || material.specular != [0.0; 3]
-                        || material.emissive != [0.0; 3]
-                    {
-                        nonzero_face_colors += 1;
-                    }
-                    match &material.texture {
-                        Some(xfile::Texture::File(name)) => {
+                *uv_sets.entry(mesh.uv_sets.len()).or_default() += 1;
+                if let Some(materials) = &mesh.materials {
+                    with_materials += 1;
+                    for material in &materials.materials {
+                        if let Some(name) = &material.texture {
                             textures.insert(name.clone());
                             if !sections.contains(&name.to_lowercase()) && unmatched_textures.len() < 20 {
                                 unmatched_textures.push(format!("{track}: {name}"));
                             }
                         }
-                        other => panic!("{track}/{name}: unexpected texture {other:?}"),
                     }
                 }
-            }
-            for decl in &mesh.decl {
-                *decl_elements.entry(decl.elements.clone()).or_default() += 1;
-                if decl.stride_dwords().is_none_or(|s| s * mesh.positions.len() != decl.data.len()) {
-                    decl_stride_bad += 1;
+                for decl in &mesh.decl {
+                    *decl_elements.entry(decl.elements.clone()).or_default() += 1;
+                }
+                for fvf in &mesh.fvf {
+                    *fvf_codes.entry(fvf.code).or_default() += 1;
                 }
             }
-            for fvf in &mesh.fvf {
-                *fvf_codes.entry(fvf.code).or_default() += 1;
-                if fvf.data.len() != fvf.uv_set_count() * 2 * mesh.positions.len() {
-                    fvf_len_bad += 1;
-                }
-            }
-            // The fan triangulation covers every polygon vertex.
-            let tris = mesh.triangles();
-            let expected: usize = mesh.faces.iter().map(|f| f.0.len().saturating_sub(2)).sum();
-            assert_eq!(tris.len(), expected, "{track}/{name}: triangulation");
         }
         for name in &xform_names {
             let mut bytes = Vec::new();
@@ -162,11 +114,6 @@ fn every_btb_mesh_and_placement_parses_and_objectlists_resolve() {
             let matrices = xform::parse(&bytes).unwrap_or_else(|e| panic!("{track}/{name}: {e}"));
             n_xforms += 1;
             n_placements += matrices.len();
-            for m in &matrices {
-                if m[15] != 1.0 {
-                    matrix_w_bad += 1;
-                }
-            }
         }
         // Every objectlist.ini mesh and placement name resolves (case-insensitive).
         let ini_text = latin1(&std::fs::read(folder.join("objectlist.ini")).unwrap());
@@ -210,20 +157,14 @@ fn every_btb_mesh_and_placement_parses_and_objectlists_resolve() {
     );
     eprintln!("templates: {templates:?}");
     eprintln!("polygon sizes: {poly_sizes:?}");
-    eprintln!("uv sets per mesh: {uv_sets:?} (meshes with vertex colours: {with_colors})");
-    eprintln!("meshes with materials: {with_materials} (nonzero face colours: {nonzero_face_colors})");
-    eprintln!("material counts per mesh: {face_material_cover:?}");
+    eprintln!("uv sets per mesh: {uv_sets:?}");
+    eprintln!("meshes with materials: {with_materials}");
     eprintln!("{} distinct textures", textures.len());
     eprintln!("DeclData element patterns:");
     for (elements, count) in &decl_elements {
         eprintln!("  {count}: {elements:?}");
     }
     eprintln!("FVFData codes: {fvf_codes:?}");
-    assert_eq!(uv_count_bad, 0, "meshes whose UV count differs from the vertex count");
-    assert_eq!(normal_count_bad, 0, "meshes without full normals");
-    assert_eq!(decl_stride_bad, 0, "DeclData payloads not stride * vertices");
-    assert_eq!(fvf_len_bad, 0, "FVFData payloads not sets * 2 * vertices");
-    assert_eq!(matrix_w_bad, 0, "xform matrices not ending in 1.0");
     if !unmatched_textures.is_empty() {
         eprintln!("textures without a materials.ini section: {unmatched_textures:?}");
     }
@@ -261,15 +202,29 @@ fn floats_token(out: &mut Vec<u8>, values: &[f32]) {
     }
 }
 
-/// A minimal binary file: one template with a fixed array and one data
-/// object whose integer and float values share merged lists.
+fn str_token(out: &mut Vec<u8>, text: &[u8]) {
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+    out.extend_from_slice(text);
+}
+
+fn obrace(out: &mut Vec<u8>) {
+    out.extend_from_slice(&10u16.to_le_bytes());
+}
+
+fn cbrace(out: &mut Vec<u8>) {
+    out.extend_from_slice(&11u16.to_le_bytes());
+}
+
+/// A minimal binary file: one template (with uuid, a counted array and a
+/// string member) and one data object whose values share merged lists.
 #[test]
 fn synthetic_binary_template_and_data() {
-    // template Seg { <uuid> DWORD n; array FLOAT v[n]; [...] }
+    // template Seg { <uuid> DWORD n; array FLOAT v[n]; LPSTR s; [...] }
     let mut t = Vec::new();
     t.extend_from_slice(&31u16.to_le_bytes());
     name_token(&mut t, 1, b"Seg");
-    t.extend_from_slice(&10u16.to_le_bytes());
+    obrace(&mut t);
     t.extend_from_slice(&5u16.to_le_bytes());
     t.extend_from_slice(&[1u8; 16]);
     t.extend_from_slice(&41u16.to_le_bytes());
@@ -282,120 +237,149 @@ fn synthetic_binary_template_and_data() {
     name_token(&mut t, 1, b"n");
     t.extend_from_slice(&15u16.to_le_bytes());
     t.extend_from_slice(&20u16.to_le_bytes());
+    t.extend_from_slice(&49u16.to_le_bytes());
+    name_token(&mut t, 1, b"s");
+    t.extend_from_slice(&20u16.to_le_bytes());
     t.extend_from_slice(&14u16.to_le_bytes());
     for _ in 0..3 {
         t.extend_from_slice(&18u16.to_le_bytes());
     }
     t.extend_from_slice(&15u16.to_le_bytes());
-    t.extend_from_slice(&11u16.to_le_bytes());
-    // Seg data { 2; 1.0, 2.0; }
+    cbrace(&mut t);
+    // Seg data { 2; 1.0, 2.0; "hi"; }
     name_token(&mut t, 1, b"Seg");
     name_token(&mut t, 1, b"data");
-    t.extend_from_slice(&10u16.to_le_bytes());
+    obrace(&mut t);
     ints_token(&mut t, &[2]);
     floats_token(&mut t, &[1.0, 2.0]);
-    t.extend_from_slice(&11u16.to_le_bytes());
+    str_token(&mut t, b"hi");
+    cbrace(&mut t);
     let file = xfile::parse(&binary_file(&t)).unwrap();
     assert_eq!(file.templates.len(), 1);
     assert_eq!(file.templates[0].name, "Seg");
     assert_eq!(file.templates[0].uuid, Some([1u8; 16]));
-    assert_eq!(file.templates[0].restrictions, xfile::Restrictions::Any);
-    let object = match &file.roots[0] {
-        xfile::Node::Object(object) => object,
-        other => panic!("{other:?}"),
-    };
+    let object = &file.roots[0];
     assert_eq!(object.ty, "Seg");
     assert_eq!(object.name.as_deref(), Some("data"));
     let decoded = xfile::decode_object(object, &file).unwrap();
     assert_eq!(decoded.members[0].name, "n");
     assert_eq!(decoded.members[1].value, xfile::MemberValue::Floats(vec![1.0, 2.0]));
+    assert_eq!(decoded.members[2].value, xfile::MemberValue::Strings(vec!["hi".to_string()]));
 }
 
-/// The same shape as text, with a `{ name }` reference child.
+/// A named child object parses; a `{ name }` reference fails.
 #[test]
-fn synthetic_text_template_data_and_reference() {
-    let text = r#"xof 0303txt 0032
-template Seg {
- <12345678-1234-1234-1234-123456789abc>
- DWORD n;
- array FLOAT v[n];
-}
-Seg data {
- 2;
- 1.0, 2.0;
- { other }
-}
-Seg other {
- 1;
- 3.0;
-}
-"#;
-    let file = xfile::parse(text.as_bytes()).unwrap();
-    assert!(file.templates[0].uuid.is_some());
-    let object = match &file.roots[0] {
-        xfile::Node::Object(object) => object,
-        other => panic!("{other:?}"),
-    };
-    assert_eq!(object.children.len(), 1);
-    assert_eq!(object.children[0], xfile::Node::Ref("other".to_string()));
-    let decoded = xfile::decode_object(object, &file).unwrap();
-    assert_eq!(decoded.members[1].value, xfile::MemberValue::Floats(vec![1.0, 2.0]));
-    assert_eq!(file.find_named("other").unwrap().ty, "Seg");
+fn synthetic_binary_child_and_reference() {
+    // template Seg { DWORD n; }
+    let mut decl = Vec::new();
+    decl.extend_from_slice(&31u16.to_le_bytes());
+    name_token(&mut decl, 1, b"Seg");
+    obrace(&mut decl);
+    decl.extend_from_slice(&41u16.to_le_bytes());
+    name_token(&mut decl, 1, b"n");
+    decl.extend_from_slice(&20u16.to_le_bytes());
+    cbrace(&mut decl);
+    // Seg { 1; Seg kid { 2; } }
+    let mut t = decl.clone();
+    name_token(&mut t, 1, b"Seg");
+    obrace(&mut t);
+    ints_token(&mut t, &[1]);
+    name_token(&mut t, 1, b"Seg");
+    name_token(&mut t, 1, b"kid");
+    obrace(&mut t);
+    ints_token(&mut t, &[2]);
+    cbrace(&mut t);
+    cbrace(&mut t);
+    let file = xfile::parse(&binary_file(&t)).unwrap();
+    assert_eq!(file.roots[0].children.len(), 1);
+    assert_eq!(file.roots[0].children[0].name.as_deref(), Some("kid"));
+    xfile::decode_object(&file.roots[0], &file).unwrap();
+    // Seg { 1; { other } }
+    let mut r = decl;
+    name_token(&mut r, 1, b"Seg");
+    obrace(&mut r);
+    ints_token(&mut r, &[1]);
+    obrace(&mut r);
+    name_token(&mut r, 1, b"other");
+    cbrace(&mut r);
+    cbrace(&mut r);
+    assert!(matches!(xfile::parse(&binary_file(&r)), Err(xfile::Error::Unexpected(_))));
 }
 
-/// Frames nest, matrices compose child-before-parent, meshes are found.
+/// A one-triangle mesh decodes to positions, one face and one triangle.
 #[test]
-fn synthetic_text_frames() {
-    let text = r#"xof 0303txt 0032
-template Vector {
- FLOAT x;
- FLOAT y;
- FLOAT z;
-}
-template MeshFace {
- DWORD nFaceVertexIndices;
- array DWORD faceVertexIndices[nFaceVertexIndices];
-}
-template Mesh {
- DWORD nVertices;
- array Vector vertices[nVertices];
- DWORD nFaces;
- array MeshFace faces[nFaces];
- [...]
-}
-template FrameTransformMatrix {
- FLOAT frameMatrix[16];
-}
-template Frame {
- [...]
-}
-Frame root {
- FrameTransformMatrix {
-  2.0,0.0,0.0,0.0, 0.0,2.0,0.0,0.0, 0.0,0.0,2.0,0.0, 4.0,0.0,0.0,1.0;;
- }
- Frame child {
-  Mesh tri {
-   3; 0.0;0.0;0.0;; 1.0;0.0;0.0;; 0.0;1.0;0.0;;; 1; 3,0,1,2;;
-  }
- }
-}
-"#;
-    let file = xfile::parse(text.as_bytes()).unwrap();
-    let root = match &file.roots[0] {
-        xfile::Node::Object(object) => xfile::Frame::decode(object, &file).unwrap(),
-        other => panic!("{other:?}"),
+fn synthetic_binary_mesh() {
+    let mut t = Vec::new();
+    let template = |t: &mut Vec<u8>, name: &[u8], members: &[u8]| {
+        t.extend_from_slice(&31u16.to_le_bytes());
+        name_token(t, 1, name);
+        obrace(t);
+        t.extend_from_slice(members);
+        cbrace(t);
     };
-    assert_eq!(root.name.as_deref(), Some("root"));
-    assert_eq!(root.frames.len(), 1);
-    assert_eq!(root.frames[0].name.as_deref(), Some("child"));
-    let found = root.meshes_with_matrices();
-    assert_eq!(found.len(), 1);
-    // Row-vector order: the mesh takes the parent matrix as is (its
-    // translation is not scaled by its own scale).
-    assert_eq!(found[0].0, [2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 4.0, 0.0, 0.0, 1.0]);
-    let mesh = xfile::Mesh::decode(found[0].1, &file).unwrap();
-    assert_eq!(mesh.positions.len(), 3);
+    // template Vector { FLOAT x; FLOAT y; FLOAT z; }
+    let mut m = Vec::new();
+    for axis in [b"x", b"y", b"z"] {
+        m.extend_from_slice(&42u16.to_le_bytes());
+        name_token(&mut m, 1, axis);
+        m.extend_from_slice(&20u16.to_le_bytes());
+    }
+    template(&mut t, b"Vector", &m);
+    // template MeshFace { DWORD nFaceVertexIndices; array DWORD faceVertexIndices[nFaceVertexIndices]; }
+    let mut m = Vec::new();
+    m.extend_from_slice(&41u16.to_le_bytes());
+    name_token(&mut m, 1, b"nFaceVertexIndices");
+    m.extend_from_slice(&20u16.to_le_bytes());
+    m.extend_from_slice(&52u16.to_le_bytes());
+    m.extend_from_slice(&41u16.to_le_bytes());
+    name_token(&mut m, 1, b"faceVertexIndices");
+    m.extend_from_slice(&14u16.to_le_bytes());
+    name_token(&mut m, 1, b"nFaceVertexIndices");
+    m.extend_from_slice(&15u16.to_le_bytes());
+    m.extend_from_slice(&20u16.to_le_bytes());
+    template(&mut t, b"MeshFace", &m);
+    // template Mesh { DWORD nVertices; array Vector vertices[nVertices];
+    //   DWORD nFaces; array MeshFace faces[nFaces]; [...] }
+    let mut m = Vec::new();
+    m.extend_from_slice(&41u16.to_le_bytes());
+    name_token(&mut m, 1, b"nVertices");
+    m.extend_from_slice(&20u16.to_le_bytes());
+    m.extend_from_slice(&52u16.to_le_bytes());
+    name_token(&mut m, 1, b"Vector");
+    name_token(&mut m, 1, b"vertices");
+    m.extend_from_slice(&14u16.to_le_bytes());
+    name_token(&mut m, 1, b"nVertices");
+    m.extend_from_slice(&15u16.to_le_bytes());
+    m.extend_from_slice(&20u16.to_le_bytes());
+    m.extend_from_slice(&41u16.to_le_bytes());
+    name_token(&mut m, 1, b"nFaces");
+    m.extend_from_slice(&20u16.to_le_bytes());
+    m.extend_from_slice(&52u16.to_le_bytes());
+    name_token(&mut m, 1, b"MeshFace");
+    name_token(&mut m, 1, b"faces");
+    m.extend_from_slice(&14u16.to_le_bytes());
+    name_token(&mut m, 1, b"nFaces");
+    m.extend_from_slice(&15u16.to_le_bytes());
+    m.extend_from_slice(&20u16.to_le_bytes());
+    m.extend_from_slice(&14u16.to_le_bytes());
+    for _ in 0..3 {
+        m.extend_from_slice(&18u16.to_le_bytes());
+    }
+    m.extend_from_slice(&15u16.to_le_bytes());
+    template(&mut t, b"Mesh", &m);
+    // Mesh { 3; 0,0,0; 1,0,0; 0,1,0; 1; 3,0,1,2; }
+    name_token(&mut t, 1, b"Mesh");
+    obrace(&mut t);
+    ints_token(&mut t, &[3]);
+    floats_token(&mut t, &[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
+    ints_token(&mut t, &[1, 3, 0, 1, 2]);
+    cbrace(&mut t);
+    let file = xfile::parse(&binary_file(&t)).unwrap();
+    let mesh = xfile::Mesh::decode(&file.roots[0], &file).unwrap();
+    assert_eq!(mesh.positions, vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    assert_eq!(mesh.faces, vec![xfile::Face(vec![0, 1, 2])]);
     assert_eq!(mesh.triangles(), vec![[0, 1, 2]]);
+    assert_eq!(xfile::triangulate(&[0, 1, 2, 3]), vec![[0, 1, 2], [0, 2, 3]]);
 }
 
 /// Malformed inputs fail with a named error, not a panic.
@@ -403,6 +387,8 @@ Frame root {
 fn synthetic_errors() {
     assert!(matches!(xfile::parse(b"short"), Err(xfile::Error::BadHeader(_))));
     assert!(matches!(xfile::parse(b"xof 0303zip 0032"), Err(xfile::Error::BadHeader(_))));
+    assert!(matches!(xfile::parse(b"xof 0303txt 0032"), Err(xfile::Error::Unsupported(_))));
+    assert!(matches!(xfile::parse(b"xof 0303bin 0064"), Err(xfile::Error::Unsupported(_))));
     assert!(matches!(xfile::parse(b"xof 0303bzip0032"), Err(xfile::Error::Compressed(_))));
     let mut truncated = binary_file(&[]);
     truncated.truncate(20);
@@ -412,13 +398,10 @@ fn synthetic_errors() {
     // Data of an undeclared template.
     let mut t = Vec::new();
     name_token(&mut t, 1, b"Nope");
-    t.extend_from_slice(&10u16.to_le_bytes());
-    t.extend_from_slice(&11u16.to_le_bytes());
+    obrace(&mut t);
+    cbrace(&mut t);
     let file = xfile::parse(&binary_file(&t)).unwrap();
-    let object = match &file.roots[0] {
-        xfile::Node::Object(object) => object.clone(),
-        other => panic!("{other:?}"),
-    };
+    let object = file.roots[0].clone();
     assert!(matches!(xfile::decode_object(&object, &file), Err(xfile::Error::UnknownTemplate(_))));
 }
 

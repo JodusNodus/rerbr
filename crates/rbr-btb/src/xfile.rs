@@ -54,9 +54,11 @@ pub enum Error {
         needed: usize,
         len: usize,
     },
-    /// The 16-byte header is missing or names an unknown version, form or
-    /// float size. Compressed forms (`bzip`, `tzip`) report [`Error::Compressed`].
+    /// The 16-byte header is missing or names an unknown version or form.
     BadHeader(String),
+    /// A file the reader does not decode: text (`txt `), 64-bit floats
+    /// (`0064`) or compressed (`bzip`, `tzip`). None occur in the install.
+    Unsupported(String),
     /// A compressed file (`bzip` or `tzip`): reported, not decoded.
     Compressed(String),
     /// An unknown binary token number at the offset.
@@ -64,13 +66,9 @@ pub enum Error {
         offset: usize,
         token: u16,
     },
-    /// A malformed text file, with its line number.
-    Text {
-        line: usize,
-        message: String,
-    },
     /// A well-formed token that fits nowhere (a separator at the top level,
-    /// a name where a value was decoded, ...).
+    /// a name where a value was decoded, a `{ name }` reference, ...). The
+    /// install's files hold no references or named objects.
     Unexpected(String),
     /// A data object or member names a template the file never declares.
     UnknownTemplate(String),
@@ -148,28 +146,20 @@ impl Display for Error {
                 write!(f, "{message}")
             }
             Error::UnknownTemplate(name) => write!(f, "unknown template {name:?}"),
+            Error::Unsupported(what) => write!(f, "{what}: not decoded"),
             Error::Compressed(form) => write!(f, "compressed .x file ({form}): not decoded"),
             Error::BadToken { offset, token } => write!(f, "unknown binary token {token} at offset {offset}"),
-            Error::Text { line, message } => write!(f, "line {line}: {message}"),
         }
     }
 }
 
 impl std::error::Error for Error {}
 
-/// The float width the header declares.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FloatSize {
-    F32,
-    F64,
-}
-
 /// A parsed file: its template declarations and top-level data objects.
 #[derive(Debug, Clone, PartialEq)]
 pub struct File {
-    pub float_size: FloatSize,
     pub templates: Vec<Template>,
-    pub roots: Vec<Node>,
+    pub roots: Vec<Object>,
 }
 
 impl File {
@@ -186,16 +176,6 @@ impl File {
         }
         out
     }
-
-    /// The data object with instance name `name`, if any.
-    pub fn find_named(&self, name: &str) -> Option<&Object> {
-        for root in &self.roots {
-            if let Some(found) = root.find_named(name) {
-                return Some(found);
-            }
-        }
-        None
-    }
 }
 
 /// A `template` declaration: the member layout of its data objects.
@@ -205,25 +185,6 @@ pub struct Template {
     /// The `<uuid>`, absent when the declaration has none.
     pub uuid: Option<[u8; 16]>,
     pub members: Vec<Member>,
-    pub restrictions: Restrictions,
-}
-
-/// The trailing `[...]` of a template declaration.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Restrictions {
-    /// No restriction block (as in `MeshFace`): no children occur.
-    None,
-    /// `[...]`: any children may occur (as in `Mesh`).
-    Any,
-    /// Named member types (as in `MeshMaterialList`'s `[Material]`).
-    Only(Vec<Restriction>),
-}
-
-/// One named member type of a restriction block.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Restriction {
-    pub name: String,
-    pub uuid: Option<[u8; 16]>,
 }
 
 /// One declared member: a primitive or a nested template instance, scalar or
@@ -285,40 +246,6 @@ impl PrimType {
     }
 }
 
-/// A data object or a `{ name }` reference to a named one.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Node {
-    Object(Object),
-    Ref(String),
-}
-
-impl Node {
-    fn collect_type<'a>(&'a self, ty: &str, out: &mut Vec<&'a Object>) {
-        if let Node::Object(object) = self {
-            if object.ty == ty {
-                out.push(object);
-            }
-            for child in &object.children {
-                child.collect_type(ty, out);
-            }
-        }
-    }
-
-    fn find_named<'a>(&'a self, name: &str) -> Option<&'a Object> {
-        if let Node::Object(object) = self {
-            if object.name.as_deref() == Some(name) {
-                return Some(object);
-            }
-            for child in &object.children {
-                if let Some(found) = child.find_named(name) {
-                    return Some(found);
-                }
-            }
-        }
-        None
-    }
-}
-
 /// A data object: its template name, optional instance name, member values in
 /// file order (adjacent same-kind values share one binary list), and children.
 #[derive(Debug, Clone, PartialEq)]
@@ -326,7 +253,18 @@ pub struct Object {
     pub ty: String,
     pub name: Option<String>,
     pub values: Vec<Value>,
-    pub children: Vec<Node>,
+    pub children: Vec<Object>,
+}
+
+impl Object {
+    fn collect_type<'a>(&'a self, ty: &str, out: &mut Vec<&'a Object>) {
+        if self.ty == ty {
+            out.push(self);
+        }
+        for child in &self.children {
+            child.collect_type(ty, out);
+        }
+    }
 }
 
 /// One member value scalar.
@@ -337,7 +275,8 @@ pub enum Value {
     Str(String),
 }
 
-/// Reads a `.x` file (binary or text) into its templates and data objects.
+/// Reads a binary 32-bit `.x` file into its templates and data objects.
+/// Text, 64-bit and compressed files report [`Error::Unsupported`].
 pub fn parse(bytes: &[u8]) -> Result<File, Error> {
     if bytes.len() < 16 {
         return Err(Error::BadHeader(format!("file is {} bytes, shorter than the 16-byte header", bytes.len())));
@@ -349,18 +288,21 @@ pub fn parse(bytes: &[u8]) -> Result<File, Error> {
     if version != b"0303" && version != b"0302" {
         return Err(Error::BadHeader(format!("unknown version {}", String::from_utf8_lossy(version))));
     }
-    let form = &bytes[8..12];
-    let float_size = match &bytes[12..16] {
-        b"0032" => FloatSize::F32,
-        b"0064" => FloatSize::F64,
-        other => {
-            return Err(Error::BadHeader(format!("unknown float size {}", String::from_utf8_lossy(other))));
+    let toks = match &bytes[8..12] {
+        b"bin " => {
+            if &bytes[12..16] != b"0032" {
+                if &bytes[12..16] == b"0064" {
+                    return Err(Error::Unsupported("64-bit .x files".to_string()));
+                }
+                return Err(Error::BadHeader(format!(
+                    "unknown float size {}",
+                    String::from_utf8_lossy(&bytes[12..16])
+                )));
+            }
+            binary_tokens(bytes)?
         }
-    };
-    let toks = match form {
-        b"bin " => binary_tokens(bytes, float_size)?,
-        b"txt " => text_tokens(bytes)?,
-        _ => {
+        b"txt " => return Err(Error::Unsupported("text .x files".to_string())),
+        form => {
             let name = String::from_utf8_lossy(form).into_owned();
             if name == "bzip" || name == "tzip" {
                 return Err(Error::Compressed(name));
@@ -374,14 +316,15 @@ pub fn parse(bytes: &[u8]) -> Result<File, Error> {
     while build.pos < build.toks.len() {
         match &build.toks[build.pos] {
             Tok::Template => templates.push(build.template_decl()?),
-            Tok::Name(_) => roots.push(Node::Object(build.object()?)),
+            Tok::Name(_) => roots.push(build.object()?),
             other => return Err(Error::Unexpected(format!("{other:?} at the top level"))),
         }
     }
-    Ok(File { float_size, templates, roots })
+    Ok(File { templates, roots })
 }
 
-/// The shared token stream both header forms decode into.
+/// The binary token stream: names, strings, integers, integer and float
+/// lists, GUIDs, member type keywords and separators.
 #[derive(Debug, Clone, PartialEq)]
 enum Tok {
     Template,
@@ -389,7 +332,6 @@ enum Tok {
     Str(String),
     Int(i32),
     Ints(Vec<i32>),
-    Float(f64),
     Floats(Vec<f64>),
     Guid([u8; 16]),
     Prim(PrimType),
@@ -432,7 +374,7 @@ fn counted(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn binary_tokens(bytes: &[u8], float_size: FloatSize) -> Result<Vec<Tok>, Error> {
+fn binary_tokens(bytes: &[u8]) -> Result<Vec<Tok>, Error> {
     let mut r = Reader::at(bytes, 16)?;
     let mut toks = Vec::new();
     while !r.is_empty() {
@@ -462,26 +404,11 @@ fn binary_tokens(bytes: &[u8], float_size: FloatSize) -> Result<Vec<Tok>, Error>
             }
             TOKEN_FLOAT_LIST => {
                 let count = r.u32()? as usize;
-                match float_size {
-                    FloatSize::F32 => {
-                        let raw = r.take(
-                            count.checked_mul(4).ok_or(Error::BadToken { offset: at, token: TOKEN_FLOAT_LIST })?,
-                        )?;
-                        toks.push(Tok::Floats(
-                            raw.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64).collect(),
-                        ));
-                    }
-                    FloatSize::F64 => {
-                        let raw = r.take(
-                            count.checked_mul(8).ok_or(Error::BadToken { offset: at, token: TOKEN_FLOAT_LIST })?,
-                        )?;
-                        toks.push(Tok::Floats(
-                            raw.chunks_exact(8)
-                                .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
-                                .collect(),
-                        ));
-                    }
-                }
+                let raw =
+                    r.take(count.checked_mul(4).ok_or(Error::BadToken { offset: at, token: TOKEN_FLOAT_LIST })?)?;
+                toks.push(Tok::Floats(
+                    raw.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]) as f64).collect(),
+                ));
             }
             TOKEN_OBRACE => toks.push(Tok::OBrace),
             TOKEN_CBRACE => toks.push(Tok::CBrace),
@@ -506,13 +433,13 @@ fn binary_tokens(bytes: &[u8], float_size: FloatSize) -> Result<Vec<Tok>, Error>
             }
         }
     }
-    // Binary files never store angle brackets (text wraps UUIDs in `<...>`;
-    // binary uses GUID tokens), so the builder rejects them on sight.
+    // Angle brackets never occur in binary files (only text `<uuid>` uses
+    // them), so the builder rejects them on sight.
     Ok(toks)
 }
 
-/// The tree builder both token streams share: template declarations and
-/// data objects (`Name [name] { ... }`), with `{ name }` references.
+/// The tree builder: template declarations and data objects
+/// (`Name [name] { ... }`).
 struct Build<'a> {
     toks: &'a [Tok],
     pos: usize,
@@ -565,44 +492,19 @@ impl Build<'_> {
             _ => None,
         };
         let mut members = Vec::new();
-        let mut restrictions = Restrictions::None;
         loop {
             match self.next()? {
                 Tok::CBrace => break,
                 Tok::OBracket => {
-                    if self.eat(&Tok::Dot) {
-                        // `[...]`: any children may occur.
-                        for _ in 0..2 {
-                            if !self.eat(&Tok::Dot) {
-                                return self.expect("'.'");
-                            }
+                    // The restriction block (`[...]` or `[Material <uuid>]`):
+                    // consumed, not used.
+                    let mut depth = 1;
+                    while depth > 0 {
+                        match self.next()? {
+                            Tok::OBracket => depth += 1,
+                            Tok::CBracket => depth -= 1,
+                            _ => {}
                         }
-                        if !self.eat(&Tok::CBracket) {
-                            return self.expect("']'");
-                        }
-                        restrictions = Restrictions::Any;
-                    } else {
-                        let mut only = Vec::new();
-                        loop {
-                            let name = self.name()?;
-                            let uuid = match self.peek() {
-                                Some(Tok::Guid(uuid)) => {
-                                    let uuid = *uuid;
-                                    self.pos += 1;
-                                    Some(uuid)
-                                }
-                                _ => None,
-                            };
-                            only.push(Restriction { name, uuid });
-                            if self.eat(&Tok::Comma) {
-                                continue;
-                            }
-                            if self.eat(&Tok::CBracket) {
-                                break;
-                            }
-                            return self.expect("',' or ']'");
-                        }
-                        restrictions = Restrictions::Only(only);
                     }
                     if !self.eat(&Tok::CBrace) {
                         return self.expect("'}' after the restrictions");
@@ -622,7 +524,7 @@ impl Build<'_> {
                 _ => return self.expect("a member or '}'"),
             }
         }
-        Ok(Template { name, uuid, members, restrictions })
+        Ok(Template { name, uuid, members })
     }
 
     fn member(&mut self, kind: MemberKind) -> Result<Member, Error> {
@@ -665,189 +567,28 @@ impl Build<'_> {
                 Tok::CBrace => break,
                 Tok::Int(v) => values.push(Value::Int(v)),
                 Tok::Ints(v) => values.extend(v.into_iter().map(Value::Int)),
-                Tok::Float(v) => values.push(Value::Float(v)),
                 Tok::Floats(v) => values.extend(v.into_iter().map(Value::Float)),
                 Tok::Str(v) => values.push(Value::Str(v)),
-                Tok::Semi | Tok::Comma => {} // text separators
+                // Binary files terminate strings with `;`.
+                Tok::Semi | Tok::Comma => {}
                 Tok::Name(ty) => {
                     if self.eat(&Tok::OBrace) {
-                        children.push(Node::Object(self.object_body(ty, None)?));
+                        children.push(self.object_body(ty, None)?);
                     } else {
                         let name = self.name()?;
                         if !self.eat(&Tok::OBrace) {
                             return self.expect("'{' after the instance name");
                         }
-                        children.push(Node::Object(self.object_body(ty, Some(name))?));
+                        children.push(self.object_body(ty, Some(name))?);
                     }
                 }
-                Tok::OBrace => {
-                    // `{ name }`: a reference to a named object.
-                    let name = self.name()?;
-                    if !self.eat(&Tok::CBrace) {
-                        return self.expect("'}' after the reference");
-                    }
-                    children.push(Node::Ref(name));
-                }
+                // The install's files hold no `{ name }` references.
+                Tok::OBrace => return self.expect("a child object, not a reference"),
                 _ => return self.expect("a value, a child object or '}'"),
             }
         }
         Ok(Object { ty, name, values, children })
     }
-}
-
-fn text_error(bytes: &[u8], at: usize, message: String) -> Error {
-    let line = bytes[..at.min(bytes.len())].iter().filter(|&&b| b == b'\n').count() + 1;
-    Error::Text { line, message }
-}
-
-/// The ASCII token stream of a `txt ` file: names, `"strings"` (with
-/// `\\` and `\"` escapes), integers, floats, `<uuid>` guids, punctuation,
-/// and the `template`/`array`/type keywords. `#` and `//` run to end of line.
-fn text_tokens(bytes: &[u8]) -> Result<Vec<Tok>, Error> {
-    let err = |at: usize, message: &str| text_error(bytes, at, message.to_string());
-    let mut toks = Vec::new();
-    let mut pos = 16;
-    while pos < bytes.len() {
-        let at = pos;
-        let b = bytes[pos];
-        if b.is_ascii_whitespace() {
-            pos += 1;
-        } else if b == b'#' || (b == b'/' && bytes.get(pos + 1) == Some(&b'/')) {
-            while pos < bytes.len() && bytes[pos] != b'\n' {
-                pos += 1;
-            }
-        } else if b == b'"' {
-            pos += 1;
-            let mut out = String::new();
-            let mut closed = false;
-            while pos < bytes.len() {
-                let c = bytes[pos];
-                pos += 1;
-                if c == b'"' {
-                    closed = true;
-                    break;
-                }
-                if c == b'\\' {
-                    if pos >= bytes.len() {
-                        break;
-                    }
-                    out.push(bytes[pos] as char);
-                    pos += 1;
-                } else {
-                    out.push(c as char);
-                }
-            }
-            if !closed {
-                return Err(err(at, "unterminated string"));
-            }
-            toks.push(Tok::Str(out));
-        } else if b == b'<' {
-            pos += 1;
-            let start = pos;
-            while pos < bytes.len() && bytes[pos] != b'>' {
-                pos += 1;
-            }
-            if pos >= bytes.len() {
-                return Err(err(at, "unterminated <uuid>"));
-            }
-            let text: String = bytes[start..pos].iter().map(|&c| c as char).collect();
-            pos += 1;
-            let hex: String = text.chars().filter(|&c| c != '-').collect();
-            if hex.len() != 32 || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
-                return Err(err(at, &format!("bad <uuid> {text:?}")));
-            }
-            let mut uuid = [0u8; 16];
-            for (i, slot) in uuid.iter_mut().enumerate() {
-                *slot = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap_or(0);
-            }
-            toks.push(Tok::Guid(uuid));
-        } else if b.is_ascii_alphabetic() || b == b'_' {
-            while pos < bytes.len() && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_') {
-                pos += 1;
-            }
-            match String::from_utf8_lossy(&bytes[at..pos]).as_ref() {
-                "template" => toks.push(Tok::Template),
-                "array" => toks.push(Tok::Array),
-                "WORD" => toks.push(Tok::Prim(PrimType::Word)),
-                "DWORD" => toks.push(Tok::Prim(PrimType::Dword)),
-                "FLOAT" => toks.push(Tok::Prim(PrimType::Float)),
-                "DOUBLE" => toks.push(Tok::Prim(PrimType::Double)),
-                "CHAR" => toks.push(Tok::Prim(PrimType::Char)),
-                "UCHAR" => toks.push(Tok::Prim(PrimType::UChar)),
-                "SWORD" => toks.push(Tok::Prim(PrimType::Sword)),
-                "SDWORD" => toks.push(Tok::Prim(PrimType::Sdword)),
-                "VOID" => toks.push(Tok::Prim(PrimType::Void)),
-                "LPSTR" => toks.push(Tok::Prim(PrimType::Lpstr)),
-                "UNICODE" => toks.push(Tok::Prim(PrimType::Unicode)),
-                "CSTRING" => toks.push(Tok::Prim(PrimType::Cstring)),
-                name => toks.push(Tok::Name(name.to_string())),
-            }
-        } else if b.is_ascii_digit() || b == b'+' || b == b'-' || b == b'.' {
-            if b == b'.' && !bytes.get(pos + 1).is_some_and(|c| c.is_ascii_digit()) {
-                pos += 1;
-                toks.push(Tok::Dot);
-                continue;
-            }
-            let mut end = pos;
-            if bytes[end] == b'+' || bytes[end] == b'-' {
-                end += 1;
-            }
-            let mut is_float = false;
-            while end < bytes.len() && bytes[end].is_ascii_digit() {
-                end += 1;
-            }
-            if end < bytes.len() && bytes[end] == b'.' {
-                is_float = true;
-                end += 1;
-                while end < bytes.len() && bytes[end].is_ascii_digit() {
-                    end += 1;
-                }
-            }
-            if end < bytes.len() && (bytes[end] == b'e' || bytes[end] == b'E') {
-                is_float = true;
-                end += 1;
-                if end < bytes.len() && (bytes[end] == b'+' || bytes[end] == b'-') {
-                    end += 1;
-                }
-                while end < bytes.len() && bytes[end].is_ascii_digit() {
-                    end += 1;
-                }
-            }
-            if end == pos || (end == pos + 1 && (b == b'+' || b == b'-' || b == b'.')) {
-                return Err(err(at, &format!("stray {:?}", b as char)));
-            }
-            let text = String::from_utf8_lossy(&bytes[pos..end]).into_owned();
-            pos = end;
-            if is_float {
-                match text.parse::<f64>() {
-                    Ok(v) => toks.push(Tok::Float(v)),
-                    Err(_) => return Err(err(at, &format!("bad float {text:?}"))),
-                }
-            } else {
-                match text.parse::<i64>() {
-                    Ok(v) => match i32::try_from(v) {
-                        Ok(v) => toks.push(Tok::Int(v)),
-                        Err(_) => return Err(err(at, &format!("integer {text:?} exceeds 32 bits"))),
-                    },
-                    Err(_) => return Err(err(at, &format!("bad integer {text:?}"))),
-                }
-            }
-        } else {
-            pos += 1;
-            match b {
-                b'{' => toks.push(Tok::OBrace),
-                b'}' => toks.push(Tok::CBrace),
-                b'(' => toks.push(Tok::OParen),
-                b')' => toks.push(Tok::CParen),
-                b'[' => toks.push(Tok::OBracket),
-                b']' => toks.push(Tok::CBracket),
-                b',' => toks.push(Tok::Comma),
-                b';' => toks.push(Tok::Semi),
-                _ => return Err(err(at, &format!("unexpected {:?}", b as char))),
-            }
-        }
-    }
-    Ok(toks)
 }
 
 /// A data object decoded through its template declaration: one entry per
@@ -1156,7 +897,6 @@ pub struct Mesh {
     /// carry at most one; further UV sets live in [`Mesh::decl`] and
     /// [`Mesh::fvf`].
     pub uv_sets: Vec<Vec<[f32; 2]>>,
-    pub colors: Option<MeshVertexColors>,
     pub materials: Option<MeshMaterialList>,
     pub duplication: Option<VertexDuplicationIndices>,
     pub decl: Vec<DeclData>,
@@ -1188,23 +928,20 @@ impl Mesh {
             faces,
             normals: None,
             uv_sets: Vec::new(),
-            colors: None,
             materials: None,
             duplication: None,
             decl: Vec::new(),
             fvf: Vec::new(),
         };
         for child in &object.children {
-            let Node::Object(child) = child else { continue };
             match child.ty.as_str() {
                 "MeshNormals" => mesh.normals = Some(MeshNormals::decode(child, file)?),
                 "MeshTextureCoords" => mesh.uv_sets.push(MeshTextureCoords::decode(child, file)?),
-                "MeshVertexColors" => mesh.colors = Some(MeshVertexColors::decode(child, file)?),
                 "MeshMaterialList" => mesh.materials = Some(MeshMaterialList::decode(child, file)?),
                 "VertexDuplicationIndices" => mesh.duplication = Some(VertexDuplicationIndices::decode(child, file)?),
                 "DeclData" => mesh.decl.push(DeclData::decode(child, file)?),
                 "FVFData" => mesh.fvf.push(FvfData::decode(child, file)?),
-                _ => {} // e.g. animation skins on non-BTB meshes
+                _ => {}
             }
         }
         Ok(mesh)
@@ -1259,43 +996,12 @@ impl MeshTextureCoords {
     }
 }
 
-/// A typed `MeshVertexColors` child: `(vertex index, RGBA)` pairs.
-#[derive(Debug, Clone, PartialEq)]
-pub struct MeshVertexColors(pub Vec<(u32, [f32; 4])>);
-
-impl MeshVertexColors {
-    pub fn decode(object: &Object, file: &File) -> Result<MeshVertexColors, Error> {
-        let decoded = decode_object(object, file)?;
-        let entries = match decoded.member("vertexColors")? {
-            MemberValue::Structs(v) => v,
-            other => return Err(Error::Decode(format!("{}: member \"vertexColors\" holds {other:?}", decoded.ty))),
-        };
-        let mut out = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let index = entry.ints()?;
-            let color = entry.floats()?;
-            if index.len() != 1 || color.len() != 4 {
-                return Err(Error::Decode(format!("{}: bad vertex color entry", entry.ty)));
-            }
-            out.push((index[0] as u32, [color[0] as f32, color[1] as f32, color[2] as f32, color[3] as f32]));
-        }
-        Ok(MeshVertexColors(out))
-    }
-}
-
-/// A typed `MeshMaterialList` child: one material index per mesh face and the
-/// materials, inline or `{ name }` references to named ones.
+/// A typed `MeshMaterialList` child: one material index per mesh face and
+/// the single material BTB files carry.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeshMaterialList {
     pub face_materials: Vec<u32>,
-    pub materials: Vec<MaterialEntry>,
-}
-
-/// One material of a [`MeshMaterialList`].
-#[derive(Debug, Clone, PartialEq)]
-pub enum MaterialEntry {
-    Material(Material),
-    Ref(String),
+    pub materials: Vec<Material>,
 }
 
 impl MeshMaterialList {
@@ -1312,33 +1018,21 @@ impl MeshMaterialList {
         };
         let mut materials = Vec::new();
         for child in &object.children {
-            match child {
-                Node::Object(child) => materials.push(MaterialEntry::Material(Material::decode(child, file)?)),
-                Node::Ref(name) => materials.push(MaterialEntry::Ref(name.clone())),
-            }
+            materials.push(Material::decode(child, file)?);
         }
         Ok(MeshMaterialList { face_materials, materials })
     }
 }
 
-/// A typed `Material`: face colour, power, specular and emissive colours,
-/// and the texture, inline or a reference to a named `TextureFilename`.
+/// A typed `Material`: face colour, power, specular and emissive colours
+/// (all zero in BTB files) and the texture file name.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Material {
     pub face_color: [f32; 4],
     pub power: f32,
     pub specular: [f32; 3],
     pub emissive: [f32; 3],
-    pub texture: Option<Texture>,
-}
-
-/// A material's texture.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Texture {
-    /// An inline `TextureFilename` with this file name.
-    File(String),
-    /// A `{ name }` reference to a named `TextureFilename`.
-    Ref(String),
+    pub texture: Option<String>,
 }
 
 impl Material {
@@ -1371,12 +1065,7 @@ impl Material {
         let emissive = color3("emissiveColor")?;
         let mut texture = None;
         for child in &object.children {
-            match child {
-                Node::Object(child) => {
-                    texture = Some(Texture::File(TextureFilename::decode(child, file)?));
-                }
-                Node::Ref(name) => texture = Some(Texture::Ref(name.clone())),
-            }
+            texture = Some(TextureFilename::decode(child, file)?);
         }
         Ok(Material { face_color, power, specular, emissive, texture })
     }
@@ -1527,89 +1216,4 @@ impl FvfData {
     pub fn uv_set_count(&self) -> usize {
         ((self.code & 0xf00) >> 8) as usize
     }
-}
-
-/// A typed `Frame`: an optional instance name, the `FrameTransformMatrix`
-/// child, nested frames and the meshes directly under it.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Frame {
-    pub name: Option<String>,
-    pub matrix: Option<[f32; 16]>,
-    pub meshes: Vec<Object>,
-    pub frames: Vec<Frame>,
-}
-
-impl Frame {
-    pub fn decode(object: &Object, file: &File) -> Result<Frame, Error> {
-        let mut frame = Frame { name: object.name.clone(), matrix: None, meshes: Vec::new(), frames: Vec::new() };
-        for child in &object.children {
-            let Node::Object(child) = child else { continue };
-            match child.ty.as_str() {
-                "Frame" => frame.frames.push(Frame::decode(child, file)?),
-                "FrameTransformMatrix" => frame.matrix = Some(frame_matrix(child, file)?),
-                "Mesh" => frame.meshes.push(child.clone()),
-                _ => {}
-            }
-        }
-        Ok(frame)
-    }
-
-    /// Every mesh under this frame with its composed matrix: each frame's
-    /// matrix applies after (outside) its children's, in row-major Direct3D
-    /// order (`p' = p * child * parent`). Frames without a matrix contribute
-    /// the identity.
-    pub fn meshes_with_matrices(&self) -> Vec<([f32; 16], &Object)> {
-        let mut out = Vec::new();
-        self.append_meshes(&identity(), &mut out);
-        out
-    }
-
-    fn append_meshes<'a>(&'a self, parent: &[f32; 16], out: &mut Vec<([f32; 16], &'a Object)>) {
-        let here = match &self.matrix {
-            Some(own) => concat_row_major(own, parent),
-            None => *parent,
-        };
-        out.extend(self.meshes.iter().map(|mesh| (here, mesh)));
-        for frame in &self.frames {
-            frame.append_meshes(&here, out);
-        }
-    }
-}
-
-fn frame_matrix(object: &Object, file: &File) -> Result<[f32; 16], Error> {
-    let decoded = decode_object(object, file)?;
-    match decoded.member("frameMatrix")? {
-        MemberValue::Floats(v) if v.len() == 16 => {
-            let mut m = [0.0f32; 16];
-            for (slot, value) in m.iter_mut().zip(v) {
-                *slot = *value as f32;
-            }
-            Ok(m)
-        }
-        other => Err(Error::Decode(format!("{}: member \"frameMatrix\" holds {other:?}", decoded.ty))),
-    }
-}
-
-fn identity() -> [f32; 16] {
-    let mut m = [0.0f32; 16];
-    m[0] = 1.0;
-    m[5] = 1.0;
-    m[10] = 1.0;
-    m[15] = 1.0;
-    m
-}
-
-/// Row-major 4x4 product applying `first` before `second`
-/// (`p' = p * first * second`), the Direct3D convention.
-pub fn concat_row_major(first: &[f32; 16], second: &[f32; 16]) -> [f32; 16] {
-    let mut out = [0.0f32; 16];
-    for row in 0..4 {
-        for col in 0..4 {
-            out[4 * row + col] = first[4 * row] * second[col]
-                + first[4 * row + 1] * second[4 + col]
-                + first[4 * row + 2] * second[8 + col]
-                + first[4 * row + 3] * second[12 + col];
-        }
-    }
-    out
 }

@@ -10,9 +10,9 @@ BTB ("Bob's Track Builder") stages draw from `RX_CONTENT/Tracks/<folder>/Objects
 `xform=<placements>`); readers `rbr_btb::xfile`/`rbr_btb::xform`, test `crates/rbr-btb/tests/meshes.rs` (`RBR_RSF`).
 
 - Every `.x` of the install (60973 files in 72 tracks) starts `xof 0303bin 0032`: binary, 32-bit floats; no
-  `txt `, `bzip`/`tzip` or `0064` file exists (the reader supports binary and text and reports compressed ones).
+  `txt `, `bzip`/`tzip` or `0064` file exists, and the reader does not decode those (they report `Unsupported`).
 - Each file declares its templates inline and holds one unnamed top-level `Mesh`; no named objects, references or
-  `Frame`s occur (`meshes.rs` asserts one `Mesh` per file).
+  `Frame`s occur.
 - Declared templates: always `Vector`, `MeshFace`, `Mesh`, `MeshNormals`, `ColorRGBA`, `ColorRGB`, `Material`,
   `MeshMaterialList`, `TextureFilename`, `VertexDuplicationIndices`; `Coords2d`/`MeshTextureCoords` in 60452 files
   (521 meshes have no UVs); `VertexElement`/`DeclData` in 18170, `FVFData` in 1035 (disjoint).
