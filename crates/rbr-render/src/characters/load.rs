@@ -11,7 +11,7 @@ use crate::stage::{
 use glam::Vec3;
 use rbr_formats::data::Data;
 use rbr_formats::lua::{self, Chunk};
-use rbr_formats::{dds, ini, lbs, pe, rbz, sga, sgc, sgs};
+use rbr_formats::{dds, exe_data, ini, lbs, rbz, sga, sgc, sgs};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Read;
 use std::path::Path;
@@ -154,7 +154,7 @@ pub struct Loaded {
     pub cells: Vec<super::cells::Cell>,
 }
 
-/// The scripts archive (the 1.02 patch's when present), by lowercase path.
+/// The scripts archive (the 1.02 patch's when present, else the retail one patched as 1.02), by lowercase path.
 pub(super) struct Scripts {
     files: HashMap<String, Vec<u8>>,
     parsed: HashMap<String, Option<Arc<Chunk>>>,
@@ -172,6 +172,10 @@ impl Scripts {
             let mut bytes = Vec::new();
             entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
             files.insert(name.replace('\\', "/"), bytes);
+        }
+        // The 1.02 patch's one script change: the `1a` can loads the `1b` model (the retail disc has both).
+        if let Some(bytes) = files.get_mut("scripts/load_sp_redbull_can1a.lua") {
+            *bytes = String::from_utf8_lossy(bytes).replace("REDBULL_CAN1a_01", "REDBULL_CAN1b_01").into_bytes();
         }
         Ok(Scripts { files, parsed: HashMap::new() })
     }
@@ -205,28 +209,13 @@ impl Scripts {
     }
 }
 
-/// The rally's script folder for map `map`, read from the exe (`RBR_PATCH`'s 1.02 exe, else the install's). Empty
-/// when the exe or the entry is missing.
-fn rally_folder(data: &Data, map: u32) -> String {
+/// The rally's script folder for map `map`, from the 1.02 exe's table (`exe_data`). Empty when the entry is missing.
+fn rally_folder(map: u32) -> String {
     let index = map / 10;
     if index > RALLY_FOLDER_LAST {
         return String::new();
     }
-    let image = data
-        .resolve("RichardBurnsRally_SSE.exe")
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| pe::parse(&bytes).ok());
-    let Some(image) = image else { return String::new() };
-    let Some(at) = image.u32(RALLY_FOLDERS + 4 * index) else { return String::new() };
-    let mut name = Vec::new();
-    for offset in 0..64 {
-        match image.read(at + offset, 1) {
-            Some([0]) | None => break,
-            Some(&[b]) => name.push(b),
-            Some(_) => break,
-        }
-    }
-    String::from_utf8_lossy(&name).into_owned()
+    exe_data::u32(RALLY_FOLDERS + 4 * index).and_then(exe_data::c_str).unwrap_or_default()
 }
 
 /// Load options (ours, for checks and captures).
@@ -262,7 +251,7 @@ pub fn load(data: &Data, name: &str, stage: &mut Stage, options: Options) -> Res
         }
     }
     let mut loader = Loader {
-        folder: rally_folder(data, map),
+        folder: rally_folder(map),
         scripts,
         crt: random::CrtRand::srand(options.seed),
         random: random::Lua::new(options.seed),
@@ -316,7 +305,7 @@ pub fn load(data: &Data, name: &str, stage: &mut Stage, options: Options) -> Res
         }
     }
     // `E03CarFlipInit` (0x445380): five spectators unless the map is in the exe's list.
-    if !no_flip_map(data, map) {
+    if !no_flip_map(map) {
         for i in 1..=5 {
             let load_name = format!("load_car_flip{i}.lua");
             if loader.spawn(i, &load_name, "run_car_flip.lua", (Vec3::ZERO, Vec3::ZERO), Role::Flip(i as usize - 1)) {
@@ -339,13 +328,8 @@ pub const BIRDSTRIKE: &str = "run_birdstrike.lua";
 /// The maps `E03CarFlipInit` loads no flip spectators on: the `i32`s from 0x72ace0 to 0x72ad34 of the exe.
 const NO_FLIP_MAPS: (u32, u32) = (0x0072_ACE0, 0x0072_AD34);
 
-fn no_flip_map(data: &Data, map: u32) -> bool {
-    let image = data
-        .resolve("RichardBurnsRally_SSE.exe")
-        .and_then(|path| std::fs::read(path).ok())
-        .and_then(|bytes| pe::parse(&bytes).ok());
-    let Some(image) = image else { return false };
-    (NO_FLIP_MAPS.0..NO_FLIP_MAPS.1).step_by(4).any(|at| image.u32(at) == Some(map))
+fn no_flip_map(map: u32) -> bool {
+    (NO_FLIP_MAPS.0..NO_FLIP_MAPS.1).step_by(4).any(|at| exe_data::u32(at) == Some(map))
 }
 
 /// What a character is for.

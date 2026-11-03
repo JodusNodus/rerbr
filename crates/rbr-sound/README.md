@@ -9,7 +9,7 @@ The gameplay sound of RBR 1.02, and RSF cars' FMOD banks. Behaviour, faithful an
 | --- | --- |
 | `lib.rs` | `Models` (one step's `Inputs` and `Scene` to commands), `Player` (live drive) |
 | `voice.rs` | voice commands |
-| `data.rs`, `tables.rs` | banks from `audio.dat` and the inis; tables copied from the exe |
+| `data.rs` | banks from `audio.dat` and the inis |
 | `engine.rs` | granular `CEngine`, `mix_scale`, `Rng` |
 | `car.rs` | whine, gear click, turbo, blow-off |
 | `exhaust.rs` | pops, bangs, pop runs, engine fire |

@@ -112,6 +112,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 
 ## Decisions
 
+- 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
+  (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
+  `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.
 - 2026-11-01 (user): development runs on one Linux x86_64 PC: no test machine, no ssh; the harness runs the original
   locally under Wine, its folders in `dev.env` ([verification.md](verification.md#dev-setup)).
 - 2026-11-01 (user): dawn and golden hour keep part of the low sun's warmth: the eye's white balance adapts less to

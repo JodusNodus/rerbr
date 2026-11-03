@@ -106,6 +106,38 @@ pub struct Amps {
 }
 
 impl Amps {
+    /// The 1.02 patch's `audio.ini` amps, for a game without one (the retail disc has none).
+    pub const PATCH_1_02: Amps = Amps {
+        engine: 1.0,
+        engine_transmission: 0.35,
+        transmission_diff: 0.35,
+        turbo: 0.2,
+        blow_off_valve: 1.0,
+        drive_shaft_broken: 1.0,
+        gravel_particles: 1.0,
+        offtrack: 1.0,
+        impacts: 1.0,
+        impact_screams: 0.5,
+        horn: 0.5,
+        helicopter: 0.3,
+        bird: 0.25,
+        wind: 0.5,
+        servicepark_bg: 1.0,
+        servicepark_fx: 1.0,
+        rain: 1.0,
+        squeeks: 1.0,
+        suspension: 1.0,
+        pop: 0.5,
+        exhaust_pop: 0.5,
+        bang: 0.5,
+        enginefire: 1.0,
+        enviormental_reflections: 1.0,
+        ignition: 1.0,
+        broken_cooler: 1.0,
+        wiper_engine: 0.25,
+        wiper: 0.25,
+    };
+
     /// The amps of `audio.ini`; a missing key is 0, as in the game.
     pub fn read(sections: &[Section]) -> Amps {
         let amp = |key| float(sections, "AMP::SOUNDS", key).unwrap_or(0.0);

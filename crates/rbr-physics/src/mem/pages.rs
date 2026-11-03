@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use super::Backend;
+use super::{exe_reads, Backend};
 
 const PAGE: u32 = 0x1000;
 
@@ -112,6 +112,20 @@ impl Default for Pages {
 }
 
 impl Pages {
+    /// The word holding byte `at`, to read ([`exe_reads`]).
+    #[inline]
+    fn read_cell(&self, at: u32) -> &AtomicU32 {
+        exe_reads::read(at & !3);
+        self.cell(at)
+    }
+
+    /// The word holding byte `at`, to write ([`exe_reads`]).
+    #[inline]
+    fn write_cell(&self, at: u32) -> &AtomicU32 {
+        exe_reads::write(at & !3);
+        self.cell(at)
+    }
+
     /// The word holding byte `at`.
     #[inline]
     fn cell(&self, at: u32) -> &AtomicU32 {
@@ -172,7 +186,7 @@ impl Pages {
     #[inline]
     pub fn word(&self, at: u32) -> Option<u32> {
         if at.is_multiple_of(4) {
-            return self.mapped(at).then(|| self.cell(at).load(Ordering::Relaxed));
+            return self.mapped(at).then(|| self.read_cell(at).load(Ordering::Relaxed));
         }
         let mut out = [0; 4];
         self.read(at, &mut out).then(|| u32::from_le_bytes(out))
@@ -186,7 +200,7 @@ impl Pages {
             if !self.mapped(at) {
                 return None;
             }
-            return Some(std::array::from_fn(|k| self.cell(at + 4 * k as u32).load(Ordering::Relaxed)));
+            return Some(std::array::from_fn(|k| self.read_cell(at + 4 * k as u32).load(Ordering::Relaxed)));
         }
         let mut bytes = [[0; 4]; N];
         self.read(at, bytes.as_flattened_mut()).then(|| bytes.map(u32::from_le_bytes))
@@ -202,7 +216,7 @@ impl Pages {
         }
         self.touch(at);
         for (k, word) in words.into_iter().enumerate() {
-            self.cell(at + 4 * k as u32).store(word, Ordering::Relaxed);
+            self.write_cell(at + 4 * k as u32).store(word, Ordering::Relaxed);
         }
         true
     }
@@ -220,7 +234,7 @@ impl Pages {
         debug_assert!(at.is_multiple_of(4) && !words.is_empty());
         self.touch_range(at, 4 * words.len() as u32);
         for (k, &word) in words.iter().enumerate() {
-            self.cell(at + 4 * k as u32).store(word, Ordering::Relaxed);
+            self.write_cell(at + 4 * k as u32).store(word, Ordering::Relaxed);
         }
     }
 }
@@ -274,7 +288,7 @@ impl Pages {
     pub fn set_word(&self, at: u32, value: u32) {
         if at.is_multiple_of(4) {
             self.touch(at);
-            self.cell(at).store(value, Ordering::Relaxed);
+            self.write_cell(at).store(value, Ordering::Relaxed);
         } else {
             self.write(at, &value.to_le_bytes());
         }
@@ -307,8 +321,9 @@ impl Pages {
             return false;
         }
         self.touch_range(to, len);
-        let copy =
-            |k: u32| self.cell(to + 4 * k).store(self.cell(from + 4 * k).load(Ordering::Relaxed), Ordering::Relaxed);
+        let copy = |k: u32| {
+            self.write_cell(to + 4 * k).store(self.read_cell(from + 4 * k).load(Ordering::Relaxed), Ordering::Relaxed)
+        };
         if descending {
             (0..n).rev().for_each(copy);
         } else {
@@ -329,7 +344,7 @@ impl Pages {
         let first = at.wrapping_add(head as u32);
         let (words, tail) = rest.as_chunks_mut::<4>();
         for (k, bytes) in words.iter_mut().enumerate() {
-            *bytes = self.cell(first + 4 * k as u32).load(Ordering::Relaxed).to_le_bytes();
+            *bytes = self.read_cell(first + 4 * k as u32).load(Ordering::Relaxed).to_le_bytes();
         }
         let tail_at = first.wrapping_add(4 * words.len() as u32);
         for (k, byte) in tail.iter_mut().enumerate() {
@@ -338,7 +353,7 @@ impl Pages {
     }
 
     fn byte(&self, at: u32) -> u8 {
-        (self.cell(at).load(Ordering::Relaxed) >> (8 * (at % 4))) as u8
+        (self.read_cell(at).load(Ordering::Relaxed) >> (8 * (at % 4))) as u8
     }
 
     fn set_byte(&self, at: u32, byte: u8) {
@@ -358,7 +373,7 @@ impl Pages {
         let first = at.wrapping_add(head as u32);
         let (words, tail) = bytes[head..].as_chunks::<4>();
         for (k, &src) in words.iter().enumerate() {
-            self.cell(first + 4 * k as u32).store(u32::from_le_bytes(src), Ordering::Relaxed);
+            self.write_cell(first + 4 * k as u32).store(u32::from_le_bytes(src), Ordering::Relaxed);
         }
         let tail_at = first.wrapping_add(4 * words.len() as u32);
         for (k, &byte) in tail.iter().enumerate() {

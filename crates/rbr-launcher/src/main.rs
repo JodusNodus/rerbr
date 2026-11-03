@@ -8,7 +8,7 @@
 //! ```
 //!
 //! The game is the RBR install folder the Settings page sets (`install_folder` in `launcher-settings.ini`, `install`):
-//! RBR 1.02 with NGP (RallySimFans or not), read in place. Without one the window asks for it, offering the first
+//! RBR with NGP (RallySimFans or not), read in place. Without one the window asks for it, offering the first
 //! usual install place with NGP (`install::detect`). `--data` (or `RBR_DATA`) and
 //! `RBR_PATCH` override its game data and 1.02 patch files, the Settings page's Advanced fields its NGP archive and RSF
 //! folder; the viewer and `rbr-standalone` get the game as `RBR_DATA` and `RBR_PATCH`.
@@ -198,8 +198,8 @@ const SETTINGS_FILE: &str = "launcher-settings.ini";
 const NGP_RECORDS: &str = "NGP";
 /// `--help`'s text.
 const USAGE: &str = "usage: rerbr [OPTIONS]
-Set your RBR install folder (1.02 with NGP; RallySimFans has both) on the Settings page, or at the first start; it is
-only read. From it: the game data and the 1.02 exe at its top, NGP's physics.rbz and, when there, the RallySimFans
+Set your RBR install folder (with NGP; RallySimFans has both) on the Settings page, or at the first start; it is
+only read. From it: the game data at its top, NGP's physics.rbz and, when there, the RallySimFans
 content (rsfdata/, Maps/<id>-<name>/, Cars/).
   --data DIR                the game data instead of the install folder's (default $RBR_DATA; $RBR_PATCH: the 1.02
                             patch files)
@@ -210,10 +210,9 @@ content (rsfdata/, Maps/<id>-<name>/, Cars/).
                             the program, one argument a line), and exit
   --screenshot DIR          draw the pages to PNGs in DIR, and exit
   --screenshot-damage FILE  with --screenshot: also the service park on this damage file's car
-  --install-from-disc DISC PATCH NGP|- OUT
-                            set up a game folder OUT (new or empty) from the disc (.iso or folder), the 1.02 patch
-                            (RBR_v102.zip or its .exe) and the NGP package (.7z or folder; - downloads it from
-                            gvrc.de), and exit
+  --install-from-disc DISC NGP|- OUT
+                            set up a game folder OUT (new or empty) from the disc (.iso or folder) and the NGP
+                            package (.7z or folder; - downloads it from gvrc.de), and exit
   --extract-test-data DISC PATCH OUT
                             write the test data (docs/development.md) to OUT (new or empty) from the disc and the
                             1.02 patch: OUT/retail-install for RBR_DATA and OUT/Main_group for RBR_PATCH, and exit

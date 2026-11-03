@@ -14,6 +14,7 @@ use std::fmt;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
+pub mod exe_reads;
 mod pages;
 pub use pages::{Pages, Snapshot as PagesSnapshot};
 

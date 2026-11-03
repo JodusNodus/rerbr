@@ -203,6 +203,7 @@ impl App {
         if let Some(form) = &mut form {
             form.log_missing_programs();
             form.page = form.first_page();
+            form.offer_cars();
         }
         // A saved folder that does not load says why.
         let error = match (&form, &folder) {
@@ -223,8 +224,8 @@ impl App {
             ui.add_space(8.0);
             ui.label("ReRBR plays Richard Burns Rally with NGP's physics. It needs your own copy of the game: choose your game folder.");
             ui.add_space(4.0);
-            ui.label("• A RallySimFans install, or Richard Burns Rally 1.02 with NGP (copied from Windows, for example): Browse… to the folder with RichardBurnsRally_SSE.exe.");
-            ui.label("• Only the disc? Set up from the disc… makes the game folder from the disc, the 1.02 patch and NGP.");
+            ui.label("• A RallySimFans install, or Richard Burns Rally with NGP (copied from Windows, for example): Browse… to the folder with Cars and Maps.");
+            ui.label("• Only the disc? Set up from the disc… makes the game folder from the disc and NGP.");
             ui.add_space(8.0);
             if let Some(notice) = &self.notice {
                 ui.colored_label(egui::Color32::GRAY, notice);
@@ -326,6 +327,7 @@ impl App {
                 form.set_monitor(window);
                 form.log_missing_programs();
                 form.page = self.form.as_ref().map_or_else(|| form.first_page(), |f| f.page);
+                form.offer_cars();
                 self.form = Some(form);
                 self.error.clear();
             }

@@ -43,6 +43,8 @@
 //! `strings` reads the game's string tables (`Strings/bstrings.<lang>`), the English texts of the menus.
 //!
 //! `pe` maps the retail exe's sections, which the physics load reads as the process starts with them.
+//! `exe_data` holds the 1.02 exe's data words ReRBR reads (generated, `scripts/gen-exe-data.py`), so that no exe is
+//! needed.
 //!
 //! Installing from the disc: `iso9660` reads the disc image, `installshield` the InstallShield cabinets of the disc
 //! and the 1.02 patch (and the patch's self-extracting `.exe`).
@@ -63,6 +65,7 @@ pub mod data;
 pub mod dds;
 pub mod dls;
 pub mod eng;
+pub mod exe_data;
 pub mod fmod;
 pub mod fnc;
 pub mod ghost;
