@@ -602,7 +602,7 @@ impl RallyPage {
         egui::Grid::new("stages").num_columns(4).spacing([16.0, 4.0]).show(ui, |ui| {
             for (k, stage) in c.rally().stages.iter().enumerate() {
                 ui.label(format!("SS{}", k + 1));
-                ui.label(stage.track());
+                ui.label(crate::catalog::title(stage.map).map_or_else(|| stage.track(), str::to_owned));
                 ui.label(format!("{:02}:{:02}", stage.hour, stage.minute));
                 ui.label(c.times().get(k).map_or("–".to_owned(), |t| clock(t.time)));
                 ui.end_row();

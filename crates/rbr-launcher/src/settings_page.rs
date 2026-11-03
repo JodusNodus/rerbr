@@ -18,7 +18,8 @@ impl Form {
     /// the version.
     pub fn settings_page(&mut self, ui: &mut egui::Ui) {
         let running = self.child.is_some();
-        section(ui, "Ready to drive");
+        // What Start needs, a row each: its heading says whether something still blocks it.
+        section(ui, if self.readiness().is_none() { "Ready to drive" } else { "Before you can drive" });
 
         // The game folder, and the disc setup under it.
         let mut set = false;
