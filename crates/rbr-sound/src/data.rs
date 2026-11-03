@@ -289,20 +289,19 @@ fn sound_def(ingame: &[rbr_formats::ini::Section], name: &str) -> SoundDef {
     }
 }
 
+/// The game's `audio.ini` amps, else the 1.02 patch's (the retail disc has no `audio.ini`).
+pub(crate) fn amps(data: &Data) -> Result<Amps, String> {
+    let Some(ini) = data.resolve("audio.ini") else { return Ok(Amps::PATCH_1_02) };
+    let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {e}", ini.display()))?;
+    Ok(Amps::read(&audio::parse_ini(&bytes).map_err(|e| format!("audio.ini: {e}"))?))
+}
+
 impl CarBank {
-    /// Car `car`'s (the `Cars.ini` index, 0-7) sounds from `Root/audio.dat` and the 1.02 `audio.ini`. Without an
-    /// `audio.ini` the retail amps are used (the game would read them as 0 and be silent).
+    /// Car `car`'s (the `Cars.ini` index, 0-7) sounds from `Root/audio.dat` and the amps ([`amps`]).
     pub fn load(data: &Data, car: u32) -> Result<CarBank, String> {
         let path = data.audio_dat().ok_or("no Root/audio.dat")?;
         let dat = AudioDat::open(&path)?;
-        let amps = match data.resolve("audio.ini") {
-            Some(ini) => {
-                let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {e}", ini.display()))?;
-                Some(Amps::read(&audio::parse_ini(&bytes).map_err(|e| format!("audio.ini: {e}"))?))
-            }
-            None => None,
-        };
-        CarBank::from_dat(&dat, car, amps, rbr_formats::ngp::load(data)?.road_surfaces.clone())
+        CarBank::from_dat(&dat, car, Some(amps(data)?), rbr_formats::ngp::load(data)?.road_surfaces.clone())
     }
 
     pub fn from_dat(dat: &AudioDat, car: u32, amps: Option<Amps>, road_surfaces: Vec<u32>) -> Result<CarBank, String> {

@@ -116,4 +116,5 @@ fn patch_audio_ini_amps() {
     assert_eq!((amps.helicopter, amps.servicepark_bg, amps.servicepark_fx), (0.3, 1.0, 1.0));
     assert_eq!((amps.squeeks, amps.suspension, amps.enginefire), (1.0, 1.0, 1.0));
     assert_eq!((amps.pop, amps.exhaust_pop, amps.bang), (0.5, 0.5, 0.5));
+    assert_eq!(amps, Amps::PATCH_1_02);
 }

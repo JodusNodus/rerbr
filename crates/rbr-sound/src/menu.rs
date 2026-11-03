@@ -14,7 +14,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use rbr_formats::audio::{self, Amps, AudioDat};
+use rbr_formats::audio::{self, AudioDat};
 use rbr_formats::data::Data;
 
 use crate::data::Wave;
@@ -175,17 +175,11 @@ pub struct MenuBank {
 }
 
 impl MenuBank {
-    /// From `Root/audio.dat` and the 1.02 `audio.ini` (the retail amps without it).
+    /// From `Root/audio.dat` and the amps (`data::amps`).
     pub fn load(data: &Data) -> Result<MenuBank, String> {
         let path = data.audio_dat().ok_or("no Root/audio.dat")?;
         let dat = AudioDat::open(&path)?;
-        let amps = match data.resolve("audio.ini") {
-            Some(ini) => {
-                let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {e}", ini.display()))?;
-                Some(Amps::read(&audio::parse_ini(&bytes).map_err(|e| format!("audio.ini: {e}"))?))
-            }
-            None => None,
-        };
+        let amps = crate::data::amps(data)?;
         let service = dat.ini("Audio\\Service.ini")?;
         let bank = |section: &str| -> Result<Vec<Arc<Wave>>, String> {
             let count = audio::float(&service, section, "Sounds").unwrap_or(0.0) as usize;
@@ -208,8 +202,8 @@ impl MenuBank {
                 bank("SFX::SOFTHIT")?,
                 bank("SFX::TOOLS")?,
             ],
-            background_gain: amps.map_or(1.0, |a| a.servicepark_bg),
-            hit_gain: amps.map_or(1.0, |a| a.servicepark_fx),
+            background_gain: amps.servicepark_bg,
+            hit_gain: amps.servicepark_fx,
         })
     }
 }
