@@ -323,12 +323,12 @@ fn run() -> Result<(), String> {
             println!("{issue}");
         }
         for car in &catalog.cars {
-            if car.unavailable().is_none() {
-                println!("Startable car: {}", catalog::car_label(car));
-            }
             if let Some(reason) = car.unavailable() {
                 println!("Unavailable car: {} — {reason}", catalog::car_label(car));
-            } else if let Some(rsf) = car.rsf.as_ref().filter(|r| r.added) {
+                continue;
+            }
+            println!("Startable car: {}", catalog::car_label(car));
+            if let Some(rsf) = car.rsf.as_ref().filter(|r| r.added) {
                 let model = match &rsf.model {
                     Ok(Some(stand_in)) => format!(" — model: {stand_in}"),
                     _ => String::new(),
