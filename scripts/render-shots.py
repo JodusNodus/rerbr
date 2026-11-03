@@ -24,7 +24,7 @@ earlier render, worst first; with `--diff DIR` it also writes the difference, ti
 arguments. `--cars A B` renders each selected shot once per car (as <name>--<slug>) plus a labelled <name>--cars.jpg
 sheet. `--rename NEW` renames the single `--only` shot; with `--save` and `--previews` the old JPEG is deleted.
 """
-import argparse, copy, json, os, re, shlex, subprocess, sys, tempfile, time
+import argparse, copy, json, os, re, shlex, shutil, subprocess, sys, tempfile, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -87,6 +87,7 @@ def launcher_command(build, home, shot, size):
     done = subprocess.run([build / 'rerbr', '--command'], env={**os.environ, 'RERBR_HOME': str(tmp)},
                           capture_output=True, text=True)
     if done.returncode:
+        shutil.rmtree(tmp)
         sys.exit(f"{shot['name']}: rerbr --command: {done.stderr.strip()}")
     return tmp, done.stdout.splitlines()
 
