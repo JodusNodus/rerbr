@@ -128,14 +128,6 @@ fn box_corners_follow_the_plugin() {
 }
 
 #[test]
-fn col_box_reads_like_sscanf() {
-    assert_eq!(track::scan_col_box("0,1, 3, 0,1"), Some([0.0, 1.0, 3.0]));
-    assert_eq!(track::scan_col_box("0.15, 1, 0.15"), Some([0.15, 1.0, 0.15]));
-    assert_eq!(track::scan_col_box("1e1, 2 , 3"), None);
-    assert_eq!(track::scan_col_box("1, 2"), None);
-}
-
-#[test]
 fn rsqrtss_is_the_intel_table() {
     // Values the instruction returns (i9-13900HX).
     for (x, want) in [

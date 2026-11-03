@@ -659,6 +659,8 @@ mod tests {
     fn col_box_reads_like_sscanf() {
         assert_eq!(scan_col_box("0,15, 1, 0,15"), Some([0.0, 15.0, 1.0]));
         assert_eq!(scan_col_box("0.3, 3, 0.3"), Some([0.3, 3.0, 0.3]));
+        assert_eq!(scan_col_box("1e1, 2 , 3"), None);
+        assert_eq!(scan_col_box("1, 2"), None);
         let section =
             ini::Section { name: "Object_0".into(), entries: vec![("colBox".into(), "0,15, 1, 0,15".into())] };
         assert_eq!(Object::parse(0, &section).col_box, Some([0.0, 15.0, 1.0]));
