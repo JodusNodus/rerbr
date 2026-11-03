@@ -202,7 +202,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - `.col` is `rbr_btb::col::build`; every folder is offered (a build error shows at Start).
 - `lbs::parse` accepts the stub `(1, 0)` chunk (a zero count, no sky word) so the boot reads the start location; `rbr-standalone --surface gravel|tarmac|snow` is the surface override (a stage that plays under another map's files).
 - Launcher: a BTB stage's map number is its RSF id (`ids`), else `1_000_000 + FNV(folder) % 1_000_000`, and its weathers are map 41's (`Map::weather_map`); Start passes `--surface` and no `--saves`/`--profile` (the records would be map 41's), so there are no records or ghosts for BTB stages.
-- Checked (2026-11-03, `--autopilot --boot`, car 2 NGP, season row 98): Hokkara Gravel 282.99 s, splits 105.97 and 192.12 s, finish at step 210149, not retired; Pirttikulma snow 388.01 s, splits 117.29 and 276.52 s; Ulu Karagita stops at 3262 m (car on its side, 160 s, split 1 at 144.9 s) at 14 and 24 m/s alike: not explained (autopilot or collision).
+- Autopilot drives (`--autopilot --boot`, NGP car 2, row 98) finish Hokkara Gravel and Pirttikulma snow with their splits (2026-11-03); on Ulu Karagita the autopilot leaves the faint savanna track at 3262 m at some speeds (12, 14, 24 m/s; 18 passes): the collision there is smooth and the `.col` the cache's.
 - The `.fnc` fences and the characters of retail map 41 are placed where map 41 has them, as in the original; the retail `.fnc`'s posts do not fit a BTB road.
 
 ## Drawing
