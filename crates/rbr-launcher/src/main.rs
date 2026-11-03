@@ -156,7 +156,6 @@ mod settings;
 mod settings_page;
 mod setup_page;
 mod stage_browser;
-mod stage_releases;
 mod time_of_day;
 mod upscaler;
 mod window;
