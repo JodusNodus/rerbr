@@ -419,7 +419,7 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
     let mut zip = rbz::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut meshes: HashMap<String, Mesh> = HashMap::new();
     let mut faces = Vec::new();
-    for object in objects.iter().filter(|o| o.collision_model == Some(0)) {
+    for object in objects.iter().filter(|o| o.collision_model == Some(0) && o.visible != Some(false)) {
         let key = object.file.to_lowercase();
         if !meshes.contains_key(&key) {
             let bytes = scene::read_entry(&mut zip, &format!("Objects/{}.x", object.file))?;
@@ -453,6 +453,33 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
         }
         for (k, v) in c { eprintln!("MAPCOUNT {:?} {}", k, v); }
     }
+    if let Ok(path) = std::env::var("COLCACHE") {
+        let d = std::fs::read(path).unwrap();
+        let u = |o: usize| u32::from_le_bytes(d[o..o + 4].try_into().unwrap()) as usize;
+        let mut set = std::collections::HashSet::new();
+        for c in 0..u(8) {
+            let o = u(u(12) + 4 * c);
+            for v in 0..u(o + 8) {
+                let b = o + 0x14 + 12 * v;
+                set.insert([u(b) as u32, u(b + 4) as u32, u(b + 8) as u32]);
+            }
+        }
+        let mut h: std::collections::BTreeMap<u32, (u32, u32)> = Default::default();
+        for f in &faces {
+            let e = h.entry(f.dbg).or_default();
+            e.0 += 1;
+            if f.pos.iter().all(|p| set.contains(&p.map(f32::to_bits))) { e.1 += 1; }
+        }
+        for (k, (n, y)) in h { if true { eprintln!("MISSING obj {k} {} {}: {y} of {n} faces present", track.objects().unwrap()[k as usize].file, track.objects().unwrap()[k as usize].xform); } }
+    }
+    if let Ok(z) = std::env::var("COLZ") {
+        let z: f32 = z.parse().unwrap();
+        let mut h: std::collections::BTreeMap<u32, f32> = Default::default();
+        for f in &faces {
+            for p in f.pos { if p[2] > z { let e = h.entry(f.dbg).or_insert(p[2]); if p[2] > *e { *e = p[2]; } } }
+        }
+        for (k, v) in h { eprintln!("HIGH obj {k} {} {}: {v}", track.objects().unwrap()[k as usize].file, track.objects().unwrap()[k as usize].xform); }
+    }
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
     let mut root = Node::new((0..faces.len() as u32).collect());
     root.split(&faces, &cents)?;
@@ -460,6 +487,18 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
         return Err("fewer than nine collision triangles".into());
     }
     let mut list = Vec::new();
+    if let Ok(want) = std::env::var("COLCELL") {
+        let want = u32::from_str_radix(&want, 16).unwrap();
+        let mut all = Vec::new();
+        regions(&root, 0, 0, &mut all);
+        for (n, p) in all.iter().filter(|(_, p)| *p == want) {
+            let mut f = Vec::new();
+            collect(n, &mut f);
+            let mut h = std::collections::BTreeMap::new();
+            for i in f { *h.entry(faces[i as usize].dbg).or_insert(0) += 1; }
+            eprintln!("CELL {p:x} {h:?}");
+        }
+    }
     regions(&root, 0, 0, &mut list);
     let cells = list
         .iter()
