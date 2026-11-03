@@ -1,6 +1,7 @@
 # The 1.02 exe's words ReRBR reads (scripts/gen-exe-data.py): START END (hex, END excluded), or
 # strings START COUNT (COUNT string pointers and their strings). `boot` lines come from --reads.
 007d34c8 007d52b0  # the season table (rbr_gameplay::weather, 0x13f rows of 0x18 bytes)
+00735c80 00737480  # the tyre sound's surface table (rbr_sound::tyre, 256 rows of 0x18 bytes)
 0072ace0 0072ad34  # the maps without flip spectators (rbr_render::characters)
 strings 007c03dc 8  # the rally script folders (rbr_render::characters, E01FrontendName)
 0072ace0 0072ad7c  # boot

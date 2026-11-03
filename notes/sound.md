@@ -46,8 +46,8 @@ wipers).
 
 ## Tyres and surfaces
 
-Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-pass) and `tables.rs` (surface
-table); NGP's road list in `rbr_formats::ngp`.
+Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-pass; the exe's surface table from
+`rbr_formats::exe_data`); NGP's road list in `rbr_formats::ngp`.
 
 - The splash is 0 in every drive tried, so no wetness voice is checked. Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).

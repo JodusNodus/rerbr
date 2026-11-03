@@ -39,7 +39,6 @@ pub mod preview;
 pub mod reflections;
 pub mod scripted;
 pub mod suspension;
-mod tables;
 pub mod tyre;
 pub mod voice;
 pub mod world;

@@ -124,13 +124,13 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
 ## Standalone dispatch
 
 The boot maps the 1.02 exe's `.rdata` and `.data` as zeros and over them the words a run reads before writing them
-(`rbr_formats::exe_data`, 2878 words with the season table and the renderer's tables), no `.text` or patch array;
-NGP callees and boot settings are in [ngp.md](ngp.md) (no exe code mapped; the load budget is NGP's 1500). The words
-come from `exe-reads` builds (`cargo build --release -p rbr-standalone --features rbr-physics/exe-reads`, a run with
-`RBR_EXE_READS=FILE` writes them; `scripts/gen-exe-data.py --reads FILE --write` merges them into
+(`rbr_formats::exe_data`, 4414 words with the season table, the renderer's and the tyre sound's tables), no `.text` or
+patch array; NGP callees and boot settings are in [ngp.md](ngp.md) (no exe code mapped; the load budget is NGP's 1500).
+The words come from `exe-reads` builds (`cargo build --release -p rbr-standalone --features rbr-physics/exe-reads`, a
+run with `RBR_EXE_READS=FILE` writes them; `scripts/gen-exe-data.py --reads FILE --write` merges them into
 `data/exe-words.txt`): drive2 attempt 5 and 140 autopilot boots (8 retail cars, 16 stages, weathers, damage, a
-championship stage). A port that reads a word not listed reads 0: rerun the sweep after porting new exe reads. Instruction operands are decoded only
-for captured-memory validation.
+championship stage). A port that reads a word not listed reads 0: rerun the sweep after porting new exe reads.
+Instruction operands are decoded only for captured-memory validation.
 
 ## Store seam
 
