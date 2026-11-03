@@ -353,7 +353,11 @@ fn load_mesh(name: &str, bytes: &[u8], maps: &Maps) -> Result<Mesh, String> {
     let map = maps.index(texture);
     Ok(Mesh {
         positions: mesh.positions.iter().map(|p| p.map(shift_input)).collect(),
-        triangles: mesh.triangles(),
+        triangles: mesh
+            .triangles()
+            .into_iter()
+            .filter(|t| t[0] != t[1] && t[1] != t[2] && t[0] != t[2])
+            .collect(),
         uvs: pick_uvs(&mesh),
         map,
     })
