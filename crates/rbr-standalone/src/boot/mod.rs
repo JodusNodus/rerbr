@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
-use rbr_formats::{cars, fnc, lbs, markers, pe, rbz, rsf, sgc, stage_files, trk};
+use rbr_formats::{cars, fnc, lbs, markers, rbz, rsf, sgc, stage_files, trk};
 use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::Mode;
 use rbr_gameplay::race_clock::AssistSettings;
@@ -443,12 +443,15 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
 
     let ngp_tables = rbr_formats::ngp::load(data)?;
 
-    // Immutable tables, vtables and initial globals. The standalone never maps executable instructions.
-    let exe = pe::parse(&read(data, "RichardBurnsRally_SSE.exe")?).map_err(|e| format!("the exe: {e:?}"))?;
-    for name in [".rdata", ".data"] {
-        let section = exe.section(name).ok_or(format!("the exe has no {name}"))?;
-        mem.map(section.address, &section.bytes);
+    // The exe's immutable tables, vtables and initial globals the run reads (`exe_data`). The standalone never maps
+    // executable instructions.
+    for (at, size) in rbr_formats::exe_data::SECTIONS {
+        mem.map(at, &vec![0; size as usize]);
     }
+    for &(at, words) in rbr_formats::exe_data::RUNS {
+        mem.map(at, &words.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<_>>());
+    }
+    rbr_physics::mem::exe_reads::start();
     mem.set_u32(QPC_SLOT, QPC_STAND_IN);
     mem.map(NGP.at(ngp_tables.rdata.address), &ngp_tables.rdata.bytes);
     mem.map(NGP.at(NGP_DATA.0), &vec![0; NGP_DATA.1]);

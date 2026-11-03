@@ -27,7 +27,7 @@
 use std::io::Read;
 
 use rbr_formats::data::Data;
-use rbr_formats::{pe, rbz};
+use rbr_formats::{exe_data, rbz};
 
 pub use crate::crt::CrtRand;
 
@@ -136,13 +136,9 @@ impl Season {
         Season { rows, nice: list(nice), bad: list(bad) }
     }
 
-    /// The exe's table (`RichardBurnsRally_SSE.exe`, from the 1.02 patch) and `Root/misc.rbz`'s lists.
+    /// The 1.02 exe's table (`exe_data`) and `Root/misc.rbz`'s lists.
     pub fn load(data: &Data) -> Result<Season, String> {
-        let exe_path =
-            data.resolve("RichardBurnsRally_SSE.exe").ok_or("RichardBurnsRally_SSE.exe: not found (RBR_PATCH)")?;
-        let exe = std::fs::read(&exe_path).map_err(|e| format!("{}: {e}", exe_path.display()))?;
-        let exe = pe::parse(&exe).map_err(|e| format!("the exe: {e}"))?;
-        let table = exe.read(SEASON_TABLE, SEASON_ROWS * ROW_BYTES).ok_or("the exe has no season table")?;
+        let table = exe_data::bytes(SEASON_TABLE, SEASON_ROWS * ROW_BYTES).ok_or("no season table")?;
         let misc = data.resolve("Root/misc.rbz").ok_or("Root/misc.rbz: not found")?;
         let mut zip = rbz::open(&misc).map_err(|e| format!("misc.rbz: {e}"))?;
         let mut text = |name: &str| -> Result<String, String> {
@@ -154,7 +150,7 @@ impl Season {
             Ok(String::from_utf8_lossy(&bytes).into_owned())
         };
         let (nice, bad) = (text("Misc/nice_w.ini")?, text("Misc/bad_w.ini")?);
-        Ok(Season::parse(table, &nice, &bad))
+        Ok(Season::parse(&table, &nice, &bad))
     }
 
     /// The rows of `map`, by row number.
