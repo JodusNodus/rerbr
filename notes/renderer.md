@@ -151,7 +151,11 @@ the layer a run-time subclass of its class whose `nextDrawable` keeps it). Ours,
 
 cachy, 4K 60 Hz, scripted flip, 3 runs each, p50 (p95) ms from the flip: before, input read 7.5 (16), answer
 taken 25 (33-45), submitted 41 (49-62), GPU done 51 (58-71); after: 9 (16), 11 (16-32), 18 (21-49), 28 (30-58).
-On screen 41 (46) with direct scan-out, 61 (61) composited; `play.sh` sets `MANGOHUD=0` (it added p95 tail).
+On screen 41 (46) with direct scan-out, 61 (61) composited; `play.sh` sets `MANGOHUD=0` (it added p95 tail). With
+`MANGOHUD=1` (set for every program by the user's `environment.d`) the viewer crashed at every exit after a live drive
+(SIGSEGV or `free(): invalid pointer`, 47 cores from 2026-10-31; reproduced 2/2, 0/2 without it): dropping the window's
+wgpu instance unloaded the Vulkan loader, the driver and the layers before the process's exit handlers ran. The window
+keeps its instance to the end (`window.rs`): 4/4 clean exits (2026-11-03).
 
 Uploads (2026-11-02, M3 Pro, `scripts/bench.py` fullscreen, GPU-bound at ~51 ms): the large writes (the car's moving
 parts, grass, drops, particles, marks, motion, dials; ~6.5 MB in ~37 writes a frame) go through `uploads.rs`

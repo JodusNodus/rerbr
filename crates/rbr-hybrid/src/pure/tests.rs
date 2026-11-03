@@ -109,6 +109,16 @@ fn a_call_with_no_binding_stops_with_its_address_and_caller() {
 }
 
 #[test]
+fn a_stop_leaves_its_chain_until_it_is_taken() {
+    let pure = host(false);
+    for _ in 0..2 {
+        stop_of(&pure, UNBOUND, 0);
+        assert_eq!(pure.take_chain(), vec![STEP_FORWARD]);
+    }
+    assert!(pure.chain().is_empty());
+}
+
+#[test]
 fn keep_going_counts_the_stop_and_answers_zero() {
     let pure = host(true);
     assert_eq!(call(&pure, UNBOUND, 0, &[]).eax, 0);

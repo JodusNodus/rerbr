@@ -171,10 +171,10 @@ pub fn require_ngp(playback: &Playback) -> Result<(), String> {
     }
 }
 
-/// The running bindings and stand-ins (`pure::Pure::chain`, outermost first) as a stop prints them:
+/// The running bindings and stand-ins at a stop (`pure::Pure::take_chain`, outermost first) as it prints them:
 /// `0x4ea720 > 0x4e9800`.
 pub fn chain(pure: &pure::Pure) -> String {
-    pure.chain().iter().map(|a| format!("{a:#x}")).collect::<Vec<_>>().join(" > ")
+    pure.take_chain().iter().map(|a| format!("{a:#x}")).collect::<Vec<_>>().join(" > ")
 }
 
 /// Runs `f` on a thread of its own: bindings call each other directly, and a deep step wants more stack than the main

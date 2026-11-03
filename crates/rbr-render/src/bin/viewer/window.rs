@@ -221,6 +221,10 @@ impl Shell {
             winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, icon::APP_ID, icon::APP_ID);
         let window = Arc::new(event_loop.create_window(attributes)?);
         let instance = renderer::instance();
+        // Kept to the process's end: dropped with the window, the Vulkan loader unloaded the driver, its layers and
+        // itself while the exit handlers they had registered (MangoHud's, set by `MANGOHUD=1`) were still to run, and
+        // the exit after every drive crashed (SIGSEGV or `free(): invalid pointer`, 2026-11-03).
+        std::mem::forget(instance.clone());
         let surface = instance.create_surface(window.clone())?;
         let gpu = renderer::request_gpu(&instance, Some(&surface))?;
         let capabilities = surface.get_capabilities(&gpu.adapter);

@@ -124,12 +124,15 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
 ## Standalone dispatch
 
 The boot maps the 1.02 exe's `.rdata` and `.data` as zeros and over them the words a run reads before writing them
-(`rbr_formats::exe_data`, 4414 words with the season table, the renderer's and the tyre sound's tables), no `.text` or
+(`rbr_formats::exe_data` with the season table, the renderer's and the tyre sound's tables), no `.text` or
 patch array; NGP callees and boot settings are in [ngp.md](ngp.md) (no exe code mapped; the load budget is NGP's 1500).
 The words come from `exe-reads` builds (`cargo build --release -p rbr-standalone --features rbr-physics/exe-reads`, a
 run with `RBR_EXE_READS=FILE` writes them; `scripts/gen-exe-data.py --reads FILE --write` merges them into
 `data/exe-words.txt`): drive2 attempt 5 and 140 autopilot boots (8 retail cars, 16 stages, weathers, damage, a
-championship stage). A port that reads a word not listed reads 0: rerun the sweep after porting new exe reads.
+championship stage). A port that reads a word not listed reads 0: rerun the sweep after porting new exe reads. A run reads
+only the virtual-table slots it calls, so the generator takes every table a listed word lies in whole (`whole_vtables`,
+5904 words): CMountedRigidBody's table (0x73e62c) had 9 of its 95 slots, and a mounted part coming off (`StepBig`,
+0x522100, slots 0x48/0x54/0x90) stopped the physics with `unbound 0x0` (El Cubilete, three live drives, 2026-11-03).
 Instruction operands are decoded only for captured-memory validation.
 
 ## Store seam
