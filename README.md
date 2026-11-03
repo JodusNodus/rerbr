@@ -123,6 +123,9 @@ packs, replays, videos and logs) goes to one folder, shown on the Settings page:
 - Windows: `%APPDATA%\ReRBR\`;
 - or `$RERBR_HOME`, if set (for a portable copy).
 
+The launcher works from the keyboard: Ctrl+1 to Ctrl+7 (Cmd on macOS) open its tabs, Tab moves between controls,
+Enter or Space presses them, the arrow keys move through lists, and Enter starts the drive.
+
 Drives are saved in `replays/`. Open the launcher's Replays tab to browse them, watch a drive or export an MP4
 with game audio to `videos/` or another filename. Video export needs ffmpeg on your PATH. Replays need the build,
 game files, profile and setup used for the drive; playback stops if its physics differs.

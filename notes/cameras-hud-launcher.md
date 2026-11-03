@@ -64,6 +64,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
+- Keyboard (2026-11-03): Ctrl+1..7 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
+  or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
+  presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
+  Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
+  (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
+  them only on a click). Enter starts a drive only with nothing focused, else it presses the focused control.
 - Stage browser: “Newest” sorts by map number, highest first (RSF numbers maps as it adds them); no hand-kept
   release dates (user decision 2026-11-03).
 - Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive

@@ -44,6 +44,27 @@ impl Page {
         (Page::Graphics, "Graphics & sound"),
         (Page::Settings, "Settings"),
     ];
+
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+7 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next, Ctrl+Shift+Tab
+    /// or Ctrl+Page Up the one before.
+    fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
+        use egui::{Key, Modifiers};
+        const NUMBERS: [Key; 7] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7];
+        let at = Self::TABS.iter().position(|(p, _)| *p == self).unwrap_or(0);
+        let by = |n: usize| Self::TABS[(at + n) % Self::TABS.len()].0;
+        let shift_ctrl = Modifiers::CTRL | Modifiers::SHIFT;
+        if input.consume_key(shift_ctrl, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageUp) {
+            return Some(by(Self::TABS.len() - 1));
+        }
+        if input.consume_key(Modifiers::CTRL, Key::Tab) || input.consume_key(Modifiers::CTRL, Key::PageDown) {
+            return Some(by(1));
+        }
+        NUMBERS
+            .iter()
+            .zip(Self::TABS)
+            .find(|(key, _)| input.consume_key(Modifiers::COMMAND, **key))
+            .map(|(_, (p, _))| p)
+    }
 }
 
 /// The width of the Drive and Graphics & sound pages' field column, and of a field.
@@ -336,14 +357,19 @@ impl Form {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("ReRBR").size(20.0).strong());
                     ui.add_space(20.0);
-                    for (page, name) in Page::TABS {
+                    let mut open = ui.input_mut(|i| self.page.shortcut(i));
+                    for (n, (page, name)) in Page::TABS.into_iter().enumerate() {
                         let tab = egui::Button::selectable(self.page == page, RichText::new(name).size(15.5));
-                        if ui.add(tab.min_size(egui::vec2(0.0, 28.0))).clicked() {
-                            if page == Page::Replays {
-                                self.replays.refresh(&self.here());
-                            }
-                            self.page = page;
+                        let key = format!("{}+{}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }, n + 1);
+                        if ui.add(tab.min_size(egui::vec2(0.0, 28.0))).on_hover_text(key).clicked() {
+                            open = Some(page);
                         }
+                    }
+                    if let Some(page) = open {
+                        if page == Page::Replays {
+                            self.replays.refresh(&self.here());
+                        }
+                        self.page = page;
                     }
                 });
                 ui.add_space(4.0);
@@ -396,6 +422,21 @@ impl Form {
                 }
             })
         });
+        // A dropdown's item picked with Enter or Space: egui closes dropdowns only on a mouse click. The focus goes
+        // back to the dropdown (the last control focused outside one).
+        let outside = Id::unique("focused outside dropdowns");
+        match ctx.memory(|m| m.focused()).and_then(|id| ctx.read_response(id)) {
+            Some(r) if r.layer_id.order == egui::Order::Foreground => {
+                if r.clicked() {
+                    egui::Popup::close_all(ctx);
+                    if let Some(id) = ctx.data(|d| d.get_temp::<Id>(outside)) {
+                        ctx.memory_mut(|m| m.request_focus(id));
+                    }
+                }
+            }
+            Some(r) => _ = ctx.data_mut(|d| d.insert_temp(outside, r.id)),
+            None => {}
+        }
         // A page changed what the status line shows: drawn again with it.
         if self.readiness() != readiness {
             ctx.request_repaint();
@@ -644,6 +685,30 @@ mod tests {
     use crate::{Start, SETTINGS_FILE};
     use rbr_gameplay::race_options::{DamageLevel, Skill};
     use rbr_render::renderer::Detail;
+
+    #[test]
+    fn shortcuts_open_the_pages() {
+        use egui::{Key, Modifiers};
+        let press = |page: Page, key: Key, modifiers: Modifiers| {
+            let event = egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+            let input =
+                egui::RawInput { events: vec![egui::Event::ModifiersChanged(modifiers), event], ..Default::default() };
+            let mut opened = None;
+            let ctx = egui::Context::default();
+            ctx.run_pass(input, |ctx| opened = ctx.input_mut(|i| page.shortcut(i))).textures_delta.clear();
+            opened
+        };
+        let (ctrl, shift_ctrl) =
+            (Modifiers::CTRL | Modifiers::COMMAND, Modifiers::CTRL | Modifiers::COMMAND | Modifiers::SHIFT);
+        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::Setup));
+        assert_eq!(press(Page::Drive, Key::Num7, ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Championship));
+        assert_eq!(press(Page::Settings, Key::PageDown, ctrl), Some(Page::Drive));
+        assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Replays, Key::PageUp, ctrl), Some(Page::Setup));
+        assert_eq!(press(Page::Drive, Key::Num3, Modifiers::NONE), None);
+        assert_eq!(press(Page::Drive, Key::Tab, Modifiers::NONE), None);
+    }
 
     /// Every dropdown choice parses back from its settings word, with a label of its own (`settings_round_trip`
     /// pins the file's text; this pins each value's word and label).

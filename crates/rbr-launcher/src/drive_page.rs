@@ -146,7 +146,8 @@ impl Form {
             let text = RichText::new("Start").size(20.0).strong().color(Color32::WHITE);
             let button = egui::Button::new(text).fill(ACCENT).min_size(egui::vec2(180.0, 44.0));
             let start = ui.add_enabled(blocker.is_none(), button).on_hover_text("Enter starts too");
-            let enter = ui.input(|i| i.key_pressed(Key::Enter));
+            // Enter on a focused control presses it instead.
+            let enter = ui.memory(|m| m.focused().is_none()) && ui.input(|i| i.key_pressed(Key::Enter));
             if blocker.is_none() && (start.clicked() || enter) {
                 self.start();
             }
