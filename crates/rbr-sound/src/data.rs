@@ -301,10 +301,10 @@ impl CarBank {
     pub fn load(data: &Data, car: u32) -> Result<CarBank, String> {
         let path = data.audio_dat().ok_or("no Root/audio.dat")?;
         let dat = AudioDat::open(&path)?;
-        CarBank::from_dat(&dat, car, Some(amps(data)?), rbr_formats::ngp::load(data)?.road_surfaces.clone())
+        CarBank::from_dat(&dat, car, amps(data)?, rbr_formats::ngp::load(data)?.road_surfaces.clone())
     }
 
-    pub fn from_dat(dat: &AudioDat, car: u32, amps: Option<Amps>, road_surfaces: Vec<u32>) -> Result<CarBank, String> {
+    pub fn from_dat(dat: &AudioDat, car: u32, a: Amps, road_surfaces: Vec<u32>) -> Result<CarBank, String> {
         let cars = dat.ini("Audio\\Cars\\Cars.ini")?;
         // A car slot the audio `Cars.ini` does not list (a modded `Cars/Cars.ini` with more than eight) takes car 0's
         // sound (ours).
@@ -348,45 +348,29 @@ impl CarBank {
         let frontend = dat.ini("Audio\\Frontend.ini")?;
         let ingame = dat.ini("Audio\\Ingame.ini")?;
         let volume = |name| sound_def(&ingame, name).volume;
-        let gains = match amps {
-            Some(a) => Gains {
-                engine: volume("EXHAUST") * a.engine,
-                gearbox: volume("TRANSMISSION") * a.engine_transmission,
-                diff: volume("TRANSMISSION") * a.transmission_diff,
-                turbo: volume("BLOWOFFVALVE") * a.turbo,
-                blow_off: volume("BLOWOFFVALVE") * a.blow_off_valve,
-                tyre: volume("TIRE") * a.gravel_particles,
-                offroad: a.offtrack,
-                ranged: volume("RANGED") * a.impacts,
-                scream: a.impact_screams,
-                squeak: a.squeeks,
-                suspension: a.suspension,
-                drive_shaft: a.drive_shaft_broken,
-                pop: volume("EXHAUSTPOP") * a.pop,
-                exhaust_pop: volume("EXHAUSTPOP") * a.exhaust_pop,
-                bang: volume("EXHAUSTPOP") * a.bang,
-                fire: a.enginefire,
-                reflections: volume("EXHAUST") * a.engine * a.enviormental_reflections,
-            },
-            None => Gains::default(),
+        let gains = Gains {
+            engine: volume("EXHAUST") * a.engine,
+            gearbox: volume("TRANSMISSION") * a.engine_transmission,
+            diff: volume("TRANSMISSION") * a.transmission_diff,
+            turbo: volume("BLOWOFFVALVE") * a.turbo,
+            blow_off: volume("BLOWOFFVALVE") * a.blow_off_valve,
+            tyre: volume("TIRE") * a.gravel_particles,
+            offroad: a.offtrack,
+            ranged: volume("RANGED") * a.impacts,
+            scream: a.impact_screams,
+            squeak: a.squeeks,
+            suspension: a.suspension,
+            drive_shaft: a.drive_shaft_broken,
+            pop: volume("EXHAUSTPOP") * a.pop,
+            exhaust_pop: volume("EXHAUSTPOP") * a.exhaust_pop,
+            bang: volume("EXHAUSTPOP") * a.bang,
+            fire: a.enginefire,
+            reflections: volume("EXHAUST") * a.engine * a.enviormental_reflections,
         };
-        let world_gains = match amps {
-            Some(a) => WorldGains { wind: a.wind, bird: a.bird, horn: a.horn, rain: a.rain },
-            None => WorldGains::default(),
-        };
-        let scripted_gains = match amps {
-            Some(a) => ScriptedGains { helicopter: a.helicopter, bird_hit: a.impacts },
-            None => ScriptedGains::default(),
-        };
-        let effect_gains = match amps {
-            Some(a) => EffectGains {
-                ignition: a.ignition,
-                cooler: a.broken_cooler,
-                wiper_engine: a.wiper_engine,
-                wiper: a.wiper,
-            },
-            None => EffectGains::default(),
-        };
+        let world_gains = WorldGains { wind: a.wind, bird: a.bird, horn: a.horn, rain: a.rain };
+        let scripted_gains = ScriptedGains { helicopter: a.helicopter, bird_hit: a.impacts };
+        let effect_gains =
+            EffectGains { ignition: a.ignition, cooler: a.broken_cooler, wiper_engine: a.wiper_engine, wiper: a.wiper };
         let ambient = dat.ini("Audio\\Ambient\\europe.ini")?;
         let ambient_wave = |key: &str| sample(&ambient, "AMBIENTFX", key);
         let named = |file: &str| -> Result<Wave, String> {
