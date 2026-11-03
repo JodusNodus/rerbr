@@ -203,6 +203,7 @@ impl App {
         if let Some(form) = &mut form {
             form.log_missing_programs();
             form.page = form.first_page();
+            form.offer_cars();
         }
         // A saved folder that does not load says why.
         let error = match (&form, &folder) {
@@ -326,6 +327,7 @@ impl App {
                 form.set_monitor(window);
                 form.log_missing_programs();
                 form.page = self.form.as_ref().map_or_else(|| form.first_page(), |f| f.page);
+                form.offer_cars();
                 self.form = Some(form);
                 self.error.clear();
             }

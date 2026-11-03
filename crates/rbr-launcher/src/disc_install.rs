@@ -735,9 +735,9 @@ impl DiscSetup {
                             "The Richard Burns Rally disc image",
                         ),
                         (
-                            "NGP",
+                            "NGP (optional)",
                             &mut self.ngp,
-                            "empty: downloaded from gvrc.de; or the NGP package's .7z or folder",
+                            "downloaded from gvrc.de; or choose the NGP package's .7z or folder",
                             "The NGP 7 package",
                         ),
                     ];

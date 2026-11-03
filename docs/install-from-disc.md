@@ -15,7 +15,8 @@ gvrc.de itself. You need nothing but the launcher.
 
 Next to the game folder's **Browse…** (at the first start, and on the **Settings** page) is **Set up from the
 disc…**. It asks for:
-- the disc: type its path or press **Choose…**; the same for NGP, or leave it empty to download it;
+- the disc: type its path or press **Choose…**;
+- NGP (optional): leave it empty to download it, or choose your copy;
 - the game folder, by default `~/Games/Richard Burns Rally`: it must be new or empty.
 
 **Set up** runs it, with a progress line and **Cancel**. When it is done, the new folder becomes the game folder. An
@@ -64,4 +65,6 @@ After the command line, give OUT as the game folder at the first start, or later
 Setup includes `Plugins/NGP.dll`, which the launcher finds automatically. If **NGP DLL** is missing or unsupported,
 use its **Browse…** button to select the 7.4.778 package's DLL.
 
-NGP's package brings NGP's physics but no NGP cars. Add them on the **Settings** page with **Download cars…**.
+NGP's package brings NGP's physics but no NGP cars. While the game has none, the launcher opens on the **Settings**
+page with gvrc.de's car list: tick the cars you want and press **Download N cars**. **Download cars…** there opens
+it again later.

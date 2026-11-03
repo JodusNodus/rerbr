@@ -468,6 +468,11 @@ impl Form {
         }
     }
 
+    /// Opens gvrc.de's car list ([`Form::download_cars_panel`]).
+    pub fn open_car_list(&mut self) {
+        self.downloads.open = true;
+    }
+
     /// "Download cars…", which opens and closes the list ([`Form::download_cars_panel`]).
     pub fn download_cars_button(&mut self, ui: &mut egui::Ui) {
         let label = if self.downloads.open { "Hide the list" } else { "Download cars…" };
