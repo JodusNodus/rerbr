@@ -106,10 +106,12 @@ It looks in the usual places and offers the first install with NGP it finds. The
 - **Only the disc, and no Windows at all:** press **Set up from the disc…**. It builds the game folder from the disc
   image and the 1.02 patch, downloading NGP itself (or taking your copy). See [docs/install-from-disc.md](docs/install-from-disc.md).
 
-ReRBR requires NGP 7.4.778's `NGP.dll`. Settings finds the RSF or game folder's `Plugins/NGP.dll` automatically;
-if it is missing or a different version, use **Browse…** to select the 7.4.778 DLL from your NGP package.
+ReRBR requires NGP 7.4.778, the version its physics is verified against. Settings finds the RSF or game folder's
+`Plugins/NGP.dll` automatically; if it is missing or another version (RallySimFans has 7.5.779), press **Download NGP
+7.4.778…**. Its `NGP.dll` and `physics.rbz` go into `NGP 7.4.778/` in your files' folder (below), and the installed
+NGP stays as it is. Or use **Browse…** under Advanced to select the 7.4.778 DLL from your NGP package.
 
-ReRBR only reads the game folder, except for an NGP download you ask for. It never changes it otherwise.
+ReRBR only reads the game folder; it never changes it.
 
 ### Your files
 

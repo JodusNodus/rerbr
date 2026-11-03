@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use egui::{Color32, Id};
 
 use crate::disc_install::DiscSetup;
-use crate::pages::{fields, section, Page, GOOD, NO_NGP, WARN};
+use crate::pages::{fields, section, Page, GOOD, NGP_WHY, NO_NGP, WARN};
 use crate::{controls_page, install, job, Form};
 
 /// The RSF field's egui id: its folder is scanned when it loses focus.
@@ -60,19 +60,19 @@ impl Form {
         let can_download = self.can_download_ngp();
         let mut download = false;
         fields(ui, "row ngp", |ui| {
-            tick(ui, "NGP", ngp_ok, |ui| match (has_ngp, &dll_problem) {
-                (true, None) => {
-                    ui.label(&self.ngp_label);
-                    download = can_download && ui.button("Download NGP 7.4.778…").clicked();
-                }
-                (has, problem) => {
-                    ui.label(match problem {
-                        Some(problem) if has => problem.as_str(),
-                        _ => NO_NGP,
-                    });
-                    download = can_download && ui.button("Download NGP…").clicked();
-                }
-            })
+            tick(ui, "NGP", ngp_ok, |ui| {
+                ui.label(match (has_ngp, &dll_problem) {
+                    (true, None) => self.ngp_label.as_str(),
+                    (true, Some(problem)) => problem.as_str(),
+                    (false, _) => NO_NGP,
+                });
+                download = can_download && ui.button("Download NGP 7.4.778…").clicked();
+            });
+            if !ngp_ok {
+                ui.label("");
+                ui.weak(NGP_WHY);
+                ui.end_row();
+            }
         });
         if download {
             self.ask_download_ngp();

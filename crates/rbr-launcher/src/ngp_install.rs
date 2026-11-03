@@ -1,11 +1,11 @@
 //! Installing NGP 7.4.778's package into a game folder, as NGP's own install does: `Plugins/` and `AudioFMOD/`,
 //! and `physics.rbz` in place of the retail one (the retail archive kept once as `physics.rbz.bak`). The disc setup
-//! (`disc_install`) and the gvrc.de download (`gvrc`) install through [`add_ngp`]; a game folder that keeps its own
-//! NGP takes only the DLL and the archive through [`add_ngp_to`].
+//! (`disc_install`) and `rerbr --download-ngp GAME` install through [`add_ngp`]. The Settings page's download keeps
+//! only the DLL and the archive, in the player's folder ([`KEPT`], [`add_ngp_to`]), and changes no game folder.
 
 use std::fs;
 use std::io::{Cursor, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use rbr_formats::rbz;
@@ -13,6 +13,18 @@ use rbr_formats::rbz;
 use crate::archive::{open_seven, safe_path};
 use crate::disc_install::{require, with_folders, write_to, Reporter};
 use crate::job::Report;
+
+/// The folder in the player's folder with NGP 7.4.778's `NGP.dll` and `physics.rbz` ([`add_ngp_to`]).
+pub(crate) const KEPT: &str = "NGP 7.4.778";
+
+/// The kept copy in the player's folder `here` ([`KEPT`]), when its `NGP.dll` is 7.4.778's and its `physics.rbz` is
+/// there: its DLL and archive.
+pub(crate) fn kept(here: &Path) -> Option<(PathBuf, PathBuf)> {
+    let dir = here.join(KEPT);
+    let (dll, physics) = (dir.join("NGP.dll"), dir.join("physics.rbz"));
+    let supported = fs::read(&dll).is_ok_and(|b| rbr_formats::ngp::version(&b).is_some());
+    (supported && physics.is_file()).then_some((dll, physics))
+}
 
 /// A failed or cancelled install's message.
 type Fail = String;
@@ -141,7 +153,7 @@ pub(crate) fn supported_dll(files: &[(String, Vec<u8>)]) -> Result<&[u8], Fail> 
 }
 
 /// Writes only the `NGP.dll` and `physics.rbz` of the NGP package at `package` into the folder `to`, when it is NGP
-/// 7.4.778's: for a game folder that keeps its own NGP (RallySimFans', or another version), which is left as it is.
+/// 7.4.778's: the Settings page's download, which leaves the game folder (and any NGP in it) as it is.
 pub fn add_ngp_to(package: &Path, to: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<(), Fail> {
     let mut reporter = Reporter::new(report, cancel);
     reporter.step("Reading NGP")?;
@@ -227,7 +239,7 @@ mod tests {
     }
 
     /// With the real NGP 7.4.778 DLL (`RBR_NGP_DLL`, or the data's): installed over a retail folder, the retail archive
-    /// kept once, and installed again over NGP's own.
+    /// kept once, and installed again over NGP's own; kept in the player's folder, found there while it is 7.4.778's.
     #[test]
     fn ngp_is_installed_over_a_retail_folder() {
         let data = rbr_formats::data::Data::from_env().unwrap_or_else(|| rbr_formats::data::Data::new("", None));
@@ -250,10 +262,15 @@ mod tests {
         assert_eq!(add_ngp(&package, &game, &|_| {}, &AtomicBool::new(false)), Ok(3));
         assert_eq!(fs::read(game.join("physics.rbz.bak")).unwrap(), physics_rbz(false));
         assert!(add_ngp(&package, &game, &|_| {}, &AtomicBool::new(true)).unwrap_err().ends_with("cancelled"));
-        let to = dir.join("player/NGP 7.4.778");
+        let player = dir.join("player");
+        let to = player.join(KEPT);
+        assert_eq!(kept(&player), None);
         assert_eq!(add_ngp_to(&package, &to, &|_| {}, &AtomicBool::new(false)), Ok(()));
         assert_eq!(fs::read(to.join("NGP.dll")).unwrap(), dll);
         assert_eq!(fs::read(to.join("physics.rbz")).unwrap(), physics_rbz(true));
+        assert_eq!(kept(&player), Some((to.join("NGP.dll"), to.join("physics.rbz"))));
+        fs::write(to.join("NGP.dll"), b"another version").unwrap();
+        assert_eq!(kept(&player), None);
         fs::remove_dir_all(&dir).unwrap();
     }
 }

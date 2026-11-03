@@ -142,19 +142,24 @@ pub struct Issue {
 pub enum Fix {
     /// The Settings page, for the game folder, the paths and the cars.
     Settings,
+    /// The Settings page with NGP 7.4.778's download asked (`Form::ask_download_ngp`).
+    DownloadNgp,
 }
 
 impl Fix {
     pub fn label(self) -> &'static str {
         match self {
             Fix::Settings => "Open Settings",
+            Fix::DownloadNgp => "Download NGP 7.4.778",
         }
     }
 }
 
 /// What the launcher says without NGP's archive.
-pub const NO_NGP: &str = "This game folder has no NGP. Install NGP 7 into it (RallySimFans includes it), or choose \
-                          a game folder that has it.";
+pub const NO_NGP: &str = "This game folder has no NGP; ReRBR needs NGP 7.4.778.";
+/// Why ReRBR needs NGP 7.4.778 and what its download changes, under the Settings page's NGP row.
+pub const NGP_WHY: &str = "ReRBR's physics is verified against NGP 7.4.778 only. Its download keeps NGP.dll and \
+                           physics.rbz in ReRBR's folder; nothing installed changes.";
 /// What the launcher says without a car NGP drives.
 pub const NO_CARS: &str = "No cars yet. Download cars from gvrc.de's NGP car packs on the Settings page, or \
                           choose a RallySimFans game folder.";
@@ -187,15 +192,21 @@ impl Form {
         }
     }
 
-    /// What the install lacks, on every page's status line: a missing program, NGP's archive or a car NGP drives;
-    /// with the fix when there is one.
+    /// What the install lacks, on every page's status line: a missing program, NGP's archive or DLL, or a car NGP
+    /// drives; with the fix when there is one.
     pub fn readiness(&self) -> Option<Issue> {
         if self.missing_programs().next().is_some() {
             return Some(Issue { text: INCOMPLETE.into(), fix: None });
         }
-        self.no_ngp().map(|text| Issue { text, fix: Some(Fix::Settings) }).or_else(|| {
-            self.ngp_dll.problem(&self.data, &self.rsf()).map(|text| Issue { text, fix: Some(Fix::Settings) })
-        })
+        // NGP's archive or DLL missing: its download when the game folder takes one.
+        let fix = Some(if self.can_download_ngp() { Fix::DownloadNgp } else { Fix::Settings });
+        if self.ngp_revision.is_none() {
+            return Some(Issue { text: NO_NGP.into(), fix });
+        }
+        if let Some(text) = self.ngp_dll.problem(&self.data, &self.rsf()) {
+            return Some(Issue { text, fix });
+        }
+        self.catalog.cars.is_empty().then(|| Issue { text: NO_CARS.into(), fix: Some(Fix::Settings) })
     }
 
     /// The page a fresh start opens on: Settings while something is missing, else Drive.
@@ -225,6 +236,10 @@ impl Form {
     pub fn apply(&mut self, fix: Fix) {
         match fix {
             Fix::Settings => self.page = Page::Settings,
+            Fix::DownloadNgp => {
+                self.page = Page::Settings;
+                self.ask_download_ngp();
+            }
         }
     }
 
@@ -341,8 +356,8 @@ impl Form {
                 ui.horizontal(|ui| match &readiness {
                     Some(issue) => {
                         ui.colored_label(WARN, format!("⚠ {}", issue.text));
-                        // Not the button to the page shown.
-                        if let Some(fix) = issue.fix.filter(|f| !(*f == Fix::Settings && self.page == Page::Settings)) {
+                        // Not on the Settings page, which has the fixes in its rows.
+                        if let Some(fix) = issue.fix.filter(|_| self.page != Page::Settings) {
                             if ui.button(fix.label()).clicked() {
                                 self.apply(fix);
                             }

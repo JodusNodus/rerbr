@@ -6,6 +6,19 @@ use std::time::SystemTime;
 
 use rbr_formats::{cars, data::Data, ngp};
 
+/// What the launcher says of an `NGP.dll` it does not read, of `FileVersion` `version`, short for the status line
+/// (`pages::NGP_WHY` says why on the Settings page).
+fn unsupported(version: Option<&str>) -> String {
+    match version {
+        Some(v) if v.starts_with("7.5.779") => "This NGP.dll is RallySimFans' 7.5.779; ReRBR needs NGP 7.4.778.".into(),
+        Some(v) if v.starts_with("7.4.778") => {
+            "This NGP.dll is a changed NGP 7.4.778; ReRBR needs the original.".into()
+        }
+        Some(v) => format!("This NGP.dll is NGP {v}; ReRBR needs NGP 7.4.778."),
+        None => "This file is not NGP 7.4.778's NGP.dll.".into(),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct File {
     path: PathBuf,
@@ -41,7 +54,7 @@ impl Choice {
     /// Hash only when the selected file or its metadata changes, rather than on every UI frame.
     pub fn problem(&self, data: &Data, rsf: &str) -> Option<String> {
         let Some(path) = self.resolved(data, rsf) else {
-            return Some("Choose NGP.dll on the Settings page; no installed plugin was found.".into());
+            return Some("No NGP.dll found; ReRBR needs NGP 7.4.778.".into());
         };
         let stamp = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().ok()));
         let file = File { path, stamp };
@@ -49,10 +62,13 @@ impl Choice {
         if let Some((_, problem)) = checked.as_ref().filter(|(old, _)| *old == file) {
             return problem.clone();
         }
-        let problem = std::fs::read(&file.path)
-            .map_err(|e| format!("{}: {e}", file.path.display()))
-            .and_then(|bytes| ngp::validate(&bytes))
-            .err();
+        let problem = match std::fs::read(&file.path) {
+            Ok(bytes) => {
+                let found = ngp::compat::identify(&bytes);
+                found.supported.is_none().then(|| unsupported(found.file_version.as_deref()))
+            }
+            Err(e) => Some(format!("{}: {e}", file.path.display())),
+        };
         *checked = Some((file, problem.clone()));
         problem
     }
@@ -116,10 +132,17 @@ mod tests {
         let game = root("missing");
         let data = Data::new(&game, None);
         let choice = Choice::default();
-        assert!(choice.problem(&data, "").unwrap().contains("Choose NGP.dll"));
+        assert_eq!(choice.problem(&data, "").unwrap(), "No NGP.dll found; ReRBR needs NGP 7.4.778.");
         std::fs::write(game.join("Plugins/NGP.dll"), b"another version").unwrap();
-        assert!(choice.problem(&data, "").unwrap().contains("unsupported NGP.dll"));
+        assert_eq!(choice.problem(&data, "").unwrap(), "This file is not NGP 7.4.778's NGP.dll.");
         std::fs::remove_dir_all(game).unwrap();
+    }
+
+    #[test]
+    fn names_the_version_found() {
+        assert_eq!(unsupported(Some("7.5.779.508")), "This NGP.dll is RallySimFans' 7.5.779; ReRBR needs NGP 7.4.778.");
+        assert!(unsupported(Some("7.4.778.0")).contains("a changed NGP 7.4.778"));
+        assert_eq!(unsupported(Some("7.6.800.0")), "This NGP.dll is NGP 7.6.800.0; ReRBR needs NGP 7.4.778.");
     }
 
     #[test]
@@ -134,7 +157,7 @@ mod tests {
         let choice = Choice::new(target.display().to_string());
         assert_eq!(choice.problem(&data, ""), None);
         std::fs::write(&target, b"unsupported").unwrap();
-        assert!(choice.problem(&data, "").unwrap().contains("unsupported NGP.dll"));
+        assert_eq!(choice.problem(&data, "").unwrap(), "This file is not NGP 7.4.778's NGP.dll.");
         std::fs::remove_dir_all(game).unwrap();
     }
 }
