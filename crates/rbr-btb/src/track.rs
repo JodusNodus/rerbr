@@ -164,6 +164,14 @@ impl Track {
     }
 }
 
+/// Whether `folder` is a BTB track folder: a `track.ini` with the `Objects.zip`, `Textures.zip` and
+/// `objectlist.ini` of its scenery beside it (file names matched ignoring case).
+pub fn is_track_folder(folder: &Path) -> bool {
+    ["track.ini", "objectlist.ini", "Objects.zip", "Textures.zip"]
+        .iter()
+        .all(|file| stage_files::in_dir(folder, file).is_some())
+}
+
 /// Every `RX_CONTENT/Tracks/*` folder under the RSF install `root`: the ones with a `track.ini` open, the rest are
 /// `Err` with the folder. Sorted by folder name.
 pub fn scan(root: &Path) -> Vec<Result<Track, (PathBuf, String)>> {
