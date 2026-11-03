@@ -171,7 +171,9 @@ fn car_display(key: &str, cars: &[Car]) -> String {
 /// Writes `cars` into the settings file's `[ffb_cars]` section, the rest of the file kept.
 fn write_ffb_cars(settings: &Path, cars: &ffb::CarSensitivity) {
     let file = std::fs::read_to_string(settings).unwrap_or_default();
-    let _ = std::fs::write(settings, cars.replace_in(&file));
+    if let Err(e) = std::fs::write(settings, cars.replace_in(&file)) {
+        eprintln!("launcher: {}: {e}", settings.display());
+    }
 }
 
 /// What the import does.
