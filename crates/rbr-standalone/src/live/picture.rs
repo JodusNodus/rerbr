@@ -202,7 +202,7 @@ impl Picture {
             splits: splits.to_bytes(),
             steering: Steering {
                 force: steering_ffb::force(mem, car),
-                surface: rbr_physics::ngp::ffb::surface_index(rbr_physics::ngp::ffb::surface(mem, car)) as u32,
+                surface: Some(rbr_physics::ngp::ffb::surface_index(rbr_physics::ngp::ffb::surface(mem, car)) as u32),
             }
             .to_bytes(),
             scenery: active_interactive_poses(mem, interactive_handle_end),

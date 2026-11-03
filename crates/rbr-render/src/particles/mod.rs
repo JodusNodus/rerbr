@@ -214,7 +214,10 @@ impl Particles {
         let tyres = Tyres::new(&file, &sim, 0x5eed_0002);
         let car_effects = CarEffects::new(&mut sim);
         let damping = Damping::new(&file, &sim);
-        let marks = rbr_formats::skidmarks::for_stage(data, stage)?.map(SkidMarks::new);
+        // The skid table is the same file's (a BTB stage's too: looked up again from the stage, it was not found).
+        let marks = rbr_formats::skidmarks::parse(&String::from_utf8_lossy(&text))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let marks = Some(SkidMarks::new(marks));
         let ground = ground.or_else(|| load_ground(&maps, stage, selection).map(Arc::new));
         let has = |name: &str| file.emitter(name).is_some();
         let (has_rain, has_snow) = (has("g_rain_emitter"), has("g_snow_emitter"));

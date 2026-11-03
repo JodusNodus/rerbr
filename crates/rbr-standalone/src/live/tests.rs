@@ -120,7 +120,7 @@ fn ngp_ffb_sensitivity_reshapes_the_force_and_nothing_else() {
                 let records = records::read_records(&mut &rest[..]).unwrap();
                 let (_, force) = records.iter().find(|(tag, _)| *tag == rbr_recording::ffb::FFB1).unwrap();
                 let steering = rbr_recording::ffb::Steering::from_payload(force).unwrap();
-                assert_eq!(steering.surface, 2, "snow");
+                assert_eq!(steering.surface, Some(2), "snow");
                 let force = steering.force;
                 out.push((answer[..FRAME_BYTES].to_vec(), force));
                 last = Some(answer);

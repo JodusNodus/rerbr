@@ -8,7 +8,7 @@
 
 use crate::dat;
 use crate::data::Data;
-use crate::ini::{self, ParseError};
+use crate::ini::ParseError;
 use std::str::FromStr;
 
 /// One `Skidmarks` record: the surface it lays a mark on and how the mark looks.
@@ -55,44 +55,6 @@ impl Skidmarks {
     pub fn alias(&self, material: u32) -> u32 {
         self.aliases.iter().rev().find(|&&(from, _)| from == material).map_or(material, |&(_, to)| to)
     }
-}
-
-/// The skid table of a stage: the particle file its `Maps/Tracks.ini` entry names (`Particles`, for example
-/// `Maps\ps_japan`), read from the install (or the patch). `Ok(None)` when no entry names the stage or the entry has no
-/// particle file. The stage name is the track's: `track-54_E` is the `track-54` entry. A stage in a folder of its own
-/// (`stage_files`) names its particle file in its `Tracks<id>.ini` ([`crate::rsf::Stage::particle_file`]).
-pub fn for_stage(data: &Data, stage: &str) -> Result<Option<Skidmarks>, String> {
-    // A stage folder's own `Tracks<id>.ini` (RallySimFans).
-    if let Some(folder) = crate::stage_files::folder(stage) {
-        let Some(path) = crate::rsf::open(folder)?.particle_file(data, false) else { return Ok(None) };
-        // The game's `.ini` reader takes bytes (`GetPrivateProfileStringA`); an RSF-added line in another code page
-        // must not fail the whole file.
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let text = String::from_utf8_lossy(&bytes);
-        return parse(&text).map(Some).map_err(|e| format!("{}: {e}", path.display()));
-    }
-    let Some(tracks) = data.resolve("Maps\\Tracks.ini") else {
-        return Err("no Maps\\Tracks.ini".to_owned());
-    };
-    let bytes = std::fs::read(&tracks).map_err(|e| format!("{}: {e}", tracks.display()))?;
-    let text = String::from_utf8_lossy(&bytes);
-    let sections = ini::parse(&text).map_err(|e| format!("{}: {e}", tracks.display()))?;
-    let names_stage = |section: &ini::Section| {
-        section
-            .get("TrackName")
-            .map(|name| name.trim_matches('"'))
-            .and_then(|name| name.rsplit('\\').next())
-            .is_some_and(|track| stage == track || stage.strip_prefix(track).is_some_and(|rest| rest.starts_with('_')))
-    };
-    let Some(particles) = sections.iter().find(|s| names_stage(s)).and_then(|s| s.get("Particles")) else {
-        return Ok(None);
-    };
-    let file = particles.trim_matches('"');
-    let Some(path) = data.resolve(&format!("{file}.ini")) else {
-        return Err(format!("no {file}.ini"));
-    };
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    parse(&text).map(Some).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// The bytes of `skidmarks.dds`, from the `Textures/particles.dat` archive.
@@ -272,18 +234,6 @@ mod tests {
     #[test]
     fn a_file_without_the_section_is_an_error() {
         assert!(parse("version3\r\n").is_err());
-    }
-
-    /// The stage's table comes from its `Tracks.ini` entry: `track-54_E` is Japan's (`Maps\ps_japan`), with 5 records.
-    #[test]
-    fn a_stage_finds_its_particle_file() {
-        let Some(data) = Data::from_env() else {
-            eprintln!("skipping: RBR_DATA not set");
-            return;
-        };
-        let table = for_stage(&data, "track-54_E").expect("tracks").expect("japan");
-        assert_eq!(table.records.len(), 5);
-        assert_eq!(for_stage(&data, "no-such-stage").expect("tracks"), None);
     }
 
     /// Every retail `Maps/PS_*.ini`: the record counts from rbr-recomp `notes/marks-sound-ghost.md` 1.1, the `_low` files with
