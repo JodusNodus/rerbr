@@ -203,6 +203,15 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - `lbs::parse` accepts the stub `(1, 0)` chunk (a zero count, no sky word) so the boot reads the start location; `rbr-standalone --surface gravel|tarmac|snow` is the surface override (a stage that plays under another map's files).
 - Launcher: a BTB stage's map number is its RSF id (`ids`), else `1_000_000 + FNV(folder) % 1_000_000`, and its weathers are map 41's (`Map::weather_map`); Start passes `--surface` and no `--saves`/`--profile` (the records would be map 41's), so there are no records or ghosts for BTB stages.
 - Autopilot drives (`--autopilot --boot`, NGP car 2, row 98) finish Hokkara Gravel and Pirttikulma snow with their splits (2026-11-03); on Ulu Karagita the autopilot leaves the faint savanna track at 3262 m at some speeds (12, 14, 24 m/s; 18 passes): the collision there is smooth and the `.col` the cache's.
+- Particles (ours, 2026-11-03): map 41's `PS_MontBlanc` handles only tarmac and grass, so a gravel BTB stage threw no
+  dust and the car stayed clean (Kuohu's surfaces 13, 17, 21, 41, 49 have no handler or alias in it). The particle
+  file is the `track.ini` `particles=` (2 folders: `PS_Arctic`, `PS_USA`), else `PS_British` on gravel, RSF's
+  `PS_BTBSnow` on snow and map 41's on tarmac (`particles::btb_particles`; all 72 folders read and handle their
+  gravel, test `btb_stages_throw_their_surfaces`). RSF's `PS_BTBTarmac` does not read: 112 material aliases declared,
+  116 listed (4 tab-separated lines added by hand), and nothing in the install names it or `PS_BTBSnow`, so how RSF
+  picks a BTB stage's particles is not known. Until then the skid table was looked up again from the stage folder
+  (`skidmarks::for_stage`, removed), which failed on a BTB folder (`no Tracks<id>.ini`) and dropped every particle
+  of a BTB stage; it is now the chosen file's.
 - The `.fnc` fences and the characters of retail map 41 are placed where map 41 has them, as in the original; the retail `.fnc`'s posts do not fit a BTB road.
 
 ## Drawing

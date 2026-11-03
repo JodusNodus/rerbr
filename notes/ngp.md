@@ -225,6 +225,16 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
 - Steering force travels in FFB1 (`rbr_recording::ffb`), not HUD2.
 - Ours: the viewer's pause menu and end page hold the wheel at 0 (`Wheel::set_paused`): a step record already on its
   way when the process pauses would otherwise set the last driving force again.
+- Per car (ours, 2026-11-03): each car's own sensitivities live in the launcher settings' `[ffb_cars]`
+  (`rbr_render::ffb::CarSensitivity`, by `camera_prefs::car_key`; an older `[ffb]` `sensitivity_car<id>` reads as
+  `rsf-<id>`), set on the launcher's Controls page ("Force feedback per car", with a one-off import of
+  `rallysimfans_personal.ini`'s) and on the pause menu's Force feedback page (`hud::ffb_page`, the drive's surface
+  only). The launcher passes the car's own as `--ffb-sensitivity`. A change in the pause menu takes effect at once in
+  the viewer: FFB1 carries the surface NGP's car took its percentage by (`def + 0x44c0`, `ngp::ffb::surface`; snow on
+  map 11, live test), and the wheel reshapes the force from the percentage the car started with `p0` to the new `p`,
+  `1 - (1 - |f|)^(p0 / p)` (`ffb::reshape`, exact for NGP's curve: `S` scales by `p / p0`); NGP's car keeps `p0`
+  until the next drive, restarts included. A Yaris (RSF car 107) at the global 280 % gravel was heavier than RSF's
+  own 352 % for it (user report, 2026-11-03).
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only
