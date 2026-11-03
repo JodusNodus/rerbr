@@ -14,7 +14,7 @@
 //! - `lbs`: a `(2, 11)` start chunk (identity matrix with the spawn translation, the position twice, `(0, angleZ,
 //!   0)` rotation), then empty `(2, 10)` and `(1, 0)` chunks.
 
-use super::{DrivelinePoint, PaceNote, Spawn};
+use crate::track::{DrivelinePoint, PaceNote, Spawn};
 
 fn put_u16(out: &mut Vec<u8>, v: u16) {
     out.extend_from_slice(&v.to_le_bytes());
@@ -37,7 +37,7 @@ fn chunk(out: &mut Vec<u8>, kind: (u32, u32), payload: &[u8]) {
 }
 
 /// The `(3, 0x14)` driveline chunk plus the `(3, 0x16)` collision chunk (`ksh_count` meshes in `ksh`, the raw
-/// `ksh.ksh` mesh bytes without their count word). Parses with [`crate::trk::parse`].
+/// `ksh.ksh` mesh bytes without their count word). Parses with [`rbr_formats::trk::parse`].
 pub fn trk(points: &[DrivelinePoint], ksh_count: u32, ksh: &[u8]) -> Vec<u8> {
     let mut driveline = Vec::with_capacity(4 + 32 * points.len());
     put_u32(&mut driveline, points.len() as u32);
@@ -75,7 +75,7 @@ pub const MAT_NAMES: [&str; 9] = [
 ];
 
 /// The `.mat` file: the nine entries with identical runs, one 264-byte run per surface map. Parses with
-/// [`crate::mat::parse`].
+/// [`rbr_formats::mat::parse`].
 pub fn mat(maps: &[[u8; 256]]) -> Vec<u8> {
     let mut out = Vec::with_capacity(4 + 9 * (12 + 4 + maps.len() * 264));
     put_u32(&mut out, MAT_NAMES.len() as u32);
@@ -101,7 +101,7 @@ const DLS_TABLE_2: [u32; 14] =
 const DLS_TABLE_3: [u32; 6] = [3333, 0xffff_ffff, 1092616192, 0, 0, 1065353216];
 
 /// The `.dls` file with the first `notes.len()` pace notes as the `Driveline` set's marker keys (`tag`, `flag`,
-/// `f32` distance). Parses with [`crate::dls::parse`] and [`crate::markers::parse`]..
+/// `f32` distance). Parses with [`rbr_formats::dls::parse`] and [`rbr_formats::markers::parse`]..
 pub fn dls(notes: &[PaceNote]) -> Vec<u8> {
     let base = 168 + 12 * notes.len() as u32;
     let mut out = Vec::with_capacity(base as usize + 131);
@@ -155,7 +155,7 @@ pub fn dls(notes: &[PaceNote]) -> Vec<u8> {
 
 /// The `.lbs` file: the `(2, 11)` start chunk (identity matrix with the spawn translation, the position twice, the
 /// `(0, angleZ, 0)` rotation), then the empty `(2, 10)` visibility and `(1, 0)` geometry chunks. Parses with
-/// [`crate::lbs::parse`].
+/// [`rbr_formats::lbs::parse`].
 pub fn lbs(spawn: &Spawn) -> Vec<u8> {
     let translation = [spawn.matrix[12] as f32, spawn.matrix[13] as f32, spawn.matrix[14] as f32];
     let mut start = Vec::with_capacity(88);

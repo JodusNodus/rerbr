@@ -5,7 +5,7 @@
 //! worker's scope): the test passes the cached ones through, so it checks the driveline encoding and the framing.
 //! Four folders build it empty.
 
-use rbr_formats::btb::{self, build};
+use rbr_btb::{classic, ids, track};
 use rbr_formats::{dls, lbs, markers, mat, trk};
 use std::path::{Path, PathBuf};
 
@@ -17,9 +17,9 @@ fn cache(folder: &Path, file: &str) -> Option<Vec<u8>> {
     std::fs::read(folder.join("CACHE").join(file)).ok()
 }
 
-fn tracks() -> Option<Vec<Result<btb::Track, (PathBuf, String)>>> {
+fn tracks() -> Option<Vec<Result<track::Track, (PathBuf, String)>>> {
     let root = root()?;
-    let tracks = btb::scan(&root);
+    let tracks = track::scan(&root);
     if tracks.is_empty() {
         eprintln!("skipping: {}: no BTB stage folders", root.display());
         return None;
@@ -82,7 +82,7 @@ fn cached_builds_match_and_parse() {
         // trk: the driveline chunk from the sources, the collision chunk from the cached `ksh.ksh`.
         let driveline = track.driveline().unwrap();
         let (ksh_count, ksh) = ksh_of(&want_trk);
-        let built_trk = build::trk(&driveline.points, ksh_count, &ksh);
+        let built_trk = classic::trk(&driveline.points, ksh_count, &ksh);
         assert_eq!(built_trk, want_trk, "{}: trk.trk", track.name);
         if ksh.is_empty() {
             assert_eq!(ksh_count, 0, "{}: empty ksh with nonzero count", track.name);
@@ -91,13 +91,13 @@ fn cached_builds_match_and_parse() {
 
         // mat: the nine identical entries from the surface maps; missing maps and rows read zero.
         let maps = track.surface_maps().unwrap();
-        let built_mat = build::mat(&maps.maps);
+        let built_mat = classic::mat(&maps.maps);
         assert_eq!(Some(built_mat.clone()), want_mat, "{}: mat.mat", track.name);
         mat::parse(&built_mat).unwrap_or_else(|e| panic!("{}: built mat: {e}", track.name));
 
         // dls: the fixed template with the first `count` pace notes as keys.
         let notes = track.pace_notes().unwrap();
-        let built_dls = build::dls(&notes.notes);
+        let built_dls = classic::dls(&notes.notes);
         assert_eq!(Some(built_dls.clone()), want_dls, "{}: dls.dls", track.name);
         dls::parse(&built_dls).unwrap_or_else(|e| panic!("{}: built dls: {e}", track.name));
         let stage_markers = markers::parse(&built_dls).unwrap();
@@ -108,7 +108,7 @@ fn cached_builds_match_and_parse() {
         // prefix; the trailing 20 bytes are asserted as framing below. The game never dispatches these stubs:
         // BTB geometry comes from the `.x` meshes through the plugin's own scene.
         let spawn = track.spawn().unwrap();
-        let built_lbs = build::lbs(&spawn);
+        let built_lbs = classic::lbs(&spawn);
         assert_eq!(Some(built_lbs.clone()), want_lbs, "{}: lbs.lbs", track.name);
         let prefix = &built_lbs[..124];
         let lbs = lbs::parse(prefix).unwrap_or_else(|e| panic!("{}: built lbs: {e}", track.name));
@@ -150,7 +150,7 @@ fn btb_stage_ids_map() {
         eprintln!("skipping: RBR_RSF not set");
         return;
     };
-    let (matched, unmatched) = btb::ids::match_ids(&root);
+    let (matched, unmatched) = ids::match_ids(&root);
     for (folder, id, source) in &matched {
         eprintln!("{id} {source:?} {}", folder.file_name().unwrap().to_string_lossy());
     }

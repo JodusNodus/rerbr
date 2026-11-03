@@ -1,4 +1,4 @@
-//! Bob's Track Builder (BTB) stages: the `RX_CONTENT/Tracks/<folder>/` folders of a RallySimFans install.
+//! The BTB stage sources in one `RX_CONTENT/Tracks/<folder>/`: the typed readers.
 //!
 //! Each folder holds the stage's sources: `track.ini` (`[INFO]` name, physics, author, version, splashscreen, date,
 //! comment, length), `spawn.ini` (`[SPAWN]` matrix and angles), `driveline.ini` (`[DRIVELINE]` count and `K<i>`
@@ -7,8 +7,8 @@
 //! (`[MAPS]` count and `[MAP<i>]` 16x16 surface grids), `pacenotes.ini` (`[PACENOTES]` count and `[P<i>]` notes),
 //! plus `Objects.zip`/`Textures.zip` (the `.x` meshes, read by another worker). Some folders carry a `CACHE/`
 //! subfolder the RSF plugin `Plugins/rbr_rx.dll` wrote: `trk.trk`, `mat.mat`, `dls.dls` and `lbs.lbs` (the physics
-//! files the game loads), `col.col`, `ksh.ksh` and minimaps. The `CACHE` files are the oracle for [`build`]: the
-//! builders return bytes identical to the plugin's output. See `notes/formats.md` "BTB stages".
+//! files the game loads), `col.col`, `ksh.ksh` and minimaps. The `CACHE` files are the oracle for [`crate::classic`]:
+//! the builders return bytes identical to the plugin's output. See `notes/btb.md`.
 //!
 //! All text files are read as bytes and decoded lossily, as the game's `GetPrivateProfileStringA` reads bytes; some
 //! installs carry non-UTF-8 bytes in them. Section lookup is first-match, case-insensitive, and key lookup within a
@@ -20,10 +20,7 @@
 //! Numbers with BTB's French-locale decimal comma (`LODOut=2679,576`, `SpecularColor=0,4235294,...`,
 //! `colBox=0,15, 1, 0,15`) parse through [`decimal_floats`].
 
-pub mod build;
-pub mod ids;
-
-use crate::{ini, stage_files};
+use rbr_formats::{ini, stage_files};
 use std::path::{Path, PathBuf};
 
 /// One folder's read failure, kept raw where the plugin's meaning is unknown.

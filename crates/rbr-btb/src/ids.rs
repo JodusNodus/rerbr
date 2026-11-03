@@ -13,8 +13,8 @@
 //! and `Myttaala Gravel` (the json's `Myttäälä`, 1059, lacks `Gravel`; the personal ini's mojibake `Mytt..l..`
 //! matches neither exactly). Both are reported, not guessed.
 
-use crate::rsf::{stage_list, ListEntry};
-use crate::{ini, stage_files};
+use rbr_formats::rsf::{stage_list, ListEntry};
+use rbr_formats::{ini, stage_files};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
