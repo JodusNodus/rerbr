@@ -1,6 +1,6 @@
 //! The four physics files the RSF plugin `Plugins/rbr_rx.dll` builds from the BTB sources, byte-identical to its
 //! `CACHE/` output. Layouts below were read off the 19 cached folders of the local install (see
-//! `notes/formats.md` "BTB stages"); every builder's output parses with the matching reader (`trk`, `mat`,
+//! `notes/btb.md`); every builder's output parses with the matching reader (`trk`, `mat`,
 //! `markers`/`dls`, `lbs`).
 //!
 //! - `trk`: one `(3, 0x14)` driveline chunk (the first seven `K<i>` values as `f32`, the two `u16`s zero) and one
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn empty_dls_has_the_cached_length() {
-        // No notes: the 299-byte `.dls` of the `notes/formats.md` layout: 168 head bytes, no keys, 131 tail bytes.
+        // No notes: the 299-byte `.dls` of the `notes/btb.md` layout: 168 head bytes, no keys, 131 tail bytes.
         let file = dls(&[]);
         assert_eq!(file.len(), 299);
         assert_eq!(&file[file.len() - 19..file.len() - 9], b"Driveline\0");
