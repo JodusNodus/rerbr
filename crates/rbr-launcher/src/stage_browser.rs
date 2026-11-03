@@ -102,6 +102,8 @@ pub struct StageRow {
     pub author: Option<String>,
     /// A 1.02 stage, not a RallySimFans one.
     pub retail: bool,
+    /// A BTB stage (`crate::btb`): listed as experimental.
+    pub btb: bool,
     pub km: Option<f32>,
     /// 0 gravel, 1 tarmac, 2 snow.
     pub surface: u32,
@@ -126,7 +128,7 @@ impl StageRow {
         let name = map.name();
         let origin = match (&map.rsf, &map.btb) {
             (Some(_), _) => "rsf rallysimfans",
-            (None, Some(_)) => "rsf btb",
+            (None, Some(_)) => "rsf btb experimental",
             (None, None) => "retail 1.02",
         };
         let place = country.as_deref().map(|c| format!("{c} {}", country_name(c))).unwrap_or_default();
@@ -139,6 +141,7 @@ impl StageRow {
             country,
             author,
             retail: map.rsf.is_none() && map.btb.is_none(),
+            btb: map.btb.is_some(),
             km,
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
@@ -711,7 +714,11 @@ impl StageBrowser {
         ui.set_width(preview::WIDTH);
         ui.add_space(6.0);
         ui.label(RichText::new(&row.name).size(22.0).strong());
-        let origin = if row.retail { "RBR 1.02" } else { "RallySimFans" };
+        let origin = match (row.retail, row.btb) {
+            (true, _) => "RBR 1.02",
+            (false, true) => "RallySimFans BTB · experimental",
+            (false, false) => "RallySimFans",
+        };
         let mut subtitle = vec![row.country_name().to_owned(), origin.to_owned()];
         subtitle.extend(row.author.clone());
         ui.label(RichText::new(subtitle.join(" · ")).color(GREY));
@@ -774,6 +781,9 @@ impl Column {
 }
 
 /// A stage's row: its star, name, country or author, length and surface; the highlighted one filled.
+/// The colour of the experimental tag of a BTB stage's row.
+const EXPERIMENTAL: Color32 = Color32::from_rgb(230, 170, 60);
+
 fn draw_row(ui: &egui::Ui, rect: Rect, row: &StageRow, column: Column, cursor: bool, hovered: bool, favourite: bool) {
     let p = ui.painter();
     let c = columns(rect.left());
@@ -783,7 +793,18 @@ fn draw_row(ui: &egui::Ui, rect: Rect, row: &StageRow, column: Column, cursor: b
     paint_star(p, Pos2::new(c[0] + 6.0, y), favourite, hovered || cursor);
     let name = p.layout_no_wrap(row.name.clone(), FontId::proportional(15.0), text);
     let room = Rect::from_min_max(Pos2::new(c[1], rect.top()), Pos2::new(c[1] + NAME_WIDTH, rect.bottom()));
+    let name_width = name.size().x;
     p.with_clip_rect(room).galley(Pos2::new(c[1], y - name.size().y / 2.0), name, text);
+    if row.btb {
+        let at = Pos2::new((c[1] + name_width + 8.0).min(c[1] + NAME_WIDTH), y);
+        p.with_clip_rect(room).text(
+            at,
+            Align2::LEFT_CENTER,
+            "BTB · experimental",
+            FontId::proportional(11.5),
+            EXPERIMENTAL,
+        );
+    }
     let third = column.text(row);
     let room = Rect::from_min_max(Pos2::new(c[2], rect.top()), Pos2::new(c[3] - 56.0, rect.bottom()));
     let third_colour = if row.startable() { GREY } else { DIM };
