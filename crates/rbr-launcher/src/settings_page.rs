@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use egui::{Color32, Id};
 
 use crate::disc_install::DiscSetup;
-use crate::pages::{fields, section, Page, GOOD, NO_NGP, WARN};
+use crate::pages::{fields, section, Page, GOOD, NGP_WHY, NO_NGP, WARN};
 use crate::{controls_page, install, job, Form};
 
 /// The RSF field's egui id: its folder is scanned when it loses focus.
@@ -35,7 +35,10 @@ impl Form {
                     self.disc_setup.open |= ui.button("Set up from the disc…").clicked();
                     set = picked || edit.lost_focus();
                 });
-            })
+            });
+            ui.label("");
+            ui.weak(READ_ONLY);
+            ui.end_row();
         });
         if let Some(dir) = ui.add_enabled_ui(!running, |ui| self.disc_setup.ui(ui)).inner {
             self.install_folder = dir;
@@ -60,19 +63,19 @@ impl Form {
         let can_download = self.can_download_ngp();
         let mut download = false;
         fields(ui, "row ngp", |ui| {
-            tick(ui, "NGP", ngp_ok, |ui| match (has_ngp, &dll_problem) {
-                (true, None) => {
-                    ui.label(&self.ngp_label);
-                    download = can_download && ui.button("Download NGP 7.4.778…").clicked();
-                }
-                (has, problem) => {
-                    ui.label(match problem {
-                        Some(problem) if has => problem.as_str(),
-                        _ => NO_NGP,
-                    });
-                    download = can_download && ui.button("Download NGP…").clicked();
-                }
-            })
+            tick(ui, "NGP", ngp_ok, |ui| {
+                ui.label(match (has_ngp, &dll_problem) {
+                    (true, None) => self.ngp_label.as_str(),
+                    (true, Some(problem)) => problem.as_str(),
+                    (false, _) => NO_NGP,
+                });
+                download = can_download && ui.button("Download NGP 7.4.778…").clicked();
+            });
+            if !ngp_ok {
+                ui.label("");
+                ui.weak(NGP_WHY);
+                ui.end_row();
+            }
         });
         if download {
             self.ask_download_ngp();
@@ -185,18 +188,24 @@ fn tick(ui: &mut egui::Ui, label: &str, ok: bool, what: impl FnOnce(&mut egui::U
     ui.end_row();
 }
 
-/// The game folder's field, its Browse button and the disc setup's; whether a folder was set (Enter, the field
-/// left, picked, or set up from the disc).
+/// What ReRBR does with the game folder, under its field.
+const READ_ONLY: &str = "ReRBR only reads your game folder and never writes to it: its settings, saves and downloads \
+                         go to your files' folder.";
+
+/// The game folder's field, its Browse button and the disc setup's, and [`READ_ONLY`]; whether a folder was set
+/// (Enter, the field left, picked, or set up from the disc).
 pub fn folder_row(ui: &mut egui::Ui, folder: &mut String, setup: &mut DiscSetup) -> bool {
-    ui.horizontal(|ui| {
-        ui.label("Game folder");
-        let hint = "the Richard Burns Rally folder, with RichardBurnsRally_SSE.exe";
-        let edit = ui.add(egui::TextEdit::singleline(folder).hint_text(hint).desired_width(420.0));
-        let picked = ui.button("Browse…").clicked()
-            && job::pick_folder("Your Richard Burns Rally folder").map(|dir| *folder = dir).is_some();
-        setup.open |= ui.button("Set up from the disc…").clicked();
-        picked || edit.lost_focus()
-    })
-    .inner
-        | setup.ui(ui).map(|dir| *folder = dir).is_some()
+    let set = ui
+        .horizontal(|ui| {
+            ui.label("Game folder");
+            let hint = "the Richard Burns Rally folder, with RichardBurnsRally_SSE.exe";
+            let edit = ui.add(egui::TextEdit::singleline(folder).hint_text(hint).desired_width(420.0));
+            let picked = ui.button("Browse…").clicked()
+                && job::pick_folder("Your Richard Burns Rally folder").map(|dir| *folder = dir).is_some();
+            setup.open |= ui.button("Set up from the disc…").clicked();
+            picked || edit.lost_focus()
+        })
+        .inner;
+    ui.weak(READ_ONLY);
+    set | setup.ui(ui).map(|dir| *folder = dir).is_some()
 }

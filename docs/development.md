@@ -93,7 +93,7 @@ page.
 | --- | --- |
 | `RBR_DATA`, or `rerbr --data DIR` | the game data (the extracted retail install works too) |
 | `RBR_PATCH` | the 1.02 files |
-| Settings field `ngp_dll` (unsaved: `RBR_NGP_DLL`) | NGP's DLL. Empty, it follows the game folder's `Plugins/NGP.dll`; a missing or unsupported DLL blocks Start |
+| Settings field `ngp_dll` (unsaved: `RBR_NGP_DLL`) | NGP's DLL. Empty, it follows the game folder's `Plugins/NGP.dll`; a missing or unsupported DLL blocks Start. With this and `ngp_physics` empty, a downloaded copy in the player's folder (`NGP 7.4.778/`) is used |
 | Settings field `ngp_physics` (unsaved: `RBR_NGP_PHYSICS`) | NGP's archive |
 | Settings field `rsf_root` (unsaved: `RBR_RSF`) | the RallySimFans folder |
 

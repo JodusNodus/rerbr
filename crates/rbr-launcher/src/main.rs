@@ -216,8 +216,8 @@ content (rsfdata/, Maps/<id>-<name>/, Cars/).
   --extract-test-data DISC PATCH OUT
                             write the test data (docs/development.md) to OUT (new or empty) from the disc and the
                             1.02 patch: OUT/retail-install for RBR_DATA and OUT/Main_group for RBR_PATCH, and exit
-  --download-ngp GAME       download NGP 7.4.778 from gvrc.de into the game folder GAME (a Richard Burns Rally folder;
-                            replaces physics.rbz, keeping the retail one as physics.rbz.bak), and exit
+  --download-ngp            download NGP 7.4.778 from gvrc.de and keep its NGP.dll and physics.rbz in your files'
+                            NGP 7.4.778 folder (no game folder is changed), and exit
   --download-cars [NAME...] download the NGP cars NAME (part of a name from gvrc.de's list) from gvrc.de and add them
                             to the cars folder of your files, and exit; without names, print the list
   --import-codriver SRC     copy a co-driver download SRC (an extracted folder, a .zip/.7z archive, or a whole
@@ -261,9 +261,6 @@ fn run() -> Result<(), String> {
     if args.first().is_some_and(|a| a == "--extract-test-data") {
         return disc_install::test_data_cli(&args[1..]);
     }
-    if args.first().is_some_and(|a| a == "--download-ngp") {
-        return gvrc::ngp_cli(&args[1..]);
-    }
     let here = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
     let home = home::dir(&here);
     let notice = home::migrate(&here, &home).map_err(|e| format!("copying your files to {}: {e}", home.display()))?;
@@ -272,6 +269,10 @@ fn run() -> Result<(), String> {
     #[cfg(windows)]
     if _made {
         rbr_render::console::log_to(&home.join(rbr_render::console::LOG_FILE));
+    }
+    if args.first().is_some_and(|a| a == "--download-ngp") {
+        notice.iter().for_each(|n| eprintln!("launcher: {n}"));
+        return gvrc::ngp_cli(&home, &args[1..]);
     }
     if args.first().is_some_and(|a| a == "--download-cars") {
         notice.iter().for_each(|n| eprintln!("launcher: {n}"));

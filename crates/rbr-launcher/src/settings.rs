@@ -700,13 +700,14 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     settings.ngp_physics = settings.ngp_physics.or_else(|| env("RBR_NGP_PHYSICS"));
     settings.rsf_root = settings.rsf_root.or_else(|| env("RBR_RSF"));
     settings.ngp_dll = settings.ngp_dll.or_else(|| env("RBR_NGP_DLL"));
+    let here = paths.settings.parent().unwrap_or(Path::new(""));
+    use_kept_ngp(&mut settings, here);
     let mut catalog = Catalog::scan(&paths.data)?;
     catalog.maps.retain(catalog::is_listed);
     let rsf = or_folder(settings.rsf_root.as_deref(), &folder.rsf_root);
     if !rsf.is_empty() {
         catalog.set_rsf(&rsf);
     }
-    let here = paths.settings.parent().unwrap_or(Path::new(""));
     catalog.set_rsf_cars(&paths.data, &rsf, &here.join(crate::car_packs::DIR));
     catalog.offer(&catalog::ngp_cars(Path::new(&or_folder(settings.ngp_physics.as_deref(), &folder.ngp_physics))));
     let data = Data::new(&paths.data, paths.patch.clone());
@@ -718,6 +719,18 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     let startable = catalog.startable_maps(&season);
     eprintln!("launcher: {} cars, {}/{} maps startable", catalog.cars.len(), startable.len(), catalog.maps.len());
     Ok(Form::new(catalog, &settings, paths, data, season, folder))
+}
+
+/// With neither NGP path set, NGP 7.4.778's copy downloaded before, when the player's folder `here` keeps it
+/// (`ngp_install::kept`).
+fn use_kept_ngp(settings: &mut Settings, here: &Path) {
+    let unset = |field: &Option<String>| field.as_deref().is_none_or(|f| f.trim().is_empty());
+    if unset(&settings.ngp_dll) && unset(&settings.ngp_physics) {
+        if let Some((dll, physics)) = crate::ngp_install::kept(here) {
+            settings.ngp_dll = Some(dll.display().to_string());
+            settings.ngp_physics = Some(physics.display().to_string());
+        }
+    }
 }
 
 /// A path field's text, or the install folder's path when it is empty.
@@ -1018,6 +1031,29 @@ impl Form {
 mod tests {
     use super::*;
     use crate::command::{clock_args, render_scale_args};
+
+    /// NGP 7.4.778's kept copy (with the real DLL: `RBR_NGP_DLL`, or the data's) fills both NGP paths while
+    /// neither is set.
+    #[test]
+    fn a_kept_ngp_fills_unset_paths() {
+        let data = Data::from_env().unwrap_or_else(|| Data::new("", None));
+        let Some(dll) = rbr_formats::ngp::path(&data) else {
+            return;
+        };
+        let here = crate::test_dir("settings-kept-ngp");
+        let kept = here.join(crate::ngp_install::KEPT);
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::copy(dll, kept.join("NGP.dll")).unwrap();
+        std::fs::write(kept.join("physics.rbz"), b"archive").unwrap();
+        let mut settings = Settings::parse("[launcher]\nngp_dll = \n");
+        use_kept_ngp(&mut settings, &here);
+        assert_eq!(settings.ngp_dll, Some(kept.join("NGP.dll").display().to_string()));
+        assert_eq!(settings.ngp_physics, Some(kept.join("physics.rbz").display().to_string()));
+        let mut chosen = Settings { ngp_physics: Some("/games/ngp/physics.rbz".into()), ..Settings::default() };
+        use_kept_ngp(&mut chosen, &here);
+        assert_eq!((chosen.ngp_dll, chosen.ngp_physics.as_deref()), (None, Some("/games/ngp/physics.rbz")));
+        std::fs::remove_dir_all(&here).unwrap();
+    }
 
     #[test]
     fn an_empty_dll_choice_preserves_automatic_discovery() {
