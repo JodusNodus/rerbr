@@ -1,0 +1,26 @@
+name: Bug report
+description: Something in ReRBR doesn't work.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what happened and what you expected. Screenshots, a video or a log help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ReRBR version and system
+      description: The version is at the bottom of the Settings page.
+      placeholder: 0.1.0, Windows 11, RTX 3070
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I attached no game files (no NGP.dll, cars, stages or anything from the game folder).
+          required: true

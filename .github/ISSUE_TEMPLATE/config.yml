@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Known limitations
+    url: https://github.com/JodusNodus/rerbr#known-limitations
+    about: Things that are known not to work yet.
