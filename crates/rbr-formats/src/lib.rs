@@ -31,7 +31,8 @@
 //! (`AudioFMOD/<name>.bank`): their recordings and their events' parameter sheets (`notes/formats.md` "Audio").
 //!
 //! `stage_files` finds a stage's files, retail (`Maps/track-54_E.*`) or in a folder of its own; `rsf` reads the
-//! RallySimFans stage folders (`notes/formats.md` "RSF stages").
+//! RallySimFans stage folders (`notes/formats.md` "RSF stages"); `btb` reads the Bob's Track Builder stage
+//! sources and rebuilds their `trk`/`mat`/`dls`/`lbs` (`notes/formats.md` "BTB stages").
 //!
 //! `times` reads `misc/times.ini`, the default reference times of each stage (`notes/formats.md` "Saves and times").
 //!
@@ -53,6 +54,7 @@
 pub mod ai_ini;
 pub mod audio;
 pub mod bnk;
+pub mod btb;
 pub mod car_parts;
 pub mod cars;
 pub mod col;
