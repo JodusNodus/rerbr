@@ -36,6 +36,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Physics clock and frame scheduling | done | - |
 | G Stage and car load | done | map 68 has no weather row |
 | G Community stages (RSF) | partial | full-install sweep; textures from other variants; encrypted stages not read |
+| G BTB stages (RSF `RX_CONTENT`, experimental) | partial | bump, specular and multiply-add drawing; no records or ghosts; dry M rows only; no original run ([btb.md](btb.md)) |
 | G Community cars (RSF NGP packs) | partial | FMOD `wheel` events, `gear`/`state` parameters; option folders |
 | G Load settle, start states, the go | done | original run: the go's frame count, a championship start (confirm, 2 s) |
 | G Countdown, race clock, jump start | done | moving start checked only on playback |

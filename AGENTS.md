@@ -26,6 +26,7 @@ same paths.
 | Physics: step, x87 and float rules, store seam, subsystems | `notes/physics.md` |
 | NGP 7.4.778, force feedback, H-shifter | `notes/ngp.md` |
 | File formats | `notes/formats.md`; key tables `data/physics-lsp-fields.md`, `data/ngp-lsp-keys.md` |
+| BTB stages (experimental) | `notes/btb.md` |
 | Renderer and visual systems | `notes/renderer.md` |
 | Sound | `notes/sound.md` |
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
@@ -38,6 +39,7 @@ same paths.
 | Path | Purpose |
 | --- | --- |
 | `crates/rbr-formats` | Game file parsers, one module per format |
+| `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, championship |
