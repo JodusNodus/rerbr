@@ -399,7 +399,7 @@ fn gather(track: &Track) -> Result<Vec<Face>, String> {
     let mut diffuse = HashMap::new();
     for m in track.materials()?.sections {
         let texture = m.texture("diffuseTexture").map(basename);
-        if let Some(t) = texture.filter(|t| held.contains(&t.to_lowercase())) {
+        if let Some(t) = texture.filter(|t| held.contains(&t.to_lowercase()) && !t.to_lowercase().ends_with(".png")) {
             diffuse.entry(m.name.to_lowercase()).or_insert_with(|| t.to_owned());
         }
     }
