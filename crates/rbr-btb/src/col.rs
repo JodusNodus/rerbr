@@ -220,8 +220,14 @@ fn write_tree(n: &Node, at: u32, t: &mut Table, out: &mut Vec<u8>) {
             out.extend_from_slice(&ATTRS.to_le_bytes());
             let map = f.map.max(0) as u8;
             out.extend_from_slice(&[map, map]);
-            if std::env::var_os("COLDBG").is_some() { eprintln!("obj {} uv {:?} nib {:02x?}", f.dbg, f.uv, slots.iter().map(|&s| nibbles(f.uv[s])).collect::<Vec<_>>()); }
-            let nib: Vec<u8> = slots.iter().map(|&s| nibbles(f.uv[s])).collect();
+            // The nibbles come from the table entry the (16-bit) index names.
+            let nib: Vec<u8> = slots
+                .iter()
+                .map(|&s| {
+                    let entry = i[s] as usize;
+                    nibbles(t.all[t.order[entry / 3] as usize].uv[entry % 3])
+                })
+                .collect();
             out.extend_from_slice(&nib);
             out.extend_from_slice(&nib);
         }
