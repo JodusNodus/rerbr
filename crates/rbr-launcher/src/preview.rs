@@ -4,7 +4,7 @@
 //! `CMenuMap3DUI::vf0c` (0x584310)'s "%2.1f KM" of `E95_O::M4a0e20` (0x4a0e20).
 //! Where the game has neither (its other maps show the warning sprite 0x4df and 0.0 km), we draw the driveline from
 //! above (`.trk`, `E09_LoadDriveLine`) and take its length (ours; the game's menu draws a 3D map model of the stage,
-//! `FUN_00583cb0`, which is not read). A RallySimFans stage shows its loading picture, else its driveline, with its own
+//! `FUN_00583cb0`, which is not read). A RallySimFans stage shows its picture (`rsf_picture`), else its driveline, with its own
 //! length, author and country, and the reason it cannot load.
 //!
 //! The car: its model turning, rendered by `rbr_render` offscreen, as the game's menus show the car in 3D
@@ -226,7 +226,7 @@ impl Previews {
         };
         match &preview.picture {
             Picture::Image(texture) => {
-                // Centred with its aspect kept (an RSF loading picture is square).
+                // Centred with its aspect kept (every picture has the retail shape, `stage_picture`).
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(WIDTH, height), egui::Sense::hover());
                 let size = texture.size_vec2();
                 let fitted = size * (rect.width() / size.x).min(rect.height() / size.y);
