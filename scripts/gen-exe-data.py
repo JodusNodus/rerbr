@@ -8,9 +8,10 @@ The words are listed in data/exe-words.txt, one range a line:
 
 The boot's words come from runs of an `exe-reads` build of rbr-standalone, which writes the words a run reads before
 writing them (`RBR_EXE_READS`, rbr_physics::mem::exe_reads); `--reads FILE...` merges such dumps into the list.
-A run reads only the virtual-table slots it calls, so every table a listed word lies in is taken whole (`whole_vtables`):
-a slot no run had called read zero, and the call through it went to 0 (CMountedRigidBody's 0x73e62c table when a
-mounted part came off, 2026-11-03). Nothing is transcribed: every word comes from the binary, whose SHA-256 is checked.
+A run reads only the virtual-table slots it calls, so every virtual table is taken whole (`whole_vtables`): each one the
+code installs (its address an operand in `.text`) and each one a listed word lies in. A slot no run had called read
+zero, and the call through it went to 0 or was declined (CMountedRigidBody's 0x73e62c table and its scratch's 0x73fb6c
+when a mounted part came off, 2026-11-03). Nothing is transcribed: every word comes from the binary, whose SHA-256 is checked.
 
 Run from the repo root:
 
@@ -194,13 +195,18 @@ def words_of(entries, read):
 
 
 def whole_vtables(words, exe, read):
-    """`words` with each virtual table one of them lies in: the run of `.text` pointers around it, after the word
-    pointing into `.rdata` (MSVC's RTTI locator) that comes before every table."""
+    """`words` with every virtual table the code installs (a 4-aligned `.rdata` address among `.text`'s operands that
+    starts a table) and each table one of `words` lies in. A table is the run of `.text` pointers around it, after the
+    word pointing into `.rdata` (MSVC's RTTI locator) that comes before every table."""
     secs = {name: (va, va + size) for name, va, size, _ in sections(exe)}
     inside = lambda name, v: secs[name][0] <= v < secs[name][1]
     word = lambda at: struct.unpack("<I", read(at, 4))[0]
+    text = next(data for name, _, _, data in sections(exe) if name == b".text")
+    operands = {struct.unpack_from("<I", text, k)[0] for k in range(len(text) - 3)}
+    installed = {a for a in operands if a % 4 == 0 and inside(b".rdata", a) and inside(b".rdata", a - 4)}
+    installed = {a for a in installed if inside(b".text", word(a)) and inside(b".rdata", word(a - 4))}
     out = set(words)
-    for w in words:
+    for w in sorted(set(words) | installed):
         if not inside(b".rdata", w) or not inside(b".text", word(w)):
             continue
         start = w
