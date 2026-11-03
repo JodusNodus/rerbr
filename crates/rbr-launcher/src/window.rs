@@ -224,7 +224,7 @@ impl App {
             ui.label("ReRBR plays Richard Burns Rally with NGP's physics. It needs your own copy of the game: choose your game folder.");
             ui.add_space(4.0);
             ui.label("• A RallySimFans install, or Richard Burns Rally 1.02 with NGP (copied from Windows, for example): Browse… to the folder with RichardBurnsRally_SSE.exe.");
-            ui.label("• Only the disc? Set up from the disc… makes the game folder from the disc, the 1.02 patch and NGP.");
+            ui.label("• Only the disc? Set up from the disc… makes the game folder from the disc and NGP.");
             ui.add_space(8.0);
             if let Some(notice) = &self.notice {
                 ui.colored_label(egui::Color32::GRAY, notice);

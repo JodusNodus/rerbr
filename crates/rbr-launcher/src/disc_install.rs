@@ -1,14 +1,13 @@
-//! Setting up a game folder from the retail disc, the official 1.02 patch and the NGP 7 package, without Windows or
-//! the installers (docs/install-from-disc.md): `launcher --install-from-disc DISC PATCH NGP OUT`, and the install
+//! Setting up a game folder from the retail disc and the NGP 7 package, without Windows or
+//! the installers (docs/install-from-disc.md): `launcher --install-from-disc DISC NGP OUT`, and the install
 //! folder's "Set up from the disc…" button, which runs it on a thread with a progress line and Cancel.
 //!
-//! OUT gets what the Windows installers leave: the disc installer's `Root` group at the top and its other content
-//! groups under their own names (its `_` groups are the installer's own; of the manuals, the English one only), the
-//! patch's `Main group` over them, matching names ignoring case (its `PixelShaders/Fog` and `VertexShaders/Fog` go
-//! into the retail `fog` folders, a replaced file keeps the existing name), then NGP's files, and last NGP's
-//! `physics.rbz` in place of the retail one. Folder names are unshield's (`Main group` is `Main_group`).
+//! OUT gets the disc installer's `Root` group at the top and its other content
+//! groups under their own names (its `_` groups are the installer's own; of the manuals, the English one only),
+//! then NGP's files, and last NGP's `physics.rbz` in place of the retail one. Folder names are unshield's (spaces
+//! and `<>[]` as `_`).
 //!
-//! The patch and NGP are read first, so a wrong one fails before the disc's 2.7 GB are written. Everything is written
+//! The NGP package is read first, so a wrong one fails before the disc's 2.7 GB are written. Everything is written
 //! into a temp folder next to OUT and renamed to OUT at the end; the temp folder is removed on every exit path but a
 //! killed process. The inputs are only read.
 
@@ -60,20 +59,18 @@ const PATCH_GROUP: &str = "Main group";
 /// Where the settings page's target folder defaults to, under the home folder.
 const DEFAULT_OUT: &str = "Games/Richard Burns Rally";
 
-/// The three downloads and the new game folder.
+/// The disc and the new game folder.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Inputs {
     /// The disc's `.iso`, or the disc as a folder.
     pub disc: PathBuf,
-    /// `RBR_v102.zip`, or the patch `.exe` inside it.
-    pub patch: PathBuf,
     /// The NGP package's `.7z`, or its folder; none downloads it from gvrc.de.
     pub ngp: Option<PathBuf>,
     /// A new or empty folder.
     pub out: PathBuf,
 }
 
-/// The files written from each input (the patch and NGP replace some retail files).
+/// The files written from each input (NGP replaces some retail files).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Counts {
     pub retail: usize,
@@ -440,7 +437,7 @@ pub fn install(inputs: &Inputs, report: Report<'_>, cancel: &AtomicBool) -> Resu
             (Some(temp), package)
         }
     };
-    let paths = [&inputs.disc, &inputs.patch, &ngp];
+    let paths = [&inputs.disc, &ngp];
     into_new_folder(&paths, &inputs.out, report, cancel, |game, reporter| setup(inputs, &ngp, game, reporter))
 }
 
@@ -535,16 +532,7 @@ pub fn extract_test_data(
 
 /// The setup's steps, writing the game into `game`.
 fn setup(inputs: &Inputs, ngp: &Path, game: &Path, reporter: &mut Reporter) -> Result<Counts, Fail> {
-    // The small patch and NGP first, so that a wrong one fails before the disc is read.
-    reporter.step("Reading the 1.02 patch")?;
-    let exe = patch_exe(&inputs.patch)?;
-    let patch = patch_cabinets(&inputs.patch, &exe)?;
-    let group =
-        patch.cab.group(PATCH_GROUP).ok_or_else(|| format!("{} has no {PATCH_GROUP}", inputs.patch.display()))?;
-    let patch_files = patch.files(&group.clone());
-    let what = format!("the 1.02 patch {}", inputs.patch.display());
-    require(&with_folders(patch_files.iter().map(|(_, p)| p.as_str())), &PATCH, what)?;
-
+    // NGP first, so that a wrong one fails before the disc is read.
     reporter.step("Reading NGP")?;
     let ngp_install::Package { files: ngp, dirs: ngp_dirs, physics: ngp_physics } = ngp_install::read_ngp(ngp)?;
     // An unsupported NGP version fails before the disc is read.
@@ -556,20 +544,14 @@ fn setup(inputs: &Inputs, ngp: &Path, game: &Path, reporter: &mut Reporter) -> R
 
     let mut tree = Tree::new(game.to_owned()).map_err(|e| format!("{}: {e}", game.display()))?;
     let sizes = |files: &[(usize, String)], cab: &Cabinet| files.iter().map(|&(k, _)| cab.files[k].size).sum::<u64>();
-    reporter.total = sizes(&retail, &disc.cab)
-        + sizes(&patch_files, &patch.cab)
-        + ngp.iter().map(|(_, b)| b.len() as u64).sum::<u64>()
-        + ngp_physics.len() as u64;
+    reporter.total =
+        sizes(&retail, &disc.cab) + ngp.iter().map(|(_, b)| b.len() as u64).sum::<u64>() + ngp_physics.len() as u64;
     let mut counts = Counts::default();
     reporter.step("Writing the retail game")?;
     disc.extract(&mut tree, &retail, reporter)?;
     counts.retail = unique(&retail);
     require(&tree.have(), &RETAIL, format!("the retail disc {}", inputs.disc.display()))?;
     drop(disc);
-
-    reporter.step("Writing the 1.02 patch")?;
-    patch.extract(&mut tree, &patch_files, reporter)?;
-    counts.patch = unique(&patch_files);
 
     reporter.step("Writing NGP")?;
     for dir in &ngp_dirs {
@@ -653,13 +635,13 @@ pub fn test_data_cli(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// The command line's `--install-from-disc DISC PATCH NGP OUT`: the setup, its steps and what OUT holds.
+/// The command line's `--install-from-disc DISC NGP OUT`: the setup, its steps and what OUT holds.
 pub fn cli(args: &[String]) -> Result<(), String> {
-    let [disc, patch, ngp, out] = args else {
-        return Err("usage: rerbr --install-from-disc DISC PATCH NGP|- OUT".into());
+    let [disc, ngp, out] = args else {
+        return Err("usage: rerbr --install-from-disc DISC NGP|- OUT".into());
     };
     let ngp = (ngp != "-").then(|| ngp.into());
-    let inputs = Inputs { disc: disc.into(), patch: patch.into(), ngp, out: out.into() };
+    let inputs = Inputs { disc: disc.into(), ngp, out: out.into() };
     let counts = install(&inputs, &print_steps(), &AtomicBool::new(false))?;
     print!("{}", summary(&inputs.out, counts));
     Ok(())
@@ -680,10 +662,9 @@ fn print_steps() -> impl Fn(&Progress) + Sync {
 /// What OUT holds: the files from each input, and the size and file count of each top-level entry.
 pub fn summary(out: &Path, counts: Counts) -> String {
     let mut text = format!(
-        "\n{}: {} files from retail, {} from the patch, {} from NGP (the patch and NGP replace some retail files)\n",
+        "\n{}: {} files from retail, {} from NGP (NGP replaces some retail files)\n",
         out.display(),
         counts.retail,
-        counts.patch,
         counts.ngp
     );
     let mut entries: Vec<_> = fs::read_dir(out).into_iter().flatten().filter_map(Result::ok).collect();
@@ -711,13 +692,12 @@ fn setup_job(inputs: Inputs) -> Job<Counts> {
     Job::start(move |report, cancel| install(&inputs, report, cancel))
 }
 
-/// The "Set up from the disc…" panel under the install folder's field: the three downloads, the target folder, Set
-/// up, and while it runs the progress line and Cancel.
+/// The "Set up from the disc…" panel under the install folder's field: the disc, the target folder, Set up,
+/// and while it runs the progress line and Cancel.
 #[derive(Default)]
 pub struct DiscSetup {
     pub open: bool,
     disc: String,
-    patch: String,
     ngp: String,
     out: String,
     job: Option<Job<Counts>>,
@@ -737,10 +717,10 @@ impl DiscSetup {
         }
         let mut done = None;
         egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.label("Set up the game from the Richard Burns Rally disc and the official 1.02 patch, with NGP 7.");
+            ui.label("Set up the game from the Richard Burns Rally disc, with NGP 7.");
             ui.colored_label(
                 egui::Color32::GRAY,
-                "The patch (RBR_v102.zip) is a free download. NGP (RBR_NGP-7.4.778.507.7z) is downloaded from gvrc.de \
+                "NGP (RBR_NGP-7.4.778.507.7z) is downloaded from gvrc.de \
                  unless you choose a copy. The disc and the files you choose are only read. The game takes about \
                  2.7 GB.",
             );
@@ -754,7 +734,6 @@ impl DiscSetup {
                             "the disc's .iso, or the disc as a folder",
                             "The Richard Burns Rally disc image",
                         ),
-                        ("1.02 patch", &mut self.patch, "RBR_v102.zip, or the patch .exe", "The 1.02 patch"),
                         (
                             "NGP",
                             &mut self.ngp,
@@ -803,13 +782,12 @@ impl DiscSetup {
                     }
                 }
                 None => {
-                    let fields = [&self.disc, &self.patch, &self.out];
+                    let fields = [&self.disc, &self.out];
                     let ready = fields.iter().all(|f| !f.trim().is_empty());
                     if ui.add_enabled(ready, egui::Button::new("Set up")).clicked() {
                         let path = |f: &String| PathBuf::from(f.trim());
                         let inputs = Inputs {
                             disc: path(&self.disc),
-                            patch: path(&self.patch),
                             ngp: Some(self.ngp.trim()).filter(|n| !n.is_empty()).map(PathBuf::from),
                             out: path(&self.out),
                         };
@@ -890,37 +868,30 @@ mod tests {
         let dir = crate::test_dir("disc-bad");
         fs::create_dir_all(dir.join("full")).unwrap();
         fs::write(dir.join("full/x"), b"x").unwrap();
-        fs::write(dir.join("patch.exe"), b"MZ").unwrap();
-        let inputs = |out: &str| Inputs {
-            disc: dir.clone(),
-            patch: dir.join("patch.exe"),
-            ngp: Some(dir.clone()),
-            out: dir.join(out),
-        };
+        fs::write(dir.join("ngp.7z"), b"not a 7z").unwrap();
+        let inputs = |out: &str| Inputs { disc: dir.clone(), ngp: Some(dir.join("ngp.7z")), out: dir.join(out) };
         let run = |i: &Inputs| install(i, &|_| {}, &AtomicBool::new(false));
         assert!(run(&inputs("full")).unwrap_err().contains("is not empty"));
         assert!(run(&Inputs { disc: dir.join("none"), ..inputs("out") }).unwrap_err().ends_with("does not exist"));
-        assert!(run(&inputs("out")).unwrap_err().contains("is not the InstallShield patch"));
+        assert!(run(&inputs("out")).unwrap_err().contains("is not the NGP package"));
         let left: Vec<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
         assert_eq!(left.len(), 2, "{left:?}");
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// The whole setup from the three downloads (`RBR_DISC`, `RBR_PATCH_ZIP`, `RBR_NGP_7Z`), against the extracted
-    /// install (`RBR_DATA`, its groups' folders) and the patch's `Main_group` (`RBR_PATCH`): the same paths (ignoring
+    /// The whole setup from the disc and the NGP package (`RBR_DISC`, `RBR_NGP_7Z`), against the extracted
+    /// install (`RBR_DATA`, its groups' folders): the same paths (ignoring
     /// case) and the same bytes, and NGP's files. A cancelled setup leaves nothing.
     #[test]
     fn sets_up_the_game_from_the_downloads() {
         let env = |key: &str| std::env::var_os(key).map(PathBuf::from);
-        let (Some(disc), Some(patch), Some(ngp), Some(data), Some(main)) =
-            (env("RBR_DISC"), env("RBR_PATCH_ZIP"), env("RBR_NGP_7Z"), env("RBR_DATA"), env("RBR_PATCH"))
-        else {
-            eprintln!("skipping: RBR_DISC, RBR_PATCH_ZIP, RBR_NGP_7Z, RBR_DATA or RBR_PATCH not set");
+        let (Some(disc), Some(ngp), Some(data)) = (env("RBR_DISC"), env("RBR_NGP_7Z"), env("RBR_DATA")) else {
+            eprintln!("skipping: RBR_DISC, RBR_NGP_7Z or RBR_DATA not set");
             return;
         };
         let dir = crate::test_dir("disc-e2e");
         fs::create_dir_all(&dir).unwrap();
-        let inputs = Inputs { disc, patch, ngp: Some(ngp), out: dir.join("game") };
+        let inputs = Inputs { disc, ngp: Some(ngp), out: dir.join("game") };
 
         // Cancelled once the retail game is being written: no OUT, no temp folder.
         let cancel = AtomicBool::new(false);
@@ -929,7 +900,7 @@ mod tests {
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
 
         let counts = install(&inputs, &|_| {}, &AtomicBool::new(false)).unwrap();
-        assert_eq!(counts, Counts { retail: 1821, patch: 43, ngp: 38 });
+        assert_eq!(counts, Counts { retail: 1821, patch: 0, ngp: 38 });
         fn files(root: &Path, rel: &str, out: &mut Vec<(String, PathBuf)>) {
             for entry in fs::read_dir(root.join(rel)).unwrap() {
                 let entry = entry.unwrap();
@@ -942,7 +913,7 @@ mod tests {
                 }
             }
         }
-        // The expected files: the install's groups as laid out, the patch over them, then NGP's.
+        // The expected files: the install's groups as laid out, then NGP's.
         let mut expected: HashMap<String, Option<PathBuf>> = HashMap::new();
         let mut groups: Vec<_> =
             fs::read_dir(&data).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
@@ -958,9 +929,6 @@ mod tests {
                 }
             }
         }
-        let mut found = Vec::new();
-        files(&main, "", &mut found);
-        expected.extend(found.into_iter().map(|(rel, path)| (rel.to_lowercase(), Some(path))));
         expected.insert("physics.rbz".into(), None);
         assert!(crate::ngp_install::is_ngp_archive(&fs::read(inputs.out.join("physics.rbz")).unwrap()));
         let mut out = Vec::new();
@@ -972,7 +940,6 @@ mod tests {
                 expected.entry(lower).or_insert(None);
             }
         }
-        assert_eq!(out.len(), 1879);
         assert_eq!(out.len(), expected.len());
         for (rel, path) in &out {
             let want = expected.get(&rel.to_lowercase()).unwrap_or_else(|| panic!("{rel} is not expected"));
@@ -983,15 +950,13 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// The panel's states drawn offscreen to `RBR_SCREENSHOTS`, with a real setup from the downloads (`RBR_DISC`,
-    /// `RBR_PATCH_ZIP`, `RBR_NGP_7Z`) run through it: open, running, done, refused, cancelled.
+    /// The panel's states drawn offscreen to `RBR_SCREENSHOTS`, with a real setup from the disc and the NGP
+    /// package (`RBR_DISC`, `RBR_NGP_7Z`) run through it: open, running, done, refused, cancelled.
     #[test]
     fn screenshots_of_the_setup_panel() {
         let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
-        let (Some(shots), Some(disc), Some(patch), Some(ngp)) =
-            (env("RBR_SCREENSHOTS"), env("RBR_DISC"), env("RBR_PATCH_ZIP"), env("RBR_NGP_7Z"))
-        else {
-            eprintln!("skipping: RBR_SCREENSHOTS, RBR_DISC, RBR_PATCH_ZIP or RBR_NGP_7Z not set");
+        let (Some(shots), Some(disc), Some(ngp)) = (env("RBR_SCREENSHOTS"), env("RBR_DISC"), env("RBR_NGP_7Z")) else {
+            eprintln!("skipping: RBR_SCREENSHOTS, RBR_DISC or RBR_NGP_7Z not set");
             return;
         };
         let dir = crate::test_dir("disc-shots");
@@ -1020,12 +985,11 @@ mod tests {
         let shot = |name: &str, rgba: &[u8]| crate::capture::write_png(&Path::new(&shots).join(name), rgba).unwrap();
         shot("setup-closed.png", &page(&mut folder, &mut setup).0);
         setup.open = true;
-        (setup.disc, setup.patch, setup.ngp) = (disc, patch, ngp);
+        (setup.disc, setup.ngp) = (disc, ngp);
         shot("setup-open.png", &page(&mut folder, &mut setup).0);
         setup.out = dir.join("Richard Burns Rally").display().to_string();
         let inputs = |s: &DiscSetup| Inputs {
             disc: s.disc.clone().into(),
-            patch: s.patch.clone().into(),
             ngp: Some(s.ngp.clone().into()),
             out: s.out.clone().into(),
         };
@@ -1048,7 +1012,7 @@ mod tests {
         shot("setup-done.png", &done.0);
         assert_eq!(done.1, setup.out);
         assert_eq!(folder, setup.out);
-        assert!(Path::new(&folder).join("RichardBurnsRally_SSE.exe").is_file());
+        assert!(Path::new(&folder).join("RichardBurnsRally.ini").is_file());
         // The same folder again: refused, as it is not empty.
         setup.job = Some(setup_job(inputs(&setup)));
         let refused = loop {
