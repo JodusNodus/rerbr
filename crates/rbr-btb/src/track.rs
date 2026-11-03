@@ -519,6 +519,8 @@ impl Materials {
 pub struct SurfaceMaps {
     pub count: usize,
     pub maps: Vec<[u8; 256]>,
+    /// Each map's `texture=` path (the author's, absolute); `None` for a missing section or key.
+    pub textures: Vec<Option<String>>,
 }
 
 impl SurfaceMaps {
@@ -526,9 +528,12 @@ impl SurfaceMaps {
         let header = find_section(sections, "MAPS").ok_or("mat.ini: no [MAPS]")?;
         let count: usize = find_entry(header, "count").and_then(|v| v.parse().ok()).ok_or("mat.ini: bad count")?;
         let mut maps = Vec::with_capacity(count);
+        let mut textures = Vec::with_capacity(count);
         for i in 0..count {
             let mut cells = [0u8; 256];
-            if let Some(map) = find_section(sections, &format!("MAP{i}")) {
+            let map = find_section(sections, &format!("MAP{i}"));
+            textures.push(map.and_then(|m| find_entry(m, "texture")).map(str::to_owned));
+            if let Some(map) = map {
                 for row in 0..16 {
                     if let Some(value) = find_entry(map, &format!("data{row}")) {
                         cells[row * 16..(row + 1) * 16].copy_from_slice(&data_cells(value));
@@ -537,7 +542,7 @@ impl SurfaceMaps {
             }
             maps.push(cells);
         }
-        Ok(SurfaceMaps { count, maps })
+        Ok(SurfaceMaps { count, maps, textures })
     }
 }
 

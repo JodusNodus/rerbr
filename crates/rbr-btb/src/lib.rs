@@ -3,6 +3,7 @@
 //! hooks into it: dropping BTB support is dropping this crate and those hooks. Findings: `notes/btb.md`.
 
 pub mod classic;
+pub mod col;
 pub mod ids;
 pub mod ksh;
 pub mod scene;
