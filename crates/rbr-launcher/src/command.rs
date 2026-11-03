@@ -387,7 +387,8 @@ impl Form {
             return Ok((stage, weather, self.options.weather));
         }
         let season = self.catalog.maps[self.map].season(&self.season);
-        let row = self.weather_row.as_deref().and_then(|s| catalog::row_by_section(&season, map, s));
+        let weather_map = self.catalog.maps[self.map].weather_map();
+        let row = self.weather_row.as_deref().and_then(|s| catalog::row_by_section(&season, weather_map, s));
         let (preset, draws, specific) = match row.filter(|_| self.clouds.is_none()) {
             // The Custom weather: our sky over the stage's good weather, or its bad one on a damp or wet road
             // (its light and textures made for the wet), with the chosen wear.
@@ -395,13 +396,17 @@ impl Form {
             Some(k) => (Preset::Random, Draws { row: Some(k), wear: 1 }, true),
             None if self.options.weather == Preset::Random => (
                 Preset::Random,
-                weather::random_draws(&season, map, rand)
-                    .ok_or(format!("map {map} has no season row (the original stops at its int3)"))?,
+                weather::random_draws(&season, weather_map, rand)
+                    .ok_or(format!("map {weather_map} has no season row (the original stops at its int3)"))?,
                 false,
             ),
             None => (self.options.weather, Draws { row: None, wear: self.wear }, false),
         };
         let (stage, mut weather) = self.catalog.stage_weather(&self.season, map, preset, draws)?;
+        // A BTB stage's bad weather is its good row (map 41's M rows only): `rbr-standalone` takes it as the row, its
+        // own bad weather is a row of the other variant.
+        let preset =
+            if preset == Preset::Bad && self.catalog.maps[self.map].btb.is_some() { Preset::Random } else { preset };
         if specific {
             // A specific row takes the chosen wear (`Draws` takes the random weather's 1 or 2).
             weather.wear = self.wear;
@@ -539,6 +544,7 @@ impl Form {
         extra: Vec<String>,
         mut viewer_extra: Vec<String>,
     ) -> Option<Vec<String>> {
+        let (stage, extra) = self.btb_launch(stage, extra)?;
         if let Some(problem) = self.ngp_dll.problem(&self.data, &self.rsf()) {
             self.status = problem;
             return None;
@@ -1053,6 +1059,7 @@ mod tests {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
                 rsf: None,
+                btb: None,
             }],
         };
         let section = catalog::environment_rows(&season(), 54)[1].1.clone();

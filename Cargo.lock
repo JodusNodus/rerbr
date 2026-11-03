@@ -2343,6 +2343,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-btb"
+version = "0.1.0"
+dependencies = [
+ "png",
+ "rbr-formats",
+ "zune-core",
+ "zune-jpeg",
+]
+
+[[package]]
 name = "rbr-counters"
 version = "0.1.0"
 dependencies = [
@@ -2387,6 +2397,7 @@ dependencies = [
  "egui-winit",
  "futures-executor",
  "png",
+ "rbr-btb",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-recording",
@@ -2438,6 +2449,7 @@ dependencies = [
  "objc2-metal 0.3.2",
  "objc2-quartz-core 0.3.2",
  "png",
+ "rbr-btb",
  "rbr-counters",
  "rbr-formats",
  "rbr-gameplay",

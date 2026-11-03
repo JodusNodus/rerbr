@@ -20,6 +20,7 @@ use std::sync::Arc;
 
 use crate::particles::ground::Ground;
 
+mod btb;
 mod mesh;
 mod textures;
 
@@ -342,9 +343,18 @@ pub struct LoadReport {
 /// Load failure. Bad texture data is a report entry, not an error.
 #[derive(Debug)]
 pub enum Error {
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     Lbs(lbs::Error),
-    Ini { path: PathBuf, line: usize, message: &'static str },
+    Ini {
+        path: PathBuf,
+        line: usize,
+        message: &'static str,
+    },
+    /// A BTB track folder that does not load ([`btb`]).
+    Btb(String),
     FilenameMap(stage_textures::Error),
     NoGeometry,
 }
@@ -355,6 +365,7 @@ impl Display for Error {
             Error::Io { path, source } => write!(f, "{}: {source}", path.display()),
             Error::Lbs(e) => write!(f, "lbs: {e}"),
             Error::Ini { path, line, message } => write!(f, "{}:{line}: {message}", path.display()),
+            Error::Btb(e) => write!(f, "btb: {e}"),
             Error::FilenameMap(e) => write!(f, "TextureFilenameMap.dat: {e}"),
             Error::NoGeometry => write!(f, "no geometry chunk"),
         }
@@ -396,6 +407,9 @@ const CLOUDS_TRACK: &str = "Clouds";
 /// use. Weather picks the clouds and wear picks the ground textures. No texture file is read yet
 /// ([`Stage::load_textures`]).
 pub fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stage, Error> {
+    if btb::is_btb(name) {
+        return btb::load(maps, name, selection);
+    }
     let lbs_bytes = read(&stage_files::file_in(maps, name, "lbs"))?;
     // Some RSF stages (299, 300) keep their geometry, object lanes and visibility entries in a `.lb2` beside the
     // `.lbs`, framed as `.lbs` chunks; RSF's plugin loads them from there (its `lbsloading.log`).

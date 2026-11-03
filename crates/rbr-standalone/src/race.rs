@@ -83,10 +83,10 @@ fn setup_root(path: &Path) -> Result<Vec<Node>, String> {
 /// The data the run loads (with `--rsf-car`'s model in `car`'s slot) and, with `--boot`, the race on `stage`.
 pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Data, Option<boot::Race>), String> {
     let recording = args.recording.as_deref();
-    let surface = match args.rsf.as_ref() {
+    let surface = args.surface.unwrap_or_else(|| match args.rsf.as_ref() {
         Some(rsf) => rsf.surface.map_or(boot::surface(stage.number), rsf::Surface::name),
         None => boot::surface(stage.number),
-    };
+    });
     let tyre = args.tyre.or_else(|| recording.and_then(|r| recorded_word(r, 3))).unwrap_or(boot::default_tyre(surface));
     let (data, car_pack) = match args.rsf_car.as_deref() {
         Some(key) => {

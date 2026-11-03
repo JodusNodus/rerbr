@@ -51,19 +51,23 @@ pub fn in_dir(dir: &Path, file: &str) -> Option<PathBuf> {
 
 /// The stage's file with extension `ext` (`lbs`, `col`, ...): in its folder, else `Maps/` of the install (or the
 /// patch). `None` when there is no such file.
+///
+/// A folder stage's file missing from its folder falls back to the install's `Maps\<track>.<ext>`, as the game does
+/// for a folder that holds only some of a retail map's files (the BTB plugin's `track-41_M` replaces five files and
+/// keeps map 41's `.fnc` and `.ini`: `notes/btb.md` "Playing"). A RallySimFans stage's id is never a retail map
+/// number, so there is no such file for it.
 pub fn file(data: &Data, stage: &str, ext: &str) -> Option<PathBuf> {
-    match folder(stage) {
-        Some(dir) => in_dir(dir, &format!("{}.{ext}", name(stage))),
-        None => data.resolve(&format!("Maps\\{stage}.{ext}")),
-    }
+    let file = format!("{}.{ext}", name(stage));
+    folder(stage).and_then(|dir| in_dir(dir, &file)).or_else(|| data.resolve(&format!("Maps\\{file}")))
 }
 
 /// The stage's file with extension `ext` for a reader that has the `Maps` folder: in the stage's folder (matched
-/// ignoring case), else in `maps`. The path is returned when the file is missing too, so the reader reports it.
+/// ignoring case), else in `maps` (also for a folder stage, as [`file`]). The path is returned when the file is
+/// missing too, so the reader reports it.
 pub fn file_in(maps: &Path, stage: &str, ext: &str) -> PathBuf {
     let file = format!("{}.{ext}", name(stage));
     let dir = folder(stage).unwrap_or(maps);
-    in_dir(dir, &file).unwrap_or_else(|| dir.join(file))
+    in_dir(dir, &file).or_else(|| in_dir(maps, &file)).unwrap_or_else(|| dir.join(file))
 }
 
 /// Reads the stage's file with extension `ext` ([`file`]), with the path in the error.
@@ -92,6 +96,31 @@ mod tests {
         assert_eq!(parts("track-x_O"), None);
         assert_eq!(parts("/rsf/Maps/352-Passo Valle/Track-352_O"), Some((352, 'O')));
         assert_eq!(file_in(Path::new("/maps"), "track-10_O", "lbs"), Path::new("/maps/track-10_O.lbs"));
+    }
+
+    #[test]
+    fn a_folder_stage_falls_back_to_maps() {
+        let root = std::env::temp_dir().join(format!("rbr-stage-files-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (maps, dir) = (root.join("Maps"), root.join("stage"));
+        std::fs::create_dir_all(&maps).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(maps.join("track-41_M.fnc"), b"fnc").unwrap();
+        std::fs::write(maps.join("track-41_M.lbs"), b"retail").unwrap();
+        std::fs::write(dir.join("track-41_M.lbs"), b"own").unwrap();
+        let stage = format!("{}/track-41_M", dir.display());
+        let data = Data::new(root.clone(), None);
+        // Its own file wins, the missing one comes from Maps, and a file in neither is none.
+        assert_eq!(std::fs::read(file(&data, &stage, "lbs").unwrap()).unwrap(), b"own");
+        assert_eq!(file(&data, &stage, "fnc"), Some(maps.join("track-41_M.fnc")));
+        assert_eq!(file(&data, &stage, "col"), None);
+        assert_eq!(file_in(&maps, &stage, "fnc"), maps.join("track-41_M.fnc"));
+        assert_eq!(file_in(&maps, &stage, "lbs"), dir.join("track-41_M.lbs"));
+        assert_eq!(file_in(&maps, &stage, "col"), dir.join("track-41_M.col"));
+        // A retail name is unchanged, and so is a stage whose track has no retail file.
+        assert_eq!(file(&data, "track-41_M", "lbs"), Some(maps.join("track-41_M.lbs")));
+        assert_eq!(file(&data, &format!("{}/track-101_O", dir.display()), "fnc"), None);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
