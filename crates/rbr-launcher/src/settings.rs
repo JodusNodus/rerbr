@@ -762,7 +762,7 @@ impl Form {
                 WeatherChoice::Preset(preset) => (preset, None),
                 WeatherChoice::Row(section) => (Preset::Random, Some(section)),
             };
-        let map_number = catalog.maps[map].number;
+        let map_number = catalog.maps[map].weather_map();
         if weather_row
             .as_deref()
             .is_some_and(|s| catalog::row_by_section(&catalog.maps[map].season(&season), map_number, s).is_none())

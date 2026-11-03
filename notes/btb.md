@@ -189,12 +189,27 @@ BTB ("Bob's Track Builder") stages draw from `RX_CONTENT/Tracks/<folder>/Objects
 - All 140,785 `objectlist.ini` `file=`/`xform=` names resolve to `Objects/<name>.x`/`.xform` case-insensitively.
 
 
+## Playing
+
+Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::stage`, the launcher's `btb.rs`.
+
+- The plugin makes the game load retail map 41 variant M and replaces only `Maps\track-41_M.{lbs,dls,col,trk,mat}` (hooks on the file opener `0x401c28`, `0x46a481`, `0x49f433`); it forces map number 41 at the track start (`10003c40(0x1660804, 0x29)`).
+- Everything else stays retail map 41's: `track-41_M.fnc` (fences, physical), `.ini`, `_textures.rbz`, `Tracks.ini [Map41]` (particles), `TrackSettings41.ini` and the season rows (weather, sky), ghosts and times by map number (no other hook in `CTimeCard`, ghost or save paths).
+- The surface is `track.ini` `physics=` (`E14_4a1330`, 0x4a1330, hooked to return 0 gravel, 1 tarmac, 2 snow; gravel when `physics` is missing). Retail map 41 is tarmac, so the override matters.
+- Only the M variant is replaced: a map 41 weather row of another variant (the O rows: rain, fog, cloud 2/3) would load retail map 41's O files, so the launcher offers the three M rows (98 crisp clear, 99 hazy clear, 100 crisp part cloud; all dry) and plays its bad weather as the good one.
+- `rbr_btb::stage::prepare(track, rsf_root, out)` writes the five files (`classic` `lbs`/`dls`/`mat`, `trk_from`, the `col`) and `btb.ini` (`[BTB] folder=`, `rsf=`) into `out` (always rebuilt, like the plugin) and returns `<out>/track-41_M`; `out` is `<files>/btb/<folder>/`. `stage::source(folder)` reads `btb.ini` back (the renderer's hook). ReRBR never writes the game folder.
+- `rbr_formats::stage_files`: a folder stage's file missing from its folder is the install's `Maps\<track>.<ext>`, which gives the prepared stage map 41's `.fnc`, `.ini`, `_textures.rbz`; an RSF stage has none (the launcher lists no RSF stage whose id is a retail map number, `Catalog::set_rsf`).
+- `.col` is `rbr_btb::col::build`; every folder is offered (a build error shows at Start).
+- `lbs::parse` accepts the stub `(1, 0)` chunk (a zero count, no sky word) so the boot reads the start location; `rbr-standalone --surface gravel|tarmac|snow` is the surface override (a stage that plays under another map's files).
+- Launcher: a BTB stage's map number is its RSF id (`ids`), else `1_000_000 + FNV(folder) % 1_000_000`, and its weathers are map 41's (`Map::weather_map`); Start passes `--surface` and no `--saves`/`--profile` (the records would be map 41's), so there are no records or ghosts for BTB stages.
+- Checked (2026-11-03, `--autopilot --boot`, car 2 NGP, season row 98): Hokkara Gravel 282.99 s, splits 105.97 and 192.12 s, finish at step 210149, not retired; Pirttikulma snow 388.01 s, splits 117.29 and 276.52 s; Ulu Karagita stops at 3262 m (car on its side, 160 s, split 1 at 144.9 s) at 14 and 24 m/s alike: not explained (autopilot or collision).
+- The `.fnc` fences and the characters of retail map 41 are placed where map 41 has them, as in the original; the retail `.fnc`'s posts do not fit a BTB road.
+
 ## Drawing
 
 `rbr_btb::scene` (`Scene::load`, no renderer types) turns a folder into meshes, materials and placements; the renderer's
 `stage/btb.rs` builds a `Stage` from it (`stage::load` takes it when the stage's folder passes
-`track::is_track_folder`, i.e. `<RBR_RSF>/RX_CONTENT/Tracks/<folder>/track-41_M`; `load_textures` likewise). Physics and
-launcher are not wired.
+`track::is_track_folder`, i.e. `<RBR_RSF>/RX_CONTENT/Tracks/<folder>/track-41_M`, or a prepared folder naming its source: [Playing](#playing); `load_textures` likewise).
 
 - Frame: `.x` vertices, `.xform` matrices and `spawn.ini` are already in the renderer's stage frame (Direct3D, left-handed,
   y up, placed `p * M`); no transform. The driveline (`z` up) is `(x, z, y)`, as the classic `.trk`'s. Evidence: the

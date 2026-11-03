@@ -102,16 +102,14 @@ fn cached_builds_match_and_parse() {
         let stage_markers = markers::parse(&built_dls).unwrap();
         assert_eq!(stage_markers.keys.len(), notes.count, "{}: marker keys", track.name);
 
-        // lbs: the start chunk from the spawn matrix and angle. The trailing stub `(1, 0)` chunk (four zero
-        // bytes) is not valid retail geometry, so the retail parser only reads the `(2, 11)` and `(2, 10)`
-        // prefix; the trailing 20 bytes are asserted as framing below. The game never dispatches these stubs:
-        // BTB geometry comes from the `.x` meshes through the plugin's own scene.
+        // lbs: the start chunk from the spawn matrix and angle, then the empty `(2, 10)` and `(1, 0)` stubs (the
+        // latter's four zero bytes are a count and no sky word: `lbs::parse` accepts it). The game never
+        // dispatches these stubs: BTB geometry comes from the `.x` meshes through the plugin's own scene.
         let spawn = track.spawn().unwrap();
         let built_lbs = classic::lbs(&spawn);
         assert_eq!(Some(built_lbs.clone()), want_lbs, "{}: lbs.lbs", track.name);
-        let prefix = &built_lbs[..124];
-        let lbs = lbs::parse(prefix).unwrap_or_else(|e| panic!("{}: built lbs: {e}", track.name));
-        assert_eq!(lbs.chunks.len(), 2, "{}: lbs chunks", track.name);
+        let lbs = lbs::parse(&built_lbs).unwrap_or_else(|e| panic!("{}: built lbs: {e}", track.name));
+        assert_eq!(lbs.chunks.len(), 3, "{}: lbs chunks", track.name);
         let rbr_formats::lbs::Chunk::StartLocation(start) = &lbs.chunks[0] else {
             panic!("{}: no start chunk", track.name)
         };

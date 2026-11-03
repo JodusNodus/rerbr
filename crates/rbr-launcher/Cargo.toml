@@ -10,6 +10,7 @@ name = "rerbr"
 path = "src/main.rs"
 
 [dependencies]
+rbr-btb = { path = "../rbr-btb" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-gameplay = { path = "../rbr-gameplay" }
 rbr-render = { path = "../rbr-render" }

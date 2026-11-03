@@ -130,6 +130,7 @@
 mod archive;
 mod browser;
 mod browser_state;
+mod btb;
 mod capture;
 mod car_browser;
 mod car_packs;

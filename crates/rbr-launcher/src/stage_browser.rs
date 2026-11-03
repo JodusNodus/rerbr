@@ -114,16 +114,21 @@ pub struct StageRow {
 impl StageRow {
     /// The row of map `index`, `problem` its reason not to start ([`catalog::Catalog::availability`]).
     pub fn new(index: usize, map: &Map, problem: Option<String>) -> StageRow {
-        let (country, author, km) = match &map.rsf {
-            Some(stage) => (stage.country.as_ref().map(|c| c.to_uppercase()), stage.author.clone(), stage.length),
-            None => (
+        let (country, author, km) = match (&map.rsf, &map.btb) {
+            (Some(stage), _) => (stage.country.as_ref().map(|c| c.to_uppercase()), stage.author.clone(), stage.length),
+            (None, Some(btb)) => (None, btb.author.clone(), btb.km),
+            (None, None) => (
                 retail_country(map.number).map(str::to_owned),
                 Some("Warthog Games".to_owned()),
                 preview::game_length(map.number).map(|m| m / 1000.0),
             ),
         };
         let name = map.name();
-        let origin = if map.rsf.is_some() { "rsf rallysimfans" } else { "retail 1.02" };
+        let origin = match (&map.rsf, &map.btb) {
+            (Some(_), _) => "rsf rallysimfans",
+            (None, Some(_)) => "rsf btb",
+            (None, None) => "retail 1.02",
+        };
         let place = country.as_deref().map(|c| format!("{c} {}", country_name(c))).unwrap_or_default();
         let haystack =
             format!("{name} {} {place} {} {origin}", map.number, author.as_deref().unwrap_or("")).to_lowercase();
@@ -133,7 +138,7 @@ impl StageRow {
             name,
             country,
             author,
-            retail: map.rsf.is_none(),
+            retail: map.rsf.is_none() && map.btb.is_none(),
             km,
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
@@ -831,7 +836,12 @@ mod tests {
             weathers: Vec::new(),
             problem: (k % 11 < 4).then(|| format!("track-{id}_M.lbs is encrypted by RallySimFans")),
         };
-        Map { number: id, stages: vec![Stage { name: stage.stage('M'), map: id, letter: 'M' }], rsf: Some(stage) }
+        Map {
+            number: id,
+            stages: vec![Stage { name: stage.stage('M'), map: id, letter: 'M' }],
+            rsf: Some(stage),
+            btb: None,
+        }
     }
 
     fn rows_of(maps: &[Map]) -> Vec<StageRow> {
@@ -857,7 +867,7 @@ mod tests {
     /// Tanner (retail 54, Japan, gravel, 3.9 km) among the synthetic stages 1 (Czechia, tarmac, blocked), 3 (Poland,
     /// gravel, blocked), 5 (Spain, snow, 7 km), 8 (Finland, snow, 10 km) and 10 (France, tarmac, 12 km).
     fn some() -> Vec<StageRow> {
-        let retail = Map { number: 54, stages: Vec::new(), rsf: None };
+        let retail = Map { number: 54, stages: Vec::new(), rsf: None, btb: None };
         rows_of(&[retail, rsf_map(5), rsf_map(1), rsf_map(8), rsf_map(3), rsf_map(10)])
     }
 
@@ -890,7 +900,7 @@ mod tests {
 
     #[test]
     fn a_country_has_the_retail_and_the_rallysimfans_stages_together() {
-        let mut maps = vec![Map { number: 54, stages: Vec::new(), rsf: None }, rsf_map(5)];
+        let mut maps = vec![Map { number: 54, stages: Vec::new(), rsf: None, btb: None }, rsf_map(5)];
         maps[1].rsf.as_mut().unwrap().country = Some("jp".into());
         let rows = rows_of(&maps);
         let japan = lines(&rows, &Collection::Country(Some("JP".into())), &Filter::default(), Sort::Name, &[], &[]);
@@ -1146,7 +1156,7 @@ mod tests {
     #[test]
     fn the_keys_choose_favourite_and_go_back() {
         let maps = [
-            Map { number: 54, stages: Vec::new(), rsf: None },
+            Map { number: 54, stages: Vec::new(), rsf: None, btb: None },
             rsf_map(5),
             rsf_map(1), // cannot start
         ];
@@ -1172,7 +1182,7 @@ mod tests {
             return;
         };
         let mut maps: Vec<Map> = (0..500).map(rsf_map).collect();
-        maps.insert(0, Map { number: 54, stages: Vec::new(), rsf: None });
+        maps.insert(0, Map { number: 54, stages: Vec::new(), rsf: None, btb: None });
         let favourites = [54, 105, 110, 128];
         let mut previews = Previews::new(rbr_formats::data::Data::new("/nonexistent", None));
         for (name, collection) in [("favourites", Collection::Favourites), ("all", Collection::All)] {

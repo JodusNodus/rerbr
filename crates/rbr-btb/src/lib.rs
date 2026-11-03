@@ -21,6 +21,7 @@ pub mod col;
 pub mod ids;
 pub mod ksh;
 pub mod scene;
+pub mod stage;
 pub mod track;
 pub mod xfile;
 pub mod xform;

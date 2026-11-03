@@ -466,3 +466,13 @@ fn visible_objects_tile_the_payload() {
     let partial = framed(VISIBLE_OBJECTS, &floats(&[1.0; 13]));
     assert!(matches!(parse(&partial), Err(Error::Truncated { .. })));
 }
+
+#[test]
+fn the_btb_geometry_stub_is_an_empty_geometry() {
+    // The BTB plugin's `.lbs` ends in `(1, 0)` with four zero bytes: no blocks and no sky word.
+    let bytes = framed(GEOMETRY, &words(&[0]));
+    let lbs = parse(&bytes).unwrap();
+    assert!(matches!(&lbs.chunks[..], [Chunk::Geometry(g)] if g.blocks.is_empty() && g.sky_value == 0));
+    // A geometry with blocks still needs its sky word.
+    assert!(parse(&framed(GEOMETRY, &words(&[1]))).is_err());
+}

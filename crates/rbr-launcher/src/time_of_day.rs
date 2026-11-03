@@ -17,7 +17,7 @@ pub fn site(map: &Map) -> Site {
     let rsf = map.rsf.as_ref();
     let snow = rsf.is_some_and(|s| s.surface == Some(rbr_formats::rsf::Surface::Snow));
     let (country, name) = (rsf.and_then(|s| s.country.as_deref()), rsf.map_or("", |s| s.name.as_str()));
-    rbr_render::relight::site(map.number, country, name, snow)
+    rbr_render::relight::site(map.weather_map(), country, name, snow)
 }
 
 /// A moment of the day: the sun at an elevation, in the morning or the evening, or at its highest.
