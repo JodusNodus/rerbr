@@ -348,7 +348,8 @@ pub struct Object {
     pub shadow_caster: Option<bool>,
     /// `CollisionModel`: 0 none, -1 unknown, 2 collision (one `(3,0x16)` mesh per such object in `trk.trk`).
     pub collision_model: Option<i32>,
-    /// `colBox`: three extents, decimal commas or points (`0,15, 1, 0,15` reads 0.15, 1, 0.15).
+    /// `colBox` as `decimal_floats` reads it (`0,15, 1, 0,15` as 0.15, 1, 0.15). The plugin's `sscanf` reads it as (0, 15, 1):
+    /// use [`crate::ksh::scan_col_box`] for what it builds from.
     pub col_box: Option<[f64; 3]>,
     /// The whole section, so unknown keys stay accessible.
     pub entries: RawEntries,

@@ -4,6 +4,7 @@
 
 pub mod classic;
 pub mod ids;
+pub mod ksh;
 pub mod scene;
 pub mod track;
 pub mod xfile;
