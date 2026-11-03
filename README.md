@@ -85,7 +85,7 @@ ReRBR isn't signed with an Apple Developer ID, so macOS refuses to open it the f
 
 After that it opens normally. (In Terminal, `xattr -dr com.apple.quarantine /Applications/ReRBR.app` does the same.)
 
-**Linux** (x86_64 or ARM): `ReRBR-<version>-<arch>.AppImage`. Make it executable and start it:
+**Linux** (x86_64): `ReRBR-<version>-x86_64.AppImage`. Make it executable and start it:
 
 ```sh
 chmod +x ReRBR-*.AppImage

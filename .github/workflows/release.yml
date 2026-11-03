@@ -21,10 +21,7 @@ jobs:
           path: dist/*.dmg
 
   linux:
-    strategy:
-      matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-24.04
     # Debian 12's glibc (2.36) is the AppImage's floor.
     container: rust:1-bookworm
     steps:
@@ -35,7 +32,7 @@ jobs:
       - run: scripts/package.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.runner }}
+          name: linux
           path: dist/*.AppImage
 
   windows:
