@@ -50,7 +50,7 @@ pub fn problem(dir: &str) -> String {
         return "There is no such folder.".into();
     }
     if !dir.join("Cars").is_dir() || !dir.join("Maps").is_dir() {
-        return "This is not a Richard Burns Rally folder. Choose the one with RichardBurnsRally_SSE.exe in it, or \
+        return "This is not a Richard Burns Rally folder. Choose the one with Cars and Maps in it, or \
                 set up the game from the disc."
             .into();
     }

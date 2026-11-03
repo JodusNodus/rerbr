@@ -1,11 +1,11 @@
-//! Setting up a game folder from the retail disc and the NGP 7 package, without Windows or
-//! the installers (docs/install-from-disc.md): `launcher --install-from-disc DISC NGP OUT`, and the install
-//! folder's "Set up from the disc…" button, which runs it on a thread with a progress line and Cancel.
+//! Setting up a game folder from the retail disc and the NGP 7 package, without Windows or the installers
+//! (docs/install-from-disc.md): `launcher --install-from-disc DISC NGP OUT`, and the install folder's "Set up from the
+//! disc…" button, which runs it on a thread with a progress line and Cancel.
 //!
-//! OUT gets the disc installer's `Root` group at the top and its other content
-//! groups under their own names (its `_` groups are the installer's own; of the manuals, the English one only),
-//! then NGP's files, and last NGP's `physics.rbz` in place of the retail one. Folder names are unshield's (spaces
-//! and `<>[]` as `_`).
+//! OUT gets the disc installer's `Root` group at the top and its other content groups under their own names (its `_`
+//! groups are the installer's own; of the manuals, the English one only), then NGP's files, and last NGP's
+//! `physics.rbz` in place of the retail one. Folder names are unshield's (spaces and `<>[]` as `_`). The 1.02 patch
+//! is only read for the test data (`--extract-test-data`).
 //!
 //! The NGP package is read first, so a wrong one fails before the disc's 2.7 GB are written. Everything is written
 //! into a temp folder next to OUT and renamed to OUT at the end; the temp folder is removed on every exit path but a

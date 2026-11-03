@@ -26,7 +26,7 @@ impl Form {
         fields(ui, "row game", |ui| {
             tick(ui, "Game folder", true, |ui| {
                 ui.add_enabled_ui(!running, |ui| {
-                    let hint = "the Richard Burns Rally folder, with RichardBurnsRally_SSE.exe";
+                    let hint = "the Richard Burns Rally folder, with Cars and Maps";
                     let edit = ui
                         .add(egui::TextEdit::singleline(&mut self.install_folder).hint_text(hint).desired_width(340.0));
                     let picked = ui.button("Browse…").clicked()
@@ -199,7 +199,7 @@ pub fn folder_row(ui: &mut egui::Ui, folder: &mut String, setup: &mut DiscSetup)
     let set = ui
         .horizontal(|ui| {
             ui.label("Game folder");
-            let hint = "the Richard Burns Rally folder, with RichardBurnsRally_SSE.exe";
+            let hint = "the Richard Burns Rally folder, with Cars and Maps";
             let edit = ui.add(egui::TextEdit::singleline(folder).hint_text(hint).desired_width(420.0));
             let picked = ui.button("Browse…").clicked()
                 && job::pick_folder("Your Richard Burns Rally folder").map(|dir| *folder = dir).is_some();
