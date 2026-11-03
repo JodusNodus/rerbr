@@ -3,8 +3,8 @@
 //! `launcher --download-cars [NAME…]`.
 //!
 //! The list is gvrc.de's `carList.ini`, the one RBRCIT (the Windows car installer) reads and WorkerBee maintains: `[Plugins]`
-//! names the NGP package (`plugin_physics_url`) and each `[Car_<n>]` a car's `name`, `cat`, `year` and downloads
-//! (`link_physics`, `link_model`, `link_banks`). It is fetched live, each time the list is opened.
+//! names the NGP package (`plugin_physics_url`) and each `[Car_<n>]` a car's `name`, `cat`, `year`, `physics` (its
+//! pack's folder), `trans` (its drive) and downloads (`link_physics`, `link_model`, `link_banks`). It is fetched live, each time the list is opened.
 //! Only `https://gvrc.de/` links are followed, and a car needs its `<Car> - NGP Physics.zip` (a model is a
 //! `<Model> - Model.7z`, sound banks a `<Car> - banks.7z`; the original eight cars, which NGP's package covers, are left
 //! out).
@@ -43,12 +43,17 @@ const MAX_BYTES: u64 = 2 << 30;
 
 type Fail = String;
 
-/// A car of the list: its name, category and year, its physics pack, its model and its sound banks, as links.
+/// A car of the list: its name, category and year, its physics pack's folder (`physics`, the added pack's folder)
+/// and its drive (`trans`), its physics pack, its model and its sound banks, as links.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub name: String,
     pub cat: String,
     pub year: String,
+    /// The physics pack's folder name (`physics=`, e.g. `BMW M1 GrpB`): what the added pack's folder is.
+    pub pack: String,
+    /// The drive (`trans=`: `4WD`, `FWD`, `RWD`, `AWD`).
+    pub trans: String,
     pub physics: String,
     pub model: Option<String>,
     pub banks: Option<String>,
@@ -106,7 +111,16 @@ pub fn parse(text: &str) -> Catalog {
                 continue;
             }
             let banks = link(fields, "link_banks", BANKS);
-            catalog.cars.push(Entry { name: field("name"), cat, year: field("year"), physics, model, banks });
+            catalog.cars.push(Entry {
+                name: field("name"),
+                cat,
+                year: field("year"),
+                pack: field("physics"),
+                trans: field("trans"),
+                physics,
+                model,
+                banks,
+            });
         }
     }
     catalog.cars.sort_by_key(|c| c.name.to_lowercase());
@@ -263,7 +277,16 @@ pub fn download_cars(
     for entry in wanted {
         let file = |url: &Option<String>| url.as_deref().map(|u| files[u].clone()).transpose();
         match (files[entry.physics.as_str()].clone(), file(&entry.model), file(&entry.banks)) {
-            (Ok(physics), Ok(model), Ok(banks)) => downloads.push(Download { physics, model, banks }),
+            (Ok(physics), Ok(model), Ok(banks)) => {
+                let group = car_packs::normalize_group(&entry.cat);
+                downloads.push(Download {
+                    physics,
+                    model,
+                    banks,
+                    group: (!group.is_empty()).then_some(group),
+                    drive_train: (!entry.trans.trim().is_empty()).then(|| entry.trans.trim().to_owned()),
+                })
+            }
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                 added.push(Added { download: entry.name.clone(), result: Err(e) })
             }
@@ -303,9 +326,13 @@ pub fn ngp_cli(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// The command line's `--download-cars [NAME…]`, into `cars_dir`: without names, the list.
+/// The command line's `--download-cars [NAME…]`, into `cars_dir`: without names, the list. Added cars that
+/// still lack their group or drive train take them from the list first.
 pub fn cars_cli(cars_dir: &Path, args: &[String]) -> Result<(), String> {
     let catalog = read_list(LIST_URL)?;
+    if let Err(e) = car_packs::backfill(cars_dir, &catalog.cars) {
+        eprintln!("launcher: added cars: {e}");
+    }
     if args.is_empty() {
         println!("gvrc.de car list {}", catalog.version);
         for car in &catalog.cars {
@@ -362,6 +389,8 @@ impl Downloads {
             name: name.into(),
             cat: cat.into(),
             year: year.into(),
+            pack: name.into(),
+            trans: "4WD".into(),
             physics: format!("https://gvrc.de/ngp/physics/{name} - NGP Physics.zip"),
             model: None,
             banks: None,
@@ -481,6 +510,18 @@ impl Form {
             if let Some(result) = ui.horizontal_wrapped(|ui| job.ui(ui)).inner {
                 self.downloads.list_job = None;
                 self.downloads.list = Some(result);
+                // Added cars that still lack their group or drive train take them from the finished list.
+                let entries = match &self.downloads.list {
+                    Some(Ok(catalog)) => Some(catalog.cars.clone()),
+                    _ => None,
+                };
+                if let Some(entries) = entries {
+                    match car_packs::backfill(&self.cars_dir(), &entries) {
+                        Ok(true) => self.rescan_cars(),
+                        Err(e) => self.adding.status = Some(Err(e)),
+                        Ok(false) => {}
+                    }
+                }
             }
         }
         let added: HashSet<String> =
@@ -566,7 +607,7 @@ mod tests {
     const LIST: &str = "\u{feff}; File: carList.ini\n; Version: 6.175 2025-12-07\n\n[Plugins]\n\
         plugin_physics_url=https://gvrc.de/ngp/plugin/RBR_NGP-7.4.778.507.7z\n\n\
         [Car_1]\nname=Citroen Xsara (0)\ncat=Original\nlink_physics=https://gvrc.de/ngp/original/physics/c_xsara.zip\nlink_model=\n\n\
-        [Car_10]\nname=Audi Sport quattro GrpB\ncat=Group B\nyear=1985\n\
+        [Car_10]\nname=Audi Sport quattro GrpB\ncat=Group B\nyear=1985\nphysics=Audi Sport quattro GrpB\ntrans=4WD\n\
         link_physics=https://gvrc.de/ngp/physics/Audi%20Sport%20quattro%20GrpB%20-%20NGP%20Physics.zip\n\
         link_model=https://gvrc.de/ngp/models/Audi%20Sport%20quattro%20GrpB%20-%20Model.7z\n\
         link_banks=https://gvrc.de/ngp/sounds/Audi%20Sport%20quattro%20GrpB%20-%20banks.7z\n\n\
@@ -585,6 +626,9 @@ mod tests {
         let names: Vec<&str> = catalog.cars.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["Audi Sport quattro GrpB", "Ford Fiesta R5"]);
         assert_eq!(catalog.cars[0].year, "1985");
+        assert_eq!(catalog.cars[0].pack, "Audi Sport quattro GrpB");
+        assert_eq!(catalog.cars[0].trans, "4WD");
+        assert_eq!((catalog.cars[1].pack.as_str(), catalog.cars[1].trans.as_str()), ("", ""));
         assert_eq!(
             catalog.cars[0].model.as_deref(),
             Some("https://gvrc.de/ngp/models/Audi%20Sport%20quattro%20GrpB%20-%20Model.7z")
@@ -690,6 +734,8 @@ mod tests {
             name: "Ghost Car".into(),
             cat: "Group B".into(),
             year: "1985".into(),
+            pack: "Ghost Car".into(),
+            trans: "4WD".into(),
             physics: format!("{base}/Ghost%20Car%20-%20NGP%20Physics.zip"),
             model: None,
             banks: None,

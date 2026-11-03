@@ -58,6 +58,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 
 - The game's quality settings and music are not offered (user decisions).
 - The co-driver is set up on the Settings page, not per drive (user decision 2026-10-29).
+- Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive
+  train (`cars_data.json`) from the list's `cat`/`trans` (`RallyN` as `Rally N`, bare `A5`..`A8` as `Group A5`..;
+  `car_packs::backfill`), so the browser classes and drive-filters them like RSF's.
 - Stage browser: “Newest on RSF” uses first native introductions from dated RSF announcements
   (`data/rsf-stage-releases.csv`, coverage from 2024-10-05); new maps precede conversions on a tied date,
   unknown dates follow dated maps, later fixes keep the introduction date (`stage_releases`, 2026-11-01).

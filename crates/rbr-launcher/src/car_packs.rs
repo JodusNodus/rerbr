@@ -9,7 +9,8 @@
 //! - `cars/AudioFMOD/`: the car's FMOD sound banks, the `.7z`'s folder holding a `.bank`;
 //! - `cars/rsfdata/cache/cars.json` and `carmodels.json`: the list, written by us from the packs' text files (the
 //!   name, the revision, the sound bank; ids of our own, so the launcher does not match them with RSF's ghosts or
-//!   gearboxes).
+//!   gearboxes), and `cargroups.json` with `cars_data.json`: each car's group (gvrc.de's list category, as RSF names
+//!   it) and drive train, the fields the car browser lists and filters by.
 //!
 //! A pack's model is the download, or one added before, whose name starts the car's download name, the pack's title
 //! or its "3D model" credit, the longest such (`Mitsubishi Lancer Evo IX - Model.7z` for the Evo IX N4 and R4). A
@@ -25,6 +26,7 @@ use std::sync::atomic::AtomicBool;
 use rbr_formats::rsf;
 
 use crate::archive::safe_folder;
+use crate::gvrc::Entry;
 use crate::job::{Counter, Job, Report, Temp};
 use crate::pages::{GOOD, WARN};
 use crate::Form;
@@ -44,12 +46,15 @@ const STAND_IN_NAME: &str = "Subaru Impreza 2003";
 
 type Fail = String;
 
-/// A physics pack download and the model and sound bank downloads it goes with.
+/// A physics pack download and the model and sound bank downloads it goes with, with the group and drive train
+/// gvrc.de's list names for the car (`None` keeps the added car's own on a re-add).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Download {
     pub physics: PathBuf,
     pub model: Option<PathBuf>,
     pub banks: Option<PathBuf>,
+    pub group: Option<String>,
+    pub drive_train: Option<String>,
 }
 
 /// An added pack: its car's name, and its model folder or why it has none; or why it was not added.
@@ -222,8 +227,24 @@ fn json(text: &str) -> String {
     out + "\""
 }
 
-/// Writes the list RSF's reader takes (`rsfdata/cache/cars.json`, `carmodels.json`), dropping the models no car uses
-/// and their folders.
+/// gvrc.de's list category as RSF names the car's group (`Rally2` is `Rally 2`, a bare `A8` is `Group A8`);
+/// anything else is kept as named, trimmed. What an added car is listed and filtered by.
+pub(crate) fn normalize_group(cat: &str) -> String {
+    let cat = cat.trim();
+    if let Some(n) = cat.strip_prefix("Rally") {
+        if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) {
+            return format!("Rally {n}");
+        }
+    }
+    match cat {
+        "A5" | "A6" | "A7" | "A8" => format!("Group {cat}"),
+        _ => cat.to_owned(),
+    }
+}
+
+/// Writes the list RSF's reader takes (`rsfdata/cache/cargroups.json`, `cars.json`, `carmodels.json` and
+/// `cars_data.json`), dropping the models no car uses and their folders. Each car keeps its `base_group_id` (one
+/// row per distinct group name, ids of our own) and its `cars_data.json` drive train, so both survive a rewrite.
 pub(crate) fn write_list(cars_dir: &Path, cars: &[rsf::Car], models: &[rsf::Model]) -> Result<(), Fail> {
     let used: Vec<&rsf::Model> = models.iter().filter(|m| cars.iter().any(|c| c.model == m.id)).collect();
     for model in models.iter().filter(|m| !used.iter().any(|u| u.path.eq_ignore_ascii_case(&m.path))) {
@@ -232,13 +253,26 @@ pub(crate) fn write_list(cars_dir: &Path, cars: &[rsf::Car], models: &[rsf::Mode
         }
     }
     let rows = |rows: Vec<String>| format!("[\n{}\n]\n", rows.join(",\n"));
+    let mut groups: Vec<&str> = cars.iter().filter_map(|c| c.group.as_deref()).filter(|g| !g.is_empty()).collect();
+    groups.sort();
+    groups.dedup();
+    let groups_json = rows(
+        groups.iter().enumerate().map(|(k, name)| format!("{{\"id\":{},\"name\":{}}}", k + 1, json(name))).collect(),
+    );
     let cars_json = rows(
         cars.iter()
             .map(|c| {
                 let (id, name, path, rev) = (c.id, json(&c.name), json(&c.pack), json(&c.revision));
+                let group = c
+                    .group
+                    .as_deref()
+                    .filter(|g| !g.is_empty())
+                    .and_then(|g| groups.iter().position(|h| *h == g))
+                    .map(|k| format!(",\"base_group_id\":{}", k + 1))
+                    .unwrap_or_default();
                 let audio = c.audio.as_deref().map(|a| format!(",\"audio\":{}", json(a))).unwrap_or_default();
                 format!(
-                    "{{\"id\":{id},\"name\":{name},\"path\":{path},\"carmodel_id\":{},\"rev\":{rev}{audio}}}",
+                    "{{\"id\":{id},\"name\":{name},\"path\":{path},\"carmodel_id\":{},\"rev\":{rev}{group}{audio}}}",
                     c.model
                 )
             })
@@ -255,15 +289,62 @@ pub(crate) fn write_list(cars_dir: &Path, cars: &[rsf::Car], models: &[rsf::Mode
             })
             .collect(),
     );
+    let data_json = rows(
+        cars.iter()
+            .filter_map(|c| {
+                let drive = c.drive_train.as_deref().filter(|d| !d.is_empty())?;
+                Some(format!("{{\"car_id\":{},\"drive_train\":{}}}", c.id, json(drive)))
+            })
+            .collect(),
+    );
     let cache = cars_dir.join("rsfdata").join("cache");
     fs::create_dir_all(&cache).map_err(|e| format!("{}: {e}", cache.display()))?;
-    for (name, text) in [("carmodels.json", models_json), ("cars.json", cars_json)] {
+    for (name, text) in [
+        ("cargroups.json", groups_json),
+        ("carmodels.json", models_json),
+        ("cars.json", cars_json),
+        ("cars_data.json", data_json),
+    ] {
         let (temp, path) = (cache.join(format!(".{name}.new")), cache.join(name));
         fs::write(&temp, text)
             .and_then(|()| fs::rename(&temp, &path))
             .map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok(())
+}
+
+/// Fills in the group and drive train gvrc.de's list names for added cars that lack them: the cars whose pack
+/// folder is an entry's pack folder (ignoring case) take its normalized category and its drive. Rewrites the list
+/// only when a car gained something, and says whether it did.
+pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
+    let (mut cars, models) = list(cars_dir);
+    let mut changed = false;
+    for car in &mut cars {
+        let missing = car.group.as_deref().filter(|g| !g.is_empty()).is_none()
+            || car.drive_train.as_deref().filter(|d| !d.is_empty()).is_none();
+        let Some(entry) = missing.then(|| entries.iter().find(|e| e.pack.eq_ignore_ascii_case(&car.pack))).flatten()
+        else {
+            continue;
+        };
+        if car.group.as_deref().filter(|g| !g.is_empty()).is_none() {
+            let group = normalize_group(&entry.cat);
+            if !group.is_empty() {
+                car.group = Some(group);
+                changed = true;
+            }
+        }
+        if car.drive_train.as_deref().filter(|d| !d.is_empty()).is_none() {
+            let drive = entry.trans.trim();
+            if !drive.is_empty() {
+                car.drive_train = Some(drive.to_owned());
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        write_list(cars_dir, &cars, &models)?;
+    }
+    Ok(changed)
 }
 
 /// Moves the `.bank` files in the folder `from` into `to`, replacing those of the same name.
@@ -375,15 +456,23 @@ fn add_one(
         move_banks(&temp.join("banks"), &cars_dir.join(AUDIO))?;
     }
     replace(&staged, &cars_dir.join("rsfdata").join("cars").join(&physics.folder))?;
+    // A re-add without metadata keeps the car's own group and drive train.
+    let (group, drive_train) = match cars.iter().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)) {
+        Some(known) => (
+            download.group.clone().or_else(|| known.group.clone()),
+            download.drive_train.clone().or_else(|| known.drive_train.clone()),
+        ),
+        None => (download.group.clone(), download.drive_train.clone()),
+    };
     let row = rsf::Car {
         id: 0,
         name: title.clone(),
         pack: physics.folder.clone(),
-        group: None,
+        group,
         model: model_id,
         revision,
         audio: banks.map(|b| b.filename),
-        drive_train: None,
+        drive_train,
     };
     match cars.iter_mut().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)) {
         Some(c) => *c = rsf::Car { id: c.id, ..row },
@@ -479,7 +568,7 @@ pub fn summary(added: &[Added]) -> Result<String, String> {
 #[derive(Default)]
 pub struct Adding {
     job: Option<Job<Vec<Added>>>,
-    status: Option<Result<String, String>>,
+    pub(crate) status: Option<Result<String, String>>,
     pub cars: Vec<(String, String)>,
 }
 
@@ -555,7 +644,7 @@ impl Form {
     }
 
     /// Reads the added cars again, into the lists.
-    fn rescan_cars(&mut self) {
+    pub(crate) fn rescan_cars(&mut self) {
         let root = self.rsf();
         self.catalog.set_rsf_cars(&self.paths.data, &root, &self.cars_dir());
         self.list_cars();
@@ -647,13 +736,20 @@ mod tests {
             physics: downloads_dir.join(physics),
             model: model.map(|m| downloads_dir.join(m)),
             banks: None,
+            group: None,
+            drive_train: None,
         };
-        let packs = vec![
+        let mut packs = vec![
             download("Broken - NGP Physics.zip", None),
             download("Ford Fiesta Rally2 - NGP Physics.zip", None),
             download("Mitsubishi Lancer Evo IX N4 - NGP Physics.zip", Some("Mitsubishi Lancer Evo IX - Model.7z")),
             download("Mitsubishi Lancer Evo IX R4 - NGP Physics.zip", Some("Mitsubishi Lancer Evo IX - Model.7z")),
         ];
+        // What gvrc.de's list would name for the two Evo IX: the group and the drive travel with the download.
+        packs[2].group = Some("Group N4".into());
+        packs[2].drive_train = Some("4WD".into());
+        packs[3].group = Some("Group R4".into());
+        packs[3].drive_train = Some("4WD".into());
 
         let progress = std::sync::Mutex::new(Vec::new());
         let added =
@@ -674,6 +770,11 @@ mod tests {
             ]
         );
         assert_eq!(install.cars[1].revision, "3 / 2024-12-10");
+        // The downloads' group and drive train are on the cars, and read back through the list.
+        assert_eq!(install.cars[1].group.as_deref(), Some("Group N4"));
+        assert_eq!(install.cars[1].drive_train.as_deref(), Some("4WD"));
+        assert_eq!(install.cars[2].group.as_deref(), Some("Group R4"));
+        assert_eq!(list(&cars).0[1].group.as_deref(), Some("Group N4"));
         let evo = install.pack(&install.cars[1]).unwrap();
         assert_eq!(evo.read("setups/d_gravel.lsp").unwrap(), b"x");
         assert_eq!(evo.path(), cars.join("rsfdata/cars/Evo_IX_N4_ngp6"));
@@ -710,12 +811,18 @@ mod tests {
                 physics: single.join(format!("Mitsubishi Lancer Evo IX R4{PHYSICS}")),
                 model: None,
                 banks: None,
+                group: None,
+                drive_train: None,
             }],
             &|_| {},
             &AtomicBool::new(false),
         )
         .unwrap();
         assert_eq!(again[0].result, Ok(("Mitsubishi Lancer Evo IX R4".into(), Some("evo_IX".into()))));
+        // A re-add without metadata keeps the car's group and drive train.
+        let kept = list(&cars).0.into_iter().find(|c| c.pack == "Mitsubishi_Lancer_Evo_IX_R4").unwrap();
+        assert_eq!(kept.group.as_deref(), Some("Group R4"));
+        assert_eq!(kept.drive_train.as_deref(), Some("4WD"));
 
         remove(&cars, "Evo_IX_N4_ngp6").unwrap();
         assert!(!cars.join("rsfdata/cars/Evo_IX_N4_ngp6").exists());
@@ -754,6 +861,8 @@ mod tests {
             physics: downloads_dir.join(format!("Citroen C2 GT S1600{PHYSICS}")),
             model: None,
             banks: Some(downloads_dir.join(format!("Citroen C2 GT S1600{BANKS}"))),
+            group: None,
+            drive_train: None,
         }];
         add_downloads(&cars, &downloads, &|_| {}, &AtomicBool::new(false)).unwrap();
 
@@ -766,6 +875,148 @@ mod tests {
         assert!(
             !cars.join("AudioFMOD/C2_S1600.bank").exists() && !cars.join("AudioFMOD/C2_S1600.strings.bank").exists()
         );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// gvrc.de's categories as RSF names the groups: `RallyN` takes a space, a bare `A5`..`A8` takes `Group`.
+    #[test]
+    fn groups_are_normalized_to_rsf_names() {
+        assert_eq!(normalize_group("Rally2"), "Rally 2");
+        assert_eq!(normalize_group("Rally5"), "Rally 5");
+        assert_eq!(normalize_group("Rally 2"), "Rally 2");
+        assert_eq!(normalize_group("A5"), "Group A5");
+        assert_eq!(normalize_group("A8"), "Group A8");
+        assert_eq!(normalize_group("Group A8"), "Group A8");
+        assert_eq!(normalize_group("Group B"), "Group B");
+        assert_eq!(normalize_group("WRC 1.6"), "WRC 1.6");
+        assert_eq!(normalize_group("  Group N4  "), "Group N4");
+        assert_eq!(normalize_group("Rally"), "Rally");
+        assert_eq!(normalize_group(""), "");
+    }
+
+    /// A `write_list` round trip keeps each car's group and drive train, and a second rewrite is byte-identical.
+    #[test]
+    fn group_and_drive_survive_a_rewrite() {
+        let root = crate::test_dir("car-groups");
+        let cars_dir = root.join("cars");
+        let model = rsf::Model { id: 7, name: "m".into(), path: "m".into(), filename: "m".into(), fallback: 5 };
+        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| rsf::Car {
+            id,
+            name: format!("{pack} car"),
+            pack: pack.into(),
+            group: group.map(str::to_owned),
+            model: 7,
+            revision: "3 / 2024-12-10".into(),
+            audio: None,
+            drive_train: drive.map(str::to_owned),
+        };
+        let cars = vec![
+            car(1, "evo_IX", Some("Group N4"), Some("4WD")),
+            car(2, "quattro", Some("Group B"), Some("AWD with torque split")),
+            car(3, "zr", None, None),
+        ];
+        write_list(&cars_dir, &cars, &[model]).unwrap();
+        let cache = cars_dir.join("rsfdata").join("cache");
+        let groups = fs::read_to_string(cache.join("cargroups.json")).unwrap();
+        assert!(
+            groups.contains("\"id\":1,\"name\":\"Group B\"") && groups.contains("\"id\":2,\"name\":\"Group N4\""),
+            "{groups}"
+        );
+        let list_cars = fs::read_to_string(cache.join("cars.json")).unwrap();
+        assert!(
+            list_cars.contains("\"path\":\"evo_IX\",\"carmodel_id\":7,\"rev\":\"3 / 2024-12-10\",\"base_group_id\":2")
+                && list_cars.contains(
+                    "{\"id\":3,\"name\":\"zr car\",\"path\":\"zr\",\"carmodel_id\":7,\"rev\":\"3 / 2024-12-10\"}"
+                ),
+            "{list_cars}"
+        );
+        let data = fs::read_to_string(cache.join("cars_data.json")).unwrap();
+        assert!(
+            data.contains("\"car_id\":1,\"drive_train\":\"4WD\"")
+                && data.contains("\"car_id\":2,\"drive_train\":\"AWD with torque split\"")
+                && !data.contains("\"car_id\":3"),
+            "{data}"
+        );
+        let (found, found_models) = list(&cars_dir);
+        assert_eq!(found, cars);
+        assert_eq!(found_models.len(), 1);
+        // A second rewrite changes nothing.
+        let before: Vec<Vec<u8>> = ["cargroups.json", "carmodels.json", "cars.json", "cars_data.json"]
+            .iter()
+            .map(|n| fs::read(cache.join(n)).unwrap())
+            .collect();
+        write_list(&cars_dir, &found, &found_models).unwrap();
+        let after: Vec<Vec<u8>> = ["cargroups.json", "carmodels.json", "cars.json", "cars_data.json"]
+            .iter()
+            .map(|n| fs::read(cache.join(n)).unwrap())
+            .collect();
+        assert_eq!(before, after);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Cars added before the group and drive train that lack them take them from the list's entries: only matching
+    /// packs without values change, and the list is not rewritten when nothing changed.
+    #[test]
+    fn missing_groups_and_drives_are_backfilled_from_the_list() {
+        let root = crate::test_dir("car-backfill");
+        let cars_dir = root.join("cars");
+        let model = rsf::Model { id: 7, name: "m".into(), path: "m".into(), filename: "m".into(), fallback: 5 };
+        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| rsf::Car {
+            id,
+            name: format!("{pack} car"),
+            pack: pack.into(),
+            group: group.map(str::to_owned),
+            model: 7,
+            revision: String::new(),
+            audio: None,
+            drive_train: drive.map(str::to_owned),
+        };
+        write_list(
+            &cars_dir,
+            &[
+                car(1, "BMW M1 GrpB", None, None),
+                car(2, "Fiesta", Some("Group B"), None),
+                car(3, "Ghost", None, None),
+                car(4, "evo_IX", Some("WRC 1.6"), Some("4WD")),
+            ],
+            &[model],
+        )
+        .unwrap();
+        let entry = |pack: &str, cat: &str, trans: &str| crate::gvrc::Entry {
+            name: pack.into(),
+            cat: cat.into(),
+            year: String::new(),
+            pack: pack.into(),
+            trans: trans.into(),
+            physics: String::new(),
+            model: None,
+            banks: None,
+        };
+        let entries = vec![
+            entry("bmw m1 grpb", "Group B", "RWD"),
+            entry("Fiesta", "Rally2", "FWD"),
+            entry("evo_IX", "Group B", "RWD"),
+        ];
+        assert!(backfill(&cars_dir, &entries).unwrap());
+        let found = list(&cars_dir).0;
+        let group = |pack: &str| found.iter().find(|c| c.pack == pack).unwrap().group.clone();
+        let drive = |pack: &str| found.iter().find(|c| c.pack == pack).unwrap().drive_train.clone();
+        assert_eq!((group("BMW M1 GrpB").as_deref(), drive("BMW M1 GrpB").as_deref()), (Some("Group B"), Some("RWD")));
+        assert_eq!((group("Fiesta").as_deref(), drive("Fiesta").as_deref()), (Some("Group B"), Some("FWD")));
+        assert_eq!((group("Ghost").as_deref(), drive("Ghost").as_deref()), (None, None));
+        assert_eq!((group("evo_IX").as_deref(), drive("evo_IX").as_deref()), (Some("WRC 1.6"), Some("4WD")));
+        // Nothing left to fill: no rewrite.
+        let cache = cars_dir.join("rsfdata").join("cache");
+        let before: Vec<Vec<u8>> = ["cargroups.json", "cars.json", "cars_data.json"]
+            .iter()
+            .map(|n| fs::read(cache.join(n)).unwrap())
+            .collect();
+        assert!(!backfill(&cars_dir, &entries).unwrap());
+        let after: Vec<Vec<u8>> = ["cargroups.json", "cars.json", "cars_data.json"]
+            .iter()
+            .map(|n| fs::read(cache.join(n)).unwrap())
+            .collect();
+        assert_eq!(before, after);
         fs::remove_dir_all(&root).unwrap();
     }
 
