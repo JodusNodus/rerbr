@@ -125,24 +125,7 @@ impl CameraPrefs {
 
     /// `file` (a whole settings file) with its `[camera]` section replaced by this one, the rest kept as it is.
     pub fn replace_in(&self, file: &str) -> String {
-        let mut out = String::new();
-        let mut inside = false;
-        for line in file.lines() {
-            let header =
-                line.trim().strip_prefix('[').and_then(|rest| rest.split_once(']')).map(|(name, _)| name.trim());
-            if let Some(name) = header {
-                inside = name == SECTION;
-            }
-            if !inside {
-                out.push_str(line);
-                out.push('\n');
-            }
-        }
-        if !out.is_empty() && !out.ends_with("\n\n") {
-            out.push('\n');
-        }
-        out.push_str(&self.to_text());
-        out
+        rbr_formats::ini::replace_section(file, SECTION, &self.to_text())
     }
 }
 

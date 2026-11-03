@@ -9,6 +9,7 @@
 //! G923 under Linux): the force opposes the steering, so it centres the wheel. `inverse` flips it for a wheel that
 //! turns the other way.
 
+use std::collections::BTreeMap;
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc};
@@ -34,8 +35,6 @@ pub struct Options {
     /// NGP's force-feedback sensitivity for gravel, tarmac and snow, percent (`ForceFeedbackSensitivity<Surface>`;
     /// `rbr-standalone --ffb-sensitivity`): below 100 the force is stronger and its peaks flatter, above 100 lighter.
     pub sensitivity: [i32; 3],
-    /// NGP's sensitivities for one RSF car, by its id, in place of [`Options::sensitivity`] (RSF's per-car ones).
-    pub car_sensitivity: Vec<(u32, [i32; 3])>,
     /// The wheel's most lock-to-lock rotation, degrees (`crate::wheel_rotation`); `None` leaves the wheel's own.
     pub rotation: Option<u16>,
     /// The rotation is the car's own lock ([`crate::wheel_rotation::car_degrees`]), up to [`Options::rotation`].
@@ -49,7 +48,6 @@ impl Default for Options {
             rate: 1000,
             device: None,
             sensitivity: [100; 3],
-            car_sensitivity: Vec::new(),
             rotation: None,
             rotation_per_car: false,
         }
@@ -80,20 +78,7 @@ impl Options {
         out.rotation =
             section.get("rotation").and_then(|v| v.parse().ok()).filter(|v| crate::wheel_rotation::DEGREES.contains(v));
         out.rotation_per_car = flag("rotation_per_car", false);
-        for (key, value) in &section.entries {
-            let Some(car) = key.strip_prefix("sensitivity_car").and_then(|c| c.parse().ok()) else { continue };
-            let values: Vec<i32> = value.split(',').filter_map(|v| v.trim().parse().ok()).collect();
-            if let Ok(values) = values.try_into() {
-                out.car_sensitivity.push((car, values));
-            }
-        }
         out
-    }
-
-    /// The sensitivities a drive of RSF car `car` (`None` for another car) takes.
-    pub fn sensitivity_for(&self, car: Option<u32>) -> [i32; 3] {
-        let own = self.car_sensitivity.iter().find(|(c, _)| Some(*c) == car);
-        own.map_or(self.sensitivity, |(_, s)| *s)
     }
 
     /// The rotation a drive takes, `car` the car's own lock if known.
@@ -108,7 +93,7 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\n{}",
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -121,12 +106,94 @@ impl Options {
             self.sensitivity[2],
             self.rotation.map_or(String::new(), |d| d.to_string()),
             u8::from(self.rotation_per_car),
-            self.car_sensitivity
-                .iter()
-                .map(|(c, [g, t, n])| format!("sensitivity_car{c} = {g},{t},{n}\n"))
-                .collect::<String>(),
         )
     }
+}
+
+/// The sensitivities' range, percent, in the launcher and the pause menu (RSF's cars go up to 372).
+pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
+
+/// Each car's own NGP sensitivities, in place of [`Options::sensitivity`]: the `[ffb_cars]` section of the launcher's
+/// settings file, by `crate::camera_prefs::car_key`, which the pause menu's Force feedback page
+/// (`crate::hud::ffb_page`) and the launcher's Controls page both write in place, as `[camera]`:
+///
+/// ```ini
+/// [ffb_cars]
+/// rsf-107 = 352,280,372
+/// ```
+///
+/// An older `[ffb]` `sensitivity_car<id> = g,t,s` (RSF car `id`) is read as `rsf-<id>` where the section has none.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CarSensitivity {
+    pub cars: BTreeMap<String, [i32; 3]>,
+}
+
+/// [`CarSensitivity`]'s section.
+pub const CARS_SECTION: &str = "ffb_cars";
+
+impl CarSensitivity {
+    /// The cars' sensitivities in `text` (a whole settings file); a malformed line is left out.
+    pub fn parse(text: &str) -> CarSensitivity {
+        let sections = rbr_formats::ini::parse(text).unwrap_or_default();
+        let values = |value: &str| -> Option<[i32; 3]> {
+            let values: Vec<i32> = value.split(',').map(|v| v.trim().parse().ok()).collect::<Option<_>>()?;
+            values.try_into().ok()
+        };
+        let mut cars = BTreeMap::new();
+        for (key, value) in sections.iter().filter(|s| s.name == CARS_SECTION).flat_map(|s| &s.entries) {
+            if let Some(values) = values(value) {
+                cars.insert(key.clone(), values);
+            }
+        }
+        for (key, value) in sections.iter().filter(|s| s.name == "ffb").flat_map(|s| &s.entries) {
+            let id = key.strip_prefix("sensitivity_car").and_then(|c| c.parse::<u32>().ok());
+            if let (Some(id), Some(values)) = (id, values(value)) {
+                cars.entry(format!("rsf-{id}")).or_insert(values);
+            }
+        }
+        CarSensitivity { cars }
+    }
+
+    /// Car `key`'s sensitivities, else `global`.
+    pub fn of(&self, key: Option<&str>, global: [i32; 3]) -> [i32; 3] {
+        key.and_then(|k| self.cars.get(k)).copied().unwrap_or(global)
+    }
+
+    /// The section's text.
+    pub fn to_text(&self) -> String {
+        let cars: String = self.cars.iter().map(|(car, [g, t, s])| format!("{car} = {g},{t},{s}\n")).collect();
+        format!("[{CARS_SECTION}]\n{cars}")
+    }
+
+    /// `file` (a whole settings file) with this section in place of its own, and without the older `[ffb]` entries.
+    pub fn replace_in(&self, file: &str) -> String {
+        let mut section = "";
+        let kept: String = file
+            .lines()
+            .filter(|line| {
+                if let Some((name, _)) = line.trim().strip_prefix('[').and_then(|r| r.split_once(']')) {
+                    section = name.trim();
+                }
+                !(section == "ffb" && line.trim_start().starts_with("sensitivity_car"))
+            })
+            .map(|line| format!("{line}\n"))
+            .collect();
+        rbr_formats::ini::replace_section(&kept, CARS_SECTION, &self.to_text())
+    }
+}
+
+/// The force NGP's curve gives at sensitivity percentage `now` for a force `force` it gave at `was`, both for the
+/// drive's surface (`rbr_physics::ngp::ffb`): its `1 - 0.975^(|T| 100 / S)` with `S` scaled by `now / was`, which
+/// is `1 - (1 - |force|)^(was / now)` with the sign kept. A percentage of 0 or less, or 100, leaves `S` as it is.
+/// The pause menu's changes take effect on the running drive this way, NGP's car keeping the percentage it started
+/// with (`rbr-standalone --ffb-sensitivity`).
+pub fn reshape(force: f32, was: i32, now: i32) -> f32 {
+    let percent = |p: i32| if p > 0 { p as f32 } else { 100.0 };
+    if percent(was) == percent(now) || force == 0.0 || force.is_nan() {
+        return force;
+    }
+    let left = (1.0 - force.abs()).max(0.0);
+    force.signum() * (1.0 - left.powf(percent(was) / percent(now)))
 }
 
 /// The wheel's force-feedback thread; dropping it stops the force.
@@ -298,7 +365,7 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
 
 #[cfg(test)]
 mod tests {
-    use super::{level, Options};
+    use super::{level, reshape, CarSensitivity, Options};
 
     #[test]
     fn options_round_trip_and_default() {
@@ -308,7 +375,6 @@ mod tests {
             sensitivity: [80, 100, 120],
             rotation: Some(540),
             rotation_per_car: true,
-            car_sensitivity: vec![(88, [300, 250, 280])],
             ..Options::default()
         };
         o.settings.strength = 0.6;
@@ -318,10 +384,6 @@ mod tests {
         assert_eq!(Options::parse("[controls]\nbrake = KeyB\n"), Options::default());
         assert_eq!(Options::parse("[ffb]\nstrength = 3\nrate = 0\n").settings.strength, 1.0);
         assert_eq!(
-            (o.sensitivity_for(Some(88)), o.sensitivity_for(Some(87)), o.sensitivity_for(None)),
-            ([300, 250, 280], [80, 100, 120], [80, 100, 120])
-        );
-        assert_eq!(
             (o.rotation_for(Some(479)), o.rotation_for(Some(565)), o.rotation_for(None)),
             (Some(479), Some(540), Some(540))
         );
@@ -329,6 +391,39 @@ mod tests {
         assert_eq!(o.rotation_for(Some(479)), Some(540));
         o.rotation = None;
         assert_eq!(o.rotation_for(Some(479)), None);
+    }
+
+    #[test]
+    fn each_car_keeps_its_own_sensitivity_in_place() {
+        let file = "[ffb]\nstrength = 1\nsensitivity_car88 = 300,250,280\nsensitivity_car24 = 1,2\n\n\
+                    [ffb_cars]\nrsf-24 = 90,100,110\nCOROLLA = 120, 120, 130\nrsf-9 = x,1,2\n\n[camera]\nview = bonnet\n";
+        let cars = CarSensitivity::parse(file);
+        let expected = [("COROLLA", [120, 120, 130]), ("rsf-24", [90, 100, 110]), ("rsf-88", [300, 250, 280])];
+        assert_eq!(cars.cars, expected.map(|(k, v)| (k.to_owned(), v)).into());
+        assert_eq!(
+            (cars.of(Some("rsf-88"), [100; 3]), cars.of(Some("rsf-1"), [7; 3]), cars.of(None, [7; 3])),
+            ([300, 250, 280], [7; 3], [7; 3])
+        );
+        // Written back as its own section: the older entries go, the rest of the file stays.
+        let mut changed = cars.clone();
+        changed.cars.remove("COROLLA");
+        let text = changed.replace_in(file);
+        assert_eq!(CarSensitivity::parse(&text), changed);
+        assert!(text.starts_with("[ffb]\nstrength = 1\n\n") && text.contains("[camera]\nview = bonnet\n"), "{text}");
+        assert!(!text.contains("sensitivity_car") && !text.contains("COROLLA"), "{text}");
+        assert_eq!(Options::parse(&text).settings.strength, 1.0);
+    }
+
+    #[test]
+    fn a_new_sensitivity_reshapes_the_curve() {
+        // NGP's curve at S = 100 and at 150: the force at 100 reshaped to 150 is the one at 150.
+        let curve = |t: f32, s: f32| 1.0 - 0.975f32.powf(t * 100.0 / s);
+        for t in [5.0, 27.4, 90.0] {
+            assert!((reshape(curve(t, 100.0), 100, 150) - curve(t, 150.0)).abs() < 1e-5);
+            assert!((reshape(-curve(t, 280.0), 280, 140) + curve(t, 140.0)).abs() < 1e-5);
+        }
+        assert_eq!((reshape(0.4, 100, 100), reshape(0.4, 0, 100), reshape(0.0, 100, 300)), (0.4, 0.4, 0.0));
+        assert_eq!(reshape(1.0, 100, 300), 1.0);
     }
 
     #[test]

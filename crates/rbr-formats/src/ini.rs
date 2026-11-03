@@ -68,6 +68,27 @@ pub fn parse(text: &str) -> Result<Vec<Section>, ParseError> {
     Ok(sections)
 }
 
+/// `file` (a whole `.ini` document) with its `[name]` section left out and `section` (a section's text) appended, the
+/// rest kept line for line.
+pub fn replace_section(file: &str, name: &str, section: &str) -> String {
+    let mut out = String::new();
+    let mut inside = false;
+    for line in file.lines() {
+        if let Some((header, _)) = line.trim().strip_prefix('[').and_then(|rest| rest.split_once(']')) {
+            inside = header.trim() == name;
+        }
+        if !inside {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !out.is_empty() && !out.ends_with("\n\n") {
+        out.push('\n');
+    }
+    out.push_str(section);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
