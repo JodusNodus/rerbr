@@ -3,9 +3,10 @@
 //!
 //! The game draws the picture with `CScreenshotUI::Vf0C` (0x53f7d0): sprite 0x520 + n of the menu bank
 //! (`rbr_formats::bnk`, `CPC_GraphicsDaemon::LoadMenuBank` 0x4c1100) for the map's base map (`E52ModeHost::Mode`
-//! 0x4a1560, the II stages share their base's picture). We read the 1280 bank, the largest pictures. A RallySimFans
-//! stage shows the first `<id>-*.dds` of its folder (its loading picture) when it is readable. Its files are never
-//! decrypted.
+//! 0x4a1560, the II stages share their base's picture). We read the 1280 bank, the largest pictures, all 384 × 184. A
+//! RallySimFans stage shows the picture RSF's menus show, `rsfdata/images/stage_images/<id>.png`, else the first
+//! `<id>-*.dds` of its folder (its loading poster) when it is readable, the middle of either in the retail pictures'
+//! shape, so both kinds show alike. Its files are never decrypted.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -18,6 +19,8 @@ use rbr_formats::{bnk, stage_files};
 const BANK: &str = "Generic\\PC_Generic_1280.bnk";
 /// The largest picture width decoded from an RSF stage's `.dds` (a smaller mip level is taken).
 const RSF_PICTURE_WIDTH: u32 = 512;
+/// The retail pictures' shape: every menu bank picture is 384 × 184.
+const ASPECT: f32 = 384.0 / 184.0;
 
 /// A picture's width, height and RGBA texels.
 pub type Pixels = (usize, usize, Vec<u8>);
@@ -108,8 +111,30 @@ impl Pictures {
     }
 }
 
-/// The first `<id>-*.dds` of an RSF stage folder, decoded, unless it is encrypted or does not read.
+/// An RSF stage's picture in the retail pictures' shape: RSF's own ([`rsf_screenshot`]), else its loading poster
+/// ([`rsf_poster`]).
 pub fn rsf_picture(folder: &Path, id: u32) -> Option<Pixels> {
+    rsf_screenshot(folder, id).or_else(|| rsf_poster(folder, id)).map(|picture| retail_shape(&picture))
+}
+
+/// `rsfdata/images/stage_images/<id>.png` of the install whose `Maps/` holds the stage `folder`: the picture RSF's
+/// menus show.
+fn rsf_screenshot(folder: &Path, id: u32) -> Option<Pixels> {
+    let root = folder.parent()?.parent()?;
+    let (width, height, rgba) =
+        crate::upscale::read_png(&root.join(format!("rsfdata/images/stage_images/{id}.png"))).ok()?;
+    Some((width as usize, height as usize, rgba))
+}
+
+/// The middle of `picture` in the retail pictures' shape ([`ASPECT`]).
+fn retail_shape(picture: &Pixels) -> Pixels {
+    let aspect = picture.0 as f32 / picture.1 as f32;
+    let (width, height) = if aspect > ASPECT { (ASPECT / aspect, 1.0) } else { (1.0, aspect / ASPECT) };
+    crop(picture, [(1.0 - width) / 2.0, (1.0 - height) / 2.0, (1.0 + width) / 2.0, (1.0 + height) / 2.0])
+}
+
+/// The first `<id>-*.dds` of an RSF stage folder, decoded, unless it is encrypted or does not read.
+fn rsf_poster(folder: &Path, id: u32) -> Option<Pixels> {
     let prefix = format!("{id}-");
     let mut names: Vec<String> = std::fs::read_dir(folder)
         .ok()?
@@ -166,6 +191,42 @@ mod tests {
         assert_eq!(picture_sprite(64), Some(0x537));
         assert_eq!(picture_sprite(71), Some(0x538));
         assert_eq!(picture_sprite(5), None);
+    }
+
+    #[test]
+    fn an_rsf_picture_takes_the_retail_shape() {
+        let picture = (1024, 768, vec![0; 1024 * 768 * 4]);
+        let (width, height, rgba) = retail_shape(&picture);
+        assert_eq!((width, height, rgba.len()), (1024, 490, 1024 * 490 * 4));
+        let (width, height, _) = retail_shape(&(1000, 100, vec![0; 1000 * 100 * 4]));
+        assert_eq!((width, height), (208, 100));
+    }
+
+    /// RSF's stage pictures (`RBR_RSF`): every PNG reads, in the retail shape (a few are JPEGs named `.png`; those
+    /// stages show their poster).
+    #[test]
+    fn rsf_stages_show_rsfs_pictures() {
+        let Some(root) = std::env::var_os("RBR_RSF").map(std::path::PathBuf::from) else {
+            eprintln!("skipping: RBR_RSF not set");
+            return;
+        };
+        let Ok(names) = std::fs::read_dir(root.join("rsfdata/images/stage_images")) else {
+            eprintln!("skipping: RBR_RSF has no stage pictures");
+            return;
+        };
+        let mut read = 0;
+        for name in names.filter_map(|e| e.ok()?.file_name().into_string().ok()) {
+            let id: u32 = name.strip_suffix(".png").and_then(|n| n.parse().ok()).expect("<id>.png");
+            let path = root.join("rsfdata/images/stage_images").join(&name);
+            if !std::fs::read(&path).unwrap().starts_with(b"\x89PNG") {
+                continue;
+            }
+            let (width, height, rgba) = rsf_picture(&root.join("Maps/any"), id).unwrap_or_else(|| panic!("{name}"));
+            assert!(width > 0 && rgba.len() == width * height * 4, "{name}");
+            assert!((width as f32 / height as f32 - ASPECT).abs() < 0.02, "{name}: {width} × {height}");
+            read += 1;
+        }
+        assert!(read > 0);
     }
 
     /// The retail stages' pictures read from the menu bank (`RBR_DATA`).

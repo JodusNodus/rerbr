@@ -70,6 +70,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
   (`browser::Keys::take`). A dropdown closes on a keyboard pick and gives the focus back (`Form::ui`; egui closes
   them only on a click). Enter starts a drive only with nothing focused, else it presses the focused control.
+- Stage pictures (Drive page, viewer loading screen; `rbr_render::stage_picture`, 2026-11-03): retail stages show
+  the menu bank's (all 384 x 184); RSF stages show `rsfdata/images/stage_images/<id>.png` (what RSF's menus show,
+  1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look
+  alike. Three of RSF's 658 (588, 629, 630) are JPEGs named `.png` and show the poster (no JPEG decoder).
 - Stage browser: “Newest” sorts by map number, highest first (RSF numbers maps as it adds them); no hand-kept
   release dates (user decision 2026-11-03).
 - Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive
