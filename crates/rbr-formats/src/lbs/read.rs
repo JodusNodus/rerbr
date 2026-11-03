@@ -67,7 +67,8 @@ fn chunk<'a>(kind: (u32, u32), mut c: Cursor<'a>) -> Result<Chunk<'a>, Error> {
 
 fn geometry<'a>(c: &mut Cursor<'a>) -> Result<Geometry<'a>, Error> {
     let block_count = c.u32()?;
-    let sky_value = c.u32()?;
+    // The BTB plugin's `.lbs` ends in a 4-byte `(1, 0)` stub: a zero count and no sky word (no retail file has it).
+    let sky_value = if block_count == 0 && c.is_empty() { 0 } else { c.u32()? };
     let mut blocks = Vec::new();
     for _ in 0..block_count {
         blocks.push(geometry_block(c)?);
