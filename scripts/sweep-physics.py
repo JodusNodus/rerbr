@@ -3,7 +3,7 @@
 the script collects what went wrong.
 
     scripts/sweep-physics.py [--out DIR] [--only SUBSTR...] [--jobs N] [--cars NAME...] [--list] [--dry]
-                             [--sample] [--build DIR] [--rsf-stages N] [--timeout-scale F]
+                             [--sample] [--build DIR] [--rsf-stages N] [--timeout-scale F] [--resummarize]
 
 The matrix (`matrix()`), every run from the launcher's real arguments (`rerbr --command` in a temporary files folder,
 its settings fixed as render-shots.py does):
@@ -251,6 +251,8 @@ def analyse(run, code, wall, stdout, stderr, result):
         if info['finish'] is None:
             reason = 'off the road' if ended.startswith('off the road') else (
                 'autopilot gave up' if 'step limit' not in ended else 'step limit')
+            if reason == 'autopilot gave up' and info.get('drivable') == 0:
+                reason = 'wrecked (undrivable)'
             if ended.startswith('the pure step stopped'):
                 reason = 'physics stop'
             problems.append(('no finish', f'{reason}: {ended}'))
@@ -344,6 +346,7 @@ def main():
     ap.add_argument('--build', type=Path, default=ROOT / 'target/release')
     ap.add_argument('--home', type=Path)
     ap.add_argument('--rsf-stages', type=int, default=RSF_STAGES)
+    ap.add_argument('--resummarize', action='store_true', help='analyse the logs under --out again, run nothing')
     ap.add_argument('--timeout-scale', type=float, default=1.0)
     args = ap.parse_args()
     files = shots.files_folder(args.home)
@@ -358,6 +361,17 @@ def main():
         if name not in cars:
             sys.exit(f'{name}: not a startable car')
     runs = matrix(maps, cars, stages, args)
+    if args.resummarize:
+        infos = []
+        for r in runs:
+            folder = outdir / 'runs' / r['name']
+            if (folder / 'stderr.log').exists():
+                old = json.loads((folder / 'info.json').read_text())
+                info = analyse(r, old['exit'], old['wall'], (folder / 'stdout.log').read_text(),
+                               (folder / 'stderr.log').read_text(), read_result(folder / 'result.txt'))
+                (folder / 'info.json').write_text(json.dumps(info, indent=1))
+                infos.append(info)
+        return summarize(infos, outdir)
     if args.list:
         for r in runs:
             print(r['name'], r['damage'], 'wet' if r['wet'] else 'dry', r['length'])
