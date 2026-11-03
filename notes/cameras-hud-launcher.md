@@ -64,9 +64,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Stage browser: “Newest on RSF” uses first native introductions from dated RSF announcements
-  (`data/rsf-stage-releases.csv`, coverage from 2024-10-05); new maps precede conversions on a tied date,
-  unknown dates follow dated maps, later fixes keep the introduction date (`stage_releases`, 2026-11-01).
+- Stage browser: “Newest” sorts by map number, highest first (RSF numbers maps as it adds them); no hand-kept
+  release dates (user decision 2026-11-03).
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).

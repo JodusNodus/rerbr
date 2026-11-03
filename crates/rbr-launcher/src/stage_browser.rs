@@ -103,7 +103,6 @@ pub struct StageRow {
     /// A 1.02 stage, not a RallySimFans one.
     pub retail: bool,
     pub km: Option<f32>,
-    pub release: Option<crate::stage_releases::Release>,
     /// 0 gravel, 1 tarmac, 2 snow.
     pub surface: u32,
     /// Why it cannot start.
@@ -136,7 +135,6 @@ impl StageRow {
             author,
             retail: map.rsf.is_none(),
             km,
-            release: map.rsf.as_ref().and_then(|_| crate::stage_releases::get(map.number)),
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
             haystack,
@@ -233,7 +231,7 @@ pub enum Sort {
     Length,
     /// The ones driven most recently first.
     Recent,
-    /// New maps and native conversions by the date RSF announced them; unknown dates last.
+    /// The highest map number first: RSF numbers its maps as it adds them.
     Newest,
 }
 
@@ -262,7 +260,7 @@ impl Sort {
             Sort::Name => "Name A–Z",
             Sort::Length => "Length",
             Sort::Recent => "Recently driven",
-            Sort::Newest => "Newest on RSF",
+            Sort::Newest => "Newest",
         }
     }
 }
@@ -298,15 +296,7 @@ pub fn lines(
                 let km = |k: usize| rows[k].km.unwrap_or(f32::INFINITY);
                 km(a).total_cmp(&km(b)).then_with(|| rows[a].name.cmp(&rows[b].name))
             }),
-            Sort::Newest => members.sort_by_cached_key(|&k| {
-                let release = rows[k].release;
-                (
-                    std::cmp::Reverse(release.map(|r| r.date)),
-                    release.map(|r| r.kind),
-                    rows[k].name.to_lowercase(),
-                    rows[k].number,
-                )
-            }),
+            Sort::Newest => members.sort_by_key(|&k| std::cmp::Reverse(rows[k].number)),
             Sort::Recent => members.sort_by_cached_key(|&k| {
                 (recent.iter().position(|&n| n == rows[k].number).unwrap_or(usize::MAX), rows[k].name.to_lowercase())
             }),
@@ -663,13 +653,7 @@ impl StageBrowser {
         let y = rect.center().y;
         let p = ui.painter();
         p.text(Pos2::new(c[1], y), Align2::LEFT_CENTER, "STAGE", small.clone(), GREY);
-        let third = if self.sort == Sort::Newest {
-            Column::Release
-        } else if by_country {
-            Column::Country
-        } else {
-            Column::Author
-        };
+        let third = if by_country { Column::Country } else { Column::Author };
         p.text(Pos2::new(c[2], y), Align2::LEFT_CENTER, third.label(), small.clone(), GREY);
         p.text(Pos2::new(c[3], y), Align2::RIGHT_CENTER, "LENGTH", small.clone(), GREY);
         p.text(Pos2::new(c[4], y), Align2::LEFT_CENTER, "SURFACE", small, GREY);
@@ -730,15 +714,6 @@ impl StageBrowser {
         env.previews.stage_ui(ui, map);
         ui.add_space(6.0);
         egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
-            if let Some(release) = row.release {
-                ui.label(RichText::new(release.label()).color(GREY));
-                ui.label(release.date);
-                ui.end_row();
-            } else if !row.retail {
-                ui.label(RichText::new("Added to RSF").color(GREY));
-                ui.label("Unknown");
-                ui.end_row();
-            }
             for (label, value) in (env.facts)(row) {
                 ui.label(RichText::new(label).color(GREY));
                 ui.label(value);
@@ -777,21 +752,18 @@ const NAME_WIDTH: f32 = 170.0;
 enum Column {
     Country,
     Author,
-    Release,
 }
 impl Column {
     fn label(self) -> &'static str {
         match self {
             Self::Country => "COUNTRY",
             Self::Author => "AUTHOR",
-            Self::Release => "RELEASED",
         }
     }
     fn text(self, row: &StageRow) -> &str {
         match self {
             Self::Country => row.country_name(),
             Self::Author => row.author.as_deref().unwrap_or(""),
-            Self::Release => row.release.map_or("Unknown", |r| r.date),
         }
     }
 }
@@ -1002,19 +974,15 @@ mod tests {
     }
 
     #[test]
-    fn newest_sort_uses_release_dates_and_leaves_unknown_dates_last() {
-        let mut rows = some();
-        use crate::stage_releases::{Kind, Release};
-        rows[1].release = Some(Release { date: "2026-08-15", kind: Kind::New });
-        rows[3].release = Some(Release { date: "2026-08-15", kind: Kind::Conversion });
-        rows[5].release = Some(Release { date: "2025-04-21", kind: Kind::New });
+    fn newest_sort_puts_the_highest_numbers_first() {
+        let rows = some();
         let newest = lines(&rows, &Collection::All, &Filter::default(), Sort::Newest, &[], &[]);
-        assert_eq!(items(&newest).collect::<Vec<_>>(), [1, 3, 5, 0]);
+        assert_eq!(items(&newest).collect::<Vec<_>>(), [5, 3, 1, 0]);
         let filter = Filter { query: "synthetic".into(), ..Default::default() };
         let found = lines(&rows, &Collection::All, &filter, Sort::Newest, &[110], &[]);
-        assert_eq!(items(&found).take(3).collect::<Vec<_>>(), [1, 3, 5], "search also sorts globally by release");
+        assert_eq!(items(&found).take(3).collect::<Vec<_>>(), [5, 3, 1], "search also sorts globally by number");
         let favourite = lines(&rows, &Collection::Favourites, &Filter::default(), Sort::Newest, &[54, 110, 105], &[]);
-        assert_eq!(items(&favourite).collect::<Vec<_>>(), [1, 5, 0]);
+        assert_eq!(items(&favourite).collect::<Vec<_>>(), [5, 1, 0]);
     }
 
     #[test]
