@@ -27,6 +27,15 @@ pub const FOV_RANGE_DEGREES: std::ops::RangeInclusive<f32> = 30.0..=120.0;
 pub const NEAR: f32 = 0.15;
 /// Far plane, metres (`notes/formats.md` "Shaders and vertex layouts": about 10,000).
 pub const FAR: f32 = 10_000.0;
+/// How far from the origin stage geometry counts, metres: past it a vertex or box is the file's garbage. SS Ai-Petri's
+/// and Uchan-Su's blocks hold vertices and boxes about `f32::MAX`, which stretched the sun's world layer over them and
+/// darkened the stage; Inland Road II's stray vertex 19 000 km off made the sky occlusion's grid wrap its size.
+pub(crate) const STAGE_LIMIT: f32 = 50_000.0;
+
+/// Whether `p` lies within [`STAGE_LIMIT`] of the origin (not when it is not finite).
+pub(crate) fn on_stage(p: Vec3) -> bool {
+    p.abs().max_element() <= STAGE_LIMIT
+}
 /// The depth the main view's buffers are cleared to: the far plane under the reversed depth.
 pub const DEPTH_CLEAR: f32 = 0.0;
 /// Winding of triangles that face the viewer (see the module comment).

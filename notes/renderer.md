@@ -225,6 +225,12 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
   the threads: 2.14 to 1.66 s. The grass's ground texels (`grass::add`, decoded and blurred per ground texture) are
   made over the threads before the ground triangles number them: 1.14 to 0.39 s. The bounce bake's surface maps leave
   out the grass's unfilled tile meshes, as the shadow casters do: 580's bounce 1.6 to 0.8 s.
+- Garbage geometry (2026-11-04): what lies over 50 km from the origin (`coords::STAGE_LIMIT`, `on_stage`) is left
+  out of the world shadow layer's box, the height fog's ground and the sky occlusion's tiles (boxes cut to it).
+  SS Ai-Petri and Uchan-Su (325-328) hold 1224 triangles and block boxes about `f32::MAX`: the world layer spread over
+  them and lit the stage as at night under a white haze, and the tile grid wrapped and panicked; Inland Road II's
+  stray vertex 19 000 km off asked a 342 MB tile buffer. The grass's light readback (`Renderer::grass_light`) reads
+  in parts of the device's largest buffer (Aguimes 562: 381 MB over 256).
 - BTB stages (RallySimFans track folders, `stage/btb.rs`, `rbr_btb::scene`, `Lod::Band`): [btb.md](btb.md#drawing).
 - Object lanes `(1,1)` (`stage::OBJECT_ALPHA_REF`, kind-byte address modes).
 - Interactive props `(1,6)` (`stage/mod.rs` `InteractivePose`): every retail record drawn at its placement while its

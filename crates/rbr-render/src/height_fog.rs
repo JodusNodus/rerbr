@@ -109,14 +109,14 @@ pub(crate) struct Ground {
 }
 
 impl Ground {
-    /// `None` without world-anchored solid meshes.
+    /// `None` without world-anchored solid meshes. Vertices off the stage ([`crate::coords::on_stage`]) are left out.
     pub(crate) fn of(meshes: &[Mesh]) -> Option<Ground> {
         let points = || {
             meshes
                 .iter()
                 .filter(|m| m.anchor == Anchor::World && m.layer == Layer::Solid)
                 .flat_map(|m| m.vertices.iter().map(|v| Vec3::from(v.position)))
-                .filter(|p| p.is_finite())
+                .filter(|&p| crate::coords::on_stage(p))
         };
         let (low, high) = points().fold(None, |bounds: Option<(Vec3, Vec3)>, p| {
             Some(bounds.map_or((p, p), |(low, high)| (low.min(p), high.max(p))))
@@ -246,9 +246,10 @@ mod tests {
             draws: Vec::new(),
         };
         // A valley floor at 0 m and a ridge at 100 m (its tree tops at 120 m) 64 m east; a sky face and camera-anchored
-        // clouds far below, which do not count.
+        // clouds far below, and stray vertices far off, which do not count.
         let meshes = [
             mesh(Anchor::World, Layer::Solid, &[[0.0, 0.0, 0.0], [64.0, 100.0, 0.0], [64.0, 120.0, 0.0]]),
+            mesh(Anchor::World, Layer::Solid, &[[-1e7, 0.0, 3e38], [f32::INFINITY, 0.0, 0.0]]),
             mesh(Anchor::World, Layer::Sky, &[[0.0, -500.0, 0.0]]),
             mesh(Anchor::Camera, Layer::Solid, &[[64.0, -500.0, 0.0]]),
         ];

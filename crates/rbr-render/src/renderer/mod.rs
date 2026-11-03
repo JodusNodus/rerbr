@@ -160,8 +160,9 @@ pub struct Renderer {
     sun: Option<SunShadow>,
     /// The sun's cascades for the frame being drawn, `None` when there are none (no sun, or an overcast sky).
     cascades: Option<Cascades>,
-    /// The low and high corners of the stage and its backdrop; the world layer's matrix and texel for the frame
-    /// ([`sun::world`], `None` without the cascades or under an overcast sky), and the matrix it was last drawn with.
+    /// The low and high corners of the stage and its backdrop (their vertices [`crate::coords::on_stage`]); the world
+    /// layer's matrix and texel for the frame ([`sun::world`], `None` without the cascades or under an overcast sky),
+    /// and the matrix it was last drawn with.
     world_box: Option<(Vec3, Vec3)>,
     world: Option<(Mat4, f32)>,
     world_drawn: Option<Mat4>,
@@ -257,6 +258,7 @@ impl Renderer {
         let ground_light = bounce::Ground::new(&device, stage, enhance.lighting);
         let world_box = (stage.meshes.iter().filter(|m| m.anchor == Anchor::World).flat_map(|m| &m.vertices))
             .map(|v| Vec3::from(v.position))
+            .filter(|&p| crate::coords::on_stage(p))
             .fold(None, |b: Option<(Vec3, Vec3)>, p| Some(b.map_or((p, p), |(low, high)| (low.min(p), high.max(p)))));
         let shadow_range = shadows::ShadowRange::new(&device, &shadow_view);
         // The volumetric clouds' shadow map ([`cloud_volume::shadow_target`]), read by every draw.

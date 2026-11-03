@@ -6,6 +6,7 @@
 //! the bake's vertex light as the stage's ambient occlusion, so it holds for stages baked under another light or not
 //! baked at all.
 
+use crate::coords::STAGE_LIMIT;
 use glam::camera::lh::{proj::directx, view};
 use glam::{Mat4, Vec2, Vec3, Vec3Swizzles};
 
@@ -53,7 +54,12 @@ pub(crate) struct Tiles {
 }
 
 impl Tiles {
+    /// Boxes are cut to [`STAGE_LIMIT`]; those not finite or wholly past it are left out.
     pub(crate) fn of(boxes: impl Iterator<Item = (Vec3, Vec3)> + Clone) -> Option<Tiles> {
+        let boxes = boxes.filter(|(c, h)| c.is_finite() && h.is_finite()).filter_map(|(c, h)| {
+            let (a, b) = ((c - h).max(Vec3::splat(-STAGE_LIMIT)), (c + h).min(Vec3::splat(STAGE_LIMIT)));
+            a.cmple(b).all().then(|| ((a + b) * 0.5, (b - a) * 0.5))
+        });
         let (lo, hi) = boxes
             .clone()
             .fold((Vec3::splat(f32::MAX), Vec3::splat(f32::MIN)), |(lo, hi), (c, h)| (lo.min(c - h), hi.max(c + h)));
@@ -150,6 +156,20 @@ mod tests {
         assert_eq!(near.touched, vec![(0, -90.0, 110.0), (2, 30.0, 70.0)]);
         assert_eq!(tiles.clone().near(&[]), Some(tiles.clone()));
         assert_eq!(tiles.near(&[Vec3::new(-5e3, 0.0, 0.0)]), None);
+    }
+
+    #[test]
+    fn boxes_far_off_or_not_finite_do_not_make_a_huge_grid() {
+        let boxes = [
+            (Vec3::new(500.0, 10.0, 500.0), Vec3::splat(100.0)),
+            (Vec3::new(-1e7, 0.0, 4e6), Vec3::splat(10.0)),
+            (Vec3::ZERO, Vec3::splat(f32::INFINITY)),
+            (Vec3::splat(f32::NAN), Vec3::ONE),
+        ];
+        let tiles = Tiles::of(boxes.iter().copied()).unwrap();
+        assert!(tiles.columns * tiles.rows <= 101 * 101, "{} x {}", tiles.columns, tiles.rows);
+        assert!(tiles.touched.iter().all(|&(i, ..)| i < tiles.columns * tiles.rows));
+        assert!(Tiles::of([(Vec3::ZERO, Vec3::splat(f32::INFINITY))].into_iter()).is_none());
     }
 
     #[test]
