@@ -350,14 +350,22 @@ struct CloudedOut {
     @location(11) cloud: f32,
 }
 
+// `v` with the draw's `instance`. On DX12 `instance_index` starts at 0 in every draw, and naga's HLSL adds the draw's
+// first instance only where an entry point reads it, not in a function it hands `v` to: each entry point reads it.
+fn drawn(v: VertexIn, instance: u32) -> VertexIn {
+    var out = v;
+    out.instance = instance;
+    return out;
+}
+
 @vertex
 fn vs_main(v: VertexIn) -> VertexOut {
-    return vertex(v);
+    return vertex(drawn(v, v.instance));
 }
 
 @vertex
 fn vs_clouded(v: VertexIn) -> CloudedOut {
-    var moved = v;
+    var moved = drawn(v, v.instance);
     if (camera_anchored()) {
         moved.position = cloud_turn(v.position);
     }
@@ -2502,7 +2510,7 @@ fn leaf_glow(v: VertexOut, lit: f32, albedo: vec3<f32>) -> vec3<f32> {
 
 @vertex
 fn vs_shadow(v: VertexIn) -> @builtin(position) vec4<f32> {
-    return frame.shadow_matrix * vec4<f32>(placed(v).position, 1.0);
+    return frame.shadow_matrix * vec4<f32>(placed(drawn(v, v.instance)).position, 1.0);
 }
 
 // 0 in the sun to 1 in the car's shadow: a filter over the shadow map as wide as the sun's penumbra. Points past the
@@ -2582,7 +2590,7 @@ fn outside(uv: vec2<f32>, uv_box: vec4<f32>) -> bool {
 
 @vertex
 fn vs_ground(v: VertexIn) -> @builtin(position) vec4<f32> {
-    return frame.ground_matrix * vec4<f32>(placed(v).position, 1.0);
+    return frame.ground_matrix * vec4<f32>(placed(drawn(v, v.instance)).position, 1.0);
 }
 
 // 0 to 1 under the car: the share of a 6x6 filter around the point where the car is above it, within the near
