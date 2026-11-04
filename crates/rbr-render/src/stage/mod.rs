@@ -735,8 +735,8 @@ mod tests {
         assert_eq!(sky.section("tanner"), None);
         assert_eq!(sky.named().as_deref(), Some("21O_E_heavyfog_heavycloud"));
         assert_eq!(
-            Sky::parse("41O_heavyrain_heavycloud").unwrap().named().as_deref(),
-            Some("41O_heavyrain_heavycloud")
+            Sky::parse("41O_M_heavyrain_heavycloud").unwrap().named().as_deref(),
+            Some("41O_M_heavyrain_heavycloud")
         );
     }
 
