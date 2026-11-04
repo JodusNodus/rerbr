@@ -430,7 +430,7 @@ mod tests {
         assert_eq!(bases, [(1, 21), (0x83, 7), (0xd1, 30)].into());
     }
 
-    /// A stage past the retail maps (an RSF stage's id, a BTB stage's number) takes the common flip scripts.
+    /// A stage past the retail maps (an RSF stage's id) takes the common flip scripts; a BTB stage passes map 41.
     #[test]
     fn a_stage_of_its_own_number_counts_the_common_scripts() {
         let Some((data, mem)) = retail() else {

@@ -242,7 +242,7 @@ pub fn load(data: &Data, name: &str, stage: &mut Stage, options: Options) -> Res
             _ => {}
         }
     }
-    let map = crate::stage::map_number(name).unwrap_or(0);
+    let map = crate::stage::sky_map(name).unwrap_or(0);
     let mut scripts = Scripts::open(data)?;
     if let Some(folder) = rbr_formats::stage_files::folder(name) {
         if let Some(path) = rbr_formats::rsf::open(folder).ok().and_then(|s| s.animation_path) {

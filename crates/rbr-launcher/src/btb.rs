@@ -32,9 +32,9 @@ impl Btb {
     }
 
     /// Writes the stage `number`'s files into `home/btb/<folder>/`; the stage name that loads them.
-    pub fn prepare(&self, number: u32, home: &Path) -> Result<String, String> {
+    pub fn prepare(&self, number: u32, maps: &Path, home: &Path) -> Result<String, String> {
         let track = track::Track::open(&self.folder)?;
-        stage::prepare(&track, number, &home.join("btb").join(&track.name))
+        stage::prepare(&track, number, maps, &home.join("btb").join(&track.name))
     }
 }
 
@@ -85,7 +85,7 @@ impl Form {
     /// plays. Other stages pass unchanged. `None`, with the status, when the files cannot be built.
     pub fn btb_launch(&mut self, mut stage: Stage, mut extra: Vec<String>) -> Option<(Stage, Vec<String>)> {
         let Some(btb) = self.catalog.map(stage.map).and_then(|m| m.btb.clone()) else { return Some((stage, extra)) };
-        match btb.prepare(stage.map, &self.here()) {
+        match btb.prepare(stage.map, &self.data.install().join("Maps"), &self.here()) {
             Ok(name) => stage.name = name,
             Err(e) => {
                 self.status = format!("{}: {e}", btb.name);

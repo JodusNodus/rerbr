@@ -125,7 +125,7 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         options,
         damage: carried,
         surface,
-        ..boot::Race::quick_race(stage.number, car, tyre, weather, ngp_physics)
+        ..boot::Race::quick_race(args.btb.unwrap_or(stage.number), car, tyre, weather, ngp_physics)
     };
     let race = match args.championship {
         Some(championship) => boot::Race { false_starts: args.false_starts, ..race.in_championship(championship) },

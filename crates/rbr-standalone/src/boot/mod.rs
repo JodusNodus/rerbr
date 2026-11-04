@@ -89,6 +89,8 @@ pub(crate) const CAR_PARTS: [CarPart; 13] = [
 /// the launcher): `IRBRGame::StartGame`'s map, car and tyre, and the settings the game takes from its menus.
 #[derive(Clone, Debug)]
 pub struct Race {
+    /// `StartGame`'s map: its flip spectators load before the car (`handles::objects_before_car`). A BTB stage's is the
+    /// retail map whose characters it shows (`--btb`).
     pub map: u32,
     /// The `[CarNN]` of `Cars/Cars.ini`.
     pub car: u32,

@@ -16,26 +16,26 @@ pub const LETTER: char = 'M';
 pub const SKY_MAP: u32 = 41;
 /// The stage whose `Maps/` files dress a BTB stage (`SKY_MAP`'s variant [`LETTER`]).
 pub const SKY_STAGE: &str = "track-41_M";
-/// The fence file of a BTB stage: retail's empty one (map 4's, 16 bytes: the magic, no groups, the tail), so the
-/// stage has no fence posts. Map 41's own `.fnc` has posts for map 41's road, not the BTB one. Putting a retail
-/// map's `.fnc` bytes here instead would give the stage its fences.
-const FENCE: [u8; 16] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 0, 0, 0];
 /// The file naming the BTB folder a prepared folder was built from.
 pub const SOURCE_FILE: &str = "btb.ini";
 /// Raised when the built files change, so that the folders an older build prepared are built again.
-const BUILD: u32 = 2;
+const BUILD: u32 = 3;
 /// The prepared files' extensions.
-const EXTENSIONS: [&str; 6] = ["lbs", "dls", "mat", "trk", "col", "fnc"];
+const EXTENSIONS: [&str; 7] = ["lbs", "dls", "mat", "trk", "col", "fnc", "ini"];
+/// The files a BTB stage takes from the sky stage's retail ones, as it does under RSF (the plugin keeps map 41's): its
+/// fence posts and stage `.ini`. Its characters come from the sky map too (`rbr_render::stage::sky_map`). Drop an
+/// extension here to leave it out.
+const RETAIL: [&str; 2] = ["fnc", "ini"];
 
 /// The stage name of the BTB stage `number` prepared in `out`: `<out>/track-<number>_M`.
 pub fn stage_name(out: &Path, number: u32) -> String {
     format!("{}/track-{number}_{LETTER}", out.display())
 }
 
-/// Writes `<out>/track-<number>_M.{lbs,dls,mat,trk,col,fnc}` and `<out>/btb.ini` for `track` and returns the stage name
-/// ([`stage_name`]). The plugin rebuilds the files on every load; we keep them while `btb.ini` holds the same [`stamp`]
+/// Writes `<out>/track-<number>_M.{lbs,dls,mat,trk,col}`, the [`RETAIL`] files copied from `maps` (the install's `Maps`
+/// folder) and `<out>/btb.ini` for `track`, and returns the stage name ([`stage_name`]). The plugin rebuilds the files on every load; we keep them while `btb.ini` holds the same [`stamp`]
 /// of the track folder (half a second to two on each load).
-pub fn prepare(track: &Track, number: u32, out: &Path) -> Result<String, String> {
+pub fn prepare(track: &Track, number: u32, maps: &Path, out: &Path) -> Result<String, String> {
     let name = stage_name(out, number);
     let source = format!("[BTB]\nfolder={}\nstamp={}\n", track.folder.display(), stamp(&track.folder));
     let built = EXTENSIONS.iter().all(|ext| Path::new(&format!("{name}.{ext}")).is_file());
@@ -52,7 +52,11 @@ pub fn prepare(track: &Track, number: u32, out: &Path) -> Result<String, String>
     write("mat", classic::mat(&track.surface_maps()?.maps))?;
     write("trk", classic::trk_from(track, crate::D3dx::Windows)?)?;
     write("col", crate::col::build(track)?)?;
-    write("fnc", FENCE.to_vec())?;
+    for ext in RETAIL {
+        let from = stage_files::in_dir(maps, &format!("{SKY_STAGE}.{ext}"))
+            .ok_or_else(|| format!("{}: no {SKY_STAGE}.{ext}", maps.display()))?;
+        write(ext, std::fs::read(&from).map_err(|e| format!("{}: {e}", from.display()))?)?;
+    }
     // Last: a build cut short is not taken for a finished one.
     std::fs::write(out.join(SOURCE_FILE), source).map_err(|e| format!("{SOURCE_FILE}: {e}"))?;
     Ok(name)
@@ -98,12 +102,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_stage_is_named_by_its_own_number_and_has_no_fence() {
+    fn a_stage_is_named_by_its_own_number() {
         let name = stage_name(Path::new("/files/btb/Pirttikulma"), 1_234_567);
         assert_eq!(name, "/files/btb/Pirttikulma/track-1234567_M");
         assert_eq!(stage_files::parts(&name), Some((1_234_567, LETTER)));
         assert_eq!(stage_files::folder(&name), Some(Path::new("/files/btb/Pirttikulma")));
-        assert!(rbr_formats::fnc::parse(&FENCE).unwrap().groups.is_empty());
     }
 
     #[test]
