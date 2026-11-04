@@ -207,9 +207,6 @@ pub struct Flags {
 }
 
 impl Flags {
-    /// The help's fragment for these flags.
-    pub const USAGE: &str = "--car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]";
-
     /// Whether `flag` is one of ours; takes its `value` when it is.
     pub fn take(&mut self, flag: &str, value: &str) -> bool {
         match flag {

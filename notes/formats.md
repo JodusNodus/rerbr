@@ -277,7 +277,7 @@ last picked, which the list has. (Since 2026-11-04 the launcher saves every car'
 the player's files folder in this layout, listed in `cars/cars.ini` (one section per pack folder; the old
 `cars.json`/`carmodels.json`/`cargroups.json`/`cars_data.json` migrate once, then are deleted). `car_pack::Pack`
 owns opening a pack (a folder or a zip) and `car_pack::resolve` resolves the pack, model, root and bank the
-children (the viewer, `rbr-standalone`, `rbr-sound`) take as `--car-pack/--car-model/--car-root/--car-bank/--car-key`;
+children (the viewer, `rbr-standalone`, `rbr-sound`) take as `Flags`: `--car-pack/--car-model/--car-bank/--car-key` (`--car-model` the model's `.sgc` path);
 `--rsf-car` stays the RSF install's entry. Files starting
 `01 a0 00 00` (`.ini` `01 a1 00 00`) are RSF-encrypted and never decrypted (162 of 443 stage folders of a full
 install); needing one, or a pack missing from `rsfdata/cars`, lists the car unavailable.
