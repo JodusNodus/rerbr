@@ -350,7 +350,7 @@ impl StagePictures {
         let data = self.data.clone();
         let driveline = || first_driveline(&data, map);
         let (picture, length) = match (&map.rsf, &map.btb) {
-            // A BTB stage's map `.trk` is map 41's: its picture, else its own driveline.
+            // A BTB stage has no map `.trk` until it starts: its picture, else its own driveline.
             (None, Some(btb)) => {
                 let id = Some(map.number).filter(|&n| n < crate::btb::SYNTHETIC);
                 let picture = btb_picture(&btb.folder, id);

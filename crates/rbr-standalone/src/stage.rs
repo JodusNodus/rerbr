@@ -27,6 +27,8 @@ pub struct StageData {
     pub obstacles: Vec<autopilot::Obstacle>,
     /// The `.dls` finish zone (table 8).
     pub finish_zone: FinishZone,
+    /// A BTB stage (`--btb`): the jump start is armed whatever the number.
+    pub btb: bool,
 }
 
 /// The stage `stage` (a name or path, `stage_files`) of `data`, with `car` the race's car.
@@ -72,6 +74,7 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         interactive_handle_end,
         obstacles,
         finish_zone,
+        btb: false,
     })
 }
 

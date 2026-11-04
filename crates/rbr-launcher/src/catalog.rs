@@ -141,15 +141,16 @@ pub struct Map {
     pub stages: Vec<Stage>,
     /// A RallySimFans stage folder's map ([`Catalog::set_rsf`]).
     pub rsf: Option<rsf::Stage>,
-    /// A BTB stage's map ([`crate::btb`]): it plays as retail map 41.
+    /// A BTB stage's map ([`crate::btb`]): a stage of its own number.
     pub btb: Option<crate::btb::Btb>,
 }
 
 impl Map {
-    /// The map number its season rows and weathers go by: the number, but a BTB stage's is retail map 41's.
-    pub fn weather_map(&self) -> u32 {
+    /// The retail map whose presentation the map takes (`rbr_render::relight::site`): a BTB stage's is
+    /// `rbr_btb::stage::SKY_MAP`, any other map's its own number.
+    pub fn sky_map(&self) -> u32 {
         if self.btb.is_some() {
-            crate::btb::MAP
+            rbr_btb::stage::SKY_MAP
         } else {
             self.number
         }
@@ -171,10 +172,11 @@ impl Map {
         }
     }
 
-    /// The season that gives the map's weathers: the game's, or a community stage's own (`Season::of_rsf`).
+    /// The season that gives the map's weathers: the game's, a community stage's own (`Season::of_rsf`), or a BTB
+    /// stage's (`Season::of_btb`: the rows of its sky map).
     pub fn season<'a>(&self, season: &'a Season) -> Cow<'a, Season> {
         if self.btb.is_some() {
-            return Cow::Owned(crate::btb::season(season));
+            return Cow::Owned(Season::of_btb(season, self.number, self.sky_map()));
         }
         match &self.rsf {
             Some(stage) => Cow::Owned(Season::of_rsf(stage, None)),
@@ -340,7 +342,7 @@ impl Catalog {
             return Err(problem.clone());
         }
         let season = entry.map_or(Cow::Borrowed(season), |m| m.season(season));
-        let weather = weather::quick_race(&season, entry.map_or(map, Map::weather_map), preset, draws)?;
+        let weather = weather::quick_race(&season, map, preset, draws)?;
         let stage = self.stage_of(map, &weather).ok_or_else(|| {
             format!("{} selected by {} weather has no installed stage file", weather.stage(), weather::name(preset))
         })?;
@@ -357,7 +359,7 @@ impl Catalog {
         words: &rbr_formats::ghost::Weather,
     ) -> Option<(Stage, Weather)> {
         let entry = self.map(map)?;
-        if entry.btb.is_some() || entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
+        if entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
             return None;
         }
         let weather = entry.season(season).ghost_weather(map, words)?;
@@ -480,6 +482,7 @@ pub fn row_label(row: &weather::Row) -> String {
 /// is kept). Each entry is the row's season-table index, its `TrackSettings.ini` section and its label.
 pub fn environment_rows(season: &weather::Season, map: u32) -> Vec<(usize, String, String)> {
     let mut seen = std::collections::HashSet::new();
+    let sky = season.sky.unwrap_or(map);
     season
         .rows_of(map)
         .filter(|&k| {
@@ -488,7 +491,7 @@ pub fn environment_rows(season: &weather::Season, map: u32) -> Vec<(usize, Strin
         })
         .filter_map(|k| {
             let row = &season.rows[k];
-            let section = rsf::WeatherRow::section_name(map, row.letter, row.cloud_letter, row.preset, row.cloud)?;
+            let section = rsf::WeatherRow::section_name(sky, row.letter, row.cloud_letter, row.preset, row.cloud)?;
             Some((k, section, row_label(row)))
         })
         .collect()
@@ -496,9 +499,10 @@ pub fn environment_rows(season: &weather::Season, map: u32) -> Vec<(usize, Strin
 
 /// The map's season row with the `TrackSettings.ini` section `section`, if it is the map's.
 pub fn row_by_section(season: &weather::Season, map: u32, section: &str) -> Option<usize> {
+    let sky = season.sky.unwrap_or(map);
     season.rows_of(map).find(|&k| {
         let row = &season.rows[k];
-        rsf::WeatherRow::section_name(map, row.letter, row.cloud_letter, row.preset, row.cloud).as_deref()
+        rsf::WeatherRow::section_name(sky, row.letter, row.cloud_letter, row.preset, row.cloud).as_deref()
             == Some(section)
     })
 }
@@ -710,6 +714,46 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// A BTB stage offers the rows of map 41 (every variant, good and bad) under its own number, one stage file (M)
+    /// for all of them, and a saved ghost finds its row again.
+    #[test]
+    fn a_btb_map_plays_map_41s_rows_under_its_own_number() {
+        let retail = Season {
+            rows: vec![
+                Row { map: 41, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0 },
+                Row { map: 41, letter: 3, cloud: 3, cloud_letter: 2, preset: 4, wetness: 2 },
+                Row { map: 54, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0 },
+            ],
+            nice: vec![0],
+            bad: vec![1],
+            sky: None,
+        };
+        let number = 1_234_567;
+        let btb = crate::btb::Btb {
+            folder: "/rsf/Tracks/Hokkara".into(),
+            name: "Hokkara".into(),
+            author: None,
+            km: None,
+            surface: "gravel",
+            rsf_root: "/rsf".into(),
+            problem: None,
+        };
+        let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };
+        let map = Map { number, stages: vec![stage.clone()], rsf: None, btb: Some(btb) };
+        let catalog = Catalog { maps: vec![map], ..Catalog::default() };
+        for (preset, row, wetness) in [(Preset::Good, 0, 0), (Preset::Bad, 1, 2)] {
+            let (found, weather) = catalog.stage_weather(&retail, number, preset, weather::Draws::default()).unwrap();
+            assert_eq!((found, weather.row, weather.wetness), (stage.clone(), Some(row), wetness));
+        }
+        let season = catalog.maps[0].season(&retail);
+        let rows = environment_rows(&season, number);
+        let sections: Vec<&str> = rows.iter().map(|(_, section, _)| section.as_str()).collect();
+        assert_eq!(sections, ["41M_crisp_clear", "41O_E_heavyrain_heavycloud"]);
+        let (_, weather) = catalog.stage_weather(&retail, number, Preset::Bad, weather::Draws::default()).unwrap();
+        let words = weather.ghost_words(&season);
+        assert_eq!(catalog.ghost_stage_weather(&retail, number, &words), Some((stage, weather)));
+    }
+
     /// The Environment rows are the map's season rows with readable labels, deduped by words.
     #[test]
     fn environment_rows_label_and_dedupe() {
@@ -723,6 +767,7 @@ mod tests {
             ],
             nice: vec![1],
             bad: vec![0],
+            sky: None,
         };
         assert_eq!(row_label(&season.rows[0]), "Heavy fog, heavy cloud, evening (O)");
         assert_eq!(row_label(&season.rows[1]), "No rain, part cloud, morning (M)");

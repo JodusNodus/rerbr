@@ -832,9 +832,14 @@ fn settle(playback: &Playback, game: &mut Game, stage: &StageData, camera_go: bo
 fn new_game(start: Stage, stage: &StageData, dt: f32, settings: MarkerSettings) -> Game {
     let values = stage.track_values.clone();
     let grid = Grid::from_settings(&install_filter_ini()).without_wheel_fade();
-    Game::new(start, grid, &stage.markers, values, dt, 0.0, settings)
+    let game = Game::new(start, grid, &stage.markers, values, dt, 0.0, settings)
         .with_finish_zone(stage.finish_zone)
-        .with_controls(ControlPath::Ngp)
+        .with_controls(ControlPath::Ngp);
+    if stage.btb {
+        game.with_forced_jump_start()
+    } else {
+        game
+    }
 }
 
 #[cfg(test)]

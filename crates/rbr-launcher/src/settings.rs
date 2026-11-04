@@ -807,7 +807,7 @@ impl Form {
                 WeatherChoice::Preset(preset) => (preset, None),
                 WeatherChoice::Row(section) => (Preset::Random, Some(section)),
             };
-        let map_number = catalog.maps[map].weather_map();
+        let map_number = catalog.maps[map].number;
         if weather_row
             .as_deref()
             .is_some_and(|s| catalog::row_by_section(&catalog.maps[map].season(&season), map_number, s).is_none())
@@ -1649,7 +1649,7 @@ mod tests {
             standalone: PathBuf::from("/bin/rbr-standalone"),
             settings: settings.clone(),
         };
-        let season = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new() };
+        let season = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new(), sky: None };
         let data = Data::new(here.join("data"), None);
         let mut form = Form::new(catalog, &read_settings(&settings), paths, data, season, install::Folder::default());
         assert_eq!(form.ffb_cars.cars, [("rsf-24".to_owned(), [90, 100, 110])].into());

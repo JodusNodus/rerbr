@@ -177,7 +177,7 @@ fn run() -> ExitCode {
         None => args.car.or_else(|| recording.and_then(|r| race::recorded_word(r, 1))).unwrap_or(0),
     };
     let stage = match stage_data(&data, &args.stage, car) {
-        Ok(stage) => stage,
+        Ok(stage) => StageData { btb: args.btb.is_some(), ..stage },
         Err(e) => {
             eprintln!("{e}");
             return ExitCode::FAILURE;

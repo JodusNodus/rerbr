@@ -391,8 +391,7 @@ impl Form {
             return Ok((stage, weather, self.options.weather));
         }
         let season = self.catalog.maps[self.map].season(&self.season);
-        let weather_map = self.catalog.maps[self.map].weather_map();
-        let row = self.weather_row.as_deref().and_then(|s| catalog::row_by_section(&season, weather_map, s));
+        let row = self.weather_row.as_deref().and_then(|s| catalog::row_by_section(&season, map, s));
         let (preset, draws, specific) = match row.filter(|_| self.clouds.is_none()) {
             // The Custom weather: our sky over the stage's good weather, or its bad one on a damp or wet road
             // (its light and textures made for the wet), with the chosen wear.
@@ -400,17 +399,13 @@ impl Form {
             Some(k) => (Preset::Random, Draws { row: Some(k), wear: 1 }, true),
             None if self.options.weather == Preset::Random => (
                 Preset::Random,
-                weather::random_draws(&season, weather_map, rand)
-                    .ok_or(format!("map {weather_map} has no season row (the original stops at its int3)"))?,
+                weather::random_draws(&season, map, rand)
+                    .ok_or(format!("map {map} has no season row (the original stops at its int3)"))?,
                 false,
             ),
             None => (self.options.weather, Draws { row: None, wear: self.wear }, false),
         };
         let (stage, mut weather) = self.catalog.stage_weather(&self.season, map, preset, draws)?;
-        // A BTB stage's bad weather is its good row (map 41's M rows only): `rbr-standalone` takes it as the row, its
-        // own bad weather is a row of the other variant.
-        let preset =
-            if preset == Preset::Bad && self.catalog.maps[self.map].btb.is_some() { Preset::Random } else { preset };
         if specific {
             // A specific row takes the chosen wear (`Draws` takes the random weather's 1 or 2).
             weather.wear = self.wear;
@@ -478,7 +473,7 @@ impl Form {
         // The Environment: the exact sky of the row or the Custom weather's base, and the Custom weather's fog, clouds,
         // rain and wetness (a ghost keeps its own wetness).
         let (sky_fog, wetness_args) = environment_args(
-            weather.section(),
+            weather.section(&self.catalog.maps[self.map].season(&self.season)),
             self.fog.filter(|_| custom),
             self.clouds,
             self.precipitation.filter(|_| custom),
@@ -1079,6 +1074,7 @@ mod tests {
             ],
             nice: vec![0],
             bad: vec![1],
+            sky: None,
         };
         let catalog = || Catalog {
             cars: Vec::new(),
@@ -1122,7 +1118,7 @@ mod tests {
         assert_eq!((stage.name.as_str(), preset), ("track-54_O", Preset::Random));
         // The stage's weather keeps the row's wetness; the saved one is the Custom weather's.
         assert_eq!((weather.row, weather.wear, weather.wetness), (Some(1), 2, 1));
-        assert_eq!(weather.section().as_deref(), Some(section.as_str()));
+        assert_eq!(weather.section(&form.season).as_deref(), Some(section.as_str()));
         assert_eq!(weather.mat_words(), ("worn", "damp"));
         // A section that is not the map's falls back to Good at load.
         let settings = Settings { weather: Some(WeatherChoice::Row("21O_E_heavyfog_heavycloud".into())), ..settings };
@@ -1250,7 +1246,7 @@ mod tests {
         // The stage's weather is the row as authored: the Custom fog, rain, wetness and time stay out.
         let (_, weather) = form.selection().unwrap();
         let (viewer, standalone) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
-        assert_eq!(value(&viewer, "--sky"), weather.section());
+        assert_eq!(value(&viewer, "--sky"), weather.section(&form.season));
         for flag in ["--fog", "--clouds", "--precipitation", "--clock"] {
             assert_eq!(value(&viewer, flag), None, "{flag}");
         }
@@ -1263,7 +1259,7 @@ mod tests {
         form.clouds = Some(Clouds::Light);
         let (_, weather) = form.selection().unwrap();
         let (viewer, standalone) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
-        assert_eq!(value(&viewer, "--sky"), weather.section());
+        assert_eq!(value(&viewer, "--sky"), weather.section(&form.season));
         assert_eq!(value(&viewer, "--fog").as_deref(), Some("heavy"));
         assert_eq!(value(&viewer, "--clouds").as_deref(), Some("light"));
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("heavy"));

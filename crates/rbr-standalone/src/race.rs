@@ -34,7 +34,10 @@ pub fn race_weather(data: &Data, args: &Args, map: u32) -> Result<(Preset, Weath
                 .map(|(_, l)| l);
             Season::of_rsf(stage, letter)
         }
-        None => Season::load(data)?,
+        None => match args.btb {
+            Some(sky) => Season::of_btb(&Season::load(data)?, map, sky),
+            None => Season::load(data)?,
+        },
     };
     let drawn = match args.rand_seed {
         Some(seed) if preset == Preset::Random => Some(
