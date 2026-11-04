@@ -64,7 +64,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Keyboard (2026-11-03): Ctrl+1..7 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
+- Keyboard (2026-11-03): Ctrl+1..8 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
   or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
@@ -100,6 +100,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from its last start, so a replay needs the same install, setup and profile, else it stops with a digest error.
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
   camera key cycles the views, V resets the mouse look, Esc closes.
+- School tab, after Championship (`pages::Page::TABS`, `school_page.rs`): the 17 rally-school lessons in
+  their Basic/Advanced groups (all open, user decision), each row its number (`RSM_LESSON_NRB/A`), title and best
+  result; the detail its instruction and cone guide (`brief_keys`), surface (from the lesson's setup file), the
+  pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: untimed) and Drive lesson. Results
+  are the profile's school array (`Profile::cars`, 0/-/1..3 Passed n/4/4 Perfect), re-read on change. Drive
+  lesson starts like the Drive page's Start on good weather with car 5 (`command::start_school`,
+  `rbr-standalone --school N` with `--saves`/`--profile`; `--tyre`/`--setup`/`--rsf-car`/`--season-row` left out)
+  and is blocked while the viewer runs, without readiness, or when NGP's archive has no car 5.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and

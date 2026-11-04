@@ -596,8 +596,8 @@ impl Form {
     }
 
     /// Starts a rally school lesson like a quick race: `lesson` on its map's `M` variant on good weather with car
-    /// 5, the lesson's setup and tyre (`rbr-standalone --school N`); without the flags `--school` refuses (car,
-    /// tyre, setup, surface, RSF car, championship). The stage records go to the profile's saves like a
+    /// 5, the lesson's setup and tyre (`rbr-standalone --school N`); without the flags `--school` refuses
+    /// (`--tyre`, `--setup`, `--surface`, `--rsf-car`, `--championship`). The stage records go to the profile's saves like a
     /// championship stage's (`--saves`, `--profile`), so the lesson's result is kept.
     pub fn start_school(&mut self, lesson: Lesson) {
         let map = lesson.map();

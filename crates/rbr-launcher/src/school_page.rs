@@ -23,7 +23,7 @@ use rbr_gameplay::school::lesson::CAR;
 use rbr_gameplay::school::Lesson;
 
 use crate::catalog::{Car, Catalog};
-use crate::pages::{section, ACCENT, DRIVE_FIELDS, WARN};
+use crate::pages::{section, Fix, Issue, ACCENT, DRIVE_FIELDS, WARN};
 use crate::Form;
 
 /// The school's car (retail car 5, `IMPREZA03`) for the viewer and `rbr-standalone` (`--school` drives it).
@@ -162,7 +162,7 @@ fn school_grades(saves: &SaveDir, profile: &str) -> [u32; 17] {
         .load_profile(profile)
         .ok()
         .and_then(|file| file.current().cloned().or_else(|| file.profiles.list.first().cloned()))
-        .map(|profile| profile.cars)
+        .map(|entry| entry.cars)
         .unwrap_or([0; 17])
 }
 
@@ -250,16 +250,16 @@ impl Form {
 
     /// What blocks Drive lesson: a running viewer, what the Drive page's Start checks, or car 5 without an NGP
     /// car (the school's fixed car).
-    fn school_blocker(&self) -> Option<crate::pages::Issue> {
+    fn school_blocker(&self) -> Option<Issue> {
         if self.child.is_some() {
-            return Some(crate::pages::Issue { text: "the viewer is running".into(), fix: None });
+            return Some(Issue { text: "the viewer is running".into(), fix: None });
         }
         if let Some(issue) = self.readiness() {
             return Some(issue);
         }
-        (!self.ngp_cars.contains(&CAR)).then(|| crate::pages::Issue {
+        (!self.ngp_cars.contains(&CAR)).then(|| Issue {
             text: "the rally school drives car 5, which has no NGP car in this archive".into(),
-            fix: Some(crate::pages::Fix::Settings),
+            fix: Some(Fix::Settings),
         })
     }
 }
