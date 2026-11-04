@@ -107,6 +107,9 @@ pub struct Models {
     rng: Rng,
     /// The part of a game frame ([`tyre::FRAME_RATE`]) not yet run.
     frame: f32,
+    /// The camera's position at the last step, and its velocity from it (for the Doppler shift).
+    listener: Option<[f32; 3]>,
+    listener_velocity: [f32; 3],
 }
 
 impl Models {
@@ -134,11 +137,15 @@ impl Models {
             fmod: None,
             rng: Rng::new(0x51d2),
             frame: 0.0,
+            listener: None,
+            listener_velocity: [0.0; 3],
         }
     }
 
     /// The commands for one step's inputs, with the camera and the car at `scene`.
     pub fn step(&mut self, inputs: &Inputs, scene: &Scene) -> Vec<Command> {
+        self.listener_velocity = world::listener_velocity(self.listener.replace(scene.listener), scene.listener, STEP);
+        let scene = &Scene { listener_velocity: self.listener_velocity, ..*scene };
         let sound = &inputs.sound;
         let inside = scene.inside;
         let rng = &mut self.rng;
@@ -204,7 +211,7 @@ impl Models {
 
     /// The commands for the scripted events of a step (the helicopter, bird strikes, the rescue call).
     pub fn events(&mut self, events: &Events, scene: &Scene) -> Vec<Command> {
-        self.scripted.step(scene, events)
+        self.scripted.step(&Scene { listener_velocity: self.listener_velocity, ..*scene }, events)
     }
 }
 

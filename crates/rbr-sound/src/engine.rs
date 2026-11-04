@@ -225,6 +225,8 @@ pub struct Engine {
     pub rpm: u32,
     pub load: u32,
     pub cylinders: [bool; 4],
+    /// The Doppler factor of the car's motion (1 from inside; ours): the firing period shortens by it.
+    pub doppler: f32,
     pub running: bool,
     counters: Vec<[usize; 2]>,
     cylinder: usize,
@@ -248,6 +250,7 @@ impl Engine {
             rpm: 1000,
             load: 0,
             cylinders: [true; 4],
+            doppler: 1.0,
             running: true,
             counters,
             cylinder: 0,
@@ -293,7 +296,8 @@ impl Engine {
     /// One firing period: the overlap of the last grains, and the start of this period's grains, which fire at its
     /// end. The returned `Vec` reuses `buf`'s allocation; the caller puts it back after copying.
     fn take_chunk(&mut self) -> Vec<f32> {
-        let period = chunk_len(self.rate, self.rpm).max(1);
+        let period = chunk_len(self.rate, self.rpm);
+        let period = if self.doppler == 1.0 { period } else { (period as f32 / self.doppler) as usize }.max(1);
         let mut out = std::mem::take(&mut self.buf);
         out.clear();
         out.extend_from_slice(&self.overlap);

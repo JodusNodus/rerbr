@@ -351,6 +351,8 @@ pub struct Mixer {
     distances: Distances,
     car_distance: f32,
     car_pan: f32,
+    /// The pitch factor of the car's voices heard from outside (1 inside): the Doppler shift. Ours.
+    doppler: f32,
     /// Seconds since the last ranged impact started.
     since_ranged: f32,
     /// The sounds playing at the last frame's count ([`Command::Frame`], [`SOUND_LIMIT`]), and each one-shot kind's
@@ -453,6 +455,7 @@ impl Mixer {
             distances: bank.distances,
             car_distance: 0.0,
             car_pan: 0.0,
+            doppler: 1.0,
             since_ranged: f32::INFINITY,
             sounds: RACE_SOUNDS,
             tally: BTreeMap::new(),
@@ -532,9 +535,11 @@ impl Mixer {
                     self.filter.retune(self.rate, cutoff);
                 }
                 Command::Inside(_) => {}
-                Command::Listener { car_distance, car_pan } => {
+                Command::Listener { car_distance, car_pan, car_doppler } => {
                     self.car_distance = car_distance;
                     self.car_pan = car_pan;
+                    self.doppler = car_doppler;
+                    self.engine.doppler = car_doppler;
                 }
                 Command::Gain { voice: Loop::Engine, gain } | Command::Loop { voice: Loop::Engine, gain, .. } => {
                     self.engine_gain.target = gain * self.placed(Place::Exhaust) * self.volumes.engine;
@@ -549,6 +554,7 @@ impl Mixer {
                 Command::FmodLoop { slot, gain, pitch, outside } => {
                     let (placed, pan) = if outside { (self.placed(Place::Exhaust), self.car_pan) } else { (1.0, 0.0) };
                     self.fmod_tree.pan = pan;
+                    let pitch = if outside { pitch * self.doppler } else { pitch };
                     if let Some((v, _)) = self.fmod_loops.get_mut(usize::from(slot)) {
                         v.gain.target = gain * placed * self.volumes.engine;
                         v.pitch = pitch;
@@ -562,6 +568,7 @@ impl Mixer {
                 Command::FmodShot { wave, gain, pitch, outside, bus, slot } => {
                     let (placed, pan) = if outside { (self.placed(Place::Exhaust), self.car_pan) } else { (1.0, 0.0) };
                     self.fmod_tree.pan = pan;
+                    let pitch = if outside { pitch * self.doppler } else { pitch };
                     if let Some(wave) = self.fmod_waves.get(usize::from(wave)) {
                         let bus = bus.map_or(self.fmod_tree.master, usize::from);
                         let playing =
@@ -571,6 +578,7 @@ impl Mixer {
                 }
                 Command::FmodTrack { slot, gain, pitch, outside } => {
                     let placed = if outside { self.placed(Place::Exhaust) } else { 1.0 };
+                    let pitch = if outside { pitch * self.doppler } else { pitch };
                     for (p, _, _) in self.fmod_playing.iter_mut().filter(|(_, _, s)| *s == Some(slot)) {
                         (p.gain, p.pitch) = (gain * placed * self.volumes.engine, pitch);
                     }
@@ -586,7 +594,7 @@ impl Mixer {
                         let [vary_pitch, vary_gain] = self.vary();
                         let (low_pass, cabin) = self.cabin_hit(shot);
                         let gain = gain * vary_gain * cabin * self.placed_at(place, distance) * self.volumes.shot(shot);
-                        let pitch = pitch * vary_pitch;
+                        let pitch = pitch * vary_pitch * self.doppler;
                         self.playing.push(Playing { pan: self.car_pan, pitch, low_pass, ..Playing::new(wave, gain) });
                     }
                 }
@@ -599,10 +607,11 @@ impl Mixer {
                     };
                     let v = &mut self.wheel_loops[k];
                     v.gain.target = gain * placed * self.volumes.tyres;
-                    v.pitch = pitch;
+                    v.pitch = pitch * self.doppler;
                     v.pan = self.car_pan;
                 }
                 Command::Tyre { wheel, slot, material, skid, gain, pitch } => {
+                    let pitch = pitch * self.doppler;
                     let placed = self.placed(Place::Tire);
                     let tyres = &mut self.tyres[usize::from(wheel) % 4];
                     // A step's commands come slot 0 first: the wheel's gains start again from 0, so a loop neither
@@ -760,7 +769,7 @@ impl Mixer {
             if matches!(shot, Shot::Grus(_) | Shot::Squeak(_)) { self.vary() } else { [1.0; 2] };
         let (low_pass, cabin) = if family.is_none() { self.cabin_hit(shot) } else { (None, 1.0) };
         let gain = gain * vary_gain * cabin * self.placed(place) * self.volumes.shot(shot);
-        let pitch = pitch * vary_pitch;
+        let pitch = pitch * vary_pitch * self.doppler;
         self.playing.push(Playing { pan: self.car_pan, pitch, family, low_pass, ..Playing::new(wave, gain) });
     }
 
@@ -859,7 +868,8 @@ impl Mixer {
                 v.pan = pan;
             }
             if let Some(pitch) = pitch {
-                v.pitch = pitch;
+                // The car's loops shift with its motion (ours); the world's (wind, siren, helicopter) are given theirs.
+                v.pitch = if place.is_some() || voice == Loop::Engine { pitch * self.doppler } else { pitch };
             }
         }
     }
