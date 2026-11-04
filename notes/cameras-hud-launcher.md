@@ -94,9 +94,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
-- Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or a saved setup for the car
-  on the stage's surface, kept per car and surface (`[setup]`, `<surface> <car> = <name>`); the Car setup tab is the
-  manager (open, edit, save, delete; saving drives with it). Ours, every car: `<files>/setups/<car>/<surface>_<name>.lsp`
+- Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or any saved setup of the car,
+  the stage surface's first, then the other surfaces' (labelled), then those of no known surface (user decision
+  2026-11-04); the pick is kept per car and surface (`[setup]`, `<surface> <car> = <name>`, `<other surface>/<name>`
+  for another surface's; `/` is not allowed in a name). Values load over the stage surface's defaults. The Car setup
+  tab is the manager (open, edit, save, delete; saving keeps it for the stage's surface and drives with it). Ours, every car: `<files>/setups/<car>/<surface>_<name>.lsp`
   (`<car>`: the pack's folder name, a retail car's physics folder such as `c_xsara`; user decision 2026-11-04), RSF's
   naming, so a file copies into RSF's `SavedGames/<pack>/` as it is. Read only: an RSF car's RSF `SavedGames/<pack>/`
   and `rsfdata/setups/<pack>/` (RSF's `<id>_d_<surface>.lsp` copies of the defaults skipped; RSF install 2026-11-04:

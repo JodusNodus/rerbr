@@ -699,7 +699,7 @@ impl Form {
         );
         ui.colored_label(
             Color32::GRAY,
-            "Make and save setups for this car on this surface; pick the one to drive with on the Drive page.",
+            "Make and save setups for this car (saved for this stage's surface); pick the one to drive with on the Drive page.",
         );
         ui.add_space(4.0);
         self.setup.ui(ui);

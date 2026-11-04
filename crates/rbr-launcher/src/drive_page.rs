@@ -195,8 +195,9 @@ impl Form {
 
             if self.car().is_some() {
                 self.select_setup();
-                let tip = "The car's saved setup for the stage's surface, kept for the car and surface: yours and \
-                           RSF's. Edit… makes and changes them";
+                let tip =
+                    "Any saved setup of the car, yours and RSF's, the stage surface's first; the pick is kept for \
+                           the car and the surface. Edit… makes and changes them";
                 ui.label("Setup").on_hover_text(tip);
                 if self.setup.choice_ui(ui, FIELD) {
                     self.page = crate::pages::Page::Setup;

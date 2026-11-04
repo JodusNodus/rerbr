@@ -64,19 +64,25 @@ impl Source {
     }
 }
 
-/// A saved setup of the car on the surface.
+/// A saved setup of the car, listed for a stage's surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Profile {
     pub name: String,
+    /// The surface it was saved for when that is not the stage's; `None` for the stage's or an unknown one.
+    pub away: Option<&'static str>,
+    /// How the lists and the remembered choice tell it: the name, after `<surface>/` when it is `away`.
+    pub id: String,
     pub source: Source,
     path: PathBuf,
 }
 
 impl Profile {
     pub fn label(&self) -> String {
-        match self.source.tag() {
-            "" => self.name.clone(),
-            tag => format!("{} ({tag})", self.name),
+        let tags: Vec<&str> = self.away.into_iter().chain(Some(self.source.tag()).filter(|t| !t.is_empty())).collect();
+        if tags.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{} ({})", self.name, tags.join(", "))
         }
     }
 
@@ -145,36 +151,48 @@ impl Folders {
         Some(self.dirs.first()?.path.join(format!("{surface}_{name}.lsp")))
     }
 
-    /// The setup a file named `file` in `dir` is, on `surface`.
-    fn name_of(&self, dir: &Dir, file: &str, surface: &str) -> Option<String> {
+    /// The surface (`None` when its name has none) and the name of the setup a file named `file` in `dir` is.
+    fn name_of(&self, dir: &Dir, file: &str) -> Option<(Option<&'static str>, String)> {
         if dir.source == Source::Slot {
-            return setup_slots::parse_name(file)
-                .filter(|(key, _, _)| self.keys.contains(key))
-                .map(|(_, _, name)| name);
+            let (key, _, name) = setup_slots::parse_name(file)?;
+            return self.keys.contains(&key).then_some((None, name));
         }
         let stem = strip_suffix_ignore_case(file, ".lsp")?;
-        let prefix = if dir.by_surface { format!("{surface}_") } else { String::new() };
-        Some(strip_prefix_ignore_case(stem, &prefix)?.to_owned())
+        if !dir.by_surface {
+            return Some((None, stem.to_owned()));
+        }
+        SURFACES.into_iter().find_map(|s| Some((Some(s), strip_prefix_ignore_case(stem, &format!("{s}_"))?.to_owned())))
     }
 
-    /// The setups on `surface`: ours first, then each other folder's, by name; a name is listed once, from the first
-    /// folder that has it.
+    /// Every setup of the car, listed for a stage on `surface`: the surface's first, then the other surfaces', then
+    /// those of no known surface; within each, ours first, then each other folder's, by name. A setup is listed once,
+    /// from the first folder that has it.
     fn scan(&self, surface: &str) -> Vec<Profile> {
-        let mut profiles: Vec<Profile> = Vec::new();
+        // Each setup with its group: 0 the surface's, 1 another surface's (by `SURFACES`), 2 of no known surface.
+        let group = |on: Option<&str>| match on {
+            Some(s) if s == surface => 0,
+            Some(s) => 1 + SURFACES.iter().position(|x| *x == s).unwrap_or(0),
+            None => SURFACES.len() + 1,
+        };
+        let mut found: Vec<(usize, Profile)> = Vec::new();
         for dir in &self.dirs {
             let Ok(entries) = std::fs::read_dir(&dir.path) else { continue };
-            let mut found: Vec<Profile> = entries
+            let mut here: Vec<(usize, Profile)> = entries
                 .filter_map(|e| {
                     let path = e.ok()?.path();
-                    let name = self.name_of(dir, path.file_name()?.to_str()?, surface)?;
-                    (!name.is_empty() && path.is_file()).then_some(Profile { name, source: dir.source, path })
+                    let (on, name) = self.name_of(dir, path.file_name()?.to_str()?)?;
+                    let away = on.filter(|s| *s != surface);
+                    let id = away.map_or_else(|| name.clone(), |s| format!("{s}/{name}"));
+                    (!name.is_empty() && path.is_file())
+                        .then(|| (group(on), Profile { name, away, id, source: dir.source, path }))
                 })
-                .filter(|p| !profiles.iter().any(|q| q.name.eq_ignore_ascii_case(&p.name)))
+                .filter(|(_, p)| !found.iter().any(|(_, q)| q.id.eq_ignore_ascii_case(&p.id)))
                 .collect();
-            found.sort_by_key(|p| p.name.to_lowercase());
-            profiles.extend(found);
+            here.sort_by_key(|(_, p)| p.name.to_lowercase());
+            found.extend(here);
         }
-        profiles
+        found.sort_by_key(|(group, _)| *group);
+        found.into_iter().map(|(_, p)| p).collect()
     }
 }
 
@@ -301,13 +319,13 @@ impl SetupPage {
     }
 
     fn text(&self, name: &str) -> Result<String, String> {
-        self.profiles.iter().find(|p| p.name == name).ok_or(format!("{name}: not found"))?.text()
+        self.profiles.iter().find(|p| p.id == name).ok_or(format!("{name}: not found"))?.text()
     }
 
     /// The names of the car's saved setups on the map surface `surface` (`catalog::Map::surface`).
-    pub fn saved_names(&self, surface: u32) -> Vec<String> {
+    pub fn saved_names(&self, surface: u32) -> Vec<(String, String)> {
         let surface = SURFACES.get(surface as usize).copied().unwrap_or(SURFACES[0]);
-        self.folders.scan(surface).into_iter().map(|p| p.name).collect()
+        self.folders.scan(surface).into_iter().map(|p| (p.id.clone(), p.label())).collect()
     }
 
     /// Makes the values Start drives with the chosen setup's (the default when it is gone).
@@ -343,10 +361,11 @@ impl SetupPage {
             },
             None => self.default_values(),
         };
+        self.name =
+            name.and_then(|id| self.profiles.iter().find(|p| p.id == id)).map_or_else(String::new, |p| p.name.clone());
         self.opened = name.map(str::to_owned);
         self.opened_values = values;
         self.draft = values;
-        self.name = name.unwrap_or_default().to_owned();
         self.confirm_delete = false;
     }
 
@@ -401,7 +420,7 @@ impl SetupPage {
         let chosen = self.chosen().map(str::to_owned);
         let selected = match &chosen {
             Some(name) => {
-                self.profiles.iter().find(|p| p.name == *name).map_or(format!("{name} (missing)"), Profile::label)
+                self.profiles.iter().find(|p| p.id == *name).map_or(format!("{name} (missing)"), Profile::label)
             }
             None => DEFAULT.to_owned(),
         };
@@ -414,8 +433,8 @@ impl SetupPage {
                         pick = Some(None);
                     }
                     for p in &self.profiles {
-                        if ui.selectable_label(chosen.as_deref() == Some(&p.name), p.label()).clicked() {
-                            pick = Some(Some(p.name.clone()));
+                        if ui.selectable_label(chosen.as_deref() == Some(&p.id), p.label()).clicked() {
+                            pick = Some(Some(p.id.clone()));
                         }
                     }
                 });
@@ -460,7 +479,7 @@ impl SetupPage {
 
     /// Deletes our setup the editor opened, and opens the default.
     fn delete(&mut self) {
-        let Some(profile) = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.name == *n)).cloned()
+        let Some(profile) = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.id == *n)).cloned()
         else {
             return;
         };
@@ -469,7 +488,7 @@ impl SetupPage {
             return;
         }
         self.profiles = self.folders.scan(self.surface());
-        if self.chosen() == Some(profile.name.as_str()) {
+        if self.chosen() == Some(profile.id.as_str()) {
             self.drive_with(None);
         }
         self.open(None);
@@ -484,9 +503,12 @@ impl SetupPage {
                 return;
             }
         };
-        let opened = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.name == *n)).cloned();
+        let opened = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.id == *n)).cloned();
         ui.horizontal(|ui| {
-            ui.label(format!("Setups on {}", self.surface()));
+            ui.label("Setup").on_hover_text(format!(
+                "Every setup of this car, the {} ones first; Save keeps it for {0}",
+                self.surface()
+            ));
             let selected = opened.as_ref().map_or(DEFAULT.to_owned(), Profile::label);
             let mut pick = None;
             ComboBox::from_id_salt("setup-open").width(220.0).selected_text(selected).show_ui(ui, |ui| {
@@ -494,8 +516,8 @@ impl SetupPage {
                     pick = Some(None);
                 }
                 for p in &self.profiles {
-                    if ui.selectable_label(self.opened.as_deref() == Some(&p.name), p.label()).clicked() {
-                        pick = Some(Some(p.name.clone()));
+                    if ui.selectable_label(self.opened.as_deref() == Some(&p.id), p.label()).clicked() {
+                        pick = Some(Some(p.id.clone()));
                     }
                 }
             });
@@ -525,7 +547,7 @@ impl SetupPage {
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(200.0).hint_text("name to save under"));
             let replaces =
-                self.profiles.iter().any(|p| p.name.eq_ignore_ascii_case(self.name.trim()) && p.source == Source::Own);
+                self.profiles.iter().any(|p| p.id.eq_ignore_ascii_case(self.name.trim()) && p.source == Source::Own);
             let save = if replaces { "Save (replace)" } else { "Save" };
             if ui.button(save).on_hover_text("Save as your setup and drive with it").clicked() {
                 self.save();
@@ -555,10 +577,12 @@ impl SetupPage {
             }
         });
         let changed = self.draft != self.opened_values;
-        let note = match (changed, opened.as_ref().map(|p| p.source)) {
+        let surface = self.surface();
+        let note = match (changed, opened.as_ref().map(|p| (p.source, p.away))) {
             (true, _) => "unsaved changes: Save to drive with them".to_owned(),
-            (false, Some(Source::Own)) | (false, None) => String::new(),
-            (false, Some(source)) => format!("{} setup, read only: Save keeps a copy as yours", source.tag()),
+            (false, Some((_, Some(away)))) => format!("a {away} setup: Save keeps a copy for {surface}"),
+            (false, Some((Source::Own, None))) | (false, None) => String::new(),
+            (false, Some((source, None))) => format!("{} setup, read only: Save keeps a copy as yours", source.tag()),
         };
         if !note.is_empty() {
             ui.colored_label(if changed { WARN } else { egui::Color32::GRAY }, note);
@@ -771,7 +795,7 @@ mod tests {
     }
 
     fn names(profiles: &[Profile]) -> Vec<(String, Source)> {
-        profiles.iter().map(|p| (p.name.clone(), p.source)).collect()
+        profiles.iter().map(|p| (p.id.clone(), p.source)).collect()
     }
 
     /// An RSF car's setups are ours, then the install's saved ones, then its shipped ones, on the surface only: RSF's
@@ -813,20 +837,33 @@ mod tests {
                 ("Vasgabi".to_owned(), Source::Rsf),
                 ("Asphalt Kid".to_owned(), Source::RsfShipped),
                 ("Today".to_owned(), Source::Earlier),
+                ("tarmac/Vasgabi".to_owned(), Source::Rsf),
                 ("before".to_owned(), Source::Earlier),
                 ("slot five".to_owned(), Source::Earlier),
                 ("old slot".to_owned(), Source::Slot),
                 ("own slot".to_owned(), Source::Slot),
             ]
         );
-        let tarmac = names(&folders.scan("tarmac"));
-        assert_eq!(tarmac[0], ("Vasgabi".to_owned(), Source::Rsf));
-        assert_eq!(tarmac.len(), 5, "the earlier ones without a surface are on every surface");
+        // On tarmac every setup is still there, the tarmac one first and the gravel ones told by their surface.
+        let tarmac = folders.scan("tarmac");
+        assert_eq!(
+            names(&tarmac[..5]),
+            [
+                ("Vasgabi".to_owned(), Source::Rsf),
+                ("gravel/Mine".to_owned(), Source::Own),
+                ("gravel/Vasgabi".to_owned(), Source::Rsf),
+                ("gravel/Asphalt Kid".to_owned(), Source::RsfShipped),
+                ("gravel/Today".to_owned(), Source::Earlier),
+            ]
+        );
+        assert_eq!(tarmac.len(), 9);
+        assert_eq!((tarmac[0].label(), tarmac[1].label()), ("Vasgabi (RSF)".to_owned(), "Mine (gravel)".to_owned()));
+        assert_eq!(tarmac[2].label(), "Vasgabi (gravel, RSF)");
         assert_eq!(folders.file("gravel", "fast"), Some(here.join("setups").join(pack).join("gravel_fast.lsp")));
     }
 
-    /// A retail car's setups are ours on the surface, then ours of earlier versions under the slot's physics folder,
-    /// by any name, then the car's game slots; the 1.02 install's are not read.
+    /// A retail car's setups are ours on the surface, then on the others, then ours of earlier versions under the
+    /// slot's physics folder, by any name, then the car's game slots; the 1.02 install's are not read.
     #[test]
     fn a_retail_cars_setups_are_ours() {
         let root = crate::test_dir("setup-retail");
@@ -845,6 +882,7 @@ mod tests {
             names(&folders.scan("tarmac")),
             [
                 ("b fast".to_owned(), Source::Own),
+                ("gravel/loose".to_owned(), Source::Own),
                 ("old".to_owned(), Source::Earlier),
                 ("rally".to_owned(), Source::Slot)
             ]

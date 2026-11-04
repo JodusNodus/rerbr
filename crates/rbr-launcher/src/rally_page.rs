@@ -564,7 +564,7 @@ impl RallyPage {
         season: &Season,
         here: &Path,
         car: &Car,
-        saved: &dyn Fn(u32) -> Vec<String>,
+        saved: &dyn Fn(u32) -> Vec<(String, String)>,
         ngp: &Path,
         car_row: &mut dyn FnMut(&mut Ui, u32) -> bool,
         blocker: Option<&Issue>,
@@ -783,7 +783,7 @@ impl RallyPage {
         &mut self,
         ui: &mut Ui,
         here: &Path,
-        saved: &dyn Fn(u32) -> Vec<String>,
+        saved: &dyn Fn(u32) -> Vec<(String, String)>,
         c: &Championship,
         index: usize,
         blocker: Option<&Issue>,
@@ -813,16 +813,23 @@ impl RallyPage {
                         }
                     },
                 );
-                // The car's saved setups on the stage's surface; a pick that is gone falls back to the current one.
-                let rows = SeasonSetup::rows(saved(crate::catalog::surface_kind(stage.map)));
+                // The car's saved setups, the stage surface's first; a pick that is gone falls back to the current one.
+                let saved = saved(crate::catalog::surface_kind(stage.map));
+                let rows = SeasonSetup::rows(saved.iter().map(|(id, _)| id.clone()));
                 if !rows.contains(&self.setup) {
                     self.setup = SeasonSetup::Current;
                 }
+                let label = |row: &SeasonSetup| match row {
+                    SeasonSetup::Saved(id) => {
+                        saved.iter().find(|(i, _)| i == id).map_or(id.clone(), |(_, l)| l.clone())
+                    }
+                    _ => row.label(),
+                };
                 ui.label("Setup");
-                ComboBox::from_id_salt("stage-setup").selected_text(self.setup.label()).show_ui(ui, |ui| {
+                ComboBox::from_id_salt("stage-setup").selected_text(label(&self.setup)).show_ui(ui, |ui| {
                     for row in rows {
                         let selected = row == self.setup;
-                        if ui.selectable_label(selected, row.label()).clicked() {
+                        if ui.selectable_label(selected, label(&row)).clicked() {
                             self.setup = row;
                         }
                     }
