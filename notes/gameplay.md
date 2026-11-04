@@ -103,6 +103,33 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 - The flip spectators are five `load_car_flipN.lua`, cosmetic; `run_car_flip.lua` never runs.
 - Bird strike feeds only the sound. Crash-site scripts are unused in retail.
 
+## Rally school (experimental)
+
+Mechanics in `school/` (lessons, the `.dls` `Driveline` filter bank, its listeners, `EvalFilters`, the awards) and
+`game.rs` (`Game::with_school`, the start, the substep hooks); the live hook and the profile write in
+`rbr-standalone` (`--school N`, `live::race_end`). Checks: `rbr-gameplay/tests/school_vectors.rs` (direct-call
+vectors of the bank's methods) and an autopilot drive of lesson 2 (stops in the box, verdict 3, profile written). No
+original school drive is recorded yet: the oracle run is open.
+
+- Flow mode 7: the lesson is the flow's +0xca4, its step counter +0xca8 (2 in a timed lesson's load, 4 while
+  driving); +0xcb4 is set by the untimed lessons' (0, 4, 10, 13, 14, 16) load only (`M5693f0` cases 2 and 4).
+- No countdown: in state 10 mode 7 arms neither the camera orbit (`M8840`, modes 1 and 2) nor the confirm (3 to 5);
+  the confirm drives at once (`Stage::school_start`).
+- Listeners: the control payload's words 0 to 2 (`CbF30`) before each substep; in the step the brake-wall emits
+  (`CbF10`, only segments with index bit 14; flag bit 2 is the crossing), the general state (`OnDrive`), the
+  driveline float (`Cb930`, not in state 10); `Tic570` runs `EndRace` each frame and emits a retire's
+  `CSigEndRace` once a trip latch is set. A retire sets latch B (`M5662c0`).
+- Verdict (`EvalFilters`): a latch gives 0, a no-go sub (flags 4) done gives 0, then the time ladder
+  (`perfect_time`, `pass_time`, `time_limit`), the speed checks, then `SeverityMax` over the 1.02 repair objects;
+  lessons 4 and 16 leave the damage out.
+- Awards (case 8): a fail keeps the results; a pass gives every earlier lesson without a result the same grade and
+  raises the lesson's own (profile +0x424, `Profile::school`); the ride (lesson 5) gives 4. A school drive writes
+  no stage records (inferred).
+- Not done: the brief flythrough (`rse%d.arp`) and the judged replay with Richard's ghost (`rse%d.gho`, case 6,
+  both in `ghosts.rbz`), the lesson 5 ride, the speech (`Audio\RS`).
+- Unverified: whether physics steps during the brief, the untimed lessons' start, `EndRace`'s order against the
+  HUD tick and its `dt`, NGP leaving the bank's repair handler alone.
+
 ## Race options
 
 Mechanics in `race_options.rs` (menu words, damage level, aids, penalties, gate). Checks: level 1 with default aids

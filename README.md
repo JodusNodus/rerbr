@@ -40,7 +40,7 @@ The whole set of 36: [docs/shots](docs/shots/README.md); frames from real drives
 
 ## Status
 
-Works today: every retail stage, the RallySimFans stages (its BTB stages experimentally), the quick race and the championship, NGP physics with the
+Works today: every retail stage, the RallySimFans stages (its BTB stages experimentally), the quick race and the championship, the rally school (experimentally), NGP physics with the
 RallySimFans cars, the HUD and pace notes, the co-driver, sound, wheels and force feedback. Drives are saved as
 ReRBR replays (`.rrp`), with playback and video export from the Replays tab.
 
@@ -50,7 +50,7 @@ and end screens, the wiper switch, the look-back key, the "Best" ghost, night, w
 additions on the Graphics & sound page, set by a quality preset or one by one. The stage always draws at the game's highest quality.
 
 Left out on purpose: original `.rpl` playback, replay cameras and filters, music, co-driver languages other than
-English, the rally school, Richard Burns Challenge, hot seat and custom rallies, unlocks (everything is open),
+English, Richard Burns Challenge, hot seat and custom rallies, unlocks (everything is open),
 automatic recovery (H calls for help), TrackIR, EAX and Prologic.
 
 ### Known limitations
@@ -116,7 +116,7 @@ packs, replays, videos and logs) goes to one folder, shown on the Settings page:
 - Windows: `%APPDATA%\ReRBR\`;
 - or `$RERBR_HOME`, if set (for a portable copy).
 
-The launcher works from the keyboard: Ctrl+1 to Ctrl+7 (Cmd on macOS) open its tabs, Tab moves between controls,
+The launcher works from the keyboard: Ctrl+1 to Ctrl+8 (Cmd on macOS) open its tabs, Tab moves between controls,
 Enter or Space presses them, the arrow keys move through lists, and Enter starts the drive.
 
 Drives are saved in `replays/`. Open the launcher's Replays tab to browse them, watch a drive or export an MP4

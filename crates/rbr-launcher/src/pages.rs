@@ -54,8 +54,8 @@ impl Page {
         self == Page::School
     }
 
-    /// The page a shortcut opens: Ctrl+1 to Ctrl+8 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next, Ctrl+Shift+Tab
-    /// or Ctrl+Page Up the one before.
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+8 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next,
+    /// Ctrl+Shift+Tab or Ctrl+Page Up the one before.
     fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
         use egui::{Key, Modifiers};
         const NUMBERS: [Key; 8] =
