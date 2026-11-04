@@ -928,7 +928,16 @@ mod tests {
         let live = args.iter().position(|a| a == "--live").unwrap();
         assert_eq!(
             args[1..9],
-            ["--car", "evo_IX", "--car-pack", "/rsf/rsfdata/cars/evo", "--car-model", "/rsf/Cars/evo_IX/evo_IX.sgc"]
+            [
+                "--car",
+                "evo_IX",
+                "--car-pack",
+                "/rsf/rsfdata/cars/evo",
+                "--car-model",
+                "/rsf/Cars/evo_IX/evo_IX.sgc",
+                "--car-key",
+                "rsf-24"
+            ]
         );
         assert_eq!(value(&args, "--car-key").as_deref(), Some("rsf-24"));
         assert!(!args[live..].contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");
