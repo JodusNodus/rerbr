@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn the_ride_ends_on_its_first_driving_frame() {
-        let mut run = SchoolRun::new(Lesson::new(5).unwrap(), stop_box());
+        let mut run = SchoolRun::new(Lesson::new(5).unwrap(), stop_box(), Vec::new());
         run.start();
         assert_eq!(run.frame(0.01, 0.0), Some(ModeEnd::Finished));
         assert_eq!(run.verdict(0.0, &CarriedDamage::default()), 4, "not judged: the award's 4");
