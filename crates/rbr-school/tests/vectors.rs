@@ -36,6 +36,10 @@ const TRACKER: u32 = 0x499360;
 const CHK_CLEAR: u32 = 0x498630;
 const SUB_INIT: u32 = 0x498660;
 const UPDATE: u32 = 0x4986a0;
+const FLAG_MAP: u32 = 0x4980a0;
+const GET20: u32 = 0x497e40;
+const GET24: u32 = 0x497e50;
+const GET28: u32 = 0x497e60;
 const SOUND_EMIT: u32 = 0x498c70;
 const INCIDENT_EMIT: u32 = 0x498d30;
 const ENDRACE_EMIT: u32 = 0x477920;
@@ -427,11 +431,15 @@ fn sub_primitives_match_the_original() {
                 assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "Update {n} state");
                 assert_eq!(status, call.eax as i32, "Update {n} status");
             }
+            FLAG_MAP => assert_eq!(sub().flag_map(), call.eax as i32, "FlagMap {n}"),
+            GET20 => assert_eq!(sub().get20(), call.eax as i32, "Get20 {n}"),
+            GET24 => assert_eq!(sub().get24(), call.eax as i32, "Get24 {n}"),
+            GET28 => assert_eq!(sub().get28(), call.eax as i32, "Get28 {n}"),
             _ => continue,
         }
         *checked.entry(call.address).or_insert(0) += 1;
     }
-    for addr in [MAX_ABS, IS_ARMED, TRIP, WINDOW_HIT, CHK_CLEAR, SUB_INIT, UPDATE] {
+    for addr in [MAX_ABS, IS_ARMED, TRIP, WINDOW_HIT, CHK_CLEAR, SUB_INIT, UPDATE, FLAG_MAP, GET20, GET24, GET28] {
         assert!(checked.get(&addr).is_some_and(|&n| n > 0), "no records for {addr:#x}");
     }
     eprintln!("sub primitives: {checked:?}");
