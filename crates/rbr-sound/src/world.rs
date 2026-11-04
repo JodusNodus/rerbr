@@ -228,8 +228,9 @@ impl World {
 
         // Vf08 runs only in a replay (app state 8; the race stays in state 1, by the harness's state log): the wind
         // then plays outside the car by the cloud and is left as it is inside. Its in-car wind by the car's speed is
-        // for state 8 without `E19IsState2`, which Rust has no case of.
-        if scene.replay && !scene.inside {
+        // for state 8 without `E19IsState2`, which Rust has no case of. Ours: while driving it plays from every
+        // camera outside the car too.
+        if !scene.inside {
             let gain = self.gains.wind * ambient;
             if gain > 0.0 || self.wind {
                 let pitch = (self.sky.cloud + 1) as f32 * WIND_PITCH;
@@ -240,12 +241,13 @@ impl World {
 
         // The birds, in a replay with the car far from the camera. Ours: the original keeps the timer in an int
         // seeded with 5.0's bit pattern, so no bird ever plays (rbr-recomp notes/marks-sound-ghost.md 2.2); this is the timer
-        // as meant, 5 s and then 2 to 5 s.
-        if scene.replay {
+        // as meant, 5 s and then 2 to 5 s. Ours: while driving they sing from cameras outside the car (the original's
+        // are a replay's only), without the 50 m rule, which a chase camera never meets.
+        if scene.replay || !scene.inside {
             self.bird_timer -= dt;
             if self.bird_timer < 0.0 {
                 self.bird_timer = (rand() & 3) as f32 + BIRD_BASE;
-                if d > BIRD_DISTANCE {
+                if !scene.replay || d > BIRD_DISTANCE {
                     out.push(Command::Shot { shot: Shot::Bird(self.next_bird), gain: self.gains.bird * ambient });
                     self.next_bird = (self.next_bird + 1) % BIRDS;
                 }
@@ -362,14 +364,39 @@ mod tests {
     }
 
     #[test]
-    fn the_wind_plays_only_outside_the_car_in_a_replay_by_the_cloud() {
+    fn the_wind_plays_only_outside_the_car_by_the_cloud() {
         let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
         let car = Scene { velocity: [0.0, 20.0, 0.0], ..Scene::default() };
         assert_eq!(find(&world.step(&car, 0.01, || 0), Loop::Wind), None);
-        let chase = Scene { inside: false, ..car };
-        assert_eq!(find(&world.step(&chase, 0.01, || 0), Loop::Wind), None);
         let (gain, pitch) = find(&world.step(&scene(40.0), 0.01, || 0), Loop::Wind).unwrap();
         assert!((gain - 0.2).abs() < 1e-6 && pitch == 0.5);
+    }
+
+    fn birds(out: Vec<Command>) -> usize {
+        out.iter().filter(|c| matches!(c, Command::Shot { shot: Shot::Bird(_), .. })).count()
+    }
+
+    #[test]
+    fn while_driving_the_wind_and_birds_play_outside_the_car_at_any_distance() {
+        let chase = Scene { listener: [0.0, -8.0, 0.0], inside: false, replay: false, ..Scene::default() };
+        let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
+        assert!(
+            find(&world.step(&chase, 0.01, || 0), Loop::Wind).is_some_and(|(gain, pitch)| gain > 0.0 && pitch == 0.5)
+        );
+        assert_eq!(birds(world.step(&chase, 4.99, || 0)), 0);
+        assert_eq!(birds(world.step(&chase, 0.02, || 0)), 1, "8 m from the car");
+        // In the car: neither, driving.
+        let cockpit = Scene { inside: true, ..chase };
+        let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
+        assert_eq!(find(&world.step(&cockpit, 0.01, || 0), Loop::Wind), None);
+        assert_eq!(birds(world.step(&cockpit, 5.1, || 0)), 0);
+    }
+
+    #[test]
+    fn in_a_replay_the_birds_keep_the_50_m_rule() {
+        let near = Scene { replay: true, ..scene(40.0) };
+        let mut world = World::new(WorldGains::default(), Sky::default(), Vec::new());
+        assert_eq!(birds(world.step(&near, 5.1, || 0)), 0);
     }
 
     #[test]

@@ -33,6 +33,9 @@ Every source is faithful except the divergences documented as ours in each modul
   unbounded (`SpInsert` 0x4dd4d0 holds 10); Doppler on the car heard from outside, the siren and the helicopter
   (`world::doppler`, 343 m/s, the camera's velocity from its motion, the car's factor smoothed over 50 ms; inside the
   car exactly 1; the helicopter is taken at rest).
+- Wind and birds (1.02: a replay's, `Scene.replay`, wind outside the car, birds with the car over 50 m away): a replay
+  and the video export set `replay`; while driving they play from every camera outside the car (birds without the
+  50 m rule), never from the cockpit view.
 
 ## Engine
 
