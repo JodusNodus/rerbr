@@ -145,6 +145,9 @@ pub struct Live<'a> {
     /// The rally school's verdict at the drive's end (`race_end`), for the answers' SCH1 record; none before
     /// the end, and [`Live::restart`] clears it.
     school_verdict: Option<u32>,
+    /// The last answer's school state, for the SCH1 record's stop flag (the flow's step emits a stop; only a
+    /// state change is visible across the process boundary). [`Live::restart`] clears it.
+    school_state: Option<u32>,
     /// The player's stage record and personal best (`--saves`).
     saves: Option<Saves>,
     /// The start clock's time of day, s after midnight (`set_start_clock`).
@@ -219,7 +222,7 @@ impl<'a> Live<'a> {
             game = game.with_camera_go();
         }
         game.set_assist_settings(race.assist_settings());
-        let mut school = race.school(&stage.replay);
+        let mut school = race.school(&stage.replay, &stage.school_strings);
         // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time.
         let now = if camera_go { 0.0 } else { f64::from(dt) };
         let settled = settle(&playback, &mut game, &mut school, stage, camera_go, now)?;
@@ -296,6 +299,7 @@ impl<'a> Live<'a> {
             school: None,
             initial_school: None,
             school_verdict: None,
+            school_state: None,
             saves: None,
             rally_next: RallyNext::default(),
             initial,
@@ -329,6 +333,7 @@ impl<'a> Live<'a> {
         self.penalties = 0.0;
         self.stopped = false;
         self.school_verdict = None;
+        self.school_state = None;
         self.last = Self::first_picture(&self.playback, &self.game, self.stage, &self.detach);
     }
 
@@ -729,8 +734,9 @@ impl<'a> Live<'a> {
     }
 
     /// The school record (SCH1) after MNU1, only for a lesson's drive: the lesson, where it stands, the kept
-    /// verdict (none before the end), the race time and the lesson's times, and this answer's last incident code.
-    /// Takes the answer's events, as the viewer's panels read them.
+    /// verdict (none before the end), the race time and the lesson's times, this answer's last incident code, the
+    /// stop when the flow moved since the last answer, and the ids `Trigger` queued this answer. Takes the
+    /// answer's events, as the viewer's panels and speech read them.
     fn school_record(&mut self) -> Option<Vec<u8>> {
         let school = self.school.as_mut()?;
         let events = school.take_events();
@@ -747,6 +753,9 @@ impl<'a> Live<'a> {
                 _ => None,
             })
             .unwrap_or(0);
+        let speech: Vec<u32> = events.iter().flat_map(|event| school.speech_ids(event)).collect();
+        let stop = self.school_state != Some(state);
+        self.school_state = Some(state);
         Some(
             School {
                 lesson: school.lesson().index(),
@@ -756,6 +765,8 @@ impl<'a> Live<'a> {
                 perfect: school.bank().perfect_time,
                 pass: school.bank().pass_time,
                 incident,
+                stop,
+                speech,
             }
             .record(),
         )

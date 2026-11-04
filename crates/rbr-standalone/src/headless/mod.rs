@@ -318,7 +318,7 @@ pub fn run(
     game.set_assist_settings(assist);
     // A boot's rally-school lesson listens to the drive (`--school`).
     let mut school = match source {
-        Source::Boot(_, _, race, _) => race.school(&stage.replay),
+        Source::Boot(_, _, race, _) => race.school(&stage.replay, &stage.school_strings),
         _ => None,
     };
     let mut recorded = Recorded { car: &[], track: &stage.track };

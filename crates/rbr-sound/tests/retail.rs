@@ -91,6 +91,28 @@ fn the_speech_queue_drops_nothing_past_ten_entries() {
     assert!(block.iter().flatten().any(|s| s.abs() > 1e-4), "the twelfth queued word was dropped");
 }
 
+/// The school voice plays the briefing and a trigger id (`RBR_DATA`): the frame's stop, the pending-only flush
+/// and the two priorities through the player, as the viewer feeds them.
+#[test]
+fn the_school_voice_plays_the_briefing_and_a_trigger() {
+    use rbr_sound::voice::{Command, Speech};
+    use rbr_sound::{Player, Sky, Volumes};
+    let Some(data) = Data::from_env() else {
+        eprintln!("RBR_DATA is not set; skipped");
+        return;
+    };
+    let mut player = Player::offline(&data, 0, 44100, 1.0, Sky::default(), true, Volumes::default()).expect("player");
+    player.load_school(&data).expect("school bank");
+    // The briefing at priority 0, then a frame's stop and a trigger id at priority 1 after a flush.
+    player.apply(&[Command::Speech(Speech::School { id: 294, priority: 0 })]);
+    player.apply(&[Command::StopSpeech]);
+    player.apply(&[Command::FlushSpeech, Command::Speech(Speech::School { id: 499, priority: 1 })]);
+    let mut out = vec![[0.0f32; 2]; 44100 * 3];
+    player.render(&mut out);
+    let rms = (out.iter().map(|f| f[0] * f[0]).sum::<f32>() / out.len() as f32).sqrt();
+    assert!(rms > 0.01, "rms {rms}");
+}
+
 /// The engine's firing period in samples at `rpm`, from the autocorrelation of its render about the expected lag.
 fn firing_period(mixer: &mut rbr_sound::mixer::Mixer, rpm: u32) -> usize {
     use rbr_sound::engine::EngineNoise;

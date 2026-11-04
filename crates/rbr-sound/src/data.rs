@@ -190,6 +190,33 @@ impl CoDriverBank {
     }
 }
 
+/// The rally school's English speech samples (`E25School::OnSignal` 0x4b8200 queues `Audio\RS\ENG\<id>.ogg`),
+/// by id. Loaded on demand for a school drive, not with the car's bank.
+#[derive(Debug, Clone, Default)]
+pub struct SchoolBank {
+    pub words: HashMap<u32, Wave>,
+}
+
+impl SchoolBank {
+    /// Every English rally-school sample in `dat` (`Audio\RS\Eng\<id>.ogg`, matched ignoring case).
+    pub fn load_eng(dat: &AudioDat) -> Result<SchoolBank, String> {
+        let mut words = HashMap::new();
+        for (path, bytes) in dat.files() {
+            let lower = path.to_lowercase();
+            let Some(file) = lower.strip_prefix("rs/eng/").and_then(|f| f.strip_suffix(".ogg")) else {
+                continue;
+            };
+            let Ok(id) = file.parse() else { continue };
+            let wave = Wave::decode_ogg(bytes).map_err(|e| format!("audio.dat {path}: {e}"))?;
+            words.insert(id, wave);
+        }
+        if words.is_empty() {
+            return Err("audio.dat has no RS/Eng oggs".to_owned());
+        }
+        Ok(SchoolBank { words })
+    }
+}
+
 /// Everything one car's sound plays.
 #[derive(Debug, Clone)]
 pub struct CarBank {
@@ -472,5 +499,18 @@ mod tests {
     fn stereo_is_mixed_down_to_mono() {
         let wave = Wave::decode(&stereo_wav_bytes()).unwrap();
         assert_eq!((wave.rate, wave.samples.as_slice()), (44100, &[2000.0f32, -2000.0][..]));
+    }
+
+    /// The English rally-school samples load (`RBR_DATA`).
+    #[test]
+    fn the_school_bank_holds_the_end_page_ids() {
+        let Some(data) = rbr_formats::data::Data::from_env() else { return };
+        let Some(path) = data.audio_dat() else { return };
+        let dat = rbr_formats::audio::AudioDat::open(&path).expect("audio.dat");
+        let bank = SchoolBank::load_eng(&dat).expect("school bank");
+        assert!(bank.words.len() > 300, "{} RS/Eng samples", bank.words.len());
+        for id in [294, 499, 242, 468, 495, 317, 497] {
+            assert!(bank.words.contains_key(&id), "RS/Eng/{id}.ogg");
+        }
     }
 }

@@ -147,11 +147,13 @@ yet: the oracle run is open.
 - Awards (case 8): a fail keeps the results; a pass gives every earlier lesson without a result the same grade and
   raises the lesson's own (profile +0x424, `Profile::school`); the ride (lesson 5) gives 4. A school drive writes
   no stage records (inferred).
-- Not done: the judged replay with Richard's ghost (`rse%d.gho`, case 6, in `ghosts.rbz`) and the speech
-  (`Audio\RS`). The brief flythrough (`rse%d.arp` in `ghosts.rbz`) plays viewer-side (`rbr_render::school_demo`):
-  a timed lesson's demonstration draws the player's car at the replay's pose from the chase camera with the brief
-  hidden until the replay ends or Enter skips it, and lesson 5's ride plays from the in-car camera and sends the
-  brief's confirm at its end, ending the drive on its first frame (`SchoolRun::frame`) with its award.
+- Demonstration and ride (`rse%d.arp`, `ghosts.rbz`) play viewer-side (`rbr_render::school_demo`): a timed
+  lesson's demonstration draws the player's car at the replay's pose from the chase camera until the replay ends or
+  Enter skips it, then the brief; lesson 5's ride plays from the in-car camera and sends the brief's confirm at its
+  end, ending the drive on its first frame (`SchoolRun::frame`) with the award's 4, unjudged.
+- Speech ([sound.md](sound.md#school-speech)): the briefing, the `Trigger` ids and the end pages on the school
+  voice; the results-page `RallySchoolSound` emit left out.
+- Not done: the judged replay with Richard's ghost (`rse%d.gho`, case 6, in `ghosts.rbz`).
 - Unverified: whether physics steps during the brief, the untimed lessons' start, `EndRace`'s order against the
   HUD tick and its `dt`, NGP leaving the bank's repair handler alone.
 
