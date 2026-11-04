@@ -316,6 +316,11 @@ pub fn run(
     )
     .with_finish_zone(stage.finish_zone);
     game.set_assist_settings(assist);
+    if let Source::Boot(_, _, race, _) = source {
+        if let Some(school) = race.school(&stage.replay) {
+            game = game.with_school(school);
+        }
+    }
     let mut recorded = Recorded { car: &[], track: &stage.track };
     let mut physics = Pure {
         playback: &playback,

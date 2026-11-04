@@ -8,7 +8,7 @@
 //!
 //! The times come from the lesson map's `.dls`: the `Driveline` animation set's replay-stream header (words 4 and
 //! 5, floats, the perfect and pass times; both 0 is untimed), the same record `rbr_formats::markers` reads the
-//! stage markers from. The results come from the profile's school array (`Profile::cars`, the original's
+//! stage markers from. The results come from the profile's school array (`Profile::school`, the original's
 //! `E69Profile +0x424`): 0 not passed, 1..3 passed with the grade, 4 perfect.
 
 use std::collections::HashMap;
@@ -156,13 +156,13 @@ fn driveline_replay(file: &rbr_formats::dls::DlsFile<'_>) -> Option<[u32; 7]> {
     })
 }
 
-/// The profile's school grades (`Profile::cars`, index = lesson), all 0 without a profile.
+/// The profile's school grades (`Profile::school`, index = lesson), all 0 without a profile.
 fn school_grades(saves: &SaveDir, profile: &str) -> [u32; 17] {
     saves
         .load_profile(profile)
         .ok()
         .and_then(|file| file.current().cloned().or_else(|| file.profiles.list.first().cloned()))
-        .map(|entry| entry.cars)
+        .map(|entry| entry.school)
         .unwrap_or([0; 17])
 }
 
@@ -318,8 +318,8 @@ mod tests {
         let (_dir, saves) = test_records();
         assert_eq!(school_grades(&saves, "nobody"), [0; 17]);
         let mut file = rbr_formats::saves::profile::ProfileFile::fresh("driver");
-        file.profiles.list[0].cars[2] = 3;
-        file.profiles.list[0].cars[7] = 4;
+        file.profiles.list[0].school[2] = 3;
+        file.profiles.list[0].school[7] = 4;
         saves.save_profile("driver", &file).unwrap();
         let grades = school_grades(&saves, "driver");
         assert_eq!((grades[2], grades[7], grades[0]), (3, 4, 0));

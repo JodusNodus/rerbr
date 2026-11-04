@@ -443,8 +443,9 @@ pub struct Profiles {
 pub struct Profile {
     /// +0x4, NUL-terminated.
     pub name: [u8; 32],
-    /// +0x424: the cars' unlock levels.
-    pub cars: [u32; 17],
+    /// +0x424: the rally school's best result per lesson (`E60Flow::M5693f0` case 8 through 0x599790/0x599740, which
+    /// the reconstruction calls `CarAt`/`SetCarAt`): 0 none, 1 to 4 (4 perfect).
+    pub school: [u32; 17],
     pub w468: u32,
     /// +0x88: fifteen counters (16-bit, written as words).
     pub counters: [u16; 15],
@@ -490,7 +491,7 @@ impl Profile {
         n[..len].copy_from_slice(&name.as_bytes()[..len]);
         Self {
             name: n,
-            cars: [0; 17],
+            school: [0; 17],
             w468: 0,
             counters: [0; 15],
             record_count: 0,
@@ -505,7 +506,7 @@ impl Profile {
 
     fn read(r: &mut Reader) -> Result<Self, Error> {
         let name = r.array()?;
-        let cars = r.words()?;
+        let school = r.words()?;
         let w468 = r.u32()?;
         let counters = r.words::<15>()?.map(|v| v as u16);
         let record_count = r.u32()?;
@@ -519,12 +520,12 @@ impl Profile {
         }
         let flags = r.array()?;
         r.tag(*b"FORP")?;
-        Ok(Self { name, cars, w468, counters, record_count, records, flags })
+        Ok(Self { name, school, w468, counters, record_count, records, flags })
     }
 
     fn write(&self, w: &mut Writer) {
         w.bytes(&self.name);
-        w.words(&self.cars);
+        w.words(&self.school);
         w.u32(self.w468);
         self.counters.iter().for_each(|&c| w.u32(c as u32));
         w.u32(self.record_count);
@@ -703,7 +704,7 @@ mod tests {
     fn sample() -> ProfileFile {
         let mut file = ProfileFile::fresh("tester");
         let profile = &mut file.profiles.list[0];
-        profile.cars[3] = 2;
+        profile.school[3] = 2;
         profile.counters[0] = 7;
         profile.record_count = 1;
         profile.records[0] = ProfileRecord { id: 54, w04: 1, f08: [1.0, 2.0, 123.5] };

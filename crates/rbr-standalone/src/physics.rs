@@ -125,6 +125,10 @@ impl PhysicsStep for Pure<'_> {
     fn drive_gear(&self) -> Option<u32> {
         Some(layout::drive_gear(self.playback))
     }
+
+    fn drive_line_point(&self, distance: f32) -> Option<[f32; 3]> {
+        Some(layout::drive_line_point(self.playback, distance))
+    }
 }
 
 /// Why a step's panic stopped the run: the pure host's stop, or a port's own failure.

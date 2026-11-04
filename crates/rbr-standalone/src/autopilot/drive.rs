@@ -155,6 +155,20 @@ pub fn drive(
         .with_step(live.step_clock().step)
         .with_limit(limit)
         .with_obstacles(&stage.obstacles);
+    // A rally school lesson with a stop box (its bank's first mode-4 sub, `SchoolIncident`'s standing test): stop in
+    // it, keeping off the brakes where a no-brake sub (mode 6 on the brake word, flag 4: braking fails) watches.
+    if let Some(bank) = live.game().school().map(|s| s.bank()) {
+        if let Some(stop) = bank.subs.iter().find(|sub| sub.tag == 4) {
+            let brake_from = bank
+                .subs
+                .iter()
+                .filter(|sub| sub.tag == 6 && sub.flags & 4 != 0)
+                .map(|sub| sub.center + sub.hi)
+                .fold(0.0, f32::max);
+            eprintln!("autopilot: the lesson's stop box at {} m, no brakes before {brake_from} m", stop.center);
+            driver = driver.with_stop(brake_from, stop.center);
+        }
+    }
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
     let mut hit: Option<u32> = None;
     let mut last: Option<(Vec<u8>, QuantizedControl)> = None;

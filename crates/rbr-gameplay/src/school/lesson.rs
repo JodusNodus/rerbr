@@ -105,9 +105,39 @@ impl Lesson {
     }
 }
 
+/// The profile's school results after a lesson's verdict (`E60Flow::M5693f0` case 8, the profile's +0x424 words): a
+/// fail (0) keeps them; a pass gives every earlier lesson without a result the same grade and raises the lesson's own.
+/// The ride (lesson 5) always gives 4.
+pub fn award(results: [u32; Lesson::COUNT as usize], lesson: Lesson, verdict: u32) -> [u32; Lesson::COUNT as usize] {
+    let grade = if lesson.ride() { 4 } else { verdict };
+    if grade == 0 {
+        return results;
+    }
+    let mut out = results;
+    for earlier in &mut out[..lesson.index() as usize] {
+        if *earlier == 0 {
+            *earlier = grade;
+        }
+    }
+    let own = &mut out[lesson.index() as usize];
+    *own = (*own).max(grade);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pass_fills_the_earlier_lessons_and_raises_its_own() {
+        let mut results = [0; 17];
+        results[1] = 2;
+        results[3] = 4;
+        let after = award(results, Lesson(3), 3);
+        assert_eq!(after[..4], [3, 2, 3, 4], "the earlier empty ones get 3, the better own result stays");
+        assert_eq!(award(results, Lesson(3), 0), results, "a fail changes nothing");
+        assert_eq!(award([0; 17], Lesson(5), 0)[..6], [4; 6], "the ride gives 4");
+    }
 
     #[test]
     fn lessons_map_onto_the_school_maps_once_each() {

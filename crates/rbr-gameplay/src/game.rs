@@ -426,7 +426,7 @@ impl Game {
 
         // `Load3b0` ticks the marker keys after the physics substeps (`M004825b0`).
         let marker_events = self.tick_markers();
-        let school_end = self.tick_school(frame.facc);
+        let school_end = self.tick_school(frame.facc, physics);
 
         // The HUD's race clock and the race flow: the jump start reaches the clock before its tick.
         let (clock_events, flow_events) = self.tick_race_clock(
@@ -606,10 +606,14 @@ impl Game {
 
     /// `E12_AnimSet::Tic570` (0x47a570) in a driving frame of `dt`, after the marker keys: the school bank's
     /// `EndRace` with the HUD's race time, then a trip latch's retire. The first `CSigEndRace` ends the race.
-    fn tick_school(&mut self, dt: f32) -> Option<StageEnd> {
+    fn tick_school(&mut self, dt: f32, physics: &mut impl PhysicsStep) -> Option<StageEnd> {
         let school = self.school.as_mut().filter(|_| self.stage.state() == State::Driving)?;
         let (finished, tripped) = school.frame(dt, self.race_clock.time);
-        (finished || tripped).then(|| self.flow.school_end(&self.race_clock, !finished)).flatten()
+        let end = (finished || tripped).then(|| self.flow.school_end(&self.race_clock, !finished)).flatten();
+        if end.is_some() {
+            self.set_race_over(physics);
+        }
+        end
     }
 
     /// The HUD's race clock. The start line's jump start reaches it before the frame's tick: the peeks show the

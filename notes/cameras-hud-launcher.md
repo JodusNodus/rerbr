@@ -105,7 +105,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   their Basic/Advanced groups (all open, user decision), each row its number (`RSM_LESSON_NRB/A`), title and best
   result; the detail its instruction and cone guide (`brief_keys`), surface (from the lesson's setup file), the
   pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: untimed) and Drive lesson. Results
-  are the profile's school array (`Profile::cars`, 0/-/1..3 Passed n/4/4 Perfect), re-read on change. Drive
+  are the profile's school array (`Profile::school`, 0/-/1..3 Passed n/4/4 Perfect), re-read on change. Drive
   lesson starts like the Drive page's Start on good weather with car 5 (`command::start_school`,
   `rbr-standalone --school N` with `--saves`/`--profile`; `--tyre`/`--setup`/`--rsf-car`/`--season-row` left out)
   and is blocked while the viewer runs, without readiness, or when NGP's archive has no car 5.

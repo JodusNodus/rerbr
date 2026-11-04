@@ -137,3 +137,53 @@ impl SchoolRun {
         eval_filters(&self.bank, time, self.lesson.index() as i32, &levels)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::school::FilterSub;
+
+    /// Lesson 2's stop box (map 83's third sub): a mode-4 sub at 160.4 m, 18.1 m either side.
+    fn stop_box() -> Bank {
+        let mut stop = FilterSub::init_sub();
+        (stop.tag, stop.class, stop.flags, stop.center, stop.hi, stop.lo) = (4, 3, 1, 160.39, 18.1, 28.1);
+        Bank { subs: vec![stop], perfect_time: 9.0, pass_time: 10.0, time_limit: 11.0, ..Bank::fresh() }
+    }
+
+    fn standing_at(distance: f32) -> StepInput {
+        StepInput {
+            wall_inside: false,
+            wall_crossed: false,
+            velocity: [0.0; 3],
+            position: [0.0; 3],
+            distance: Some(distance),
+            driveline: None,
+            app_state: 1,
+        }
+    }
+
+    #[test]
+    fn standing_in_the_stop_box_ends_the_drive_and_passes_on_time() {
+        // Lesson 4's verdict leaves the damage out (`SeverityMax` gives 4).
+        let mut run = SchoolRun::new(Lesson::new(4).unwrap(), stop_box());
+        run.start();
+        // The tracker enlists the box on one step; the standing test takes it on the next.
+        run.in_step(&standing_at(150.0), false);
+        assert_eq!(run.frame(0.01, 9.2), (false, false));
+        run.in_step(&standing_at(150.0), false);
+        assert_eq!(run.frame(0.01, 9.4), (true, false));
+        let damage = CarriedDamage::default();
+        assert_eq!(run.verdict(9.4, &damage), 3);
+        assert_eq!(run.verdict(8.9, &damage), 4);
+        assert_eq!(run.verdict(10.5, &damage), 0);
+    }
+
+    #[test]
+    fn a_retire_trips_the_bank_and_fails() {
+        let mut run = SchoolRun::new(Lesson::new(2).unwrap(), stop_box());
+        run.start();
+        run.in_step(&standing_at(20.0), true);
+        assert_eq!(run.frame(0.01, 3.0), (false, true));
+        assert_eq!(run.verdict(3.0, &CarriedDamage::default()), 0);
+    }
+}

@@ -27,7 +27,7 @@ use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::Mode;
 use rbr_gameplay::race_clock::AssistSettings;
 use rbr_gameplay::race_options::{self, ChampionshipOptions, RaceOptions};
-use rbr_gameplay::school::{self, Lesson};
+use rbr_gameplay::school::{self, Bank, Lesson, SchoolRun};
 use rbr_gameplay::timing::TimeKeeper;
 use rbr_gameplay::weather::Weather;
 use rbr_hybrid::pure::Pure;
@@ -183,6 +183,13 @@ impl Race {
             level: self.options.damage.word(),
             false_starts: self.false_starts,
         }
+    }
+
+    /// A lesson's drive: the bank `Load020` (0x479020) builds from the stage's `Driveline` replay stream (a fresh
+    /// bank's `InitState` and `ReadStream`, in mode 7). The pair codes' block base is left 0: only the speech reads them.
+    pub fn school(&self, replay: &rbr_formats::dls::DlsReplayStream) -> Option<SchoolRun> {
+        let bank = Bank::from_stream(&Bank::fresh(), replay, 0, true);
+        self.lesson.map(|lesson| SchoolRun::new(lesson, bank))
     }
 
     /// The level `InitQuickRaceDamageHandler` (0x567640) gives the car in this flow mode.

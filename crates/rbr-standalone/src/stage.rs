@@ -27,6 +27,8 @@ pub struct StageData {
     pub obstacles: Vec<autopilot::Obstacle>,
     /// The `.dls` finish zone (table 8).
     pub finish_zone: FinishZone,
+    /// The `Driveline` set's replay stream, the rally school's filter bank (`rbr_gameplay::school::Bank`).
+    pub replay: dls::DlsReplayStream,
 }
 
 /// The stage `stage` (a name or path, `stage_files`) of `data`, with `car` the race's car.
@@ -46,7 +48,9 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         .sum();
     let dls_bytes = read("dls")?;
     let markers = markers::parse(&dls_bytes).map_err(|e| format!("{stage}.dls: {e}"))?;
-    let finish_zone = FinishZone::load(dls::parse(&dls_bytes).map_err(|e| format!("{stage}.dls: {e}"))?.world_vector);
+    let dls_file = dls::parse(&dls_bytes).map_err(|e| format!("{stage}.dls: {e}"))?;
+    let finish_zone = FinishZone::load(dls_file.world_vector);
+    let replay = markers::driveline_entry(&dls_file).map_err(|e| format!("{stage}.dls: {e}"))?.replay.clone();
     let trk = trk::parse(&read("trk")?).map_err(|e| format!("{stage}.trk: {e}"))?;
     let track = trk
         .chunks
@@ -72,6 +76,7 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         interactive_handle_end,
         obstacles,
         finish_zone,
+        replay,
     })
 }
 

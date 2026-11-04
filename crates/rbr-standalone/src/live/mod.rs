@@ -210,6 +210,9 @@ impl<'a> Live<'a> {
             game = game.with_camera_go();
         }
         game.set_assist_settings(race.assist_settings());
+        if let Some(school) = race.school(&stage.replay) {
+            game = game.with_school(school);
+        }
         // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time.
         let now = if camera_go { 0.0 } else { f64::from(dt) };
         let settled = settle(&playback, &mut game, stage, camera_go, now)?;
@@ -655,6 +658,19 @@ impl<'a> Live<'a> {
     fn race_end(&mut self, step: u32, end: &StageEnd) {
         let page = self.end_page(end);
         eprintln!("step {step}: the race ended: {:?}, {:?}, end page {:#x}", end.cause, end.end_race, page.value());
+        if let Some(school) = self.game.school() {
+            // `EvalFilters` on the HUD's time and the car's damage; a lesson's drive keeps no stage record.
+            let damage = rally::stage_out(&self.playback.pure.mem, *end, false).damage;
+            let (lesson, verdict) = (school.lesson(), school.verdict(end.end_race.time, &damage));
+            eprintln!("step {step}: rally school lesson {} verdict {verdict} of 4", lesson.index());
+            if let Some(saves) = self.saves.as_mut() {
+                match saves.school(lesson, verdict) {
+                    Ok(results) => eprintln!("step {step}: the school results are {results:?}"),
+                    Err(e) => eprintln!("step {step}: the school result was not saved: {e}"),
+                }
+            }
+            return;
+        }
         let Some(saves) = self.saves.as_mut().filter(|s| end.finished() && !s.written()) else { return };
         let times = [end.end_race.splits[0], end.end_race.splits[1], end.end_race.time];
         match saves.finish(times) {

@@ -67,8 +67,8 @@ pub fn seed(second: u32, minute: u32, millisecond: u32, hour: u32, weekday: u32,
 }
 
 /// The player of a new season: the profile's name, the picked team and the
-/// rank, the profile's first locked car capped at 15, which orders the first
-/// rally's start.
+/// rank, the first rally school lesson the profile has no result for, capped at 15, which orders the first rally's
+/// start.
 #[derive(Debug, Clone, Copy)]
 pub struct Player<'a> {
     pub name: &'a str,
@@ -76,9 +76,10 @@ pub struct Player<'a> {
     pub rank: u32,
 }
 
-/// The player's rank for a new season: the first locked car, capped at 15.
+/// The player's rank for a new season: the first rally school lesson without a result (`Profile::school`), capped at
+/// 15.
 pub fn player_rank(profile: &rbr_formats::saves::profile::Profile) -> u32 {
-    let first = profile.cars.iter().position(|&c| c == 0).unwrap_or(profile.cars.len()) as u32;
+    let first = profile.school.iter().position(|&c| c == 0).unwrap_or(profile.school.len()) as u32;
     first.min(15)
 }
 
