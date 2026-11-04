@@ -5,7 +5,7 @@
 //! `CSeasonChooseSetupUI`, `rbr_gameplay::setup::SeasonSetup`) and the tyre from the stage surface's tyres
 //! (`SELECTTYRES`, `championship::tyre_choices`); a stage with no service before it runs on the car's tyre and setup,
 //! with the tyres' wear carried (`championship::choice_before`). The park reads the car's `repair.ini` from NGP's
-//! `physics.rbz` (an RSF car's: slot 5's, where it runs). The road wear is the player's start place's (`season::road_wear`).
+//! `physics.rbz` (an RSF car's: its pack's, else slot 5's, where it runs). The road wear is the player's start place's (`season::road_wear`).
 //!
 //! The championship's options (`race_options::ChampionshipOptions`) are chosen before New season, as the game's
 //! `SSKILL` and `CARDAM` pages ask them: the skill level (Rookie, Professional, Champion: the outside-assistance
