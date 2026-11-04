@@ -406,13 +406,14 @@ impl Catalog {
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
     }
 
-    /// Replaces the pack cars by those of the RSF folder `dir` (none, with the reason on stderr, when it doesn't
-    /// read; none for an empty `dir`), then the added cars of `added` (`car_packs::DIR`). A car both have (by pack
+    /// Replaces the pack cars by those of RSF's cache in the game folder `dir` (none without one; none, with the
+    /// reason on stderr, when it doesn't read), then the added cars of `added` (`car_packs::DIR`). A car both have (by pack
     /// folder or name) is the added one: the player downloaded it over RSF's, which is back once it is removed.
     pub fn set_community_cars(&mut self, install: &Path, dir: &str, added: &Path) {
         self.all_cars.retain(|c| matches!(c.physics, Physics::Archive));
-        if !dir.trim().is_empty() {
-            match rsf_cars(install, Path::new(dir.trim())) {
+        let dir = Path::new(dir.trim());
+        if dir.join("rsfdata").join("cache").is_dir() {
+            match rsf_cars(install, dir) {
                 Ok(cars) => self.all_cars.extend(cars),
                 Err(e) => eprintln!("launcher: RSF cars: {e}"),
             }
