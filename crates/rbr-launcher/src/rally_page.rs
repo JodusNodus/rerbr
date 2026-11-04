@@ -37,7 +37,7 @@ use egui::{Color32, ComboBox, Ui};
 use rbr_championship::events::{self, Ai};
 use rbr_championship::season::{self as season_model, AiField, Block};
 use rbr_championship::{choice_before, rally, service, store, tyre_choices, Championship, RallyOutcome, RallyPhase};
-use rbr_championship::{ParkState, ProfileSeason, RallyStage, ServicePark, StageTimes, Turn};
+use rbr_championship::{ParkState, ProfileSeason, RallyStage, ServicePark, StageReport, StageTimes, Turn};
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::data::Data;
 use rbr_formats::saves::season::Season as SeasonSave;
@@ -132,26 +132,6 @@ pub struct RallyPage {
 fn clock(seconds: f32) -> String {
     let s = seconds.max(0.0);
     format!("{}:{:05.2}", (s / 60.0) as u32, s % 60.0)
-}
-
-/// `rbr-standalone --result-out`'s file: the race's end, and whether the car can still drive.
-fn read_result(path: &Path) -> Result<(StageEnd, bool, bool), String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let value = |key: &str| text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('='));
-    let get = |key: &str| -> f32 { value(key).and_then(|v| v.parse().ok()).unwrap_or(0.0) };
-    let cause = match value("cause") {
-        Some("Finish") => EndCause::Finish,
-        Some("Marker") => EndCause::Marker,
-        Some("Bystander") => EndCause::Bystander,
-        Some("Offstage") => EndCause::Offstage,
-        Some("Excluded") => EndCause::Excluded,
-        Some("Retired") => EndCause::Retired,
-        Some("FinishZone") => EndCause::FinishZone,
-        _ => EndCause::Left,
-    };
-    let end_race =
-        EndRace { time: get("time"), splits: [get("split1"), get("split2")], retired: get("finished") == 0.0 };
-    Ok((StageEnd { cause, end_race }, get("drivable") != 0.0, get("false_start") != 0.0))
 }
 
 impl RallyPage {
@@ -492,7 +472,8 @@ impl RallyPage {
         let Some(c) = self.championship.take() else { return };
         let (_, out, result) = Self::files(here);
         let left = StageEnd { cause: EndCause::Left, end_race: EndRace { time: 0.0, splits: [0.0; 2], retired: true } };
-        let (end, drivable, false_start) = read_result(&result).unwrap_or((left, true, false));
+        let StageReport { end, drivable, false_start } = std::fs::read_to_string(&result)
+            .map_or(StageReport { end: left, drivable: true, false_start: false }, |text| StageReport::parse(&text));
         if let Some(run) = self.run.as_mut().filter(|_| false_start) {
             store::record_false_start(&mut run.save);
         }

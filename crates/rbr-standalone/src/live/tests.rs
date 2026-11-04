@@ -491,7 +491,7 @@ fn an_autopilot_playback_starts_on_the_green() {
         let neutral = payload(&QuantizedControl::default().car_control(), 0);
         let drove = crate::autopilot::drive(live, &[], neutral, stage, 9000, None, None, &out).unwrap();
         std::fs::remove_file(&out).unwrap();
-        assert!(!drove.out.unwrap().false_start, "the autopilot jumped the start");
+        assert!(!drove.out.unwrap().result.false_start, "the autopilot jumped the start");
     });
 }
 

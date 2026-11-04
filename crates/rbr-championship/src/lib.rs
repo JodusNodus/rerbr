@@ -12,6 +12,8 @@ pub mod service;
 pub mod store;
 
 pub use events::Turn;
-pub use rally::{choice_before, tyre_choices, Championship, Rally, RallyOutcome, RallyPhase, RallyStage, StageTimes};
+pub use rally::{
+    choice_before, tyre_choices, Championship, Rally, RallyOutcome, RallyPhase, RallyStage, StageReport, StageTimes,
+};
 pub use service::{ParkState, ServicePark};
 pub use store::ProfileSeason;

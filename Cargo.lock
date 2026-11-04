@@ -2502,6 +2502,7 @@ dependencies = [
 name = "rbr-standalone"
 version = "0.1.0"
 dependencies = [
+ "rbr-championship",
  "rbr-counters",
  "rbr-formats",
  "rbr-gameplay",
