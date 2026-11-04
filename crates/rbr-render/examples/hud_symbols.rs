@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // The custom co-driver's plugin-only symbols (`pace::custom_symbol`): the water, the short labels, and the game's
     // crest for an extended id's stand-in (OVERCREST_NOLINK, 2269).
-    use rbr_formats::rsf::pacenotes::{id, Note};
+    use rbr_formats::pacenote::notes::{id, Note};
     let custom: Vec<Note> = [id::CAUTION_WATER, id::CUT, id::DONTCUT, id::LONG, id::TIGHTENSBAD, id::MAYBE, id::AND]
         .map(|kind| Note { kind, flags: 0, distance: 0.0 })
         .into_iter()

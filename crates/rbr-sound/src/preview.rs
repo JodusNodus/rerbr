@@ -6,7 +6,7 @@ use std::path::Path;
 
 use rbr_formats::audio::{self, AudioDat};
 use rbr_formats::data::Data;
-use rbr_formats::rsf::codriver;
+use rbr_formats::pacenote::codriver;
 
 use crate::data::Wave;
 use crate::mixer::voices::interpolate;

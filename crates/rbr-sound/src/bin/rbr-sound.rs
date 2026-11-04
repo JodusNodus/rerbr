@@ -382,7 +382,7 @@ fn run() -> Result<(), String> {
     let mut models = Models::new(&bank, sky, spheres(&data, &stage)?);
     models.codriver.muted = !args.codriver;
     if let Some(m) = &args.codriver_mod {
-        let voice = m.voice.clone().or_else(|| rbr_formats::rsf::codriver::settings(&m.plugin).voice);
+        let voice = m.voice.clone().or_else(|| rbr_formats::pacenote::codriver::settings(&m.plugin).voice);
         let choice = rbr_sound::custom_codriver::Choice {
             plugin: m.plugin.clone(),
             voice: voice.ok_or("--codriver-mod: no voice (PaceNote.ini names none)")?,

@@ -2,7 +2,7 @@
 //! `rsfdata/cache/`): every folder reads, and every variant of a loadable stage parses. Skipped when `RBR_RSF` is unset.
 
 use rbr_formats::data::Data;
-use rbr_formats::{col, dls, fnc, lbs, markers, mat, pss, rsf, stage_files, trk};
+use rbr_formats::{col, dls, fnc, lbs, markers, mat, pacenote, pss, rbrhud, rsf, stage_files, trk};
 use std::path::PathBuf;
 
 fn root() -> Option<PathBuf> {
@@ -87,12 +87,12 @@ fn rsf_particle_files_parse() {
     assert!(failed.iter().all(|f| f.starts_with("ps_btb")), "{failed:#?}");
 }
 
-/// Every RBRHUD gauge config (`rsf::gauges`) under `Plugins/RBRHUD/gauges` reads, with its atlas; the sprites and fonts
+/// Every RBRHUD gauge config (`rbrhud`) under `Plugins/RBRHUD/gauges` reads, with its atlas; the sprites and fonts
 /// its elements name that the atlas lacks are listed (an element without its sprite is not drawn).
 #[test]
 fn rsf_gauge_configs_read() {
-    let Some(gauges) = root().map(|r| r.join(rsf::gauges::GAUGES)).filter(|g| g.is_dir()) else {
-        eprintln!("skipping: RBR_RSF has no {}", rsf::gauges::GAUGES);
+    let Some(gauges) = root().map(|r| r.join(rbrhud::GAUGES)).filter(|g| g.is_dir()) else {
+        eprintln!("skipping: RBR_RSF has no {}", rbrhud::GAUGES);
         return;
     };
     let dirs = |dir: &std::path::Path| {
@@ -111,15 +111,15 @@ fn rsf_gauge_configs_read() {
                 }
                 let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap()).into_owned();
                 let config =
-                    rsf::gauges::Config::parse(&text).unwrap_or_else(|| panic!("{}: no [main]", path.display()));
+                    rbrhud::Config::parse(&text).unwrap_or_else(|| panic!("{}: no [main]", path.display()));
                 let atlas_path = rbr_formats::cars::resolve(&car, &config.atlas)
                     .unwrap_or_else(|| panic!("{}: no atlas {}", path.display(), config.atlas));
-                let atlas = rsf::gauges::Atlas::parse(&String::from_utf8_lossy(&std::fs::read(&atlas_path).unwrap()));
+                let atlas = rbrhud::Atlas::parse(&String::from_utf8_lossy(&std::fs::read(&atlas_path).unwrap()));
                 assert!(rbr_formats::cars::resolve(&car, &atlas.texture).is_some(), "{}", atlas_path.display());
                 for element in &config.elements {
                     let found = match &element.kind {
-                        rsf::gauges::Kind::Number(number) => atlas.font(&number.font).is_some(),
-                        rsf::gauges::Kind::Other(_) => continue,
+                        rbrhud::Kind::Number(number) => atlas.font(&number.font).is_some(),
+                        rbrhud::Kind::Other(_) => continue,
                         _ => element.texture.as_deref().is_none_or(|t| atlas.sprite(t).is_some()),
                     };
                     references += 1;
@@ -143,7 +143,7 @@ fn rsf_gauge_configs_read() {
 /// parses, with the files its notes name present. Skipped without the plugin's folder.
 #[test]
 fn pacenote_plugin_styles_and_note_files_read() {
-    use rsf::{codriver, pacenotes};
+    use pacenote::{codriver, notes as pacenotes};
     let Some(root) = root() else {
         eprintln!("skipping: RBR_RSF not set");
         return;

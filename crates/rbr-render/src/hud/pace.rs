@@ -2,7 +2,7 @@
 //! `GEN_BOX_PACE_VERSION1_*` sprites (`Gendef.h`), mirrored for the left corners, and to a colour (halved when drawn,
 //! 0x574090). The stock HUD draws them (`stock::pace`).
 
-use rbr_formats::rsf::pacenotes::{id, Note};
+use rbr_formats::pacenote::notes::{id, Note};
 use rbr_gameplay::markers::flag_word_id;
 
 /// What a symbol shows.

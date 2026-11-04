@@ -757,7 +757,7 @@ mod tests {
         assert_eq!(hud.view().note_distance, Some(80.0));
         // A text call shows its label once the queue gets to it.
         let cut =
-            rbr_formats::rsf::pacenotes::Note { kind: rbr_formats::rsf::pacenotes::id::CUT, flags: 0, distance: 200.0 };
+            rbr_formats::pacenote::notes::Note { kind: rbr_formats::pacenote::notes::id::CUT, flags: 0, distance: 200.0 };
         hud.callout(Note { symbol: pace::custom_symbol(&cut).unwrap(), flags: 0, called: 0.0, at: Some(200.0) });
         for _ in 0..answers(1.6) {
             hud.answer(&[], Some(&dash(20.0, vec![])), None, false, None);

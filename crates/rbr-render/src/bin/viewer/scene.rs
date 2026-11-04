@@ -598,7 +598,7 @@ fn load_crew(data: &Data, car: &str, stage: &mut Stage, args: &Args) -> Option<C
 /// `root`, else the game install's `install`: a pack copied into ReRBR's own folder has none beside it, the install's
 /// is read in place.
 fn load_dials(root: &Path, install: &Path, car: &str, stage: &mut Stage) -> Option<Dials> {
-    let root = [root, install].into_iter().find(|r| rbr_formats::rsf::gauges::variant(r, car).is_some())?;
+    let root = [root, install].into_iter().find(|r| rbr_formats::rbrhud::variant(r, car).is_some())?;
     let (dials, skipped) = Dials::load(root, car, stage);
     for skip in &skipped {
         eprintln!("dials: config not drawn: {skip:?}");

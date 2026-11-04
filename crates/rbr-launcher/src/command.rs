@@ -4,7 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use rbr_formats::rsf::{codriver, stage_list};
+use rbr_formats::pacenote::codriver;
+use rbr_formats::rsf::stage_list;
 use rbr_formats::saves::SaveDir;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
@@ -1440,7 +1441,7 @@ mod tests {
         assert_eq!(value(&defaults, "--codriver-voice"), Some(voice.clone()));
         // Unset, the install's largest note set plays (LuppisV3 in an RSF install).
         let largest = form.rsf_note_sets.first().map(|set| set.name.clone()).unwrap_or_default();
-        let notes = rbr_formats::rsf::pacenotes::my_pacenotes_dir(&rsf)
+        let notes = rbr_formats::pacenote::notes::my_pacenotes_dir(&rsf)
             .and_then(|dir| crate::codriver_packs::find_in_set(&dir, &["Tanner"], &largest));
         assert_eq!(value(&defaults, "--pacenotes"), notes.map(|p| p.display().to_string()));
         let stepping = defaults[defaults.iter().position(|a| a == "--live").unwrap()..].to_vec();
@@ -1473,7 +1474,7 @@ mod tests {
     #[test]
     fn local_codriver_packs_drive_without_rsf() {
         use crate::codriver_packs;
-        use rbr_formats::rsf::codriver;
+        use rbr_formats::pacenote::codriver;
         let (Some(data), Some(patch), Some(ngp)) =
             (env_path("RBR_DATA"), env_path("RBR_PATCH"), env_path("RBR_NGP_PHYSICS"))
         else {

@@ -191,7 +191,7 @@ pub struct CodriverMod {
 impl CodriverMod {
     /// The co-driver it names, with `--codriver-voice` else `PaceNote.ini`'s voice; `None` (on stderr) without one.
     pub fn choice(&self) -> Option<rbr_sound::custom_codriver::Choice> {
-        let voice = self.voice.clone().or_else(|| rbr_formats::rsf::codriver::settings(&self.plugin).voice);
+        let voice = self.voice.clone().or_else(|| rbr_formats::pacenote::codriver::settings(&self.plugin).voice);
         let Some(voice) = voice else {
             eprintln!("viewer: co-driver mod: no voice (PaceNote.ini names none)");
             return None;
