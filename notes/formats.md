@@ -295,7 +295,7 @@ Not supported (user decision): every race uses the game's own `.ghc` ghosts, by 
 
 ## RBRHUD gauges
 
-RBRHUD cockpit dials: [cameras-hud-launcher.md](cameras-hud-launcher.md#rbrhud-gauges-rsf-cockpit-dials) (read by
+RBRHUD cockpit dials: [cameras-hud-launcher.md](cameras-hud-launcher.md#rbrhud-gauges) (read by
 `rbrhud`, drawn by `rbr_render::dials`).
 
 ## Pacenote plugin

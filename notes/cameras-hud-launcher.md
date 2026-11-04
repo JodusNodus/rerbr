@@ -46,7 +46,7 @@ Model and rules in `rbr_render::hud::model`, sprites in `hud::pace`, layout in `
 - The game's 3D notes (`AID_MARKER`) are not drawn (dropped 2026-10-27).
 - The minidash and digidash art is not drawn (not in code).
 
-### RBRHUD gauges (RSF cockpit dials)
+### RBRHUD gauges
 
 Data in `rbr_formats::rbrhud`, drawing in `rbr_render::dials` (toggle: `dials`); check
 `rbr-formats/tests/rsf_data.rs` (every sprite and font the configs name is in its atlas).
