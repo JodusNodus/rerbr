@@ -183,3 +183,68 @@ pub fn dial_values(playback: &Playback, live: Option<&Live>) -> dials::Values {
         body: view.body,
     }
 }
+
+/// Draws the school demo car (viewer-only): the player's own car meshes at the replay's `car` pose, the crew
+/// hidden, returning the demo camera. `ride` watches from the cockpit, or the bonnet when the car has no cockpit
+/// mount; a demonstration is watched from the chase camera.
+///
+/// The glass and the dials are not updated for the demo: the wipers ride rigidly with the car and the dials keep
+/// the standing car's values.
+///
+/// The game's start orbit replaces the view until the go ([`scripted_camera`]); the caller passes the demo lens
+/// instead while the demo plays.
+pub fn draw_demo(
+    scene: &mut Scene,
+    renderer: &mut Renderer,
+    ride: bool,
+    car: &rbr_recording::pose::CarPose,
+    look: ChaseLook,
+    fov: f32,
+) -> Option<Lens> {
+    let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return None };
+    let body = playback.model_to_stage(car);
+    let lens = if ride {
+        let view = [CarView::Cockpit, CarView::Bonnet]
+            .into_iter()
+            .find(|view| mounts.of(*view).is_some())
+            .unwrap_or(CarView::Bonnet);
+        playback.interior = view.interior();
+        renderer.set_outside_view(!view.interior());
+        playback.apply_demo(renderer, car, view.interior());
+        if let Some(crew) = &mut scene.crew {
+            crew.apply(renderer, body, false);
+        }
+        playback.lens_at(mounts, view, car, fov)
+    } else {
+        playback.interior = false;
+        renderer.set_outside_view(true);
+        playback.apply_demo(renderer, car, false);
+        if let Some(crew) = &mut scene.crew {
+            crew.apply(renderer, body, false);
+        }
+        playback.camera_at(car, look).lens(playback.chase_fov)
+    };
+    Some(lens)
+}
+
+/// The demo's hint over the HUD: what plays and that Enter skips it.
+///
+/// The brief's panel stays hidden while the demo plays (the viewer clears the school record before painting it);
+/// at the demo's end, or on Enter, the scene returns to the player's car at the start and the brief shows.
+pub fn demo_hint(ctx: &egui::Context, ride: bool) {
+    let text = if ride { "Ride with Richard Burns - Enter: skip" } else { "Demonstration - Enter: skip" };
+    let screen = ctx.content_rect();
+    let panel = egui::Rect::from_center_size(
+        egui::Pos2::new(screen.center().x, screen.min.y + 96.0),
+        egui::Vec2::new(if ride { 430.0 } else { 340.0 }, 40.0),
+    );
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("school demo")));
+    painter.rect_filled(panel, 8.0, egui::Color32::from_rgba_premultiplied(10, 10, 12, 235));
+    painter.text(
+        panel.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(20.0),
+        egui::Color32::from_rgb(255, 196, 0),
+    );
+}

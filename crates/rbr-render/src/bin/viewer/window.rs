@@ -5,7 +5,10 @@ mod input;
 mod results;
 
 use crate::args::{Args, QuitFrom};
-use crate::draw::{dial_values, draw_car, draw_particles, readout, scripted_camera, start_camera, step_characters};
+use crate::draw::{
+    demo_hint, dial_values, draw_car, draw_demo, draw_particles, readout, scripted_camera, start_camera,
+    step_characters,
+};
 use crate::latency::Latency;
 use crate::loading::{Loaded, Loading};
 use crate::pacer::Pacer;
@@ -17,15 +20,17 @@ use gilrs::ev::filter::{Filter, Repeat};
 use gilrs::Gilrs;
 use input::{movement, select_gear, shifter};
 use rbr_formats::data::Data;
+use rbr_recording::pose::CarPose;
 use rbr_render::bindings::{self, Action, Bindings};
 use rbr_render::camera::FreeFly;
 use rbr_render::ffb;
 use rbr_render::hud::pause::{self, Nav, PauseMenu};
 use rbr_render::hud::results::{self as result_actions, ResultsMenu};
+use rbr_render::hud::school;
 use rbr_render::hud::stock::Stock;
 use rbr_render::hud::{self as hud_overlay, Overlay};
 use rbr_render::icon;
-use rbr_render::live::Controls;
+use rbr_render::live::{self, Controls};
 use rbr_render::perf_log;
 use rbr_render::playback::ChaseLook;
 use rbr_render::present::Acquired;
@@ -86,6 +91,12 @@ impl FpsMeter {
         }
         self.shown
     }
+}
+
+/// A school demo playing: the replay's time and whether it ended (then the brief shows).
+struct DemoPlay {
+    t: f32,
+    finished: bool,
 }
 
 /// Opens the window, shows the loading screen while a thread loads what `args` name, then runs the drive in it.
@@ -374,6 +385,8 @@ pub struct App {
     ended: Option<Instant>,
     /// The live drive's pause menu, while it is open (the drive is paused).
     menu: Option<PauseMenu>,
+    /// The school demo playing (a lesson's drive in the brief state): the replay's time and whether it ended.
+    demo: Option<DemoPlay>,
     /// Actions alongside the stage result, independent of HUD visibility.
     results: Option<ResultsMenu>,
     /// When the open menu paused the drive, and the time paused before it (the renderer's time leaves it out).
@@ -470,6 +483,7 @@ impl App {
             went: None,
             ended: None,
             menu: None,
+            demo: None,
             results: None,
             paused_at: None,
             paused: Duration::ZERO,
@@ -506,6 +520,77 @@ impl App {
         if self.latency.is_some() {
             process.keep_steps();
         }
+    }
+
+    /// Whether the lesson stands on the brief (the SCH1 record's brief state, the countdown waiting for the
+    /// confirm): the school demo plays then.
+    fn school_brief(&self) -> bool {
+        self.scene
+            .live
+            .as_ref()
+            .is_some_and(|live| live.hud_model.view().school.is_some_and(|school| school.phase == school::Phase::Brief))
+    }
+
+    /// Plays the school demo on while the brief shows (viewer-only): the replay's time runs with the frame, and at
+    /// its end the scene returns to the player's car at the start and the brief shows. A ride sends the brief's
+    /// confirm at its end, so the lesson ends with its award and the verdict panel. Once the drive starts the demo
+    /// is gone; a restart brings the brief, and the demo, back.
+    fn advance_demo(&mut self, dt: f32) {
+        let Some(demo) = &self.scene.school_demo else {
+            self.demo = None;
+            return;
+        };
+        if !self.school_brief() {
+            self.demo = None;
+            return;
+        }
+        let fresh = self.demo.is_none();
+        let play = self.demo.get_or_insert(DemoPlay { t: 0.0, finished: false });
+        if fresh {
+            self.running.renderer.reset_history();
+        }
+        if play.finished {
+            return;
+        }
+        play.t += dt;
+        if play.t < demo.duration() {
+            return;
+        }
+        play.finished = true;
+        self.running.renderer.reset_history();
+        if demo.ride() {
+            // The brief's confirm ends the ride with its award.
+            self.controls.flags |= live::ACCEPT_MESSAGE;
+        }
+    }
+
+    /// The demo car playing now: its pose and whether it is the ride.
+    fn demo_car(&self) -> Option<(CarPose, bool)> {
+        let (Some(play), Some(demo)) = (&self.demo, &self.scene.school_demo) else { return None };
+        if play.finished || !self.school_brief() {
+            return None;
+        }
+        let pose = demo.pose(play.t)?;
+        Some((CarPose { position: pose.position, orientation: pose.rotation, velocity: [0.0; 3] }, demo.ride()))
+    }
+
+    /// Skips the school demo playing (Enter): the brief shows instead, and a ride sends its confirm, ending the
+    /// lesson. Whether one played (consumed: the Enter must not reach the standalone as the brief's confirm).
+    fn skip_demo(&mut self) -> bool {
+        if !self.school_brief() {
+            return false;
+        }
+        let (Some(play), Some(demo)) = (&mut self.demo, &self.scene.school_demo) else { return false };
+        if play.finished {
+            return false;
+        }
+        let ride = demo.ride();
+        play.finished = true;
+        self.running.renderer.reset_history();
+        if ride {
+            self.controls.flags |= live::ACCEPT_MESSAGE;
+        }
+        true
     }
 
     fn frame(&mut self) {
@@ -576,6 +661,11 @@ impl App {
             self.sync_results();
         }
         self.wheel_sensitivity();
+        if self.menu.is_none() {
+            self.advance_demo(dt);
+        }
+        let demo = self.demo_car();
+        let demo_ride = demo.as_ref().map(|(_, ride)| *ride);
         let running = &mut self.running;
         let speed = WALK_SPEED * if self.held.contains(&KeyCode::ShiftLeft) { FAST_FACTOR } else { 1.0 };
         let movement = movement(&self.held);
@@ -712,7 +802,11 @@ impl App {
             playback.follow_cameras(self.shown.swing(), looking_back);
         }
         let fov = self.fov;
-        let car_lens = draw_car(&mut self.scene, &mut running.renderer, self.shown, self.look, fov);
+        let car_lens = match &demo {
+            // The school demo: the player's car at the replay's pose, the player's camera replaced.
+            Some((car, ride)) => draw_demo(&mut self.scene, &mut running.renderer, *ride, car, self.look, fov),
+            None => draw_car(&mut self.scene, &mut running.renderer, self.shown, self.look, fov),
+        };
         let (view_projection, sky_view_projection) = match (&mut self.scene.orbit, car_lens) {
             (Some(orbit), _) => {
                 orbit.zoom((movement.forward * -ZOOM_RATE * dt).exp());
@@ -756,14 +850,22 @@ impl App {
         let readout = self.scene.playback.as_ref().filter(|_| self.scene.hud.show).map(|playback| {
             let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
             let (live, shown, bindings) = (self.scene.live.as_ref(), self.shown, &self.bindings);
-            readout(playback, live, shown, bindings, self.scene.hud, fps)
+            let mut readout = readout(playback, live, shown, bindings, self.scene.hud, fps);
+            if demo_ride.is_some() {
+                // The brief's panel stays hidden while the demo plays.
+                readout.state.school = None;
+            }
+            readout
         });
-        if readout.is_some() || self.menu.is_some() || self.results.is_some() {
+        if readout.is_some() || self.menu.is_some() || self.results.is_some() || demo_ride.is_some() {
             let (gpu, menu) = (&running.gpu, &self.menu);
             running.overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, (width, height), |ctx, hud| {
                 readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
                 menu.iter().for_each(|m| pause::paint(ctx, m));
                 self.results.iter().for_each(|m| result_actions::paint(ctx, m));
+                if let Some(ride) = demo_ride {
+                    demo_hint(ctx, ride);
+                }
             });
         }
         span.next("submit");

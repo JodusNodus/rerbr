@@ -531,8 +531,13 @@ impl Playback {
 
     /// The chase camera behind the body, looking at its middle, turned around it by `look`.
     pub fn camera(&self, look: ChaseLook) -> FreeFly {
-        let position = self.position();
-        let forward = physics_to_stage().transform_vector3(Vec3::from(self.car().forward()));
+        self.camera_at(&self.car(), look)
+    }
+
+    /// The chase camera behind `car`, as [`Playback::camera`] but at another pose (the school demo's).
+    pub fn camera_at(&self, car: &CarPose, look: ChaseLook) -> FreeFly {
+        let position = physics_to_stage().transform_point3(Vec3::from(car.position));
+        let forward = physics_to_stage().transform_vector3(Vec3::from(car.forward()));
         let target = position + Vec3::Y * CHASE_TARGET_HEIGHT;
         let offset = -forward * CHASE_DISTANCE + Vec3::Y * (CHASE_HEIGHT - CHASE_TARGET_HEIGHT);
         let eye = target + look.apply(offset);
@@ -542,7 +547,12 @@ impl Playback {
     /// A camera fixed to the body: `mount` placed as the body meshes are, so it follows the pose with no lag and rolls
     /// with the car. `fov` is the horizontal field of view, radians.
     pub fn mounted(&self, mount: &Mount, fov: f32) -> Lens {
-        let body = self.body();
+        self.mounted_at(mount, &self.car(), fov)
+    }
+
+    /// A camera fixed to the body at `car`'s pose, as [`Playback::mounted`] but at another pose (the school demo's).
+    pub fn mounted_at(&self, mount: &Mount, car: &CarPose, fov: f32) -> Lens {
+        let body = self.model_to_stage(car);
         Lens {
             eye: body.transform_point3(mount.eye),
             forward: body.transform_vector3(mount.target - mount.eye).normalize(),
@@ -580,6 +590,27 @@ impl Playback {
                 }
                 None => self.camera(look).lens(self.chase_fov),
             },
+        }
+    }
+
+    /// The camera of `view` at `car`'s pose, as [`Playback::lens`] but at another pose (the school demo's
+    /// ride): one of `mounts`, shaken by the current frame (the replay holds no shake samples) and turned by
+    /// the head there. The chase has no mount: the caller takes [`Playback::camera_at`].
+    pub fn lens_at(&self, mounts: &Mounts, view: CarView, car: &CarPose, fov: f32) -> Lens {
+        match mounts.of(view) {
+            Some(mount) if view.shakes() => {
+                self.head.turned(self.mounted_at(&mount.shaken(self.sample().shake[CAMERA_SHAKE]), car, fov))
+            }
+            Some(mount) if view == CarView::Bonnet => {
+                let mut lens = self.mounted_at(&mount, car, fov);
+                if let Some(probe) = &self.probe {
+                    let swap = |v: Vec3| Vec3::new(v.x, v.z, v.y);
+                    lens.eye = swap(crate::game_camera::bonnet_lift(probe, swap(lens.eye), mount.near));
+                }
+                lens
+            }
+            Some(mount) => self.mounted_at(&mount, car, fov),
+            None => self.camera_at(car, ChaseLook::default()).lens(self.chase_fov),
         }
     }
 
@@ -698,6 +729,67 @@ impl Playback {
         renderer.set_mirrors(&mirrors);
         if let (Some(texture), Some(probe)) = (&self.shadow, &self.probe) {
             renderer.set_car_shadow(texture, probe, physics_pose(&car));
+        }
+    }
+    /// Moves every car mesh to `car`'s pose in `renderer` (the school demo's replay sample): every part rigidly
+    /// at the demo body, the wheels at their rest pose (the replay holds no wheel samples, and the renderer never
+    /// steers the exterior wheels). `interior` shows the interior set instead of the exterior, as
+    /// [`Playback::interior`] does. The hidden set moves too, as in [`Playback::apply`].
+    pub fn apply_demo(&self, renderer: &mut Renderer, car: &CarPose, interior: bool) {
+        let body = self.model_to_stage(car);
+        let index = self.index();
+        let inputs = self.inputs(index);
+        for part in &self.parts {
+            let cracked = part.effect.crack.is_none_or(|crack| self.cracks.shows(crack));
+            let lamp = part.effect.lamp.is_none_or(|switch| switch.shown(inputs));
+            let steering = part.interior && part.effect.steering;
+            let hidden = steering && self.hide_wheel;
+            renderer.set_visible(part.stage, part.interior == interior && cracked && lamp && !hidden);
+            renderer.set_outside_visible(part.stage, !part.interior && cracked && lamp);
+            let detached = part.detach.and_then(|k| self.detached[k]);
+            // As in `apply`: the parts that move only with the body are given once, in its model space. The wheels
+            // ride rigidly with the body here, at their rest pose.
+            if part.wheel.is_none() && detached.is_none() && part.motion == Mat4::IDENTITY {
+                if !part.in_car.replace(true) {
+                    let vertices = part.placed(Mat4::IDENTITY);
+                    renderer.set_car_vertices(part.stage, &vertices, mesh_bounds(&vertices));
+                }
+                continue;
+            }
+            part.in_car.set(false);
+            let matrix = match part.wheel {
+                None => match detached {
+                    Some(detach) => detach.placement(),
+                    None => body * part.motion,
+                },
+                Some(_) => body * part.motion,
+            };
+            let vertices = part.placed(matrix);
+            renderer.set_vertices(part.stage, &vertices, mesh_bounds(&vertices));
+        }
+        let (forward, up) =
+            (body.transform_vector3(Vec3::NEG_Z).normalize(), body.transform_vector3(Vec3::Y).normalize());
+        let main = self.headlights == lights::Headlights::Main;
+        let lamps: Vec<_> = self
+            .lamp_points
+            .iter()
+            .filter_map(|point| {
+                let light = &point.light;
+                let on_at = |i| light.fixed.unwrap_or_else(|| lights::lit(light.kind, light.lamp, self.inputs(i)));
+                let horizon = f64::from(light.fade_in.max(light.fade_out)) + 1.0;
+                let since = lights::since_switch(self.time(), index, |i| self.start_of(i), on_at, horizon);
+                let fade = lights::fade(light, on_at(index), since)?;
+                let position = body.transform_point3(point.position);
+                let outward = body.transform_vector3(point.normal).normalize_or_zero();
+                Some(lights::lamp(light, position, outward, forward, up, fade, main))
+            })
+            .collect();
+        renderer.set_lamps(&lamps);
+        renderer.set_car_body(body);
+        let mirrors: Vec<_> = self.mirrors.iter().filter(|_| interior).map(|glass| glass.placed(body)).collect();
+        renderer.set_mirrors(&mirrors);
+        if let (Some(texture), Some(probe)) = (&self.shadow, &self.probe) {
+            renderer.set_car_shadow(texture, probe, physics_pose(car));
         }
     }
 }
