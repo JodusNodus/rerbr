@@ -109,6 +109,21 @@ impl Pack {
     }
 }
 
+/// The model entry `--car-model` names (`Cars\\<model>\\<model>.sgc`), for the pack car's slot.
+pub fn model_entry_of(model: &str) -> Result<CarEntry, String> {
+    let mut parts = model.split(['\\', '/']).filter(|c| !c.is_empty());
+    match (parts.next(), parts.next(), parts.next(), parts.next()) {
+        (Some(cars), Some(folder), Some(file), None) if cars.eq_ignore_ascii_case("Cars") && !folder.is_empty() => {
+            let stem = (file.len() > 4 && file[file.len() - 4..].eq_ignore_ascii_case(".sgc"))
+                .then(|| &file[..file.len() - 4])
+                .filter(|s| !s.is_empty())
+                .ok_or(format!("--car-model {model}: want Cars\\<model>\\<model>.sgc"))?;
+            Ok(model_entry(folder, stem))
+        }
+        _ => Err(format!("--car-model {model}: want Cars\\<model>\\<model>.sgc")),
+    }
+}
+
 /// The model a pack car is loaded with in [`SLOT`]: its `Cars.ini` entry, and, when its own model folder is not
 /// installed, why it falls back to another.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,14 +217,7 @@ pub fn resolve(
     if let Some((_, dir)) = &skin {
         data = data.with_skin(dir.clone());
     }
-    Ok(Resolved {
-        pack,
-        model,
-        skin: skin.map(|(name, _)| name),
-        data,
-        bank,
-        tyre_brand: "pirelli",
-    })
+    Ok(Resolved { pack, model, skin: skin.map(|(name, _)| name), data, bank, tyre_brand: "pirelli" })
 }
 
 #[cfg(test)]

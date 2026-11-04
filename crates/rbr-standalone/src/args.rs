@@ -75,9 +75,17 @@ pub struct Args {
     pub setup: Option<PathBuf>,
     /// NGP's `physics.rbz` (`boot::Race::ngp_physics`).
     pub ngp_physics: Option<PathBuf>,
-    /// `--rsf-car`: an RSF car (a pack path, or an id or pack name in `RBR_RSF`) under `--ngp-physics`, instead of a
-    /// retail `--car` (`rbr_formats::rsf::locate`).
+    /// `--rsf-car`: an RSF car (an id or pack name in `RBR_RSF`) under `--ngp-physics`, instead of a retail `--car`.
     pub rsf_car: Option<String>,
+    /// `--car-pack DIR --car-model FILE --car-root DIR [--car-bank PATH] [--car-key KEY]`: a pack car under
+    /// `--ngp-physics`, instead of a retail `--car`: its physics pack, its model entry (`Cars\\<model>\\<model>.sgc`),
+    /// the root the model resolves under, its FMOD bank and its saved key. The launcher resolves every pack car to
+    /// these; `--rsf-car` stays as the developer entry for an RSF install.
+    pub car_pack: Option<PathBuf>,
+    pub car_model: Option<String>,
+    pub car_root: Option<PathBuf>,
+    pub car_bank: Option<PathBuf>,
+    pub car_key: Option<String>,
     /// `--ffb-sensitivity G,T,S`: NGP's force-feedback sensitivity percentages (`boot::Race::ffb_sensitivity`).
     pub ffb_sensitivity: Option<[i32; 3]>,
     /// `--head-gasket-durability N`: NGP's `headGasketDurability` (`boot::Race::head_gasket_durability`).
@@ -121,7 +129,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
-       NGP (required with --boot): --ngp-physics FILE [--rsf-car PACK|ID] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
+       NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model FILE --car-root DIR [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
@@ -229,6 +237,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--setup" => args.setup = Some(PathBuf::from(value)),
             "--ngp-physics" => args.ngp_physics = Some(PathBuf::from(value)),
             "--rsf-car" => args.rsf_car = Some(value),
+            "--car-pack" => args.car_pack = Some(PathBuf::from(value)),
+            "--car-model" => args.car_model = Some(value),
+            "--car-root" => args.car_root = Some(PathBuf::from(value)),
+            "--car-bank" => args.car_bank = Some(PathBuf::from(value)),
+            "--car-key" => args.car_key = Some(value),
             "--ffb-sensitivity" => {
                 args.ffb_sensitivity =
                     Some(percentages(&value).ok_or(format!("--ffb-sensitivity {value}: three percentages, G,T,S"))?)
@@ -302,6 +315,20 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.rsf_car.is_some() && args.car.is_some() {
         return Err("--rsf-car replaces --car".into());
     }
+    if args.car_pack.is_some() && args.car.is_some() {
+        return Err("--car-pack replaces --car".into());
+    }
+    if args.car_pack.is_some() && args.rsf_car.is_some() {
+        return Err("give one of --rsf-car and --car-pack".into());
+    }
+    if args.car_pack.is_none()
+        && (args.car_model.is_some() || args.car_root.is_some() || args.car_bank.is_some() || args.car_key.is_some())
+    {
+        return Err("--car-model, --car-root, --car-bank and --car-key need --car-pack".into());
+    }
+    if args.car_pack.is_some() && (args.car_model.is_none() || args.car_root.is_none()) {
+        return Err("--car-pack needs --car-model and --car-root".into());
+    }
     if args.autopilot.is_some() && (args.live || args.snapshots.len() != usize::from(!args.boot)) {
         return Err("--autopilot takes one --snapshot or --boot, and no --live".into());
     }
@@ -316,6 +343,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     for (flag, present) in [
         ("--rsf-car", args.rsf_car.is_some()),
+        ("--car-pack", args.car_pack.is_some()),
         ("--ffb-sensitivity", args.ffb_sensitivity.is_some()),
         ("--head-gasket-durability", args.head_gasket_durability.is_some()),
         ("--damage-in", args.damage_in.is_some()),
@@ -634,6 +662,18 @@ mod tests {
                     assert_eq!(a.dump_image, Some(PathBuf::from("IMG")));
                 },
             ),
+            (
+                format!(
+                    "{BOOT} --car-pack PACK --car-model Cars\\evo\\evo.sgc --car-root R --car-bank B.bank --car-key rsf-24"
+                ),
+                |a| {
+                    assert_eq!(a.car_pack, Some(PathBuf::from("PACK")));
+                    assert_eq!(a.car_model.as_deref(), Some("Cars\\evo\\evo.sgc"));
+                    assert_eq!(a.car_root, Some(PathBuf::from("R")));
+                    assert_eq!(a.car_bank, Some(PathBuf::from("B.bank")));
+                    assert_eq!(a.car_key.as_deref(), Some("rsf-24"));
+                },
+            ),
         ];
         for (argv, check) in &good {
             match run_str(argv, None) {
@@ -715,6 +755,18 @@ mod tests {
             ),
             (format!("{REC} --rsf-car PACK"), "--rsf-car needs --boot"),
             (format!("{BOOT} --car 5 --rsf-car PACK"), "--rsf-car replaces --car"),
+            (format!("{REC} --car-pack P --car-model M --car-root R"), "--car-pack needs --boot"),
+            (format!("{BOOT} --car 5 --car-pack P --car-model M --car-root R"), "--car-pack replaces --car"),
+            (
+                format!("{BOOT} --rsf-car X --car-pack P --car-model M --car-root R"),
+                "give one of --rsf-car and --car-pack",
+            ),
+            (format!("{BOOT} --car-pack P --car-model M"), "--car-pack needs --car-model and --car-root"),
+            (format!("{BOOT} --car-pack P --car-root R"), "--car-pack needs --car-model and --car-root"),
+            (format!("{BOOT} --car-model M"), "--car-model, --car-root, --car-bank and --car-key need --car-pack"),
+            (format!("{BOOT} --car-root R"), "--car-model, --car-root, --car-bank and --car-key need --car-pack"),
+            (format!("{BOOT} --car-bank B"), "--car-model, --car-root, --car-bank and --car-key need --car-pack"),
+            (format!("{BOOT} --car-key rsf-24"), "--car-model, --car-root, --car-bank and --car-key need --car-pack"),
             (format!("{REC} --ffb-sensitivity 90,80,70"), "--ffb-sensitivity needs --boot"),
             (format!("{REC} --head-gasket-durability 3"), "--head-gasket-durability needs --boot"),
             (format!("{REC} --damage-in IN"), "--damage-in needs --boot"),

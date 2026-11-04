@@ -7,7 +7,7 @@ use egui::Color32;
 
 use crate::disc_install::DiscSetup;
 use crate::pages::{fields, section, Page, GOOD, NGP_WHY, NO_NGP, WARN};
-use crate::{controls_page, install, job, Form};
+use crate::{catalog, controls_page, install, job, Form};
 
 impl Form {
     /// What the player needs to drive, a row each with its next step beside it: the game folder, NGP, the cars and the
@@ -76,10 +76,10 @@ impl Form {
         let cars = self.catalog.cars.iter().filter(|c| c.unavailable().is_none());
         let (mut from_rsf, mut added, mut from_ngp) = (0, 0, 0);
         for car in cars {
-            match &car.community {
-                Some(r) if r.added => added += 1,
-                Some(_) => from_rsf += 1,
-                None => from_ngp += 1,
+            match &car.physics {
+                catalog::Physics::Pack(_) if car.added => added += 1,
+                catalog::Physics::Pack(_) => from_rsf += 1,
+                catalog::Physics::Archive => from_ngp += 1,
             }
         }
         let count = [(from_rsf, "from RallySimFans"), (added, "added"), (from_ngp, "from NGP")]

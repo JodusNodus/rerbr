@@ -11,7 +11,7 @@
 //! The car: its model turning, rendered by `rbr_render` offscreen, as the game's menus show the car in 3D
 //! (`LoadFrontEndCars` in `RichardBurnsRally.ini`, `CPC_Application::vf04` 0x44c890; the menu loads the car with
 //! `E09_LoadCar` in `CPC_TrackLoaderDaemon::Vf1C` 0x46f330). An RSF car is drawn with the model RSF gives it, its own or
-//! the retail stand-in (`rsf::select`). The frames are rendered on a thread of their own, once per car, and the last
+//! the retail stand-in (`rbr_formats::car_pack::resolve`). The frames are rendered on a thread of their own, once per car, and the last
 //! few cars are kept, so a selection does not stall the window. The stage pictures and drivelines are read on another
 //! thread, the last [`KEEP_STAGES`] kept, so that browsing the map list does not stall it either.
 
@@ -22,10 +22,10 @@ use std::time::Duration;
 
 use egui::{Color32, ColorImage, Stroke, TextureHandle, TextureOptions};
 use rbr_formats::data::Data;
-use rbr_formats::{rsf, stage_files, trk};
+use rbr_formats::{stage_files, trk};
 use rbr_render::stage_picture::{btb_picture, picture_sprite, rsf_picture, Pictures, Pixels};
 
-use crate::catalog::{Car, Map, Origin};
+use crate::catalog::{self, Car, Map, Origin};
 
 /// The preview column's width, points.
 pub const WIDTH: f32 = 384.0;
@@ -119,7 +119,7 @@ struct CarRequest {
 
 enum CarModel {
     Retail(String),
-    Community { pack: PathBuf, root: PathBuf },
+    Community { pack: PathBuf, model: rbr_formats::car_pack::Model, root: PathBuf },
 }
 
 type CarResult = (String, Result<Vec<ColorImage>, String>);
@@ -304,8 +304,10 @@ impl Previews {
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
             }
         }
-        if let Some(Ok(Some(stand_in))) = car.community.as_ref().map(|r| &r.model) {
-            ui.label(egui::RichText::new(format!("Stand-in model: {stand_in}")).color(Color32::GRAY));
+        if let Ok(model) = &car.model {
+            if let Some(stand_in) = &model.fallback {
+                ui.label(egui::RichText::new(format!("Stand-in model: {stand_in}")).color(Color32::GRAY));
+            }
         }
     }
 
@@ -314,15 +316,19 @@ impl Previews {
         if self.pending.as_deref() == Some(key) {
             return;
         }
-        let model = match &car.community {
-            None => CarModel::Retail(car.name.clone()),
-            Some(community) => match (&community.pack, &community.model) {
-                (Err(e), _) | (_, Err(e)) => {
+        let model = match &car.physics {
+            catalog::Physics::Archive => CarModel::Retail(car.name.clone()),
+            catalog::Physics::Pack(pack) => match &car.model {
+                Err(e) => {
                     self.cars.push_front((key.to_owned(), Err(e.clone())));
                     self.cars.truncate(KEEP);
                     return;
                 }
-                (Ok(pack), Ok(_)) => CarModel::Community { pack: pack.clone(), root: PathBuf::from(root.trim()) },
+                Ok(model) => CarModel::Community {
+                    pack: pack.clone(),
+                    model: model.clone(),
+                    root: car.model_root.clone().unwrap_or_else(|| PathBuf::from(root.trim())),
+                },
             },
         };
         self.pending = Some(key.to_owned());
@@ -392,9 +398,9 @@ impl StagePictures {
 }
 
 fn car_key(car: &Car) -> String {
-    match &car.community {
-        Some(rsf) => format!("rsf {}", rsf.id),
-        None => car.name.clone(),
+    match &car.physics {
+        catalog::Physics::Pack(_) => format!("pack {}", car.key),
+        catalog::Physics::Archive => car.name.clone(),
     }
 }
 
@@ -461,8 +467,9 @@ fn render_car(
     use rbr_render::{camera::Orbit, car as render_car, renderer, stage::Selection};
     let (data, name) = match car {
         CarModel::Retail(name) => (data, name.clone()),
-        CarModel::Community { pack, root } => {
-            let selected = rsf::select(data, &pack.display().to_string(), Some(root))?;
+        CarModel::Community { pack, model, root } => {
+            let pack = rbr_formats::car_pack::Pack::open(pack)?;
+            let selected = rbr_formats::car_pack::resolve(data, pack, model.clone(), root.clone(), None)?;
             let name = selected.folder().to_owned();
             (selected.data, name)
         }

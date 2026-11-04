@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
-use rbr_formats::{cars, fnc, lbs, markers, rbz, rsf, sgc, stage_files, trk};
+use rbr_formats::{car_pack, cars, fnc, lbs, markers, rbz, sgc, stage_files, trk};
 use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::Mode;
 use rbr_gameplay::race_clock::AssistSettings;
@@ -111,9 +111,8 @@ pub struct Race {
     pub frequency: u64,
     /// NGP's `physics.rbz` (with its cars in their slots): the physics files come from it, parsed with NGP's keys.
     pub ngp_physics: std::path::PathBuf,
-    /// An NGP car pack read in place of the slot's physics folder (an RSF car, `rbr_formats::rsf`): what RSF copies to
-    /// `Physics/<dir>/` before the game loads the slot, which is `car` (`rsf::SLOT`). Its model comes through
-    /// `Data::with_car`.
+    /// An NGP car pack read in place of the slot's physics folder: what RSF copies to `Physics/<dir>/` before the
+    /// game loads the slot, which is `car` (`car_pack::SLOT`). Its model comes through `Data::with_car`.
     pub car_pack: Option<CarPack>,
     /// The player's setup file's root group (`%sSetups/<name>.lsp`, `rbr_gameplay::setup`), walked on the setup after
     /// the default file as the game's loader layers it; none for the default setup.
@@ -131,8 +130,8 @@ pub struct Race {
 /// An NGP car pack with the tyres it runs on.
 #[derive(Clone, Debug)]
 pub struct CarPack {
-    pub pack: rsf::Pack,
-    /// The folder of its `Physics/<brand>/tyres.lsp` (`rsf::Selected::tyre_brand`).
+    pub pack: car_pack::Pack,
+    /// The folder of its `Physics/<brand>/tyres.lsp` (`car_pack::Resolved::tyre_brand`).
     pub tyre_brand: &'static str,
 }
 
@@ -800,8 +799,8 @@ mod tests {
             [0, 3, 5, 6, 7].map(|car| tyre_brand(&race(car, None))),
             ["michelin", "michelin", "pirelli", "michelin", "pirelli"]
         );
-        let pack = |tyre_brand| Some(CarPack { pack: rsf::Pack::Dir("p".into()), tyre_brand });
-        assert_eq!(tyre_brand(&race(rsf::SLOT, pack("michelin"))), "michelin");
+        let pack = |tyre_brand| Some(CarPack { pack: car_pack::Pack::Dir("p".into()), tyre_brand });
+        assert_eq!(tyre_brand(&race(car_pack::SLOT, pack("michelin"))), "michelin");
         assert_eq!(tyre_brand(&race(0, pack("pirelli"))), "pirelli");
     }
 }

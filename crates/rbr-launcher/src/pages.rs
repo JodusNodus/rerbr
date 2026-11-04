@@ -551,7 +551,7 @@ impl Form {
     /// The offered car of team `team` (its car `0x1660808`, `SetupAI`'s table), when NGP drives it.
     pub(crate) fn team_car(&self, team: u32) -> Option<usize> {
         let index = *season_model::TEAM_CARS.get(team as usize)?;
-        self.catalog.cars.iter().position(|c| c.community.is_none() && c.index == index)
+        self.catalog.cars.iter().position(|c| matches!(c.physics, crate::catalog::Physics::Archive) && c.slot == index)
     }
 
     /// The Championship page (`rally_page`). The season drives its team's car when NGP drives it, else the car picked

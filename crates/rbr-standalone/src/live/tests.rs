@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rbr_formats::rsf;
+use rbr_formats::{car_pack, rsf};
 use rbr_gameplay::weather::{self, Draws, Preset, Season};
 use rbr_recording::damage::DMG1_BYTES;
 use rbr_recording::hud::{Hud, HUD2_BYTES};
@@ -432,12 +432,12 @@ fn an_rsf_car_boots_and_drives_under_ngp() {
     on_big_stack(move || {
         let selected = rsf::select(data, &key, Some(&root)).unwrap();
         let data = selected.data;
-        let stage = stage_data(&data, "track-54_E", rsf::SLOT).unwrap();
+        let stage = stage_data(&data, "track-54_E", car_pack::SLOT).unwrap();
         let season = Season::load(&data).unwrap();
         let weather = weather::quick_race(&season, 54, Preset::Good, Draws::default()).unwrap();
         let race = boot::Race {
             car_pack: Some(boot::CarPack { pack: selected.pack, tyre_brand: selected.tyre_brand }),
-            ..boot::Race::quick_race(54, rsf::SLOT, 4, weather, ngp)
+            ..boot::Race::quick_race(54, car_pack::SLOT, 4, weather, ngp)
         };
         let mut live = Live::boot(&data, "track-54_E", &race, &stage, MarkerSettings::default(), false).unwrap();
         // The autopilot's way off the line: full throttle in neutral, a shift-up pulse into first, then full

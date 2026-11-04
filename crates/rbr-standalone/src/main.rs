@@ -110,8 +110,8 @@ use std::panic;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use rbr_formats::car_pack;
 use rbr_formats::data::Data;
-use rbr_formats::rsf;
 use rbr_gameplay::control::QuantizedControl;
 use rbr_gameplay::weather::{self, Season};
 use rbr_physics::snapshot::Snapshot;
@@ -171,10 +171,10 @@ fn run() -> ExitCode {
     }
     let args = args;
     let recording = args.recording.as_deref();
-    // An RSF car's record word is the slot the game holds it in (`rsf::SLOT`).
-    let car = match args.rsf_car {
-        Some(_) => rsf::SLOT,
-        None => args.car.or_else(|| recording.and_then(|r| race::recorded_word(r, 1))).unwrap_or(0),
+    // A pack car's record word is the slot the game holds it in (`car_pack::SLOT`).
+    let car = match (&args.rsf_car, &args.car_pack) {
+        (Some(_), _) | (None, Some(_)) => car_pack::SLOT,
+        (None, None) => args.car.or_else(|| recording.and_then(|r| race::recorded_word(r, 1))).unwrap_or(0),
     };
     let stage = match stage_data(&data, &args.stage, car) {
         Ok(stage) => StageData { btb: args.btb.is_some(), ..stage },

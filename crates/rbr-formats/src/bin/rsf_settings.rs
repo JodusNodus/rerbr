@@ -8,8 +8,8 @@
 //! `--session` reads the session's `meta.txt`; `--profile` gives the game's profile a session does not hold. The slot
 //! is the game's car slot (RSF's 5 by default). Nothing is written.
 
-use rbr_formats::rsf::settings::{game_options, Sources};
 use rbr_formats::car_pack::SLOT;
+use rbr_formats::rsf::settings::{game_options, Sources};
 use std::path::PathBuf;
 use std::process::ExitCode;
 

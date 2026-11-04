@@ -127,7 +127,7 @@ pub fn repair_parts_in(archive: &std::path::Path, car: usize) -> Result<Vec<Repa
 
 /// The repair tree of an RSF car's `pack`: its own `repair.ini` (RSF copies the pack into the slot it runs in, so the
 /// game reads it there), `None` when the pack has none to read.
-pub fn repair_parts_of(pack: &rbr_formats::rsf::Pack) -> Option<Result<Vec<RepairPart>, String>> {
+pub fn repair_parts_of(pack: &rbr_formats::car_pack::Pack) -> Option<Result<Vec<RepairPart>, String>> {
     let text = pack.read("repair.ini").ok()?;
     let name = format!("{}/repair.ini", pack.path().display());
     Some(rbr_formats::repair::parse(&String::from_utf8_lossy(&text)).map_err(|e| format!("{name}: {e}")))
@@ -529,7 +529,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rbr-pack-repair-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let pack = rbr_formats::rsf::Pack::Dir(dir.clone());
+        let pack = rbr_formats::car_pack::Pack::Dir(dir.clone());
         assert!(repair_parts_of(&pack).is_none(), "no repair.ini: the slot's tree stands in");
         std::fs::write(dir.join("repair.ini"), "1\n{\n7\n2\nHood\n10\n1\n1\n20\n1\n1\n}\n").unwrap();
         let parts = repair_parts_of(&pack).unwrap().unwrap();

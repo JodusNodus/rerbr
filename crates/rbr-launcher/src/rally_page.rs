@@ -531,13 +531,11 @@ impl RallyPage {
         let (parts, rules) = match ngp {
             Some(archive) => {
                 let own = car
-                    .community
-                    .as_ref()
-                    .and_then(|r| r.pack.as_ref().ok())
-                    .and_then(|path| service::repair_parts_of(&rbr_formats::rsf::Pack::open(path).ok()?));
-                (own.unwrap_or_else(|| service::repair_parts_in(archive, car.index as usize)), Rules::Ngp)
+                    .pack()
+                    .and_then(|path| service::repair_parts_of(&rbr_formats::car_pack::Pack::open(path).ok()?));
+                (own.unwrap_or_else(|| service::repair_parts_in(archive, car.slot as usize)), Rules::Ngp)
             }
-            None => (service::repair_parts(data, car.index as usize), Rules::V102),
+            None => (service::repair_parts(data, car.slot as usize), Rules::V102),
         };
         match parts {
             Ok(parts) => {
@@ -1199,8 +1197,8 @@ mod tests {
             let setup = rbr_formats::saves::setup_slots::text(&after.setup);
             (save, after.damage.tyre, damage, setup)
         };
-        let car = Car { index: page.season_car().unwrap(), ..Car::default() };
-        let parts = service::repair_parts(&data, car.index as usize).unwrap();
+        let car = Car { slot: page.season_car().unwrap(), ..Car::default() };
+        let parts = service::repair_parts(&data, car.slot as usize).unwrap();
         let mut sound = CarriedDamage::default();
         let mut ids = Vec::new();
         fn walk(parts: &[rbr_formats::repair::Part], ids: &mut Vec<i32>) {

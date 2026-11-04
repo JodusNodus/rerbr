@@ -11,7 +11,6 @@ use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::RaceOptions;
 use rbr_gameplay::weather::{self, Draws, Preset, Weather};
-use rbr_render::camera_prefs;
 use rbr_render::glass::model::Switch;
 use rbr_render::renderer::{Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
@@ -248,15 +247,21 @@ impl ViewerLaunch {
             bindings,
             setup,
         } = self;
-        let pack = car.community.as_ref().and_then(|r| r.pack.as_ref().ok()).map(|p| p.display().to_string());
-        let car_arg = match &pack {
-            Some(pack) => ["--rsf-car".into(), pack.clone()],
-            None => ["--car".into(), car.name.clone()],
+        // The folder the viewer loads: an archive car's own, a pack car's model folder; then the flags resolving
+        // a pack car, empty for an archive car.
+        let folder = match &car.physics {
+            catalog::Physics::Pack(_) => car
+                .model
+                .as_ref()
+                .ok()
+                .and_then(|m| m.entry.file_name.split(['\\', '/']).rev().nth(1))
+                .unwrap_or(&car.name)
+                .to_owned(),
+            catalog::Physics::Archive => car.name.clone(),
         };
-        let mut args: Vec<String> = vec![
-            stage.name.clone(),
-            car_arg[0].clone(),
-            car_arg[1].clone(),
+        let mut args: Vec<String> = vec![stage.name.clone(), "--car".into(), folder];
+        args.extend(pack_car_args(car));
+        args.extend(vec![
             "--weather".into(),
             weather.mat_words().1.into(),
             "--size".into(),
@@ -269,7 +274,7 @@ impl ViewerLaunch {
             volume.to_string(),
             "--volumes".into(),
             format!("{},{},{},{}", volumes.engine, volumes.codriver, volumes.effects, volumes.tyres),
-        ];
+        ]);
         if !codriver {
             args.push("--no-codriver".into());
         }
@@ -314,8 +319,8 @@ impl ViewerLaunch {
             "--stage".into(),
             stage.name.clone(),
         ]);
-        if pack.is_none() {
-            args.extend(["--car".into(), car.index.to_string()]);
+        if matches!(car.physics, catalog::Physics::Archive) {
+            args.extend(["--car".into(), car.slot.to_string()]);
         }
         args.extend([
             "--data".into(),
@@ -345,11 +350,27 @@ impl ViewerLaunch {
         if let Some(path) = setup {
             args.extend(["--setup".into(), path.display().to_string()]);
         }
-        if let Some(pack) = pack {
-            args.extend(["--rsf-car".into(), pack]);
-        }
+        args.extend(pack_car_args(car));
         args
     }
+}
+
+/// The flags resolving a pack car in the viewer, `rbr-standalone` and `rbr-sound`: its pack, its model entry, the
+/// root the model resolves under, its bank and its saved key. Empty for an archive car.
+pub fn pack_car_args(car: &Car) -> Vec<String> {
+    let catalog::Physics::Pack(pack) = &car.physics else { return Vec::new() };
+    let mut args = vec!["--car-pack".into(), pack.display().to_string()];
+    if let Ok(model) = &car.model {
+        args.extend(["--car-model".into(), model.entry.file_name.clone()]);
+    }
+    if let Some(root) = &car.model_root {
+        args.extend(["--car-root".into(), root.display().to_string()]);
+    }
+    if let Some(bank) = &car.bank {
+        args.extend(["--car-bank".into(), bank.display().to_string()]);
+    }
+    args.extend(["--car-key".into(), car.key.clone()]);
+    args
 }
 
 /// The viewer's `--save-replay` for a live start: the drive's replay in `replays/` of the player's folder `home`,
@@ -682,8 +703,7 @@ impl Form {
         args.splice(live..live, viewer_extra);
         args.extend(extra);
         args.extend(["--ngp-physics".to_owned(), self.ngp_archive()]);
-        let key = camera_prefs::car_key(&car.name, car.community.as_ref().map(|r| r.id));
-        let sensitivity = self.ffb_cars.of(Some(&key), self.ffb.sensitivity);
+        let sensitivity = self.ffb_cars.of(Some(&car.key), self.ffb.sensitivity);
         if sensitivity != [100; 3] {
             let [gravel, tarmac, snow] = sensitivity;
             args.extend(["--ffb-sensitivity".to_owned(), format!("{gravel},{tarmac},{snow}")]);
@@ -789,7 +809,7 @@ impl Form {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{Catalog, CommunityCar};
+    use crate::catalog::Catalog;
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
@@ -872,19 +892,22 @@ mod tests {
         ),
     ];
 
-    /// An RSF car goes to the viewer and to `rbr-standalone` as its pack, in its slot.
+    /// A pack car goes to the viewer and to `rbr-standalone` as its pack, in its slot.
     #[test]
-    fn viewer_args_name_an_rsf_cars_pack() {
+    fn viewer_args_name_a_pack_cars_pack() {
         let stage = Stage { name: "track-54_E".into(), map: 54, letter: 'E' };
-        let rsf = CommunityCar {
-            id: 24,
-            added: false,
-            group: None,
-            pack: Ok("/rsf/rsfdata/cars/evo".into()),
-            model: Ok(None),
-            drive_train: None,
+        let car = Car {
+            name: "Mitsubishi Lancer Evo IX N4".into(),
+            slot: 5,
+            physics: catalog::Physics::Pack("/rsf/rsfdata/cars/evo".into()),
+            model: Ok(rbr_formats::car_pack::Model {
+                entry: rbr_formats::car_pack::model_entry("evo_IX", "evo_IX"),
+                fallback: None,
+            }),
+            model_root: Some("/rsf".into()),
+            key: "rsf-24".into(),
+            ..Car::default()
         };
-        let car = Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), community: Some(rsf) };
         assert_eq!(car.unavailable(), None);
         let weather =
             Weather { map: 54, row: Some(162), letter: 4, cloud: 1, cloud_letter: 0, preset: 0, wetness: 1, wear: 0 };
@@ -908,16 +931,28 @@ mod tests {
         }
         .args();
         let live = args.iter().position(|a| a == "--live").unwrap();
-        assert_eq!(args[1..3], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
-        assert!(!args[..live].contains(&"--car".to_owned()));
-        assert_eq!(args[args.len() - 2..], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
-        assert!(!args.contains(&"--car".to_owned()), "an RSF car is named by its pack alone");
+        assert_eq!(
+            args[1..9],
+            [
+                "--car",
+                "evo_IX",
+                "--car-pack",
+                "/rsf/rsfdata/cars/evo",
+                "--car-model",
+                "Cars\\evo_IX\\evo_IX.sgc",
+                "--car-root",
+                "/rsf"
+            ]
+        );
+        assert_eq!(value(&args, "--car-key").as_deref(), Some("rsf-24"));
+        assert!(!args[live..].contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");
+        assert!(args[live..].contains(&"--car-pack".to_owned()));
     }
 
     #[test]
     fn viewer_args_include_game_weather_wear_and_tyre() {
         let stage = Stage { name: "track-54_O".into(), map: 54, letter: 'O' };
-        let car = Car { index: 6, name: "COROLLA".into(), community: None };
+        let car = Car { slot: 6, name: "COROLLA".into(), key: "COROLLA".into(), ..Car::default() };
         let weather =
             Weather { map: 54, row: Some(167), letter: 3, cloud: 3, cloud_letter: 2, preset: 4, wetness: 2, wear: 2 };
         let options = RaceOptions { weather: Preset::Bad, ..RaceOptions::default() };
@@ -1032,7 +1067,7 @@ mod tests {
     #[test]
     fn the_wetness_override_changes_the_viewer_weather_word() {
         let stage = Stage { name: "track-54_O".into(), map: 54, letter: 'O' };
-        let car = Car { index: 6, name: "COROLLA".into(), community: None };
+        let car = Car { slot: 6, name: "COROLLA".into(), key: "COROLLA".into(), ..Car::default() };
         let weather = |wetness| Weather {
             map: 54,
             row: Some(7),

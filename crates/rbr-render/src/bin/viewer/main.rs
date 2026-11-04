@@ -59,8 +59,9 @@
 //! degrees (default 50); `--chase-fov DEG` sets the chase view's (same range, default 65). The vertical one follows from the window's aspect.
 //!
 //! `--car <name>` (the car's `Cars.ini` folder, for example `XSARA`) puts the car at the stage start.
-//! `--rsf-car <pack|id>` puts an RSF car (`rbr_formats::rsf`: a pack path, or an id or pack name of the install
-//! `RBR_RSF`) into slot 5 as RSF does, and makes its model folder the `--car`; give it before `--live`. A live
+//! `--rsf-car <id|pack>` puts an RSF car (an id or pack name of the install `RBR_RSF`) into slot 5 as RSF does, and
+//! makes its model folder the `--car`; `--car-pack DIR --car-model FILE --car-root DIR [--car-bank PATH]
+//! [--car-key KEY]` puts a pack car the launcher resolved; give it before `--live`. A live
 //! drive then plays the car's own FMOD bank (`AudioFMOD/<audio>.bank`, `rbr_sound::fmod`) when it has one.
 //! Without a stage the car is shown alone under an orbit camera: drag with the left button to turn
 //! around it, W/S to zoom.
@@ -235,9 +236,22 @@ fn run() -> Result<(), String> {
         eprintln!("viewer: {}", selected.describe());
         args.car.get_or_insert_with(|| selected.folder().to_owned());
         fmod_bank = selected.audio_bank;
-        args.rsf_install = Some(selected.root.clone());
-        args.rsf_car_id = Some(selected.car.id);
+        args.car_root = Some(selected.root.clone());
+        args.car_key.get_or_insert_with(|| format!("rsf-{}", selected.car.id));
         data = selected.data;
+    } else if let Some(pack) = &args.car_pack {
+        let pack = rbr_formats::car_pack::Pack::open(pack)?;
+        let model = args.car_model.as_deref().ok_or("--car-pack needs --car-model and --car-root")?;
+        let root = args.car_root.clone().ok_or("--car-pack needs --car-model and --car-root")?;
+        let entry = rbr_formats::car_pack::model_entry_of(model)?;
+        let model = rbr_formats::car_pack::Model { entry, fallback: None };
+        let resolved = rbr_formats::car_pack::resolve(data, pack, model, root.clone(), args.car_bank.clone())?;
+        let key = args.car_key.as_deref().unwrap_or("pack car");
+        eprintln!("viewer: {}", resolved.describe(key, None));
+        args.car.get_or_insert_with(|| resolved.folder().to_owned());
+        fmod_bank = resolved.bank;
+        args.car_root = Some(root);
+        data = resolved.data;
     }
     args.ffb.rotation = args.ffb.rotation_for(args.car_lock);
     if let Some(dir) = &args.perf_log {

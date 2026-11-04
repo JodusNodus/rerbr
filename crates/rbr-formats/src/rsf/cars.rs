@@ -268,14 +268,14 @@ impl Selected {
 pub fn select(data: Data, key: &str, root: Option<&Path>) -> Result<Selected, String> {
     let root = root.ok_or(format!("{key}: not an id or pack, and no RSF install (RBR_RSF) to find it in"))?;
     let install = Install::open(root)?;
-    let car =
-        install.find(key).ok_or(format!("{key}: not an id or pack in {}'s cars.json", root.display()))?.clone();
+    let car = install.find(key).ok_or(format!("{key}: not an id or pack in {}'s cars.json", root.display()))?.clone();
     let pack = install.pack(&car)?;
     let ini = data.resolve("Cars/Cars.ini").ok_or("Cars/Cars.ini: not found")?;
     let text = std::fs::read(&ini).map_err(|e| format!("{}: {e}", ini.display()))?;
     let retail = cars::parse(&String::from_utf8_lossy(&text)).map_err(|e| e.to_string())?;
     let model = install.model_entry(&car, &retail)?;
-    let resolved = car_pack::resolve(data, pack.clone(), model.clone(), install.root.clone(), install.audio_bank(&car))?;
+    let resolved =
+        car_pack::resolve(data, pack.clone(), model.clone(), install.root.clone(), install.audio_bank(&car))?;
     Ok(Selected {
         root: install.root.clone(),
         car,

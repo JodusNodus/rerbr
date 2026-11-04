@@ -601,7 +601,7 @@ impl Form {
     /// settings file's `[camera]` section, `rbr_render::camera_prefs`).
     fn camera_row(&mut self, ui: &mut egui::Ui) {
         let Some(car) = self.car() else { return };
-        let key = camera_prefs::car_key(&car.name, car.community.as_ref().map(|r| r.id));
+        let key = car.key.clone();
         let reset = ui
             .add_enabled(!self.read_only, egui::Button::new("Reset this car's cameras"))
             .on_hover_text("While driving: C changes the view (kept for the next drive); the pause menu's Camera moves it for this car");

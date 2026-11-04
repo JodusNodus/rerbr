@@ -5,7 +5,7 @@
 //!
 //! Usage: rbr-sound --recording X [--stage NAME] --out WAV [--seconds S] [--camera inside|chase|trackside]
 //!        [--no-codriver] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--car N]
-//!        --ngp-physics FILE [--rsf-car PACK|ID [--no-fmod]] [--solo LAYER]
+//!        --ngp-physics FILE [--rsf-car ID|PACK [--no-fmod] | --car-pack DIR --car-model FILE --car-root DIR [--car-bank PATH] [--car-key KEY]] [--solo LAYER]
 //!        [--codriver-mod DIR [--codriver-voice V] [--codriver-style S] [--codriver-ranges R] [--pacenotes FILE]]
 //!
 //! The car, weather and tyre are the recording's `.auto` (`map car weather tyre`); the weather preset gives the
@@ -22,7 +22,9 @@
 //! under NGP's physics (`rbr-standalone --ngp-physics`; the viewer's 7 ms frames, so a step of sound is still 7 ms)
 //! and `--car` replaces the `.auto`'s car, for NGP's own cars. `--rsf-car` drives an RSF car under NGP
 //! (`rbr-standalone --rsf-car`) in slot 5 with its FMOD bank's sound (`rbr_sound::fmod`; `RBR_RSF`'s
-//! `AudioFMOD/`), or without one (or with `--no-fmod`) slot 5's retail sound, as the viewer plays it. `--codriver-mod`
+//! `AudioFMOD/`), or without one (or with `--no-fmod`) slot 5's retail sound, as the viewer plays it; `--car-pack`
+//! with `--car-model`, `--car-root`, `--car-bank` and `--car-key` drives a pack car the launcher resolved.
+//! `--codriver-mod`
 //! calls the notes with a co-driver mod (`rbr_sound::custom_codriver`), its Pacenote plugin folder: the voice (default
 //! `PaceNote.ini`'s), the style and range set when the notes name none (default `Rbr.ini`), and the stage's note file
 //! (default the stage's `.dls` keys), at the profile's default callout distance. `RBR_DATA` and `RBR_PATCH` are
@@ -77,6 +79,11 @@ struct Args {
     car: Option<String>,
     ngp_physics: PathBuf,
     rsf_car: Option<String>,
+    car_pack: Option<PathBuf>,
+    car_model: Option<String>,
+    car_root: Option<PathBuf>,
+    car_bank: Option<PathBuf>,
+    car_key: Option<String>,
     fmod: bool,
     solo: Option<usize>,
     volumes: rbr_sound::mixer::Volumes,
@@ -130,6 +137,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--car" => args.car = Some(value()?),
             "--ngp-physics" => ngp_physics = Some(PathBuf::from(value()?)),
             "--rsf-car" => args.rsf_car = Some(value()?),
+            "--car-pack" => args.car_pack = Some(PathBuf::from(value()?)),
+            "--car-model" => args.car_model = Some(value()?),
+            "--car-root" => args.car_root = Some(PathBuf::from(value()?)),
+            "--car-bank" => args.car_bank = Some(PathBuf::from(value()?)),
+            "--car-key" => args.car_key = Some(value()?),
             "--no-fmod" => args.fmod = false,
             "--solo" => {
                 let name = value()?;
@@ -158,8 +170,19 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             .map_err(|e| e.to_string())?
             .with_file_name(format!("rbr-standalone{}", std::env::consts::EXE_SUFFIX)),
     };
-    if args.rsf_car.is_some() {
-        args.car = Some(rbr_formats::rsf::SLOT.to_string());
+    if args.rsf_car.is_some() || args.car_pack.is_some() {
+        args.car = Some(rbr_formats::car_pack::SLOT.to_string());
+    }
+    if args.car_pack.is_some() && args.rsf_car.is_some() {
+        return Err("give one of --rsf-car and --car-pack".into());
+    }
+    if args.car_pack.is_some() && (args.car_model.is_none() || args.car_root.is_none()) {
+        return Err("--car-pack needs --car-model and --car-root".into());
+    }
+    if args.car_pack.is_none()
+        && (args.car_model.is_some() || args.car_root.is_some() || args.car_bank.is_some() || args.car_key.is_some())
+    {
+        return Err("--car-model, --car-root, --car-bank and --car-key need --car-pack".into());
     }
     args.codriver_mod = plugin.map(|plugin| CodriverMod { plugin, voice, style, ranges, notes: pacenotes });
     Ok(args)
@@ -406,15 +429,20 @@ fn run() -> Result<(), String> {
     if let Some(custom) = &models.custom {
         mixer.set_voice(custom.samples());
     }
-    if let Some(key) = args.rsf_car.as_ref().filter(|_| args.fmod) {
-        let root = std::env::var_os("RBR_RSF").map(PathBuf::from);
-        let (install, car, _) = rbr_formats::rsf::locate(key, root.as_deref())?;
-        if let Some(path) = install.audio_bank(&car) {
-            let fmod = rbr_sound::fmod::FmodCar::load(&path)?;
-            eprintln!("rbr-sound: {} ({} slots, {} recordings)", path.display(), fmod.slots.len(), fmod.waves.len());
-            mixer.set_fmod(fmod.loop_waves(), fmod.waves.clone(), &fmod.buses);
-            models.fmod = Some(fmod);
+    // The pack car's FMOD bank: `--car-bank`'s, else the RSF install's for `--rsf-car`.
+    let bank = match (&args.car_bank, args.rsf_car.as_deref().filter(|_| args.fmod)) {
+        (Some(bank), _) => Some(bank.clone()),
+        (None, Some(key)) => {
+            let root = std::env::var_os("RBR_RSF").map(PathBuf::from);
+            rbr_formats::rsf::select(data.clone(), key, root.as_deref())?.audio_bank
         }
+        (None, None) => None,
+    };
+    if let Some(path) = bank {
+        let fmod = rbr_sound::fmod::FmodCar::load(&path)?;
+        eprintln!("rbr-sound: {} ({} slots, {} recordings)", path.display(), fmod.slots.len(), fmod.waves.len());
+        mixer.set_fmod(fmod.loop_waves(), fmod.waves.clone(), &fmod.buses);
+        models.fmod = Some(fmod);
     }
 
     let mut command = process::Command::new(&args.standalone);
@@ -423,6 +451,21 @@ fn run() -> Result<(), String> {
     command.arg("--ngp-physics").arg(&args.ngp_physics);
     if let Some(key) = &args.rsf_car {
         command.args(["--rsf-car", key]);
+    }
+    if let Some(pack) = &args.car_pack {
+        command.args(["--car-pack", &pack.display().to_string()]);
+        if let Some(model) = &args.car_model {
+            command.args(["--car-model", model]);
+        }
+        if let Some(root) = &args.car_root {
+            command.args(["--car-root", &root.display().to_string()]);
+        }
+        if let Some(bank) = &args.car_bank {
+            command.args(["--car-bank", &bank.display().to_string()]);
+        }
+        if let Some(key) = &args.car_key {
+            command.args(["--car-key", key]);
+        }
     }
     let mut child = command
         .stdin(Stdio::piped())
@@ -538,6 +581,10 @@ mod tests {
         assert!(matches!(args.camera, Camera::Chase));
         assert!(args.codriver && args.fmod);
         assert_eq!((args.solo, args.car, args.rsf_car), (None, None, None));
+        assert_eq!(
+            (args.car_pack, args.car_model, args.car_root, args.car_bank, args.car_key),
+            (None, None, None, None, None)
+        );
         assert_eq!(args.volumes, rbr_sound::mixer::Volumes::default());
         assert!(args.codriver_mod.is_none());
         assert_eq!(
@@ -566,6 +613,10 @@ mod tests {
         let args = run("--recording R --out O --ngp-physics N --rsf-car PACK --car 2 --camera chase").unwrap();
         assert_eq!((args.car, args.rsf_car), (Some("5".to_owned()), Some("PACK".to_owned())));
         assert!(matches!(args.camera, Camera::Chase));
+        // A pack car runs in its slot too, on the launcher's explicit flags.
+        let args = run("--recording R --out O --ngp-physics N --car-pack P --car-model M --car-root R --car-bank B --car-key rsf-24").unwrap();
+        assert_eq!((args.car, args.car_pack), (Some("5".to_owned()), Some(PathBuf::from("P"))));
+        assert_eq!((args.car_model.as_deref(), args.car_key.as_deref()), (Some("M"), Some("rsf-24")));
         let args = run("--recording R --out O --ngp-physics N --camera trackside --no-fmod").unwrap();
         assert!(matches!(args.camera, Camera::Trackside { .. }) && !args.fmod);
     }
@@ -583,6 +634,18 @@ mod tests {
             (
                 "--recording R --out O --ngp-physics N --solo warp",
                 "--solo warp: one of engine, reflections, loops, tyres, wheel, fmod, rain, shots, speech",
+            ),
+            (
+                "--recording R --out O --ngp-physics N --rsf-car X --car-pack P --car-model M --car-root R",
+                "give one of --rsf-car and --car-pack",
+            ),
+            (
+                "--recording R --out O --ngp-physics N --car-pack P --car-model M",
+                "--car-pack needs --car-model and --car-root",
+            ),
+            (
+                "--recording R --out O --ngp-physics N --car-model M",
+                "--car-model, --car-root, --car-bank and --car-key need --car-pack",
             ),
         ];
         for (argv, want) in &bad {

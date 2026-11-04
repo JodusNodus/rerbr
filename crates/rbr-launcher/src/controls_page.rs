@@ -12,13 +12,12 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use egui::{Color32, ComboBox, DragValue, ProgressBar, RichText, Ui};
+use rbr_formats::car_pack::SLOT;
 use rbr_formats::rsf::settings::{personal, Sources};
-use rbr_formats::rsf::SLOT;
 use rbr_formats::saves::action_map::Object;
 use rbr_gameplay::poll::Invert;
 use rbr_gameplay::race_options::DriverAids;
 use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
-use rbr_render::camera_prefs;
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
 use rbr_render::wheel_rotation::{self, Wheel};
@@ -124,7 +123,7 @@ fn ffb_cars_ui(
             changed = true;
         }
         let selected = cars.get(car);
-        let key = selected.map(|c| camera_prefs::car_key(&c.name, c.community.as_ref().map(|r| r.id)));
+        let key = selected.map(|c| c.key.clone());
         let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
         ui.horizontal(|ui| {
             let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
@@ -162,10 +161,7 @@ fn ffb_cars_ui(
 
 /// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
 fn car_display(key: &str, cars: &[Car]) -> String {
-    cars.iter()
-        .find(|car| camera_prefs::car_key(&car.name, car.community.as_ref().map(|r| r.id)) == key)
-        .map(|car| car.name.clone())
-        .unwrap_or_else(|| key.to_owned())
+    cars.iter().find(|car| car.key == key).map(|car| car.name.clone()).unwrap_or_else(|| key.to_owned())
 }
 
 /// Writes `cars` into the settings file's `[ffb_cars]` section, the rest of the file kept.
@@ -197,10 +193,11 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
         .unwrap_or_default();
     let mut imported = 0;
     for car in cars {
-        let Some(id) = car.community.as_ref().map(|rsf| rsf.id) else { continue };
+        let crate::catalog::Physics::Pack(_) = car.physics else { continue };
+        let Some(id) = car.key.strip_prefix("rsf-").and_then(|s| s.parse::<u32>().ok()) else { continue };
         let own = Sources { car: personal(&personal_ini, id), ..sources.clone() }.resolve(SLOT).sensitivity;
         if own != global {
-            ffb_cars.cars.insert(camera_prefs::car_key(&car.name, Some(id)), own);
+            ffb_cars.cars.insert(car.key.clone(), own);
             imported += 1;
         }
     }
@@ -712,7 +709,6 @@ fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::CommunityCar;
     use rbr_render::bindings::Device;
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };
@@ -777,20 +773,14 @@ mod tests {
              forcefeedbacksensitivitygravel=280\nforcefeedbacksensitivitytarmac=250\nforcefeedbacksensitivitysnow=280\n",
         )
         .unwrap();
-        let rsf = |id| {
-            Some(CommunityCar {
-                id,
-                added: false,
-                group: None,
-                pack: Ok(root.join("pack")),
-                model: Ok(None),
-                drive_train: None,
-            })
+        let pack = |id, name: &str| Car {
+            slot: 5,
+            name: name.into(),
+            physics: crate::catalog::Physics::Pack(root.join("pack")),
+            key: format!("rsf-{id}"),
+            ..Car::default()
         };
-        let cars = vec![
-            Car { index: 0, name: "Evo".into(), community: rsf(88) },
-            Car { index: 1, name: "Same".into(), community: rsf(87) },
-        ];
+        let cars = vec![pack(88, "Evo"), pack(87, "Same")];
         let global = [280, 250, 280];
         let mut ffb_cars = ffb::CarSensitivity { cars: [("rsf-88".to_owned(), [1, 2, 3])].into() };
         let n = import_ffb_cars(&root.display().to_string(), &cars, global, &mut ffb_cars);
