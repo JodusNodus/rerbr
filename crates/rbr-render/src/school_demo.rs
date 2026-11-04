@@ -17,6 +17,8 @@ use rbr_formats::arp::{BodyPose, Replay};
 use rbr_formats::data::Data;
 use rbr_school::Lesson;
 
+use crate::views::{CarView, Mounts};
+
 /// A lesson's demonstration or ride.
 #[derive(Debug, Clone)]
 pub struct Demo {
@@ -49,6 +51,11 @@ impl Demo {
         self.lesson.ride()
     }
 
+    /// The ride's camera: the cockpit, or the bonnet when the car has no cockpit mount.
+    pub fn ride_view(&self, mounts: &Mounts) -> CarView {
+        ride_view(mounts)
+    }
+
     /// The replay's length, s.
     pub fn duration(&self) -> f32 {
         self.replay.sections.first().map_or(0.0, |s| s.duration())
@@ -58,4 +65,9 @@ impl Demo {
     pub fn pose(&self, t: f32) -> Option<BodyPose> {
         self.replay.sections.first()?.sample_body(t)
     }
+}
+
+/// The ride's camera: the cockpit, or the bonnet when the car has no cockpit mount.
+pub fn ride_view(mounts: &Mounts) -> CarView {
+    [CarView::Cockpit, CarView::Bonnet].into_iter().find(|view| mounts.of(*view).is_some()).unwrap_or(CarView::Bonnet)
 }

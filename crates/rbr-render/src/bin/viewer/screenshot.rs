@@ -125,11 +125,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         // from the cockpit (or the bonnet).
         let demo_lens = match (&demo, scene.playback.as_ref(), scene.mounts.as_ref()) {
             (Some((true, car)), Some(playback), Some(mounts)) => {
-                let view = [rbr_render::views::CarView::Cockpit, rbr_render::views::CarView::Bonnet]
-                    .into_iter()
-                    .find(|view| mounts.of(*view).is_some())
-                    .unwrap_or(rbr_render::views::CarView::Bonnet);
-                Some(playback.lens_at(mounts, view, car, fov))
+                Some(playback.lens_at(mounts, rbr_render::school_demo::ride_view(mounts), car, fov))
             }
             (Some((false, car)), Some(playback), _) => Some(playback.camera_at(car, look).lens(playback.chase_fov)),
             _ => None,

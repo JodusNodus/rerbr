@@ -204,10 +204,7 @@ pub fn draw_demo(
     let (Some(playback), Some(mounts)) = (&mut scene.playback, &scene.mounts) else { return None };
     let body = playback.model_to_stage(car);
     let lens = if ride {
-        let view = [CarView::Cockpit, CarView::Bonnet]
-            .into_iter()
-            .find(|view| mounts.of(*view).is_some())
-            .unwrap_or(CarView::Bonnet);
+        let view = rbr_render::school_demo::ride_view(mounts);
         playback.interior = view.interior();
         renderer.set_outside_view(!view.interior());
         playback.apply_demo(renderer, car, view.interior());
