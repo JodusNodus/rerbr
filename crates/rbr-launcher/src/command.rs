@@ -960,7 +960,7 @@ mod tests {
         use rbr_school::Lesson;
         let lesson = Lesson::new(2).unwrap();
         let stage = Stage { name: "track-83_M".into(), map: 83, letter: 'M' };
-        let car = Car { index: 5, name: "IMPREZA03".into(), rsf: None };
+        let car = Car { index: 5, name: "IMPREZA03".into(), community: None };
         let weather =
             Weather { map: 83, row: Some(0), letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0, wear: 0 };
         let args = ViewerLaunch {
@@ -997,7 +997,7 @@ mod tests {
     fn school_args_carry_an_rsf_cars_pack() {
         use rbr_school::Lesson;
         let lesson = Lesson::new(2).unwrap();
-        let rsf = RsfCar {
+        let rsf = CommunityCar {
             id: 24,
             added: false,
             group: None,
@@ -1007,7 +1007,7 @@ mod tests {
         };
         let args = ViewerLaunch {
             stage: Stage { name: "track-83_M".into(), map: 83, letter: 'M' },
-            car: Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), rsf: Some(rsf) },
+            car: Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), community: Some(rsf) },
             tyre: lesson.tyre(),
             standalone: PathBuf::from("/b/rbr-standalone"),
             data: PathBuf::from("/d"),
