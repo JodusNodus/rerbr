@@ -18,8 +18,8 @@
 //! rules NGP's (`car_damage::Rules`); its texts are the game's English string table.
 //!
 //! The season (`rbr_championship::season`): New season draws the rallies' levels and forecast weather on the clock's
-//! seed, with the player in the team picked from the game's team offers (`TEAM_OFFERS`, in its order; the team's car
-//! is the season's, or when NGP doesn't drive it a car picked with it, ours, kept out of the save). The season's event
+//! seed, with the player in the team picked from the game's team offers (`TEAM_OFFERS`, in its order; the game's
+//! season drives the team's car, ours any car picked with it, kept out of the save). The season's event
 //! queue (`rbr_championship::events`) runs it: the AI drivers' stages and
 //! services between the player's turns, as the game's menu flow stops at them: the rally's welcome, each stage (at
 //! its start time on the season's clock), each service, the rally's results and the page between rallies with the

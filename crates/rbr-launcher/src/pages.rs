@@ -589,9 +589,10 @@ impl Form {
         self.catalog.cars.iter().position(|c| c.community.is_none() && c.index == index)
     }
 
-    /// The Championship page (`rally_page`). The season drives its team's car when NGP drives it, else the car picked
-    /// for it (ours: kept per profile in `[season]`; the game's season always drives the team's car). A season with
-    /// neither asks for one.
+    /// The Championship page (`rally_page`). A season drives the car picked for it, any car (ours: kept per profile in
+    /// `[season]`; the game's season always drives the team's car, and a car slot names no particular car outside a
+    /// vanilla install). Picking a team picks its car when NGP drives it. A saved season with no pick drives the
+    /// team's car, and asks for one when NGP doesn't drive it.
     fn championship_page(&mut self, ui: &mut egui::Ui) {
         if self.no_cars_yet(ui) {
             return;
@@ -600,17 +601,28 @@ impl Form {
             return self.car_browser_page(ui);
         }
         let profile = self.rally.profile.clone();
+        let team = self.rally.team;
+        if self.season_team_seen.is_some_and(|seen| seen != team) {
+            if let Some(i) = self.team_car(team) {
+                self.season_pick = i;
+            }
+        }
+        self.season_team_seen = Some(team);
         if self.rally.take_new_season() {
-            match self.catalog.cars.get(self.season_pick).filter(|_| self.team_car(self.rally.team).is_none()) {
+            match self.catalog.cars.get(self.season_pick) {
                 Some(car) => self.season_cars.set(&profile, &car.name.clone()),
                 None => self.season_cars.remove(&profile),
             }
         }
         let cars = &self.catalog.cars;
         let picked = self.season_cars.of(&profile).and_then(|name| cars.iter().position(|c| c.name == name));
-        let season_car = self.rally.season_team().map(|team| self.team_car(team).or(picked));
+        let season_car = self.rally.season_team().map(|team| picked.or(self.team_car(team)));
         if season_car == Some(None) {
-            ui.label(format!("NGP doesn't drive the team's car of {profile}'s season. Choose the car it drives:"));
+            section(ui, "Choose the season's car");
+            ui.label(format!(
+                "{profile}'s saved season drives its team's car, which NGP doesn't drive here. Any car can drive it:"
+            ));
+            ui.add_space(4.0);
             let mut browse = false;
             ui.horizontal(|ui| {
                 if let Some(row) = self.car_browser.row(self.season_pick) {
@@ -637,24 +649,22 @@ impl Form {
         let here = self.here();
         let archive = self.ngp_archive();
         let car = self.car().cloned().unwrap_or_default();
-        let team_cars: Vec<Option<String>> =
-            (0..7).map(|t| self.team_car(t).map(|i| self.catalog.cars[i].name.clone())).collect();
+        let team_cars: Vec<Option<usize>> = (0..7).map(|t| self.team_car(t)).collect();
         let mut browse = false;
         let (browser_rows, favourites) = (&self.car_browser, &self.favourite_cars);
         let (pick, cars) = (self.season_pick, &self.catalog.cars);
-        // The new season's car: the team's when NGP drives it, else the car browser's.
-        let mut car_row = |ui: &mut egui::Ui, team: u32| match team_cars.get(team as usize).cloned().flatten() {
-            Some(name) => {
-                ui.label(format!("{name} (the team's)"));
-                true
-            }
-            None => {
+        // The new season's car: the car browser's, the team's when picking the team found it.
+        let mut car_row = |ui: &mut egui::Ui, team: u32| {
+            ui.horizontal(|ui| {
                 if let Some(row) = browser_rows.row(pick) {
                     browse |=
                         browser::field_button(ui, favourites.contains(&row.name), &row.title, &row.detail(), FIELD);
                 }
-                cars.get(pick).is_some_and(|c| c.unavailable().is_none())
-            }
+                if team_cars.get(team as usize).copied().flatten() == Some(pick) {
+                    ui.colored_label(browser::GREY, "the team's car");
+                }
+            });
+            cars.get(pick).is_some_and(|c| c.unavailable().is_none())
         };
         // What blocks a championship or trial launch: a running viewer, what the Drive page's Start checks
         // through `readiness` (no program, NGP or car: the status line names the fix), and a car that cannot

@@ -118,9 +118,9 @@
 //! `SavedGames/`), each rally stage by stage with the service park between stages, the AI drivers' times, the rally
 //! and season standings, the bulletins and the trials between rallies. New season takes the championship's own
 //! options (the team, skill level and car damage, kept in `launcher-settings.ini` as `championship_team`,
-//! `championship_skill` and `championship_damage`); the season drives its team's car when NGP drives it, else a car
-//! picked for it (ours; each profile's in the settings file's `[season]` section, so the game's save stays the
-//! game's), and its stages
+//! `championship_skill` and `championship_damage`); the season drives the car picked for it, any car, the team's
+//! when NGP drives it picked with the team (ours; each profile's in the settings file's `[season]` section, so the
+//! game's save stays the game's), and its stages
 //! run as the game's championship on the season's (`rbr-standalone --championship`) with the Controls page's aids.
 //! `--screenshot` also draws it, and with `--screenshot-damage FILE` (`rbr-standalone --damage-out`) its service park on that car.
 
@@ -461,6 +461,8 @@ struct Form {
     /// The car a new season takes, and each profile's season car (`[season]`).
     season_pick: usize,
     season_cars: SeasonCars,
+    /// The new season's team last seen: picking another team picks its car when NGP drives it.
+    season_team_seen: Option<u32>,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
     /// The weather preset, the damage level and the driver aids.
