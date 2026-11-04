@@ -48,8 +48,8 @@ drive() {
         --steps 150000 --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS" >"$log" 2>&1 || true
     local verdict ended stopped
     verdict=$(grep -o 'verdict [0-9]' "$log" | head -1 | cut -d' ' -f2)
-    ended=$(grep -o 'cause: [A-Za-z]*, end_race: EndRace { time: [0-9.]*' "$log" | head -1 |
-        sed 's/cause: \([A-Za-z]*\), end_race: EndRace { time: \(.*\)/\1 at \2 s/')
+    ended=$(grep -o 'the race ended: [A-Za-z]*, EndRace { time: [0-9.]*' "$log" | head -1 |
+        sed 's/the race ended: \([A-Za-z]*\), EndRace { time: \(.*\)/\1 at \2 s/')
     stopped=$(grep -o 'ended by .*' "$log" | head -1 | sed 's/ended by //')
     printf '%2s  %-40s  %-7s  %-22s  %s\n' "$lesson" "$name" "${verdict:--}" "${ended:-no end}" "$stopped"
 }
