@@ -100,7 +100,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`<car>`: the pack's folder name, a retail car's physics folder such as `c_xsara`; user decision 2026-11-04), RSF's
   naming, so a file copies into RSF's `SavedGames/<pack>/` as it is. Read only: an RSF car's RSF `SavedGames/<pack>/`
   and `rsfdata/setups/<pack>/` (RSF's `<id>_d_<surface>.lsp` copies of the defaults skipped; RSF install 2026-11-04:
-  85 shipped, 214 saved files, none named otherwise), a retail car's install `Physics/<car>/Setups/` (any surface).
+  85 shipped, 214 saved files, none named otherwise). The 1.02 install's `Physics/<car>/Setups/` are not read (1.02's
+  car ranges, not NGP's; user decision 2026-11-04).
   The older `[launcher] setup` (one name for every car) is no longer read. No save slots (user decision
   2026-11-04). Earlier versions' files are listed read only: an RSF car's `<files>/SavedGames/<pack>/`, the
   `Physics/<key>/Setups/` of `Car::setup_keys` (`rsf-<id>`, then 5; a retail car its number's), and their slot files

@@ -5,8 +5,9 @@
 //!
 //! Ours are `setups/<car>/<surface>_<name>.lsp` in the player's folder for every car (`<car>`: an RSF or added car's
 //! pack, a retail car's physics folder), named as RSF names its own. Listed beside them, read only: an RSF car's
-//! setups of the RSF install (its `SavedGames/<pack>/` and the ones it ships in `rsfdata/setups/<pack>/`), a retail
-//! car's of the 1.02 install (`Physics/<car>/Setups/`, any surface), and ours of earlier versions ([`Folders`]). Start
+//! setups of the RSF install (its `SavedGames/<pack>/` and the ones it ships in `rsfdata/setups/<pack>/`) and ours of
+//! earlier versions ([`Folders`]); the 1.02 install's `Physics/<car>/Setups/` are not read (made for 1.02's car
+//! ranges, not NGP's). Start
 //! writes the chosen values to `setup-current.lsp` in the player's folder and passes it to `rbr-standalone --setup`,
 //! unless they are the default.
 //!
@@ -18,7 +19,6 @@
 use std::path::{Path, PathBuf};
 
 use egui::{ComboBox, DragValue, RichText, Ui};
-use rbr_formats::data::Data;
 use rbr_formats::saves::{is_file_name_part, setup_slots, DIR as SAVES};
 use rbr_gameplay::setup::{Area, CarSetup, Range, SeasonSetup, Setup, Slot, Spec, CAR_FOLDERS, MAP_POINTS, WHEELS};
 
@@ -39,13 +39,12 @@ fn pack_setup(path: &Path, surface: &str) -> Result<CarSetup, String> {
 /// The setups' surfaces by the map's surface (`catalog::Map::surface`), as the files name them.
 pub const SURFACES: [&str; 3] = ["gravel", "tarmac", "snow"];
 
-/// Where a saved setup is from. Ours are saved and deleted here; the others are only read: the 1.02 install's, ours
-/// from earlier versions (see [`Folders`]), the game's save slots, and the RSF install's (its players'
-/// `SavedGames/<pack>/` and the ones it ships in `rsfdata/setups/<pack>/`).
+/// Where a saved setup is from. Ours are saved and deleted here; the others are only read: ours from earlier versions
+/// (see [`Folders`]), the game's save slots, and the RSF install's (its players' `SavedGames/<pack>/` and the ones it
+/// ships in `rsfdata/setups/<pack>/`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     Own,
-    Game,
     Earlier,
     Slot,
     Rsf,
@@ -57,7 +56,6 @@ impl Source {
     pub fn tag(self) -> &'static str {
         match self {
             Source::Own => "",
-            Source::Game => "game",
             Source::Earlier => "earlier",
             Source::Slot => "game slot",
             Source::Rsf => "RSF",
@@ -106,8 +104,8 @@ struct Dir {
 }
 
 /// The folders a car's setups are in: ours in [`SETUPS`], then the read-only ones. An RSF car's: RSF's
-/// `SavedGames/<pack>/` and `rsfdata/setups/<pack>/`. A retail car's: the 1.02 install's `Physics/<car>/Setups/`,
-/// named as the player typed. Then ours of earlier versions: a retail car's `Physics/<car>/Setups/`, an RSF car's
+/// `SavedGames/<pack>/` and `rsfdata/setups/<pack>/`. Then ours of earlier versions, named as the player typed: a
+/// retail car's `Physics/<car>/Setups/`, an RSF car's
 /// `SavedGames/<pack>/` and `Physics/<key>/Setups/` under its setup keys (`Car::setup_keys`: its own, then slot 5's),
 /// and last the game's save slots of the keys in our `SavedGames/` (`<key>slot<n>_<name>.lsp`).
 #[derive(Debug, Default)]
@@ -117,29 +115,27 @@ struct Folders {
 }
 
 impl Folders {
-    fn of(install: &Path, here: &Path, rsf: &Path, car: &Car) -> Folders {
+    fn of(here: &Path, rsf: &Path, car: &Car) -> Folders {
         let Some(folder) = car_folder(car) else {
             return Folders::default();
         };
         let keys = car.setup_keys();
         let dir = |source, path, by_surface| Dir { source, path, by_surface };
-        // The game's `Physics/<car>/Setups/` of a setup key, under `root`.
-        let physics = |root: &Path, key: &String| {
+        // Our earlier `Physics/<car>/Setups/` of a setup key.
+        let physics = |key: &String| {
             let folder = match key.parse::<usize>() {
                 Ok(n) => CAR_FOLDERS.get(n)?.to_string(),
                 Err(_) => format!("Physics/{key}/"),
             };
-            Some(root.join(folder).join("Setups"))
+            Some(here.join(folder).join("Setups"))
         };
         let mut dirs = vec![dir(Source::Own, here.join(SETUPS).join(&folder), true)];
         if car.rsf.is_some() {
             dirs.push(dir(Source::Rsf, rsf.join(SAVES).join(&folder), true));
             dirs.push(dir(Source::RsfShipped, rsf.join("rsfdata/setups").join(&folder), true));
             dirs.push(dir(Source::Earlier, here.join(SAVES).join(&folder), true));
-        } else {
-            dirs.extend(physics(install, &keys[0]).map(|p| dir(Source::Game, p, false)));
         }
-        dirs.extend(keys.iter().filter_map(|k| physics(here, k)).map(|p| dir(Source::Earlier, p, false)));
+        dirs.extend(keys.iter().filter_map(physics).map(|p| dir(Source::Earlier, p, false)));
         dirs.push(dir(Source::Slot, here.join(SAVES), false));
         Folders { dirs, keys }
     }
@@ -261,7 +257,7 @@ impl SetupPage {
     /// the editor opens. An RSF car's come from its pack (`setups/d_<surface>.lsp`, `r_<surface>.lsp`), as the game
     /// reads them once RSF has copied the pack into the slot; its saved setups are RSF's per pack and its game slots
     /// the slot's. A retail slot's come from NGP's `physics.rbz` (`archive`), which has the NGP car installed in it.
-    pub fn select(&mut self, data: &Data, here: &Path, rsf: &Path, car: &Car, archive: &Path, surface: &'static str) {
+    pub fn select(&mut self, here: &Path, rsf: &Path, car: &Car, archive: &Path, surface: &'static str) {
         if self.key == Some((car.index, surface)) && self.car_name == car.name {
             return;
         }
@@ -272,7 +268,7 @@ impl SetupPage {
             Some(Err(e)) => Err(e.clone()),
             None => CarSetup::load_in(archive, car.index as usize, surface),
         };
-        self.folders = Folders::of(data.install(), here, rsf, car);
+        self.folders = Folders::of(here, rsf, car);
         self.profiles = self.folders.scan(surface);
         self.status.clear();
         self.drive_chosen();
@@ -784,7 +780,7 @@ mod tests {
     #[test]
     fn an_rsf_cars_setups_are_by_pack_and_surface() {
         let root = crate::test_dir("setup-rsf");
-        let (here, rsf, install) = (root.join("here"), root.join("rsf"), root.join("install"));
+        let (here, rsf) = (root.join("here"), root.join("rsf"));
         let pack = "Ford_Fiesta_R5_ngp6";
         write(here.join("setups").join(pack).join("gravel_Mine.lsp"));
         write(here.join("SavedGames").join(pack).join("gravel_Today.lsp"));
@@ -809,7 +805,7 @@ mod tests {
             drive_train: None,
         };
         let car = Car { index: rbr_formats::rsf::SLOT, name: "Ford Fiesta R5".into(), rsf: Some(rsf_car) };
-        let folders = Folders::of(&install, &here, &rsf, &car);
+        let folders = Folders::of(&here, &rsf, &car);
         assert_eq!(
             names(&folders.scan("gravel")),
             [
@@ -829,10 +825,10 @@ mod tests {
         assert_eq!(folders.file("gravel", "fast"), Some(here.join("setups").join(pack).join("gravel_fast.lsp")));
     }
 
-    /// A retail car's setups are ours on the surface, then the install's and ours of earlier versions under the
-    /// slot's physics folder, by any name, then the car's game slots.
+    /// A retail car's setups are ours on the surface, then ours of earlier versions under the slot's physics folder,
+    /// by any name, then the car's game slots; the 1.02 install's are not read.
     #[test]
-    fn a_retail_cars_setups_are_ours_then_the_games() {
+    fn a_retail_cars_setups_are_ours() {
         let root = crate::test_dir("setup-retail");
         let (here, install) = (root.join("here"), root.join("install"));
         write(here.join("setups/c_xsara/tarmac_b fast.lsp"));
@@ -844,12 +840,11 @@ mod tests {
         write(here.join("SavedGames/3slot0_lancer.lsp"));
         write(here.join("SavedGames/pfplayer.rbr"));
         let car = Car { index: 0, name: "XSARA".into(), rsf: None };
-        let folders = Folders::of(&install, &here, &root.join("rsf"), &car);
+        let folders = Folders::of(&here, &root.join("rsf"), &car);
         assert_eq!(
             names(&folders.scan("tarmac")),
             [
                 ("b fast".to_owned(), Source::Own),
-                ("a safe".to_owned(), Source::Game),
                 ("old".to_owned(), Source::Earlier),
                 ("rally".to_owned(), Source::Slot)
             ]
