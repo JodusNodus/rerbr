@@ -124,7 +124,13 @@ impl Viewer {
         let args = &*self.args;
         let Shell { window, surface, config, stale, gpu, overlay } = shell;
         let camera = start_camera(&scene.stage, scene.chase);
-        App::new(scene, args, sound, Running { window, surface, config, stale, gpu, renderer, camera, overlay })
+        App::new(
+            scene,
+            args,
+            sound,
+            Running { window, surface, config, stale, gpu, renderer, camera, overlay },
+            self.data.clone(),
+        )
     }
 }
 
@@ -367,6 +373,10 @@ pub struct App {
     clock: f64,
     /// The live drive's sound (`--no-sound` turns it off).
     sound: Option<rbr_render::sound::Player>,
+    /// The rally school's speech feed, loading its samples from the game data on the first school frame.
+    school_speech: rbr_render::sound::SchoolSpeech,
+    /// Frames with a live drive, for the school end page's `sub` (never the game's `rand()` stream).
+    school_frame: u32,
     quit_after: Option<(f32, QuitFrom)>,
     /// When the live race's go was first seen (`--quit-after go+S`; the performance log's summary counts from it).
     went: Option<Instant>,
@@ -386,7 +396,7 @@ pub struct App {
 }
 
 impl App {
-    fn new(scene: Scene, args: &Args, sound: Option<rbr_render::sound::Player>, running: Running) -> App {
+    fn new(scene: Scene, args: &Args, sound: Option<rbr_render::sound::Player>, running: Running, data: Data) -> App {
         let view = scene.cameras.start_view(args.view);
         let ffb = args.ffb.clone();
         let replay = args.replay.is_some();
@@ -466,6 +476,8 @@ impl App {
             last_frame: Instant::now(),
             started: Instant::now(),
             sound,
+            school_speech: rbr_render::sound::SchoolSpeech::new(data),
+            school_frame: 0,
             quit_after: args.quit_after,
             went: None,
             ended: None,
@@ -666,6 +678,9 @@ impl App {
                 }
             }
             let sounds = process.take_sounds();
+            // The rally school's speech, from the live record's school state.
+            let (school_stop, school_ids) = process.take_school_speech();
+            let school = process.hud_view().school;
             if let Some(sound) = &mut self.sound {
                 if let Some(mounts) = &self.scene.mounts {
                     let lens = self.shown.lens(playback, mounts, None, self.look, self.fov);
@@ -673,6 +688,9 @@ impl App {
                     sound.set_scene(rbr_render::sound::scene(&lens, &playback.sample().car, interior, self.replay));
                 }
                 sounds.iter().for_each(|s| sound.step(s));
+                self.school_frame = self.school_frame.wrapping_add(1);
+                let frame = self.school_frame;
+                self.school_speech.feed(sound, school.as_ref(), school_stop, &school_ids, frame);
             }
         } else if let Some(playback) = &mut self.scene.playback {
             playback.advance(dt as f64);

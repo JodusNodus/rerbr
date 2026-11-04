@@ -90,6 +90,15 @@ pack layout in `rbr_formats::rsf`.
 
 Mechanics in `codriver.rs` (HUD codes, `CSoundFX`, late-join skip). No finish sound.
 
+## School speech
+
+Mechanics in `speech` (`Speech::School`), `data::SchoolBank`, the mixer's queue and `rbr_render::sound::SchoolSpeech`.
+
+- Handler `E25School::OnSignal` (0x4b8200, `RBR_E25_School.cpp`): `{0,0,0,raw 0}` stops the playing word and flushes the queue (`S10` + `SpClearAll`); a nonzero raw runs `E25School::M80c0x` (0x4b80c0) over the NUL-terminated digit string (4-character slots, each `atoi`'d, `digits[3] == 0` ending it), which flushes the pending queue and queues each id at priority 1; kinds 4/5/6 queue one id at priority 0 from `sub`-indexed tables (4: 499, 242, 236, 500; 5: 468, 235, 495, 496; 6: 317, 467, 497, 498); kind 1 queues `M8160[bank]` at priority 0; kinds 0/2/3 without raw are silent.
+- Senders: every school-flow step emits the stop; `CReplayManager::Trigger` (0x4992a0, `RBR_E19_School.cpp`) emits `{2, i, 0, pair.code}` per tripped pair, the code the digit string's offset in the lesson `.dls`'s table-7 string block (`ReadStream` 0x498840, `E12_AnimSet::BlockAddB` 0x475c90); the end pages emit kind 4 on failure (`CFailedSchoolExplanationUI::Vf04` 0x542aa0) or by grade, 0 to 4, 1..3 to 5, 4 to 6 (`CRSEndTrialUI::Vf04` 0x5a2510, `CSchoolAwardUI::Vf04` 0x5a26a0), with `sub = rand & 3`.
+- Rust (`rbr_school::speech`): `speech_ids` follows `M80c0x` exactly (C `atoi` per slot), the `.dls` string block rides with the run and the pair code is its offset (block base 0); SCH1 carries the frame's stop and `Trigger`'s ids; `Speech::School` plays `Audio\RS\ENG\<id>.ogg` (English only), priorities 0/1 through `SpInsert`'s `speech_slot`, `FlushSpeech` for the pending-only clear; the co-driver switch does not mute it and the co-driver volume applies.
+- Inferred: kind 1 plays once per brief (`BRIEFING[lesson]`, no sender reconstructed); each SCH1 state change stands in for the flow steps' stops; the results page's `RallySchoolSound` `{2,1,0,lesson}` emit is left out (its payload contradicts the handler).
+
 ## World and ambient
 
 Mechanics in `world.rs` (wind, birds, siren) and `mixer/rain.rs`. Birds, wind and siren play only in

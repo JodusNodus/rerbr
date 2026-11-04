@@ -472,6 +472,7 @@ mod tests {
             perfect: 9.0,
             pass: 10.0,
             incident: 0,
+            ..Record::default()
         };
         let state = State::of(&record);
         assert_eq!((state.phase, state.verdict), (Phase::Ended, Some(3)));

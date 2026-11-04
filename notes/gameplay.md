@@ -148,7 +148,8 @@ yet: the oracle run is open.
   raises the lesson's own (profile +0x424, `Profile::school`); the ride (lesson 5) gives 4. A school drive writes
   no stage records (inferred).
 - Not done: the brief flythrough (`rse%d.arp`) and the judged replay with Richard's ghost (`rse%d.gho`, case 6,
-  both in `ghosts.rbz`), the lesson 5 ride, the speech (`Audio\RS`).
+  both in `ghosts.rbz`), the lesson 5 ride. Speech done ([sound.md](sound.md#school-speech)): the briefing, the
+  `Trigger` ids and the end pages on the school voice; the results-page `RallySchoolSound` emit left out.
 - Unverified: whether physics steps during the brief, the untimed lessons' start, `EndRace`'s order against the
   HUD tick and its `dt`, NGP leaving the bank's repair handler alone.
 
