@@ -23,6 +23,8 @@ pub enum Page {
     /// The quick race: car, stage, conditions, the race options and Start.
     Drive,
     Championship,
+    /// The rally school's lessons, each on its map with car 5.
+    School,
     /// The car setup.
     Setup,
     Replays,
@@ -35,9 +37,10 @@ pub enum Page {
 
 impl Page {
     /// The tabs, in order.
-    const TABS: [(Page, &'static str); 7] = [
+    const TABS: [(Page, &'static str); 8] = [
         (Page::Drive, "Drive"),
         (Page::Championship, "Championship"),
+        (Page::School, "School"),
         (Page::Setup, "Car setup"),
         (Page::Replays, "Replays"),
         (Page::Controls, "Controls"),
@@ -45,11 +48,12 @@ impl Page {
         (Page::Settings, "Settings"),
     ];
 
-    /// The page a shortcut opens: Ctrl+1 to Ctrl+7 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next, Ctrl+Shift+Tab
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+8 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next, Ctrl+Shift+Tab
     /// or Ctrl+Page Up the one before.
     fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
         use egui::{Key, Modifiers};
-        const NUMBERS: [Key; 7] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7];
+        const NUMBERS: [Key; 8] =
+            [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8];
         let at = Self::TABS.iter().position(|(p, _)| *p == self).unwrap_or(0);
         let by = |n: usize| Self::TABS[(at + n) % Self::TABS.len()].0;
         let shift_ctrl = Modifiers::CTRL | Modifiers::SHIFT;
@@ -421,6 +425,7 @@ impl Form {
             egui::CentralPanel::default().show(root, |ui| match self.page {
                 Page::Drive => self.drive_page(ui),
                 Page::Championship => self.championship_page(ui),
+                Page::School => self.school_page(ui),
                 Page::Replays => self.replays_page(ui),
                 Page::Setup => self.setup_page(ui),
                 Page::Controls => {
@@ -726,8 +731,9 @@ mod tests {
         };
         let (ctrl, shift_ctrl) =
             (Modifiers::CTRL | Modifiers::COMMAND, Modifiers::CTRL | Modifiers::COMMAND | Modifiers::SHIFT);
-        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::Setup));
-        assert_eq!(press(Page::Drive, Key::Num7, ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::School));
+        assert_eq!(press(Page::Drive, Key::Num4, ctrl), Some(Page::Setup));
+        assert_eq!(press(Page::Drive, Key::Num8, ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Championship));
         assert_eq!(press(Page::Settings, Key::PageDown, ctrl), Some(Page::Drive));
         assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Settings));

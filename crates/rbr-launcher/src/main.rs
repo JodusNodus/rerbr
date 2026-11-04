@@ -86,7 +86,7 @@
 //! and `$RBR_RSF`.
 //!
 //! The tabs follow what the player wants to do (ours, after Content Manager): Drive (car and stage, conditions, race
-//! options, the previews and Start), Championship, Car setup, Replays (saved drives, playback and video export),
+//! options, the previews and Start), Championship, School (the rally school's lessons on their maps with car 5), Car setup, Replays (saved drives, playback and video export),
 //! Controls, Graphics & sound (window, camera, HUD and pace notes, sound, the renderer's additions) and Settings
 //! (install folder, advanced paths, about). The status line under every page says what the install lacks
 //! (the programs, NGP's archive, a car NGP drives), with its fix
@@ -154,6 +154,7 @@ mod pages;
 mod preview;
 mod rally_page;
 mod replay_page;
+mod school_page;
 mod settings;
 mod settings_page;
 mod setup_page;
@@ -178,6 +179,7 @@ use rbr_gameplay::weather::Season;
 use rbr_render::bindings::Bindings;
 use rbr_render::glass::model::Switch;
 use rbr_sound::menu::MenuPlayer;
+use school_page::SchoolPage;
 use settings::{load, or_folder, read_settings, Gearboxes, SeasonCars};
 use setup_page::SetupPage;
 use window::App;
@@ -429,6 +431,7 @@ struct Form {
     page: Page,
     setup: SetupPage,
     rally: RallyPage,
+    school: SchoolPage,
     /// The Drive page's stage and car previews.
     previews: preview::Previews,
     car: usize,

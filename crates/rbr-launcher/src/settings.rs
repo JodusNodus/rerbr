@@ -29,6 +29,7 @@ use crate::graphics_page::{
 };
 use crate::pages::{Choice, Page};
 use crate::rally_page::RallyPage;
+use crate::school_page::SchoolPage;
 use crate::setup_page::SetupPage;
 use crate::time_of_day::StartTime;
 use crate::{install, preview, Form, Paths, Start};
@@ -813,6 +814,7 @@ impl Form {
             catalog,
             paths,
             previews: preview::Previews::new(data.clone()),
+            school: SchoolPage::new(&data),
             data,
             season,
             page: Page::Drive,
