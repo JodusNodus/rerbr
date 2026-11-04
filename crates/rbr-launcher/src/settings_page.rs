@@ -87,7 +87,7 @@ impl Form {
         let cars = self.catalog.cars.iter().filter(|c| c.unavailable().is_none());
         let (mut from_rsf, mut added, mut from_ngp) = (0, 0, 0);
         for car in cars {
-            match &car.rsf {
+            match &car.community {
                 Some(r) if r.added => added += 1,
                 Some(_) => from_rsf += 1,
                 None => from_ngp += 1,

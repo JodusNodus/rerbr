@@ -328,14 +328,14 @@ fn run() -> Result<(), String> {
                 continue;
             }
             println!("Startable car: {}", catalog::car_label(car));
-            if let Some(rsf) = car.rsf.as_ref().filter(|r| r.added) {
-                let model = match &rsf.model {
+            if let Some(added) = car.community.as_ref().filter(|r| r.added) {
+                let model = match &added.model {
                     Ok(Some(stand_in)) => format!(" — model: {stand_in}"),
                     _ => String::new(),
                 };
-                let pack = rsf.pack.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+                let pack = added.pack.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
                 println!("Added car: {} — {pack}{model}", catalog::car_label(car));
-            } else if let Some(Ok(Some(stand_in))) = car.rsf.as_ref().map(|r| &r.model) {
+            } else if let Some(Ok(Some(stand_in))) = car.community.as_ref().map(|r| &r.model) {
                 println!("RSF car: {} — model: {stand_in}", catalog::car_label(car));
             }
         }
@@ -625,9 +625,9 @@ impl Form {
     /// still there (the cars: `list_cars`).
     fn rescan_rsf(&mut self) {
         let root = self.rsf();
-        self.catalog.set_rsf_cars(&self.paths.data, &root, &self.cars_dir());
+        self.catalog.set_community_cars(&self.paths.data, &root, &self.cars_dir());
         let number = self.catalog.maps[self.map].number;
-        self.catalog.set_rsf(&root);
+        self.catalog.set_community_stages(&root);
         self.rsf_scanned = self.rsf_root.clone();
         self.rescan_codrivers();
         let (catalog, season) = (&self.catalog, &self.season);

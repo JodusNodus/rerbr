@@ -95,7 +95,7 @@ pub fn enhance_list(graphics: &Graphics) -> String {
     Enhance::NAMES.into_iter().filter(|name| on(name)).collect::<Vec<_>>().join(",")
 }
 
-/// The RSF install's Pacenote plugin: its folder and the voices, styles and range sets it offers.
+/// The Pacenote plugin in play: its folder and the voices, styles and range sets it offers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodriverMods {
     pub dir: PathBuf,
@@ -248,7 +248,7 @@ impl ViewerLaunch {
             bindings,
             setup,
         } = self;
-        let pack = car.rsf.as_ref().and_then(|r| r.pack.as_ref().ok()).map(|p| p.display().to_string());
+        let pack = car.community.as_ref().and_then(|r| r.pack.as_ref().ok()).map(|p| p.display().to_string());
         let car_arg = match &pack {
             Some(pack) => ["--rsf-car".into(), pack.clone()],
             None => ["--car".into(), car.name.clone()],
@@ -682,7 +682,7 @@ impl Form {
         args.splice(live..live, viewer_extra);
         args.extend(extra);
         args.extend(["--ngp-physics".to_owned(), self.ngp_archive()]);
-        let key = camera_prefs::car_key(&car.name, car.rsf.as_ref().map(|r| r.id));
+        let key = camera_prefs::car_key(&car.name, car.community.as_ref().map(|r| r.id));
         let sensitivity = self.ffb_cars.of(Some(&key), self.ffb.sensitivity);
         if sensitivity != [100; 3] {
             let [gravel, tarmac, snow] = sensitivity;
@@ -703,7 +703,7 @@ impl Form {
         let map = self.catalog.map(stage.map);
         listed
             .into_iter()
-            .chain(map.and_then(|m| m.rsf.as_ref()).map(|s| s.name.clone()))
+            .chain(map.and_then(|m| m.community.as_ref()).map(|s| s.name.clone()))
             .chain(map.map(catalog::Map::name))
             .chain(catalog::title(stage.map).map(str::to_owned))
             .chain([stage.name.clone()])
@@ -789,7 +789,7 @@ impl Form {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{Catalog, RsfCar};
+    use crate::catalog::{Catalog, CommunityCar};
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
@@ -878,7 +878,7 @@ mod tests {
     #[test]
     fn viewer_args_name_an_rsf_cars_pack() {
         let stage = Stage { name: "track-54_E".into(), map: 54, letter: 'E' };
-        let rsf = RsfCar {
+        let rsf = CommunityCar {
             id: 24,
             added: false,
             group: None,
@@ -886,7 +886,7 @@ mod tests {
             model: Ok(None),
             drive_train: None,
         };
-        let car = Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), rsf: Some(rsf) };
+        let car = Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), community: Some(rsf) };
         assert_eq!(car.unavailable(), None);
         let weather =
             Weather { map: 54, row: Some(162), letter: 4, cloud: 1, cloud_letter: 0, preset: 0, wetness: 1, wear: 0 };
@@ -919,7 +919,7 @@ mod tests {
     #[test]
     fn viewer_args_include_game_weather_wear_and_tyre() {
         let stage = Stage { name: "track-54_O".into(), map: 54, letter: 'O' };
-        let car = Car { index: 6, name: "COROLLA".into(), rsf: None };
+        let car = Car { index: 6, name: "COROLLA".into(), community: None };
         let weather =
             Weather { map: 54, row: Some(167), letter: 3, cloud: 3, cloud_letter: 2, preset: 4, wetness: 2, wear: 2 };
         let options = RaceOptions { weather: Preset::Bad, ..RaceOptions::default() };
@@ -1034,7 +1034,7 @@ mod tests {
     #[test]
     fn the_wetness_override_changes_the_viewer_weather_word() {
         let stage = Stage { name: "track-54_O".into(), map: 54, letter: 'O' };
-        let car = Car { index: 6, name: "COROLLA".into(), rsf: None };
+        let car = Car { index: 6, name: "COROLLA".into(), community: None };
         let weather = |wetness| Weather {
             map: 54,
             row: Some(7),
@@ -1094,7 +1094,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                rsf: None,
+                community: None,
                 btb: None,
             }],
         };
@@ -1187,7 +1187,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                rsf: None,
+                community: None,
                 btb: None,
             }],
             ..Catalog::default()
@@ -1607,7 +1607,7 @@ mod tests {
         let data = Data::new(&paths.data, paths.patch.clone());
         let season = Season::load(&data).unwrap();
         let mut catalog = Catalog::scan(&paths.data).unwrap();
-        catalog.set_rsf_cars(&paths.data, &rsf.to_string_lossy(), Path::new(""));
+        catalog.set_community_cars(&paths.data, &rsf.to_string_lossy(), Path::new(""));
         catalog.offer(&crate::catalog::ngp_cars(Path::new(&ngp)));
         let car = std::env::var("RBR_E2E_CAR").ok();
         let settings = Settings { car, ngp_physics: Some(ngp.to_string_lossy().into()), ..Settings::default() };
