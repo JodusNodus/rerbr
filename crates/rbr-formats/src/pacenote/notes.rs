@@ -1,4 +1,4 @@
-//! Pace-note files of an RSF install's Pacenote plugin (`notes/formats.md` "Pacenote plugin"): a stage's own notes
+//! Pace-note files of the Pacenote plugin (`notes/formats.md` "Pacenote plugin"): a stage's own notes
 //! saved as INI (the plugin's "BTB" format, NGPCarMenu's MyPacenotes), and where MyPacenotes keeps them.
 //!
 //! A note file is `[PACENOTES] count = N` and `[P<k>]` sections with `type`, `distance` and `flag`, the three words of
@@ -13,7 +13,7 @@
 //!   (`NARROWS`, `WIDEOUT`, `LONG`, ...).
 //!
 //! MyPacenotes (`Plugins/NGPCarMenu.ini` `MyPacenotesPath`, default `Plugins\NGPCarMenu\MyPacenotes`) has a folder per
-//! stage, named as RSF's stage list names it, and takes the note file modified last.
+//! stage, named as the stage list names it, and takes the note file modified last.
 
 use std::path::{Path, PathBuf};
 
@@ -194,7 +194,7 @@ pub fn named_file(notes: &[Note], call: u32) -> Option<String> {
     (!bytes.is_empty()).then(|| String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// The MyPacenotes folder of an RSF install: `MyPacenotesPath` of `Plugins/NGPCarMenu.ini` (relative to the install
+/// The MyPacenotes folder: `MyPacenotesPath` of `Plugins/NGPCarMenu.ini` (relative to the install
 /// or absolute), else NGPCarMenu's default. `None` when it is not there or the feature is disabled.
 pub fn my_pacenotes_dir(root: &Path) -> Option<PathBuf> {
     let configured = stage_files::in_dir(root, "Plugins\\NGPCarMenu.ini")
@@ -214,7 +214,7 @@ pub fn my_pacenotes_dir(root: &Path) -> Option<PathBuf> {
     stage_files::in_dir(root, &path).filter(|p| p.is_dir())
 }
 
-/// The note file MyPacenotes plays on the stage RSF calls by one of `names`: in the stage's folder (its name matched
+/// The note file MyPacenotes plays on the stage called by one of `names`: in the stage's folder (its name matched
 /// ignoring case, accents and punctuation: the folders replace characters a file name cannot have), the `.ini`
 /// modified last. Ours on a tie (files unpacked together): a file other than NGPCarMenu's `_default` export, then the
 /// name.

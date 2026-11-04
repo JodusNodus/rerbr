@@ -25,12 +25,14 @@ Parsers: `crates/rbr-formats/src/`; retail tests: `crates/rbr-formats/tests/` (`
 | repair tree | `repair.ini` | `repair` | `all_retail_repair_ini_parse` | yes |
 | menu sprites | `PC_Generic_<w>.bnk` | `bnk` | unit `retail_banks_parse` | yes |
 | sound | `audio.dat` inis, `.eng` | `audio`, `eng` | `audio.rs` | yes |
-| FMOD bank | RSF `.bank` | `fmod` | unit `every_rsf_bank_reads` | partial |
+| FMOD bank | community `.bank` | `fmod` | unit `every_rsf_bank_reads` | partial |
 | saves | `SavedGames/*` | `saves` | golden files (`RBR_SAVES`) | season partly raw |
 | ghosts | `.gho`, `.ghc` | `ghost` | `ghost.rs` | yes |
 | animated replay | `.arp` | `arp` | `arp.rs` | yes |
 | reference times | `Misc/times.ini` | `times` | `all_retail_times_ini_parse` | yes |
-| RSF | cars, stages, RBRHUD, Pacenote plugin | `rsf` | `rsf_data.rs` (`RBR_RSF`) | see below |
+| RSF | cars, stages, settings, car/stage lists | `rsf` | `rsf_data.rs` (`RBR_RSF`) | see below |
+| Pacenote plugin | co-driver voices, stage notes | `pacenote::{codriver,notes}` | `rsf_data.rs` (`RBR_RSF`) | [below](#pacenote-plugin) |
+| RBRHUD | cockpit dials | `rbrhud` | `rsf_data.rs` (`RBR_RSF`) | [below](#rbrhud-gauges) |
 
 ## Archives
 
@@ -46,7 +48,7 @@ directory), u32 name length, name padded to 4. The root is a developer path the 
 
 `Maps/Tracks.ini`: `[General]` extensions, `[MapNN] TrackName`. A stage is `track-NN_<L>` (time of day E, M, N, O)
 with `.lbs .trk .dls .col .mat .fnc .ini`; `.bws` is never read. Loader: `CPC_TrackLoaderDaemon::vf1c` 0x46f330.
-Read as bytes, not UTF-8 (the game's `GetPrivateProfileStringA`): RSF installs carry non-UTF-8 bytes in it, which
+Read as bytes, not UTF-8 (the game's `GetPrivateProfileStringA`): installs may carry non-UTF-8 bytes in it, which
 left every retail stage without particles and skid marks (`skidmarks::for_stage`, 2026-10-27).
 
 `.trk` (`FUN_0046ed20`): chunks `u32 header_len (8), u32 type, u32 subtype, u32 size, payload`, tiling the file
@@ -86,8 +88,7 @@ values pace notes. Bit 31 of the flags is set at run time when a key fires.
 ## Collision
 
 `.col` (`FUN_004fe570`): header `{u32 'OC7R' 0x5237434f, u32 root offset (0x10), u32 cell count, u32 table offset}`;
-the table holds absolute cell offsets. Bytes after its `cell count` words up to the next region are unread (one word in
-RSF's 149 and 150 Pribram, none in retail).
+the table holds absolute cell offsets. Bytes after its `cell count` words up to the next region are unread (one word in the community 149 and 150 Pribram, none in retail).
 - Root (0x28 bytes, type 4 mode 3): u16 slot, u32 flags, u32 vertex count (0), u32 vertex rel, u32 tree rel, u32
   brake-wall rel (0 = none), u32 list A count/rel, u32 list B count/rel. Lists are 0x40-byte records of four
   padded Vec3 corners: A wet puddles, B deep water.
@@ -202,7 +203,7 @@ Placement: vertices go to `F * P * v`. `F` is the chained world matrix (`sgc::ch
 nothing, so the car origin is the rear axle). `P` is `T * R1 * R2 * S * inverse(R2)` from the transform
 (`rbr-render/src/coords.rs` `part_to_car`; same compose as the collision grids). A mirrored `F` (negative
 determinant) keeps its triangles: the game draws through `m_world` with the shader's fixed `D3DCULL_CCW`, so the mirror
-turns which side is culled (XSARA's right mudflaps; RSF models mirror whole parts that read right only that way:
+turns which side is culled (XSARA's right mudflaps; community models mirror whole parts that read right only that way:
 Celica ST185 `i_body`, Lada VFTS `i_internal_analog`, Escort Mk II `i_door2_l`, Xsara WRC 2006 `i_mirrornew_*`).
 Built: `i_` (outside views skip them), `e_`/`pc_`, mudflaps, wheels naming the surface; never `d_`, `k_` (but
 `k_windscreen`).
@@ -230,7 +231,7 @@ typed in `lsp_keys.rs`.
 
 `.dds`: standard header, no DX10. Retail is DXT1/DXT3 with 4 mips (count stored without its flag); levels are
 `ceil(w/4) * ceil(h/4)` blocks, no padding. Community files add DXT5, 32/24-bit (`dds::to_rgba8`), sub-block sizes
-and uncounted extra mips (ignored, as D3DX). RSF cars ship 2048x2048 `A8R8G8B8` with one level (Porsche 911 GT3 RS
+and uncounted extra mips (ignored, as D3DX). Community cars ship 2048x2048 `A8R8G8B8` with one level (Porsche 911 GT3 RS
 RGT: 12 of 14 files); the car and stage loaders convert them and add the box-filtered chain (`dds::with_mips`).
 
 `Generic/PC_Generic_<width>.bnk` (0x4c1100): layout in `bnk.rs`; stage pictures are sprites 0x520-0x538.
@@ -245,7 +246,7 @@ the 1.02 amps `Amps::PATCH_1_02`). Every car plays `subaru.eng`.
 unused, WAVE, version, rate, i16 samples (counted), firing positions (counted, 16.16)}`, then for 0x101 two counted
 tables. Files with two waves per part do not load in 1.02.
 
-FMOD Studio banks (RSF `AudioFMOD/<audio>.bank` + `.strings.bank`): RIFF `FEV ` objects and FSB5 sound banks
+FMOD Studio banks (`AudioFMOD/<audio>.bank` + `.strings.bank`): RIFF `FEV ` objects and FSB5 sound banks
 (Vorbis setup headers in `crates/rbr-sound/data/fsb-vorbis/`); layout in `fmod.rs`.
 
 ## Saves and times
@@ -283,8 +284,8 @@ rewritten as `rsf::model_entry` builds it; read in place, nothing written). The 
 (`Selected::tyre_brand`, the game's brand for slot 5), its repair tree its pack's `repair.ini` (`Pack::read`, the
 slot's tree only when the pack has none), and the launcher keys its setups by `rsf-<id>`: slot files
 `rsf-<id>slot<n>_<name>.lsp`, named setups in `Physics/rsf-<id>/Setups`, with what was saved as car 5 still offered
-(read only) to every RSF car without its own. The records keep the game's car word, 5 (the profile and result files
-hold a number only). The launcher hides the retail slot 5 beside RSF cars: in RSF's `physics.rbz` it is the RSF car
+(read only) to every community car without its own. The records keep the game's car word, 5 (the profile and result files
+hold a number only). The launcher hides the retail slot 5 beside community cars: in the install's `physics.rbz` it is the community car
 last picked, which the list has. (Since 2026-11-04 the launcher saves every car's setups as
 `setups/<car>/<surface>_<name>.lsp`, RSF's naming, and no slots; the `rsf-<id>` and car 5 files are listed read only,
 `notes/cameras-hud-launcher.md`.) `.sgc` quirk: duplicate node ids
@@ -310,13 +311,13 @@ Not supported (user decision): every race uses the game's own `.ghc` ghosts, by 
 
 ## RBRHUD gauges
 
-RSF cockpit dials: [cameras-hud-launcher.md](cameras-hud-launcher.md#rbrhud-gauges-rsf-cockpit-dials) (read by
-`rsf::gauges`, drawn by `rbr_render::dials`).
+RBRHUD cockpit dials: [cameras-hud-launcher.md](cameras-hud-launcher.md#rbrhud-gauges) (read by
+`rbrhud`, drawn by `rbr_render::dials`).
 
 ## Pacenote plugin
 
 Read from the plugin's files and `PaceNote.dll` (Ghidra; nothing of it is copied or run). Voices, styles, ranges
-and the note file layout (`[PACENOTES]`, `[P<k>] type distance flag`): `rsf::codriver`, `rsf::pacenotes`. Luppis V3
+and the note file layout (`[PACENOTES]`, `[P<k>] type distance flag`): `pacenote::codriver`, `pacenote::notes`. Luppis V3
 notes start with `PACENOTES_FILE`/`RANGES_FILE` notes spelling `Rbr.ini` and set 0x100 on every note. MyPacenotes
 (`Plugins\NGPCarMenu\MyPacenotes` by default): 1038 files of 525 folders parse.
 

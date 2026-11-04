@@ -1,4 +1,4 @@
-//! RBRHUD's in-car gauges (`Plugins/RBRHUD/gauges/` of an RSF install; `notes/cameras-hud-launcher.md` "RBRHUD gauges"). The plugin
+//! RBRHUD's in-car gauges (`Plugins/RBRHUD/gauges/`; `notes/cameras-hud-launcher.md` "RBRHUD gauges"). The plugin
 //! draws working dials by redrawing parts of a car's interior texture each frame: a gauge folder per car
 //! (`gauges/<car folder>/`) holds variants (`default/`, `race/`, ...), each with one `config<N>.ini` per texture it
 //! draws on, and the textures and sprite atlases under `textures/`. `gauge_selections.ini` names each car's variant.
@@ -14,13 +14,13 @@
 use crate::ini::{self, Section};
 use std::path::{Path, PathBuf};
 
-/// The gauges folder under an RSF install.
+/// The gauges folder (`Plugins/RBRHUD/gauges`).
 pub const GAUGES: &str = "Plugins/RBRHUD/gauges";
-/// The per-car variant choices under an RSF install.
+/// The per-car variant choices (`Plugins/RBRHUD/gauge_selections.ini`).
 pub const SELECTIONS: &str = "Plugins/RBRHUD/gauge_selections.ini";
 /// The variant a car without a choice gets.
 pub const DEFAULT_VARIANT: &str = "default";
-/// The rects copied from a car's own texture into its remapped copy, under an RSF install.
+/// The rects copied from a car's own texture into its remapped copy (`Plugins/RBRHUD/texture_migrations.ini`).
 pub const MIGRATIONS: &str = "Plugins/RBRHUD/texture_migrations.ini";
 
 /// A texel rect, edges inclusive of `left` and `top`, exclusive of `right` and `bottom`.
@@ -405,7 +405,7 @@ pub fn migrations(text: &str, texture: &str) -> Vec<[f32; 4]> {
         .collect()
 }
 
-/// A car's chosen gauge variant under the RSF install `root`: its folder and its configs (in `config<N>` order), or
+/// A car's chosen gauge variant under the install `root`: its folder and its configs (in `config<N>` order), or
 /// `None` when the car has no gauge or its choice is not installed.
 pub fn variant(root: &Path, car_folder: &str) -> Option<(PathBuf, Vec<Config>)> {
     let chosen = std::fs::read_to_string(root.join(SELECTIONS))

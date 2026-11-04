@@ -119,7 +119,7 @@ pub struct Loading {
 }
 
 impl Loading {
-    /// Starts loading what `args` name (`fmod_bank`: the RSF car's sound), the renderer on `gpu` for frames of
+    /// Starts loading what `args` name (`fmod_bank`: the community car's sound), the renderer on `gpu` for frames of
     /// `format` and `size`.
     pub fn start(
         args: Arc<Args>,

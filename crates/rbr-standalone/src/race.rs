@@ -1,4 +1,4 @@
-//! The race `--boot` starts (`boot::Race`) from the command line: the weather, the car (an RSF car under NGP), the
+//! The race `--boot` starts (`boot::Race`) from the command line: the weather, the car (a community car under NGP), the
 //! tyre, the setup, the race options and a championship's, with the recording's `.auto` words as the defaults.
 
 use std::path::Path;

@@ -620,7 +620,7 @@ impl Form {
     /// Reads the added cars again, into the lists.
     pub(crate) fn rescan_cars(&mut self) {
         let root = self.rsf();
-        self.catalog.set_rsf_cars(&self.paths.data, &root, &self.cars_dir());
+        self.catalog.set_community_cars(&self.paths.data, &root, &self.cars_dir());
         self.list_cars();
         self.adding =
             Adding { job: self.adding.job.take(), status: self.adding.status.take(), ..Adding::new(&self.cars_dir()) };

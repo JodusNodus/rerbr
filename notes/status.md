@@ -35,9 +35,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Retire and end pages | done | original run: a championship retire and a wrecked finish, a stop in the finish zone, a full replay buffer (945 s) |
 | G Physics clock and frame scheduling | done | - |
 | G Stage and car load | done | map 68 (a home base map, not listed by the launcher) has table row 267 but is in neither `nice_w.ini` nor `bad_w.ini`, so the original's good and bad weather stop at the int3; ours gives it row 267 (dry crisp clear, `68M_crisp_clear`) for all three weathers (`Season::unlisted`) |
-| G Community stages (RSF) | partial | full-install sweep; textures from other variants; encrypted stages not read |
-| G BTB stages (RSF `RX_CONTENT`, experimental) | partial | bump, specular and multiply-add drawing; own number, records, ghosts and map 41's weather rows; no original run ([btb.md](btb.md)) |
-| G Community cars (RSF NGP packs) | partial | FMOD `wheel` events, `gear`/`state` parameters; option folders |
+| G Community stages | partial | full-install sweep; textures from other variants; encrypted stages not read |
+| G BTB stages (`RX_CONTENT`, experimental) | partial | bump, specular and multiply-add drawing; own number, records, ghosts and map 41's weather rows; no original run ([btb.md](btb.md)) |
+| G Community cars (NGP car packs) | partial | FMOD `wheel` events, `gear`/`state` parameters; option folders |
 | G Load settle, start states, the go | done | original run: the go's frame count, a championship start (confirm, 2 s) |
 | G Countdown, race clock, jump start | done | moving start checked only on playback |
 | G Time keeper, splits, finish | done | speed start and split 1 have no peek; a hand drive held 20 s past the finish |
@@ -69,7 +69,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | System | State | Open items |
 | --- | --- | --- |
 | Co-driver phrases, countdown, damage calls | done | not listened to against the original; option gate inferred |
-| Co-driver mods (RSF Pacenote plugin voices, styles, MyPacenotes) | done (ours) | not compared by ear with the plugin; speed not `Dot150` |
+| Co-driver mods (Pacenote plugin voices, styles, MyPacenotes) | done (ours) | not compared by ear with the plugin; speed not `Dot150` |
 | Locally owned co-driver and stage-note packs (`codrivers/`, `notes/`, `--import-codriver`) | done (ours) | discovery lists what a pack ships, not full note coverage |
 | Engine, transmission, turbo, pops | done | harness hook for `CEngine +0x101c` |
 | Tyres, suspension, impacts | done | run the frame finish read-only |
@@ -77,7 +77,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Music | out | - |
 | Stage, sky, car rendering | done | - |
 | HUD, messages, dash lamps, pace-note symbols, units | done | result page from a real finish |
-| RSF working dials | done | oil, tyre health fixed; `Damage` unverified |
+| RBRHUD working dials | done | oil, tyre health fixed; `Damage` unverified |
 | Particles | partial | soft edges; rates against a capture |
 | Skid marks | done | - |
 | Car lights | partial | recordings without live data approximate |
@@ -88,7 +88,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Rain and snow particles | done | - |
 | Windscreen, wipers | partial | crack normal map, camera dirt |
 | Night mode, render enhancements | done (ours) | - |
-| Cockpit mirrors | done (ours) | RSF Fiesta Rally2: none found; images not anti-aliased |
+| Cockpit mirrors | done (ours) | the Fiesta Rally2: none found; images not anti-aliased |
 | In-car and chase cameras | done | mode 3 ground probe; chase capture |
 | Start orbit, helicam, seat shake | done | - |
 | ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile |
@@ -110,7 +110,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
    golden, a retire, a record-beating drive.
 2. Extend the NGP gate matrix ([verification.md](verification.md#drives-and-the-gate-matrix)) to whole stages for
    every car and surface class, with damage and collisions.
-3. Community stages and cars: the full RSF sweep, the FMOD leftovers, encrypted stages.
+3. Community stages and cars: the full-install sweep, the FMOD leftovers, encrypted stages.
 4. Presentation leftovers: particle edges, door detach, windscreen cracks, game captures to compare.
 
 ## Decisions

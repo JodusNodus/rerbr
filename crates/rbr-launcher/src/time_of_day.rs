@@ -14,7 +14,7 @@ pub type Site = (f32, f32, f32);
 
 /// Map `map`'s site, as the viewer places it (`viewer`'s `stage_place`).
 pub fn site(map: &Map) -> Site {
-    let rsf = map.rsf.as_ref();
+    let rsf = map.community.as_ref();
     let snow = rsf.is_some_and(|s| s.surface == Some(rbr_formats::rsf::Surface::Snow));
     let (country, name) = (rsf.and_then(|s| s.country.as_deref()), rsf.map_or("", |s| s.name.as_str()));
     rbr_render::relight::site(map.sky_map(), country, name, snow)

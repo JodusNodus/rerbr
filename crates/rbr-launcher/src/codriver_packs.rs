@@ -9,10 +9,10 @@
 //! always belong to ReRBR. This module applies that policy to co-driver voice/style/range and stage-note packs.
 //!
 //! Layout, each pack isolated so different `Rbr.ini` definitions never collide:
-//! - `codrivers/<pack>/`: a Pacenote plugin's folder as `rbr_formats::rsf::codriver` reads it (`PaceNote.ini`,
+//! - `codrivers/<pack>/`: a Pacenote plugin's folder as `rbr_formats::pacenote::codriver` reads it (`PaceNote.ini`,
 //!   `sounds/...`, `config/pacenotes/*.ini`, `config/ranges/*.ini` with their package/category trees, relative paths
 //!   preserved);
-//! - `notes/<pack>/`: stage-note INI files (the plugin's BTB/MyPacenotes format, `rbr_formats::rsf::pacenotes`),
+//! - `notes/<pack>/`: stage-note INI files (the plugin's BTB/MyPacenotes format, `rbr_formats::pacenote::notes`),
 //!   relative paths preserved; looked up recursively, so stage folders may nest.
 //!
 //! Sources: an extracted folder (a Pacenote plugin folder, a MyPacenotes folder, a folder with both, or a whole
@@ -30,7 +30,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use rbr_formats::rsf::{codriver, pacenotes};
+use rbr_formats::pacenote::{codriver, notes};
 
 use crate::archive::{safe_folder, safe_path};
 use crate::job::{Job, Progress, Temp};
@@ -223,7 +223,7 @@ fn voice_root_candidates(dir: &Path) -> Vec<PathBuf> {
 
 /// Whether the text is a note file (the `[PACENOTES]` section with a count).
 fn is_note_text(text: &str) -> bool {
-    pacenotes::parse(text).is_ok()
+    notes::parse(text).is_ok()
 }
 
 /// The note INI files below `dir` (relative paths), validated by parsing.
@@ -421,8 +421,8 @@ pub fn note_sets(dir: &Path) -> Vec<NoteSet> {
     sets
 }
 
-/// The note file of the set `set` in the notes folder `dir` for the stage RSF calls by one of `names` (stage folders
-/// and file stems matched ignoring case, accents and punctuation, as `pacenotes::my_pacenotes`), its highest version
+/// The note file of the set `set` in the notes folder `dir` for the stage called by one of `names` (stage folders
+/// and file stems matched ignoring case, accents and punctuation, as `notes::my_pacenotes`), its highest version
 /// that parses.
 pub fn find_in_set(dir: &Path, names: &[&str], set: &str) -> Option<PathBuf> {
     let wanted: Vec<String> = names.iter().map(|n| fold(n)).filter(|n| !n.is_empty()).collect();
@@ -438,7 +438,7 @@ fn is_note_file(path: &Path) -> bool {
 }
 
 /// A name for matching: lowercase ASCII letters and digits, accented Latin letters as their base letter (as
-/// `pacenotes` matches stage folders).
+/// `notes` matches stage folders).
 fn fold(name: &str) -> String {
     let mut out = String::new();
     for c in name.chars().flat_map(char::to_lowercase) {
@@ -557,7 +557,7 @@ pub fn call_sets_differ(dir: &Path, styles: &[String], ranges: &[String]) -> (bo
 /// The MyPacenotes folder of an install's `Plugins/NGPCarMenu.ini` (`MyPacenotesPath`, relative to the install or
 /// absolute), else NGPCarMenu's default; `None` when disabled or missing.
 fn install_notes_dir(root: &Path) -> Option<PathBuf> {
-    pacenotes::my_pacenotes_dir(root)
+    notes::my_pacenotes_dir(root)
 }
 
 /// Imports the folder `src` (a plugin folder, a note folder, a folder with both, or a whole install to copy from)
@@ -576,7 +576,7 @@ fn import_folder(home: &Path, src: &Path, cancel: &AtomicBool) -> Result<Vec<Str
             (None, None) => Err(format!(
                 "{}: no Pacenote plugin (Plugins/Pacenote) and no stage notes ({}): is it an RBR install?",
                 src.display(),
-                pacenotes::my_pacenotes_dir(src)
+                notes::my_pacenotes_dir(src)
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| { "Plugins/NGPCarMenu/MyPacenotes".into() })
             )),
@@ -967,7 +967,7 @@ impl Form {
         self.rsf_plugin = rsf.is_some();
         self.rsf_voices = rsf.map(|mods| mods.voices).unwrap_or_default();
         self.rsf_note_sets =
-            pacenotes::my_pacenotes_dir(Path::new(self.rsf().trim())).map(|d| note_sets(&d)).unwrap_or_default();
+            notes::my_pacenotes_dir(Path::new(self.rsf().trim())).map(|d| note_sets(&d)).unwrap_or_default();
         (self.codriver_styles_differ, self.codriver_ranges_differ) = match &self.codriver_mods {
             Some(mods) => call_sets_differ(&mods.dir, &mods.styles, &mods.ranges),
             None => (false, false),
@@ -1000,7 +1000,7 @@ impl Form {
                 let label = set_label(self.notes_pack.as_deref(), &set.name);
                 let refs: Vec<&str> = names.iter().map(String::as_str).collect();
                 summary.file = self.resolve_notes(&refs);
-                match summary.file.as_deref().map(pacenotes::read) {
+                match summary.file.as_deref().map(notes::read) {
                     Some(Ok(notes)) if notes.len() == 1 => format!("{voice} calls {label} (1 note)"),
                     Some(Ok(notes)) => format!("{voice} calls {label} ({} notes)", notes.len()),
                     _ => {
@@ -1066,7 +1066,7 @@ impl Form {
         let set = self.active_set()?;
         let dir = match self.notes_pack.as_deref() {
             Some(pack) => self.here().join(NOTES_DIR).join(pack),
-            None => pacenotes::my_pacenotes_dir(Path::new(self.rsf().trim()))?,
+            None => notes::my_pacenotes_dir(Path::new(self.rsf().trim()))?,
         };
         find_in_set(&dir, names, &set.name)
     }

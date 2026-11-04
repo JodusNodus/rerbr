@@ -6,7 +6,7 @@ Goal (user, 2026-10-17): RBR with NGP 7 physics and its NGP cars, on the origina
   gameplay loop behaving exactly like the original.
 - **NGP 7.4.778:** NGP's physics on top ([ngp.md](ngp.md); `rbr-standalone --ngp-physics`), compared with the
   original running NGP (`harness/matrix.py`).
-- **NGP cars:** the community car packs as RallySimFans installs them (`Cars/<name>/`, `rsfdata/cars/*_ngp6`), read
+- **NGP cars:** the community car packs as the installs hold them (`Cars/<name>/`, `rsfdata/cars/*_ngp6`), read
   in place ([formats.md](formats.md#rsf-cars); `--rsf-car`).
 - **Modded stages:** community stages in the original format, one folder per stage under `Maps/`, with RSF's
   `Tracks<id>.ini`, `TrackSettings<id>.ini` and `TextureFilenameMap<id>.ini` ([formats.md](formats.md#rsf-stages)).

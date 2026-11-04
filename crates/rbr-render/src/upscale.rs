@@ -282,7 +282,7 @@ fn bc(format: Format) -> texpresso::Format {
     match format {
         Format::Dxt1 => texpresso::Format::Bc1,
         Format::Dxt3 => texpresso::Format::Bc2,
-        // Plain RGBA (a community stage's, an RSF car's) is packed as DXT5, which keeps its alpha.
+        // Plain RGBA (community stages' and cars') is packed as DXT5, which keeps its alpha.
         Format::Dxt5 | Format::Rgba8 => texpresso::Format::Bc3,
     }
 }

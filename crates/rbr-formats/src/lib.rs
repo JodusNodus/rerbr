@@ -27,7 +27,7 @@
 //! and drive them (`notes/renderer.md` "Characters").
 //!
 //! Sound: `audio` reads `Root/audio.dat` and the audio inis, `eng` the engine sound banks; see
-//! `notes/formats.md` "Audio" and `notes/formats.md` "Audio". `fmod` reads the FMOD Studio banks of RSF's cars
+//! `notes/formats.md` "Audio" and `notes/formats.md` "Audio". `fmod` reads the FMOD Studio banks of car packs
 //! (`AudioFMOD/<name>.bank`): their recordings and their events' parameter sheets (`notes/formats.md` "Audio").
 //!
 //! `stage_files` finds a stage's files, retail (`Maps/track-54_E.*`) or in a folder of its own; `rsf` reads the
@@ -86,8 +86,10 @@ pub mod lua;
 pub mod markers;
 pub mod mat;
 pub mod ngp;
+pub mod pacenote;
 pub mod pe;
 pub mod pss;
+pub mod rbrhud;
 pub mod rbz;
 pub mod repair;
 pub mod rsf;

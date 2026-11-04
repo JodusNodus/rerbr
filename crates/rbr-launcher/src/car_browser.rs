@@ -133,7 +133,7 @@ pub struct CarRow {
 impl CarRow {
     pub fn new(index: usize, car: &Car) -> CarRow {
         let problem = car.unavailable();
-        let (title, group, source, drive, model) = match &car.rsf {
+        let (title, group, source, drive, model) = match &car.community {
             Some(rsf) => {
                 let source = if rsf.added { "Added".to_owned() } else { format!("RSF {}", rsf.id) };
                 let model = match &rsf.model {

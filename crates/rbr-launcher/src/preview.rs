@@ -110,7 +110,7 @@ enum Frame {
     Texture(TextureHandle),
 }
 
-/// A car to render: its key, the data and the car's folder or RSF pack.
+/// A car to render: its key, the data and the car's folder or community pack.
 struct CarRequest {
     key: String,
     data: Data,
@@ -119,7 +119,7 @@ struct CarRequest {
 
 enum CarModel {
     Retail(String),
-    Rsf { pack: PathBuf, root: PathBuf },
+    Community { pack: PathBuf, root: PathBuf },
 }
 
 type CarResult = (String, Result<Vec<ColorImage>, String>);
@@ -304,7 +304,7 @@ impl Previews {
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
             }
         }
-        if let Some(Ok(Some(stand_in))) = car.rsf.as_ref().map(|r| &r.model) {
+        if let Some(Ok(Some(stand_in))) = car.community.as_ref().map(|r| &r.model) {
             ui.label(egui::RichText::new(format!("Stand-in model: {stand_in}")).color(Color32::GRAY));
         }
     }
@@ -314,15 +314,15 @@ impl Previews {
         if self.pending.as_deref() == Some(key) {
             return;
         }
-        let model = match &car.rsf {
+        let model = match &car.community {
             None => CarModel::Retail(car.name.clone()),
-            Some(rsf) => match (&rsf.pack, &rsf.model) {
+            Some(community) => match (&community.pack, &community.model) {
                 (Err(e), _) | (_, Err(e)) => {
                     self.cars.push_front((key.to_owned(), Err(e.clone())));
                     self.cars.truncate(KEEP);
                     return;
                 }
-                (Ok(pack), Ok(_)) => CarModel::Rsf { pack: pack.clone(), root: PathBuf::from(rsf_root.trim()) },
+                (Ok(pack), Ok(_)) => CarModel::Community { pack: pack.clone(), root: PathBuf::from(rsf_root.trim()) },
             },
         };
         self.pending = Some(key.to_owned());
@@ -349,7 +349,7 @@ impl StagePictures {
     fn preview(&mut self, map: &Map) -> StageData {
         let data = self.data.clone();
         let driveline = || first_driveline(&data, map);
-        let (picture, length) = match (&map.rsf, &map.btb) {
+        let (picture, length) = match (&map.community, &map.btb) {
             // A BTB stage has no map `.trk` until it starts: its picture, else its own driveline.
             (None, Some(btb)) => {
                 let id = Some(map.number).filter(|&n| n < crate::btb::SYNTHETIC);
@@ -379,7 +379,7 @@ impl StagePictures {
             lines.push(format!("{:.1} km", metres / 1000.0));
         }
         lines.push(crate::stage_browser::SURFACES[map.surface().min(2) as usize].to_owned());
-        if let Some(stage) = &map.rsf {
+        if let Some(stage) = &map.community {
             lines.extend(stage.country.clone());
             lines.extend(stage.author.as_ref().map(|a| format!("by {a}")));
         }
@@ -387,13 +387,13 @@ impl StagePictures {
             lines.extend(btb.author.as_ref().map(|a| format!("by {a}")));
         }
         let problem =
-            map.rsf.as_ref().and_then(|s| s.problem.clone()).or(map.btb.as_ref().and_then(|b| b.problem.clone()));
+            map.community.as_ref().and_then(|s| s.problem.clone()).or(map.btb.as_ref().and_then(|b| b.problem.clone()));
         StageData { picture, lines, problem }
     }
 }
 
 fn car_key(car: &Car) -> String {
-    match &car.rsf {
+    match &car.community {
         Some(rsf) => format!("rsf {}", rsf.id),
         None => car.name.clone(),
     }
@@ -462,7 +462,7 @@ fn render_car(
     use rbr_render::{camera::Orbit, car as render_car, renderer, stage::Selection};
     let (data, name) = match car {
         CarModel::Retail(name) => (data, name.clone()),
-        CarModel::Rsf { pack, root } => {
+        CarModel::Community { pack, root } => {
             let selected = rsf::select(data, &pack.display().to_string(), Some(root))?;
             let name = selected.folder().to_owned();
             (selected.data, name)

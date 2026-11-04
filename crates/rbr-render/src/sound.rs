@@ -55,7 +55,7 @@ pub fn start(
     }
 }
 
-/// Plays the RSF car's FMOD bank at `path` (`rbr_sound::fmod`) instead of its slot's 1.02 engine, turbo and
+/// Plays the community car's FMOD bank at `path` (`rbr_sound::fmod`) instead of its slot's 1.02 engine, turbo and
 /// transmission sounds; without it (the reason on stderr) those stay.
 pub fn use_fmod(player: &mut Player, path: &std::path::Path) {
     match rbr_sound::fmod::FmodCar::load(path) {

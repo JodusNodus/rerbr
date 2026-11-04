@@ -2,7 +2,7 @@
 
 ![The cockpit of an Audi quattro A2 Group B sliding through the rocks of El Condor past the crowd, the dials lit by the low sun](docs/clips/condor-sideways-cockpit.webp)
 
-Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not a repackage, an actual rewrite from scratch. Everything you know and love, enhanced. Bring your own game files (an RSF install or any RBR + NGP 7 installation).
+Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not a repackage, an actual rewrite from scratch. Everything you know and love, enhanced. Bring your own game files (a RallySimFans install or any RBR + NGP 7 installation).
 
 ## Why
 
@@ -10,8 +10,7 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 - **NGP 7 physics.** use the latest NGP version (must be provided by you).
 - **The original game around it.** Weather, damage, the service park, the championship and the stage records work
   as in RBR 1.02, checked against recordings of the original.
-- **The community's cars and stages.** Any original file format stage and NGP car works out of the box, and the
-  RallySimFans install's BTB stages work experimentally.
+- **The community's cars and stages.** Any original file format stage and NGP car works out of the box, and community BTB stages work experimentally.
 - **A modern look.** A physically based sky and sun, HDR, sun shadows, rain and dust, a lit
   cockpit, windscreen glass and working mirrors.
 
@@ -40,8 +39,8 @@ The whole set of 36: [docs/shots](docs/shots/README.md); frames from real drives
 
 ## Status
 
-Works today: every retail stage, the RallySimFans stages (its BTB stages experimentally), the quick race and the championship, the rally school (experimentally), NGP physics with the
-RallySimFans cars, the HUD and pace notes, the co-driver, sound, wheels and force feedback. Drives are saved as
+Works today: every retail stage, the community stages (BTB stages experimentally), the quick race and the championship, the rally school (experimentally), NGP physics with the
+community cars, the HUD and pace notes, the co-driver, sound, wheels and force feedback. Drives are saved as
 ReRBR replays (`.rrp`), with playback and video export from the Replays tab.
 
 The physics is NGP 7.4.778's; the gameplay (weather draws, race flow, damage, service, season, records) is the game's.
@@ -55,16 +54,16 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
 
 ### Known limitations
 
-- **Car sound.** A car with an FMOD sound bank (RSF's, or gvrc.de's when it has one) plays its own sounds. Other cars
+- **Car sound.** A car with an FMOD sound bank (its pack's, or gvrc.de's when it has one) plays its own sounds. Other cars
   use the retail Impreza's sound. Engine reflections are missing and the rain sound is a
   stand-in.
 - **Keyboard steering on a RallySimFans install** moves at a tenth of the retail speed, as in RSF's own game.
-- **RSF cars.** A car whose model isn't installed is drawn as the retail car RSF names as its stand-in. Car-parts
-  options, extra lights and other modder options are not applied; the selected skin is. RSF cars and added cars
+- **Community cars.** A car whose model isn't installed is drawn as the retail car RSF names as its stand-in. Car-parts
+  options, extra lights and other modder options are not applied; the selected skin is. Community cars and added cars
   share one slot: the same ghosts, and the service park repairs them by that slot's rules. Their setups are their
   own, per car and surface, with RSF's own setups listed too.
-- **Encrypted RSF stages** are not decrypted; they stay in the list, marked unavailable.
-- **BTB stages** (RallySimFans' `RX_CONTENT/Tracks`) are drawn without bump or specular maps. Each is a stage of its
+- **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.
+- **BTB stages** (`RX_CONTENT/Tracks` folders of a RallySimFans install) are drawn without bump or specular maps. Each is a stage of its
   own, with its own records and ghosts; its weathers are retail map 41's (Mont Blanc).
 - **Force feedback** uses the first device it finds; set `device =` in the `[ffb]` section of
   `launcher-settings.ini` to pick another.
@@ -99,8 +98,8 @@ It looks in the usual places and offers the first install with NGP it finds. The
 - **Only the disc, and no Windows at all:** press **Set up from the disc…**. It builds the game folder from the disc
   image, downloading NGP itself (or taking your copy). See [docs/install-from-disc.md](docs/install-from-disc.md).
 
-ReRBR requires NGP 7.4.778, the version its physics is verified against. Settings finds the RSF or game folder's
-`Plugins/NGP.dll` automatically; if it is missing or another version (RallySimFans has 7.5.779), press **Download NGP
+ReRBR requires NGP 7.4.778, the version its physics is verified against. Settings finds the game folder's
+`Plugins/NGP.dll` automatically; if it is missing or another version (RallySimFans ships 7.5.779), press **Download NGP
 7.4.778…**. Its `NGP.dll` and `physics.rbz` go into `NGP 7.4.778/` in your files' folder (below), and the installed
 NGP stays as it is. Or use **Browse…** under Advanced to select the 7.4.778 DLL from your NGP package.
 
@@ -163,7 +162,7 @@ ReRBR stands on the work of many people. Thank you.
 [gvrc.de](https://gvrc.de/NGP.html) hosts NGP and the NGP car packs.
 
 **RallySimFans.** The team that keeps RBR alive, and every car and stage author whose work players drive. The
-captions above credit the car models and the RallySimFans stages shown.
+captions above credit the car models and the community stages shown.
 
 **Plugins and projects we learned from.**
 - RBRHUD by Towerbrah: the cockpit dials are drawn from its gauge data.

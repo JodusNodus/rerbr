@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use rbr_formats::data::Data;
-use rbr_formats::rsf::{codriver, pacenotes};
+use rbr_formats::pacenote::{codriver, notes as pacenotes};
 use rbr_sound::custom_codriver::{stage_notes, Choice, CustomCoDriver, DEFAULT_RANGES, DEFAULT_STYLE};
 use rbr_sound::voice::{Command, Speech};
 
