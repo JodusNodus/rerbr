@@ -109,6 +109,8 @@ pub struct StartLineContext {
     /// The race-host vtable slot 0x13 result (`CPC_TrackLoaderDaemon::Vf4C` 0x467930: the map `InitDemo` started,
     /// e.g. 54 for Tanner); read only when the menu host is nonzero and the state is not 10.
     pub race_host_result: u32,
+    /// Ours: the jump start is armed whatever the map number (a BTB stage; the original's BTB stage is map 41).
+    pub jump_start_forced: bool,
     /// `E59Host90::M00565470()` result.
     pub event_state: i32,
 }
@@ -135,7 +137,9 @@ impl StartLineContext {
         let menu_host_active = self.game_host_result == 0 && self.menu_host_result != 0;
         StartLineEffects {
             warn_in_start_scene: menu_host_active && self.application_state == 10,
-            jump_start: menu_host_active && self.application_state != 10 && self.race_host_result % 10 < 8,
+            jump_start: menu_host_active
+                && self.application_state != 10
+                && (self.jump_start_forced || self.race_host_result % 10 < 8),
             clear_menu_flag: self.game_host_result == 1,
             activate_ghost_camera: self.event_state == 7,
             clear_ghost_flag: self.event_state == 7,
@@ -483,6 +487,7 @@ mod tests {
             menu_host_result: 1,
             application_state: 10,
             race_host_result: 17,
+            jump_start_forced: false,
             event_state: 7,
         };
         let (_, events) = ticker(&[key(TAG_START, 0, 10.0)]).tick(f);
@@ -504,6 +509,16 @@ mod tests {
             }
         };
         assert_eq!([jump(1, 54), jump(1, 17), jump(1, 18), jump(1, 39)], [true, true, false, false]);
+        let forced = StartLineContext {
+            application_state: 1,
+            race_host_result: 1_000_008,
+            jump_start_forced: true,
+            ..f.start_line
+        };
+        match ticker(&[key(TAG_START, 0, 10.0)]).tick(TickInput { start_line: forced, ..f }).1.as_slice() {
+            [MarkerEvent::StartLine(effects)] => assert!(effects.jump_start),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

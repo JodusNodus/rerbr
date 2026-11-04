@@ -66,6 +66,8 @@ pub struct Season {
     pub rows: Vec<Row>,
     pub nice: Vec<u32>,
     pub bad: Vec<u32>,
+    /// A BTB stage's season ([`Season::of_btb`]): the retail map whose `TrackSettings.ini` sections dress the rows.
+    pub sky: Option<u32>,
 }
 
 /// `StartGame`'s weather (`IRBRGame::ERBRWeatherType`).
@@ -135,7 +137,7 @@ impl Season {
                 Row { map: w(0), letter: w(1), cloud: w(2), cloud_letter: w(3), preset: w(4), wetness: w(5) }
             })
             .collect();
-        Season { rows, nice: list(nice), bad: list(bad) }
+        Season { rows, nice: list(nice), bad: list(bad), sky: None }
     }
 
     /// The 1.02 exe's table (`exe_data`) and `Root/misc.rbz`'s lists.
@@ -153,6 +155,23 @@ impl Season {
         };
         let (nice, bad) = (text("Misc/nice_w.ini")?, text("Misc/bad_w.ini")?);
         Ok(Season::parse(&table, &nice, &bad))
+    }
+
+    /// A BTB stage's season (ours): every row of retail map `sky` under the stage's own `number`, so its weathers are
+    /// that map's (good and bad, every variant). The stage has one set of files, variant M, whatever the row's: the
+    /// weather's letter is M ([`Season::letter`]), and the row's sky is `sky`'s section ([`Weather::section`]).
+    pub fn of_btb(retail: &Season, number: u32, sky: u32) -> Season {
+        let rows = retail.rows.iter().map(|row| Row { map: if row.map == sky { number } else { row.map }, ..*row });
+        Season { rows: rows.collect(), sky: Some(sky), ..retail.clone() }
+    }
+
+    /// The letter of the stage file `row` loads: its own, M for a BTB stage.
+    fn letter(&self, row: &Row) -> u32 {
+        if self.sky.is_some() {
+            0
+        } else {
+            row.letter
+        }
     }
 
     /// The rows of `map`, by row number.
@@ -213,7 +232,7 @@ impl Season {
         } else if bad.is_empty() {
             bad = nice.clone();
         }
-        Season { rows: rows.into_iter().map(|(row, _)| row).collect(), nice, bad }
+        Season { rows: rows.into_iter().map(|(row, _)| row).collect(), nice, bad, sky: None }
     }
 }
 
@@ -263,7 +282,7 @@ pub fn quick_race(season: &Season, map: u32, preset: Preset, draws: Draws) -> Re
     Ok(Weather {
         map,
         row: Some(row),
-        letter: r.letter,
+        letter: season.letter(&r),
         cloud: r.cloud,
         cloud_letter: r.cloud_letter,
         preset: r.preset,
@@ -336,9 +355,15 @@ impl Weather {
 
     /// The `TrackSettings.ini` section of the row's sky, light and fog (`<map><letter>_[<cloud letter>_]<weather>_<cloud>`,
     /// `rsf::WeatherRow::section_name`); `None` for map 4, which has no row.
-    pub fn section(&self) -> Option<String> {
-        self.row?;
-        rbr_formats::rsf::WeatherRow::section_name(self.map, self.letter, self.cloud_letter, self.preset, self.cloud)
+    pub fn section(&self, season: &Season) -> Option<String> {
+        let row = season.rows.get(self.row?)?;
+        rbr_formats::rsf::WeatherRow::section_name(
+            season.sky.unwrap_or(self.map),
+            row.letter,
+            self.cloud_letter,
+            self.preset,
+            self.cloud,
+        )
     }
 
     /// The collision load's wet meshes (collision list A) load: `Vf1c() == 2`.
@@ -379,7 +404,7 @@ impl Season {
     pub fn ghost_weather(&self, map: u32, words: &rbr_formats::ghost::Weather) -> Option<Weather> {
         let fits = |k: &usize| {
             let r = &self.rows[*k];
-            r.letter == words.track_letter && r.cloud == words.cloud && r.wetness.min(2) == words.wetness
+            self.letter(r) == words.track_letter && r.cloud == words.cloud && r.wetness.min(2) == words.wetness
         };
         let exact =
             |k: &usize| self.rows[*k].preset == words.weather && self.rows[*k].cloud_letter == words.cloud_letter;
@@ -388,7 +413,7 @@ impl Season {
         Some(Weather {
             map,
             row: Some(row),
-            letter: r.letter,
+            letter: self.letter(&r),
             cloud: r.cloud,
             cloud_letter: r.cloud_letter,
             preset: r.preset,
@@ -495,6 +520,25 @@ mod tests {
     }
 
     #[test]
+    fn a_btb_stage_has_a_retail_maps_rows_under_its_own_number() {
+        let retail = season();
+        let btb = Season::of_btb(&retail, 1_000_007, 20);
+        assert_eq!(btb.rows_of(20).count(), 0);
+        assert_eq!(btb.rows_of(1_000_007).collect::<Vec<_>>(), [0, 1, 2]);
+        assert_eq!(btb.rows_of(52).count(), 2, "other maps' rows stay");
+        // Good and bad: the retail map's own lists. One stage file (M) for every row; the sky is the retail map's.
+        let good = quick_race(&btb, 1_000_007, Preset::Good, Draws::default()).unwrap();
+        let bad = quick_race(&btb, 1_000_007, Preset::Bad, Draws { row: None, wear: 2 }).unwrap();
+        assert_eq!((good.row, good.stage()), (Some(0), "track-1000007_M".into()));
+        assert_eq!((bad.row, bad.stage(), bad.wet_meshes()), (Some(1), "track-1000007_M".into(), true));
+        let retail_sky = |preset| quick_race(&retail, 20, preset, Draws::default()).unwrap().section(&retail);
+        assert_eq!((good.section(&btb), bad.section(&btb)), (retail_sky(Preset::Good), retail_sky(Preset::Bad)));
+        // A ghost finds its row again by the file letter.
+        let words = bad.ghost_words(&btb);
+        assert_eq!(btb.ghost_weather(1_000_007, &words), Some(bad));
+    }
+
+    #[test]
     fn lists_stop_at_the_end_mark_and_the_dollar() {
         assert_eq!(list("1\n; c\n2 ;x\n123456\n3\n"), [1, 2]);
         assert_eq!(list("7\n$\n8\n"), [7]);
@@ -571,7 +615,7 @@ mod tests {
         for preset in [Preset::Good, Preset::Bad, Preset::Random] {
             let w = quick_race(&s, 68, preset, Draws { row: None, wear: 1 }).unwrap();
             assert_eq!((w.row, w.stage(), w.mat_words().1), (Some(1), "track-68_M".into(), "dry"));
-            assert_eq!(w.section().as_deref(), Some("68M_crisp_clear"));
+            assert_eq!(w.section(&s).as_deref(), Some("68M_crisp_clear"));
         }
         // A listed map keeps its listed row; a map with no table row still stops.
         assert_eq!(quick_race(&s, 20, Preset::Bad, Draws::default()).unwrap().row, Some(0));

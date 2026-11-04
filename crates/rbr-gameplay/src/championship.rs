@@ -340,7 +340,8 @@ mod tests {
     fn the_season_gives_the_stages_on_their_rows() {
         let info = |map, tod| season_dat::StageInfo { map, time_of_day: tod, tint_set: 0, hour: 8, minute: 15 };
         let row = |map, letter| weather::Row { map, letter, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0 };
-        let table = weather::Season { rows: vec![row(63, 3), row(63, 1), row(34, 2)], nice: vec![], bad: vec![] };
+        let table =
+            weather::Season { rows: vec![row(63, 3), row(63, 1), row(34, 2)], nice: vec![], bad: vec![], sky: None };
         let mut files = [info(63, 1); 7];
         files[2] = info(34, 1);
         let rallies = [season_dat::Rally {

@@ -190,6 +190,8 @@ pub struct Game {
     controls: ControlPath,
     /// The stage's finish zone.
     finish_zone: FinishZone,
+    /// The jump start is armed whatever the stage's number ([`Game::with_forced_jump_start`]).
+    jump_start_forced: bool,
 }
 
 impl Game {
@@ -227,12 +229,19 @@ impl Game {
             start_camera: None,
             controls: ControlPath::Quantized,
             finish_zone: FinishZone::load(None),
+            jump_start_forced: false,
         }
     }
 
     /// The stage's finish zone ([`FinishZone::load`] of its `.dls`; the original's default zone unless set).
     pub fn with_finish_zone(self, finish_zone: FinishZone) -> Self {
         Self { finish_zone, ..self }
+    }
+
+    /// Arms the jump start whatever the stage's number (ours: a BTB stage; the original plays it as map 41, which is
+    /// armed, and `race_host_result % 10 < 8` of its own number would arm only most of them).
+    pub fn with_forced_jump_start(self) -> Self {
+        Self { jump_start_forced: true, ..self }
     }
 
     /// The go from the camera's start orbit (`crate::camera_go`) instead of the host's [`FrameInput::camera_go`]: the
@@ -546,6 +555,7 @@ impl Game {
                 marker_input.start_line.menu_host_result = self.race_clock.counting_down() as i32;
                 marker_input.start_line.application_state = marker_state.value();
                 marker_input.start_line.race_host_result = self.stage.track();
+                marker_input.start_line.jump_start_forced = self.jump_start_forced;
                 marker_input.finish_to_menu = Mode(self.assist_settings.mode).finish_to_menu();
                 let ticker = std::mem::replace(&mut self.markers, MarkerTicker::from_keys(Vec::new()));
                 let (next, events) = ticker.tick(marker_input);

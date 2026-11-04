@@ -449,7 +449,7 @@ pub(crate) mod tests {
                 row(map, 3, 8, 0),
             ]);
         }
-        weather::Season { rows, nice: vec![], bad: vec![] }
+        weather::Season { rows, nice: vec![], bad: vec![], sky: None }
     }
 
     pub(crate) fn rallies() -> Vec<season_dat::Rally> {
