@@ -45,7 +45,7 @@ tests.
 | `RBR_NGP_PHYSICS` | an NGP 7.4.778 `physics.rbz` with NGP cars in slots 2, 4, 5 and 6 | below |
 | `RBR_NGP_DLL` | NGP 7.4.778's `Plugins/NGP.dll`, in place of the install's | the NGP package; the reader checks its SHA-256 |
 | `RBR_NGP` | a folder with `7.4.778/physics.rbz` and NGP car `.lsp` files under `cars-rsf/` | the NGP package and the car packs |
-| `RBR_RSF` | a RallySimFans install, or sample packs from one; only read | your own install |
+| `RBR_RSF` | the game folder in use when set (an unsaved developer override pairing the game data with sample community packs) | your own install |
 | `RBR_SAVES` | the `SavedGames` files 1.02 wrote: `pf<name>.rbr`, `.acm`, `pfresult.rst` | play 1.02 once (a new profile, no records) and copy the folder |
 
 **From your disc.** `DISC` is the retail disc's `.iso` or folder, `PATCH` the official 1.02 patch (`RBR_v102.zip` or
@@ -95,7 +95,7 @@ page.
 | `RBR_PATCH` | the 1.02 files |
 | Settings field `ngp_dll` (unsaved: `RBR_NGP_DLL`) | NGP's DLL. Empty, it follows the game folder's `Plugins/NGP.dll`; a missing or unsupported DLL blocks Start. With this and `ngp_physics` empty, a downloaded copy in the player's folder (`NGP 7.4.778/`) is used |
 | Settings field `ngp_physics` (unsaved: `RBR_NGP_PHYSICS`) | NGP's archive |
-| Settings field `rsf_root` (unsaved: `RBR_RSF`) | the game folder (a RallySimFans install has the cars and stages) |
+| `RBR_RSF` (unsaved, never saved) | the game folder in use when set, for pairing the game data with sample community packs |
 
 On Windows the launcher and the viewer open no console window. Started from Explorer or `cmd`, they write stderr to
 `rerbr.log` in the player's files folder, and stdout shows only when redirected (`rerbr.exe --list > list.txt`).

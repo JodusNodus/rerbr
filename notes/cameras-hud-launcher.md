@@ -60,6 +60,9 @@ Pages and policy in `crates/rbr-launcher/src/` (`main.rs` doc: command line, wea
 sources). Start runs the viewer with `rbr-standalone --live --boot` as child processes (`command.rs`).
 
 - The game's quality settings and music are not offered (user decisions).
+- One game folder (user decision 2026-11-04): everything is read from the game folder in use (`Paths::game_root`:
+  `RBR_RSF` when set, else the game data folder), its plugins and community content with it. A saved `rsf_root`
+  is ignored and dropped on save.
 - The co-driver is set up on the Settings page, not per drive (user decision 2026-10-29).
 - NGP: only 7.4.778 is read (`notes/ngp.md`). Settings' "Download NGP 7.4.778…" keeps its `NGP.dll` and
   `physics.rbz` in `<files>/NGP 7.4.778/` and writes no game folder, RSF's 7.5.779 or a plain 1.02 alike; the
