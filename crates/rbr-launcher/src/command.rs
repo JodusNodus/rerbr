@@ -306,6 +306,11 @@ impl ViewerLaunch {
             tyre.to_string(),
             "--stage".into(),
             stage.name.clone(),
+        ]);
+        if pack.is_none() {
+            args.extend(["--car".into(), car.index.to_string()]);
+        }
+        args.extend([
             "--data".into(),
             data.display().to_string(),
             "--callout-distance".into(),
@@ -333,9 +338,8 @@ impl ViewerLaunch {
         if let Some(path) = setup {
             args.extend(["--setup".into(), path.display().to_string()]);
         }
-        match pack {
-            Some(pack) => args.extend(["--rsf-car".into(), pack]),
-            None => args.extend(["--car".into(), car.index.to_string()]),
+        if let Some(pack) = pack {
+            args.extend(["--rsf-car".into(), pack]);
         }
         args
     }
