@@ -377,6 +377,48 @@ fn the_ride_ends_on_the_brief_s_confirm() {
     .unwrap();
 }
 
+/// Lessons driven headless to their end by the autopilot (`--autopilot --boot --school --saves`, as
+/// `scripts/school-sweep.sh` drives them): lesson 0 ends standing in its box on the driveline, lesson 2 in its stop
+/// box with a verdict, and each pass reaches the profile's school results.
+#[test]
+fn the_autopilot_drives_lessons_to_their_saved_verdicts() {
+    use rbr_school::Lesson;
+    let (Some(install), Some(patch), Some(ngp)) = (
+        std::env::var_os("RBR_DATA").map(PathBuf::from),
+        std::env::var_os("RBR_PATCH").map(PathBuf::from),
+        std::env::var_os("RBR_NGP_PHYSICS").map(PathBuf::from),
+    ) else {
+        eprintln!("RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS unset; skipped");
+        return;
+    };
+    on_big_stack(move || {
+        let data = Data::new(install, Some(patch));
+        let season = Season::load(&data).unwrap();
+        for index in [0, 2] {
+            let lesson = Lesson::new(index).unwrap();
+            let track = format!("track-{}_M", lesson.map());
+            let stage = stage_data(&data, &track, 5).unwrap();
+            let weather = weather::quick_race(&season, lesson.map(), Preset::Good, Draws::default()).unwrap();
+            let race = boot::Race::quick_race(lesson.map(), 5, 3, weather, ngp.clone()).in_school(lesson);
+            let mut live = Live::boot(&data, &track, &race, &stage, MarkerSettings::default(), false).unwrap();
+            let dir = std::env::temp_dir().join(format!("rbr-school-autopilot-{}-{index}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            live.set_saves(stage.saves(&dir, Some("school")).unwrap());
+            let neutral = payload(&QuantizedControl::default().car_control(), 0);
+            let drove =
+                crate::autopilot::drive(live, &[], neutral, &stage, 150_000, None, None, &dir.join("drive.bin"))
+                    .unwrap();
+            assert_eq!(drove.end, "the race's end", "lesson {index}");
+            let file = rbr_formats::saves::SaveDir { path: dir.clone() }.load_profile("school").unwrap();
+            let grades = file.current().or(file.profiles.list.first()).unwrap().school;
+            assert!(grades[index as usize] > 0, "lesson {index}'s pass saved: {grades:?}");
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+    })
+    .unwrap();
+}
+
 /// A payload of several periods (`Input::frames`, a viewer behind real time) is one game frame of their wall
 /// time: the same answers as a process paced at that time a payload, frames of 15 to 18 steps once driving.
 #[test]
