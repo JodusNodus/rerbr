@@ -482,7 +482,8 @@ type Detaching = (isize, Vec<PartPose>);
 
 /// The live process (`--live`) and its drive: the first frame, then the `--at` frames, with the frames that first list
 /// a detached part, so that it starts where its body left the car. A screenshot steps the process in lockstep
-/// (`Live::lockstep`), a window drives it in real time.
+/// (`Live::lockstep`), a window drives it in real time. A replay's screenshot reads the replay back to back in real
+/// time (`--replay-pace free`): lockstep's `--frames -` takes no `--replay` beside it.
 /// The live command with the start board's clock at the hour the stage is drawn at (`--start-time`), unless it names
 /// one or races a championship stage (the season's clock).
 fn with_start_time(command: &[String], clock: Option<&relight::Clock>) -> Vec<String> {
@@ -500,8 +501,15 @@ fn start_live(
     data: &Data,
     command: &[String],
 ) -> Result<(Live, Drive, Vec<Detaching>, Option<Demo>), String> {
+    // Watching a replay serves its frames, not the viewer's payloads, so lockstep's `--frames -` (which takes no
+    // `--replay`) cannot step it: the replay runs back to back, its answers read to `--at`.
+    let replay = command.iter().any(|a| a == "--replay");
+    if replay && args.at_drive.is_some() {
+        return Err("--at-drive takes no --replay (the replay drives)".to_owned());
+    }
     let mut process = match &args.screenshot {
-        Some(_) => Live::lockstep(command)?,
+        Some(_) if !replay => Live::lockstep(command)?,
+        Some(_) => Live::spawn(command)?,
         None if args.at.is_some() || args.at_drive.is_some() => {
             return Err("--at and --at-drive with --live need --screenshot".to_owned());
         }
@@ -538,12 +546,29 @@ fn start_live(
     }
     // `--at N`: N more frames with no keys pressed, before the screenshot; with `--at-drive` each frame sends the
     // recording's control of the step it feeds, so the first one goes through the countdown's frames, which step nothing.
+    // A replay's `--at N` reads its next N answers instead: the replay drives, each answer standing for its periods.
+    let (mut stepped, mut seen, mut detaching) = (0, Vec::new(), Vec::new());
+    if replay {
+        if args.at.unwrap_or(0) > 0 {
+            process.resume();
+        }
+        for k in 0..args.at.unwrap_or(0) {
+            let Some((frame, _)) = process.next_answer() else {
+                return Err(format!("the replay ends before --at {} (after {k} frames)", args.at.unwrap_or(0)));
+            };
+            drive.extend(process.parse(&frame)?);
+            if process.detached.iter().any(|p| !seen.contains(&p.part)) {
+                seen.extend(process.detached.iter().map(|p| p.part));
+                detaching.push((k as isize + 1, process.detached.clone()));
+            }
+        }
+        return Ok((process, drive, detaching, demo));
+    }
     let recorded = match &args.at_drive {
         Some(path) => recorded_controls(path)?,
         None => Vec::new(),
     };
     let neutral = Controls::default().payload();
-    let (mut stepped, mut seen, mut detaching) = (0, Vec::new(), Vec::new());
     for k in 0..args.at.unwrap_or(0) {
         let frame = process.step_payload_periods(recorded.get(stepped).unwrap_or(&neutral), args.at_periods)?;
         stepped += rbr_recording::Frames::new(&frame).map(|f| f.map_or(0, |f| f.substeps as usize)).sum::<usize>();
