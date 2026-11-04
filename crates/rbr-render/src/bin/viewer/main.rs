@@ -59,8 +59,9 @@
 //! degrees (default 50); `--chase-fov DEG` sets the chase view's (same range, default 65). The vertical one follows from the window's aspect.
 //!
 //! `--car <name>` (the car's `Cars.ini` folder, for example `XSARA`) puts the car at the stage start.
-//! `--rsf-car <pack|id>` puts an RSF car (`rbr_formats::rsf`: a pack path, or an id or pack name of the install
-//! `RBR_RSF`) into slot 5 as RSF does, and makes its model folder the `--car`; give it before `--live`. A live
+//! `--rsf-car <id|pack>` puts an RSF car (an id or pack name of the install `RBR_RSF`) into slot 5 as RSF does, and
+//! makes its model folder the `--car`; `--car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]`
+//! puts a pack car the launcher resolved (`--car-model` its model's `.sgc` path); give it before `--live`. A live
 //! drive then plays the car's own FMOD bank (`AudioFMOD/<audio>.bank`, `rbr_sound::fmod`) when it has one.
 //! Without a stage the car is shown alone under an orbit camera: drag with the left button to turn
 //! around it, W/S to zoom.
@@ -235,9 +236,16 @@ fn run() -> Result<(), String> {
         eprintln!("viewer: {}", selected.describe());
         args.car.get_or_insert_with(|| selected.folder().to_owned());
         fmod_bank = selected.audio_bank;
-        args.rsf_install = Some(selected.root.clone());
-        args.rsf_car_id = Some(selected.car.id);
+        args.pack_car.key.get_or_insert_with(|| format!("rsf-{}", selected.car.id));
+        args.pack_car.model = Some(rbr_formats::car_pack::file_under(&selected.root, &selected.model.entry.file_name));
         data = selected.data;
+    } else if args.pack_car.pack.is_some() {
+        let resolved = args.pack_car.resolve(data)?;
+        let key = args.pack_car.key.as_deref().unwrap_or("pack car");
+        eprintln!("viewer: {}", resolved.describe(key, None));
+        args.car.get_or_insert_with(|| resolved.folder().to_owned());
+        fmod_bank = resolved.bank;
+        data = resolved.data;
     }
     args.ffb.rotation = args.ffb.rotation_for(args.car_lock);
     if let Some(dir) = &args.perf_log {

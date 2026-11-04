@@ -2,15 +2,13 @@
 //! downloads the packs and adds them through [`add_downloads`]: every `<Car> - NGP Physics.zip` with its
 //! `<Model> - Model.7z` and its `<Car> - banks.7z`.
 //!
-//! The cars go into `cars/` in the player's folder (`home`), laid out as an RSF install so that `rbr_formats::rsf` reads them:
+//! The cars go into `cars/` in the player's folder (`home`):
 //! - `cars/rsfdata/cars/<pack>/`: the physics pack, unpacked (the zip's `<pack>/` folder, else the download's name
 //!   with `_` for spaces);
 //! - `cars/Cars/<model>/`: the model, the `.7z`'s folder holding a `.sgc`;
 //! - `cars/AudioFMOD/`: the car's FMOD sound banks, the `.7z`'s folder holding a `.bank`;
-//! - `cars/rsfdata/cache/cars.json` and `carmodels.json`: the list, written by us from the packs' text files (the
-//!   name, the revision, the sound bank; ids of our own, so the launcher does not match them with RSF's ghosts or
-//!   gearboxes), and `cargroups.json` with `cars_data.json`: each car's group (gvrc.de's list category, as RSF names
-//!   it) and drive train, the fields the car browser lists and filters by.
+//! - `cars/cars.ini`: the list, one section per pack folder (the name, the revision, the bank, the model, the group
+//!   and drive train; ids of our own, so the launcher does not match them with RSF's ghosts or gearboxes).
 //!
 //! A pack's model is the download, or one added before, whose name starts the car's download name, the pack's title
 //! or its "3D model" credit, the longest such (`Mitsubishi Lancer Evo IX - Model.7z` for the Evo IX N4 and R4). A
@@ -23,6 +21,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
+use rbr_formats::car_pack;
 use rbr_formats::rsf;
 
 use crate::archive::safe_folder;
@@ -40,7 +39,7 @@ pub(crate) const BANKS: &str = " - banks.7z";
 /// The folder in `cars/` with the sound banks, as RSF's.
 const AUDIO: &str = "AudioFMOD";
 /// The retail car whose model a pack without one is drawn with (ours: RSF names one per model; the slot's own).
-pub const STAND_IN: u32 = rsf::SLOT;
+pub const STAND_IN: u32 = car_pack::SLOT;
 /// [`STAND_IN`]'s name, for the player.
 const STAND_IN_NAME: &str = "Subaru Impreza 2003";
 
@@ -205,104 +204,185 @@ fn within(path: &[String], prefix: &[String]) -> bool {
     path.len() > prefix.len() && path.iter().zip(prefix).all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
-/// The added cars' list in `cars` (none without one).
-pub fn list(cars: &Path) -> (Vec<rsf::Car>, Vec<rsf::Model>) {
-    match rsf::Install::open(cars) {
-        Ok(install) => (install.cars, install.models),
-        Err(_) => (Vec::new(), Vec::new()),
-    }
+/// An added car: its name, its physics pack folder, and what it drives with. Stored in `cars/cars.ini`, one
+/// section per pack folder; the id stays with the pack, so its saved keys (`rsf-<id>`) survive rewrites and re-adds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredCar {
+    pub id: u32,
+    pub name: String,
+    pub pack: String,
+    pub group: Option<String>,
+    pub drive_train: Option<String>,
+    pub revision: String,
+    /// The FMOD bank's name (`AudioFMOD/<audio>.bank`), when it has one.
+    pub audio: Option<String>,
+    pub model: StoredModel,
 }
 
-/// `text` as a JSON string.
-fn json(text: &str) -> String {
-    let mut out = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out + "\""
+/// What an added car is drawn with: its model folder and file, or the retail slot standing in for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoredModel {
+    Files { folder: String, file: String, name: String },
+    StandIn { slot: u32 },
 }
 
-/// Writes the list RSF's reader takes (`rsfdata/cache/cargroups.json`, `cars.json`, `carmodels.json` and
-/// `cars_data.json`), dropping the models no car uses and their folders. Each car keeps its `base_group_id` (one
-/// row per distinct group name, ids of our own) and its `cars_data.json` drive train, so both survive a rewrite.
-pub(crate) fn write_list(cars_dir: &Path, cars: &[rsf::Car], models: &[rsf::Model]) -> Result<(), Fail> {
-    let used: Vec<&rsf::Model> = models.iter().filter(|m| cars.iter().any(|c| c.model == m.id)).collect();
-    for model in models.iter().filter(|m| !used.iter().any(|u| u.path.eq_ignore_ascii_case(&m.path))) {
-        if let Some(folder) = safe_folder(&model.path) {
-            let _ = fs::remove_dir_all(cars_dir.join("Cars").join(folder));
+/// The added cars' list in `cars` (none without one): `cars.ini`, migrating the old RSF-format JSON cache
+/// (`cars/rsfdata/cache/*.json`, ours, from when the list was written for RSF's reader) when it is there instead.
+/// The migration keeps the ids and deletes the JSON files.
+pub fn list(cars: &Path) -> Vec<StoredCar> {
+    migrate(cars);
+    read_ini(cars)
+}
+
+/// `cars.ini`'s cars, in file order; bad sections are left out with the reason on stderr.
+fn read_ini(cars_dir: &Path) -> Vec<StoredCar> {
+    let path = cars_dir.join("cars.ini");
+    let Ok(text) = fs::read_to_string(&path) else { return Vec::new() };
+    let Ok(sections) = rbr_formats::ini::parse(&text) else { return Vec::new() };
+    let mut cars = Vec::new();
+    for section in sections {
+        match stored_car(&section) {
+            Ok(car) => cars.push(car),
+            Err(e) => eprintln!("launcher: {} [{}]: {e}", path.display(), section.name),
         }
     }
-    let rows = |rows: Vec<String>| format!("[\n{}\n]\n", rows.join(",\n"));
-    let mut groups: Vec<&str> = cars.iter().filter_map(|c| c.group.as_deref()).filter(|g| !g.is_empty()).collect();
-    groups.sort();
-    groups.dedup();
-    let groups_json = rows(
-        groups.iter().enumerate().map(|(k, name)| format!("{{\"id\":{},\"name\":{}}}", k + 1, json(name))).collect(),
-    );
-    let cars_json = rows(
-        cars.iter()
-            .map(|c| {
-                let (id, name, path, rev) = (c.id, json(&c.name), json(&c.pack), json(&c.revision));
-                let group = c
-                    .group
-                    .as_deref()
-                    .filter(|g| !g.is_empty())
-                    .and_then(|g| groups.iter().position(|h| *h == g))
-                    .map(|k| format!(",\"base_group_id\":{}", k + 1))
-                    .unwrap_or_default();
-                let audio = c.audio.as_deref().map(|a| format!(",\"audio\":{}", json(a))).unwrap_or_default();
-                format!(
-                    "{{\"id\":{id},\"name\":{name},\"path\":{path},\"carmodel_id\":{},\"rev\":{rev}{group}{audio}}}",
-                    c.model
-                )
-            })
-            .collect(),
-    );
-    let models_json = rows(
-        used.iter()
-            .map(|m| {
-                let (id, name, path, file) = (m.id, json(&m.name), json(&m.path), json(&m.filename));
-                format!(
-                    "{{\"id\":{id},\"name\":{name},\"path\":{path},\"filename\":{file},\"fallback\":{}}}",
-                    m.fallback
-                )
-            })
-            .collect(),
-    );
-    let data_json = rows(
-        cars.iter()
-            .filter_map(|c| {
-                let drive = c.drive_train.as_deref().filter(|d| !d.is_empty())?;
-                Some(format!("{{\"car_id\":{},\"drive_train\":{}}}", c.id, json(drive)))
-            })
-            .collect(),
-    );
-    let cache = cars_dir.join("rsfdata").join("cache");
-    fs::create_dir_all(&cache).map_err(|e| format!("{}: {e}", cache.display()))?;
-    for (name, text) in [
-        ("cargroups.json", groups_json),
-        ("carmodels.json", models_json),
-        ("cars.json", cars_json),
-        ("cars_data.json", data_json),
-    ] {
-        let (temp, path) = (cache.join(format!(".{name}.new")), cache.join(name));
-        fs::write(&temp, text)
-            .and_then(|()| fs::rename(&temp, &path))
-            .map_err(|e| format!("{}: {e}", path.display()))?;
+    cars
+}
+
+/// The car of a `cars.ini` section (named by its pack folder).
+fn stored_car(section: &rbr_formats::ini::Section) -> Result<StoredCar, String> {
+    let pack = section.name.clone();
+    let value = |key: &str| section.get(key).map(str::to_owned);
+    let id: u32 = section.get("id").ok_or("no id")?.parse().map_err(|_| "bad id")?;
+    let model = match (value("model"), value("standin")) {
+        (Some(files), _) => {
+            let (folder, file) = files.split_once('/').ok_or("bad model: want folder/file")?;
+            if folder.is_empty() || file.is_empty() {
+                return Err("bad model: want folder/file".into());
+            }
+            StoredModel::Files {
+                folder: folder.to_owned(),
+                file: file.to_owned(),
+                name: value("model_name").unwrap_or_default(),
+            }
+        }
+        (None, Some(slot)) => {
+            StoredModel::StandIn { slot: slot.parse().map_err(|_| "bad standin: want a retail slot")? }
+        }
+        (None, None) => return Err("no model or standin".into()),
+    };
+    Ok(StoredCar {
+        id,
+        name: value("name").filter(|n| !n.is_empty()).unwrap_or_else(|| pack.clone()),
+        pack,
+        group: value("group").filter(|g| !g.is_empty()),
+        drive_train: value("drive").filter(|d| !d.is_empty()),
+        revision: value("revision").unwrap_or_default(),
+        audio: value("bank").filter(|b| !b.is_empty()),
+        model,
+    })
+}
+
+/// Writes the added cars to `cars/cars.ini` (one section per pack folder), dropping the model folders no car
+/// uses. Each car keeps its id, so its saved keys survive a rewrite.
+pub fn write_cars(cars_dir: &Path, cars: &[StoredCar]) -> Result<(), Fail> {
+    let used: Vec<&str> = cars
+        .iter()
+        .filter_map(|c| match &c.model {
+            StoredModel::Files { folder, .. } => Some(folder.as_str()),
+            StoredModel::StandIn { .. } => None,
+        })
+        .collect();
+    for dir in model_folders(cars_dir) {
+        if !used.iter().any(|u| u.eq_ignore_ascii_case(&dir)) {
+            let _ = fs::remove_dir_all(cars_dir.join("Cars").join(dir));
+        }
     }
-    Ok(())
+    let mut text = String::from("; ReRBR's added cars: one section per physics pack folder in rsfdata/cars/.\n");
+    for car in cars {
+        text.push_str(&format!("\n[{}]\n", car.pack));
+        let mut row = |key: &str, value: &str| text.push_str(&format!("{key} = {value}\n"));
+        row("name", &car.name);
+        row("id", &car.id.to_string());
+        if let Some(group) = car.group.as_deref() {
+            row("group", group);
+        }
+        if let Some(drive) = car.drive_train.as_deref() {
+            row("drive", drive);
+        }
+        if !car.revision.is_empty() {
+            row("revision", &car.revision);
+        }
+        if let Some(audio) = car.audio.as_deref() {
+            row("bank", audio);
+        }
+        match &car.model {
+            StoredModel::Files { folder, file, name } => {
+                row("model", &format!("{folder}/{file}"));
+                if !name.is_empty() {
+                    row("model_name", name);
+                }
+            }
+            StoredModel::StandIn { slot } => row("standin", &slot.to_string()),
+        }
+    }
+    let (temp, path) = (cars_dir.join(".cars.ini.new"), cars_dir.join("cars.ini"));
+    fs::create_dir_all(cars_dir).map_err(|e| format!("{}: {e}", cars_dir.display()))?;
+    fs::write(&temp, text).and_then(|()| fs::rename(&temp, &path)).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The model folders in `cars/Cars/`.
+fn model_folders(cars_dir: &Path) -> Vec<String> {
+    fs::read_dir(cars_dir.join("Cars"))
+        .map(|entries| {
+            entries.filter_map(|e| e.ok()?.file_name().into_string().ok()).filter(|n| !n.starts_with('.')).collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Converts the old RSF-format JSON cache (`cars/rsfdata/cache/cars.json`, `carmodels.json`, `cargroups.json` and
+/// `cars_data.json`, ours, from when the added cars were listed for RSF's reader) to `cars/cars.ini` once, keeping
+/// the ids, then deletes the JSON files. Nothing happens when `cars.ini` is there or the cache is not.
+fn migrate(cars_dir: &Path) {
+    if cars_dir.join("cars.ini").exists() || !cars_dir.join("rsfdata").join("cache").join("cars.json").exists() {
+        return;
+    }
+    let Ok(install) = rsf::Install::open(cars_dir) else { return };
+    let stored: Vec<StoredCar> = install
+        .cars
+        .iter()
+        .map(|c| {
+            let model = match install.models.iter().find(|m| m.id == c.model) {
+                Some(m) => {
+                    StoredModel::Files { folder: m.path.clone(), file: m.filename.clone(), name: m.name.clone() }
+                }
+                None => StoredModel::StandIn { slot: STAND_IN },
+            };
+            StoredCar {
+                id: c.id,
+                name: c.name.clone(),
+                pack: c.pack.clone(),
+                group: c.group.clone(),
+                drive_train: c.drive_train.clone(),
+                revision: c.revision.clone(),
+                audio: c.audio.clone(),
+                model,
+            }
+        })
+        .collect();
+    if write_cars(cars_dir, &stored).is_err() {
+        return;
+    }
+    for name in ["cargroups.json", "carmodels.json", "cars.json", "cars_data.json"] {
+        let _ = fs::remove_file(cars_dir.join("rsfdata").join("cache").join(name));
+    }
 }
 
 /// Fills in the group and drive train gvrc.de's list names for added cars that lack them: the cars whose pack
 /// folder is an entry's pack folder (ignoring case) take its normalized category and its drive. Rewrites the list
 /// only when a car gained something, and says whether it did.
 pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
-    let (mut cars, models) = list(cars_dir);
+    let mut cars = list(cars_dir);
     let mut changed = false;
     for car in &mut cars {
         let Some(entry) = entries.iter().find(|e| e.pack.eq_ignore_ascii_case(&car.pack)) else {
@@ -316,7 +396,7 @@ pub fn backfill(cars_dir: &Path, entries: &[Entry]) -> Result<bool, Fail> {
         }
     }
     if changed {
-        write_list(cars_dir, &cars, &models)?;
+        write_cars(cars_dir, &cars)?;
     }
     Ok(changed)
 }
@@ -356,12 +436,12 @@ fn about_value<'a>(about: &'a str, keys: &[&str]) -> Option<&'a str> {
     })
 }
 
-/// Adds `download` to `cars_dir`'s list (`cars`, `models`), unpacking through `temp`: its car's name and model folder.
+/// Adds `download` to `cars_dir`'s list, unpacking through `temp`: its car's name and model folder.
 fn add_one(
     cars_dir: &Path,
     temp: &Path,
     download: &Download,
-    list: &mut (Vec<rsf::Car>, Vec<rsf::Model>),
+    cars: &mut Vec<StoredCar>,
     count: &mut Counter,
 ) -> Result<(String, Option<String>), Fail> {
     let physics = PhysicsZip::open(&download.physics)?;
@@ -369,59 +449,53 @@ fn add_one(
     let banks = download.banks.as_deref().map(Archive::banks).transpose()?;
     let staged = temp.join("pack");
     physics.extract(&staged, count)?;
-    let pack = rsf::Pack::open(&staged)?;
+    let pack = car_pack::Pack::open(&staged)?;
     let about = pack.about().unwrap_or_default();
     let title = pack.title().filter(|t| !t.is_empty()).unwrap_or_else(|| physics.folder.replace('_', " "));
     let revision = about_value(&about, &["revision"]).unwrap_or_default().to_owned();
-    let (cars, models) = list;
     let next = |ids: &mut dyn Iterator<Item = u32>| ids.max().map_or(1, |m| m + 1);
-    let model_id = match &model {
+    let stored = match &model {
         Some(archive) => {
             let folder = archive.folder()?;
             archive.extract(&temp.join("model"), count)?;
             replace(&temp.join("model"), &cars_dir.join("Cars").join(&folder))?;
-            let name = download.model.as_deref().and_then(|p| strip_end(p.file_name()?.to_str()?, MODEL));
-            let row = rsf::Model {
-                id: 0,
-                name: name.unwrap_or(&folder).to_owned(),
-                path: folder.clone(),
-                filename: archive.filename.clone(),
-                fallback: STAND_IN,
-            };
-            match models.iter_mut().find(|m| m.path.eq_ignore_ascii_case(&folder)) {
-                Some(m) => {
-                    *m = rsf::Model { id: m.id, ..row };
-                    m.id
-                }
-                None => {
-                    let id = next(&mut models.iter().map(|m| m.id));
-                    models.push(rsf::Model { id, ..row });
-                    id
-                }
-            }
+            let name = download
+                .model
+                .as_deref()
+                .and_then(|p| strip_end(p.file_name()?.to_str()?, MODEL))
+                .unwrap_or(&folder)
+                .to_owned();
+            StoredModel::Files { folder, file: archive.filename.clone(), name }
         }
         None => {
-            // A model added before, else the stand-in's row: a folder that is never there.
+            // A model added before, else the retail stand-in.
             let download_name = download.physics.file_name().and_then(|n| strip_end(n.to_str()?, PHYSICS));
             let credit = about_value(&about, &["3D model", "model"]).unwrap_or_default();
-            let real: Vec<&rsf::Model> =
-                models.iter().filter(|m| cars_dir.join("Cars").join(&m.path).is_dir()).collect();
-            let names: Vec<&str> = real.iter().map(|m| m.name.as_str()).collect();
+            let mut real: Vec<&StoredModel> = cars
+                .iter()
+                .filter_map(|c| match &c.model {
+                    StoredModel::Files { folder, .. } if cars_dir.join("Cars").join(folder).is_dir() => Some(&c.model),
+                    _ => None,
+                })
+                .collect();
+            real.sort_by_key(|m| match m {
+                StoredModel::Files { folder, .. } => folder.clone(),
+                StoredModel::StandIn { .. } => String::new(),
+            });
+            real.dedup_by_key(|m| match m {
+                StoredModel::Files { folder, .. } => folder.clone(),
+                StoredModel::StandIn { .. } => String::new(),
+            });
+            let names: Vec<&str> = real
+                .iter()
+                .map(|m| match m {
+                    StoredModel::Files { name, .. } => name.as_str(),
+                    StoredModel::StandIn { .. } => "",
+                })
+                .collect();
             match pick_model(&[download_name.unwrap_or_default(), &title, credit], &names) {
-                Some(k) => real[k].id,
-                None => {
-                    let id = next(&mut models.iter().map(|m| m.id));
-                    let missing = format!("{} (no model)", physics.folder);
-                    let row = rsf::Model {
-                        id,
-                        name: missing.clone(),
-                        path: missing.clone(),
-                        filename: missing,
-                        fallback: STAND_IN,
-                    };
-                    models.push(row);
-                    id
-                }
+                Some(k) => real[k].clone(),
+                None => StoredModel::StandIn { slot: STAND_IN },
             }
         }
     };
@@ -438,25 +512,28 @@ fn add_one(
         ),
         None => (download.group.clone(), download.drive_train.clone()),
     };
-    let row = rsf::Car {
+    let row = StoredCar {
         id: 0,
         name: title.clone(),
         pack: physics.folder.clone(),
         group,
-        model: model_id,
+        model: stored,
         revision,
         audio: banks.map(|b| b.filename),
         drive_train,
     };
     match cars.iter_mut().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)) {
-        Some(c) => *c = rsf::Car { id: c.id, ..row },
+        Some(c) => *c = StoredCar { id: c.id, ..row },
         None => {
             let id = next(&mut cars.iter().map(|c| c.id));
-            cars.push(rsf::Car { id, ..row });
+            cars.push(StoredCar { id, ..row });
         }
     }
-    write_list(cars_dir, cars, models)?;
-    let folder = models.iter().find(|m| m.id == model_id).map(|m| m.path.clone());
+    write_cars(cars_dir, cars)?;
+    let folder = match &cars.iter().find(|c| c.pack.eq_ignore_ascii_case(&physics.folder)).map(|c| &c.model) {
+        Some(StoredModel::Files { folder, .. }) => Some(folder.clone()),
+        _ => None,
+    };
     Ok((title, folder.filter(|f| cars_dir.join("Cars").join(f).is_dir())))
 }
 
@@ -494,10 +571,10 @@ pub fn add_downloads(
 
 /// Removes the added car whose pack folder is `pack` from `cars_dir`, and its model when no other car uses it.
 pub fn remove(cars_dir: &Path, pack: &str) -> Result<(), Fail> {
-    let (mut cars, models) = list(cars_dir);
+    let mut cars = list(cars_dir);
     let audio = cars.iter().find(|c| c.pack.eq_ignore_ascii_case(pack)).and_then(|c| c.audio.clone());
     cars.retain(|c| !c.pack.eq_ignore_ascii_case(pack));
-    write_list(cars_dir, &cars, &models)?;
+    write_cars(cars_dir, &cars)?;
     // Its sound banks, when no other car plays them.
     if let Some(name) =
         audio.filter(|a| !cars.iter().any(|c| c.audio.as_ref() == Some(a))).and_then(|a| safe_folder(&a))
@@ -549,7 +626,7 @@ pub struct Adding {
 impl Adding {
     /// The added cars of `cars_dir`.
     pub fn new(cars_dir: &Path) -> Adding {
-        let cars = list(cars_dir).0.into_iter().map(|c| (c.name, c.pack)).collect();
+        let cars = list(cars_dir).into_iter().map(|c| (c.name, c.pack)).collect();
         Adding { cars, ..Adding::default() }
     }
 }
@@ -662,7 +739,6 @@ mod tests {
         assert_eq!(safe_folder(".hidden"), None);
         assert_eq!(about_value("Evo\r\nrevision            8 / 2019-10-08\r\n", &["revision"]), Some("8 / 2019-10-08"));
         assert_eq!(about_value("3D model\t\tKUBRT v1.1\n", &["3D model", "model"]), Some("KUBRT v1.1"));
-        assert_eq!(json("a \"b\" \\ \u{1}"), "\"a \\\"b\\\" \\\\ \\u0001\"");
     }
 
     /// A physics pack download: `<Car> - NGP Physics.zip` holding `<pack>/` (or its files at the top).
@@ -694,7 +770,7 @@ mod tests {
         out.finish().unwrap();
     }
 
-    /// Two packs sharing one model and one without a model are added, listed by RSF's reader, added again (replaced,
+    /// Two packs sharing one model and one without a model are added, listed in `cars.ini`, added again (replaced,
     /// same ids) and removed (the shared model stays until its last car goes).
     #[test]
     fn packs_are_added_listed_and_removed() {
@@ -733,8 +809,8 @@ mod tests {
         assert!(line.contains("Not added: Broken - NGP Physics.zip: "), "{line}");
         assert!(progress.lock().unwrap().windows(2).all(|w| w[0] <= w[1]));
 
-        let install = rsf::Install::open(&cars).unwrap();
-        let names: Vec<(&str, &str)> = install.cars.iter().map(|c| (c.name.as_str(), c.pack.as_str())).collect();
+        let found = list(&cars);
+        let names: Vec<(&str, &str)> = found.iter().map(|c| (c.name.as_str(), c.pack.as_str())).collect();
         assert_eq!(
             names,
             [
@@ -743,33 +819,35 @@ mod tests {
                 ("Mitsubishi Lancer Evo IX R4", "Mitsubishi_Lancer_Evo_IX_R4"),
             ]
         );
-        assert_eq!(install.cars[1].revision, "3 / 2024-12-10");
-        // The downloads' group and drive train are on the cars, and read back through the list.
-        assert_eq!(install.cars[1].group.as_deref(), Some("Group N4"));
-        assert_eq!(install.cars[1].drive_train.as_deref(), Some("4WD"));
-        assert_eq!(install.cars[2].group.as_deref(), Some("Group R4"));
-        assert_eq!(list(&cars).0[1].group.as_deref(), Some("Group N4"));
-        let evo = install.pack(&install.cars[1]).unwrap();
+        assert_eq!(found[1].revision, "3 / 2024-12-10");
+        // The downloads' group and drive train are on the cars.
+        assert_eq!(found[1].group.as_deref(), Some("Group N4"));
+        assert_eq!(found[1].drive_train.as_deref(), Some("4WD"));
+        assert_eq!(found[2].group.as_deref(), Some("Group R4"));
+        let evo = car_pack::Pack::open(&cars.join("rsfdata/cars/Evo_IX_N4_ngp6")).unwrap();
         assert_eq!(evo.read("setups/d_gravel.lsp").unwrap(), b"x");
-        assert_eq!(evo.path(), cars.join("rsfdata/cars/Evo_IX_N4_ngp6"));
-        assert_eq!(install.cars[1].model, install.cars[2].model);
-        let model = |c: &rsf::Car| install.model_entry(c, &[retail()]).unwrap();
-        assert_eq!(model(&install.cars[1]).entry.file_name, "Cars\\evo_IX\\evo_IX.sgc");
-        assert_eq!(model(&install.cars[1]).fallback, None);
-        assert_eq!(model(&install.cars[0]).entry.file_name, retail().file_name);
+        assert_eq!(found[1].model, found[2].model);
+        assert_eq!(
+            found[1].model,
+            StoredModel::Files {
+                folder: "evo_IX".into(),
+                file: "evo_IX".into(),
+                name: "Mitsubishi Lancer Evo IX".into()
+            }
+        );
+        assert_eq!(found[0].model, StoredModel::StandIn { slot: STAND_IN });
         assert!(cars.join("Cars/evo_IX/textures/a.dds").is_file());
         assert!(!cars.join("Cars/readme.txt").exists() && !cars.join("readme.txt").exists());
-        let (found, car, _) = rsf::locate(&evo.path().display().to_string(), Some(&root)).unwrap();
-        assert_eq!((found.root, car.name.as_str()), (cars.canonicalize().unwrap(), "Mitsubishi Lancer Evo IX N4"));
+        assert!(cars.join("cars.ini").is_file());
 
         // Again: replaced, the same ids; nothing left in the temp folders.
-        let ids: Vec<u32> = install.cars.iter().map(|c| c.id).collect();
+        let ids: Vec<u32> = found.iter().map(|c| c.id).collect();
         add_downloads(&cars, &packs, &|_| {}, &AtomicBool::new(false)).unwrap();
-        assert_eq!(list(&cars).0.iter().map(|c| c.id).collect::<Vec<_>>(), ids);
+        assert_eq!(list(&cars).iter().map(|c| c.id).collect::<Vec<_>>(), ids);
         let mut top: Vec<String> =
             fs::read_dir(&cars).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         top.sort();
-        assert_eq!(top, ["Cars", "rsfdata"]);
+        assert_eq!(top, ["Cars", "cars.ini", "rsfdata"]);
 
         // The R4 alone again, its model already added: it keeps it.
         let single = root.join("single");
@@ -794,7 +872,7 @@ mod tests {
         .unwrap();
         assert_eq!(again[0].result, Ok(("Mitsubishi Lancer Evo IX R4".into(), Some("evo_IX".into()))));
         // A re-add without metadata keeps the car's group and drive train.
-        let kept = list(&cars).0.into_iter().find(|c| c.pack == "Mitsubishi_Lancer_Evo_IX_R4").unwrap();
+        let kept = list(&cars).into_iter().find(|c| c.pack == "Mitsubishi_Lancer_Evo_IX_R4").unwrap();
         assert_eq!(kept.group.as_deref(), Some("Group R4"));
         assert_eq!(kept.drive_train.as_deref(), Some("4WD"));
 
@@ -803,13 +881,14 @@ mod tests {
         assert!(cars.join("Cars/evo_IX").is_dir());
         remove(&cars, "Mitsubishi_Lancer_Evo_IX_R4").unwrap();
         assert!(!cars.join("Cars/evo_IX").exists());
-        assert_eq!(list(&cars).0.len(), 1);
+        assert_eq!(list(&cars).len(), 1);
         assert!(remove(&cars, "../x").is_err());
 
         // Cancelled: nothing half-written.
         let err = add_downloads(&cars, &packs, &|_| {}, &AtomicBool::new(true)).unwrap_err();
         assert!(err.ends_with("cancelled"));
-        assert_eq!(fs::read_dir(&cars).unwrap().count(), 2);
+        assert_eq!(fs::read_dir(&cars).unwrap().count(), 3);
+
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -840,9 +919,12 @@ mod tests {
         }];
         add_downloads(&cars, &downloads, &|_| {}, &AtomicBool::new(false)).unwrap();
 
-        let install = rsf::Install::open(&cars).unwrap();
-        assert_eq!(install.cars[0].audio.as_deref(), Some("C2_S1600"));
-        assert_eq!(install.audio_bank(&install.cars[0]), Some(cars.join("AudioFMOD/C2_S1600.bank")));
+        let found = list(&cars);
+        assert_eq!(found[0].audio.as_deref(), Some("C2_S1600"));
+        assert_eq!(
+            rbr_formats::cars::resolve(&cars, "AudioFMOD\\C2_S1600.bank"),
+            Some(cars.join("AudioFMOD/C2_S1600.bank"))
+        );
         assert!(cars.join("AudioFMOD/C2_S1600.strings.bank").is_file());
         assert!(!cars.join("AudioFMOD/readme.txt").exists());
         remove(&cars, "C2_S1600").unwrap();
@@ -852,18 +934,17 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// A `write_list` round trip keeps each car's group and drive train, and a second rewrite is byte-identical.
+    /// A `cars.ini` round trip keeps each car's fields, and a second rewrite is byte-identical.
     #[test]
     fn group_and_drive_survive_a_rewrite() {
         let root = crate::test_dir("car-groups");
         let cars_dir = root.join("cars");
-        let model = rsf::Model { id: 7, name: "m".into(), path: "m".into(), filename: "m".into(), fallback: 5 };
-        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| rsf::Car {
+        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| StoredCar {
             id,
             name: format!("{pack} car"),
             pack: pack.into(),
             group: group.map(str::to_owned),
-            model: 7,
+            model: StoredModel::Files { folder: "m".into(), file: "m".into(), name: "m".into() },
             revision: "3 / 2024-12-10".into(),
             audio: None,
             drive_train: drive.map(str::to_owned),
@@ -873,42 +954,17 @@ mod tests {
             car(2, "quattro", Some("Group B"), Some("AWD with torque split")),
             car(3, "zr", None, None),
         ];
-        write_list(&cars_dir, &cars, &[model]).unwrap();
-        let cache = cars_dir.join("rsfdata").join("cache");
-        let groups = fs::read_to_string(cache.join("cargroups.json")).unwrap();
-        assert!(
-            groups.contains("\"id\":1,\"name\":\"Group B\"") && groups.contains("\"id\":2,\"name\":\"Group N4\""),
-            "{groups}"
-        );
-        let list_cars = fs::read_to_string(cache.join("cars.json")).unwrap();
-        assert!(
-            list_cars.contains("\"path\":\"evo_IX\",\"carmodel_id\":7,\"rev\":\"3 / 2024-12-10\",\"base_group_id\":2")
-                && list_cars.contains(
-                    "{\"id\":3,\"name\":\"zr car\",\"path\":\"zr\",\"carmodel_id\":7,\"rev\":\"3 / 2024-12-10\"}"
-                ),
-            "{list_cars}"
-        );
-        let data = fs::read_to_string(cache.join("cars_data.json")).unwrap();
-        assert!(
-            data.contains("\"car_id\":1,\"drive_train\":\"4WD\"")
-                && data.contains("\"car_id\":2,\"drive_train\":\"AWD with torque split\"")
-                && !data.contains("\"car_id\":3"),
-            "{data}"
-        );
-        let (found, found_models) = list(&cars_dir);
+        write_cars(&cars_dir, &cars).unwrap();
+        let text = fs::read_to_string(cars_dir.join("cars.ini")).unwrap();
+        assert!(text.contains("[evo_IX]\nname = evo_IX car\nid = 1\ngroup = Group N4\ndrive = 4WD\n"), "{text}");
+        assert!(text.contains("[zr]\nname = zr car\nid = 3\n"), "{text}");
+        assert!(text.contains("model = m/m\n"), "{text}");
+        let found = list(&cars_dir);
         assert_eq!(found, cars);
-        assert_eq!(found_models.len(), 1);
         // A second rewrite changes nothing.
-        let before: Vec<Vec<u8>> = ["cargroups.json", "carmodels.json", "cars.json", "cars_data.json"]
-            .iter()
-            .map(|n| fs::read(cache.join(n)).unwrap())
-            .collect();
-        write_list(&cars_dir, &found, &found_models).unwrap();
-        let after: Vec<Vec<u8>> = ["cargroups.json", "carmodels.json", "cars.json", "cars_data.json"]
-            .iter()
-            .map(|n| fs::read(cache.join(n)).unwrap())
-            .collect();
-        assert_eq!(before, after);
+        let before = fs::read(cars_dir.join("cars.ini")).unwrap();
+        write_cars(&cars_dir, &found).unwrap();
+        assert_eq!(fs::read(cars_dir.join("cars.ini")).unwrap(), before);
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -918,18 +974,17 @@ mod tests {
     fn missing_groups_and_drives_are_backfilled_from_the_list() {
         let root = crate::test_dir("car-backfill");
         let cars_dir = root.join("cars");
-        let model = rsf::Model { id: 7, name: "m".into(), path: "m".into(), filename: "m".into(), fallback: 5 };
-        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| rsf::Car {
+        let car = |id, pack: &str, group: Option<&str>, drive: Option<&str>| StoredCar {
             id,
             name: format!("{pack} car"),
             pack: pack.into(),
             group: group.map(str::to_owned),
-            model: 7,
+            model: StoredModel::Files { folder: "m".into(), file: "m".into(), name: "m".into() },
             revision: String::new(),
             audio: None,
             drive_train: drive.map(str::to_owned),
         };
-        write_list(
+        write_cars(
             &cars_dir,
             &[
                 car(1, "BMW M1 GrpB", None, None),
@@ -937,7 +992,6 @@ mod tests {
                 car(3, "Ghost", None, None),
                 car(4, "evo_IX", Some("WRC 1.6"), Some("4WD")),
             ],
-            &[model],
         )
         .unwrap();
         let entry = |pack: &str, cat: &str, trans: &str| crate::gvrc::Entry {
@@ -956,7 +1010,7 @@ mod tests {
             entry("evo_IX", "Group B", "RWD"),
         ];
         assert!(backfill(&cars_dir, &entries).unwrap());
-        let found = list(&cars_dir).0;
+        let found = list(&cars_dir);
         let group = |pack: &str| found.iter().find(|c| c.pack == pack).unwrap().group.clone();
         let drive = |pack: &str| found.iter().find(|c| c.pack == pack).unwrap().drive_train.clone();
         assert_eq!((group("BMW M1 GrpB").as_deref(), drive("BMW M1 GrpB").as_deref()), (Some("Group B"), Some("RWD")));
@@ -964,28 +1018,54 @@ mod tests {
         assert_eq!((group("Ghost").as_deref(), drive("Ghost").as_deref()), (None, None));
         assert_eq!((group("evo_IX").as_deref(), drive("evo_IX").as_deref()), (Some("WRC 1.6"), Some("4WD")));
         // Nothing left to fill: no rewrite.
-        let cache = cars_dir.join("rsfdata").join("cache");
-        let before: Vec<Vec<u8>> = ["cargroups.json", "cars.json", "cars_data.json"]
-            .iter()
-            .map(|n| fs::read(cache.join(n)).unwrap())
-            .collect();
+        let before = fs::read(cars_dir.join("cars.ini")).unwrap();
         assert!(!backfill(&cars_dir, &entries).unwrap());
-        let after: Vec<Vec<u8>> = ["cargroups.json", "cars.json", "cars_data.json"]
-            .iter()
-            .map(|n| fs::read(cache.join(n)).unwrap())
-            .collect();
-        assert_eq!(before, after);
+        assert_eq!(fs::read(cars_dir.join("cars.ini")).unwrap(), before);
         fs::remove_dir_all(&root).unwrap();
     }
 
-    fn retail() -> rbr_formats::cars::CarEntry {
-        rbr_formats::cars::CarEntry {
-            index: 5,
-            file_name: "Cars\\s_i2003\\s_i2003.sgc".into(),
-            ini_file: String::new(),
-            shader_file: String::new(),
-            shader_settings: String::new(),
-            texture_path: String::new(),
+    /// The old RSF-format JSON cache converts to `cars.ini` once, keeping the ids, and the JSON files go.
+    #[test]
+    fn the_old_json_cache_migrates_to_cars_ini() {
+        let root = crate::test_dir("car-migrate");
+        let cars_dir = root.join("cars");
+        let cache = cars_dir.join("rsfdata").join("cache");
+        fs::create_dir_all(&cache).unwrap();
+        let json = |rows: &[&str]| format!("[\n{}\n]\n", rows.join(",\n"));
+        fs::write(cache.join("cargroups.json"), json(&["{\"id\":1,\"name\":\"Group N4\"}"])).unwrap();
+        fs::write(
+            cache.join("carmodels.json"),
+            json(&["{\"id\":7,\"name\":\"Evo IX\",\"path\":\"evo_IX\",\"filename\":\"evo_IX\",\"fallback\":5}"]),
+        )
+        .unwrap();
+        fs::write(
+            cache.join("cars.json"),
+            json(&[
+                "{\"id\":4,\"name\":\"Evo IX\",\"path\":\"Evo_IX\",\"carmodel_id\":7,\"rev\":\"3\",\"base_group_id\":1,\"audio\":\"Evo\"}",
+                "{\"id\":9,\"name\":\"Ghost\",\"path\":\"Ghost\",\"carmodel_id\":77,\"rev\":\"\"}",
+            ]),
+        )
+        .unwrap();
+        fs::write(cache.join("cars_data.json"), json(&["{\"car_id\":4,\"drive_train\":\"4WD\"}"])).unwrap();
+        let found = list(&cars_dir);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].id, 4);
+        assert_eq!(found[0].group.as_deref(), Some("Group N4"));
+        assert_eq!(found[0].drive_train.as_deref(), Some("4WD"));
+        assert_eq!(found[0].audio.as_deref(), Some("Evo"));
+        assert_eq!(
+            found[0].model,
+            StoredModel::Files { folder: "evo_IX".into(), file: "evo_IX".into(), name: "Evo IX".into() }
+        );
+        // A model the cache does not name is the retail stand-in.
+        assert_eq!(found[1].model, StoredModel::StandIn { slot: STAND_IN });
+        for name in ["cargroups.json", "carmodels.json", "cars.json", "cars_data.json"] {
+            assert!(!cache.join(name).exists(), "{name} deleted");
         }
+        // A second read keeps the converted list, byte-identical.
+        let before = fs::read(cars_dir.join("cars.ini")).unwrap();
+        assert_eq!(list(&cars_dir), found);
+        assert_eq!(fs::read(cars_dir.join("cars.ini")).unwrap(), before);
+        fs::remove_dir_all(&root).unwrap();
     }
 }

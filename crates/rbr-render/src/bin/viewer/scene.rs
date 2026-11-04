@@ -167,7 +167,7 @@ fn load_scene<'scope, 'env>(
     progress: &mut dyn FnMut(Step),
 ) -> Result<Scene, String> {
     let error = |e: car::Error| e.to_string();
-    let car_key = args.car.as_deref().map(|car| camera_prefs::car_key(car, args.rsf_car_id));
+    let car_key = args.pack_car.key.clone().or_else(|| args.car.as_deref().map(|car| camera_prefs::car_key(car, None)));
     let started = args.live.as_deref().map_or([100; 3], rbr_render::ffb::started);
     let ffb =
         rbr_render::ffb::Session::load(args.bindings_file.as_deref(), car_key.clone(), args.ffb.sensitivity, started);
@@ -313,12 +313,17 @@ fn load_scene<'scope, 'env>(
                             add_interior(data, car_name, &mut stage, cabin, args.enhance.windscreen)?;
                         (cabin_sun, tints, bulkhead) = (sun_in, window_tints, under_glass);
                         car::follow_dents(&interior, &mut interior_damage, &model, &damage);
-                        let rsf = args.rsf_install.as_deref().filter(|_| args.dials && args.rsf_car.is_some());
-                        dials = rsf.and_then(|root| load_dials(root, data.install(), car_name, &mut stage));
+                        let rsf = args
+                            .pack_car
+                            .model
+                            .as_deref()
+                            .filter(|_| args.dials)
+                            .and_then(|model| rbr_formats::car_pack::root_of(model).ok());
+                        dials = rsf.as_deref().and_then(|root| load_dials(root, data.install(), car_name, &mut stage));
                         for _ in 1..args.gauge_mode {
                             dials.iter_mut().for_each(Dials::next_mode);
                         }
-                        if let Some(root) = rsf.filter(|_| args.enhance.cabin && dials.is_some()) {
+                        if let Some(root) = rsf.as_deref().filter(|_| args.enhance.cabin && dials.is_some()) {
                             mark_gauges(root, car_name, &mut stage, &mut interior);
                         }
                         // Before the mirrors are marked: marking copies their vertices where they are, so the views

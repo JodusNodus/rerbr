@@ -62,14 +62,14 @@
 //! The physics is NGP's (`rbr-standalone --ngp-physics`, from the install's `physics.rbz`; user decision: the game
 //! steps NGP physics only). The cars are
 //! those NGP drives (`catalog::ngp_offered`): the retail slots its archive has NGP cars in (`catalog::ngp_cars`), and
-//! the cars of the game folder's cache (`rsfdata/cache/cars.json`, with their group), raced from their packs as
-//! RSF installs them in slot 5 (`--rsf-car`, `rbr_formats::rsf`); the
-//! retail slot 5 is then left out (it is the RSF car last picked). The cars downloaded from gvrc.de's NGP car
-//! packs ("Download cars…" on the Settings page: `car_packs`, in `cars/` of the player's folder) are raced the
-//! same way; a car RSF also has
+//! every pack car, raced from its pack in slot 5 as RSF installs it; the
+//! retail slot 5 is then left out (it is the RSF car last picked). The pack cars are the game folder's RSF cache
+//! (`rsfdata/cache/cars.json`, with their group) and the cars downloaded from gvrc.de's NGP car packs
+//! ("Download cars…" on the Settings page: `car_packs`, in `cars/` of the player's folder, listed in `cars.ini`);
+//! a car RSF also has
 //! is listed once, the added one. Cars without a
 //! pack are listed as unavailable with the reason (also by `--list`); cars without their model folder use the retail
-//! model RSF names as their fallback. The stage records, personal bests and ghosts are kept in the game's files
+//! stand-in as their fallback. The stage records, personal bests and ghosts are kept in the game's files
 //! under `NGP/` in the player's folder (`home`; `NGP/SavedGames/pfresult.rst`, `NGP/SavedGames/pf<name>.rbr`,
 //! `NGP/GhostCars/`; ours: the game has no NGP convention and RSF keeps its records online). RSF ghosts (`.gch`
 //! files) are not supported: every race offers the game's own ghosts above.
@@ -343,15 +343,16 @@ fn run() -> Result<(), String> {
                 continue;
             }
             println!("Startable car: {}", catalog::car_label(car));
-            if let Some(added) = car.community.as_ref().filter(|r| r.added) {
-                let model = match &added.model {
-                    Ok(Some(stand_in)) => format!(" — model: {stand_in}"),
-                    _ => String::new(),
-                };
-                let pack = added.pack.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+            if !matches!(car.physics, catalog::Physics::Pack(_)) {
+                continue;
+            }
+            let model = car.model.as_ref().ok().and_then(|m| m.fallback.clone()).unwrap_or_default();
+            if car.added {
+                let pack = car.pack().map(|p| p.display().to_string()).unwrap_or_default();
+                let model = if model.is_empty() { String::new() } else { format!(" — model: {model}") };
                 println!("Added car: {} — {pack}{model}", catalog::car_label(car));
-            } else if let Some(Ok(Some(stand_in))) = car.community.as_ref().map(|r| &r.model) {
-                println!("RSF car: {} — model: {stand_in}", catalog::car_label(car));
+            } else if !model.is_empty() {
+                println!("RSF car: {} — model: {model}", catalog::car_label(car));
             }
         }
         for pack in &form.owned_voices {

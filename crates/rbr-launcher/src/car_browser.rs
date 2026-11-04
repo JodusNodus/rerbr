@@ -14,7 +14,7 @@ use crate::browser::{
     block, favourite_button, header_line, items, key_action, list_rows, paint_selection, paint_star, random_row,
     row_slot, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY, ROW,
 };
-use crate::catalog::Car;
+use crate::catalog::{self, Car};
 use crate::pages::{combo, ACCENT};
 use crate::preview::{self, Previews};
 
@@ -133,18 +133,21 @@ pub struct CarRow {
 impl CarRow {
     pub fn new(index: usize, car: &Car) -> CarRow {
         let problem = car.unavailable();
-        let (title, group, source, drive, model) = match &car.community {
-            Some(rsf) => {
-                let source = if rsf.added { "Added".to_owned() } else { format!("RSF {}", rsf.id) };
-                let model = match &rsf.model {
-                    Ok(None) => Model::Own,
-                    Ok(Some(stand_in)) => Model::StandIn(stand_in.clone()),
+        let (title, group, source, drive, model) = match &car.physics {
+            catalog::Physics::Pack(_) => {
+                let source = match car.key.strip_prefix("rsf-") {
+                    Some(id) if !car.added => format!("RSF {id}"),
+                    _ => "Added".to_owned(),
+                };
+                let model = match &car.model {
+                    Ok(m) if m.fallback.is_none() => Model::Own,
+                    Ok(m) => Model::StandIn(m.fallback.clone().unwrap_or_default()),
                     Err(_) => Model::Missing,
                 };
-                let drive = rsf.drive_train.as_deref().and_then(Drive::parse);
-                (car.name.clone(), rsf.group.clone(), source, drive, model)
+                let drive = car.drive_train.as_deref().and_then(Drive::parse);
+                (car.name.clone(), car.group.clone(), source, drive, model)
             }
-            None => match RETAIL.iter().find(|(folder, ..)| *folder == car.name) {
+            catalog::Physics::Archive => match RETAIL.iter().find(|(folder, ..)| *folder == car.name) {
                 Some((_, title, group, drive)) => {
                     (title.to_string(), Some(group.to_string()), "RBR 1.02".to_owned(), Some(*drive), Model::Own)
                 }

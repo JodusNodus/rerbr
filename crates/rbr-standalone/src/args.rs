@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use rbr_formats::{rsf, stage_files};
+use rbr_formats::{car_pack, rsf, stage_files};
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, DriverAids, Skill};
 use rbr_school::Lesson;
@@ -63,7 +63,7 @@ pub struct Args {
     pub championship: Option<ChampionshipOptions>,
     /// `--championship-false-starts`: the player's false starts so far in the rally.
     pub false_starts: u8,
-    /// `--school N`: rally school lesson N (flow mode 7) on its map, with car 5 unless `--car`/`--rsf-car` gives
+    /// `--school N`: rally school lesson N (flow mode 7) on its map, with car 5 unless `--car`, `--rsf-car` or `--car-pack` gives
     /// another (`boot::Race::in_school`).
     pub lesson: Option<Lesson>,
     /// `--start-time`: the start board's clock (a championship stage's, or a quick race's time of day), s after midnight.
@@ -79,9 +79,11 @@ pub struct Args {
     pub setup: Option<PathBuf>,
     /// NGP's `physics.rbz` (`boot::Race::ngp_physics`).
     pub ngp_physics: Option<PathBuf>,
-    /// `--rsf-car`: an RSF car (a pack path, or an id or pack name in `RBR_RSF`) under `--ngp-physics`, instead of a
-    /// retail `--car` (`rbr_formats::rsf::locate`).
+    /// `--rsf-car`: an RSF car (an id or pack name in `RBR_RSF`) under `--ngp-physics`, instead of a retail `--car`.
     pub rsf_car: Option<String>,
+    /// A pack car under `--ngp-physics`, instead of a retail `--car` ([`car_pack::Flags`]). The launcher resolves
+    /// every pack car to these; `--rsf-car` stays as the developer entry for an RSF install.
+    pub pack_car: car_pack::Flags,
     /// `--ffb-sensitivity G,T,S`: NGP's force-feedback sensitivity percentages (`boot::Race::ffb_sensitivity`).
     pub ffb_sensitivity: Option<[i32; 3]>,
     /// `--head-gasket-durability N`: NGP's `headGasketDurability` (`boot::Race::head_gasket_durability`).
@@ -125,9 +127,9 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
-       NGP (required with --boot): --ngp-physics FILE [--rsf-car PACK|ID] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
+       NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
-       a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car with its own)
+       a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
@@ -169,6 +171,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             continue;
         }
         let value = it.next().ok_or(format!("{flag}: no value"))?;
+        if args.pack_car.take(&flag, &value) {
+            continue;
+        }
         match flag.as_str() {
             "--recording" => args.recording = Some(PathBuf::from(value)),
             "--autopilot" => args.autopilot = Some(PathBuf::from(value)),
@@ -312,6 +317,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.rsf_car.is_some() && args.car.is_some() {
         return Err("--rsf-car replaces --car".into());
     }
+    if args.pack_car.pack.is_some() && args.car.is_some() {
+        return Err("--car-pack replaces --car".into());
+    }
+    args.pack_car.check(args.rsf_car.is_some())?;
     if args.autopilot.is_some() && (args.live || args.snapshots.len() != usize::from(!args.boot)) {
         return Err("--autopilot takes one --snapshot or --boot, and no --live".into());
     }
@@ -326,6 +335,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     for (flag, present) in [
         ("--rsf-car", args.rsf_car.is_some()),
+        ("--car-pack", args.pack_car.pack.is_some()),
         ("--ffb-sensitivity", args.ffb_sensitivity.is_some()),
         ("--head-gasket-durability", args.head_gasket_durability.is_some()),
         ("--damage-in", args.damage_in.is_some()),
@@ -359,7 +369,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
         }
         // The lesson's own car unless another is given (ours: the original drives car 5 only).
-        if args.rsf_car.is_none() {
+        if args.rsf_car.is_none() && args.pack_car.pack.is_none() {
             args.car = Some(args.car.unwrap_or(rbr_school::lesson::CAR));
         }
         let map = lesson.map();
@@ -801,6 +811,8 @@ mod tests {
         assert_eq!(run_str(&format!("{school} 2 --car 6"), None).unwrap().car, Some(6));
         let rsf = run_str(&format!("{school} 2 --rsf-car PACK"), None).unwrap();
         assert_eq!((rsf.car, rsf.rsf_car.as_deref()), (None, Some("PACK")));
+        let pack = run_str(&format!("{school} 2 --car-pack P --car-model /R/Cars/evo/evo.sgc"), None).unwrap();
+        assert_eq!((pack.car, pack.pack_car.pack), (None, Some(PathBuf::from("P"))));
         for (argv, want) in [
             (format!("{school} 17"), "--school 17: a lesson, 0 to 16"),
             (format!("{school} 2 --stage track-54_E"), "--school 2: lesson's stage is map 83, not track-54_E"),
@@ -809,6 +821,34 @@ mod tests {
             (format!("{REC} --school 2"), "--school needs --boot"),
         ] {
             assert_eq!(run_str(&argv, None).err().as_deref(), Some(want), "{argv}");
+        }
+    }
+
+    /// The pack-car flags forward to `car_pack::Flags` (`car_pack` tests their combinations); `--rsf-car`
+    /// beside them fails there.
+    #[test]
+    fn pack_car_flags_forward_and_check() {
+        let args = run_str(
+            &format!("{BOOT} --car-pack P --car-model /R/Cars/evo/evo.sgc --car-bank B --car-key rsf-24"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            args.pack_car,
+            car_pack::Flags {
+                pack: Some(PathBuf::from("P")),
+                model: Some(PathBuf::from("/R/Cars/evo/evo.sgc")),
+                bank: Some(PathBuf::from("B")),
+                key: Some("rsf-24".into()),
+            }
+        );
+        match run_str(&format!("{BOOT} --car-pack P --car-model /R/Cars/evo/evo.sgc --rsf-car X"), None) {
+            Err(e) => assert_eq!(e, "give one of --rsf-car and --car-pack"),
+            Ok(_) => panic!("a pack car beside --rsf-car parses"),
+        }
+        match run_str(&format!("{BOOT} --car-model /R/Cars/evo/evo.sgc"), None) {
+            Err(e) => assert_eq!(e, "--car-model, --car-bank and --car-key need --car-pack"),
+            Ok(_) => panic!("a model without --car-pack parses"),
         }
     }
 

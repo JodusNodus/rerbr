@@ -1,6 +1,7 @@
 //! The command line (`--help`'s [`USAGE`]).
 
 use glam::Vec3;
+use rbr_formats::car_pack;
 use rbr_render::atmosphere::{Clouds, Fog, Rain};
 use rbr_render::bindings::Bindings;
 use rbr_render::camera::FreeFly;
@@ -28,6 +29,9 @@ pub struct Args {
     pub car: Option<String>,
     /// `--rsf-car`: an RSF car in slot 5, read in place (`rbr_formats::rsf::select`).
     pub rsf_car: Option<String>,
+    /// A pack car in slot 5, read in place ([`car_pack::Flags`]). The launcher resolves every pack car to these;
+    /// `--rsf-car` stays as the developer entry for an RSF install.
+    pub pack_car: car_pack::Flags,
     pub drive: Option<PathBuf>,
     pub at: Option<u32>,
     /// `--at-periods N`: payload periods (7 ms) each `--at` frame of a live screenshot stands for (default 1).
@@ -156,10 +160,6 @@ pub struct Args {
     /// `--replay FILE`: the replay watched (`replay::expand`), its frames in place of the live drive.
     pub replay: Option<PathBuf>,
     pub ghost_weather: rbr_formats::ghost::Weather,
-    /// The RSF install, for a community car's working dials.
-    pub rsf_install: Option<PathBuf>,
-    /// The `--rsf-car`'s RSF id, which keys its camera nudges (`camera_prefs::car_key`).
-    pub rsf_car_id: Option<u32>,
     /// `--car-gearbox`: the car's gearbox for the advanced H-shifter; `--grind-sound`: its grind.
     pub car_gearbox: Option<CarBox>,
     pub grind_sound: Option<PathBuf>,
@@ -228,7 +228,8 @@ pub struct HudOptions {
 /// `--help`'s text.
 pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [STAGE] [OPTIONS] [--live COMMAND...]
   STAGE: track-NN_X (default track-10_O), a RallySimFans stage folder, or the path of its files without the extension
-  car:        --car NAME  --rsf-car PACK|ID  --damage ZONE:VALUE,...  --crack CODE:INDEX,...
+  car:        --car NAME [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]]
+              --damage ZONE:VALUE,...  --crack CODE:INDEX,...
   drive:      --drive RECORDING  --at STEP  --at-periods N  --at-drive RECORDING  --live COMMAND... (the rest of the line)
               --bindings INI  --ghost FILE  --save-ghost FILE  --best-ghost FILE  --ghost-weather WORDS
               --car-gearbox synchro|dog|sequential  --grind-sound WAV  --car-lock DEG
@@ -252,6 +253,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut stage = None;
     let mut car = None;
     let mut rsf_car = None;
+    let mut pack_car = car_pack::Flags::default();
     let mut drive = None;
     let mut at = None;
     let mut live: Option<Vec<String>> = None;
@@ -438,6 +440,10 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 car = Some(name);
             }
             "--rsf-car" => rsf_car = Some(args.next().ok_or("--rsf-car needs a pack or an id")?),
+            flag @ ("--car-pack" | "--car-model" | "--car-bank" | "--car-key") => {
+                let value = args.next().ok_or(format!("{flag} needs a value"))?;
+                assert!(pack_car.take(flag, &value));
+            }
             "--drive" => {
                 let path = args.next().ok_or("--drive needs a recording file")?;
                 drive = Some(PathBuf::from(path));
@@ -676,6 +682,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         }
         command.extend(["--replay-pace".to_owned(), "free".to_owned()]);
     }
+    pack_car.check(rsf_car.is_some())?;
     // A stage folder (RallySimFans, `rbr_formats::rsf`): its default variant. One it cannot load (encrypted) says why.
     let mut stage_place = (None, String::new(), false);
     let stage = match stage {
@@ -767,8 +774,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         save_replay,
         replay,
         ghost_weather,
-        rsf_install: std::env::var_os("RBR_RSF").map(PathBuf::from),
-        rsf_car_id: None,
+        pack_car,
         car_gearbox,
         grind_sound,
         car_lock,
@@ -958,6 +964,23 @@ mod tests {
         for bad in ["--render-scale 0.2", "--render-scale 1.5", "--render-scale", "--render-scale half"] {
             assert!(parse(bad).is_err(), "{bad}");
         }
+    }
+
+    /// The pack-car flags forward to `car_pack::Flags` (`car_pack` tests their combinations).
+    #[test]
+    fn pack_car_flags_forward() {
+        let args = parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --car-bank /r/b.bank --car-key k").unwrap();
+        assert_eq!(
+            args.pack_car,
+            car_pack::Flags {
+                pack: Some(PathBuf::from("/p")),
+                model: Some(PathBuf::from("/r/Cars/evo/evo.sgc")),
+                bank: Some(PathBuf::from("/r/b.bank")),
+                key: Some("k".into()),
+            }
+        );
+        assert!(parse("--car-pack /p").is_err());
+        assert!(parse("--car-pack /p --car-model /r/Cars/evo/evo.sgc --rsf-car 24").is_err());
     }
 
     #[test]
