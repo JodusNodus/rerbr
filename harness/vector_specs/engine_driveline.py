@@ -976,6 +976,59 @@ def last_nodes(mu, a):
     return [(a[0] + DRIVE_LINE_COUNT, 4), (drive_entry_at(a[0], (count - 1) & 0xFFFFFFFF) + 0x20, 4)]
 
 
+def fuzz_sample(mu, heap, r):
+    """CDriveLine::Sample (this, d, out): a table of 0 to 12 entries with increasing finite distances, and d below
+    the first entry, exactly on one, strictly inside, past the last, NaN or infinite. The empty table's copy reads
+    this-0x20, written here like the entries."""
+    count = r.randrange(0, 13)
+    this, writes = drive_fuzz_object(heap, r, count)
+    # The entry before the table (at this-0x20): only the empty table's copy reads it.
+    writes.append((drive_entry_at(this, 0xFFFFFFFF), drive_entry_bytes(r)))
+    if count <= 1:
+        dist = []
+    else:
+        s = r.uniform(-50.0, 50.0)
+        dist = [s]
+        for _ in range(1, count):
+            s += r.uniform(0.5, 50.0)
+            dist.append(s)
+        for k, s in enumerate(dist):
+            writes.append((drive_entry_at(this, k) + 0x20, struct.pack("<f", s)))
+    if count <= 1:
+        d = r.choice((NAN, INF, -INF, 0.0, r.uniform(-100.0, 100.0)))
+    else:
+        j = r.randrange(count - 1)
+        d = r.choice((dist[0] - r.uniform(0.5, 50.0), dist[0], r.uniform(dist[0], dist[-1]),
+                      dist[r.randrange(count)], (dist[j] + dist[j + 1]) / 2.0,
+                      dist[-1] + r.uniform(0.5, 50.0), dist[-1], NAN, INF, -INF))
+    return [bits(d), heap + 0x1400], writes, this
+
+
+def sample_branch(args, windows):
+    """CDriveLine::Sample (0x50b180): 'empty' (no entries: copies this-0x20), 'single' (one entry: copies it),
+    'hit' (entry k's distance is above d, so BlendB runs at (d - d0) / (d1 - d0)), 'past' (no entry's distance is
+    above d: copies the last entry). Windows: the out (0), the count and entries -1 to n - 1. The scan is comiss+ja,
+    so a NaN d never hits."""
+    count = struct.unpack_from("<I", windows[1][3], 0)[0]
+    if count == 0:
+        return "empty"
+    if count == 1:
+        return "single"
+    d = f32(args[1])
+    for k in range(1, count):
+        if struct.unpack_from("<f", windows[k + 3][3], 0x20)[0] > d:
+            return "hit"
+    return "past"
+
+
+def sample_nodes(mu, a):
+    """The count and the entries the scan compares and the result copies or blends (entry -1 is the empty table's
+    copy source)."""
+    this = a[0]
+    count = u32_at(mu, this + DRIVE_LINE_COUNT)
+    return [(this + DRIVE_LINE_COUNT, 4)] + [(drive_entry_at(this, k), 0x28) for k in range(-1, count)]
+
+
 def set_drive_line_slots(n):
     """The entries SetDriveLine's windows cover: the copied entries and one past them, then sampled far entries."""
     return sorted(set(range(n + 2)) | set(DRIVE_SLOTS))
@@ -1859,6 +1912,11 @@ SPECS = {
     # args: this, x, out. BlendB at the integer part of x and the fraction; the branches are clamp_branch's.
     0x50B0F0: dict(direct_fuzz=fuzz_clamp_mix, name="CDriveLine::ClampMix", popped=8, x87=False, thiscall=True,
                    branch=clamp_branch, windows=[(2, lambda a: 0x10)], nodes=clamp_nodes),
+    # args: this, d, out. The point at the distance d: the first entry from 1 whose distance is above d gives the
+    # spline from the entry before it, else the last entry's position (this-0x20 when empty). The branches are
+    # sample_branch's; the nodes are the count and entries -1 to n - 1.
+    0x50B180: dict(direct_fuzz=fuzz_sample, name="CDriveLine::Sample", popped=8, x87=False, thiscall=True,
+                   branch=sample_branch, windows=[(2, lambda a: 0x10)], nodes=sample_nodes),
     # args: this, sig. Copies the signal's entries, sets the count and fills the rest of the table (see
     # set_drive_line_nodes for the windows: the far entries are sampled).
     # args: this, pos, x (st0). The arc position of pos (three floats) bisected from x; the table is read in full.
