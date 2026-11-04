@@ -229,7 +229,7 @@ pub fn draw_demo(
 /// The brief's panel stays hidden while the demo plays (the viewer clears the school record before painting it);
 /// at the demo's end, or on Enter, the scene returns to the player's car at the start and the brief shows.
 pub fn demo_hint(ctx: &egui::Context, ride: bool) {
-    let text = if ride { "Ride with Richard Burns - Enter: skip" } else { "Demonstration - Enter: skip" };
+    let text = if ride { "Ride with Richard Burns · Enter or A: skip" } else { "Demonstration · Enter or A: skip" };
     let screen = ctx.content_rect();
     let panel = egui::Rect::from_center_size(
         egui::Pos2::new(screen.center().x, screen.min.y + 96.0),

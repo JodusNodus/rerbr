@@ -141,9 +141,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   the times and the answer's last incident code). No countdown plaque shows in a lesson. The brief's confirm ends
   the start orbit, as the countdown's end does. A timed lesson's brief first plays its demonstration from
   `Ghosts\rse%d.arp` (viewer-only, `rbr_render::school_demo`: the player's car at the replay's pose, wheels at rest,
-  from the chase camera, the HUD and the start lamps hidden under a "Demonstration - Enter: skip" hint, Enter skipping without
-  confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera, and its end or skip sends the
-  brief's confirm, ending the lesson with its award and the verdict panel.
+  from the chase camera, the HUD and the start lamps hidden under a "Demonstration · Enter or A: skip" hint, Enter
+  or the pad's A skipping without confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera,
+  and its end or skip sends the brief's confirm, ending the lesson with its award and the verdict panel.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and

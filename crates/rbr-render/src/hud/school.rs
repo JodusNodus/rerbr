@@ -361,7 +361,7 @@ fn brief_panel(painter: &Painter, screen: Rect, school: &State) {
             c.times(school, None);
         }
         c.gap(10.0);
-        c.text("start: Enter", 13.0, DIM);
+        c.text("Enter or A: start the lesson", 13.0, DIM);
     });
 }
 
