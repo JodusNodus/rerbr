@@ -18,4 +18,4 @@ it ports.
 ## Tests
 
 Unit tests in each module; the retail ones need `RBR_DATA` (and `RBR_PATCH`, `RBR_NGP_PHYSICS`, `RBR_SAVES` where
-named) and print "skipping" without them.
+named) and pass without them.
