@@ -87,6 +87,13 @@ pub struct StepSample {
     /// The car's position (`CCar` +0x140), which `CCar::Vf28x` sends in `CSigCarGeneralState` with the velocity whose
     /// length is [`Self::speed`] ([`FinishZone`]).
     pub position: [f32; 3],
+    /// The car's velocity (`CCar` +0x1c0), the vector `CSigCarGeneralState` sends at +0x30, whose length the rally
+    /// school's `SchoolIncident` (0x498e10) takes.
+    pub velocity: [f32; 3],
+    /// Whether the step's `CSigCarBrakeWallPenetration` emits came from inside an emitting wall (flag bit 2 without
+    /// bit 1) and from a crossing of one (both bits), what the rally school's `Checkpoint` (0x4991c0) reads.
+    pub wall_inside: bool,
+    pub wall_crossed: bool,
 }
 
 /// One `StepForward(1)` in driving, or one part of a load-time

@@ -50,6 +50,9 @@ impl CarState {
             speed: self.velocity.iter().map(|v| v * v).sum::<f32>().sqrt(),
             retire: None,
             position: self.position,
+            velocity: self.velocity,
+            wall_inside: false,
+            wall_crossed: false,
         }
     }
 }
@@ -100,8 +103,11 @@ impl PhysicsStep for Pure<'_> {
             self.own_step = false;
             layout::accumulate_tyre_terms(self.playback, &mut self.tyre_max);
         }
+        let (wall_inside, wall_crossed) = self.playback.pure.take_wall_emits();
         inside_step(StepSample {
             notify_a_vector: Some(self.playback.notify_a_vector()),
+            wall_inside,
+            wall_crossed,
             outside_assistance: self.playback.pure.take_outside_assistance(),
             retire: self.playback.pure.take_retire(),
             ..layout::car_state(self.playback).sample(self.track)

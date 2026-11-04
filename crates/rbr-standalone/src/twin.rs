@@ -62,6 +62,7 @@ impl Twin {
         b.pure.take_tyre_terms();
         b.pure.take_outside_assistance();
         b.pure.take_retire();
+        b.pure.take_wall_emits();
         self.steps += 1;
         let at = format!("step {}", self.steps);
         self.compare(a, &at);

@@ -40,8 +40,19 @@ pub const PARTICLE_EVENT_BYTES: usize = 0x40;
 const ENGINE_FIRE_EMIT: u32 = PARTICLE_EMITS[2].0;
 const ENGINE_FIRE_SIGNAL: u32 = PARTICLE_EMITS[2].1;
 
+/// `CMultiSignal1<CSigCarBrakeWallPenetration>::Emit` (0x4e4490) on its signal (`[0x893600] + 0xa780`), whose
+/// payload's flags word (+0x18) [`Watch::take_wall_emits`] gives the host: the rally school's `Checkpoint`
+/// (0x4991c0, through `E12_Cb::CbF10` 0x476f10) reads it. `E34WallVf::Raycast` emits only inside a segment whose index
+/// has bit 14, with flag bit 2 set (`rbr_physics::collision::wall::wall_raycast`); bit 1 is the latch, the car's sweep
+/// having crossed a wall edge (`brake_wall_vf_e8`).
+const BRAKE_WALL_EMIT: u32 = 0x4e4490;
+const BRAKE_WALL_SIGNAL: u32 = 0xa780;
+const BRAKE_WALL_FLAGS: u32 = 0x18;
+const EMITTING_WALL: u32 = 4;
+const CROSSED: u32 = 2;
+
 /// The emits [`Watch::watch`] keeps a payload or a count of.
-pub(crate) const WATCHED: [u32; 9] = [
+pub(crate) const WATCHED: [u32; 10] = [
     OUTSIDE_ASSISTANCE_EMIT,
     TYRE_PARTICLES_EMIT,
     PARTICLE_EMITS[0].0,
@@ -51,6 +62,7 @@ pub(crate) const WATCHED: [u32; 9] = [
     RETIRE_EMIT,
     STAND_STILL_EMIT,
     CAR_PROBLEM_EMIT,
+    BRAKE_WALL_EMIT,
 ];
 
 /// The watched emits' kept payloads and counts, taken by the host after each step.
@@ -72,6 +84,10 @@ pub(crate) struct Watch {
     /// the HUD. The host takes them after each step.
     stand_still: Cell<Option<[u32; 2]>>,
     car_problem: Cell<Option<u32>>,
+    /// Whether the brake-wall emits since the host last took them came from inside an emitting wall (flag bit 2
+    /// without bit 1) and from a crossing of one (both bits).
+    wall_inside: Cell<bool>,
+    wall_crossed: Cell<bool>,
     /// The `CSigEngineFire` emits since the host last took them.
     engine_fires: Cell<u32>,
     /// The damper-signal payloads `CSpringDamper::ResetOutputs` emitted since the host last took them: the strut
@@ -114,6 +130,12 @@ impl Watch {
         }
         if addr == CAR_PROBLEM_EMIT {
             self.car_problem.set(Some(mem.u32(regs.stack[0])));
+        }
+        if addr == BRAKE_WALL_EMIT && regs.ecx == mem.u32(SIGNALS).wrapping_add(BRAKE_WALL_SIGNAL) {
+            let flags = mem.u32(regs.stack[0] + BRAKE_WALL_FLAGS);
+            if flags & EMITTING_WALL != 0 {
+                (if flags & CROSSED != 0 { &self.wall_crossed } else { &self.wall_inside }).set(true);
+            }
         }
     }
 
@@ -168,5 +190,11 @@ impl Watch {
     /// The code of the `CSigRetireCar` emitted since the last call, if any.
     pub(crate) fn take_retire(&self) -> Option<u32> {
         self.retire.take()
+    }
+
+    /// Whether the brake-wall emits since the last call came from inside an emitting wall and from a crossing of one
+    /// (`Checkpoint`'s two arms, which do not depend on each other's order).
+    pub(crate) fn take_wall_emits(&self) -> (bool, bool) {
+        (self.wall_inside.take(), self.wall_crossed.take())
     }
 }

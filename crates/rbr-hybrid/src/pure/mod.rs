@@ -320,6 +320,12 @@ impl Pure {
         self.captures.take_retire()
     }
 
+    /// Whether the brake-wall emits since the last call came from inside an emitting wall and from a crossing of one
+    /// (the rally school's `Checkpoint` inputs).
+    pub fn take_wall_emits(&self) -> (bool, bool) {
+        self.captures.take_wall_emits()
+    }
+
     /// Runs the binding at `addr` from the entry registers `regs` (`regs.esp` its return address slot; `regs.stack`
     /// is read from there). A stop panics with [`Stopped`] unless `keep_going`.
     pub fn enter(&self, addr: u32, regs: Regs) -> Return {
