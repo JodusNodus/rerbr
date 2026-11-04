@@ -561,7 +561,7 @@ impl Form {
     /// drawn row.
     fn rally_weather(
         &self,
-        stage: &rbr_gameplay::championship::RallyStage,
+        stage: &rbr_championship::RallyStage,
         preset: Option<Preset>,
         wear: u32,
     ) -> Result<(catalog::Stage, Weather), String> {
@@ -871,10 +871,9 @@ mod tests {
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
+    use rbr_championship::{ParkState, Turn};
     use rbr_formats::data::Data;
     use rbr_gameplay::race_options::{DamageLevel, DriverAids};
-    use rbr_gameplay::season_events::Turn;
-    use rbr_gameplay::service::ParkState;
     use rbr_gameplay::weather::Season;
     use rbr_render::hud::Parts;
     use rbr_render::shifter::Engagement;
@@ -1322,7 +1321,7 @@ mod tests {
     #[test]
     fn a_championship_stage_takes_the_rallys_weather_choice() {
         use crate::catalog::{Map, Stage};
-        use rbr_gameplay::championship::RallyStage;
+        use rbr_championship::RallyStage;
         use rbr_gameplay::weather::Row;
         let season = Season {
             rows: vec![

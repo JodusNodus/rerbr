@@ -10,7 +10,7 @@ use crate::browser;
 use crate::car_browser;
 use crate::catalog::{self, car_label};
 use crate::settings_page::RSF_FIELD;
-use rbr_gameplay::season as season_model;
+use rbr_championship::season as season_model;
 
 use crate::{rally_page, Form};
 

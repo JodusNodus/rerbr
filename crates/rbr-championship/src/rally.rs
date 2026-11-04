@@ -1,5 +1,5 @@
 //! The championship's rally: its stages from the season data, run stage by
-//! stage with the season's service stops, on the stage ends of [`crate::flow`].
+//! stage with the season's service stops, on the stage ends of [`rbr_gameplay::flow`].
 //! Pure. The season around it (the AI drivers, points, standings) is
 //! [`crate::season`].
 //!
@@ -12,16 +12,15 @@
 //! The stages come from the season's forecast ([`crate::season::Block::rally`]); without one from `season.dat`
 //! ([`Rally::from_season`]: the map and the track letter of `s<level>_st<n>.lsp`).
 //! The service stops are the season's events ([`crate::service::service_before`]); the late penalties add to the
-//! rally's penalty. The damage the car ends a stage with is carried
-//! to the next ([`crate::car_damage`]). The rally's total (time plus penalties) is ours; the season's standings are
-//! [`crate::season`]'s.
+//! rally's penalty. The damage the car ends a stage with is carried to the next ([`rbr_gameplay::car_damage`]). The
+//! rally's total (time plus penalties) is ours; the season's standings are [`crate::season`]'s.
 
 use rbr_formats::season_dat;
+use rbr_gameplay::car_damage::CarriedDamage;
+use rbr_gameplay::flow::{EndPage, EndRace, Mode, StageEnd};
+use rbr_gameplay::weather;
 
-use crate::car_damage::CarriedDamage;
-use crate::flow::{EndPage, EndRace, Mode, StageEnd};
 use crate::service::{self, ServiceKind};
-use crate::weather;
 
 /// A stage of a rally: the map the stage loads and its track letter (`Maps/track-<map>_<letter>`), and its start time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -251,7 +250,7 @@ impl Championship {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flow::EndCause;
+    use rbr_gameplay::flow::EndCause;
 
     #[test]
     fn the_setup_and_tyres_are_picked_after_a_service_only() {

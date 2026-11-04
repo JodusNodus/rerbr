@@ -1,10 +1,10 @@
-//! The Championship page: a rally of the season (`season.dat`) driven stage by stage (`rbr_gameplay::championship`),
-//! with the service park between stages (`rbr_gameplay::service`): the damaged parts to order, the time left, Repair!
-//! and the late penalty, which goes into the season as the park closes. After each service and the rally's start
+//! The Championship page: a rally of the season (`season.dat`) driven stage by stage (`rbr_championship::rally`),
+//! with the service park between stages (`rbr_championship::service`): the damaged parts to order, the time left,
+//! Repair! and the late penalty, which goes into the season as the park closes. After each service and the rally's start
 //! (the game's page 0x1a) the setup is picked (the surface's default, the current one or a saved one:
 //! `CSeasonChooseSetupUI`, `rbr_gameplay::setup::SeasonSetup`) and the tyre from the stage surface's tyres
-//! (`SELECTTYRES`, `championship::tyre_choices`); a stage with no service before it runs on the car's tyre and setup,
-//! with the tyres' wear carried (`championship::choice_before`). The park reads the car's `repair.ini` from NGP's
+//! (`SELECTTYRES`, `rally::tyre_choices`); a stage with no service before it runs on the car's tyre and setup,
+//! with the tyres' wear carried (`rally::choice_before`). The park reads the car's `repair.ini` from NGP's
 //! `physics.rbz` (an RSF car's: its pack's, else slot 5's, where it runs). The road wear is the player's start place's (`season::road_wear`).
 //!
 //! The championship's options (`race_options::ChampionshipOptions`) are chosen before New season, as the game's
@@ -15,12 +15,12 @@
 //! A stage runs as on the Drive page, on the stage's season-table row, with the damage the car carries
 //! (`rbr-standalone --damage-in`); when the viewer closes, `rbr-standalone` leaves the stage's result and damage in
 //! `rally/` in the player's folder (`--result-out`, `--damage-out`). The service's crew is the player's team's, its
-//! rules NGP's (`service::Rules`); its texts are the game's English string table.
+//! rules NGP's (`car_damage::Rules`); its texts are the game's English string table.
 //!
-//! The season (`rbr_gameplay::season`): New season draws the rallies' levels and forecast weather on the clock's
+//! The season (`rbr_championship::season`): New season draws the rallies' levels and forecast weather on the clock's
 //! seed, with the player in the team picked from the game's team offers (`TEAM_OFFERS`, in its order; the team's car
 //! is the season's, or when NGP doesn't drive it a car picked with it, ours, kept out of the save). The season's event
-//! queue (`rbr_gameplay::season_events`) runs it: the AI drivers' stages and
+//! queue (`rbr_championship::events`) runs it: the AI drivers' stages and
 //! services between the player's turns, as the game's menu flow stops at them: the rally's welcome, each stage (at
 //! its start time on the season's clock), each service, the rally's results and the page between rallies with the
 //! game's two trials (`S_YARD_TRIAL`, `S_STAGE_TRIAL`: practice drives that the season does not record). After each
@@ -34,22 +34,20 @@
 use std::path::{Path, PathBuf};
 
 use egui::{Color32, ComboBox, Ui};
+use rbr_championship::events::{self, Ai};
+use rbr_championship::season::{self as season_model, AiField, Block};
+use rbr_championship::{choice_before, rally, service, store, tyre_choices, Championship, RallyOutcome, RallyPhase};
+use rbr_championship::{ParkState, ProfileSeason, RallyStage, ServicePark, StageTimes, Turn};
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::data::Data;
 use rbr_formats::saves::season::Season as SeasonSave;
 use rbr_formats::saves::{is_file_name_part, SaveDir};
 use rbr_formats::season_dat;
 use rbr_formats::strings::Strings;
-use rbr_gameplay::car_damage::CarriedDamage;
-use rbr_gameplay::championship::StageTimes;
-use rbr_gameplay::championship::{choice_before, tyre_choices, Championship, RallyOutcome, RallyPhase, RallyStage};
+use rbr_gameplay::car_damage::{CarriedDamage, Rules};
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::flow::{EndCause, EndRace, StageEnd};
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, Skill};
-use rbr_gameplay::season::{self as season_model, AiField, Block};
-use rbr_gameplay::season_events::{self as events, Ai, Turn};
-use rbr_gameplay::season_store::{self, ProfileSeason};
-use rbr_gameplay::service::{self, ParkState, Rules, ServicePark};
 use rbr_gameplay::setup::SeasonSetup;
 use rbr_gameplay::weather::{Preset, Season};
 
@@ -294,7 +292,7 @@ impl RallyPage {
         };
         let stage = stage as usize;
         let damage = self.loaded_damage.take();
-        let penalty = season_store::player_penalty(&run.save);
+        let penalty = store::player_penalty(&run.save);
         self.championship = Some(match run.turn {
             Turn::Welcome => Championship::start(r),
             Turn::Stage(s) => {
@@ -302,7 +300,7 @@ impl RallyPage {
             }
             Turn::Service { .. } => {
                 let kind = service::service_before(stage).unwrap_or(service::ServiceKind::Short);
-                let phase = RallyPhase::Service(rbr_gameplay::championship::Service { next: stage, kind });
+                let phase = RallyPhase::Service(rally::Service { next: stage, kind });
                 Championship::resume(r, phase, times(stage), penalty, damage)
             }
             Turn::Results | Turn::BetweenRallies | Turn::Over => {
@@ -320,15 +318,8 @@ impl RallyPage {
         let (Some(run), Ok((_, roster))) = (&self.run, &self.ai) else { return };
         if let Some(store) = &run.store {
             let damage = self.championship.as_ref().and_then(Championship::damage).cloned().unwrap_or_default();
-            let after = season_store::after_season(
-                &run.save,
-                &run.field,
-                roster,
-                &damage,
-                self.last_tyre,
-                false,
-                &self.setup_text,
-            );
+            let after =
+                store::after_season(&run.save, &run.field, roster, &damage, self.last_tyre, false, &self.setup_text);
             if let Err(e) = store.save(&run.save, Some(&after)) {
                 self.status = format!("save: {e}");
             }
@@ -347,7 +338,7 @@ impl RallyPage {
         let over = self.championship.as_ref().is_some_and(|c| matches!(c.phase(), RallyPhase::Over(_)));
         while over && matches!(run.turn, Turn::Stage(_) | Turn::Service { .. }) {
             if let Turn::Stage(_) = run.turn {
-                season_store::record_stage(&mut run.save, None, true);
+                store::record_stage(&mut run.save, None, true);
             }
             run.turn = events::turn_done(&mut run.save, &mut ai, &mut news);
         }
@@ -372,7 +363,7 @@ impl RallyPage {
     /// on.
     pub fn season_stage_done(&mut self, times: Option<StageTimes>, drivable: bool) {
         let Some(run) = self.run.as_mut().filter(|r| matches!(r.turn, Turn::Stage(_))) else { return };
-        season_store::record_stage(&mut run.save, times, drivable);
+        store::record_stage(&mut run.save, times, drivable);
         self.turn_done();
     }
 
@@ -383,7 +374,7 @@ impl RallyPage {
         self.championship = Some(c.service_done(penalty, Some(damage)));
         self.park = None;
         if let Some(run) = self.run.as_mut().filter(|r| matches!(r.turn, Turn::Service { .. })) {
-            season_store::record_penalty(&mut run.save, penalty);
+            store::record_penalty(&mut run.save, penalty);
             self.turn_done();
         }
     }
@@ -456,7 +447,7 @@ impl RallyPage {
             (
                 season_model::road_wear(season_model::player_start_place(&r.save)),
                 season_model::options(&r.save),
-                season_store::player_false_starts(&r.save),
+                store::player_false_starts(&r.save),
                 events::start_clock(&r.save),
             )
         });
@@ -503,7 +494,7 @@ impl RallyPage {
         let left = StageEnd { cause: EndCause::Left, end_race: EndRace { time: 0.0, splits: [0.0; 2], retired: true } };
         let (end, drivable, false_start) = read_result(&result).unwrap_or((left, true, false));
         if let Some(run) = self.run.as_mut().filter(|_| false_start) {
-            season_store::record_false_start(&mut run.save);
+            store::record_false_start(&mut run.save);
         }
         let damage = std::fs::read(&out).ok().and_then(|b| CarriedDamage::from_bytes(&b));
         let damage = damage.or_else(|| c.damage().cloned()).unwrap_or_default();
@@ -1263,7 +1254,7 @@ mod tests {
         page.service_done(penalty, repaired.clone());
         assert_eq!(page.run.as_ref().unwrap().turn, Turn::Stage(1));
         let (save, _, damage, _) = saved(&page);
-        assert_eq!((season_store::player_penalty(&save), &damage), (penalty, &repaired));
+        assert_eq!((store::player_penalty(&save), &damage), (penalty, &repaired));
 
         // SS2 on another tyre, with the repaired car.
         assert!(choice_before(1));

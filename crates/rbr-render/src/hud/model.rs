@@ -26,8 +26,7 @@
 //! The time base is the game's frame time: each live answer is one frame of one step ([`STEP_SECONDS`],
 //! `rbr_render::live`). Ours: the fade of the messages.
 
-use rbr_gameplay::car_damage::{level, CarriedDamage};
-use rbr_gameplay::service::Rules;
+use rbr_gameplay::car_damage::{level, CarriedDamage, Rules};
 use rbr_recording::dash::{Dash, StackKey};
 use rbr_recording::flow::{Flow, MessageBox};
 use rbr_recording::pacenote::Callout;

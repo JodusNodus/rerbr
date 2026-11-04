@@ -1,7 +1,7 @@
 //! The championship season around the rally flow: its creation, the rallies'
 //! forecast weather ([`init6`], [`Block`]), the AI field, the rally points
 //! and the standings. The event queue and the clock that run the season are
-//! [`crate::season_events`]. The state is the profile's `RBR7` season, so a
+//! [`crate::events`]. The state is the profile's `RBR7` season, so a
 //! season is saved and continued in the game's own format. Layout evidence
 //! lives in [`layout`].
 //!
@@ -19,10 +19,10 @@
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::saves::after_season::{CarStore, DriverStore, Stores, TeamStore};
 use rbr_formats::saves::season::{Season, DRIVERS};
+use rbr_gameplay::crt::CrtRand;
+use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, Skill};
 
-use crate::ai_season::{self, CarState, DriverState, TeamCosts};
-use crate::crt::CrtRand;
-use crate::race_options::{ChampionshipOptions, DamageLevel, Skill};
+use crate::ai::{self, CarState, DriverState, TeamCosts};
 
 mod forecast;
 pub mod layout;
@@ -36,8 +36,8 @@ pub use layout::{
     entry_id, entry_name, entry_rank, entry_team_slot, false_starts, fill_neg, first_stage_order, forecast_rally_id,
     forecast_slot_time, forecast_start_time, head_time, inc_false_starts, out_of_rally, player_entry, position,
     rally_penalty, rally_points, rally_total, rank_order_override, rewind_stage, season_points, set_clock,
-    set_entry_rank, set_first_stage_order, set_head_time, set_start_order, skill_level, start_key, start_order,
-    team_ids, wrapping_season_points, ENTRIES,
+    set_entry_rank, set_first_stage_order, set_head_time, set_start_order, start_key, start_order, team_ids,
+    wrapping_season_points, ENTRIES,
 };
 pub(crate) use layout::{bubble, push_pair, retired_in, set_stage_start_time, stage_retired};
 
@@ -359,7 +359,7 @@ pub struct RallyLine {
 fn key(season: &Season, entry: usize, rally: usize) -> f32 {
     let retired = season.drivers.get(entry).and_then(|d| d.rallies.get(rally)).is_some_and(retired_in);
     if retired {
-        ai_season::RETIRED
+        ai::RETIRED
     } else {
         rally_penalty(season, entry, rally) + rally_total(season, entry, rally)
     }
@@ -412,7 +412,7 @@ pub fn award_points(season: &mut Season, rally: usize) {
     let mut place = 0;
     for e in order {
         let retired = retired_in(&season.drivers[e].rallies[rally]);
-        let no_time = rally_total(season, e, rally) == ai_season::RETIRED;
+        let no_time = rally_total(season, e, rally) == ai::RETIRED;
         if retired || no_time || entry_excluded(season, e) || place >= POINTS.len() {
             continue;
         }
@@ -433,9 +433,9 @@ pub fn season_standings(season: &Season) -> Vec<(usize, String, u32)> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::weather;
     use rbr_formats::saves::season::RETIRED;
     use rbr_formats::season_dat;
+    use rbr_gameplay::weather;
 
     pub(crate) fn table() -> weather::Season {
         let row =
@@ -483,7 +483,7 @@ pub(crate) mod tests {
         let classes = driver_classes(roster, &mut CrtRand(7));
         let mut s = create(roster, blocks, options, Player { name: "Player", team, rank: 0 }, &classes, rng);
         let mut field = AiField::new(roster);
-        crate::season_events::rally_start(&mut s, &mut field);
+        crate::events::rally_start(&mut s, &mut field);
         (s, field)
     }
 
@@ -519,7 +519,7 @@ pub(crate) mod tests {
         }
         // Entry 3 retired: last.
         s.drivers[3].rallies[0].stages[0].retired = 1;
-        crate::season_events::fill_stage(&mut s);
+        crate::events::fill_stage(&mut s);
         assert_eq!(s.position(), (0, 1));
         assert_eq!(player_start_place(&s), Some(0));
         assert_eq!(road_wear(player_start_place(&s)), 0);
@@ -625,7 +625,7 @@ pub(crate) mod tests {
     /// the next rally starts with the budgets scored; the field's stores give the same field back.
     #[test]
     fn retail_rally_through_the_queue() {
-        use crate::season_events::{self as ev, Ai, Turn};
+        use crate::events::{self as ev, Ai, Turn};
         let Some(data) = rbr_formats::data::Data::from_env() else { return };
         if data.patch().is_none() {
             return;
@@ -659,7 +659,7 @@ pub(crate) mod tests {
             turn = ev::turn_done(&mut s, &mut ai, &mut news);
         }
         assert_eq!(s.position(), (1, 0));
-        use crate::ai_season::Bulletin;
+        use crate::ai::Bulletin;
         assert!(news.iter().any(|n| matches!(n.bulletin, Bulletin::ManagerOrder { .. })));
         assert!(news.iter().any(|n| matches!(n.bulletin, Bulletin::Accident { .. })));
         // Accidents leave pairs in the results.

@@ -3,9 +3,9 @@
 //! penalty.
 
 use rbr_formats::ai_ini::{Master, Team};
+use rbr_gameplay::crt::CrtRand;
 
 use super::{ftol, Bulletin, CarState, DriverState, RunLog, INV_RAND_MAX};
-use crate::crt::CrtRand;
 
 /// A team's money (`E78Entry`): +0x80 the budget and +0x8c the manager style, from `aidrv.ini` and changed by the
 /// rally's result (`Dmg` 0x5d6df0); the repair spending, +0x84 the current service's and +0x88 the rally's
@@ -218,7 +218,7 @@ pub fn service_penalty(id: i32, minutes: u32, long: bool, log: &mut RunLog) -> f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_season::tests::*;
+    use crate::ai::tests::*;
 
     /// `Ev9ec0`: value 5 at engineering 3 costs `97 * 0.01 * 5` (4.85 -> 4), time 5 at 3 x 6 = 18 % off
     /// (`82 * 0.01 * 5` = 4.1 -> 4).
