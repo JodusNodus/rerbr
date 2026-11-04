@@ -105,11 +105,20 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 
 ## Rally school (experimental)
 
-Mechanics in `school/` (lessons, the `.dls` `Driveline` filter bank, its listeners, `EvalFilters`, the awards) and
-`game.rs` (`Game::with_school`, the start, the substep hooks); the live hook and the profile write in
-`rbr-standalone` (`--school N`, `live::race_end`). Checks: `rbr-gameplay/tests/school_vectors.rs` (direct-call
-vectors of the bank's methods) and an autopilot drive of lesson 2 (stops in the box, verdict 3, profile written). No
-original school drive is recorded yet: the oracle run is open.
+Mechanics in the `rbr-school` crate (lessons, the `.dls` `Driveline` filter bank, its listeners, `EvalFilters`,
+the awards), a mode on the stage loop: `SchoolRun` is a `rbr_gameplay::mode::ModeRules` the host passes to
+`Game::frame_with` (the start, the control before each substep, the step's emits, `Tic570` each frame). The host
+owns it, and the live hook and the profile write are in `rbr-standalone` (`--school N`, `live::race_end`). Checks:
+`rbr-school/tests/vectors.rs` (direct-call vectors of the bank's methods, records in `gameplay_school/`) and an
+autopilot drive of lesson 2 (stops in the box, verdict 3, profile written). No original school drive is recorded
+yet: the oracle run is open.
+
+- Ported and vector-checked but with no caller in ours, removed in f9eb0e60 (restore from its parent): the sub
+  primitives the results page uses (`Classify`, `Category`, `FlagMap`, `Over`/`Over2`/`Over3`, `Pick`, `InRange`,
+  `Init`, `Set7`, `SetThresh`, `SetLim`, `MaxStore`, the getters), `InitState`, `Publish`, `RallySchoolSound` and
+  the latch accessors.
+- `SchoolIncident` reads its lead through the sub's words whatever it points at: a check lead is armed by its
+  bounds (`IsArmed` on +0x14/+0x18; the records agree, none was found to tell the two reads apart).
 
 - Flow mode 7: the lesson is the flow's +0xca4, its step counter +0xca8 (2 in a timed lesson's load, 4 while
   driving); +0xcb4 is set by the untimed lessons' (0, 4, 10, 13, 14, 16) load only (`M5693f0` cases 2 and 4).
