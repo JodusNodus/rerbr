@@ -461,6 +461,7 @@ addr,module,rust_item,test,status
 0x50ad40,engine_driveline/layout/drive_line.rs,engine_driveline::layout::drive_line::last,engine_driveline_vectors::last_matches_original_calls,checked
 0x50aec0,engine_driveline/layout/drive_line.rs,engine_driveline::layout::drive_line::set_drive_line,engine_driveline_vectors::set_drive_line_matches_original_calls,checked
 0x50b0f0,engine_driveline/layout/drive_line.rs,engine_driveline::layout::drive_line::clamp_mix,engine_driveline_vectors::clamp_mix_matches_original_calls,checked
+0x50b180,engine_driveline/layout/drive_line.rs,engine_driveline::layout::drive_line::sample,engine_driveline_vectors::sample_matches_original_calls,checked
 0x50b300,engine_driveline/layout/drive_calls.rs,engine_driveline::layout::drive_calls::sample_big,engine_driveline_vectors::sample_big_matches_original_calls,checked
 0x50bed0,engine_driveline/layout/construct.rs,engine_driveline::layout::construct::construct_engine_state,load_defs::car_instance_matches_the_game,partial
 0x50ced0,engine_driveline/sim.rs,engine_driveline::sim::blend_tables_checked,engine_driveline_vectors::blend_x_matches_original_calls,checked

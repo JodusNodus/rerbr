@@ -523,6 +523,17 @@ fn blend_b_matches_original_calls() {
     });
 }
 
+const SAMPLE: u32 = 0x50b180;
+
+#[test]
+fn sample_matches_original_calls() {
+    let _pc24 = Precision::Pc24.scope();
+    each_call(SAMPLE, "CDriveLine::Sample", |mem, call| {
+        let out = layout::sample(mem, call.args[0], f32::from_bits(call.args[1]));
+        out.store(mem, call.args[2]);
+    });
+}
+
 #[test]
 fn last_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
