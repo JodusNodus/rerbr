@@ -120,9 +120,27 @@ yet: the oracle run is open.
   (verdicts 0, 3 or 4 by the autopilot's time; car 2 at 10.10 s fails).
 
 - Ported and vector-checked but with no caller in ours, removed in f9eb0e60 (restore from its parent): the sub
-  primitives the results page uses (`Classify`, `Category`, `FlagMap`, `Over`/`Over2`/`Over3`, `Pick`, `InRange`,
-  `Init`, `Set7`, `SetThresh`, `SetLim`, `MaxStore`, the getters), `InitState`, `Publish`, `RallySchoolSound` and
-  the latch accessors.
+  primitives the listeners use (`Classify`, `Category`, `Pick`, `Over`/`Over2`/`Over3`, `InRange`, `Init`, `Set7`,
+  `SetThresh`, `SetLim`, `MaxStore`), `InitState`, `Publish`, `RallySchoolSound` and the latch accessors. The
+  failure page needs only `FlagMap` and `Get20`/`Get24`/`Get28` (restored, vector-covered): its draw calls nothing
+  else (verified against the disassembly below).
+- Failure reasons (`rbr_school::explain::failure_reasons`, listed under the HUD's Failed): `Vf0C` 0x542330 over the
+  bank, verified against the 1.02 disassembly where the reconstruction (`RBR_E52_X87.cpp`, 26% matched) diverges:
+  title `FAILURE1`, advice `SCOM_FAIL1-4` by `rand & 3` (`Vf04` 0x542aa0; neither picked from the result); per sub
+  `FlagMap` 0/1/2 reads `lim0`/`lim1`/`lim2` (other values skip: `dec; jne`), `q >= 0` names the lesson's own
+  string-table key at that offset (`BlockAddB` 0x475c90, block base 0 in ours), `q == -1` skips, else the sub's tag
+  (`m_00`) 1..8/1..5/1..5 names a built-in (`m_str8[9..16]` `BRKFAIL`..`NOHBFAIL`, `[17..21]` `BRKEARLY`..`HALTEARLY`,
+  `[22..26]` `BRKLATE`..`HALTLATE`; the reconstruction's `m_str8[6..13]` and its switch on the limit are wrong);
+  each tripped check (`state` +-1) with `code > 0` names its own key; results de-duplicated, at most 7; when timed
+  (all three ladder words ordered-nonzero, `IsZeroAny` 0x4981a0) a race time over the limit names `TIMEFAIL`, else
+  over the pass `TIMEBAD`, appended without a scan. `FAILHELP` and `OOBFAIL`/`OOBYAFAIL`/`OOBSTFAIL`/`OOB_TTFAIL`/
+  `CRASHFAIL` are set but never resolved here (the out-of-bounds ones feed the fade's warning instead).
+- The race time the time pair compares (`DAT_0165fc68+0x140`) is inferred to be the HUD time; ours passes the
+  end's race time. Every retail lesson's limits and check codes resolve to keys in the English table, as does
+  every built-in but `HALTEARLY` (absent in 1.02 English, skipped at runtime like the original's null `Resolve`).
+- `SCH1` carries the failed end's reason keys after the speech ids (old bodies still read); the standalone fills
+  them once the verdict is known and failed, the viewer resolves them through `bstrings.eng` (the `HudModel`
+  keeps the table a school drive hands it) and the verdict panel lists each text under Failed.
 - Lessons 0 and 10 (free practice, "yellow rectangle: end lesson") end standing in the box within 2 m (each axis)
   of `CDriveLine::Sample(m_00)` on the object `0x1659184` points to (fixed 2026-11-04: read as the table it gave
   the origin and they never ended). Both start facing the box, before the start on a two-record driveline; lesson
