@@ -244,6 +244,30 @@ fn a_championship_start_waits_for_the_confirm() {
     });
 }
 
+/// The drive line point the rally school's lessons 0 and 10 measure the car from (`PhysicsStep::drive_line_point`,
+/// `CDriveLine::Sample` on the object 0x1659184 points to) is the stage's own driveline: its first record at
+/// distance 0. Read at the global's address as the table, it was the origin, and the free lessons never ended.
+#[test]
+fn the_drive_line_point_is_the_stage_s_driveline() {
+    use rbr_gameplay::game::PhysicsStep;
+    quick_race(|data, stage, race| {
+        let mut live = Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), true).unwrap();
+        live.answer(&Input::default().to_bytes()).unwrap();
+        let physics = Pure {
+            playback: &live.playback,
+            trace: None,
+            track: &live.stage.track,
+            own_step: false,
+            word6: 0,
+            substeps: 1,
+            tyre_max: live.pending.tyre_max,
+            twin: None,
+        };
+        let first = stage.track[0].vectors[0];
+        assert_eq!(physics.drive_line_point(0.0), Some([first.x, first.y, first.z]));
+    });
+}
+
 /// The school record (SCH1): a lesson's drive sends one after MNU1, with the lesson, the brief while the
 /// countdown waits for the confirm, the drive after it, and the kept verdict at the end; a restart clears it.
 /// A quick race sends none.
