@@ -100,7 +100,7 @@ pub fn run_window(args: Args, data: Data, fmod_bank: Option<PathBuf>) -> Result<
 struct Viewer {
     args: Arc<Args>,
     data: Data,
-    /// The RSF car's FMOD bank, for the sound the load starts.
+    /// The community car's FMOD bank, for the sound the load starts.
     fmod_bank: Option<PathBuf>,
     phase: Phase,
     /// Why the window or the load failed.

@@ -1,4 +1,4 @@
-//! A co-driver mod (`notes/sound.md` "Custom co-driver"): RSF's Pacenote plugin's way of calling the notes, with a
+//! A co-driver mod (`notes/sound.md` "Custom co-driver"): the Pacenote plugin's way of calling the notes, with a
 //! voice, a style and a range set from its folder (`rbr_formats::pacenote::codriver`) and the stage's notes, its `.dls` keys
 //! or a note file (`rbr_formats::pacenote::notes`). It plays instead of 1.02's pace notes; the countdown and the damage
 //! calls stay 1.02's.
@@ -109,7 +109,7 @@ pub struct Choice {
     pub notes: Option<PathBuf>,
 }
 
-/// The style and range set when the player names none: what RSF's notes name.
+/// The style and range set when the player names none: what the notes name.
 pub const DEFAULT_STYLE: &str = "Rbr.ini";
 pub const DEFAULT_RANGES: &str = "Rbr.ini";
 

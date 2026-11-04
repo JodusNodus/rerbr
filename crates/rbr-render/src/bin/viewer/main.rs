@@ -132,7 +132,7 @@
 //! the exhaust, and rain or snow in the wet and damp weathers of the rain and snow presets. A screenshot replays the
 //! frames before it so that they are in the air. `--no-particles` leaves them out. The stage's tape and net fences
 //! (`rbr_render::fences`) are drawn at rest, and a drive pushes, tears and drops them as the car goes through;
-//! `--no-fences` leaves them out. An RSF car with RBRHUD gauges in the RSF install (`rbr_render::dials`) has working
+//! `--no-fences` leaves them out. A community car with RBRHUD gauges in the RSF install (`rbr_render::dials`) has working
 //! dials in the cockpit: its needles, lights and displays follow the drive, and its backlit faces glow by night;
 //! `--no-dials` leaves its painted dials. The gauge mode key (End by default, `[controls] gauge mode`) turns the pages
 //! of its digital dash, and `--gauge-mode N` starts on page N. `--hide-wheel` leaves the steering wheel out of the
@@ -260,7 +260,7 @@ fn run() -> Result<(), String> {
     result
 }
 
-/// The live drive's sound (`--no-sound` turns it off): the car's FMOD bank when the RSF car has one, and the
+/// The live drive's sound (`--no-sound` turns it off): the car's FMOD bank when the community car has one, and the
 /// `--grind-sound`; the rain or snow the scene's (`Scene::precipitation`). With `offline`'s sample rate no device
 /// plays it (`--video`).
 fn start_sound(

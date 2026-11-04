@@ -110,8 +110,7 @@ fn rsf_gauge_configs_read() {
                     continue;
                 }
                 let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap()).into_owned();
-                let config =
-                    rbrhud::Config::parse(&text).unwrap_or_else(|| panic!("{}: no [main]", path.display()));
+                let config = rbrhud::Config::parse(&text).unwrap_or_else(|| panic!("{}: no [main]", path.display()));
                 let atlas_path = rbr_formats::cars::resolve(&car, &config.atlas)
                     .unwrap_or_else(|| panic!("{}: no atlas {}", path.display(), config.atlas));
                 let atlas = rbrhud::Atlas::parse(&String::from_utf8_lossy(&std::fs::read(&atlas_path).unwrap()));

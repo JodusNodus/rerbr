@@ -254,7 +254,7 @@ pub fn to_rgba8(bytes: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-/// A one-level [`Format::Rgba8`] file (as [`to_rgba8`] writes RSF cars' `A8R8G8B8` textures) with its mip chain down
+/// A one-level [`Format::Rgba8`] file (as [`to_rgba8`] writes community cars' `A8R8G8B8` textures) with its mip chain down
 /// to 1x1 appended, each level the 2x2 box filter of the one above (D3DX's default): `None` when it is another format
 /// or already has levels. Without them a 2048x2048 car texture shimmers in the distance and thrashes the GPU's texture
 /// cache wherever it is drawn small.

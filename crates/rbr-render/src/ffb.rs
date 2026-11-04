@@ -111,7 +111,7 @@ impl Options {
     }
 }
 
-/// The sensitivities' range, percent, in the launcher and the pause menu (RSF's cars go up to 372).
+/// The sensitivities' range, percent, in the launcher and the pause menu (community cars go up to 372).
 pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
 
 /// Each car's own NGP sensitivities, in place of [`Options::sensitivity`]: the `[ffb_cars]` section of the launcher's

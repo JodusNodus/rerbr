@@ -1,4 +1,4 @@
-//! An RSF car's own sound from its FMOD Studio bank (`rbr_formats::fmod`; ours, rbr-recomp `notes/sound.md` section 14): the
+//! A community car's own sound from its FMOD Studio bank (`rbr_formats::fmod`; ours, rbr-recomp `notes/sound.md` section 14): the
 //! car's recordings, laid out as the bank's events lay them out, in place of the 1.02 engine, turbo, blow-off and
 //! transmission voices, with the bank's gear, backfire, ignition, wind and wheel events on top. NGP plays these
 //! banks through FMOD (`NgpFmodDaemon.exe`); FMOD is not used here: the bank's mixing tree (tracks, the mixer's

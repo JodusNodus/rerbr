@@ -132,7 +132,7 @@ pub struct Args {
     pub quit_after: Option<(f32, QuitFrom)>,
     /// `--no-fences` clears it.
     pub fences: bool,
-    /// The working dials of an RSF car with RBRHUD gauges (`rbr_render::dials`); `--no-dials` clears it. `--gauge-mode N`:
+    /// The working dials of a community car with RBRHUD gauges (`rbr_render::dials`); `--no-dials` clears it. `--gauge-mode N`:
     /// the gauge mode they start in (1 on; the gauge mode key cycles it).
     pub dials: bool,
     pub gauge_mode: u32,
@@ -156,7 +156,7 @@ pub struct Args {
     /// `--replay FILE`: the replay watched (`replay::expand`), its frames in place of the live drive.
     pub replay: Option<PathBuf>,
     pub ghost_weather: rbr_formats::ghost::Weather,
-    /// The RSF install, for an RSF car's working dials.
+    /// The RSF install, for a community car's working dials.
     pub rsf_install: Option<PathBuf>,
     /// The `--rsf-car`'s RSF id, which keys its camera nudges (`camera_prefs::car_key`).
     pub rsf_car_id: Option<u32>,
