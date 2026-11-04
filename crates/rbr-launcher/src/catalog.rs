@@ -858,7 +858,7 @@ mod tests {
             }
         }
         let mut catalog = Catalog::default();
-        let base = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new() };
+        let base = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new(), sky: None };
         let check = |catalog: &mut Catalog| {
             catalog.set_rsf(root.to_str().unwrap());
             let map = catalog.map(777).unwrap().clone();

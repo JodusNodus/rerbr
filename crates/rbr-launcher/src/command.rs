@@ -1169,6 +1169,7 @@ mod tests {
             ],
             nice: vec![0],
             bad: vec![1],
+            sky: None,
         };
         let catalog = Catalog {
             maps: vec![Map {
