@@ -37,7 +37,7 @@ use egui::{Color32, ComboBox, Ui};
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::data::Data;
 use rbr_formats::saves::season::Season as SeasonSave;
-use rbr_formats::saves::SaveDir;
+use rbr_formats::saves::{is_file_name_part, SaveDir};
 use rbr_formats::season_dat;
 use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::CarriedDamage;
@@ -578,11 +578,14 @@ impl RallyPage {
         ui.horizontal(|ui| {
             ui.label("Profile");
             ui.add_enabled(!self.driving, egui::TextEdit::singleline(&mut self.profile).desired_width(100.0));
-            if ui.add_enabled(!self.driving && startable, egui::Button::new("New season")).clicked() {
+            // The name is part of the save's file name: keep out what could leave the folder.
+            self.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
+            let named = is_file_name_part(&self.profile);
+            if ui.add_enabled(!self.driving && startable && named, egui::Button::new("New season")).clicked() {
                 let store = self.store(here);
                 self.new_season(season, Some(store), season_model::seed_from_unix_ms(now_ms()));
             }
-            if ui.add_enabled(!self.driving, egui::Button::new("Continue")).clicked() {
+            if ui.add_enabled(!self.driving && named, egui::Button::new("Continue")).clicked() {
                 self.continue_season(here, season);
             }
         });

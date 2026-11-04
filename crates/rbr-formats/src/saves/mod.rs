@@ -54,6 +54,12 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
+/// Whether `name` can sit inside a save file name: not empty, no control characters, no path separators and none of
+/// the characters Windows forbids in a file name (`:` also names streams and drives).
+pub fn is_file_name_part(name: &str) -> bool {
+    !name.is_empty() && !name.chars().any(|c| c.is_control() || "/\\:*?\"<>|".contains(c))
+}
+
 /// A game directory's `SavedGames`, with the game's file names. This is the launcher's way in: the selected profile's
 /// settings are [`profile::ProfileFile::menu`] and [`profile::ProfileFile::controls`].
 #[derive(Clone, Debug)]
@@ -86,16 +92,25 @@ impl SaveDir {
         Ok(names)
     }
 
+    /// The path of `kind`'s file for `base`, inside this folder; a `base` that could leave it is refused.
+    pub fn file(&self, kind: Kind, base: &str) -> Result<PathBuf, Error> {
+        if !is_file_name_part(base) {
+            return Err(Error::BadName(base.to_owned()));
+        }
+        Ok(self.path.join(kind.file_name(base)))
+    }
+
     pub fn load_profile(&self, name: &str) -> Result<profile::ProfileFile, Error> {
-        profile::ProfileFile::read(&fs::read(self.path.join(Kind::Profile.file_name(name)))?)
+        profile::ProfileFile::read(&fs::read(self.file(Kind::Profile, name)?)?)
     }
 
     pub fn save_profile(&self, name: &str, file: &profile::ProfileFile) -> Result<(), Error> {
+        self.file(Kind::Profile, name)?;
         self.store(&Kind::Profile.file_name(name), &file.write()?)
     }
 
     pub fn load_results(&self) -> Result<results::Results, Error> {
-        results::Results::read(&fs::read(self.path.join(Kind::Results.file_name("result")))?)
+        results::Results::read(&fs::read(self.file(Kind::Results, "result")?)?)
     }
 
     pub fn save_results(&self, results: &results::Results) -> Result<(), Error> {
@@ -197,13 +212,36 @@ fn unseal(bytes: &[u8], size: usize) -> Result<Reader<'_>, Error> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    Size { len: usize, size: usize },
-    Checksum { stored: u32, computed: u32 },
-    Version { found: u32, want: u32 },
-    Tag { at: usize, found: [u8; 4], want: [u8; 4] },
-    Eof { at: usize },
-    TooLarge { len: usize, size: usize },
-    Io { kind: io::ErrorKind, message: String },
+    Size {
+        len: usize,
+        size: usize,
+    },
+    Checksum {
+        stored: u32,
+        computed: u32,
+    },
+    Version {
+        found: u32,
+        want: u32,
+    },
+    Tag {
+        at: usize,
+        found: [u8; 4],
+        want: [u8; 4],
+    },
+    Eof {
+        at: usize,
+    },
+    TooLarge {
+        len: usize,
+        size: usize,
+    },
+    Io {
+        kind: io::ErrorKind,
+        message: String,
+    },
+    /// A name that is not usable in a file name ([`is_file_name_part`]).
+    BadName(String),
 }
 
 impl From<io::Error> for Error {
@@ -227,6 +265,7 @@ impl fmt::Display for Error {
             Error::Eof { at } => write!(f, "data ends at {at:#x}"),
             Error::TooLarge { len, size } => write!(f, "{len} bytes do not fit the {size}-byte file"),
             Error::Io { message, .. } => write!(f, "{message}"),
+            Error::BadName(name) => write!(f, "{name:?} cannot be used in a save file name"),
         }
     }
 }
@@ -293,6 +332,21 @@ impl Writer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_name_cannot_leave_the_saves_folder() {
+        let saves = SaveDir { path: PathBuf::from("/tmp/nowhere/SavedGames") };
+        for bad in
+            ["../x", "..\\x", "/etc/x", "C:\\x", "a/b", "a:b", "a\0b", "a*b", "a?b", "a\"b", "a<b", "a|b", "a\nb", ""]
+        {
+            assert_eq!(saves.file(Kind::Profile, bad), Err(Error::BadName(bad.to_owned())), "{bad:?}");
+            assert!(saves.load_profile(bad).is_err());
+            assert!(saves.save_profile(bad, &profile::ProfileFile::fresh(bad)).is_err());
+        }
+        for good in ["player", "Anna Maria", "pilot_1-b", "Jürgen", "a.b", ".."] {
+            assert_eq!(saves.file(Kind::Profile, good).unwrap(), saves.path.join(format!("pf{good}.rbr")));
+        }
+    }
 
     #[test]
     fn cipher_round_trips() {
