@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use rbr_btb::{ids, stage, track};
 
-use crate::catalog::{Map, Stage};
+use crate::catalog::{Map, Origin, Stage};
 use crate::Form;
 
 /// A listed BTB stage. The map's number is its RSF id, else a synthetic one no other map has ([`synthetic`]).
@@ -61,7 +61,7 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             folder: track.folder.clone(),
         };
         let stage = Stage { name: stage::stage_name(&btb.folder, number), map: number, letter: stage::LETTER };
-        maps.push(Map { number, stages: vec![stage], community: None, btb: Some(btb) });
+        maps.push(Map { number, stages: vec![stage], origin: Origin::Btb(btb) });
     }
     maps
 }
@@ -84,7 +84,7 @@ impl Form {
     /// and the BTB stage's arguments for `rbr-standalone`: the surface, and the retail map whose weather rows it
     /// plays. Other stages pass unchanged. `None`, with the status, when the files cannot be built.
     pub fn btb_launch(&mut self, mut stage: Stage, mut extra: Vec<String>) -> Option<(Stage, Vec<String>)> {
-        let Some(btb) = self.catalog.map(stage.map).and_then(|m| m.btb.clone()) else { return Some((stage, extra)) };
+        let Some(btb) = self.catalog.map(stage.map).and_then(Map::btb).cloned() else { return Some((stage, extra)) };
         match btb.prepare(stage.map, &self.data.install().join("Maps"), &self.here()) {
             Ok(name) => stage.name = name,
             Err(e) => {

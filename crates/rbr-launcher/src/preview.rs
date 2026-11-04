@@ -25,7 +25,7 @@ use rbr_formats::data::Data;
 use rbr_formats::{rsf, stage_files, trk};
 use rbr_render::stage_picture::{btb_picture, picture_sprite, rsf_picture, Pictures, Pixels};
 
-use crate::catalog::{Car, Map};
+use crate::catalog::{Car, Map, Origin};
 
 /// The preview column's width, points.
 pub const WIDTH: f32 = 384.0;
@@ -349,20 +349,20 @@ impl StagePictures {
     fn preview(&mut self, map: &Map) -> StageData {
         let data = self.data.clone();
         let driveline = || first_driveline(&data, map);
-        let (picture, length) = match (&map.community, &map.btb) {
+        let (picture, length) = match &map.origin {
             // A BTB stage has no map `.trk` until it starts: its picture, else its own driveline.
-            (None, Some(btb)) => {
+            Origin::Btb(btb) => {
                 let id = Some(map.number).filter(|&n| n < crate::btb::SYNTHETIC);
                 let picture = btb_picture(&btb.folder, id);
                 (picture.ok_or_else(|| btb_driveline(&btb.folder)), btb.km.map(|km| km * 1000.0))
             }
-            (Some(stage), _) => {
+            Origin::Community(stage) => {
                 let picture = rsf_picture(&stage.folder, stage.id);
                 let line = driveline();
                 let length = stage.length.map(|km| km * 1000.0).or(line.as_ref().map(|l| l.1));
                 (picture.ok_or(line.map(|l| l.0)), length)
             }
-            (None, None) => {
+            Origin::Retail => {
                 let picture = picture_sprite(map.number).and_then(|sprite| self.pictures.sprite(sprite));
                 match (picture, game_length(map.number)) {
                     (Some(picture), Some(length)) => (Ok(picture), Some(length)),
@@ -379,15 +379,14 @@ impl StagePictures {
             lines.push(format!("{:.1} km", metres / 1000.0));
         }
         lines.push(crate::stage_browser::SURFACES[map.surface().min(2) as usize].to_owned());
-        if let Some(stage) = &map.community {
+        if let Origin::Community(stage) = &map.origin {
             lines.extend(stage.country.clone());
             lines.extend(stage.author.as_ref().map(|a| format!("by {a}")));
         }
-        if let Some(btb) = &map.btb {
+        if let Origin::Btb(btb) = &map.origin {
             lines.extend(btb.author.as_ref().map(|a| format!("by {a}")));
         }
-        let problem =
-            map.community.as_ref().and_then(|s| s.problem.clone()).or(map.btb.as_ref().and_then(|b| b.problem.clone()));
+        let problem = map.problem().cloned();
         StageData { picture, lines, problem }
     }
 }
