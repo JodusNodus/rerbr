@@ -108,7 +108,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   are the profile's school array (`Profile::school`, 0/-/1..3 Passed n/4/4 Perfect), re-read on change. Drive
   lesson starts like the Drive page's Start on good weather with car 5 (`command::start_school`,
   `rbr-standalone --school N` with `--saves`/`--profile`; `--tyre`/`--setup`/`--rsf-car`/`--season-row` left out)
-  and is blocked while the viewer runs, without readiness, or when NGP's archive has no car 5.
+  and is blocked while the viewer runs, without readiness, or when NGP's archive has no car 5. In the viewer a
+  lesson opens on its brief panel (the number, title, instruction and cone guide from `bstrings.eng`, the
+  pass/perfect times when timed, Enter to start), driving shows a short Too slow/Too fast toast for the bank's
+  incident codes, and the end its verdict panel (Perfect, Passed n/4, Failed, with the time) in place of the stage
+  result (`hud::school`, from the live SCH1 record: the lesson, its state, the kept verdict, the times and the
+  answer's last incident code). The brief's confirm ends the start orbit, as the countdown's end does.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and
