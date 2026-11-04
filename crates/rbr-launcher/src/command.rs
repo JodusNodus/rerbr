@@ -306,8 +306,11 @@ impl ViewerLaunch {
             tyre.to_string(),
             "--stage".into(),
             stage.name.clone(),
-            "--car".into(),
-            car.index.to_string(),
+        ]);
+        if pack.is_none() {
+            args.extend(["--car".into(), car.index.to_string()]);
+        }
+        args.extend([
             "--data".into(),
             data.display().to_string(),
             "--callout-distance".into(),
@@ -892,8 +895,7 @@ mod tests {
         assert_eq!(args[1..3], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
         assert!(!args[..live].contains(&"--car".to_owned()));
         assert_eq!(args[args.len() - 2..], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
-        let car_at = args.iter().rposition(|a| a == "--car").unwrap();
-        assert_eq!(args[car_at + 1], "5");
+        assert!(!args.contains(&"--car".to_owned()), "an RSF car is named by its pack alone");
     }
 
     #[test]
@@ -1545,7 +1547,7 @@ mod tests {
         let store = form.rally.store(&here);
         form.rally.new_season(&form.season, Some(store), 1234);
         form.rally.start_rally();
-        let car = form.car().unwrap().index;
+        let car = form.car().unwrap().clone();
         let stages =
             form.rally.championship.as_ref().unwrap().rally().stages.iter().map(|s| s.track()).collect::<Vec<_>>();
         eprintln!("car {}, stages {stages:?}", form.car().unwrap().name);
@@ -1561,7 +1563,7 @@ mod tests {
             eprintln!("SS{}: {:?}, phase {:?}", stage + 1, time, c.phase());
             assert!(time.is_some_and(|t| t > 0.0), "SS{} has no time", stage + 1);
             if let Some(Turn::Service { .. }) = form.rally.run.as_ref().map(|r| r.turn) {
-                form.rally.open_park(&form.data, car, Some(Path::new(&ngp)));
+                form.rally.open_park(&form.data, &car, Some(Path::new(&ngp)));
                 let park = form.rally.park.as_mut().unwrap();
                 park.manager_advice();
                 if !park.start() {

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use rbr_formats::{cars, rbz, rsf, stage_files};
 use rbr_gameplay::weather::{self, Preset, Season, Weather};
+use rbr_render::camera_prefs;
 
 /// Each car number's folder in `physics.rbz` (the exe's table at 0x7c18d4).
 const PHYSICS_DIRS: [&str; 8] = ["c_xsara", "h_accent", "mg_zr", "m_lancer", "p_206", "s_i2003", "t_coroll", "s_i2000"];
@@ -45,7 +46,8 @@ pub fn ngp_offered(cars: &[Car], ngp_cars: &[u32]) -> Vec<Car> {
 /// A car of `Cars/Cars.ini`, or an RSF or added car raced in RSF's slot.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Car {
-    /// Its game's car number (`rbr-standalone --car`).
+    /// Its game's car number (`rbr-standalone --car`). An RSF car has none: `rsf::SLOT` stands in, and it is told by
+    /// `rsf`.
     pub index: u32,
     /// Its folder, upper case (`viewer --car`); an RSF car's name.
     pub name: String,
@@ -70,6 +72,16 @@ pub struct RsfCar {
 }
 
 impl Car {
+    /// The keys its setups are saved under (the game's slot files and the `Physics/<key>/Setups` folder), its own
+    /// first. A retail car's is its number; an RSF car's is `rsf-<id>` (`camera_prefs::car_key`), then `5`: the
+    /// setups saved before RSF cars had keys of their own, offered to every RSF car.
+    pub fn setup_keys(&self) -> Vec<String> {
+        match &self.rsf {
+            Some(rsf) => vec![camera_prefs::car_key(&self.name, Some(rsf.id)), rsf::SLOT.to_string()],
+            None => vec![self.index.to_string()],
+        }
+    }
+
     /// Why the car can't start (an RSF car needs its pack and a model), or `None`.
     pub fn unavailable(&self) -> Option<String> {
         let rsf = self.rsf.as_ref()?;
@@ -96,7 +108,7 @@ pub fn rsf_cars(install: &Path, root: &Path, added: bool) -> Result<Vec<Car>, St
                 Ok(p) => p.read("common.lsp").map(|_| p.path().to_owned()),
                 Err(_) => Err("not downloaded in RallySimFans".into()),
             };
-            let model = rsf.model_entry(car, rsf::SLOT, &retail).map(|m| m.fallback);
+            let model = rsf.model_entry(car, &retail).map(|m| m.fallback);
             Car {
                 index: rsf::SLOT,
                 name: car.name.clone(),
@@ -602,6 +614,17 @@ mod tests {
                 (0..8).filter(|&c| common(PHYSICS_DIRS[c as usize]).is_ok_and(|t| is_ngp_car(&t))).collect();
             assert_eq!(slots, [5]);
         }
+    }
+
+    /// A retail car's setups are its number's; an RSF car has its own key, then the old slot 5's.
+    #[test]
+    fn setup_keys_are_the_cars_own_with_slot_5_behind_an_rsf_car() {
+        let rsf =
+            RsfCar { id: 24, added: false, group: None, pack: Ok("/p".into()), model: Ok(None), drive_train: None };
+        let car = |index, rsf| Car { index, name: "Evo".into(), rsf };
+        assert_eq!(car(6, None).setup_keys(), ["6"]);
+        assert_eq!(car(rsf::SLOT, Some(rsf.clone())).setup_keys(), ["rsf-24", "5"]);
+        assert_eq!(car(rsf::SLOT, Some(RsfCar { id: 25, ..rsf })).setup_keys(), ["rsf-25", "5"]);
     }
 
     /// NGP's retail slots are offered, the others hidden; with RSF cars the retail slot 5 is too.

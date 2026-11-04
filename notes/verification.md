@@ -120,7 +120,7 @@ scripts/rsf-session.sh fetch <name>     # to $RBR_RECORDINGS/rsf/<name>
 
 Driverless tests: `start` takes `AUTO="map car weather tyre"`, `PLAYBACK=<FRM1 under the home>`, `FAST=N`.
 
-Replay an attempt as `rbr-launcher`'s command does for an RSF car: `rbr-standalone --boot --recording <n>/physics.bin --stage track-<map>_<letter> --car 5 --weather W --tyre T --ngp-physics $RBR_NGP_PHYSICS --rsf-car $RBR_RSF/rsfdata/cars/<pack>` (map, weather, tyre from `GAM1`, the pack from `attempt.txt`).
+Replay an attempt as `rbr-launcher`'s command does for an RSF car: `rbr-standalone --boot --recording <n>/physics.bin --stage track-<map>_<letter> --weather W --tyre T --ngp-physics $RBR_NGP_PHYSICS --rsf-car $RBR_RSF/rsfdata/cars/<pack>` (map, weather, tyre from `GAM1`, the pack from `attempt.txt`).
 
 Behaviour (2026-10-20, no driver, `AUTO="54 5 0 4"`, Evo IX): 7.5.779 calls the car control input `0x4e91f0` from the same site as 7.4.778, so `HookCarControl` records its controls; RSF's exe differs from 1.02 only in the PE header, the byte at 0x40b225 and appended data, so every plugin patch applies. RSF's NGP sends FFB as SetParameters, Download and Start of one constant force about 600 times a second (none while idle); never SetProperty or GetDeviceData; each device made twice. The RSF launcher left the plugin in place at its start (its "start game" untried). The idle run replays 8459 of 30000 steps equal, departing at step 9941 (first non-zero control: FFB turned the wheel), where `Game`'s control differs from the recorded payload (word 4, steering; open). Not yet seen: a restart's or second stage's rotation (no driver), SetProperty, buffered input.
 

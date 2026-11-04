@@ -11,8 +11,8 @@
 //! the default.
 //!
 //! The game's three save slots per car (`CSetupSaveSlotButtonUI`, `SavedGames/<car>slot<n>_<name>.lsp`,
-//! `rbr_formats::saves::setup_slots`) are not offered: earlier versions' slot files in the player's folder are listed
-//! with a retail car's setups, read only. The championship offers the stage's default, the current setup or a saved
+//! `rbr_formats::saves::setup_slots`) are not offered: earlier versions' slot files in the player's folder, and an
+//! RSF car's earlier `Physics/<key>/Setups/`, are listed with the car's setups, read only (`Car::setup_keys`). The championship offers the stage's default, the current setup or a saved
 //! one before each stage (`CSeasonChooseSetupUI`, [`SetupPage::choose`]).
 
 use std::path::{Path, PathBuf};
@@ -39,13 +39,14 @@ fn pack_setup(path: &Path, surface: &str) -> Result<CarSetup, String> {
 /// The setups' surfaces by the map's surface (`catalog::Map::surface`), as the files name them.
 pub const SURFACES: [&str; 3] = ["gravel", "tarmac", "snow"];
 
-/// Where a saved setup is from. Ours are saved and deleted here; the others are only read: the 1.02 install's, the
-/// game's save slots kept from earlier versions, and the RSF install's (its players' `SavedGames/<pack>/` and the
-/// ones it ships in `rsfdata/setups/<pack>/`).
+/// Where a saved setup is from. Ours are saved and deleted here; the others are only read: the 1.02 install's, ours
+/// from earlier versions (an RSF car's `Physics/<key>/Setups/` and the game's save slots), and the RSF install's (its
+/// players' `SavedGames/<pack>/` and the ones it ships in `rsfdata/setups/<pack>/`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     Own,
     Game,
+    Earlier,
     Slot,
     Rsf,
     RsfShipped,
@@ -57,6 +58,7 @@ impl Source {
         match self {
             Source::Own => "",
             Source::Game => "game",
+            Source::Earlier => "earlier",
             Source::Slot => "game slot",
             Source::Rsf => "RSF",
             Source::RsfShipped => "RSF's",
@@ -91,48 +93,55 @@ impl Profile {
 }
 
 /// The folders a car's setups are in, ours first. A retail car's are the game's `Physics/<car>/Setups/`, named as
-/// the player typed, then the game's save slots of the car in our `SavedGames/` (`<car>slot<n>_<name>.lsp`); an RSF
-/// car's are RSF's `SavedGames/<pack>/`, named `<surface>_<name>.lsp` (`by_surface`; RSF's `<id>_d_<surface>.lsp`
-/// copies of the defaults don't match). RSF cars share a slot, so the slots' files are not theirs.
+/// the player typed. An RSF car's are RSF's `SavedGames/<pack>/`, named `<surface>_<name>.lsp` (`by_surface`; RSF's
+/// `<id>_d_<surface>.lsp` copies of the defaults don't match), then ours of earlier versions under its setup keys'
+/// `Physics/<key>/Setups/` (`Car::setup_keys`: its own, then slot 5's). Last, the game's save slots of the keys in
+/// our `SavedGames/` (`<key>slot<n>_<name>.lsp`).
 #[derive(Debug, Default)]
 struct Folders {
     dirs: Vec<(Source, PathBuf)>,
     by_surface: bool,
-    car: u32,
+    keys: Vec<String>,
 }
 
 impl Folders {
     fn of(install: &Path, here: &Path, rsf: &Path, car: &Car) -> Folders {
+        let keys = car.setup_keys();
+        let setups = |root: &Path, key: &String| {
+            let folder = match key.parse::<usize>() {
+                Ok(n) => CAR_FOLDERS.get(n)?.to_string(),
+                Err(_) => format!("Physics/{key}/"),
+            };
+            Some(root.join(folder).join("Setups"))
+        };
+        let slots = (Source::Slot, here.join(SAVES));
         match &car.rsf {
             Some(r) => {
                 let Some(pack) = r.pack.as_ref().ok().and_then(|p| pack_folder(p)) else {
                     return Folders::default();
                 };
                 let saved = |root: &Path| root.join(SAVES).join(&pack);
-                let dirs = vec![
+                let mut dirs = vec![
                     (Source::Own, saved(here)),
                     (Source::Rsf, saved(rsf)),
                     (Source::RsfShipped, rsf.join("rsfdata/setups").join(&pack)),
                 ];
-                Folders { dirs, by_surface: true, car: car.index }
+                dirs.extend(keys.iter().filter_map(|k| setups(here, k)).map(|d| (Source::Earlier, d)));
+                dirs.push(slots);
+                Folders { dirs, by_surface: true, keys }
             }
             None => {
-                let Some(folder) = CAR_FOLDERS.get(car.index as usize) else {
+                let (Some(own), Some(game)) = (setups(here, &keys[0]), setups(install, &keys[0])) else {
                     return Folders::default();
                 };
-                let setups = |root: &Path| root.join(folder).join("Setups");
-                let dirs = vec![
-                    (Source::Own, setups(here)),
-                    (Source::Game, setups(install)),
-                    (Source::Slot, here.join(SAVES)),
-                ];
-                Folders { dirs, by_surface: false, car: car.index }
+                Folders { dirs: vec![(Source::Own, own), (Source::Game, game), slots], by_surface: false, keys }
             }
         }
     }
 
-    fn prefix(&self, surface: &str) -> String {
-        if self.by_surface {
+    /// The prefix of a file name of `source` on `surface`: RSF's names in RSF's folders and ours of an RSF car.
+    fn prefix(&self, source: Source, surface: &str) -> String {
+        if self.by_surface && matches!(source, Source::Own | Source::Rsf | Source::RsfShipped) {
             format!("{surface}_")
         } else {
             String::new()
@@ -142,16 +151,18 @@ impl Folders {
     /// Our file of setup `name` on `surface`.
     fn file(&self, surface: &str, name: &str) -> Option<PathBuf> {
         let (_, own) = self.dirs.first()?;
-        Some(own.join(format!("{}{name}.lsp", self.prefix(surface))))
+        Some(own.join(format!("{}{name}.lsp", self.prefix(Source::Own, surface))))
     }
 
     /// The setup a file named `file` in a folder of `source` is, on `surface`.
     fn name_of(&self, source: Source, file: &str, surface: &str) -> Option<String> {
         if source == Source::Slot {
-            return setup_slots::parse_name(file).filter(|(car, _, _)| *car == self.car).map(|(_, _, name)| name);
+            return setup_slots::parse_name(file)
+                .filter(|(key, _, _)| self.keys.contains(key))
+                .map(|(_, _, name)| name);
         }
         let stem = strip_suffix_ignore_case(file, ".lsp")?;
-        Some(strip_prefix_ignore_case(stem, &self.prefix(surface))?.to_owned())
+        Some(strip_prefix_ignore_case(stem, &self.prefix(source, surface))?.to_owned())
     }
 
     /// The setups on `surface`: ours first, then each other folder's, by name; a name is listed once, from the first
@@ -757,7 +768,8 @@ mod tests {
     }
 
     /// An RSF car's setups are ours, then the install's saved ones, then its shipped ones, on the surface only: RSF's
-    /// `<surface>_<name>.lsp`, without its copies of the defaults, a name once from the first folder with it.
+    /// `<surface>_<name>.lsp`, without its copies of the defaults, a name once from the first folder with it. Then
+    /// ours of earlier versions under its own key and slot 5's.
     #[test]
     fn an_rsf_cars_setups_are_by_pack_and_surface() {
         let root = crate::test_dir("setup-rsf");
@@ -770,6 +782,11 @@ mod tests {
         write(rsf.join("SavedGames").join(pack).join("37_d_gravel.lsp"));
         write(rsf.join("rsfdata/setups").join(pack).join("GRAVEL_Vasgabi.LSP"));
         write(rsf.join("rsfdata/setups").join(pack).join("gravel_Asphalt Kid.lsp"));
+        write(here.join("Physics/rsf-37/Setups/before.lsp"));
+        write(here.join("Physics/s_i2003/Setups/slot five.lsp"));
+        write(here.join("SavedGames/rsf-37slot0_own slot.lsp"));
+        write(here.join("SavedGames/5slot1_old slot.lsp"));
+        write(here.join("SavedGames/rsf-38slot0_other car.lsp"));
         let rsf_car = crate::catalog::RsfCar {
             id: 37,
             added: false,
@@ -786,9 +803,15 @@ mod tests {
                 ("Mine".to_owned(), Source::Own),
                 ("Vasgabi".to_owned(), Source::Rsf),
                 ("Asphalt Kid".to_owned(), Source::RsfShipped),
+                ("before".to_owned(), Source::Earlier),
+                ("slot five".to_owned(), Source::Earlier),
+                ("old slot".to_owned(), Source::Slot),
+                ("own slot".to_owned(), Source::Slot),
             ]
         );
-        assert_eq!(names(&folders.scan("tarmac")), [("Vasgabi".to_owned(), Source::Rsf)]);
+        let tarmac = names(&folders.scan("tarmac"));
+        assert_eq!(tarmac[0], ("Vasgabi".to_owned(), Source::Rsf));
+        assert_eq!(tarmac.len(), 5, "the earlier ones are on every surface");
         assert_eq!(folders.file("gravel", "fast"), Some(here.join("SavedGames").join(pack).join("gravel_fast.lsp")));
     }
 

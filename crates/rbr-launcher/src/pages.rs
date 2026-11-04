@@ -609,7 +609,7 @@ impl Form {
         self.select_setup();
         let here = self.here();
         let archive = self.ngp_archive();
-        let (slot, car_name) = self.car().map_or((0, String::new()), |c| (c.index, c.name.clone()));
+        let car = self.car().cloned().unwrap_or_default();
         let team_cars: Vec<Option<String>> =
             (0..7).map(|t| self.team_car(t).map(|i| self.catalog.cars[i].name.clone())).collect();
         let mut browse = false;
@@ -646,14 +646,14 @@ impl Form {
             .id_salt("championship")
             .show(ui, |ui| {
                 let (data, season, setups) = (&self.data, &self.season, &self.setup);
+                let saved = |surface| setups.saved_names(surface);
                 self.rally.ui(
                     ui,
                     data,
                     season,
                     &here,
-                    slot,
-                    &car_name,
-                    &|surface| setups.saved_names(surface),
+                    &car,
+                    &saved,
                     Path::new(&archive),
                     &mut car_row,
                     launch_blocker.as_ref(),

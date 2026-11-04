@@ -5,7 +5,7 @@
 //! `CSeasonChooseSetupUI`, `rbr_gameplay::setup::SeasonSetup`) and the tyre from the stage surface's tyres
 //! (`SELECTTYRES`, `championship::tyre_choices`); a stage with no service before it runs on the car's tyre and setup,
 //! with the tyres' wear carried (`championship::choice_before`). The park reads the car's `repair.ini` from NGP's
-//! `physics.rbz` (an RSF car's: slot 5's, where it runs). The road wear is the player's start place's (`season::road_wear`).
+//! `physics.rbz` (an RSF car's: its pack's, else slot 5's, where it runs). The road wear is the player's start place's (`season::road_wear`).
 //!
 //! The championship's options (`race_options::ChampionshipOptions`) are chosen before New season, as the game's
 //! `SSKILL` and `CARDAM` pages ask them: the skill level (Rookie, Professional, Champion: the outside-assistance
@@ -53,6 +53,7 @@ use rbr_gameplay::service::{self, ParkState, Rules, ServicePark};
 use rbr_gameplay::setup::SeasonSetup;
 use rbr_gameplay::weather::Season;
 
+use crate::catalog::Car;
 use crate::pages::{combo, Choice, Issue, WARN};
 
 /// A stage to drive: the extra `rbr-standalone` arguments (the season's options and the rally's files), the tyre and
@@ -516,15 +517,23 @@ impl RallyPage {
         self.last_tyre = prev_tyre;
     }
 
-    /// Opens the park for the current service stop, on the car's repair tree: under NGP (`ngp`: its `physics.rbz`) the
-    /// tree of the car NGP has in the slot, with NGP's rules (the launcher's: an RSF car in slot 5 gets the archive's
-    /// slot 5 tree, as a quick race's RSF car runs there); without, the retail one with 1.02's (the tests').
-    pub(crate) fn open_park(&mut self, data: &Data, car: u32, ngp: Option<&Path>) {
+    /// Opens the park for the current service stop, on the car's repair tree: under NGP (`ngp`: its `physics.rbz`) an
+    /// RSF car's own `repair.ini` (RSF copies its pack into the slot it runs in; the archive's slot tree when the pack
+    /// has none) or the tree of the car NGP has in the slot, with NGP's rules; without NGP, the retail one with 1.02's
+    /// (the tests').
+    pub(crate) fn open_park(&mut self, data: &Data, car: &Car, ngp: Option<&Path>) {
         let Some(c) = &self.championship else { return };
         let RallyPhase::Service(stop) = c.phase() else { return };
         let (parts, rules) = match ngp {
-            Some(archive) => (service::repair_parts_in(archive, car as usize), Rules::Ngp),
-            None => (service::repair_parts(data, car as usize), Rules::V102),
+            Some(archive) => {
+                let own = car
+                    .rsf
+                    .as_ref()
+                    .and_then(|r| r.pack.as_ref().ok())
+                    .and_then(|path| service::repair_parts_of(&rbr_formats::rsf::Pack::open(path).ok()?));
+                (own.unwrap_or_else(|| service::repair_parts_in(archive, car.index as usize)), Rules::Ngp)
+            }
+            None => (service::repair_parts(data, car.index as usize), Rules::V102),
         };
         match parts {
             Ok(parts) => {
@@ -541,9 +550,8 @@ impl RallyPage {
         }
     }
 
-    /// The page for the season's car (its slot `car` and name `car_name`, its saved setups on a map surface `saved`)
-    /// under NGP (its `physics.rbz`, `ngp`); `car_row` draws the new season's car field for a team, and says whether
-    /// that car can start.
+    /// The page for the season's `car` (its saved setups on a map surface: `saved`) under NGP (its `physics.rbz`,
+    /// `ngp`); `car_row` draws the new season's car field for a team, and says whether that car can start.
     #[allow(clippy::too_many_arguments)]
     pub fn ui(
         &mut self,
@@ -551,8 +559,7 @@ impl RallyPage {
         data: &Data,
         season: &Season,
         here: &Path,
-        car: u32,
-        car_name: &str,
+        car: &Car,
         saved: &dyn Fn(u32) -> Vec<String>,
         ngp: &Path,
         car_row: &mut dyn FnMut(&mut Ui, u32) -> bool,
@@ -592,7 +599,8 @@ impl RallyPage {
             let (hour, minute) = events::clock(&run.save);
             ui.label(
                 egui::RichText::new(format!(
-                    "This season: {car_name}, {team}, {}, car damage {}   Clock {hour:02}:{minute:02}",
+                    "This season: {}, {team}, {}, car damage {}   Clock {hour:02}:{minute:02}",
+                    car.name,
                     options.skill.label(),
                     options.damage.label()
                 ))
@@ -1170,8 +1178,8 @@ mod tests {
             let setup = rbr_formats::saves::setup_slots::text(&after.setup);
             (save, after.damage.tyre, damage, setup)
         };
-        let car = page.season_car().unwrap();
-        let parts = service::repair_parts(&data, car as usize).unwrap();
+        let car = Car { index: page.season_car().unwrap(), ..Car::default() };
+        let parts = service::repair_parts(&data, car.index as usize).unwrap();
         let mut sound = CarriedDamage::default();
         let mut ids = Vec::new();
         fn walk(parts: &[rbr_formats::repair::Part], ids: &mut Vec<i32>) {
@@ -1212,7 +1220,7 @@ mod tests {
         assert!(setup.contains("DropGearId 12"));
 
         // The service: part 31 ordered with 10 s of the budget left, so it runs late.
-        page.open_park(&data, car, None);
+        page.open_park(&data, &car, None);
         let park = page.park.as_mut().unwrap();
         let row = park.tree.iter().position(|n| n.id == 31).unwrap();
         let ids: Vec<_> = park.rows().iter().map(|&i| (park.tree[i].id, park.level(i))).collect();

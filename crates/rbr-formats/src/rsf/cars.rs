@@ -16,7 +16,9 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-/// The slot RSF puts the chosen car into (the sample install's `Cars.ini` and `Physics/s_i2003`): `[Car05]`.
+/// The game slot RSF's plugin puts the chosen car into (the sample install's `Cars.ini` and `Physics/s_i2003`):
+/// `[Car05]`, so NGP's `_Car5` keys and the game's records see it there. Ours only the model's `Cars.ini` entry
+/// ([`select`]) and the settings keys take it from here; an RSF car is otherwise known by its id and pack.
 pub const SLOT: u32 = 5;
 
 /// A car of RSF's `cars.json`.
@@ -154,15 +156,15 @@ impl Install {
             .and_then(|p| Pack::open(&p))
     }
 
-    /// The model car `car` is loaded with in `slot`: its own when its folder is installed, else its fallback's (a
+    /// The model car `car` is loaded with in [`SLOT`]: its own when its folder is installed, else its fallback's (a
     /// retail car of `retail`, the install's `Cars.ini`), as `[CarNN]` paths under [`Install::root`] or the install.
-    pub fn model_entry(&self, car: &Car, slot: u32, retail: &[CarEntry]) -> Result<ModelChoice, String> {
+    pub fn model_entry(&self, car: &Car, retail: &[CarEntry]) -> Result<ModelChoice, String> {
         let mut id = car.model;
         let mut why: Vec<String> = Vec::new();
         for _ in 0..8 {
             let model =
                 self.models.iter().find(|m| m.id == id).ok_or(format!("car model {id}: not in carmodels.json"))?;
-            let entry = model_entry(&model.path, &model.filename, slot);
+            let entry = model_entry(&model.path, &model.filename);
             if let Some(path) = cars::resolve(&self.root, &entry.file_name) {
                 let locked = path.parent().map_or(0, encrypted_files);
                 if locked > 0 {
@@ -179,7 +181,7 @@ impl Install {
                     .ok_or(format!("Cars.ini: no [Car{:02}]", model.fallback))?;
                 why.push(format!("retail car {}", retail.index));
                 return Ok(ModelChoice {
-                    entry: CarEntry { index: slot as usize, ..retail.clone() },
+                    entry: CarEntry { index: SLOT as usize, ..retail.clone() },
                     fallback: Some(why.join(", ")),
                 });
             }
@@ -230,6 +232,9 @@ pub struct Selected {
     pub data: Data,
     /// Its FMOD bank ([`Install::audio_bank`]).
     pub audio_bank: Option<PathBuf>,
+    /// The tyre brand whose `Physics/<brand>/tyres.lsp` it runs on: Pirelli's, which the game gives its slot 5, where
+    /// RSF puts every car (the packs have no tyre file of their own).
+    pub tyre_brand: &'static str,
 }
 
 impl Selected {
@@ -253,13 +258,13 @@ impl Selected {
     }
 }
 
-/// Car `key` ([`locate`]) in `slot` of `data`: what RSF would install, read in place.
-pub fn select(data: Data, key: &str, slot: u32, root: Option<&Path>) -> Result<Selected, String> {
+/// Car `key` ([`locate`]) in [`SLOT`] of `data`: what RSF would install, read in place.
+pub fn select(data: Data, key: &str, root: Option<&Path>) -> Result<Selected, String> {
     let (install, car, pack) = locate(key, root)?;
     let ini = data.resolve("Cars/Cars.ini").ok_or("Cars/Cars.ini: not found")?;
     let text = std::fs::read(&ini).map_err(|e| format!("{}: {e}", ini.display()))?;
     let retail = cars::parse(&String::from_utf8_lossy(&text)).map_err(|e| e.to_string())?;
-    let model = install.model_entry(&car, slot, &retail)?;
+    let model = install.model_entry(&car, &retail)?;
     let mut data = data.with_car(install.root.clone(), model.entry.clone());
     let folder = model.entry.file_name.split(['\\', '/']).rev().nth(1).unwrap_or_default();
     let skin = match model.fallback {
@@ -270,7 +275,16 @@ pub fn select(data: Data, key: &str, slot: u32, root: Option<&Path>) -> Result<S
         data = data.with_skin(dir.clone());
     }
     let audio_bank = install.audio_bank(&car);
-    Ok(Selected { root: install.root.clone(), car, pack, model, skin: skin.map(|(name, _)| name), data, audio_bank })
+    Ok(Selected {
+        root: install.root.clone(),
+        car,
+        pack,
+        model,
+        skin: skin.map(|(name, _)| name),
+        data,
+        audio_bank,
+        tyre_brand: "pirelli",
+    })
 }
 
 /// The skin RSF's launcher selected for model folder `folder` (`Cars/<folder>/.rsfconfig`, `[skin]`'s `folder`), and
@@ -341,10 +355,10 @@ fn encrypted_files(dir: &Path) -> usize {
 
 /// The `[CarNN]` paths RSF writes for model folder `path` with file name `filename` (`Cars.ini`'s `[Car05]` in the
 /// sample: `Cars\evo_IX\evo_IX.sgc`, `.ini`, `_shaders.ini`, `_shader_settings`, `Textures\`).
-pub fn model_entry(path: &str, filename: &str, slot: u32) -> CarEntry {
+pub fn model_entry(path: &str, filename: &str) -> CarEntry {
     let dir = format!("Cars\\{path}\\");
     CarEntry {
-        index: slot as usize,
+        index: SLOT as usize,
         file_name: format!("{dir}{filename}.sgc"),
         ini_file: format!("{dir}{filename}.ini"),
         shader_file: format!("{dir}{filename}_shaders.ini"),
@@ -449,7 +463,7 @@ mod tests {
 
     #[test]
     fn model_entry_is_the_slot_rsf_writes() {
-        let e = model_entry("evo_IX", "evo_IX", 5);
+        let e = model_entry("evo_IX", "evo_IX");
         assert_eq!(e.index, 5);
         assert_eq!(e.file_name, "Cars\\evo_IX\\evo_IX.sgc");
         assert_eq!(e.shader_settings, "Cars\\evo_IX\\evo_IX_shader_settings");
@@ -508,14 +522,14 @@ mod tests {
             return;
         };
         let root = Path::new(&root);
-        let fiesta = select(data.clone(), "Ford_Fiesta_Rally3_ngp6", SLOT, Some(root)).unwrap();
+        let fiesta = select(data.clone(), "Ford_Fiesta_Rally3_ngp6", Some(root)).unwrap();
         assert_eq!(fiesta.skin.as_deref(), Some("Pajari_Monte"));
         let dir = |path: &str| fiesta.data.resolve(path).unwrap().parent().unwrap().to_owned();
         let skin = cars::resolve(root, "Cars\\Fiesta_rally3\\skins\\Pajari_Monte\\textures").unwrap();
         assert_eq!(dir("Cars\\Fiesta_rally3\\Textures\\Fiesta_rally3_external.dds"), skin);
         let own = cars::resolve(root, "Cars\\Fiesta_rally3\\Textures").unwrap();
         assert_eq!(dir("Cars\\Fiesta_rally3\\Textures\\Fiesta_rally3_internal_parts.dds"), own);
-        let bmw = select(data, "BMW_M3_E30_GrpA_ngp6", SLOT, Some(root)).unwrap();
+        let bmw = select(data, "BMW_M3_E30_GrpA_ngp6", Some(root)).unwrap();
         assert_eq!(bmw.skin, None);
     }
 

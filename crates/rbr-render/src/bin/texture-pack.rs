@@ -63,7 +63,7 @@ fn run() -> Result<(), String> {
     let mut car_name = args.car.clone();
     if let Some(key) = &args.rsf_car {
         let root = std::env::var_os("RBR_RSF").map(PathBuf::from);
-        let selected = rbr_formats::rsf::select(data, key, rbr_formats::rsf::SLOT, root.as_deref())?;
+        let selected = rbr_formats::rsf::select(data, key, root.as_deref())?;
         car_name.get_or_insert_with(|| selected.folder().to_owned());
         data = selected.data;
     }

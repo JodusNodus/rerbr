@@ -125,6 +125,14 @@ pub fn repair_parts_in(archive: &std::path::Path, car: usize) -> Result<Vec<Repa
     rbr_formats::repair::parse(&text).map_err(|e| format!("{name}: {e}"))
 }
 
+/// The repair tree of an RSF car's `pack`: its own `repair.ini` (RSF copies the pack into the slot it runs in, so the
+/// game reads it there), `None` when the pack has none to read.
+pub fn repair_parts_of(pack: &rbr_formats::rsf::Pack) -> Option<Result<Vec<RepairPart>, String>> {
+    let text = pack.read("repair.ini").ok()?;
+    let name = format!("{}/repair.ini", pack.path().display());
+    Some(rbr_formats::repair::parse(&String::from_utf8_lossy(&text)).map_err(|e| format!("{name}: {e}")))
+}
+
 /// The late penalty (`E80Daemon::Penalty` 0x5cf330): 10 s for every started 60 s past the budget, as the asm's loop.
 pub fn late_penalty(time_left: f32) -> f32 {
     let mut over = -time_left;
@@ -514,6 +522,21 @@ mod tests {
             mount: t(mount),
             children,
         }
+    }
+
+    #[test]
+    fn an_rsf_cars_repair_tree_is_its_packs() {
+        let dir = std::env::temp_dir().join(format!("rbr-pack-repair-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let pack = rbr_formats::rsf::Pack::Dir(dir.clone());
+        assert!(repair_parts_of(&pack).is_none(), "no repair.ini: the slot's tree stands in");
+        std::fs::write(dir.join("repair.ini"), "1\n{\n7\n2\nHood\n10\n1\n1\n20\n1\n1\n}\n").unwrap();
+        let parts = repair_parts_of(&pack).unwrap().unwrap();
+        assert_eq!((parts[0].physics_id, parts[0].name.as_str(), parts[0].mount.time), (7, "Hood", 20.0));
+        std::fs::write(dir.join("repair.ini"), "x").unwrap();
+        assert!(repair_parts_of(&pack).unwrap().is_err(), "a pack's broken file is an error, not a fallback");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     fn open(parts: &[RepairPart], crew: Crew, rules: Rules) -> ServicePark {

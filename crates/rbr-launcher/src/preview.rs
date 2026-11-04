@@ -463,7 +463,7 @@ fn render_car(
     let (data, name) = match car {
         CarModel::Retail(name) => (data, name.clone()),
         CarModel::Rsf { pack, root } => {
-            let selected = rsf::select(data, &pack.display().to_string(), rsf::SLOT, Some(root))?;
+            let selected = rsf::select(data, &pack.display().to_string(), Some(root))?;
             let name = selected.folder().to_owned();
             (selected.data, name)
         }

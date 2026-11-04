@@ -149,8 +149,6 @@ worn
 5
 --stage
 track-54_O
---car
-5
 --data
 <data>
 --callout-distance
@@ -242,8 +240,6 @@ normal
 6
 --stage
 track-10_O
---car
-5
 --data
 <data>
 --callout-distance
@@ -424,8 +420,6 @@ new
 4
 --stage
 track-54_E
---car
-5
 --data
 <data>
 --callout-distance
@@ -517,8 +511,6 @@ new
 0
 --stage
 <rsf>/Maps/129-Peyregrosse Mandagout/track-129_M
---car
-5
 --data
 <data>
 --callout-distance
@@ -606,8 +598,6 @@ new
 4
 --stage
 track-54_E
---car
-5
 --data
 <data>
 --callout-distance
@@ -699,8 +689,6 @@ new
 4
 --stage
 track-54_E
---car
-5
 --data
 <data>
 --callout-distance
