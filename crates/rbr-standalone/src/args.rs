@@ -72,8 +72,8 @@ pub struct Args {
     pub setup: Option<PathBuf>,
     /// NGP's `physics.rbz` (`boot::Race::ngp_physics`).
     pub ngp_physics: Option<PathBuf>,
-    /// `--rsf-car`: an RSF car (a pack path, or an id or pack name in `RBR_RSF`), loaded into `--car`'s slot (default
-    /// RSF's slot 5) under `--ngp-physics` (`rbr_formats::rsf::locate`).
+    /// `--rsf-car`: an RSF car (a pack path, or an id or pack name in `RBR_RSF`) under `--ngp-physics`, instead of a
+    /// retail `--car` (`rbr_formats::rsf::locate`).
     pub rsf_car: Option<String>,
     /// `--ffb-sensitivity G,T,S`: NGP's force-feedback sensitivity percentages (`boot::Race::ffb_sensitivity`).
     pub ffb_sensitivity: Option<[i32; 3]>,
@@ -294,6 +294,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         (false, false, _) if !(args.boot && args.autopilot.is_some()) => return Err("--recording is required".into()),
         (false, false, _) => {}
         (false, true, _) => {}
+    }
+    if args.rsf_car.is_some() && args.car.is_some() {
+        return Err("--rsf-car replaces --car".into());
     }
     if args.autopilot.is_some() && (args.live || args.snapshots.len() != usize::from(!args.boot)) {
         return Err("--autopilot takes one --snapshot or --boot, and no --live".into());
@@ -706,6 +709,7 @@ mod tests {
                 "--boot needs --ngp-physics FILE (NGP's physics.rbz): ReRBR steps NGP physics only",
             ),
             (format!("{REC} --rsf-car PACK"), "--rsf-car needs --boot"),
+            (format!("{BOOT} --car 5 --rsf-car PACK"), "--rsf-car replaces --car"),
             (format!("{REC} --ffb-sensitivity 90,80,70"), "--ffb-sensitivity needs --boot"),
             (format!("{REC} --head-gasket-durability 3"), "--head-gasket-durability needs --boot"),
             (format!("{REC} --damage-in IN"), "--damage-in needs --boot"),

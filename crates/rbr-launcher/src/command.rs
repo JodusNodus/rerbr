@@ -306,8 +306,6 @@ impl ViewerLaunch {
             tyre.to_string(),
             "--stage".into(),
             stage.name.clone(),
-            "--car".into(),
-            car.index.to_string(),
             "--data".into(),
             data.display().to_string(),
             "--callout-distance".into(),
@@ -335,8 +333,9 @@ impl ViewerLaunch {
         if let Some(path) = setup {
             args.extend(["--setup".into(), path.display().to_string()]);
         }
-        if let Some(pack) = pack {
-            args.extend(["--rsf-car".into(), pack]);
+        match pack {
+            Some(pack) => args.extend(["--rsf-car".into(), pack]),
+            None => args.extend(["--car".into(), car.index.to_string()]),
         }
         args
     }
@@ -889,8 +888,7 @@ mod tests {
         assert_eq!(args[1..3], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
         assert!(!args[..live].contains(&"--car".to_owned()));
         assert_eq!(args[args.len() - 2..], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
-        let car_at = args.iter().rposition(|a| a == "--car").unwrap();
-        assert_eq!(args[car_at + 1], "5");
+        assert!(!args.contains(&"--car".to_owned()), "an RSF car is named by its pack alone");
     }
 
     #[test]

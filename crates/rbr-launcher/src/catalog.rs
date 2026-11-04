@@ -96,7 +96,7 @@ pub fn rsf_cars(install: &Path, root: &Path, added: bool) -> Result<Vec<Car>, St
                 Ok(p) => p.read("common.lsp").map(|_| p.path().to_owned()),
                 Err(_) => Err("not downloaded in RallySimFans".into()),
             };
-            let model = rsf.model_entry(car, rsf::SLOT, &retail).map(|m| m.fallback);
+            let model = rsf.model_entry(car, &retail).map(|m| m.fallback);
             Car {
                 index: rsf::SLOT,
                 name: car.name.clone(),

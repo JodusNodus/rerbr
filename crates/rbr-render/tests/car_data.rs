@@ -428,7 +428,7 @@ fn rsf_car_models_load_with_their_textures() {
     let mut loaded = 0;
     for rsf_car in &install.cars {
         let Ok(selected) =
-            rbr_formats::rsf::select(data.clone(), &rsf_car.pack, rbr_formats::rsf::SLOT, Some(&install.root))
+            rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root))
         else {
             continue;
         };
@@ -494,7 +494,7 @@ fn the_cockpit_eye_stays_out_of_the_seat() {
     let mut short = Vec::new();
     for rsf_car in &install.cars {
         let Ok(selected) =
-            rbr_formats::rsf::select(data.clone(), &rsf_car.pack, rbr_formats::rsf::SLOT, Some(&install.root))
+            rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root))
         else {
             continue;
         };
