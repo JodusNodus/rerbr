@@ -15,7 +15,7 @@ while empty and blocks Start when missing or unsupported). No plugin instruction
 `.text` and applies no executable patches. Named callees select the NGP bindings, typed boot settings
 (`ngp::layout::runtime::Runtime`) the collision copies, damage gate and head-gasket coefficients
 (`rbr-hybrid/src/ngp/`). drive2 attempt 5 is physics PASS 84084/84084 with the DLL inputs and without code bytes.
-Cars: NGP's `physics.rbz` (`--ngp-physics`) and RSF packs (`--rsf-car`, `rbr_formats::rsf`).
+Cars: NGP's `physics.rbz` (`--ngp-physics`) and community packs (`--rsf-car`, `rbr_formats::rsf`).
 
 ReRBR steps NGP physics only (user decision): `rbr-standalone --boot` needs `--ngp-physics` and refuses a 1.02
 snapshot; the launcher and the viewer's `--live` go through it. The exactness proof is `harness/rsf_compare.py
@@ -27,7 +27,7 @@ $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics` (84084/84084). The 1.
 - `original/ngp/7.4.778/`: the package (`NGP.dll` sha256 `95b6dbf5...edaaa4`, `physics.rbz` `831cf121...0c4b27`).
   Its `physics.rbz` differs from retail only in `physics.lsp` (stock cars); NGP's own cars are in
   `ngp-data/physics.rbz`. NGP refuses non-NGP cars (reverse and first gear only).
-- `original/ngp/cars-rsf/`: the 42 RSF NGP cars, one slot folder each (`common.lsp`, surface and `r_*` files,
+- `original/ngp/cars-rsf/`: the 42 community NGP cars, one slot folder each (`common.lsp`, surface and `r_*` files,
   `setups/`); RSF installs one into a slot of `physics.rbz`, the model stays the slot's.
 - `original/ngp/analysis/patches-runtime.tsv`: NGP's edits, diffed from a running game (`scripts/ngp-dump.py`,
   rbr-recomp's `scripts/ngp-memdiff.py`). Physics: 65 calls/jmps into NGP (45 targets), 56 repointed floats, 43
@@ -182,7 +182,7 @@ direct calls in `crates/rbr-physics/tests/ngp_engine.rs` (`scripts/ngp-engine-ve
 
 Death and idle-table lookup (`1004b8e0`, jmp `0x4e6657`): `rbr-hybrid/src/ngp.rs` (`engine_wrapper`,
 `engine_dies`), `ngp::engine`. Every car
-has 10-15 idle knots (42 RSF cars, `physics.rbz` 13-15); 0 and 1 come only from patched snapshots.
+has 10-15 idle knots (42 community cars, `physics.rbz` 13-15); 0 and 1 come only from patched snapshots.
 
 ### Unreachable guards
 

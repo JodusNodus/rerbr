@@ -31,7 +31,7 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   Windows: no body, only the wheels and the seats (2026-11-03).
 - Highest quality always: the full `PS_*.ini`, the high renderer's LOD and visibility distances.
 - The backdrop `(1,3)` comes in two kinds, and both must look right: low terrain with baked vertex light (retail,
-  most RSF stages) and upright photo panorama strips with alpha sky and white vertex colour (many RSF stages, 462
+  most community stages) and upright photo panorama strips with alpha sky and white vertex colour (many community stages, 462
   Odry; "Panorama backdrops" below). Backdrop code may not take it as flat, facing up or reaching the horizon: the eye
   can see over a strip's top. Check changes on both (41M and 462M, 138M).
 
@@ -52,7 +52,7 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   12.8 ms, 2.6% of pixels over 8; 45O similar, 2026-10-26). Off: wet roads and water take the cube and sky alone
   (wet 1080p 394M 26.4 to 10.5 ms; 41M similar, 2026-10-25).
   Reflections trace at half size (`reflection_composite.wgsl`): 41M
-  chase 12.8 to 6.5 ms (45O similar); thin RSF reflections softer. Additions off: only water differs (44E max 17/255;
+  chase 12.8 to 6.5 ms (45O similar); thin community-car reflections softer. Additions off: only water differs (44E max 17/255;
   71M 52 pixels over 8) (2026-10-26).
 - `--anti-aliasing taa|off` (`AntiAliasing`, default `Taa`, ours after gp4's `taa.rs`; `4x` parses as `taa`): one
   sample, the main view's projection jittered and resolved into the post pass's scene, sharpened under TAA
@@ -218,7 +218,7 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
   made over the load's threads 1024 meshes at a time, the uploads in order (2026-10-31): 580 renderer creation to the
   sky occlusion bake 5.0 to 4.1 s, byte-identical. The cockpit eye's fit (`views::cockpit_back`, twice a load) casts
   its lines only at the interior triangles whose boxes come within reach of the eye: the 208's car load 1.9 to 1.0 s,
-  the 42 RSF cars' mounts identical. The glass's film samples (`film_corners`, `Tints::film_tints`) go over the
+  the 42 community cars' mounts identical. The glass's film samples (`film_corners`, `Tints::film_tints`) go over the
   threads too: `glass::Drawn::load` 0.56 to 0.25 s. The road and ground marks (`Stage::mark_surfaces`) share one load
   of the collision ground and one lookup per ground triangle: 580's stage load 2.99 to 2.14 s. The road's edges
   (`puddles::mark_roads`) map only the film triangles' edges, the others' looked up and the edge distances found over
@@ -243,7 +243,7 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
   camera-anchored, before the stage. Water `(1,8)` is our surface (`water.wgsl`); reflection items `(1,7)`
   withheld; the sky dome (`skyboxes.lbs`) is not drawn.
 - Textures: weather/wear fallback as requested (`stage/mod.rs` `Weather::fallbacks`; `tests/stage_data.rs`).
-- Texture size: from the first mip that fits the adapter's 2D limit (`renderer/textures.rs` `dds_texture`; RSF
+- Texture size: from the first mip that fits the adapter's 2D limit (`renderer/textures.rs` `dds_texture`; stage
   484's backdrop is 16384 x 8192, RX 9060 XT allows 32768; checked capped at 8192, 2026-10-27).
 - Ours: ground detail noise, the backdrop's own texture as its detail (`backdrop_detail` in `shader.wgsl`), road
   shine on specular slots 6 and 8 (the game's formula, our `c90`); the wet film is the `wet` addition.
@@ -253,7 +253,7 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
   apart between the Mac and the desktop, now 2.2-3.2 (Gabiria fly-by, Komarov chase; the rest foliage edges and the
   CPU particles' libm).
 - Terrain detail (ours, always on; `terrain_detail.wgsl`, `terrain_detail.rs`, 2026-10-28): the draw's most
-  detailed texture window tiled mirrored and triplanar adds its high pass on the near ground (RSF Luceram's 4096
+  detailed texture window tiled mirrored and triplanar adds its high pass on the near ground (Luceram's 4096
   `z*` atlases, past the upscaler's cap). Load 63-72 ms (52M, 417O); scene pass 1080p 417O rain fly-by 2.74 to 2.84
   ms (golden fly-by, 580 chase and 1440p similar; `RERBR_NO_TERRAIN_DETAIL` A/B). The windows are found over the
   load's threads (2026-10-31): 580's 0.51 s to about 0.05.
@@ -274,7 +274,7 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
 `atmosphere.rs` picks one `Maps/TrackSettings.ini` section by stage and weather preset (`viewer --sky` overrides;
 every retail row of an installed stage but `69S`'s clear ones names one). `viewer --fog off|light|heavy` puts our
 height fog over any section; `--clouds` and `--precipitation` put any sky over any row. Haze is the linear fog's
-range, at least 600 m without `UseFog` (retail 69's light fog, 71 and 45 RSF rows at 25..215 m hid the stage in a
+range, at least 600 m without `UseFog` (retail 69's light fog, stages 71 and 45's rows at 25..215 m hid the stage in a
 white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled clouds and tone curve are ours.
 
 - Backdrop `(1,3)` (the superbowl): every item drawn whole with the stage's matrix, its scattering depth by
@@ -304,7 +304,7 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   a held vertex bent its triangle toward the sun, so under a low sun the near cascades shaded the road the world layer
   lit, with a lit band from the 14 m split that moved with the car (Torre Vecchia 337M 05:30 cockpit replay). 31 of
   the 34 reference shots byte-identical, 3 by 1 to 10 pixels at 1/255.
-- Panorama backdrops: on 60 of 356 installed RSF stage folders the backdrop is at least half upright faces, on some a
+- Panorama backdrops: on 60 of 356 installed community stage folders the backdrop is at least half upright faces, on some a
   ring of photo strips with alpha sky (462-467 Odry: 4 items, 22 triangles, 2.5-2.8 km out, white vertex colour,
   `HOR_2`/`Hor_11` 4096x512; also 138-140, 149, 166-169, 436). Where the eye is above a strip's top the sky dome
   shows below the horizon: with `Enhance::lighting` it takes the horizon's light there (`SKY_HORIZON` in
@@ -418,7 +418,7 @@ probably fit the wrong hour.
 - The steering wheel is the interior meshes whose node is `i_steeringwheel` (`MeshDamage::steering`), not the meshes
   centred near the node: rim and column in one mesh have their centre off the hub (Delta HF 4WD GrpA 0.17 m; the old
   0.12 m match missed it, the Escort Cosworth, Focus 2006, Impreza 95 and Polo R5 too; `tests/steering_data.rs`, 42
-  installed RSF cars, all with the node). Delta frames: wheel static before, turning after; Escort, Clio R3 and M3
+  installed community cars, all with the node). Delta frames: wheel static before, turning after; Escort, Clio R3 and M3
   cockpit shots byte-identical.
 - Lighting per class from `<car>_shader_settings_clear.ini` with the stage's light (`car/shading.rs`); Schlick
   `F0 = 0.125` (`c91`). `c41`, `c67`, `c68`, `c90` unproven.
@@ -433,14 +433,14 @@ probably fit the wrong hour.
   10 cm outboard. Particles still take the anchor.
 - Not drawn: `pc_e_premove` (2026-10-28, `car/mod.rs` 0x1001e090): the classifier returns kind 10, which
   `FUN_1001e430` adds to no draw list (`cmp eax, 9; ja` at 0x1001e59d, `cmp eax, 8; ja` at 0x1001e61e).
-  RSF models give it a `Default Material` FaceBlock (40 of 583 installed `.ini`s; a 2.3 m white cube about the
+  Community models give it a `Default Material` FaceBlock (40 of 583 installed `.ini`s; a 2.3 m white cube about the
   cabin), which showed as a pale panel behind the rear window in chase views (GC8 555, Clio Rally3, Fiat 131
   Grp4; Fiesta Rally2, M3 E30, Escort Mk II byte for byte).
 - Stage and cloud textures get their mip chain completed to 1x1 at load (ours, 2026-11-04, the same
   `upscale::with_block_mips`, stored levels kept): retail stage textures hold 4 levels (a 512x512 one stops at
   64x64), so far ground shimmered without the upscaler, whose textures already have a full chain.
 - Block-compressed car textures with no mip levels get a chain at load (ours, 2026-10-31, `upscale::with_block_mips`:
-  top level kept, the rest box-filtered and re-encoded in the file's format). The RSF Fiat 131 Abarth Grp4's 4096x4096
+  top level kept, the rest box-filtered and re-encoded in the file's format). The Fiat 131 Abarth Grp4's 4096x4096
   livery, its 2048x2048 dynamic and its glass texture are DXT3 with one level and aliased in the chase view; its paint,
   dark green (0, 56, 8), reads grey under the overcast sky by the shared clear coat, its rear window's top strip is
   opaque green (0, 132, 51, alpha 255) and the beige dash panel is in its texture: the car's own art. Escort, GC8
@@ -453,9 +453,9 @@ probably fit the wrong hour.
   The water film's cells (48x24, `wet_layer` in `glass.wgsl`) add a soft layer, wiper-swept areas clearer; outside
   views only, cockpit byte-identical.
 - `CarIntGlass` in the in-car view with the day's light (ours, 2026-10-26; `shader.wgsl`): translucent texels darken
-  what is seen through them, near-opaque ones (sun strips, visors) stay lit. A light texel (RSF 52's `i_window_f`,
-  grey 134 at alpha 85) greyed the view in overcast and wet. 12 RSF cars checked; additions off byte-identical.
-  Coloured texels stay lit too (chroma 0.15 to 0.3, `INT_GLASS_PRINTED_CHROMA`, 2026-10-30): the RSF M3 E30's yellow
+  what is seen through them, near-opaque ones (sun strips, visors) stay lit. A light texel (stage 52's `i_window_f`,
+  grey 134 at alpha 85) greyed the view in overcast and wet. 12 community cars checked; additions off byte-identical.
+  Coloured texels stay lit too (chroma 0.15 to 0.3, `INT_GLASS_PRINTED_CHROMA`, 2026-10-30): the M3 E30's yellow
   banner is drawn at alpha 0.47 and went dark against the sky; its clear glass is grey at 0.22.
 
 ## Lights
@@ -500,13 +500,13 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 - Tried for the beam's white look (2026-10-25) and dropped: pulling the meter toward the 97th percentile, and local
   exposure from 1.5 stops (halos, day highlights down). The road under the beam at 1 to 5 lux against ~50x dimmer
   moonlight is physical.
-- Ours: a car with no kind 1 record that ever lights (an RSF car installed with headlights off: none, or all
+- Ours: a car with no kind 1 record that ever lights (a community car installed with headlights off: none, or all
   `Active = false` without their switch box, as 19 installed cars incl. the Escort Mk II, 2026-10-30) gets a beam per
   `Point_light_lf`/`rf` for the night light, in the colour of its "on" option's headlight record
   (`rsf::headlights_on`), else the retail 255, 255, 233. Points the car's `<car>.ini` lacks come from the "on"
   option's (`lights::with_headlight_points`, 2026-10-30): 9 of 108 installed cars had neither records nor points and lit
   nothing at night (GR Yaris Rally2, Fabia RS Rally2, Polo GTI R5, DS3 R5, Fiesta S2000 and R2, Grande Punto S2000,
-  Kalina RC2, Mini WRC). The BMW M3 E36's option is named `Lights` (taken too; not rendered, its RSF pack is not
+  Kalina RC2, Mini WRC). The BMW M3 E36's option is named `Lights` (taken too; not rendered, its community pack is not
   installed here). The Fiesta Rally3 Evo has no `carparts/`: its `light_on/` beside the model is taken.
 - Open: the writer of the lamp words on damage; `RenderLights`' second visibility test.
 - Ours: the headlights' shadow map (`sun::LAMP`, `lamps.wgsl`) shades the beams beyond the stage (2026-10-27): rain,
@@ -600,13 +600,13 @@ splash never shows on a wet stage.
   (2 to 2.5 m from the eye) as the rain does; the wheels' spray showed through the GC8's footwell gaps (52 rain
   cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical.
 - Dust colour from the stage's road (2026-11-01, `wheel_spray::dust::of_stage`; was a colour by the `PS_*.ini`
-  region name, ours, neutral grey on 29 of 52 readable RSF variants and all MontBlanc and Arctic ones): the
+  region name, ours, neutral grey on 29 of 52 readable community variants and all MontBlanc and Arctic ones): the
   area-weighted linear mean of the drawn ground (textures, texture 1's blend, vertex tint) within 3 m of the driveline
-  on gravel, dirt or rough collision, green triangles left out (RSF verges marked loose under grass); luma kept within
-  0.55-0.75 (RSF 417's and 176's O textures carry their light, a third darker than M; wet textures half), no bluer
+  on gravel, dirt or rough collision, green triangles left out (community verges marked loose under grass); luma kept within
+  0.55-0.75 (stages 417's and 176's O textures carry their light, a third darker than M; wet textures half), no bluer
   than red (Gabiria's blue-grey verges); neutral under 5% loose road (tarmac, snow). Also tints the car's dirt.
   Retail measures pale cream in Australia (0.78,0.75,0.70; 1.02's own dust class 0.95,0.91,0.79, not our old red),
-  grey-brown in Britain, grey in Japan, red-brown to tan in the USA. Scan over 86 retail and 52 RSF variants,
+  grey-brown in Britain, grey in Japan, red-brown to tan in the USA. Scan over 86 retail and 52 community variants,
   checked against top-down renders of each road. Load +80 ms at most (621, 580). 34 shots: 12 change by 0.1% RMSE or
   more (dusty chases and fly-bys, day Gabiria fly-by 1.3%), snow, tarmac cockpits and night byte-identical or nearly.
 - Spin dust live (2026-11-02, `particles::slip_of_mass`): the spray's slip took the payload's rubber, a slip speed in
@@ -778,7 +778,7 @@ not ported.
   II's footwell (upright glass), and baked it took the cabin's sky share from 0.280 to 0.267; now the Escort is
   unchanged and the Clio changes only in the gap; a few dim lines stay at the dash's edge. Tried and dropped: sloping
   it back under the dash at 45 degrees (lit grey facets, a larger gap). Outside views byte-identical.
-  Cars without `i_window_f` (RSF M3 E30) have no glass at all.
+  Cars without `i_window_f` (the M3 E30) have no glass at all.
 
 ## Skid marks
 
@@ -812,7 +812,7 @@ replays only the 4 s warm-up, so captures show short trails.
 car's `c_e_body`. With the own light (ours) the lines carry their normals; fence meshes skip `on_foliage` and
 `with_plants` (the 45_O net was a "plant", glowing in patches). Without the own light they stay facing up;
 additions off equal on 64_O, 45_O, 61_M but 1 to 2 pixels by 1 (shader codegen). Cost: +0.17 ms scene at 1440p with
-a net filling the view. A torn line's rewrite has occlusion 0 (no bake), as before. `dials/` (ours): an RSF car's
+a net filling the view. A torn line's rewrite has occlusion 0 (no bake), as before. `dials/` (ours): a community car's
 needles and displays from RBRHUD's gauges, drawn into the dial textures from the HUD records.
 
 ## Enhancements
@@ -833,9 +833,9 @@ byte-identical before and after (chase, cockpit, heavy rain, 1920x1080).
 | Name | What |
 | --- | --- |
 | `anisotropy` | 16x anisotropic stage samplers |
-| `cabin` | cockpit lit by its baked sky share, sun only through glass, interior set clear of the stage fog; with the day's light the interior set takes it as the lit draws outside do (45O Xsara and RSF Evo IX, dry, wet, fog; scene pass within noise; additions off byte-identical, 2026-10-25); the car's glass drawn from both sides, so the far window seen through the near one tints too (the game culls it) |
+| `cabin` | cockpit lit by its baked sky share, sun only through glass, interior set clear of the stage fog; with the day's light the interior set takes it as the lit draws outside do (45O Xsara and the Evo IX, dry, wet, fog; scene pass within noise; additions off byte-identical, 2026-10-25); the car's glass drawn from both sides, so the far window seen through the near one tints too (the game culls it) |
 | `contact` | soft contact shadow in place of the decal |
-| `decals` | soft ground decals blended after the stage instead of cut at 60/255 (`decals.rs` documents the rule: RSF 129, 369, 370 skid marks and 129 sand patches; no retail draw; the factory's blend switch untraced). Upright soft cut-outs keep the cut: blended, the wire mesh vanishes |
+| `decals` | soft ground decals blended after the stage instead of cut at 60/255 (`decals.rs` documents the rule: stages 129, 369, 370 skid marks and 129 sand patches; no retail draw; the factory's blend switch untraced). Upright soft cut-outs keep the cut: blended, the wire mesh vanishes |
 | `lighting` | our lighting in place of the game's look (2026-10-27: one flag for the former `sky`, `sun`, `occlusion` and `clouds`; the half-on looks, the 2D cloud layer and its cloud-face lighting went): the physically based sky with aerial perspective, height fog, light shafts and volumetric clouds with their shadows; sun shadow cascades and sunlit foliage in place of the baked light maps; ambient occlusion and bounced light computed at load; reflection probes; the day's exposure. Details below |
 | ~~`hdr`~~ (always on) | float targets, bloom, histogram exposure, AgX (`post.rs`); the exposure's limits follow the clock's light, heavy rain or snow a fifth darker, heavy cloud 15% more saturated. Local exposure: where the bloom blur is over 2 stops above middle grey, 0.6 off, so the night beam keeps the road's texture (45O cockpit 23:00: 24% clipped, now none); post pass 2.91-2.94 ms; additions off byte-identical (2026-10-25). Tried and dropped: a 97th-percentile cap (blacked out everything around the beam). Daytime exposure under our sun lighting (`Enhance::lighting`, 2026-10-27; `post::SUN_EXPOSURE` 1.5, `DayLight::sun_share`): 41M chase noon lit grass (188 207 141) to (166 184 124), road 190 to 137; 45O noon grass green 165 to 121, road 178 to 115. 1.5 keeps sunlit grass above a photo's 120-140 green; 2 crushes the shadows (31 to 24). AgX contrast follows the adapting light (Stevens effect): day p95/p99 up ~10 levels, p5 down ~6; post pass 3.34 to 3.35 ms; additions off byte-identical |
 | `marks` | our tyre marks in place of the skid marks (Skid marks; launcher default off) |
@@ -843,7 +843,7 @@ byte-identical before and after (chase, cockpit, heavy rain, 1920x1080).
 | `grass` | not in `all` (launcher "Dense grass", default off; the reference shots take it): crossed cards of drawn grass blades over the green and straw ground within 20 m of the driveline (`grass.rs`), streamed by 8 m tile about the eye into 550 fixed tile meshes in 9 pools by card count (a tile takes the smallest free one holding its cards, bare ground none), drawn within 118 m (`Lod::Close`), full within 50 m then halving every 25 m, flattened into the ground from 100 to 110 m; each tile holds 1.5x its density (by its nearest point) on 24 steps and the vertex shader shrinks each card by its rank against the density where it stands (`GRASS_THIN`), so the field glides instead of popping; swayed by the wind in the vertex shader (`grass_sway`). Tiles are made on a worker thread (the near 24 m on the frame itself, uploads capped; tiles ahead of the motion built early). Lit as a dense canopy (`GRASS_*` in `shader.wgsl`): tighter wrap, sky and sun shut out down the blades, a low sun more; the ground's computed sky occlusion, sky direction and bounce read back once at load (`Renderer::grass_light`). 580 chase 1080p scene 5.05 to 5.14 ms (+39k triangles), Gabiria fly-by 3.76 to 3.62 ms (-77k triangles); ~280 MB video memory (2026-10-30; ~540 MB since the reach below). Look (2026-10-30): cards 0.07 to 0.14 m (were 0.1 to 0.2), their foot lighter (`GRASS_BASE` 0.6, `GRASS_SUN_BASE` 0.4 to 0.6), so the field reads as a low meadow, not dark fur; the retail tufts toned to sit with it (`TUFT_TRANSMIT` 0.35). Snow shots unchanged (RMSE under 0.005). Retail tufts lit as our grass (2026-10-30): the stage's tufts and ferns take our grass's light (`GRASS_*`: wrap 0.3, sun and sky shut out down them, no warm tips), keep 0.4 of the sky's colour (`TUFT_SKY_TINT`: their grey-green textures read bluish), no dark-leaf lift, green leaves at most 0.09 linear (`TUFT_GREEN_MOST`, was 0.15; 580's lime ferns read as lit card). Their luma over our grass's in the same 48-pixel tiles: 580 Evo chase 2.4-2.5 to 1.2-1.3, 580 shot 3.7 to 1.5, 532 1.34 to 0.89, Gabiria's pale straw 2.1 to 1.9 (its texels sit in the snow test's range: a straw cap missed them, and moving the range changed Pian's snow tufts). Snow shots RMSE under 0.0035, night Sardian identical. The tile meshes not yet given a tile (no bounds, zeroed cards: 306 of 560 at the Luceram shot) drew their whole capacity in the main view and the mirrors until skipped (2026-10-31): scene 0.5-0.7 ms less (580 chase 5.09 to 4.59, Luceram rain fly-by 3.83 to 3.18), mirrors 0.45-1.0 ms less in the cockpit, the 34 shots byte-identical. Their zeroed vertices no longer go through the load's vertex prep (2026-10-31): all in one place, they made `foliage::with_plants`'s tree grouping quadratic; 580 load 28 to 22 s, the 34 shots 594 to 441 s, byte-identical. Tried and dropped: lighting our blades as upright on banks (no visible change; 580's dark bank is the hill's own shadow). Thatch (2026-10-30): with a field (`GRASS`) the ground under the grass is darker (0.82) and fuller in colour (1.1) by the grass's own test, slope and density by the eye's distance (`thatch` in `shader.wgsl`; not the 20 m band, so the near ground past it is thatched too), so its pale and pink texels no longer show between the blades; the blades brighter (`SHADE` 0.62 to 0.9), less saturated (`SATURATION` 1.15 to 0.85, `LUSH_SHARE` 0.25 to 0.15: lit, 580's came out at blue over green 0.26 against the ground's 0.63, now 0.37 against 0.57) and fuller (240, 180, 180, 140 blades a picture, were 170, 130, 130, 100; the same cards). Blades over the ground between them (median of 32 px tiles): 580 Evo chase 0.51 to 1.12 and 0.31 to 0.86, Gabiria fly-by 0.79 to 1.29, 532 0.48 to 0.90; the field's mean brightness 580 Evo +0.5% and -14%, 580 shot +8%, Gabiria +4%, 532 -8%. Snow shots unchanged; scene pass 580 19.8 ms and 532 11.8 ms both before and after. Reach (2026-10-31): full to 50 m (was 14), halving every 25 m (was 10), to 110 m (was 100); the tile meshes sized by their cards (a full 6400-card mesh for every tile in reach would be ~1.2 GB; sized on 580, 621, 532, 450, 417, 176 and 52, a few of the farthest at Odry 462's densest spot go without). Meshes never filled drew their whole capacity of zero-area cards (no bounds: never culled), about 0.5 to 2.4 M triangles a frame before: now they draw nothing until filled. Full density to 100 m measured 580 chase 29.4 to 39.0 ms a frame, 621 cockpit 12.5 to 29.4 ms (with the empty meshes still drawn); this reach, after the fix: scene pass 580 chase 20.1 to 21.0 ms, 621 cockpit 7.8 to 8.4, Odry chase 10.8 to 8.7, Gabiria fly-by 11.4 both |
 | `water` | water flowing by its scroll (`water.wgsl`), fading into banks |
 | `windscreen` | the windscreen seen from inside as glass: the pane (Fresnel loss, dust, specks, wiper scratches, water spots) and the cabin reflected in it, a mirror pass of its own every 2nd frame whatever `--mirrors` says (held with the car between) ("Windscreen and wipers" above). Off: the frame as before |
-| `wet` | the wet road, in wet and damp weather: a film and puddles over the ground whose `.col` surface takes them (tarmac 1, gravel and dirt 0.5), retail and RSF alike (user decision 2026-10-25; `puddles.rs`). Screen-space reflections on the wet roads: +12 to 17 ms at 1080p; film alone +0.9 to 1.7 ms; load +0.2 s. Wet film (2026-10-28): the rays missed the car, so the film halves back to any crossing and `reach` judges it (`film` in `trace`); the far road takes the sky, the near road stays dark. 41O chase screen reflections 1.32 to 1.50 ms at 1080p. Loose roads (2026-10-28): the half-film road's film was a pale even sheet; its reflection now falls with the film's share, so the stones show through and puddles stand out (tarmac and dry byte-identical; 52O/21O chase screen reflections 1.46/1.67 to 1.14/1.37 ms). The rings were never on the film: they were in the puddles. Damp is a drying road: no puddles, rings or screen-space reflections, the film 0.4 of the wet one's, the ground soaked by half (41M dry 101, damp 68, wet 59 at 13:00; 460M 147 to 131; 45O 140 to 118). 41M +0.9 ms, 45O within noise; wet and additions off unchanged byte for byte (2026-10-26). Wet road edge (2026-10-28): the reflection and glint fade over the outer 0.1 to 0.8 m, frayed by noise (puddles and the road's darkness stay); mean distance 1.2 m on 41M, 0.3 m on RSF Gabiria; damp and dry byte-identical. By texture (2026-10-28): a film triangle takes the share most film triangles of its texture have (RSF Bois de Bie tags stretches of tarmac as gravel: 46000 `Gravel_Fine_Shallow_Wet` against 139000 `Tarmac_Coarse_Clean_Wet`); retail Fraizer Wells byte for byte, damp Gabiria RMSE 0.0003. Wet road look (2026-10-28, tarmac first): the film alone is darker and its reflection takes the asphalt's grain, its normal tilted by microrelief and rain's impacts, fading to the mean between 4 and 25 m. Tried and dropped: a 0.12 tilt (white sky blobs over the near road). Gravel nearly unchanged; dry, snow, night byte-identical. Flyby 1080p scene 1.72 to 1.80 ms, screen reflections 1.58 to 1.85 ms; cockpit within noise. Tarmac's even film (2026-10-28, user decision): where the film share is 1 there are no random puddles and only the hollows hold water, so the bumper and plate read in the road near the car. Rain rings on tarmac only in the hollows' water; the film shows fine splash specks instead. Round 2 roughens the normal at the grain in place of the 5 and 2 cm waves. The near road's olive cast is the green bank's reflection, kept. Gravel and dirt keep the film and puddles (52O chase RMSE 0.0000022); dry, damp, snow and night-dry byte-identical; Luceram fly-by within compiler noise (RMSE 0.00015). Puddles at the edge (2026-10-28): puddles now end 0.05 to 0.2 m from the edge, frayed as the film is; 52O chase RMSE 0.017, dry byte-identical. Wheel tracks (2026-10-28, loose roads only): the water lies in two tracks 1.5 m in from the road's edge, rims frayed by 7 cm stone noise; damp keeps its old spray. 52O chase scene 2.54 to 2.65 ms, screen reflections 1.69 to 1.74 ms; dry, damp, snow, night byte-identical, Luceram within compiler noise (RMSE 0.00015) |
+| `wet` | the wet road, in wet and damp weather: a film and puddles over the ground whose `.col` surface takes them (tarmac 1, gravel and dirt 0.5), retail and community alike (user decision 2026-10-25; `puddles.rs`). Screen-space reflections on the wet roads: +12 to 17 ms at 1080p; film alone +0.9 to 1.7 ms; load +0.2 s. Wet film (2026-10-28): the rays missed the car, so the film halves back to any crossing and `reach` judges it (`film` in `trace`); the far road takes the sky, the near road stays dark. 41O chase screen reflections 1.32 to 1.50 ms at 1080p. Loose roads (2026-10-28): the half-film road's film was a pale even sheet; its reflection now falls with the film's share, so the stones show through and puddles stand out (tarmac and dry byte-identical; 52O/21O chase screen reflections 1.46/1.67 to 1.14/1.37 ms). The rings were never on the film: they were in the puddles. Damp is a drying road: no puddles, rings or screen-space reflections, the film 0.4 of the wet one's, the ground soaked by half (41M dry 101, damp 68, wet 59 at 13:00; 460M 147 to 131; 45O 140 to 118). 41M +0.9 ms, 45O within noise; wet and additions off unchanged byte for byte (2026-10-26). Wet road edge (2026-10-28): the reflection and glint fade over the outer 0.1 to 0.8 m, frayed by noise (puddles and the road's darkness stay); mean distance 1.2 m on 41M, 0.3 m on Gabiria; damp and dry byte-identical. By texture (2026-10-28): a film triangle takes the share most film triangles of its texture have (Bois de Bie tags stretches of tarmac as gravel: 46000 `Gravel_Fine_Shallow_Wet` against 139000 `Tarmac_Coarse_Clean_Wet`); retail Fraizer Wells byte for byte, damp Gabiria RMSE 0.0003. Wet road look (2026-10-28, tarmac first): the film alone is darker and its reflection takes the asphalt's grain, its normal tilted by microrelief and rain's impacts, fading to the mean between 4 and 25 m. Tried and dropped: a 0.12 tilt (white sky blobs over the near road). Gravel nearly unchanged; dry, snow, night byte-identical. Flyby 1080p scene 1.72 to 1.80 ms, screen reflections 1.58 to 1.85 ms; cockpit within noise. Tarmac's even film (2026-10-28, user decision): where the film share is 1 there are no random puddles and only the hollows hold water, so the bumper and plate read in the road near the car. Rain rings on tarmac only in the hollows' water; the film shows fine splash specks instead. Round 2 roughens the normal at the grain in place of the 5 and 2 cm waves. The near road's olive cast is the green bank's reflection, kept. Gravel and dirt keep the film and puddles (52O chase RMSE 0.0000022); dry, damp, snow and night-dry byte-identical; Luceram fly-by within compiler noise (RMSE 0.00015). Puddles at the edge (2026-10-28): puddles now end 0.05 to 0.2 m from the edge, frayed as the film is; 52O chase RMSE 0.017, dry byte-identical. Wheel tracks (2026-10-28, loose roads only): the water lies in two tracks 1.5 m in from the road's edge, rims frayed by 7 cm stone noise; damp keeps its old spray. 52O chase scene 2.54 to 2.65 ms, screen reflections 1.69 to 1.74 ms; dry, damp, snow, night byte-identical, Luceram within compiler noise (RMSE 0.00015) |
 
 Scanned surfaces removed (user decision 2026-11-02): `asphalt`, `gravel`, `snow` and `ground` (Poly Haven scans over
 the roads, snow and off-road ground; launcher "Surfaces") did not look right on every stage. The road and ground marks
@@ -871,7 +871,7 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   (2026-10-27): the surroundings cube at 256 texels, a face every frame, the probes baked at 128 texels, and the wet
   screen-space reflections traced at full size. 41M 1440p: dry +0.05 ms, wet screen reflections 1.75 to 3.4 ms; High
   byte for byte (6 scenes). Sky domes (`sky_dome.rs`): a world sky face over the stage's middle casts into neither
-  the sky's occlusion nor the cascades (39 of 659 readable RSF variants, e.g. 519, 580); as a caster it left 519 and
+  the sky's occlusion nor the cascades (39 of 659 readable community variants, e.g. 519, 580); as a caster it left 519 and
   580 black. Under `lighting` the dome is not drawn at all (user decision; 2026-10-27).
 - Sun: cascades and a far layer to 1 km in place of the baked light maps, leaf translucency (`sun.rs`,
   `foliage.rs`); the characters cast into the cascades, and the car's body and the characters take them (the car
@@ -882,11 +882,11 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   interior transmission (lost the backlit glow). Vegetation look (2026-10-28; `tuft_*` in `shader.wgsl`, `foliage::with_plants`):
   grass, low bushes and shrub crowns get bent normals, wrapped sun with transmission, foot occlusion and a straw tint
   on pale textures (retail tufts read bluish under the blue sky); gab-lit 1.9% RMSE, additions off identical. Each piece's cut-out test runs once a piece over a summed-area
-  table: Semetin's load 7.4 to 2.3 s, 41M 1.08 to 0.67 s, frames identical (2026-10-25). Structures in the RSF
+  table: Semetin's load 7.4 to 2.3 s, 41M 1.08 to 0.67 s, frames identical (2026-10-25). Structures in the community
   stages' own atlases (2026-11-01, `foliage::Marks`): a piece up to 9 m whose part of the texture, read at 1024 texels,
   has few gaps and is not green, or straight edges, is not a plant; people, signs, fences, poles, buildings and
   vehicles share the atlases with the trees, and names alone (`STRUCTURES`) caught 31% of them (4% by use). A tree
-  fitted to 1391 hand-labelled RSF pieces (768 drawn by use): with the names 95% caught, 1% of plants taken (0.3% by
+  fitted to 1391 hand-labelled community pieces (768 drawn by use): with the names 95% caught, 1% of plants taken (0.3% by
   use), cross-validated by texture 93% and 3%; 192 pieces of unseen textures: 90% of those it calls structures are,
   98% of those it calls plants are. Misses: chain-link and wire (mostly named), bare twigs and dry stalks. At 256
   texels the gaps do not show (9% of plants taken). Retail atlases (tiny dry plants, cacti) failed it: only a stage's
@@ -961,7 +961,7 @@ are gone. A closed room's interreflection gives the bounce: E = (1 - sky) x rho 
 interior takes in, the sky's through the cabin's mean seen direction and the sun's mean n.l (`SunIn`). rho is the
 area-weighted interior albedo (texel at each face's uv centroid at 64 px or less, times the vertex colour, per channel,
 at most 0.9; the bounce per channel, so a tan cabin's is warm), over the faces that see the sky at most 0.6 to 0.9 of
-the time (`cabin::OUTSIDE`): the interior set holds outside body panels, and the RSF M3 E30's green livery (13.7 of its
+the time (`cabin::OUTSIDE`): the interior set holds outside body panels, and the M3 E30's green livery (13.7 of its
 28.7 m^2) lit its headliner teal (albedo 0.099 / 0.183 / 0.146, now 0.095 / 0.112 / 0.106; roof 19 / 44 / 34 of 255,
 now 23 / 29 / 28). The light in (sky share, seen direction, the sun's n.l) is weighed so too (2026-10-31, with the
 cabin's own exposure below): the body seen through the glass takes in light the cabin does not, and counted it made
@@ -1039,9 +1039,9 @@ launcher "Mirrors" (default every frame). Off: no passes, the frame byte-identic
   housings' faces) and the opaque glass-class faces (retail cars), in panes of welded, coplanar faces. A pane is a
   mirror when the eye's line reflects back along the car, it is 3-45 cm, 0.2-1.5 m ahead, at most 45 cm below the
   eye, flat to 4 % of its size, and the eye sees it past opaque non-glass faces; one per side and one centre. No
-  named centre mirror (RSF): the largest opaque pane hanging there. Not flat: the cube as before.
+  named centre mirror (community cars): the largest opaque pane hanging there. Not flat: the cube as before.
 - Survey (`examples/mirror_survey.rs`): the retail cars 2 door mirrors each, Lancer Evo VII 1 door + centre, Impreza
-  2000 2 + centre; the 42 RSF samples 1-3 each but the Fiesta Rally2 (none); curved glass in 12 keeps the cube.
+  2000 2 + centre; the 42 community samples 1-3 each but the Fiesta Rally2 (none); curved glass in 12 keeps the cube.
 - View: `crop * VP * R`, R the reflection across the glass, crop the glass's screen box with x flipped, z row for an
   oblique near plane 1 cm past the glass. Image about 1:1 with the glass, 32 px steps, at most 1024 x 512. Rates take
   turns between mirrors.
@@ -1201,7 +1201,7 @@ displays keep the pack's texels, scaled to the target's. Clio 4K cockpit: edges 
 the small switch labels garbled. Reference cockpits 0.35 to 2.86 % RMSE, upscale off byte-identical; the target
 gets the base's mip chain (+21 MB at 4096, the dials redrawn into every level: a Clio redraw 0.92 ms GPU against
 0.60, `--profile` with the dials redrawn each frame).
-A pack's base without mip levels (139 of RSF's 150) gets a chain at load, as the car's own textures do: one level
+A pack's base without mip levels (139 of the 150 community packs) gets a chain at load, as the car's own textures do: one level
 aliased over the whole cockpit where the upscaler did not replace it (2026-11-01).
 Past a face's first draw, the levels its largest region is under 8 texels in keep its last whole draw (`SMALLEST`); a
 face's textures with one file and one base share a target: the Fiat 131's redraw 26 passes to 8 (dials span 0.081 to

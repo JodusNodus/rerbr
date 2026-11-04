@@ -32,11 +32,11 @@ and `poll/wine.rs` (Proton path, G923 lattice, rest values); NGP additions in `c
 
 - NGP version addresses (code states 778's only): 779 polls at 0x10006e70, its direct gears at 0x1003c4d0. The strand
   the 1000 Hz thread posts to is 0x10098270 -> 0x10094200 (not in code).
-- RBRControls (RSF) sets properties and FFB on device instances of its own (MOD1: PRP1 9, DEV1 5, no POL1); the
+- RBRControls (the install's) sets properties and FFB on device instances of its own (MOD1: PRP1 9, DEV1 5, no POL1); the
   chain replays exactly without it.
 - Live: checked on cachy (autopilot, `rec/input-own`): G923 and T500 RS found, read at rest (0, gears bound). The
   keyboard state is the frame's held keys: a sub-frame tap is missed (unverified).
-- No import of RSF's controls or settings (user decision: the player sets them again); removed with
+- No import of the install's controls or settings (user decision: the player sets them again); removed with
   `rbr-launcher/src/rsf_import.rs`, `rbr_formats::wine`.
 
 ### Input filter

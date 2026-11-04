@@ -78,12 +78,12 @@ Mechanics in `codriver.rs` (phrase, queue, damage calls, countdown). Word ids: `
 ## Custom co-driver
 
 Mechanics in `custom_codriver.rs` (window, spoken call, sticky rules, preview in `preview.rs`, HUD integration);
-pack layout in `rbr_formats::rsf`.
+pack layout in `rbr_formats::pacenote`.
 
-- RSF install (2026-10-26): all 17 styles and both range sets load the same packages, so the voice decides the words
+- Test install (2026-10-26): all 17 styles and both range sets load the same packages, so the voice decides the words
   (`Janne Laahanen EnNu A`: Descriptive ids on numbered takes, `six_left` for EASYLEFT); the launcher hides the style
   and range rows when the sets say the same (data observation, not in code).
-- Owned copies: Janne V3 with Tanner LuppisV3 loads 1,154 samples without RSF configured; a 40 s constant-speed
+- Owned copies: Janne V3 with Tanner LuppisV3 loads 1,154 samples without a game install configured; a 40 s constant-speed
   preview gives the same 47 calls and byte-identical WAV as the source pack (local copied-pack review, 2026-10-22).
 
 ## Countdown
