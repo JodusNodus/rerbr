@@ -87,7 +87,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         shot(&dir.join(format!("setup-{n}.png")), |ctx| form.ui(ctx))?;
     }
     // The Championship page: no season, a rally's welcome, a wrecked car's end of the rally, a season after its first
-    // stage, then (with the damage file's car) its service.
+    // stage, a rally's results, between rallies, the season over, then (with the damage file's car) its service.
     form.page = Page::Championship;
     shot(&dir.join("championship-new.png"), |ctx| form.ui(ctx))?;
     form.rally.screenshot_season(&form.season, Shot::Welcome);
@@ -96,6 +96,16 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     shot(&dir.join("championship-over.png"), |ctx| form.ui(ctx))?;
     form.rally.screenshot_season(&form.season, Shot::Stage);
     shot(&dir.join("championship.png"), |ctx| form.ui(ctx))?;
+    // A rally driven to its results, the page between rallies, and the season's end.
+    for (name, at) in [
+        ("championship-results", Shot::Results),
+        ("championship-between", Shot::BetweenRallies),
+        ("championship-season-over", Shot::SeasonOver),
+    ] {
+        form.rally.screenshot_season(&form.season, at);
+        shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
+    }
+    form.rally.screenshot_season(&form.season, Shot::Stage);
     // Its car list open, and a season saved without an RSF car asking for one.
     form.car_browser.open_on(Target::Season, form.season_pick, &form.favourite_cars, None);
     shot(&dir.join("championship-cars.png"), |ctx| form.ui(ctx))?;

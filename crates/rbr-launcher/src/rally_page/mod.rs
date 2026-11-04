@@ -367,6 +367,24 @@ impl RallyPage {
         if shot == Shot::Welcome {
             return;
         }
+        let rallies = match shot {
+            Shot::Results | Shot::BetweenRallies => 1,
+            Shot::SeasonOver => 6,
+            _ => 0,
+        };
+        for k in 0..rallies {
+            self.start_rally();
+            self.screenshot_rally();
+            if shot != Shot::Results {
+                self.turn_done();
+            }
+            if k + 1 < rallies {
+                self.turn_done();
+            }
+        }
+        if rallies > 0 {
+            return;
+        }
         self.start_rally();
         let end_race = EndRace { time: 300.0, splits: [100.0, 200.0], retired: false };
         let (damage, drivable) = match &shot {
@@ -384,6 +402,24 @@ impl RallyPage {
                 self.championship = Some(c.service_done(0.0, None));
             }
             self.turn_done();
+        }
+    }
+
+    /// `--screenshot`: the rally's stages driven to its results, each a little slower, the services passed.
+    fn screenshot_rally(&mut self) {
+        for stage in 0..6 {
+            let end_race = EndRace { time: 300.0 + 4.0 * stage as f32, splits: [100.0, 200.0], retired: false };
+            if let Some(c) = self.championship.take() {
+                let end = StageEnd { cause: EndCause::Finish, end_race };
+                self.championship = Some(c.stage_end(&end, CarriedDamage::default(), true));
+            }
+            self.season_stage_done(Some(StageTimes::from_end_race(&end_race)), true);
+            if self.in_service() {
+                if let Some(c) = self.championship.take() {
+                    self.championship = Some(c.service_done(0.0, None));
+                }
+                self.turn_done();
+            }
         }
     }
 
@@ -555,8 +591,13 @@ impl RallyPage {
     }
     /// The name of the season's current rally.
     fn rally_name(&self) -> String {
+        self.rally_name_at(self.run.as_ref().map_or(0, |r| r.save.position().0 as usize))
+    }
+
+    /// The season's rally `k`'s name.
+    fn rally_name_at(&self, k: usize) -> String {
         let (Some(run), Ok(rallies)) = (&self.run, &self.rallies) else { return String::new() };
-        let block = run.blocks.get(run.save.position().0 as usize);
+        let block = run.blocks.get(k);
         block.and_then(|b| rallies.get(b.rally as usize)).map_or("?".to_owned(), |r| r.name.clone())
     }
 }
@@ -568,6 +609,10 @@ pub enum Shot {
     Stage,
     Service(Box<CarriedDamage>),
     Wrecked,
+    /// A rally driven to its results.
+    Results,
+    BetweenRallies,
+    SeasonOver,
 }
 
 /// A string-table text by key, the key itself when the table or the key is missing.

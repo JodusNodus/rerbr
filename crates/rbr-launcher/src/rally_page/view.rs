@@ -1,8 +1,9 @@
-//! The Championship page's drawing. With no season loaded: the new season's options and Continue. With one under way:
-//! the rally's header, its itinerary (stages and service stops, done, next, to come), the card of the next step (the
-//! stage's tyres, setup and Drive; the welcome; the service park; the rally's end), and beside them the rally's
-//! standings, the season's points and the bulletins. Starting another season or loading the saved one is folded away
-//! under the itinerary.
+//! The Championship page's drawing. With no season loaded: the profile with Continue, then the new season's options
+//! and New season. With one under way: the header (the rally, rally n of 6, the step: stage n of 6 or the service before
+//! it, the player's place), the card of the next step with its one primary button (the stage's tyres, setup and Drive;
+//! the welcome; the service park; the rally's end), the itinerary under it (stages and service stops, done, next, to
+//! come), and beside them the rally's standings, the season's points and the bulletins. Starting another season or
+//! loading the saved one is folded away under the itinerary.
 
 use std::path::Path;
 
@@ -60,10 +61,23 @@ fn stage_mark(c: &Championship, index: usize) -> StageMark {
     match c.phase() {
         RallyPhase::Stage(next) if next == index => StageMark::Next,
         RallyPhase::Service(stop) if stop.next == index => StageMark::Next,
+        // Only the first stage not driven: the rest were never started.
         RallyPhase::Over(RallyOutcome::Finished) => StageMark::Later,
-        RallyPhase::Over(_) => StageMark::Retired,
+        RallyPhase::Over(_) if index == c.times().len() => StageMark::Retired,
         _ => StageMark::Later,
     }
+}
+
+/// `n` as a place: 1st, 2nd, 3rd, 4th, 11th.
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
 }
 
 /// `time`'s gap to the leader's `best`: blank for the leader.
@@ -100,12 +114,11 @@ impl RallyPage {
             return None;
         };
         let mut request = None;
-        self.header_ui(ui, car);
+        self.header_ui(ui, car, &c);
         ui.add_space(8.0);
         ui.columns(2, |cols| {
             let ui = &mut cols[0];
-            self.itinerary_ui(ui, &c);
-            ui.add_space(10.0);
+            // The next step first, so its button is always in view; the itinerary under it.
             card(ui, |ui| match c.phase() {
                 RallyPhase::Stage(index) => request = self.stage_ui(ui, here, saved, &c, index, blocker),
                 RallyPhase::Service(stop) if c.damage().is_none() => self.welcome_ui(ui, stop.next),
@@ -117,12 +130,14 @@ impl RallyPage {
                         self.service_done(penalty, damage);
                     }
                 }
-                RallyPhase::Over(outcome) => request = self.over_ui(ui, season, outcome, blocker),
+                RallyPhase::Over(outcome) => request = self.over_ui(ui, season, here, outcome, blocker),
             });
             if !self.status.is_empty() {
                 ui.add_space(4.0);
                 ui.colored_label(WARN, &self.status);
             }
+            ui.add_space(10.0);
+            self.itinerary_ui(ui, &c);
             ui.add_space(10.0);
             self.seasons_ui(ui, season, here);
             self.standings_ui(&mut cols[1]);
@@ -132,41 +147,48 @@ impl RallyPage {
 
     /// No season loaded: the new season's options, New season and Continue.
     fn start_ui(&mut self, ui: &mut Ui, season: &Season, here: &Path, car_row: &mut dyn FnMut(&mut Ui, u32) -> bool) {
+        let named = is_file_name_part(&self.profile);
         section(ui, "Championship");
-        ui.colored_label(GREY, "A season of six rallies against the AI field, with service between stages.");
+        ui.colored_label(GREY, "Six rallies of six stages against the AI field, with service between stages.");
         ui.add_space(6.0);
-        let startable = fields(ui, "season-new", |ui| {
-            self.profile_row(ui);
-            self.options_rows(ui, car_row)
-        });
-        ui.add_space(10.0);
-        ui.horizontal(|ui| {
-            let named = is_file_name_part(&self.profile);
-            let new = ui.add_enabled(!self.driving && startable && named, start_button("New season"));
-            if new.on_hover_text("Replaces this profile's saved season").clicked() {
-                let store = self.store(here);
-                self.new_season(season, Some(store), season_model::seed_from_unix_ms(now_ms()));
-            }
-            let resume =
-                egui::Button::new(RichText::new("Continue saved season").size(16.0)).min_size([0.0, 44.0].into());
-            if ui.add_enabled(!self.driving && named, resume).clicked() {
-                self.continue_season(here, season);
-            }
+        // The profile names the save: Continue is beside it, New season (which replaces it) under its options.
+        fields(ui, "season-profile", |ui| {
+            ui.label("Profile").on_hover_text("The season is saved under this name");
+            ui.horizontal(|ui| {
+                self.profile_edit(ui);
+                if ui.add_enabled(!self.driving && named, egui::Button::new("Continue saved season")).clicked() {
+                    self.continue_season(here, season);
+                }
+            });
+            ui.end_row();
         });
         if !self.status.is_empty() {
             ui.colored_label(WARN, &self.status);
         }
+        section(ui, "New season");
+        let startable = fields(ui, "season-new", |ui| self.options_rows(ui, car_row));
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if ui.add_enabled(!self.driving && startable && named, start_button("New season")).clicked() {
+                self.season_now(season, here);
+            }
+            ui.colored_label(GREY, format!("replaces {}'s saved season", self.profile));
+        });
         ui.add_space(10.0);
         ui.colored_label(DIM, TIP);
     }
 
-    /// The profile's row: the save's name.
-    fn profile_row(&mut self, ui: &mut Ui) {
-        ui.label("Profile").on_hover_text("The season is saved under this name, and Continue reads it back");
+    /// New season: a season on the clock's seed, saved under the profile (replacing its saved one).
+    fn season_now(&mut self, season: &Season, here: &Path) {
+        let store = self.store(here);
+        self.new_season(season, Some(store), season_model::seed_from_unix_ms(now_ms()));
+    }
+
+    /// The profile's field: the save's name.
+    fn profile_edit(&mut self, ui: &mut Ui) {
         ui.add_enabled(!self.driving, egui::TextEdit::singleline(&mut self.profile).desired_width(160.0));
         // The name is part of the save's file name: keep out what could leave the folder.
         self.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
-        ui.end_row();
     }
 
     /// The options a new season takes, a row each: the game's `TEAM_OFFERS`, `SSKILL` and `CARDAM` pages, and the car
@@ -189,7 +211,7 @@ impl RallyPage {
         ui.label("Skill level");
         ui.horizontal(|ui| {
             combo(ui, "season-skill", 160.0, &mut self.options.skill, &Skill::ALL, Skill::label);
-            ui.colored_label(GREY, format!("outside assistance: {}", assistance_note(self.options)));
+            ui.colored_label(GREY, format!("help when stuck: {}", assistance_note(self.options)));
         });
         ui.end_row();
         ui.label("Car damage");
@@ -198,13 +220,30 @@ impl RallyPage {
         startable
     }
 
-    /// The season's header: the rally and where the season stands, and the car, team, options and clock.
-    fn header_ui(&self, ui: &mut Ui, car: &Car) {
+    /// The season's header: the rally, where the rally stands and the player's place in it, then the car, team,
+    /// options and the season's clock.
+    fn header_ui(&self, ui: &mut Ui, car: &Car, c: &Championship) {
         let Some(run) = &self.run else { return };
         let (rally, _) = run.save.position();
+        let stages = c.rally().stages.len();
+        let step = match (run.turn, c.phase()) {
+            (Turn::Welcome, _) => "Before the start".to_owned(),
+            (_, RallyPhase::Stage(i)) => format!("Stage {} of {stages}", i + 1),
+            (_, RallyPhase::Service(stop)) => format!("Service before stage {} of {stages}", stop.next + 1),
+            (Turn::Over, _) => "Season over".to_owned(),
+            (_, RallyPhase::Over(_)) => "Rally over".to_owned(),
+        };
         ui.horizontal(|ui| {
             ui.label(RichText::new(self.rally_name()).size(24.0).strong());
-            ui.colored_label(GREY, format!("rally {} of {}", rally + 1, run.blocks.len()));
+            ui.add_space(6.0);
+            let big = |text: String| RichText::new(text).size(17.0);
+            ui.label(big(format!("Rally {} of {}", rally + 1, run.blocks.len())));
+            ui.colored_label(DIM, big("·".into()));
+            ui.label(big(step).color(STAR));
+            if let Some((place, field)) = self.player_place() {
+                ui.colored_label(DIM, big("·".into()));
+                ui.label(big(format!("{} of {field}", ordinal(place))));
+            }
         });
         let options = season_model::options(&run.save);
         let team = season_model::player_entry(&run.save).map_or(0, |e| run.save.drivers[e].team);
@@ -212,35 +251,64 @@ impl RallyPage {
         ui.colored_label(
             GREY,
             format!(
-                "{} · {} · {} · damage {} · {} · clock {hour:02}:{minute:02}",
+                "{} · {} · {} · {} damage · season clock {hour:02}:{minute:02}",
                 car.name,
                 self.team_label(team),
                 options.skill.label(),
                 options.damage.label(),
-                self.profile,
             ),
         );
+    }
+
+    /// The stages the AI has run in this rally: how far the rally's standings go.
+    fn stages_run(&self) -> usize {
+        let Some(run) = &self.run else { return 0 };
+        let done = self.championship.as_ref().map_or(0, |c| c.times().len());
+        let ran = match run.turn {
+            Turn::Welcome => 0,
+            Turn::Stage(s) => s as usize,
+            Turn::Service { .. } => run.save.position().1 as usize,
+            Turn::Results | Turn::BetweenRallies | Turn::Over => 6,
+        };
+        ran.max(done)
+    }
+
+    /// The player's place in the rally's standings and the field's size, once a stage has run and while the player
+    /// is in it.
+    fn player_place(&self) -> Option<(usize, usize)> {
+        let run = self.run.as_ref()?;
+        let ran = Some(self.stages_run()).filter(|&r| r > 0)?;
+        let lines = season_model::rally_standings(&run.save, run.save.position().0 as usize, ran);
+        let place = lines.iter().position(|l| run.save.drivers[l.entry].id == season_model::PLAYER_ID)?;
+        lines[place].total.map(|_| (place + 1, lines.len()))
     }
 
     /// The rally's stages and service stops, each stage's time once driven, then the penalties and the total.
     fn itinerary_ui(&self, ui: &mut Ui, c: &Championship) {
         card(ui, |ui| {
             card_title(ui, "Itinerary");
+            let at_service = matches!(c.phase(), RallyPhase::Service(_));
             egui::Grid::new("itinerary").num_columns(5).spacing([14.0, 5.0]).show(ui, |ui| {
+                for heading in ["", "", "Stage", "Start", "Time"] {
+                    ui.colored_label(GREY, heading);
+                }
+                ui.end_row();
                 for (k, stage) in c.rally().stages.iter().enumerate() {
                     let mark = stage_mark(c, k);
                     if let Some(kind) = service::service_before(k).filter(|_| k > 0) {
                         let at = matches!(c.phase(), RallyPhase::Service(stop) if stop.next == k);
                         let colour = if at { STAR } else { DIM };
-                        ui.label("");
+                        ui.colored_label(colour, if at { "▶" } else { "" });
                         ui.label("");
                         let title = text_of(self.strings.as_ref(), kind.title_key());
-                        ui.colored_label(colour, format!("{title}, {} min", kind.budget() as u32 / 60));
+                        ui.colored_label(colour, format!("🔧 {title}, {} min", kind.budget() as u32 / 60));
                         ui.end_row();
                     }
                     let (icon, colour) = match mark {
                         StageMark::Done(_) => ("✔", GOOD),
                         StageMark::Retired => ("✖", WARN),
+                        // At a service the arrow is on the service's row.
+                        StageMark::Next if at_service => ("", STAR),
                         StageMark::Next => ("▶", STAR),
                         StageMark::Later => ("", GREY),
                     };
@@ -258,7 +326,7 @@ impl RallyPage {
                     ui.colored_label(GREY, format!("{:02}:{:02}", stage.hour, stage.minute));
                     ui.label(match mark {
                         StageMark::Done(time) => clock(time),
-                        StageMark::Retired => "retired".to_owned(),
+                        StageMark::Retired => "out".to_owned(),
                         StageMark::Next | StageMark::Later => String::new(),
                     });
                     ui.end_row();
@@ -266,8 +334,10 @@ impl RallyPage {
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.colored_label(GREY, format!("Penalties {}", clock(c.penalty())));
-                ui.add_space(12.0);
+                if c.penalty() > 0.0 {
+                    ui.colored_label(BAD, format!("Penalties {}", clock(c.penalty())));
+                    ui.add_space(12.0);
+                }
                 ui.label(RichText::new(format!("Total {}", clock(c.total_time()))).strong());
             });
         });
@@ -276,15 +346,18 @@ impl RallyPage {
     /// Another season, folded away: the profile, New season (which replaces the saved one) and Continue (which reads
     /// it back).
     fn seasons_ui(&mut self, ui: &mut Ui, season: &Season, here: &Path) {
-        egui::CollapsingHeader::new("Another season").id_salt("season-other").show(ui, |ui| {
-            fields(ui, "season-other-fields", |ui| self.profile_row(ui));
-            ui.colored_label(GREY, "New season uses the team and options the page last had; the car is the season's.");
+        egui::CollapsingHeader::new("Another season or profile").id_salt("season-other").show(ui, |ui| {
+            fields(ui, "season-other-fields", |ui| {
+                ui.label("Profile").on_hover_text("The season is saved under this name");
+                self.profile_edit(ui);
+                ui.end_row();
+            });
+            ui.colored_label(GREY, "New season takes the team and options the page last had; the car is the season's.");
             ui.horizontal(|ui| {
                 let named = is_file_name_part(&self.profile);
                 let new = ui.add_enabled(!self.driving && named, egui::Button::new("New season"));
-                if new.on_hover_text("Replaces this profile's saved season").clicked() {
-                    let store = self.store(here);
-                    self.new_season(season, Some(store), season_model::seed_from_unix_ms(now_ms()));
+                if new.on_hover_text(format!("Replaces {}'s saved season", self.profile)).clicked() {
+                    self.season_now(season, here);
                 }
                 if ui.add_enabled(!self.driving && named, egui::Button::new("Continue saved season")).clicked() {
                     self.continue_season(here, season);
@@ -296,16 +369,8 @@ impl RallyPage {
     /// The rally's standings after the stages run, the season's points and the bulletins since the player's turn.
     fn standings_ui(&self, ui: &mut Ui) {
         let Some(run) = &self.run else { return };
-        let done = self.championship.as_ref().map_or(0, |c| c.times().len());
-        let (rally, stage) = run.save.position();
-        // Stages the AI has run in this rally.
-        let ran = match run.turn {
-            Turn::Welcome => 0,
-            Turn::Stage(s) => s as usize,
-            Turn::Service { .. } => stage as usize,
-            Turn::Results | Turn::BetweenRallies | Turn::Over => 6,
-        };
-        let ran = ran.max(done);
+        let rally = run.save.position().0;
+        let ran = self.stages_run();
         let is_player = |entry: usize| run.save.drivers[entry].id == season_model::PLAYER_ID;
         let name = |entry: usize, text: &str| {
             let text = RichText::new(text);
@@ -316,23 +381,45 @@ impl RallyPage {
             }
         };
         card(ui, |ui| {
-            card_title(ui, &if ran == 0 { "Rally standings".to_owned() } else { format!("Rally after SS{ran}") });
+            ui.horizontal(|ui| {
+                card_title(ui, "Rally standings");
+                if ran > 0 {
+                    ui.colored_label(GREY, if ran == 6 { "final".to_owned() } else { format!("after SS{ran}") });
+                }
+            });
             let lines = season_model::rally_standings(&run.save, rally as usize, ran);
             if ran == 0 {
                 ui.colored_label(GREY, "No stage run yet.");
             } else {
                 let best = lines.iter().filter_map(|l| l.total).fold(f32::INFINITY, f32::min);
+                // After one stage its time is the total: one column.
+                let stage = (ran > 1).then(|| format!("SS{ran}"));
+                let points = lines.iter().any(|l| l.points > 0);
                 egui::Grid::new("rally-standings").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
-                    for heading in ["", "Driver", &format!("SS{ran}"), "Total", "Gap"] {
+                    let headings = ["", "Driver"].into_iter().chain(stage.as_deref()).chain(["Total", "Gap"]);
+                    for heading in headings.chain(points.then_some("Pts")) {
                         ui.colored_label(GREY, heading);
                     }
                     ui.end_row();
                     for (place, line) in lines.iter().enumerate() {
                         ui.label(if line.total.is_some() { format!("{}", place + 1) } else { "–".into() });
                         ui.label(name(line.entry, &line.name));
-                        ui.label(line.stages.last().copied().flatten().map_or("ret".to_owned(), clock));
-                        ui.label(line.total.map_or("retired".to_owned(), clock));
-                        ui.colored_label(GREY, line.total.map_or(String::new(), |t| gap(t, best)));
+                        if stage.is_some() {
+                            ui.label(line.stages.last().copied().flatten().map_or("–".to_owned(), clock));
+                        }
+                        match line.total {
+                            Some(total) => {
+                                ui.label(clock(total));
+                                ui.colored_label(GREY, gap(total, best));
+                            }
+                            None => {
+                                ui.colored_label(GREY, "retired");
+                                ui.label("");
+                            }
+                        }
+                        if points {
+                            ui.label(if line.points > 0 { line.points.to_string() } else { String::new() });
+                        }
                         ui.end_row();
                     }
                 });
@@ -343,7 +430,8 @@ impl RallyPage {
         card(ui, |ui| {
             card_title(ui, "Season points");
             if points.iter().all(|(_, _, p)| *p == 0) {
-                ui.colored_label(GREY, "No points yet: the first rally's finish gives them.");
+                let scale = season_model::POINTS.map(|p| p.to_string()).join(", ");
+                ui.colored_label(GREY, format!("Points come at each rally's finish: {scale}."));
                 return;
             }
             egui::Grid::new("season-standings").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
@@ -379,12 +467,18 @@ impl RallyPage {
     ) -> Option<Request> {
         let mut request = None;
         let stage = c.rally().stages[index];
-        card_title(ui, &format!("SS{} · {}", index + 1, stage_name(&stage)));
+        card_title(ui, &format!("Next: SS{} · {}", index + 1, stage_name(&stage)));
         if let Some(ev) = self.run.as_ref().filter(|r| r.turn == Turn::Stage(index as u32)) {
             if let Some(head) = ev.save.events.first() {
                 let (hour, minute) = events::time_of(head);
-                let place = season_model::player_start_place(&ev.save).map_or(0, |p| p + 1);
-                ui.colored_label(GREY, format!("Your start {hour:02}:{minute:02}, from place {place}"));
+                let start = season_model::player_start_place(&ev.save);
+                let place = start.map_or(0, |p| p + 1);
+                let road = ["new", "normal", "worn"][season_model::road_wear(start) as usize];
+                ui.colored_label(
+                    GREY,
+                    format!("Start {hour:02}:{minute:02} · {} on the road · {road} surface", ordinal(place)),
+                )
+                .on_hover_text("The start order: the first three find a new road, from the twelfth it is worn");
             }
         }
         ui.add_space(6.0);
@@ -408,7 +502,7 @@ impl RallyPage {
                 // No service before the stage: the stage loop starts it on the car as it is.
                 ui.colored_label(
                     GREY,
-                    format!("{}, as driven (no service before)", crate::catalog::tyre_label(self.last_tyre)),
+                    format!("{}, kept: no service before", crate::catalog::tyre_label(self.last_tyre)),
                 );
             }
             ui.end_row();
@@ -443,7 +537,7 @@ impl RallyPage {
                     }
                 });
             } else {
-                ui.colored_label(GREY, "as driven");
+                ui.colored_label(GREY, "kept");
             }
             ui.end_row();
             ui.label("Weather").on_hover_text("The forecast the season drew, or the stage's good or bad weather");
@@ -476,7 +570,17 @@ impl RallyPage {
     /// The rally's start with a fresh car: the welcome and the recce question.
     fn welcome_ui(&mut self, ui: &mut Ui, next: usize) {
         card_title(ui, &format!("Welcome to {}", self.rally_name()));
-        ui.label(format!("The car is new: the service before SS{} has nothing to repair.", next + 1));
+        if let Some(c) = &self.championship {
+            let stages = &c.rally().stages;
+            let services = (1..stages.len()).filter(|&k| service::service_before(k).is_some()).count();
+            let first = stages
+                .get(next)
+                .map_or(String::new(), |s| format!(", SS{} at {:02}:{:02}", next + 1, s.hour, s.minute));
+            ui.colored_label(
+                GREY,
+                format!("{} stages, {services} service stops{first}. The car starts new.", stages.len()),
+            );
+        }
         ui.add_space(10.0);
         if self.recce_asked {
             // `CONTINUE_SEASON` (0x5abc20) asks before the setup choice; "Yes" goes on to it (0x5abc00).
@@ -509,6 +613,7 @@ impl RallyPage {
         &mut self,
         ui: &mut Ui,
         season: &Season,
+        here: &Path,
         outcome: RallyOutcome,
         blocker: Option<&Issue>,
     ) -> Option<Request> {
@@ -531,26 +636,57 @@ impl RallyPage {
         if let Some(detail) = detail {
             ui.colored_label(GREY, detail);
         }
+        if let Some((place, field)) = self.player_place() {
+            ui.label(RichText::new(format!("You finished {} of {field}", ordinal(place))).size(16.0).color(STAR));
+        }
+        let turn = self.run.as_ref().map(|r| r.turn);
+        if turn == Some(Turn::Over) {
+            ui.add_space(6.0);
+            ui.label(RichText::new("The season is over.").size(16.0).strong());
+            if let Some((place, points)) = self.run.as_ref().and_then(|run| {
+                let lines = season_model::season_standings(&run.save);
+                let place = lines.iter().position(|l| run.save.drivers[l.0].id == season_model::PLAYER_ID)?;
+                Some((place + 1, lines[place].2))
+            }) {
+                ui.label(format!("You are {} in the season with {points} points.", ordinal(place)));
+            }
+        }
         ui.add_space(10.0);
-        match self.run.as_ref().map(|r| r.turn) {
+        match turn {
             Some(Turn::Results) => {
                 if ui.horizontal(|ui| ui.add(start_button("Continue"))).inner.clicked() {
                     self.turn_done();
                 }
             }
+            Some(Turn::Over) => {
+                // The fold's New season, brought up: the only way on.
+                let new = ui.horizontal(|ui| {
+                    let new =
+                        ui.add_enabled(!self.driving && is_file_name_part(&self.profile), start_button("New season"));
+                    ui.colored_label(GREY, format!("replaces {}'s saved season", self.profile));
+                    new
+                });
+                if new.inner.clicked() {
+                    self.season_now(season, here);
+                }
+            }
             Some(Turn::BetweenRallies) => {
                 // Page 0x19 (0x5acf30): Continue, the two trials (the car tune and the season data are the
                 // Setup page and the standings beside).
+                let next = self.run.as_ref().map_or(0, |r| r.save.position().0 as usize + 1);
+                let label = format!("Next rally: {}", self.rally_name_at(next));
+                if ui.horizontal(|ui| ui.add_enabled(!self.driving, start_button(&label))).inner.clicked() {
+                    self.turn_done();
+                }
+                ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(!self.driving, start_button("Next rally")).clicked() {
-                        self.turn_done();
-                    }
+                    ui.colored_label(GREY, "Practice first (not recorded):");
                     for (label, map, tip) in [
                         ("Yard trial", 72, "A practice drive in the yard; the season does not record it"),
                         ("Stage trial", 71, "A practice stage; the season does not record it"),
                     ] {
-                        let trial = egui::Button::new(RichText::new(label).size(16.0)).min_size([0.0, 44.0].into());
-                        let trial = ui.add_enabled(!self.driving && blocker.is_none(), trial).on_hover_text(tip);
+                        let trial = ui.add_enabled(!self.driving && blocker.is_none(), egui::Button::new(label));
+                        let trial = trial.on_hover_text(tip);
                         if trial.clicked() {
                             match self.trial(season, map) {
                                 Ok(start) => {
@@ -565,10 +701,6 @@ impl RallyPage {
                 if let Some(issue) = blocker.filter(|_| !self.driving) {
                     ui.colored_label(WARN, &issue.text);
                 }
-            }
-            Some(Turn::Over) => {
-                ui.label(RichText::new("The season is over.").strong());
-                ui.colored_label(GREY, "Another season, below, starts a new one.");
             }
             _ => {}
         }
@@ -590,24 +722,34 @@ impl RallyPage {
             ui.ctx().request_repaint();
         }
         card_title(ui, &format!("{} before SS{}", text(park.kind.title_key()), next + 1));
+        // The clock that matters first, big; what the orders take beside it, red past the time allowed.
+        let over = park.estimate() > park.time_left;
         ui.horizontal(|ui| {
-            for (label, value) in [
-                (text("SP_ALLOW"), clock(park.kind.budget())),
-                (text("SP_ESTIM"), clock(park.estimate())),
-                ("Time left".to_owned(), clock(park.time_left)),
-            ] {
-                ui.colored_label(GREY, label.trim_end_matches([':', ' ']));
-                ui.label(RichText::new(value).strong());
-                ui.add_space(10.0);
-            }
+            ui.colored_label(GREY, "Time left");
+            ui.label(RichText::new(clock(park.time_left)).size(20.0).strong());
+            ui.colored_label(DIM, format!("of {}", clock(park.kind.budget())));
+            ui.add_space(14.0);
+            ui.colored_label(GREY, text("SP_ESTIM").trim_end_matches([':', ' ']));
+            ui.label(RichText::new(clock(park.estimate())).strong().color(if over { BAD } else { Color32::WHITE }));
         });
+        if over && park.state == ParkState::Choosing {
+            ui.colored_label(BAD, "The orders take longer than the time left: expect a late penalty.");
+        }
         ui.add_space(6.0);
         let choosing = park.state == ParkState::Choosing && !self.forfeit_asked;
         let rows = park.rows();
         if rows.is_empty() {
             ui.colored_label(GREY, "Nothing is damaged.");
+        } else if choosing {
+            ui.colored_label(GREY, "Tick the parts to repair, then Repair!");
         }
         egui::Grid::new("park-parts").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
+            if !rows.is_empty() {
+                for heading in ["Part", "Damage", "Repair time"] {
+                    ui.colored_label(GREY, heading);
+                }
+                ui.end_row();
+            }
             for i in rows {
                 let mut on = park.covering(i).is_some();
                 let level = park.level(i);
@@ -682,5 +824,11 @@ mod tests {
     fn a_gap_is_blank_for_the_leader() {
         assert_eq!(gap(300.0, 300.0), "");
         assert_eq!(gap(312.5, 300.0), "+0:12.50");
+    }
+
+    #[test]
+    fn places_read_as_ordinals() {
+        let places: Vec<_> = [1, 2, 3, 4, 11, 12, 13, 21, 22, 103].map(ordinal).into();
+        assert_eq!(places, ["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "103rd"]);
     }
 }
