@@ -34,7 +34,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Outside-assistance penalty | done | 20/35 s not compared with the original |
 | G Retire and end pages | done | original run: a championship retire and a wrecked finish, a stop in the finish zone, a full replay buffer (945 s) |
 | G Physics clock and frame scheduling | done | - |
-| G Stage and car load | done | map 68 has no weather row |
+| G Stage and car load | done | map 68 (a home base map, not listed by the launcher) has table row 267 but is in neither `nice_w.ini` nor `bad_w.ini`, so the original's good and bad weather stop at the int3; ours gives it row 267 (dry crisp clear, `68M_crisp_clear`) for all three weathers (`Season::unlisted`) |
 | G Community stages (RSF) | partial | full-install sweep; textures from other variants; encrypted stages not read |
 | G BTB stages (RSF `RX_CONTENT`, experimental) | partial | bump, specular and multiply-add drawing; no records or ghosts; dry M rows only; no original run ([btb.md](btb.md)) |
 | G Community cars (RSF NGP packs) | partial | FMOD `wheel` events, `gear`/`state` parameters; option folders |
