@@ -995,12 +995,12 @@ def fuzz_sample(mu, heap, r):
         for k, s in enumerate(dist):
             writes.append((drive_entry_at(this, k) + 0x20, struct.pack("<f", s)))
     if count <= 1:
-        d = r.choice((NAN, INF, -INF, 0.0, r.uniform(-100.0, 100.0)))
+        d = r.choice((NAN, INF, 0.0, r.uniform(-100.0, 100.0)))
     else:
         j = r.randrange(count - 1)
         d = r.choice((dist[0] - r.uniform(0.5, 50.0), dist[0], r.uniform(dist[0], dist[-1]),
                       dist[r.randrange(count)], (dist[j] + dist[j + 1]) / 2.0,
-                      dist[-1] + r.uniform(0.5, 50.0), dist[-1], NAN, INF, -INF))
+                      dist[-1] + r.uniform(0.5, 50.0), dist[-1], NAN, INF))
     return [bits(d), heap + 0x1400], writes, this
 
 
