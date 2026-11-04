@@ -817,7 +817,9 @@ fn settle(playback: &Playback, game: &mut Game, stage: &StageData, camera_go: bo
             settled += game.frame(0.0, FrameInput::default(), &mut physics).substeps.len() as u32;
         }
         if !camera_go {
-            let go = FrameInput { camera_go: true, ..FrameInput::default() };
+            // The school's start is the confirm on the brief (`Stage::school_start`), the others' the camera's go.
+            let school = game.assist_settings().school();
+            let go = FrameInput { camera_go: !school, confirm: school, ..FrameInput::default() };
             game.frame(0.0, go, &mut physics);
             game.frame(now, FrameInput::default(), &mut physics);
         }

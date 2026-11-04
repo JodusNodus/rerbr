@@ -163,6 +163,16 @@ impl Stage {
         }
     }
 
+    /// The rally school's start (`E60Flow::M5693f0` case 4, `SetAppState(1)`): the player's confirm on the lesson's
+    /// brief starts the driving at once, without a countdown. The school's state-10 camera gives no go and its confirm
+    /// arms nothing (`M8840`, `M0047f9c0` case 10).
+    pub fn school_start(self) -> Self {
+        match self.state {
+            State::Countdown => Self { state: State::Driving, armed: false, ..self },
+            _ => self,
+        }
+    }
+
     /// `Tic` in state 10: once armed, takes the frame's `dt` off the countdown; below 0 the countdown disarms and the
     /// driving starts (1).
     pub fn countdown_tick(self, dt: f32) -> Self {

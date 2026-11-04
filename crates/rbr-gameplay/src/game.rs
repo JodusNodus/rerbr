@@ -365,8 +365,12 @@ impl Game {
         // Input poll (`TicFwd`) precedes the application tick, including
         // frames where the app is loading or counting down.
         self.filter.notify(&input.raw);
-        let tick_state = self.stage.state();
         let mode = Mode(self.assist_settings.mode);
+        // The school's confirm comes with the input poll (`CSigMenuActivate`), so `Tic` drives in the same frame.
+        if mode.school() && input.confirm && self.stage.state() == State::Countdown {
+            self.set_stage(self.stage.school_start(), physics);
+        }
+        let tick_state = self.stage.state();
         self.tick_countdown(tick_state, frame.facc, input.confirm, mode, physics);
 
         // The pause of a message box (state 2): the box takes the input; its accept ends the race.
