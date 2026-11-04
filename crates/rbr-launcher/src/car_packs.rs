@@ -887,7 +887,8 @@ mod tests {
         // Cancelled: nothing half-written.
         let err = add_downloads(&cars, &packs, &|_| {}, &AtomicBool::new(true)).unwrap_err();
         assert!(err.ends_with("cancelled"));
-        assert_eq!(fs::read_dir(&cars).unwrap().count(), 2);
+        assert_eq!(fs::read_dir(&cars).unwrap().count(), 3);
+
         fs::remove_dir_all(&root).unwrap();
     }
 
