@@ -212,35 +212,14 @@ fn unseal(bytes: &[u8], size: usize) -> Result<Reader<'_>, Error> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    Size {
-        len: usize,
-        size: usize,
-    },
-    Checksum {
-        stored: u32,
-        computed: u32,
-    },
-    Version {
-        found: u32,
-        want: u32,
-    },
-    Tag {
-        at: usize,
-        found: [u8; 4],
-        want: [u8; 4],
-    },
-    Eof {
-        at: usize,
-    },
-    TooLarge {
-        len: usize,
-        size: usize,
-    },
-    Io {
-        kind: io::ErrorKind,
-        message: String,
-    },
-    /// A name that is not usable in a file name ([`is_file_name_part`]).
+    Size { len: usize, size: usize },
+    Checksum { stored: u32, computed: u32 },
+    Version { found: u32, want: u32 },
+    Tag { at: usize, found: [u8; 4], want: [u8; 4] },
+    Eof { at: usize },
+    TooLarge { len: usize, size: usize },
+    Io { kind: io::ErrorKind, message: String },
+    // A name that is not usable in a file name (`is_file_name_part`).
     BadName(String),
 }
 
