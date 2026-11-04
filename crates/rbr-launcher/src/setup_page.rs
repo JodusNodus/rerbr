@@ -2,7 +2,9 @@
 //! (`rbr_gameplay::setup`), with named setups saved in the game's `Setups/*.lsp` format.
 //!
 //! Setups are saved in `Physics/<car>/Setups/` in the player's folder (the game's `%sSetups/` under its own folder) and
-//! also listed from the install's `Physics/<car>/Setups/`, where the game saves them. Start writes the values to
+//! also listed from the install's `Physics/<car>/Setups/`, where the game saves them. An RSF car's folder is
+//! `Physics/rsf-<id>/` and its slot files `rsf-<id>slot<n>_<name>.lsp`; what was saved as its stand-in car 5 is still
+//! listed and loaded for it until it has its own (`Car::setup_keys`). Start writes the values to
 //! `setup-current.lsp` in the player's folder and passes it to `rbr-standalone --setup`, unless they are the default.
 //!
 //! The game's three save slots per car (`CSetupSaveSlotButtonUI`) are the files `SavedGames/<car>slot<n>_<name>.lsp`
@@ -30,8 +32,8 @@ fn pack_setup(path: &Path, surface: &str) -> Result<CarSetup, String> {
 
 /// The page's state for one car and surface.
 pub struct SetupPage {
-    /// The car (`[CarNN]`) and surface the setup is for, and the car's name.
-    key: Option<(u32, &'static str)>,
+    /// The car's setup keys (`Car::setup_keys`) and the surface the setup is for, and the car's name.
+    key: Option<(Vec<String>, &'static str)>,
     car_name: String,
     car: Result<CarSetup, String>,
     pub setup: Setup,
@@ -61,10 +63,11 @@ impl SetupPage {
     /// copied the pack into the slot; its named setups and game slots are the slot's. A retail slot's come from NGP's
     /// `physics.rbz` (`archive`), which has the NGP car installed in it.
     pub fn select(&mut self, data: &Data, here: &Path, car: &Car, archive: &Path, surface: &'static str) {
-        if self.key == Some((car.index, surface)) && self.car_name == car.name {
+        let keys = car.setup_keys();
+        if self.key.as_ref() == Some(&(keys.clone(), surface)) && self.car_name == car.name {
             return;
         }
-        self.key = Some((car.index, surface));
+        self.key = Some((keys, surface));
         self.car_name = car.name.clone();
         self.car = match car.rsf.as_ref().map(|r| &r.pack) {
             Some(Ok(pack)) => pack_setup(pack, surface),
@@ -106,11 +109,11 @@ impl SetupPage {
 
     /// Puts the setup of `CSeasonChooseSetupUI`'s row `choice` on the page.
     pub fn choose(&mut self, here: &Path, choice: SeasonSetup) -> Result<(), String> {
-        let (Ok(car), Some((index, _))) = (&self.car, self.key) else {
+        let (Ok(car), Some((keys, _))) = (&self.car, &self.key) else {
             return Err("no setup for this car".into());
         };
         let slot = match choice {
-            SeasonSetup::Slot(n) => SaveDir::new(here).load_setup_slot(index, n).map_err(|e| e.to_string())?,
+            SeasonSetup::Slot(n) => SaveDir::new(here).load_setup_slot(keys, n).map_err(|e| e.to_string())?,
             _ => None,
         };
         self.setup = choice.setup(&car.default, &self.setup, slot.as_ref().map(|(_, t)| t.as_str()))?;
@@ -133,12 +136,12 @@ impl SetupPage {
     /// The car's game slots: each one's name, `None` when empty.
     pub fn slots(&self, here: &Path) -> Vec<Option<String>> {
         let empty = vec![None; SLOTS as usize];
-        self.key.map_or(empty.clone(), |(car, _)| SaveDir::new(here).setup_slots(car).unwrap_or(empty))
+        self.key.as_ref().map_or(empty.clone(), |(keys, _)| SaveDir::new(here).setup_slots(keys).unwrap_or(empty))
     }
 
     /// The game's save slots: load one, or save the current values into one under the name field's name.
     fn slots_ui(&mut self, ui: &mut Ui, here: &Path) {
-        let Some((car, _)) = self.key else {
+        let Some(car) = self.key.as_ref().map(|(keys, _)| keys[0].clone()) else {
             return;
         };
         let slots = self.slots(here);
@@ -156,7 +159,7 @@ impl SetupPage {
                 }
                 if ui.small_button("Save").on_hover_text("Save the values here under the name field's name").clicked() {
                     self.status = match valid_name(&self.name) {
-                        Ok(name) => match SaveDir::new(here).save_setup_slot(car, n, name, &self.setup.to_text()) {
+                        Ok(name) => match SaveDir::new(here).save_setup_slot(&car, n, name, &self.setup.to_text()) {
                             Ok(()) => format!("saved {name} to slot {}", n + 1),
                             Err(e) => format!("slot {}: {e}", n + 1),
                         },
@@ -167,18 +170,27 @@ impl SetupPage {
         });
     }
 
-    fn folder(&self) -> Option<&'static str> {
-        self.key.and_then(|(car, _)| CAR_FOLDERS.get(car as usize).copied())
+    /// The folders of the car's saved setups (`Physics/<car>/`), its own first.
+    fn folders(&self) -> Vec<String> {
+        let folder = |key: &String| match key.parse::<usize>() {
+            Ok(car) => CAR_FOLDERS.get(car).map(|f| f.to_string()),
+            Err(_) => Some(format!("Physics/{key}/")),
+        };
+        self.key.iter().flat_map(|(keys, _)| keys.iter().filter_map(folder)).collect()
+    }
+
+    /// The directories holding the car's `Setups/`: the launcher's and the install's of each folder.
+    fn setup_dirs(&self, data: &Data, here: &Path) -> Vec<PathBuf> {
+        let folders = self.folders();
+        folders.iter().flat_map(|f| [here.join(f), data.install().join(f)]).map(|d| d.join("Setups")).collect()
     }
 
     /// The saved setups' names: the launcher's and the install's `Setups/*.lsp`.
     fn saved(&self, data: &Data, here: &Path) -> Vec<String> {
-        let Some(folder) = self.folder() else {
-            return Vec::new();
-        };
-        let mut names: Vec<String> = [here.join(folder), data.install().join(folder)]
+        let mut names: Vec<String> = self
+            .setup_dirs(data, here)
             .iter()
-            .filter_map(|dir| std::fs::read_dir(dir.join("Setups")).ok())
+            .filter_map(|dir| std::fs::read_dir(dir).ok())
             .flatten()
             .filter_map(|e| e.ok()?.file_name().into_string().ok())
             .filter(|n| n.to_ascii_lowercase().ends_with(".lsp"))
@@ -190,14 +202,11 @@ impl SetupPage {
     }
 
     fn load(&mut self, data: &Data, here: &Path, name: &str) {
-        let (Ok(car), Some(folder)) = (&self.car, self.folder()) else {
+        let Ok(car) = &self.car else {
             return;
         };
         let file = format!("{name}.lsp");
-        let path = [here.join(folder), data.install().join(folder)]
-            .into_iter()
-            .map(|dir| dir.join("Setups").join(&file))
-            .find(|p| p.is_file());
+        let path = self.setup_dirs(data, here).into_iter().map(|dir| dir.join(&file)).find(|p| p.is_file());
         let result = path
             .ok_or_else(|| format!("{file}: not found"))
             .and_then(|p| std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display())))
@@ -213,7 +222,7 @@ impl SetupPage {
     }
 
     fn save(&mut self, here: &Path) {
-        let Some(folder) = self.folder() else {
+        let Some(folder) = self.folders().into_iter().next() else {
             return;
         };
         let name = match valid_name(&self.name) {
@@ -239,7 +248,7 @@ impl SetupPage {
                 return;
             }
         };
-        let surface = self.key.map_or("", |(_, s)| s);
+        let surface = self.key.as_ref().map_or("", |(_, s)| s);
         let name = if self.name.is_empty() { "default setup" } else { &self.name };
         let modified = if self.setup == car.default { "" } else { " (changed from the default)" };
         ui.label(format!("{surface} · {name}{modified}"));
@@ -465,6 +474,31 @@ fn value_ui(ui: &mut Ui, spec: &Spec, range: Range, slot: Slot<'_>, widget: Widg
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An RSF car saves its named setups in a folder of its own and still lists and loads the ones saved in slot 5's.
+    #[test]
+    fn an_rsf_car_has_its_own_setups_and_sees_the_old_slot_5_ones() {
+        let here = std::env::temp_dir().join(format!("rbr-setup-page-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&here);
+        let old = here.join("Physics/s_i2003/Setups");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("old.lsp"), "").unwrap();
+        let data = Data::new(&here, None);
+        let mut page = SetupPage::new(String::new());
+        page.key = Some((vec!["rsf-24".into(), "5".into()], "gravel"));
+        assert_eq!(page.folders(), ["Physics/rsf-24/", "Physics/s_i2003/"]);
+        assert_eq!(page.saved(&data, &here), ["old"]);
+        page.car = Ok(CarSetup { default: Setup::default(), ranges: Vec::new(), gears: Vec::new() });
+        page.name = "mine".into();
+        page.save(&here);
+        assert!(here.join("Physics/rsf-24/Setups/mine.lsp").is_file());
+        assert_eq!(page.saved(&data, &here), ["mine", "old"]);
+        page.key = Some((vec!["rsf-25".into(), "5".into()], "gravel"));
+        assert_eq!(page.saved(&data, &here), ["old"]);
+        page.key = Some((vec!["5".into()], "gravel"));
+        assert_eq!(page.folders(), ["Physics/s_i2003/"]);
+        std::fs::remove_dir_all(&here).unwrap();
+    }
 
     /// Every NGP car pack of the RSF install (`RBR_RSF`) with plain setup files gives the page its defaults and ranges
     /// on each surface.

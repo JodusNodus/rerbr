@@ -427,9 +427,7 @@ fn rsf_car_models_load_with_their_textures() {
     let install = rbr_formats::rsf::Install::open(std::path::Path::new(&root)).unwrap();
     let mut loaded = 0;
     for rsf_car in &install.cars {
-        let Ok(selected) =
-            rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root))
-        else {
+        let Ok(selected) = rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root)) else {
             continue;
         };
         if selected.model.fallback.is_some() {
@@ -493,9 +491,7 @@ fn the_cockpit_eye_stays_out_of_the_seat() {
     let install = rbr_formats::rsf::Install::open(std::path::Path::new(&root)).unwrap();
     let mut short = Vec::new();
     for rsf_car in &install.cars {
-        let Ok(selected) =
-            rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root))
-        else {
+        let Ok(selected) = rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root)) else {
             continue;
         };
         if selected.model.fallback.is_some() {

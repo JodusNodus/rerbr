@@ -1540,7 +1540,7 @@ mod tests {
         let store = form.rally.store(&here);
         form.rally.new_season(&form.season, Some(store), 1234);
         form.rally.start_rally();
-        let car = form.car().unwrap().index;
+        let car = form.car().unwrap().clone();
         let stages =
             form.rally.championship.as_ref().unwrap().rally().stages.iter().map(|s| s.track()).collect::<Vec<_>>();
         eprintln!("car {}, stages {stages:?}", form.car().unwrap().name);
@@ -1556,7 +1556,7 @@ mod tests {
             eprintln!("SS{}: {:?}, phase {:?}", stage + 1, time, c.phase());
             assert!(time.is_some_and(|t| t > 0.0), "SS{} has no time", stage + 1);
             if let Some(Turn::Service { .. }) = form.rally.run.as_ref().map(|r| r.turn) {
-                form.rally.open_park(&form.data, car, Some(Path::new(&ngp)));
+                form.rally.open_park(&form.data, &car, Some(Path::new(&ngp)));
                 let park = form.rally.park.as_mut().unwrap();
                 park.manager_advice();
                 if !park.start() {
