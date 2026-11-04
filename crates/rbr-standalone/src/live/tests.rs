@@ -308,17 +308,26 @@ fn the_school_record_stands_where_the_lesson_does() {
         assert_eq!(brief.verdict, school::NO_VERDICT, "no verdict before the end");
         assert_eq!(brief.incident, 0);
         assert_eq!((brief.perfect, brief.pass), (9.0, 10.0), "lesson 2's times");
+        assert!(brief.stop, "the first answer's flow step stops the speech");
+        assert!(brief.speech.is_empty(), "nothing tripped yet");
+        // Still the brief: no stop again.
+        let still = school_of(&live.answer(&input(0)).unwrap());
+        assert_eq!((still.lesson, still.state), (2, school::STATE_BRIEF));
+        assert!(!still.stop);
         // The confirm starts the lesson's drive at once.
         let driving = school_of(&live.answer(&input(ACCEPT_MESSAGE)).unwrap());
         assert_eq!((driving.lesson, driving.state), (2, school::STATE_DRIVING));
+        assert!(driving.stop, "brief -> driving stops the speech");
         // The pause menu's retire ends it, keeping its verdict; a restart clears the kept one.
         let end = school_of(&live.answer(&input(RETIRE)).unwrap());
         assert_eq!((end.lesson, end.state), (2, school::STATE_ENDED));
         assert_ne!(end.verdict, school::NO_VERDICT, "the kept verdict");
+        assert!(end.stop, "driving -> ended stops the speech");
         live.restart();
         let again = school_of(&live.answer(&input(0)).unwrap());
         assert_eq!((again.lesson, again.state), (2, school::STATE_BRIEF));
         assert_eq!(again.verdict, school::NO_VERDICT, "restart clears it");
+        assert!(again.stop, "a restart stops the speech");
         // A quick race sends no school record.
         let stage = stage_data(&data, "track-11_O", 5).unwrap();
         let weather = weather::quick_race(&season, 11, Preset::Good, Draws::default()).unwrap();
