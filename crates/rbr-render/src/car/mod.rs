@@ -197,7 +197,7 @@ pub struct CarReport {
     pub meshes_drawn: usize,
     /// Model meshes not drawn, with the reason.
     pub skipped: Vec<(String, Skip)>,
-    /// Requests for diffuse textures with no readable DDS (drawn magenta).
+    /// Requests for diffuse textures with no readable DDS (drawn plain).
     pub missing_textures: Vec<String>,
     /// Triangles with an index outside their mesh, or a face range outside the list. Dropped.
     pub bad_triangles: usize,

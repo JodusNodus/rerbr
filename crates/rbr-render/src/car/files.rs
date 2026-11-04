@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// The car's diffuse textures by DOS path. Each path is read once; a missing or unreadable one keeps
-/// its key with no DDS, so the renderer draws it magenta.
+/// its key with no DDS, so the renderer draws it plain.
 pub(super) struct Textures<'a> {
     data: &'a Data,
     keys: HashMap<String, TextureRef>,

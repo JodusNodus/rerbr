@@ -61,7 +61,7 @@ pub(crate) use shadows::RANGE_SHADER;
 use sun_mask::SunMask;
 pub(crate) use textures::dds_texture;
 use textures::{
-    bind_group, bind_key, depth_view, luminance_texture, solid_texture, Glow, Samplers, Views, MISSING, WHITE,
+    bind_group, bind_key, depth_view, luminance_texture, solid_texture, Glow, Samplers, Views, CLEAR, WHITE,
 };
 use uniforms::{frame_index, FrameBinding, FrameUniform};
 pub(crate) use uniforms::{LampUniform, MAX_LAMPS};
@@ -379,7 +379,7 @@ impl Renderer {
                 })
                 .collect(),
             white: solid_texture(&device, &queue, WHITE).create_view(&Default::default()),
-            missing: solid_texture(&device, &queue, MISSING).create_view(&Default::default()),
+            clear: solid_texture(&device, &queue, CLEAR).create_view(&Default::default()),
             glows,
             detail,
             banks: terrain_detail::bank_shares(&stage.meshes),

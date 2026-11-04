@@ -11,15 +11,17 @@ use wgpu::util::DeviceExt;
 
 /// Texel used for a draw with no texture (vertex colour only).
 pub(super) const WHITE: [u8; 4] = [255, 255, 255, 255];
-/// Texel used for a draw whose texture is missing. Magenta stands out.
-pub(super) const MISSING: [u8; 4] = [255, 0, 255, 255];
+/// Texel used for a missing texture that would otherwise cover what it should not: a cut-out or blended draw's (not
+/// drawn), a second texture (adds nothing).
+pub(super) const CLEAR: [u8; 4] = [255, 255, 255, 0];
 
-/// Which view a texture slot samples: a loaded texture, the white placeholder (no texture), or the
-/// magenta placeholder (missing texture).
+/// Which view a texture slot samples: a loaded texture, the white placeholder (no texture, or a missing one: the draw
+/// is plain, its vertex colour), or the clear one (a missing texture of a cut-out or blended draw: its cards would be
+/// solid rectangles).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Source {
     White,
-    Missing,
+    Clear,
     Texture(TextureRef),
 }
 
@@ -110,21 +112,23 @@ fn address_mode(address: Address) -> wgpu::AddressMode {
     }
 }
 
-/// The texture bindings of a draw. A texture that did not load is the missing placeholder.
+/// The texture bindings of a draw. A first texture that did not load draws plain (white), or not at all in a cut-out
+/// or blended draw (clear); a second one adds nothing (clear: it blends in by its alpha).
 pub(super) fn bind_key(state: &DrawState, views: &Views) -> BindKey {
     let loaded = &views.loaded;
-    let source = |texture: Option<TextureRef>| match texture {
+    let source = |texture: Option<TextureRef>, missing: Source| match texture {
         None => Source::White,
         Some(texture) if loaded.contains_key(&texture) => Source::Texture(texture),
-        Some(_) => Source::Missing,
+        Some(_) => missing,
     };
-    // A missing light map means no shadow, not the magenta placeholder.
+    let first = if state.alpha_ref.is_some() || state.blend { Source::Clear } else { Source::White };
+    // A missing light map means no shadow.
     let shadow = match state.shadow {
         Some(texture) if loaded.contains_key(&texture) => Source::Texture(texture),
         _ => Source::White,
     };
     BindKey {
-        textures: [source(state.textures[0]), source(state.textures[1])],
+        textures: [source(state.textures[0], first), source(state.textures[1], Source::Clear)],
         shadow,
         address: state.address,
         second_texture: state.second_texture,
@@ -154,7 +158,7 @@ pub(super) struct Glow {
 pub(super) struct Views {
     pub(super) loaded: BTreeMap<TextureRef, wgpu::TextureView>,
     pub(super) white: wgpu::TextureView,
-    pub(super) missing: wgpu::TextureView,
+    pub(super) clear: wgpu::TextureView,
     /// The emissive masks, by the texture they light (a dial's `Image::Dial`, the start board's faces).
     pub(super) glows: BTreeMap<TextureRef, Glow>,
     /// The near ground's detail windows ([`crate::terrain_detail::window`]).
@@ -167,8 +171,8 @@ impl Views {
     fn get(&self, source: Source) -> &wgpu::TextureView {
         match source {
             Source::White => &self.white,
-            Source::Missing => &self.missing,
-            Source::Texture(texture) => self.loaded.get(&texture).unwrap_or(&self.missing),
+            Source::Clear => &self.clear,
+            Source::Texture(texture) => self.loaded.get(&texture).unwrap_or(&self.white),
         }
     }
 }

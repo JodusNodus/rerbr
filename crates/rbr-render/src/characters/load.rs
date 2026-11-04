@@ -654,7 +654,7 @@ impl<'a> Assets<'a> {
         }
     }
 
-    /// A texture of `SGS/textures`, loaded once; a missing one keeps its key with no image (drawn magenta).
+    /// A texture of `SGS/textures`, loaded once; a missing one keeps its key with no image (drawn plain).
     fn texture(&mut self, file: &str) -> TextureRef {
         let request = format!("SGS\\textures\\{file}");
         if let Some(&key) = self.texture_keys.get(&request.to_ascii_lowercase()) {

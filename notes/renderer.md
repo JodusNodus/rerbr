@@ -231,6 +231,9 @@ Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video
   them and lit the stage as at night under a white haze, and the tile grid wrapped and panicked; Inland Road II's
   stray vertex 19 000 km off asked a 342 MB tile buffer. The grass's light readback (`Renderer::grass_light`) reads
   in parts of the device's largest buffer (Aguimes 562: 381 MB over 256).
+- Missing textures (2026-11-04, user decision, were magenta): a draw's first texture that did not load draws plain
+  (white: the vertex colour), a cut-out or blended draw's not at all, a second texture adds nothing
+  (`renderer/textures.rs` `bind_key`). Savopohja's road, Ponteareas' tent, El Fargue's far cards.
 - BTB stages (RallySimFans track folders, `stage/btb.rs`, `rbr_btb::scene`, `Lod::Band`): [btb.md](btb.md#drawing).
 - Object lanes `(1,1)` (`stage::OBJECT_ALPHA_REF`, kind-byte address modes).
 - Interactive props `(1,6)` (`stage/mod.rs` `InteractivePose`): every retail record drawn at its placement while its
