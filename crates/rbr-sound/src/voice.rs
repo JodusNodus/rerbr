@@ -107,6 +107,10 @@ pub enum Speech {
     Damage(u32),
     /// A co-driver mod's sample (`crate::custom_codriver`), by its index in the mod's voice.
     Sample(u32),
+    /// A rally-school sample (`Audio\RS\ENG\<id>.ogg`, English only): the briefing and the end pages queue at
+    /// priority 0, `Trigger`'s ids at priority 1 (`E25School::OnSignal` 0x4b8200; [`crate::mixer::speech_slot`]
+    /// orders them with the pace notes' 0 and the damage calls' 2).
+    School { id: u32, priority: u32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -133,8 +137,11 @@ pub enum Command {
     Tyre { wheel: u8, slot: u8, material: Material, skid: bool, gain: f32, pitch: f32 },
     /// Queues a sample on the speech voice.
     Speech(Speech),
-    /// Stops the speech voice and clears its queue.
+    /// Stops the speech voice and clears its queue (`E25VBack::S10` and `E32_SpClearAll`, as `OnSignal`'s stop does).
     StopSpeech,
+    /// Clears the speech queue's pending entries, leaving the playing word (`E32_SpClearAll` as `M80c0x`
+    /// calls it before queueing `Trigger`'s ids).
+    FlushSpeech,
     /// A game frame: the original's mixer counts the sounds playing (`E31Master::Vf08` 0x4d4980), the count the
     /// one-shots asked for until the next frame see ([`crate::mixer::SOUND_LIMIT`]).
     Frame,
