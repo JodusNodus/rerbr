@@ -53,7 +53,8 @@ impl<'a> Pilot<'a> {
                 } else if driver.gave_up.is_some() {
                     QuantizedControl { brake: 255, ..QuantizedControl::default() }
                 } else {
-                    let finished = pure::time_keeper(live.mem()).card.finish_time.is_some();
+                    // A lesson ends by the school, not the card (lesson 10's map has no finish, its card a finish time).
+                    let finished = live.school().is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
                     let (step, sense) = (live.next_step(), sense(last?, live));
                     if step >= *report {
                         *report = step + driver.steps(PILOT_REPORT);
@@ -165,8 +166,14 @@ pub fn drive(
                 .filter(|sub| sub.tag == 6 && sub.flags & 4 != 0)
                 .map(|sub| sub.center + sub.hi)
                 .fold(0.0, f32::max);
-            eprintln!("autopilot: the lesson's stop box at {} m, no brakes before {brake_from} m", stop.center);
-            driver = driver.with_stop(brake_from, stop.center);
+            let behind = stage.markers.start().is_some_and(|start| stop.center < start);
+            eprintln!(
+                "autopilot: the lesson's stop box at {} m{}, no brakes before {brake_from} m",
+                stop.center,
+                if behind { " (behind the start)" } else { "" }
+            );
+            driver =
+                if behind { driver.with_stop_behind(stop.center) } else { driver.with_stop(brake_from, stop.center) };
         }
     }
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
@@ -188,11 +195,14 @@ pub fn drive(
         }
         file.write_all(&answer[..FRAME_BYTES]).map_err(failed)?;
         drove.steps += 1;
-        let finished = pure::time_keeper(live.mem()).card.finish_time.is_some();
+        // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
+        // finish time).
+        let school = live.school().is_some();
+        let finished = !school && pure::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }
-        if live.has_saves() {
+        if live.has_saves() || school {
             if live.game().stage().state() == rbr_gameplay::stage::State::Ended {
                 drove.end = "the race's end".to_owned();
                 break;

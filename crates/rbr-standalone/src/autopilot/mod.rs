@@ -367,6 +367,8 @@ pub struct Driver<'a> {
     props: Vec<Placed>,
     /// A rally school lesson's stop: the driveline distance the brakes stay off before and the one to stop at, m.
     stop: Option<(f32, f32)>,
+    /// The drive runs down the driveline, to a stop behind the start.
+    against: bool,
 }
 
 impl<'a> Driver<'a> {
@@ -390,6 +392,7 @@ impl<'a> Driver<'a> {
             bogged: 0,
             props: Vec::new(),
             stop: None,
+            against: false,
         }
     }
 
@@ -397,6 +400,12 @@ impl<'a> Driver<'a> {
     /// standing there.
     pub fn with_stop(self, brake_from: f32, at: f32) -> Self {
         Self { stop: Some((brake_from, at)), ..self }
+    }
+
+    /// The driver following the driveline down to the stop `at` behind the start and standing there: the free
+    /// lessons 0 and 10 start facing the yellow box that ends them, which lies before the start on the driveline.
+    pub fn with_stop_behind(self, at: f32) -> Self {
+        Self { stop: Some((0.0, at)), against: true, ..self }
     }
 
     /// The driver steering around `obstacles`: each is placed by its centre's nearest driveline point (sampled).
@@ -460,6 +469,10 @@ impl<'a> Driver<'a> {
 
     /// The target speed: the slowest of the curve limits ahead, each reachable by braking.
     pub fn target_speed(&self, at: f32) -> f32 {
+        if self.against {
+            let stop = self.stop.map_or(0.0, |(_, s)| s);
+            return self.top.min((2.0 * BRAKING * (at - stop).max(0.0)).sqrt());
+        }
         let mut target = self.top;
         let mut s = 0.0;
         while s < PLAN_AHEAD {
@@ -557,6 +570,9 @@ impl<'a> Driver<'a> {
         let at = distance(&self.values, sense.parameter);
         let look = LOOK_BASE + LOOK_TIME * speed;
         let target = self.aim_target(&sense.pose).unwrap_or_else(|| {
+            if self.against {
+                return point(self.track, parameter(&self.values, at - look));
+            }
             let u = parameter(&self.values, at + look);
             let (p, s) = (point(self.track, u), self.dodge(at, at + look + LEAD));
             if s == 0.0 {
