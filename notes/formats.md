@@ -296,7 +296,12 @@ owns opening a pack (a folder or a zip) and `car_pack::resolve` resolves the pac
 children (the viewer, `rbr-standalone`, `rbr-sound`) take as `Flags`: `--car-pack/--car-model/--car-bank/--car-key` (`--car-model` the model's `.sgc` path);
 `--rsf-car` stays the RSF install's entry. Files starting
 `01 a0 00 00` (`.ini` `01 a1 00 00`) are RSF-encrypted and never decrypted (162 of 443 stage folders of a full
-install); needing one, or a pack missing from `rsfdata/cars`, lists the car unavailable.
+install); needing one, or a pack missing from `rsfdata/cars`, lists the car unavailable. Option folders (2026-11-04
+survey, behaviour open): 100 of 209 RSF models carry `carparts/<option>/` folders with `metadata.ini` `[rsf_info]`
+(`name`, `state`; lights, extralights, mudflaps, plates, mirrors, wheel/tyre variants, bumpers and the like), each
+holding the `<model>.ini`/`_settings.ini` replacements RSF's picker copies over the model; the added pack cars
+carry bare option folders instead (`lights_on/`, `Close Roof/`, no metadata). Only the headlights-on option is
+read (for the night lights' colour and points); which option is the default, and any picker UI, are undecided.
 
 ## RSF stages
 

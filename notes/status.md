@@ -37,7 +37,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Stage and car load | done | map 68 (a home base map, not listed by the launcher) has table row 267 but is in neither `nice_w.ini` nor `bad_w.ini`, so the original's good and bad weather stop at the int3; ours gives it row 267 (dry crisp clear, `68M_crisp_clear`) for all three weathers (`Season::unlisted`) |
 | G Community stages | partial | full-install sweep; textures from other variants; encrypted stages not read |
 | G BTB stages (`RX_CONTENT`, experimental) | partial | bump, specular and multiply-add drawing; own number, records, ghosts and map 41's weather rows; no original run ([btb.md](btb.md)) |
-| G Community cars (NGP car packs) | partial | FMOD `wheel` events, `gear`/`state` parameters; option folders |
+| G Community cars (NGP car packs) | partial | option folders |
 | G Load settle, start states, the go | done | original run: the go's frame count, a championship start (confirm, 2 s) |
 | G Countdown, race clock, jump start | done | moving start checked only on playback |
 | G Time keeper, splits, finish | done | speed start and split 1 have no peek; a hand drive held 20 s past the finish |
