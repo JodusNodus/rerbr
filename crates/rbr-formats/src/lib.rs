@@ -37,6 +37,9 @@
 //!
 //! `ghost` reads and writes the ghost car files (`.gho`, `.ghc`); see `notes/renderer.md`.
 //!
+//! `arp` reads the rally-school animated replays (`.arp`) and samples the demonstration car; see
+//! `notes/formats.md` "Animated replay".
+//!
 //! `bnk` reads the menu graphics bank (`Generic/PC_Generic_<width>.bnk`): its texture pages and sprites, the stage
 //! pictures among them.
 //!
@@ -53,6 +56,7 @@
 //! season inside it, and the records table (`pfresult.rst`); see `notes/formats.md` "Saves and times".
 
 pub mod ai_ini;
+pub mod arp;
 pub mod audio;
 pub mod bnk;
 pub mod car_parts;
