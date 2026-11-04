@@ -115,8 +115,12 @@ impl ModeRules for SchoolRun {
         }
     }
 
-    /// `Tic570`: `EndRace`'s emits (a finished `CSigEndRace` each), then a trip latch's retire.
+    /// `Tic570`: `EndRace`'s emits (a finished `CSigEndRace` each), then a trip latch's retire. The ride
+    /// ends as soon as the drive starts, with no judging.
     fn frame(&mut self, dt: f32, race_time: f32) -> Option<ModeEnd> {
+        if self.lesson.ride() {
+            return Some(ModeEnd::Finished);
+        }
         let ends = end_race(&mut self.bank, dt, race_time.to_bits());
         let finished = ends.iter().any(|e| matches!(e, SchoolEvent::EndRace { .. }));
         self.events.extend(ends);
@@ -175,5 +179,12 @@ mod tests {
         run.after_step(&standing_at(20.0, Some(1)));
         assert_eq!(run.frame(0.01, 3.0), Some(ModeEnd::Retired));
         assert_eq!(run.verdict(3.0, &CarriedDamage::default()), 0);
+    }
+
+    #[test]
+    fn the_ride_ends_on_its_first_driving_frame() {
+        let mut run = SchoolRun::new(Lesson::new(5).unwrap(), stop_box());
+        run.start();
+        assert_eq!(run.frame(0.01, 0.0), Some(ModeEnd::Finished));
     }
 }

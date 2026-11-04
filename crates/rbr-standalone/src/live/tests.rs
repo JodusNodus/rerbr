@@ -328,6 +328,46 @@ fn the_school_record_stands_where_the_lesson_does() {
     })
     .unwrap();
 }
+
+/// The ride (lesson 5): the brief's confirm starts the drive and ends it on its first driving frame, with no
+/// judging (the award already gives 4); the record keeps a verdict and the viewer plays `rse5.arp` as the ride.
+#[test]
+fn the_ride_ends_on_the_brief_s_confirm() {
+    use rbr_school::Lesson;
+    let (Some(install), Some(patch), Some(ngp)) = (
+        std::env::var_os("RBR_DATA").map(PathBuf::from),
+        std::env::var_os("RBR_PATCH").map(PathBuf::from),
+        std::env::var_os("RBR_NGP_PHYSICS").map(PathBuf::from),
+    ) else {
+        eprintln!("RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS unset; skipped");
+        return;
+    };
+    on_big_stack(move || {
+        let data = Data::new(install, Some(patch));
+        let lesson = Lesson::new(5).unwrap();
+        let stage = stage_data(&data, "track-79_M", 5).unwrap();
+        let season = Season::load(&data).unwrap();
+        let weather = weather::quick_race(&season, lesson.map(), Preset::Good, Draws::default()).unwrap();
+        let race = boot::Race::quick_race(lesson.map(), 5, 3, weather, ngp.clone()).in_school(lesson);
+        let mut live = Live::boot(&data, "track-79_M", &race, &stage, MarkerSettings::default(), true).unwrap();
+        live.pace(f64::from(rbr_recording::STEP_SECONDS));
+        let school_of = |answer: &[u8]| {
+            let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
+            let records = records::read_records(&mut &rest[..]).unwrap();
+            let (_, body) = records.iter().find(|(tag, _)| *tag == school::SCH1).expect("SCH1");
+            School::read_body(body).unwrap()
+        };
+        let input = |flags| Input { flags, ..Input::default() }.to_bytes();
+        let brief = school_of(&live.answer(&input(0)).unwrap());
+        assert_eq!((brief.lesson, brief.state), (5, school::STATE_BRIEF));
+        // The confirm ends the ride at once, keeping a verdict; the award gives 4.
+        let end = school_of(&live.answer(&input(ACCEPT_MESSAGE)).unwrap());
+        assert_eq!((end.lesson, end.state), (5, school::STATE_ENDED));
+        assert_ne!(end.verdict, school::NO_VERDICT, "the kept verdict");
+    })
+    .unwrap();
+}
+
 /// A payload of several periods (`Input::frames`, a viewer behind real time) is one game frame of their wall
 /// time: the same answers as a process paced at that time a payload, frames of 15 to 18 steps once driving.
 #[test]
