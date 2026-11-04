@@ -431,6 +431,7 @@ mod tests {
             folder: "/rsf/Maps/129-Peyregrosse".into(),
             track: "track-129".into(),
             variants: vec!['M', 'O'],
+            broken: Vec::new(),
             particles: None,
             surface: None,
             length: None,

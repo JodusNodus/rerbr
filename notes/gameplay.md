@@ -121,6 +121,7 @@ presentation: [renderer.md](renderer.md), [sound.md](sound.md).
 
 - Any season-table row starts like Random with that row (`--weather 1 --season-row K`); good rows come from `misc/nice_w.ini`, bad rows from `bad_w.ini`.
 - Map 68 has season-table row 267 (dry crisp clear) but is in neither list: the original's good and bad weather stop at the int3 there; ours (`Season::unlisted`) takes the map's first table row, so 68 starts on all three weathers. Maps with listed rows are unchanged; a map with no table row still stops.
+- Ours: the launcher's rally page has a Weather choice per rally (Season's weather by default: the drawn row, as the game; Good or Bad: the stage's own, via `Catalog::stage_weather`), applied to each championship stage but not the trials. The season's wear still applies; results and records save as for any stage.
 - Wet surfaces are separate physics records with lower friction (wet/dry static 0.71-0.88, not in code).
 
 ## Championship and service

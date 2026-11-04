@@ -37,7 +37,7 @@ use egui::{Color32, ComboBox, Ui};
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::data::Data;
 use rbr_formats::saves::season::Season as SeasonSave;
-use rbr_formats::saves::SaveDir;
+use rbr_formats::saves::{is_file_name_part, SaveDir};
 use rbr_formats::season_dat;
 use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::CarriedDamage;
@@ -51,7 +51,7 @@ use rbr_gameplay::season_events::{self as events, Ai, Turn};
 use rbr_gameplay::season_store::{self, ProfileSeason};
 use rbr_gameplay::service::{self, ParkState, Rules, ServicePark};
 use rbr_gameplay::setup::SeasonSetup;
-use rbr_gameplay::weather::Season;
+use rbr_gameplay::weather::{Preset, Season};
 
 use crate::catalog::Car;
 use crate::pages::{combo, Choice, Issue, WARN};
@@ -107,6 +107,9 @@ pub struct RallyPage {
     /// The damage a continued season carries into its rally.
     loaded_damage: Option<CarriedDamage>,
     pub profile: String,
+    /// The weather every stage of the rally runs in: the good or bad one of its map. `None` is the season's drawn
+    /// forecast, as the game runs it.
+    pub weather: Option<Preset>,
     pub run: Option<SeasonRun>,
     pub championship: Option<Championship>,
     pub park: Option<ServicePark>,
@@ -171,6 +174,7 @@ impl RallyPage {
             saved_setup: None,
             loaded_damage: None,
             profile: "player".into(),
+            weather: None,
             run: None,
             championship: None,
             park: None,
@@ -579,11 +583,21 @@ impl RallyPage {
         ui.horizontal(|ui| {
             ui.label("Profile");
             ui.add_enabled(!self.driving, egui::TextEdit::singleline(&mut self.profile).desired_width(100.0));
-            if ui.add_enabled(!self.driving && startable, egui::Button::new("New season")).clicked() {
+            // The name is part of the save's file name: keep out what could leave the folder.
+            self.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
+            let named = is_file_name_part(&self.profile);
+            ui.label("Weather").on_hover_text("The forecast the season drew, or the stage's good or bad weather");
+            let choices = [None, Some(Preset::Good), Some(Preset::Bad)];
+            combo(ui, "rally-weather", 120.0, &mut self.weather, &choices, |w| match w {
+                None => "Season's weather",
+                Some(Preset::Bad) => "Bad",
+                Some(_) => "Good",
+            });
+            if ui.add_enabled(!self.driving && startable && named, egui::Button::new("New season")).clicked() {
                 let store = self.store(here);
                 self.new_season(season, Some(store), season_model::seed_from_unix_ms(now_ms()));
             }
-            if ui.add_enabled(!self.driving, egui::Button::new("Continue")).clicked() {
+            if ui.add_enabled(!self.driving && named, egui::Button::new("Continue")).clicked() {
                 self.continue_season(here, season);
             }
         });

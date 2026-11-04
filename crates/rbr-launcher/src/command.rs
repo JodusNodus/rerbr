@@ -504,14 +504,9 @@ impl Form {
             let saves = SaveDir::new(&self.records()).path.display().to_string();
             extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.rally.profile.clone()]);
         }
-        let draws = weather::Draws { row: Some(stage.row), wear: wear.max(1) };
-        let found = weather::quick_race(&self.season, stage.map, Preset::Random, draws).and_then(|weather| {
-            let name = stage.track();
-            let map = self.catalog.map(stage.map);
-            let s =
-                map.and_then(|m| m.stages.iter().find(|s| s.name == name)).ok_or(format!("{name}: not installed"))?;
-            Ok((s.clone(), weather))
-        });
+        // The rally's weather choice (a trial has none): the stage's good or bad weather, else the drawn row.
+        let preset = self.rally.weather.filter(|_| extra.iter().any(|a| a == "--championship"));
+        let found = self.rally_weather(&stage, preset, wear);
         match found {
             Ok((s, weather)) => {
                 self.map = self.catalog.map_index(stage.map).unwrap_or(self.map);
@@ -522,7 +517,7 @@ impl Form {
                     eprintln!("launcher: setup {}: {e}; the stage keeps the current setup", setup.label());
                 }
                 // The quick race's options keep their menu values; the stage takes the season's from `extra`.
-                let options = RaceOptions { weather: Preset::Random, ..self.options };
+                let options = RaceOptions { weather: preset.unwrap_or(Preset::Random), ..self.options };
                 // The road's wear is the season's (`Draws` takes the random weather's 1 or 2; 0 is set after).
                 let weather = Weather { wear, ..weather };
                 let chosen = std::mem::replace(&mut self.tyre, TyreChoice::Fixed(tyre));
@@ -539,6 +534,25 @@ impl Form {
             // and the season save stay exactly as they were and the player can retry.
             self.rally.abort_stage_start(prev_tyre);
         }
+    }
+
+    /// The stage variant and weather a championship stage runs in: `preset`'s weather of its map, else the season's
+    /// drawn row.
+    fn rally_weather(
+        &self,
+        stage: &rbr_gameplay::championship::RallyStage,
+        preset: Option<Preset>,
+        wear: u32,
+    ) -> Result<(catalog::Stage, Weather), String> {
+        let wear = wear.max(1);
+        if let Some(preset) = preset {
+            return self.catalog.stage_weather(&self.season, stage.map, preset, weather::Draws { row: None, wear });
+        }
+        let draws = weather::Draws { row: Some(stage.row), wear };
+        let weather = weather::quick_race(&self.season, stage.map, Preset::Random, draws)?;
+        let name = stage.track();
+        let found = self.catalog.map(stage.map).and_then(|m| m.stages.iter().find(|s| s.name == name));
+        Ok((found.ok_or(format!("{name}: not installed"))?.clone(), weather))
     }
 
     /// The viewer's arguments for `stage`; `extra` goes to `rbr-standalone`, `viewer_extra` to the viewer. `None`, with
@@ -1143,6 +1157,56 @@ mod tests {
             let (_, weather, chosen) = form.selection_from(&mut CrtRand::srand(1)).unwrap();
             assert_eq!((chosen, weather.wear, weather.wetness), (preset, 2, wetness));
         }
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// A championship stage runs its drawn row unless the rally's weather is Good or Bad, which pick the map's own.
+    #[test]
+    fn a_championship_stage_takes_the_rallys_weather_choice() {
+        use crate::catalog::{Map, Stage};
+        use rbr_gameplay::championship::RallyStage;
+        use rbr_gameplay::weather::Row;
+        let season = Season {
+            rows: vec![
+                Row { map: 54, letter: 3, cloud: 3, cloud_letter: 1, preset: 4, wetness: 2 },
+                Row { map: 54, letter: 3, cloud: 1, cloud_letter: 0, preset: 2, wetness: 1 },
+            ],
+            nice: vec![0],
+            bad: vec![1],
+        };
+        let catalog = Catalog {
+            maps: vec![Map {
+                number: 54,
+                stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
+                rsf: None,
+                btb: None,
+            }],
+            ..Catalog::default()
+        };
+        let here = crate::test_dir("command-rally-weather");
+        let paths = Paths {
+            data: here.join("data"),
+            patch: None,
+            viewer: PathBuf::from("/bin/viewer"),
+            standalone: PathBuf::from("/bin/rbr-standalone"),
+            settings: here.join(SETTINGS_FILE),
+        };
+        let form = Form::new(
+            catalog,
+            &Settings::default(),
+            paths,
+            Data::new(here.join("data"), None),
+            season,
+            install::Folder::default(),
+        );
+        let stage = RallyStage { map: 54, letter: 'O', row: 1, hour: 12, minute: 0 };
+        let rows: Vec<_> = [None, Some(Preset::Good), Some(Preset::Bad)]
+            .map(|p| form.rally_weather(&stage, p, 2).map(|(s, w)| (s.name, w.row, w.wear)))
+            .into();
+        assert_eq!(rows[0], Ok(("track-54_O".to_owned(), Some(1), 2)));
+        // The good weather is new tyres here; `start_rally_stage` sets the season's wear after.
+        assert_eq!(rows[1], Ok(("track-54_O".to_owned(), Some(0), 0)));
+        assert_eq!(rows[2], Ok(("track-54_O".to_owned(), Some(1), 2)));
         std::fs::remove_dir_all(&here).unwrap();
     }
 

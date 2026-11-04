@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{ComboBox, DragValue, RichText, Ui};
 use rbr_formats::data::Data;
-use rbr_formats::saves::{setup_slots, DIR as SAVES};
+use rbr_formats::saves::{is_file_name_part, setup_slots, DIR as SAVES};
 use rbr_gameplay::setup::{Area, CarSetup, Range, SeasonSetup, Setup, Slot, Spec, CAR_FOLDERS, MAP_POINTS, WHEELS};
 
 use crate::catalog::Car;
@@ -689,11 +689,14 @@ impl SetupPage {
     }
 }
 
-/// A setup name the page saves under: trimmed, 1 to 27 characters, no slashes.
+/// The longest setup name in bytes: the file name (`<surface>_<name>.lsp`) stays well inside a file system's 255.
+const MAX_NAME: usize = 100;
+
+/// A setup name the page saves under: trimmed, 1 to [`MAX_NAME`] bytes, usable in a file name.
 fn valid_name(name: &str) -> Result<&str, String> {
     let name = name.trim();
-    if name.is_empty() || name.contains(['/', '\\']) || name.len() > 27 {
-        return Err("a name of 1 to 27 characters, no slashes".into());
+    if !is_file_name_part(name) || name.len() > MAX_NAME {
+        return Err(format!("a name of 1 to {MAX_NAME} bytes, without / \\ : * ? \" < > |"));
     }
     Ok(name)
 }
@@ -838,6 +841,18 @@ mod tests {
             ]
         );
         assert_eq!(folders.file("tarmac", "x"), Some(here.join("Physics/c_xsara/Setups/x.lsp")));
+    }
+
+    #[test]
+    fn setup_names_take_a_long_name_but_nothing_that_leaves_the_folder() {
+        assert_eq!(
+            valid_name("  fast gravel, wet, soft tyres, long final drive  "),
+            Ok("fast gravel, wet, soft tyres, long final drive")
+        );
+        assert!(valid_name(&"a".repeat(MAX_NAME)).is_ok());
+        for bad in ["", "  ", "../x", "a\\b", "c:x", &"a".repeat(MAX_NAME + 1)] {
+            assert!(valid_name(bad).is_err(), "{bad:?}");
+        }
     }
 
     /// Every NGP car pack of the RSF install (`RBR_RSF`) with plain setup files gives the page its defaults and ranges

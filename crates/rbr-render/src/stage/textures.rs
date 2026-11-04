@@ -263,6 +263,8 @@ pub(super) fn decode(set: TextureSet, bytes: Vec<u8>) -> Option<Image> {
         _ => {
             let bytes = dds::to_rgba8(&bytes).unwrap_or(bytes);
             let bytes = dds::with_mips(&bytes).unwrap_or(bytes);
+            // Ours: the stored chain completed (the game keeps the 4 levels the files hold).
+            let bytes = crate::upscale::with_block_mips(&bytes).unwrap_or(bytes);
             let readable = dds::parse(&bytes).is_ok();
             readable.then_some(Image::Dds(bytes))
         }
