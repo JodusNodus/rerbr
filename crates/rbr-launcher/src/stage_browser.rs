@@ -17,7 +17,7 @@ use crate::browser::{
     block, favourite_button, header_line, items, key_action, list_rows, paint_selection, paint_star, random_row,
     row_slot, side_list, step_nav, top_line, Line, Nav, SideEntry, DIM, GREY,
 };
-use crate::catalog::Map;
+use crate::catalog::{Map, Origin};
 use crate::pages::{combo, ACCENT};
 use crate::preview::{self, Previews};
 
@@ -116,20 +116,22 @@ pub struct StageRow {
 impl StageRow {
     /// The row of map `index`, `problem` its reason not to start ([`catalog::Catalog::availability`]).
     pub fn new(index: usize, map: &Map, problem: Option<String>) -> StageRow {
-        let (country, author, km) = match (&map.community, &map.btb) {
-            (Some(stage), _) => (stage.country.as_ref().map(|c| c.to_uppercase()), stage.author.clone(), stage.length),
-            (None, Some(btb)) => (None, btb.author.clone(), btb.km),
-            (None, None) => (
+        let (country, author, km) = match &map.origin {
+            Origin::Community(stage) => {
+                (stage.country.as_ref().map(|c| c.to_uppercase()), stage.author.clone(), stage.length)
+            }
+            Origin::Btb(btb) => (None, btb.author.clone(), btb.km),
+            Origin::Retail => (
                 retail_country(map.number).map(str::to_owned),
                 Some("Warthog Games".to_owned()),
                 preview::game_length(map.number).map(|m| m / 1000.0),
             ),
         };
         let name = map.name();
-        let origin = match (&map.community, &map.btb) {
-            (Some(_), _) => "rsf rallysimfans",
-            (None, Some(_)) => "rsf btb experimental",
-            (None, None) => "retail 1.02",
+        let origin = match &map.origin {
+            Origin::Community(_) => "rsf rallysimfans",
+            Origin::Btb(_) => "rsf btb experimental",
+            Origin::Retail => "retail 1.02",
         };
         let place = country.as_deref().map(|c| format!("{c} {}", country_name(c))).unwrap_or_default();
         let haystack =
@@ -140,8 +142,8 @@ impl StageRow {
             name,
             country,
             author,
-            retail: map.community.is_none() && map.btb.is_none(),
-            btb: map.btb.is_some(),
+            retail: matches!(map.origin, Origin::Retail),
+            btb: matches!(map.origin, Origin::Btb(_)),
             km,
             surface: map.surface().min(2),
             problem: problem.map(plain_problem),
@@ -863,13 +865,12 @@ mod tests {
         Map {
             number: id,
             stages: vec![Stage { name: stage.stage('M'), map: id, letter: 'M' }],
-            community: Some(stage),
-            btb: None,
+            origin: Origin::Community(stage),
         }
     }
 
     fn rows_of(maps: &[Map]) -> Vec<StageRow> {
-        let problem = |m: &Map| m.community.as_ref().and_then(|s| s.problem.clone());
+        let problem = |m: &Map| m.problem().cloned();
         maps.iter().enumerate().map(|(i, m)| StageRow::new(i, m, problem(m))).collect()
     }
 
@@ -891,7 +892,7 @@ mod tests {
     /// Tanner (retail 54, Japan, gravel, 3.9 km) among the synthetic stages 1 (Czechia, tarmac, blocked), 3 (Poland,
     /// gravel, blocked), 5 (Spain, snow, 7 km), 8 (Finland, snow, 10 km) and 10 (France, tarmac, 12 km).
     fn some() -> Vec<StageRow> {
-        let retail = Map { number: 54, stages: Vec::new(), community: None, btb: None };
+        let retail = Map { number: 54, stages: Vec::new(), origin: Origin::Retail };
         rows_of(&[retail, rsf_map(5), rsf_map(1), rsf_map(8), rsf_map(3), rsf_map(10)])
     }
 
@@ -924,8 +925,9 @@ mod tests {
 
     #[test]
     fn a_country_has_the_retail_and_the_rallysimfans_stages_together() {
-        let mut maps = vec![Map { number: 54, stages: Vec::new(), community: None, btb: None }, rsf_map(5)];
-        maps[1].community.as_mut().unwrap().country = Some("jp".into());
+        let mut maps = vec![Map { number: 54, stages: Vec::new(), origin: Origin::Retail }, rsf_map(5)];
+        let Origin::Community(stage) = &mut maps[1].origin else { panic!("synthetic RSF map") };
+        stage.country = Some("jp".into());
         let rows = rows_of(&maps);
         let japan = lines(&rows, &Collection::Country(Some("JP".into())), &Filter::default(), Sort::Name, &[], &[]);
         assert_eq!(names(&rows, &japan), ["Synthetic 5 Hills", "Tanner"]);
@@ -1180,7 +1182,7 @@ mod tests {
     #[test]
     fn the_keys_choose_favourite_and_go_back() {
         let maps = [
-            Map { number: 54, stages: Vec::new(), community: None, btb: None },
+            Map { number: 54, stages: Vec::new(), origin: Origin::Retail },
             rsf_map(5),
             rsf_map(1), // cannot start
         ];
@@ -1206,7 +1208,7 @@ mod tests {
             return;
         };
         let mut maps: Vec<Map> = (0..500).map(rsf_map).collect();
-        maps.insert(0, Map { number: 54, stages: Vec::new(), community: None, btb: None });
+        maps.insert(0, Map { number: 54, stages: Vec::new(), origin: Origin::Retail });
         let favourites = [54, 105, 110, 128];
         let mut previews = Previews::new(rbr_formats::data::Data::new("/nonexistent", None));
         for (name, collection) in [("favourites", Collection::Favourites), ("all", Collection::All)] {

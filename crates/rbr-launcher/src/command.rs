@@ -117,9 +117,9 @@ fn voices_equal(have: &str, wanted: &str) -> bool {
 }
 
 impl CodriverMods {
-    /// The plugin of the RSF install `rsf_root`, or `None` without one.
-    pub fn scan(rsf_root: &str) -> Option<Self> {
-        let dir = codriver::plugin_dir(Path::new(rsf_root.trim()))?;
+    /// The plugin of the game folder `root`, or `None` without one.
+    pub fn scan(root: &str) -> Option<Self> {
+        let dir = codriver::plugin_dir(Path::new(root.trim()))?;
         let (voices, styles, ranges) = (codriver::voices(&dir), codriver::styles(&dir), codriver::range_sets(&dir));
         Some(Self { dir, voices, styles, ranges, default_voice: None })
     }
@@ -377,14 +377,14 @@ pub fn replay_args(home: &Path, stage: &str) -> Vec<String> {
 }
 
 /// The viewer's arguments for the advanced H-shifter: the car's gearbox (`--car-gearbox`) and the grind from
-/// RBRControls' folder in the RSF install `rsf_root`, `Shifter_Error.wav` (or the `.wav.sample` RBRControls ships it
+/// RBRControls' folder in the game folder `root`, `Shifter_Error.wav` (or the `.wav.sample` RBRControls ships it
 /// as; `--grind-sound`).
-pub fn shifter_args(gearbox: CarBox, rsf_root: &Path) -> Vec<String> {
+pub fn shifter_args(gearbox: CarBox, root: &Path) -> Vec<String> {
     let mut args = vec!["--car-gearbox".into(), gearbox.arg().into()];
-    if rsf_root.as_os_str().is_empty() {
+    if root.as_os_str().is_empty() {
         return args;
     }
-    let dir = rsf_root.join("Plugins").join("RBRControls");
+    let dir = root.join("Plugins").join("RBRControls");
     let grind =
         ["Shifter_Error.wav", "Shifter_Error.wav.sample"].map(|n| dir.join(n)).into_iter().find(|p| p.is_file());
     if let Some(wav) = grind {
@@ -588,13 +588,13 @@ impl Form {
         viewer_extra: Vec<String>,
     ) -> Option<Vec<String>> {
         let (stage, extra) = self.btb_launch(stage, extra)?;
-        if let Some(problem) = self.ngp_dll.problem(&self.data, &self.rsf()) {
+        if let Some(problem) = self.ngp_dll.problem(&self.data, &self.game_root()) {
             self.status = problem;
             return None;
         }
         let tyre = self.tyre_id(&weather).ok()?;
         let Some(car) = self.car().cloned() else {
-            self.status = "no car: the Settings page's RallySimFans folder has none".into();
+            self.status = "no car: the game folder has none NGP drives".into();
             return None;
         };
         self.select_setup();
@@ -668,7 +668,7 @@ impl Form {
             if !gearbox.sequential {
                 (options.aids.clutch_help, options.aids.auto_gears) = (false, false);
             }
-            viewer_extra.extend(shifter_args(gearbox, Path::new(self.rsf().trim())));
+            viewer_extra.extend(shifter_args(gearbox, Path::new(&self.game_root())));
         }
         if let Some(mods) = self.codriver_mods.as_ref().filter(|_| self.codriver) {
             // The stage's names for the note lookup: RSF's aliases where there are any, then the launcher's own
@@ -777,12 +777,12 @@ impl Form {
     /// a community stage's own), then the launcher's own catalogue names (the map's name, the game's title and the
     /// stage variant), so the lookup works without an RSF stage list.
     pub fn stage_note_names(&self, stage: &catalog::Stage) -> Vec<String> {
-        let rsf_root = self.rsf();
-        let listed = stage_list(Path::new(rsf_root.trim())).remove(&stage.map).and_then(|mut e| e.remove("name"));
+        let root = self.game_root();
+        let listed = stage_list(Path::new(root.trim())).remove(&stage.map).and_then(|mut e| e.remove("name"));
         let map = self.catalog.map(stage.map);
         listed
             .into_iter()
-            .chain(map.and_then(|m| m.community.as_ref()).map(|s| s.name.clone()))
+            .chain(map.and_then(catalog::Map::community).map(|s| s.name.clone()))
             .chain(map.map(catalog::Map::name))
             .chain(catalog::title(stage.map).map(str::to_owned))
             .chain([stage.name.clone()])
@@ -933,13 +933,11 @@ mod tests {
         ("NGP", "[launcher]\ncar = COROLLA\nmap = 33\nngp_physics = {ngp}\nweather = good\n"),
         (
             "RSF car on a retail stage",
-            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nngp_physics = {ngp}\nrsf_root = {rsf}\n\
-             ghost = best\n",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nngp_physics = {ngp}\nghost = best\n",
         ),
         (
             "RSF car and stage",
-            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 129\nngp_physics = {ngp}\nrsf_root = {rsf}\n\
-             ghost = best\n",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 129\nngp_physics = {ngp}\nghost = best\n",
         ),
         (
             "force feedback sensitivity",
@@ -1245,8 +1243,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                community: None,
-                btb: None,
+                origin: catalog::Origin::Retail,
             }],
         };
         let section = catalog::environment_rows(&season(), 54)[1].1.clone();
@@ -1338,8 +1335,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                community: None,
-                btb: None,
+                origin: catalog::Origin::Retail,
             }],
             ..Catalog::default()
         };
@@ -1533,7 +1529,7 @@ mod tests {
             let env: Vec<String> = form.child_env().iter().map(|(k, v)| format!("{k}={}", v.display())).collect();
             let lines = env.into_iter().chain(args);
             let mut case: String = lines.map(|line| line + "\n").collect();
-            if let Some(dll) = form.ngp_dll.resolved(&form.data, &form.rsf()) {
+            if let Some(dll) = form.ngp_dll.resolved(&form.data, &form.game_root()) {
                 case = case.replace(&dll.display().to_string(), "<ngp-dll>");
             }
             case = case.replace(&here.display().to_string(), "<here>");
@@ -1579,12 +1575,8 @@ mod tests {
         let Some(voice) = mods.voice(None) else { return };
         let here = crate::test_dir("command-tanner-codriver");
         let start = start(here.join(SETTINGS_FILE), Some(data), Some(patch));
-        let settings = Settings {
-            map: Some(54),
-            ngp_physics: Some(ngp.to_string_lossy().into_owned()),
-            rsf_root: Some(rsf.to_string_lossy().into_owned()),
-            ..Settings::default()
-        };
+        let settings =
+            Settings { map: Some(54), ngp_physics: Some(ngp.to_string_lossy().into_owned()), ..Settings::default() };
         let mut form = load(&start, settings).unwrap();
         form.read_only = true;
         let defaults = launch(&mut form);
@@ -1619,7 +1611,7 @@ mod tests {
         std::fs::remove_dir_all(here).unwrap();
     }
 
-    /// Without an RSF install, a locally owned voice pack and Tanner notes reach the viewer on the same flags;
+    /// Without a chosen pack, a locally owned voice pack and Tanner notes reach the viewer on the same flags;
     /// the imported choices persist in the settings and work after the sources are removed. The stepping
     /// process's arguments never change.
     #[test]
@@ -1649,7 +1641,7 @@ mod tests {
             notes_src.join("Tanner/tanner.ini"),
             "[PACENOTES]\ncount = 1\n\n[P0]\ntype = 16\ndistance = 100.0\nflag = 0\n",
         );
-        // The player's folder owns the copies; the RSF field stays empty (no RSF install).
+        // The player's folder owns the copies; the chosen packs drive over the game folder's plugin.
         let home = root.join("home");
         std::fs::create_dir_all(&home).unwrap();
         codriver_packs::import(&home, &root.join("download"), &std::sync::atomic::AtomicBool::new(false)).unwrap();
@@ -1658,7 +1650,6 @@ mod tests {
         let settings = Settings {
             map: Some(54),
             ngp_physics: Some(ngp.to_string_lossy().into_owned()),
-            rsf_root: Some(String::new()),
             codriver_pack: Some("download".into()),
             notes_pack: Some("notes-download".into()),
             ..Settings::default()

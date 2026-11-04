@@ -9,7 +9,6 @@ use rbr_sound::menu::MenuPlayer;
 use crate::browser;
 use crate::car_browser;
 use crate::catalog::{self, car_label};
-use crate::settings_page::RSF_FIELD;
 use rbr_gameplay::season as season_model;
 
 use crate::{rally_page, Form};
@@ -196,7 +195,7 @@ pub const NGP_WHY: &str = "ReRBR's physics is verified against NGP 7.4.778 only.
                            physics.rbz in ReRBR's folder; nothing installed changes.";
 /// What the launcher says without a car NGP drives.
 pub const NO_CARS: &str = "No cars yet. Download cars from gvrc.de's NGP car packs on the Settings page, or \
-                          choose a RallySimFans game folder.";
+                          choose a game folder with community cars.";
 /// What the player sees when the viewer or `rbr-standalone` is missing; the paths go to the log
 /// ([`Form::log_missing_programs`]).
 const INCOMPLETE: &str = "ReRBR is incomplete: its driving window or physics program is missing. Reinstall ReRBR.";
@@ -237,7 +236,7 @@ impl Form {
         if self.ngp_revision.is_none() {
             return Some(Issue { text: NO_NGP.into(), fix });
         }
-        if let Some(text) = self.ngp_dll.problem(&self.data, &self.rsf()) {
+        if let Some(text) = self.ngp_dll.problem(&self.data, &self.game_root()) {
             return Some(Issue { text, fix });
         }
         self.catalog.cars.is_empty().then(|| Issue { text: NO_CARS.into(), fix: Some(Fix::DownloadCars) })
@@ -357,10 +356,9 @@ impl Form {
             self.perf_log,
             self.start_time,
         );
-        let old_paths = (self.ngp_physics.clone(), self.rsf_root.clone());
+        let old_paths = self.ngp_physics.clone();
         let old_head_gasket = self.head_gasket;
         let old_car_picks = (self.season_cars.clone(), self.gearboxes.clone());
-        let old_scanned = self.rsf_scanned.clone();
         let old_folder = self.install_folder.clone();
         let old_recent = (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone());
         let old_codriver = (
@@ -453,7 +451,7 @@ impl Form {
                 Page::Replays => self.replays_page(ui),
                 Page::Setup => self.setup_page(ui),
                 Page::Controls => {
-                    let rsf = self.rsf();
+                    let root = self.game_root();
                     let settings = self.paths.settings.clone();
                     let (read_only, car) = (self.read_only, self.car);
                     self.controls.ui(
@@ -465,7 +463,7 @@ impl Form {
                         &mut self.ffb_cars,
                         &self.catalog.cars,
                         car,
-                        &rsf,
+                        &root,
                         &settings,
                         read_only,
                     )
@@ -526,7 +524,7 @@ impl Form {
                 )
             || old_setup != self.setup.choices
             || old_ghost != self.ghost
-            || old_paths != (self.ngp_physics.clone(), self.rsf_root.clone())
+            || old_paths != self.ngp_physics.clone()
             || old_head_gasket != self.head_gasket
             || old_car_picks != (self.season_cars.clone(), self.gearboxes.clone())
             || old_graphics
@@ -556,10 +554,7 @@ impl Form {
         {
             self.save();
         }
-        if self.rsf_root != self.rsf_scanned && !ctx.memory(|m| m.has_focus(Id::unique(RSF_FIELD))) {
-            self.rescan_rsf();
-        }
-        if (&old_paths.0, &old_scanned) != (&self.ngp_physics, &self.rsf_scanned) {
+        if old_paths != self.ngp_physics {
             self.list_cars();
         }
     }
@@ -819,8 +814,8 @@ mod tests {
                 data: Some(PathBuf::from(&data)),
                 patch: Some(PathBuf::from(&patch)),
             };
-            // No RallySimFans cars: an empty RSF folder.
-            let text = format!("[launcher]\nngp_physics = {archive}\nrsf_root = {}\n", here.display());
+            // The community content comes from the game folder in use.
+            let text = format!("[launcher]\nngp_physics = {archive}\n");
             load(&start, Settings::parse(&text)).unwrap()
         };
         let retail = format!("{data}/Root/physics.rbz");

@@ -619,7 +619,7 @@ impl Form {
 
     /// Reads the added cars again, into the lists.
     pub(crate) fn rescan_cars(&mut self) {
-        let root = self.rsf();
+        let root = self.game_root();
         self.catalog.set_community_cars(&self.paths.data, &root, &self.cars_dir());
         self.list_cars();
         self.adding =

@@ -963,11 +963,11 @@ impl Form {
         self.owned_voices = voice_packs(&home);
         self.owned_notes = note_packs(&home);
         self.codriver_mods = self.active_mods();
-        let rsf = crate::command::CodriverMods::scan(&self.rsf());
-        self.rsf_plugin = rsf.is_some();
-        self.rsf_voices = rsf.map(|mods| mods.voices).unwrap_or_default();
-        self.rsf_note_sets =
-            notes::my_pacenotes_dir(Path::new(self.rsf().trim())).map(|d| note_sets(&d)).unwrap_or_default();
+        let root = self.game_root();
+        let mods = crate::command::CodriverMods::scan(&root);
+        self.rsf_plugin = mods.is_some();
+        self.rsf_voices = mods.map(|mods| mods.voices).unwrap_or_default();
+        self.rsf_note_sets = notes::my_pacenotes_dir(Path::new(root.trim())).map(|d| note_sets(&d)).unwrap_or_default();
         (self.codriver_styles_differ, self.codriver_ranges_differ) = match &self.codriver_mods {
             Some(mods) => call_sets_differ(&mods.dir, &mods.styles, &mods.ranges),
             None => (false, false),
@@ -1039,7 +1039,7 @@ impl Form {
             }
             return None;
         }
-        crate::command::CodriverMods::scan(&self.rsf())
+        crate::command::CodriverMods::scan(&self.game_root())
     }
 
     /// The note sets of the chosen source: the local pack's, else the RSF install's MyPacenotes.
@@ -1066,7 +1066,7 @@ impl Form {
         let set = self.active_set()?;
         let dir = match self.notes_pack.as_deref() {
             Some(pack) => self.here().join(NOTES_DIR).join(pack),
-            None => notes::my_pacenotes_dir(Path::new(self.rsf().trim()))?,
+            None => notes::my_pacenotes_dir(Path::new(self.game_root().trim()))?,
         };
         find_in_set(&dir, names, &set.name)
     }

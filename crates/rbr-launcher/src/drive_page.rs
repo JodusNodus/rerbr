@@ -11,7 +11,7 @@ use crate::car_browser::{self, Target};
 use crate::catalog::{self, TyreChoice};
 use crate::ghosts::{self, GhostChoice};
 use crate::pages::{combo, fields, section, Choice, ACCENT, DRIVE_FIELDS, FIELD, WARN};
-use crate::settings::{or_folder, Clouds, Fog, Precipitation, SEQUENTIAL};
+use crate::settings::{Clouds, Fog, Precipitation, SEQUENTIAL};
 use crate::stage_browser::{self, Action, Collection, StageRow};
 use crate::time_of_day::{self, StartTime};
 use crate::Form;
@@ -116,9 +116,9 @@ impl Form {
             });
             ui.add_space(20.0);
             ui.vertical(|ui| {
-                let rsf = or_folder(Some(&self.rsf_scanned), &self.folder.rsf_root);
+                let root = self.game_root();
                 if let Some(car) = self.catalog.cars.get(self.car) {
-                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &rsf);
+                    self.previews.ui(ui, &self.catalog.maps[self.map], car, &root);
                 }
                 ui.add_space(12.0);
                 self.start_area(ui);
@@ -441,13 +441,13 @@ impl Form {
             ui.horizontal_wrapped(|ui| self.adding_job_ui(ui));
             self.adding_status_ui(ui);
         }
-        let rsf = self.rsf();
+        let root = self.game_root();
         let env = car_browser::Env {
             cars: &self.catalog.cars,
             favourites: &self.favourite_cars,
             recent: &self.recent_cars,
             previews: &mut self.previews,
-            rsf_root: &rsf,
+            root: &root,
         };
         let target = self.car_browser.target;
         match self.car_browser.ui(ui, env) {
