@@ -842,7 +842,8 @@ impl App {
             characters.apply(&mut running.renderer, view_projection);
         }
         if let (Some(ghost), Some(playback)) = (&mut self.scene.ghost, &self.scene.playback) {
-            ghost.apply(&mut running.renderer, playback, view_projection);
+            let hud = rbr_render::ghost::hud_time(self.scene.live.as_ref());
+            ghost.apply(&mut running.renderer, playback, hud, view_projection);
         }
         draw_particles(&mut self.scene, &mut running.renderer, view_projection);
         if let (Some(drawn), Some(playback)) = (&mut self.scene.fences, &self.scene.playback) {

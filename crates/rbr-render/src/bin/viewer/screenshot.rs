@@ -171,7 +171,8 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             }
         }
         if let (Some(ghost), Some(playback)) = (&mut scene.ghost, &scene.playback) {
-            ghost.apply(&mut renderer, playback, view_projection);
+            let hud = rbr_render::ghost::hud_time(scene.live.as_ref());
+            ghost.apply(&mut renderer, playback, hud, view_projection);
         }
         if let (Some(drawn), Some(playback)) = (&mut scene.fences, &scene.playback) {
             drawn.draw(&mut renderer, playback, view_projection);
