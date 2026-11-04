@@ -120,6 +120,11 @@ impl FilenameMap {
         }
     }
 
+    /// Each request (lower-case) and the archive path it maps to.
+    pub fn pairs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.entries.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+
     /// Number of pairs.
     pub fn len(&self) -> usize {
         self.entries.len()

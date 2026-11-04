@@ -169,7 +169,9 @@ impl StageRow {
 
 /// A stage's reason not to start in the player's words (`--list` prints it as it is).
 fn plain_problem(problem: String) -> String {
-    if problem.contains("encrypted by RallySimFans") {
+    if problem.contains("textures are in") && problem.contains("encrypted by RallySimFans") {
+        "its textures are in a stage RallySimFans encrypts".into()
+    } else if problem.contains("encrypted by RallySimFans") {
         "encrypted by RallySimFans: ReRBR can't read it".into()
     } else if problem.contains("weather row") {
         "the game has no weather for it".into()

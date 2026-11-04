@@ -272,7 +272,9 @@ install); needing one, or a pack missing from `rsfdata/cars`, lists the car unav
 `track-<id>_<L>_textures.rbz` or a loose `_textures/` folder, `TextureFilenameMap<id>.ini`,
 `TrackSettings<id>.ini`, `CustomData/<AnimationPath>/Scripts/`, `PS_*.ini`: layout, surface, weathers and texture
 lookup in `rsf::stages`. Quirks: `.col` cells may share a placeholder, `.mat` may end in a `CMAP` block, `(2,11)`
-matrices are zero.
+matrices are zero. A remap holds sibling stages' requests too (416's has 425's); a stage whose own requests map into
+another folder's encrypted archive is unavailable (432 into 431's, 558 into 557's, 629 and 630 into 588's: they drew
+without those textures).
 
 ## RSF ghosts
 

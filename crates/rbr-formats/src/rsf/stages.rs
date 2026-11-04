@@ -291,8 +291,46 @@ impl Stage {
                 }
             }
         }
-        self.texture_map().map(drop)
+        let remap = self.texture_map()?;
+        match encrypted_sibling(&self.folder, &self.track, &remap) {
+            Some(archive) => Err(format!("its textures are in {archive}, which is encrypted by RallySimFans")),
+            None => Ok(()),
+        }
     }
+}
+
+/// The first archive of another stage folder beside `folder` that `remap` maps the stage's own requests into and
+/// RallySimFans encrypts (Inland Road II's point at 431's, Erken II's at 557's): the stage would draw without those
+/// textures. The remaps also hold sibling stages' requests (416's has 425's into 424's archive), which do not count.
+fn encrypted_sibling(folder: &Path, track: &str, remap: &FilenameMap) -> Option<String> {
+    let own = format!("{}_", track.to_ascii_lowercase());
+    let mut archives: Vec<String> = remap
+        .pairs()
+        .filter(|(request, _)| request.starts_with(&own))
+        .filter_map(|(_, t)| t.split_once('\\').map(|(archive, _)| archive.to_ascii_lowercase()))
+        .filter(|a| a.ends_with("_textures") && !a.starts_with(&own))
+        .collect();
+    archives.sort_unstable();
+    archives.dedup();
+    if archives.is_empty() {
+        return None;
+    }
+    let siblings: Vec<(String, PathBuf)> = std::fs::read_dir(folder.parent()?)
+        .ok()?
+        .flatten()
+        .filter_map(|e| Some((e.file_name().into_string().ok()?, e.path())))
+        .collect();
+    archives.into_iter().find_map(|archive| {
+        // `track-431_o_textures` is in the folder `431-<name>`.
+        let id = archive.strip_prefix("track-")?.split('_').next()?;
+        let file = format!("{archive}.rbz");
+        siblings.iter().filter(|(name, _)| name.split('-').next() == Some(id)).find_map(|(_, dir)| {
+            let path = stage_files::in_dir(dir, &file)?;
+            let mut head = [0u8; 4];
+            std::fs::File::open(&path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head)).ok()?;
+            stage_files::encrypted(&head).then(|| path.file_name().unwrap_or_default().to_string_lossy().into_owned())
+        })
+    })
 }
 
 /// The `[...]` names of the folder's `TrackSettings<id>.ini`, in file order; none when it has none.
@@ -428,6 +466,37 @@ mod tests {
     }
 
     /// A stage folder with a `Tracks<id>.ini`, a `TrackSettings<id>.ini` and variant `O`'s files, the `.col` encrypted.
+    #[test]
+    fn a_remap_into_an_encrypted_siblings_archive_is_its_problem() {
+        let root = std::env::temp_dir().join(format!("rbr-rsf-sibling-{}", std::process::id()));
+        let (folder, sibling) = (root.join("Maps").join("778-Borrower"), root.join("Maps").join("431-Lender"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        std::fs::write(folder.join("Tracks778.ini"), "[Map778]\r\nStageName=\"Borrower\"\r\n").unwrap();
+        for ext in REQUIRED {
+            std::fs::write(folder.join(format!("track-778_O.{ext}")), b"plain").unwrap();
+        }
+        // A sibling's own request into the encrypted archive does not count (416's remap holds 425's).
+        let others = "; remap\r\ntrack-778_o_textures\\dry\\b.dds\tdry\\c.dds\r\n\
+            track-778_o_textures\\dry\\d.dds\ttrack-13_o_textures\\dry\\d.dds\r\n\
+            track-779_o_textures\\dry\\e.dds\ttrack-431_o_textures\\dry\\e.dds\r\n";
+        std::fs::write(folder.join("TextureFilenameMap778.ini"), others).unwrap();
+        std::fs::write(sibling.join("track-431_O_textures.rbz"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        assert_eq!(open(&folder).unwrap().problem, None);
+        let own = format!("{others}track-778_o_textures\\dry\\a.dds\ttrack-431_o_textures\\dry\\a.dds\r\n");
+        std::fs::write(folder.join("TextureFilenameMap778.ini"), own).unwrap();
+        // A plain sibling archive (and a retail one not in a stage folder) is no problem; an encrypted one is.
+        std::fs::write(sibling.join("track-431_O_textures.rbz"), b"PK\x03\x04").unwrap();
+        assert_eq!(open(&folder).unwrap().problem, None);
+        std::fs::write(sibling.join("track-431_O_textures.rbz"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        assert_eq!(
+            open(&folder).unwrap().problem.as_deref(),
+            Some("its textures are in track-431_O_textures.rbz, which is encrypted by RallySimFans")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn a_folder_reads_and_an_encrypted_file_is_its_problem() {
         let root = std::env::temp_dir().join(format!("rbr-rsf-{}", std::process::id()));
