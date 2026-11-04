@@ -175,8 +175,10 @@ impl Form {
             }
             let tip = "How many seconds before a note the co-driver calls it, at your speed";
             ui.label("Call ahead").on_hover_text(tip);
-            ui.add(DragValue::new(&mut self.marker.callout_distance).range(0.05..=CALLOUT_MAX).speed(0.05).suffix(" s"))
-                .on_hover_text(tip);
+            ui.add(
+                DragValue::new(&mut self.marker.callout_distance).range(0.05..=CALLOUT_MAX).speed(0.05).suffix(" s"),
+            )
+            .on_hover_text(tip);
             ui.end_row();
 
             // The custom co-driver fires on its own lookahead and never reads the threshold: only the original

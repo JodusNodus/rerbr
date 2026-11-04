@@ -30,7 +30,7 @@
 //! Road wear defaults to new, and the tyre
 //! defaults to `E74_WeatherKind` for the map surface and derived wetness. `--list` prints the startable map count and
 //! any unavailable-map reasons without opening a window. The field of view is the horizontal one of the in-car views and
-//! the free-fly camera (`viewer --fov`), 30 to 120 degrees, default 50; the chase view keeps its own. The viewer keeps
+//! the free-fly camera (`viewer --fov`), 30 to 120 degrees, default 50; `viewer --chase-fov` sets the chase view's, default 65. The viewer keeps
 //! the view last chosen and each car's camera nudges in the settings file's `[camera]` section (`viewer --cameras`,
 //! `rbr_render::camera_prefs`); the launcher carries that section over when it writes the file, and the Cameras row's
 //! "Reset this car's cameras" drops the selected car's nudges. The sound volume
@@ -469,6 +469,8 @@ struct Form {
     sizes: Vec<(u32, u32)>,
     /// Every view's horizontal field of view, degrees.
     fov: f32,
+    /// The chase view's horizontal field of view, degrees.
+    chase_fov: f32,
     /// The in-car view's head (`[camera] head`, `rbr_render::head`), written when changed: the viewer owns the section.
     head: bool,
     /// The sound volume, linear (`viewer --volume`).

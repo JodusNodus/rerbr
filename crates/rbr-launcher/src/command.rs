@@ -171,6 +171,8 @@ pub struct ViewerLaunch {
     pub tyre: u32,
     pub size: (u32, u32),
     pub fov: f32,
+    /// The chase view's field of view, degrees (`viewer --chase-fov`).
+    pub chase_fov: f32,
     pub volume: f32,
     pub volumes: Volumes,
     pub codriver: bool,
@@ -205,6 +207,7 @@ impl Default for ViewerLaunch {
             tyre: 0,
             size: (0, 0),
             fov: 0.0,
+            chase_fov: 0.0,
             volume: 0.0,
             volumes: Volumes::default(),
             codriver: false,
@@ -231,6 +234,7 @@ impl ViewerLaunch {
             tyre,
             size,
             fov,
+            chase_fov,
             volume,
             volumes,
             codriver,
@@ -258,6 +262,8 @@ impl ViewerLaunch {
             format!("{}x{}", size.0, size.1),
             "--fov".into(),
             fov.to_string(),
+            "--chase-fov".into(),
+            chase_fov.to_string(),
             "--volume".into(),
             volume.to_string(),
             "--volumes".into(),
@@ -612,6 +618,7 @@ impl Form {
             tyre,
             size: self.size,
             fov: self.fov,
+            chase_fov: self.chase_fov,
             volume: self.volume,
             volumes: Volumes {
                 engine: self.engine_volume,
@@ -833,7 +840,7 @@ mod tests {
         (
             "everything changed",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nweather = bad\nwear = worn\ntyre = 5\n\
-             size = 1920x1080\nfov = 72.5\nvolume = 0.75\ncodriver = off\nhud = off\nunits = mph\nfps = on\n\
+             size = 1920x1080\nfov = 72.5\nchase_fov = 80\nvolume = 0.75\ncodriver = off\nhud = off\nunits = mph\nfps = on\n\
              pace_stack = 2\npace_3d = on\nwipers = intermittent\ncallout_distance = 0.5\nmarker_threshold = 12.5\n\
              damage = realistic\nauto_gears = on\ngear_guard = off\nneutral_lock = on\nclutch_help = off\n\
              ghost = best\nrender_scale = 75\nreflections = off\npresent = immediate\nfullscreen = off\nstart_time = dusk\n",
@@ -889,6 +896,7 @@ mod tests {
             tyre: 4,
             size: (1280, 720),
             fov: 65.0,
+            chase_fov: 65.0,
             volume: 1.0,
             codriver: true,
             graphics: Quality::Low.graphics(false),
@@ -922,6 +930,7 @@ mod tests {
             tyre: 5,
             size: (1280, 720),
             fov: 65.0,
+            chase_fov: 65.0,
             volume: 0.5,
             volumes: Volumes { engine: 0.5, codriver: 1.0, effects: 1.5, tyres: 2.0 },
             codriver: false,
@@ -945,7 +954,7 @@ mod tests {
         .args();
         assert_eq!(
             args.join(" "),
-            "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
+            "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --chase-fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
              --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hide-wheel --hud-hide inputs,view --bindings /l/launcher-settings.ini \
              --cameras /l/launcher-settings.ini --enhance anisotropy,decals,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
              --stage track-54_O --car 6 --data /d --callout-distance 4 --marker-threshold 25 \
@@ -964,6 +973,7 @@ mod tests {
             tyre: 5,
             size: (1280, 720),
             fov: 65.0,
+            chase_fov: 65.0,
             volume: 0.5,
             codriver: true,
             graphics: Graphics { lighting: true, marks: true, ..Quality::Low.graphics(false) },
@@ -1042,6 +1052,7 @@ mod tests {
                 tyre: 3,
                 size: (1280, 720),
                 fov: 65.0,
+                chase_fov: 65.0,
                 volume: 1.0,
                 codriver: true,
                 graphics: Quality::Low.graphics(false),

@@ -339,6 +339,7 @@ fn load_scene<'scope, 'env>(
                             characters.set_probe(probe.clone());
                         }
                         loaded.set_probe(probe);
+                        loaded.chase_fov = args.chase_fov;
                         loaded.add_interior(&stage, &interior, &interior_damage)?;
                         if args.hide_wheel {
                             let wheel =

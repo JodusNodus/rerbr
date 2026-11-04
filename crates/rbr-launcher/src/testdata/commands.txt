@@ -12,6 +12,8 @@ dry
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes
@@ -99,6 +101,8 @@ wet
 1920x1080
 --fov
 72.5
+--chase-fov
+80
 --volume
 0.75
 --volumes
@@ -187,6 +191,8 @@ dry
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes
@@ -280,6 +286,8 @@ dry
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes
@@ -367,6 +375,8 @@ damp
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes
@@ -458,6 +468,8 @@ dry
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes
@@ -549,6 +561,8 @@ damp
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes
@@ -640,6 +654,8 @@ damp
 1280x720
 --fov
 50
+--chase-fov
+65
 --volume
 1
 --volumes

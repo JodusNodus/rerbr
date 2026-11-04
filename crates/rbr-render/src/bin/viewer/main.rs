@@ -56,7 +56,7 @@
 //! start view with an eye and a forward direction (stage coordinates; for comparing with a capture's view matrix), and
 //! `--size WxH` sets the screenshot size (default 1280x720) and the window's size in pixels (default 1280x720 points).
 //! `--fov DEG` is the horizontal field of view of the free-fly, orbit, cockpit, bonnet and bumper cameras, 30 to 120
-//! degrees (default 50); the chase view keeps its own, 65 degrees. The vertical one follows from the window's aspect.
+//! degrees (default 50); `--chase-fov DEG` sets the chase view's (same range, default 65). The vertical one follows from the window's aspect.
 //!
 //! `--car <name>` (the car's `Cars.ini` folder, for example `XSARA`) puts the car at the stage start.
 //! `--rsf-car <pack|id>` puts an RSF car (`rbr_formats::rsf`: a pack path, or an id or pack name of the install

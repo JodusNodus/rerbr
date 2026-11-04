@@ -17,6 +17,7 @@ use rbr_render::glass::model::Switch;
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
+use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
 use rbr_render::renderer::Detail;
 use rbr_render::shifter::{CarBox, Engagement};
@@ -194,6 +195,8 @@ pub struct Settings {
     pub size: Option<(u32, u32)>,
     /// Every view's horizontal field of view, degrees (`viewer --fov`).
     pub fov: Option<f32>,
+    /// The chase view's field of view, degrees (`viewer --chase-fov`).
+    pub chase_fov: Option<f32>,
     /// The sound volume, linear, 0 to [`MAX_VOLUME`] (`viewer --volume`).
     pub volume: Option<f32>,
     /// The sound group volumes, linear, 0 to [`MAX_GROUP_VOLUME`] (`viewer --volumes E,C,F,T`).
@@ -556,6 +559,7 @@ impl Settings {
             }),
             size: launcher.parsed("size", parse_size),
             fov: launcher.ranged("fov", coords::FOV_RANGE_DEGREES),
+            chase_fov: launcher.ranged("chase_fov", coords::FOV_RANGE_DEGREES),
             volume: launcher.ranged("volume", 0.0..=MAX_VOLUME),
             engine_volume: launcher.ranged("engine_volume", 0.0..=MAX_GROUP_VOLUME),
             codriver_volume: launcher.ranged("codriver_volume", 0.0..=MAX_GROUP_VOLUME),
@@ -648,6 +652,7 @@ impl Settings {
             ),
             ("size", self.size.map(|(w, h)| format!("{w}x{h}"))),
             ("fov", self.fov.map(|v| v.to_string())),
+            ("chase_fov", self.chase_fov.map(|v| v.to_string())),
             ("volume", self.volume.map(|v| v.to_string())),
             ("engine_volume", self.engine_volume.map(|v| v.to_string())),
             ("codriver_volume", self.codriver_volume.map(|v| v.to_string())),
@@ -830,6 +835,7 @@ impl Form {
         let tyre = settings.tyre.unwrap_or(TyreChoice::Auto);
         let size = settings.size.unwrap_or(DEFAULT_SIZE);
         let fov = settings.fov.unwrap_or(coords::FOV_DEGREES);
+        let chase_fov = settings.chase_fov.unwrap_or(CHASE_FOV_DEGREES);
         let volume = settings.volume.unwrap_or(1.0);
         let engine_volume = settings.engine_volume.unwrap_or(1.0);
         let codriver_volume = settings.codriver_volume.unwrap_or(1.0);
@@ -885,6 +891,7 @@ impl Form {
             size,
             sizes: vec![size],
             fov,
+            chase_fov,
             head: !settings.camera.head_off,
             volume,
             engine_volume,
@@ -1007,6 +1014,7 @@ impl Form {
             tyre: Some(self.tyre),
             size: Some(self.size),
             fov: Some(self.fov),
+            chase_fov: Some(self.chase_fov),
             volume: Some(self.volume),
             engine_volume: Some(self.engine_volume),
             codriver_volume: Some(self.codriver_volume),
@@ -1132,6 +1140,7 @@ mod tests {
             tyre: Some(TyreChoice::Fixed(5)),
             size: Some((1920, 1080)),
             fov: Some(72.5),
+            chase_fov: Some(80.0),
             volume: Some(0.75),
             engine_volume: Some(0.5),
             codriver_volume: Some(1.5),
@@ -1275,12 +1284,14 @@ mod tests {
         assert_eq!(setups, SetupChoices::default());
         assert_eq!(Settings::parse(&text), settings);
         assert!(text.contains("map = 54\nrecent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\nrecent_maps = 54,129\nfavourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\nfavourite_maps = 129,54,300\n"));
-        assert!(text.contains("fov = 72.5\nvolume = 0.75\n"), "the game chase's camera page is gone");
+        assert!(text.contains("fov = 72.5\nchase_fov = 80\nvolume = 0.75\n"), "the game chase's camera page is gone");
         // Any other word is a season row's section, not a preset.
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("[launcher]\nfov = 121\n").fov, None);
         assert_eq!(Settings::parse("[launcher]\nfov = 30\n").fov, Some(30.0));
+        assert_eq!(Settings::parse("[launcher]\nchase_fov = 121\n").chase_fov, None);
+        assert_eq!(Settings::parse("[launcher]\nchase_fov = 100\n").chase_fov, Some(100.0));
         assert_eq!(Settings::parse("[launcher]\nvolume = 5\n").volume, None);
         assert!(text.contains("volume = 0.75\n"));
         assert!(
@@ -1396,6 +1407,7 @@ mod tests {
                 "tyre = 5\n",
                 "size = 1920x1080\n",
                 "fov = 72.5\n",
+                "chase_fov = 80\n",
                 "volume = 0.75\n",
                 "engine_volume = 0.5\n",
                 "codriver_volume = 1.5\n",
