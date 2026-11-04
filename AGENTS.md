@@ -53,7 +53,7 @@ same paths.
 | `RBR_RECORDINGS`, `RBR_VECTOR_STORE` | Recorded drives (`drive-*.bin`) and vector records; not in git, published set via `scripts/fetch-test-data.sh` |
 | `original/` | Original binaries and game data (gitignored, `SHA256SUMS` only) |
 | `data/` | Test data hashes and file lists, generator inputs |
-| `scripts/` | `rust-check.sh`, `rust-vectors.sh`, `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), generators of Rust tables, NGP tools |
+| `scripts/` | `rust-check.sh`, `rust-vectors.sh`, `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), `school-sweep.sh` (every lesson headless), generators of Rust tables, NGP tools |
 
 Treat `original/`, `build/` and the recordings as local data. Do not commit their contents.
 

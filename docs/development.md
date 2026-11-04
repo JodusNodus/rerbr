@@ -121,7 +121,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 
 | Path | What |
 | --- | --- |
-| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
+| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
 | `harness/` | records and replays the original game for the physics checks ([README](../harness/README.md)) |
 | `data/` | test data hashes and file lists, the reference shot list, generator inputs |
 | `docs/` | this guide, the install guide, the reference shots and clips |
@@ -232,6 +232,13 @@ viewer's performance log times 90 s from the go. It prints average fps, the 1% a
 hitches and the costliest GPU passes and CPU spans, the median of 3 runs. The same release builds and install as the
 reference shots, and a display; the window takes the screen for a few minutes. `--out NEW --compare BASE` compares two
 results. The scene's choice and a baseline are in [renderer.md](../notes/renderer.md#benchmark-2026-11-02).
+
+## Rally school sweep
+
+`scripts/school-sweep.sh` drives every rally school lesson headless with the autopilot (`-l` lessons, `-c` car slots
+or RSF pack folders, `-j` jobs) and prints each drive's verdict, race end and why the drive stopped, in about a
+minute. It checks the school's wiring end to end: every lesson should end by its box, its finish, the school or a
+retire. It does not check the judging; the autopilot fails most timed lessons, and it gets stuck in lessons 1 and 8.
 
 ## Packaging
 
