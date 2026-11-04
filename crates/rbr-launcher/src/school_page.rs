@@ -1,5 +1,6 @@
-//! The School page: the rally school's 17 lessons (flow mode 7, `rbr_school`), each on its map with
-//! car 5, the lesson's setup and tyre (`rbr-standalone --school N`).
+//! The School page: the rally school's 17 lessons (flow mode 7, `rbr_school`), each on its map with the lesson's
+//! tyre and car 5 with the lesson's setup (`rbr-standalone --school N`), or the Drive page's car on its own setup
+//! (ours: the original drives car 5 only).
 //!
 //! Every lesson is open (user decision: no unlocks). Each row shows the lesson number (`RSM_LESSON_NRB1`..`NRB6`
 //! for the basic lessons, `RSM_LESSON_NRA1`..`NRA11` for the advanced) and its title (`Lesson::title_key`), with
@@ -22,7 +23,7 @@ use rbr_formats::strings::Strings;
 use rbr_school::lesson::CAR;
 use rbr_school::Lesson;
 
-use crate::catalog::{Car, Catalog};
+use crate::catalog::{car_label, Car, Catalog};
 use crate::pages::{section, Fix, Issue, ACCENT, DRIVE_FIELDS, WARN};
 use crate::Form;
 
@@ -31,10 +32,13 @@ pub(crate) fn school_car(catalog: &Catalog) -> Option<Car> {
     catalog.all_cars.iter().find(|c| c.rsf.is_none() && c.index == CAR).cloned()
 }
 
-/// The page's state: the English string table, the selected lesson, the lesson times and the player's results.
+/// The page's state: the English string table, the selected lesson and car, the lesson times and the player's
+/// results.
 pub struct SchoolPage {
     strings: Option<Strings>,
     selected: u32,
+    /// The lesson is driven in the Drive page's car instead of its own.
+    drive_car: bool,
     /// The lesson maps' times, by map: the perfect and pass times, or `None` when untimed.
     times: HashMap<u32, Option<(f32, f32)>>,
     results: Option<CachedResults>,
@@ -52,6 +56,7 @@ impl SchoolPage {
         SchoolPage {
             strings: rbr_formats::strings::english(data).ok(),
             selected: 0,
+            drive_car: false,
             times: HashMap::new(),
             results: None,
         }
@@ -174,6 +179,8 @@ impl Form {
         let saves = SaveDir::new(&self.records());
         let profile = self.rally.profile.clone();
         let blocker = self.school_blocker();
+        let lesson_car = school_car(&self.catalog).map_or_else(|| "car 5, not installed".to_owned(), |c| car_label(&c));
+        let drive_car = self.car().map_or_else(|| "none".to_owned(), car_label);
         let mut drive = None;
         {
             let school = &mut self.school;
@@ -228,6 +235,15 @@ impl Form {
                         ui.label("Best");
                         ui.label(result_text(grades[lesson.index() as usize]));
                         ui.end_row();
+                        ui.label("Car");
+                        ui.vertical(|ui| {
+                            ui.radio_value(&mut school.drive_car, false, format!("The lesson's: {lesson_car}"));
+                            ui.radio_value(&mut school.drive_car, true, format!("The Drive page's: {drive_car}"))
+                                .on_hover_text(
+                                    "Ours: the original drives the lesson's car. Yours runs on its own setup.",
+                                );
+                        });
+                        ui.end_row();
                     });
                     ui.add_space(8.0);
                     let button =
@@ -248,14 +264,26 @@ impl Form {
         }
     }
 
-    /// What blocks Drive lesson: a running viewer, what the Drive page's Start checks, or car 5 without an NGP
-    /// car (the school's fixed car).
+    /// The car a lesson is driven in: the Drive page's when chosen, else the lesson's (car 5).
+    pub(crate) fn school_drive_car(&self) -> Option<Car> {
+        if self.school.drive_car {
+            self.car().cloned()
+        } else {
+            school_car(&self.catalog)
+        }
+    }
+
+    /// What blocks Drive lesson: a running viewer, what the Drive page's Start checks, or the lesson's car 5 without
+    /// an NGP car.
     fn school_blocker(&self) -> Option<Issue> {
         if self.child.is_some() {
             return Some(Issue { text: "the viewer is running".into(), fix: None });
         }
         if let Some(issue) = self.readiness() {
             return Some(issue);
+        }
+        if self.school.drive_car {
+            return self.car().is_none().then(|| Issue { text: "no car on the Drive page".into(), fix: None });
         }
         (!self.ngp_cars.contains(&CAR)).then(|| Issue {
             text: "the rally school drives car 5, which has no NGP car in this archive".into(),

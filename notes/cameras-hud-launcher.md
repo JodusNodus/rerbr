@@ -123,9 +123,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   result; the detail its instruction and cone guide (`brief_keys`), surface (from the lesson's setup file), the
   pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: untimed) and Drive lesson. Results
   are the profile's school array (`Profile::school`, 0/-/1..3 Passed n/4/4 Perfect), re-read on change. Drive
-  lesson starts like the Drive page's Start on good weather with car 5 (`command::start_school`,
-  `rbr-standalone --school N` with `--saves`/`--profile`; `--tyre`/`--setup`/`--rsf-car`/`--season-row` left out)
-  and is blocked while the viewer runs, without readiness, or when NGP's archive has no car 5. In the viewer a
+  lesson starts like the Drive page's Start on good weather (`command::start_school`, `rbr-standalone --school N`
+  with `--saves`/`--profile`; `--tyre`/`--setup`/`--season-row` left out) in the detail's Car choice: the
+  lesson's car 5 (default) or the Drive page's car, retail or RSF (`Form::school_drive_car`). It is blocked while
+  the viewer runs, without readiness, without a Drive page car when that is chosen, or when NGP's archive has no
+  car 5 for the lesson's. In the viewer a
   lesson opens on its brief panel (the number, title, instruction and cone guide from `bstrings.eng`, the
   pass/perfect times when timed, Enter to start), driving shows a short Too slow/Too fast toast for the bank's
   incident codes (ours: no HUD consumer of them was found in 1.02), and the end its verdict panel (Perfect, Passed

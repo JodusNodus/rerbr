@@ -20,7 +20,7 @@ use rbr_sound::mixer::Volumes;
 use crate::catalog::{self, Car, Stage, TyreChoice};
 use crate::graphics_page::{Graphics, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
-use crate::{pages::Choice, rally_page, school_page, time_of_day, Form};
+use crate::{pages::Choice, rally_page, time_of_day, Form};
 
 /// The viewer's `--clock` arguments for a start time, none for the stage's own light.
 pub fn clock_args(start: Option<u32>) -> Vec<String> {
@@ -185,8 +185,8 @@ pub struct ViewerLaunch {
     pub marker: MarkerSettings,
     pub bindings: Option<PathBuf>,
     pub setup: Option<PathBuf>,
-    /// A rally school lesson: the lesson's setup and tyre with car 5 (`--school N`), without `--tyre`, `--setup`,
-    /// `--surface`, `--rsf-car`, `--championship` and `--season-row`.
+    /// A rally school lesson (`--school N`): the lesson's tyre, and with car 5 its setup; without `--tyre`,
+    /// `--setup`, `--surface`, `--championship` and `--season-row`.
     pub school: Option<Lesson>,
 }
 
@@ -352,13 +352,11 @@ impl ViewerLaunch {
             "--clutch-help".into(),
             on_off(aids.clutch_help),
         ]);
-        if school.is_none() {
-            if let Some(path) = setup {
-                args.extend(["--setup".into(), path.display().to_string()]);
-            }
-            if let Some(pack) = pack {
-                args.extend(["--rsf-car".into(), pack]);
-            }
+        if let (None, Some(path)) = (school, setup) {
+            args.extend(["--setup".into(), path.display().to_string()]);
+        }
+        if let Some(pack) = pack {
+            args.extend(["--rsf-car".into(), pack]);
         }
         args
     }
@@ -395,7 +393,7 @@ pub fn shifter_args(gearbox: CarBox, rsf_root: &Path) -> Vec<String> {
 }
 
 /// What a launch drives: the car, its tyre and setup (`None` leaves `--tyre` and `--setup` out), and the rally
-/// school lesson (`--school N`, the lesson's setup and tyre with car 5).
+/// school lesson (`--school N`: the lesson's tyre, and with car 5 its setup).
 struct LaunchCar {
     car: catalog::Car,
     tyre: Option<u32>,
@@ -616,18 +614,18 @@ impl Form {
         )
     }
 
-    /// Starts a rally school lesson like a quick race: `lesson` on its map's `M` variant on good weather with car
-    /// 5, the lesson's setup and tyre (`rbr-standalone --school N`); without the flags `--school` refuses
-    /// (`--tyre`, `--setup`, `--surface`, `--rsf-car`, `--championship`). The stage records go to the profile's saves like a
-    /// championship stage's (`--saves`, `--profile`), so the lesson's result is kept.
+    /// Starts a rally school lesson like a quick race: `lesson` on its map's `M` variant on good weather with the
+    /// lesson's tyre, in the School page's car (`rbr-standalone --school N`, with `--car` or `--rsf-car`); without
+    /// the flags `--school` refuses (`--tyre`, `--setup`, `--surface`, `--championship`). The result goes to the
+    /// profile's saves (`--saves`, `--profile`).
     pub fn start_school(&mut self, lesson: Lesson) {
         let map = lesson.map();
         // Like `rbr-standalone --school` without `--weather`: the good weather, new wear.
         let draws = Draws { row: None, wear: 0 };
         match self.catalog.stage_weather(&self.season, map, Preset::Good, draws) {
             Ok((stage, weather)) => {
-                let Some(car) = school_page::school_car(&self.catalog) else {
-                    self.status = "the rally school's car 5 is not installed".into();
+                let Some(car) = self.school_drive_car() else {
+                    self.status = "the rally school's car is not installed".into();
                     return;
                 };
                 let mut extra = vec!["--school".to_owned(), lesson.index().to_string()];
@@ -955,7 +953,7 @@ mod tests {
     ];
 
     /// A rally school lesson's command: `--school N` with car 5 on the lesson's stage, without the flags
-    /// `--school` refuses (tyre, setup, surface, RSF car, championship, season row), and with the viewer's car.
+    /// `--school` refuses (tyre, setup, surface, championship, season row), and with the viewer's car.
     #[test]
     fn school_args_carry_the_lesson_without_its_refused_flags() {
         use rbr_school::Lesson;
@@ -990,6 +988,39 @@ mod tests {
         assert_eq!(value(standalone, "--car"), Some("5".into()));
         for refused in ["--tyre", "--setup", "--surface", "--rsf-car", "--championship", "--season-row"] {
             assert!(!standalone.contains(&refused.to_owned()), "{refused} refused: {args:?}");
+        }
+    }
+
+    /// A school lesson in an RSF car names the pack to `rbr-standalone` too, still without a setup.
+    #[test]
+    fn school_args_carry_an_rsf_cars_pack() {
+        use rbr_school::Lesson;
+        let lesson = Lesson::new(2).unwrap();
+        let rsf = RsfCar {
+            id: 24,
+            added: false,
+            group: None,
+            pack: Ok("/rsf/rsfdata/cars/evo".into()),
+            model: Ok(None),
+            drive_train: None,
+        };
+        let args = ViewerLaunch {
+            stage: Stage { name: "track-83_M".into(), map: 83, letter: 'M' },
+            car: Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), rsf: Some(rsf) },
+            tyre: lesson.tyre(),
+            standalone: PathBuf::from("/b/rbr-standalone"),
+            data: PathBuf::from("/d"),
+            setup: Some(PathBuf::from("/l/setup-current.lsp")),
+            school: Some(lesson),
+            ..Default::default()
+        }
+        .args();
+        let live = args.iter().position(|a| a == "--live").unwrap();
+        let standalone = &args[live..];
+        assert_eq!(value(standalone, "--rsf-car"), Some("/rsf/rsfdata/cars/evo".into()));
+        assert_eq!(value(standalone, "--school"), Some("2".into()));
+        for refused in ["--car", "--tyre", "--setup"] {
+            assert!(!standalone.contains(&refused.to_owned()), "{refused}: {args:?}");
         }
     }
 

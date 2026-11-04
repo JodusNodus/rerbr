@@ -169,13 +169,12 @@ impl Race {
         Race { flow_mode: Mode::CHAMPIONSHIP.value(), championship: Some(options), ..self }
     }
 
-    /// The race as a rally school lesson: flow mode 7 on the lesson's map with car 5 and the lesson's tyre, its setup
-    /// over the car's default (`car_files`).
+    /// The race as a rally school lesson: flow mode 7 on the lesson's map with the lesson's tyre, in the race's car
+    /// (the lesson's is car 5, [`Race::school_setup`]).
     pub fn in_school(self, lesson: Lesson) -> Race {
         let map = lesson.map();
         Race {
             map,
-            car: rbr_school::lesson::CAR,
             tyre: lesson.tyre(),
             surface: surface(map),
             flow_mode: Mode::SCHOOL.value(),
@@ -194,6 +193,13 @@ impl Race {
             level: self.options.damage.word(),
             false_starts: self.false_starts,
         }
+    }
+
+    /// The lesson's setup `LoadSchool` (0x48df80) parses over the car's default, in the lesson's own car (retail
+    /// car 5). Ours: another car keeps its own default, which the school's setups are not made for.
+    pub fn school_setup(&self) -> Option<&'static str> {
+        let lesson_car = self.car == rbr_school::lesson::CAR && self.car_pack.is_none();
+        self.lesson.filter(|_| lesson_car).map(Lesson::setup_file)
     }
 
     /// A lesson's drive: the bank `Load020` (0x479020) builds from the stage's `Driveline` replay stream (a fresh
@@ -313,7 +319,7 @@ fn car_files(data: &Data, mem: &Mem, race: &Race) -> Result<CarFiles, String> {
             ("Root/physics.rbz", format!("{dir}{surface}.lsp")),
         ],
         setup: format!("{dir}setups/d_{surface}.lsp"),
-        school_setup: race.lesson.map(Lesson::setup_file),
+        school_setup: race.school_setup(),
         options: [format!("Physics/{brand}/tyres.lsp"), format!("{dir}r_{surface}.lsp")],
         model,
         dir,
