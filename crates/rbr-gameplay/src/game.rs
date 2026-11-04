@@ -397,6 +397,11 @@ impl Game {
             if let Some(school) = &mut self.school {
                 school.start();
             }
+            // `Tic` sets the player's camera when the driving starts, ending the orbit, as the countdown's
+            // end does ([`Self::tick_countdown`]).
+            if self.start_camera.is_some() {
+                self.start_camera = Some(StartCamera::Done);
+            }
         }
         let tick_state = self.stage.state();
         self.tick_countdown(tick_state, frame.facc, input.confirm, mode, physics);
@@ -956,6 +961,25 @@ mod tests {
         assert_eq!(frames, 286);
         assert_eq!(game.start_camera(), Some(StartCamera::Done));
         assert_eq!(frame(&mut game, FrameInput::default()).substeps.len(), 1);
+    }
+
+    /// In the rally school the brief's confirm starts the drive at once (`Stage::school_start`), ending the orbit
+    /// as the countdown's end does, so the viewer drives the player's view.
+    #[test]
+    fn the_school_s_confirm_starts_the_drive_and_ends_the_orbit() {
+        use crate::school::{Bank, Lesson, SchoolRun};
+        let mut game = new_game(Stage::quick_race(54, 6).load_ready()).with_camera_go();
+        game.set_assist_settings(AssistSettings { mode: 7, ..AssistSettings::QUICK_RACE });
+        game = game.with_school(SchoolRun::new(Lesson::new(2).unwrap(), Bank::fresh()));
+        while game.stage().state() == State::Load {
+            game.frame(0.0, FrameInput::default(), &mut Still);
+        }
+        assert_eq!(game.stage().state(), State::Countdown);
+        assert!(game.start_camera().and_then(StartCamera::angle).is_some());
+        let events = game.frame(DT, FrameInput { confirm: true, ..FrameInput::default() }, &mut Still);
+        assert_eq!(game.stage().state(), State::Driving);
+        assert_eq!(game.start_camera(), Some(StartCamera::Done));
+        assert!(!events.substeps.is_empty(), "Tic drives in the confirm's frame");
     }
 
     /// The quick race takes no confirm: its go is the camera's.
