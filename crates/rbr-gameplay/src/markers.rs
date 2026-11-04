@@ -395,14 +395,27 @@ mod tests {
 
     #[test]
     fn the_pace_stack_is_the_last_symbol_behind_and_the_next_eight() {
-        let keys: Vec<MarkerKey> =
-            [(3, 10.0), (0x15, 20.0), (8, 30.0), (0x0d, 40.0), (1, 50.0), (2, 60.0), (4, 70.0), (5, 80.0), (6, 90.0)]
-                .iter()
-                .map(|&(tag, d)| key(tag, 0, d))
-                .collect();
+        let keys: Vec<MarkerKey> = [
+            (3, 10.0),
+            (0x15, 20.0),
+            (8, 30.0),
+            (0x0d, 40.0),
+            (1, 50.0),
+            (2, 60.0),
+            (4, 70.0),
+            (5, 80.0),
+            (6, 90.0),
+            (7, 100.0),
+            (8, 110.0),
+            (9, 120.0),
+            (10, 130.0),
+        ]
+        .iter()
+        .map(|&(tag, d)| key(tag, 0, d))
+        .collect();
         let stack = pace_stack(&keys, 35.0);
         let at: Vec<f32> = stack.iter().map(|k| k.distance).collect();
-        assert_eq!(at, [30.0, 50.0, 60.0, 70.0, 80.0, 90.0]);
+        assert_eq!(at, [30.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0]);
         assert_eq!(pace_stack(&keys, 0.0).len(), PACE_STACK_KEYS, "nothing behind the start");
     }
 
