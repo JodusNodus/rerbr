@@ -91,7 +91,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Cockpit mirrors | done (ours) | the Fiesta Rally2: none found; images not anti-aliased |
 | In-car and chase cameras | done | mode 3 ground probe; chase capture |
 | Start orbit, helicam, seat shake | done | - |
-| ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile; `viewer --replay --screenshot` fails (the lockstep's `--frames -` beside `--replay`; `--video` works) |
+| ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile; `viewer --replay FILE --screenshot PNG --at N` draws the Nth answer headless (the replay runs `--replay-pace free`, not lockstep's `--frames -`) |
 | Original replays (`.rpl`), replay cameras and filters | out | - |
 | Ghost car (1.02; RSF ghosts not supported) | done | best-ghost store; original run: a ghost with a penalty |
 

@@ -119,7 +119,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   drove and the stepping process's frame log (`rbr_recording::replay`); watching runs the drive's frames again
   from its last start, so a replay needs the same install, setup and profile, else it stops with a digest error.
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
-  camera key cycles the views, V resets the mouse look, Esc closes.
+  camera key cycles the views, V resets the mouse look, Esc closes. A replay screenshot (`--screenshot PNG
+  --at N`) draws the Nth answer headless, the way a live screenshot draws the Nth payload: the replay
+  runs back to back (`--replay-pace free`), not in lockstep (`--frames -` takes no `--replay` beside it);
+  `--at-drive` takes no `--replay`.
 - Championship tab (`rally_page/`: `mod.rs` the season's state and turns, `view.rs` the drawing): with no season, the
   new season's fields (profile, team, car, skill with its outside-assistance rule, damage), New season and Continue
   saved season. With one: a header (rally n of 6, car, team, options, profile, clock), the itinerary (stages with the
