@@ -735,8 +735,9 @@ impl<'a> Live<'a> {
 
     /// The school record (SCH1) after MNU1, only for a lesson's drive: the lesson, where it stands, the kept
     /// verdict (none before the end), the race time and the lesson's times, this answer's last incident code, the
-    /// stop when the flow moved since the last answer, and the ids `Trigger` queued this answer. Takes the
-    /// answer's events, as the viewer's panels and speech read them.
+    /// stop when the flow moved since the last answer, the ids `Trigger` queued this answer, and the failed end's
+    /// reasons (only once the verdict is known and failed). Takes the answer's events, as the viewer's panels
+    /// and speech read them.
     fn school_record(&mut self) -> Option<Vec<u8>> {
         let school = self.school.as_mut()?;
         let events = school.take_events();
@@ -756,17 +757,29 @@ impl<'a> Live<'a> {
         let speech: Vec<u32> = events.iter().flat_map(|event| school.speech_ids(event)).collect();
         let stop = self.school_state != Some(state);
         self.school_state = Some(state);
+        let verdict = self.school_verdict.unwrap_or(school::NO_VERDICT);
+        let time = self.game.race_clock().time;
+        let reasons = if state == school::STATE_ENDED && verdict == 0 {
+            school
+                .failure_reasons(time)
+                .into_iter()
+                .map(|reason| school::Reason { lesson: reason.lesson, key: reason.key })
+                .collect()
+        } else {
+            Vec::new()
+        };
         Some(
             School {
                 lesson: school.lesson().index(),
                 state,
-                verdict: self.school_verdict.unwrap_or(school::NO_VERDICT),
-                time: self.game.race_clock().time,
+                verdict,
+                time,
                 perfect: school.bank().perfect_time,
                 pass: school.bank().pass_time,
                 incident,
                 stop,
                 speech,
+                reasons,
             }
             .record(),
         )
