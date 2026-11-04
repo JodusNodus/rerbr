@@ -42,6 +42,7 @@ pub mod peek;
 pub mod pose;
 pub mod realtime;
 pub mod replay;
+pub mod school;
 pub mod shift;
 pub mod sound;
 pub mod splits;
