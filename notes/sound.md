@@ -116,6 +116,21 @@ come from the retail `audio.dat` (`audio.dat.disabled` in RSF installs).
 
 - NGP's FMOD output sits 6.8 dB (car) and 8.8 dB (outside) above ours (not in code).
 - Checked: gvrc's C2 S1600 bank loads (not in code).
+- Checked: all 63 banks on this machine (57 RSF, 6 gvrc) carry `event:/wheel` with 2-4 layers over `brake`
+  and `wheel_speed` (2026-11-04); its four instances play with per-wheel speeds and brake from FMB1, the car
+  speed when the block is missing. Renders of pack cars with banks (Focus Mk II RS WRC 2006 on drive2/5,
+  Fiesta rally3 evo and DS3 R1 on the tanner drive, Evo IX on rsf-test1/1; `/tmp/car-pack-sound/`, not kept)
+  command the wheel loops every driving step (`--log`'s `fmod_wheel`) and the solo-`fmod` mix matches the full
+  mix, engine-dominated as Sound-C measured the original's.
+- Checked: `skid_int`, `skid_ext` and `gear_grind` are empty in all 63 banks (their events reference no
+  sheets; the daemon loads neither), so there is nothing to play (2026-11-04, scan, not in code).
+- Checked: the `gear`/`state` parameters (2026-11-04). Every bank tiles `gear` [-1, 8] per gear with `state`
+  [0.5, 1] for upshifts and [~0.085, ~0.49] for downshifts, which is what the shift logic sends (0.6-1.0 up,
+  0.1-0.5 down, else 0); a down `state` of 0.487-0.497 lands in neither, as the daemon's does (inferred from
+  the bank ranges and the event structure). A tanner-drive render fires a launch shift's gear shot end to end.
+- Aston's `event:/wind 2` (its only wind) is not played: no daemon slot addresses it (inferred NGP-silent too).
+- `suspension_damage` (56 banks) is never set by the daemon; ours stays 0 (undamaged), which holds 306_maxi_B's
+  one wheel bus-vol at -80 dB (inferred).
 
 ## Open
 

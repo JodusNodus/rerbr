@@ -319,7 +319,7 @@ fn read_answer(reader: &mut impl Read) -> Result<Option<Answer>, String> {
 }
 
 /// The load and the loops' and one-shots' columns of a `--log` line.
-fn log_line(inputs: &Inputs, commands: &[Command]) -> String {
+fn log_line(inputs: &Inputs, commands: &[Command], fmod: Option<&rbr_sound::fmod::FmodCar>) -> String {
     let load = rbr_sound::engine::EngineNoise::from_payload(&inputs.sound.engine, inputs.ngp.min_rpm).load;
     let mut cells = vec![load.to_string()];
     for voice in [Loop::Gearbox, Loop::Diff, Loop::Turbo, Loop::Wind, Loop::Siren] {
@@ -364,6 +364,32 @@ fn log_line(inputs: &Inputs, commands: &[Command]) -> String {
         })
         .collect();
     cells.push(shots.join(" "));
+    // The FMOD bank's wheel, transmission and engine loops (summed gains) and gear one-shots (slot@gain), by slot role.
+    let (mut wheel, mut trans, mut engine) = (0.0f32, 0.0f32, 0.0f32);
+    let mut gear = Vec::new();
+    if let Some(car) = fmod {
+        use rbr_sound::fmod::Role;
+        for c in commands {
+            match *c {
+                Command::FmodLoop { slot, gain, .. } => {
+                    let role = car.slots.get(usize::from(slot)).map(|s| s.role);
+                    match role {
+                        Some(Role::Wheel(_)) => wheel += gain,
+                        Some(Role::Transmission) => trans += gain,
+                        Some(Role::Engine(_)) => engine += gain,
+                        _ => {}
+                    }
+                }
+                Command::FmodShot { slot: Some(slot), gain, .. }
+                    if car.slots.get(usize::from(slot)).is_some_and(|s| matches!(s.role, Role::Gear(_))) =>
+                {
+                    gear.push(format!("{slot}:{gain}"));
+                }
+                _ => {}
+            }
+        }
+    }
+    cells.extend([wheel.to_string(), trans.to_string(), engine.to_string(), gear.join(" ")]);
     cells.join(",")
 }
 
@@ -431,7 +457,12 @@ fn run() -> Result<(), String> {
     }
 
     let mut command = process::Command::new(&args.standalone);
-    command.args(["--live", "--boot", "--stage", &stage, "--car", &car, "--weather", &weather, "--tyre", &tyre]);
+    // An RSF or pack car races slot 5 by construction (`--rsf-car`, `--car-pack`), so the standalone takes no
+    // `--car` for it (it rejects the two together); a retail car is named as ever.
+    command.args(["--live", "--boot", "--stage", &stage, "--weather", &weather, "--tyre", &tyre]);
+    if args.rsf_car.is_none() && args.pack_car.pack.is_none() {
+        command.args(["--car", &car]);
+    }
     command.args(["--frames", "-"]);
     command.arg("--ngp-physics").arg(&args.ngp_physics);
     if let Some(key) = &args.rsf_car {
@@ -461,7 +492,7 @@ fn run() -> Result<(), String> {
             writeln!(
                 file,
                 "step,rpm,load,gearbox_gain,gearbox_pitch,diff_gain,diff_pitch,turbo_gain,turbo_pitch,wind_gain,wind_pitch,\
-                 siren_gain,siren_pitch,tyres,rumble,wetness,surface,shots"
+                 siren_gain,siren_pitch,tyres,rumble,wetness,surface,shots,fmod_wheel,fmod_trans,fmod_engine,fmod_gear"
             )
             .map_err(|e| e.to_string())?;
             Some(std::io::BufWriter::new(file))
@@ -501,7 +532,7 @@ fn run() -> Result<(), String> {
                 mixer.apply(&models.events(events.get(&frame).unwrap_or(&none), &scene));
             }
             if let Some(log) = &mut log {
-                writeln!(log, "{answered},{},{}", mixer.rpm(), log_line(&inputs, &commands))
+                writeln!(log, "{answered},{},{}", mixer.rpm(), log_line(&inputs, &commands, models.fmod.as_ref()))
                     .map_err(|e| e.to_string())?;
             }
         }
