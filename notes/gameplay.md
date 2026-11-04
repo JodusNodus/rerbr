@@ -118,7 +118,7 @@ yet: the oracle run is open.
   `Init`, `Set7`, `SetThresh`, `SetLim`, `MaxStore`, the getters), `InitState`, `Publish`, `RallySchoolSound` and
   the latch accessors.
 - `SchoolIncident` reads its lead through the sub's words whatever it points at: a check lead is armed by its
-  bounds (`IsArmed` on +0x14/+0x18; the records agree, none was found to tell the two reads apart).
+  bounds (`IsArmed` on +0x14/+0x18). Inferred: no record has an untripped check lead with a zero bound.
 
 - Flow mode 7: the lesson is the flow's +0xca4, its step counter +0xca8 (2 in a timed lesson's load, 4 while
   driving); +0xcb4 is set by the untimed lessons' (0, 4, 10, 13, 14, 16) load only (`M5693f0` cases 2 and 4).
