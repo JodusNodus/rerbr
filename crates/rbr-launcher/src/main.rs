@@ -23,7 +23,7 @@
 //! the CRT's `rand()` stream seeded with the time when the launcher starts (the game seeds it
 //! at its start too; the menus' own `rand()` calls between are not modelled, ours); the Drive page shows the next
 //! draw, and each Start takes it. A preset chooses the stage variant and dry, damp or wet render
-//! folder; map 68 has no good or bad row and the original stops at its int3. Road wetness overrides the row's (the
+//! folder; map 68's one row is in neither list, so the original stops at its int3 for good and bad; ours gives it that row. Road wetness overrides the row's (the
 //! viewer's road, the auto tyre and `rbr-standalone --wetness` follow); road wear is the `.mat` road wear (random
 //! draws it, a specific row takes the chosen wear); the time of day is ours, not the stage's baked light; fog is ours
 //! over the stage (`viewer --fog`). The viewer draws the row's exact `TrackSettings.ini` section (`viewer --sky`).

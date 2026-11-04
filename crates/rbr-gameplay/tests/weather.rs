@@ -94,8 +94,8 @@ fn every_retail_weather_selects_a_mat_table_of_its_stage() {
     loaded.dedup();
     eprintln!("{checked} weathers of {} maps checked; no row (int3): {stops:?}", maps.len());
     eprintln!("{} stages loaded by some weather: {loaded:?}", loaded.len());
-    // Map 68 is the only retail map with a row and no listed one.
-    assert_eq!(stops, [(68, Preset::Good), (68, Preset::Bad)]);
+    // Map 68 is the only retail map with a row and no listed one; ours gives it that row (`Season::unlisted`).
+    assert_eq!(stops, []);
 }
 
 #[test]

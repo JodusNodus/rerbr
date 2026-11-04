@@ -746,10 +746,8 @@ mod tests {
             println!("launcher: map {map}: {reason}");
         }
         assert_eq!(catalog.maps.len(), 58, "retail maps changed");
-        assert_eq!(startable.len(), 57);
-        assert_eq!(unavailable.len(), 1);
-        assert_eq!(unavailable[0].0, 68);
-        assert!(unavailable[0].1.contains("int3"));
+        assert_eq!(startable.len(), 58);
+        assert_eq!(unavailable, []);
     }
 
     #[test]

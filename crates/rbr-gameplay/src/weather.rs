@@ -11,7 +11,9 @@
 //! - random (`E74_FindBest`, 0x5b53b0): the map's row number `rand() % n`, and the wear `rand() % 10 > 6`, so normal
 //!   or worn.
 //!
-//! A map with no row in the list (68 and every map without rows) hits the `int3` in `InitA`/`InitB`. What the data
+//! A map with no row in the list (68 and every map without rows) hits the `int3` in `InitA`/`InitB`. Map 68 does have
+//! a table row (267, dry crisp clear), only unlisted, so ours gives it that row for the good and bad weathers too
+//! (`Season::unlisted`); a map without table rows still stops. What the data
 //! cannot give, [`quick_race`] takes as [`Draws`]: the random weather's two `rand()` draws (the CRT's state at the
 //! race start) and the wear the bad weather keeps (the daemon's constructor leaves it unset; the first race of a
 //! fresh game keeps 0, new, as the snapshots show).
@@ -158,6 +160,13 @@ impl Season {
         (0..self.rows.len()).filter(move |&k| self.rows[k].map == map)
     }
 
+    /// Ours, not the game's: the map's first table row when no list names it, so the good and bad weathers do not
+    /// reach the `int3`. Only map 68 (USA) is such a map: its one row (267, dry crisp clear `68M_crisp_clear`) is in
+    /// the table but in neither list, so only the random weather starts it in the game.
+    fn unlisted(&self, map: u32) -> Option<usize> {
+        self.rows_of(map).next()
+    }
+
     /// `M9650`/`M96f0`: the first row of `list` that is `map`'s.
     fn listed(&self, list: &[u32], map: u32) -> Option<usize> {
         list.iter().map(|&k| k as usize).find(|&k| self.rows.get(k).is_some_and(|r| r.map == map))
@@ -241,8 +250,8 @@ pub fn quick_race(season: &Season, map: u32, preset: Preset, draws: Draws) -> Re
         return Ok(Weather { map, row: None, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0, wear: 0 });
     }
     let row = match preset {
-        Preset::Good => season.listed(&season.nice, map),
-        Preset::Bad => season.listed(&season.bad, map),
+        Preset::Good => season.listed(&season.nice, map).or_else(|| season.unlisted(map)),
+        Preset::Bad => season.listed(&season.bad, map).or_else(|| season.unlisted(map)),
         Preset::Random => match draws.row {
             Some(k) if season.rows.get(k).is_some_and(|r| r.map == map) => Some(k),
             Some(k) => return Err(format!("season row {k} is not map {map}'s")),
@@ -545,6 +554,27 @@ mod tests {
         let w = quick_race(&s, 4, Preset::Bad, Draws { row: None, wear: 2 }).unwrap();
         assert_eq!((w.stage(), w.mat_words(), w.wet_meshes()), ("track-4_M".into(), ("new", "dry"), false));
         assert!(quick_race(&s, 68, Preset::Good, Draws::default()).is_err());
+    }
+
+    #[test]
+    fn a_map_with_a_row_in_no_list_takes_its_row_for_good_and_bad() {
+        let mut bytes = Vec::new();
+        // Map 20 M crisp clear (listed), map 68 M crisp clear (in no list).
+        for map in [20u32, 68] {
+            for w in [map, 0, 0, 0, 0, 0] {
+                bytes.extend(w.to_le_bytes());
+            }
+        }
+        bytes.resize(SEASON_ROWS * ROW_BYTES, 0);
+        let s = Season::parse(&bytes, "0\n123456", "0\n123456");
+        for preset in [Preset::Good, Preset::Bad, Preset::Random] {
+            let w = quick_race(&s, 68, preset, Draws { row: None, wear: 1 }).unwrap();
+            assert_eq!((w.row, w.stage(), w.mat_words().1), (Some(1), "track-68_M".into(), "dry"));
+            assert_eq!(w.section().as_deref(), Some("68M_crisp_clear"));
+        }
+        // A listed map keeps its listed row; a map with no table row still stops.
+        assert_eq!(quick_race(&s, 20, Preset::Bad, Draws::default()).unwrap().row, Some(0));
+        assert!(quick_race(&s, 69, Preset::Good, Draws::default()).is_err());
     }
 
     #[test]
