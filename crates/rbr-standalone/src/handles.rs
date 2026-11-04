@@ -429,4 +429,16 @@ mod tests {
         // The skipped maps (4, 68, 69, 72-89), Hokkaido and the rally school (root scripts), the other rallies.
         assert_eq!(bases, [(1, 21), (0x83, 7), (0xd1, 30)].into());
     }
+
+    /// A stage past the retail maps (an RSF stage's id, a BTB stage's number) takes the common flip scripts.
+    #[test]
+    fn a_stage_of_its_own_number_counts_the_common_scripts() {
+        let Some((data, mem)) = retail() else {
+            eprintln!("RBR_DATA or RBR_PATCH unset; skipped");
+            return;
+        };
+        let count = |map| objects_before_car(&data, &mem, map).unwrap();
+        // Map 41's own rally folder holds more flip spectators (0xd1 objects) than the common scripts (0x83).
+        assert_eq!((count(41), count(1001), count(1_000_007)), (0xd1, 0x83, 0x83));
+    }
 }

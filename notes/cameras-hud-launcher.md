@@ -82,7 +82,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   the menu bank's (all 384 x 184); RSF stages show `rsfdata/images/stage_images/<id>.png` (what RSF's menus show,
   1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look
   alike. Three of RSF's 658 (588, 629, 630) are JPEGs named `.png` and show the poster (no JPEG decoder).
-- BTB stages (`btb.rs`, `notes/btb.md` "Playing"): the RSF install's `RX_CONTENT/Tracks` folders are listed with its stages (number = RSF id), Start builds their map 41 files into `<files>/btb/<folder>/`; map 41's M weathers, no records or ghosts.
+- BTB stages (`btb.rs`, `notes/btb.md` "Playing"): the RSF install's `RX_CONTENT/Tracks` folders are listed with its stages (number = RSF id, else a synthetic one), Start builds the stage's files into `<files>/btb/<folder>/`; its weathers are map 41's rows under its number (`Season::of_btb`), its records and ghosts are kept under that number.
 - Stage browser: “Newest” sorts by map number, highest first (RSF numbers maps as it adds them); no hand-kept
   release dates (user decision 2026-11-03).
 - Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive

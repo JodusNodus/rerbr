@@ -10,9 +10,9 @@ Goal (user, 2026-10-17): RBR with NGP 7 physics and its NGP cars, on the origina
   in place ([formats.md](formats.md#rsf-cars); `--rsf-car`).
 - **Modded stages:** community stages in the original format, one folder per stage under `Maps/`, with RSF's
   `Tracks<id>.ini`, `TrackSettings<id>.ini` and `TextureFilenameMap<id>.ini` ([formats.md](formats.md#rsf-stages)).
-- **BTB stages (experimental, 2026-11-03):** RallySimFans' `RX_CONTENT/Tracks/<folder>/` stages, played as its
-  `rbr_rx.dll` plugin plays them (retail map 41 M with five files built from the folder), in their own crate
-  `rbr-btb` so they can be dropped ([btb.md](btb.md)).
+- **BTB stages (experimental, 2026-11-03):** RallySimFans' `RX_CONTENT/Tracks/<folder>/` stages, each a folder
+  stage of its own number with six files built from the folder (the plugin plays them as retail map 41 M), in their own
+  crate `rbr-btb` so they can be dropped ([btb.md](btb.md)).
 - **Live play:** all of it together: pacing, HUD, sound, force feedback.
 
 No original code runs. It reads the game data and the retail exe's data sections at run time, never transcribed. It is

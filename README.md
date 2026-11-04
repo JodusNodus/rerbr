@@ -64,8 +64,8 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
   share one slot: the same ghosts, and the service park repairs them by that slot's rules. Their setups are their
   own, per car and surface, with RSF's own setups listed too.
 - **Encrypted RSF stages** are not decrypted; they stay in the list, marked unavailable.
-- **BTB stages** (RallySimFans' `RX_CONTENT/Tracks`) are drawn without bump or specular maps, only in dry weather, and
-  keep no records or ghosts.
+- **BTB stages** (RallySimFans' `RX_CONTENT/Tracks`) are drawn without bump or specular maps. Each is a stage of its
+  own, with its own records and ghosts; its weathers are retail map 41's (Mont Blanc).
 - **Force feedback** uses the first device it finds; set `device =` in the `[ffb]` section of
   `launcher-settings.ini` to pick another.
 
