@@ -503,7 +503,7 @@ impl RallyPage {
         let (parts, rules) = match ngp {
             Some(archive) => {
                 let own = car
-                    .rsf
+                    .community
                     .as_ref()
                     .and_then(|r| r.pack.as_ref().ok())
                     .and_then(|path| service::repair_parts_of(&rbr_formats::rsf::Pack::open(path).ok()?));

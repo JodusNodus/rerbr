@@ -3,7 +3,7 @@
 //!
 //! Each car's `<car>.ini` has `Cam_*` sections (`notes/formats.md` "Cars"): `Pos`, `Target` and `Up` in the car
 //! model's frame (front `-z`, left `+x`, up `+y`), `FOV` in radians and `Near` in metres. `E09_LoadCarCameras`
-//! (0x469210) reads `Cam_bonnet`, `Cam_internal` and `Cam_bonnet2`. An RSF car's `<car>_personal.ini` beside it
+//! (0x469210) reads `Cam_bonnet`, `Cam_internal` and `Cam_bonnet2`. A community car's `<car>_personal.ini` beside it
 //! replaces those sections ([`crate::car::camera_sections`]). The viewer takes the place, the target and the near
 //! plane, and not `FOV`: the in-car, bonnet and bumper views have the horizontal field of view of `viewer --fov`
 //! (default [`crate::coords::FOV_DEGREES`]), the chase its own fixed one ([`crate::playback::CHASE_FOV_DEGREES`]).

@@ -26,7 +26,7 @@ use crate::damage::MeshDamage;
 use crate::parallel::in_parallel;
 use crate::stage::{Draw, Image, Mesh, Stage, StageTexture, TextureRef, TextureSet, Vertex};
 use glam::{IVec3, Mat4, Vec2, Vec3};
-use rbr_formats::rsf::gauges::{self, Atlas, Kind};
+use rbr_formats::rbrhud::{self, Atlas, Kind};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -511,11 +511,11 @@ const SEEN_Z: [f32; 2] = [0.5, 0.45];
 pub type Face = (Vec2, Vec2);
 
 /// The dial faces of the RBRHUD gauges of the car whose folder is `car_folder` (the ones [`crate::dials`] draws), under
-/// the RSF install `root`, by the texture of `stage` each is on. Ours: the faces are not in the data, the needles are,
+/// the install `root`, by the texture of `stage` each is on. Ours: the faces are not in the data, the needles are,
 /// so a face is the circle about a needle's pivot as far as the needle reaches, and a quarter more ([`FACE`]).
 pub fn gauge_faces(root: &Path, car_folder: &str, stage: &Stage) -> BTreeMap<TextureRef, Vec<Face>> {
     let mut faces: BTreeMap<TextureRef, Vec<Face>> = BTreeMap::new();
-    let Some((folder, configs)) = gauges::variant(root, car_folder) else { return faces };
+    let Some((folder, configs)) = rbrhud::variant(root, car_folder) else { return faces };
     for config in configs {
         let Some(atlas) = rbr_formats::cars::resolve(&folder, &config.atlas)
             .and_then(|path| std::fs::read(path).ok())

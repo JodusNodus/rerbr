@@ -68,7 +68,7 @@ Treat `original/`, `build/` and the recordings as local data. Do not commit thei
   every retail file it covers (`RBR_DATA`).
 - Physics ports are pure functions over typed values; memory access (`Mem`, raw offsets) only in the subsystem's
   `layout.rs` or `layout/` directory.
-- Never commit game files: no binaries, data, RSF content or anything extracted from them. The exceptions are the
+- Never commit game files: no binaries, data, community content or anything extracted from them. The exceptions are the
   generated tables of the 1.02 exe's data words (`exe_data.rs`, `lsp_tables.rs`), which
   let the game run on the retail disc's files alone.
 

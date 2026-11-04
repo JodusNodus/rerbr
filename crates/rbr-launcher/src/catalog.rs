@@ -38,26 +38,26 @@ fn is_ngp_car(common: &str) -> bool {
 /// NGP data for, and the RSF and added cars. With RSF's cars, the retail slot 5 is left out: in RallySimFans' archive
 /// it is the RSF car last picked, which the list already has.
 pub fn ngp_offered(cars: &[Car], ngp_cars: &[u32]) -> Vec<Car> {
-    let rsf = cars.iter().any(|c| c.rsf.as_ref().is_some_and(|r| !r.added));
-    let offered = |c: &&Car| c.rsf.is_some() || ngp_cars.contains(&c.index) && !(rsf && c.index == rsf::SLOT);
+    let rsf = cars.iter().any(|c| c.community.as_ref().is_some_and(|r| !r.added));
+    let offered = |c: &&Car| c.community.is_some() || ngp_cars.contains(&c.index) && !(rsf && c.index == rsf::SLOT);
     cars.iter().filter(offered).cloned().collect()
 }
 
-/// A car of `Cars/Cars.ini`, or an RSF or added car raced in RSF's slot.
+/// A car of `Cars/Cars.ini`, or a community car raced in RSF's slot.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Car {
-    /// Its game's car number (`rbr-standalone --car`). An RSF car has none: `rsf::SLOT` stands in, and it is told by
-    /// `rsf`.
+    /// Its game's car number (`rbr-standalone --car`). A community car has none: `rsf::SLOT` stands in, and it is told by
+    /// `community`.
     pub index: u32,
     /// Its folder, upper case (`viewer --car`); an RSF car's name.
     pub name: String,
-    pub rsf: Option<RsfCar>,
+    pub community: Option<CommunityCar>,
 }
 
-/// An RSF car of the cache (`rbr_formats::rsf`), or a car pack the player added (`car_packs`, laid out as RSF's):
+/// A community car: one of the cache's (`rbr_formats::rsf`), or a car pack the player added (`car_packs`, laid out as RSF's):
 /// `rbr-standalone` and the viewer read its pack (`--rsf-car`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RsfCar {
+pub struct CommunityCar {
     /// RSF's id; an added car's is ours, not RSF's.
     pub id: u32,
     /// Added from a car pack, not RSF's.
@@ -76,7 +76,7 @@ impl Car {
     /// first. A retail car's is its number; an RSF car's is `rsf-<id>` (`camera_prefs::car_key`), then `5`: the
     /// setups saved before RSF cars had keys of their own, offered to every RSF car.
     pub fn setup_keys(&self) -> Vec<String> {
-        match &self.rsf {
+        match &self.community {
             Some(rsf) => vec![camera_prefs::car_key(&self.name, Some(rsf.id)), rsf::SLOT.to_string()],
             None => vec![self.index.to_string()],
         }
@@ -84,7 +84,7 @@ impl Car {
 
     /// Why the car can't start (an RSF car needs its pack and a model), or `None`.
     pub fn unavailable(&self) -> Option<String> {
-        let rsf = self.rsf.as_ref()?;
+        let rsf = self.community.as_ref()?;
         match (&rsf.pack, &rsf.model) {
             (Err(e), _) | (_, Err(e)) => Some(e.clone()),
             _ => None,
@@ -92,9 +92,9 @@ impl Car {
     }
 }
 
-/// The cars of the RSF install at `root` (its cache's `cars.json`; the added cars' folder, `added`), in RSF's slot,
-/// their models checked against the install's `Cars.ini` (`install`) for the retail stand-ins.
-pub fn rsf_cars(install: &Path, root: &Path, added: bool) -> Result<Vec<Car>, String> {
+/// The community cars of the folder at `root` (an RSF install's cache, `cars.json`, or the added cars' folder when
+/// `added`), in RSF's slot, their models checked against the install's `Cars.ini` (`install`) for the retail stand-ins.
+pub fn community_cars(install: &Path, root: &Path, added: bool) -> Result<Vec<Car>, String> {
     let rsf = rsf::Install::open(root)?;
     let cars_ini = install.join("Cars").join("Cars.ini");
     let text = std::fs::read(&cars_ini).map_err(|e| format!("{}: {e}", cars_ini.display()))?;
@@ -112,7 +112,7 @@ pub fn rsf_cars(install: &Path, root: &Path, added: bool) -> Result<Vec<Car>, St
             Car {
                 index: rsf::SLOT,
                 name: car.name.clone(),
-                rsf: Some(RsfCar {
+                community: Some(CommunityCar {
                     id: car.id,
                     added,
                     group: car.group.clone(),
@@ -139,8 +139,8 @@ pub struct Stage {
 pub struct Map {
     pub number: u32,
     pub stages: Vec<Stage>,
-    /// A RallySimFans stage folder's map ([`Catalog::set_rsf`]).
-    pub rsf: Option<rsf::Stage>,
+    /// A RallySimFans stage folder's map ([`Catalog::set_community_stages`]).
+    pub community: Option<rsf::Stage>,
     /// A BTB stage's map ([`crate::btb`]): a stage of its own number.
     pub btb: Option<crate::btb::Btb>,
 }
@@ -158,7 +158,7 @@ impl Map {
 
     /// Why the community or BTB stage cannot start.
     pub fn problem(&self) -> Option<&String> {
-        self.rsf.as_ref().and_then(|s| s.problem.as_ref()).or(self.btb.as_ref().and_then(|b| b.problem.as_ref()))
+        self.community.as_ref().and_then(|s| s.problem.as_ref()).or(self.btb.as_ref().and_then(|b| b.problem.as_ref()))
     }
 
     /// The name the menus show: the game's, or the community stage's.
@@ -166,7 +166,7 @@ impl Map {
         if let Some(btb) = &self.btb {
             return btb.name.clone();
         }
-        match &self.rsf {
+        match &self.community {
             Some(stage) => stage.name.clone(),
             None => title(self.number).map_or_else(|| format!("Map {}", self.number), str::to_owned),
         }
@@ -178,7 +178,7 @@ impl Map {
         if self.btb.is_some() {
             return Cow::Owned(Season::of_btb(season, self.number, self.sky_map()));
         }
-        match &self.rsf {
+        match &self.community {
             Some(stage) => Cow::Owned(Season::of_rsf(stage, None)),
             None => Cow::Borrowed(season),
         }
@@ -189,7 +189,7 @@ impl Map {
         if let Some(btb) = &self.btb {
             return btb.surface_kind();
         }
-        match self.rsf.as_ref().map(|s| s.surface) {
+        match self.community.as_ref().map(|s| s.surface) {
             Some(Some(rsf::Surface::Gravel)) => 0,
             Some(Some(rsf::Surface::Tarmac)) => 1,
             Some(Some(rsf::Surface::Snow)) => 2,
@@ -226,7 +226,7 @@ impl Catalog {
             .map_err(|e| e.to_string())?
             .iter()
             .filter_map(|e| {
-                Some(Car { index: e.index as u32, name: car_folder(&e.file_name)?.to_uppercase(), rsf: None })
+                Some(Car { index: e.index as u32, name: car_folder(&e.file_name)?.to_uppercase(), community: None })
             })
             .collect();
 
@@ -245,7 +245,7 @@ impl Catalog {
             .into_iter()
             .map(|(number, mut stages)| {
                 stages.sort_by_key(|s| s.letter);
-                Map { number, stages, rsf: None, btb: None }
+                Map { number, stages, community: None, btb: None }
             })
             .collect();
         Ok(Catalog { cars: Vec::new(), all_cars: cars, maps })
@@ -255,8 +255,8 @@ impl Catalog {
     /// `rbr_formats::rsf`; none when it is empty), after the retail maps; one that does not load stays listed with its
     /// reason ([`Catalog::availability`]). A folder whose `Tracks<id>.ini` does not read, or whose id a retail map has,
     /// is reported and left out.
-    pub fn set_rsf(&mut self, root: &str) {
-        self.maps.retain(|m| m.rsf.is_none() && m.btb.is_none());
+    pub fn set_community_stages(&mut self, root: &str) {
+        self.maps.retain(|m| m.community.is_none() && m.btb.is_none());
         if root.trim().is_empty() {
             return;
         }
@@ -274,7 +274,7 @@ impl Catalog {
             }
             let stages =
                 stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
-            self.maps.push(Map { number: stage.id, stages, rsf: Some(stage), btb: None });
+            self.maps.push(Map { number: stage.id, stages, community: Some(stage), btb: None });
         }
         let taken: Vec<u32> = self.maps.iter().map(|m| m.number).collect();
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
@@ -283,10 +283,10 @@ impl Catalog {
     /// Replaces the RSF cars by those of the RSF folder `dir` (none, with the reason on stderr, when it doesn't read;
     /// none for an empty `dir`), then the added cars of `added` (`car_packs::DIR`). A car both have (by pack folder or
     /// name) is the added one: the player downloaded it over RSF's, which is back once it is removed.
-    pub fn set_rsf_cars(&mut self, install: &Path, dir: &str, added: &Path) {
-        self.all_cars.retain(|c| c.rsf.is_none());
+    pub fn set_community_cars(&mut self, install: &Path, dir: &str, added: &Path) {
+        self.all_cars.retain(|c| c.community.is_none());
         if !dir.trim().is_empty() {
-            match rsf_cars(install, Path::new(dir.trim()), false) {
+            match community_cars(install, Path::new(dir.trim()), false) {
                 Ok(cars) => self.all_cars.extend(cars),
                 Err(e) => eprintln!("launcher: RSF cars: {e}"),
             }
@@ -295,16 +295,16 @@ impl Catalog {
             return;
         }
         let pack_name = |c: &Car| {
-            let pack = c.rsf.as_ref()?.pack.as_ref().ok()?;
+            let pack = c.community.as_ref()?.pack.as_ref().ok()?;
             Some(pack.file_name()?.to_string_lossy().trim_end_matches(".zip").to_lowercase())
         };
-        match rsf_cars(install, added, true) {
+        match community_cars(install, added, true) {
             Ok(cars) => {
                 let added: Vec<(Option<String>, String)> =
                     cars.iter().map(|c| (pack_name(c), c.name.to_lowercase())).collect();
                 let kept = |c: &Car| {
                     let (pack, name) = (pack_name(c), c.name.to_lowercase());
-                    c.rsf.is_none() || !added.iter().any(|(p, n)| (p.is_some() && *p == pack) || *n == name)
+                    c.community.is_none() || !added.iter().any(|(p, n)| (p.is_some() && *p == pack) || *n == name)
                 };
                 self.all_cars.retain(kept);
                 self.all_cars.extend(cars);
@@ -359,7 +359,7 @@ impl Catalog {
         words: &rbr_formats::ghost::Weather,
     ) -> Option<(Stage, Weather)> {
         let entry = self.map(map)?;
-        if entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
+        if entry.community.as_ref().is_some_and(|r| r.problem.is_some()) {
             return None;
         }
         let weather = entry.season(season).ghost_weather(map, words)?;
@@ -521,7 +521,7 @@ pub fn tyre_label(tyre: u32) -> &'static str {
 }
 
 pub fn map_label(map: &Map) -> String {
-    if let Some(stage) = &map.rsf {
+    if let Some(stage) = &map.community {
         return format!("{} {} (RSF)", map.number, stage.name);
     }
     if let Some(btb) = &map.btb {
@@ -537,7 +537,7 @@ pub fn map_label(map: &Map) -> String {
 /// test maps (`[HOMEBASE]`, `[RSSTAGE]`, `[RALLYYARD]` and the unnamed ones; user decision: no rally school). They
 /// still start from the viewer's and `rbr-standalone`'s command lines.
 pub fn is_listed(map: &Map) -> bool {
-    map.rsf.is_some() || map.btb.is_some() || title(map.number).is_some_and(|name| !name.starts_with('['))
+    map.community.is_some() || map.btb.is_some() || title(map.number).is_some_and(|name| !name.starts_with('['))
 }
 
 /// The stage's name in the game: `E52ModeHost::M4a1020` (0x4a1020), queried by map number.
@@ -587,7 +587,7 @@ pub fn title(map: u32) -> Option<&'static str> {
 }
 
 pub fn car_label(car: &Car) -> String {
-    match &car.rsf {
+    match &car.community {
         Some(rsf) if rsf.added => format!("{} ({}, added)", car.name, rsf.group.as_deref().unwrap_or("no group")),
         Some(rsf) => format!("{} ({}, RSF {})", car.name, rsf.group.as_deref().unwrap_or("no group"), rsf.id),
         None => format!("{} ({})", car.name, car.index),
@@ -623,22 +623,28 @@ mod tests {
     /// A retail car's setups are its number's; an RSF car has its own key, then the old slot 5's.
     #[test]
     fn setup_keys_are_the_cars_own_with_slot_5_behind_an_rsf_car() {
-        let rsf =
-            RsfCar { id: 24, added: false, group: None, pack: Ok("/p".into()), model: Ok(None), drive_train: None };
-        let car = |index, rsf| Car { index, name: "Evo".into(), rsf };
+        let rsf = CommunityCar {
+            id: 24,
+            added: false,
+            group: None,
+            pack: Ok("/p".into()),
+            model: Ok(None),
+            drive_train: None,
+        };
+        let car = |index, community| Car { index, name: "Evo".into(), community };
         assert_eq!(car(6, None).setup_keys(), ["6"]);
         assert_eq!(car(rsf::SLOT, Some(rsf.clone())).setup_keys(), ["rsf-24", "5"]);
-        assert_eq!(car(rsf::SLOT, Some(RsfCar { id: 25, ..rsf })).setup_keys(), ["rsf-25", "5"]);
+        assert_eq!(car(rsf::SLOT, Some(CommunityCar { id: 25, ..rsf })).setup_keys(), ["rsf-25", "5"]);
     }
 
     /// NGP's retail slots are offered, the others hidden; with RSF cars the retail slot 5 is too.
     #[test]
     fn the_offered_cars_are_the_ones_ngp_drives() {
-        let retail = |index| Car { index, name: format!("RETAIL{index}"), rsf: None };
+        let retail = |index| Car { index, name: format!("RETAIL{index}"), community: None };
         let rsf = Car {
             index: rsf::SLOT,
             name: "RSF".into(),
-            rsf: Some(RsfCar {
+            community: Some(CommunityCar {
                 id: 24,
                 added: false,
                 group: None,
@@ -698,16 +704,16 @@ mod tests {
             ],
         );
         let mut catalog = Catalog::default();
-        catalog.set_rsf_cars(&install, &rsf_root.display().to_string(), &added);
+        catalog.set_community_cars(&install, &rsf_root.display().to_string(), &added);
         let listed: Vec<(String, bool)> =
-            catalog.all_cars.iter().map(|c| (c.name.clone(), c.rsf.as_ref().unwrap().added)).collect();
+            catalog.all_cars.iter().map(|c| (c.name.clone(), c.community.as_ref().unwrap().added)).collect();
         let want = [("Evo IX N4 (gvrc)", true), ("Ford Fiesta Rally2", true), ("Alpine A110", true)];
         assert_eq!(listed, want.map(|(n, a)| (n.to_owned(), a)));
         assert_eq!(car_label(&catalog.all_cars[2]), "Alpine A110 (no group, added)");
         // Without RSF the added ones; the retail slot 5 stays offered (it is not RSF's last pick).
-        catalog.set_rsf_cars(&install, " ", &added);
+        catalog.set_community_cars(&install, " ", &added);
         assert_eq!(catalog.all_cars.len(), 3);
-        let retail = Car { index: 5, name: "RETAIL5".into(), rsf: None };
+        let retail = Car { index: 5, name: "RETAIL5".into(), community: None };
         catalog.all_cars.insert(0, retail);
         catalog.offer(&[5]);
         assert_eq!(catalog.cars.len(), 4);
@@ -738,7 +744,7 @@ mod tests {
             problem: None,
         };
         let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };
-        let map = Map { number, stages: vec![stage.clone()], rsf: None, btb: Some(btb) };
+        let map = Map { number, stages: vec![stage.clone()], community: None, btb: Some(btb) };
         let catalog = Catalog { maps: vec![map], ..Catalog::default() };
         for (preset, row, wetness) in [(Preset::Good, 0, 0), (Preset::Bad, 1, 2)] {
             let (found, weather) = catalog.stage_weather(&retail, number, preset, weather::Draws::default()).unwrap();
@@ -860,7 +866,7 @@ mod tests {
         let mut catalog = Catalog::default();
         let base = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new(), sky: None };
         let check = |catalog: &mut Catalog| {
-            catalog.set_rsf(root.to_str().unwrap());
+            catalog.set_community_stages(root.to_str().unwrap());
             let map = catalog.map(777).unwrap().clone();
             let rows = environment_rows(&map.season(&base), 777);
             let picks: Vec<_> = [Preset::Good, Preset::Bad, Preset::Random]
@@ -886,19 +892,19 @@ mod tests {
 
     /// Setting the RSF folder again leaves the same stages; clearing it leaves the retail ones.
     #[test]
-    fn set_rsf_replaces_the_rsf_stages() {
+    fn set_community_stages_replaces_the_community_stages() {
         let (Some(install), Some(rsf)) = (std::env::var_os("RBR_DATA"), std::env::var("RBR_RSF").ok()) else {
             eprintln!("skipping: RBR_DATA or RBR_RSF not set");
             return;
         };
         let mut catalog = Catalog::scan(Path::new(&install)).unwrap();
         let retail = catalog.maps.len();
-        catalog.set_rsf(&rsf);
+        catalog.set_community_stages(&rsf);
         let with_rsf = catalog.maps.len();
         assert!(with_rsf > retail, "no RSF stages in {rsf}");
-        catalog.set_rsf(&rsf);
+        catalog.set_community_stages(&rsf);
         assert_eq!(catalog.maps.len(), with_rsf);
-        catalog.set_rsf(" ");
+        catalog.set_community_stages(" ");
         assert_eq!(catalog.maps.len(), retail);
     }
 }

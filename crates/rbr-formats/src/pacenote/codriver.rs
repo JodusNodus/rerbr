@@ -1,4 +1,4 @@
-//! The co-driver of an RSF install's Pacenote plugin (`Plugins/Pacenote`, `notes/formats.md` "Pacenote plugin"): the
+//! The co-driver of the Pacenote plugin (`Plugins/Pacenote`, `notes/formats.md` "Pacenote plugin"): the
 //! voices, the call styles and the distance calls a co-driver mod installs.
 //!
 //! - `PaceNote.ini` `[SETTINGS]`: `sounds` the voice, a folder under `sounds/` (`english\male\steve`, `Janne Laahanen
@@ -9,7 +9,7 @@
 //!   `id`, `Sounds`, `Snd<n>` (`[<label>::]<file>.ogg` in the voice's folder), `link` (the call said for a gap under
 //!   about 10 m: `INTO`, `ONTO`, none) and `standard`, `column` for the plugin's editor. The style decides how a turn
 //!   is counted: the same id is "six left" in one and "one left" in another. A call without `id=` is one of the
-//!   plugin's own ([`super::pacenotes::NAMED`]) or a 1.02 modifier;
+//!   plugin's own ([`super::notes::NAMED`]) or a 1.02 modifier;
 //! - a range set, `config/ranges/<set>.ini`, the same tree with `[RANGE::<metres>]` calls.
 //!
 //! A call without a sound file plays 1.02's sample of its name (`CoDriver.ini`, `Numbers.ini`). The definition files
@@ -18,7 +18,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use super::pacenotes::NAMED;
+use super::notes::NAMED;
 use crate::ini::{self, Section};
 use crate::stage_files;
 
@@ -56,7 +56,7 @@ pub struct Settings {
     pub mute_replay: bool,
 }
 
-/// The plugin's folder of an RSF install, when it has one.
+/// The plugin's folder under the install, when it has one.
 pub fn plugin_dir(root: &Path) -> Option<PathBuf> {
     stage_files::in_dir(root, "Plugins\\Pacenote").filter(|p| p.is_dir())
 }
@@ -257,7 +257,7 @@ mod tests {
         assert_eq!((one.name.as_str(), one.link.as_deref()), ("ONE_LEFT", Some("INTO")));
         assert_eq!(one.sounds, ["one_left.ogg", "one_left2.ogg"]);
         assert!(calls.notes[&4].sounds.is_empty());
-        assert_eq!(calls.notes[&super::super::pacenotes::id::LONG].link, None);
+        assert_eq!(calls.notes[&super::super::notes::id::LONG].link, None);
         assert_eq!(calls.by_name("INTO").unwrap().sounds, ["into1.ogg"]);
         assert_eq!(calls.by_name("NARROWS").unwrap().sounds, ["narrows1.ogg"]);
         assert_eq!(calls.ranges.keys().copied().collect::<Vec<_>>(), [30, 50]);

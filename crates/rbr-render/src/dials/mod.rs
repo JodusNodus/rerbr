@@ -1,4 +1,4 @@
-//! Working dials in the cockpit, from the RallySimFans install's RBRHUD gauges (`rbr_formats::rsf::gauges`,
+//! Working dials in the cockpit, from RBRHUD's gauges (`rbr_formats::rbrhud`,
 //! `notes/cameras-hud-launcher.md` "RBRHUD gauges"). Ours: the plugin is not traced; this reads its data and draws it the way the data
 //! says. A gauge config replaces one car texture with its `remapped` copy (the car's texture with the painted needles
 //! removed) and draws its elements on it: needles turned to the live values, lights and digits shown by their
@@ -22,7 +22,7 @@ use crate::stage::{Image, Stage, TextureRef, TextureSet};
 use crate::start_board::Rgba;
 use glam::Vec2;
 use rbr_formats::dds;
-use rbr_formats::rsf::gauges::{self, Atlas, Config, Element, Font, Kind};
+use rbr_formats::rbrhud::{self, Atlas, Config, Element, Font, Kind};
 use rbr_recording::shift::ShiftPoints;
 use std::path::Path;
 use std::sync::Arc;
@@ -368,8 +368,8 @@ impl Dials {
     /// `stage` becomes a texture the dials draw on. `None` when the car has no gauge or none of its configs can be
     /// drawn; the configs that cannot be are listed.
     pub fn load(root: &Path, car_folder: &str, stage: &mut Stage) -> (Option<Dials>, Vec<Skipped>) {
-        let Some((folder, configs)) = gauges::variant(root, car_folder) else { return (None, Vec::new()) };
-        let migrations = std::fs::read(root.join(gauges::MIGRATIONS)).unwrap_or_default();
+        let Some((folder, configs)) = rbrhud::variant(root, car_folder) else { return (None, Vec::new()) };
+        let migrations = std::fs::read(root.join(rbrhud::MIGRATIONS)).unwrap_or_default();
         let migrations = String::from_utf8_lossy(&migrations);
         let mut skipped = Vec::new();
         let faces: Vec<Face> = configs
@@ -433,7 +433,7 @@ impl Face {
             (None, None) => return Err(Skipped::Unreadable(config.texture.clone())),
         };
         let unreadable = || Skipped::Unreadable(config.remapped.clone().unwrap_or_default());
-        let rects = gauges::migrations(migrations, &config.texture);
+        let rects = rbrhud::migrations(migrations, &config.texture);
         let skin = own.filter(|_| !rects.is_empty() && config.remapped.is_some()).and_then(|b| dds::parse(b).ok());
         if let Some(own) = skin {
             let mut base = Rgba::decode(&dds::parse(&remapped).map_err(|_| unreadable())?);

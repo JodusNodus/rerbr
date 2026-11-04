@@ -33,7 +33,7 @@ scripts/launcher.sh   # live drives: the launcher runs viewer --live rbr-standal
 - `ghost`: ghost car
 - `characters/`: stage characters, scripted events, crew
 - `fences/`: fence cloth
-- `dials/`: RSF working dials
+- `dials/`: RBRHUD working dials
 - `start_board`: start clock digits and lamps
 - `playback/`: recorded drives on the car
 - `live/`: live mode

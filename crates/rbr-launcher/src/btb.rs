@@ -61,7 +61,7 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             folder: track.folder.clone(),
         };
         let stage = Stage { name: stage::stage_name(&btb.folder, number), map: number, letter: stage::LETTER };
-        maps.push(Map { number, stages: vec![stage], rsf: None, btb: Some(btb) });
+        maps.push(Map { number, stages: vec![stage], community: None, btb: Some(btb) });
     }
     maps
 }

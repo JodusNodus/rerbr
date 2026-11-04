@@ -32,6 +32,9 @@ const DRIVE_STEP: u32 = 4;
 pub struct SchoolRun {
     lesson: Lesson,
     bank: Bank,
+    /// The lesson `.dls`'s table-7 string block (`rbr_formats::dls::DlsFile::string_bytes`): `Trigger`'s pair
+    /// codes are the speech digit strings' offsets in it (the pair-code block base 0).
+    strings: Vec<u8>,
     /// The flow's step counter (`+0xca8`).
     step: u32,
     /// The flow's `+0xcb4`.
@@ -41,11 +44,18 @@ pub struct SchoolRun {
 }
 
 impl SchoolRun {
-    /// `lesson` with the bank its map's `.dls` `Driveline` set built (`Bank::from_stream`), in the state its load
-    /// leaves the flow in.
-    pub fn new(lesson: Lesson, bank: Bank) -> Self {
+    /// `lesson` with the bank its map's `.dls` `Driveline` set built (`Bank::from_stream`) and the `.dls`'s
+    /// table-7 string block, in the state its load leaves the flow in.
+    pub fn new(lesson: Lesson, bank: Bank, strings: Vec<u8>) -> Self {
         let untimed = lesson.untimed();
-        Self { lesson, bank, step: if untimed { DRIVE_STEP } else { 2 }, cb4: i32::from(untimed), events: Vec::new() }
+        Self {
+            lesson,
+            bank,
+            strings,
+            step: if untimed { DRIVE_STEP } else { 2 },
+            cb4: i32::from(untimed),
+            events: Vec::new(),
+        }
     }
 
     pub fn lesson(&self) -> Lesson {
@@ -61,9 +71,23 @@ impl SchoolRun {
         std::mem::take(&mut self.events)
     }
 
+    /// The speech ids one answer's `Sound` event queues: `Trigger` (`a == 2`) reads its pair code as the digit
+    /// string's offset in the `.dls`'s string block (`E25School::M80c0x`, [`speech_ids`]). The other kinds' single
+    /// ids are the viewer's, from the record's lesson and verdict.
+    pub fn speech_ids(&self, event: &SchoolEvent) -> Vec<u32> {
+        match event {
+            SchoolEvent::Sound { a: 2, d, .. } => super::speech::speech_ids(&self.strings, *d as u32),
+            _ => Vec::new(),
+        }
+    }
+
     /// `EvalFilters` at the drive's end: 0 (failed) to 4 (perfect) for the race time `time` and the car's damage
-    /// (`SeverityMax`: the 1.02 repair objects' levels, `car_damage::severity`).
+    /// (`SeverityMax`: the 1.02 repair objects' levels, `car_damage::severity`). The ride is not judged (`M5693f0`
+    /// case 5 skips lesson 5): its result is the award's 4.
     pub fn verdict(&self, time: f32, damage: &CarriedDamage) -> u32 {
+        if self.lesson.ride() {
+            return 4;
+        }
         // The repair handler's 0x100 part ids, as `SeverityMax` asks `GetDamage` for them.
         let levels: [u32; 0x100] = std::array::from_fn(|id| u32::from(car_damage::severity(damage, id as u32)));
         eval_filters(&self.bank, time, self.lesson.index() as i32, &levels)
@@ -115,8 +139,12 @@ impl ModeRules for SchoolRun {
         }
     }
 
-    /// `Tic570`: `EndRace`'s emits (a finished `CSigEndRace` each), then a trip latch's retire.
+    /// `Tic570`: `EndRace`'s emits (a finished `CSigEndRace` each), then a trip latch's retire. The ride
+    /// ends as soon as the drive starts, with no judging.
     fn frame(&mut self, dt: f32, race_time: f32) -> Option<ModeEnd> {
+        if self.lesson.ride() {
+            return Some(ModeEnd::Finished);
+        }
         let ends = end_race(&mut self.bank, dt, race_time.to_bits());
         let finished = ends.iter().any(|e| matches!(e, SchoolEvent::EndRace { .. }));
         self.events.extend(ends);
@@ -155,7 +183,7 @@ mod tests {
     #[test]
     fn standing_in_the_stop_box_ends_the_drive_and_passes_on_time() {
         // Lesson 4's verdict leaves the damage out (`SeverityMax` gives 4).
-        let mut run = SchoolRun::new(Lesson::new(4).unwrap(), stop_box());
+        let mut run = SchoolRun::new(Lesson::new(4).unwrap(), stop_box(), Vec::new());
         run.start();
         // The tracker enlists the box on one step; the standing test takes it on the next.
         run.after_step(&standing_at(150.0, None));
@@ -169,11 +197,37 @@ mod tests {
     }
 
     #[test]
+    fn sound_events_resolve_their_digit_strings() {
+        let block = [b"294\0".as_slice(), b"311 312\0"].concat();
+        let run = SchoolRun::new(Lesson::new(2).unwrap(), stop_box(), block);
+        assert_eq!(
+            run.speech_ids(&SchoolEvent::Sound { a: 2, b: 0, c: 0, d: 0 }),
+            [294],
+            "the pair code is the string's offset"
+        );
+        assert_eq!(run.speech_ids(&SchoolEvent::Sound { a: 2, b: 1, c: 0, d: 4 }), [311, 312]);
+        assert_eq!(run.speech_ids(&SchoolEvent::Incident { code: 1 }), Vec::<u32>::new());
+        assert_eq!(
+            run.speech_ids(&SchoolEvent::Sound { a: 1, b: 0, c: 0, d: 0 }),
+            Vec::<u32>::new(),
+            "other kinds are the viewer's"
+        );
+    }
+
+    #[test]
     fn a_retire_trips_the_bank_and_fails() {
-        let mut run = SchoolRun::new(Lesson::new(2).unwrap(), stop_box());
+        let mut run = SchoolRun::new(Lesson::new(2).unwrap(), stop_box(), Vec::new());
         run.start();
         run.after_step(&standing_at(20.0, Some(1)));
         assert_eq!(run.frame(0.01, 3.0), Some(ModeEnd::Retired));
         assert_eq!(run.verdict(3.0, &CarriedDamage::default()), 0);
+    }
+
+    #[test]
+    fn the_ride_ends_on_its_first_driving_frame() {
+        let mut run = SchoolRun::new(Lesson::new(5).unwrap(), stop_box(), Vec::new());
+        run.start();
+        assert_eq!(run.frame(0.01, 0.0), Some(ModeEnd::Finished));
+        assert_eq!(run.verdict(0.0, &CarriedDamage::default()), 4, "not judged: the award's 4");
     }
 }

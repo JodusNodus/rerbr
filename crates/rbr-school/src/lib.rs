@@ -10,6 +10,7 @@ pub mod filter;
 pub mod judge;
 pub mod lesson;
 pub mod run;
+pub mod speech;
 pub mod step;
 
 pub use bank::{Bank, Check, Lead, Pair};
@@ -17,4 +18,5 @@ pub use filter::{max_abs, FilterSub};
 pub use judge::{eval_filters, severity_max};
 pub use lesson::Lesson;
 pub use run::SchoolRun;
+pub use speech::{briefing, end_page, speech_ids};
 pub use step::{checkpoint, end_race, school_incident, school_tick, tracker, trigger, IncidentInput, SchoolEvent};

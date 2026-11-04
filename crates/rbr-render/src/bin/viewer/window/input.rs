@@ -94,6 +94,11 @@ impl App {
     /// either was. The game's box keeps the menu's input until it is accepted, so the pause, Enter, the gamepad's
     /// South and a click all accept it.
     pub fn accept_message(&mut self) -> bool {
+        // A school demo playing is skipped first: the brief shows instead (a ride sends its confirm, ending
+        // the lesson), and the Enter never reaches the standalone as the brief's confirm.
+        if self.skip_demo() {
+            return true;
+        }
         let up = self.scene.live.as_ref().is_some_and(|live| {
             let waits = rbr_gameplay::flow::Mode(live.menu.mode).start_waits() && !live.menu.driving && !live.menu.over;
             live.hud_model.view().message_box.is_some() || waits
@@ -106,6 +111,8 @@ impl App {
 
     /// Starts the stage over in the live process (the stage's start).
     pub fn restart_live(&mut self) {
+        // A restart brings the brief, and the school demo, back.
+        self.demo = None;
         let (Some(process), Some(playback)) = (&mut self.scene.live, &mut self.scene.playback) else {
             return;
         };

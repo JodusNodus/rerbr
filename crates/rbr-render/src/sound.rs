@@ -13,6 +13,7 @@ pub use rbr_sound::{Events, Player, Scene, Sky};
 
 use crate::camera::Lens;
 use crate::characters::scripted::Event;
+use crate::hud::school::{self, State as SchoolState};
 
 /// The `Cars/Cars.ini` index of the car in folder `name` (`COROLLA`), or `None`.
 pub fn car_index(data: &Data, name: &str) -> Option<u32> {
@@ -54,7 +55,7 @@ pub fn start(
     }
 }
 
-/// Plays the RSF car's FMOD bank at `path` (`rbr_sound::fmod`) instead of its slot's 1.02 engine, turbo and
+/// Plays the community car's FMOD bank at `path` (`rbr_sound::fmod`) instead of its slot's 1.02 engine, turbo and
 /// transmission sounds; without it (the reason on stderr) those stay.
 pub fn use_fmod(player: &mut Player, path: &std::path::Path) {
     match rbr_sound::fmod::FmodCar::load(path) {
@@ -97,6 +98,78 @@ pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool) -> Scene {
         inside,
         replay,
         ..Scene::default()
+    }
+}
+
+/// The rally school's speech on the school voice (`E25School::OnSignal` 0x4b8200), fed from the live record's
+/// school state (SCH1): the stop when the flow moved, `Trigger`'s ids at priority 1 after a flush of the pending
+/// queue, the briefing's id once per brief (kind 1, ours: no sender of it is reconstructed) and the end page's id
+/// once per verdict (kind by the verdict, `sub` from the viewer's frame count: never the game's CRT `rand()`
+/// stream). The co-driver switch does not mute it (the handler does not test it); the co-driver volume applies
+/// (the mixer's speech gain).
+#[derive(Debug)]
+pub struct SchoolSpeech {
+    data: Data,
+    /// The bank failed to load (the reason is on stderr): no retries.
+    failed: bool,
+    /// The lesson whose briefing id was queued, until the brief ends.
+    brief_done: Option<u32>,
+    /// The lesson and verdict whose end page's id was queued, until the end panel goes.
+    verdict_done: Option<(u32, u32)>,
+}
+
+impl SchoolSpeech {
+    /// A feed loading its samples from `data` on the first school frame.
+    pub fn new(data: Data) -> SchoolSpeech {
+        SchoolSpeech { data, failed: false, brief_done: None, verdict_done: None }
+    }
+
+    /// Feeds the player the school state's speech: no school drive clears the once-per-panel latches.
+    pub fn feed(&mut self, player: &mut Player, school: Option<&SchoolState>, stop: bool, ids: &[u32], frame: u32) {
+        use rbr_sound::voice::{Command, Speech};
+        let Some(school) = school else {
+            self.brief_done = None;
+            self.verdict_done = None;
+            return;
+        };
+        if !self.failed {
+            if let Err(e) = player.load_school(&self.data) {
+                self.failed = true;
+                eprintln!("viewer: no school speech: {e}");
+                return;
+            }
+        } else {
+            return;
+        }
+        if stop {
+            player.apply(&[Command::StopSpeech]);
+        }
+        if !ids.is_empty() {
+            let mut commands = Vec::with_capacity(ids.len() + 1);
+            commands.push(Command::FlushSpeech);
+            commands.extend(ids.iter().map(|&id| Command::Speech(Speech::School { id, priority: 1 })));
+            player.apply(&commands);
+        }
+        if school.phase == school::Phase::Brief {
+            if self.brief_done != Some(school.lesson) {
+                self.brief_done = Some(school.lesson);
+                if let Some(id) = rbr_school::briefing(school.lesson) {
+                    player.apply(&[Command::Speech(Speech::School { id, priority: 0 })]);
+                }
+            }
+        } else {
+            self.brief_done = None;
+        }
+        match (school.phase, school.verdict) {
+            (school::Phase::Ended, Some(verdict)) => {
+                if self.verdict_done != Some((school.lesson, verdict)) {
+                    self.verdict_done = Some((school.lesson, verdict));
+                    let id = rbr_school::end_page(verdict, frame);
+                    player.apply(&[Command::Speech(Speech::School { id, priority: 0 })]);
+                }
+            }
+            _ => self.verdict_done = None,
+        }
     }
 }
 

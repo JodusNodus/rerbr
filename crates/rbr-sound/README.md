@@ -1,6 +1,6 @@
 # rbr-sound
 
-The gameplay sound of RBR 1.02, and RSF cars' FMOD banks. Behaviour, faithful and ours:
+The gameplay sound of RBR 1.02, and community cars' FMOD banks. Behaviour, faithful and ours:
 [notes/sound.md](../../notes/sound.md).
 
 ## Modules (`src/`)
@@ -22,7 +22,7 @@ The gameplay sound of RBR 1.02, and RSF cars' FMOD banks. Behaviour, faithful an
 | `world.rs` | wind, birds, siren, rain triggers, distance gain |
 | `scripted.rs` | helicopter, bird hit, rally incident |
 | `menu.rs` | service park ambience for the launcher |
-| `fmod.rs` | RSF car FMOD banks, NGP daemon parameters |
+| `fmod.rs` | community car FMOD banks, NGP daemon parameters |
 | `mixer/` | renderer: voices, rain, FMOD tree, DSP effects, sound limit |
 | `device.rs` | cpal output |
 | `bin/rbr-sound.rs` | offline render of a recorded drive |
@@ -38,4 +38,4 @@ The gameplay sound of RBR 1.02, and RSF cars' FMOD banks. Behaviour, faithful an
 - `cargo run --release -p rbr-sound --example menu -- OUT [SECONDS] [VOLUME]`: service park ambience to a WAV.
 - `cargo run --release -p rbr-sound --example sweep [SECONDS]`: an rpm sweep on the audio device.
 
-They read `RBR_DATA`, `RBR_PATCH` (for `audio.ini`) and, for RSF cars, `RBR_RSF`.
+They read `RBR_DATA`, `RBR_PATCH` (for `audio.ini`) and, for community cars, `RBR_RSF`.

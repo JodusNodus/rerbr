@@ -46,9 +46,9 @@ Model and rules in `rbr_render::hud::model`, sprites in `hud::pace`, layout in `
 - The game's 3D notes (`AID_MARKER`) are not drawn (dropped 2026-10-27).
 - The minidash and digidash art is not drawn (not in code).
 
-### RBRHUD gauges (RSF cockpit dials)
+### RBRHUD gauges
 
-Data in `rbr_formats::rsf::gauges`, drawing in `rbr_render::dials` (toggle: `dials`); check
+Data in `rbr_formats::rbrhud`, drawing in `rbr_render::dials` (toggle: `dials`); check
 `rbr-formats/tests/rsf_data.rs` (every sprite and font the configs name is in its atlas).
 
 - A car copied into ReRBR's own folder has no `Plugins/RBRHUD` beside it: its gauges come from the game install's,
@@ -82,7 +82,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   arboard brings the `image` crate, egui-winit asks for its image support); before 2026-11-03 paste from other
   programs did not work.
 - Stage pictures (Drive page, viewer loading screen; `rbr_render::stage_picture`, 2026-11-03): retail stages show
-  the menu bank's (all 384 x 184); RSF stages show `rsfdata/images/stage_images/<id>.png` (what RSF's menus show,
+  the menu bank's (all 384 x 184); community stages show `rsfdata/images/stage_images/<id>.png` (what the RallySimFans menus show,
   1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look
   alike. Three of RSF's 658 (588, 629, 630) are JPEGs named `.png` and show the poster (no JPEG decoder).
 - BTB stages (`btb.rs`, `notes/btb.md` "Playing"): the RSF install's `RX_CONTENT/Tracks` folders are listed with its stages (number = RSF id, else a synthetic one), Start builds the stage's files into `<files>/btb/<folder>/`; its weathers are map 41's rows under its number (`Season::of_btb`), its records and ghosts are kept under that number.
@@ -90,7 +90,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   release dates (user decision 2026-11-03).
 - Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive
   train (`cars_data.json`) from the list's `cat`/`trans` (`RallyN` as `Rally N`, bare `A5`..`A8` as `Group A5`..;
-  `car_packs::backfill`), so the browser classes and drive-filters them like RSF's.
+  `car_packs::backfill`), so the browser classes and drive-filters them like the other community cars.
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
@@ -100,12 +100,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   for another surface's; `/` is not allowed in a name). Values load over the stage surface's defaults. The Car setup
   tab is the manager (open, edit, save, delete; saving keeps it for the stage's surface and drives with it). Ours, every car: `<files>/setups/<car>/<surface>_<name>.lsp`
   (`<car>`: the pack's folder name, a retail car's physics folder such as `c_xsara`; user decision 2026-11-04), RSF's
-  naming, so a file copies into RSF's `SavedGames/<pack>/` as it is. Read only: an RSF car's RSF `SavedGames/<pack>/`
+  naming, so a file copies into the install's `SavedGames/<pack>/` as it is. Read only: a community car's install `SavedGames/<pack>/`
   and `rsfdata/setups/<pack>/` (RSF's `<id>_d_<surface>.lsp` copies of the defaults skipped; RSF install 2026-11-04:
   85 shipped, 214 saved files, none named otherwise). The 1.02 install's `Physics/<car>/Setups/` are not read (1.02's
   car ranges, not NGP's; user decision 2026-11-04).
   The older `[launcher] setup` (one name for every car) is no longer read. No save slots (user decision
-  2026-11-04). Earlier versions' files are listed read only: an RSF car's `<files>/SavedGames/<pack>/`, the
+  2026-11-04). Earlier versions' files are listed read only: a community car's `<files>/SavedGames/<pack>/`, the
   `Physics/<key>/Setups/` of `Car::setup_keys` (`rsf-<id>`, then 5; a retail car its number's), and their slot files
   `SavedGames/<key>slot<n>_*.lsp`. The championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
@@ -133,7 +133,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   with the grade as pips, Failed; the time and the tier reached) in place of the stage result, over the results
   menu's Retry lesson and Quit (`hud::school`, from the live SCH1 record: the lesson, its state, the kept verdict,
   the times and the answer's last incident code). No countdown plaque shows in a lesson. The brief's confirm ends
-  the start orbit, as the countdown's end does.
+  the start orbit, as the countdown's end does. A timed lesson's brief first plays its demonstration from
+  `Ghosts\rse%d.arp` (viewer-only, `rbr_render::school_demo`: the player's car at the replay's pose, wheels at rest,
+  from the chase camera, the HUD and the start lamps hidden under a "Demonstration - Enter: skip" hint, Enter skipping without
+  confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera, and its end or skip sends the
+  brief's confirm, ending the lesson with its award and the verdict panel.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and

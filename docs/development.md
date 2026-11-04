@@ -6,7 +6,7 @@ How to build ReRBR, run it, find your way around the code and check a change. Ea
 ## What ReRBR is
 
 A Rust program that plays Richard Burns Rally with NGP 7.4.778 physics on the player's own game files: the retail
-stages and cars, and the RallySimFans cars and stages, read in place. No original code runs. ReRBR reads the game
+stages and cars, and community cars and stages, read in place. No original code runs. ReRBR reads the game
 data, the 1.02 exe's data sections and the tables of the player's `NGP.dll` as files.
 
 The physics and the gameplay (race flow, timing, weather, damage, service, season, saves) must give the same results
@@ -61,7 +61,7 @@ export RBR_DATA=OUT/retail-install RBR_PATCH=OUT/Main_group
 **NGP.** Only the 7.4.778 `NGP.dll` is supported (`ngp-compat` checks another one against it:
 [ngp.md](../notes/ngp.md#adding-an-ngp-version)). Take `physics.rbz` from the NGP package (`RBR_NGP-7.4.778.507.7z`)
 and put four NGP cars in it, each from its gvrc.de physics pack (`<Car> - NGP
-Physics.zip`, unzipped; an RSF install has the same folders under `rsfdata/cars/`):
+Physics.zip`, unzipped; an install with community packs has the same folders under `rsfdata/cars/`):
 
 ```sh
 cp <NGP package>/physics.rbz ngp-physics.rbz
@@ -95,7 +95,7 @@ page.
 | `RBR_PATCH` | the 1.02 files |
 | Settings field `ngp_dll` (unsaved: `RBR_NGP_DLL`) | NGP's DLL. Empty, it follows the game folder's `Plugins/NGP.dll`; a missing or unsupported DLL blocks Start. With this and `ngp_physics` empty, a downloaded copy in the player's folder (`NGP 7.4.778/`) is used |
 | Settings field `ngp_physics` (unsaved: `RBR_NGP_PHYSICS`) | NGP's archive |
-| Settings field `rsf_root` (unsaved: `RBR_RSF`) | the RallySimFans folder |
+| Settings field `rsf_root` (unsaved: `RBR_RSF`) | the game folder (a RallySimFans install has the cars and stages) |
 
 On Windows the launcher and the viewer open no console window. Started from Explorer or `cmd`, they write stderr to
 `rerbr.log` in the player's files folder, and stdout shows only when redirected (`rerbr.exe --list > list.txt`).
@@ -112,7 +112,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 | [`rbr-gameplay`](../crates/rbr-gameplay) | the gameplay loop: input to car control, frame clock, stage states, timing, race flow, records | [gameplay.md](../notes/gameplay.md) |
 | [`rbr-championship`](../crates/rbr-championship) | the championship: the season, its event queue and AI field, the rally's stages, the service park, the season save | [gameplay.md](../notes/gameplay.md#championship-and-service) |
 | [`rbr-school`](../crates/rbr-school) | the rally school (experimental): the lessons, their filter bank and verdict, as a mode on the stage loop | [gameplay.md](../notes/gameplay.md#rally-school-experimental) |
-| [`rbr-formats`](../crates/rbr-formats) | readers for the game's files and the RallySimFans layouts, one module per format | [formats.md](../notes/formats.md) |
+| [`rbr-formats`](../crates/rbr-formats) | readers for the game's files and the community layouts, one module per format | [formats.md](../notes/formats.md) |
 | [`rbr-btb`](../crates/rbr-btb) | BTB stages (experimental): their folders, meshes, the stage files built from them, and their scene | [btb.md](../notes/btb.md) |
 | [`rbr-standalone`](../crates/rbr-standalone) | the physics process: `--live` steps the car for the viewer, `--boot` checks a recording | [physics.md](../notes/physics.md) |
 | [`rbr-physics`](../crates/rbr-physics) | NGP 7.4.778's physics; `ports.csv` lists the ported functions | [physics.md](../notes/physics.md), [ngp.md](../notes/ngp.md) |
@@ -140,7 +140,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 - File readers go in `rbr-formats`, one module per format, with a test over every retail file they cover.
 - Physics code names physical quantities; addresses and the original's names stay in `layout` code, the bindings and
   the CSVs ([rbr-physics README](../crates/rbr-physics/README.md#code-style)).
-- Never commit game files: no binaries, game data, NGP or RSF content, or anything extracted from them.
+- Never commit game files: no binaries, game data, NGP or community content, or anything extracted from them.
 - Portable code (CI builds on macOS, Linux and Windows); English only.
 
 ## Checks
@@ -206,7 +206,7 @@ every note as of the split under the same paths. Paths under `src/`, `symbols/` 
 
 `scripts/render-shots.py` renders the 36 shots of `data/shots.json` at 1080p with every enhancement on. They are the
 README pictures and the reference for graphics changes. The script needs release builds of `rerbr`, `viewer` and
-`rbr-standalone`, an install with NGP and the RallySimFans stages and cars the shots name, and the upscaler for the
+`rbr-standalone`, an install with NGP and the community stages and cars the shots name, and the upscaler for the
 same textures. Its docstring lists the options.
 
 For a graphics change:

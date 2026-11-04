@@ -27,7 +27,7 @@
 //! and drive them (`notes/renderer.md` "Characters").
 //!
 //! Sound: `audio` reads `Root/audio.dat` and the audio inis, `eng` the engine sound banks; see
-//! `notes/formats.md` "Audio" and `notes/formats.md` "Audio". `fmod` reads the FMOD Studio banks of RSF's cars
+//! `notes/formats.md` "Audio" and `notes/formats.md` "Audio". `fmod` reads the FMOD Studio banks of car packs
 //! (`AudioFMOD/<name>.bank`): their recordings and their events' parameter sheets (`notes/formats.md` "Audio").
 //!
 //! `stage_files` finds a stage's files, retail (`Maps/track-54_E.*`) or in a folder of its own; `rsf` reads the
@@ -36,6 +36,9 @@
 //! `times` reads `misc/times.ini`, the default reference times of each stage (`notes/formats.md` "Saves and times").
 //!
 //! `ghost` reads and writes the ghost car files (`.gho`, `.ghc`); see `notes/renderer.md`.
+//!
+//! `arp` reads the rally-school animated replays (`.arp`) and samples the demonstration car; see
+//! `notes/formats.md` "Animated replay".
 //!
 //! `bnk` reads the menu graphics bank (`Generic/PC_Generic_<width>.bnk`): its texture pages and sprites, the stage
 //! pictures among them.
@@ -53,6 +56,7 @@
 //! season inside it, and the records table (`pfresult.rst`); see `notes/formats.md` "Saves and times".
 
 pub mod ai_ini;
+pub mod arp;
 pub mod audio;
 pub mod bnk;
 pub mod car_parts;
@@ -82,8 +86,10 @@ pub mod lua;
 pub mod markers;
 pub mod mat;
 pub mod ngp;
+pub mod pacenote;
 pub mod pe;
 pub mod pss;
+pub mod rbrhud;
 pub mod rbz;
 pub mod repair;
 pub mod rsf;

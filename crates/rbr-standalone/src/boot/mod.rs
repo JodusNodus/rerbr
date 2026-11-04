@@ -203,10 +203,11 @@ impl Race {
     }
 
     /// A lesson's drive: the bank `Load020` (0x479020) builds from the stage's `Driveline` replay stream (a fresh
-    /// bank's `InitState` and `ReadStream`, in mode 7). The pair codes' block base is left 0: only the speech reads them.
-    pub fn school(&self, replay: &rbr_formats::dls::DlsReplayStream) -> Option<SchoolRun> {
+    /// bank's `InitState` and `ReadStream`, in mode 7), with the `.dls`'s table-7 string block for the speech.
+    /// The pair codes' block base is left 0: only the speech reads them, as offsets into `strings`.
+    pub fn school(&self, replay: &rbr_formats::dls::DlsReplayStream, strings: &[u8]) -> Option<SchoolRun> {
         let bank = Bank::from_stream(&Bank::fresh(), replay, 0);
-        self.lesson.map(|lesson| SchoolRun::new(lesson, bank))
+        self.lesson.map(|lesson| SchoolRun::new(lesson, bank, strings.to_vec()))
     }
 
     /// The level `InitQuickRaceDamageHandler` (0x567640) gives the car in this flow mode.

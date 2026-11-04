@@ -308,17 +308,26 @@ fn the_school_record_stands_where_the_lesson_does() {
         assert_eq!(brief.verdict, school::NO_VERDICT, "no verdict before the end");
         assert_eq!(brief.incident, 0);
         assert_eq!((brief.perfect, brief.pass), (9.0, 10.0), "lesson 2's times");
+        assert!(brief.stop, "the first answer's flow step stops the speech");
+        assert!(brief.speech.is_empty(), "nothing tripped yet");
+        // Still the brief: no stop again.
+        let still = school_of(&live.answer(&input(0)).unwrap());
+        assert_eq!((still.lesson, still.state), (2, school::STATE_BRIEF));
+        assert!(!still.stop);
         // The confirm starts the lesson's drive at once.
         let driving = school_of(&live.answer(&input(ACCEPT_MESSAGE)).unwrap());
         assert_eq!((driving.lesson, driving.state), (2, school::STATE_DRIVING));
+        assert!(driving.stop, "brief -> driving stops the speech");
         // The pause menu's retire ends it, keeping its verdict; a restart clears the kept one.
         let end = school_of(&live.answer(&input(RETIRE)).unwrap());
         assert_eq!((end.lesson, end.state), (2, school::STATE_ENDED));
         assert_ne!(end.verdict, school::NO_VERDICT, "the kept verdict");
+        assert!(end.stop, "driving -> ended stops the speech");
         live.restart();
         let again = school_of(&live.answer(&input(0)).unwrap());
         assert_eq!((again.lesson, again.state), (2, school::STATE_BRIEF));
         assert_eq!(again.verdict, school::NO_VERDICT, "restart clears it");
+        assert!(again.stop, "a restart stops the speech");
         // A quick race sends no school record.
         let stage = stage_data(&data, "track-11_O", 5).unwrap();
         let weather = weather::quick_race(&season, 11, Preset::Good, Draws::default()).unwrap();
@@ -328,6 +337,46 @@ fn the_school_record_stands_where_the_lesson_does() {
     })
     .unwrap();
 }
+
+/// The ride (lesson 5): the brief's confirm starts the drive and ends it on its first driving frame, with no
+/// judging (the award already gives 4); the record keeps a verdict and the viewer plays `rse5.arp` as the ride.
+#[test]
+fn the_ride_ends_on_the_brief_s_confirm() {
+    use rbr_school::Lesson;
+    let (Some(install), Some(patch), Some(ngp)) = (
+        std::env::var_os("RBR_DATA").map(PathBuf::from),
+        std::env::var_os("RBR_PATCH").map(PathBuf::from),
+        std::env::var_os("RBR_NGP_PHYSICS").map(PathBuf::from),
+    ) else {
+        eprintln!("RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS unset; skipped");
+        return;
+    };
+    on_big_stack(move || {
+        let data = Data::new(install, Some(patch));
+        let lesson = Lesson::new(5).unwrap();
+        let stage = stage_data(&data, "track-79_M", 5).unwrap();
+        let season = Season::load(&data).unwrap();
+        let weather = weather::quick_race(&season, lesson.map(), Preset::Good, Draws::default()).unwrap();
+        let race = boot::Race::quick_race(lesson.map(), 5, 3, weather, ngp.clone()).in_school(lesson);
+        let mut live = Live::boot(&data, "track-79_M", &race, &stage, MarkerSettings::default(), true).unwrap();
+        live.pace(f64::from(rbr_recording::STEP_SECONDS));
+        let school_of = |answer: &[u8]| {
+            let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
+            let records = records::read_records(&mut &rest[..]).unwrap();
+            let (_, body) = records.iter().find(|(tag, _)| *tag == school::SCH1).expect("SCH1");
+            School::read_body(body).unwrap()
+        };
+        let input = |flags| Input { flags, ..Input::default() }.to_bytes();
+        let brief = school_of(&live.answer(&input(0)).unwrap());
+        assert_eq!((brief.lesson, brief.state), (5, school::STATE_BRIEF));
+        // The confirm ends the ride at once, keeping a verdict; the award gives 4.
+        let end = school_of(&live.answer(&input(ACCEPT_MESSAGE)).unwrap());
+        assert_eq!((end.lesson, end.state), (5, school::STATE_ENDED));
+        assert_ne!(end.verdict, school::NO_VERDICT, "the kept verdict");
+    })
+    .unwrap();
+}
+
 /// A payload of several periods (`Input::frames`, a viewer behind real time) is one game frame of their wall
 /// time: the same answers as a process paced at that time a payload, frames of 15 to 18 steps once driving.
 #[test]

@@ -4,7 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use rbr_formats::rsf::{codriver, stage_list};
+use rbr_formats::pacenote::codriver;
+use rbr_formats::rsf::stage_list;
 use rbr_formats::saves::SaveDir;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
@@ -95,7 +96,7 @@ pub fn enhance_list(graphics: &Graphics) -> String {
     Enhance::NAMES.into_iter().filter(|name| on(name)).collect::<Vec<_>>().join(",")
 }
 
-/// The RSF install's Pacenote plugin: its folder and the voices, styles and range sets it offers.
+/// The Pacenote plugin in play: its folder and the voices, styles and range sets it offers.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CodriverMods {
     pub dir: PathBuf,
@@ -253,7 +254,7 @@ impl ViewerLaunch {
             setup,
             school,
         } = self;
-        let pack = car.rsf.as_ref().and_then(|r| r.pack.as_ref().ok()).map(|p| p.display().to_string());
+        let pack = car.community.as_ref().and_then(|r| r.pack.as_ref().ok()).map(|p| p.display().to_string());
         let car_arg = match &pack {
             Some(pack) => ["--rsf-car".into(), pack.clone()],
             None => ["--car".into(), car.name.clone()],
@@ -760,7 +761,7 @@ impl Form {
         args.splice(live..live, viewer_extra);
         args.extend(extra);
         args.extend(["--ngp-physics".to_owned(), self.ngp_archive()]);
-        let key = camera_prefs::car_key(&car.name, car.rsf.as_ref().map(|r| r.id));
+        let key = camera_prefs::car_key(&car.name, car.community.as_ref().map(|r| r.id));
         let sensitivity = self.ffb_cars.of(Some(&key), self.ffb.sensitivity);
         if sensitivity != [100; 3] {
             let [gravel, tarmac, snow] = sensitivity;
@@ -781,7 +782,7 @@ impl Form {
         let map = self.catalog.map(stage.map);
         listed
             .into_iter()
-            .chain(map.and_then(|m| m.rsf.as_ref()).map(|s| s.name.clone()))
+            .chain(map.and_then(|m| m.community.as_ref()).map(|s| s.name.clone()))
             .chain(map.map(catalog::Map::name))
             .chain(catalog::title(stage.map).map(str::to_owned))
             .chain([stage.name.clone()])
@@ -867,7 +868,7 @@ impl Form {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{Catalog, RsfCar};
+    use crate::catalog::{Catalog, CommunityCar};
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
@@ -958,7 +959,7 @@ mod tests {
         use rbr_school::Lesson;
         let lesson = Lesson::new(2).unwrap();
         let stage = Stage { name: "track-83_M".into(), map: 83, letter: 'M' };
-        let car = Car { index: 5, name: "IMPREZA03".into(), rsf: None };
+        let car = Car { index: 5, name: "IMPREZA03".into(), community: None };
         let weather =
             Weather { map: 83, row: Some(0), letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0, wear: 0 };
         let args = ViewerLaunch {
@@ -995,7 +996,7 @@ mod tests {
     fn school_args_carry_an_rsf_cars_pack() {
         use rbr_school::Lesson;
         let lesson = Lesson::new(2).unwrap();
-        let rsf = RsfCar {
+        let rsf = CommunityCar {
             id: 24,
             added: false,
             group: None,
@@ -1005,7 +1006,7 @@ mod tests {
         };
         let args = ViewerLaunch {
             stage: Stage { name: "track-83_M".into(), map: 83, letter: 'M' },
-            car: Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), rsf: Some(rsf) },
+            car: Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), community: Some(rsf) },
             tyre: lesson.tyre(),
             standalone: PathBuf::from("/b/rbr-standalone"),
             data: PathBuf::from("/d"),
@@ -1027,7 +1028,7 @@ mod tests {
     #[test]
     fn viewer_args_name_an_rsf_cars_pack() {
         let stage = Stage { name: "track-54_E".into(), map: 54, letter: 'E' };
-        let rsf = RsfCar {
+        let rsf = CommunityCar {
             id: 24,
             added: false,
             group: None,
@@ -1035,7 +1036,7 @@ mod tests {
             model: Ok(None),
             drive_train: None,
         };
-        let car = Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), rsf: Some(rsf) };
+        let car = Car { index: 5, name: "Mitsubishi Lancer Evo IX N4".into(), community: Some(rsf) };
         assert_eq!(car.unavailable(), None);
         let weather =
             Weather { map: 54, row: Some(162), letter: 4, cloud: 1, cloud_letter: 0, preset: 0, wetness: 1, wear: 0 };
@@ -1068,7 +1069,7 @@ mod tests {
     #[test]
     fn viewer_args_include_game_weather_wear_and_tyre() {
         let stage = Stage { name: "track-54_O".into(), map: 54, letter: 'O' };
-        let car = Car { index: 6, name: "COROLLA".into(), rsf: None };
+        let car = Car { index: 6, name: "COROLLA".into(), community: None };
         let weather =
             Weather { map: 54, row: Some(167), letter: 3, cloud: 3, cloud_letter: 2, preset: 4, wetness: 2, wear: 2 };
         let options = RaceOptions { weather: Preset::Bad, ..RaceOptions::default() };
@@ -1183,7 +1184,7 @@ mod tests {
     #[test]
     fn the_wetness_override_changes_the_viewer_weather_word() {
         let stage = Stage { name: "track-54_O".into(), map: 54, letter: 'O' };
-        let car = Car { index: 6, name: "COROLLA".into(), rsf: None };
+        let car = Car { index: 6, name: "COROLLA".into(), community: None };
         let weather = |wetness| Weather {
             map: 54,
             row: Some(7),
@@ -1243,7 +1244,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                rsf: None,
+                community: None,
                 btb: None,
             }],
         };
@@ -1336,7 +1337,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                rsf: None,
+                community: None,
                 btb: None,
             }],
             ..Catalog::default()
@@ -1590,7 +1591,7 @@ mod tests {
         assert_eq!(value(&defaults, "--codriver-voice"), Some(voice.clone()));
         // Unset, the install's largest note set plays (LuppisV3 in an RSF install).
         let largest = form.rsf_note_sets.first().map(|set| set.name.clone()).unwrap_or_default();
-        let notes = rbr_formats::rsf::pacenotes::my_pacenotes_dir(&rsf)
+        let notes = rbr_formats::pacenote::notes::my_pacenotes_dir(&rsf)
             .and_then(|dir| crate::codriver_packs::find_in_set(&dir, &["Tanner"], &largest));
         assert_eq!(value(&defaults, "--pacenotes"), notes.map(|p| p.display().to_string()));
         let stepping = defaults[defaults.iter().position(|a| a == "--live").unwrap()..].to_vec();
@@ -1623,7 +1624,7 @@ mod tests {
     #[test]
     fn local_codriver_packs_drive_without_rsf() {
         use crate::codriver_packs;
-        use rbr_formats::rsf::codriver;
+        use rbr_formats::pacenote::codriver;
         let (Some(data), Some(patch), Some(ngp)) =
             (env_path("RBR_DATA"), env_path("RBR_PATCH"), env_path("RBR_NGP_PHYSICS"))
         else {
@@ -1757,7 +1758,7 @@ mod tests {
         let data = Data::new(&paths.data, paths.patch.clone());
         let season = Season::load(&data).unwrap();
         let mut catalog = Catalog::scan(&paths.data).unwrap();
-        catalog.set_rsf_cars(&paths.data, &rsf.to_string_lossy(), Path::new(""));
+        catalog.set_community_cars(&paths.data, &rsf.to_string_lossy(), Path::new(""));
         catalog.offer(&crate::catalog::ngp_cars(Path::new(&ngp)));
         let car = std::env::var("RBR_E2E_CAR").ok();
         let ngp_dll = std::env::var("RBR_NGP_DLL").ok();

@@ -1,6 +1,6 @@
-//! A co-driver mod (`notes/sound.md` "Custom co-driver"): RSF's Pacenote plugin's way of calling the notes, with a
-//! voice, a style and a range set from its folder (`rbr_formats::rsf::codriver`) and the stage's notes, its `.dls` keys
-//! or a note file (`rbr_formats::rsf::pacenotes`). It plays instead of 1.02's pace notes; the countdown and the damage
+//! A co-driver mod (`notes/sound.md` "Custom co-driver"): the Pacenote plugin's way of calling the notes, with a
+//! voice, a style and a range set from its folder (`rbr_formats::pacenote::codriver`) and the stage's notes, its `.dls` keys
+//! or a note file (`rbr_formats::pacenote::notes`). It plays instead of 1.02's pace notes; the countdown and the damage
 //! calls stay 1.02's.
 //!
 //! The rules are the plugin's `PaceNoteHandler` (`PaceNote.dll`, read in its disassembly; nothing of it runs here):
@@ -23,8 +23,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use rbr_formats::rsf::codriver::{self, Call, Calls};
-use rbr_formats::rsf::pacenotes::{self, id, Note};
+use rbr_formats::pacenote::codriver::{self, Call, Calls};
+use rbr_formats::pacenote::notes::{self, id, Note};
 
 use crate::data::{legacy_word, Wave};
 use crate::voice::{Command, Speech};
@@ -109,7 +109,7 @@ pub struct Choice {
     pub notes: Option<PathBuf>,
 }
 
-/// The style and range set when the player names none: what RSF's notes name.
+/// The style and range set when the player names none: what the notes name.
 pub const DEFAULT_STYLE: &str = "Rbr.ini";
 pub const DEFAULT_RANGES: &str = "Rbr.ini";
 
@@ -143,7 +143,7 @@ impl CustomCoDriver {
 /// The notes `choice` names: `dls` unless it names a note file.
 fn notes(choice: &Choice, dls: Vec<Note>) -> Result<Vec<Note>, String> {
     match &choice.notes {
-        Some(path) => pacenotes::read(path),
+        Some(path) => notes::read(path),
         None => Ok(dls),
     }
 }
@@ -480,7 +480,7 @@ impl CustomCoDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rbr_formats::rsf::pacenotes::STICKY;
+    use rbr_formats::pacenote::notes::STICKY;
 
     fn call(name: &str, link: Option<&str>) -> Call {
         Call { name: name.into(), sounds: vec![format!("{name}.ogg")], link: link.map(str::to_owned) }

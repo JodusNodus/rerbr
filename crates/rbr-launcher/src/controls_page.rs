@@ -124,7 +124,7 @@ fn ffb_cars_ui(
             changed = true;
         }
         let selected = cars.get(car);
-        let key = selected.map(|c| camera_prefs::car_key(&c.name, c.rsf.as_ref().map(|r| r.id)));
+        let key = selected.map(|c| camera_prefs::car_key(&c.name, c.community.as_ref().map(|r| r.id)));
         let listed = key.as_ref().is_some_and(|k| ffb_cars.cars.contains_key(k));
         ui.horizontal(|ui| {
             let name = selected.map(|c| c.name.as_str()).unwrap_or("?");
@@ -163,7 +163,7 @@ fn ffb_cars_ui(
 /// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
 fn car_display(key: &str, cars: &[Car]) -> String {
     cars.iter()
-        .find(|car| camera_prefs::car_key(&car.name, car.rsf.as_ref().map(|r| r.id)) == key)
+        .find(|car| camera_prefs::car_key(&car.name, car.community.as_ref().map(|r| r.id)) == key)
         .map(|car| car.name.clone())
         .unwrap_or_else(|| key.to_owned())
 }
@@ -192,7 +192,7 @@ fn import_ffb_cars(rsf_root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mu
         .unwrap_or_default();
     let mut imported = 0;
     for car in cars {
-        let Some(id) = car.rsf.as_ref().map(|rsf| rsf.id) else { continue };
+        let Some(id) = car.community.as_ref().map(|rsf| rsf.id) else { continue };
         let own = Sources { car: personal(&personal_ini, id), ..sources.clone() }.resolve(SLOT).sensitivity;
         if own != global {
             ffb_cars.cars.insert(camera_prefs::car_key(&car.name, Some(id)), own);
@@ -718,7 +718,7 @@ fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::RsfCar;
+    use crate::catalog::CommunityCar;
     use rbr_render::bindings::Device;
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };
@@ -784,7 +784,7 @@ mod tests {
         )
         .unwrap();
         let rsf = |id| {
-            Some(RsfCar {
+            Some(CommunityCar {
                 id,
                 added: false,
                 group: None,
@@ -794,8 +794,8 @@ mod tests {
             })
         };
         let cars = vec![
-            Car { index: 0, name: "Evo".into(), rsf: rsf(88) },
-            Car { index: 1, name: "Same".into(), rsf: rsf(87) },
+            Car { index: 0, name: "Evo".into(), community: rsf(88) },
+            Car { index: 1, name: "Same".into(), community: rsf(87) },
         ];
         let global = [280, 250, 280];
         let mut ffb_cars = ffb::CarSensitivity { cars: [("rsf-88".to_owned(), [1, 2, 3])].into() };

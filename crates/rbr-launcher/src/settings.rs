@@ -758,13 +758,13 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     catalog.maps.retain(catalog::is_listed);
     let rsf = or_folder(settings.rsf_root.as_deref(), &folder.rsf_root);
     if !rsf.is_empty() {
-        catalog.set_rsf(&rsf);
+        catalog.set_community_stages(&rsf);
     }
-    catalog.set_rsf_cars(&paths.data, &rsf, &here.join(crate::car_packs::DIR));
+    catalog.set_community_cars(&paths.data, &rsf, &here.join(crate::car_packs::DIR));
     catalog.offer(&catalog::ngp_cars(Path::new(&or_folder(settings.ngp_physics.as_deref(), &folder.ngp_physics))));
     let data = Data::new(&paths.data, paths.patch.clone());
     let season = Season::load(&data)?;
-    // Without RSF cars the form still loads: the Settings page and the status line say what is missing.
+    // Without community cars the form still loads: the Settings page and the status line say what is missing.
     if catalog.maps.is_empty() {
         return Err(format!("no maps in {}", paths.data.display()));
     }
@@ -1655,7 +1655,7 @@ mod tests {
             maps: vec![catalog::Map {
                 number: 54,
                 stages: vec![catalog::Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                rsf: None,
+                community: None,
                 btb: None,
             }],
         };
