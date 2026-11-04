@@ -23,7 +23,7 @@ pub enum Page {
     /// The quick race: car, stage, conditions, the race options and Start.
     Drive,
     Championship,
-    /// The rally school's lessons, each on its map with car 5.
+    /// The rally school's lessons, each on its map in the Drive page's car.
     School,
     /// The car setup.
     Setup,

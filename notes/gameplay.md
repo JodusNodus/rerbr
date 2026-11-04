@@ -113,10 +113,11 @@ owns it, and the live hook and the profile write are in `rbr-standalone` (`--sch
 autopilot drive of lesson 2 (stops in the box, verdict 3, profile written). No original school drive is recorded
 yet: the oracle run is open.
 
-- Car (ours): the original drives car 5 with the lesson's setup (`Lesson::setup_file`). `--school` takes any
-  `--car` or `--rsf-car`, car 5 by default; the lesson's setup applies to car 5 without a pack only
-  (`Race::school_setup`), any other car runs its default setup on the lesson's tyre. Lesson 2 autopilot: car 5
-  9.381877 s, car 0 9.604045 s, an RSF Focus 9.234691 s, all verdict 3. User decision 2026-11-04.
+- Car (ours, user decision 2026-11-04): the original drives car 5 with the lesson's setup (`Lesson::setup_file`).
+  `--school` takes any `--car` or `--rsf-car`, car 5 by default; like the original the lesson's setup goes over
+  slot 5 without a pack, whatever car it holds (`Race::school_setup`), any other car keeps its default setup on the
+  lesson's tyre. Lesson 2 autopilot over the 8 retail slots and 84 RSF packs: every drive ends by the school
+  (verdicts 0, 3 or 4 by the autopilot's time; car 2 at 10.10 s fails).
 
 - Ported and vector-checked but with no caller in ours, removed in f9eb0e60 (restore from its parent): the sub
   primitives the results page uses (`Classify`, `Category`, `FlagMap`, `Over`/`Over2`/`Over3`, `Pick`, `InRange`,

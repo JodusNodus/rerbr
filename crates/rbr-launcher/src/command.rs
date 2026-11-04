@@ -615,7 +615,7 @@ impl Form {
     }
 
     /// Starts a rally school lesson like a quick race: `lesson` on its map's `M` variant on good weather with the
-    /// lesson's tyre, in the School page's car (`rbr-standalone --school N`, with `--car` or `--rsf-car`); without
+    /// lesson's tyre, in the Drive page's car (`rbr-standalone --school N`, with `--car` or `--rsf-car`); without
     /// the flags `--school` refuses (`--tyre`, `--setup`, `--surface`, `--championship`). The result goes to the
     /// profile's saves (`--saves`, `--profile`).
     pub fn start_school(&mut self, lesson: Lesson) {
@@ -624,8 +624,8 @@ impl Form {
         let draws = Draws { row: None, wear: 0 };
         match self.catalog.stage_weather(&self.season, map, Preset::Good, draws) {
             Ok((stage, weather)) => {
-                let Some(car) = self.school_drive_car() else {
-                    self.status = "the rally school's car is not installed".into();
+                let Some(car) = self.car().cloned() else {
+                    self.status = "no car on the Drive page".into();
                     return;
                 };
                 let mut extra = vec!["--school".to_owned(), lesson.index().to_string()];

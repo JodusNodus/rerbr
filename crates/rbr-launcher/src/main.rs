@@ -86,7 +86,7 @@
 //! and `$RBR_RSF`.
 //!
 //! The tabs follow what the player wants to do (ours, after Content Manager): Drive (car and stage, conditions, race
-//! options, the previews and Start), Championship, School (the rally school's lessons on their maps with car 5), Car
+//! options, the previews and Start), Championship, School (the rally school's lessons in the Drive page's car), Car
 //! setup, Replays (saved drives, playback and video export), Controls, Graphics & sound (window, camera, HUD and pace
 //! notes, sound, the renderer's additions) and Settings (install folder, advanced paths, about). The status line under
 //! every page says what the install lacks (the programs, NGP's archive, a car NGP drives), with its fix
