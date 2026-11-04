@@ -575,37 +575,41 @@ impl CarSetup {
 
 /// The rows of the season's setup choice before a stage (`CSeasonChooseSetupUI` 0x5460b0, `DrawRow` 0x5466b0): the
 /// default setup of the next stage's surface (`CSDEFA`, the surface from `E14_4a1330` on the stage's map), the current
-/// setup (`CSCURR`), or one of the car's three save slots (`CSSLOT`, `rbr_formats::saves::setup_slots`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// setup (`CSCURR`), or in place of the game's one of the car's three save slots (`CSSLOT`), ours: one of the car's
+/// saved setups on the surface, by name.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SeasonSetup {
     Default,
     #[default]
     Current,
-    Slot(u32),
+    Saved(String),
 }
 
 impl SeasonSetup {
-    /// The rows in the menu's order for `slots` save slots.
-    pub fn rows(slots: u32) -> Vec<SeasonSetup> {
-        [SeasonSetup::Default, SeasonSetup::Current].into_iter().chain((0..slots).map(SeasonSetup::Slot)).collect()
+    /// The rows in the menu's order with the car's `saved` setups.
+    pub fn rows(saved: impl IntoIterator<Item = String>) -> Vec<SeasonSetup> {
+        [SeasonSetup::Default, SeasonSetup::Current]
+            .into_iter()
+            .chain(saved.into_iter().map(SeasonSetup::Saved))
+            .collect()
     }
 
-    /// The setup the row gives: the surface's `default`, the `current` one, or the slot's text over the default
-    /// (`LoadFromMemory` parses a slot over the setup in place; ours: over the surface's default, so a slot saved on
-    /// another surface gives the same values whatever was loaded before).
-    pub fn setup(self, default: &Setup, current: &Setup, slot_text: Option<&str>) -> Result<Setup, String> {
+    /// The setup the row gives: the surface's `default`, the `current` one, or the saved setup's text over the
+    /// default (`LoadFromMemory` parses a slot over the setup in place; ours: over the surface's default, so a setup
+    /// gives the same values whatever was loaded before).
+    pub fn setup(&self, default: &Setup, current: &Setup, saved_text: Option<&str>) -> Result<Setup, String> {
         match self {
             SeasonSetup::Default => Ok(*default),
             SeasonSetup::Current => Ok(*current),
-            SeasonSetup::Slot(n) => Setup::from_text(default, slot_text.ok_or(format!("slot {} is empty", n + 1))?),
+            SeasonSetup::Saved(name) => Setup::from_text(default, saved_text.ok_or(format!("{name}: not found"))?),
         }
     }
 
-    pub fn label(self) -> String {
+    pub fn label(&self) -> String {
         match self {
             SeasonSetup::Default => "Default".into(),
             SeasonSetup::Current => "Current".into(),
-            SeasonSetup::Slot(n) => format!("Slot {}", n + 1),
+            SeasonSetup::Saved(name) => name.clone(),
         }
     }
 }
@@ -657,15 +661,16 @@ mod tests {
     }
 
     #[test]
-    fn the_season_rows_give_the_default_current_or_a_slot() {
+    fn the_season_rows_give_the_default_current_or_a_saved_setup() {
         let default = Setup { steering_lock: 1.4, drop_gear: 11, ..Setup::default() };
         let current = Setup { drop_gear: 12, ..default };
-        let slot = "((\"CarSetup\" Drive (\":-D\" DropGearId 10 ) ))";
-        assert_eq!(SeasonSetup::rows(3).len(), 5);
+        let saved = "((\"CarSetup\" Drive (\":-D\" DropGearId 10 ) ))";
+        assert_eq!(SeasonSetup::rows(["fast".to_owned()]).len(), 3);
         assert_eq!(SeasonSetup::Default.setup(&default, &current, None), Ok(default));
         assert_eq!(SeasonSetup::Current.setup(&default, &current, None), Ok(current));
-        assert_eq!(SeasonSetup::Slot(0).setup(&default, &current, Some(slot)).map(|s| s.drop_gear), Ok(10));
-        assert!(SeasonSetup::Slot(1).setup(&default, &current, None).is_err());
+        let fast = SeasonSetup::Saved("fast".into());
+        assert_eq!(fast.setup(&default, &current, Some(saved)).map(|s| s.drop_gear), Ok(10));
+        assert!(fast.setup(&default, &current, None).is_err());
     }
 
     #[test]

@@ -515,7 +515,7 @@ impl Form {
                 self.validate_weather_row();
                 // The setup row picked for the stage, on the stage's surface (`CSeasonChooseSetupUI`).
                 self.select_setup();
-                if let Err(e) = self.setup.choose(&self.here(), setup) {
+                if let Err(e) = self.setup.choose(&setup) {
                     eprintln!("launcher: setup {}: {e}; the stage keeps the current setup", setup.label());
                 }
                 // The quick race's options keep their menu values; the stage takes the season's from `extra`.

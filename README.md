@@ -61,8 +61,8 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
 - **Keyboard steering on a RallySimFans install** moves at a tenth of the retail speed, as in RSF's own game.
 - **RSF cars.** A car whose model isn't installed is drawn as the retail car RSF names as its stand-in. Car-parts
   options, extra lights and other modder options are not applied; the selected skin is. RSF cars and added cars
-  share one slot: the same ghosts, named setups and setup slots, and the service park repairs them by that slot's
-  rules.
+  share one slot: the same ghosts, and the service park repairs them by that slot's rules. Their setups are their
+  own, per car and surface, with RSF's own setups listed too.
 - **Encrypted RSF stages** are not decrypted; they stay in the list, marked unavailable.
 - **BTB stages** (RallySimFans' `RX_CONTENT/Tracks`) are drawn without bump or specular maps, only in dry weather, and
   keep no records or ghosts.

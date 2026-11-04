@@ -57,7 +57,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Unlocks, rally school, RB Challenge, hot seat | out | - |
 | Profiles and save files | done | which profile options the launcher shows (user) |
 | G Default setup, option selection | done | - |
-| G Player-edited and saved setups | done | original run: a drive with a changed setup; a golden slot file |
+| G Player-edited and saved setups | done | original run: a drive with a changed setup; a golden slot file (the format; the launcher offers named setups, not slots) |
 | G Driver aids | done | original run: a drive per changed aid; no auto-gears recording |
 | G Season difficulty, weather draw, pace-note settings | done | - |
 | Particle and render quality options | out | always highest |

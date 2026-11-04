@@ -680,7 +680,7 @@ impl Form {
 
     /// Points the Setup page at the selected car and the map's surface.
     fn select_setup(&mut self) {
-        let surface = ["gravel", "tarmac", "snow"][self.catalog.maps[self.map].surface() as usize];
+        let surface = setup_page::SURFACES[self.catalog.maps[self.map].surface() as usize];
         let here = self.here();
         let archive = self.ngp_archive();
         let rsf = PathBuf::from(self.rsf().trim());

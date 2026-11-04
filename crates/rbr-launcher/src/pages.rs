@@ -605,6 +605,8 @@ impl Form {
         if let Some(Some(i)) = season_car {
             self.car = i;
         }
+        // The setup choice before a stage lists the season car's saved setups.
+        self.select_setup();
         let here = self.here();
         let archive = self.ngp_archive();
         let (slot, car_name) = self.car().map_or((0, String::new()), |c| (c.index, c.name.clone()));
@@ -643,7 +645,7 @@ impl Form {
         let request = egui::ScrollArea::vertical()
             .id_salt("championship")
             .show(ui, |ui| {
-                let (data, season) = (&self.data, &self.season);
+                let (data, season, setups) = (&self.data, &self.season, &self.setup);
                 self.rally.ui(
                     ui,
                     data,
@@ -651,6 +653,7 @@ impl Form {
                     &here,
                     slot,
                     &car_name,
+                    &|surface| setups.saved_names(surface),
                     Path::new(&archive),
                     &mut car_row,
                     launch_blocker.as_ref(),
@@ -699,8 +702,7 @@ impl Form {
             "Make and save setups for this car on this surface; pick the one to drive with on the Drive page.",
         );
         ui.add_space(4.0);
-        let here = self.here();
-        self.setup.ui(ui, &here);
+        self.setup.ui(ui);
     }
 }
 

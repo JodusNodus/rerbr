@@ -1,7 +1,7 @@
 //! The Championship page: a rally of the season (`season.dat`) driven stage by stage (`rbr_gameplay::championship`),
 //! with the service park between stages (`rbr_gameplay::service`): the damaged parts to order, the time left, Repair!
 //! and the late penalty, which goes into the season as the park closes. After each service and the rally's start
-//! (the game's page 0x1a) the setup is picked (the surface's default, the current one or a save slot:
+//! (the game's page 0x1a) the setup is picked (the surface's default, the current one or a saved one:
 //! `CSeasonChooseSetupUI`, `rbr_gameplay::setup::SeasonSetup`) and the tyre from the stage surface's tyres
 //! (`SELECTTYRES`, `championship::tyre_choices`); a stage with no service before it runs on the car's tyre and setup,
 //! with the tyres' wear carried (`championship::choice_before`). The park reads the car's `repair.ini` from NGP's
@@ -446,7 +446,7 @@ impl RallyPage {
         let stage = *self.championship.as_ref().and_then(|c| c.rally().stages.get(index)).ok_or("no such stage")?;
         let stage_args = self.stage_args(here)?;
         let tyre = self.next_tyre(index);
-        let setup = if choice_before(index) { self.setup } else { SeasonSetup::Current };
+        let setup = if choice_before(index) { self.setup.clone() } else { SeasonSetup::Current };
         let (wear, options, false_starts, start) = self.run.as_ref().map_or((1, self.options, 0, None), |r| {
             (
                 season_model::road_wear(season_model::player_start_place(&r.save)),
@@ -541,8 +541,9 @@ impl RallyPage {
         }
     }
 
-    /// The page for the season's car (its slot `car` and name `car_name`) under NGP (its `physics.rbz`, `ngp`);
-    /// `car_row` draws the new season's car field for a team, and says whether that car can start.
+    /// The page for the season's car (its slot `car` and name `car_name`, its saved setups on a map surface `saved`)
+    /// under NGP (its `physics.rbz`, `ngp`); `car_row` draws the new season's car field for a team, and says whether
+    /// that car can start.
     #[allow(clippy::too_many_arguments)]
     pub fn ui(
         &mut self,
@@ -552,6 +553,7 @@ impl RallyPage {
         here: &Path,
         car: u32,
         car_name: &str,
+        saved: &dyn Fn(u32) -> Vec<String>,
         ngp: &Path,
         car_row: &mut dyn FnMut(&mut Ui, u32) -> bool,
         blocker: Option<&Issue>,
@@ -610,7 +612,7 @@ impl RallyPage {
         ui.label(format!("Penalties {}   Total {}", clock(c.penalty()), clock(c.total_time())));
         ui.separator();
         match c.phase() {
-            RallyPhase::Stage(index) => request = self.stage_ui(ui, here, car, &c, index, blocker),
+            RallyPhase::Stage(index) => request = self.stage_ui(ui, here, saved, &c, index, blocker),
             RallyPhase::Service(stop) if c.damage().is_none() => self.welcome_ui(ui, stop.next),
             RallyPhase::Service(stop) => {
                 if self.park.is_none() {
@@ -759,7 +761,7 @@ impl RallyPage {
         &mut self,
         ui: &mut Ui,
         here: &Path,
-        car: u32,
+        saved: &dyn Fn(u32) -> Vec<String>,
         c: &Championship,
         index: usize,
         blocker: Option<&Issue>,
@@ -789,20 +791,16 @@ impl RallyPage {
                         }
                     },
                 );
-                let slots = SaveDir::new(here).setup_slots(car).unwrap_or_default();
-                let label = |row: SeasonSetup| match row {
-                    SeasonSetup::Slot(n) => {
-                        let name = slots.get(n as usize).cloned().flatten();
-                        format!("{}: {}", row.label(), name.unwrap_or_else(|| "empty".into()))
-                    }
-                    _ => row.label(),
-                };
+                // The car's saved setups on the stage's surface; a pick that is gone falls back to the current one.
+                let rows = SeasonSetup::rows(saved(crate::catalog::surface_kind(stage.map)));
+                if !rows.contains(&self.setup) {
+                    self.setup = SeasonSetup::Current;
+                }
                 ui.label("Setup");
-                ComboBox::from_id_salt("stage-setup").selected_text(label(self.setup)).show_ui(ui, |ui| {
-                    for row in SeasonSetup::rows(slots.len() as u32) {
-                        let empty = matches!(row, SeasonSetup::Slot(n) if slots[n as usize].is_none());
-                        let button = egui::Button::selectable(row == self.setup, label(row));
-                        if ui.add_enabled(!empty, button).clicked() {
+                ComboBox::from_id_salt("stage-setup").selected_text(self.setup.label()).show_ui(ui, |ui| {
+                    for row in rows {
+                        let selected = row == self.setup;
+                        if ui.selectable_label(selected, row.label()).clicked() {
                             self.setup = row;
                         }
                     }

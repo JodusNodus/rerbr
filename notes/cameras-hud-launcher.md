@@ -97,7 +97,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `Physics/<car>/Setups/`. RSF cars: ours in `<files>/SavedGames/<pack>/`, then RSF's `SavedGames/<pack>/` and
   `rsfdata/setups/<pack>/`, read only; all RSF names are `<surface>_<name>.lsp`, and its `<id>_d_<surface>.lsp`
   copies of the defaults are skipped (RSF install 2026-11-04: 85 shipped, 214 saved files, none named otherwise).
-  The older `[launcher] setup` (one name for every car) is no longer read.
+  The older `[launcher] setup` (one name for every car) is no longer read. No save slots (user decision
+  2026-11-04): a retail car's earlier slot files (`SavedGames/<car>slot<n>_*.lsp`) are listed read only; the
+  championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.
