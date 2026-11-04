@@ -26,6 +26,7 @@
 //! The time base is the game's frame time: each live answer is one frame of one step ([`STEP_SECONDS`],
 //! `rbr_render::live`). Ours: the fade of the messages.
 
+use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::{level, CarriedDamage};
 use rbr_gameplay::service::Rules;
 use rbr_recording::dash::{Dash, StackKey};
@@ -377,8 +378,10 @@ pub struct HudModel {
     service_next: bool,
     /// The pace stack's size (`PN_STACK`).
     stack: u8,
-    /// The rally-school lesson's state (SCH1) with its toast's time left.
+    /// The rally-school lesson's state (SCH1) with its toast's time left, and the English table the failed
+    /// end's reasons resolve through.
     school: Option<(school::State, f32)>,
+    school_strings: Option<Strings>,
     /// The custom co-driver's visible notes (`CustomKey`, sorted by distance): the pace stack follows these instead
     /// of DSH1's keys while set.
     custom: Option<Vec<CustomKey>>,
@@ -394,6 +397,7 @@ impl HudModel {
     pub fn fresh(&self) -> HudModel {
         let mut fresh = HudModel::with_stack(self.stack);
         fresh.custom = self.custom.clone();
+        fresh.school_strings.clone_from(&self.school_strings);
         fresh
     }
 
@@ -401,6 +405,12 @@ impl HudModel {
     /// calls come through [`callout`](Self::callout).
     pub fn set_custom(&mut self, keys: Vec<CustomKey>) {
         self.custom = Some(keys);
+    }
+
+    /// The English table the failed school end's reasons resolve through (a school drive's viewer loads
+    /// `bstrings.eng` once its first answer arrives).
+    pub fn set_school_strings(&mut self, strings: Strings) {
+        self.school_strings = Some(strings);
     }
 
     /// Takes one answer's records: its callouts (PCN1), its dash record (DSH1), the damage zones (DMG1), whether
@@ -576,7 +586,7 @@ impl HudModel {
             red: self.tints.0,
             black: self.tints.1,
             service_next: self.service_next,
-            school: self.school.as_ref().map(|(state, _)| *state),
+            school: self.school.as_ref().map(|(state, _)| state.clone()),
             // The live process's own records, set by the viewer.
             ..HudView::default()
         }
@@ -590,6 +600,7 @@ impl HudModel {
             return;
         };
         let mut state = school::State::of(record);
+        state.reasons = school::resolve(&record.reasons, self.school_strings.as_ref());
         let left = match school::Toast::of(record.incident) {
             Some(toast) => {
                 state.toast = Some(toast);
@@ -856,5 +867,32 @@ mod tests {
         assert_eq!(hud.view().school.unwrap().toast, None, "gone after 2 s");
         hud.set_school(STEP_SECONDS, None);
         assert_eq!(hud.view().school, None);
+    }
+
+    #[test]
+    fn the_failed_school_end_lists_its_reasons_texts() {
+        use rbr_recording::school::{Reason as SchoolReason, School as SchoolRecord, STATE_ENDED};
+        use std::collections::HashMap;
+        let strings = Strings(HashMap::from([
+            ("TIMEFAIL".to_owned(), "Too slow. ".to_owned()),
+            ("RS_X".to_owned(), "X".to_owned()),
+        ]));
+        let record = SchoolRecord {
+            lesson: 2,
+            state: STATE_ENDED,
+            verdict: 0,
+            reasons: vec![
+                SchoolReason { lesson: true, key: "RS_X".into() },
+                SchoolReason { lesson: false, key: "HALTEARLY".into() },
+                SchoolReason { lesson: false, key: "TIMEFAIL".into() },
+            ],
+            ..SchoolRecord::default()
+        };
+        let mut hud = HudModel::default();
+        hud.set_school(STEP_SECONDS, Some(&record));
+        assert!(hud.view().school.unwrap().reasons.is_empty(), "no table yet: no reasons");
+        hud.set_school_strings(strings);
+        hud.set_school(STEP_SECONDS, Some(&record));
+        assert_eq!(hud.view().school.unwrap().reasons, ["X", "Too slow."], "unknown keys are skipped");
     }
 }
