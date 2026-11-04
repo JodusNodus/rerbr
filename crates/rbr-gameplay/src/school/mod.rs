@@ -19,12 +19,14 @@ pub mod bank;
 pub mod filter;
 pub mod judge;
 pub mod lesson;
+pub mod run;
 pub mod step;
 
 pub use bank::{Bank, Check, Lead, Mirrors, Pair, CHECK_SPREAD, STREAM_MAGIC};
 pub use filter::{max_abs, FilterSub, WINDOW};
 pub use judge::{eval_filters, severity_max};
 pub use lesson::Lesson;
+pub use run::{SchoolRun, StepInput};
 pub use step::{
     checkpoint, end_race, rally_sound, school_incident, school_tick, tracker, trigger, IncidentInput, SchoolEvent,
     CHECKPOINT_REARM, DEVIATION_LIMIT, INPUT_GATE, SPEED_STOP,

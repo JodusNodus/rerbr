@@ -19,6 +19,7 @@ use crate::flow::{FinishZone, FlowEvents, FlowFrame, Mode, RaceFlow, StageEnd};
 use crate::markers::{MarkerEvent, MarkerSettings, MarkerTicker, TickInput};
 use crate::race_clock::{AssistSettings, ClockEvents, RaceClock};
 use crate::result::{self, StageResult};
+use crate::school::{SchoolRun, StepInput};
 use crate::stage::{Stage, State};
 use crate::tick::{self, Frame, FrameClock, SingleStep};
 use crate::timing::{self, Checkpoint, TimeCard, TimeKeeper, CLOCK_START};
@@ -115,6 +116,12 @@ pub trait PhysicsStep {
     fn drive_gear(&self) -> Option<u32> {
         None
     }
+
+    /// `CDriveLine::Sample` (0x50b180) on the physics' drive line at `distance`: the point the rally school's lessons
+    /// 0 and 10 measure the car's deviation from; `None` when the host does not have it.
+    fn drive_line_point(&self, _distance: f32) -> Option<[f32; 3]> {
+        None
+    }
 }
 
 /// Who turns the filtered control into the car's payload while driving.
@@ -197,6 +204,8 @@ pub struct Game {
     controls: ControlPath,
     /// The stage's finish zone.
     finish_zone: FinishZone,
+    /// The rally school's lesson, in flow mode 7 ([`Game::with_school`]).
+    school: Option<SchoolRun>,
 }
 
 impl Game {
@@ -234,7 +243,23 @@ impl Game {
             start_camera: None,
             controls: ControlPath::Quantized,
             finish_zone: FinishZone::load(None),
+            school: None,
         }
+    }
+
+    /// The rally school's lesson and its bank, which the drive feeds ([`crate::school::run`]).
+    pub fn with_school(self, school: SchoolRun) -> Self {
+        Self { school: Some(school), ..self }
+    }
+
+    /// The rally school's lesson and its bank.
+    pub fn school(&self) -> Option<&SchoolRun> {
+        self.school.as_ref()
+    }
+
+    /// The rally school's lesson and its bank, for the host to take its emits.
+    pub fn school_mut(&mut self) -> Option<&mut SchoolRun> {
+        self.school.as_mut()
     }
 
     /// The stage's finish zone ([`FinishZone::load`] of its `.dls`; the original's default zone unless set).
@@ -369,6 +394,9 @@ impl Game {
         // The school's confirm comes with the input poll (`CSigMenuActivate`), so `Tic` drives in the same frame.
         if mode.school() && input.confirm && self.stage.state() == State::Countdown {
             self.set_stage(self.stage.school_start(), physics);
+            if let Some(school) = &mut self.school {
+                school.start();
+            }
         }
         let tick_state = self.stage.state();
         self.tick_countdown(tick_state, frame.facc, input.confirm, mode, physics);
@@ -398,10 +426,16 @@ impl Game {
 
         // `Load3b0` ticks the marker keys after the physics substeps (`M004825b0`).
         let marker_events = self.tick_markers();
+        let school_end = self.tick_school(frame.facc);
 
         // The HUD's race clock and the race flow: the jump start reaches the clock before its tick.
-        let (clock_events, flow_events) =
-            self.tick_race_clock(frame.facc, acknowledged.or(zone_end), &marker_events, &substeps, physics);
+        let (clock_events, flow_events) = self.tick_race_clock(
+            frame.facc,
+            acknowledged.or(zone_end).or(school_end),
+            &marker_events,
+            &substeps,
+            physics,
+        );
         // `E16CamHolder::Tic` is part of the post-tick M004825b0 path; its
         // M0047ca40 event arms the countdown for the next outer frame.
         // With the go timer, `M004825b0`'s state 10 runs the camera (`M8840`) with the frame's `facc`.
@@ -515,6 +549,9 @@ impl Game {
                         fired.car_control()
                     }
                 };
+                if let Some(school) = &mut self.school {
+                    school.before_step(control.throttle, control.brake, control.handbrake);
+                }
                 substeps.push(self.physics_substep(physics, Some(control), Some(generated), index));
             }
         }
@@ -565,6 +602,14 @@ impl Game {
             }
         }
         marker_events
+    }
+
+    /// `E12_AnimSet::Tic570` (0x47a570) in a driving frame of `dt`, after the marker keys: the school bank's
+    /// `EndRace` with the HUD's race time, then a trip latch's retire. The first `CSigEndRace` ends the race.
+    fn tick_school(&mut self, dt: f32) -> Option<StageEnd> {
+        let school = self.school.as_mut().filter(|_| self.stage.state() == State::Driving)?;
+        let (finished, tripped) = school.frame(dt, self.race_clock.time);
+        (finished || tripped).then(|| self.flow.school_end(&self.race_clock, !finished)).flatten()
     }
 
     /// The HUD's race clock. The start line's jump start reaches it before the frame's tick: the peeks show the
@@ -698,7 +743,21 @@ impl Game {
             assert!(event.is_none(), "PhysicsStep called its in-step callback more than once");
             event = Some(self.record_step(sample, generated_control, control));
         });
-        event.expect("PhysicsStep must call its in-step callback once")
+        let event = event.expect("PhysicsStep must call its in-step callback once");
+        if let (Some(school), Some(sample)) = (&mut self.school, self.last_sample) {
+            let driveline = school.sample_at().and_then(|d| physics.drive_line_point(d));
+            let input = StepInput {
+                wall_inside: sample.wall_inside,
+                wall_crossed: sample.wall_crossed,
+                velocity: sample.velocity,
+                position: sample.position,
+                distance: event.distance,
+                driveline,
+                app_state: event.stage.state().value(),
+            };
+            school.in_step(&input, event.retire.is_some());
+        }
+        event
     }
 }
 

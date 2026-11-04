@@ -30,6 +30,22 @@ pub fn blend_b<S: EngineStore>(mem: &S, this: u32, idx: i32, t: f32) -> Vec4 {
     drive_line::hermite(p0, v0, p1, v1, t)
 }
 
+/// `CDriveLine::Sample` (0x50b180): the point at the distance `d`. The first entry from 1 whose distance is above `d`
+/// (`comiss`+`ja`: a NaN `d` finds none) gives the spline from the entry before it at `(d - d0) / (d1 - d0)`; with
+/// none, the last entry's position (an empty table's reads `this - 0x20`).
+pub fn sample<S: EngineStore>(mem: &S, this: u32, d: f32) -> Vec4 {
+    let n = mem.u32(this + COUNT_AT);
+    let distance = |k: u32| mem.f32(entry_at(this, k) + 0x20);
+    for k in 1..n {
+        let d1 = distance(k);
+        if d1 > d {
+            let d0 = distance(k - 1);
+            return blend_b(mem, this, (k - 1) as i32, (d - d0) / (d1 - d0));
+        }
+    }
+    Vec4::load(mem, entry_at(this, n.wrapping_sub(1)))
+}
+
 /// `CDriveLine::ClampMix` (0x50b0f0): `BlendB` at the segment of `x` (see `drive_line::segment_of`). An index of
 /// 0x7fffffff wraps to `this - 0x30`.
 pub fn clamp_mix<S: EngineStore>(mem: &S, this: u32, x: f32) -> Vec4 {
