@@ -24,7 +24,7 @@ use rbr_render::particles;
 use rbr_render::playback::{Drive, Playback};
 use rbr_render::relight;
 use rbr_render::renderer::{Enhance, Gpu, Renderer};
-use rbr_render::school_demo::Demo;
+use rbr_render::school_demo::{self, Demo};
 use rbr_render::stage::{self, Mesh, Stage};
 use rbr_render::stage_probe::StageProbe;
 use rbr_render::upscale;
@@ -371,12 +371,16 @@ fn load_scene<'scope, 'env>(
                             }
                             take_damage(&mut loaded, process);
                         }
+                        // The rally school's judged replay: watching a replay (`--replay`) of a school lesson
+                        // (its live command carries `--school N`) races Richard's ghost for the lesson
+                        // (`Ghosts\rse<N>.gho`), unless `--ghost` names one. A live lesson drive keeps no ghost.
                         let options = ghost::Options {
                             play: args.ghost.as_deref(),
                             save: args.save_ghost.as_deref(),
                             best: args.best_ghost.as_deref(),
                             weather: args.ghost_weather,
                             live: live.is_some(),
+                            memory: school_ghost(data, args),
                         };
                         ghost = Some(ghost::Session::load(data, &mut stage, name, car_name, &loaded, options)?);
                         cameras.apply(&mut car_mounts, &mut loaded);
@@ -537,6 +541,28 @@ fn start_live(
         }
     }
     Ok((process, drive, detaching, demo))
+}
+
+/// The school lesson's judged-replay ghost for a replay watch: Richard's `rse<N>.gho` stream when the viewer
+/// watches a replay (`--replay`) whose live command carries `--school N`, and no explicit `--ghost` names one.
+/// A live lesson drive is vanilla (no replay, no ghost). `None` with one log line when the lesson has no ghost file.
+fn school_ghost(data: &Data, args: &Args) -> Option<(String, (u32, u32, rbr_formats::ghost::Stream))> {
+    let lesson = school_demo::judged_lesson(
+        args.live.as_deref().unwrap_or_default(),
+        args.replay.is_some(),
+        args.ghost.is_some(),
+    )?;
+    match school_demo::ghost(data, lesson) {
+        Some((map, car, stream)) => Some((format!("rse{}.gho", lesson.index()), (map, car, stream))),
+        None => {
+            eprintln!(
+                "school ghost: lesson {} has no {}; racing without one",
+                lesson.index(),
+                school_demo::ghost_name(lesson)
+            );
+            None
+        }
+    }
 }
 
 /// The stage's light and the clock that moves it on (`rbr_render::relight`): relit at `--clock`'s time, else under the
