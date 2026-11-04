@@ -134,6 +134,9 @@ pub struct Selection {
 /// `TrackSettings.ini` section (`rsf::WeatherRow`), its sun, light, clouds and fog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sky {
+    /// The map and track letter the section was named by.
+    pub map: u32,
+    pub letter: u32,
     pub cloud_letter: u32,
     pub preset: u32,
     pub cloud: u32,
@@ -144,7 +147,13 @@ impl Sky {
     pub fn parse(section: &str) -> Option<Sky> {
         let id = section.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()?;
         let row = rbr_formats::rsf::WeatherRow::parse(id, section)?;
-        Some(Sky { cloud_letter: row.cloud_letter, preset: row.preset, cloud: row.cloud })
+        Some(Sky { map: id, letter: row.letter, cloud_letter: row.cloud_letter, preset: row.preset, cloud: row.cloud })
+    }
+
+    /// The section it was parsed from, for a stage that takes its sky from another map (a BTB stage's, `sky_map`): the
+    /// stage's own name has a letter of its own.
+    pub fn named(self) -> Option<String> {
+        rbr_formats::rsf::WeatherRow::section_name(self.map, self.letter, self.cloud_letter, self.preset, self.cloud)
     }
 
     /// The section it names for stage `name` (`track-21_O`).
@@ -296,6 +305,16 @@ pub fn interactive_record_index(handle: u32) -> Option<u32> {
 /// The stage's map number from its name (`track-33_N` is map 33, also in a stage folder's path).
 pub fn map_number(stage: &str) -> Option<u32> {
     stage_files::parts(stage).map(|(map, _)| map)
+}
+
+/// The retail map whose presentation (the sky's sections, the wind, the particles' map entry, the time of day's site)
+/// a stage takes: a BTB stage's is `rbr_btb::stage::SKY_MAP`, any other stage's its own number.
+pub fn sky_map(stage: &str) -> Option<u32> {
+    if btb::is_btb(stage) {
+        Some(rbr_btb::stage::SKY_MAP)
+    } else {
+        map_number(stage)
+    }
 }
 
 /// What loading skipped or could not find. Counts only: loading never stops on bad data.
@@ -714,6 +733,11 @@ mod tests {
         assert_eq!(Sky::parse("54E_crisp_clear").unwrap().section("track-54_E").as_deref(), Some("54E_crisp_clear"));
         assert_eq!(Sky::parse("21O_E_sunny_heavycloud"), None);
         assert_eq!(sky.section("tanner"), None);
+        assert_eq!(sky.named().as_deref(), Some("21O_E_heavyfog_heavycloud"));
+        assert_eq!(
+            Sky::parse("41O_heavyrain_heavycloud").unwrap().named().as_deref(),
+            Some("41O_heavyrain_heavycloud")
+        );
     }
 
     #[test]

@@ -706,9 +706,11 @@ fn report_car(report: &CarReport) {
     }
 }
 
-/// The map number and variant letter of `track-NN_X` (0 and `O` otherwise).
+/// The map number (its sky map's, [`rbr_render::stage::sky_map`]) and variant letter of `track-NN_X` (0 and `O`
+/// otherwise).
 fn clock_stage(name: &str) -> (u32, char) {
-    rbr_formats::stage_files::parts(name).unwrap_or((0, 'O'))
+    let letter = rbr_formats::stage_files::parts(name).map_or('O', |(_, letter)| letter);
+    (rbr_render::stage::sky_map(name).unwrap_or(0), letter)
 }
 
 /// The bake's letter of a `TrackSettings.ini` section: `54E_crisp_clear` is `E`, `54O_E_norain_lightcloud` is `E`.

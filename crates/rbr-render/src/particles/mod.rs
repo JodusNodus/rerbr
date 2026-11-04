@@ -41,7 +41,7 @@ use crate::live::Live;
 use crate::playback::{Playback, Sample};
 use crate::renderer::Renderer;
 use crate::skidmarks::SkidMarks;
-use crate::stage::{map_number, Selection, Stage};
+use crate::stage::{sky_map, Selection, Stage};
 use crate::tyre_marks::TyreMarks;
 use car::CarEffects;
 use damping::Damping;
@@ -222,7 +222,7 @@ impl Particles {
         let has = |name: &str| file.emitter(name).is_some();
         let (has_rain, has_snow) = (has("g_rain_emitter"), has("g_snow_emitter"));
         let precipitation = Precipitation::resolve(chosen, section, has_rain, has_snow);
-        let track_weather = map_number(stage).map_or_else(TrackWeather::default, |map| TrackWeather::load(data, map));
+        let track_weather = sky_map(stage).map_or_else(TrackWeather::default, |map| TrackWeather::load(data, map));
         let rain = precipitation
             .map_or_else(Rain::default, |p| Rain::new(&file, &mut sim, p, track_weather.wind, 0x5eed_0004));
         let points = ["Point_exhaust1", "Point_engine"].map(|name| car.and_then(|car| car_point(data, car, name)));
@@ -678,7 +678,8 @@ fn wheel_of_payload(p: &TyreParticles) -> Wheel {
 /// game takes `_LOW` with `ParticleQuality = low`, and for every map from 0x48 but 0x4a, 0x4f and 0x50 at any quality;
 /// `CPC_TrackState`, `RBR_E09_TrackHead.cpp:436`). The name is matched without case.
 fn particle_file(data: &Data, maps: &Path, stage: &str) -> Result<Option<std::path::PathBuf>, String> {
-    // A stage folder's `Tracks<id>.ini` (RallySimFans): the full file (ours: the exe's map-number rule is retail's).
+    // A stage folder's `Tracks<id>.ini` (RallySimFans): the full file (ours: the exe's map-number rule is retail's). A BTB
+    // stage's own choice ([`btb_particles`]), else its sky map's entry.
     if let Some(folder) = stage_files::folder(stage) {
         match rbr_btb::stage::source(folder) {
             None => return Ok(rsf::open(folder)?.particle_file(data, false)),
@@ -689,7 +690,7 @@ fn particle_file(data: &Data, maps: &Path, stage: &str) -> Result<Option<std::pa
             }
         }
     }
-    let Some(number) = map_number(stage) else { return Ok(None) };
+    let Some(number) = sky_map(stage) else { return Ok(None) };
     let text = std::fs::read(maps.join("Tracks.ini")).map_err(|e| format!("Tracks.ini: {e}"))?;
     let sections = ini::parse(&String::from_utf8_lossy(&text)).map_err(|e| format!("Tracks.ini: {e}"))?;
     let Some(value) = sections.iter().find(|s| s.name == format!("Map{number}")).and_then(|s| s.get("Particles"))
@@ -700,7 +701,7 @@ fn particle_file(data: &Data, maps: &Path, stage: &str) -> Result<Option<std::pa
 }
 
 /// A BTB stage's particle file (ours; `notes/btb.md` "Particles"): its `track.ini` `particles=`, else on gravel the
-/// British one (`PS_British`) and on snow RallySimFans's `PS_BTBSnow`; `None` for map 41's, Mont Blanc's, which throws
+/// British one (`PS_British`) and on snow RallySimFans's `PS_BTBSnow`; `None` for the sky map's (41, Mont Blanc's), which throws
 /// tarmac's and grass's but nothing on gravel. RallySimFans's `PS_BTBTarmac` does not read: 112 material aliases
 /// declared, 116 listed.
 fn btb_particles(maps: &Path, btb: &Path) -> Result<Option<std::path::PathBuf>, String> {
