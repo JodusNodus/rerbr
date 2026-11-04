@@ -269,8 +269,8 @@ slot's tree only when the pack has none), and the launcher keys its setups by `r
 `rsf-<id>slot<n>_<name>.lsp`, named setups in `Physics/rsf-<id>/Setups`, with what was saved as car 5 still offered
 (read only) to every RSF car without its own. The records keep the game's car word, 5 (the profile and result files
 hold a number only). The launcher hides the retail slot 5 beside RSF cars: in RSF's `physics.rbz` it is the RSF car
-last picked, which the list has. (Since 2026-11-04 the launcher saves an RSF car's setups in RSF's layout,
-`SavedGames/<pack>/<surface>_<name>.lsp`, and no slots; the `rsf-<id>` and car 5 files are listed read only,
+last picked, which the list has. (Since 2026-11-04 the launcher saves every car's setups as
+`setups/<car>/<surface>_<name>.lsp`, RSF's naming, and no slots; the `rsf-<id>` and car 5 files are listed read only,
 `notes/cameras-hud-launcher.md`.) `.sgc` quirk: duplicate node ids
 (first wins). The launcher's added gvrc.de packs (`crates/rbr-launcher/src/car_packs.rs`) unpack into `cars/` in
 the player's files folder in this layout, with a `cars.json` and `carmodels.json` of ours. Files starting
