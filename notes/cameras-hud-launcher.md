@@ -91,6 +91,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or a saved setup for the car
+  on the stage's surface, kept per car and surface (`[setup]`, `<surface> <car> = <name>`); the Car setup tab is the
+  manager (open, edit, save, delete; saving drives with it). Retail cars: ours and the install's
+  `Physics/<car>/Setups/`. RSF cars: ours in `<files>/SavedGames/<pack>/`, then RSF's `SavedGames/<pack>/` and
+  `rsfdata/setups/<pack>/`, read only; all RSF names are `<surface>_<name>.lsp`, and its `<id>_d_<surface>.lsp`
+  copies of the defaults are skipped (RSF install 2026-11-04: 85 shipped, 214 saved files, none named otherwise).
+  The older `[launcher] setup` (one name for every car) is no longer read.
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.

@@ -1,9 +1,14 @@
-//! The Setup page: the car's setup values grouped by area, within the car options' ranges and by the game's steps
-//! (`rbr_gameplay::setup`), with named setups saved in the game's `Setups/*.lsp` format.
+//! The Car setup page: the manager of the car's saved setups on the stage's surface. It opens one (or the default),
+//! edits its values grouped by area, within the car options' ranges and by the game's steps (`rbr_gameplay::setup`),
+//! and saves them in the game's `Setups/*.lsp` format. The Drive page picks the one to drive with
+//! ([`SetupPage::choice_ui`]), kept per car and surface (`[setup]` of the settings, [`SetupChoices`]).
 //!
-//! Setups are saved in `Physics/<car>/Setups/` in the player's folder (the game's `%sSetups/` under its own folder) and
-//! also listed from the install's `Physics/<car>/Setups/`, where the game saves them. Start writes the values to
-//! `setup-current.lsp` in the player's folder and passes it to `rbr-standalone --setup`, unless they are the default.
+//! A retail car's setups are ours in `Physics/<car>/Setups/` of the player's folder (the game's `%sSetups/` under its
+//! own folder) and the install's, where the game saves them. An RSF car's are ours in `SavedGames/<pack>/` of the
+//! player's folder, then the RSF install's own `SavedGames/<pack>/` and the ones it ships in `rsfdata/setups/<pack>/`,
+//! all named `<surface>_<name>.lsp` as RSF names them. Only ours are saved and deleted. Start writes the chosen
+//! values to `setup-current.lsp` in the player's folder and passes it to `rbr-standalone --setup`, unless they are
+//! the default.
 //!
 //! The game's three save slots per car (`CSetupSaveSlotButtonUI`) are the files `SavedGames/<car>slot<n>_<name>.lsp`
 //! (`rbr_formats::saves::setup_slots`) in the player's folder, so the game reads a slot saved here and the other way
@@ -12,14 +17,18 @@
 
 use std::path::{Path, PathBuf};
 
-use egui::{ComboBox, DragValue, Ui};
+use egui::{ComboBox, DragValue, RichText, Ui};
 use rbr_formats::data::Data;
 use rbr_formats::saves::setup_slots::SLOTS;
-use rbr_formats::saves::SaveDir;
+use rbr_formats::saves::{SaveDir, DIR as SAVES};
 use rbr_gameplay::setup::{Area, CarSetup, Range, SeasonSetup, Setup, Slot, Spec, CAR_FOLDERS, MAP_POINTS, WHEELS};
 
 use crate::catalog::Car;
 use crate::pages::{combo, WARN};
+use crate::settings::SetupChoices;
+
+/// How the lists name the car's default setup.
+const DEFAULT: &str = "Default setup";
 
 /// The defaults and ranges of the NGP car pack at `path` on `surface`.
 fn pack_setup(path: &Path, surface: &str) -> Result<CarSetup, String> {
@@ -28,39 +37,176 @@ fn pack_setup(path: &Path, surface: &str) -> Result<CarSetup, String> {
     CarSetup::parse(&text(format!("setups/d_{surface}.lsp"))?, &text(format!("r_{surface}.lsp"))?)
 }
 
+/// Where a saved setup is from. Ours are saved and deleted here; the 1.02 install's and the RSF install's (its
+/// players' `SavedGames/<pack>/` and the ones it ships in `rsfdata/setups/<pack>/`) are only read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    Own,
+    Game,
+    Rsf,
+    RsfShipped,
+}
+
+impl Source {
+    /// How a list names the source after the setup's name; ours have none.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Source::Own => "",
+            Source::Game => "game",
+            Source::Rsf => "RSF",
+            Source::RsfShipped => "RSF's",
+        }
+    }
+}
+
+/// A saved setup of the car on the surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Profile {
+    pub name: String,
+    pub source: Source,
+    path: PathBuf,
+}
+
+impl Profile {
+    pub fn label(&self) -> String {
+        match self.source.tag() {
+            "" => self.name.clone(),
+            tag => format!("{} ({tag})", self.name),
+        }
+    }
+}
+
+/// The folders a car's setups are in, ours first, and the file names' prefix. A retail car's are the game's
+/// `Physics/<car>/Setups/`, named as the player typed; an RSF car's are RSF's `SavedGames/<pack>/`, named
+/// `<surface>_<name>.lsp` (RSF's `<id>_d_<surface>.lsp` copies of the defaults don't match the prefix).
+#[derive(Debug, Default)]
+struct Folders {
+    dirs: Vec<(Source, PathBuf)>,
+    prefix: String,
+}
+
+impl Folders {
+    fn of(install: &Path, here: &Path, rsf: &Path, car: &Car, surface: &str) -> Folders {
+        match &car.rsf {
+            Some(r) => {
+                let Some(pack) = r.pack.as_ref().ok().and_then(|p| pack_folder(p)) else {
+                    return Folders::default();
+                };
+                let saved = |root: &Path| root.join(SAVES).join(&pack);
+                let dirs = vec![
+                    (Source::Own, saved(here)),
+                    (Source::Rsf, saved(rsf)),
+                    (Source::RsfShipped, rsf.join("rsfdata/setups").join(&pack)),
+                ];
+                Folders { dirs, prefix: format!("{surface}_") }
+            }
+            None => {
+                let Some(folder) = CAR_FOLDERS.get(car.index as usize) else {
+                    return Folders::default();
+                };
+                let dirs = [(Source::Own, here), (Source::Game, install)];
+                let dirs = dirs.into_iter().map(|(s, root)| (s, root.join(folder).join("Setups"))).collect();
+                Folders { dirs, prefix: String::new() }
+            }
+        }
+    }
+
+    fn file(&self, name: &str) -> Option<PathBuf> {
+        let (_, own) = self.dirs.first()?;
+        Some(own.join(format!("{}{name}.lsp", self.prefix)))
+    }
+
+    /// The setups in the folders: ours first, then each other folder's, by name; a name is listed once, from the
+    /// first folder that has it.
+    fn scan(&self) -> Vec<Profile> {
+        let mut profiles: Vec<Profile> = Vec::new();
+        for (source, dir) in &self.dirs {
+            let Ok(entries) = std::fs::read_dir(dir) else { continue };
+            let mut found: Vec<Profile> = entries
+                .filter_map(|e| {
+                    let path = e.ok()?.path();
+                    let file = path.file_name()?.to_str()?;
+                    let stem = strip_suffix_ignore_case(file, ".lsp")?;
+                    let name = strip_prefix_ignore_case(stem, &self.prefix)?.to_owned();
+                    (!name.is_empty() && path.is_file()).then_some(Profile { name, source: *source, path })
+                })
+                .filter(|p| !profiles.iter().any(|q| q.name.eq_ignore_ascii_case(&p.name)))
+                .collect();
+            found.sort_by_key(|p| p.name.to_lowercase());
+            profiles.extend(found);
+        }
+        profiles
+    }
+}
+
+/// RSF's folder for a setup of the car pack at `pack` (`rsfdata/cars/<pack>` or `<pack>.zip`): the pack's name.
+fn pack_folder(pack: &Path) -> Option<String> {
+    let name = pack.file_name()?.to_str()?;
+    Some(strip_suffix_ignore_case(name, ".zip").unwrap_or(name).to_owned())
+}
+
+fn strip_suffix_ignore_case<'a>(s: &'a str, suffix: &str) -> Option<&'a str> {
+    let at = s.len().checked_sub(suffix.len())?;
+    (s.is_char_boundary(at) && s[at..].eq_ignore_ascii_case(suffix)).then(|| &s[..at])
+}
+
+fn strip_prefix_ignore_case<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    let at = prefix.len();
+    (s.len() >= at && s.is_char_boundary(at) && s[..at].eq_ignore_ascii_case(prefix)).then(|| &s[at..])
+}
+
 /// The page's state for one car and surface.
 pub struct SetupPage {
     /// The car (`[CarNN]`) and surface the setup is for, and the car's name.
     key: Option<(u32, &'static str)>,
     car_name: String,
     car: Result<CarSetup, String>,
+    folders: Folders,
+    profiles: Vec<Profile>,
+    /// The setup each car drives with on each surface, the Drive page's choice.
+    pub choices: SetupChoices,
+    /// The values Start drives with: the chosen setup's, or a championship's (`choose`, `load_text`, `season`).
     pub setup: Setup,
-    /// The loaded or saved setup's name; empty for the default.
-    pub name: String,
+    season: bool,
+    /// The editor: the setup it opened (`None` the default), its values as opened and as edited, and the name it
+    /// saves under.
+    opened: Option<String>,
+    opened_values: Setup,
+    draft: Setup,
+    name: String,
+    confirm_delete: bool,
     area: Area,
     map: usize,
     status: String,
 }
 
 impl SetupPage {
-    pub fn new(name: String) -> SetupPage {
+    pub fn new(choices: SetupChoices) -> SetupPage {
         SetupPage {
             key: None,
             car_name: String::new(),
             car: Err(String::new()),
+            folders: Folders::default(),
+            profiles: Vec::new(),
+            choices,
             setup: Setup::default(),
-            name,
+            season: false,
+            opened: None,
+            opened_values: Setup::default(),
+            draft: Setup::default(),
+            name: String::new(),
+            confirm_delete: false,
             area: Area::Tyres,
             map: 0,
             status: String::new(),
         }
     }
 
-    /// Loads the car's defaults and ranges when the car or surface changes, then the named setup over them. An RSF
-    /// car's come from its pack (`setups/d_<surface>.lsp`, `r_<surface>.lsp`), as the game reads them once RSF has
-    /// copied the pack into the slot; its named setups and game slots are the slot's. A retail slot's come from NGP's
-    /// `physics.rbz` (`archive`), which has the NGP car installed in it.
-    pub fn select(&mut self, data: &Data, here: &Path, car: &Car, archive: &Path, surface: &'static str) {
+    /// Loads the car's defaults and ranges when the car or surface changes, then the setup chosen for them, which
+    /// the editor opens. An RSF car's come from its pack (`setups/d_<surface>.lsp`, `r_<surface>.lsp`), as the game
+    /// reads them once RSF has copied the pack into the slot; its saved setups are RSF's per pack and its game slots
+    /// the slot's. A retail slot's come from NGP's `physics.rbz` (`archive`), which has the NGP car installed in it.
+    pub fn select(&mut self, data: &Data, here: &Path, rsf: &Path, car: &Car, archive: &Path, surface: &'static str) {
         if self.key == Some((car.index, surface)) && self.car_name == car.name {
             return;
         }
@@ -71,11 +217,12 @@ impl SetupPage {
             Some(Err(e)) => Err(e.clone()),
             None => CarSetup::load_in(archive, car.index as usize, surface),
         };
-        self.setup = self.car.as_ref().map_or_else(|_| Setup::default(), |c| c.default);
-        if !self.name.is_empty() {
-            let name = std::mem::take(&mut self.name);
-            self.load(data, here, &name);
-        }
+        self.folders = Folders::of(data.install(), here, rsf, car, surface);
+        self.profiles = self.folders.scan();
+        self.status.clear();
+        self.drive_chosen();
+        let chosen = self.chosen().map(str::to_owned);
+        self.open(chosen.as_deref());
     }
 
     /// Shows `area` (`--screenshot`).
@@ -83,7 +230,68 @@ impl SetupPage {
         self.area = area;
     }
 
-    /// The setup file to start with: the current values, unless they are the default (none then).
+    fn surface(&self) -> &'static str {
+        self.key.map_or("", |(_, s)| s)
+    }
+
+    fn default_values(&self) -> Setup {
+        self.car.as_ref().map_or_else(|_| Setup::default(), |c| c.default)
+    }
+
+    /// The name of the setup the car drives with on the surface; `None` for the default.
+    pub fn chosen(&self) -> Option<&str> {
+        self.choices.of(&self.car_name, self.surface())
+    }
+
+    /// Reads the saved setup `name` over the car's defaults.
+    fn read(&self, name: &str) -> Result<Setup, String> {
+        let car = self.car.as_ref().map_err(|e| e.clone())?;
+        let profile = self.profiles.iter().find(|p| p.name == name).ok_or(format!("{name}: not found"))?;
+        let text = std::fs::read(&profile.path).map_err(|e| format!("{}: {e}", profile.path.display()))?;
+        Setup::from_text(&car.default, &String::from_utf8_lossy(&text))
+    }
+
+    /// Makes the values Start drives with the chosen setup's (the default when it is gone).
+    pub fn drive_chosen(&mut self) {
+        self.season = false;
+        let chosen = self.chosen().map(str::to_owned);
+        self.setup = match chosen.map(|name| self.read(&name)) {
+            Some(Ok(setup)) => setup,
+            Some(Err(e)) => {
+                self.status = format!("{e}; driving with the default setup");
+                self.default_values()
+            }
+            None => self.default_values(),
+        };
+    }
+
+    /// Makes `name` (`None` the default) the setup the car drives with on the surface.
+    pub fn drive_with(&mut self, name: Option<&str>) {
+        let surface = self.surface();
+        self.choices.set(&self.car_name, surface, name);
+        self.drive_chosen();
+    }
+
+    /// Opens saved setup `name` (`None` the default) in the editor.
+    fn open(&mut self, name: Option<&str>) {
+        let values = match name {
+            Some(n) => match self.read(n) {
+                Ok(values) => values,
+                Err(e) => {
+                    self.status = e;
+                    return;
+                }
+            },
+            None => self.default_values(),
+        };
+        self.opened = name.map(str::to_owned);
+        self.opened_values = values;
+        self.draft = values;
+        self.name = name.unwrap_or_default().to_owned();
+        self.confirm_delete = false;
+    }
+
+    /// The setup file to start with: the values Start drives with, unless they are the default (none then).
     pub fn current_file(&self, here: &Path) -> Result<Option<PathBuf>, String> {
         let car = self.car.as_ref().map_err(|e| e.clone())?;
         if self.setup == car.default {
@@ -104,7 +312,7 @@ impl SetupPage {
         self.setup.to_text()
     }
 
-    /// Puts the setup of `CSeasonChooseSetupUI`'s row `choice` on the page.
+    /// Makes the setup of `CSeasonChooseSetupUI`'s row `choice` the one Start drives with.
     pub fn choose(&mut self, here: &Path, choice: SeasonSetup) -> Result<(), String> {
         let (Ok(car), Some((index, _))) = (&self.car, self.key) else {
             return Err("no setup for this car".into());
@@ -114,19 +322,15 @@ impl SetupPage {
             _ => None,
         };
         self.setup = choice.setup(&car.default, &self.setup, slot.as_ref().map(|(_, t)| t.as_str()))?;
-        match (choice, slot) {
-            (SeasonSetup::Default, _) => self.name.clear(),
-            (_, Some((name, _))) => self.name = name,
-            _ => {}
-        }
+        self.season = true;
         Ok(())
     }
 
-    /// Puts a setup file's text over the default on the page, unnamed (a season's saved setup).
+    /// Makes a setup file's text over the default the one Start drives with (a season's saved setup).
     pub fn load_text(&mut self, text: &str) -> Result<(), String> {
         let car = self.car.as_ref().map_err(|e| e.clone())?;
         self.setup = Setup::from_text(&car.default, text)?;
-        self.name.clear();
+        self.season = true;
         Ok(())
     }
 
@@ -136,27 +340,69 @@ impl SetupPage {
         self.key.map_or(empty.clone(), |(car, _)| SaveDir::new(here).setup_slots(car).unwrap_or(empty))
     }
 
-    /// The game's save slots: load one, or save the current values into one under the name field's name.
+    /// The Drive page's Setup field: the default or a saved setup of the car on the surface, and Edit…. Whether
+    /// Edit… was pressed.
+    pub fn choice_ui(&mut self, ui: &mut Ui, width: f32) -> bool {
+        if let Err(e) = &self.car {
+            ui.colored_label(WARN, format!("no setup for this car: {e}"));
+            return false;
+        }
+        let chosen = self.chosen().map(str::to_owned);
+        let selected = match &chosen {
+            Some(name) => {
+                self.profiles.iter().find(|p| p.name == *name).map_or(format!("{name} (missing)"), Profile::label)
+            }
+            None => DEFAULT.to_owned(),
+        };
+        let mut pick = None;
+        let edit = ui
+            .horizontal(|ui| {
+                let combo = ComboBox::from_id_salt("drive-setup").width(width - 70.0).selected_text(selected);
+                combo.show_ui(ui, |ui| {
+                    if ui.selectable_label(chosen.is_none(), DEFAULT).clicked() {
+                        pick = Some(None);
+                    }
+                    for p in &self.profiles {
+                        if ui.selectable_label(chosen.as_deref() == Some(&p.name), p.label()).clicked() {
+                            pick = Some(Some(p.name.clone()));
+                        }
+                    }
+                });
+                ui.button("Edit…").on_hover_text("Make, change and save setups on the Car setup page").clicked()
+            })
+            .inner;
+        if let Some(name) = pick {
+            self.drive_with(name.as_deref());
+            // The editor follows, unless it holds unsaved changes.
+            if self.draft == self.opened_values {
+                self.open(name.as_deref());
+            }
+        }
+        edit
+    }
+
+    /// The game's save slots: open one, or save the editor's values into one under the name field's name.
     fn slots_ui(&mut self, ui: &mut Ui, here: &Path) {
         let Some((car, _)) = self.key else {
             return;
         };
         let slots = self.slots(here);
         ui.horizontal(|ui| {
-            ui.label("Game slots");
+            ui.label("Game slots").on_hover_text("The game's three save slots for this car, which championships offer");
             for (n, slot) in slots.iter().enumerate() {
                 let n = n as u32;
                 ui.separator();
                 ui.label(format!("{}: {}", n + 1, slot.as_deref().unwrap_or("empty")));
-                if slot.is_some() && ui.small_button("Load").clicked() {
-                    self.status = match self.choose(here, SeasonSetup::Slot(n)) {
-                        Ok(()) => format!("loaded slot {}", n + 1),
+                if slot.is_some() && ui.small_button("Open").clicked() {
+                    self.status = match self.open_slot(here, n) {
+                        Ok(()) => format!("opened slot {}", n + 1),
                         Err(e) => e,
                     };
                 }
-                if ui.small_button("Save").on_hover_text("Save the values here under the name field's name").clicked() {
+                if ui.small_button("Save").on_hover_text("Save these values here under the name field's name").clicked()
+                {
                     self.status = match valid_name(&self.name) {
-                        Ok(name) => match SaveDir::new(here).save_setup_slot(car, n, name, &self.setup.to_text()) {
+                        Ok(name) => match SaveDir::new(here).save_setup_slot(car, n, name, &self.draft.to_text()) {
                             Ok(()) => format!("saved {name} to slot {}", n + 1),
                             Err(e) => format!("slot {}: {e}", n + 1),
                         },
@@ -167,71 +413,62 @@ impl SetupPage {
         });
     }
 
-    fn folder(&self) -> Option<&'static str> {
-        self.key.and_then(|(car, _)| CAR_FOLDERS.get(car as usize).copied())
+    /// Puts game slot `n`'s values in the editor, under its name, unsaved.
+    fn open_slot(&mut self, here: &Path, n: u32) -> Result<(), String> {
+        let (Ok(car), Some((index, _))) = (&self.car, self.key) else {
+            return Err("no setup for this car".into());
+        };
+        let (name, text) = SaveDir::new(here).load_setup_slot(index, n).map_err(|e| e.to_string())?.ok_or("empty")?;
+        self.draft = Setup::from_text(&car.default, &text)?;
+        self.name = name;
+        Ok(())
     }
 
-    /// The saved setups' names: the launcher's and the install's `Setups/*.lsp`.
-    fn saved(&self, data: &Data, here: &Path) -> Vec<String> {
-        let Some(folder) = self.folder() else {
-            return Vec::new();
-        };
-        let mut names: Vec<String> = [here.join(folder), data.install().join(folder)]
-            .iter()
-            .filter_map(|dir| std::fs::read_dir(dir.join("Setups")).ok())
-            .flatten()
-            .filter_map(|e| e.ok()?.file_name().into_string().ok())
-            .filter(|n| n.to_ascii_lowercase().ends_with(".lsp"))
-            .map(|n| n[..n.len() - 4].to_owned())
-            .collect();
-        names.sort();
-        names.dedup();
-        names
-    }
-
-    fn load(&mut self, data: &Data, here: &Path, name: &str) {
-        let (Ok(car), Some(folder)) = (&self.car, self.folder()) else {
-            return;
-        };
-        let file = format!("{name}.lsp");
-        let path = [here.join(folder), data.install().join(folder)]
-            .into_iter()
-            .map(|dir| dir.join("Setups").join(&file))
-            .find(|p| p.is_file());
-        let result = path
-            .ok_or_else(|| format!("{file}: not found"))
-            .and_then(|p| std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display())))
-            .and_then(|text| Setup::from_text(&car.default, &text));
-        match result {
-            Ok(setup) => {
-                self.setup = setup;
-                self.name = name.to_owned();
-                self.status = format!("loaded {name}");
-            }
-            Err(e) => self.status = e,
-        }
-    }
-
-    fn save(&mut self, here: &Path) {
-        let Some(folder) = self.folder() else {
-            return;
-        };
+    /// Saves the editor's values as our setup under the name field's name, and drives with it.
+    fn save(&mut self) {
         let name = match valid_name(&self.name) {
-            Ok(name) => name,
+            Ok(name) => name.to_owned(),
             Err(e) => {
                 self.status = e;
                 return;
             }
         };
-        let dir = here.join(folder).join("Setups");
-        let path = dir.join(format!("{name}.lsp"));
-        self.status = match std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(&path, self.setup.to_text())) {
-            Ok(()) => format!("saved {}", path.display()),
-            Err(e) => format!("{}: {e}", path.display()),
+        let Some(path) = self.folders.file(&name) else {
+            return;
         };
+        let written = path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|_| std::fs::write(&path, self.draft.to_text()));
+        if let Err(e) = written {
+            self.status = format!("{}: {e}", path.display());
+            return;
+        }
+        self.profiles = self.folders.scan();
+        self.drive_with(Some(&name));
+        self.open(Some(&name));
+        self.status = format!("saved {name}; the Drive page drives with it");
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, data: &Data, here: &Path) {
+    /// Deletes our setup the editor opened, and opens the default.
+    fn delete(&mut self) {
+        let Some(profile) = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.name == *n)).cloned()
+        else {
+            return;
+        };
+        if let Err(e) = std::fs::remove_file(&profile.path) {
+            self.status = format!("{}: {e}", profile.path.display());
+            return;
+        }
+        self.profiles = self.folders.scan();
+        if self.chosen() == Some(profile.name.as_str()) {
+            self.drive_with(None);
+        }
+        self.open(None);
+        self.status = format!("deleted {}", profile.name);
+    }
+
+    pub fn ui(&mut self, ui: &mut Ui, here: &Path) {
         let car = match &self.car {
             Ok(car) => car.clone(),
             Err(e) => {
@@ -239,33 +476,85 @@ impl SetupPage {
                 return;
             }
         };
-        let surface = self.key.map_or("", |(_, s)| s);
-        let name = if self.name.is_empty() { "default setup" } else { &self.name };
-        let modified = if self.setup == car.default { "" } else { " (changed from the default)" };
-        ui.label(format!("{surface} · {name}{modified}"));
+        let opened = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.name == *n)).cloned();
         ui.horizontal(|ui| {
-            let saved = self.saved(data, here);
+            ui.label(format!("Setups on {}", self.surface()));
+            let selected = opened.as_ref().map_or(DEFAULT.to_owned(), Profile::label);
             let mut pick = None;
-            ComboBox::from_id_salt("setup-load").width(180.0).selected_text("Load…").show_ui(ui, |ui| {
-                for name in &saved {
-                    if ui.selectable_label(*name == self.name, name).clicked() {
-                        pick = Some(name.clone());
+            ComboBox::from_id_salt("setup-open").width(220.0).selected_text(selected).show_ui(ui, |ui| {
+                if ui.selectable_label(self.opened.is_none(), DEFAULT).clicked() {
+                    pick = Some(None);
+                }
+                for p in &self.profiles {
+                    if ui.selectable_label(self.opened.as_deref() == Some(&p.name), p.label()).clicked() {
+                        pick = Some(Some(p.name.clone()));
                     }
                 }
             });
             if let Some(name) = pick {
-                self.load(data, here, &name);
+                self.open(name.as_deref());
+                self.status.clear();
             }
-            ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(160.0).hint_text("setup name"));
-            if ui.button("Save").clicked() {
-                self.save(here);
+            if self.season
+                && ui
+                    .button("Open the championship's")
+                    .on_hover_text("The values the championship drives with; Save keeps them as a setup")
+                    .clicked()
+            {
+                self.draft = self.setup;
             }
-            if ui.button("Reset to default").clicked() {
-                self.setup = car.default;
-                self.name.clear();
-                self.status = "default values".into();
+            if self.opened.as_deref() == self.chosen() {
+                ui.weak("driving with this");
+            } else if ui
+                .button("Drive with this")
+                .on_hover_text("Make it the Drive page's setup for this car")
+                .clicked()
+            {
+                let name = self.opened.clone();
+                self.drive_with(name.as_deref());
             }
         });
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.name).desired_width(200.0).hint_text("name to save under"));
+            let replaces =
+                self.profiles.iter().any(|p| p.name.eq_ignore_ascii_case(self.name.trim()) && p.source == Source::Own);
+            let save = if replaces { "Save (replace)" } else { "Save" };
+            if ui.button(save).on_hover_text("Save as your setup and drive with it").clicked() {
+                self.save();
+            }
+            let changed = self.draft != self.opened_values;
+            if ui
+                .add_enabled(changed, egui::Button::new("Revert"))
+                .on_hover_text("Back to the values as opened")
+                .clicked()
+            {
+                self.draft = self.opened_values;
+            }
+            if ui.add_enabled(self.draft != car.default, egui::Button::new("Default values")).clicked() {
+                self.draft = car.default;
+            }
+            if opened.as_ref().is_some_and(|p| p.source == Source::Own) {
+                if self.confirm_delete {
+                    if ui.button(RichText::new("Delete it").color(WARN)).clicked() {
+                        self.delete();
+                    }
+                    if ui.button("Keep").clicked() {
+                        self.confirm_delete = false;
+                    }
+                } else if ui.button("Delete…").clicked() {
+                    self.confirm_delete = true;
+                }
+            }
+        });
+        let changed = self.draft != self.opened_values;
+        let note = match (changed, opened.as_ref().map(|p| p.source)) {
+            (true, _) => "unsaved changes: Save to drive with them".to_owned(),
+            (false, Some(Source::Own)) | (false, None) => String::new(),
+            (false, Some(source)) => format!("{} setup, read only: Save keeps a copy as yours", source.tag()),
+        };
+        if !note.is_empty() {
+            ui.colored_label(if changed { WARN } else { egui::Color32::GRAY }, note);
+        }
         self.slots_ui(ui, here);
         if !self.status.is_empty() {
             ui.label(&self.status);
@@ -294,7 +583,7 @@ impl SetupPage {
             Area::RollBars | Area::Brakes => {
                 self.rows_ui(ui, &specs);
                 if area == Area::Brakes {
-                    let (f, r) = (self.setup.front_brake_pressure, self.setup.rear_brake_pressure);
+                    let (f, r) = (self.draft.front_brake_pressure, self.draft.rear_brake_pressure);
                     ui.label(format!("Brake balance: {:.0}% front", 100.0 * f / (f + r).max(1.0)));
                 }
             }
@@ -376,7 +665,7 @@ impl SetupPage {
             |id: u32| car.gears.iter().find(|g| g.0 == id).map_or(format!("{id}"), |&(_, p, g)| format!("{p}:{g}"));
         ui.horizontal(|ui| {
             ui.label("Drop gear").on_hover_text("the car options' drop gear rows; the gearbox ratios are fixed");
-            let gear = &mut self.setup.drop_gear;
+            let gear = &mut self.draft.drop_gear;
             ui.add_enabled_ui(range.max > range.min, |ui| {
                 let ids: Vec<u32> = (range.min as u32..=range.max as u32).collect();
                 combo(ui, "drop-gear", None, gear, &ids, ratio);
@@ -387,7 +676,7 @@ impl SetupPage {
     /// Calls `f` with the setup's slot of `spec`.
     fn with_slot(&mut self, spec: &Spec, f: impl FnOnce(Slot<'_>)) {
         let mut f = Some(f);
-        self.setup.visit(&mut |s, slot| {
+        self.draft.visit(&mut |s, slot| {
             if s.group == spec.group && s.key == spec.key {
                 if let Some(f) = f.take() {
                     f(slot);
@@ -465,6 +754,64 @@ fn value_ui(ui: &mut Ui, spec: &Spec, range: Range, slot: Slot<'_>, widget: Widg
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write(path: PathBuf) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "").unwrap();
+    }
+
+    fn names(profiles: &[Profile]) -> Vec<(String, Source)> {
+        profiles.iter().map(|p| (p.name.clone(), p.source)).collect()
+    }
+
+    /// An RSF car's setups are ours, then the install's saved ones, then its shipped ones, on the surface only: RSF's
+    /// `<surface>_<name>.lsp`, without its copies of the defaults, a name once from the first folder with it.
+    #[test]
+    fn an_rsf_cars_setups_are_by_pack_and_surface() {
+        let root = crate::test_dir("setup-rsf");
+        let (here, rsf, install) = (root.join("here"), root.join("rsf"), root.join("install"));
+        let pack = "Ford_Fiesta_R5_ngp6";
+        write(here.join("SavedGames").join(pack).join("gravel_Mine.lsp"));
+        write(rsf.join("SavedGames").join(pack).join("gravel_Vasgabi.lsp"));
+        write(rsf.join("SavedGames").join(pack).join("gravel_mine.lsp"));
+        write(rsf.join("SavedGames").join(pack).join("tarmac_Vasgabi.lsp"));
+        write(rsf.join("SavedGames").join(pack).join("37_d_gravel.lsp"));
+        write(rsf.join("rsfdata/setups").join(pack).join("GRAVEL_Vasgabi.LSP"));
+        write(rsf.join("rsfdata/setups").join(pack).join("gravel_Asphalt Kid.lsp"));
+        let rsf_car = crate::catalog::RsfCar {
+            id: 37,
+            added: false,
+            group: None,
+            pack: Ok(rsf.join("rsfdata/cars").join(format!("{pack}.zip"))),
+            model: Ok(None),
+            drive_train: None,
+        };
+        let car = Car { index: rbr_formats::rsf::SLOT, name: "Ford Fiesta R5".into(), rsf: Some(rsf_car) };
+        let folders = Folders::of(&install, &here, &rsf, &car, "gravel");
+        assert_eq!(
+            names(&folders.scan()),
+            [
+                ("Mine".to_owned(), Source::Own),
+                ("Vasgabi".to_owned(), Source::Rsf),
+                ("Asphalt Kid".to_owned(), Source::RsfShipped),
+            ]
+        );
+        assert_eq!(folders.file("fast"), Some(here.join("SavedGames").join(pack).join("gravel_fast.lsp")));
+    }
+
+    /// A retail car's setups are ours, then the install's, under the slot's folder, by any name.
+    #[test]
+    fn a_retail_cars_setups_are_the_games() {
+        let root = crate::test_dir("setup-retail");
+        let (here, install) = (root.join("here"), root.join("install"));
+        write(here.join("Physics/c_xsara/Setups/b fast.lsp"));
+        write(install.join("Physics/c_xsara/Setups/a safe.lsp"));
+        write(install.join("Physics/c_xsara/Setups/notes.txt"));
+        let car = Car { index: 0, name: "XSARA".into(), rsf: None };
+        let folders = Folders::of(&install, &here, &root.join("rsf"), &car, "tarmac");
+        assert_eq!(names(&folders.scan()), [("b fast".to_owned(), Source::Own), ("a safe".to_owned(), Source::Game)]);
+        assert_eq!(folders.file("x"), Some(here.join("Physics/c_xsara/Setups/x.lsp")));
+    }
 
     /// Every NGP car pack of the RSF install (`RBR_RSF`) with plain setup files gives the page its defaults and ranges
     /// on each surface.

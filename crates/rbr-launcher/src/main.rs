@@ -683,8 +683,9 @@ impl Form {
         let surface = ["gravel", "tarmac", "snow"][self.catalog.maps[self.map].surface() as usize];
         let here = self.here();
         let archive = self.ngp_archive();
+        let rsf = PathBuf::from(self.rsf().trim());
         if let Some(car) = self.catalog.cars.get(self.car) {
-            self.setup.select(&self.data, &here, car, Path::new(&archive), surface);
+            self.setup.select(&self.data, &here, &rsf, car, Path::new(&archive), surface);
         }
     }
 }

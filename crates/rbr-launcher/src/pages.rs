@@ -335,7 +335,7 @@ impl Form {
             self.rally.options,
             self.rally.team,
         );
-        let old_setup = self.setup.name.clone();
+        let old_setup = self.setup.choices.clone();
         let old_ghost = self.ghost.clone();
         let old_graphics = (
             self.graphics,
@@ -495,7 +495,7 @@ impl Form {
                     self.rally.options,
                     self.rally.team,
                 )
-            || old_setup != self.setup.name
+            || old_setup != self.setup.choices
             || old_ghost != self.ghost
             || old_paths != (self.ngp_physics.clone(), self.rsf_root.clone())
             || old_head_gasket != self.head_gasket
@@ -694,10 +694,13 @@ impl Form {
         ui.label(
             RichText::new(format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]))).size(16.0).strong(),
         );
-        ui.colored_label(Color32::GRAY, "Used at the next Start. Change the car or the stage on the Drive page.");
+        ui.colored_label(
+            Color32::GRAY,
+            "Make and save setups for this car on this surface; pick the one to drive with on the Drive page.",
+        );
         ui.add_space(4.0);
         let here = self.here();
-        self.setup.ui(ui, &self.data, &here);
+        self.setup.ui(ui, &here);
     }
 }
 

@@ -485,6 +485,9 @@ impl Form {
         let viewer_extra = [viewer_extra, sky_fog].concat();
         extra.extend(wetness_args);
         let options = RaceOptions { weather: preset, ..self.options };
+        // The quick race drives with the Drive page's setup (read again, a championship may have put its own).
+        self.select_setup();
+        self.setup.drive_chosen();
         self.launch_args(stage, options, weather, extra, viewer_extra)
     }
 
