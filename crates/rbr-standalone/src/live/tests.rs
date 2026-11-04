@@ -249,7 +249,7 @@ fn a_championship_start_waits_for_the_confirm() {
 /// A quick race sends none.
 #[test]
 fn the_school_record_stands_where_the_lesson_does() {
-    use rbr_gameplay::school::Lesson;
+    use rbr_school::Lesson;
     let (Some(install), Some(patch), Some(ngp)) = (
         std::env::var_os("RBR_DATA").map(PathBuf::from),
         std::env::var_os("RBR_PATCH").map(PathBuf::from),

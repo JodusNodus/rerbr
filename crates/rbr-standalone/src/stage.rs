@@ -27,7 +27,7 @@ pub struct StageData {
     pub obstacles: Vec<autopilot::Obstacle>,
     /// The `.dls` finish zone (table 8).
     pub finish_zone: FinishZone,
-    /// The `Driveline` set's replay stream, the rally school's filter bank (`rbr_gameplay::school::Bank`).
+    /// The `Driveline` set's replay stream, the rally school's filter bank (`rbr_school::Bank`).
     pub replay: dls::DlsReplayStream,
     /// A BTB stage (`--btb`): the jump start is armed whatever the number.
     pub btb: bool,

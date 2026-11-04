@@ -1,4 +1,4 @@
-//! The School page: the rally school's 17 lessons (flow mode 7, `rbr_gameplay::school`), each on its map with
+//! The School page: the rally school's 17 lessons (flow mode 7, `rbr_school`), each on its map with
 //! car 5, the lesson's setup and tyre (`rbr-standalone --school N`).
 //!
 //! Every lesson is open (user decision: no unlocks). Each row shows the lesson number (`RSM_LESSON_NRB1`..`NRB6`
@@ -19,8 +19,8 @@ use egui::{Color32, RichText};
 use rbr_formats::data::Data;
 use rbr_formats::saves::{Kind, SaveDir};
 use rbr_formats::strings::Strings;
-use rbr_gameplay::school::lesson::CAR;
-use rbr_gameplay::school::Lesson;
+use rbr_school::lesson::CAR;
+use rbr_school::Lesson;
 
 use crate::catalog::{Car, Catalog};
 use crate::pages::{section, Fix, Issue, ACCENT, DRIVE_FIELDS, WARN};

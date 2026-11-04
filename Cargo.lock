@@ -2402,6 +2402,7 @@ dependencies = [
  "rbr-gameplay",
  "rbr-recording",
  "rbr-render",
+ "rbr-school",
  "rbr-sound",
  "rustix 1.1.5",
  "sevenz-rust2",
@@ -2455,6 +2456,7 @@ dependencies = [
  "rbr-gameplay",
  "rbr-physics",
  "rbr-recording",
+ "rbr-school",
  "rbr-sound",
  "sdl3-sys",
  "sha2",
@@ -2465,6 +2467,14 @@ dependencies = [
  "windows-sys 0.61.2",
  "winit",
  "winresource",
+]
+
+[[package]]
+name = "rbr-school"
+version = "0.1.0"
+dependencies = [
+ "rbr-formats",
+ "rbr-gameplay",
 ]
 
 [[package]]
@@ -2489,6 +2499,7 @@ dependencies = [
  "rbr-hybrid",
  "rbr-physics",
  "rbr-recording",
+ "rbr-school",
 ]
 
 [[package]]

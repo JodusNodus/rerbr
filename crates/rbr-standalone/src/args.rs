@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use rbr_formats::{rsf, stage_files};
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, DriverAids, Skill};
-use rbr_gameplay::school::Lesson;
+use rbr_school::Lesson;
 
 use crate::{autopilot, live};
 
@@ -358,10 +358,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 return Err(format!("--school takes no {flag} (the lesson sets it)"));
             }
         }
-        if args.car.is_some_and(|car| car != rbr_gameplay::school::lesson::CAR) {
+        if args.car.is_some_and(|car| car != rbr_school::lesson::CAR) {
             return Err("--school drives car 5".into());
         }
-        args.car = Some(rbr_gameplay::school::lesson::CAR);
+        args.car = Some(rbr_school::lesson::CAR);
         let map = lesson.map();
         match &stage {
             Some(name) if stage_files::parts(name).is_none_or(|(number, _)| number != map) => {

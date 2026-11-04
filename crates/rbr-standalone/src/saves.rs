@@ -9,8 +9,8 @@ use rbr_formats::saves::results::ResultRecord;
 use rbr_formats::saves::SaveDir;
 use rbr_formats::times::StageTimes;
 use rbr_gameplay::record::{self, Book, Finish, Update};
-use rbr_gameplay::school::{lesson, Lesson};
 use rbr_recording::splits::{Mark, Standing, Verdict};
+use rbr_school::{lesson, Lesson};
 
 /// One stage's records, loaded when the race starts.
 pub struct Saves {

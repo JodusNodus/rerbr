@@ -9,12 +9,12 @@ use rbr_formats::saves::SaveDir;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::RaceOptions;
-use rbr_gameplay::school::Lesson;
 use rbr_gameplay::weather::{self, Draws, Preset, Weather};
 use rbr_render::camera_prefs;
 use rbr_render::glass::model::Switch;
 use rbr_render::renderer::{Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
+use rbr_school::Lesson;
 use rbr_sound::mixer::Volumes;
 
 use crate::catalog::{self, Car, Stage, TyreChoice};
@@ -958,7 +958,7 @@ mod tests {
     /// `--school` refuses (tyre, setup, surface, RSF car, championship, season row), and with the viewer's car.
     #[test]
     fn school_args_carry_the_lesson_without_its_refused_flags() {
-        use rbr_gameplay::school::Lesson;
+        use rbr_school::Lesson;
         let lesson = Lesson::new(2).unwrap();
         let stage = Stage { name: "track-83_M".into(), map: 83, letter: 'M' };
         let car = Car { index: 5, name: "IMPREZA03".into(), rsf: None };

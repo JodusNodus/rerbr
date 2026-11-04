@@ -1,5 +1,5 @@
 //! Replays the original's direct calls of the rally-school judging core through
-//! `rbr_gameplay::school`. The records come from `harness/direct_calls.py --set gameplay_school`, built in the
+//! `rbr_school`. The records come from `harness/direct_calls.py --set gameplay_school`, built in the
 //! emulator's stub heap so every record is self-contained (the bank, its arrays and the gameflow/app/message/signal
 //! objects it reads).
 //!
@@ -9,57 +9,28 @@
 //! windows, the class gate, the driveline sample and the 256 repair-part reads) as inner records.
 
 use rbr_formats::dls::DlsReplayStream;
-use rbr_gameplay::school::{
-    checkpoint, end_race, eval_filters, max_abs, rally_sound, school_incident, school_tick, severity_max, tracker,
-    trigger, Bank, Check, FilterSub, IncidentInput, Lead, Mirrors, Pair, SchoolEvent,
+use rbr_school::{
+    checkpoint, end_race, eval_filters, max_abs, school_incident, school_tick, severity_max, tracker, trigger, Bank,
+    Check, FilterSub, IncidentInput, Lead, Pair, SchoolEvent,
 };
 use std::collections::BTreeMap;
 
-mod common;
-use common::hex;
+/// Bytes of hex text.
+fn hex(s: &str) -> Vec<u8> {
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+}
 
 const MAX_ABS: u32 = 0x497b10;
-const IN_RANGE: u32 = 0x497cf0;
-const INIT: u32 = 0x497d20;
-const DEREF: u32 = 0x497d70;
-const SET_THRESH: u32 = 0x497d80;
 const IS_ARMED: u32 = 0x497da0;
 const TRIP: u32 = 0x497dd0;
-const SET_LIM: u32 = 0x497e20;
-const GET20: u32 = 0x497e40;
-const GET24: u32 = 0x497e50;
-const GET28: u32 = 0x497e60;
-const CLASSIFY: u32 = 0x497e70;
-const PICK: u32 = 0x497f70;
 const WINDOW_HIT: u32 = 0x497f90;
-const SET7: u32 = 0x498000;
-const MAX_STORE: u32 = 0x498040;
-const OVER: u32 = 0x498060;
-const FLAG_MAP: u32 = 0x4980a0;
-const IS_ZERO_ANY: u32 = 0x4981a0;
-const CATEGORY: u32 = 0x4981e0;
-const GET0C: u32 = 0x4983f0;
-const GET08: u32 = 0x498400;
-const GET10: u32 = 0x498410;
-const OVER2: u32 = 0x498420;
-const OVER3: u32 = 0x498450;
-const INIT_STATE: u32 = 0x4980c0;
 const SEVERITY_MAX: u32 = 0x498240;
 const EVAL_FILTERS: u32 = 0x4982e0;
-const GET44: u32 = 0x4984a0;
-const GET48: u32 = 0x4984b0;
-const SET44: u32 = 0x4984c0;
-const SET48: u32 = 0x4984d0;
-const SET48_1: u32 = 0x4984e0;
-const SET44_1: u32 = 0x498500;
-const CLEAR40: u32 = 0x498510;
-const PUBLISH: u32 = 0x498520;
 const READ_STREAM: u32 = 0x498840;
 const SCHOOL_TICK: u32 = 0x498bb0;
 const SCHOOL_INCIDENT: u32 = 0x498e10;
 const END_RACE: u32 = 0x499110;
 const CHECKPOINT: u32 = 0x4991c0;
-const RALLY_SOUND: u32 = 0x499240;
 const TRIGGER: u32 = 0x4992a0;
 const TRACKER: u32 = 0x499360;
 const CHK_CLEAR: u32 = 0x498630;
@@ -255,13 +226,11 @@ fn bank_scalars(bytes: &[u8]) -> Bank {
         lead: None,
         pairs: Vec::new(),
         ack: word(bytes, 0x40),
-        latched_a: word(bytes, 0x44) as i32,
-        latched_b: word(bytes, 0x48) as i32,
-        kept4c: word(bytes, 0x4c),
+        latched_a: word(bytes, 0x44) != 0,
+        latched_b: word(bytes, 0x48) != 0,
         timer: ifloat(bytes, 0x50),
-        sounded: word(bytes, 0x54) as i32,
-        live: word(bytes, 0x58) as i32,
-        has_handler: word(bytes, 0x5c) != 0,
+        sounded: word(bytes, 0x54) != 0,
+        live: word(bytes, 0x58) != 0,
     }
 }
 
@@ -437,62 +406,15 @@ fn sub_primitives_match_the_original() {
                 ];
                 assert_st0(max_abs(v), call, "MaxAbs", n);
             }
-            IN_RANGE => assert_eq!(sub().in_range(argf(0)) as u32, call.eax, "InRange {n}"),
-            INIT => {
-                let mut s = sub();
-                s.init(argf(0), argf(1), argf(2));
-                assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "Init {n}");
-            }
-            DEREF => assert_st0(sub().deref(), call, "Deref", n),
-            SET_THRESH => {
-                let mut s = sub();
-                s.set_thresh(arg(0) as i32, arg(1) as i32, arg(2) as i32);
-                assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "SetThresh {n}");
-            }
-            IS_ARMED => assert_eq!(sub().is_armed(), call.eax as i32, "IsArmed {n}"),
+            IS_ARMED => assert_eq!(sub().is_armed() as u32, call.eax, "IsArmed {n}"),
             TRIP => {
                 let mut s = sub();
                 s.trip(argf(0));
                 assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "Trip {n}");
             }
-            SET_LIM => {
-                let mut s = sub();
-                s.set_lim(arg(0) as i32, arg(1) as i32, arg(2) as i32);
-                assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "SetLim {n}");
-            }
-            GET20 => assert_eq!(sub().get20(), call.eax as i32, "Get20 {n}"),
-            GET24 => assert_eq!(sub().get24(), call.eax as i32, "Get24 {n}"),
-            GET28 => assert_eq!(sub().get28(), call.eax as i32, "Get28 {n}"),
-            CLASSIFY => assert_eq!(sub().classify(argf(0)), call.eax, "Classify {n}"),
-            PICK => assert_st0(sub().pick(), call, "Pick", n),
             WINDOW_HIT => assert_eq!(sub().window_hit(argf(0)) as u32, call.eax, "WindowHit {n}"),
-            SET7 => {
-                let mut s = sub();
-                s.set7(arg(0) as i32, arg(1) as i32, argf(2), argf(3), argf(4), argf(5));
-                assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "Set7 {n}");
-            }
-            MAX_STORE => {
-                let mut s = sub();
-                s.max_store(arg(0) as i32, arg(1) as i32);
-                assert_eq!(sub_bits(&s), sub_bits(&sub_of(&call.windows[&0].post)), "MaxStore {n}");
-            }
-            OVER => assert_eq!(sub().over(argf(0)) as u32, call.eax, "Over {n}"),
-            FLAG_MAP => assert_eq!(sub().flag_map(), call.eax as i32, "FlagMap {n}"),
-            IS_ZERO_ANY => assert_eq!(sub().is_zero_any(), call.eax as i32, "IsZeroAny {n}"),
-            CATEGORY => assert_eq!(sub().category(argf(0)), call.eax, "Category {n}"),
-            GET0C => assert_st0(sub().get0c(), call, "Get0c", n),
-            GET08 => assert_st0(sub().get08(), call, "Get08", n),
-            GET10 => assert_st0(sub().get10(), call, "Get10", n),
-            OVER2 => {
-                let other = sub_of(&call.windows[&1].pre);
-                assert_eq!(sub().over2(&other) as u32, call.eax, "Over2 {n}");
-            }
-            OVER3 => {
-                let other = sub_of(&call.windows[&1].pre);
-                assert_eq!(sub().over3(&other) as u32, call.eax, "Over3 {n}");
-            }
             CHK_CLEAR => {
-                assert!(check_bits(&Check::clear()) == check_bits(&check_of(&call.windows[&0].post)), "ChkClear {n}");
+                assert!(check_bits(&Check::default()) == check_bits(&check_of(&call.windows[&0].post)), "ChkClear {n}");
                 assert_eq!(call.eax, call.args[0], "ChkClear returns this");
             }
             SUB_INIT => {
@@ -509,82 +431,10 @@ fn sub_primitives_match_the_original() {
         }
         *checked.entry(call.address).or_insert(0) += 1;
     }
-    for addr in [
-        MAX_ABS,
-        IN_RANGE,
-        INIT,
-        DEREF,
-        SET_THRESH,
-        IS_ARMED,
-        TRIP,
-        SET_LIM,
-        GET20,
-        GET24,
-        GET28,
-        CLASSIFY,
-        PICK,
-        WINDOW_HIT,
-        SET7,
-        MAX_STORE,
-        OVER,
-        FLAG_MAP,
-        IS_ZERO_ANY,
-        CATEGORY,
-        GET0C,
-        GET08,
-        GET10,
-        OVER2,
-        OVER3,
-        CHK_CLEAR,
-        SUB_INIT,
-        UPDATE,
-    ] {
+    for addr in [MAX_ABS, IS_ARMED, TRIP, WINDOW_HIT, CHK_CLEAR, SUB_INIT, UPDATE] {
         assert!(checked.get(&addr).is_some_and(|&n| n > 0), "no records for {addr:#x}");
     }
     eprintln!("sub primitives: {checked:?}");
-}
-
-#[test]
-fn bank_latches_match_the_original() {
-    let Some(calls) = records() else {
-        eprintln!("RBR_SCHOOL_VECTORS and RBR_VECTOR_STORE unset; skipped");
-        return;
-    };
-    let mut checked = 0;
-    for (n, call) in calls
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| matches!(c.address, GET44 | GET48 | SET44 | SET48 | SET48_1 | SET44_1 | CLEAR40 | INIT_STATE))
-    {
-        if call.address == INIT_STATE {
-            // `InitState` keeps the speed and the ack mask (the pre bank is fuzz garbage: read only
-            // those two words, never a full parse).
-            let mut want = Bank::fresh();
-            let pre = &call.windows[&0].pre;
-            want.speed = ifloat(pre, 4);
-            want.ack = word(pre, 0x40);
-            assert_bank(call, &want, n);
-            checked += 1;
-            continue;
-        }
-        let mut bank = bank_of(call, false);
-        match call.address {
-            GET44 => assert_eq!(bank.latched_a(), call.eax as i32, "Get44 {n}"),
-            GET48 => assert_eq!(bank.latched_b(), call.eax as i32, "Get48 {n}"),
-            SET44 => bank.set_latched_a(call.args[1] as i32),
-            SET48 => bank.set_latched_b(call.args[1] as i32),
-            SET48_1 => bank.set_latched_b_1(),
-            SET44_1 => bank.set_latched_a_1(),
-            CLEAR40 => bank.clear_ack(),
-            _ => unreachable!(),
-        }
-        if !matches!(call.address, GET44 | GET48) {
-            assert_bank(call, &bank, n);
-        }
-        checked += 1;
-    }
-    assert!(checked > 0, "no latch records");
-    eprintln!("latches: {checked} records equal");
 }
 
 /// Bitwise equality: derived `PartialEq` treats NaN as unequal, but the port must reproduce the original's NaN
@@ -639,11 +489,20 @@ fn banks_match(want: &Bank, got: &Bank) -> bool {
         && want.ack == got.ack
         && want.latched_a == got.latched_a
         && want.latched_b == got.latched_b
-        && want.kept4c == got.kept4c
         && want.timer.to_bits() == got.timer.to_bits()
         && want.sounded == got.sounded
         && want.live == got.live
-        && want.has_handler == got.has_handler
+}
+
+/// A record outside flow mode 7, which the ports do not run: the original left the bank as it was and emitted
+/// nothing.
+fn outside_school(call: &Call, bank: &Bank, mode: i32, n: usize) -> bool {
+    if mode == 7 {
+        return false;
+    }
+    assert_bank(call, bank, n);
+    assert!(events_of(call).is_empty(), "record {n} emits outside the school");
+    true
 }
 
 fn assert_bank(call: &Call, bank: &Bank, n: usize) {
@@ -692,11 +551,9 @@ fn assert_bank(call: &Call, bank: &Bank, n: usize) {
             ("ack", want.ack, bank.ack),
             ("latched_a", want.latched_a as u32, bank.latched_a as u32),
             ("latched_b", want.latched_b as u32, bank.latched_b as u32),
-            ("kept4c", want.kept4c, bank.kept4c),
             ("timer", want.timer.to_bits(), bank.timer.to_bits()),
             ("sounded", want.sounded as u32, bank.sounded as u32),
             ("live", want.live as u32, bank.live as u32),
-            ("has_handler", want.has_handler as u32, bank.has_handler as u32),
         ] {
             if a != b {
                 eprintln!("record {n} {name}: want {a:#x} got {b:#x}");
@@ -704,38 +561,6 @@ fn assert_bank(call: &Call, bank: &Bank, n: usize) {
         }
     }
     assert!(banks_match(&want, bank), "record {n} bank post state");
-}
-
-#[test]
-fn publish_matches_the_original() {
-    let Some(calls) = records() else {
-        eprintln!("RBR_SCHOOL_VECTORS and RBR_VECTOR_STORE unset; skipped");
-        return;
-    };
-    let mut checked = 0;
-    for (n, call) in calls.iter().enumerate().filter(|(_, c)| c.address == PUBLISH) {
-        let mut bank = bank_of(call, false);
-        let mirr = &call.windows[&4].pre;
-        let mirrors = Mirrors {
-            buttons: mirr[0x20..0x30].try_into().unwrap(),
-            btn_mask: word(mirr, 0x08),
-            flags: word(mirr, 0x04),
-            checks: mirr[0x0c..0x1c].try_into().unwrap(),
-            misc20: word(mirr, 0x1c),
-            misc04: word(mirr, 0x00),
-        };
-        let msg = bank.publish(&mirrors);
-        assert_bank(call, &bank, n);
-        assert_eq!(&call.windows[&7].post, &le(mirrors.misc20), "Publish {n} msg write");
-        assert_eq!(msg, mirrors.misc20);
-        checked += 1;
-    }
-    assert!(checked > 0, "no Publish records");
-    eprintln!("Publish: {checked} records equal");
-}
-
-fn le(value: u32) -> [u8; 4] {
-    value.to_le_bytes()
 }
 
 #[test]
@@ -764,9 +589,8 @@ fn read_stream_matches_the_original() {
         };
         let replay = DlsReplayStream { offset: 0, header, ten_word_records: ten, six_word_records: six, pairs };
         let block_base = word(&call.windows[&4].pre, 0);
-        let mode = word(&call.windows[&5].pre, 0) as i32;
         let pre = bank_scalars(&call.windows[&0].pre);
-        let bank = Bank::from_stream(&pre, &replay, block_base, mode == 7);
+        let bank = Bank::from_stream(&pre, &replay, block_base);
         // The freed bank's scalars come from its own window (no array windows exist); the arrays come
         // from the fill snapshots. `FreeState` also clears the slots and the lead.
         let post_bytes = &call.windows[&0].post;
@@ -809,7 +633,10 @@ fn school_tick_matches_the_original() {
         let v = &call.windows[&4].pre;
         let input = [ifloat(v, 0), ifloat(v, 4), ifloat(v, 8)];
         let (mode, _, substate, _, _, _) = globals_of(call, 5);
-        school_tick(&mut bank, input, mode == 7, substate);
+        if outside_school(call, &bank, mode, n) {
+            continue;
+        }
+        school_tick(&mut bank, input, substate);
         assert_bank(call, &bank, n);
         assert!(events_of(call).is_empty(), "record {n} emits");
         checked += 1;
@@ -835,10 +662,12 @@ fn school_incident_matches_the_original() {
             })
         });
         let gate = call.inner.iter().find(|i| i.address == CLS_GATE).is_some_and(|i| i.eax != 0);
+        if outside_school(call, &bank, mode, n) {
+            continue;
+        }
         let input = IncidentInput {
             speed_vec: [ifloat(v, 0x30), ifloat(v, 0x34), ifloat(v, 0x38)],
             car_pos: [ifloat(v, 0x10), ifloat(v, 0x14), ifloat(v, 0x18)],
-            is_school: mode == 7,
             app_state: app,
             substate,
             lesson,
@@ -864,7 +693,10 @@ fn end_race_matches_the_original() {
     for (n, call) in calls.iter().enumerate().filter(|(_, c)| c.address == END_RACE) {
         let mut bank = bank_of(call, false);
         let (mode, _, _, _, _, host_time) = globals_of(call, 4);
-        let events = end_race(&mut bank, f32::from_bits(call.args[1]), host_time, mode == 7);
+        if outside_school(call, &bank, mode, n) {
+            continue;
+        }
+        let events = end_race(&mut bank, f32::from_bits(call.args[1]), host_time);
         assert_bank(call, &bank, n);
         assert_eq!(events, events_of(call), "record {n} events");
         checked += 1;
@@ -884,32 +716,16 @@ fn checkpoint_matches_the_original() {
         let mut bank = bank_of(call, false);
         let flags = call.windows[&4].pre[0x18];
         let (mode, _, _, _, app, _) = globals_of(call, 5);
-        let events = checkpoint(&mut bank, flags, mode == 7, app);
+        if outside_school(call, &bank, mode, n) {
+            continue;
+        }
+        let events = checkpoint(&mut bank, flags, app);
         assert_bank(call, &bank, n);
         assert_eq!(events, events_of(call), "record {n} events");
         checked += 1;
     }
     assert!(checked > 0, "no Checkpoint records");
     eprintln!("Checkpoint: {checked} records equal");
-}
-
-#[test]
-fn rally_sound_matches_the_original() {
-    let Some(calls) = records() else {
-        eprintln!("RBR_SCHOOL_VECTORS and RBR_VECTOR_STORE unset; skipped");
-        return;
-    };
-    let mut checked = 0;
-    for (n, call) in calls.iter().enumerate().filter(|(_, c)| c.address == RALLY_SOUND) {
-        let mut bank = bank_of(call, false);
-        let (_, lesson, _, _, _, _) = globals_of(call, 4);
-        let events = rally_sound(&mut bank, lesson);
-        assert_bank(call, &bank, n);
-        assert_eq!(events, events_of(call), "record {n} events");
-        checked += 1;
-    }
-    assert!(checked > 0, "no RallySound records");
-    eprintln!("RallySound: {checked} records equal");
 }
 
 #[test]
@@ -942,7 +758,10 @@ fn tracker_matches_the_original() {
         let mut bank = bank_of(call, false);
         let (mode, _, substate, cb4, _, _) = globals_of(call, 4);
         let p_bits = word(&call.windows[&7].pre, 0);
-        let events = tracker(&mut bank, p_bits, mode == 7, substate, cb4);
+        if outside_school(call, &bank, mode, n) {
+            continue;
+        }
+        let events = tracker(&mut bank, p_bits, substate, cb4);
         assert_bank(call, &bank, n);
         assert_eq!(events, events_of(call), "record {n} events");
         checked += 1;
@@ -962,7 +781,7 @@ fn eval_filters_matches_the_original() {
         let bank = bank_of(call, false);
         let (_, lesson, _, _, _, _) = globals_of(call, 4);
         let (damages, full) = damages_of(call);
-        let latched = bank.latched_a() != 0 || bank.latched_b() != 0;
+        let latched = bank.latched_a || bank.latched_b;
         assert_eq!(full, !latched && lesson != 4 && lesson != 16, "record {n} damage loop ran");
         let verdict = eval_filters(&bank, f32::from_bits(call.args[1]), lesson as i32, &damages);
         assert_eq!(verdict, call.eax, "record {n} verdict");
@@ -994,8 +813,7 @@ fn severity_max_matches_the_original() {
     eprintln!("SeverityMax: {checked} records equal");
 }
 
-/// Every retail lesson stream builds a bank whose arrays hold the header's counts, and a version-6 stream
-/// builds for school and non-school alike (`RBR_DATA`; skipped without it).
+/// Every retail lesson stream builds a bank whose arrays hold the header's counts (`RBR_DATA`; skipped without it).
 #[test]
 fn retail_dls_streams_build_banks() {
     let Some(data) = std::env::var_os("RBR_DATA") else {
@@ -1013,16 +831,13 @@ fn retail_dls_streams_build_banks() {
         files += 1;
         for animation in &file.animation_entries {
             let stream = &animation.replay;
-            for is_school in [false, true] {
-                let bank =
-                    rbr_gameplay::school::Bank::from_stream(&rbr_gameplay::school::Bank::fresh(), stream, 0, is_school);
-                if stream.header[0] == 6 {
-                    assert_eq!(bank.subs.len(), stream.ten_word_records.len(), "{path:?}");
-                    assert_eq!(bank.checks.len(), stream.six_word_records.len(), "{path:?}");
-                    assert_eq!(bank.pairs.len(), stream.pairs.len(), "{path:?}");
-                } else {
-                    assert!(bank.subs.is_empty() && bank.checks.is_empty() && bank.pairs.is_empty(), "{path:?}");
-                }
+            let bank = Bank::from_stream(&Bank::fresh(), stream, 0);
+            if stream.header[0] == 6 {
+                assert_eq!(bank.subs.len(), stream.ten_word_records.len(), "{path:?}");
+                assert_eq!(bank.checks.len(), stream.six_word_records.len(), "{path:?}");
+                assert_eq!(bank.pairs.len(), stream.pairs.len(), "{path:?}");
+            } else {
+                assert!(bank.subs.is_empty() && bank.checks.is_empty() && bank.pairs.is_empty(), "{path:?}");
             }
             v6 += usize::from(stream.header[0] == 6);
         }

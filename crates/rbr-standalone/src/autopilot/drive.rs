@@ -157,7 +157,7 @@ pub fn drive(
         .with_obstacles(&stage.obstacles);
     // A rally school lesson with a stop box (its bank's first mode-4 sub, `SchoolIncident`'s standing test): stop in
     // it, keeping off the brakes where a no-brake sub (mode 6 on the brake word, flag 4: braking fails) watches.
-    if let Some(bank) = live.game().school().map(|s| s.bank()) {
+    if let Some(bank) = live.school().map(|s| s.bank()) {
         if let Some(stop) = bank.subs.iter().find(|sub| sub.tag == 4) {
             let brake_from = bank
                 .subs

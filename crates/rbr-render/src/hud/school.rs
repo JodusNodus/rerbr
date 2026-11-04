@@ -109,10 +109,10 @@ pub fn brief(lesson: u32) -> Option<Brief> {
 /// The lesson's number label, as the game's (`RSM_LESSON_NRB1`..`NRB6`, `RSM_LESSON_NRA1`..`NRA11`): group-relative,
 /// like the launcher's.
 pub fn number(lesson: u32) -> u32 {
-    if lesson < rbr_gameplay::school::Lesson::FIRST_ADVANCED {
+    if lesson < rbr_school::Lesson::FIRST_ADVANCED {
         lesson + 1
     } else {
-        lesson - rbr_gameplay::school::Lesson::FIRST_ADVANCED + 1
+        lesson - rbr_school::Lesson::FIRST_ADVANCED + 1
     }
 }
 
@@ -245,7 +245,7 @@ pub fn paint(ctx: &egui::Context, state: &HudView) {
 
 /// The lesson's label: its group-relative number and group, as the school's menu lists them.
 fn label(lesson: u32) -> String {
-    let group = if lesson < rbr_gameplay::school::Lesson::FIRST_ADVANCED { "BASIC" } else { "ADVANCED" };
+    let group = if lesson < rbr_school::Lesson::FIRST_ADVANCED { "BASIC" } else { "ADVANCED" };
     format!("LESSON {} · {group}", number(lesson))
 }
 
@@ -410,7 +410,7 @@ fn grade(painter: &Painter, at: Pos2, verdict: u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rbr_gameplay::school::Lesson;
+    use rbr_school::Lesson;
 
     /// The keys the briefs come from (`Lesson::title_key`, `brief_keys`, and the number labels).
     fn keys(lesson: Lesson) -> (String, (String, String)) {

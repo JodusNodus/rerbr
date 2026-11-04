@@ -27,7 +27,6 @@ use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::Mode;
 use rbr_gameplay::race_clock::AssistSettings;
 use rbr_gameplay::race_options::{self, ChampionshipOptions, RaceOptions};
-use rbr_gameplay::school::{self, Bank, Lesson, SchoolRun};
 use rbr_gameplay::timing::TimeKeeper;
 use rbr_gameplay::weather::Weather;
 use rbr_hybrid::pure::Pure;
@@ -42,6 +41,7 @@ use rbr_physics::ngp::layout::{car_init, runtime, stage as ngp_stage};
 use rbr_physics::physics_core::layout as physics;
 use rbr_physics::physics_core::layout::physics_object::cdef_new_physics;
 use rbr_physics::stage::layout as stage;
+use rbr_school::{Bank, Lesson, SchoolRun};
 
 use crate::handles;
 
@@ -175,7 +175,7 @@ impl Race {
         let map = lesson.map();
         Race {
             map,
-            car: school::lesson::CAR,
+            car: rbr_school::lesson::CAR,
             tyre: lesson.tyre(),
             surface: surface(map),
             flow_mode: Mode::SCHOOL.value(),
@@ -199,7 +199,7 @@ impl Race {
     /// A lesson's drive: the bank `Load020` (0x479020) builds from the stage's `Driveline` replay stream (a fresh
     /// bank's `InitState` and `ReadStream`, in mode 7). The pair codes' block base is left 0: only the speech reads them.
     pub fn school(&self, replay: &rbr_formats::dls::DlsReplayStream) -> Option<SchoolRun> {
-        let bank = Bank::from_stream(&Bank::fresh(), replay, 0, true);
+        let bank = Bank::from_stream(&Bank::fresh(), replay, 0);
         self.lesson.map(|lesson| SchoolRun::new(lesson, bank))
     }
 

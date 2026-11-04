@@ -14,6 +14,7 @@ rbr-btb = { path = "../rbr-btb" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-gameplay = { path = "../rbr-gameplay" }
 rbr-render = { path = "../rbr-render" }
+rbr-school = { path = "../rbr-school" }
 rbr-recording = { path = "../rbr-recording" }
 rbr-sound = { path = "../rbr-sound" }
 egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }  # 0.33 had these fonts (text and symbols such as ⚠) by default

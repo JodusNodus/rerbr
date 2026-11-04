@@ -43,6 +43,7 @@ same paths.
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, championship |
+| `crates/rbr-school` | Rally school (experimental): lessons, filter bank, verdict, on `rbr_gameplay::mode` |
 | `crates/rbr-standalone` | The physics program (`--boot`, `--live`) |
 | `crates/rbr-render` | wgpu renderer and the driving window (`viewer`) |
 | `crates/rbr-sound` | Gameplay sound from the SND1 record |
