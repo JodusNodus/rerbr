@@ -66,9 +66,8 @@ pub struct IncidentInput {
     pub app_state: u32,
     /// `M00565d20()` (gameflow +0xca8).
     pub substate: u32,
-    /// Gameflow +0xca4: the driveline is sampled only for lessons 0 and 10.
-    pub lesson: u32,
-    /// `CDriveLine::Sample(bank.m_00)` (drive line 0x1659184) when `lesson` is 0 or 10.
+    /// `CDriveLine::Sample(bank.m_00)` (drive line 0x1659184), which the exe takes only in lessons 0 and 10
+    /// (gameflow +0xca4, [`crate::Lesson::stands_by_the_line`]).
     pub driveline: Option<[f32; 3]>,
     /// `E19ClsGate()` on the host at 0x893634.
     pub cls_gate: bool,
@@ -127,16 +126,9 @@ pub fn school_incident(bank: &mut Bank, input: &IncidentInput) -> Vec<SchoolEven
         let Some(i) = slot else { continue };
         let mode = bank.subs.get(i).map(|sub| sub.tag - 4);
         if mode == Some(0) {
-            let mut deviation = 0.0;
-            if input.lesson == 0 || input.lesson == 10 {
-                if let Some(sample) = input.driveline {
-                    deviation = max_abs([
-                        sample[0] - input.car_pos[0],
-                        sample[1] - input.car_pos[1],
-                        sample[2] - input.car_pos[2],
-                    ]);
-                }
-            }
+            let deviation = input.driveline.map_or(0.0, |sample| {
+                max_abs([sample[0] - input.car_pos[0], sample[1] - input.car_pos[1], sample[2] - input.car_pos[2]])
+            });
             if (STANDING >= f && deviation < DEVIATION_LIMIT) || (input.substate == 6 && input.cls_gate) {
                 if let Some(sub) = bank.subs.get_mut(i) {
                     sub.update(arg);

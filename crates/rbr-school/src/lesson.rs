@@ -66,6 +66,12 @@ impl Lesson {
         !self.untimed()
     }
 
+    /// Lessons 0 and 10, the free drives: their stop box is the driveline's point at the bank's `m_00`, and the car
+    /// must stand within 2 m of it on each axis (`SchoolIncident` samples the driveline for these two only).
+    pub fn stands_by_the_line(self) -> bool {
+        matches!(self.0, 0 | 10)
+    }
+
     /// `E59Host90::M00565960` (0x565960): lessons 4, 5, 13 and 16, which the school's pages treat apart.
     pub fn apart(self) -> bool {
         matches!(self.0, 4 | 5 | 13 | 16)

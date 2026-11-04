@@ -109,7 +109,7 @@ impl ModeRules for SchoolRun {
     /// `CDriveLine::Sample` (0x50b180) at the bank's `m_00` word as a float: the point lessons 0 and 10 measure
     /// the car's deviation from.
     fn drive_line_at(&self) -> Option<f32> {
-        matches!(self.lesson.index(), 0 | 10).then(|| f32::from_bits(self.bank.origin as u32))
+        self.lesson.stands_by_the_line().then(|| f32::from_bits(self.bank.origin as u32))
     }
 
     /// The step's listeners in the step's order: the brake wall, the general state, the driveline float, then the
@@ -126,7 +126,6 @@ impl ModeRules for SchoolRun {
             car_pos: sample.position,
             app_state: step.app_state,
             substate: self.step,
-            lesson: self.lesson.index(),
             driveline: step.drive_line,
             cls_gate: false,
         };

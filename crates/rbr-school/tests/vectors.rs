@@ -655,7 +655,7 @@ fn school_incident_matches_the_original() {
     for (n, call) in calls.iter().enumerate().filter(|(_, c)| c.address == SCHOOL_INCIDENT) {
         let mut bank = bank_of(call, false);
         let v = &call.windows[&4].pre;
-        let (mode, lesson, substate, _, app, _) = globals_of(call, 5);
+        let (mode, _, substate, _, app, _) = globals_of(call, 5);
         let sample = call.inner.iter().find(|i| i.address == SAMPLE).and_then(|i| {
             i.after.iter().find_map(|&(at, ref bytes)| {
                 (at == i.args[2]).then_some([ifloat(bytes, 0), ifloat(bytes, 4), ifloat(bytes, 8)])
@@ -670,7 +670,6 @@ fn school_incident_matches_the_original() {
             car_pos: [ifloat(v, 0x10), ifloat(v, 0x14), ifloat(v, 0x18)],
             app_state: app,
             substate,
-            lesson,
             driveline: sample,
             cls_gate: gate,
         };
