@@ -8,6 +8,7 @@ use futures_executor::block_on;
 
 use crate::car_browser::{Collection as CarCollection, Target};
 use crate::pages::Page;
+use crate::rally_page::Shot;
 use crate::stage_browser::Collection;
 use crate::{preview, Form};
 
@@ -85,9 +86,15 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         form.setup.show_area(area);
         shot(&dir.join(format!("setup-{n}.png")), |ctx| form.ui(ctx))?;
     }
-    // The Championship page: a season after its first stage, then (with the damage file's car) its service.
+    // The Championship page: no season, a rally's welcome, a wrecked car's end of the rally, a season after its first
+    // stage, then (with the damage file's car) its service.
     form.page = Page::Championship;
-    form.rally.screenshot_season(&form.season, None);
+    shot(&dir.join("championship-new.png"), |ctx| form.ui(ctx))?;
+    form.rally.screenshot_season(&form.season, Shot::Welcome);
+    shot(&dir.join("championship-welcome.png"), |ctx| form.ui(ctx))?;
+    form.rally.screenshot_season(&form.season, Shot::Wrecked);
+    shot(&dir.join("championship-over.png"), |ctx| form.ui(ctx))?;
+    form.rally.screenshot_season(&form.season, Shot::Stage);
     shot(&dir.join("championship.png"), |ctx| form.ui(ctx))?;
     // Its car list open, and a season saved without an RSF car asking for one.
     form.car_browser.open_on(Target::Season, form.season_pick, &form.favourite_cars, None);
@@ -99,7 +106,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     if let Some(path) = rally_damage {
         let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let damage = rbr_gameplay::car_damage::CarriedDamage::from_bytes(&bytes).ok_or("not a damage file")?;
-        form.rally.screenshot_season(&form.season, Some(damage));
+        form.rally.screenshot_season(&form.season, Shot::Service(Box::new(damage)));
         shot(&dir.join("service.png"), |ctx| form.ui(ctx))?;
     }
     Ok(())

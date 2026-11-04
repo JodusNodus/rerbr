@@ -148,6 +148,12 @@ pub(crate) fn theme(ctx: &egui::Context) {
     });
 }
 
+/// The page's main action (Start, Drive lesson, Drive SS1): large, white on green.
+pub fn start_button(label: &str) -> egui::Button<'static> {
+    let text = RichText::new(label).size(20.0).strong().color(Color32::WHITE);
+    egui::Button::new(text).fill(ACCENT).min_size(egui::vec2(180.0, 44.0))
+}
+
 /// A section's heading.
 pub fn section(ui: &mut egui::Ui, title: &str) {
     ui.add_space(10.0);
@@ -603,9 +609,6 @@ impl Form {
         let cars = &self.catalog.cars;
         let picked = self.season_cars.of(&profile).and_then(|name| cars.iter().position(|c| c.name == name));
         let season_car = self.rally.season_team().map(|team| self.team_car(team).or(picked));
-        let tip = "The Controls page's driver aids, and the Graphics & sound options, apply to the season too";
-        ui.colored_label(Color32::GRAY, tip);
-        ui.add_space(4.0);
         if season_car == Some(None) {
             ui.label(format!("NGP doesn't drive the team's car of {profile}'s season. Choose the car it drives:"));
             let mut browse = false;

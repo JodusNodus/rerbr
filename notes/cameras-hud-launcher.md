@@ -120,6 +120,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from its last start, so a replay needs the same install, setup and profile, else it stops with a digest error.
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
   camera key cycles the views, V resets the mouse look, Esc closes.
+- Championship tab (`rally_page/`: `mod.rs` the season's state and turns, `view.rs` the drawing): with no season, the
+  new season's fields (profile, team, car, skill with its outside-assistance rule, damage), New season and Continue
+  saved season. With one: a header (rally n of 6, car, team, options, profile, clock), the itinerary (stages with the
+  service stops between them, done, next, retired), one card for the next step (the stage's tyres, setup and Edit,
+  weather and Drive SSn; the welcome; the park with its parts by damage colour; the rally's end), the rally standings
+  (last stage, total, gap), the season points and the bulletins beside, and Another season folded away.
+  `--screenshot` draws it new, at the welcome, after a wrecked SS1, at SS2 and (with `--screenshot-damage`) in service.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
   their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in

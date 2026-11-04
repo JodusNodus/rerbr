@@ -360,19 +360,25 @@ impl RallyPage {
         }
     }
 
-    /// `--screenshot`: a season on a fixed seed, its first stage driven in 5:00 (ending with `damage`) and the AI run
-    /// on it; without `damage`, past the service to SS2.
-    pub fn screenshot_season(&mut self, table: &Season, damage: Option<CarriedDamage>) {
-        let to_service = damage.is_some();
+    /// `--screenshot`: a season on a fixed seed at `shot`: the rally's welcome, or its first stage driven in 5:00
+    /// and the AI run on it, then SS2 to drive, the service on the damaged car, or the rally over with a wrecked car.
+    pub fn screenshot_season(&mut self, table: &Season, shot: Shot) {
         self.new_season(table, None, 2940);
+        if shot == Shot::Welcome {
+            return;
+        }
         self.start_rally();
         let end_race = EndRace { time: 300.0, splits: [100.0, 200.0], retired: false };
+        let (damage, drivable) = match &shot {
+            Shot::Service(damage) => ((**damage).clone(), true),
+            Shot::Wrecked => (CarriedDamage::default(), false),
+            _ => (CarriedDamage::default(), true),
+        };
         if let Some(c) = self.championship.take() {
-            self.championship =
-                Some(c.stage_end(&StageEnd { cause: EndCause::Finish, end_race }, damage.unwrap_or_default(), true));
+            self.championship = Some(c.stage_end(&StageEnd { cause: EndCause::Finish, end_race }, damage, drivable));
         }
-        self.season_stage_done(Some(StageTimes::from_end_race(&end_race)), true);
-        if !to_service {
+        self.season_stage_done(Some(StageTimes::from_end_race(&end_race)), drivable);
+        if shot == Shot::Stage {
             // Past the service: SS2 to drive.
             if let Some(c) = self.championship.take() {
                 self.championship = Some(c.service_done(0.0, None));
@@ -555,6 +561,15 @@ impl RallyPage {
         let block = run.blocks.get(run.save.position().0 as usize);
         block.and_then(|b| rallies.get(b.rally as usize)).map_or("?".to_owned(), |r| r.name.clone())
     }
+}
+
+/// Where [`RallyPage::screenshot_season`] leaves the season.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Shot {
+    Welcome,
+    Stage,
+    Service(Box<CarriedDamage>),
+    Wrecked,
 }
 
 /// A string-table text by key, the key itself when the table or the key is missing.

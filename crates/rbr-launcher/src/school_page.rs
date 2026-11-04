@@ -24,7 +24,7 @@ use rbr_school::Lesson;
 
 use crate::browser::{DIM, GREY, STAR};
 use crate::catalog::car_label;
-use crate::pages::{section, Issue, Page, ACCENT, DRIVE_FIELDS, GOOD, WARN};
+use crate::pages::{section, Issue, Page, DRIVE_FIELDS, GOOD, WARN};
 use crate::Form;
 
 /// The page's state: the English string table, the selected lesson, the lesson times and the player's results.
@@ -332,10 +332,7 @@ impl Form {
                     ui.colored_label(GREY, lesson_flow(lesson));
                     ui.add_space(8.0);
                     let label = if lesson.ride() { "Ride along" } else { "Drive lesson" };
-                    let button = egui::Button::new(RichText::new(label).size(20.0).strong().color(Color32::WHITE))
-                        .fill(ACCENT)
-                        .min_size(egui::vec2(180.0, 44.0));
-                    if ui.add_enabled(blocker.is_none(), button).clicked() {
+                    if ui.add_enabled(blocker.is_none(), crate::pages::start_button(label)).clicked() {
                         drive = Some(lesson);
                     }
                     if let Some(issue) = &blocker {
