@@ -16,10 +16,12 @@
 //! u32 count     the ids that follow
 //! u32[count]    the ids `Trigger` queued this answer, in order (each at priority 1, after a flush of the pending
 //!               queue: `E25School::M80c0x` 0x4b80c0 over the pair's digit string)
+//! u32 rcount    the reasons that follow (none before a failed end: `rbr_school::explain::failure_reasons`)
+//! per reason: u32 lesson (0: a built-in key, 1: the lesson's own) + u32 len + [len]u8 key (UTF-8)
 //! ```
 //!
-//! The first 28 bytes are the old body: a reader of it still works, and the new reader accepts it (with no stop
-//! and no ids).
+//! The first 28 bytes are the old body: a reader of it still works, and the new reader accepts it and the
+//! speech-only body (with no reasons) too.
 
 use std::io;
 
@@ -38,6 +40,16 @@ pub const STATE_DRIVING: u32 = 1;
 /// The drive ended.
 pub const STATE_ENDED: u32 = 2;
 
+/// One failure reason: a locale key for the verdict panel (`rbr_school::explain::Reason`), resolved through
+/// the English string table at the viewer's end (unknown keys are skipped there).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reason {
+    /// The key is the lesson's own (from its `.dls` string block), else a built-in.
+    pub lesson: bool,
+    /// The locale key.
+    pub key: String,
+}
+
 /// One rally-school record.
 #[derive(Debug, Clone, PartialEq)]
 pub struct School {
@@ -52,6 +64,8 @@ pub struct School {
     pub stop: bool,
     /// The ids `Trigger` queued this answer, in order.
     pub speech: Vec<u32>,
+    /// The failed end's reasons, in the original's order (empty before a failed end).
+    pub reasons: Vec<Reason>,
 }
 
 impl Default for School {
@@ -67,6 +81,7 @@ impl Default for School {
             incident: 0,
             stop: false,
             speech: Vec::new(),
+            reasons: Vec::new(),
         }
     }
 }
@@ -87,33 +102,72 @@ impl School {
         for id in &self.speech {
             body.extend_from_slice(&id.to_le_bytes());
         }
+        body.extend_from_slice(&(self.reasons.len() as u32).to_le_bytes());
+        for reason in &self.reasons {
+            body.extend_from_slice(&u32::from(reason.lesson).to_le_bytes());
+            body.extend_from_slice(&(reason.key.len() as u32).to_le_bytes());
+            body.extend_from_slice(reason.key.as_bytes());
+        }
         crate::live::record(SCH1, &body)
     }
 
-    /// The record's body (the bytes after the tag and length): the 28-byte body or the longer one with the frame's
-    /// speech.
+    /// The record's body (the bytes after the tag and length): the 28-byte body, the speech body (with no
+    /// reasons), or the full body with the failed end's reasons.
     pub fn read_body(body: &[u8]) -> io::Result<School> {
         if body.len() == BODY_BYTES {
             let body: &[u8; BODY_BYTES] = sized(body, format!("an SCH1 body of {} bytes", body.len()))?;
-            return Ok(school_of(body, false, Vec::new()));
+            return Ok(school_of(body, false, Vec::new(), Vec::new()));
         }
-        if body.len() < BODY_BYTES + 8 || !(body.len() - BODY_BYTES - 8).is_multiple_of(4) {
+        if body.len() < BODY_BYTES + 8 {
             return Err(crate::invalid(format!("an SCH1 body of {} bytes", body.len())));
         }
         let base: &[u8; BODY_BYTES] = sized(&body[..BODY_BYTES], format!("an SCH1 body of {} bytes", body.len()))?;
         let stop = u32::from_le_bytes(body[28..32].try_into().map_err(|_| crate::invalid("an SCH1 stop"))?) != 0;
         let count = u32::from_le_bytes(body[32..36].try_into().map_err(|_| crate::invalid("an SCH1 count"))?) as usize;
-        if BODY_BYTES + 8 + 4 * count != body.len() {
+        if BODY_BYTES + 8 + 4 * count > body.len() {
             return Err(crate::invalid(format!("an SCH1 body of {} bytes", body.len())));
         }
         let speech = (0..count)
             .map(|k| u32::from_le_bytes(body[36 + 4 * k..40 + 4 * k].try_into().expect("an SCH1 id")))
             .collect();
-        Ok(school_of(base, stop, speech))
+        let reasons = read_reasons(&body[BODY_BYTES + 8 + 4 * count..])?;
+        Ok(school_of(base, stop, speech, reasons))
     }
 }
 
-fn school_of(base: &[u8; BODY_BYTES], stop: bool, speech: Vec<u32>) -> School {
+/// The reasons after the speech ids: a count, then each reason's lesson flag, key length and key bytes.
+fn read_reasons(mut tail: &[u8]) -> io::Result<Vec<Reason>> {
+    if tail.is_empty() {
+        return Ok(Vec::new());
+    }
+    let invalid = || crate::invalid(format!("an SCH1 reasons tail of {} bytes", tail.len()));
+    if tail.len() < 4 {
+        return Err(invalid());
+    }
+    let count = u32::from_le_bytes(tail[..4].try_into().map_err(|_| invalid())?) as usize;
+    tail = &tail[4..];
+    let mut reasons = Vec::with_capacity(count);
+    for _ in 0..count {
+        if tail.len() < 8 {
+            return Err(invalid());
+        }
+        let lesson = u32::from_le_bytes(tail[..4].try_into().map_err(|_| invalid())?) != 0;
+        let len = u32::from_le_bytes(tail[4..8].try_into().map_err(|_| invalid())?) as usize;
+        tail = &tail[8..];
+        if tail.len() < len {
+            return Err(invalid());
+        }
+        let key = std::str::from_utf8(&tail[..len]).map_err(|_| invalid())?.to_owned();
+        tail = &tail[len..];
+        reasons.push(Reason { lesson, key });
+    }
+    if !tail.is_empty() {
+        return Err(invalid());
+    }
+    Ok(reasons)
+}
+
+fn school_of(base: &[u8; BODY_BYTES], stop: bool, speech: Vec<u32>, reasons: Vec<Reason>) -> School {
     let float = |i: usize| f32::from_bits(word(base, i));
     School {
         lesson: word(base, 0),
@@ -125,6 +179,7 @@ fn school_of(base: &[u8; BODY_BYTES], stop: bool, speech: Vec<u32>) -> School {
         incident: word(base, 6),
         stop,
         speech,
+        reasons,
     }
 }
 
@@ -144,15 +199,34 @@ mod tests {
             incident: 4,
             stop: true,
             speech: vec![294, 295],
+            reasons: Vec::new(),
         };
         let bytes = school.record();
         assert_eq!(&bytes[..4], b"SCH1");
-        assert_eq!(bytes[4..8], ((BODY_BYTES + 8 + 8) as u32).to_le_bytes());
+        assert_eq!(bytes[4..8], ((BODY_BYTES + 8 + 8 + 4) as u32).to_le_bytes());
         assert_eq!(School::read_body(&bytes[8..]).unwrap(), school);
         let brief = School::default();
         assert_eq!(brief.verdict, NO_VERDICT);
         assert_eq!(School::read_body(&brief.record()[8..]).unwrap(), brief);
         assert!(School::read_body(&bytes[8..12]).is_err());
+    }
+
+    #[test]
+    fn the_reasons_round_trip() {
+        let school = School {
+            state: STATE_ENDED,
+            verdict: 0,
+            speech: vec![294],
+            reasons: vec![
+                Reason { lesson: true, key: "RS_NOBRAKES_F".into() },
+                Reason { lesson: false, key: "TIMEFAIL".into() },
+            ],
+            ..School::default()
+        };
+        let bytes = school.record();
+        assert_eq!(School::read_body(&bytes[8..]).unwrap(), school);
+        // A cut key is no body.
+        assert!(School::read_body(&bytes[8..bytes.len() - 1]).is_err());
     }
 
     #[test]

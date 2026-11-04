@@ -519,6 +519,14 @@ fn start_live(
         );
     }
     let mut drive = process.parse(&first)?;
+    // A school lesson's drive resolves its failed end's reasons through the English table (unknown keys
+    // are skipped at the panel; without it the verdict shows no reasons).
+    if process.hud_model.view().school.is_some() {
+        match rbr_formats::strings::english(data) {
+            Ok(strings) => process.hud_model.set_school_strings(strings),
+            Err(e) => eprintln!("school reasons unavailable: {e}"),
+        }
+    }
     // `--at N`: N more frames with no keys pressed, before the screenshot; with `--at-drive` each frame sends the
     // recording's control of the step it feeds, so the first one goes through the countdown's frames, which step nothing.
     let recorded = match &args.at_drive {

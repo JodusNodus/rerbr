@@ -66,8 +66,9 @@ impl Toast {
     }
 }
 
-/// What the school drive shows: the lesson, where it stands and its verdict, with the toast showing now.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+/// What the school drive shows: the lesson, where it stands and its verdict, with the toast showing now and
+/// the failed end's reasons (the English texts of the record's reason keys, in order).
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     pub lesson: u32,
     pub phase: Phase,
@@ -79,10 +80,13 @@ pub struct State {
     pub perfect: f32,
     pub pass: f32,
     pub toast: Option<Toast>,
+    /// The failed end's reasons, resolved (`resolve`).
+    pub reasons: Vec<String>,
 }
 
 impl State {
-    /// The record's state; the toast is set where the record is taken ([`super::model::HudModel::set_school`]).
+    /// The record's state; the toast is set where the record is taken ([`super::model::HudModel::set_school`]),
+    /// the reasons once the English table is known there.
     pub fn of(record: &Record) -> State {
         State {
             lesson: record.lesson,
@@ -92,13 +96,21 @@ impl State {
             perfect: record.perfect,
             pass: record.pass,
             toast: None,
+            reasons: Vec::new(),
         }
     }
 
     /// Whether the lesson is timed.
-    pub fn timed(self) -> bool {
+    pub fn timed(&self) -> bool {
         self.perfect != 0.0 || self.pass != 0.0
     }
+}
+
+/// The record's reason keys' English texts, in order; unknown keys are skipped, as the original's null
+/// `Resolve` skips them (`CFailedSchoolExplanationUI::Vf0C` 0x542330). `None` (no table yet) resolves nothing.
+pub fn resolve(reasons: &[school::Reason], strings: Option<&rbr_formats::strings::Strings>) -> Vec<String> {
+    let Some(strings) = strings else { return Vec::new() };
+    reasons.iter().filter_map(|reason| strings.get(&reason.key)).map(|text| text.trim_end().to_owned()).collect()
 }
 
 /// The lesson's brief: its title, instruction and cone guide. `None` past the last lesson.
@@ -273,6 +285,34 @@ impl Column<'_> {
         self.gap(14.0);
     }
 
+    /// Centred rows of wrapped text: a greedy word wrap at `width`, one row per line.
+    fn wrapped(&mut self, text: &str, size: f32, colour: Color32, width: f32) {
+        let font = FontId::proportional(size);
+        let space = self.painter.layout_no_wrap(" ".to_owned(), font.clone(), colour).size().x;
+        let mut lines: Vec<String> = Vec::new();
+        let mut line = String::new();
+        let mut used = 0.0;
+        for word in text.split_whitespace() {
+            let w = self.painter.layout_no_wrap(word.to_owned(), font.clone(), colour).size().x;
+            if !line.is_empty() && used + space + w > width {
+                lines.push(std::mem::take(&mut line));
+                used = 0.0;
+            }
+            if !line.is_empty() {
+                line.push(' ');
+                used += space;
+            }
+            line.push_str(word);
+            used += w;
+        }
+        if !line.is_empty() {
+            lines.push(line);
+        }
+        for line in lines {
+            self.text(&line, size, colour);
+        }
+    }
+
     /// The cone guide: each line with a cone of its colour, the lines' block centred.
     fn cones(&mut self, lines: &str) {
         let font = FontId::proportional(15.0);
@@ -372,7 +412,8 @@ fn toast_panel(painter: &Painter, screen: Rect, toast: Toast) {
     painter.text(panel.center(), Align2::CENTER_CENTER, toast.text(), FontId::proportional(20.0), GOLD);
 }
 
-/// The end's panel: the lesson, the verdict with its grade, the time and the lesson's times.
+/// The end's panel: the lesson, the verdict with its grade, the failed end's reasons, the time and the
+/// lesson's times.
 fn verdict_panel(painter: &Painter, screen: Rect, school: &State, verdict: u32) {
     let title = brief(school.lesson).map(|b| b.title.to_uppercase());
     panel(painter, screen, |c| {
@@ -383,6 +424,11 @@ fn verdict_panel(painter: &Painter, screen: Rect, school: &State, verdict: u32) 
             _ => FAILED,
         };
         c.text(verdict_text(verdict), 30.0, colour);
+        if verdict == 0 {
+            for reason in &school.reasons {
+                c.wrapped(reason, 15.0, TEXT, WIDTH - 80.0);
+            }
+        }
         if verdict > 0 {
             grade(c.painter, Pos2::new(c.x, c.y + 4.0), verdict);
             c.gap(22.0);

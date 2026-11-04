@@ -45,7 +45,7 @@ pub struct FilterSub {
     pub lo: f32,
     /// +0x1c: the trip latch as int bits (`Trip`) and the near bound as float bits (`Update`, `WindowHit`).
     pub near_bits: u32,
-    /// +0x20/+0x24/+0x28: the judge limits (read by the results page, not ported).
+    /// +0x20/+0x24/+0x28: the judge limits (read by the results page).
     pub lim0: i32,
     /// +0x24.
     pub lim1: i32,
@@ -98,6 +98,31 @@ impl FilterSub {
             self.near_bits = (-1i32) as u32;
         } else if v > self.hi {
             self.near_bits = 1;
+        }
+    }
+
+    /// `E19FltSub::Get20` (0x497e40): the first judge limit.
+    pub fn get20(&self) -> i32 {
+        self.lim0
+    }
+
+    /// `E19FltSub::Get24` (0x497e50): the second judge limit.
+    pub fn get24(&self) -> i32 {
+        self.lim1
+    }
+
+    /// `E19FltSub::Get28` (0x497e60): the third judge limit.
+    pub fn get28(&self) -> i32 {
+        self.lim2
+    }
+
+    /// `E19FltSub::FlagMap` (0x4980a0): the judge value the results page (`CFailedSchoolExplanationUI::Vf0C`
+    /// 0x542330) selects the limit word by: `(m_04 != 0) - 1 & 4` when bit 2 is set, else `m_04`.
+    pub fn flag_map(&self) -> i32 {
+        if self.flags & 4 != 0 {
+            (i32::from(self.value != 0).wrapping_sub(1)) & 4
+        } else {
+            self.value
         }
     }
 

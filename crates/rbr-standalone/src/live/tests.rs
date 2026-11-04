@@ -310,6 +310,7 @@ fn the_school_record_stands_where_the_lesson_does() {
         assert_eq!((brief.perfect, brief.pass), (9.0, 10.0), "lesson 2's times");
         assert!(brief.stop, "the first answer's flow step stops the speech");
         assert!(brief.speech.is_empty(), "nothing tripped yet");
+        assert!(brief.reasons.is_empty(), "no reasons before the failed end");
         // Still the brief: no stop again.
         let still = school_of(&live.answer(&input(0)).unwrap());
         assert_eq!((still.lesson, still.state), (2, school::STATE_BRIEF));
@@ -318,11 +319,21 @@ fn the_school_record_stands_where_the_lesson_does() {
         let driving = school_of(&live.answer(&input(ACCEPT_MESSAGE)).unwrap());
         assert_eq!((driving.lesson, driving.state), (2, school::STATE_DRIVING));
         assert!(driving.stop, "brief -> driving stops the speech");
+        assert!(driving.reasons.is_empty(), "no reasons before the failed end");
         // The pause menu's retire ends it, keeping its verdict; a restart clears the kept one.
         let end = school_of(&live.answer(&input(RETIRE)).unwrap());
         assert_eq!((end.lesson, end.state), (2, school::STATE_ENDED));
-        assert_ne!(end.verdict, school::NO_VERDICT, "the kept verdict");
+        assert_eq!(end.verdict, 0, "a retire fails");
         assert!(end.stop, "driving -> ended stops the speech");
+        let expected: Vec<school::Reason> = live
+            .school
+            .as_ref()
+            .expect("school")
+            .failure_reasons(end.time)
+            .into_iter()
+            .map(|reason| school::Reason { lesson: reason.lesson, key: reason.key })
+            .collect();
+        assert_eq!(end.reasons, expected, "the failed end carries the bank's reasons");
         live.restart();
         let again = school_of(&live.answer(&input(0)).unwrap());
         assert_eq!((again.lesson, again.state), (2, school::STATE_BRIEF));
