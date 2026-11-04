@@ -68,3 +68,25 @@ fn one_shots_are_refused_at_the_sound_limit_and_ranged_impacts_steal() {
     assert_eq!(mixer.tally()["Squeak"], [room, 1]);
     assert_eq!(mixer.tally()["Ranged"], [1, 0]);
 }
+
+#[test]
+fn the_speech_queue_drops_nothing_past_ten_entries() {
+    use rbr_sound::mixer::Mixer;
+    use rbr_sound::voice::{Command, Speech};
+    let Some(data) = Data::from_env() else {
+        eprintln!("RBR_DATA is not set; skipped");
+        return;
+    };
+    let bank = CarBank::load(&data, 0).expect("car 0");
+    let mut mixer = Mixer::new(&bank, 44100, 1.0);
+    let one = &bank.codriver.numbers[0];
+    let seconds = one.samples.len() as f32 / one.rate as f32;
+    mixer.apply(&[Command::Speech(Speech::Number(1)); 12]);
+    let mut block = vec![[0.0f32; 2]; (seconds * 44100.0) as usize];
+    // The 12th word plays after eleven others (the original's queue of 10 would be silent here).
+    for _ in 0..11 {
+        mixer.render(&mut block);
+    }
+    mixer.render(&mut block);
+    assert!(block.iter().flatten().any(|s| s.abs() > 1e-4), "the twelfth queued word was dropped");
+}

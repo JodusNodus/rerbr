@@ -7,7 +7,7 @@
 //! The car's voices take the distance gain of the distances the original sets on each (DirectSound's default rolloff,
 //! [`distance_gain`]; the tyre loops the software 3D path's [`software_gain`]; the 2D whine and wetness none) and
 //! their side from where the car is from the camera ([`Command::Listener`]). The engine takes `E30Engine::Vf08`'s
-//! one-pole filter ([`engine_filter`]). The speech queue is `SOUND::CSpeech`'s: 10 entries, placed by priority
+//! one-pole filter ([`engine_filter`]). The speech queue is `SOUND::CSpeech`'s (ours: unbounded, the original's has 10 entries), placed by priority
 //! as `SpInsert` does ([`speech_slot`]), with the pause [`Command::SpeechGap`] gives after each word.
 //!
 //! Ours, not traced (rbr-recomp `notes/sound.md` 4.3): the sample voices' band-limited interpolation ([`voices::interpolate`],
@@ -97,8 +97,6 @@ pub const SOUND_LIMIT: usize = 32;
 /// exhaust, less the one the count leaves out), but 9 is what gives each caller the original's made and refused
 /// counts at 60 frames a second (rbr-recomp `notes/sound.md` 2.5); the two are open.
 const RACE_SOUNDS: usize = 9;
-/// The speech queue's entries (`SOUND::CSpeech::SpInsert` 0x4dd4d0).
-const SPEECH_QUEUE: usize = 10;
 
 /// The mix's master gain (ours): every retail sample is normalised to full scale and the original sums its voices
 /// past it. 0.8 matched the original's level on the tanner drive (rbr-recomp `notes/sound.md` 2.6), clipping 2-3% of
@@ -640,8 +638,8 @@ impl Mixer {
                         Speech::Damage(code) => (DAMAGE_PRIORITY, self.banks.damage.get(code as usize).cloned()),
                         Speech::Sample(k) => (NOTE_PRIORITY, self.banks.voice.get(k as usize).cloned()),
                     };
-                    // SpInsert drops an entry when the queue is full.
-                    if let Some(wave) = wave.filter(|w| !w.samples.is_empty() && self.speech.len() < SPEECH_QUEUE) {
+                    // Ours: the queue never refuses an entry. `SpInsert` (0x4dd4d0) holds 10 and drops the rest.
+                    if let Some(wave) = wave.filter(|w| !w.samples.is_empty()) {
                         let at = speech_slot(self.speech.iter().map(|(p, _)| *p), pri);
                         self.speech.insert(at, (pri, wave));
                     }
