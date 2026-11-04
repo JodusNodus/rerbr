@@ -1,7 +1,6 @@
-//! Playing a BTB stage: the plugin makes the game load retail map 41, variant M, replacing five of its files
-//! (`Maps\track-41_M.{lbs,dls,col,trk,mat}`) with ones built from the BTB folder (`notes/btb.md` "Playing").
-//! [`prepare`] writes those five files into a folder of ours and the stage name `<out>/track-41_M` then loads as a
-//! folder stage, the other files of map 41 coming from the install's `Maps/` (`rbr_formats::stage_files`).
+//! Playing a BTB stage: a stage of its own, a folder stage (`rbr_formats::stage_files`) named `track-<number>_M` whose
+//! files [`prepare`] writes into a folder of ours (`notes/btb.md` "Playing"). The RSF plugin makes the game load retail
+//! map 41 instead; ReRBR has no file opener to hook, so nothing of map 41 is kept but what [`SKY_MAP`] says.
 
 use crate::classic;
 use crate::track::{Physics, Track};
@@ -9,38 +8,51 @@ use rbr_formats::{ini, stage_files};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
-/// The stage name the plugin plays every BTB stage as: retail map 41, variant M.
-pub const TRACK: &str = "track-41_M";
+/// The variant letter of a prepared stage's name: its files are the same whatever the weather, so there is one.
+pub const LETTER: char = 'M';
+/// The retail map whose presentation a BTB stage borrows: the weather rows (and their `TrackSettings.ini` sky sections,
+/// `Season::of_btb`), the particles' wind and the time of day's site. One place to change it. Physics inputs
+/// (wear, wetness, wet meshes, `.mat` entry) come from the row as for any stage.
+pub const SKY_MAP: u32 = 41;
+/// The stage whose `Maps/` files dress a BTB stage (`SKY_MAP`'s variant [`LETTER`]).
+pub const SKY_STAGE: &str = "track-41_M";
+/// The fence file of a BTB stage: retail's empty one (map 4's, 16 bytes: the magic, no groups, the tail), so the
+/// stage has no fence posts. Map 41's own `.fnc` has posts for map 41's road, not the BTB one. Putting a retail
+/// map's `.fnc` bytes here instead would give the stage its fences.
+const FENCE: [u8; 16] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20, 0, 0, 0];
 /// The file naming the BTB folder a prepared folder was built from.
 pub const SOURCE_FILE: &str = "btb.ini";
 /// Raised when the built files change, so that the folders an older build prepared are built again.
-const BUILD: u32 = 1;
+const BUILD: u32 = 2;
+/// The prepared files' extensions.
+const EXTENSIONS: [&str; 6] = ["lbs", "dls", "mat", "trk", "col", "fnc"];
 
-/// Writes `<out>/track-41_M.{lbs,dls,col,trk,mat}` and `<out>/btb.ini` for `track` and returns the stage name
-/// `<out>/track-41_M`. `rsf_root` is the RallySimFans install, recorded in `btb.ini`. The plugin rebuilds them on every
-/// load; we keep them while `btb.ini` holds the same [`stamp`] of the track folder (half a second to two on each load).
-pub fn prepare(track: &Track, rsf_root: &Path, out: &Path) -> Result<String, String> {
-    let name = format!("{}/{TRACK}", out.display());
-    let source = format!(
-        "[BTB]\nfolder={}\nrsf={}\nstamp={}\n",
-        track.folder.display(),
-        rsf_root.display(),
-        stamp(&track.folder)
-    );
-    let built = ["lbs", "dls", "mat", "trk", "col"].iter().all(|ext| out.join(format!("{TRACK}.{ext}")).is_file());
+/// The stage name of the BTB stage `number` prepared in `out`: `<out>/track-<number>_M`.
+pub fn stage_name(out: &Path, number: u32) -> String {
+    format!("{}/track-{number}_{LETTER}", out.display())
+}
+
+/// Writes `<out>/track-<number>_M.{lbs,dls,mat,trk,col,fnc}` and `<out>/btb.ini` for `track` and returns the stage name
+/// ([`stage_name`]). The plugin rebuilds the files on every load; we keep them while `btb.ini` holds the same [`stamp`]
+/// of the track folder (half a second to two on each load).
+pub fn prepare(track: &Track, number: u32, out: &Path) -> Result<String, String> {
+    let name = stage_name(out, number);
+    let source = format!("[BTB]\nfolder={}\nstamp={}\n", track.folder.display(), stamp(&track.folder));
+    let built = EXTENSIONS.iter().all(|ext| Path::new(&format!("{name}.{ext}")).is_file());
     if built && std::fs::read_to_string(out.join(SOURCE_FILE)).is_ok_and(|text| text == source) {
         return Ok(name);
     }
     std::fs::create_dir_all(out).map_err(|e| format!("{}: {e}", out.display()))?;
     let write = |ext: &str, bytes: Vec<u8>| {
-        let path = out.join(format!("{TRACK}.{ext}"));
-        std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))
+        let path = format!("{name}.{ext}");
+        std::fs::write(&path, bytes).map_err(|e| format!("{path}: {e}"))
     };
     write("lbs", classic::lbs(&track.spawn()?))?;
     write("dls", classic::dls(&track.pace_notes()?.notes))?;
     write("mat", classic::mat(&track.surface_maps()?.maps))?;
     write("trk", classic::trk_from(track, crate::D3dx::Windows)?)?;
     write("col", crate::col::build(track)?)?;
+    write("fnc", FENCE.to_vec())?;
     // Last: a build cut short is not taken for a finished one.
     std::fs::write(out.join(SOURCE_FILE), source).map_err(|e| format!("{SOURCE_FILE}: {e}"))?;
     Ok(name)
@@ -84,6 +96,15 @@ pub fn surface(track: &Track) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stage_is_named_by_its_own_number_and_has_no_fence() {
+        let name = stage_name(Path::new("/files/btb/Pirttikulma"), 1_234_567);
+        assert_eq!(name, "/files/btb/Pirttikulma/track-1234567_M");
+        assert_eq!(stage_files::parts(&name), Some((1_234_567, LETTER)));
+        assert_eq!(stage_files::folder(&name), Some(Path::new("/files/btb/Pirttikulma")));
+        assert!(rbr_formats::fnc::parse(&FENCE).unwrap().groups.is_empty());
+    }
 
     #[test]
     fn source_reads_btb_ini() {
