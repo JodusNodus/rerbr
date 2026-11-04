@@ -839,24 +839,22 @@ impl App {
         let paused = self.paused + self.paused_at.map_or(Duration::ZERO, |at| at.elapsed());
         let elapsed = self.started.elapsed() - paused;
         running.renderer.set_time(elapsed.as_secs_f32());
-        running.renderer.set_start_clock(self.scene.live.as_ref().and_then(|l| l.hud_model.view().start_clock));
-        running.renderer.set_start_lamps(self.scene.live.as_ref().and_then(|l| l.hud.race.as_ref()));
+        // The school demo shows no HUD of the player's car (start lamps, dials, times), only its hint.
+        let live = self.scene.live.as_ref().filter(|_| demo_ride.is_none());
+        running.renderer.set_start_clock(live.and_then(|l| l.hud_model.view().start_clock));
+        running.renderer.set_start_lamps(live.and_then(|l| l.hud.race.as_ref()));
         if let (Some(dials), Some(playback)) = (&mut self.scene.dials, &self.scene.playback) {
             dials.update(&dial_values(playback, self.scene.live.as_ref()), Some(dt), &mut running.renderer);
         }
         span.next("render");
         running.renderer.render(&mut encoder, &view, (width, height), view_projection, sky_view_projection);
         span.next("HUD");
-        let readout = self.scene.playback.as_ref().filter(|_| self.scene.hud.show).map(|playback| {
-            let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
-            let (live, shown, bindings) = (self.scene.live.as_ref(), self.shown, &self.bindings);
-            let mut readout = readout(playback, live, shown, bindings, self.scene.hud, fps);
-            if demo_ride.is_some() {
-                // The brief's panel stays hidden while the demo plays.
-                readout.state.school = None;
-            }
-            readout
-        });
+        let readout =
+            self.scene.playback.as_ref().filter(|_| self.scene.hud.show && demo_ride.is_none()).map(|playback| {
+                let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
+                let (live, shown, bindings) = (self.scene.live.as_ref(), self.shown, &self.bindings);
+                readout(playback, live, shown, bindings, self.scene.hud, fps)
+            });
         if readout.is_some() || self.menu.is_some() || self.results.is_some() || demo_ride.is_some() {
             let (gpu, menu) = (&running.gpu, &self.menu);
             running.overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, (width, height), |ctx, hud| {

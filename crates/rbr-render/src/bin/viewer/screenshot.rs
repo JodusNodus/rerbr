@@ -84,8 +84,9 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = scene.renderer(&gpu, format, enhance, args.render_scale, &mut |_| {});
     renderer.set_time(time);
-    renderer.set_start_clock(scene.live.as_ref().and_then(|l| l.hud_model.view().start_clock));
-    renderer.set_start_lamps(scene.live.as_ref().and_then(|l| l.hud.race.as_ref()));
+    let live = scene.live.as_ref().filter(|_| demo_ride.is_none());
+    renderer.set_start_clock(live.and_then(|l| l.hud_model.view().start_clock));
+    renderer.set_start_lamps(live.and_then(|l| l.hud.race.as_ref()));
     let shots = args.sequence.max(1);
     for shot in 0..shots {
         // A drive's frame at its time, with the car's velocity standing for the eye's (the rain's streaks) when the
@@ -178,17 +179,12 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         if let (Some(dials), Some(playback)) = (&mut scene.dials, &scene.playback) {
             dials.update(&dial_values(playback, scene.live.as_ref()), None, &mut renderer);
         }
-        let mut readout = scene
+        // The school demo shows no HUD of the player's car, only its hint.
+        let readout = scene
             .playback
             .as_ref()
-            .filter(|_| scene.hud.show)
+            .filter(|_| scene.hud.show && demo_ride.is_none())
             .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
-        if demo_ride.is_some() {
-            // The brief's panel stays hidden while the demo plays.
-            if let Some(readout) = readout.as_mut() {
-                readout.state.school = None;
-            }
-        }
         let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         // The probes show a first frame's sky and shadows (as the window's load draws them).
         if shot == 0 && renderer.has_probes() {

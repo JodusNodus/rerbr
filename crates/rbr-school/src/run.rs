@@ -62,8 +62,12 @@ impl SchoolRun {
     }
 
     /// `EvalFilters` at the drive's end: 0 (failed) to 4 (perfect) for the race time `time` and the car's damage
-    /// (`SeverityMax`: the 1.02 repair objects' levels, `car_damage::severity`).
+    /// (`SeverityMax`: the 1.02 repair objects' levels, `car_damage::severity`). The ride is not judged (`M5693f0`
+    /// case 5 skips lesson 5): its result is the award's 4.
     pub fn verdict(&self, time: f32, damage: &CarriedDamage) -> u32 {
+        if self.lesson.ride() {
+            return 4;
+        }
         // The repair handler's 0x100 part ids, as `SeverityMax` asks `GetDamage` for them.
         let levels: [u32; 0x100] = std::array::from_fn(|id| u32::from(car_damage::severity(damage, id as u32)));
         eval_filters(&self.bank, time, self.lesson.index() as i32, &levels)
@@ -186,5 +190,6 @@ mod tests {
         let mut run = SchoolRun::new(Lesson::new(5).unwrap(), stop_box());
         run.start();
         assert_eq!(run.frame(0.01, 0.0), Some(ModeEnd::Finished));
+        assert_eq!(run.verdict(0.0, &CarriedDamage::default()), 4, "not judged: the award's 4");
     }
 }
