@@ -35,7 +35,7 @@
 //! no go: the player's confirm, an input payload's `ACCEPT_MESSAGE` (a recorded payload confirms at once), arms the 2 s
 //! countdown (`FrameInput::confirm`). Without the timer (the autopilot
 //! and the recorded-boot checks) the go comes before the first payload, as the headless boot gives it at the
-//! recording's step. Each payload of the drive is one frame of one step, from the settle's last step.
+//! recording's step; a lesson's brief still waits for the first payload's confirm. Each payload of the drive is one frame of one step, from the settle's last step.
 //!
 //! A payload with the call-for-help flag (quantized 0x20, the viewer's call for help) gives the game that request
 //! (`FrameInput::help_call`) instead of the flag, so the race clock's gate applies; the assist and its penalty are
@@ -223,9 +223,12 @@ impl<'a> Live<'a> {
         }
         game.set_assist_settings(race.assist_settings());
         let mut school = race.school(&stage.replay, &stage.school_strings);
-        // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time.
-        let now = if camera_go { 0.0 } else { f64::from(dt) };
-        let settled = settle(&playback, &mut game, &mut school, stage, camera_go, now)?;
+        // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time. A
+        // lesson's brief waits for the first payload's confirm (`Stage::school_start`) instead, so its start, and the
+        // ride's end at once, run through the answers as on the viewer.
+        let go = !camera_go && !game.assist_settings().school();
+        let now = if go { f64::from(dt) } else { 0.0 };
+        let settled = settle(&playback, &mut game, &mut school, stage, go, now)?;
         let mut live =
             Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
         live.now = now;
@@ -884,14 +887,14 @@ fn install_filter_ini() -> Ini {
     Ini::parse(&text)
 }
 
-/// The load settle the boot runs: the game from `Load` to the countdown, then the go's frames as the headless boot
-/// runs them (without the camera the second takes a step's time). Returns the settled steps, the live start's step.
+/// The load settle the boot runs: the game from `Load` to the countdown, then with `go` the go's frames as the
+/// headless boot runs them (the second at `now`, a step's time). Returns the settled steps, the live start's step.
 fn settle(
     playback: &Playback,
     game: &mut Game,
     school: &mut Option<SchoolRun>,
     stage: &StageData,
-    camera_go: bool,
+    go: bool,
     now: f64,
 ) -> Result<u32, String> {
     let mut physics = Pure {
@@ -909,10 +912,8 @@ fn settle(
         while game.stage().state() == State::Load {
             settled += game.frame_with(0.0, FrameInput::default(), &mut physics, school).substeps.len() as u32;
         }
-        if !camera_go {
-            // The school's start is the confirm on the brief (`Stage::school_start`), the others' the camera's go.
-            let confirm = game.assist_settings().school();
-            let go = FrameInput { camera_go: !confirm, confirm, ..FrameInput::default() };
+        if go {
+            let go = FrameInput { camera_go: true, ..FrameInput::default() };
             game.frame_with(0.0, go, &mut physics, school);
             game.frame_with(now, FrameInput::default(), &mut physics, school);
         }
