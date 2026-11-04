@@ -436,6 +436,9 @@ probably fit the wrong hour.
   RSF models give it a `Default Material` FaceBlock (40 of 583 installed `.ini`s; a 2.3 m white cube about the
   cabin), which showed as a pale panel behind the rear window in chase views (GC8 555, Clio Rally3, Fiat 131
   Grp4; Fiesta Rally2, M3 E30, Escort Mk II byte for byte).
+- Stage and cloud textures get their mip chain completed to 1x1 at load (ours, 2026-11-04, the same
+  `upscale::with_block_mips`, stored levels kept): retail stage textures hold 4 levels (a 512x512 one stops at
+  64x64), so far ground shimmered without the upscaler, whose textures already have a full chain.
 - Block-compressed car textures with no mip levels get a chain at load (ours, 2026-10-31, `upscale::with_block_mips`:
   top level kept, the rest box-filtered and re-encoded in the file's format). The RSF Fiat 131 Abarth Grp4's 4096x4096
   livery, its 2048x2048 dynamic and its glass texture are DXT3 with one level and aliased in the chase view; its paint,
@@ -1231,5 +1234,5 @@ maximum. Quick with two binaries: about 2.5 to 4 minutes.
   alpha cut falls where the filtered colour is half black (462 `HOR_1`, `HOR_2`: transparent texels (0, 0, 0)). A fix
   bleeds the colour into them at load (the textures upload as BCn, so a decode and re-encode) or reads such textures
   as premultiplied; either changes every cut-out with black transparent texels, trees included.
-- Stage `c90`; kind-byte blend bits; reflection items `(1,7)`; water texture; mip levels beyond the 4 stored.
+- Stage `c90`; kind-byte blend bits; reflection items `(1,7)`; water texture.
 - Wheel set shown; `Plane_*` shadows; detached node motion; `pc_e_window_*` panels.

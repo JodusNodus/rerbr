@@ -337,18 +337,22 @@ pub fn encode(format: Format, mut width: u32, mut height: u32, mut rgba: Vec<u8>
     file
 }
 
-/// A one-level block-compressed file with its mip chain down to 1x1 appended, each level the box-filtered one above
-/// re-encoded in the file's format (the top level stays as it is): `None` when it is plain RGBA, already has levels or
-/// is under 8 texels. Some RSF cars' 4096x4096 liveries have no levels and alias in the distance.
+/// A block-compressed file with its mip chain completed down to 1x1, each new level the box-filtered one above
+/// re-encoded in the file's format (the stored levels stay as they are): `None` when it is plain RGBA, already has
+/// every level or is under 8 texels. Some RSF cars' 4096x4096 liveries have no levels and alias in the distance; the
+/// stage textures keep 4 (a 512x512 one stops at 64x64), so far ground shimmers.
 pub fn with_block_mips(bytes: &[u8]) -> Option<Vec<u8>> {
     let file = dds::parse(bytes).ok()?;
-    if file.format == Format::Rgba8 || file.mip_count != 1 || file.width.max(file.height) < 8 {
+    let levels = file.levels();
+    let last = levels.last()?;
+    if file.format == Format::Rgba8 || (last.width == 1 && last.height == 1) || file.width.max(file.height) < 8 {
         return None;
     }
-    let (mut width, mut height) = (file.width, file.height);
-    let mut rgba = decompress(file.format, file.data, width, height);
-    let mut out = bytes[..128 + file.data.len()].to_vec();
-    let mut count = 1u32;
+    let stored: usize = levels.iter().map(|l| l.data.len()).sum();
+    let (mut width, mut height) = (last.width, last.height);
+    let mut rgba = decompress(file.format, last.data, width, height);
+    let mut out = bytes[..128 + stored].to_vec();
+    let mut count = levels.len() as u32;
     while width > 1 || height > 1 {
         (width, height, rgba) = half(width, height, &rgba);
         let format = bc(file.format);
@@ -442,6 +446,20 @@ mod tests {
         assert_eq!((dds.width, dds.mip_count, dds.levels()[0].data), (16, 5, top.as_slice()));
         // Already mipped: left as it is.
         assert_eq!(with_block_mips(&bytes), None);
+    }
+
+    #[test]
+    fn a_short_chain_is_completed_below_its_stored_levels() {
+        let full = file(64);
+        let stored = dds::parse(&full).unwrap().levels()[..4].iter().map(|l| l.data.to_vec()).collect::<Vec<_>>();
+        let mut four = full[..128].to_vec();
+        four[28..32].copy_from_slice(&4u32.to_le_bytes());
+        stored.iter().for_each(|level| four.extend_from_slice(level));
+        let bytes = with_block_mips(&four).unwrap();
+        let dds = dds::parse(&bytes).unwrap();
+        let levels = dds.levels();
+        assert_eq!((dds.mip_count, levels.last().map(|l| (l.width, l.height))), (7, Some((1, 1))));
+        assert!(levels[..4].iter().zip(&stored).all(|(level, old)| level.data == old.as_slice()));
     }
 
     #[test]
