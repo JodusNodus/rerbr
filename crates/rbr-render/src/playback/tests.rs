@@ -60,6 +60,7 @@ fn playback(frames: &[Vec<u8>]) -> Playback {
         turn: None,
         hide_wheel: false,
         game_chase: Follow::new(crate::game_camera::Settings::default()),
+        chase_fov: CHASE_FOV_DEGREES.to_radians(),
         head: crate::head::Head::new(true),
         probe: None,
         shadow: None,
@@ -129,6 +130,22 @@ fn chase_has_its_own_field_of_view_and_the_views_the_setting() {
             assert!((projection.y_axis.y - aspect * projection.x_axis.x).abs() < 1e-4, "{view:?}");
         }
     }
+}
+
+#[test]
+fn the_chase_field_of_view_is_a_setting() {
+    let mut p = playback(&[frame(10, 1, 0.0)]);
+    p.follow_cameras(None, false);
+    let mounts = Mounts {
+        bonnet: Mount { eye: Vec3::ZERO, target: Vec3::NEG_Z, up: Vec3::Y, near: 0.1 },
+        bumper: Mount { eye: Vec3::ZERO, target: Vec3::NEG_Z, up: Vec3::Y, near: 0.1 },
+        cockpit: Mount { eye: Vec3::ZERO, target: Vec3::NEG_Z, up: Vec3::Y, near: 0.1 },
+        nudges: Default::default(),
+    };
+    let fov = |p: &Playback| p.lens(&mounts, CarView::Chase, ChaseLook::default(), 0.5).fov;
+    assert_eq!(fov(&p), 65.0f32.to_radians(), "the default is the old fixed one");
+    p.chase_fov = 90.0f32.to_radians();
+    assert_eq!(fov(&p), 90.0f32.to_radians());
 }
 
 #[test]

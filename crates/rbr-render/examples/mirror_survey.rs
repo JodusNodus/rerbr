@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             if !wanted.is_empty() && !wanted.contains(&key) {
                 continue;
             }
-            match rbr_formats::rsf::select(data.clone(), &key, rbr_formats::rsf::SLOT, Some(root)) {
+            match rbr_formats::rsf::select(data.clone(), &key, Some(root)) {
                 Ok(selected) => {
                     let folder = selected.folder().to_owned();
                     cars.push((format!("rsf {} {}", car.id, car.name), selected.data, folder))

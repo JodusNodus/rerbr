@@ -141,8 +141,9 @@ pub enum Command {
     /// The pause after each word (`E31Speech::Vf08` 0x4d2e30: before the race clock runs), seconds.
     SpeechGap(f32),
     /// Where the car is from the camera: its distance, metres, and its side (-1 left to 1 right). The car's voices
-    /// take their `SOUNDDEF` distance gain from it, and the engine's outside low-pass its cutoff.
-    Listener { car_distance: f32, car_pan: f32 },
+    /// take their `SOUNDDEF` distance gain from it, and the engine's outside low-pass its cutoff. `car_doppler` is the
+    /// pitch factor their motion gives them (1 from inside the car; ours).
+    Listener { car_distance: f32, car_pan: f32, car_doppler: f32 },
     /// A loop's side (-1 left to 1 right).
     Pan { voice: Loop, pan: f32 },
     /// The rain stream's gain (0 stops it) and the precipitation amount (50 light, 100 heavy).

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use rbr_formats::{cars, rbz, rsf, stage_files};
 use rbr_gameplay::weather::{self, Preset, Season, Weather};
+use rbr_render::camera_prefs;
 
 /// Each car number's folder in `physics.rbz` (the exe's table at 0x7c18d4).
 const PHYSICS_DIRS: [&str; 8] = ["c_xsara", "h_accent", "mg_zr", "m_lancer", "p_206", "s_i2003", "t_coroll", "s_i2000"];
@@ -45,7 +46,8 @@ pub fn ngp_offered(cars: &[Car], ngp_cars: &[u32]) -> Vec<Car> {
 /// A car of `Cars/Cars.ini`, or an RSF or added car raced in RSF's slot.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Car {
-    /// Its game's car number (`rbr-standalone --car`).
+    /// Its game's car number (`rbr-standalone --car`). An RSF car has none: `rsf::SLOT` stands in, and it is told by
+    /// `rsf`.
     pub index: u32,
     /// Its folder, upper case (`viewer --car`); an RSF car's name.
     pub name: String,
@@ -70,6 +72,16 @@ pub struct RsfCar {
 }
 
 impl Car {
+    /// The keys its setups are saved under (the game's slot files and the `Physics/<key>/Setups` folder), its own
+    /// first. A retail car's is its number; an RSF car's is `rsf-<id>` (`camera_prefs::car_key`), then `5`: the
+    /// setups saved before RSF cars had keys of their own, offered to every RSF car.
+    pub fn setup_keys(&self) -> Vec<String> {
+        match &self.rsf {
+            Some(rsf) => vec![camera_prefs::car_key(&self.name, Some(rsf.id)), rsf::SLOT.to_string()],
+            None => vec![self.index.to_string()],
+        }
+    }
+
     /// Why the car can't start (an RSF car needs its pack and a model), or `None`.
     pub fn unavailable(&self) -> Option<String> {
         let rsf = self.rsf.as_ref()?;
@@ -96,7 +108,7 @@ pub fn rsf_cars(install: &Path, root: &Path, added: bool) -> Result<Vec<Car>, St
                 Ok(p) => p.read("common.lsp").map(|_| p.path().to_owned()),
                 Err(_) => Err("not downloaded in RallySimFans".into()),
             };
-            let model = rsf.model_entry(car, rsf::SLOT, &retail).map(|m| m.fallback);
+            let model = rsf.model_entry(car, &retail).map(|m| m.fallback);
             Car {
                 index: rsf::SLOT,
                 name: car.name.clone(),
@@ -129,15 +141,16 @@ pub struct Map {
     pub stages: Vec<Stage>,
     /// A RallySimFans stage folder's map ([`Catalog::set_rsf`]).
     pub rsf: Option<rsf::Stage>,
-    /// A BTB stage's map ([`crate::btb`]): it plays as retail map 41.
+    /// A BTB stage's map ([`crate::btb`]): a stage of its own number.
     pub btb: Option<crate::btb::Btb>,
 }
 
 impl Map {
-    /// The map number its season rows and weathers go by: the number, but a BTB stage's is retail map 41's.
-    pub fn weather_map(&self) -> u32 {
+    /// The retail map whose presentation the map takes (`rbr_render::relight::site`): a BTB stage's is
+    /// `rbr_btb::stage::SKY_MAP`, any other map's its own number.
+    pub fn sky_map(&self) -> u32 {
         if self.btb.is_some() {
-            crate::btb::MAP
+            rbr_btb::stage::SKY_MAP
         } else {
             self.number
         }
@@ -159,10 +172,11 @@ impl Map {
         }
     }
 
-    /// The season that gives the map's weathers: the game's, or a community stage's own (`Season::of_rsf`).
+    /// The season that gives the map's weathers: the game's, a community stage's own (`Season::of_rsf`), or a BTB
+    /// stage's (`Season::of_btb`: the rows of its sky map).
     pub fn season<'a>(&self, season: &'a Season) -> Cow<'a, Season> {
         if self.btb.is_some() {
-            return Cow::Owned(crate::btb::season(season));
+            return Cow::Owned(Season::of_btb(season, self.number, self.sky_map()));
         }
         match &self.rsf {
             Some(stage) => Cow::Owned(Season::of_rsf(stage, None)),
@@ -328,7 +342,7 @@ impl Catalog {
             return Err(problem.clone());
         }
         let season = entry.map_or(Cow::Borrowed(season), |m| m.season(season));
-        let weather = weather::quick_race(&season, entry.map_or(map, Map::weather_map), preset, draws)?;
+        let weather = weather::quick_race(&season, map, preset, draws)?;
         let stage = self.stage_of(map, &weather).ok_or_else(|| {
             format!("{} selected by {} weather has no installed stage file", weather.stage(), weather::name(preset))
         })?;
@@ -345,7 +359,7 @@ impl Catalog {
         words: &rbr_formats::ghost::Weather,
     ) -> Option<(Stage, Weather)> {
         let entry = self.map(map)?;
-        if entry.btb.is_some() || entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
+        if entry.rsf.as_ref().is_some_and(|r| r.problem.is_some()) {
             return None;
         }
         let weather = entry.season(season).ghost_weather(map, words)?;
@@ -468,6 +482,7 @@ pub fn row_label(row: &weather::Row) -> String {
 /// is kept). Each entry is the row's season-table index, its `TrackSettings.ini` section and its label.
 pub fn environment_rows(season: &weather::Season, map: u32) -> Vec<(usize, String, String)> {
     let mut seen = std::collections::HashSet::new();
+    let sky = season.sky.unwrap_or(map);
     season
         .rows_of(map)
         .filter(|&k| {
@@ -476,7 +491,7 @@ pub fn environment_rows(season: &weather::Season, map: u32) -> Vec<(usize, Strin
         })
         .filter_map(|k| {
             let row = &season.rows[k];
-            let section = rsf::WeatherRow::section_name(map, row.letter, row.cloud_letter, row.preset, row.cloud)?;
+            let section = rsf::WeatherRow::section_name(sky, row.letter, row.cloud_letter, row.preset, row.cloud)?;
             Some((k, section, row_label(row)))
         })
         .collect()
@@ -484,9 +499,10 @@ pub fn environment_rows(season: &weather::Season, map: u32) -> Vec<(usize, Strin
 
 /// The map's season row with the `TrackSettings.ini` section `section`, if it is the map's.
 pub fn row_by_section(season: &weather::Season, map: u32, section: &str) -> Option<usize> {
+    let sky = season.sky.unwrap_or(map);
     season.rows_of(map).find(|&k| {
         let row = &season.rows[k];
-        rsf::WeatherRow::section_name(map, row.letter, row.cloud_letter, row.preset, row.cloud).as_deref()
+        rsf::WeatherRow::section_name(sky, row.letter, row.cloud_letter, row.preset, row.cloud).as_deref()
             == Some(section)
     })
 }
@@ -604,6 +620,17 @@ mod tests {
         }
     }
 
+    /// A retail car's setups are its number's; an RSF car has its own key, then the old slot 5's.
+    #[test]
+    fn setup_keys_are_the_cars_own_with_slot_5_behind_an_rsf_car() {
+        let rsf =
+            RsfCar { id: 24, added: false, group: None, pack: Ok("/p".into()), model: Ok(None), drive_train: None };
+        let car = |index, rsf| Car { index, name: "Evo".into(), rsf };
+        assert_eq!(car(6, None).setup_keys(), ["6"]);
+        assert_eq!(car(rsf::SLOT, Some(rsf.clone())).setup_keys(), ["rsf-24", "5"]);
+        assert_eq!(car(rsf::SLOT, Some(RsfCar { id: 25, ..rsf })).setup_keys(), ["rsf-25", "5"]);
+    }
+
     /// NGP's retail slots are offered, the others hidden; with RSF cars the retail slot 5 is too.
     #[test]
     fn the_offered_cars_are_the_ones_ngp_drives() {
@@ -687,6 +714,45 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// A BTB stage offers the rows of map 41 (every variant, good and bad) under its own number, one stage file (M)
+    /// for all of them, and a saved ghost finds its row again.
+    #[test]
+    fn a_btb_map_plays_map_41s_rows_under_its_own_number() {
+        let retail = Season {
+            rows: vec![
+                Row { map: 41, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0 },
+                Row { map: 41, letter: 3, cloud: 3, cloud_letter: 2, preset: 4, wetness: 2 },
+                Row { map: 54, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0 },
+            ],
+            nice: vec![0],
+            bad: vec![1],
+            sky: None,
+        };
+        let number = 1_234_567;
+        let btb = crate::btb::Btb {
+            folder: "/rsf/Tracks/Hokkara".into(),
+            name: "Hokkara".into(),
+            author: None,
+            km: None,
+            surface: "gravel",
+            problem: None,
+        };
+        let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };
+        let map = Map { number, stages: vec![stage.clone()], rsf: None, btb: Some(btb) };
+        let catalog = Catalog { maps: vec![map], ..Catalog::default() };
+        for (preset, row, wetness) in [(Preset::Good, 0, 0), (Preset::Bad, 1, 2)] {
+            let (found, weather) = catalog.stage_weather(&retail, number, preset, weather::Draws::default()).unwrap();
+            assert_eq!((found, weather.row, weather.wetness), (stage.clone(), Some(row), wetness));
+        }
+        let season = catalog.maps[0].season(&retail);
+        let rows = environment_rows(&season, number);
+        let sections: Vec<&str> = rows.iter().map(|(_, section, _)| section.as_str()).collect();
+        assert_eq!(sections, ["41M_crisp_clear", "41O_E_heavyrain_heavycloud"]);
+        let (_, weather) = catalog.stage_weather(&retail, number, Preset::Bad, weather::Draws::default()).unwrap();
+        let words = weather.ghost_words(&season);
+        assert_eq!(catalog.ghost_stage_weather(&retail, number, &words), Some((stage, weather)));
+    }
+
     /// The Environment rows are the map's season rows with readable labels, deduped by words.
     #[test]
     fn environment_rows_label_and_dedupe() {
@@ -700,6 +766,7 @@ mod tests {
             ],
             nice: vec![1],
             bad: vec![0],
+            sky: None,
         };
         assert_eq!(row_label(&season.rows[0]), "Heavy fog, heavy cloud, evening (O)");
         assert_eq!(row_label(&season.rows[1]), "No rain, part cloud, morning (M)");
@@ -769,6 +836,52 @@ mod tests {
             })
             .collect();
         assert!(missing.is_empty(), "{missing:?}");
+    }
+
+    /// A community stage with one broken variant offers the others' weathers, and is unavailable only when none work.
+    #[test]
+    fn a_broken_variant_hides_only_its_own_weathers() {
+        let root = std::env::temp_dir().join(format!("rbr-catalog-{}", std::process::id()));
+        let folder = root.join("Maps").join("777-Test Stage");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("Tracks777.ini"), "[Map777]\r\nTrackName=\"Maps\\777-Test Stage\\track-777\"\r\n")
+            .unwrap();
+        std::fs::write(
+            folder.join("TrackSettings777.ini"),
+            "[777O_E_crisp_clear]\r\nFogEnd = 5\r\n[777M_E_crisp_clear]\r\nFogEnd = 5\r\n",
+        )
+        .unwrap();
+        for letter in ['O', 'M'] {
+            for ext in ["lbs", "col", "trk", "dls", "mat", "ini"] {
+                std::fs::write(folder.join(format!("track-777_{letter}.{ext}")), b"plain").unwrap();
+            }
+        }
+        let mut catalog = Catalog::default();
+        let base = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new(), sky: None };
+        let check = |catalog: &mut Catalog| {
+            catalog.set_rsf(root.to_str().unwrap());
+            let map = catalog.map(777).unwrap().clone();
+            let rows = environment_rows(&map.season(&base), 777);
+            let picks: Vec<_> = [Preset::Good, Preset::Bad, Preset::Random]
+                .map(|p| {
+                    catalog
+                        .stage_weather(&base, 777, p, weather::Draws { row: Some(0), wear: 1 })
+                        .map(|(s, _)| s.letter)
+                })
+                .into();
+            (catalog.availability(&base, &map), rows.len(), picks)
+        };
+        let (available, rows, picks) = check(&mut catalog);
+        assert_eq!((available, rows), (Ok(()), 2));
+        assert!(picks.iter().all(Result::is_ok));
+        std::fs::write(folder.join("track-777_O.col"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        let (available, rows, picks) = check(&mut catalog);
+        assert_eq!((available, rows), (Ok(()), 1));
+        assert!(picks.iter().all(|p| *p == Ok('M')));
+        std::fs::write(folder.join("track-777_M.col"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        assert!(check(&mut catalog).0.is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Setting the RSF folder again leaves the same stages; clearing it leaves the retail ones.

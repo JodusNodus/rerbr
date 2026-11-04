@@ -119,8 +119,11 @@ pub struct Stage {
     pub folder: PathBuf,
     /// The track's file stem without the letter (`track-101`).
     pub track: String,
-    /// The installed variants: the letters with a `.lbs`, sorted.
+    /// The usable variants: the letters with a `.lbs` whose files are all there and readable, sorted.
     pub variants: Vec<char>,
+    /// The variants with a `.lbs` that are not usable, each with its first problem. The stage still plays its
+    /// [`Stage::variants`].
+    pub broken: Vec<(char, String)>,
     /// `Particles` (`Maps\ps_arctic`): a DOS path from the RSF root, without `.ini`.
     pub particles: Option<String>,
     pub surface: Option<Surface>,
@@ -210,6 +213,7 @@ impl Stage {
             folder: folder.to_owned(),
             track,
             variants,
+            broken: Vec::new(),
             particles: value("Particles").filter(|p| !p.is_empty()),
             surface,
             length: value("Length")
@@ -228,7 +232,7 @@ impl Stage {
             weathers,
             problem: None,
         };
-        stage.problem = stage.check().err();
+        stage.check();
         Ok(stage)
     }
 
@@ -263,34 +267,45 @@ impl Stage {
         low.then(|| find(format!("{stem}_LOW.ini"))).flatten().or_else(|| find(format!("{stem}.ini")))
     }
 
-    /// Whether every variant has its files, readable: the first problem found.
-    fn check(&self) -> Result<(), String> {
-        if self.variants.is_empty() {
-            return Err(format!("no {}_<letter>.lbs", self.track));
-        }
-        for &letter in &self.variants {
-            let stage = self.stage(letter);
-            for ext in REQUIRED {
-                let path = stage_files::file_in(&self.folder, &stage, ext);
-                let mut head = [0u8; 4];
-                let read = std::fs::File::open(&path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head));
-                if read.is_err() {
-                    return Err(format!("{}: missing", stage_files::name(&stage).to_owned() + "." + ext));
-                }
-                if stage_files::encrypted(&head) {
-                    return Err(format!("{}.{ext} is encrypted by RallySimFans", stage_files::name(&stage)));
-                }
+    /// Sorts the variants into usable and [`Stage::broken`], and sets the stage's problem: none while one variant
+    /// works and the stage's shared textures read.
+    fn check(&mut self) {
+        let (variants, broken) = std::mem::take(&mut self.variants)
+            .into_iter()
+            .partition::<Vec<_>, _>(|&l| self.variant_problem(l).is_none());
+        self.broken = broken.into_iter().filter_map(|l| Some((l, self.variant_problem(l)?))).collect();
+        self.variants = variants;
+        self.problem = if self.variants.is_empty() {
+            Some(self.broken.first().map_or_else(|| format!("no {}_<letter>.lbs", self.track), |(_, p)| p.clone()))
+        } else {
+            self.shared_problem().err()
+        };
+    }
+
+    /// The first problem of `letter`'s files: one missing, unreadable or encrypted.
+    fn variant_problem(&self, letter: char) -> Option<String> {
+        let stage = self.stage(letter);
+        for ext in REQUIRED {
+            let path = stage_files::file_in(&self.folder, &stage, ext);
+            let mut head = [0u8; 4];
+            let read = std::fs::File::open(&path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head));
+            if read.is_err() {
+                return Some(format!("{}: missing", stage_files::name(&stage).to_owned() + "." + ext));
             }
-            // The texture archive is optional (a stage may remap every texture or ship a loose folder).
-            let textures = format!("{}_textures.rbz", stage_files::name(&stage));
-            if let Some(path) = stage_files::in_dir(&self.folder, &textures) {
-                let mut head = [0u8; 4];
-                let read = std::fs::File::open(&path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head));
-                if read.is_ok() && stage_files::encrypted(&head) {
-                    return Err(format!("{textures} is encrypted by RallySimFans"));
-                }
+            if stage_files::encrypted(&head) {
+                return Some(format!("{}.{ext} is encrypted by RallySimFans", stage_files::name(&stage)));
             }
         }
+        // The texture archive is optional (a stage may remap every texture or ship a loose folder).
+        let textures = format!("{}_textures.rbz", stage_files::name(&stage));
+        let path = stage_files::in_dir(&self.folder, &textures)?;
+        let mut head = [0u8; 4];
+        let read = std::fs::File::open(&path).and_then(|mut f| std::io::Read::read_exact(&mut f, &mut head));
+        (read.is_ok() && stage_files::encrypted(&head)).then(|| format!("{textures} is encrypted by RallySimFans"))
+    }
+
+    /// The problem every variant shares: the texture remap that does not read, or points into an encrypted archive.
+    fn shared_problem(&self) -> Result<(), String> {
         let remap = self.texture_map()?;
         match encrypted_sibling(&self.folder, &self.track, &remap) {
             Some(archive) => Err(format!("its textures are in {archive}, which is encrypted by RallySimFans")),
@@ -528,8 +543,19 @@ mod tests {
         std::fs::write(folder.join("TrackSettings777.ini"), "[777M_E_crisp_clear]\r\nFogEnd = 5\r\n").unwrap();
         assert_eq!(open(&folder).unwrap().default_variant(), Some('M'));
         std::fs::write(folder.join("track-777_O.col"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        // O is broken, M works: the stage plays M alone.
         let stage = open(&folder).unwrap();
-        assert_eq!(stage.problem.as_deref(), Some("track-777_O.col is encrypted by RallySimFans"));
+        assert_eq!(stage.problem, None);
+        assert_eq!(stage.variants, ['M']);
+        assert_eq!(stage.broken, [('O', "track-777_O.col is encrypted by RallySimFans".to_owned())]);
+        assert_eq!(stage.installed_weathers().count(), 1);
+        // No variant works: the stage's problem is the first one's.
+        std::fs::write(folder.join("track-777_M.trk"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        let stage = open(&folder).unwrap();
+        assert!(stage.variants.is_empty());
+        assert_eq!(stage.problem.as_deref(), Some("track-777_M.trk is encrypted by RallySimFans"));
+        assert_eq!(stage.default_variant(), None);
+        std::fs::write(folder.join("track-777_M.trk"), b"plain").unwrap();
         assert_eq!(base_track(&folder, 777), None);
         std::fs::write(folder.join("track-777_21_Test Stage"), b"").unwrap();
         assert_eq!(base_track(&folder, 777), Some(21));

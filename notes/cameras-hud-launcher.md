@@ -22,7 +22,10 @@ Chase builder, settings and start orbit in `rbr_render::game_camera`; car views 
 
 ### Ours: the viewer's views
 
-Ours views, nudges and FOV rules in `rbr_render::views`; choices in `rbr_render::camera_prefs` (`[camera]`,
+Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of view is 65 degrees unless set
+(`viewer --chase-fov`, launcher Camera page, 30 to 120 like `--fov`; `Playback::chase_fov`); the pace stack shows
+`PN_STACK` notes ahead (the original's loop stops one short, so its 4 showed 3), up to 8 in the viewer and launcher
+(the game's slider stops at 4); the launcher's co-driver "Call ahead" goes to 15 s (the page stopped at 8); choices in `rbr_render::camera_prefs` (`[camera]`,
 `viewer --cameras`).
 
 - Whether RSF itself applies `<car>_personal.ini` `[Cam_*]` overrides is not traced (the loader is
@@ -82,7 +85,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   the menu bank's (all 384 x 184); RSF stages show `rsfdata/images/stage_images/<id>.png` (what RSF's menus show,
   1024 x 768), else their `<id>-*.dds` loading poster, the middle of either cropped to 384:184 so both kinds look
   alike. Three of RSF's 658 (588, 629, 630) are JPEGs named `.png` and show the poster (no JPEG decoder).
-- BTB stages (`btb.rs`, `notes/btb.md` "Playing"): the RSF install's `RX_CONTENT/Tracks` folders are listed with its stages (number = RSF id), Start builds their map 41 files into `<files>/btb/<folder>/`; map 41's M weathers, no records or ghosts.
+- BTB stages (`btb.rs`, `notes/btb.md` "Playing"): the RSF install's `RX_CONTENT/Tracks` folders are listed with its stages (number = RSF id, else a synthetic one), Start builds the stage's files into `<files>/btb/<folder>/`; its weathers are map 41's rows under its number (`Season::of_btb`), its records and ghosts are kept under that number.
 - Stage browser: “Newest” sorts by map number, highest first (RSF numbers maps as it adds them); no hand-kept
   release dates (user decision 2026-11-03).
 - Added cars (gvrc.de packs in the player's `cars/`) keep their group (`cargroups.json` `base_group_id`) and drive
@@ -91,6 +94,20 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).
+- Setups (`setup_page.rs`, 2026-11-04): the Drive page's Setup field picks the default or any saved setup of the car,
+  the stage surface's first, then the other surfaces' (labelled), then those of no known surface (user decision
+  2026-11-04); the pick is kept per car and surface (`[setup]`, `<surface> <car> = <name>`, `<other surface>/<name>`
+  for another surface's; `/` is not allowed in a name). Values load over the stage surface's defaults. The Car setup
+  tab is the manager (open, edit, save, delete; saving keeps it for the stage's surface and drives with it). Ours, every car: `<files>/setups/<car>/<surface>_<name>.lsp`
+  (`<car>`: the pack's folder name, a retail car's physics folder such as `c_xsara`; user decision 2026-11-04), RSF's
+  naming, so a file copies into RSF's `SavedGames/<pack>/` as it is. Read only: an RSF car's RSF `SavedGames/<pack>/`
+  and `rsfdata/setups/<pack>/` (RSF's `<id>_d_<surface>.lsp` copies of the defaults skipped; RSF install 2026-11-04:
+  85 shipped, 214 saved files, none named otherwise). The 1.02 install's `Physics/<car>/Setups/` are not read (1.02's
+  car ranges, not NGP's; user decision 2026-11-04).
+  The older `[launcher] setup` (one name for every car) is no longer read. No save slots (user decision
+  2026-11-04). Earlier versions' files are listed read only: an RSF car's `<files>/SavedGames/<pack>/`, the
+  `Physics/<key>/Setups/` of `Car::setup_keys` (`rsf-<id>`, then 5; a retail car its number's), and their slot files
+  `SavedGames/<key>slot<n>_*.lsp`. The championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.

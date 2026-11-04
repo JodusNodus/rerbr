@@ -192,6 +192,18 @@ impl Form {
             ui.label("Stage");
             ui.vertical(|ui| self.stage_field(ui));
             ui.end_row();
+
+            if self.car().is_some() {
+                self.select_setup();
+                let tip =
+                    "Any saved setup of the car, yours and RSF's, the stage surface's first; the pick is kept for \
+                           the car and the surface. Edit… makes and changes them";
+                ui.label("Setup").on_hover_text(tip);
+                if self.setup.choice_ui(ui, FIELD) {
+                    self.page = crate::pages::Page::Setup;
+                }
+                ui.end_row();
+            }
         });
 
         section(ui, "Environment");
@@ -264,7 +276,7 @@ impl Form {
                 } else {
                     let map = &self.catalog.maps[self.map];
                     let season = map.season(&self.season);
-                    let rows = catalog::environment_rows(&season, map.weather_map());
+                    let rows = catalog::environment_rows(&season, map.number);
                     let mut selected = match self.weather_row.clone() {
                         Some(section) if rows.iter().any(|(_, s, _)| s == &section) => WeatherSel::Row(section),
                         _ => WeatherSel::Preset(self.options.weather),
@@ -494,9 +506,10 @@ impl Form {
     /// Drops the specific weather row when it is not the new stage's: the choice falls back to Good.
     pub(crate) fn validate_weather_row(&mut self) {
         let map = &self.catalog.maps[self.map];
-        let valid = self.weather_row.as_deref().is_some_and(|section| {
-            catalog::row_by_section(&map.season(&self.season), map.weather_map(), section).is_some()
-        });
+        let valid = self
+            .weather_row
+            .as_deref()
+            .is_some_and(|section| catalog::row_by_section(&map.season(&self.season), map.number, section).is_some());
         if !valid && self.weather_row.is_some() {
             self.weather_row = None;
             self.options.weather = Preset::Good;
@@ -515,7 +528,7 @@ impl Form {
         if let Some(section) = &self.weather_row {
             let map = &self.catalog.maps[self.map];
             let season = map.season(&self.season);
-            if let Some(k) = catalog::row_by_section(&season, map.weather_map(), section) {
+            if let Some(k) = catalog::row_by_section(&season, map.number, section) {
                 return catalog::row_label(&season.rows[k]);
             }
         }

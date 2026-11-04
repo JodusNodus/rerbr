@@ -167,7 +167,7 @@ impl Drawn {
             }
             Err(e) => eprintln!("fences: {car}: {e}; the car is its model's box"),
         }
-        if let Some(map) = crate::stage::map_number(stage) {
+        if let Some(map) = crate::stage::sky_map(stage) {
             self.weather = TrackWeather::load(data, map);
         }
         self.wind = Wind::new(self.weather, WIND_SEED);

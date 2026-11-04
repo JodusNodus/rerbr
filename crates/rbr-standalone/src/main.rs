@@ -171,12 +171,13 @@ fn run() -> ExitCode {
     }
     let args = args;
     let recording = args.recording.as_deref();
-    let car = args
-        .car
-        .or_else(|| recording.and_then(|r| race::recorded_word(r, 1)))
-        .unwrap_or(if args.rsf_car.is_some() { rsf::SLOT } else { 0 });
+    // An RSF car's record word is the slot the game holds it in (`rsf::SLOT`).
+    let car = match args.rsf_car {
+        Some(_) => rsf::SLOT,
+        None => args.car.or_else(|| recording.and_then(|r| race::recorded_word(r, 1))).unwrap_or(0),
+    };
     let stage = match stage_data(&data, &args.stage, car) {
-        Ok(stage) => stage,
+        Ok(stage) => StageData { btb: args.btb.is_some(), ..stage },
         Err(e) => {
             eprintln!("{e}");
             return ExitCode::FAILURE;

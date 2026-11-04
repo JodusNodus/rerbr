@@ -350,7 +350,7 @@ impl StagePictures {
         let data = self.data.clone();
         let driveline = || first_driveline(&data, map);
         let (picture, length) = match (&map.rsf, &map.btb) {
-            // A BTB stage's map `.trk` is map 41's: its picture, else its own driveline.
+            // A BTB stage has no map `.trk` until it starts: its picture, else its own driveline.
             (None, Some(btb)) => {
                 let id = Some(map.number).filter(|&n| n < crate::btb::SYNTHETIC);
                 let picture = btb_picture(&btb.folder, id);
@@ -463,7 +463,7 @@ fn render_car(
     let (data, name) = match car {
         CarModel::Retail(name) => (data, name.clone()),
         CarModel::Rsf { pack, root } => {
-            let selected = rsf::select(data, &pack.display().to_string(), rsf::SLOT, Some(root))?;
+            let selected = rsf::select(data, &pack.display().to_string(), Some(root))?;
             let name = selected.folder().to_owned();
             (selected.data, name)
         }

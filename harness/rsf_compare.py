@@ -391,7 +391,7 @@ def id_pack(rsf_car):
 def race_flags(game, meta, opts, attempt, s):
     """The --boot flags the launcher builds for this attempt (command.rs viewer_args/launch_args), and notes. The RSF
     car is --rsf-car's, else the pack the stage load opened, else attempt.txt's (`Cars.ini [Car05]`, which can lag)."""
-    notes, flags = [], ["--weather", str(game["weather"]), "--tyre", str(game["tyre"]), "--car", str(game["car"])]
+    notes, flags = [], ["--weather", str(game["weather"]), "--tyre", str(game["tyre"])]
     if game["ngp_base"] == 0:
         raise Failure("NGP.dll was not loaded in this attempt: ReRBR steps NGP physics only")
     physics = opts.ngp_physics or os.environ.get("RBR_NGP_PHYSICS")
@@ -413,6 +413,8 @@ def race_flags(game, meta, opts, attempt, s):
             notes.append("meta.txt names cars %s; give --rsf-car" % cars)
     if rsf_car:
         flags += ["--rsf-car", rsf_car]
+    else:
+        flags += ["--car", str(game["car"])]
     settings = drive_settings(os.path.dirname(attempt), rsf_car, game["car"], opts)
     notes += settings["notes"]
     if opts.rsf_car:  # the car run, whose S the boot takes

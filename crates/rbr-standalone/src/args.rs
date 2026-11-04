@@ -53,6 +53,9 @@ pub struct Args {
     /// `--surface gravel|tarmac|snow`: the map's surface (`E14_4a1330`'s) overridden, as a stage that plays under another
     /// map's files (a BTB stage's `track.ini` `physics=`).
     pub surface: Option<&'static str>,
+    /// `--btb MAP`: the stage is a BTB stage, a folder stage of its own number that plays the weather rows of retail
+    /// map `MAP` (`Season::of_btb`) and starts with the jump start armed whatever its number.
+    pub btb: Option<u32>,
     pub season_row: Option<usize>,
     pub rand_seed: Option<u32>,
     pub damage: Option<DamageLevel>,
@@ -75,8 +78,8 @@ pub struct Args {
     pub setup: Option<PathBuf>,
     /// NGP's `physics.rbz` (`boot::Race::ngp_physics`).
     pub ngp_physics: Option<PathBuf>,
-    /// `--rsf-car`: an RSF car (a pack path, or an id or pack name in `RBR_RSF`), loaded into `--car`'s slot (default
-    /// RSF's slot 5) under `--ngp-physics` (`rbr_formats::rsf::locate`).
+    /// `--rsf-car`: an RSF car (a pack path, or an id or pack name in `RBR_RSF`) under `--ngp-physics`, instead of a
+    /// retail `--car` (`rbr_formats::rsf::locate`).
     pub rsf_car: Option<String>,
     /// `--ffb-sensitivity G,T,S`: NGP's force-feedback sensitivity percentages (`boot::Race::ffb_sensitivity`).
     pub ffb_sensitivity: Option<[i32; 3]>,
@@ -120,7 +123,7 @@ fn on_off(flag: &str, value: &str) -> Result<bool, String> {
 pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snapshot Y [--snapshot Z...] [--steps N] [--data DIR] [--read-set DIR]
        rbr-standalone --recording X --stage NAME --boot [--steps N] [--data DIR] [--dump-image FILE] [--events-out FILE] [--twin mem|mem-direct] [--recorded-payload [--extra-payloads FILE] [--wall-clock FILE]] [--trace-out FILE [--ffb-settings E,S,I,DZ,T]] [WEATHER]
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
-       WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--season-row N] [--rand-seed N] [--setup FILE]
+       WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car PACK|ID] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; car 5, the lesson's setup and tyre)
@@ -226,6 +229,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                         .ok_or(format!("--surface {value}: gravel, tarmac or snow"))?,
                 )
             }
+            "--btb" => args.btb = Some(parsed(&flag, &value)?),
             "--setup" => args.setup = Some(PathBuf::from(value)),
             "--ngp-physics" => args.ngp_physics = Some(PathBuf::from(value)),
             "--rsf-car" => args.rsf_car = Some(value),
@@ -303,6 +307,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         (false, false, _) if !(args.boot && args.autopilot.is_some()) => return Err("--recording is required".into()),
         (false, false, _) => {}
         (false, true, _) => {}
+    }
+    if args.rsf_car.is_some() && args.car.is_some() {
+        return Err("--rsf-car replaces --car".into());
     }
     if args.autopilot.is_some() && (args.live || args.snapshots.len() != usize::from(!args.boot)) {
         return Err("--autopilot takes one --snapshot or --boot, and no --live".into());
@@ -592,6 +599,7 @@ mod tests {
                 },
             ),
             (format!("{BOOT} --surface snow"), |a| assert_eq!(a.surface, Some("snow"))),
+            (format!("{BOOT} --btb 41"), |a| assert_eq!(a.btb, Some(41))),
             (format!("{BOOT} --damage realistic"), |a| assert_eq!(a.damage, Some(DamageLevel::Realistic))),
             (format!("{BOOT} --championship champion"), |a| {
                 assert!(matches!(
@@ -745,6 +753,7 @@ mod tests {
                 "--boot needs --ngp-physics FILE (NGP's physics.rbz): ReRBR steps NGP physics only",
             ),
             (format!("{REC} --rsf-car PACK"), "--rsf-car needs --boot"),
+            (format!("{BOOT} --car 5 --rsf-car PACK"), "--rsf-car replaces --car"),
             (format!("{REC} --ffb-sensitivity 90,80,70"), "--ffb-sensitivity needs --boot"),
             (format!("{REC} --head-gasket-durability 3"), "--head-gasket-durability needs --boot"),
             (format!("{REC} --damage-in IN"), "--damage-in needs --boot"),

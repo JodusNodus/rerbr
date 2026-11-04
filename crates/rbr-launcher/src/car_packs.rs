@@ -753,7 +753,7 @@ mod tests {
         assert_eq!(evo.read("setups/d_gravel.lsp").unwrap(), b"x");
         assert_eq!(evo.path(), cars.join("rsfdata/cars/Evo_IX_N4_ngp6"));
         assert_eq!(install.cars[1].model, install.cars[2].model);
-        let model = |c: &rsf::Car| install.model_entry(c, rsf::SLOT, &[retail()]).unwrap();
+        let model = |c: &rsf::Car| install.model_entry(c, &[retail()]).unwrap();
         assert_eq!(model(&install.cars[1]).entry.file_name, "Cars\\evo_IX\\evo_IX.sgc");
         assert_eq!(model(&install.cars[1]).fallback, None);
         assert_eq!(model(&install.cars[0]).entry.file_name, retail().file_name);

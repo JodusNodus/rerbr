@@ -9,8 +9,10 @@ use rbr_render::damage::{self, Zones};
 use rbr_render::ffb;
 use rbr_render::ghost;
 use rbr_render::glass;
+use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
+use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
 use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
@@ -53,8 +55,10 @@ pub struct Args {
     pub flyby: Option<[f32; 3]>,
     /// `--size`: the screenshot size, and the window's in pixels.
     pub size: Option<(u32, u32)>,
-    /// `--fov`: the horizontal field of view of the cameras but the chase, radians.
+    /// `--fov`: the horizontal field of view of the cameras but the chase (`--chase-fov`), radians.
     pub fov: f32,
+    /// `--chase-fov`: the chase's horizontal field of view, radians (default [`CHASE_FOV_DEGREES`]).
+    pub chase_fov: f32,
     /// `--cameras`: the file with the player's camera choices (`camera_prefs`).
     pub cameras: Option<PathBuf>,
     pub selection: Selection,
@@ -215,7 +219,7 @@ pub struct HudOptions {
     pub show: bool,
     pub mph: bool,
     pub fps: bool,
-    /// `--pace-stack N`: the pace stack's notes (`PN_STACK`, 0 to 4; 0, the game's default, hides it).
+    /// `--pace-stack N`: the pace stack's notes (`PN_STACK`, 0 to 8 here, 4 in the game; 0, its default, hides it).
     pub stack: u8,
     /// `--hud-hide LIST`: the HUD's parts shown (`rbr_render::hud::Part`), all by default.
     pub parts: Parts,
@@ -229,7 +233,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --bindings INI  --ghost FILE  --save-ghost FILE  --best-ghost FILE  --ghost-weather WORDS
               --car-gearbox synchro|dog|sequential  --grind-sound WAV  --car-lock DEG
               --save-replay FILE (with --live)  --replay FILE [ARGS...] (watches a replay, extras override)
-  view:       --view NAME  --cameras INI  --fov DEG  --camera EX,EY,EZ,FX,FY,FZ  --flyby AHEAD,SIDE,HEIGHT  --size WxH  --fullscreen  --look-back
+  view:       --view NAME  --cameras INI  --fov DEG  --chase-fov DEG  --camera EX,EY,EZ,FX,FY,FZ  --flyby AHEAD,SIDE,HEIGHT  --size WxH  --fullscreen  --look-back
               --title TEXT  --pause-menu MOVES  --debug-view MODE
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
@@ -263,6 +267,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut at_periods = 1;
     let mut size = None;
     let mut fov = coords::FOV_DEGREES;
+    let mut chase_fov = CHASE_FOV_DEGREES;
     let mut cameras = None;
     let mut selection = Selection::default();
     let mut view = None;
@@ -412,6 +417,13 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let degrees = value.parse().ok().filter(|degrees| range.contains(degrees));
                 fov = degrees
                     .ok_or_else(|| format!("--fov {value}: needs {} to {} degrees", range.start(), range.end()))?;
+            }
+            "--chase-fov" => {
+                let value = args.next().ok_or("--chase-fov needs degrees")?;
+                let range = coords::FOV_RANGE_DEGREES;
+                chase_fov = value.parse().ok().filter(|degrees| range.contains(degrees)).ok_or_else(|| {
+                    format!("--chase-fov {value}: needs {} to {} degrees", range.start(), range.end())
+                })?;
             }
             "--cameras" => cameras = Some(PathBuf::from(args.next().ok_or("--cameras needs a file")?)),
             "--view" => {
@@ -576,8 +588,12 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--mph" => hud.mph = true,
             "--fps" => hud.fps = true,
             "--pace-stack" => {
-                let value = args.next().ok_or("--pace-stack needs 0 to 4")?;
-                hud.stack = value.parse().ok().filter(|n| *n <= 4).ok_or(format!("--pace-stack {value}: 0 to 4"))?;
+                let value = args.next().ok_or("--pace-stack needs 0 to 8")?;
+                hud.stack = value
+                    .parse()
+                    .ok()
+                    .filter(|n| *n <= STACK_MAX)
+                    .ok_or(format!("--pace-stack {value}: 0 to {STACK_MAX}"))?;
             }
             "--hud-hide" => hud.parts = Parts::hiding(&args.next().ok_or("--hud-hide needs a list of HUD parts")?)?,
             "--at-drive" => at_drive = Some(PathBuf::from(args.next().ok_or("--at-drive needs a recording")?)),
@@ -649,7 +665,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             }
         }
     }
-    let fov = fov.to_radians();
+    let (fov, chase_fov) = (fov.to_radians(), chase_fov.to_radians());
     // A video renders its replay back to back: the live command runs it with `--replay-pace free`.
     if video.is_some() && screenshot.is_some() {
         return Err("--video takes no --screenshot".to_owned());
@@ -695,6 +711,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         camera,
         size,
         fov,
+        chase_fov,
         cameras,
         selection,
         view,
@@ -801,6 +818,15 @@ mod tests {
         let volumes = parse("--volumes 0.5,1,2,0").unwrap().volumes;
         assert_eq!((volumes.engine, volumes.codriver, volumes.effects, volumes.tyres), (0.5, 1.0, 2.0, 0.0));
         for bad in ["--volumes 1,1,1", "--volumes 1,1,1,1,1", "--volumes 1,x,1,1", "--volumes"] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_chase_fov_defaults_to_65_and_takes_the_same_range() {
+        assert_eq!(parse("track-54_E").unwrap().chase_fov, 65.0f32.to_radians());
+        assert_eq!(parse("track-54_E --chase-fov 90 --fov 75").unwrap().chase_fov, 90.0f32.to_radians());
+        for bad in ["--chase-fov 29", "--chase-fov 121", "--chase-fov wide", "--chase-fov"] {
             assert!(parse(bad).is_err(), "{bad}");
         }
     }

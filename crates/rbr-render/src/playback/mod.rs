@@ -47,8 +47,8 @@ use frames::{model_to_body, physics_pose, tyre_nodes, WHEEL_ROLL_AXIS};
 pub const CHASE_DISTANCE: f32 = 6.0;
 pub const CHASE_HEIGHT: f32 = 2.5;
 pub const CHASE_TARGET_HEIGHT: f32 = 0.5;
-/// The chase camera's horizontal field of view, degrees. Ours, and fixed: the `--fov` setting (the in-car views')
-/// does not change it.
+/// The chase camera's default horizontal field of view, degrees. Ours; `--chase-fov` sets it ([`Playback::chase_fov`]),
+/// and the `--fov` setting (the in-car views') does not change it.
 pub const CHASE_FOV_DEGREES: f32 = 65.0;
 
 /// Lowest and highest elevation of the chase eye above the target, radians.
@@ -192,6 +192,8 @@ pub struct Playback {
     pub hide_wheel: bool,
     /// The game's chase camera, moved by [`Playback::follow_cameras`].
     game_chase: Follow,
+    /// The chase's horizontal field of view, radians (ours: 1.02 fixes it).
+    pub chase_fov: f32,
     /// The in-car view's head, moved by [`Playback::follow_cameras`].
     head: Head,
     /// The stage's collision mesh for the cameras' probes and the car's shadow ([`Playback::set_probe`]).
@@ -252,6 +254,7 @@ impl Playback {
             turn: None,
             hide_wheel: false,
             game_chase: Follow::new(crate::game_camera::Settings::default()),
+            chase_fov: CHASE_FOV_DEGREES.to_radians(),
             head: Head::new(true),
             probe: None,
             shadow: data
@@ -550,7 +553,7 @@ impl Playback {
     }
 
     /// The camera of `view`: the chase (the game's, [`crate::game_camera`]) turned about its look point by `look`, at
-    /// [`CHASE_FOV_DEGREES`], or one of `mounts` at the horizontal field of view `fov`, radians, shaken in the view
+    /// [`Playback::chase_fov`], or one of `mounts` at the horizontal field of view `fov`, radians, shaken in the view
     /// that takes the seat shake, and turned by the head ([`crate::head`]) there.
     pub fn lens(&self, mounts: &Mounts, view: CarView, look: ChaseLook, fov: f32) -> Lens {
         match mounts.of(view) {
@@ -573,9 +576,9 @@ impl Playback {
                     let lens = Lens { eye: lens.eye + physics_to_stage().transform_vector3(lead), ..lens };
                     let target = lens.eye + lens.forward;
                     let eye = target + look.apply(lens.eye - target);
-                    Lens { eye, forward: (target - eye).normalize(), ..lens }
+                    Lens { eye, forward: (target - eye).normalize(), fov: self.chase_fov, ..lens }
                 }
-                None => self.camera(look).lens(CHASE_FOV_DEGREES.to_radians()),
+                None => self.camera(look).lens(self.chase_fov),
             },
         }
     }

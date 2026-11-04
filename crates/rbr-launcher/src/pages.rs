@@ -345,7 +345,7 @@ impl Form {
             self.rally.options,
             self.rally.team,
         );
-        let old_setup = self.setup.name.clone();
+        let old_setup = self.setup.choices.clone();
         let old_ghost = self.ghost.clone();
         let old_graphics = (
             self.graphics,
@@ -524,7 +524,7 @@ impl Form {
                     self.rally.options,
                     self.rally.team,
                 )
-            || old_setup != self.setup.name
+            || old_setup != self.setup.choices
             || old_ghost != self.ghost
             || old_paths != (self.ngp_physics.clone(), self.rsf_root.clone())
             || old_head_gasket != self.head_gasket
@@ -634,9 +634,11 @@ impl Form {
         if let Some(Some(i)) = season_car {
             self.car = i;
         }
+        // The setup choice before a stage lists the season car's saved setups.
+        self.select_setup();
         let here = self.here();
         let archive = self.ngp_archive();
-        let (slot, car_name) = self.car().map_or((0, String::new()), |c| (c.index, c.name.clone()));
+        let car = self.car().cloned().unwrap_or_default();
         let team_cars: Vec<Option<String>> =
             (0..7).map(|t| self.team_car(t).map(|i| self.catalog.cars[i].name.clone())).collect();
         let mut browse = false;
@@ -672,14 +674,15 @@ impl Form {
         let request = egui::ScrollArea::vertical()
             .id_salt("championship")
             .show(ui, |ui| {
-                let (data, season) = (&self.data, &self.season);
+                let (data, season, setups) = (&self.data, &self.season, &self.setup);
+                let saved = |surface| setups.saved_names(surface);
                 self.rally.ui(
                     ui,
                     data,
                     season,
                     &here,
-                    slot,
-                    &car_name,
+                    &car,
+                    &saved,
                     Path::new(&archive),
                     &mut car_row,
                     launch_blocker.as_ref(),
@@ -723,10 +726,12 @@ impl Form {
         ui.label(
             RichText::new(format!("{car} · {}", catalog::map_label(&self.catalog.maps[self.map]))).size(16.0).strong(),
         );
-        ui.colored_label(Color32::GRAY, "Used at the next Start. Change the car or the stage on the Drive page.");
+        ui.colored_label(
+            Color32::GRAY,
+            "Make and save setups for this car (saved for this stage's surface); pick the one to drive with on the Drive page.",
+        );
         ui.add_space(4.0);
-        let here = self.here();
-        self.setup.ui(ui, &self.data, &here);
+        self.setup.ui(ui);
     }
 }
 

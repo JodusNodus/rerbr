@@ -192,7 +192,7 @@ fn every_retail_row_names_a_track_settings_section() {
             if !data.install().join(format!("Maps/{}.lbs", race.stage())).exists() {
                 continue;
             }
-            let section = race.section().unwrap();
+            let section = race.section(&season).unwrap();
             named += 1;
             if !sections.iter().any(|s| s.name == section) {
                 missing.push(section);

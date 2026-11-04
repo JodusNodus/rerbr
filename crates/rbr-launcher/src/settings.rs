@@ -14,8 +14,10 @@ use rbr_render::camera_prefs::CameraPrefs;
 use rbr_render::coords;
 use rbr_render::ffb;
 use rbr_render::glass::model::Switch;
+use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
+use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
 use rbr_render::renderer::Detail;
 use rbr_render::shifter::{CarBox, Engagement};
@@ -194,6 +196,8 @@ pub struct Settings {
     pub size: Option<(u32, u32)>,
     /// Every view's horizontal field of view, degrees (`viewer --fov`).
     pub fov: Option<f32>,
+    /// The chase view's field of view, degrees (`viewer --chase-fov`).
+    pub chase_fov: Option<f32>,
     /// The sound volume, linear, 0 to [`MAX_VOLUME`] (`viewer --volume`).
     pub volume: Option<f32>,
     /// The sound group volumes, linear, 0 to [`MAX_GROUP_VOLUME`] (`viewer --volumes E,C,F,T`).
@@ -222,7 +226,7 @@ pub struct Settings {
     pub mph: Option<bool>,
     /// The FPS counter (`viewer --fps`).
     pub fps: Option<bool>,
-    /// The pace stack's notes (`viewer --pace-stack`, 0 to 4).
+    /// The pace stack's notes (`viewer --pace-stack`, 0 to 8).
     pub pace_stack: Option<u8>,
     /// The working dials (`viewer --no-dials` when off).
     pub dials: Option<bool>,
@@ -262,8 +266,6 @@ pub struct Settings {
     pub start_time: Option<StartTime>,
     pub callout_distance: Option<f32>,
     pub marker_threshold: Option<f32>,
-    /// The Car setup page's named setup (`Physics/<car>/Setups/<name>.lsp`); none for the default.
-    pub setup: Option<String>,
     /// The Drive page's race options (`rbr_gameplay::race_options`).
     pub damage: Option<DamageLevel>,
     pub auto_gears: Option<bool>,
@@ -302,6 +304,8 @@ pub struct Settings {
     pub season_cars: SeasonCars,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     pub gearboxes: Gearboxes,
+    /// The setup each car drives with on each surface (`[setup]`).
+    pub setups: SetupChoices,
 }
 
 /// The championship's picked cars (for a team whose car NGP doesn't drive), by name, kept out of the game's save
@@ -392,6 +396,45 @@ impl Gearboxes {
         self.0.retain(|(c, _)| c != car);
         if !gearbox.sequential {
             self.0.push((car.to_owned(), gearbox));
+        }
+    }
+}
+
+/// The saved setup each car drives with on each surface, the Drive page's choice by car name (`<surface> <car> =
+/// <setup>`, ours; `setup_page`). A car without one on a surface drives the default setup.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SetupChoices(pub Vec<(String, String, String)>);
+
+const SETUP: &str = "setup";
+
+impl SetupChoices {
+    fn parse(sections: &[ini::Section]) -> SetupChoices {
+        let Some(section) = sections.iter().find(|s| s.name == SETUP) else { return SetupChoices::default() };
+        let choices = section.entries.iter().filter_map(|(key, name)| {
+            let (surface, car) = key.split_once(' ')?;
+            let car = car.trim();
+            (!car.is_empty() && !name.is_empty()).then(|| (car.to_owned(), surface.to_owned(), name.clone()))
+        });
+        SetupChoices(choices.collect())
+    }
+
+    fn to_text(&self) -> String {
+        if self.0.is_empty() {
+            return String::new();
+        }
+        let lines = self.0.iter().map(|(car, surface, name)| format!("{surface} {car} = {name}\n"));
+        format!("\n[{SETUP}]\n{}", lines.collect::<String>())
+    }
+
+    /// The setup `car` drives with on `surface`; `None` for the default.
+    pub fn of(&self, car: &str, surface: &str) -> Option<&str> {
+        self.0.iter().find(|(c, s, _)| c == car && s == surface).map(|(_, _, n)| n.as_str())
+    }
+
+    pub fn set(&mut self, car: &str, surface: &str, name: Option<&str>) {
+        self.0.retain(|(c, s, _)| !(c == car && s == surface));
+        if let Some(name) = name {
+            self.0.push((car.to_owned(), surface.to_owned(), name.to_owned()));
         }
     }
 }
@@ -517,6 +560,7 @@ impl Settings {
             }),
             size: launcher.parsed("size", parse_size),
             fov: launcher.ranged("fov", coords::FOV_RANGE_DEGREES),
+            chase_fov: launcher.ranged("chase_fov", coords::FOV_RANGE_DEGREES),
             volume: launcher.ranged("volume", 0.0..=MAX_VOLUME),
             engine_volume: launcher.ranged("engine_volume", 0.0..=MAX_GROUP_VOLUME),
             codriver_volume: launcher.ranged("codriver_volume", 0.0..=MAX_GROUP_VOLUME),
@@ -537,7 +581,7 @@ impl Settings {
                 _ => None,
             }),
             fps: launcher.on_off("fps"),
-            pace_stack: launcher.number("pace_stack").filter(|n| *n <= 4),
+            pace_stack: launcher.number("pace_stack").filter(|n| *n <= STACK_MAX),
             dials: launcher.on_off("dials"),
             hide_wheel: launcher.on_off("hide_wheel"),
             hud_hide: launcher.get("hud_hide").and_then(|v| Parts::hiding(&v).ok()),
@@ -561,7 +605,6 @@ impl Settings {
             start_time: launcher.parsed("start_time", StartTime::parse),
             callout_distance: launcher.number("callout_distance"),
             marker_threshold: launcher.number("marker_threshold"),
-            setup: launcher.word("setup"),
             damage: launcher.choice("damage"),
             auto_gears: launcher.on_off("auto_gears"),
             gear_guard: launcher.on_off("gear_guard"),
@@ -582,6 +625,7 @@ impl Settings {
             camera: CameraPrefs::parse(text),
             season_cars: SeasonCars::parse(&sections),
             gearboxes: Gearboxes::parse(&sections),
+            setups: SetupChoices::parse(&sections),
         }
     }
 
@@ -609,6 +653,7 @@ impl Settings {
             ),
             ("size", self.size.map(|(w, h)| format!("{w}x{h}"))),
             ("fov", self.fov.map(|v| v.to_string())),
+            ("chase_fov", self.chase_fov.map(|v| v.to_string())),
             ("volume", self.volume.map(|v| v.to_string())),
             ("engine_volume", self.engine_volume.map(|v| v.to_string())),
             ("codriver_volume", self.codriver_volume.map(|v| v.to_string())),
@@ -632,7 +677,6 @@ impl Settings {
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
             ("callout_distance", self.callout_distance.map(|v| v.to_string())),
             ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
-            ("setup", self.setup.clone()),
             ("damage", choice(self.damage)),
             ("auto_gears", on_off_text(self.auto_gears)),
             ("gear_guard", on_off_text(self.gear_guard)),
@@ -681,6 +725,7 @@ impl Settings {
         out.push_str(&self.camera.to_text());
         out.push_str(&self.season_cars.to_text());
         out.push_str(&self.gearboxes.to_text());
+        out.push_str(&self.setups.to_text());
         out
     }
 }
@@ -769,7 +814,7 @@ impl Form {
                 WeatherChoice::Preset(preset) => (preset, None),
                 WeatherChoice::Row(section) => (Preset::Random, Some(section)),
             };
-        let map_number = catalog.maps[map].weather_map();
+        let map_number = catalog.maps[map].number;
         if weather_row
             .as_deref()
             .is_some_and(|s| catalog::row_by_section(&catalog.maps[map].season(&season), map_number, s).is_none())
@@ -791,6 +836,7 @@ impl Form {
         let tyre = settings.tyre.unwrap_or(TyreChoice::Auto);
         let size = settings.size.unwrap_or(DEFAULT_SIZE);
         let fov = settings.fov.unwrap_or(coords::FOV_DEGREES);
+        let chase_fov = settings.chase_fov.unwrap_or(CHASE_FOV_DEGREES);
         let volume = settings.volume.unwrap_or(1.0);
         let engine_volume = settings.engine_volume.unwrap_or(1.0);
         let codriver_volume = settings.codriver_volume.unwrap_or(1.0);
@@ -818,7 +864,7 @@ impl Form {
             data,
             season,
             page: Page::Drive,
-            setup: SetupPage::new(settings.setup.clone().unwrap_or_default()),
+            setup: SetupPage::new(settings.setups.clone()),
             rally,
             car,
             map,
@@ -847,6 +893,7 @@ impl Form {
             size,
             sizes: vec![size],
             fov,
+            chase_fov,
             head: !settings.camera.head_off,
             volume,
             engine_volume,
@@ -969,6 +1016,7 @@ impl Form {
             tyre: Some(self.tyre),
             size: Some(self.size),
             fov: Some(self.fov),
+            chase_fov: Some(self.chase_fov),
             volume: Some(self.volume),
             engine_volume: Some(self.engine_volume),
             codriver_volume: Some(self.codriver_volume),
@@ -1009,7 +1057,6 @@ impl Form {
             wipers: Some(self.wipers),
             callout_distance: Some(self.marker.callout_distance),
             marker_threshold: Some(self.marker.marker_threshold),
-            setup: Some(self.setup.name.trim().to_owned()).filter(|n| !n.is_empty()),
             damage: Some(self.options.damage),
             auto_gears: Some(self.options.aids.auto_gears),
             gear_guard: Some(self.options.aids.gear_guard),
@@ -1031,6 +1078,7 @@ impl Form {
             camera: read_settings(&self.paths.settings).camera,
             season_cars: self.season_cars.clone(),
             gearboxes: self.gearboxes.clone(),
+            setups: self.setup.choices.clone(),
         };
         std::fs::write(&self.paths.settings, settings.to_text())
             .map_err(|e| eprintln!("launcher: {}: {e}", self.paths.settings.display()))
@@ -1094,6 +1142,7 @@ mod tests {
             tyre: Some(TyreChoice::Fixed(5)),
             size: Some((1920, 1080)),
             fov: Some(72.5),
+            chase_fov: Some(80.0),
             volume: Some(0.75),
             engine_volume: Some(0.5),
             codriver_volume: Some(1.5),
@@ -1134,7 +1183,6 @@ mod tests {
             start_time: Some(StartTime::Baked),
             callout_distance: Some(0.5),
             marker_threshold: Some(12.5),
-            setup: Some("gravel fast".into()),
             damage: Some(DamageLevel::Realistic),
             auto_gears: Some(true),
             gear_guard: Some(false),
@@ -1166,6 +1214,10 @@ mod tests {
                 "Ford Escort Mk II".into(),
                 CarBox { engagement: Engagement::Dog, sequential: false },
             )]),
+            setups: SetupChoices(vec![
+                ("Skoda Fabia R5".into(), "gravel".into(), "fast".into()),
+                ("XSARA".into(), "tarmac".into(), "dry grip".into()),
+            ]),
         }
     }
 
@@ -1204,7 +1256,8 @@ mod tests {
                 "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[camera]\nview = bonnet\n\
                  rsf-24 chase = 0 0.5 -1\n\n[season]\nlast = Skoda Fabia R5\n\
                  profile player = Mitsubishi Lancer Evo IX N4\nprofile me = Skoda Fabia R5\n\n\
-                 [gearbox]\nFord Escort Mk II = dog\n"
+                 [gearbox]\nFord Escort Mk II = dog\n\n\
+                 [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n"
             ),
             "{text}"
         );
@@ -1224,14 +1277,23 @@ mod tests {
         assert!(!gearboxes.of("Ford Escort Mk II").sequential);
         gearboxes.set("Ford Escort Mk II", SEQUENTIAL);
         assert_eq!(gearboxes, Gearboxes::default());
+        // A setup is kept per car and surface; the default forgets it.
+        let mut setups = settings.setups.clone();
+        assert_eq!(setups.of("Skoda Fabia R5", "gravel"), Some("fast"));
+        assert_eq!(setups.of("Skoda Fabia R5", "tarmac"), None);
+        setups.set("Skoda Fabia R5", "gravel", None);
+        setups.set("XSARA", "tarmac", None);
+        assert_eq!(setups, SetupChoices::default());
         assert_eq!(Settings::parse(&text), settings);
         assert!(text.contains("map = 54\nrecent_cars = COROLLA|Mitsubishi Lancer Evo IX N4\nrecent_maps = 54,129\nfavourite_cars = XSARA|Mitsubishi Lancer Evo IX N4\nfavourite_maps = 129,54,300\n"));
-        assert!(text.contains("fov = 72.5\nvolume = 0.75\n"), "the game chase's camera page is gone");
+        assert!(text.contains("fov = 72.5\nchase_fov = 80\nvolume = 0.75\n"), "the game chase's camera page is gone");
         // Any other word is a season row's section, not a preset.
         assert_eq!(Settings::parse("[launcher]\nweather = dry\n").weather, Some(WeatherChoice::Row("dry".into())));
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("[launcher]\nfov = 121\n").fov, None);
         assert_eq!(Settings::parse("[launcher]\nfov = 30\n").fov, Some(30.0));
+        assert_eq!(Settings::parse("[launcher]\nchase_fov = 121\n").chase_fov, None);
+        assert_eq!(Settings::parse("[launcher]\nchase_fov = 100\n").chase_fov, Some(100.0));
         assert_eq!(Settings::parse("[launcher]\nvolume = 5\n").volume, None);
         assert!(text.contains("volume = 0.75\n"));
         assert!(
@@ -1251,7 +1313,7 @@ mod tests {
         let unset = Settings::parse("[launcher]\ncodriver_voice = \nmy_pacenotes = maybe\n");
         assert_eq!((unset.codriver_voice, unset.my_pacenotes), (None, None));
         assert!(text.contains("hud = off\nunits = mph\nfps = on\npace_stack = 2\nwipers = intermittent\n"));
-        assert_eq!(Settings::parse("[launcher]\npace_stack = 5\n").pace_stack, None);
+        assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(
             text.contains("wipers = intermittent\ndials = off\nhide_wheel = on\nhud_hide = progress,car\n"),
             "{text}"
@@ -1347,6 +1409,7 @@ mod tests {
                 "tyre = 5\n",
                 "size = 1920x1080\n",
                 "fov = 72.5\n",
+                "chase_fov = 80\n",
                 "volume = 0.75\n",
                 "engine_volume = 0.5\n",
                 "codriver_volume = 1.5\n",
@@ -1370,7 +1433,6 @@ mod tests {
                 "hud_hide = progress,car\n",
                 "callout_distance = 0.5\n",
                 "marker_threshold = 12.5\n",
-                "setup = gravel fast\n",
                 "damage = realistic\n",
                 "auto_gears = on\n",
                 "gear_guard = off\n",
@@ -1487,7 +1549,11 @@ mod tests {
                 "profile me = Skoda Fabia R5\n",
                 "\n",
                 "[gearbox]\n",
-                "Ford Escort Mk II = dog\n"
+                "Ford Escort Mk II = dog\n",
+                "\n",
+                "[setup]\n",
+                "gravel Skoda Fabia R5 = fast\n",
+                "tarmac XSARA = dry grip\n"
             )
         );
     }
@@ -1506,7 +1572,8 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nengine_volume = 2\n").engine_volume, Some(2.0));
         assert_eq!(Settings::parse("[launcher]\nengine_volume = 2.1\n").engine_volume, None);
         assert_eq!(Settings::parse("[launcher]\npace_stack = 4\n").pace_stack, Some(4));
-        assert_eq!(Settings::parse("[launcher]\npace_stack = 5\n").pace_stack, None);
+        assert_eq!(Settings::parse("[launcher]\npace_stack = 8\n").pace_stack, Some(8));
+        assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 50\n").render_scale, Some(50));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 87\n").render_scale, Some(87));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 80\n").render_scale, None);
@@ -1519,6 +1586,7 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ntyre = 7\n").tyre, None);
         assert_eq!(Settings::parse("[launcher]\nmap = abc\n").map, None);
         assert_eq!(Settings::parse("[launcher]\ncallout_distance = -1.5\n").callout_distance, Some(-1.5));
+        assert_eq!(Settings::parse("[launcher]\ncallout_distance = 15\n").callout_distance, Some(15.0));
         // Unknown choice words keep the default.
         assert_eq!(Settings::parse("[launcher]\nfog = mist\n").fog, None);
         assert_eq!(Settings::parse("[launcher]\nclouds = storm\n").clouds, None);
@@ -1551,7 +1619,6 @@ mod tests {
         );
         // Empty strings are dropped, but the notes set and the NGP DLL keep an empty choice.
         assert_eq!(Settings::parse("[launcher]\ncodriver_voice = \n").codriver_voice, None);
-        assert_eq!(Settings::parse("[launcher]\nsetup = \n").setup, None);
         assert_eq!(Settings::parse("[launcher]\ninstall_folder = \n").install_folder, None);
         assert_eq!(Settings::parse("[launcher]\nnotes_set = \n").notes_set, Some(String::new()));
         // Empty lists are empty; blanks and words that do not parse are skipped.
@@ -1599,7 +1666,7 @@ mod tests {
             standalone: PathBuf::from("/bin/rbr-standalone"),
             settings: settings.clone(),
         };
-        let season = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new() };
+        let season = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new(), sky: None };
         let data = Data::new(here.join("data"), None);
         let mut form = Form::new(catalog, &read_settings(&settings), paths, data, season, install::Folder::default());
         assert_eq!(form.ffb_cars.cars, [("rsf-24".to_owned(), [90, 100, 110])].into());

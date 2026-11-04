@@ -109,6 +109,8 @@ pub struct StartLineContext {
     /// The race-host vtable slot 0x13 result (`CPC_TrackLoaderDaemon::Vf4C` 0x467930: the map `InitDemo` started,
     /// e.g. 54 for Tanner); read only when the menu host is nonzero and the state is not 10.
     pub race_host_result: u32,
+    /// Ours: the jump start is armed whatever the map number (a BTB stage; the original's BTB stage is map 41).
+    pub jump_start_forced: bool,
     /// `E59Host90::M00565470()` result.
     pub event_state: i32,
 }
@@ -135,7 +137,9 @@ impl StartLineContext {
         let menu_host_active = self.game_host_result == 0 && self.menu_host_result != 0;
         StartLineEffects {
             warn_in_start_scene: menu_host_active && self.application_state == 10,
-            jump_start: menu_host_active && self.application_state != 10 && self.race_host_result % 10 < 8,
+            jump_start: menu_host_active
+                && self.application_state != 10
+                && (self.jump_start_forced || self.race_host_result % 10 < 8),
             clear_menu_flag: self.game_host_result == 1,
             activate_ghost_camera: self.event_state == 7,
             clear_ghost_flag: self.event_state == 7,
@@ -364,8 +368,9 @@ pub fn spoken_tag(tag: u32) -> bool {
     matches!(tag, 0x00..=0x0c | 0x0e | 0x10..=0x14 | 0x19..=0x1c | 0x20)
 }
 
-/// How many symbol keys the HUD's pace stack keeps from the next one on (HUD +0x1d0..+0x1e0).
-pub const PACE_STACK_KEYS: usize = 5;
+/// How many symbol keys the HUD's pace stack keeps from the next one on. Ours: 8, for the largest stack setting; the
+/// original keeps 5 (HUD +0x1d0..+0x1e0).
+pub const PACE_STACK_KEYS: usize = 8;
 
 /// The keys of `HUD::Update`'s pace stack (0x578c30, with `PN_STACK` and the 3D notes reading them): the symbol key
 /// before the car's distance `x` (`E12_FindKey` 0x477d40 then the walk back, 0x475e20), when there is one, then the next
@@ -389,15 +394,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_pace_stack_is_the_last_symbol_behind_and_the_next_five() {
-        let keys: Vec<MarkerKey> =
-            [(3, 10.0), (0x15, 20.0), (8, 30.0), (0x0d, 40.0), (1, 50.0), (2, 60.0), (4, 70.0), (5, 80.0), (6, 90.0)]
-                .iter()
-                .map(|&(tag, d)| key(tag, 0, d))
-                .collect();
+    fn the_pace_stack_is_the_last_symbol_behind_and_the_next_eight() {
+        let keys: Vec<MarkerKey> = [
+            (3, 10.0),
+            (0x15, 20.0),
+            (8, 30.0),
+            (0x0d, 40.0),
+            (1, 50.0),
+            (2, 60.0),
+            (4, 70.0),
+            (5, 80.0),
+            (6, 90.0),
+            (7, 100.0),
+            (8, 110.0),
+            (9, 120.0),
+            (10, 130.0),
+        ]
+        .iter()
+        .map(|&(tag, d)| key(tag, 0, d))
+        .collect();
         let stack = pace_stack(&keys, 35.0);
         let at: Vec<f32> = stack.iter().map(|k| k.distance).collect();
-        assert_eq!(at, [30.0, 50.0, 60.0, 70.0, 80.0, 90.0]);
+        assert_eq!(at, [30.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 120.0]);
         assert_eq!(pace_stack(&keys, 0.0).len(), PACE_STACK_KEYS, "nothing behind the start");
     }
 
@@ -483,6 +501,7 @@ mod tests {
             menu_host_result: 1,
             application_state: 10,
             race_host_result: 17,
+            jump_start_forced: false,
             event_state: 7,
         };
         let (_, events) = ticker(&[key(TAG_START, 0, 10.0)]).tick(f);
@@ -504,6 +523,16 @@ mod tests {
             }
         };
         assert_eq!([jump(1, 54), jump(1, 17), jump(1, 18), jump(1, 39)], [true, true, false, false]);
+        let forced = StartLineContext {
+            application_state: 1,
+            race_host_result: 1_000_008,
+            jump_start_forced: true,
+            ..f.start_line
+        };
+        match ticker(&[key(TAG_START, 0, 10.0)]).tick(TickInput { start_line: forced, ..f }).1.as_slice() {
+            [MarkerEvent::StartLine(effects)] => assert!(effects.jump_start),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

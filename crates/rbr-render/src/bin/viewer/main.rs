@@ -56,7 +56,7 @@
 //! start view with an eye and a forward direction (stage coordinates; for comparing with a capture's view matrix), and
 //! `--size WxH` sets the screenshot size (default 1280x720) and the window's size in pixels (default 1280x720 points).
 //! `--fov DEG` is the horizontal field of view of the free-fly, orbit, cockpit, bonnet and bumper cameras, 30 to 120
-//! degrees (default 50); the chase view keeps its own, 65 degrees. The vertical one follows from the window's aspect.
+//! degrees (default 50); `--chase-fov DEG` sets the chase view's (same range, default 65). The vertical one follows from the window's aspect.
 //!
 //! `--car <name>` (the car's `Cars.ini` folder, for example `XSARA`) puts the car at the stage start.
 //! `--rsf-car <pack|id>` puts an RSF car (`rbr_formats::rsf`: a pack path, or an id or pack name of the install
@@ -103,7 +103,7 @@
 //! with that co-driver instead (`rbr_sound::custom_codriver`), and the HUD shows its fired calls instead of the
 //! stage's notes. `--no-hud` hides the HUD, and
 //! `--mph` shows the speed in mph instead of km/h, and `--fps` shows the rendered frames per second
-//! in the top-right corner. `--pace-stack N` (0 to 4, default 0: the game's PN_STACK slider) shows the next N pace
+//! in the top-right corner. `--pace-stack N` (0 to 8, default 0; the game's PN_STACK slider stops at 4) shows the next N pace
 //! notes in a column at the right edge (the game's 3D pace notes, AID_MARKER, are not drawn). `--hud-hide LIST` hides HUD parts by name (`rbr_render::hud::Part`). `--at-drive <recording>` (with `--live`, `--screenshot` and `--at`) feeds the
 //! recording's controls instead of no keys: each `--at` payload is the control of the step it feeds, as the live boot
 //! with the recorded controls equals the recording (`rbr-standalone`'s `a_paced_live_boot_with_the_recorded_controls`).
@@ -231,7 +231,7 @@ fn run() -> Result<(), String> {
     let mut fmod_bank = None;
     if let Some(key) = &args.rsf_car {
         let root = std::env::var_os("RBR_RSF").map(PathBuf::from);
-        let selected = rbr_formats::rsf::select(data, key, rbr_formats::rsf::SLOT, root.as_deref())?;
+        let selected = rbr_formats::rsf::select(data, key, root.as_deref())?;
         eprintln!("viewer: {}", selected.describe());
         args.car.get_or_insert_with(|| selected.folder().to_owned());
         fmod_bank = selected.audio_bank;

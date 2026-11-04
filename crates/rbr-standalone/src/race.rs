@@ -34,7 +34,10 @@ pub fn race_weather(data: &Data, args: &Args, map: u32) -> Result<(Preset, Weath
                 .map(|(_, l)| l);
             Season::of_rsf(stage, letter)
         }
-        None => Season::load(data)?,
+        None => match args.btb {
+            Some(sky) => Season::of_btb(&Season::load(data)?, map, sky),
+            None => Season::load(data)?,
+        },
     };
     let drawn = match args.rand_seed {
         Some(seed) if preset == Preset::Random => Some(
@@ -64,11 +67,11 @@ pub fn race_weather(data: &Data, args: &Args, map: u32) -> Result<(Preset, Weath
     Ok((preset, selected))
 }
 
-/// `--rsf-car KEY` in slot `slot`: the data with the car's model in the slot, and its pack.
-fn rsf_car(data: Data, key: &str, slot: u32) -> Result<(Data, rsf::Pack), String> {
-    let selected = rsf::select(data, key, slot, std::env::var_os("RBR_RSF").as_deref().map(Path::new))?;
+/// `--rsf-car KEY`: the data with the car's model in RSF's slot, and its pack with its tyres.
+fn rsf_car(data: Data, key: &str) -> Result<(Data, boot::CarPack), String> {
+    let selected = rsf::select(data, key, std::env::var_os("RBR_RSF").as_deref().map(Path::new))?;
     eprintln!("{}", selected.describe());
-    Ok((selected.data, selected.pack))
+    Ok((selected.data, boot::CarPack { pack: selected.pack, tyre_brand: selected.tyre_brand }))
 }
 
 /// The root group of a setup file (`--setup`), checked as a setup (`rbr_gameplay::setup`).
@@ -80,7 +83,7 @@ fn setup_root(path: &Path) -> Result<Vec<Node>, String> {
     Ok(root.to_vec())
 }
 
-/// The data the run loads (with `--rsf-car`'s model in `car`'s slot) and, with `--boot`, the race on `stage`.
+/// The data the run loads (with `--rsf-car`'s model in RSF's slot) and, with `--boot`, the race on `stage`.
 pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Data, Option<boot::Race>), String> {
     let recording = args.recording.as_deref();
     let surface = args.surface.unwrap_or_else(|| match args.rsf.as_ref() {
@@ -90,7 +93,7 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
     let tyre = args.tyre.or_else(|| recording.and_then(|r| recorded_word(r, 3))).unwrap_or(boot::default_tyre(surface));
     let (data, car_pack) = match args.rsf_car.as_deref() {
         Some(key) => {
-            let (data, pack) = rsf_car(data, key, car)?;
+            let (data, pack) = rsf_car(data, key)?;
             (data, Some(pack))
         }
         None => (data, None),
@@ -122,7 +125,7 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         options,
         damage: carried,
         surface,
-        ..boot::Race::quick_race(stage.number, car, tyre, weather, ngp_physics)
+        ..boot::Race::quick_race(args.btb.unwrap_or(stage.number), car, tyre, weather, ngp_physics)
     };
     let race = match (args.championship, args.lesson) {
         (Some(championship), _) => boot::Race { false_starts: args.false_starts, ..race.in_championship(championship) },

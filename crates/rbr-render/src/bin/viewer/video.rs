@@ -331,7 +331,7 @@ fn audio_scene(scene: &Scene, args: &Args, shown: Shown) -> AudioScene {
         (Some(playback), Some(mounts)) => {
             let (_, _, scripted) = scripted_camera(scene.characters.as_ref());
             let lens = shown.lens(playback, mounts, scripted, ChaseLook::default(), args.fov);
-            rbr_render::sound::scene(&lens, &playback.sample().car, shown.car_view().interior())
+            rbr_render::sound::scene(&lens, &playback.sample().car, shown.car_view().interior(), true)
         }
         _ => AudioScene::default(),
     }

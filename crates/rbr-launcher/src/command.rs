@@ -172,6 +172,8 @@ pub struct ViewerLaunch {
     pub tyre: u32,
     pub size: (u32, u32),
     pub fov: f32,
+    /// The chase view's field of view, degrees (`viewer --chase-fov`).
+    pub chase_fov: f32,
     pub volume: f32,
     pub volumes: Volumes,
     pub codriver: bool,
@@ -209,6 +211,7 @@ impl Default for ViewerLaunch {
             tyre: 0,
             size: (0, 0),
             fov: 0.0,
+            chase_fov: 0.0,
             volume: 0.0,
             volumes: Volumes::default(),
             codriver: false,
@@ -236,6 +239,7 @@ impl ViewerLaunch {
             tyre,
             size,
             fov,
+            chase_fov,
             volume,
             volumes,
             codriver,
@@ -264,6 +268,8 @@ impl ViewerLaunch {
             format!("{}x{}", size.0, size.1),
             "--fov".into(),
             fov.to_string(),
+            "--chase-fov".into(),
+            chase_fov.to_string(),
             "--volume".into(),
             volume.to_string(),
             "--volumes".into(),
@@ -312,7 +318,10 @@ impl ViewerLaunch {
         if school.is_none() {
             args.extend(["--tyre".into(), tyre.to_string()]);
         }
-        args.extend(["--stage".into(), stage.name.clone(), "--car".into(), car.index.to_string()]);
+        args.extend(["--stage".into(), stage.name.clone()]);
+        if pack.is_none() {
+            args.extend(["--car".into(), car.index.to_string()]);
+        }
         if let Some(lesson) = school {
             args.extend(["--school".into(), lesson.index().to_string()]);
         }
@@ -410,8 +419,7 @@ impl Form {
             return Ok((stage, weather, self.options.weather));
         }
         let season = self.catalog.maps[self.map].season(&self.season);
-        let weather_map = self.catalog.maps[self.map].weather_map();
-        let row = self.weather_row.as_deref().and_then(|s| catalog::row_by_section(&season, weather_map, s));
+        let row = self.weather_row.as_deref().and_then(|s| catalog::row_by_section(&season, map, s));
         let (preset, draws, specific) = match row.filter(|_| self.clouds.is_none()) {
             // The Custom weather: our sky over the stage's good weather, or its bad one on a damp or wet road
             // (its light and textures made for the wet), with the chosen wear.
@@ -419,17 +427,13 @@ impl Form {
             Some(k) => (Preset::Random, Draws { row: Some(k), wear: 1 }, true),
             None if self.options.weather == Preset::Random => (
                 Preset::Random,
-                weather::random_draws(&season, weather_map, rand)
-                    .ok_or(format!("map {weather_map} has no season row (the original stops at its int3)"))?,
+                weather::random_draws(&season, map, rand)
+                    .ok_or(format!("map {map} has no season row (the original stops at its int3)"))?,
                 false,
             ),
             None => (self.options.weather, Draws { row: None, wear: self.wear }, false),
         };
         let (stage, mut weather) = self.catalog.stage_weather(&self.season, map, preset, draws)?;
-        // A BTB stage's bad weather is its good row (map 41's M rows only): `rbr-standalone` takes it as the row, its
-        // own bad weather is a row of the other variant.
-        let preset =
-            if preset == Preset::Bad && self.catalog.maps[self.map].btb.is_some() { Preset::Random } else { preset };
         if specific {
             // A specific row takes the chosen wear (`Draws` takes the random weather's 1 or 2).
             weather.wear = self.wear;
@@ -497,7 +501,7 @@ impl Form {
         // The Environment: the exact sky of the row or the Custom weather's base, and the Custom weather's fog, clouds,
         // rain and wetness (a ghost keeps its own wetness).
         let (sky_fog, wetness_args) = environment_args(
-            weather.section(),
+            weather.section(&self.catalog.maps[self.map].season(&self.season)),
             self.fog.filter(|_| custom),
             self.clouds,
             self.precipitation.filter(|_| custom),
@@ -507,6 +511,9 @@ impl Form {
         let viewer_extra = [viewer_extra, sky_fog].concat();
         extra.extend(wetness_args);
         let options = RaceOptions { weather: preset, ..self.options };
+        // The quick race drives with the Drive page's setup (read again, a championship may have put its own).
+        self.select_setup();
+        self.setup.drive_chosen();
         self.launch_args(stage, options, weather, extra, viewer_extra)
     }
 
@@ -520,25 +527,20 @@ impl Form {
             let saves = SaveDir::new(&self.records()).path.display().to_string();
             extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.rally.profile.clone()]);
         }
-        let draws = weather::Draws { row: Some(stage.row), wear: wear.max(1) };
-        let found = weather::quick_race(&self.season, stage.map, Preset::Random, draws).and_then(|weather| {
-            let name = stage.track();
-            let map = self.catalog.map(stage.map);
-            let s =
-                map.and_then(|m| m.stages.iter().find(|s| s.name == name)).ok_or(format!("{name}: not installed"))?;
-            Ok((s.clone(), weather))
-        });
+        // The rally's weather choice (a trial has none): the stage's good or bad weather, else the drawn row.
+        let preset = self.rally.weather.filter(|_| extra.iter().any(|a| a == "--championship"));
+        let found = self.rally_weather(&stage, preset, wear);
         match found {
             Ok((s, weather)) => {
                 self.map = self.catalog.map_index(stage.map).unwrap_or(self.map);
                 self.validate_weather_row();
                 // The setup row picked for the stage, on the stage's surface (`CSeasonChooseSetupUI`).
                 self.select_setup();
-                if let Err(e) = self.setup.choose(&self.here(), setup) {
+                if let Err(e) = self.setup.choose(&setup) {
                     eprintln!("launcher: setup {}: {e}; the stage keeps the current setup", setup.label());
                 }
                 // The quick race's options keep their menu values; the stage takes the season's from `extra`.
-                let options = RaceOptions { weather: Preset::Random, ..self.options };
+                let options = RaceOptions { weather: preset.unwrap_or(Preset::Random), ..self.options };
                 // The road's wear is the season's (`Draws` takes the random weather's 1 or 2; 0 is set after).
                 let weather = Weather { wear, ..weather };
                 let chosen = std::mem::replace(&mut self.tyre, TyreChoice::Fixed(tyre));
@@ -555,6 +557,25 @@ impl Form {
             // and the season save stay exactly as they were and the player can retry.
             self.rally.abort_stage_start(prev_tyre);
         }
+    }
+
+    /// The stage variant and weather a championship stage runs in: `preset`'s weather of its map, else the season's
+    /// drawn row.
+    fn rally_weather(
+        &self,
+        stage: &rbr_gameplay::championship::RallyStage,
+        preset: Option<Preset>,
+        wear: u32,
+    ) -> Result<(catalog::Stage, Weather), String> {
+        let wear = wear.max(1);
+        if let Some(preset) = preset {
+            return self.catalog.stage_weather(&self.season, stage.map, preset, weather::Draws { row: None, wear });
+        }
+        let draws = weather::Draws { row: Some(stage.row), wear };
+        let weather = weather::quick_race(&self.season, stage.map, Preset::Random, draws)?;
+        let name = stage.track();
+        let found = self.catalog.map(stage.map).and_then(|m| m.stages.iter().find(|s| s.name == name));
+        Ok((found.ok_or(format!("{name}: not installed"))?.clone(), weather))
     }
 
     /// The viewer's arguments for `stage`; `extra` goes to `rbr-standalone`, `viewer_extra` to the viewer. `None`, with
@@ -674,6 +695,7 @@ impl Form {
             tyre: tyre.unwrap_or(0),
             size: self.size,
             fov: self.fov,
+            chase_fov: self.chase_fov,
             volume: self.volume,
             volumes: Volumes {
                 engine: self.engine_volume,
@@ -899,7 +921,7 @@ mod tests {
         (
             "everything changed",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nweather = bad\nwear = worn\ntyre = 5\n\
-             size = 1920x1080\nfov = 72.5\nvolume = 0.75\ncodriver = off\nhud = off\nunits = mph\nfps = on\n\
+             size = 1920x1080\nfov = 72.5\nchase_fov = 80\nvolume = 0.75\ncodriver = off\nhud = off\nunits = mph\nfps = on\n\
              pace_stack = 2\npace_3d = on\nwipers = intermittent\ncallout_distance = 0.5\nmarker_threshold = 12.5\n\
              damage = realistic\nauto_gears = on\ngear_guard = off\nneutral_lock = on\nclutch_help = off\n\
              ghost = best\nrender_scale = 75\nreflections = off\npresent = immediate\nfullscreen = off\nstart_time = dusk\n",
@@ -994,6 +1016,7 @@ mod tests {
             tyre: 4,
             size: (1280, 720),
             fov: 65.0,
+            chase_fov: 65.0,
             volume: 1.0,
             codriver: true,
             graphics: Quality::Low.graphics(false),
@@ -1009,8 +1032,7 @@ mod tests {
         assert_eq!(args[1..3], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
         assert!(!args[..live].contains(&"--car".to_owned()));
         assert_eq!(args[args.len() - 2..], ["--rsf-car", "/rsf/rsfdata/cars/evo"]);
-        let car_at = args.iter().rposition(|a| a == "--car").unwrap();
-        assert_eq!(args[car_at + 1], "5");
+        assert!(!args.contains(&"--car".to_owned()), "an RSF car is named by its pack alone");
     }
 
     #[test]
@@ -1028,6 +1050,7 @@ mod tests {
             tyre: 5,
             size: (1280, 720),
             fov: 65.0,
+            chase_fov: 65.0,
             volume: 0.5,
             volumes: Volumes { engine: 0.5, codriver: 1.0, effects: 1.5, tyres: 2.0 },
             codriver: false,
@@ -1051,7 +1074,7 @@ mod tests {
         .args();
         assert_eq!(
             args.join(" "),
-            "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
+            "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --chase-fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
              --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hide-wheel --hud-hide inputs,view --bindings /l/launcher-settings.ini \
              --cameras /l/launcher-settings.ini --enhance anisotropy,decals,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
              --stage track-54_O --car 6 --data /d --callout-distance 4 --marker-threshold 25 \
@@ -1070,6 +1093,7 @@ mod tests {
             tyre: 5,
             size: (1280, 720),
             fov: 65.0,
+            chase_fov: 65.0,
             volume: 0.5,
             codriver: true,
             graphics: Graphics { lighting: true, marks: true, ..Quality::Low.graphics(false) },
@@ -1148,6 +1172,7 @@ mod tests {
                 tyre: 3,
                 size: (1280, 720),
                 fov: 65.0,
+                chase_fov: 65.0,
                 volume: 1.0,
                 codriver: true,
                 graphics: Quality::Low.graphics(false),
@@ -1180,6 +1205,7 @@ mod tests {
             ],
             nice: vec![0],
             bad: vec![1],
+            sky: None,
         };
         let catalog = || Catalog {
             cars: Vec::new(),
@@ -1223,7 +1249,7 @@ mod tests {
         assert_eq!((stage.name.as_str(), preset), ("track-54_O", Preset::Random));
         // The stage's weather keeps the row's wetness; the saved one is the Custom weather's.
         assert_eq!((weather.row, weather.wear, weather.wetness), (Some(1), 2, 1));
-        assert_eq!(weather.section().as_deref(), Some(section.as_str()));
+        assert_eq!(weather.section(&form.season).as_deref(), Some(section.as_str()));
         assert_eq!(weather.mat_words(), ("worn", "damp"));
         // A section that is not the map's falls back to Good at load.
         let settings = Settings { weather: Some(WeatherChoice::Row("21O_E_heavyfog_heavycloud".into())), ..settings };
@@ -1258,6 +1284,57 @@ mod tests {
             let (_, weather, chosen) = form.selection_from(&mut CrtRand::srand(1)).unwrap();
             assert_eq!((chosen, weather.wear, weather.wetness), (preset, 2, wetness));
         }
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// A championship stage runs its drawn row unless the rally's weather is Good or Bad, which pick the map's own.
+    #[test]
+    fn a_championship_stage_takes_the_rallys_weather_choice() {
+        use crate::catalog::{Map, Stage};
+        use rbr_gameplay::championship::RallyStage;
+        use rbr_gameplay::weather::Row;
+        let season = Season {
+            rows: vec![
+                Row { map: 54, letter: 3, cloud: 3, cloud_letter: 1, preset: 4, wetness: 2 },
+                Row { map: 54, letter: 3, cloud: 1, cloud_letter: 0, preset: 2, wetness: 1 },
+            ],
+            nice: vec![0],
+            bad: vec![1],
+            sky: None,
+        };
+        let catalog = Catalog {
+            maps: vec![Map {
+                number: 54,
+                stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
+                rsf: None,
+                btb: None,
+            }],
+            ..Catalog::default()
+        };
+        let here = crate::test_dir("command-rally-weather");
+        let paths = Paths {
+            data: here.join("data"),
+            patch: None,
+            viewer: PathBuf::from("/bin/viewer"),
+            standalone: PathBuf::from("/bin/rbr-standalone"),
+            settings: here.join(SETTINGS_FILE),
+        };
+        let form = Form::new(
+            catalog,
+            &Settings::default(),
+            paths,
+            Data::new(here.join("data"), None),
+            season,
+            install::Folder::default(),
+        );
+        let stage = RallyStage { map: 54, letter: 'O', row: 1, hour: 12, minute: 0 };
+        let rows: Vec<_> = [None, Some(Preset::Good), Some(Preset::Bad)]
+            .map(|p| form.rally_weather(&stage, p, 2).map(|(s, w)| (s.name, w.row, w.wear)))
+            .into();
+        assert_eq!(rows[0], Ok(("track-54_O".to_owned(), Some(1), 2)));
+        // The good weather is new tyres here; `start_rally_stage` sets the season's wear after.
+        assert_eq!(rows[1], Ok(("track-54_O".to_owned(), Some(0), 0)));
+        assert_eq!(rows[2], Ok(("track-54_O".to_owned(), Some(1), 2)));
         std::fs::remove_dir_all(&here).unwrap();
     }
 
@@ -1301,7 +1378,7 @@ mod tests {
         // The stage's weather is the row as authored: the Custom fog, rain, wetness and time stay out.
         let (_, weather) = form.selection().unwrap();
         let (viewer, standalone) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
-        assert_eq!(value(&viewer, "--sky"), weather.section());
+        assert_eq!(value(&viewer, "--sky"), weather.section(&form.season));
         for flag in ["--fog", "--clouds", "--precipitation", "--clock"] {
             assert_eq!(value(&viewer, flag), None, "{flag}");
         }
@@ -1314,7 +1391,7 @@ mod tests {
         form.clouds = Some(Clouds::Light);
         let (_, weather) = form.selection().unwrap();
         let (viewer, standalone) = split(form.start_args(&mut CrtRand::srand(1)).unwrap());
-        assert_eq!(value(&viewer, "--sky"), weather.section());
+        assert_eq!(value(&viewer, "--sky"), weather.section(&form.season));
         assert_eq!(value(&viewer, "--fog").as_deref(), Some("heavy"));
         assert_eq!(value(&viewer, "--clouds").as_deref(), Some("light"));
         assert_eq!(value(&viewer, "--precipitation").as_deref(), Some("heavy"));
@@ -1662,7 +1739,7 @@ mod tests {
         let store = form.rally.store(&here);
         form.rally.new_season(&form.season, Some(store), 1234);
         form.rally.start_rally();
-        let car = form.car().unwrap().index;
+        let car = form.car().unwrap().clone();
         let stages =
             form.rally.championship.as_ref().unwrap().rally().stages.iter().map(|s| s.track()).collect::<Vec<_>>();
         eprintln!("car {}, stages {stages:?}", form.car().unwrap().name);
@@ -1678,7 +1755,7 @@ mod tests {
             eprintln!("SS{}: {:?}, phase {:?}", stage + 1, time, c.phase());
             assert!(time.is_some_and(|t| t > 0.0), "SS{} has no time", stage + 1);
             if let Some(Turn::Service { .. }) = form.rally.run.as_ref().map(|r| r.turn) {
-                form.rally.open_park(&form.data, car, Some(Path::new(&ngp)));
+                form.rally.open_park(&form.data, &car, Some(Path::new(&ngp)));
                 let park = form.rally.park.as_mut().unwrap();
                 park.manager_advice();
                 if !park.start() {

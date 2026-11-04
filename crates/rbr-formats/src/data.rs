@@ -167,7 +167,7 @@ mod tests {
                 ("Cars/Fiesta/skins/Monte/fiesta_shader_settings_clear.ini", "skin"),
             ],
         );
-        let entry = crate::rsf::model_entry("Fiesta", "fiesta", 5);
+        let entry = crate::rsf::model_entry("Fiesta", "fiesta");
         let data = Data::new(&install, None).with_car(root.clone(), entry);
         let skinned = data.clone().with_skin(root.join("Cars/Fiesta/skins/Monte"));
         let read = |data: &Data, path: &str| std::fs::read_to_string(data.resolve(path).expect(path)).unwrap();

@@ -38,6 +38,39 @@ pub fn distance_gain(distance: f32, (min, max): (f32, f32)) -> f32 {
     min / distance.clamp(min, max.max(min))
 }
 
+/// The speed of sound, m/s (ours: the original has no Doppler, its voices' velocities are set to zero).
+pub const SPEED_OF_SOUND: f32 = 343.0;
+/// How fast the car voices' Doppler factor follows the geometry, seconds: a car passing a few metres away swings the
+/// factor within a few frames, and the pitch would step audibly.
+const DOPPLER_SMOOTHING: f32 = 0.05;
+/// A listener faster than this between two steps was cut to another place, not moved, m/s.
+const CAMERA_CUT_SPEED: f32 = 200.0;
+
+/// The camera's velocity from its position at the last step (`None`: the first) to `now`, `dt` seconds on. A jump
+/// faster than [`CAMERA_CUT_SPEED`] is a cut to another place and gives none.
+pub fn listener_velocity(last: Option<[f32; 3]>, now: [f32; 3], dt: f32) -> [f32; 3] {
+    let Some(last) = last else { return [0.0; 3] };
+    let v = sub(now, last).map(|d| d / dt);
+    if length(v) > CAMERA_CUT_SPEED {
+        [0.0; 3]
+    } else {
+        v
+    }
+}
+
+/// The Doppler pitch factor of a source at `source` moving at `source_velocity`, heard from `listener` moving at
+/// `listener_velocity`: `(c + v_listener) / (c + v_source)` with each velocity along the line from the listener to the
+/// source (the listener's toward it, the source's away from it). Above 1 while they close in.
+pub fn doppler(listener: [f32; 3], listener_velocity: [f32; 3], source: [f32; 3], source_velocity: [f32; 3]) -> f32 {
+    let d = sub(source, listener);
+    let distance = length(d);
+    if distance < 1e-3 {
+        return 1.0;
+    }
+    let along = |v: [f32; 3]| (dot(v, d) / distance).clamp(-SPEED_OF_SOUND / 2.0, SPEED_OF_SOUND / 2.0);
+    (SPEED_OF_SOUND + along(listener_velocity)) / (SPEED_OF_SOUND + along(source_velocity))
+}
+
 /// The side a source at `at` is on for a camera at `from` whose right is `right`: -1 left to 1 right, going to the
 /// middle within 2 m (ours: a plain balance, not DirectSound's 3D panning).
 pub fn pan(from: [f32; 3], right: [f32; 3], at: [f32; 3]) -> f32 {
@@ -63,6 +96,8 @@ pub struct Scene {
     /// The camera's position and its right, physics frame.
     pub listener: [f32; 3],
     pub right: [f32; 3],
+    /// The camera's velocity (m/s), for the Doppler shift; [`crate::Models`] fills it from the camera's motion.
+    pub listener_velocity: [f32; 3],
     /// The car's position and velocity (m/s).
     pub car: [f32; 3],
     pub velocity: [f32; 3],
@@ -82,6 +117,7 @@ impl Default for Scene {
         Scene {
             listener: [0.0; 3],
             right: [1.0, 0.0, 0.0],
+            listener_velocity: [0.0; 3],
             car: [0.0; 3],
             velocity: [0.0; 3],
             inside: true,
@@ -155,6 +191,8 @@ pub struct World {
     siren: Option<[f32; 3]>,
     /// The wind voice runs.
     wind: bool,
+    /// The car voices' Doppler factor, smoothed ([`DOPPLER_SMOOTHING`]).
+    doppler: f32,
 }
 
 impl World {
@@ -169,20 +207,30 @@ impl World {
             played: false,
             siren: None,
             wind: false,
+            doppler: 1.0,
         }
     }
 
     /// The commands for one step of `dt` seconds; `rand` stands for the original's `rand()`.
     pub fn step(&mut self, scene: &Scene, dt: f32, mut rand: impl FnMut() -> u32) -> Vec<Command> {
         let d = length(sub(scene.car, scene.listener));
-        let mut out = vec![Command::Listener { car_distance: d, car_pan: pan(scene.listener, scene.right, scene.car) }];
+        // The car heard from outside shifts with the two velocities; in the car nothing does.
+        if scene.inside {
+            self.doppler = 1.0;
+        } else {
+            let target = doppler(scene.listener, scene.listener_velocity, scene.car, scene.velocity);
+            self.doppler += (target - self.doppler) * (1.0 - (-dt / DOPPLER_SMOOTHING).exp());
+        }
+        let car_pan = pan(scene.listener, scene.right, scene.car);
+        let mut out = vec![Command::Listener { car_distance: d, car_pan, car_doppler: self.doppler }];
         let ambient = if d < AMBIENT_FULL { d * AMBIENT_PER_METRE } else { 1.0 };
         let speed = length(scene.velocity);
 
         // Vf08 runs only in a replay (app state 8; the race stays in state 1, by the harness's state log): the wind
         // then plays outside the car by the cloud and is left as it is inside. Its in-car wind by the car's speed is
-        // for state 8 without `E19IsState2`, which Rust has no case of.
-        if scene.replay && !scene.inside {
+        // for state 8 without `E19IsState2`, which Rust has no case of. Ours: while driving it plays from every
+        // camera outside the car too.
+        if !scene.inside {
             let gain = self.gains.wind * ambient;
             if gain > 0.0 || self.wind {
                 let pitch = (self.sky.cloud + 1) as f32 * WIND_PITCH;
@@ -193,12 +241,13 @@ impl World {
 
         // The birds, in a replay with the car far from the camera. Ours: the original keeps the timer in an int
         // seeded with 5.0's bit pattern, so no bird ever plays (rbr-recomp notes/marks-sound-ghost.md 2.2); this is the timer
-        // as meant, 5 s and then 2 to 5 s.
-        if scene.replay {
+        // as meant, 5 s and then 2 to 5 s. Ours: while driving they sing from cameras outside the car (the original's
+        // are a replay's only), without the 50 m rule, which a chase camera never meets.
+        if scene.replay || !scene.inside {
             self.bird_timer -= dt;
             if self.bird_timer < 0.0 {
                 self.bird_timer = (rand() & 3) as f32 + BIRD_BASE;
-                if d > BIRD_DISTANCE {
+                if !scene.replay || d > BIRD_DISTANCE {
                     out.push(Command::Shot { shot: Shot::Bird(self.next_bird), gain: self.gains.bird * ambient });
                     self.next_bird = (self.next_bird + 1) % BIRDS;
                 }
@@ -225,7 +274,8 @@ impl World {
         }
         if let Some(at) = self.siren {
             let gain = self.gains.horn * distance_gain(length(sub(at, scene.listener)), SIREN_DISTANCES);
-            out.push(Command::Loop { voice: Loop::Siren, gain, pitch: 1.0 });
+            let pitch = doppler(scene.listener, scene.listener_velocity, at, [0.0; 3]);
+            out.push(Command::Loop { voice: Loop::Siren, gain, pitch });
             out.push(Command::Pan { voice: Loop::Siren, pan: pan(scene.listener, scene.right, at) });
         }
 
@@ -267,15 +317,86 @@ mod tests {
         assert_eq!(pan([0.0; 3], [1.0, 0.0, 0.0], [0.5, 0.0, 0.0]), 0.25);
     }
 
+    fn car_doppler(world: &mut World, scene: &Scene) -> f32 {
+        match world.step(scene, 0.007, || 0)[0] {
+            Command::Listener { car_doppler, .. } => car_doppler,
+            other => panic!("{other:?}"),
+        }
+    }
+
     #[test]
-    fn the_wind_plays_only_outside_the_car_in_a_replay_by_the_cloud() {
+    fn doppler_follows_the_closing_speed_over_the_speed_of_sound() {
+        let (at, away) = ([100.0, 0.0, 0.0], [10.0, 0.0, 0.0]);
+        // A source coming at 34.3 m/s: c / (c - 34.3), and the same speed the other way.
+        assert!((doppler([0.0; 3], [0.0; 3], at, [-34.3, 0.0, 0.0]) - 343.0 / 308.7).abs() < 1e-5);
+        assert!((doppler([0.0; 3], [0.0; 3], at, [34.3, 0.0, 0.0]) - 343.0 / 377.3).abs() < 1e-5);
+        // A listener driving at the source hears it higher, away from it lower.
+        assert!((doppler([0.0; 3], [34.3, 0.0, 0.0], at, [0.0; 3]) - 377.3 / 343.0).abs() < 1e-5);
+        assert!(doppler([0.0; 3], [-34.3, 0.0, 0.0], at, [0.0; 3]) < 1.0);
+        // Both at one velocity, and a source passing at right angles: unshifted.
+        assert!((doppler([0.0; 3], away, at, away) - 1.0).abs() < 1e-6);
+        assert_eq!(doppler([0.0; 3], [0.0; 3], at, [0.0, 50.0, 0.0]), 1.0);
+        assert_eq!(doppler(at, away, at, [30.0, 0.0, 0.0]), 1.0, "on top of each other");
+    }
+
+    #[test]
+    fn the_car_shifts_outside_and_never_inside() {
+        let mut world = World::new(WorldGains::default(), Sky::default(), Vec::new());
+        let coming =
+            Scene { listener: [0.0, -50.0, 0.0], velocity: [0.0, -40.0, 0.0], inside: false, ..Scene::default() };
+        let mut heard = 1.0;
+        for _ in 0..100 {
+            heard = car_doppler(&mut world, &coming);
+        }
+        assert!((heard - 343.0 / 303.0).abs() < 1e-3, "{heard}");
+        let inside = Scene { inside: true, ..coming };
+        assert_eq!(car_doppler(&mut world, &inside), 1.0);
+        // The first step outside starts from 1 and eases toward the shift.
+        let first = car_doppler(&mut world, &coming);
+        assert!(first > 1.0 && first < heard);
+    }
+
+    #[test]
+    fn a_camera_cut_is_not_a_velocity() {
+        assert_eq!(listener_velocity(None, [1.0, 2.0, 3.0], 0.007), [0.0; 3]);
+        assert_eq!(listener_velocity(Some([0.0; 3]), [0.07, 0.0, 0.0], 0.007), [10.0, 0.0, 0.0]);
+        assert_eq!(listener_velocity(Some([0.0; 3]), [500.0, 0.0, 0.0], 0.007), [0.0; 3]);
+    }
+
+    #[test]
+    fn the_wind_plays_only_outside_the_car_by_the_cloud() {
         let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
         let car = Scene { velocity: [0.0, 20.0, 0.0], ..Scene::default() };
         assert_eq!(find(&world.step(&car, 0.01, || 0), Loop::Wind), None);
-        let chase = Scene { inside: false, ..car };
-        assert_eq!(find(&world.step(&chase, 0.01, || 0), Loop::Wind), None);
         let (gain, pitch) = find(&world.step(&scene(40.0), 0.01, || 0), Loop::Wind).unwrap();
         assert!((gain - 0.2).abs() < 1e-6 && pitch == 0.5);
+    }
+
+    fn birds(out: Vec<Command>) -> usize {
+        out.iter().filter(|c| matches!(c, Command::Shot { shot: Shot::Bird(_), .. })).count()
+    }
+
+    #[test]
+    fn while_driving_the_wind_and_birds_play_outside_the_car_at_any_distance() {
+        let chase = Scene { listener: [0.0, -8.0, 0.0], inside: false, replay: false, ..Scene::default() };
+        let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
+        assert!(
+            find(&world.step(&chase, 0.01, || 0), Loop::Wind).is_some_and(|(gain, pitch)| gain > 0.0 && pitch == 0.5)
+        );
+        assert_eq!(birds(world.step(&chase, 4.99, || 0)), 0);
+        assert_eq!(birds(world.step(&chase, 0.02, || 0)), 1, "8 m from the car");
+        // In the car: neither, driving.
+        let cockpit = Scene { inside: true, ..chase };
+        let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
+        assert_eq!(find(&world.step(&cockpit, 0.01, || 0), Loop::Wind), None);
+        assert_eq!(birds(world.step(&cockpit, 5.1, || 0)), 0);
+    }
+
+    #[test]
+    fn in_a_replay_the_birds_keep_the_50_m_rule() {
+        let near = Scene { replay: true, ..scene(40.0) };
+        let mut world = World::new(WorldGains::default(), Sky::default(), Vec::new());
+        assert_eq!(birds(world.step(&near, 5.1, || 0)), 0);
     }
 
     #[test]

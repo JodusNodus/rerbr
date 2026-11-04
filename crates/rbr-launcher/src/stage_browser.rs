@@ -848,6 +848,7 @@ mod tests {
             folder: format!("/synthetic/Maps/{id}-x").into(),
             track: format!("track-{id}"),
             variants: vec!['M'],
+            broken: Vec::new(),
             particles: None,
             surface: Some(surface),
             length: Some(2.0 + (k % 25) as f32),

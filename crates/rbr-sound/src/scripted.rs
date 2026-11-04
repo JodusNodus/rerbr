@@ -5,7 +5,7 @@
 //!
 //! - **Helicopter**: while `CRescueHelicopter::IsActive`, one looping `Audio\Ambient\heli_g.wav` voice at the
 //!   helicopter's body (`Vf20`), gain `Helicopter amp` times the effects volume. Its distances are 50 to 100 m (`+0x78`
-//!   50, then `+0x74` 100 as NGP patches it); the velocity is set to zero each frame, so no Doppler. It stops when the helicopter is
+//!   50, then `+0x74` 100 as NGP patches it); the velocity is set to zero each frame, so no Doppler (ours adds the camera's). It stops when the helicopter is
 //!   retired. `heli_r.wav` is the replay's (`E31_5800`), out of scope.
 //! - **Bird hit**: `OnBirdstrike` copies the strike's point and plays `IMPACT::VARIOUS` sample 0 (`birdhit`) there,
 //!   3 to 5 m, gain `Impacts amp` times the effects volume (the `SOUNDDEF` volume is not applied).
@@ -14,7 +14,7 @@
 //!   `sprintf`, checked in the disassembly), so nothing is said. That the call emits it (`0x577550`) is inferred.
 
 use crate::voice::{Command, Loop, Shot};
-use crate::world::{distance_gain, pan, Scene};
+use crate::world::{distance_gain, doppler, pan, Scene};
 
 /// The helicopter's distances: 50 to 100 m (the second call is `+0x74`, 0x4d5ad4).
 const HELICOPTER_DISTANCES: (f32, f32) = (50.0, 100.0);
@@ -71,7 +71,9 @@ impl Scripted {
         match events.helicopter {
             Some(at) => {
                 let gain = self.gains.helicopter * distance_gain(distance(at), HELICOPTER_DISTANCES);
-                out.push(Command::Loop { voice: Loop::Helicopter, gain, pitch: 1.0 });
+                // Ours: 1.02 zeroes its velocity. The body is taken at rest, so only the camera's motion shifts it.
+                let pitch = doppler(from, scene.listener_velocity, at, [0.0; 3]);
+                out.push(Command::Loop { voice: Loop::Helicopter, gain, pitch });
                 out.push(Command::Pan { voice: Loop::Helicopter, pan: pan(from, scene.right, at) });
                 self.helicopter = true;
             }

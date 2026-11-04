@@ -263,7 +263,7 @@ impl Characters {
             crt,
             flip_camera: None,
             probe: None,
-            smoke_kind: crate::stage::map_number(name).and_then(scripted::smoke),
+            smoke_kind: crate::stage::sky_map(name).and_then(scripted::smoke),
             burst: Burst::default(),
             smoke: Vec::new(),
             windscreen: None,

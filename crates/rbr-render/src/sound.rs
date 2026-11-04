@@ -85,7 +85,7 @@ pub fn use_codriver(player: &mut Player, data: &Data, stage: &str, choice: &Choi
 
 /// The sound's scene for the camera `lens` (stage frame) and the car at `car` (physics frame): the stage's y up is
 /// the physics' z up (`crate::coords`), so the eye and its right swap y and z.
-pub fn scene(lens: &Lens, car: &CarPose, inside: bool) -> Scene {
+pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool) -> Scene {
     let swap = |v: Vec3| [v.x, v.z, v.y];
     // Left-handed, y up: right is up x forward.
     let right = lens.up.cross(lens.forward).normalize_or_zero();
@@ -95,6 +95,7 @@ pub fn scene(lens: &Lens, car: &CarPose, inside: bool) -> Scene {
         car: car.position,
         velocity: car.velocity,
         inside,
+        replay,
         ..Scene::default()
     }
 }

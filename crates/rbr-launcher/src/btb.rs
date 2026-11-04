@@ -1,20 +1,16 @@
 //! BTB (Bob's Track Builder) stages in the launcher (`notes/btb.md` "Playing"): the BTB folders of the RallySimFans
-//! install listed with its stages, and Start preparing the files the stage plays as (`rbr_btb::stage`). The stage plays
-//! as retail map 41, M variant: its weathers are map 41's M rows (the plugin only replaces the M files), its records
-//! and ghosts are not kept (they would be map 41's), and the surface is `track.ini`'s.
+//! install listed with its stages, and Start preparing the files the stage plays (`rbr_btb::stage`). A BTB stage is a
+//! stage of its own number: its weathers are the rows of the sky map (`rbr_btb::stage::SKY_MAP`) under that number, and
+//! its records and ghosts are kept under it as a community stage's are.
 
 use std::path::{Path, PathBuf};
 
 use rbr_btb::{ids, stage, track};
-use rbr_gameplay::weather::Season;
 
 use crate::catalog::{Map, Stage};
 use crate::Form;
 
-/// The retail map a BTB stage plays as: its weathers and the numbers the game's files and records go by.
-pub const MAP: u32 = 41;
-
-/// A listed BTB stage. The map's number is its RSF id, else a synthetic one no other map has ([`number`]).
+/// A listed BTB stage. The map's number is its RSF id, else a synthetic one no other map has ([`synthetic`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Btb {
     /// The `RX_CONTENT/Tracks/<folder>/` directory.
@@ -25,8 +21,6 @@ pub struct Btb {
     pub km: Option<f32>,
     /// The `rbr-standalone --surface` word, from `track.ini` (the plugin plays gravel when it names none).
     pub surface: &'static str,
-    /// The RallySimFans install.
-    pub rsf_root: PathBuf,
     /// Why it cannot start.
     pub problem: Option<String>,
 }
@@ -37,24 +31,11 @@ impl Btb {
         ["gravel", "tarmac", "snow"].iter().position(|s| *s == self.surface).unwrap_or(0) as u32
     }
 
-    /// Writes the stage's five map 41 files into `home/btb/<folder>/`; the stage name that loads them.
-    pub fn prepare(&self, home: &Path) -> Result<String, String> {
+    /// Writes the stage `number`'s files into `home/btb/<folder>/`; the stage name that loads them.
+    pub fn prepare(&self, number: u32, maps: &Path, home: &Path) -> Result<String, String> {
         let track = track::Track::open(&self.folder)?;
-        stage::prepare(&track, &self.rsf_root, &home.join("btb").join(&track.name))
+        stage::prepare(&track, number, maps, &home.join("btb").join(&track.name))
     }
-}
-
-/// The retail season with map 41's M rows only (the plugin replaces only the M files): the other rows of map 41 are
-/// no one's, and its bad weather is the good one. Row numbers stay, `rbr-standalone --season-row` takes them.
-pub fn season(retail: &Season) -> Season {
-    let mut season = retail.clone();
-    for row in season.rows.iter_mut().filter(|r| r.map == MAP && r.letter != 0) {
-        row.map = 0;
-    }
-    let nice = season.nice.iter().copied().find(|&k| season.rows.get(k as usize).is_some_and(|r| r.map == MAP));
-    season.nice = nice.into_iter().collect();
-    season.bad = season.nice.clone();
-    season
 }
 
 /// The BTB stages of the RSF install `root` as maps, the ones whose number `taken` not already.
@@ -76,11 +57,10 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             author: track.info.author.clone().filter(|a| !a.trim().is_empty()),
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),
-            rsf_root: root.to_owned(),
             problem: None,
             folder: track.folder.clone(),
         };
-        let stage = Stage { name: format!("{}/{}", btb.folder.display(), stage::TRACK), map: number, letter: 'M' };
+        let stage = Stage { name: stage::stage_name(&btb.folder, number), map: number, letter: stage::LETTER };
         maps.push(Map { number, stages: vec![stage], rsf: None, btb: Some(btb) });
     }
     maps
@@ -101,26 +81,18 @@ fn synthetic(name: &str, free: impl Fn(u32) -> bool) -> u32 {
 
 impl Form {
     /// The launch of a BTB `stage`: its files prepared in the player's folder and named in place of the listed folder,
-    /// the surface for `rbr-standalone`, and no records (`--saves`, `--profile`: they would be map 41's). Other stages
-    /// pass unchanged. `None`, with the status, when the files cannot be built.
+    /// and the BTB stage's arguments for `rbr-standalone`: the surface, and the retail map whose weather rows it
+    /// plays. Other stages pass unchanged. `None`, with the status, when the files cannot be built.
     pub fn btb_launch(&mut self, mut stage: Stage, mut extra: Vec<String>) -> Option<(Stage, Vec<String>)> {
         let Some(btb) = self.catalog.map(stage.map).and_then(|m| m.btb.clone()) else { return Some((stage, extra)) };
-        match btb.prepare(&self.here()) {
+        match btb.prepare(stage.map, &self.data.install().join("Maps"), &self.here()) {
             Ok(name) => stage.name = name,
             Err(e) => {
                 self.status = format!("{}: {e}", btb.name);
                 return None;
             }
         }
-        let mut kept = Vec::new();
-        let mut args = extra.drain(..);
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--saves" | "--profile" => drop(args.next()),
-                _ => kept.push(arg),
-            }
-        }
-        kept.extend(["--surface".to_owned(), btb.surface.to_owned()]);
-        Some((stage, kept))
+        extra.extend(["--surface".to_owned(), btb.surface.to_owned(), "--btb".to_owned(), stage::SKY_MAP.to_string()]);
+        Some((stage, extra))
     }
 }

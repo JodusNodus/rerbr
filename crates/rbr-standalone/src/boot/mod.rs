@@ -90,6 +90,8 @@ pub(crate) const CAR_PARTS: [CarPart; 13] = [
 /// the launcher): `IRBRGame::StartGame`'s map, car and tyre, and the settings the game takes from its menus.
 #[derive(Clone, Debug)]
 pub struct Race {
+    /// `StartGame`'s map: its flip spectators load before the car (`handles::objects_before_car`). A BTB stage's is the
+    /// retail map whose characters it shows (`--btb`).
     pub map: u32,
     /// The `[CarNN]` of `Cars/Cars.ini`.
     pub car: u32,
@@ -113,8 +115,9 @@ pub struct Race {
     /// NGP's `physics.rbz` (with its cars in their slots): the physics files come from it, parsed with NGP's keys.
     pub ngp_physics: std::path::PathBuf,
     /// An NGP car pack read in place of the slot's physics folder (an RSF car, `rbr_formats::rsf`): what RSF copies to
-    /// `Physics/<dir>/` before the game loads the slot. Its model comes through `Data::with_car`.
-    pub car_pack: Option<rsf::Pack>,
+    /// `Physics/<dir>/` before the game loads the slot, which is `car` (`rsf::SLOT`). Its model comes through
+    /// `Data::with_car`.
+    pub car_pack: Option<CarPack>,
     /// The player's setup file's root group (`%sSetups/<name>.lsp`, `rbr_gameplay::setup`), walked on the setup after
     /// the default file as the game's loader layers it; none for the default setup.
     pub setup: Option<Vec<Node>>,
@@ -126,6 +129,14 @@ pub struct Race {
     pub ffb_sensitivity: [i32; 3],
     /// NGP's `headGasketDurability` (1, its default, leaves the stall roll as 1.02's; `runtime::head_gasket`).
     pub head_gasket_durability: i32,
+}
+
+/// An NGP car pack with the tyres it runs on.
+#[derive(Clone, Debug)]
+pub struct CarPack {
+    pub pack: rsf::Pack,
+    /// The folder of its `Physics/<brand>/tyres.lsp` (`rsf::Selected::tyre_brand`).
+    pub tyre_brand: &'static str,
 }
 
 impl Race {
@@ -255,7 +266,7 @@ fn start_pose(start: &lbs::StartLocation) -> ([f32; 3], [f32; 4]) {
 }
 
 /// The car's files: its physics folder (the exe's table), the map's surface, the tyre brand (`LoadTyreBrand`, 0x48df00:
-/// Pirelli for cars 5 and 7) and the model (`Cars/Cars.ini`).
+/// Pirelli for cars 5 and 7, a car pack's own) and the model (`Cars/Cars.ini`).
 struct CarFiles {
     /// The car's physics folder (`Physics/t_coroll/`).
     dir: String,
@@ -269,6 +280,15 @@ struct CarFiles {
     model: String,
 }
 
+/// The folder of the tyres the car runs on (`Physics/<brand>/tyres.lsp`): a car pack's own, else the game's by slot.
+fn tyre_brand(race: &Race) -> &'static str {
+    match &race.car_pack {
+        Some(car) => car.tyre_brand,
+        None if matches!(race.car, 5 | 7) => "pirelli",
+        None => "michelin",
+    }
+}
+
 fn car_files(data: &Data, mem: &Mem, race: &Race) -> Result<CarFiles, String> {
     if race.car > 7 {
         return Err(format!("car {}: not a retail car", race.car));
@@ -277,7 +297,7 @@ fn car_files(data: &Data, mem: &Mem, race: &Race) -> Result<CarFiles, String> {
     let dir: Vec<u8> = (name..).map(|a| mem.u8(a)).take_while(|&b| b != 0).collect();
     let dir = String::from_utf8(dir).map_err(|_| "the exe's car folder is not text")?;
     let surface = race.surface;
-    let brand = if matches!(race.car, 5 | 7) { "pirelli" } else { "michelin" };
+    let brand = tyre_brand(race);
     let ini = String::from_utf8_lossy(&read(data, "Cars/Cars.ini")?).into_owned();
     let model = data
         .car_slots(cars::parse(&ini).map_err(|e| e.to_string())?)
@@ -420,7 +440,7 @@ fn lsp_root(data: &Data, race: &Race, files: &CarFiles, archive: &str, name: &st
 /// that folder from a car pack.
 fn pack_file(race: &Race, dir: &str, name: &str) -> Option<Result<Vec<u8>, String>> {
     let rest = name.strip_prefix(dir)?;
-    Some(race.car_pack.as_ref()?.read(rest))
+    Some(race.car_pack.as_ref()?.pack.read(rest))
 }
 
 /// The car placement `part` at `at` (its handle, the registry index `index`, the damage handler `hook`), as the car
@@ -802,4 +822,26 @@ pub fn dump(mem: &Mem, image: &Image, path: &std::path::Path) -> std::io::Result
         writeln!(blocks, "{at:08x} {size:x}").unwrap();
     }
     std::fs::write(path.with_extension("blocks"), blocks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn race(car: u32, car_pack: Option<CarPack>) -> Race {
+        let weather =
+            Weather { map: 54, row: None, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0, wear: 0 };
+        Race { car_pack, ..Race::quick_race(54, car, 4, weather, "ngp".into()) }
+    }
+
+    #[test]
+    fn the_tyre_brand_is_the_slots_for_a_retail_car_and_the_packs_for_an_rsf_car() {
+        assert_eq!(
+            [0, 3, 5, 6, 7].map(|car| tyre_brand(&race(car, None))),
+            ["michelin", "michelin", "pirelli", "michelin", "pirelli"]
+        );
+        let pack = |tyre_brand| Some(CarPack { pack: rsf::Pack::Dir("p".into()), tyre_brand });
+        assert_eq!(tyre_brand(&race(rsf::SLOT, pack("michelin"))), "michelin");
+        assert_eq!(tyre_brand(&race(0, pack("pirelli"))), "pirelli");
+    }
 }

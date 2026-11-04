@@ -1,6 +1,6 @@
 //! BTB (Bob's Track Builder) stages: [`rbr_btb::scene::Scene`] as a [`Stage`]. A stage prepared by
-//! `rbr_btb::stage::prepare` (its folder's `btb.ini` names the BTB folder), or named `<BTB folder>/track-41_M` directly
-//! (the RSF plugin plays BTB stages as map 41), draws from the track folder instead of `Maps/`. What each effect and
+//! `rbr_btb::stage::prepare` (its folder's `btb.ini` names the BTB folder), or named `<BTB folder>/track-<n>_<L>` directly
+//! (for development), draws from the track folder instead of `Maps/`. What each effect and
 //! technique becomes, and what is missing: `notes/btb.md` "Drawing".
 //!
 //! There is no instancing: every placement is expanded into world-space vertices, grouped by 128 m cells, `LODIn` and
@@ -8,7 +8,7 @@
 
 use super::mesh::{Bounds, Draw, DrawState, Layer, Lod, Mesh, Vertex};
 use super::{
-    Address, Anchor, Error, LoadReport, Pose, Selection, Stage, StageTexture, TextureName, TextureRef, TextureSet,
+    Address, Anchor, Error, LoadReport, Pose, Selection, Sky, Stage, StageTexture, TextureName, TextureRef, TextureSet,
 };
 use crate::atmosphere::Atmosphere;
 use glam::{Vec3, Vec3Swizzles};
@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 /// The BTB track folder stage `name` plays: a prepared folder's `btb.ini` source (`rbr_btb::stage::prepare`), or the
-/// track folder itself (`<folder>/track-41_M`, for development).
+/// track folder itself (`<folder>/track-<n>_<L>`, for development).
 fn source(name: &str) -> Option<PathBuf> {
     let folder = stage_files::folder(name)?;
     rbr_btb::stage::source(folder).or_else(|| rbr_btb::track::is_track_folder(folder).then(|| folder.to_owned()))
@@ -155,8 +155,10 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
         );
     }
 
-    let sky = selection.sky.and_then(|sky| sky.section(name));
-    let mut atmosphere = Atmosphere::load(maps, name, selection.weather.as_str(), sky.as_deref());
+    // The sky is the sky map's (`rbr_btb::stage::SKY_MAP`): its section by the row's own words, in the retail
+    // `TrackSettings.ini`; without a row, its variant M's pick by the weather.
+    let sky = selection.sky.and_then(Sky::named);
+    let mut atmosphere = Atmosphere::load(maps, rbr_btb::stage::SKY_STAGE, selection.weather.as_str(), sky.as_deref());
     if scene.sun_direction.is_some() {
         atmosphere.sun_direction = sun;
     }

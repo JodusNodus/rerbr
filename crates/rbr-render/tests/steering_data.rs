@@ -40,7 +40,7 @@ fn every_installed_rsf_car_with_a_drawn_interior_wheel_turns_it() {
     let (mut checked, mut skipped, mut without_node) = (0, 0, Vec::new());
     let mut before_missed = Vec::new();
     for rsf_car in &install.cars {
-        let Ok(selected) = rsf::select(data.clone(), &rsf_car.pack, rsf::SLOT, Some(&rsf_root)) else {
+        let Ok(selected) = rsf::select(data.clone(), &rsf_car.pack, Some(&rsf_root)) else {
             skipped += 1;
             continue;
         };

@@ -670,7 +670,7 @@ impl App {
                 if let Some(mounts) = &self.scene.mounts {
                     let lens = self.shown.lens(playback, mounts, None, self.look, self.fov);
                     let interior = self.shown.car_view().interior();
-                    sound.set_scene(rbr_render::sound::scene(&lens, &playback.sample().car, interior));
+                    sound.set_scene(rbr_render::sound::scene(&lens, &playback.sample().car, interior, self.replay));
                 }
                 sounds.iter().for_each(|s| sound.step(s));
             }

@@ -3,6 +3,7 @@
 use egui::{Color32, ComboBox, DragValue};
 use rbr_render::camera_prefs;
 use rbr_render::coords;
+use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
@@ -245,7 +246,7 @@ pub struct HudChoice {
     pub show: bool,
     pub mph: bool,
     pub fps: bool,
-    /// The pace stack's notes, 0 to 4 (the game's `PN_STACK`; 0, its default, hides it).
+    /// The pace stack's notes, 0 to 8 (the game's `PN_STACK` stops at 4; 0, its default, hides it).
     pub stack: u8,
     /// The working dials of the RSF cars with RBRHUD gauges in the install (on by default).
     pub dials: bool,
@@ -397,9 +398,15 @@ impl Form {
         section(ui, "Camera");
         fields(ui, "camera", |ui| {
             let tip =
-                "The horizontal field of view of the in-car views and the free camera; the chase view keeps its own";
+                "The horizontal field of view of the in-car views and the free camera; the chase view has its own below";
             ui.label("Field of view").on_hover_text(tip);
             ui.add(egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
+                .on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "The horizontal field of view of the chase view (65 by default)";
+            ui.label("Chase field of view").on_hover_text(tip);
+            ui.add(egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
                 .on_hover_text(tip);
             ui.end_row();
 
@@ -465,7 +472,7 @@ impl Form {
 
             let tip = "The next notes stacked at the right of the screen (0: none)";
             ui.label("Shown notes").on_hover_text(tip);
-            ui.add(DragValue::new(&mut self.hud.stack).range(0..=4).prefix("stack ")).on_hover_text(tip);
+            ui.add(DragValue::new(&mut self.hud.stack).range(0..=STACK_MAX).prefix("stack ")).on_hover_text(tip);
             ui.end_row();
         });
 

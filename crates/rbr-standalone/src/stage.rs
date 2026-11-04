@@ -29,6 +29,8 @@ pub struct StageData {
     pub finish_zone: FinishZone,
     /// The `Driveline` set's replay stream, the rally school's filter bank (`rbr_gameplay::school::Bank`).
     pub replay: dls::DlsReplayStream,
+    /// A BTB stage (`--btb`): the jump start is armed whatever the number.
+    pub btb: bool,
 }
 
 /// The stage `stage` (a name or path, `stage_files`) of `data`, with `car` the race's car.
@@ -77,6 +79,7 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         obstacles,
         finish_zone,
         replay,
+        btb: false,
     })
 }
 
