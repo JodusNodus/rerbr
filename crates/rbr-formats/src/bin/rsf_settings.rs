@@ -9,7 +9,7 @@
 //! is the game's car slot (RSF's 5 by default). Nothing is written.
 
 use rbr_formats::rsf::settings::{game_options, Sources};
-use rbr_formats::rsf::SLOT;
+use rbr_formats::car_pack::SLOT;
 use std::path::PathBuf;
 use std::process::ExitCode;
 

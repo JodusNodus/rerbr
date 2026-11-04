@@ -55,6 +55,7 @@
 pub mod ai_ini;
 pub mod audio;
 pub mod bnk;
+pub mod car_pack;
 pub mod car_parts;
 pub mod cars;
 pub mod col;
