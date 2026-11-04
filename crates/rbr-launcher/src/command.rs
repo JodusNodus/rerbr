@@ -355,22 +355,17 @@ impl ViewerLaunch {
     }
 }
 
-/// The flags resolving a pack car in the viewer, `rbr-standalone` and `rbr-sound`: its pack, its model entry, the
-/// root the model resolves under, its bank and its saved key. Empty for an archive car.
+/// The flags resolving a pack car in the viewer, `rbr-standalone` and `rbr-sound`: its pack, its model's `.sgc`
+/// path, its bank and its saved key ([`car_pack::Flags`]). Empty for an archive car.
 pub fn pack_car_args(car: &Car) -> Vec<String> {
     let catalog::Physics::Pack(pack) = &car.physics else { return Vec::new() };
-    let mut args = vec!["--car-pack".into(), pack.display().to_string()];
-    if let Ok(model) = &car.model {
-        args.extend(["--car-model".into(), model.entry.file_name.clone()]);
+    rbr_formats::car_pack::Flags {
+        pack: Some(pack.clone()),
+        model: car.model_path.clone(),
+        bank: car.bank.clone(),
+        key: Some(car.key.clone()),
     }
-    if let Some(root) = &car.model_root {
-        args.extend(["--car-root".into(), root.display().to_string()]);
-    }
-    if let Some(bank) = &car.bank {
-        args.extend(["--car-bank".into(), bank.display().to_string()]);
-    }
-    args.extend(["--car-key".into(), car.key.clone()]);
-    args
+    .argv()
 }
 
 /// The viewer's `--save-replay` for a live start: the drive's replay in `replays/` of the player's folder `home`,
@@ -904,7 +899,7 @@ mod tests {
                 entry: rbr_formats::car_pack::model_entry("evo_IX", "evo_IX"),
                 fallback: None,
             }),
-            model_root: Some("/rsf".into()),
+            model_path: Some("/rsf/Cars/evo_IX/evo_IX.sgc".into()),
             key: "rsf-24".into(),
             ..Car::default()
         };
@@ -933,16 +928,7 @@ mod tests {
         let live = args.iter().position(|a| a == "--live").unwrap();
         assert_eq!(
             args[1..9],
-            [
-                "--car",
-                "evo_IX",
-                "--car-pack",
-                "/rsf/rsfdata/cars/evo",
-                "--car-model",
-                "Cars\\evo_IX\\evo_IX.sgc",
-                "--car-root",
-                "/rsf"
-            ]
+            ["--car", "evo_IX", "--car-pack", "/rsf/rsfdata/cars/evo", "--car-model", "/rsf/Cars/evo_IX/evo_IX.sgc"]
         );
         assert_eq!(value(&args, "--car-key").as_deref(), Some("rsf-24"));
         assert!(!args[live..].contains(&"--car".to_owned()), "a pack car races in slot 5, named by its pack");

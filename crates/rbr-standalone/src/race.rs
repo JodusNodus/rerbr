@@ -5,7 +5,7 @@ use std::path::Path;
 
 use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
-use rbr_formats::{car_pack, rsf, stage_files};
+use rbr_formats::{rsf, stage_files};
 use rbr_gameplay::race_options::{DamageLevel, DriverAids, RaceOptions};
 use rbr_gameplay::setup::{self, Setup};
 use rbr_gameplay::weather::{self, CrtRand, Draws, Preset, Season, Weather};
@@ -74,23 +74,6 @@ fn rsf_car(data: Data, key: &str) -> Result<(Data, boot::CarPack), String> {
     Ok((selected.data, boot::CarPack { pack: selected.pack, tyre_brand: selected.tyre_brand }))
 }
 
-/// `--car-pack`'s pack car: the data with its model entry (`--car-model`) under `--car-root`, and its pack with
-/// its tyres, through the same resolving function as `--rsf-car`.
-fn pack_car(
-    data: Data,
-    pack: &Path,
-    model: &str,
-    root: &Path,
-    bank: Option<&Path>,
-    key: &str,
-) -> Result<(Data, boot::CarPack), String> {
-    let pack = car_pack::Pack::open(pack)?;
-    let model = car_pack::Model { entry: car_pack::model_entry_of(model)?, fallback: None };
-    let selected = car_pack::resolve(data, pack, model, root.to_owned(), bank.map(Path::to_path_buf))?;
-    eprintln!("{}", selected.describe(key, None));
-    Ok((selected.data, boot::CarPack { pack: selected.pack, tyre_brand: selected.tyre_brand }))
-}
-
 /// The root group of a setup file (`--setup`), checked as a setup (`rbr_gameplay::setup`).
 fn setup_root(path: &Path) -> Result<Vec<Node>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -108,20 +91,19 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         None => boot::surface(stage.number),
     });
     let tyre = args.tyre.or_else(|| recording.and_then(|r| recorded_word(r, 3))).unwrap_or(boot::default_tyre(surface));
-    let (data, car_pack) = match (args.rsf_car.as_deref(), args.car_pack.as_deref()) {
-        (Some(key), None) => {
+    let (data, car_pack) = match args.rsf_car.as_deref() {
+        Some(key) => {
             let (data, pack) = rsf_car(data, key)?;
             (data, Some(pack))
         }
-        (None, Some(pack)) => {
-            let model = args.car_model.as_deref().ok_or("--car-pack needs --car-model and --car-root")?;
-            let root = args.car_root.as_deref().ok_or("--car-pack needs --car-model and --car-root")?;
-            let key = args.car_key.as_deref().unwrap_or("pack car");
-            let (data, pack) = pack_car(data, pack, model, root, args.car_bank.as_deref(), key)?;
+        None if args.pack_car.pack.is_some() => {
+            let key = args.pack_car.key.as_deref().unwrap_or("pack car");
+            let selected = args.pack_car.resolve(data)?;
+            eprintln!("{}", selected.describe(key, None));
+            let (data, pack) = (selected.data, boot::CarPack { pack: selected.pack, tyre_brand: selected.tyre_brand });
             (data, Some(pack))
         }
-        (None, None) => (data, None),
-        (Some(_), Some(_)) => unreachable!("args() allows one of --rsf-car and --car-pack"),
+        None => (data, None),
     };
     if !args.boot {
         return Ok((data, None));

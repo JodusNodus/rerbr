@@ -327,7 +327,11 @@ impl Previews {
                 Ok(model) => CarModel::Community {
                     pack: pack.clone(),
                     model: model.clone(),
-                    root: car.model_root.clone().unwrap_or_else(|| PathBuf::from(root.trim())),
+                    root: car
+                        .model_path
+                        .as_deref()
+                        .and_then(|p| rbr_formats::car_pack::root_of(p).ok())
+                        .unwrap_or_else(|| PathBuf::from(root.trim())),
                 },
             },
         };

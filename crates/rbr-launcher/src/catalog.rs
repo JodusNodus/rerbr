@@ -67,8 +67,9 @@ pub struct Car {
     /// The model it is drawn and collided with: its `Cars.ini` entry, a retail stand-in applied with the reason when
     /// its own folder is not installed; or why there is none. An archive car's is its own entry.
     pub model: Result<car_pack::Model, String>,
-    /// Where the model's `Cars\` files resolve: the RSF install, or the added cars' folder. None for an archive car.
-    pub model_root: Option<PathBuf>,
+    /// Its model's `.sgc` path (absolute): the folder holding its `Cars\` folder is the root it resolves
+    /// under. None for an archive car, and when there is no model.
+    pub model_path: Option<PathBuf>,
     /// The key its setups, camera nudges, FFB sensitivities and ghosts are saved under: an archive car's folder,
     /// upper case; a pack car's `rsf-<id>` (`camera_prefs::car_key`).
     pub key: String,
@@ -88,7 +89,7 @@ impl Default for Car {
             slot: 0,
             physics: Physics::Archive,
             model: Err(String::new()),
-            model_root: None,
+            model_path: None,
             key: String::new(),
             group: None,
             drive_train: None,
@@ -109,12 +110,10 @@ impl Car {
         }
     }
 
-    /// Why the car can't start (a pack car needs its pack and a model), or `None`.
+    /// Why the car can't start (a pack car needs its pack and a model), or `None`. An archive car's model is
+    /// always its own entry.
     pub fn unavailable(&self) -> Option<String> {
-        match &self.physics {
-            Physics::Pack(_) => self.model.as_ref().err().cloned(),
-            Physics::Archive => None,
-        }
+        self.model.as_ref().err().cloned()
     }
 
     /// Its pack folder, when it is a pack car.
@@ -153,12 +152,13 @@ fn rsf_cars(install: &Path, root: &Path) -> Result<Vec<Car>, String> {
                     (root.join("rsfdata").join("cars").join(&car.pack), Err("not downloaded in RallySimFans".into()))
                 }
             };
+            let model_path = model.as_ref().ok().map(|m| car_pack::file_under(root, &m.entry.file_name));
             Car {
                 name: car.name.clone(),
                 slot: car_pack::SLOT,
                 physics: Physics::Pack(path),
                 model,
-                model_root: Some(root.to_owned()),
+                model_path,
                 key: format!("rsf-{}", car.id),
                 group: car.group.clone(),
                 drive_train: car.drive_train.clone(),
@@ -184,12 +184,13 @@ fn added_car(cars: &Path, retail: &[cars::CarEntry], stored: &car_packs::StoredC
         }
         None => (root.join(&stored.pack), Err("not downloaded".into())),
     };
+    let model_path = model.as_ref().ok().map(|m| car_pack::file_under(cars, &m.entry.file_name));
     Car {
         name: stored.name.clone(),
         slot: car_pack::SLOT,
         physics: Physics::Pack(path),
         model,
-        model_root: Some(cars.to_owned()),
+        model_path,
         key: format!("rsf-{}", stored.id),
         group: stored.group.clone(),
         drive_train: stored.drive_train.clone(),
@@ -208,28 +209,18 @@ fn added_model(
     let (folder, file) = match &stored.model {
         StoredModel::Files { folder, file, .. } => (folder.clone(), file.clone()),
         StoredModel::StandIn { slot } => {
-            let retail =
-                retail.iter().find(|e| e.index == *slot as usize).ok_or(format!("Cars.ini: no [Car{slot:02}]"))?;
-            return Ok(car_pack::Model { entry: pack_entry(retail), fallback: Some(format!("retail car {slot}")) });
+            return car_pack::stand_in(retail, *slot as usize, format!("retail car {slot}"));
         }
     };
     let entry = car_pack::model_entry(&folder, &file);
     match rbr_formats::cars::resolve(cars, &entry.file_name) {
         Some(_) => Ok(car_pack::Model { entry, fallback: None }),
-        None => {
-            let retail =
-                retail.iter().find(|e| e.index == car_pack::SLOT as usize).ok_or("Cars.ini: no [Car05]".to_owned())?;
-            Ok(car_pack::Model {
-                entry: pack_entry(retail),
-                fallback: Some(format!("Cars/{folder} not installed, retail car {}", car_pack::SLOT)),
-            })
-        }
+        None => car_pack::stand_in(
+            retail,
+            car_pack::SLOT as usize,
+            format!("Cars/{folder} not installed, retail car {}", car_pack::SLOT),
+        ),
     }
-}
-
-/// The retail entry as the pack car's slot 5 entry.
-fn pack_entry(retail: &cars::CarEntry) -> cars::CarEntry {
-    cars::CarEntry { index: car_pack::SLOT as usize, ..retail.clone() }
 }
 
 /// A stage variant, `track-NN_X` (a community stage's: the path of its files, `rbr_formats::stage_files`), loaded for

@@ -162,15 +162,8 @@ impl Install {
             }
             why.push(format!("Cars/{} not installed", model.path));
             if model.fallback < 8 {
-                let retail = retail
-                    .iter()
-                    .find(|e| e.index == model.fallback as usize)
-                    .ok_or(format!("Cars.ini: no [Car{:02}]", model.fallback))?;
-                why.push(format!("retail car {}", retail.index));
-                return Ok(car_pack::Model {
-                    entry: CarEntry { index: car_pack::SLOT as usize, ..retail.clone() },
-                    fallback: Some(why.join(", ")),
-                });
+                why.push(format!("retail car {}", model.fallback));
+                return car_pack::stand_in(retail, model.fallback as usize, why.join(", "));
             }
             id = model.fallback;
         }

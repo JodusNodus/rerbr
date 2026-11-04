@@ -172,7 +172,7 @@ fn run() -> ExitCode {
     let args = args;
     let recording = args.recording.as_deref();
     // A pack car's record word is the slot the game holds it in (`car_pack::SLOT`).
-    let car = match (&args.rsf_car, &args.car_pack) {
+    let car = match (&args.rsf_car, &args.pack_car.pack) {
         (Some(_), _) | (None, Some(_)) => car_pack::SLOT,
         (None, None) => args.car.or_else(|| recording.and_then(|r| race::recorded_word(r, 1))).unwrap_or(0),
     };
