@@ -257,7 +257,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   `BTB_Sky` meshes (7 in two tracks; the renderer's sky stays), the 139 meshes whose texture name has no
   `materials.ini` section (Cauterets' `vieuxpylone`, one La Serra), invisible objects. Pirttikulma's own sky
   (`Taivaita\Materials\sky16`, `BTB_Diffuse`) is an ordinary object, a sky dome (below). No wear, light maps,
-  characters, fences or grass for a BTB stage (the `.fnc` is empty, the `.lbs` has none); the weather is the sky map's sections.
+  characters, fences or grass for a BTB stage (the stage draws its own objects; map 41's `.fnc` fences are drawn); the weather is the sky map's sections.
 - LOD and size: no instancing. Each placement is expanded into world-space vertices (88-byte renderer vertices), grouped by
   128 m cell (a placement over 150 m half extent is a mesh of its own: the terrain tiles) and by `LODIn`/`LODOut` in 50 m
   steps (`Lod::Band`, the draw's distance from its mesh's bounds centre; a solo placement's `LODOut` counts from its
