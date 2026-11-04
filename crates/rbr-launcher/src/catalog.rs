@@ -794,6 +794,52 @@ mod tests {
         assert!(missing.is_empty(), "{missing:?}");
     }
 
+    /// A community stage with one broken variant offers the others' weathers, and is unavailable only when none work.
+    #[test]
+    fn a_broken_variant_hides_only_its_own_weathers() {
+        let root = std::env::temp_dir().join(format!("rbr-catalog-{}", std::process::id()));
+        let folder = root.join("Maps").join("777-Test Stage");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("Tracks777.ini"), "[Map777]\r\nTrackName=\"Maps\\777-Test Stage\\track-777\"\r\n")
+            .unwrap();
+        std::fs::write(
+            folder.join("TrackSettings777.ini"),
+            "[777O_E_crisp_clear]\r\nFogEnd = 5\r\n[777M_E_crisp_clear]\r\nFogEnd = 5\r\n",
+        )
+        .unwrap();
+        for letter in ['O', 'M'] {
+            for ext in ["lbs", "col", "trk", "dls", "mat", "ini"] {
+                std::fs::write(folder.join(format!("track-777_{letter}.{ext}")), b"plain").unwrap();
+            }
+        }
+        let mut catalog = Catalog::default();
+        let base = Season { rows: Vec::new(), nice: Vec::new(), bad: Vec::new() };
+        let check = |catalog: &mut Catalog| {
+            catalog.set_rsf(root.to_str().unwrap());
+            let map = catalog.map(777).unwrap().clone();
+            let rows = environment_rows(&map.season(&base), 777);
+            let picks: Vec<_> = [Preset::Good, Preset::Bad, Preset::Random]
+                .map(|p| {
+                    catalog
+                        .stage_weather(&base, 777, p, weather::Draws { row: Some(0), wear: 1 })
+                        .map(|(s, _)| s.letter)
+                })
+                .into();
+            (catalog.availability(&base, &map), rows.len(), picks)
+        };
+        let (available, rows, picks) = check(&mut catalog);
+        assert_eq!((available, rows), (Ok(()), 2));
+        assert!(picks.iter().all(Result::is_ok));
+        std::fs::write(folder.join("track-777_O.col"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        let (available, rows, picks) = check(&mut catalog);
+        assert_eq!((available, rows), (Ok(()), 1));
+        assert!(picks.iter().all(|p| *p == Ok('M')));
+        std::fs::write(folder.join("track-777_M.col"), [1u8, 0xa0, 0, 0, 9]).unwrap();
+        assert!(check(&mut catalog).0.is_err());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Setting the RSF folder again leaves the same stages; clearing it leaves the retail ones.
     #[test]
     fn set_rsf_replaces_the_rsf_stages() {
