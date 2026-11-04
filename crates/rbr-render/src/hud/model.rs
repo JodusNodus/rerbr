@@ -18,7 +18,7 @@
 //!   once when the test fails;
 //! - the odometer and the distance to go (HUD +0x20 and +0x28, 0x5715b0: the driveline distance, and the finish key's
 //!   distance less it and the start key's);
-//! - the pace stack (`PN_STACK`, 0 to 4, default 0) of `HUD::Update`: the symbol behind the car fading out over the
+//! - the pace stack (`PN_STACK`, 0 to 8 here, 4 in the game, default 0) of `HUD::Update`: the symbol behind the car fading out over the
 //!   first half of the way to the next, the next ones at 0.3 alpha, the first brightening to 0.5 and the last fading in
 //!   (`pace_stack`);
 //! - the HUD is not drawn while the rescue helicopter flies (`HUD::Update` returns, `CRescueHelicopter::IsActive`).
@@ -60,8 +60,8 @@ pub const WRONG_WAY_FADE: f32 = 3.0;
 const STACK_ALPHA: f32 = 0.3;
 const STACK_FIRST: f32 = 0.2;
 const STACK_PASSED: f32 = 0.5;
-/// The most notes the stack shows (`PN_STACK`'s slider, 0 to 4).
-pub const STACK_MAX: u8 = 4;
+/// The most notes the stack shows. Ours: `PN_STACK`'s slider is 0 to 4; the column has room for 8 above the passed one.
+pub const STACK_MAX: u8 = 8;
 
 /// A pace note as the HUD shows it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -298,8 +298,9 @@ pub struct StackNote {
 
 /// `HUD::Update`'s pace stack over `keys` (DSH1's: the symbol key behind the car, when there is one, then the next
 /// ones) at the car's distance `car`: the passed one while the car is in the first half of the way to the next (alpha
-/// 0.5 less the fraction covered), then the next `count - 1` (the original's loop stops one short of `PN_STACK`), the
-/// first at 0.3 + 0.2 of the fraction, the last of them at 0.3 times the fraction, the rest at 0.3.
+/// 0.5 less the fraction covered), then the next `count` (ours: the original's loop stops one short of `PN_STACK`, so
+/// its setting 4 shows 3), the first at 0.3 + 0.2 of the fraction, the last of them at 0.3 times the fraction, the rest
+/// at 0.3.
 pub fn pace_stack(keys: &[StackKey], car: f32, count: u8) -> Vec<StackNote> {
     let keys: Vec<CustomKey> =
         keys.iter().filter_map(|k| Some(CustomKey { distance: k.distance, symbol: pace::symbol(k.tag)? })).collect();
@@ -323,11 +324,11 @@ pub fn custom_stack(keys: &[CustomKey], car: f32, count: u8) -> Vec<StackNote> {
         let alpha = STACK_PASSED - fraction;
         out.push(StackNote { symbol: key.symbol, alpha, passed: true, fraction });
     }
-    let shown = usize::from(count.min(STACK_MAX)).saturating_sub(1);
+    let shown = usize::from(count.min(STACK_MAX));
     for (i, key) in ahead.iter().take(shown).enumerate() {
         let alpha = if i == 0 {
             fraction * STACK_FIRST + STACK_ALPHA
-        } else if i + 2 == usize::from(count) {
+        } else if i + 1 == shown {
             fraction * STACK_ALPHA
         } else {
             STACK_ALPHA
@@ -775,6 +776,17 @@ mod tests {
         assert_eq!(stack[1].symbol, pace::symbol(1).unwrap());
         assert!(custom_stack(&[], 35.0, 4).is_empty());
         assert!(custom_stack(&keys, 35.0, 0).is_empty());
+    }
+
+    #[test]
+    fn the_stack_shows_every_note_it_is_set_to() {
+        // Ours: the original's loop stops one short of the setting, so its 4 showed 3.
+        let keys: Vec<CustomKey> = (1..=12).map(|i| custom_key(i as f32 * 10.0, 3)).collect();
+        for count in 1..=STACK_MAX {
+            let ahead = custom_stack(&keys, 5.0, count).iter().filter(|n| !n.passed).count();
+            assert_eq!(ahead, usize::from(count));
+        }
+        assert_eq!(custom_stack(&keys, 5.0, 200).len(), usize::from(STACK_MAX));
     }
 
     #[test]

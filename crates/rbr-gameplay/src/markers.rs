@@ -368,8 +368,9 @@ pub fn spoken_tag(tag: u32) -> bool {
     matches!(tag, 0x00..=0x0c | 0x0e | 0x10..=0x14 | 0x19..=0x1c | 0x20)
 }
 
-/// How many symbol keys the HUD's pace stack keeps from the next one on (HUD +0x1d0..+0x1e0).
-pub const PACE_STACK_KEYS: usize = 5;
+/// How many symbol keys the HUD's pace stack keeps from the next one on. Ours: 8, for the largest stack setting; the
+/// original keeps 5 (HUD +0x1d0..+0x1e0).
+pub const PACE_STACK_KEYS: usize = 8;
 
 /// The keys of `HUD::Update`'s pace stack (0x578c30, with `PN_STACK` and the 3D notes reading them): the symbol key
 /// before the car's distance `x` (`E12_FindKey` 0x477d40 then the walk back, 0x475e20), when there is one, then the next
@@ -393,7 +394,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_pace_stack_is_the_last_symbol_behind_and_the_next_five() {
+    fn the_pace_stack_is_the_last_symbol_behind_and_the_next_eight() {
         let keys: Vec<MarkerKey> =
             [(3, 10.0), (0x15, 20.0), (8, 30.0), (0x0d, 40.0), (1, 50.0), (2, 60.0), (4, 70.0), (5, 80.0), (6, 90.0)]
                 .iter()

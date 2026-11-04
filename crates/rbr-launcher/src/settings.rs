@@ -14,6 +14,7 @@ use rbr_render::camera_prefs::CameraPrefs;
 use rbr_render::coords;
 use rbr_render::ffb;
 use rbr_render::glass::model::Switch;
+use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
@@ -221,7 +222,7 @@ pub struct Settings {
     pub mph: Option<bool>,
     /// The FPS counter (`viewer --fps`).
     pub fps: Option<bool>,
-    /// The pace stack's notes (`viewer --pace-stack`, 0 to 4).
+    /// The pace stack's notes (`viewer --pace-stack`, 0 to 8).
     pub pace_stack: Option<u8>,
     /// The working dials (`viewer --no-dials` when off).
     pub dials: Option<bool>,
@@ -575,7 +576,7 @@ impl Settings {
                 _ => None,
             }),
             fps: launcher.on_off("fps"),
-            pace_stack: launcher.number("pace_stack").filter(|n| *n <= 4),
+            pace_stack: launcher.number("pace_stack").filter(|n| *n <= STACK_MAX),
             dials: launcher.on_off("dials"),
             hide_wheel: launcher.on_off("hide_wheel"),
             hud_hide: launcher.get("hud_hide").and_then(|v| Parts::hiding(&v).ok()),
@@ -1299,7 +1300,7 @@ mod tests {
         let unset = Settings::parse("[launcher]\ncodriver_voice = \nmy_pacenotes = maybe\n");
         assert_eq!((unset.codriver_voice, unset.my_pacenotes), (None, None));
         assert!(text.contains("hud = off\nunits = mph\nfps = on\npace_stack = 2\nwipers = intermittent\n"));
-        assert_eq!(Settings::parse("[launcher]\npace_stack = 5\n").pace_stack, None);
+        assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(
             text.contains("wipers = intermittent\ndials = off\nhide_wheel = on\nhud_hide = progress,car\n"),
             "{text}"
@@ -1557,7 +1558,8 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nengine_volume = 2\n").engine_volume, Some(2.0));
         assert_eq!(Settings::parse("[launcher]\nengine_volume = 2.1\n").engine_volume, None);
         assert_eq!(Settings::parse("[launcher]\npace_stack = 4\n").pace_stack, Some(4));
-        assert_eq!(Settings::parse("[launcher]\npace_stack = 5\n").pace_stack, None);
+        assert_eq!(Settings::parse("[launcher]\npace_stack = 8\n").pace_stack, Some(8));
+        assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 50\n").render_scale, Some(50));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 87\n").render_scale, Some(87));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 80\n").render_scale, None);

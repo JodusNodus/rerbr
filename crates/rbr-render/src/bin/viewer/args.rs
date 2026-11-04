@@ -8,6 +8,7 @@ use rbr_render::coords;
 use rbr_render::damage::{self, Zones};
 use rbr_render::ffb;
 use rbr_render::ghost;
+use rbr_render::hud::model::STACK_MAX;
 use rbr_render::glass;
 use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
@@ -215,7 +216,7 @@ pub struct HudOptions {
     pub show: bool,
     pub mph: bool,
     pub fps: bool,
-    /// `--pace-stack N`: the pace stack's notes (`PN_STACK`, 0 to 4; 0, the game's default, hides it).
+    /// `--pace-stack N`: the pace stack's notes (`PN_STACK`, 0 to 8 here, 4 in the game; 0, its default, hides it).
     pub stack: u8,
     /// `--hud-hide LIST`: the HUD's parts shown (`rbr_render::hud::Part`), all by default.
     pub parts: Parts,
@@ -576,8 +577,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--mph" => hud.mph = true,
             "--fps" => hud.fps = true,
             "--pace-stack" => {
-                let value = args.next().ok_or("--pace-stack needs 0 to 4")?;
-                hud.stack = value.parse().ok().filter(|n| *n <= 4).ok_or(format!("--pace-stack {value}: 0 to 4"))?;
+                let value = args.next().ok_or("--pace-stack needs 0 to 8")?;
+                hud.stack = value.parse().ok().filter(|n| *n <= STACK_MAX).ok_or(format!("--pace-stack {value}: 0 to {STACK_MAX}"))?;
             }
             "--hud-hide" => hud.parts = Parts::hiding(&args.next().ok_or("--hud-hide needs a list of HUD parts")?)?,
             "--at-drive" => at_drive = Some(PathBuf::from(args.next().ok_or("--at-drive needs a recording")?)),
