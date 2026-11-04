@@ -244,6 +244,66 @@ fn a_championship_start_waits_for_the_confirm() {
     });
 }
 
+/// The school record (SCH1): a lesson's drive sends one after MNU1, with the lesson, the brief while the
+/// countdown waits for the confirm, the drive after it, and the kept verdict at the end; a restart clears it.
+/// A quick race sends none.
+#[test]
+fn the_school_record_stands_where_the_lesson_does() {
+    use rbr_gameplay::school::Lesson;
+    let (Some(install), Some(patch), Some(ngp)) = (
+        std::env::var_os("RBR_DATA").map(PathBuf::from),
+        std::env::var_os("RBR_PATCH").map(PathBuf::from),
+        std::env::var_os("RBR_NGP_PHYSICS").map(PathBuf::from),
+    ) else {
+        eprintln!("RBR_DATA, RBR_PATCH or RBR_NGP_PHYSICS unset; skipped");
+        return;
+    };
+    on_big_stack(move || {
+        let data = Data::new(install, Some(patch));
+        let lesson = Lesson::new(2).unwrap();
+        let stage = stage_data(&data, "track-83_M", 5).unwrap();
+        let season = Season::load(&data).unwrap();
+        let weather = weather::quick_race(&season, lesson.map(), Preset::Good, Draws::default()).unwrap();
+        let race = boot::Race::quick_race(lesson.map(), 5, 3, weather, ngp.clone()).in_school(lesson);
+        let mut live = Live::boot(&data, "track-83_M", &race, &stage, MarkerSettings::default(), true).unwrap();
+        live.pace(f64::from(rbr_recording::STEP_SECONDS));
+        let school_of = |answer: &[u8]| {
+            let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
+            let records = records::read_records(&mut &rest[..]).unwrap();
+            let (_, body) = records.iter().find(|(tag, _)| *tag == school::SCH1).expect("SCH1");
+            School::read_body(body).unwrap()
+        };
+        let has_school = |answer: &[u8]| {
+            let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
+            let records = records::read_records(&mut &rest[..]).unwrap();
+            records.iter().any(|(tag, _)| *tag == school::SCH1)
+        };
+        let input = |flags| Input { flags, ..Input::default() }.to_bytes();
+        let brief = school_of(&live.answer(&input(0)).unwrap());
+        assert_eq!((brief.lesson, brief.state), (2, school::STATE_BRIEF));
+        assert_eq!(brief.verdict, school::NO_VERDICT, "no verdict before the end");
+        assert_eq!(brief.incident, 0);
+        assert_eq!((brief.perfect, brief.pass), (9.0, 10.0), "lesson 2's times");
+        // The confirm starts the lesson's drive at once.
+        let driving = school_of(&live.answer(&input(ACCEPT_MESSAGE)).unwrap());
+        assert_eq!((driving.lesson, driving.state), (2, school::STATE_DRIVING));
+        // The pause menu's retire ends it, keeping its verdict; a restart clears the kept one.
+        let end = school_of(&live.answer(&input(RETIRE)).unwrap());
+        assert_eq!((end.lesson, end.state), (2, school::STATE_ENDED));
+        assert_ne!(end.verdict, school::NO_VERDICT, "the kept verdict");
+        live.restart();
+        let again = school_of(&live.answer(&input(0)).unwrap());
+        assert_eq!((again.lesson, again.state), (2, school::STATE_BRIEF));
+        assert_eq!(again.verdict, school::NO_VERDICT, "restart clears it");
+        // A quick race sends no school record.
+        let stage = stage_data(&data, "track-11_O", 5).unwrap();
+        let weather = weather::quick_race(&season, 11, Preset::Good, Draws::default()).unwrap();
+        let race = boot::Race::quick_race(11, 5, 3, weather, ngp);
+        let mut live = Live::boot(&data, "track-11_O", &race, &stage, MarkerSettings::default(), true).unwrap();
+        assert!(!has_school(&live.answer(&input(0)).unwrap()));
+    })
+    .unwrap();
+}
 /// A payload of several periods (`Input::frames`, a viewer behind real time) is one game frame of their wall
 /// time: the same answers as a process paced at that time a payload, frames of 15 to 18 steps once driving.
 #[test]

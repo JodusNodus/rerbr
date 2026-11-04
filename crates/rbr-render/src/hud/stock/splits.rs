@@ -34,8 +34,15 @@ fn colour(difference: f32) -> Color32 {
 
 /// Draws the split panel for `record` over the top of `screen`, when there is one to show; `page` is the race's end
 /// page once it is over (FLW1). `flash`, the top of the space under the clock, shows a passed split's panel there; the
-/// finish and end pages always show.
-pub fn paint(painter: &Painter, screen: Rect, record: &Splits, page: Option<u32>, flash: Option<f32>) {
+/// finish and end pages always show. On a school drive (`school`) none of the end pages show: the lesson ends on its
+/// verdict panel (`super::school`).
+pub fn paint(painter: &Painter, screen: Rect, record: &Splits, page: Option<u32>, flash: Option<f32>, school: bool) {
+    if school {
+        if let (Some((number, split)), Some(top)) = (splits::flash(record), flash) {
+            flash_panel(painter, Pos2::new(screen.min.x + MARGIN, top), number, split);
+        }
+        return;
+    }
     if record.retired {
         retired_panel(painter, screen, record, page);
     } else if record.over && record.standing.is_some() {

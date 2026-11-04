@@ -23,8 +23,11 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprit
     let s = &r.state;
     let font = FontId::proportional;
     let centre = screen.center().x;
-    if let Some(call) = r.race.as_ref().and_then(countdown_call) {
-        countdown::paint(painter, Pos2::new(centre, screen.height() * 0.3 + 20.0), &call);
+    // A lesson has no countdown: its confirm drives at once (the clock's word stays at the reset).
+    if s.school.is_none() {
+        if let Some(call) = r.race.as_ref().and_then(countdown_call) {
+            countdown::paint(painter, Pos2::new(centre, screen.height() * 0.3 + 20.0), &call);
+        }
     }
     if let Some(alpha) = s.false_start {
         let colour = Color32::from_rgba_unmultiplied(235, 60, 50, (alpha * 255.0) as u8);

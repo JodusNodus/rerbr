@@ -12,8 +12,8 @@
 //! and the warnings' texts here. A recorded drive has none of the live records, so those are empty.
 //!
 //! Over any HUD the viewer draws the race's own screens, which are not the HUD's: a retire's tints, message boxes and
-//! FAILED page (`retire`, through [`paint_readout`]) and the pause menu (`pause`) with its Camera page
-//! (`camera_page`).
+//! FAILED page (`retire`, through [`paint_readout`]), the rally-school lesson's brief, toasts and verdict (`school`)
+//! and the pause menu (`pause`) with its Camera page (`camera_page`).
 
 use egui::{Pos2, Rect, Vec2};
 
@@ -28,6 +28,7 @@ pub mod pace;
 pub mod pause;
 pub mod results;
 pub mod retire;
+pub mod school;
 pub mod splits;
 pub mod stock;
 
@@ -328,10 +329,11 @@ impl Overlay {
     }
 }
 
-/// `hud`'s HUD for `readout` and the retire's screens over it.
+/// `hud`'s HUD for `readout`, the retire's screens over it, and the rally-school's.
 pub fn paint_readout(ctx: &egui::Context, hud: &mut dyn Hud, readout: &Readout) {
     hud.paint(ctx, readout);
     retire::paint(ctx, &readout.state, readout.splits.as_ref());
+    school::paint(ctx, &readout.state);
 }
 
 #[cfg(test)]

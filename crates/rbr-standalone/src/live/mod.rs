@@ -70,6 +70,7 @@ use rbr_gameplay::game::{ControlPath, FrameInput, Game};
 use rbr_gameplay::ini::Ini;
 use rbr_gameplay::markers::{MarkerEvent, MarkerSettings, PaceCallout};
 use rbr_gameplay::race_clock::RaceClock;
+use rbr_gameplay::school::step::SchoolEvent;
 use rbr_gameplay::stage::{Stage, State};
 use rbr_gameplay::tick::SETTLE_SUBSTEPS;
 use rbr_hybrid::pure::{self, Playback, CAR_BYTES, CAR_PTR};
@@ -85,6 +86,7 @@ use rbr_recording::live as records;
 use rbr_recording::menu::Menu;
 use rbr_recording::pacenote::{self, PCN1};
 use rbr_recording::particles;
+use rbr_recording::school::{self, School};
 use rbr_recording::sound::{TyreMax, SND1};
 use rbr_recording::{CONTROL_BYTES, MAGIC};
 
@@ -136,6 +138,9 @@ pub struct Live<'a> {
     detach: Vec<(u32, u32)>,
     /// The `.trk` driveline values (the car's distance in the dash record).
     track: Vec<f32>,
+    /// The rally school's verdict at the drive's end (`race_end`), for the answers' SCH1 record; none before
+    /// the end, and [`Live::restart`] clears it.
+    school_verdict: Option<u32>,
     /// The player's stage record and personal best (`--saves`).
     saves: Option<Saves>,
     /// The start clock's time of day, s after midnight (`set_start_clock`).
@@ -284,6 +289,7 @@ impl<'a> Live<'a> {
             track,
             time_of_day: None,
             initial_time_of_day: None,
+            school_verdict: None,
             saves: None,
             rally_next: RallyNext::default(),
             initial,
@@ -315,6 +321,7 @@ impl<'a> Live<'a> {
         self.pending = Pending::default();
         self.penalties = 0.0;
         self.stopped = false;
+        self.school_verdict = None;
         self.last = Self::first_picture(&self.playback, &self.game, self.stage, &self.detach);
     }
 
@@ -366,7 +373,7 @@ impl<'a> Live<'a> {
 
     /// The answer of a frame that echoes `payload` and ran `substeps` from step `pre`: the frame and HUD record and
     /// the tagged records of the last picture.
-    fn answer_bytes(&self, payload: &[u8; CONTROL_BYTES], pre: u32, substeps: u32) -> Vec<u8> {
+    fn answer_bytes(&mut self, payload: &[u8; CONTROL_BYTES], pre: u32, substeps: u32) -> Vec<u8> {
         let camera = match self.game.start_camera().and_then(|c| c.angle()) {
             Some(angle) => Camera { mode: MODE_START_ORBIT, angle },
             None => Camera { mode: MODE_CHASE, angle: 0.0 },
@@ -374,6 +381,7 @@ impl<'a> Live<'a> {
         .record();
         let clock = self.clock.record();
         let menu = self.menu().record();
+        let school = self.school_record();
         let mut out = Vec::new();
         for word in [MAGIC, pre, pre + substeps, substeps, CAR_BYTES as u32] {
             out.extend_from_slice(&word.to_le_bytes());
@@ -397,6 +405,9 @@ impl<'a> Live<'a> {
         out.extend_from_slice(&self.last.gearbox);
         out.extend_from_slice(&self.last.hub);
         out.extend_from_slice(&menu);
+        if let Some(school) = school {
+            out.extend_from_slice(&school);
+        }
         out.extend_from_slice(&self.last.fmod_block);
         out.extend_from_slice(&self.last.carried);
         records::write_record(&mut out, records::CTL1, &self.control);
@@ -663,6 +674,7 @@ impl<'a> Live<'a> {
             let damage = rally::stage_out(&self.playback.pure.mem, *end, false).damage;
             let (lesson, verdict) = (school.lesson(), school.verdict(end.end_race.time, &damage));
             eprintln!("step {step}: rally school lesson {} verdict {verdict} of 4", lesson.index());
+            self.school_verdict = Some(verdict);
             if let Some(saves) = self.saves.as_mut() {
                 match saves.school(lesson, verdict) {
                     Ok(results) => eprintln!("step {step}: the school results are {results:?}"),
@@ -700,6 +712,39 @@ impl<'a> Live<'a> {
             help: driving && self.game.help_offered(),
             over: state == State::Ended,
         }
+    }
+
+    /// The school record (SCH1) after MNU1, only for a lesson's drive: the lesson, where it stands, the kept
+    /// verdict (none before the end), the race time and the lesson's times, and this answer's last incident code.
+    /// Takes the answer's events, as the viewer's panels read them.
+    fn school_record(&mut self) -> Option<Vec<u8>> {
+        let events = self.game.school_mut()?.take_events();
+        let school = self.game.school().expect("a lesson's drive");
+        let state = match self.game.stage().state() {
+            State::Countdown => school::STATE_BRIEF,
+            State::Ended => school::STATE_ENDED,
+            _ => school::STATE_DRIVING,
+        };
+        let incident = events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                SchoolEvent::Incident { code } => Some(*code as u32),
+                _ => None,
+            })
+            .unwrap_or(0);
+        Some(
+            School {
+                lesson: school.lesson().index(),
+                state,
+                verdict: self.school_verdict.unwrap_or(school::NO_VERDICT),
+                time: self.game.race_clock().time,
+                perfect: school.bank().perfect_time,
+                pass: school.bank().pass_time,
+                incident,
+            }
+            .record(),
+        )
     }
 
     /// The FLW1 record of a frame: its events, and where the flow stands after it.

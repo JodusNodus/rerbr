@@ -70,6 +70,12 @@ impl Mode {
     pub fn confirm_arms(self) -> bool {
         matches!(self.0, 3..=5)
     }
+
+    /// The countdown waits for the player's confirm: the modes that arm it, and the rally school, whose brief's
+    /// confirm starts the lesson at once (`Stage::school_start`, no countdown).
+    pub fn start_waits(self) -> bool {
+        self.confirm_arms() || self.school()
+    }
 }
 
 /// `E60Flow::M566640` and its twin `M5665f0` (0x566640/0x5665f0), the assistance gate: open unless the mode is the
@@ -714,6 +720,10 @@ mod tests {
         assert!(!Mode::CHAMPIONSHIP.camera_go() && !Mode(4).camera_go() && !Mode::SCHOOL.camera_go());
         assert!((3..=5).all(|m| Mode(m).confirm_arms()));
         assert!(![0, 1, 2, 6, 7, 8].iter().any(|&m| Mode(m).confirm_arms()));
+        // The countdown waits in the modes that arm it, and in the rally school (the brief's confirm).
+        assert!((3..=5).all(|m| Mode(m).start_waits()));
+        assert!(Mode::SCHOOL.start_waits());
+        assert!(![0, 1, 2, 6, 8].iter().any(|&m| Mode(m).start_waits()));
     }
 
     #[test]

@@ -466,6 +466,8 @@ impl Live {
             answer.hud.race.is_some_and(|r| r.jump_start),
             answer.flow.as_ref(),
         );
+        // The rally-school lesson's screens (SCH1), on a school drive: none clears them.
+        self.hud_model.set_school(periods as f32 * rbr_recording::STEP_SECONDS, answer.school.as_ref());
         self.interactive_poses.extend(answer.poses.into_iter().map(|pose| (pose.handle, pose)));
         self.stats.answer(u32::from_le_bytes(frame[12..16].try_into().expect("a frame header")));
         frame
