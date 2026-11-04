@@ -119,10 +119,13 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   camera key cycles the views, V resets the mouse look, Esc closes.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
-  their Basic/Advanced groups (all open, user decision), each row its number (`RSM_LESSON_NRB/A`), title and best
-  result; the detail its instruction and cone guide (`brief_keys`), surface (from the lesson's setup file), the
-  pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: untimed) and Drive lesson. Results
-  are the profile's school array (`Profile::school`, 0/-/1..3 Passed n/4/4 Perfect), re-read on change. Drive
+  their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
+  the group, title and grade pips; the detail its label (`RSM_LESSON_NRB/A`, the table's period dropped), title,
+  instruction, cone guide with coloured markers (`brief_keys`), surface (from the lesson's setup file), the
+  pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: Untimed), the best result, the Drive
+  page's car with a link there, what comes first (`Lesson::demonstrated`, the ride) and Drive lesson (Ride along
+  for lesson 6; a double-click on a row starts it too). Results are the profile's school array (`Profile::school`,
+  0 not passed, 1..3 Passed n/4, 4 Perfect), re-read on change. Drive
   lesson starts like the Drive page's Start on good weather (`command::start_school`, `rbr-standalone --school N`
   with `--saves`/`--profile`; `--tyre`/`--setup`/`--season-row` left out) in the Drive page's car, retail or RSF
   (user decision 2026-11-04: a car slot names no particular car outside a vanilla install). It is blocked while

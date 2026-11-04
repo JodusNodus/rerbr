@@ -22,8 +22,9 @@ use rbr_formats::saves::{Kind, SaveDir};
 use rbr_formats::strings::Strings;
 use rbr_school::Lesson;
 
+use crate::browser::{DIM, GREY, STAR};
 use crate::catalog::car_label;
-use crate::pages::{section, Issue, ACCENT, DRIVE_FIELDS, WARN};
+use crate::pages::{section, Issue, Page, ACCENT, DRIVE_FIELDS, GOOD, WARN};
 use crate::Form;
 
 /// The page's state: the English string table, the selected lesson, the lesson times and the player's results.
@@ -102,17 +103,102 @@ pub fn lesson_label(strings: Option<&Strings>, lesson: Lesson) -> String {
     };
     strings
         .and_then(|s| s.get(&key))
-        .map(|t| t.replace('\n', " "))
-        .unwrap_or_else(|| format!("Lesson {}", lesson.index() + 1))
+        .map(|t| t.replace('\n', " ").trim().trim_end_matches('.').to_owned())
+        .unwrap_or_else(|| format!("Lesson {}", lesson.index() - group_start(lesson) + 1))
+}
+
+/// The first lesson of `lesson`'s group.
+fn group_start(lesson: Lesson) -> u32 {
+    if lesson.index() < Lesson::FIRST_ADVANCED {
+        0
+    } else {
+        Lesson::FIRST_ADVANCED
+    }
+}
+
+/// The lessons of `lesson`'s group.
+fn group_lessons(lesson: Lesson) -> impl Iterator<Item = Lesson> {
+    let first = group_start(lesson);
+    Lesson::all().filter(move |l| group_start(*l) == first)
 }
 
 /// The player's best result: 0 is not passed, 1..3 passed with the grade, 4 perfect.
 pub fn result_text(grade: u32) -> String {
     match grade {
-        0 => "-".to_owned(),
+        0 => "Not passed".to_owned(),
         4 => "Perfect".to_owned(),
         n @ 1..=3 => format!("Passed {n}/4"),
         n => format!("{n}/4"),
+    }
+}
+
+/// The result's colour: gold for perfect, green for passed, grey for not passed.
+fn result_colour(grade: u32) -> Color32 {
+    match grade {
+        0 => GREY,
+        4 => STAR,
+        _ => GOOD,
+    }
+}
+
+/// A grade as four pips, `grade` of them filled in its colour; nothing for a lesson not passed.
+fn grade_pips(ui: &mut egui::Ui, grade: u32) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(4.0 * PIP_STEP, PIP_STEP), egui::Sense::hover());
+    if grade > 0 {
+        let colour = result_colour(grade);
+        for k in 0..4u32 {
+            let centre = egui::pos2(rect.left() + PIP_STEP * (k as f32 + 0.5), rect.center().y);
+            if k < grade {
+                ui.painter().circle_filled(centre, PIP_RADIUS, colour);
+            } else {
+                ui.painter().circle_stroke(centre, PIP_RADIUS, egui::Stroke::new(1.0, DIM));
+            }
+        }
+    }
+    response.on_hover_text(result_text(grade))
+}
+
+/// The lesson number column's width (points), so one- and two-digit numbers line their titles up.
+const NUMBER_WIDTH: f32 = 18.0;
+
+/// The pips' spacing and radius (points).
+const PIP_STEP: f32 = 11.0;
+const PIP_RADIUS: f32 = 3.5;
+
+/// A cone guide line's colour, by the cone colour it starts with (`Red cones - Lift off throttle`).
+fn cone_colour(line: &str) -> Color32 {
+    let word = line.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+    match word.as_str() {
+        "red" => Color32::from_rgb(220, 70, 60),
+        "green" => Color32::from_rgb(80, 190, 90),
+        "yellow" => Color32::from_rgb(235, 200, 60),
+        "blue" => Color32::from_rgb(80, 140, 230),
+        "white" => Color32::from_gray(225),
+        _ => GREY,
+    }
+}
+
+/// The cone guide, one line a cone colour with its marker.
+fn cone_guide(ui: &mut egui::Ui, text: &str) {
+    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 12.0), egui::Sense::hover());
+            let (top, base) = (rect.center_top(), rect.bottom());
+            let points = vec![top, egui::pos2(rect.right(), base), egui::pos2(rect.left(), base)];
+            ui.painter().add(egui::Shape::convex_polygon(points, cone_colour(line), egui::Stroke::NONE));
+            ui.label(line);
+        });
+    }
+}
+
+/// What the lesson plays before the drive, or instead of it.
+fn lesson_flow(lesson: Lesson) -> &'static str {
+    if lesson.ride() {
+        "Ride along while Richard drives the stage (Enter skips). The ride counts as perfect."
+    } else if lesson.demonstrated() {
+        "Richard shows the lesson first (Enter skips it), then you drive it."
+    } else {
+        "No demonstration: you drive the lesson straight from the brief."
     }
 }
 
@@ -170,28 +256,35 @@ impl Form {
         let profile = self.rally.profile.clone();
         let blocker = self.school_blocker();
         let car = self.car().map_or_else(|| "none".to_owned(), car_label);
-        let mut drive = None;
+        let (mut drive, mut to_drive_page) = (None, false);
         {
             let school = &mut self.school;
             let grades = school.results(&saves, &profile);
+            let grade = |lesson: Lesson| grades[lesson.index() as usize];
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(DRIVE_FIELDS);
                     egui::ScrollArea::vertical().id_salt("school").show(ui, |ui| {
-                        for (group, key) in [group_of(Lesson::new(0).unwrap()), group_of(Lesson::new(16).unwrap())] {
-                            section(ui, group);
-                            ui.colored_label(Color32::GRAY, school.text(key));
-                            for i in 0..Lesson::COUNT {
-                                let lesson = Lesson::new(i).unwrap();
-                                if group_of(lesson).0 != group {
-                                    continue;
-                                }
-                                let title = school.text(lesson.title_key());
-                                let row = format!("{} · {title}", lesson_label(school.strings.as_ref(), lesson));
+                        for first in [Lesson::new(0).unwrap(), Lesson::new(Lesson::FIRST_ADVANCED).unwrap()] {
+                            let (group, key) = group_of(first);
+                            let passed = group_lessons(first).filter(|l| grade(*l) > 0).count();
+                            let total = group_lessons(first).count();
+                            section(ui, &format!("{group}  ·  {passed}/{total} passed"));
+                            ui.colored_label(GREY, school.text(key));
+                            ui.add_space(2.0);
+                            for lesson in group_lessons(first) {
+                                let i = lesson.index();
                                 ui.horizontal(|ui| {
-                                    ui.selectable_value(&mut school.selected, i, row);
+                                    let number = RichText::new((i - group_start(lesson) + 1).to_string()).color(GREY);
+                                    let height = ui.spacing().interact_size.y;
+                                    ui.add_sized([NUMBER_WIDTH, height], egui::Label::new(number));
+                                    let title = school.text(lesson.title_key());
+                                    let item = ui.selectable_value(&mut school.selected, i, title);
+                                    if item.double_clicked() && blocker.is_none() {
+                                        drive = Some(lesson);
+                                    }
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.label(result_text(grades[i as usize]));
+                                        grade_pips(ui, grade(lesson));
                                     });
                                 });
                             }
@@ -201,38 +294,47 @@ impl Form {
                 ui.add_space(20.0);
                 ui.vertical(|ui| {
                     let lesson = Lesson::new(school.selected).unwrap_or(Lesson::new(0).unwrap());
-                    let title = school.text(lesson.title_key());
                     let (instruction, cones) = lesson.brief_keys();
-                    ui.label(RichText::new(&title).size(16.5).strong());
-                    ui.colored_label(Color32::GRAY, lesson_label(school.strings.as_ref(), lesson));
+                    let (group, _) = group_of(lesson);
+                    ui.colored_label(STAR, format!("{} · {group}", lesson_label(school.strings.as_ref(), lesson)));
+                    ui.label(RichText::new(school.text(lesson.title_key())).size(18.0).strong());
                     ui.add_space(4.0);
                     ui.label(school.text(&instruction));
-                    ui.add_space(4.0);
-                    ui.label(format!("Cones: {}", school.text(&cones)));
+                    ui.add_space(6.0);
+                    cone_guide(ui, &school.text(&cones));
                     ui.add_space(8.0);
                     crate::pages::fields(ui, "school-detail", |ui| {
                         ui.label("Surface");
                         ui.label(surface_of(lesson));
                         ui.end_row();
-                        let times = school.times(&data, lesson);
-                        ui.label("Pass time");
-                        ui.label(times.map_or_else(|| "None".to_owned(), |(_, pass)| seconds(pass)));
-                        ui.end_row();
-                        ui.label("Perfect time");
-                        ui.label(times.map_or_else(|| "None".to_owned(), |(perfect, _)| seconds(perfect)));
+                        ui.label("Times");
+                        ui.label(school.times(&data, lesson).map_or_else(
+                            || "Untimed".to_owned(),
+                            |(perfect, pass)| format!("pass {}  ·  perfect {}", seconds(pass), seconds(perfect)),
+                        ));
                         ui.end_row();
                         ui.label("Best");
-                        ui.label(result_text(grades[lesson.index() as usize]));
+                        ui.horizontal(|ui| {
+                            if grade(lesson) > 0 {
+                                grade_pips(ui, grade(lesson));
+                            }
+                            ui.colored_label(result_colour(grade(lesson)), result_text(grade(lesson)));
+                        });
                         ui.end_row();
                         ui.label("Car");
-                        ui.label(car).on_hover_text("The Drive page's car, on its default setup.");
+                        ui.horizontal(|ui| {
+                            ui.label(&car).on_hover_text("The Drive page's car, on its default setup.");
+                            to_drive_page = ui.link("change").clicked();
+                        });
                         ui.end_row();
                     });
+                    ui.add_space(6.0);
+                    ui.colored_label(GREY, lesson_flow(lesson));
                     ui.add_space(8.0);
-                    let button =
-                        egui::Button::new(RichText::new("Drive lesson").size(20.0).strong().color(Color32::WHITE))
-                            .fill(ACCENT)
-                            .min_size(egui::vec2(180.0, 44.0));
+                    let label = if lesson.ride() { "Ride along" } else { "Drive lesson" };
+                    let button = egui::Button::new(RichText::new(label).size(20.0).strong().color(Color32::WHITE))
+                        .fill(ACCENT)
+                        .min_size(egui::vec2(180.0, 44.0));
                     if ui.add_enabled(blocker.is_none(), button).clicked() {
                         drive = Some(lesson);
                     }
@@ -241,6 +343,9 @@ impl Form {
                     }
                 });
             });
+        }
+        if to_drive_page {
+            self.page = Page::Drive;
         }
         if let Some(lesson) = drive {
             self.start_school(lesson);
@@ -284,7 +389,7 @@ mod tests {
 
     #[test]
     fn result_text_names_the_grades() {
-        assert_eq!(result_text(0), "-");
+        assert_eq!(result_text(0), "Not passed");
         assert_eq!(result_text(1), "Passed 1/4");
         assert_eq!(result_text(3), "Passed 3/4");
         assert_eq!(result_text(4), "Perfect");
@@ -302,10 +407,44 @@ mod tests {
 
     #[test]
     fn lesson_labels_number_the_groups() {
+        // Without the string tables, each group counts from 1 as the tables' `RSM_LESSON_NRB`/`NRA` keys do.
         assert_eq!(lesson_label(None, Lesson::new(0).unwrap()), "Lesson 1");
         assert_eq!(lesson_label(None, Lesson::new(5).unwrap()), "Lesson 6");
-        assert_eq!(lesson_label(None, Lesson::new(6).unwrap()), "Lesson 7");
-        assert_eq!(lesson_label(None, Lesson::new(16).unwrap()), "Lesson 17");
+        assert_eq!(lesson_label(None, Lesson::new(6).unwrap()), "Lesson 1");
+        assert_eq!(lesson_label(None, Lesson::new(16).unwrap()), "Lesson 11");
+        let counts: Vec<usize> =
+            [0, Lesson::FIRST_ADVANCED].map(|i| group_lessons(Lesson::new(i).unwrap()).count()).into();
+        assert_eq!(counts, [6, 11]);
+    }
+
+    /// The table's "Lesson 1." loses its period (`RBR_DATA`), so the label reads cleanly before the group name.
+    #[test]
+    fn lesson_labels_drop_the_tables_period() {
+        let Some(data) = Data::from_env() else {
+            eprintln!("skipping: RBR_DATA not set");
+            return;
+        };
+        let strings = rbr_formats::strings::english(&data).unwrap();
+        for lesson in Lesson::all() {
+            let label = lesson_label(Some(&strings), lesson);
+            assert!(label.starts_with("Lesson ") && !label.ends_with('.'), "{lesson:?}: {label:?}");
+        }
+    }
+
+    #[test]
+    fn cone_lines_take_their_cones_colour() {
+        assert_eq!(cone_colour("Red cones - Lift off throttle"), Color32::from_rgb(220, 70, 60));
+        assert_eq!(cone_colour("green cones - Brake"), Color32::from_rgb(80, 190, 90));
+        assert_eq!(cone_colour("Yellow rectangle - End lesson"), Color32::from_rgb(235, 200, 60));
+        assert_eq!(cone_colour(""), GREY);
+    }
+
+    /// The detail says what comes before the drive: the ride, a demonstration, or neither.
+    #[test]
+    fn the_lesson_flow_names_the_demonstration_and_the_ride() {
+        assert!(lesson_flow(Lesson::new(5).unwrap()).starts_with("Ride along"));
+        assert!(lesson_flow(Lesson::new(2).unwrap()).starts_with("Richard shows"));
+        assert!(lesson_flow(Lesson::new(0).unwrap()).starts_with("No demonstration"));
     }
 
     #[test]

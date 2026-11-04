@@ -60,6 +60,12 @@ impl Lesson {
         matches!(self.0, 0 | 4 | 10 | 13 | 14 | 16)
     }
 
+    /// The lesson plays Richard's drive first (`rse%d.arp`, loaded in a timed lesson's step 2 by
+    /// `E59Host90::M00565c00` 0x565c00): the demonstration, or lesson 5's whole ride.
+    pub fn demonstrated(self) -> bool {
+        !self.untimed()
+    }
+
     /// `E59Host90::M00565960` (0x565960): lessons 4, 5, 13 and 16, which the school's pages treat apart.
     pub fn apart(self) -> bool {
         matches!(self.0, 4 | 5 | 13 | 16)
