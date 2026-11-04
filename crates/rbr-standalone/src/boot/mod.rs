@@ -27,6 +27,7 @@ use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::Mode;
 use rbr_gameplay::race_clock::AssistSettings;
 use rbr_gameplay::race_options::{self, ChampionshipOptions, RaceOptions};
+use rbr_gameplay::school::{self, Lesson};
 use rbr_gameplay::timing::TimeKeeper;
 use rbr_gameplay::weather::Weather;
 use rbr_hybrid::pure::Pure;
@@ -105,6 +106,8 @@ pub struct Race {
     pub flow_mode: u32,
     /// A championship stage's options (flow mode 3): the season's skill and damage level. None outside one.
     pub championship: Option<ChampionshipOptions>,
+    /// A rally school lesson (flow mode 7): the flow's `+0xca4`. None outside the school.
+    pub lesson: Option<Lesson>,
     /// `QueryPerformanceFrequency` (Wine's in the reference runs).
     pub frequency: u64,
     /// NGP's `physics.rbz` (with its cars in their slots): the physics files come from it, parsed with NGP's keys.
@@ -138,6 +141,7 @@ impl Race {
             weather,
             flow_mode: Mode::QUICK_RALLY.value(),
             championship: None,
+            lesson: None,
             frequency: 10_000_000,
             setup: None,
             ngp_physics,
@@ -152,6 +156,21 @@ impl Race {
     /// The race as a championship stage: flow mode 3 with the season's options.
     pub fn in_championship(self, options: ChampionshipOptions) -> Race {
         Race { flow_mode: Mode::CHAMPIONSHIP.value(), championship: Some(options), ..self }
+    }
+
+    /// The race as a rally school lesson: flow mode 7 on the lesson's map with car 5 and the lesson's tyre, its setup
+    /// over the car's default (`car_files`).
+    pub fn in_school(self, lesson: Lesson) -> Race {
+        let map = lesson.map();
+        Race {
+            map,
+            car: school::lesson::CAR,
+            tyre: lesson.tyre(),
+            surface: surface(map),
+            flow_mode: Mode::SCHOOL.value(),
+            lesson: Some(lesson),
+            ..self
+        }
     }
 
     /// The penalty settings the race flow takes: the flow mode, the season's skill (+0x8e84) and the quick race's
@@ -235,6 +254,10 @@ struct CarFiles {
     dir: String,
     physics: [(&'static str, String); 4],
     setup: String,
+    /// A lesson's setup (`Lesson::setup_file`), read after `setup`. `LoadSchool` (0x48df80) parses it alone; under NGP
+    /// ours lays it over the car's default, which holds the NGP keys the 1.02 file lacks (`Features_NGP`, the speed
+    /// maps): unverified against an NGP school run.
+    school_setup: Option<&'static str>,
     options: [String; 2],
     model: String,
 }
@@ -263,6 +286,7 @@ fn car_files(data: &Data, mem: &Mem, race: &Race) -> Result<CarFiles, String> {
             ("Root/physics.rbz", format!("{dir}{surface}.lsp")),
         ],
         setup: format!("{dir}setups/d_{surface}.lsp"),
+        school_setup: race.lesson.map(Lesson::setup_file),
         options: [format!("Physics/{brand}/tyres.lsp"), format!("{dir}r_{surface}.lsp")],
         model,
         dir,
@@ -280,6 +304,8 @@ const SIGNALS: u32 = 0x0089_3600;
 const FLOW: u32 = 0x0165_FA90;
 const FLOW_SIZE: u32 = 0xCB0;
 const FLOW_HOST: u32 = 0xC98;
+/// The flow's lesson word (`E59Extra::M5657b0`, 0x5657b0), which mode 7's tests read (`E60_566690`, 0x566690).
+const FLOW_LESSON: u32 = 0xCA4;
 /// The game's `CCompleteCarSetup` and `CCompleteCarSetupOptions` (NGP's `0x10011cb0` and `0x10013cd0` read them).
 const COMPLETE_SETUP: u32 = 0x007E_CD00;
 const SETUP_OPTIONS: u32 = 0x007E_CD04;
@@ -469,6 +495,9 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     let flow = heap.take(FLOW_SIZE);
     mem.set_u32(flow, race.flow_mode);
     mem.set_u32(flow + FLOW_HOST, heap.take(0x10));
+    if let Some(lesson) = race.lesson {
+        mem.set_u32(flow + FLOW_LESSON, lesson.index());
+    }
     mem.set_u32(FLOW, flow);
     // The menu settings the loads read (`E66MenuSettings`): the damage selection the step reads, and the others.
     for (at, word) in race.options.globals() {
@@ -501,6 +530,10 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     mem.set_u32(SETUP_OPTIONS, options);
     let root = lsp_root(data, race, &car_files, "Root/physics.rbz", &car_files.setup)?;
     load::setup_file(&mut mem, &mut files, complete, &root).map_err(|e| format!("{}: {e:?}", car_files.setup))?;
+    if let Some(file) = car_files.school_setup {
+        let root = lsp_root(data, race, &car_files, "Root/physics.rbz", file)?;
+        load::setup_file(&mut mem, &mut files, complete, &root).map_err(|e| format!("{file}: {e:?}"))?;
+    }
     if let Some(root) = &race.setup {
         load::setup_file(&mut mem, &mut files, complete, root).map_err(|e| format!("the player's setup: {e:?}"))?;
     }

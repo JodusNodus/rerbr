@@ -48,7 +48,7 @@ impl<'a> Pilot<'a> {
         match self {
             Pilot::Recording(controls) => controls.get(&live.next_step()).copied(),
             Pilot::Autopilot { driver, report } => {
-                let q = if live.game().race_clock().counting_down() {
+                let q = if live.game().race_clock().start_pending(live.game().assist_settings()) {
                     QuantizedControl { handbrake: 255, throttle: 255, ..QuantizedControl::default() }
                 } else if driver.gave_up.is_some() {
                     QuantizedControl { brake: 255, ..QuantizedControl::default() }
@@ -214,10 +214,10 @@ pub fn drive(
                 break;
             }
         }
-        // The drive waits on the handbrake until the start countdown is out, as a jump start would add its penalty
-        // (and its playback would take it again under `--live --pilot` or in the game), with the engine revved in
-        // neutral (NGP's clutch help stalls a car put into first at idle, `notes/ngp.md`).
-        let q = if live.game().race_clock().counting_down() {
+        // The drive waits on the handbrake until the start countdown is out (none in the rally school), as a jump start
+        // would add its penalty (and its playback would take it again under `--live --pilot` or in the game), with the
+        // engine revved in neutral (NGP's clutch help stalls a car put into first at idle, `notes/ngp.md`).
+        let q = if live.game().race_clock().start_pending(live.game().assist_settings()) {
             QuantizedControl { handbrake: 255, throttle: 255, ..QuantizedControl::default() }
         } else {
             driver.control(step + 1, &sense, finished)

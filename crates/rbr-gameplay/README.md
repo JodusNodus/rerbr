@@ -21,6 +21,7 @@ The 1.02 gameplay loop around the physics step, pure and checked against the ori
 | `pause_menu` | Pause menu items per mode, confirm boxes, retire |
 | `result` | Stage result: running, finished or retired, time, penalties, splits |
 | `record` | Stage record and personal best in `pfresult.rst` and `pf<name>.rbr` |
+| `school/` | Rally school (flow mode 7): lessons' maps, setups, tyres and flow tests |
 | `race_options` | Quick race and championship options to menu globals and penalty settings |
 | `weather` | Quick race weather row and wear draw; default tyre kind |
 | `crt` | msvcr71 `rand()` and `qsort` |

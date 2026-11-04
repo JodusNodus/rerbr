@@ -24,6 +24,7 @@ pub mod race_clock;
 pub mod race_options;
 pub mod record;
 pub mod result;
+pub mod school;
 pub mod season;
 pub mod season_events;
 pub mod season_store;

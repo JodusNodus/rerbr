@@ -124,9 +124,10 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         surface,
         ..boot::Race::quick_race(stage.number, car, tyre, weather, ngp_physics)
     };
-    let race = match args.championship {
-        Some(championship) => boot::Race { false_starts: args.false_starts, ..race.in_championship(championship) },
-        None => race,
+    let race = match (args.championship, args.lesson) {
+        (Some(championship), _) => boot::Race { false_starts: args.false_starts, ..race.in_championship(championship) },
+        (None, Some(lesson)) => race.in_school(lesson),
+        (None, None) => race,
     };
     Ok((data, Some(race)))
 }
