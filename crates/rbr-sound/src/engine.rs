@@ -11,6 +11,11 @@ const RPM_PER_RAD_S: f32 = 9.549_296;
 /// The rpm the slew target is clamped to (0x731cd4, 0x731cd8); below the low one the engine voice stops. NGP reads
 /// the low one from NGP.dll (`rbr_recording::sound::NgpSound::min_rpm`; the exe's is 500).
 pub const MAX_RPM: f32 = 9000.0;
+/// The rpm the engine voice follows. Ours: the original clamps at [`MAX_RPM`] (0x731cd4), so a car revving past it
+/// stops rising in pitch. Above the highest bank the voice plays that bank alone ([`crossfade`]) and only the firing
+/// period shortens, so the pitch keeps rising with the rpm. No car revs near this ceiling; it keeps the period (66
+/// samples at 44.1 kHz) well above zero.
+pub const RPM_CEILING: f32 = 20_000.0;
 /// The most the rpm moves per input (`M740` 0x4bc740).
 const SLEW: i64 = 0x1f4;
 /// rpm values the slew steps over, 2 at a time (`E26_Tab2cc8`, the 0xffff-terminated words at 0x732cc8).
@@ -29,7 +34,7 @@ const MISFIRE_GAIN: f32 = 0.25;
 /// What `CCarSound::M6a0` (0x4b06a0) takes from one `EngineNoise` payload for the engine voice.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EngineNoise {
-    /// The slew target, clamped to the low rpm (NGP's)..[`MAX_RPM`] and truncated.
+    /// The slew target, clamped to the low rpm (NGP's)..[`RPM_CEILING`] and truncated.
     pub target_rpm: u32,
     /// Below the low rpm before the clamp: the engine voice stops.
     pub stopped: bool,
@@ -44,7 +49,7 @@ impl EngineNoise {
     pub fn from_payload(p: &[u32; 12], min_rpm: f32) -> EngineNoise {
         let f = |i: usize| f32::from_bits(p[i]);
         let rpm = f(0) * RPM_PER_RAD_S;
-        let clamped = rpm.clamp(min_rpm, MAX_RPM);
+        let clamped = rpm.clamp(min_rpm, RPM_CEILING);
         EngineNoise {
             target_rpm: clamped as u32,
             stopped: rpm < min_rpm,
@@ -353,8 +358,8 @@ mod tests {
         p[0] = 10f32.to_bits();
         let idle = EngineNoise::from_payload(&p, MIN_RPM);
         assert_eq!((idle.target_rpm, idle.stopped), (500, true));
-        p[0] = 1000f32.to_bits();
-        assert_eq!(EngineNoise::from_payload(&p, MIN_RPM).target_rpm, 9000);
+        p[0] = 3000f32.to_bits();
+        assert_eq!(EngineNoise::from_payload(&p, MIN_RPM).target_rpm, 20_000);
     }
 
     #[test]
@@ -371,6 +376,19 @@ mod tests {
         assert_eq!(&mixes[..n], &[(2usize, 0.25f32), (1, 0.75)]);
         let (mixes, n) = crossfade(&rpms, 4000);
         assert_eq!(&mixes[..n], &[(3usize, 0.0f32), (2, 1.0)]);
+    }
+
+    #[test]
+    fn the_engine_keeps_rising_past_the_original_clamp() {
+        let mut payload = [0u32; 12];
+        let rad_s = |rpm: f32| (rpm / RPM_PER_RAD_S).to_bits();
+        payload[0] = rad_s(11_000.0);
+        assert_eq!(EngineNoise::from_payload(&payload, 500.0).target_rpm, 11_000);
+        payload[0] = rad_s(40_000.0);
+        assert_eq!(EngineNoise::from_payload(&payload, 500.0).target_rpm, RPM_CEILING as u32);
+        // Above the top bank only the firing period shortens.
+        assert_eq!(crossfade(&[1000, 5000, 9000], 11_000).1, 1);
+        assert!(chunk_len(44100, 11_000) < chunk_len(44100, 9000));
     }
 
     #[test]
