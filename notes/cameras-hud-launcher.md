@@ -22,7 +22,10 @@ Chase builder, settings and start orbit in `rbr_render::game_camera`; car views 
 
 ### Ours: the viewer's views
 
-Ours views, nudges and FOV rules in `rbr_render::views`; choices in `rbr_render::camera_prefs` (`[camera]`,
+Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of view is 65 degrees unless set
+(`viewer --chase-fov`, launcher Camera page, 30 to 120 like `--fov`; `Playback::chase_fov`); the pace stack shows
+`PN_STACK` notes ahead (the original's loop stops one short, so its 4 showed 3), up to 8 in the viewer and launcher
+(the game's slider stops at 4); the launcher's co-driver "Call ahead" goes to 15 s (the page stopped at 8); choices in `rbr_render::camera_prefs` (`[camera]`,
 `viewer --cameras`).
 
 - Whether RSF itself applies `<car>_personal.ini` `[Cam_*]` overrides is not traced (the loader is
