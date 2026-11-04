@@ -735,7 +735,6 @@ mod tests {
             author: None,
             km: None,
             surface: "gravel",
-            rsf_root: "/rsf".into(),
             problem: None,
         };
         let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };

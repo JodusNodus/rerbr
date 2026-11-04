@@ -21,8 +21,6 @@ pub struct Btb {
     pub km: Option<f32>,
     /// The `rbr-standalone --surface` word, from `track.ini` (the plugin plays gravel when it names none).
     pub surface: &'static str,
-    /// The RallySimFans install.
-    pub rsf_root: PathBuf,
     /// Why it cannot start.
     pub problem: Option<String>,
 }
@@ -59,7 +57,6 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
             author: track.info.author.clone().filter(|a| !a.trim().is_empty()),
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),
-            rsf_root: root.to_owned(),
             problem: None,
             folder: track.folder.clone(),
         };
