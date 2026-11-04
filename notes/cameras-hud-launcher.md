@@ -121,12 +121,18 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
   camera key cycles the views, V resets the mouse look, Esc closes.
 - Championship tab (`rally_page/`: `mod.rs` the season's state and turns, `view.rs` the drawing): with no season, the
-  new season's fields (profile, team, car, skill with its outside-assistance rule, damage), New season and Continue
-  saved season. With one: a header (rally n of 6, car, team, options, profile, clock), the itinerary (stages with the
-  service stops between them, done, next, retired), one card for the next step (the stage's tyres, setup and Edit,
-  weather and Drive SSn; the welcome; the park with its parts by damage colour; the rally's end), the rally standings
-  (last stage, total, gap), the season points and the bulletins beside, and Another season folded away.
-  `--screenshot` draws it new, at the welcome, after a wrecked SS1, at SS2 and (with `--screenshot-damage`) in service.
+  profile with Continue saved season beside it, then the New season section (team, car, skill with its
+  outside-assistance rule, damage) and New season. With one: a header (the rally, Rally n of 6, the step in amber:
+  Before the start, Stage n of 6, Service before stage n of 6, Rally over, Season over; the player's place in the
+  rally; then car, team, options, season clock), the card of the next step first, with one primary button (the
+  stage's start time, place on the road and its surface, tyres, setup and Edit, weather and Drive SSn; the welcome's
+  stage and service count; the park with time left, its parts by damage colour and the late-penalty warning; the
+  rally's end with the place, Next rally: name over the trials, or at the season's end New season), the itinerary
+  under it (Stage, Start, Time; the arrow on the stage or service up next; a wreck marks only the first stage not
+  driven), the rally standings (the last stage's column from SS2, total, gap, points once awarded), the season points
+  and the bulletins beside, and Another season or profile folded away. `--screenshot` draws it new, at the welcome,
+  after a wrecked SS1, at SS2, a rally's results, between rallies, the season over and (with `--screenshot-damage`)
+  in service.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
   their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
