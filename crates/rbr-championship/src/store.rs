@@ -11,7 +11,7 @@ use rbr_formats::saves::profile::{ProfileFile, SeasonSave};
 use rbr_formats::saves::season::Season;
 use rbr_formats::saves::SaveDir;
 
-use crate::championship::StageTimes;
+use crate::rally::StageTimes;
 use crate::season::{self, add_rally_penalty, false_starts, inc_false_starts, position, rally_penalty, PLAYER_ID};
 
 /// The rally's last stage index, after which a car that cannot drive does
@@ -83,7 +83,7 @@ pub fn after_season(
     season: &Season,
     field: &season::AiField,
     roster: &rbr_formats::ai_ini::Roster,
-    damage: &crate::car_damage::CarriedDamage,
+    damage: &rbr_gameplay::car_damage::CarriedDamage,
     tyre: u32,
     auto_gears: bool,
     setup: &[u8],
@@ -147,14 +147,14 @@ impl ProfileSeason {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::race_options::{ChampionshipOptions, DamageLevel, Skill};
     use rbr_formats::ai_ini::Roster;
     use rbr_formats::saves::season::RETIRED;
+    use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, Skill};
 
     fn new_season(roster: &Roster, options: ChampionshipOptions) -> Season {
         let player = season::Player { name: "Tester", team: 6, rank: 0 };
-        let mut s = season::create(roster, &[], options, player, &[], &mut crate::crt::CrtRand(1));
-        crate::season_events::rally_start(&mut s, &mut season::AiField::new(roster));
+        let mut s = season::create(roster, &[], options, player, &[], &mut rbr_gameplay::crt::CrtRand(1));
+        crate::events::rally_start(&mut s, &mut season::AiField::new(roster));
         s
     }
 
@@ -169,7 +169,7 @@ mod tests {
         store.save(&s, None).unwrap();
         assert_eq!(store.load().unwrap(), Some((s.clone(), None)));
         // With the stores, the damage and the setup behind it, the season reads back whole.
-        let mut damage = crate::car_damage::CarriedDamage::default();
+        let mut damage = rbr_gameplay::car_damage::CarriedDamage::default();
         damage.set(0x3A90, 1);
         let field = season::AiField::new(&roster);
         let after = after_season(&s, &field, &roster, &damage, 4, false, b"((setup))");
@@ -177,7 +177,7 @@ mod tests {
         let (_, back) = store.load().unwrap().unwrap();
         let back = back.unwrap();
         assert_eq!(back, after);
-        assert_eq!(crate::car_damage::CarriedDamage::from_binary(&back.damage.handler), Some(damage));
+        assert_eq!(rbr_gameplay::car_damage::CarriedDamage::from_binary(&back.damage.handler), Some(damage));
         record_stage(&mut s, Some(StageTimes { time: 300.5, sectors: [100.0, 150.0, 50.5] }), true);
         record_penalty(&mut s, 10.0);
         assert_eq!(player_penalty(&s), 10.0);
@@ -280,9 +280,9 @@ mod tests {
         if data.patch().is_none() {
             return;
         }
-        use crate::season_events::{self as ev, Ai, Turn};
+        use crate::events::{self as ev, Ai, Turn};
         let (master, roster, rallies, table) = crate::season::tests::retail(&data);
-        let mut rng = crate::crt::CrtRand(77);
+        let mut rng = rbr_gameplay::crt::CrtRand(77);
         let (_, blocks) = season::new_blocks(&mut rng, &rallies, &table).unwrap();
         let options = ChampionshipOptions { skill: Skill::Professional, damage: DamageLevel::Reduced };
         let (mut s, mut field) = crate::season::tests::start(&roster, &blocks, options, 4, &mut rng);
@@ -298,7 +298,7 @@ mod tests {
             turn = ev::turn_done(&mut s, &mut ai, &mut news);
         }
         assert!(!s.events.is_empty() && !s.events_b.is_empty());
-        let mut damage = crate::car_damage::CarriedDamage::default();
+        let mut damage = rbr_gameplay::car_damage::CarriedDamage::default();
         damage.set(0x3A90, 2);
         let after = after_season(&s, &field, &roster, &damage, 4, true, b"(\"CarSetup\")");
 
@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(back, s);
         let back_after = back_after.unwrap();
         assert_eq!(back_after, after);
-        assert_eq!(crate::car_damage::CarriedDamage::from_binary(&back_after.damage.handler), Some(damage));
+        assert_eq!(rbr_gameplay::car_damage::CarriedDamage::from_binary(&back_after.damage.handler), Some(damage));
         let mut again = season::AiField::new(&roster);
         again.restore(&back, &back_after.stores);
         assert_eq!(again.stores(&back, &roster), after.stores);

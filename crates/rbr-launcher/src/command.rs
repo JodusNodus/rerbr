@@ -562,7 +562,7 @@ impl Form {
     /// drawn row.
     fn rally_weather(
         &self,
-        stage: &rbr_gameplay::championship::RallyStage,
+        stage: &rbr_championship::RallyStage,
         preset: Option<Preset>,
         wear: u32,
     ) -> Result<(catalog::Stage, Weather), String> {
@@ -872,10 +872,9 @@ mod tests {
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
+    use rbr_championship::{ParkState, Turn};
     use rbr_formats::data::Data;
     use rbr_gameplay::race_options::{DamageLevel, DriverAids};
-    use rbr_gameplay::season_events::Turn;
-    use rbr_gameplay::service::ParkState;
     use rbr_gameplay::weather::Season;
     use rbr_render::hud::Parts;
     use rbr_render::shifter::Engagement;
@@ -1320,7 +1319,7 @@ mod tests {
     #[test]
     fn a_championship_stage_takes_the_rallys_weather_choice() {
         use crate::catalog::{Map, Stage};
-        use rbr_gameplay::championship::RallyStage;
+        use rbr_championship::RallyStage;
         use rbr_gameplay::weather::Row;
         let season = Season {
             rows: vec![
@@ -1727,8 +1726,9 @@ mod tests {
     /// when the viewer exits; the park between closes with the manager's advice. `RBR_E2E_VIEWER` is the viewer to
     /// run (a wrapper adding `--quit-after` and `rbr-standalone --pilot autopilot` drives it unattended),
     /// `RBR_E2E_STANDALONE` the stepping program; `RBR_DATA` and `RBR_PATCH` the game, `RBR_NGP_PHYSICS` the physics
-    /// and `RBR_RSF` the cars. `RBR_E2E_TEAM` is the team (default the first offered): its car when NGP drives it,
-    /// else the Drive page's (as picked; `RBR_E2E_CAR` names it). Takes as long as the stages.
+    /// and `RBR_RSF` the cars, `RBR_NGP_DLL` NGP's DLL where the game folder has none. `RBR_E2E_TEAM` is the team
+    /// (default the first offered): its car when NGP drives it, else the Drive page's (as picked; `RBR_E2E_CAR` names
+    /// it). Takes as long as the stages.
     #[test]
     #[ignore]
     fn a_live_two_stage_championship_runs_through_the_turns() {
@@ -1752,7 +1752,9 @@ mod tests {
         catalog.set_community_cars(&paths.data, &rsf.to_string_lossy(), Path::new(""));
         catalog.offer(&crate::catalog::ngp_cars(Path::new(&ngp)));
         let car = std::env::var("RBR_E2E_CAR").ok();
-        let settings = Settings { car, ngp_physics: Some(ngp.to_string_lossy().into()), ..Settings::default() };
+        let ngp_dll = std::env::var("RBR_NGP_DLL").ok();
+        let settings =
+            Settings { car, ngp_physics: Some(ngp.to_string_lossy().into()), ngp_dll, ..Settings::default() };
         let mut form = Form::new(catalog, &settings, paths, data, season, install::Folder::default());
         form.volume = 0.02;
         if let Some(team) = std::env::var("RBR_E2E_TEAM").ok().and_then(|t| t.parse().ok()) {
@@ -1785,6 +1787,8 @@ mod tests {
                     park.forfeit();
                 }
                 park.finish_now();
+                // The park closes a second after the orders are done.
+                park.tick(1.0);
                 let ParkState::Closed { penalty, .. } = park.state else { panic!("{:?}", park.state) };
                 let damage = park.damage.clone();
                 eprintln!("service: penalty {penalty} s");

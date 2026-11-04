@@ -3,8 +3,7 @@
 use super::Hud;
 use crate::hud::model::CarStatus;
 use crate::stage::InteractivePose;
-use rbr_gameplay::car_damage::CarriedDamage;
-use rbr_gameplay::service::Rules;
+use rbr_gameplay::car_damage::{CarriedDamage, Rules};
 use rbr_recording::camera::{self, Camera};
 use rbr_recording::clock::{StepClock, CLK1};
 use rbr_recording::damage::{self, Damage};

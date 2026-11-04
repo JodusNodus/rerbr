@@ -14,8 +14,7 @@
 //! ([`master_word`]), but a read before the object gives 0.
 
 use rbr_formats::ai_ini::{Car, Driver, Master};
-
-use crate::crt::CrtRand;
+use rbr_gameplay::crt::CrtRand;
 
 mod service;
 mod stage;

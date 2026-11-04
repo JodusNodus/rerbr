@@ -180,9 +180,13 @@ presentation: [renderer.md](renderer.md), [sound.md](sound.md).
 
 ## Championship and service
 
-Mechanics in `championship.rs` (time, sectors, retire rule), `season/` (position, clock, rank, result views;
-byte-exact save), `season_events.rs`, `season_store.rs`, `ai_season/`, `service/`, `setup.rs`. The `rand()` order is the asm's
-(`ai_season`); the driver classes' draws are ours (not in code).
+Mechanics in the `rbr-championship` crate: `rally` (time, sectors, retire rule, the `--result-out` file `StageReport`),
+`season/` (position, clock, rank, result views; byte-exact save), `events`, `store`, `ai`, `service/`; the setup in
+`rbr_gameplay::setup`. The `rand()` order is the asm's (`ai`); the driver classes' draws are ours (not in code).
+- The launcher owns the season and the rally (`rally_page.rs`); each stage is a `rbr-standalone --championship` run
+  whose stage rules are flow mode 3's tests in `rbr-gameplay` (`Mode::CHAMPIONSHIP`), so it needs no
+  `rbr_gameplay::mode::ModeRules` hook.
+- `rbr_gameplay::car_damage::Rules` (1.02 or NGP) picks the damage objects for the HUD and the service park.
 
 ## Damage
 
@@ -191,7 +195,7 @@ Mechanics in `car_damage.rs` (carried damage, part severity, repair, service ref
 
 ## Saves
 
-Mechanics in `record.rs` (submit, personal best, `times.ini`) and `season_store.rs`; layouts in [formats.md](formats.md).
+Mechanics in `record.rs` (submit, personal best, `times.ini`) and `rbr_championship::store`; layouts in [formats.md](formats.md).
 The viewer compares against `misc/times.ini` without `--saves` (`rbr_render::hud::splits`).
 
 - The submit rule is not checked against the original.

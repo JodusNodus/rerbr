@@ -9,7 +9,7 @@ use rbr_sound::menu::MenuPlayer;
 use crate::browser;
 use crate::car_browser;
 use crate::catalog::{self, car_label};
-use rbr_gameplay::season as season_model;
+use rbr_championship::season as season_model;
 
 use crate::{rally_page, Form};
 

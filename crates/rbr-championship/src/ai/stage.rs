@@ -2,9 +2,9 @@
 //! checks each with their par draws, mistakes, accidents and the inspired roll, and the section pars by the rally level.
 
 use rbr_formats::ai_ini::{Accident, Master, MistakeType, Section, Team, Track};
+use rbr_gameplay::crt::CrtRand;
 
 use super::{ftol, master_word, rem, AccidentRecord, Bulletin, CarState, DriverState, INV_RAND_MAX, RETIRED};
-use crate::crt::CrtRand;
 
 /// The run's context: the track (with `wet` set from the stage's weather), the rally level (`*0x7d6128 + 0x8e84`),
 /// the stage's index for the bulletins (`Ev094e0`'s last argument, the event's stage) and the extra check value (its
@@ -299,7 +299,7 @@ pub fn stage_time(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_season::tests::*;
+    use crate::ai::tests::*;
 
     #[test]
     fn par_follows_the_level_and_the_wet() {

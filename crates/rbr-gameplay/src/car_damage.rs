@@ -16,7 +16,13 @@
 //! (0.09) and the intercooler and hosing both reading +0x3b10 are the exe's. Under NGP the wheels and tyres are NGP's
 //! own objects ([`level`], [`reset_damage`]).
 
-use crate::service::Rules;
+/// The damage and repair rules: 1.02's, or 1.02's as NGP patches them (its wheels and tyres, and the service park's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Rules {
+    #[default]
+    V102,
+    Ngp,
+}
 
 /// The zones (`ZONES` first words, `ZONE_STRIDE` apart from `ZONES_AT`), the zone floats and the tail, as `CopyFrom`
 /// copies them.

@@ -8,10 +8,10 @@
 
 use rbr_formats::saves::season::Season;
 use rbr_formats::season_dat;
+use rbr_gameplay::crt::CrtRand;
+use rbr_gameplay::weather;
 
-use crate::championship::{Rally, RallyStage};
-use crate::crt::CrtRand;
-use crate::weather;
+use crate::rally::{Rally, RallyStage};
 
 /// The blocks' rally ids in season order (`DaemonInit`).
 pub const RALLY_ORDER: [u32; 6] = [2, 4, 1, 0, 5, 3];

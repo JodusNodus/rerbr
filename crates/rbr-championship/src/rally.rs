@@ -1,5 +1,5 @@
 //! The championship's rally: its stages from the season data, run stage by
-//! stage with the season's service stops, on the stage ends of [`crate::flow`].
+//! stage with the season's service stops, on the stage ends of [`rbr_gameplay::flow`].
 //! Pure. The season around it (the AI drivers, points, standings) is
 //! [`crate::season`].
 //!
@@ -12,16 +12,15 @@
 //! The stages come from the season's forecast ([`crate::season::Block::rally`]); without one from `season.dat`
 //! ([`Rally::from_season`]: the map and the track letter of `s<level>_st<n>.lsp`).
 //! The service stops are the season's events ([`crate::service::service_before`]); the late penalties add to the
-//! rally's penalty. The damage the car ends a stage with is carried
-//! to the next ([`crate::car_damage`]). The rally's total (time plus penalties) is ours; the season's standings are
-//! [`crate::season`]'s.
+//! rally's penalty. The damage the car ends a stage with is carried to the next ([`rbr_gameplay::car_damage`]). The
+//! rally's total (time plus penalties) is ours; the season's standings are [`crate::season`]'s.
 
 use rbr_formats::season_dat;
+use rbr_gameplay::car_damage::CarriedDamage;
+use rbr_gameplay::flow::{EndCause, EndPage, EndRace, Mode, StageEnd};
+use rbr_gameplay::weather;
 
-use crate::car_damage::CarriedDamage;
-use crate::flow::{EndPage, EndRace, Mode, StageEnd};
 use crate::service::{self, ServiceKind};
-use crate::weather;
 
 /// A stage of a rally: the map the stage loads and its track letter (`Maps/track-<map>_<letter>`), and its start time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +104,57 @@ impl StageTimes {
     pub fn from_end_race(end: &EndRace) -> Self {
         let [split1, split2] = end.splits;
         Self { time: end.time, sectors: [split1, split2 - split1, end.time - split2] }
+    }
+}
+
+/// A stage's end as the rally takes it from `rbr-standalone --result-out` (ours: `key=value` lines `finished`,
+/// `time`, `split1`, `split2`, `drivable`, `cause`, `false_start`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StageReport {
+    /// The race's end: the `CSigEndRace` payload (the HUD's race time with the penalties and its two splits) the
+    /// season takes in mode 3.
+    pub end: StageEnd,
+    /// `CCarDamageHandler::Test3B20` on the car at the end: the engine runs and two wheels are on.
+    pub drivable: bool,
+    /// The race had a jump start: the season counts it (`IncT174` 0x5ce2e0, the rally's +0x174).
+    pub false_start: bool,
+}
+
+impl StageReport {
+    pub fn to_text(&self) -> String {
+        let race = self.end.end_race;
+        let [s1, s2] = race.splits;
+        format!(
+            "finished={}\ntime={}\nsplit1={s1}\nsplit2={s2}\ndrivable={}\ncause={:?}\nfalse_start={}\n",
+            u8::from(self.end.finished()),
+            race.time,
+            u8::from(self.drivable),
+            self.end.cause,
+            u8::from(self.false_start)
+        )
+    }
+
+    /// [`StageReport::to_text`]'s lines back: a missing number reads 0, an unknown cause [`EndCause::Left`].
+    pub fn parse(text: &str) -> Self {
+        let value = |key: &str| text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix('='));
+        let get = |key: &str| -> f32 { value(key).and_then(|v| v.parse().ok()).unwrap_or(0.0) };
+        let cause = match value("cause") {
+            Some("Finish") => EndCause::Finish,
+            Some("Marker") => EndCause::Marker,
+            Some("Bystander") => EndCause::Bystander,
+            Some("Offstage") => EndCause::Offstage,
+            Some("Excluded") => EndCause::Excluded,
+            Some("Retired") => EndCause::Retired,
+            Some("FinishZone") => EndCause::FinishZone,
+            _ => EndCause::Left,
+        };
+        let end_race =
+            EndRace { time: get("time"), splits: [get("split1"), get("split2")], retired: get("finished") == 0.0 };
+        Self {
+            end: StageEnd { cause, end_race },
+            drivable: get("drivable") != 0.0,
+            false_start: get("false_start") != 0.0,
+        }
     }
 }
 
@@ -251,7 +301,16 @@ impl Championship {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::flow::EndCause;
+
+    #[test]
+    fn a_stage_report_reads_back_as_written() {
+        let end_race = EndRace { time: 123.456_79, splits: [40.1, 80.25], retired: false };
+        let result =
+            StageReport { end: StageEnd { cause: EndCause::FinishZone, end_race }, drivable: false, false_start: true };
+        assert_eq!(StageReport::parse(&result.to_text()), result);
+        let left = StageReport::parse("");
+        assert_eq!((left.end.cause, left.end.finished(), left.drivable), (EndCause::Left, false, false));
+    }
 
     #[test]
     fn the_setup_and_tyres_are_picked_after_a_service_only() {
