@@ -54,7 +54,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Game flow state machine | done | - |
 | G Rally, service park, tyre and setup choice | done | original run: time-out message, NGP tyre rows; recce/shakedown |
 | G Championship season, AI, forecast, offers, trials | done | original run: a season golden, the original reading our save |
-| G Unlocks, rally school, RB Challenge, hot seat | out | - |
+| G Rally school | partial (experimental): all 17 lessons, demonstration, ride, speech, failure reasons, replay with Richard's ghost (ours) | an original school drive to check the judging, the ghost's timing and the brief's camera |
+| G Championship in its own crate on `rbr_gameplay::mode` | done: `rbr-championship`; no `ModeRules` hook needed (flow mode 3) | - |
+| G Unlocks, RB Challenge, hot seat | out | - |
 | Profiles and save files | done | which profile options the launcher shows (user) |
 | G Default setup, option selection | done | - |
 | G Player-edited and saved setups | done | original run: a drive with a changed setup; a golden slot file (the format; the launcher offers named setups, not slots) |
@@ -89,7 +91,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Cockpit mirrors | done (ours) | the Fiesta Rally2: none found; images not anti-aliased |
 | In-car and chase cameras | done | mode 3 ground probe; chase capture |
 | Start orbit, helicam, seat shake | done | - |
-| ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile |
+| ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile; `viewer --replay --screenshot` fails (the lockstep's `--frames -` beside `--replay`; `--video` works) |
 | Original replays (`.rpl`), replay cameras and filters | out | - |
 | Ghost car (1.02; RSF ghosts not supported) | done | best-ghost store; original run: a ghost with a penalty |
 

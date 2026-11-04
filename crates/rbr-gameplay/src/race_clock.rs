@@ -175,6 +175,12 @@ impl RaceClock {
         self.countdown > 0.0
     }
 
+    /// Whether a start countdown is still to run out: [`Self::counting_down`] outside the rally school, whose countdown
+    /// never runs (`M573d90`) and keeps the HUD reset's value.
+    pub fn start_pending(self, settings: AssistSettings) -> bool {
+        !settings.school() && self.counting_down()
+    }
+
     /// `M579430` (0x579430), the jump start: the clock takes the countdown's rest and the penalty (two f32 adds, the
     /// second on the x87 and rounded once), the countdown is 0 and `start_animation2` counts as fired. Once per race;
     /// returns the penalty when it is taken. In a rally the penalty grows with the player's false starts

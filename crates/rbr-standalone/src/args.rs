@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use rbr_formats::{car_pack, rsf, stage_files};
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, DriverAids, Skill};
+use rbr_school::Lesson;
 
 use crate::{autopilot, live};
 
@@ -62,6 +63,9 @@ pub struct Args {
     pub championship: Option<ChampionshipOptions>,
     /// `--championship-false-starts`: the player's false starts so far in the rally.
     pub false_starts: u8,
+    /// `--school N`: rally school lesson N (flow mode 7) on its map, with car 5 unless `--car`, `--rsf-car` or `--car-pack` gives
+    /// another (`boot::Race::in_school`).
+    pub lesson: Option<Lesson>,
     /// `--start-time`: the start board's clock (a championship stage's, or a quick race's time of day), s after midnight.
     pub start_time: Option<f32>,
     /// `--dispatch direct` (with `--live`, the default): the pure host runs the leaf calls of the entity walk, wheel,
@@ -125,6 +129,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
+       a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
@@ -280,6 +285,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 false_starts =
                     Some(value.parse::<u8>().map_err(|e| format!("--championship-false-starts {value}: {e}"))?)
             }
+            "--school" => {
+                args.lesson = Some(
+                    value.parse().ok().and_then(Lesson::new).ok_or(format!("--school {value}: a lesson, 0 to 16"))?,
+                )
+            }
             "--start-time" => args.start_time = Some(clock_time(&value).ok_or(format!("--start-time {value}: H:MM"))?),
             "--rally-next" => {
                 args.rally_next =
@@ -341,6 +351,35 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if (championship_damage.is_some() || false_starts.is_some() || args.rally_next.is_some()) && skill.is_none() {
         return Err("--championship-damage, --championship-false-starts and --rally-next need --championship".into());
+    }
+    if let Some(lesson) = args.lesson {
+        if !args.boot {
+            return Err("--school needs --boot".into());
+        }
+        for (flag, present) in [
+            ("--championship", skill.is_some()),
+            ("--setup", args.setup.is_some()),
+            ("--tyre", args.tyre.is_some()),
+            ("--surface", args.surface.is_some()),
+            ("--stage-dir", stage_dir.is_some()),
+            ("--rsf-stage", rsf_stage.is_some()),
+        ] {
+            if present {
+                return Err(format!("--school takes no {flag} (the lesson sets it)"));
+            }
+        }
+        // The lesson's own car unless another is given (ours: the original drives car 5 only).
+        if args.rsf_car.is_none() && args.pack_car.pack.is_none() {
+            args.car = Some(args.car.unwrap_or(rbr_school::lesson::CAR));
+        }
+        let map = lesson.map();
+        match &stage {
+            Some(name) if stage_files::parts(name).is_none_or(|(number, _)| number != map) => {
+                return Err(format!("--school {}: lesson's stage is map {map}, not {name}", lesson.index()));
+            }
+            Some(_) => {}
+            None => stage = Some(format!("track-{map}_M")),
+        }
     }
     let championship = skill.map(|skill| ChampionshipOptions {
         skill,
@@ -759,6 +798,29 @@ mod tests {
                 Err(e) => assert_eq!(&e, want, "{argv}"),
                 Ok(_) => panic!("{argv}: parsed, want error {want}"),
             }
+        }
+    }
+
+    /// `--school`: the lesson's stage and car 5 filled in unless another car is given, its own flags refused.
+    #[test]
+    fn school_sets_the_lessons_stage_and_car() {
+        let school = "--boot --data D --ngp-physics N --autopilot OUT --school";
+        let a = run_str(&format!("{school} 2"), None).unwrap();
+        assert_eq!((a.lesson.map(Lesson::index), a.stage.as_str(), a.car), (Some(2), "track-83_M", Some(5)));
+        assert_eq!(run_str(&format!("{school} 2 --stage track-83_M --car 5"), None).unwrap().stage, "track-83_M");
+        assert_eq!(run_str(&format!("{school} 2 --car 6"), None).unwrap().car, Some(6));
+        let rsf = run_str(&format!("{school} 2 --rsf-car PACK"), None).unwrap();
+        assert_eq!((rsf.car, rsf.rsf_car.as_deref()), (None, Some("PACK")));
+        let pack = run_str(&format!("{school} 2 --car-pack P --car-model /R/Cars/evo/evo.sgc"), None).unwrap();
+        assert_eq!((pack.car, pack.pack_car.pack), (None, Some(PathBuf::from("P"))));
+        for (argv, want) in [
+            (format!("{school} 17"), "--school 17: a lesson, 0 to 16"),
+            (format!("{school} 2 --stage track-54_E"), "--school 2: lesson's stage is map 83, not track-54_E"),
+            (format!("{school} 2 --tyre 4"), "--school takes no --tyre (the lesson sets it)"),
+            (format!("{school} 2 --championship rookie"), "--school takes no --championship (the lesson sets it)"),
+            (format!("{REC} --school 2"), "--school needs --boot"),
+        ] {
+            assert_eq!(run_str(&argv, None).err().as_deref(), Some(want), "{argv}");
         }
     }
 

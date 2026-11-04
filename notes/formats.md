@@ -28,6 +28,7 @@ Parsers: `crates/rbr-formats/src/`; retail tests: `crates/rbr-formats/tests/` (`
 | FMOD bank | community `.bank` | `fmod` | unit `every_rsf_bank_reads` | partial |
 | saves | `SavedGames/*` | `saves` | golden files (`RBR_SAVES`) | season partly raw |
 | ghosts | `.gho`, `.ghc` | `ghost` | `ghost.rs` | yes |
+| animated replay | `.arp` | `arp` | `arp.rs` | yes |
 | reference times | `Misc/times.ini` | `times` | `all_retail_times_ini_parse` | yes |
 | RSF | cars, stages, settings, car/stage lists | `rsf` | `rsf_data.rs` (`RBR_RSF`) | see below |
 | Pacenote plugin | co-driver voices, stage notes | `pacenote::{codriver,notes}` | `rsf_data.rs` (`RBR_RSF`) | [below](#pacenote-plugin) |
@@ -259,6 +260,21 @@ allows 100 bytes (no file-format limit found: the name is the file name's tail).
 
 `Misc/times.ini` (`E60_5680e0`): stage count (37), then per stage its number and three `mm:ss:cc` times (split 1,
 split 2, finish); `;` comments, ends with `$`.
+
+## Animated replay
+
+The rally school's demonstration car: `Ghosts\rse%d.arp` in `Root/ghosts.rbz` (rse1, 2, 3, 5, 6, 7, 8, 9, 11, 12,
+15; `rse5.arp` is the lesson 5 ride at twice the size), loaded by `E59Host90::M00565c00` 0x565c00 through
+`E89Manager::LoadCar` 0x5fdfa0 and played by `E88Car::Vf18` 0x5fd2c0 once `StopCar` arms it. Layout in `arp.rs`:
+`LRPA`, version 3, section count, trailing count; per tag-0 section a `0x290`-byte head (steer scale, 12 spare
+bytes, four `0xa0` wheel blocks of 37 words + 3 garbage) and typed buffer pages (`E88Car::Vf14`: 0 body, 1
+suspension, 2 steer, 3 engine, 4-7 extra, 8-11 tyre, 12 drivetrain), each one full page with `count` live entries
+and stale filler. The sampler (`arp::Section::sample_body/sample_steer`) follows `Sample2` 0x5f96f0: page-chain
+`Query` at the channel quantum, standard position lerp (the reconstruction swaps `VecLerp`'s `a`/`b` at 0x5f9215
+and 0x5f97a9; the bytes pass the earlier entry in `ecx`), dequantise/normalise/slerp/normalise quats, steer bytes
+through `1/127.5` times the head scale; `Duration` is the max over the body/suspension/steer/engine chains and
+ignores the drivetrain. Counts fit the record moduli (body every 8th call, suspension/engine/drivetrain every
+4th, steer every 32nd, extra/tyre every 16th); the record path leaves page ticks unset (`0x81...` in `rse5.arp`).
 
 ## RSF cars
 

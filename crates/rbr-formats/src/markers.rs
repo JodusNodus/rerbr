@@ -261,7 +261,8 @@ pub fn from_dls(file: &DlsFile<'_>) -> Result<StageMarkers, Error> {
 
 /// Finds the `Driveline` entry. The loader compares the names
 /// case-insensitively and takes the first match.
-fn driveline_entry<'a>(file: &'a DlsFile<'_>) -> Result<&'a DlsAnimationEntry, Error> {
+/// The `Driveline` animation set of `file` (the first, by its name compared case-insensitively).
+pub fn driveline_entry<'a>(file: &'a DlsFile<'_>) -> Result<&'a DlsAnimationEntry, Error> {
     for entry in &file.animation_entries {
         let offset = entry.fields[0];
         let name =

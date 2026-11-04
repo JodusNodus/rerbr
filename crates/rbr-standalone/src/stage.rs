@@ -27,6 +27,11 @@ pub struct StageData {
     pub obstacles: Vec<autopilot::Obstacle>,
     /// The `.dls` finish zone (table 8).
     pub finish_zone: FinishZone,
+    /// The `Driveline` set's replay stream, the rally school's filter bank (`rbr_school::Bank`).
+    pub replay: dls::DlsReplayStream,
+    /// The `.dls`'s table-7 string block: `Trigger`'s pair codes are the speech digit strings' offsets in it
+    /// (`rbr_school::speech`; the pair-code block base 0).
+    pub school_strings: Vec<u8>,
     /// A BTB stage (`--btb`): the jump start is armed whatever the number.
     pub btb: bool,
 }
@@ -48,7 +53,10 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         .sum();
     let dls_bytes = read("dls")?;
     let markers = markers::parse(&dls_bytes).map_err(|e| format!("{stage}.dls: {e}"))?;
-    let finish_zone = FinishZone::load(dls::parse(&dls_bytes).map_err(|e| format!("{stage}.dls: {e}"))?.world_vector);
+    let dls_file = dls::parse(&dls_bytes).map_err(|e| format!("{stage}.dls: {e}"))?;
+    let finish_zone = FinishZone::load(dls_file.world_vector);
+    let replay = markers::driveline_entry(&dls_file).map_err(|e| format!("{stage}.dls: {e}"))?.replay.clone();
+    let school_strings = dls_file.string_bytes.clone();
     let trk = trk::parse(&read("trk")?).map_err(|e| format!("{stage}.trk: {e}"))?;
     let track = trk
         .chunks
@@ -74,6 +82,8 @@ pub fn stage_data(data: &Data, stage: &str, car: u32) -> Result<StageData, Strin
         interactive_handle_end,
         obstacles,
         finish_zone,
+        replay,
+        school_strings,
         btb: false,
     })
 }

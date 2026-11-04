@@ -70,7 +70,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (`ngp_install::KEPT`; user decision 2026-11-03); `--download-ngp` too. No player path writes an existing game or
   RSF folder (audit 2026-11-03; the disc setup makes a new one), and the Game folder row says so; with no `HOME`/
   `APPDATA` the player's folder falls back to the launcher's own folder (`home::dir`).
-- Keyboard (2026-11-03): Ctrl+1..7 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
+- Keyboard (2026-11-03): Ctrl+1..8 (Cmd on macOS) open the tabs, Ctrl+Tab / Ctrl+Page Down the next, with Shift
   or Ctrl+Page Up the one before (`Page::shortcut`); Tab, Shift+Tab and the arrows move egui's focus, Enter or Space
   presses. The browser lists and the Replays list are one keyboard list each (rows are not Tab stops): the arrows,
   Page keys and Enter work while nothing else or the search box is focused, Esc on another control only leaves it
@@ -120,6 +120,37 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from its last start, so a replay needs the same install, setup and profile, else it stops with a digest error.
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
   camera key cycles the views, V resets the mouse look, Esc closes.
+- Championship tab (`rally_page/`: `mod.rs` the season's state and turns, `view.rs` the drawing): with no season, the
+  new season's fields (profile, team, car, skill with its outside-assistance rule, damage), New season and Continue
+  saved season. With one: a header (rally n of 6, car, team, options, profile, clock), the itinerary (stages with the
+  service stops between them, done, next, retired), one card for the next step (the stage's tyres, setup and Edit,
+  weather and Drive SSn; the welcome; the park with its parts by damage colour; the rally's end), the rally standings
+  (last stage, total, gap), the season points and the bulletins beside, and Another season folded away.
+  `--screenshot` draws it new, at the welcome, after a wrecked SS1, at SS2 and (with `--screenshot-damage`) in service.
+- School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
+  user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
+  their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
+  the group, title and grade pips; the detail its label (`RSM_LESSON_NRB/A`, the table's period dropped), title,
+  instruction, cone guide with coloured markers (`brief_keys`), surface (from the lesson's setup file), the
+  pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: Untimed), the best result, the Drive
+  page's car with a link there, what comes first (`Lesson::demonstrated`, the ride) and Drive lesson (Ride along
+  for lesson 6; a double-click on a row starts it too). Results are the profile's school array (`Profile::school`,
+  0 not passed, 1..3 Passed n/4, 4 Perfect), re-read on change. Drive
+  lesson starts like the Drive page's Start on good weather (`command::start_school`, `rbr-standalone --school N`
+  with `--saves`/`--profile`; `--tyre`/`--setup`/`--season-row` left out) in the Drive page's car, retail or RSF
+  (user decision 2026-11-04: a car slot names no particular car outside a vanilla install). It is blocked while
+  the viewer runs, without readiness, or without a Drive page car. In the viewer a
+  lesson opens on its brief panel (the number, title, instruction and cone guide from `bstrings.eng`, the
+  pass/perfect times when timed, Enter to start), driving shows a short Too slow/Too fast toast for the bank's
+  incident codes (ours: no HUD consumer of them was found in 1.02), and the end its verdict panel (Perfect, Passed
+  with the grade as pips, Failed; the time and the tier reached) in place of the stage result, over the results
+  menu's Retry lesson and Quit (`hud::school`, from the live SCH1 record: the lesson, its state, the kept verdict,
+  the times and the answer's last incident code). No countdown plaque shows in a lesson. The brief's confirm ends
+  the start orbit, as the countdown's end does. A timed lesson's brief first plays its demonstration from
+  `Ghosts\rse%d.arp` (viewer-only, `rbr_render::school_demo`: the player's car at the replay's pose, wheels at rest,
+  from the chase camera, the HUD and the start lamps hidden under a "Demonstration · Enter or A: skip" hint, Enter
+  or the pad's A skipping without confirming). Lesson 5's ride plays `rse5.arp` the same way from the in-car camera,
+  and its end or skip sends the brief's confirm, ending the lesson with its award and the verdict panel.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and

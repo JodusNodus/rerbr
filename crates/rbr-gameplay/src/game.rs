@@ -17,6 +17,7 @@ use crate::driveline;
 use crate::filter::{self, Filter, Filtered, Grid, Raw};
 use crate::flow::{FinishZone, FlowEvents, FlowFrame, Mode, RaceFlow, StageEnd};
 use crate::markers::{MarkerEvent, MarkerSettings, MarkerTicker, TickInput};
+use crate::mode::{ModeEnd, ModeRules, StepView};
 use crate::race_clock::{AssistSettings, ClockEvents, RaceClock};
 use crate::result::{self, StageResult};
 use crate::stage::{Stage, State};
@@ -87,6 +88,13 @@ pub struct StepSample {
     /// The car's position (`CCar` +0x140), which `CCar::Vf28x` sends in `CSigCarGeneralState` with the velocity whose
     /// length is [`Self::speed`] ([`FinishZone`]).
     pub position: [f32; 3],
+    /// The car's velocity (`CCar` +0x1c0), the vector `CSigCarGeneralState` sends at +0x30, whose length the rally
+    /// school's `SchoolIncident` (0x498e10) takes.
+    pub velocity: [f32; 3],
+    /// Whether the step's `CSigCarBrakeWallPenetration` emits came from inside an emitting wall (flag bit 2 without
+    /// bit 1) and from a crossing of one (both bits), what the rally school's `Checkpoint` (0x4991c0) reads.
+    pub wall_inside: bool,
+    pub wall_crossed: bool,
 }
 
 /// One `StepForward(1)` in driving, or one part of a load-time
@@ -106,6 +114,12 @@ pub trait PhysicsStep {
     /// The drive's gear as NGP's live handler reads it to drop a selection of the gear the drive is in (the drive
     /// state's +0x570, [`CarControl::ngp`]); `None` when the host does not know it.
     fn drive_gear(&self) -> Option<u32> {
+        None
+    }
+
+    /// `CDriveLine::Sample` (0x50b180) on the physics' drive line at `distance`: the point the rally school's lessons
+    /// 0 and 10 measure the car's deviation from; `None` when the host does not have it.
+    fn drive_line_point(&self, _distance: f32) -> Option<[f32; 3]> {
         None
     }
 }
@@ -357,19 +371,35 @@ impl Game {
     /// 5. `M004825b0` runs the animation ticker after `Tic` (0x4825b0), so
     ///    the marker keys tick after the physics substeps.
     pub fn frame(&mut self, now: f64, input: FrameInput, physics: &mut impl PhysicsStep) -> FrameEvents {
+        self.frame_with(now, input, physics, &mut ())
+    }
+
+    /// [`Self::frame`] with a mode's rules listening ([`crate::mode`]).
+    pub fn frame_with(
+        &mut self,
+        now: f64,
+        input: FrameInput,
+        physics: &mut impl PhysicsStep,
+        rules: &mut impl ModeRules,
+    ) -> FrameEvents {
         let frame = self.clock.frame(now, self.max_time_step);
         self.clock = frame.clock;
         let mut substeps = Vec::new();
 
         let state_at_frame_start = self.stage.state();
-        self.settle_load(state_at_frame_start, input.race_host_ready, physics, &mut substeps);
+        self.settle_load(state_at_frame_start, input.race_host_ready, physics, rules, &mut substeps);
 
         // Input poll (`TicFwd`) precedes the application tick, including
         // frames where the app is loading or counting down.
         self.filter.notify(&input.raw);
-        let tick_state = self.stage.state();
         let mode = Mode(self.assist_settings.mode);
-        self.tick_countdown(tick_state, frame.facc, input.confirm, mode, physics);
+        // The school's confirm comes with the input poll (`CSigMenuActivate`), so `Tic` drives in the same frame.
+        if mode.school() && input.confirm && self.stage.state() == State::Countdown {
+            self.set_stage(self.stage.school_start(), physics);
+            self.drive_started(rules);
+        }
+        let tick_state = self.stage.state();
+        self.tick_countdown(tick_state, frame.facc, input.confirm, mode, physics, rules);
 
         // The pause of a message box (state 2): the box takes the input; its accept ends the race.
         let mut acknowledged = None;
@@ -390,16 +420,22 @@ impl Game {
         }
 
         // `Tic`'s driving case: each gated substep runs its filter, payload and `StepForward(1)`.
-        self.drive_substeps(tick_state, frame.nsteps, &input, physics, &mut substeps);
+        self.drive_substeps(tick_state, frame.nsteps, &input, physics, rules, &mut substeps);
 
         let zone_end = self.check_finish_zone(physics);
 
         // `Load3b0` ticks the marker keys after the physics substeps (`M004825b0`).
         let marker_events = self.tick_markers();
+        let mode_end = self.tick_mode(frame.facc, physics, rules);
 
         // The HUD's race clock and the race flow: the jump start reaches the clock before its tick.
-        let (clock_events, flow_events) =
-            self.tick_race_clock(frame.facc, acknowledged.or(zone_end), &marker_events, &substeps, physics);
+        let (clock_events, flow_events) = self.tick_race_clock(
+            frame.facc,
+            acknowledged.or(zone_end).or(mode_end),
+            &marker_events,
+            &substeps,
+            physics,
+        );
         // `E16CamHolder::Tic` is part of the post-tick M004825b0 path; its
         // M0047ca40 event arms the countdown for the next outer frame.
         // With the go timer, `M004825b0`'s state 10 runs the camera (`M8840`) with the frame's `facc`.
@@ -435,6 +471,7 @@ impl Game {
         state_at_frame_start: State,
         race_host_ready: bool,
         physics: &mut impl PhysicsStep,
+        rules: &mut impl ModeRules,
         substeps: &mut Vec<SubstepEvent>,
     ) {
         if state_at_frame_start == State::Setup && race_host_ready {
@@ -442,7 +479,7 @@ impl Game {
         }
         if state_at_frame_start == State::Load {
             for index in 0..tick::SETTLE_SUBSTEPS[0] {
-                substeps.push(self.physics_substep(physics, None, None, index));
+                substeps.push(self.physics_substep(physics, None, None, index, rules));
             }
             self.set_stage(self.stage.load_tick(tick::SETTLE_SUBSTEPS[0]), physics);
             // The countdown's state 10 sets the camera's mode 10, which starts the orbit (`M487680(10,1)`).
@@ -462,6 +499,7 @@ impl Game {
         confirm: bool,
         mode: Mode,
         physics: &mut impl PhysicsStep,
+        rules: &mut impl ModeRules,
     ) {
         if tick_state == State::Countdown && confirm && mode.confirm_arms() {
             self.set_stage(self.stage.confirm(), physics);
@@ -469,12 +507,18 @@ impl Game {
         if tick_state == State::Countdown {
             self.set_stage(self.stage.countdown_tick(facc), physics);
             if self.stage.state() == State::Driving {
-                // `Tic` sets the player's camera (`M00566390`).
-                if self.start_camera.is_some() {
-                    self.start_camera = Some(StartCamera::Done);
-                }
+                self.drive_started(rules);
             }
         }
+    }
+
+    /// The driving starts: `Tic` sets the player's camera (`M00566390`), ending the start orbit; the mode's rules
+    /// start.
+    fn drive_started(&mut self, rules: &mut impl ModeRules) {
+        if self.start_camera.is_some() {
+            self.start_camera = Some(StartCamera::Done);
+        }
+        rules.start();
     }
 
     /// `Tic`'s driving case: each gated substep runs filter -> `Pack` -> payload, replay fire, then `StepForward(1)`
@@ -485,6 +529,7 @@ impl Game {
         nsteps: u32,
         input: &FrameInput,
         physics: &mut impl PhysicsStep,
+        rules: &mut impl ModeRules,
         substeps: &mut Vec<SubstepEvent>,
     ) {
         if tick_state == State::Driving && self.stage.state() == State::Driving {
@@ -513,7 +558,8 @@ impl Game {
                         fired.car_control()
                     }
                 };
-                substeps.push(self.physics_substep(physics, Some(control), Some(generated), index));
+                rules.before_step(&control);
+                substeps.push(self.physics_substep(physics, Some(control), Some(generated), index, rules));
             }
         }
     }
@@ -564,6 +610,20 @@ impl Game {
             }
         }
         marker_events
+    }
+
+    /// The mode's frame in a driving frame of `dt`, after the marker keys, with the HUD's race time; its end
+    /// (`CSigEndRace`) ends the race.
+    fn tick_mode(&mut self, dt: f32, physics: &mut impl PhysicsStep, rules: &mut impl ModeRules) -> Option<StageEnd> {
+        if self.stage.state() != State::Driving {
+            return None;
+        }
+        let ended = rules.frame(dt, self.race_clock.time)?;
+        let end = self.flow.mode_end(&self.race_clock, ended == ModeEnd::Retired);
+        if end.is_some() {
+            self.set_race_over(physics);
+        }
+        end
     }
 
     /// The HUD's race clock. The start line's jump start reaches it before the frame's tick: the peeks show the
@@ -691,13 +751,23 @@ impl Game {
         control: Option<CarControl>,
         generated_control: Option<CarControl>,
         index: u32,
+        rules: &mut impl ModeRules,
     ) -> SubstepEvent {
         let mut event = None;
         physics.step(control, index, &mut |sample| {
             assert!(event.is_none(), "PhysicsStep called its in-step callback more than once");
             event = Some(self.record_step(sample, generated_control, control));
         });
-        event.expect("PhysicsStep must call its in-step callback once")
+        let event = event.expect("PhysicsStep must call its in-step callback once");
+        if let Some(sample) = self.last_sample {
+            rules.after_step(&StepView {
+                sample,
+                distance: event.distance,
+                drive_line: rules.drive_line_at().and_then(|d| physics.drive_line_point(d)),
+                app_state: event.stage.state().value(),
+            });
+        }
+        event
     }
 }
 
@@ -892,6 +962,61 @@ mod tests {
         assert_eq!(frames, 286);
         assert_eq!(game.start_camera(), Some(StartCamera::Done));
         assert_eq!(frame(&mut game, FrameInput::default()).substeps.len(), 1);
+    }
+
+    /// A mode's hooks, counted.
+    #[derive(Default)]
+    struct Counted {
+        starts: u32,
+        before: u32,
+        after: u32,
+        end_after: Option<u32>,
+    }
+
+    impl ModeRules for Counted {
+        fn start(&mut self) {
+            self.starts += 1;
+        }
+        fn before_step(&mut self, _control: &CarControl) {
+            self.before += 1;
+        }
+        fn after_step(&mut self, _step: &StepView) {
+            self.after += 1;
+        }
+        fn frame(&mut self, _dt: f32, _race_time: f32) -> Option<ModeEnd> {
+            self.end_after.is_some_and(|n| self.before >= n).then_some(ModeEnd::Finished)
+        }
+    }
+
+    /// In the rally school the brief's confirm starts the drive at once (`Stage::school_start`), ending the orbit
+    /// as the countdown's end does, so the viewer drives the player's view; the mode's rules hear the start, each
+    /// substep and the end they ask for.
+    #[test]
+    fn the_school_s_confirm_starts_the_drive_and_the_rules_end_it() {
+        let mut game = new_game(Stage::quick_race(54, 6).load_ready()).with_camera_go();
+        game.set_assist_settings(AssistSettings { mode: 7, ..AssistSettings::QUICK_RACE });
+        let mut rules = Counted { end_after: Some(3), ..Counted::default() };
+        while game.stage().state() == State::Load {
+            game.frame_with(0.0, FrameInput::default(), &mut Still, &mut rules);
+        }
+        assert_eq!(game.stage().state(), State::Countdown);
+        assert!(game.start_camera().and_then(StartCamera::angle).is_some());
+        let settle = rules.after;
+        assert!(settle > 0 && rules.before == 0, "the load settle's steps reach the listeners, without control");
+        let confirm = FrameInput { confirm: true, ..FrameInput::default() };
+        let events = game.frame_with(DT, confirm, &mut Still, &mut rules);
+        assert_eq!(game.stage().state(), State::Driving);
+        assert_eq!(game.start_camera(), Some(StartCamera::Done));
+        assert!(!events.substeps.is_empty(), "Tic drives in the confirm's frame");
+        assert_eq!(rules.starts, 1);
+        assert_eq!(rules.before as usize, events.substeps.len());
+        assert_eq!(rules.after - settle, rules.before);
+        let mut now = DT;
+        while game.stage().state() == State::Driving {
+            now += DT;
+            game.frame_with(now, FrameInput::default(), &mut Still, &mut rules);
+        }
+        assert_eq!(game.flow().end().map(|end| end.cause), Some(crate::flow::EndCause::Mode));
     }
 
     /// The quick race takes no confirm: its go is the camera's.

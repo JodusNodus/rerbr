@@ -21,19 +21,15 @@ The 1.02 gameplay loop around the physics step, pure and checked against the ori
 | `pause_menu` | Pause menu items per mode, confirm boxes, retire |
 | `result` | Stage result: running, finished or retired, time, penalties, splits |
 | `record` | Stage record and personal best in `pfresult.rst` and `pf<name>.rbr` |
+| `mode` | A game mode's listeners on the stage loop (`ModeRules`; the rally school's in `rbr-school`) |
 | `race_options` | Quick race and championship options to menu globals and penalty settings |
 | `weather` | Quick race weather row and wear draw; default tyre kind |
 | `crt` | msvcr71 `rand()` and `qsort` |
 | `setup` | Typed car setup, ranges, defaults, slider steps, setup file text |
 | `ghost` | Ghost car recording and playback |
-| `car_damage` | Damage carried between stages; part severity and repair |
-| `championship` | A rally's stages, end-of-stage handling, carried damage and tyres |
-| `service/` | Service park: budget, part tree, orders, repairs, late penalty |
-| `season/` | Season creation, teams, forecast weather, points |
-| `season/layout` | Named view over the season save: position, clock, ranks, results, orders; the save-layout adapter |
-| `season_events` | Season clock and event queue, AI stages and services, player turns |
-| `season_store` | Season in the profile's `RBR7` block |
-| `ai_season/` | AI driver's stage and service on `rand()` |
+| `car_damage` | Damage carried between stages; part severity and repair, 1.02's and NGP's (`Rules`) |
+
+The championship (season, AI, service park, season save) is [`rbr-championship`](../rbr-championship).
 
 ## Tests
 

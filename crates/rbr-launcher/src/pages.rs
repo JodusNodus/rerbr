@@ -9,7 +9,7 @@ use rbr_sound::menu::MenuPlayer;
 use crate::browser;
 use crate::car_browser;
 use crate::catalog::{self, car_label};
-use rbr_gameplay::season as season_model;
+use rbr_championship::season as season_model;
 
 use crate::{rally_page, Form};
 
@@ -22,6 +22,8 @@ pub enum Page {
     /// The quick race: car, stage, conditions, the race options and Start.
     Drive,
     Championship,
+    /// The rally school's lessons, each on its map in the Drive page's car.
+    School,
     /// The car setup.
     Setup,
     Replays,
@@ -34,9 +36,10 @@ pub enum Page {
 
 impl Page {
     /// The tabs, in order.
-    const TABS: [(Page, &'static str); 7] = [
+    const TABS: [(Page, &'static str); 8] = [
         (Page::Drive, "Drive"),
         (Page::Championship, "Championship"),
+        (Page::School, "School"),
         (Page::Setup, "Car setup"),
         (Page::Replays, "Replays"),
         (Page::Controls, "Controls"),
@@ -44,11 +47,18 @@ impl Page {
         (Page::Settings, "Settings"),
     ];
 
-    /// The page a shortcut opens: Ctrl+1 to Ctrl+7 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next, Ctrl+Shift+Tab
-    /// or Ctrl+Page Up the one before.
+    /// Whether the page's tab is tagged experimental: the rally school, whose judging is not checked against the
+    /// original yet.
+    pub fn experimental(self) -> bool {
+        self == Page::School
+    }
+
+    /// The page a shortcut opens: Ctrl+1 to Ctrl+8 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next,
+    /// Ctrl+Shift+Tab or Ctrl+Page Up the one before.
     fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
         use egui::{Key, Modifiers};
-        const NUMBERS: [Key; 7] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7];
+        const NUMBERS: [Key; 8] =
+            [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8];
         let at = Self::TABS.iter().position(|(p, _)| *p == self).unwrap_or(0);
         let by = |n: usize| Self::TABS[(at + n) % Self::TABS.len()].0;
         let shift_ctrl = Modifiers::CTRL | Modifiers::SHIFT;
@@ -136,6 +146,12 @@ pub(crate) fn theme(ctx: &egui::Context) {
         style.spacing.button_padding = egui::vec2(8.0, 3.0);
         style.spacing.interact_size.y = 24.0;
     });
+}
+
+/// The page's main action (Start, Drive lesson, Drive SS1): large, white on green.
+pub fn start_button(label: &str) -> egui::Button<'static> {
+    let text = RichText::new(label).size(20.0).strong().color(Color32::WHITE);
+    egui::Button::new(text).fill(ACCENT).min_size(egui::vec2(180.0, 44.0))
 }
 
 /// A section's heading.
@@ -371,8 +387,26 @@ impl Form {
                     ui.add_space(20.0);
                     let mut open = ui.input_mut(|i| self.page.shortcut(i));
                     for (n, (page, name)) in Page::TABS.into_iter().enumerate() {
-                        let tab = egui::Button::selectable(self.page == page, RichText::new(name).size(15.5));
-                        let key = format!("{}+{}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }, n + 1);
+                        let mut label = egui::text::LayoutJob::default();
+                        RichText::new(name).size(15.5).append_to(
+                            &mut label,
+                            ui.style(),
+                            egui::FontSelection::Default,
+                            egui::Align::Center,
+                        );
+                        if page.experimental() {
+                            RichText::new(" experimental").size(11.5).color(WARN).append_to(
+                                &mut label,
+                                ui.style(),
+                                egui::FontSelection::Default,
+                                egui::Align::Center,
+                            );
+                        }
+                        let tab = egui::Button::selectable(self.page == page, label);
+                        let mut key = format!("{}+{}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }, n + 1);
+                        if page.experimental() {
+                            key += " · experimental: not yet checked against the original game";
+                        }
                         if ui.add(tab.min_size(egui::vec2(0.0, 28.0))).on_hover_text(key).clicked() {
                             open = Some(page);
                         }
@@ -419,6 +453,7 @@ impl Form {
             egui::CentralPanel::default().show(root, |ui| match self.page {
                 Page::Drive => self.drive_page(ui),
                 Page::Championship => self.championship_page(ui),
+                Page::School => self.school_page(ui),
                 Page::Replays => self.replays_page(ui),
                 Page::Setup => self.setup_page(ui),
                 Page::Controls => {
@@ -554,9 +589,10 @@ impl Form {
         self.catalog.cars.iter().position(|c| matches!(c.physics, crate::catalog::Physics::Archive) && c.slot == index)
     }
 
-    /// The Championship page (`rally_page`). The season drives its team's car when NGP drives it, else the car picked
-    /// for it (ours: kept per profile in `[season]`; the game's season always drives the team's car). A season with
-    /// neither asks for one.
+    /// The Championship page (`rally_page`). A season drives the car picked for it, any car (ours: kept per profile in
+    /// `[season]`; the game's season always drives the team's car, and a car slot names no particular car outside a
+    /// vanilla install). Picking a team picks its car when NGP drives it. A saved season with no pick drives the
+    /// team's car, and asks for one when NGP doesn't drive it.
     fn championship_page(&mut self, ui: &mut egui::Ui) {
         if self.no_cars_yet(ui) {
             return;
@@ -565,20 +601,28 @@ impl Form {
             return self.car_browser_page(ui);
         }
         let profile = self.rally.profile.clone();
+        let team = self.rally.team;
+        if self.season_team_seen.is_some_and(|seen| seen != team) {
+            if let Some(i) = self.team_car(team) {
+                self.season_pick = i;
+            }
+        }
+        self.season_team_seen = Some(team);
         if self.rally.take_new_season() {
-            match self.catalog.cars.get(self.season_pick).filter(|_| self.team_car(self.rally.team).is_none()) {
+            match self.catalog.cars.get(self.season_pick) {
                 Some(car) => self.season_cars.set(&profile, &car.name.clone()),
                 None => self.season_cars.remove(&profile),
             }
         }
         let cars = &self.catalog.cars;
         let picked = self.season_cars.of(&profile).and_then(|name| cars.iter().position(|c| c.name == name));
-        let season_car = self.rally.season_team().map(|team| self.team_car(team).or(picked));
-        let tip = "The Controls page's driver aids, and the Graphics & sound options, apply to the season too";
-        ui.colored_label(Color32::GRAY, tip);
-        ui.add_space(4.0);
+        let season_car = self.rally.season_team().map(|team| picked.or(self.team_car(team)));
         if season_car == Some(None) {
-            ui.label(format!("NGP doesn't drive the team's car of {profile}'s season. Choose the car it drives:"));
+            section(ui, "Choose the season's car");
+            ui.label(format!(
+                "{profile}'s saved season drives its team's car, which NGP doesn't drive here. Any car can drive it:"
+            ));
+            ui.add_space(4.0);
             let mut browse = false;
             ui.horizontal(|ui| {
                 if let Some(row) = self.car_browser.row(self.season_pick) {
@@ -605,24 +649,22 @@ impl Form {
         let here = self.here();
         let archive = self.ngp_archive();
         let car = self.car().cloned().unwrap_or_default();
-        let team_cars: Vec<Option<String>> =
-            (0..7).map(|t| self.team_car(t).map(|i| self.catalog.cars[i].name.clone())).collect();
+        let team_cars: Vec<Option<usize>> = (0..7).map(|t| self.team_car(t)).collect();
         let mut browse = false;
         let (browser_rows, favourites) = (&self.car_browser, &self.favourite_cars);
         let (pick, cars) = (self.season_pick, &self.catalog.cars);
-        // The new season's car: the team's when NGP drives it, else the car browser's.
-        let mut car_row = |ui: &mut egui::Ui, team: u32| match team_cars.get(team as usize).cloned().flatten() {
-            Some(name) => {
-                ui.label(format!("{name} (the team's)"));
-                true
-            }
-            None => {
+        // The new season's car: the car browser's, the team's when picking the team found it.
+        let mut car_row = |ui: &mut egui::Ui, team: u32| {
+            ui.horizontal(|ui| {
                 if let Some(row) = browser_rows.row(pick) {
                     browse |=
                         browser::field_button(ui, favourites.contains(&row.name), &row.title, &row.detail(), FIELD);
                 }
-                cars.get(pick).is_some_and(|c| c.unavailable().is_none())
-            }
+                if team_cars.get(team as usize).copied().flatten() == Some(pick) {
+                    ui.colored_label(browser::GREY, "the team's car");
+                }
+            });
+            cars.get(pick).is_some_and(|c| c.unavailable().is_none())
         };
         // What blocks a championship or trial launch: a running viewer, what the Drive page's Start checks
         // through `readiness` (no program, NGP or car: the status line names the fix), and a car that cannot
@@ -726,8 +768,9 @@ mod tests {
         };
         let (ctrl, shift_ctrl) =
             (Modifiers::CTRL | Modifiers::COMMAND, Modifiers::CTRL | Modifiers::COMMAND | Modifiers::SHIFT);
-        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::Setup));
-        assert_eq!(press(Page::Drive, Key::Num7, ctrl), Some(Page::Settings));
+        assert_eq!(press(Page::Drive, Key::Num3, ctrl), Some(Page::School));
+        assert_eq!(press(Page::Drive, Key::Num4, ctrl), Some(Page::Setup));
+        assert_eq!(press(Page::Drive, Key::Num8, ctrl), Some(Page::Settings));
         assert_eq!(press(Page::Drive, Key::Tab, ctrl), Some(Page::Championship));
         assert_eq!(press(Page::Settings, Key::PageDown, ctrl), Some(Page::Drive));
         assert_eq!(press(Page::Drive, Key::Tab, shift_ctrl), Some(Page::Settings));

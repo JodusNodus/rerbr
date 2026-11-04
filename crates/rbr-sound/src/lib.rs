@@ -222,6 +222,8 @@ pub struct Player {
     scene: Scene,
     /// `None` offline.
     output: Option<device::Output>,
+    /// The rally school's bank is swapped into the mixer ([`Player::load_school`]).
+    school_loaded: bool,
 }
 
 impl Player {
@@ -267,7 +269,7 @@ impl Player {
         let (output, mixer) = output(&bank)?;
         let mut models = Models::new(&bank, sky, Vec::new());
         models.codriver.muted = !codriver;
-        Ok(Player { models, mixer, scene: Scene::default(), output })
+        Ok(Player { models, mixer, scene: Scene::default(), output, school_loaded: false })
     }
 
     /// Fills `out` with the next samples (an offline player's; a device's own are taken from it).
@@ -283,6 +285,31 @@ impl Player {
         if let Ok(mut mixer) = self.mixer.lock() {
             mixer.apply(&commands);
         }
+    }
+
+    /// Applies `commands` to the mixer (the rally school's speech, which comes from the live record rather than
+    /// a step's inputs; the co-driver switch does not mute it, as the original's handler does not test it).
+    pub fn apply(&mut self, commands: &[Command]) {
+        if let Ok(mut mixer) = self.mixer.lock() {
+            mixer.apply(commands);
+        }
+    }
+
+    /// Swaps the rally school's English samples (`Audio\RS\ENG\<id>.ogg`) into the mixer, once; later calls
+    /// with the same data are free. The samples are copied before taking the mixer lock; only the swap runs
+    /// under it.
+    pub fn load_school(&mut self, data: &Data) -> Result<(), String> {
+        if self.school_loaded {
+            return Ok(());
+        }
+        let path = data.audio_dat().ok_or("no Root/audio.dat")?;
+        let dat = rbr_formats::audio::AudioDat::open(&path)?;
+        let bank = crate::data::SchoolBank::load_eng(&dat)?;
+        let prepared: std::collections::HashMap<u32, std::sync::Arc<crate::data::Wave>> =
+            bank.words.into_iter().map(|(id, wave)| (id, std::sync::Arc::new(wave))).collect();
+        self.swap(prepared, Mixer::swap_school);
+        self.school_loaded = true;
+        Ok(())
     }
 
     /// The scripted events since the last call (`rbr_render::characters`).

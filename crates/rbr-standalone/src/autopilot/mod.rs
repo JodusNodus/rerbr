@@ -365,6 +365,10 @@ pub struct Driver<'a> {
     bogged: u32,
     /// The heavy props near the driveline, by `from`.
     props: Vec<Placed>,
+    /// A rally school lesson's stop: the driveline distance the brakes stay off before and the one to stop at, m.
+    stop: Option<(f32, f32)>,
+    /// The drive runs down the driveline, to a stop behind the start.
+    against: bool,
 }
 
 impl<'a> Driver<'a> {
@@ -387,7 +391,21 @@ impl<'a> Driver<'a> {
             limit: f32::INFINITY,
             bogged: 0,
             props: Vec::new(),
+            stop: None,
+            against: false,
         }
+    }
+
+    /// The driver keeping off the brakes before the driveline distance `brake_from`, then stopping at `at` and
+    /// standing there.
+    pub fn with_stop(self, brake_from: f32, at: f32) -> Self {
+        Self { stop: Some((brake_from, at)), ..self }
+    }
+
+    /// The driver following the driveline down to the stop `at` behind the start and standing there: the free
+    /// lessons 0 and 10 start facing the yellow box that ends them, which lies before the start on the driveline.
+    pub fn with_stop_behind(self, at: f32) -> Self {
+        Self { stop: Some((0.0, at)), against: true, ..self }
     }
 
     /// The driver steering around `obstacles`: each is placed by its centre's nearest driveline point (sampled).
@@ -451,6 +469,10 @@ impl<'a> Driver<'a> {
 
     /// The target speed: the slowest of the curve limits ahead, each reachable by braking.
     pub fn target_speed(&self, at: f32) -> f32 {
+        if self.against {
+            let stop = self.stop.map_or(0.0, |(_, s)| s);
+            return self.top.min((2.0 * BRAKING * (at - stop).max(0.0)).sqrt());
+        }
         let mut target = self.top;
         let mut s = 0.0;
         while s < PLAN_AHEAD {
@@ -470,6 +492,12 @@ impl<'a> Driver<'a> {
         for p in on_line.filter(|p| p.to + PASSED >= at && p.from < at + PLAN_AHEAD) {
             let s = (p.from - LEAD - at).max(0.0);
             target = target.min((DODGE_TOP * DODGE_TOP + 2.0 * BRAKING * s).sqrt());
+        }
+        if let Some((brake_from, stop)) = self.stop {
+            if at < brake_from {
+                return self.top;
+            }
+            target = target.min((2.0 * BRAKING * (stop - at).max(0.0)).sqrt());
         }
         target
     }
@@ -542,6 +570,9 @@ impl<'a> Driver<'a> {
         let at = distance(&self.values, sense.parameter);
         let look = LOOK_BASE + LOOK_TIME * speed;
         let target = self.aim_target(&sense.pose).unwrap_or_else(|| {
+            if self.against {
+                return point(self.track, parameter(&self.values, at - look));
+            }
             let u = parameter(&self.values, at + look);
             let (p, s) = (point(self.track, u), self.dodge(at, at + look + LEAD));
             if s == 0.0 {
@@ -554,7 +585,7 @@ impl<'a> Driver<'a> {
         let error = angle(sense.pose.forward(), sub(target, sense.pose.position));
         if finished {
             self.mode = Mode::Drive;
-        } else if self.aim.is_none() {
+        } else if self.aim.is_none() && self.stop.is_none() {
             self.watch(step, at, sense, error);
         }
         // Counter-clockwise (left) error wants left (negative) steering; backing up, right swings the nose left.
@@ -585,7 +616,7 @@ impl<'a> Driver<'a> {
                     steer = lean.signum();
                 }
                 let gap = want - speed;
-                (throttle, brake) = if finished {
+                (throttle, brake) = if finished || want <= 0.0 {
                     (0.0, 1.0)
                 } else if gap > 0.0 {
                     ((0.4 + 0.2 * gap).min(1.0), 0.0)

@@ -21,7 +21,7 @@ impl CrtRand {
 /// msvcr71's `qsort` (0x7c36695f, retail `Root/msvcr71.dll`) on one-word elements: up to 8 a max-selection
 /// (`shortsort` 0x7c3668fb), else a median of three and the partition that keeps track of the middle element, the
 /// larger side kept for later. The order of equal elements is this algorithm's.
-pub(crate) fn crt_qsort<T: Copy>(v: &mut [T], mut cmp: impl FnMut(T, T) -> i32) {
+pub fn crt_qsort<T: Copy>(v: &mut [T], mut cmp: impl FnMut(T, T) -> i32) {
     if v.len() < 2 {
         return;
     }

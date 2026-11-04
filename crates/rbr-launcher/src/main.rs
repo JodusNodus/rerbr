@@ -86,13 +86,13 @@
 //! (an encrypted one) stays listed with the reason. Until saved, the NGP field defaults to `$RBR_NGP_PHYSICS`.
 //!
 //! The tabs follow what the player wants to do (ours, after Content Manager): Drive (car and stage, conditions, race
-//! options, the previews and Start), Championship, Car setup, Replays (saved drives, playback and video export),
-//! Controls, Graphics & sound (window, camera, HUD and pace notes, sound, the renderer's additions) and Settings
-//! (install folder, advanced paths, about). The status line under every page says what the install lacks
-//! (the programs, NGP's archive, a car NGP drives), with its fix
-//! (`Form::readiness`); the Drive page
-//! says what else blocks Start (`Form::blocker`). The pages change only where a field is shown: the settings file and
-//! the viewer command are those of the earlier pages (`command::tests::the_viewer_command_follows_the_saved_settings`).
+//! options, the previews and Start), Championship, School (the rally school's lessons in the Drive page's car), Car
+//! setup, Replays (saved drives, playback and video export), Controls, Graphics & sound (window, camera, HUD and pace
+//! notes, sound, the renderer's additions) and Settings (install folder, advanced paths, about). The status line under
+//! every page says what the install lacks (the programs, NGP's archive, a car NGP drives), with its fix
+//! (`Form::readiness`); the Drive page says what else blocks Start (`Form::blocker`). The pages change only where a
+//! field is shown: the settings file and the viewer command are those of the earlier pages
+//! (`command::tests::the_viewer_command_follows_the_saved_settings`).
 //!
 //! The Controls page (`controls_page`) sets the live mode's bindings (`rbr_render::bindings`), the wheel, pedals and
 //! shifter first, the keyboard's keys collapsed below: a device input (`rbr_render::devices`) and a
@@ -118,9 +118,9 @@
 //! `SavedGames/`), each rally stage by stage with the service park between stages, the AI drivers' times, the rally
 //! and season standings, the bulletins and the trials between rallies. New season takes the championship's own
 //! options (the team, skill level and car damage, kept in `launcher-settings.ini` as `championship_team`,
-//! `championship_skill` and `championship_damage`); the season drives its team's car when NGP drives it, else a car
-//! picked for it (ours; each profile's in the settings file's `[season]` section, so the game's save stays the
-//! game's), and its stages
+//! `championship_skill` and `championship_damage`); the season drives the car picked for it, any car, the team's
+//! when NGP drives it picked with the team (ours; each profile's in the settings file's `[season]` section, so the
+//! game's save stays the game's), and its stages
 //! run as the game's championship on the season's (`rbr-standalone --championship`) with the Controls page's aids.
 //! `--screenshot` also draws it, and with `--screenshot-damage FILE` (`rbr-standalone --damage-out`) its service park on that car.
 
@@ -154,6 +154,7 @@ mod pages;
 mod preview;
 mod rally_page;
 mod replay_page;
+mod school_page;
 mod settings;
 mod settings_page;
 mod setup_page;
@@ -178,6 +179,7 @@ use rbr_gameplay::weather::Season;
 use rbr_render::bindings::Bindings;
 use rbr_render::glass::model::Switch;
 use rbr_sound::menu::MenuPlayer;
+use school_page::SchoolPage;
 use settings::{load, or_folder, read_settings, Gearboxes, SeasonCars};
 use setup_page::SetupPage;
 use window::App;
@@ -443,6 +445,7 @@ struct Form {
     page: Page,
     setup: SetupPage,
     rally: RallyPage,
+    school: SchoolPage,
     /// The Drive page's stage and car previews.
     previews: preview::Previews,
     car: usize,
@@ -459,6 +462,8 @@ struct Form {
     /// The car a new season takes, and each profile's season car (`[season]`).
     season_pick: usize,
     season_cars: SeasonCars,
+    /// The new season's team last seen: picking another team picks its car when NGP drives it.
+    season_team_seen: Option<u32>,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
     /// The weather preset, the damage level and the driver aids.

@@ -44,6 +44,7 @@
 
 use crate::camera;
 use crate::car;
+use crate::live::Live;
 use crate::playback::{self, Playback, Sample};
 use crate::renderer::{mesh_bounds, Renderer};
 use crate::stage::{Address, DrawState, Image, Layer, Stage, StageTexture, TextureRef, TextureSet, Vertex};
@@ -207,14 +208,17 @@ fn cars(data: &Data) -> Vec<(usize, String)> {
 }
 
 /// The viewer's ghost options: the file `--ghost` plays, the one `--save-ghost` writes, the `--best-ghost` file, the
-/// `--ghost-weather` words, and whether the drive is live.
-#[derive(Debug, Clone, Copy, Default)]
+/// `--ghost-weather` words, whether the drive is live, and a ghost played from memory instead of a file: its log
+/// name, map, car (`Cars.ini` index) and stream (the rally school's judged replay keeps Richard's `rse<N>.gho`
+/// here (its map and car paired, as a ghost file reads); an explicit `--ghost` wins).
+#[derive(Debug, Clone, Default)]
 pub struct Options<'a> {
     pub play: Option<&'a Path>,
     pub save: Option<&'a Path>,
     pub best: Option<&'a Path>,
     pub weather: Weather,
     pub live: bool,
+    pub memory: Option<(String, (u32, u32, Stream))>,
 }
 
 /// `--ghost-weather`'s value: the eight `.ghc` weather words in file order, comma-separated (the amount and `+0x3c`
@@ -238,6 +242,12 @@ pub fn parse_weather(text: &str) -> Result<Weather, String> {
     })
 }
 
+/// The HUD race clock of a live drive (`None` without one): the race time the school ghost runs on (its race
+/// starts at the brief's confirm, not the load settle the step clock counts from).
+pub fn hud_time(live: Option<&Live>) -> Option<f32> {
+    live.and_then(|live| live.hud.race.map(|race| race.time))
+}
+
 /// `--ghost-weather`'s value for `weather` ([`parse_weather`] reads it back).
 pub fn weather_arg(w: &Weather) -> String {
     let words = [w.track_letter, w.cloud, w.weather, w.cloud_letter, w.wear, w.wetness];
@@ -248,6 +258,9 @@ pub fn weather_arg(w: &Weather) -> String {
 /// The viewer's ghost: the ghost car `--ghost` plays and the recording `--save-ghost` writes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Session {
+    /// Whether the ghost is the rally school's judged replay: it runs on the HUD race clock (the school race
+    /// starts at the brief's confirm, not the load settle), not the drive's step clock like a `--ghost` file.
+    school: bool,
     car: Option<GhostCar>,
     /// The map and car (`Cars.ini` index) a written ghost names.
     key: (u32, u16),
@@ -285,24 +298,26 @@ impl Session {
             let best = stored.as_ref().map(|(m, _, s)| Best { map: *m, time: rbr_gameplay::ghost::end_time(s) });
             (p.to_owned(), best)
         });
+        let school = options.memory.is_some();
         let play = match (options.play, &stored) {
-            (Some(path), _) => Some((path.to_owned(), read(path)?)),
-            (None, Some(ghost)) => options.best.map(|p| (p.to_owned(), ghost.clone())),
-            (None, None) => None,
+            (Some(path), _) => Some((path.display().to_string(), read(path)?)),
+            (None, Some(ghost)) => options.best.map(|p| (p.display().to_string(), ghost.clone())),
+            (None, None) => options.memory,
         };
         let slot_car =
             |index: u32| cars.iter().find(|(i, _)| *i as u32 == index).map_or(player_car, |(_, f)| f.as_str());
         let car = match play {
-            Some((path, (_, index, stream))) => {
-                let name = slot_car(index);
-                eprintln!("ghost: {} ({} samples, car {name})", path.display(), stream.samples.len());
-                Some(GhostCar::add(data, name, stage, Track::stream(stream))?)
+            Some((name, (_, index, stream))) => {
+                let car = slot_car(index);
+                eprintln!("ghost: {name} ({} samples, car {car})", stream.samples.len());
+                Some(GhostCar::add(data, car, stage, Track::stream(stream))?)
             }
             None => None,
         };
         let index = cars.iter().find(|(_, f)| f.eq_ignore_ascii_case(player_car)).map_or(0, |(i, _)| *i as u16);
         let save = options.save.map(Path::to_owned);
         let session = Session {
+            school,
             car,
             key: (map, index),
             save,
@@ -320,12 +335,18 @@ impl Session {
         Ok(session)
     }
 
-    /// Plays the ghost to the race time of `drive`'s current frame (see [`GhostCar::apply`]).
-    pub fn apply(&mut self, renderer: &mut Renderer, drive: &Playback, view_projection: Mat4) {
+    /// Plays the ghost to the race time of `drive`'s current frame (see [`GhostCar::apply`]): the HUD race clock
+    /// `hud` for the school ghost (its race starts at the brief's confirm, about 3 s after the load settle the step
+    /// clock counts from), the drive's step clock otherwise. `hud` is `None` without a live drive.
+    pub fn apply(&mut self, renderer: &mut Renderer, drive: &Playback, hud: Option<f32>, view_projection: Mat4) {
         if let Some(car) = &mut self.car {
             let sample = drive.sample();
             let penalties: f32 = self.penalties.iter().filter(|&&(at, _)| at <= sample.step).map(|&(_, p)| p).sum();
-            car.apply(renderer, race_time(sample, drive.step_clock()) + penalties, view_projection);
+            let t = match (self.school, hud) {
+                (true, Some(hud)) => hud + penalties,
+                _ => race_time(sample, drive.step_clock()) + penalties,
+            };
+            car.apply(renderer, t, view_projection);
         }
     }
 
@@ -555,6 +576,12 @@ impl GhostCar {
 mod tests {
     use super::*;
 
+    /// A ghost from memory is off unless a school replay keeps one there: an explicit `--ghost` wins.
+    #[test]
+    fn the_in_memory_ghost_is_off_by_default() {
+        assert!(Options::default().memory.is_none());
+    }
+
     #[test]
     fn the_weather_argument_reads_back() {
         let w = Weather {
@@ -574,6 +601,7 @@ mod tests {
     #[test]
     fn a_finish_is_kept_until_a_restart() {
         let mut session = Session {
+            school: false,
             car: None,
             key: (54, 6),
             save: None,
@@ -597,6 +625,7 @@ mod tests {
     #[test]
     fn the_penalties_are_kept_by_step_until_a_restart() {
         let mut session = Session {
+            school: false,
             car: None,
             key: (34, 6),
             save: None,

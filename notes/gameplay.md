@@ -103,6 +103,82 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 - The flip spectators are five `load_car_flipN.lua`, cosmetic; `run_car_flip.lua` never runs.
 - Bird strike feeds only the sound. Crash-site scripts are unused in retail.
 
+## Rally school (experimental)
+
+Mechanics in the `rbr-school` crate (lessons, the `.dls` `Driveline` filter bank, its listeners, `EvalFilters`,
+the awards), a mode on the stage loop: `SchoolRun` is a `rbr_gameplay::mode::ModeRules` the host passes to
+`Game::frame_with` (the start, the control before each substep, the step's emits, `Tic570` each frame). The host
+owns it, and the live hook and the profile write are in `rbr-standalone` (`--school N`, `live::race_end`). Checks:
+`rbr-school/tests/vectors.rs` (direct-call vectors of the bank's methods, records in `gameplay_school/`) and an
+autopilot drive of lesson 2 (stops in the box, verdict 3, profile written). No original school drive is recorded
+yet: the oracle run is open.
+
+- Car (ours, user decision 2026-11-04): the original drives car 5 with the lesson's setup (`Lesson::setup_file`).
+  `--school` takes any `--car` or `--rsf-car`, car 5 by default; like the original the lesson's setup goes over
+  slot 5 without a pack, whatever car it holds (`Race::school_setup`), any other car keeps its default setup on the
+  lesson's tyre. Lesson 2 autopilot over the 8 retail slots and 84 RSF packs: every drive ends by the school
+  (verdicts 0, 3 or 4 by the autopilot's time; car 2 at 10.10 s fails).
+
+- Ported and vector-checked but with no caller in ours, removed in f9eb0e60 (restore from its parent): the sub
+  primitives the listeners use (`Classify`, `Category`, `Pick`, `Over`/`Over2`/`Over3`, `InRange`, `Init`, `Set7`,
+  `SetThresh`, `SetLim`, `MaxStore`), `InitState`, `Publish`, `RallySchoolSound` and the latch accessors. The
+  failure page needs only `FlagMap` and `Get20`/`Get24`/`Get28` (restored, vector-covered): its draw calls nothing
+  else (verified against the disassembly below).
+- Failure reasons (`rbr_school::explain::failure_reasons`, listed under the HUD's Failed): `Vf0C` 0x542330 over the
+  bank, verified against the 1.02 disassembly where the reconstruction (`RBR_E52_X87.cpp`, 26% matched) diverges:
+  title `FAILURE1`, advice `SCOM_FAIL1-4` by `rand & 3` (`Vf04` 0x542aa0; neither picked from the result); per sub
+  `FlagMap` 0/1/2 reads `lim0`/`lim1`/`lim2` (other values skip: `dec; jne`), `q >= 0` names the lesson's own
+  string-table key at that offset (`BlockAddB` 0x475c90, block base 0 in ours), `q == -1` skips, else the sub's tag
+  (`m_00`) 1..8/1..5/1..5 names a built-in (`m_str8[9..16]` `BRKFAIL`..`NOHBFAIL`, `[17..21]` `BRKEARLY`..`HALTEARLY`,
+  `[22..26]` `BRKLATE`..`HALTLATE`; the reconstruction's `m_str8[6..13]` and its switch on the limit are wrong);
+  each tripped check (`state` +-1) with `code > 0` names its own key; results de-duplicated, at most 7; when timed
+  (all three ladder words ordered-nonzero, `IsZeroAny` 0x4981a0) a race time over the limit names `TIMEFAIL`, else
+  over the pass `TIMEBAD`, appended without a scan. `FAILHELP` and `OOBFAIL`/`OOBYAFAIL`/`OOBSTFAIL`/`OOB_TTFAIL`/
+  `CRASHFAIL` are set but never resolved here (the out-of-bounds ones feed the fade's warning instead).
+- The race time the time pair compares (`DAT_0165fc68+0x140`) is inferred to be the HUD time; ours passes the
+  end's race time. Every retail lesson's limits and check codes resolve to keys in the English table, as does
+  every built-in but `HALTEARLY` (absent in 1.02 English, skipped at runtime like the original's null `Resolve`).
+- `SCH1` carries the failed end's reason keys after the speech ids (old bodies still read); the standalone fills
+  them once the verdict is known and failed, the viewer resolves them through `bstrings.eng` (the `HudModel`
+  keeps the table a school drive hands it) and the verdict panel lists each text under Failed.
+- Lessons 0 and 10 (free practice, "yellow rectangle: end lesson") end standing in the box within 2 m (each axis)
+  of `CDriveLine::Sample(m_00)` on the object `0x1659184` points to (fixed 2026-11-04: read as the table it gave
+  the origin and they never ended). Both start facing the box, before the start on a two-record driveline; lesson
+  10's map has no finish and its card a finish time from the first step.
+- Lesson sweep (autopilot, car 5, an NGP car 2/4/6 and an RSF pack): every lesson ends, by the school, a retire
+  latch or the finish marker; 0, 2, 10 and 11 pass, the others fail on the autopilot's time or lines. Slots with no
+  NGP car (here 0, 1, 3, 7) start the free lessons with the engine off; the launcher does not offer them.
+- `SchoolIncident` reads its lead through the sub's words whatever it points at: a check lead is armed by its
+  bounds (`IsArmed` on +0x14/+0x18). Inferred: no record has an untripped check lead with a zero bound.
+
+- Flow mode 7: the lesson is the flow's +0xca4, its step counter +0xca8 (2 in a timed lesson's load, 4 while
+  driving); +0xcb4 is set by the untimed lessons' (0, 4, 10, 13, 14, 16) load only (`M5693f0` cases 2 and 4).
+- No countdown: in state 10 mode 7 arms neither the camera orbit (`M8840`, modes 1 and 2) nor the confirm (3 to 5);
+  the confirm drives at once (`Stage::school_start`).
+- Listeners: the control payload's words 0 to 2 (`CbF30`) before each substep; in the step the brake-wall emits
+  (`CbF10`, only segments with index bit 14; flag bit 2 is the crossing), the general state (`OnDrive`), the
+  driveline float (`Cb930`, not in state 10); `Tic570` runs `EndRace` each frame and emits a retire's
+  `CSigEndRace` once a trip latch is set. A retire sets latch B (`M5662c0`).
+- Verdict (`EvalFilters`): a latch gives 0, a no-go sub (flags 4) done gives 0, then the time ladder
+  (`perfect_time`, `pass_time`, `time_limit`), the speed checks, then `SeverityMax` over the 1.02 repair objects;
+  lessons 4 and 16 leave the damage out.
+- Awards (case 8): a fail keeps the results; a pass gives every earlier lesson without a result the same grade and
+  raises the lesson's own (profile +0x424, `Profile::school`); the ride (lesson 5) gives 4. A school drive writes
+  no stage records (inferred).
+- Demonstration and ride (`rse%d.arp`, `ghosts.rbz`) play viewer-side (`rbr_render::school_demo`): a timed
+  lesson's demonstration draws the player's car at the replay's pose from the chase camera until the replay ends or
+  Enter skips it, then the brief; lesson 5's ride plays from the in-car camera and sends the brief's confirm at its
+  end, ending the drive on its first frame (`SchoolRun::frame`) with the award's 4, unjudged.
+- Speech ([sound.md](sound.md#school-speech)): the briefing, the `Trigger` ids and the end pages on the school
+  voice; the results-page `RallySchoolSound` emit left out.
+- Judged replay (case 6, ours): watching a replay (`viewer --replay`) of a school lesson races Richard's ghost
+  (`Ghosts\rse<lesson>.gho` in `Root/ghosts.rbz`) as the ghost car, on the HUD race clock (verified on a lesson 2
+  replay: the ghost loads with 218 samples and drives in step with the race clock; lessons 4, 10, 14 and 16 have
+  no `.gho` and race without one). A live lesson drive stays vanilla. Inferred: the ghost's race-clock timing
+  (the original's case 6 is not traced); unverified against the original's judged replay.
+- Unverified: whether physics steps during the brief, the untimed lessons' start, `EndRace`'s order against the
+  HUD tick and its `dt`, NGP leaving the bank's repair handler alone.
+
 ## Race options
 
 Mechanics in `race_options.rs` (menu words, damage level, aids, penalties, gate). Checks: level 1 with default aids
@@ -126,9 +202,13 @@ presentation: [renderer.md](renderer.md), [sound.md](sound.md).
 
 ## Championship and service
 
-Mechanics in `championship.rs` (time, sectors, retire rule), `season/` (position, clock, rank, result views;
-byte-exact save), `season_events.rs`, `season_store.rs`, `ai_season/`, `service/`, `setup.rs`. The `rand()` order is the asm's
-(`ai_season`); the driver classes' draws are ours (not in code).
+Mechanics in the `rbr-championship` crate: `rally` (time, sectors, retire rule, the `--result-out` file `StageReport`),
+`season/` (position, clock, rank, result views; byte-exact save), `events`, `store`, `ai`, `service/`; the setup in
+`rbr_gameplay::setup`. The `rand()` order is the asm's (`ai`); the driver classes' draws are ours (not in code).
+- The launcher owns the season and the rally (`rally_page.rs`); each stage is a `rbr-standalone --championship` run
+  whose stage rules are flow mode 3's tests in `rbr-gameplay` (`Mode::CHAMPIONSHIP`), so it needs no
+  `rbr_gameplay::mode::ModeRules` hook.
+- `rbr_gameplay::car_damage::Rules` (1.02 or NGP) picks the damage objects for the HUD and the service park.
 
 ## Damage
 
@@ -137,7 +217,7 @@ Mechanics in `car_damage.rs` (carried damage, part severity, repair, service ref
 
 ## Saves
 
-Mechanics in `record.rs` (submit, personal best, `times.ini`) and `season_store.rs`; layouts in [formats.md](formats.md).
+Mechanics in `record.rs` (submit, personal best, `times.ini`) and `rbr_championship::store`; layouts in [formats.md](formats.md).
 The viewer compares against `misc/times.ini` without `--saves` (`rbr_render::hud::splits`).
 
 - The submit rule is not checked against the original.

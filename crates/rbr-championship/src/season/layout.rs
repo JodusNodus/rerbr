@@ -21,10 +21,10 @@
 //! `+0x208`, the block id first). Unknown words pass through untouched.
 
 use rbr_formats::saves::season::{self as save, Season, DRIVERS, RETIRED};
+use rbr_gameplay::race_options::ChampionshipOptions;
 
 use super::forecast::{Block, BLOCK, SLOT};
 use super::{Player, RallyPosition, SeasonClock, PLAYER_ID, TEAM_CARS};
-use crate::race_options::ChampionshipOptions;
 
 /// Builds the initial byte-preserving save representation before the AI rank draws.
 pub(super) fn new_season(blocks: &[Block], options: ChampionshipOptions, player: Player<'_>) -> Season {
@@ -137,11 +137,6 @@ pub fn head_time(save: &Season) -> u32 {
 /// Remember the queue head's time.
 pub fn set_head_time(save: &mut Season, time: u32) {
     save.state[7] = time;
-}
-
-/// The skill level (word 0).
-pub fn skill_level(save: &Season) -> u32 {
-    save.state[0]
 }
 
 /// Whether the start orders use ranks even past the first rally (`+0xa0c4`).
@@ -418,8 +413,8 @@ pub fn bubble(mut order: [u32; DRIVERS], before: impl Fn(usize, usize) -> bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crt::CrtRand;
-    use crate::race_options::ChampionshipOptions;
+    use rbr_gameplay::crt::CrtRand;
+    use rbr_gameplay::race_options::ChampionshipOptions;
 
     fn nonzero() -> Season {
         let roster = rbr_formats::ai_ini::Roster { drivers: vec![], teams: vec![], cars: vec![] };

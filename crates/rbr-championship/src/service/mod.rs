@@ -47,22 +47,13 @@
 //! and is not used.
 
 use rbr_formats::repair::Part as RepairPart;
-
-use crate::car_damage::{self, CarriedDamage};
-use crate::crt::{crt_qsort, CrtRand};
+use rbr_gameplay::car_damage::{self, CarriedDamage, Rules};
+use rbr_gameplay::crt::{crt_qsort, CrtRand};
 
 mod tree;
 
 use tree::{build, finish, mount_step, shown, subtree, unmount_step};
 pub use tree::{draw_time, Node, Progress};
-
-/// The service rules: 1.02's, or 1.02's as NGP patches them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Rules {
-    #[default]
-    V102,
-    Ngp,
-}
 
 /// The kinds of season events with a service, and their budgets in minutes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +104,7 @@ pub fn repair_parts(data: &rbr_formats::data::Data, car: usize) -> Result<Vec<Re
 /// the installed NGP cars' `repair.ini` (the loader reads `%srepair.ini` in the car's physics folder, whatever archive
 /// the game mounted).
 pub fn repair_parts_in(archive: &std::path::Path, car: usize) -> Result<Vec<RepairPart>, String> {
-    let folder = crate::setup::CAR_FOLDERS.get(car).ok_or(format!("car {car}: not a retail car"))?;
+    let folder = rbr_gameplay::setup::CAR_FOLDERS.get(car).ok_or(format!("car {car}: not a retail car"))?;
     let mut zip = rbr_formats::rbz::open(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
     let name = format!("{folder}repair.ini");
     let mut text = String::new();

@@ -10,6 +10,7 @@ use rbr_formats::saves::SaveDir;
 use rbr_formats::times::StageTimes;
 use rbr_gameplay::record::{self, Book, Finish, Update};
 use rbr_recording::splits::{Mark, Standing, Verdict};
+use rbr_school::{lesson, Lesson};
 
 /// One stage's records, loaded when the race starts.
 pub struct Saves {
@@ -86,6 +87,22 @@ impl Saves {
             self.book.save(&self.dir, &self.profile, update)?;
         }
         Ok(update)
+    }
+
+    /// A rally school lesson's verdict into the profile's school results (`lesson::award`), written unless dry: the
+    /// results after it.
+    pub fn school(&mut self, lesson: Lesson, verdict: u32) -> Result<[u32; 17], String> {
+        let file = self.book.file.as_mut().ok_or("no profile file")?;
+        let at = (file.profiles.current as usize).min(file.profiles.list.len().saturating_sub(1));
+        let entry = file.profiles.list.get_mut(at).ok_or("the profile file has no profile")?;
+        let results = lesson::award(entry.school, lesson, verdict);
+        if results != entry.school {
+            entry.school = results;
+            if !self.dry {
+                self.dir.save_profile(&self.profile, file).map_err(|e| format!("pf{}.rbr: {e}", self.profile))?;
+            }
+        }
+        Ok(results)
     }
 
     /// The record, the personal best and the result page's message.

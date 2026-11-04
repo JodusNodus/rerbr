@@ -3,8 +3,7 @@
 //! (`M6f0` 0x5b06f0, `M820` 0x5b0820, `Mfbd0` 0x5afbd0, `M620` 0x5b0620).
 
 use rbr_formats::repair::Part as RepairPart;
-
-use crate::crt::CrtRand;
+use rbr_gameplay::crt::CrtRand;
 
 /// One drawn time (0x5b0ea3): `r = rand * (1/32767) * 2`, below or at 1 the time less `r * min`, else more by
 /// `(r - 1) * max`.

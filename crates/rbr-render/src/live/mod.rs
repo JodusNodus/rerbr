@@ -206,6 +206,10 @@ pub struct Live {
     events: Vec<Vec<ParticleEvent>>,
     /// The sound records of the frames that came back, in step order, until [`Live::take_sounds`].
     sounds: Vec<Inputs>,
+    /// Whether the school flow moved since the school speech was taken, and the ids `Trigger` queued since
+    /// ([`Live::take_school_speech`]).
+    school_stop: bool,
+    school_speech: Vec<u32>,
     /// The race flow called the rescue helicopter, until [`Live::take_rescue_call`].
     rescue_called: bool,
     /// What a step of the frames' counters is (CLK1; 1.02's from a process that sends none). Parse the frames with it
@@ -283,6 +287,8 @@ impl Live {
             splits: None,
             hud_model: HudModel::default(),
             custom: None,
+            school_stop: false,
+            school_speech: Vec::new(),
             interactive_poses: HashMap::new(),
             tyres: Vec::new(),
             events: Vec::new(),
@@ -396,6 +402,12 @@ impl Live {
         std::mem::take(&mut self.sounds)
     }
 
+    /// Whether the school flow moved since the last call (brief -> driving -> ended, or a restart) and the ids
+    /// `Trigger` queued since, in order.
+    pub fn take_school_speech(&mut self) -> (bool, Vec<u32>) {
+        (std::mem::take(&mut self.school_stop), std::mem::take(&mut self.school_speech))
+    }
+
     /// Takes in one answer: keeps its records (the tyre payloads of at most [`KEPT_STEPS`] steps, the oldest go)
     /// and returns its frame.
     fn keep(&mut self, answer: LiveFrame) -> Vec<u8> {
@@ -466,6 +478,16 @@ impl Live {
             answer.hud.race.is_some_and(|r| r.jump_start),
             answer.flow.as_ref(),
         );
+        // The rally-school lesson's screens (SCH1), on a school drive: none clears them; the frame's speech
+        // accumulates for the school voice until the viewer takes it.
+        self.hud_model.set_school(periods as f32 * rbr_recording::STEP_SECONDS, answer.school.as_ref());
+        if let Some(school) = &answer.school {
+            self.school_stop |= school.stop;
+            self.school_speech.extend(school.speech.iter().copied());
+        } else {
+            self.school_stop = false;
+            self.school_speech.clear();
+        }
         self.interactive_poses.extend(answer.poses.into_iter().map(|pose| (pose.handle, pose)));
         self.stats.answer(u32::from_le_bytes(frame[12..16].try_into().expect("a frame header")));
         frame

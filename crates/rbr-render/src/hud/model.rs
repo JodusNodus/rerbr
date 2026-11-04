@@ -26,13 +26,15 @@
 //! The time base is the game's frame time: each live answer is one frame of one step ([`STEP_SECONDS`],
 //! `rbr_render::live`). Ours: the fade of the messages.
 
-use rbr_gameplay::car_damage::{level, CarriedDamage};
-use rbr_gameplay::service::Rules;
+use rbr_formats::strings::Strings;
+use rbr_gameplay::car_damage::{level, CarriedDamage, Rules};
 use rbr_recording::dash::{Dash, StackKey};
 use rbr_recording::flow::{Flow, MessageBox};
 use rbr_recording::pacenote::Callout;
+use rbr_recording::school::School as SchoolRecord;
 
 use super::pace::{self, Symbol};
+use super::school;
 
 /// Frame time per live answer period, s (7 ms, `rbr_recording::live`).
 pub const STEP_SECONDS: f32 = rbr_recording::STEP_SECONDS;
@@ -278,6 +280,8 @@ pub struct HudView {
     pub black: Option<f32>,
     /// A championship's next event is a service (page 0x18's text).
     pub service_next: bool,
+    /// The rally-school lesson's screens (SCH1), on a school drive.
+    pub school: Option<school::State>,
     /// The car's damage by group (CDM1), for the car status.
     pub car: Option<CarStatus>,
     /// The car's rev limit and its upshift point in the gear, rpm (SHF1), for the dial.
@@ -373,6 +377,10 @@ pub struct HudModel {
     service_next: bool,
     /// The pace stack's size (`PN_STACK`).
     stack: u8,
+    /// The rally-school lesson's state (SCH1) with its toast's time left, and the English table the failed
+    /// end's reasons resolve through.
+    school: Option<(school::State, f32)>,
+    school_strings: Option<Strings>,
     /// The custom co-driver's visible notes (`CustomKey`, sorted by distance): the pace stack follows these instead
     /// of DSH1's keys while set.
     custom: Option<Vec<CustomKey>>,
@@ -388,6 +396,7 @@ impl HudModel {
     pub fn fresh(&self) -> HudModel {
         let mut fresh = HudModel::with_stack(self.stack);
         fresh.custom = self.custom.clone();
+        fresh.school_strings.clone_from(&self.school_strings);
         fresh
     }
 
@@ -395,6 +404,12 @@ impl HudModel {
     /// calls come through [`callout`](Self::callout).
     pub fn set_custom(&mut self, keys: Vec<CustomKey>) {
         self.custom = Some(keys);
+    }
+
+    /// The English table the failed school end's reasons resolve through (a school drive's viewer loads
+    /// `bstrings.eng` once its first answer arrives).
+    pub fn set_school_strings(&mut self, strings: Strings) {
+        self.school_strings = Some(strings);
     }
 
     /// Takes one answer's records: its callouts (PCN1), its dash record (DSH1), the damage zones (DMG1), whether
@@ -570,9 +585,35 @@ impl HudModel {
             red: self.tints.0,
             black: self.tints.1,
             service_next: self.service_next,
+            school: self.school.as_ref().map(|(state, _)| state.clone()),
             // The live process's own records, set by the viewer.
             ..HudView::default()
         }
+    }
+
+    /// Takes one answer's school record (SCH1) and runs `seconds` of the incident toast's clock: an incident code
+    /// shows its toast for [`school::TOAST_SECONDS`]. `None` (no school drive) clears the lesson's screens.
+    pub fn set_school(&mut self, seconds: f32, record: Option<&SchoolRecord>) {
+        let Some(record) = record else {
+            self.school = None;
+            return;
+        };
+        let mut state = school::State::of(record);
+        state.reasons = school::resolve(&record.reasons, self.school_strings.as_ref());
+        let left = match school::Toast::of(record.incident) {
+            Some(toast) => {
+                state.toast = Some(toast);
+                school::TOAST_SECONDS
+            }
+            None => match &self.school {
+                Some((before, left)) if *left > seconds => {
+                    state.toast = before.toast;
+                    left - seconds
+                }
+                _ => 0.0,
+            },
+        };
+        self.school = Some((state, left));
     }
 }
 
@@ -807,5 +848,50 @@ mod tests {
         let mut fresh = hud.fresh();
         fresh.answer(&[], Some(&dash), None, false, None);
         assert_eq!(fresh.view().stack, stack, "a restart keeps the custom notes");
+    }
+
+    #[test]
+    fn the_school_toast_lasts_two_seconds() {
+        use rbr_recording::school::{School as SchoolRecord, STATE_DRIVING};
+        let record = |incident| SchoolRecord { lesson: 2, state: STATE_DRIVING, incident, ..SchoolRecord::default() };
+        let mut hud = HudModel::default();
+        hud.set_school(STEP_SECONDS, Some(&record(4)));
+        assert_eq!(hud.view().school.unwrap().toast, Some(school::Toast::TooFast));
+        // Answers without a code keep it for 2 s, then it goes; none clears the lesson's screens.
+        for _ in 0..285 {
+            hud.set_school(STEP_SECONDS, Some(&record(0)));
+        }
+        assert_eq!(hud.view().school.unwrap().toast, Some(school::Toast::TooFast));
+        hud.set_school(STEP_SECONDS, Some(&record(0)));
+        assert_eq!(hud.view().school.unwrap().toast, None, "gone after 2 s");
+        hud.set_school(STEP_SECONDS, None);
+        assert_eq!(hud.view().school, None);
+    }
+
+    #[test]
+    fn the_failed_school_end_lists_its_reasons_texts() {
+        use rbr_recording::school::{Reason as SchoolReason, School as SchoolRecord, STATE_ENDED};
+        use std::collections::HashMap;
+        let strings = Strings(HashMap::from([
+            ("TIMEFAIL".to_owned(), "Too slow. ".to_owned()),
+            ("RS_X".to_owned(), "X".to_owned()),
+        ]));
+        let record = SchoolRecord {
+            lesson: 2,
+            state: STATE_ENDED,
+            verdict: 0,
+            reasons: vec![
+                SchoolReason { lesson: true, key: "RS_X".into() },
+                SchoolReason { lesson: false, key: "HALTEARLY".into() },
+                SchoolReason { lesson: false, key: "TIMEFAIL".into() },
+            ],
+            ..SchoolRecord::default()
+        };
+        let mut hud = HudModel::default();
+        hud.set_school(STEP_SECONDS, Some(&record));
+        assert!(hud.view().school.unwrap().reasons.is_empty(), "no table yet: no reasons");
+        hud.set_school_strings(strings);
+        hud.set_school(STEP_SECONDS, Some(&record));
+        assert_eq!(hud.view().school.unwrap().reasons, ["X", "Too slow."], "unknown keys are skipped");
     }
 }

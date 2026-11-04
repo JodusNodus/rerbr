@@ -171,6 +171,8 @@ struct Banks {
     damage: Vec<Arc<Wave>>,
     /// A co-driver mod's voice (`Speech::Sample`).
     voice: Vec<Arc<Wave>>,
+    /// The rally school's English samples by id (`Speech::School`), empty until [`Mixer::swap_school`].
+    school: HashMap<u32, Arc<Wave>>,
 }
 
 fn shared(waves: &[Wave]) -> Vec<Arc<Wave>> {
@@ -425,6 +427,7 @@ impl Mixer {
             numbers: shared(&bank.codriver.numbers),
             damage: shared(&bank.codriver.damage),
             voice: Vec::new(),
+            school: HashMap::new(),
         };
         Mixer {
             rate,
@@ -646,6 +649,9 @@ impl Mixer {
                         }
                         Speech::Damage(code) => (DAMAGE_PRIORITY, self.banks.damage.get(code as usize).cloned()),
                         Speech::Sample(k) => (NOTE_PRIORITY, self.banks.voice.get(k as usize).cloned()),
+                        // The briefing and the end pages queue at 0, `Trigger`'s ids at 1. A missing id is
+                        // silent (ours: the original's file open fails the voice).
+                        Speech::School { id, priority } => (priority, self.banks.school.get(&id).cloned()),
                     };
                     // Ours: the queue never refuses an entry. `SpInsert` (0x4dd4d0) holds 10 and drops the rest.
                     if let Some(wave) = wave.filter(|w| !w.samples.is_empty()) {
@@ -661,6 +667,7 @@ impl Mixer {
                         self.fading.push(speaking);
                     }
                 }
+                Command::FlushSpeech => self.speech.clear(),
                 Command::SpeechGap(gap) => self.speech_gap = gap,
                 Command::Reflections { gain, doors_off } => {
                     self.reflections_gain.target = gain * self.volumes.engine;
@@ -842,6 +849,11 @@ impl Mixer {
         std::mem::replace(&mut self.banks.voice, prepared)
     }
 
+    /// Swaps in the rally school's prepared samples by id, returning the old ones to drop after releasing the lock.
+    pub(crate) fn swap_school(&mut self, prepared: HashMap<u32, Arc<Wave>>) -> HashMap<u32, Arc<Wave>> {
+        std::mem::replace(&mut self.banks.school, prepared)
+    }
+
     /// Swaps in the grind loop's prepared sample, returning what it replaces to drop after releasing the lock.
     pub(crate) fn swap_grind(&mut self, prepared: Arc<Wave>) -> Option<LoopVoice> {
         self.loops.insert(Loop::Grind, LoopVoice { wave: prepared, pitch: 1.0, ..LoopVoice::default() })
@@ -1013,6 +1025,16 @@ mod tests {
         assert_eq!(speech_slot([2, 0], 2), 0);
         // A note behind only damage calls goes first (the signed read of priority 2 is -2).
         assert_eq!(speech_slot([2], 0), 0);
+    }
+
+    #[test]
+    fn school_speech_slots_between_damage_and_notes() {
+        // `Trigger`'s ids (1) go before damage (read back as -2) and notes (0), after a queued one; the
+        // briefing and the end pages (0) go after the last queued note or trigger id.
+        assert_eq!(speech_slot([2, 0], 1), 0);
+        assert_eq!(speech_slot([1, 0], 1), 1);
+        assert_eq!(speech_slot([1], 0), 1);
+        assert_eq!(speech_slot([0, 0], 0), 2);
     }
 
     #[test]

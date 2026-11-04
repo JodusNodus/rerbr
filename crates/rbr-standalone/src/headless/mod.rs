@@ -316,6 +316,11 @@ pub fn run(
     )
     .with_finish_zone(stage.finish_zone);
     game.set_assist_settings(assist);
+    // A boot's rally-school lesson listens to the drive (`--school`).
+    let mut school = match source {
+        Source::Boot(_, _, race, _) => race.school(&stage.replay, &stage.school_strings),
+        _ => None,
+    };
     let mut recorded = Recorded { car: &[], track: &stage.track };
     let mut physics = Pure {
         playback: &playback,
@@ -360,14 +365,14 @@ pub fn run(
             for (input, frame_time) in [(go, 0.0), (FrameInput::default(), dt)] {
                 now += f64::from(frame_time);
                 if i > first {
-                    let events = game.frame(now, input, &mut physics);
+                    let events = game.frame_with(now, input, &mut physics, &mut school);
                     if events.substeps.is_empty() {
                         if let Some(phase) = out.phases.get_mut(events.tick_state) {
                             phase.no_step_game_frames += 1;
                         }
                     }
                 } else {
-                    game.frame(now, input, &mut recorded);
+                    game.frame_with(now, input, &mut recorded, &mut school);
                 }
             }
             if start == 0 && i > first {
@@ -408,7 +413,7 @@ pub fn run(
         let input = FrameInput { replay_control, ..FrameInput::default() };
         if i < first {
             recorded.car = frame.car;
-            game.frame(now, input, &mut recorded);
+            game.frame_with(now, input, &mut recorded, &mut school);
             continue;
         }
         if i == first {
@@ -430,20 +435,21 @@ pub fn run(
         if let Some(clock) = hooks.wall_clock {
             rbr_hybrid::ngp::set_wall_clock(clock.get(&frame.pre).copied());
         }
-        let events = match panic::catch_unwind(AssertUnwindSafe(|| game.frame(now, input, &mut exact))) {
-            Ok(events) => events,
-            Err(e) => {
-                out.stop = Some(format!(
-                    "step {} (frame {i}, {} substeps): {} in {}, after {} binding runs of the step",
-                    frame.pre,
-                    frame.substeps,
-                    why(e.as_ref()),
-                    chain(&playback.pure),
-                    playback.pure.runs() - runs
-                ));
-                break;
-            }
-        };
+        let events =
+            match panic::catch_unwind(AssertUnwindSafe(|| game.frame_with(now, input, &mut exact, &mut school))) {
+                Ok(events) => events,
+                Err(e) => {
+                    out.stop = Some(format!(
+                        "step {} (frame {i}, {} substeps): {} in {}, after {} binding runs of the step",
+                        frame.pre,
+                        frame.substeps,
+                        why(e.as_ref()),
+                        chain(&playback.pure),
+                        playback.pure.runs() - runs
+                    ));
+                    break;
+                }
+            };
         out.stepping += stepping.elapsed();
         out.stepping_counts += counting.elapsed();
         out.steps += 1;

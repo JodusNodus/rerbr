@@ -36,7 +36,7 @@ impl<'a> Pilot<'a> {
                 .with_step(live.step_clock().step)
                 .with_limit(rev_limit(live))
                 .with_obstacles(&stage.obstacles);
-            return Ok(Pilot::Autopilot { driver, report: 0 });
+            return Ok(Pilot::Autopilot { driver: with_lesson(driver, live, stage), report: 0 });
         }
         let bytes = std::fs::read(what).map_err(|e| format!("--pilot {what}: {e}"))?;
         let frames = rbr_recording::read_all(&bytes).map_err(|e| format!("--pilot {what}: {e}"))?;
@@ -48,12 +48,13 @@ impl<'a> Pilot<'a> {
         match self {
             Pilot::Recording(controls) => controls.get(&live.next_step()).copied(),
             Pilot::Autopilot { driver, report } => {
-                let q = if live.game().race_clock().counting_down() {
+                let q = if live.game().race_clock().start_pending(live.game().assist_settings()) {
                     QuantizedControl { handbrake: 255, throttle: 255, ..QuantizedControl::default() }
                 } else if driver.gave_up.is_some() {
                     QuantizedControl { brake: 255, ..QuantizedControl::default() }
                 } else {
-                    let finished = pure::time_keeper(live.mem()).card.finish_time.is_some();
+                    // A lesson ends by the school, not the card (lesson 10's map has no finish, its card a finish time).
+                    let finished = live.school().is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
                     let (step, sense) = (live.next_step(), sense(last?, live));
                     if step >= *report {
                         *report = step + driver.steps(PILOT_REPORT);
@@ -151,10 +152,14 @@ pub fn drive(
     );
     let limit = rev_limit(&live);
     eprintln!("autopilot: rev limit {limit} rpm");
-    let mut driver = Driver::new(&stage.track, stage.track_values.clone(), top.unwrap_or(TOP_SPEED), aim)
-        .with_step(live.step_clock().step)
-        .with_limit(limit)
-        .with_obstacles(&stage.obstacles);
+    let mut driver = with_lesson(
+        Driver::new(&stage.track, stage.track_values.clone(), top.unwrap_or(TOP_SPEED), aim)
+            .with_step(live.step_clock().step)
+            .with_limit(limit)
+            .with_obstacles(&stage.obstacles),
+        &live,
+        stage,
+    );
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
     let mut hit: Option<u32> = None;
     let mut last: Option<(Vec<u8>, QuantizedControl)> = None;
@@ -174,11 +179,14 @@ pub fn drive(
         }
         file.write_all(&answer[..FRAME_BYTES]).map_err(failed)?;
         drove.steps += 1;
-        let finished = pure::time_keeper(live.mem()).card.finish_time.is_some();
+        // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
+        // finish time).
+        let school = live.school().is_some();
+        let finished = !school && pure::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }
-        if live.has_saves() {
+        if live.has_saves() || school {
             if live.game().stage().state() == rbr_gameplay::stage::State::Ended {
                 drove.end = "the race's end".to_owned();
                 break;
@@ -214,10 +222,10 @@ pub fn drive(
                 break;
             }
         }
-        // The drive waits on the handbrake until the start countdown is out, as a jump start would add its penalty
-        // (and its playback would take it again under `--live --pilot` or in the game), with the engine revved in
-        // neutral (NGP's clutch help stalls a car put into first at idle, `notes/ngp.md`).
-        let q = if live.game().race_clock().counting_down() {
+        // The drive waits on the handbrake until the start countdown is out (none in the rally school), as a jump start
+        // would add its penalty (and its playback would take it again under `--live --pilot` or in the game), with the
+        // engine revved in neutral (NGP's clutch help stalls a car put into first at idle, `notes/ngp.md`).
+        let q = if live.game().race_clock().start_pending(live.game().assist_settings()) {
             QuantizedControl { handbrake: 255, throttle: 255, ..QuantizedControl::default() }
         } else {
             driver.control(step + 1, &sense, finished)
@@ -242,4 +250,30 @@ pub fn drive(
     file.flush().map_err(failed)?;
     drove.out = Some(crate::rally::stage_out(live.mem(), live.game().end_now(), live.game().race_clock().jumped));
     Ok(drove)
+}
+
+/// `driver` for `live`'s rally school lesson, if it has a stop box (its bank's first mode-4 sub, `SchoolIncident`'s
+/// standing test): it stops in the box, keeping off the brakes where a no-brake sub (mode 6 on the brake word, flag
+/// 4: braking fails) watches, or runs down the driveline to a box behind the start. Both the headless drive and
+/// the viewer's `--pilot autopilot` take it.
+fn with_lesson<'a>(driver: Driver<'a>, live: &Live, stage: &StageData) -> Driver<'a> {
+    let Some(bank) = live.school().map(|s| s.bank()) else { return driver };
+    let Some(stop) = bank.subs.iter().find(|sub| sub.tag == 4) else { return driver };
+    let brake_from = bank
+        .subs
+        .iter()
+        .filter(|sub| sub.tag == 6 && sub.flags & 4 != 0)
+        .map(|sub| sub.center + sub.hi)
+        .fold(0.0, f32::max);
+    let behind = stage.markers.start().is_some_and(|start| stop.center < start);
+    eprintln!(
+        "autopilot: the lesson's stop box at {} m{}, no brakes before {brake_from} m",
+        stop.center,
+        if behind { " (behind the start)" } else { "" }
+    );
+    if behind {
+        driver.with_stop_behind(stop.center)
+    } else {
+        driver.with_stop(brake_from, stop.center)
+    }
 }

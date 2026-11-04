@@ -42,7 +42,9 @@ same paths.
 | `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
-| `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, championship |
+| `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
+| `crates/rbr-championship` | Championship: season, AI field, rallies, service park, season save, on the flow's mode 3 |
+| `crates/rbr-school` | Rally school (experimental): lessons, filter bank, verdict, on `rbr_gameplay::mode` |
 | `crates/rbr-standalone` | The physics program (`--boot`, `--live`) |
 | `crates/rbr-render` | wgpu renderer and the driving window (`viewer`) |
 | `crates/rbr-sound` | Gameplay sound from the SND1 record |
@@ -52,7 +54,7 @@ same paths.
 | `RBR_RECORDINGS`, `RBR_VECTOR_STORE` | Recorded drives (`drive-*.bin`) and vector records; not in git, published set via `scripts/fetch-test-data.sh` |
 | `original/` | Original binaries and game data (gitignored, `SHA256SUMS` only) |
 | `data/` | Test data hashes and file lists, generator inputs |
-| `scripts/` | `rust-check.sh`, `rust-vectors.sh`, `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), generators of Rust tables, NGP tools |
+| `scripts/` | `rust-check.sh`, `rust-vectors.sh`, `dev-env.sh` (the `dev.env` folders), `render-shots.py` (reference shots, `data/shots.json`), `bench.py` (worst-case frame rate), `school-sweep.sh` (every lesson headless), generators of Rust tables, NGP tools |
 
 Treat `original/`, `build/` and the recordings as local data. Do not commit their contents.
 

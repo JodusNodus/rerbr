@@ -356,7 +356,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
                 d.end
             );
             if let Some(o) = &d.out {
-                println!("rally: {:?}, drivable {}", o.end, o.drivable);
+                println!("rally: {:?}, drivable {}", o.result.end, o.result.drivable);
                 if let Err(e) = rally::write(o, args.damage_out.as_deref(), args.result_out.as_deref()) {
                     eprintln!("rbr-standalone: {e}");
                     return ExitCode::FAILURE;

@@ -32,6 +32,7 @@ rbr-counters = { path = "../rbr-counters" }
 rbr-gameplay = { path = "../rbr-gameplay" }
 rbr-physics = { path = "../rbr-physics" }
 rbr-recording = { path = "../rbr-recording" }
+rbr-school = { path = "../rbr-school" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-btb = { path = "../rbr-btb" }
 rbr-sound = { path = "../rbr-sound" }

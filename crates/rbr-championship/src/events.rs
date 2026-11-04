@@ -25,9 +25,9 @@
 
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::saves::season::{Event, Season, DRIVERS};
+use rbr_gameplay::crt::CrtRand;
 
-use crate::ai_season::{self, Bulletin, Run, RunLog, TeamCosts};
-use crate::crt::CrtRand;
+use crate::ai::{self, Bulletin, Run, RunLog, TeamCosts};
 use crate::season::{
     self, advance_clock, advance_rally, advance_stage, clock as saved_clock, entry_car, entry_excluded, entry_id,
     entry_team_slot, first_stage_order, forecast_rally_id, forecast_slot_time, forecast_start_time, layout, position,
@@ -220,7 +220,7 @@ pub struct News {
 
 /// An accident pair: the id, section, accident and retired bytes,
 /// then the time.
-fn pair(a: &ai_season::AccidentRecord) -> [u32; 2] {
+fn pair(a: &ai::AccidentRecord) -> [u32; 2] {
     let bytes = [a.driver as u8, a.section as u8, a.accident, u8::from(a.retired)];
     [u32::from_le_bytes(bytes), a.time.to_bits()]
 }
@@ -257,7 +257,7 @@ fn ai_stage(s: &mut Season, ai: &mut Ai, ev: &Event, news: &mut Vec<News>) {
     let mut log = RunLog::default();
     let starts = &mut s.drivers[k].rallies[pos.rally as usize].false_starts;
     let before = *starts;
-    let time = ai_season::stage_time(ai.master, &run, id, d, car, team, starts, ai.rng, &mut log);
+    let time = ai::stage_time(ai.master, &run, id, d, car, team, starts, ai.rng, &mut log);
     let after = *starts;
     if before < after {
         log.bulletins.push(if after < 4 {
@@ -296,8 +296,8 @@ fn ai_service(s: &mut Season, ai: &mut Ai, ev: &Event, long: bool, news: &mut Ve
             continue;
         };
         let mut log = RunLog::default();
-        let minutes = ai_season::service(ai.master, id, d, car, team, costs, long, ai.rng, &mut log);
-        let penalty = ai_season::service_penalty(id, minutes, long, &mut log);
+        let minutes = ai::service(ai.master, id, d, car, team, costs, long, ai.rng, &mut log);
+        let penalty = ai::service_penalty(id, minutes, long, &mut log);
         layout::add_rally_penalty(s, k, pos.rally as usize, penalty);
         news.extend(log.bulletins.into_iter().map(|bulletin| News { event: *ev, bulletin }));
     }
@@ -485,8 +485,8 @@ pub fn ensure_queue(s: &mut Season) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::race_options::ChampionshipOptions;
     use rbr_formats::ai_ini::Roster;
+    use rbr_gameplay::race_options::ChampionshipOptions;
 
     fn empty() -> (Roster, AiField) {
         let roster = Roster { drivers: vec![], teams: vec![], cars: vec![] };
@@ -575,7 +575,7 @@ mod tests {
         let kinds: Vec<u32> = s.events.iter().map(|e| e.kind).collect();
         assert_eq!(kinds.iter().filter(|&&k| k == kind::LONG_SERVICE).count(), 14);
         assert_eq!(*kinds.last().unwrap(), kind::OVERNIGHT);
-        let master = crate::ai_season::tests::master();
+        let master = crate::ai::tests::master();
         let mut rng = CrtRand(1);
         let mut ai = Ai { master: &master, roster: &roster, field: &mut field, blocks: &[], rng: &mut rng };
         let mut news = Vec::new();
@@ -594,7 +594,7 @@ mod tests {
     fn the_player_turns_follow_the_queue() {
         let (roster, mut field) = empty();
         let mut s = new_season(&roster, &mut field, 2);
-        let master = crate::ai_season::tests::master();
+        let master = crate::ai::tests::master();
         let mut rng = CrtRand(1);
         let mut ai = Ai { master: &master, roster: &roster, field: &mut field, blocks: &[], rng: &mut rng };
         let mut news = Vec::new();
@@ -645,7 +645,7 @@ mod tests {
     fn a_retired_player_skips_to_the_results() {
         let (roster, mut field) = empty();
         let mut s = new_season(&roster, &mut field, 3);
-        let master = crate::ai_season::tests::master();
+        let master = crate::ai::tests::master();
         let mut rng = CrtRand(1);
         let mut ai = Ai { master: &master, roster: &roster, field: &mut field, blocks: &[], rng: &mut rng };
         let mut news = Vec::new();
@@ -678,8 +678,7 @@ mod tests {
     fn the_pairs_fill_the_result() {
         let (roster, mut field) = empty();
         let mut s = new_season(&roster, &mut field, 6);
-        let rec =
-            |driver, section| ai_season::AccidentRecord { driver, section, accident: 2, retired: false, time: 1.5 };
+        let rec = |driver, section| ai::AccidentRecord { driver, section, accident: 2, retired: false, time: 1.5 };
         s.pairs = (0..5).map(|k| pair(&rec(3, k))).chain([pair(&rec(4, 0))]).collect();
         fill_pairs(&mut s, 3);
         let r = &s.drivers[3].rallies[0].stages[0];

@@ -1,14 +1,19 @@
 //! `--screenshot`: one frame drawn offscreen into a PNG, after the `--frames` timings.
 
 use crate::args::Args;
-use crate::draw::{dial_values, draw_particles, readout, scripted_camera, show_crew, start_camera, step_characters};
+use crate::draw::{
+    demo_hint, dial_values, draw_demo, draw_particles, readout, scripted_camera, show_crew, start_camera,
+    step_characters,
+};
 use crate::scene::Scene;
 use glam::Mat4;
 use rbr_counters::{Counts, Mark};
 use rbr_formats::data::Data;
+use rbr_recording::pose::CarPose;
 use rbr_render::hud::camera_page::CameraPage;
 use rbr_render::hud::pause::{self, Outcome, PauseMenu};
 use rbr_render::hud::results::{self, ResultsMenu};
+use rbr_render::hud::school;
 use rbr_render::hud::stock::Stock;
 use rbr_render::hud::{self as hud_overlay, Overlay};
 use rbr_render::perf_log;
@@ -48,13 +53,40 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         }
     }
     let size = args.size.unwrap_or(SIZE);
+    // The school demo playing: each `--at` payload stands for one step of wall time (7 ms), the first frame one
+    // more; past the replay's end the brief shows.
+    let brief = scene
+        .live
+        .as_ref()
+        .is_some_and(|live| live.hud_model.view().school.is_some_and(|school| school.phase == school::Phase::Brief));
+    let demo_t = (1 + args.at.unwrap_or(0) * args.at_periods) as f32 * rbr_recording::STEP_SECONDS;
+    let demo = scene.school_demo.as_ref().and_then(|demo| {
+        (brief && demo_t < demo.duration()).then(|| demo.pose(demo_t)).flatten().map(|pose| {
+            (demo.ride(), CarPose { position: pose.position, orientation: pose.rotation, velocity: [0.0; 3] })
+        })
+    });
+    if let Some(school_demo) = &scene.school_demo {
+        match &demo {
+            Some((ride, _)) => eprintln!(
+                "screenshot: school {} at {demo_t:.2} s of {:.2} s, the hint shows",
+                if *ride { "ride" } else { "demonstration" },
+                school_demo.duration()
+            ),
+            None => eprintln!(
+                "screenshot: past the school demo ({demo_t:.2} s, {})",
+                if brief { "the brief shows" } else { "the lesson is driven" }
+            ),
+        }
+    }
+    let demo_ride = demo.as_ref().map(|(ride, _)| *ride);
     let instance = renderer::instance();
     let gpu = renderer::request_gpu(&instance, None)?;
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = scene.renderer(&gpu, format, enhance, args.render_scale, &mut |_| {});
     renderer.set_time(time);
-    renderer.set_start_clock(scene.live.as_ref().and_then(|l| l.hud_model.view().start_clock));
-    renderer.set_start_lamps(scene.live.as_ref().and_then(|l| l.hud.race.as_ref()));
+    let live = scene.live.as_ref().filter(|_| demo_ride.is_none());
+    renderer.set_start_clock(live.and_then(|l| l.hud_model.view().start_clock));
+    renderer.set_start_lamps(live.and_then(|l| l.hud.race.as_ref()));
     let shots = args.sequence.max(1);
     for shot in 0..shots {
         // A drive's frame at its time, with the car's velocity standing for the eye's (the rain's streaks) when the
@@ -90,32 +122,57 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             playback.follow_cameras(shown.swing(), args.look_back);
         }
         let aspect = size.0 as f32 / size.1 as f32;
+        // The school demo replaces the player's camera: the chase follows the demo car, the ride watches
+        // from the cockpit (or the bonnet).
+        let demo_lens = match (&demo, scene.playback.as_ref(), scene.mounts.as_ref()) {
+            (Some((true, car)), Some(playback), Some(mounts)) => {
+                Some(playback.lens_at(mounts, rbr_render::school_demo::ride_view(mounts), car, fov))
+            }
+            (Some((false, car)), Some(playback), _) => Some(playback.camera_at(car, look).lens(playback.chase_fov)),
+            _ => None,
+        };
         let (view_projection, sky_view_projection) = match camera {
             Some(camera) => (camera.view_projection(fov, aspect), camera.sky_view_projection(fov, aspect)),
-            None => view_projections(scene, shown, look, fov, aspect),
+            None => match demo_lens {
+                Some(lens) => (lens.view_projection(aspect), lens.sky_view_projection(aspect)),
+                None => view_projections(scene, shown, look, fov, aspect),
+            },
         };
         if let Some(characters) = &mut scene.characters {
             characters.apply(&mut renderer, view_projection);
         }
         // The particles first: the glass takes their tyre spray.
         draw_particles(scene, &mut renderer, view_projection);
-        if let (Some(playback), Some(glass)) = (&mut scene.playback, &mut scene.glass) {
-            glass.draw(&mut renderer, playback, view.interior(), scene.particles.as_ref().map(|p| &p.particles.spray));
-        }
-        if let (Some(playback), Some(crew)) = (&mut scene.playback, &mut scene.crew) {
-            show_crew(crew, playback, view, None, &mut renderer);
-        }
-        if let Some(playback) = &mut scene.playback {
-            playback.interior = view.interior();
-            renderer.set_outside_view(!view.interior());
-            playback.reverse = scene.live.as_ref().is_some_and(|live| live.hud.gear == 0);
-            if let Some(lamps) = scene.live.as_ref().and_then(|live| live.lamps) {
-                playback.set_lamps(lamps);
+        // The school demo draws the player's car at the replay's pose; else the drive draws as usual.
+        let demo_drawn = match &demo {
+            Some((ride, car)) => draw_demo(scene, &mut renderer, *ride, car, look, fov).is_some(),
+            None => false,
+        };
+        if !demo_drawn {
+            if let (Some(playback), Some(glass)) = (&mut scene.playback, &mut scene.glass) {
+                glass.draw(
+                    &mut renderer,
+                    playback,
+                    view.interior(),
+                    scene.particles.as_ref().map(|p| &p.particles.spray),
+                );
             }
-            playback.apply(&mut renderer);
+            if let (Some(playback), Some(crew)) = (&mut scene.playback, &mut scene.crew) {
+                show_crew(crew, playback, view, None, &mut renderer);
+            }
+            if let Some(playback) = &mut scene.playback {
+                playback.interior = view.interior();
+                renderer.set_outside_view(!view.interior());
+                playback.reverse = scene.live.as_ref().is_some_and(|live| live.hud.gear == 0);
+                if let Some(lamps) = scene.live.as_ref().and_then(|live| live.lamps) {
+                    playback.set_lamps(lamps);
+                }
+                playback.apply(&mut renderer);
+            }
         }
         if let (Some(ghost), Some(playback)) = (&mut scene.ghost, &scene.playback) {
-            ghost.apply(&mut renderer, playback, view_projection);
+            let hud = rbr_render::ghost::hud_time(scene.live.as_ref());
+            ghost.apply(&mut renderer, playback, hud, view_projection);
         }
         if let (Some(drawn), Some(playback)) = (&mut scene.fences, &scene.playback) {
             drawn.draw(&mut renderer, playback, view_projection);
@@ -123,10 +180,11 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         if let (Some(dials), Some(playback)) = (&mut scene.dials, &scene.playback) {
             dials.update(&dial_values(playback, scene.live.as_ref()), None, &mut renderer);
         }
+        // The school demo shows no HUD of the player's car, only its hint.
         let readout = scene
             .playback
             .as_ref()
-            .filter(|_| scene.hud.show)
+            .filter(|_| scene.hud.show && demo_ride.is_none())
             .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
         let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         // The probes show a first frame's sky and shadows (as the window's load draws them).
@@ -146,6 +204,9 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
                         if let Some(actions) = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu)) {
                             results::paint(ctx, &actions);
                         }
+                    }
+                    if let Some(ride) = demo_ride {
+                        demo_hint(ctx, ride);
                     }
                 });
             })?;

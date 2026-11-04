@@ -89,13 +89,18 @@ impl App {
         }
     }
 
-    /// Accepts the race's message box (a retire's) if one is up, or confirms the start of a championship stage, whose
-    /// countdown waits for it (`rbr_gameplay::flow::Mode::confirm_arms`); whether either was. The game's box keeps the
-    /// menu's input until it is accepted, so the pause, Enter, the gamepad's South and a click all accept it.
+    /// Accepts the race's message box (a retire's) if one is up, or confirms the start of a championship stage
+    /// or a rally-school lesson, whose countdown waits for it (`rbr_gameplay::flow::Mode::start_waits`); whether
+    /// either was. The game's box keeps the menu's input until it is accepted, so the pause, Enter, the gamepad's
+    /// South and a click all accept it.
     pub fn accept_message(&mut self) -> bool {
+        // A school demo playing is skipped first: the brief shows instead (a ride sends its confirm, ending
+        // the lesson), and the Enter never reaches the standalone as the brief's confirm.
+        if self.skip_demo() {
+            return true;
+        }
         let up = self.scene.live.as_ref().is_some_and(|live| {
-            let waits =
-                rbr_gameplay::flow::Mode(live.menu.mode).confirm_arms() && !live.menu.driving && !live.menu.over;
+            let waits = rbr_gameplay::flow::Mode(live.menu.mode).start_waits() && !live.menu.driving && !live.menu.over;
             live.hud_model.view().message_box.is_some() || waits
         });
         if up {
@@ -106,6 +111,8 @@ impl App {
 
     /// Starts the stage over in the live process (the stage's start).
     pub fn restart_live(&mut self) {
+        // A restart brings the brief, and the school demo, back.
+        self.demo = None;
         let (Some(process), Some(playback)) = (&mut self.scene.live, &mut self.scene.playback) else {
             return;
         };

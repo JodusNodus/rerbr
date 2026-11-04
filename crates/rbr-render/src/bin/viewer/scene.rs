@@ -17,12 +17,14 @@ use rbr_render::ghost;
 use rbr_render::glass;
 use rbr_render::hud::model::{CustomKey, HudModel};
 use rbr_render::hud::pace;
+use rbr_render::hud::school;
 use rbr_render::live::{Controls, Live};
 use rbr_render::mirrors;
 use rbr_render::particles;
 use rbr_render::playback::{Drive, Playback};
 use rbr_render::relight;
 use rbr_render::renderer::{Enhance, Gpu, Renderer};
+use rbr_render::school_demo::{self, Demo};
 use rbr_render::stage::{self, Mesh, Stage};
 use rbr_render::stage_probe::StageProbe;
 use rbr_render::upscale;
@@ -64,6 +66,8 @@ pub struct Scene {
     pub hud: HudOptions,
     /// The ghost car and the ghost recording, with a drive.
     pub ghost: Option<ghost::Session>,
+    /// The school lesson's demonstration or ride (a lesson's drive in the brief state).
+    pub school_demo: Option<Demo>,
     /// How much sun gets into the cabin, with the cabin light (`car::cabin::SunIn`).
     pub cabin_sun: Option<car::cabin::SunIn>,
     /// The bulkhead under the windscreen, drawn only in its reflection (`glass::bulkhead`).
@@ -214,6 +218,7 @@ fn load_scene<'scope, 'env>(
                 dials: None,
                 hud: args.hud,
                 ghost: None,
+                school_demo: None,
                 cabin_sun: None,
                 bulkhead: None,
                 grass: None,
@@ -264,6 +269,7 @@ fn load_scene<'scope, 'env>(
             let fences = if args.fences { fences::load(data, &mut stage) } else { None };
             let (mut playback, mut live, mut mounts, mut crew, mut car_bounds, mut ghost, mut dials) =
                 (None, None, None, None, None, None, None);
+            let mut school_demo = None;
             let mut cabin_sun = None;
             let mut tints = glass::Tints::default();
             let mut bulkhead = None;
@@ -285,10 +291,10 @@ fn load_scene<'scope, 'env>(
                         let started = scope.spawn(move || match (drive, command) {
                             (Some(path), _) => {
                                 let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-                                Ok((None, Drive::parse(&bytes)?, Vec::new()))
+                                Ok((None, Drive::parse(&bytes)?, Vec::new(), None))
                             }
                             (None, Some(command)) => start_live(args, data, &command)
-                                .map(|(process, drive, detached)| (Some(process), drive, detached)),
+                                .map(|(process, drive, detached, demo)| (Some(process), drive, detached, demo)),
                             (None, None) => unreachable!(),
                         });
                         let probe = scope.spawn(|| StageProbe::load(data, name).map(std::sync::Arc::new));
@@ -335,9 +341,10 @@ fn load_scene<'scope, 'env>(
                         });
                         crew = load_crew(data, car_name, &mut stage, args);
                         // With the `--at` frames that first list a detached part (`start_live`).
-                        let (process, drive, detaching) =
+                        let (process, drive, detaching, demo) =
                             started.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))?;
                         live = process;
+                        school_demo = demo;
                         let mut loaded = Playback::load(data, car_name, &stage, &model, &damage, drive)?;
                         let probe = probe.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
                         if let Some(characters) = &mut characters {
@@ -369,12 +376,16 @@ fn load_scene<'scope, 'env>(
                             }
                             take_damage(&mut loaded, process);
                         }
+                        // The rally school's judged replay: watching a replay (`--replay`) of a school lesson
+                        // (its live command carries `--school N`) races Richard's ghost for the lesson
+                        // (`Ghosts\rse<N>.gho`), unless `--ghost` names one. A live lesson drive keeps no ghost.
                         let options = ghost::Options {
                             play: args.ghost.as_deref(),
                             save: args.save_ghost.as_deref(),
                             best: args.best_ghost.as_deref(),
                             weather: args.ghost_weather,
                             live: live.is_some(),
+                            memory: school_ghost(data, args),
                         };
                         ghost = Some(ghost::Session::load(data, &mut stage, name, car_name, &loaded, options)?);
                         cameras.apply(&mut car_mounts, &mut loaded);
@@ -457,6 +468,7 @@ fn load_scene<'scope, 'env>(
                 dials,
                 hud: args.hud,
                 ghost,
+                school_demo,
                 cabin_sun,
                 bulkhead,
                 grass,
@@ -483,7 +495,11 @@ fn with_start_time(command: &[String], clock: Option<&relight::Clock>) -> Vec<St
     command
 }
 
-fn start_live(args: &Args, data: &Data, command: &[String]) -> Result<(Live, Drive, Vec<Detaching>), String> {
+fn start_live(
+    args: &Args,
+    data: &Data,
+    command: &[String],
+) -> Result<(Live, Drive, Vec<Detaching>, Option<Demo>), String> {
     let mut process = match &args.screenshot {
         Some(_) => Live::lockstep(command)?,
         None if args.at.is_some() || args.at_drive.is_some() => {
@@ -494,7 +510,32 @@ fn start_live(args: &Args, data: &Data, command: &[String]) -> Result<(Live, Dri
     process.hud_model = HudModel::with_stack(args.hud.stack);
     use_custom_hud(&mut process, args, data, command);
     let first = process.first_frame()?;
+    // A school lesson's drive opens on the brief: its demonstration or ride plays there (viewer-only).
+    let demo = process
+        .hud_model
+        .view()
+        .school
+        .filter(|school| school.phase == school::Phase::Brief)
+        .and_then(|school| rbr_school::Lesson::new(school.lesson))
+        .and_then(|lesson| Demo::load(data, lesson));
+    if let Some(demo) = &demo {
+        eprintln!(
+            "school demo: lesson {} ({}) {:.1} s{}",
+            demo.lesson().index(),
+            if demo.ride() { "ride" } else { "demonstration" },
+            demo.duration(),
+            if demo.ride() { ", the confirm ends it" } else { "" },
+        );
+    }
     let mut drive = process.parse(&first)?;
+    // A school lesson's drive resolves its failed end's reasons through the English table (unknown keys
+    // are skipped at the panel; without it the verdict shows no reasons).
+    if process.hud_model.view().school.is_some() {
+        match rbr_formats::strings::english(data) {
+            Ok(strings) => process.hud_model.set_school_strings(strings),
+            Err(e) => eprintln!("school reasons unavailable: {e}"),
+        }
+    }
     // `--at N`: N more frames with no keys pressed, before the screenshot; with `--at-drive` each frame sends the
     // recording's control of the step it feeds, so the first one goes through the countdown's frames, which step nothing.
     let recorded = match &args.at_drive {
@@ -512,7 +553,29 @@ fn start_live(args: &Args, data: &Data, command: &[String]) -> Result<(Live, Dri
             detaching.push((k as isize + 1, process.detached.clone()));
         }
     }
-    Ok((process, drive, detaching))
+    Ok((process, drive, detaching, demo))
+}
+
+/// The school lesson's judged-replay ghost for a replay watch: Richard's `rse<N>.gho` stream when the viewer
+/// watches a replay (`--replay`) whose live command carries `--school N`, and no explicit `--ghost` names one.
+/// A live lesson drive is vanilla (no replay, no ghost). `None` with one log line when the lesson has no ghost file.
+fn school_ghost(data: &Data, args: &Args) -> Option<(String, (u32, u32, rbr_formats::ghost::Stream))> {
+    let lesson = school_demo::judged_lesson(
+        args.live.as_deref().unwrap_or_default(),
+        args.replay.is_some(),
+        args.ghost.is_some(),
+    )?;
+    match school_demo::ghost(data, lesson) {
+        Some((map, car, stream)) => Some((format!("rse{}.gho", lesson.index()), (map, car, stream))),
+        None => {
+            eprintln!(
+                "school ghost: lesson {} has no {}; racing without one",
+                lesson.index(),
+                school_demo::ghost_name(lesson)
+            );
+            None
+        }
+    }
 }
 
 /// The stage's light and the clock that moves it on (`rbr_render::relight`): relit at `--clock`'s time, else under the

@@ -3,8 +3,7 @@
 use super::Hud;
 use crate::hud::model::CarStatus;
 use crate::stage::InteractivePose;
-use rbr_gameplay::car_damage::CarriedDamage;
-use rbr_gameplay::service::Rules;
+use rbr_gameplay::car_damage::{CarriedDamage, Rules};
 use rbr_recording::camera::{self, Camera};
 use rbr_recording::clock::{StepClock, CLK1};
 use rbr_recording::damage::{self, Damage};
@@ -19,6 +18,7 @@ use rbr_recording::menu::{Menu, MNU1};
 use rbr_recording::pacenote::{self, Callout, PCN1};
 use rbr_recording::particles::{self, Event as ParticleEvent, TyreParticles};
 use rbr_recording::realtime::{Step, STEP_BYTES, STP1};
+use rbr_recording::school::{School, SCH1};
 use rbr_recording::shift::{ShiftPoints, SHF1};
 use rbr_recording::sound::Inputs;
 use rbr_recording::splits::{Splits, SPL1};
@@ -54,14 +54,16 @@ pub(super) struct LiveFrame {
     pub(super) hub: Option<[f32; WHEELS]>,
     /// MNU1, where the race stands for the pause menu.
     pub(super) menu: Option<Menu>,
+    /// SCH1, where the rally-school lesson stands, on a school drive.
+    pub(super) school: Option<School>,
     /// CTL1, the car's control the frame's last step took.
     pub(super) control: Option<[u8; CONTROL_BYTES]>,
     pub(super) poses: Vec<InteractivePose>,
 }
 
 /// One FRM1 frame and the HUD and damage records after it, the tagged records (`rbr_recording::live`; the viewer takes
-/// PTC1, PEV1, DET1, SND1, PCN1, SPL1, DSH1, CAM1, FLW1, FFB1, CLK1, HUB1, GBX1, SHF1, MNU1, CDM1 and CTL1 and skips the
-/// others)
+/// PTC1, PEV1, DET1, SND1, PCN1, SPL1, DSH1, CAM1, FLW1, FFB1, CLK1, HUB1, GBX1, SHF1, MNU1, SCH1, CDM1 and CTL1 and skips
+/// the others)
 /// and the SCN1 scenery poses that end them, or `None` at the end of the stream.
 /// The payload periods of a frame that came back, from the payload it echoes (1 for one it cannot read).
 pub(super) fn frame_periods(frame: &[u8]) -> u32 {
@@ -117,7 +119,8 @@ fn read_frame_records(frame: Vec<u8>, reader: &mut impl Read) -> Result<LiveFram
     let records = records::read_records(reader).map_err(|e| format!("the live process's records: {e}"))?;
     let sound = Inputs::from_records(&records, &record);
     let (mut tyres, mut events, mut detached, mut splits) = (Vec::new(), Vec::new(), Vec::new(), None);
-    let (mut pace, mut dash, mut flow, mut clock, mut menu, mut control) = (Vec::new(), None, None, None, None, None);
+    let (mut pace, mut dash, mut flow, mut clock, mut menu, mut school, mut control) =
+        (Vec::new(), None, None, None, None, None, None);
     let mut hub = None;
     for (tag, payload) in &records {
         match *tag {
@@ -164,6 +167,9 @@ fn read_frame_records(frame: Vec<u8>, reader: &mut impl Read) -> Result<LiveFram
             }
             HUB1 => hub = Some(hub::from_payload(payload).map_err(|e| format!("the live process's hub record: {e}"))?),
             MNU1 => menu = Some(Menu::read_body(payload).map_err(|e| format!("the live process's menu record: {e}"))?),
+            SCH1 => {
+                school = Some(School::read_body(payload).map_err(|e| format!("the live process's school record: {e}"))?)
+            }
             damage::CDM1 => {
                 let carried = CarriedDamage::from_bytes(payload).ok_or("the live process's car damage record")?;
                 hud.car = Some(CarStatus::of(&carried, Rules::Ngp));
@@ -208,6 +214,7 @@ fn read_frame_records(frame: Vec<u8>, reader: &mut impl Read) -> Result<LiveFram
         clock,
         hub,
         menu,
+        school,
         control,
         poses,
     })

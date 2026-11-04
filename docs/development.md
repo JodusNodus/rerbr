@@ -109,7 +109,9 @@ One Cargo workspace, each crate in `crates/<name>/`.
 | [`rbr-launcher`](../crates/rbr-launcher) | the launcher `rerbr` (egui): game folder, stage and car pickers, settings, championship, replays | [cameras-hud-launcher.md](../notes/cameras-hud-launcher.md) |
 | [`rbr-render`](../crates/rbr-render) | the wgpu renderer and the driving window `viewer`: stage, car, sky, weather, HUD, cameras, devices, force feedback | [renderer.md](../notes/renderer.md), [cameras-hud-launcher.md](../notes/cameras-hud-launcher.md) |
 | [`rbr-sound`](../crates/rbr-sound) | gameplay sound | [sound.md](../notes/sound.md) |
-| [`rbr-gameplay`](../crates/rbr-gameplay) | the gameplay loop: input to car control, frame clock, stage states, timing, race flow, championship, service park, saves | [gameplay.md](../notes/gameplay.md) |
+| [`rbr-gameplay`](../crates/rbr-gameplay) | the gameplay loop: input to car control, frame clock, stage states, timing, race flow, records | [gameplay.md](../notes/gameplay.md) |
+| [`rbr-championship`](../crates/rbr-championship) | the championship: the season, its event queue and AI field, the rally's stages, the service park, the season save | [gameplay.md](../notes/gameplay.md#championship-and-service) |
+| [`rbr-school`](../crates/rbr-school) | the rally school (experimental): the lessons, their filter bank and verdict, as a mode on the stage loop | [gameplay.md](../notes/gameplay.md#rally-school-experimental) |
 | [`rbr-formats`](../crates/rbr-formats) | readers for the game's files and the community layouts, one module per format | [formats.md](../notes/formats.md) |
 | [`rbr-btb`](../crates/rbr-btb) | BTB stages (experimental): their folders, meshes, the stage files built from them, and their scene | [btb.md](../notes/btb.md) |
 | [`rbr-standalone`](../crates/rbr-standalone) | the physics process: `--live` steps the car for the viewer, `--boot` checks a recording | [physics.md](../notes/physics.md) |
@@ -120,7 +122,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 
 | Path | What |
 | --- | --- |
-| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
+| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
 | `harness/` | records and replays the original game for the physics checks ([README](../harness/README.md)) |
 | `data/` | test data hashes and file lists, the reference shot list, generator inputs |
 | `docs/` | this guide, the install guide, the reference shots and clips |
@@ -231,6 +233,13 @@ viewer's performance log times 90 s from the go. It prints average fps, the 1% a
 hitches and the costliest GPU passes and CPU spans, the median of 3 runs. The same release builds and install as the
 reference shots, and a display; the window takes the screen for a few minutes. `--out NEW --compare BASE` compares two
 results. The scene's choice and a baseline are in [renderer.md](../notes/renderer.md#benchmark-2026-11-02).
+
+## Rally school sweep
+
+`scripts/school-sweep.sh` drives every rally school lesson headless with the autopilot (`-l` lessons, `-c` car slots
+or RSF pack folders, `-j` jobs) and prints each drive's verdict, race end and why the drive stopped, in about a
+minute. It checks the school's wiring end to end: every lesson should end by its box, its finish, the school or a
+retire. It does not check the judging; the autopilot fails most timed lessons, and it gets stuck in lessons 1 and 8.
 
 ## Packaging
 

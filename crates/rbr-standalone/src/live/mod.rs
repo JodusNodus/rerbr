@@ -35,7 +35,7 @@
 //! no go: the player's confirm, an input payload's `ACCEPT_MESSAGE` (a recorded payload confirms at once), arms the 2 s
 //! countdown (`FrameInput::confirm`). Without the timer (the autopilot
 //! and the recorded-boot checks) the go comes before the first payload, as the headless boot gives it at the
-//! recording's step. Each payload of the drive is one frame of one step, from the settle's last step.
+//! recording's step; a lesson's brief still waits for the first payload's confirm. Each payload of the drive is one frame of one step, from the settle's last step.
 //!
 //! A payload with the call-for-help flag (quantized 0x20, the viewer's call for help) gives the game that request
 //! (`FrameInput::help_call`) instead of the flag, so the race clock's gate applies; the assist and its penalty are
@@ -85,8 +85,10 @@ use rbr_recording::live as records;
 use rbr_recording::menu::Menu;
 use rbr_recording::pacenote::{self, PCN1};
 use rbr_recording::particles;
+use rbr_recording::school::{self, School};
 use rbr_recording::sound::{TyreMax, SND1};
 use rbr_recording::{CONTROL_BYTES, MAGIC};
+use rbr_school::{SchoolEvent, SchoolRun};
 
 use crate::physics::{boot_playback, chain, load_substeps, why, Pure, DT};
 use crate::saves::Saves;
@@ -136,6 +138,16 @@ pub struct Live<'a> {
     detach: Vec<(u32, u32)>,
     /// The `.trk` driveline values (the car's distance in the dash record).
     track: Vec<f32>,
+    /// The rally school's lesson (`--school`), the mode's rules the game runs with, and as it was at the start
+    /// ([`Live::restart`]).
+    school: Option<SchoolRun>,
+    initial_school: Option<SchoolRun>,
+    /// The rally school's verdict at the drive's end (`race_end`), for the answers' SCH1 record; none before
+    /// the end, and [`Live::restart`] clears it.
+    school_verdict: Option<u32>,
+    /// The last answer's school state, for the SCH1 record's stop flag (the flow's step emits a stop; only a
+    /// state change is visible across the process boundary). [`Live::restart`] clears it.
+    school_state: Option<u32>,
     /// The player's stage record and personal best (`--saves`).
     saves: Option<Saves>,
     /// The start clock's time of day, s after midnight (`set_start_clock`).
@@ -210,13 +222,19 @@ impl<'a> Live<'a> {
             game = game.with_camera_go();
         }
         game.set_assist_settings(race.assist_settings());
-        // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time.
-        let now = if camera_go { 0.0 } else { f64::from(dt) };
-        let settled = settle(&playback, &mut game, stage, camera_go, now)?;
+        let mut school = race.school(&stage.replay, &stage.school_strings);
+        // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time. A
+        // lesson's brief waits for the first payload's confirm (`Stage::school_start`) instead, so its start, and the
+        // ride's end at once, run through the answers as on the viewer.
+        let go = !camera_go && !game.assist_settings().school();
+        let now = if go { f64::from(dt) } else { 0.0 };
+        let settled = settle(&playback, &mut game, &mut school, stage, go, now)?;
         let mut live =
             Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
         live.now = now;
         live.boot_now = now;
+        live.initial_school.clone_from(&school);
+        live.school = school;
         Ok(live)
     }
 
@@ -281,6 +299,10 @@ impl<'a> Live<'a> {
             track,
             time_of_day: None,
             initial_time_of_day: None,
+            school: None,
+            initial_school: None,
+            school_verdict: None,
+            school_state: None,
             saves: None,
             rally_next: RallyNext::default(),
             initial,
@@ -296,6 +318,7 @@ impl<'a> Live<'a> {
     pub fn restart(&mut self) {
         self.playback.pure.restore(&self.initial);
         self.game = self.initial_game.clone();
+        self.school.clone_from(&self.initial_school);
         if let Some(saves) = self.saves.as_mut() {
             saves.rearm();
         }
@@ -312,6 +335,8 @@ impl<'a> Live<'a> {
         self.pending = Pending::default();
         self.penalties = 0.0;
         self.stopped = false;
+        self.school_verdict = None;
+        self.school_state = None;
         self.last = Self::first_picture(&self.playback, &self.game, self.stage, &self.detach);
     }
 
@@ -363,7 +388,7 @@ impl<'a> Live<'a> {
 
     /// The answer of a frame that echoes `payload` and ran `substeps` from step `pre`: the frame and HUD record and
     /// the tagged records of the last picture.
-    fn answer_bytes(&self, payload: &[u8; CONTROL_BYTES], pre: u32, substeps: u32) -> Vec<u8> {
+    fn answer_bytes(&mut self, payload: &[u8; CONTROL_BYTES], pre: u32, substeps: u32) -> Vec<u8> {
         let camera = match self.game.start_camera().and_then(|c| c.angle()) {
             Some(angle) => Camera { mode: MODE_START_ORBIT, angle },
             None => Camera { mode: MODE_CHASE, angle: 0.0 },
@@ -371,6 +396,7 @@ impl<'a> Live<'a> {
         .record();
         let clock = self.clock.record();
         let menu = self.menu().record();
+        let school = self.school_record();
         let mut out = Vec::new();
         for word in [MAGIC, pre, pre + substeps, substeps, CAR_BYTES as u32] {
             out.extend_from_slice(&word.to_le_bytes());
@@ -394,6 +420,9 @@ impl<'a> Live<'a> {
         out.extend_from_slice(&self.last.gearbox);
         out.extend_from_slice(&self.last.hub);
         out.extend_from_slice(&menu);
+        if let Some(school) = school {
+            out.extend_from_slice(&school);
+        }
         out.extend_from_slice(&self.last.fmod_block);
         out.extend_from_slice(&self.last.carried);
         records::write_record(&mut out, records::CTL1, &self.control);
@@ -416,6 +445,11 @@ impl<'a> Live<'a> {
     /// The gameplay loop.
     pub fn game(&self) -> &Game {
         &self.game
+    }
+
+    /// The rally school's lesson, on a lesson's drive.
+    pub fn school(&self) -> Option<&SchoolRun> {
+        self.school.as_ref()
     }
 
     /// The pure physics' memory after the last step.
@@ -534,8 +568,10 @@ impl<'a> Live<'a> {
             },
         };
         let runs = self.playback.pure.runs();
-        let events = panic::catch_unwind(AssertUnwindSafe(|| self.game.frame(self.now, input, &mut physics)))
-            .map_err(|e| self.stop_text(e.as_ref(), runs))?;
+        let events = panic::catch_unwind(AssertUnwindSafe(|| {
+            self.game.frame_with(self.now, input, &mut physics, &mut self.school)
+        }))
+        .map_err(|e| self.stop_text(e.as_ref(), runs))?;
         self.pending.tyre_max = physics.tyre_max;
         self.time_of_day = self.time_of_day.map(|t| t + seconds as f32);
         if events.substeps.is_empty() && events.tick_state == State::Countdown {
@@ -655,6 +691,20 @@ impl<'a> Live<'a> {
     fn race_end(&mut self, step: u32, end: &StageEnd) {
         let page = self.end_page(end);
         eprintln!("step {step}: the race ended: {:?}, {:?}, end page {:#x}", end.cause, end.end_race, page.value());
+        if let Some(school) = &self.school {
+            // `EvalFilters` on the HUD's time and the car's damage; a lesson's drive keeps no stage record.
+            let damage = rally::stage_out(&self.playback.pure.mem, *end, false).damage;
+            let (lesson, verdict) = (school.lesson(), school.verdict(end.end_race.time, &damage));
+            eprintln!("step {step}: rally school lesson {} verdict {verdict} of 4", lesson.index());
+            self.school_verdict = Some(verdict);
+            if let Some(saves) = self.saves.as_mut() {
+                match saves.school(lesson, verdict) {
+                    Ok(results) => eprintln!("step {step}: the school results are {results:?}"),
+                    Err(e) => eprintln!("step {step}: the school result was not saved: {e}"),
+                }
+            }
+            return;
+        }
         let Some(saves) = self.saves.as_mut().filter(|s| end.finished() && !s.written()) else { return };
         let times = [end.end_race.splits[0], end.end_race.splits[1], end.end_race.time];
         match saves.finish(times) {
@@ -684,6 +734,58 @@ impl<'a> Live<'a> {
             help: driving && self.game.help_offered(),
             over: state == State::Ended,
         }
+    }
+
+    /// The school record (SCH1) after MNU1, only for a lesson's drive: the lesson, where it stands, the kept
+    /// verdict (none before the end), the race time and the lesson's times, this answer's last incident code, the
+    /// stop when the flow moved since the last answer, the ids `Trigger` queued this answer, and the failed end's
+    /// reasons (only once the verdict is known and failed). Takes the answer's events, as the viewer's panels
+    /// and speech read them.
+    fn school_record(&mut self) -> Option<Vec<u8>> {
+        let school = self.school.as_mut()?;
+        let events = school.take_events();
+        let state = match self.game.stage().state() {
+            State::Countdown => school::STATE_BRIEF,
+            State::Ended => school::STATE_ENDED,
+            _ => school::STATE_DRIVING,
+        };
+        let incident = events
+            .iter()
+            .rev()
+            .find_map(|event| match event {
+                SchoolEvent::Incident { code } => Some(*code as u32),
+                _ => None,
+            })
+            .unwrap_or(0);
+        let speech: Vec<u32> = events.iter().flat_map(|event| school.speech_ids(event)).collect();
+        let stop = self.school_state != Some(state);
+        self.school_state = Some(state);
+        let verdict = self.school_verdict.unwrap_or(school::NO_VERDICT);
+        let time = self.game.race_clock().time;
+        let reasons = if state == school::STATE_ENDED && verdict == 0 {
+            school
+                .failure_reasons(time)
+                .into_iter()
+                .map(|reason| school::Reason { lesson: reason.lesson, key: reason.key })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Some(
+            School {
+                lesson: school.lesson().index(),
+                state,
+                verdict,
+                time,
+                perfect: school.bank().perfect_time,
+                pass: school.bank().pass_time,
+                incident,
+                stop,
+                speech,
+                reasons,
+            }
+            .record(),
+        )
     }
 
     /// The FLW1 record of a frame: its events, and where the flow stands after it.
@@ -798,9 +900,16 @@ fn install_filter_ini() -> Ini {
     Ini::parse(&text)
 }
 
-/// The load settle the boot runs: the game from `Load` to the countdown, then the go's frames as the headless boot
-/// runs them (without the camera the second takes a step's time). Returns the settled steps, the live start's step.
-fn settle(playback: &Playback, game: &mut Game, stage: &StageData, camera_go: bool, now: f64) -> Result<u32, String> {
+/// The load settle the boot runs: the game from `Load` to the countdown, then with `go` the go's frames as the
+/// headless boot runs them (the second at `now`, a step's time). Returns the settled steps, the live start's step.
+fn settle(
+    playback: &Playback,
+    game: &mut Game,
+    school: &mut Option<SchoolRun>,
+    stage: &StageData,
+    go: bool,
+    now: f64,
+) -> Result<u32, String> {
     let mut physics = Pure {
         playback,
         trace: None,
@@ -814,12 +923,12 @@ fn settle(playback: &Playback, game: &mut Game, stage: &StageData, camera_go: bo
     let mut settled = 0;
     panic::catch_unwind(AssertUnwindSafe(|| {
         while game.stage().state() == State::Load {
-            settled += game.frame(0.0, FrameInput::default(), &mut physics).substeps.len() as u32;
+            settled += game.frame_with(0.0, FrameInput::default(), &mut physics, school).substeps.len() as u32;
         }
-        if !camera_go {
+        if go {
             let go = FrameInput { camera_go: true, ..FrameInput::default() };
-            game.frame(0.0, go, &mut physics);
-            game.frame(now, FrameInput::default(), &mut physics);
+            game.frame_with(0.0, go, &mut physics, school);
+            game.frame_with(now, FrameInput::default(), &mut physics, school);
         }
     }))
     .map_err(|e| format!("the settle, step {settled}: {}", why(e.as_ref())))?;

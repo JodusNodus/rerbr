@@ -49,6 +49,7 @@ mod profile;
 mod puddles;
 pub mod relight;
 pub mod renderer;
+pub mod school_demo;
 #[cfg(test)]
 mod shader_check;
 pub mod shifter;

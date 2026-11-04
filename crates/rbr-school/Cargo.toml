@@ -1,0 +1,10 @@
+[package]
+name = "rbr-school"
+version = "0.1.0"
+edition = "2021"
+description = "The Richard Burns Rally 1.02 rally school: the lessons, their filter bank and its verdict"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+rbr-formats = { path = "../rbr-formats" }
+rbr-gameplay = { path = "../rbr-gameplay" }

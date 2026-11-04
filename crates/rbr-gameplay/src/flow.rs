@@ -70,6 +70,12 @@ impl Mode {
     pub fn confirm_arms(self) -> bool {
         matches!(self.0, 3..=5)
     }
+
+    /// The countdown waits for the player's confirm: the modes that arm it, and the rally school, whose brief's
+    /// confirm starts the lesson at once (`Stage::school_start`, no countdown).
+    pub fn start_waits(self) -> bool {
+        self.confirm_arms() || self.school()
+    }
 }
 
 /// `E60Flow::M566640` and its twin `M5665f0` (0x566640/0x5665f0), the assistance gate: open unless the mode is the
@@ -224,6 +230,9 @@ pub enum EndCause {
     FinishZone,
     /// Ours: the race was left before its end (the viewer closed, the launcher's rally page): see [`RaceFlow::end_now`].
     Left,
+    /// A mode's rules ([`crate::mode`]): the rally school's `EndRace` (`E12_AnimSet::Tic570` 0x47a570; the stop box,
+    /// with 0) or a trip latch (the lesson failed or retired, with 1).
+    Mode,
 }
 
 /// The end of the stage: what ended it and the `CSigEndRace` it emitted. The stage result (`result::StageResult`)
@@ -447,6 +456,12 @@ impl RaceFlow {
     /// `None` when the race is over or a box is up.
     pub fn finish_zone(&mut self, clock: &RaceClock) -> Option<StageEnd> {
         (self.end.is_none() && self.message.is_none()).then(|| self.end_race(EndCause::FinishZone, clock, false))
+    }
+
+    /// A mode's `CSigEndRace` (the rally school's `Tic570`): finished with the race clock `clock`, or a retire. `None`
+    /// when the race is over or a box is up.
+    pub fn mode_end(&mut self, clock: &RaceClock, retired: bool) -> Option<StageEnd> {
+        (self.end.is_none() && self.message.is_none()).then(|| self.end_race(EndCause::Mode, clock, retired))
     }
 
     /// The race is still on: not over, and the finish line not passed. A run that stops at the finish stops here.
@@ -705,6 +720,10 @@ mod tests {
         assert!(!Mode::CHAMPIONSHIP.camera_go() && !Mode(4).camera_go() && !Mode::SCHOOL.camera_go());
         assert!((3..=5).all(|m| Mode(m).confirm_arms()));
         assert!(![0, 1, 2, 6, 7, 8].iter().any(|&m| Mode(m).confirm_arms()));
+        // The countdown waits in the modes that arm it, and in the rally school (the brief's confirm).
+        assert!((3..=5).all(|m| Mode(m).start_waits()));
+        assert!(Mode::SCHOOL.start_waits());
+        assert!(![0, 1, 2, 6, 8].iter().any(|&m| Mode(m).start_waits()));
     }
 
     #[test]

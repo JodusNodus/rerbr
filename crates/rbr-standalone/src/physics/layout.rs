@@ -41,6 +41,18 @@ pub(super) fn accumulate_tyre_terms(playback: &Playback, tyre_max: &mut TyreMax)
     }
 }
 
+/// `CDriveLine::Sample` (0x50b180) on the physics' drive line (the object 0x1659184 points to) at `distance`: its
+/// xyz.
+pub(super) fn drive_line_point(playback: &Playback, distance: f32) -> [f32; 3] {
+    let mem = &playback.pure.mem;
+    let p = rbr_physics::engine_driveline::layout::sample(mem, mem.u32(DRIVE_LINE), distance);
+    [p.x, p.y, p.z]
+}
+
+/// The global holding the drive line object (`CDriveLine`) the physics and the school's `SchoolIncident` sample
+/// (`CCar::Test7910` reads it the same way).
+const DRIVE_LINE: u32 = 0x165_9184;
+
 /// The drive state's +0x570 (car +0x4b0, its +8), compared by NGP's live gear handler.
 pub(super) fn drive_gear(playback: &Playback) -> u32 {
     let mem = &playback.pure.mem;
