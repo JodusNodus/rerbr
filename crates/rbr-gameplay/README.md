@@ -20,6 +20,7 @@ The 1.02 gameplay loop around the physics step, pure and checked against the ori
 | `flow` | Flow modes and gates; finish timer, retires (no time limit), `CSigEndRace`, end pages |
 | `pause_menu` | Pause menu items per mode, confirm boxes, retire |
 | `result` | Stage result: running, finished or retired, time, penalties, splits |
+`school` | Rally-school judging core: the E19 filter bank, its sub primitives, the in-step runners and the verdict |
 | `record` | Stage record and personal best in `pfresult.rst` and `pf<name>.rbr` |
 | `race_options` | Quick race and championship options to menu globals and penalty settings |
 | `weather` | Quick race weather row and wear draw; default tyre kind |
