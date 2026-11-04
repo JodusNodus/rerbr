@@ -6,7 +6,7 @@ use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 use super::{countdown, pace, ACCENT, ALERT, DIM, MARGIN, PAD, PANEL, RADIUS, TEXT};
 use crate::hud::model::StackNote;
 use crate::hud::pace::{label, modifier};
-use crate::hud::{countdown_call, Part, Readout, FALSE_START_WARNINGS, REFERENCE_HEIGHT, WRONG_WAY};
+use crate::hud::{countdown_call, school, Part, Readout, FALSE_START_WARNINGS, REFERENCE_HEIGHT, WRONG_WAY};
 
 /// The pace note's top, under the progress line.
 const PACE_TOP: f32 = 56.0;
@@ -23,8 +23,13 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprit
     let s = &r.state;
     let font = FontId::proportional;
     let centre = screen.center().x;
-    if let Some(call) = r.race.as_ref().and_then(countdown_call) {
-        countdown::paint(painter, Pos2::new(centre, screen.height() * 0.3 + 20.0), &call);
+    // The school's countdown never ticks past its brief (the clock's word stays at the reset), so its GO plaque
+    // would show for the whole drive: none after the brief.
+    let school_driving = s.school.is_some_and(|s| s.phase != school::Phase::Brief);
+    if !school_driving {
+        if let Some(call) = r.race.as_ref().and_then(countdown_call) {
+            countdown::paint(painter, Pos2::new(centre, screen.height() * 0.3 + 20.0), &call);
+        }
     }
     if let Some(alpha) = s.false_start {
         let colour = Color32::from_rgba_unmultiplied(235, 60, 50, (alpha * 255.0) as u8);

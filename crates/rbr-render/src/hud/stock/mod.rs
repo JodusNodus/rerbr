@@ -63,7 +63,7 @@ impl Hud for Stock {
         let under_clock = top::clock(&painter, screen, r);
         if let Some(record) = &r.splits {
             let flash = r.parts.shows(Part::Splits).then_some(under_clock);
-            splits::paint(&painter, screen, record, r.state.end_page, flash);
+            splits::paint(&painter, screen, record, r.state.end_page, flash, r.state.school.is_some());
         }
         // `HUD::Update` draws nothing while the rescue helicopter flies; the caption is ours.
         if r.state.helicopter && r.state.end_page.is_none() {

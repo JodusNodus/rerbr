@@ -23,8 +23,9 @@ pub struct ResultsMenu {
 
 impl ResultsMenu {
     /// Only the end page offers these actions. Crossing the finish line still lets the car drive to the marshal.
+    /// A school drive ends on its verdict panel instead (`hud::school`), with no actions.
     pub fn open(record: Record) -> Option<Self> {
-        if !record.over {
+        if !record.over || Mode(record.mode).school() {
             return None;
         }
         let state = MenuState { mode: Mode(record.mode), driving: false, help: false, over: true };
