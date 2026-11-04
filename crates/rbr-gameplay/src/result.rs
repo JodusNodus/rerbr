@@ -7,8 +7,8 @@
 //! What the original shows (`CQRResultUI`: driver, split 1, split 2, total time, the stage record and the personal
 //! best; `CHotSeatRallyStageResultsUI`: split, time and difference) is the layout this follows. The stage record and
 //! personal best are not here: they need the save data. The outcome is the race flow's (`flow::StageEnd`) once the race
-//! is over: `Retired` for a `CSigEndRace` with the state word 1 (the helicopter's bystander retire, off the stage, the
-//! time limit), with its cause. Before that the race is `Running`, or `Finished` once the finish line is passed.
+//! is over: `Retired` for a `CSigEndRace` with the state word 1 (the helicopter's bystander retire, off the stage; ours
+//! has no time limit), with its cause. Before that the race is `Running`, or `Finished` once the finish line is passed.
 
 use crate::flow::{EndCause, StageEnd};
 use crate::race_clock::RaceClock;

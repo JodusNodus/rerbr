@@ -82,8 +82,6 @@ pub fn assistance_gate(settings: AssistSettings) -> bool {
 
 /// The finish timer `M573530` arms (HUD +0x2c0, the f32 20.0).
 pub const FINISH_DELAY: f32 = 20.0;
-/// The race time at which the HUD tick ends the race (the f32 at 0x746828).
-pub const TIME_LIMIT: f32 = 1800.0;
 /// The rally incident's timer after a retire code 3 (HUD +0x27c, set by 0x577550) and its rate (the f32 at 0x739cb8).
 const INCIDENT_TIME: f32 = 1.0;
 const INCIDENT_RATE: f32 = 0.98;
@@ -214,8 +212,6 @@ pub enum EndCause {
     Finish,
     /// A marker's own `CSigEndRace`: the end of the stage (0x18), or the finish line outside modes 1-5 and 8 (0x16).
     Marker,
-    /// The race time reached [`TIME_LIMIT`] with the helicopter idle.
-    TimeLimit,
     /// The helicopter's [`HELICOPTER_TIME`] ran out and the player accepted `MSG_RETIRE_BYSTAND`.
     Bystander,
     /// A retire code 4's timer ran out and the player accepted `MSG_RETIRE_OFFSTAGE`.
@@ -540,7 +536,7 @@ impl RaceFlow {
 
     /// One frame after the HUD's race clock ticked, in the original's order: the retire receiver (inside the frame's
     /// steps), the marker events (`Load3b0`, after `Tic`), then the HUD tick's timers (0x579df0): the incident, the
-    /// off-stage message, the finish timer, the time limit; then the helicopter's `Tic` (ours: its place in the frame
+    /// off-stage message, the finish timer (the game's time limit is not kept); then the helicopter's `Tic` (ours: its place in the frame
     /// is not traced). The first `CSigEndRace` ends the race; nothing runs after it.
     pub fn frame(&mut self, input: FlowFrame) -> FlowEvents {
         let mut events = FlowEvents::default();
@@ -590,7 +586,7 @@ impl RaceFlow {
             self.call_helicopter(&mut events);
         }
         // +0x280: on the frame it passes 0, `MSG_RETIRE_OFFSTAGE`. The pause (state 2) stops the rest of the tick's
-        // timers: the finish timer and the time limit run outside it only.
+        // timers: the finish timer runs outside it only.
         self.offstage -= dt;
         if 0.0 > self.offstage && !(self.offstage + dt < 0.0) {
             self.post(Message::RetireOffstage, &mut events);
@@ -606,11 +602,8 @@ impl RaceFlow {
                 return events;
             }
         }
-        // The time limit, in the application states 1 and 8, while the helicopter is idle (`IsActive`, 0x49bea0).
-        if !(clock.time < TIME_LIMIT) && self.helicopter.is_none() {
-            events.end = Some(self.end_race(EndCause::TimeLimit, clock, true));
-            return events;
-        }
+        // Ours: no time limit. The game ends the race as retired at 1800 s (the f32 at 0x746828, in the application
+        // states 1 and 8, while the helicopter is idle), which cut off the long community stages.
         // `CRescueHelicopter::Tic`: its time; at 24 s it leaves (`Deactivate`) and posts `MSG_RETIRE_BYSTAND`.
         if let Some(time) = self.helicopter {
             let time = time + dt;
@@ -665,7 +658,7 @@ mod tests {
     /// The box is up: nothing runs until the player accepts it, which retires with the box's cause.
     fn accept(flow: &mut RaceFlow, message: Message) -> StageEnd {
         assert_eq!(flow.phase(driving()), Phase::Message(message));
-        assert_eq!(run(flow, TIME_LIMIT, 5000), None, "the pause holds every timer");
+        assert_eq!(run(flow, 10.0, 5000), None, "the pause holds every timer");
         let end = flow.acknowledge(&clock(10.0)).expect("a box is up");
         assert_eq!((end.cause, end.finished()), (message.cause(), false));
         assert_eq!(flow.acknowledge(&clock(10.0)), None);
@@ -789,12 +782,11 @@ mod tests {
     }
 
     #[test]
-    fn the_time_limit_retires() {
+    fn a_race_has_no_time_limit() {
         let mut flow = RaceFlow::new(AssistSettings::QUICK_RACE);
-        assert_eq!(flow.frame(frame(clock(1799.9), &[], &[])).end, None);
-        let end = flow.frame(frame(clock(TIME_LIMIT), &[], &[])).end.expect("the limit");
-        assert_eq!(end.cause, EndCause::TimeLimit);
-        assert!(!end.finished());
+        for time in [1799.9, 1800.0, 7200.0] {
+            assert_eq!(flow.frame(frame(clock(time), &[], &[])).end, None, "{time}");
+        }
     }
 
     #[test]
@@ -810,13 +802,6 @@ mod tests {
             assert!((3427..=3430).contains(&(frames + 1)), "{frames}");
             accept(&mut flow, message);
         }
-    }
-
-    #[test]
-    fn the_helicopter_holds_off_the_time_limit() {
-        let mut flow = RaceFlow::new(AssistSettings::QUICK_RACE);
-        flow.frame(frame(clock(1700.0), &[], &[1]));
-        assert_eq!(flow.frame(frame(clock(TIME_LIMIT), &[], &[])).end, None);
     }
 
     #[test]

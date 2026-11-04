@@ -140,7 +140,6 @@ fn read_result(path: &Path) -> Result<(StageEnd, bool, bool), String> {
     let cause = match value("cause") {
         Some("Finish") => EndCause::Finish,
         Some("Marker") => EndCause::Marker,
-        Some("TimeLimit") => EndCause::TimeLimit,
         Some("Bystander") => EndCause::Bystander,
         Some("Offstage") => EndCause::Offstage,
         Some("Excluded") => EndCause::Excluded,

@@ -17,7 +17,7 @@ The 1.02 gameplay loop around the physics step, pure and checked against the ori
 | `timing` | Time card and timekeeper: start, splits, finish, still counter; the f32 clock |
 | `markers` | Marker ticker: start/split/finish/end events, pace-note lookahead |
 | `race_clock` | HUD race clock: countdown, go, jump start, assistance penalty, help gate |
-| `flow` | Flow modes and gates; finish timer, retires, time limit, `CSigEndRace`, end pages |
+| `flow` | Flow modes and gates; finish timer, retires (no time limit), `CSigEndRace`, end pages |
 | `pause_menu` | Pause menu items per mode, confirm boxes, retire |
 | `result` | Stage result: running, finished or retired, time, penalties, splits |
 | `record` | Stage record and personal best in `pfresult.rst` and `pf<name>.rbr` |

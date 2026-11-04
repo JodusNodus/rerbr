@@ -84,6 +84,9 @@ byte again).
   it after 945 s). NGP replaces both calls (0x47f4c3, 0x47f4ce) with a growing buffer. Unreached by any recording:
   unverified.
 - Ours: a race left early (`RaceFlow::end_now`) ends with cause `Left`.
+- Ours (user decision, 2026-11-04): no time limit. The game retires the race at 1800 s (`0x746828`), which cut off
+  long community stages; a ghost records to 4.5 h (its 24-bit stamps), not the game's 0x4b000-byte buffer (about
+  1024 s). A retired race still offers 1800 s (`record::RETIRED_TIME`).
 - Not compared with an original ghost (outside-assistance penalty in the ghost clock).
 
 ## Scripted events

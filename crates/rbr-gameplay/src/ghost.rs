@@ -26,9 +26,10 @@ pub struct Pose {
     pub rotation: [f32; 4],
 }
 
-/// Stream bytes a recording may fill: writing stops once the write offset reaches 0x4afe8 of the 0x4b000-byte buffer
-/// (`Update`).
-pub const BUFFER_LIMIT: usize = 0x4afe8;
+/// The race time a recording reaches, s: past it nothing is written. Ours: the game stops at its 0x4b000-byte buffer
+/// (the write offset at 0x4afe8, `Update`), about 1024 s of driving, which froze the ghost on long community stages;
+/// ours runs to where the samples' 24-bit 1/1024 s stamps end (4.5 h).
+pub const TIME_LIMIT: f32 = (1 << 24) as f32 / TIME_SCALE;
 /// `Update`'s in-between step factor (0x795e00 area, the f32 -0.5128205): one more sample per 1.95 m moved.
 const STEP_FACTOR: f32 = -0.512_820_5;
 /// `E18_QuatSlerp` (0x492160) blends linearly above this dot product (the f32 at 0x72fedc).
@@ -46,8 +47,6 @@ const NEVER_SAMPLED: u32 = 0xdead_beaf;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Recorder {
     samples: Vec<Sample>,
-    /// The stream's length so far, run headers included (`m_write` less the buffer start).
-    written: usize,
     /// The run being written: its kind as a key or not, and its count.
     run: Option<(bool, usize)>,
     /// Race time, s (`m_wtime->t`).
@@ -78,7 +77,6 @@ impl Recorder {
     pub fn new() -> Recorder {
         Recorder {
             samples: Vec::new(),
-            written: 0,
             run: None,
             time: 0.0,
             accum: 0.0,
@@ -105,16 +103,16 @@ impl Recorder {
     /// The car's `CSigCarGeneralState` of this frame (`Update`).
     pub fn car_state(&mut self, pose: Pose) {
         if self.key_due {
-            if self.written < BUFFER_LIMIT {
+            if self.time < TIME_LIMIT {
                 self.key(pose);
             }
             self.key_due = false;
-            if self.written >= BUFFER_LIMIT {
+            if self.time >= TIME_LIMIT {
                 return;
             }
         } else {
             let count = self.frames;
-            if self.sampled == count || count & 1 == 0 || self.written >= BUFFER_LIMIT {
+            if self.sampled == count || count & 1 == 0 || self.time >= TIME_LIMIT {
                 return;
             }
             self.sampled = count;
@@ -175,28 +173,24 @@ impl Recorder {
         ((self.time * TIME_SCALE) as u32) & 0xff_ffff
     }
 
-    fn push(&mut self, sample: Sample, key: bool, len: usize) {
+    fn push(&mut self, sample: Sample, key: bool) {
         match self.run {
             Some((k, n)) if k == key && n < rbr_formats::ghost::RUN_MAX => self.run = Some((k, n + 1)),
-            _ => {
-                self.run = Some((key, 1));
-                self.written += 4;
-            }
+            _ => self.run = Some((key, 1)),
         }
-        self.written += len;
         self.samples.push(sample);
     }
 
     fn key(&mut self, pose: Pose) {
         let key = Key { time: self.time_word(), position: pose.position, rotation: quantize(pose.rotation), spare: 0 };
-        self.push(Sample::Key(key), true, 20);
+        self.push(Sample::Key(key), true);
         self.last = pose.position;
     }
 
     fn delta(&mut self, pose: Pose) {
         let offset: [i8; 3] = std::array::from_fn(|i| ((pose.position[i] - self.last[i]) * DELTA_SCALE) as i32 as i8);
         let delta = Delta { time: self.time_word(), offset, rotation: quantize(pose.rotation) };
-        self.push(Sample::Delta(delta), false, 10);
+        self.push(Sample::Delta(delta), false);
         for (last, step) in self.last.iter_mut().zip(offset) {
             *last += f32::from(step) * DELTA_UNIT;
         }
@@ -491,7 +485,18 @@ mod tests {
         assert_eq!(back.samples.len(), 3);
         assert!(matches!(back.samples[2], Sample::Key(k) if k.position[0] == 3.0));
         assert_eq!(back.tail, vec![0; 4]);
-        assert_eq!(r.written, bytes.len() - 4);
+    }
+
+    #[test]
+    fn a_long_stage_records_past_the_games_buffer() {
+        // 1200 s at 60 frames a second, moving 1 m a frame: the game's buffer filled at about 1024 s.
+        let mut r = Recorder::new();
+        for i in 0..72_000 {
+            r.car_state(at(i as f32));
+            r.frame(1.0 / 60.0);
+        }
+        let last = r.finish().samples.last().map(Sample::time).unwrap_or_default();
+        assert!(last as f32 / TIME_SCALE > 1190.0, "{last}");
     }
 
     #[test]
