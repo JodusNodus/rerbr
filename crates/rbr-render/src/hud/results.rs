@@ -19,13 +19,14 @@ const PANEL: Color32 = Color32::from_rgba_premultiplied(10, 10, 12, 235);
 pub struct ResultsMenu {
     items: Vec<Item>,
     selected: usize,
+    /// A rally-school lesson's: its restart retries the lesson.
+    school: bool,
 }
 
 impl ResultsMenu {
     /// Only the end page offers these actions. Crossing the finish line still lets the car drive to the marshal.
-    /// A school drive ends on its verdict panel instead (`hud::school`), with no actions.
     pub fn open(record: Record) -> Option<Self> {
-        if !record.over || Mode(record.mode).school() {
+        if !record.over {
             return None;
         }
         let state = MenuState { mode: Mode(record.mode), driving: false, help: false, over: true };
@@ -35,7 +36,7 @@ impl ResultsMenu {
                 (enabled && matches!(item, Item::Restart | Item::Exit | Item::Continue)).then_some(item)
             })
             .collect();
-        Some(Self { items, selected: 0 })
+        Some(Self { items, selected: 0, school: Mode(record.mode).school() })
     }
 
     pub fn nav(&mut self, nav: Nav) -> Option<Item> {
@@ -74,6 +75,7 @@ pub fn paint(ctx: &egui::Context, menu: &ResultsMenu) {
         let rect = menu.button(screen, i);
         painter.rect_filled(rect, 6.0, if i == menu.selected { SELECTED } else { PANEL });
         let label = match item {
+            Item::Restart if menu.school => "Retry lesson",
             Item::Restart => "Restart stage",
             Item::Exit => "Quit to menu",
             Item::Continue => "Continue",

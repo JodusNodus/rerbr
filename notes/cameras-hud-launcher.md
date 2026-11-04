@@ -111,9 +111,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   and is blocked while the viewer runs, without readiness, or when NGP's archive has no car 5. In the viewer a
   lesson opens on its brief panel (the number, title, instruction and cone guide from `bstrings.eng`, the
   pass/perfect times when timed, Enter to start), driving shows a short Too slow/Too fast toast for the bank's
-  incident codes, and the end its verdict panel (Perfect, Passed n/4, Failed, with the time) in place of the stage
-  result (`hud::school`, from the live SCH1 record: the lesson, its state, the kept verdict, the times and the
-  answer's last incident code). The brief's confirm ends the start orbit, as the countdown's end does.
+  incident codes (ours: no HUD consumer of them was found in 1.02), and the end its verdict panel (Perfect, Passed
+  with the grade as pips, Failed; the time and the tier reached) in place of the stage result, over the results
+  menu's Retry lesson and Quit (`hud::school`, from the live SCH1 record: the lesson, its state, the kept verdict,
+  the times and the answer's last incident code). No countdown plaque shows in a lesson. The brief's confirm ends
+  the start orbit, as the countdown's end does.
 - Replays tab, after Car setup (`pages::Page::TABS`, `replay_page.rs`): cached, newest-first headers from
   `<files>/replays`, searched by title or filename or conditions;
   malformed and unfinished files stay visible with their error. Rows show the stage time, how long ago it was recorded and
