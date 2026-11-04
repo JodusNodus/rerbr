@@ -703,7 +703,7 @@ impl Form {
         let map = self.catalog.map(stage.map);
         listed
             .into_iter()
-            .chain(map.and_then(|m| m.community.as_ref()).map(|s| s.name.clone()))
+            .chain(map.and_then(catalog::Map::community).map(|s| s.name.clone()))
             .chain(map.map(catalog::Map::name))
             .chain(catalog::title(stage.map).map(str::to_owned))
             .chain([stage.name.clone()])
@@ -1094,8 +1094,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                community: None,
-                btb: None,
+                origin: catalog::Origin::Retail,
             }],
         };
         let section = catalog::environment_rows(&season(), 54)[1].1.clone();
@@ -1187,8 +1186,7 @@ mod tests {
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                community: None,
-                btb: None,
+                origin: catalog::Origin::Retail,
             }],
             ..Catalog::default()
         };

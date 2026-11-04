@@ -1653,8 +1653,7 @@ mod tests {
             maps: vec![catalog::Map {
                 number: 54,
                 stages: vec![catalog::Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                community: None,
-                btb: None,
+                origin: catalog::Origin::Retail,
             }],
         };
         let paths = Paths {

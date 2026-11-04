@@ -134,66 +134,88 @@ pub struct Stage {
     pub letter: char,
 }
 
+/// Where a selectable map comes from: the game, a RallySimFans stage folder
+/// ([`Catalog::set_community_stages`]), or a BTB stage ([`crate::btb`], a stage of its own number).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Origin {
+    Retail,
+    Community(rsf::Stage),
+    Btb(crate::btb::Btb),
+}
+
 /// One selectable map and the stage variants installed for it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Map {
     pub number: u32,
     pub stages: Vec<Stage>,
-    /// A RallySimFans stage folder's map ([`Catalog::set_community_stages`]).
-    pub community: Option<rsf::Stage>,
-    /// A BTB stage's map ([`crate::btb`]): a stage of its own number.
-    pub btb: Option<crate::btb::Btb>,
+    pub origin: Origin,
 }
 
 impl Map {
+    /// The community stage, when the map is one's.
+    pub fn community(&self) -> Option<&rsf::Stage> {
+        match &self.origin {
+            Origin::Community(stage) => Some(stage),
+            _ => None,
+        }
+    }
+
+    /// The BTB stage, when the map is one's.
+    pub fn btb(&self) -> Option<&crate::btb::Btb> {
+        match &self.origin {
+            Origin::Btb(btb) => Some(btb),
+            _ => None,
+        }
+    }
+
     /// The retail map whose presentation the map takes (`rbr_render::relight::site`): a BTB stage's is
     /// `rbr_btb::stage::SKY_MAP`, any other map's its own number.
     pub fn sky_map(&self) -> u32 {
-        if self.btb.is_some() {
-            rbr_btb::stage::SKY_MAP
-        } else {
-            self.number
+        match self.origin {
+            Origin::Btb(_) => rbr_btb::stage::SKY_MAP,
+            _ => self.number,
         }
     }
 
     /// Why the community or BTB stage cannot start.
     pub fn problem(&self) -> Option<&String> {
-        self.community.as_ref().and_then(|s| s.problem.as_ref()).or(self.btb.as_ref().and_then(|b| b.problem.as_ref()))
+        match &self.origin {
+            Origin::Community(stage) => stage.problem.as_ref(),
+            Origin::Btb(btb) => btb.problem.as_ref(),
+            Origin::Retail => None,
+        }
     }
 
     /// The name the menus show: the game's, or the community stage's.
     pub fn name(&self) -> String {
-        if let Some(btb) = &self.btb {
-            return btb.name.clone();
-        }
-        match &self.community {
-            Some(stage) => stage.name.clone(),
-            None => title(self.number).map_or_else(|| format!("Map {}", self.number), str::to_owned),
+        match &self.origin {
+            Origin::Community(stage) => stage.name.clone(),
+            Origin::Btb(btb) => btb.name.clone(),
+            Origin::Retail => title(self.number).map_or_else(|| format!("Map {}", self.number), str::to_owned),
         }
     }
 
     /// The season that gives the map's weathers: the game's, a community stage's own (`Season::of_rsf`), or a BTB
     /// stage's (`Season::of_btb`: the rows of its sky map).
     pub fn season<'a>(&self, season: &'a Season) -> Cow<'a, Season> {
-        if self.btb.is_some() {
-            return Cow::Owned(Season::of_btb(season, self.number, self.sky_map()));
-        }
-        match &self.community {
-            Some(stage) => Cow::Owned(Season::of_rsf(stage, None)),
-            None => Cow::Borrowed(season),
+        match &self.origin {
+            Origin::Community(stage) => Cow::Owned(Season::of_rsf(stage, None)),
+            Origin::Btb(_) => Cow::Owned(Season::of_btb(season, self.number, self.sky_map())),
+            Origin::Retail => Cow::Borrowed(season),
         }
     }
 
     /// The game's surface number of the map (0 gravel, 1 tarmac, 2 snow): [`surface_kind`], or the community stage's.
     pub fn surface(&self) -> u32 {
-        if let Some(btb) = &self.btb {
-            return btb.surface_kind();
-        }
-        match self.community.as_ref().map(|s| s.surface) {
-            Some(Some(rsf::Surface::Gravel)) => 0,
-            Some(Some(rsf::Surface::Tarmac)) => 1,
-            Some(Some(rsf::Surface::Snow)) => 2,
-            _ => surface_kind(self.number),
+        match &self.origin {
+            Origin::Btb(btb) => btb.surface_kind(),
+            Origin::Community(stage) => match stage.surface {
+                Some(rsf::Surface::Gravel) => 0,
+                Some(rsf::Surface::Tarmac) => 1,
+                Some(rsf::Surface::Snow) => 2,
+                None => surface_kind(self.number),
+            },
+            Origin::Retail => surface_kind(self.number),
         }
     }
 }
@@ -245,7 +267,7 @@ impl Catalog {
             .into_iter()
             .map(|(number, mut stages)| {
                 stages.sort_by_key(|s| s.letter);
-                Map { number, stages, community: None, btb: None }
+                Map { number, stages, origin: Origin::Retail }
             })
             .collect();
         Ok(Catalog { cars: Vec::new(), all_cars: cars, maps })
@@ -256,7 +278,7 @@ impl Catalog {
     /// reason ([`Catalog::availability`]). A folder whose `Tracks<id>.ini` does not read, or whose id a retail map has,
     /// is reported and left out.
     pub fn set_community_stages(&mut self, root: &str) {
-        self.maps.retain(|m| m.community.is_none() && m.btb.is_none());
+        self.maps.retain(|m| matches!(m.origin, Origin::Retail));
         if root.trim().is_empty() {
             return;
         }
@@ -274,7 +296,7 @@ impl Catalog {
             }
             let stages =
                 stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
-            self.maps.push(Map { number: stage.id, stages, community: Some(stage), btb: None });
+            self.maps.push(Map { number: stage.id, stages, origin: Origin::Community(stage) });
         }
         let taken: Vec<u32> = self.maps.iter().map(|m| m.number).collect();
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
@@ -359,7 +381,7 @@ impl Catalog {
         words: &rbr_formats::ghost::Weather,
     ) -> Option<(Stage, Weather)> {
         let entry = self.map(map)?;
-        if entry.community.as_ref().is_some_and(|r| r.problem.is_some()) {
+        if entry.community().is_some_and(|r| r.problem.is_some()) {
             return None;
         }
         let weather = entry.season(season).ghost_weather(map, words)?;
@@ -521,15 +543,13 @@ pub fn tyre_label(tyre: u32) -> &'static str {
 }
 
 pub fn map_label(map: &Map) -> String {
-    if let Some(stage) = &map.community {
-        return format!("{} {} (RSF)", map.number, stage.name);
-    }
-    if let Some(btb) = &map.btb {
-        return format!("{} {} (BTB)", map.number, btb.name);
-    }
-    match title(map.number) {
-        Some(name) => format!("{} {name}", map.number),
-        None => map.number.to_string(),
+    match &map.origin {
+        Origin::Community(stage) => format!("{} {} (RSF)", map.number, stage.name),
+        Origin::Btb(btb) => format!("{} {} (BTB)", map.number, btb.name),
+        Origin::Retail => match title(map.number) {
+            Some(name) => format!("{} {name}", map.number),
+            None => map.number.to_string(),
+        },
     }
 }
 
@@ -537,7 +557,7 @@ pub fn map_label(map: &Map) -> String {
 /// test maps (`[HOMEBASE]`, `[RSSTAGE]`, `[RALLYYARD]` and the unnamed ones; user decision: no rally school). They
 /// still start from the viewer's and `rbr-standalone`'s command lines.
 pub fn is_listed(map: &Map) -> bool {
-    map.community.is_some() || map.btb.is_some() || title(map.number).is_some_and(|name| !name.starts_with('['))
+    !matches!(map.origin, Origin::Retail) || title(map.number).is_some_and(|name| !name.starts_with('['))
 }
 
 /// The stage's name in the game: `E52ModeHost::M4a1020` (0x4a1020), queried by map number.
@@ -744,7 +764,7 @@ mod tests {
             problem: None,
         };
         let stage = Stage { name: format!("/rsf/Tracks/Hokkara/track-{number}_M"), map: number, letter: 'M' };
-        let map = Map { number, stages: vec![stage.clone()], community: None, btb: Some(btb) };
+        let map = Map { number, stages: vec![stage.clone()], origin: Origin::Btb(btb) };
         let catalog = Catalog { maps: vec![map], ..Catalog::default() };
         for (preset, row, wetness) in [(Preset::Good, 0, 0), (Preset::Bad, 1, 2)] {
             let (found, weather) = catalog.stage_weather(&retail, number, preset, weather::Draws::default()).unwrap();
