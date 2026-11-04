@@ -252,7 +252,9 @@ FMOD Studio banks (RSF `AudioFMOD/<audio>.bank` + `.strings.bank`): RIFF `FEV ` 
 `SavedGames/` (`CPC_SaveFileManager`, names by `E20MakeName` 0x49e230): `pf<name>.rbr` profile (0x26000 bytes,
 encrypted), `<car>slot<n>_<name>.lsp` setups, `pf<name>.rst` records (0x4000), `pf<name>.acm` action map;
 `GhostCars/<name>_<map>.ghc`. Encrypt: `b = ~((b + 0xa0) ^ key[i % 500])` (key 0x7d12c8). Word 0 is a CRC-32 with the
-game's broken table `t[i] = reverse32(i)`. Streams are u32 words, tags byte-reversed. Layouts in `saves/*.rs`.
+game's broken table `t[i] = reverse32(i)`. `SaveDir::file` refuses a name with a separator, `:`, a control character
+or another Windows-reserved character (`is_file_name_part`), so no profile name escapes the folder. Setup names: ours
+allows 100 bytes (no file-format limit found: the name is the file name's tail). Streams are u32 words, tags byte-reversed. Layouts in `saves/*.rs`.
 
 `Misc/times.ini` (`E60_5680e0`): stage count (37), then per stage its number and three `mm:ss:cc` times (split 1,
 split 2, finish); `;` comments, ends with `$`.
@@ -281,7 +283,8 @@ install); needing one, or a pack missing from `rsfdata/cars`, lists the car unav
 lookup in `rsf::stages`. Quirks: `.col` cells may share a placeholder, `.mat` may end in a `CMAP` block, `(2,11)`
 matrices are zero. A remap holds sibling stages' requests too (416's has 425's); a stage whose own requests map into
 another folder's encrypted archive is unavailable (432 into 431's, 558 into 557's, 629 and 630 into 588's: they drew
-without those textures).
+without those textures). A variant with a missing, unreadable or encrypted file is `rsf::Stage::broken` and its
+weathers are left out; the stage plays its other variants and is unavailable only when none works.
 
 ## RSF ghosts
 
