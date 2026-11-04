@@ -204,6 +204,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
 - `.col` is `rbr_btb::col::build`; every folder is offered (a build error shows at Start).
 - `lbs::parse` accepts the stub `(1, 0)` chunk (a zero count, no sky word) so the boot reads the start location; `rbr-standalone --surface gravel|tarmac|snow` is the surface override.
 - Launcher: Start passes `--surface`, `--btb 41` and the usual `--saves`/`--profile`.
+- Own-number stages (2026-11-04, Yaris Rally2): Hokkara Gravel (1055) and Pirttikulma (1103) finish on map 41's good row 98 and its bad row 102 (wet), with the record under `[1055]`/`[1103]` of `community-records.ini` and no inherited time; 0 fence posts, 0 missing textures.
 - Autopilot drives (`--autopilot --boot`, NGP car 2, row 98) finish Hokkara Gravel and Pirttikulma snow with their splits (2026-11-03); on Ulu Karagita the autopilot leaves the faint savanna track at 3262 m at some speeds (12, 14, 24 m/s; 18 passes): the collision there is smooth and the `.col` the cache's.
 - Particles (ours, 2026-11-03): map 41's `PS_MontBlanc` handles only tarmac and grass, so a gravel BTB stage threw no
   dust and the car stayed clean (Kuohu's surfaces 13, 17, 21, 41, 49 have no handler or alias in it). The particle
