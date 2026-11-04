@@ -458,12 +458,12 @@ mod tests {
         std::fs::write(&path, text).unwrap();
     }
 
-    /// The co-driver rows drawn offscreen to `RBR_SCREENSHOTS`: a locally owned voice pack and Tanner notes with
-    /// no RSF install, and the RSF install's plugin. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF`.
+    /// The co-driver rows drawn offscreen to `RBR_SCREENSHOTS`: a locally owned voice pack and Tanner notes beside
+    /// the game folder's plugin. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF`.
     #[test]
     fn screenshots_of_the_codriver_rows() {
         let env = |key: &str| std::env::var_os(key).map(|v| v.to_string_lossy().into_owned());
-        let (Some(shots), Some(data), Some(patch), Some(ngp), Some(rsf)) =
+        let (Some(shots), Some(data), Some(patch), Some(ngp), Some(_)) =
             (env("RBR_SCREENSHOTS"), env("RBR_DATA"), env("RBR_PATCH"), env("RBR_NGP_PHYSICS"), env("RBR_RSF"))
         else {
             eprintln!("skipping: RBR_SCREENSHOTS, RBR_DATA, RBR_PATCH, RBR_NGP_PHYSICS or RBR_RSF not set");
@@ -493,11 +493,10 @@ mod tests {
             data: Some(PathBuf::from(&data)),
             patch: Some(PathBuf::from(&patch)),
         };
-        // Without RSF: the owned packs drive.
+        // The owned packs drive when chosen, over the game folder's plugin.
         let settings = Settings {
             map: Some(54),
             ngp_physics: Some(ngp.clone()),
-            rsf_root: Some(String::new()),
             codriver_pack: Some("voice".into()),
             notes_pack: Some("notes".into()),
             ..Settings::default()
@@ -505,9 +504,12 @@ mod tests {
         let mut local = load(&start_in(&home), settings).unwrap();
         local.read_only = true;
         assert!(local.codriver_mods.is_some());
-        assert!(!local.rsf_plugin);
-        // With RSF: the install's plugin drives, as before.
-        let settings = Settings { map: Some(54), ngp_physics: Some(ngp), rsf_root: Some(rsf), ..Settings::default() };
+        assert_eq!(
+            local.codriver_mods.as_ref().unwrap().dir,
+            home.join(crate::codriver_packs::VOICES_DIR).join("voice")
+        );
+        // With no chosen pack: the game folder's plugin drives, as before.
+        let settings = Settings { map: Some(54), ngp_physics: Some(ngp), ..Settings::default() };
         let elsewhere = root.join("rsf-home");
         std::fs::create_dir_all(&elsewhere).unwrap();
         let mut installed = load(&start_in(&elsewhere), settings).unwrap();
@@ -593,7 +595,6 @@ mod tests {
         let settings = Settings {
             map: Some(54),
             ngp_physics: Some(ngp),
-            rsf_root: Some(String::new()),
             codriver_pack: Some("voice".into()),
             notes_pack: Some("notes".into()),
             ..Settings::default()

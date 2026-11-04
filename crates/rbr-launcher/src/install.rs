@@ -1,14 +1,13 @@
-//! The RBR install folder the Settings page sets (`install_folder`): RBR with NGP (RallySimFans or not), read in
-//! place and never written, but by "Download NGP…" (`gvrc`). At the first start the launcher offers the first usual install place whose `physics.rbz`
-//! is NGP's ([`detect`]). It looks only at fixed places in the folder:
+//! The RBR install folder the Settings page sets (`install_folder`): RBR with NGP, read in place and never
+//! written, but by "Download NGP…" (`gvrc`). At the first start the launcher offers the first usual install place
+//! whose `physics.rbz` is NGP's ([`detect`]). It looks only at fixed places in the folder:
 //! - the game data: the folder itself (an installed game holds the extracted layout's
 //!   `Root\` files at its top, `rbr_formats::data`);
-//! - NGP's physics: `physics.rbz`, when it is NGP's (its `Physics/physics.lsp` sets `PhysicsRevision_NGP`; NGP and
-//!   RallySimFans put it in the retail archive's place);
-//! - RallySimFans: the folder, when it has `rsfdata/` (`rsfdata/cache`, `rsfdata/cars`, `Maps/<id>-<name>/`, `Cars/`).
+//! - NGP's physics: `physics.rbz`, when it is NGP's (its `Physics/physics.lsp` sets `PhysicsRevision_NGP`; NGP
+//!   puts it in the retail archive's place).
 //!
-//! `--data` (or `RBR_DATA`) and `RBR_PATCH` override the first, and the Settings page's NGP and RSF fields (unsaved,
-//! `RBR_NGP_PHYSICS` and `RBR_RSF`) the other two.
+//! `--data` (or `RBR_DATA`) and `RBR_PATCH` override the game data, the Settings page's NGP field (unsaved,
+//! `RBR_NGP_PHYSICS`) its archive.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -22,8 +21,6 @@ pub struct Folder {
     pub game: Option<PathBuf>,
     /// NGP's `physics.rbz`.
     pub ngp_physics: Option<PathBuf>,
-    /// The RallySimFans folder.
-    pub rsf_root: Option<PathBuf>,
 }
 
 impl Folder {
@@ -35,11 +32,7 @@ impl Folder {
         }
         let dir = PathBuf::from(dir);
         let archive = dir.join("physics.rbz");
-        Folder {
-            ngp_physics: is_ngp_archive(&archive).then_some(archive),
-            rsf_root: dir.join("rsfdata").is_dir().then(|| dir.clone()),
-            game: Some(dir),
-        }
+        Folder { ngp_physics: is_ngp_archive(&archive).then_some(archive), game: Some(dir) }
     }
 }
 
@@ -134,15 +127,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_folder_without_ngp_or_rsf_gives_the_game_only() {
+    fn a_folder_without_ngp_gives_the_game_only() {
         let dir = crate::test_dir("install-folder");
-        std::fs::create_dir_all(dir.join("rsfdata")).unwrap();
         let folder = Folder::read(&dir.display().to_string());
         assert_eq!(folder.game.as_deref(), Some(dir.as_path()));
         assert_eq!(folder.ngp_physics, None);
-        assert_eq!(folder.rsf_root.as_deref(), Some(dir.as_path()));
-        std::fs::remove_dir(dir.join("rsfdata")).unwrap();
-        assert_eq!(Folder::read(&dir.display().to_string()).rsf_root, None);
         assert_eq!(Folder::read(" "), Folder::default());
         let _ = std::fs::remove_dir_all(&dir);
     }

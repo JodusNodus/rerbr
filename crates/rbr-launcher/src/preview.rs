@@ -183,12 +183,12 @@ impl Previews {
     }
 
     /// Draws the stage's and the car's previews, one above the other.
-    pub fn ui(&mut self, ui: &mut egui::Ui, map: &Map, car: &Car, rsf_root: &str) {
+    pub fn ui(&mut self, ui: &mut egui::Ui, map: &Map, car: &Car, root: &str) {
         ui.vertical(|ui| {
             ui.set_width(WIDTH);
             self.stage_ui(ui, map);
             ui.add_space(12.0);
-            self.car_ui(ui, car, rsf_root);
+            self.car_ui(ui, car, root);
         });
     }
 
@@ -259,7 +259,7 @@ impl Previews {
     }
 
     /// Draws the car turning (its frames are rendered on a thread of their own).
-    pub fn car_ui(&mut self, ui: &mut egui::Ui, car: &Car, rsf_root: &str) {
+    pub fn car_ui(&mut self, ui: &mut egui::Ui, car: &Car, root: &str) {
         let key = car_key(car);
         self.arrived.extend(self.results.try_iter());
         for (done, frames) in std::mem::take(&mut self.arrived) {
@@ -296,7 +296,7 @@ impl Previews {
                 ui.colored_label(Color32::from_rgb(230, 120, 80), format!("No car model: {e}"));
             }
             _ => {
-                self.request(car, &key, rsf_root);
+                self.request(car, &key, root);
                 let (rect, painter) = ui.allocate_painter(size, egui::Sense::hover());
                 painter.rect_filled(rect.rect, 4.0, Color32::from_gray(24));
                 let font = egui::FontId::proportional(13.0);
@@ -310,7 +310,7 @@ impl Previews {
     }
 
     /// Asks the worker for the car's frames, once.
-    fn request(&mut self, car: &Car, key: &str, rsf_root: &str) {
+    fn request(&mut self, car: &Car, key: &str, root: &str) {
         if self.pending.as_deref() == Some(key) {
             return;
         }
@@ -322,7 +322,7 @@ impl Previews {
                     self.cars.truncate(KEEP);
                     return;
                 }
-                (Ok(pack), Ok(_)) => CarModel::Community { pack: pack.clone(), root: PathBuf::from(rsf_root.trim()) },
+                (Ok(pack), Ok(_)) => CarModel::Community { pack: pack.clone(), root: PathBuf::from(root.trim()) },
             },
         };
         self.pending = Some(key.to_owned());
@@ -330,11 +330,11 @@ impl Previews {
     }
 
     /// Waits for the stage's preview and the car's frames, which the next draw shows (the `--screenshot` pages).
-    pub fn wait_for(&mut self, map: &Map, car: &Car, rsf_root: &str) {
+    pub fn wait_for(&mut self, map: &Map, car: &Car, root: &str) {
         self.stage_pending = Some(map.number);
         let _ = self.stage_requests.send(map.clone());
         self.stage_arrived.extend(self.stage_results.recv_timeout(Duration::from_secs(60)));
-        self.request(car, &car_key(car), rsf_root);
+        self.request(car, &car_key(car), root);
         self.arrived.extend(self.results.recv_timeout(Duration::from_secs(120)));
     }
 }

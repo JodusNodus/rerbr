@@ -89,7 +89,7 @@ fn ffb_cars_ui(
     ffb_cars: &mut ffb::CarSensitivity,
     cars: &[Car],
     car: usize,
-    rsf_root: &str,
+    root: &str,
     settings: &Path,
     read_only: bool,
     ffb_status: &mut Option<String>,
@@ -139,11 +139,11 @@ fn ffb_cars_ui(
                 }
             }
             if ui
-                .add_enabled(!rsf_root.trim().is_empty(), egui::Button::new("Import from RSF"))
+                .add_enabled(has_rsf_settings(root), egui::Button::new("Import from RSF"))
                 .on_hover_text(IMPORT_HELP)
                 .clicked()
             {
-                let n = import_ffb_cars(rsf_root, cars, global, ffb_cars);
+                let n = import_ffb_cars(root, cars, global, ffb_cars);
                 *ffb_status = Some(match n {
                     1 => "Imported 1 car from RSF.".to_owned(),
                     n => format!("Imported {n} cars from RSF."),
@@ -181,11 +181,16 @@ const IMPORT_HELP: &str = "Lists every RSF car below with RSF's own sensitivity 
      forcefeedbacksensitivity per surface, a surface RSF leaves empty filled from the install's global), replacing \
      those cars' entries. Only cars that differ from the sensitivities above are added.";
 
+/// Whether the game folder `root` holds RSF's files to import from (`rsfdata/`).
+fn has_rsf_settings(root: &str) -> bool {
+    Path::new(root.trim()).join("rsfdata").is_dir()
+}
+
 /// RSF's own per-car sensitivities for the RSF cars of `cars`, resolved as the removed import did (a surface RSF
 /// leaves empty filled from the install's global). Adds the cars that differ from `global`, overwriting their
 /// entries, and returns how many were added.
-fn import_ffb_cars(rsf_root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ffb::CarSensitivity) -> usize {
-    let root = Path::new(rsf_root.trim());
+fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ffb::CarSensitivity) -> usize {
+    let root = Path::new(root.trim());
     let sources = Sources::install(root, 0);
     let personal_ini = std::fs::read(root.join("rallysimfans_personal.ini"))
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
@@ -409,7 +414,7 @@ impl ControlsPage {
         ffb_cars: &mut ffb::CarSensitivity,
         cars: &[Car],
         car: usize,
-        rsf_root: &str,
+        root: &str,
         settings: &Path,
         read_only: bool,
     ) {
@@ -450,18 +455,7 @@ impl ControlsPage {
                     ffb_ui(ui, ffb);
                     let global = ffb.sensitivity;
                     let on = ffb.settings.enabled;
-                    ffb_cars_ui(
-                        ui,
-                        on,
-                        global,
-                        ffb_cars,
-                        cars,
-                        car,
-                        rsf_root,
-                        settings,
-                        read_only,
-                        &mut self.ffb_status,
-                    );
+                    ffb_cars_ui(ui, on, global, ffb_cars, cars, car, root, settings, read_only, &mut self.ffb_status);
                 });
             });
             ui.add_space(8.0);

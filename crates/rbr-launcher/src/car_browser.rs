@@ -327,8 +327,8 @@ pub struct Env<'a> {
     pub favourites: &'a [String],
     pub recent: &'a [String],
     pub previews: &'a mut Previews,
-    /// The RSF folder the cars' models are read from.
-    pub rsf_root: &'a str,
+    /// The game folder the cars' models are read from.
+    pub root: &'a str,
 }
 
 /// What a list was made for.
@@ -629,7 +629,7 @@ impl CarBrowser {
         ui.label(RichText::new(&row.title).size(22.0).strong());
         ui.label(RichText::new(row.detail()).color(GREY));
         ui.add_space(6.0);
-        env.previews.car_ui(ui, car, env.rsf_root);
+        env.previews.car_ui(ui, car, env.root);
         ui.add_space(6.0);
         egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
             ui.label(RichText::new("Drive").color(GREY));

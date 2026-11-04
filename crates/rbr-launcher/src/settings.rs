@@ -212,7 +212,7 @@ pub struct Settings {
     pub codriver_style: Option<String>,
     pub codriver_ranges: Option<String>,
     /// The locally owned voice pack (`codriver_packs::VOICES_DIR`) and stage-note pack
-    /// (`codriver_packs::NOTES_DIR`); none each for the RSF install's.
+    /// (`codriver_packs::NOTES_DIR`); none each for the game folder's.
     pub codriver_pack: Option<String>,
     pub notes_pack: Option<String>,
     /// The note set chosen in it (`codriver_packs::NoteSet`); none for its largest.
@@ -285,9 +285,6 @@ pub struct Settings {
     pub ngp_physics: Option<String>,
     /// Selected NGP DLL; empty follows the installed plugin.
     pub ngp_dll: Option<String>,
-    /// The RallySimFans install (`Maps/<id>-<name>/` stage folders, `Cars/` and `rsfdata/` NGP cars) when not the
-    /// install folder.
-    pub rsf_root: Option<String>,
     /// NGP's `headGasketDurability` (`rbr-standalone --head-gasket-durability`; 1, NGP's default, leaves the engine
     /// as it is).
     pub head_gasket: Option<i32>,
@@ -616,7 +613,6 @@ impl Settings {
             install_folder: launcher.word("install_folder"),
             ngp_physics: launcher.word("ngp_physics"),
             ngp_dll: launcher.get("ngp_dll"),
-            rsf_root: launcher.word("rsf_root"),
             head_gasket: launcher.number("head_gasket").filter(|v| *v >= 1),
             bindings: Bindings::parse(text),
             ffb: ffb::Options::parse(text),
@@ -688,7 +684,6 @@ impl Settings {
             ("install_folder", self.install_folder.clone()),
             ("ngp_physics", self.ngp_physics.clone()),
             ("ngp_dll", self.ngp_dll.clone()),
-            ("rsf_root", self.rsf_root.clone()),
             ("head_gasket", self.head_gasket.map(|v| v.to_string())),
             ("render_scale", self.render_scale.map(|v| v.to_string())),
             ("wet_roads", choice(self.wet_roads)),
@@ -745,21 +740,18 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
         standalone: start.standalone.clone(),
         settings: start.settings.clone(),
     };
-    // Unsaved, the NGP and RSF fields come from the environment; and NGP physics is on by default when its archive
+    // Unsaved, the NGP paths come from the environment; and NGP physics is on by default when its archive
     // is there.
     let env = |key| std::env::var(key).ok().filter(|v| !v.is_empty());
     settings.ngp_physics = settings.ngp_physics.or_else(|| env("RBR_NGP_PHYSICS"));
-    settings.rsf_root = settings.rsf_root.or_else(|| env("RBR_RSF"));
     settings.ngp_dll = settings.ngp_dll.or_else(|| env("RBR_NGP_DLL"));
     let here = paths.settings.parent().unwrap_or(Path::new(""));
     use_kept_ngp(&mut settings, here);
     let mut catalog = Catalog::scan(&paths.data)?;
     catalog.maps.retain(catalog::is_listed);
-    let rsf = or_folder(settings.rsf_root.as_deref(), &folder.rsf_root);
-    if !rsf.is_empty() {
-        catalog.set_community_stages(&rsf);
-    }
-    catalog.set_community_cars(&paths.data, &rsf, &here.join(crate::car_packs::DIR));
+    let root = paths.game_root();
+    catalog.set_community_stages(&root);
+    catalog.set_community_cars(&paths.data, &root, &here.join(crate::car_packs::DIR));
     catalog.offer(&catalog::ngp_cars(Path::new(&or_folder(settings.ngp_physics.as_deref(), &folder.ngp_physics))));
     let data = Data::new(&paths.data, paths.patch.clone());
     let season = Season::load(&data)?;
@@ -855,6 +847,7 @@ impl Form {
         rally.team = settings.championship_team.unwrap_or(rally.team);
         let adding = crate::car_packs::Adding::new(&paths.settings.with_file_name(crate::car_packs::DIR));
         let home = paths.settings.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let game_root = paths.game_root();
         let mut form = Form {
             catalog,
             paths,
@@ -899,10 +892,7 @@ impl Form {
             effects_volume,
             tyres_volume,
             codriver: settings.codriver.unwrap_or(true),
-            codriver_mods: crate::command::CodriverMods::scan(&or_folder(
-                settings.rsf_root.as_deref(),
-                &folder.rsf_root,
-            )),
+            codriver_mods: crate::command::CodriverMods::scan(&game_root),
             codriver_pack: settings.codriver_pack.clone(),
             notes_pack: settings.notes_pack.clone(),
             notes_set: settings.notes_set.clone(),
@@ -967,8 +957,6 @@ impl Form {
             ngp_revision: None,
             ngp_label: String::new(),
             ngp_cars: Vec::new(),
-            rsf_root: settings.rsf_root.clone().unwrap_or_default(),
-            rsf_scanned: settings.rsf_root.clone().unwrap_or_default(),
             marker,
             child: None,
             crash: Default::default(),
@@ -1067,7 +1055,6 @@ impl Form {
             install_folder: Some(self.install_folder.trim().to_owned()).filter(|p| !p.is_empty()),
             ngp_physics: Some(self.ngp_physics.trim().to_owned()).filter(|p| !p.is_empty()),
             ngp_dll: Some(self.ngp_dll.path.trim().to_owned()),
-            rsf_root: Some(self.rsf_root.trim().to_owned()).filter(|p| !p.is_empty()),
             head_gasket: Some(self.head_gasket),
             bindings: self.bindings.clone(),
             ffb: self.ffb.clone(),
@@ -1193,7 +1180,6 @@ mod tests {
             install_folder: Some("/games/Richard Burns Rally".into()),
             ngp_physics: Some("/games/rbr-ngp/physics.rbz".into()),
             ngp_dll: Some("/games/ngp/Plugins/NGP.dll".into()),
-            rsf_root: Some("/games/rsf".into()),
             head_gasket: Some(10),
             bindings: Bindings { input_rate: 500, ..Default::default() },
             ffb: ffb::Options { rate: 500, ..Default::default() },
@@ -1443,7 +1429,6 @@ mod tests {
                 "install_folder = /games/Richard Burns Rally\n",
                 "ngp_physics = /games/rbr-ngp/physics.rbz\n",
                 "ngp_dll = /games/ngp/Plugins/NGP.dll\n",
-                "rsf_root = /games/rsf\n",
                 "head_gasket = 10\n",
                 "render_scale = 75\n",
                 "wet_roads = low\n",
@@ -1603,6 +1588,9 @@ mod tests {
         assert_eq!(Settings::parse(""), Settings::default());
         assert_eq!(Settings::parse("[launcher]\n"), Settings::default());
         assert_eq!(Settings::parse("[launcher]\ncar = \n").car, Some(String::new()));
+        // A saved `rsf_root` from before the one game folder is ignored on read and dropped on save.
+        assert_eq!(Settings::parse("[launcher]\nrsf_root = /games/rsf\n"), Settings::default());
+        assert!(!Settings::parse("[launcher]\nrsf_root = /games/rsf\n").to_text().contains("rsf_root"));
         // The units word is `mph`/`kmh`, not the field's name.
         assert_eq!(Settings::parse("[launcher]\nunits = mph\n").mph, Some(true));
         assert_eq!(Settings::parse("[launcher]\nunits = kmh\n").mph, Some(false));

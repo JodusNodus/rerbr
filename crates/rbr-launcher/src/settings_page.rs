@@ -1,16 +1,13 @@
 //! The Settings page: what the player needs to drive, the game folder, the cars, the co-driver, the advanced paths and
 //! the programs.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use egui::{Color32, Id};
+use egui::Color32;
 
 use crate::disc_install::DiscSetup;
 use crate::pages::{fields, section, Page, GOOD, NGP_WHY, NO_NGP, WARN};
 use crate::{controls_page, install, job, Form};
-
-/// The RSF field's egui id: its folder is scanned when it loses focus.
-pub const RSF_FIELD: &str = "rsf_root";
 
 impl Form {
     /// What the player needs to drive, a row each with its next step beside it: the game folder, NGP, the cars and the
@@ -48,18 +45,10 @@ impl Form {
         if set && install::Folder::read(&self.install_folder) != self.folder {
             self.reload = true;
         }
-        let rsf = self.rsf();
-        if Path::new(rsf.trim()).join("rsfdata").is_dir() {
-            fields(ui, "row rsf", |ui| {
-                tick(ui, "RallySimFans", true, |ui| {
-                    _ = ui.label(format!("its cars and stages are listed ({})", rsf.trim()))
-                })
-            });
-        }
-
         // NGP: its archive and its DLL in one row, and the download's confirmation under it.
         let has_ngp = self.ngp_revision.is_some();
-        let dll_problem = self.ngp_dll.problem(&self.data, &rsf);
+        let root = self.game_root();
+        let dll_problem = self.ngp_dll.problem(&self.data, &root);
         let ngp_ok = has_ngp && dll_problem.is_none();
         let can_download = self.can_download_ngp();
         let mut download = false;
@@ -136,7 +125,7 @@ impl Form {
 
         ui.add_space(6.0);
         egui::CollapsingHeader::new("Advanced").show(ui, |ui| {
-            self.ngp_dll.ui(ui, &self.data, &rsf, !running);
+            self.ngp_dll.ui(ui, &self.data, &root, !running);
             ui.add_space(4.0);
             let hint =
                 |path: &Option<PathBuf>, none: &str| path.as_ref().map_or(none.to_owned(), |p| p.display().to_string());
@@ -144,15 +133,6 @@ impl Form {
                 ui.label("NGP physics.rbz");
                 let ngp = hint(&self.folder.ngp_physics, "NGP's physics.rbz");
                 ui.add(egui::TextEdit::singleline(&mut self.ngp_physics).hint_text(ngp).desired_width(420.0));
-                ui.end_row();
-                ui.label("RSF folder");
-                let rsf = hint(&self.folder.rsf_root, "a RallySimFans game folder");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.rsf_root)
-                        .id(Id::unique(RSF_FIELD))
-                        .hint_text(rsf)
-                        .desired_width(420.0),
-                );
                 ui.end_row();
                 ui.label("Game data");
                 ui.label(self.paths.data.display().to_string());
@@ -169,8 +149,8 @@ impl Form {
             });
             ui.colored_label(
                 Color32::GRAY,
-                "Empty fields take the game folder's. --data (or RBR_DATA) sets the game data. rerbr --help lists the \
-                 options.",
+                "An empty field takes the game folder's. --data (or RBR_DATA) sets the game data, RBR_RSF is an \
+                 unsaved developer override for it. rerbr --help lists the options.",
             );
         });
         ui.add_space(8.0);

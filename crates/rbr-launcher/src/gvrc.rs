@@ -414,7 +414,7 @@ impl Form {
     pub fn can_download_ngp(&self) -> bool {
         let game = self.folder.game.as_deref();
         let there = game.is_some_and(|g| ngp_install::check_game_folder(g).is_ok());
-        let wanted = self.ngp_revision != Some(778) || self.ngp_dll.problem(&self.data, &self.rsf()).is_some();
+        let wanted = self.ngp_revision != Some(778) || self.ngp_dll.problem(&self.data, &self.game_root()).is_some();
         there && wanted && self.child.is_none() && self.downloads.ngp_job.is_none()
     }
 

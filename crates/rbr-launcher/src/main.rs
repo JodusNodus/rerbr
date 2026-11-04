@@ -8,10 +8,11 @@
 //! ```
 //!
 //! The game is the RBR install folder the Settings page sets (`install_folder` in `launcher-settings.ini`, `install`):
-//! RBR with NGP (RallySimFans or not), read in place. Without one the window asks for it, offering the first
+//! RBR with NGP, read in place: its game data, NGP's physics, and its plugins and community content when it has
+//! them (a RallySimFans install has both). Without a folder the window asks for it, offering the first
 //! usual install place with NGP (`install::detect`). `--data` (or `RBR_DATA`) and
-//! `RBR_PATCH` override its game data and 1.02 patch files, the Settings page's Advanced fields its NGP archive and RSF
-//! folder; the viewer and `rbr-standalone` get the game as `RBR_DATA` and `RBR_PATCH`.
+//! `RBR_PATCH` override its game data and 1.02 patch files, the Settings page's Advanced field its NGP archive;
+//! the viewer and `rbr-standalone` get the game folder as `RBR_DATA`, `RBR_PATCH` and `RBR_RSF`.
 //!
 //! `--command` prints the viewer command Start runs with the saved selection (`RBR_DATA=` and `RBR_PATCH=`, the
 //! program, then one argument a line) and exits, for starting it unattended. `--list`, `--command` and `--screenshot`
@@ -61,8 +62,8 @@
 //! The physics is NGP's (`rbr-standalone --ngp-physics`, from the install's `physics.rbz`; user decision: the game
 //! steps NGP physics only). The cars are
 //! those NGP drives (`catalog::ngp_offered`): the retail slots its archive has NGP cars in (`catalog::ngp_cars`), and
-//! with a RallySimFans folder (the install folder, or the RSF field) the cars of its cache (`rsfdata/cache/cars.json`,
-//! with their group), raced from their packs as RSF installs them in slot 5 (`--rsf-car`, `rbr_formats::rsf`); the
+//! the cars of the game folder's cache (`rsfdata/cache/cars.json`, with their group), raced from their packs as
+//! RSF installs them in slot 5 (`--rsf-car`, `rbr_formats::rsf`); the
 //! retail slot 5 is then left out (it is the RSF car last picked). The cars downloaded from gvrc.de's NGP car
 //! packs ("Download cars…" on the Settings page: `car_packs`, in `cars/` of the player's folder) are raced the
 //! same way; a car RSF also has
@@ -81,9 +82,8 @@
 //! (`favourite_maps`, `favourite_cars`); the Championship page's new-season car is chosen in the car browser too. The
 //! last selection, the recent picks (`recent_cars`, `recent_maps`) and the favourites are kept in
 //! `launcher-settings.ini` in the player's folder; a saved car not offered gives way to the most recent one that is.
-//! With a RallySimFans folder the maps add its community stages (`rbr_formats::rsf`); one the launcher cannot start
-//! (an encrypted one) stays listed with the reason. Until saved, the NGP and RSF fields default to `$RBR_NGP_PHYSICS`
-//! and `$RBR_RSF`.
+//! The maps add the game folder's community stages (`rbr_formats::rsf`); one the launcher cannot start
+//! (an encrypted one) stays listed with the reason. Until saved, the NGP field defaults to `$RBR_NGP_PHYSICS`.
 //!
 //! The tabs follow what the player wants to do (ours, after Content Manager): Drive (car and stage, conditions, race
 //! options, the previews and Start), Championship, Car setup, Replays (saved drives, playback and video export),
@@ -102,8 +102,8 @@
 //! viewer, not the launcher, reads the inputs while driving. The advanced H-shifter
 //! (`rbr_render::shifter`) and the four driver aids are set there too. With it on, the Drive page's Gearbox row picks
 //! each car's gearbox (sequential until picked; `[gearbox]` in the settings file): for an H-pattern one the launcher
-//! turns clutch help and the automatic gearbox off and passes the gearbox and the grind sample from RBRControls' folder
-//! in the RSF install (`command::shifter_args`); a sequential car keeps its aids and the shifter stays off.
+//! turns clutch help and the automatic gearbox off and passes the gearbox and the grind sample from RBRControls'
+//! folder in the game folder (`command::shifter_args`); a sequential car keeps its aids and the shifter stays off.
 //!
 //! The menu's race options (`rbr_gameplay::race_options`): the Drive page's damage level, which also sets the
 //! outside-assistance penalty, and the Controls page's four driver aids, passed as `rbr-standalone --damage`,
@@ -199,8 +199,8 @@ const NGP_RECORDS: &str = "NGP";
 /// `--help`'s text.
 const USAGE: &str = "usage: rerbr [OPTIONS]
 Set your RBR install folder (with NGP; RallySimFans has both) on the Settings page, or at the first start; it is
-only read. From it: the game data at its top, NGP's physics.rbz and, when there, the RallySimFans
-content (rsfdata/, Maps/<id>-<name>/, Cars/).
+only read. From it: the game data at its top, NGP's physics.rbz, and its plugins and community content when it has
+them (rsfdata/, Maps/<id>-<name>/, Cars/).
   --data DIR                the game data instead of the install folder's (default $RBR_DATA; $RBR_PATCH: the 1.02
                             patch files)
   --viewer PATH             the viewer (default: next to the launcher)
@@ -227,8 +227,9 @@ content (rsfdata/, Maps/<id>-<name>/, Cars/).
 Your files (settings, saves, records, ghosts, setups, added cars) are kept in ~/Library/Application Support/ReRBR on
 macOS, $XDG_DATA_HOME/rerbr (default ~/.local/share/rerbr) on Linux, or $RERBR_HOME; the settings in
 launcher-settings.ini there. --list, --command and --screenshot do not write it.
-The Settings page's Advanced fields override the install folder's NGP physics.rbz and RSF folder; until saved they come
-from RBR_NGP_PHYSICS and RBR_RSF.";
+The Settings page's Advanced field overrides the install folder's NGP physics.rbz; until saved it comes
+from RBR_NGP_PHYSICS. RBR_RSF is an unsaved developer override: the game folder in use when set, for pairing
+extracted retail data with sample community packs.";
 
 /// The game's data and 1.02 patch files (`rbr_formats::data`), the programs and the settings file.
 struct Paths {
@@ -237,6 +238,18 @@ struct Paths {
     viewer: PathBuf,
     standalone: PathBuf,
     settings: PathBuf,
+}
+
+impl Paths {
+    /// The game folder in use: `RBR_RSF` when set (an unsaved developer override pairing the game data with
+    /// sample community packs), else the game data folder (`--data` or `RBR_DATA` when overridden, the install
+    /// folder otherwise). The plugins and the community content are read from it.
+    pub(crate) fn game_root(&self) -> String {
+        std::env::var("RBR_RSF")
+            .ok()
+            .filter(|v| !v.trim().is_empty())
+            .unwrap_or_else(|| self.data.display().to_string())
+    }
 }
 
 fn main() -> ExitCode {
@@ -482,21 +495,21 @@ struct Form {
     tyres_volume: f32,
     /// The co-driver calls the pace notes.
     codriver: bool,
-    /// The co-driver mod: the active Pacenote plugin (the chosen local pack, else the RSF install's; none
+    /// The co-driver mod: the active Pacenote plugin (the chosen local pack, else the game folder's; none
     /// without either), the voice chosen (none: the plugin's, `command::ORIGINAL_VOICE`: 1.02's), the style and
     /// range set, and the stage's MyPacenotes notes.
     codriver_mods: Option<command::CodriverMods>,
-    /// The locally owned voice pack (`codriver_packs::VOICES_DIR`), or the RSF install's plugin when unset.
+    /// The locally owned voice pack (`codriver_packs::VOICES_DIR`), or the game folder's plugin when unset.
     codriver_pack: Option<String>,
-    /// The locally owned stage-note pack (`codriver_packs::NOTES_DIR`), or the RSF install's notes when unset.
+    /// The locally owned stage-note pack (`codriver_packs::NOTES_DIR`), or the game folder's notes when unset.
     notes_pack: Option<String>,
     /// The note set chosen in that source (`codriver_packs::NoteSet`); unset or gone: the source's largest.
     notes_set: Option<String>,
-    /// The RSF install's MyPacenotes note sets, re-read by `rescan_codrivers`.
+    /// The game folder's MyPacenotes note sets, re-read by `rescan_codrivers`.
     rsf_note_sets: Vec<codriver_packs::NoteSet>,
-    /// Whether the RSF folder holds a Pacenote plugin (offered as a source); refreshed by the rescans, never drawn.
+    /// Whether the game folder holds a Pacenote plugin (offered as a source); refreshed by the rescans, never drawn.
     rsf_plugin: bool,
-    /// The RSF install's plugin voices, re-read by `rescan_codrivers`: the Co-driver dropdown lists them beside
+    /// The game folder's plugin voices, re-read by `rescan_codrivers`: the Co-driver dropdown lists them beside
     /// the owned packs' (no directory reads while drawing).
     rsf_voices: Vec<String>,
     /// Whether the active plugin's listed styles (and range sets) actually say different things, re-read by
@@ -568,11 +581,6 @@ struct Form {
     ngp_revision: Option<u32>,
     ngp_label: String,
     ngp_cars: Vec<u32>,
-    /// The RSF game folder field (empty: the install folder), whose cars and stages the lists add.
-    rsf_root: String,
-    /// The folder the lists hold the RSF cars and stages of: the field's once it loses focus, as a scan of a full
-    /// install takes 0.2-1.7 s (ours).
-    rsf_scanned: String,
     marker: MarkerSettings,
     child: Option<Child>,
     /// The viewer's log, and the report of a run that failed.
@@ -621,42 +629,30 @@ impl Form {
         self.catalog.cars.get(self.car)
     }
 
-    /// Replaces the lists' RSF cars and stages by the RSF field's folder's, keeping the selected map when it is
-    /// still there (the cars: `list_cars`).
-    fn rescan_rsf(&mut self) {
-        let root = self.rsf();
-        self.catalog.set_community_cars(&self.paths.data, &root, &self.cars_dir());
-        let number = self.catalog.maps[self.map].number;
-        self.catalog.set_community_stages(&root);
-        self.rsf_scanned = self.rsf_root.clone();
-        self.rescan_codrivers();
-        let (catalog, season) = (&self.catalog, &self.season);
-        self.map = catalog
-            .map_index(number)
-            .or_else(|| catalog.maps.iter().position(|map| catalog.availability(season, map).is_ok()))
-            .unwrap_or(0);
-        self.validate_weather_row();
-        self.list_maps();
-    }
-
     /// NGP's `physics.rbz`: the field's, else the install folder's.
     fn ngp_archive(&self) -> String {
         or_folder(Some(&self.ngp_physics), &self.folder.ngp_physics)
     }
 
-    /// The RSF folder: the field's, else the install folder when it is one.
-    fn rsf(&self) -> String {
-        or_folder(Some(&self.rsf_root), &self.folder.rsf_root)
+    /// The game folder in use: the viewer and `rbr-standalone` read the game, its plugins and its community
+    /// content from it.
+    fn game_root(&self) -> String {
+        self.paths.game_root()
     }
 
-    /// The viewer's and `rbr-standalone`'s game (`rbr_formats::data::Data::from_env`), and the RSF install an RSF
-    /// ghost's car model is read from.
+    /// The viewer's and `rbr-standalone`'s game (`rbr_formats::data::Data::from_env`): the game folder in use
+    /// (`RBR_DATA`), the 1.02 patch (`RBR_PATCH`), its plugins and community content (`RBR_RSF`), and the
+    /// NGP DLL (`RBR_NGP_DLL`).
     fn child_env(&self) -> Vec<(&'static str, PathBuf)> {
         let patch = self.paths.patch.clone().map(|p| ("RBR_PATCH", p));
-        let rsf = self.rsf();
-        let rsf = (!rsf.trim().is_empty()).then(|| ("RBR_RSF", PathBuf::from(rsf.trim())));
-        let dll = self.ngp_dll.resolved(&self.data, &self.rsf()).map(|p| ("RBR_NGP_DLL", p));
-        [("RBR_DATA", self.paths.data.clone())].into_iter().chain(patch).chain(rsf).chain(dll).collect()
+        let root = self.game_root();
+        let dll = self.ngp_dll.resolved(&self.data, &root).map(|p| ("RBR_NGP_DLL", p));
+        [("RBR_DATA", self.paths.data.clone())]
+            .into_iter()
+            .chain(patch)
+            .chain([("RBR_RSF", PathBuf::from(root))])
+            .chain(dll)
+            .collect()
     }
 
     /// The player's folder (`home`), where the settings and the saved setups are.
@@ -685,9 +681,9 @@ impl Form {
         let surface = setup_page::SURFACES[self.catalog.maps[self.map].surface() as usize];
         let here = self.here();
         let archive = self.ngp_archive();
-        let rsf = PathBuf::from(self.rsf().trim());
+        let root = PathBuf::from(self.game_root());
         if let Some(car) = self.catalog.cars.get(self.car) {
-            self.setup.select(&here, &rsf, car, Path::new(&archive), surface);
+            self.setup.select(&here, &root, car, Path::new(&archive), surface);
         }
     }
 }

@@ -37,23 +37,20 @@ impl Choice {
         Self { path, ..Self::default() }
     }
 
-    pub fn automatic(data: &Data, rsf: &str) -> Option<PathBuf> {
-        (!rsf.trim().is_empty())
-            .then(|| cars::resolve(Path::new(rsf.trim()), "Plugins/NGP.dll"))
-            .flatten()
-            .or_else(|| data.resolve("Plugins/NGP.dll"))
+    pub fn automatic(data: &Data, root: &str) -> Option<PathBuf> {
+        cars::resolve(Path::new(root.trim()), "Plugins/NGP.dll").or_else(|| data.resolve("Plugins/NGP.dll"))
     }
 
-    pub fn resolved(&self, data: &Data, rsf: &str) -> Option<PathBuf> {
+    pub fn resolved(&self, data: &Data, root: &str) -> Option<PathBuf> {
         match self.path.trim() {
-            "" => Self::automatic(data, rsf),
+            "" => Self::automatic(data, root),
             path => Some(PathBuf::from(path)),
         }
     }
 
     /// Hash only when the selected file or its metadata changes, rather than on every UI frame.
-    pub fn problem(&self, data: &Data, rsf: &str) -> Option<String> {
-        let Some(path) = self.resolved(data, rsf) else {
+    pub fn problem(&self, data: &Data, root: &str) -> Option<String> {
+        let Some(path) = self.resolved(data, root) else {
             return Some("No NGP.dll found; ReRBR needs NGP 7.4.778.".into());
         };
         let stamp = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().ok()));
@@ -73,8 +70,8 @@ impl Choice {
         problem
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, data: &Data, rsf: &str, enabled: bool) {
-        let automatic = Self::automatic(data, rsf);
+    pub fn ui(&mut self, ui: &mut egui::Ui, data: &Data, root: &str, enabled: bool) {
+        let automatic = Self::automatic(data, root);
         ui.add_enabled_ui(enabled, |ui| {
             ui.horizontal(|ui| {
                 ui.label("NGP.dll");
@@ -90,7 +87,7 @@ impl Choice {
                 }
             });
         });
-        if let Some(problem) = self.problem(data, rsf) {
+        if let Some(problem) = self.problem(data, root) {
             ui.colored_label(crate::pages::WARN, problem);
         } else if self.path.trim().is_empty() {
             ui.label("Linked to your installed NGP.dll. The game folder is read only.");
@@ -111,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    fn follows_rsf_and_keeps_an_explicit_choice() {
+    fn follows_the_game_folder_and_keeps_an_explicit_choice() {
         let game = root("game");
         let rsf = root("rsf");
         std::fs::write(game.join("Plugins/NGP.dll"), b"game").unwrap();
