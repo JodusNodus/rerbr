@@ -100,7 +100,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   from its last start, so a replay needs the same install, setup and profile, else it stops with a digest error.
   While watching there is no device input, pause menu or ghost saving: P or Space pauses, R starts over, the
   camera key cycles the views, V resets the mouse look, Esc closes.
-- School tab, after Championship (`pages::Page::TABS`, `school_page.rs`): the 17 rally-school lessons in
+- School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
+  user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
   their Basic/Advanced groups (all open, user decision), each row its number (`RSM_LESSON_NRB/A`), title and best
   result; the detail its instruction and cone guide (`brief_keys`), surface (from the lesson's setup file), the
   pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: untimed) and Drive lesson. Results
