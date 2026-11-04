@@ -153,7 +153,11 @@ yet: the oracle run is open.
   end, ending the drive on its first frame (`SchoolRun::frame`) with the award's 4, unjudged.
 - Speech ([sound.md](sound.md#school-speech)): the briefing, the `Trigger` ids and the end pages on the school
   voice; the results-page `RallySchoolSound` emit left out.
-- Not done: the judged replay with Richard's ghost (`rse%d.gho`, case 6, in `ghosts.rbz`).
+- Judged replay (case 6, ours): watching a replay (`viewer --replay`) of a school lesson races Richard's ghost
+  (`Ghosts\rse<lesson>.gho` in `Root/ghosts.rbz`) as the ghost car, on the HUD race clock (verified on a lesson 2
+  replay: the ghost loads with 218 samples and drives in step with the race clock; lessons 4, 10, 14 and 16 have
+  no `.gho` and race without one). A live lesson drive stays vanilla. Inferred: the ghost's race-clock timing
+  (the original's case 6 is not traced); unverified against the original's judged replay.
 - Unverified: whether physics steps during the brief, the untimed lessons' start, `EndRace`'s order against the
   HUD tick and its `dt`, NGP leaving the bank's repair handler alone.
 
