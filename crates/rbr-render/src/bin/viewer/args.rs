@@ -673,14 +673,17 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     }
     let (fov, chase_fov) = (fov.to_radians(), chase_fov.to_radians());
     // A video renders its replay back to back: the live command runs it with `--replay-pace free`.
+    // A replay screenshot runs the same way: headless, the answers read back to back (`scene::start_live`).
     if video.is_some() && screenshot.is_some() {
         return Err("--video takes no --screenshot".to_owned());
     }
-    if let (Some(_), Some(command)) = (&video, &mut live) {
-        if !command.iter().any(|a| a == "--replay") {
+    if let Some(command) = live.as_mut().filter(|_| video.is_some() || screenshot.is_some()) {
+        if command.iter().any(|a| a == "--replay") && !command.iter().any(|a| a == "--replay-pace") {
+            command.extend(["--replay-pace".to_owned(), "free".to_owned()]);
+        }
+        if video.is_some() && !command.iter().any(|a| a == "--replay") {
             return Err("--video needs --replay in the live command (it renders a replay)".to_owned());
         }
-        command.extend(["--replay-pace".to_owned(), "free".to_owned()]);
     }
     pack_car.check(rsf_car.is_some())?;
     // A stage folder (RallySimFans, `rbr_formats::rsf`): its default variant. One it cannot load (encrypted) says why.
@@ -879,6 +882,18 @@ mod tests {
         for bad in ["--video", "--video-fps 0", "--video-fps x", "--video-fps"] {
             assert!(parse(&format!("track-54_E {bad} --live foo --replay d.rrp")).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn screenshot_runs_its_replay_free() {
+        let args = parse("track-54_E --screenshot out.png --at 10 --live foo --replay drive.rrp").unwrap();
+        assert_eq!(args.live.as_deref().unwrap()[3..], ["--replay-pace".to_owned(), "free".to_owned()]);
+        // A live drive's screenshot steps in lockstep: no pace added.
+        let args = parse("track-54_E --screenshot out.png --at 10 --live foo --boot").unwrap();
+        assert!(!args.live.unwrap().iter().any(|a| a == "--replay-pace"));
+        // An explicit pace stays.
+        let args = parse("track-54_E --screenshot out.png --live foo --replay d.rrp --replay-pace clock").unwrap();
+        assert_eq!(args.live.unwrap().iter().filter(|a| *a == "--replay-pace").count(), 1, "no second --replay-pace");
     }
 
     #[test]
