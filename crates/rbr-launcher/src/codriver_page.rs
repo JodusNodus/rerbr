@@ -10,6 +10,10 @@ use crate::command::ORIGINAL_VOICE;
 use crate::pages::{combo, fields, section, FIELD, GOOD, WARN};
 use crate::Form;
 
+/// The longest "Call ahead", seconds. Ours: the page stopped at 8. 15 s is about 800 m at 200 km/h, as far as a pace note
+/// reads usefully (the ranges between notes are metres to a few hundred).
+const CALLOUT_MAX: f32 = 15.0;
+
 /// A call style or range set file's stem: without `.ini`.
 fn ini_stem(file: &str) -> &str {
     match file.len().checked_sub(4) {
@@ -171,7 +175,7 @@ impl Form {
             }
             let tip = "How many seconds before a note the co-driver calls it, at your speed";
             ui.label("Call ahead").on_hover_text(tip);
-            ui.add(DragValue::new(&mut self.marker.callout_distance).range(0.05..=8.0).speed(0.05).suffix(" s"))
+            ui.add(DragValue::new(&mut self.marker.callout_distance).range(0.05..=CALLOUT_MAX).speed(0.05).suffix(" s"))
                 .on_hover_text(tip);
             ui.end_row();
 

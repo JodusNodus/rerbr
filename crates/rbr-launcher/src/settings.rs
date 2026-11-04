@@ -1572,6 +1572,7 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ntyre = 7\n").tyre, None);
         assert_eq!(Settings::parse("[launcher]\nmap = abc\n").map, None);
         assert_eq!(Settings::parse("[launcher]\ncallout_distance = -1.5\n").callout_distance, Some(-1.5));
+        assert_eq!(Settings::parse("[launcher]\ncallout_distance = 15\n").callout_distance, Some(15.0));
         // Unknown choice words keep the default.
         assert_eq!(Settings::parse("[launcher]\nfog = mist\n").fog, None);
         assert_eq!(Settings::parse("[launcher]\nclouds = storm\n").clouds, None);
