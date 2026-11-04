@@ -6,6 +6,7 @@
 //! Nothing here writes car or physics state: the bank observes the drive, emits events and ends it.
 
 pub mod bank;
+pub mod explain;
 pub mod filter;
 pub mod judge;
 pub mod lesson;
@@ -14,6 +15,7 @@ pub mod speech;
 pub mod step;
 
 pub use bank::{Bank, Check, Lead, Pair};
+pub use explain::{failure_reasons, Reason};
 pub use filter::{max_abs, FilterSub};
 pub use judge::{eval_filters, severity_max};
 pub use lesson::Lesson;

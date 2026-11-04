@@ -18,6 +18,7 @@ use rbr_gameplay::control::CarControl;
 use rbr_gameplay::mode::{ModeEnd, ModeRules, StepView};
 
 use super::bank::Bank;
+use super::explain::{failure_reasons, Reason};
 use super::judge::eval_filters;
 use super::lesson::Lesson;
 use super::step::{checkpoint, end_race, school_incident, school_tick, tracker, IncidentInput, SchoolEvent};
@@ -79,6 +80,12 @@ impl SchoolRun {
             SchoolEvent::Sound { a: 2, d, .. } => super::speech::speech_ids(&self.strings, *d as u32),
             _ => Vec::new(),
         }
+    }
+
+    /// The failed lesson's reasons (`explain::failure_reasons`) at race time `time`: the verdict panel's lines.
+    /// Empty unless the drive failed; the viewer resolves the keys and skips the unknown ones.
+    pub fn failure_reasons(&self, time: f32) -> Vec<Reason> {
+        failure_reasons(&self.bank, time, &self.strings)
     }
 
     /// `EvalFilters` at the drive's end: 0 (failed) to 4 (perfect) for the race time `time` and the car's damage
