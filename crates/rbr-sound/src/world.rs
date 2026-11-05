@@ -14,6 +14,25 @@ const AMBIENT_PER_METRE: f32 = 0.01;
 const WIND_PITCH: f32 = 0.25;
 /// A bird plays only with the car farther than this from the camera (0x7304a0).
 const BIRD_DISTANCE: f32 = 50.0;
+/// The in-car wind. 1.02's (`Vf08` 0x4aaf50, the camera in the car): `a = |velocity| * 0.1`, then `Vf48(a, clamp(a,
+/// 0.1, 1))`, the gain `Wind amp * clamp(a, 0.1, 1)` and the pitch `a * 0.25` ([`WIND_PITCH`]), stopped at `a == 0`.
+/// Its gain is full from 36 km/h on, so only the pitch tells the speed. Ours (game feel): the pitch as 1.02's, the
+/// gain silent up to [`CABIN_WIND_QUIET`] km/h and rising linearly to [`CABIN_WIND_FULL`] at [`CABIN_WIND_TOP`]
+/// km/h, held above. On a speed ramp at full throttle (Corolla, through the cabin low-pass) the wind sits about 21 dB
+/// under the engine at 60 km/h, 14 at 100 and 11 to 13 from 150 on (1.02's gain: 16 dB under from 36 km/h on).
+const CABIN_WIND_SPEED: f32 = 0.1;
+const CABIN_WIND_QUIET: f32 = 10.0;
+const CABIN_WIND_TOP: f32 = 160.0;
+const CABIN_WIND_FULL: f32 = 2.0;
+
+/// The in-car wind's gain (before the `Wind` amp) and pitch at `speed` m/s; the pitch is held at its value at
+/// [`CABIN_WIND_QUIET`] below it, so a voice fading out on a stop keeps moving.
+fn cabin_wind(speed: f32) -> (f32, f32) {
+    let kmh = speed * 3.6;
+    let rise = ((kmh - CABIN_WIND_QUIET) / (CABIN_WIND_TOP - CABIN_WIND_QUIET)).clamp(0.0, 1.0);
+    (rise * CABIN_WIND_FULL, kmh.max(CABIN_WIND_QUIET) / 3.6 * CABIN_WIND_SPEED * WIND_PITCH)
+}
+
 /// The bird timer's first value (0x72ae44) and its base after each bird (0x72ad94).
 const BIRD_FIRST: f32 = 5.0;
 const BIRD_BASE: f32 = 2.0;
@@ -227,17 +246,19 @@ impl World {
         let speed = length(scene.velocity);
 
         // Vf08 runs only in a replay (app state 8; the race stays in state 1, by the harness's state log): the wind
-        // then plays outside the car by the cloud and is left as it is inside. Its in-car wind by the car's speed is
-        // for state 8 without `E19IsState2`, which Rust has no case of. Ours: while driving it plays from every
-        // camera outside the car too.
-        if !scene.inside {
-            let gain = self.gains.wind * ambient;
-            if gain > 0.0 || self.wind {
-                let pitch = (self.sky.cloud + 1) as f32 * WIND_PITCH;
-                out.push(Command::Loop { voice: Loop::Wind, gain, pitch });
-            }
-            self.wind = gain > 0.0;
+        // then plays outside the car by the cloud and is left as it is inside; its in-car wind by the car's speed is
+        // for state 8 without `E19IsState2`. Ours: while driving it plays from every camera outside the car by the
+        // cloud, and in the car by the speed ([`cabin_wind`]).
+        let (gain, pitch) = if scene.inside {
+            let (gain, pitch) = cabin_wind(speed);
+            (self.gains.wind * gain, pitch)
+        } else {
+            (self.gains.wind * ambient, (self.sky.cloud + 1) as f32 * WIND_PITCH)
+        };
+        if gain > 0.0 || self.wind {
+            out.push(Command::Loop { voice: Loop::Wind, gain, pitch });
         }
+        self.wind = gain > 0.0;
 
         // The birds, in a replay with the car far from the camera. Ours: the original keeps the timer in an int
         // seeded with 5.0's bit pattern, so no bird ever plays (rbr-recomp notes/marks-sound-ghost.md 2.2); this is the timer
@@ -364,12 +385,29 @@ mod tests {
     }
 
     #[test]
-    fn the_wind_plays_only_outside_the_car_by_the_cloud() {
+    fn the_wind_plays_outside_the_car_by_the_cloud() {
         let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
-        let car = Scene { velocity: [0.0, 20.0, 0.0], ..Scene::default() };
-        assert_eq!(find(&world.step(&car, 0.01, || 0), Loop::Wind), None);
         let (gain, pitch) = find(&world.step(&scene(40.0), 0.01, || 0), Loop::Wind).unwrap();
         assert!((gain - 0.2).abs() < 1e-6 && pitch == 0.5);
+    }
+
+    #[test]
+    fn in_the_car_the_wind_rises_with_the_speed_and_stops_at_rest() {
+        let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
+        let mut at = |kmh: f32| {
+            let car = Scene { velocity: [0.0, kmh / 3.6, 0.0], ..Scene::default() };
+            find(&world.step(&car, 0.01, || 0), Loop::Wind)
+        };
+        assert_eq!(at(0.0), None, "silent at rest");
+        assert_eq!(at(8.0), None, "and at a crawl");
+        let heard = [60.0, 100.0, 150.0].map(|kmh| at(kmh).unwrap());
+        assert!(heard.windows(2).all(|w| w[1].0 > w[0].0 && w[1].1 > w[0].1), "{heard:?}");
+        // 1.02's pitch, a quarter of a tenth of the speed in m/s; the gain full (twice the `Wind` amp) from 160 km/h.
+        assert!((heard[2].1 - 150.0 / 3.6 * 0.025).abs() < 1e-6);
+        assert_eq!(at(200.0).map(|(gain, _)| gain), Some(1.0));
+        // Stopping fades the running voice out.
+        assert!(at(0.0).is_some_and(|(gain, pitch)| gain == 0.0 && pitch > 0.0));
+        assert_eq!(at(0.0), None);
     }
 
     fn birds(out: Vec<Command>) -> usize {
@@ -385,7 +423,7 @@ mod tests {
         );
         assert_eq!(birds(world.step(&chase, 4.99, || 0)), 0);
         assert_eq!(birds(world.step(&chase, 0.02, || 0)), 1, "8 m from the car");
-        // In the car: neither, driving.
+        // In the car at rest: neither.
         let cockpit = Scene { inside: true, ..chase };
         let mut world = World::new(WorldGains::default(), Sky { cloud: 1, ..Sky::default() }, Vec::new());
         assert_eq!(find(&world.step(&cockpit, 0.01, || 0), Loop::Wind), None);

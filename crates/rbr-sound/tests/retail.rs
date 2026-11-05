@@ -146,3 +146,28 @@ fn the_engine_pitch_keeps_rising_past_9000_rpm() {
     eprintln!("firing period: {at_9000} samples at 9000 rpm, {at_12000} at 12000");
     assert!(at_12000 * 5 < at_9000 * 4, "the pitch stopped rising: {at_9000} then {at_12000}");
 }
+
+#[test]
+fn the_wind_comes_through_the_cabin_low_pass_in_the_car() {
+    use rbr_sound::mixer::{Mixer, LAYERS};
+    use rbr_sound::voice::{Command, Loop};
+    let Some(data) = Data::from_env() else {
+        eprintln!("RBR_DATA is not set; skipped");
+        return;
+    };
+    let bank = CarBank::load(&data, 0).expect("car 0");
+    // The high band's share of the wind alone: the first difference's RMS over the signal's. The wind sample is dark
+    // already (an RMS frequency near 320 Hz), so the 1 kHz low-pass takes only a few per cent off.
+    let brightness = |inside: bool| {
+        let mut mixer = Mixer::new(&bank, 44100, 1.0);
+        mixer.solo = LAYERS.iter().position(|&l| l == "loops");
+        mixer.apply(&[Command::Inside(inside), Command::Loop { voice: Loop::Wind, gain: 1.0, pitch: 1.0 }]);
+        let mut out = vec![[0.0; 2]; 44100];
+        mixer.render(&mut out);
+        let s: Vec<f32> = out[4410..].iter().map(|f| f[0]).collect();
+        let rms = |x: &mut dyn Iterator<Item = f32>| x.map(|v| v * v).sum::<f32>().sqrt();
+        rms(&mut s.windows(2).map(|w| w[1] - w[0])) / rms(&mut s.iter().copied())
+    };
+    let (inside, outside) = (brightness(true), brightness(false));
+    assert!(inside > 0.0 && inside < outside * 0.95, "inside {inside}, outside {outside}");
+}
