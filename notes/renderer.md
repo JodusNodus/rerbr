@@ -526,11 +526,22 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   views a white glare). Tail and brake ones glow in the records'
   red (`LAMP_RED`), not their texture's: the GC8's brake parts are white reflectors, the M3 E30's and 911 SC's lit
   textures light the indicator. 43 installed cars had dark tail lamps (night Sardian M3 chase); the GC8 brakes red
-  (rain Sipirkakim chase 0.6 % RMSE), other reference shots byte-identical. A lit part the game always draws stays
-  as drawn, no glow: the GC8's `e_light_lb_lit` (`Switch = false`) is its reverse lamp's reflector, which glowed white.
-  Still dark: the GC8's and MAZDA 323's tail lamps (that case), the Fiesta Rally2 23 as installed (its `<car>.ini`
-  lacks the `_lit` sections; both car-parts options have them, always drawn), and cars whose model has no `_lit` tail
-  mesh (Focus WRC 2006: its lamp is not seen from behind at all; Delta HF 4WD, Lancer Evo II, Fiesta WRC 2014).
+  (rain Sipirkakim chase 0.6 % RMSE), other reference shots byte-identical.
+- Ours: a `_lit` part the game always draws (shown from the start, on no lamp's box: installed `Switch = false`, or a
+  lights-on option's, `load_lit`) stays drawn and glows only while a lit lamp of its kind is within `LAMP_NEAR`
+  (`Switch::of_drawn`, `steady`; the kind's number in `mode.glow.w` and `LampUniform.up.w`; 2026-11-05). Its lamp is
+  its name's, else the `Point_light_*` nearest its centre within 0.3 m (pods, bars, bonnet lamps); names first, as a
+  tail part's centre can lie nearest the reversing or brake point (Fiesta Rally2's and GC8's `e_light_lb_lit`). Of a
+  part with lamp and body classes only the `CarLight`, `CarGlass` and `CarPlastic` faces glow (the quattro pod's
+  `CarPaint` housing). This fixed the M3 E30's headlamps, dark at night since `load_lit`'s Lights_On option drew its
+  lit parts always. Now glow: GC8 headlamps and tails (night Sipirkakim chase 3.6 % RMSE, fly-by 10.8 %, rain by day
+  0.13 %; retail cars under 0.04 %; the GC8's tail part also covers the amber indicator band, which glows red), the M3
+  E30's headlamps, the Fiesta Rally2's and M3's bars and bumper lamps. Still dark: the Fiesta Rally2's tails (the lit
+  strip lies inside the opaque, always-drawn housing `e_light_lb`; the game shows that lamp by its flare), the quattro
+  A2's pods (its Africa lights and Extralights options tie, so `night_options` vetoes them), cars whose model has no
+  `_lit` tail mesh (Focus WRC 2006, Delta HF 4WD, Lancer Evo II, Fiesta WRC 2014); MAZDA 323 not seen (not downloaded).
+  The quattro's dark headlamps in Pengonpohja night shots past frame ~8000 are crash damage, not a regression (works
+  bits 0xF0F to 0xC0C between frames 4000 and 8000).
 - Ours: each kind's light at a luminous intensity (headlight hot spot 20000 cd, tail 8, brake 100, reverse 150); a lamp
   in its state since the drive's first frame is settled, not fading (2026-10-25). The rear lamps shine in a flat band
   after ECE R7.

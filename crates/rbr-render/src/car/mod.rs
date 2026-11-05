@@ -376,6 +376,19 @@ fn load_set(
         report.night_skipped = skipped;
         report.night_veto = veto;
     }
+    let lamp_points = if exterior {
+        let settings = match lit_settings {
+            Some(settings) => settings,
+            None => read_ini(data, &settings_file)?,
+        };
+        let on = model_path.parent().and_then(rbr_formats::rsf::headlights_on);
+        let on_ini = |file: &str| on.as_deref().and_then(|on| option_ini(on, file)).unwrap_or_default();
+        let beam = lights::headlight_colour(&on_ini(&settings_file));
+        let parts = lights::with_headlight_points(&parts, &on_ini(&entry.ini_file));
+        lights::lamp_points(&settings, &parts, beam)
+    } else {
+        Vec::new()
+    };
     // The car's shaders in the order the loader creates them: one per class and material, at its first face
     // (`FUN_1001e430`). Each list draws its shaders in that order.
     let mut ranks: Vec<(String, String)> = Vec::new();
@@ -450,7 +463,8 @@ fn load_set(
         if !built.meshes.is_empty() {
             report.meshes_drawn += 1;
         }
-        let lamp = lights::Switch::of_part(part, &parts);
+        let lamp = lights::Switch::of_part(part, &parts)
+            .or_else(|| lights::Switch::of_drawn(part, model_centre(mesh, transform)?, &lamp_points));
         let detach = detach_part(&mesh.node.name);
         let wheel = wheel_of(&mesh.node.name).map(|(_, k)| k);
         let steering = mesh.node.name.eq_ignore_ascii_case("i_steeringwheel");
@@ -466,10 +480,15 @@ fn load_set(
                 lights::projected_area(&positions, &placed.indices, along)
             })
             .sum();
+        // Of a lit part with lamp and body classes only the lamp's faces glow, not a pod's or bar's housing.
+        let lamp_faces = faces.iter().any(|f| lights::lamp_class(&f.shader));
+        let body_faces = faces.iter().any(|f| !lights::lamp_class(&f.shader));
         groups.extend(built.meshes.into_iter().map(|(order, mut placed, effect)| {
-            if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass) {
+            let glows = !(lamp_faces && body_faces) || lights::lamp_class(&ranks[order.1].0);
+            if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass && glows) {
                 for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
                     shade.glow = Some(switch.glow(lit_area));
+                    shade.glow_kind = if switch.steady { switch.kind.number() as u8 } else { 0 };
                 }
             }
             if window.is_some() {
@@ -491,19 +510,6 @@ fn load_set(
         }
     }
     let (meshes, damage) = in_draw_order(groups).into_iter().unzip();
-    let lamp_points = if exterior {
-        let settings = match lit_settings {
-            Some(settings) => settings,
-            None => read_ini(data, &settings_file)?,
-        };
-        let on = model_path.parent().and_then(rbr_formats::rsf::headlights_on);
-        let on_ini = |file: &str| on.as_deref().and_then(|on| option_ini(on, file)).unwrap_or_default();
-        let beam = lights::headlight_colour(&on_ini(&settings_file));
-        let parts = lights::with_headlight_points(&parts, &on_ini(&entry.ini_file));
-        lights::lamp_points(&settings, &parts, beam)
-    } else {
-        Vec::new()
-    };
 
     for class in &report.base_only_shaders {
         let Some((_, stem, set)) = SHADER_FILES.iter().find(|(c, _, _)| *c == class) else {
@@ -717,6 +723,15 @@ pub fn node_place(data: &Data, name: &str, node: &str) -> Result<Option<Vec3>, E
 /// Car `name`'s `.sgc` file.
 pub(crate) fn model_file(data: &Data, name: &str) -> Result<PathBuf, Error> {
     resolve(data, &entry(data, name)?.file_name)
+}
+
+/// The centre of `mesh`'s bounds in the car's model space, its vertices placed by `transform`.
+fn model_centre(mesh: &sgc::Mesh, transform: Mat4) -> Option<Vec3> {
+    let points = mesh.vertices.iter().map(|v| transform.transform_point3(Vec3::from(v.position)));
+    let (low, high) = points.fold(None, |bounds: Option<(Vec3, Vec3)>, p| {
+        Some(bounds.map_or((p, p), |(low, high)| (low.min(p), high.max(p))))
+    })?;
+    Some((low + high) / 2.0)
 }
 
 /// Car `name`'s `Cars/Cars.ini` entry (its folder, matched ignoring case), with `Data::with_car`'s car in its slot.

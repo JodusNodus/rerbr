@@ -186,6 +186,9 @@ pub struct Shade {
     /// A lit lamp's part (`lights::Switch`): glows in this colour (its texture's where white) at its fourth, its
     /// luminance on the lamp's axis, cd/m2, negative for a headlight's (renderer addition, `lights::Switch::glow`).
     pub glow: Option<[f32; 4]>,
+    /// A lit part the game always draws (`lights::Switch::steady`): its lamp's kind number, so that it glows only
+    /// while a lamp of that kind near it is lit; 0 for one drawn only while its lamp is lit.
+    pub glow_kind: u8,
     /// A window's crack overlay (ours, [`crate::crack_decal`]): its normal comes from the crack texture's alpha, so
     /// the cracks catch the light.
     pub crack: bool,
@@ -221,7 +224,8 @@ impl Shade {
                 | u32::from(self.grime) << 3
                 | u32::from(self.tint) << 11
                 | u32::from(self.spatter) << 12
-                | u32::from(self.window) << 13,
+                | u32::from(self.window) << 13
+                | u32::from(self.glow_kind) << 14,
             glow[0],
             glow[1],
             glow[2],
