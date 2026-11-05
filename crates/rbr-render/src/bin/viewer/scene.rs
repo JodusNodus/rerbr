@@ -277,12 +277,8 @@ fn load_scene<'scope, 'env>(
                 match (&args.drive, &args.live) {
                     (None, None) => {
                         progress(Step::Car);
-                        let night = stage.atmosphere.night;
-                        let mut car = if night {
-                            car::load_night(data, car_name, car::placement_at(stage.start)).map_err(error)?
-                        } else {
-                            car::load(data, car_name, car::placement_at(stage.start)).map_err(error)?
-                        };
+                        let mut car = car::load_lit(data, car_name, car::placement_at(stage.start), lit(&day_clock))
+                            .map_err(error)?;
                         damage_static(&mut car, args);
                         report_car(&car.at_rest().add_to_stage(&mut stage));
                     }
@@ -304,12 +300,8 @@ fn load_scene<'scope, 'env>(
                         });
                         let probe = scope.spawn(|| StageProbe::load(data, name).map(std::sync::Arc::new));
                         progress(Step::Car);
-                        let night = stage.atmosphere.night;
-                        let mut car = if night {
-                            car::load_night(data, car_name, car::placement_at(None)).map_err(error)?
-                        } else {
-                            car::load(data, car_name, car::placement_at(None)).map_err(error)?
-                        };
+                        let mut car =
+                            car::load_lit(data, car_name, car::placement_at(None), lit(&day_clock)).map_err(error)?;
                         if args.enhance.cabin {
                             car.add_inner_glass();
                         }
@@ -320,7 +312,7 @@ fn load_scene<'scope, 'env>(
                         // Both sets are in the stage before the playback looks up their meshes: adding sorts it.
                         let cabin = args.enhance.cabin.then_some(model.as_slice());
                         let (mut interior, mut interior_damage, sun_in, window_tints, under_glass) =
-                            add_interior(data, car_name, &mut stage, cabin, args.enhance.windscreen)?;
+                            add_interior(data, car_name, &mut stage, cabin, args.enhance.windscreen, lit(&day_clock))?;
                         (cabin_sun, tints, bulkhead) = (sun_in, window_tints, under_glass);
                         car::follow_dents(&interior, &mut interior_damage, &model, &damage);
                         let rsf = args
@@ -614,6 +606,12 @@ fn school_ghost(data: &Data, args: &Args) -> Option<(String, (u32, u32, rbr_form
     }
 }
 
+/// Whether the car's lamps light the stage, so its car-parts light options are on: the sun below
+/// [`relight::LAMPS_FROM`], where the lamps start ramping, dusk included.
+fn lit(clock: &Option<relight::Clock>) -> bool {
+    clock.as_ref().is_some_and(|clock| clock.daylight(clock.start).lamps > 0.0)
+}
+
 /// The stage's light and the clock that moves it on (`rbr_render::relight`): relit at `--clock`'s time, else under the
 /// bake's own sun (`relight::own_sun`). `--no-relight` keeps the baked light.
 fn light(args: &Args, stage: &mut Stage, name: &str) -> relight::Clock {
@@ -739,15 +737,11 @@ fn add_interior(
     stage: &mut Stage,
     exterior: Option<&[Mesh]>,
     windscreen: bool,
+    lit: bool,
 ) -> Result<Interior, String> {
-    let night = stage.atmosphere.night;
-    let mut interior = if night {
-        car::load_interior_night(data, car_name, car::placement_at(None))
-    } else {
-        car::load_interior(data, car_name, car::placement_at(None))
-    }
-    .map_err(|e| e.to_string())?
-    .after_textures_of(stage);
+    let mut interior = car::load_interior_lit(data, car_name, car::placement_at(None), lit)
+        .map_err(|e| e.to_string())?
+        .after_textures_of(stage);
     let sun_in = exterior
         .and_then(|exterior| car::cabin::bake(&mut interior.meshes, &interior.damage, exterior, &interior.textures));
     if let Some(sun_in) = &sun_in {

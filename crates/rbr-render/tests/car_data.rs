@@ -467,7 +467,8 @@ fn rsf_night_options_load_where_they_apply() {
         }
         let name = selected.folder().to_owned();
         let day = car::load(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
-        let night = car::load_night(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let night =
+            car::load_lit(&selected.data, &name, Mat4::IDENTITY, true).unwrap_or_else(|e| panic!("{name}: {e}"));
         if !night.report.night_options.is_empty() {
             assert!(night.report.night_veto.is_none(), "{name}: {:?}", night.report.night_veto);
             // The counts may go either way: a lights-off car lights nothing by day but for the two
@@ -483,8 +484,8 @@ fn rsf_night_options_load_where_they_apply() {
             assert_eq!(night.meshes.len(), day.meshes.len(), "{name}: vetoed night differs");
         }
         // The interior set takes the same options (its pods and ramps), or stays as installed.
-        let inside =
-            car::load_interior_night(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let inside = car::load_interior_lit(&selected.data, &name, Mat4::IDENTITY, true)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(inside.report.night_options, night.report.night_options, "{name}: interior");
     }
     assert!(applied > 10, "{applied} RSF cars changed by a night option");

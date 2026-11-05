@@ -252,11 +252,11 @@ pub fn load(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
     load_set(data, name, placement, part_for, true, false)
 }
 
-/// Loads car `name` for a stage drawn at night ([`crate::atmosphere::Atmosphere::night`]): its car-parts
-/// light options on (headlights, extra lights and pods), the way RSF's picker takes them over the model,
-/// in memory. A vetoed car, or one with no night option, loads as [`load`].
-pub fn load_night(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, part_for, true, true)
+/// Loads car `name` with its car-parts light options on when `lit` (headlights, extra lights and pods),
+/// the way RSF's picker takes them over the model, in memory: for a stage the lamps light (dusk and night).
+/// A vetoed car, or one with no night option, loads as [`load`].
+pub fn load_lit(data: &Data, name: &str, placement: Mat4, lit: bool) -> Result<Car, Error> {
+    load_set(data, name, placement, part_for, true, lit)
 }
 
 /// Loads car `name`'s interior set (`i_*`) as [`load`] loads the exterior. `CHH_Car::Render` draws these instead of
@@ -265,9 +265,10 @@ pub fn load_interior(data: &Data, name: &str, placement: Mat4) -> Result<Car, Er
     load_set(data, name, placement, interior_part_for, false, false)
 }
 
-/// Loads car `name`'s interior set for a stage drawn at night, as [`load_night`] loads the exterior.
-pub fn load_interior_night(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, interior_part_for, false, true)
+/// Loads car `name`'s interior set with its car-parts light options on when `lit`, as [`load_lit`] loads
+/// the exterior.
+pub fn load_interior_lit(data: &Data, name: &str, placement: Mat4, lit: bool) -> Result<Car, Error> {
+    load_set(data, name, placement, interior_part_for, false, lit)
 }
 
 /// Loads car `name`'s ghost set (`ghost_*`, one `GhostCar` mesh per car), which the ghost car is drawn with
@@ -332,13 +333,26 @@ fn load_set(
     placement: Mat4,
     part: for<'a> fn(&str, &'a [Section]) -> Result<&'a Section, Skip>,
     exterior: bool,
-    night: bool,
+    lit: bool,
 ) -> Result<Car, Error> {
     let entry = entry(data, name)?;
 
     let model_path = resolve(data, &entry.file_name)?;
     let model = sgc::parse(&read_bytes(&model_path)?).map_err(Error::Sgc)?;
     let parts = read_ini(data, &entry.ini_file)?;
+    let settings_file = entry.ini_file.replace(".ini", "_settings.ini");
+    // When lit the options' files stand in for the model's, in memory (the exterior and the interior
+    // sets alike), before any mesh is built: visibility, lamp switches and points all use the merged
+    // files. By day only the headlights' colour and points come from the "lights on" option.
+    let (parts, lit_settings, night_report) = match (lit, model_path.parent()) {
+        (true, Some(model)) => {
+            let settings = if exterior { read_ini(data, &settings_file)? } else { Vec::new() };
+            let applied = night_overlays(model, parts, settings);
+            let report = (applied.applied, applied.skipped, applied.veto);
+            (applied.parts, Some(applied.settings), Some(report))
+        }
+        _ => (parts, None, None),
+    };
     let shaders = read_ini(data, &entry.shader_file)?;
     let settings = read_ini(data, &format!("{}_clear.ini", entry.shader_settings))?;
     let classes: BTreeSet<String> = settings.iter().map(|s| s.name.clone()).collect();
@@ -357,6 +371,11 @@ fn load_set(
     };
     let mut textures = Textures::new(data);
     let mut report = CarReport::default();
+    if let Some((applied, skipped, veto)) = night_report {
+        report.night_options = applied;
+        report.night_skipped = skipped;
+        report.night_veto = veto;
+    }
     // The car's shaders in the order the loader creates them: one per class and material, at its first face
     // (`FUN_1001e430`). Each list draws its shaders in that order.
     let mut ranks: Vec<(String, String)> = Vec::new();
@@ -462,23 +481,8 @@ fn load_set(
         }
     }
     let (meshes, damage) = in_draw_order(groups).into_iter().unzip();
-    let settings_file = entry.ini_file.replace(".ini", "_settings.ini");
-    // At night the options' files stand in for the model's, in memory (the exterior and the interior sets
-    // alike); by day only the headlights' colour and points come from the "lights on" option, the
-    // installed parts staying.
-    let (parts, settings) = match (night, model_path.parent()) {
-        (true, Some(model)) => {
-            let settings = if exterior { read_ini(data, &settings_file)? } else { Vec::new() };
-            let applied = night_overlays(model, parts, settings);
-            report.night_options = applied.applied;
-            report.night_skipped = applied.skipped;
-            report.night_veto = applied.veto;
-            (applied.parts, Some(applied.settings))
-        }
-        _ => (parts, None),
-    };
     let lamp_points = if exterior {
-        let settings = match settings {
+        let settings = match lit_settings {
             Some(settings) => settings,
             None => read_ini(data, &settings_file)?,
         };
