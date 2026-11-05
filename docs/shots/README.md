@@ -93,6 +93,12 @@ Subaru Impreza GC8 555 GrpA, Odry (RSF 462), chase view, 18:30
 
 ![golden-odry-gc8-chase](golden-odry-gc8-chase.jpg)
 
+### golden-falstone-yaris-flyby
+
+Toyota GR Yaris Rally2, Falstone II (RSF 103), flyby view, 17:20
+
+![golden-falstone-yaris-flyby](golden-falstone-yaris-flyby.jpg)
+
 ### golden-pengonpohja-quattro-flyby
 
 Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 05:30
@@ -188,12 +194,6 @@ Ford Escort Mk II RS Grp4, Peklo Snow (RSF 133), flyby view
 Subaru Impreza GC8 555 GrpA, Peklo Snow (RSF 133), cockpit view
 
 ![snow-peklo-gc8-cockpit](snow-peklo-gc8-cockpit.jpg)
-
-### snow-peklo-yaris-chase
-
-Toyota GR Yaris Rally2, Peklo Snow (RSF 133), chase view
-
-![snow-peklo-yaris-chase](snow-peklo-yaris-chase.jpg)
 
 ### snow-pian-fiesta-chase
 

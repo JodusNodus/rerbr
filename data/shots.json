@@ -313,14 +313,24 @@
   "at": 6202
  },
  {
-  "name": "snow-peklo-yaris-chase",
-  "stage": 133,
+  "name": "golden-falstone-yaris-flyby",
+  "stage": 103,
   "car": "Toyota GR Yaris Rally2",
-  "view": "chase",
+  "view": "flyby",
   "settings": {
-   "weather": "bad"
+   "weather": "bad",
+   "wetness": "wet",
+   "clouds": "light",
+   "precipitation": "none"
   },
-  "at": 5090
+  "clock": "17:20",
+  "at": 9000,
+  "args": [
+   "--fov",
+   "60",
+   "--flyby",
+   "16,4,1.2"
+  ]
  },
  {
   "name": "snow-pian-fiesta-chase",
