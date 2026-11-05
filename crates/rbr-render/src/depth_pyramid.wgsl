@@ -1,6 +1,7 @@
-// The frame's depth pyramid (`renderer::depth_pyramid`, `viewer --ssr stochastic`; after AMD FidelityFX SSSR's
-// hierarchical depth, MIT): level 0 the frame's depth, each further level the nearest of the 2x2 texels below it
-// (reversed depth: the largest). Level 0 is padded to a multiple of the coarsest cell; the padding is the sky (0).
+// The frame's depth pyramid (`renderer::depth_pyramid`) for the screen-space reflections (`ssr.wgsl`; after AMD
+// FidelityFX SSSR's hierarchical depth, MIT): level 0 the frame's depth, each further level the nearest of the 2x2
+// texels below it (reversed depth: the largest). Level 0 is padded to a multiple of the coarsest cell; the padding is
+// the sky (0).
 
 @group(0) @binding(0) var below: texture_2d<f32>;
 @group(0) @binding(1) var level: texture_storage_2d<r32float, write>;

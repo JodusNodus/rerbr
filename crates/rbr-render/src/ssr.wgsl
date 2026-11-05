@@ -1,19 +1,20 @@
-// Stochastic screen-space reflections (`viewer --ssr stochastic`, `renderer::Ssr`; ideas after AMD FidelityFX SSSR,
-// MIT, and DiligentFX's port, Apache-2.0): the surface as `reflect_plus` (`water.wgsl`) takes it, its rays drawn from
-// the GGX distribution of visible normals (Heitz 2018) and traversed through the frame's depth pyramid
-// (`renderer::depth_pyramid`) coarse to fine instead of stepped. A hit is judged and shaded as in `trace`
-// (`shader.wgsl`): the thickness growing with the distance, the blurrier levels further on screen, the edge and
-// distance fades, the cube and the sky for the misses.
+// Screen-space reflections (`renderer::ScreenReflection`; after AMD FidelityFX SSSR's hierarchical march, MIT, and
+// DiligentFX's write-up, Apache-2.0; ideas only, no code): every reflecting surface (water, flowing water, the wet
+// roads' film and puddles; the additions' flags say which), its rays drawn from the GGX distribution of visible normals
+// (Heitz 2018) and traversed through the frame's depth pyramid (`renderer::depth_pyramid`) coarse to fine. A hit is
+// judged by a thickness growing with the distance and read from blurrier levels the further it lies on screen, with
+// the edge and distance fades and the cube and the sky for the misses. In place of a linear march with a hand-spread
+// cone (2026-11-05): wet 41M at 4K 7.7 to 4.0 ms, 1080p 1.6 to 1.05 ms; 45O chase within 0.3 ms.
 
 // Nearest depth per cell, level 0 the frame's (reversed depth: the largest).
 @group(2) @binding(2) var depth_pyramid: texture_2d<f32>;
 
-// Cells visited a ray at most (`Ssr::rays`).
+// Cells visited a ray at most (`Reflections::rays`).
 override SSR_ITERATIONS: i32 = 64;
 // The pyramid's finest level the rays reach (0 the frame's pixels; 1 cost as much and missed thin things).
 const SSR_FINEST: i32 = 0;
-// The GGX lobe's alpha over the linear cone's length along the view (`roughness` times `stretch`): 0.5 matched its
-// length and spread the lamps' streaks wider than the linear path's; 0.25 keeps them as crisp.
+// The GGX lobe's alpha over the cone's length along the view (`roughness` times `stretch`): 0.5 matched its length
+// and spread the lamps' streaks wider than the linear march's; 0.25 keeps them as crisp.
 const SSR_ALPHA: f32 = 0.25;
 // The cells a ray that passed behind something skips at first, doubling each time it is still behind.
 const SSR_SKIP: f32 = 4.0;
@@ -25,16 +26,17 @@ const SSR_TAIL: f32 = 0.3;
 const SSR_EYE_PLANE: f32 = 0.2;
 
 @fragment
-fn fs_reflect_stochastic(v: VertexOut) -> Traced {
+fn fs_reflect(v: VertexOut) -> Traced {
     if (hidden(v)) {
         discard;
     }
-    return Traced(reflect_stochastic(v), v.clip.z);
+    return Traced(reflect_ray(v), v.clip.z);
 }
 
-// The surface as `reflect_plus` takes it; each ray is a sample of the GGX lobe of `alpha` (`SSR_ALPHA`): at a grazing
-// view the lobe stretches toward the eye by itself, as `STRETCH` does by hand.
-fn reflect_stochastic(v: VertexOut) -> vec4<f32> {
+// The reflection at `v` and its weight, the mean of `SSR_RAYS` rays. Each is a sample of the GGX lobe of `alpha`
+// (`SSR_ALPHA` of the surface's cone, `GLOSS`, `ROUGHNESS` and `STRETCH`, or a puddle's or tarmac film's): at a grazing
+// view the lobe stretches toward the eye by itself.
+fn reflect_ray(v: VertexOut) -> vec4<f32> {
     let view = normalize(frame.eye.xyz - v.world);
     var n = vec3<f32>(0.0, 1.0, 0.0);
     var weight = 0.0;
@@ -107,7 +109,7 @@ fn visible_normal(view: vec3<f32>, alpha: f32, u: vec2<f32>) -> vec3<f32> {
 // The ray from `v` along `ray` traversed through the depth pyramid (FidelityFX SSSR's hierarchical march, in the
 // frame's pixels): a cell nearer than the ray is crossed and the next is taken a level coarser; one the ray is
 // behind is taken a level finer. At the finest level the ray has reached the frame's surface: a hit if it lies
-// within the thickness behind it (as `trace` judges), else the ray passed behind something in front and goes on.
+// within the thickness behind it, else the ray passed behind something in front and goes on.
 fn march(v: VertexOut, ray: vec3<f32>, weight: f32, miss: vec4<f32>, still: f32, gloss: f32) -> vec4<f32> {
     if (ray.y <= 0.0) {
         return miss;

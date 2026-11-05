@@ -5,7 +5,7 @@ use super::frame::{mark, span, View};
 use super::meshes::{Bound, GpuDraw};
 use super::pipelines::{texture_entry, vertex_layout, TEXTURE};
 use super::textures::depth_view;
-use super::{depth_binding, Detail, Renderer, Ssr, CLEAR_COLOR, DEPTH_FORMAT};
+use super::{depth_binding, Detail, Renderer, CLEAR_COLOR, DEPTH_FORMAT};
 use crate::camera::{self, Frustum};
 use crate::coords::{self, FRONT_FACE, NEAR};
 use crate::profile::Profiler;
@@ -52,9 +52,7 @@ impl Renderer {
                 },
             })
         };
-        if let Some(pyramid) = &ssr.pyramid {
-            pyramid.build(encoder);
-        }
+        ssr.pyramid.build(encoder);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("screen-space reflections"),
             color_attachments: &[cleared(&ssr.traced[0]), cleared(&ssr.traced[1])],
@@ -244,8 +242,8 @@ pub(super) struct ScreenReflection {
     composite_group: wgpu::BindGroup,
     /// The traced targets' side over the frame's: a half, or 1 with [`Detail::Ultra`].
     scale: u32,
-    /// The frame's depth pyramid with [`Ssr::Stochastic`], which its rays traverse.
-    pyramid: Option<DepthPyramid>,
+    /// The frame's depth pyramid, which the rays traverse.
+    pyramid: DepthPyramid,
 }
 
 /// The depth pyramid's binding ([`DepthPyramid`]): unfilterable 32-bit levels.
@@ -263,9 +261,9 @@ const COMPOSITE: &str = include_str!("../reflection_composite.wgsl");
 
 impl ScreenReflection {
     /// `shader` with the stage draws' vertex entry point ([`vertex_entry`](super::pipelines::vertex_entry)) and the
-    /// fragment entry point ([`reflect_entry`](super::pipelines::reflect_entry)), `rays` a pixel and
-    /// `steps` a ray ([`Ssr::rays`]), `full` traces at the frame's size, not half, and as `ssr`
-    /// says.
+    /// fragment entry point (`fs_reflect` in `ssr.wgsl`), `rays` a pixel and
+    /// the pyramid's cells a ray visits ([`Reflections::rays`](super::Reflections::rays)). `full` traces at the
+    /// frame's size, not half.
     pub(super) fn new(
         device: &wgpu::Device,
         (shader, vertex, fragment, [rays, steps], write_mask): (
@@ -279,14 +277,12 @@ impl ScreenReflection {
         format: wgpu::TextureFormat,
         size: (u32, u32),
         depth: &wgpu::TextureView,
-        (full, ssr): (bool, Ssr),
+        full: bool,
     ) -> ScreenReflection {
         let scale = if full { 1 } else { 2 };
-        let pyramid = (ssr == Ssr::Stochastic).then(|| DepthPyramid::new(device, size, depth));
-        let mut entries = vec![texture_entry(0, TEXTURE), texture_entry(1, depth_binding())];
-        entries.extend(pyramid.as_ref().map(|_| texture_entry(2, PYRAMID)));
-        let steps_name = if pyramid.is_some() { "SSR_ITERATIONS" } else { "SSR_STEPS" };
-        let constants = [("SSR_RAYS", f64::from(rays)), (steps_name, f64::from(steps))];
+        let pyramid = DepthPyramid::new(device, size, depth);
+        let entries = [texture_entry(0, TEXTURE), texture_entry(1, depth_binding()), texture_entry(2, PYRAMID)];
+        let constants = [("SSR_RAYS", f64::from(rays)), ("SSR_ITERATIONS", f64::from(steps))];
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("screen-space reflections"),
             entries: &entries,
@@ -388,7 +384,7 @@ impl ScreenReflection {
             cache: None,
         });
         let halver = Halver::new(device, format);
-        let sized = Self::targets(device, [&layout, &composite_layout], format, size, depth, scale, pyramid.as_ref());
+        let sized = Self::targets(device, [&layout, &composite_layout], format, size, depth, scale, &pyramid);
         ScreenReflection {
             pipeline,
             layout,
@@ -413,9 +409,7 @@ impl ScreenReflection {
         size: (u32, u32),
         depth: &wgpu::TextureView,
     ) {
-        if let Some(pyramid) = &mut self.pyramid {
-            pyramid.resize(device, size, depth);
-        }
+        self.pyramid.resize(device, size, depth);
         let sized = Self::targets(
             device,
             [&self.layout, &self.composite_layout],
@@ -423,7 +417,7 @@ impl ScreenReflection {
             size,
             depth,
             self.scale,
-            self.pyramid.as_ref(),
+            &self.pyramid,
         );
         self.sources = self.halver.sources(device, &sized.levels);
         (self.levels, self.scene, self.group) = (sized.levels, sized.scene, sized.group);
@@ -439,7 +433,7 @@ impl ScreenReflection {
         (width, height): (u32, u32),
         depth: &wgpu::TextureView,
         scale: u32,
-        pyramid: Option<&DepthPyramid>,
+        pyramid: &DepthPyramid,
     ) -> FrameTargets {
         let (width, height) = (width.max(1), height.max(1));
         let mips = SCENE_MIPS.min(width.min(height).ilog2() + 1);
@@ -466,13 +460,11 @@ impl ScreenReflection {
             })
             .collect();
         let scene = texture.create_view(&Default::default());
-        let mut entries = vec![
+        let entries = [
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene) },
             wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&pyramid.view) },
         ];
-        entries.extend(
-            pyramid.map(|p| wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&p.view) }),
-        );
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("screen-space reflections"),
             layout,

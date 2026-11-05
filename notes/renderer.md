@@ -54,6 +54,16 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   Reflections trace at half size (`reflection_composite.wgsl`): 41M
   chase 12.8 to 6.5 ms (45O similar); thin community-car reflections softer. Additions off: only water differs (44E max 17/255;
   71M 52 pixels over 8) (2026-10-26).
+  Rays (2026-11-05, `ssr.wgsl`, `renderer/depth_pyramid.rs`; after AMD FidelityFX SSSR, ideas only): each is a GGX
+  visible-normal sample (Heitz 2018) of the surface's cone (alpha `SSR_ALPHA` 0.25 of its roughness times stretch,
+  the outer 30% of the lobe left out) traversed through a nearest-depth pyramid (R32F, 9 levels, built each frame by
+  compute) coarse to fine, `Reflections::rays` the rays and the cells a ray visits; a ray behind something skips 4
+  cells, doubling. Replaced the linear march with a hand-spread cone and its two entry points (one for the additions,
+  one without): screen reflections at high, RX 9060 XT, wet 41M 1080p 1.63 to 1.05 ms, 4K 7.7 to 3.97 ms; 45O chase
+  0.84 to 0.83 and 3.34 to 3.00 ms; medium and low 0.05 ms slower where little reflects (the pyramid). Dry and fog
+  byte-identical; night lamp streaks on wet tarmac a little crisper, lakes' bank reflections fuller; 41M's roadside
+  sign reflects shorter and one at the bend not at all (the pixel-exact march stops at the verge grass the linear
+  steps stepped over). Not run on Metal (naga's SPIR-V check only).
 - `--anti-aliasing taa|off` (`AntiAliasing`, default `Taa`, ours after gp4's `taa.rs`; `4x` parses as `taa`): one
   sample, the main view's projection jittered and resolved into the post pass's scene, sharpened under TAA
   (`taa.rs`, `taa.wgsl`, `post.rs`: Halton 2,3, 8 phases an output pixel, `taa::phases`, 18 at 67 % and 32 at 50 %;

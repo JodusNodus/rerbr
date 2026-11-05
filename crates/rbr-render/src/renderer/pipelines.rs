@@ -221,18 +221,6 @@ pub(super) fn vertex_entry(enhance: Enhance) -> &'static str {
     }
 }
 
-/// The screen-space reflections' fragment entry point: `fs_reflect_plus` (`water.wgsl`) with the flowing water or the
-/// puddles, which keeps `fs_reflect` as it was without them; `fs_reflect_stochastic` (`ssr.wgsl`) with [`Ssr::Stochastic`](super::Ssr::Stochastic).
-pub(super) fn reflect_entry(enhance: Enhance) -> &'static str {
-    if enhance.ssr == super::Ssr::Stochastic {
-        "fs_reflect_stochastic"
-    } else if enhance.water || enhance.wet {
-        "fs_reflect_plus"
-    } else {
-        "fs_reflect"
-    }
-}
-
 impl Context<'_> {
     /// The fragment entry point that shades the draws, taking the clouds' shadow when the vertex gives it.
     fn shading(&self) -> &'static str {

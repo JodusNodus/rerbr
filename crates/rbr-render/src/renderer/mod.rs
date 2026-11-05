@@ -43,7 +43,7 @@ mod uniforms;
 
 #[cfg(test)]
 pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
-pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, Reflections, Ssr};
+pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
 pub use frame::FrameStats;
 pub use gpu::{instance, request_gpu, Gpu, GpuError};
 pub(crate) use meshes::mesh_bounds;

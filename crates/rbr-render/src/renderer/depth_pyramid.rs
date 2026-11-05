@@ -1,6 +1,5 @@
-//! The frame's depth pyramid for the stochastic screen-space reflections (`viewer --ssr stochastic`,
-//! `depth_pyramid.wgsl`): the frame's depth, then each level the nearest depth of the 2x2 texels below it, which the
-//! rays traverse coarse to fine (`ssr.wgsl`).
+//! The frame's depth pyramid for the screen-space reflections (`depth_pyramid.wgsl`): the frame's depth, then each
+//! level the nearest depth of the 2x2 texels below it, which the rays traverse coarse to fine (`ssr.wgsl`).
 
 /// The pyramid's levels past the frame's depth: at 4K the coarsest cell is 128 pixels.
 pub(super) const LEVELS: u32 = 8;
