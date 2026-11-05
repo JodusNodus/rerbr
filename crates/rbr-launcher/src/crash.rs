@@ -249,7 +249,7 @@ fn copy_to_stderr(log: PathBuf) -> Arc<AtomicBool> {
 }
 
 /// Opens a link or a folder with the system's handler.
-fn open(target: &OsStr) {
+pub(crate) fn open(target: &OsStr) {
     let program = if cfg!(windows) {
         "explorer"
     } else if cfg!(target_os = "macos") {
