@@ -23,6 +23,10 @@ pub enum Loop {
     Cooler,
     /// The H-shifter's grind (ours, `Player::set_grind`): silent until a sample is given.
     Grind,
+    /// Ours (`crate::verge`): the tyres' swish on grass and the bushes brushing the body (`data::CarBank::grass`,
+    /// `data::CarBank::brush`).
+    Grass,
+    Brush,
 }
 
 /// The one-shots.
@@ -51,6 +55,8 @@ pub enum Shot {
     Bottoming(usize),
     /// Ours: a tyre running into a puddle (`tyre::Water`), one of the embedded splashes (`data::CarBank::splashes`).
     Splash(usize),
+    /// Ours: a branch slapping the body (`crate::verge`), one of the embedded hits (`data::CarBank::branches`).
+    Branch(usize),
     /// `CAR::DRIVESHAFT DS1-13` (`CTireSnd::M7590` 0x4d7590), by index.
     DriveShaft(usize),
     /// `CAR::EXHAUST Pop1-11` (`CCarSound::Mf280` 0x4af280), `CARn::EXHAUSTNEW Pop1-11` (`Mf180` 0x4af180) and
