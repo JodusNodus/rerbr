@@ -124,18 +124,23 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   runs back to back (`--replay-pace free`), not in lockstep (`--frames -` takes no `--replay` beside it);
   `--at-drive` takes no `--replay`.
 - Championship tab (`rally_page/`: `mod.rs` the season's state and turns, `view.rs` the drawing): with no season, the
-  profile with Continue saved season beside it, then the New season section (team, car, skill with its
-  outside-assistance rule, damage) and New season. With one: a header (the rally, Rally n of 6, the step in amber:
+  profile, Continue saved season as the primary button when the profile's file holds a season (read once per profile
+  name, `has_saved_season`), then the New season section (team, car, skill with its outside-assistance rule, damage)
+  and New season (secondary, "replaces …", when there is a save). With one: a header (the rally, Rally n of 6, the step in amber:
   Before the start, Stage n of 6, Service before stage n of 6, Rally over, Season over; the player's place in the
   rally; then car, team, options, season clock), the card of the next step first, with one primary button (the
   stage's start time, place on the road and its surface, tyres, setup and Edit, weather and Drive SSn; the welcome's
-  stage and service count; the park with time left, its parts by damage colour and the late-penalty warning; the
+  stage and service count; the park with time left, its parts by damage colour and the late-penalty warning, Repair!,
+  or Leave service with nothing ticked, which closes the park unrepaired without the game's `MSG_NOREP` question; the
   rally's end with the place, Next rally: name over the trials, or at the season's end New season), the itinerary
   under it (Stage, Start, Time; the arrow on the stage or service up next; a wreck marks only the first stage not
   driven), the rally standings (the last stage's column from SS2, total, gap, points once awarded), the season points
-  and the bulletins beside, and Another season or profile folded away. `--screenshot` draws it new, at the welcome,
-  after a wrecked SS1, at SS2, a rally's results, between rallies, the season over and (with `--screenshot-damage`)
-  in service.
+  and the bulletins beside, and Another season or profile folded away. Ours: the flow does not stop at a rally's
+  results (kind 9): `turn_done` passes it (its points go in) to the page between rallies, which shows the place and
+  the final standings; a season saved at the results continues there. New season from a season under way (the fold,
+  the season over) takes that season's team, options and car (`SeasonCar::Kept`). `--screenshot` draws it new
+  (without and with a saved season), at the welcome, after a wrecked SS1, at SS2, between rallies, the season over
+  and (with `--screenshot-damage`) in service.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
   their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
