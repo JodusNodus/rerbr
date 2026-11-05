@@ -193,7 +193,6 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
         entrant.car = cars[k % cars.len()].clone();
     }
     let master = fixture::ai().0;
-    let mut event = event;
     // The player's pace against the reference: 3rd or so, slower on the wet stage.
     let drive = |event: &mut rbr_season::event::Event, n: usize| {
         for _ in 0..n {
