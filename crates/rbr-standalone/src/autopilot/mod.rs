@@ -59,10 +59,19 @@ const LATERAL: f32 = 5.0;
 const BRAKING: f32 = 4.0;
 const TOP_SPEED: f32 = 30.0;
 /// The target speed while the steering is past full lock (m/s): the curve plan missed hairpins at full lock on RSF
-/// stages 122 and 302.
-const FULL_LOCK_TOP: f32 = 6.0;
+/// stages 122 and 302, and the map 87 kink at 800 m slid 2.4 m off at 6.5 m/s and retired on the wall.
+const FULL_LOCK_TOP: f32 = 5.0;
+/// A very slow corner looms (ours): the slowest curve limit within `KINK_AHEAD` m under this (m/s), and the hard
+/// braking for it. The gentle pedal below tracks fast corners loosely (lesson 2 overshoots its 16 m/s corner by 8
+/// and still passes), but the map 87 kink (limit 6) needs full braking from 30 m out to arrive at 5 m/s on line;
+/// arriving hot slides it into the wall. Only the kink brakes hard; lesson 2's corners (limits 16 and up) keep the
+/// gentle pedal.
+const KINK_SLOW: f32 = 7.0;
+const KINK_AHEAD: f32 = 40.0;
 const PLAN_AHEAD: f32 = 150.0;
-const PLAN_STEP: f32 = 3.0;
+/// The plan's sample spacing (m): 1 m resolves the driveline's kinks (the map 87 kink turns 28 degrees over 5 m
+/// between 2.5 m-spaced records, which 3 m samples aliased into a fast read), while smooth corners read the same.
+const PLAN_STEP: f32 = 1.0;
 /// Shift points (engine speed, rad/s), the steps between shifts, and the gear index of first and the top gear (neutral is below first).
 const SHIFT_UP: f32 = 680.0;
 const SHIFT_DOWN: f32 = 380.0;
@@ -165,20 +174,41 @@ impl std::str::FromStr for Aim {
 }
 
 /// Heavy props (ours): the collision meshes of kinds 2 (concrete block, `PIG`, 4000 kg), 8 (`LOG_POLE`) and 10
-/// (`WOODEN_FENCE_POLE`, both 1000 kg; rbr-recomp `notes/interactive-scenery.md` 1c, 3.2). The controller steers around those
-/// near the driveline, at most `DODGE_TOP` m/s: RSF 468's driveline runs through a chicane of 1000 kg boxes at
-/// 711-738 m, and the car hit the first at 22 m/s and rolled. Lighter props (cones, signs, banners, logs, fence bars)
-/// are driven through, and the fixed scenery is not looked at.
+/// (`WOODEN_FENCE_POLE`, both 1000 kg; rbr-recomp `notes/interactive-scenery.md` 1c, 3.2), and the static (`static_flag
+/// == 1`, one collision id shared across placements) meshes of kinds 0 and 3, the baked solid stage geometry. The
+/// controller steers around those near the driveline, at most `DODGE_TOP` m/s: RSF 468's driveline runs through a
+/// chicane of 1000 kg boxes at 711-738 m, and the car hit the first at 22 m/s and rolled; the school playground's
+/// fence (static kind-0 2 m panels) crosses the map 87 driveline at 18-76 m and the map 76 one at 22-40 m, and the car
+/// drove into it at 33 and 48 m. Lighter and breakable props (cones, signs, banners, logs, fence bars, the dynamic
+/// kind-0 trees and start fences) are driven through: no static kind-0 or kind-3 mesh covers the driveline of the
+/// retail road stages checked (track-11_O, track-22_O), so the road drives keep their line.
 const HEAVY: [u32; 3] = [2, 8, 10];
+/// A static kind-0 or kind-3 mesh counts as a heavy prop too.
+const STATIC_HEAVY: [u32; 2] = [0, 3];
 /// Lateral clearance from a prop's footprint to the car's centre line (m; the car is about 1.75 m wide); how far the
-/// target may swing off the driveline (m: the road's edges are not known, so a chicane is passed prop by prop); how
+/// target may swing off the driveline (m: the road's edges are not known, so a chicane is passed prop by prop, and a
+/// fence is ridden along its edge; a centred 2 m panel needs 2.6 m of offset with `CLEAR`); how
 /// long a prop stays in view after the car's centre passes it (m); how far before a prop the target swings past the
 /// look-ahead point, and the speed is held at `DODGE_TOP` m/s for one on the line (m).
 const CLEAR: f32 = 1.6;
-const SWING: f32 = 2.0;
+const SWING: f32 = 3.0;
+/// The tracking guard (ours): while driving, the target speed is capped where the car is further from its steered
+/// line than this (m), proportionally down to `TRACK_MIN` m/s. The curve plan reads the driveline, but a sliding car
+/// leaves it: the wet track-22_O hairpin at 3796 m held 7.2 m/s dry and slid wide at 8.6 m/s wet, down the bank past
+/// recovery; the map 87 kink at 800 m slid 2.2 m off at 6.5 m/s and ground the wall into a school retire. Slowing
+/// until the car answers the steering again holds both, on any surface, with no grip data.
+const TRACK_ERR: f32 = 1.2;
+const TRACK_MIN: f32 = 3.0;
+/// Adaptive look-ahead (ours): the steering target stays within the driveline's near part, pulling nearer while the
+/// line ahead winds past this (rad, cumulative). A fixed look aims across kinks and cuts them: the map 87 kink at
+/// 800 m turns 28 degrees over 5 m, and the 6-9 m look put the target across it, so the car left the road before it
+/// could slow. Tracking the entry instead threads it. Straights and sweepers keep the full look.
+const TURN_IN: f32 = 0.3;
 const PASSED: f32 = 2.2;
 const LEAD: f32 = 10.0;
-const DODGE_TOP: f32 = 4.0;
+/// The crawl past a prop on the line (m/s): above the school's lowest judged speed band (15 km/h, lesson 1's
+/// 69.7-707.5 m check trips below it), slow enough for the RSF 468 chicane it was built for.
+const DODGE_TOP: f32 = 4.5;
 
 /// A heavy prop's footprint: its collision mesh's vertices placed in the stage (x, y).
 #[derive(Clone, Debug, PartialEq)]
@@ -186,14 +216,16 @@ pub struct Obstacle {
     pub footprint: Vec<[f32; 2]>,
 }
 
-/// The heavy props of a stage's `.trk` collision meshes (`HEAVY`).
+/// The heavy props of a stage's `.trk` collision meshes (`HEAVY`, and the static kind-0 and kind-3 meshes).
 pub fn obstacles(trk: &rbr_formats::trk::TrkFile) -> Vec<Obstacle> {
     use rbr_formats::trk::ChunkPayload;
     let meshes = trk.chunks.iter().filter_map(|c| match &c.payload {
         ChunkPayload::CollisionMeshes(m) => Some(&m.meshes),
         _ => None,
     });
-    let heavy = meshes.flatten().filter(|m| HEAVY.contains(&m.kind) && !m.vertices.is_empty());
+    let heavy = meshes.flatten().filter(|m| {
+        !m.vertices.is_empty() && (HEAVY.contains(&m.kind) || (STATIC_HEAVY.contains(&m.kind) && m.static_flag == 1))
+    });
     let placed = heavy.flat_map(|mesh| {
         mesh.objects.iter().map(move |o| {
             let at = CarPose {
@@ -369,6 +401,21 @@ pub struct Driver<'a> {
     stop: Option<(f32, f32)>,
     /// The drive runs down the driveline, to a stop behind the start.
     against: bool,
+    /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
+    bands: Vec<SpeedBand>,
+    /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
+    grip: f32,
+}
+
+/// A judged speed band of a rally school lesson's filter bank (a check with both speed bounds, km/h): the car must
+/// stay under the top in its driveline window (lesson 1 cruises at 108 km/h through its 90 km/h 69.7-707.5 m band),
+/// with 2 km/h of margin for the tracking overshoot.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpeedBand {
+    pub from: f32,
+    pub to: f32,
+    /// m/s.
+    pub hi: f32,
 }
 
 impl<'a> Driver<'a> {
@@ -393,7 +440,20 @@ impl<'a> Driver<'a> {
             props: Vec::new(),
             stop: None,
             against: false,
+            bands: Vec::new(),
+            grip: 1.0,
         }
+    }
+
+    /// The driver on a surface with `grip` of the dry grip (1 dry, less on a damp or wet race: `with_lesson`).
+    pub fn with_grip(self, grip: f32) -> Self {
+        Self { grip, ..self }
+    }
+
+    /// The driver holding the lesson's judged speed bands (`bands`): the target speed stays under each band's top in
+    /// its window, braking for it from ahead.
+    pub fn with_bands(self, bands: Vec<SpeedBand>) -> Self {
+        Self { bands, ..self }
     }
 
     /// The driver keeping off the brakes before the driveline distance `brake_from`, then stopping at `at` and
@@ -467,37 +527,49 @@ impl<'a> Driver<'a> {
         (to[0].hypot(to[1]) < AIM_RANGE && ahead).then_some([at[0], at[1], pose.position[2]])
     }
 
+    /// The curve limit `s` metres ahead of `at`: the lateral limit there (at `grip` of the dry grip), uncapped by
+    /// braking. The kink scan passes 1.0: a kink is sharp geometry whatever the grip, and the grip scales the plan
+    /// and the full-lock cap separately.
+    fn curve_limit(&self, at: f32, s: f32, grip: f32) -> f32 {
+        let u = |d: f32| parameter(&self.values, at + d);
+        let (a, b, c) =
+            (point(self.track, u(s)), point(self.track, u(s + PLAN_STEP)), point(self.track, u(s + 2.0 * PLAN_STEP)));
+        let turn = angle(sub(b, a), sub(c, b)).abs();
+        let curvature = turn / PLAN_STEP;
+        ((LATERAL * grip) / curvature.max(1e-4)).sqrt().min(self.top)
+    }
+
     /// The target speed: the slowest of the curve limits ahead, each reachable by braking.
     pub fn target_speed(&self, at: f32) -> f32 {
+        let braking = BRAKING * self.grip;
         if self.against {
             let stop = self.stop.map_or(0.0, |(_, s)| s);
-            return self.top.min((2.0 * BRAKING * (at - stop).max(0.0)).sqrt());
+            return self.top.min((2.0 * braking * (at - stop).max(0.0)).sqrt());
         }
         let mut target = self.top;
         let mut s = 0.0;
         while s < PLAN_AHEAD {
-            let u = |d: f32| parameter(&self.values, at + d);
-            let (a, b, c) = (
-                point(self.track, u(s)),
-                point(self.track, u(s + PLAN_STEP)),
-                point(self.track, u(s + 2.0 * PLAN_STEP)),
-            );
-            let turn = angle(sub(b, a), sub(c, b)).abs();
-            let curvature = turn / PLAN_STEP;
-            let limit = (LATERAL / curvature.max(1e-4)).sqrt().min(self.top);
-            target = target.min((limit * limit + 2.0 * BRAKING * s).sqrt());
+            let limit = self.curve_limit(at, s, self.grip);
+            target = target.min((limit * limit + 2.0 * braking * s).sqrt());
             s += PLAN_STEP;
         }
         let on_line = self.props.iter().filter(|p| p.left[0] - CLEAR < 0.0 && p.left[1] + CLEAR > 0.0);
         for p in on_line.filter(|p| p.to + PASSED >= at && p.from < at + PLAN_AHEAD) {
             let s = (p.from - LEAD - at).max(0.0);
-            target = target.min((DODGE_TOP * DODGE_TOP + 2.0 * BRAKING * s).sqrt());
+            target = target.min((DODGE_TOP * DODGE_TOP + 2.0 * braking * s).sqrt());
+        }
+        for b in self.bands.iter().filter(|b| b.to >= at && b.from < at + PLAN_AHEAD) {
+            if at >= b.from {
+                target = target.min(b.hi);
+            } else {
+                target = target.min((b.hi * b.hi + 2.0 * braking * (b.from - at)).sqrt());
+            }
         }
         if let Some((brake_from, stop)) = self.stop {
             if at < brake_from {
                 return self.top;
             }
-            target = target.min((2.0 * BRAKING * (stop - at).max(0.0)).sqrt());
+            target = target.min((2.0 * braking * (stop - at).max(0.0)).sqrt());
         }
         target
     }
@@ -568,19 +640,38 @@ impl<'a> Driver<'a> {
         }
         let speed = sense.pose.speed();
         let at = distance(&self.values, sense.parameter);
-        let look = LOOK_BASE + LOOK_TIME * speed;
-        let target = self.aim_target(&sense.pose).unwrap_or_else(|| {
+        let mut look = LOOK_BASE + LOOK_TIME * speed;
+        if self.aim.is_none() && !self.against {
+            // Pull the target nearer through windings: while the driveline ahead turns away, aim at its near part.
+            let mut turn = 0.0;
+            let mut s = LOOK_BASE;
+            let mut prev = point(self.track, parameter(&self.values, at));
+            while s < look {
+                s += 2.0;
+                let p = point(self.track, parameter(&self.values, at + s));
+                let q = point(self.track, parameter(&self.values, at + s + 2.0));
+                turn += angle(sub(p, prev), sub(q, p)).abs();
+                prev = p;
+                if turn > TURN_IN {
+                    look = s;
+                    break;
+                }
+            }
+        }
+        let aimed = self.aim_target(&sense.pose);
+        let swerve = if aimed.is_some() || self.against { 0.0 } else { self.dodge(at, at + look + LEAD) };
+        let target = aimed.unwrap_or_else(|| {
             if self.against {
                 return point(self.track, parameter(&self.values, at - look));
             }
             let u = parameter(&self.values, at + look);
-            let (p, s) = (point(self.track, u), self.dodge(at, at + look + LEAD));
-            if s == 0.0 {
+            let p = point(self.track, u);
+            if swerve == 0.0 {
                 return p;
             }
             let ahead = sub(point(self.track, u + 0.01), p);
             let length = ahead[0].hypot(ahead[1]);
-            [p[0] - s * ahead[1] / length, p[1] + s * ahead[0] / length, p[2]]
+            [p[0] - swerve * ahead[1] / length, p[1] + swerve * ahead[0] / length, p[2]]
         });
         let error = angle(sense.pose.forward(), sub(target, sense.pose.position));
         if finished {
@@ -607,21 +698,40 @@ impl<'a> Driver<'a> {
             Mode::Forward if sense.gear < FIRST => flags = self.shift(step, RECOVER_GAP, 0x01),
             Mode::Forward | Mode::Drive => {
                 self.mode = Mode::Drive;
+                let off = sub(sense.pose.position, point(self.track, sense.parameter));
+                let err = (off[0].hypot(off[1]) - swerve.abs()).abs();
                 let mut want = if finished { 0.0 } else { self.target_speed(at) };
                 if (error * STEER_GAIN).abs() > 1.0 {
-                    want = want.min(FULL_LOCK_TOP);
+                    want = want.min(FULL_LOCK_TOP * self.grip);
+                }
+                if !finished && err > TRACK_ERR {
+                    // The tracking guard: the steered line is the driveline swung by the dodge offset; further from
+                    // it than `TRACK_ERR`, the car is sliding, so slow down proportionally until it answers again.
+                    want = want.min((speed * TRACK_ERR / err).max(TRACK_MIN));
                 }
                 let lean = lean(&sense.pose);
                 if lean.abs() > TIP {
                     steer = lean.signum();
                 }
                 let gap = want - speed;
+                // A very slow corner looms within `KINK_AHEAD` m: brake hard now, while straight, to arrive on
+                // line (the gentle pedal below arrives hot and slides wide). Only while tracking well; a sliding
+                // car takes the tracking guard's proportional slow instead of piling on brake in the turn.
+                let mut slow = f32::INFINITY;
+                let mut s = 0.0;
+                while s < KINK_AHEAD {
+                    slow = slow.min(self.curve_limit(at, s, 1.0));
+                    s += PLAN_STEP;
+                }
+                let kink = !finished && slow < KINK_SLOW && err < TRACK_ERR && gap < -1.0;
                 (throttle, brake) = if finished || want <= 0.0 {
                     (0.0, 1.0)
                 } else if gap > 0.0 {
                     ((0.4 + 0.2 * gap).min(1.0), 0.0)
-                } else if gap > -1.5 {
+                } else if gap > -1.5 && !kink {
                     (0.15, 0.0)
+                } else if kink {
+                    (0.0, 0.8)
                 } else {
                     (0.0, (-0.15 * gap).min(0.8))
                 };

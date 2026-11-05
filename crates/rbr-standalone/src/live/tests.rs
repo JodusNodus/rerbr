@@ -389,8 +389,10 @@ fn the_ride_ends_on_the_brief_s_confirm() {
 }
 
 /// Lessons driven headless to their end by the autopilot (`--autopilot --boot --school --saves`, as
-/// `scripts/school-sweep.sh` drives them): lesson 0 ends standing in its box on the driveline, lesson 2 in its stop
-/// box with a verdict, and each pass reaches the profile's school results.
+/// `scripts/school-sweep.sh` drives them): lesson 0 ends standing in its box on the driveline, lessons 1 and 2 in
+/// their finish and stop box with passing verdicts, and each pass reaches the profile's school results. Lesson 8
+/// reaches the finish too, but the test pilot cannot pass it (15 s needs Richard's pace through its 85-115 km/h
+/// check band) and a fail writes no profile, so it only asserts the end reached.
 #[test]
 fn the_autopilot_drives_lessons_to_their_saved_verdicts() {
     use rbr_school::Lesson;
@@ -405,7 +407,7 @@ fn the_autopilot_drives_lessons_to_their_saved_verdicts() {
     on_big_stack(move || {
         let data = Data::new(install, Some(patch));
         let season = Season::load(&data).unwrap();
-        for index in [0, 2] {
+        for index in [0, 1, 2, 8] {
             let lesson = Lesson::new(index).unwrap();
             let track = format!("track-{}_M", lesson.map());
             let stage = stage_data(&data, &track, 5).unwrap();
@@ -421,9 +423,12 @@ fn the_autopilot_drives_lessons_to_their_saved_verdicts() {
                 crate::autopilot::drive(live, &[], neutral, &stage, 150_000, None, None, &dir.join("drive.bin"))
                     .unwrap();
             assert_eq!(drove.end, "the race's end", "lesson {index}");
-            let file = rbr_formats::saves::SaveDir { path: dir.clone() }.load_profile("school").unwrap();
-            let grades = file.current().or(file.profiles.list.first()).unwrap().school;
-            assert!(grades[index as usize] > 0, "lesson {index}'s pass saved: {grades:?}");
+            // A fail writes no profile; lesson 8 only asserts the end reached.
+            if index != 8 {
+                let file = rbr_formats::saves::SaveDir { path: dir.clone() }.load_profile("school").unwrap();
+                let grades = file.current().or(file.profiles.list.first()).unwrap().school;
+                assert!(grades[index as usize] > 0, "lesson {index}'s pass saved: {grades:?}");
+            }
             std::fs::remove_dir_all(&dir).unwrap();
         }
     })

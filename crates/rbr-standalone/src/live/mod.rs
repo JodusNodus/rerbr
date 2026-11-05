@@ -133,6 +133,8 @@ pub struct Live<'a> {
     pending: Pending,
     /// The outside-assistance penalties the race clock added so far.
     penalties: f32,
+    /// The race's wetness (`Weather::wetness`, 0 dry).
+    wetness: u32,
     stopped: bool,
     /// The handles of the detachable car parts (the boot's image; none for a snapshot).
     detach: Vec<(u32, u32)>,
@@ -231,11 +233,17 @@ impl<'a> Live<'a> {
         let settled = settle(&playback, &mut game, &mut school, stage, go, now)?;
         let mut live =
             Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
+        live.wetness = race.weather.wetness;
         live.now = now;
         live.boot_now = now;
         live.initial_school.clone_from(&school);
         live.school = school;
         Ok(live)
+    }
+
+    /// The race's wetness (`Weather::wetness`, 0 dry), for the test pilot's grip.
+    pub fn wetness(&self) -> u32 {
+        self.wetness
     }
 
     /// The first frame's records, before anything drove: the countdown repeats them.
@@ -294,6 +302,7 @@ impl<'a> Live<'a> {
             control: [0; CONTROL_BYTES],
             pending: Pending::default(),
             penalties: 0.0,
+            wetness: 0,
             stopped: false,
             detach,
             track,

@@ -146,8 +146,10 @@ yet: the oracle run is open.
   the origin and they never ended). Both start facing the box, before the start on a two-record driveline; lesson
   10's map has no finish and its card a finish time from the first step.
 - Lesson sweep (autopilot, car 5, an NGP car 2/4/6 and an RSF pack): every lesson ends, by the school, a retire
-  latch or the finish marker; 0, 2, 10 and 11 pass, the others fail on the autopilot's time or lines. Slots with no
-  NGP car (here 0, 1, 3, 7) start the free lessons with the engine off; the launcher does not offer them.
+  latch or the finish marker; 0, 1, 2, 10 and 11 pass, the others fail on the autopilot's time or lines. Slots with
+  no NGP car (here 0, 1, 3, 7) start the free lessons with the engine off; the launcher does not offer them. Lesson
+  1 passes since the autopilot rides the playground fence's edge, holds its 90 km/h band and brakes hard for its
+  800 m kink; lesson 8's 15 s and 85-115 km/h band stay out of the test pilot's reach (ends with a recorded fail).
 - `SchoolIncident` reads its lead through the sub's words whatever it points at: a check lead is armed by its
   bounds (`IsArmed` on +0x14/+0x18). Inferred: no record has an untripped check lead with a zero bound.
 

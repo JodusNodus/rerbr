@@ -60,7 +60,8 @@ fn a_chicane_is_passed_prop_by_prop_and_slowly() {
     let driver = driver(&track, TOP_SPEED).with_obstacles(&[square(50.0, -1.0), square(61.0, 0.3)]);
     assert_eq!(driver.props.len(), 2);
     assert_eq!(driver.dodge(30.0, 45.0), 0.0);
-    assert_eq!(driver.dodge(40.0, 65.0), CLEAR);
+    // Both boxes fit around at once, so the target swings past both (not between them).
+    assert!((driver.dodge(40.0, 65.0) - (-1.0 - CLEAR)).abs() < 1e-4);
     assert!((driver.dodge(54.0, 70.0) - (0.3 - CLEAR)).abs() < 1e-4);
     assert_eq!(driver.target_speed(45.0), DODGE_TOP);
     assert_eq!(driver.target_speed(70.0), TOP_SPEED);
