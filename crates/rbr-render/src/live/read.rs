@@ -64,7 +64,7 @@ pub(super) struct LiveFrame {
 }
 
 /// One FRM1 frame and the HUD and damage records after it, the tagged records (`rbr_recording::live`; the viewer takes
-/// PTC1, PEV1, DET1, SND1, PCN1, SPL1, DSH1, CAM1, FLW1, FFB1, CLK1, HUB1, GBX1, SHF1, MNU1, SCH1, CDM1 and CTL1 and skips
+/// PTC1, PEV1, DET1, DOR1, SND1, PCN1, SPL1, DSH1, CAM1, FLW1, FFB1, CLK1, HUB1, GBX1, SHF1, MNU1, SCH1, CDM1 and CTL1 and skips
 /// the others)
 /// and the SCN1 scenery poses that end them, or `None` at the end of the stream.
 /// The payload periods of a frame that came back, from the payload it echoes (1 for one it cannot read).

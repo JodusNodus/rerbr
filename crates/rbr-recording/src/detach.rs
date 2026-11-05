@@ -52,8 +52,6 @@ pub struct PartPose {
 ///
 /// An entry is an attached door: its hinged body's slot (`CCar` +0x480 + 4 i) is still set. A detached door
 /// leaves the record, and the viewer keeps drawing it by its DET1 body.
-///
-/// The tag of the door angles record.
 pub const DOR1: [u8; 4] = *b"DOR1";
 /// The bytes of one door-angle entry.
 pub const DOOR_ENTRY_BYTES: usize = 8;

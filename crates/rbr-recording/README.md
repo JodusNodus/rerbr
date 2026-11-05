@@ -18,6 +18,7 @@ SCN1, which ends them. Readers skip tags they do not know.
 | `PTC1` | `particles` | each signalling wheel's `CSigTireParticles` (0xB0 bytes, up to 16) |
 | `PEV1` | `particles` | particle and light events (exhaust, lamps) |
 | `DET1` | `detach` | detached part poses |
+| `DOR1` | `detach` | attached doors' hinge angles |
 | `SND1` | `sound` | engine, drivetrain, tyre-noise, damage and sensor payloads |
 | `NSD1`, `FMB1` | `sound` | NGP sound words; the FMOD block |
 | `PCN1` | `pacenote` | the step's pace-note callouts |
