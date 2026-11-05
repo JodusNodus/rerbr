@@ -59,35 +59,19 @@ SOLID_MASK = [(0x10, 0x1C), (0x160, 0x16C), (0x8C, 0x90), (0x9C, 0xA0),
               (0x3B8, 0x3C0), (0x3C4, 0x3C8)]
 
 
-def fnv(data):
-    h = 0xCBF29CE484222325
-    for b in data:
-        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-    return h
-
-
 def pages(snap, at, n):
     data = snap.read(at, n)
-    return "fnv:%d:%s" % (n, ",".join("%016x" % fnv(data[i:i + PAGE]) for i in range(0, n, PAGE)))
-
-
-def connections(snap, first):
-    """The body event's connections from `first` on (0x18 bytes) and their targets' words at +0x10, as (address, size)."""
-    out = []
-    while first:
-        out += [(first, 0x18), (snap.u32(first + 0x10) + 0x10, 4)]
-        first = snap.u32(first + 4)
-    return out
+    return "fnv:%d:%s" % (n, ",".join("%016x" % replay.fnv1a64(data[i:i + PAGE]) for i in range(0, n, PAGE)))
 
 
 def body_event(snap):
     """The words the body event's emit reads, as (address, size)."""
     signal = snap.u32(SIGNALS) + BODY_EVENT
-    out = [(SIGNALS, 4), (signal, 12), (signal + 0x208, 4)] + connections(snap, snap.u32(signal + 0x208))
+    out = [(SIGNALS, 4), (signal, 12), (signal + 0x208, 4)] + replay.connections(snap, snap.u32(signal + 0x208))
     current = snap.u32(signal + 4)
     if current:
         by_type = signal + 8 + 0x10 * snap.u32(current)
-        out += [(current, 4), (by_type, 4)] + connections(snap, snap.u32(by_type))
+        out += [(current, 4), (by_type, 4)] + replay.connections(snap, snap.u32(by_type))
     return out
 
 
@@ -151,7 +135,7 @@ def main():
     for k in range(10000 - count):
         tail[0x30 * k + 0x24:0x30 * k + 0x30] = bytes(12)
     lines.append("drive_tail %d %#x fnv:%d:%s" % (count, line + 0x30 * count + 0x10, len(tail), ",".join(
-        "%016x" % fnv(tail[i:i + PAGE]) for i in range(0, len(tail), PAGE))))
+        "%016x" % replay.fnv1a64(tail[i:i + PAGE]) for i in range(0, len(tail), PAGE))))
 
     physics = snap.u32(PHYSICS)
     obj("physics", 0, physics, 0x40)
@@ -174,7 +158,7 @@ def main():
     lines.append("solid_mask 0 0 %s" % mask.hex())
     for k, o in enumerate(solids):
         data = bytes(0 if m else b for b, m in zip(snap.read(o, SOLID_SIZE), mask))
-        lines.append("solid %d %#x fnv:%d:%016x" % (k, o, SOLID_SIZE, fnv(data)))
+        lines.append("solid %d %#x fnv:%d:%016x" % (k, o, SOLID_SIZE, replay.fnv1a64(data)))
         obj("solid_link", k, o + 0x10, 0xC)
         obj("solid_cell", k, o + 0x160, 0xC)
         if snap.u32(o + 0x30):
