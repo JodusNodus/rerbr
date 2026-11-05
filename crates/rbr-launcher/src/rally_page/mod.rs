@@ -42,7 +42,7 @@ use rbr_championship::{ParkState, ProfileSeason, RallyStage, ServicePark, StageR
 use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::data::Data;
 use rbr_formats::saves::season::Season as SeasonSave;
-use rbr_formats::saves::{is_file_name_part, SaveDir};
+use rbr_formats::saves::{is_file_name_part, Error as SaveError, SaveDir};
 use rbr_formats::season_dat;
 use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::{CarriedDamage, Rules};
@@ -106,6 +106,8 @@ pub struct RallyPage {
     /// The damage a continued season carries into its rally.
     loaded_damage: Option<CarriedDamage>,
     pub profile: String,
+    /// Whether the profile named here has a saved season ([`RallyPage::has_saved_season`]).
+    saved_season: Option<(String, bool)>,
     /// The weather every stage of the rally runs in: the good or bad one of its map. `None` is the season's drawn
     /// forecast, as the game runs it.
     pub weather: Option<Preset>,
@@ -153,6 +155,7 @@ impl RallyPage {
             saved_setup: None,
             loaded_damage: None,
             profile: "player".into(),
+            saved_season: None,
             weather: None,
             run: None,
             championship: None,
@@ -230,6 +233,26 @@ impl RallyPage {
         self.saved_setup.take()
     }
 
+    /// Whether the profile has a saved season, from its file's read once per profile name (not a season load each
+    /// frame). A file that does not read counts as one, so Continue is offered and says why it fails.
+    fn has_saved_season(&mut self, here: &Path) -> bool {
+        if self.saved_season.as_ref().is_none_or(|(name, _)| *name != self.profile) {
+            let saved = match self.store(here).saves.load_profile(&self.profile) {
+                Ok(file) => file.season.is_some(),
+                Err(SaveError::Io { kind: std::io::ErrorKind::NotFound, .. } | SaveError::BadName(_)) => false,
+                Err(_) => true,
+            };
+            self.saved_season = Some((self.profile.clone(), saved));
+        }
+        self.saved_season.as_ref().is_some_and(|(_, saved)| *saved)
+    }
+
+    /// `--screenshot`: the start page as if the profile had a saved season or not.
+    pub fn screenshot_saved_season(&mut self, saved: bool) {
+        (self.run, self.championship, self.park) = (None, None, None);
+        self.saved_season = Some((self.profile.clone(), saved));
+    }
+
     /// The profile's season, if it has one.
     fn continue_season(&mut self, here: &Path, table: &Season) {
         let Ok((master, roster)) = &self.ai else { return };
@@ -298,6 +321,7 @@ impl RallyPage {
     fn save(&mut self) {
         let (Some(run), Ok((_, roster))) = (&self.run, &self.ai) else { return };
         if let Some(store) = &run.store {
+            self.saved_season = None;
             let damage = self.championship.as_ref().and_then(Championship::damage).cloned().unwrap_or_default();
             let after =
                 store::after_season(&run.save, &run.field, roster, &damage, self.last_tyre, false, &self.setup_text);
@@ -754,6 +778,24 @@ mod tests {
         assert_eq!((run.turn, run.save.position()), (Turn::Welcome, (1, 0)));
         assert!(matches!(page.championship.as_ref().map(|c| c.phase()), Some(RallyPhase::Service(_))));
         assert!(recce(&page));
+    }
+
+    /// The start page's check for a saved season: per profile name, and read again once a season is saved.
+    #[test]
+    fn a_saved_season_is_found_by_profile() {
+        let Some(data) = Data::from_env() else { return };
+        let table = Season::load(&data).unwrap();
+        let here = crate::test_dir("rally-saved-check");
+        let mut page = RallyPage::new(&data);
+        assert!(!page.has_saved_season(&here));
+        let store = page.store(&here);
+        page.new_season(&table, Some(store), 1234);
+        assert!(page.has_saved_season(&here));
+        page.profile = "other".into();
+        assert!(!page.has_saved_season(&here));
+        page.profile = "player".into();
+        assert!(page.has_saved_season(&here));
+        let _ = std::fs::remove_dir_all(&here);
     }
 
     /// What `rbr-standalone` leaves after a stage: the car's damage and a finish in `time`.

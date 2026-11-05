@@ -1,9 +1,9 @@
-//! The Championship page's drawing. With no season loaded: the profile with Continue, then the new season's options
-//! and New season. With one under way: the header (the rally, rally n of 6, the step: stage n of 6 or the service before
-//! it, the player's place), the card of the next step with its one primary button (the stage's tyres, setup and Drive;
-//! the welcome; the service park; the rally's end), the itinerary under it (stages and service stops, done, next, to
-//! come), and beside them the rally's standings, the season's points and the bulletins. Starting another season or
-//! loading the saved one is folded away under the itinerary.
+//! The Championship page's drawing. With no season loaded: the profile, Continue first when it has a saved season,
+//! then the new season's options and New season. With one under way: the header (the rally, rally n of 6, the step:
+//! stage n of 6 or the service before it, the player's place), the card of the next step with its one primary button
+//! (the stage's tyres, setup and Drive; the welcome; the service park; the rally's end), the itinerary under it (stages
+//! and service stops, done, next, to come), and beside them the rally's standings, the season's points and the
+//! bulletins. Starting another season or loading the saved one is folded away under the itinerary.
 
 use std::path::Path;
 
@@ -145,23 +145,31 @@ impl RallyPage {
         request
     }
 
-    /// No season loaded: the new season's options, New season and Continue.
+    /// No season loaded: Continue first when the profile has a saved season, then the new season's options and New
+    /// season (which replaces it).
     fn start_ui(&mut self, ui: &mut Ui, season: &Season, here: &Path, car_row: &mut dyn FnMut(&mut Ui, u32) -> bool) {
         let named = is_file_name_part(&self.profile);
+        let saved = named && self.has_saved_season(here);
         section(ui, "Championship");
         ui.colored_label(GREY, "Six rallies of six stages against the AI field, with service between stages.");
         ui.add_space(6.0);
-        // The profile names the save: Continue is beside it, New season (which replaces it) under its options.
         fields(ui, "season-profile", |ui| {
             ui.label("Profile").on_hover_text("The season is saved under this name");
             ui.horizontal(|ui| {
                 self.profile_edit(ui);
-                if ui.add_enabled(!self.driving && named, egui::Button::new("Continue saved season")).clicked() {
-                    self.continue_season(here, season);
+                if !saved {
+                    ui.colored_label(GREY, "no saved season");
                 }
             });
             ui.end_row();
         });
+        if saved {
+            ui.add_space(6.0);
+            let go = ui.horizontal(|ui| ui.add_enabled(!self.driving, start_button("Continue saved season")));
+            if go.inner.clicked() {
+                self.continue_season(here, season);
+            }
+        }
         if !self.status.is_empty() {
             ui.colored_label(WARN, &self.status);
         }
@@ -169,10 +177,14 @@ impl RallyPage {
         let startable = fields(ui, "season-new", |ui| self.options_rows(ui, car_row));
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            if ui.add_enabled(!self.driving && startable && named, start_button("New season")).clicked() {
+            let enabled = !self.driving && startable && named;
+            let button = if saved { egui::Button::new("New season") } else { start_button("New season") };
+            if ui.add_enabled(enabled, button).clicked() {
                 self.season_now(season, here);
             }
-            ui.colored_label(GREY, format!("replaces {}'s saved season", self.profile));
+            if saved {
+                ui.colored_label(GREY, format!("replaces {}'s saved season", self.profile));
+            }
         });
         ui.add_space(10.0);
         ui.colored_label(DIM, TIP);
