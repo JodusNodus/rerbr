@@ -3,10 +3,11 @@
 //! - pure models that turn one physics step's inputs (`rbr_recording::sound`, the SND1 record) into voice commands
 //!   ([`voice`]): the granular engine ([`engine`]: rpm slew, bank choice, crossfade, grains, the renderer), the gear
 //!   and diff whine, the turbo and the blow-off valve ([`car`]), the tyre loops and off-road rattles ([`tyre`]), the
-//!   impacts ([`impact`]), the suspension's squeaks and knocks ([`suspension`]), the broken driveshaft's clunks
-//!   ([`driveshaft`]), the exhaust pops, bangs and the engine fire ([`exhaust`]), the co-driver's pace notes,
-//!   countdown and damage calls ([`codriver`]) or a co-driver mod's calls ([`custom_codriver`]), the wind, birds,
-//!   siren and rain around the car ([`world`]), and the
+//!   impacts ([`impact`]), the tyres on grass and the vegetation against the body (ours, [`verge`]), the
+//!   suspension's squeaks and knocks ([`suspension`]), the broken driveshaft's clunks ([`driveshaft`]), the exhaust
+//!   pops, bangs and the engine fire ([`exhaust`]), the co-driver's pace notes, countdown and damage calls
+//!   ([`codriver`]) or a co-driver mod's calls ([`custom_codriver`]), the wind, birds, siren and rain around the car
+//!   ([`world`]), and the
 //!   rescue helicopter, bird hit and rally incident ([`scripted`]); [`Models`] runs them all on one step's [`Inputs`]
 //!   and the camera's [`Scene`];
 //! - the backend: the [`mixer`] plays the commands (engine stream, loops, one-shots, the in-car low-pass, the car
@@ -40,6 +41,7 @@ pub mod reflections;
 pub mod scripted;
 pub mod suspension;
 pub mod tyre;
+pub mod verge;
 pub mod voice;
 pub mod world;
 
@@ -64,6 +66,7 @@ pub use crate::scripted::Events;
 use crate::scripted::Scripted;
 use crate::suspension::Suspension;
 use crate::tyre::Tyres;
+use crate::verge::Verges;
 use crate::voice::Command;
 use crate::world::World;
 pub use crate::world::{Scene, Sky, Sphere};
@@ -91,6 +94,8 @@ fn ngp_call(code: u32) -> u32 {
 pub struct Models {
     pub car: Car,
     pub tyres: Tyres,
+    /// The tyres on grass and the vegetation against the body (ours, [`verge`]).
+    pub verges: Verges,
     pub impacts: Impacts,
     pub suspension: Suspension,
     pub drive_shafts: DriveShafts,
@@ -123,6 +128,7 @@ impl Models {
                 tyres.splash_samples = bank.splashes.len();
                 tyres
             },
+            verges: Verges::new(bank.branches.len()),
             impacts: Impacts::new(g.ranged, g.scream, bank.ranged.len(), bank.screams.len()),
             suspension: Suspension::new(
                 [g.squeak, g.suspension, g.ranged],
@@ -177,6 +183,7 @@ impl Models {
             (car_distance, scene.listener),
             || rng.rand(),
         ));
+        out.extend(self.verges.step(sound.speed, car_distance, STEP));
         out.extend(self.impacts.step(&sound.hit, inside, || rng.rand()));
         let wheels = std::array::from_fn(|k| tyre::distance(&sound.tyres[k], scene.listener));
         let (suspension, mut calls) = self.suspension.step(sound, inside, wheels, STEP, || rng.rand());
@@ -295,6 +302,12 @@ impl Player {
         self.models.effects.set_glass(glass);
     }
 
+    /// The car at the verge as the renderer sees it (ours, [`verge::Verge`]); `None`, the default, plays nothing of
+    /// it.
+    pub fn set_verge(&mut self, verge: Option<verge::Verge>) {
+        self.models.verges.set(verge);
+    }
+
     /// One physics step's inputs.
     pub fn step(&mut self, inputs: &Inputs) {
         let commands = self.models.step(inputs, &self.scene);
@@ -407,5 +420,51 @@ mod tests {
     #[test]
     fn the_damper_and_fire_calls_are_swapped_only() {
         assert_eq!([7, 6, 8].map(ngp_call), [6, 7, 8]);
+    }
+
+    /// The verge adds its own voices and leaves the stones' timing, samples, gains and pitches as they were: it takes
+    /// none of the shared random numbers.
+    #[test]
+    fn the_verge_keeps_the_stone_hits() {
+        let Some(data) = Data::from_env() else {
+            eprintln!("skipping: RBR_DATA is not set");
+            return;
+        };
+        let bank = CarBank::load(&data, 0).unwrap();
+        // Every wheel on surface 1 (gravel first) at 15 m/s, a force sum of 2 (a hit every 24 frames, 1.02's rate).
+        let mut inputs = Inputs::default();
+        inputs.sound.speed = 15.0;
+        for block in &mut inputs.sound.tyres {
+            (block[0x14], block[0x17], block[9], block[2]) = (1, 1, 15f32.to_bits(), 2f32.to_bits());
+        }
+        let mut touches = [None; verge::TOUCHES];
+        touches[0] = Some(verge::Touch { id: 3, depth: 0.4, density: 1.0, branches: true });
+        let verge = verge::Verge { grass: [1.0; 4], touches };
+        let run = |with: bool| {
+            let mut models = Models::new(&bank, Sky::default(), Vec::new());
+            (0..600)
+                .flat_map(|step| {
+                    // A new frame every other step, off and on the tree.
+                    if with && step % 2 == 0 {
+                        let mut v = verge;
+                        if step % 100 >= 50 {
+                            v.touches = [None; verge::TOUCHES];
+                        }
+                        models.verges.set(Some(v));
+                    }
+                    models.step(&inputs, &Scene::default())
+                })
+                .collect::<Vec<_>>()
+        };
+        let (without, with) = (run(false), run(true));
+        let stones = |c: &[Command]| -> Vec<Command> {
+            c.iter().filter(|c| matches!(c, Command::Hit { shot: voice::Shot::Grus(_), .. })).copied().collect()
+        };
+        assert!(!stones(&without).is_empty());
+        assert_eq!(stones(&without), stones(&with));
+        let branches = with.iter().filter(|c| matches!(c, Command::Hit { shot: voice::Shot::Branch(_), .. })).count();
+        assert_eq!(branches, 6);
+        let grass = |c: &Command| matches!(c, Command::Loop { voice: voice::Loop::Grass, gain, .. } if *gain > 0.0);
+        assert!(with.iter().any(grass) && !without.iter().any(grass));
     }
 }

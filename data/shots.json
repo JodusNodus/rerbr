@@ -5,7 +5,7 @@
   "car": "Fiat 131 Abarth Grp4",
   "view": "cockpit-clean",
   "clock": "17:00",
-  "at": 5400
+  "at": 5821
  },
  {
   "name": "day-gabiria-m3-flyby",
@@ -13,7 +13,7 @@
   "car": "BMW M3 E30 GrpA",
   "view": "flyby",
   "clock": "11:00",
-  "at": 4900
+  "at": 5270
  },
  {
   "name": "day-sipirkakim-clio-flyby",
@@ -21,7 +21,7 @@
   "car": "Renault Clio Rally3",
   "view": "flyby",
   "clock": "13:00",
-  "at": 6500
+  "at": 7012
  },
  {
   "name": "day-621-i20-cockpit",
@@ -40,7 +40,7 @@
   "car": "Ford Fiesta Rally2",
   "view": "cockpit-clean",
   "clock": "08:30",
-  "at": 5700
+  "at": 6308
  },
  {
   "name": "fog-532-208-flyby",
@@ -52,7 +52,7 @@
    "--fog",
    "heavy"
   ],
-  "at": 5700
+  "at": 6311
  },
  {
   "name": "fog-621-yaris-chase",
@@ -64,7 +64,7 @@
    "--fog",
    "heavy"
   ],
-  "at": 4900
+  "at": 4915
  },
  {
   "name": "fog-alpes-gc8-cockpit",
@@ -72,7 +72,7 @@
   "car": "Subaru Impreza GC8 555 GrpA",
   "view": "cockpit-clean",
   "clock": "08:00",
-  "at": 5700
+  "at": 5917
  },
  {
   "name": "fog-gabiria-m3-cockpit",
@@ -84,7 +84,7 @@
    "--fog",
    "heavy"
   ],
-  "at": 4900
+  "at": 5270
  },
  {
   "name": "fog-luceram-gc8-chase",
@@ -101,7 +101,7 @@
    "--fog",
    "light"
   ],
-  "at": 5700
+  "at": 7422
  },
  {
   "name": "fog-odry-clio-chase",
@@ -113,7 +113,7 @@
    "--fog",
    "heavy"
   ],
-  "at": 5700
+  "at": 6053
  },
  {
   "name": "fog-semetin-escort-chase",
@@ -125,7 +125,7 @@
    "--fog",
    "heavy"
   ],
-  "at": 4900
+  "at": 5387
  },
  {
   "name": "golden-532-clio-cockpit",
@@ -133,7 +133,7 @@
   "car": "Renault Clio Rally3",
   "view": "cockpit-clean",
   "clock": "18:30",
-  "at": 4900
+  "at": 5398
  },
  {
   "name": "golden-532-fiesta-chase",
@@ -141,7 +141,7 @@
   "car": "Ford Fiesta Rally2",
   "view": "chase",
   "clock": "18:30",
-  "at": 4400
+  "at": 4809
  },
  {
   "name": "golden-580-208-chase",
@@ -149,7 +149,7 @@
   "car": "Peugeot 208 Rally4",
   "view": "chase",
   "clock": "18:30",
-  "at": 4900
+  "at": 5610
  },
  {
   "name": "golden-621-yaris-flyby",
@@ -157,7 +157,7 @@
   "car": "Toyota GR Yaris Rally2",
   "view": "flyby",
   "clock": "18:45",
-  "at": 4900
+  "at": 4915
  },
  {
   "name": "golden-gabiria-escort-chase",
@@ -165,7 +165,7 @@
   "car": "Ford Escort Mk II RS Grp4",
   "view": "chase",
   "clock": "19:00",
-  "at": 3800
+  "at": 4021
  },
  {
   "name": "golden-komarov-clio-chase",
@@ -173,7 +173,7 @@
   "car": "Renault Clio Rally3",
   "view": "chase",
   "clock": "19:00",
-  "at": 4900
+  "at": 5243
  },
  {
   "name": "golden-luceram-fiesta-flyby",
@@ -181,7 +181,7 @@
   "car": "Ford Fiesta Rally2",
   "view": "flyby",
   "clock": "18:45",
-  "at": 5700
+  "at": 6308
  },
  {
   "name": "golden-odry-gc8-chase",
@@ -189,7 +189,7 @@
   "car": "Subaru Impreza GC8 555 GrpA",
   "view": "chase",
   "clock": "18:30",
-  "at": 5700
+  "at": 6104
  },
  {
   "name": "night-gabiria-fiesta-chase",
@@ -197,7 +197,7 @@
   "car": "Ford Fiesta Rally2",
   "view": "chase",
   "clock": "22:15",
-  "at": 5700
+  "at": 6200
  },
  {
   "name": "night-luceram-131-cockpit",
@@ -211,7 +211,7 @@
    "precipitation": "heavy"
   },
   "clock": "22:30",
-  "at": 3600
+  "at": 4269
  },
  {
   "name": "night-sardian-clio-cockpit",
@@ -219,7 +219,7 @@
   "car": "Renault Clio Rally3",
   "view": "cockpit-clean",
   "clock": "23:00",
-  "at": 4900
+  "at": 5220
  },
  {
   "name": "night-sardian-m3-chase",
@@ -227,7 +227,7 @@
   "car": "BMW M3 E30 GrpA",
   "view": "chase",
   "clock": "23:00",
-  "at": 4900
+  "at": 5242
  },
  {
   "name": "rain-sipirkakim-gc8-chase",
@@ -238,7 +238,7 @@
    "weather": "bad",
    "precipitation": "heavy"
   },
-  "at": 5200
+  "at": 5825
  },
  {
   "name": "rain-luceram-gc8-cockpit",
@@ -252,7 +252,7 @@
    "precipitation": "heavy"
   },
   "clock": "10:00",
-  "at": 6200
+  "at": 8165
  },
  {
   "name": "rain-luceram-gc8-flyby",
@@ -266,7 +266,7 @@
    "precipitation": "heavy"
   },
   "clock": "10:30",
-  "at": 5700
+  "at": 7422
  },
  {
   "name": "snow-komarov-clio-chase",
@@ -276,7 +276,7 @@
   "settings": {
    "weather": "bad"
   },
-  "at": 4900
+  "at": 5243
  },
  {
   "name": "snow-komarov-m3-flyby",
@@ -286,7 +286,7 @@
   "settings": {
    "weather": "bad"
   },
-  "at": 4100
+  "at": 4281
  },
  {
   "name": "snow-peklo-escort-flyby",
@@ -296,7 +296,7 @@
   "settings": {
    "weather": "bad"
   },
-  "at": 4900
+  "at": 4980
  },
  {
   "name": "snow-peklo-gc8-cockpit",
@@ -310,17 +310,27 @@
    "--precipitation",
    "moderate"
   ],
-  "at": 5700
+  "at": 6202
  },
  {
-  "name": "snow-peklo-yaris-chase",
-  "stage": 133,
+  "name": "golden-falstone-yaris-flyby",
+  "stage": 103,
   "car": "Toyota GR Yaris Rally2",
-  "view": "chase",
+  "view": "flyby",
   "settings": {
-   "weather": "bad"
+   "weather": "bad",
+   "wetness": "wet",
+   "clouds": "light",
+   "precipitation": "none"
   },
-  "at": 4900
+  "clock": "17:20",
+  "at": 9000,
+  "args": [
+   "--fov",
+   "60",
+   "--flyby",
+   "16,4,1.2"
+  ]
  },
  {
   "name": "snow-pian-fiesta-chase",
@@ -334,7 +344,7 @@
    "--precipitation",
    "heavy"
   ],
-  "at": 4900
+  "at": 5140
  },
  {
   "name": "snow-sturec-208-chase",
@@ -344,7 +354,7 @@
   "settings": {
    "weather": "bad"
   },
-  "at": 5700
+  "at": 6006
  },
  {
   "name": "golden-pengonpohja-quattro-flyby",
@@ -355,7 +365,7 @@
    "clouds": "partly"
   },
   "clock": "05:30",
-  "at": 10480,
+  "at": 11448,
   "args": [
    "--fov",
    "60",
@@ -372,6 +382,6 @@
    "clouds": "clear"
   },
   "clock": "17:30",
-  "at": 2220
+  "at": 2238
  }
 ]

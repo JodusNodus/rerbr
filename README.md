@@ -20,16 +20,14 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 |---|---|
 | ![An Audi quattro A2 Group B in a bend at a junction on Pengonpohja, the road signs and tape behind it, seen from a wide fly-by camera](docs/shots/golden-pengonpohja-quattro-flyby.jpg) | ![The cockpit of an Audi quattro A2 Group B passing a sunlit red barn on Pirttikulma in the afternoon, the road ahead through the windscreen](docs/shots/day-pirttikulma-quattro-cockpit.jpg) |
 | Audi quattro A2 Group B (model by Shenshee), Pengonpohja (stage by Justup & BTBfin) | Audi quattro A2 Group B (model by Shenshee), Pirttikulma (stage by Justup & BTBfin) |
-| ![A BMW M3 E30 Group A on Gabiria Legazpi, seen from a fly-by camera](docs/shots/day-gabiria-m3-flyby.jpg) | ![A Subaru Impreza GC8 555 throwing up spray in heavy rain on Luceram Col Saint Roch](docs/shots/rain-luceram-gc8-flyby.jpg) |
-| BMW M3 E30 Group A (model by atiwrc), Gabiria Legazpi (stage by Jan Kaderabek & Lorenzo Clerici) | Subaru Impreza GC8 555 Group A (model by gonzo_kool), Luceram Col Saint Roch (stage by Casgra11) |
-| ![A Toyota GR Yaris Rally2 in fog on Comb I](docs/shots/fog-621-yaris-chase.jpg) | ![A Ford Escort Mk II RS Group 4 on a snowy Peklo Snow](docs/shots/snow-peklo-escort-flyby.jpg) |
-| Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) | Ford Escort Mk II RS Group 4 (model by Ha3aP, fixed by WorkerBee), Peklo Snow (stage by Miro Kurek) |
-| ![A Ford Fiesta Rally2 at night on Gabiria Legazpi, the headlights lighting the road and the spectators](docs/shots/night-gabiria-fiesta-chase.jpg) | ![A Subaru Impreza GC8 555 in heavy rain on Sipirkakim, Japan](docs/shots/rain-sipirkakim-gc8-chase.jpg) |
-| Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Gabiria Legazpi (stage by Jan Kaderabek & Lorenzo Clerici) | Subaru Impreza GC8 555 Group A (model by gonzo_kool), Sipirkakim, Japan |
-| ![A Toyota GR Yaris Rally2 throwing up dust in the evening sun on Comb I](docs/shots/golden-621-yaris-flyby.jpg) | ![The cockpit of a Renault Clio Rally3 on Wythop I in the evening sun, the road seen through the windscreen](docs/shots/golden-532-clio-cockpit.jpg) |
-| Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) | Renault Clio Rally3 (model by DMRally74), Wythop I (stage by Edd Hartley) |
-| ![The cockpit of a Subaru Impreza GC8 555 in fog on Alpes Rally, the road fading into the haze](docs/shots/fog-alpes-gc8-cockpit.jpg) | ![A Toyota GR Yaris Rally2 on the snow of Peklo Snow](docs/shots/snow-peklo-yaris-chase.jpg) |
-| Subaru Impreza GC8 555 Group A (model by gonzo_kool), Alpes Rally (stage by DmRally) | Toyota GR Yaris Rally2 (model by Ha3aP), Peklo Snow (stage by Miro Kurek) |
+| ![A Subaru Impreza GC8 555 throwing up spray in heavy rain on Luceram Col Saint Roch](docs/shots/rain-luceram-gc8-flyby.jpg) | ![A Toyota GR Yaris Rally2 in fog on Comb I](docs/shots/fog-621-yaris-chase.jpg) |
+| Subaru Impreza GC8 555 Group A (model by gonzo_kool), Luceram Col Saint Roch (stage by Casgra11) | Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) |
+| ![A Ford Escort Mk II RS Group 4 on a snowy Peklo Snow](docs/shots/snow-peklo-escort-flyby.jpg) | ![A Ford Fiesta Rally2 at night on Gabiria Legazpi, the headlights lighting the road and the spectators](docs/shots/night-gabiria-fiesta-chase.jpg) |
+| Ford Escort Mk II RS Group 4 (model by Ha3aP, fixed by WorkerBee), Peklo Snow (stage by Miro Kurek) | Ford Fiesta Rally2 (model by G. Rodriguez & D. Antonelli), Gabiria Legazpi (stage by Jan Kaderabek & Lorenzo Clerici) |
+| ![A Subaru Impreza GC8 555 in heavy rain on Sipirkakim, Japan](docs/shots/rain-sipirkakim-gc8-chase.jpg) | ![A Toyota GR Yaris Rally2 throwing up dust in the evening sun on Comb I](docs/shots/golden-621-yaris-flyby.jpg) |
+| Subaru Impreza GC8 555 Group A (model by gonzo_kool), Sipirkakim, Japan | Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) |
+| ![The cockpit of a Renault Clio Rally3 on Wythop I in the evening sun, the road seen through the windscreen](docs/shots/golden-532-clio-cockpit.jpg) | ![A Toyota GR Yaris Rally2 splashing through the puddles of a wet Falstone II in the low evening sun, seen from a wide fly-by camera](docs/shots/golden-falstone-yaris-flyby.jpg) |
+| Renault Clio Rally3 (model by DMRally74), Wythop I (stage by Edd Hartley) | Toyota GR Yaris Rally2 (model by Ha3aP), Falstone II, Great Britain |
 | ![The cockpit of a Fiat 131 Abarth Group 4 at night in the rain on Luceram Col Saint Roch, its dials lit red](docs/shots/night-luceram-131-cockpit.jpg) | ![A Renault Clio Rally3 in the low evening sun on Komarov Snow](docs/shots/golden-komarov-clio-chase.jpg) |
 | Fiat 131 Abarth Group 4 (model by DMRally74), Luceram Col Saint Roch (stage by Casgra11) | Renault Clio Rally3 (model by DMRally74), Komarov Snow (stage by Miro Kurek, Myra43 & Napa RBR Cup) |
 | ![The cockpit of a Ford Fiesta Rally2 on Luceram Col Saint Roch in the morning sun, the road ahead seen through the windscreen](docs/shots/day-luceram-fiesta-cockpit.jpg) | ![A Ford Escort Mk II RS Group 4 on a village lane in the morning mist on Semetin 2009](docs/shots/fog-semetin-escort-chase.jpg) |
@@ -186,6 +184,10 @@ captions above credit the car models and the community stages shown.
   and [Mirandat7](https://freesound.org/people/Mirandat7/sounds/614993/) (CC0), and
   [tosha73](https://freesound.org/people/tosha73/sounds/547356/) (CC BY 4.0) on Freesound
   ([`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
+- Verge sounds: recordings by [Nox_Sound](https://freesound.org/people/Nox_Sound/sounds/559082/),
+  [kyles](https://freesound.org/people/kyles/sounds/637547/) and worthahep88
+  ([1](https://freesound.org/people/worthahep88/sounds/319208/), [2](https://freesound.org/people/worthahep88/sounds/319215/))
+  on Freesound (CC0; [`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
 
 ## License
 

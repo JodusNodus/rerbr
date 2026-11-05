@@ -53,11 +53,12 @@ Mechanics in `engine.rs` (inputs, bank, slew, crossfade, grains, `MixScale`, out
   roadside instead of 1.02's fixed 1.6/1.4 m (`rbr_render::roadside` probes it after each frame's step, `Scene.roadside`
   carries it, `reflections::side_gain`/`side_cutoff`/`side_delay` map it; `viewer --no-roadside` and a missing probe
   keep 1.02's). Probe: the `.trk` scenery placements as upright cylinders (surface id sets the hardness; bushes,
-  `Bendable_Tree`, spectators and cones left out) summed in a 120° lobe each side to 35 m, plus 4 `.col` rays a side
-  (square of the face's cosine, so the road and gentle slopes count for nothing) and a ceiling segment. Delay is the
-  round trip, gain `4.5 * size * hardness * min(1, 5 / d)` capped at 2, cutoff 1.2-6 kHz by hardness halved by 40 m,
-  under 750 Hz in the car; glides 30 ms (delay, slew 0.16 sample/sample) and 25 ms (gain), a jump over 1.5 m of path
-  crossfades in 20 ms. Outside cameras: the same from the car, sides as the camera faces.
+  `Bendable_Tree`, spectators and cones left out; the index keeps the first two for the verge) summed in a 120° lobe
+  each side to 35 m, plus 4 `.col` rays a side (square of the face's cosine, so the road and gentle slopes count for
+  nothing) and a ceiling segment. Delay is the round trip, gain `4.5 * size * hardness * min(1, 5 / d)` capped at 2,
+  cutoff 1.2-6 kHz by hardness halved by 40 m, under 750 Hz in the car; glides 30 ms (delay, slew 0.16 sample/sample)
+  and 25 ms (gain), a jump over 1.5 m of path crossfades in 20 ms. Outside cameras: the same from the car, sides as the
+  camera faces.
 - Roadside evidence (scratch, not in code): probe 7-11 us mean, 13-23 us p99, under 0.1 ms worst a call over 32 000
   poses (retail, release). Along the retail drivelines at 22 m/s the in-car mean side gain is about 0.9 on forest stages
   (35_N, 22_N, 4x up to 1.2 on Mont Blanc's walls), 0.1 on 66_E (80 % open) and 0.4-0.8 elsewhere, against 1.02's 1;
@@ -112,6 +113,23 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   chase mix, +1 in the car; the wet gravel hiss 10-13 dB under the tyres; without water, output identical.
 - Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).
+- Verge (ours, 2026-11-05, `verge.rs`): 1.02 has no grass, bush or branch sounds. The renderer's `rbr_render::verge`
+  gives each frame each wheel's share on grass (the tyre payload's two surfaces' `Grass_*` blend) and the bushes and
+  bendable trees the body is in (`rbr_render::sound::verge`, `Player::set_verge`; without it nothing plays): the
+  roadside index keeps their `.trk` placements (`Growth`, left out of the echoes), the body a 4 x 1.8 m box from 0.35 m
+  below to 0.9 m above the car's centre, each placement widened by 0.5 m of foliage (the meshes are cores and trunks,
+  0.1-0.4 m across). Grass loop `2 * sqrt(share / 4)` over 1.5-20 m/s, brush loop `1.4 * min(sum(density * depth /
+  0.5 m), 1)` over 0.5-12 m/s, both pitched 0.8-1.2 and 0.85-1.15 to 30 m/s, falling with 150 ms; a hit on each new
+  bendable tree (bush: half times its density) over 2-20 m/s, at most 2 a frame, four samples in turn (no random
+  numbers, no mixer variation). Loops through the cabin low-pass, hits through the stones' 2.5 kHz shell filter (the
+  cabin's 1 kHz left them 30 dB under the mix), all at the tyres' distance gain. Stones: no CC0/CC-BY recording of
+  stones on an underbody or arch was clean enough (the interior and tyre-mic gravel drives carry the road's roar under
+  every tick), so the retail `IMPACT::GRUS` stay. Away from the verge the output is byte-identical to main (rbr-sound
+  binary and the verge path with an empty verge, 61_M autopilot, chase and cockpit); the hits count under the sound
+  limit, so in a crash that saturates it they change which stones play. Probe 0.7-1.2 us mean, 1.3-3.5 us p99 a frame
+  (retail, release); the echoes' probe unchanged (15.8 vs 16.0 us on 42_M). Retail roadside vegetation is sparse near
+  the drivelines (42_M: 5 placements within 6 m of the autopilot's first 60 s), so most corners cut over grass alone
+  (not in code).
 
 ## Suspension and driveshaft
 

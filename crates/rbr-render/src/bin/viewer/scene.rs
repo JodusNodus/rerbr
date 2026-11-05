@@ -76,8 +76,11 @@ pub struct Scene {
     pub cabin_mask: Option<rbr_render::particles::cabin::CabinMask>,
     /// The grass streamed about the eye (`--enhance grass`, [`rbr_render::grass`]).
     pub grass: Option<std::sync::Arc<rbr_render::grass::Field>>,
-    /// The stage's roadside the engine's reflections follow (`rbr_render::roadside`), with a drive.
+    /// The stage's roadside (`rbr_render::roadside`), with a drive: the vegetation the body brushes
+    /// (`rbr_render::verge`) and, with `echoes`, what the engine's reflections follow.
     pub roadside: Option<rbr_render::roadside::Roadside>,
+    /// The engine's reflections follow the roadside (not `--no-roadside`).
+    pub echoes: bool,
 }
 
 impl Scene {
@@ -229,6 +232,7 @@ fn load_scene<'scope, 'env>(
                 cabin_mask: None,
                 grass: None,
                 roadside: None,
+                echoes: args.roadside,
             })
         }
         (stage_name, car_name) => {
@@ -357,8 +361,7 @@ fn load_scene<'scope, 'env>(
                         school_demo = demo;
                         let mut loaded = Playback::load(data, car_name, &stage, &model, &damage, drive)?;
                         let probe = probe.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-                        roadside =
-                            args.roadside.then(|| rbr_render::roadside::Roadside::load(data, name, probe.clone()));
+                        roadside = Some(rbr_render::roadside::Roadside::load(data, name, probe.clone()));
                         if let Some(characters) = &mut characters {
                             characters.set_probe(probe.clone());
                         }
@@ -490,6 +493,7 @@ fn load_scene<'scope, 'env>(
                 cabin_mask,
                 grass,
                 roadside,
+                echoes: args.roadside,
             })
         }
     }

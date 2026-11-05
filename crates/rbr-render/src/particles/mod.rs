@@ -194,6 +194,8 @@ pub struct Particles {
     wheel_spray: Option<WheelSpray>,
     /// Each wheel's water at the last frame ([`wheel_spray::water`]), for the sound.
     water: [wheel_spray::Water; 4],
+    /// Each wheel's share on grass at the last frame ([`crate::verge::grass`]), for the sound.
+    grass: [f32; 4],
 }
 
 impl Particles {
@@ -270,6 +272,7 @@ impl Particles {
             dust: wheel_spray::NEUTRAL_DUST,
             wheel_spray: None,
             water: Default::default(),
+            grass: [0.0; 4],
         }))
     }
 
@@ -277,6 +280,11 @@ impl Particles {
     /// puddles or film).
     pub fn wheel_water(&self) -> [wheel_spray::Water; 4] {
         self.water
+    }
+
+    /// Each wheel's share on grass at the last frame ([`crate::verge::grass`]).
+    pub fn wheel_grass(&self) -> [f32; 4] {
+        self.grass
     }
 
     /// The wheel spray's dust colour ([`wheel_spray::dust`]).
@@ -425,6 +433,7 @@ impl Particles {
         for p in &payloads {
             self.car.tyre_water(p.splash);
         }
+        self.grass = crate::verge::grass(&payloads);
         let exhausts = events.iter().filter(|e| matches!(e, Event::Exhaust { .. })).count();
         for event in events {
             self.event(event, &pose);

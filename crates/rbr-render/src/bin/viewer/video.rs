@@ -142,6 +142,11 @@ pub fn render(
                 let helicopter = scene.characters.as_ref().and_then(|c| c.rescue_position());
                 audio.player.set_water(scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
                 audio.player.set_glass(scene.glass.as_mut().map(rbr_render::sound::glass));
+                if let Some(playback) = &scene.playback {
+                    let particles = scene.particles.as_ref().map(|p| &p.particles);
+                    let verge = rbr_render::sound::verge(particles, scene.roadside.as_ref(), &playback.sample().car);
+                    audio.player.set_verge(verge);
+                }
                 audio.step(audio_scene(scene, args, shown), pending, &rbr_render::sound::events(&events, helicopter));
                 audio.samples(periods)?;
             }
@@ -339,7 +344,7 @@ fn audio_scene(scene: &Scene, args: &Args, shown: Shown) -> AudioScene {
                 &playback.sample().car,
                 shown.car_view().interior(),
                 true,
-                scene.roadside.as_ref(),
+                scene.roadside.as_ref().filter(|_| scene.echoes),
             )
         }
         _ => AudioScene::default(),
