@@ -118,7 +118,11 @@ impl Models {
         let g = bank.gains;
         Models {
             car: Car::new(g),
-            tyres: Tyres::new(g.tyre, g.offroad, bank.grus.len(), bank.road_surfaces.clone()),
+            tyres: {
+                let mut tyres = Tyres::new(g.tyre, g.offroad, bank.grus.len(), bank.road_surfaces.clone());
+                tyres.thump_samples = bank.bottomings.len();
+                tyres
+            },
             impacts: Impacts::new(g.ranged, g.scream, bank.ranged.len(), bank.screams.len()),
             suspension: Suspension::new(
                 [g.squeak, g.suspension, g.ranged],
@@ -277,6 +281,11 @@ impl Player {
         if let Ok(mut mixer) = self.mixer.lock() {
             device::Render::render(&mut *mixer, out);
         }
+    }
+
+    /// Each wheel's water as the renderer sees it (ours, [`tyre::Water`]); `None`, the default, plays 1.02's splash.
+    pub fn set_water(&mut self, water: Option<[tyre::Water; 4]>) {
+        self.models.tyres.set_water(water);
     }
 
     /// One physics step's inputs.

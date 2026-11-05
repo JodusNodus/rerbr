@@ -69,7 +69,19 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   the table's at 72 km/h (wheel speed) linearly to +20 % at 180 km/h, held above; level, rumble, stones and outside
   cameras unchanged. Speed ramp (tyre layer alone, gravel and tarmac): commanded gain identical, output level -0.2 to
   -0.3 dB from 140 km/h (the cabin low-pass), spectral centroid 717 to 823-853 Hz (scratch render, not in code).
-- The splash is 0 in every drive tried, so no wetness voice is checked. Lancer leaving the road at 69.9 s, in the
+- Water (ours, 2026-11-05, `tyre::Water`): 1.02's splash is 0 in every drive tried, so the wetness voice now plays
+  the renderer's water per wheel (`wheel_spray::water`, the spray's own: puddles with `--enhance wet`, the wet tarmac
+  film, the water surface; `rbr_render::sound::water`, `Player::set_water`; without it, 1.02's splash alone). The
+  only retail water sample is `Surfaces/Normal/water.wav` (`TIRE::SURFACES` NormalWater and SkidWater, a steady
+  1.24 s swish); the surface loops have no wet variants (the table maps wet surfaces to gravel, tarmac or snow).
+  Puddle depth is the spray's plume depth (`wheel_spray::puddle`, standing water 0.15 to 0.6; a rut's 0.08 film is 0):
+  running in gushes by the depth's rise times the speed (2 to 15 m/s) and thumps with `CAR::SUSPENSION` (pitch 0.75
+  to 0.55) once the rise ends; in it a swish by depth and speed; on a wet road a hiss by wetness squared (damp a
+  quarter) over 2 to 25 m/s, 0.6 of the level and 0.78 of the pitch off tarmac. The voice takes the tyres' distance
+  gain (1.02: flat) and in the car the cabin low-pass. Autopilot drive on wet 54O, Corolla (`/tmp/water-sound/`, not
+  kept): a puddle's gush at the tyre layer's level, the wet gravel hiss 11-13 dB under it; outside the water,
+  output identical.
+- Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).
 
 ## Suspension and driveshaft
@@ -150,7 +162,7 @@ come from the retail `audio.dat` (`audio.dat.disabled` in RSF installs).
 - Whether 1.02 on current Windows takes the tyres' software path.
 - The sound limit's count: 9 against the live list's 11.
 - HUD countdown against the gameplay start; why a `--boot` drive starts below 0.
-- What writes the splash (`+0x98`); ignition, dog rings, cooler and `EngineNoise p[5]`/`p[7]` never seen live.
+- What writes the splash (`+0x98`); water against the floor through deep fords (the swish at full depth stands in); ignition, dog rings, cooler and `EngineNoise p[5]`/`p[7]` never seen live.
 - `E31Speech +0x95` as the idle flag (inferred).
 - Wine's constant-power 3D panning against 2D speech.
 - FMOD: region end rule, async and loop flags, parameter defaults, 3D attributes, an A/B against NGP.

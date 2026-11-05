@@ -152,6 +152,12 @@ const BOW_MIST_RATE: f32 = 40.0;
 const BOW_INWARD: f32 = 0.25;
 /// The standing water over which a front tyre's plume grows from nothing (a wet rut's film) to full (a puddle).
 const BOW_WATER: [f32; 2] = [0.15, 0.6];
+/// How much of a puddle the standing water `standing` is, 0 (a wet rut's film) to 1 ([`BOW_WATER`]): the front tyres'
+/// plume and the sound's splash both take it.
+pub fn puddle(standing: f32) -> f32 {
+    smoothstep(BOW_WATER, standing)
+}
+
 /// The splats of it that land on the windscreen a second, a front tyre at full speed (`Thrown::bow`).
 const BOW_SPLATS: f32 = 6.0;
 /// A front tyre entering a puddle at speed throws this many clumps (and half as much mist) at once, and this many
@@ -174,6 +180,8 @@ pub struct WheelSpray {
     air: Option<Vec3>,
     /// Each wheel's standing water at its last frame, for the burst on entering it.
     standing: [f32; 4],
+    /// Each wheel's water at the last frame ([`water`]).
+    water: [Water; 4],
     /// Whether the renderer draws puddles to splash through.
     puddles: bool,
     /// Whether wet tarmac carries the renderer's film (wet weather with `--enhance wet`).
@@ -181,6 +189,54 @@ pub struct WheelSpray {
     rng: Rng,
     /// The front tyres' throws draw from their own, so the rest of the spray is as without them.
     front_rng: Rng,
+}
+
+/// A wheel's water for a frame ([`water`]): the standing water under it (0 to 1) and its ground. Shared with the sound
+/// (`crate::sound::water`), so what is heard matches what the spray throws.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Water {
+    pub standing: f32,
+    pub ground: Material,
+}
+
+/// Each wheel's [`Water`] from its frame's payloads (the last of a wheel's), on a car at `pose`; `puddles` when the
+/// renderer draws them, `film` its wet tarmac. A wheel off the ground, or on ground that throws nothing, has none.
+pub fn water(payloads: &[TyreParticles], pose: &Pose, puddles: bool, film: bool) -> [Water; 4] {
+    let level = puddle_level(pose);
+    let mut out = [Water::default(); 4];
+    for p in payloads {
+        if let Some(w) = wheel_water(p, level, puddles, film) {
+            out[p.wheel as usize] = w;
+        }
+    }
+    out
+}
+
+/// How level the car stands for puddles to lie under it: 1 on level ground, 0 on a slope ([`ground::PUDDLE_GRADE`]).
+fn puddle_level(pose: &Pose) -> f32 {
+    let grade = pose.up.truncate().length() / pose.up.z.max(1e-3);
+    1.0 - smoothstep(ground::PUDDLE_GRADE, grade)
+}
+
+/// The water under the wheel of payload `p` at puddle level `level` ([`puddle_level`]); `None` off the ground or on
+/// ground that throws nothing.
+fn wheel_water(p: &TyreParticles, level: f32, puddles: bool, film: bool) -> Option<Water> {
+    let m = ground::material(p.surface());
+    if !p.contact || p.wheel >= 4 || m.kind == Kind::None {
+        return None;
+    }
+    let at = Vec3::from(p.centre());
+    let puddle = if film && m.wet >= 1.0 && m.kind == Kind::Tarmac {
+        FILM_WATER
+    } else if puddles && m.wet >= 1.0 && matches!(m.kind, Kind::Gravel | Kind::Dirt) {
+        let (share, tracks) =
+            if film { (ground::PUDDLE_SHARE, ground::RUT_COVER) } else { (ground::PUDDLE_SHARE_DAMP, 0.0) };
+        level * ground::puddle_cover(at.x, at.y, share).max(tracks)
+    } else {
+        0.0
+    };
+    let standing = if m.kind == Kind::Water { 1.0 } else { puddle.max(p.splash / FULL_WATER).min(1.0) };
+    Some(Water { standing, ground: m })
 }
 
 /// One wheel's values for a frame.
@@ -208,6 +264,7 @@ impl WheelSpray {
             carry: [[0.0; POOLS.len()]; 4],
             air: None,
             standing: [0.0; 4],
+            water: [Water::default(); 4],
             puddles,
             film,
             rng: Rng::new(0x5eed_0006),
@@ -220,6 +277,12 @@ impl WheelSpray {
         self.carry = [[0.0; POOLS.len()]; 4];
         self.air = None;
         self.standing = [0.0; 4];
+        self.water = [Water::default(); 4];
+    }
+
+    /// Each wheel's water at the last frame fed ([`water`]).
+    pub fn water(&self) -> [Water; 4] {
+        self.water
     }
 
     /// Throws `dt` seconds of each wheel's spray from its payload. `game` when the payloads are the game's: their
@@ -228,19 +291,16 @@ impl WheelSpray {
     pub fn feed(&mut self, sim: &mut Simulation, payloads: &[TyreParticles], pose: &Pose, dt: f32, game: bool) -> f32 {
         let speed = pose.velocity.length();
         let forward = pose.velocity.try_normalize().unwrap_or(pose.side.cross(pose.up));
-        let grade = pose.up.truncate().length() / pose.up.z.max(1e-3);
-        let level = 1.0 - smoothstep(ground::PUDDLE_GRADE, grade);
+        let level = puddle_level(pose);
         let air = front::wake(self.air, pose.velocity, dt);
         self.air = Some(air);
         let carried = front::carried(pose.velocity, air, forward);
         let mut standing = [0.0; 4];
+        let mut water = [Water::default(); 4];
         let mut splats = 0.0;
-        for p in payloads.iter().filter(|p| p.contact && p.wheel < 4) {
-            let m = ground::material(p.surface());
-            if m.kind == Kind::None {
-                continue;
-            }
-            let at = Vec3::from(p.centre());
+        for p in payloads {
+            let Some(here) = wheel_water(p, level, self.puddles, self.film) else { continue };
+            let m = here.ground;
             let out = if p.wheel % 2 == 0 { pose.side } else { -pose.side };
             let edges = p.edges.map(Vec3::from);
             let w = Throw {
@@ -256,27 +316,15 @@ impl WheelSpray {
                 front: (p.wheel < 2)
                     .then(|| front::slide(edges, Vec3::from(p.velocity), pose.up).unwrap_or((out, 0.0))),
             };
-            let puddle = if self.film && m.wet >= 1.0 && m.kind == Kind::Tarmac {
-                FILM_WATER
-            } else if self.puddles && m.wet >= 1.0 && matches!(m.kind, Kind::Gravel | Kind::Dirt) {
-                let (share, tracks) = if self.film {
-                    (ground::PUDDLE_SHARE, ground::RUT_COVER)
-                } else {
-                    (ground::PUDDLE_SHARE_DAMP, 0.0)
-                };
-                level * ground::puddle_cover(at.x, at.y, share).max(tracks)
-            } else {
-                0.0
-            };
             let wheel = p.wheel as usize;
-            standing[wheel] = if m.kind == Kind::Water { 1.0 } else { puddle.max(p.splash / FULL_WATER).min(1.0) };
+            (standing[wheel], water[wheel]) = (here.standing, here);
             if standing[wheel] - self.standing[wheel] >= BURST_RISE {
                 let k = POOLS.iter().position(|&p| p == Pool::Splash).unwrap();
                 self.burst(sim, k, BURST * standing[wheel] * smoothstep(SPLASH_SPEED, speed), &w);
             }
             // A front tyre running into a puddle: the plume and its splats at once, by how much deeper it got.
             if w.front.is_some() {
-                let deeper = smoothstep(BOW_WATER, standing[wheel]) - smoothstep(BOW_WATER, self.standing[wheel]);
+                let deeper = puddle(standing[wheel]) - puddle(self.standing[wheel]);
                 let hit = deeper.max(0.0) * smoothstep(SPLASH_SPEED, speed);
                 for (pool, share) in [(Pool::Bow, 1.0), (Pool::BowMist, 0.35)] {
                     let k = POOLS.iter().position(|&p| p == pool).unwrap();
@@ -292,6 +340,7 @@ impl WheelSpray {
             }
         }
         self.standing = standing;
+        self.water = water;
         splats
     }
 
@@ -379,7 +428,7 @@ fn rates(m: &Material, w: &Throw, standing: f32) -> [f32; POOLS.len()] {
         Kind::Snow | Kind::Water | Kind::None => (0.0, 0.0),
     };
     let flurry = if m.kind == Kind::Snow { scrub + front * PLOUGH * m.loose * motion } else { 0.0 };
-    let bow = front * smoothstep(BOW_WATER, standing) * smoothstep(SPLASH_SPEED, w.speed);
+    let bow = front * puddle(standing) * smoothstep(SPLASH_SPEED, w.speed);
     [
         dust * DUST_RATE,
         powder * POWDER_RATE,
@@ -894,6 +943,19 @@ mod tests {
         assert!((through - BOW_SPLATS * 0.01).abs() < 1e-6, "running through: {through}");
         assert_eq!(feed(0, 0.04), 0.0, "a wet rut's film throws none over the bonnet");
         assert_eq!(feed(2, 0.0) + feed(2, 0.5), 0.0, "a rear tyre's splash stays behind");
+    }
+
+    #[test]
+    fn the_sound_takes_the_sprays_water_and_puddle_depth() {
+        assert_eq!([0.0, ground::RUT_COVER, 0.15, 0.6, 1.0].map(puddle), [0.0, 0.0, 0.0, 1.0, 1.0]);
+        let wet = (0..256).find(|&id| ground::material(id) == ground::by_name("Tarmac_Fine_Clean_Wet")).unwrap();
+        let pose = Pose { velocity: Vec3::ZERO, up: Vec3::Z, side: Vec3::X, engine: None, exhaust: None };
+        let p =
+            |wheel, contact| TyreParticles { wheel, splash: 0.25, surfaces: [wet; 2], contact, ..Default::default() };
+        let w = water(&[p(1, true), p(2, false)], &pose, false, false);
+        assert_eq!(w[1], Water { standing: 0.5, ground: ground::material(wet) });
+        assert_eq!((w[0], w[2]), (Water::default(), Water::default()), "no payload, off the ground");
+        assert_eq!(water(&[p(1, true)], &pose, false, true)[1].standing, FILM_WATER.max(0.5));
     }
 
     #[test]

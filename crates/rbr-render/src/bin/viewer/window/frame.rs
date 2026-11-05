@@ -268,6 +268,7 @@ impl App {
                     let interior = self.shown.car_view().interior();
                     sound.set_scene(rbr_render::sound::scene(&lens, &playback.sample().car, interior, self.replay));
                 }
+                sound.set_water(self.scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
                 sounds.iter().for_each(|s| sound.step(s));
                 self.school_frame = self.school_frame.wrapping_add(1);
                 let frame = self.school_frame;

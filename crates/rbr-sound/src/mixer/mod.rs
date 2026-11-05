@@ -602,16 +602,24 @@ impl Mixer {
                     }
                 }
                 Command::WheelLoop { wheel, voice, gain, pitch } => {
-                    // The rumble plays in the car; the wetness is a 2D voice on the software path (`M6cb0`: flags
-                    // 0x200), so neither takes a distance gain.
-                    let (k, placed) = match voice {
-                        WheelLoop::Rumble => (usize::from(wheel) % 4, 1.0),
-                        WheelLoop::Wetness => (4 + usize::from(wheel) % 4, self.placed(Place::Flat)),
+                    // The rumble plays in the car, without a distance gain. The wetness is a 2D voice on the
+                    // software path (`M6cb0`: flags 0x200); ours, as it carries the renderer's water (`tyre::Water`),
+                    // it takes the tyres' distance gain and, in the car, their cabin low-pass.
+                    let (k, placed, cabin) = match voice {
+                        WheelLoop::Rumble => (usize::from(wheel) % 4, 1.0, None),
+                        WheelLoop::Wetness => {
+                            (4 + usize::from(wheel) % 4, self.placed(Place::Tire), Some(self.cabin()))
+                        }
                     };
                     let v = &mut self.wheel_loops[k];
                     v.gain.target = gain * placed * self.volumes.tyres;
                     v.pitch = pitch * self.doppler;
                     v.pan = self.car_pan;
+                    match cabin {
+                        Some(None) => v.low_pass = None,
+                        Some(cabin) if v.low_pass.is_none() => v.low_pass = cabin,
+                        _ => {}
+                    }
                 }
                 Command::Tyre { wheel, slot, material, skid, gain, pitch } => {
                     let pitch = pitch * self.doppler;
