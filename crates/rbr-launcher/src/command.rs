@@ -1758,9 +1758,12 @@ mod tests {
     /// `RBR_E2E_STANDALONE` the stepping program; `RBR_DATA` and `RBR_PATCH` the game, `RBR_NGP_PHYSICS` the physics
     /// and `RBR_RSF` the cars, `RBR_NGP_DLL` NGP's DLL where the game folder has none. `RBR_E2E_TEAM` is the team
     /// (default the first offered): its car when NGP drives it, else the Drive page's (as picked; `RBR_E2E_CAR` names
-    /// it). Takes as long as the stages.
+    /// it). Takes as long as the stages (about 25 min for the default two: SS1 416 s, SS2 438 s of driving plus the
+    /// service). Without the `RBR_E2E_*` variables it returns at once, so plain `cargo test` and `rust-check.sh`
+    /// skip it; to run it, build the release `viewer` and `rbr-standalone`, point the wrapper at them, and run
+    /// `cargo test -p rbr-launcher --bin rerbr a_live_two_stage -- --nocapture` under `dev-env.sh` with the
+    /// variables set (a Wayland session with a GPU, windowed: strip the launcher's `--fullscreen`).
     #[test]
-    #[ignore]
     fn a_live_two_stage_championship_runs_through_the_turns() {
         let var = std::env::var_os;
         let (Some(viewer), Some(standalone), Some(install), Some(rsf), Some(ngp)) =
