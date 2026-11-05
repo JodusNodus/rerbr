@@ -12,10 +12,10 @@ use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, StagePool, Sur
 use rbr_season::event::{Conditions, Event, Standing, Turn};
 use rbr_season::field::AiResult;
 
+use super::common::{card, card_title, clock, gap, ordinal, park_card, text_of, StageMark, BAD, CARD};
 use super::*;
 use crate::browser::{DIM, GREY, STAR};
 use crate::pages::{combo, fields, section, start_button, Issue, ACCENT, GOOD, WARN};
-use super::common::{card, card_title, clock, gap, ordinal, park_card, text_of, StageMark, BAD, CARD};
 
 /// What the page draws with.
 pub struct Env<'a> {

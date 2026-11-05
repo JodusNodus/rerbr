@@ -233,7 +233,8 @@ impl Play for Double {
         let name = |i: usize| self.0.field[i].name.clone();
         let mut lines = Vec::new();
         for (i, result) in self.0.results[rally][stage].1.iter().enumerate() {
-            if *result == AiResult::Retired && (stage == 0 || self.0.results[rally][stage - 1].1[i] != AiResult::Retired)
+            if *result == AiResult::Retired
+                && (stage == 0 || self.0.results[rally][stage - 1].1[i] != AiResult::Retired)
             {
                 lines.push(format!("{} retired on SS{}.", name(i), stage + 1));
             }

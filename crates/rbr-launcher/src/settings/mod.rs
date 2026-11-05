@@ -790,7 +790,10 @@ mod tests {
             .is_empty());
         assert_eq!(Settings::parse("[launcher]\ndamage = hard\nclutch_help = yes\n"), Settings::default());
         // The old 1.02 season's keys are no longer read.
-        assert_eq!(Settings::parse("[launcher]\nchampionship_skill = champion\nchampionship_team = 5\n"), Settings::default());
+        assert_eq!(
+            Settings::parse("[launcher]\nchampionship_skill = champion\nchampionship_team = 5\n"),
+            Settings::default()
+        );
     }
 
     #[test]
