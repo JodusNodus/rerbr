@@ -520,11 +520,12 @@ impl Renderer {
         );
         let draws = || meshes.iter().flat_map(|mesh| &mesh.draws);
         let wetness = stage.selection.weather.wetness();
-        let rays = enhance.reflections.rays().filter(|_| draws().any(|draw| reflects(draw, wetness)));
+        let rays = enhance.ssr.rays(enhance.reflections).filter(|_| draws().any(|draw| reflects(draw, wetness)));
         let screen_reflection = rays.map(|rays| {
             ScreenReflection::new(
                 &device,
                 (&shader, vertex_entry(enhance), reflect_entry(enhance), rays, pipelines::alpha_writes(taa, false)),
+                enhance.ssr,
                 [&frame_layout, &texture_layout],
                 format,
                 depth_size,

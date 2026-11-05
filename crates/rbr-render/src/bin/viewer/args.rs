@@ -15,7 +15,7 @@ use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
 use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
-use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
+use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections, Ssr};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
 use rbr_render::views::CarView;
@@ -238,7 +238,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off
-              --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
+              --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --ssr linear|stochastic  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --no-relight
   sound, HUD: --no-sound  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
@@ -280,6 +280,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut mirrors = rbr_render::mirrors::Rate::Off;
     let mut anti_aliasing = AntiAliasing::default();
     let mut reflections = Reflections::default();
+    let mut ssr = Ssr::default();
     let mut detail = Detail::default();
     let (mut clock, mut relight) = (None, true);
     let mut fog = None;
@@ -493,6 +494,10 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let value = args.next().ok_or("--reflections needs high, medium, low or off")?;
                 reflections =
                     Reflections::parse(&value).ok_or(format!("--reflections {value}: high, medium, low or off"))?;
+            }
+            "--ssr" => {
+                let value = args.next().ok_or("--ssr needs linear or stochastic")?;
+                ssr = Ssr::parse(&value).ok_or(format!("--ssr {value}: linear or stochastic"))?;
             }
             "--detail" => {
                 let value = args.next().ok_or("--detail needs high or ultra")?;
@@ -721,7 +726,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         cracks,
         textures,
         upscale,
-        enhance: Enhance { mirrors, anti_aliasing, reflections, detail, debug_view, ..enhance },
+        enhance: Enhance { mirrors, anti_aliasing, reflections, ssr, detail, debug_view, ..enhance },
         clock,
         relight,
         fog,
@@ -934,6 +939,13 @@ mod tests {
         for bad in ["--anti-aliasing 4x", "--anti-aliasing"] {
             assert!(parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn ssr_defaults_to_linear() {
+        assert_eq!(parse("track-54_E").unwrap().enhance.ssr, Ssr::Linear);
+        assert_eq!(parse("--ssr stochastic").unwrap().enhance.ssr, Ssr::Stochastic);
+        assert!(parse("--ssr hiz").is_err());
     }
 
     #[test]

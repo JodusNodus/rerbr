@@ -51,6 +51,9 @@ pub struct Enhance {
     /// The screen-space reflections on the wet roads and the water (`viewer --reflections`, not in
     /// [`Enhance::NAMES`]).
     pub reflections: Reflections,
+    /// How the screen-space reflections trace their rays (`viewer --ssr`, not in [`Enhance::NAMES`]; an
+    /// experiment).
+    pub ssr: Ssr,
     /// How much detail the additions draw at (`viewer --detail`, not in [`Enhance::NAMES`]).
     pub detail: Detail,
     /// What `viewer --debug-view` draws on the cabin's interior-set faces in the in-car view
@@ -124,6 +127,45 @@ impl Reflections {
             Reflections::Medium => Some([2, 48]),
             Reflections::Low => Some([1, 32]),
             Reflections::Off => None,
+        }
+    }
+}
+
+/// How the screen-space reflections trace their rays (an experiment): [`Ssr::Linear`] steps a cone of rays a pixel
+/// (`trace` in `shader.wgsl`); [`Ssr::Stochastic`] draws them from the GGX lobe and traverses the frame's depth
+/// pyramid (`ssr.wgsl`, [`depth_pyramid`](super::depth_pyramid)).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Ssr {
+    #[default]
+    Linear,
+    Stochastic,
+}
+
+impl Ssr {
+    pub const ALL: [Ssr; 2] = [Ssr::Linear, Ssr::Stochastic];
+
+    /// `linear` or `stochastic`.
+    pub fn parse(text: &str) -> Option<Ssr> {
+        Ssr::ALL.into_iter().find(|s| s.name() == text)
+    }
+
+    /// Its [`Ssr::parse`] name.
+    pub fn name(self) -> &'static str {
+        match self {
+            Ssr::Linear => "linear",
+            Ssr::Stochastic => "stochastic",
+        }
+    }
+
+    /// At `reflections`, the rays a pixel and the steps (linear) or the pyramid's cells (stochastic) each takes
+    /// (`SSR_RAYS`, and `SSR_STEPS` or `SSR_ITERATIONS`); none when off.
+    pub fn rays(self, reflections: Reflections) -> Option<[u32; 2]> {
+        match (self, reflections) {
+            (Ssr::Linear, _) => reflections.rays(),
+            (Ssr::Stochastic, Reflections::High) => Some([4, 64]),
+            (Ssr::Stochastic, Reflections::Medium) => Some([2, 48]),
+            (Ssr::Stochastic, Reflections::Low) => Some([1, 32]),
+            (Ssr::Stochastic, Reflections::Off) => None,
         }
     }
 }
@@ -232,6 +274,7 @@ impl Enhance {
                         mirrors: enhance.mirrors,
                         anti_aliasing: enhance.anti_aliasing,
                         reflections: enhance.reflections,
+                        ssr: enhance.ssr,
                         detail: enhance.detail,
                         debug_view: enhance.debug_view,
                     }
