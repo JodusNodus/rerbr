@@ -70,6 +70,7 @@ mod terrain_detail;
 pub mod tyre_marks;
 mod uploads;
 pub mod upscale;
+pub mod verge;
 pub mod views;
 pub mod visibility;
 pub mod wheel_rotation;

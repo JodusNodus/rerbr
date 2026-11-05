@@ -141,6 +141,11 @@ pub fn render(
             if let (Some(audio), Some(pending)) = (&mut audio, &mut pending) {
                 let helicopter = scene.characters.as_ref().and_then(|c| c.rescue_position());
                 audio.player.set_water(scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
+                if let Some(playback) = &scene.playback {
+                    let particles = scene.particles.as_ref().map(|p| &p.particles);
+                    let verge = rbr_render::sound::verge(particles, scene.roadside.as_ref(), &playback.sample().car);
+                    audio.player.set_verge(verge);
+                }
                 audio.step(audio_scene(scene, args, shown), pending, &rbr_render::sound::events(&events, helicopter));
                 audio.samples(periods)?;
             }
