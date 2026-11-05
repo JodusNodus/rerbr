@@ -35,6 +35,8 @@ use std::path::{Path, PathBuf};
 
 mod view;
 
+pub(crate) use view::{card, card_title, gap, ordinal, park_card, StageMark, BAD};
+
 use rbr_championship::events::{self, Ai};
 use rbr_championship::season::{self as season_model, AiField, Block};
 use rbr_championship::{choice_before, rally, service, store, tyre_choices, Championship, RallyOutcome, RallyPhase};
@@ -130,7 +132,7 @@ pub struct RallyPage {
     pub status: String,
 }
 
-fn clock(seconds: f32) -> String {
+pub(crate) fn clock(seconds: f32) -> String {
     let s = seconds.max(0.0);
     format!("{}:{:05.2}", (s / 60.0) as u32, s % 60.0)
 }
@@ -570,15 +572,7 @@ impl RallyPage {
     pub(crate) fn open_park(&mut self, data: &Data, car: &Car, ngp: Option<&Path>) {
         let Some(c) = &self.championship else { return };
         let RallyPhase::Service(stop) = c.phase() else { return };
-        let (parts, rules) = match ngp {
-            Some(archive) => {
-                let own = car
-                    .pack()
-                    .and_then(|path| service::repair_parts_of(&rbr_formats::car_pack::Pack::open(path).ok()?));
-                (own.unwrap_or_else(|| service::repair_parts_in(archive, car.slot as usize)), Rules::Ngp)
-            }
-            None => (service::repair_parts(data, car.slot as usize), Rules::V102),
-        };
+        let (parts, rules) = repair_tree(data, car, ngp);
         match parts {
             Ok(parts) => {
                 let damage = c.damage().cloned().unwrap_or_default();
@@ -593,18 +587,10 @@ impl RallyPage {
         }
     }
 
-    /// The park's primary button: Repair! with orders starts the repairs; without, Leave service closes the park
-    /// unrepaired (`forfeit`, as the game's `MSG_NOREP` Yes; ours: not asked) and returns its penalty and the car.
+    /// The park's primary button ([`park_go`]).
+    #[cfg(test)]
     fn park_go(&mut self) -> Option<(f32, CarriedDamage)> {
-        let park = self.park.as_mut()?;
-        if park.start() {
-            return None;
-        }
-        park.forfeit();
-        match park.state {
-            ParkState::Closed { penalty, .. } => Some((penalty, park.damage.clone())),
-            _ => None,
-        }
+        park_go(self.park.as_mut()?)
     }
 
     /// What follows the rally's stage `index` for the player: the end of the rally after its last stage; otherwise a
@@ -642,6 +628,36 @@ impl RallyPage {
     }
 }
 
+/// The car's repair tree and rules ([`RallyPage::open_park`]): under NGP (`ngp`: its `physics.rbz`) an RSF car's own
+/// `repair.ini`, else the archive's slot tree, with NGP's rules; without NGP the retail one with 1.02's.
+pub(crate) fn repair_tree(
+    data: &Data,
+    car: &Car,
+    ngp: Option<&Path>,
+) -> (Result<Vec<rbr_formats::repair::Part>, String>, Rules) {
+    match ngp {
+        Some(archive) => {
+            let own =
+                car.pack().and_then(|path| service::repair_parts_of(&rbr_formats::car_pack::Pack::open(path).ok()?));
+            (own.unwrap_or_else(|| service::repair_parts_in(archive, car.slot as usize)), Rules::Ngp)
+        }
+        None => (service::repair_parts(data, car.slot as usize), Rules::V102),
+    }
+}
+
+/// The park's primary button: Repair! with orders starts the repairs; without, Leave service closes the park
+/// unrepaired (`forfeit`, as the game's `MSG_NOREP` Yes; ours: not asked) and returns its penalty and the car.
+fn park_go(park: &mut ServicePark) -> Option<(f32, CarriedDamage)> {
+    if park.start() {
+        return None;
+    }
+    park.forfeit();
+    match park.state {
+        ParkState::Closed { penalty, .. } => Some((penalty, park.damage.clone())),
+        _ => None,
+    }
+}
+
 /// The car a new season takes ([`RallyPage::take_new_season`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SeasonCar {
@@ -664,7 +680,7 @@ pub enum Shot {
 }
 
 /// A string-table text by key, the key itself when the table or the key is missing.
-fn text_of(strings: Option<&Strings>, key: &str) -> String {
+pub(crate) fn text_of(strings: Option<&Strings>, key: &str) -> String {
     strings.and_then(|s| s.get(key)).unwrap_or(key).to_owned()
 }
 

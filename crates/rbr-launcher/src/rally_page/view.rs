@@ -14,14 +14,14 @@ use crate::browser::{DIM, GREY, STAR};
 use crate::pages::{fields, section, start_button, GOOD};
 
 /// A severe or lost part.
-const BAD: Color32 = Color32::from_rgb(225, 95, 80);
+pub(crate) const BAD: Color32 = Color32::from_rgb(225, 95, 80);
 /// A card's fill: a shade above the page's.
 const CARD: Color32 = Color32::from_gray(32);
 /// The tip the page opens with.
 const TIP: &str = "The Controls page's driver aids and the Graphics & sound options apply to the season too.";
 
 /// Content in a card: the fill, rounded corners and a margin, the full width.
-fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+pub(crate) fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     egui::Frame::new()
         .fill(CARD)
         .corner_radius(6.0)
@@ -35,7 +35,7 @@ fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 /// A card's title.
-fn card_title(ui: &mut Ui, title: &str) {
+pub(crate) fn card_title(ui: &mut Ui, title: &str) {
     ui.label(RichText::new(title).size(18.0).strong());
     ui.add_space(2.0);
 }
@@ -47,7 +47,7 @@ fn stage_name(stage: &RallyStage) -> String {
 
 /// Where stage `index` stands in a rally at `phase`: its time once driven, retired, the next, or to come.
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum StageMark {
+pub(crate) enum StageMark {
     Done(f32),
     Retired,
     Next,
@@ -69,7 +69,7 @@ fn stage_mark(c: &Championship, index: usize) -> StageMark {
 }
 
 /// `n` as a place: 1st, 2nd, 3rd, 4th, 11th.
-fn ordinal(n: usize) -> String {
+pub(crate) fn ordinal(n: usize) -> String {
     let suffix = match (n % 10, n % 100) {
         (_, 11..=13) => "th",
         (1, _) => "st",
@@ -81,7 +81,7 @@ fn ordinal(n: usize) -> String {
 }
 
 /// `time`'s gap to the leader's `best`: blank for the leader.
-fn gap(time: f32, best: f32) -> String {
+pub(crate) fn gap(time: f32, best: f32) -> String {
     if time <= best {
         String::new()
     } else {
@@ -725,101 +725,118 @@ impl RallyPage {
         request
     }
 
-    /// The park, as `CSelectPartsUI` and the timer show it: the allowed and estimated times, the damaged parts to
-    /// order, the manager's advice, Repair! (with no orders Leave service, without the game's `MSG_NOREP` question),
-    /// selecting during the repairs to finish them now, and the closing message. Returns the penalty and the car when
-    /// closed and confirmed, or at once on Leave service.
+    /// The park before stage `next` ([`park_card`]); the Setup page on its Setup… button.
     fn park_ui(&mut self, ui: &mut Ui, next: usize, request: &mut Option<Request>) -> Option<(f32, CarriedDamage)> {
         let park = self.park.as_mut()?;
-        let strings = self.strings.as_ref();
-        let text = |key: &str| text_of(strings, key);
-        let dt = ui.input(|i| i.stable_dt).min(0.1);
-        park.tick(dt);
-        if !matches!(park.state, ParkState::Closed { .. }) {
-            ui.ctx().request_repaint();
-        }
-        card_title(ui, &format!("{} before SS{}", text(park.kind.title_key()), next + 1));
-        // The clock that matters first, big; what the orders take beside it, red past the time allowed.
-        let over = park.estimate() > park.time_left;
-        ui.horizontal(|ui| {
-            ui.colored_label(GREY, "Time left");
-            ui.label(RichText::new(clock(park.time_left)).size(20.0).strong());
-            ui.colored_label(DIM, format!("of {}", clock(park.kind.budget())));
-            ui.add_space(14.0);
-            ui.colored_label(GREY, text("SP_ESTIM").trim_end_matches([':', ' ']));
-            ui.label(RichText::new(clock(park.estimate())).strong().color(if over { BAD } else { Color32::WHITE }));
-        });
-        if over && park.state == ParkState::Choosing {
-            ui.colored_label(BAD, "The orders take longer than the time left: expect a late penalty.");
-        }
-        ui.add_space(6.0);
-        let choosing = park.state == ParkState::Choosing;
-        let rows = park.rows();
-        if rows.is_empty() {
-            ui.colored_label(GREY, "Nothing is damaged.");
-        } else if choosing {
-            ui.colored_label(GREY, "Tick the parts to repair. With none ticked, the car leaves as it is.");
-        }
-        egui::Grid::new("park-parts").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
-            if !rows.is_empty() {
-                for heading in ["Part", "Damage", "Repair time"] {
-                    ui.colored_label(GREY, heading);
-                }
-                ui.end_row();
-            }
-            for i in rows {
-                let mut on = park.covering(i).is_some();
-                let level = park.level(i);
-                let part = ui.add_enabled(choosing, egui::Checkbox::new(&mut on, text_of(strings, &park.tree[i].name)));
-                if part.changed() {
-                    park.toggle(i);
-                }
-                let colour = match level {
-                    0 => GREY,
-                    1 | 2 => STAR,
-                    _ => BAD,
-                };
-                ui.colored_label(colour, text(service::damage_key(level)));
-                ui.colored_label(GREY, clock(park.time_of(i)));
-                ui.end_row();
-            }
-        });
-        ui.add_space(10.0);
-        let (mut done, mut go) = (None, false);
-        ui.horizontal(|ui| match park.state {
-            ParkState::Choosing => {
-                let label = if park.orders.is_empty() { "Leave service".to_owned() } else { text("SP_REPAIR") };
-                go = ui.add(start_button(&label)).clicked();
-                if ui.button(text("SP_MANADV")).on_hover_text("Order what the team manager would").clicked() {
-                    park.manager_advice();
-                }
-                if ui.button("Setup…").clicked() {
-                    *request = Some(Request::Setup);
-                }
-            }
-            ParkState::Repairing => {
-                ui.label(format!("{}…", text("SP_STATUS")));
-                if ui.button("Finish now").clicked() {
-                    park.finish_now();
-                }
-            }
-            ParkState::Closed { penalty, end } => {
-                ui.vertical(|ui| {
-                    if let Some(key) = service::end_message(end, penalty) {
-                        ui.label(text(key).replace("%1.f", &format!("{penalty:.0}")));
-                    }
-                    ui.colored_label(GREY, format!("{}{penalty:.0} s", text("SP_PEN")));
-                    if ui.horizontal(|ui| ui.add(start_button("Continue"))).inner.clicked() {
-                        done = Some((penalty, park.damage.clone()));
-                    }
-                });
-            }
-        });
-        if go {
-            done = self.park_go();
+        let title = format!("{} before SS{}", text_of(self.strings.as_ref(), park.kind.title_key()), next + 1);
+        let mut setup = false;
+        let done = park_card(ui, park, self.strings.as_ref(), &title, park.kind.budget(), &mut setup);
+        if setup {
+            *request = Some(Request::Setup);
         }
         done
     }
+}
+
+/// The park, as `CSelectPartsUI` and the timer show it: the allowed and estimated times, the damaged parts to order,
+/// the manager's advice, Repair! (with no orders Leave service, without the game's `MSG_NOREP` question), selecting
+/// during the repairs to finish them now, and the closing message; `setup` set by its Setup… button. Returns the
+/// penalty and the car when closed and confirmed, or at once on Leave service. The events' service draws it too.
+pub(crate) fn park_card(
+    ui: &mut Ui,
+    park: &mut ServicePark,
+    strings: Option<&Strings>,
+    title: &str,
+    budget: f32,
+    setup: &mut bool,
+) -> Option<(f32, CarriedDamage)> {
+    let text = |key: &str| text_of(strings, key);
+    let dt = ui.input(|i| i.stable_dt).min(0.1);
+    park.tick(dt);
+    if !matches!(park.state, ParkState::Closed { .. }) {
+        ui.ctx().request_repaint();
+    }
+    card_title(ui, title);
+    // The clock that matters first, big; what the orders take beside it, red past the time allowed.
+    let over = park.estimate() > park.time_left;
+    ui.horizontal(|ui| {
+        ui.colored_label(GREY, "Time left");
+        ui.label(RichText::new(clock(park.time_left)).size(20.0).strong());
+        ui.colored_label(DIM, format!("of {}", clock(budget)));
+        ui.add_space(14.0);
+        ui.colored_label(GREY, text("SP_ESTIM").trim_end_matches([':', ' ']));
+        ui.label(RichText::new(clock(park.estimate())).strong().color(if over { BAD } else { Color32::WHITE }));
+    });
+    if over && park.state == ParkState::Choosing {
+        ui.colored_label(BAD, "The orders take longer than the time left: expect a late penalty.");
+    }
+    ui.add_space(6.0);
+    let choosing = park.state == ParkState::Choosing;
+    let rows = park.rows();
+    if rows.is_empty() {
+        ui.colored_label(GREY, "Nothing is damaged.");
+    } else if choosing {
+        ui.colored_label(GREY, "Tick the parts to repair. With none ticked, the car leaves as it is.");
+    }
+    egui::Grid::new("park-parts").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
+        if !rows.is_empty() {
+            for heading in ["Part", "Damage", "Repair time"] {
+                ui.colored_label(GREY, heading);
+            }
+            ui.end_row();
+        }
+        for i in rows {
+            let mut on = park.covering(i).is_some();
+            let level = park.level(i);
+            let part = ui.add_enabled(choosing, egui::Checkbox::new(&mut on, text_of(strings, &park.tree[i].name)));
+            if part.changed() {
+                park.toggle(i);
+            }
+            let colour = match level {
+                0 => GREY,
+                1 | 2 => STAR,
+                _ => BAD,
+            };
+            ui.colored_label(colour, text(service::damage_key(level)));
+            ui.colored_label(GREY, clock(park.time_of(i)));
+            ui.end_row();
+        }
+    });
+    ui.add_space(10.0);
+    let (mut done, mut go) = (None, false);
+    ui.horizontal(|ui| match park.state {
+        ParkState::Choosing => {
+            let label = if park.orders.is_empty() { "Leave service".to_owned() } else { text("SP_REPAIR") };
+            go = ui.add(start_button(&label)).clicked();
+            if ui.button(text("SP_MANADV")).on_hover_text("Order what the team manager would").clicked() {
+                park.manager_advice();
+            }
+            if ui.button("Setup…").clicked() {
+                *setup = true;
+            }
+        }
+        ParkState::Repairing => {
+            ui.label(format!("{}…", text("SP_STATUS")));
+            if ui.button("Finish now").clicked() {
+                park.finish_now();
+            }
+        }
+        ParkState::Closed { penalty, end } => {
+            ui.vertical(|ui| {
+                if let Some(key) = service::end_message(end, penalty) {
+                    ui.label(text(key).replace("%1.f", &format!("{penalty:.0}")));
+                }
+                ui.colored_label(GREY, format!("{}{penalty:.0} s", text("SP_PEN")));
+                if ui.horizontal(|ui| ui.add(start_button("Continue"))).inner.clicked() {
+                    done = Some((penalty, park.damage.clone()));
+                }
+            });
+        }
+    });
+    if go {
+        done = park_go(park);
+    }
+    done
 }
 
 #[cfg(test)]
