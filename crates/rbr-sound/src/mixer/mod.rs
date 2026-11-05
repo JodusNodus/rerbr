@@ -328,6 +328,7 @@ pub struct Mixer {
     reflections: Reflections,
     reflections_gain: Gain,
     doors_off: [bool; 2],
+    roadside: Option<crate::reflections::Roadside>,
     /// The engine's `E32Flt` (`E30Engine +0xf0`) and the outside cutoff (`CCarSound +0x41934`).
     filter: OnePole,
     /// The bright cabin path in the car ([`CABIN_BRIGHT_CUTOFF`]).
@@ -440,6 +441,7 @@ impl Mixer {
             reflections: Reflections::default(),
             reflections_gain: Gain::default(),
             doors_off: [false; 2],
+            roadside: None,
             filter: OnePole::new(rate, bank.car.low_shelf_frequency),
             bright: OnePole::new(rate, CABIN_BRIGHT_CUTOFF),
             low_shelf_frequency: bank.car.low_shelf_frequency,
@@ -673,6 +675,7 @@ impl Mixer {
                     self.reflections_gain.target = gain * self.volumes.engine;
                     self.doors_off = doors_off;
                 }
+                Command::Roadside(roadside) => self.roadside = roadside,
                 Command::Rain { gain, amount } => {
                     self.rain.gain.target = gain * self.volumes.effects;
                     self.rain.amount = amount;
@@ -929,6 +932,7 @@ impl Mixer {
             self.car_distance,
             self.engine.rpm,
             self.doors_off,
+            self.roadside.as_ref(),
             &mut layer,
             || gain.next(k),
         );

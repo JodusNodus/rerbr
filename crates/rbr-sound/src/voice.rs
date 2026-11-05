@@ -157,6 +157,8 @@ pub enum Command {
     Rain { gain: f32, amount: f32 },
     /// The engine reflections' gain, and whether each door (left, right) is off the car (`crate::reflections`).
     Reflections { gain: f32, doors_off: [bool; 2] },
+    /// The roadside the reflections follow (ours; `None`: 1.02's fixed delays).
+    Roadside(Option<crate::reflections::Roadside>),
     /// An FMOD bank's loop (`crate::fmod`, ours): slot `slot`'s gain and pitch, outside the car or in it.
     FmodLoop { slot: u16, gain: f32, pitch: f32, outside: bool },
     /// An FMOD bus's fader gain (`mixer::fmod_mix`).

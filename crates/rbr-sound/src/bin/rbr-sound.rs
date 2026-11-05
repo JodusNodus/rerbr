@@ -4,7 +4,7 @@
 //! prints each one-shot kind's made and refused requests under the sound limit (`rbr_sound::mixer::SOUND_LIMIT`).
 //!
 //! Usage: rbr-sound --recording X [--stage NAME] --out WAV [--seconds S] [--camera inside|chase|trackside]
-//!        [--no-codriver] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--car N]
+//!        [--no-codriver] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--poses CSV] [--roadside CSV] [--car N]
 //!        --ngp-physics FILE [--rsf-car ID|PACK [--no-fmod] | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--solo LAYER]
 //!        [--codriver-mod DIR [--codriver-voice V] [--codriver-style S] [--codriver-ranges R] [--pacenotes FILE]]
 //!
@@ -18,7 +18,9 @@
 //! of the gearbox, diff, turbo, wind and siren loops, the summed tyre, rumble and wetness gains, the first wheel's surface id, and the one-shots, effects (`shot:gain@pitch`) and speech). `--from` starts the WAV at
 //! second S of the drive (the steps before it still run). `--events` plays the scripted events of a CSV
 //! (`frame,kind,x,y,z`; kind `heli`, `bird` or `call`, the frame the recording's, the point in the physics frame), as
-//! `rbr-render`'s `scripted_events` example writes them. `--standalone` is the stepping program (default: `rbr-standalone` next to this one). `--ngp-physics` (required) drives
+//! `rbr-render`'s `scripted_events` example writes them. `--poses` writes the car's position and forward each step
+//! (CSV), and `--roadside` plays the engine's reflections against a roadside CSV the `roadside_probe` example made
+//! from them (`rbr_sound::reflections::Roadside`, ours), for A/B renders. `--standalone` is the stepping program (default: `rbr-standalone` next to this one). `--ngp-physics` (required) drives
 //! under NGP's physics (`rbr-standalone --ngp-physics`; the viewer's 7 ms frames, so a step of sound is still 7 ms)
 //! and `--car` replaces the `.auto`'s car, for NGP's own cars. `--rsf-car` drives an RSF car under NGP
 //! (`rbr-standalone --rsf-car`) in slot 5 with its FMOD bank's sound (`rbr_sound::fmod`; `RBR_RSF`'s
@@ -45,6 +47,7 @@ use rbr_recording::sound::Inputs;
 use rbr_recording::{Frames, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHEEL_BYTES};
 use rbr_sound::data::CarBank;
 use rbr_sound::mixer::Mixer;
+use rbr_sound::reflections::{Roadside, Side};
 use rbr_sound::voice::{Command, Loop, WheelLoop};
 use rbr_sound::{Events, Models, Scene, Sky, Sphere};
 use std::collections::HashMap;
@@ -84,6 +87,8 @@ struct Args {
     solo: Option<usize>,
     volumes: rbr_sound::mixer::Volumes,
     codriver_mod: Option<CodriverMod>,
+    poses: Option<PathBuf>,
+    roadside: Option<PathBuf>,
 }
 
 /// `--codriver-mod` and its options.
@@ -130,6 +135,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--no-codriver" => args.codriver = false,
             "--log" => args.log = Some(PathBuf::from(value()?)),
             "--events" => args.events = Some(PathBuf::from(value()?)),
+            "--poses" => args.poses = Some(PathBuf::from(value()?)),
+            "--roadside" => args.roadside = Some(PathBuf::from(value()?)),
             "--car" => args.car = Some(value()?),
             "--ngp-physics" => ngp_physics = Some(PathBuf::from(value()?)),
             "--rsf-car" => args.rsf_car = Some(value()?),
@@ -171,6 +178,33 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     args.pack_car.check(args.rsf_car.is_some())?;
     args.codriver_mod = plugin.map(|plugin| CodriverMod { plugin, voice, style, ranges, notes: pacenotes });
     Ok(args)
+}
+
+/// The roadside of a `--roadside` CSV (`rbr-render`'s `roadside_probe` example), by step: the car's left, right and
+/// overhead as `distance,size,hardness` each.
+fn read_roadside(path: &Path) -> Result<HashMap<usize, Roadside>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut out = HashMap::new();
+    for line in text.lines().skip(1) {
+        let v: Vec<f32> =
+            line.split(',').map(|f| f.parse().map_err(|e| format!("{line}: {e}"))).collect::<Result<_, _>>()?;
+        let [step, rest @ ..] = v.as_slice() else { continue };
+        let side = |i: usize| Side { distance: rest[i], size: rest[i + 1], hardness: rest[i + 2] };
+        if rest.len() == 9 {
+            out.insert(*step as usize, Roadside { sides: [side(0), side(3)], overhead: side(6) });
+        }
+    }
+    Ok(out)
+}
+
+/// The car's roadside (its own left and right, facing `forward`) as a listener with right `right` hears it.
+fn heard(roadside: Roadside, forward: [f32; 3], right: [f32; 3]) -> Roadside {
+    let car = right_of(forward);
+    if car[0] * right[0] + car[1] * right[1] < 0.0 {
+        Roadside { sides: [roadside.sides[1], roadside.sides[0]], ..roadside }
+    } else {
+        roadside
+    }
 }
 
 /// The scripted events of an `--events` CSV, by recording frame.
@@ -501,6 +535,16 @@ fn run() -> Result<(), String> {
     };
     let from = (f64::from(args.from) * STEPS_PER_SECOND) as usize;
     let events = args.events.as_deref().map(read_events).transpose()?.unwrap_or_default();
+    let roadside = args.roadside.as_deref().map(read_roadside).transpose()?;
+    let mut poses = match &args.poses {
+        Some(path) => {
+            let mut file =
+                std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
+            writeln!(file, "step,x,y,z,fx,fy,fz").map_err(|e| e.to_string())?;
+            Some(file)
+        }
+        None => None,
+    };
     // One frame per answer (`--frames -`, a frame a step): the live boot's countdown frames run no step (`rbr-standalone`'s `live`), so each
     // recorded frame's control goes to the frame that steps it, as the recording's (its frames step one each).
     let mut driven = 0;
@@ -520,6 +564,13 @@ fn run() -> Result<(), String> {
         }
         if let Some(pose) = pose {
             scene = camera.scene(&pose);
+            let ([x, y, z], [fx, fy, fz]) = (pose.position, pose.forward());
+            if let Some(file) = &mut poses {
+                writeln!(file, "{answered},{x},{y},{z},{fx},{fy},{fz}").map_err(|e| e.to_string())?;
+            }
+            if let Some(roadside) = &roadside {
+                scene.roadside = roadside.get(&answered).map(|r| heard(*r, pose.forward(), scene.right));
+            }
         }
         if let Some(inputs) = inputs {
             if answered == 0 {
