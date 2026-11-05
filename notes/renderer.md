@@ -672,8 +672,16 @@ splash never shows on a wet stage.
   cockpit at the 54O puddle (`--at 10800`, wet heavy): 0.46 to 0.70 ms; off the puddles within 0.05 ms. Captures
   `/tmp/cockpit-spray/wet2/`. Shots against the first version: rain Luceram GC8 cockpit RMSE 0.025 and fly-by
   0.023 (streaks gone, the plume at the corner), night Luceram 131 cockpit 0.014, fog Luceram GC8 chase 0.007, two
-  under 0.001, 30 byte-identical; 52 rain cockpit `--at 4500` footwells clean. The rear wheels' `Drops`,
-  `MudDrops` and `Splash` keep the `drop` streak sprite: dark thin spikes behind the car in the wet chase (open).
+  under 0.001, 30 byte-identical; 52 rain cockpit `--at 4500` footwells clean. The wiper angle that differed
+  between some builds in `--enhance all` cockpit frames is not the auto schedule (54O `--at 10803`: same frame,
+  Continuous, 629 mud specks, phase 0.947 in both; adding a log line flipped it): build-dependent, not chased.
+- Wet spray without streaks (2026-11-05): `Drops` and `Splash` are soft `PUFF` clumps of the water's grey (0.32 and
+  0.25 alpha, growing 0.08 to 0.5 and 0.05 to 0.35 m), `MudDrops` small dark `STONE` clods without a trail; rates,
+  lives, fall and drag as before, so the plumes keep their shape and every pool its draws. Effects pass 1080p within
+  0.1 ms (54O wet chase 0.59 to 0.60, Luceram rain fly-by 1.51 to 1.58). Shots against the plume version: rain
+  Luceram GC8 fly-by RMSE 0.010, fog Luceram chase 0.008, rain Sipirkakim chase 0.008, day Gabiria M3 fly-by 0.006
+  (damp patches' clods), golden Gabiria chase 0.004, two under 0.001, 29 byte-identical. Captures
+  `/tmp/cockpit-spray/wet3/`.
 Soft-particle cost (2026-10-26, RX 9060 XT): the effects pass is fill-bound (Sipirkakim II `--at 15000`: 926
 quads, ~400 screens of coverage, 35 ms at 1440p, nearly all `fs_soft`; GPU clocks bimodal). Fixes, frames within
 2/255 of before (lamps' code out of the day's pipeline, fragments under 1/1000 alpha discarded, depth after the

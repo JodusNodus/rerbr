@@ -6,7 +6,7 @@
 //! - dry loose ground: a dust trail that hangs and drifts, in the colour of the stage's loose road ([`dust::of_stage`]),
 //!   more with slip;
 //! - snow: powder clouds, as the dust;
-//! - wet road: a grey mist plume and thin streaked drops off every tyre, more with speed; wet loose ground: the same
+//! - wet road: a grey mist plume and soft clumps of water off every tyre, more with speed; wet loose ground: the same
 //!   in the ground's brown ([`MUD_SHADE`]), coarser and with less mist (a damp road: a third of the mist, no drops);
 //! - standing water (the renderer's puddles with `--enhance wet`, the water surface, or the payload's +0x98): a splash
 //!   out of both sides.
@@ -622,9 +622,16 @@ fn def(pool: Pool, dust: [f32; 3]) -> EmitterDef {
         Pool::Mist => puff(fade(mist, 0.0, 0.2, 0.2), low(0.8, 2.2, 3.4), 2.5, MIST_RATE * 3.0, 0.2, 0.9, 0.5),
         Pool::WetMist => puff(young_mist, low(1.0, 2.4, 3.8), 3.2, MIST_RATE * 3.0, 0.3, 0.7, 0.5),
         Pool::MudMist => puff(fade(mud, 0.0, 0.4, 0.12), low(0.5, 1.5, 2.2), 2.0, MIST_RATE * 3.0, -0.4, 1.2, 0.3),
-        Pool::Drops => drop(water, 0.6, 0.018, 0.7, 0.06, DROP_RATE, 1.2),
-        Pool::MudDrops => drop(clod, 0.9, 0.025, 0.35, 0.015, DROP_RATE * MUD_DROP_GAIN, 0.7),
-        Pool::Splash => drop(water, 0.4, 0.02, 0.9, 0.04, SPLASH_RATE, 1.0),
+        // The water off the tread and out of a puddle: soft clumps that spread and thin as they fall, not streaks
+        // (their life, fall and drag as the streaked drops' were, so the plume keeps its shape). The clods: small dark
+        // lumps of mud, unstreaked.
+        Pool::Drops => puff(fade(water, 0.32, 0.22, 0.4), growing(0.08, 0.25, 0.5), 0.7, DROP_RATE, -9.81, 1.2, 0.0),
+        Pool::MudDrops => {
+            Spec { sprite: sprites::STONE, ..drop(clod, 0.9, 0.03, 0.35, 0.0, DROP_RATE * MUD_DROP_GAIN, 0.7) }
+        }
+        Pool::Splash => {
+            puff(fade(water, 0.25, 0.15, 0.4), growing(0.05, 0.18, 0.35), 0.9, SPLASH_RATE, -9.81, 1.0, 0.0)
+        }
         Pool::SplashMist => {
             puff(fade(splash_mist, 0.0, 0.35, 0.15), low(0.8, 2.0, 3.0), 1.3, SPLASH_MIST_RATE, -2.0, 1.5, 0.3)
         }
