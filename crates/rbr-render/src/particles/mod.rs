@@ -13,6 +13,7 @@
 //! ([`Particles::payloads_from_poses`], ours). The same payloads step the skid marks ([`crate::skidmarks`]), so a
 //! drive, a live run and a jump all lay them alike.
 
+pub mod cabin;
 pub mod car;
 pub mod damping;
 pub mod gpu;

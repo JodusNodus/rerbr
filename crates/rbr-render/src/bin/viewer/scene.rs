@@ -72,6 +72,8 @@ pub struct Scene {
     pub cabin_sun: Option<car::cabin::SunIn>,
     /// The bulkhead under the windscreen, drawn only in its reflection (`glass::bulkhead`).
     pub bulkhead: Option<Mesh>,
+    /// The car's shape the in-car view draws no particles in, with the playback.
+    pub cabin_mask: Option<rbr_render::particles::cabin::CabinMask>,
     /// The grass streamed about the eye (`--enhance grass`, [`rbr_render::grass`]).
     pub grass: Option<std::sync::Arc<rbr_render::grass::Field>>,
 }
@@ -97,6 +99,7 @@ impl Scene {
         }
         renderer.set_precipitation(self.precipitation);
         renderer.set_cabin_sun(self.cabin_sun.clone());
+        renderer.set_cabin_mask(self.cabin_mask);
         if let Some(index) = self.bulkhead.as_ref().and_then(|b| self.stage.meshes.iter().position(|m| m == b)) {
             renderer.set_reflected_only(index);
         }
@@ -221,6 +224,7 @@ fn load_scene<'scope, 'env>(
                 school_demo: None,
                 cabin_sun: None,
                 bulkhead: None,
+                cabin_mask: None,
                 grass: None,
             })
         }
@@ -453,6 +457,9 @@ fn load_scene<'scope, 'env>(
                 .and_then(|(loaded, car)| fences::Drawn::new(loaded, &stage, car))
                 .zip(car_name.as_deref().zip(playback.as_ref()))
                 .map(|(drawn, (car, playback))| drawn.with_car_and_wind(data, car, name, playback));
+            let cabin_mask = car_bounds
+                .zip(mounts.as_ref())
+                .map(|((lo, hi), m)| rbr_render::particles::cabin::CabinMask::new(lo, hi, m.cockpit.eye));
             Ok(Scene {
                 stage,
                 orbit: None,
@@ -474,6 +481,7 @@ fn load_scene<'scope, 'env>(
                 school_demo,
                 cabin_sun,
                 bulkhead,
+                cabin_mask,
                 grass,
             })
         }

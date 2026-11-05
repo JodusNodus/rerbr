@@ -5,6 +5,7 @@
 //! draw in a pass that reads the depth instead of writing it.
 
 use crate::atmosphere::Atmosphere;
+use crate::particles::cabin::CabinMask;
 use crate::particles::Precipitation;
 use crate::renderer::{depth_binding, LampUniform, DEPTH_FORMAT, MAX_LAMPS};
 use crate::sun::Cascades;
@@ -44,6 +45,8 @@ struct Uniform {
     lamp_matrix: [[f32; 4]; 4],
     day_sun: [f32; 4],
     day_sky: [f32; 4],
+    cabin_from_stage: [[f32; 4]; 4],
+    cabin_box: [[f32; 4]; 4],
 }
 
 pub(crate) struct Effects {
@@ -69,6 +72,8 @@ pub(crate) struct Effects {
     lamps: [LampUniform; MAX_LAMPS],
     /// How far from the eye the cabin reaches, metres: no rain or snow falls inside it (0 outside the car).
     cabin: f32,
+    /// The car's shape the in-car view draws no particles in, and the car body's model space to stage space.
+    cabin_mask: Option<(CabinMask, Mat4)>,
 }
 
 impl Effects {
@@ -231,6 +236,7 @@ impl Effects {
             velocity: Vec3::ZERO,
             lamps: [LampUniform::default(); MAX_LAMPS],
             cabin: 0.0,
+            cabin_mask: None,
         }
     }
 
@@ -261,6 +267,12 @@ impl Effects {
     /// Whether the view is from inside the car, whose cabin no rain or snow enters.
     pub(crate) fn set_inside(&mut self, inside: bool) {
         self.cabin = if inside { crate::post::CABIN_REACH } else { 0.0 };
+    }
+
+    /// The car's shape the in-car view draws no particles in ([`CabinMask`]) and the car body's model space to stage
+    /// space this frame; `None` keeps the sphere of the cabin's reach.
+    pub(crate) fn set_cabin_mask(&mut self, mask: Option<(CabinMask, Mat4)>) {
+        self.cabin_mask = mask;
     }
 
     /// The eye's velocity for the next frame, where the frames do not move it in time (a screenshot).
@@ -316,6 +328,11 @@ impl Effects {
             lamp_matrix: lamp.unwrap_or(Mat4::ZERO).to_cols_array_2d(),
             day_sun: day.map_or([0.0; 4], |d| d.sun),
             day_sky: day.map_or([0.0; 4], |d| d.sky),
+            cabin_from_stage: self.cabin_mask.map_or(Mat4::ZERO, |(_, body)| body.inverse()).to_cols_array_2d(),
+            cabin_box: self.cabin_mask.map_or([[0.0; 4]; 4], |(mask, _)| {
+                let [[a, b], [c, d]] = [mask.body, mask.room];
+                [a.extend(1.0), b.extend(0.0), c.extend(0.0), d.extend(0.0)].map(|v| v.to_array())
+            }),
         };
         queue.write_buffer(&self.uniform, 0, bytes_of(&uniform));
         self.written = uniform;
