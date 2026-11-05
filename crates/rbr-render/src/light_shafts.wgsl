@@ -8,8 +8,9 @@
 // air (the headlights' beams in the fog). `lamps.wgsl` and `volume_shadow.wgsl` are appended.
 
 struct Shafts {
-    // `fs_march`'s and `fs_beams`': the unjittered main view's clip space to stage space; `fs_beams`' eye and in w the
-    // air's scattering per metre, and the lamps (`LampUniform`, at the share they light the stage).
+    // `fs_march`'s and `fs_beams`': the unjittered main view's clip space to stage space; the eye and in w the air's
+    // scattering per metre (`fs_beams`) or how far the far layer reaches, metres (`fs_march`), and the lamps
+    // (`LampUniform`, at the share they light the stage).
     inverse_view_projection: mat4x4<f32>,
     eye: vec4<f32>,
     // `fs_march`'s: xyz the direction the sunlight travels.
@@ -26,8 +27,8 @@ struct Shafts {
     march_fog: vec4<f32>,
     // `fs_march`'s: each cascade's far distance from the eye, metres, w how much the cascades shade (0: none).
     march_splits: vec4<f32>,
-    // `fs_march`'s: stage space to each cascade's clip space.
-    march_matrices: array<mat4x4<f32>, 3>,
+    // `fs_march`'s: stage space to each cascade's clip space, then the far layer's (`sun::far`).
+    march_matrices: array<mat4x4<f32>, 4>,
     // `fs_march`'s: the volumetric clouds' shadow map's parameters (`cloud_volume::shadow_params`; zero without them).
     march_clouds: vec4<f32>,
     lamps: array<Lamp, 8>,
@@ -61,10 +62,16 @@ const MARCH_FORWARD: f32 = 0.6;
 const MARCH_PHASE_CAP: f32 = 4.0;
 // The glow's Henyey-Greenstein lobe, narrow about the sun, how far from the eye the air glows, metres, and the share of
 // that way in shade from which it glows in full: a ray all through sunlit air (open air, the valley from a hill) has
-// its light in the haze already, so the glow only shows the sun's rays among shaded air.
+// its light in the haze already, so the glow only shows the sun's rays among shaded air. That way runs the whole
+// `GLOW_REACH` whatever the depth, the part past the surface in `GLOW_BEYOND` steps that only judge the shade: judged
+// to the surface alone, the air just before a tree's shaded side counted a near tree as among shade and filled its
+// outline with glow, while the gap beside it, open to the sky, stayed dark.
 const GLOW_FORWARD: f32 = 0.85;
 const GLOW_REACH: f32 = 350.0;
 const GLOW_SHADE: f32 = 0.25;
+const GLOW_BEYOND: i32 = 8;
+// The far layer's depth bias (its depth spans 3500 m: about 2 m).
+const FAR_BIAS: f32 = 0.0005;
 
 struct Out {
     @builtin(position) clip: vec4<f32>,
@@ -84,7 +91,9 @@ fn march_jitter(pixel: vec2<i32>) -> f32 {
 }
 
 // How much of the sun reaches the air at stage point `world` (1 lit, 0 shaded): the cascades as `sun_reach` in
-// `effects.wgsl` takes them (1 past them or without them), times what the volumetric clouds let through.
+// `effects.wgsl` takes them, past them the far layer to its reach (1 past it or without them), times what the
+// volumetric clouds let through. Past the cascades the far trees shade the air too, or the air among them would count
+// as sunlit and glow in their shapes.
 fn air_sun_seen(world: vec3<f32>) -> f32 {
     let to_sun = -shafts.march_dir.xyz;
     var clouds = 1.0;
@@ -102,7 +111,12 @@ fn air_sun_seen(world: vec3<f32>) -> f32 {
     if (reach > shafts.march_splits.y) {
         cascade = 2;
     }
+    var bias = 0.002;
     if (reach > shafts.march_splits.z) {
+        cascade = 3;
+        bias = FAR_BIAS;
+    }
+    if (reach > shafts.eye.w) {
         return clouds;
     }
     let clip = shafts.march_matrices[cascade] * vec4<f32>(world, 1.0);
@@ -110,7 +124,7 @@ fn air_sun_seen(world: vec3<f32>) -> f32 {
     if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) {
         return clouds;
     }
-    return clouds * textureSampleCompareLevel(shafts_sun_map, shafts_sun_sampler, uv, cascade, clip.z - 0.002);
+    return clouds * textureSampleCompareLevel(shafts_sun_map, shafts_sun_sampler, uv, cascade, clip.z - bias);
 }
 
 // The air's extinction at stage point `world`, per metre (ours): the height fog's density there, at least the base
@@ -160,6 +174,14 @@ fn fs_march(v: Out) -> @location(0) vec4<f32> {
         near += step * glows;
         near_shade += (1.0 - seen) * step * glows;
         transmit *= exp(-density * step);
+    }
+    // The way on past the surface to `GLOW_REACH`, for the shade alone (`GLOW_BEYOND`).
+    let beyond = max(GLOW_REACH - reach, 0.0);
+    for (var i = 0; i < GLOW_BEYOND; i++) {
+        let step = beyond / f32(GLOW_BEYOND);
+        let t = reach + (f32(i) + jitter) * step;
+        near += step;
+        near_shade += (1.0 - air_sun_seen(eye + dir * t)) * step;
     }
     let k = 1.0 + GLOW_FORWARD * GLOW_FORWARD - 2.0 * GLOW_FORWARD * dot(dir, -shafts.march_dir.xyz);
     let among_shade = smoothstep(0.0, GLOW_SHADE, near_shade / max(near, 1e-6));

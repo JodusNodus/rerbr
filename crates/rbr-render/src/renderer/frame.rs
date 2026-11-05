@@ -663,8 +663,9 @@ impl Renderer {
         let day = self.day_light()?;
         let eye = camera::eye(view_projection);
         let (matrices, splits, shade) =
-            self.cascades.as_ref().map_or(([Mat4::IDENTITY; 3], [f32::INFINITY; 3], 0.0), |c| {
-                (c.matrices, [crate::sun::SPLITS[0], crate::sun::SPLITS[1], crate::sun::SPLITS[2]], 1.0)
+            self.cascades.as_ref().map_or(([Mat4::IDENTITY; 4], [f32::INFINITY; 4], 0.0), |c| {
+                let (m, s) = (c.matrices, crate::sun::SPLITS);
+                ([m[0], m[1], m[2], c.far], [s[0], s[1], s[2], crate::sun::FAR_REACH], 1.0)
             });
         let frame = self.air_frame;
         self.air_frame = self.air_frame.wrapping_add(1);

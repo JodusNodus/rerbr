@@ -311,6 +311,13 @@ white wall; other frames byte-identical, 2026-10-27). The sky gradient, doubled 
   canopy in rays. Shows in fog and low sun through trees; in clear air faint (13:00 mean under 0.4/255). 0.16-0.18
   ms at 2560x1440 (RX 9060 XT; 0.01-0.14 before). Additions off, overcast, night, night fog and dusk byte-identical
   to before. Tried and dropped: a CPU dust-grid splat for the wheel spray (no visible difference).
+  Glow gate fix (2026-11-05): the glow's share in shade (`GLOW_SHADE`) was judged along the ray to the surface only,
+  so the shaded air just before a tree's dark side switched the glow on for near trees and off for the gaps open to
+  the sky: tree outlines filled with flame-shaped haze, neighbours dark (Falstone II 103O 17:20 light cloud fly-by
+  frame 11000; same before the glare and GT7, so since `3c9cad09`). Now judged over the whole 350 m (8 shade-only steps
+  past the surface), and past the 150 m cascades the air takes the far layer's shade (was all sunlit). Shots RMSE:
+  Falstone 0.043, fog Luceram chase 0.0045, the rest under 0.0025, 20 byte-identical; light shafts 0.11 to 0.18 ms
+  at 1080p. Tried and dropped: `GLOW_SHADE` 0.1 (a wash over day Luceram cockpit, RMSE 0.015).
 - The backdrop's sky occlusion is weighed against its own meshes alone, not the strip it continues under (with the
   strip as cover its vertices went near black, 41M raised camera, 2026-10-27; `renderer/occlusion.rs`). The strip's
   own occlusion is unchanged; load +0.0 to 0.1 s (Semetin 0.2 to 0.3 s).
