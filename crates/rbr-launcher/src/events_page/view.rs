@@ -9,7 +9,7 @@ use egui::{Color32, ComboBox, RichText, Sense, Slider, Stroke, Ui};
 use rbr_formats::saves::is_file_name_part;
 use rbr_gameplay::setup::SeasonSetup;
 use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, StagePool, Surface, Surfaces, Weather};
-use rbr_season::event::{Conditions, Event, Standing, Turn};
+use rbr_season::event::{run_stages, Conditions, Event, PlayerResult, Standing, Turn};
 use rbr_season::field::AiResult;
 use rbr_season::team::team_offers;
 
@@ -59,6 +59,12 @@ fn rally_of(event: &Event) -> usize {
     }
 }
 
+/// The rows of `rally`'s results the player or the field drove (the model keeps a row per stage).
+fn driven(event: &Event, rally: usize) -> &[(Option<PlayerResult>, Vec<AiResult>)] {
+    let results = event.results.get(rally).map_or(&[][..], Vec::as_slice);
+    &results[..run_stages(results)]
+}
+
 /// The last stage driven in the turn's rally, while its result is news (not at a welcome or the event's end).
 fn last_stage(event: &Event) -> Option<(usize, usize)> {
     let rally = match event.turn {
@@ -66,7 +72,7 @@ fn last_stage(event: &Event) -> Option<(usize, usize)> {
         Turn::Service { rally, .. } | Turn::RallyOver { rally } => rally,
         _ => return None,
     };
-    let done = event.results.get(rally)?.len();
+    let done = driven(event, rally).len();
     Some((rally, done.checked_sub(1)?))
 }
 
@@ -88,7 +94,7 @@ fn car_name(cars: &[Car], key: &str) -> String {
 
 /// An entrant's (or the player's) time on stage `stage` of `rally`: none once retired or not run.
 fn stage_time(event: &Event, rally: usize, stage: usize, entrant: Option<usize>) -> Option<f32> {
-    let (player, ai) = event.results.get(rally)?.get(stage)?;
+    let (player, ai) = driven(event, rally).get(stage)?;
     match entrant {
         None => player.filter(|p| !p.retired).map(|p| p.time),
         Some(e) => match ai.get(e)? {
@@ -639,7 +645,7 @@ impl EventsPage {
     ) -> Option<Request> {
         let mut request = None;
         let name = event.rallies.get(rally).map_or("The rally", |r| r.name.as_str());
-        let retired = event.results.get(rally).and_then(|r| r.iter().position(|(p, _)| p.is_none_or(|p| p.retired)));
+        let retired = driven(event, rally).iter().position(|(p, _)| p.is_none_or(|p| p.retired));
         match retired {
             Some(stage) => card_title(ui, &format!("Out of {name} on SS{}", stage + 1)),
             None => card_title(ui, &format!("{name} is over")),
@@ -792,7 +798,7 @@ fn header_ui(ui: &mut Ui, event: &Event, lines: &[Standing], cars: &[Car]) {
             ui.colored_label(DIM, big("·".into()));
         }
         ui.label(big(step(event)).color(STAR));
-        if let Some((at, of)) = place(lines).filter(|_| event.results.get(rally).is_some_and(|r| !r.is_empty())) {
+        if let Some((at, of)) = place(lines).filter(|_| !driven(event, rally).is_empty()) {
             ui.colored_label(DIM, big("·".into()));
             ui.label(big(format!("{} of {of}", ordinal(at))));
         }
@@ -856,7 +862,7 @@ fn stage_result_ui(ui: &mut Ui, event: &Event, rally: usize, stage: usize) {
 /// The rally's stages and services: each stage's start, length, road and the player's time once driven.
 fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize) {
     let Some(r) = event.rallies.get(rally) else { return };
-    let results = event.results.get(rally).map_or(&[][..], Vec::as_slice);
+    let results = driven(event, rally);
     let mark = |k: usize| match results.get(k) {
         Some((Some(p), _)) if !p.retired => StageMark::Done(p.time),
         Some(_) => StageMark::Retired,
@@ -930,7 +936,7 @@ fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize) {
 
 /// The rally's standings after the stages run: place, driver, car, the last stage's time, total, gap and points.
 fn standings_ui(ui: &mut Ui, event: &Event, rally: usize, lines: &[Standing], cars: &[Car]) {
-    let ran = event.results.get(rally).map_or(0, Vec::len);
+    let ran = driven(event, rally).len();
     let count = event.rallies.get(rally).map_or(0, |r| r.stages.len());
     card(ui, |ui| {
         ui.horizontal(|ui| {

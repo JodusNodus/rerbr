@@ -1025,7 +1025,7 @@ impl<'a> Fields<'a> {
 }
 
 /// The stages run in a rally's results: every row the player or the field drove.
-fn run_stages(results: &[(Option<PlayerResult>, Vec<AiResult>)]) -> usize {
+pub fn run_stages(results: &[(Option<PlayerResult>, Vec<AiResult>)]) -> usize {
     results.iter().filter(|(p, ai)| p.is_some() || !ai.is_empty()).count()
 }
 
