@@ -362,9 +362,11 @@
   "car": "Audi quattro A2 GrpB",
   "view": "flyby",
   "settings": {
-   "clouds": "partly"
+   "clouds": "light",
+   "wetness": "wet",
+   "precipitation": "none"
   },
-  "clock": "05:30",
+  "clock": "18:00",
   "at": 11448,
   "args": [
    "--fov",

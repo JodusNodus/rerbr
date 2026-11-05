@@ -101,7 +101,7 @@ Toyota GR Yaris Rally2, Falstone II (RSF 103), flyby view, 17:20
 
 ### golden-pengonpohja-quattro-flyby
 
-Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 05:30
+Audi quattro A2 GrpB, Pengonpohja (RSF 607), flyby view, 18:00
 
 ![golden-pengonpohja-quattro-flyby](golden-pengonpohja-quattro-flyby.jpg)
 

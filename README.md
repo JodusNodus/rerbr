@@ -18,7 +18,7 @@ Reimplementation of Richard Burns Rally 1.02 with NGP 7 physics. Not a mod, not 
 
 | | |
 |---|---|
-| ![An Audi quattro A2 Group B in a bend at a junction on Pengonpohja, the road signs and tape behind it, seen from a wide fly-by camera](docs/shots/golden-pengonpohja-quattro-flyby.jpg) | ![The cockpit of an Audi quattro A2 Group B passing a sunlit red barn on Pirttikulma in the afternoon, the road ahead through the windscreen](docs/shots/day-pirttikulma-quattro-cockpit.jpg) |
+| ![An Audi quattro A2 Group B on a wet Pengonpohja in the low evening sun, light through the pines and a puddle by the road, seen from a wide fly-by camera](docs/shots/golden-pengonpohja-quattro-flyby.jpg) | ![The cockpit of an Audi quattro A2 Group B passing a sunlit red barn on Pirttikulma in the afternoon, the road ahead through the windscreen](docs/shots/day-pirttikulma-quattro-cockpit.jpg) |
 | Audi quattro A2 Group B (model by Shenshee), Pengonpohja (stage by Justup & BTBfin) | Audi quattro A2 Group B (model by Shenshee), Pirttikulma (stage by Justup & BTBfin) |
 | ![A Subaru Impreza GC8 555 throwing up spray in heavy rain on Luceram Col Saint Roch](docs/shots/rain-luceram-gc8-flyby.jpg) | ![A Toyota GR Yaris Rally2 in fog on Comb I](docs/shots/fog-621-yaris-chase.jpg) |
 | Subaru Impreza GC8 555 Group A (model by gonzo_kool), Luceram Col Saint Roch (stage by Casgra11) | Toyota GR Yaris Rally2 (model by Ha3aP), Comb I (stage by Edd Hartley) |
