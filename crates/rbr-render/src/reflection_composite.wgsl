@@ -1,20 +1,18 @@
-// The screen-space reflections traced at half the frame's size (`fs_reflect` in `shader.wgsl`,
-// `renderer::ScreenReflection`) laid over the frame: each pixel takes the 3x3 half-size texels about it by a tent
-// `TENT` texels wide (wider than bilinear, so that the rays' per-texel noise does not show as blocks), each times how
-// near its depth is to the pixel's (`DEPTH_MATCH` on the relative difference), not renormalised, so that a pixel whose
-// texels lie on another surface (the car over the road, the verge beside it) takes none of their reflection. The
-// texels hold the reflection premultiplied by its weight.
+// The frame with the screen-space reflections laid over it (`renderer::ScreenReflection`), written whole into the
+// target. The reflections are traced at half the frame's size, or at its size (`Detail::Ultra`;
+// `fs_reflect` in `ssr.wgsl`): each pixel takes the 3x3 traced texels about it by a tent `tent` texels wide (wider
+// than bilinear, so that the rays' per-texel noise does not show as blocks), each times how near its depth is to the
+// pixel's (`DEPTH_MATCH` on the relative difference), not renormalised, so that a pixel whose texels lie on another
+// surface (the car over the road, the verge beside it) takes none of their reflection. The texels hold the reflection
+// premultiplied by its weight.
 
 @group(0) @binding(0) var traced: texture_2d<f32>;
 @group(0) @binding(1) var traced_depth: texture_2d<f32>;
 @group(0) @binding(2) var frame_depth: texture_depth_2d;
-
-// The traced texels' side over the frame's pixel: a half, or 1 at `Detail::Ultra`.
-override TRACED_SCALE: f32 = 0.5;
+// The frame without the reflections (the screen-space reflections' first level).
+@group(0) @binding(3) var frame: texture_2d<f32>;
 
 const DEPTH_MATCH: f32 = 100.0;
-// The tent's width, texels: wider at the finer texels (`Detail::Ultra`), whose rays' noise it hides as much.
-override TENT: f32 = 1.5;
 
 struct Out {
     @builtin(position) clip: vec4<f32>,
@@ -30,20 +28,26 @@ fn vs_composite(@builtin(vertex_index) index: u32) -> Out {
 @fragment
 fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     let size = vec2<i32>(textureDimensions(traced));
-    let depth = textureLoad(frame_depth, vec2<i32>(v.clip.xy), 0);
-    let p = v.clip.xy * TRACED_SCALE - 0.5;
+    let pixel = vec2<i32>(v.clip.xy);
+    let under = textureLoad(frame, pixel, 0);
+    let depth = textureLoad(frame_depth, pixel, 0);
+    // The traced texels' side over the frame's pixel, and the tent's width: wider at the finer texels, whose rays'
+    // noise it hides as much.
+    let scale = vec2<f32>(size) / vec2<f32>(textureDimensions(frame_depth));
+    let tent = select(1.5, 2.0, scale.x > 0.75);
+    let p = v.clip.xy * scale - 0.5;
     let centre = vec2<i32>(round(p));
     var sum = vec4<f32>(0.0);
     var total = 0.0;
     for (var k = 0; k < 9; k++) {
         let at = centre + vec2<i32>(k % 3 - 1, k / 3 - 1);
         let far = abs(vec2<f32>(at) - p);
-        let tent = max(TENT - far.x, 0.0) * max(TENT - far.y, 0.0);
+        let weight = max(tent - far.x, 0.0) * max(tent - far.y, 0.0);
         let texel = clamp(at, vec2<i32>(0), size - 1);
         let d = textureLoad(traced_depth, texel, 0).r;
         let off = abs(d - depth) / max(max(d, depth), 1e-6);
-        sum += textureLoad(traced, texel, 0) * tent * exp(-off * off * DEPTH_MATCH);
-        total += tent;
+        sum += textureLoad(traced, texel, 0) * weight * exp(-off * off * DEPTH_MATCH);
+        total += weight;
     }
-    return vec4<f32>(sum.rgb / max(sum.a, 1e-6), sum.a / total);
+    return vec4<f32>(mix(under.rgb, sum.rgb / max(sum.a, 1e-6), sum.a / total), under.a);
 }

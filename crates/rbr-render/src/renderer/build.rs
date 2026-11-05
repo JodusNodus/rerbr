@@ -16,7 +16,7 @@ use super::uniforms::{frame_index, FrameBinding, FrameUniform};
 use super::uniforms::{LampUniform, MAX_LAMPS};
 use super::Renderer;
 use super::SHADER;
-use super::{bounce, cloud_volume, meshes, mirrors, motion, occlusion, pipelines, probes, reflection, shadows};
+use super::{bounce, cloud_volume, meshes, mirrors, motion, occlusion, probes, reflection, shadows};
 use crate::dials;
 use crate::effects::Effects;
 use crate::foliage;
@@ -525,7 +525,7 @@ impl Renderer {
         let screen_reflection = rays.map(|rays| {
             ScreenReflection::new(
                 &device,
-                (&shader, vertex_entry(enhance), "fs_reflect", rays, pipelines::alpha_writes(taa, false)),
+                (&shader, vertex_entry(enhance), "fs_reflect", rays),
                 [&frame_layout, &texture_layout],
                 format,
                 depth_size,

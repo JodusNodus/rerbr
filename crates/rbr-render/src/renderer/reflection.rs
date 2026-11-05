@@ -30,8 +30,8 @@ pub(super) const ULTRA_SIZE: u32 = 256;
 impl Renderer {
     /// Draws the screen-space reflections ([`ScreenReflection`]) over the frame `draw_scene` kept, and resolves it into
     /// `target`: the water draws, and in wet weather the wet roads, again at half size (full with
-    /// [`Detail::Ultra`]; `fs_reflect`, which hides what lies behind the frame's depth), then
-    /// laid over the frame (`reflection_composite.wgsl`).
+    /// [`Detail::Ultra`]; `fs_reflect`, which hides what lies behind the frame's depth),
+    /// then the frame with them laid over is written into `target` (`reflection_composite.wgsl`).
     pub(super) fn draw_reflections(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -41,6 +41,35 @@ impl Renderer {
     ) {
         let eye = camera::eye(view_projection);
         let frustum = Frustum::from_view_projection(view_projection);
+        let draws: Vec<_> = self
+            .meshes
+            .iter()
+            .filter(|mesh| {
+                !mesh.bounds.is_some_and(|(center, half)| !frustum.intersects_box(center, half))
+                    && !mesh.cell_hidden(view_projection)
+            })
+            .flat_map(|mesh| {
+                let distance = mesh.bounds.map_or(0.0, |(center, _)| center.distance(eye));
+                mesh.draws
+                    .iter()
+                    .filter(move |draw| draw.lod.shows(distance) && reflects(draw, self.wetness))
+                    .map(move |draw| (mesh, draw))
+            })
+            .collect();
+        // The glass's lenses read the levels.
+        if !draws.is_empty() || self.glass.as_ref().is_some_and(|g| g.active()) {
+            ssr.halver.halve(encoder, &ssr.levels, &ssr.sources);
+        }
+        // Nothing reflects in view: the frame as drawn.
+        if draws.is_empty() {
+            let scene = ssr.levels[0].texture();
+            encoder.copy_texture_to_texture(
+                scene.as_image_copy(),
+                target.texture().as_image_copy(),
+                wgpu::Extent3d { depth_or_array_layers: 1, ..scene.size() },
+            );
+            return;
+        }
         let cleared = |view| {
             Some(wgpu::RenderPassColorAttachment {
                 view,
@@ -53,37 +82,13 @@ impl Renderer {
             })
         };
         ssr.pyramid.build(encoder);
+        // At the frame's size the frame's depth culls what lies behind it before the shader runs (`hidden` does at
+        // half size): wet 127 chase at 4K 4.6 to 3.9 ms.
+        let full = ssr.scale == 1;
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("screen-space reflections"),
             color_attachments: &[cleared(&ssr.traced[0]), cleared(&ssr.traced[1])],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        pass.set_pipeline(&ssr.pipeline);
-        pass.set_bind_group(0, &self.frames[0].bind_group, &[]);
-        pass.set_bind_group(2, &ssr.group, &[]);
-        let mut bound = Bound::new(&self.buffers);
-        for mesh in &self.meshes {
-            if mesh.bounds.is_some_and(|(center, half)| !frustum.intersects_box(center, half))
-                || mesh.cell_hidden(view_projection)
-            {
-                continue;
-            }
-            let distance = mesh.bounds.map_or(0.0, |(center, _)| center.distance(eye));
-            for draw in mesh.draws.iter().filter(|draw| draw.lod.shows(distance) && reflects(draw, self.wetness)) {
-                pass.set_bind_group(1, &draw.group, &[]);
-                bound.draw(&mut pass, mesh, draw);
-            }
-        }
-        drop(pass);
-        let attachment = self.over_attachment(encoder, target, &ssr.levels[0]);
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("screen-space reflections' composite"),
-            color_attachments: &[Some(attachment)],
-            // Read only, so that the effects can also sample it.
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            depth_stencil_attachment: full.then_some(wgpu::RenderPassDepthStencilAttachment {
                 view: &self.depth_view,
                 depth_ops: None,
                 stencil_ops: None,
@@ -92,15 +97,31 @@ impl Renderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        pass.set_pipeline(&ssr.pipelines[usize::from(full)]);
+        pass.set_bind_group(0, &self.frames[0].bind_group, &[]);
+        pass.set_bind_group(2, &ssr.group, &[]);
+        let mut bound = Bound::new(&self.buffers);
+        for (mesh, draw) in draws {
+            pass.set_bind_group(1, &draw.group, &[]);
+            bound.draw(&mut pass, mesh, draw);
+        }
+        drop(pass);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("screen-space reflections' composite"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
         pass.set_pipeline(&ssr.composite);
         pass.set_bind_group(0, &ssr.composite_group, &[]);
         pass.draw(0..3, 0..1);
-        if !self.late_effects() {
-            self.draw_effects(&mut pass);
-        }
-        if let Some(glass) = &self.glass {
-            glass.draw(&self.device, &mut pass, &ssr.scene, (&self.mirrors.view, &self.mirrors.uniform));
-        }
     }
 
     /// Draws the due faces of the reflection cube and of the surroundings cube from the car's centre
@@ -225,13 +246,14 @@ pub(super) fn reflects(draw: &GpuDraw, wetness: f32) -> bool {
 /// with `pipeline`, which reads `scene` and the depth (`group`) and writes what their reflected rays hit on screen and
 /// their depth into `traced`; `composite` lays that over the frame (`composite_group`).
 pub(super) struct ScreenReflection {
-    pipeline: wgpu::RenderPipeline,
+    /// The trace at half size, and at the frame's (depth-tested).
+    pipelines: [wgpu::RenderPipeline; 2],
     layout: wgpu::BindGroupLayout,
     /// The resolved frame's levels ([`SCENE_MIPS`]): the frame, then ever blurrier halvings of it, for glossy
     /// reflections.
     pub(super) levels: Vec<wgpu::TextureView>,
     /// All the levels, for the glass's lenses.
-    scene: wgpu::TextureView,
+    pub(super) scene: wgpu::TextureView,
     pub(super) sources: Vec<wgpu::BindGroup>,
     pub(super) halver: Halver,
     group: wgpu::BindGroup,
@@ -240,7 +262,9 @@ pub(super) struct ScreenReflection {
     composite: wgpu::RenderPipeline,
     composite_layout: wgpu::BindGroupLayout,
     composite_group: wgpu::BindGroup,
-    /// The traced targets' side over the frame's: a half, or 1 with [`Detail::Ultra`].
+    /// Whether the rays trace at the frame's size ([`Detail::Ultra`]; [`trace_scale`]).
+    ultra: bool,
+    /// The traced targets' side over the frame's now ([`trace_scale`]).
     scale: u32,
     /// The frame's depth pyramid, which the rays traverse.
     pyramid: DepthPyramid,
@@ -262,24 +286,17 @@ const COMPOSITE: &str = include_str!("../reflection_composite.wgsl");
 impl ScreenReflection {
     /// `shader` with the stage draws' vertex entry point ([`vertex_entry`](super::pipelines::vertex_entry)) and the
     /// fragment entry point (`fs_reflect` in `ssr.wgsl`), `rays` a pixel and
-    /// the pyramid's cells a ray visits ([`Reflections::rays`](super::Reflections::rays)). `full` traces at the
-    /// frame's size, not half.
+    /// the pyramid's cells a ray visits ([`Reflections::rays`](super::Reflections::rays)). `ultra`: [`Detail::Ultra`]
+    /// ([`trace_scale`]).
     pub(super) fn new(
         device: &wgpu::Device,
-        (shader, vertex, fragment, [rays, steps], write_mask): (
-            &wgpu::ShaderModule,
-            &str,
-            &str,
-            [u32; 2],
-            wgpu::ColorWrites,
-        ),
+        (shader, vertex, fragment, [rays, steps]): (&wgpu::ShaderModule, &str, &str, [u32; 2]),
         [frame_layout, texture_layout]: [&wgpu::BindGroupLayout; 2],
         format: wgpu::TextureFormat,
         size: (u32, u32),
         depth: &wgpu::TextureView,
-        full: bool,
+        ultra: bool,
     ) -> ScreenReflection {
-        let scale = if full { 1 } else { 2 };
         let pyramid = DepthPyramid::new(device, size, depth);
         let entries = [texture_entry(0, TEXTURE), texture_entry(1, depth_binding()), texture_entry(2, PYRAMID)];
         let constants = [("SSR_RAYS", f64::from(rays)), ("SSR_ITERATIONS", f64::from(steps))];
@@ -287,43 +304,56 @@ impl ScreenReflection {
             label: Some("screen-space reflections"),
             entries: &entries,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("screen-space reflections"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            bind_group_layouts: &[Some(frame_layout), Some(texture_layout), Some(&layout)],
+            immediate_size: 0,
+        });
+        // Without and with the frame's depth (reversed: nearer or level passes), for half and full size.
+        let pipelines = [false, true].map(|tested| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("screen-space reflections"),
-                bind_group_layouts: &[Some(frame_layout), Some(texture_layout), Some(&layout)],
-                immediate_size: 0,
-            })),
-            vertex: wgpu::VertexState {
-                module: shader,
-                entry_point: Some(vertex),
-                compilation_options: Default::default(),
-                buffers: &[Some(vertex_layout())],
-            },
-            primitive: wgpu::PrimitiveState {
-                front_face: FRONT_FACE,
-                cull_mode: Some(wgpu::Face::Back),
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: shader,
-                entry_point: Some(fragment),
-                compilation_options: wgpu::PipelineCompilationOptions { constants: &constants, ..Default::default() },
-                // The reflecting layers (an RSF road's decals over it) blend over each other as they did over the
-                // frame: from transparent, the colour comes out premultiplied by the weight.
-                targets: &[
-                    Some(wgpu::ColorTargetState {
-                        format: TRACED[0],
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                    Some(TRACED[1].into()),
-                ],
-            }),
-            multiview_mask: None,
-            cache: None,
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: shader,
+                    entry_point: Some(vertex),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(vertex_layout())],
+                },
+                primitive: wgpu::PrimitiveState {
+                    front_face: FRONT_FACE,
+                    cull_mode: Some(wgpu::Face::Back),
+                    ..Default::default()
+                },
+                depth_stencil: tested.then(|| wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: shader,
+                    entry_point: Some(fragment),
+                    compilation_options: wgpu::PipelineCompilationOptions {
+                        constants: &constants,
+                        ..Default::default()
+                    },
+                    // The reflecting layers (an RSF road's decals over it) blend over each other as they did over the
+                    // frame: from transparent, the colour comes out premultiplied by the weight.
+                    targets: &[
+                        Some(wgpu::ColorTargetState {
+                            format: TRACED[0],
+                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        }),
+                        Some(TRACED[1].into()),
+                    ],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
         });
         let composite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("screen-space reflections' composite"),
@@ -338,6 +368,7 @@ impl ScreenReflection {
                     },
                 ),
                 texture_entry(2, depth_binding()),
+                texture_entry(3, TEXTURE),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -358,35 +389,22 @@ impl ScreenReflection {
                 buffers: &[],
             },
             primitive: Default::default(),
-            // The pass keeps the frame's depth bound, read only, for the effects drawn after.
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
+            depth_stencil: None,
             multisample: Default::default(),
             fragment: Some(wgpu::FragmentState {
                 module: &module,
                 entry_point: Some("fs_composite"),
-                compilation_options: wgpu::PipelineCompilationOptions {
-                    constants: &[("TRACED_SCALE", 1.0 / f64::from(scale)), ("TENT", if full { 2.0 } else { 1.5 })],
-                    ..Default::default()
-                },
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask,
-                })],
+                compilation_options: Default::default(),
+                // Every pixel written: the frame with its reflection laid over.
+                targets: &[Some(format.into())],
             }),
             multiview_mask: None,
             cache: None,
         });
         let halver = Halver::new(device, format);
-        let sized = Self::targets(device, [&layout, &composite_layout], format, size, depth, scale, &pyramid);
+        let sized = Self::targets(device, [&layout, &composite_layout], format, size, depth, ultra, &pyramid);
         ScreenReflection {
-            pipeline,
+            pipelines,
             layout,
             sources: halver.sources(device, &sized.levels),
             levels: sized.levels,
@@ -397,7 +415,8 @@ impl ScreenReflection {
             composite,
             composite_layout,
             composite_group: sized.composite_group,
-            scale,
+            ultra,
+            scale: sized.scale,
             pyramid,
         }
     }
@@ -416,26 +435,27 @@ impl ScreenReflection {
             format,
             size,
             depth,
-            self.scale,
+            self.ultra,
             &self.pyramid,
         );
         self.sources = self.halver.sources(device, &sized.levels);
         (self.levels, self.scene, self.group) = (sized.levels, sized.scene, sized.group);
-        (self.traced, self.composite_group) = (sized.traced, sized.composite_group);
+        (self.traced, self.composite_group, self.scale) = (sized.traced, sized.composite_group, sized.scale);
     }
 
     /// The targets for frames of `size`: the resolved frame's levels and the bind group that reads them and `depth`;
-    /// the traced targets ([`ScreenReflection::scale`]) and the composite's bind group; `pyramid`'s levels too.
+    /// the traced targets ([`trace_scale`]) and the composite's bind group; `pyramid`'s levels too.
     fn targets(
         device: &wgpu::Device,
         [layout, composite_layout]: [&wgpu::BindGroupLayout; 2],
         format: wgpu::TextureFormat,
         (width, height): (u32, u32),
         depth: &wgpu::TextureView,
-        scale: u32,
+        ultra: bool,
         pyramid: &DepthPyramid,
     ) -> FrameTargets {
         let (width, height) = (width.max(1), height.max(1));
+        let scale = trace_scale(ultra, height);
         let mips = SCENE_MIPS.min(width.min(height).ilog2() + 1);
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("resolved frame"),
@@ -450,7 +470,7 @@ impl ScreenReflection {
                 | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        let levels = (0..mips)
+        let levels: Vec<_> = (0..mips)
             .map(|mip| {
                 texture.create_view(&wgpu::TextureViewDescriptor {
                     base_mip_level: mip,
@@ -495,9 +515,19 @@ impl ScreenReflection {
                 wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&traced[0]) },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&traced[1]) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&levels[0]) },
             ],
         });
-        FrameTargets { levels, scene, group, traced, composite_group }
+        FrameTargets { levels, scene, group, traced, composite_group, scale }
+    }
+}
+
+/// The traced targets' side over the frame's: 2, or 1 with [`Detail::Ultra`].
+fn trace_scale(ultra: bool, _height: u32) -> u32 {
+    if ultra {
+        1
+    } else {
+        2
     }
 }
 
@@ -508,6 +538,7 @@ struct FrameTargets {
     group: wgpu::BindGroup,
     traced: [wgpu::TextureView; 2],
     composite_group: wgpu::BindGroup,
+    scale: u32,
 }
 
 /// The cube faces in the order of their layers (+x, -x, +y, -y, +z, -z): the view direction and up of each, as

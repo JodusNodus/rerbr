@@ -351,7 +351,7 @@ impl Renderer {
                 let stats = self.draw_scene(encoder, [scene, &self.depth_view], view_projection, View::Main, [true; 2]);
                 span(profiler, encoder, "scene", t);
                 let t = mark(profiler, encoder);
-                self.draw_over(encoder, resolved, scene);
+                self.draw_over(encoder, resolved, scene, scene);
                 span(profiler, encoder, "particles, glass, rain", t);
                 stats
             }
@@ -367,18 +367,29 @@ impl Renderer {
                 let stats = self.draw_scene(encoder, levels, view_projection, View::Main, [true; 2]);
                 span(profiler, encoder, "scene", t);
                 let t = mark(profiler, encoder);
-                ssr.halver.halve(encoder, &ssr.levels, &ssr.sources);
                 self.draw_reflections(encoder, ssr, resolved, view_projection);
                 span(profiler, encoder, "screen reflections", t);
+                if glass || effects {
+                    let t = mark(profiler, encoder);
+                    self.draw_over(encoder, resolved, resolved, &ssr.scene);
+                    span(profiler, encoder, "particles, glass, rain", t);
+                }
                 stats
             }
         };
         stats
     }
 
-    /// Draws the particles and the glass over the frame `draw_scene` kept and resolves it into `target`; the glass
-    /// reads the resolved frame `scene`.
-    fn draw_over(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::TextureView, scene: &wgpu::TextureView) {
+    /// Draws the particles and the glass over the frame `draw_scene` kept in `scene` and resolves it into `target`
+    /// (the same view: drawn over in place); the glass reads the resolved frame `lens` (the screen-space reflections'
+    /// levels hold it without the reflections).
+    fn draw_over(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        scene: &wgpu::TextureView,
+        lens: &wgpu::TextureView,
+    ) {
         let attachment = self.over_attachment(encoder, target, scene);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("glass"),
@@ -396,7 +407,7 @@ impl Renderer {
             self.draw_effects(&mut pass);
         }
         if let Some(glass) = &self.glass {
-            glass.draw(&self.device, &mut pass, scene, (&self.mirrors.view, &self.mirrors.uniform));
+            glass.draw(&self.device, &mut pass, lens, (&self.mirrors.view, &self.mirrors.uniform));
         }
     }
 
