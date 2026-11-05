@@ -2415,6 +2415,7 @@ dependencies = [
  "png",
  "rbr-btb",
  "rbr-championship",
+ "rbr-events",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-recording",

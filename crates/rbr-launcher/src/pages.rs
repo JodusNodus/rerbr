@@ -231,6 +231,19 @@ impl Form {
         }
     }
 
+    /// What blocks a stage's launch: a running viewer, what Start checks (`readiness`) and a car that cannot start.
+    pub(crate) fn launch_blocker(&self) -> Option<Issue> {
+        self.child
+            .is_some()
+            .then(|| Issue { text: "the viewer is running".into(), fix: None })
+            .or_else(|| self.readiness())
+            .or_else(|| {
+                self.car().and_then(|car| {
+                    car.unavailable().map(|reason| Issue { text: format!("{}: {reason}", car.name), fix: None })
+                })
+            })
+    }
+
     /// What the install lacks, on every page's status line: a missing program, NGP's archive or DLL, or a car NGP
     /// drives; with the fix when there is one.
     pub fn readiness(&self) -> Option<Issue> {
@@ -296,8 +309,9 @@ impl Form {
     /// The menus' sound for the page shown: the service park at a championship's service stop, while the viewer is
     /// not running.
     pub fn menu_sound(&mut self) {
-        let park =
-            self.child.is_none() && self.rally.in_service() && matches!(self.page, Page::Championship | Page::Setup);
+        let service = self.rally.in_service() && self.events.view == crate::events_page::View::Classic;
+        let service = service || self.events.in_service();
+        let park = self.child.is_none() && service && matches!(self.page, Page::Championship | Page::Setup);
         if !park && self.menu_sound.is_none() {
             return;
         }
@@ -447,7 +461,7 @@ impl Form {
         self.stage_browser.open &= self.page == Page::Drive;
         self.car_browser.open &= match self.car_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
-            car_browser::Target::Season => self.page == Page::Championship,
+            car_browser::Target::Season | car_browser::Target::Event => self.page == Page::Championship,
         };
         ctx.root_ui(|root| {
             egui::CentralPanel::default().show(root, |ui| match self.page {
@@ -597,8 +611,14 @@ impl Form {
         if self.no_cars_yet(ui) {
             return;
         }
-        if self.car_browser.open && self.car_browser.target == car_browser::Target::Season {
+        if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
             return self.car_browser_page(ui);
+        }
+        if self.events.view != crate::events_page::View::Classic {
+            return self.events_page(ui);
+        }
+        if ui.link("‹ All events").clicked() {
+            self.events.view = crate::events_page::View::Entry;
         }
         let profile = self.rally.profile.clone();
         let team = self.rally.team;
@@ -673,16 +693,7 @@ impl Form {
         // What blocks a championship or trial launch: a running viewer, what the Drive page's Start checks
         // through `readiness` (no program, NGP or car: the status line names the fix), and a car that cannot
         // start. The Drive page's own selection does not apply: a championship stage resolves on its own row.
-        let launch_blocker = self
-            .child
-            .is_some()
-            .then(|| Issue { text: "the viewer is running".into(), fix: None })
-            .or_else(|| self.readiness())
-            .or_else(|| {
-                self.car().and_then(|car| {
-                    car.unavailable().map(|reason| Issue { text: format!("{}: {reason}", car.name), fix: None })
-                })
-            });
+        let launch_blocker = self.launch_blocker();
         let request = egui::ScrollArea::vertical()
             .id_salt("championship")
             .show(ui, |ui| {

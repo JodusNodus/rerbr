@@ -595,7 +595,7 @@ impl Form {
 
     /// The viewer's arguments for `stage`; `extra` goes to `rbr-standalone`, `viewer_extra` to the viewer. `None`, with
     /// the status saying why, when it cannot start.
-    fn launch_args(
+    pub(crate) fn launch_args(
         &mut self,
         stage: catalog::Stage,
         options: RaceOptions,
@@ -826,7 +826,7 @@ impl Form {
     }
 
     /// Runs the viewer with `args`; whether it started.
-    fn spawn(&mut self, args: Vec<String>) -> bool {
+    pub(crate) fn spawn(&mut self, args: Vec<String>) -> bool {
         eprintln!("launcher: {} {}", self.paths.viewer.display(), args.join(" "));
         let title = args.iter().position(|a| a == "--title").and_then(|n| args.get(n + 1)).cloned().unwrap_or_default();
         let mut command = self.viewer_command(&args);
@@ -873,6 +873,7 @@ impl Form {
                 self.ffb_cars = saved.ffb_cars;
                 if !replay {
                     self.rally.stage_closed(&self.here());
+                    self.events.stage_closed(&self.here(), &self.rally.profile.clone());
                 }
                 self.replays.refresh(&self.here());
             }

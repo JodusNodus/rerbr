@@ -154,6 +154,7 @@ impl Form {
             paths,
             previews: preview::Previews::new(data.clone()),
             school: SchoolPage::new(&data),
+            events: crate::events_page::EventsPage::new(&data),
             data,
             season,
             page: Page::Drive,

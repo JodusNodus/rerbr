@@ -86,8 +86,9 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         form.setup.show_area(area);
         shot(&dir.join(format!("setup-{n}.png")), |ctx| form.ui(ctx))?;
     }
-    // The Championship page: no season (without and with a saved one), a rally's welcome, a wrecked car's end of the rally, a season after its first
+    // The events (ours), then the Classic 1.02 season's page: no season (without and with a saved one), a rally's welcome, a wrecked car's end of the rally, a season after its first
     // stage, a rally's results, between rallies, the season over, then (with the damage file's car) its service.
+    crate::events_page::shots(form, dir)?;
     form.page = Page::Championship;
     form.rally.screenshot_saved_season(false);
     shot(&dir.join("championship-new.png"), |ctx| form.ui(ctx))?;

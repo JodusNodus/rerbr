@@ -345,6 +345,8 @@ pub enum Target {
     Drive,
     /// The car a new season drives.
     Season,
+    /// The car an event drives (`events_page`).
+    Event,
 }
 
 #[derive(Default)]

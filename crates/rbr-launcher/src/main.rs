@@ -142,6 +142,7 @@ mod controls_page;
 mod crash;
 mod disc_install;
 mod drive_page;
+mod events_page;
 mod ghosts;
 mod graphics_page;
 mod gvrc;
@@ -445,6 +446,8 @@ struct Form {
     page: Page,
     setup: SetupPage,
     rally: RallyPage,
+    /// The Championship tab's events (ours) and its way to the 1.02 season.
+    events: events_page::EventsPage,
     school: SchoolPage,
     /// The Drive page's stage and car previews.
     previews: preview::Previews,
