@@ -652,15 +652,28 @@ splash never shows on a wet stage.
   box above it from 0.8 m ahead of the eye; 0.15 m soft edge; model frame from `car.bounds()` and the cockpit eye)
   replaces the eye sphere in `fs_soft`, so spray outside the doors shows and the 52 GC8 footwell gaps stay clean.
   Front-wheel pools from the patch's sideways slide (`front::slide`, 0.8-4 m/s): `Kick` dust and `Fling` stones
-  thrown out the slide's way, `Flurry` snow powder (also ploughed in snow); `Bow` drops over the bonnet from
-  standing water. The air about the car lags its speed by `front::WAKE_LAG` 0.8 s, so a braking car's dust, haze
+  thrown out the slide's way, `Flurry` snow powder (also ploughed in snow); a plume from standing water (next
+  bullet). The air about the car lags its speed by `front::WAKE_LAG` 0.8 s, so a braking car's dust, haze
   and powder roll past it (`front::carried`). The front pools draw from their own `Rng` (`Simulation::emit_drawing`)
   so the other pools stay byte-identical. Recorded drives seldom slide their fronts, so the side throws show mostly
   in live play. Additions off byte-identical; effects pass 1080p cockpit, wet and dusty, within noise (0.3-0.4 ms
-  either way). Shots: rain Luceram GC8 cockpit RMSE 0.011 (bow drops), snow Sturec 208 chase 0.027 and Peklo Yaris
+  either way). Shots: snow Sturec 208 chase 0.027 and Peklo Yaris
   chase 0.016 (braking powder), dusty chases and fly-bys 0.001-0.009; 13 byte-identical. Mirrors draw the spray in
-  the flat game pipeline (`particles.draw`), not the soft pass. Bow drops hitting the windscreen would need a hook
-  into `glass/` spatter (not built).
+  the flat game pipeline (`particles.draw`), not the soft pass.
+- Puddle plume and splats (2026-11-05; the first version's streaked `drop` sheet over the bonnet read as an old
+  game's thin lines): a front tyre in standing water throws `Bow` clumps (`PUFF`, translucent muddy grey, 0.6 s,
+  0.3 to 1.3 m) and `BowMist` (`WISP`, 0.9 s, 0.4 to 1.8 m), mostly out and up at the front corner, a quarter in
+  over the bonnet, keeping 0.9-0.98 of the car's speed so the air takes them back past the wing. Gated on the
+  standing water from 0.15 to 0.6 (`BOW_WATER`: the wet ruts' 0.08 film under `--enhance wet` throws none), and
+  thrown at once on running in (`BOW_BURST` 80 by how much deeper it got: the puddles on 54O are crossed in about
+  10 frames). Glass hook: `Thrown::bow`, splats a frame (6 a second at full depth and speed, 3 on running in), from
+  `WheelSpray::feed` through `dirt::Spray` to `Glass::splat`: a 3-6 mm drop low on the glass with 3-7 raindrops
+  round it within 4 cm, skidding and running and wiped as rain; the paint's grime ignores it. Effects pass 1080p
+  cockpit at the 54O puddle (`--at 10800`, wet heavy): 0.46 to 0.70 ms; off the puddles within 0.05 ms. Captures
+  `/tmp/cockpit-spray/wet2/`. Shots against the first version: rain Luceram GC8 cockpit RMSE 0.025 and fly-by
+  0.023 (streaks gone, the plume at the corner), night Luceram 131 cockpit 0.014, fog Luceram GC8 chase 0.007, two
+  under 0.001, 30 byte-identical; 52 rain cockpit `--at 4500` footwells clean. The rear wheels' `Drops`,
+  `MudDrops` and `Splash` keep the `drop` streak sprite: dark thin spikes behind the car in the wet chase (open).
 Soft-particle cost (2026-10-26, RX 9060 XT): the effects pass is fill-bound (Sipirkakim II `--at 15000`: 926
 quads, ~400 screens of coverage, 35 ms at 1440p, nearly all `fs_soft`; GPU clocks bimodal). Fixes, frames within
 2/255 of before (lamps' code out of the day's pipeline, fragments under 1/1000 alpha discarded, depth after the

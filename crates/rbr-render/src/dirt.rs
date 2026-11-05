@@ -66,23 +66,26 @@ pub struct Thrown {
     pub mud: f32,
     pub snow: f32,
     pub water: f32,
+    /// Splats of standing water the front tyres throw over the bonnet (ours, `wheel_spray::front::splats`): the glass
+    /// takes them as they are; they leave the paint alone.
+    pub bow: f32,
 }
 
 impl Thrown {
     pub(crate) fn scaled(self, k: f32) -> Thrown {
-        Thrown { mud: self.mud * k, snow: self.snow * k, water: self.water * k }
+        Thrown { mud: self.mud * k, snow: self.snow * k, water: self.water * k, bow: self.bow * k }
     }
 
     pub(crate) fn plus(self, o: Thrown) -> Thrown {
-        Thrown { mud: self.mud + o.mud, snow: self.snow + o.snow, water: self.water + o.water }
+        Thrown { mud: self.mud + o.mud, snow: self.snow + o.snow, water: self.water + o.water, bow: self.bow + o.bow }
     }
 
-    fn wide(self) -> [f64; 3] {
-        [self.mud, self.snow, self.water].map(f64::from)
+    fn wide(self) -> [f64; 4] {
+        [self.mud, self.snow, self.water, self.bow].map(f64::from)
     }
 
-    fn narrow([mud, snow, water]: [f64; 3]) -> Thrown {
-        Thrown { mud: mud as f32, snow: snow as f32, water: water as f32 }
+    fn narrow([mud, snow, water, bow]: [f64; 4]) -> Thrown {
+        Thrown { mud: mud as f32, snow: snow as f32, water: water as f32, bow: bow as f32 }
     }
 }
 
@@ -114,7 +117,7 @@ impl CarDirt {
         if !surfaces {
             return Look { level: self.level, colour: COLOUR, sheen: 0.0 };
         }
-        let Thrown { mud, snow, water } = self.thrown;
+        let Thrown { mud, snow, water, .. } = self.thrown;
         let rest = (self.mass - mud - snow - water).max(0.0);
         let grime = mud + snow + WATER_GRIME * water + DRY_GRIME * rest;
         let snowy = if grime > 0.0 { snow / grime } else { 0.0 };
@@ -197,7 +200,7 @@ pub fn frame_spray(payloads: impl IntoIterator<Item = (u32, f32)>) -> (f32, Thro
 pub struct Spray {
     /// Per frame index, the total mass up to and including it, and the frame's physics step.
     totals: Vec<f64>,
-    glass: Vec<[f64; 3]>,
+    glass: Vec<[f64; 4]>,
     steps: Vec<u32>,
 }
 
@@ -258,7 +261,7 @@ impl Spray {
     /// What frame `index` threw at the windscreen (nothing when unknown).
     pub fn thrown(&self, index: usize) -> Thrown {
         let at = |i: usize| self.glass.get(i).copied();
-        match (at(index), index.checked_sub(1).map_or(Some([0.0; 3]), at)) {
+        match (at(index), index.checked_sub(1).map_or(Some([0.0; 4]), at)) {
             (Some(now), Some(before)) => Thrown::narrow(std::array::from_fn(|k| now[k] - before[k])),
             _ => Thrown::default(),
         }
@@ -311,7 +314,7 @@ mod tests {
         assert_eq!(thrown(1000), Thrown::default());
         let (mass, glass) = frame_spray([(gravel, 10.0), (tarmac, 20.0), (wet_tarmac, 4.0), (snow, -1.0)]);
         assert_eq!(mass, 33.0, "the paint's dirt takes all of it");
-        assert_eq!(glass, Thrown { mud: 10.0, snow: 0.0, water: 4.0 });
+        assert_eq!(glass, Thrown { mud: 10.0, snow: 0.0, water: 4.0, bow: 0.0 });
     }
 
     #[test]

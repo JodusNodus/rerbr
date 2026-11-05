@@ -12,8 +12,9 @@
 //!   out of both sides.
 //!
 //! Where the in-car views see it ([`front`]): a front tyre sliding sideways scrubs stones and a little dust out the way
-//! it slides; in standing water a front tyre throws a sheet up over the bonnet, and in snow a flurry; a braking car's
-//! dust keeps its air's speed and rolls past it.
+//! it slides; in standing water a front tyre throws a short plume of water up at the front corner and partly over the
+//! bonnet, whose splats land on the windscreen ([`WheelSpray::feed`]'s, `Thrown::bow`), and in snow a flurry; a braking
+//! car's dust keeps its air's speed and rolls past it.
 //!
 //! The particles live in the stage's [`Simulation`] pools of their own, drawn lit and soft like the rest, with
 //! sprites drawn here ([`sprites`]).
@@ -45,14 +46,16 @@ enum Pool {
     SplashMist,
     Debris,
     Haze,
-    /// Ours, the front tyres': dust and stones scrubbed out sideways, snow kicked up, water thrown over the bonnet.
+    /// Ours, the front tyres': dust and stones scrubbed out sideways, snow kicked up, standing water thrown up at the
+    /// front corner in clumps and mist.
     Kick,
     Fling,
     Flurry,
     Bow,
+    BowMist,
 }
 
-const POOLS: [Pool; 15] = [
+const POOLS: [Pool; 16] = [
     Pool::Dust,
     Pool::Powder,
     Pool::Mist,
@@ -68,6 +71,7 @@ const POOLS: [Pool; 15] = [
     Pool::Fling,
     Pool::Flurry,
     Pool::Bow,
+    Pool::BowMist,
 ];
 
 /// The share of the airborne dust's brightness that loose ground's spray has: wet earth is dark.
@@ -141,8 +145,19 @@ const FLING_RATE: f32 = 120.0;
 const FLURRY_RATE: f32 = 30.0;
 /// The snow a front tyre ploughs up over the bonnet at speed, as a share of the full slide's flurry.
 const PLOUGH: f32 = 0.3;
-/// The water sheet a front tyre throws up over the bonnet in standing water, a second at full speed.
-const BOW_RATE: f32 = 250.0;
+/// The clumps and mist of the plume a front tyre throws up in standing water, a second at full speed, and the share
+/// of it that goes in over the bonnet rather than out at the corner.
+const BOW_RATE: f32 = 90.0;
+const BOW_MIST_RATE: f32 = 40.0;
+const BOW_INWARD: f32 = 0.25;
+/// The standing water over which a front tyre's plume grows from nothing (a wet rut's film) to full (a puddle).
+const BOW_WATER: [f32; 2] = [0.15, 0.6];
+/// The splats of it that land on the windscreen a second, a front tyre at full speed (`Thrown::bow`).
+const BOW_SPLATS: f32 = 6.0;
+/// A front tyre entering a puddle at speed throws this many clumps (and half as much mist) at once, and this many
+/// splats at the windscreen: a puddle is crossed in a tenth of a second.
+const BOW_BURST: f32 = 80.0;
+const BOW_BURST_SPLATS: f32 = 3.0;
 /// How far below the wheel a cloud (dust, powder, mist) may sink before it is dropped, m.
 const CLOUD_FLOOR: f32 = 4.0;
 
@@ -209,7 +224,8 @@ impl WheelSpray {
 
     /// Throws `dt` seconds of each wheel's spray from its payload. `game` when the payloads are the game's: their
     /// rubber is 0 to 1, so the slip comes from the mass flow ([`super::slip_of_mass`]); playback's rubber is the slip.
-    pub fn feed(&mut self, sim: &mut Simulation, payloads: &[TyreParticles], pose: &Pose, dt: f32, game: bool) {
+    /// Gives the splats of standing water the front tyres threw over the bonnet ([`BOW_SPLATS`]).
+    pub fn feed(&mut self, sim: &mut Simulation, payloads: &[TyreParticles], pose: &Pose, dt: f32, game: bool) -> f32 {
         let speed = pose.velocity.length();
         let forward = pose.velocity.try_normalize().unwrap_or(pose.side.cross(pose.up));
         let grade = pose.up.truncate().length() / pose.up.z.max(1e-3);
@@ -218,6 +234,7 @@ impl WheelSpray {
         self.air = Some(air);
         let carried = front::carried(pose.velocity, air, forward);
         let mut standing = [0.0; 4];
+        let mut splats = 0.0;
         for p in payloads.iter().filter(|p| p.contact && p.wheel < 4) {
             let m = ground::material(p.surface());
             if m.kind == Kind::None {
@@ -257,12 +274,25 @@ impl WheelSpray {
                 let k = POOLS.iter().position(|&p| p == Pool::Splash).unwrap();
                 self.burst(sim, k, BURST * standing[wheel] * smoothstep(SPLASH_SPEED, speed), &w);
             }
+            // A front tyre running into a puddle: the plume and its splats at once, by how much deeper it got.
+            if w.front.is_some() {
+                let deeper = smoothstep(BOW_WATER, standing[wheel]) - smoothstep(BOW_WATER, self.standing[wheel]);
+                let hit = deeper.max(0.0) * smoothstep(SPLASH_SPEED, speed);
+                for (pool, share) in [(Pool::Bow, 1.0), (Pool::BowMist, 0.35)] {
+                    let k = POOLS.iter().position(|&p| p == pool).unwrap();
+                    self.throw(sim, wheel, k, BOW_BURST * share * hit, &w);
+                }
+                splats += BOW_BURST_SPLATS * hit;
+            }
             let rates = rates(&m, &w, standing[wheel]);
+            let bow = POOLS.iter().position(|&p| p == Pool::Bow).unwrap();
+            splats += rates[bow] / BOW_RATE * BOW_SPLATS * dt;
             for (k, rate) in rates.into_iter().enumerate() {
                 self.throw(sim, wheel, k, rate * dt, &w);
             }
         }
         self.standing = standing;
+        splats
     }
 
     /// A wheel's crown of `count` drops of pool `k` on entering standing water: out all round its front half and up.
@@ -284,7 +314,7 @@ impl WheelSpray {
         *carry += count.max(0.0);
         let n = carry.floor();
         *carry -= n;
-        let front = matches!(POOLS[k], Pool::Kick | Pool::Fling | Pool::Flurry | Pool::Bow);
+        let front = matches!(POOLS[k], Pool::Kick | Pool::Fling | Pool::Flurry | Pool::Bow | Pool::BowMist);
         for _ in 0..n as usize {
             let r = if front { &mut self.front_rng } else { &mut self.rng };
             let at = w.edges[0].lerp(w.edges[1], r.unit());
@@ -349,6 +379,7 @@ fn rates(m: &Material, w: &Throw, standing: f32) -> [f32; POOLS.len()] {
         Kind::Snow | Kind::Water | Kind::None => (0.0, 0.0),
     };
     let flurry = if m.kind == Kind::Snow { scrub + front * PLOUGH * m.loose * motion } else { 0.0 };
+    let bow = front * smoothstep(BOW_WATER, standing) * smoothstep(SPLASH_SPEED, w.speed);
     [
         dust * DUST_RATE,
         powder * POWDER_RATE,
@@ -364,7 +395,8 @@ fn rates(m: &Material, w: &Throw, standing: f32) -> [f32; POOLS.len()] {
         kick * KICK_RATE,
         fling * FLING_RATE,
         flurry * FLURRY_RATE,
-        front * splash * BOW_RATE,
+        bow * BOW_RATE,
+        bow * BOW_MIST_RATE,
     ]
 }
 
@@ -460,11 +492,13 @@ fn launch(pool: Pool, at: Vec3, w: &Throw, r: &mut Rng) -> (Vec3, Vec3, f32) {
             let high = u(0.0, 1.0);
             (at, w.velocity * u(0.95, 1.02) + side + w.up * (2.0 + 4.0 * high * high), cloud)
         }
-        Pool::Bow => {
-            // Pushed ahead of the tyre and up, in over the bonnet.
+        Pool::Bow | Pool::BowMist => {
+            // A short plume pushed off the tyre's front, mostly out and up at the corner, some in over the bonnet;
+            // it keeps less than the car's speed, so the air takes it back past the wing.
             let hard = (w.speed / 15.0).clamp(0.3, 1.0);
-            let launch = w.velocity * u(0.97, 1.03) + (w.up * u(3.5, 7.0) - w.out * u(0.3, 1.5)) * hard;
-            (at + w.forward * TYRE_RADIUS, launch, ground - 0.2)
+            let side = if u(0.0, 1.0) < BOW_INWARD { -w.out * u(0.3, 1.2) } else { w.out * u(0.6, 3.0) };
+            let launch = w.velocity * u(0.9, 0.98) + (side + w.up * u(2.0, 5.0)) * hard;
+            (at + (w.forward * 0.7 + w.up * 0.5) * TYRE_RADIUS, launch, ground - 0.3)
         }
     }
 }
@@ -525,7 +559,7 @@ fn def(pool: Pool, dust: [f32; 3]) -> EmitterDef {
         ([[0.66, 0.69, 0.72, 0.16], [0.58, 0.61, 0.64, 0.22], [wet_mist[0], wet_mist[1], wet_mist[2], 0.0]], 0.1);
     let puff = |colors, sizes, life, rate, rise, friction, wind| Spec {
         sprite: match pool {
-            Pool::WetMist | Pool::SplashMist => sprites::WISP,
+            Pool::WetMist | Pool::SplashMist | Pool::BowMist => sprites::WISP,
             Pool::Dust => sprites::DUST,
             _ => sprites::PUFF,
         },
@@ -605,7 +639,12 @@ fn def(pool: Pool, dust: [f32; 3]) -> EmitterDef {
         Pool::Flurry => {
             puff(fade([0.95, 0.97, 1.0], 0.3, 0.35, 0.2), growing(0.3, 1.0, 1.8), 1.0, FLURRY_RATE, 0.0, 0.6, 0.3)
         }
-        Pool::Bow => drop(water, 0.5, 0.02, 0.9, 0.04, BOW_RATE, 0.3),
+        // Translucent clumps of the road's muddy water breaking into a grey-white mist: short-lived, never streaks.
+        Pool::Bow => {
+            let muddy = std::array::from_fn(|k| (water[k] + mud[k]) * 0.5);
+            puff(fade(muddy, 0.4, 0.3, 0.25), growing(0.3, 0.8, 1.3), 0.6, BOW_RATE, -4.0, 0.3, 0.2)
+        }
+        Pool::BowMist => puff(fade(splash_mist, 0.0, 0.2, 0.2), low(0.4, 1.1, 1.8), 0.9, BOW_MIST_RATE, -1.5, 0.6, 0.3),
     };
     let look = Look {
         sprite: spec.sprite,
@@ -627,7 +666,7 @@ fn def(pool: Pool, dust: [f32; 3]) -> EmitterDef {
         stone: false,
         // The drops are drawn as small as they are, as the sparks: a few millimetres, streaked.
         spark: matches!(spec.sprite, sprites::DROP | sprites::STONE),
-        wisp: matches!(pool, Pool::Mist | Pool::WetMist | Pool::MudMist | Pool::SplashMist),
+        wisp: matches!(pool, Pool::Mist | Pool::WetMist | Pool::MudMist | Pool::SplashMist | Pool::BowMist),
     };
     EmitterDef {
         name: format!("{pool:?} (wheel spray, ours)"),
@@ -761,10 +800,11 @@ mod tests {
             0 1 6 17 0 1 17 0 0 0 0 -7 0.02 0.02 em 0 $";
 
     /// The particles of `sprite` a driver sees through the windscreen after a car on `surface` ran 1.5 s (or braked to
-    /// a stop at `brake` m/s² and stood) along -y from `speed` m/s, its tyres in `water` standing water: within 37
-    /// degrees across and from 14 degrees below to 22 above the eye's level, outside the body ([`cabin`]'s mask for a
+    /// a stop at `brake` m/s² and stood) along -y from `speed` m/s, its tyres in `water` standing water: within `across`
+    /// (the tangent: 0.77 the windscreen's 37 degrees, 1.5 the side windows too) and from 14 degrees below to 22 above
+    /// the eye's level, outside the body ([`cabin`]'s mask for a
     /// 1.8 by 1.4 by 4 m car, the eye 1.1 m up, 0.35 m left of and 0.1 m behind the middle).
-    fn seen_from_the_seat(surface: &str, speed: f32, water: f32, brake: f32, sprite: u32) -> usize {
+    fn seen_from_the_seat(surface: &str, speed: f32, water: f32, brake: f32, sprite: u32, across: f32) -> usize {
         use crate::particles::cabin::CabinMask;
         use crate::particles::sim::{to_stage, Facing};
         let mut sim = Simulation::new(&rbr_formats::pss::parse(FILE).unwrap(), 1);
@@ -804,22 +844,49 @@ mod tests {
             let p = Vec3::new(b.centre[0], b.centre[2], b.centre[1]) - car;
             let (d, ahead) = (p - eye, eye.y - p.y);
             let shown = mask.shown(Vec3::new(p.x, p.z, p.y)) > 0.5;
-            shown && ahead > 0.2 && (d.x / ahead).abs() < 0.77 && d.z / ahead > -0.25 && d.z / ahead < 0.4
+            shown && ahead > 0.2 && (d.x / ahead).abs() < across && d.z / ahead > -0.25 && d.z / ahead < 0.4
         };
         sim.billboards(facing, |s| (s == sprite).then_some(0)).iter().filter(|b| seen(b)).count()
     }
 
     #[test]
     fn a_braking_cars_dust_rolls_past_it_into_view() {
-        let seen = seen_from_the_seat("Gravel_Medium_Deep_Dry", 20.0, 0.0, 9.0, sprites::DUST);
+        let seen = seen_from_the_seat("Gravel_Medium_Deep_Dry", 20.0, 0.0, 9.0, sprites::DUST, 0.77);
         assert!(seen > 20, "{seen}");
-        assert_eq!(seen_from_the_seat("Gravel_Medium_Deep_Dry", 20.0, 0.0, 0.0, sprites::DUST), 0, "not at speed");
+        assert_eq!(
+            seen_from_the_seat("Gravel_Medium_Deep_Dry", 20.0, 0.0, 0.0, sprites::DUST, 0.77),
+            0,
+            "not at speed"
+        );
     }
 
     #[test]
-    fn standing_water_splashes_over_the_bonnet() {
-        let seen = seen_from_the_seat("Tarmac_Fine_Clean_Wet", 20.0, 0.5, 0.0, sprites::DROP);
-        assert!(seen > 5, "{seen}");
+    fn standing_water_splashes_up_at_the_front_corners() {
+        // The plume's clumps rise at the front corners, seen out of the windscreen's edges and the side windows.
+        let seen = |water, across| seen_from_the_seat("Tarmac_Fine_Clean_Wet", 20.0, water, 0.0, sprites::PUFF, across);
+        let (wide, ahead) = (seen(0.5, 1.5), seen(0.5, 0.77));
+        assert!(wide > 5 && ahead < wide, "{wide} {ahead}");
+        assert_eq!(seen(0.0, 1.5), 0, "no standing water");
+    }
+
+    #[test]
+    fn a_front_tyre_running_into_a_puddle_splats_the_windscreen() {
+        let mut sim = Simulation::new(&rbr_formats::pss::parse(FILE).unwrap(), 1);
+        let mut spray = WheelSpray::new(&mut sim, NEUTRAL_DUST, false, false);
+        let wet = (0..256).find(|&id| ground::material(id) == ground::by_name("Tarmac_Fine_Clean_Wet")).unwrap();
+        let pose =
+            Pose { velocity: Vec3::new(0.0, -20.0, 0.0), up: Vec3::Z, side: Vec3::X, engine: None, exhaust: None };
+        let mut feed = |wheel, splash| {
+            let p = TyreParticles { wheel, splash, surfaces: [wet; 2], contact: true, ..TyreParticles::default() };
+            spray.feed(&mut sim, &[p], &pose, 0.01, false)
+        };
+        assert_eq!(feed(0, 0.0), 0.0, "no standing water");
+        let hit = feed(0, 0.5);
+        assert!(hit >= BOW_BURST_SPLATS, "running in: {hit}");
+        let through = feed(0, 0.5);
+        assert!((through - BOW_SPLATS * 0.01).abs() < 1e-6, "running through: {through}");
+        assert_eq!(feed(0, 0.04), 0.0, "a wet rut's film throws none over the bonnet");
+        assert_eq!(feed(2, 0.0) + feed(2, 0.5), 0.0, "a rear tyre's splash stays behind");
     }
 
     #[test]
