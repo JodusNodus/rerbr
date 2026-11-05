@@ -4,13 +4,29 @@
 // than bilinear, so that the rays' per-texel noise does not show as blocks), each times how near its depth is to the
 // pixel's (`DEPTH_MATCH` on the relative difference), not renormalised, so that a pixel whose texels lie on another
 // surface (the car over the road, the verge beside it) takes none of their reflection. The texels hold the reflection
-// premultiplied by its weight.
+// premultiplied by its weight. With `OWN` (the split trace, `fs_trace` in `ssr.wgsl`) they hold the reflection and the
+// share of the surface's weight its rays found, and each pixel takes its own weight (`surface`), so the film's grain
+// and the rain's ripples keep the frame's size.
 
 @group(0) @binding(0) var traced: texture_2d<f32>;
 @group(0) @binding(1) var traced_depth: texture_2d<f32>;
 @group(0) @binding(2) var frame_depth: texture_depth_2d;
 // The frame without the reflections (the screen-space reflections' first level).
 @group(0) @binding(3) var frame: texture_2d<f32>;
+// The reflecting surfaces at the frame's size (`fs_surface`; with `OWN`).
+@group(0) @binding(4) var surface: texture_2d<f32>;
+// The traced pixels' normals, x and z (with `OWN`).
+@group(0) @binding(5) var traced_normal: texture_2d<f32>;
+
+override OWN: bool = false;
+// How sharply a pixel prefers the reflections traced from normals like its own (with `OWN`; one over the square of the
+// normals' spread in radians): 1000 to 10000 brought out the rain's ripples in the car's mirrored image (Luceram 417
+// fly-by at 4K), sharper ones blocky.
+const NORMAL_MATCH: f32 = 3000.0;
+
+fn unpacked(xz: vec2<f32>) -> vec3<f32> {
+    return vec3<f32>(xz.x, sqrt(max(1.0 - dot(xz, xz), 0.0)), xz.y);
+}
 
 const DEPTH_MATCH: f32 = 100.0;
 
@@ -30,6 +46,17 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     let size = vec2<i32>(textureDimensions(traced));
     let pixel = vec2<i32>(v.clip.xy);
     let under = textureLoad(frame, pixel, 0);
+    var own = 1.0;
+    var normal = vec3<f32>(0.0, 1.0, 0.0);
+    if (OWN) {
+        let here = textureLoad(surface, pixel, 0);
+        own = here.w;
+        if (own <= 0.0) {
+            return under;
+        }
+        normal = unpacked(here.xy);
+    }
+    var colour = vec4<f32>(0.0);
     let depth = textureLoad(frame_depth, pixel, 0);
     // The traced texels' side over the frame's pixel, and the tent's width: wider at the finer texels, whose rays'
     // noise it hides as much.
@@ -46,8 +73,19 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
         let texel = clamp(at, vec2<i32>(0), size - 1);
         let d = textureLoad(traced_depth, texel, 0).r;
         let off = abs(d - depth) / max(max(d, depth), 1e-6);
-        sum += textureLoad(traced, texel, 0) * weight * exp(-off * off * DEPTH_MATCH);
+        var found = textureLoad(traced, texel, 0);
+        let near = weight * exp(-off * off * DEPTH_MATCH);
+        if (OWN) {
+            // The coverage by the depth alone, the colour mostly from the texels whose normal is like this pixel's.
+            let like = exp(-(1.0 - dot(normal, unpacked(textureLoad(traced_normal, texel, 0).xy))) * NORMAL_MATCH);
+            colour += vec4<f32>(found.rgb, 1.0) * found.a * near * (like + 0.01);
+            found = vec4<f32>(found.rgb * found.a, found.a);
+        }
+        sum += found * near;
         total += weight;
     }
-    return vec4<f32>(mix(under.rgb, sum.rgb / max(sum.a, 1e-6), sum.a / total), under.a);
+    if (OWN) {
+        sum = vec4<f32>(colour.rgb / max(colour.a, 1e-6) * sum.a, sum.a);
+    }
+    return vec4<f32>(mix(under.rgb, sum.rgb / max(sum.a, 1e-6), own * sum.a / total), under.a);
 }
