@@ -1,8 +1,14 @@
 //! A built event (ours): the itinerary drawn from the stage pool, the field, the results so far, the standings and
 //! points, the player's next turn, and the save in the player's folder.
 
+use crate::ai::{self, Bulletin, RunLog, TeamCosts};
 use crate::config::{Daylight, EventConfig, Length, StagePool, StageRef, Surfaces, Weather};
-use crate::field::{self, AiResult, Entrant};
+use crate::field::{self, AiResult, Contender, Entrant};
+use crate::road::road_wear;
+use crate::service::Crew;
+use crate::team::crew_of;
+use crate::track::{StageProfile, PAR_SCALE};
+use rbr_formats::ai_ini::{Master, Roster, Section, Team, Track};
 use rbr_gameplay::crt::CrtRand;
 
 /// One stage of a rally's itinerary.
@@ -12,6 +18,10 @@ pub struct ItineraryStage {
     /// The start clock (hours, 0 to 24): the launcher passes it as the stage's time of day.
     pub clock: f32,
     pub conditions: Conditions,
+    /// The dry reference time (s) of the stage for the field's class.
+    pub reference: f32,
+    /// The stage's AI track (dry, at the field's best pace): the 1.02 AI engine drives it.
+    pub track: Track,
     /// The service after this stage (minutes), none when the next stage follows directly.
     pub service_after: Option<u32>,
 }
@@ -82,15 +92,50 @@ const SERVICE_NIGHT: u32 = 45;
 /// The adaptive step: the most a stage moves an entrant's skill.
 const ADAPT_STEP: f32 = 0.003;
 
+/// The field's pace over its tracks' pars at difficulty `d`: 1 at the top, about 9 % slower at the bottom.
+fn pace_for(difficulty: f32) -> f32 {
+    1.0 / (1.0 - 0.08 * (1.0 - difficulty.clamp(0.0, 1.0)))
+}
+
+/// The pace the field may be adapted to (times the pars).
+const PACE_RANGE: (f32, f32) = (0.97, 1.18);
+
 /// An event under way.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Event {
     pub config: EventConfig,
     pub rallies: Vec<Rally>,
     pub field: Vec<Entrant>,
+    /// What the 1.02 AI engine carries for each entrant (parallel to `field`): driver and car state, team, false starts.
+    pub contenders: Vec<Contender>,
+    /// The roster's teams and their repair spending (`ai::TeamCosts`).
+    pub teams: Vec<Team>,
+    pub costs: Vec<TeamCosts>,
+    /// The field's pace over its tracks' pars: the difficulty sets it and the adaptive field moves it.
+    pub pace: f32,
     /// Per rally, per stage: the player's result and each entrant's.
     pub results: Vec<Vec<(Option<PlayerResult>, Vec<AiResult>)>>,
+    /// Per rally, per entrant: the late penalties (s) of its services.
+    pub penalties: Vec<Vec<f32>>,
+    /// Per rally: what the bulletins reported, in order.
+    pub news: Vec<Vec<String>>,
     pub turn: Turn,
+}
+
+/// The team a roster without teams gets.
+fn default_team() -> Team {
+    Team {
+        name: "Works team".into(),
+        budget: 4,
+        manager_style: 3,
+        mechanics: 6,
+        engineering: 3,
+        specialities: vec![],
+        difficulties: vec![],
+        history: 0,
+        nationality: 0,
+        manager: String::new(),
+    }
 }
 
 impl Conditions {
@@ -146,14 +191,15 @@ fn pool_stages<'a>(config: &EventConfig, stages: &'a [StageRef]) -> Vec<&'a Stag
 
 impl Event {
     /// Builds the event: the itinerary from `stages` (the installed pool) by the config's length, pool, surfaces,
-    /// daylight and weather, and the field from `class_cars` (catalog keys of the config's class).
-    /// `reference` gives a stage's reference time for the class at a wetness (`pace::reference_time` over its
-    /// driveline).
+    /// daylight and weather, and the field from `class_cars` (catalog keys of the config's class), seated in `roster`'s
+    /// teams and cars. `profile` gives a stage's profile for the class (`track::profile` over its driveline, or
+    /// `StageProfile::flat` without one): its reference times and the AI track the engine drives.
     pub fn build(
         config: EventConfig,
         stages: &[StageRef],
         class_cars: &[String],
-        reference: &dyn Fn(&StageRef, f32) -> f32,
+        roster: &Roster,
+        profile: &dyn Fn(&StageRef) -> StageProfile,
     ) -> Result<Event, String> {
         let (rallies, legs): (Vec<u8>, Vec<u8>) = match config.length {
             Length::Rally { stages: n } => {
@@ -233,11 +279,34 @@ impl Event {
                 }
             }
             let leg_count = legs[rally.min(legs.len() - 1)];
-            built.push(draw_rally(&config, &picked, leg_count, &mut rng, reference));
+            built.push(draw_rally(&config, &picked, leg_count, &mut rng, profile));
         }
-        let field = field::field(class_cars, config.field_size as usize, config.difficulty, config.seed ^ 0xF1E1D);
+        let (field, contenders) =
+            field::field(class_cars, config.field_size as usize, config.difficulty, config.seed ^ 0xF1E1D, roster);
+        let teams = if roster.teams.is_empty() { vec![default_team()] } else { roster.teams.clone() };
+        let costs = teams.iter().map(TeamCosts::new).collect();
         let results = built.iter().map(|r| vec![(None, Vec::new()); r.stages.len()]).collect();
-        Ok(Event { config, rallies: built, field, results, turn: Turn::Welcome { rally: 0 } })
+        let penalties = built.iter().map(|_| vec![0.0; field.len()]).collect();
+        let news = built.iter().map(|_| Vec::new()).collect();
+        let pace = pace_for(config.difficulty);
+        Ok(Event {
+            config,
+            rallies: built,
+            field,
+            contenders,
+            teams,
+            costs,
+            pace,
+            results,
+            penalties,
+            news,
+            turn: Turn::Welcome { rally: 0 },
+        })
+    }
+
+    /// The player's service crew: the engineer and mechanics of the team the config picked.
+    pub fn crew(&self) -> Crew {
+        self.teams.get(self.config.team as usize).map_or_else(Crew::default, crew_of)
     }
 
     /// The rally and stage the results are being driven on, if the turn is a stage.
@@ -248,22 +317,148 @@ impl Event {
         }
     }
 
-    /// The player's stage result: the field drives the same stage, and the turn moves on.
-    pub fn stage_done(&mut self, result: PlayerResult, reference: f32) {
+    /// The player's stage result: the field drives the same stage with the 1.02 AI engine on `master`, and the turn
+    /// moves on. A retired player is out of the rally: the field drives its remaining stages and the turn goes to the
+    /// rally's end.
+    pub fn stage_done(&mut self, master: &Master, result: PlayerResult) {
         let Some((rally, stage)) = self.at() else { return };
-        let wet = self.rallies[rally].stages[stage].conditions.wetness();
-        let mut rng = CrtRand::srand(
-            self.config
-                .seed
-                .wrapping_add((rally as u32 + 1).wrapping_mul(0x9E37_79B1))
-                .wrapping_add((stage as u32 + 1).wrapping_mul(0x85EB_CA6B)),
-        );
-        let ai = self.field.iter().map(|e| field::drive_stage(e, reference, wet, &mut rng)).collect();
-        self.results[rally][stage] = (Some(result), ai);
+        self.results[rally][stage].0 = Some(result);
+        self.drive_field(master, rally, stage);
+        if result.retired {
+            for later in stage + 1..self.rallies[rally].stages.len() {
+                self.drive_field(master, rally, later);
+            }
+            self.turn = Turn::RallyOver { rally };
+            return;
+        }
         if self.config.adaptive {
             self.adapt(rally);
         }
         self.turn = next_turn(&self.rallies, rally, stage);
+    }
+
+    /// The field's stage, its bulletins and the service after it.
+    fn drive_field(&mut self, master: &Master, rally: usize, stage: usize) {
+        let it = &self.rallies[rally].stages[stage];
+        let (conditions, service_after) = (it.conditions, it.service_after);
+        let mut track = it.track;
+        track.wet = u32::from(conditions == Conditions::Wet);
+        // A damp road costs half the engine's wet penalty.
+        let scale = self.pace * if conditions == Conditions::Damp { 1.045 } else { 1.0 };
+        track.sections.iter_mut().for_each(|s| s.par *= scale);
+        if stage == 0 {
+            field::rally_start(&mut self.contenders);
+            self.costs.iter_mut().for_each(|c| (c.service, c.rally) = (0, 0));
+        }
+        let order = self.start_order(rally, stage);
+        let seed = self
+            .config
+            .seed
+            .wrapping_add((rally as u32 + 1).wrapping_mul(0x9E37_79B1))
+            .wrapping_add((stage as u32 + 1).wrapping_mul(0x85EB_CA6B));
+        let mut rng = CrtRand::srand(seed);
+        let mut log = RunLog::default();
+        let mut out = vec![AiResult::Retired; self.field.len()];
+        for &e in order.iter().flatten() {
+            // Out of the rally for good once retired.
+            if self.results[rally][..stage].iter().any(|(_, ai)| ai.get(e) == Some(&AiResult::Retired)) {
+                continue;
+            }
+            let c = &mut self.contenders[e];
+            let team = &self.teams[c.team.min(self.teams.len() - 1)];
+            out[e] = field::drive_stage(master, &track, stage as u32, e as i32, c, team, &mut rng, &mut log);
+        }
+        let mut news = self.render(&log, stage);
+        // The service after the stage: the AI cars' manager, repairs and late penalty.
+        if let Some(minutes) = service_after {
+            let long = minutes >= 40;
+            let mut rng = CrtRand::srand(seed ^ 0x5E21_1CE0);
+            let mut log = RunLog::default();
+            for &e in order.iter().flatten() {
+                if out[e] == AiResult::Retired {
+                    continue;
+                }
+                let c = &mut self.contenders[e];
+                let t = c.team.min(self.teams.len() - 1);
+                let used = ai::service(
+                    master,
+                    e as i32,
+                    &mut c.driver,
+                    &mut c.car,
+                    &self.teams[t],
+                    &mut self.costs[t],
+                    long,
+                    &mut rng,
+                    &mut log,
+                );
+                self.penalties[rally][e] += ai::service_penalty(e as i32, used, long, &mut log);
+            }
+            log.bulletins.retain(|b| matches!(b, Bulletin::ServicePenalty { .. }));
+            news.extend(self.render(&log, stage));
+        }
+        self.news[rally].extend(news);
+        self.results[rally][stage].1 = out;
+    }
+
+    /// The log as the bulletin lines of stage `stage`, in the engine's order: its bulletins, then the accidents that
+    /// ended a run without one of their own.
+    fn render(&self, log: &RunLog, stage: usize) -> Vec<String> {
+        let name = |id: i32| self.field.get(id as usize).map_or_else(|| "A driver".to_owned(), |e| e.name.clone());
+        let line = |text: String| format!("SS{}: {text}", stage + 1);
+        let mut out = Vec::new();
+        let mut explained = Vec::new();
+        for b in &log.bulletins {
+            match *b {
+                // The manager's orders are the team's business.
+                Bulletin::ManagerOrder { .. } | Bulletin::CarUnlock { .. } | Bulletin::Uneventful { .. } => {}
+                Bulletin::DamageRetire { driver } | Bulletin::Hurt { driver, .. } | Bulletin::Dead { driver, .. } => {
+                    explained.push(driver);
+                    out.push(line(b.text(&name)));
+                }
+                _ => out.push(line(b.text(&name))),
+            }
+        }
+        for a in log.accidents.iter().filter(|a| a.retired && a.accident != 0xff && !explained.contains(&a.driver)) {
+            out.push(line(format!("{} retired after an accident in section {}", name(a.driver), a.section + 1)));
+        }
+        if log.accidents.is_empty() && log.bulletins.iter().all(|b| matches!(b, Bulletin::ManagerOrder { .. })) {
+            out.push(line(Bulletin::Uneventful { stage: stage as u32 }.text(&name)));
+        }
+        out
+    }
+
+    /// What the bulletins reported in rally `rally`, in order: accidents, injuries, broken cars, false starts and late
+    /// services, each with its stage.
+    pub fn bulletins(&self, rally: usize) -> Vec<String> {
+        self.news.get(rally).cloned().unwrap_or_default()
+    }
+
+    /// The start order of `rally`'s `stage`, the player as `None`. The first stage starts by the season points so far
+    /// (the seed's draw for the first rally and for ties); later stages by the rally standings, leader first and the
+    /// retired last.
+    pub fn start_order(&self, rally: usize, stage: usize) -> Vec<Option<usize>> {
+        let mut order: Vec<Option<usize>> = std::iter::once(None).chain((0..self.field.len()).map(Some)).collect();
+        let mut rng = CrtRand::srand(self.config.seed ^ 0x57A2_7001);
+        for i in (1..order.len()).rev() {
+            let j = (rng.draw() as usize) % (i + 1);
+            order.swap(i, j);
+        }
+        if stage > 0 {
+            return self.standings_after(rally, stage).into_iter().map(|row| row.entrant).collect();
+        }
+        if rally > 0 {
+            let points = self.points_through(rally);
+            order.sort_by_key(|who| {
+                std::cmp::Reverse(points.iter().find(|r| r.entrant == *who).map_or(0, |r| r.points))
+            });
+        }
+        order
+    }
+
+    /// The road's wear for the player on `stage` (0 new, 1 normal, 2 worn): the 1.02 rule over the player's start place.
+    pub fn road_wear(&self, rally: usize, stage: usize) -> f32 {
+        let place = self.start_order(rally, stage).iter().position(Option::is_none);
+        road_wear(place) as f32
     }
 
     /// Nudges the field toward the player finishing around 2nd to 4th, by at most a small step a stage.
@@ -277,11 +472,8 @@ impl Event {
         } else {
             0.0
         };
-        if delta != 0.0 {
-            for e in &mut self.field {
-                e.skill = (e.skill + delta).clamp(0.85, 1.03);
-            }
-        }
+        // A faster field drives its pars with a smaller pace.
+        self.pace = (self.pace - delta).clamp(PACE_RANGE.0, PACE_RANGE.1);
     }
 
     /// The service (or welcome, or rally over) is done: the turn moves on.
@@ -307,7 +499,14 @@ impl Event {
 
     /// Rally `rally`'s standings after the stages run so far, best first.
     pub fn rally_standings(&self, rally: usize) -> Vec<Standing> {
-        let Some(run) = self.results.get(rally).map(|r| run_stages(r)) else { return Vec::new() };
+        match self.results.get(rally) {
+            Some(r) => self.standings_after(rally, run_stages(r)),
+            None => Vec::new(),
+        }
+    }
+
+    /// Rally `rally`'s standings after its first `run` stages, best first. The points go to the finishers only.
+    fn standings_after(&self, rally: usize, run: usize) -> Vec<Standing> {
         let mut rows = Vec::new();
         rows.push(Standing { entrant: None, total: self.player_total(rally, run), points: 0 });
         for (i, _) in self.field.iter().enumerate() {
@@ -320,7 +519,7 @@ impl Event {
             (None, None) => std::cmp::Ordering::Equal,
         });
         for (i, row) in rows.iter_mut().enumerate() {
-            row.points = POINTS.get(i).copied().unwrap_or(0);
+            row.points = if row.total.is_some() { POINTS.get(i).copied().unwrap_or(0) } else { 0 };
         }
         rows
     }
@@ -337,7 +536,7 @@ impl Event {
     }
 
     fn entrant_total(&self, rally: usize, entrant: usize, run: usize) -> Option<f32> {
-        let mut total = 0.0;
+        let mut total = self.penalties.get(rally).and_then(|p| p.get(entrant)).copied().unwrap_or(0.0);
         for (_, ai) in self.results[rally].iter().take(run) {
             match ai.get(entrant) {
                 Some(AiResult::Time(t)) => total += t,
@@ -349,11 +548,17 @@ impl Event {
 
     /// The event's points standings (a season's; a single rally's are its rally standings), best first.
     pub fn points(&self) -> Vec<Standing> {
+        self.points_through(self.rallies.len())
+    }
+
+    /// The points standings of the rallies before `upto` that are over: a rally is over once the field has driven all
+    /// its stages, a retired player's included (who scores nothing in it).
+    fn points_through(&self, upto: usize) -> Vec<Standing> {
         // Points come from the finished rallies only; the totals add the finished ones for the tie-break.
         let mut won = vec![0u32; self.field.len() + 1];
         let mut totals = vec![Some(0.0f32); self.field.len() + 1];
-        for rally in 0..self.rallies.len() {
-            if self.results[rally].iter().all(|(p, ai)| p.is_some() && !ai.is_empty()) {
+        for rally in 0..upto.min(self.rallies.len()) {
+            if self.results[rally].iter().all(|(_, ai)| !ai.is_empty()) {
                 for row in self.rally_standings(rally) {
                     let at = row.entrant.map_or(self.field.len(), |i| i);
                     won[at] += row.points;
@@ -384,10 +589,10 @@ impl Event {
 
     /// The event as text for the player's folder.
     pub fn save(&self) -> String {
-        let mut out = String::from("rbr-season 1\n");
+        let mut out = format!("{SAVE_HEAD}\n");
         let c = &self.config;
         out.push_str(&format!(
-            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
             esc(&c.class),
             esc(&c.car),
             length_save(&c.length),
@@ -400,13 +605,32 @@ impl Event {
             if c.adaptive { 1 } else { 0 },
             c.field_size,
             c.seed,
-            skill_save(c.skill)
+            skill_save(c.skill),
+            c.team
         ));
+        out.push_str(&format!("P|{}\n", self.pace));
         for rally in &self.rallies {
             out.push_str(&format!("R|{}\n", esc(&rally.name)));
             for s in &rally.stages {
+                let sections: Vec<String> = s
+                    .track
+                    .sections
+                    .iter()
+                    .map(|k| {
+                        format!(
+                            "{}|{}|{}|{}|{}|{}|{}",
+                            k.par,
+                            k.material,
+                            k.checks[0].0,
+                            k.checks[0].1,
+                            k.checks[1].0,
+                            k.checks[1].1,
+                            k.accident_table
+                        )
+                    })
+                    .collect();
                 out.push_str(&format!(
-                    "S|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                    "S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                     esc(&s.stage.key),
                     esc(&s.stage.name),
                     s.stage.surface.name(),
@@ -414,12 +638,70 @@ impl Event {
                     s.stage.length,
                     s.clock,
                     conditions_save(s.conditions),
-                    s.service_after.map_or(String::new(), |m| m.to_string())
+                    s.service_after.map_or(String::new(), |m| m.to_string()),
+                    s.reference,
+                    sections.join("|")
                 ));
             }
         }
-        for e in &self.field {
-            out.push_str(&format!("F|{}|{}|{}|{}\n", esc(&e.name), esc(&e.car), e.skill, e.consistency));
+        for t in 0..self.teams.len() {
+            let (team, costs) = (&self.teams[t], &self.costs[t]);
+            let list = |v: &[i32]| v.iter().map(i32::to_string).collect::<Vec<_>>().join(",");
+            out.push_str(&format!(
+                "M|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                esc(&team.name),
+                team.budget,
+                team.manager_style,
+                team.mechanics,
+                team.engineering,
+                list(&team.specialities),
+                list(&team.difficulties),
+                team.history,
+                team.nationality,
+                esc(&team.manager),
+                costs.budget,
+                costs.service,
+                costs.rally,
+                costs.style
+            ));
+        }
+        for (e, c) in self.field.iter().zip(&self.contenders) {
+            let (d, st, car) = (&c.driver.driver, &c.driver, &c.car);
+            let join = |v: &[String]| v.join(",");
+            let nums = |v: &[u32]| join(&v.iter().map(u32::to_string).collect::<Vec<_>>());
+            let fields = [
+                esc(&e.name),
+                esc(&e.car),
+                e.skill.to_string(),
+                e.consistency.to_string(),
+                c.team.to_string(),
+                c.false_starts.to_string(),
+                esc(&d.name),
+                d.photo.to_string(),
+                d.technique.to_string(),
+                d.temperament.to_string(),
+                join(&d.skills.map(|v| v.to_string())),
+                d.speed.to_string(),
+                d.endurance.to_string(),
+                d.condition.to_string(),
+                d.history.to_string(),
+                d.nationality.to_string(),
+                esc(&d.codriver),
+                st.injury.to_string(),
+                st.injury_len.to_string(),
+                st.co_injury.to_string(),
+                st.co_injury_len.to_string(),
+                st.vs_par.to_string(),
+                join(&st.sections.map(|v| v.to_string())),
+                esc(&car.car.name),
+                car.car.control.to_string(),
+                car.car.power.to_string(),
+                car.car.handling.to_string(),
+                car.car.durability.to_string(),
+                nums(&car.parts),
+                nums(&car.hits),
+            ];
+            out.push_str(&format!("F|{}\n", fields.join("|")));
         }
         for (rally, stages) in self.results.iter().enumerate() {
             for (stage, (player, ai)) in stages.iter().enumerate() {
@@ -438,6 +720,14 @@ impl Event {
                 out.push_str(&format!("T|{rally}|{stage}|{p}|{}\n", a.join(",")));
             }
         }
+        for (rally, p) in self.penalties.iter().enumerate() {
+            out.push_str(&format!("Y|{rally}|{}\n", p.iter().map(f32::to_string).collect::<Vec<_>>().join(",")));
+        }
+        for (rally, lines) in self.news.iter().enumerate() {
+            for line in lines {
+                out.push_str(&format!("N|{rally}|{}\n", esc(line)));
+            }
+        }
         out.push_str(&format!("U|{}\n", turn_save(&self.turn)));
         out
     }
@@ -446,13 +736,22 @@ impl Event {
     pub fn load(text: &str) -> Result<Event, String> {
         let mut lines = text.lines();
         match lines.next() {
-            Some("rbr-season 1") => {}
+            Some(SAVE_HEAD) => {}
+            Some(head) if head.starts_with("rbr-season ") => {
+                return Err(format!("an older save ({head}): not readable"))
+            }
             Some(head) => return Err(format!("not an rbr-season save: {head}")),
             None => return Err("empty save".to_owned()),
         }
         let mut config: Option<EventConfig> = None;
         let mut rallies: Vec<Rally> = Vec::new();
         let mut field: Vec<Entrant> = Vec::new();
+        let mut contenders: Vec<Contender> = Vec::new();
+        let mut teams: Vec<Team> = Vec::new();
+        let mut costs: Vec<TeamCosts> = Vec::new();
+        let mut pace = None;
+        let mut penalties: Vec<Vec<f32>> = Vec::new();
+        let mut news: Vec<Vec<String>> = Vec::new();
         let mut results: Vec<Vec<(Option<PlayerResult>, Vec<AiResult>)>> = Vec::new();
         let mut turn: Option<Turn> = None;
         for line in lines {
@@ -460,85 +759,153 @@ impl Event {
                 continue;
             }
             let parts: Vec<String> = split(line);
-            match parts.first().map(String::as_str) {
-                Some("C") => {
-                    if parts.len() != 14 {
-                        return Err("bad config line".to_owned());
-                    }
+            let mut f = Fields::new(&parts);
+            match f.next().unwrap_or("") {
+                "C" => {
+                    f.expect(14, "config")?;
+                    let (class, car) = (f.text()?, f.text()?);
+                    let length = length_load(f.raw()?)?;
+                    let pool = pool_load(f.raw()?)?;
+                    let surfaces = surfaces_load(f.raw()?)?;
+                    let daylight = daylight_load(f.raw()?)?;
+                    let weather = weather_load(f.raw()?)?;
+                    let damage = damage_load(f.raw()?)?;
+                    let difficulty = f.num("difficulty")?;
+                    let adaptive = match f.raw()? {
+                        "1" => true,
+                        "0" => false,
+                        _ => return Err("bad adaptive".to_owned()),
+                    };
+                    let (field_size, seed) = (f.num("field size")?, f.num("seed")?);
+                    let skill = skill_load(f.raw()?)?;
+                    let team = f.num("team")?;
                     config = Some(EventConfig {
-                        class: parts[1].clone(),
-                        car: parts[2].clone(),
-                        length: length_load(&parts[3])?,
-                        pool: pool_load(&parts[4])?,
-                        surfaces: surfaces_load(&parts[5])?,
-                        daylight: daylight_load(&parts[6])?,
-                        weather: weather_load(&parts[7])?,
-                        damage: damage_load(&parts[8])?,
-                        difficulty: parts[9].parse().map_err(|_| "bad difficulty".to_owned())?,
-                        adaptive: match parts[10].as_str() {
-                            "1" => true,
-                            "0" => false,
-                            _ => return Err("bad adaptive".to_owned()),
-                        },
-                        field_size: parts[11].parse().map_err(|_| "bad field size".to_owned())?,
-                        seed: parts[12].parse().map_err(|_| "bad seed".to_owned())?,
-                        skill: skill_load(&parts[13])?,
+                        class,
+                        car,
+                        team,
+                        length,
+                        pool,
+                        surfaces,
+                        daylight,
+                        weather,
+                        damage,
+                        skill,
+                        difficulty,
+                        adaptive,
+                        field_size,
+                        seed,
                     });
                 }
-                Some("R") => {
-                    if parts.len() != 2 {
-                        return Err("bad rally line".to_owned());
-                    }
-                    rallies.push(Rally { name: parts[1].clone(), stages: Vec::new() });
+                "P" => pace = Some(f.num("pace")?),
+                "R" => {
+                    f.expect(1, "rally")?;
+                    rallies.push(Rally { name: f.text()?, stages: Vec::new() });
                     results.push(Vec::new());
+                    penalties.push(Vec::new());
+                    news.push(Vec::new());
                 }
-                Some("S") => {
-                    if parts.len() != 9 {
-                        return Err("bad stage line".to_owned());
-                    }
+                "S" => {
+                    f.expect(30, "stage")?;
                     let rally = rallies.last_mut().ok_or("stage outside a rally".to_owned())?;
+                    let key = f.text()?;
+                    let name = f.text()?;
+                    let surface = surface_load(f.raw()?)?;
+                    let community = match f.raw()? {
+                        "1" => true,
+                        "0" => false,
+                        _ => return Err("bad community".to_owned()),
+                    };
+                    let length = f.num("length")?;
+                    let clock = f.num("clock")?;
+                    let conditions = conditions_load(f.raw()?)?;
+                    let service_after = match f.raw()? {
+                        "" => None,
+                        m => Some(m.parse().map_err(|_| "bad service".to_owned())?),
+                    };
+                    let reference = f.num("reference")?;
+                    let mut sections = Vec::new();
+                    for _ in 0..3 {
+                        sections.push(Section {
+                            par: f.num("par")?,
+                            material: f.num("material")?,
+                            checks: [(f.num("check")?, f.num("check")?), (f.num("check")?, f.num("check")?)],
+                            accident_table: f.num("accident table")?,
+                        });
+                    }
+                    let track = Track { stage: 0, wet: 0, sections: [sections[0], sections[1], sections[2]] };
                     rally.stages.push(ItineraryStage {
-                        stage: StageRef {
-                            key: parts[1].clone(),
-                            name: parts[2].clone(),
-                            surface: surface_load(&parts[3])?,
-                            community: match parts[4].as_str() {
-                                "1" => true,
-                                "0" => false,
-                                _ => return Err("bad community".to_owned()),
-                            },
-                            length: parts[5].parse().map_err(|_| "bad length".to_owned())?,
-                        },
-                        clock: parts[6].parse().map_err(|_| "bad clock".to_owned())?,
-                        conditions: conditions_load(&parts[7])?,
-                        service_after: if parts[8].is_empty() {
-                            None
-                        } else {
-                            Some(parts[8].parse().map_err(|_| "bad service".to_owned())?)
-                        },
+                        stage: StageRef { key, name, surface, community, length },
+                        clock,
+                        conditions,
+                        reference,
+                        track,
+                        service_after,
                     });
                     results.last_mut().ok_or("stage outside a rally".to_owned())?.push((None, Vec::new()));
                 }
-                Some("F") => {
-                    if parts.len() != 5 {
-                        return Err("bad entrant line".to_owned());
-                    }
-                    field.push(Entrant {
-                        name: parts[1].clone(),
-                        car: parts[2].clone(),
-                        skill: parts[3].parse().map_err(|_| "bad skill".to_owned())?,
-                        consistency: parts[4].parse().map_err(|_| "bad consistency".to_owned())?,
+                "M" => {
+                    f.expect(14, "team")?;
+                    let team = Team {
+                        name: f.text()?,
+                        budget: f.num("budget")?,
+                        manager_style: f.num("style")?,
+                        mechanics: f.num("mechanics")?,
+                        engineering: f.num("engineering")?,
+                        specialities: f.list("specialities")?,
+                        difficulties: f.list("difficulties")?,
+                        history: f.num("history")?,
+                        nationality: f.num("nationality")?,
+                        manager: f.text()?,
+                    };
+                    costs.push(TeamCosts {
+                        budget: f.num("budget")?,
+                        service: f.num("service")?,
+                        rally: f.num("rally cost")?,
+                        style: f.num("style")?,
                     });
+                    teams.push(team);
                 }
-                Some("T") => {
-                    if parts.len() != 5 {
-                        return Err("bad result line".to_owned());
-                    }
-                    let (rally, stage) = (
-                        parts[1].parse::<usize>().map_err(|_| "bad result rally".to_owned())?,
-                        parts[2].parse::<usize>().map_err(|_| "bad result stage".to_owned())?,
-                    );
-                    let player = match parts[3].as_str() {
+                "F" => {
+                    f.expect(30, "entrant")?;
+                    let (name, car, skill, consistency) =
+                        (f.text()?, f.text()?, f.num("skill")?, f.num("consistency")?);
+                    let (team, false_starts) = (f.num("team")?, f.num("false starts")?);
+                    let driver = rbr_formats::ai_ini::Driver {
+                        name: f.text()?,
+                        photo: f.num("photo")?,
+                        technique: f.num("technique")?,
+                        temperament: f.num("temperament")?,
+                        skills: f.array("skills")?,
+                        speed: f.num("speed")?,
+                        endurance: f.num("endurance")?,
+                        condition: f.num("condition")?,
+                        history: f.num("history")?,
+                        nationality: f.num("nationality")?,
+                        codriver: f.text()?,
+                    };
+                    let mut state = crate::ai::DriverState::new(driver);
+                    state.injury = f.num("injury")?;
+                    state.injury_len = f.num("injury length")?;
+                    state.co_injury = f.num("co-driver injury")?;
+                    state.co_injury_len = f.num("co-driver injury length")?;
+                    state.vs_par = f.num("vs par")?;
+                    state.sections = f.array("sections")?;
+                    let mut car_state = crate::ai::CarState::new(rbr_formats::ai_ini::Car {
+                        name: f.text()?,
+                        control: f.num("control")?,
+                        power: f.num("power")?,
+                        handling: f.num("handling")?,
+                        durability: f.num("durability")?,
+                    });
+                    car_state.parts = f.array("parts")?;
+                    car_state.hits = f.array("hits")?;
+                    field.push(Entrant { name, car, skill, consistency });
+                    contenders.push(Contender { team, driver: state, car: car_state, false_starts });
+                }
+                "T" => {
+                    f.expect(4, "result")?;
+                    let (rally, stage) = (f.num::<usize>("result rally")?, f.num::<usize>("result stage")?);
+                    let player = match f.raw()? {
                         "-" => None,
                         "R" => Some(PlayerResult { time: 0.0, penalties: 0.0, retired: true }),
                         t => {
@@ -551,8 +918,9 @@ impl Event {
                         }
                     };
                     let mut ai = Vec::new();
-                    if !parts[4].is_empty() {
-                        for cell in parts[4].split(',') {
+                    let cells = f.raw()?;
+                    if !cells.is_empty() {
+                        for cell in cells.split(',') {
                             ai.push(match cell {
                                 "R" => AiResult::Retired,
                                 t => AiResult::Time(t.parse().map_err(|_| "bad AI time".to_owned())?),
@@ -565,22 +933,94 @@ impl Event {
                         .ok_or("result outside the itinerary".to_owned())?;
                     *row = (player, ai);
                 }
-                Some("U") => {
-                    if parts.len() != 2 {
-                        return Err("bad turn line".to_owned());
-                    }
-                    turn = Some(turn_load(&parts[1])?);
+                "Y" => {
+                    f.expect(2, "penalties")?;
+                    let rally: usize = f.num("penalty rally")?;
+                    let row = penalties.get_mut(rally).ok_or("penalties outside the itinerary".to_owned())?;
+                    *row = f.list("penalties")?;
+                }
+                "N" => {
+                    f.expect(2, "news")?;
+                    let rally: usize = f.num("news rally")?;
+                    news.get_mut(rally).ok_or("news outside the itinerary".to_owned())?.push(f.text()?);
+                }
+                "U" => {
+                    f.expect(1, "turn")?;
+                    turn = Some(turn_load(f.raw()?)?);
                 }
                 _ => return Err(format!("bad save line: {line}")),
             }
+        }
+        if field.len() != contenders.len() || teams.is_empty() || penalties.iter().any(|p| p.len() != field.len()) {
+            return Err("an incomplete field".to_owned());
         }
         Ok(Event {
             config: config.ok_or("no config".to_owned())?,
             rallies,
             field,
+            contenders,
+            teams,
+            costs,
+            pace: pace.ok_or("no pace".to_owned())?,
             results,
+            penalties,
+            news,
             turn: turn.ok_or("no turn".to_owned())?,
         })
+    }
+}
+
+/// The save's first line.
+const SAVE_HEAD: &str = "rbr-season 2";
+
+/// A save line's fields in order, read as the writer wrote them.
+struct Fields<'a> {
+    parts: std::slice::Iter<'a, String>,
+    left: usize,
+}
+
+impl<'a> Fields<'a> {
+    fn new(parts: &'a [String]) -> Self {
+        Fields { parts: parts.iter(), left: parts.len() }
+    }
+
+    /// The line's tag (the first field).
+    fn next(&mut self) -> Option<&'a str> {
+        self.left = self.left.saturating_sub(1);
+        self.parts.next().map(String::as_str)
+    }
+
+    /// The line has at least `n` fields after its tag.
+    fn expect(&self, n: usize, what: &str) -> Result<(), String> {
+        if self.left >= n {
+            Ok(())
+        } else {
+            Err(format!("bad {what} line"))
+        }
+    }
+
+    fn raw(&mut self) -> Result<&'a str, String> {
+        self.parts.next().map(String::as_str).ok_or_else(|| "a short line".to_owned())
+    }
+
+    fn text(&mut self) -> Result<String, String> {
+        self.raw().map(str::to_owned)
+    }
+
+    fn num<T: std::str::FromStr>(&mut self, what: &str) -> Result<T, String> {
+        self.raw()?.parse().map_err(|_| format!("bad {what}"))
+    }
+
+    fn list<T: std::str::FromStr>(&mut self, what: &str) -> Result<Vec<T>, String> {
+        let text = self.raw()?;
+        if text.is_empty() {
+            return Ok(Vec::new());
+        }
+        text.split(',').map(|v| v.parse().map_err(|_| format!("bad {what}"))).collect()
+    }
+
+    fn array<T: std::str::FromStr, const N: usize>(&mut self, what: &str) -> Result<[T; N], String> {
+        self.list::<T>(what)?.try_into().map_err(|_| format!("bad {what}"))
     }
 }
 
@@ -608,7 +1048,7 @@ fn draw_rally(
     picked: &[StageRef],
     legs: u8,
     rng: &mut CrtRand,
-    reference: &dyn Fn(&StageRef, f32) -> f32,
+    profile: &dyn Fn(&StageRef) -> StageProfile,
 ) -> Rally {
     let legs = legs.max(1) as usize;
     let per_leg = picked.len().div_ceil(legs);
@@ -640,7 +1080,8 @@ fn draw_rally(
         let leg = (i / per_leg.max(1)).min(legs - 1);
         let conditions = leg_conditions[leg];
         let wet = conditions.wetness();
-        let reference = reference(stage, wet);
+        let profile = profile(stage);
+        let reference = profile.reference(wet);
         // Realistic daylight puts the last leg at dusk or night.
         if matches!(config.daylight, Daylight::Realistic) && i >= last_start && picked.len() > 1 {
             clock = clock.max(19.0 + 0.5 * (i - last_start) as f32);
@@ -662,7 +1103,14 @@ fn draw_rally(
         if let Some(m) = service_after {
             clock += m as f32 / 60.0;
         }
-        stages.push(ItineraryStage { stage: stage.clone(), clock: at, conditions, service_after });
+        stages.push(ItineraryStage {
+            stage: stage.clone(),
+            clock: at,
+            conditions,
+            reference: profile.dry,
+            track: profile.track(0, PAR_SCALE),
+            service_after,
+        });
     }
     Rally { name: rally_name(picked), stages }
 }
@@ -990,8 +1438,38 @@ mod tests {
         ]
     }
 
-    fn reference(_stage: &StageRef, wet: f32) -> f32 {
-        300.0 * (1.0 + 0.1 * wet)
+    fn profile(stage: &StageRef) -> StageProfile {
+        StageProfile::flat(stage.length, stage.surface, &crate::pace::class_pace("Rally 2"))
+    }
+
+    fn roster() -> Roster {
+        Roster {
+            drivers: vec![],
+            teams: (0..7)
+                .map(|k| Team { name: format!("Team {k}"), engineering: 1 + k % 5, ..crate::ai::fixtures::team() })
+                .collect(),
+            cars: (0..8)
+                .map(|k| rbr_formats::ai_ini::Car {
+                    name: format!("c{k}"),
+                    control: 3,
+                    power: 3,
+                    handling: 3,
+                    durability: 3,
+                })
+                .collect(),
+        }
+    }
+
+    fn master() -> Master {
+        crate::ai::fixtures::master()
+    }
+
+    fn build(config: EventConfig, pool: &[StageRef], cars: &[String]) -> Event {
+        Event::build(config, pool, cars, &roster(), &profile).unwrap()
+    }
+
+    fn finish(time: f32) -> PlayerResult {
+        PlayerResult { time, penalties: 0.0, retired: false }
     }
 
     #[test]
@@ -1002,7 +1480,7 @@ mod tests {
         let mut config = Preset::QuickRally.config("Rally2", "car", 5);
         config.length = Length::Rally { stages: 4 };
         config.pool = StagePool::Retail;
-        let event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let event = build(config, &pool, &cars);
         assert_eq!(event.rallies.len(), 1);
         assert_eq!(event.rallies[0].stages.len(), 4);
         assert!(event.rallies[0].stages.iter().all(|s| !s.stage.community));
@@ -1012,7 +1490,7 @@ mod tests {
         let mut config = Preset::QuickRally.config("Rally2", "car", 5);
         config.length = Length::Rally { stages: 2 };
         config.pool = StagePool::Retail;
-        let event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let event = build(config, &pool, &cars);
         assert_eq!(keys.len(), 4);
         let keys: Vec<&str> = event.rallies[0].stages.iter().map(|s| s.stage.key.as_str()).collect();
         assert_eq!(keys.len(), 2);
@@ -1028,7 +1506,7 @@ mod tests {
         let cars = vec!["car".to_owned()];
         let mut config = Preset::Season.config("Rally2", "car", 5);
         config.length = Length::Season { rallies: 4, stages: 2 };
-        let event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let event = build(config, &pool, &cars);
         assert_eq!(event.rallies.len(), 4);
         // Each rally keeps one surface.
         for rally in &event.rallies {
@@ -1037,7 +1515,7 @@ mod tests {
         }
         let mut config = Preset::Weekend.config("Rally2", "car", 5);
         config.length = Length::Weekend { stages: 4 };
-        let event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let event = build(config, &pool, &cars);
         let nights: Vec<_> = event.rallies[0].stages.iter().filter(|s| s.service_after == Some(45)).collect();
         assert_eq!(nights.len(), 1, "one overnight service between the legs");
         assert!(event.rallies[0].name.ends_with("Rally"));
@@ -1049,7 +1527,7 @@ mod tests {
         let cars = vec!["car".to_owned()];
         let mut config = Preset::QuickRally.config("Rally2", "car", 5);
         config.length = Length::Rally { stages: 3 };
-        let event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let event = build(config, &pool, &cars);
         let clocks: Vec<f32> = event.rallies[0].stages.iter().map(|s| s.clock).collect();
         assert!((clocks[0] - 8.0).abs() < 0.01, "{clocks:?}");
         assert!(clocks.windows(2).all(|w| w[1] > w[0]), "{clocks:?}");
@@ -1058,7 +1536,7 @@ mod tests {
         let mut config = Preset::QuickRally.config("Rally2", "car", 5);
         config.length = Length::Rally { stages: 3 };
         config.daylight = Daylight::Night;
-        let event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let event = build(config, &pool, &cars);
         assert!(event.rallies[0].stages.iter().all(|s| s.clock >= 21.0 || s.clock < 8.0));
     }
 
@@ -1069,9 +1547,9 @@ mod tests {
         let mut config = Preset::QuickRally.config("Rally2", "car", 5);
         config.length = Length::Rally { stages: 2 };
         config.field_size = 3;
-        let mut event = Event::build(config, &pool, &cars, &reference).unwrap();
+        let mut event = build(config, &pool, &cars);
         event.turn_done(); // Welcome -> stage 0.
-        event.stage_done(PlayerResult { time: 300.0, penalties: 0.0, retired: false }, 300.0);
+        event.stage_done(&master(), finish(300.0));
         // Force known AI times for the standings check.
         event.results[0][0].1 = vec![AiResult::Time(290.0), AiResult::Time(310.0), AiResult::Retired];
         let standings = event.rally_standings(0);
@@ -1079,10 +1557,11 @@ mod tests {
         assert_eq!(standings[0], Standing { entrant: Some(0), total: Some(290.0), points: 25 });
         assert_eq!(standings[1], Standing { entrant: None, total: Some(300.0), points: 18 });
         assert_eq!(standings[2].points, 15);
-        assert_eq!(standings[3], Standing { entrant: Some(2), total: None, points: 12 });
+        // A retired entrant scores nothing, whatever its place.
+        assert_eq!(standings[3], Standing { entrant: Some(2), total: None, points: 0 });
         // The retired AI is out of the rally: still last after stage 2.
         event.turn_done();
-        event.stage_done(PlayerResult { time: 300.0, penalties: 10.0, retired: false }, 300.0);
+        event.stage_done(&master(), PlayerResult { time: 300.0, penalties: 10.0, retired: false });
         event.results[0][1].1 = vec![AiResult::Time(290.0), AiResult::Time(310.0), AiResult::Time(200.0)];
         let standings = event.rally_standings(0);
         assert!(standings.last().unwrap().entrant == Some(2));
@@ -1101,22 +1580,18 @@ mod tests {
         config.field_size = 4;
         config.adaptive = true;
         config.difficulty = 1.0;
-        let mut event = Event::build(config, &pool, &cars, &reference).unwrap();
-        let before: Vec<f32> = event.field.iter().map(|e| e.skill).collect();
+        let mut event = build(config, &pool, &cars);
+        let before = event.pace;
         event.turn_done();
-        // The player wins easily: the field speeds up, by at most the step.
-        event.stage_done(PlayerResult { time: 200.0, penalties: 0.0, retired: false }, 300.0);
-        for (a, b) in before.iter().zip(event.field.iter()) {
-            assert!((b.skill - a).abs() <= ADAPT_STEP + 1e-6, "{} -> {}", a, b.skill);
-        }
-        assert!(event.field.iter().map(|e| e.skill).sum::<f32>() > before.iter().sum::<f32>());
+        // The player wins easily: the field speeds up (a smaller pace over its pars), by at most the step.
+        event.stage_done(&master(), finish(100.0));
+        assert!(event.pace < before && before - event.pace <= ADAPT_STEP + 1e-6, "{before} -> {}", event.pace);
         // The player crawls: the field slows down.
-        let mid: Vec<f32> = event.field.iter().map(|e| e.skill).collect();
+        let mid = event.pace;
         event.turn_done();
-        event.stage_done(PlayerResult { time: 900.0, penalties: 0.0, retired: false }, 300.0);
-        assert!(event.field.iter().map(|e| e.skill).sum::<f32>() < mid.iter().sum::<f32>());
-        // Skills stay in bounds over a full event.
-        assert!(event.field.iter().all(|e| e.skill >= 0.85 && e.skill <= 1.03));
+        event.stage_done(&master(), finish(900.0));
+        assert!(event.pace > mid);
+        assert!((PACE_RANGE.0..=PACE_RANGE.1).contains(&event.pace));
         assert_eq!(event.config.damage, Damage::Realistic);
     }
 
@@ -1126,17 +1601,39 @@ mod tests {
         let cars = vec!["car-a".to_owned(), "car|b\\c".to_owned()];
         let mut config = Preset::Season.config("Rally 2", "car|b\\c", 5);
         config.length = Length::Season { rallies: 2, stages: 3 };
-        let mut event = Event::build(config, &pool, &cars, &reference).unwrap();
+        config.team = 4;
+        let mut event = build(config, &pool, &cars);
         event.turn_done();
-        event.stage_done(PlayerResult { time: 301.5, penalties: 10.0, retired: false }, 300.0);
+        event.stage_done(&master(), PlayerResult { time: 301.5, penalties: 10.0, retired: false });
         event.turn_done();
+        assert!(!event.bulletins(0).is_empty());
         let text = event.save();
-        assert!(text.starts_with("rbr-season 1\n"));
+        assert!(text.starts_with("rbr-season 2\n"));
         let back = Event::load(&text).unwrap();
         assert_eq!(event, back);
         assert_eq!(Event::load(&back.save()).unwrap(), back);
+        assert_eq!(back.config.team, 4);
         assert!(Event::load("bogus").is_err());
-        assert!(Event::load("rbr-season 1\nbogus|line").is_err());
+        assert!(Event::load("rbr-season 1\nC|x").unwrap_err().contains("older"));
+        assert!(Event::load("rbr-season 2\nbogus|line").is_err());
+    }
+
+    /// Drives the whole event with a fixed player time, returning the stages driven.
+    fn run(event: &mut Event, time: f32) -> usize {
+        let m = master();
+        let mut stages = 0;
+        loop {
+            match event.turn.clone() {
+                Turn::Welcome { .. } | Turn::Service { .. } | Turn::RallyOver { .. } => event.turn_done(),
+                Turn::Stage { .. } => {
+                    event.stage_done(&m, finish(time));
+                    stages += 1;
+                }
+                Turn::EventOver => break,
+            }
+            assert!(stages < 200, "the event must end");
+        }
+        stages
     }
 
     #[test]
@@ -1144,28 +1641,144 @@ mod tests {
         let pool = gravel_pool();
         let cars = vec!["car-a".to_owned(), "car-b".to_owned()];
         let mut config = Preset::Season.config("Rally2", "car-a", 99);
-        config.length = Length::Season { rallies: 2, stages: 3 };
-        config.field_size = 6;
-        let mut event = Event::build(config, &pool, &cars, &reference).unwrap();
-        let mut stages = 0;
-        loop {
-            match event.turn.clone() {
-                Turn::Welcome { .. } | Turn::Service { .. } | Turn::RallyOver { .. } => event.turn_done(),
-                Turn::Stage { .. } => {
-                    event.stage_done(PlayerResult { time: 310.0, penalties: 0.0, retired: false }, 300.0);
-                    stages += 1;
-                }
-                Turn::EventOver => break,
-            }
-            assert!(stages < 100, "the event must end");
-        }
-        assert_eq!(stages, 6);
+        config.length = Length::Season { rallies: 2, stages: 6 };
+        config.field_size = 12;
+        let mut event = build(config, &pool, &cars);
+        let ref_time = event.rallies[0].stages[0].reference;
+        assert_eq!(run(&mut event, ref_time * 1.05), 12);
         assert_eq!(event.turn, Turn::EventOver);
         let points = event.points();
-        assert_eq!(points.len(), 7);
+        assert_eq!(points.len(), 13);
         assert!(points.windows(2).all(|w| w[0].points >= w[1].points));
-        assert_eq!(points.iter().map(|r| r.points).sum::<u32>(), 2 * (25 + 18 + 15 + 12 + 10 + 8 + 6));
+        // The points go to finishers, 25 + 18 + ... a rally at most.
+        assert!(points.iter().map(|r| r.points).sum::<u32>() <= 2 * (25 + 18 + 15 + 12 + 10 + 8 + 6 + 4 + 2 + 1));
+        assert!(!event.bulletins(0).is_empty());
+        // The AI drove its stages with the engine: the times scatter around the pars.
+        let times: Vec<f32> = event.results[0][0]
+            .1
+            .iter()
+            .filter_map(|r| if let AiResult::Time(t) = r { Some(*t) } else { None })
+            .collect();
+        assert!(times.len() > 6 && times.iter().any(|t| (t - times[0]).abs() > 0.01), "{times:?}");
         // The save still round-trips at the end.
         assert_eq!(Event::load(&event.save()).unwrap(), event);
+    }
+
+    #[test]
+    fn a_retired_player_ends_the_rally_and_scores_nothing() {
+        let pool = gravel_pool();
+        let cars = vec!["car".to_owned()];
+        let mut config = Preset::QuickRally.config("Rally2", "car", 21);
+        config.length = Length::Season { rallies: 2, stages: 4 };
+        config.field_size = 8;
+        let mut event = build(config, &pool, &cars);
+        event.turn_done();
+        event.stage_done(&master(), finish(300.0));
+        event.turn_done();
+        if matches!(event.turn, Turn::Service { .. }) {
+            event.turn_done();
+        }
+        event.stage_done(&master(), PlayerResult { time: 0.0, penalties: 0.0, retired: true });
+        assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
+        // The field drove all four stages.
+        assert!(event.results[0].iter().all(|(_, ai)| ai.len() == 8));
+        let rows = event.rally_standings(0);
+        let player = rows.iter().find(|r| r.entrant.is_none()).unwrap();
+        assert_eq!((player.total, player.points), (None, 0));
+        assert!(rows.iter().filter(|r| r.points > 0).count() >= 1);
+        // The event goes on to the next rally, and the retired rally's points count for the field alone.
+        event.turn_done();
+        assert_eq!(event.turn, Turn::Welcome { rally: 1 });
+        let points = event.points();
+        assert_eq!(points.iter().find(|r| r.entrant.is_none()).unwrap().points, 0);
+        assert!(points[0].points > 0);
+    }
+
+    #[test]
+    fn the_start_order_follows_points_then_standings() {
+        let pool = gravel_pool();
+        let cars = vec!["car".to_owned()];
+        let mut config = Preset::QuickRally.config("Rally2", "car", 33);
+        config.length = Length::Season { rallies: 2, stages: 3 };
+        config.field_size = 6;
+        let mut event = build(config, &pool, &cars);
+        let first = event.start_order(0, 0);
+        assert_eq!(first.len(), 7);
+        assert_eq!(first, event.start_order(0, 0));
+        let mut sorted = first.clone();
+        sorted.sort();
+        assert_eq!(sorted, std::iter::once(None).chain((0..6).map(Some)).collect::<Vec<_>>());
+        run_rally(&mut event, 0);
+        // Stage 2 of the first rally starts by its standings, leader first.
+        let standings: Vec<Option<usize>> = event.standings_after(0, 1).into_iter().map(|r| r.entrant).collect();
+        assert_eq!(event.start_order(0, 1), standings);
+        // The second rally's first stage starts by the season points.
+        let points = event.points();
+        let order = event.start_order(1, 0);
+        let pts = |who: Option<usize>| points.iter().find(|r| r.entrant == who).unwrap().points;
+        assert!(order.windows(2).all(|w| pts(w[0]) >= pts(w[1])), "{order:?}");
+        // The road wear follows the player's place: the front three drive a new road.
+        let place = event.start_order(0, 1).iter().position(Option::is_none).unwrap();
+        assert_eq!(
+            event.road_wear(0, 1),
+            if place <= 2 {
+                0.0
+            } else if place <= 10 {
+                1.0
+            } else {
+                2.0
+            }
+        );
+    }
+
+    fn run_rally(event: &mut Event, rally: usize) {
+        let m = master();
+        while !matches!(event.turn, Turn::RallyOver { rally: r } if r == rally) {
+            match event.turn.clone() {
+                Turn::Welcome { .. } | Turn::Service { .. } => event.turn_done(),
+                Turn::Stage { .. } => event.stage_done(&m, finish(300.0)),
+                _ => unreachable!(),
+            }
+        }
+        event.turn_done();
+        event.turn_done();
+    }
+
+    #[test]
+    fn the_crew_is_the_picked_teams() {
+        let pool = gravel_pool();
+        let cars = vec!["car".to_owned()];
+        let mut config = Preset::QuickRally.config("Rally2", "car", 1);
+        config.team = 3;
+        let event = build(config, &pool, &cars);
+        assert_eq!(event.crew(), crate::service::Crew { a: 4, b: 6 });
+        // An out-of-range team falls back to the default crew.
+        let mut config = Preset::QuickRally.config("Rally2", "car", 1);
+        config.team = 99;
+        assert_eq!(build(config, &pool, &cars).crew(), crate::service::Crew::default());
+    }
+
+    #[test]
+    fn the_ai_is_serviced_between_stages() {
+        let pool = gravel_pool();
+        let cars = vec!["car".to_owned()];
+        let mut config = Preset::QuickRally.config("Rally2", "car", 4);
+        config.length = Length::Rally { stages: 3 };
+        config.field_size = 4;
+        let mut event = build(config, &pool, &cars);
+        event.turn_done();
+        event.stage_done(&master(), finish(300.0));
+        // The service falls after the second of three stages: a worn car is repaired in it, at the team's cost.
+        event.turn_done();
+        for c in &mut event.contenders {
+            c.car.parts[2] = 3;
+        }
+        assert_eq!(event.costs.iter().map(|c| c.rally).sum::<u32>(), 0);
+        event.stage_done(&master(), finish(300.0));
+        assert!(matches!(event.turn, Turn::Service { minutes: 20, .. }));
+        let spent: u32 = event.costs.iter().map(|c| c.rally).sum();
+        assert!(spent > 0, "the service repaired nothing");
+        let alive = (0..4).filter(|&e| event.results[0][1].1[e] != AiResult::Retired).collect::<Vec<_>>();
+        assert!(!alive.is_empty() && alive.iter().all(|&e| event.contenders[e].car.parts[2] < 3));
     }
 }

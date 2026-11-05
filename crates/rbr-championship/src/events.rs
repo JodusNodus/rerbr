@@ -575,7 +575,7 @@ mod tests {
         let kinds: Vec<u32> = s.events.iter().map(|e| e.kind).collect();
         assert_eq!(kinds.iter().filter(|&&k| k == kind::LONG_SERVICE).count(), 14);
         assert_eq!(*kinds.last().unwrap(), kind::OVERNIGHT);
-        let master = crate::ai::tests::master();
+        let master = rbr_season::ai::fixtures::master();
         let mut rng = CrtRand(1);
         let mut ai = Ai { master: &master, roster: &roster, field: &mut field, blocks: &[], rng: &mut rng };
         let mut news = Vec::new();
@@ -594,7 +594,7 @@ mod tests {
     fn the_player_turns_follow_the_queue() {
         let (roster, mut field) = empty();
         let mut s = new_season(&roster, &mut field, 2);
-        let master = crate::ai::tests::master();
+        let master = rbr_season::ai::fixtures::master();
         let mut rng = CrtRand(1);
         let mut ai = Ai { master: &master, roster: &roster, field: &mut field, blocks: &[], rng: &mut rng };
         let mut news = Vec::new();
@@ -645,7 +645,7 @@ mod tests {
     fn a_retired_player_skips_to_the_results() {
         let (roster, mut field) = empty();
         let mut s = new_season(&roster, &mut field, 3);
-        let master = crate::ai::tests::master();
+        let master = rbr_season::ai::fixtures::master();
         let mut rng = CrtRand(1);
         let mut ai = Ai { master: &master, roster: &roster, field: &mut field, blocks: &[], rng: &mut rng };
         let mut news = Vec::new();

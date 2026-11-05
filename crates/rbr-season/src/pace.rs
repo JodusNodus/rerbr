@@ -28,7 +28,7 @@ pub struct ClassPace {
 }
 
 /// The sample step along the driveline (m).
-const STEP: f32 = 1.5;
+pub(crate) const STEP: f32 = 1.5;
 /// The curvature smoothing radius (samples each side): 6 samples at 1.5 m is a ~19 m window, wide enough that
 /// the line's positioning weave cancels out while real corners keep their sign. A lone hairpin still reads slow
 /// (180 degrees over the window is ~7 m/s on gravel); shorter windows count every weave as a corner.
@@ -239,13 +239,32 @@ fn resample(points: &[[f32; 3]]) -> Vec<[f32; 3]> {
     out
 }
 
-/// The winning time (s) of a stage over `driveline` (its points in order, m) on `surface`, `wetness` 0 (dry) to 1.
-pub fn reference_time(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class: &ClassPace) -> f32 {
+/// A speed plan along a driveline: the samples (every `STEP` metres), the speed limit at each and the planned speed.
+pub(crate) struct Plan {
+    pub samples: Vec<[f32; 3]>,
+    pub limit: Vec<f32>,
+    pub speed: Vec<f32>,
+    pub top_speed: f32,
+}
+
+impl Plan {
+    /// The time (s) from sample `from` to sample `to`.
+    pub fn time(&self, from: usize, to: usize) -> f32 {
+        (from..to.min(self.samples.len() - 1)).map(|i| 2.0 * STEP / (self.speed[i] + self.speed[i + 1]).max(0.5)).sum()
+    }
+
+    /// The sample at `distance` metres along the plan.
+    pub fn index(&self, distance: f32) -> usize {
+        ((distance / STEP).round().max(0.0) as usize).min(self.samples.len() - 1)
+    }
+}
+
+/// The speed plan of a stage over `driveline` on `surface`, `wetness` 0 (dry) to 1; none for a line too short to sample.
+pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class: &ClassPace) -> Option<Plan> {
     let wet = wetness.clamp(0.0, 1.0);
     let samples = resample(driveline);
     if samples.len() < 3 {
-        let length = path_length(driveline);
-        return length / (class.top_speed * 0.7).max(1.0);
+        return None;
     }
     let grip_eff = class.grip * surface_grip(surface) * (1.0 - 0.25 * wet);
     let brake_eff = class.brake * grip_eff / class.grip;
@@ -285,11 +304,15 @@ pub fn reference_time(driveline: &[[f32; 3]], surface: Surface, wetness: f32, cl
         let v = (speed[i + 1] * speed[i + 1] + 2.0 * brake_eff * STEP).sqrt();
         speed[i] = speed[i].min(v);
     }
-    let mut time = 0.0f32;
-    for i in 0..samples.len() - 1 {
-        time += 2.0 * STEP / (speed[i] + speed[i + 1]).max(0.5);
+    Some(Plan { samples, limit, speed, top_speed: class.top_speed })
+}
+
+/// The winning time (s) of a stage over `driveline` (its points in order, m) on `surface`, `wetness` 0 (dry) to 1.
+pub fn reference_time(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class: &ClassPace) -> f32 {
+    match plan(driveline, surface, wetness, class) {
+        Some(plan) => plan.time(0, plan.samples.len() - 1),
+        None => path_length(driveline) / (class.top_speed * 0.7).max(1.0),
     }
-    time
 }
 
 #[cfg(test)]

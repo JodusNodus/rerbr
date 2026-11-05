@@ -5,12 +5,12 @@
 
 use std::path::Path;
 
-use rbr_championship::StageReport;
 use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::StageEnd;
 use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::car_body::{damage, layout::DAMAGE_HANDLER};
 use rbr_physics::mem::Mem;
+use rbr_season::rally::StageReport;
 
 /// The stage's end as the rally takes it.
 #[derive(Debug, Clone, PartialEq)]
