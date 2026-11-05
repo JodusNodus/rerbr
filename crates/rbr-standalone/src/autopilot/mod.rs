@@ -445,7 +445,7 @@ impl<'a> Driver<'a> {
         }
     }
 
-    /// The driver on a surface with `grip` of the dry grip (the race's wetness, `Live::grip`).
+    /// The driver on a surface with `grip` of the dry grip (1 dry, less on a damp or wet race: `with_lesson`).
     pub fn with_grip(self, grip: f32) -> Self {
         Self { grip, ..self }
     }

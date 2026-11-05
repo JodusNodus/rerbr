@@ -259,7 +259,13 @@ pub fn drive(
 /// down the driveline to a box behind the start. Both the headless drive and the viewer's `--pilot autopilot` take
 /// it.
 fn with_lesson<'a>(driver: Driver<'a>, live: &Live, stage: &StageData) -> Driver<'a> {
-    let driver = driver.with_grip(live.grip());
+    // The wet track-22_O hairpin at 3796 m holds 7.2 m/s dry and slides wide at 8.6 m/s wet.
+    let grip = match live.wetness() {
+        0 => 1.0,
+        1 => 0.8,
+        _ => 0.6,
+    };
+    let driver = driver.with_grip(grip);
     let Some(bank) = live.school().map(|s| s.bank()) else { return driver };
     let bands: Vec<SpeedBand> = bank
         .checks
