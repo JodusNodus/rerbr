@@ -80,7 +80,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | RBRHUD working dials | done | oil, tyre health fixed; `Damage` unverified |
 | Particles | partial | soft edges; rates against a capture |
 | Skid marks | done | - |
-| Car lights | partial | recordings without live data approximate |
+| Car lights | partial | recordings without live data infer brake only (the gear and lamp words are heap; a replay's sidecar covers reverse and damage) |
 | Deformation, cracks, detached parts, dirt | partial | door-detach crash drive (the renderer hangs/detaches doors by DOR1/DET1; no natural detach found yet) |
 | Interactive scenery, fences | done | - |
 | Stage characters, in-car crew, car-flip marshals | done | original run: game captures |

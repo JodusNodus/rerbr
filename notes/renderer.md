@@ -471,7 +471,10 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 | 5 | reverse | `reverse_lb/rb` | gear index 0 (`Set1ed0` 0x4f1ed0) |
 
 - Lit = kind switch, master word `+0xdc` and the lamp's works bit; the `lightglass_*` part and flare go with the glass
-  bit. Live and sidecar: PEV1 kind 6. Otherwise brake from `CCar+0x4ec` past 0.1, no reverse or damage.
+  bit. Live and sidecar: PEV1 kind 6. Otherwise brake from `CCar+0x4ec` past 0.1, no reverse or damage: the drive's
+  gear index (`dri+0x54c`) and the lamp block live on the heap outside the recorded car block, and the payload's
+  word 6 gear is the input's select action only (absent on auto-gear drives), so neither is in a recording; the lamp
+  damage wants its own replay's kind-6 events (`particles::sidecar`, made with `rbr-standalone --events-out`).
 - Flares (`InitLights` 0x10016fd0, `RenderLights` 0x100158b0; `lights.rs`): `<car>_settings.ini` `LightN`, key
   `kind * 4 + i`; additive quad 0.2 m toward the eye, alpha `facing * fade * 114.75`. Only the first record of a key
   with a `Switch = true` part switches. Ours: the headlight key (L) steps main beam, dipped, off (with the tail
@@ -508,7 +511,20 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   nothing at night (GR Yaris Rally2, Fabia RS Rally2, Polo GTI R5, DS3 R5, Fiesta S2000 and R2, Grande Punto S2000,
   Kalina RC2, Mini WRC). The BMW M3 E36's option is named `Lights` (taken too; not rendered, its community pack is not
   installed here). The Fiesta Rally3 Evo has no `carparts/`: its `light_on/` beside the model is taken.
-- Open: the writer of the lamp words on damage; `RenderLights`' second visibility test.
+- Damage breaks the lamps through the damage pairs: the light block (handler `+0x3b24`) holds each kind's group at
+  `+0x1c + 0x20 * (k - 1)`, lamp `i`'s works and glass at `+8i` and `+8i + 4`, so kind 1 (front) is the differential
+  pair `+0x3b40` (`DmgCC30` 0x4ecc30), kind 3 (tail) the steering pair `+0x3b80` (`DmgCD30` 0x4ecd30), kind 4 (brake) the
+  suspension pair `+0x3ba0` (`DmgCCB0` 0x4eccb0), kind 5 (reverse) the hub pair `+0x3bc0` (`DmgCDB0` 0x4ecdb0), kinds 2
+  and 6 the driveshaft and brake-disc pairs (`DmgBB0` 0x4ecbb0, `DmgCE30` 0x4ece30); each clears its pair and sets its
+  kind flag when its table fires (rbr-recomp `RBR_E35_DamageB.cpp`, `RBR_E36_CarLight.h`, `car-lights.md`). The master
+  word (`+0xdc` = handler `+0x3c00`) falls in `EngineGate` 0x4ef680 and comes back in `CElectricalDamage::Vf04`
+  (the service repair); no repair restores a pair, and `Reset` (`block_reset` 0x4f19b0) sets every word to 1. The six
+  functors, the gate and the reset are ported (`rbr-physics` `car_body`, bound in `bound.csv`) and the hybrid check
+  compares every heap byte, so live play already darkens broken lamps (lit part, beam and light off; `lightglass_*`
+  with the glass bit; no flares by decision): night Tanner Corolla fly-by and cockpit with a sidecar breaking the
+  front-right lamp (the 0xd0d words the standalone sent on tanner-damage) against the whole one.
+- Open: `RenderLights`' second visibility test. Only the fade loop of 0x100158b0 is reconstructed (rbr-recomp
+  `HH_CarRender.cpp`, 10%); the test's vectors are unknown, and no flare is drawn anyway (user, 2026-10-31).
 - Ours: the headlights' shadow map (`sun::LAMP`, `lamps.wgsl`) shades the beams beyond the stage (2026-10-27): rain,
   snow, dust and mist (`lamps_at`), each step of the beams' march and the wet-road glints (`lamp_glint`). Only with
   `Enhance::lighting` and a drawn map (else a zero matrix reads lit): day and shadows-off frames byte-identical.

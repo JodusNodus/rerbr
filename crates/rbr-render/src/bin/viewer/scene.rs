@@ -560,7 +560,7 @@ fn start_live(
             drive.extend(process.parse(&frame)?);
             if process.detached.iter().any(|p| !seen.contains(&p.part)) {
                 seen.extend(process.detached.iter().map(|p| p.part));
-                detaching.push((k as isize + 1, process.detached.clone()));
+                detaching.push((k as isize + 1, process.detached.clone(), process.doors.clone()));
             }
         }
         return Ok((process, drive, detaching, demo));
