@@ -13,6 +13,7 @@ pub use rbr_sound::{Events, Player, Scene, Sky};
 
 use crate::camera::Lens;
 use crate::characters::scripted::Event;
+use crate::glass::{self, model::Kind as Lying};
 use crate::hud::school::{self, State as SchoolState};
 use crate::particles::wheel_spray::{self, ground::Kind};
 use crate::particles::Particles;
@@ -119,6 +120,28 @@ pub fn water(particles: &Particles) -> [rbr_sound::tyre::Water; 4] {
         loose: matches!(w.ground.kind, Kind::Gravel | Kind::Dirt | Kind::Grass),
         film: w.film,
     })
+}
+
+/// The windscreen for the sound (`rbr_sound::effects::Glass`, ours) from the glass's last frame: whether the blades
+/// are off the park, the strokes begun and the last one's way, the water under their sweep (the film's mean over the
+/// cells they sweep plus the share of the sweep the water, snow and trails cover; the whole glass without blades), and
+/// the splats since the last call.
+pub fn glass(drawn: &mut glass::Drawn) -> rbr_sound::effects::Glass {
+    let splats = drawn.take_splats();
+    let g = drawn.glass();
+    let swept = |at: glam::Vec2| g.wipers.is_empty() || g.wipers.iter().any(|w| w.swept(at, 0.0, w.sweep, 0.0));
+    let (film, cells) = (g.film.iter().enumerate())
+        .filter(|&(i, _)| swept(g.film_cell(i).0))
+        .fold((0.0, 0usize), |(sum, n), (_, f)| (sum + f, n + 1));
+    let cell = g.film_cell(0).1;
+    let area = cells as f32 * cell.x * cell.y;
+    let covered: f32 = (g.drops.iter())
+        .filter(|d| matches!(d.kind, Lying::Water | Lying::Snow | Lying::Trail) && swept(d.at))
+        .map(|d| std::f32::consts::PI * d.radius * d.radius)
+        .sum();
+    let wet = if cells > 0 { film / cells as f32 + covered / area } else { 0.0 };
+    let last = g.strokes[0];
+    rbr_sound::effects::Glass { moving: g.phase > 0.0, strokes: g.stroke_count, out: last.to > last.from, wet, splats }
 }
 
 /// The car's roadside `sides` (left, right as the car facing `forward` has them) as a listener whose right is

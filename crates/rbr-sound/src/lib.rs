@@ -289,6 +289,12 @@ impl Player {
         self.models.tyres.set_water(water);
     }
 
+    /// The windscreen as the renderer's glass model shows it after a frame (ours, [`effects::Glass`]): the wipers
+    /// and splats play from it; `None`, the default, plays 1.02's wipers.
+    pub fn set_glass(&mut self, glass: Option<effects::Glass>) {
+        self.models.effects.set_glass(glass);
+    }
+
     /// One physics step's inputs.
     pub fn step(&mut self, inputs: &Inputs) {
         let commands = self.models.step(inputs, &self.scene);

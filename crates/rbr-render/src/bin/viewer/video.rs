@@ -141,6 +141,7 @@ pub fn render(
             if let (Some(audio), Some(pending)) = (&mut audio, &mut pending) {
                 let helicopter = scene.characters.as_ref().and_then(|c| c.rescue_position());
                 audio.player.set_water(scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
+                audio.player.set_glass(scene.glass.as_mut().map(rbr_render::sound::glass));
                 audio.step(audio_scene(scene, args, shown), pending, &rbr_render::sound::events(&events, helicopter));
                 audio.samples(periods)?;
             }

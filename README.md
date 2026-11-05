@@ -181,6 +181,11 @@ captions above credit the car models and the community stages shown.
 - Water sounds: recordings by [EverydaySounds](https://freesound.org/people/EverydaySounds/sounds/268625/) and
   [Breviceps](https://freesound.org/people/Breviceps/sounds/462862/) on Freesound (CC0;
   [`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
+- Windscreen sounds: recordings by [domenicodr](https://freesound.org/people/domenicodr/sounds/607129/),
+  [leocb](https://freesound.org/people/leocb/sounds/849916/), [Cinetony](https://freesound.org/people/Cinetony/sounds/672703/)
+  and [Mirandat7](https://freesound.org/people/Mirandat7/sounds/614993/) (CC0), and
+  [tosha73](https://freesound.org/people/tosha73/sounds/547356/) (CC BY 4.0) on Freesound
+  ([`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
 
 ## License
 

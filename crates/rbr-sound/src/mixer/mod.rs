@@ -167,6 +167,10 @@ struct Banks {
     ignition: Vec<Arc<Wave>>,
     dog_rings: Vec<Arc<Wave>>,
     wiper: Vec<Arc<Wave>>,
+    /// Ours: the embedded wiper strokes on wet and dry glass and the windscreen splats (`data::GlassBank`).
+    wiper_wet: Vec<Arc<Wave>>,
+    wiper_dry: Vec<Arc<Wave>>,
+    glass_splats: Vec<Arc<Wave>>,
     surfaces: HashMap<(Material, bool), Arc<Wave>>,
     words: HashMap<u32, Vec<Arc<Wave>>>,
     numbers: Vec<Arc<Wave>>,
@@ -343,6 +347,8 @@ pub struct Mixer {
     /// Each wheel's rumble (0-3), wetness (4-7) and wet-road hiss (8-11, ours) loops.
     wheel_loops: [LoopVoice; 12],
     rain: Rain,
+    /// Ours: the recorded rain heard in the car, light and heavy ([`Command::CabinRain`]).
+    cabin_rain: [LoopVoice; 2],
     banks: Banks,
     playing: Vec<Playing>,
     /// One-shots and speech stopped early, fading out ([`Playing::stop`]).
@@ -396,6 +402,7 @@ impl Mixer {
             (Loop::Siren, voice(&bank.siren)),
             (Loop::Helicopter, voice(&bank.helicopter)),
             (Loop::Cooler, voice(&bank.cooler)),
+            (Loop::WiperMotor, voice(&bank.glass.motor)),
         ]);
         let materials = [Material::Gravel, Material::Tarmac, Material::Snow];
         let banks = Banks {
@@ -419,6 +426,9 @@ impl Mixer {
             ignition: shared(std::slice::from_ref(&bank.ignition)),
             dog_rings: shared(&bank.dog_rings),
             wiper: shared(&bank.wiper),
+            wiper_wet: shared(&bank.glass.wet),
+            wiper_dry: shared(&bank.glass.dry),
+            glass_splats: shared(&bank.glass.splats),
             surfaces: materials
                 .iter()
                 .zip(&bank.surfaces)
@@ -453,6 +463,7 @@ impl Mixer {
             tyres: Default::default(),
             wheel_loops: std::array::from_fn(|k| voice([&bank.rumble, &bank.wetness, &bank.wet_road][k / 4])),
             rain: Rain::new(rate),
+            cabin_rain: bank.glass.rain.each_ref().map(voice),
             banks,
             playing: Vec::new(),
             fading: Vec::new(),
@@ -692,6 +703,12 @@ impl Mixer {
                     self.rain.gain.target = gain * self.volumes.effects;
                     self.rain.amount = amount;
                 }
+                Command::CabinRain { gains, pitch } => {
+                    for (v, gain) in self.cabin_rain.iter_mut().zip(gains) {
+                        v.gain.target = gain * self.volumes.effects;
+                        v.pitch = pitch;
+                    }
+                }
             }
         }
     }
@@ -713,11 +730,14 @@ impl Mixer {
             Shot::WiperEngine => (&self.banks.wiper, 0, None),
             Shot::WiperUp => (&self.banks.wiper, 1, None),
             Shot::WiperDown => (&self.banks.wiper, 2, None),
+            Shot::WiperWet(i) => (&self.banks.wiper_wet, i, None),
+            Shot::WiperDry(i) => (&self.banks.wiper_dry, i, None),
             Shot::BlowOff
             | Shot::Grus(_)
             | Shot::Squeak(_)
             | Shot::Bottoming(_)
             | Shot::Splash(_)
+            | Shot::GlassSplat(_)
             | Shot::DriveShaft(_)
             | Shot::ExhaustPop(_)
             | Shot::Pop(_)
@@ -752,6 +772,8 @@ impl Mixer {
             Shot::Squeak(i) => (&self.banks.squeaks, i, Place::Default, None),
             Shot::Bottoming(i) => (&self.banks.bottomings, i, Place::Default, None),
             Shot::Splash(i) => (&self.banks.splashes, i, Place::Tire, None),
+            // Ours: the windscreen, through the cabin as the hits are.
+            Shot::GlassSplat(i) => (&self.banks.glass_splats, i, Place::Flat, None),
             Shot::DriveShaft(i) => (&self.banks.drive_shafts, i, Place::Default, None),
             Shot::ExhaustPop(i) => (&self.banks.exhaust_pops, i, Place::ExhaustPop, Some(Family::ExhaustPop)),
             Shot::Pop(i) => (&self.banks.pops, i, Place::ExhaustPop, Some(Family::Pop)),
@@ -884,7 +906,7 @@ impl Mixer {
             Loop::Gearbox | Loop::Diff => Some(Place::Exhaust),
             Loop::Turbo => Some(Place::Turbo),
             Loop::Cooler => Some(Place::Cooler),
-            Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind => None,
+            Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind | Loop::WiperMotor => None,
         };
         let placed = place.map(|p| (self.placed(p), self.car_pan));
         // The wind heard in the car comes through the cabin, as the tyres' roar (ours).
@@ -977,6 +999,9 @@ impl Mixer {
         self.fmod_tree.render(&mut layer, k, FULL_SCALE);
         keep(&mut layer, out, play[5]);
         self.rain.add(&mut layer, self.k);
+        for voice in self.cabin_rain.iter_mut() {
+            voice.add(&mut layer, self.rate, self.k);
+        }
         keep(&mut layer, out, play[6]);
         let rate = self.rate;
         self.since_ranged += out.len() as f32 / rate as f32;

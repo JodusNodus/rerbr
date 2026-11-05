@@ -23,6 +23,8 @@ pub enum Loop {
     Cooler,
     /// The H-shifter's grind (ours, `Player::set_grind`): silent until a sample is given.
     Grind,
+    /// Ours: the wiper motor while the blades move (`effects::Glass`, `data::GlassBank::motor`).
+    WiperMotor,
 }
 
 /// The one-shots.
@@ -68,6 +70,11 @@ pub enum Shot {
     WiperEngine,
     WiperUp,
     WiperDown,
+    /// Ours: a wiper stroke on wet glass and on dry glass (`effects::Glass`, `data::GlassBank`), by index, and water
+    /// slapping the windscreen.
+    WiperWet(usize),
+    WiperDry(usize),
+    GlassSplat(usize),
 }
 
 /// The per-wheel loops of `CTireSnd` besides the surface voices.
@@ -160,6 +167,9 @@ pub enum Command {
     Pan { voice: Loop, pan: f32 },
     /// The rain stream's gain (0 stops it) and the precipitation amount (50 light, 100 heavy).
     Rain { gain: f32, amount: f32 },
+    /// Ours: the recorded rain heard in the car (`world::cabin_rain`): the light and heavy loops' gains, and their
+    /// pitch.
+    CabinRain { gains: [f32; 2], pitch: f32 },
     /// The engine reflections' gain, and whether each door (left, right) is off the car (`crate::reflections`).
     Reflections { gain: f32, doors_off: [bool; 2] },
     /// The roadside the reflections follow (ours; `None`: 1.02's fixed delays).

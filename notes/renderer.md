@@ -736,6 +736,9 @@ drops. Additions off unchanged; wet chase within noise of main.
 `glass/`, ours (`glass/model.rs` documents the chart, inputs and wiper schedule: 1.3823/1.3195 rad, 0.4 s each way,
 `--wipers`, key I). Drops are lenses over the resolved frame; a wet film blurs it. Camera dirt on outside views is
 not ported.
+- The sound reads the glass after each frame (`crate::sound::glass`, 2026-11-05): the blades' phase and strokes, the
+  film and drops under their sweep, and the splats (`Glass::splatted`, taken by `Drawn::take_splats`; nothing in the
+  glass reads it). `notes/sound.md`, Exhaust and car effects.
 - Look (ours): mud specks are opaque (the HDR sky through a 5 % gap read as grey); with `cabin`, seen from inside, a speck's thin rim lets
   3 to 45 % of the light behind through in the mud's hue, its core dark (2026-10-27; glass pass 0.14 ms before and
   after, off frames byte-identical). Tried and dropped: a dashboard reflection in the windscreen (user's call).

@@ -24,6 +24,46 @@ const SPLASHES: [&[u8]; 3] = [
     include_bytes!("../sounds/splash3.wav"),
 ];
 const WET_ROAD: &[u8] = include_bytes!("../sounds/wet_road.wav");
+/// Ours: the windscreen recordings embedded from `sounds/` (`sounds/CREDITS.md`, CC0 and CC-BY 4.0): [`GlassBank`].
+const WIPER_MOTOR: &[u8] = include_bytes!("../sounds/wiper_motor.wav");
+const WIPER_WET: [&[u8]; 2] = [include_bytes!("../sounds/wiper_wet1.wav"), include_bytes!("../sounds/wiper_wet2.wav")];
+const WIPER_DRY: [&[u8]; 2] = [include_bytes!("../sounds/wiper_dry1.wav"), include_bytes!("../sounds/wiper_dry2.wav")];
+const GLASS_SPLATS: [&[u8]; 3] = [
+    include_bytes!("../sounds/glass_splat1.wav"),
+    include_bytes!("../sounds/glass_splat2.wav"),
+    include_bytes!("../sounds/glass_splat3.wav"),
+];
+const CABIN_RAIN: [&[u8]; 2] = [include_bytes!("../sounds/rain_light.wav"), include_bytes!("../sounds/rain_heavy.wav")];
+
+/// Ours: the windscreen's embedded recordings, which play as the renderer's glass model shows it
+/// ([`crate::effects::Glass`]) and for the rain heard in the car ([`crate::world::cabin_rain`]).
+#[derive(Debug, Clone, Default)]
+pub struct GlassBank {
+    /// The wiper motor and linkage between strokes, a loop.
+    pub motor: Wave,
+    /// A stroke on wet glass and on dry glass, each by direction: turning back at the top, then setting out from the
+    /// park.
+    pub wet: Vec<Wave>,
+    pub dry: Vec<Wave>,
+    /// Water slapping the windscreen.
+    pub splats: Vec<Wave>,
+    /// Rain on the roof and windscreen heard inside, light and heavy, loops.
+    pub rain: [Wave; 2],
+}
+
+impl GlassBank {
+    pub fn embedded() -> Result<GlassBank, String> {
+        let all = |files: &[&[u8]]| files.iter().map(|b| Wave::decode(b)).collect::<Result<Vec<_>, _>>();
+        let [light, heavy] = CABIN_RAIN.map(Wave::decode);
+        Ok(GlassBank {
+            motor: Wave::decode(WIPER_MOTOR)?,
+            wet: all(&WIPER_WET)?,
+            dry: all(&WIPER_DRY)?,
+            splats: all(&GLASS_SPLATS)?,
+            rain: [light?, heavy?],
+        })
+    }
+}
 
 /// One frame's mean over its channels: stereo is mixed down (every retail wave is mono).
 pub(crate) fn mono(channels: usize, frame: impl Iterator<Item = f32>) -> f32 {
@@ -264,6 +304,8 @@ pub struct CarBank {
     pub dog_rings: Vec<Wave>,
     pub cooler: Wave,
     pub wiper: [Wave; 3],
+    /// Ours: the windscreen's recordings.
+    pub glass: GlassBank,
     /// `IMPACT::RANGED` and `IMPACT::SPEECH`.
     pub ranged: Vec<Wave>,
     pub screams: Vec<Wave>,
@@ -447,6 +489,7 @@ impl CarBank {
                 wave("CAR::WIPER", "WiperUp")?,
                 wave("CAR::WIPER", "WiperDown")?,
             ],
+            glass: GlassBank::embedded()?,
             ranged: numbered("IMPACT::RANGED")?,
             screams: numbered("IMPACT::SPEECH")?,
             go: sample(&frontend, "SFX::INGAME", "GO")?,
@@ -476,6 +519,18 @@ mod tests {
             let wave = Wave::decode(bytes).unwrap();
             assert_eq!(wave.rate, 44100);
             assert!((0.5..2.0).contains(&(wave.samples.len() as f32 / 44100.0)));
+        }
+    }
+
+    #[test]
+    fn the_embedded_glass_sounds_decode() {
+        let bank = GlassBank::embedded().unwrap();
+        let waves: Vec<&Wave> =
+            [&bank.motor].into_iter().chain(&bank.wet).chain(&bank.dry).chain(&bank.splats).chain(&bank.rain).collect();
+        assert_eq!(waves.len(), 10);
+        for wave in waves {
+            assert_eq!(wave.rate, 44100);
+            assert!((0.4..4.0).contains(&(wave.samples.len() as f32 / 44100.0)));
         }
     }
 

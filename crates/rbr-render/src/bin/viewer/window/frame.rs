@@ -275,6 +275,7 @@ impl App {
                     ));
                 }
                 sound.set_water(self.scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
+                sound.set_glass(self.scene.glass.as_mut().map(rbr_render::sound::glass));
                 sounds.iter().for_each(|s| sound.step(s));
                 self.school_frame = self.school_frame.wrapping_add(1);
                 let frame = self.school_frame;
