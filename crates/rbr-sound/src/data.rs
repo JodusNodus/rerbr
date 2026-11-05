@@ -24,6 +24,17 @@ const SPLASHES: [&[u8]; 3] = [
     include_bytes!("../sounds/splash3.wav"),
 ];
 const WET_ROAD: &[u8] = include_bytes!("../sounds/wet_road.wav");
+/// Ours: the verge's recordings (`crate::verge`, `sounds/CREDITS.md`): the tyres' swish on grass and the body
+/// brushing through bushes, loops ([`CarBank::grass`], [`CarBank::brush`]), and branches slapping the body
+/// ([`CarBank::branches`]).
+const GRASS: &[u8] = include_bytes!("../sounds/grass.wav");
+const BRUSH: &[u8] = include_bytes!("../sounds/brush.wav");
+const BRANCHES: [&[u8]; 4] = [
+    include_bytes!("../sounds/branch1.wav"),
+    include_bytes!("../sounds/branch2.wav"),
+    include_bytes!("../sounds/branch3.wav"),
+    include_bytes!("../sounds/branch4.wav"),
+];
 
 /// One frame's mean over its channels: stereo is mixed down (every retail wave is mono).
 pub(crate) fn mono(channels: usize, frame: impl Iterator<Item = f32>) -> f32 {
@@ -246,6 +257,10 @@ pub struct CarBank {
     /// Ours (`tyre::Water`): the embedded puddle splashes and wet-road loop ([`SPLASHES`], [`WET_ROAD`]).
     pub splashes: Vec<Wave>,
     pub wet_road: Wave,
+    /// Ours (`crate::verge`): the embedded grass and brush loops and branch hits ([`GRASS`], [`BRUSH`], [`BRANCHES`]).
+    pub grass: Wave,
+    pub brush: Wave,
+    pub branches: Vec<Wave>,
     /// `IMPACT::GRUS Snd1-20` (the gravel hits; `LoadWaves` starts at 1, so `Snd0` is unused), `CAR::SQUEEKS Sqe1-18`,
     /// `CAR::SUSPENSION Sus1-4` and `CAR::DRIVESHAFT DS1-13`.
     pub grus: Vec<Wave>,
@@ -431,6 +446,9 @@ impl CarBank {
             wetness: wave("TIRE::SURFACES", "SkidWater")?,
             splashes: SPLASHES.iter().map(|b| Wave::decode(b)).collect::<Result<_, _>>()?,
             wet_road: Wave::decode(WET_ROAD)?,
+            grass: Wave::decode(GRASS)?,
+            brush: Wave::decode(BRUSH)?,
+            branches: BRANCHES.iter().map(|b| Wave::decode(b)).collect::<Result<_, _>>()?,
             grus: from_one(&impacts, "IMPACT::GRUS", "Snd")?,
             squeaks: from_one(&effects, "CAR::SQUEEKS", "Sqe")?,
             bottomings: from_one(&effects, "CAR::SUSPENSION", "Sus")?,

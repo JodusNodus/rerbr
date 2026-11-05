@@ -46,7 +46,8 @@ pub const RAYS: [(f32, f32); 4] = [(0.0, 0.0), (0.5, 0.0), (-0.5, 0.0), (0.0, 0.
 const CEILING: [f32; 2] = [1.5, 15.0];
 const CEILING_HARDNESS: f32 = 0.9;
 
-/// A scenery placement as the probe takes it: an upright cylinder.
+/// A scenery placement as the probe takes it: an upright cylinder. Vegetation the sound lets through (`growth`) is
+/// kept for the body's contacts with it (`crate::verge`) and left out of the echoes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Post {
     pub at: Vec2,
@@ -54,6 +55,30 @@ pub struct Post {
     pub bottom: f32,
     pub top: f32,
     pub hardness: f32,
+    pub growth: Option<Growth>,
+}
+
+/// Vegetation the car drives into: a bush of a density (0 to 1) or a bendable tree's branches.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Growth {
+    Bush(f32),
+    Branches,
+}
+
+/// The vegetation of surface id `material` (`.trk` kind `0x16`), or `None`: the Spret and Lov bushes by size, the four
+/// bush densities and `Bendable_Tree` (ids as [`hardness`]'s).
+pub fn growth(material: u8) -> Option<Growth> {
+    Some(match material {
+        0x18 | 0x1b => Growth::Bush(0.5),
+        0x19 | 0x1c => Growth::Bush(0.75),
+        0x1a | 0x1d => Growth::Bush(1.0),
+        0xa5 => Growth::Bush(0.3),
+        0xa6 => Growth::Bush(0.5),
+        0xa7 => Growth::Bush(0.8),
+        0xa8 => Growth::Bush(1.0),
+        0x79 => Growth::Branches,
+        _ => return None,
+    })
 }
 
 /// The stage's reflecting geometry.
@@ -91,9 +116,11 @@ pub fn hardness(material: u8, kind: u32) -> Option<f32> {
     })
 }
 
-/// The posts of the collision mesh `mesh`'s placements.
+/// The posts of the collision mesh `mesh`'s placements: what reflects ([`hardness`]) and the vegetation ([`growth`]).
 fn posts_of(mesh: &CollisionMesh) -> impl Iterator<Item = Post> + '_ {
-    let hard = if mesh.vertices.is_empty() { None } else { hardness(mesh.unknown_byte, mesh.kind) };
+    let growth = growth(mesh.unknown_byte);
+    let kept = hardness(mesh.unknown_byte, mesh.kind).or(growth.map(|_| 0.0));
+    let hard = if mesh.vertices.is_empty() { None } else { kept };
     let v = |p: &trk::Vec3| Vec3::new(p.x, p.y, p.z);
     let lo = mesh.vertices.iter().map(v).fold(Vec3::INFINITY, Vec3::min);
     let hi = mesh.vertices.iter().map(v).fold(Vec3::NEG_INFINITY, Vec3::max);
@@ -112,7 +139,8 @@ fn posts_of(mesh: &CollisionMesh) -> impl Iterator<Item = Post> + '_ {
             });
             let (a, b) = corners.fold((Vec3::INFINITY, Vec3::NEG_INFINITY), |(a, b), c| (a.min(c), b.max(c)));
             let half = (b - a) * 0.5;
-            Post { at: ((a + b) * 0.5).truncate(), radius: half.x.max(half.y), bottom: a.z, top: b.z, hardness }
+            let (at, radius) = (((a + b) * 0.5).truncate(), half.x.max(half.y));
+            Post { at, radius, bottom: a.z, top: b.z, hardness, growth }
         })
     })
 }
@@ -183,6 +211,16 @@ impl Roadside {
         &self.posts
     }
 
+    /// The placements (index, post) whose cells lie within `reach` m of `p`, plus the widest post's radius.
+    pub fn near(&self, p: Vec2, reach: f32) -> impl Iterator<Item = (u32, &Post)> + '_ {
+        let reach = reach + self.widest;
+        let (lo, hi) = (key(p - Vec2::splat(reach)), key(p + Vec2::splat(reach)));
+        (lo.0..=hi.0)
+            .flat_map(move |x| (lo.1..=hi.1).map(move |y| (x, y)))
+            .flat_map(|cell| self.cells.get(&cell).into_iter().flatten())
+            .map(|&i| (i, &self.posts[i as usize]))
+    }
+
     /// The roadside about the car at `position` facing `forward` (physics frame): its left and right as the car
     /// has them, and the ceiling over it.
     pub fn probe(&self, position: Vec3, forward: Vec3) -> Heard {
@@ -211,6 +249,9 @@ impl Roadside {
             for y in lo.1..=hi.1 {
                 for &i in self.cells.get(&(x, y)).into_iter().flatten() {
                     let post = &self.posts[i as usize];
+                    if post.growth.is_some() {
+                        continue;
+                    }
                     let to = post.at - p;
                     let centre = to.length();
                     let distance = centre - post.radius;
@@ -317,7 +358,14 @@ mod tests {
 
     #[test]
     fn a_tree_beside_the_car_counts_and_one_ahead_does_not() {
-        let tree = |x: f32, y: f32| Post { at: Vec2::new(x, y), radius: 0.3, bottom: -1.0, top: 10.0, hardness: 0.5 };
+        let tree = |x: f32, y: f32| Post {
+            at: Vec2::new(x, y),
+            radius: 0.3,
+            bottom: -1.0,
+            top: 10.0,
+            hardness: 0.5,
+            growth: None,
+        };
         let roadside = Roadside::new(vec![tree(-5.3, 0.0), tree(0.0, 8.0)], None);
         let [left, right] = roadside.probe(Vec3::ZERO, Vec3::Y).sides;
         assert!((left.distance - 5.0).abs() < 1e-4 && left.hardness == 0.5 && left.size > 0.0, "{left:?}");
@@ -326,6 +374,10 @@ mod tests {
         let low = Post { top: -0.6, ..tree(4.0, 0.0) };
         let high = Post { bottom: 3.0, ..tree(4.0, 0.0) };
         assert_eq!(Roadside::new(vec![low, high], None).probe(Vec3::ZERO, Vec3::Y), Heard::default());
+        // A bush or a bendable tree beside it neither.
+        let bush = Post { growth: Some(Growth::Bush(1.0)), hardness: 0.0, ..tree(-5.3, 0.0) };
+        let branches = Post { growth: Some(Growth::Branches), hardness: 0.0, ..tree(5.3, 0.0) };
+        assert_eq!(Roadside::new(vec![bush, branches], None).probe(Vec3::ZERO, Vec3::Y), Heard::default());
     }
 
     #[test]
@@ -348,6 +400,11 @@ mod tests {
         assert_eq!(hardness(0xc8, 0), None);
         assert_eq!(hardness(0x3a, 0), Some(0.9));
         assert_eq!(hardness(0x1f, 0), Some(0.5));
+        assert_eq!(
+            (growth(0x79), growth(0x1d), growth(0xa5)),
+            (Some(Growth::Branches), Some(Growth::Bush(1.0)), Some(Growth::Bush(0.3)))
+        );
+        assert_eq!((growth(0xc8), growth(0xff), growth(0x1f)), (None, None, None));
     }
 
     /// Every retail stage's scenery loads, and every stage but map 69 has some.

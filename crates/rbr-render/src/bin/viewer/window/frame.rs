@@ -271,10 +271,13 @@ impl App {
                         &playback.sample().car,
                         interior,
                         self.replay,
-                        self.scene.roadside.as_ref(),
+                        self.scene.roadside.as_ref().filter(|_| self.scene.echoes),
                     ));
                 }
                 sound.set_water(self.scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
+                let particles = self.scene.particles.as_ref().map(|p| &p.particles);
+                let car = &playback.sample().car;
+                sound.set_verge(rbr_render::sound::verge(particles, self.scene.roadside.as_ref(), car));
                 sounds.iter().for_each(|s| sound.step(s));
                 self.school_frame = self.school_frame.wrapping_add(1);
                 let frame = self.school_frame;

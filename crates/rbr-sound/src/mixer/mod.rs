@@ -157,8 +157,9 @@ struct Banks {
     grus: Vec<Arc<Wave>>,
     squeaks: Vec<Arc<Wave>>,
     bottomings: Vec<Arc<Wave>>,
-    /// Ours: the embedded puddle splashes (`tyre::Water`).
+    /// Ours: the embedded puddle splashes (`tyre::Water`) and branch hits (`crate::verge`).
     splashes: Vec<Arc<Wave>>,
+    branches: Vec<Arc<Wave>>,
     drive_shafts: Vec<Arc<Wave>>,
     exhaust_pops: Vec<Arc<Wave>>,
     pops: Vec<Arc<Wave>>,
@@ -396,6 +397,8 @@ impl Mixer {
             (Loop::Siren, voice(&bank.siren)),
             (Loop::Helicopter, voice(&bank.helicopter)),
             (Loop::Cooler, voice(&bank.cooler)),
+            (Loop::Grass, voice(&bank.grass)),
+            (Loop::Brush, voice(&bank.brush)),
         ]);
         let materials = [Material::Gravel, Material::Tarmac, Material::Snow];
         let banks = Banks {
@@ -411,6 +414,7 @@ impl Mixer {
             squeaks: shared(&bank.squeaks),
             bottomings: shared(&bank.bottomings),
             splashes: shared(&bank.splashes),
+            branches: shared(&bank.branches),
             drive_shafts: shared(&bank.drive_shafts),
             exhaust_pops: shared(&bank.exhaust_pops),
             pops: shared(&bank.pops),
@@ -499,7 +503,8 @@ impl Mixer {
     fn cabin_hit(&self, shot: Shot) -> (Option<OnePole>, f32) {
         match shot {
             _ if !self.inside => (None, 1.0),
-            Shot::Grus(_) => (Some(OnePole::new(self.rate, STONE_CUTOFF)), STONE_GAIN),
+            // A branch slapping the body rings the shell as a stone does (ours, `crate::verge`).
+            Shot::Grus(_) | Shot::Branch(_) => (Some(OnePole::new(self.rate, STONE_CUTOFF)), STONE_GAIN),
             _ => (self.cabin(), 1.0),
         }
     }
@@ -599,7 +604,10 @@ impl Mixer {
                     let Some((bank, i, place, None)) = self.bank_of(shot) else { continue };
                     let wave = (!bank.is_empty()).then(|| bank[i % bank.len()].clone());
                     if let Some(wave) = wave.filter(|_| self.make(shot)) {
-                        let [vary_pitch, vary_gain] = self.vary();
+                        // The verge's branch hits come in turn (`crate::verge`) and leave the variation's numbers to
+                        // the rest.
+                        let [vary_pitch, vary_gain] =
+                            if matches!(shot, Shot::Branch(_)) { [1.0; 2] } else { self.vary() };
                         let (low_pass, cabin) = self.cabin_hit(shot);
                         let gain = gain * vary_gain * cabin * self.placed_at(place, distance) * self.volumes.shot(shot);
                         let pitch = pitch * vary_pitch * self.doppler;
@@ -718,6 +726,7 @@ impl Mixer {
             | Shot::Squeak(_)
             | Shot::Bottoming(_)
             | Shot::Splash(_)
+            | Shot::Branch(_)
             | Shot::DriveShaft(_)
             | Shot::ExhaustPop(_)
             | Shot::Pop(_)
@@ -752,6 +761,7 @@ impl Mixer {
             Shot::Squeak(i) => (&self.banks.squeaks, i, Place::Default, None),
             Shot::Bottoming(i) => (&self.banks.bottomings, i, Place::Default, None),
             Shot::Splash(i) => (&self.banks.splashes, i, Place::Tire, None),
+            Shot::Branch(i) => (&self.banks.branches, i, Place::Tire, None),
             Shot::DriveShaft(i) => (&self.banks.drive_shafts, i, Place::Default, None),
             Shot::ExhaustPop(i) => (&self.banks.exhaust_pops, i, Place::ExhaustPop, Some(Family::ExhaustPop)),
             Shot::Pop(i) => (&self.banks.pops, i, Place::ExhaustPop, Some(Family::Pop)),
@@ -884,13 +894,16 @@ impl Mixer {
             Loop::Gearbox | Loop::Diff => Some(Place::Exhaust),
             Loop::Turbo => Some(Place::Turbo),
             Loop::Cooler => Some(Place::Cooler),
+            // Ours (`crate::verge`): at the car, as the tyres.
+            Loop::Grass | Loop::Brush => Some(Place::Tire),
             Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind => None,
         };
         let placed = place.map(|p| (self.placed(p), self.car_pan));
-        // The wind heard in the car comes through the cabin, as the tyres' roar (ours).
-        let cabin = (voice == Loop::Wind).then(|| self.cabin());
+        // The wind, the grass and the brush heard in the car come through the cabin, as the tyres' roar (ours).
+        let cabin = matches!(voice, Loop::Wind | Loop::Grass | Loop::Brush).then(|| self.cabin());
         let option = match voice {
             Loop::Engine | Loop::Gearbox | Loop::Diff => self.volumes.engine,
+            Loop::Grass => self.volumes.tyres,
             _ => self.volumes.effects,
         };
         if let Some(v) = self.loops.get_mut(&voice) {
