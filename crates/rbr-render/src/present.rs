@@ -86,6 +86,11 @@ pub fn surface_format(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
 /// headroom (`HDR` in `post.wgsl`, [`Renderer::set_headroom`](crate::renderer::Renderer::set_headroom)).
 pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
+/// Whether the launcher offers HDR: on macOS, where Metal has extended-range sRGB; DX12 has no such colour space,
+/// Windows' Vulkan drivers only scRGB and PQ, and Linux's depends on the driver and the compositor (`viewer --hdr`
+/// still tries it everywhere).
+pub const HDR_OFFERED: bool = cfg!(target_os = "macos");
+
 /// The window's format and colour space: with `hdr` [`HDR_FORMAT`] in extended-range sRGB when the surface has it (the
 /// extended dynamic range on macOS; Vulkan where the driver and the compositor have it, DX12 not), else
 /// [`surface_format`]'s. Extended-range sRGB takes the frame's sRGB-coded values as on an SDR display, with 1 the
