@@ -59,50 +59,60 @@
 //! answered with the last good frame and HUD, so the car freezes and the viewer stays up. A payload that is not
 //! quantized is a protocol error and ends the run.
 
-use std::any::Any;
-use std::panic::{self, AssertUnwindSafe};
-
+#[cfg(test)]
+use crate::boot;
+use crate::physics::Pure;
+use crate::saves::Saves;
+use crate::stage::StageData;
+#[cfg(test)]
+#[cfg(test)]
 use rbr_formats::data::Data;
 use rbr_gameplay::control::{ngp_direct_gears, QuantizedControl, CALL_FOR_HELP};
 use rbr_gameplay::filter::{Grid, Raw};
-use rbr_gameplay::flow::{EndPage, FlowEvents, Message, StageEnd};
+#[cfg(test)]
+use rbr_gameplay::flow::EndPage;
+use rbr_gameplay::flow::FlowEvents;
 use rbr_gameplay::game::{ControlPath, FrameInput, Game};
-use rbr_gameplay::ini::Ini;
-use rbr_gameplay::markers::{MarkerEvent, MarkerSettings, PaceCallout};
+use rbr_gameplay::markers::MarkerEvent;
+#[cfg(test)]
+use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_clock::RaceClock;
-use rbr_gameplay::stage::{Stage, State};
-use rbr_gameplay::tick::SETTLE_SUBSTEPS;
-use rbr_hybrid::pure::{self, Playback, CAR_BYTES, CAR_PTR};
-use rbr_hybrid::timekeeper::layout as keeper_layout;
+use rbr_gameplay::stage::State;
+#[cfg(test)]
+use rbr_hybrid::pure;
+use rbr_hybrid::pure::{Playback, CAR_BYTES, CAR_PTR};
 use rbr_physics::mem::Mem;
-use rbr_physics::snapshot::Snapshot;
 use rbr_recording::camera::{Camera, MODE_CHASE, MODE_START_ORBIT};
 use rbr_recording::clock::StepClock;
 use rbr_recording::dash::DSH1;
-use rbr_recording::flow::{Flow, MessageBox};
+use rbr_recording::flow::Flow;
 use rbr_recording::input::{Input, Payload, ACCEPT_MESSAGE, RETIRE};
 use rbr_recording::live as records;
+#[cfg(test)]
 use rbr_recording::menu::Menu;
 use rbr_recording::pacenote::{self, PCN1};
 use rbr_recording::particles;
-use rbr_recording::school::{self, School};
+#[cfg(test)]
+use rbr_recording::school;
+#[cfg(test)]
+use rbr_recording::school::School;
 use rbr_recording::sound::{TyreMax, SND1};
 use rbr_recording::{CONTROL_BYTES, MAGIC};
-use rbr_school::{SchoolEvent, SchoolRun};
-
-use crate::physics::{boot_playback, chain, load_substeps, why, Pure, DT};
-use crate::saves::Saves;
-use crate::stage::StageData;
-use crate::{boot, rally};
+use rbr_school::SchoolRun;
+use std::panic::{self, AssertUnwindSafe};
 
 mod picture;
 mod realtime;
+mod record;
+mod start;
+
+use start::install_filter_ini;
+pub use start::RallyNext;
 
 pub use realtime::{serve_frames, serve_realtime, serve_replay, Pace};
 
 use picture::{
-    callouts, damper_frame, dash, last_per_wheel, pace_callouts, particle_events, race_hud, split_record, with_fires,
-    Picture,
+    callouts, damper_frame, last_per_wheel, pace_callouts, particle_events, race_hud, split_record, with_fires, Picture,
 };
 
 /// The snapshot's stepping: the gameplay loop and the pure physics, one substep per payload.
@@ -167,188 +177,7 @@ pub struct Live<'a> {
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
-/// unless the stage is the rally's last (the season's stage index 5), and its text names the service or the next stage
-/// (`CFailedSeasonFinishedWithBadCarUI::vf0c`, 0x5b6900).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum RallyNext {
-    #[default]
-    Stage,
-    Service,
-    End,
-}
-
-impl RallyNext {
-    pub fn parse(name: &str) -> Option<RallyNext> {
-        match name {
-            "stage" => Some(RallyNext::Stage),
-            "service" => Some(RallyNext::Service),
-            "end" => Some(RallyNext::End),
-            _ => None,
-        }
-    }
-}
-
 impl<'a> Live<'a> {
-    pub fn new(snap: &Snapshot, stage: &'a StageData, settings: MarkerSettings) -> Result<Self, String> {
-        let h = snap.metadata();
-        let playback = Playback::new(snap, false);
-        crate::physics::require_ngp(&playback)?;
-        let dt = pure::max_time_step(snap).unwrap_or(DT);
-        let game = new_game(Stage::driving(stage.number, stage.car), stage, dt, settings);
-        let settle = load_substeps(&playback.pure.mem).div_ceil(SETTLE_SUBSTEPS[0]) * SETTLE_SUBSTEPS[0];
-        Ok(Self::with(playback, game, stage, StepClock { step: dt, settle }, h.step, Some(h.substeps), Vec::new()))
-    }
-
-    /// The boot's stepping (`--live --boot`): `race` on `name` from the stage start. The load settle runs here, as the
-    /// headless boot runs it before its first driving frame. With `camera_go` the camera's start orbit gives the go
-    /// during the payloads; without it the go is given here too.
-    pub fn boot(
-        data: &Data,
-        name: &str,
-        race: &boot::Race,
-        stage: &'a StageData,
-        settings: MarkerSettings,
-        camera_go: bool,
-    ) -> Result<Self, String> {
-        let (playback, image) = boot_playback(data, stage, name, race, None, false)?;
-        let built: Vec<String> = image.built.iter().map(|(what, n)| format!("{what} {n}")).collect();
-        eprintln!("rbr-standalone: boot built {}", built.join(", "));
-        let dt = keeper_layout::max_time_step(&playback.pure.mem);
-        let mut game = new_game(
-            Stage::quick_race(stage.number, stage.car).load_ready_with(load_substeps(&playback.pure.mem)),
-            stage,
-            dt,
-            settings,
-        );
-        if camera_go {
-            game = game.with_camera_go();
-        }
-        game.set_assist_settings(race.assist_settings());
-        let mut school = race.school(&stage.replay, &stage.school_strings);
-        // Without the camera, the go's two frames as the headless boot runs them: the second takes a step's time. A
-        // lesson's brief waits for the first payload's confirm (`Stage::school_start`) instead, so its start, and the
-        // ride's end at once, run through the answers as on the viewer.
-        let go = !camera_go && !game.assist_settings().school();
-        let now = if go { f64::from(dt) } else { 0.0 };
-        let settled = settle(&playback, &mut game, &mut school, stage, go, now)?;
-        let mut live =
-            Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
-        live.wetness = race.weather.wetness;
-        live.now = now;
-        live.boot_now = now;
-        live.initial_school.clone_from(&school);
-        live.school = school;
-        Ok(live)
-    }
-
-    /// The race's wetness (`Weather::wetness`, 0 dry), for the test pilot's grip.
-    pub fn wetness(&self) -> u32 {
-        self.wetness
-    }
-
-    /// The first frame's records, before anything drove: the countdown repeats them.
-    fn first_picture(playback: &Playback, game: &Game, stage: &StageData, detach: &[(u32, u32)]) -> Picture {
-        let splits = split_record(game, stage, None);
-        // Before any frame ran no reset has: the memory words stand as the step left them.
-        let dampers = damper_frame(&playback.pure.mem, &[]);
-        let mut last = Picture::of(
-            &playback.pure.mem,
-            race_hud(game.race_clock(), 0.0),
-            &splits,
-            stage.interactive_handle_end,
-            &[],
-            detach,
-            dampers,
-        );
-        let track = stage.track_values.clone();
-        // The countdown's frames repeat this one: its dash is the car's as it stands (not an empty record, whose
-        // zero battery and engine would light the warnings).
-        last.dash = dash(&playback.pure.mem, &stage.track, &track, game.markers().keys(), (None, None), &[], 0, None)
-            .to_bytes();
-        last
-    }
-
-    fn with(
-        playback: Playback,
-        game: Game,
-        stage: &'a StageData,
-        clock: StepClock,
-        start: u32,
-        own_substeps: Option<u32>,
-        detach: Vec<(u32, u32)>,
-    ) -> Self {
-        let mut playback = playback;
-        playback.pure.keep_tyre_particles = true;
-        playback.pure.take_tyre_particles();
-        playback.pure.take_particle_events();
-        playback.pure.take_engine_fires();
-        playback.pure.take_damper_signals();
-        let initial = playback.pure.snapshot();
-        let initial_game = game.clone();
-        let last = Self::first_picture(&playback, &game, stage, &detach);
-        let track = stage.track_values.clone();
-        Self {
-            playback,
-            game,
-            stage,
-            now: 0.0,
-            frame_seconds: f64::from(clock.step),
-            clock,
-            start,
-            own_substeps,
-            answered: 0,
-            waited: 0,
-            last,
-            control: [0; CONTROL_BYTES],
-            pending: Pending::default(),
-            penalties: 0.0,
-            wetness: 0,
-            stopped: false,
-            detach,
-            track,
-            time_of_day: None,
-            initial_time_of_day: None,
-            school: None,
-            initial_school: None,
-            school_verdict: None,
-            school_state: None,
-            saves: None,
-            rally_next: RallyNext::default(),
-            initial,
-            initial_game,
-            boot_now: 0.0,
-        }
-    }
-
-    /// Restarts the stage in process, as a fresh boot would start it: the memory and the settled game back to the
-    /// stage start, and the race counters cleared. The player's setup (saves directory, profile, start clock,
-    /// rally choice) stays, but the saves are re-armed (the next finish writes again, against the record as it now
-    /// stands) and the start clock is restored to the stage's start.
-    pub fn restart(&mut self) {
-        self.playback.pure.restore(&self.initial);
-        self.game = self.initial_game.clone();
-        self.school.clone_from(&self.initial_school);
-        if let Some(saves) = self.saves.as_mut() {
-            saves.rearm();
-        }
-        self.time_of_day = self.initial_time_of_day;
-        self.playback.pure.take_tyre_particles();
-        self.playback.pure.take_tyre_terms();
-        self.playback.pure.take_particle_events();
-        self.playback.pure.take_engine_fires();
-        self.playback.pure.take_damper_signals();
-        self.now = self.boot_now;
-        self.answered = 0;
-        self.waited = 0;
-        self.control = [0; CONTROL_BYTES];
-        self.pending = Pending::default();
-        self.penalties = 0.0;
-        self.stopped = false;
-        self.school_verdict = None;
-        self.school_state = None;
-        self.last = Self::first_picture(&self.playback, &self.game, self.stage, &self.detach);
-    }
-
     /// Answers one payload with the frame and HUD record after its step, as `harness/live.py` writes them.
     pub fn answer(&mut self, payload: &[u8; CONTROL_BYTES]) -> Result<Vec<u8>, String> {
         self.answer_over(payload, 1)
@@ -688,164 +517,6 @@ impl<'a> Live<'a> {
         self.last.flow = self.flow_record(&pending.flow);
         self.last.dash = self.dash(signals, &pace);
     }
-
-    /// The end page the race's end opens (`CApplication::M00480810`): `Test3B20` on the car as it is now, and the
-    /// rally's last stage from `--rally-next`.
-    fn end_page(&self, end: &StageEnd) -> EndPage {
-        let drivable = rally::drivable(&self.playback.pure.mem);
-        EndPage::of(self.game.flow().mode(), end, drivable, self.rally_next == RallyNext::End)
-    }
-
-    /// The race's end: the log, and a finished race's times offered to the stage record and the personal best
-    /// (`M00567330`, with `--saves`).
-    fn race_end(&mut self, step: u32, end: &StageEnd) {
-        let page = self.end_page(end);
-        eprintln!("step {step}: the race ended: {:?}, {:?}, end page {:#x}", end.cause, end.end_race, page.value());
-        if let Some(school) = &self.school {
-            // `EvalFilters` on the HUD's time and the car's damage; a lesson's drive keeps no stage record.
-            let damage = rally::stage_out(&self.playback.pure.mem, *end, false).damage;
-            let (lesson, verdict) = (school.lesson(), school.verdict(end.end_race.time, &damage));
-            eprintln!("step {step}: rally school lesson {} verdict {verdict} of 4", lesson.index());
-            self.school_verdict = Some(verdict);
-            if let Some(saves) = self.saves.as_mut() {
-                match saves.school(lesson, verdict) {
-                    Ok(results) => eprintln!("step {step}: the school results are {results:?}"),
-                    Err(e) => eprintln!("step {step}: the school result was not saved: {e}"),
-                }
-            }
-            return;
-        }
-        let Some(saves) = self.saves.as_mut().filter(|s| end.finished() && !s.written()) else { return };
-        let times = [end.end_race.splits[0], end.end_race.splits[1], end.end_race.time];
-        match saves.finish(times) {
-            Ok(update) => {
-                let standing = saves.standing();
-                eprintln!(
-                    "step {step}: new stage record {}, new personal best {}; the record is {:.2} s by {:?}, the personal best {:?}",
-                    update.record,
-                    update.personal,
-                    standing.record.time,
-                    standing.record.holder,
-                    standing.personal.map(|p| p.time),
-                );
-            }
-            Err(e) => eprintln!("step {step}: the records were not saved: {e}"),
-        }
-    }
-
-    /// Where the race stands for the viewer's pause menu (MNU1).
-    fn menu(&self) -> Menu {
-        let flow = self.game.flow();
-        let state = self.game.stage().state();
-        let driving = state == State::Driving && flow.end().is_none() && flow.message().is_none();
-        Menu {
-            mode: flow.mode().value(),
-            driving,
-            help: driving && self.game.help_offered(),
-            over: state == State::Ended,
-        }
-    }
-
-    /// The school record (SCH1) after MNU1, only for a lesson's drive: the lesson, where it stands, the kept
-    /// verdict (none before the end), the race time and the lesson's times, this answer's last incident code, the
-    /// stop when the flow moved since the last answer, the ids `Trigger` queued this answer, and the failed end's
-    /// reasons (only once the verdict is known and failed). Takes the answer's events, as the viewer's panels
-    /// and speech read them.
-    fn school_record(&mut self) -> Option<Vec<u8>> {
-        let school = self.school.as_mut()?;
-        let events = school.take_events();
-        let state = match self.game.stage().state() {
-            State::Countdown => school::STATE_BRIEF,
-            State::Ended => school::STATE_ENDED,
-            _ => school::STATE_DRIVING,
-        };
-        let incident = events
-            .iter()
-            .rev()
-            .find_map(|event| match event {
-                SchoolEvent::Incident { code } => Some(*code as u32),
-                _ => None,
-            })
-            .unwrap_or(0);
-        let speech: Vec<u32> = events.iter().flat_map(|event| school.speech_ids(event)).collect();
-        let stop = self.school_state != Some(state);
-        self.school_state = Some(state);
-        let verdict = self.school_verdict.unwrap_or(school::NO_VERDICT);
-        let time = self.game.race_clock().time;
-        let reasons = if state == school::STATE_ENDED && verdict == 0 {
-            school
-                .failure_reasons(time)
-                .into_iter()
-                .map(|reason| school::Reason { lesson: reason.lesson, key: reason.key })
-                .collect()
-        } else {
-            Vec::new()
-        };
-        Some(
-            School {
-                lesson: school.lesson().index(),
-                state,
-                verdict,
-                time,
-                perfect: school.bank().perfect_time,
-                pass: school.bank().pass_time,
-                incident,
-                stop,
-                speech,
-                reasons,
-            }
-            .record(),
-        )
-    }
-
-    /// The FLW1 record of a frame: its events, and where the flow stands after it.
-    fn flow_record(&self, events: &FlowEvents) -> Vec<u8> {
-        let flow = self.game.flow();
-        let tints = flow.tints();
-        Flow {
-            helicopter_called: events.helicopter_called,
-            rally_incident: events.rally_incident,
-            finish_line: events.finish_line,
-            ended: events.end.is_some(),
-            page: events.end.map_or(0, |end| self.end_page(&end).value()),
-            helicopter_active: flow.helicopter_active(),
-            message: flow.message().map(|m| match m {
-                Message::RetireBystand => MessageBox::RetireBystand,
-                Message::RetireOffstage => MessageBox::RetireOffstage,
-            }),
-            service_next: self.rally_next == RallyNext::Service,
-            red: tints.red,
-            black: tints.black,
-        }
-        .to_bytes()
-    }
-
-    /// The dash record now (`dash`), with the step's signals and callouts.
-    fn dash(&self, signals: (Option<[u32; 2]>, Option<u32>), pace: &[&PaceCallout]) -> Vec<u8> {
-        let jumped = self.game.race_clock().jumped;
-        dash(
-            &self.playback.pure.mem,
-            &self.stage.track,
-            &self.track,
-            self.game.markers().keys(),
-            signals,
-            pace,
-            self.game.assist_settings().false_start_warning(jumped),
-            self.time_of_day,
-        )
-        .to_bytes()
-    }
-
-    /// Where a step's panic stopped the run: the step, the reason, the call chain and the bindings run in the step.
-    fn stop_text(&self, e: &(dyn Any + Send), runs: u64) -> String {
-        format!(
-            "step {}: {} in {}, after {} binding runs of the step",
-            self.start + self.answered,
-            why(e),
-            chain(&self.playback.pure),
-            self.playback.pure.runs() - runs
-        )
-    }
 }
 
 /// What the frames since the last picture emitted: their steps, callouts and flow events, the race clock after the
@@ -898,66 +569,6 @@ fn poll(input: &Input, controls: ControlPath, mem: &Mem) -> Raw {
         channels: [input.steering, input.throttle, input.brake, input.handbrake, input.clutch],
         gear,
         select: input.cells.map(u32::from),
-    }
-}
-
-/// The game's `PC_InputFilter.ini` (empty without one: an RSF install renames it, so the built-in values apply).
-fn install_filter_ini() -> Ini {
-    let text = Data::from_env()
-        .and_then(|data| ["PC_InputFilter.ini", "Root/PC_InputFilter.ini"].into_iter().find_map(|f| data.resolve(f)))
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .unwrap_or_default();
-    Ini::parse(&text)
-}
-
-/// The load settle the boot runs: the game from `Load` to the countdown, then with `go` the go's frames as the
-/// headless boot runs them (the second at `now`, a step's time). Returns the settled steps, the live start's step.
-fn settle(
-    playback: &Playback,
-    game: &mut Game,
-    school: &mut Option<SchoolRun>,
-    stage: &StageData,
-    go: bool,
-    now: f64,
-) -> Result<u32, String> {
-    let mut physics = Pure {
-        playback,
-        trace: None,
-        track: &stage.track,
-        own_step: true,
-        word6: 0,
-        substeps: SETTLE_SUBSTEPS[0],
-        tyre_max: TyreMax::default(),
-        twin: None,
-    };
-    let mut settled = 0;
-    panic::catch_unwind(AssertUnwindSafe(|| {
-        while game.stage().state() == State::Load {
-            settled += game.frame_with(0.0, FrameInput::default(), &mut physics, school).substeps.len() as u32;
-        }
-        if go {
-            let go = FrameInput { camera_go: true, ..FrameInput::default() };
-            game.frame_with(0.0, go, &mut physics, school);
-            game.frame_with(now, FrameInput::default(), &mut physics, school);
-        }
-    }))
-    .map_err(|e| format!("the settle, step {settled}: {}", why(e.as_ref())))?;
-    Ok(settled)
-}
-
-/// The game a live run steps: `stage` from `start`, with the input filter of the game's `PC_InputFilter.ini` (the
-/// wheel without its speed fade, [`Grid::without_wheel_fade`]) and NGP's control path; a profile's grid replaces it
-/// ([`Live::set_saves`]).
-fn new_game(start: Stage, stage: &StageData, dt: f32, settings: MarkerSettings) -> Game {
-    let values = stage.track_values.clone();
-    let grid = Grid::from_settings(&install_filter_ini()).without_wheel_fade();
-    let game = Game::new(start, grid, &stage.markers, values, dt, 0.0, settings)
-        .with_finish_zone(stage.finish_zone)
-        .with_controls(ControlPath::Ngp);
-    if stage.btb {
-        game.with_forced_jump_start()
-    } else {
-        game
     }
 }
 
