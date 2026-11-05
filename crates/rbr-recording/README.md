@@ -35,13 +35,13 @@ SCN1, which ends them. Readers skip tags they do not know.
 | `INP1` | `input` | the viewer's device input, sent to the process |
 | `PEK1` | `peek` | harness pointer-probe log |
 
-`pose` reads car and wheel poses from a frame (offsets with evidence in `src/pose.rs`); `trace` reads capture traces.
+`pose` reads car and wheel poses from a frame (offsets with evidence in `src/pose.rs`).
 
 ## Tools
 
 - `rec_info <file>`: frame count, substeps, first and last steps.
 - `drive_path <file> [--every N] [--csv out.csv]`: position, speed and heading every N steps.
-- `peek_info <file>`, `trace_info <file>`: summaries of peek logs and traces.
+- `peek_info <file>`: summary of a peek log.
 
 ## Checks
 

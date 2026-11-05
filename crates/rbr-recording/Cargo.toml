@@ -14,10 +14,6 @@ name = "peek_info"
 path = "src/bin/peek_info.rs"
 
 [[bin]]
-name = "trace_info"
-path = "src/bin/trace_info.rs"
-
-[[bin]]
 name = "drive_path"
 path = "src/bin/drive_path.rs"
 

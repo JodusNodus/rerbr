@@ -10,8 +10,8 @@
 #   The drive's files live in $RBR_RUNS (harness/record.sh, harness/v1-drive.sh):
 #   drive-<drive>.playback.bin and drive-<drive>.auto are copied into the slot's
 #   RBRRecompPlayback.bin / RBRRecompAuto.txt when they differ.
-#   The plugin's transplant, shadow, count and capture runs and load-time dumps take a
-#   transplant file built from the C++ reconstruction: run them from an rbr-recomp checkout.
+#   The transplant, shadow, count and capture modes live in rbr-recomp's own copy of the
+#   plugin: run them from an rbr-recomp checkout.
 #   Runs take the first free slot (RBR_SLOTS, default 4; one lock per slot)
 #   and wait while all are busy, so up to RBR_SLOTS games run at once.
 #   Each run installs its plugin into the slot first: $RBR_HARNESS_PLUGIN
@@ -34,8 +34,6 @@
 #   RBR_POPS=1 logs the exhaust pops' misfire values and the 16-sound limit: the count, and each caller's made and
 #   refused sounds (RBRRecompPops.txt; rbr-recomp notes/sound.md 2.5).
 #   RBR_FPS=N caps the game at N frames a second (RBRRecompFps.txt), as the retrace wait does on a display.
-#   RBR_ALLOCLOG=1 logs the exe's heap calls (RBRRecompAllocLog.on, see the plugin), kept as
-#   $RBR_RUNS/<name>.allocs.bin (rbr-recomp's harness/allocs.py reads it).
 #   A game still running after RBR_TIMEOUT seconds (default 600) counts as hung and is killed.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../scripts/dev-env.sh"
@@ -111,13 +109,11 @@ if [ "$writewatch" != 1 ]; then
 fi
 test -f RBRRecompPlayback.bin && test -f RBRRecompAuto.txt
 ! pgrep -f "[${game_dir:0:1}]${game_dir:1}/RichardBurnsRally_SSE.exe" >/dev/null
-rm -f RBRRecompTransplant.bin RBRRecompRecord-*.bin RBRRecompHarness.log RBRRecompCalls.log RBRRecompShadow.log RBRRecompShadow.on \
-  RBRRecompCount.on RBRRecompTrace.on RBRRecompTrace-*.bin RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompEarlyStop.txt \
-  RBRRecompSnapshot.txt RBRRecompSnap-*.bin RBRRecompSnapAt.txt RBRRecompSnapAt-*.bin RBRRecompAllocLog.on \
-  RBRRecompAllocs.bin RBRRecompWriteWatch.on RBRRecompFastForward.txt RBRRecompCamera.txt RBRRecompVolumes.txt \
+rm -f RBRRecompRecord-*.bin RBRRecompHarness.log RBRRecompPeek.txt RBRRecompPeek-*.bin RBRRecompEarlyStop.txt \
+  RBRRecompSnapshot.txt RBRRecompSnap-*.bin \
+  RBRRecompWriteWatch.on RBRRecompFastForward.txt RBRRecompCamera.txt RBRRecompVolumes.txt \
   RBRRecompPops.txt RBRRecompFps.txt
 touch RBRRecompRecord.on
-if [ "${RBR_ALLOCLOG:-0}" = 1 ]; then touch RBRRecompAllocLog.on; fi
 if [ "$writewatch" = 1 ]; then touch RBRRecompWriteWatch.on; fi
 if [ "$snaparg" != - ]; then echo "${snaparg//,/ }" > RBRRecompSnapshot.txt; fi
 if [ -n "$peek" ]; then cp "$peek" "$game_dir/RBRRecompPeek.txt"; fi
@@ -153,10 +149,7 @@ timeout 300 bash -c "until pgrep -f '$game_pat' >/dev/null; do sleep 2; done" ||
 timeout "$rbr_timeout" bash -c "while pgrep -f '$game_pat' >/dev/null; do sleep 5; done" || echo "the game did not quit in $rbr_timeout s (hung); killed" >&2
 kill_vanilla
 has_peek=0; [ -n "$peek" ] && has_peek=1
-for log in Harness Calls Shadow; do
-  if [ -f RBRRecomp$log.log ]; then cp RBRRecomp$log.log "$runs/$name".${log,,}.log; fi
-done
-rm -f RBRRecompTransplant.bin
+if [ -f RBRRecompHarness.log ]; then cp RBRRecompHarness.log "$runs/$name.harness.log"; fi
 rec=$(ls -t RBRRecompRecord-*.bin 2>/dev/null | head -1)
 [ -n "$rec" ] || { echo "no recording" >&2; exit 1; }
 mv "$rec" "$runs/$name.bin"
@@ -176,11 +169,6 @@ for f in RBRRecompSnap-*.bin; do
   ls -la "$runs/$name.snap-${step%.bin}.bin"
 done
 rm -f RBRRecompSnapshot.txt
-if [ -f RBRRecompAllocs.bin ]; then
-  mv RBRRecompAllocs.bin "$runs/$name.allocs.bin"
-  ls -la "$runs/$name.allocs.bin"
-fi
-rm -f RBRRecompAllocLog.on
 echo "slot: $game_dir"
 ls -la "$runs/$name.bin"
 if [ "$has_peek" = 1 ]; then ls -la "$runs/$name.peek.bin"; fi

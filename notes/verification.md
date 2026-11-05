@@ -46,13 +46,11 @@ One file in the game folder, written by `harness/play.sh` from an environment va
 | `RBRRecompPlayback.bin` | `RBR_DRIVE` | play recorded controls back, 8 steps per frame; quit 2 s after the last; recorded too |
 | `RBRRecompAuto.txt` | `RBR_DRIVE` | start the stage without menus: `map car weather tyre [damage [transmission]]` (damage at 0x1660850, transmission at 0x1660814) |
 | `RBRRecompSnapshot.txt` | `RBR_SNAPSHOT="40 572"` | dump the process before the listed steps' calls and after ([Snapshots](#snapshots)) |
-| `RBRRecompSnapAt.txt` | `RBR_SNAPAT` | dump at a function's entry and return: `<addr> <count> [<arg0-off> <min> <max>]` (load-time dumps) |
 | `RBRRecompPeek.txt` | `RBR_PEEK=<file>` | pointer probes after each step ([Peek probes](#peek-probes)) |
 | `RBRRecompEarlyStop.txt` | `RBR_EARLYSTOP` | quit at the first step differing from a reference ([Early stop](#early-stop)) |
-| `RBRRecompAllocLog.on` | `RBR_ALLOCLOG=1` | msvcr71 heap calls and `operator new` (24-byte records, a marker per dump); rbr-recomp's `harness/allocs.py` prints them |
 | `RBRRecompCamera.txt` etc. | `RBR_CAMERA`, `RBR_VOLUMES`, `RBR_POPS`, `RBR_FPS` | sound captures: camera mode, volumes, pop logs, frame-rate cap |
 
-The transplant, count, shadow, capture and load-time dump modes run the C++ reconstruction's functions and need its build; `play.sh` here does not start them (run from rbr-recomp, `harness/README.md` there).
+The transplant, count, shadow, capture and load-time dump modes live in rbr-recomp's copy of the plugin (run from rbr-recomp, `harness/README.md` there); this repo only reads their dumps (`harness/replay.py` runs the entry dumps, the Rust load tests compare them).
 
 ## Recordings
 
