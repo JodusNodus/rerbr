@@ -3,8 +3,8 @@
 //! writes one FRM1 frame, a 32-byte HUD2 record (`rbr_recording::hud`: live.py's HUD1 and the race clock) and a DMG1
 //! record (`rbr_recording::damage`: the damage zones and the last damage event) on stdout, then the tagged records
 //! (`rbr_recording::live`): the step's tyre-particle payloads (PTC1, `rbr_recording::particles`), the detached parts
-//! (DET1, `rbr_recording::detach`), the sound inputs (SND1, `rbr_recording::sound`), the step's pace-note callouts
-//! (PCN1, `rbr_recording::pacenote`), the splits (SPL1, `rbr_recording::splits`), the HUD's dash values (DSH1,
+//! (DET1, `rbr_recording::detach`), the attached doors' hinge angles (DOR1, `rbr_recording::detach::DOR1`), the
+//! sound inputs (SND1, `rbr_recording::sound`), the step's pace-note callouts (PCN1, `rbr_recording::pacenote`), the splits (SPL1, `rbr_recording::splits`), the HUD's dash values (DSH1,
 //! `rbr_recording::dash`), the camera's mode and start orbit (CAM1, `rbr_recording::camera`), the race flow's events
 //! (FLW1, `rbr_recording::flow`) and the steering force (FFB1, `rbr_recording::ffb`), the step clock (CLK1,
 //! `rbr_recording::clock`), under NGP its sound words (NSD1, `rbr_recording::sound::NgpSound`, after FFB1), the gear
@@ -417,6 +417,7 @@ impl<'a> Live<'a> {
         out.extend_from_slice(&self.last.tyres);
         out.extend_from_slice(&self.last.events);
         out.extend_from_slice(&self.last.detached);
+        out.extend_from_slice(&self.last.doors);
         records::write_record(&mut out, SND1, &self.last.sound);
         records::write_record(&mut out, PCN1, &self.last.pace);
         out.extend_from_slice(&self.last.splits);

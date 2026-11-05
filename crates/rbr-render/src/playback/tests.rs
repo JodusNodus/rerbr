@@ -57,6 +57,7 @@ fn playback(frames: &[Vec<u8>]) -> Playback {
         lamps: Default::default(),
         headlights: lights::Headlights::Main,
         detached: [None; detach::PARTS.len()],
+        door_angles: [HINGE_DEFAULT_ANGLE; DOORS],
         turn: None,
         hide_wheel: false,
         game_chase: Follow::new(crate::game_camera::Settings::default()),
@@ -202,4 +203,20 @@ fn the_car_is_drawn_at_the_newest_step_until_the_frame_changes() {
 fn the_position_is_the_body_in_stage_space() {
     let p = playback(&[frame(10, 1, 5.0)]);
     assert_eq!(p.position(), Vec3::new(5.0, 0.0, 0.0));
+}
+
+#[test]
+fn door_angles_hang_and_reset() {
+    let frames = [frame(1, 1, 0.0)];
+    let mut p = playback(&frames);
+    assert_eq!(p.door_angles, [HINGE_DEFAULT_ANGLE; DOORS]);
+    p.set_door_angles(&[detach::DoorAngle { part: 0, angle: 0.5 }]);
+    assert_eq!(p.door_angles, [0.5, HINGE_DEFAULT_ANGLE]);
+    // A part the car has no door for is ignored.
+    p.set_door_angles(&[detach::DoorAngle { part: 9, angle: 1.0 }]);
+    assert_eq!(p.door_angles, [0.5, HINGE_DEFAULT_ANGLE]);
+    // Without hinged parts the doors sit at the body placement.
+    assert_eq!(p.door_placement(0), p.body());
+    p.reset(Drive::parse(&frames.concat()).unwrap());
+    assert_eq!(p.door_angles, [HINGE_DEFAULT_ANGLE; DOORS]);
 }

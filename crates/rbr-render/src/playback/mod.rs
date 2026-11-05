@@ -15,7 +15,7 @@
 //! tyre forward: the recorded roll grows at about 2.2 rad per metre of forward travel (`rbr-recording` notes).
 
 use crate::camera::{FreeFly, Lens};
-use crate::coords::physics_to_stage;
+use crate::coords::{door_swing, physics_to_stage, HINGE_DEFAULT_ANGLE};
 use crate::damage::{self, Cracks, MeshDamage, Zones};
 use crate::damage_parts::Detach;
 use crate::game_camera::Follow;
@@ -28,7 +28,7 @@ use crate::views::{CarView, Mount, Mounts};
 use glam::{Mat4, Quat, Vec3};
 use rbr_formats::data::Data;
 use rbr_recording::clock::StepClock;
-use rbr_recording::detach::{self, PartPose};
+use rbr_recording::detach::{self, DoorAngle, PartPose};
 use rbr_recording::pose::CarPose;
 use rbr_recording::WHEELS;
 use std::cell::Cell;
@@ -156,6 +156,10 @@ impl Part {
     }
 }
 
+/// The detachable parts that are side doors: [`detach::PARTS`] 0 and 1, hung by their hinge angles while
+/// attached ([`Playback::set_door_angles`]).
+const DOORS: usize = 2;
+
 /// The playback clock, the drive and the car's parts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Playback {
@@ -185,6 +189,9 @@ pub struct Playback {
     pub headlights: lights::Headlights,
     /// Per detachable part ([`detach::PARTS`]), its placement once the physics has detached it.
     detached: [Option<Detach>; detach::PARTS.len()],
+    /// Per door (detachable parts 0 and 1), its hinge angle while attached (`DOR1`, [`Playback::set_door_angles`]):
+    /// the doors hang by this, at the rest angle until the physics unlatches them.
+    door_angles: [f32; DOORS],
     /// The interior steering-wheel meshes ([`MeshDamage::steering`]) turn by this matrix, in model space (the
     /// wheel, `characters::incar::Crew::wheel_turn`).
     pub turn: Option<Mat4>,
@@ -251,6 +258,7 @@ impl Playback {
             lamps: Default::default(),
             headlights: lights::Headlights::Main,
             detached: [None; detach::PARTS.len()],
+            door_angles: [HINGE_DEFAULT_ANGLE; DOORS],
             turn: None,
             hide_wheel: false,
             game_chase: Follow::new(crate::game_camera::Settings::default()),
@@ -366,18 +374,57 @@ impl Playback {
     }
 
     /// Places the detached parts at their bodies' poses in the live step's record (`DET1`, [`detach`]). A part is
-    /// detached from the first record that lists it, its mesh at the car's placement there, and then follows its
-    /// body. A part the record leaves out (its body asleep) keeps its last placement.
+    /// detached from the first record that lists it, its mesh at the car's placement there (a door at its hung
+    /// placement, [`Playback::door_placement`]), and then follows its body. A part the record leaves out (its body
+    /// asleep) keeps its last placement.
     pub fn set_detached(&mut self, poses: &[PartPose]) {
         let attached = self.body();
+        let hung = [self.door_placement(0), self.door_placement(1)];
         for pose in poses {
             let Some(slot) = self.detached.get_mut(pose.part as usize) else {
                 continue;
             };
             let orientation = Quat::from_array(pose.orientation);
             let body = physics_to_stage() * Mat4::from_rotation_translation(orientation, Vec3::from(pose.position));
-            slot.get_or_insert_with(|| Detach::start(body, attached)).follow(body);
+            let placed = match pose.part as usize {
+                k if k < DOORS => hung[k],
+                _ => attached,
+            };
+            slot.get_or_insert_with(|| Detach::start(body, placed)).follow(body);
         }
+    }
+
+    /// Hangs the attached doors by their hinge angles in the live step's record (`DOR1`, [`detach`]): door `part`
+    /// turns about its hinge by the angle. A door the record leaves out (detached) keeps its last angle, but the
+    /// detached placement draws it once it detaches ([`Playback::set_detached`]).
+    pub fn set_door_angles(&mut self, angles: &[DoorAngle]) {
+        for angle in angles {
+            if let Some(slot) = self.door_angles.get_mut(angle.part as usize) {
+                *slot = angle.angle;
+            }
+        }
+    }
+
+    /// A door's placement while attached: the body placement hung by its hinge angle ([`door_swing`]). At the rest
+    /// angle this is the body placement, which [`Detach::start`] takes over once the door detaches.
+    fn door_placement(&self, door: usize) -> Mat4 {
+        let body = self.body();
+        let angle = self.door_angles.get(door).copied().unwrap_or(HINGE_DEFAULT_ANGLE);
+        self.parts
+            .iter()
+            .filter(|part| part.detach == Some(door))
+            .find_map(|part| part.effect.hinge)
+            .map_or(body, |(hinge, side)| body * door_swing(hinge, side, angle))
+    }
+
+    /// A door panel's placement while attached and hung open: its swing about the hinge ([`door_swing`]) after
+    /// the body placement, or `None` while it hangs at the rest angle (then the body placement draws it, as
+    /// before). Detached doors are drawn by their bodies instead ([`Playback::set_detached`]).
+    fn door_matrix(&self, body: Mat4, part: &Part) -> Option<Mat4> {
+        let (hinge, side) = part.effect.hinge?;
+        let door = part.detach.filter(|&k| k < DOORS)?;
+        let swing = door_swing(hinge, side, self.door_angles[door]);
+        (swing != Mat4::IDENTITY).then(|| body * swing)
     }
 
     /// Dents the damageable parts for the damage handler's `zones`. As `UpdateDeformation`, nothing is redone while
@@ -475,6 +522,7 @@ impl Playback {
         self.clock = 0.0;
         self.cracks = Cracks::new(self.windows());
         self.detached = [None; detach::PARTS.len()];
+        self.door_angles = [HINGE_DEFAULT_ANGLE; DOORS];
     }
 
     /// The drive time when frame `i` starts.
@@ -677,9 +725,15 @@ impl Playback {
             renderer.set_outside_visible(part.stage, !part.interior && cracked && lamp);
             let turned = self.turn.filter(|_| steering);
             let detached = part.detach.and_then(|k| self.detached[k]);
+            let swung = self.door_matrix(body, part);
             // The parts that move only with the body are given once, in its model space, and placed on the GPU: a car
             // has some 200,000 vertices, which took milliseconds a frame to place and give.
-            if part.wheel.is_none() && detached.is_none() && turned.is_none() && part.motion == Mat4::IDENTITY {
+            if part.wheel.is_none()
+                && detached.is_none()
+                && turned.is_none()
+                && swung.is_none()
+                && part.motion == Mat4::IDENTITY
+            {
                 if !part.in_car.replace(true) {
                     let vertices = part.placed(Mat4::IDENTITY);
                     renderer.set_car_vertices(part.stage, &vertices, mesh_bounds(&vertices));
@@ -690,7 +744,10 @@ impl Playback {
             let matrix = match part.wheel {
                 None => match detached {
                     Some(detach) => detach.placement(),
-                    None => turned.map_or(body, |turn| body * turn) * part.motion,
+                    None => match swung {
+                        Some(swung) => swung * part.motion,
+                        None => turned.map_or(body, |turn| body * turn) * part.motion,
+                    },
                 },
                 Some((k, centre)) => {
                     let wheel = sample.wheels[k];
@@ -747,9 +804,10 @@ impl Playback {
             renderer.set_visible(part.stage, part.interior == interior && cracked && lamp && !hidden);
             renderer.set_outside_visible(part.stage, !part.interior && cracked && lamp);
             let detached = part.detach.and_then(|k| self.detached[k]);
+            let swung = self.door_matrix(body, part);
             // As in `apply`: the parts that move only with the body are given once, in its model space. The wheels
             // ride rigidly with the body here, at their rest pose.
-            if part.wheel.is_none() && detached.is_none() && part.motion == Mat4::IDENTITY {
+            if part.wheel.is_none() && detached.is_none() && swung.is_none() && part.motion == Mat4::IDENTITY {
                 if !part.in_car.replace(true) {
                     let vertices = part.placed(Mat4::IDENTITY);
                     renderer.set_car_vertices(part.stage, &vertices, mesh_bounds(&vertices));
@@ -760,7 +818,10 @@ impl Playback {
             let matrix = match part.wheel {
                 None => match detached {
                     Some(detach) => detach.placement(),
-                    None => body * part.motion,
+                    None => match swung {
+                        Some(swung) => swung * part.motion,
+                        None => body * part.motion,
+                    },
                 },
                 Some(_) => body * part.motion,
             };

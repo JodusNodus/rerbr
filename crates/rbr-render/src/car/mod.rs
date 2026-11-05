@@ -357,9 +357,11 @@ fn load_set(
             .collect();
         let world = chained.get(&mesh.node.id).copied().unwrap_or(mesh.node.world);
         // The node's world matrix after its transform block (`coords::part_to_car`). The side doors are hinged
-        // bodies at rest (`coords::hinged_panel_to_car`).
+        // bodies at rest (`coords::hinged_panel_to_car`); their hinge point and side also hang them open by
+        // the hinge angle (`MeshDamage::hinge`).
         let block = mesh.node.transform.words();
-        let transform = match hinge_side(&mesh.node.name).and_then(|(s, side)| Some((hinge(s)?, side))) {
+        let swung = hinge_side(&mesh.node.name).and_then(|(s, side)| Some((hinge(s)?, side)));
+        let transform = match swung {
             Some((hinge, side)) => coords::hinged_panel_to_car(world, block, hinge, side),
             None => coords::part_to_car(world, block),
         };
@@ -385,7 +387,7 @@ fn load_set(
                     shade.window = true;
                 }
             }
-            (order, placed, MeshDamage { lamp, detach, wheel, mirror, window, steering, ..effect })
+            (order, placed, MeshDamage { lamp, detach, hinge: swung, wheel, mirror, window, steering, ..effect })
         }));
         if let Some(window) = damage::window_slot(&mesh.node.name) {
             let style = FaceStyle {

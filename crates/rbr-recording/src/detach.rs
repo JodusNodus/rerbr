@@ -39,6 +39,57 @@ pub struct PartPose {
     pub orientation: [f32; 4],
 }
 
+/// The attached doors' hinge angles a live stepping process writes after each DET1 record
+/// (`rbr-standalone --live`), which the viewer hangs the doors by. Little-endian:
+///
+/// ```text
+/// u32 tag       'DOR1'
+/// u32 len       the entries' bytes (a multiple of DOOR_ENTRY_BYTES)
+/// per entry (8 bytes):
+/// u32 part      the index into PARTS (0 or 1, the doors)
+/// f32 angle     the hinge angle, rad (the hinged body's +0x3FC)
+/// ```
+///
+/// An entry is an attached door: its hinged body's slot (`CCar` +0x480 + 4 i) is still set. A detached door
+/// leaves the record, and the viewer keeps drawing it by its DET1 body.
+pub const DOR1: [u8; 4] = *b"DOR1";
+/// The bytes of one door-angle entry.
+pub const DOOR_ENTRY_BYTES: usize = 8;
+
+/// One attached door's hinge angle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DoorAngle {
+    pub part: u32,
+    pub angle: f32,
+}
+
+/// The record with `angles` as its entries.
+pub fn door_angles_to_bytes(angles: &[DoorAngle]) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(DOOR_ENTRY_BYTES * angles.len());
+    for angle in angles {
+        payload.extend_from_slice(&angle.part.to_le_bytes());
+        payload.extend_from_slice(&angle.angle.to_le_bytes());
+    }
+    crate::live::record(DOR1, &payload)
+}
+
+/// The entries of a door-angles record's payload (the bytes after its tag and length).
+pub fn parse_door_angles(payload: &[u8]) -> io::Result<Vec<DoorAngle>> {
+    if !payload.len().is_multiple_of(DOOR_ENTRY_BYTES) {
+        return Err(invalid(format!("{} bytes of door angles", payload.len())));
+    }
+    payload
+        .chunks_exact(DOOR_ENTRY_BYTES)
+        .map(|entry| {
+            let part = word(entry, 0);
+            if part as usize >= PARTS.len() {
+                return Err(invalid(format!("door angle for part {part}")));
+            }
+            Ok(DoorAngle { part, angle: f32::from_bits(word(entry, 1)) })
+        })
+        .collect()
+}
+
 /// The record with `poses` as its entries.
 pub fn to_bytes(poses: &[PartPose]) -> Vec<u8> {
     let mut payload = Vec::with_capacity(ENTRY_BYTES * poses.len());
@@ -102,5 +153,23 @@ mod tests {
     fn part_names_index_the_record() {
         assert_eq!(part_index("e_bumper_f"), Some(4));
         assert_eq!(part_index("e_body"), None);
+    }
+
+    #[test]
+    fn door_angles_round_trip() {
+        let angles = [DoorAngle { part: 0, angle: 0.01 }, DoorAngle { part: 1, angle: -0.3957 }];
+        let bytes = door_angles_to_bytes(&angles);
+        assert_eq!(&bytes[..4], b"DOR1");
+        assert_eq!(bytes.len(), 8 + 2 * DOOR_ENTRY_BYTES);
+        assert_eq!(parse_door_angles(&bytes[8..]).unwrap(), angles);
+        assert_eq!(parse_door_angles(&[]).unwrap(), []);
+    }
+
+    #[test]
+    fn bad_door_angles_are_errors() {
+        assert!(parse_door_angles(&[0; 7]).is_err());
+        let mut bytes = door_angles_to_bytes(&[DoorAngle { part: 0, angle: 0.0 }]);
+        bytes[8] = PARTS.len() as u8;
+        assert!(parse_door_angles(&bytes[8..]).is_err());
     }
 }
