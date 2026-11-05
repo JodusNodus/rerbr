@@ -307,7 +307,7 @@ impl Form {
     /// The menus' sound for the page shown: the service park at a championship's service stop, while the viewer is
     /// not running.
     pub fn menu_sound(&mut self) {
-        let service = self.events.in_service();
+        let service = self.championship.in_service();
         let park = self.child.is_none() && service && matches!(self.page, Page::Championship | Page::Setup);
         if !park && self.menu_sound.is_none() {
             return;
@@ -459,7 +459,7 @@ impl Form {
         self.stage_browser.open &= self.page == Page::Drive;
         self.car_browser.open &= match self.car_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
-            car_browser::Target::Event => self.page == Page::Championship,
+            car_browser::Target::Championship => self.page == Page::Championship,
         };
         ctx.root_ui(|root| {
             egui::CentralPanel::default().show(root, |ui| match self.page {
@@ -593,19 +593,8 @@ impl Form {
         self.ui(ctx);
     }
 
-    /// The Championship page: the presets, the builder and the event (`events_page`).
-    fn championship_page(&mut self, ui: &mut egui::Ui) {
-        if self.no_cars_yet(ui) {
-            return;
-        }
-        if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
-            return self.car_browser_page(ui);
-        }
-        self.events_page(ui);
-    }
-
     /// A page that needs a car, without any: what to do. Whether there are none.
-    fn no_cars_yet(&self, ui: &mut egui::Ui) -> bool {
+    pub(crate) fn no_cars_yet(&self, ui: &mut egui::Ui) -> bool {
         if !self.catalog.cars.is_empty() {
             return false;
         }

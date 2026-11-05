@@ -503,7 +503,7 @@ impl Form {
         let ghost = self.ghost.viewer_args(&self.records(), stage.map, &words);
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
-        let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.events.profile.clone()]].concat();
+        let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.championship.profile.clone()]].concat();
         // The Custom weather's Time of day is the quick race's: the stage is drawn at it and the start board shows
         // it. The Stage weather and a championship stage keep the stage's own light and the season's start clock.
         let custom = self.custom();
@@ -586,7 +586,7 @@ impl Form {
                 };
                 let mut extra = vec!["--school".to_owned(), lesson.index().to_string()];
                 let saves = SaveDir::new(&self.records()).path.display().to_string();
-                extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.events.profile.clone()]);
+                extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.championship.profile.clone()]);
                 let options = RaceOptions { weather: Preset::Good, ..self.options };
                 if let Some(args) = self.launch_with(
                     stage,
@@ -811,7 +811,7 @@ impl Form {
                 self.head = !saved.camera.head_off;
                 self.ffb_cars = saved.ffb_cars;
                 if !replay {
-                    self.events.stage_closed(&self.here(), &self.events.profile.clone());
+                    self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
                 }
                 self.replays.refresh(&self.here());
             }
@@ -1640,6 +1640,6 @@ mod tests {
     }
 
     // A live end-to-end test of a built event through the launcher's turns (the old two-stage 1.02 season test's
-    // successor) is still to write: it needs the events' stage launch (`Form::start_event_stage`) and `Event` wired
+    // successor) is still to write: it needs the events' stage launch (`Form::start_championship_stage`) and `Event` wired
     // for the service and bulletins.
 }

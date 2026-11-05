@@ -1,5 +1,5 @@
-//! The events in the launcher: the Championship tab's page (`Form::events_page`) and a stage's launch
-//! (`Form::start_event_stage`), the way the Drive page starts any stage, on the itinerary's road and clock.
+//! The championship in the launcher: the Championship tab's page (`Form::championship_page`) and a stage's launch
+//! (`Form::start_championship_stage`), the way the Drive page starts any stage, on the itinerary's road and clock.
 
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use rbr_season::config::Damage;
 use rbr_season::event::{Conditions, Turn};
 
 use super::view::Env;
-use super::{wetness, EventStart, Request};
+use super::{wetness, Request, StageStart};
 use crate::catalog::{self, TyreChoice};
 use crate::command::clock_args;
 use crate::pages::{Issue, FIELD};
@@ -19,15 +19,21 @@ use crate::settings::wetness_name;
 use crate::{browser, car_browser, Form};
 
 impl Form {
-    /// The Championship tab: the presets, the builder and the event. An event drives its own car (the Drive page's
-    /// car follows it).
-    pub(crate) fn events_page(&mut self, ui: &mut egui::Ui) {
-        if self.events.pool.is_none() {
+    /// The Championship tab: the presets, the builder and the championship under way. A championship drives its own
+    /// car (the Drive page's car follows it).
+    pub(crate) fn championship_page(&mut self, ui: &mut egui::Ui) {
+        if self.no_cars_yet(ui) {
+            return;
+        }
+        if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
+            return self.car_browser_page(ui);
+        }
+        if self.championship.pool.is_none() {
             let items = super::pool::items(&self.catalog, &self.season);
             let cache = self.here().join(super::pool::CACHE);
-            self.events.pool = Some(super::pool::Pool::start(self.data.clone(), cache, items));
+            self.championship.pool = Some(super::pool::Pool::start(self.data.clone(), cache, items));
         }
-        let event_car = self.events.run.as_ref().map(|r| r.event.config.car.clone());
+        let event_car = self.championship.run.as_ref().map(|r| r.event.config.car.clone());
         let car_missing = match &event_car {
             Some(key) => match self.catalog.cars.iter().position(|c| c.key == *key) {
                 Some(i) => {
@@ -39,17 +45,17 @@ impl Form {
             None => false,
         };
         // The service's park opens on the car's repair tree.
-        let service = self.events.run.as_ref().and_then(|r| match r.event.turn {
+        let service = self.championship.run.as_ref().and_then(|r| match r.event.turn {
             Turn::Service { minutes, .. } => Some(minutes),
             _ => None,
         });
         match service {
-            Some(minutes) if self.events.park.is_none() && self.events.view == super::View::Event => {
+            Some(minutes) if self.championship.park.is_none() && self.championship.view == super::View::Event => {
                 let car = self.car().cloned().unwrap_or_default();
                 let archive = self.ngp_archive();
-                self.events.open_park(&self.data, &car, Some(Path::new(&archive)), minutes);
+                self.championship.open_park(&self.data, &car, Some(Path::new(&archive)), minutes);
             }
-            None => self.events.park = None,
+            None => self.championship.park = None,
             _ => {}
         }
         self.select_setup();
@@ -62,7 +68,7 @@ impl Form {
             self.launch_blocker()
         };
         let here = self.here();
-        let mut profile = self.events.profile.clone();
+        let mut profile = self.championship.profile.clone();
         let (rows, favourites) = (&self.car_browser, &self.favourite_cars);
         let mut car_field = |ui: &mut egui::Ui, car: usize| {
             rows.row(car).is_some_and(|row| {
@@ -84,14 +90,14 @@ impl Form {
             blocker: blocker.as_ref(),
             seed,
         };
-        let request = egui::ScrollArea::vertical().id_salt("events").show(ui, |ui| self.events.ui(ui, env)).inner;
-        self.events.profile = profile;
+        let request = egui::ScrollArea::vertical().id_salt("events").show(ui, |ui| self.championship.ui(ui, env)).inner;
+        self.championship.profile = profile;
         match request {
-            Some(Request::Launch(start)) => self.start_event_stage(start),
+            Some(Request::Launch(start)) => self.start_championship_stage(start),
             Some(Request::Setup) => self.page = crate::pages::Page::Setup,
             Some(Request::BrowseCar) => {
-                let car = self.events.car.unwrap_or(self.car);
-                self.car_browser.open_on(car_browser::Target::Event, car, &self.favourite_cars, None);
+                let car = self.championship.car.unwrap_or(self.car);
+                self.car_browser.open_on(car_browser::Target::Championship, car, &self.favourite_cars, None);
             }
             None => {}
         }
@@ -99,7 +105,7 @@ impl Form {
 
     /// The stage and weather an event stage runs on: the map's weather row with the road's wetness (the nearest one
     /// otherwise), and whether the road needs `--wetness` over the row's.
-    pub(crate) fn event_weather(
+    pub(crate) fn championship_weather(
         &self,
         map: u32,
         conditions: Conditions,
@@ -124,9 +130,9 @@ impl Form {
 
     /// Starts an event's stage like the Drive page's Start, on the itinerary's road and clock, the tyre and setup
     /// picked, the event's damage and the files `stage_start` named.
-    pub fn start_event_stage(&mut self, start: EventStart) {
-        let EventStart { map, conditions, clock, tyre, setup, damage, args: mut extra } = start;
-        match self.event_weather(map, conditions) {
+    pub fn start_championship_stage(&mut self, start: StageStart) {
+        let StageStart { map, conditions, clock, tyre, setup, damage, args: mut extra } = start;
+        match self.championship_weather(map, conditions) {
             Ok((stage, weather, off)) => {
                 self.map = self.catalog.map_index(map).unwrap_or(self.map);
                 self.validate_weather_row();
@@ -137,7 +143,12 @@ impl Form {
                 // A championship stage is offered to the stage record and the personal best; a trial is practice.
                 if extra.iter().any(|a| a == "--championship") {
                     let saves = SaveDir::new(&self.records()).path.display().to_string();
-                    extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.events.profile.clone()]);
+                    extra.extend([
+                        "--saves".to_owned(),
+                        saves,
+                        "--profile".to_owned(),
+                        self.championship.profile.clone(),
+                    ]);
                 }
                 if off {
                     extra.extend(["--wetness".to_owned(), wetness_name(weather.wetness).to_owned()]);
@@ -158,7 +169,7 @@ impl Form {
             Err(e) => self.status = e,
         }
         if self.child.is_none() {
-            self.events.abort_stage_start();
+            self.championship.abort_stage_start();
         }
     }
 }
@@ -172,15 +183,15 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     use rbr_season::config::Preset;
     use rbr_season::event::PlayerResult;
     form.page = crate::pages::Page::Championship;
-    form.events.ai = Ok(fixture::ai());
-    form.events.pool = Some(super::pool::Pool::Ready(fixture::stages()));
-    let profile = form.events.profile.clone();
-    form.events.screenshot_saved(&profile, None);
+    form.championship.ai = Ok(fixture::ai());
+    form.championship.pool = Some(super::pool::Pool::Ready(fixture::stages()));
+    let profile = form.championship.profile.clone();
+    form.championship.screenshot_saved(&profile, None);
     shot(&dir.join("championship.png"), |ctx| form.ui(ctx))?;
     let line = "Season · Rally 2 of 6 · Rally of the Lakes · Stage 3 of 6".to_owned();
-    form.events.screenshot_saved(&profile, Some(line));
+    form.championship.screenshot_saved(&profile, Some(line));
     shot(&dir.join("championship-saved.png"), |ctx| form.ui(ctx))?;
-    form.events.open_builder(Preset::Weekend, &form.catalog.cars, form.car, 20261105);
+    form.championship.open_builder(Preset::Weekend, &form.catalog.cars, form.car, 20261105);
     shot(&dir.join("championship-builder.png"), |ctx| form.ui(ctx))?;
 
     // A season of two rallies in the Drive page's car and its class's cars.
@@ -206,7 +217,7 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
         }
     };
     let at = |form: &mut Form, event: &rbr_season::event::Event, name: &str| {
-        form.events.screenshot_event(event.clone());
+        form.championship.screenshot_event(event.clone());
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))
     };
     at(form, &event, "championship-welcome")?;
@@ -218,10 +229,10 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     if let Some(path) = damage {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let carried = CarriedDamage::from_bytes(&bytes).ok_or("not a damage file")?;
-        if let Some(run) = form.events.run.as_mut() {
+        if let Some(run) = form.championship.run.as_mut() {
             run.damage = Some(carried);
         }
-        form.events.park = None;
+        form.championship.park = None;
         shot(&dir.join("championship-service-damaged.png"), |ctx| form.ui(ctx))?;
     }
     event.turn_done();
@@ -234,6 +245,6 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     drive(&mut event, 6);
     event.turn_done();
     at(form, &event, "championship-over")?;
-    form.events.screenshot_saved(&profile, None);
+    form.championship.screenshot_saved(&profile, None);
     Ok(())
 }

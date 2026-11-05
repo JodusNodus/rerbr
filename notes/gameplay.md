@@ -210,7 +210,7 @@ presentation: [renderer.md](renderer.md), [sound.md](sound.md).
 Mechanics in the `rbr-season` crate: `rally` (the `--result-out` file `StageReport`, the tyre choices), `ai` (the
 1.02 AI engine), `service/` (the park), `event` (our built rallies); the setup in `rbr_gameplay::setup`. The classic
 1.02 season crate (`rbr-championship`: season, events queue, byte-exact save) is deleted, in git history. The `rand()` order is the asm's (`ai`); the driver classes' draws are ours (not in code).
-- The launcher owns the built events' rally turns (`events_page`); each stage is a `rbr-standalone --championship` run
+- The launcher owns the built events' rally turns (`championship_page`); each stage is a `rbr-standalone --championship` run
   whose stage rules are flow mode 3's tests in `rbr-gameplay` (`Mode::CHAMPIONSHIP`), so it needs no
   `rbr_gameplay::mode::ModeRules` hook.
 - `rbr_gameplay::car_damage::Rules` (1.02 or NGP) picks the damage objects for the HUD and the service park.

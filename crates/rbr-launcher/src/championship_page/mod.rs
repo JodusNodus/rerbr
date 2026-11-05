@@ -66,7 +66,7 @@ pub struct Builder {
 /// A stage to drive: its map, road and clock, the tyre and setup picked, the damage and the extra `rbr-standalone`
 /// arguments (none for a practice trial).
 #[derive(Debug, Clone, PartialEq)]
-pub struct EventStart {
+pub struct StageStart {
     pub map: u32,
     pub conditions: Conditions,
     /// Hours, 0 to 24.
@@ -79,7 +79,7 @@ pub struct EventStart {
 
 /// What the page asks of the launcher.
 pub enum Request {
-    Launch(EventStart),
+    Launch(StageStart),
     /// Open the Setup page.
     Setup,
     /// Open the car browser on the builder's car.
@@ -100,7 +100,7 @@ pub struct Run {
 /// The 1.02 AI's tables the field runs on: `ai.ini` and `aidrv.ini`.
 pub type Ai = (Master, Roster);
 
-pub struct EventsPage {
+pub struct ChampionshipPage {
     /// The AI tables, read once (or why they do not read: the event cannot start without them).
     pub ai: Result<Ai, String>,
     pub view: View,
@@ -276,9 +276,9 @@ pub fn clock_hm(hours: f32) -> String {
     format!("{}:{:02}", minutes / 60, minutes % 60)
 }
 
-impl EventsPage {
-    pub fn new(data: &Data) -> EventsPage {
-        EventsPage {
+impl ChampionshipPage {
+    pub fn new(data: &Data) -> ChampionshipPage {
+        ChampionshipPage {
             ai: rbr_season::ai::load_ai(data),
             view: View::Entry,
             builder: None,
@@ -453,7 +453,7 @@ impl EventsPage {
 
     /// Drive the next stage: the damage files, the championship flags on the event's damage, what follows it, and
     /// the tyre and setup.
-    pub fn stage_start(&mut self, here: &Path) -> Result<EventStart, String> {
+    pub fn stage_start(&mut self, here: &Path) -> Result<StageStart, String> {
         let (rally, stage, next) = self.next_stage().ok_or("no stage is next")?;
         let next = next.clone();
         let run = self.run.as_ref().ok_or("no event")?;
@@ -492,7 +492,7 @@ impl EventsPage {
         let map = next.stage.key.parse().map_err(|_| format!("{}: not a map number", next.stage.key))?;
         self.driving = true;
         let damage = event.config.damage;
-        Ok(EventStart { map, conditions: next.conditions, clock: next.clock, tyre, setup, damage, args })
+        Ok(StageStart { map, conditions: next.conditions, clock: next.clock, tyre, setup, damage, args })
     }
 
     /// The stage never started: nothing changed, the player can retry.
@@ -503,7 +503,7 @@ impl EventsPage {
     /// A practice trial between rallies (the game's `S_YARD_TRIAL` on map 72, `S_STAGE_TRIAL`): the yard, or the next
     /// rally's first stage on its road and clock, in the event's car and damage, on the road's tyre and the current
     /// setup. No championship flags and no files: it is not recorded.
-    pub fn trial(&mut self, yard: bool) -> Result<EventStart, String> {
+    pub fn trial(&mut self, yard: bool) -> Result<StageStart, String> {
         let run = self.run.as_ref().ok_or("no event")?;
         let event = &run.event;
         let Turn::RallyOver { rally } = event.turn else { return Err("trials come between rallies".into()) };
@@ -520,7 +520,7 @@ impl EventsPage {
         let tyre = road.filter(|t| choices.contains(t)).unwrap_or(choices[0]);
         let damage = event.config.damage;
         (self.driving, self.practice) = (true, true);
-        Ok(EventStart { map, conditions, clock, tyre, setup: SeasonSetup::Current, damage, args: Vec::new() })
+        Ok(StageStart { map, conditions, clock, tyre, setup: SeasonSetup::Current, damage, args: Vec::new() })
     }
 
     /// The viewer closed: the stage's result and damage from `rbr-standalone`'s files (a stage left before the
@@ -681,8 +681,8 @@ mod tests {
     }
 
     /// A page on the fixture AI with a pool of the fixture's stages.
-    fn page(here: &Path) -> EventsPage {
-        let mut page = EventsPage::new(&Data::new(here.join("data"), None));
+    fn page(here: &Path) -> ChampionshipPage {
+        let mut page = ChampionshipPage::new(&Data::new(here.join("data"), None));
         page.ai = Ok(fixture::ai());
         let cars = [Car {
             key: "rsf-1".into(),
@@ -699,9 +699,9 @@ mod tests {
     }
 
     /// Drives the next stage: `rbr-standalone`'s files as it leaves them.
-    fn drive(page: &mut EventsPage, here: &Path, time: f32, damage: Option<&CarriedDamage>) -> EventStart {
+    fn drive(page: &mut ChampionshipPage, here: &Path, time: f32, damage: Option<&CarriedDamage>) -> StageStart {
         let start = page.stage_start(here).unwrap();
-        let (_, out, result) = EventsPage::stage_files(here);
+        let (_, out, result) = ChampionshipPage::stage_files(here);
         let race = EndRace { time, splits: [time / 3.0, time * 2.0 / 3.0], retired: false };
         let report = StageReport {
             end: StageEnd { cause: EndCause::Finish, end_race: race },
@@ -720,9 +720,9 @@ mod tests {
     fn a_rally_runs_its_turns_with_service_damage_and_the_late_penalty() {
         let here = crate::test_dir("events-turns");
         let mut page = page(&here);
-        let turn = |page: &EventsPage| page.run.as_ref().unwrap().event.turn.clone();
+        let turn = |page: &ChampionshipPage| page.run.as_ref().unwrap().event.turn.clone();
         assert_eq!(turn(&page), Turn::Welcome { rally: 0 });
-        let (save, dmg, state) = EventsPage::files(&here, "tester");
+        let (save, dmg, state) = ChampionshipPage::files(&here, "tester");
         assert!(save.is_file(), "saved at the welcome");
         page.turn_done(&here, "tester");
         // SS1: the road's tyre, the itinerary's clock and the flags; no damage carried yet.
@@ -764,7 +764,7 @@ mod tests {
         page.turn_done(&here, "tester");
         assert_eq!(turn(&page), Turn::EventOver);
         // Continue reads it back with the damage; leaving the finished event removes its files.
-        let mut again = EventsPage::new(&Data::new(here.join("data"), None));
+        let mut again = ChampionshipPage::new(&Data::new(here.join("data"), None));
         again.ai = Ok(fixture::ai());
         assert!(again.saved_event(&here, "tester").is_some());
         again.continue_event(&here, "tester");

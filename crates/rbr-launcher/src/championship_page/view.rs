@@ -158,7 +158,7 @@ fn button_card(ui: &mut Ui, id: &str, add: impl FnOnce(&mut Ui)) -> bool {
     response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 
-impl EventsPage {
+impl ChampionshipPage {
     /// The page: the presets, the builder or the event under way.
     pub fn ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         match self.view {

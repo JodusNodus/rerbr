@@ -126,12 +126,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   --at N`) draws the Nth answer headless, the way a live screenshot draws the Nth payload: the replay
   runs back to back (`--replay-pace free`), not in lockstep (`--frames -` takes no `--replay` beside it);
   `--at-drive` takes no `--replay`.
-- Championship tab (`events_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
+- Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
   `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the
   keys at its next save). The tab opens on the preset cards (Quick rally, Weekend, Season, Random), Continue first when
   `SavedGames/event-<profile>.txt` exists (carried damage in `.dmg`, the service's late penalty and the tyre in `.ini`:
-  `Event` keeps neither). A preset opens the builder (car through the car browser, `Target::Event`, defaulting to the
+  `Event` keeps neither). A preset opens the builder (car through the car browser, `Target::Championship`, defaulting to the
   Drive page's; class = the car's group, only that class's cars fill the field; length, stage pool, surface, time of day,
   weather, damage, skill level, team, difficulty Gentle/Club/National/Pro, adaptive, field, seed) beside a live summary
   and Start. The skill level is the game's three (`SSKILL`) under `rbr_season` names: Rookie 10 s, Professional 20 s,
@@ -149,10 +149,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   start, else kept; a Start order line "14th on the road · used road" from `Event::start_order`/`road_wear`: fresh, used or worn), last stage's result (winner, gap), service (`common::park_card`, the itinerary's
   minutes), rally over with points and, when a rally follows, "Practice first (not recorded)": a yard trial (map 72) and
   a stage trial (the next rally's first stage, its surface, road and clock), in the event's car and damage on the road's
-  tyre, with no championship flags, no `--saves` and no files; its end changes nothing (`EventsPage::trial`, `practice`),
+  tyre, with no championship flags, no `--saves` and no files; its end changes nothing (`ChampionshipPage::trial`, `practice`),
   and event over. A bulletins card ("Since your last stage", `Event::bulletins`, the last 8 lines, "Show all" for the rest) sits
   above the standings. The page holds the real `Event` (no seam); `common.rs` holds the cards, the
-  places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `events_page::fixture`'s stages and AI stand-in
+  places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
   (`championship*.png`; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The built-event test (`a_quick_rally_on_the_real_stages_and_ai_plays_through`, `RBR_DATA`) loads the real `ai.ini`,
   builds a Quick rally on the installed stages and plays every stage at a fixed pace.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,

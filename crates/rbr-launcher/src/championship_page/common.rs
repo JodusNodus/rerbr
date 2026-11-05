@@ -79,7 +79,7 @@ pub(crate) fn text_of(strings: Option<&Strings>, key: &str) -> String {
     strings.and_then(|s| s.get(key)).unwrap_or(key).to_owned()
 }
 
-/// The car's repair tree and rules ((`EventsPage::open_park`)): under NGP (`ngp`: its `physics.rbz`) an RSF car's own
+/// The car's repair tree and rules ((`ChampionshipPage::open_park`)): under NGP (`ngp`: its `physics.rbz`) an RSF car's own
 /// `repair.ini`, else the archive's slot tree, with NGP's rules; without NGP the retail one with 1.02's.
 pub(crate) fn repair_tree(
     data: &Data,

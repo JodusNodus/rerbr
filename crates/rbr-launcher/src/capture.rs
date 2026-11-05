@@ -84,7 +84,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         shot(&dir.join(format!("setup-{n}.png")), |ctx| form.ui(ctx))?;
     }
     // The Championship tab: the presets, the builder and an event's turns (with the damage file's car in its service).
-    crate::events_page::shots(form, dir, rally_damage.as_deref())?;
+    crate::championship_page::shots(form, dir, rally_damage.as_deref())?;
     Ok(())
 }
 

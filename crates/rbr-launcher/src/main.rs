@@ -114,7 +114,7 @@
 //! `rbr-standalone --setup`. `--screenshot DIR` draws the pages, and the Car setup page's areas, offscreen
 //! to PNGs and exits.
 //!
-//! The Championship page (`events_page`, model `rbr_season`) builds a rally or a season from a preset on any installed
+//! The Championship page (`championship_page`, model `rbr_season`) builds a rally or a season from a preset on any installed
 //! stage and runs it stage by stage with the service park between stages, the AI field's times, the standings and the
 //! trials between rallies; its stages run as the game's championship on the event's skill and damage
 //! (`rbr-standalone --championship`) with the Controls page's aids. `--screenshot` also draws it, and with
@@ -131,6 +131,7 @@ mod capture;
 mod car_browser;
 mod car_packs;
 mod catalog;
+mod championship_page;
 mod codriver_packs;
 mod codriver_page;
 mod command;
@@ -138,7 +139,6 @@ mod controls_page;
 mod crash;
 mod disc_install;
 mod drive_page;
-mod events_page;
 mod ghosts;
 mod graphics_page;
 mod gvrc;
@@ -433,7 +433,7 @@ struct Form {
     page: Page,
     setup: SetupPage,
     /// The Championship tab (ours).
-    events: events_page::EventsPage,
+    championship: championship_page::ChampionshipPage,
     school: SchoolPage,
     /// The Drive page's stage and car previews.
     previews: preview::Previews,
