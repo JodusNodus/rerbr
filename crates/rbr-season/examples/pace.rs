@@ -114,7 +114,7 @@ fn main() {
         let Some((map, _)) = rest.split_once('_') else { continue };
         let Ok(id) = map.parse::<u32>() else { continue };
         let Some(driveline) = read_trk(path) else { continue };
-        let points = timed_road(&driveline, markers(&path).as_ref()).points;
+        let points = timed_road(&driveline, markers(path).as_ref()).points;
         let length = path_length(&points);
         if length < 100.0 {
             continue;

@@ -84,4 +84,3 @@ mod tests {
         assert_eq!(crew_of(&roster.teams[1]), Crew { a: 5, b: 5 });
     }
 }
-
