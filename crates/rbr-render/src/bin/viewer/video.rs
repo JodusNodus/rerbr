@@ -92,6 +92,10 @@ pub fn render(
     // Without sound the answers' records are dropped, not kept.
     let mut pending = audio.is_some().then(Vec::new);
     let mut probed = false;
+    // `--perf-log`: each rendered frame's passes, as the window's frames log them.
+    if rbr_render::perf_log::enabled() {
+        crate::perf::begin(args, &gpu.adapter, size, "video".into(), &mut renderer);
+    }
     let mut rendered_yet = false;
     let started = Instant::now();
     let mut last_progress = started;
@@ -156,12 +160,14 @@ pub fn render(
                 .filter(|_| scene.hud.show)
                 .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
             let results = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu));
+            rbr_render::perf_log::frame();
             let (_, pixels) = renderer.render_offscreen_with(size, view, sky, |encoder, target| {
                 overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, size, |ctx, hud| {
                     readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
                     results.iter().for_each(|m| results::paint(ctx, m));
                 });
             })?;
+            renderer.end_frame();
             if in_span {
                 encoder.video(&pixels)?;
                 encoded += 1;
