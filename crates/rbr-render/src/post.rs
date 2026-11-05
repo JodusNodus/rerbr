@@ -2,7 +2,7 @@
 //! renderer resolves the frame into [`Post::scene`] ([`SCENE_FORMAT`], linear colour); [`Post::draw`] builds the
 //! bloom chain from it, meters it, and writes the exposed, tone-curved frame into the caller's target.
 
-use crate::renderer::{depth_binding, texture_entry, TEXTURE};
+use crate::renderer::{depth_binding, texture_entry, AntiAliasing, Enhance, Glare, TEXTURE};
 use crate::skylight::NIGHT_PRE_EXPOSURE;
 
 /// The float format of the scene and every target drawn before the post pass.
@@ -19,8 +19,12 @@ pub(crate) struct Post {
     source_layout: wgpu::BindGroupLayout,
     composite_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    down: wgpu::RenderPipeline,
+    /// The bloom chain's first level, then the rest (`fs_down`; under [`Glare::Exposure`] `fs_glare_first`, then
+    /// `fs_glare_down`).
+    down: [wgpu::RenderPipeline; 2],
     up: wgpu::RenderPipeline,
+    /// Under [`Glare::Exposure`] the exposure for the chain's levels (their glare's aperture).
+    glare: Option<wgpu::BindGroup>,
     /// The composite, then the in-car view's, with the cabin's exposure (`CABIN` in `post.wgsl`).
     composite: [wgpu::RenderPipeline; 2],
     /// Bins the scene's light (`cs_histogram`), then meters the bins into [`Post::exposure`] (`cs_meter`).
@@ -130,19 +134,19 @@ pub(crate) fn cabin_depth(view_projection: glam::Mat4) -> f32 {
 }
 
 impl Post {
-    /// The post pass into targets of `format`, for frames of `size` and the frame's `depth`; with
-    /// `shafts`, the composite adds [`Post::shafts`]; with `sharpen`, it sharpens the scene by [`TAA_SHARPEN`] (the
-    /// temporal resolve's blur); with `debug_view`, the composite passes the cabin's debug grey through (`DEBUG_VIEW`
-    /// in `post.wgsl`).
+    /// The post pass into targets of `format`, for frames of `size` and the frame's `depth`. With
+    /// [`Enhance::lighting`] the composite adds [`Post::shafts`]; under TAA it sharpens the scene by [`TAA_SHARPEN`]
+    /// (the temporal resolve's blur); with [`Enhance::debug_view`] it passes the cabin's debug grey through
+    /// (`DEBUG_VIEW` in `post.wgsl`); [`Enhance::glare`] picks the bloom's glare (`GLARE`).
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         size: (u32, u32),
         depth: &wgpu::TextureView,
-        shafts: bool,
-        sharpen: bool,
-        debug_view: u32,
+        enhance: &Enhance,
     ) -> Post {
+        let shafts = enhance.lighting;
+        let glare = enhance.glare == Glare::Exposure;
         let source_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post source"),
             entries: &[
@@ -174,6 +178,9 @@ impl Post {
                 ),
             ],
         });
+        let buffer = |label, size, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
+        };
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("post"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -216,7 +223,26 @@ impl Post {
                 cache: None,
             })
         };
-        let down = pipeline("fs_down", &[&source_layout], SCENE_FORMAT.into(), &[]);
+        let exposure = buffer("exposure", 16, wgpu::BufferUsages::STORAGE);
+        let glare_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("post glare"),
+            entries: &[texture_entry(
+                1,
+                wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+            )],
+        });
+        let down = match glare {
+            false => {
+                let down = pipeline("fs_down", &[&source_layout], SCENE_FORMAT.into(), &[]);
+                [down.clone(), down]
+            }
+            true => ["fs_glare_first", "fs_glare_down"]
+                .map(|entry| pipeline(entry, &[&source_layout, &glare_layout], SCENE_FORMAT.into(), &[])),
+        };
         // Each level adds the blurred level below it.
         let add = wgpu::BlendComponent {
             src_factor: wgpu::BlendFactor::One,
@@ -224,7 +250,7 @@ impl Post {
             operation: wgpu::BlendOperation::Add,
         };
         let up = pipeline(
-            "fs_up",
+            if glare { "fs_glare_up" } else { "fs_up" },
             &[&source_layout],
             wgpu::ColorTargetState {
                 format: SCENE_FORMAT,
@@ -234,9 +260,15 @@ impl Post {
             &[],
         );
         let composite = [0.0, 1.0].map(|cabin| {
-            let constants =
-                [("SHAFTS", f64::from(u8::from(shafts))), ("CABIN", cabin), ("DEBUG_VIEW", f64::from(debug_view))];
-            pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
+            let constants = [
+                ("SHAFTS", f64::from(u8::from(shafts))),
+                ("CABIN", cabin),
+                ("DEBUG_VIEW", f64::from(enhance.debug_view.code())),
+                ("GLARE", f64::from(u8::from(glare))),
+            ];
+            // Without the glare the composite is built as before it.
+            let constants = if glare { &constants[..] } else { &constants[..3] };
+            pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), constants)
         });
         let meter = ["cs_histogram", "cs_meter"].map(|entry| {
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -248,10 +280,13 @@ impl Post {
                 cache: None,
             })
         });
-        let buffer = |label, size, usage| {
-            device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
-        };
-        let exposure = buffer("exposure", 16, wgpu::BufferUsages::STORAGE);
+        let glare = glare.then(|| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("post glare"),
+                layout: &glare_layout,
+                entries: &[wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() }],
+            })
+        });
         let histogram = buffer("histogram", ZONE_BINS * 4, wgpu::BufferUsages::STORAGE);
         let meter_settings =
             buffer("meter", size_of::<Meter>() as u64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
@@ -271,13 +306,14 @@ impl Post {
             sampler,
             down,
             up,
+            glare,
             composite,
             meter,
             exposure,
             histogram,
             meter_settings,
             metered: None,
-            sharpen: if sharpen { TAA_SHARPEN } else { 0.0 },
+            sharpen: if enhance.anti_aliasing == AntiAliasing::Taa { TAA_SHARPEN } else { 0.0 },
             scene,
             targets,
             shafts,
@@ -363,8 +399,12 @@ impl Post {
                 pass.dispatch_workgroups(size.0, size.1, 1);
             }
         }
-        for (level, source) in t.levels.iter().zip(&t.sources) {
-            pass(encoder, level, clear, &self.down, &[source]);
+        for (index, (level, source)) in t.levels.iter().zip(&t.sources).enumerate() {
+            let down = &self.down[usize::from(index > 0)];
+            match &self.glare {
+                Some(glare) => pass(encoder, level, clear, down, &[source, glare]),
+                None => pass(encoder, level, clear, down, &[source]),
+            }
         }
         for index in (1..t.levels.len()).rev() {
             pass(encoder, &t.levels[index - 1], wgpu::LoadOp::Load, &self.up, &[&t.sources[index + 1]]);

@@ -57,6 +57,8 @@ pub struct Enhance {
     /// (`cabin.wgsl` `cabin_debug`): one term of the cabin's light instead of the shaded colour, passed through
     /// the post pass unexposed and untonemapped. Presentation only; off by default, not in [`Enhance::NAMES`].
     pub debug_view: DebugView,
+    /// The bloom's glare (`viewer --glare`, an experiment; not in [`Enhance::NAMES`]).
+    pub glare: Glare,
 }
 
 /// How much detail the additions draw at: [`Detail::High`], the frame as tuned, or [`Detail::Ultra`], finer and
@@ -196,6 +198,30 @@ impl DebugView {
     }
 }
 
+/// The bloom's glare (`viewer --glare`, `GLARE` in `post.wgsl`): [`Glare::Fixed`], the same blur of the whole frame
+/// for every scene, or [`Glare::Exposure`], a camera aperture's diffraction, the aperture set by the light the eye is
+/// adapted to (after Gran Turismo 7; an experiment).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Glare {
+    #[default]
+    Fixed,
+    Exposure,
+}
+
+impl Glare {
+    /// The `--glare` choices.
+    pub const NAMES: [&'static str; 2] = ["fixed", "exposure"];
+
+    /// `fixed` or `exposure`.
+    pub fn parse(text: &str) -> Option<Glare> {
+        match text {
+            "fixed" => Some(Glare::Fixed),
+            "exposure" => Some(Glare::Exposure),
+            _ => None,
+        }
+    }
+}
+
 impl Enhance {
     pub const NAMES: [&str; 11] = [
         "anisotropy",
@@ -234,6 +260,7 @@ impl Enhance {
                         reflections: enhance.reflections,
                         detail: enhance.detail,
                         debug_view: enhance.debug_view,
+                        glare: enhance.glare,
                     }
                 }
                 "anisotropy" => enhance.anisotropy = true,

@@ -532,15 +532,7 @@ impl Renderer {
                 ultra,
             )
         });
-        let post = Post::new(
-            &device,
-            output_format,
-            depth_size,
-            &depth_view,
-            enhance.lighting,
-            taa,
-            enhance.debug_view.code(),
-        );
+        let post = Post::new(&device, output_format, depth_size, &depth_view, &enhance);
         let light_shafts = enhance.lighting.then(|| {
             let clouds = cloud_volume.shadow_map();
             crate::light_shafts::LightShafts::new(&device, &post.scene, depth_size, &depth_view, &sun_view, clouds)

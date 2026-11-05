@@ -108,7 +108,7 @@ fn every_shader_builds_for_vulkan() {
     let rain = none().into_iter().map(|c| [c, vec![("NEAR_COUNT", 1.0)]].concat()).collect::<Vec<_>>();
     failures.extend(check("rain", &crate::effects::rain_source(), &rain));
     failures.extend(check("particles", &crate::particles::gpu::source(), &none()));
-    failures.extend(check("post", crate::post::SHADER, &flags(&["SHAFTS"])));
+    failures.extend(check("post", crate::post::SHADER, &flags(&["SHAFTS", "GLARE"])));
     failures.extend(check("light shafts", crate::light_shafts::SHADER, &none()));
     failures.extend(check("taa", crate::taa::SHADER, &none()));
     failures.extend(check("skid marks", crate::skidmarks_pass::SHADER, &none()));

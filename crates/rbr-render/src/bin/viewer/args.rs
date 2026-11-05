@@ -15,7 +15,7 @@ use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
 use rbr_render::playback::CHASE_FOV_DEGREES;
 use rbr_render::present::Present;
-use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
+use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Glare, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
 use rbr_render::views::CarView;
@@ -234,7 +234,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --car-gearbox synchro|dog|sequential  --grind-sound WAV  --car-lock DEG
               --save-replay FILE (with --live)  --replay FILE [ARGS...] (watches a replay, extras override)
   view:       --view NAME  --cameras INI  --fov DEG  --chase-fov DEG  --camera EX,EY,EZ,FX,FY,FZ  --flyby AHEAD,SIDE,HEIGHT  --size WxH  --fullscreen  --look-back
-              --title TEXT  --pause-menu MOVES  --debug-view MODE
+              --title TEXT  --pause-menu MOVES  --debug-view MODE  --glare fixed|exposure
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off
@@ -320,6 +320,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut at_drive = None;
     let (mut car_gearbox, mut grind_sound, mut car_lock) = (None, None, None);
     let mut debug_view = DebugView::default();
+    let mut glare = Glare::default();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--help" | "-h" => {
@@ -471,6 +472,10 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let value = args.next().ok_or("--debug-view needs a mode")?;
                 debug_view = DebugView::parse(&value)
                     .ok_or(format!("--debug-view {value}: use {}", DebugView::MODES.join(", ")))?;
+            }
+            "--glare" => {
+                let value = args.next().ok_or("--glare needs fixed or exposure")?;
+                glare = Glare::parse(&value).ok_or(format!("--glare {value}: use {}", Glare::NAMES.join(", ")))?;
             }
             "--damage" => {
                 let value = args.next().ok_or("--damage needs zone:value pairs")?;
@@ -721,7 +726,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         cracks,
         textures,
         upscale,
-        enhance: Enhance { mirrors, anti_aliasing, reflections, detail, debug_view, ..enhance },
+        enhance: Enhance { mirrors, anti_aliasing, reflections, detail, debug_view, glare, ..enhance },
         clock,
         relight,
         fog,
@@ -810,6 +815,13 @@ mod tests {
             }
         }
         assert!(parse("--debug-view").is_err());
+    }
+
+    #[test]
+    fn glare_defaults_to_fixed() {
+        assert_eq!(parse("track-54_E").unwrap().enhance.glare, Glare::Fixed);
+        assert_eq!(parse("--glare exposure").unwrap().enhance.glare, Glare::Exposure);
+        assert!(parse("--glare on").is_err() && parse("--glare").is_err());
     }
 
     #[test]
