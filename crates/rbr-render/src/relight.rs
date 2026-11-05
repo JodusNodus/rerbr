@@ -1,6 +1,6 @@
 //! Relighting a stage's baked vertex light for another sun (explore/time-of-day, ours). The opaque unlit draws'
-//! vertex light holds the bake's sun: their luminance fits `a + b * facing` of the variant's `SunDir`
-//! (`examples/baked_light.rs`). The shader takes `b * facing(bake sun)` out and puts `b * facing(drawn sun)` in.
+//! vertex light holds the bake's sun: their luminance fits `a + b * facing` of the variant's `SunDir`.
+//! The shader takes `b * facing(bake sun)` out and puts `b * facing(drawn sun)` in.
 //! Foliage (alpha-tested draws) does not follow the sun this way: its vertices take the normal of the ground they stand
 //! on ([`Ground`]), so that grass and bushes shift with the ground around them.
 //!
@@ -15,7 +15,7 @@ use crate::stage::{Anchor, Layer, Mesh, Stage, Vertex};
 use glam::Vec3;
 
 /// The fit's correlation from which its sun is the bake's: below it (Loch Ard N, 51N, 63N, the unbaked RSF stages)
-/// the section's `SunDir` stays (`relight_survey`).
+/// the section's `SunDir` stays.
 pub const FIT_HOLDS: f32 = 0.35;
 
 /// The stage's own sun, as `Atmosphere::sun_direction`: the bake's where the fit holds, so the drawn sun and its

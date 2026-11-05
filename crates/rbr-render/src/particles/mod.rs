@@ -550,11 +550,6 @@ impl Particles {
             .collect()
     }
 
-    /// The wheels' values for [`Particles::frame`] made from the recorded poses ([`Particles::payloads_from_poses`]).
-    pub fn wheels_from_poses(&self, sample: &Sample, previous: Option<&Sample>) -> Vec<Wheel> {
-        self.payloads_from_poses(sample, previous).iter().map(wheel_of_payload).collect()
-    }
-
     /// The billboards for a frame seen with `view_projection`, back to front; `layer` maps a sprite id to a texture
     /// layer ([`gpu::Sprites::layer`]).
     pub fn billboards(&self, view_projection: Mat4, layer: impl Fn(u32) -> Option<u32>) -> Vec<Billboard> {
