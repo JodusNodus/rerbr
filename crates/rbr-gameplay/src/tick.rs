@@ -1,6 +1,6 @@
 //! The frame clock and the substep schedule of the original's frame. `CPC_Application::Vf0c` (0x44a3d0) splits the
 //! wall time since the last frame into whole physics steps; `CApplication::Tic` passes the count on, and
-//! `TicPhysicsRecording` (0x47f420) runs each substep as one `StepForward(1)`, through the single-step gate.
+//! `TicPhysicsRecording` (0x47f420) runs each substep as one `StepForward(1)`.
 //!
 //! Pure: the host gives the timer's reading and the physics step interval; the functions return the step count, the
 //! time it covers, the clock for the next frame and the substeps the tick runs. The arithmetic is the assembly's; where
@@ -70,34 +70,6 @@ fn whole_steps(dt: f64, step: f32) -> (u32, f64, f64) {
         sum += step;
     }
     (nsteps, sum, rest)
-}
-
-/// `CApplication`'s single-step gate: `m_unkC38` (active) and `m_unkC3C` (credits). `M0047cd50(n)` turns it on and adds
-/// `n` credits; `M0047cd70` clears both. While it is on, a tick runs one substep for each credit and none without one.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SingleStep {
-    active: bool,
-    credits: i32,
-}
-
-impl SingleStep {
-    /// `M0047cd50`: the gate on, with `credits` more.
-    pub fn grant(self, credits: i32) -> Self {
-        Self { active: true, credits: self.credits.wrapping_add(credits) }
-    }
-
-    /// The substeps a tick runs when the frame asked for `requested`, and the gate after it (the head of
-    /// `TicPhysicsRecording`).
-    pub fn take(self, requested: u32) -> (u32, Self) {
-        if !self.active {
-            (requested, self)
-        } else if self.credits == 0 {
-            (0, self)
-        } else {
-            let credits = self.credits.wrapping_sub(1);
-            (1, Self { credits, ..self })
-        }
-    }
 }
 
 /// What a tick's substeps did.
@@ -184,28 +156,6 @@ mod tests {
     #[test]
     fn settle_is_four_calls_of_forty() {
         assert_eq!(SETTLE_SUBSTEPS.iter().sum::<u32>(), 160);
-    }
-
-    #[test]
-    fn gate_off_runs_what_was_asked() {
-        assert_eq!(SingleStep::default().take(7), (7, SingleStep::default()));
-    }
-
-    #[test]
-    fn gate_on_runs_one_substep_per_credit() {
-        let gate = SingleStep::default().grant(2);
-        let (first, gate) = gate.take(40);
-        let (second, gate) = gate.take(40);
-        let (third, gate) = gate.take(40);
-        assert_eq!((first, second, third), (1, 1, 0));
-        assert_eq!(gate, SingleStep { active: true, credits: 0 });
-    }
-
-    #[test]
-    fn clear_is_the_default_gate() {
-        let gate = SingleStep::default().grant(5);
-        assert_ne!(gate, SingleStep::default());
-        assert_eq!(SingleStep::default(), SingleStep { active: false, credits: 0 });
     }
 
     #[test]

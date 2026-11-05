@@ -21,8 +21,8 @@ use crate::mode::{ModeEnd, ModeRules, StepView};
 use crate::race_clock::{AssistSettings, ClockEvents, RaceClock};
 use crate::result::{self, StageResult};
 use crate::stage::{Stage, State};
-use crate::tick::{self, Frame, FrameClock, SingleStep};
-use crate::timing::{self, Checkpoint, TimeCard, TimeKeeper, CLOCK_START};
+use crate::tick::{self, FrameClock};
+use crate::timing::{self, TimeCard, TimeKeeper, CLOCK_START};
 
 /// Samples the game receives from the input and race hosts for one frame.
 #[derive(Debug, Clone, Copy, Default)]
@@ -35,7 +35,7 @@ pub struct FrameInput {
     /// The camera's `M0047ca40` event (0x47ca40), which arms state 10, from the host. A game with the camera's go
     /// timer ([`Game::with_camera_go`]) gives it itself.
     pub camera_go: bool,
-    /// A replay entry fired after the local filter/Pack path. FRM1 stores this
+    /// A replay entry fired instead of the filtered control. FRM1 stores this
     /// emitted payload, not the raw device input. One entry is used for each
     /// driving substep in this frame; a replay cursor for multi-step frames is
     /// host-owned and not modeled here.
@@ -124,31 +124,18 @@ pub trait PhysicsStep {
     }
 }
 
-/// Who turns the filtered control into the car's payload while driving.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ControlPath {
-    /// 1.02: the quantizer (`Pack`, then `NotifyFilt`), the bytes the replay stores.
-    #[default]
-    Quantized,
-    /// NGP 7.4.778's handler (`CarControl::ngp`): the filtered values unquantized. A replay entry still goes through
-    /// `NotifyFilt` (NGP calls the original in replay mode).
-    Ngp,
-}
-
 /// What one substep emitted or recorded.
 #[derive(Debug, Clone, Copy)]
 pub struct SubstepEvent {
     /// State and counters as observed inside the step call. For the load
     /// settle this remains state 0xd until `StepForward(40)` returns.
     pub stage: Stage,
-    /// `None` for the load settle, which runs outside `TicPhysicsRecording`.
-    pub generated_control: Option<CarControl>,
-    /// The control delivered to the physics host after a possible replay fire.
+    /// The control delivered to the physics host after a possible replay fire
+    /// (`None` for the load settle, which runs outside `TicPhysicsRecording`).
     pub control: Option<CarControl>,
     /// The driveline distance at the timekeeper call site, if the sample was
     /// within the stage's driveline table.
     pub distance: Option<f32>,
-    pub checkpoint: Option<Checkpoint>,
     /// The code of the `CSigOutsideAssistance` the step emitted.
     pub outside_assistance: Option<u32>,
     /// The code of the `CSigRetireCar` the step emitted.
@@ -158,18 +145,12 @@ pub struct SubstepEvent {
 /// The parts of one outer frame that can be compared with FRM1 and peek data.
 #[derive(Debug, Clone)]
 pub struct FrameEvents {
-    /// The frame clock's whole-step request before the single-step gate.
-    pub clock: Frame,
     /// The stage case selected by `CApplication::Tic` (0x4804f0).
     pub tick_state: State,
-    /// Physics substeps run this frame: settle calls first, then gated ticks.
+    /// Physics substeps run this frame: settle calls first, then the driving ticks.
     pub substeps: Vec<SubstepEvent>,
     pub marker_events: Vec<MarkerEvent>,
-    /// Fired bits after the post-tick `Tic570`/`Load3b0` path (0x47a570/0x4783b0).
-    pub marker_fired: usize,
     pub stage: Stage,
-    pub time_card: TimeCard,
-    pub elapsed: f64,
     /// The HUD's race clock after this frame's tick, and what the tick emitted.
     pub race_clock: RaceClock,
     pub clock_events: ClockEvents,
@@ -181,7 +162,6 @@ pub struct FrameEvents {
 #[derive(Debug, Clone)]
 pub struct Game {
     clock: FrameClock,
-    gate: SingleStep,
     stage: Stage,
     filter: Filter,
     timekeeper: TimeKeeper,
@@ -201,7 +181,6 @@ pub struct Game {
     pending_flags: u8,
     /// The camera's start orbit, when the game gives the go itself ([`Game::with_camera_go`]).
     start_camera: Option<StartCamera>,
-    controls: ControlPath,
     /// The stage's finish zone.
     finish_zone: FinishZone,
     /// The jump start is armed whatever the stage's number ([`Game::with_forced_jump_start`]).
@@ -224,7 +203,6 @@ impl Game {
     ) -> Self {
         Self {
             clock: FrameClock::start(now),
-            gate: SingleStep::default(),
             stage,
             filter: Filter::new(grid),
             timekeeper: TimeKeeper::load(markers),
@@ -241,7 +219,6 @@ impl Game {
             flow: RaceFlow::new(AssistSettings::QUICK_RACE),
             pending_flags: 0,
             start_camera: None,
-            controls: ControlPath::Quantized,
             finish_zone: FinishZone::load(None),
             jump_start_forced: false,
         }
@@ -271,16 +248,7 @@ impl Game {
         self.filter = Filter::new(grid);
     }
 
-    /// The path from the filtered control to the car's payload ([`ControlPath::Quantized`] unless set).
-    pub fn with_controls(self, controls: ControlPath) -> Self {
-        Self { controls, ..self }
-    }
-
-    pub fn controls(&self) -> ControlPath {
-        self.controls
-    }
-
-    /// The camera's start orbit, with [`Game::with_camera_go`].
+    /// The camera's start orbit, with [`Game::with_camera_go`]
     pub fn start_camera(&self) -> Option<StartCamera> {
         self.start_camera
     }
@@ -329,18 +297,6 @@ impl Game {
         self.flow.end_now(&self.race_clock)
     }
 
-    /// Grant credits to `CApplication`'s single-step gate (`M0047cd50`,
-    /// 0x47cd50). While active, `TicPhysicsRecording` consumes one credit per
-    /// substep.
-    pub fn grant_single_steps(&mut self, credits: i32) {
-        self.gate = self.gate.grant(credits);
-    }
-
-    /// Clear the single-step gate (`M0047cd70`, 0x47cd70).
-    pub fn clear_single_step_gate(&mut self) {
-        self.gate = SingleStep::default();
-    }
-
     pub fn stage(&self) -> Stage {
         self.stage
     }
@@ -363,8 +319,8 @@ impl Game {
     ///    settle before input polling.
     /// 2. `TicFwd`/`NotifyB` poll and store raw input (0x4cc550/0x48ab40).
     /// 3. `Tic` selects countdown or driving; each driving substep runs
-    ///    filter -> `Pack` -> payload, replay fire, then `StepForward(1)`
-    ///    (0x48c500/0x48c910/0x48d130/0x47f420/0x5273a0).
+    ///    filter -> NGP payload, replay fire, then `StepForward(1)`
+    ///    (0x48c500/0x47f420/0x5273a0).
     /// 4. On the returned in-step car sample, `Record` runs before the clock
     ///    advance (0x4ea300/0x4a0540), then `StepForward` advances time
     ///    (0x5273a0).
@@ -419,7 +375,7 @@ impl Game {
             }
         }
 
-        // `Tic`'s driving case: each gated substep runs its filter, payload and `StepForward(1)`.
+        // `Tic`'s driving case: each substep runs its filter, payload and `StepForward(1)`.
         self.drive_substeps(tick_state, frame.nsteps, &input, physics, rules, &mut substeps);
 
         let zone_end = self.check_finish_zone(physics);
@@ -450,14 +406,10 @@ impl Game {
         }
 
         FrameEvents {
-            clock: frame,
             tick_state,
             substeps,
-            marker_fired: self.markers.keys().iter().filter(|key| key.word1 & crate::markers::FIRED != 0).count(),
             marker_events,
             stage: self.stage,
-            time_card: self.timekeeper.card,
-            elapsed: self.elapsed,
             race_clock: self.race_clock,
             clock_events,
             flow: flow_events,
@@ -479,7 +431,7 @@ impl Game {
         }
         if state_at_frame_start == State::Load {
             for index in 0..tick::SETTLE_SUBSTEPS[0] {
-                substeps.push(self.physics_substep(physics, None, None, index, rules));
+                substeps.push(self.physics_substep(physics, None, index, rules));
             }
             self.set_stage(self.stage.load_tick(tick::SETTLE_SUBSTEPS[0]), physics);
             // The countdown's state 10 sets the camera's mode 10, which starts the orbit (`M487680(10,1)`).
@@ -521,8 +473,8 @@ impl Game {
         rules.start();
     }
 
-    /// `Tic`'s driving case: each gated substep runs filter -> `Pack` -> payload, replay fire, then `StepForward(1)`
-    /// (0x48c500/0x48c910/0x48d130/0x47f420/0x5273a0).
+    /// `Tic`'s driving case: each substep runs filter -> NGP payload, replay fire, then `StepForward(1)`
+    /// (0x48c500/0x47f420/0x5273a0).
     fn drive_substeps(
         &mut self,
         tick_state: State,
@@ -536,30 +488,25 @@ impl Game {
             if input.help_call && self.help_offered() {
                 self.pending_flags |= CALL_FOR_HELP;
             }
-            let (count, gate) = self.gate.take(nsteps);
-            self.gate = gate;
-            for index in 0..count {
+            for index in 0..nsteps {
                 self.filter.set_speed(self.filter_speed);
                 let filtered = self.filter.tic(self.max_time_step);
-                let quantized = QuantizedControl::pack(&filtered);
-                let generated = quantized.car_control();
                 // `CReplayManager::ClsTick` (0x4996c0) ORs the sticky flags into the entry; `E19ClsScan` clears
                 // them once it is stored.
                 let replay = if index == 0 { input.replay_control } else { input.replay_tail.or(input.replay_control) };
                 let pending = std::mem::take(&mut self.pending_flags);
-                let control = match (replay, self.controls) {
-                    (None, ControlPath::Ngp) => {
+                let control = match replay {
+                    None => {
                         let fired = Filtered { flags: filtered.flags | u32::from(pending), ..filtered };
                         CarControl::ngp(&fired, physics.drive_gear())
                     }
-                    (replay, _) => {
-                        let mut fired = replay.unwrap_or(quantized);
-                        fired.flags |= pending;
-                        fired.car_control()
+                    Some(mut entry) => {
+                        entry.flags |= pending;
+                        entry.car_control()
                     }
                 };
                 rules.before_step(&control);
-                substeps.push(self.physics_substep(physics, Some(control), Some(generated), index, rules));
+                substeps.push(self.physics_substep(physics, Some(control), index, rules));
             }
         }
     }
@@ -707,12 +654,7 @@ impl Game {
         self.stage = next;
     }
 
-    fn record_step(
-        &mut self,
-        sample: StepSample,
-        generated_control: Option<CarControl>,
-        control: Option<CarControl>,
-    ) -> SubstepEvent {
+    fn record_step(&mut self, sample: StepSample, control: Option<CarControl>) -> SubstepEvent {
         self.last_sample = Some(sample);
         if let Some(code) = sample.outside_assistance {
             self.race_clock = self.race_clock.outside_assistance(code);
@@ -725,21 +667,18 @@ impl Game {
             None => sample.notify_a_speed.abs(),
         };
         let distance = driveline::sample_x(&self.driveline_values, sample.driveline_parameter);
-        let checkpoint = distance.map(|x| {
+        if let Some(x) = distance {
             // `Record` is inside Vf6cx and observes the current elapsed time;
             // StepForward advances the clock only after this call returns.
-            let (keeper, checkpoint) = self.timekeeper.record(x, self.elapsed, self.max_time_step);
+            let (keeper, _) = self.timekeeper.record(x, self.elapsed, self.max_time_step);
             self.timekeeper = keeper;
-            checkpoint
-        });
+        }
         let pc53 = self.stage.state() != State::Load;
         self.elapsed = timing::advance_time(self.elapsed, self.max_time_step, pc53);
         SubstepEvent {
             stage: self.stage,
-            generated_control,
             control,
             distance,
-            checkpoint: checkpoint.flatten(),
             outside_assistance: sample.outside_assistance,
             retire: sample.retire,
         }
@@ -749,14 +688,13 @@ impl Game {
         &mut self,
         physics: &mut impl PhysicsStep,
         control: Option<CarControl>,
-        generated_control: Option<CarControl>,
         index: u32,
         rules: &mut impl ModeRules,
     ) -> SubstepEvent {
         let mut event = None;
         physics.step(control, index, &mut |sample| {
             assert!(event.is_none(), "PhysicsStep called its in-step callback more than once");
-            event = Some(self.record_step(sample, generated_control, control));
+            event = Some(self.record_step(sample, control));
         });
         let event = event.expect("PhysicsStep must call its in-step callback once");
         if let Some(sample) = self.last_sample {
