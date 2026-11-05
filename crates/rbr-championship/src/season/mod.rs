@@ -617,7 +617,9 @@ pub(crate) mod tests {
         assert_eq!(stores.teams[1].drivers, [PLAYER_ID as u32, 3]);
     }
 
-    pub(crate) fn retail(data: &rbr_formats::data::Data) -> (rbr_formats::ai_ini::Master, Roster, Vec<season_dat::Rally>, weather::Season) {
+    pub(crate) fn retail(
+        data: &rbr_formats::data::Data,
+    ) -> (rbr_formats::ai_ini::Master, Roster, Vec<season_dat::Rally>, weather::Season) {
         let (master, roster) = load_ai(data).unwrap();
         let rallies = season_dat::parse(&std::fs::read(data.resolve("Root/season.dat").unwrap()).unwrap()).unwrap();
         (master, roster, rallies, weather::Season::load(data).unwrap())

@@ -83,6 +83,8 @@ pub struct EventConfig {
     pub class: String,
     /// The player's car (the catalog car's key).
     pub car: String,
+    /// The team whose service crew works on the player's car (the roster's team index; see [`crate::team`]).
+    pub team: u8,
     pub length: Length,
     pub pool: StagePool,
     pub surfaces: Surfaces,
@@ -121,6 +123,7 @@ impl Preset {
         let base = EventConfig {
             class: class.to_owned(),
             car: car.to_owned(),
+            team: 0,
             length: Length::Rally { stages: 6 },
             pool: StagePool::All,
             surfaces: Surfaces::Only(Surface::Gravel),

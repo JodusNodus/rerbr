@@ -19,3 +19,5 @@ pub mod rally;
 pub mod road;
 pub mod seed;
 pub mod service;
+pub mod team;
+pub mod track;
