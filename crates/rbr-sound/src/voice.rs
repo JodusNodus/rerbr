@@ -49,6 +49,8 @@ pub enum Shot {
     /// `CAR::SQUEEKS Sqe1-18` (`CTireSnd::M7700` 0x4d7700) and `CAR::SUSPENSION Sus1-4` (`M77c0` 0x4d77c0).
     Squeak(usize),
     Bottoming(usize),
+    /// Ours: a tyre running into a puddle (`tyre::Water`), one of the embedded splashes (`data::CarBank::splashes`).
+    Splash(usize),
     /// `CAR::DRIVESHAFT DS1-13` (`CTireSnd::M7590` 0x4d7590), by index.
     DriveShaft(usize),
     /// `CAR::EXHAUST Pop1-11` (`CCarSound::Mf280` 0x4af280), `CARn::EXHAUSTNEW Pop1-11` (`Mf180` 0x4af180) and
@@ -73,8 +75,11 @@ pub enum Shot {
 pub enum WheelLoop {
     /// `CAR::RUMBLE Rumble` (`M6750` 0x4d6750), in the car only.
     Rumble,
-    /// `TIRE::SURFACES SkidWater`, the splash (`M5fd0`, from `M6560`'s `CSigTireParticles` +0x98).
+    /// `TIRE::SURFACES SkidWater`, the splash (`M5fd0`, from `M6560`'s `CSigTireParticles` +0x98); ours, also the
+    /// swish in a puddle (`tyre::Water`).
     Wetness,
+    /// Ours: the wet road's tyre roar (`tyre::Water`, `data::CarBank::wet_road`).
+    Hiss,
 }
 
 /// How a one-shot treats the last one of its kind still playing.

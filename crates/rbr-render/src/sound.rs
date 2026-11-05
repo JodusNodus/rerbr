@@ -14,6 +14,8 @@ pub use rbr_sound::{Events, Player, Scene, Sky};
 use crate::camera::Lens;
 use crate::characters::scripted::Event;
 use crate::hud::school::{self, State as SchoolState};
+use crate::particles::wheel_spray::{self, ground::Kind};
+use crate::particles::Particles;
 use crate::roadside::Roadside;
 
 /// The `Cars/Cars.ini` index of the car in folder `name` (`COROLLA`), or `None`.
@@ -105,6 +107,18 @@ pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool, roadside: O
         roadside,
         ..Scene::default()
     }
+}
+
+/// Each wheel's water for the sound (`rbr_sound::tyre::Water`, ours) from the particles' last frame: the puddle depth
+/// the spray's plume takes ([`wheel_spray::puddle`]), whether it is wet tarmac's film, the ground's wetness and whether
+/// it is loose.
+pub fn water(particles: &Particles) -> [rbr_sound::tyre::Water; 4] {
+    particles.wheel_water().map(|w| rbr_sound::tyre::Water {
+        puddle: wheel_spray::puddle(w.standing),
+        wet: w.ground.wet,
+        loose: matches!(w.ground.kind, Kind::Gravel | Kind::Dirt | Kind::Grass),
+        film: w.film,
+    })
 }
 
 /// The car's roadside `sides` (left, right as the car facing `forward` has them) as a listener whose right is
