@@ -299,7 +299,7 @@ pub fn stage_time(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::tests::*;
+    use crate::ai::fixtures::*;
 
     #[test]
     fn par_follows_the_level_and_the_wet() {

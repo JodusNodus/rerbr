@@ -30,6 +30,7 @@ same paths.
 | Renderer and visual systems | `notes/renderer.md` |
 | Sound | `notes/sound.md` |
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
+| Championship (ours): built rallies and seasons, pace model, field, standings, save | `notes/season.md` |
 | Cameras, HUD, launcher | `notes/cameras-hud-launcher.md` |
 | Harness, recordings, hybrid check, vectors, masks | `notes/verification.md`, `harness/README.md` |
 | Third-party references and licences | `notes/references/README.md` |
@@ -43,7 +44,7 @@ same paths.
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
-| `crates/rbr-championship` | Championship: season, AI field, rallies, service park, season save, on the flow's mode 3 |
+| `crates/rbr-season` | The championship (ours): built rallies and seasons on any installed stages; the 1.02 AI engine (`ai`), service park, field, tracks, standings, save |
 | `crates/rbr-school` | Rally school (experimental): lessons, filter bank, verdict, on `rbr_gameplay::mode` |
 | `crates/rbr-standalone` | The physics program (`--boot`, `--live`) |
 | `crates/rbr-render` | wgpu renderer and the driving window (`viewer`) |

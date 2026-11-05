@@ -15,6 +15,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   mapped.
 - **Gameplay loop:** done on the recorded drives (control payload, stage states, timing, time card), plus the
   championship, service park and saves.
+- **Championship (ours):** `crates/rbr-season` builds rallies and seasons from presets on any installed stage, with a
+  curvature pace model calibrated to the 1.02 AI's winning times, a fictional AI field, standings, points and a
+  text save ([season.md](season.md)).
 - **Gate matrix:** the NGP gate is drive2 attempt 5 (snow, Ford Focus RS WRC 06, RSF car 55), physics PASS
   84084/84084 (`harness/rsf_compare.py`), and `harness/matrix.py` (NGP playback-made pairs on NGP's four car slots).
   The 1.02 drives (4 hand-recorded, 35 playback-made) feed only the hybrid check and playback
@@ -55,7 +58,6 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Rally, service park, tyre and setup choice | done | original run: time-out message, NGP tyre rows; recce/shakedown |
 | G Championship season, AI, forecast, offers, trials | done | original run: a season golden, the original reading our save |
 | G Rally school | partial (experimental): all 17 lessons, demonstration, ride, speech, failure reasons, replay with Richard's ghost (ours) | an original school drive to check the judging, the ghost's timing and the brief's camera |
-| G Championship in its own crate on `rbr_gameplay::mode` | done: `rbr-championship`; no `ModeRules` hook needed (flow mode 3) | - |
 | G Unlocks, RB Challenge, hot seat | out | - |
 | Profiles and save files | done | which profile options the launcher shows (user) |
 | G Default setup, option selection | done | - |

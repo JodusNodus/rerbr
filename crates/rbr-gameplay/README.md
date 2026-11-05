@@ -29,7 +29,7 @@ The 1.02 gameplay loop around the physics step, pure and checked against the ori
 | `ghost` | Ghost car recording and playback |
 | `car_damage` | Damage carried between stages; part severity and repair, 1.02's and NGP's (`Rules`) |
 
-The championship (season, AI, service park, season save) is [`rbr-championship`](../rbr-championship).
+The championship (the built events, the AI, the service park, the event save) is [`rbr-season`](../rbr-season).
 
 ## Tests
 

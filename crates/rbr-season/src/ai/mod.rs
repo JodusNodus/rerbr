@@ -13,7 +13,7 @@
 //! the master object past the mistake table for skill sums outside 1-18 follows the object's layout
 //! ([`master_word`]), but a read before the object gives 0.
 
-use rbr_formats::ai_ini::{Car, Driver, Master};
+use rbr_formats::ai_ini::{Car, Driver, Master, Roster};
 use rbr_gameplay::crt::CrtRand;
 
 mod service;
@@ -21,6 +21,22 @@ mod stage;
 
 pub use service::{repair_cost, service, service_penalty, set_temperament, TeamCosts};
 pub use stage::{false_start_penalty, section_par, stage_time, track_par, Run, RunLog, FALSE_START_PENALTY};
+
+/// `ai.ini` and `aidrv.ini` from `Root/misc.rbz`.
+pub fn load_ai(data: &rbr_formats::data::Data) -> Result<(Master, Roster), String> {
+    use std::io::Read;
+    let misc = data.resolve("Root/misc.rbz").ok_or("Root/misc.rbz: not found")?;
+    let mut zip = rbr_formats::rbz::open(&misc).map_err(|e| format!("misc.rbz: {e}"))?;
+    let mut text = |name: &str| -> Result<String, String> {
+        let mut b = Vec::new();
+        zip.by_name(name).and_then(|mut f| Ok(f.read_to_end(&mut b)?)).map_err(|e| format!("misc.rbz/{name}: {e}"))?;
+        Ok(String::from_utf8_lossy(&b).into_owned())
+    };
+    let master = rbr_formats::ai_ini::parse_master(&text("Misc/ai/ai.ini")?).map_err(|e| format!("ai.ini: {e}"))?;
+    let roster =
+        rbr_formats::ai_ini::parse_roster(&text("Misc/ai/aidrv.ini")?).map_err(|e| format!("aidrv.ini: {e}"))?;
+    Ok((master, roster))
+}
 
 /// The CRT's `rand() % n` (signed `idiv`; `rand()` is never negative).
 fn rem(rng: &mut CrtRand, n: i32) -> u32 {
@@ -342,12 +358,13 @@ pub fn master_word(m: &Master, k: i64) -> i32 {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+/// Small fixtures for the tests here and in the launcher's fixture (a master, a track, a driver, a car, a team).
+#[doc(hidden)]
+pub mod fixtures {
     use super::*;
     use rbr_formats::ai_ini::{Accident, AccidentTable, MistakeType, Section, Team, Temperament, Track};
 
-    pub(crate) fn master() -> Master {
+    pub fn master() -> Master {
         let mut mistakes = [[0; 18]; 5];
         mistakes[2] = [30, 30, 29, 26, 23, 20, 17, 13, 10, 9, 7, 5, 3, 2, 1, 1, 1, 1];
         let acc = |k: i32| Accident {
@@ -389,12 +406,12 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn track() -> Track {
+    pub fn track() -> Track {
         let s = |par| Section { par, material: 0, checks: [(0, 3), (3, 2)], accident_table: 0 };
         Track { stage: 10, wet: 0, sections: [s(97.5), s(97.67), s(62.87)] }
     }
 
-    pub(crate) fn driver() -> DriverState {
+    pub fn driver() -> DriverState {
         DriverState::new(Driver {
             name: "Pablo Ramirez".into(),
             photo: 0,
@@ -410,11 +427,11 @@ pub(crate) mod tests {
         })
     }
 
-    pub(crate) fn car() -> CarState {
+    pub fn car() -> CarState {
         CarState::new(Car { name: "Citroen Saxo".into(), control: 5, power: 4, handling: 5, durability: 3 })
     }
 
-    pub(crate) fn team() -> Team {
+    pub fn team() -> Team {
         Team {
             name: "CoreDrive".into(),
             budget: 4,
@@ -428,6 +445,12 @@ pub(crate) mod tests {
             manager: "Estelle Gasparino".into(),
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::*;
+    use super::*;
 
     #[test]
     fn the_master_words_follow_the_object() {

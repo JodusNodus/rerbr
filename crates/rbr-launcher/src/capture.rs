@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 
 use futures_executor::block_on;
 
-use crate::car_browser::{Collection as CarCollection, Target};
+use crate::car_browser::Collection as CarCollection;
 use crate::pages::Page;
-use crate::rally_page::Shot;
 use crate::stage_browser::Collection;
 use crate::{preview, Form};
 
@@ -84,38 +83,8 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         form.setup.show_area(area);
         shot(&dir.join(format!("setup-{n}.png")), |ctx| form.ui(ctx))?;
     }
-    // The Championship page: no season (without and with a saved one), a rally's welcome, a wrecked car's end of the rally, a season after its first
-    // stage, a rally's results, between rallies, the season over, then (with the damage file's car) its service.
-    form.page = Page::Championship;
-    form.rally.screenshot_saved_season(false);
-    shot(&dir.join("championship-new.png"), |ctx| form.ui(ctx))?;
-    form.rally.screenshot_saved_season(true);
-    shot(&dir.join("championship-saved.png"), |ctx| form.ui(ctx))?;
-    form.rally.screenshot_season(&form.season, Shot::Welcome);
-    shot(&dir.join("championship-welcome.png"), |ctx| form.ui(ctx))?;
-    form.rally.screenshot_season(&form.season, Shot::Wrecked);
-    shot(&dir.join("championship-over.png"), |ctx| form.ui(ctx))?;
-    form.rally.screenshot_season(&form.season, Shot::Stage);
-    shot(&dir.join("championship.png"), |ctx| form.ui(ctx))?;
-    // A rally driven to its end (the page between rallies), and the season's end.
-    for (name, at) in [("championship-between", Shot::BetweenRallies), ("championship-season-over", Shot::SeasonOver)] {
-        form.rally.screenshot_season(&form.season, at);
-        shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
-    }
-    form.rally.screenshot_season(&form.season, Shot::Stage);
-    // Its car list open, and a season saved without an RSF car asking for one.
-    form.car_browser.open_on(Target::Season, form.season_pick, &form.favourite_cars, None);
-    shot(&dir.join("championship-cars.png"), |ctx| form.ui(ctx))?;
-    form.car_browser.open = false;
-    let seasons = std::mem::take(&mut form.season_cars);
-    shot(&dir.join("championship-no-car.png"), |ctx| form.ui(ctx))?;
-    form.season_cars = seasons;
-    if let Some(path) = rally_damage {
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let damage = rbr_gameplay::car_damage::CarriedDamage::from_bytes(&bytes).ok_or("not a damage file")?;
-        form.rally.screenshot_season(&form.season, Shot::Service(Box::new(damage)));
-        shot(&dir.join("service.png"), |ctx| form.ui(ctx))?;
-    }
+    // The Championship tab: the presets, the builder and an event's turns (with the damage file's car in its service).
+    crate::championship_page::shots(form, dir, rally_damage.as_deref())?;
     Ok(())
 }
 

@@ -1,0 +1,10 @@
+[package]
+name = "rbr-season"
+version = "0.1.0"
+edition = "2021"
+description = "The championship season (ours): built rallies and seasons on any installed stage, a field in the player's car class, its pace from the stages"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+rbr-formats = { path = "../rbr-formats" }
+rbr-gameplay = { path = "../rbr-gameplay" }
