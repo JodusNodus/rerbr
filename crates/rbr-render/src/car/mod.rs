@@ -34,7 +34,7 @@ use glam::{Mat4, Vec3};
 use rbr_formats::data::Data;
 use rbr_formats::ini::Section;
 use rbr_formats::sgc;
-use rbr_formats::{car_parts, cars};
+use rbr_formats::{car_parts, cars, rsf};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display, Formatter};
 use std::path::{Path, PathBuf};
@@ -193,6 +193,12 @@ impl std::error::Error for Error {}
 /// What loading a car drew and what it left out.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CarReport {
+    /// The car-parts light options applied for a night drive, by folder name.
+    pub night_options: Vec<String>,
+    /// Light groups left as installed at night, each with why.
+    pub night_skipped: Vec<String>,
+    /// Why the installed parts are kept instead at night, when they are.
+    pub night_veto: Option<String>,
     /// Model meshes drawn.
     pub meshes_drawn: usize,
     /// Model meshes not drawn, with the reason.
@@ -243,19 +249,31 @@ pub fn placement_at(pose: Option<Pose>) -> Mat4 {
 /// Loads car `name` (its `Cars.ini` folder, for example `XSARA`, matched ignoring case) from `data`
 /// (the install, with the 1.02 patch over it when set), with its model-space positions mapped by `placement`.
 pub fn load(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, part_for, true)
+    load_set(data, name, placement, part_for, true, false)
+}
+
+/// Loads car `name` for a stage drawn at night ([`crate::atmosphere::Atmosphere::night`]): its car-parts
+/// light options on (headlights, extra lights and pods), the way RSF's picker takes them over the model,
+/// in memory. A vetoed car, or one with no night option, loads as [`load`].
+pub fn load_night(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
+    load_set(data, name, placement, part_for, true, true)
 }
 
 /// Loads car `name`'s interior set (`i_*`) as [`load`] loads the exterior. `CHH_Car::Render` draws these instead of
 /// the exterior in the in-car views (the cockpit camera; rbr-recomp `notes/formats/sgc.md`, section 9).
 pub fn load_interior(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, interior_part_for, false)
+    load_set(data, name, placement, interior_part_for, false, false)
+}
+
+/// Loads car `name`'s interior set for a stage drawn at night, as [`load_night`] loads the exterior.
+pub fn load_interior_night(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
+    load_set(data, name, placement, interior_part_for, false, true)
 }
 
 /// Loads car `name`'s ghost set (`ghost_*`, one `GhostCar` mesh per car), which the ghost car is drawn with
 /// (`E09_LoadGhostCar` 0x466910). [`crate::ghost`] gives it the ghost's look.
 pub fn load_ghost(data: &Data, name: &str, placement: Mat4) -> Result<Car, Error> {
-    load_set(data, name, placement, ghost_part_for, false)
+    load_set(data, name, placement, ghost_part_for, false, false)
 }
 
 /// The file of `dos_path`'s name in the "lights on" car-parts option `option` ([`rbr_formats::rsf::headlights_on`]),
@@ -265,6 +283,48 @@ fn option_ini(option: &Path, dos_path: &str) -> Option<Vec<Section>> {
     rbr_formats::ini::parse(&String::from_utf8_lossy(&std::fs::read(path).ok()?)).ok()
 }
 
+/// The model's files with its night options over them.
+struct NightApplied {
+    parts: Vec<Section>,
+    settings: Vec<Section>,
+    applied: Vec<String>,
+    skipped: Vec<String>,
+    veto: Option<String>,
+}
+
+/// The model's car-parts night options over its `.ini` and `_settings.ini` (see [`rsf::night_options`]),
+/// in memory: the headlights' option, then each extra. Vetoed or option-less models, and unreadable or
+/// disagreeing options, keep the installed files.
+fn night_overlays(model: &Path, parts: Vec<Section>, settings: Vec<Section>) -> NightApplied {
+    let pick = rsf::night_options(model);
+    if pick.veto.is_none() && !pick.options().is_empty() {
+        let files = |dirs: &[PathBuf]| -> Result<Vec<rsf::OptionFiles>, String> {
+            dirs.iter().map(|dir| rsf::read_option_files(dir)).collect()
+        };
+        let merged = files(&pick.headlights)
+            .and_then(|heads| files(&pick.extras).map(|extras| (heads, extras)))
+            .and_then(|(heads, extras)| rsf::merge_night_options(&parts, &settings, &heads, &extras));
+        match merged {
+            Ok(merged) => {
+                let applied = pick.options().iter().map(|d| option_name(d)).collect();
+                let mut skipped = pick.skipped;
+                skipped.extend(merged.skipped);
+                return NightApplied { parts: merged.parts, settings: merged.settings, applied, skipped, veto: None };
+            }
+            Err(veto) => {
+                return NightApplied { parts, settings, applied: Vec::new(), skipped: pick.skipped, veto: Some(veto) };
+            }
+        }
+    }
+    let veto = pick.veto;
+    NightApplied { parts, settings, applied: Vec::new(), skipped: pick.skipped, veto }
+}
+
+/// An option folder's name for the load report.
+fn option_name(dir: &Path) -> String {
+    dir.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned()
+}
+
 /// The meshes `part` admits, each with its part section.
 fn load_set(
     data: &Data,
@@ -272,6 +332,7 @@ fn load_set(
     placement: Mat4,
     part: for<'a> fn(&str, &'a [Section]) -> Result<&'a Section, Skip>,
     exterior: bool,
+    night: bool,
 ) -> Result<Car, Error> {
     let entry = entry(data, name)?;
 
@@ -401,9 +462,26 @@ fn load_set(
         }
     }
     let (meshes, damage) = in_draw_order(groups).into_iter().unzip();
+    let settings_file = entry.ini_file.replace(".ini", "_settings.ini");
+    // At night the options' files stand in for the model's, in memory (the exterior and the interior sets
+    // alike); by day only the headlights' colour and points come from the "lights on" option, the
+    // installed parts staying.
+    let (parts, settings) = match (night, model_path.parent()) {
+        (true, Some(model)) => {
+            let settings = if exterior { read_ini(data, &settings_file)? } else { Vec::new() };
+            let applied = night_overlays(model, parts, settings);
+            report.night_options = applied.applied;
+            report.night_skipped = applied.skipped;
+            report.night_veto = applied.veto;
+            (applied.parts, Some(applied.settings))
+        }
+        _ => (parts, None),
+    };
     let lamp_points = if exterior {
-        let settings_file = entry.ini_file.replace(".ini", "_settings.ini");
-        let settings = read_ini(data, &settings_file)?;
+        let settings = match settings {
+            Some(settings) => settings,
+            None => read_ini(data, &settings_file)?,
+        };
         let on = model_path.parent().and_then(rbr_formats::rsf::headlights_on);
         let on_ini = |file: &str| on.as_deref().and_then(|on| option_ini(on, file)).unwrap_or_default();
         let beam = lights::headlight_colour(&on_ini(&settings_file));

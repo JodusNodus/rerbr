@@ -277,7 +277,12 @@ fn load_scene<'scope, 'env>(
                 match (&args.drive, &args.live) {
                     (None, None) => {
                         progress(Step::Car);
-                        let mut car = car::load(data, car_name, car::placement_at(stage.start)).map_err(error)?;
+                        let night = stage.atmosphere.night;
+                        let mut car = if night {
+                            car::load_night(data, car_name, car::placement_at(stage.start)).map_err(error)?
+                        } else {
+                            car::load(data, car_name, car::placement_at(stage.start)).map_err(error)?
+                        };
                         damage_static(&mut car, args);
                         report_car(&car.at_rest().add_to_stage(&mut stage));
                     }
@@ -299,7 +304,12 @@ fn load_scene<'scope, 'env>(
                         });
                         let probe = scope.spawn(|| StageProbe::load(data, name).map(std::sync::Arc::new));
                         progress(Step::Car);
-                        let mut car = car::load(data, car_name, car::placement_at(None)).map_err(error)?;
+                        let night = stage.atmosphere.night;
+                        let mut car = if night {
+                            car::load_night(data, car_name, car::placement_at(None)).map_err(error)?
+                        } else {
+                            car::load(data, car_name, car::placement_at(None)).map_err(error)?
+                        };
                         if args.enhance.cabin {
                             car.add_inner_glass();
                         }
@@ -730,9 +740,14 @@ fn add_interior(
     exterior: Option<&[Mesh]>,
     windscreen: bool,
 ) -> Result<Interior, String> {
-    let mut interior = car::load_interior(data, car_name, car::placement_at(None))
-        .map_err(|e| e.to_string())?
-        .after_textures_of(stage);
+    let night = stage.atmosphere.night;
+    let mut interior = if night {
+        car::load_interior_night(data, car_name, car::placement_at(None))
+    } else {
+        car::load_interior(data, car_name, car::placement_at(None))
+    }
+    .map_err(|e| e.to_string())?
+    .after_textures_of(stage);
     let sun_in = exterior
         .and_then(|exterior| car::cabin::bake(&mut interior.meshes, &interior.damage, exterior, &interior.textures));
     if let Some(sun_in) = &sun_in {
@@ -783,6 +798,15 @@ fn report_car(report: &CarReport) {
         report.missing_textures.len(),
         report.bad_triangles
     );
+    if !report.night_options.is_empty() {
+        eprintln!("car night options: {}", report.night_options.join(", "));
+    }
+    for skipped in &report.night_skipped {
+        eprintln!("car night option left out: {skipped}");
+    }
+    if let Some(veto) = &report.night_veto {
+        eprintln!("car night options kept installed: {veto}");
+    }
     for (name, reason) in &report.skipped {
         eprintln!("skipped {name}: {reason}");
     }
