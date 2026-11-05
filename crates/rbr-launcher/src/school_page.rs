@@ -484,9 +484,12 @@ mod tests {
         };
         let install = std::env::var_os("RBR_DATA").map(PathBuf::from).unwrap();
         let season = rbr_gameplay::weather::Season::load(&data).unwrap();
-        let catalog = crate::catalog::Catalog::scan(&install).unwrap();
+        // As the launcher loads it (`settings::form`): the school maps are not listed.
+        let mut catalog = crate::catalog::Catalog::scan(&install).unwrap();
+        catalog.hide_unlisted();
         for lesson in Lesson::all() {
             let map = lesson.map();
+            assert!(catalog.maps.iter().all(|m| m.number != map), "map {map} listed");
             let draws = Draws { row: None, wear: 0 };
             let (stage, weather) = catalog.stage_weather(&season, map, Preset::Good, draws).expect("good weather");
             assert_eq!(stage.name, format!("track-{map}_M"), "{lesson:?}");

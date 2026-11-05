@@ -1209,6 +1209,7 @@ mod tests {
         let catalog = || Catalog {
             cars: Vec::new(),
             all_cars: Vec::new(),
+            unlisted: Vec::new(),
             maps: vec![Map {
                 number: 54,
                 stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],

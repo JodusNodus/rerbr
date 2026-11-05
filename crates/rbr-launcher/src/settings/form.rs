@@ -48,7 +48,7 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     let here = paths.settings.parent().unwrap_or(Path::new(""));
     use_kept_ngp(&mut settings, here);
     let mut catalog = Catalog::scan(&paths.data)?;
-    catalog.maps.retain(catalog::is_listed);
+    catalog.hide_unlisted();
     let root = paths.game_root();
     catalog.set_community_stages(&root);
     catalog.set_community_cars(&paths.data, &root, &here.join(crate::car_packs::DIR));
@@ -394,6 +394,7 @@ mod tests {
         let catalog = Catalog {
             cars: vec![Car { name: "COROLLA".into(), ..Default::default() }],
             all_cars: Vec::new(),
+            unlisted: Vec::new(),
             maps: vec![catalog::Map {
                 number: 54,
                 stages: vec![catalog::Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],

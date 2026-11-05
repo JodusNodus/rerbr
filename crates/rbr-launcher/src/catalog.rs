@@ -335,6 +335,9 @@ pub struct Catalog {
     /// The retail cars and the RSF ones.
     pub all_cars: Vec<Car>,
     pub maps: Vec<Map>,
+    /// The retail maps the launcher does not list ([`Catalog::hide_unlisted`]): the rally school's, which the School
+    /// page starts, and the test maps.
+    pub unlisted: Vec<Map>,
 }
 
 impl Catalog {
@@ -374,7 +377,13 @@ impl Catalog {
                 Map { number, stages, origin: Origin::Retail }
             })
             .collect();
-        Ok(Catalog { cars: Vec::new(), all_cars: cars, maps })
+        Ok(Catalog { cars: Vec::new(), all_cars: cars, maps, unlisted: Vec::new() })
+    }
+
+    /// Moves the maps the launcher does not list ([`is_listed`]) out of `maps` into `unlisted`.
+    pub fn hide_unlisted(&mut self) {
+        let (listed, unlisted) = std::mem::take(&mut self.maps).into_iter().partition(is_listed);
+        (self.maps, self.unlisted) = (listed, unlisted);
     }
 
     /// Replaces the RSF stages by the RallySimFans stage folders of `root` (`<root>/Maps/<id>-<name>/`,
@@ -394,7 +403,7 @@ impl Catalog {
                     continue;
                 }
             };
-            if self.maps.iter().any(|m| m.number == stage.id) {
+            if self.maps.iter().chain(&self.unlisted).any(|m| m.number == stage.id) {
                 eprintln!("launcher: RSF stage {} has a retail map's number; left out", stage.id);
                 continue;
             }
@@ -402,7 +411,7 @@ impl Catalog {
                 stage.variants.iter().map(|&l| Stage { name: stage.stage(l), map: stage.id, letter: l }).collect();
             self.maps.push(Map { number: stage.id, stages, origin: Origin::Community(stage) });
         }
-        let taken: Vec<u32> = self.maps.iter().map(|m| m.number).collect();
+        let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
     }
 
@@ -444,9 +453,9 @@ impl Catalog {
         self.cars = ngp_offered(&self.all_cars, ngp_cars);
     }
 
-    /// The installed map with `number`.
+    /// The installed map with `number`, listed or not.
     pub fn map(&self, number: u32) -> Option<&Map> {
-        self.maps.iter().find(|m| m.number == number)
+        self.maps.iter().chain(&self.unlisted).find(|m| m.number == number)
     }
 
     /// The maps list's row of `number`.
