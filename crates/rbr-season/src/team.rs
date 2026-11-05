@@ -13,7 +13,7 @@ pub struct TeamOffer {
     /// The team's index in the roster, what `EventConfig::team` holds.
     pub index: u8,
     pub name: String,
-    /// The crew in words: its engineer, its mechanics and how fast it repairs against a standard crew.
+    /// The crew in words: its engineer, its mechanics and its repair times against a standard crew.
     pub crew: String,
 }
 
@@ -37,14 +37,12 @@ pub fn describe(crew: Crew) -> String {
         4 => "a strong engineer",
         _ => "an expert engineer",
     };
-    // Against the standard crew (the park's default): below 1 is faster.
+    // Against the standard crew (the park's default). Under NGP's rules a mechanic short doubles the time.
     let rel = factor(crew) / factor(Crew::default());
     let pace = if (rel - 1.0).abs() < 0.03 {
-        "repairs at the standard pace".to_owned()
-    } else if rel < 1.0 {
-        format!("repairs about {:.0} % faster than the standard crew", (1.0 - rel) * 100.0)
+        "standard repair times".to_owned()
     } else {
-        format!("repairs about {:.0} % slower than the standard crew", (rel - 1.0) * 100.0)
+        format!("repairs take {rel:.1}x the standard time")
     };
     format!("{engineer} and {} mechanics, {pace}", crew.b.max(0))
 }
@@ -65,11 +63,11 @@ mod tests {
 
     #[test]
     fn the_crew_is_described_against_the_standard() {
-        assert!(describe(Crew::default()).ends_with("repairs at the standard pace"));
+        assert!(describe(Crew::default()).ends_with("standard repair times"));
         let better = describe(Crew { a: 5, b: 9 });
-        assert!(better.contains("expert engineer") && better.contains("faster"), "{better}");
+        assert!(better.contains("expert engineer") && better.contains("0.8x"), "{better}");
         let worse = describe(Crew { a: 1, b: 4 });
-        assert!(worse.contains("rookie") && worse.contains("slower"), "{worse}");
+        assert!(worse.contains("rookie") && worse.contains("x the standard time"), "{worse}");
     }
 
     #[test]
@@ -86,3 +84,4 @@ mod tests {
         assert_eq!(crew_of(&roster.teams[1]), Crew { a: 5, b: 5 });
     }
 }
+
