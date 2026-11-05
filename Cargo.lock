@@ -2371,6 +2371,7 @@ dependencies = [
 name = "rbr-events"
 version = "0.1.0"
 dependencies = [
+ "rbr-championship",
  "rbr-formats",
  "rbr-gameplay",
 ]

@@ -8,3 +8,6 @@ license = "GPL-3.0-or-later"
 [dependencies]
 rbr-formats = { path = "../rbr-formats" }
 rbr-gameplay = { path = "../rbr-gameplay" }
+
+[dev-dependencies]
+rbr-championship = { path = "../rbr-championship" }
