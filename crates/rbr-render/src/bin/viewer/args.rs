@@ -110,6 +110,8 @@ pub struct Args {
     pub pacing: bool,
     /// `--fullscreen`: the window fills its monitor, borderless (`--size` is then the size it leaves fullscreen at).
     pub fullscreen: bool,
+    /// `--hdr`: the window shows the highlights past the display's SDR white where it can (`present::surface_colour`).
+    pub hdr: bool,
     /// `--title`: what the loading screen names (the launcher's stage and car), else the stage's file name.
     pub title: Option<String>,
     /// `--no-particles` clears it.
@@ -239,7 +241,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --title TEXT  --pause-menu MOVES  --debug-view MODE
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
-              --present mailbox|fifo|immediate  --max-fps N  --pacing on|off
+              --present mailbox|fifo|immediate  --max-fps N  --pacing on|off  --hdr
               --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
@@ -317,6 +319,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut wipers = glass::model::Switch::default();
     let mut look_back = false;
     let mut fullscreen = false;
+    let mut hdr = false;
     let mut title = None;
     let mut pause_menu = None;
     let mut hud = HudOptions { show: true, mph: false, fps: false, stack: 0, parts: Parts::default() };
@@ -344,6 +347,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             }
             "--look-back" => look_back = true,
             "--fullscreen" => fullscreen = true,
+            "--hdr" => hdr = true,
             "--title" => title = Some(args.next().ok_or("--title needs a text")?),
             "--pause-menu" => {
                 let value = args.next().ok_or("--pause-menu needs moves (u, d, l, r, e, b) or -")?;
@@ -736,6 +740,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         max_fps,
         pacing,
         fullscreen,
+        hdr,
         title,
         particles,
         sound,
@@ -924,6 +929,7 @@ mod tests {
         let args = parse("track-54_E").unwrap();
         assert_eq!((args.present, args.max_fps, args.fullscreen), (Present::default(), None, false));
         assert!(parse("--fullscreen").unwrap().fullscreen);
+        assert!(!args.hdr && parse("--hdr").unwrap().hdr);
         let args = parse("--present immediate --max-fps 144").unwrap();
         assert_eq!((args.present, args.max_fps), (Present::Immediate, Some(144.0)));
         for bad in ["--present vsync", "--present", "--max-fps 5", "--max-fps NaN", "--max-fps"] {

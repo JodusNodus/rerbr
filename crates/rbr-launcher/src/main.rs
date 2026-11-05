@@ -545,6 +545,8 @@ struct Form {
     max_fps: u32,
     /// The driving window fills the monitor (`viewer --fullscreen`); `size` applies when off.
     fullscreen: bool,
+    /// The driving window shows the highlights past an HDR display's SDR white (`viewer --hdr`).
+    hdr: bool,
     /// The viewer writes a performance log to the player's `logs` folder (`viewer --perf-log`).
     perf_log: bool,
     /// The Custom weather's start time (`viewer --clock`).

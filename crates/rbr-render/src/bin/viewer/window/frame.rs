@@ -356,6 +356,11 @@ impl App {
         let paused = self.paused + self.paused_at.map_or(Duration::ZERO, |at| at.elapsed());
         let elapsed = self.started.elapsed() - paused;
         running.renderer.set_time(elapsed.as_secs_f32());
+        // The headroom moves with the brightness and the display the window is on (on the main thread, as macOS asks).
+        if running.config.color_space.is_hdr() {
+            let headroom = running.surface.display_hdr_info(&running.gpu.adapter).tone_map_headroom();
+            running.renderer.set_headroom(headroom.unwrap_or(1.0));
+        }
         // The school demo shows no HUD of the player's car (start lamps, dials, times), only its hint.
         let live = self.scene.live.as_ref().filter(|_| demo_ride.is_none());
         running.renderer.set_start_clock(live.and_then(|l| l.hud_model.view().start_clock));

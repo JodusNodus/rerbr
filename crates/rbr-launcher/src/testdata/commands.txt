@@ -145,6 +145,7 @@ ultra
 immediate
 --mirrors
 1
+--hdr
 --title
 Tanner · Mitsubishi Lancer Evo IX N4
 --car-lock

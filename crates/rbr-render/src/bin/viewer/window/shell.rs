@@ -169,7 +169,7 @@ impl Shell {
         let surface = instance.create_surface(window.clone())?;
         let gpu = renderer::request_gpu(&instance, Some(&surface))?;
         let capabilities = surface.get_capabilities(&gpu.adapter);
-        let format = rbr_render::present::surface_format(&capabilities.formats);
+        let (format, color_space) = rbr_render::present::surface_colour(&capabilities, args.hdr);
         let size = window.inner_size();
         let present_mode = args.present.pick(&capabilities.present_modes);
         eprintln!("viewer: presenting with {present_mode:?} (asked for {})", args.present.name());
@@ -186,13 +186,21 @@ impl Shell {
                 capabilities.alpha_modes[0]
             },
             view_formats: vec![],
-            color_space: wgpu::SurfaceColorSpace::Auto,
+            color_space,
             // Two frames queued: the frame waits for its texture before it reads the input ([`App::frame`]), so the
             // second adds no lag, and with one the frame missed every other refresh once the wait came first (27
             // frames a second against 60 at 4K on cachy, `RBR_LATENCY`).
             desired_maximum_frame_latency: 2,
         };
         let stale = !rbr_render::present::configure(&surface, &gpu.device, &config);
+        if args.hdr {
+            if color_space.is_hdr() {
+                let headroom = surface.display_hdr_info(&gpu.adapter).headroom;
+                eprintln!("viewer: HDR in {color_space:?}, display headroom {headroom:?}");
+            } else {
+                eprintln!("viewer: HDR asked for, but the display has no extended-range sRGB: drawing SDR");
+            }
+        }
         let overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         Ok(Shell { window, surface, config, stale, gpu, overlay })
     }

@@ -137,6 +137,8 @@ pub struct Settings {
     pub mirrors: Option<Rate>,
     /// The driving window fills the monitor (`viewer --fullscreen`).
     pub fullscreen: Option<bool>,
+    /// The driving window shows the highlights past an HDR display's SDR white (`viewer --hdr`).
+    pub hdr: Option<bool>,
     /// The viewer writes a performance log (`viewer --perf-log`, in the player's `logs` folder).
     pub perf_log: Option<bool>,
     /// The Custom weather's start time (`viewer --clock`).
@@ -416,6 +418,7 @@ impl Settings {
             max_fps: launcher.number("max_fps").filter(|v| FRAME_CAPS.contains(v)),
             mirrors: launcher.parsed("mirrors", Rate::parse),
             fullscreen: launcher.on_off("fullscreen"),
+            hdr: launcher.on_off("hdr"),
             perf_log: launcher.on_off("perf_log"),
             start_time: launcher.parsed("start_time", StartTime::parse),
             callout_distance: launcher.number("callout_distance"),
@@ -505,6 +508,7 @@ impl Settings {
             ("max_fps", self.max_fps.map(|v| v.to_string())),
             ("mirrors", self.mirrors.map(Rate::name)),
             ("fullscreen", on_off_text(self.fullscreen)),
+            ("hdr", on_off_text(self.hdr)),
             ("start_time", self.start_time.map(StartTime::to_text)),
             ("perf_log", on_off_text(self.perf_log)),
             ("lighting", on_off_text(self.lighting)),
@@ -605,6 +609,7 @@ mod tests {
             max_fps: Some(120),
             mirrors: Some(Rate::Every(3)),
             fullscreen: Some(false),
+            hdr: Some(true),
             perf_log: Some(true),
             start_time: Some(StartTime::Baked),
             callout_distance: Some(0.5),
@@ -861,6 +866,7 @@ mod tests {
                 "max_fps = 120\n",
                 "mirrors = 3\n",
                 "fullscreen = off\n",
+                "hdr = on\n",
                 "start_time = baked\n",
                 "perf_log = on\n",
                 "lighting = off\n",

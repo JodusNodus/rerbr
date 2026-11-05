@@ -377,6 +377,13 @@ impl Form {
             combo(ui, "frame cap", QUALITY_FIELD, &mut self.max_fps, &FRAME_CAPS, cap_label).on_hover_text(tip);
             ui.end_row();
 
+            let tip = "On an HDR display (a Mac's extended dynamic range) the sun, the lamps and their glints show \
+                       brighter than its white, as far as it reaches at its brightness; the rest of the frame and the \
+                       HUD as without. Elsewhere the window draws as without it";
+            ui.label("HDR").on_hover_text(tip);
+            ui.checkbox(&mut self.hdr, "highlights past the display's white").on_hover_text(tip);
+            ui.end_row();
+
             ui.label("FPS counter");
             ui.checkbox(&mut self.hud.fps, "top-right corner");
             ui.end_row();

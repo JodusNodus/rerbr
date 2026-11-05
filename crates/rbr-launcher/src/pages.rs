@@ -368,6 +368,7 @@ impl Form {
             self.present,
             self.max_fps,
             self.fullscreen,
+            self.hdr,
             self.perf_log,
             self.start_time,
         );
@@ -551,6 +552,7 @@ impl Form {
                     self.present,
                     self.max_fps,
                     self.fullscreen,
+                    self.hdr,
                     self.perf_log,
                     self.start_time,
                 )

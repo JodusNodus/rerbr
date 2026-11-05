@@ -27,7 +27,8 @@ struct Meter {
     cabin_depth: f32,
     // The renderer's units per cd/m2 (`post::Conditions::pre_exposure`).
     pre_exposure: f32,
-    // The weather's grade (`post::Conditions`): `x` the metered exposure's scale, `y` the saturation's.
+    // The weather's grade (`post::Conditions`): `x` the metered exposure's scale, `y` the saturation's; `z` the
+    // sharpening (`sharpened`); `w` an HDR display's headroom (`HDR`).
     grade: vec4<f32>,
 }
 
@@ -45,6 +46,10 @@ override CABIN: bool = false;
 // scene, else the cabin's debug grey, already in display grey. A pipeline override, so the composite without it is
 // built as before.
 override DEBUG_VIEW: u32 = 0u;
+// An HDR display (`present::surface_colour`, `viewer --hdr`): the target takes extended-range sRGB, 1 for the display's
+// SDR white and above it up to its headroom (`Meter::headroom`, `grade.w`), which the tone curve's peak rises to
+// (`display`). A pipeline override, so the composite for an SDR display is built as before.
+override HDR: bool = false;
 
 // `cs_histogram`'s and `cs_meter`'s, with the scene in `source`. `cs_meter` empties the histogram for the next frame.
 // `meter` is the composite's too.
@@ -223,25 +228,50 @@ fn from_ictcp(i: vec3<f32>) -> vec3<f32> {
     return max(pq_light(i * FROM_ICTCP) * FROM_LMS, vec3<f32>(0.0));
 }
 
-fn gt7_curve(x: vec3<f32>) -> vec3<f32> {
+fn gt7_curve(x: vec3<f32>, peak: f32) -> vec3<f32> {
     let k = (GT7_LINEAR - 1.0) / (GT7_ALPHA - 1.0);
     let v = max(x, vec3<f32>(0.0));
     let toe = GT7_MID * pow(v / GT7_MID, vec3<f32>(GT7_TOE));
     let below = mix(toe, v, smoothstep(vec3<f32>(0.0), vec3<f32>(GT7_MID), v));
-    let shoulder = GT7_PEAK * (GT7_LINEAR + k) - GT7_PEAK * k * exp((GT7_LINEAR - v / GT7_PEAK) / k);
-    return select(shoulder, below, v < vec3<f32>(GT7_LINEAR * GT7_PEAK));
+    let shoulder = peak * (GT7_LINEAR + k) - peak * k * exp((GT7_LINEAR - v / peak) / k);
+    return select(shoulder, below, v < vec3<f32>(GT7_LINEAR * peak));
+}
+
+// What the display shows (`display`): the tone curve's peak, frame buffer units, and its ICtCp intensity; the brightest
+// display value over the SDR white, and sRGB-coded.
+struct Display {
+    peak: f32,
+    intensity: f32,
+    headroom: f32,
+    top: f32,
+}
+
+// An SDR display shows up to the paper white. An HDR display (`HDR`) shows the paper white at its SDR white, as GT7's
+// SDR mode, and its highlights up to its headroom: the curve peaks there, as GT7's HDR mode peaks at the display's
+// luminance, so the mid-tones stay as on an SDR display.
+fn display() -> Display {
+    if (!HDR) {
+        return Display(GT7_PEAK, GT7_PEAK_INTENSITY, 1.0, 1.0);
+    }
+    let headroom = max(meter.grade.w, 1.0);
+    let peak = GT7_PEAK * headroom;
+    return Display(peak, pq(vec3<f32>(peak)).x, headroom, srgb(vec3<f32>(headroom)).x);
+}
+
+// The sRGB transfer function, continued past 1 for an HDR display's extended-range sRGB.
+fn srgb(shown: vec3<f32>) -> vec3<f32> {
+    return select(1.055 * pow(shown, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * shown, shown <= vec3<f32>(0.0031308));
 }
 
 // Display values for the exposed linear Rec.709 light: the mapped light over the paper white, sRGB-coded.
-fn gt7(linear: vec3<f32>) -> vec3<f32> {
+fn gt7(linear: vec3<f32>, d: Display) -> vec3<f32> {
     let rgb = linear * REC709_TO_2020;
-    let skewed = gt7_curve(rgb);
+    let skewed = gt7_curve(rgb, d.peak);
     let ucs = ictcp(rgb);
-    let chroma = 1.0 - smoothstep(GT7_FADE.x, GT7_FADE.y, ucs.x / GT7_PEAK_INTENSITY);
+    let chroma = 1.0 - smoothstep(GT7_FADE.x, GT7_FADE.y, ucs.x / d.intensity);
     let scaled = from_ictcp(vec3<f32>(ictcp(skewed).x, ucs.yz * chroma));
-    let mapped = min(mix(skewed, scaled, GT7_BLEND), vec3<f32>(GT7_PEAK)) / GT7_PEAK;
-    let shown = clamp(mapped * REC2020_TO_709, vec3<f32>(0.0), vec3<f32>(1.0));
-    return select(1.055 * pow(shown, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * shown, shown <= vec3<f32>(0.0031308));
+    let mapped = min(mix(skewed, scaled, GT7_BLEND), vec3<f32>(d.peak)) / GT7_PEAK;
+    return srgb(clamp(mapped * REC2020_TO_709, vec3<f32>(0.0), vec3<f32>(d.headroom)));
 }
 
 struct Out {
@@ -547,7 +577,8 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     // Local exposure (`LOCAL_FROM`).
     let broad = log2(max(bloomed.a / LEVELS * exposed, 1e-9) / KEY);
     let linear = max(lit * exposed * exp2(-LOCAL_GIVE * max(broad - LOCAL_FROM, 0.0)), vec3<f32>(0.0));
-    let c = gt7(linear);
+    let d = display();
+    let c = gt7(linear, d);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-    return vec4<f32>(clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    return vec4<f32>(clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(d.top)), 1.0);
 }

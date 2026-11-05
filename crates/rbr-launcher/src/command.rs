@@ -685,6 +685,7 @@ impl Form {
         let max_fps = (self.max_fps > 0).then(|| ["--max-fps".to_owned(), self.max_fps.to_string()]);
         let mirrors = ["--mirrors".to_owned(), self.graphics.mirrors.name()];
         let fullscreen = self.fullscreen.then(|| "--fullscreen".to_owned());
+        let hdr = self.hdr.then(|| "--hdr".to_owned());
         let perf_log = perf_log_args(self.perf_log, &self.logs_dir());
         let upscale = (self.upscale_textures && self.upscaler)
             .then(|| ["--upscale-textures".to_owned(), self.upscaler_dir().display().to_string()]);
@@ -709,6 +710,7 @@ impl Form {
             .chain(max_fps.into_iter().flatten())
             .chain(mirrors)
             .chain(fullscreen)
+            .chain(hdr)
             .chain(perf_log)
             .chain(upscale.into_iter().flatten())
             .chain(title)
@@ -875,7 +877,7 @@ mod tests {
              size = 1920x1080\nfov = 72.5\nchase_fov = 80\nvolume = 0.75\ncodriver = off\nhud = off\nunits = mph\nfps = on\n\
              pace_stack = 2\npace_3d = on\nwipers = intermittent\ncallout_distance = 0.5\nmarker_threshold = 12.5\n\
              damage = realistic\nauto_gears = on\ngear_guard = off\nneutral_lock = on\nclutch_help = off\n\
-             ghost = best\nrender_scale = 75\nreflections = off\npresent = immediate\nfullscreen = off\nstart_time = dusk\n",
+             ghost = best\nrender_scale = 75\nreflections = off\npresent = immediate\nfullscreen = off\nhdr = on\nstart_time = dusk\n",
         ),
         (
             "random weather, advanced shifter",

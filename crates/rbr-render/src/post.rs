@@ -38,6 +38,8 @@ pub(crate) struct Post {
     metered: Option<f32>,
     /// The composite's sharpening strength (0: none).
     sharpen: f32,
+    /// An HDR display's headroom over its SDR white ([`Post::set_headroom`]).
+    headroom: f32,
     /// The resolved frame.
     pub(crate) scene: wgpu::TextureView,
     targets: Targets,
@@ -75,7 +77,8 @@ struct Meter {
     exposure: f32,
     saturation: f32,
     sharpen: f32,
-    pad: f32,
+    /// An HDR display's headroom (`HDR` in `post.wgsl`).
+    headroom: f32,
 }
 
 /// What the frame's conditions do to the post pass ([`conditions`]).
@@ -136,7 +139,7 @@ impl Post {
     /// The post pass into targets of `format`, for frames of `size` and the frame's `depth`; with
     /// `shafts`, the composite adds [`Post::shafts`]; with `sharpen`, it sharpens the scene by [`TAA_SHARPEN`] (the
     /// temporal resolve's blur); with `debug_view`, the composite passes the cabin's debug grey through (`DEBUG_VIEW`
-    /// in `post.wgsl`).
+    /// in `post.wgsl`). A target of [`HDR_FORMAT`](crate::present::HDR_FORMAT) is an HDR display's (`HDR`).
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -249,8 +252,13 @@ impl Post {
             &[],
         );
         let composite = [0.0, 1.0].map(|cabin| {
-            let constants =
-                [("SHAFTS", f64::from(u8::from(shafts))), ("CABIN", cabin), ("DEBUG_VIEW", f64::from(debug_view))];
+            let hdr = f64::from(u8::from(format == crate::present::HDR_FORMAT));
+            let constants = [
+                ("SHAFTS", f64::from(u8::from(shafts))),
+                ("CABIN", cabin),
+                ("DEBUG_VIEW", f64::from(debug_view)),
+                ("HDR", hdr),
+            ];
             pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
         });
         let meter = ["cs_histogram", "cs_meter"].map(|entry| {
@@ -299,6 +307,7 @@ impl Post {
             meter_settings,
             metered: None,
             sharpen: if sharpen { TAA_SHARPEN } else { 0.0 },
+            headroom: 1.0,
             scene,
             targets,
             shafts,
@@ -318,6 +327,11 @@ impl Post {
             size,
             self.shafts,
         );
+    }
+
+    /// An HDR display's headroom, the brightest it shows over its SDR white (1: none), which the tone curve peaks at.
+    pub(crate) fn set_headroom(&mut self, headroom: f32) {
+        self.headroom = headroom;
     }
 
     /// The light shafts the composite adds ([`crate::light_shafts::LightShafts::draw`] draws them).
@@ -347,7 +361,7 @@ impl Post {
             exposure: conditions.exposure,
             saturation: conditions.saturation,
             sharpen: self.sharpen,
-            pad: 0.0,
+            headroom: self.headroom,
         };
         queue.write_buffer(&self.meter_settings, 0, bytemuck::bytes_of(&settings));
         let t = &self.targets;

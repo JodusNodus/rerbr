@@ -82,6 +82,27 @@ pub fn surface_format(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
         .unwrap_or(formats[0])
 }
 
+/// An HDR display's format (`viewer --hdr`, [`surface_colour`]): a renderer drawing into it tone maps for the display's
+/// headroom (`HDR` in `post.wgsl`, [`Renderer::set_headroom`](crate::renderer::Renderer::set_headroom)).
+pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// The window's format and colour space: with `hdr` [`HDR_FORMAT`] in extended-range sRGB when the surface has it (the
+/// extended dynamic range on macOS; Vulkan where the driver and the compositor have it, DX12 not), else
+/// [`surface_format`]'s. Extended-range sRGB takes the frame's sRGB-coded values as on an SDR display, with 1 the
+/// display's SDR white and the highlights above it, so what else is drawn into the window (the HUD, the loading screen)
+/// shows as on an SDR display.
+pub fn surface_colour(
+    capabilities: &wgpu::SurfaceCapabilities,
+    hdr: bool,
+) -> (wgpu::TextureFormat, wgpu::SurfaceColorSpace) {
+    let extended = wgpu::SurfaceColorSpaces::EXTENDED_SRGB;
+    if hdr && capabilities.color_spaces(HDR_FORMAT).contains(extended) {
+        (HDR_FORMAT, wgpu::SurfaceColorSpace::ExtendedSrgb)
+    } else {
+        (surface_format(&capabilities.formats), wgpu::SurfaceColorSpace::Auto)
+    }
+}
+
 /// Configures `surface`; whether it took. wgpu 30 waits for the queue before it reconfigures a surface and refuses
 /// when another thread submitted meanwhile (the viewer's loading thread uploading the stage): the caller keeps the
 /// surface marked stale and tries again on a later frame, instead of the device's error handler ending the program.
@@ -154,5 +175,25 @@ mod tests {
         assert_eq!(surface_format(&[Bgra8UnormSrgb, Rgba8Snorm, Rgba8UnormSrgb, Rgba8Unorm]), Rgba8Unorm);
         assert_eq!(surface_format(&[Rgba16Unorm, Rgb10a2Unorm, Bgra8UnormSrgb]), Rgb10a2Unorm);
         assert_eq!(surface_format(&[Bgra8UnormSrgb]), Bgra8UnormSrgb);
+    }
+
+    #[test]
+    fn hdr_takes_extended_srgb_where_the_surface_has_it() {
+        use wgpu::{SurfaceColorSpace as Space, SurfaceColorSpaces as Spaces, TextureFormat::*};
+        let surface = |extended: Spaces| wgpu::SurfaceCapabilities {
+            formats: vec![Bgra8Unorm, Rgba16Float],
+            format_capabilities: vec![
+                wgpu::SurfaceFormatCapabilities { format: Bgra8Unorm, color_spaces: Spaces::SRGB },
+                wgpu::SurfaceFormatCapabilities { format: Rgba16Float, color_spaces: Spaces::SRGB | extended },
+            ],
+            ..Default::default()
+        };
+        // Metal.
+        let metal = surface(Spaces::EXTENDED_SRGB_LINEAR | Spaces::EXTENDED_SRGB);
+        assert_eq!(surface_colour(&metal, true), (Rgba16Float, Space::ExtendedSrgb));
+        assert_eq!(surface_colour(&metal, false), (Bgra8Unorm, Space::Auto));
+        // DX12, and Vulkan without HDR.
+        assert_eq!(surface_colour(&surface(Spaces::EXTENDED_SRGB_LINEAR), true), (Bgra8Unorm, Space::Auto));
+        assert_eq!(surface_colour(&surface(Spaces::empty()), true), (Bgra8Unorm, Space::Auto));
     }
 }

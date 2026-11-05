@@ -337,6 +337,12 @@ impl Renderer {
         }
     }
 
+    /// An HDR display's headroom over its SDR white (1: none; [`present::HDR_FORMAT`](crate::present::HDR_FORMAT)),
+    /// up to which the frame's highlights show.
+    pub fn set_headroom(&mut self, headroom: f32) {
+        self.post.set_headroom(headroom);
+    }
+
     /// Lights the start board's lamps by the race clock (`None`: no race, unlit; [`start_board::lamps`]).
     pub fn set_start_lamps(&mut self, race: Option<&crate::live::RaceHud>) {
         for (lamps, lit) in self.start_lamps.iter_mut().zip(start_board::lamps(race)) {
