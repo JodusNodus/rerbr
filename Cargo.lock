@@ -2368,6 +2368,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-events"
+version = "0.1.0"
+dependencies = [
+ "rbr-formats",
+ "rbr-gameplay",
+]
+
+[[package]]
 name = "rbr-formats"
 version = "0.1.0"
 dependencies = [
