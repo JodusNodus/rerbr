@@ -7,11 +7,8 @@
 // when every original byte matches (so the NoSSE exe or any other build is left
 // alone). Results go to RBRRecompHarness.log in the game folder.
 //
-// If RBRRecompTransplant.bin (written by harness/transplant.py) is in the game
-// folder, its functions, our compiled code rebound to the original's addresses,
-// replace the originals: each original entry jumps to a stub that counts the call
-// and continues into our copy. RBRRecompCalls.log holds the counts, rewritten every
-// 5 s (the game is usually closed without unloading plugins).
+// The transplant, count, shadow and capture modes of the C++ reconstruction live in
+// rbr-recomp's own copy of this plugin; this one keeps only the modes this repo runs.
 //
 // If RBRRecompAuto.txt exists ("map car weather tyre", the IRBRGame::StartGame
 // arguments), the stage is started from the main loop as soon as the game accepts
@@ -26,9 +23,6 @@
 // instead of the player, and the run is recorded too; harness/compare.py diffs two
 // recordings. If RBRRecompEarlyStop.txt names a reference recording, the run quits at
 // the first step that departs from it.
-// If RBRRecompTrace.on exists (its text: the calls to log per function), the shadow entries
-// run the original only and its inputs and outputs go to RBRRecompTrace-<tick>.bin
-// (harness/README.md at git 9c28c0b8, capture).
 #include "IPlugin.h"
 #include "IRBRGame.h"
 #include <stdio.h>
@@ -152,67 +146,9 @@ static void WriteCode(unsigned char* p, const void* src, unsigned n)
     FlushInstructionCache(GetCurrentProcess(), p, n);
 }
 
-struct TransplantFunc
-{
-    unsigned addr;
-    unsigned offset;
-    unsigned char check[8];
-    unsigned flags;       // bit 0: shadow-eligible leaf; bit 1: no copy of ours (count runs only)
-    unsigned trampoline;  // blob offset of the original's displaced prologue + jmp back
-    unsigned retKind;     // 0 void, 1 eax, 2 st0, 3 edx:eax, 4 unknown (eax, flagged)
-    // Bytes [lo, hi) around an input (source: pushad register order, then 8 + stack
-    // argument) that either copy may write: all a shadow call snapshots and restores.
-    // nspec ~0 (version 1 and 2 files): [-0x40, 0x800) around every input.
-    unsigned nspec;
-    struct
-    {
-        unsigned source;
-        short lo, hi;
-    } spec[16];
-};
-typedef char TransplantFuncIs160Bytes[sizeof(TransplantFunc) == 160 ? 1 : -1];  // ShadowEntry indexes them
-
-struct TransplantFix
-{
-    unsigned kind;
-    unsigned offset;
-    unsigned value;
-};
-
-static unsigned s_count;
-static volatile int s_shadowIndex = -1, s_shadowPhase;  // last shadowed call, for crash logs
-static volatile unsigned long s_shadowThread;          // the thread running it
-static unsigned char* s_blob;
-static unsigned s_blobSize;
-static const TransplantFunc* s_funcs;
-static volatile long* s_calls;
-
-static unsigned long __stdcall LogCalls(void*);
-
 static void Rel32(unsigned char* at, unsigned target)
 {
     *(unsigned*)at = target - ((unsigned)at + 4);
-}
-
-// First access violation / illegal instruction: log where, and which transplanted
-// function it is in (the one whose copy starts closest below EIP), then let the
-// game's own handling run.
-// " (our copy of <original> +off)" when addr is inside the blob; offsets of copied EH
-// pieces and constants attribute to the function copied just before them.
-static char* BlobAddress(char* out, unsigned addr)
-{
-    *out = 0;
-    if (addr - (unsigned)s_blob >= s_blobSize)
-        return out;
-    unsigned best = 0;
-    for (unsigned i = 0; i < s_count; i++)
-        if (!(s_funcs[i].flags & 2) && (unsigned)s_blob + s_funcs[i].offset <= addr
-            && (!best || s_funcs[i].offset > s_funcs[best - 1].offset))
-            best = i + 1;
-    if (best)
-        out += wsprintfA(out, " (our copy of %08x +%x)", s_funcs[best - 1].addr,
-            addr - ((unsigned)s_blob + s_funcs[best - 1].offset));
-    return out;
 }
 
 // The game folder as the plugin loads. The game moves the current directory into Maps\ while it
@@ -433,8 +369,6 @@ static long __stdcall OnException(void* info)
         return -1;                     // EXCEPTION_CONTINUE_EXECUTION
     }
     static int logged;  // how many logged (the first few: later ones may follow from the first)
-    if (s_shadowPhase == 2 && GetCurrentThreadId() == s_shadowThread)
-        return 0;  // our copy faulting under SafeInvoke (counted there)
     if (rec[0] == 0xC00000FD && !s_overflowEsp)  // stack overflow: no room to log here
     {
         s_overflowEip = *(unsigned*)(ctx + 0xb8);
@@ -452,595 +386,25 @@ static long __stdcall OnException(void* info)
     static char buf[2048];  // static: little stack left after a fault deep in a recursion
     char* p = buf;
     p += wsprintfA(p, "exception %08x at %08x (access %08x)", rec[0], eip, rec[0] == 0xC0000005 ? rec[6] : 0);
-    p = BlobAddress(p, eip);
-    if (s_shadowIndex >= 0)
-        p += wsprintfA(p, "\n  last shadowed call: %08x, phase %d (1 original, 2 ours, 3 compare/restore, 0 done)",
-            s_funcs[s_shadowIndex].addr, s_shadowPhase);
     p += wsprintfA(p, "\n  stack:");
     for (int k = 0; k < 24; k++)
     {
         unsigned v = ((unsigned*)esp)[k];
         p += wsprintfA(p, " %08x", v);
-        p = BlobAddress(p, v);  // return addresses into our copies
     }
     p += wsprintfA(p, "\n");
     AppendLog(buf, p - buf);
     return 0;
 }
 
-// ---- shadow comparison ----
-// A shadowed function runs twice on the same input: the original (through its
-// trampoline) and our copy. Registers, the 64 bytes of stack arguments and every
-// memory region a register or argument points at are snapshotted first and restored
-// between the runs; afterwards the return value, x87 st0, callee-saved registers,
-// bytes popped and the regions are compared, and the game continues with the
-// original's results. Only leaves (no calls, no globals) are shadowed, so running
-// twice has no side effects outside those regions.
-struct Regs
-{
-    unsigned edi, esi, ebp, esp, ebx, edx, ecx, eax;  // pushad order
-};
-
-struct ShadowFrame
-{
-    Regs regs;
-    unsigned index;
-    unsigned ret;
-    unsigned args[16];
-};
-
-struct ShadowStats
-{
-    unsigned calls;
-    unsigned mismatches;
-    unsigned fpuInput;  // calls that arrived with x87 input and ran the original only
-    char first[160];
-    unsigned in[7];     // eax, ecx, edx and the first 4 stack arguments of that call
-};
-
-struct Region
-{
-    unsigned char* at;
-    unsigned size;
-    unsigned base;   // the pointer value it was found through
-    const char* from;
-    unsigned snap;   // offset of the snapshot in s_snap
-};
-
-static ShadowStats* s_shadow;
-static Region s_regions[16];
-static unsigned s_nregions;
-static unsigned char s_snap[16 * 0x880], s_after[16 * 0x880];
-
-// Invoke() parameters and results (the physics thread is the only caller).
-static Regs s_invIn, s_invOut;
-static unsigned s_invArgs[16];
-static unsigned s_invTarget, s_invSaveEsp, s_invEspAfter, s_invHasSt0;
-static double s_invSt0;
-static unsigned char s_fenv[28];
-// SSE registers: LTCG callers keep values in the xmm registers a callee leaves alone, so
-// each run starts from the caller's xmm0-7 and the caller gets the original's back.
-static unsigned char s_xmmIn[128], s_invXmm[128], s_xmmRet[128];
-// ShadowEntry's way out
-static unsigned s_retN, s_retAddr, s_pushSt0;
-static double s_st0;
-
-static __declspec(naked) void Invoke()
-{
-    __asm
-    {
-        pushad
-        mov s_invSaveEsp, esp
-        sub esp, 64
-        mov ecx, 16
-        lea esi, s_invArgs
-        mov edi, esp
-        rep movsd
-        movups xmm0, s_xmmIn
-        movups xmm1, s_xmmIn + 16
-        movups xmm2, s_xmmIn + 32
-        movups xmm3, s_xmmIn + 48
-        movups xmm4, s_xmmIn + 64
-        movups xmm5, s_xmmIn + 80
-        movups xmm6, s_xmmIn + 96
-        movups xmm7, s_xmmIn + 112
-        mov ebx, s_invIn.ebx
-        mov esi, s_invIn.esi
-        mov edi, s_invIn.edi
-        mov ebp, s_invIn.ebp
-        mov ecx, s_invIn.ecx
-        mov edx, s_invIn.edx
-        mov eax, s_invIn.eax
-        call dword ptr [s_invTarget]
-        mov s_invOut.eax, eax
-        mov s_invOut.ebx, ebx
-        mov s_invOut.ecx, ecx
-        mov s_invOut.edx, edx
-        mov s_invOut.esi, esi
-        mov s_invOut.edi, edi
-        mov s_invOut.ebp, ebp
-        mov s_invEspAfter, esp
-        movups s_invXmm, xmm0
-        movups s_invXmm + 16, xmm1
-        movups s_invXmm + 32, xmm2
-        movups s_invXmm + 48, xmm3
-        movups s_invXmm + 64, xmm4
-        movups s_invXmm + 80, xmm5
-        movups s_invXmm + 96, xmm6
-        movups s_invXmm + 112, xmm7
-        fnstenv s_fenv
-        fldcw word ptr s_fenv       // fnstenv masked all exceptions; restore the control word
-        movzx eax, word ptr s_fenv + 4
-        shr eax, 11
-        and eax, 7                  // TOP
-        lea ecx, [eax + eax]
-        movzx edx, word ptr s_fenv + 8
-        shr edx, cl
-        and edx, 3                  // tag of st0
-        mov s_invHasSt0, 0
-        cmp edx, 3
-        je empty
-        fstp s_invSt0
-        mov s_invHasSt0, 1
-    empty:
-        mov esp, s_invSaveEsp
-        popad
-        ret
-    }
-}
-
-
 struct MemInfo  // MEMORY_BASIC_INFORMATION
 {
     unsigned base, allocBase, allocProtect, size, state, protect, type;
 };
 
-// Whether the region holding `at` is committed, writable, non-guard memory. Asked, not
-// probed: IsBadWritePtr writes to the pages (Wine's does `*p |= 0`), racing other threads.
-static int WritableRegion(unsigned at, MemInfo& mi)
-{
-    return VirtualQuery((void*)at, &mi, sizeof(mi)) && mi.state == 0x1000 /* MEM_COMMIT */
-        && (mi.protect & 0xcc) /* (EXECUTE_)READWRITE / WRITECOPY */ && !(mi.protect & 0x100) /* PAGE_GUARD */;
-}
-
-// The end of the writable memory from `at`, at most `to`.
-static unsigned WritableEnd(unsigned at, unsigned to)
-{
-    MemInfo mi;
-    while (at < to && WritableRegion(at, mi))
-        at = mi.base + mi.size;
-    return at < to ? at : to;
-}
-
-// Snapshot [v + from, v + to) when v is a pointer the function could write through.
-static void AddRegion(unsigned v, const char* name, int from, int to, unsigned argsAt, unsigned stackTop,
-    unsigned stackLimit)
-{
-    if (s_nregions == 16 || v < 0x10000 || v - (unsigned)s_blob < s_blobSize)
-        return;
-    if (v >= stackLimit && v < argsAt)
-        return;  // below the caller's arguments: the stub's and our own frames
-    unsigned lo = v + from, hi = v + to;
-    if (hi - lo > 0x880)
-        hi = lo + 0x880;
-    if (v >= argsAt && v < stackTop)
-    {
-        if (lo < argsAt)
-            lo = argsAt;  // never below the caller's arguments: that's our own frames
-        if (hi > stackTop)
-            hi = stackTop;
-    }
-    else
-    {
-        unsigned at = lo > v ? lo : v;  // the pointer, or the first byte written past it
-        MemInfo mi;
-        if (!WritableRegion(at, mi))
-            return;
-        if (lo < mi.base)
-            lo = mi.base;
-        hi = WritableEnd(at, hi);
-    }
-    if (hi <= lo || hi - lo > 0x880)
-        return;
-    Region& r = s_regions[s_nregions];
-    r.at = (unsigned char*)lo;
-    r.size = hi - lo;
-    r.base = v;
-    r.from = name;
-    r.snap = s_nregions * 0x880;
-    memcpy(s_snap + r.snap, r.at, r.size);
-    s_nregions++;
-}
-
-extern "C" void* __cdecl _exception_info();  // excpt.h's GetExceptionInformation()
-static unsigned s_faultCode, s_faultAt;
-
-static int FaultFilter(void* info)
-{
-    unsigned* rec = *(unsigned**)info;
-    s_faultCode = rec[0];
-    s_faultAt = rec[3];
-    return 1;  // EXCEPTION_EXECUTE_HANDLER
-}
-
-// Invoke() under SEH: 0 if the callee faulted (the x87 stack is reset then).
-static int SafeInvoke()
-{
-    __try
-    {
-        Invoke();
-    }
-    __except (FaultFilter(_exception_info()))
-    {
-        unsigned short cw = *(unsigned short*)s_fenv;
-        __asm
-        {
-            fnstcw cw
-            fninit
-            fldcw cw
-        }
-        return 0;
-    }
-    return 1;
-}
-
-static unsigned s_callMismatched;
-
-static const unsigned* s_callIn;  // the call's eax, ecx, edx, then its stack arguments
-
-static void Mismatch(ShadowStats& st, const char* what, unsigned a, unsigned b)
-{
-    if (s_callMismatched++)
-        return;  // count calls, not differing words
-    if (st.mismatches++ == 0)
-    {
-        _snprintf(st.first, sizeof(st.first) - 1, "%s: %08x vs %08x (as float %g vs %g)", what, a, b,
-            (double)*(float*)&a, (double)*(float*)&b);
-        memcpy(st.in, s_callIn, sizeof(st.in));
-    }
-}
-
-// Snapshot the memory around a call's inputs: the transplant specs, or the default window.
-static void SnapshotInputs(const ShadowFrame* f, const TransplantFunc& fn, int chaseState = 0)
-{
-    unsigned argsAt = (unsigned)f->args, stackTop, stackLimit;
-    __asm
-    {
-        mov eax, fs:[4]
-        mov stackTop, eax
-        mov eax, fs:[8]
-        mov stackLimit, eax
-    }
-    s_nregions = 0;
-    static const char* names[] = { "edi", "esi", "ebp", "esp", "ebx", "edx", "ecx", "eax" };
-    static const char* argn[] = { "arg0", "arg1", "arg2", "arg3", "arg4", "arg5", "arg6", "arg7" };
-    unsigned k;
-    if (fn.nspec > 16)
-    {
-        for (k = 0; k < 8; k++)
-            if (k != 3)
-                AddRegion((&f->regs.edi)[k], names[k], -0x40, 0x800, argsAt, stackTop, stackLimit);
-        for (k = 0; k < 8; k++)
-            AddRegion(f->args[k], argn[k], -0x40, 0x800, argsAt, stackTop, stackLimit);
-    }
-    for (k = 0; fn.nspec <= 16 && k < fn.nspec; k++)
-    {
-        unsigned src = fn.spec[k].source & 15;
-        AddRegion(src < 8 ? (&f->regs.edi)[src] : f->args[src - 8], src < 8 ? names[src] : argn[src - 8],
-            fn.spec[k].lo, fn.spec[k].hi, argsAt, stackTop, stackLimit);
-    }
-    if (chaseState)
-    {
-        // one hop through this+0x10 (CScratch's tyre parameters) and this+0x14 (m_state): the
-        // tyre methods read their sub-objects there
-        static const unsigned hops[] = { 0x10, 0x14 };
-        static const char* hopNames[] = { "+0x10", "+0x14" };
-        for (k = 0; k < 2; k++)
-        {
-            MemInfo mi;
-            if (WritableRegion(f->regs.ecx + hops[k], mi))
-                AddRegion(*(unsigned*)(f->regs.ecx + hops[k]), hopNames[k], -0x40, 0x800, argsAt, stackTop, stackLimit);
-        }
-    }
-}
-
-// ---- capture (RBRRecompTrace.on) ----
-// Shadow entries run only the original (no copy of ours). The first s_traceMax calls of each
-// function are written to RBRRecompTrace-<tick>.bin: the registers and first 16 stack arguments
-// on entry, the x87 control word and whether an x87 value came in, the registers, popped bytes,
-// st0 and control word on return, and each input region's bytes before and after the call.
-// Layout (u32 little-endian unless noted): header 'RBTR', 1, calls per function; then per call
-// 'CAL1', addr, index, cw_in, fpu_in, eax ebx ecx edx esi edi ebp, args[16], eax ebx ecx edx esi
-// edi ebp, popped, has_st0, st0 (f64), cw_out, nregions; per region base, at, size, name length,
-// name bytes, pre bytes, post bytes.
-static FILE* s_trace;
-static unsigned s_traceMax;
-static int s_capture;
-
-static void TraceWord(unsigned v)
-{
-    fwrite(&v, 4, 1, s_trace);
-}
-
-static void TraceRecord(const TransplantFunc& fn, const ShadowFrame* f, unsigned index, unsigned cwIn,
-    unsigned fpuIn, const Regs& a, unsigned popped, unsigned hasSt0, double st0, unsigned cwOut)
-{
-    TraceWord(0x314c4143);  // 'CAL1'
-    TraceWord(fn.addr);
-    TraceWord(index);
-    TraceWord(cwIn);
-    TraceWord(fpuIn);
-    TraceWord(f->regs.eax); TraceWord(f->regs.ebx); TraceWord(f->regs.ecx); TraceWord(f->regs.edx);
-    TraceWord(f->regs.esi); TraceWord(f->regs.edi); TraceWord(f->regs.ebp);
-    fwrite(f->args, 4, 16, s_trace);
-    TraceWord(a.eax); TraceWord(a.ebx); TraceWord(a.ecx); TraceWord(a.edx);
-    TraceWord(a.esi); TraceWord(a.edi); TraceWord(a.ebp);
-    TraceWord(popped);
-    TraceWord(hasSt0);
-    fwrite(&st0, 8, 1, s_trace);
-    TraceWord(cwOut);
-    TraceWord(s_nregions);
-    for (unsigned k = 0; k < s_nregions; k++)
-    {
-        const Region& r = s_regions[k];
-        TraceWord(r.base);
-        TraceWord((unsigned)r.at);
-        TraceWord(r.size);
-        TraceWord((unsigned)strlen(r.from));
-        fwrite(r.from, 1, strlen(r.from), s_trace);
-        fwrite(s_snap + r.snap, 1, r.size, s_trace);
-        fwrite(s_after + r.snap, 1, r.size, s_trace);
-    }
-    fflush(s_trace);
-}
-
-static void __cdecl CaptureC(ShadowFrame* f)
-{
-    const TransplantFunc& fn = s_funcs[f->index];
-    ShadowStats& st = s_shadow[f->index];
-    unsigned index = st.calls++;
-    unsigned short fpuTag;
-    __asm
-    {
-        fnstenv s_fenv
-        fldcw word ptr s_fenv
-        mov ax, word ptr s_fenv + 8
-        mov fpuTag, ax
-    }
-    unsigned cwIn = *(unsigned short*)s_fenv;
-    unsigned fpuIn = fpuTag != 0xffff;
-    unsigned logged = index < s_traceMax;
-    if (logged)
-    {
-        // the default window around every input: a port reads what it doesn't write
-        TransplantFunc wide = fn;
-        wide.nspec = ~0u;
-        SnapshotInputs(f, wide, 1);
-    }
-    unsigned args[16];
-    memcpy(args, f->args, sizeof(args));
-    s_invIn = f->regs;
-    memcpy(s_invArgs, args, sizeof(args));
-    s_invTarget = (unsigned)s_blob + fn.trampoline;
-    Invoke();
-    Regs a = s_invOut;
-    unsigned popped = s_invEspAfter - (s_invSaveEsp - 64);
-    unsigned hasSt0 = s_invHasSt0;
-    double st0 = s_invSt0;
-    unsigned cwOut = *(unsigned short*)s_fenv;
-    memcpy(s_xmmRet, s_invXmm, sizeof(s_xmmRet));
-    if (logged)
-    {
-        for (unsigned k = 0; k < s_nregions; k++)
-            memcpy(s_after + s_regions[k].snap, s_regions[k].at, s_regions[k].size);
-        TraceRecord(fn, f, index, cwIn, fpuIn, a, popped, hasSt0, st0, cwOut);
-    }
-    // the original's writes stay: nothing is restored
-    f->regs.eax = a.eax; f->regs.ebx = a.ebx; f->regs.ecx = a.ecx; f->regs.edx = a.edx;
-    f->regs.esi = a.esi; f->regs.edi = a.edi; f->regs.ebp = a.ebp;
-    s_retN = popped;
-    s_pushSt0 = hasSt0;
-    s_st0 = st0;
-}
-
-static void __cdecl ShadowC(ShadowFrame* f)
-{
-    if (s_capture)
-    {
-        CaptureC(f);
-        return;
-    }
-    const TransplantFunc& fn = s_funcs[f->index];
-    ShadowStats& st = s_shadow[f->index];
-    st.calls++;
-    s_callMismatched = 0;
-    s_shadowIndex = f->index;
-    s_shadowThread = GetCurrentThreadId();
-    s_shadowPhase = 1;
-    unsigned short fpuTag;
-    __asm
-    {
-        fnstenv s_fenv
-        fldcw word ptr s_fenv
-        mov ax, word ptr s_fenv + 8
-        mov fpuTag, ax
-    }
-    if (fpuTag != 0xffff)
-    {
-        // x87 input (an LTCG st0 hand-off): can't be replayed twice; run the original only
-        st.fpuInput++;
-        s_invIn = f->regs;
-        memcpy(s_invArgs, f->args, sizeof(s_invArgs));
-        s_invTarget = (unsigned)s_blob + fn.trampoline;
-        Invoke();
-        f->regs.eax = s_invOut.eax; f->regs.ebx = s_invOut.ebx; f->regs.ecx = s_invOut.ecx;
-        f->regs.edx = s_invOut.edx; f->regs.esi = s_invOut.esi; f->regs.edi = s_invOut.edi;
-        f->regs.ebp = s_invOut.ebp;
-        s_retN = s_invEspAfter - (s_invSaveEsp - 64);
-        memcpy(s_xmmRet, s_invXmm, sizeof(s_xmmRet));
-        s_pushSt0 = s_invHasSt0;
-        s_st0 = s_invSt0;
-        s_shadowPhase = 0;
-        return;
-    }
-    SnapshotInputs(f, fn);
-    unsigned k;
-    unsigned args[16];
-    memcpy(args, f->args, sizeof(args));
-    unsigned callIn[7] = { f->regs.eax, f->regs.ecx, f->regs.edx, args[0], args[1], args[2], args[3] };
-    s_callIn = callIn;
-
-    // A: the original
-    s_invIn = f->regs;
-    memcpy(s_invArgs, args, sizeof(args));
-    s_invTarget = (unsigned)s_blob + fn.trampoline;
-    Invoke();
-    Regs a = s_invOut;
-    unsigned aPopped = s_invEspAfter - (s_invSaveEsp - 64), aHas = s_invHasSt0;
-    double aSt0 = s_invSt0;
-    memcpy(s_xmmRet, s_invXmm, sizeof(s_xmmRet));
-    // capture every region before restoring any: regions can overlap
-    for (k = 0; k < s_nregions; k++)
-        memcpy(s_after + s_regions[k].snap, s_regions[k].at, s_regions[k].size);
-    for (k = 0; k < s_nregions; k++)
-        memcpy(s_regions[k].at, s_snap + s_regions[k].snap, s_regions[k].size);
-    memcpy(f->args, args, sizeof(args));
-
-    // B: ours
-    s_shadowPhase = 2;
-    s_invIn = f->regs;
-    memcpy(s_invArgs, args, sizeof(args));
-    s_invTarget = (unsigned)s_blob + fn.offset;
-    if (!SafeInvoke())
-    {
-        // our copy faulted: count it, put the original's results back and carry on
-        Mismatch(st, "ours crashed (exception code, address)", s_faultCode, s_faultAt);
-        for (k = 0; k < s_nregions; k++)
-            memcpy(s_regions[k].at, s_after + s_regions[k].snap, s_regions[k].size);
-        f->regs.eax = a.eax; f->regs.ebx = a.ebx; f->regs.ecx = a.ecx; f->regs.edx = a.edx;
-        f->regs.esi = a.esi; f->regs.edi = a.edi; f->regs.ebp = a.ebp;
-        s_retN = aPopped;
-        s_pushSt0 = aHas;
-        s_st0 = aSt0;
-        s_shadowPhase = 0;
-        return;
-    }
-    Regs& b = s_invOut;
-    s_shadowPhase = 3;
-    unsigned bPopped = s_invEspAfter - (s_invSaveEsp - 64);
-
-    if (aPopped != bPopped)
-        Mismatch(st, "bytes popped", aPopped, bPopped);
-    if ((fn.retKind == 1 || fn.retKind == 3) && a.eax != b.eax)
-        Mismatch(st, "eax", a.eax, b.eax);
-    if (fn.retKind == 4 && a.eax != b.eax)
-        Mismatch(st, "eax (return type unknown, may be void)", a.eax, b.eax);
-    if (fn.retKind == 3 && a.edx != b.edx)
-        Mismatch(st, "edx", a.edx, b.edx);
-    if (aHas != s_invHasSt0)
-        Mismatch(st, "st0 present", aHas, s_invHasSt0);
-    else if (aHas && memcmp(&aSt0, &s_invSt0, 8) != 0)
-    {
-        float fa = (float)aSt0, fb = (float)s_invSt0;
-        Mismatch(st, "st0", *(unsigned*)&fa, *(unsigned*)&fb);
-    }
-    if (a.ebx != b.ebx || a.esi != b.esi || a.edi != b.edi || a.ebp != b.ebp)
-        Mismatch(st, "callee-saved ebx", a.ebx, b.ebx);
-    for (k = 0; k < s_nregions; k++)
-    {
-        const Region& r = s_regions[k];
-        const unsigned char* pa = s_after + r.snap;
-        for (unsigned o = 0; o + 4 <= r.size; o += 4)
-            if (*(unsigned*)(pa + o) != *(unsigned*)(r.at + o))
-            {
-                char what[48];
-                _snprintf(what, sizeof(what) - 1, "memory [%s%+d]", r.from, (int)((unsigned)r.at + o - r.base));
-                what[sizeof(what) - 1] = 0;
-                Mismatch(st, what, *(unsigned*)(pa + o), *(unsigned*)(r.at + o));
-                break;
-            }
-    }
-
-    // continue with the original's results
-    for (k = 0; k < s_nregions; k++)
-        memcpy(s_regions[k].at, s_after + s_regions[k].snap, s_regions[k].size);
-    f->regs.eax = a.eax;
-    f->regs.ebx = a.ebx;
-    f->regs.ecx = a.ecx;
-    f->regs.edx = a.edx;
-    f->regs.esi = a.esi;
-    f->regs.edi = a.edi;
-    f->regs.ebp = a.ebp;
-    s_retN = aPopped;
-    s_pushSt0 = aHas;
-    s_st0 = aSt0;
-    s_shadowPhase = 0;
-}
-
-static volatile int s_inShadow;
-
-static __declspec(naked) void ShadowEntry()
-{
-    __asm
-    {
-        push eax
-        mov eax, 1
-        xchg eax, s_inShadow            // atomic: two threads can arrive at once
-        test eax, eax
-        pop eax
-        jz outer
-        // nested (another thread, or a callee re-entering): run the original directly
-        push eax
-        mov eax, [esp + 4]              // the stub's index
-        shl eax, 2
-        add eax, s_calls
-        lock inc dword ptr [eax]        // shadow runs count these in RBRRecompCalls.log
-        mov eax, [esp + 4]
-        imul eax, eax, 160              // sizeof(TransplantFunc)
-        add eax, s_funcs
-        mov eax, [eax + 20]             // trampoline offset
-        add eax, s_blob
-        mov [esp + 4], eax
-        pop eax
-        ret                             // to the trampoline; the caller's return address stays
-    outer:
-        movups s_xmmIn, xmm0
-        movups s_xmmIn + 16, xmm1
-        movups s_xmmIn + 32, xmm2
-        movups s_xmmIn + 48, xmm3
-        movups s_xmmIn + 64, xmm4
-        movups s_xmmIn + 80, xmm5
-        movups s_xmmIn + 96, xmm6
-        movups s_xmmIn + 112, xmm7
-        pushad
-        mov eax, esp
-        push eax
-        call ShadowC
-        add esp, 4
-        movups xmm0, s_xmmRet
-        movups xmm1, s_xmmRet + 16
-        movups xmm2, s_xmmRet + 32
-        movups xmm3, s_xmmRet + 48
-        movups xmm4, s_xmmRet + 64
-        movups xmm5, s_xmmRet + 80
-        movups xmm6, s_xmmRet + 96
-        movups xmm7, s_xmmRet + 112
-        mov s_inShadow, 0
-        popad
-        add esp, 4                  // the stub's pushed index
-        cmp s_pushSt0, 0
-        je noflt
-        fld s_st0
-    noflt:
-        pop s_retAddr
-        add esp, s_retN
-        jmp dword ptr [s_retAddr]
-    }
-}
-
-// ---- load-time snapshots (RBRRecompSnapAt.txt) ----
+// ---- load-time dumps (RBRRecompSnapAt.txt) ----
 // Each line of RBRRecompSnapAt.txt is `<address hex> <calls> [arg-offset hex min hex max hex]`:
-// when the transplant patches that function (its entry, in whatever mode the run uses), its first
+// every listed function is patched at load (its entry jumps to a per-function stub), and its first
 // <calls> calls matching the optional 32-bit value range at `[arg0 + offset]` are dumped:
 // RBRRecompSnapAt-<address>-<k>.bin at entry (version 2 header: the entry address as the step,
 // the stack from the entry esp - kSnapBelow to + kSnapAbove, the registers as the call sees them)
@@ -1061,14 +425,6 @@ static __declspec(align(16)) unsigned char s_snapAtFx[512];
 static unsigned SnapAtEntryAddress();  // the naked stubs, below
 static unsigned SnapAtRetAddress();
 static void EnsureSnapBuffers();
-
-static int SnapAtFind(unsigned addr)
-{
-    for (unsigned k = 0; k < s_snapAtCount; k++)
-        if (s_snapAtAddr[k] == addr)
-            return (int)k;
-    return -1;
-}
 
 static void LoadSnapAt(FILE* log)
 {
@@ -1092,200 +448,54 @@ static void LoadSnapAt(FILE* log)
     fprintf(log, "snapat: %u functions listed for load-time dumps\n", s_snapAtCount);
 }
 
-static void ApplyTransplant(FILE* log)
+// Patches every listed function for its dumps: the entry jumps to a per-function stub (the list
+// index and the trampoline below it), which SnapAtEntry runs before the function body. The
+// trampoline replays the entry's first 5 bytes, then jumps back behind the patch, so the run
+// stays the original's. Only list functions whose first instruction boundary is exactly 5 bytes
+// in; the displaced bytes go to the log with each patch, so a bad entry is diagnosable.
+static void StartSnapAtDumps(FILE* log)
 {
-    FILE* f = fopen("RBRRecompTransplant.bin", "rb");
-    if (!f)
-        return;
-    unsigned head[5];
-    if (fread(head, 4, 5, f) != 5 || head[0] != 0x54524252 /* 'RBRT' */ || head[1] < 1 || head[1] > 3)
-    {
-        fprintf(log, "transplant: bad header\n");
-        fclose(f);
-        return;
-    }
-    const unsigned nfunc = head[2], nfix = head[3], size = head[4];
-    TransplantFunc* funcs = new TransplantFunc[nfunc];
-    TransplantFix* fixes = new TransplantFix[nfix];
-    // blob, then one 12-byte stub per function, then the call counters
-    unsigned char* mem = (unsigned char*)VirtualAlloc(0, size + 16 * nfunc + 4 * nfunc + 32 * nfunc + 16,
-        0x3000 /* MEM_COMMIT | MEM_RESERVE */, 0x40 /* PAGE_EXECUTE_READWRITE */);
-    // version 1 entries stop after the check bytes (no shadow data), version 2 after retKind
-    const unsigned entry = head[1] == 1 ? 16 : head[1] == 2 ? 28 : sizeof(TransplantFunc);
-    unsigned i;
-    memset(funcs, 0, nfunc * sizeof(*funcs));
-    for (i = 0; mem && i < nfunc; i++)
-    {
-        if (fread(&funcs[i], entry, 1, f) != 1)
-            break;
-        if (head[1] < 3)
-            funcs[i].nspec = ~0u;
-    }
-    if (!mem || i != nfunc || fread(fixes, sizeof(*fixes), nfix, f) != nfix
-        || fread(mem, 1, size, f) != size)
-    {
-        fprintf(log, "transplant: truncated file\n");
-        fclose(f);
-        return;
-    }
-    fclose(f);
-    for (i = 0; i < nfunc; i++)
-    {
-        if (memcmp((const void*)funcs[i].addr, funcs[i].check, 8) != 0)
-        {
-            fprintf(log, "transplant: original bytes at %08x differ, nothing applied\n", funcs[i].addr);
-            return;
-        }
-    }
-    for (i = 0; i < nfix; i++)
-    {
-        unsigned char* at = mem + fixes[i].offset;
-        if (fixes[i].kind == 0)
-            *(unsigned*)at += (unsigned)mem;
-        else if (fixes[i].kind == 1)
-            Rel32(at, fixes[i].value);
-        else
-            Rel32(at, (unsigned)mem + fixes[i].value);
-    }
-    unsigned char* stubs = mem + ((size + 15) & ~15u);
-    volatile long* calls = (volatile long*)(stubs + 16 * nfunc);
-    unsigned char* snapStubs = (unsigned char*)(calls + nfunc);  // 32 bytes each, see SnapAtEntry
     LoadSnapAt(log);
-    if (s_snapAtCount)
-        EnsureSnapBuffers();
-    FILE* on = fopen("RBRRecompShadow.on", "rb");
-    if (on)
-        fclose(on);
-    // count run: every function with a trampoline is counted and runs the original
-    FILE* count = fopen("RBRRecompCount.on", "rb");
-    if (count)
+    if (!s_snapAtCount)
+        return;
+    EnsureSnapBuffers();
+    if (!s_snapStack)
     {
-        fclose(count);
-        on = 0;
+        fprintf(log, "snapat: no memory for the stack copies, off\n");
+        s_snapAtCount = 0;
+        return;
     }
-    // capture run (RBRRecompTrace.on, the calls to log per function): shadow entries, original only
-    FILE* trace = count ? 0 : fopen("RBRRecompTrace.on", "rb");
-    if (trace)
+    // one trampoline (5 displaced bytes + jmp back) and one 32-byte entry stub per function
+    unsigned char* mem = (unsigned char*)VirtualAlloc(0, 42 * s_snapAtCount,
+        0x3000 /* MEM_COMMIT | MEM_RESERVE */, 0x40 /* PAGE_EXECUTE_READWRITE */);
+    if (!mem)
     {
-        char text[16] = { 0 };
-        fread(text, 1, sizeof(text) - 1, trace);
-        fclose(trace);
-        s_traceMax = atoi(text) > 0 ? atoi(text) : 64;
-        char name[64];
-        sprintf(name, "RBRRecompTrace-%lu.bin", GetTickCount());
-        s_trace = fopen(name, "wb");
-        if (s_trace)
-        {
-            unsigned head[3] = { 0x52544252 /* 'RBTR' */, 1, s_traceMax };
-            fwrite(head, 4, 3, s_trace);
-            fflush(s_trace);
-            s_capture = 1;
-            fprintf(log, "capture: writing %s, the first %u calls of each eligible function\n", name, s_traceMax);
-        }
+        fprintf(log, "snapat: no memory for the entry stubs, off\n");
+        s_snapAtCount = 0;
+        return;
     }
-    // before any entry is patched: other threads may call in at once
-    s_count = nfunc;
-    s_funcs = funcs;
-    s_calls = calls;
-    s_blob = mem;
-    s_blobSize = size;
-    s_shadow = new ShadowStats[nfunc];
-    memset(s_shadow, 0, nfunc * sizeof(ShadowStats));
-    unsigned patched = 0;
-    for (i = 0; i < nfunc; i++)
+    for (unsigned k = 0; k < s_snapAtCount; k++)
     {
-        unsigned char* stub = stubs + 16 * i;
-        if (funcs[i].addr == 0x004804f0 || funcs[i].addr == 0x0048cd90)
-        {
-            // CApplication::Tic and the control Emit carry our own hooks (auto start, recorder)
-            fprintf(log, "transplant: %08x left alone (hooked by the harness)\n", funcs[i].addr);
-            continue;
-        }
-        if (count ? !funcs[i].trampoline : (funcs[i].flags & 2) || (on || s_capture) && !(funcs[i].flags & 1))
-            continue;  // left original: shadow runs leave what can't be shadowed, count runs what can't be counted
-        if (count)
-        {
-            stub[0] = 0xF0; stub[1] = 0xFF; stub[2] = 0x05;  // lock inc dword [calls + 4i]
-            *(unsigned*)(stub + 3) = (unsigned)(calls + i);
-            stub[7] = 0xE9;                                   // jmp the original's trampoline
-            Rel32(stub + 8, (unsigned)mem + funcs[i].trampoline);
-            patched++;
-        }
-        else if ((on || s_capture) && (funcs[i].flags & 1))
-        {
-            stub[0] = 0x68;                               // push i
-            *(unsigned*)(stub + 1) = i;
-            stub[5] = 0xE9;                               // jmp ShadowEntry
-            Rel32(stub + 6, (unsigned)&ShadowEntry);
-            patched++;
-        }
-        else
-        {
-            stub[0] = 0xF0; stub[1] = 0xFF; stub[2] = 0x05;  // lock inc dword [calls + 4i]
-            *(unsigned*)(stub + 3) = (unsigned)(calls + i);
-            stub[7] = 0xE9;                                   // jmp our copy
-            Rel32(stub + 8, (unsigned)mem + funcs[i].offset);
-        }
-        unsigned char* entry = stub;
-        int k = SnapAtFind(funcs[i].addr);
-        if (k >= 0)
-        {
-            // mov [s_snapAtIdx], k; mov [s_snapAtTarget], stub; jmp SnapAtEntry (no push: esp stays the call's)
-            unsigned char* snap = snapStubs + 32 * i;
-            snap[0] = 0xC7; snap[1] = 0x05;
-            *(unsigned*)(snap + 2) = (unsigned)&s_snapAtIdx;
-            *(unsigned*)(snap + 6) = (unsigned)k;
-            snap[10] = 0xC7; snap[11] = 0x05;
-            *(unsigned*)(snap + 12) = (unsigned)&s_snapAtTarget;
-            *(unsigned*)(snap + 16) = (unsigned)stub;
-            snap[20] = 0xE9;
-            Rel32(snap + 21, SnapAtEntryAddress());
-            entry = snap;
-        }
-        unsigned char jmp[5] = { 0xE9 };                  // original entry: jmp stub (or the snapshot stub)
-        *(unsigned*)(jmp + 1) = (unsigned)entry - (funcs[i].addr + 5);
-        WriteCode((unsigned char*)funcs[i].addr, jmp, 5);
+        unsigned char* tramp = mem + 42 * k;
+        unsigned char* snap = tramp + 10;
+        memcpy(tramp, (void*)s_snapAtAddr[k], 5);
+        tramp[5] = 0xE9;
+        Rel32(tramp + 6, s_snapAtAddr[k] + 5);
+        snap[0] = 0xC7; snap[1] = 0x05;
+        *(unsigned*)(snap + 2) = (unsigned)&s_snapAtIdx;
+        *(unsigned*)(snap + 6) = k;
+        snap[10] = 0xC7; snap[11] = 0x05;
+        *(unsigned*)(snap + 12) = (unsigned)&s_snapAtTarget;
+        *(unsigned*)(snap + 16) = (unsigned)tramp;
+        snap[20] = 0xE9;
+        Rel32(snap + 21, SnapAtEntryAddress());
+        unsigned char jmp[5] = { 0xE9 };
+        *(unsigned*)(jmp + 1) = (unsigned)snap - (s_snapAtAddr[k] + 5);
+        WriteCode((unsigned char*)s_snapAtAddr[k], jmp, 5);
+        fprintf(log, "snapat: %08x hooked, entry bytes %02x %02x %02x %02x %02x\n", s_snapAtAddr[k],
+            tramp[0], tramp[1], tramp[2], tramp[3], tramp[4]);
     }
-    fprintf(log, "transplant: %u functions, %u %s (%u fixups, %u bytes)\n", nfunc,
-        on || s_capture || count ? patched : nfunc,
-        count ? "counted, all original" : s_capture ? "captured, original only, the rest left original"
-        : on ? "shadowed, the rest left original" : "replaced", nfix, size);
-    if (count && patched < nfunc)  // built without transplant.py --count: no trampolines, so no counts
-        fprintf(log, "transplant: WARNING %u of %u functions have no trampoline and are NOT counted (their 0 in "
-            "RBRRecompCalls.log means not measured; build the file with transplant.py --count)\n", nfunc - patched, nfunc);
-    unsigned long id;
-    CreateThread(0, 0, LogCalls, 0, 0, &id);
     EnsureExceptionHandler();
-}
-
-static unsigned long __stdcall LogCalls(void*)
-{
-    char path[320];
-    for (;;)
-    {
-        Sleep(5000);
-        FILE* log = fopen(GameFile(path, "RBRRecompCalls.log"), "w");
-        if (!log)
-            continue;
-        for (unsigned i = 0; i < s_count; i++)
-            fprintf(log, "%08x %ld\n", s_funcs[i].addr, s_calls[i]);
-        fclose(log);
-        log = fopen(GameFile(path, "RBRRecompShadow.log"), "w");
-        if (!log)
-            continue;
-        for (unsigned j = 0; j < s_count; j++)
-            if (s_shadow[j].calls)
-            {
-                const ShadowStats& st = s_shadow[j];
-                fprintf(log, "%08x calls %u mismatches %u x87-input %u", s_funcs[j].addr, st.calls, st.mismatches,
-                    st.fpuInput);
-                if (st.mismatches)
-                    fprintf(log, "  first: %s  in: eax %08x ecx %08x edx %08x args %08x %08x %08x %08x", st.first,
-                        st.in[0], st.in[1], st.in[2], st.in[3], st.in[4], st.in[5], st.in[6]);
-                fprintf(log, "\n");
-            }
-        fclose(log);
-    }
 }
 
 // ---- recorder ----
@@ -1737,177 +947,6 @@ static void CallEmit(void* self, const void* sig)
     }
 }
 
-// ---- allocation log (RBRRecompAllocLog.on) ----
-// The exe's heap calls go through its MSVCR71 imports (operator new 0x0070bec2 is linked in
-// and calls malloc; operator delete is imported). With RBRRecompAllocLog.on, those import
-// slots point at the Log* hooks below, which call the CRT and append one record per call to a
-// VirtualAlloc'd buffer: { kind, thread id, return address, a, b, result }. Kinds: 1 operator
-// new (return address: new's caller), 2 malloc, 3 calloc (a count, b size), 4 realloc (a size,
-// b the old block), 5 _strdup (a the length with its NUL), 6 operator delete, 7 operator
-// delete[], 8 free (a the block); 9 a dump (a its version, b its step or entry address, and in
-// the return address word its substeps or ordinal), logged as SnapClose closes it, so the log can
-// be cut where snap-0 was taken.
-// A thread appends the complete records to RBRRecompAllocs.bin ('RBRA', 1, then the records)
-// every second. The heap's placement differs from run to run; its order is what the log
-// gives, for the Rust load path's placement (H3).
-extern "C" __declspec(dllimport) long __stdcall InterlockedIncrement(volatile long* p);
-extern "C" void* _ReturnAddress(void);
-#pragma intrinsic(_ReturnAddress)
-static const unsigned kAllocMax = 4 << 20, kNewMallocRet = 0x0070bee0;
-struct AllocRecord
-{
-    unsigned kind;  // set last: 0 while the record is being filled
-    unsigned thread, ret, a, b, result;
-};
-static AllocRecord* s_allocs;
-static volatile long s_allocN;
-typedef void* (__cdecl* MallocFn)(unsigned);
-typedef void* (__cdecl* CallocFn)(unsigned, unsigned);
-typedef void* (__cdecl* ReallocFn)(void*, unsigned);
-typedef char* (__cdecl* StrdupFn)(const char*);
-typedef void (__cdecl* FreeFn)(void*);
-static MallocFn s_malloc;
-static CallocFn s_calloc;
-static ReallocFn s_realloc;
-static StrdupFn s_strdup;
-static FreeFn s_delete, s_deleteArray, s_free;
-
-static void AllocLog(unsigned kind, unsigned ret, unsigned a, unsigned b, unsigned result)
-{
-    unsigned i = (unsigned)InterlockedIncrement(&s_allocN) - 1;
-    if (i >= kAllocMax)
-        return;
-    volatile AllocRecord* r = &s_allocs[i];  // volatile: the stores stay in order, kind last
-    r->thread = GetCurrentThreadId(), r->ret = ret, r->a = a, r->b = b, r->result = result;
-    r->kind = kind;
-}
-
-static void* __cdecl LogMalloc(unsigned n)
-{
-    void* p = s_malloc(n);
-    unsigned ret = (unsigned)_ReturnAddress();
-    if (ret == kNewMallocRet)  // operator new: push esi (size), and new's own push esi, sit below its return address
-        AllocLog(1, (&n)[2], n, 0, (unsigned)p);
-    else
-        AllocLog(2, ret, n, 0, (unsigned)p);
-    return p;
-}
-
-static void* __cdecl LogCalloc(unsigned count, unsigned size)
-{
-    void* p = s_calloc(count, size);
-    AllocLog(3, (unsigned)_ReturnAddress(), count, size, (unsigned)p);
-    return p;
-}
-
-static void* __cdecl LogRealloc(void* old, unsigned n)
-{
-    void* p = s_realloc(old, n);
-    AllocLog(4, (unsigned)_ReturnAddress(), n, (unsigned)old, (unsigned)p);
-    return p;
-}
-
-static char* __cdecl LogStrdup(const char* s)
-{
-    char* p = s_strdup(s);
-    AllocLog(5, (unsigned)_ReturnAddress(), p ? (unsigned)strlen(p) + 1 : 0, 0, (unsigned)p);
-    return p;
-}
-
-static void __cdecl LogDelete(void* p)
-{
-    AllocLog(6, (unsigned)_ReturnAddress(), (unsigned)p, 0, 0);
-    s_delete(p);
-}
-
-static void __cdecl LogDeleteArray(void* p)
-{
-    AllocLog(7, (unsigned)_ReturnAddress(), (unsigned)p, 0, 0);
-    s_deleteArray(p);
-}
-
-static void __cdecl LogFree(void* p)
-{
-    AllocLog(8, (unsigned)_ReturnAddress(), (unsigned)p, 0, 0);
-    s_free(p);
-}
-
-static unsigned long __stdcall WriteAllocs(void*)
-{
-    char path[320];
-    void* h = CreateFileA(GameFile(path, "RBRRecompAllocs.bin"), 0x40000000 /* GENERIC_WRITE */, 1 /* share read */, 0,
-        2 /* CREATE_ALWAYS */, 0x80, 0);
-    if (h == (void*)-1)
-        return 0;
-    unsigned head[2] = { 0x41524252 /* 'RBRA' */, 1 }, done = 0;
-    unsigned long wrote;
-    WriteFile(h, head, sizeof(head), &wrote, 0);
-    for (;;)
-    {
-        Sleep(1000);
-        unsigned n = (unsigned)s_allocN < kAllocMax ? (unsigned)s_allocN : kAllocMax, end = done;
-        while (end < n && ((volatile AllocRecord*)s_allocs)[end].kind)
-            end++;
-        if (end > done)
-            WriteFile(h, &s_allocs[done], (end - done) * sizeof(AllocRecord), &wrote, 0);
-        done = end;
-    }
-}
-
-// The exe's import slot of MSVCR71's `name`: the slot's address, or 0.
-static void** ImportSlot(const char* name)
-{
-    unsigned char* base = (unsigned char*)0x00400000;
-    unsigned char* nt = base + *(unsigned*)(base + 0x3c);
-    unsigned* desc = (unsigned*)(base + *(unsigned*)(nt + 0x80));
-    for (; desc[3]; desc += 5)
-    {
-        if (_stricmp((const char*)base + desc[3], "MSVCR71.dll") != 0)
-            continue;
-        unsigned* names = (unsigned*)(base + (desc[0] ? desc[0] : desc[4]));
-        for (unsigned k = 0; names[k]; k++)
-            if (!(names[k] & 0x80000000) && strcmp((const char*)base + names[k] + 2, name) == 0)
-                return (void**)(base + desc[4]) + k;
-    }
-    return 0;
-}
-
-// Points the import slot of `name` at `hook`; the CRT function goes to `*real`.
-static int HookImport(const char* name, void* hook, void** real)
-{
-    void** slot = ImportSlot(name);
-    if (!slot)
-        return 0;
-    *real = *slot;
-    WriteCode((unsigned char*)slot, &hook, 4);
-    return 1;
-}
-
-static void StartAllocLog(FILE* log)
-{
-    FILE* on = fopen("RBRRecompAllocLog.on", "rb");
-    if (!on)
-        return;
-    fclose(on);
-    if (memcmp((void*)0x0070bedb, "\xe8", 1) != 0 || *(unsigned*)0x0070bedc != 0x0070c3b4 - kNewMallocRet)
-    {
-        fprintf(log, "alloc log: operator new differs, not hooking\n");
-        return;
-    }
-    s_allocs = (AllocRecord*)VirtualAlloc(0, kAllocMax * sizeof(AllocRecord), 0x3000 /* MEM_COMMIT | MEM_RESERVE */, 4);
-    if (!s_allocs)
-        return;
-    int n = HookImport("malloc", (void*)LogMalloc, (void**)&s_malloc) + HookImport("calloc", (void*)LogCalloc, (void**)&s_calloc)
-        + HookImport("realloc", (void*)LogRealloc, (void**)&s_realloc)
-        + HookImport("_strdup", (void*)LogStrdup, (void**)&s_strdup)
-        + HookImport("??3@YAXPAX@Z", (void*)LogDelete, (void**)&s_delete)
-        + HookImport("??_V@YAXPAX@Z", (void*)LogDeleteArray, (void**)&s_deleteArray)
-        + HookImport("free", (void*)LogFree, (void**)&s_free);
-    unsigned long id;
-    CreateThread(0, 0, WriteAllocs, 0, 0, &id);
-    fprintf(log, "alloc log: %d of 7 imports hooked, writing RBRRecompAllocs.bin\n", n);
-}
-
 // ---- snapshots ----
 // RBRRecompSnapshot.txt lists step counters. Right before the StepForward call that starts
 // at a listed step S and the call after it (in playback after the control emit; the load
@@ -2052,8 +1091,6 @@ static void SnapClose(int stack)
         && (!stack || SnapWrite(h, s_snapStack, kSnapStackBytes))
         && SnapWrite(h, s_snapRegions, s_snapN * sizeof(SnapRegion)) && SnapWrite(h, tail, sizeof(tail));
     CloseHandle(h);
-    if (s_allocs)
-        AllocLog(9, s_snapSubsteps, s_snapVersion, s_snapStep, 0);
     char line[192];
     int len = wsprintfA(line, "snapshot: %s %s, %u regions, %u MB, %u skipped, %u chunks unreadable, %u ms\n", s_snapName,
         ok ? "written" : "WRITE FAILED", s_snapN, s_snapOffset >> 20, s_snapSkipped, s_snapFailed, s_snapMs);
@@ -3918,9 +2955,6 @@ static void Fail(const char* what, unsigned addr)
 {
     char buf[512], *p = buf;
     p += wsprintfA(p, "%s at %08x", what, addr);
-    p = BlobAddress(p, addr);
-    if (s_shadowIndex >= 0)
-        p += wsprintfA(p, "; last shadowed call %08x, phase %d", s_funcs[s_shadowIndex].addr, s_shadowPhase);
     p += wsprintfA(p, "\n");
     AppendLog(buf, p - buf);
     TerminateProcess(GetCurrentProcess(), 3);
@@ -3937,16 +2971,15 @@ static void __cdecl OnPureCall()
     Fail("pure virtual call from", caller);
 }
 
-// " [offset]address (our copy ...)" for each code address (exe .text or our copies) in words.
+// " [offset]address" for each code address (exe .text) in words.
 static char* CodeWords(char* p, const unsigned* words, unsigned n, unsigned max)
 {
     for (unsigned k = 0, found = 0; k < n && found < max; k++)
     {
         unsigned v = words[k];
-        if ((v >= 0x00401000 && v < 0x00729000) || v - (unsigned)s_blob < s_blobSize)
+        if (v >= 0x00401000 && v < 0x00729000)
         {
             p += wsprintfA(p, " [%x]%08x", k * 4, v);
-            p = BlobAddress(p, v);
             found++;
         }
     }
@@ -3986,7 +3019,6 @@ static void LogStall()
                 break;
             }
             p += wsprintfA(p, " %08x", ctx[0xb8 / 4]);
-            p = BlobAddress(p, ctx[0xb8 / 4]);
             Sleep(150);
         }
         if (ok)
@@ -4003,7 +3035,6 @@ static void LogStall()
     if (s_overflowEsp)
     {
         p += wsprintfA(p, "  stack overflow at %08x", s_overflowEip);
-        p = BlobAddress(p, s_overflowEip);
         p += wsprintfA(p, ", stack:");
         p = CodeWords(p, (const unsigned*)s_overflowStack, 2048, 40);
         p += wsprintfA(p, "\n");
@@ -4889,8 +3920,7 @@ extern "C" __declspec(dllexport) IPlugin* RBR_CreatePlugin(IRBRGame* game)
             ApplyPatches(log);
         if (play)
             fclose(play);
-        StartAllocLog(log);
-        ApplyTransplant(log);
+        StartSnapAtDumps(log);
         StartWriteWatch(log);
         StartFocusHandling(log);
         StartRecorder(log);
