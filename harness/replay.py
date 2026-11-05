@@ -17,6 +17,7 @@ compiled at first use).
 import argparse
 import bisect
 import ctypes
+import math
 import mmap
 import os
 import platform
@@ -243,9 +244,62 @@ def modrm(mu, code):
 # rsqrtss/rcpss approximate in hardware and are exact in the emulator. The tables of the CPU the
 # references ran on (harness/replay-approx.c) give the hardware's results; checked on 400k random
 # inputs over the whole float range, zero, denormals, infinities and NaNs included.
-_tables = struct.unpack("<4096I", open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                    "replay-approx.bin"), "rb").read())
+_tables = struct.unpack(
+    "<4096I",
+    open(os.path.join(REPO, "crates", "rbr-physics", "data", "rsqrt.bin"), "rb").read()
+    + open(os.path.join(REPO, "crates", "rbr-physics", "data", "rcp.bin"), "rb").read())
 RSQRT, RCP = _tables[:2048], _tables[2048:]
+
+
+def f32_bits(x):
+    """A float as its f32 bits."""
+    return struct.unpack("<I", struct.pack("<f", x))[0]
+
+
+def st0(mu):
+    """The x87 st0 of the emulator as a Python float (exact for f32 and f64 results)."""
+    top = (mu.reg_read(UC_X86_REG_FPSW) >> 11) & 7
+    mant, se = mu.reg_read(UC_X86_REG_FP0 + top)
+    e = se & 0x7FFF
+    sign = -1.0 if se & 0x8000 else 1.0
+    if e == 0 and mant == 0:
+        return 0.0 * sign
+    if e == 0x7FFF:
+        return sign * math.inf if mant & ((1 << 63) - 1) == 0 else math.copysign(math.nan, sign)
+    assert mant & 0x7FF == 0, "more than 53 bits"
+    return sign * math.ldexp(mant, e - 16383 - 63)
+
+
+def ngp_base(snap):
+    """NGP.dll's base in a snapshot, 0 without NGP: under NGP the CCar::CDef key dict (0x8ef73c) points at NGP's
+    copy of its table (file address 0x10171318) instead of the exe's (0x7c6578, notes/ngp.md "Load path")."""
+    table = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0]
+    return 0 if table == 0x7C6578 else table - 0x171318
+
+
+def c_string(snap, at):
+    """The NUL-terminated string at `at` (NUL included)."""
+    out = bytearray()
+    while not out.endswith(b"\0"):
+        out += snap.read(at + len(out), 1)
+    return bytes(out)
+
+
+def connections(snap, first):
+    """The body event's connections from `first` on (0x18 bytes) and their targets' words at +0x10."""
+    out = []
+    while first:
+        out += [(first, 0x18), (snap.u32(first + 0x10) + 0x10, 4)]
+        first = snap.u32(first + 4)
+    return out
+
+
+def fnv1a64(data):
+    """The FNV-1a 64 digest of data, as an int."""
+    h = 0xCBF29CE484222325
+    for b in data:
+        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return h
 
 
 def hw_rsqrt(x):
