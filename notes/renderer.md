@@ -109,7 +109,7 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
 - Tried and removed (no gain on an RX 9060 XT, 2026-10-26): the car's shadow filter taps (`Quality`, `--shadows`,
   `SHADOW_TAPS`, `CONTACT_TAPS`; medium saved ~0.2 ms but differed from high in the cockpit with sun through the
   windows by mean 0.3-0.7, 1% of pixels over 5-10/255, so the filter stays high's 4 and 6; `--shadows X` and
-  `shadows =` are read and ignored), the stage's weather in the pipelines (`WEATHER_KNOWN`, `Conditions`), the
+  `shadows =` were read and ignored, taken out 2026-11-05), the stage's weather in the pipelines (`WEATHER_KNOWN`, `Conditions`), the
   day-only pipelines (`DAY_ONLY`, `night_probes`), the split reflection pipelines (`REFLECT_WATER`; one pipeline
   draws water and wet road, the draw's mode says which).
 - Passes over the kept frame draw into it (`Renderer::over_attachment` in `renderer/frame.rs`);

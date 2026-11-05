@@ -21,6 +21,7 @@
 
 use crate::foliage::test_texels;
 use crate::parallel::in_parallel;
+use crate::particles::wheel_spray::ground::smoothstep;
 use crate::puddles::{self, GROUND_MARK};
 use crate::stage::{
     Address, Anchor, Bounds, Draw, DrawState, Image, Layer, Lod, Mesh, Stage, StageTexture, TextureName, TextureRef,
@@ -359,8 +360,8 @@ impl Field {
                     continue;
                 }
                 let distance = self.line.distance(at.xz());
-                let near = 1.0 - (1.0 - FAR_SHARE) * smoothstep(FULL, BAND, distance);
-                let fade = 1.0 - smoothstep(BAND - 6.0, BAND, distance);
+                let near = 1.0 - (1.0 - FAR_SHARE) * smoothstep([FULL, BAND], distance);
+                let fade = 1.0 - smoothstep([BAND - 6.0, BAND], distance);
                 let colour = colour_at([1.0 - a - b, a, b]);
                 if chance >= green(colour, g.road) * near * fade {
                     continue;
@@ -426,9 +427,9 @@ enum Kind {
 impl Kind {
     /// A card's kind by its draw `pick` (0 to 1) and its patch's tallness and dryness ([`patches`]).
     fn pick(pick: f32, tall: f32, dry: f32) -> Kind {
-        let seeds = 0.04 + 0.1 * smoothstep(1.0, 1.4, tall);
+        let seeds = 0.04 + 0.1 * smoothstep([1.0, 1.4], tall);
         let dry_share = 0.04 + 0.4 * dry;
-        let meadow = 0.2 + 0.3 * smoothstep(0.8, 1.3, tall);
+        let meadow = 0.2 + 0.3 * smoothstep([0.8, 1.3], tall);
         if pick < seeds {
             Kind::Seeds
         } else if pick < seeds + dry_share {
@@ -465,7 +466,7 @@ impl Kind {
 /// 1), from value noise at a few metres and under a metre.
 fn patches(p: Vec2) -> (f32, f32) {
     let tall = noise(p / 3.5, 1) * 0.7 + noise(p / 0.9, 2) * 0.3;
-    let dry = smoothstep(0.6, 0.9, noise(p / 7.0, 3) * 0.8 + noise(p / 1.6, 4) * 0.2);
+    let dry = smoothstep([0.6, 0.9], noise(p / 7.0, 3) * 0.8 + noise(p / 1.6, 4) * 0.2);
     (0.55 + 0.95 * tall, dry)
 }
 
@@ -788,7 +789,7 @@ fn green(rgb: Vec3, road: bool) -> f32 {
     let c = rgb / rgb.element_sum().max(1e-3);
     // Green or straw (green over blue) and not earth (red over green) nor stone (grey).
     let [low, high] = GRASSY[usize::from(road)];
-    smoothstep(low, high, c.y - c.z - 2.0 * (c.x - c.y - 0.02).max(0.0))
+    smoothstep([low, high], c.y - c.z - 2.0 * (c.x - c.y - 0.02).max(0.0))
 }
 
 /// The tint of a ground vertex of colour `rgb`, as `own_light` in `shader.wgsl` takes it on the near ground: its hue,
@@ -796,7 +797,7 @@ fn green(rgb: Vec3, road: bool) -> f32 {
 pub(crate) fn tint([r, g, b, _]: [u8; 4]) -> Vec3 {
     let c = Vec3::new(r.into(), g.into(), b.into()) / 255.0;
     let most = c.max_element();
-    let hue = Vec3::ONE.lerp(c / most.max(1e-3), smoothstep(0.02, 0.08, most));
+    let hue = Vec3::ONE.lerp(c / most.max(1e-3), smoothstep([0.02, 0.08], most));
     Vec3::ONE.lerp(hue, GROUND_HUE)
 }
 
@@ -906,11 +907,6 @@ impl Random {
 
 fn lerp([a, b]: [f32; 2], t: f32) -> f32 {
     a + (b - a) * t
-}
-
-fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
-    let t = ((x - a) / (b - a)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
 }
 
 /// The texture being drawn: colour (display) and coverage per texel.

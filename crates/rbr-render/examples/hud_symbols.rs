@@ -4,8 +4,7 @@
 //! without the countdown). Drawn over the stage with an identity camera (`RBR_DATA`).
 
 use std::error::Error;
-use std::fs::{self, File};
-use std::io::BufWriter;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
@@ -122,9 +121,5 @@ fn render(
 }
 
 fn write(path: &Path, pixels: &[u8]) -> Result<(), Box<dyn Error>> {
-    let mut png = png::Encoder::new(BufWriter::new(File::create(path)?), SIZE.0, SIZE.1);
-    png.set_color(png::ColorType::Rgba);
-    png.set_depth(png::BitDepth::Eight);
-    png.write_header()?.write_image_data(pixels)?;
-    Ok(())
+    rbr_render::upscale::write_png(path, SIZE.0, SIZE.1, pixels)
 }

@@ -279,23 +279,18 @@ fn run() -> Result<(), String> {
     }
     let here = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
     let home = home::dir(&here);
-    let notice = home::migrate(&here, &home).map_err(|e| format!("copying your files to {}: {e}", home.display()))?;
-    // `migrate` makes it only when there are old files; the settings are written into it without making it.
     let _made = std::fs::create_dir_all(&home).is_ok();
     #[cfg(windows)]
     if _made {
         rbr_render::console::log_to(&home.join(rbr_render::console::LOG_FILE));
     }
     if args.first().is_some_and(|a| a == "--download-ngp") {
-        notice.iter().for_each(|n| eprintln!("launcher: {n}"));
         return gvrc::ngp_cli(&home, &args[1..]);
     }
     if args.first().is_some_and(|a| a == "--download-cars") {
-        notice.iter().for_each(|n| eprintln!("launcher: {n}"));
         return gvrc::cars_cli(&home.join(car_packs::DIR), &args[1..]);
     }
     if args.first().is_some_and(|a| a == "--import-codriver") {
-        notice.iter().for_each(|n| eprintln!("launcher: {n}"));
         return codriver_packs::cli(&home, &args[1..]);
     }
     let (start, list, command, screenshot, rally_damage) = parse_args(std::env::args().skip(1), &here, &home)?;
@@ -306,22 +301,18 @@ fn run() -> Result<(), String> {
         update::start();
         // The window opens without a game too, to choose its folder.
         let mut form = load(&start, settings.clone()).map_err(|e| eprintln!("launcher: {e}")).ok();
-        if let (Some(form), Some(notice)) = (&mut form, &notice) {
-            form.status = notice.clone();
-        }
         if let Some(form) = &mut form {
             form.crash.report = crash::last_crash(&home.join(home::LOGS));
         }
         let folder = settings.install_folder;
         let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
-        let mut app = App::new(start, form, folder, notice);
+        let mut app = App::new(start, form, folder);
         return event_loop.run_app(&mut app).map_err(|e| e.to_string());
     }
-    notice.iter().for_each(|n| eprintln!("launcher: {n}"));
     let mut form = match (load(&start, settings.clone()), &screenshot) {
         (Ok(form), _) => form,
         // Without a game, the page that asks for it.
-        (Err(e), Some(dir)) => return App::new(start, None, settings.install_folder, None).screenshots(&e, dir),
+        (Err(e), Some(dir)) => return App::new(start, None, settings.install_folder).screenshots(&e, dir),
         (Err(e), None) => return Err(e),
     };
     // Only the window writes the settings file.

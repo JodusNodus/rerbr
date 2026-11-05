@@ -289,31 +289,33 @@ pub fn decode_image(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
             let (width, height) = decoder.dimensions()?;
             Some((width as u32, height as u32, pixels))
         }
-        [0x89, b'P', b'N', b'G'] => {
-            let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-            decoder.set_transformations(png::Transformations::normalize_to_color8());
-            let mut reader = decoder.read_info().ok()?;
-            let mut buffer = vec![0; reader.output_buffer_size()?];
-            let info = reader.next_frame(&mut buffer).ok()?;
-            let pixels: Vec<u8> = match info.color_type {
-                png::ColorType::Rgba => buffer[..info.buffer_size()].to_vec(),
-                png::ColorType::Rgb => {
-                    buffer[..info.buffer_size()].chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
-                }
-                png::ColorType::GrayscaleAlpha => {
-                    buffer[..info.buffer_size()].chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
-                }
-                png::ColorType::Grayscale => {
-                    buffer[..info.buffer_size()].iter().flat_map(|&g| [g, g, g, 255]).collect()
-                }
-                // `normalize_to_color8` expands palettes.
-                png::ColorType::Indexed => return None,
-            };
-            Some((info.width, info.height, pixels))
-        }
+        [0x89, b'P', b'N', b'G'] => decode_png(bytes).ok(),
         [b'B', b'M', ..] => bmp(bytes),
         _ => None,
     }
+}
+
+/// A PNG's width, height and RGBA texels; an image without alpha reads as opaque. The errors `upscale::read_png`
+/// reported when it decoded PNGs itself.
+pub fn decode_png(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info()?;
+    let mut buffer = vec![0; reader.output_buffer_size().ok_or("image too large")?];
+    let info = reader.next_frame(&mut buffer)?;
+    let pixels: Vec<u8> = match info.color_type {
+        png::ColorType::Rgba => buffer[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => {
+            buffer[..info.buffer_size()].chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
+        }
+        png::ColorType::GrayscaleAlpha => {
+            buffer[..info.buffer_size()].chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
+        }
+        png::ColorType::Grayscale => buffer[..info.buffer_size()].iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        // `normalize_to_color8` expands palettes.
+        png::ColorType::Indexed => return Err("indexed PNG after expansion".into()),
+    };
+    Ok((info.width, info.height, pixels))
 }
 
 /// An uncompressed 24- or 32-bit Windows bitmap's width, height and RGBA texels; `None` for the other layouts.

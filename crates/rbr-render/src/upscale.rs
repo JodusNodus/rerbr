@@ -397,20 +397,7 @@ pub fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<()
 
 /// A PNG as RGBA8. An image without alpha reads as opaque.
 pub fn read_png(path: &Path) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
-    let mut decoder = png::Decoder::new(BufReader::new(File::open(path)?));
-    decoder.set_transformations(png::Transformations::normalize_to_color8());
-    let mut reader = decoder.read_info()?;
-    let mut pixels = vec![0; reader.output_buffer_size().ok_or("image too large")?];
-    let info = reader.next_frame(&mut pixels)?;
-    pixels.truncate(info.buffer_size());
-    let rgba = match info.color_type {
-        png::ColorType::Rgba => pixels,
-        png::ColorType::Rgb => pixels.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
-        png::ColorType::GrayscaleAlpha => pixels.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
-        png::ColorType::Grayscale => pixels.iter().flat_map(|&g| [g, g, g, 255]).collect(),
-        png::ColorType::Indexed => return Err("indexed PNG after expansion".into()),
-    };
-    Ok((info.width, info.height, rgba))
+    rbr_btb::scene::decode_png(&std::fs::read(path)?)
 }
 
 #[cfg(test)]

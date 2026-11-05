@@ -101,8 +101,7 @@ pub struct Args {
     /// `--precipitation none|light|moderate|heavy`: our rain or snow over the section's (`Atmosphere::rain`), in the
     /// sky, the particles, the glass and the sound; without it the scene's rule (`scene::load`).
     pub precipitation: Option<Rain>,
-    /// `--render-scale`: the share of the window's width and height the frame is drawn at (`Renderer::set_render_scale`;
-    /// `auto`, from older settings: 1).
+    /// `--render-scale`: the share of the window's width and height the frame is drawn at (`Renderer::set_render_scale`).
     pub render_scale: f32,
     /// `--present`: how the window presents its frames; `--max-fps`: the drawn frames per second, at most.
     pub present: Present,
@@ -499,10 +498,6 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                 let value = args.next().ok_or("--detail needs high or ultra")?;
                 detail = Detail::parse(&value).ok_or(format!("--detail {value}: high or ultra"))?;
             }
-            // Taken out: older command lines still pass it.
-            "--shadows" => {
-                args.next().ok_or("--shadows needs a value")?;
-            }
             "--enhance" => {
                 let value = args.next().ok_or("--enhance needs a list")?;
                 enhance = Enhance::parse(&value)
@@ -523,14 +518,11 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             }
             "--render-scale" => {
                 let value = args.next().ok_or("--render-scale needs a share")?;
-                render_scale = match value.as_str() {
-                    "auto" => 1.0,
-                    _ => value
-                        .parse()
-                        .ok()
-                        .filter(|s| (0.25..=1.0).contains(s))
-                        .ok_or_else(|| format!("--render-scale {value}: use 0.25 to 1"))?,
-                };
+                render_scale = value
+                    .parse()
+                    .ok()
+                    .filter(|s| (0.25..=1.0).contains(s))
+                    .ok_or_else(|| format!("--render-scale {value}: use 0.25 to 1"))?;
             }
             "--present" => {
                 let value = args.next().ok_or("--present needs a mode")?;
@@ -965,18 +957,12 @@ mod tests {
     }
 
     #[test]
-    fn shadows_is_read_and_ignored() {
-        assert!(parse("--shadows medium --enhance all").is_ok());
-        assert!(parse("--shadows").is_err());
-    }
-
-    #[test]
-    fn render_scale_is_a_share_or_auto() {
+    fn render_scale_is_a_share() {
         assert_eq!(parse("track-54_E").unwrap().render_scale, 1.0);
         assert_eq!(parse("--render-scale 0.67").unwrap().render_scale, 0.67);
-        // `auto`, the removed choice by the window's size, from older settings.
-        assert_eq!(parse("--render-scale auto").unwrap().render_scale, 1.0);
-        for bad in ["--render-scale 0.2", "--render-scale 1.5", "--render-scale", "--render-scale half"] {
+        for bad in
+            ["--render-scale 0.2", "--render-scale 1.5", "--render-scale", "--render-scale half", "--render-scale auto"]
+        {
             assert!(parse(bad).is_err(), "{bad}");
         }
     }

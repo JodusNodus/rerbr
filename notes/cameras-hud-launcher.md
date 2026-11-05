@@ -180,7 +180,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 
 ### `launcher-settings.ini`
 
-Form in `rbr-launcher/src/settings.rs`, folder and once-only migrate in `rbr-launcher/src/home.rs`.
+Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 
 - Quality keys (`graphics_page::Graphics`): `lighting`, `particles`, `cabin`, `contact`, `grass`, `windscreen`,
   `marks`, `wet_roads`, `detail`, `mirrors`; unset takes the Ultra preset. The preset box is not stored: it shows the preset the
