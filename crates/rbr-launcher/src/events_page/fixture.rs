@@ -45,6 +45,7 @@ fn config(preset: Preset, class: &str, car: &str, seed: u32) -> EventConfig {
         daylight: Daylight::Day,
         weather: Weather::Changeable,
         damage: Damage::Realistic,
+        skill: rbr_season::config::Skill::Professional,
         difficulty: 0.5,
         adaptive: true,
         field_size: 12,

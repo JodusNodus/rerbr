@@ -387,7 +387,7 @@ impl Event {
         let mut out = String::from("rbr-season 1\n");
         let c = &self.config;
         out.push_str(&format!(
-            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
             esc(&c.class),
             esc(&c.car),
             length_save(&c.length),
@@ -399,7 +399,8 @@ impl Event {
             c.difficulty,
             if c.adaptive { 1 } else { 0 },
             c.field_size,
-            c.seed
+            c.seed,
+            skill_save(c.skill)
         ));
         for rally in &self.rallies {
             out.push_str(&format!("R|{}\n", esc(&rally.name)));
@@ -461,7 +462,7 @@ impl Event {
             let parts: Vec<String> = split(line);
             match parts.first().map(String::as_str) {
                 Some("C") => {
-                    if parts.len() != 13 {
+                    if parts.len() != 14 {
                         return Err("bad config line".to_owned());
                     }
                     config = Some(EventConfig {
@@ -481,6 +482,7 @@ impl Event {
                         },
                         field_size: parts[11].parse().map_err(|_| "bad field size".to_owned())?,
                         seed: parts[12].parse().map_err(|_| "bad seed".to_owned())?,
+                        skill: skill_load(&parts[13])?,
                     });
                 }
                 Some("R") => {
@@ -823,6 +825,25 @@ fn damage_load(text: &str) -> Result<crate::config::Damage, String> {
         "reduced" => Ok(Damage::Reduced),
         "realistic" => Ok(Damage::Realistic),
         _ => Err("bad damage".to_owned()),
+    }
+}
+
+fn skill_save(skill: crate::config::Skill) -> &'static str {
+    use crate::config::Skill;
+    match skill {
+        Skill::Rookie => "rookie",
+        Skill::Amateur => "amateur",
+        Skill::Professional => "professional",
+    }
+}
+
+fn skill_load(text: &str) -> Result<crate::config::Skill, String> {
+    use crate::config::Skill;
+    match text {
+        "rookie" => Ok(Skill::Rookie),
+        "amateur" => Ok(Skill::Amateur),
+        "professional" => Ok(Skill::Professional),
+        _ => Err("bad skill".to_owned()),
     }
 }
 

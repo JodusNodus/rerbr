@@ -558,6 +558,7 @@ mod tests {
             daylight: Daylight::Day,
             weather: Weather::Changeable,
             damage: Damage::Realistic,
+            skill: rbr_season::config::Skill::Professional,
             difficulty: 0.6,
             adaptive: true,
             field_size: 12,

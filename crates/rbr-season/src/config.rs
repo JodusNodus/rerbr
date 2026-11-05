@@ -55,6 +55,14 @@ pub enum Damage {
     Realistic,
 }
 
+/// The driver's skill level (the game's `SSKILL`): what the call for help costs and whether a stage can restart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Skill {
+    Rookie,
+    Amateur,
+    Professional,
+}
+
 /// A stage the itinerary can use: the launcher's catalog fills these from the installed stages.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StageRef {
@@ -81,6 +89,7 @@ pub struct EventConfig {
     pub daylight: Daylight,
     pub weather: Weather,
     pub damage: Damage,
+    pub skill: Skill,
     /// The field's pace, 0 (gentle) to 1 (the reference pace is the winner's).
     pub difficulty: f32,
     /// The difficulty follows the player's results so the fight stays close.
@@ -118,6 +127,7 @@ impl Preset {
             daylight: Daylight::Day,
             weather: Weather::Dry,
             damage: Damage::Realistic,
+            skill: Skill::Professional,
             difficulty: 0.6,
             adaptive: false,
             field_size: 12,
