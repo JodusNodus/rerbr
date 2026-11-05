@@ -15,7 +15,7 @@ use rbr_formats::ai_ini;
 use rbr_formats::trk::{self, DriveLineData};
 use rbr_gameplay::crt::CrtRand;
 use rbr_season::ai::{self, Run, RunLog};
-use rbr_season::pace::{class_pace, driveline_points, path_length, reference_time, timed_slice};
+use rbr_season::pace::{class_pace, path_length, reference_time, timed_road};
 
 /// The classes of the summary.
 const CLASSES: [&str; 12] = [
@@ -114,9 +114,7 @@ fn main() {
         let Some((map, _)) = rest.split_once('_') else { continue };
         let Ok(id) = map.parse::<u32>() else { continue };
         let Some(driveline) = read_trk(path) else { continue };
-        let points = driveline_points(&driveline);
-        let (start, finish) = stage_bounds(&path.with_extension("dls"), path_length(&points));
-        let points = timed_slice(&points, start, finish);
+        let points = timed_road(&driveline, markers(&path).as_ref()).points;
         let length = path_length(&points);
         if length < 100.0 {
             continue;
@@ -161,9 +159,7 @@ fn main() {
             for letter in &stage.variants {
                 let trk = stage.folder.join(format!("track-{}_{}.trk", stage.id, letter));
                 let Some(driveline) = read_trk(&trk) else { continue };
-                let points = driveline_points(&driveline);
-                let (start, finish) = stage_bounds(&trk.with_extension("dls"), path_length(&points));
-                let points = timed_slice(&points, start, finish);
+                let points = timed_road(&driveline, markers(&trk).as_ref()).points;
                 let length = path_length(&points);
                 if length < 100.0 {
                     continue;
@@ -193,13 +189,6 @@ fn header() -> String {
 }
 
 /// The timed stage's bounds: the `.dls` start/finish markers (metres along the line), whole driveline without one.
-fn stage_bounds(dls: &Path, length: f32) -> (f32, f32) {
-    let Ok(bytes) = std::fs::read(dls) else { return (0.0, length) };
-    let Ok(markers) = rbr_formats::markers::parse(&bytes) else { return (0.0, length) };
-    let (start, finish) = (markers.start().unwrap_or(0.0), markers.finish().unwrap_or(length));
-    if 0.0 <= start && start < finish {
-        (start, finish.min(length))
-    } else {
-        (0.0, length)
-    }
+fn markers(trk: &Path) -> Option<rbr_formats::markers::StageMarkers> {
+    rbr_formats::markers::parse(&std::fs::read(trk.with_extension("dls")).ok()?).ok()
 }

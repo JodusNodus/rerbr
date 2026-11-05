@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use rbr_formats::ai_ini::Track;
 use rbr_formats::trk::{self, DriveLineData};
 use rbr_season::config::Surface;
-use rbr_season::pace::{class_pace, driveline_points, path_length, timed_slice};
+use rbr_season::pace::{class_pace, timed_road, TimedRoad};
 use rbr_season::track::{profile, PAR_SCALE};
 
 fn read_trk(path: &Path) -> Option<DriveLineData> {
@@ -45,18 +45,8 @@ fn main() {
             continue;
         };
         let Some(driveline) = read_trk(&path) else { continue };
-        let points = driveline_points(&driveline);
         let markers = std::fs::read(path.with_extension("dls")).ok().and_then(|b| rbr_formats::markers::parse(&b).ok());
-        let (start, finish, splits) = match &markers {
-            Some(m) => {
-                let len = path_length(&points);
-                let (s, f) = (m.start().unwrap_or(0.0), m.finish().unwrap_or(len));
-                let (s, f) = if 0.0 <= s && s < f { (s, f.min(len)) } else { (0.0, len) };
-                (s, f, m.splits().filter(|&d| d > s && d < f).map(|d| d - s).collect::<Vec<_>>())
-            }
-            None => (0.0, path_length(&points), vec![]),
-        };
-        let points = timed_slice(&points, start, finish);
+        let TimedRoad { points, splits } = timed_road(&driveline, markers.as_ref());
         let surface = match retail.sections[0].material {
             1 => Surface::Tarmac,
             2 => Surface::Snow,

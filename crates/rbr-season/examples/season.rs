@@ -11,7 +11,7 @@ use rbr_formats::trk;
 use rbr_season::config::{Length, Preset, StageRef, Surface};
 use rbr_season::event::{Event, PlayerResult, Turn};
 use rbr_season::field::AiResult;
-use rbr_season::pace::{class_pace, driveline_points, path_length, timed_slice};
+use rbr_season::pace::{class_pace, path_length, timed_road, TimedRoad};
 use rbr_season::track::{profile, StageProfile};
 
 fn main() {
@@ -50,18 +50,8 @@ fn main() {
         }) else {
             continue;
         };
-        let points = driveline_points(&line);
         let markers = std::fs::read(path.with_extension("dls")).ok().and_then(|b| rbr_formats::markers::parse(&b).ok());
-        let len = path_length(&points);
-        let (start, finish, splits) = match &markers {
-            Some(m) => {
-                let (s, f) = (m.start().unwrap_or(0.0), m.finish().unwrap_or(len));
-                let (s, f) = if 0.0 <= s && s < f { (s, f.min(len)) } else { (0.0, len) };
-                (s, f, m.splits().filter(|&d| d > s && d < f).map(|d| d - s).collect::<Vec<_>>())
-            }
-            None => (0.0, len, vec![]),
-        };
-        let points = timed_slice(&points, start, finish);
+        let TimedRoad { points, splits } = timed_road(&line, markers.as_ref());
         let length = path_length(&points);
         if length < 500.0 {
             continue;

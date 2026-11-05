@@ -99,6 +99,26 @@ fn surface_grip(surface: Surface) -> f32 {
     }
 }
 
+/// A stage's timed road: the driveline's spline points ([`driveline_points`]) from the start marker to the finish,
+/// and the split markers (m from the start). The pace calibration and the launcher both time this.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimedRoad {
+    pub points: Vec<[f32; 3]>,
+    pub splits: Vec<f32>,
+}
+
+/// The timed road of `trk` between `markers`' start and finish (its `.dls`); the whole line without them, or when
+/// they do not fit the line.
+pub fn timed_road(trk: &DriveLineData, markers: Option<&rbr_formats::markers::StageMarkers>) -> TimedRoad {
+    let points = driveline_points(trk);
+    let length = path_length(&points);
+    let Some(m) = markers else { return TimedRoad { points, splits: Vec::new() } };
+    let (start, finish) = (m.start().unwrap_or(0.0), m.finish().unwrap_or(length));
+    let (start, finish) = if 0.0 <= start && start < finish { (start, finish.min(length)) } else { (0.0, length) };
+    let splits = m.splits().filter(|&d| d > start && d < finish).map(|d| d - start).collect();
+    TimedRoad { points: timed_slice(&points, start, finish), splits }
+}
+
 /// The driveline's points in order (m): the `.trk` line through its Hermite spline, the line the game drives (the
 /// autopilot's `point`: `vectors[0]` is the position, `vectors[1]` the tangent, over-long tangents fitted back to
 /// the chord). Sampled finely enough that [`reference_time`] sees the corners, not the records.

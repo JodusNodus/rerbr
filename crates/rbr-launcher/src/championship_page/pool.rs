@@ -1,6 +1,6 @@
-//! The events' stage pool: the catalog's stages that can start (retail, RSF, BTB) as `rbr_season::config::StageRef`s,
-//! each with its surface, whether it is a community one, and its length from its driveline (the `.trk`'s kind 0x14
-//! records, a BTB folder's `driveline.ini`). A full RSF install has hundreds of stages: the drivelines are read on a
+//! The championship's stage pool: the catalog's stages that can start (retail, RSF, BTB) as `rbr_season::config::StageRef`s,
+//! each with its surface, whether it is a community one, and its length from its timed road (the `.trk` driveline
+//! between the `.dls` start and finish, as `rbr_season::pace::timed_road` times it; a BTB folder's `driveline.ini`). A full RSF install has hundreds of stages: the drivelines are read on a
 //! thread once and kept in the player's folder (`cache/drivelines/<map>.line`, with the source's path, size and time,
 //! so a changed stage is read again); a stage whose driveline does not read (RSF-encrypted, missing) is left out. The
 //! reference times read the kept driveline back.
@@ -11,18 +11,18 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 
 use rbr_formats::data::Data;
-use rbr_formats::{stage_files, trk};
+use rbr_formats::{markers, stage_files, trk};
 use rbr_gameplay::weather::Season;
 use rbr_season::config::{StageRef, Surface};
-use rbr_season::pace::ClassPace;
+use rbr_season::pace::{self, ClassPace, TimedRoad};
 use rbr_season::track::StageProfile;
 
 use crate::catalog::{self, Catalog, Origin};
 
 /// The kept drivelines' folder in the player's folder.
 pub const CACHE: &str = "cache/drivelines";
-/// The cache file's first bytes (format 1).
-const MAGIC: &[u8; 6] = b"RRDL1\n";
+/// The cache file's first bytes (format 2: the timed road's points, then its splits).
+const MAGIC: &[u8; 6] = b"RRDL2\n";
 
 /// Where a stage's driveline is read from.
 #[derive(Debug, Clone, PartialEq)]
@@ -97,36 +97,32 @@ fn fingerprint(path: &Path) -> Option<String> {
     Some(format!("{}|{}|{time}", path.display(), meta.len()))
 }
 
-/// The driveline's points (m), from the source file.
-fn read_driveline(path: &Path, source: &Source) -> Option<Vec<[f32; 3]>> {
-    let points: Vec<[f32; 3]> = match source {
+/// The stage's timed road, from the source file.
+fn read_driveline(path: &Path, source: &Source) -> Option<TimedRoad> {
+    let road = match source {
         Source::Trk(_) => {
             let bytes = std::fs::read(path).ok().filter(|b| !stage_files::encrypted(b))?;
-            let records = trk::parse(&bytes).ok()?.chunks.into_iter().find_map(|c| match c.payload {
-                trk::ChunkPayload::DriveLine(d) => Some(d.records),
+            let line = trk::parse(&bytes).ok()?.chunks.into_iter().find_map(|c| match c.payload {
+                trk::ChunkPayload::DriveLine(d) => Some(d),
                 _ => None,
             })?;
-            records.iter().map(|r| [r.vectors[0].x, r.vectors[0].y, r.vectors[0].z]).collect()
+            let markers = std::fs::read(path.with_extension("dls")).ok().and_then(|b| markers::parse(&b).ok());
+            pace::timed_road(&line, markers.as_ref())
         }
         Source::Btb(folder) => {
             let line = rbr_btb::track::Track::open(folder).ok()?.driveline().ok()?;
-            line.points.iter().map(|p| p.position.map(|v| v as f32)).collect()
+            TimedRoad { points: line.points.iter().map(|p| p.position.map(|v| v as f32)).collect(), splits: Vec::new() }
         }
     };
-    (points.len() >= 2).then_some(points)
-}
-
-/// The polyline's length (m).
-pub fn length(points: &[[f32; 3]]) -> f32 {
-    points.windows(2).map(|w| (0..3).map(|k| (w[1][k] - w[0][k]).powi(2)).sum::<f32>().sqrt()).sum()
+    (road.points.len() >= 2).then_some(road)
 }
 
 fn cache_file(cache: &Path, key: &str) -> PathBuf {
     cache.join(format!("{key}.line"))
 }
 
-/// The kept driveline of `key`, when it was read from `print` (any source with `None`).
-fn read_cached(cache: &Path, key: &str, print: Option<&str>) -> Option<Vec<[f32; 3]>> {
+/// The kept timed road of `key`, when it was read from `print` (any source with `None`).
+fn read_cached(cache: &Path, key: &str, print: Option<&str>) -> Option<TimedRoad> {
     let bytes = std::fs::read(cache_file(cache, key)).ok()?;
     let rest = bytes.strip_prefix(MAGIC.as_slice())?;
     let word = |b: &[u8], at: usize| Some(u32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?) as usize);
@@ -135,35 +131,42 @@ fn read_cached(cache: &Path, key: &str, print: Option<&str>) -> Option<Vec<[f32;
     if print.is_some_and(|p| p != kept) {
         return None;
     }
+    let floats = |b: &[u8], count: usize| -> Option<Vec<f32>> {
+        let raw = b.get(4..4 + count * 4)?;
+        Some(raw.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect())
+    };
     let rest = &rest[4 + n..];
     let count = word(rest, 0)?;
-    let floats = rest.get(4..4 + count * 12)?;
-    let f = |at: usize| f32::from_le_bytes(floats[at..at + 4].try_into().unwrap());
-    Some((0..count).map(|i| [f(i * 12), f(i * 12 + 4), f(i * 12 + 8)]).collect())
+    let points = floats(rest, count * 3)?.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
+    let rest = &rest[4 + count * 12..];
+    let splits = floats(rest, word(rest, 0)?)?;
+    Some(TimedRoad { points, splits })
 }
 
-fn write_cached(cache: &Path, key: &str, print: &str, points: &[[f32; 3]]) -> std::io::Result<()> {
+fn write_cached(cache: &Path, key: &str, print: &str, road: &TimedRoad) -> std::io::Result<()> {
     let mut bytes = MAGIC.to_vec();
     bytes.extend((print.len() as u32).to_le_bytes());
     bytes.extend(print.as_bytes());
-    bytes.extend((points.len() as u32).to_le_bytes());
-    bytes.extend(points.iter().flatten().flat_map(|v| v.to_le_bytes()));
+    bytes.extend((road.points.len() as u32).to_le_bytes());
+    bytes.extend(road.points.iter().flatten().flat_map(|v| v.to_le_bytes()));
+    bytes.extend((road.splits.len() as u32).to_le_bytes());
+    bytes.extend(road.splits.iter().flat_map(|v| v.to_le_bytes()));
     std::fs::create_dir_all(cache)?;
     std::fs::write(cache_file(cache, key), bytes)
 }
 
-/// The item's driveline, kept or read (and kept); `None` when it does not read.
-fn driveline(data: &Data, cache: &Path, item: &Item) -> Option<Vec<[f32; 3]>> {
+/// The item's timed road, kept or read (and kept); `None` when it does not read.
+fn driveline(data: &Data, cache: &Path, item: &Item) -> Option<TimedRoad> {
     let path = source_file(data, &item.source)?;
     let print = fingerprint(&path)?;
-    if let Some(points) = read_cached(cache, &item.stage.key, Some(&print)) {
-        return Some(points);
+    if let Some(road) = read_cached(cache, &item.stage.key, Some(&print)) {
+        return Some(road);
     }
-    let points = read_driveline(&path, &item.source)?;
-    if let Err(e) = write_cached(cache, &item.stage.key, &print, &points) {
+    let road = read_driveline(&path, &item.source)?;
+    if let Err(e) = write_cached(cache, &item.stage.key, &print, &road) {
         eprintln!("launcher: {}: {e}", cache_file(cache, &item.stage.key).display());
     }
-    Some(points)
+    Some(road)
 }
 
 /// The items whose driveline reads, with their lengths; `done` counts the items looked at.
@@ -173,18 +176,18 @@ pub fn read(data: &Data, cache: &Path, items: Vec<Item>, done: &AtomicUsize, sto
         if stop.load(Ordering::Relaxed) {
             break;
         }
-        if let Some(points) = driveline(data, cache, &item) {
-            stages.push(StageRef { length: length(&points), ..item.stage });
+        if let Some(road) = driveline(data, cache, &item) {
+            stages.push(StageRef { length: pace::path_length(&road.points), ..item.stage });
         }
         done.fetch_add(1, Ordering::Relaxed);
     }
     stages
 }
 
-/// A stage's profile for `class` from its kept driveline; a stage without one is a flat profile over its length.
+/// A stage's profile for `class` from its kept timed road; a stage without one is a flat profile over its length.
 pub fn profile(cache: &Path, stage: &StageRef, class: &ClassPace) -> StageProfile {
     match read_cached(cache, &stage.key, None) {
-        Some(points) => rbr_season::track::profile(&points, &[], stage.surface, class),
+        Some(road) => rbr_season::track::profile(&road.points, &road.splits, stage.surface, class),
         None => StageProfile::flat(stage.length, stage.surface, class),
     }
 }
@@ -267,11 +270,11 @@ mod tests {
 
     #[test]
     fn the_pool_has_the_startable_stages_with_their_driveline_lengths_and_keeps_them() {
-        let here = crate::test_dir("events-pool");
+        let here = crate::test_dir("championship-pool");
         let maps = here.join("data").join("Maps");
         std::fs::create_dir_all(&maps).unwrap();
         // 54 reads (a 3-4-5 corner: 7 m), 55 is RSF-encrypted, 56 has no `.trk`, 71 is the school's (not listed).
-        std::fs::write(maps.join("track-54_O.trk"), trk_bytes(&[[0.0; 3], [3.0, 0.0, 0.0], [3.0, 4.0, 0.0]])).unwrap();
+        std::fs::write(maps.join("track-54_O.trk"), trk_bytes(&[[0.0; 3], [3.0, 0.0, 0.0], [7.0, 0.0, 0.0]])).unwrap();
         let mut encrypted = stage_files::ENCRYPTED.to_vec();
         encrypted.extend([0; 64]);
         std::fs::write(maps.join("track-55_O.trk"), encrypted).unwrap();
@@ -293,10 +296,13 @@ mod tests {
         let stages = read(&data, &cache, found.clone(), &done, &stop);
         assert_eq!(done.load(Ordering::Relaxed), 3);
         assert_eq!(stages.len(), 1);
-        assert_eq!((stages[0].key.as_str(), stages[0].length), ("54", 7.0));
-        // Kept: read back without the `.trk`'s parse, and again once the stage changes.
+        assert_eq!(stages[0].key, "54");
+        assert!((stages[0].length - 7.0).abs() < 1e-3, "{}", stages[0].length);
+        // Kept: the timed road the pace model times (`pace::timed_road`), read back without the `.trk`'s parse, and
+        // again once the stage changes.
         let kept = read_cached(&cache, "54", None).unwrap();
-        assert_eq!(kept, [[0.0; 3], [3.0, 0.0, 0.0], [3.0, 4.0, 0.0]]);
+        let source = Source::Trk("track-54_O".into());
+        assert_eq!(Some(kept), read_driveline(&maps.join("track-54_O.trk"), &source));
         std::fs::write(cache_file(&cache, "54"), {
             let mut b = MAGIC.to_vec();
             let print = fingerprint(&maps.join("track-54_O.trk")).unwrap();
@@ -309,7 +315,7 @@ mod tests {
         assert_eq!(read_cached(&cache, "54", None), None, "a short file is not a driveline");
         std::fs::write(maps.join("track-54_O.trk"), trk_bytes(&[[0.0; 3], [0.0, 0.0, 10.0]])).unwrap();
         let again = read(&data, &cache, found, &done, &stop);
-        assert_eq!(again[0].length, 10.0);
+        assert!((again[0].length - 10.0).abs() < 1e-3, "{}", again[0].length);
         std::fs::remove_dir_all(&here).unwrap();
     }
 }
