@@ -756,7 +756,8 @@ fn backlit(colour: vec3<f32>, texel: vec3<f32>, uv: vec2<f32>, night: bool, faci
 
 // The start board's lit lamps' luminance, cd/m2 (ours): a semi-outdoor LED display's, as start clocks are. A traffic
 // signal's 12000 (EN 12368: about 400 cd over a 200 mm lens) went past the tone curve's peak in sunlight, whose chroma
-// fade drew the red lamp white (45N cockpit 13:00); at 2500 it shows red by day and glares red at night.
+// fade drew the red lamp pale (45N cockpit 13:00: 255, 205, 164); at 2500 it shows red by day (255, 95, 72) and glares
+// red at night.
 const SIGNAL_LUMINANCE: f32 = 2500.0;
 
 // A dial's or lamp's depth in its housing over its radius (`backlit`): at 25 degrees off its axis 88 % of the face
@@ -2775,12 +2776,14 @@ fn lamp_shown(texel: vec3<f32>, world: vec3<f32>, to_eye: vec3<f32>) -> vec3<f32
     return shining(hue, texel, abs(mode.lamp.w) * max(seen, LAMP_SIDE));
 }
 
-// A light source's texel, renderer units: luminance `l` (cd/m2) in the colour `hue` at the texel's brightness (its
-// strongest channel), held under `LIGHT_CAP`.
+// A light source's texel: luminance `l` (cd/m2) in the colour `hue` at the texel's brightness (its strongest channel),
+// held under `LIGHT_CAP` renderer units, in the draws' graded colour (`ungraded`, as the sun's disc): until 2026-11-05
+// it went in linear, so the frame took it to the power 2.2 (a tail lamp's 40 units at night drawn at 3300, a capped
+// headlight's past the half floats; by day the lamps' glow under their texture).
 fn shining(hue: vec3<f32>, texel: vec3<f32>, l: f32) -> vec3<f32> {
     let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
     let bright = max(texel.r, max(texel.g, texel.b));
-    return capped(hue / max(dot(hue, luma), 1e-4) * bright * l * pre_exposure());
+    return ungraded(capped(hue / max(dot(hue, luma), 1e-4) * bright * l * pre_exposure()));
 }
 
 // `sky` without the sun's disc and glow (also the light the haze takes on, `haze_colour`).

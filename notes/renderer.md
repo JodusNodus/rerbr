@@ -346,7 +346,7 @@ probably fit the wrong hour.
   fogged (2026-10-27, track-54_E). Since 2026-11-05 the lit lamps shine at 2500 cd/m2 (an LED display's) in their
   signal's colour (`start_board::LAMPS`: red, a 505 nm green), not their texture's pale red: 45N countdown, the red
   lamp by day saturated red (was salmon), at night a red glare about a bright core (was a flat cream square). A
-  signal's 12000 cd/m2 drew it white by day (GT7's chroma fade past its peak).
+  signal's 12000 cd/m2 drew it pale by day (255, 205, 164; GT7's chroma fade past its peak).
 - Baked shading lives in three places. The shadow light maps paint the bake's cast shadows: with `Enhance::lighting`
   they are neither loaded nor used (Semetin 176_M: 165 maps, 350 MB); the cascades, the far layer and the world layer
   (`sun::world`) cast for any sun, and at night for the moon (no measurable frame cost, 2026-10-25). The backdrop
@@ -506,7 +506,11 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   part's area along the car's axis (held within 0.002-0.1 m2), toward the eye by the nearest lit lamp's beam or signal
   pattern over the cosine (at least 0.25), at least 3% of the axis's, held under 30000 renderer units (half floats).
   It needs the glare (`hdr` below): the old 6% bloom spread it into a red fog. Was `LAMP_GLOW` 1.6 times the
-  texture, a tail lamp's 0.3 of it by day (2026-10-31). The game's rear sprites read as blobs by day.
+  texture, a tail lamp's 0.3 of it by day (2026-10-31). The game's rear sprites read as blobs by day. The luminance
+  goes into the draws' graded colour (`shining`, `ungraded`); its first day it went in linear, so the frame drew it
+  to the power 2.2 (a tail lamp's 90 units at night at 20000, a capped headlight's past the half floats): 45O night
+  chase, the tail lamps' red glare now faint about their burnt cores, by day no change (their glow under the
+  texture).
 - Ours: a lamp's lit part the game never draws (on the `light` or `brake` box, or `Predicate = NotUsed`), named
   `e_light_lf_lit`, `e_light_lb_lit`, `e_light_brake_lb_lit` and so on, follows its lamp by name, with its unlit pair
   `e_light_lb` when that one's box does not switch it (`lights::Switch::of_part`, 2026-10-31; user: "whatever is
