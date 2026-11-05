@@ -153,6 +153,8 @@ pub struct Renderer {
     light_shafts: Option<crate::light_shafts::LightShafts>,
     /// `None` unless [`Enhance::particles`].
     effects: Option<Effects>,
+    /// The soft particles' target at half a tall frame's size ([`crate::particle_target`]).
+    particle_target: Option<crate::particle_target::ParticleTarget>,
     /// `None` unless [`Enhance::lighting`].
     sun: Option<SunShadow>,
     /// The sun's cascades for the frame being drawn, `None` when there are none (no sun, or an overcast sky).

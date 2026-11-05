@@ -66,6 +66,10 @@ impl Renderer {
             if let Some(effects) = &mut self.effects {
                 effects.resize(&self.device, &self.depth_view);
             }
+            self.particle_target = self.effects.as_ref().and_then(|effects| {
+                let reduced = |depth: &wgpu::TextureView| effects.reduced_group(&self.device, depth);
+                crate::particle_target::ParticleTarget::new(&self.device, size, &self.depth_view, reduced)
+            });
             self.sun_mask.resize(&self.device, &self.depth_view, size);
             self.cloud_volume.resize(&self.device, &self.depth_view, size);
             if let (Some(taa), Some(motion)) = (&mut self.taa, &mut self.motion) {
@@ -427,7 +431,38 @@ impl Renderer {
 
     /// Draws the rain and the particles over the resolved `scene`, in the unjittered view.
     fn draw_late_effects(&self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        // On a tall frame the rain's mist and the soft billboards go into the particles' target at half its size,
+        // each laid over the frame in its turn (`crate::particle_target`).
+        let (Some(target), Some(effects)) = (&self.particle_target, &self.effects) else {
+            return self.draw_effects(&mut self.effects_pass(encoder, scene));
+        };
+        let (mist, soft) = (effects.rain() > 0.0, self.particles.as_ref().is_some_and(|p| p.soft_billboards()));
+        if !mist && !soft {
+            return self.draw_effects(&mut self.effects_pass(encoder, scene));
+        }
+        effects.write_reduced(&self.queue, crate::particle_target::reduced(target.size()).unwrap_or_default());
+        target.reduce_depth(encoder);
+        if mist {
+            target.layer(encoder, scene, |pass| effects.draw_mist(pass, true, target.effects()));
+        }
+        let mut pass = self.effects_pass(encoder, scene);
+        effects.draw_drops(&mut pass);
+        let Some(particles) = &self.particles else { return };
+        particles.draw_waves(&mut pass);
+        drop(pass);
+        if soft {
+            let lamps = self.lamps_light();
+            target.layer(encoder, scene, |pass| particles.draw_soft_reduced(pass, target.effects(), lamps));
+        }
+    }
+
+    /// A pass over `scene` that reads the frame's depth.
+    fn effects_pass<'e>(
+        &self,
+        encoder: &'e mut wgpu::CommandEncoder,
+        scene: &wgpu::TextureView,
+    ) -> wgpu::RenderPass<'e> {
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("effects over the resolve"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: scene,
@@ -443,8 +478,7 @@ impl Renderer {
             timestamp_writes: None,
             occlusion_query_set: None,
             multiview_mask: None,
-        });
-        self.draw_effects(&mut pass);
+        })
     }
 
     /// Draws the rain and the particles into `pass`, which reads the depth: lit and soft with the effects

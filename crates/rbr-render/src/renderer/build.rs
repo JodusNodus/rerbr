@@ -560,6 +560,7 @@ impl Renderer {
             motion,
             light_shafts,
             effects,
+            particle_target: None,
             sun,
             cascades: None,
             world_box,
