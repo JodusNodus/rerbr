@@ -248,7 +248,7 @@ impl Game {
         self.filter = Filter::new(grid);
     }
 
-    /// The camera's start orbit, with [`Game::with_camera_go`]
+    /// The camera's start orbit, with [`Game::with_camera_go`].
     pub fn start_camera(&self) -> Option<StartCamera> {
         self.start_camera
     }
