@@ -565,6 +565,12 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 - Rear lamps are capped by a soft knee on their summed light (2026-10-27): a brake lamp's 100 cd saturated red within
   a few metres under the night's exposure. Maps 450/369 fly-by 22:00-22:15 and 466 chase 23:00 show small lamps and
   a faint wash; headlights unchanged (map 126 night chase MAE 0.0004 to 0.0005).
+- Wet-road lamp streaks at their real luminance (2026-11-05, `lamp_glint` in `night.wgsl`): the film's reflectance
+  times the lamp's illuminance toward the road point (`beam`/`signal` of `CANDELA`) over the lobe's solid angle (pi
+  times 0.2 rad in elevation and 0.2 times the view's sine, plus the lamp's 0.1 m over its distance, across), added in
+  linear light; the rippled normal breaks it up. Replaced the fixed brightnesses: the 45O wet flyby's one clipped slab is
+  two rippled streaks (clipped 6.6 to 5.4 % of the frame; road crop flicker mean 6.4 to 9.1, the ripples' edges), the
+  chase's red haze under the tail lamps is gone (they shine little that steeply down); day wet and dry byte-identical.
 
 ## Damage visuals
 

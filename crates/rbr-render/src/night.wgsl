@@ -145,18 +145,20 @@ fn moon_lit(world: vec3<f32>, n: vec3<f32>, has_normal: bool) -> f32 {
     return mix(1.0, mix(MOON_SHADE, 1.0, lit), near);
 }
 
-// The lamps mirrored in a wet road at `world` along `mirrored` (the view reflected about the road), with the film's
-// reflectance `f`: each lit lamp's face as wet roads show lights, a streak stretched toward and away from the eye
-// (`REFLECTION_SPREAD`: narrow across, long in elevation), as bright as the lamp shines toward that point of the road.
-// Headlights (`REFLECTION_BRIGHTNESS.x`) outshine the tail lights (`.y`, brake lights up to `.z`), a rear lamp by its
-// colour's strongest channel over a tail lamp's (`REFLECTION_TAIL`, `lights::CANDELA`).
-const REFLECTION_SPREAD: vec2<f32> = vec2<f32>(0.03, 0.3);
-const REFLECTION_BRIGHTNESS: vec3<f32> = vec3<f32>(12.0, 2.5, 8.0);
-const REFLECTION_TAIL: f32 = 5.64;
+// The lamps mirrored in a wet road at `world` along `mirrored` (the view reflected about the road's rippled normal), with
+// the film's reflectance `f`, renderer units in linear light: each lit lamp as wet roads show lights, a streak under it
+// toward the eye. The film's slopes finer than a pixel spread the mirrored direction by `REFLECTION_SPREAD` radians
+// (1/e) in elevation and by that times the view's sine across (a tilt moves the reflection `2 sin` as far across as up),
+// widened by the lamp's own `REFLECTION_LAMP` metres over its distance. The streak's luminance is `f` times the lamp's
+// illuminance toward the point (`beam` or `signal` of its intensity, `lamp_lux`) over the lobe's solid angle
+// (pi times its two widths), so that it carries the light the film mirrors.
+const REFLECTION_SPREAD: f32 = 0.2;
+const REFLECTION_LAMP: f32 = 0.1;
 
 fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
     let across = normalize(vec2<f32>(mirrored.x, mirrored.z) + vec2<f32>(1e-6, 0.0));
+    let sine = max(mirrored.y, 0.01);
     for (var i = 0; i < 8; i++) {
         let lamp = frame.lamps[i];
         if (lamp.position.w == 0.0) {
@@ -166,21 +168,19 @@ fn lamp_glint(world: vec3<f32>, mirrored: vec3<f32>, f: f32) -> vec3<f32> {
         let d = length(to);
         let l = to / d;
         let flat = normalize(vec2<f32>(l.x, l.z) + vec2<f32>(1e-6, 0.0));
-        // The angle between the two directions across, and their difference in elevation; the lamp's own width widens
-        // the streak near it.
-        let side = abs(across.x * flat.y - across.y * flat.x) / (REFLECTION_SPREAD.x + 0.1 / d);
-        let rise = (mirrored.y - l.y) / REFLECTION_SPREAD.y;
-        let lobe = exp(-side * side - rise * rise) * f32(dot(across, flat) > 0.0);
+        // The angle between the two directions across, and their difference in elevation.
+        let wide = REFLECTION_SPREAD * sine + REFLECTION_LAMP / d;
+        let side = abs(across.x * flat.y - across.y * flat.x) / wide;
+        let rise = (mirrored.y - l.y) / REFLECTION_SPREAD;
+        let lobe = exp(-side * side - rise * rise) * f32(dot(across, flat) > 0.0) / (PI * wide * REFLECTION_SPREAD);
         let beam_lamp = lamp.forward.w != 0.0;
-        let toward = select(signal(lamp, -l), min(beam(lamp, -l) * 4.0, 1.0), beam_lamp);
+        let toward = select(signal(lamp, -l), beam(lamp, -l), beam_lamp);
         // A tree or a bank between the lamp and the road cuts the headlights' streaks too; the rear lamps stay
         // unshadowed.
         let reach = select(1.0, lamp_reach(world, vec3<f32>(0.0, 1.0, 0.0), l), beam_lamp);
-        let tint = lamp.colour.rgb / max(max(lamp.colour.r, lamp.colour.g), max(lamp.colour.b, 1e-6));
-        let tail = clamp(max(lamp.colour.r, max(lamp.colour.g, lamp.colour.b)) / REFLECTION_TAIL, REFLECTION_BRIGHTNESS.y, REFLECTION_BRIGHTNESS.z);
-        sum += tint * select(tail, REFLECTION_BRIGHTNESS.x, beam_lamp) * toward * lobe * reach;
+        sum += lamp_lux(lamp.colour.rgb * toward / (d * d)) * lobe * reach;
     }
-    return sum * clamp(3.0 * f, 0.0, 1.0);
+    return capped(sum * f * pre_exposure());
 }
 
 // The night sky along `dir`: a dark blue gradient, lighter toward the horizon, stars, and the moon (where the sun
