@@ -454,7 +454,6 @@ impl Form {
             Some(car_browser::Action::Choose(index)) => {
                 match target {
                     Target::Drive => self.choose_car(index),
-                    Target::Season => self.season_pick = index,
                     Target::Event => self.events.pick_car(index, &self.catalog.cars),
                 }
                 self.car_browser.open = false;

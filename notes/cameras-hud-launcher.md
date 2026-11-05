@@ -123,40 +123,36 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   --at N`) draws the Nth answer headless, the way a live screenshot draws the Nth payload: the replay
   runs back to back (`--replay-pace free`), not in lockstep (`--frames -` takes no `--replay` beside it);
   `--at-drive` takes no `--replay`.
-- Championship tab (`rally_page/`: `mod.rs` the season's state and turns, `view.rs` the drawing): with no season, the
-  profile, Continue saved season as the primary button when the profile's file holds a season (read once per profile
-  name, `has_saved_season`), then the New season section (team, car, skill with its outside-assistance rule, damage)
-  and New season (secondary, "replaces …", when there is a save). With one: a header (the rally, Rally n of 6, the step in amber:
-  Before the start, Stage n of 6, Service before stage n of 6, Rally over, Season over; the player's place in the
-  rally; then car, team, options, season clock), the card of the next step first, with one primary button (the
-  stage's start time, place on the road and its surface, tyres, setup and Edit, weather and Drive SSn; the welcome's
-  stage and service count; the park with time left, its parts by damage colour and the late-penalty warning, Repair!,
-  or Leave service with nothing ticked, which closes the park unrepaired without the game's `MSG_NOREP` question; the
-  rally's end with the place, Next rally: name over the trials, or at the season's end New season), the itinerary
-  under it (Stage, Start, Time; the arrow on the stage or service up next; a wreck marks only the first stage not
-  driven), the rally standings (the last stage's column from SS2, total, gap, points once awarded), the season points
-  and the bulletins beside, and Another season or profile folded away. Ours: the flow does not stop at a rally's
-  results (kind 9): `turn_done` passes it (its points go in) to the page between rallies, which shows the place and
-  the final standings; a season saved at the results continues there. New season from a season under way (the fold,
-  the season over) takes that season's team, options and car (`SeasonCar::Kept`). `--screenshot` draws it new
-  (without and with a saved season), at the welcome, after a wrecked SS1, at SS2, between rallies, the season over
-  and (with `--screenshot-damage`) in service.
-- Championship tab's events (ours, `events_page/`, model `rbr_season`; 2026-11-05): the tab opens on preset cards
-  (Quick rally, Weekend, Season, Random, Classic 1.02 season; the Classic card opens the 1.02 season page above,
-  unchanged, with "‹ All events" back), Continue event first when `SavedGames/event-<profile>.txt` exists (carried
-  damage in `.dmg`, the service's late penalty and the tyre in `.ini`: `Event` keeps neither). A preset opens the
-  builder (car through the car browser, `Target::Event`, defaulting to the Drive page's; class = the car's group,
-  only that class's cars fill the field; length, stage pool, surface, time of day, weather, damage, difficulty
-  Gentle/Club/National/Pro, adaptive, field, seed) beside a live summary and Start event. The pool is every listed,
+- Championship tab (`events_page/`, model `rbr_season`; 2026-11-05): the one mode of the tab; the classic 1.02 season
+  page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
+  `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the
+  keys at its next save). The tab opens on the preset cards (Quick rally, Weekend, Season, Random), Continue first when
+  `SavedGames/event-<profile>.txt` exists (carried damage in `.dmg`, the service's late penalty and the tyre in `.ini`:
+  `Event` keeps neither). A preset opens the builder (car through the car browser, `Target::Event`, defaulting to the
+  Drive page's; class = the car's group, only that class's cars fill the field; length, stage pool, surface, time of day,
+  weather, damage, skill level, team, difficulty Gentle/Club/National/Pro, adaptive, field, seed) beside a live summary
+  and Start. The skill level is the game's three (`SSKILL`) under `rbr_season` names: Rookie 10 s, Amateur 20 s,
+  Professional 35 s and a stuck car is not helped (`--championship rookie|professional|champion`); the help text shows the
+  penalty. The Team row (service crew) lists `Model::team_offers` and shows nothing until the model offers teams. The
+  pool is every listed,
   startable map (`pool::items`), its length from the driveline (`.trk` kind 0x14, a BTB folder's `driveline.ini`),
   read on a thread and kept in `<files>/cache/drivelines/<map>.line` (path, size, mtime checked); an unreadable
   driveline drops the stage (RSF install 2026-11-05: 687 `.trk`, none encrypted, 209 MB). The reference closure runs
   `pace::reference_time` over the kept points. A stage launches like the Drive page's on the map's weather row of the
   itinerary's road (nearest row plus `--wetness` when none matches), `--clock`/`--start-time` from its clock, as a
-  championship stage (`--championship professional`, `--championship-damage` the event's), with `--damage-in/-out`
+  championship stage (`--championship` on the event's skill, `--championship-damage` the event's), with `--damage-in/-out`
   and `--result-out` in `<files>/events/`. Screens: welcome, stage card (tyres and setup after a service or at the
-  start, else kept), last stage's result (winner, gap), service (`rally_page::park_card`, the itinerary's minutes),
-  rally over with points, event over. `--screenshot` draws them on `events_page::fixture`'s double (`events*.png`).
+  start, else kept; a Start order line "14th on the road · worn surface" from `Play::start_order`/`road_wear`, none
+  while the model gives no order), last stage's result (winner, gap), service (`common::park_card`, the itinerary's
+  minutes), rally over with points and, when a rally follows, "Practice first (not recorded)": a yard trial (map 72) and
+  a stage trial (the next rally's first stage, its surface, road and clock), in the event's car and damage on the road's
+  tyre, with no championship flags, no `--saves` and no files; its end changes nothing (`EventsPage::trial`, `practice`),
+  and event over. A bulletins card ("Since your last stage", `Play::bulletins`) sits above the standings. The seam to
+  `rbr_season` is `model::Play` and `model::Model`; the real `Event`'s `bulletins`, `start_order`, `road_wear` and
+  `team_offers` return empty or neutral values until wired (marked `wired at merge`). `common.rs` holds the cards, the
+  places, times and the service park. `--screenshot` draws them on `events_page::fixture`'s double
+  (`championship*.png`; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The old live two-stage
+  test is gone from `command.rs`; a built-event e2e test replaces it later.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
   their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in

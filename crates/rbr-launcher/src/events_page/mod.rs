@@ -1,19 +1,21 @@
-//! The Championship tab's events (ours, `rbr_season`): a rally or a season the player builds from a preset, on any
-//! installed stage (retail, RSF, BTB: [`pool`]), against a field in the car's class. The tab opens on the presets
-//! (Quick rally, Weekend, Season, Random, and the Classic 1.02 season, which is `rally_page`'s season as it was), with
-//! Continue event first when the profile has one. A preset opens the builder with its settings; Start event builds the
+//! The Championship tab (ours, `rbr_season`): a rally or a season the player builds from a preset, on any installed
+//! stage (retail, RSF, BTB: [`pool`]), against a field in the car's class. The tab opens on the presets (Quick rally,
+//! Weekend, Season, Random), with Continue first when the profile has an event. A preset opens the builder with its settings; Start event builds the
 //! event, and the page then runs its turns: the rally's welcome and itinerary, each stage (its conditions, start time,
 //! tyres and setup, then Drive), the standings with gaps and the stage winner after each, the service park where the
-//! itinerary has one (`rally_page::park_card`, the damage carried), the rally's end with its points, and the event's
+//! itinerary has one (`common::park_card`, the damage carried), the rally's end with its points, and the event's
 //! end.
 //!
 //! A stage runs as on the Drive page on the stage's own weather row of the itinerary's road (dry, damp or wet; the
 //! nearest row with `--wetness` when the stage has none), at the itinerary's clock (`viewer --clock`,
-//! `rbr-standalone --start-time`), as a championship stage (`--championship professional`, flow mode 3: no restart)
-//! on the event's damage. The damage carried goes in with `--damage-in`; the stage's result and damage come back
-//! through `--result-out` and `--damage-out` in `events/` in the player's folder, as the 1.02 season's do.
+//! `rbr-standalone --start-time`), as a championship stage (`--championship` on the event's skill, flow mode 3: no
+//! restart) on the event's damage. The damage carried goes in with `--damage-in`; the stage's result and damage come back
+//! through `--result-out` and `--damage-out` in `events/` in the player's folder.
 //!
-//! One event per profile: `SavedGames/event-<profile>.txt` (`Event::save`) next to the 1.02 saves, with the carried
+//! Between rallies the page offers the game's two trials as practice that is not recorded: a yard trial and a stage
+//! trial on the next rally's first stage (its surface and road), in the event's car, with no championship flags.
+//!
+//! One event per profile: `SavedGames/event-<profile>.txt` (`Event::save`) in `SavedGames/`, with the carried
 //! damage in `event-<profile>.dmg` and the service's late penalty still to add and the tyre on the car in
 //! `event-<profile>.ini` (the event's API keeps neither).
 
@@ -28,11 +30,12 @@ use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::flow::{EndCause, EndRace, StageEnd};
 use rbr_gameplay::setup::SeasonSetup;
-use rbr_season::config::{Damage, EventConfig, Length, Preset, StagePool, StageRef, Surface, Surfaces};
+use rbr_season::config::{Damage, EventConfig, Length, Preset, Skill, StagePool, StageRef, Surface, Surfaces};
 use rbr_season::event::{Conditions, ItineraryStage, PlayerResult, Turn};
 
 use crate::catalog::Car;
 
+mod common;
 pub mod fixture;
 mod launch;
 
@@ -49,8 +52,6 @@ use pool::Pool;
 pub enum View {
     /// The presets, and Continue event.
     Entry,
-    /// The 1.02 season (`rally_page`).
-    Classic,
     Builder,
     /// The event under way.
     Event,
@@ -62,7 +63,8 @@ pub struct Builder {
     pub preset: Preset,
 }
 
-/// A stage to drive: its map, road and clock, the tyre and setup picked, and the extra `rbr-standalone` arguments.
+/// A stage to drive: its map, road and clock, the tyre and setup picked, the damage and the extra `rbr-standalone`
+/// arguments (none for a practice trial).
 #[derive(Debug, Clone, PartialEq)]
 pub struct EventStart {
     pub map: u32,
@@ -71,6 +73,7 @@ pub struct EventStart {
     pub clock: f32,
     pub tyre: u32,
     pub setup: SeasonSetup,
+    pub damage: Damage,
     pub args: Vec<String>,
 }
 
@@ -115,6 +118,12 @@ pub struct EventsPage {
     setup: SeasonSetup,
     /// A stage is being driven.
     driving: bool,
+    /// A practice trial is being driven (it is not recorded).
+    practice: bool,
+    /// The profile the event is saved under.
+    pub profile: String,
+    /// The team (service crew) the builder picked, from [`model::Model::team_offers`].
+    pub team: usize,
     pub status: String,
 }
 
@@ -213,12 +222,47 @@ pub fn surface_kind(surface: Surface) -> u32 {
     }
 }
 
+/// The yard, the game's map for the yard trial.
+const YARD: u32 = 72;
+
 /// `rbr-standalone --championship-damage`'s word for the event's damage.
 fn damage_word(damage: Damage) -> &'static str {
     match damage {
         Damage::Off => "off",
         Damage::Reduced => "reduced",
         Damage::Realistic => "realistic",
+    }
+}
+
+/// The game's skill level an event skill runs as (`SSKILL`: Rookie, Professional, Champion).
+fn race_skill(skill: Skill) -> rbr_gameplay::race_options::Skill {
+    use rbr_gameplay::race_options::Skill as Game;
+    match skill {
+        Skill::Rookie => Game::Rookie,
+        Skill::Amateur => Game::Professional,
+        Skill::Professional => Game::Champion,
+    }
+}
+
+/// What the skill level does to outside assistance (`M576710`'s penalty, the gate `E60Flow::M566640`).
+pub fn assistance_note(skill: Skill) -> String {
+    use rbr_gameplay::race_options::{ChampionshipOptions, RaceOptions};
+    let options = ChampionshipOptions { skill: race_skill(skill), ..ChampionshipOptions::default() };
+    let settings = options.assist_settings(&RaceOptions::default());
+    let penalty = settings.penalty();
+    if rbr_gameplay::flow::assistance_gate(settings) {
+        format!("{penalty} s penalty")
+    } else {
+        format!("{penalty} s penalty; a stuck car is not helped back and retires")
+    }
+}
+
+/// The skill level's word.
+pub fn skill_word(skill: Skill) -> &'static str {
+    match skill {
+        Skill::Rookie => "Rookie",
+        Skill::Amateur => "Amateur",
+        Skill::Professional => "Professional",
     }
 }
 
@@ -245,6 +289,9 @@ impl EventsPage {
             tyre: None,
             setup: SeasonSetup::Current,
             driving: false,
+            practice: false,
+            profile: "player".into(),
+            team: 0,
             status: String::new(),
         }
     }
@@ -418,7 +465,7 @@ impl EventsPage {
         let path = |p: &Path| p.display().to_string();
         let mut args: Vec<String> = [
             "--championship",
-            "professional",
+            race_skill(event.config.skill).name(),
             "--championship-damage",
             damage_word(event.config.damage),
             "--rally-next",
@@ -436,19 +483,43 @@ impl EventsPage {
         let setup = if self.choice_before(rally, stage) { self.setup.clone() } else { SeasonSetup::Current };
         let map = next.stage.key.parse().map_err(|_| format!("{}: not a map number", next.stage.key))?;
         self.driving = true;
-        Ok(EventStart { map, conditions: next.conditions, clock: next.clock, tyre, setup, args })
+        let damage = event.config.damage;
+        Ok(EventStart { map, conditions: next.conditions, clock: next.clock, tyre, setup, damage, args })
     }
 
     /// The stage never started: nothing changed, the player can retry.
     pub fn abort_stage_start(&mut self) {
-        self.driving = false;
+        (self.driving, self.practice) = (false, false);
+    }
+
+    /// A practice trial between rallies (the game's `S_YARD_TRIAL` on map 72, `S_STAGE_TRIAL`): the yard, or the next
+    /// rally's first stage on its road and clock, in the event's car and damage, on the road's tyre and the current
+    /// setup. No championship flags and no files: it is not recorded.
+    pub fn trial(&mut self, yard: bool) -> Result<EventStart, String> {
+        let run = self.run.as_ref().ok_or("no event")?;
+        let event = run.play.event();
+        let Turn::RallyOver { rally } = event.turn else { return Err("trials come between rallies".into()) };
+        let next = event.rallies.get(rally + 1).and_then(|r| r.stages.first()).ok_or("no rally follows")?;
+        let (map, surface, conditions, clock) = if yard {
+            (YARD, Surface::Gravel, Conditions::Dry, 12.0)
+        } else {
+            let map = next.stage.key.parse().map_err(|_| format!("{}: not a map number", next.stage.key))?;
+            (map, next.stage.surface, next.conditions, next.clock)
+        };
+        let kind = surface_kind(surface);
+        let road = rbr_gameplay::weather::tyre_kind(kind, wetness(conditions).1);
+        let choices = rbr_championship::tyre_choices(kind);
+        let tyre = road.filter(|t| choices.contains(t)).unwrap_or(choices[0]);
+        let damage = event.config.damage;
+        (self.driving, self.practice) = (true, true);
+        Ok(EventStart { map, conditions, clock, tyre, setup: SeasonSetup::Current, damage, args: Vec::new() })
     }
 
     /// The viewer closed: the stage's result and damage from `rbr-standalone`'s files (a stage left before the
     /// finish, or a run without the files, is a retire), with the service's penalty, against the stage's reference;
     /// the event saved.
     pub fn stage_closed(&mut self, here: &Path, profile: &str) {
-        if !std::mem::take(&mut self.driving) {
+        if !std::mem::take(&mut self.driving) || std::mem::take(&mut self.practice) {
             return;
         }
         let Some((_, _, next)) = self.next_stage() else { return };
@@ -496,7 +567,7 @@ impl EventsPage {
 
     /// Opens the park for the service up next, `minutes` long, on the car's repair tree.
     pub fn open_park(&mut self, data: &Data, car: &Car, ngp: Option<&Path>, minutes: u32) {
-        let (parts, rules) = crate::rally_page::repair_tree(data, car, ngp);
+        let (parts, rules) = common::repair_tree(data, car, ngp);
         match parts {
             Ok(parts) => {
                 let damage = self.run.as_ref().and_then(|r| r.damage.clone()).unwrap_or_default();
@@ -558,7 +629,7 @@ mod tests {
             daylight: Daylight::Day,
             weather: Weather::Changeable,
             damage: Damage::Realistic,
-            skill: rbr_season::config::Skill::Professional,
+            skill: Skill::Professional,
             difficulty: 0.6,
             adaptive: true,
             field_size: 12,
@@ -648,6 +719,8 @@ mod tests {
         assert_eq!(flag("--championship-damage"), Some("realistic"));
         assert_eq!(flag("--rally-next"), Some("stage"));
         assert_eq!(flag("--damage-in"), None);
+        // The fixture's Professional skill is the game's Champion.
+        assert_eq!(flag("--championship"), Some("champion"));
         assert_eq!(turn(&page), Turn::Stage { rally: 0, stage: 1 });
         // SS2 leaves damage and a service follows.
         let mut damage = CarriedDamage::default();
@@ -683,6 +756,35 @@ mod tests {
         assert!(!save.exists() && !dmg.exists() && !state.exists());
         assert_eq!(again.saved_event(&here, "tester"), None);
         std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    #[test]
+    fn a_trial_between_rallies_is_practice_that_is_not_recorded() {
+        let here = crate::test_dir("events-trial");
+        let mut page = page(&here);
+        let mut event = fixture::fixture_event();
+        page.screenshot_event(Box::new(fixture::Double(event.clone())));
+        assert!(page.trial(false).is_err(), "trials come between rallies");
+        event.turn = Turn::RallyOver { rally: 0 };
+        page.screenshot_event(Box::new(fixture::Double(event.clone())));
+        let stage = page.trial(false).unwrap();
+        assert_eq!(stage.map.to_string(), event.rallies[1].stages[0].stage.key);
+        assert!(stage.args.is_empty(), "no championship flags, no files");
+        // Its end changes nothing: the turn stays, nothing is recorded.
+        page.stage_closed(&here, "tester");
+        assert_eq!(page.run.as_ref().unwrap().play.event().turn, Turn::RallyOver { rally: 0 });
+        assert!(page.run.as_ref().unwrap().play.event().results[0].is_empty());
+        assert_eq!(page.trial(true).unwrap().map, YARD);
+        page.abort_stage_start();
+        assert!(!page.driving && !page.practice);
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    #[test]
+    fn the_skill_levels_are_the_games_three_with_their_help_rules() {
+        assert_eq!(assistance_note(Skill::Rookie), "10 s penalty");
+        assert_eq!(assistance_note(Skill::Amateur), "20 s penalty");
+        assert!(assistance_note(Skill::Professional).starts_with("35 s penalty; a stuck car is not helped"));
     }
 
     #[test]

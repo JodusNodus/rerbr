@@ -6,12 +6,10 @@ use std::time::Duration;
 use egui::{Color32, Id, RichText};
 use rbr_sound::menu::MenuPlayer;
 
-use crate::browser;
 use crate::car_browser;
 use crate::catalog::{self, car_label};
-use rbr_championship::season as season_model;
 
-use crate::{rally_page, Form};
+use crate::Form;
 
 /// How often a running viewer is checked for its exit.
 const POLL: Duration = Duration::from_millis(250);
@@ -309,8 +307,7 @@ impl Form {
     /// The menus' sound for the page shown: the service park at a championship's service stop, while the viewer is
     /// not running.
     pub fn menu_sound(&mut self) {
-        let service = self.rally.in_service() && self.events.view == crate::events_page::View::Classic;
-        let service = service || self.events.in_service();
+        let service = self.events.in_service();
         let park = self.child.is_none() && service && matches!(self.page, Page::Championship | Page::Setup);
         if !park && self.menu_sound.is_none() {
             return;
@@ -361,8 +358,6 @@ impl Form {
             self.precipitation,
             self.wear,
             self.tyre,
-            self.rally.options,
-            self.rally.team,
         );
         let old_setup = self.setup.choices.clone();
         let old_ghost = self.ghost.clone();
@@ -378,7 +373,7 @@ impl Form {
         );
         let old_paths = self.ngp_physics.clone();
         let old_head_gasket = self.head_gasket;
-        let old_car_picks = (self.season_cars.clone(), self.gearboxes.clone());
+        let old_car_picks = self.gearboxes.clone();
         let old_folder = self.install_folder.clone();
         let old_recent = (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone());
         let old_codriver = (
@@ -461,7 +456,7 @@ impl Form {
         self.stage_browser.open &= self.page == Page::Drive;
         self.car_browser.open &= match self.car_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
-            car_browser::Target::Season | car_browser::Target::Event => self.page == Page::Championship,
+            car_browser::Target::Event => self.page == Page::Championship,
         };
         ctx.root_ui(|root| {
             egui::CentralPanel::default().show(root, |ui| match self.page {
@@ -539,14 +534,12 @@ impl Form {
                     self.precipitation,
                     self.wear,
                     self.tyre,
-                    self.rally.options,
-                    self.rally.team,
                 )
             || old_setup != self.setup.choices
             || old_ghost != self.ghost
             || old_paths != self.ngp_physics.clone()
             || old_head_gasket != self.head_gasket
-            || old_car_picks != (self.season_cars.clone(), self.gearboxes.clone())
+            || old_car_picks != self.gearboxes
             || old_graphics
                 != (
                     self.graphics,
@@ -597,16 +590,7 @@ impl Form {
         self.ui(ctx);
     }
 
-    /// The offered car of team `team` (its car `0x1660808`, `SetupAI`'s table), when NGP drives it.
-    pub(crate) fn team_car(&self, team: u32) -> Option<usize> {
-        let index = *season_model::TEAM_CARS.get(team as usize)?;
-        self.catalog.cars.iter().position(|c| matches!(c.physics, crate::catalog::Physics::Archive) && c.slot == index)
-    }
-
-    /// The Championship page (`rally_page`). A season drives the car picked for it, any car (ours: kept per profile in
-    /// `[season]`; the game's season always drives the team's car, and a car slot names no particular car outside a
-    /// vanilla install). Picking a team picks its car when NGP drives it. A saved season with no pick drives the
-    /// team's car, and asks for one when NGP doesn't drive it. A new season from one under way keeps its car.
+    /// The Championship page: the presets, the builder and the event (`events_page`).
     fn championship_page(&mut self, ui: &mut egui::Ui) {
         if self.no_cars_yet(ui) {
             return;
@@ -614,119 +598,7 @@ impl Form {
         if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
             return self.car_browser_page(ui);
         }
-        if self.events.view != crate::events_page::View::Classic {
-            return self.events_page(ui);
-        }
-        if ui.link("‹ All events").clicked() {
-            self.events.view = crate::events_page::View::Entry;
-        }
-        let profile = self.rally.profile.clone();
-        let team = self.rally.team;
-        if self.season_team_seen.is_some_and(|seen| seen != team) {
-            if let Some(i) = self.team_car(team) {
-                self.season_pick = i;
-            }
-        }
-        self.season_team_seen = Some(team);
-        if let Some(car) = self.rally.take_new_season() {
-            if car == rally_page::SeasonCar::Kept {
-                // The season before's car: the one this page drove it with.
-                self.season_pick = self.car;
-            }
-            match self.catalog.cars.get(self.season_pick) {
-                Some(car) => self.season_cars.set(&profile, &car.name.clone()),
-                None => self.season_cars.remove(&profile),
-            }
-        }
-        let cars = &self.catalog.cars;
-        let picked = self.season_cars.of(&profile).and_then(|name| cars.iter().position(|c| c.name == name));
-        let season_car = self.rally.season_team().map(|team| picked.or(self.team_car(team)));
-        if season_car == Some(None) {
-            section(ui, "Choose the season's car");
-            ui.label(format!(
-                "{profile}'s saved season drives its team's car, which NGP doesn't drive here. Any car can drive it:"
-            ));
-            ui.add_space(4.0);
-            let mut browse = false;
-            ui.horizontal(|ui| {
-                if let Some(row) = self.car_browser.row(self.season_pick) {
-                    let favourite = self.favourite_cars.contains(&row.name);
-                    browse = browser::field_button(ui, favourite, &row.title, &row.detail(), FIELD);
-                }
-                let car = self.catalog.cars.get(self.season_pick).filter(|c| c.unavailable().is_none());
-                if ui.add_enabled(car.is_some(), egui::Button::new("Drive the season with it")).clicked() {
-                    if let Some(car) = car {
-                        self.season_cars.set(&profile, &car.name);
-                    }
-                }
-            });
-            if browse {
-                self.car_browser.open_on(car_browser::Target::Season, self.season_pick, &self.favourite_cars, None);
-            }
-            return;
-        }
-        if let Some(Some(i)) = season_car {
-            self.car = i;
-        }
-        // The setup choice before a stage lists the season car's saved setups.
-        self.select_setup();
-        let here = self.here();
-        let archive = self.ngp_archive();
-        let car = self.car().cloned().unwrap_or_default();
-        let team_cars: Vec<Option<usize>> = (0..7).map(|t| self.team_car(t)).collect();
-        let mut browse = false;
-        let (browser_rows, favourites) = (&self.car_browser, &self.favourite_cars);
-        let (pick, cars) = (self.season_pick, &self.catalog.cars);
-        // The new season's car: the car browser's, the team's when picking the team found it.
-        let mut car_row = |ui: &mut egui::Ui, team: u32| {
-            ui.horizontal(|ui| {
-                if let Some(row) = browser_rows.row(pick) {
-                    browse |=
-                        browser::field_button(ui, favourites.contains(&row.name), &row.title, &row.detail(), FIELD);
-                }
-                if team_cars.get(team as usize).copied().flatten() == Some(pick) {
-                    ui.colored_label(browser::GREY, "the team's car");
-                }
-            });
-            cars.get(pick).is_some_and(|c| c.unavailable().is_none())
-        };
-        // What blocks a championship or trial launch: a running viewer, what the Drive page's Start checks
-        // through `readiness` (no program, NGP or car: the status line names the fix), and a car that cannot
-        // start. The Drive page's own selection does not apply: a championship stage resolves on its own row.
-        let launch_blocker = self.launch_blocker();
-        let request = egui::ScrollArea::vertical()
-            .id_salt("championship")
-            .show(ui, |ui| {
-                let (data, season, setups) = (&self.data, &self.season, &self.setup);
-                let saved = |surface| setups.saved_names(surface);
-                self.rally.ui(
-                    ui,
-                    data,
-                    season,
-                    &here,
-                    &car,
-                    &saved,
-                    Path::new(&archive),
-                    &mut car_row,
-                    launch_blocker.as_ref(),
-                )
-            })
-            .inner;
-        if browse {
-            self.car_browser.open_on(car_browser::Target::Season, self.season_pick, &self.favourite_cars, None);
-        }
-        match request {
-            Some(rally_page::Request::Launch(start)) => self.start_rally_stage(start),
-            Some(rally_page::Request::Setup) => self.page = Page::Setup,
-            None => {}
-        }
-        if let Some(text) = self.rally.take_saved_setup() {
-            // The continued season's setup (`PTSC`) becomes the current one.
-            self.select_setup();
-            if let Err(e) = self.setup.load_text(&text) {
-                self.status = format!("the season's setup: {e}");
-            }
-        }
+        self.events_page(ui);
     }
 
     /// A page that needs a car, without any: what to do. Whether there are none.

@@ -20,7 +20,7 @@ use rbr_sound::mixer::Volumes;
 use crate::catalog::{self, Car, Stage, TyreChoice};
 use crate::graphics_page::{Graphics, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
-use crate::{pages::Choice, rally_page, time_of_day, Form};
+use crate::{pages::Choice, time_of_day, Form};
 
 /// The viewer's `--clock` arguments for a start time, none for the stage's own light.
 pub fn clock_args(start: Option<u32>) -> Vec<String> {
@@ -503,7 +503,7 @@ impl Form {
         let ghost = self.ghost.viewer_args(&self.records(), stage.map, &words);
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
-        let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.rally.profile.clone()]].concat();
+        let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.events.profile.clone()]].concat();
         // The Custom weather's Time of day is the quick race's: the stage is drawn at it and the start board shows
         // it. The Stage weather and a championship stage keep the stage's own light and the season's start clock.
         let custom = self.custom();
@@ -530,67 +530,6 @@ impl Form {
         self.select_setup();
         self.setup.drive_chosen();
         self.launch_args(stage, options, weather, extra, viewer_extra)
-    }
-
-    /// Starts a championship stage on its season-table row (the random preset's row) with the stage's tyres, road
-    /// wear and the season's options.
-    pub fn start_rally_stage(&mut self, start: rally_page::StageStart) {
-        let rally_page::StageStart { stage, args: mut extra, tyre, wear, setup, prev_tyre } = start;
-        // A finished championship stage is offered to the stage record and the personal best too (`M00480810` calls
-        // `M00567330` in every mode but 6, 7 and 9); the trials are practice.
-        if extra.iter().any(|a| a == "--championship") {
-            let saves = SaveDir::new(&self.records()).path.display().to_string();
-            extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.rally.profile.clone()]);
-        }
-        // The rally's weather choice (a trial has none): the stage's good or bad weather, else the drawn row.
-        let preset = self.rally.weather.filter(|_| extra.iter().any(|a| a == "--championship"));
-        let found = self.rally_weather(&stage, preset, wear);
-        match found {
-            Ok((s, weather)) => {
-                self.map = self.catalog.map_index(stage.map).unwrap_or(self.map);
-                self.validate_weather_row();
-                // The setup row picked for the stage, on the stage's surface (`CSeasonChooseSetupUI`).
-                self.select_setup();
-                if let Err(e) = self.setup.choose(&setup) {
-                    eprintln!("launcher: setup {}: {e}; the stage keeps the current setup", setup.label());
-                }
-                // The quick race's options keep their menu values; the stage takes the season's from `extra`.
-                let options = RaceOptions { weather: preset.unwrap_or(Preset::Random), ..self.options };
-                // The road's wear is the season's (`Draws` takes the random weather's 1 or 2; 0 is set after).
-                let weather = Weather { wear, ..weather };
-                let chosen = std::mem::replace(&mut self.tyre, TyreChoice::Fixed(tyre));
-                if let Some(args) = self.launch_args(s, options, weather, extra, Vec::new()) {
-                    self.spawn(args);
-                }
-                self.tyre = chosen;
-                self.rally.setup_text = self.setup.current_text().into_bytes();
-            }
-            Err(e) => self.status = e,
-        }
-        if self.child.is_none() {
-            // The stage never started (the status says why): undo what `stage_start` set, so the championship
-            // and the season save stay exactly as they were and the player can retry.
-            self.rally.abort_stage_start(prev_tyre);
-        }
-    }
-
-    /// The stage variant and weather a championship stage runs in: `preset`'s weather of its map, else the season's
-    /// drawn row.
-    fn rally_weather(
-        &self,
-        stage: &rbr_championship::RallyStage,
-        preset: Option<Preset>,
-        wear: u32,
-    ) -> Result<(catalog::Stage, Weather), String> {
-        let wear = wear.max(1);
-        if let Some(preset) = preset {
-            return self.catalog.stage_weather(&self.season, stage.map, preset, weather::Draws { row: None, wear });
-        }
-        let draws = weather::Draws { row: Some(stage.row), wear };
-        let weather = weather::quick_race(&self.season, stage.map, Preset::Random, draws)?;
-        let name = stage.track();
-        let found = self.catalog.map(stage.map).and_then(|m| m.stages.iter().find(|s| s.name == name));
-        Ok((found.ok_or(format!("{name}: not installed"))?.clone(), weather))
     }
 
     /// The viewer's arguments for `stage`; `extra` goes to `rbr-standalone`, `viewer_extra` to the viewer. `None`, with
@@ -647,7 +586,7 @@ impl Form {
                 };
                 let mut extra = vec!["--school".to_owned(), lesson.index().to_string()];
                 let saves = SaveDir::new(&self.records()).path.display().to_string();
-                extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.rally.profile.clone()]);
+                extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.events.profile.clone()]);
                 let options = RaceOptions { weather: Preset::Good, ..self.options };
                 if let Some(args) = self.launch_with(
                     stage,
@@ -872,8 +811,7 @@ impl Form {
                 self.head = !saved.camera.head_off;
                 self.ffb_cars = saved.ffb_cars;
                 if !replay {
-                    self.rally.stage_closed(&self.here());
-                    self.events.stage_closed(&self.here(), &self.rally.profile.clone());
+                    self.events.stage_closed(&self.here(), &self.events.profile.clone());
                 }
                 self.replays.refresh(&self.here());
             }
@@ -888,7 +826,6 @@ mod tests {
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
-    use rbr_championship::{ParkState, Turn};
     use rbr_formats::data::Data;
     use rbr_gameplay::race_options::{DamageLevel, DriverAids};
     use rbr_gameplay::weather::Season;
@@ -1346,56 +1283,6 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// A championship stage runs its drawn row unless the rally's weather is Good or Bad, which pick the map's own.
-    #[test]
-    fn a_championship_stage_takes_the_rallys_weather_choice() {
-        use crate::catalog::{Map, Stage};
-        use rbr_championship::RallyStage;
-        use rbr_gameplay::weather::Row;
-        let season = Season {
-            rows: vec![
-                Row { map: 54, letter: 3, cloud: 3, cloud_letter: 1, preset: 4, wetness: 2 },
-                Row { map: 54, letter: 3, cloud: 1, cloud_letter: 0, preset: 2, wetness: 1 },
-            ],
-            nice: vec![0],
-            bad: vec![1],
-            sky: None,
-        };
-        let catalog = Catalog {
-            maps: vec![Map {
-                number: 54,
-                stages: vec![Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
-                origin: catalog::Origin::Retail,
-            }],
-            ..Catalog::default()
-        };
-        let here = crate::test_dir("command-rally-weather");
-        let paths = Paths {
-            data: here.join("data"),
-            patch: None,
-            viewer: PathBuf::from("/bin/viewer"),
-            standalone: PathBuf::from("/bin/rbr-standalone"),
-            settings: here.join(SETTINGS_FILE),
-        };
-        let form = Form::new(
-            catalog,
-            &Settings::default(),
-            paths,
-            Data::new(here.join("data"), None),
-            season,
-            install::Folder::default(),
-        );
-        let stage = RallyStage { map: 54, letter: 'O', row: 1, hour: 12, minute: 0 };
-        let rows: Vec<_> = [None, Some(Preset::Good), Some(Preset::Bad)]
-            .map(|p| form.rally_weather(&stage, p, 2).map(|(s, w)| (s.name, w.row, w.wear)))
-            .into();
-        assert_eq!(rows[0], Ok(("track-54_O".to_owned(), Some(1), 2)));
-        // The good weather is new tyres here; `start_rally_stage` sets the season's wear after.
-        assert_eq!(rows[1], Ok(("track-54_O".to_owned(), Some(0), 0)));
-        assert_eq!(rows[2], Ok(("track-54_O".to_owned(), Some(1), 2)));
-        std::fs::remove_dir_all(&here).unwrap();
-    }
-
     /// A specific row's start carries its sky, fog, wetness and season row, and the wetness override changes the
     /// viewer's weather word. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF`.
     #[test]
@@ -1515,7 +1402,7 @@ mod tests {
     }
 
     /// The Time of day reaches a quick race's viewer and start board, and not a championship stage (`launch_args`,
-    /// as `start_rally_stage` calls it), which keeps the stage's own light and the season's start clock.
+    /// for a plain championship stage), which keeps the stage's own light and the season's start clock.
     #[test]
     fn the_time_of_day_is_the_quick_races_only() {
         let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
@@ -1752,90 +1639,7 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    /// Two championship stages and the service between them, live, through the launcher's turns: each stage starts
-    /// as Drive SS<n> starts it (`start_rally_stage`), runs in the viewer to its end, and the page reads its result
-    /// when the viewer exits; the park between closes with the manager's advice. `RBR_E2E_VIEWER` is the viewer to
-    /// run (a wrapper adding `--quit-after` and `rbr-standalone --pilot autopilot` drives it unattended),
-    /// `RBR_E2E_STANDALONE` the stepping program; `RBR_DATA` and `RBR_PATCH` the game, `RBR_NGP_PHYSICS` the physics
-    /// and `RBR_RSF` the cars, `RBR_NGP_DLL` NGP's DLL where the game folder has none. `RBR_E2E_TEAM` is the team
-    /// (default the first offered): its car when NGP drives it, else the Drive page's (as picked; `RBR_E2E_CAR` names
-    /// it). Takes as long as the stages (about 25 min for the default two: SS1 416 s, SS2 438 s of driving plus the
-    /// service). Without the `RBR_E2E_*` variables it returns at once, so plain `cargo test` and `rust-check.sh`
-    /// skip it; to run it, build the release `viewer` and `rbr-standalone`, point the wrapper at them, and run
-    /// `cargo test -p rbr-launcher --bin rerbr a_live_two_stage -- --nocapture` under `dev-env.sh` with the
-    /// variables set (a Wayland session with a GPU, windowed: strip the launcher's `--fullscreen`).
-    #[test]
-    fn a_live_two_stage_championship_runs_through_the_turns() {
-        let var = std::env::var_os;
-        let (Some(viewer), Some(standalone), Some(install), Some(rsf), Some(ngp)) =
-            (var("RBR_E2E_VIEWER"), var("RBR_E2E_STANDALONE"), var("RBR_DATA"), var("RBR_RSF"), var("RBR_NGP_PHYSICS"))
-        else {
-            return;
-        };
-        let here = crate::test_dir("command-e2e-championship");
-        let paths = Paths {
-            data: PathBuf::from(&install),
-            patch: std::env::var_os("RBR_PATCH").map(PathBuf::from),
-            viewer: PathBuf::from(viewer),
-            standalone: PathBuf::from(standalone),
-            settings: here.join(SETTINGS_FILE),
-        };
-        let data = Data::new(&paths.data, paths.patch.clone());
-        let season = Season::load(&data).unwrap();
-        let mut catalog = Catalog::scan(&paths.data).unwrap();
-        catalog.set_community_cars(&paths.data, &rsf.to_string_lossy(), Path::new(""));
-        catalog.offer(&crate::catalog::ngp_cars(Path::new(&ngp)));
-        let car = std::env::var("RBR_E2E_CAR").ok();
-        let ngp_dll = std::env::var("RBR_NGP_DLL").ok();
-        let settings =
-            Settings { car, ngp_physics: Some(ngp.to_string_lossy().into()), ngp_dll, ..Settings::default() };
-        let mut form = Form::new(catalog, &settings, paths, data, season, install::Folder::default());
-        form.volume = 0.02;
-        if let Some(team) = std::env::var("RBR_E2E_TEAM").ok().and_then(|t| t.parse().ok()) {
-            form.rally.team = team;
-        }
-        form.car = form.team_car(form.rally.team).unwrap_or(form.car);
-        let store = form.rally.store(&here);
-        form.rally.new_season(&form.season, Some(store), 1234);
-        form.rally.start_rally();
-        let car = form.car().unwrap().clone();
-        let stages =
-            form.rally.championship.as_ref().unwrap().rally().stages.iter().map(|s| s.track()).collect::<Vec<_>>();
-        eprintln!("car {}, stages {stages:?}", form.car().unwrap().name);
-        for stage in 0..2 {
-            assert_eq!(form.rally.run.as_ref().map(|r| r.turn), Some(Turn::Stage(stage)));
-            let start = form.rally.stage_start(&here, stage as usize).unwrap();
-            form.start_rally_stage(start);
-            let status = form.child.take().expect("the viewer started").wait().unwrap();
-            assert!(status.success(), "viewer: {status}");
-            form.rally.stage_closed(&here);
-            let c = form.rally.championship.as_ref().unwrap();
-            let time = c.times().get(stage as usize).map(|t| t.time);
-            eprintln!("SS{}: {:?}, phase {:?}", stage + 1, time, c.phase());
-            assert!(time.is_some_and(|t| t > 0.0), "SS{} has no time", stage + 1);
-            if let Some(Turn::Service { .. }) = form.rally.run.as_ref().map(|r| r.turn) {
-                form.rally.open_park(&form.data, &car, Some(Path::new(&ngp)));
-                let park = form.rally.park.as_mut().unwrap();
-                park.manager_advice();
-                if !park.start() {
-                    park.forfeit();
-                }
-                park.finish_now();
-                // The park closes a second after the orders are done.
-                park.tick(1.0);
-                let ParkState::Closed { penalty, .. } = park.state else { panic!("{:?}", park.state) };
-                let damage = park.damage.clone();
-                eprintln!("service: penalty {penalty} s");
-                form.rally.service_done(penalty, damage);
-            }
-        }
-        let save = &form.rally.run.as_ref().unwrap().save;
-        let r = rally_page::player_rally(save, 0).unwrap();
-        eprintln!("saved: SS1 {} SS2 {} penalty {}", r.stages[0].time, r.stages[1].time, r.f170);
-        assert!(r.stages[0].time > 0.0 && r.stages[1].time > 0.0);
-        // The profile file on disk holds the same season, as Continue loads it.
-        let (loaded, _) = form.rally.store(&here).load().unwrap().expect("a saved season");
-        assert_eq!(&loaded, save, "the saved season reads back");
-        let _ = std::fs::remove_dir_all(&here);
-    }
+    // A live end-to-end test of a built event through the launcher's turns (the old two-stage 1.02 season test's
+    // successor) is still to write: it needs the events' stage launch (`Form::start_event_stage`) and `Event` wired
+    // for the service and bulletins.
 }

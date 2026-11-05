@@ -234,7 +234,7 @@ pub struct SetupPage {
     profiles: Vec<Profile>,
     /// The setup each car drives with on each surface, the Drive page's choice.
     pub choices: SetupChoices,
-    /// The values Start drives with: the chosen setup's, or a championship's (`choose`, `load_text`, `season`).
+    /// The values Start drives with: the chosen setup's, or a championship's (`choose`, `season`).
     pub setup: Setup,
     season: bool,
     /// The editor: the setup it opened (`None` the default), its values as opened and as edited, and the name it
@@ -387,11 +387,6 @@ impl SetupPage {
         self.car.as_ref().ok().map(|_| self.setup.steering_lock)
     }
 
-    /// The setup's text as a setup file holds it (the championship's save keeps it, `PTSC`).
-    pub fn current_text(&self) -> String {
-        self.setup.to_text()
-    }
-
     /// Makes the setup of `CSeasonChooseSetupUI`'s row `choice` the one Start drives with.
     pub fn choose(&mut self, choice: &SeasonSetup) -> Result<(), String> {
         let car = self.car.as_ref().map_err(|_| "no setup for this car".to_owned())?;
@@ -400,14 +395,6 @@ impl SetupPage {
             _ => None,
         };
         self.setup = choice.setup(&car.default, &self.setup, text.as_deref())?;
-        self.season = true;
-        Ok(())
-    }
-
-    /// Makes a setup file's text over the default the one Start drives with (a season's saved setup).
-    pub fn load_text(&mut self, text: &str) -> Result<(), String> {
-        let car = self.car.as_ref().map_err(|e| e.clone())?;
-        self.setup = Setup::from_text(&car.default, text)?;
         self.season = true;
         Ok(())
     }

@@ -114,15 +114,11 @@
 //! `rbr-standalone --setup`. `--screenshot DIR` draws the pages, and the Car setup page's areas, offscreen
 //! to PNGs and exits.
 //!
-//! The Championship page (`rally_page`) runs the season: new season or continue (the profile's save in
-//! `SavedGames/`), each rally stage by stage with the service park between stages, the AI drivers' times, the rally
-//! and season standings, the bulletins and the trials between rallies. New season takes the championship's own
-//! options (the team, skill level and car damage, kept in `launcher-settings.ini` as `championship_team`,
-//! `championship_skill` and `championship_damage`); the season drives the car picked for it, any car, the team's
-//! when NGP drives it picked with the team (ours; each profile's in the settings file's `[season]` section, so the
-//! game's save stays the game's), and its stages
-//! run as the game's championship on the season's (`rbr-standalone --championship`) with the Controls page's aids.
-//! `--screenshot` also draws it, and with `--screenshot-damage FILE` (`rbr-standalone --damage-out`) its service park on that car.
+//! The Championship page (`events_page`, model `rbr_season`) builds a rally or a season from a preset on any installed
+//! stage and runs it stage by stage with the service park between stages, the AI field's times, the standings and the
+//! trials between rallies; its stages run as the game's championship on the event's skill and damage
+//! (`rbr-standalone --championship`) with the Controls page's aids. `--screenshot` also draws it, and with
+//! `--screenshot-damage FILE` (`rbr-standalone --damage-out`) its service park on that car.
 
 // No console window on Windows: stderr goes to the log file (`rbr_render::console`).
 #![windows_subsystem = "windows"]
@@ -153,7 +149,6 @@ mod ngp_dll;
 mod ngp_install;
 mod pages;
 mod preview;
-mod rally_page;
 mod replay_page;
 mod school_page;
 mod settings;
@@ -171,7 +166,6 @@ use catalog::{Catalog, TyreChoice};
 use controls_page::ControlsPage;
 use ghosts::GhostChoice;
 use pages::Page;
-use rally_page::RallyPage;
 use rbr_formats::data::Data;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
@@ -181,7 +175,7 @@ use rbr_render::bindings::Bindings;
 use rbr_render::glass::model::Switch;
 use rbr_sound::menu::MenuPlayer;
 use school_page::SchoolPage;
-use settings::{load, or_folder, read_settings, Gearboxes, SeasonCars};
+use settings::{load, or_folder, read_settings, Gearboxes};
 use setup_page::SetupPage;
 use window::App;
 use winit::event_loop::EventLoop;
@@ -445,8 +439,7 @@ struct Form {
     season: Season,
     page: Page,
     setup: SetupPage,
-    rally: RallyPage,
-    /// The Championship tab's events (ours) and its way to the 1.02 season.
+    /// The Championship tab (ours).
     events: events_page::EventsPage,
     school: SchoolPage,
     /// The Drive page's stage and car previews.
@@ -462,11 +455,6 @@ struct Form {
     recent_maps: Vec<u32>,
     favourite_cars: Vec<String>,
     favourite_maps: Vec<u32>,
-    /// The car a new season takes, and each profile's season car (`[season]`).
-    season_pick: usize,
-    season_cars: SeasonCars,
-    /// The new season's team last seen: picking another team picks its car when NGP drives it.
-    season_team_seen: Option<u32>,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
     /// The weather preset, the damage level and the driver aids.
@@ -618,17 +606,15 @@ impl Form {
     }
 
     /// Offers the cars NGP's archive drives, keeping the selected ones when they are still there, and fills the car
-    /// lists (the Drive page's and the season's) and NGP's name.
+    /// list and NGP's name.
     fn list_cars(&mut self) {
         let archive = self.ngp_archive();
         self.ngp_revision = install::ngp_revision(Path::new(&archive));
         self.ngp_label = install::ngp_label(self.ngp_revision);
         self.ngp_cars = catalog::ngp_cars(Path::new(&archive));
         let name = self.car().map(|c| c.name.clone());
-        let season = self.catalog.cars.get(self.season_pick).map(|c| c.name.clone());
         self.catalog.offer(&self.ngp_cars);
         self.car = settings::pick_car(&self.catalog.cars, name.iter().chain(&self.recent_cars));
-        self.season_pick = settings::pick_car(&self.catalog.cars, season.iter().chain(&self.recent_cars));
         let rows = self.catalog.cars.iter().enumerate().map(|(i, car)| car_browser::CarRow::new(i, car)).collect();
         self.car_browser.set_rows(rows);
     }

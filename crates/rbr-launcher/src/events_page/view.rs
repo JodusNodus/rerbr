@@ -1,4 +1,4 @@
-//! The events' drawing: the presets (Continue event first when there is one), the builder (its settings beside the
+//! The Championship tab's drawing: the presets (Continue first when there is a saved championship), the builder (its settings beside the
 //! live summary and Start event), and the event under way: the header (rally n of m, the step, the player's place),
 //! the last stage's result, the card of the next step with its one primary button, the itinerary under it, and the
 //! rally's standings and the event's points beside.
@@ -8,17 +8,14 @@ use std::path::Path;
 use egui::{Color32, ComboBox, RichText, Sense, Slider, Stroke, Ui};
 use rbr_formats::saves::is_file_name_part;
 use rbr_gameplay::setup::SeasonSetup;
-use rbr_season::config::{Damage, Daylight, Length, Preset, StagePool, Surface, Surfaces, Weather};
+use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, StagePool, Surface, Surfaces, Weather};
 use rbr_season::event::{Conditions, Event, Standing, Turn};
 use rbr_season::field::AiResult;
 
+use super::common::{card, card_title, clock, gap, ordinal, park_card, text_of, StageMark, BAD, CARD};
 use super::*;
 use crate::browser::{DIM, GREY, STAR};
 use crate::pages::{combo, fields, section, start_button, Issue, ACCENT, GOOD, WARN};
-use crate::rally_page::{card, card_title, clock, gap, ordinal, park_card, text_of, StageMark, BAD};
-
-/// A card's fill (`rally_page`'s).
-const CARD: Color32 = Color32::from_gray(32);
 
 /// What the page draws with.
 pub struct Env<'a> {
@@ -46,7 +43,7 @@ pub fn step(event: &Event) -> String {
         Turn::Stage { rally, stage } => format!("Stage {} of {}", stage + 1, count(rally)),
         Turn::Service { rally, stage, .. } => format!("Service before stage {} of {}", stage + 2, count(rally)),
         Turn::RallyOver { .. } => "Rally over".to_owned(),
-        Turn::EventOver => "Event over".to_owned(),
+        Turn::EventOver => "Over".to_owned(),
     }
 }
 
@@ -126,23 +123,16 @@ fn km(metres: f32) -> String {
 }
 
 /// A preset's card: its name, what it is and its shape.
-fn preset_text(preset: Option<Preset>) -> (&'static str, &'static str, &'static str) {
+fn preset_text(preset: Preset) -> (&'static str, &'static str, &'static str) {
     match preset {
-        Some(Preset::QuickRally) => {
-            ("Quick rally", "One rally on gravel, service halfway.", "6 stages · about an hour")
-        }
-        Some(Preset::Weekend) => (
+        Preset::QuickRally => ("Quick rally", "One rally on gravel, service halfway.", "6 stages · about an hour"),
+        Preset::Weekend => (
             "Weekend",
             "Two legs and an overnight service; the second leg runs into the night.",
             "10 stages · two legs",
         ),
-        Some(Preset::Season) => {
-            ("Season", "Six rallies on mixed surfaces, points after each.", "6 rallies · 36 stages")
-        }
-        Some(Preset::Random) => ("Random", "A weekend drawn from a random seed: stages, weather, field.", "a surprise"),
-        None => {
-            ("Classic 1.02 season", "The original season: 1.02's rallies, teams, rules and saves.", "6 rallies · 1.02")
-        }
+        Preset::Season => ("Season", "Six rallies on mixed surfaces, points after each.", "6 rallies · 36 stages"),
+        Preset::Random => ("Random", "A weekend drawn from a random seed: stages, weather, field.", "a surprise"),
     }
 }
 
@@ -168,7 +158,7 @@ impl EventsPage {
             View::Builder if self.config.is_some() => self.builder_ui(ui, env),
             View::Event if self.run.is_some() => self.event_ui(ui, env),
             _ => {
-                self.view = if self.view == View::Classic { View::Classic } else { View::Entry };
+                self.view = View::Entry;
                 self.entry_ui(ui, env);
                 None
             }
@@ -184,7 +174,7 @@ impl EventsPage {
         );
         ui.add_space(8.0);
         fields(ui, "event-profile", |ui| {
-            ui.label("Profile").on_hover_text("The event is saved under this name, one per profile");
+            ui.label("Profile").on_hover_text("The championship is saved under this name, one per profile");
             ui.add_enabled(!self.driving, egui::TextEdit::singleline(env.profile).desired_width(160.0));
             env.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
             ui.end_row();
@@ -193,26 +183,25 @@ impl EventsPage {
         if let Some(saved) = &saved {
             ui.add_space(8.0);
             card(ui, |ui| {
-                card_title(ui, "Your event");
+                card_title(ui, "Your championship");
                 match saved {
                     Ok(line) => {
                         ui.label(RichText::new(line).size(16.0));
                         ui.add_space(8.0);
-                        if ui.horizontal(|ui| ui.add(start_button("Continue event"))).inner.clicked() {
+                        if ui.horizontal(|ui| ui.add(start_button("Continue"))).inner.clicked() {
                             self.continue_event(env.here, env.profile);
                         }
                     }
-                    Err(e) => _ = ui.colored_label(WARN, format!("The saved event does not read: {e}")),
+                    Err(e) => _ = ui.colored_label(WARN, format!("The saved championship does not read: {e}")),
                 }
             });
         }
         if !self.status.is_empty() {
             ui.colored_label(WARN, &self.status);
         }
-        section(ui, if saved.is_some() { "Or start a new event" } else { "Start an event" });
-        let presets: Vec<Option<Preset>> = Preset::ALL.into_iter().map(Some).chain([None]).collect();
-        for row in presets.chunks(3) {
-            ui.columns(3, |cols| {
+        section(ui, if saved.is_some() { "Or start a new one" } else { "Start a championship" });
+        for row in Preset::ALL.chunks(2) {
+            ui.columns(2, |cols| {
                 for (ui, &preset) in cols.iter_mut().zip(row) {
                     let (title, text, detail) = preset_text(preset);
                     let clicked = button_card(ui, title, |ui| {
@@ -223,10 +212,7 @@ impl EventsPage {
                         ui.colored_label(DIM, detail);
                     });
                     if clicked {
-                        match preset {
-                            Some(preset) => self.open_builder(preset, env.cars, env.default_car, env.seed),
-                            None => self.view = View::Classic,
-                        }
+                        self.open_builder(preset, env.cars, env.default_car, env.seed);
                     }
                 }
             });
@@ -238,12 +224,12 @@ impl EventsPage {
     fn builder_ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         let mut request = None;
         let preset = self.builder.map_or(Preset::QuickRally, |b| b.preset);
-        if ui.link("‹ All events").clicked() {
+        if ui.link("‹ Championship").clicked() {
             self.view = View::Entry;
             return None;
         }
-        ui.label(RichText::new(preset_text(Some(preset)).0).size(24.0).strong());
-        ui.colored_label(GREY, preset_text(Some(preset)).1);
+        ui.label(RichText::new(preset_text(preset).0).size(24.0).strong());
+        ui.colored_label(GREY, preset_text(preset).1);
         ui.add_space(8.0);
         let car = self.car.unwrap_or(env.default_car);
         let stages = self.pool.as_mut().and_then(|p| p.stages().map(<[_]>::to_vec));
@@ -254,6 +240,8 @@ impl EventsPage {
         let classes = classes(env.cars);
         let (driving, status) = (self.driving, self.status.clone());
         let mut start = false;
+        let teams = (self.model.team_offers)();
+        let (team, mut picked_team) = (self.team, self.team);
         ui.columns(2, |cols| {
             fields(&mut cols[0], "event-builder", |ui| {
                 ui.label("Car");
@@ -343,6 +331,33 @@ impl EventsPage {
                     },
                 );
                 ui.end_row();
+                ui.label("Skill level");
+                ui.horizontal(|ui| {
+                    combo(
+                        ui,
+                        "event-skill",
+                        160.0,
+                        &mut config.skill,
+                        &[Skill::Rookie, Skill::Amateur, Skill::Professional],
+                        skill_word,
+                    );
+                    ui.colored_label(GREY, format!("help when stuck: {}", assistance_note(config.skill)));
+                });
+                ui.end_row();
+                if !teams.is_empty() {
+                    ui.label("Team").on_hover_text("The service crew that repairs your car");
+                    let (mut team, offers) = (team, &teams);
+                    ui.horizontal(|ui| {
+                        let name = |i: usize| offers.iter().find(|t| t.0 == i).map_or(String::new(), |t| t.1.clone());
+                        let indexes: Vec<usize> = offers.iter().map(|t| t.0).collect();
+                        combo(ui, "event-team", 200.0, &mut team, &indexes, name);
+                        if let Some(offer) = offers.iter().find(|t| t.0 == team) {
+                            ui.colored_label(GREY, &offer.2);
+                        }
+                    });
+                    picked_team = team;
+                    ui.end_row();
+                }
                 ui.label("Difficulty");
                 ui.horizontal(|ui| {
                     ui.add(Slider::new(&mut config.difficulty, 0.0..=1.0).show_value(false));
@@ -356,7 +371,7 @@ impl EventsPage {
                 ui.label("Field");
                 ui.add(Slider::new(&mut config.field_size, 1..=30).suffix(" drivers"));
                 ui.end_row();
-                ui.label("Seed").on_hover_text("The same seed and stages build the same event");
+                ui.label("Seed").on_hover_text("The same seed and stages build the same championship");
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut config.seed));
                     if ui.button("New seed").clicked() {
@@ -398,9 +413,9 @@ impl EventsPage {
                 }
                 ui.add_space(10.0);
                 let ready = fit.is_some_and(|n| n > 0) && is_file_name_part(env.profile) && !driving;
-                let go = ui.horizontal(|ui| ui.add_enabled(ready, start_button("Start event"))).inner;
+                let go = ui.horizontal(|ui| ui.add_enabled(ready, start_button("Start"))).inner;
                 if saved {
-                    ui.colored_label(GREY, format!("Replaces {}'s saved event.", env.profile));
+                    ui.colored_label(GREY, format!("Replaces {}'s saved championship.", env.profile));
                 }
                 start = go.clicked();
                 if !status.is_empty() {
@@ -409,6 +424,7 @@ impl EventsPage {
             });
         });
         self.config = Some(edited);
+        self.team = picked_team;
         if let Some(stages) = stages.filter(|_| start) {
             self.start_event(env.here, env.profile, env.cars, &stages);
         }
@@ -423,7 +439,8 @@ impl EventsPage {
         let rally = rally_of(&event);
         let standings = run.play.rally_standings(rally);
         let points = (event.rallies.len() > 1).then(|| run.play.points());
-        if ui.link("‹ All events").clicked() {
+        let news = if last_stage(&event).is_some() { run.play.bulletins(rally) } else { Vec::new() };
+        if ui.link("‹ Championship").clicked() {
             self.view = View::Entry;
             return None;
         }
@@ -456,7 +473,9 @@ impl EventsPage {
                         self.service_done(env.here, env.profile, penalty, damage);
                     }
                 }
-                Turn::RallyOver { rally } => self.rally_over_ui(ui, env.here, env.profile, &event, rally, &standings),
+                Turn::RallyOver { rally } => {
+                    request = self.rally_over_ui(ui, &env, &event, rally, &standings);
+                }
                 Turn::EventOver => self.event_over_ui(ui, env.here, env.profile, &event, &standings, points.as_deref()),
             });
             if !self.status.is_empty() {
@@ -466,6 +485,10 @@ impl EventsPage {
             ui.add_space(10.0);
             itinerary_ui(ui, &event, rally);
             let ui = &mut cols[1];
+            if !news.is_empty() {
+                bulletins_ui(ui, &news);
+                ui.add_space(10.0);
+            }
             standings_ui(ui, &event, rally, &standings, env.cars);
             if let Some(points) = &points {
                 ui.add_space(10.0);
@@ -521,7 +544,13 @@ impl EventsPage {
         ui.add_space(6.0);
         let choosing = self.choice_before(rally, stage);
         let tyre = self.next_tyre();
+        let road = self.run.as_ref().and_then(|r| road_line(r.play.as_ref(), rally, stage));
         fields(ui, "event-stage", |ui| {
+            if let Some(road) = road {
+                ui.label("Start order");
+                ui.label(road);
+                ui.end_row();
+            }
             ui.label("Tyres");
             if choosing {
                 ComboBox::from_id_salt("event-tyre")
@@ -595,12 +624,12 @@ impl EventsPage {
     fn rally_over_ui(
         &mut self,
         ui: &mut Ui,
-        here: &Path,
-        profile: &str,
+        env: &Env,
         event: &Event,
         rally: usize,
         lines: &[Standing],
-    ) {
+    ) -> Option<Request> {
+        let mut request = None;
         let name = event.rallies.get(rally).map_or("The rally", |r| r.name.as_str());
         let retired = event.results.get(rally).and_then(|r| r.iter().position(|(p, _)| p.is_none_or(|p| p.retired)));
         match retired {
@@ -614,13 +643,41 @@ impl EventsPage {
             );
         }
         ui.add_space(10.0);
-        let label = match event.rallies.get(rally + 1) {
+        let next = event.rallies.get(rally + 1);
+        let label = match next {
             Some(next) => format!("Next rally: {}", next.name),
             None => "To the final result".to_owned(),
         };
-        if ui.horizontal(|ui| ui.add(start_button(&label))).inner.clicked() {
-            self.turn_done(here, profile);
+        if ui.horizontal(|ui| ui.add_enabled(!self.driving, start_button(&label))).inner.clicked() {
+            self.turn_done(env.here, env.profile);
         }
+        if next.is_some() {
+            // The game's two trials (`S_YARD_TRIAL`, `S_STAGE_TRIAL`): practice that is not recorded.
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.colored_label(GREY, "Practice first (not recorded):");
+                for (label, yard, tip) in [
+                    ("Yard trial", true, "A practice drive in the yard; the championship does not record it"),
+                    (
+                        "Stage trial",
+                        false,
+                        "A practice drive on the next rally's first stage, on its surface; not recorded",
+                    ),
+                ] {
+                    let trial = ui.add_enabled(!self.driving && env.blocker.is_none(), egui::Button::new(label));
+                    if trial.on_hover_text(tip).clicked() {
+                        match self.trial(yard) {
+                            Ok(start) => request = Some(Request::Launch(start)),
+                            Err(e) => self.status = e,
+                        }
+                    }
+                }
+            });
+            if let Some(issue) = env.blocker.filter(|_| !self.driving) {
+                ui.colored_label(WARN, &issue.text);
+            }
+        }
+        request
     }
 
     fn event_over_ui(
@@ -633,7 +690,7 @@ impl EventsPage {
         points: Option<&[Standing]>,
     ) {
         let season = points.is_some();
-        card_title(ui, if season { "The season is over" } else { "The event is over" });
+        card_title(ui, if season { "The season is over" } else { "The championship is over" });
         let lines = points.unwrap_or(rally);
         if let Some(at) = lines.iter().position(|l| l.entrant.is_none()) {
             let total = lines[at].points;
@@ -651,7 +708,7 @@ impl EventsPage {
         }
         ui.add_space(10.0);
         let new = ui.horizontal(|ui| {
-            let new = ui.add(start_button("New event"));
+            let new = ui.add(start_button("New championship"));
             ui.colored_label(GREY, "back to the presets");
             new
         });
@@ -659,6 +716,27 @@ impl EventsPage {
             self.leave_event(here, profile);
         }
     }
+}
+
+/// The stage card's road line: "14th on the road · worn surface", none without a road order.
+fn road_line(play: &dyn Play, rally: usize, stage: usize) -> Option<String> {
+    let at = play.start_order(rally, stage).iter().position(Option::is_none)?;
+    let wear = match play.road_wear(rally, stage) {
+        w if w < 0.15 => "clean surface",
+        w if w < 0.5 => "worn surface",
+        _ => "heavily worn surface",
+    };
+    Some(format!("{} on the road · {wear}", ordinal(at + 1)))
+}
+
+/// The news since the player's last stage.
+fn bulletins_ui(ui: &mut Ui, news: &[String]) {
+    card(ui, |ui| {
+        card_title(ui, "Since your last stage");
+        for line in news {
+            ui.label(line);
+        }
+    });
 }
 
 fn label_class(class: &str) -> &str {
