@@ -76,6 +76,8 @@ pub struct Scene {
     pub cabin_mask: Option<rbr_render::particles::cabin::CabinMask>,
     /// The grass streamed about the eye (`--enhance grass`, [`rbr_render::grass`]).
     pub grass: Option<std::sync::Arc<rbr_render::grass::Field>>,
+    /// The stage's roadside the engine's reflections follow (`rbr_render::roadside`), with a drive.
+    pub roadside: Option<rbr_render::roadside::Roadside>,
 }
 
 impl Scene {
@@ -226,6 +228,7 @@ fn load_scene<'scope, 'env>(
                 bulkhead: None,
                 cabin_mask: None,
                 grass: None,
+                roadside: None,
             })
         }
         (stage_name, car_name) => {
@@ -274,6 +277,7 @@ fn load_scene<'scope, 'env>(
             let (mut playback, mut live, mut mounts, mut crew, mut car_bounds, mut ghost, mut dials) =
                 (None, None, None, None, None, None, None);
             let mut school_demo = None;
+            let mut roadside = None;
             let mut cabin_sun = None;
             let mut tints = glass::Tints::default();
             let mut bulkhead = None;
@@ -353,6 +357,8 @@ fn load_scene<'scope, 'env>(
                         school_demo = demo;
                         let mut loaded = Playback::load(data, car_name, &stage, &model, &damage, drive)?;
                         let probe = probe.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+                        roadside =
+                            args.roadside.then(|| rbr_render::roadside::Roadside::load(data, name, probe.clone()));
                         if let Some(characters) = &mut characters {
                             characters.set_probe(probe.clone());
                         }
@@ -483,6 +489,7 @@ fn load_scene<'scope, 'env>(
                 bulkhead,
                 cabin_mask,
                 grass,
+                roadside,
             })
         }
     }

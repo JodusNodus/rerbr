@@ -141,6 +141,8 @@ pub struct Args {
     pub gauge_mode: u32,
     /// `--hide-wheel`: the cockpit's steering wheel is not drawn.
     pub hide_wheel: bool,
+    /// The engine's reflections follow the roadside (`rbr_render::roadside`); `--no-roadside` keeps 1.02's.
+    pub roadside: bool,
     /// `--wipers`: the wiper switch at the start (`glass::model::Switch`).
     pub wipers: glass::model::Switch,
     /// `--look-back`: the screenshot's chases look behind the car.
@@ -240,7 +242,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --present mailbox|fifo|immediate  --max-fps N  --pacing on|off
               --enhance LIST  --mirrors off|1|2|3  --anti-aliasing taa|off  --reflections high|medium|low|off  --detail high|ultra  --render-scale S  --textures DIR  --upscale-textures DIR  --no-particles  --no-fences  --no-dials  --gauge-mode N  --hide-wheel
               --clock HH:MM  --no-relight
-  sound, HUD: --no-sound  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
+  sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
               --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages,view
   events:     --birdstrike  --rescue-at STEP  --seed N
@@ -311,6 +313,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut dials = true;
     let mut gauge_mode = 1;
     let mut hide_wheel = false;
+    let mut roadside = true;
     let mut wipers = glass::model::Switch::default();
     let mut look_back = false;
     let mut fullscreen = false;
@@ -334,6 +337,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--no-fences" => fences = false,
             "--no-dials" => dials = false,
             "--hide-wheel" => hide_wheel = true,
+            "--no-roadside" => roadside = false,
             "--gauge-mode" => {
                 let value = args.next().ok_or("--gauge-mode needs a mode, 1 on")?;
                 gauge_mode = value.parse().ok().filter(|&n| n >= 1).ok_or(format!("--gauge-mode {value}: 1 on"))?;
@@ -759,6 +763,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         dials,
         gauge_mode,
         hide_wheel,
+        roadside,
         wipers,
         look_back,
         pause_menu,
