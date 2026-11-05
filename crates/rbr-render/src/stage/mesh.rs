@@ -183,12 +183,9 @@ pub struct Shade {
     pub kf: f32,
     /// `CarGlass`: the Fresnel term adds to the alpha (`alpha = t0.a + 0.5 * F * Kf`).
     pub glass: bool,
-    /// A lit lamp's part (`lights::Switch`): glows, its texture times this colour, by day times its fourth
-    /// (renderer addition, `lights::Switch::glow`).
+    /// A lit lamp's part (`lights::Switch`): glows in this colour (its texture's where white) at its fourth, its
+    /// luminance on the lamp's axis, cd/m2, negative for a headlight's (renderer addition, `lights::Switch::glow`).
     pub glow: Option<[f32; 4]>,
-    /// A lit lamp's part's luminance on its lamp's axis, cd/m2, negative for a headlight's (`lights::Switch::luminance`;
-    /// read only under `LightLevels::Physical`), else 0.
-    pub luminance: f32,
     /// A window's crack overlay (ours, [`crate::crack_decal`]): its normal comes from the crack texture's alpha, so
     /// the cracks catch the light.
     pub crack: bool,
@@ -208,7 +205,7 @@ pub struct Shade {
 }
 
 impl Shade {
-    fn bits(&self) -> [u32; 13] {
+    fn bits(&self) -> [u32; 12] {
         let glow = self.glow.unwrap_or_default().map(f32::to_bits);
         [
             self.ka.to_bits(),
@@ -229,7 +226,6 @@ impl Shade {
             glow[1],
             glow[2],
             glow[3],
-            self.luminance.to_bits(),
         ]
     }
 }

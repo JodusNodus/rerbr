@@ -101,7 +101,7 @@ fn every_shader_builds_for_vulkan() {
     failures.extend(check(
         "stage",
         crate::renderer::SHADER,
-        &flags(&["ALPHA_TEST", "WATER_PLUS", "CABIN", "LIGHTING", "MIRRORS", "GRASS", "PHYSICAL"]),
+        &flags(&["ALPHA_TEST", "WATER_PLUS", "CABIN", "LIGHTING", "MIRRORS", "GRASS"]),
     ));
     let taps = [("SSR_RAYS", 1.0), ("SSR_ITERATIONS", 32.0)];
     failures.extend(check("stage quality", crate::renderer::SHADER, &[taps.to_vec()]));
@@ -109,7 +109,7 @@ fn every_shader_builds_for_vulkan() {
     let rain = none().into_iter().map(|c| [c, vec![("NEAR_COUNT", 1.0)]].concat()).collect::<Vec<_>>();
     failures.extend(check("rain", &crate::effects::rain_source(), &rain));
     failures.extend(check("particles", &crate::particles::gpu::source(), &none()));
-    failures.extend(check("post", crate::post::SHADER, &flags(&["SHAFTS", "GLARE", "PHYSICAL"])));
+    failures.extend(check("post", crate::post::SHADER, &flags(&["SHAFTS"])));
     failures.extend(check("light shafts", crate::light_shafts::SHADER, &none()));
     failures.extend(check("taa", crate::taa::SHADER, &none()));
     failures.extend(check("skid marks", crate::skidmarks_pass::SHADER, &none()));

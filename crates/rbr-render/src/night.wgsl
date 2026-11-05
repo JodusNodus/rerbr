@@ -2,8 +2,6 @@
 // moonlight, lit by the car's lamps (`lights::Lamp`), under a night sky with stars and the moon where the sun would be.
 // The stage's baked light is daylight, so the stage's albedo is its textures times the bake's occlusion
 // (`night_albedo`): moonlight (`frame.moon`) and the lamps light that.
-// A lit lamp's own part glows by this times its texture.
-const LAMP_GLOW: f32 = 1.6;
 // A backlit texel against its texture (`backlit` in `shader.wgsl`, ours).
 const DIAL_GLOW: f32 = 1.6;
 

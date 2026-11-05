@@ -19,10 +19,6 @@ use rbr_formats::ini::Section;
 pub const BRAKE_ON: f32 = 0.1;
 /// The tail and brake lamps' colour: their records' (255, 0, 0 in 351 of the installed cars' 409, 2026-10-31).
 const LAMP_RED: [f32; 3] = [1.0, 0.0, 0.0];
-/// How bright a tail lamp's lit part glows by day against the other lamps' (ours): about 8 cd against a brake lamp's
-/// 100 ([`CANDELA`]), it barely reads in sunlight, so braking shows. By night, and at dusk as the lamps light the stage,
-/// it glows as the others do (all the lamps' parts outshine the dark there).
-const TAIL_DAY: f32 = 0.3;
 
 /// A lamp kind, numbered as `CCarLightSystem` numbers them. `<car>_settings.ini`'s `Id` is `number * 4 + lamp`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -230,28 +226,18 @@ impl Switch {
         Some(Switch { kind, lamp, lit, glass: false, named: true })
     }
 
-    /// What a lit part of the lamp glows in, its texture times this colour (ours; `LAMP_GLOW` in `night.wgsl` over
-    /// it), and the share of it kept by day: a tail or brake lamp's part taken by its name glows in the lamp's red
-    /// ([`LAMP_RED`]), not its texture's colour, and a tail lamp keeps [`TAIL_DAY`].
-    pub fn glow(&self) -> [f32; 4] {
+    /// A lit part of the lamp's light (ours; `mode.lamp`, `lamp_shown` in `shader.wgsl`): the colour it glows in, its
+    /// texture's unless a tail or brake lamp's part taken by its name ([`LAMP_RED`]), and its luminance on the lamp's
+    /// axis, cd/m2: the kind's intensity ([`CANDELA`]) over the part's `area` seen along the axis (m2,
+    /// [`projected_area`], held within [`LIT_AREA`]), so that the part shines as its cast light. The luminance is
+    /// negative for a headlight's (`lamp_shown` takes a beam's pattern for it, a rear lamp's for the others).
+    pub fn glow(&self, area: f32) -> [f32; 4] {
         let [r, g, b] = match self.kind {
             Kind::Tail | Kind::Brake if self.named => LAMP_RED,
             _ => [1.0; 3],
         };
-        [r, g, b, if self.kind == Kind::Tail { TAIL_DAY } else { 1.0 }]
-    }
-
-    /// The lit part's luminance on its lamp's axis under [`LightLevels::Physical`](crate::renderer::LightLevels), cd/m2:
-    /// the kind's intensity ([`CANDELA`]) over the part's `area` seen along the axis (m2, [`projected_area`], held
-    /// within [`LIT_AREA`]), so that the part shines as its cast light. Negative for a headlight's (`lamp_shown` in
-    /// `shader.wgsl` takes a beam's pattern for it, a rear lamp's for the others).
-    pub fn luminance(&self, area: f32) -> f32 {
         let luminance = CANDELA[self.kind as usize] / area.clamp(LIT_AREA[0], LIT_AREA[1]);
-        if self.kind == Kind::Front {
-            -luminance
-        } else {
-            luminance
-        }
+        [r, g, b, if self.kind == Kind::Front { -luminance } else { luminance }]
     }
 
     /// Whether the part is drawn with `inputs`. The glass is whole unless the game says otherwise.
@@ -458,7 +444,7 @@ pub struct Lamp {
 /// beam's, which reaches about 60 m; the main beam's axis gets five times it) and the rear lamps' typical ECE values
 /// (R7: tail 4 to 17, stop 60 to 185; R23: reversing 80 to 300).
 const CANDELA: [f32; 4] = [20000.0, 8.0, 100.0, 150.0];
-/// The range a lit part's area along its lamp's axis is held in, m2 ([`Switch::luminance`]): a lamp's lens is a few
+/// The range a lit part's area along its lamp's axis is held in, m2 ([`Switch::glow`]): a lamp's lens is a few
 /// square centimetres to a few tenths of a square metre; outside that the part is not the lens alone (a whole rear
 /// panel) or a sliver, and its luminance would be far off.
 const LIT_AREA: [f32; 2] = [0.002, 0.1];
@@ -535,10 +521,10 @@ mod tests {
         let slab = [sheet.to_vec(), back].concat();
         assert!((projected_area(&slab, &[0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6], Vec3::Z) - area).abs() < 1e-5);
         let brake = Switch { kind: Kind::Brake, lamp: 0, lit: true, glass: false, named: true };
-        assert_eq!(brake.luminance(0.01), 10_000.0);
-        assert_eq!(Switch { kind: Kind::Front, ..brake }.luminance(0.02), -1_000_000.0);
+        assert_eq!(brake.glow(0.01)[3], 10_000.0);
+        assert_eq!(Switch { kind: Kind::Front, ..brake }.glow(0.02)[3], -1_000_000.0);
         // A sliver or a whole panel is held to a lens's size.
-        assert_eq!(brake.luminance(0.0), 100.0 / LIT_AREA[0]);
+        assert_eq!(brake.glow(0.0)[3], 100.0 / LIT_AREA[0]);
     }
 
     #[test]
@@ -625,8 +611,9 @@ mod tests {
         assert_eq!(switch("e_light_rb"), None, "its lit pair is always drawn");
         assert_eq!(switch("e_light_m"), None, "no lit pair");
         assert_eq!(switch("e_light_lf_lit"), Some(Switch { kind: Kind::Front, ..tail }));
-        assert_eq!(tail.glow(), [1.0, 0.0, 0.0, TAIL_DAY], "red, dimmer by day");
-        assert_eq!(Switch { kind: Kind::Brake, named: false, ..tail }.glow(), [1.0; 4], "in its texture's colour");
+        assert_eq!(tail.glow(0.01)[..3], [1.0, 0.0, 0.0], "red");
+        let unnamed = Switch { kind: Kind::Brake, named: false, ..tail };
+        assert_eq!(unnamed.glow(0.01)[..3], [1.0; 3], "in its texture's colour");
     }
 
     #[test]

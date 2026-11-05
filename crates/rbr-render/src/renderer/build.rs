@@ -266,7 +266,6 @@ impl Renderer {
             debug_view: enhance.debug_view.code(),
             cube_shift: u32::from(ultra),
             taa,
-            physical: enhance.light_levels.physical(),
         };
         // A draw of a mesh whose indices start at `first_index` in the shared buffer, with its pipelines and bind group.
         let mut gpu_draw = |draw: &Draw,
@@ -533,7 +532,15 @@ impl Renderer {
                 ultra,
             )
         });
-        let post = Post::new(&device, output_format, depth_size, &depth_view, &enhance);
+        let post = Post::new(
+            &device,
+            output_format,
+            depth_size,
+            &depth_view,
+            enhance.lighting,
+            taa,
+            enhance.debug_view.code(),
+        );
         let light_shafts = enhance.lighting.then(|| {
             let clouds = cloud_volume.shadow_map();
             crate::light_shafts::LightShafts::new(&device, &post.scene, depth_size, &depth_view, &sun_view, clouds)

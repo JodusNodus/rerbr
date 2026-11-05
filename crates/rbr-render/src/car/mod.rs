@@ -469,8 +469,7 @@ fn load_set(
         groups.extend(built.meshes.into_iter().map(|(order, mut placed, effect)| {
             if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass) {
                 for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
-                    shade.glow = Some(switch.glow());
-                    shade.luminance = switch.luminance(lit_area);
+                    shade.glow = Some(switch.glow(lit_area));
                 }
             }
             if window.is_some() {

@@ -19,7 +19,6 @@ pub(super) fn shade_for(settings: &[Section], class: &str) -> Option<Shade> {
         glass: class == "CarGlass",
         tint: class == "CarIntGlass",
         glow: None,
-        luminance: 0.0,
         crack: false,
         dirt: None,
         grime: 0,
