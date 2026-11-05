@@ -4,7 +4,7 @@
 //! Retail drivelines come from `RBR_DATA/Maps/track-*.trk`; the AI column runs the 1.02 championship AI's best
 //! driver (`rbr-championship`'s `ai::stage_time`, level 2, dry, averaged over seeds) over the dry rows of
 //! `RBR_DATA/Root/misc.rbz` (`Misc/ai/ai.ini`, `aidrv.ini`). The RSF stages (`RBR_RSF/Maps/<id>-<name>/`, when set)
-//! print with their scanned surface. Run with `bash -c 'source scripts/dev-env.sh; cargo run -p rbr-events
+//! print with their scanned surface. Run with `bash -c 'source scripts/dev-env.sh; cargo run -p rbr-season
 //! --example pace'`.
 
 use std::collections::BTreeMap;
@@ -12,10 +12,10 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use rbr_championship::ai::{self, Run, RunLog};
-use rbr_events::pace::{class_pace, driveline_points, path_length, reference_time, timed_slice};
 use rbr_formats::ai_ini;
 use rbr_formats::trk::{self, DriveLineData};
 use rbr_gameplay::crt::CrtRand;
+use rbr_season::pace::{class_pace, driveline_points, path_length, reference_time, timed_slice};
 
 /// The classes of the summary.
 const CLASSES: [&str; 12] = [

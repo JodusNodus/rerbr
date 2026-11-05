@@ -1,7 +1,7 @@
 # Events (ours)
 
 Rally events the player builds from presets, on any installed stage (retail, RSF, BTB), against an AI field in their
-car class. Code: `crates/rbr-events` (`config`, `pace`, `field`, `event`); the faithful 1.02 season stays in
+car class. Code: `crates/rbr-season` (`config`, `pace`, `field`, `event`); the faithful 1.02 season stays in
 `rbr-championship`. Nothing gameplay- or physics-facing: the event layer only reads drivelines and hands the launcher
 times, standings and saves.
 
@@ -27,11 +27,11 @@ times, standings and saves.
   night; realistic puts the last leg at dusk/night), changeable weather per leg, ~20 min mid-rally services and
   45 min overnight in a weekend. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
   rally points. Adaptive moves every entrant's skill by at most 0.003 a stage toward the player finishing 2nd-4th.
-  Save is a versioned `|`-separated text format (`rbr-events 1` head), backslash-escaped, no serde.
+  Save is a versioned `|`-separated text format (`rbr-season 1` head), backslash-escaped, no serde.
 
 ## Calibration
 
-`crates/rbr-events/examples/pace.rs` prints every installed stage's length and reference time per class. Retail AI
+`crates/rbr-season/examples/pace.rs` prints every installed stage's length and reference time per class. Retail AI
 column runs the 1.02 championship AI's best driver (`rbr-championship` `ai::stage_time`, level 2, dry, mean of 8
 seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records within a few seconds everywhere.
 

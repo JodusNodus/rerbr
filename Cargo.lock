@@ -2368,15 +2368,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rbr-events"
-version = "0.1.0"
-dependencies = [
- "rbr-championship",
- "rbr-formats",
- "rbr-gameplay",
-]
-
-[[package]]
 name = "rbr-formats"
 version = "0.1.0"
 dependencies = [
@@ -2416,12 +2407,12 @@ dependencies = [
  "png",
  "rbr-btb",
  "rbr-championship",
- "rbr-events",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-recording",
  "rbr-render",
  "rbr-school",
+ "rbr-season",
  "rbr-sound",
  "rustix 1.1.5",
  "sevenz-rust2",
@@ -2492,6 +2483,15 @@ dependencies = [
 name = "rbr-school"
 version = "0.1.0"
 dependencies = [
+ "rbr-formats",
+ "rbr-gameplay",
+]
+
+[[package]]
+name = "rbr-season"
+version = "0.1.0"
+dependencies = [
+ "rbr-championship",
  "rbr-formats",
  "rbr-gameplay",
 ]

@@ -1,4 +1,4 @@
-//! The events' stage pool: the catalog's stages that can start (retail, RSF, BTB) as `rbr_events::config::StageRef`s,
+//! The events' stage pool: the catalog's stages that can start (retail, RSF, BTB) as `rbr_season::config::StageRef`s,
 //! each with its surface, whether it is a community one, and its length from its driveline (the `.trk`'s kind 0x14
 //! records, a BTB folder's `driveline.ini`). A full RSF install has hundreds of stages: the drivelines are read on a
 //! thread once and kept in the player's folder (`cache/drivelines/<map>.line`, with the source's path, size and time,
@@ -10,10 +10,10 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 
-use rbr_events::config::{StageRef, Surface};
 use rbr_formats::data::Data;
 use rbr_formats::{stage_files, trk};
 use rbr_gameplay::weather::Season;
+use rbr_season::config::{StageRef, Surface};
 
 use crate::catalog::{self, Catalog, Origin};
 
@@ -184,7 +184,7 @@ pub fn read(data: &Data, cache: &Path, items: Vec<Item>, done: &AtomicUsize, sto
 pub fn reference(cache: &Path, stage: &StageRef, wetness: f32, class: &str) -> f32 {
     match read_cached(cache, &stage.key, None) {
         Some(points) => {
-            rbr_events::pace::reference_time(&points, stage.surface, wetness, &rbr_events::pace::class_pace(class))
+            rbr_season::pace::reference_time(&points, stage.surface, wetness, &rbr_season::pace::class_pace(class))
         }
         None => stage.length / 25.0,
     }

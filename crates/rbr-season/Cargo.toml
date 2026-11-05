@@ -1,8 +1,8 @@
 [package]
-name = "rbr-events"
+name = "rbr-season"
 version = "0.1.0"
 edition = "2021"
-description = "Rally events (ours): built rallies and seasons on any installed stages, a field in the player's car class, its pace from the stages"
+description = "The championship season (ours): built rallies and seasons on any installed stage, a field in the player's car class, its pace from the stages"
 license = "GPL-3.0-or-later"
 
 [dependencies]

@@ -384,7 +384,7 @@ impl Event {
 
     /// The event as text for the player's folder.
     pub fn save(&self) -> String {
-        let mut out = String::from("rbr-events 1\n");
+        let mut out = String::from("rbr-season 1\n");
         let c = &self.config;
         out.push_str(&format!(
             "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
@@ -445,8 +445,8 @@ impl Event {
     pub fn load(text: &str) -> Result<Event, String> {
         let mut lines = text.lines();
         match lines.next() {
-            Some("rbr-events 1") => {}
-            Some(head) => return Err(format!("not an rbr-events save: {head}")),
+            Some("rbr-season 1") => {}
+            Some(head) => return Err(format!("not an rbr-season save: {head}")),
             None => return Err("empty save".to_owned()),
         }
         let mut config: Option<EventConfig> = None;
@@ -1110,12 +1110,12 @@ mod tests {
         event.stage_done(PlayerResult { time: 301.5, penalties: 10.0, retired: false }, 300.0);
         event.turn_done();
         let text = event.save();
-        assert!(text.starts_with("rbr-events 1\n"));
+        assert!(text.starts_with("rbr-season 1\n"));
         let back = Event::load(&text).unwrap();
         assert_eq!(event, back);
         assert_eq!(Event::load(&back.save()).unwrap(), back);
         assert!(Event::load("bogus").is_err());
-        assert!(Event::load("rbr-events 1\nbogus|line").is_err());
+        assert!(Event::load("rbr-season 1\nbogus|line").is_err());
     }
 
     #[test]

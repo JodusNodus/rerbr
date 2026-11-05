@@ -5,7 +5,7 @@ championship and saves. Code: `crates/rbr-gameplay/src/` (module map:
 [crates/rbr-gameplay/README.md](../crates/rbr-gameplay/README.md)); each section names the module that states the
 detail. File layouts are in [formats.md](formats.md); cameras and HUD in
 [cameras-hud-launcher.md](cameras-hud-launcher.md). Addresses are `RichardBurnsRally_SSE.exe` 1.02. Detail dropped
-here: rbr-recomp `notes/gameplay-loop.md`, `notes/scripted-events.md`, `notes/weather.md`.
+here: rbr-recomp `notes/gameplay-loop.md`, `notes/scripted-season.md`, `notes/weather.md`.
 
 ## Frame and fixed step
 

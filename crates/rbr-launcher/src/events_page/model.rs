@@ -1,9 +1,9 @@
-//! The page's way into `rbr_events`: the presets, building and loading an event, and an event's turns, standings and
+//! The page's way into `rbr_season`: the presets, building and loading an event, and an event's turns, standings and
 //! save. The page runs on [`REAL`]; the screenshots and the tests run on the fixture's double
 //! ([`super::fixture::DOUBLE`]), which keeps the same turn order on a simple field.
 
-use rbr_events::config::{EventConfig, Preset, StageRef};
-use rbr_events::event::{Event, PlayerResult, Standing};
+use rbr_season::config::{EventConfig, Preset, StageRef};
+use rbr_season::event::{Event, PlayerResult, Standing};
 
 /// An event under way, as the page drives it.
 pub trait Play {
@@ -50,7 +50,7 @@ pub struct Model {
     pub load: fn(&str) -> Result<Box<dyn Play>, String>,
 }
 
-/// `rbr_events` itself.
+/// `rbr_season` itself.
 pub const REAL: Model = Model {
     config: |preset, class, car, seed| preset.config(class, car, seed),
     build: |config, stages, cars, reference| Ok(Box::new(Event::build(config, stages, cars, reference)?)),

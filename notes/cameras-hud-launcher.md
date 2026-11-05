@@ -141,7 +141,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   the season over) takes that season's team, options and car (`SeasonCar::Kept`). `--screenshot` draws it new
   (without and with a saved season), at the welcome, after a wrecked SS1, at SS2, between rallies, the season over
   and (with `--screenshot-damage`) in service.
-- Championship tab's events (ours, `events_page/`, model `rbr_events`; 2026-11-05): the tab opens on preset cards
+- Championship tab's events (ours, `events_page/`, model `rbr_season`; 2026-11-05): the tab opens on preset cards
   (Quick rally, Weekend, Season, Random, Classic 1.02 season; the Classic card opens the 1.02 season page above,
   unchanged, with "‹ All events" back), Continue event first when `SavedGames/event-<profile>.txt` exists (carried
   damage in `.dmg`, the service's late penalty and the tyre in `.ini`: `Event` keeps neither). A preset opens the

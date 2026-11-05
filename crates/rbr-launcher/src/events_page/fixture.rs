@@ -1,13 +1,13 @@
-//! A stand-in for `rbr_events` for the screenshots and the tests (not the events' rules): presets with fixed
+//! A stand-in for `rbr_season` for the screenshots and the tests (not the events' rules): presets with fixed
 //! settings, an itinerary drawn in order from the pool, a field whose times are the reference over its skill, and the
 //! same turn order as the model's: the welcome, the stages, a service where the itinerary has one, the rally's end,
 //! the next rally or the event's end.
 
-use rbr_events::config::{
+use rbr_season::config::{
     Damage, Daylight, EventConfig, Length, Preset, StagePool, StageRef, Surface, Surfaces, Weather,
 };
-use rbr_events::event::{Conditions, Event, ItineraryStage, PlayerResult, Rally, Standing, Turn};
-use rbr_events::field::{AiResult, Entrant};
+use rbr_season::event::{Conditions, Event, ItineraryStage, PlayerResult, Rally, Standing, Turn};
+use rbr_season::field::{AiResult, Entrant};
 
 use super::model::{Model, Play, Reference};
 

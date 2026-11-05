@@ -3,10 +3,10 @@
 
 use std::path::Path;
 
-use rbr_events::event::{Conditions, Turn};
 use rbr_formats::saves::SaveDir;
 use rbr_gameplay::race_options::{DamageLevel, RaceOptions};
 use rbr_gameplay::weather::{Draws, Preset, Weather};
+use rbr_season::event::{Conditions, Turn};
 
 use super::view::Env;
 use super::{wetness, EventStart, Request};
@@ -166,8 +166,8 @@ pub fn shots(form: &mut Form, dir: &Path) -> Result<(), String> {
     use super::fixture::{self, Double};
     use super::model::Play;
     use crate::capture::shot;
-    use rbr_events::config::Preset;
-    use rbr_events::event::PlayerResult;
+    use rbr_season::config::Preset;
+    use rbr_season::event::PlayerResult;
     form.page = crate::pages::Page::Championship;
     form.events.model = &fixture::DOUBLE;
     form.events.pool = Some(super::pool::Pool::Ready(fixture::stages()));
@@ -193,12 +193,12 @@ pub fn shots(form: &mut Form, dir: &Path) -> Result<(), String> {
     // The player's pace against the reference: 3rd or so, slower on the wet stage.
     let drive = |play: &mut Double, n: usize| {
         for _ in 0..n {
-            let rbr_events::event::Turn::Stage { rally, stage } = play.0.turn else { return };
+            let rbr_season::event::Turn::Stage { rally, stage } = play.0.turn else { return };
             let s = &play.0.rallies[rally].stages[stage];
             let reference = s.stage.length / 22.0;
             let time = reference * [1.012, 1.004, 1.03, 0.998, 1.01, 1.006][stage % 6];
             play.stage_done(PlayerResult { time, penalties: 0.0, retired: false }, reference);
-            if matches!(play.0.turn, rbr_events::event::Turn::Service { .. }) && n > 1 {
+            if matches!(play.0.turn, rbr_season::event::Turn::Service { .. }) && n > 1 {
                 play.turn_done();
             }
         }

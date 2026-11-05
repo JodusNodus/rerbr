@@ -1,4 +1,4 @@
-//! The Championship tab's events (ours, `rbr_events`): a rally or a season the player builds from a preset, on any
+//! The Championship tab's events (ours, `rbr_season`): a rally or a season the player builds from a preset, on any
 //! installed stage (retail, RSF, BTB: [`pool`]), against a field in the car's class. The tab opens on the presets
 //! (Quick rally, Weekend, Season, Random, and the Classic 1.02 season, which is `rally_page`'s season as it was), with
 //! Continue event first when the profile has one. A preset opens the builder with its settings; Start event builds the
@@ -21,8 +21,6 @@ use std::path::{Path, PathBuf};
 
 use rbr_championship::service::{Crew, ServiceKind};
 use rbr_championship::{ServicePark, StageReport};
-use rbr_events::config::{Damage, EventConfig, Length, Preset, StagePool, StageRef, Surface, Surfaces};
-use rbr_events::event::{Conditions, ItineraryStage, PlayerResult, Turn};
 use rbr_formats::data::Data;
 use rbr_formats::saves::{is_file_name_part, SaveDir};
 use rbr_formats::strings::Strings;
@@ -30,6 +28,8 @@ use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::flow::{EndCause, EndRace, StageEnd};
 use rbr_gameplay::setup::SeasonSetup;
+use rbr_season::config::{Damage, EventConfig, Length, Preset, StagePool, StageRef, Surface, Surfaces};
+use rbr_season::event::{Conditions, ItineraryStage, PlayerResult, Turn};
 
 use crate::catalog::Car;
 
@@ -546,7 +546,7 @@ pub fn place_line(play: &dyn Play) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rbr_events::config::{Daylight, Weather};
+    use rbr_season::config::{Daylight, Weather};
 
     fn config() -> EventConfig {
         EventConfig {
