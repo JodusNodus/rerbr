@@ -538,7 +538,7 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   0.13 %; retail cars under 0.04 %; the GC8's tail part also covers the amber indicator band, which glows red), the M3
   E30's headlamps, the Fiesta Rally2's and M3's bars and bumper lamps. Still dark: the Fiesta Rally2's tails (the lit
   strip lies inside the opaque, always-drawn housing `e_light_lb`; the game shows that lamp by its flare), the quattro
-  A2's pods (its Africa lights and Extralights options tie, so `night_options` vetoes them), cars whose model has no
+  A2's pods (left out while its options tied; now picked, below, not yet seen), cars whose model has no
   `_lit` tail mesh (Focus WRC 2006, Delta HF 4WD, Lancer Evo II, Fiesta WRC 2014); MAZDA 323 not seen (not downloaded).
   The quattro's dark headlamps in Pengonpohja night shots past frame ~8000 are crash damage, not a regression (works
   bits 0xF0F to 0xC0C between frames 4000 and 8000).
@@ -555,7 +555,9 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
   on-option, then each extra-lights/pod on-option merged over the model's `.ini`/`_settings.ini` in memory
   before any mesh is built, so visibility, lamp switches and points all use the merged files
   (`rsf::night_options`, `rsf::merge_night_options`; `notes/formats.md` "RSF cars"). By day, and for the six
-  vetoed cars (ambiguous on variants) and the six installed lights-on already, the installed parts stay. An
+  installed lights-on already, the installed parts stay. Tied on variants take the first by folder name (2026-11-05,
+  user: "just take whatever"; six cars kept their installed parts: the quattros, Volvo 242, Celica ST185, TA64, 208
+  Rally4), not yet seen on them. An
   extra only renumbering the headlights' pods (Fiesta Rally3 `extralights_on`) is left out.
 - Ours: a car with no kind 1 record that ever lights (a community car installed with headlights off: none, or all
   `Active = false` without their switch box, as 19 installed cars incl. the Escort Mk II, 2026-10-30) gets a beam per

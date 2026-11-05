@@ -294,11 +294,11 @@ struct NightApplied {
 }
 
 /// The model's car-parts night options over its `.ini` and `_settings.ini` (see [`rsf::night_options`]),
-/// in memory: the headlights' option, then each extra. Vetoed or option-less models, and unreadable or
-/// disagreeing options, keep the installed files.
+/// in memory: the headlights' option, then each extra. Option-less models, and unreadable or disagreeing
+/// options, keep the installed files.
 fn night_overlays(model: &Path, parts: Vec<Section>, settings: Vec<Section>) -> NightApplied {
     let pick = rsf::night_options(model);
-    if pick.veto.is_none() && !pick.options().is_empty() {
+    if !pick.options().is_empty() {
         let files = |dirs: &[PathBuf]| -> Result<Vec<rsf::OptionFiles>, String> {
             dirs.iter().map(|dir| rsf::read_option_files(dir)).collect()
         };
@@ -317,8 +317,7 @@ fn night_overlays(model: &Path, parts: Vec<Section>, settings: Vec<Section>) -> 
             }
         }
     }
-    let veto = pick.veto;
-    NightApplied { parts, settings, applied: Vec::new(), skipped: pick.skipped, veto }
+    NightApplied { parts, settings, applied: Vec::new(), skipped: pick.skipped, veto: None }
 }
 
 /// An option folder's name for the load report.

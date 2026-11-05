@@ -280,29 +280,19 @@ fn is_light_group(name: &str) -> bool {
 }
 
 /// The night pick from bare option folders (no `metadata.ini` to group by): the folder with an `on`
-/// token and no `off` one, preferring the one packing extra lights (`lights on (with extralights)` over
-/// `lights on`).
+/// token and no `off` one, preferring one packing extra lights (`lights on (with extralights)` over
+/// `lights on`); of several, the first by name.
 fn pick_bare(bare: &[ModelOption], pick: &mut NightPick) {
     let light: Vec<&ModelOption> = bare.iter().filter(|o| is_light_group(&o.name)).collect();
     let on: Vec<&ModelOption> =
         light.iter().filter(|o| folder_has_word(&o.name, "on") && !folder_has_word(&o.name, "off")).copied().collect();
-    if on.len() == 1 {
-        pick.headlights.push(on[0].dir.clone());
-    } else if on.len() > 1 {
-        let full: Vec<&&ModelOption> = on
-            .iter()
-            .filter(|o| {
-                ["extra", "pod", "ramp", "all", "bonnet", "bumper"].iter().any(|w| o.name.to_lowercase().contains(w))
-            })
-            .collect();
-        if full.len() == 1 {
-            pick.headlights.push(full[0].dir.clone());
-        } else {
-            let names: Vec<&str> = on.iter().map(|o| option_folder(o)).collect();
-            pick.veto = Some(format!("bare options: on variants disagree ({})", names.join(", ")));
-        }
-    } else if !light.is_empty() {
-        pick.skipped.push("bare options: no on variant".to_owned());
+    let full = on.iter().find(|o| {
+        ["extra", "pod", "ramp", "all", "bonnet", "bumper"].iter().any(|w| o.name.to_lowercase().contains(w))
+    });
+    match full.or(on.first()) {
+        Some(option) => pick.headlights.push(option.dir.clone()),
+        None if !light.is_empty() => pick.skipped.push("bare options: no on variant".to_owned()),
+        None => {}
     }
 }
 
@@ -325,7 +315,7 @@ fn folder_has_word(folder: &str, word: &str) -> bool {
 
 /// The light options a night drive applies to the model in `model`: the switched-on option of each light
 /// group (headlights on, plus extra lights and light pods where the car has them), in the order applied.
-/// A stage by day, or a vetoed car, keeps the installed parts.
+/// A stage by day keeps the installed parts.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct NightPick {
     /// The selected "on" option of the headlights group, if any (never more than one).
@@ -334,9 +324,6 @@ pub struct NightPick {
     pub extras: Vec<PathBuf>,
     /// Light groups left as installed, each with why (no on variant, or not an on/off group).
     pub skipped: Vec<String>,
-    /// Why the installed parts are kept for the whole car instead, when they are: a light option is
-    /// ambiguous (several on variants, none the plain or full one), or two selected options disagree.
-    pub veto: Option<String>,
 }
 
 impl NightPick {
@@ -351,23 +338,19 @@ impl NightPick {
 ///
 /// A group with several on variants takes the full one (`All on`, `Mounted, all on`, `Full`); a bare `On`
 /// over a qualified one (`On` over `On (Safari)`); a headlights group the high beam (`highbeam`, `On, high
-/// beam`, the headlight key's default). Anything still tied vetoes the car, as does a group whose folder
-/// names both claim `on`.
+/// beam`, the headlight key's default). Of variants still tied (the quattro A2's outer and inner pods, its
+/// 1983 and 1984 Africa lights) the first by folder name (user, 2026-11-05: "just take whatever").
 pub fn night_options(model: &Path) -> NightPick {
     let (bare, meta): (Vec<ModelOption>, Vec<ModelOption>) = model_options(model).into_iter().partition(|o| o.bare);
     let mut pick = NightPick::default();
     if !bare.is_empty() {
         pick_bare(&bare, &mut pick);
-        if pick.veto.is_some() {
-            pick.headlights.clear();
-        }
         return pick;
     }
     let mut groups: BTreeMap<String, Vec<ModelOption>> = BTreeMap::new();
     for option in meta.into_iter().filter(|o| is_light_group(&o.name)) {
         groups.entry(option.name.to_lowercase()).or_default().push(option);
     }
-    let mut selected: Vec<(&String, &ModelOption)> = Vec::new();
     for (group, options) in &groups {
         // The on candidates: the `on` states, else the folders claiming `on` of an on/off group.
         let mut candidates: Vec<&ModelOption> = options.iter().filter(|o| has_word(&o.state, "on")).collect();
@@ -388,10 +371,6 @@ pub fn night_options(model: &Path) -> NightPick {
                 continue;
             }
         }
-        if candidates.len() == 1 {
-            selected.push((group, candidates[0]));
-            continue;
-        }
         let all: Vec<&&ModelOption> = candidates
             .iter()
             .filter(|o| o.state.to_lowercase().contains("all") || has_word(&o.state, "full"))
@@ -405,24 +384,10 @@ pub fn night_options(model: &Path) -> NightPick {
         } else {
             Vec::new()
         };
-        if all.len() == 1 {
-            selected.push((group, all[0]));
-        } else if bare.len() == 1 && all.is_empty() {
-            selected.push((group, bare[0]));
-        } else if high.len() == 1 {
-            selected.push((group, high[0]));
-        } else {
-            let names: Vec<&str> = candidates.iter().map(|o| option_folder(o)).collect();
-            pick.veto = Some(format!("carparts {group}: on variants disagree ({})", names.join(", ")));
-            return pick;
-        }
-    }
-    for (group, option) in selected {
-        if group.contains("head") {
-            pick.headlights.push(option.dir.clone());
-        } else {
-            pick.extras.push(option.dir.clone());
-        }
+        let narrowest = [&all, &bare, &high].into_iter().find(|set| !set.is_empty());
+        let chosen = narrowest.map_or(candidates[0], |set| *set[0]);
+        let list = if group.contains("head") { &mut pick.headlights } else { &mut pick.extras };
+        list.push(chosen.dir.clone());
     }
     pick.extras.sort();
     pick
@@ -855,9 +820,35 @@ mod tests {
             &[("light_on/light.ini", "[a]\r\nx = 1\r\n"), ("light_off/light.ini", "[a]\r\nx = 2\r\n")],
         );
         let pick = night_options(&root);
-        assert_eq!(pick.veto, None);
         assert_eq!(pick.options().len(), 1);
         assert!(pick.options()[0].ends_with("light_on"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn tied_on_variants_take_the_first_by_folder() {
+        // As the quattro A2's car parts: two full pod variants, a winter pod, two Africa lights years.
+        let option = |folder: &str, name: &str, state: &str| {
+            (format!("carparts/{folder}/metadata.ini"), format!("[rsf_info]\r\nname={name}\r\nstate={state}\r\n"))
+        };
+        let files = [
+            option("headlights_on", "Headlights", "Normal"),
+            option("headlights_off", "Headlights", "Off"),
+            option("extralights_all_on_outer", "Extralights", "All on, outer"),
+            option("extralights_all_on_inner", "Extralights", "All on, inner"),
+            option("extralights_winter_on", "Extralights", "Winter lightpod on"),
+            option("extralights_no", "Extralights", "Not mounted"),
+            option("africalights_on_84", "Africa lights", "Safari 1984, on"),
+            option("africalights_on_83", "Africa lights", "Ivory 1983, on"),
+        ];
+        let files: Vec<(&str, &str)> = files.iter().map(|(p, c)| (p.as_str(), c.as_str())).collect();
+        let root = model_tree("tied", &files);
+        let names: Vec<String> = night_options(&root)
+            .options()
+            .iter()
+            .map(|p| p.file_name().unwrap().to_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(names, ["headlights_on", "africalights_on_83", "extralights_all_on_inner"]);
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -870,8 +861,7 @@ mod tests {
             return;
         };
         let cars = cars::resolve(Path::new(&root), "Cars").unwrap();
-        // The expected "on" options (folder names) of models with an unambiguous night setup, and the
-        // models that keep their installed parts (genuinely ambiguous on variants).
+        // The expected "on" options (folder names) of models with an unambiguous night setup.
         let expected: &[(&str, &[&str])] = &[
             ("FORD_FOCUS_2006", &["lights_on", "lights_on_extralights"]),
             ("fiesta_wrc_19", &["headlights_on", "bonnet_extralights_on", "bumper_extralights_on"]),
@@ -885,7 +875,6 @@ mod tests {
             ("YARIS_WRC18", &["light_on", "light_on_all", "light_on_bonnet"]),
             ("vw_golf_86", &["light_on_full", "light_on_ramp"]),
         ];
-        let vetoed: &[&str] = &["Volvo242LE", "AUDI_QUATTRO_A1_GrpB", "AUDI_QUATTRO_A2_GrpB"];
         let mut models = 0;
         let mut with_night = 0;
         for model in std::fs::read_dir(&cars).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir()) {
@@ -914,20 +903,17 @@ mod tests {
             if let Some((_, want)) = expected.iter().find(|(m, _)| m == &name) {
                 assert_eq!(names, *want, "{name}");
                 with_night += 1;
-            } else if vetoed.contains(&name.as_str()) {
-                assert!(pick.veto.is_some(), "{name}: expected a veto");
             } else if !options.is_empty() {
                 with_night += usize::from(!pick.options().is_empty());
             }
-            if !pick.options().is_empty() || pick.veto.is_some() || !pick.skipped.is_empty() {
+            if !pick.options().is_empty() || !pick.skipped.is_empty() {
                 eprintln!(
-                    "{name}: night {}{}{}",
+                    "{name}: night {}{}",
                     pick.options()
                         .iter()
                         .map(|p| p.file_name().unwrap().to_str().unwrap().to_owned())
                         .collect::<Vec<_>>()
                         .join(", "),
-                    pick.veto.as_deref().map(|v| format!(" veto: {v}")).unwrap_or_default(),
                     if pick.skipped.is_empty() {
                         String::new()
                     } else {
