@@ -589,8 +589,11 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 Each thrower follows its 1.02 source (`particles/*.rs` cite them; `E82F_BlkD0::Emit` 0x5ddba0 emits `rate * frame
 dt` a payload, we use 1/60 s). The payload layout is in `rbr_recording::particles` (wheel, edges, velocity, rubber,
 smoke, mass, depth, dirt, splash, surfaces, blend, contact). Ours: the step, pools 4x the file's, sparks (1.02
-throws none), no 3D stones (never loaded in 1.02). Open: camera-speed modulation, the wave's vertex alpha and
-scroll.
+throws none), no 3D stones (never loaded in 1.02). Open: the wave's vertex alpha and scroll.
+- The emitter's "camera speed modulation factor" (+0x180) scales the car's horizontal velocity, not the camera's:
+  `CamHandler` 0x5d8600 on `CSigCarGeneralState` stores k (vx, vy, 0), `GenVel` 0x5d91fb adds it to each new particle.
+  Only the weather's one-particle file emitters set it (-0.6, `g_rain*`, `g_snow2/3`); we don't run them, so nothing
+  to port. `weather::Fall` (their fall height, forward distance, car velocity flag) is parsed but unused.
 
 Wheel spray (`particles/wheel_spray/`, ours, `--enhance particles`): replaces the tyre handlers, fake smoke, splash
 and wave with dust and water only (no stones, user decision 2026-10-20); dust, powder, mist, drops and splash by
