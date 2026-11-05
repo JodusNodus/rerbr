@@ -178,6 +178,9 @@ captions above credit the car models and the community stages shown.
   formats and shader names.
 - [rbr-setup-extractor](https://github.com/wbsth/rbr-setup-extractor) by wbsth.
 - [openRBRVR](https://github.com/Detegr/openRBRVR) by Detegr.
+- Water sounds: recordings by [EverydaySounds](https://freesound.org/people/EverydaySounds/sounds/268625/) and
+  [Breviceps](https://freesound.org/people/Breviceps/sounds/462862/) on Freesound (CC0;
+  [`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
 
 ## License
 

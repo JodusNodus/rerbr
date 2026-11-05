@@ -16,6 +16,15 @@ use crate::effects::EffectGains;
 use crate::scripted::ScriptedGains;
 use crate::world::WorldGains;
 
+/// Ours: the water recordings embedded from `sounds/` (`sounds/CREDITS.md`, CC0): three tyres running into a puddle
+/// ([`CarBank::splashes`]) and a wet road's tyre roar, a loop ([`CarBank::wet_road`]).
+const SPLASHES: [&[u8]; 3] = [
+    include_bytes!("../sounds/splash1.wav"),
+    include_bytes!("../sounds/splash2.wav"),
+    include_bytes!("../sounds/splash3.wav"),
+];
+const WET_ROAD: &[u8] = include_bytes!("../sounds/wet_road.wav");
+
 /// One frame's mean over its channels: stereo is mixed down (every retail wave is mono).
 pub(crate) fn mono(channels: usize, frame: impl Iterator<Item = f32>) -> f32 {
     frame.sum::<f32>() / channels as f32
@@ -234,6 +243,9 @@ pub struct CarBank {
     /// `CAR::RUMBLE Rumble` and `TIRE::SURFACES SkidWater` (the wetness), each wheel's third and fourth voice.
     pub rumble: Wave,
     pub wetness: Wave,
+    /// Ours (`tyre::Water`): the embedded puddle splashes and wet-road loop ([`SPLASHES`], [`WET_ROAD`]).
+    pub splashes: Vec<Wave>,
+    pub wet_road: Wave,
     /// `IMPACT::GRUS Snd1-20` (the gravel hits; `LoadWaves` starts at 1, so `Snd0` is unused), `CAR::SQUEEKS Sqe1-18`,
     /// `CAR::SUSPENSION Sus1-4` and `CAR::DRIVESHAFT DS1-13`.
     pub grus: Vec<Wave>,
@@ -417,6 +429,8 @@ impl CarBank {
             offroad: (1..=7).map(|k| wave("CAR::OTHER", &format!("Offroad{k}"))).collect::<Result<_, _>>()?,
             rumble: wave("CAR::RUMBLE", "Rumble")?,
             wetness: wave("TIRE::SURFACES", "SkidWater")?,
+            splashes: SPLASHES.iter().map(|b| Wave::decode(b)).collect::<Result<_, _>>()?,
+            wet_road: Wave::decode(WET_ROAD)?,
             grus: from_one(&impacts, "IMPACT::GRUS", "Snd")?,
             squeaks: from_one(&effects, "CAR::SQUEEKS", "Sqe")?,
             bottomings: from_one(&effects, "CAR::SUSPENSION", "Sus")?,
@@ -455,6 +469,15 @@ impl CarBank {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_embedded_water_sounds_decode() {
+        for bytes in SPLASHES.iter().chain([&WET_ROAD]) {
+            let wave = Wave::decode(bytes).unwrap();
+            assert_eq!(wave.rate, 44100);
+            assert!((0.5..2.0).contains(&(wave.samples.len() as f32 / 44100.0)));
+        }
+    }
 
     fn wav_bytes(rate: u32) -> Vec<u8> {
         let mut out = Cursor::new(Vec::new());

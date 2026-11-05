@@ -120,7 +120,7 @@ impl Models {
             car: Car::new(g),
             tyres: {
                 let mut tyres = Tyres::new(g.tyre, g.offroad, bank.grus.len(), bank.road_surfaces.clone());
-                tyres.thump_samples = bank.bottomings.len();
+                tyres.splash_samples = bank.splashes.len();
                 tyres
             },
             impacts: Impacts::new(g.ranged, g.scream, bank.ranged.len(), bank.screams.len()),

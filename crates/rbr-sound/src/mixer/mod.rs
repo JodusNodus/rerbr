@@ -157,6 +157,8 @@ struct Banks {
     grus: Vec<Arc<Wave>>,
     squeaks: Vec<Arc<Wave>>,
     bottomings: Vec<Arc<Wave>>,
+    /// Ours: the embedded puddle splashes (`tyre::Water`).
+    splashes: Vec<Arc<Wave>>,
     drive_shafts: Vec<Arc<Wave>>,
     exhaust_pops: Vec<Arc<Wave>>,
     pops: Vec<Arc<Wave>>,
@@ -306,7 +308,7 @@ impl Volumes {
     /// A one-shot's option.
     fn shot(&self, shot: Shot) -> f32 {
         match shot {
-            Shot::Grus(_) => self.tyres,
+            Shot::Grus(_) | Shot::Splash(_) => self.tyres,
             Shot::Go => self.codriver,
             _ => self.effects,
         }
@@ -337,8 +339,8 @@ pub struct Mixer {
     /// By key, so the mix sums them in the same order on every run.
     loops: BTreeMap<Loop, LoopVoice>,
     tyres: [WheelTyres; 4],
-    /// Each wheel's rumble (0-3) and wetness (4-7) loops.
-    wheel_loops: [LoopVoice; 8],
+    /// Each wheel's rumble (0-3), wetness (4-7) and wet-road hiss (8-11, ours) loops.
+    wheel_loops: [LoopVoice; 12],
     rain: Rain,
     banks: Banks,
     playing: Vec<Playing>,
@@ -407,6 +409,7 @@ impl Mixer {
             grus: shared(&bank.grus),
             squeaks: shared(&bank.squeaks),
             bottomings: shared(&bank.bottomings),
+            splashes: shared(&bank.splashes),
             drive_shafts: shared(&bank.drive_shafts),
             exhaust_pops: shared(&bank.exhaust_pops),
             pops: shared(&bank.pops),
@@ -446,7 +449,7 @@ impl Mixer {
             inside: false,
             loops,
             tyres: Default::default(),
-            wheel_loops: std::array::from_fn(|k| voice(if k < 4 { &bank.rumble } else { &bank.wetness })),
+            wheel_loops: std::array::from_fn(|k| voice([&bank.rumble, &bank.wetness, &bank.wet_road][k / 4])),
             rain: Rain::new(rate),
             banks,
             playing: Vec::new(),
@@ -604,11 +607,12 @@ impl Mixer {
                 Command::WheelLoop { wheel, voice, gain, pitch } => {
                     // The rumble plays in the car, without a distance gain. The wetness is a 2D voice on the
                     // software path (`M6cb0`: flags 0x200); ours, as it carries the renderer's water (`tyre::Water`),
-                    // it takes the tyres' distance gain and, in the car, their cabin low-pass.
+                    // it and the wet road's hiss take the tyres' distance gain and, in the car, their cabin low-pass.
                     let (k, placed, cabin) = match voice {
                         WheelLoop::Rumble => (usize::from(wheel) % 4, 1.0, None),
-                        WheelLoop::Wetness => {
-                            (4 + usize::from(wheel) % 4, self.placed(Place::Tire), Some(self.cabin()))
+                        WheelLoop::Wetness | WheelLoop::Hiss => {
+                            let first = if voice == WheelLoop::Hiss { 8 } else { 4 };
+                            (first + usize::from(wheel) % 4, self.placed(Place::Tire), Some(self.cabin()))
                         }
                     };
                     let v = &mut self.wheel_loops[k];
@@ -710,6 +714,7 @@ impl Mixer {
             | Shot::Grus(_)
             | Shot::Squeak(_)
             | Shot::Bottoming(_)
+            | Shot::Splash(_)
             | Shot::DriveShaft(_)
             | Shot::ExhaustPop(_)
             | Shot::Pop(_)
@@ -743,6 +748,7 @@ impl Mixer {
             Shot::Grus(i) => (&self.banks.grus, i, Place::Grus, None),
             Shot::Squeak(i) => (&self.banks.squeaks, i, Place::Default, None),
             Shot::Bottoming(i) => (&self.banks.bottomings, i, Place::Default, None),
+            Shot::Splash(i) => (&self.banks.splashes, i, Place::Tire, None),
             Shot::DriveShaft(i) => (&self.banks.drive_shafts, i, Place::Default, None),
             Shot::ExhaustPop(i) => (&self.banks.exhaust_pops, i, Place::ExhaustPop, Some(Family::ExhaustPop)),
             Shot::Pop(i) => (&self.banks.pops, i, Place::ExhaustPop, Some(Family::Pop)),

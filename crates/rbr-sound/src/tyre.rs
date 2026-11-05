@@ -92,16 +92,20 @@ fn roll_pitch(speed: f32) -> f32 {
 const WET_DECAY: f32 = 0.95;
 const QUIET: f32 = 0.001;
 
-/// Ours: each wheel's water as the renderer sees it ([`Tyres::set_water`]; its wheel spray's), which plays on the
-/// wetness voice (`TIRE::SURFACES SkidWater`, the retail `water.wav`) in place of 1.02's splash, 0 in every drive:
-/// - a puddle: running in gushes by how much deeper it got times [`SPLASH_SPEED`] ([`GUSH_GAIN`], decaying as 1.02's
-///   wetness, [`WET_DECAY`] a frame) with a thump of `CAR::SUSPENSION` once the rise ends ([`THUMP_MIN`],
-///   [`THUMP_GAIN`], [`THUMP_PITCH`]); in it, a swish by its depth and the speed ([`SWISH_GAIN`]);
-/// - a wet road: a hiss by the ground's wetness squared ([`HISS_GAIN`]) over [`HISS_SPEED`], darker and quieter on
-///   loose ground ([`LOOSE_PITCH`], [`LOOSE_HISS`]), brighter with speed ([`WATER_PITCH`]).
+/// Ours: each wheel's water as the renderer sees it ([`Tyres::set_water`]; its wheel spray's), in place of 1.02's
+/// splash, 0 in every drive:
+/// - running into a puddle: a splash (`Shot::Splash`, the embedded recordings of a car hitting water, its impact in
+///   them) once the depth stops rising, if it rose by at least [`SPLASH_MIN`] times [`SPLASH_SPEED`], at
+///   [`SPLASH_GAIN`] times the rise, lower the deeper ([`SPLASH_DROP`]); the rise also sets the gush, which decays as
+///   1.02's wetness ([`WET_DECAY`] a frame) and ducks the rest while the splash plays;
+/// - in a puddle: a swish on the wetness voice (`TIRE::SURFACES SkidWater`, the retail `water.wav`) by its depth and
+///   the speed ([`SWISH_GAIN`]);
+/// - on a wet road: the wet-road loop (`WheelLoop::Hiss`) by the ground's wetness squared ([`HISS_GAIN`]) over
+///   [`HISS_SPEED`], darker and quieter on loose ground ([`LOOSE_PITCH`], [`LOOSE_HISS`]), brighter with speed
+///   ([`WATER_PITCH`]).
 ///
-/// The voice plays the louder of the hiss and the swish plus the gush, at the tyres' distance and, in the car, through
-/// the cabin low-pass (`crate::mixer`).
+/// The gush overrides the swish and the swish the hiss: their shares of 1 add up to at most 1. Both loops play at the
+/// tyres' distance and, in the car, through the cabin low-pass (`crate::mixer`).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Water {
     /// How much of a puddle the standing water is, 0 to 1 (the spray's plume depth: 0 under a wet rut's film).
@@ -114,20 +118,17 @@ pub struct Water {
 
 /// The wheel speeds, m/s, over which a puddle splashes from nothing to full (the spray's).
 const SPLASH_SPEED: [f32; 2] = [2.0, 15.0];
-const GUSH_GAIN: f32 = 1.0;
+const SPLASH_MIN: f32 = 0.15;
+const SPLASH_GAIN: f32 = 1.6;
+const SPLASH_DROP: f32 = 0.15;
 const SWISH_GAIN: f32 = 0.35;
-/// A puddle's rise (depth times [`SPLASH_SPEED`]) under this makes no thump.
-const THUMP_MIN: f32 = 0.2;
-const THUMP_GAIN: f32 = 0.5;
-/// The thump's pitch: lower the deeper the puddle ran in, from the first to the second.
-const THUMP_PITCH: [f32; 2] = [0.75, 0.55];
 /// The wheel speeds, m/s, over which a wet road's hiss rises from nothing (about 7 km/h) to full (90 km/h).
 const HISS_SPEED: [f32; 2] = [2.0, 25.0];
-const HISS_GAIN: f32 = 0.35;
+const HISS_GAIN: f32 = 0.5;
 const LOOSE_HISS: f32 = 0.6;
 const LOOSE_PITCH: f32 = 0.78;
-/// The water's pitch from standstill to [`WATER_PITCH_TOP`] m/s, times 0.85 at full puddle depth.
-const WATER_PITCH: [f32; 2] = [0.9, 1.1];
+/// The water's pitch from standstill to [`WATER_PITCH_TOP`] m/s; the swish's times 0.85 at full puddle depth.
+const WATER_PITCH: [f32; 2] = [0.85, 1.1];
 const WATER_PITCH_TOP: f32 = 40.0;
 const DEEP_PITCH: f32 = 0.85;
 
@@ -136,18 +137,22 @@ fn smoothstep([from, to]: [f32; 2], x: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// A wheel's wet-road hiss and puddle swish levels at wheel speed `speed` m/s in `water` (ours, [`Water`]).
-fn water_levels(water: &Water, speed: f32) -> (f32, f32) {
+/// A wheel's swish and hiss shares of 1 at wheel speed `speed` m/s in `water` under a gush of `gush` (ours, [`Water`]):
+/// the gush overrides the swish, the swish the hiss.
+fn water_shares(water: &Water, speed: f32, gush: f32) -> (f32, f32) {
+    let swish = water.puddle * smoothstep(SPLASH_SPEED, speed) * (1.0 - gush);
     let hiss = water.wet * water.wet * smoothstep(HISS_SPEED, speed) * if water.loose { LOOSE_HISS } else { 1.0 };
-    (HISS_GAIN * hiss, SWISH_GAIN * water.puddle * smoothstep(SPLASH_SPEED, speed))
+    (swish, hiss * (1.0 - gush - swish).max(0.0))
 }
 
-/// The wetness voice's pitch in `water` at wheel speed `speed` with a gush of `gush` (ours, [`Water`]).
-fn water_pitch(water: &Water, speed: f32, gush: f32) -> f32 {
+/// The water loops' pitch in `water` at wheel speed `speed`, a puddle's swish lower the deeper (ours, [`Water`]).
+fn water_pitch(water: &Water, speed: f32, swish: bool) -> f32 {
     let base = if water.loose { LOOSE_PITCH } else { 1.0 };
     let pace = WATER_PITCH[0] + (WATER_PITCH[1] - WATER_PITCH[0]) * (speed / WATER_PITCH_TOP).clamp(0.0, 1.0);
-    base * pace * (1.0 - (1.0 - DEEP_PITCH) * water.puddle.max(gush).min(1.0))
+    let deep = if swish { 1.0 - (1.0 - DEEP_PITCH) * water.puddle } else { 1.0 };
+    base * pace * deep
 }
+
 /// The gravel hits: off a tarmac-first surface a hit is due every `trunc(50 / (force sum + 0.01))` frames (0x7304a0,
 /// 0x72f440), from 1 to 999, while the wheel touches the ground and the car is within 20 m (0x72f614) of the
 /// listener. The pitch is the surface table's word 0 plus `(rand() % 10) * 0.02 - 0.1` (0x72fcb4, 0x72b068).
@@ -273,14 +278,16 @@ pub struct Tyres {
     /// `IMPACT::GRUS` samples.
     pub grus_count_samples: usize,
     /// Ours ([`Water`]): each wheel's water from the renderer, whether it is new since the last step, the puddle
-    /// depth it last gave, the rise since the depth last stopped growing, the gush, and the `CAR::SUSPENSION`
-    /// samples the thump picks from.
+    /// depth it last gave, the rise since the depth last stopped growing, the gush, and the splash samples
+    /// (`data::CarBank::splashes`) and the splashes made, which pick them in turn (not from the random numbers, so
+    /// the other sounds stay as without water).
     water: Option<[Water; 4]>,
     fresh: bool,
     depth: [f32; 4],
     rise: [f32; 4],
     gush: [f32; 4],
-    pub thump_samples: usize,
+    pub splash_samples: usize,
+    splashes: usize,
 }
 
 impl Tyres {
@@ -352,8 +359,10 @@ impl Tyres {
                 };
                 out.push(Command::Tyre { wheel: k as u8, slot: slot as u8, material, skid, gain, pitch });
             }
-            let (gain, pitch) = self.water(k, sig, sound.is_some(), frames, listener, &mut pick, &mut out);
-            out.push(Command::WheelLoop { wheel: k as u8, voice: WheelLoop::Wetness, gain, pitch });
+            let [wetness, hiss] = self.water(k, sig, sound.is_some(), frames, listener, &mut out);
+            for (voice, (gain, pitch)) in [(WheelLoop::Wetness, wetness), (WheelLoop::Hiss, hiss)] {
+                out.push(Command::WheelLoop { wheel: k as u8, voice, gain, pitch });
+            }
             out.push(self.rumble(k, sig, inside, frames));
         }
         self.fresh = false;
@@ -395,9 +404,9 @@ impl Tyres {
         out
     }
 
-    /// The wetness voice's gain and pitch for wheel `k` of block `sig` (touching the ground or not) over `frames`
-    /// game frames: 1.02's splash level, or with the renderer's water the louder of it and ours ([`Water`]); a thump
-    /// into `out` when a puddle's rise ends.
+    /// The wetness and hiss voices' gains and pitches for wheel `k` of block `sig` (touching the ground or not) over
+    /// `frames` game frames: 1.02's splash level on the wetness, or with the renderer's water the louder of it and
+    /// ours ([`Water`]); a splash into `out` when a puddle's rise ends.
     #[allow(clippy::too_many_arguments)]
     fn water(
         &mut self,
@@ -406,10 +415,10 @@ impl Tyres {
         contact: bool,
         frames: u32,
         listener: [f32; 3],
-        pick: &mut impl FnMut() -> u32,
         out: &mut Vec<Command>,
-    ) -> (f32, f32) {
-        let Some(waters) = self.water else { return (self.wet[k], 1.0) };
+    ) -> [(f32, f32); 2] {
+        let silent = [(self.wet[k], 1.0), (0.0, 1.0)];
+        let Some(waters) = self.water else { return silent };
         let water = if contact { waters[k] } else { Water::default() };
         let speed = if contact { f32::from_bits(sig[SPEED]).abs() } else { 0.0 };
         for _ in 0..frames {
@@ -423,20 +432,25 @@ impl Tyres {
                 self.rise[k] += deeper;
             } else {
                 let rise = std::mem::take(&mut self.rise[k]).min(1.0);
-                if rise >= THUMP_MIN && self.thump_samples > 0 {
-                    let pitch = THUMP_PITCH[0] + (THUMP_PITCH[1] - THUMP_PITCH[0]) * rise;
-                    let shot = Shot::Bottoming(pick() as usize % self.thump_samples);
-                    let gain = THUMP_GAIN * rise;
+                if rise >= SPLASH_MIN && self.splash_samples > 0 {
+                    self.splashes += 1;
+                    let shot = Shot::Splash(self.splashes % self.splash_samples);
+                    let (gain, pitch) = (SPLASH_GAIN * rise, 1.0 - SPLASH_DROP * rise);
                     out.push(Command::Hit { shot, gain, pitch, distance: distance(sig, listener) });
                 }
             }
         }
-        let (hiss, swish) = water_levels(&water, speed);
-        let ours = hiss.max(swish) + GUSH_GAIN * self.gush[k];
-        if ours <= 0.0 {
-            return (self.wet[k], 1.0);
+        let (swish, hiss) = water_shares(&water, speed, self.gush[k]);
+        if swish <= 0.0 && hiss <= 0.0 {
+            return silent;
         }
-        (ours.max(self.wet[k]), water_pitch(&water, speed, self.gush[k]))
+        let wetness = if swish > 0.0 {
+            ((SWISH_GAIN * swish).max(self.wet[k]), water_pitch(&water, speed, true))
+        } else {
+            silent[0]
+        };
+        let hiss = if hiss > 0.0 { (HISS_GAIN * hiss, water_pitch(&water, speed, false)) } else { silent[1] };
+        [wetness, hiss]
     }
 
     /// `M6750` for wheel `k`: the rumble plays in the car on a wheel touching a surface whose first material is not
@@ -694,75 +708,80 @@ mod tests {
         assert_eq!(shots(&tyres.step(&grass, &[None; 4], 1.0, 0.01, false, (5.0, [0.0; 3]), || 3)), 0);
     }
 
-    /// One step of `tyres` on gravel (surface 1) at wheel speed `speed` in `water`, a new renderer frame: the wetness
-    /// voice's gain and pitch of wheel 0, and the thumps.
-    fn wet_step(tyres: &mut Tyres, water: Water, speed: f32) -> ((f32, f32), Vec<(f32, f32)>) {
+    /// One step of `tyres` on gravel (surface 1) at wheel speed `speed` in `water`, a new renderer frame: wheel 0's
+    /// wetness (the swish) and hiss voices' gains and pitches, and the splashes.
+    type WetStep = ([(f32, f32); 2], Vec<(f32, f32)>);
+
+    fn wet_step(tyres: &mut Tyres, water: Water, speed: f32) -> WetStep {
         tyres.set_water(Some([water; 4]));
-        let out = tyres.step(
-            &[block(1, 1.0, 0.0, 0.0, speed); 4],
-            &[None; 4],
-            speed,
-            1.0 / 60.0,
-            false,
-            (0.0, [0.0; 3]),
-            || 0,
-        );
-        let voice = out
-            .iter()
-            .find_map(|c| match *c {
-                Command::WheelLoop { wheel: 0, voice: WheelLoop::Wetness, gain, pitch } => Some((gain, pitch)),
-                _ => None,
-            })
-            .unwrap();
-        let thumps = out
+        let block = [block(1, 1.0, 0.0, 0.0, speed); 4];
+        let out = tyres.step(&block, &[None; 4], speed, 1.0 / 60.0, false, (0.0, [0.0; 3]), || 0);
+        let voice = |want: WheelLoop| {
+            out.iter()
+                .find_map(|c| match *c {
+                    Command::WheelLoop { wheel: 0, voice, gain, pitch } if voice == want => Some((gain, pitch)),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let splashes = out
             .iter()
             .filter_map(|c| match *c {
-                Command::Hit { shot: Shot::Bottoming(_), gain, pitch, .. } => Some((gain, pitch)),
+                Command::Hit { shot: Shot::Splash(_), gain, pitch, .. } => Some((gain, pitch)),
                 _ => None,
             })
             .collect();
-        (voice, thumps)
+        ([voice(WheelLoop::Wetness), voice(WheelLoop::Hiss)], splashes)
     }
 
     fn wet_tyres() -> Tyres {
         let mut tyres = Tyres::new(1.0, 1.0, 0, vec![1, 33, 101]);
-        tyres.thump_samples = 2;
+        tyres.splash_samples = 3;
         tyres
     }
 
     #[test]
-    fn running_into_a_puddle_gushes_and_thumps_once_the_rise_ends() {
+    fn running_into_a_puddle_splashes_once_the_rise_ends_and_the_gush_ducks_the_swish_and_hiss() {
         let mut tyres = wet_tyres();
         let dry = Water::default();
         let puddle = Water { puddle: 1.0, wet: 1.0, loose: true };
-        assert_eq!(wet_step(&mut tyres, dry, 20.0), ((0.0, 1.0), vec![]));
-        let ((hit, _), thumps) = wet_step(&mut tyres, puddle, 20.0);
-        assert!(thumps.is_empty(), "the thump waits for the rise to end");
-        let ((through, _), thumps) = wet_step(&mut tyres, puddle, 20.0);
-        // Four wheels ran in at once: four thumps, at the deep puddle's pitch.
-        assert_eq!(thumps, vec![(THUMP_GAIN, THUMP_PITCH[1]); 4]);
-        assert!(hit > 0.7 && through < hit, "{hit} {through}");
-        // In it the swish stays; out of it the gush dies away.
-        let ((held, _), _) = (0..200).map(|_| wet_step(&mut tyres, puddle, 20.0)).last().unwrap();
-        let (hiss, swish) = water_levels(&puddle, 20.0);
-        assert!((held - hiss.max(swish)).abs() < 1e-6 && swish == SWISH_GAIN, "{held}");
+        assert_eq!(wet_step(&mut tyres, dry, 20.0), ([(0.0, 1.0), (0.0, 1.0)], vec![]));
+        let ([hit, hit_hiss], splashes) = wet_step(&mut tyres, puddle, 20.0);
+        assert!(splashes.is_empty(), "the splash waits for the rise to end");
+        // The gush is full: no swish, no hiss under the splash.
+        assert_eq!((hit.0, hit_hiss.0), (0.0, 0.0));
+        let (_, splashes) = wet_step(&mut tyres, puddle, 20.0);
+        // Four wheels ran in at once: four splashes, at the deep puddle's pitch.
+        assert_eq!(splashes, vec![(SPLASH_GAIN, 1.0 - SPLASH_DROP); 4]);
+        // In it, once the gush has died away, the swish alone; out of it the hiss alone.
+        let ([held, held_hiss], _) = (0..200).map(|_| wet_step(&mut tyres, puddle, 20.0)).last().unwrap();
+        assert_eq!((held.0, held_hiss.0), (SWISH_GAIN, 0.0));
         let wet = Water { puddle: 0.0, ..puddle };
-        let ((after, _), thumps) = (0..200).map(|_| wet_step(&mut tyres, wet, 20.0)).last().unwrap();
-        assert!(thumps.is_empty() && (after - water_levels(&wet, 20.0).0).abs() < 1e-6, "{after}");
+        let ([after, after_hiss], splashes) = wet_step(&mut tyres, wet, 20.0);
+        assert!(splashes.is_empty() && after.0 == 0.0 && after_hiss.0 > 0.0, "{after:?} {after_hiss:?}");
     }
 
     #[test]
-    fn a_shallow_or_slow_puddle_does_not_thump() {
+    fn the_shares_never_stack_past_one() {
+        let water = Water { puddle: 0.5, wet: 1.0, loose: false };
+        for gush in [0.0, 0.3, 0.6, 1.0] {
+            let (swish, hiss) = water_shares(&water, 30.0, gush);
+            assert!(gush + swish + hiss <= 1.0 + 1e-6, "{gush} {swish} {hiss}");
+        }
+    }
+
+    #[test]
+    fn a_shallow_or_slow_puddle_does_not_splash() {
         // A rut's film is no puddle (the spray's depth is 0 under 0.15 standing water): the hiss alone.
         let mut tyres = wet_tyres();
         let rut = Water { puddle: 0.0, wet: 1.0, loose: true };
         for _ in 0..5 {
-            let ((gain, _), thumps) = wet_step(&mut tyres, rut, 20.0);
-            assert!(thumps.is_empty() && (gain - water_levels(&rut, 20.0).0).abs() < 1e-6);
+            let ([swish, hiss], splashes) = wet_step(&mut tyres, rut, 20.0);
+            assert!(splashes.is_empty() && swish.0 == 0.0 && hiss.0 > 0.0);
         }
-        let shallow = Water { puddle: 0.15, ..rut };
+        let shallow = Water { puddle: 0.12, ..rut };
         let mut tyres = wet_tyres();
-        assert!((0..3).all(|_| wet_step(&mut tyres, shallow, 20.0).1.is_empty()));
+        assert!((0..3).all(|_| wet_step(&mut tyres, shallow, 20.0).1.is_empty()), "a rise under 0.15");
         let mut tyres = wet_tyres();
         let deep = Water { puddle: 1.0, ..rut };
         assert!((0..3).all(|_| wet_step(&mut tyres, deep, 2.0).1.is_empty()), "at walking pace");
@@ -770,7 +789,7 @@ mod tests {
 
     #[test]
     fn the_wet_road_hiss_rises_with_speed_darker_off_tarmac_and_is_silent_dry() {
-        let hiss = |water: Water, speed| wet_step(&mut wet_tyres(), water, speed).0;
+        let hiss = |water: Water, speed| wet_step(&mut wet_tyres(), water, speed).0[1];
         let tarmac = Water { puddle: 0.0, wet: 1.0, loose: false };
         let gains: Vec<f32> = [2.0, 8.0, 15.0, 20.0, 25.0].iter().map(|&v| hiss(tarmac, v).0).collect();
         assert_eq!(gains[0], 0.0);
