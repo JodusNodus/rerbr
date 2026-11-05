@@ -685,7 +685,7 @@ impl Form {
         let max_fps = (self.max_fps > 0).then(|| ["--max-fps".to_owned(), self.max_fps.to_string()]);
         let mirrors = ["--mirrors".to_owned(), self.graphics.mirrors.name()];
         let fullscreen = self.fullscreen.then(|| "--fullscreen".to_owned());
-        let hdr = self.hdr.then(|| "--hdr".to_owned());
+        let hdr = (self.hdr && rbr_render::present::HDR_OFFERED).then(|| "--hdr".to_owned());
         let perf_log = perf_log_args(self.perf_log, &self.logs_dir());
         let upscale = (self.upscale_textures && self.upscaler)
             .then(|| ["--upscale-textures".to_owned(), self.upscaler_dir().display().to_string()]);

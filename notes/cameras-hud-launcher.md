@@ -202,4 +202,5 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
   offers those two there (`Present::OFFERED`) and shows a saved mailbox as vsync (2026-11-02). `max_fps` (`viewer
   --max-fps`, one of `FRAME_CAPS`, 0 none) is the Frame cap: uncapped held at the display's rate.
 - `hdr` (`viewer --hdr`, Graphics > Display > HDR) defaults off: the highlights past an HDR display's SDR white where the
-  surface has extended-range sRGB (macOS EDR), else the viewer draws SDR (2026-11-05; renderer note, `hdr` row).
+  surface has extended-range sRGB (macOS EDR), else the viewer draws SDR (2026-11-05; renderer note, `hdr` row). Offered
+  and passed on macOS only (`present::HDR_OFFERED`): DX12 has no such space, Windows' Vulkan drivers scRGB and PQ only.
