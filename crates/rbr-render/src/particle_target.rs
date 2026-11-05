@@ -118,7 +118,7 @@ impl ParticleTarget {
                     module: &shader,
                     entry_point: Some(fragment),
                     compilation_options: Default::default(),
-                    targets: target.as_ref().map(std::slice::from_ref).unwrap_or_default(),
+                    targets: target.as_slice(),
                 }),
                 primitive: Default::default(),
                 depth_stencil: depth,
