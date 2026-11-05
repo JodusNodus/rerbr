@@ -32,7 +32,7 @@ pub const WIDTH: f32 = 384.0;
 /// The car turntable: frames per turn, their size and the frame rate shown.
 const FRAMES: usize = 60;
 const CAR_SIZE: [usize; 2] = [384, 216];
-const FPS: f64 = 20.0;
+const FPS: f64 = 10.0;
 /// The cars whose frames are kept, and the stages whose pictures are.
 const KEEP: usize = 3;
 const KEEP_STAGES: usize = 32;
@@ -139,6 +139,9 @@ pub struct Previews {
     arrived: Vec<CarResult>,
     requests: Sender<CarRequest>,
     results: Receiver<CarResult>,
+    /// The car turntable stands still, at frame `shown` (while the viewer runs).
+    pub still: bool,
+    shown: usize,
 }
 
 impl Previews {
@@ -179,6 +182,8 @@ impl Previews {
             arrived: Vec::new(),
             requests,
             results,
+            still: false,
+            shown: 0,
         }
     }
 
@@ -276,8 +281,10 @@ impl Previews {
         let size = egui::vec2(WIDTH, WIDTH * CAR_SIZE[1] as f32 / CAR_SIZE[0] as f32);
         match self.cars.iter_mut().find(|(k, _)| *k == key).map(|(_, f)| f) {
             Some(Ok(frames)) if !frames.is_empty() => {
-                let time = ui.input(|i| i.time);
-                let k = (time * FPS) as usize % frames.len();
+                if !self.still {
+                    self.shown = (ui.input(|i| i.time) * FPS) as usize;
+                }
+                let k = self.shown % frames.len();
                 // Each frame is uploaded when first shown, so a new car does not upload its whole turn at once.
                 if let Frame::Image(image) = &mut frames[k] {
                     let image = std::mem::take(image);
@@ -287,7 +294,9 @@ impl Previews {
                 if let Frame::Texture(texture) = &frames[k] {
                     ui.add(egui::Image::new(texture).fit_to_exact_size(size));
                 }
-                ui.ctx().request_repaint_after(Duration::from_secs_f64(1.0 / FPS));
+                if !self.still {
+                    ui.ctx().request_repaint_after(Duration::from_secs_f64(1.0 / FPS));
+                }
             }
             Some(Err(e)) => {
                 let e = e.clone();

@@ -340,10 +340,11 @@ impl ControlsPage {
         }
     }
 
-    /// Reads the joysticks; while a device binding is being set, the first button pressed or axis moved sets it.
-    pub fn poll(&mut self, bindings: &mut Bindings) {
-        if self.capture.is_none() && self.scanned.elapsed() >= RESCAN {
-            self.joysticks = Joysticks::connected();
+    /// Reads the joysticks, and looks for new ones unless the viewer is `running`; while a device binding is being
+    /// set, the first button pressed or axis moved sets it.
+    pub fn poll(&mut self, bindings: &mut Bindings, running: bool) {
+        if self.capture.is_none() && !running && self.scanned.elapsed() >= RESCAN {
+            self.joysticks.rescan();
             self.scanned = Instant::now();
         }
         self.joysticks.read();
