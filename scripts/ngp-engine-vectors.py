@@ -18,18 +18,16 @@ and b, and its four floats; empty without the walk). Words are `address=value` (
 recipes), the rest 0; Sim8890's state `+0xc` is the snapshot's car, so its walk runs on the car. A `d` line first:
 NGP's tuning words they read, at NGP's file base.
 """
-import importlib.util, math, os, random, struct, sys
+import math, os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
 from unicorn import UC_HOOK_CODE  # noqa: E402
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_ESP,  # noqa: E402
-                               UC_X86_REG_FPSW, UC_X86_REG_FPTAG, UC_X86_REG_FP0)
+                               UC_X86_REG_FPSW, UC_X86_REG_FPTAG)
 
 WRAPPER, LOOKUP, POST, INLINE, TABLE_VTABLE = 0x1004B8E0, 0x1004A700, 0x1004A2F0, 0x1004A8D0, 0x10148930
-F = lambda x: struct.unpack("<I", struct.pack("<f", x))[0]
+F = replay.f32_bits
 D = lambda x: struct.unpack("<Q", struct.pack("<d", x))[0]
 SIM8890, SIM_E970, SIM_ECF0, LAUNCH_CLUTCH = 0x518890, 0x50E970, 0x50ECF0, 0x5375B0
 OBJECTS = 0x800000  # the objects' offset in the stub heap, past what its allocations take
@@ -39,21 +37,9 @@ FILLED = ((0x4000, 0x6880, 2), (0x8000, 0x8274, 1), (0xA000, 0xA080, 1))
 TUNING = (0x10171ABC, 0x10171ADC, 0x10171AE4, 0x10172338, 0x101767C4)
 
 
-def st0(mu):
-    top = (mu.reg_read(UC_X86_REG_FPSW) >> 11) & 7
-    mant, se = mu.reg_read(UC_X86_REG_FP0 + top)
-    e, sign = se & 0x7FFF, -1.0 if se & 0x8000 else 1.0
-    if e == 0 and mant == 0:
-        return 0.0 * sign
-    if e == 0x7FFF:
-        return sign * math.inf if mant & ((1 << 63) - 1) == 0 else math.copysign(math.nan, sign)
-    assert mant & 0x7FF == 0, "more than 53 bits"
-    return sign * math.ldexp(mant, e - 16383 - 63)
-
-
 def main(snap_path, out, count="1000"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     rebase = lambda a: a - 0x10000000 + base
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu
@@ -123,7 +109,7 @@ def main(snap_path, out, count="1000"):
                 y_at + 8 * n, 0)
             lo, hi = struct.unpack("<II", struct.pack("<d", v))
             call(LOOKUP, table, [lo, hi])
-            words = [D(v)] + [D(d) for d in slots[0] + slots[1]] + [D(st0(mu))]
+            words = [D(v)] + [D(d) for d in slots[0] + slots[1]] + [D(replay.st0(mu))]
             f.write("t %d " % n + " ".join("%016x" % w for w in words) + "\n")
         repointed(mu, call, rebase, car, m.heap_base + OBJECTS, rng, int(count) // 4, f, walk)
 
@@ -195,7 +181,7 @@ def repointed(mu, call, rebase, car, heap, rng, count, f, walk):
             f.write("c %x %x %s | %s | %s | %x %016x | %s\n" % (
                 fn, seed, " ".join("%x" % w for w in words), " ".join("%x=%x" % kv for kv in sets.items()),
                 " ".join("%x=%x" % kv for kv in diffs), mu.reg_read(UC_X86_REG_EAX),
-                D(st0(mu)) if fn == SIM_E970 else 0, " ".join("%x" % w for w in walk)))
+                D(replay.st0(mu)) if fn == SIM_E970 else 0, " ".join("%x" % w for w in walk)))
 
 
 if __name__ == "__main__":

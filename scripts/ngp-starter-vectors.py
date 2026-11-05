@@ -7,30 +7,15 @@ Usage: python3 -I scripts/ngp-starter-vectors.py SNAPSHOT OUT [COUNT]   (the wor
 Lines: gate, ready, E (u64), then dt, band, speed, term, rate (f32 bits), then st0 (f64 bits), +0x1a0, +0x1c8, the
 term, the speed (f32 bits) and 1 when the stamp was reset to the timer (0 when kept).
 """
-import importlib.util, math, os, random, struct, sys
+import math, os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
 from unicorn.x86_const import (UC_X86_REG_EAX, UC_X86_REG_ECX, UC_X86_REG_EDX, UC_X86_REG_ESP,  # noqa
-                               UC_X86_REG_FPSW, UC_X86_REG_FPTAG, UC_X86_REG_FP0)
+                               UC_X86_REG_FPSW, UC_X86_REG_FPTAG)
 
 STARTER, TIMER, STAMP, BAND = 0x100456C0, 0x10111CE0, 0x10176718, 0x10171A98
-F = lambda x: struct.unpack("<I", struct.pack("<f", x))[0]
-
-
-def st0(mu):
-    top = (mu.reg_read(UC_X86_REG_FPSW) >> 11) & 7
-    mant, se = mu.reg_read(UC_X86_REG_FP0 + top)
-    e = se & 0x7FFF
-    sign = -1.0 if se & 0x8000 else 1.0
-    if e == 0 and mant == 0:
-        return 0.0 * sign
-    if e == 0x7FFF:
-        return sign * math.inf if mant & ((1 << 63) - 1) == 0 else math.copysign(math.nan, sign)
-    assert mant & 0x7FF == 0, "more than 53 bits"
-    return sign * math.ldexp(mant, e - 16383 - 63)
+F = replay.f32_bits
 
 
 def hold(rng, dt_us):
@@ -42,7 +27,7 @@ def hold(rng, dt_us):
 
 def main(snap_path, out, count="2000"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     rebase = lambda a: a - 0x10000000 + base
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu
@@ -89,7 +74,7 @@ def main(snap_path, out, count="2000"):
             m.ticks = ticks
             put(rebase(STAMP), "<Q", now - e)
             call(STARTER, drive, [F(dt)])
-            r = struct.unpack("<Q", struct.pack("<d", st0(mu)))[0]
+            r = struct.unpack("<Q", struct.pack("<d", replay.st0(mu)))[0]
             stamp = struct.unpack("<Q", mu.mem_read(rebase(STAMP), 8))[0]
             assert stamp in (now, now - e)
             outs = [get(drive + 0x1A0), get(drive + 0x1C8), get(obj + 0x8C), get(state + 0x45C)]

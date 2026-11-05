@@ -9,30 +9,15 @@ Usage: python3 -I scripts/ngp-damper-vectors.py SNAPSHOT OUT [COUNT]   (the work
 Lines: the function's address, a, b, c, d, the temperature, the three scratch words (f32 bits), then st0 (f64 bits;
 the x87 value has at most 53 significant bits at this control word).
 """
-import importlib.util, math, os, random, struct, sys
+import os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
-from unicorn.x86_const import UC_X86_REG_ESI, UC_X86_REG_ESP, UC_X86_REG_FPSW, UC_X86_REG_FPTAG, UC_X86_REG_FP0  # noqa
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
+from unicorn.x86_const import UC_X86_REG_ESI, UC_X86_REG_ESP, UC_X86_REG_FPSW, UC_X86_REG_FPTAG  # noqa
 
 FUNCS = (0x1004D2F0, 0x1004D3C0, 0x1004D380)
 TEMPERATURE = 0x10171ADC
-F = lambda x: struct.unpack("<I", struct.pack("<f", x))[0]
-
-
-def st0(mu):
-    top = (mu.reg_read(UC_X86_REG_FPSW) >> 11) & 7
-    mant, se = mu.reg_read(UC_X86_REG_FP0 + top)
-    e = se & 0x7FFF
-    sign = -1.0 if se & 0x8000 else 1.0
-    if e == 0 and mant == 0:
-        return 0.0 * sign
-    if e == 0x7FFF:
-        return sign * math.inf if mant & ((1 << 63) - 1) == 0 else math.copysign(math.nan, sign)
-    assert mant & 0x7FF == 0, "more than 53 bits"
-    return sign * math.ldexp(mant, e - 16383 - 63)
+F = replay.f32_bits
 
 
 def value(rng):
@@ -46,7 +31,7 @@ def value(rng):
 
 def main(snap_path, out, count="1000"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     rebase = lambda a: a - 0x10000000 + base
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu
@@ -73,7 +58,7 @@ def main(snap_path, out, count="1000"):
                 mu.reg_write(UC_X86_REG_FPSW, sw)
                 mu.reg_write(UC_X86_REG_FPTAG, tag)
                 mu.emu_start(rebase(fn), replay.SENTINEL, timeout=10 * 1000000)
-                r = struct.unpack("<Q", struct.pack("<d", st0(mu)))[0]
+                r = struct.unpack("<Q", struct.pack("<d", replay.st0(mu)))[0]
                 ins = [F(x) for x in (a, b, c, d, temp)] + [F(x) for x in words]
                 f.write("%08x " % fn + " ".join("%08x" % w for w in ins) + " %016x\n" % r)
 

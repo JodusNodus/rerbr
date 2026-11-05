@@ -7,7 +7,6 @@ Usage: .venv/bin/python -I harness/replay-fpu.py [SNAPSHOT...]
   fstp r0; fstp r1 in unicorn and natively (harness/replay-fpu.c, compiled into build/replay-fpu/)
   and the 80-bit results are compared. Prints mismatches per op. Needs an x86_64 CPU.
 """
-import importlib.util
 import os
 import platform
 import random
@@ -18,10 +17,9 @@ import sys
 from unicorn import Uc, UC_ARCH_X86, UC_MODE_32, UC_PROT_ALL
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(HERE)
 sys.dont_write_bytecode = True
-spec = importlib.util.spec_from_file_location("replay", os.path.join(HERE, "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+import replay  # noqa: E402
 
 OPS = ["fadd", "fsub", "fmul", "fdiv", "fsqrt", "fsin", "fcos", "fsincos", "fptan", "fpatan", "fyl2x", "f2xm1",
        "fscale", "frndint", "fprem"]
