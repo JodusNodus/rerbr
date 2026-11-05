@@ -343,7 +343,10 @@ probably fit the wrong hour.
   gives the start board that hour (`--start-time`, not on a championship stage).
 - The start board (ours; `start_board.rs`): red during the countdown, green for 5 s from the go (none on a jump
   start's go), unlit lamps darkened to a quarter. Lit lamps glow at any hour, the digits by night and dusk, still
-  fogged (2026-10-27, track-54_E).
+  fogged (2026-10-27, track-54_E). Since 2026-11-05 the lit lamps shine at 2500 cd/m2 (an LED display's) in their
+  signal's colour (`start_board::LAMPS`: red, a 505 nm green), not their texture's pale red: 45N countdown, the red
+  lamp by day saturated red (was salmon), at night a red glare about a bright core (was a flat cream square). A
+  signal's 12000 cd/m2 drew it white by day (GT7's chroma fade past its peak).
 - Baked shading lives in three places. The shadow light maps paint the bake's cast shadows: with `Enhance::lighting`
   they are neither loaded nor used (Semetin 176_M: 165 maps, 350 MB); the cascades, the far layer and the world layer
   (`sun::world`) cast for any sun, and at night for the moon (no measurable frame cost, 2026-10-25). The backdrop

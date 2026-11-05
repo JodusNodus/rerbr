@@ -730,10 +730,11 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     return vec4<f32>(graded(fogged(colour, v.world)), alpha);
 }
 
-// A texel's backlight (ours): by night, and at dusk as much as the lamps light the stage (always with `mode.glow.z`),
-// the texel glows in the light of its emissive mask (the RBRHUD gauges' `emissive_mask`, `rbr_render::dials`; the
-// start board's digits and lamps, `rbr_render::start_board`): the mask's colour (the bulbs' pools on analog faces)
-// plus its alpha in white (displays, warning lamps). In a mirror's pass (`frame.night.z`) the light is what a
+// A texel's backlight (ours): by night, and at dusk as much as the lamps light the stage, the texel glows in the light
+// of its emissive mask (the RBRHUD gauges' `emissive_mask`, `rbr_render::dials`; the start board's digits,
+// `rbr_render::start_board`) at `DIAL_GLOW`, and the start board's lit lamps (`mode.glow.z`) at any hour at an LED
+// display's luminance (`SIGNAL_LUMINANCE`) in their signal's colour: the mask's colour (the bulbs' pools on analog
+// faces) plus its alpha in white (displays, warning lamps). In a mirror's pass (`frame.night.z`) the light is what a
 // recessed face shows past its bezel at `facing`, the cosine to the eye (`DIAL_RECESS`): the dials are flat in the
 // meshes, and the windscreen, seeing them from some 75 degrees off, mirrored every face whole at night (Audi quattro
 // A2, Helette). The main view sees the dials about head on, and the lamps standing out of the dash (the A2's orange
@@ -747,8 +748,16 @@ fn backlit(colour: vec3<f32>, texel: vec3<f32>, uv: vec2<f32>, night: bool, faci
     let backlight = mask.rgb + vec3<f32>(mask.a * mode.glow.y);
     let c = clamp(facing, 1e-3, 1.0);
     let shown = select(1.0, clamp(1.0 - DIAL_RECESS * sqrt(1.0 - c * c) / c, 0.0, 1.0), frame.night.z != 0.0);
+    if (mode.glow.z != 0.0) {
+        return max(colour, shining(backlight, texel, SIGNAL_LUMINANCE) * shown);
+    }
     return max(colour, texel * backlight * DIAL_GLOW * level * shown);
 }
+
+// The start board's lit lamps' luminance, cd/m2 (ours): a semi-outdoor LED display's, as start clocks are. A traffic
+// signal's 12000 (EN 12368: about 400 cd over a 200 mm lens) went past the tone curve's peak in sunlight, whose chroma
+// fade drew the red lamp white (45N cockpit 13:00); at 2500 it shows red by day and glares red at night.
+const SIGNAL_LUMINANCE: f32 = 2500.0;
 
 // A dial's or lamp's depth in its housing over its radius (`backlit`): at 25 degrees off its axis 88 % of the face
 // shows, at 75 degrees 7 %.
@@ -2762,10 +2771,15 @@ fn lamp_shown(texel: vec3<f32>, world: vec3<f32>, to_eye: vec3<f32>) -> vec3<f32
         let share = select(signal(lamp, to_eye), beam(lamp, to_eye), headlight);
         seen = share / max(dot(to_eye, lamp.forward.xyz), LAMP_FACING);
     }
-    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
     let hue = select(texel, mode.lamp.rgb, any(mode.lamp.rgb != vec3<f32>(1.0)));
+    return shining(hue, texel, abs(mode.lamp.w) * max(seen, LAMP_SIDE));
+}
+
+// A light source's texel, renderer units: luminance `l` (cd/m2) in the colour `hue` at the texel's brightness (its
+// strongest channel), held under `LIGHT_CAP`.
+fn shining(hue: vec3<f32>, texel: vec3<f32>, l: f32) -> vec3<f32> {
+    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
     let bright = max(texel.r, max(texel.g, texel.b));
-    let l = abs(mode.lamp.w) * max(seen, LAMP_SIDE);
     return capped(hue / max(dot(hue, luma), 1e-4) * bright * l * pre_exposure());
 }
 

@@ -118,7 +118,11 @@ impl Models {
         let g = bank.gains;
         Models {
             car: Car::new(g),
-            tyres: Tyres::new(g.tyre, g.offroad, bank.grus.len(), bank.road_surfaces.clone()),
+            tyres: {
+                let mut tyres = Tyres::new(g.tyre, g.offroad, bank.grus.len(), bank.road_surfaces.clone());
+                tyres.splash_samples = bank.splashes.len();
+                tyres
+            },
             impacts: Impacts::new(g.ranged, g.scream, bank.ranged.len(), bank.screams.len()),
             suspension: Suspension::new(
                 [g.squeak, g.suspension, g.ranged],
@@ -162,6 +166,7 @@ impl Models {
         }
         self.car.gear_click = self.fmod.as_ref().and_then(FmodCar::gear_click);
         out.extend(self.car.step(sound, inside, ngp, frame));
+        out.push(Command::Roadside(scene.roadside));
         let car_distance = (0..3).map(|i| (scene.car[i] - scene.listener[i]).powi(2)).sum::<f32>().sqrt();
         out.extend(self.tyres.step(
             &sound.tyres,
@@ -277,6 +282,11 @@ impl Player {
         if let Ok(mut mixer) = self.mixer.lock() {
             device::Render::render(&mut *mixer, out);
         }
+    }
+
+    /// Each wheel's water as the renderer sees it (ours, [`tyre::Water`]); `None`, the default, plays 1.02's splash.
+    pub fn set_water(&mut self, water: Option<[tyre::Water; 4]>) {
+        self.models.tyres.set_water(water);
     }
 
     /// One physics step's inputs.

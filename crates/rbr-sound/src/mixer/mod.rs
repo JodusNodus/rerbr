@@ -157,6 +157,8 @@ struct Banks {
     grus: Vec<Arc<Wave>>,
     squeaks: Vec<Arc<Wave>>,
     bottomings: Vec<Arc<Wave>>,
+    /// Ours: the embedded puddle splashes (`tyre::Water`).
+    splashes: Vec<Arc<Wave>>,
     drive_shafts: Vec<Arc<Wave>>,
     exhaust_pops: Vec<Arc<Wave>>,
     pops: Vec<Arc<Wave>>,
@@ -306,7 +308,7 @@ impl Volumes {
     /// A one-shot's option.
     fn shot(&self, shot: Shot) -> f32 {
         match shot {
-            Shot::Grus(_) => self.tyres,
+            Shot::Grus(_) | Shot::Splash(_) => self.tyres,
             Shot::Go => self.codriver,
             _ => self.effects,
         }
@@ -328,6 +330,7 @@ pub struct Mixer {
     reflections: Reflections,
     reflections_gain: Gain,
     doors_off: [bool; 2],
+    roadside: Option<crate::reflections::Roadside>,
     /// The engine's `E32Flt` (`E30Engine +0xf0`) and the outside cutoff (`CCarSound +0x41934`).
     filter: OnePole,
     /// The bright cabin path in the car ([`CABIN_BRIGHT_CUTOFF`]).
@@ -337,8 +340,8 @@ pub struct Mixer {
     /// By key, so the mix sums them in the same order on every run.
     loops: BTreeMap<Loop, LoopVoice>,
     tyres: [WheelTyres; 4],
-    /// Each wheel's rumble (0-3) and wetness (4-7) loops.
-    wheel_loops: [LoopVoice; 8],
+    /// Each wheel's rumble (0-3), wetness (4-7) and wet-road hiss (8-11, ours) loops.
+    wheel_loops: [LoopVoice; 12],
     rain: Rain,
     banks: Banks,
     playing: Vec<Playing>,
@@ -407,6 +410,7 @@ impl Mixer {
             grus: shared(&bank.grus),
             squeaks: shared(&bank.squeaks),
             bottomings: shared(&bank.bottomings),
+            splashes: shared(&bank.splashes),
             drive_shafts: shared(&bank.drive_shafts),
             exhaust_pops: shared(&bank.exhaust_pops),
             pops: shared(&bank.pops),
@@ -440,13 +444,14 @@ impl Mixer {
             reflections: Reflections::default(),
             reflections_gain: Gain::default(),
             doors_off: [false; 2],
+            roadside: None,
             filter: OnePole::new(rate, bank.car.low_shelf_frequency),
             bright: OnePole::new(rate, CABIN_BRIGHT_CUTOFF),
             low_shelf_frequency: bank.car.low_shelf_frequency,
             inside: false,
             loops,
             tyres: Default::default(),
-            wheel_loops: std::array::from_fn(|k| voice(if k < 4 { &bank.rumble } else { &bank.wetness })),
+            wheel_loops: std::array::from_fn(|k| voice([&bank.rumble, &bank.wetness, &bank.wet_road][k / 4])),
             rain: Rain::new(rate),
             banks,
             playing: Vec::new(),
@@ -602,16 +607,25 @@ impl Mixer {
                     }
                 }
                 Command::WheelLoop { wheel, voice, gain, pitch } => {
-                    // The rumble plays in the car; the wetness is a 2D voice on the software path (`M6cb0`: flags
-                    // 0x200), so neither takes a distance gain.
-                    let (k, placed) = match voice {
-                        WheelLoop::Rumble => (usize::from(wheel) % 4, 1.0),
-                        WheelLoop::Wetness => (4 + usize::from(wheel) % 4, self.placed(Place::Flat)),
+                    // The rumble plays in the car, without a distance gain. The wetness is a 2D voice on the
+                    // software path (`M6cb0`: flags 0x200); ours, as it carries the renderer's water (`tyre::Water`),
+                    // it and the wet road's hiss take the tyres' distance gain and, in the car, their cabin low-pass.
+                    let (k, placed, cabin) = match voice {
+                        WheelLoop::Rumble => (usize::from(wheel) % 4, 1.0, None),
+                        WheelLoop::Wetness | WheelLoop::Hiss => {
+                            let first = if voice == WheelLoop::Hiss { 8 } else { 4 };
+                            (first + usize::from(wheel) % 4, self.placed(Place::Tire), Some(self.cabin()))
+                        }
                     };
                     let v = &mut self.wheel_loops[k];
                     v.gain.target = gain * placed * self.volumes.tyres;
                     v.pitch = pitch * self.doppler;
                     v.pan = self.car_pan;
+                    match cabin {
+                        Some(None) => v.low_pass = None,
+                        Some(cabin) if v.low_pass.is_none() => v.low_pass = cabin,
+                        _ => {}
+                    }
                 }
                 Command::Tyre { wheel, slot, material, skid, gain, pitch } => {
                     let pitch = pitch * self.doppler;
@@ -673,6 +687,7 @@ impl Mixer {
                     self.reflections_gain.target = gain * self.volumes.engine;
                     self.doors_off = doors_off;
                 }
+                Command::Roadside(roadside) => self.roadside = roadside,
                 Command::Rain { gain, amount } => {
                     self.rain.gain.target = gain * self.volumes.effects;
                     self.rain.amount = amount;
@@ -702,6 +717,7 @@ impl Mixer {
             | Shot::Grus(_)
             | Shot::Squeak(_)
             | Shot::Bottoming(_)
+            | Shot::Splash(_)
             | Shot::DriveShaft(_)
             | Shot::ExhaustPop(_)
             | Shot::Pop(_)
@@ -735,6 +751,7 @@ impl Mixer {
             Shot::Grus(i) => (&self.banks.grus, i, Place::Grus, None),
             Shot::Squeak(i) => (&self.banks.squeaks, i, Place::Default, None),
             Shot::Bottoming(i) => (&self.banks.bottomings, i, Place::Default, None),
+            Shot::Splash(i) => (&self.banks.splashes, i, Place::Tire, None),
             Shot::DriveShaft(i) => (&self.banks.drive_shafts, i, Place::Default, None),
             Shot::ExhaustPop(i) => (&self.banks.exhaust_pops, i, Place::ExhaustPop, Some(Family::ExhaustPop)),
             Shot::Pop(i) => (&self.banks.pops, i, Place::ExhaustPop, Some(Family::Pop)),
@@ -929,6 +946,7 @@ impl Mixer {
             self.car_distance,
             self.engine.rpm,
             self.doors_off,
+            self.roadside.as_ref(),
             &mut layer,
             || gain.next(k),
         );

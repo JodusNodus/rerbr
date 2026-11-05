@@ -192,6 +192,8 @@ pub struct Particles {
     dust: [f32; 3],
     /// Our wheel spray in place of the file's tyre handlers ([`Particles::use_wheel_spray`]).
     wheel_spray: Option<WheelSpray>,
+    /// Each wheel's water at the last frame ([`wheel_spray::water`]), for the sound.
+    water: [wheel_spray::Water; 4],
 }
 
 impl Particles {
@@ -267,7 +269,14 @@ impl Particles {
             track,
             dust: wheel_spray::NEUTRAL_DUST,
             wheel_spray: None,
+            water: Default::default(),
         }))
+    }
+
+    /// Each wheel's standing water and ground at the last frame ([`wheel_spray::water`]; without the wheel spray, no
+    /// puddles or film).
+    pub fn wheel_water(&self) -> [wheel_spray::Water; 4] {
+        self.water
     }
 
     /// The wheel spray's dust colour ([`wheel_spray::dust`]).
@@ -428,10 +437,15 @@ impl Particles {
             marks.step(&payloads, from_game);
         }
         let splats = match &mut self.wheel_spray {
-            Some(spray) => spray.feed(&mut self.sim, &payloads, &pose, dt, from_game),
+            Some(spray) => {
+                let splats = spray.feed(&mut self.sim, &payloads, &pose, dt, from_game);
+                self.water = spray.water();
+                splats
+            }
             None => {
                 let wheels: Vec<Wheel> = payloads.iter().map(wheel_of_payload).collect();
                 self.tyres.feed(&mut self.sim, &wheels, car_velocity, pose.side, dt);
+                self.water = wheel_spray::water(&payloads, &pose, false, false);
                 0.0
             }
         };

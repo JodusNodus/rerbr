@@ -226,12 +226,13 @@ impl Renderer {
             views.glows.insert(texture, Glow { view: board.face.glow_view(), alpha: false, day: false });
             Some(board)
         });
-        let start_lamps = start_board::LAMPS.map(|name| {
+        let start_lamps = start_board::LAMPS.map(|(name, signal)| {
             stage
                 .textures_ending(name)
                 .filter_map(|texture| {
                     let Some(Image::Dds(bytes)) = stage.textures.get(&texture)?.image.as_ref() else { return None };
-                    let lamp = StartLamp::new(&device, &queue, start_board::Rgba::decode(&dds::parse(bytes).ok()?));
+                    let image = start_board::Rgba::decode(&dds::parse(bytes).ok()?);
+                    let lamp = StartLamp::new(&device, &queue, image, signal);
                     views.loaded.insert(texture, lamp.face.view());
                     views.glows.insert(texture, Glow { view: lamp.face.glow_view(), alpha: false, day: true });
                     Some(lamp)
