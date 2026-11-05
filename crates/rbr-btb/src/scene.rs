@@ -295,8 +295,7 @@ pub fn decode_image(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     }
 }
 
-/// A PNG's width, height and RGBA texels; an image without alpha reads as opaque. The errors `upscale::read_png`
-/// reported when it decoded PNGs itself.
+/// A PNG's width, height and RGBA texels; an image without alpha reads as opaque.
 pub fn decode_png(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), Box<dyn std::error::Error>> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
