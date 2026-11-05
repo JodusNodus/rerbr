@@ -48,14 +48,21 @@ fn fs_composite(@builtin(position) clip: vec4<f32>) -> @location(0) vec4<f32> {
     let f = at - floor(at);
     var sum = vec4<f32>(0.0);
     var weight = 0.0;
+    var empty = true;
     for (var k = 0; k < 4; k++) {
         let corner = vec2<i32>(k & 1, k >> 1);
         let texel = clamp(base + corner, vec2<i32>(0), most);
         let bilinear = select(1.0 - f.x, f.x, corner.x == 1) * select(1.0 - f.y, f.y, corner.y == 1);
         let apart = abs(far_of(textureLoad(half_depth, texel, 0)) - far) / far / DEPTH_TOLERANCE;
         let w = (bilinear + 1e-4) / (1.0 + apart * apart);
-        sum += textureLoad(half_colour, texel, 0) * w;
+        let drawn = textureLoad(half_colour, texel, 0);
+        empty = empty && all(drawn == vec4<f32>(0.0, 0.0, 0.0, 1.0));
+        sum += drawn * w;
         weight += w;
+    }
+    // Where no particle reached, the frame stays as it is: no blend to pay for.
+    if (empty) {
+        discard;
     }
     return sum / weight;
 }
