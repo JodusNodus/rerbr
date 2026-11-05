@@ -30,13 +30,6 @@ DESC_SIZE = 0x34
 BODY_NAME = 0x1ACA74
 
 
-def fnv64(data):
-    h = 0xCBF29CE484222325
-    for b in data:
-        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-    return "fnv:%016x" % h
-
-
 def descriptors(snap, faces):
     """{id: address} of the 0x34-byte blocks with the grid's id at +0 and its faces pointer at +0x14."""
     want = {struct.pack("<I", f): gid for gid, f in faces.items() if f}
@@ -87,7 +80,7 @@ def main():
                     continue
                 data = snap.read(at2, length)
                 lines.append("block %s %d %s %08x %d %s" % (
-                    label, gid, kind, at2, length, fnv64(data) if digest else data.hex()))
+                    label, gid, kind, at2, length, ("fnv:%016x" % replay.fnv1a64(data)) if digest else data.hex()))
         print("%s: %s, %s (%d descriptors)" % (label, entry_path, snap_path, len(descs)))
     with open(sys.argv[1], "w") as f:
         f.write("\n".join(lines) + "\n")

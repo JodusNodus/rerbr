@@ -21,7 +21,7 @@ original (`play.sh`, `record.sh`, `slots.sh`, `matrix.py`, `apitrace.sh`) need t
 | `diverge.py` | first differing step between two recordings; `--mask` writes the noise mask |
 | `session.py` | RSS1 session files of an RSF session (`scripts/rsf-session.sh`): reader and summary; the format is its docstring ([verification.md](../notes/verification.md#rsf-sessions)) |
 | `replay.py` | one `StepForward` of the original in the emulator from a snapshot |
-| `replay-approx.c`, `.bin`, `replay-fpu.c`, `.py` | the CPU's rsqrtss/rcpss tables and x87 oracle for the emulator |
+| `replay-approx.c`, `replay-fpu.c`, `.py` | the CPU's rsqrtss/rcpss tables (`crates/rbr-physics/data/rsqrt.bin`, `rcp.bin`) and x87 oracle for the emulator |
 | `rust_step.py` | the hybrid check: Rust bindings (run B) against the original (run A) |
 | `long_run.py` | `rust_step.py --steps` over a drive's whole snapshot chain |
 | `live.py` | the hybrid stepped live, harness-only (FRM1 out per control payload); the viewer drives `rbr-standalone --live` only |
