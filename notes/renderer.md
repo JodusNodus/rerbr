@@ -77,8 +77,8 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   the resolve writes the output's size (history and post pass there) instead of the post pass stretching the frame. Each
   output pixel gathers the 3x3 jittered samples by a Gaussian of their distance in output pixels, at a share of 0.1 over
   the scale per unit of weight (`taa.rs` `KERNEL_AREA`); the clip box is the unweighted 3x3 (weighted by nearness:
-  stair-steps, speckled grass); the motion is the 3x3's nearest depth's; where clipped hard or moving fast (3/4 at 64
-  output pixels a frame: a chase camera's roadside smudged) the history gives way to a Catmull-Rom of the frame held
+  stair-steps, speckled grass); the motion is the 3x3's nearest depth's; where clipped hard or moving fast (3/4 at 32
+  output pixels a frame, 64 before 2026-11-05: a chase camera's roadside smudged) the history gives way to a Catmull-Rom of the frame held
   within the 3x3 (the nearest sample drew blocks, a Gaussian smudged). Textures biased `log2(scale)` in the main view
   (`texture_bias` in `shader.wgsl`; Laplacian variance 50 % flyby 122 to 163). Rain and particles go into the frame after
   a copy (`Taa::keep`) and their difference is added, out of the history. The reference shots draw one or two frames, so
@@ -89,6 +89,15 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   on fast-moving edges (wiper, a passing car's roof). Resolve 0.32-0.59 ms at 1080p (FSR 0.86-1.04, old 0.05-0.09),
   scene 3.2 to 1.8 ms at 50 % (RX 9060 XT radv). 100 % and `--anti-aliasing off` byte-identical to before. Untested on
   Metal.
+  Road detail at speed (2026-11-05): each frame's resampling of the history blurs what moves (a half-pixel shift passes
+  nothing at Nyquist, whatever the kernel), so the near road lost most of its grain while driving. Measured on 32-frame
+  live sequences (75 km/h, step 12 and step 24 for twice the motion; Gabiria tarmac, 532 gravel; road-crop Laplacian
+  variance, 1080p, still / moving before / after / TAA off): tarmac chase 747 / 221 / 442 / 1010, gravel chase 1071 / 345
+  / 699 / 1514, tarmac cockpit 536 / 337 / 401 / 901, gravel cockpit 475 / 149 / 178 / 900; 67 % cockpit tarmac 244 /
+  147 / 235, gravel 174 / 53 / 93. Fix: the new frame's share rises 0.3 by 32 pixels a frame (`fs_taa`, was 0.1 by 16) and
+  the upscale's frame alone 3/4 by 32 (was 64); edges (guard rail, fence wire) still smooth, still frames unchanged,
+  the 36 reference shots within 0.35/65535 RMSE, no added work. Tried: a sharper history cubic (Keys a = -1.5: wavy
+  ridges on gravel; -1: +10-35 %, dropped for the simpler change); a negative mip bias was tried before (above).
   Glass over the car (the dash below the windscreen, the cabin behind the windows, lamp lenses) gathers as the rest:
   the mask takes the frame new only where the stage is behind the glass (2026-10-31). The lower windscreen (alpha about
   0.9 at its grazing angle) was taken new every frame, its dash edges and reflected cabin never smoothed; its
