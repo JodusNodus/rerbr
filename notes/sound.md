@@ -64,7 +64,11 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
 
 - In the car the road noise already follows speed and surface: the level's speed term `min(speed * 0.05 + slip *
   0.1, 1)` (full by 72 km/h) on the surface's own loops (gravel, tarmac, snow; table pitch, cabin low-pass), and the
-  rumble off tarmac (full by 36 km/h, pitch 0.8-1.2) (`tyre.rs`; checked 2026-11-05, left as it is).
+  rumble off tarmac (full by 36 km/h, pitch 0.8-1.2) (`tyre.rs`; checked 2026-11-05).
+- Ours (game feel, `tyre::roll_pitch`): in the car the rolling surface loops (not the skid loops) rise in pitch from
+  the table's at 72 km/h (wheel speed) linearly to +20 % at 180 km/h, held above; level, rumble, stones and outside
+  cameras unchanged. Speed ramp (tyre layer alone, gravel and tarmac): commanded gain identical, output level -0.2 to
+  -0.3 dB from 140 km/h (the cabin low-pass), spectral centroid 717 to 823-853 Hz (scratch render, not in code).
 - The splash is 0 in every drive tried, so no wetness voice is checked. Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).
 
