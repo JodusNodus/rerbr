@@ -2358,6 +2358,7 @@ version = "0.1.0"
 dependencies = [
  "rbr-formats",
  "rbr-gameplay",
+ "rbr-season",
 ]
 
 [[package]]
@@ -2491,7 +2492,6 @@ dependencies = [
 name = "rbr-season"
 version = "0.1.0"
 dependencies = [
- "rbr-championship",
  "rbr-formats",
  "rbr-gameplay",
 ]
@@ -2512,7 +2512,6 @@ dependencies = [
 name = "rbr-standalone"
 version = "0.1.0"
 dependencies = [
- "rbr-championship",
  "rbr-counters",
  "rbr-formats",
  "rbr-gameplay",
@@ -2520,6 +2519,7 @@ dependencies = [
  "rbr-physics",
  "rbr-recording",
  "rbr-school",
+ "rbr-season",
 ]
 
 [[package]]

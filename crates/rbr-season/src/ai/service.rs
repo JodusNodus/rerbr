@@ -218,7 +218,7 @@ pub fn service_penalty(id: i32, minutes: u32, long: bool, log: &mut RunLog) -> f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::tests::*;
+    use crate::ai::fixtures::*;
 
     /// `Ev9ec0`: value 5 at engineering 3 costs `97 * 0.01 * 5` (4.85 -> 4), time 5 at 3 x 6 = 18 % off
     /// (`82 * 0.01 * 5` = 4.1 -> 4).

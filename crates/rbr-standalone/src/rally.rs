@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use rbr_championship::StageReport;
+use rbr_season::rally::StageReport;
 use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::flow::StageEnd;
 use rbr_hybrid::pure::CAR_PTR;

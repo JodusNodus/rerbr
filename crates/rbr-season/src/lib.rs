@@ -10,7 +10,12 @@
 //!
 //! The physics and the stage gameplay are the game's, run as on the Drive page; only this layer around them is ours.
 
+pub mod ai;
 pub mod config;
 pub mod event;
 pub mod field;
 pub mod pace;
+pub mod rally;
+pub mod road;
+pub mod seed;
+pub mod service;

@@ -16,7 +16,7 @@
 //! The driver-class draws are ours: the game makes them at its start on a
 //! time seed.
 
-use rbr_formats::ai_ini::{Master, Roster};
+use rbr_formats::ai_ini::Roster;
 use rbr_formats::saves::after_season::{CarStore, DriverStore, Stores, TeamStore};
 use rbr_formats::saves::season::{Season, DRIVERS};
 use rbr_gameplay::crt::CrtRand;
@@ -29,6 +29,10 @@ pub mod layout;
 
 #[cfg(test)]
 pub(crate) use forecast::{BLOCK, SLOT};
+
+pub use rbr_season::ai::load_ai;
+pub use rbr_season::road::road_wear;
+pub use rbr_season::seed::{seed, seed_from_unix_ms};
 
 pub use forecast::{blocks, init6, new_blocks, Block, Slot, RALLY_ORDER};
 pub use layout::{
@@ -60,11 +64,6 @@ pub struct SeasonClock {
 pub const POINTS: [u32; 8] = [10, 8, 6, 5, 4, 3, 2, 1];
 /// The player's id (the first human gets id -2).
 pub const PLAYER_ID: i32 = -2;
-
-/// The season's seed over the local time.
-pub fn seed(second: u32, minute: u32, millisecond: u32, hour: u32, weekday: u32, day: u32, year: u32) -> u32 {
-    second + minute + millisecond + hour + weekday + day + year
-}
 
 /// The player of a new season: the profile's name, the picked team and the
 /// rank, the first rally school lesson the profile has no result for, capped at 15, which orders the first rally's
@@ -170,55 +169,9 @@ pub fn player_crew(season: &Season, roster: &Roster) -> Option<crate::service::C
     Some(crate::service::Crew { a: team.engineering, b: team.mechanics })
 }
 
-/// The road's wear for a starter: the first three starters drive a new
-/// road (0), places 4-11 a normal one (1), the rest a worn one (2); 1 when
-/// the player is not in the start list.
-pub fn road_wear(start_place: Option<usize>) -> u32 {
-    match start_place {
-        Some(p) if p <= 2 => 0,
-        Some(p) => 1 + u32::from(p > 10),
-        None => 1,
-    }
-}
-
 /// The player's place in the stage's start list ([`stage_start_order`]).
 pub fn player_start_place(season: &Season) -> Option<usize> {
     start_order(season).iter().position(|&k| entry_id(season, k as usize).is_some_and(|id| id == PLAYER_ID))
-}
-
-/// `ai.ini` and `aidrv.ini` from `Root/misc.rbz`.
-pub fn load_ai(data: &rbr_formats::data::Data) -> Result<(Master, Roster), String> {
-    use std::io::Read;
-    let misc = data.resolve("Root/misc.rbz").ok_or("Root/misc.rbz: not found")?;
-    let mut zip = rbr_formats::rbz::open(&misc).map_err(|e| format!("misc.rbz: {e}"))?;
-    let mut text = |name: &str| -> Result<String, String> {
-        let mut b = Vec::new();
-        zip.by_name(name).and_then(|mut f| Ok(f.read_to_end(&mut b)?)).map_err(|e| format!("misc.rbz/{name}: {e}"))?;
-        Ok(String::from_utf8_lossy(&b).into_owned())
-    };
-    let master = rbr_formats::ai_ini::parse_master(&text("Misc/ai/ai.ini")?).map_err(|e| format!("ai.ini: {e}"))?;
-    let roster =
-        rbr_formats::ai_ini::parse_roster(&text("Misc/ai/aidrv.ini")?).map_err(|e| format!("aidrv.ini: {e}"))?;
-    Ok((master, roster))
-}
-
-/// The season's seed from a Unix time in milliseconds (ours: UTC; the original reads the local time).
-pub fn seed_from_unix_ms(ms: u64) -> u32 {
-    let secs = ms / 1000;
-    let days = (secs / 86_400) as i64;
-    let rem = secs % 86_400;
-    // Days to the civil date (Howard Hinnant's algorithm).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = (yoe + era * 400 + i64::from(month <= 2)) as u32;
-    let weekday = ((days + 4).rem_euclid(7)) as u32;
-    seed((rem % 60) as u32, (rem / 60 % 60) as u32, (ms % 1000) as u32, (rem / 3600) as u32, weekday, day, year)
 }
 
 /// Team `t`'s car in `aidrv.ini` (car 2 has no team). Its two drivers, ids
@@ -466,12 +419,6 @@ pub(crate) mod tests {
         (0..6).map(|k| season_dat::Rally { name: format!("R{k}"), setup, levels: vec![files; 3] }).collect()
     }
 
-    #[test]
-    fn the_road_wears_with_the_start_place() {
-        assert_eq!([0, 2, 3, 10, 11, 13].map(|p| road_wear(Some(p))), [0, 0, 1, 1, 2, 2]);
-        assert_eq!(road_wear(None), 1);
-    }
-
     /// A new season with its first rally started, the player in `team`'s seat.
     pub(crate) fn start(
         roster: &Roster,
@@ -564,12 +511,6 @@ pub(crate) mod tests {
         assert_eq!(rng, probe);
         assert_eq!((s.drivers[6].id, s.drivers[6].b8d0[0], s.drivers[6].name()), (PLAYER_ID, 1, "P".into()));
         assert_eq!(s.position(), (u32::MAX, 255));
-    }
-
-    #[test]
-    fn the_seed_adds_the_time_fields() {
-        // 2026-10-17 12:34:56.789 UTC, a Saturday (6).
-        assert_eq!(seed_from_unix_ms(1_792_240_496_789), 56 + 34 + 789 + 12 + 6 + 17 + 2026);
     }
 
     #[test]
@@ -676,7 +617,7 @@ pub(crate) mod tests {
         assert_eq!(stores.teams[1].drivers, [PLAYER_ID as u32, 3]);
     }
 
-    pub(crate) fn retail(data: &rbr_formats::data::Data) -> (Master, Roster, Vec<season_dat::Rally>, weather::Season) {
+    pub(crate) fn retail(data: &rbr_formats::data::Data) -> (rbr_formats::ai_ini::Master, Roster, Vec<season_dat::Rally>, weather::Season) {
         let (master, roster) = load_ai(data).unwrap();
         let rallies = season_dat::parse(&std::fs::read(data.resolve("Root/season.dat").unwrap()).unwrap()).unwrap();
         (master, roster, rallies, weather::Season::load(data).unwrap())

@@ -10,7 +10,7 @@ name = "rbr-standalone"
 path = "src/main.rs"
 
 [dependencies]
-rbr-championship = { path = "../rbr-championship" }
+rbr-season = { path = "../rbr-season" }
 rbr-counters = { path = "../rbr-counters" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-gameplay = { path = "../rbr-gameplay" }

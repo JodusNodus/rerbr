@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use rbr_championship::ai::{self, Run, RunLog};
+use rbr_season::ai::{self, Run, RunLog};
 use rbr_formats::ai_ini;
 use rbr_formats::trk::{self, DriveLineData};
 use rbr_gameplay::crt::CrtRand;
