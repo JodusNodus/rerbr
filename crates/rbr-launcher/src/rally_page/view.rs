@@ -619,8 +619,8 @@ impl RallyPage {
         }
     }
 
-    /// The rally's end: the result, then the season's queue (the results, the trials between rallies, the season
-    /// over).
+    /// The rally's end: the result, then the season's queue (the next rally and the trials between rallies, or the
+    /// season over).
     fn over_ui(
         &mut self,
         ui: &mut Ui,
@@ -665,11 +665,6 @@ impl RallyPage {
         }
         ui.add_space(10.0);
         match turn {
-            Some(Turn::Results) => {
-                if ui.horizontal(|ui| ui.add(start_button("Continue"))).inner.clicked() {
-                    self.turn_done();
-                }
-            }
             Some(Turn::Over) => {
                 // The fold's New season, brought up: the only way on.
                 let new = ui.horizontal(|ui| {

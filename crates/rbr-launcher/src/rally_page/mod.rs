@@ -276,6 +276,10 @@ impl RallyPage {
                 let turn = events::run_to_turn(&mut save, &mut ai, &mut news);
                 self.run = Some(SeasonRun { save, blocks, field, rng, turn, news: Vec::new(), store: Some(store) });
                 self.open_rally();
+                if turn == Turn::Results {
+                    // A season saved at the rally's results: on to the page between rallies, as `turn_done` goes.
+                    self.turn_done();
+                }
             }
             Ok(None) => self.status = format!("{}: no season under way", self.profile),
             Err(e) => self.status = e,
@@ -333,7 +337,8 @@ impl RallyPage {
 
     /// The player's turn is done: the queue runs to the next one (the AI's stages and services on the way, a new
     /// rally at the end of one), and the season is saved. While the player's rally is over (retired, or a car that
-    /// can't go on), the player's stages are retired and the services passed.
+    /// can't go on), the player's stages are retired and the services passed. The rally's results (kind 9) are passed
+    /// too: the page between rallies shows the place and the final standings.
     fn turn_done(&mut self) {
         let (Ok((master, roster)), Some(run)) = (&self.ai, self.run.as_mut()) else { return };
         let rally = run.save.position().0;
@@ -341,9 +346,13 @@ impl RallyPage {
         let mut ai = Ai { master, roster, field: &mut run.field, blocks: &run.blocks, rng: &mut run.rng };
         run.turn = events::turn_done(&mut run.save, &mut ai, &mut news);
         let over = self.championship.as_ref().is_some_and(|c| matches!(c.phase(), RallyPhase::Over(_)));
-        while over && matches!(run.turn, Turn::Stage(_) | Turn::Service { .. }) {
-            if let Turn::Stage(_) = run.turn {
-                store::record_stage(&mut run.save, None, true);
+        loop {
+            match run.turn {
+                Turn::Stage(_) if over => store::record_stage(&mut run.save, None, true),
+                Turn::Service { .. } if over => {}
+                // Ours: no stop at the rally's results; its points go in and the page between rallies shows them.
+                Turn::Results => {}
+                _ => break,
             }
             run.turn = events::turn_done(&mut run.save, &mut ai, &mut news);
         }
@@ -392,16 +401,13 @@ impl RallyPage {
             return;
         }
         let rallies = match shot {
-            Shot::Results | Shot::BetweenRallies => 1,
+            Shot::BetweenRallies => 1,
             Shot::SeasonOver => 6,
             _ => 0,
         };
         for k in 0..rallies {
             self.start_rally();
             self.screenshot_rally();
-            if shot != Shot::Results {
-                self.turn_done();
-            }
             if k + 1 < rallies {
                 self.turn_done();
             }
@@ -633,8 +639,7 @@ pub enum Shot {
     Stage,
     Service(Box<CarriedDamage>),
     Wrecked,
-    /// A rally driven to its results.
-    Results,
+    /// A rally driven to its end.
     BetweenRallies,
     SeasonOver,
 }
@@ -736,7 +741,7 @@ mod tests {
     }
 
     /// A retail season through the page (`RBR_DATA`, `RBR_PATCH`): the welcome, six stages with their services, the
-    /// results, the page between rallies, then the next rally's welcome on its first stage.
+    /// page between rallies (the results passed, their points in), then the next rally's welcome on its first stage.
     #[test]
     fn a_rally_runs_through_the_page() {
         let Some(data) = Data::from_env() else { return };
@@ -765,13 +770,14 @@ mod tests {
                 page.turn_done();
             }
         }
-        assert_eq!(page.run.as_ref().map(|r| r.turn), Some(Turn::Results));
+        // No stop at the results: their points are in, and the page between rallies is next.
+        assert_eq!(page.run.as_ref().map(|r| r.turn), Some(Turn::BetweenRallies));
         assert!(matches!(
             page.championship.as_ref().map(|c| c.phase()),
             Some(RallyPhase::Over(RallyOutcome::Finished))
         ));
-        page.turn_done();
-        assert_eq!(page.run.as_ref().map(|r| r.turn), Some(Turn::BetweenRallies));
+        let points = season_model::season_standings(&page.run.as_ref().unwrap().save);
+        assert!(points.iter().any(|&(_, _, p)| p > 0), "{points:?}");
         assert!(page.trial(&table, 72).is_ok() && page.trial(&table, 71).is_ok());
         page.turn_done();
         let run = page.run.as_ref().unwrap();
@@ -921,7 +927,7 @@ mod tests {
     }
 
     /// A finish in a car that can't drive (page 0x18) counts the stage and ends the player's rally: the season retires
-    /// the later stages and the queue goes on to the results.
+    /// the later stages and the queue goes on past the results to the page between rallies.
     #[test]
     fn a_wrecked_finish_ends_the_rally_through_the_page() {
         let Some(data) = Data::from_env() else { return };
@@ -937,7 +943,7 @@ mod tests {
             Some(c.stage_end(&StageEnd { cause: EndCause::Finish, end_race }, CarriedDamage::default(), false));
         page.season_stage_done(Some(StageTimes::from_end_race(&end_race)), false);
         let run = page.run.as_ref().unwrap();
-        assert_eq!(run.turn, Turn::Results);
+        assert_eq!(run.turn, Turn::BetweenRallies);
         let r = player_rally(&run.save, 0).unwrap();
         assert_eq!((r.stages[0].time, r.stages[0].retired), (300.0, 0));
         assert!(r.stages[1..].iter().all(|s| s.retired == 1));
