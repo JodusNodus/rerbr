@@ -1,8 +1,8 @@
 // HDR post pass (renderer addition, `post.rs`; not the game's look). The scene arrives as linear colour in a float
 // target (`graded` in `shader.wgsl`). A bloom chain halves it (`fs_down`, the 13-tap filter of Jimenez 2014) and adds
 // the levels back up (`fs_up`, a 3x3 tent); `cs_histogram` bins the scene's light and `cs_meter` sets the exposure
-// from the histogram, eased over time as an eye adapts; `fs_composite` blends a little of the bloom in, exposes, and applies AgX (sharpening first
-// under TAA, `sharpened`).
+// from the histogram, eased over time as an eye adapts; `fs_composite` blends a little of the bloom in, exposes, and
+// applies Gran Turismo 7's tone mapping (`gt7`; sharpening first under TAA, `sharpened`).
 
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linear_sampler: sampler;
@@ -78,10 +78,12 @@ const IN_CAR_WEIGHT: vec2<u32> = vec2<u32>(5u, 1u);
 const CABIN_STOPS: f32 = 2.5;
 // The exposure, as Unreal's and BeamNG's auto exposure: the metered light, back in luminance (over the pre-exposure),
 // as EV100 (ISO 100, the calibration constant `CALIBRATION`), held within `EV100_RANGE`, is exposed to `KEY`, middle
-// grey (18 percent before `AGX_SCALE`), shifted by the exposure compensation curve (`compensation`). The curve is Krawczyk, Myszkowski and Seidel's (2005) key value
-// against the adapting luminance, relative to a sunny scene's (EV100 15): dim scenes are drawn darker, as a dim scene
-// looks darker to the adapted eye (twilight 1 to 3 EV down, a moonlit night about 4.5).
-const KEY: f32 = 0.18 / AGX_SCALE;
+// grey in GT7's frame buffer units (`gt7`), shifted by the exposure compensation curve (`compensation`). The curve is
+// Krawczyk, Myszkowski and Seidel's (2005) key value against the adapting luminance, relative to a sunny scene's
+// (EV100 15): dim scenes are drawn darker, as a dim scene looks darker to the adapted eye (twilight 1 to 3 EV down, a
+// moonlit night about 4.5). `KEY` 0.3681 is where GT7's curve shows middle grey at 0.415 of white, as AgX, the curve
+// before it, showed a sunny scene's (2026-11-05; GT's own convention, 0.18, draws the mid-tones about 1.3 stops darker).
+const KEY: f32 = 0.3681;
 const CALIBRATION: f32 = 12.5;
 const EV100_RANGE: vec2<f32> = vec2<f32>(-8.0, 18.0);
 const SUNNY_LUMINANCE: f32 = 4096.0;
@@ -117,41 +119,100 @@ const LOCAL_GIVE: f32 = 0.6;
 // How fast the exposure follows the frame, per second: faster down into a bright frame than up into a dark one.
 const ADAPT_SPEED: vec2<f32> = vec2<f32>(3.0, 1.2);
 
-// AgX (Sobotka; the polynomial fit of Wrensch 2023) on the exposed linear light, pre-scaled by `AGX_SCALE`, over
-// `AGX_RANGE` stops about middle grey and given `AGX_PUNCH` contrast so that the display middle grey stays near where
-// the plain renderer's curve puts it, then `SATURATION`. Highlights desaturate toward white rather than clipping per
-// channel. The contrast follows the adapting light, as contrast looks higher in brighter light (the Stevens effect):
-// a dim scene keeps Blender's range (-10 to +6.5), a sunny one's (`compensation` 1) tops out a stop lower, with more
-// punch, so a day's brightest reach about 85 percent of white rather than 80 while the night's shadows hold.
-const AGX_SCALE: f32 = 2.0;
-const AGX_RANGE: vec3<f32> = vec3<f32>(-10.0, 6.5, 5.5);
-const AGX_PUNCH: vec2<f32> = vec2<f32>(1.25, 1.6);
-const SATURATION: f32 = 1.1;
+// Gran Turismo 7's tone mapping (Polyphony Digital, SIGGRAPH 2025 Physically Based Shading course, and their MIT sample
+// `gt7_tone_mapping.cpp` 1.0, ICtCp mode; `notes/references/gt7-tone-mapping`). Its curve (`gt7_curve`: a toe up
+// to `GT7_MID`, linear to `GT7_LINEAR` of the peak, then a shoulder converging on the peak) maps each channel; the
+// mapped colour's intensity in ICtCp with the input's chroma, faded out between `GT7_FADE` of the peak's intensity,
+// goes back to RGB, and the two blend by `GT7_BLEND`. It works in linear Rec.2020 in GT's frame buffer units, 1 for
+// 100 cd/m2 (`GT7_UNIT`), and an SDR display's white is its 250 cd/m2 paper white (`GT7_PEAK`); the exposure (`KEY`) puts
+// light in those units. It reaches white about 3.3 stops over middle grey (AgX 0.92 of white at 4 stops); its highlights
+// keep their hue and lose their chroma only near white. Chosen over AgX on the lighting sheet (user, 2026-11-05).
+const GT7_PEAK: f32 = 2.5;
+const GT7_UNIT: f32 = 100.0;
+const GT7_ALPHA: f32 = 0.25;
+const GT7_MID: f32 = 0.538;
+const GT7_LINEAR: f32 = 0.444;
+const GT7_TOE: f32 = 1.28;
+const GT7_BLEND: f32 = 0.6;
+const GT7_FADE: vec2<f32> = vec2<f32>(0.98, 1.16);
+// The peak's ICtCp intensity: a grey's L, M and S are its own, so its PQ code, `pq(GT7_PEAK)`.
+const GT7_PEAK_INTENSITY: f32 = 0.6025592;
+// SMPTE ST 2084 (PQ): m1, m2; c1, c2, c3.
+const PQ_M: vec2<f32> = vec2<f32>(0.1593017578125, 78.84375);
+const PQ_C: vec3<f32> = vec3<f32>(0.8359375, 18.8515625, 18.6875);
+// The matrices below are written by rows, as published, and applied as `v * m`. Rec.709 to Rec.2020 and back
+// (ITU-R BT.2087, from the primaries); Rec.2020 to LMS, PQ-coded LMS to ICtCp, and back (ITU-T T.302; the sample's).
+const REC709_TO_2020: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(0.6274039, 0.3292830, 0.0433131),
+    vec3<f32>(0.0690973, 0.9195404, 0.0113623),
+    vec3<f32>(0.0163914, 0.0880133, 0.8955953),
+);
+const REC2020_TO_709: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(1.6604910, -0.5876411, -0.0728499),
+    vec3<f32>(-0.1245505, 1.1328999, -0.0083494),
+    vec3<f32>(-0.0181508, -0.1005789, 1.1187297),
+);
+const TO_LMS: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(0.412109375, 0.52392578125, 0.06396484375),
+    vec3<f32>(0.166748046875, 0.720458984375, 0.11279296875),
+    vec3<f32>(0.024169921875, 0.075439453125, 0.900390625),
+);
+const TO_ICTCP: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(0.5, 0.5, 0.0),
+    vec3<f32>(1.61376953125, -3.323486328125, 1.709716796875),
+    vec3<f32>(4.378173828125, -4.24560546875, -0.132568359375),
+);
+const FROM_ICTCP: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(1.0, 0.00860904, 0.11103),
+    vec3<f32>(1.0, -0.00860904, -0.11103),
+    vec3<f32>(1.0, 0.560031, -0.320627),
+);
+const FROM_LMS: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(3.43661, -2.50645, 0.0698454),
+    vec3<f32>(-0.79133, 1.9836, -0.192271),
+    vec3<f32>(-0.0259499, -0.0989137, 1.12486),
+);
 
-fn agx_contrast(x: vec3<f32>) -> vec3<f32> {
-    let x2 = x * x;
-    let x4 = x2 * x2;
-    return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+// GT's frame buffer light to PQ code values.
+fn pq(v: vec3<f32>) -> vec3<f32> {
+    let y = pow(max(v, vec3<f32>(0.0)) * (GT7_UNIT / 10000.0), vec3<f32>(PQ_M.x));
+    return pow((PQ_C.x + PQ_C.y * y) / (1.0 + PQ_C.z * y), vec3<f32>(PQ_M.y));
 }
 
-// `bright`: 0 for a dim scene's contrast, 1 for a sunny one's.
-fn agx(linear: vec3<f32>, bright: f32) -> vec3<f32> {
-    let inset = mat3x3<f32>(
-        vec3<f32>(0.842479062253094, 0.0423282422610123, 0.0423756549057051),
-        vec3<f32>(0.0784335999999992, 0.878468636469772, 0.0784336),
-        vec3<f32>(0.0792237451477643, 0.0791661274605434, 0.879142973793104),
-    );
-    let outset = mat3x3<f32>(
-        vec3<f32>(1.19687900512017, -0.0528968517574562, -0.0529716355144438),
-        vec3<f32>(-0.0980208811401368, 1.15190312990417, -0.0980434501171241),
-        vec3<f32>(-0.0990297440797205, -0.0989611768448433, 1.15107367264116),
-    );
-    let top = mix(AGX_RANGE.y, AGX_RANGE.z, bright);
-    let stops = clamp(log2(max(inset * linear, vec3<f32>(1e-10)) / 0.18), vec3<f32>(AGX_RANGE.x), vec3<f32>(top));
-    let encoded = (stops - AGX_RANGE.x) / (top - AGX_RANGE.x);
-    let punch = mix(AGX_PUNCH.x, AGX_PUNCH.y, bright);
-    let curved = pow(clamp(agx_contrast(encoded), vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(punch));
-    return clamp(outset * curved, vec3<f32>(0.0), vec3<f32>(1.0));
+// PQ code values to GT's frame buffer light.
+fn pq_light(n: vec3<f32>) -> vec3<f32> {
+    let p = pow(clamp(n, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / PQ_M.y));
+    let l = pow(max(p - PQ_C.x, vec3<f32>(0.0)) / (PQ_C.y - PQ_C.z * p), vec3<f32>(1.0 / PQ_M.x));
+    return l * (10000.0 / GT7_UNIT);
+}
+
+fn ictcp(rgb: vec3<f32>) -> vec3<f32> {
+    return pq(rgb * TO_LMS) * TO_ICTCP;
+}
+
+fn from_ictcp(i: vec3<f32>) -> vec3<f32> {
+    return max(pq_light(i * FROM_ICTCP) * FROM_LMS, vec3<f32>(0.0));
+}
+
+fn gt7_curve(x: vec3<f32>) -> vec3<f32> {
+    let k = (GT7_LINEAR - 1.0) / (GT7_ALPHA - 1.0);
+    let v = max(x, vec3<f32>(0.0));
+    let toe = GT7_MID * pow(v / GT7_MID, vec3<f32>(GT7_TOE));
+    let below = mix(toe, v, smoothstep(vec3<f32>(0.0), vec3<f32>(GT7_MID), v));
+    let shoulder = GT7_PEAK * (GT7_LINEAR + k) - GT7_PEAK * k * exp((GT7_LINEAR - v / GT7_PEAK) / k);
+    return select(shoulder, below, v < vec3<f32>(GT7_LINEAR * GT7_PEAK));
+}
+
+// Display values for the exposed linear Rec.709 light: the mapped light over the paper white, sRGB-coded.
+fn gt7(linear: vec3<f32>) -> vec3<f32> {
+    let rgb = linear * REC709_TO_2020;
+    let skewed = gt7_curve(rgb);
+    let ucs = ictcp(rgb);
+    let chroma = 1.0 - smoothstep(GT7_FADE.x, GT7_FADE.y, ucs.x / GT7_PEAK_INTENSITY);
+    let scaled = from_ictcp(vec3<f32>(ictcp(skewed).x, ucs.yz * chroma));
+    let mapped = min(mix(skewed, scaled, GT7_BLEND), vec3<f32>(GT7_PEAK)) / GT7_PEAK;
+    let shown = clamp(mapped * REC2020_TO_709, vec3<f32>(0.0), vec3<f32>(1.0));
+    return select(1.055 * pow(shown, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * shown, shown <= vec3<f32>(0.0031308));
 }
 
 struct Out {
@@ -405,7 +466,7 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     // Local exposure (`LOCAL_FROM`).
     let broad = log2(max(luminance(glow) * exposed, 1e-9) / KEY);
     let linear = max(lit * exposed * exp2(-LOCAL_GIVE * max(broad - LOCAL_FROM, 0.0)), vec3<f32>(0.0));
-    let c = agx(linear * AGX_SCALE, compensation(adapting));
+    let c = gt7(linear);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));
-    return vec4<f32>(clamp(mix(vec3<f32>(grey), c, SATURATION * meter.grade.y), vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+    return vec4<f32>(clamp(mix(vec3<f32>(grey), c, meter.grade.y), vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
 }
