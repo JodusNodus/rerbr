@@ -8,7 +8,7 @@
 //!
 //! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.75, snow 0.50) and the wetness
 //! (up to -25 % soaked). The class table is anchored to the 1.02 AI's winning times on the retail stages (the
-//! `rbr-championship` AI's level-2 pars): the top class matches them, the others follow by power, weight and grip
+//! the 1.02 AI's level-2 pars): the top class matches them, the others follow by power, weight and grip
 //! ratios. The calibration is in `notes/season.md`.
 
 use crate::config::Surface;

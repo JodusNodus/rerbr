@@ -358,7 +358,7 @@ pub fn master_word(m: &Master, k: i64) -> i32 {
     }
 }
 
-/// Small fixtures for the tests here and in `rbr-championship` (a master, a track, a driver, a car, a team).
+/// Small fixtures for the tests here and in the launcher's fixture (a master, a track, a driver, a car, a team).
 #[doc(hidden)]
 pub mod fixtures {
     use super::*;

@@ -3,9 +3,8 @@
 Rally events the player builds from presets, on any installed stage (retail, RSF, BTB), against an AI field in their
 car class: the one championship mode, a better 1.02 season. Code: `crates/rbr-season` holds everything a season needs:
 `config`, `pace`, `track`, `field`, `event`, `team`, and the 1.02 pieces it reuses (`ai`: the AI engine, `service`: the
-service park and `Crew`, `rally`: `RallyStage`, `StageReport`, `tyre_choices`, `road`, `seed`). `rbr-championship`
-(the classic 1.02 season state machine, events queue, save and layout) depends on it and re-exports the moved items
-until the launcher drops it; it is to be deleted. Nothing gameplay- or physics-facing: the event layer only reads
+service park and `Crew`, `rally`: `RallyStage`, `StageReport`, `tyre_choices`, `road`, `seed`). The classic 1.02 season crate
+(`rbr-championship`) is deleted; its state machine and save are in git history. Nothing gameplay- or physics-facing: the event layer only reads
 drivelines and hands the launcher times, standings and saves.
 
 ## Model

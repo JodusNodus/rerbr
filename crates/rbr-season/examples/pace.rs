@@ -2,7 +2,7 @@
 //! stages' 1.02 AI beside the top class's time.
 //!
 //! Retail drivelines come from `RBR_DATA/Maps/track-*.trk`; the AI column runs the 1.02 championship AI's best
-//! driver (`rbr-championship`'s `ai::stage_time`, level 2, dry, averaged over seeds) over the dry rows of
+//! driver (`rbr_season::ai::stage_time`, level 2, dry, averaged over seeds) over the dry rows of
 //! `RBR_DATA/Root/misc.rbz` (`Misc/ai/ai.ini`, `aidrv.ini`). The RSF stages (`RBR_RSF/Maps/<id>-<name>/`, when set)
 //! print with their scanned surface. Run with `bash -c 'source scripts/dev-env.sh; cargo run -p rbr-season
 //! --example pace'`.

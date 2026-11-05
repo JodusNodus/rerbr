@@ -44,7 +44,6 @@ same paths.
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
-| `crates/rbr-championship` | Classic 1.02 season (to be deleted): season state machine, events queue, season save; re-exports `rbr-season`'s moved parts |
 | `crates/rbr-season` | The championship (ours): built rallies and seasons on any installed stages; the 1.02 AI engine (`ai`), service park, field, tracks, standings, save |
 | `crates/rbr-school` | Rally school (experimental): lessons, filter bank, verdict, on `rbr_gameplay::mode` |
 | `crates/rbr-standalone` | The physics program (`--boot`, `--live`) |
