@@ -207,7 +207,14 @@ fn a_quick_rally_on_the_real_stages_and_ai_plays_through() {
     assert_eq!(event.rallies[0].stages.len(), 6);
     event.turn_done();
     let mut player = 0.0;
+    // Saved and read back mid-rally, the championship runs on as the one never saved.
+    let mut resumed: Option<Event> = None;
     while let Turn::Stage { rally, stage } = event.turn {
+        if stage == 3 && resumed.is_none() {
+            let loaded = Event::load(&event.save()).unwrap();
+            assert_eq!(loaded, event, "read back before SS4");
+            resumed = Some(loaded);
+        }
         let order = event.start_order(rally, stage);
         assert_eq!(order.len(), field + 1);
         assert_eq!(order.iter().filter(|who| who.is_none()).count(), 1);
@@ -216,11 +223,14 @@ fn a_quick_rally_on_the_real_stages_and_ai_plays_through() {
         assert!(reference > 30.0, "SS{} reference {reference}", stage + 1);
         let time = reference * 1.08;
         player += time;
-        event.stage_done(&master, PlayerResult { time, penalties: 0.0, retired: false });
-        if let Turn::Service { .. } = event.turn {
-            event.turn_done();
+        for event in std::iter::once(&mut event).chain(resumed.as_mut()) {
+            event.stage_done(&master, PlayerResult { time, penalties: 0.0, retired: false });
+            if let Turn::Service { .. } = event.turn {
+                event.turn_done();
+            }
         }
     }
+    assert_eq!(resumed.as_ref(), Some(&event), "the resumed championship ends as the one never saved");
     assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
     let standings = event.rally_standings(0);
     assert_eq!(standings.len(), field + 1);
