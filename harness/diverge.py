@@ -3,11 +3,10 @@ that differ anywhere between REF and a NOISE run.
 diverge.py --mask REF NOISE...: write REF.mask, the words to ignore that don't depend on the
 run (one byte per word), for the plugin's early stop (notes/verification.md). When REF.mask
 exists it is ignored too, so a run cut short at its divergence reports the same step.
-The mask's noise runs must include count runs (RBR_COUNT=1, our code never runs): any harness
-mode shifts the heap, so ~170 words of uninitialised memory and pointers differ from REF for
-the whole drive. ref1.bin.mask = ref2 + refnoise-count1..3. (Until 2026-10-14 every
-word that differed at the first common step was ignored instead, which also hid real
-differences a transplant makes during the load settle, e.g. BlendB 0x50a650 at car+0x17c.)"""
+The mask's noise runs are repeats of the same drive: any run shifts the heap, so ~170 words of
+uninitialised memory and pointers differ from REF for the whole drive. ref1.bin.mask = ref2 +
+refnoise-count1..3. (Until 2026-10-14 every word that differed at the first common step was ignored
+instead, which also hid real differences during the load settle, e.g. BlendB 0x50a650 at car+0x17c.)"""
 import os,struct,sys
 import numpy as np
 def load(path):
@@ -30,7 +29,7 @@ def static_mask(ref,a,noises):
     """Words to ignore whatever the run: a is REF's steps to scan for garbage."""
     mask=np.zeros(a.shape[1],dtype=bool)
     # Frame artifacts, not physics: car+0x824 (word 0x844) is set per rendered frame and cleared at
-    # its end, so it lives one fast-forward frame longer when transplant/count/shadow overhead packs
+    # its end, so it lives one fast-forward frame longer when harness overhead packs
     # steps into frames differently; control word 0x18 holds a heap pointer once the controls run out.
     # car+0x658 (bit 1) and car+0x674 (1.0 -> 0.0), words 0x678/0x694, change at a frame-driven event
     # (step 9,729 on tanner-corolla) and shift by whole frames the same way, then agree again.
