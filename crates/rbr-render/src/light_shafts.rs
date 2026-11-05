@@ -48,7 +48,7 @@ struct Uniform {
     march_glow: [f32; 4],
     march_fog: [f32; 4],
     march_splits: [f32; 4],
-    march_matrices: [[[f32; 4]; 4]; 3],
+    march_matrices: [[[f32; 4]; 4]; 4],
     march_clouds: [f32; 4],
     lamps: [LampUniform; MAX_LAMPS],
     lamp_matrix: [[f32; 4]; 4],
@@ -68,8 +68,9 @@ pub(crate) struct Beams {
 /// The sun's march ([`LightShafts::draw`], `fs_march`): the unjittered main view's clip space to stage space, the eye,
 /// the sunlight's travel and colour (pre-exposed linear), how strongly it shows, the height fog's uniform
 /// ([`crate::height_fog::uniform`]) and whether it is the whole fog ([`crate::height_fog::is_volume`]), the base air's
-/// density per metre ([`air`]), the cascades (`shade` 0: none), the volumetric clouds' shadow map's parameters
-/// (`cloud_volume::shadow_params`; zero without them) and the frame's index for the jitter.
+/// density per metre ([`air`]), the cascades then the far layer and how far each reaches (`shade` 0: none), the
+/// volumetric clouds' shadow map's parameters (`cloud_volume::shadow_params`; zero without them) and the frame's index
+/// for the jitter.
 pub(crate) struct Sun {
     pub(crate) inverse_view_projection: Mat4,
     pub(crate) eye: Vec3,
@@ -79,8 +80,8 @@ pub(crate) struct Sun {
     pub(crate) height_fog: [f32; 4],
     pub(crate) fog_volume: bool,
     pub(crate) base_air: f32,
-    pub(crate) matrices: [Mat4; 3],
-    pub(crate) splits: [f32; 3],
+    pub(crate) matrices: [Mat4; 4],
+    pub(crate) splits: [f32; 4],
     pub(crate) shade: f32,
     pub(crate) clouds: [f32; 4],
     pub(crate) frame: u32,
@@ -289,7 +290,7 @@ impl LightShafts {
         let mist_sky = MIST_SKY[usize::from(sun.fog_volume)];
         let uniform = Uniform {
             inverse_view_projection: sun.inverse_view_projection.to_cols_array_2d(),
-            eye: sun.eye.extend(0.0).to_array(),
+            eye: sun.eye.extend(sun.splits[3]).to_array(),
             march_dir: sun.direction.extend(0.0).to_array(),
             march_light: [sun.strength, mist_sky, MARCH_LOBE, sun.frame as f32],
             march_glow: (sun.colour * MARCH_GLOW * sun.strength).extend(GLOW_AIR).to_array(),
