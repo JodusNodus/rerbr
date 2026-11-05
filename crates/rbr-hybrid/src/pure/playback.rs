@@ -19,8 +19,7 @@ use rbr_physics::fpu::Precision;
 
 /// One playback step from the call slot `slot` (`StepForward`'s return address slot, `regs` the other registers):
 /// the control at `control` (`None` for the snapshot's own step, whose control was emitted before it) through NGP's
-/// control input, then `StepForward(1)`. NGP hands the payload to the player car's control input itself, as
-/// [`emit`] does; its connections are host calls from `slot`.
+/// control input ([`emit`]), then `StepForward(1)`; its calls are host calls from `slot`.
 pub fn step(pure: &Pure, regs: Regs, slot: u32, control: Option<u32>, substeps: u32) -> Return {
     let _run = PureRunGuard::new(&pure.run_depth);
     let _ngp = crate::ngp::Scope::new(pure.ngp_base);
@@ -41,10 +40,9 @@ pub fn step(pure: &Pure, regs: Regs, slot: u32, control: Option<u32>, substeps: 
 /// the car has no connection on the emit, and NGP's walk of the other listeners reaches no physics (`notes/ngp.md`,
 /// "Controls under NGP").
 pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
-    let mem = pure.mem.clone();
-    let at = mem.u32(SIGNALS) + EMIT_OFFSET;
+    let at = pure.mem.u32(SIGNALS) + EMIT_OFFSET;
     let entry = Regs { ecx: at, esp: slot, ..regs };
-    let car = mem.u32(CAR_PTR);
+    let car = pure.mem.u32(CAR_PTR);
     pure.with_frame(EMIT, entry, || pure.host().call(UPDATE_SEED, car, &[control]));
 }
 
