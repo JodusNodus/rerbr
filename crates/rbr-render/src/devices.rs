@@ -52,6 +52,18 @@ impl Joysticks {
         Joysticks { lost: vec![false; list.len()], list, context }
     }
 
+    /// Looks for joysticks plugged in or out, in the same context (a new gilrs context each time leaks its thread on
+    /// macOS, and sees no pad there until its connection events are read). The list, with its states, is kept while
+    /// the same devices are connected and none was lost.
+    pub fn rescan(&mut self) {
+        self.context.update(&mut self.list);
+        let found = imp::Joystick::all(&mut self.context, true);
+        if self.lost.contains(&true) || !found.iter().map(|(d, _)| d).eq(self.list.iter().map(|(d, _)| d)) {
+            self.lost = vec![false; found.len()];
+            self.list = found;
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.list.len()
     }

@@ -84,6 +84,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   start. The system clipboard is egui-winit's `clipboard` feature (smithay-clipboard on Wayland, arboard elsewhere;
   arboard brings the `image` crate, egui-winit asks for its image support); before 2026-11-03 paste from other
   programs did not work.
+- Idle and while the viewer runs (2026-11-05): the joysticks are looked for every 2 s in one gilrs context
+  (`Joysticks::rescan`); a new context each time leaked a `gilrs` thread and its HID manager on macOS (gilrs-core
+  0.6.8 never stops it; 27 to 79 threads in 4 min). While the viewer runs the launcher draws only at 4 Hz (`POLL`:
+  its exit, the gamepad events queued meanwhile), with no rescan and the car turntable still; otherwise the Drive
+  page's turntable redraws at 10 Hz (one turn in 6 s; 20 Hz cost about 6% of a core).
 - Update check (`update.rs`, 2026-11-05): one request at the window's start to the GitHub releases API (published
   releases only; `release.yml` makes drafts), the highest `v*` tag above `CARGO_PKG_VERSION` (semver order) shown as
   a link to its page at the status bar's right. No download, no setting; a failed check shows nothing.

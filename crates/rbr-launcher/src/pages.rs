@@ -332,20 +332,21 @@ impl Form {
         theme(ctx);
         self.poll();
         let (bindings, ffb) = (self.bindings.clone(), self.ffb.clone());
-        self.controls.poll(&mut self.bindings);
+        let running = self.child.is_some();
+        self.controls.poll(&mut self.bindings, running);
         // The first start with a gamepad and nothing bound to it: the Controls page is shown, once the game
         // is ready to drive (Settings says what it lacks first).
-        if self.child.is_none() && self.readiness().is_none() && self.controls.offer(&self.bindings) {
+        if !running && self.readiness().is_none() && self.controls.offer(&self.bindings) {
             self.page = Page::Controls;
         }
+        // While the viewer runs the window wakes only for its exit and the gamepad events taken while it is driven
+        // with one (`POLL`): the car turntable stands still and the Controls page's bars are not live.
+        self.previews.still = running;
         if self.controls.capturing() {
             ctx.request_repaint();
-        } else if self.controls.has_pads() {
-            // The live bars, and the gamepad events taken while the viewer is driven with it.
-            ctx.request_repaint_after(if self.page == Page::Controls { Duration::from_millis(30) } else { POLL });
-        }
-        if self.child.is_some() {
-            ctx.request_repaint_after(POLL);
+        } else if running || self.controls.has_pads() {
+            let live = self.page == Page::Controls && !running;
+            ctx.request_repaint_after(if live { Duration::from_millis(30) } else { POLL });
         }
         let old_selection = (
             self.map,
