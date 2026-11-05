@@ -15,7 +15,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   mapped.
 - **Gameplay loop:** done on the recorded drives (control payload, stage states, timing, time card), plus the
   championship, service park and saves.
-- **Events (ours):** `crates/rbr-season` builds rallies and seasons from presets on any installed stage, with a
+- **Championship (ours):** `crates/rbr-season` builds rallies and seasons from presets on any installed stage, with a
   curvature pace model calibrated to the 1.02 AI's winning times, a fictional AI field, standings, points and a
   text save ([season.md](season.md)).
 - **Gate matrix:** the NGP gate is drive2 attempt 5 (snow, Ford Focus RS WRC 06, RSF car 55), physics PASS

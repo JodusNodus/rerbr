@@ -30,7 +30,7 @@ same paths.
 | Renderer and visual systems | `notes/renderer.md` |
 | Sound | `notes/sound.md` |
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
-| Events (ours): built rallies and seasons, pace model, field, standings, save | `notes/season.md` |
+| Championship (ours): built rallies and seasons, pace model, field, standings, save | `notes/season.md` |
 | Cameras, HUD, launcher | `notes/cameras-hud-launcher.md` |
 | Harness, recordings, hybrid check, vectors, masks | `notes/verification.md`, `harness/README.md` |
 | Third-party references and licences | `notes/references/README.md` |

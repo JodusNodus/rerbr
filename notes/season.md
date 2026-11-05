@@ -1,17 +1,17 @@
-# Events (ours)
+# Championship (ours)
 
-Rally events the player builds from presets, on any installed stage (retail, RSF, BTB), against an AI field in their
-car class: the one championship mode, a better 1.02 season. Code: `crates/rbr-season` holds everything a season needs:
-`config`, `pace`, `track`, `field`, `event`, `team`, and the 1.02 pieces it reuses (`ai`: the AI engine, `service`: the
-service park and `Crew`, `rally`: `RallyStage`, `StageReport`, `tyre_choices`, `road`, `seed`). The classic 1.02 season crate
-(`rbr-championship`) is deleted; its state machine and save are in git history. Nothing gameplay- or physics-facing: the event layer only reads
-drivelines and hands the launcher times, standings and saves.
+Rallies and seasons the player builds from presets, on any installed stage (retail, RSF, BTB), against an AI field in
+their car class: the one championship mode, a better 1.02 season. Code: `crates/rbr-season` holds everything a season
+needs: `config`, `pace`, `track`, `field`, `event/` (`build`, `run`, `standings`, `save`), `team`, and the 1.02 pieces
+it reuses (`ai`: the AI engine, `service`: the service park and `Crew`, `rally`: `StageReport`, `tyre_choices`; `road`,
+`seed`). The classic 1.02 season (`rbr-championship`) is deleted, in git history. Nothing gameplay- or physics-facing:
+the layer only reads drivelines and hands the launcher times, standings and saves.
 
 ## Model
 
 - `pace`: a quasi-static speed plan along the driveline's Hermite spline (`driveline_points`: the game's own
-  Hermite through the `.trk` records, tangents fitted as the autopilot fits them; `timed_slice` cuts the `.dls`
-  start/finish). Samples at ~1.5 m; speed limit `sqrt(grip_eff / curvature)` capped at top speed; forward pass with
+  Hermite through the `.trk` records, tangents fitted as the autopilot fits them; `timed_road` cuts it at the `.dls`
+  start and finish and keeps the splits from the start, the one road the launcher, the examples and the tests use). Samples at ~1.5 m; speed limit `sqrt(grip_eff / curvature)` capped at top speed; forward pass with
   acceleration falling linearly to 0 at top speed, backward pass with braking; trapezoid time integral.
 - Curvature is the *signed* heading change, smoothed over ~19 m before taking the absolute: the records' lateral
   jitter weaves left and right and cancels out, while real corners keep their sign. Smoothing the absolute
@@ -46,14 +46,14 @@ drivelines and hands the launcher times, standings and saves.
 - Bulletins: `Event::bulletins(rally)` renders the engine's `Bulletin` and `AccidentRecord` entries in order, "SS2: name
   ...", without the manager orders. They are stored as text in the save.
 - `event`: per rally one surface (Mixed draws one per rally from the pool's own), one stage family preferred
-  (retail `track-NN`, RSF/BTB the id before `-`), sampled without repeating unless the pool is too small. Rally
+  (`StageRef::family`: an RSF stage's country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), sampled without repeating unless the pool is too small. Rally
   names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). Clocks from 08:00 (21:00 at
   night; realistic puts the last leg at dusk/night), changeable weather per leg, ~20 min mid-rally services and
   45 min overnight in a weekend. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
   rally points. Adaptive moves every entrant's skill by at most 0.003 a stage toward the player finishing 2nd-4th.
   A retired player ends the rally: the field's remaining stages are simulated, the turn goes to RallyOver, no points. Points
-  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 2` head: config with the team,
-  pace, itinerary with each stage's track, the roster's teams and costs, each entrant's driver/car state and false
+  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 3` head: config with the team,
+  pace, itinerary with each stage's family and track, the roster's teams and costs, each entrant's driver/car state and false
   starts, results, AI penalties, bulletins), backslash-escaped, no serde.
 
 ## Calibration
@@ -73,16 +73,17 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 
 ## Open items
 
-- The launcher builds `StageRef`s and calls `reference_time` (parallel work); BTB stages have no drivelines yet,
-  so they need reference times another way (length/surface estimate) until they do.
-- Wetness comes from the itinerary's conditions; the launcher maps conditions to the stage's own weathers.
+- A damp road is a flat 4.5 % on the field's pace (half the engine's wet +9 %), not a wet track of its own.
+- The teams' budgets and costs stay as the roster has them for the whole season.
+- BTB stages have no driveline: `StageProfile::flat` from the length, so their pace is an estimate.
+- The generated check types follow the geometry, not the retail ones (below).
 
 ## Generated tracks vs the retail `ai.ini`
 
 `examples/track.rs` (reads the install's `ai.ini` at run time, nothing kept) builds each retail map's track for the WRC
-class and compares (36 maps, dry rows): material 108/108; section share of the stage |generated - retail| 0.036; total
-par generated / retail gravel 1.022 (sd 0.226), snow 1.027 (0.152), tarmac 1.003 (0.089), the same residuals as the pace
-model's; check types 130/216 and type with value within 1 117/216. The retail checks are hand-set and barely follow
+class and compares (36 maps, dry rows, `timed_road`): material 108/108; section share of the stage |generated - retail|
+0.036; total par generated / retail gravel 1.038 (sd 0.230), snow 1.043 (0.154), tarmac 1.018 (0.091), the same
+residuals as the pace model's; `tests/retail_tracks.rs` keeps the materials and each surface's mean within 0.95-1.05; check types 130/216 and type with value within 1 117/216. The retail checks are hand-set and barely follow
 the geometry (type 0 vs 3 halves have near-equal tightness and straight share), so a constant (0, 3) would score about
 as well; the generator keeps the rules above for their plausibility, not their match. `examples/season.rs` runs a
 three-rally season on the retail stages with a fixed player time and prints standings, bulletins and retirements.
