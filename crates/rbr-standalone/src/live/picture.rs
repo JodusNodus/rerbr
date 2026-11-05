@@ -12,6 +12,8 @@ use rbr_gameplay::race_clock::RaceClock;
 use rbr_gameplay::result::Outcome;
 use rbr_hybrid::pure::{self, CAR_BYTES, CAR_PTR};
 use rbr_physics::car_body::steering_ffb;
+use rbr_physics::car_body::store::CarStore;
+use rbr_physics::entities::store::HingeStore;
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::rigid_body::layout::Body;
@@ -19,7 +21,7 @@ use rbr_physics::spring_damper::DamperSignal;
 use rbr_physics::wheel::layout::{TAIL_HUB_OFFSET, TYRE_TAIL};
 use rbr_recording::damage::{self, Damage};
 use rbr_recording::dash::{Dash, StackKey};
-use rbr_recording::detach::{self, PartPose};
+use rbr_recording::detach::{self, DoorAngle, PartPose};
 use rbr_recording::ffb::Steering;
 use rbr_recording::flow::Flow;
 use rbr_recording::gearbox::Gearbox;
@@ -85,6 +87,8 @@ pub struct Picture {
     /// The step's other particle signals (PEV1, `rbr_recording::particles::events_record`).
     pub events: Vec<u8>,
     pub detached: Vec<u8>,
+    /// The attached doors' hinge angles (DOR1, [`door_angles`]).
+    pub doors: Vec<u8>,
     pub splits: Vec<u8>,
     pub steering: Vec<u8>,
     pub scenery: Vec<ActiveInteractivePose>,
@@ -199,6 +203,7 @@ impl Picture {
             tyres: particles::record(tyres),
             events: particles::events_record(&[]),
             detached: detached_parts(mem, detach),
+            doors: door_angles(mem),
             splits: splits.to_bytes(),
             steering: Steering {
                 force: steering_ffb::force(mem, car),
@@ -523,6 +528,20 @@ pub fn detached_parts(mem: &Mem, detach: &[(u32, u32)]) -> Vec<u8> {
         })
         .collect();
     detach::to_bytes(&poses)
+}
+
+/// The doors' hinge angles (`rbr_recording::detach::DOR1`): each attached door (the hinged bodies in the car's
+/// slots 0 and 1 whose slot is still set) with its hinge angle (`HingeStore::hinge_angle`, +0x3FC). The viewer
+/// hangs the doors by these; a detached door leaves this record and is drawn by its DET1 body.
+pub fn door_angles(mem: &Mem) -> Vec<u8> {
+    let car = mem.u32(CAR_PTR);
+    let angles: Vec<DoorAngle> = (0..2)
+        .filter_map(|i| {
+            let body = mem.hinged_body(car, i);
+            (body != 0).then(|| DoorAngle { part: i, angle: mem.hinge_angle(body) })
+        })
+        .collect();
+    detach::door_angles_to_bytes(&angles)
 }
 
 /// The tyre payloads of a frame of several steps: each wheel's last, in emit order. The viewer's emitters take one
