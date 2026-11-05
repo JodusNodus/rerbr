@@ -19,6 +19,8 @@ use winit::keyboard::KeyCode;
 
 /// The longest time between two sends of the same input, and how often a lost device is looked for.
 const KEEPALIVE: Duration = Duration::from_millis(50);
+/// How often a bound joystick not connected at the open is looked for (plugged in during the drive).
+const SEARCH: Duration = Duration::from_secs(1);
 
 /// The input thread.
 pub struct Feed {
@@ -102,7 +104,8 @@ fn run(shared: &Mutex<State>, stop: &AtomicBool, bindings: &Bindings, script: Op
     input.names().iter().for_each(|n| eprintln!("viewer: controls from {n}"));
     input.missing.iter().for_each(|e| eprintln!("viewer: controls: {e}"));
     let period = Duration::from_secs(1) / bindings.input_rate.max(1);
-    let (mut seq, mut last, mut sent, mut looked) = (0, None, Instant::now(), Instant::now());
+    let (mut seq, mut last, mut sent, mut looked, mut searched) =
+        (0, None, Instant::now(), Instant::now(), Instant::now());
     let (opened, mut reported) = (Instant::now(), false);
     let mut keys = [0u8; 256];
     let mut pads = [0.0; ACTIONS];
@@ -154,6 +157,12 @@ fn run(shared: &Mutex<State>, stop: &AtomicBool, bindings: &Bindings, script: Op
         if now - looked >= KEEPALIVE {
             input.reopen();
             looked = now;
+        }
+        if now - searched >= SEARCH {
+            if input.find_missing(bindings) {
+                input.names().iter().for_each(|n| eprintln!("viewer: controls from {n} (connected during the drive)"));
+            }
+            searched = now;
         }
         thread::sleep(period.saturating_sub(start.elapsed()));
     }

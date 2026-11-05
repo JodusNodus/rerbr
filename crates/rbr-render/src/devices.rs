@@ -27,7 +27,10 @@ pub struct Joysticks {
 impl Joysticks {
     /// The joysticks `want` names, as the game sees them, and why each one is not open.
     pub fn open(want: &[Device]) -> (Joysticks, Vec<String>) {
-        let mut context = imp::Context::new();
+        Joysticks::open_in(imp::Context::new(), want)
+    }
+
+    fn open_in(mut context: imp::Context, want: &[Device]) -> (Joysticks, Vec<String>) {
         let mut found = imp::Joystick::all(&mut context, false);
         let mut missing = Vec::new();
         let list: Vec<_> = want
@@ -62,6 +65,13 @@ impl Joysticks {
             self.lost = vec![false; found.len()];
             self.list = found;
         }
+    }
+
+    /// Whether one of `want` that is not open is connected now (plugged in after the open).
+    fn found(&mut self, want: &[Device]) -> bool {
+        self.context.update(&mut self.list);
+        let open: Vec<_> = self.list.iter().map(|(d, _)| *d).collect();
+        imp::Joystick::all(&mut self.context, false).iter().any(|(d, _)| want.contains(d) && !open.contains(d))
     }
 
     pub fn len(&self) -> usize {
@@ -127,7 +137,11 @@ pub struct Input {
 impl Input {
     /// The keyboard and the joysticks the bindings name that are connected.
     pub fn open(bindings: &Bindings) -> Input {
-        let (joysticks, missing) = Joysticks::open(&bindings.devices());
+        Input::open_in(imp::Context::new(), bindings)
+    }
+
+    fn open_in(context: imp::Context, bindings: &Bindings) -> Input {
+        let (joysticks, missing) = Joysticks::open_in(context, &bindings.devices());
         let mut devices = vec![keyboard()];
         for k in 0..joysticks.len() {
             let (axes, buttons) = joysticks.objects(k);
@@ -205,6 +219,16 @@ impl Input {
         }
     }
 
+    /// Opens everything again, in the same context, when a bound joystick that was not connected is now; whether it
+    /// did. The poll starts fresh, as at the open.
+    pub fn find_missing(&mut self, bindings: &Bindings) -> bool {
+        if self.missing.is_empty() || !self.joysticks.found(&bindings.devices()) {
+            return false;
+        }
+        *self = Input::open_in(std::mem::take(&mut self.joysticks.context), bindings);
+        true
+    }
+
     /// Opens the lost joysticks again if they are back (the keepalive's).
     pub fn reopen(&mut self) {
         let lost = self.joysticks.lost.clone();
@@ -256,6 +280,7 @@ mod imp {
     pub use super::evdev::Joystick;
 
     /// evdev needs no context: each joystick is its file.
+    #[derive(Default)]
     pub struct Context;
 
     impl Context {
@@ -453,11 +478,24 @@ mod imp {
     use gilrs_core::{EventType, Gilrs};
 
     /// gilrs's platform layer, which every pad reads its events from.
+    #[derive(Default)]
     pub struct Context(Option<Gilrs>);
 
     impl Context {
         pub fn new() -> Context {
-            Context(Gilrs::new().map_err(|e| eprintln!("devices: no gamepads: {e}")).ok())
+            #[allow(unused_mut)]
+            let mut gilrs = Gilrs::new().map_err(|e| eprintln!("devices: no gamepads: {e}")).ok();
+            // macOS: gilrs's thread sends the pads connected as events, and lists a pad only once its event is
+            // read; read them until 100 ms pass without one (at most 500 ms).
+            #[cfg(target_os = "macos")]
+            if let Some(gilrs) = &mut gilrs {
+                let end = std::time::Instant::now() + std::time::Duration::from_millis(500);
+                while std::time::Instant::now() < end
+                    && gilrs.next_event_blocking(Some(std::time::Duration::from_millis(100))).is_some()
+                {
+                }
+            }
+            Context(gilrs)
         }
 
         /// The events since the last update, into the pads' values.
