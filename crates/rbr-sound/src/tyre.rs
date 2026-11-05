@@ -268,11 +268,10 @@ impl Tyres {
             // second voice doubles the first, the same loop from the same place.
             for slot in 0..2 {
                 let (material, gain, skid, pitch) = match sound {
-                    Some(s) if inside && !s.skid => {
-                        let pitch = s.pitch * roll_pitch(f32::from_bits(sig[SPEED]));
-                        (s.materials[slot].0, s.materials[0].1 * self.gain, false, pitch)
+                    Some(s) => {
+                        let rolling = if inside && !s.skid { roll_pitch(f32::from_bits(sig[SPEED])) } else { 1.0 };
+                        (s.materials[slot].0, s.materials[0].1 * self.gain, s.skid, s.pitch * rolling)
                     }
-                    Some(s) => (s.materials[slot].0, s.materials[0].1 * self.gain, s.skid, s.pitch),
                     None => (Material::Gravel, 0.0, false, 1.0),
                 };
                 out.push(Command::Tyre { wheel: k as u8, slot: slot as u8, material, skid, gain, pitch });
