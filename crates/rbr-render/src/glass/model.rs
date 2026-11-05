@@ -262,6 +262,11 @@ const BUG_RATE: f32 = 0.25;
 const MUD_RADIUS: [f32; 2] = [0.001, 0.005];
 const MUD_PER_MASS: f32 = 0.02;
 const MUD_SPEED: f32 = 20.0;
+/// A splat of water over the bonnet (ours, [`Glass::splat`]): its big drop's radius, the raindrop-sized ones round it
+/// and how far they scatter, m.
+const SPLAT_RADIUS: [f32; 2] = [0.003, 0.006];
+const SPLAT_DROPLETS: [usize; 2] = [3, 7];
+const SPLAT_SPREAD: f32 = 0.04;
 /// Mud's colours (ours: drying gravel mud, lighter than the paint's dirt colour in `shader.wgsl`).
 const MUD_COLORS: [[f32; 3]; 4] = [[0.52, 0.45, 0.34], [0.45, 0.38, 0.27], [0.58, 0.52, 0.41], [0.40, 0.33, 0.23]];
 /// Thrown snow's colours (ours: white-grey slush), mud specks of colour index 4 to 7.
@@ -405,8 +410,8 @@ pub struct Glass {
     centre_x: f32,
     rng: Rng,
     carry: f32,
-    /// The spray's mud, snow and water not yet thrown as a whole speck or drop.
-    mud_carry: [f32; 3],
+    /// The spray's mud, snow and water not yet thrown as a whole speck or drop, and the splats over the bonnet.
+    mud_carry: [f32; 4],
     /// Seconds since the drops last merged.
     merge_clock: f32,
     /// The wet film, [`FILM_CELLS`] row by row from the chart's low corner.
@@ -437,7 +442,7 @@ impl Glass {
             centre_x: (bounds[0].x + bounds[1].x) * 0.5,
             rng: Rng::new(seed),
             carry: 0.0,
-            mud_carry: [0.0; 3],
+            mud_carry: [0.0; 4],
             merge_clock: 0.0,
             film: vec![0.0; FILM_CELLS[0] * FILM_CELLS[1]],
             blade_snow: vec![0.0; wipers.len()],
@@ -457,7 +462,7 @@ impl Glass {
     pub fn clear(&mut self) {
         self.drops.clear();
         self.carry = 0.0;
-        self.mud_carry = [0.0; 3];
+        self.mud_carry = [0.0; 4];
         self.film.fill(0.0);
         self.blade_snow.fill(0.0);
         self.blade_water.fill(0.0);
@@ -613,15 +618,50 @@ impl Glass {
     /// Mud, snow and water from the step's tyre spray, at speed (ours).
     fn spatter(&mut self, c: Conditions, inside: &impl Fn(Vec2) -> bool) {
         let share = (c.speed / MUD_SPEED).clamp(0.0, 1.0);
-        let Thrown { mud, snow, water } = c.spray;
-        for (k, mass) in [mud, snow, water].into_iter().enumerate() {
-            self.mud_carry[k] += mass.max(0.0) * MUD_PER_MASS * share;
+        let Thrown { mud, snow, water, bow } = c.spray;
+        // The splats are counted as they come: their rate already grows with speed.
+        let counts = [mud * MUD_PER_MASS * share, snow * MUD_PER_MASS * share, water * MUD_PER_MASS * share, bow];
+        for (k, count) in counts.into_iter().enumerate() {
+            self.mud_carry[k] += count.max(0.0);
             while self.mud_carry[k] >= 1.0 {
                 self.mud_carry[k] -= 1.0;
                 match k {
                     2 => self.splash(c.speed, inside),
+                    3 => self.splat(c.speed, inside),
                     _ => _ = self.speck(k == 1, inside),
                 }
+            }
+        }
+    }
+
+    /// A splat of standing water thrown over the bonnet (ours): a big drop low on the glass with a few raindrop-sized
+    /// ones scattered round it ([`SPLAT_RADIUS`], [`SPLAT_DROPLETS`], [`SPLAT_SPREAD`]), skidding as rain's do.
+    fn splat(&mut self, speed: f32, inside: &impl Fn(Vec2) -> bool) {
+        let [lo, hi] = self.bounds;
+        let (x, y) = (self.rng.unit(), self.rng.unit());
+        let centre = lo + (hi - lo) * Vec2::new(x, y * y);
+        let droplets =
+            SPLAT_DROPLETS[0] + (self.rng.unit() * (SPLAT_DROPLETS[1] - SPLAT_DROPLETS[0] + 1) as f32) as usize;
+        for k in 0..=droplets {
+            let (radius, at) = if k == 0 {
+                (SPLAT_RADIUS[0] + (SPLAT_RADIUS[1] - SPLAT_RADIUS[0]) * self.rng.unit(), centre)
+            } else {
+                let off = Vec2::from_angle(std::f32::consts::TAU * self.rng.unit()) * SPLAT_SPREAD * self.rng.unit();
+                (RAIN_RADIUS[0] + (RAIN_RADIUS[1] - RAIN_RADIUS[0]) * self.rng.unit().powi(2), centre + off)
+            };
+            let seed = self.rng.unit();
+            if inside(at) {
+                let velocity = self.skid(at, speed.max(0.0));
+                self.drops.push(Drop {
+                    at,
+                    radius,
+                    kind: Kind::Water,
+                    velocity,
+                    span: Vec2::ZERO,
+                    age: 0.0,
+                    left: 0.0,
+                    seed,
+                });
             }
         }
     }
@@ -1323,6 +1363,9 @@ mod tests {
         let wet = throw(Thrown { water: 20.0, ..Thrown::default() });
         assert_eq!(wet.mud(), 0, "wet tarmac throws water");
         assert!(wet.drops.iter().any(|d| d.kind == Kind::Water));
+        let bow = throw(Thrown { bow: 0.04, ..Thrown::default() });
+        let big = |g: &Glass| g.drops.iter().filter(|d| d.kind == Kind::Water && d.radius >= SPLAT_RADIUS[0]).count();
+        assert!(big(&bow) >= 10 && bow.mud() == 0, "splats over the bonnet: {}", big(&bow));
     }
 
     #[test]

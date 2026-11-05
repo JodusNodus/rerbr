@@ -32,6 +32,10 @@ struct Effects {
     // `shader.wgsl`): the sun's square on, w the pre-exposure; the sky's on open ground, w its gain (0 without them).
     day_sun: vec4<f32>,
     day_sky: vec4<f32>,
+    // The in-car view's particle mask (`particles::cabin`): stage space to the car's model space, and its boxes'
+    // corners, the body's then the room's (`cabin_box[0].w` 1 when set, else the cabin's reach is a sphere).
+    cabin_from_stage: mat4x4<f32>,
+    cabin_box: array<vec4<f32>, 4>,
 }
 
 // The light the car's lamps give a point in the air at `world` (0 by day). The headlights' beams past their shadow

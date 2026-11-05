@@ -77,8 +77,8 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   the resolve writes the output's size (history and post pass there) instead of the post pass stretching the frame. Each
   output pixel gathers the 3x3 jittered samples by a Gaussian of their distance in output pixels, at a share of 0.1 over
   the scale per unit of weight (`taa.rs` `KERNEL_AREA`); the clip box is the unweighted 3x3 (weighted by nearness:
-  stair-steps, speckled grass); the motion is the 3x3's nearest depth's; where clipped hard or moving fast (3/4 at 64
-  output pixels a frame: a chase camera's roadside smudged) the history gives way to a Catmull-Rom of the frame held
+  stair-steps, speckled grass); the motion is the 3x3's nearest depth's; where clipped hard or moving fast (3/4 at 32
+  output pixels a frame, 64 before 2026-11-05: a chase camera's roadside smudged) the history gives way to a Catmull-Rom of the frame held
   within the 3x3 (the nearest sample drew blocks, a Gaussian smudged). Textures biased `log2(scale)` in the main view
   (`texture_bias` in `shader.wgsl`; Laplacian variance 50 % flyby 122 to 163). Rain and particles go into the frame after
   a copy (`Taa::keep`) and their difference is added, out of the history. The reference shots draw one or two frames, so
@@ -89,6 +89,15 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   on fast-moving edges (wiper, a passing car's roof). Resolve 0.32-0.59 ms at 1080p (FSR 0.86-1.04, old 0.05-0.09),
   scene 3.2 to 1.8 ms at 50 % (RX 9060 XT radv). 100 % and `--anti-aliasing off` byte-identical to before. Untested on
   Metal.
+  Road detail at speed (2026-11-05): each frame's resampling of the history blurs what moves (a half-pixel shift passes
+  nothing at Nyquist, whatever the kernel), so the near road lost most of its grain while driving. Measured on 32-frame
+  live sequences (75 km/h, step 12 and step 24 for twice the motion; Gabiria tarmac, 532 gravel; road-crop Laplacian
+  variance, 1080p, still / moving before / after / TAA off): tarmac chase 747 / 221 / 442 / 1010, gravel chase 1071 / 345
+  / 699 / 1514, tarmac cockpit 536 / 337 / 401 / 901, gravel cockpit 475 / 149 / 178 / 900; 67 % cockpit tarmac 244 /
+  147 / 235, gravel 174 / 53 / 93. Fix: the new frame's share rises 0.3 by 32 pixels a frame (`fs_taa`, was 0.1 by 16) and
+  the upscale's frame alone 3/4 by 32 (was 64); edges (guard rail, fence wire) still smooth, still frames unchanged,
+  the 36 reference shots within 0.35/65535 RMSE, no added work. Tried: a sharper history cubic (Keys a = -1.5: wavy
+  ridges on gravel; -1: +10-35 %, dropped for the simpler change); a negative mip bias was tried before (above).
   Glass over the car (the dash below the windscreen, the cabin behind the windows, lamp lenses) gathers as the rest:
   the mask takes the frame new only where the stage is behind the glass (2026-10-31). The lower windscreen (alpha about
   0.9 at its grazing angle) was taken new every frame, its dash edges and reflected cabin never smoothed; its
@@ -580,8 +589,11 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 Each thrower follows its 1.02 source (`particles/*.rs` cite them; `E82F_BlkD0::Emit` 0x5ddba0 emits `rate * frame
 dt` a payload, we use 1/60 s). The payload layout is in `rbr_recording::particles` (wheel, edges, velocity, rubber,
 smoke, mass, depth, dirt, splash, surfaces, blend, contact). Ours: the step, pools 4x the file's, sparks (1.02
-throws none), no 3D stones (never loaded in 1.02). Open: camera-speed modulation, the wave's vertex alpha and
-scroll.
+throws none), no 3D stones (never loaded in 1.02). Open: the wave's vertex alpha and scroll.
+- The emitter's "camera speed modulation factor" (+0x180) scales the car's horizontal velocity, not the camera's:
+  `CamHandler` 0x5d8600 on `CSigCarGeneralState` stores k (vx, vy, 0), `GenVel` 0x5d91fb adds it to each new particle.
+  Only the weather's one-particle file emitters set it (-0.6, `g_rain*`, `g_snow2/3`); we don't run them, so nothing
+  to port. `weather::Fall` (their fall height, forward distance, car velocity flag) is parsed but unused.
 
 Wheel spray (`particles/wheel_spray/`, ours, `--enhance particles`): replaces the tyre handlers, fake smoke, splash
 and wave with dust and water only (no stones, user decision 2026-10-20); dust, powder, mist, drops and splash by
@@ -628,7 +640,8 @@ splash never shows on a wet stage.
   and a 0.75 far veil (dimmed gab-lit's far more than the 532 plume, so it stays a bright tan body).
 - No spray in the cabin (2026-11-01, `fs_soft`): in the in-car views the soft particles fade inside the cabin reach
   (2 to 2.5 m from the eye) as the rain does; the wheels' spray showed through the GC8's footwell gaps (52 rain
-  cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical.
+  cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical. The eye sphere is now the
+  cabin mask (2026-11-05, below).
 - Dust colour from the stage's road (2026-11-01, `wheel_spray::dust::of_stage`; was a colour by the `PS_*.ini`
   region name, ours, neutral grey on 29 of 52 readable community variants and all MontBlanc and Arctic ones): the
   area-weighted linear mean of the drawn ground (textures, texture 1's blend, vertex tint) within 3 m of the driveline
@@ -643,6 +656,44 @@ splash never shows on a wet stage.
   playback's payloads but 0 to 1 in the game's, so spinning and sliding threw no extra dust live or in replays
   (El Condor: rubber at most 0.001 while the mass reached 50 sliding). The game's payloads now take the slip from the
   mass flow (`SLIP_MASS` read backwards); the reference shots build their payloads from the poses and keep the rubber.
+- Spray from the seat (2026-11-05). Diagnosis: the in-car views showed almost no own spray because none reached
+  their frustum, not because a view rule erased it (cockpit frames byte-identical with the cabin fade, `DUST_CLOSE`
+  and the wisp near fade off; bumper frames byte-identical with `--no-particles`, on gravel slides, hard braking,
+  wet and snow). Spray leaves the wheels inside the body's box and drag takes it behind the eye within 0.3 s.
+  Changes: `particles::cabin::CabinMask` (body box below the belt, eye − 0.25 m, from 0.5 m under the floor; room
+  box above it from 0.8 m ahead of the eye; 0.15 m soft edge; model frame from `car.bounds()` and the cockpit eye)
+  replaces the eye sphere in `fs_soft`, so spray outside the doors shows and the 52 GC8 footwell gaps stay clean.
+  Front-wheel pools from the patch's sideways slide (`front::slide`, 0.8-4 m/s): `Kick` dust and `Fling` stones
+  thrown out the slide's way, `Flurry` snow powder (also ploughed in snow); a plume from standing water (next
+  bullet). The air about the car lags its speed by `front::WAKE_LAG` 0.8 s, so a braking car's dust, haze
+  and powder roll past it (`front::carried`). The front pools draw from their own `Rng` (`Simulation::emit_drawing`)
+  so the other pools stay byte-identical. Recorded drives seldom slide their fronts, so the side throws show mostly
+  in live play. Additions off byte-identical; effects pass 1080p cockpit, wet and dusty, within noise (0.3-0.4 ms
+  either way). Shots: snow Sturec 208 chase 0.027 and Peklo Yaris
+  chase 0.016 (braking powder), dusty chases and fly-bys 0.001-0.009; 13 byte-identical. Mirrors draw the spray in
+  the flat game pipeline (`particles.draw`), not the soft pass.
+- Puddle plume and splats (2026-11-05; the first version's streaked `drop` sheet over the bonnet read as an old
+  game's thin lines): a front tyre in standing water throws `Bow` clumps (`PUFF`, translucent muddy grey, 0.6 s,
+  0.3 to 1.3 m) and `BowMist` (`WISP`, 0.9 s, 0.4 to 1.8 m), mostly out and up at the front corner, a quarter in
+  over the bonnet, keeping 0.9-0.98 of the car's speed so the air takes them back past the wing. Gated on the
+  standing water from 0.15 to 0.6 (`BOW_WATER`: the wet ruts' 0.08 film under `--enhance wet` throws none), and
+  thrown at once on running in (`BOW_BURST` 80 by how much deeper it got: the puddles on 54O are crossed in about
+  10 frames). Glass hook: `Thrown::bow`, splats a frame (6 a second at full depth and speed, 3 on running in), from
+  `WheelSpray::feed` through `dirt::Spray` to `Glass::splat`: a 3-6 mm drop low on the glass with 3-7 raindrops
+  round it within 4 cm, skidding and running and wiped as rain; the paint's grime ignores it. Effects pass 1080p
+  cockpit at the 54O puddle (`--at 10800`, wet heavy): 0.46 to 0.70 ms; off the puddles within 0.05 ms. Captures
+  `/tmp/cockpit-spray/wet2/`. Shots against the first version: rain Luceram GC8 cockpit RMSE 0.025 and fly-by
+  0.023 (streaks gone, the plume at the corner), night Luceram 131 cockpit 0.014, fog Luceram GC8 chase 0.007, two
+  under 0.001, 30 byte-identical; 52 rain cockpit `--at 4500` footwells clean. The wiper angle that differed
+  between some builds in `--enhance all` cockpit frames is not the auto schedule (54O `--at 10803`: same frame,
+  Continuous, 629 mud specks, phase 0.947 in both; adding a log line flipped it): build-dependent, not chased.
+- Wet spray without streaks (2026-11-05): `Drops` and `Splash` are soft `PUFF` clumps of the water's grey (0.32 and
+  0.25 alpha, growing 0.08 to 0.5 and 0.05 to 0.35 m), `MudDrops` small dark `STONE` clods without a trail; rates,
+  lives, fall and drag as before, so the plumes keep their shape and every pool its draws. Effects pass 1080p within
+  0.1 ms (54O wet chase 0.59 to 0.60, Luceram rain fly-by 1.51 to 1.58). Shots against the plume version: rain
+  Luceram GC8 fly-by RMSE 0.010, fog Luceram chase 0.008, rain Sipirkakim chase 0.008, day Gabiria M3 fly-by 0.006
+  (damp patches' clods), golden Gabiria chase 0.004, two under 0.001, 29 byte-identical. Captures
+  `/tmp/cockpit-spray/wet3/`.
 Soft-particle cost (2026-10-26, RX 9060 XT): the effects pass is fill-bound (Sipirkakim II `--at 15000`: 926
 quads, ~400 screens of coverage, 35 ms at 1440p, nearly all `fs_soft`; GPU clocks bimodal). Fixes, frames within
 2/255 of before (lamps' code out of the day's pipeline, fragments under 1/1000 alpha discarded, depth after the

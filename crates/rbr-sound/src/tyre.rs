@@ -76,6 +76,18 @@ const RUMBLE_FACTOR: f32 = 1.5625e-5;
 const RUMBLE_SMOOTH: f32 = 0.25;
 const RUMBLE_GAIN: f32 = 0.5;
 const RUMBLE_PITCH: (f32, f32) = (0.4, 0.8);
+/// Ours (game feel): in the car a wheel's rolling loops (not the skid loops) rise in pitch above the speed where the
+/// level saturates ([`SPEED_SCALE`]: 20 m/s, 72 km/h), linearly to [`ROLL_PITCH_RISE`] more at [`ROLL_PITCH_TOP`]
+/// m/s (180 km/h), held above; the level is left as it is. 1.02 plays them at the surface table's pitch only.
+const ROLL_PITCH_FROM: f32 = 1.0 / SPEED_SCALE;
+const ROLL_PITCH_TOP: f32 = 50.0;
+const ROLL_PITCH_RISE: f32 = 0.2;
+
+/// The in-car rolling loops' pitch factor at wheel speed `speed` m/s (ours, [`ROLL_PITCH_RISE`]).
+fn roll_pitch(speed: f32) -> f32 {
+    1.0 + ROLL_PITCH_RISE * ((speed - ROLL_PITCH_FROM) / (ROLL_PITCH_TOP - ROLL_PITCH_FROM)).clamp(0.0, 1.0)
+}
+
 /// The wetness voice decays by 0.95 (0x7355d4) a frame, to 0 below 0.001 (0x795e94); the splash sets it, at most 1.
 const WET_DECAY: f32 = 0.95;
 const QUIET: f32 = 0.001;
@@ -256,7 +268,10 @@ impl Tyres {
             // second voice doubles the first, the same loop from the same place.
             for slot in 0..2 {
                 let (material, gain, skid, pitch) = match sound {
-                    Some(s) => (s.materials[slot].0, s.materials[0].1 * self.gain, s.skid, s.pitch),
+                    Some(s) => {
+                        let rolling = if inside && !s.skid { roll_pitch(f32::from_bits(sig[SPEED])) } else { 1.0 };
+                        (s.materials[slot].0, s.materials[0].1 * self.gain, s.skid, s.pitch * rolling)
+                    }
                     None => (Material::Gravel, 0.0, false, 1.0),
                 };
                 out.push(Command::Tyre { wheel: k as u8, slot: slot as u8, material, skid, gain, pitch });
@@ -383,6 +398,37 @@ mod tests {
         assert_eq!(t.materials[0].0, Material::Tarmac);
         // skid share 0.5 at rest on tarmac: 0.5 * 2000 * 1 / 4000.
         assert!((t.materials[0].1 + t.materials[1].1 - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn in_the_car_the_rolling_loops_rise_in_pitch_past_72_kmh_at_the_same_level() {
+        assert_eq!([0.0, 10.0, 20.0].map(roll_pitch), [1.0; 3]);
+        assert!((roll_pitch(35.0) - 1.1).abs() < 1e-6);
+        assert_eq!([50.0, 80.0].map(roll_pitch), [1.2; 2]);
+        let tyre = |speed: f32, grip: f32, inside: bool| {
+            let mut tyres = Tyres::new(1.0, 1.0, 0, vec![1, 33, 101]);
+            let out = tyres.step(
+                &[block(1, grip, 2500.0, 4.0, speed); 4],
+                &[None; 4],
+                speed,
+                0.01,
+                inside,
+                (0.0, [0.0; 3]),
+                || 0,
+            );
+            out.into_iter()
+                .find_map(|c| match c {
+                    Command::Tyre { wheel: 0, slot: 0, gain, pitch, .. } => Some((gain, pitch)),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let (slow, fast) = (tyre(20.0, 1.0, true), tyre(50.0, 1.0, true));
+        assert_eq!((slow.0, slow.1), (fast.0, 1.125));
+        assert!((fast.1 - 1.125 * 1.2).abs() < 1e-6);
+        // Outside the car and on the skid loops: the table's pitch.
+        assert_eq!(tyre(50.0, 1.0, false).1, 1.125);
+        assert_eq!(tyre(50.0, 3.0, true).1, 1.125);
     }
 
     #[test]

@@ -13,6 +13,7 @@
 //! ([`Particles::payloads_from_poses`], ours). The same payloads step the skid marks ([`crate::skidmarks`]), so a
 //! drive, a live run and a jump all lay them alike.
 
+pub mod cabin;
 pub mod car;
 pub mod damping;
 pub mod gpu;
@@ -387,7 +388,7 @@ impl Particles {
 
     /// One frame of `dt` seconds: the tyres, the car's events, the exhaust, the weather, then the motion. `step` is the
     /// game's own payloads and events (live, or recorded), else they come from the poses. Gives the payloads' summed
-    /// mass and what they throw at the windscreen ([`dirt::frame_spray`]). A frame of several periods has each wheel's last payload (the standalone's), which emits for all of them.
+    /// mass and what they throw at the windscreen ([`dirt::frame_spray`], with the splats over the bonnet). A frame of several periods has each wheel's last payload (the standalone's), which emits for all of them.
     #[allow(clippy::too_many_arguments)]
     fn frame(
         &mut self,
@@ -426,13 +427,14 @@ impl Particles {
         if let Some(marks) = &mut self.tyre_marks {
             marks.step(&payloads, from_game);
         }
-        match &mut self.wheel_spray {
+        let splats = match &mut self.wheel_spray {
             Some(spray) => spray.feed(&mut self.sim, &payloads, &pose, dt, from_game),
             None => {
                 let wheels: Vec<Wheel> = payloads.iter().map(wheel_of_payload).collect();
                 self.tyres.feed(&mut self.sim, &wheels, car_velocity, pose.side, dt);
+                0.0
             }
-        }
+        };
         if let (Some((pool, point)), 0) = (self.exhaust, exhausts) {
             let at = model.transform_point3(point);
             let throttle = sample.control[0].clamp(0.0, 1.0);
@@ -444,7 +446,8 @@ impl Particles {
         self.track.step(&mut self.sim, eye, dt);
         self.sim.step(dt);
         self.rain.step(&mut self.sim, eye, forward, dt);
-        dirt::frame_spray(payloads.iter().map(|p| (p.surface(), p.mass)))
+        let (mass, thrown) = dirt::frame_spray(payloads.iter().map(|p| (p.surface(), p.mass)));
+        (mass, Thrown { bow: splats, ..thrown })
     }
 
     /// The rescue helicopter's dust (`CRescueHelicopter::Burst`, [`crate::characters::Characters::take_smoke`]):

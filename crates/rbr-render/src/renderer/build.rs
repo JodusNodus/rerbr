@@ -588,6 +588,7 @@ impl Renderer {
             car_dirt: Default::default(),
             cabin_sun: None,
             car_body: None,
+            cabin_mask: None,
             outside_view: false,
             screen_reflection,
             skid_marks: None,
