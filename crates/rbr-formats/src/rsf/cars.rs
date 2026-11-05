@@ -11,6 +11,8 @@ use super::json::{rows, Row};
 use crate::car_pack::{self, Pack};
 use crate::cars::{self, CarEntry};
 use crate::data::Data;
+use crate::ini::Section;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -201,6 +203,429 @@ pub fn option_info(option: &Path) -> Option<(String, String)> {
     Some((info.get("name")?.trim().to_owned(), info.get("state")?.trim().to_owned()))
 }
 
+/// A visual option folder of a car model: an RSF `carparts/<option>/` folder with its `metadata.ini`
+/// `[rsf_info]` name and state, or a bare folder beside the model holding `.ini` files (the added pack cars'
+/// `lights_on/`, `Close Roof/`, no metadata; the Fiesta Rally3 Evo's `light_on/`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelOption {
+    /// The option's folder.
+    pub dir: PathBuf,
+    /// Its `[rsf_info]` name, or the folder's name for a bare option.
+    pub name: String,
+    /// Its `[rsf_info]` state, or empty for a bare option.
+    pub state: String,
+    /// Whether it has no `metadata.ini`.
+    pub bare: bool,
+}
+
+/// Folders beside the model that are never bare options: the option store itself, and folders of textures.
+const NON_OPTION_FOLDERS: [&str; 4] = ["carparts", "textures", "skins", "carplate"];
+
+/// The model's option folders, sorted by folder name: the `carparts/` options with `metadata.ini`, else the
+/// bare folders beside the model holding `.ini` files (never both: a model with `carparts/` leaves its
+/// top-level preset folders alone).
+///
+/// Only the light ones matter for a night drive ([`night_options`]); the rest (mudflaps, plates, mirrors,
+/// wheels, bumpers) always stay as installed.
+pub fn model_options(model: &Path) -> Vec<ModelOption> {
+    let mut options: Vec<ModelOption> = cars::resolve(model, "carparts")
+        .and_then(|parts| std::fs::read_dir(parts).ok())
+        .into_iter()
+        .flatten()
+        .filter_map(|e| Some(e.ok()?.path()))
+        .filter(|dir| dir.is_dir() && cars::resolve(dir, "metadata.ini").is_some())
+        .filter_map(|dir| option_info(&dir).map(|(name, state)| ModelOption { dir, name, state, bare: false }))
+        .collect();
+    if !options.is_empty() {
+        options.sort_by(|a, b| a.dir.cmp(&b.dir));
+        return options;
+    }
+    let mut bare: Vec<ModelOption> = std::fs::read_dir(model)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| Some(e.ok()?.path()))
+        .filter(|dir| {
+            dir.is_dir()
+                && dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| !NON_OPTION_FOLDERS.iter().any(|x| n.eq_ignore_ascii_case(x)))
+                && has_ini_files(dir)
+        })
+        .map(|dir| ModelOption {
+            name: dir.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned(),
+            dir,
+            state: String::new(),
+            bare: true,
+        })
+        .collect();
+    bare.sort_by(|a, b| a.dir.cmp(&b.dir));
+    bare
+}
+
+/// Whether `dir` holds `.ini` files directly below it.
+fn has_ini_files(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|entries| {
+        entries
+            .filter_map(Result::ok)
+            .any(|e| e.file_name().to_str().is_some_and(|n| n.to_lowercase().ends_with(".ini")))
+    })
+}
+
+/// Whether the option group `name` is a front light (`Headlights`, `Extralights`, `Bonnet extralights`,
+/// `Bumper lights`, `Safari lights`, `Foglights`, `Winglights`, ...). Rear and brake lights stay as installed.
+fn is_light_group(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name.contains("light") && !["rear", "brake", "tail"].iter().any(|w| name.contains(w))
+}
+
+/// The night pick from bare option folders (no `metadata.ini` to group by): the folder with an `on`
+/// token and no `off` one, preferring the one packing extra lights (`lights on (with extralights)` over
+/// `lights on`).
+fn pick_bare(bare: &[ModelOption], pick: &mut NightPick) {
+    let light: Vec<&ModelOption> = bare.iter().filter(|o| is_light_group(&o.name)).collect();
+    let on: Vec<&ModelOption> =
+        light.iter().filter(|o| folder_has_word(&o.name, "on") && !folder_has_word(&o.name, "off")).copied().collect();
+    if on.len() == 1 {
+        pick.headlights.push(on[0].dir.clone());
+    } else if on.len() > 1 {
+        let full: Vec<&&ModelOption> = on
+            .iter()
+            .filter(|o| {
+                ["extra", "pod", "ramp", "all", "bonnet", "bumper"].iter().any(|w| o.name.to_lowercase().contains(w))
+            })
+            .collect();
+        if full.len() == 1 {
+            pick.headlights.push(full[0].dir.clone());
+        } else {
+            let names: Vec<&str> = on.iter().map(|o| option_folder(o)).collect();
+            pick.veto = Some(format!("bare options: on variants disagree ({})", names.join(", ")));
+        }
+    } else if !light.is_empty() {
+        pick.skipped.push("bare options: no on variant".to_owned());
+    }
+}
+
+/// An option's folder name.
+fn option_folder(option: &ModelOption) -> &str {
+    option.dir.file_name().and_then(|n| n.to_str()).unwrap_or_default()
+}
+
+/// Whether `text` holds `word` as a whole word (letters only, ignoring ASCII case): `on` in `All on` and
+/// `on+`, but not in `bonnet` or `Not mounted`.
+fn has_word(text: &str, word: &str) -> bool {
+    text.split(|c: char| !c.is_ascii_alphabetic()).any(|w| w.eq_ignore_ascii_case(word))
+}
+
+/// Whether the folder name holds `word` as a whole token (letters and digits, ignoring ASCII case): `on` in
+/// `headlights_on` and `lights on (with extralights)`, but not in `bonnet` or `bumperon`.
+fn folder_has_word(folder: &str, word: &str) -> bool {
+    folder.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w.eq_ignore_ascii_case(word))
+}
+
+/// The light options a night drive applies to the model in `model`: the switched-on option of each light
+/// group (headlights on, plus extra lights and light pods where the car has them), in the order applied.
+/// A stage by day, or a vetoed car, keeps the installed parts.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NightPick {
+    /// The selected "on" option of the headlights group, if any (never more than one).
+    pub headlights: Vec<PathBuf>,
+    /// The selected "on" options of the other light groups (extra lights, pods), sorted.
+    pub extras: Vec<PathBuf>,
+    /// Light groups left as installed, each with why (no on variant, or not an on/off group).
+    pub skipped: Vec<String>,
+    /// Why the installed parts are kept for the whole car instead, when they are: a light option is
+    /// ambiguous (several on variants, none the plain or full one), or two selected options disagree.
+    pub veto: Option<String>,
+}
+
+impl NightPick {
+    /// Every selected option folder, headlights first.
+    pub fn options(&self) -> Vec<PathBuf> {
+        self.headlights.iter().chain(&self.extras).cloned().collect()
+    }
+}
+
+/// The model's [`NightPick`]: one "on" option per light group of [`model_options`]. Mudflaps, plates,
+/// mirrors, wheels, bumpers and any other group stay as installed and are never picked.
+///
+/// A group with several on variants takes the full one (`All on`, `Mounted, all on`, `Full`); a bare `On`
+/// over a qualified one (`On` over `On (Safari)`); a headlights group the high beam (`highbeam`, `On, high
+/// beam`, the headlight key's default). Anything still tied vetoes the car, as does a group whose folder
+/// names both claim `on`.
+pub fn night_options(model: &Path) -> NightPick {
+    let (bare, meta): (Vec<ModelOption>, Vec<ModelOption>) = model_options(model).into_iter().partition(|o| o.bare);
+    let mut pick = NightPick::default();
+    if !bare.is_empty() {
+        pick_bare(&bare, &mut pick);
+        if pick.veto.is_some() {
+            pick.headlights.clear();
+        }
+        return pick;
+    }
+    let mut groups: BTreeMap<String, Vec<ModelOption>> = BTreeMap::new();
+    for option in meta.into_iter().filter(|o| is_light_group(&o.name)) {
+        groups.entry(option.name.to_lowercase()).or_default().push(option);
+    }
+    let mut selected: Vec<(&String, &ModelOption)> = Vec::new();
+    for (group, options) in &groups {
+        // The on candidates: the `on` states, else the folders claiming `on` of an on/off group.
+        let mut candidates: Vec<&ModelOption> = options.iter().filter(|o| has_word(&o.state, "on")).collect();
+        if candidates.is_empty() {
+            if !options.iter().any(|o| has_word(&o.state, "off")) {
+                pick.skipped.push(format!("{group}: not an on/off group"));
+                continue;
+            }
+            candidates = options
+                .iter()
+                .filter(|o| {
+                    let folder = option_folder(o);
+                    folder_has_word(folder, "on") && !folder_has_word(folder, "off")
+                })
+                .collect();
+            if candidates.is_empty() {
+                pick.skipped.push(format!("{group}: no on variant"));
+                continue;
+            }
+        }
+        if candidates.len() == 1 {
+            selected.push((group, candidates[0]));
+            continue;
+        }
+        let all: Vec<&&ModelOption> = candidates
+            .iter()
+            .filter(|o| o.state.to_lowercase().contains("all") || has_word(&o.state, "full"))
+            .collect();
+        let bare: Vec<&&ModelOption> = candidates.iter().filter(|o| o.state.to_lowercase() == "on").collect();
+        let high: Vec<&&ModelOption> = if group.contains("head") && all.is_empty() && bare.is_empty() {
+            candidates
+                .iter()
+                .filter(|o| option_folder(o).to_lowercase().contains("high") || o.state.to_lowercase().contains("high"))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if all.len() == 1 {
+            selected.push((group, all[0]));
+        } else if bare.len() == 1 && all.is_empty() {
+            selected.push((group, bare[0]));
+        } else if high.len() == 1 {
+            selected.push((group, high[0]));
+        } else {
+            let names: Vec<&str> = candidates.iter().map(|o| option_folder(o)).collect();
+            pick.veto = Some(format!("carparts {group}: on variants disagree ({})", names.join(", ")));
+            return pick;
+        }
+    }
+    for (group, option) in selected {
+        if group.contains("head") {
+            pick.headlights.push(option.dir.clone());
+        } else {
+            pick.extras.push(option.dir.clone());
+        }
+    }
+    pick.extras.sort();
+    pick
+}
+
+/// An option folder's files: its `<model>.ini` and `<model>_settings.ini` replacements, as RSF's picker
+/// takes them over the model's (in memory only; never written).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptionFiles {
+    /// The option's folder.
+    pub dir: PathBuf,
+    /// Its `<model>.ini` replacement's sections (empty without one).
+    pub parts: Vec<Section>,
+    /// Its `<model>_settings.ini` replacement's sections (empty without one).
+    pub settings: Vec<Section>,
+}
+
+/// The `.ini` replacements of option folder `dir`: the single non-settings `.ini` (not `metadata.ini`) and
+/// the single `_settings.ini`.
+///
+/// Only the model's `.ini` and `_settings.ini` are ever replaced: option folders hold nothing else
+/// (`tests` assert every installed option file is one of those, a preview picture or `metadata.ini`).
+pub fn read_option_files(dir: &Path) -> Result<OptionFiles, String> {
+    let mut inis: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file() && p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.to_lowercase().ends_with(".ini"))
+        })
+        .collect();
+    inis.sort();
+    inis.retain(|p| p.file_name().and_then(|n| n.to_str()).is_none_or(|n| !n.eq_ignore_ascii_case("metadata.ini")));
+    let (settings, parts): (Vec<PathBuf>, Vec<PathBuf>) = inis
+        .into_iter()
+        .partition(|p| p.file_stem().and_then(|s| s.to_str()).is_some_and(|s| s.to_lowercase().ends_with("_settings")));
+    let one = |mut paths: Vec<PathBuf>, what: &str| -> Result<Option<PathBuf>, String> {
+        if paths.len() > 1 {
+            return Err(format!("{}: several {what} ({}))", dir.display(), paths.len()));
+        }
+        Ok(paths.pop())
+    };
+    let (settings, parts) = (one(settings, "_settings.ini")?, one(parts, "model .ini")?);
+    let read = |path: Option<PathBuf>| -> Result<Vec<Section>, String> {
+        path.map(|path| {
+            std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display())).and_then(|text| {
+                crate::ini::parse(&String::from_utf8_lossy(&text)).map_err(|e| format!("{}: {e}", path.display()))
+            })
+        })
+        .transpose()
+        .map(|sections| sections.unwrap_or_default())
+    };
+    Ok(OptionFiles { dir: dir.to_owned(), parts: read(parts)?, settings: read(settings)? })
+}
+
+/// A value with its whitespace runs collapsed, for comparing sections across an option's formatting.
+fn collapsed(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Whether two sections hold the same entries: same keys (ignoring ASCII case) with the same values
+/// (whitespace runs collapsed), whatever their order.
+fn same_entries(a: &Section, b: &Section) -> bool {
+    let entries = |s: &Section| {
+        let mut entries: Vec<(String, String)> =
+            s.entries.iter().map(|(k, v)| (k.to_lowercase(), collapsed(v))).collect();
+        entries.sort();
+        entries
+    };
+    entries(a) == entries(b)
+}
+
+/// The sections of `over` (an option's file) over `base` (the model's): matching names (ignoring ASCII
+/// case) merged key by key, new sections appended. Sections an option repeats unchanged keep the model's
+/// text, so a stale formatting never spreads.
+pub fn overlay_sections(base: &[Section], over: &[Section]) -> Vec<Section> {
+    let mut merged: Vec<Section> = base.to_vec();
+    for section in over {
+        match merged.iter_mut().find(|s| s.name.eq_ignore_ascii_case(&section.name)) {
+            Some(base) if same_entries(base, section) => {}
+            Some(base) => {
+                for (key, value) in &section.entries {
+                    match base.entries.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(key)) {
+                        Some(entry) => entry.1 = value.clone(),
+                        None => base.entries.push((key.clone(), value.clone())),
+                    }
+                }
+            }
+            None => merged.push(section.clone()),
+        }
+    }
+    merged
+}
+
+/// Whether the extra option's lamp points are all already in `merged_parts` unchanged: then it only
+/// renumbers the headlights' lamps (the Fiesta Rally3's `extralights_on` over its `Lights_on`) and is
+/// redundant.
+fn adds_no_points(merged_parts: &[Section], extra: &OptionFiles) -> bool {
+    extra
+        .parts
+        .iter()
+        .filter(|s| s.name.to_lowercase().starts_with("point_"))
+        .all(|s| crate::car_parts::section(merged_parts, &s.name).is_some_and(|have| same_entries(have, s)))
+}
+
+/// `option`'s sections over `parts` and `settings`, recording whose value each section key holds in
+/// `seen`: two options setting the same key differently disagree.
+fn overlay_checked(
+    parts: &mut Vec<Section>,
+    settings: &mut Vec<Section>,
+    option: &OptionFiles,
+    seen: &mut BTreeMap<(String, String), (String, PathBuf)>,
+) -> Result<(), String> {
+    for (target, sections) in [(parts, &option.parts), (settings, &option.settings)] {
+        for section in sections {
+            for (key, value) in &section.entries {
+                let at = (section.name.to_lowercase(), key.to_lowercase());
+                if let Some((have, from)) = seen.get(&at) {
+                    if collapsed(have) != collapsed(value) {
+                        return Err(format!(
+                            "{} and {} disagree on [{}] {}",
+                            from.display(),
+                            option.dir.display(),
+                            section.name,
+                            key
+                        ));
+                    }
+                } else {
+                    seen.insert(at, (value.clone(), option.dir.clone()));
+                }
+            }
+        }
+        *target = overlay_sections(target, sections);
+    }
+    Ok(())
+}
+
+/// The model's `.ini` and `_settings.ini` with `options` (of [`night_options`], in order) over them. Two
+/// selected options setting the same section's key differently disagree: the installed parts are kept and
+/// why is returned.
+pub fn merge_options(
+    base_parts: &[Section],
+    base_settings: &[Section],
+    options: &[OptionFiles],
+) -> Result<(Vec<Section>, Vec<Section>), String> {
+    let mut parts = base_parts.to_vec();
+    let mut settings = base_settings.to_vec();
+    let mut seen: BTreeMap<(String, String), (String, PathBuf)> = BTreeMap::new();
+    for option in options {
+        overlay_checked(&mut parts, &mut settings, option, &mut seen)?;
+    }
+    Ok((parts, settings))
+}
+
+/// The model's `.ini` and `_settings.ini` with a [`NightPick`] over them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MergedNight {
+    /// The merged `.ini` sections.
+    pub parts: Vec<Section>,
+    /// The merged `_settings.ini` sections.
+    pub settings: Vec<Section>,
+    /// Extras left out as redundant with the headlights, each with why.
+    pub skipped: Vec<String>,
+}
+
+/// The model's `.ini` and `_settings.ini` with the [`NightPick`] over them: the headlights' option, then
+/// each extra. An extra disagreeing with the headlights that adds no lamp point of its own only renumbers
+/// them and is left out (returned, with why); any other disagreement keeps the installed parts.
+pub fn merge_night_options(
+    base_parts: &[Section],
+    base_settings: &[Section],
+    headlights: &[OptionFiles],
+    extras: &[OptionFiles],
+) -> Result<MergedNight, String> {
+    let (mut parts, mut settings) = merge_options(base_parts, base_settings, headlights)?;
+    let mut seen: BTreeMap<(String, String), (String, PathBuf)> = BTreeMap::new();
+    for option in headlights {
+        for sections in [&option.parts, &option.settings] {
+            for section in sections {
+                for (key, value) in &section.entries {
+                    seen.insert((section.name.to_lowercase(), key.to_lowercase()), (value.clone(), option.dir.clone()));
+                }
+            }
+        }
+    }
+    let mut skipped = Vec::new();
+    for extra in extras {
+        let mut trial_parts = parts.clone();
+        let mut trial_settings = settings.clone();
+        let mut trial_seen = seen.clone();
+        match overlay_checked(&mut trial_parts, &mut trial_settings, extra, &mut trial_seen) {
+            Ok(()) => {
+                (parts, settings, seen) = (trial_parts, trial_settings, trial_seen);
+            }
+            Err(conflict) if adds_no_points(&parts, extra) => {
+                skipped.push(format!("{}: {conflict}", extra.dir.display()));
+            }
+            Err(conflict) => return Err(conflict),
+        }
+    }
+    Ok(MergedNight { parts, settings, skipped })
+}
+
 /// The RSF-encrypted files under `dir`, counted by their first four bytes.
 fn encrypted_files(dir: &Path) -> usize {
     let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
@@ -373,5 +798,197 @@ mod tests {
             let found = headlights_on(&cars::resolve(&cars, model).unwrap()).unwrap();
             assert_eq!(found.file_name().unwrap(), on, "{model}");
         }
+    }
+
+    /// A fresh model folder for one test, with a file at each `(path, contents)` pair.
+    fn model_tree(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("car-options-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (path, contents) in files {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().expect("parent")).expect("dirs");
+            std::fs::write(file, contents).expect("write");
+        }
+        root
+    }
+
+    #[test]
+    fn overlay_merges_sections_key_by_key() {
+        let base = crate::ini::parse("[a]\r\nx = 1\r\ny = 2\r\n[b]\r\nz = 3\r\n").unwrap();
+        let over = crate::ini::parse("[A]\r\nX = 1\r\ny = 20\r\nw = 4\r\n[c]\r\nv = 5\r\n").unwrap();
+        let merged = overlay_sections(&base, &over);
+        assert_eq!(merged.len(), 3);
+        // Unchanged sections keep the model's text; changed ones take the option's keys.
+        let a = crate::car_parts::section(&merged, "a").unwrap();
+        assert_eq!(
+            a.entries,
+            [("x".to_owned(), "1".to_owned()), ("y".to_owned(), "20".to_owned()), ("w".to_owned(), "4".to_owned())]
+        );
+        assert_eq!(merged[1].name, "b");
+        assert_eq!(crate::car_parts::section(&merged, "c").unwrap().entries.len(), 1);
+        // Whitespace-only differences are no change.
+        let spaced = crate::ini::parse("[a]\r\nx=1\r\ny=2\r\n").unwrap();
+        assert_eq!(overlay_sections(&base, &spaced)[0].entries, base[0].entries);
+    }
+
+    #[test]
+    fn merge_options_rejects_disagreeing_options() {
+        let base: Vec<Section> = Vec::new();
+        let a = |entries: &[(&str, &str)]| Section {
+            name: "e_light_lf".to_owned(),
+            entries: entries.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        };
+        let one =
+            OptionFiles { dir: PathBuf::from("one"), parts: vec![a(&[("Predicate", "on")])], settings: Vec::new() };
+        let same =
+            OptionFiles { dir: PathBuf::from("two"), parts: vec![a(&[("Predicate", "on")])], settings: Vec::new() };
+        assert!(merge_options(&base, &base, &[one.clone(), same]).is_ok());
+        let other =
+            OptionFiles { dir: PathBuf::from("two"), parts: vec![a(&[("Predicate", "off")])], settings: Vec::new() };
+        assert!(merge_options(&base, &base, &[one, other]).is_err());
+    }
+
+    #[test]
+    fn bare_options_pick_the_on_folder() {
+        let root = model_tree(
+            "bare",
+            &[("light_on/light.ini", "[a]\r\nx = 1\r\n"), ("light_off/light.ini", "[a]\r\nx = 2\r\n")],
+        );
+        let pick = night_options(&root);
+        assert_eq!(pick.veto, None);
+        assert_eq!(pick.options().len(), 1);
+        assert!(pick.options()[0].ends_with("light_on"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Every installed option file of `RBR_RSF` (an RSF install, or the samples) parses, holds only visual
+    /// files, and merges over its model; every installed car without options needs none.
+    #[test]
+    fn night_options_cover_every_installed_car() {
+        let Some(root) = std::env::var_os("RBR_RSF") else {
+            eprintln!("skipping: RBR_RSF not set");
+            return;
+        };
+        let cars = cars::resolve(Path::new(&root), "Cars").unwrap();
+        // The expected "on" options (folder names) of models with an unambiguous night setup, and the
+        // models that keep their installed parts (genuinely ambiguous on variants).
+        let expected: &[(&str, &[&str])] = &[
+            ("FORD_FOCUS_2006", &["lights_on", "lights_on_extralights"]),
+            ("fiesta_wrc_19", &["headlights_on", "bonnet_extralights_on", "bumper_extralights_on"]),
+            ("delta_4wd", &["lights_on_all", "extralights_on"]),
+            ("ESCORT_COSWORTH_GRA", &["lights_on", "bonnet_extralights_on", "bumper_extralights_on"]),
+            ("bmw_m3_e30", &["Lights_On", "bumperextralights_ON"]),
+            ("evo_IX", &["light_on", "extralights_on"]),
+            ("Fiesta_rally3", &["Lights_on", "extralights_on"]),
+            ("fiesta_rally3_evo", &["light_on"]),
+            ("OPEL_MANTA_400", &["headlights_highbeam", "extralights_on"]),
+            ("YARIS_WRC18", &["light_on", "light_on_all", "light_on_bonnet"]),
+            ("vw_golf_86", &["light_on_full", "light_on_ramp"]),
+        ];
+        let vetoed: &[&str] = &["Volvo242LE", "AUDI_QUATTRO_A1_GrpB", "AUDI_QUATTRO_A2_GrpB"];
+        let mut models = 0;
+        let mut with_night = 0;
+        for model in std::fs::read_dir(&cars).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir()) {
+            let name = model.file_name().unwrap().to_str().unwrap().to_owned();
+            let options = model_options(&model);
+            for option in &options {
+                // Option folders hold the replacements, their metadata and a preview picture: visual only,
+                // never physics (no `.lsp`) or textures.
+                for file in std::fs::read_dir(&option.dir).unwrap().map(|e| e.unwrap().path()) {
+                    let name = file.file_name().unwrap().to_str().unwrap().to_lowercase();
+                    assert!(
+                        name.ends_with(".ini") || name.ends_with(".jpg") || name.ends_with(".png"),
+                        "{}",
+                        file.display()
+                    );
+                }
+                // Some options are guides with no replacement files (`animalguard_guide`).
+                let files = read_option_files(&option.dir).unwrap();
+                if files.parts.is_empty() && files.settings.is_empty() {
+                    eprintln!("{}: option with no .ini", option.dir.display());
+                }
+            }
+            let pick = night_options(&model);
+            let names: Vec<String> =
+                pick.options().iter().map(|p| p.file_name().unwrap().to_str().unwrap().to_owned()).collect();
+            if let Some((_, want)) = expected.iter().find(|(m, _)| m == &name) {
+                assert_eq!(names, *want, "{name}");
+                with_night += 1;
+            } else if vetoed.contains(&name.as_str()) {
+                assert!(pick.veto.is_some(), "{name}: expected a veto");
+            } else if !options.is_empty() {
+                with_night += usize::from(!pick.options().is_empty());
+            }
+            if !pick.options().is_empty() || pick.veto.is_some() || !pick.skipped.is_empty() {
+                eprintln!(
+                    "{name}: night {}{}{}",
+                    pick.options()
+                        .iter()
+                        .map(|p| p.file_name().unwrap().to_str().unwrap().to_owned())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    pick.veto.as_deref().map(|v| format!(" veto: {v}")).unwrap_or_default(),
+                    if pick.skipped.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" skipped: {}", pick.skipped.join("; "))
+                    }
+                );
+            }
+            // The selection merges over the model without disagreeing.
+            if !pick.options().is_empty() {
+                let stem =
+                    std::fs::read_dir(&model).unwrap().filter_map(Result::ok).map(|e| e.path()).find(|p| {
+                        p.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("sgc"))
+                    });
+                let (base_parts, base_settings) = stem
+                    .map(|sgc| {
+                        let stem = sgc.file_stem().unwrap().to_str().unwrap().to_owned();
+                        let read = |suffix: &str| {
+                            cars::resolve(&model, &format!("{stem}{suffix}"))
+                                .and_then(|p| std::fs::read(p).ok())
+                                .and_then(|text| crate::ini::parse(&String::from_utf8_lossy(&text)).ok())
+                                .unwrap_or_default()
+                        };
+                        (read(".ini"), read("_settings.ini"))
+                    })
+                    .unwrap_or_default();
+                let heads: Vec<OptionFiles> =
+                    pick.headlights.iter().map(|dir| read_option_files(dir).unwrap()).collect();
+                let extras: Vec<OptionFiles> = pick.extras.iter().map(|dir| read_option_files(dir).unwrap()).collect();
+                let merged = merge_night_options(&base_parts, &base_settings, &heads, &extras)
+                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+                // The Rally3's extras only renumber the headlights' pods: left out, reported.
+                if name == "Fiesta_rally3" {
+                    assert!(merged.skipped.iter().any(|s| s.contains("extralights_on")), "{:?}", merged.skipped);
+                }
+            }
+            models += 1;
+        }
+        assert!(models > 0, "no car models under {}", cars.display());
+        eprintln!("{models} installed models, {with_night} checked with a night option");
+        // Every model the install has options for is either expected above or merges cleanly.
+        for (model, want) in expected {
+            assert!(cars::resolve(&cars, model).is_some(), "{model}: not installed");
+            let _ = want;
+        }
+    }
+
+    /// Retail cars carry no option folders and need no night option.
+    #[test]
+    fn retail_cars_have_no_options() {
+        let Some(data) = Data::from_env() else {
+            eprintln!("skipping: RBR_DATA not set");
+            return;
+        };
+        let mut models = 0;
+        for model in
+            std::fs::read_dir(data.install().join("Cars")).unwrap().map(|e| e.unwrap().path()).filter(|p| p.is_dir())
+        {
+            assert_eq!(model_options(&model), Vec::new(), "{}", model.display());
+            assert_eq!(night_options(&model), NightPick::default(), "{}", model.display());
+            models += 1;
+        }
+        assert!(models > 0, "no retail cars");
     }
 }
