@@ -114,8 +114,6 @@ pub struct RallyPage {
     pub run: Option<SeasonRun>,
     pub championship: Option<Championship>,
     pub park: Option<ServicePark>,
-    /// `MSG_NOREP` is up: "Repair!" without orders.
-    forfeit_asked: bool,
     /// Message 0x31 (`MSG_CRECCE`) is up: the rally's start with the recce day next ([`events::recce_next`]).
     recce_asked: bool,
     /// The English string table (`bstrings.eng`), for the park's texts.
@@ -160,7 +158,6 @@ impl RallyPage {
             run: None,
             championship: None,
             park: None,
-            forfeit_asked: false,
             recce_asked: false,
             strings: rbr_formats::strings::english(data).ok(),
             rand: CrtRand(1),
@@ -591,9 +588,22 @@ impl RallyPage {
                 };
                 let crew = crew.unwrap_or_default();
                 self.park = Some(ServicePark::open(stop.kind, &parts, crew, rules, &mut self.rand, damage));
-                self.forfeit_asked = false;
             }
             Err(e) => self.status = format!("repairs: {e}"),
+        }
+    }
+
+    /// The park's primary button: Repair! with orders starts the repairs; without, Leave service closes the park
+    /// unrepaired (`forfeit`, as the game's `MSG_NOREP` Yes; ours: not asked) and returns its penalty and the car.
+    fn park_go(&mut self) -> Option<(f32, CarriedDamage)> {
+        let park = self.park.as_mut()?;
+        if park.start() {
+            return None;
+        }
+        park.forfeit();
+        match park.state {
+            ParkState::Closed { penalty, .. } => Some((penalty, park.damage.clone())),
+            _ => None,
         }
     }
 
@@ -923,6 +933,50 @@ mod tests {
         let start = page.stage_start(&here, 2).unwrap();
         assert_eq!((start.tyre, start.setup), (choices[2 % choices.len()], SeasonSetup::Current));
         assert_eq!(std::fs::read(&carried).unwrap(), worn2.to_bytes());
+        let _ = std::fs::remove_dir_all(&here);
+    }
+
+    /// The park's primary button: with a part ticked it starts the repairs; with none it leaves at once, the car
+    /// unrepaired (the service's refresh run) and no penalty in time, and the season goes on to the next stage.
+    #[test]
+    fn leave_service_without_orders_goes_on_to_the_next_stage() {
+        let Some(data) = Data::from_env() else { return };
+        let table = Season::load(&data).unwrap();
+        let here = crate::test_dir("rally-leave-service");
+        let mut page = RallyPage::new(&data);
+        page.team = 5;
+        page.new_season(&table, None, 1234);
+        page.start_rally();
+        let car = Car { slot: page.season_car().unwrap(), ..Car::default() };
+        let mut hit = CarriedDamage::default();
+        let parts = service::repair_parts(&data, car.slot as usize).unwrap();
+        for p in &parts {
+            rbr_gameplay::car_damage::repair(&mut hit, p.physics_id as u32);
+        }
+        hit.set(0x3A90, 0); // part 31 lost
+        page.stage_start(&here, 0).unwrap();
+        drive(&here, &hit, 300.0);
+        page.stage_closed(&here);
+        assert!(matches!(page.run.as_ref().unwrap().turn, Turn::Service { .. }));
+        page.open_park(&data, &car, None);
+
+        // A part ticked: the repairs start and the park stays open.
+        let park = page.park.as_mut().unwrap();
+        let row = park.rows()[0];
+        park.toggle(row);
+        assert_eq!(page.park_go(), None);
+        assert_eq!(page.park.as_ref().unwrap().state, ParkState::Repairing);
+
+        // None ticked: the park closes at once with the car as it was.
+        page.open_park(&data, &car, None);
+        assert!(page.park.as_ref().unwrap().orders.is_empty());
+        let (penalty, damage) = page.park_go().unwrap();
+        let mut want = hit.clone();
+        want.service_refresh();
+        assert_eq!((penalty, &damage), (0.0, &want));
+        assert_ne!(rbr_gameplay::car_damage::severity(&damage, 31), 0);
+        page.service_done(penalty, damage);
+        assert_eq!(page.run.as_ref().unwrap().turn, Turn::Stage(1));
         let _ = std::fs::remove_dir_all(&here);
     }
 

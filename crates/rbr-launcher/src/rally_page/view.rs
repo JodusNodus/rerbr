@@ -715,16 +715,15 @@ impl RallyPage {
     }
 
     /// The park, as `CSelectPartsUI` and the timer show it: the allowed and estimated times, the damaged parts to
-    /// order, the manager's advice, Repair! (with no orders, `MSG_NOREP` asks to leave), selecting during the repairs
-    /// to finish them now, and the closing message. Returns the penalty and the car when closed and confirmed.
+    /// order, the manager's advice, Repair! (with no orders Leave service, without the game's `MSG_NOREP` question),
+    /// selecting during the repairs to finish them now, and the closing message. Returns the penalty and the car when
+    /// closed and confirmed, or at once on Leave service.
     fn park_ui(&mut self, ui: &mut Ui, next: usize, request: &mut Option<Request>) -> Option<(f32, CarriedDamage)> {
         let park = self.park.as_mut()?;
         let strings = self.strings.as_ref();
         let text = |key: &str| text_of(strings, key);
         let dt = ui.input(|i| i.stable_dt).min(0.1);
-        if !self.forfeit_asked {
-            park.tick(dt);
-        }
+        park.tick(dt);
         if !matches!(park.state, ParkState::Closed { .. }) {
             ui.ctx().request_repaint();
         }
@@ -743,12 +742,12 @@ impl RallyPage {
             ui.colored_label(BAD, "The orders take longer than the time left: expect a late penalty.");
         }
         ui.add_space(6.0);
-        let choosing = park.state == ParkState::Choosing && !self.forfeit_asked;
+        let choosing = park.state == ParkState::Choosing;
         let rows = park.rows();
         if rows.is_empty() {
             ui.colored_label(GREY, "Nothing is damaged.");
         } else if choosing {
-            ui.colored_label(GREY, "Tick the parts to repair, then Repair!");
+            ui.colored_label(GREY, "Tick the parts to repair. With none ticked, the car leaves as it is.");
         }
         egui::Grid::new("park-parts").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
             if !rows.is_empty() {
@@ -775,25 +774,11 @@ impl RallyPage {
             }
         });
         ui.add_space(10.0);
-        let mut done = None;
-        if self.forfeit_asked {
-            ui.label(text("MSG_NOREP"));
-            ui.horizontal(|ui| {
-                if ui.button(text("YES")).clicked() {
-                    park.forfeit();
-                    self.forfeit_asked = false;
-                }
-                if ui.button(text("NO")).clicked() {
-                    self.forfeit_asked = false;
-                }
-            });
-            return None;
-        }
+        let (mut done, mut go) = (None, false);
         ui.horizontal(|ui| match park.state {
             ParkState::Choosing => {
-                if ui.add(start_button(&text("SP_REPAIR"))).clicked() && !park.start() {
-                    self.forfeit_asked = true;
-                }
+                let label = if park.orders.is_empty() { "Leave service".to_owned() } else { text("SP_REPAIR") };
+                go = ui.add(start_button(&label)).clicked();
                 if ui.button(text("SP_MANADV")).on_hover_text("Order what the team manager would").clicked() {
                     park.manager_advice();
                 }
@@ -819,6 +804,9 @@ impl RallyPage {
                 });
             }
         });
+        if go {
+            done = self.park_go();
+        }
         done
     }
 }
