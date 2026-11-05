@@ -59,8 +59,8 @@ pub enum Damage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Skill {
     Rookie,
-    Amateur,
     Professional,
+    Champion,
 }
 
 /// A stage the itinerary can use: the launcher's catalog fills these from the installed stages.

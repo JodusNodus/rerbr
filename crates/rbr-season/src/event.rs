@@ -1280,8 +1280,8 @@ fn skill_save(skill: crate::config::Skill) -> &'static str {
     use crate::config::Skill;
     match skill {
         Skill::Rookie => "rookie",
-        Skill::Amateur => "amateur",
         Skill::Professional => "professional",
+        Skill::Champion => "champion",
     }
 }
 
@@ -1289,8 +1289,8 @@ fn skill_load(text: &str) -> Result<crate::config::Skill, String> {
     use crate::config::Skill;
     match text {
         "rookie" => Ok(Skill::Rookie),
-        "amateur" => Ok(Skill::Amateur),
         "professional" => Ok(Skill::Professional),
+        "champion" => Ok(Skill::Champion),
         _ => Err("bad skill".to_owned()),
     }
 }
