@@ -181,6 +181,10 @@ captions above credit the car models and the community stages shown.
 - Water sounds: recordings by [EverydaySounds](https://freesound.org/people/EverydaySounds/sounds/268625/) and
   [Breviceps](https://freesound.org/people/Breviceps/sounds/462862/) on Freesound (CC0;
   [`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
+- Verge sounds: recordings by [Nox_Sound](https://freesound.org/people/Nox_Sound/sounds/559082/),
+  [kyles](https://freesound.org/people/kyles/sounds/637547/) and worthahep88
+  ([1](https://freesound.org/people/worthahep88/sounds/319208/), [2](https://freesound.org/people/worthahep88/sounds/319215/))
+  on Freesound (CC0; [`crates/rbr-sound/sounds/CREDITS.md`](crates/rbr-sound/sounds/CREDITS.md)).
 
 ## License
 
