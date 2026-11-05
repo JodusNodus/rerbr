@@ -306,9 +306,13 @@ pub(crate) fn cascades(view_projection: Mat4, sun: Vec3, quality: Quality) -> (C
 /// reach (`texel_filter`, 2.5) and the lookup's offset along the normal (1.5).
 const HELD_MARGIN: f32 = 4.0;
 
-/// What the second and third cascades were last drawn with (ours): each is drawn every other frame, in turn, and on
-/// the frame between the frame reads it through the matrix it was drawn with, while that still holds the view's
-/// slice; the first cascade (the car's surroundings, the characters near it) is drawn every frame.
+/// Each cascade is drawn on the frames whose number is the second modulo the first ([`CascadesDrawn`]): the first
+/// (the car's surroundings, the characters near it) every frame, the second every other frame, the third every fourth
+/// between the second's.
+const TURNS: [(u64, u64); 3] = [(1, 0), (2, 0), (4, 1)];
+
+/// What the cascades were last drawn with (ours): each is drawn on its turns ([`TURNS`]), and between them the frame
+/// reads it through the matrix it was drawn with, while that still holds the view's slice.
 #[derive(Debug, Default)]
 pub(crate) struct CascadesDrawn {
     held: [Option<HeldCascade>; 3],
@@ -331,7 +335,8 @@ impl CascadesDrawn {
         self.frame = frame.wrapping_add(1);
         let inside = 1.0 - 2.0 * HELD_MARGIN / quality.size as f32;
         std::array::from_fn(|i| {
-            let turn = i == 0 || (frame + i as u64).is_multiple_of(2);
+            let (every, phase) = TURNS[i];
+            let turn = frame % every == phase;
             let kept = self.held[i].filter(|held| {
                 !turn
                     && held.light == light
@@ -489,9 +494,12 @@ mod tests {
             drawn.due(&mut made, &slices, sun, quality)
         };
         assert_eq!(due(0.0), [true; 3]);
-        // A step of 20 cm: each outer cascade is kept on the frame between its turns.
-        assert_eq!(due(0.2), [true, true, false]);
-        assert_eq!(due(0.4), [true, false, true]);
+        // Steps of 20 cm: the outer cascades are kept between their turns.
+        assert_eq!(due(0.2), [true, false, true]);
+        assert_eq!(due(0.4), [true, true, false]);
+        assert_eq!(due(0.6), [true, false, false]);
+        assert_eq!(due(0.8), [true, true, false]);
+        assert_eq!(due(1.0), [true, false, true]);
         // A cut to another place: all of them again.
         assert_eq!(due(300.0), [true; 3]);
     }
