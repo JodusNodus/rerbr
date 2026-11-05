@@ -628,7 +628,8 @@ splash never shows on a wet stage.
   and a 0.75 far veil (dimmed gab-lit's far more than the 532 plume, so it stays a bright tan body).
 - No spray in the cabin (2026-11-01, `fs_soft`): in the in-car views the soft particles fade inside the cabin reach
   (2 to 2.5 m from the eye) as the rain does; the wheels' spray showed through the GC8's footwell gaps (52 rain
-  cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical.
+  cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical. The eye sphere is now the
+  cabin mask (2026-11-05, below).
 - Dust colour from the stage's road (2026-11-01, `wheel_spray::dust::of_stage`; was a colour by the `PS_*.ini`
   region name, ours, neutral grey on 29 of 52 readable community variants and all MontBlanc and Arctic ones): the
   area-weighted linear mean of the drawn ground (textures, texture 1's blend, vertex tint) within 3 m of the driveline
@@ -643,6 +644,23 @@ splash never shows on a wet stage.
   playback's payloads but 0 to 1 in the game's, so spinning and sliding threw no extra dust live or in replays
   (El Condor: rubber at most 0.001 while the mass reached 50 sliding). The game's payloads now take the slip from the
   mass flow (`SLIP_MASS` read backwards); the reference shots build their payloads from the poses and keep the rubber.
+- Spray from the seat (2026-11-05). Diagnosis: the in-car views showed almost no own spray because none reached
+  their frustum, not because a view rule erased it (cockpit frames byte-identical with the cabin fade, `DUST_CLOSE`
+  and the wisp near fade off; bumper frames byte-identical with `--no-particles`, on gravel slides, hard braking,
+  wet and snow). Spray leaves the wheels inside the body's box and drag takes it behind the eye within 0.3 s.
+  Changes: `particles::cabin::CabinMask` (body box below the belt, eye − 0.25 m, from 0.5 m under the floor; room
+  box above it from 0.8 m ahead of the eye; 0.15 m soft edge; model frame from `car.bounds()` and the cockpit eye)
+  replaces the eye sphere in `fs_soft`, so spray outside the doors shows and the 52 GC8 footwell gaps stay clean.
+  Front-wheel pools from the patch's sideways slide (`front::slide`, 0.8-4 m/s): `Kick` dust and `Fling` stones
+  thrown out the slide's way, `Flurry` snow powder (also ploughed in snow); `Bow` drops over the bonnet from
+  standing water. The air about the car lags its speed by `front::WAKE_LAG` 0.8 s, so a braking car's dust, haze
+  and powder roll past it (`front::carried`). The front pools draw from their own `Rng` (`Simulation::emit_drawing`)
+  so the other pools stay byte-identical. Recorded drives seldom slide their fronts, so the side throws show mostly
+  in live play. Additions off byte-identical; effects pass 1080p cockpit, wet and dusty, within noise (0.3-0.4 ms
+  either way). Shots: rain Luceram GC8 cockpit RMSE 0.011 (bow drops), snow Sturec 208 chase 0.027 and Peklo Yaris
+  chase 0.016 (braking powder), dusty chases and fly-bys 0.001-0.009; 13 byte-identical. Mirrors draw the spray in
+  the flat game pipeline (`particles.draw`), not the soft pass. Bow drops hitting the windscreen would need a hook
+  into `glass/` spatter (not built).
 Soft-particle cost (2026-10-26, RX 9060 XT): the effects pass is fill-bound (Sipirkakim II `--at 15000`: 926
 quads, ~400 screens of coverage, 35 ms at 1440p, nearly all `fs_soft`; GPU clocks bimodal). Fixes, frames within
 2/255 of before (lamps' code out of the day's pipeline, fragments under 1/1000 alpha discarded, depth after the
