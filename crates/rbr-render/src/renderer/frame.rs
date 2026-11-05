@@ -80,11 +80,15 @@ impl Renderer {
         self.prepare_motion(view_projection);
         // At night the moon casts them (`sun_direction` is the moon's then).
         let (light, quality, eye) = (self.shadow_light(), self.sun_quality(), camera::eye(view_projection));
-        self.cascades = self.enhance.lighting.then(|| sun::cascades(view_projection, light, quality));
-        // The far layer is drawn again only once it no longer serves the eye ([`sun::FarDrawn::kept`]); until then
-        // the frame reads it through the matrix it was drawn with.
+        let made = self.enhance.lighting.then(|| sun::cascades(view_projection, light, quality));
+        self.cascades = made.map(|(cascades, _)| cascades);
+        // The second and third cascades are drawn in turn ([`sun::CascadesDrawn`]), the far layer again only once it
+        // no longer serves the eye ([`sun::FarDrawn::kept`]); until then the frame reads them through the matrix they
+        // were drawn with.
         let mut far = None;
-        if let Some(cascades) = &mut self.cascades {
+        let mut due = [true; 3];
+        if let (Some(cascades), Some((_, slices))) = (&mut self.cascades, &made) {
+            due = self.cascades_drawn.due(cascades, slices, light, quality);
             match self.far_drawn.filter(|drawn| drawn.kept(eye, light, quality)) {
                 Some(drawn) => (cascades.far, cascades.far_texel) = (drawn.matrix, drawn.texel),
                 None => {
@@ -161,7 +165,7 @@ impl Renderer {
             queue: &self.queue,
         });
         let drop = sun::backdrop_drop(self.shadow_light());
-        let layers = Layers { cascades: self.cascades, far, lamp: self.lamp_matrix, world, eye, drop };
+        let layers = Layers { cascades: self.cascades, due, far, lamp: self.lamp_matrix, world, eye, drop };
         let range = self.sun_range.as_ref().filter(|_| self.cascades.is_some());
         let device = &self.device;
         let stats = std::thread::scope(|scope| {

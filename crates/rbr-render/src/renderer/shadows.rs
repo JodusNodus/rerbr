@@ -125,8 +125,9 @@ pub(super) struct Casting<'a> {
 
 /// The sun's map's layers a frame draws ([`Casting::draw`]).
 pub(super) struct Layers {
-    /// The cascades ([`Renderer::cascades`]).
+    /// The cascades ([`Renderer::cascades`]), and which of them are drawn ([`crate::sun::CascadesDrawn`]).
     pub(super) cascades: Option<Cascades>,
+    pub(super) due: [bool; 3],
     /// The far layer, when it is due ([`crate::sun::FarDrawn`]).
     pub(super) far: Option<Mat4>,
     /// The headlights' map.
@@ -151,10 +152,11 @@ impl Casting<'_> {
         mut around: impl FnMut(&mut wgpu::CommandEncoder, &'static str, bool),
     ) {
         const CASCADES: [&str; 3] = ["sun cascade 1", "sun cascade 2", "sun cascade 3"];
-        let &Layers { cascades, far, lamp, world, eye, drop } = layers;
+        let &Layers { cascades, due, far, lamp, world, eye, drop } = layers;
         let mut drawn = Vec::new();
         if let Some(cascades) = cascades {
-            drawn.extend(cascades.matrices.iter().enumerate().map(|(i, &m)| (CASCADES[i], i, m, Some(eye), drop)));
+            let matrices = cascades.matrices.into_iter().enumerate().filter(|&(i, _)| due[i]);
+            drawn.extend(matrices.map(|(i, m)| (CASCADES[i], i, m, Some(eye), drop)));
         }
         drawn.extend(far.map(|m| ("sun far layer", crate::sun::FAR, m, Some(eye), drop)));
         drawn.extend(lamp.map(|m| ("lamp shadow", crate::sun::LAMP, m, Some(eye), Vec3::ZERO)));

@@ -566,6 +566,7 @@ impl Renderer {
             world: None,
             world_drawn: None,
             far_drawn: None,
+            cascades_drawn: Default::default(),
             time: 0.0,
             air_frame: 0,
             lamps: [LampUniform::default(); MAX_LAMPS],
