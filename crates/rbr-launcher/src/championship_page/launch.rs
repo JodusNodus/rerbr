@@ -106,7 +106,7 @@ impl Form {
 
     /// The stage and weather a championship stage runs on: the map's weather row with the road's wetness (the nearest one
     /// otherwise), and whether the road needs `--wetness` over the row's.
-    pub(crate) fn championship_weather(
+    fn championship_weather(
         &self,
         map: u32,
         conditions: Conditions,

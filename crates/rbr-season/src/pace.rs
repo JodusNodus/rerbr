@@ -142,7 +142,7 @@ pub fn driveline_points(trk: &DriveLineData) -> Vec<[f32; 3]> {
 }
 
 /// The points of `points` between `start` and `finish` (m along the line), with interpolated ends.
-pub fn timed_slice(points: &[[f32; 3]], start: f32, finish: f32) -> Vec<[f32; 3]> {
+fn timed_slice(points: &[[f32; 3]], start: f32, finish: f32) -> Vec<[f32; 3]> {
     if points.len() < 2 || finish <= start {
         return points.to_vec();
     }

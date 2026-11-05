@@ -9,7 +9,7 @@
 //! - **Schedule** (`E80Daemon` 0x5d3800, after the stage results): after the rally's first stage (index 0) and its third
 //!   (index 2) a kind-5 event (20 min); after index 3 a kind-6 one (40 min, `OSERVICE`, before the night: `Push10`
 //!   0x5cf6f0 then sets the season's clock to 08:00); none after 1, 4 and 5. The rally's start (0x5d4c90) gives the
-//!   player a kind-7 event (20 min) before the first stage. See [`service_before`].
+//!   player a kind-7 event (20 min) before the first stage.
 //! - **Parts** (`M5b16f0` 0x5b16f0 and `M0dc0` 0x5b0dc0): each node keeps the file's unmount and mount times (+0x38,
 //!   +0x3c) and draws its own from them with one CRT `rand()` each (+0x40, +0x44): `r = rand() / 32767 * 2`, then
 //!   `time - r * min` for `r <= 1`, else `time + (r - 1) * max`. All four are then scaled by the crew ([`Crew::scales`]).
@@ -81,16 +81,6 @@ impl ServiceKind {
             ServiceKind::Long => "OSERVICE",
             _ => "NSERVICE",
         }
-    }
-}
-
-/// The service before stage `index` of a six-stage rally (0x5d3800 and 0x5d4c90).
-pub fn service_before(index: usize) -> Option<ServiceKind> {
-    match index {
-        0 => Some(ServiceKind::Start),
-        1 | 3 => Some(ServiceKind::Short),
-        4 => Some(ServiceKind::Long),
-        _ => None,
     }
 }
 
@@ -223,7 +213,7 @@ pub struct ServicePark {
 }
 
 /// The clock's rate during the repairs (`0x72f42c`).
-pub const REPAIR_RATE: f32 = 30.0;
+const REPAIR_RATE: f32 = 30.0;
 /// `M5b19c0`'s bound: the manager drops only orders scoring below this.
 const ADVICE_KEEP: u32 = 0x50;
 
@@ -545,10 +535,8 @@ mod tests {
     }
 
     #[test]
-    fn schedule_and_budgets() {
-        let services: Vec<_> = (0..6).map(service_before).collect();
+    fn budgets() {
         use ServiceKind::*;
-        assert_eq!(services, [Some(Start), Some(Short), None, Some(Short), Some(Long), None]);
         assert_eq!(Long.budget(), 2400.0);
         assert_eq!(Short.budget(), 1200.0);
         assert_eq!((Long.title_key(), Short.title_key()), ("OSERVICE", "NSERVICE"));

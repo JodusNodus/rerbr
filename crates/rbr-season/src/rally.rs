@@ -1,27 +1,7 @@
-//! The stage and service pieces a rally shares (the 1.02 rally and ours): a stage's map and
-//! weather row ([`RallyStage`]), the tyres on offer ([`tyre_choices`]) and a stage's end as `rbr-standalone
-//! --result-out` reports it ([`StageReport`]).
+//! The stage pieces a rally takes from 1.02: the tyres on offer ([`tyre_choices`]) and a stage's end as
+//! `rbr-standalone --result-out` reports it ([`StageReport`]).
 
 use rbr_gameplay::flow::{EndCause, EndRace, StageEnd};
-
-/// A stage of a rally: the map the stage loads and its track letter (`Maps/track-<map>_<letter>`), and its start time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RallyStage {
-    pub map: u32,
-    /// The weather row's track letter (M, N, E, O, S).
-    pub letter: char,
-    /// The season-table row the stage boots with (`rbr_gameplay::weather`, the random weather's row).
-    pub row: usize,
-    pub hour: u32,
-    pub minute: u32,
-}
-
-impl RallyStage {
-    /// The stage file's name, `track-<map>_<letter>`.
-    pub fn track(&self) -> String {
-        format!("track-{}_{}", self.map, self.letter)
-    }
-}
 
 /// The tyres the player may pick after the setup choice, the dry one first.
 /// Tarmac: dry, intermediate, wet (0-2); gravel: dry, normal, wet (3-5);
