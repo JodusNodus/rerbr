@@ -133,6 +133,8 @@ pub struct Live<'a> {
     pending: Pending,
     /// The outside-assistance penalties the race clock added so far.
     penalties: f32,
+    /// The autopilot's grip factor for the race's wetness (1 dry).
+    grip: f32,
     stopped: bool,
     /// The handles of the detachable car parts (the boot's image; none for a snapshot).
     detach: Vec<(u32, u32)>,
@@ -231,11 +233,24 @@ impl<'a> Live<'a> {
         let settled = settle(&playback, &mut game, &mut school, stage, go, now)?;
         let mut live =
             Self::with(playback, game, stage, StepClock { step: dt, settle: settled }, settled, None, image.detach);
+        // The autopilot's grip factor for the race's wetness (dry 1, damp and wet less): the wet track-22_O
+        // hairpin at 3796 m holds 7.2 m/s dry and slides wide at 8.6 m/s wet. The physics is untouched.
+        live.grip = match race.weather.wetness {
+            0 => 1.0,
+            1 => 0.8,
+            _ => 0.6,
+        };
         live.now = now;
         live.boot_now = now;
         live.initial_school.clone_from(&school);
         live.school = school;
         Ok(live)
+    }
+
+    /// The autopilot's grip factor for the race's wetness (1 dry, less damp and wet): the curve plan's lateral and
+    /// braking rates scale with it. Only the test pilot reads it; the physics is untouched.
+    pub fn grip(&self) -> f32 {
+        self.grip
     }
 
     /// The first frame's records, before anything drove: the countdown repeats them.
@@ -294,6 +309,7 @@ impl<'a> Live<'a> {
             control: [0; CONTROL_BYTES],
             pending: Pending::default(),
             penalties: 0.0,
+            grip: 1.0,
             stopped: false,
             detach,
             track,

@@ -252,12 +252,25 @@ pub fn drive(
     Ok(drove)
 }
 
-/// `driver` for `live`'s rally school lesson, if it has a stop box (its bank's first mode-4 sub, `SchoolIncident`'s
-/// standing test): it stops in the box, keeping off the brakes where a no-brake sub (mode 6 on the brake word, flag
-/// 4: braking fails) watches, or runs down the driveline to a box behind the start. Both the headless drive and
-/// the viewer's `--pilot autopilot` take it.
+/// `driver` for `live`'s rally school lesson: it holds the bank's judged speed bands (the checks with both speed
+/// bounds, which trip the verdict outside them; lesson 1 cruises at 108 km/h through its 90 km/h band), and, if the
+/// lesson has a stop box (its bank's first mode-4 sub, `SchoolIncident`'s standing test), it stops in the box,
+/// keeping off the brakes where a no-brake sub (mode 6 on the brake word, flag 4: braking fails) watches, or runs
+/// down the driveline to a box behind the start. Both the headless drive and the viewer's `--pilot autopilot` take
+/// it.
 fn with_lesson<'a>(driver: Driver<'a>, live: &Live, stage: &StageData) -> Driver<'a> {
+    let driver = driver.with_grip(live.grip());
     let Some(bank) = live.school().map(|s| s.bank()) else { return driver };
+    let bands: Vec<SpeedBand> = bank
+        .checks
+        .iter()
+        .filter(|c| c.hi != 0.0 && c.lo != 0.0)
+        .map(|c| SpeedBand { from: c.pos, to: c.pos + c.span, hi: (c.hi - 2.0) * 1000.0 / 3600.0 })
+        .collect();
+    if !bands.is_empty() {
+        eprintln!("autopilot: the lesson's judged speed bands: {bands:.1?}");
+    }
+    let driver = driver.with_bands(bands);
     let Some(stop) = bank.subs.iter().find(|sub| sub.tag == 4) else { return driver };
     let brake_from = bank
         .subs
