@@ -241,6 +241,19 @@ impl Switch {
         [r, g, b, if self.kind == Kind::Tail { TAIL_DAY } else { 1.0 }]
     }
 
+    /// The lit part's luminance on its lamp's axis under [`LightLevels::Physical`](crate::renderer::LightLevels), cd/m2:
+    /// the kind's intensity ([`CANDELA`]) over the part's `area` seen along the axis (m2, [`projected_area`], held
+    /// within [`LIT_AREA`]), so that the part shines as its cast light. Negative for a headlight's (`lamp_shown` in
+    /// `shader.wgsl` takes a beam's pattern for it, a rear lamp's for the others).
+    pub fn luminance(&self, area: f32) -> f32 {
+        let luminance = CANDELA[self.kind as usize] / area.clamp(LIT_AREA[0], LIT_AREA[1]);
+        if self.kind == Kind::Front {
+            -luminance
+        } else {
+            luminance
+        }
+    }
+
     /// Whether the part is drawn with `inputs`. The glass is whole unless the game says otherwise.
     pub fn shown(&self, inputs: Inputs) -> bool {
         let on = if self.glass {
@@ -445,6 +458,28 @@ pub struct Lamp {
 /// beam's, which reaches about 60 m; the main beam's axis gets five times it) and the rear lamps' typical ECE values
 /// (R7: tail 4 to 17, stop 60 to 185; R23: reversing 80 to 300).
 const CANDELA: [f32; 4] = [20000.0, 8.0, 100.0, 150.0];
+/// The range a lit part's area along its lamp's axis is held in, m2 ([`Switch::luminance`]): a lamp's lens is a few
+/// square centimetres to a few tenths of a square metre; outside that the part is not the lens alone (a whole rear
+/// panel) or a sliver, and its luminance would be far off.
+const LIT_AREA: [f32; 2] = [0.002, 0.1];
+
+/// The area of the triangles `indices` over `vertices` (stage or model space, metres) seen along `axis` (unit): the
+/// larger of their areas facing either way along it, so that a lens drawn as one sheet or as a closed shell counts
+/// once.
+pub fn projected_area(vertices: &[Vec3], indices: &[u32], axis: Vec3) -> f32 {
+    let (mut ahead, mut behind) = (0.0f32, 0.0f32);
+    for tri in indices.chunks_exact(3) {
+        let [a, b, c] = [0, 1, 2].map(|k| vertices[tri[k] as usize]);
+        let facing = (b - a).cross(c - a).dot(axis) * 0.5;
+        if facing > 0.0 {
+            ahead += facing;
+        } else {
+            behind -= facing;
+        }
+    }
+    ahead.max(behind)
+}
+
 /// The lamps' light per candela (`lamps.wgsl`'s unit: a stage surface facing the lamp 1 m away along its axis gets
 /// `HEADLIGHT_UNIT` for `HEADLIGHT_CD`, `night.wgsl`).
 const UNITS_PER_CANDELA: f32 = 3000.0 / 20000.0;
@@ -487,6 +522,23 @@ mod tests {
         assert!(!back.beam && !back.main);
         assert_eq!(back.forward, outward);
         assert!((back.colour - Vec3::new(8.0 * 0.15 / 0.2126, 0.0, 0.0)).length() < 1e-3, "{:?}", back.colour);
+    }
+
+    #[test]
+    fn a_lit_part_shines_its_lamps_intensity_over_its_area_along_the_axis() {
+        // A 0.2 by 0.1 m lens tilted 60 degrees off the axis, as one sheet and as a closed slab.
+        let tilt = Vec3::new(0.0, 60f32.to_radians().cos(), 60f32.to_radians().sin());
+        let sheet = [Vec3::ZERO, Vec3::X * 0.2, Vec3::X * 0.2 + tilt * 0.1, tilt * 0.1];
+        let area = projected_area(&sheet, &[0, 1, 2, 0, 2, 3], Vec3::Z);
+        assert!((area - 0.02 * 0.5).abs() < 1e-5, "{area}");
+        let back: Vec<Vec3> = sheet.iter().map(|p| *p + Vec3::Z * 0.01).collect();
+        let slab = [sheet.to_vec(), back].concat();
+        assert!((projected_area(&slab, &[0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6], Vec3::Z) - area).abs() < 1e-5);
+        let brake = Switch { kind: Kind::Brake, lamp: 0, lit: true, glass: false, named: true };
+        assert_eq!(brake.luminance(0.01), 10_000.0);
+        assert_eq!(Switch { kind: Kind::Front, ..brake }.luminance(0.02), -1_000_000.0);
+        // A sliver or a whole panel is held to a lens's size.
+        assert_eq!(brake.luminance(0.0), 100.0 / LIT_AREA[0]);
     }
 
     #[test]

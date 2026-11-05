@@ -456,10 +456,21 @@ fn load_set(
         let steering = mesh.node.name.eq_ignore_ascii_case("i_steeringwheel");
         let mirror = cabin::Mirror::of_part(&mesh.node.name);
         let window = damage::window_slot(&mesh.node.name);
+        // A lit lamp's part's area along the car (its lamp's axis), over all its meshes.
+        let along = placement.transform_vector3(Vec3::Z).normalize_or(Vec3::Z);
+        let lit_area: f32 = built
+            .meshes
+            .iter()
+            .map(|(_, placed, _)| {
+                let positions: Vec<Vec3> = placed.vertices.iter().map(|v| Vec3::from(v.position)).collect();
+                lights::projected_area(&positions, &placed.indices, along)
+            })
+            .sum();
         groups.extend(built.meshes.into_iter().map(|(order, mut placed, effect)| {
             if let Some(switch) = lamp.filter(|switch| switch.lit && !switch.glass) {
                 for shade in placed.draws.iter_mut().filter_map(|draw| draw.state.shade.as_mut()) {
                     shade.glow = Some(switch.glow());
+                    shade.luminance = switch.luminance(lit_area);
                 }
             }
             if window.is_some() {

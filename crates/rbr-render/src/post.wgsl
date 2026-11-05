@@ -47,6 +47,10 @@ override DEBUG_VIEW: u32 = 0u;
 // The exposure-dependent glare (`viewer --glare exposure`, `renderer::Glare`; `fs_glare_first`). A pipeline
 // override, so the composite without it is built as before.
 override GLARE: bool = false;
+// The light sources at their real luminances (`renderer::LightLevels::Physical`, `PHYSICAL` in `shader.wgsl`), with
+// `GLARE`: the glare chain carries them (`CHAIN_CAP` in place of the clamp at 32) and the local exposure leaves them out
+// (`BROAD_OVER_WHITE`). A pipeline override, so the post pass without it is built as before.
+override PHYSICAL: bool = false;
 
 // `cs_histogram`'s and `cs_meter`'s, with the scene in `source`. `cs_meter` empties the histogram for the next frame.
 // `meter` is the composite's too.
@@ -138,6 +142,14 @@ const GLARE_WAVELENGTH: vec3<f32> = vec3<f32>(611.0e-6, 549.0e-6, 464.0e-6);
 const GLARE_SHUTTER: f32 = 1.0 / 125.0;
 const GLARE_APERTURE: vec2<f32> = vec2<f32>(1.4, 22.0);
 const PI: f32 = 3.14159265;
+// `PHYSICAL`'s glare chain: the most a tap reads, renderer units (`LIGHT_CAP` in `shader.wgsl`, the most a light source
+// is drawn at; only against a stray infinity). The local exposure's broad light takes the frame's light at most
+// `BROAD_OVER_WHITE` times the display's white, exposed (`GLARE_WHITE`, where `gt7` reaches white, 3.3 stops over `KEY`):
+// with the light sources' full light the local exposure darkened all about them (the car's rear and the glare under its
+// tail lamps), and at white the night beam on the road burnt out (45O chase 23:00: 3.7% of the frame clipped, 2.4% at 8).
+const CHAIN_CAP: f32 = 30000.0;
+const GLARE_WHITE: f32 = 3.65;
+const BROAD_OVER_WHITE: f32 = 8.0;
 // How fast the exposure follows the frame, per second: faster down into a bright frame than up into a dark one.
 const ADAPT_SPEED: vec2<f32> = vec2<f32>(3.0, 1.2);
 
@@ -322,13 +334,17 @@ fn glare_filter(uv: vec2<f32>, first: bool) -> vec4<f32> {
     return e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
 }
 
-// A tap of the glare chain: from the frame (`first`), `fs_down`'s (clamped) exposed, and its luminance; from a level,
-// as it is.
+// A tap of the glare chain: from the frame (`first`), `fs_down`'s (clamped) exposed, and its luminance (`PHYSICAL`'s
+// held under `BROAD_OVER_WHITE`); from a level, as it is.
 fn glare_tap(uv: vec2<f32>, offset: vec2<f32>, first: bool) -> vec4<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(source));
     let s = textureSampleLevel(source, linear_sampler, uv + offset * texel, 0.0);
     if (!first) {
         return s;
+    }
+    if (PHYSICAL) {
+        let broad = min(s.rgb, vec3<f32>(BROAD_OVER_WHITE * GLARE_WHITE / exposure.value));
+        return vec4<f32>(clamp(s.rgb, vec3<f32>(0.0), vec3<f32>(CHAIN_CAP)) * exposure.value, luminance(broad));
     }
     let c = min(s.rgb, vec3<f32>(32.0));
     return vec4<f32>(max(c, vec3<f32>(0.0)) * exposure.value, luminance(c));

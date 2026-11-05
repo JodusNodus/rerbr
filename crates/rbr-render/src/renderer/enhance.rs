@@ -59,6 +59,8 @@ pub struct Enhance {
     pub debug_view: DebugView,
     /// The bloom's glare (`viewer --glare`, an experiment; not in [`Enhance::NAMES`]).
     pub glare: Glare,
+    /// How bright the light sources are drawn (`viewer --light-levels`, an experiment; not in [`Enhance::NAMES`]).
+    pub light_levels: LightLevels,
 }
 
 /// How much detail the additions draw at: [`Detail::High`], the frame as tuned, or [`Detail::Ultra`], finer and
@@ -222,6 +224,36 @@ impl Glare {
     }
 }
 
+/// How bright the light sources are drawn (`viewer --light-levels`, `PHYSICAL` in `shader.wgsl` and `post.wgsl`):
+/// [`LightLevels::Game`], the tuned glow of the car's lamps and the sun's disc, or [`LightLevels::Physical`], their
+/// real luminances (a lamp's intensity over its lit part's area, the sun's light over its disc), with the post pass's
+/// glare made to carry them: it implies [`Glare::Exposure`] (an experiment).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LightLevels {
+    #[default]
+    Game,
+    Physical,
+}
+
+impl LightLevels {
+    /// The `--light-levels` choices.
+    pub const NAMES: [&'static str; 2] = ["game", "physical"];
+
+    /// `game` or `physical`.
+    pub fn parse(text: &str) -> Option<LightLevels> {
+        match text {
+            "game" => Some(LightLevels::Game),
+            "physical" => Some(LightLevels::Physical),
+            _ => None,
+        }
+    }
+
+    /// Whether the light sources are at their real luminances.
+    pub(crate) fn physical(self) -> bool {
+        self == LightLevels::Physical
+    }
+}
+
 impl Enhance {
     pub const NAMES: [&str; 11] = [
         "anisotropy",
@@ -261,6 +293,7 @@ impl Enhance {
                         detail: enhance.detail,
                         debug_view: enhance.debug_view,
                         glare: enhance.glare,
+                        light_levels: enhance.light_levels,
                     }
                 }
                 "anisotropy" => enhance.anisotropy = true,

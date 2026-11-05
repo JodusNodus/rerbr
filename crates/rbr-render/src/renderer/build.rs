@@ -266,6 +266,7 @@ impl Renderer {
             debug_view: enhance.debug_view.code(),
             cube_shift: u32::from(ultra),
             taa,
+            physical: enhance.light_levels.physical(),
         };
         // A draw of a mesh whose indices start at `first_index` in the shared buffer, with its pipelines and bind group.
         let mut gpu_draw = |draw: &Draw,

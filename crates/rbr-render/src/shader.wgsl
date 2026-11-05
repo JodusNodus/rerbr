@@ -232,6 +232,10 @@ override SUN_MASK: bool = false;
 // How many levels finer the surroundings cube is than the 128-texel cube the levels below are counted in (1 at
 // `Detail::Ultra`, 256 texels).
 override CUBE_SHIFT: f32 = 0.0;
+// The light sources at their real luminances (`renderer::LightLevels::Physical`, `viewer --light-levels physical`; an
+// experiment): the car's lit lamp parts (`lamp_shown`) and the sun's disc (`sun_disc`). Passed only when set, so the
+// other pipelines are built as before.
+override PHYSICAL: bool = false;
 var<private> pixel: vec2<i32>;
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -1004,8 +1008,12 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     // A lit lamp's part (`stage::Shade::glow`) glows (ours): by day `mode.lamp.w` of it, by night and at dusk, as the
     // lamps light the stage, all of it.
     if (lit_class() == 3u) {
-        let level = mix(mode.lamp.w, 1.0, select(frame.dusk.w, 1.0, night));
-        colour = max(colour, first.rgb * LAMP_GLOW * mode.lamp.rgb * level);
+        if (PHYSICAL && mode.glow.w != 0.0) {
+            colour = max(colour, lamp_shown(first.rgb, v.world, view));
+        } else {
+            let level = mix(mode.lamp.w, 1.0, select(frame.dusk.w, 1.0, night));
+            colour = max(colour, first.rgb * LAMP_GLOW * mode.lamp.rgb * level);
+        }
     }
     colour = backlit(colour, first.rgb, v.uv0, night, dot(n, view));
     // The scrape (`CarPaint`, `CarPaintInt`): the scrape texel times the diffuse light (`t3 * v0`, no highlight or
@@ -2797,8 +2805,13 @@ fn sky(dir: vec3<f32>, ground: f32) -> vec3<f32> {
                 colour = moon_shown(dir, starry(dir, moon_aureole(dir, colour)));
             }
         }
+        var shown = mix(vec3<f32>(1.0), sun_colour, 0.25) * 1.5 * SUN_HDR;
+        if (PHYSICAL && sky_on()) {
+            disc = select(0.0, sun_disc(mu), frame.skylight.y >= -0.005);
+            shown = ungraded(capped(PI * frame.day_sun.rgb / SUN_SOLID_ANGLE));
+        }
         // The disc is brighter than white, for the bloom (`post.wgsl`).
-        colour = mix(colour + glow * sun_colour, mix(vec3<f32>(1.0), sun_colour, 0.25) * 1.5 * SUN_HDR, disc);
+        colour = mix(colour + glow * sun_colour, shown, disc);
     }
     let below = clamp(-dir.y * 4.0, 0.0, 1.0) * ground;
     return mix(colour, frame.fog_color.rgb * 0.25, below);
@@ -2806,6 +2819,68 @@ fn sky(dir: vec3<f32>, ground: f32) -> vec3<f32> {
 
 // How much brighter the sun's disc is than white.
 const SUN_HDR: f32 = 4.0;
+
+// `PHYSICAL`'s light sources. The renderer's units per cd/m2 (`frame.day_sun.w` with the sky's tables, else
+// `post::DAY_PRE_EXPOSURE` by day and `skylight::NIGHT_PRE_EXPOSURE` at night, as the post pass takes them).
+const PI: f32 = 3.14159265;
+const DAY_PRE_EXPOSURE: f32 = 1.93 * PI / 100000.0;
+const NIGHT_PRE_EXPOSURE: f32 = 0.004 * PI / 0.25;
+// The most a light source is drawn at, renderer units: under the half floats' 65504 with room for what is added over
+// it (rain, particles, the glass's reflection) and the bloom chain's sums.
+const LIGHT_CAP: f32 = 30000.0;
+// The sun's disc at its real size, its angular radius (`SUN_RADIUS` in `sun_mask.wgsl`, 0.27 degrees) and solid angle,
+// its edge softened over `SUN_EDGE` radians (about half a pixel at 1080p).
+const SUN_SOLID_ANGLE: f32 = PI * SUN_RADIUS * SUN_RADIUS;
+const SUN_EDGE: f32 = 0.0004;
+// A lit lamp part's luminance (`lamp_shown`): the lamp's light toward the eye (`beam` or `signal`, its share of the
+// axis's intensity) over the part's area seen from there (its area on the axis times the cosine, at least
+// `LAMP_FACING`), at least `LAMP_SIDE` of the axis's (the lens seen from the side still glows); the lamp is the nearest
+// lit one of its kind within `LAMP_NEAR` metres, else the axis's luminance.
+const LAMP_FACING: f32 = 0.25;
+const LAMP_SIDE: f32 = 0.03;
+const LAMP_NEAR: f32 = 1.5;
+
+fn pre_exposure() -> f32 {
+    if (frame.day_sun.w > 0.0) {
+        return frame.day_sun.w;
+    }
+    return select(DAY_PRE_EXPOSURE, NIGHT_PRE_EXPOSURE, frame.night.x != 0.0);
+}
+
+// `c` scaled down to `LIGHT_CAP` in its strongest channel, keeping its hue.
+fn capped(c: vec3<f32>) -> vec3<f32> {
+    return c * min(1.0, LIGHT_CAP / max(max(c.r, max(c.g, c.b)), 1e-6));
+}
+
+// How much of the real-size sun's disc covers the direction `mu` (the cosine to the sun) away.
+fn sun_disc(mu: f32) -> f32 {
+    let angle = sqrt(max(2.0 * (1.0 - mu), 0.0));
+    return 1.0 - smoothstep(SUN_RADIUS - SUN_EDGE, SUN_RADIUS + SUN_EDGE, angle);
+}
+
+// A lit lamp part's light (`PHYSICAL`), renderer units: its luminance on the axis (`mode.glow.w`, cd/m2, negative for
+// a headlight's, `lights::Switch::luminance`) as seen from the eye along `to_eye`, in the lamp's colour (`mode.lamp`,
+// the part's texture's where white) at the texel's brightness (its strongest channel).
+fn lamp_shown(texel: vec3<f32>, world: vec3<f32>, to_eye: vec3<f32>) -> vec3<f32> {
+    let headlight = mode.glow.w < 0.0;
+    var best = LAMP_NEAR * LAMP_NEAR;
+    var seen = 1.0;
+    for (var i = 0; i < 8; i++) {
+        let lamp = frame.lamps[i];
+        let d = world - lamp.position.xyz;
+        if (lamp.position.w == 0.0 || (lamp.forward.w != 0.0) != headlight || dot(d, d) >= best) {
+            continue;
+        }
+        best = dot(d, d);
+        let share = select(signal(lamp, to_eye), beam(lamp, to_eye), headlight);
+        seen = share / max(dot(to_eye, lamp.forward.xyz), LAMP_FACING);
+    }
+    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+    let hue = select(texel, mode.lamp.rgb, any(mode.lamp.rgb != vec3<f32>(1.0)));
+    let bright = max(texel.r, max(texel.g, texel.b));
+    let l = abs(mode.glow.w) * max(seen, LAMP_SIDE);
+    return capped(hue / max(dot(hue, luma), 1e-4) * bright * l * pre_exposure());
+}
 
 // `sky` without the sun's disc and glow (also the light the haze takes on, `haze_colour`).
 fn sky_light(dir: vec3<f32>) -> vec3<f32> {

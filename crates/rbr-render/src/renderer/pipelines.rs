@@ -198,6 +198,9 @@ pub(super) struct Context<'a> {
     pub(super) cube_shift: u32,
     /// The colour targets' alpha the draws write ([`alpha_writes`]).
     pub(super) taa: bool,
+    /// [`LightLevels::Physical`](super::LightLevels::Physical) (`PHYSICAL` in `shader.wgsl`): passed only when set,
+    /// so the other pipelines are built as before.
+    pub(super) physical: bool,
 }
 
 /// The colour a draw writes into the frame: all of it, but under the temporal anti-aliasing only the car's blended
@@ -302,33 +305,37 @@ impl Context<'_> {
                 entry_point: Some(entry),
                 compilation_options: wgpu::PipelineCompilationOptions {
                     constants: &[
-                        ("ALPHA_TEST", f64::from(u8::from(alpha_test))),
-                        ("WATER_PLUS", f64::from(u8::from(self.water_plus))),
-                        ("CABIN", f64::from(u8::from(self.cabin && key.lit != 0))),
-                        ("GRASS", f64::from(u8::from(self.grass))),
-                        ("LIGHTING", f64::from(u8::from(self.lighting))),
-                        ("DEBUG_VIEW", f64::from(self.debug_view)),
-                        ("MIRRORS", f64::from(u8::from(key.mirror))),
-                        ("LAMPS", f64::from(u8::from(key.lamps))),
-                        ("LIT", f64::from(key.lit)),
-                        ("INSIDE", key.inside.map_or(2.0, |inside| f64::from(u8::from(inside)))),
-                        ("CABIN_SET", key.cabin_set.map_or(2.0, |set| f64::from(u8::from(set)))),
-                        ("FRAME_KIND", key.frame.map_or(3.0, |frame| frame as f64)),
-                        ("KNOWN", f64::from(u8::from(key.features.is_some()))),
-                        ("DRAW_WATER", f64::from(u8::from(features.water))),
-                        ("DRAW_SPECULAR", f64::from(u8::from(features.specular))),
-                        ("DRAW_SECOND", f64::from(u8::from(features.second_texture))),
-                        ("DRAW_DETAIL", f64::from(u8::from(features.detail))),
-                        (
-                            "SUN_MASK",
-                            f64::from(u8::from(
-                                self.lighting
-                                    && matches!(key.pass, DrawPass::AfterPrepass | DrawPass::CarMain)
-                                    && !key.sky,
-                            )),
-                        ),
-                        ("CUBE_SHIFT", f64::from(self.cube_shift)),
-                    ],
+                        &[
+                            ("ALPHA_TEST", f64::from(u8::from(alpha_test))),
+                            ("WATER_PLUS", f64::from(u8::from(self.water_plus))),
+                            ("CABIN", f64::from(u8::from(self.cabin && key.lit != 0))),
+                            ("GRASS", f64::from(u8::from(self.grass))),
+                            ("LIGHTING", f64::from(u8::from(self.lighting))),
+                            ("DEBUG_VIEW", f64::from(self.debug_view)),
+                            ("MIRRORS", f64::from(u8::from(key.mirror))),
+                            ("LAMPS", f64::from(u8::from(key.lamps))),
+                            ("LIT", f64::from(key.lit)),
+                            ("INSIDE", key.inside.map_or(2.0, |inside| f64::from(u8::from(inside)))),
+                            ("CABIN_SET", key.cabin_set.map_or(2.0, |set| f64::from(u8::from(set)))),
+                            ("FRAME_KIND", key.frame.map_or(3.0, |frame| frame as f64)),
+                            ("KNOWN", f64::from(u8::from(key.features.is_some()))),
+                            ("DRAW_WATER", f64::from(u8::from(features.water))),
+                            ("DRAW_SPECULAR", f64::from(u8::from(features.specular))),
+                            ("DRAW_SECOND", f64::from(u8::from(features.second_texture))),
+                            ("DRAW_DETAIL", f64::from(u8::from(features.detail))),
+                            (
+                                "SUN_MASK",
+                                f64::from(u8::from(
+                                    self.lighting
+                                        && matches!(key.pass, DrawPass::AfterPrepass | DrawPass::CarMain)
+                                        && !key.sky,
+                                )),
+                            ),
+                            ("CUBE_SHIFT", f64::from(self.cube_shift)),
+                        ][..],
+                        self.physical_constant(),
+                    ]
+                    .concat(),
                     ..Default::default()
                 },
                 targets: &[Some(wgpu::ColorTargetState {
@@ -341,6 +348,15 @@ impl Context<'_> {
             multiview_mask: None,
             cache: None,
         })
+    }
+
+    /// `PHYSICAL` when [`Context::physical`], else nothing.
+    fn physical_constant(&self) -> &'static [(&'static str, f64)] {
+        if self.physical {
+            &[("PHYSICAL", 1.0)]
+        } else {
+            &[]
+        }
     }
 
     /// The sky gradient: one triangle over the screen, behind everything (where the depth is still the clear one, no
@@ -368,7 +384,8 @@ impl Context<'_> {
                 module: self.shader,
                 entry_point: Some("fs_sky"),
                 compilation_options: wgpu::PipelineCompilationOptions {
-                    constants: &[("LIGHTING", f64::from(u8::from(self.lighting)))],
+                    constants: &[&[("LIGHTING", f64::from(u8::from(self.lighting)))][..], self.physical_constant()]
+                        .concat(),
                     ..Default::default()
                 },
                 targets: &[Some(wgpu::ColorTargetState {

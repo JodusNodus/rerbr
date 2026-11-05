@@ -137,7 +137,8 @@ impl Post {
     /// The post pass into targets of `format`, for frames of `size` and the frame's `depth`. With
     /// [`Enhance::lighting`] the composite adds [`Post::shafts`]; under TAA it sharpens the scene by [`TAA_SHARPEN`]
     /// (the temporal resolve's blur); with [`Enhance::debug_view`] it passes the cabin's debug grey through
-    /// (`DEBUG_VIEW` in `post.wgsl`); [`Enhance::glare`] picks the bloom's glare (`GLARE`).
+    /// (`DEBUG_VIEW` in `post.wgsl`); [`Enhance::glare`] picks the bloom's glare (`GLARE`), which
+    /// [`Enhance::light_levels`] at its physical levels implies, its chain carrying them (`PHYSICAL`).
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
@@ -146,7 +147,12 @@ impl Post {
         enhance: &Enhance,
     ) -> Post {
         let shafts = enhance.lighting;
-        let glare = enhance.glare == Glare::Exposure;
+        // The real light sources take the glare (`viewer --light-levels physical`): the fixed bloom spread 6% of them
+        // into a wash over the frame.
+        let physical = enhance.light_levels.physical();
+        let glare = enhance.glare == Glare::Exposure || physical;
+        // Passed only when set, so the pipelines without it are built as before.
+        let flags: &[(&str, f64)] = if physical { &[("PHYSICAL", 1.0)] } else { &[] };
         let source_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post source"),
             entries: &[
@@ -241,7 +247,7 @@ impl Post {
                 [down.clone(), down]
             }
             true => ["fs_glare_first", "fs_glare_down"]
-                .map(|entry| pipeline(entry, &[&source_layout, &glare_layout], SCENE_FORMAT.into(), &[])),
+                .map(|entry| pipeline(entry, &[&source_layout, &glare_layout], SCENE_FORMAT.into(), flags)),
         };
         // Each level adds the blurred level below it.
         let add = wgpu::BlendComponent {
@@ -267,8 +273,8 @@ impl Post {
                 ("GLARE", f64::from(u8::from(glare))),
             ];
             // Without the glare the composite is built as before it.
-            let constants = if glare { &constants[..] } else { &constants[..3] };
-            pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), constants)
+            let constants = [if glare { &constants[..] } else { &constants[..3] }, flags].concat();
+            pipeline("fs_composite", &[&source_layout, &composite_layout], format.into(), &constants)
         });
         let meter = ["cs_histogram", "cs_meter"].map(|entry| {
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
