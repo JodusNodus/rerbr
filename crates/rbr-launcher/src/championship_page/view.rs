@@ -1,7 +1,7 @@
 //! The Championship tab's drawing: the presets (Continue first when there is a saved championship), the builder (its settings beside the
-//! live summary and Start event), and the event under way: the header (rally n of m, the step, the player's place),
+//! live summary and Start), and the championship under way: the header (rally n of m, the step, the player's place),
 //! the last stage's result, the card of the next step with its one primary button, the itinerary under it, and the
-//! rally's standings and the event's points beside.
+//! rally's standings and the championship's points beside.
 
 use std::path::Path;
 
@@ -36,7 +36,7 @@ pub struct Env<'a> {
     pub seed: u32,
 }
 
-/// The step of the event's turn: "Before the start", "Stage 3 of 6", "Service before stage 3 of 6", ...
+/// The step of the championship's turn: "Before the start", "Stage 3 of 6", "Service before stage 3 of 6", ...
 pub fn step(event: &Event) -> String {
     let count = |rally: usize| event.rallies.get(rally).map_or(0, |r| r.stages.len());
     match event.turn {
@@ -48,7 +48,7 @@ pub fn step(event: &Event) -> String {
     }
 }
 
-/// The rally the turn is in (the last one at the event's end).
+/// The rally the turn is in (the last one at the championship's end).
 fn rally_of(event: &Event) -> usize {
     match event.turn {
         Turn::Welcome { rally }
@@ -65,7 +65,7 @@ fn driven(event: &Event, rally: usize) -> &[(Option<PlayerResult>, Vec<AiResult>
     &results[..run_stages(results)]
 }
 
-/// The last stage driven in the turn's rally, while its result is news (not at a welcome or the event's end).
+/// The last stage driven in the turn's rally, while its result is news (not at a welcome or the championship's end).
 fn last_stage(event: &Event) -> Option<(usize, usize)> {
     let rally = match event.turn {
         Turn::Stage { rally, stage } if stage > 0 => rally,
@@ -159,11 +159,11 @@ fn button_card(ui: &mut Ui, id: &str, add: impl FnOnce(&mut Ui)) -> bool {
 }
 
 impl ChampionshipPage {
-    /// The page: the presets, the builder or the event under way.
+    /// The page: the presets, the builder or the championship under way.
     pub fn ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         match self.view {
             View::Builder if self.config.is_some() => self.builder_ui(ui, env),
-            View::Event if self.run.is_some() => self.event_ui(ui, env),
+            View::Running if self.run.is_some() => self.event_ui(ui, env),
             _ => {
                 self.view = View::Entry;
                 self.entry_ui(ui, env);
@@ -172,7 +172,7 @@ impl ChampionshipPage {
         }
     }
 
-    /// The presets, with the profile and Continue event first when it has one.
+    /// The presets, with the profile and Continue first when it has one.
     fn entry_ui(&mut self, ui: &mut Ui, env: Env) {
         ui.label(RichText::new("Championship").size(24.0).strong());
         ui.colored_label(
@@ -180,7 +180,7 @@ impl ChampionshipPage {
             "Build a rally or a season on any installed stage, against a field in your car's class.",
         );
         ui.add_space(8.0);
-        fields(ui, "event-profile", |ui| {
+        fields(ui, "championship-profile", |ui| {
             ui.label("Profile").on_hover_text("The championship is saved under this name, one per profile");
             ui.add_enabled(!self.driving, egui::TextEdit::singleline(env.profile).desired_width(160.0));
             env.profile.retain(|c| is_file_name_part(c.encode_utf8(&mut [0; 4])));
@@ -227,7 +227,7 @@ impl ChampionshipPage {
         }
     }
 
-    /// The builder: the settings beside the summary and Start event.
+    /// The builder: the settings beside the summary and Start.
     fn builder_ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         let mut request = None;
         let preset = self.builder.map_or(Preset::QuickRally, |b| b.preset);
@@ -251,7 +251,7 @@ impl ChampionshipPage {
         let (team, mut picked_team) = (config.team as usize, config.team as usize);
         let ai_error = self.ai.as_ref().err().cloned();
         ui.columns(2, |cols| {
-            fields(&mut cols[0], "event-builder", |ui| {
+            fields(&mut cols[0], "championship-builder", |ui| {
                 ui.label("Car");
                 if (env.car_field)(ui, car) {
                     request = Some(Request::BrowseCar);
@@ -259,7 +259,7 @@ impl ChampionshipPage {
                 ui.end_row();
                 ui.label("Class").on_hover_text("Only cars of this class fill the field");
                 let label = |c: String| if c.is_empty() { "No class".to_owned() } else { c };
-                combo(ui, "event-class", 200.0, &mut config.class, &classes, label);
+                combo(ui, "championship-class", 200.0, &mut config.class, &classes, label);
                 ui.end_row();
                 ui.label("Length");
                 length_row(ui, &mut config.length);
@@ -267,7 +267,7 @@ impl ChampionshipPage {
                 ui.label("Stages from");
                 combo(
                     ui,
-                    "event-pool",
+                    "championship-pool",
                     200.0,
                     &mut config.pool,
                     &[StagePool::All, StagePool::Retail, StagePool::Community],
@@ -282,7 +282,7 @@ impl ChampionshipPage {
                 let surfaces = [Surface::Gravel, Surface::Tarmac, Surface::Snow].map(Surfaces::Only);
                 combo(
                     ui,
-                    "event-surface",
+                    "championship-surface",
                     200.0,
                     &mut config.surfaces,
                     &[surfaces[0], surfaces[1], surfaces[2], Surfaces::Mixed],
@@ -297,7 +297,7 @@ impl ChampionshipPage {
                 ui.label("Time of day");
                 combo(
                     ui,
-                    "event-daylight",
+                    "championship-daylight",
                     200.0,
                     &mut config.daylight,
                     &[Daylight::Day, Daylight::Realistic, Daylight::Night],
@@ -311,7 +311,7 @@ impl ChampionshipPage {
                 ui.label("Weather");
                 combo(
                     ui,
-                    "event-weather",
+                    "championship-weather",
                     200.0,
                     &mut config.weather,
                     &[Weather::Dry, Weather::Changeable, Weather::Wet],
@@ -328,7 +328,7 @@ impl ChampionshipPage {
                 ui.label("Damage");
                 combo(
                     ui,
-                    "event-damage",
+                    "championship-damage",
                     200.0,
                     &mut config.damage,
                     &[Damage::Off, Damage::Reduced, Damage::Realistic],
@@ -343,7 +343,7 @@ impl ChampionshipPage {
                 ui.horizontal(|ui| {
                     combo(
                         ui,
-                        "event-skill",
+                        "championship-skill",
                         160.0,
                         &mut config.skill,
                         &[Skill::Rookie, Skill::Professional, Skill::Champion],
@@ -360,7 +360,7 @@ impl ChampionshipPage {
                             offers.iter().find(|t| t.index as usize == i).map_or(String::new(), |t| t.name.clone())
                         };
                         let indexes: Vec<usize> = offers.iter().map(|t| t.index as usize).collect();
-                        combo(ui, "event-team", 200.0, &mut team, &indexes, name);
+                        combo(ui, "championship-team", 200.0, &mut team, &indexes, name);
                         if let Some(offer) = offers.iter().find(|t| t.index as usize == team) {
                             ui.colored_label(GREY, &offer.crew);
                         }
@@ -445,7 +445,7 @@ impl ChampionshipPage {
         request
     }
 
-    /// The event under way: the header, the next step's card with its button, the itinerary, the standings.
+    /// The championship under way: the header, the next step's card with its button, the itinerary, the standings.
     fn event_ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         let mut request = None;
         let run = self.run.as_ref()?;
@@ -559,7 +559,7 @@ impl ChampionshipPage {
         let choosing = self.choice_before(rally, stage);
         let tyre = self.next_tyre();
         let road = self.run.as_ref().and_then(|r| road_line(&r.event, rally, stage));
-        fields(ui, "event-stage", |ui| {
+        fields(ui, "championship-stage", |ui| {
             if let Some(road) = road {
                 ui.label("Start order");
                 ui.label(road);
@@ -567,7 +567,7 @@ impl ChampionshipPage {
             }
             ui.label("Tyres");
             if choosing {
-                ComboBox::from_id_salt("event-tyre")
+                ComboBox::from_id_salt("championship-tyre")
                     .width(200.0)
                     .selected_text(crate::catalog::tyre_label(tyre))
                     .show_ui(ui, |ui| {
@@ -595,7 +595,7 @@ impl ChampionshipPage {
                     _ => row.label(),
                 };
                 ui.horizontal(|ui| {
-                    ComboBox::from_id_salt("event-setup").width(200.0).selected_text(label(&self.setup)).show_ui(
+                    ComboBox::from_id_salt("championship-setup").width(200.0).selected_text(label(&self.setup)).show_ui(
                         ui,
                         |ui| {
                             for row in rows {
@@ -772,7 +772,7 @@ fn length_row(ui: &mut Ui, length: &mut Length) {
         Length::Season { rallies, stages } => (2, rallies, stages),
     };
     ui.horizontal(|ui| {
-        combo(ui, "event-length", 120.0, &mut kind, &[0, 1, 2], |k| ["One rally", "Weekend", "Season"][k]);
+        combo(ui, "championship-length", 120.0, &mut kind, &[0, 1, 2], |k| ["One rally", "Weekend", "Season"][k]);
         if kind == 2 {
             ui.add(Slider::new(&mut rallies, 2..=12).suffix(" rallies"));
         }
@@ -785,7 +785,7 @@ fn length_row(ui: &mut Ui, length: &mut Length) {
     };
 }
 
-/// The event's header: the rally, where it stands and the player's place, then the car and the settings.
+/// The championship's header: the rally, where it stands and the player's place, then the car and the settings.
 fn header_ui(ui: &mut Ui, event: &Event, lines: &[Standing], cars: &[Car]) {
     let rally = rally_of(event);
     ui.horizontal(|ui| {
@@ -874,7 +874,7 @@ fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize) {
     };
     card(ui, |ui| {
         card_title(ui, "Itinerary");
-        egui::Grid::new("event-itinerary").num_columns(7).spacing([12.0, 5.0]).show(ui, |ui| {
+        egui::Grid::new("championship-itinerary").num_columns(7).spacing([12.0, 5.0]).show(ui, |ui| {
             for heading in ["", "", "Stage", "Length", "Start", "Road", "Time"] {
                 ui.colored_label(GREY, heading);
             }
@@ -953,7 +953,7 @@ fn standings_ui(ui: &mut Ui, event: &Event, rally: usize, lines: &[Standing], ca
         let points = lines.iter().any(|l| l.points > 0);
         // The last stage's column from SS2 on, until the points take its place.
         let stage = (ran > 1 && !points).then(|| format!("SS{ran}"));
-        egui::Grid::new("event-standings").striped(true).spacing([12.0, 3.0]).show(ui, |ui| {
+        egui::Grid::new("championship-standings").striped(true).spacing([12.0, 3.0]).show(ui, |ui| {
             let headings = ["", "Driver", "Car"].into_iter().chain(stage.as_deref()).chain(["Total", "Gap"]);
             for heading in headings.chain(points.then_some("Pts")) {
                 ui.colored_label(GREY, heading);
@@ -996,7 +996,7 @@ fn points_ui(ui: &mut Ui, event: &Event, lines: &[Standing]) {
             ui.colored_label(GREY, "Points come at each rally's end.");
             return;
         }
-        egui::Grid::new("event-points").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
+        egui::Grid::new("championship-points").striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
             for (at, line) in lines.iter().enumerate() {
                 let name = RichText::new(driver(event, line.entrant));
                 ui.label(format!("{}", at + 1));

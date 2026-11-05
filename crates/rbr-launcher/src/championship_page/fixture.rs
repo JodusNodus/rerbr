@@ -1,5 +1,5 @@
-//! What the screenshots and the tests build an event on without game files: a few stages, a small `ai.ini` /
-//! `aidrv.ini` stand-in (the 1.02 AI engine's own test fixtures) and an event built by the real `Event::build`.
+//! What the screenshots and the tests build a championship on without game files: a few stages, a small `ai.ini` /
+//! `aidrv.ini` stand-in (the 1.02 AI engine's own test fixtures) and a championship built by the real `Event::build`.
 
 use rbr_formats::ai_ini::{Car, Roster, Team};
 use rbr_season::ai::fixtures;
@@ -23,7 +23,7 @@ pub fn ai() -> Ai {
     (fixtures::master(), roster)
 }
 
-/// The stages the screenshots draw an event on.
+/// The stages the screenshots draw a championship on.
 pub fn stages() -> Vec<StageRef> {
     [
         ("Harwood Forest", 9_870.0, false),
@@ -48,7 +48,7 @@ pub fn stages() -> Vec<StageRef> {
     .collect()
 }
 
-/// A built event on [`stages`] (a season of two rallies of six stages) at its welcome.
+/// A built championship on [`stages`] (a season of two rallies of six stages) at its welcome.
 pub fn fixture_event() -> Event {
     let config = EventConfig {
         length: Length::Season { rallies: 2, stages: 6 },

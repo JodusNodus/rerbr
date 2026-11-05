@@ -1,23 +1,23 @@
 //! The Championship tab (ours, `rbr_season`): a rally or a season the player builds from a preset, on any installed
 //! stage (retail, RSF, BTB: [`pool`]), against a field in the car's class. The tab opens on the presets (Quick rally,
-//! Weekend, Season, Random), with Continue first when the profile has an event. A preset opens the builder with its settings; Start event builds the
-//! event, and the page then runs its turns: the rally's welcome and itinerary, each stage (its conditions, start time,
+//! Weekend, Season, Random), with Continue first when the profile has a championship. A preset opens the builder with its settings; Start builds the
+//! championship, and the page then runs its turns: the rally's welcome and itinerary, each stage (its conditions, start time,
 //! tyres and setup, then Drive), the standings with gaps and the stage winner after each, the service park where the
-//! itinerary has one (`common::park_card`, the damage carried), the rally's end with its points, and the event's
+//! itinerary has one (`common::park_card`, the damage carried), the rally's end with its points, and the championship's
 //! end.
 //!
 //! A stage runs as on the Drive page on the stage's own weather row of the itinerary's road (dry, damp or wet; the
 //! nearest row with `--wetness` when the stage has none), at the itinerary's clock (`viewer --clock`,
-//! `rbr-standalone --start-time`), as a championship stage (`--championship` on the event's skill, flow mode 3: no
-//! restart) on the event's damage. The damage carried goes in with `--damage-in`; the stage's result and damage come back
-//! through `--result-out` and `--damage-out` in `events/` in the player's folder.
+//! `rbr-standalone --start-time`), as a championship stage (`--championship` on the championship's skill, flow mode 3: no
+//! restart) on the championship's damage. The damage carried goes in with `--damage-in`; the stage's result and damage come back
+//! through `--result-out` and `--damage-out` in `championship/` in the player's folder.
 //!
 //! Between rallies the page offers the game's two trials as practice that is not recorded: a yard trial and a stage
-//! trial on the next rally's first stage (its surface and road), in the event's car, with no championship flags.
+//! trial on the next rally's first stage (its surface and road), in the championship's car, with no championship flags.
 //!
-//! One event per profile: `SavedGames/event-<profile>.txt` (`Event::save`) in `SavedGames/`, with the carried
-//! damage in `event-<profile>.dmg` and the service's late penalty still to add and the tyre on the car in
-//! `event-<profile>.ini` (the event's API keeps neither).
+//! One championship per profile: `SavedGames/championship-<profile>.txt` (`Event::save`) in `SavedGames/`, with the carried
+//! damage in `championship-<profile>.dmg` and the service's late penalty still to add and the tyre on the car in
+//! `championship-<profile>.ini` (the championship's API keeps neither).
 
 use std::path::{Path, PathBuf};
 
@@ -50,11 +50,11 @@ use pool::Pool;
 /// What the Championship tab shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
-    /// The presets, and Continue event.
+    /// The presets, and Continue.
     Entry,
     Builder,
-    /// The event under way.
-    Event,
+    /// The championship under way.
+    Running,
 }
 
 /// The preset a builder started from.
@@ -86,7 +86,7 @@ pub enum Request {
     BrowseCar,
 }
 
-/// The event under way and what the launcher keeps beside it.
+/// The championship under way and what the launcher keeps beside it.
 pub struct Run {
     pub event: Event,
     /// The damage the car carries (none: new).
@@ -101,7 +101,7 @@ pub struct Run {
 pub type Ai = (Master, Roster);
 
 pub struct ChampionshipPage {
-    /// The AI tables, read once (or why they do not read: the event cannot start without them).
+    /// The AI tables, read once (or why they do not read: the championship cannot start without them).
     pub ai: Result<Ai, String>,
     pub view: View,
     pub builder: Option<Builder>,
@@ -112,7 +112,7 @@ pub struct ChampionshipPage {
     pub run: Option<Run>,
     /// The installed stages, read once the tab opens.
     pub pool: Option<Pool>,
-    /// The profile's saved event, read once per profile name: its summary, or why it does not read.
+    /// The profile's saved championship, read once per profile name: its summary, or why it does not read.
     saved: Option<(String, Option<Result<String, String>>)>,
     pub park: Option<ServicePark>,
     strings: Option<Strings>,
@@ -124,7 +124,7 @@ pub struct ChampionshipPage {
     driving: bool,
     /// A practice trial is being driven (it is not recorded).
     practice: bool,
-    /// The profile the event is saved under.
+    /// The profile the championship is saved under.
     pub profile: String,
     /// The bulletins shown in full, not the last few.
     news_all: bool,
@@ -229,7 +229,7 @@ pub fn surface_kind(surface: Surface) -> u32 {
 /// The yard, the game's map for the yard trial.
 const YARD: u32 = 72;
 
-/// `rbr-standalone --championship-damage`'s word for the event's damage.
+/// `rbr-standalone --championship-damage`'s word for the championship's damage.
 fn damage_word(damage: Damage) -> &'static str {
     match damage {
         Damage::Off => "off",
@@ -238,7 +238,7 @@ fn damage_word(damage: Damage) -> &'static str {
     }
 }
 
-/// The game's skill level an event skill runs as (`SSKILL`: Rookie, Professional, Champion).
+/// The game's skill level a championship skill runs as (`SSKILL`: Rookie, Professional, Champion).
 fn race_skill(skill: Skill) -> rbr_gameplay::race_options::Skill {
     use rbr_gameplay::race_options::Skill as Game;
     match skill {
@@ -300,20 +300,20 @@ impl ChampionshipPage {
         }
     }
 
-    /// The profile's event files: the save, the carried damage and the launcher's state.
+    /// The profile's championship files: the save, the carried damage and the launcher's state.
     pub fn files(here: &Path, profile: &str) -> (PathBuf, PathBuf, PathBuf) {
         let dir = SaveDir::new(here).path;
-        let file = |ext: &str| dir.join(format!("event-{profile}.{ext}"));
+        let file = |ext: &str| dir.join(format!("championship-{profile}.{ext}"));
         (file("txt"), file("dmg"), file("ini"))
     }
 
     /// The stage's run files: the damage carried in, the damage and the result out.
     fn stage_files(here: &Path) -> (PathBuf, PathBuf, PathBuf) {
-        let dir = here.join("events");
+        let dir = here.join("championship");
         (dir.join("carried.dmg"), dir.join("stage.dmg"), dir.join("stage.txt"))
     }
 
-    /// The profile's saved event's summary, read once per profile name; none without one.
+    /// The profile's saved championship's summary, read once per profile name; none without one.
     fn saved_event(&mut self, here: &Path, profile: &str) -> Option<Result<String, String>> {
         if self.saved.as_ref().is_none_or(|(name, _)| name != profile) {
             let (save, _, _) = Self::files(here, profile);
@@ -324,7 +324,7 @@ impl ChampionshipPage {
         self.saved.as_ref().and_then(|(_, s)| s.clone())
     }
 
-    /// `--screenshot`: the entry with or without a saved event.
+    /// `--screenshot`: the entry with or without a saved championship.
     pub fn screenshot_saved(&mut self, profile: &str, saved: Option<String>) {
         (self.run, self.view, self.park) = (None, View::Entry, None);
         self.saved = Some((profile.to_owned(), saved.map(Ok)));
@@ -334,7 +334,7 @@ impl ChampionshipPage {
     pub fn screenshot_event(&mut self, event: Event) {
         let tyre = 3;
         self.run = Some(Run { event, damage: None, penalty: 0.0, tyre });
-        (self.view, self.park, self.tyre, self.driving) = (View::Event, None, None, false);
+        (self.view, self.park, self.tyre, self.driving) = (View::Running, None, None, false);
     }
 
     /// The builder on `preset`'s settings for the car.
@@ -356,7 +356,7 @@ impl ChampionshipPage {
         }
     }
 
-    /// Start event: the event built on the pool, saved under the profile, at its welcome.
+    /// Start: the championship built on the pool, saved under the profile, at its welcome.
     pub fn start_event(&mut self, here: &Path, profile: &str, cars: &[Car], stages: &[StageRef]) {
         let Some(config) = self.config.clone() else { return };
         let field = class_cars(cars, &config.class);
@@ -370,15 +370,15 @@ impl ChampionshipPage {
         match built {
             Ok(event) => {
                 self.run = Some(Run { event, damage: None, penalty: 0.0, tyre: 3 });
-                (self.view, self.tyre, self.setup, self.park) = (View::Event, None, SeasonSetup::Current, None);
+                (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
                 self.status.clear();
                 self.save(here, profile);
             }
-            Err(e) => self.status = format!("The event cannot be built: {e}"),
+            Err(e) => self.status = format!("The championship cannot be built: {e}"),
         }
     }
 
-    /// Continue event: the profile's saved event, its carried damage and state.
+    /// Continue: the profile's saved championship, its carried damage and state.
     pub fn continue_event(&mut self, here: &Path, profile: &str) {
         let (save, dmg, state) = Self::files(here, profile);
         let loaded = std::fs::read_to_string(&save).map_err(|e| format!("{}: {e}", save.display()));
@@ -391,14 +391,14 @@ impl ChampionshipPage {
                 };
                 let (penalty, tyre) = (value("penalty").unwrap_or(0.0), value("tyre").map_or(3, |t: f32| t as u32));
                 self.run = Some(Run { event, damage, penalty, tyre });
-                (self.view, self.tyre, self.setup, self.park) = (View::Event, None, SeasonSetup::Current, None);
+                (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
                 self.status.clear();
             }
-            Err(e) => self.status = format!("The saved event does not read: {e}"),
+            Err(e) => self.status = format!("The saved championship does not read: {e}"),
         }
     }
 
-    /// Writes the event, its carried damage and state under the profile.
+    /// Writes the championship, its carried damage and state under the profile.
     fn save(&mut self, here: &Path, profile: &str) {
         let Some(run) = &self.run else { return };
         let (save, dmg, state) = Self::files(here, profile);
@@ -417,7 +417,7 @@ impl ChampionshipPage {
         self.saved = Some((profile.to_owned(), Some(Ok(place_line(&run.event)))));
     }
 
-    /// The event over and left: its files removed, back to the presets.
+    /// The championship over and left: its files removed, back to the presets.
     pub fn leave_event(&mut self, here: &Path, profile: &str) {
         for file in <[PathBuf; 3]>::from(Self::files(here, profile)) {
             let _ = std::fs::remove_file(file);
@@ -451,12 +451,12 @@ impl ChampionshipPage {
         self.tyre.or(road).filter(|t| choices.contains(t)).unwrap_or(choices[0])
     }
 
-    /// Drive the next stage: the damage files, the championship flags on the event's damage, what follows it, and
+    /// Drive the next stage: the damage files, the championship flags on the championship's damage, what follows it, and
     /// the tyre and setup.
     pub fn stage_start(&mut self, here: &Path) -> Result<StageStart, String> {
         let (rally, stage, next) = self.next_stage().ok_or("no stage is next")?;
         let next = next.clone();
-        let run = self.run.as_ref().ok_or("no event")?;
+        let run = self.run.as_ref().ok_or("no championship")?;
         let event = &run.event;
         let last = stage + 1 == event.rallies[rally].stages.len();
         let follows = match next.service_after {
@@ -501,10 +501,10 @@ impl ChampionshipPage {
     }
 
     /// A practice trial between rallies (the game's `S_YARD_TRIAL` on map 72, `S_STAGE_TRIAL`): the yard, or the next
-    /// rally's first stage on its road and clock, in the event's car and damage, on the road's tyre and the current
+    /// rally's first stage on its road and clock, in the championship's car and damage, on the road's tyre and the current
     /// setup. No championship flags and no files: it is not recorded.
     pub fn trial(&mut self, yard: bool) -> Result<StageStart, String> {
-        let run = self.run.as_ref().ok_or("no event")?;
+        let run = self.run.as_ref().ok_or("no championship")?;
         let event = &run.event;
         let Turn::RallyOver { rally } = event.turn else { return Err("trials come between rallies".into()) };
         let next = event.rallies.get(rally + 1).and_then(|r| r.stages.first()).ok_or("no rally follows")?;
@@ -525,7 +525,7 @@ impl ChampionshipPage {
 
     /// The viewer closed: the stage's result and damage from `rbr-standalone`'s files (a stage left before the
     /// finish, or a run without the files, is a retire), with the service's penalty, against the stage's reference;
-    /// the event saved.
+    /// the championship saved.
     pub fn stage_closed(&mut self, here: &Path, profile: &str) {
         if !std::mem::take(&mut self.driving) || std::mem::take(&mut self.practice) {
             return;
@@ -596,13 +596,13 @@ impl ChampionshipPage {
         }
     }
 
-    /// The event is at a service (the park's sound plays).
+    /// The championship is at a service (the park's sound plays).
     pub fn in_service(&self) -> bool {
-        self.view == View::Event && self.park.is_some()
+        self.view == View::Running && self.park.is_some()
     }
 }
 
-/// Where the event stands, for the Continue card: "Season · Rally 2 of 6 · Stage 3 of 6" or "Event over".
+/// Where the championship stands, for the Continue card: "Season · Rally 2 of 6 · Stage 3 of 6" or "Season · over".
 pub fn place_line(event: &Event) -> String {
     let kind = match event.config.length {
         Length::Rally { .. } => "Rally",
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn a_rally_runs_its_turns_with_service_damage_and_the_late_penalty() {
-        let here = crate::test_dir("events-turns");
+        let here = crate::test_dir("championship-turns");
         let mut page = page(&here);
         let turn = |page: &ChampionshipPage| page.run.as_ref().unwrap().event.turn.clone();
         assert_eq!(turn(&page), Turn::Welcome { rally: 0 });
@@ -763,7 +763,7 @@ mod tests {
         assert_eq!(lines.iter().find(|l| l.entrant.is_none()).unwrap().total, None);
         page.turn_done(&here, "tester");
         assert_eq!(turn(&page), Turn::EventOver);
-        // Continue reads it back with the damage; leaving the finished event removes its files.
+        // Continue reads it back with the damage; leaving the finished championship removes its files.
         let mut again = ChampionshipPage::new(&Data::new(here.join("data"), None));
         again.ai = Ok(fixture::ai());
         assert!(again.saved_event(&here, "tester").is_some());
@@ -777,7 +777,7 @@ mod tests {
 
     #[test]
     fn a_trial_between_rallies_is_practice_that_is_not_recorded() {
-        let here = crate::test_dir("events-trial");
+        let here = crate::test_dir("championship-trial");
         let mut page = page(&here);
         let mut event = fixture::fixture_event();
         page.screenshot_event(event.clone());
@@ -806,7 +806,7 @@ mod tests {
 
     #[test]
     fn a_stage_that_never_starts_changes_nothing() {
-        let here = crate::test_dir("events-abort");
+        let here = crate::test_dir("championship-abort");
         let mut page = page(&here);
         page.turn_done(&here, "tester");
         page.stage_start(&here).unwrap();
@@ -827,7 +827,7 @@ mod tests {
         let install = std::env::var_os("RBR_DATA").map(PathBuf::from).unwrap();
         let season = rbr_gameplay::weather::Season::load(&data).unwrap();
         let catalog = crate::catalog::Catalog::scan(&install).unwrap();
-        let here = crate::test_dir("events-real");
+        let here = crate::test_dir("championship-real");
         let cache = here.join(pool::CACHE);
         let (done, stop) = (AtomicUsize::new(0), AtomicBool::new(false));
         let stages = pool::read(&data, &cache, pool::items(&catalog, &season), &done, &stop);

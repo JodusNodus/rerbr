@@ -50,7 +50,7 @@ impl Form {
             _ => None,
         });
         match service {
-            Some(minutes) if self.championship.park.is_none() && self.championship.view == super::View::Event => {
+            Some(minutes) if self.championship.park.is_none() && self.championship.view == super::View::Running => {
                 let car = self.car().cloned().unwrap_or_default();
                 let archive = self.ngp_archive();
                 self.championship.open_park(&self.data, &car, Some(Path::new(&archive)), minutes);
@@ -61,7 +61,7 @@ impl Form {
         self.select_setup();
         let blocker = if car_missing {
             Some(Issue {
-                text: format!("the event's car {} is not installed", event_car.unwrap_or_default()),
+                text: format!("the championship's car {} is not installed", event_car.unwrap_or_default()),
                 fix: None,
             })
         } else {
@@ -90,7 +90,8 @@ impl Form {
             blocker: blocker.as_ref(),
             seed,
         };
-        let request = egui::ScrollArea::vertical().id_salt("events").show(ui, |ui| self.championship.ui(ui, env)).inner;
+        let request =
+            egui::ScrollArea::vertical().id_salt("championship").show(ui, |ui| self.championship.ui(ui, env)).inner;
         self.championship.profile = profile;
         match request {
             Some(Request::Launch(start)) => self.start_championship_stage(start),
@@ -103,7 +104,7 @@ impl Form {
         }
     }
 
-    /// The stage and weather an event stage runs on: the map's weather row with the road's wetness (the nearest one
+    /// The stage and weather a championship stage runs on: the map's weather row with the road's wetness (the nearest one
     /// otherwise), and whether the road needs `--wetness` over the row's.
     pub(crate) fn championship_weather(
         &self,
@@ -128,8 +129,8 @@ impl Form {
         Err(last)
     }
 
-    /// Starts an event's stage like the Drive page's Start, on the itinerary's road and clock, the tyre and setup
-    /// picked, the event's damage and the files `stage_start` named.
+    /// Starts a championship's stage like the Drive page's Start, on the itinerary's road and clock, the tyre and setup
+    /// picked, the championship's damage and the files `stage_start` named.
     pub fn start_championship_stage(&mut self, start: StageStart) {
         let StageStart { map, conditions, clock, tyre, setup, damage, args: mut extra } = start;
         match self.championship_weather(map, conditions) {
@@ -174,7 +175,7 @@ impl Form {
     }
 }
 
-/// `--screenshot`: the Championship tab on an event built from the fixture's stages ([`super::fixture`]): the presets without and with a saved
+/// `--screenshot`: the Championship tab on a championship built from the fixture's stages ([`super::fixture`]): the presets without and with a saved
 /// championship, the builder, and a season's welcome, a stage, a service (on the car of `damage`, a damage file),
 /// the standings later in the rally, the rally's end with its trials and the season's end.
 pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), String> {

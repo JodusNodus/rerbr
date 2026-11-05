@@ -1,4 +1,4 @@
-//! What the event pages draw with: cards, places and times, and the service park (`CSelectPartsUI` and the timer) on
+//! What the championship pages draw with: cards, places and times, and the service park (`CSelectPartsUI` and the timer) on
 //! the car's repair tree. The park's rules and state are `rbr_season::service::ServicePark`'s.
 
 use std::path::Path;
