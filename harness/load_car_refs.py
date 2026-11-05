@@ -27,20 +27,13 @@ ARRAYS = ((0x9C, 0xA0), (0xA4, 0xA8))
 ELEMENT, BLOCK = 0xC, 0x54
 
 
-def c_string(snap, at):
-    out = bytearray()
-    while not out.endswith(b"\0"):
-        out += snap.read(at + len(out), 1)
-    return bytes(out)
-
-
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
     snap = replay.Snapshot(sys.argv[1])
     car = snap.u32(0x8EF660)
     at = snap.u32(car + 0x34)
-    names = ["%x=%s" % (o + 4, c_string(snap, snap.u32(at + o + 4)).hex()) for o in NAMED
+    names = ["%x=%s" % (o + 4, replay.c_string(snap, snap.u32(at + o + 4)).hex()) for o in NAMED
              if snap.u32(at + o + 4) not in IMAGE]
     lines = ["# %s" % os.path.basename(sys.argv[1]),
              " ".join(["car_def", "0", "%#x" % at, snap.read(at, DEF_SIZE).hex()] + names)]

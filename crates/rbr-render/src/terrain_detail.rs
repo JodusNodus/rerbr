@@ -2,6 +2,7 @@
 //! near ground tiles as its own fine structure. An RSF stage's ground atlases (Luceram's 4096 `z*`) hold leaf litter
 //! and stones next to flat padding and road strips; tiled whole, the flat parts left the detail patchy.
 
+use crate::particles::wheel_spray::ground::smoothstep;
 use crate::stage::{Mesh, TextureRef};
 use glam::Vec3;
 use rbr_formats::dds::{self, Format};
@@ -92,11 +93,6 @@ pub(crate) fn bank_shares(meshes: &[Mesh]) -> BTreeMap<TextureRef, f32> {
     }
     (areas.into_iter())
         .filter(|(_, [steep, _])| *steep > 0.0)
-        .map(|(key, [steep, standing])| (key, 1.0 - smoothstep(0.1, 0.3, standing / steep)))
+        .map(|(key, [steep, standing])| (key, 1.0 - smoothstep([0.1, 0.3], standing / steep)))
         .collect()
-}
-
-fn smoothstep(low: f32, high: f32, x: f32) -> f32 {
-    let t = ((x - low) / (high - low)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
 }

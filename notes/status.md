@@ -130,7 +130,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 - 2026-10-21 (user): ReRBR steps NGP physics only; the viewer and launcher run through `rbr-standalone --boot
   --ngp-physics`, the oracle is drive2 attempt 5. The 1.02 branches in `rbr-physics`/`rbr-hybrid` and the `Variant`
   type are gone: the x87 precision is the thread's (`fpu::precision()`), and the `ngp` flags of gameplay, render,
-  recording and standalone went with it (`ControlPath::Quantized` is the 1.02 leftover).
+  recording and standalone went with it (the 1.02 quantizer path is gone with `ControlPath`; a replay entry still
+  goes through `NotifyFilt`, as NGP calls the original in replay mode).
 - 2026-10-20 (user): the porting workbench (the exe's function map, worklist, progress tracking, rename tables) moves
   to rbr-recomp's `rerbr/`. ReRBR keeps the Rust, the layouts and addresses that key the vectors and bindings, and
   the checks.

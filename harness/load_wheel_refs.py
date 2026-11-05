@@ -50,16 +50,9 @@ OPTIONS = (
 TYRE_TYPES = (0x2790, 0x6AC, 7)
 
 
-def c_string(snap, at):
-    out = bytearray()
-    while not out.endswith(b"\0"):
-        out += snap.read(at + len(out), 1)
-    return bytes(out)
-
-
 def line(snap, kind, position, at, size, names):
     fields = [kind, position, "%#x" % at, snap.read(at, size).hex()]
-    fields += ["%x=%s" % (o, c_string(snap, snap.u32(at + o)).hex()) for o in names if snap.u32(at + o)]
+    fields += ["%x=%s" % (o, replay.c_string(snap, snap.u32(at + o)).hex()) for o in names if snap.u32(at + o)]
     return " ".join(fields)
 
 

@@ -1,7 +1,5 @@
 //! `--screenshot DIR`: draws the pages offscreen and writes them to PNGs, for reports.
 
-use std::fs::File;
-use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
 use futures_executor::block_on;
@@ -191,11 +189,7 @@ pub fn draw(mut ui: impl FnMut(&egui::Context)) -> Result<Vec<u8>, String> {
 /// Writes `rgba` (the capture's size) to `path`, making its folder first.
 pub fn write_png(path: &Path, rgba: &[u8]) -> Result<(), String> {
     path.parent().map_or(Ok(()), std::fs::create_dir_all).map_err(|e| format!("{}: {e}", path.display()))?;
-    let file = File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut encoder = png::Encoder::new(BufWriter::new(file), SIZE.0, SIZE.1);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header().and_then(|mut w| w.write_image_data(rgba)).map_err(|e| format!("{}: {e}", path.display()))
+    rbr_render::upscale::write_png(path, SIZE.0, SIZE.1, rgba).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 #[cfg(test)]

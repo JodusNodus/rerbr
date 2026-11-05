@@ -447,6 +447,51 @@ fn rsf_car_models_load_with_their_textures() {
     assert!(loaded > 0, "no RSF car with its own model under {}", install.root.display());
 }
 
+/// A night drive loads the car-parts light options where the car has them ([`rbr_formats::rsf::night_options`]):
+/// the Fiesta WRC's and the Focus's pods light, the Rally3's redundant extras stay out, and a vetoed car
+/// keeps its installed parts. By day nothing changes.
+#[test]
+fn rsf_night_options_load_where_they_apply() {
+    let (Some(data), Some(root)) = (data(), std::env::var_os("RBR_RSF")) else {
+        eprintln!("skipping: RBR_DATA or RBR_RSF not set");
+        return;
+    };
+    let install = rbr_formats::rsf::Install::open(std::path::Path::new(&root)).unwrap();
+    let mut applied = 0;
+    for rsf_car in &install.cars {
+        let Ok(selected) = rbr_formats::rsf::select(data.clone(), &rsf_car.pack, Some(&install.root)) else {
+            continue;
+        };
+        if selected.model.fallback.is_some() {
+            continue;
+        }
+        let name = selected.folder().to_owned();
+        let day = car::load(&selected.data, &name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let night =
+            car::load_lit(&selected.data, &name, Mat4::IDENTITY, true).unwrap_or_else(|e| panic!("{name}: {e}"));
+        if !night.report.night_options.is_empty() {
+            assert!(night.report.night_veto.is_none(), "{name}: {:?}", night.report.night_veto);
+            // The counts may go either way: a lights-off car lights nothing by day but for the two
+            // synthesized beams, which the real records replace at night. A car installed with its
+            // lights on (the 911 SC) merges to its own files and stays identical.
+            if night.lamp_points != day.lamp_points || night.meshes.len() != day.meshes.len() {
+                applied += 1;
+            } else {
+                eprintln!("{name}: night option matches the installed parts");
+            }
+        } else {
+            assert_eq!(night.lamp_points, day.lamp_points, "{name}: vetoed night differs");
+            assert_eq!(night.meshes.len(), day.meshes.len(), "{name}: vetoed night differs");
+        }
+        // The interior set takes the same options (its pods and ramps), or stays as installed.
+        let inside = car::load_interior_lit(&selected.data, &name, Mat4::IDENTITY, true)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(inside.report.night_options, night.report.night_options, "{name}: interior");
+    }
+    assert!(applied > 10, "{applied} RSF cars changed by a night option");
+    eprintln!("{applied} RSF cars changed by a night option");
+}
+
 /// Every retail car's cockpit is its `Cam_internal` moved the whole [`COCKPIT_BACK`], unturned; the RSF GR Yaris's
 /// stops short of its seat shell, but clear of its headrest (Cameras-4), the RSF Audi quattro A2's short of where its
 /// seat bolsters enter the frame (`views::FRAME_CLEAR`; no retail seat comes within it), and no RSF car's eye is

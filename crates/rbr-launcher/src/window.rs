@@ -186,10 +186,9 @@ impl Gfx {
 }
 
 /// The window: the form, or without a game the install folder's field (`folder`, at first the install found in the
-/// usual places, `found`), why the last one did not load, and the files copied from the launcher's folder (`home`).
+/// usual places, `found`) and why the last one did not load.
 pub struct App {
     start: Start,
-    notice: Option<String>,
     form: Option<Form>,
     folder: String,
     disc_setup: DiscSetup,
@@ -199,7 +198,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(start: Start, mut form: Option<Form>, folder: Option<String>, notice: Option<String>) -> App {
+    pub fn new(start: Start, mut form: Option<Form>, folder: Option<String>) -> App {
         if let Some(form) = &mut form {
             form.log_missing_programs();
             form.page = form.first_page();
@@ -213,7 +212,7 @@ impl App {
         // At the first start, the usual install places' first with NGP.
         let found = folder.is_none().then(install::detect).flatten().map(|dir| dir.display().to_string());
         let folder = folder.or_else(|| found.clone()).unwrap_or_default();
-        App { start, notice, form, folder, disc_setup: DiscSetup::default(), found, error, gfx: None }
+        App { start, form, folder, disc_setup: DiscSetup::default(), found, error, gfx: None }
     }
 
     /// The page without a game: the install folder's field; whether a folder was saved, to load.
@@ -227,9 +226,6 @@ impl App {
             ui.label("• A RallySimFans install, or Richard Burns Rally with NGP (copied from Windows, for example): Browse… to the folder with Cars and Maps.");
             ui.label("• Only the disc? Set up from the disc… makes the game folder from the disc and NGP.");
             ui.add_space(8.0);
-            if let Some(notice) = &self.notice {
-                ui.colored_label(egui::Color32::GRAY, notice);
-            }
             let set = folder_row(ui, &mut self.folder, &mut self.disc_setup);
             let found = self.found.as_deref() == Some(self.folder.as_str());
             if found {

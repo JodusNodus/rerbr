@@ -1,6 +1,6 @@
 //! Relighting a stage's baked vertex light for another sun (explore/time-of-day, ours). The opaque unlit draws'
-//! vertex light holds the bake's sun: their luminance fits `a + b * facing` of the variant's `SunDir`
-//! (`examples/baked_light.rs`). The shader takes `b * facing(bake sun)` out and puts `b * facing(drawn sun)` in.
+//! vertex light holds the bake's sun: their luminance fits `a + b * facing` of the variant's `SunDir`.
+//! The shader takes `b * facing(bake sun)` out and puts `b * facing(drawn sun)` in.
 //! Foliage (alpha-tested draws) does not follow the sun this way: its vertices take the normal of the ground they stand
 //! on ([`Ground`]), so that grass and bushes shift with the ground around them.
 //!
@@ -15,7 +15,7 @@ use crate::stage::{Anchor, Layer, Mesh, Stage, Vertex};
 use glam::Vec3;
 
 /// The fit's correlation from which its sun is the bake's: below it (Loch Ard N, 51N, 63N, the unbaked RSF stages)
-/// the section's `SunDir` stays (`relight_survey`).
+/// the section's `SunDir` stays.
 pub const FIT_HOLDS: f32 = 0.35;
 
 /// The stage's own sun, as `Atmosphere::sun_direction`: the bake's where the fit holds, so the drawn sun and its
@@ -377,7 +377,7 @@ pub struct Daylight {
     /// alone).
     pub ambient: f32,
     pub tint: Vec3,
-    /// How much the car's lamps light the stage: none by day, all at [`NIGHT`].
+    /// How much the car's lamps light the stage: none by day (from [`LAMPS_FROM` up), all at [`NIGHT`].
     pub lamps: f32,
     /// The sun below [`NIGHT`]: drawn as night (`Atmosphere::night`).
     pub night: bool,
@@ -398,6 +398,9 @@ pub struct Moon {
 /// The sun's elevation, degrees, below which the stage is drawn as night: a little past the end of civil twilight,
 /// where the day's dimmed light meets the moonlight.
 pub const NIGHT: f32 = -7.0;
+/// The sun's elevation, degrees, below which the car's lamps light the stage: the lamps ramp in from here
+/// down to [`NIGHT`], where they are at full (`Daylight::lamps`). A rally car runs its pods into the dusk.
+pub const LAMPS_FROM: f32 = 6.0;
 /// With the physical light ([`Clock::physical`]), the end of astronomical twilight, where the twilight sky's light is
 /// under the night sky's own (airglow and stars, 0.002 lux); the moon lights the stage from [`MOON_FROM`], where the
 /// sun's light has gone.
@@ -502,7 +505,7 @@ impl Clock {
             sun: warm * smooth(-1.0, 6.0, elevation),
             ambient,
             tint,
-            lamps: 1.0 - smooth(NIGHT, 6.0, elevation),
+            lamps: 1.0 - smooth(NIGHT, LAMPS_FROM, elevation),
             night,
             moon: lunar.map(|(up, _, light)| Moon {
                 to_sun: toward(turned, elevation),

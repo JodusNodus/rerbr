@@ -109,7 +109,7 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
 - Tried and removed (no gain on an RX 9060 XT, 2026-10-26): the car's shadow filter taps (`Quality`, `--shadows`,
   `SHADOW_TAPS`, `CONTACT_TAPS`; medium saved ~0.2 ms but differed from high in the cockpit with sun through the
   windows by mean 0.3-0.7, 1% of pixels over 5-10/255, so the filter stays high's 4 and 6; `--shadows X` and
-  `shadows =` are read and ignored), the stage's weather in the pipelines (`WEATHER_KNOWN`, `Conditions`), the
+  `shadows =` were read and ignored, taken out 2026-11-05), the stage's weather in the pipelines (`WEATHER_KNOWN`, `Conditions`), the
   day-only pipelines (`DAY_ONLY`, `night_probes`), the split reflection pipelines (`REFLECT_WATER`; one pipeline
   draws water and wet road, the draw's mode says which).
 - Passes over the kept frame draw into it (`Renderer::over_attachment` in `renderer/frame.rs`);
@@ -503,6 +503,13 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 - Tried for the beam's white look (2026-10-25) and dropped: pulling the meter toward the 97th percentile, and local
   exposure from 1.5 stops (halos, day highlights down). The road under the beam at 1 to 5 lux against ~50x dimmer
   moonlight is physical.
+- Ours: a stage the lamps light (sun below +6 degrees, `relight::LAMPS_FROM`, dusk included) loads the car with
+  its car-parts light options on (`car::load_lit`, 2026-11-05, user: automatic, no picker UI): the headlights'
+  on-option, then each extra-lights/pod on-option merged over the model's `.ini`/`_settings.ini` in memory
+  before any mesh is built, so visibility, lamp switches and points all use the merged files
+  (`rsf::night_options`, `rsf::merge_night_options`; `notes/formats.md` "RSF cars"). By day, and for the six
+  vetoed cars (ambiguous on variants) and the six installed lights-on already, the installed parts stay. An
+  extra only renumbering the headlights' pods (Fiesta Rally3 `extralights_on`) is left out.
 - Ours: a car with no kind 1 record that ever lights (a community car installed with headlights off: none, or all
   `Active = false` without their switch box, as 19 installed cars incl. the Escort Mk II, 2026-10-30) gets a beam per
   `Point_light_lf`/`rf` for the night light, in the colour of its "on" option's headlight record

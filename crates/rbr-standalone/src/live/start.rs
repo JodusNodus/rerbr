@@ -68,7 +68,7 @@ use crate::physics::{boot_playback, load_substeps, why, Pure, DT};
 use crate::stage::StageData;
 use rbr_formats::data::Data;
 use rbr_gameplay::filter::Grid;
-use rbr_gameplay::game::{ControlPath, FrameInput, Game};
+use rbr_gameplay::game::{FrameInput, Game};
 use rbr_gameplay::ini::Ini;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::stage::{Stage, State};
@@ -310,14 +310,12 @@ fn settle(
 }
 
 /// The game a live run steps: `stage` from `start`, with the input filter of the game's `PC_InputFilter.ini` (the
-/// wheel without its speed fade, [`Grid::without_wheel_fade`]) and NGP's control path; a profile's grid replaces it
+/// wheel without its speed fade, [`Grid::without_wheel_fade`]); a profile's grid replaces it
 /// ([`Live::set_saves`]).
 fn new_game(start: Stage, stage: &StageData, dt: f32, settings: MarkerSettings) -> Game {
     let values = stage.track_values.clone();
     let grid = Grid::from_settings(&install_filter_ini()).without_wheel_fade();
-    let game = Game::new(start, grid, &stage.markers, values, dt, 0.0, settings)
-        .with_finish_zone(stage.finish_zone)
-        .with_controls(ControlPath::Ngp);
+    let game = Game::new(start, grid, &stage.markers, values, dt, 0.0, settings).with_finish_zone(stage.finish_zone);
     if stage.btb {
         game.with_forced_jump_start()
     } else {

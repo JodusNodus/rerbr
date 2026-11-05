@@ -38,12 +38,11 @@
 //! Night is a time of day: `--clock HH:MM` after dusk (the stage lit by the moon and the car's lamps).
 //! `--anti-aliasing taa|off` is the frame's anti-aliasing: one sample a pixel jittered and gathered over the frames (the
 //! default; `RBR_TAA_DEBUG=motion` or `mask` shows its motion or glass mask), or one sample a pixel, the cut-outs
-//! alpha-tested as in 1.02. `4x`, the multisampling taken out, is read as `taa`.
+//! alpha-tested as in 1.02.
 //! `--reflections high|medium|low|off` the screen-space reflections' rays a pixel and steps a ray (4 and 64, 2 and 48,
-//! 1 and 32), or none. `--shadows X`, from older command lines, is read and ignored.
+//! 1 and 32), or none.
 //! `--render-scale S` (0.25 to 1) draws the frame at S of the window's width and height, which the temporal
-//! anti-aliasing upscales (without it the post pass stretches it): cheaper, softer frames. `auto`, from older settings,
-//! is full size.
+//! anti-aliasing upscales (without it the post pass stretches it): cheaper, softer frames.
 //!
 //! `STAGE` defaults to `track-10_O`. A community stage is its folder (RallySimFans `Maps/<id>-<name>`, loaded at its
 //! default variant) or the path of its files without the extension (`notes/formats.md` "RSF stages"). `RBR_PATCH` (optional) is the 1.02 patch's `files/Main_group`: its files

@@ -1,6 +1,5 @@
 //! `rcpss`/`rcpps` as the reference CPU computes them: a 12-bit table approximation of `1 / x`. `data/rcp.bin` is the
-//! table the reference CPU gives: 2048 little-endian words, the second half of `harness/replay-approx.bin` (made by
-//! `harness/replay-approx.c`). `harness/replay.py`'s `hw_rcp` is the same model.
+//! table the reference CPU gives (made by `harness/replay-approx.c`). `harness/replay.py`'s `hw_rcp` is the same model.
 
 const TABLE_BYTES: &[u8] = include_bytes!("../../data/rcp.bin");
 

@@ -196,13 +196,6 @@ class Options(ctypes.Structure):
                 ("ngp_base", ctypes.c_uint32)]
 
 
-def ngp_base(snap):
-    """NGP.dll's base in a snapshot, 0 without NGP: under NGP the CCar::CDef key dict (0x8ef73c) points at NGP's copy
-    of its table (file address 0x10171318) instead of the exe's (0x7c6578, notes/ngp.md "Load path")."""
-    table = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0]
-    return 0 if table == 0x7C6578 else table - 0x171318
-
-
 def at_snapshot(addrs, base):
     """Bound entries where the snapshot has them: NGP.dll's (file addresses, rbr-hybrid's ngp.rs) at its base, none
     without NGP."""
@@ -403,7 +396,7 @@ class Hybrid:
             m.stop = m.stop or message.decode()
 
         if call:
-            track_own_writes(m, at_snapshot(only or self.bound, ngp_base(m.snap)))  # its block hooks before the bindings': unicorn runs them in order
+            track_own_writes(m, at_snapshot(only or self.bound, replay.ngp_base(m.snap)))  # its block hooks before the bindings': unicorn runs them in order
             b.lib.rbr_book_fill(b.ptr, struct.unpack("<I", fill)[0], m.stack_floor)
             b.set_record(record)
         api = uc_api(m)
@@ -411,7 +404,7 @@ class Hybrid:
                            STOPPED(lambda _: bool(m.stop)), FAIL(fail),
                            ctypes.cast(b.lib.rbr_book_fill_call, FILL_CALL) if call else FILL_CALL())
         options = Options(fill is not None and not call, struct.unpack("<I", fill)[0] if fill else 0, STACK_FILL,
-                          m.stack_floor, perturb is not None, perturb or 0.0, ngp_base(m.snap))
+                          m.stack_floor, perturb is not None, perturb or 0.0, replay.ngp_base(m.snap))
         hooked = (ctypes.c_uint32 * len(only))(*only) if only else None
         native = self.lib.rbr_hybrid_install(ctypes.byref(api), ctypes.byref(side), ctypes.byref(options), hooked,
                                              len(only) if only else 0)
@@ -760,7 +753,7 @@ def one_step(path, a, hybrid, o, groups):
     ma = machine(snap, o)
     record = not a.full_fill
     if record:
-        record_calls(ma, at_snapshot(hybrid.bound, ngp_base(snap)))
+        record_calls(ma, at_snapshot(hybrid.bound, replay.ngp_base(snap)))
     track_reads(ma)
     if finish(ma):
         print("%s: run A: %s" % (path, ma.stop))
@@ -1064,7 +1057,7 @@ class RunA:
         m.oracle = self.queries = Queries(o)
         record_accesses(m)
         if not a.full_fill:
-            record_calls(m, at_snapshot(hybrid.bound, ngp_base(snap)))
+            record_calls(m, at_snapshot(hybrid.bound, replay.ngp_base(snap)))
         self.m = self.live = m
         self.stale, self.stale_stop = [stale_machine(snap, o, fill) for fill in FILLS], None
         if self.file:

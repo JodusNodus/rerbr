@@ -7,12 +7,10 @@ Usage: python3 -I scripts/ngp-atmosphere-vectors.py SNAPSHOT OUT [COUNT]   (the 
 Lines: h, then T (10171adc), p (10171ad8), rho (10171ae0), 1/p (101767c8), 1.15 p (101767cc), 0.987 p (101767d0),
 all f32 bits in hex.
 """
-import importlib.util, os, random, struct, sys
+import os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
 from unicorn.x86_const import UC_X86_REG_ESP  # noqa: E402
 
 ATMOSPHERE = 0x1004B5A0
@@ -21,7 +19,7 @@ OUTPUTS = (0x10171ADC, 0x10171AD8, 0x10171AE0, 0x101767C8, 0x101767CC, 0x101767D
 
 def main(snap_path, out, count="2000"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     rebase = lambda a: a - 0x10000000 + base
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu

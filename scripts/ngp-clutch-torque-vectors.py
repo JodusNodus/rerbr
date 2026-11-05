@@ -10,17 +10,15 @@ Usage: python3 -I scripts/ngp-clutch-torque-vectors.py SNAPSHOT OUT [COUNT]   (t
 Lines (hex words): ratio, gear flag, sign word, trigger, speed, key, slip a, slip b, a, b, c, d, then the outputs:
 *out (0xdeadbeef when unwritten), speed, sign word, trigger.
 """
-import importlib.util, os, random, struct, sys
+import os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
 from unicorn.x86_const import UC_X86_REG_ECX, UC_X86_REG_ESP  # noqa: E402
 
 M93A0 = 0x10047300
 UNWRITTEN = 0xDEADBEEF
-F = lambda x: struct.unpack("<I", struct.pack("<f", x))[0]
+F = replay.f32_bits
 
 
 def value(rng):
@@ -34,7 +32,7 @@ def value(rng):
 
 def main(snap_path, out, count="3000"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu
     esp = mu.reg_read(UC_X86_REG_ESP) - 0x100

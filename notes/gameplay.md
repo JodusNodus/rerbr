@@ -44,7 +44,10 @@ and `poll/wine.rs` (Proton path, G923 lattice, rest values); NGP additions in `c
 Mechanics in `filter.rs` (grid, curve, `Step`, `Pack`, `notify_a`, `Reset`, profile grid, `without_wheel_fade`,
 `is_made_up`) and `ini.rs`; the NGP-path-only live rule in `rbr-standalone/src/live/mod.rs` (`Grid::from_profile`,
 `new_game`). Checks: `tests/filter_peek.rs` (grid and zero-input path per step), `tests/filter_vectors.rs` with
-`harness/vector_specs/gameplay_filter.py` (curve and `Pack` fuzzed).
+`harness/vector_specs/gameplay_filter.py` (curve and `Pack` fuzzed). `game.rs` takes every live control through
+NGP's handler (`CarControl::ngp`); a replay entry still goes through the quantizer's `NotifyFilt`. The 1.02
+`ControlPath`, the single-step gate and the unread event copies (`generated_control`, `checkpoint`, `marker_fired`,
+`time_card`, `elapsed`, `clock`) are removed.
 
 - RSF renames the install's file to `PC_InputFilter.ini.bak`, leaving the built-in grid, whose digital steering runs at a tenth of the retail file's rates (not in code).
 - Live play takes the profile grid from `--saves`/`--profile` on the NGP path only; FRM1 holds the payload after the filter, so `--boot` never runs it.

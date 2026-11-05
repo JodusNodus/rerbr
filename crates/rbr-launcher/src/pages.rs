@@ -434,20 +434,23 @@ impl Form {
         ctx.root_ui(|root| {
             egui::Panel::bottom("status").show(root, |ui| {
                 ui.add_space(4.0);
-                ui.horizontal(|ui| match &readiness {
-                    Some(issue) => {
-                        ui.colored_label(WARN, format!("⚠ {}", issue.text));
-                        // Not on the Settings page, which has the fixes in its rows.
-                        if let Some(fix) = issue.fix.filter(|_| self.page != Page::Settings) {
-                            if ui.button(fix.label()).clicked() {
-                                self.apply(fix);
+                ui.horizontal(|ui| {
+                    match &readiness {
+                        Some(issue) => {
+                            ui.colored_label(WARN, format!("⚠ {}", issue.text));
+                            // Not on the Settings page, which has the fixes in its rows.
+                            if let Some(fix) = issue.fix.filter(|_| self.page != Page::Settings) {
+                                if ui.button(fix.label()).clicked() {
+                                    self.apply(fix);
+                                }
                             }
                         }
+                        None => {
+                            let text = if self.status.is_empty() { "Ready" } else { &self.status };
+                            ui.colored_label(Color32::GRAY, text);
+                        }
                     }
-                    None => {
-                        let text = if self.status.is_empty() { "Ready" } else { &self.status };
-                        ui.colored_label(Color32::GRAY, text);
-                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), crate::update::link);
                 });
                 ui.add_space(2.0);
             })

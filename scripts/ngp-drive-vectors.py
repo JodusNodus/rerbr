@@ -8,19 +8,17 @@ Lines (hex words): the function, x, the split, the wheel's pack, weight, the axl
 scale, the gate, the latch bound, enabled, the wheel offset, terms[0] and terms[pack] speeds, the drive gain, the
 pack gain, loc0, pending, latch count; then step_vec[x], pack_out[x], the gate, the dirty word, pending, latch count.
 """
-import importlib.util, os, random, struct, sys
+import os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
 from unicorn.x86_const import (UC_X86_REG_EBP, UC_X86_REG_EBX, UC_X86_REG_EDI,  # noqa: E402
                                UC_X86_REG_ESI, UC_X86_REG_ESP)
 
 M5FE0, M6260 = 0x100458C0, 0x10045B80
 ENTER = {M5FE0: 0x100458E2, M6260: 0x10045BD1}
 SPLIT = 0x10171A90
-F = lambda x: struct.unpack("<I", struct.pack("<f", x))[0]
+F = replay.f32_bits
 
 
 def value(rng):
@@ -34,7 +32,7 @@ def value(rng):
 
 def main(snap_path, out, count="1500"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu
     ebp = mu.reg_read(UC_X86_REG_ESP) - 0x200

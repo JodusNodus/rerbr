@@ -8,17 +8,15 @@ Lines (hex words): has damage, the two damage states, front, rear, density, spee
 then the outputs: car+0x4a4, +0x4a8, +0x4ac, +0x378, +0x310, 1017147c and eax (8: no downforce; the speed's
 direction; else the wheel pointer at car+0x474, written here as 0xffff0474).
 """
-import importlib.util, os, random, struct, sys
+import os, random, struct, sys
 
-spec = importlib.util.spec_from_file_location(
-    "replay", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness", "replay.py"))
-replay = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(replay)
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "harness"))
+import replay  # noqa: E402
 from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_ESP  # noqa: E402
 
 DOWNFORCE = 0x10047040
 DENSITY, DRAG = 0x10171AE0, 0x1017147C
-F = lambda x: struct.unpack("<I", struct.pack("<f", x))[0]
+F = replay.f32_bits
 
 
 def value(rng):
@@ -33,7 +31,7 @@ def value(rng):
 
 def main(snap_path, out, count="3000"):
     snap = replay.Snapshot(snap_path)
-    base = struct.unpack("<I", snap.read(0x8EF73C + 0xC, 4))[0] - 0x171318
+    base = replay.ngp_base(snap)
     rebase = lambda a: a - 0x10000000 + base
     m = replay.Machine(snap, log_writes=False)
     mu = m.mu
