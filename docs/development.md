@@ -110,7 +110,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 | [`rbr-render`](../crates/rbr-render) | the wgpu renderer and the driving window `viewer`: stage, car, sky, weather, HUD, cameras, devices, force feedback | [renderer.md](../notes/renderer.md), [cameras-hud-launcher.md](../notes/cameras-hud-launcher.md) |
 | [`rbr-sound`](../crates/rbr-sound) | gameplay sound | [sound.md](../notes/sound.md) |
 | [`rbr-gameplay`](../crates/rbr-gameplay) | the gameplay loop: input to car control, frame clock, stage states, timing, race flow, records | [gameplay.md](../notes/gameplay.md) |
-| [`rbr-championship`](../crates/rbr-championship) | the championship: the season, its event queue and AI field, the rally's stages, the service park, the season save | [gameplay.md](../notes/gameplay.md#championship-and-service) |
+| [`rbr-championship`](../crates/rbr-championship) | the classic 1.02 season (to be deleted): the season, its event queue, the season save; the AI engine, service park and rally stages now live in `rbr-season` | [gameplay.md](../notes/gameplay.md#championship-and-service) |
 | [`rbr-school`](../crates/rbr-school) | the rally school (experimental): the lessons, their filter bank and verdict, as a mode on the stage loop | [gameplay.md](../notes/gameplay.md#rally-school-experimental) |
 | [`rbr-formats`](../crates/rbr-formats) | readers for the game's files and the community layouts, one module per format | [formats.md](../notes/formats.md) |
 | [`rbr-btb`](../crates/rbr-btb) | BTB stages (experimental): their folders, meshes, the stage files built from them, and their scene | [btb.md](../notes/btb.md) |

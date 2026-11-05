@@ -1,9 +1,12 @@
 # Events (ours)
 
 Rally events the player builds from presets, on any installed stage (retail, RSF, BTB), against an AI field in their
-car class. Code: `crates/rbr-season` (`config`, `pace`, `field`, `event`); the faithful 1.02 season stays in
-`rbr-championship`. Nothing gameplay- or physics-facing: the event layer only reads drivelines and hands the launcher
-times, standings and saves.
+car class: the one championship mode, a better 1.02 season. Code: `crates/rbr-season` holds everything a season needs:
+`config`, `pace`, `track`, `field`, `event`, `team`, and the 1.02 pieces it reuses (`ai`: the AI engine, `service`: the
+service park and `Crew`, `rally`: `RallyStage`, `StageReport`, `tyre_choices`, `road`, `seed`). `rbr-championship`
+(the classic 1.02 season state machine, events queue, save and layout) depends on it and re-exports the moved items
+until the launcher drops it; it is to be deleted. Nothing gameplay- or physics-facing: the event layer only reads
+drivelines and hands the launcher times, standings and saves.
 
 ## Model
 
@@ -17,22 +20,47 @@ times, standings and saves.
   net heading change).
 - `grip_eff` = class grip x surface (tarmac 1, gravel 0.75, snow 0.50) x (1 - 0.25 x wetness). Braking scales with
   the grip.
-- `field`: fictional international crews (nothing from the game's roster, which stays out of the source). Skills
-  spread below the best: best = 1 - 0.08 x (1 - difficulty), rest up to 0.09 below, rescaled so the best equals the
-  reference at difficulty 1. Stage time = reference / skill with central noise, rarer 5-60 s losses and a small
-  retire chance, wider spread when wet. All draws from `CrtRand`, seeded per (seed, rally, stage).
+- `track`: a stage's `ai_ini::Track` for the 1.02 engine, from its driveline. Sections are the stage's `.dls` splits
+  (the retail `ai.ini` cuts there), thirds without. A section's par is its share of the speed plan's time
+  (`PAR_SCALE` 1: the engine's par draws and mistakes net out for the field's best, whose mean lands within 0.2 % of the
+  reference, sd 0.002 over the retail stages). Each check describes one half: a straights check (type 3) when the half
+  is 70 %+ long straights (top speed over 150 m+), else curves (type 0, value 3 +/- how tight the corners hold the plan;
+  tightness 0.15 is the retail mean); the second half of a snow section looser than the first takes rough (type 1),
+  a much looser gravel one obstacles (type 2). Material from the surface, accident table 0 (every retail row uses it).
+  `StageProfile::flat` gives a stage without a driveline (BTB) a reference and a middling track from its length.
+- `field`: fictional international crews (nothing from the game's roster, which stays out of the source) drive the
+  1.02 AI engine (`ai::stage_time`: sections, checks, mistakes, accidents with car-part damage and injuries,
+  retirements, the inspired roll, false starts 10/60/180 s then out, temperaments; wet is the engine's +9 %). Drivers
+  are drawn by difficulty with means rising with it (technique 2.9 + 1.1 d, skills 2.6 + d, speed 2 + 1.4 d,
+  endurance 3 + 0.8 d, spreads from the retail `aidrv.ini`'s fourteen drivers) and the retail temperament mix (mostly 3,
+  then 1, 0, 4). Entrant `i` takes team `i / 2` and that team's car, as the season seats two drivers to a team. The
+  difficulty also sets the field's `pace` over the pars (1 at 1, 1.087 at 0); adaptive moves it 0.003 a stage.
+  `Entrant.skill`/`consistency` are display summaries of the driver record.
+- AI service: after a stage with a service the cars get `ai::service` (the manager's order, repairs at the team's cost
+  within 20/40 minutes) and `service_penalty` (10 s per minute late) into `Event.penalties`. Cars are repaired and
+  false starts reset at each rally's first stage. A driver who retires is out for the rally.
+- Road order: stage 1 starts by season points (the seed's shuffle for rally 1 and ties), later stages by the rally
+  standings, leader first, the retired last (`Event::start_order`); the player's place gives `road_wear` with the 1.02
+  rule (front three new, 4-11 normal, rest worn). 1.02's AI comparison has no road-position effect on time, nor do we.
+- Team crew: `EventConfig.team` is the roster team whose engineer and mechanics scale the player's repair times
+  (`Event::crew`, `team::team_offers` describes them in words). Player's car is separate.
+- Bulletins: `Event::bulletins(rally)` renders the engine's `Bulletin` and `AccidentRecord` entries in order, "SS2: name
+  ...", without the manager orders. They are stored as text in the save.
 - `event`: per rally one surface (Mixed draws one per rally from the pool's own), one stage family preferred
   (retail `track-NN`, RSF/BTB the id before `-`), sampled without repeating unless the pool is too small. Rally
   names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). Clocks from 08:00 (21:00 at
   night; realistic puts the last leg at dusk/night), changeable weather per leg, ~20 min mid-rally services and
   45 min overnight in a weekend. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
   rally points. Adaptive moves every entrant's skill by at most 0.003 a stage toward the player finishing 2nd-4th.
-  Save is a versioned `|`-separated text format (`rbr-season 1` head), backslash-escaped, no serde.
+  A retired player ends the rally: the field's remaining stages are simulated, the turn goes to RallyOver, no points. Points
+  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 2` head: config with the team,
+  pace, itinerary with each stage's track, the roster's teams and costs, each entrant's driver/car state and false
+  starts, results, AI penalties, bulletins), backslash-escaped, no serde.
 
 ## Calibration
 
 `crates/rbr-season/examples/pace.rs` prints every installed stage's length and reference time per class. Retail AI
-column runs the 1.02 championship AI's best driver (`rbr-championship` `ai::stage_time`, level 2, dry, mean of 8
+column runs the 1.02 championship AI's best driver (`rbr-season` `ai::stage_time`, level 2, dry, mean of 8
 seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records within a few seconds everywhere.
 
 - WRC/top class vs the AI, totals: gravel 0.992 (39 stages), tarmac 1.009 (12), snow 0.934 (6); median stage 0.97.
@@ -49,3 +77,13 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 - The launcher builds `StageRef`s and calls `reference_time` (parallel work); BTB stages have no drivelines yet,
   so they need reference times another way (length/surface estimate) until they do.
 - Wetness comes from the itinerary's conditions; the launcher maps conditions to the stage's own weathers.
+
+## Generated tracks vs the retail `ai.ini`
+
+`examples/track.rs` (reads the install's `ai.ini` at run time, nothing kept) builds each retail map's track for the WRC
+class and compares (36 maps, dry rows): material 108/108; section share of the stage |generated - retail| 0.036; total
+par generated / retail gravel 1.022 (sd 0.226), snow 1.027 (0.152), tarmac 1.003 (0.089), the same residuals as the pace
+model's; check types 130/216 and type with value within 1 117/216. The retail checks are hand-set and barely follow
+the geometry (type 0 vs 3 halves have near-equal tightness and straight share), so a constant (0, 3) would score about
+as well; the generator keeps the rules above for their plausibility, not their match. `examples/season.rs` runs a
+three-rally season on the retail stages with a fixed player time and prints standings, bulletins and retirements.

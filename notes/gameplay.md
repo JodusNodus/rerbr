@@ -204,7 +204,7 @@ presentation: [renderer.md](renderer.md), [sound.md](sound.md).
 
 ## Championship and service
 
-Mechanics in the `rbr-championship` crate: `rally` (time, sectors, retire rule, the `--result-out` file `StageReport`),
+Mechanics in the `rbr-championship` crate (the AI engine `ai`, `service` and `StageReport` moved to `rbr-season`): `rally` (time, sectors, retire rule, the `--result-out` file `StageReport`),
 `season/` (position, clock, rank, result views; byte-exact save), `events`, `store`, `ai`, `service/`; the setup in
 `rbr_gameplay::setup`. The `rand()` order is the asm's (`ai`); the driver classes' draws are ours (not in code).
 - The launcher owns the season and the rally (`rally_page.rs`); each stage is a `rbr-standalone --championship` run
