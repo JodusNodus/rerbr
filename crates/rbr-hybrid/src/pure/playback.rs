@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use rbr_physics::mem::{Backend, Mem};
-use rbr_physics::physics_core::layout::signal_emit;
 use rbr_physics::snapshot::Snapshot;
 use rbr_recording::CONTROL_BYTES;
 
@@ -15,19 +14,20 @@ use super::image::{app_state, CAR_PTR, LOAD_STATE};
 use super::{Pure, EMIT, EMIT_OFFSET, SIGNALS, STEP_FORWARD};
 use crate::car_body::UPDATE_SEED;
 use crate::entities::MB560;
-use crate::{Regs, Return, SignalCallees};
+use crate::{Regs, Return};
 use rbr_physics::fpu::Precision;
 
 /// One playback step from the call slot `slot` (`StepForward`'s return address slot, `regs` the other registers):
-/// the control at `control` (`None` for the snapshot's own step, whose control was emitted before it) through `Emit`,
-/// then `StepForward(1)`. `Emit` is the same template as `CMultiSignal1<const CSigLocalTime&>::Emit`, so it runs as
-/// [`signal_emit::emit`]; its connections are host calls from `slot`.
+/// the control at `control` (`None` for the snapshot's own step, whose control was emitted before it) through NGP's
+/// control input, then `StepForward(1)`. NGP hands the payload to the player car's control input itself, as
+/// [`emit`] does; its connections are host calls from `slot`.
 pub fn step(pure: &Pure, regs: Regs, slot: u32, control: Option<u32>, substeps: u32) -> Return {
     let _run = PureRunGuard::new(&pure.run_depth);
     let _ngp = crate::ngp::Scope::new(pure.ngp_base);
-    // The load's settle steps run on the game's thread, at D3D's control word `0x7f`; under NGP the race's steps run on
-    // NGP's thread, at `0x27f` (`notes/ngp.md`, "x87 precision").
-    let pc53 = crate::ngp::is_ngp() && app_state(&pure.mem) != LOAD_STATE;
+    // The pure host steps NGP physics only (production entries refuse non-NGP snapshots): the load's settle steps
+    // run on the game's thread, at D3D's control word `0x7f`; the race's steps run on NGP's thread, at `0x27f`
+    // (`notes/ngp.md`, "x87 precision").
+    let pc53 = app_state(&pure.mem) != LOAD_STATE;
     rbr_physics::fpu::set_precision(if pc53 { Precision::Pc53 } else { Precision::Pc24 });
     if let Some(control) = control {
         emit(pure, regs, slot, control);
@@ -37,21 +37,15 @@ pub fn step(pure: &Pure, regs: Regs, slot: u32, control: Option<u32>, substeps: 
     pure.enter(STEP_FORWARD, Regs { esp: slot, ..regs })
 }
 
-/// [`step`]'s `Emit` of the payload at `control`.
+/// [`step`]'s `Emit` of the payload at `control`: NGP hands the payload to the player car's control input itself;
+/// the car has no connection on the emit, and NGP's walk of the other listeners reaches no physics (`notes/ngp.md`,
+/// "Controls under NGP").
 pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
-    let mut mem = pure.mem.clone();
+    let mem = pure.mem.clone();
     let at = mem.u32(SIGNALS) + EMIT_OFFSET;
     let entry = Regs { ecx: at, esp: slot, ..regs };
-    if crate::ngp::is_ngp() {
-        // NGP hands the payload to the player car's control input itself; the car has no connection on the emit,
-        // and NGP's walk of the other listeners reaches no physics (`notes/ngp.md`, "Controls under NGP").
-        let car = mem.u32(CAR_PTR);
-        pure.with_frame(EMIT, entry, || pure.host().call(UPDATE_SEED, car, &[control]));
-    } else {
-        pure.with_frame(EMIT, entry, || {
-            signal_emit::emit(&mut mem, &mut SignalCallees(pure.host(), crate::emit_name(EMIT)), at, control)
-        });
-    }
+    let car = mem.u32(CAR_PTR);
+    pure.with_frame(EMIT, entry, || pure.host().call(UPDATE_SEED, car, &[control]));
 }
 
 /// The return address of the driver's `StepForward` call (`replay.py`'s `SENTINEL`).

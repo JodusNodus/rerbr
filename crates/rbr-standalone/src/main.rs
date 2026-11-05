@@ -95,7 +95,7 @@
 //! `StepForward` on the snapshot's memory, with the control `Game` emits from the recorded payload. A snapshot at
 //! step 0 (S1) runs everything pure: the load settle's `StepForward(40)` frames, the
 //! camera's go and the countdown, then driving. `Game` gives each application state change to the pure memory
-//! (`PhysicsStep::app_state`, `SetAppState`'s store), so a control emitted while driving reaches the car (S2). The compare is `pure_step`'s (`rbr_hybrid::pure::Compare`; at step 0
+//! (`PhysicsStep::app_state`, `SetAppState`'s store), so a control emitted while driving reaches the car (S2). The compare is `rbr_hybrid::pure::Compare`'s (at step 0
 //! `Compare::at_start`). `Game`'s time card and clock are compared with the bound `CTimeKeeper`'s in `Mem` at the boot
 //! and after every step. A call the pure host cannot run stops the snapshot's run, with its step and address; there
 //! is no fallback.
