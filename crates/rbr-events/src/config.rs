@@ -1,6 +1,7 @@
 //! What the player picks for an event, and the presets that fill it.
 
 pub use rbr_formats::rsf::Surface;
+use rbr_gameplay::crt::CrtRand;
 
 /// How long the event is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,7 +109,70 @@ impl Preset {
 
     /// The preset's settings for `class` and `car`.
     pub fn config(self, class: &str, car: &str, seed: u32) -> EventConfig {
-        let _ = (class, car, seed);
-        todo!("rbr-events worker")
+        let base = EventConfig {
+            class: class.to_owned(),
+            car: car.to_owned(),
+            length: Length::Rally { stages: 6 },
+            pool: StagePool::All,
+            surfaces: Surfaces::Only(Surface::Gravel),
+            daylight: Daylight::Day,
+            weather: Weather::Dry,
+            damage: Damage::Realistic,
+            difficulty: 0.6,
+            adaptive: false,
+            field_size: 12,
+            seed,
+        };
+        match self {
+            // One gravel rally of six stages.
+            Preset::QuickRally => base,
+            // A two-leg rally of ten stages, the second leg at dusk or night, with changeable weather.
+            Preset::Weekend => EventConfig {
+                length: Length::Weekend { stages: 10 },
+                surfaces: Surfaces::Mixed,
+                daylight: Daylight::Realistic,
+                weather: Weather::Changeable,
+                ..base
+            },
+            // Six rallies of six stages on mixed surfaces.
+            Preset::Season => EventConfig {
+                length: Length::Season { rallies: 6, stages: 6 },
+                surfaces: Surfaces::Mixed,
+                weather: Weather::Changeable,
+                ..base
+            },
+            // A seeded mix of everything else (length, pool, surfaces, daylight, weather).
+            Preset::Random => {
+                let mut rng = CrtRand::srand(seed);
+                let draw = |rng: &mut CrtRand, n: usize| (rng.draw() as usize) % n;
+                let length = match draw(&mut rng, 3) {
+                    0 => Length::Rally { stages: 4 + draw(&mut rng, 5) as u8 },
+                    1 => Length::Weekend { stages: 8 + draw(&mut rng, 5) as u8 },
+                    _ => Length::Season { rallies: 3 + draw(&mut rng, 4) as u8, stages: 4 + draw(&mut rng, 5) as u8 },
+                };
+                let pool = match draw(&mut rng, 3) {
+                    0 => StagePool::Retail,
+                    1 => StagePool::Community,
+                    _ => StagePool::All,
+                };
+                let surfaces = match draw(&mut rng, 4) {
+                    0 => Surfaces::Only(Surface::Tarmac),
+                    1 => Surfaces::Only(Surface::Gravel),
+                    2 => Surfaces::Only(Surface::Snow),
+                    _ => Surfaces::Mixed,
+                };
+                let daylight = match draw(&mut rng, 3) {
+                    0 => Daylight::Day,
+                    1 => Daylight::Realistic,
+                    _ => Daylight::Night,
+                };
+                let weather = match draw(&mut rng, 3) {
+                    0 => Weather::Dry,
+                    1 => Weather::Changeable,
+                    _ => Weather::Wet,
+                };
+                EventConfig { length, pool, surfaces, daylight, weather, ..base }
+            }
+        }
     }
 }
