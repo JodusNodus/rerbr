@@ -24,6 +24,7 @@ use std::collections::{BTreeMap, HashMap};
 mod bounce;
 mod build;
 mod cloud_volume;
+mod depth_pyramid;
 mod enhance;
 mod frame;
 mod gpu;
@@ -40,6 +41,8 @@ mod sun_mask;
 mod textures;
 mod uniforms;
 
+#[cfg(test)]
+pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
 pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
 pub use frame::FrameStats;
 pub use gpu::{instance, request_gpu, Gpu, GpuError};

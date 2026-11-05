@@ -1,8 +1,9 @@
 // HDR post pass (renderer addition, `post.rs`; not the game's look). The scene arrives as linear colour in a float
-// target (`graded` in `shader.wgsl`). A bloom chain halves it (`fs_down`, the 13-tap filter of Jimenez 2014) and adds
-// the levels back up (`fs_up`, a 3x3 tent); `cs_histogram` bins the scene's light and `cs_meter` sets the exposure
-// from the histogram, eased over time as an eye adapts; `fs_composite` blends a little of the bloom in, exposes, and
-// applies Gran Turismo 7's tone mapping (`gt7`; sharpening first under TAA, `sharpened`).
+// target (`graded` in `shader.wgsl`). A glare chain halves it (`fs_glare_first`, `fs_glare_down`, the 13-tap filter of
+// Jimenez 2014, each level weighted by a camera's diffraction) and adds the levels back up (`fs_glare_up`, a 3x3 tent);
+// `cs_histogram` bins the scene's light and `cs_meter` sets the exposure from the histogram, eased over time as an eye
+// adapts; `fs_composite` adds the glare, exposes, and applies Gran Turismo 7's tone mapping (`gt7`; sharpening first
+// under TAA, `sharpened`).
 
 @group(0) @binding(0) var source: texture_2d<f32>;
 @group(0) @binding(1) var linear_sampler: sampler;
@@ -52,9 +53,7 @@ override DEBUG_VIEW: u32 = 0u;
 @group(1) @binding(4) var<uniform> meter: Meter;
 @group(1) @binding(5) var<storage, read_write> meter_histogram: array<atomic<u32>, ZONE_BINS>;
 
-// How much of the frame the bloom replaces.
-const BLOOM: f32 = 0.06;
-// The bloom chain's levels (`post::LEVELS`); `fs_up` sums them.
+// The glare chain's levels (`post::LEVELS`); `fs_glare_up` sums them.
 const LEVELS: f32 = 6.0;
 // The metering (`cs_histogram`, `cs_meter`): the scene's luminance (cd/m2, its light over the pre-exposure) on a grid
 // of `METER_GRID` points binned by its log2 in `BINS` bins from `EV_LOW` over `EV_SPAN` stops (starlit ground to the
@@ -111,11 +110,41 @@ const ROD_SHIFT: mat3x3<f32> = mat3x3<f32>(
 const ROD_RETINA: f32 = 3000.0;
 // Local exposure (`fs_composite`; as Unreal's local exposure lowers the highlights' contrast): the eye adapts to each
 // part of what it sees, a single exposure cannot, and the lamps' beam on the road at night is several stops over the
-// dark the meter exposes for. Where the frame's broad light, the bloom chain's sum of blurs, is exposed more than
+// dark the meter exposes for. Where the frame's broad light, the glare chain's sum of blurs, is exposed more than
 // `LOCAL_FROM` stops over `KEY`, `LOCAL_GIVE` of the excess is taken off the exposure there; the detail within it stays.
 // A day's sky seldom reaches it.
 const LOCAL_FROM: f32 = 2.0;
 const LOCAL_GIVE: f32 = 0.6;
+// The glare (after Gran Turismo 7, SIGGRAPH 2025 Physically Based Shading course; until 2026-11-05 an even blur of 6%
+// of the frame): the frame's light spread by a camera's diffraction, the Airy pattern of a round aperture, whose light
+// beyond a radius r is J0(x)^2 + J1(x)^2 with x = pi r / (lambda N), about 2 / (pi x) past the first ring. The glare
+// chain's level j takes the light between `GLARE_EDGE` of its texels and half that (1.5 and 3 pixels for the first,
+// doubling each level), so its weight halves from level to level (`glare_weight`; least squares of the edge against the
+// pattern's light outside 1 to 120 pixels, through the chain's own blurs: 27% rms in log, the outer levels short of the
+// pattern's far tail). The radii are on a full-frame camera's 24 mm high frame (`GLARE_SENSOR`), the wavelengths the
+// Rec.709 primaries' dominant ones (`GLARE_WAVELENGTH`: the red glare reaches further, the dispersion), and the
+// F-number the aperture a camera at 1/125 s and ISO 100 takes for the adapting luminance's EV100 (`GLARE_SHUTTER`, the
+// sunny 16 rule: f/16 in sun), within `GLARE_APERTURE`: the light spread grows with the F-number, so a bright scene
+// glares and a dim one hardly does. At 1920x1080 it spreads 5.4% of the light in sun (f/16), 0.5% at f/1.4 (dusk and
+// night): the light sources at their real luminances (`lamp_shown`, `sun_disc` in `shader.wgsl`) glare at night, where
+// the even blur spread 6% of them into a red fog over the frame. GT7 spreads only the light past the display's white:
+// with the game's lamps and low sun a few stops over it (and the chain's clamp at 32), that glare did not show, even 16
+// times as strong.
+const GLARE_EDGE: f32 = 1.5;
+const GLARE_SENSOR: f32 = 24.0;
+const GLARE_WAVELENGTH: vec3<f32> = vec3<f32>(611.0e-6, 549.0e-6, 464.0e-6);
+const GLARE_SHUTTER: f32 = 1.0 / 125.0;
+const GLARE_APERTURE: vec2<f32> = vec2<f32>(1.4, 22.0);
+const PI: f32 = 3.14159265;
+// The glare chain: the most a tap reads, renderer units (`LIGHT_CAP` in `shader.wgsl`, the most a light source is drawn
+// at; only against a stray infinity). The local exposure's broad light takes the frame's light at most
+// `BROAD_OVER_WHITE` times the display's white, exposed (`GLARE_WHITE`, where `gt7` reaches white, 3.3 stops over
+// `KEY`): with the light sources' full light the local exposure darkened all about them (the car's rear and the glare
+// under its tail lamps), and at white the night beam on the road burnt out (45O chase 23:00: 3.7% of the frame clipped,
+// 2.4% at 8).
+const CHAIN_CAP: f32 = 30000.0;
+const GLARE_WHITE: f32 = 3.65;
+const BROAD_OVER_WHITE: f32 = 8.0;
 // How fast the exposure follows the frame, per second: faster down into a bright frame than up into a dark one.
 const ADAPT_SPEED: vec2<f32> = vec2<f32>(3.0, 1.2);
 
@@ -226,43 +255,88 @@ fn vs_full(@builtin(vertex_index) index: u32) -> Out {
     return Out(vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0), uv);
 }
 
-fn tap(uv: vec2<f32>, offset: vec2<f32>) -> vec3<f32> {
-    let texel = 1.0 / vec2<f32>(textureDimensions(source));
-    // Clamped, so that the sun's disc does not flood the chain.
-    return min(textureSampleLevel(source, linear_sampler, uv + offset * texel, 0.0).rgb, vec3<f32>(32.0));
-}
-
-@fragment
-fn fs_down(v: Out) -> @location(0) vec4<f32> {
-    let a = tap(v.uv, vec2<f32>(-2.0, -2.0));
-    let b = tap(v.uv, vec2<f32>(0.0, -2.0));
-    let c = tap(v.uv, vec2<f32>(2.0, -2.0));
-    let d = tap(v.uv, vec2<f32>(-2.0, 0.0));
-    let e = tap(v.uv, vec2<f32>(0.0, 0.0));
-    let f = tap(v.uv, vec2<f32>(2.0, 0.0));
-    let g = tap(v.uv, vec2<f32>(-2.0, 2.0));
-    let h = tap(v.uv, vec2<f32>(0.0, 2.0));
-    let i = tap(v.uv, vec2<f32>(2.0, 2.0));
-    let j = tap(v.uv, vec2<f32>(-1.0, -1.0));
-    let k = tap(v.uv, vec2<f32>(1.0, -1.0));
-    let l = tap(v.uv, vec2<f32>(-1.0, 1.0));
-    let m = tap(v.uv, vec2<f32>(1.0, 1.0));
-    let sum = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
-    return vec4<f32>(sum, 1.0);
-}
-
-@fragment
-fn fs_up(v: Out) -> @location(0) vec4<f32> {
-    var sum = tap(v.uv, vec2<f32>(0.0, 0.0)) * 4.0;
-    sum += (tap(v.uv, vec2<f32>(-1.0, 0.0)) + tap(v.uv, vec2<f32>(1.0, 0.0))) * 2.0;
-    sum += (tap(v.uv, vec2<f32>(0.0, -1.0)) + tap(v.uv, vec2<f32>(0.0, 1.0))) * 2.0;
-    sum += tap(v.uv, vec2<f32>(-1.0, -1.0)) + tap(v.uv, vec2<f32>(1.0, -1.0));
-    sum += tap(v.uv, vec2<f32>(-1.0, 1.0)) + tap(v.uv, vec2<f32>(1.0, 1.0));
-    return vec4<f32>(sum / 16.0, 1.0);
-}
-
 fn luminance(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+// The glare's F-number (`GLARE_SHUTTER`).
+fn aperture() -> f32 {
+    let ev100 = log2(max(exposure.adapting, 1e-6) * 100.0 / CALIBRATION);
+    return clamp(sqrt(exp2(ev100) * GLARE_SHUTTER), GLARE_APERTURE.x, GLARE_APERTURE.y);
+}
+
+// Each channel's share of the light the Airy pattern at F-number `n` puts beyond `r` texels of a level `height` texels
+// high (`GLARE_SENSOR`).
+fn airy_beyond(r: f32, height: f32, n: f32) -> vec3<f32> {
+    return min(2.0 * GLARE_WAVELENGTH * n / (PI * PI * r / height * GLARE_SENSOR), vec3<f32>(1.0));
+}
+
+// The glare's weight of the level `height` texels high (`GLARE_EDGE`).
+fn glare_weight(height: f32, n: f32) -> vec3<f32> {
+    return airy_beyond(GLARE_EDGE * 0.5, height, n) - airy_beyond(GLARE_EDGE, height, n);
+}
+
+// The 13 taps of Jimenez's filter of `source` about `uv`, each by `glare_tap`.
+fn glare_filter(uv: vec2<f32>, first: bool) -> vec4<f32> {
+    let a = glare_tap(uv, vec2<f32>(-2.0, -2.0), first);
+    let b = glare_tap(uv, vec2<f32>(0.0, -2.0), first);
+    let c = glare_tap(uv, vec2<f32>(2.0, -2.0), first);
+    let d = glare_tap(uv, vec2<f32>(-2.0, 0.0), first);
+    let e = glare_tap(uv, vec2<f32>(0.0, 0.0), first);
+    let f = glare_tap(uv, vec2<f32>(2.0, 0.0), first);
+    let g = glare_tap(uv, vec2<f32>(-2.0, 2.0), first);
+    let h = glare_tap(uv, vec2<f32>(0.0, 2.0), first);
+    let i = glare_tap(uv, vec2<f32>(2.0, 2.0), first);
+    let j = glare_tap(uv, vec2<f32>(-1.0, -1.0), first);
+    let k = glare_tap(uv, vec2<f32>(1.0, -1.0), first);
+    let l = glare_tap(uv, vec2<f32>(-1.0, 1.0), first);
+    let m = glare_tap(uv, vec2<f32>(1.0, 1.0), first);
+    return e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
+}
+
+// A tap of the glare chain: from the frame (`first`), exposed (held under `CHAIN_CAP`), and its luminance (held under
+// `BROAD_OVER_WHITE`); from a level, as it is.
+fn glare_tap(uv: vec2<f32>, offset: vec2<f32>, first: bool) -> vec4<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(source));
+    let s = textureSampleLevel(source, linear_sampler, uv + offset * texel, 0.0);
+    if (!first) {
+        return s;
+    }
+    let broad = min(s.rgb, vec3<f32>(BROAD_OVER_WHITE * GLARE_WHITE / exposure.value));
+    return vec4<f32>(clamp(s.rgb, vec3<f32>(0.0), vec3<f32>(CHAIN_CAP)) * exposure.value, luminance(broad));
+}
+
+// The glare chain's first level: in `rgb` the exposed light weighted by the level's glare (`glare_weight`; exposed, so
+// the dim nights' weighted light stays in the half floats' range), in `a` the frame's luminance, which the local
+// exposure reads.
+@fragment
+fn fs_glare_first(v: Out) -> @location(0) vec4<f32> {
+    let sum = glare_filter(v.uv, true);
+    let height = f32(textureDimensions(source).y / 2u);
+    return vec4<f32>(sum.rgb * glare_weight(height, aperture()), sum.a);
+}
+
+// The glare chain's next levels (`fs_glare_first`): the level above's light, its weight exchanged for this level's.
+@fragment
+fn fs_glare_down(v: Out) -> @location(0) vec4<f32> {
+    let sum = glare_filter(v.uv, false);
+    let above = f32(textureDimensions(source).y);
+    let n = aperture();
+    return vec4<f32>(sum.rgb * glare_weight(floor(above * 0.5), n) / glare_weight(above, n), sum.a);
+}
+
+// Adds a level to the one above, a tent filter of 3x3 taps, every channel.
+@fragment
+fn fs_glare_up(v: Out) -> @location(0) vec4<f32> {
+    let texel = 1.0 / vec2<f32>(textureDimensions(source));
+    var sum = vec4<f32>(0.0);
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let w = f32((2 - abs(x)) * (2 - abs(y)));
+            sum += textureSampleLevel(source, linear_sampler, v.uv + vec2<f32>(f32(x), f32(y)) * texel, 0.0) * w;
+        }
+    }
+    return sum / 16.0;
 }
 
 var<workgroup> histogram: array<atomic<u32>, ZONE_BINS>;
@@ -437,14 +511,14 @@ fn sharpened(uv: vec2<f32>) -> vec3<f32> {
 @fragment
 fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     // The cabin debug view (`viewer --debug-view`): the cabin's pixels carry their debug grey (`cabin_debug` in
-    // `cabin.wgsl`), already in display grey, so they bypass the sharpening, the bloom, the shafts, the exposure,
+    // `cabin.wgsl`), already in display grey, so they bypass the sharpening, the glare, the shafts, the exposure,
     // the rod vision, the local exposure and the tone curve, and read as drawn. Every other pixel draws as normal.
     if (DEBUG_VIEW != 0u && in_cabin(v.uv)) {
         return vec4<f32>(max(textureSampleLevel(source, linear_sampler, v.uv, 0.0).rgb, vec3<f32>(0.0)), 1.0);
     }
     let scene = sharpened(v.uv);
-    let glow = textureSampleLevel(bloom, linear_sampler, v.uv, 0.0).rgb / LEVELS;
-    // The cabin's exposure (`CABIN_STOPS`). The glow and the shafts (the light scattered on the way, mostly the
+    let bloomed = textureSampleLevel(bloom, linear_sampler, v.uv, 0.0);
+    // The cabin's exposure (`CABIN_STOPS`). The glare and the shafts (the light scattered on the way, mostly the
     // outside's) keep the outside's: at the cabin's they lit the pillars with a green haze.
     let cabin = CABIN && in_cabin(v.uv);
     var exposed = exposure.value;
@@ -453,7 +527,14 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
         exposed = clamp(exposure.cabin, exposure.value, exposure.value * exp2(CABIN_STOPS));
         veil = exposure.value / exposed;
     }
-    var lit = mix(scene, glow * veil, BLOOM);
+    // The chain's levels carry the glare (exposed) and the frame's luminance; the glare takes its light from the scene
+    // (the levels' weights, `glare_weight`, summed).
+    let n = aperture();
+    var spread = vec3<f32>(0.0);
+    for (var level = 1u; level <= u32(LEVELS); level++) {
+        spread += glare_weight(f32(textureDimensions(source).y >> level), n);
+    }
+    var lit = scene * (1.0 - spread) + bloomed.rgb / exposure.value * veil;
     if (SHAFTS) {
         lit += shafts_at(v.uv) * veil;
     }
@@ -464,7 +545,7 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
     let white = luminance(rod_vision(vec3<f32>(adapting))) / adapting;
     lit = rod_vision(lit / pre) * pre / white;
     // Local exposure (`LOCAL_FROM`).
-    let broad = log2(max(luminance(glow) * exposed, 1e-9) / KEY);
+    let broad = log2(max(bloomed.a / LEVELS * exposed, 1e-9) / KEY);
     let linear = max(lit * exposed * exp2(-LOCAL_GIVE * max(broad - LOCAL_FROM, 0.0)), vec3<f32>(0.0));
     let c = gt7(linear);
     let grey = dot(c, vec3<f32>(0.299, 0.587, 0.114));

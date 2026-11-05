@@ -14,6 +14,7 @@ pub(crate) const SHADER: &str = concat!(
     include_str!("../lamps.wgsl"),
     include_str!("../night.wgsl"),
     include_str!("../water.wgsl"),
+    include_str!("../ssr.wgsl"),
     include_str!("../cabin.wgsl"),
     include_str!("../sky_lut.wgsl"),
     include_str!("../mirrors.wgsl"),
@@ -217,16 +218,6 @@ pub(super) fn vertex_entry(enhance: Enhance) -> &'static str {
         "vs_clouded"
     } else {
         "vs_main"
-    }
-}
-
-/// The screen-space reflections' fragment entry point: `fs_reflect_plus` (`water.wgsl`) with the flowing water or the
-/// puddles, which keeps `fs_reflect` as it was without them.
-pub(super) fn reflect_entry(enhance: Enhance) -> &'static str {
-    if enhance.water || enhance.wet {
-        "fs_reflect_plus"
-    } else {
-        "fs_reflect"
     }
 }
 

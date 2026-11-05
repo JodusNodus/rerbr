@@ -166,6 +166,7 @@ impl Models {
         }
         self.car.gear_click = self.fmod.as_ref().and_then(FmodCar::gear_click);
         out.extend(self.car.step(sound, inside, ngp, frame));
+        out.push(Command::Roadside(scene.roadside));
         let car_distance = (0..3).map(|i| (scene.car[i] - scene.listener[i]).powi(2)).sum::<f32>().sqrt();
         out.extend(self.tyres.step(
             &sound.tyres,

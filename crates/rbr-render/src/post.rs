@@ -1,13 +1,13 @@
 //! The HDR post pass (`post.wgsl`): a renderer addition, not the game's look. The
 //! renderer resolves the frame into [`Post::scene`] ([`SCENE_FORMAT`], linear colour); [`Post::draw`] builds the
-//! bloom chain from it, meters it, and writes the exposed, tone-curved frame into the caller's target.
+//! glare chain from it, meters it, and writes the exposed, tone-curved frame into the caller's target.
 
 use crate::renderer::{depth_binding, texture_entry, TEXTURE};
 use crate::skylight::NIGHT_PRE_EXPOSURE;
 
 /// The float format of the scene and every target drawn before the post pass.
 pub(crate) const SCENE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
-/// Bloom chain levels below the frame (`LEVELS` in `post.wgsl`).
+/// Glare chain levels below the frame (`LEVELS` in `post.wgsl`).
 const LEVELS: u32 = 6;
 /// The composite's sharpening under TAA, whose resolve softens texture detail (Laplacian variance of a forest still: 4x
 /// MSAA 422, TAA 201, TAA sharpened 355).
@@ -19,8 +19,11 @@ pub(crate) struct Post {
     source_layout: wgpu::BindGroupLayout,
     composite_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    down: wgpu::RenderPipeline,
+    /// The glare chain's first level, then the rest (`fs_glare_first`, `fs_glare_down`).
+    down: [wgpu::RenderPipeline; 2],
     up: wgpu::RenderPipeline,
+    /// The exposure for the chain's levels (their glare's aperture).
+    glare: wgpu::BindGroup,
     /// The composite, then the in-car view's, with the cabin's exposure (`CABIN` in `post.wgsl`).
     composite: [wgpu::RenderPipeline; 2],
     /// Bins the scene's light (`cs_histogram`), then meters the bins into [`Post::exposure`] (`cs_meter`).
@@ -42,9 +45,9 @@ pub(crate) struct Post {
     shafts: bool,
 }
 
-/// What depends on the frame's size: the bloom levels and the bind groups that read them.
+/// What depends on the frame's size: the glare levels and the bind groups that read them.
 struct Targets {
-    /// Bloom levels, the largest (half the frame) first.
+    /// Glare levels, the largest (half the frame) first.
     levels: Vec<wgpu::TextureView>,
     /// Reading the frame, then each level, for the next pass.
     sources: Vec<wgpu::BindGroup>,
@@ -216,7 +219,19 @@ impl Post {
                 cache: None,
             })
         };
-        let down = pipeline("fs_down", &[&source_layout], SCENE_FORMAT.into(), &[]);
+        let glare_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("post glare"),
+            entries: &[texture_entry(
+                1,
+                wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+            )],
+        });
+        let down = ["fs_glare_first", "fs_glare_down"]
+            .map(|entry| pipeline(entry, &[&source_layout, &glare_layout], SCENE_FORMAT.into(), &[]));
         // Each level adds the blurred level below it.
         let add = wgpu::BlendComponent {
             src_factor: wgpu::BlendFactor::One,
@@ -224,7 +239,7 @@ impl Post {
             operation: wgpu::BlendOperation::Add,
         };
         let up = pipeline(
-            "fs_up",
+            "fs_glare_up",
             &[&source_layout],
             wgpu::ColorTargetState {
                 format: SCENE_FORMAT,
@@ -252,6 +267,11 @@ impl Post {
             device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
         };
         let exposure = buffer("exposure", 16, wgpu::BufferUsages::STORAGE);
+        let glare = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("post glare"),
+            layout: &glare_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 1, resource: exposure.as_entire_binding() }],
+        });
         let histogram = buffer("histogram", ZONE_BINS * 4, wgpu::BufferUsages::STORAGE);
         let meter_settings =
             buffer("meter", size_of::<Meter>() as u64, wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
@@ -271,6 +291,7 @@ impl Post {
             sampler,
             down,
             up,
+            glare,
             composite,
             meter,
             exposure,
@@ -363,8 +384,8 @@ impl Post {
                 pass.dispatch_workgroups(size.0, size.1, 1);
             }
         }
-        for (level, source) in t.levels.iter().zip(&t.sources) {
-            pass(encoder, level, clear, &self.down, &[source]);
+        for (index, (level, source)) in t.levels.iter().zip(&t.sources).enumerate() {
+            pass(encoder, level, clear, &self.down[usize::from(index > 0)], &[source, &self.glare]);
         }
         for index in (1..t.levels.len()).rev() {
             pass(encoder, &t.levels[index - 1], wgpu::LoadOp::Load, &self.up, &[&t.sources[index + 1]]);

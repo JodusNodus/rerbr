@@ -117,7 +117,8 @@ impl Reflections {
         }
     }
 
-    /// The rays a pixel and the steps each takes (`SSR_RAYS`, `SSR_STEPS` in `shader.wgsl`); none when off.
+    /// The rays a pixel and the depth pyramid's cells each visits at most (`SSR_RAYS` in `shader.wgsl`,
+    /// `SSR_ITERATIONS` in `ssr.wgsl`); none when off.
     pub fn rays(self) -> Option<[u32; 2]> {
         match self {
             Reflections::High => Some([4, 64]),

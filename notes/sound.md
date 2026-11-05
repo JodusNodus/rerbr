@@ -49,6 +49,19 @@ Mechanics in `engine.rs` (inputs, bank, slew, crossfade, grains, `MixScale`, out
 
 - All 8 cars use `subaru.eng`; four of the other `.eng` files cannot load in 1.02 (not in code).
 - Output is `E30Engine::Vf08` (0x4cebc0; in-car filter at 0x4ced95, `mixer::INSIDE_CUTOFF`): in the car the 400 Hz low-pass at gain 2 (`InsideCutFrequency` is not read); outside the dry block plus its low-passed self above 2500 rpm.
+- Roadside reflections (ours, realism; tuning is game feel): with a stage loaded the two reflection taps follow the
+  roadside instead of 1.02's fixed 1.6/1.4 m (`rbr_render::roadside` probes it after each frame's step, `Scene.roadside`
+  carries it, `reflections::side_gain`/`side_cutoff`/`side_delay` map it; `viewer --no-roadside` and a missing probe
+  keep 1.02's). Probe: the `.trk` scenery placements as upright cylinders (surface id sets the hardness; bushes,
+  `Bendable_Tree`, spectators and cones left out) summed in a 120° lobe each side to 35 m, plus 4 `.col` rays a side
+  (square of the face's cosine, so the road and gentle slopes count for nothing) and a ceiling segment. Delay is the
+  round trip, gain `4.5 * size * hardness * min(1, 5 / d)` capped at 2, cutoff 1.2-6 kHz by hardness halved by 40 m,
+  under 750 Hz in the car; glides 30 ms (delay, slew 0.16 sample/sample) and 25 ms (gain), a jump over 1.5 m of path
+  crossfades in 20 ms. Outside cameras: the same from the car, sides as the camera faces.
+- Roadside evidence (scratch, not in code): probe 7-11 us mean, 13-23 us p99, under 0.1 ms worst a call over 32 000
+  poses (retail, release). Along the retail drivelines at 22 m/s the in-car mean side gain is about 0.9 on forest stages
+  (35_N, 22_N, 4x up to 1.2 on Mont Blanc's walls), 0.1 on 66_E (80 % open) and 0.4-0.8 elsewhere, against 1.02's 1;
+  every retail stage but map 69 has scenery.
 
 ## Exhaust and car effects
 

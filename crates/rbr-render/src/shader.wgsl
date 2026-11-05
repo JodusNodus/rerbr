@@ -140,7 +140,7 @@ struct Mode {
     // The near ground's detail window in texture 0's uv (low u and v, width and height; z 0 for none;
     // `terrain_detail`).
     detail: vec4<f32>,
-    // A lit lamp's part's glow colour (`stage::Shade::glow`), times `LAMP_GLOW`; w the share of it kept by day.
+    // A lit lamp's part's glow colour and, in w, its luminance (`stage::Shade::glow`, `lamp_shown`).
     lamp: vec4<f32>,
     // x and y texture 0's and texture 1's bank shares (`terrain_detail::bank_shares`; `terrain_bank`).
     bank: vec4<f32>,
@@ -1001,11 +1001,9 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         alpha = blended;
     }
     colour = colour + glint;
-    // A lit lamp's part (`stage::Shade::glow`) glows (ours): by day `mode.lamp.w` of it, by night and at dusk, as the
-    // lamps light the stage, all of it.
+    // A lit lamp's part (`stage::Shade::glow`) shines at its lamp's luminance (ours, `lamp_shown`).
     if (lit_class() == 3u) {
-        let level = mix(mode.lamp.w, 1.0, select(frame.dusk.w, 1.0, night));
-        colour = max(colour, first.rgb * LAMP_GLOW * mode.lamp.rgb * level);
+        colour = max(colour, lamp_shown(first.rgb, v.world, view));
     }
     colour = backlit(colour, first.rgb, v.uv0, night, dot(n, view));
     // The scrape (`CarPaint`, `CarPaintInt`): the scrape texel times the diffuse light (`t3 * v0`, no highlight or
@@ -2051,14 +2049,13 @@ fn water_surface(world: vec3<f32>) -> vec4<f32> {
 }
 
 // Screen-space reflections (renderer choice, `renderer::ScreenReflection`): the water, and the wet roads' film, drawn
-// again at half the frame's size over the resolved frame (`Traced`, laid over it by `reflection_composite.wgsl`). The
-// reflected ray is stepped through the stage (`SSR_STEPS` steps, the setting's `Reflections::rays`, growing, out to `SSR_REACH` metres); the first step
-// behind the frame's depth, by less than a thickness that grows with the distance, (each pixel's steps start at a
-// different fraction of a step, so the step size does not show as bands) is refined by halving and its frame colour is
-// blended in by the surface's Fresnel weight, fading out toward the screen's edges and with the distance stepped. Rays that leave the screen or hit nothing take the car's reflection
-// cube instead (the stage around the car, `renderer::Reflection`), near the eye only (`SSR_CUBE_REACH` metres), since
-// the cube is drawn at the car; elsewhere, or with no car, the sky reflection drawn with the surface shows.
-override SSR_STEPS: i32 = 64;
+// again at half the frame's size over the resolved frame (`Traced`, laid over it by `reflection_composite.wgsl`), with
+// `SSR_RAYS` rays a pixel (the setting's `Reflections::rays`) traversed through the frame's depth pyramid out to
+// `SSR_REACH` metres (`fs_reflect` in `ssr.wgsl`). A hit's frame colour is blended in by the surface's Fresnel weight,
+// fading out toward the screen's edges and with the distance travelled. Rays that leave the screen or hit nothing take
+// the car's reflection cube instead (the stage around the car, `renderer::Reflection`), near the eye only
+// (`SSR_CUBE_REACH` metres), since the cube is drawn at the car; elsewhere, or with no car, the sky reflection drawn
+// with the surface shows.
 override SSR_RAYS: i32 = 4;
 const SSR_REACH: f32 = 120.0;
 const SSR_CUBE_REACH: vec2<f32> = vec2<f32>(20.0, 60.0);
@@ -2116,110 +2113,6 @@ const HIDDEN: f32 = 0.02;
 
 fn hidden(v: VertexOut) -> bool {
     return v.clip.z < scene_depth_at(on_screen(v.world).xy) * (1.0 - HIDDEN);
-}
-
-@fragment
-fn fs_reflect(v: VertexOut) -> Traced {
-    if (hidden(v)) {
-        discard;
-    }
-    return Traced(reflect_ray(v), v.clip.z);
-}
-
-// The screen-space reflection at `v` and its weight: the mean of `SSR_RAYS` rays spread over the gloss cone
-// (`ROUGHNESS`, wider on roads than on water), so hits and misses average out instead of showing per pixel.
-fn reflect_ray(v: VertexOut) -> vec4<f32> {
-    // Interleaved gradient noise (Jimenez 2014) by pixel.
-    let jitter = fract(52.9829189 * fract(dot(v.clip.xy, vec2<f32>(0.06711056, 0.00583715))));
-    let view = normalize(frame.eye.xyz - v.world);
-    var n = vec3<f32>(0.0, 1.0, 0.0);
-    var weight = 0.0;
-    if (mode.water != 0u) {
-        n = water_normal(v.world);
-        weight = water_fresnel(n, view);
-    }
-    let ray = reflect(-view, n);
-    if (weight <= 0.0 || ray.y <= 0.0) {
-        return vec4<f32>(0.0);
-    }
-    // What a missed ray reflects: on water the cube near the eye, else nothing (what the surface was drawn with: the
-    // sky on water, the cube on roads).
-    var miss = vec4<f32>(0.0);
-    if (frame.reflection.x != 0.0 && mode.water != 0u) {
-        let near = 1.0 - smoothstep(SSR_CUBE_REACH.x, SSR_CUBE_REACH.y, distance(v.world, frame.eye.xyz));
-        miss = vec4<f32>(surrounding(ray, select(3.0, 1.0, mode.water != 0u), v.world), weight * near);
-    }
-    let roughness = select(ROUGHNESS.x, ROUGHNESS.y, mode.water != 0u);
-    let side = normalize(cross(ray, n + vec3<f32>(1e-3, 0.0, 0.0)));
-    let up = cross(side, ray);
-    var sum = vec4<f32>(0.0);
-    for (var k = 0; k < SSR_RAYS; k++) {
-        // Points on a disc, turned by the pixel's noise.
-        let angle = 6.2831853 * (f32(k) + jitter) / f32(SSR_RAYS);
-        let radius = roughness * sqrt((f32(k) + 0.5) / f32(SSR_RAYS));
-        // Stretched toward and away from the eye (`STRETCH.y`), as wet roads smear reflections down the screen.
-        let spread = normalize(ray + radius * (cos(angle) * side + STRETCH.y * sin(angle) * up));
-        let found = trace(v, spread, weight, miss, fract(jitter + f32(k) * 0.618), f32(mode.water != 0u), select(GLOSS.x, GLOSS.y, mode.water != 0u));
-        // Colour weighted by how much each ray contributes.
-        sum += vec4<f32>(found.rgb * found.a, found.a);
-    }
-    sum /= f32(SSR_RAYS);
-    return vec4<f32>(sum.rgb / max(sum.a, 1e-4), sum.a);
-}
-
-// One ray from `v` along `ray` (`still` 1 on water and puddles: a sharp reflection, `gloss` its cone, `GLOSS`): what it reflects and its weight (`weight` on a hit, `miss` when it leaves the screen
-// or hits nothing), its steps starting `jitter` of a step early.
-fn trace(v: VertexOut, ray: vec3<f32>, weight: f32, miss: vec4<f32>, jitter: f32, still: f32, gloss: f32) -> vec4<f32> {
-    if (ray.y <= 0.0) {
-        return miss;
-    }
-    let thickness = 0.15 + 0.01 * distance(v.world, frame.eye.xyz);
-    // The clip position runs linearly along the ray.
-    let start = frame.view_projection * vec4<f32>(v.world, 1.0);
-    let along = frame.view_projection * vec4<f32>(ray, 0.0);
-    // A film's step may end far behind the surface it crossed (a car's rear, seen along the ray): it halves back to
-    // the crossing whatever its depth and `reach` checks that; water's and puddles' must end within the thickness.
-    let film = still < 0.5;
-    var before = 0.0;
-    for (var i = 1; i <= SSR_STEPS; i++) {
-        let t = SSR_REACH * pow((f32(i) - jitter) / f32(SSR_STEPS), 2.0);
-        let at = on_screen_clip(start + along * t);
-        if (at.w == 0.0) {
-            return miss;
-        }
-        // The step's distance behind the frame's surface only once it is behind it.
-        let depth = scene_depth_at(at.xy);
-        if (at.z < depth && depth > 0.0
-            && (film || distance(v.world + ray * t, frame.eye.xyz) - scene_distance(at.xy, depth) < thickness + 0.02 * t)) {
-            // Halve back to the surface.
-            var low = before;
-            var high = t;
-            for (var k = 0; k < 5; k++) {
-                let mid = 0.5 * (low + high);
-                let m = on_screen_clip(start + along * mid);
-                if (m.z < scene_depth_at(m.xy)) {
-                    high = mid;
-                } else {
-                    low = mid;
-                }
-            }
-            let hit = on_screen_clip(start + along * high);
-            let behind = distance(v.world + ray * high, frame.eye.xyz) - scene_distance(hit.xy, scene_depth_at(hit.xy));
-            let reach = thickness + 0.02 * high;
-            if (behind <= reach) {
-                let size = vec2<f32>(textureDimensions(scene_colour));
-                let pixels = length((hit.xy - on_screen_clip(start).xy) * size);
-                let lod = clamp(log2(max(pixels * gloss, 1.0)), 0.0, f32(textureNumLevels(scene_colour) - 1u));
-                let colour = textureSampleLevel(scene_colour, reflection_sampler, hit.xy, lod).rgb;
-                let edge = smoothstep(0.0, select(0.15, FILM_EDGE, film), min(min(hit.x, 1.0 - hit.x), min(hit.y, 1.0 - hit.y)));
-                let fade = 1.0 - smoothstep(0.6, 1.0, high / SSR_REACH);
-                let trust = edge * fade * (1.0 - smoothstep(0.3 * reach, reach, max(behind, 0.0)));
-                return vec4<f32>(mix(miss.rgb, colour, trust), mix(miss.a, weight, trust));
-            }
-        }
-        before = t;
-    }
-    return miss;
 }
 
 // Ground detail (renderer choice): two octaves of 3D value noise in stage space, at 9 and 33 cm, that brighten or
@@ -2784,11 +2677,17 @@ fn sky(dir: vec3<f32>, ground: f32) -> vec3<f32> {
         let mu = clamp(dot(dir, -frame.sun.xyz), -1.0, 1.0);
         let light = sunlight();
         let sun_colour = light / max(max(light.r, light.g), light.b);
-        // The disc, about a degree across (twice the real one, so that it reads at screen sizes), and a tight glow
+        // The disc: with the physically based sky at its real size and luminance (`sun_disc`), else about a degree
+        // across (twice the real one, so that it reads at screen sizes) at `SUN_HDR` times white; and a tight glow
         // around it, as a camera sees the sun.
         let toward = max(mu, 0.0);
         var glow = 0.9 * pow(toward, 3000.0) + 0.3 * pow(toward, 200.0);
         var disc = smoothstep(0.99988, 0.99993, mu);
+        var shown = mix(vec3<f32>(1.0), sun_colour, 0.25) * 1.5 * SUN_HDR;
+        if (sky_on()) {
+            disc = sun_disc(mu);
+            shown = ungraded(capped(PI * frame.day_sun.rgb / SUN_SOLID_ANGLE));
+        }
         // With the physically based sky, the sun's true elevation: no disc once it has set, and the light is the moon's.
         if (sky_on() && frame.skylight.y < -0.005) {
             glow = 0.0;
@@ -2797,15 +2696,78 @@ fn sky(dir: vec3<f32>, ground: f32) -> vec3<f32> {
                 colour = moon_shown(dir, starry(dir, moon_aureole(dir, colour)));
             }
         }
-        // The disc is brighter than white, for the bloom (`post.wgsl`).
-        colour = mix(colour + glow * sun_colour, mix(vec3<f32>(1.0), sun_colour, 0.25) * 1.5 * SUN_HDR, disc);
+        // The disc is brighter than white, for the glare (`post.wgsl`).
+        colour = mix(colour + glow * sun_colour, shown, disc);
     }
     let below = clamp(-dir.y * 4.0, 0.0, 1.0) * ground;
     return mix(colour, frame.fog_color.rgb * 0.25, below);
 }
 
-// How much brighter the sun's disc is than white.
+// How much brighter the sun's disc is than white without the physically based sky.
 const SUN_HDR: f32 = 4.0;
+
+// The light sources at their real luminances: the car's lit lamp parts (`lamp_shown`) and, with the physically based
+// sky, the sun's disc (`sun_disc`). The renderer's units per cd/m2 (`frame.day_sun.w` with the sky's tables, else
+// `post::DAY_PRE_EXPOSURE` by day and `skylight::NIGHT_PRE_EXPOSURE` at night, as the post pass takes them).
+const PI: f32 = 3.14159265;
+const DAY_PRE_EXPOSURE: f32 = 1.93 * PI / 100000.0;
+const NIGHT_PRE_EXPOSURE: f32 = 0.004 * PI / 0.25;
+// The most a light source is drawn at, renderer units: under the half floats' 65504 with room for what is added over
+// it (rain, particles, the glass's reflection) and the glare chain's sums.
+const LIGHT_CAP: f32 = 30000.0;
+// The sun's disc at its real size, its angular radius (`SUN_RADIUS` in `sun_mask.wgsl`, 0.27 degrees) and solid angle,
+// its edge softened over `SUN_EDGE` radians (about half a pixel at 1080p).
+const SUN_SOLID_ANGLE: f32 = PI * SUN_RADIUS * SUN_RADIUS;
+const SUN_EDGE: f32 = 0.0004;
+// A lit lamp part's luminance (`lamp_shown`): the lamp's light toward the eye (`beam` or `signal`, its share of the
+// axis's intensity) over the part's area seen from there (its area on the axis times the cosine, at least
+// `LAMP_FACING`), at least `LAMP_SIDE` of the axis's (the lens seen from the side still glows); the lamp is the nearest
+// lit one of its kind within `LAMP_NEAR` metres, else the axis's luminance.
+const LAMP_FACING: f32 = 0.25;
+const LAMP_SIDE: f32 = 0.03;
+const LAMP_NEAR: f32 = 1.5;
+
+fn pre_exposure() -> f32 {
+    if (frame.day_sun.w > 0.0) {
+        return frame.day_sun.w;
+    }
+    return select(DAY_PRE_EXPOSURE, NIGHT_PRE_EXPOSURE, frame.night.x != 0.0);
+}
+
+// `c` scaled down to `LIGHT_CAP` in its strongest channel, keeping its hue.
+fn capped(c: vec3<f32>) -> vec3<f32> {
+    return c * min(1.0, LIGHT_CAP / max(max(c.r, max(c.g, c.b)), 1e-6));
+}
+
+// How much of the real-size sun's disc covers the direction `mu` (the cosine to the sun) away.
+fn sun_disc(mu: f32) -> f32 {
+    let angle = sqrt(max(2.0 * (1.0 - mu), 0.0));
+    return 1.0 - smoothstep(SUN_RADIUS - SUN_EDGE, SUN_RADIUS + SUN_EDGE, angle);
+}
+
+// A lit lamp part's light, renderer units: its luminance on the axis (`mode.lamp.w`, cd/m2, negative for a
+// headlight's, `lights::Switch::glow`) as seen from the eye along `to_eye`, in the lamp's colour (`mode.lamp`, the
+// part's texture's where white) at the texel's brightness (its strongest channel).
+fn lamp_shown(texel: vec3<f32>, world: vec3<f32>, to_eye: vec3<f32>) -> vec3<f32> {
+    let headlight = mode.lamp.w < 0.0;
+    var best = LAMP_NEAR * LAMP_NEAR;
+    var seen = 1.0;
+    for (var i = 0; i < 8; i++) {
+        let lamp = frame.lamps[i];
+        let d = world - lamp.position.xyz;
+        if (lamp.position.w == 0.0 || (lamp.forward.w != 0.0) != headlight || dot(d, d) >= best) {
+            continue;
+        }
+        best = dot(d, d);
+        let share = select(signal(lamp, to_eye), beam(lamp, to_eye), headlight);
+        seen = share / max(dot(to_eye, lamp.forward.xyz), LAMP_FACING);
+    }
+    let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
+    let hue = select(texel, mode.lamp.rgb, any(mode.lamp.rgb != vec3<f32>(1.0)));
+    let bright = max(texel.r, max(texel.g, texel.b));
+    let l = abs(mode.lamp.w) * max(seen, LAMP_SIDE);
+    return capped(hue / max(dot(hue, luma), 1e-4) * bright * l * pre_exposure());
+}
 
 // `sky` without the sun's disc and glow (also the light the haze takes on, `haze_colour`).
 fn sky_light(dir: vec3<f32>) -> vec3<f32> {

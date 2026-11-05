@@ -96,7 +96,8 @@
 //! go (`rbr_render::views::start_orbit`). The live drive plays the car's sound
 //! (`rbr_sound`, from the live process's SND1 records; `rbr-standalone` writes them) on the default audio output, with
 //! the in-car sound in the bonnet and cockpit views and the car's voices placed from the camera; `--no-sound` turns
-//! it off, `--volume V` (0 to 4, default 1) scales it, `--volumes E,C,F,T` (each 0 to 2, default 1) the engine,
+//! it off, `--no-roadside` keeps the engine's reflections at 1.02's fixed delays instead of the roadside's
+//! (`rbr_render::roadside`), `--volume V` (0 to 4, default 1) scales it, `--volumes E,C,F,T` (each 0 to 2, default 1) the engine,
 //! co-driver, effects and tyre groups (`rbr_sound::mixer::Volumes`), `--rain none|light|heavy` sets the rain (the season row's
 //! weather; the launcher passes it) and `--no-codriver` turns the pace notes off. `--codriver-mod DIR` (a Pacenote
 //! plugin folder, with `--codriver-voice`, `--codriver-style`, `--codriver-ranges` and `--pacenotes FILE`) calls them

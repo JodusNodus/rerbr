@@ -43,8 +43,7 @@ pub(super) struct ModeUniform {
     /// The near ground's detail window in its first texture's uv (low u and v, width and height; zero for none;
     /// [`terrain_detail::window`](crate::terrain_detail::window)).
     pub(super) detail: [f32; 4],
-    /// A lit lamp's part's glow colour and the share of it kept by day (`Shade::glow`, `LAMP_GLOW` in `night.wgsl`
-    /// times it).
+    /// A lit lamp's part's glow colour and luminance (`Shade::glow`, `lamp_shown` in `shader.wgsl`).
     pub(super) lamp: [f32; 4],
     /// `x` and `y` texture 0's and texture 1's bank shares
     /// ([`terrain_detail::bank_shares`](crate::terrain_detail::bank_shares)).

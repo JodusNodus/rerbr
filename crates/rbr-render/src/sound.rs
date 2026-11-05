@@ -16,6 +16,7 @@ use crate::characters::scripted::Event;
 use crate::hud::school::{self, State as SchoolState};
 use crate::particles::wheel_spray::{self, ground::Kind};
 use crate::particles::Particles;
+use crate::roadside::Roadside;
 
 /// The `Cars/Cars.ini` index of the car in folder `name` (`COROLLA`), or `None`.
 pub fn car_index(data: &Data, name: &str) -> Option<u32> {
@@ -87,11 +88,15 @@ pub fn use_codriver(player: &mut Player, data: &Data, stage: &str, choice: &Choi
 }
 
 /// The sound's scene for the camera `lens` (stage frame) and the car at `car` (physics frame): the stage's y up is
-/// the physics' z up (`crate::coords`), so the eye and its right swap y and z.
-pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool) -> Scene {
+/// the physics' z up (`crate::coords`), so the eye and its right swap y and z. With the stage's `roadside` the
+/// engine's reflections follow it (ours), probed at the car, its sides as the camera has them.
+pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool, roadside: Option<&Roadside>) -> Scene {
     let swap = |v: Vec3| [v.x, v.z, v.y];
     // Left-handed, y up: right is up x forward.
     let right = lens.up.cross(lens.forward).normalize_or_zero();
+    let forward = Vec3::from(car.forward());
+    let roadside =
+        roadside.map(|r| heard(r.probe(Vec3::from(car.position), forward), forward, Vec3::from(swap(right))));
     Scene {
         listener: swap(lens.eye),
         right: swap(right),
@@ -99,6 +104,7 @@ pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool) -> Scene {
         velocity: car.velocity,
         inside,
         replay,
+        roadside,
         ..Scene::default()
     }
 }
@@ -113,6 +119,22 @@ pub fn water(particles: &Particles) -> [rbr_sound::tyre::Water; 4] {
         loose: matches!(w.ground.kind, Kind::Gravel | Kind::Dirt | Kind::Grass),
         film: w.film,
     })
+}
+
+/// The car's roadside `sides` (left, right as the car facing `forward` has them) as a listener whose right is
+/// `right` hears them: swapped for a camera facing the car.
+pub fn heard(
+    roadside: rbr_sound::reflections::Roadside,
+    forward: Vec3,
+    right: Vec3,
+) -> rbr_sound::reflections::Roadside {
+    let car_right = Vec3::new(forward.y, -forward.x, 0.0);
+    let [left, right_side] = roadside.sides;
+    if car_right.dot(right) < 0.0 {
+        rbr_sound::reflections::Roadside { sides: [right_side, left], ..roadside }
+    } else {
+        roadside
+    }
 }
 
 /// The rally school's speech on the school voice (`E25School::OnSignal` 0x4b8200), fed from the live record's
@@ -198,5 +220,20 @@ pub fn events(events: &[Event], helicopter: Option<Vec3>) -> Events {
             .filter_map(|e| if let Event::Birdstrike(p) = e { Some(physics(*p)) } else { None })
             .collect(),
         rescue_called: events.iter().any(|e| matches!(e, Event::RescueCalled(_))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rbr_sound::reflections::{Roadside as Heard, Side};
+
+    #[test]
+    fn a_camera_facing_the_car_hears_its_sides_swapped() {
+        let left = Side { distance: 3.0, size: 1.0, hardness: 1.0 };
+        let car = Heard { sides: [left, Side::default()], overhead: Side::default() };
+        // The car faces +y: its right is +x.
+        assert_eq!(heard(car, Vec3::Y, Vec3::X), car);
+        assert_eq!(heard(car, Vec3::Y, Vec3::NEG_X).sides, [Side::default(), left]);
     }
 }

@@ -4,7 +4,7 @@ use super::enhance::{AntiAliasing, Detail, Enhance};
 use super::gpu::Gpu;
 use super::meshes::mesh_bounds;
 use super::meshes::{transformed_vertices, GpuDraw, GpuMesh, InteractiveGpu, Packing};
-use super::pipelines::{cutout, layouts, prepassed, reflect_entry, vertex_entry, Context, DrawPass, PipelineKey};
+use super::pipelines::{cutout, layouts, prepassed, vertex_entry, Context, DrawPass, PipelineKey};
 use super::reflection::{reflects, Reflection, ScreenReflection};
 use super::shadows::shadow_map;
 use super::sun_mask::SunMask;
@@ -524,7 +524,7 @@ impl Renderer {
         let screen_reflection = rays.map(|rays| {
             ScreenReflection::new(
                 &device,
-                (&shader, vertex_entry(enhance), reflect_entry(enhance), rays, pipelines::alpha_writes(taa, false)),
+                (&shader, vertex_entry(enhance), "fs_reflect", rays, pipelines::alpha_writes(taa, false)),
                 [&frame_layout, &texture_layout],
                 format,
                 depth_size,

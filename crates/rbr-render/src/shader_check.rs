@@ -103,8 +103,9 @@ fn every_shader_builds_for_vulkan() {
         crate::renderer::SHADER,
         &flags(&["ALPHA_TEST", "WATER_PLUS", "CABIN", "LIGHTING", "MIRRORS", "GRASS"]),
     ));
-    let taps = [("SSR_RAYS", 1.0), ("SSR_STEPS", 32.0)];
+    let taps = [("SSR_RAYS", 1.0), ("SSR_ITERATIONS", 32.0)];
     failures.extend(check("stage quality", crate::renderer::SHADER, &[taps.to_vec()]));
+    failures.extend(check("depth pyramid", crate::renderer::PYRAMID_SHADER, &none()));
     let rain = none().into_iter().map(|c| [c, vec![("NEAR_COUNT", 1.0)]].concat()).collect::<Vec<_>>();
     failures.extend(check("rain", &crate::effects::rain_source(), &rain));
     failures.extend(check("particles", &crate::particles::gpu::source(), &none()));

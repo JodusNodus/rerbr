@@ -128,6 +128,8 @@ pub struct Scene {
     /// The active camera's id (app `+1000`) and whether it follows the car (`E12_Classify` -14 or -16).
     pub camera: u32,
     pub tracking: bool,
+    /// The roadside the engine's reflections follow (ours, [`crate::reflections::Roadside`]); `None` keeps 1.02's.
+    pub roadside: Option<crate::reflections::Roadside>,
 }
 
 impl Default for Scene {
@@ -143,6 +145,7 @@ impl Default for Scene {
             replay: false,
             camera: 0,
             tracking: true,
+            roadside: None,
         }
     }
 }
