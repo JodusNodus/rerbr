@@ -143,8 +143,7 @@ pub struct Args {
     pub gauge_mode: u32,
     /// `--hide-wheel`: the cockpit's steering wheel is not drawn.
     pub hide_wheel: bool,
-    /// The engine's reflections follow the roadside (`rbr_render::roadside`), and the body brushes its vegetation
-    /// (`rbr_render::verge`); `--no-roadside` keeps 1.02's reflections, without the vegetation.
+    /// The engine's reflections follow the roadside (`rbr_render::roadside`); `--no-roadside` keeps 1.02's.
     pub roadside: bool,
     /// `--wipers`: the wiper switch at the start (`glass::model::Switch`).
     pub wipers: glass::model::Switch,

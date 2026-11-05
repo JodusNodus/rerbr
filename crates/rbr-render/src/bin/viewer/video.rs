@@ -343,7 +343,7 @@ fn audio_scene(scene: &Scene, args: &Args, shown: Shown) -> AudioScene {
                 &playback.sample().car,
                 shown.car_view().interior(),
                 true,
-                scene.roadside.as_ref(),
+                scene.roadside.as_ref().filter(|_| scene.echoes),
             )
         }
         _ => AudioScene::default(),

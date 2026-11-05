@@ -271,7 +271,7 @@ impl App {
                         &playback.sample().car,
                         interior,
                         self.replay,
-                        self.scene.roadside.as_ref(),
+                        self.scene.roadside.as_ref().filter(|_| self.scene.echoes),
                     ));
                 }
                 sound.set_water(self.scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
