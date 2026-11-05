@@ -542,3 +542,49 @@ fn the_cockpit_eye_stays_out_of_the_seat() {
     // The Audi quattro A2's seat bolsters lie 0.26 to 0.3 m from the eye at the frame's bottom edge 0.5 m back.
     assert!(short.iter().any(|(n, back)| n.eq_ignore_ascii_case("AUDI_QUATTRO_A2_GrpB") && *back > 0.0), "{short:?}");
 }
+
+/// The side doors hang on their hinge: the exterior doors' node translation, at the door's front-outer
+/// edge, shared with the interior panel, with the side sign of the door.
+#[test]
+fn doors_hang_on_their_front_outer_edge() {
+    let Some(data) = data() else {
+        return;
+    };
+    for name in CARS {
+        let car = car::load(&data, name, Mat4::IDENTITY).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let mut hinged = 0;
+        let mut left = None;
+        let mut right = None;
+        for (mesh, dmg) in car.meshes.iter().zip(car.damage.iter()) {
+            let is_door = dmg.detach == Some(0) || dmg.detach == Some(1);
+            if !is_door {
+                assert!(dmg.hinge.is_none(), "{name}: a non-door mesh hangs on a hinge");
+                continue;
+            }
+            hinged += 1;
+            let (hinge, side) = dmg.hinge.expect("{name}: a door mesh without its hinge");
+            assert_eq!(side, if dmg.detach == Some(0) { 1.0 } else { -1.0 }, "{name}: a door's side sign");
+            let mut lo = [f32::INFINITY; 3];
+            let mut hi = [f32::NEG_INFINITY; 3];
+            for v in &mesh.vertices {
+                for k in 0..3 {
+                    lo[k] = lo[k].min(v.position[k]);
+                    hi[k] = hi[k].max(v.position[k]);
+                }
+            }
+            // The hinge sits at the door's front half (its lowest z is the car's front); sub-meshes
+            // like the window glass ride above it on the same pivot.
+            assert!(hinge[2] < (lo[2] + hi[2]) * 0.5, "{name}: a door's hinge {hinge:?} behind {lo:?}..{hi:?}");
+            if dmg.detach == Some(0) {
+                left = Some(hinge);
+            } else {
+                right = Some(hinge);
+            }
+        }
+        assert!(hinged >= 4, "{name}: {hinged} hinged door meshes");
+        // The doors mirror each other across the car's centre plane.
+        let (l, r) = (left.expect("left hinge"), right.expect("right hinge"));
+        assert!((l[0] + r[0]).abs() < 0.01, "{name}: hinges {l:?} {r:?}");
+        assert!((l[1] - r[1]).abs() + (l[2] - r[2]).abs() < 0.01, "{name}: hinges {l:?} {r:?}");
+    }
+}

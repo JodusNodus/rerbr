@@ -88,6 +88,10 @@ pub struct MeshDamage {
     pub lamp: Option<Switch>,
     /// The detachable part this mesh is, by its node name (`rbr_recording::detach::PARTS`).
     pub detach: Option<u32>,
+    /// The door hinge this mesh hangs on: the exterior door's hinge point (its node translation) and the side
+    /// sign (`coords::door_swing`), on its detachable part's meshes (`detach` 0 or 1). The viewer turns the mesh
+    /// about it by the hinge angle.
+    pub hinge: Option<([f32; 3], f32)>,
     /// The wheel (0 to 3, `crate::playback`'s order) this mesh is, by its node name (`e_wheel_<class>_<side>` or its
     /// `e_wheel_<class>_tyre_<side>`).
     pub wheel: Option<usize>,

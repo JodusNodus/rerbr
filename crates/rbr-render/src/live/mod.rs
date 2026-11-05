@@ -33,7 +33,7 @@ pub use crate::stage::InteractivePose;
 use rbr_recording::camera::Camera;
 use rbr_recording::clock::StepClock;
 pub use rbr_recording::damage::Damage;
-use rbr_recording::detach::PartPose;
+use rbr_recording::detach::{DoorAngle, PartPose};
 pub use rbr_recording::gearbox::{Gearbox, GBX1};
 pub use rbr_recording::hud::RaceHud;
 use rbr_recording::input::{Input, CELL_AXIS, CELL_BUTTON};
@@ -194,6 +194,8 @@ pub struct Live {
     pub damage: Damage,
     /// The detached car parts of the last frame that came back (`DET1`): the parts whose bodies are awake.
     pub detached: Vec<PartPose>,
+    /// The attached doors' hinge angles of the last frame that came back (`DOR1`).
+    pub doors: Vec<DoorAngle>,
     /// The split record of the last frame that came back, if the process sent one.
     pub splits: Option<Splits>,
     /// The HUD's state, fed with each frame that comes back (`rbr_render::hud::model`).
@@ -284,6 +286,7 @@ impl Live {
             hud: Hud::default(),
             damage: Damage::default(),
             detached: Vec::new(),
+            doors: Vec::new(),
             splits: None,
             hud_model: HudModel::default(),
             custom: None,
@@ -438,6 +441,7 @@ impl Live {
         self.hud = answer.hud;
         self.damage = answer.damage;
         self.detached = answer.detached;
+        self.doors = answer.doors;
         self.splits = answer.splits;
         self.rescue_called |= answer.flow.is_some_and(|f| f.helicopter_called);
         if let Some(clock) = answer.clock {

@@ -3,7 +3,7 @@
 use crate::args::{Args, HudOptions};
 use crate::loading::Step;
 use rbr_formats::data::Data;
-use rbr_recording::detach::PartPose;
+use rbr_recording::detach::{DoorAngle, PartPose};
 use rbr_render::atmosphere::Rain;
 use rbr_render::camera::Orbit;
 use rbr_render::camera_prefs;
@@ -370,8 +370,9 @@ fn load_scene<'scope, 'env>(
                             loaded.on_damage(code, index);
                         }
                         if let Some(process) = &live {
-                            for (frame, poses) in &detaching {
+                            for (frame, poses, doors) in &detaching {
                                 loaded.step(frame - loaded.index() as isize);
+                                loaded.set_door_angles(doors);
                                 loaded.set_detached(poses);
                             }
                             take_damage(&mut loaded, process);
@@ -477,8 +478,8 @@ fn load_scene<'scope, 'env>(
     }
 }
 
-/// An `--at` frame, and the detached parts' poses it first lists.
-type Detaching = (isize, Vec<PartPose>);
+/// An `--at` frame, the detached parts' poses it first lists, and the doors' hinge angles then.
+type Detaching = (isize, Vec<PartPose>, Vec<DoorAngle>);
 
 /// The live process (`--live`) and its drive: the first frame, then the `--at` frames, with the frames that first list
 /// a detached part, so that it starts where its body left the car. A screenshot steps the process in lockstep
@@ -550,7 +551,7 @@ fn start_live(
         drive.extend(process.parse(&frame)?);
         if process.detached.iter().any(|p| !seen.contains(&p.part)) {
             seen.extend(process.detached.iter().map(|p| p.part));
-            detaching.push((k as isize + 1, process.detached.clone()));
+            detaching.push((k as isize + 1, process.detached.clone(), process.doors.clone()));
         }
     }
     Ok((process, drive, detaching, demo))
@@ -838,10 +839,12 @@ fn report_load(stage: &Stage) {
     }
 }
 
-/// Dents and cracks the car as the live process's last damage record says, and places its detached parts.
+/// Dents and cracks the car as the live process's last damage record says, hangs its attached doors by their
+/// hinge angles, and places its detached parts.
 pub fn take_damage(playback: &mut Playback, process: &Live) {
     playback.set_damage(&process.damage.zones);
     playback.on_damage(process.damage.code, process.damage.index);
+    playback.set_door_angles(&process.doors);
     playback.set_detached(&process.detached);
 }
 

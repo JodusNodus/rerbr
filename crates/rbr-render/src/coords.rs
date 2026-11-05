@@ -132,6 +132,19 @@ pub fn part_to_car(world: [[f32; 4]; 3], words: [f32; 14]) -> Mat4 {
 /// `HingeDefaultAngle` of the side doors in every retail car's `common.lsp` (radians).
 pub const HINGE_DEFAULT_ANGLE: f32 = 0.01;
 
+/// A door panel hung open by the hinge angle: its placement ([`part_to_car`]) turned about the exterior door's
+/// hinge point `hinge` (its node translation) by the angle over the rest angle, about the car's up axis, mirrored
+/// for the right door (`side` +1 for the left door and -1 for the right, as in [`hinged_panel_to_car`]). At the rest
+/// angle this is the identity. The physics turns the door about the same axis by the hinge angle
+/// (`rbr_physics::entities::store::HingeStore::hinge_angle`): the lab in `notes/renderer.md` "Damage visuals"
+/// turns a right door by +(angle - rest) about model up, matching the body's world rotation.
+pub fn door_swing(hinge: [f32; 3], side: f32, angle: f32) -> Mat4 {
+    let hinge = Vec3::from(hinge);
+    Mat4::from_translation(hinge)
+        * Mat4::from_rotation_y(-side * (angle - HINGE_DEFAULT_ANGLE))
+        * Mat4::from_translation(-hinge)
+}
+
 /// A door panel at rest: its placement ([`part_to_car`], which keeps the car's orientation: the block's rotation
 /// undoes the node's in all eight retail cars), turned by the hinge's default angle about the exterior door's hinge
 /// point `hinge` (its node translation). `side` is +1 for the left door and -1
@@ -228,6 +241,29 @@ mod tests {
         let door = [[0.0, 1.0, 0.0, -0.819], [-1.0, 0.0, 0.0, 0.485], [0.0, 0.0, 1.0, -2.061]];
         let placed = part_to_car(door, block([-0.543, 0.819, -1.415], FRAC_PI_2, [0.0, 0.0, 1.0]));
         assert!(placed.abs_diff_eq(Mat4::from_translation(Vec3::new(0.0, 1.028, -3.476)), 1e-3));
+    }
+
+    #[test]
+    fn a_hung_door_turns_about_its_hinge_point() {
+        let hinge = [0.5, 1.0, -1.5];
+        // At the rest angle the swing is the identity, on either side.
+        assert!(door_swing(hinge, 1.0, HINGE_DEFAULT_ANGLE).abs_diff_eq(Mat4::IDENTITY, 1e-6));
+        assert!(door_swing(hinge, -1.0, HINGE_DEFAULT_ANGLE).abs_diff_eq(Mat4::IDENTITY, 1e-6));
+        // A point a metre behind the hinge swings sideways round it: the left door by -(angle - rest)
+        // about model up, the right door mirrored (the crash lab's right door at -0.3957 turns by
+        // +0.4057 about up, matching its body's world rotation).
+        let behind = Vec3::new(0.5, 1.0, -2.5);
+        for (side, angle) in [(1.0, 0.02f32), (-1.0, -0.3957f32)] {
+            let want = Mat4::from_rotation_y(-side * (angle - HINGE_DEFAULT_ANGLE))
+                .transform_point3(behind - Vec3::from(hinge))
+                + Vec3::from(hinge);
+            let got = door_swing(hinge, side, angle).transform_point3(behind);
+            assert!((got - want).length() < 1e-6, "{side}: {got:?} {want:?}");
+            assert!(got.x != behind.x, "the door swings sideways");
+        }
+        // The hinge point itself never moves.
+        let p = Vec3::from(hinge);
+        assert!((door_swing(hinge, -1.0, -0.4).transform_point3(p) - p).length() < 1e-6);
     }
 
     #[test]
