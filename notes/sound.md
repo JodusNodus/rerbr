@@ -35,7 +35,12 @@ Every source is faithful except the divergences documented as ours in each modul
   car exactly 1; the helicopter is taken at rest).
 - Wind and birds (1.02: a replay's, `Scene.replay`, wind outside the car, birds with the car over 50 m away): a replay
   and the video export set `replay`; while driving they play from every camera outside the car (birds without the
-  50 m rule), never from the cockpit view.
+  50 m rule); the birds never from the in-car views.
+- In-car wind while driving (`world::cabin_wind`; 1.02's `Vf08` 0x4aaf50 in-car branch, unreached in a race:
+  `a = |v| * 0.1`, gain `Wind amp * clamp(a, 0.1, 1)`, pitch `a * 0.25`): 1.02's pitch; the gain ours, 0 to 10 km/h,
+  linear to twice the `Wind` amp at 160 km/h (1.02's is full from 36 km/h), through the cabin low-pass; an FMOD bank
+  with `event:/wind` mutes it as before. Speed ramp at full throttle (Corolla, scratch render): wind 21 dB under the
+  engine at 60 km/h, 14 at 100, 11-13 from 150 (1.02's gain: 16 from 36 km/h; not in code).
 
 ## Engine
 
@@ -57,6 +62,13 @@ wipers).
 Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-pass; the exe's surface table from
 `rbr_formats::exe_data`); NGP's road list in `rbr_formats::ngp`.
 
+- In the car the road noise already follows speed and surface: the level's speed term `min(speed * 0.05 + slip *
+  0.1, 1)` (full by 72 km/h) on the surface's own loops (gravel, tarmac, snow; table pitch, cabin low-pass), and the
+  rumble off tarmac (full by 36 km/h, pitch 0.8-1.2) (`tyre.rs`; checked 2026-11-05).
+- Ours (game feel, `tyre::roll_pitch`): in the car the rolling surface loops (not the skid loops) rise in pitch from
+  the table's at 72 km/h (wheel speed) linearly to +20 % at 180 km/h, held above; level, rumble, stones and outside
+  cameras unchanged. Speed ramp (tyre layer alone, gravel and tarmac): commanded gain identical, output level -0.2 to
+  -0.3 dB from 140 km/h (the cabin low-pass), spectral centroid 717 to 823-853 Hz (scratch render, not in code).
 - The splash is 0 in every drive tried, so no wetness voice is checked. Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).
 
@@ -101,8 +113,8 @@ Mechanics in `speech` (`Speech::School`), `data::SchoolBank`, the mixer's queue 
 
 ## World and ambient
 
-Mechanics in `world.rs` (wind, birds, siren) and `mixer/rain.rs`. Birds, wind and siren play only in
-`rbr-sound --camera trackside` (the binary has no replay cameras).
+Mechanics in `world.rs` (wind, birds, siren) and `mixer/rain.rs`. The siren plays only in `rbr-sound --camera
+trackside` (the binary has no replay cameras); the wind in every camera, the birds outside the car.
 
 ## Scripted and service park
 
