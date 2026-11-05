@@ -25,19 +25,6 @@ fn default_team() -> Team {
     }
 }
 
-/// The stage key's family: the location the stages share. Retail keys are `track-NN_X` (the map); RSF and BTB keys
-/// start with the location's id or folder (`101-...`).
-fn family(key: &str) -> &str {
-    if let Some(rest) = key.strip_prefix("track-") {
-        let end = rest.find('_').map_or(rest.len(), |i| i + "track-".len());
-        return &key[..end];
-    }
-    match key.find('-') {
-        Some(i) => &key[..i],
-        None => key,
-    }
-}
-
 /// A rally's name from its stages: the first stage's name without a trailing variant (`II`, `2`, `B`) and `Rally`.
 fn rally_name(stages: &[StageRef]) -> String {
     let base = stages.first().map(|s| s.name.as_str()).unwrap_or("Rally");
@@ -128,7 +115,7 @@ impl Event {
             // Prefer one stage family (the same location): the fullest, ties drawn by the seed.
             let mut families: Vec<(&str, usize)> = Vec::new();
             for s in &candidates {
-                let f = family(&s.key);
+                let f = s.family.as_str();
                 match families.iter_mut().find(|(k, _)| *k == f) {
                     Some(slot) => slot.1 += 1,
                     None => families.push((f, 1)),
@@ -139,7 +126,7 @@ impl Event {
             let home = fullest[(rng.draw() as usize) % fullest.len()];
             let refill: Vec<StageRef> = candidates.iter().map(|s| (*s).clone()).collect();
             let (mut first, mut rest): (Vec<&StageRef>, Vec<&StageRef>) =
-                candidates.drain(..).partition(|s| family(&s.key) == home);
+                candidates.drain(..).partition(|s| s.family.as_str() == home);
             // Shuffle each group with the seed, then take without repeating unless the pool is too small.
             for group in [&mut first, &mut rest] {
                 for i in (1..group.len()).rev() {

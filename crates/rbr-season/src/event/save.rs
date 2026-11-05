@@ -46,9 +46,10 @@ impl Event {
                     })
                     .collect();
                 out.push_str(&format!(
-                    "S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                    "S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                     esc(&s.stage.key),
                     esc(&s.stage.name),
+                    esc(&s.stage.family),
                     s.stage.surface.name(),
                     if s.stage.community { 1 } else { 0 },
                     s.stage.length,
@@ -221,10 +222,11 @@ impl Event {
                     news.push(Vec::new());
                 }
                 "S" => {
-                    f.expect(30, "stage")?;
+                    f.expect(31, "stage")?;
                     let rally = rallies.last_mut().ok_or("stage outside a rally".to_owned())?;
                     let key = f.text()?;
                     let name = f.text()?;
+                    let family = f.text()?;
                     let surface = surface_load(f.raw()?)?;
                     let community = match f.raw()? {
                         "1" => true,
@@ -250,7 +252,7 @@ impl Event {
                     }
                     let track = Track { stage: 0, wet: 0, sections: [sections[0], sections[1], sections[2]] };
                     rally.stages.push(ItineraryStage {
-                        stage: StageRef { key, name, surface, community, length },
+                        stage: StageRef { key, name, family, surface, community, length },
                         clock,
                         conditions,
                         reference,
@@ -387,7 +389,7 @@ impl Event {
 }
 
 /// The save's first line.
-const SAVE_HEAD: &str = "rbr-season 2";
+const SAVE_HEAD: &str = "rbr-season 3";
 
 /// A save line's fields in order, read as the writer wrote them.
 struct Fields<'a> {

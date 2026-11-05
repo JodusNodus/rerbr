@@ -40,6 +40,7 @@ pub fn stages() -> Vec<StageRef> {
     .map(|(k, &(name, length, community))| StageRef {
         key: (20 + k).to_string(),
         name: name.to_owned(),
+        family: "fixture".to_owned(),
         surface: Surface::Gravel,
         community,
         length,

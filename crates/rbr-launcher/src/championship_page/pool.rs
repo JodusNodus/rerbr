@@ -55,6 +55,7 @@ pub fn items(catalog: &Catalog, season: &Season) -> Vec<Item> {
             let stage = StageRef {
                 key: map.number.to_string(),
                 name: map.name(),
+                family: family(map),
                 surface: surface(map.surface()),
                 community: !matches!(map.origin, Origin::Retail),
                 length: 0.0,
@@ -64,7 +65,17 @@ pub fn items(catalog: &Catalog, season: &Season) -> Vec<Item> {
         .collect()
 }
 
-/// The game's surface number (0 gravel, 1 tarmac, 2 snow) as the events' surface.
+/// The location a map shares with others, which a rally keeps to: an RSF stage's country (else its name), a BTB
+/// stage's name, a retail map's tens (the game numbers a country's maps together: 10-18, 20-27, ...).
+fn family(map: &catalog::Map) -> String {
+    match &map.origin {
+        Origin::Community(stage) => stage.country.clone().unwrap_or_else(|| stage.name.clone()),
+        Origin::Btb(btb) => btb.name.clone(),
+        Origin::Retail => format!("retail-{}", map.number / 10),
+    }
+}
+
+/// The game's surface number (0 gravel, 1 tarmac, 2 snow) as the championship's surface.
 pub fn surface(kind: u32) -> Surface {
     match kind {
         1 => Surface::Tarmac,

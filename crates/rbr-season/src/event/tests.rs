@@ -10,6 +10,7 @@ fn gravel_pool() -> Vec<StageRef> {
             stages.push(StageRef {
                 key: format!("track-{map}_{letter}"),
                 name: format!("Map {map} stage {}", i + 1),
+                family: map.to_string(),
                 surface: Surface::Gravel,
                 community: false,
                 length: 8000.0,
@@ -25,6 +26,7 @@ fn mixed_pool() -> Vec<StageRef> {
         StageRef {
             key: "track-4_A".into(),
             name: "Himalaya A".into(),
+            family: "4".into(),
             surface: Surface::Gravel,
             community: false,
             length: 8000.0,
@@ -32,6 +34,7 @@ fn mixed_pool() -> Vec<StageRef> {
         StageRef {
             key: "track-4_B".into(),
             name: "Himalaya B".into(),
+            family: "4".into(),
             surface: Surface::Gravel,
             community: false,
             length: 9000.0,
@@ -39,6 +42,7 @@ fn mixed_pool() -> Vec<StageRef> {
         StageRef {
             key: "track-10_A".into(),
             name: "Alp A".into(),
+            family: "10".into(),
             surface: Surface::Tarmac,
             community: false,
             length: 7000.0,
@@ -46,6 +50,7 @@ fn mixed_pool() -> Vec<StageRef> {
         StageRef {
             key: "track-10_B".into(),
             name: "Alp B".into(),
+            family: "10".into(),
             surface: Surface::Tarmac,
             community: false,
             length: 7500.0,
@@ -53,6 +58,7 @@ fn mixed_pool() -> Vec<StageRef> {
         StageRef {
             key: "101-a".into(),
             name: "Autiovaara I".into(),
+            family: "101".into(),
             surface: Surface::Snow,
             community: true,
             length: 10000.0,
@@ -60,6 +66,7 @@ fn mixed_pool() -> Vec<StageRef> {
         StageRef {
             key: "101-b".into(),
             name: "Autiovaara II".into(),
+            family: "101".into(),
             surface: Surface::Snow,
             community: true,
             length: 11000.0,
@@ -237,14 +244,14 @@ fn the_save_round_trips() {
     event.turn_done();
     assert!(!event.bulletins(0).is_empty());
     let text = event.save();
-    assert!(text.starts_with("rbr-season 2\n"));
+    assert!(text.starts_with("rbr-season 3\n"));
     let back = Event::load(&text).unwrap();
     assert_eq!(event, back);
     assert_eq!(Event::load(&back.save()).unwrap(), back);
     assert_eq!(back.config.team, 4);
     assert!(Event::load("bogus").is_err());
-    assert!(Event::load("rbr-season 1\nC|x").unwrap_err().contains("older"));
-    assert!(Event::load("rbr-season 2\nbogus|line").is_err());
+    assert!(Event::load("rbr-season 2\nC|x").unwrap_err().contains("older"));
+    assert!(Event::load("rbr-season 3\nbogus|line").is_err());
 }
 
 /// Drives the whole event with a fixed player time, returning the stages driven.

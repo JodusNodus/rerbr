@@ -60,6 +60,7 @@ fn main() {
         stages.push(StageRef {
             key: stem.clone(),
             name: format!("Map {map} {stem}"),
+            family: (map / 10).to_string(),
             surface,
             community: false,
             length,

@@ -66,9 +66,12 @@ pub enum Skill {
 /// A stage the itinerary can use: the launcher's catalog fills these from the installed stages.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StageRef {
-    /// The launcher's key for launching it (a retail `track-NN_X`, an RSF stage folder, a BTB stage).
+    /// The launcher's key for launching it; opaque here.
     pub key: String,
     pub name: String,
+    /// The location the stage shares with others (an RSF stage's country, a retail map's rally): a rally keeps to one
+    /// where the pool allows.
+    pub family: String,
     pub surface: Surface,
     /// The stage is a community one (RSF or BTB), for [`StagePool`].
     pub community: bool,

@@ -652,7 +652,7 @@ mod tests {
     }
 
     fn stage(key: &str, surface: Surface, community: bool, length: f32) -> StageRef {
-        StageRef { key: key.into(), name: key.into(), surface, community, length }
+        StageRef { key: key.into(), name: key.into(), family: key.into(), surface, community, length }
     }
 
     #[test]
