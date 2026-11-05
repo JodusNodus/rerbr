@@ -7,13 +7,16 @@ pub(super) const LEVELS: u32 = 8;
 /// The depth shader.
 pub(crate) const SHADER: &str = include_str!("../depth_pyramid.wgsl");
 
+/// A level's bind group and size.
+type Level = (wgpu::BindGroup, (u32, u32));
+
 pub(super) struct DepthPyramid {
     copy: wgpu::ComputePipeline,
     halve: wgpu::ComputePipeline,
     /// All the levels, for the trace.
     pub(super) view: wgpu::TextureView,
     /// Each level's bind group and size: level 0 from the frame's depth, the others from the level below.
-    groups: Vec<(wgpu::BindGroup, (u32, u32))>,
+    groups: Vec<Level>,
 }
 
 impl DepthPyramid {
@@ -46,7 +49,7 @@ impl DepthPyramid {
         [copy, halve]: [&wgpu::ComputePipeline; 2],
         (width, height): (u32, u32),
         depth: &wgpu::TextureView,
-    ) -> (wgpu::TextureView, Vec<(wgpu::BindGroup, (u32, u32))>) {
+    ) -> (wgpu::TextureView, Vec<Level>) {
         let cell = 1 << LEVELS;
         let (width, height) = (width.max(1).next_multiple_of(cell), height.max(1).next_multiple_of(cell));
         let texture = device.create_texture(&wgpu::TextureDescriptor {

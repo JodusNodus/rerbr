@@ -264,7 +264,8 @@ const COMPOSITE: &str = include_str!("../reflection_composite.wgsl");
 impl ScreenReflection {
     /// `shader` with the stage draws' vertex entry point ([`vertex_entry`](super::pipelines::vertex_entry)) and the
     /// fragment entry point ([`reflect_entry`](super::pipelines::reflect_entry)), `rays` a pixel and
-    /// `steps` a ray ([`Ssr::rays`]), traced as `ssr` says. `full` traces at the frame's size, not half.
+    /// `steps` a ray ([`Ssr::rays`]), `full` traces at the frame's size, not half, and as `ssr`
+    /// says.
     pub(super) fn new(
         device: &wgpu::Device,
         (shader, vertex, fragment, [rays, steps], write_mask): (
@@ -274,12 +275,11 @@ impl ScreenReflection {
             [u32; 2],
             wgpu::ColorWrites,
         ),
-        ssr: Ssr,
         [frame_layout, texture_layout]: [&wgpu::BindGroupLayout; 2],
         format: wgpu::TextureFormat,
         size: (u32, u32),
         depth: &wgpu::TextureView,
-        full: bool,
+        (full, ssr): (bool, Ssr),
     ) -> ScreenReflection {
         let scale = if full { 1 } else { 2 };
         let pyramid = (ssr == Ssr::Stochastic).then(|| DepthPyramid::new(device, size, depth));

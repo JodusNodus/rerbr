@@ -525,12 +525,11 @@ impl Renderer {
             ScreenReflection::new(
                 &device,
                 (&shader, vertex_entry(enhance), reflect_entry(enhance), rays, pipelines::alpha_writes(taa, false)),
-                enhance.ssr,
                 [&frame_layout, &texture_layout],
                 format,
                 depth_size,
                 &depth_view,
-                ultra,
+                (ultra, enhance.ssr),
             )
         });
         let post = Post::new(
