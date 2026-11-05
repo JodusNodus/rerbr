@@ -1,4 +1,4 @@
-//! The stage and service pieces a rally shares (the 1.02 rally of `rbr-championship` and ours): a stage's map and
+//! The stage and service pieces a rally shares (the 1.02 rally and ours): a stage's map and
 //! weather row ([`RallyStage`]), the tyres on offer ([`tyre_choices`]) and a stage's end as `rbr-standalone
 //! --result-out` reports it ([`StageReport`]).
 
@@ -84,5 +84,27 @@ impl StageReport {
             drivable: get("drivable") != 0.0,
             false_start: get("false_start") != 0.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stage_report_reads_back_as_written() {
+        let end_race = EndRace { time: 123.456_79, splits: [40.1, 80.25], retired: false };
+        let result =
+            StageReport { end: StageEnd { cause: EndCause::FinishZone, end_race }, drivable: false, false_start: true };
+        assert_eq!(StageReport::parse(&result.to_text()), result);
+        let left = StageReport::parse("");
+        assert_eq!((left.end.cause, left.end.finished(), left.drivable), (EndCause::Left, false, false));
+    }
+
+    #[test]
+    fn each_surface_offers_its_own_tyres() {
+        assert_eq!(tyre_choices(0), [3, 4, 5]);
+        assert_eq!(tyre_choices(1), [0, 1, 2]);
+        assert_eq!(tyre_choices(2), [6]);
     }
 }

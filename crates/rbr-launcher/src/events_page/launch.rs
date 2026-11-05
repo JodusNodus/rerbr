@@ -27,7 +27,7 @@ impl Form {
             let cache = self.here().join(super::pool::CACHE);
             self.events.pool = Some(super::pool::Pool::start(self.data.clone(), cache, items));
         }
-        let event_car = self.events.run.as_ref().map(|r| r.play.event().config.car.clone());
+        let event_car = self.events.run.as_ref().map(|r| r.event.config.car.clone());
         let car_missing = match &event_car {
             Some(key) => match self.catalog.cars.iter().position(|c| c.key == *key) {
                 Some(i) => {
@@ -39,7 +39,7 @@ impl Form {
             None => false,
         };
         // The service's park opens on the car's repair tree.
-        let service = self.events.run.as_ref().and_then(|r| match r.play.event().turn {
+        let service = self.events.run.as_ref().and_then(|r| match r.event.turn {
             Turn::Service { minutes, .. } => Some(minutes),
             _ => None,
         });
@@ -71,7 +71,7 @@ impl Form {
         };
         let setups = &self.setup;
         let saved = |surface| setups.saved_names(surface);
-        let seed = rbr_championship::season::seed_from_unix_ms(
+        let seed = rbr_season::seed::seed_from_unix_ms(
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64),
         );
         let env = Env {
@@ -163,17 +163,16 @@ impl Form {
     }
 }
 
-/// `--screenshot`: the Championship tab on the double ([`super::fixture`]): the presets without and with a saved
+/// `--screenshot`: the Championship tab on an event built from the fixture's stages ([`super::fixture`]): the presets without and with a saved
 /// championship, the builder, and a season's welcome, a stage, a service (on the car of `damage`, a damage file),
 /// the standings later in the rally, the rally's end with its trials and the season's end.
 pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), String> {
-    use super::fixture::{self, Double};
-    use super::model::Play;
+    use super::fixture;
     use crate::capture::shot;
     use rbr_season::config::Preset;
     use rbr_season::event::PlayerResult;
     form.page = crate::pages::Page::Championship;
-    form.events.model = &fixture::DOUBLE;
+    form.events.ai = Ok(fixture::ai());
     form.events.pool = Some(super::pool::Pool::Ready(fixture::stages()));
     let profile = form.events.profile.clone();
     form.events.screenshot_saved(&profile, None);
@@ -193,30 +192,30 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     for (k, entrant) in event.field.iter_mut().enumerate().filter(|_| !cars.is_empty()) {
         entrant.car = cars[k % cars.len()].clone();
     }
-    let mut play = Double(event);
+    let master = fixture::ai().0;
+    let mut event = event;
     // The player's pace against the reference: 3rd or so, slower on the wet stage.
-    let drive = |play: &mut Double, n: usize| {
+    let drive = |event: &mut rbr_season::event::Event, n: usize| {
         for _ in 0..n {
-            let rbr_season::event::Turn::Stage { rally, stage } = play.0.turn else { return };
-            let s = &play.0.rallies[rally].stages[stage];
-            let reference = s.stage.length / 22.0;
+            let rbr_season::event::Turn::Stage { rally, stage } = event.turn else { return };
+            let reference = event.rallies[rally].stages[stage].reference;
             let time = reference * [1.012, 1.004, 1.03, 0.998, 1.01, 1.006][stage % 6];
-            play.stage_done(PlayerResult { time, penalties: 0.0, retired: false }, reference);
-            if matches!(play.0.turn, rbr_season::event::Turn::Service { .. }) && n > 1 {
-                play.turn_done();
+            event.stage_done(&master, PlayerResult { time, penalties: 0.0, retired: false });
+            if matches!(event.turn, rbr_season::event::Turn::Service { .. }) && n > 1 {
+                event.turn_done();
             }
         }
     };
-    let at = |form: &mut Form, play: &Double, name: &str| {
-        form.events.screenshot_event(Box::new(Double(play.0.clone())));
+    let at = |form: &mut Form, event: &rbr_season::event::Event, name: &str| {
+        form.events.screenshot_event(event.clone());
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))
     };
-    at(form, &play, "championship-welcome")?;
-    play.turn_done();
-    drive(&mut play, 1);
-    at(form, &play, "championship-stage")?;
-    drive(&mut play, 1);
-    at(form, &play, "championship-service")?;
+    at(form, &event, "championship-welcome")?;
+    event.turn_done();
+    drive(&mut event, 1);
+    at(form, &event, "championship-stage")?;
+    drive(&mut event, 1);
+    at(form, &event, "championship-service")?;
     if let Some(path) = damage {
         let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let carried = CarriedDamage::from_bytes(&bytes).ok_or("not a damage file")?;
@@ -226,16 +225,16 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
         form.events.park = None;
         shot(&dir.join("championship-service-damaged.png"), |ctx| form.ui(ctx))?;
     }
-    play.turn_done();
-    drive(&mut play, 2);
-    at(form, &play, "championship-standings")?;
-    drive(&mut play, 6);
-    at(form, &play, "championship-rally-over")?;
-    play.turn_done();
-    play.turn_done();
-    drive(&mut play, 6);
-    play.turn_done();
-    at(form, &play, "championship-over")?;
+    event.turn_done();
+    drive(&mut event, 2);
+    at(form, &event, "championship-standings")?;
+    drive(&mut event, 6);
+    at(form, &event, "championship-rally-over")?;
+    event.turn_done();
+    event.turn_done();
+    drive(&mut event, 6);
+    event.turn_done();
+    at(form, &event, "championship-over")?;
     form.events.screenshot_saved(&profile, None);
     Ok(())
 }

@@ -1,13 +1,13 @@
 //! What the event pages draw with: cards, places and times, and the service park (`CSelectPartsUI` and the timer) on
-//! the car's repair tree. The park's rules and state are `rbr_championship::ServicePark`'s.
+//! the car's repair tree. The park's rules and state are `rbr_season::service::ServicePark`'s.
 
 use std::path::Path;
 
 use egui::{Color32, RichText, Ui};
-use rbr_championship::{service, ParkState, ServicePark};
 use rbr_formats::data::Data;
 use rbr_formats::strings::Strings;
 use rbr_gameplay::car_damage::{CarriedDamage, Rules};
+use rbr_season::service::{self, ParkState, ServicePark};
 
 use crate::browser::{DIM, GREY, STAR};
 use crate::catalog::Car;

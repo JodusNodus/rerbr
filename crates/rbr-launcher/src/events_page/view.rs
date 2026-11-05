@@ -11,6 +11,7 @@ use rbr_gameplay::setup::SeasonSetup;
 use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, StagePool, Surface, Surfaces, Weather};
 use rbr_season::event::{Conditions, Event, Standing, Turn};
 use rbr_season::field::AiResult;
+use rbr_season::team::team_offers;
 
 use super::common::{card, card_title, clock, gap, ordinal, park_card, text_of, StageMark, BAD, CARD};
 use super::*;
@@ -240,8 +241,9 @@ impl EventsPage {
         let classes = classes(env.cars);
         let (driving, status) = (self.driving, self.status.clone());
         let mut start = false;
-        let teams = (self.model.team_offers)();
-        let (team, mut picked_team) = (self.team, self.team);
+        let teams = self.ai.as_ref().map_or_else(|_| Vec::new(), |(_, roster)| team_offers(roster));
+        let (team, mut picked_team) = (config.team as usize, config.team as usize);
+        let ai_error = self.ai.as_ref().err().cloned();
         ui.columns(2, |cols| {
             fields(&mut cols[0], "event-builder", |ui| {
                 ui.label("Car");
@@ -338,7 +340,7 @@ impl EventsPage {
                         "event-skill",
                         160.0,
                         &mut config.skill,
-                        &[Skill::Rookie, Skill::Amateur, Skill::Professional],
+                        &[Skill::Rookie, Skill::Professional, Skill::Champion],
                         skill_word,
                     );
                     ui.colored_label(GREY, format!("help when stuck: {}", assistance_note(config.skill)));
@@ -348,11 +350,13 @@ impl EventsPage {
                     ui.label("Team").on_hover_text("The service crew that repairs your car");
                     let (mut team, offers) = (team, &teams);
                     ui.horizontal(|ui| {
-                        let name = |i: usize| offers.iter().find(|t| t.0 == i).map_or(String::new(), |t| t.1.clone());
-                        let indexes: Vec<usize> = offers.iter().map(|t| t.0).collect();
+                        let name = |i: usize| {
+                            offers.iter().find(|t| t.index as usize == i).map_or(String::new(), |t| t.name.clone())
+                        };
+                        let indexes: Vec<usize> = offers.iter().map(|t| t.index as usize).collect();
                         combo(ui, "event-team", 200.0, &mut team, &indexes, name);
-                        if let Some(offer) = offers.iter().find(|t| t.0 == team) {
-                            ui.colored_label(GREY, &offer.2);
+                        if let Some(offer) = offers.iter().find(|t| t.index as usize == team) {
+                            ui.colored_label(GREY, &offer.crew);
                         }
                     });
                     picked_team = team;
@@ -412,19 +416,23 @@ impl EventsPage {
                     (None, None) => {}
                 }
                 ui.add_space(10.0);
-                let ready = fit.is_some_and(|n| n > 0) && is_file_name_part(env.profile) && !driving;
+                let ready =
+                    fit.is_some_and(|n| n > 0) && is_file_name_part(env.profile) && !driving && ai_error.is_none();
                 let go = ui.horizontal(|ui| ui.add_enabled(ready, start_button("Start"))).inner;
                 if saved {
                     ui.colored_label(GREY, format!("Replaces {}'s saved championship.", env.profile));
                 }
                 start = go.clicked();
+                if let Some(e) = &ai_error {
+                    ui.colored_label(WARN, format!("The AI tables do not read: {e}"));
+                }
                 if !status.is_empty() {
                     ui.colored_label(WARN, &status);
                 }
             });
         });
+        edited.team = picked_team as u8;
         self.config = Some(edited);
-        self.team = picked_team;
         if let Some(stages) = stages.filter(|_| start) {
             self.start_event(env.here, env.profile, env.cars, &stages);
         }
@@ -435,11 +443,11 @@ impl EventsPage {
     fn event_ui(&mut self, ui: &mut Ui, env: Env) -> Option<Request> {
         let mut request = None;
         let run = self.run.as_ref()?;
-        let event = run.play.event().clone();
+        let event = run.event.clone();
         let rally = rally_of(&event);
-        let standings = run.play.rally_standings(rally);
-        let points = (event.rallies.len() > 1).then(|| run.play.points());
-        let news = if last_stage(&event).is_some() { run.play.bulletins(rally) } else { Vec::new() };
+        let standings = event.rally_standings(rally);
+        let points = (event.rallies.len() > 1).then(|| event.points());
+        let news = if last_stage(&event).is_some() { event.bulletins(rally) } else { Vec::new() };
         if ui.link("‹ Championship").clicked() {
             self.view = View::Entry;
             return None;
@@ -486,7 +494,7 @@ impl EventsPage {
             itinerary_ui(ui, &event, rally);
             let ui = &mut cols[1];
             if !news.is_empty() {
-                bulletins_ui(ui, &news);
+                bulletins_ui(ui, &news, &mut self.news_all);
                 ui.add_space(10.0);
             }
             standings_ui(ui, &event, rally, &standings, env.cars);
@@ -544,7 +552,7 @@ impl EventsPage {
         ui.add_space(6.0);
         let choosing = self.choice_before(rally, stage);
         let tyre = self.next_tyre();
-        let road = self.run.as_ref().and_then(|r| road_line(r.play.as_ref(), rally, stage));
+        let road = self.run.as_ref().and_then(|r| road_line(&r.event, rally, stage));
         fields(ui, "event-stage", |ui| {
             if let Some(road) = road {
                 ui.label("Start order");
@@ -557,7 +565,7 @@ impl EventsPage {
                     .width(200.0)
                     .selected_text(crate::catalog::tyre_label(tyre))
                     .show_ui(ui, |ui| {
-                        for &t in rbr_championship::tyre_choices(kind) {
+                        for &t in rbr_season::rally::tyre_choices(kind) {
                             if ui.selectable_label(t == tyre, crate::catalog::tyre_label(t)).clicked() {
                                 self.tyre = Some(t);
                             }
@@ -718,23 +726,26 @@ impl EventsPage {
     }
 }
 
-/// The stage card's road line: "14th on the road · worn surface", none without a road order.
-fn road_line(play: &dyn Play, rally: usize, stage: usize) -> Option<String> {
-    let at = play.start_order(rally, stage).iter().position(Option::is_none)?;
-    let wear = match play.road_wear(rally, stage) {
-        w if w < 0.15 => "clean surface",
-        w if w < 0.5 => "worn surface",
-        _ => "heavily worn surface",
-    };
-    Some(format!("{} on the road · {wear}", ordinal(at + 1)))
+/// The stage card's road line: "14th on the road · worn road", none without a road order.
+fn road_line(event: &Event, rally: usize, stage: usize) -> Option<String> {
+    let at = event.start_order(rally, stage).iter().position(Option::is_none)?;
+    let wear = ["fresh", "used", "worn"][event.road_wear(rally, stage) as usize % 3];
+    Some(format!("{} on the road · {wear} road", ordinal(at + 1)))
 }
 
-/// The news since the player's last stage.
-fn bulletins_ui(ui: &mut Ui, news: &[String]) {
+/// The bulletins' lines shown without "show all".
+const NEWS_SHOWN: usize = 8;
+
+/// The news since the player's last stage: the last few lines, or all of them.
+fn bulletins_ui(ui: &mut Ui, news: &[String], all: &mut bool) {
     card(ui, |ui| {
         card_title(ui, "Since your last stage");
-        for line in news {
+        let hidden = if *all { 0 } else { news.len().saturating_sub(NEWS_SHOWN) };
+        for line in &news[hidden..] {
             ui.label(line);
+        }
+        if news.len() > NEWS_SHOWN && ui.link(if *all { "Show fewer" } else { "Show all" }).clicked() {
+            *all = !*all;
         }
     });
 }

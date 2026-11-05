@@ -2353,15 +2353,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rbr-championship"
-version = "0.1.0"
-dependencies = [
- "rbr-formats",
- "rbr-gameplay",
- "rbr-season",
-]
-
-[[package]]
 name = "rbr-counters"
 version = "0.1.0"
 dependencies = [
@@ -2407,7 +2398,6 @@ dependencies = [
  "futures-executor",
  "png",
  "rbr-btb",
- "rbr-championship",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-recording",

@@ -14,6 +14,8 @@ use rbr_formats::data::Data;
 use rbr_formats::{stage_files, trk};
 use rbr_gameplay::weather::Season;
 use rbr_season::config::{StageRef, Surface};
+use rbr_season::pace::ClassPace;
+use rbr_season::track::StageProfile;
 
 use crate::catalog::{self, Catalog, Origin};
 
@@ -179,14 +181,11 @@ pub fn read(data: &Data, cache: &Path, items: Vec<Item>, done: &AtomicUsize, sto
     stages
 }
 
-/// A stage's reference time (s) for `class` at `wetness` (0 dry to 1 wet), from its kept driveline; a stage without
-/// one is taken at 25 m/s.
-pub fn reference(cache: &Path, stage: &StageRef, wetness: f32, class: &str) -> f32 {
+/// A stage's profile for `class` from its kept driveline; a stage without one is a flat profile over its length.
+pub fn profile(cache: &Path, stage: &StageRef, class: &ClassPace) -> StageProfile {
     match read_cached(cache, &stage.key, None) {
-        Some(points) => {
-            rbr_season::pace::reference_time(&points, stage.surface, wetness, &rbr_season::pace::class_pace(class))
-        }
-        None => stage.length / 25.0,
+        Some(points) => rbr_season::track::profile(&points, &[], stage.surface, class),
+        None => StageProfile::flat(stage.length, stage.surface, class),
     }
 }
 

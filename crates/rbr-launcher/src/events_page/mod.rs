@@ -21,8 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rbr_championship::service::{Crew, ServiceKind};
-use rbr_championship::{ServicePark, StageReport};
+use rbr_formats::ai_ini::{Master, Roster};
 use rbr_formats::data::Data;
 use rbr_formats::saves::{is_file_name_part, SaveDir};
 use rbr_formats::strings::Strings;
@@ -31,7 +30,10 @@ use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::flow::{EndCause, EndRace, StageEnd};
 use rbr_gameplay::setup::SeasonSetup;
 use rbr_season::config::{Damage, EventConfig, Length, Preset, Skill, StagePool, StageRef, Surface, Surfaces};
-use rbr_season::event::{Conditions, ItineraryStage, PlayerResult, Turn};
+use rbr_season::event::{Conditions, Event, ItineraryStage, PlayerResult, Turn};
+use rbr_season::pace;
+use rbr_season::rally::{tyre_choices, StageReport};
+use rbr_season::service::{ParkState, ServiceKind, ServicePark};
 
 use crate::catalog::Car;
 
@@ -40,11 +42,9 @@ pub mod fixture;
 mod launch;
 
 pub use launch::shots;
-pub mod model;
 pub mod pool;
 mod view;
 
-use model::{Model, Play};
 use pool::Pool;
 
 /// What the Championship tab shows.
@@ -88,7 +88,7 @@ pub enum Request {
 
 /// The event under way and what the launcher keeps beside it.
 pub struct Run {
-    pub play: Box<dyn Play>,
+    pub event: Event,
     /// The damage the car carries (none: new).
     pub damage: Option<CarriedDamage>,
     /// The service's late penalty, added to the next stage's result.
@@ -97,8 +97,12 @@ pub struct Run {
     pub tyre: u32,
 }
 
+/// The 1.02 AI's tables the field runs on: `ai.ini` and `aidrv.ini`.
+pub type Ai = (Master, Roster);
+
 pub struct EventsPage {
-    pub model: &'static Model,
+    /// The AI tables, read once (or why they do not read: the event cannot start without them).
+    pub ai: Result<Ai, String>,
     pub view: View,
     pub builder: Option<Builder>,
     /// The builder's settings.
@@ -122,8 +126,8 @@ pub struct EventsPage {
     practice: bool,
     /// The profile the event is saved under.
     pub profile: String,
-    /// The team (service crew) the builder picked, from [`model::Model::team_offers`].
-    pub team: usize,
+    /// The bulletins shown in full, not the last few.
+    news_all: bool,
     pub status: String,
 }
 
@@ -239,8 +243,8 @@ fn race_skill(skill: Skill) -> rbr_gameplay::race_options::Skill {
     use rbr_gameplay::race_options::Skill as Game;
     match skill {
         Skill::Rookie => Game::Rookie,
-        Skill::Amateur => Game::Professional,
-        Skill::Professional => Game::Champion,
+        Skill::Professional => Game::Professional,
+        Skill::Champion => Game::Champion,
     }
 }
 
@@ -261,8 +265,8 @@ pub fn assistance_note(skill: Skill) -> String {
 pub fn skill_word(skill: Skill) -> &'static str {
     match skill {
         Skill::Rookie => "Rookie",
-        Skill::Amateur => "Amateur",
         Skill::Professional => "Professional",
+        Skill::Champion => "Champion",
     }
 }
 
@@ -275,7 +279,7 @@ pub fn clock_hm(hours: f32) -> String {
 impl EventsPage {
     pub fn new(data: &Data) -> EventsPage {
         EventsPage {
-            model: &model::REAL,
+            ai: rbr_season::ai::load_ai(data),
             view: View::Entry,
             builder: None,
             config: None,
@@ -291,7 +295,7 @@ impl EventsPage {
             driving: false,
             practice: false,
             profile: "player".into(),
-            team: 0,
+            news_all: false,
             status: String::new(),
         }
     }
@@ -314,7 +318,7 @@ impl EventsPage {
         if self.saved.as_ref().is_none_or(|(name, _)| name != profile) {
             let (save, _, _) = Self::files(here, profile);
             let found = is_file_name_part(profile).then(|| std::fs::read_to_string(&save).ok()).flatten();
-            let summary = found.map(|text| (self.model.load)(&text).map(|play| place_line(play.as_ref())));
+            let summary = found.map(|text| Event::load(&text).map(|event| place_line(&event)));
             self.saved = Some((profile.to_owned(), summary));
         }
         self.saved.as_ref().and_then(|(_, s)| s.clone())
@@ -327,9 +331,9 @@ impl EventsPage {
     }
 
     /// `--screenshot`: `play` under way, unsaved.
-    pub fn screenshot_event(&mut self, play: Box<dyn Play>) {
+    pub fn screenshot_event(&mut self, event: Event) {
         let tyre = 3;
-        self.run = Some(Run { play, damage: None, penalty: 0.0, tyre });
+        self.run = Some(Run { event, damage: None, penalty: 0.0, tyre });
         (self.view, self.park, self.tyre, self.driving) = (View::Event, None, None, false);
     }
 
@@ -338,7 +342,7 @@ impl EventsPage {
         let car = self.car.filter(|&i| i < cars.len()).unwrap_or(car);
         let picked = cars.get(car).cloned().unwrap_or_default();
         self.car = Some(car);
-        self.config = Some((self.model.config)(preset, &class_of(&picked), &picked.key, seed));
+        self.config = Some(preset.config(&class_of(&picked), &picked.key, seed));
         self.builder = Some(Builder { preset });
         self.view = View::Builder;
     }
@@ -357,11 +361,15 @@ impl EventsPage {
         let Some(config) = self.config.clone() else { return };
         let field = class_cars(cars, &config.class);
         let cache = here.join(pool::CACHE);
-        let class = config.class.clone();
-        let reference = |s: &StageRef, wet: f32| pool::reference(&cache, s, wet, &class);
-        match (self.model.build)(config, stages, &field, &reference) {
-            Ok(play) => {
-                self.run = Some(Run { play, damage: None, penalty: 0.0, tyre: 3 });
+        let class = pace::class_pace(&config.class);
+        let stage_profile = |s: &StageRef| pool::profile(&cache, s, &class);
+        let built = match &self.ai {
+            Ok((_, roster)) => Event::build(config, stages, &field, roster, &stage_profile),
+            Err(e) => Err(format!("the AI tables do not read: {e}")),
+        };
+        match built {
+            Ok(event) => {
+                self.run = Some(Run { event, damage: None, penalty: 0.0, tyre: 3 });
                 (self.view, self.tyre, self.setup, self.park) = (View::Event, None, SeasonSetup::Current, None);
                 self.status.clear();
                 self.save(here, profile);
@@ -374,15 +382,15 @@ impl EventsPage {
     pub fn continue_event(&mut self, here: &Path, profile: &str) {
         let (save, dmg, state) = Self::files(here, profile);
         let loaded = std::fs::read_to_string(&save).map_err(|e| format!("{}: {e}", save.display()));
-        match loaded.and_then(|text| (self.model.load)(&text)) {
-            Ok(play) => {
+        match loaded.and_then(|text| Event::load(&text)) {
+            Ok(event) => {
                 let damage = std::fs::read(&dmg).ok().and_then(|b| CarriedDamage::from_bytes(&b));
                 let state = std::fs::read_to_string(&state).unwrap_or_default();
                 let value = |key: &str| {
                     state.lines().find_map(|l| l.strip_prefix(key)?.trim_start().strip_prefix('=')?.trim().parse().ok())
                 };
                 let (penalty, tyre) = (value("penalty").unwrap_or(0.0), value("tyre").map_or(3, |t: f32| t as u32));
-                self.run = Some(Run { play, damage, penalty, tyre });
+                self.run = Some(Run { event, damage, penalty, tyre });
                 (self.view, self.tyre, self.setup, self.park) = (View::Event, None, SeasonSetup::Current, None);
                 self.status.clear();
             }
@@ -396,7 +404,7 @@ impl EventsPage {
         let (save, dmg, state) = Self::files(here, profile);
         let write = || -> std::io::Result<()> {
             std::fs::create_dir_all(save.parent().unwrap_or(here))?;
-            std::fs::write(&save, run.play.save())?;
+            std::fs::write(&save, run.event.save())?;
             match &run.damage {
                 Some(damage) => std::fs::write(&dmg, damage.to_bytes())?,
                 None => _ = std::fs::remove_file(&dmg),
@@ -406,7 +414,7 @@ impl EventsPage {
         if let Err(e) = write() {
             self.status = format!("{}: {e}", save.display());
         }
-        self.saved = Some((profile.to_owned(), Some(Ok(place_line(run.play.as_ref())))));
+        self.saved = Some((profile.to_owned(), Some(Ok(place_line(&run.event)))));
     }
 
     /// The event over and left: its files removed, back to the presets.
@@ -420,14 +428,14 @@ impl EventsPage {
     /// The itinerary stage of the turn, if it is a stage.
     pub fn next_stage(&self) -> Option<(usize, usize, &ItineraryStage)> {
         let run = self.run.as_ref()?;
-        let Turn::Stage { rally, stage } = run.play.event().turn else { return None };
-        Some((rally, stage, run.play.event().rallies.get(rally)?.stages.get(stage)?))
+        let Turn::Stage { rally, stage } = run.event.turn else { return None };
+        Some((rally, stage, run.event.rallies.get(rally)?.stages.get(stage)?))
     }
 
     /// Whether the tyres and setup can change before stage `stage`: at the rally's start and after a service.
     pub fn choice_before(&self, rally: usize, stage: usize) -> bool {
         let Some(run) = &self.run else { return true };
-        stage == 0 || run.play.event().rallies[rally].stages.get(stage - 1).is_some_and(|s| s.service_after.is_some())
+        stage == 0 || run.event.rallies[rally].stages.get(stage - 1).is_some_and(|s| s.service_after.is_some())
     }
 
     /// The tyre the next stage runs on: the pick (the road's by default) when it can change, else the car's.
@@ -438,7 +446,7 @@ impl EventsPage {
             return last;
         }
         let kind = surface_kind(next.stage.surface);
-        let choices = rbr_championship::tyre_choices(kind);
+        let choices = tyre_choices(kind);
         let road = rbr_gameplay::weather::tyre_kind(kind, wetness(next.conditions).1);
         self.tyre.or(road).filter(|t| choices.contains(t)).unwrap_or(choices[0])
     }
@@ -449,7 +457,7 @@ impl EventsPage {
         let (rally, stage, next) = self.next_stage().ok_or("no stage is next")?;
         let next = next.clone();
         let run = self.run.as_ref().ok_or("no event")?;
-        let event = run.play.event();
+        let event = &run.event;
         let last = stage + 1 == event.rallies[rally].stages.len();
         let follows = match next.service_after {
             _ if last => "end",
@@ -497,7 +505,7 @@ impl EventsPage {
     /// setup. No championship flags and no files: it is not recorded.
     pub fn trial(&mut self, yard: bool) -> Result<EventStart, String> {
         let run = self.run.as_ref().ok_or("no event")?;
-        let event = run.play.event();
+        let event = &run.event;
         let Turn::RallyOver { rally } = event.turn else { return Err("trials come between rallies".into()) };
         let next = event.rallies.get(rally + 1).and_then(|r| r.stages.first()).ok_or("no rally follows")?;
         let (map, surface, conditions, clock) = if yard {
@@ -508,7 +516,7 @@ impl EventsPage {
         };
         let kind = surface_kind(surface);
         let road = rbr_gameplay::weather::tyre_kind(kind, wetness(conditions).1);
-        let choices = rbr_championship::tyre_choices(kind);
+        let choices = tyre_choices(kind);
         let tyre = road.filter(|t| choices.contains(t)).unwrap_or(choices[0]);
         let damage = event.config.damage;
         (self.driving, self.practice) = (true, true);
@@ -522,8 +530,9 @@ impl EventsPage {
         if !std::mem::take(&mut self.driving) || std::mem::take(&mut self.practice) {
             return;
         }
-        let Some((_, _, next)) = self.next_stage() else { return };
-        let next = next.clone();
+        if self.next_stage().is_none() {
+            return;
+        }
         let tyre = self.next_tyre();
         let Some(run) = self.run.as_mut() else { return };
         let (_, out, result) = Self::stage_files(here);
@@ -537,9 +546,13 @@ impl EventsPage {
         let player =
             PlayerResult { time: race.time, penalties: run.penalty, retired: race.retired || !report.drivable };
         run.penalty = 0.0;
-        let class = run.play.event().config.class.clone();
-        let reference = pool::reference(&here.join(pool::CACHE), &next.stage, wetness(next.conditions).0, &class);
-        run.play.stage_done(player, reference);
+        match &self.ai {
+            Ok((master, _)) => run.event.stage_done(master, player),
+            Err(e) => {
+                self.status = format!("the AI tables do not read: {e}");
+                return;
+            }
+        }
         self.tyre = None;
         self.save(here, profile);
     }
@@ -547,10 +560,10 @@ impl EventsPage {
     /// The welcome, a service's end or the rally's end: the turn moves on (a rally starts on a new car).
     pub fn turn_done(&mut self, here: &Path, profile: &str) {
         let Some(run) = self.run.as_mut() else { return };
-        if let Turn::Welcome { .. } = run.play.event().turn {
+        if let Turn::Welcome { .. } = run.event.turn {
             (run.damage, run.penalty) = (None, 0.0);
         }
-        run.play.turn_done();
+        run.event.turn_done();
         (self.tyre, self.setup) = (None, SeasonSetup::Current);
         self.save(here, profile);
     }
@@ -572,8 +585,9 @@ impl EventsPage {
             Ok(parts) => {
                 let damage = self.run.as_ref().and_then(|r| r.damage.clone()).unwrap_or_default();
                 let kind = if minutes >= 40 { ServiceKind::Long } else { ServiceKind::Short };
-                let mut park = ServicePark::open(kind, &parts, Crew::default(), rules, &mut self.rand, damage);
-                if park.state == rbr_championship::ParkState::Choosing {
+                let crew = self.run.as_ref().map_or_else(Default::default, |r| r.event.crew());
+                let mut park = ServicePark::open(kind, &parts, crew, rules, &mut self.rand, damage);
+                if park.state == ParkState::Choosing {
                     park.time_left = minutes as f32 * 60.0;
                 }
                 self.park = Some(park);
@@ -589,8 +603,7 @@ impl EventsPage {
 }
 
 /// Where the event stands, for the Continue card: "Season · Rally 2 of 6 · Stage 3 of 6" or "Event over".
-pub fn place_line(play: &dyn Play) -> String {
-    let event = play.event();
+pub fn place_line(event: &Event) -> String {
     let kind = match event.config.length {
         Length::Rally { .. } => "Rally",
         Length::Weekend { .. } => "Weekend",
@@ -629,6 +642,7 @@ mod tests {
             daylight: Daylight::Day,
             weather: Weather::Changeable,
             damage: Damage::Realistic,
+            team: 0,
             skill: Skill::Professional,
             difficulty: 0.6,
             adaptive: true,
@@ -666,10 +680,10 @@ mod tests {
         assert_eq!(clock_hm(20.5), "20:30");
     }
 
-    /// A page on the double with a pool of the fixture's stages.
+    /// A page on the fixture AI with a pool of the fixture's stages.
     fn page(here: &Path) -> EventsPage {
         let mut page = EventsPage::new(&Data::new(here.join("data"), None));
-        page.model = &fixture::DOUBLE;
+        page.ai = Ok(fixture::ai());
         let cars = [Car {
             key: "rsf-1".into(),
             group: Some("Rally2".into()),
@@ -706,49 +720,52 @@ mod tests {
     fn a_rally_runs_its_turns_with_service_damage_and_the_late_penalty() {
         let here = crate::test_dir("events-turns");
         let mut page = page(&here);
-        let turn = |page: &EventsPage| page.run.as_ref().unwrap().play.event().turn.clone();
+        let turn = |page: &EventsPage| page.run.as_ref().unwrap().event.turn.clone();
         assert_eq!(turn(&page), Turn::Welcome { rally: 0 });
         let (save, dmg, state) = EventsPage::files(&here, "tester");
         assert!(save.is_file(), "saved at the welcome");
         page.turn_done(&here, "tester");
         // SS1: the road's tyre, the itinerary's clock and the flags; no damage carried yet.
         let start = drive(&mut page, &here, 300.0, None);
-        assert_eq!((start.map, start.conditions, start.tyre), (20, Conditions::Dry, 3));
+        let first = page.run.as_ref().unwrap().event.rallies[0].stages[0].clone();
+        assert_eq!((start.map.to_string(), start.conditions), (first.stage.key.clone(), first.conditions));
+        assert_eq!(start.tyre, rbr_gameplay::weather::tyre_kind(0, wetness(first.conditions).1).unwrap_or(3));
         let flag = |name: &str| start.args.iter().position(|a| a == name).map(|i| start.args[i + 1].as_str());
-        assert_eq!(flag("--start-time"), Some("8:30"));
+        assert_eq!(flag("--start-time"), Some(clock_hm(first.clock).as_str()));
         assert_eq!(flag("--championship-damage"), Some("realistic"));
         assert_eq!(flag("--rally-next"), Some("stage"));
         assert_eq!(flag("--damage-in"), None);
-        // The fixture's Professional skill is the game's Champion.
-        assert_eq!(flag("--championship"), Some("champion"));
+        // The fixture's Professional skill is the game's Professional.
+        assert_eq!(flag("--championship"), Some("professional"));
         assert_eq!(turn(&page), Turn::Stage { rally: 0, stage: 1 });
-        // SS2 leaves damage and a service follows.
+        drive(&mut page, &here, 305.0, None);
+        // SS3 leaves damage and a service follows.
         let mut damage = CarriedDamage::default();
         damage.service_refresh();
         let start = drive(&mut page, &here, 310.0, Some(&damage));
         assert!(start.args.iter().any(|a| a == "service"));
-        assert_eq!(turn(&page), Turn::Service { rally: 0, stage: 1, minutes: 20 });
+        assert_eq!(turn(&page), Turn::Service { rally: 0, stage: 2, minutes: 20 });
         assert!(dmg.is_file());
         page.service_done(&here, "tester", 20.0, damage.clone());
-        assert_eq!(turn(&page), Turn::Stage { rally: 0, stage: 2 });
+        assert_eq!(turn(&page), Turn::Stage { rally: 0, stage: 3 });
         assert!(std::fs::read_to_string(&state).unwrap().contains("penalty = 20"));
-        // SS3 takes the damage in and the penalty into its result.
+        // SS4 takes the damage in and the penalty into its result.
         let start = drive(&mut page, &here, 320.0, None);
         assert!(start.args.iter().any(|a| a == "--damage-in"));
-        let event = page.run.as_ref().unwrap().play.event();
-        assert_eq!(event.results[0][2].0.unwrap().penalties, 20.0);
+        let event = &page.run.as_ref().unwrap().event;
+        assert_eq!(event.results[0][3].0.unwrap().penalties, 20.0);
         assert_eq!(page.run.as_ref().unwrap().penalty, 0.0);
         // A stage left before the finish retires: the rally is over, its standings' player line has no total.
         page.stage_start(&here).unwrap();
         page.stage_closed(&here, "tester");
         assert_eq!(turn(&page), Turn::RallyOver { rally: 0 });
-        let lines = page.run.as_ref().unwrap().play.rally_standings(0);
+        let lines = page.run.as_ref().unwrap().event.rally_standings(0);
         assert_eq!(lines.iter().find(|l| l.entrant.is_none()).unwrap().total, None);
         page.turn_done(&here, "tester");
         assert_eq!(turn(&page), Turn::EventOver);
         // Continue reads it back with the damage; leaving the finished event removes its files.
         let mut again = EventsPage::new(&Data::new(here.join("data"), None));
-        again.model = &fixture::DOUBLE;
+        again.ai = Ok(fixture::ai());
         assert!(again.saved_event(&here, "tester").is_some());
         again.continue_event(&here, "tester");
         assert!(again.run.as_ref().is_some_and(|r| r.damage.is_some()));
@@ -763,17 +780,17 @@ mod tests {
         let here = crate::test_dir("events-trial");
         let mut page = page(&here);
         let mut event = fixture::fixture_event();
-        page.screenshot_event(Box::new(fixture::Double(event.clone())));
+        page.screenshot_event(event.clone());
         assert!(page.trial(false).is_err(), "trials come between rallies");
         event.turn = Turn::RallyOver { rally: 0 };
-        page.screenshot_event(Box::new(fixture::Double(event.clone())));
+        page.screenshot_event(event.clone());
         let stage = page.trial(false).unwrap();
         assert_eq!(stage.map.to_string(), event.rallies[1].stages[0].stage.key);
         assert!(stage.args.is_empty(), "no championship flags, no files");
         // Its end changes nothing: the turn stays, nothing is recorded.
         page.stage_closed(&here, "tester");
-        assert_eq!(page.run.as_ref().unwrap().play.event().turn, Turn::RallyOver { rally: 0 });
-        assert!(page.run.as_ref().unwrap().play.event().results[0].is_empty());
+        assert_eq!(page.run.as_ref().unwrap().event.turn, Turn::RallyOver { rally: 0 });
+        assert!(page.run.as_ref().unwrap().event.results[0].iter().all(|(player, _)| player.is_none()));
         assert_eq!(page.trial(true).unwrap().map, YARD);
         page.abort_stage_start();
         assert!(!page.driving && !page.practice);
@@ -783,8 +800,8 @@ mod tests {
     #[test]
     fn the_skill_levels_are_the_games_three_with_their_help_rules() {
         assert_eq!(assistance_note(Skill::Rookie), "10 s penalty");
-        assert_eq!(assistance_note(Skill::Amateur), "20 s penalty");
-        assert!(assistance_note(Skill::Professional).starts_with("35 s penalty; a stuck car is not helped"));
+        assert_eq!(assistance_note(Skill::Professional), "20 s penalty");
+        assert!(assistance_note(Skill::Champion).starts_with("35 s penalty; a stuck car is not helped"));
     }
 
     #[test]
@@ -795,7 +812,66 @@ mod tests {
         page.stage_start(&here).unwrap();
         page.abort_stage_start();
         page.stage_closed(&here, "tester");
-        assert_eq!(page.run.as_ref().unwrap().play.event().turn, Turn::Stage { rally: 0, stage: 0 });
+        assert_eq!(page.run.as_ref().unwrap().event.turn, Turn::Stage { rally: 0, stage: 0 });
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// A Quick rally on the installed stages and the real `ai.ini`, played with a fixed player pace (`RBR_DATA`).
+    #[test]
+    fn a_quick_rally_on_the_real_stages_and_ai_plays_through() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize};
+        let Some(data) = Data::from_env() else {
+            eprintln!("skipping: RBR_DATA not set");
+            return;
+        };
+        let install = std::env::var_os("RBR_DATA").map(PathBuf::from).unwrap();
+        let season = rbr_gameplay::weather::Season::load(&data).unwrap();
+        let catalog = crate::catalog::Catalog::scan(&install).unwrap();
+        let here = crate::test_dir("events-real");
+        let cache = here.join(pool::CACHE);
+        let (done, stop) = (AtomicUsize::new(0), AtomicBool::new(false));
+        let stages = pool::read(&data, &cache, pool::items(&catalog, &season), &done, &stop);
+        assert!(stages.len() >= 20, "{} stages read", stages.len());
+        let (master, roster) = rbr_season::ai::load_ai(&data).unwrap();
+        assert!(!rbr_season::team::team_offers(&roster).is_empty());
+
+        let config = Preset::QuickRally.config("Rally2", "", 11);
+        let class = pace::class_pace(&config.class);
+        let profile = |s: &StageRef| pool::profile(&cache, s, &class);
+        let cars = ["Skoda Fabia Rally2".to_owned(), "Citroen C3 Rally2".to_owned()];
+        let mut event = Event::build(config, &stages, &cars, &roster, &profile).unwrap();
+        let field = event.field.len();
+        assert_eq!(event.rallies[0].stages.len(), 6);
+        event.turn_done();
+        let mut player = 0.0;
+        while let Turn::Stage { rally, stage } = event.turn {
+            let order = event.start_order(rally, stage);
+            assert_eq!(order.len(), field + 1);
+            assert_eq!(order.iter().filter(|who| who.is_none()).count(), 1);
+            assert!(event.road_wear(rally, stage) <= 2.0);
+            let reference = event.rallies[rally].stages[stage].reference;
+            assert!(reference > 30.0, "SS{} reference {reference}", stage + 1);
+            let time = reference * 1.08;
+            player += time;
+            event.stage_done(&master, PlayerResult { time, penalties: 0.0, retired: false });
+            if let Turn::Service { .. } = event.turn {
+                event.turn_done();
+            }
+        }
+        assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
+        let standings = event.rally_standings(0);
+        assert_eq!(standings.len(), field + 1);
+        let place = standings.iter().position(|row| row.entrant.is_none()).unwrap();
+        let total = standings[place].total.expect("the player finished");
+        assert!((total - player).abs() < 0.5, "{total} against {player}");
+        // A 8 % slower player is not winning against a field of the class's pace, and is not last.
+        assert!(place > 0 && place < field, "the player is {} of {}", place + 1, field + 1);
+        let totals: Vec<f32> = standings.iter().filter_map(|row| row.total).collect();
+        assert!(totals.windows(2).all(|w| w[0] <= w[1]), "sorted by total");
+        assert!(standings[0].points > 0 && standings[0].points >= standings.last().unwrap().points);
+        let news = event.bulletins(0);
+        assert!(!news.is_empty() && news.iter().all(|line| !line.trim().is_empty()), "{news:?}");
+        assert_eq!(Event::load(&event.save()).unwrap(), event);
         std::fs::remove_dir_all(&here).unwrap();
     }
 }
