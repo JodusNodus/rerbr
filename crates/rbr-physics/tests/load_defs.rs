@@ -20,7 +20,8 @@
 //! The car instance (step 4, `car_instance_matches_the_game`): the car's factory (`CCar::CDef::Vf50`), the four
 //! wheels' (`E51Wheel::CDef::Vf50`), the four hinged bodies' (`CHingedRigidBody::CDef::Vf50`), the three mounted bodies'
 //! (`CMountedRigidBody::CDef::Vf50`) and the car body's (`CCarBody::CDef::Vf50x`), called as the game called them, against
-//! the same run's dumps at each factory's return (`vectors/load-car-instance.txt`, cut by `harness/load_instance_refs.py`):
+//! the same run's dumps at each factory's return (`vectors/load-car-instance.txt`, cut by rbr-recomp's
+//! `harness/load_instance_refs.py`):
 //! the car and its exclusion set, the current car word, the five signal lists the car's connections join, each wheel,
 //! and each body with its exclusion set. The heap returns the blocks the
 //! run's allocation log (`RBR_ALLOCLOG`) shows inside the factory calls, in order, holding what they held at the
@@ -84,7 +85,7 @@ const VECTORS: [&str; 3] = [
     include_str!("vectors/load-car-def.txt"),
     include_str!("vectors/load-registry-defs.txt"),
 ];
-/// The car instance at its factories' returns, cut by `harness/load_instance_refs.py` from the same run, with the calls,
+/// The car instance at its factories' returns, cut by rbr-recomp's `harness/load_instance_refs.py` from the same run, with the calls,
 /// the blocks and the words of the game's the constructors read.
 const INSTANCE: &str = include_str!("vectors/load-car-instance.txt");
 const INSTANCE_LINES: [&str; 3] = ["call", "alloc", "env"];
