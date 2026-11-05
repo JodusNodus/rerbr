@@ -196,6 +196,17 @@ impl RallyPage {
         self.new_season(season, Some(store), season_model::seed_from_unix_ms(now_ms()));
     }
 
+    /// New season from a season under way (the fold, or the season over): on its team and options, and its car, not
+    /// the start page's last ones.
+    pub(super) fn season_again(&mut self, table: &Season, here: &Path) {
+        let Some(run) = &self.run else { return self.season_now(table, here) };
+        (self.team, self.options) = (self.season_team().unwrap_or(self.team), season_model::options(&run.save));
+        self.season_now(table, here);
+        if self.new_season.is_some() {
+            self.new_season = Some(SeasonCar::Kept);
+        }
+    }
+
     /// The profile's field: the save's name.
     fn profile_edit(&mut self, ui: &mut Ui) {
         ui.add_enabled(!self.driving, egui::TextEdit::singleline(&mut self.profile).desired_width(160.0));
@@ -364,12 +375,12 @@ impl RallyPage {
                 self.profile_edit(ui);
                 ui.end_row();
             });
-            ui.colored_label(GREY, "New season takes the team and options the page last had; the car is the season's.");
+            ui.colored_label(GREY, "New season takes this season's team, car and options.");
             ui.horizontal(|ui| {
                 let named = is_file_name_part(&self.profile);
                 let new = ui.add_enabled(!self.driving && named, egui::Button::new("New season"));
                 if new.on_hover_text(format!("Replaces {}'s saved season", self.profile)).clicked() {
-                    self.season_now(season, here);
+                    self.season_again(season, here);
                 }
                 if ui.add_enabled(!self.driving && named, egui::Button::new("Continue saved season")).clicked() {
                     self.continue_season(here, season);
@@ -674,7 +685,7 @@ impl RallyPage {
                     new
                 });
                 if new.inner.clicked() {
-                    self.season_now(season, here);
+                    self.season_again(season, here);
                 }
             }
             Some(Turn::BetweenRallies) => {

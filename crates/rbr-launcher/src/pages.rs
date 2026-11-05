@@ -592,7 +592,7 @@ impl Form {
     /// The Championship page (`rally_page`). A season drives the car picked for it, any car (ours: kept per profile in
     /// `[season]`; the game's season always drives the team's car, and a car slot names no particular car outside a
     /// vanilla install). Picking a team picks its car when NGP drives it. A saved season with no pick drives the
-    /// team's car, and asks for one when NGP doesn't drive it.
+    /// team's car, and asks for one when NGP doesn't drive it. A new season from one under way keeps its car.
     fn championship_page(&mut self, ui: &mut egui::Ui) {
         if self.no_cars_yet(ui) {
             return;
@@ -608,7 +608,11 @@ impl Form {
             }
         }
         self.season_team_seen = Some(team);
-        if self.rally.take_new_season() {
+        if let Some(car) = self.rally.take_new_season() {
+            if car == rally_page::SeasonCar::Kept {
+                // The season before's car: the one this page drove it with.
+                self.season_pick = self.car;
+            }
             match self.catalog.cars.get(self.season_pick) {
                 Some(car) => self.season_cars.set(&profile, &car.name.clone()),
                 None => self.season_cars.remove(&profile),

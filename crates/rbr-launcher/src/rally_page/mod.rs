@@ -126,7 +126,7 @@ pub struct RallyPage {
     /// The team a new season takes (`TEAM_OFFERS`).
     pub team: u32,
     /// A new season was made: the launcher gives it its car ([`RallyPage::take_new_season`]).
-    new_season: bool,
+    new_season: Option<SeasonCar>,
     pub status: String,
 }
 
@@ -164,7 +164,7 @@ impl RallyPage {
             driving: false,
             practice: false,
             team: season_model::TEAM_OFFERS[0],
-            new_season: false,
+            new_season: None,
             status: String::new(),
         }
     }
@@ -212,7 +212,7 @@ impl RallyPage {
                 let mut ai = Ai { master, roster, field: &mut field, blocks: &blocks, rng: &mut rng };
                 let turn = events::run_to_turn(&mut save, &mut ai, &mut news);
                 self.run = Some(SeasonRun { save, blocks, field, rng, turn, news: Vec::new(), store });
-                self.new_season = true;
+                self.new_season = Some(SeasonCar::Picked);
                 self.save();
                 self.open_rally();
             }
@@ -220,9 +220,9 @@ impl RallyPage {
         }
     }
 
-    /// Whether a new season was made since the last call.
-    pub fn take_new_season(&mut self) -> bool {
-        std::mem::take(&mut self.new_season)
+    /// Whether a new season was made since the last call, and which car it takes.
+    pub fn take_new_season(&mut self) -> Option<SeasonCar> {
+        self.new_season.take()
     }
 
     /// The setup of a season just continued (`PTSC`), once.
@@ -642,6 +642,15 @@ impl RallyPage {
     }
 }
 
+/// The car a new season takes ([`RallyPage::take_new_season`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeasonCar {
+    /// The start page's pick.
+    Picked,
+    /// The car of the season before it.
+    Kept,
+}
+
 /// Where [`RallyPage::screenshot_season`] leaves the season.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Shot {
@@ -977,6 +986,28 @@ mod tests {
         assert_ne!(rbr_gameplay::car_damage::severity(&damage, 31), 0);
         page.service_done(penalty, damage);
         assert_eq!(page.run.as_ref().unwrap().turn, Turn::Stage(1));
+        let _ = std::fs::remove_dir_all(&here);
+    }
+
+    /// New season from a season under way takes its team, options and car, not the start page's last ones.
+    #[test]
+    fn a_season_again_keeps_the_team_options_and_car() {
+        let Some(data) = Data::from_env() else { return };
+        let table = Season::load(&data).unwrap();
+        let here = crate::test_dir("rally-season-again");
+        let mut page = RallyPage::new(&data);
+        let options = ChampionshipOptions { skill: Skill::Champion, damage: DamageLevel::ALL[0] };
+        (page.team, page.options) = (5, options);
+        let store = page.store(&here);
+        page.new_season(&table, Some(store), 1234);
+        assert_eq!(page.take_new_season(), Some(SeasonCar::Picked));
+        // The start page's values changed since.
+        (page.team, page.options) = (season_model::TEAM_OFFERS[0], ChampionshipOptions::default());
+        page.season_again(&table, &here);
+        assert_eq!(page.take_new_season(), Some(SeasonCar::Kept));
+        let run = page.run.as_ref().unwrap();
+        assert_eq!((page.season_team(), season_model::options(&run.save)), (Some(5), options));
+        assert_eq!((page.team, page.options), (5, options));
         let _ = std::fs::remove_dir_all(&here);
     }
 
