@@ -221,6 +221,38 @@ pub struct Pool {
     carry: f32,
 }
 
+impl Pool {
+    fn spawn(&mut self, rng: &mut Rng, launch: Vec3, count: f32, floor: f32, mut place: impl FnMut(&mut Rng) -> Vec3) {
+        if self.def.max == 0 || count.is_nan() || count <= 0.0 {
+            return;
+        }
+        self.carry += count;
+        // More than a full pool in one call would only overwrite itself.
+        let n = (self.carry.floor() as usize).min(self.def.max);
+        self.carry -= self.carry.floor();
+        for _ in 0..n {
+            let at = place(rng);
+            let (offset, velocity) = self.def.launch(rng);
+            let variance = self.def.look.size_variance;
+            let particle = Particle {
+                position: at + offset,
+                velocity: velocity + launch,
+                age: 0.0,
+                life: self.def.look.life * (0.8 + 0.4 * rng.unit()),
+                scale: (1.0 + variance * 0.25 * rng.signed()).max(0.2),
+                floor,
+            };
+            if self.particles.len() < self.def.max {
+                self.particles.push(particle);
+            } else {
+                let slot = self.next % self.def.max;
+                self.particles[slot] = particle;
+                self.next = slot + 1;
+            }
+        }
+    }
+}
+
 /// Every emitter of a file and their particles.
 #[derive(Debug, Clone)]
 pub struct Simulation {
@@ -317,34 +349,17 @@ impl Simulation {
         }
     }
 
-    fn spawn(&mut self, pool: usize, launch: Vec3, count: f32, floor: f32, mut place: impl FnMut(&mut Rng) -> Vec3) {
-        let Some(p) = self.pools.get_mut(pool) else { return };
-        if p.def.max == 0 || count.is_nan() || count <= 0.0 {
-            return;
+    /// Emits one particle of pool `pool` at `at` as [`Simulation::emit`] does, drawing from `rng` instead of the
+    /// simulation's (ours: a thrower whose draws leave the others' as they were).
+    pub fn emit_drawing(&mut self, pool: usize, at: Vec3, launch: Vec3, floor: f32, rng: &mut Rng) {
+        if let Some(p) = self.pools.get_mut(pool) {
+            p.spawn(rng, launch, 1.0, floor, |_| at);
         }
-        p.carry += count;
-        // More than a full pool in one call would only overwrite itself.
-        let n = (p.carry.floor() as usize).min(p.def.max);
-        p.carry -= p.carry.floor();
-        for _ in 0..n {
-            let at = place(&mut self.rng);
-            let (offset, velocity) = p.def.launch(&mut self.rng);
-            let variance = p.def.look.size_variance;
-            let particle = Particle {
-                position: at + offset,
-                velocity: velocity + launch,
-                age: 0.0,
-                life: p.def.look.life * (0.8 + 0.4 * self.rng.unit()),
-                scale: (1.0 + variance * 0.25 * self.rng.signed()).max(0.2),
-                floor,
-            };
-            if p.particles.len() < p.def.max {
-                p.particles.push(particle);
-            } else {
-                let slot = p.next % p.def.max;
-                p.particles[slot] = particle;
-                p.next = slot + 1;
-            }
+    }
+
+    fn spawn(&mut self, pool: usize, launch: Vec3, count: f32, floor: f32, place: impl FnMut(&mut Rng) -> Vec3) {
+        if let Some(p) = self.pools.get_mut(pool) {
+            p.spawn(&mut self.rng, launch, count, floor, place);
         }
     }
 

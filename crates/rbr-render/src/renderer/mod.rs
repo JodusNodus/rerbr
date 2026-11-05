@@ -24,6 +24,7 @@ use std::collections::{BTreeMap, HashMap};
 mod bounce;
 mod build;
 mod cloud_volume;
+mod depth_pyramid;
 mod enhance;
 mod frame;
 mod gpu;
@@ -40,6 +41,8 @@ mod sun_mask;
 mod textures;
 mod uniforms;
 
+#[cfg(test)]
+pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
 pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, Glare, LightLevels, Reflections};
 pub use frame::FrameStats;
 pub use gpu::{instance, request_gpu, Gpu, GpuError};
@@ -99,6 +102,8 @@ pub struct Renderer {
     /// ([`Renderer::set_car_body`]).
     cabin_sun: Option<crate::car::cabin::SunIn>,
     car_body: Option<Mat4>,
+    /// The car's shape the in-car view draws no particles in ([`Renderer::set_cabin_mask`]).
+    cabin_mask: Option<crate::particles::cabin::CabinMask>,
     /// The camera is outside the car ([`Renderer::set_outside_view`]).
     outside_view: bool,
     /// The sky gradient, drawn first ([`Atmosphere::zenith`] overhead, the fog colour at the horizon).
@@ -433,6 +438,11 @@ impl Renderer {
                 mesh.bounds = Some(meshes::placed_box(model_to_stage, model));
             }
         }
+    }
+
+    /// The car's shape, model space, the in-car view draws no particles in (`particles::cabin`).
+    pub fn set_cabin_mask(&mut self, mask: Option<crate::particles::cabin::CabinMask>) {
+        self.cabin_mask = mask;
     }
 
     /// How much sun gets into the car's cabin by its direction ([`Enhance::cabin`], `crate::car::cabin::SunIn`), which

@@ -61,8 +61,8 @@ const OUTSIDE_LOW_PER_RPM: f32 = 0.0004 * 2.0;
 /// The in-car low-pass of the squeaks, bottoming, driveshaft clunks and the tyres' rolling loops (`E31Mgr::M4870`
 /// 0x4d4870: `SetRate(1000)` with the in-car flag set and the skid flag clear; 1.02 also sets it on the gravel hits).
 /// 1.02 sets it but runs it only on software-mixed voices, so on DirectSound nothing is filtered (`notes/sound.md`);
-/// ours runs it, so in the car the tyres' roar and the body's knocks come through the floor; the stones take
-/// [`STONE_CUTOFF`] instead.
+/// ours runs it, so in the car the tyres' roar and the body's knocks come through the floor, and (ours) the wind
+/// through the cabin; the stones take [`STONE_CUTOFF`] instead.
 const CABIN_CUTOFF: f32 = 1000.0;
 /// In the car the stones (the gravel hits) ring the bare shell instead (ours): a [`STONE_CUTOFF`] low-pass that
 /// keeps their crack but takes off the hiss, at [`STONE_GAIN`] so the shower of them stays under the engine.
@@ -870,6 +870,8 @@ impl Mixer {
             Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind => None,
         };
         let placed = place.map(|p| (self.placed(p), self.car_pan));
+        // The wind heard in the car comes through the cabin, as the tyres' roar (ours).
+        let cabin = (voice == Loop::Wind).then(|| self.cabin());
         let option = match voice {
             Loop::Engine | Loop::Gearbox | Loop::Diff => self.volumes.engine,
             _ => self.volumes.effects,
@@ -878,6 +880,11 @@ impl Mixer {
             v.gain.target = gain * placed.map_or(1.0, |(g, _)| g) * option;
             if let Some((_, pan)) = placed {
                 v.pan = pan;
+            }
+            match cabin {
+                Some(None) => v.low_pass = None,
+                Some(cabin) if v.low_pass.is_none() => v.low_pass = cabin,
+                _ => {}
             }
             if let Some(pitch) = pitch {
                 // The car's loops shift with its motion (ours); the world's (wind, siren, helicopter) are given theirs.

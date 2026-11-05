@@ -178,10 +178,10 @@ fn fs_taa(in: Out) -> Resolved {
     let sigma = sqrt(max(m2 - m1 * m1, vec3<f32>(0.0)));
     let clipped = clip_box(held, m1, sigma * t.params.y + vec3<f32>(1.0e-3));
     // The new frame's share: the base, more where the history moved a lot (uncovered) or the pixel moves fast
-    // (resampling blurs).
+    // (each frame's resampling blurs the history: up to 0.3 more at 32 pixels a frame, the near road at speed).
     let moved = length((clipped - held) / max(m1.x, 0.02));
     let speed = length(motion * t.size.xy);
-    var share = clamp(t.params.x + 0.25 * clamp(moved, 0.0, 1.0) + 0.1 * clamp(speed / 16.0, 0.0, 1.0), 0.03, 1.0);
+    var share = clamp(t.params.x + 0.25 * clamp(moved, 0.0, 1.0) + 0.3 * clamp(speed / 32.0, 0.0, 1.0), 0.03, 1.0);
     // Clean glass (alpha below GLASS.x) gathers as the rest; mud and drops (GLASS.y) are taken new, but not over the car,
     // which moves with them.
     share = max(share, smoothstep(GLASS.x, GLASS.y, max(mask, kept.a)) * (1.0 - previous.z));
@@ -275,7 +275,7 @@ fn fs_upscale(in: Out) -> Resolved {
         let share = min(gathered.w * rate, 1.0);
         let gathers = clipped * (1.0 - share) + gathered.rgb * select(rate, 1.0 / gathered.w, share == 1.0);
         let speed = length(motion * t.output.xy);
-        var taken = 0.25 * clamp(moved, 0.0, 1.0) + 0.75 * clamp(speed / 64.0, 0.0, 1.0);
+        var taken = 0.25 * clamp(moved, 0.0, 1.0) + 0.75 * clamp(speed / 32.0, 0.0, 1.0);
         // The glass's mud and drops, as in `fs_taa`.
         taken = max(taken, smoothstep(GLASS.x, GLASS.y, max(mask, kept.a)) * (1.0 - previous.z));
         c = vec4<f32>(untone(mix(gathers, alone, taken)), mask);
