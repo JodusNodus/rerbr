@@ -160,6 +160,7 @@ mod settings_page;
 mod setup_page;
 mod stage_browser;
 mod time_of_day;
+mod update;
 mod upscaler;
 mod window;
 
@@ -302,6 +303,7 @@ fn run() -> Result<(), String> {
     if !list && !command && screenshot.is_none() {
         // A panic of the window's is shown at the next start (`crash`).
         crash::hook(home.join(home::LOGS));
+        update::start();
         // The window opens without a game too, to choose its folder.
         let mut form = load(&start, settings.clone()).map_err(|e| eprintln!("launcher: {e}")).ok();
         if let (Some(form), Some(notice)) = (&mut form, &notice) {
