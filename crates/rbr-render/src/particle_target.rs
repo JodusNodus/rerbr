@@ -4,6 +4,8 @@
 //! covers much of a 4K frame, many deep. Their light and the frame's transmittance through them add up as drawing them
 //! over the frame does, so the order of the draws before and after them holds.
 
+use crate::effects::Effects;
+use crate::particles::gpu::Pass;
 use crate::post::SCENE_FORMAT;
 use crate::renderer::{depth_binding, DEPTH_FORMAT};
 use glam::{Mat4, Vec3};
@@ -57,7 +59,7 @@ pub(crate) fn cover(corners: &[Vec3], view_projection: Mat4, size: (u32, u32)) -
     let pixels = |ndc: f32, side: u32, margin: f32| ((ndc * 0.5 + 0.5) * side as f32 + margin).clamp(0.0, side as f32);
     let (x0, x1) = (pixels(lo[0], size.0, -MARGIN).floor(), pixels(hi[0], size.0, MARGIN).ceil());
     let (y0, y1) = (pixels(lo[1], size.1, -MARGIN).floor(), pixels(hi[1], size.1, MARGIN).ceil());
-    (x1 > x0 && y1 > y0).then(|| [x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32])
+    (x1 > x0 && y1 > y0).then_some([x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32])
 }
 
 /// `rect` of the frame in the reduced target's pixels, a texel more about it (the composite's taps).
@@ -65,6 +67,31 @@ fn halved([x, y, w, h]: Rect, half: (u32, u32)) -> Rect {
     let (x0, y0) = ((x / 2).saturating_sub(1), (y / 2).saturating_sub(1));
     let (x1, y1) = (((x + w).div_ceil(2) + 1).min(half.0), ((y + h).div_ceil(2) + 1).min(half.1));
     [x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)]
+}
+
+/// A pass over `scene` that reads the frame's `depth`, as the rain and the particles draw in.
+pub(crate) fn effects_pass<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    scene: &wgpu::TextureView,
+    depth: &wgpu::TextureView,
+) -> wgpu::RenderPass<'e> {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("effects over the resolve"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: scene,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+        })],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view: depth,
+            depth_ops: None,
+            stencil_ops: None,
+        }),
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
 }
 
 fn scissor(pass: &mut wgpu::RenderPass<'_>, [x, y, w, h]: Rect) {
@@ -205,24 +232,50 @@ impl ParticleTarget {
         })
     }
 
-    /// The frame's size it was made for.
-    pub(crate) fn size(&self) -> (u32, u32) {
-        self.size
-    }
-
     /// Its own size.
-    pub(crate) fn half(&self) -> (u32, u32) {
+    fn half(&self) -> (u32, u32) {
         reduced(self.size).unwrap_or(self.size)
     }
 
-    /// The effects' bind group over the reduced depth.
-    pub(crate) fn effects(&self) -> &wgpu::BindGroup {
-        &self.effects
+    /// Draws the rain and the particles over `scene` (with the frame's `depth`, in `view_projection`): the mist
+    /// and the soft billboards (with the lamps' code when `lamps`) here, each laid over in its turn, the streaks and
+    /// the waves at the frame's size between them. `false` when there is neither (nothing drawn: the caller draws
+    /// the rest as before).
+    pub(crate) fn draw(
+        &self,
+        (queue, encoder): (&wgpu::Queue, &mut wgpu::CommandEncoder),
+        [scene, depth]: [&wgpu::TextureView; 2],
+        effects: &Effects,
+        particles: Option<&Pass>,
+        lamps: bool,
+        view_projection: Mat4,
+    ) -> bool {
+        let mist = effects.rain() > 0.0;
+        // Only the pixels the billboards cover; the mist covers the whole frame.
+        let whole = [0, 0, self.size.0, self.size.1];
+        let billboards =
+            particles.filter(|p| p.soft_billboards()).and_then(|p| cover(p.corners(), view_projection, self.size));
+        let Some(rect) = (if mist { Some(whole) } else { billboards }) else {
+            return false;
+        };
+        effects.write_reduced(queue, self.half());
+        self.reduce_depth(encoder, rect);
+        if mist {
+            self.layer(encoder, scene, whole, |pass| effects.draw_mist(pass, true, &self.effects));
+        }
+        let mut pass = effects_pass(encoder, scene, depth);
+        effects.draw_drops(&mut pass);
+        particles.inspect(|p| p.draw_waves(&mut pass));
+        drop(pass);
+        if let (Some(rect), Some(particles)) = (billboards, particles) {
+            self.layer(encoder, scene, rect, |pass| particles.draw_soft_reduced(pass, &self.effects, lamps));
+        }
+        true
     }
 
     /// Reduces the frame's depth into the target's within `rect` (of the frame), for the [`ParticleTarget::layer`]s
     /// after it.
-    pub(crate) fn reduce_depth(&self, encoder: &mut wgpu::CommandEncoder, rect: Rect) {
+    fn reduce_depth(&self, encoder: &mut wgpu::CommandEncoder, rect: Rect) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("particles' depth"),
             color_attachments: &[],
@@ -244,7 +297,7 @@ impl ParticleTarget {
     /// Opens the reduced pass for `draw` (with [`ParticleTarget::effects`] and pipelines that keep the transmittance
     /// in alpha) and lays its result over `scene`, as drawing it there would, within `rect` of the frame (which the
     /// depth was reduced over).
-    pub(crate) fn layer(
+    fn layer(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         scene: &wgpu::TextureView,
