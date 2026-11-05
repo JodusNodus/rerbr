@@ -263,9 +263,26 @@ fn srgb(shown: vec3<f32>) -> vec3<f32> {
     return select(1.055 * pow(shown, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * shown, shown <= vec3<f32>(0.0031308));
 }
 
+// A near-primary light far past white whitens straight from its hue (ours): the curve maps each channel, so a red
+// lamp's core, whose Rec.2020 green (0.07 of its red) clips well before its blue (0.02), went orange. Its least channel
+// rises to its middle one from the curve's linear part (`GT7_LINEAR` of the peak) to `WHITEN_FULL` peaks, so the
+// lamp stays red to some 4 times white, then shades to pink and white. A hue with a strong second channel (an amber
+// lamp's, `WHITEN_PRIMARY`) keeps the curve's.
+const WHITEN_FULL: f32 = 4.0;
+const WHITEN_PRIMARY: vec2<f32> = vec2<f32>(0.15, 0.4);
+
+fn whitened(rgb: vec3<f32>, peak: f32) -> vec3<f32> {
+    let high = max(rgb.r, max(rgb.g, rgb.b));
+    let low = min(rgb.r, min(rgb.g, rgb.b));
+    let mid = rgb.r + rgb.g + rgb.b - high - low;
+    let primary = 1.0 - smoothstep(WHITEN_PRIMARY.x, WHITEN_PRIMARY.y, mid / max(high, 1e-6));
+    let over = smoothstep(GT7_LINEAR * peak, WHITEN_FULL * peak, high);
+    return max(rgb, vec3<f32>(mix(low, mid, primary * over)));
+}
+
 // Display values for the exposed linear Rec.709 light: the mapped light over the paper white, sRGB-coded.
 fn gt7(linear: vec3<f32>, d: Display) -> vec3<f32> {
-    let rgb = linear * REC709_TO_2020;
+    let rgb = whitened(linear * REC709_TO_2020, d.peak);
     let skewed = gt7_curve(rgb, d.peak);
     let ucs = ictcp(rgb);
     let chroma = 1.0 - smoothstep(GT7_FADE.x, GT7_FADE.y, ucs.x / d.intensity);

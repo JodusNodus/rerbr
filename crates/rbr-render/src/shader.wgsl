@@ -2757,23 +2757,27 @@ fn sun_disc(mu: f32) -> f32 {
 
 // A lit lamp part's light, renderer units: its luminance on the axis (`mode.lamp.w`, cd/m2, negative for a
 // headlight's, `lights::Switch::glow`) as seen from the eye along `to_eye`, in the lamp's colour (`mode.lamp`, the
-// part's texture's where white) at the texel's brightness (its strongest channel).
+// part's texture's where white) at the texel's brightness (its strongest channel). A part the game always draws
+// (`mode.glow.w`, its lamp's kind number, `lights::Switch::steady`) takes the nearest lit lamp of that kind, and
+// is dark without one.
 fn lamp_shown(texel: vec3<f32>, world: vec3<f32>, to_eye: vec3<f32>) -> vec3<f32> {
     let headlight = mode.lamp.w < 0.0;
+    let kind = mode.glow.w;
     var best = LAMP_NEAR * LAMP_NEAR;
-    var seen = 1.0;
+    var seen = select(1.0, 0.0, kind != 0.0);
     for (var i = 0; i < 8; i++) {
         let lamp = frame.lamps[i];
         let d = world - lamp.position.xyz;
-        if (lamp.position.w == 0.0 || (lamp.forward.w != 0.0) != headlight || dot(d, d) >= best) {
+        let other = select((lamp.forward.w != 0.0) != headlight, lamp.up.w != kind, kind != 0.0);
+        if (lamp.position.w == 0.0 || other || dot(d, d) >= best) {
             continue;
         }
         best = dot(d, d);
         let share = select(signal(lamp, to_eye), beam(lamp, to_eye), headlight);
-        seen = share / max(dot(to_eye, lamp.forward.xyz), LAMP_FACING);
+        seen = max(share / max(dot(to_eye, lamp.forward.xyz), LAMP_FACING), LAMP_SIDE);
     }
     let hue = select(texel, mode.lamp.rgb, any(mode.lamp.rgb != vec3<f32>(1.0)));
-    return shining(hue, texel, abs(mode.lamp.w) * max(seen, LAMP_SIDE));
+    return shining(hue, texel, abs(mode.lamp.w) * seen);
 }
 
 // A light source's texel: luminance `l` (cd/m2) in the colour `hue` at the texel's brightness (its strongest channel),

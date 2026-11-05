@@ -34,6 +34,7 @@ const SHADE: Shade = Shade {
     kf: 0.0,
     glass: false,
     glow: None,
+    glow_kind: 0,
     crack: false,
     dirt: None,
     grime: 0,

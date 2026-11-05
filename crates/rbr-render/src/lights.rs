@@ -176,9 +176,13 @@ pub struct Switch {
     pub lit: bool,
     /// A `lightglass_*` box: the part follows the lamp's glass, not its light.
     pub glass: bool,
-    /// The part takes its lamp by its name ([`Switch::of_part`]): the game never draws it lit, so its texture's colour
-    /// need not be the lamp's (the GC8's brake lamps' is a white reflector).
+    /// The part takes its lamp by its name ([`Switch::of_part`]) or its place ([`Switch::of_drawn`]): the game never
+    /// draws it lit, or always, so its texture's colour need not be the lamp's (the GC8's brake lamps' is a white
+    /// reflector).
     pub named: bool,
+    /// The game always draws the part ([`Switch::of_drawn`]): it stays drawn whatever its lamp's state and glows only
+    /// while a lamp of its kind near it is lit (`lamp_shown` in `shader.wgsl`).
+    pub steady: bool,
 }
 
 impl Switch {
@@ -207,7 +211,7 @@ impl Switch {
             "off" => false,
             _ => return None,
         };
-        Some(Switch { kind, lamp, lit, glass, named: false })
+        Some(Switch { kind, lamp, lit, glass, named: false, steady: false })
     }
 
     /// The lamp a part is by its name: `e_light_lf` and `e_light_rf` the headlamps', `e_light_lb`, `e_light_rb` and
@@ -223,7 +227,35 @@ impl Switch {
             format!("light_{lamp}")
         };
         let (kind, lamp, _) = Kind::of_box(&lamp_box)?;
-        Some(Switch { kind, lamp, lit, glass: false, named: true })
+        Some(Switch { kind, lamp, lit, glass: false, named: true, steady: false })
+    }
+
+    /// The switch of a lit part the game always draws, which [`Switch::of_part`] leaves out (ours): a `_lit` part
+    /// shown from the start and switched by no lamp's box. RSF cars' "lights on" options draw their lamps' lit parts
+    /// so (the M3 E30's headlamps, the Fiesta Rally2's tail lamps, the quattro A2's light pods), as do some installed
+    /// cars (the GC8's). Its lamp is the one of its name ([`Switch::of_name`]), else the lamp whose point (`points`)
+    /// is nearest its centre in the model, within [`PART_NEAR`] (an extra lamp: a pod, a bar, a bonnet lamp). Names
+    /// come first: a tail lamp's lit part can cover its cluster's reversing lamp, whose point is then the nearest (the
+    /// Fiesta Rally2's `e_light_lb_lit`).
+    pub fn of_drawn(part: &Section, centre: Vec3, points: &[LampPoint]) -> Option<Switch> {
+        let lit = part.name.to_ascii_lowercase().ends_with("_lit");
+        if !lit || !shown_at_start(part) || Switch::of_box(part).is_some() {
+            return None;
+        }
+        let placed = || {
+            let distance = |point: &LampPoint| point.position.distance(centre);
+            let nearest = points.iter().min_by(|a, b| distance(a).total_cmp(&distance(b)))?;
+            let (kind, lamp) = (nearest.light.kind, nearest.light.lamp);
+            (distance(nearest) <= PART_NEAR).then_some(Switch {
+                kind,
+                lamp,
+                lit,
+                glass: false,
+                named: true,
+                steady: true,
+            })
+        };
+        Switch::of_name(&part.name).map(|named| Switch { steady: true, ..named }).or_else(placed)
     }
 
     /// A lit part of the lamp's light (ours; `mode.lamp`, `lamp_shown` in `shader.wgsl`): the colour it glows in, its
@@ -242,6 +274,9 @@ impl Switch {
 
     /// Whether the part is drawn with `inputs`. The glass is whole unless the game says otherwise.
     pub fn shown(&self, inputs: Inputs) -> bool {
+        if self.steady {
+            return true;
+        }
         let on = if self.glass {
             inputs.game.is_none_or(|game| game.glass(self.kind, self.lamp))
         } else {
@@ -250,6 +285,17 @@ impl Switch {
         on == self.lit
     }
 }
+
+/// Whether a car shader class is a lamp's (its reflector or lens) rather than the body's: of a lit part with both, only
+/// the lamp's faces glow, not the housing of a light pod or bar (the quattro A2's `e_lightpod_lit`: `CarPaint`,
+/// `CarLight`, `CarPlastic`).
+pub fn lamp_class(class: &str) -> bool {
+    matches!(class, "CarLight" | "CarGlass" | "CarPlastic")
+}
+
+/// How far a lit part the game always draws may lie from its lamp's point, m ([`Switch::of_drawn`]): its centre
+/// against the point.
+const PART_NEAR: f32 = 0.3;
 
 /// Whether a part is shown at the stage start. The loader makes a part with `Switch = true` and a non-empty
 /// `SwitchBox` and `Predicate` a `CGeomObjectSwitch` (`FUN_1001fc70`, `FUN_1001fde0`), hidden until its box is set to
@@ -426,12 +472,13 @@ pub fn since_switch(
     (now - start(first)) as f32
 }
 
-/// A lit lamp as a light on the stage at night (renderer addition, `Atmosphere::night`; the game has no night): where
-/// it is, the way it points and the car's up (stage space), its colour times its intensity, and whether it is a
-/// headlight's beam (`beam` in `lamps.wgsl`) rather than a lamp lighting what it faces, and then whether it is the main
-/// beam rather than the dipped one.
+/// A lit lamp as a light on the stage at night (renderer addition, `Atmosphere::night`; the game has no night): its
+/// kind, where it is, the way it points and the car's up (stage space), its colour times its intensity, and whether it
+/// is a headlight's beam (`beam` in `lamps.wgsl`) rather than a lamp lighting what it faces, and then whether it is the
+/// main beam rather than the dipped one.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lamp {
+    pub kind: Kind,
     pub position: Vec3,
     pub forward: Vec3,
     pub up: Vec3,
@@ -484,7 +531,7 @@ pub fn lamp(light: &Light, position: Vec3, normal: Vec3, forward: Vec3, up: Vec3
     let colour = Vec3::from(light.colour);
     let luminance = colour.dot(Vec3::new(0.2126, 0.7152, 0.0722)).max(1e-3);
     let colour = colour / luminance * candela * UNITS_PER_CANDELA * fade;
-    Lamp { position, forward, up, colour, beam, main: beam && main }
+    Lamp { kind: light.kind, position, forward, up, colour, beam, main: beam && main }
 }
 
 #[cfg(test)]
@@ -520,7 +567,7 @@ mod tests {
         let back: Vec<Vec3> = sheet.iter().map(|p| *p + Vec3::Z * 0.01).collect();
         let slab = [sheet.to_vec(), back].concat();
         assert!((projected_area(&slab, &[0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6], Vec3::Z) - area).abs() < 1e-5);
-        let brake = Switch { kind: Kind::Brake, lamp: 0, lit: true, glass: false, named: true };
+        let brake = Switch { kind: Kind::Brake, lamp: 0, lit: true, glass: false, named: true, steady: false };
         assert_eq!(brake.glow(0.01)[3], 10_000.0);
         assert_eq!(Switch { kind: Kind::Front, ..brake }.glow(0.02)[3], -1_000_000.0);
         // A sliver or a whole panel is held to a lens's size.
@@ -546,7 +593,7 @@ mod tests {
         assert!(lit(Kind::Front, 0, game) && !lit(Kind::Front, 1, game));
         assert!(lit(Kind::Brake, 0, game), "the game's switch, not the brake word");
         assert!(!lit(Kind::Reverse, 0, game), "the game's switch, not the HUD gear");
-        let glass = |lamp| Switch { kind: Kind::Front, lamp, lit: true, glass: true, named: false };
+        let glass = |lamp| Switch { kind: Kind::Front, lamp, lit: true, glass: true, named: false, steady: false };
         assert!(glass(0).shown(game) && !glass(1).shown(game));
         assert!(glass(1).shown(Inputs::default()), "whole without the game's word");
         let dark = Inputs { game: Some(Lamps { master: 0, ..lamps }), ..game };
@@ -571,21 +618,22 @@ mod tests {
         };
         assert_eq!(
             Switch::of_part(lit_part, &parts),
-            Some(Switch { kind: Kind::Front, lamp: 0, lit: true, glass: false, named: false })
+            Some(Switch { kind: Kind::Front, lamp: 0, lit: true, glass: false, named: false, steady: false })
         );
         assert_eq!(
             Switch::of_part(brake, &parts),
-            Some(Switch { kind: Kind::Brake, lamp: 0, lit: false, glass: false, named: false })
+            Some(Switch { kind: Kind::Brake, lamp: 0, lit: false, glass: false, named: false, steady: false })
         );
         assert_eq!(
             Switch::of_part(glass, &parts),
-            Some(Switch { kind: Kind::Front, lamp: 0, lit: true, glass: true, named: false })
+            Some(Switch { kind: Kind::Front, lamp: 0, lit: true, glass: true, named: false, steady: false })
         );
         assert_eq!(Switch::of_part(horn, &parts), None);
-        let unlit_brake = Switch { kind: Kind::Brake, lamp: 0, lit: false, glass: false, named: false };
+        let unlit_brake = Switch { kind: Kind::Brake, lamp: 0, lit: false, glass: false, named: false, steady: false };
         assert!(unlit_brake.shown(Inputs::default()));
         assert!(!unlit_brake.shown(Inputs { brake: 0.5, ..Inputs::default() }));
-        assert!(!Switch { kind: Kind::Front, lamp: 1, lit: false, glass: false, named: false }.shown(Inputs::default()));
+        let unlit_head = Switch { kind: Kind::Front, lamp: 1, ..unlit_brake };
+        assert!(!unlit_head.shown(Inputs::default()));
     }
 
     #[test]
@@ -602,7 +650,7 @@ mod tests {
              [e_light_lf_lit]\r\nSwitch = true\r\nSwitchBox = light\r\nPredicate = on\r\n",
         );
         let switch = |name| Switch::of_part(car_parts::section(&parts, name).unwrap(), &parts);
-        let tail = Switch { kind: Kind::Tail, lamp: 0, lit: true, glass: false, named: true };
+        let tail = Switch { kind: Kind::Tail, lamp: 0, lit: true, glass: false, named: true, steady: false };
         assert_eq!(switch("e_light_lb_lit"), Some(tail));
         assert_eq!(switch("e_light_lb"), Some(Switch { lit: false, ..tail }));
         assert_eq!(switch("e_light_brake_rb_lit"), Some(Switch { kind: Kind::Brake, lamp: 1, ..tail }));
@@ -614,6 +662,40 @@ mod tests {
         assert_eq!(tail.glow(0.01)[..3], [1.0, 0.0, 0.0], "red");
         let unnamed = Switch { kind: Kind::Brake, named: false, ..tail };
         assert_eq!(unnamed.glow(0.01)[..3], [1.0; 3], "in its texture's colour");
+    }
+
+    #[test]
+    fn lit_parts_the_game_always_draws_take_their_lamp_by_name_then_place() {
+        let parts = sections(
+            "[e_light_rb_lit]\r\nSwitch = false\r\n\
+             [e_lightpod_lit]\r\nSwitch = false\r\n\
+             [e_lightpod]\r\nSwitch = false\r\n\
+             [e_light_lf_lit]\r\nSwitch = true\r\nSwitchBox = light\r\nPredicate = on\r\n\
+             [e_light_m_lit]\r\nSwitch = true\r\nSwitchBox = light_m\r\nPredicate = off\r\n\
+             [Point_light_rb]\r\nNormal = 0 0 1\r\nPos = -0.6 0.5 2\r\n\
+             [Point_light_pod]\r\nNormal = 0 0 -1\r\nPos = 0.3 0.8 -2\r\n",
+        );
+        let settings = sections(
+            "[Light0]\r\nId = 13\r\nCar Part = Point_light_rb\r\n[Light1]\r\nId = 6\r\nCar Part = Point_light_pod\r\n",
+        );
+        let points = lamp_points(&settings, &parts, RETAIL_HEADLIGHT);
+        let drawn = |name, centre| Switch::of_drawn(car_parts::section(&parts, name).unwrap(), centre, &points);
+        let tail = Switch { kind: Kind::Tail, lamp: 1, lit: true, glass: false, named: true, steady: true };
+        assert_eq!(drawn("e_light_rb_lit", Vec3::new(0.3, 0.8, -2.0)), Some(tail), "by its name wherever it is");
+        let pod = Switch { kind: Kind::Front, lamp: 2, ..tail };
+        assert_eq!(drawn("e_lightpod_lit", Vec3::new(0.3, 0.6, -2.1)), Some(pod), "by the nearest point");
+        assert_eq!(drawn("e_lightpod_lit", Vec3::new(0.3, 0.4, -2.0)), None, "too far from every point");
+        assert_eq!(drawn("e_lightpod", Vec3::new(0.3, 0.8, -2.0)), None, "not a lit part");
+        assert_eq!(drawn("e_light_lf_lit", Vec3::ZERO), None, "hidden until switched");
+        assert_eq!(drawn("e_light_m_lit", Vec3::new(0.3, 0.8, -2.0)), None, "its box switches it");
+        let dark = Inputs { game: Some(Lamps::default()), ..Inputs::default() };
+        assert!(tail.shown(dark) && pod.shown(Inputs::default()), "always drawn");
+    }
+
+    #[test]
+    fn lamp_classes_are_the_lens_and_reflector() {
+        assert!(["CarLight", "CarGlass", "CarPlastic"].into_iter().all(lamp_class));
+        assert!(!["CarPaint", "CarChrome", "CarIntGlass"].into_iter().any(lamp_class));
     }
 
     #[test]
