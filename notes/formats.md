@@ -297,11 +297,18 @@ children (the viewer, `rbr-standalone`, `rbr-sound`) take as `Flags`: `--car-pac
 `--rsf-car` stays the RSF install's entry. Files starting
 `01 a0 00 00` (`.ini` `01 a1 00 00`) are RSF-encrypted and never decrypted (162 of 443 stage folders of a full
 install); needing one, or a pack missing from `rsfdata/cars`, lists the car unavailable. Option folders (2026-11-04
-survey, behaviour open): 100 of 209 RSF models carry `carparts/<option>/` folders with `metadata.ini` `[rsf_info]`
-(`name`, `state`; lights, extralights, mudflaps, plates, mirrors, wheel/tyre variants, bumpers and the like), each
-holding the `<model>.ini`/`_settings.ini` replacements RSF's picker copies over the model; the added pack cars
-carry bare option folders instead (`lights_on/`, `Close Roof/`, no metadata). Only the headlights-on option is
-read (for the night lights' colour and points); which option is the default, and any picker UI, are undecided.
+survey, 2026-11-05 auto night): 100 of 209 RSF models carry `carparts/<option>/` folders with `metadata.ini`
+`[rsf_info]` (`name`, `state`; lights, extralights, mudflaps, plates, mirrors, wheel/tyre variants, bumpers and
+the like), each holding the `<model>.ini`/`_settings.ini` replacements RSF's picker copies over the model; the
+added pack cars carry bare option folders instead (`lights_on/`, `Close Roof/`, no metadata). A stage drawn at
+night (`Atmosphere::night`) loads the car with its light options on, in memory: the headlights' on-option, then
+each extra-lights/pod on-option merged over the model's files (`rsf::night_options`, `rsf::merge_night_options`;
+`car::load_night`); by day, and for a vetoed car, the installed parts stay. A light group is `metadata` names
+holding `light` but no rear word; its on variant the `on` state, preferring `all`/`full`, bare `On`, the high beam
+for headlights, else the `*on` folder; several still tied (Audi quattros, Volvo 242, Celica ST185, TA64, 208
+Rally4), or two options disagreeing, keep the installed parts. Option folders hold only `.ini`, preview
+pictures and `metadata.ini`: visual only, no physics. The six models installed lights-on already (911 SC and
+the like) merge to their own files. No picker UI.
 
 ## RSF stages
 
