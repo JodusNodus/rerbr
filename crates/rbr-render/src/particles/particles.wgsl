@@ -215,6 +215,30 @@ fn soft_noise(p: vec3<f32>) -> f32 {
     return mix(a, b, u.z);
 }
 
+// The signed distance from `p` to the box `lo`..`hi`.
+fn box_distance(p: vec3<f32>, lo: vec3<f32>, hi: vec3<f32>) -> f32 {
+    let q = abs(p - (lo + hi) * 0.5) - (hi - lo) * 0.5;
+    return length(max(q, vec3<f32>(0.0))) + min(max(q.x, max(q.y, q.z)), 0.0);
+}
+
+// The in-car views draw nothing inside the car's body or cabin (`particles::cabin::CabinMask::shown`, `CABIN_EDGE` its
+// `EDGE`): the wheels' spray would show through the interior's gaps, while outside the doors and over the bonnet it
+// is what a driver sees. Without the car's shape, nothing within the cabin's reach of the eye (as the rain in
+// `rain.wgsl`).
+const CABIN_EDGE: f32 = 0.15;
+fn cabin_shown(world: vec3<f32>) -> f32 {
+    if (effects.ambient.w <= 0.0) {
+        return 1.0;
+    }
+    if (effects.cabin_box[0].w <= 0.0) {
+        return smoothstep(effects.ambient.w, effects.ambient.w + 0.5, distance(world, effects.eye.xyz));
+    }
+    let p = (effects.cabin_from_stage * vec4<f32>(world, 1.0)).xyz;
+    let body = box_distance(p, effects.cabin_box[0].xyz, effects.cabin_box[1].xyz);
+    let room = box_distance(p, effects.cabin_box[2].xyz, effects.cabin_box[3].xyz);
+    return smoothstep(0.0, CABIN_EDGE, min(body, room));
+}
+
 @fragment
 fn fs_soft(in: Out) -> @location(0) vec4<f32> {
     // Billowing dust softens with its size on screen (`DUST_BLUR`): a large or near puff shows a blurred, thinner rim
@@ -245,10 +269,7 @@ fn fs_soft(in: Out) -> @location(0) vec4<f32> {
     let erosion = select(select(EROSION, WISP_EROSION, wisp), mix(EROSION, DUST_CLOSE_EROSION, close), dust);
     let eaten = clamp((density - erosion * (1.0 - grain) * (1.0 - density)) / max(density, 1e-3), 0.0, 1.0);
     let near = select(1.0, smoothstep(in.radius, 3.0 * in.radius, distance(in.centre, effects.eye.xyz)), wisp);
-    // In the in-car views nothing is drawn inside the cabin (as the rain in `rain.wgsl`): the wheels' spray would
-    // show through the interior's gaps.
-    let cabin = select(1.0, smoothstep(effects.ambient.w, effects.ambient.w + 0.5, distance(in.world, effects.eye.xyz)),
-        effects.ambient.w > 0.0);
+    let cabin = cabin_shown(in.world);
     let visible = density * eaten * near * cabin;
     if (visible < NEGLIGIBLE) {
         discard;
