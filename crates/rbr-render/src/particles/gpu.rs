@@ -320,6 +320,8 @@ pub struct Pass {
     instances: wgpu::Buffer,
     capacity: usize,
     count: u32,
+    /// The billboards' corners, stage space, for the screen they cover (`crate::particle_target::cover`).
+    corners: Vec<Vec3>,
     waves: wgpu::Buffer,
     wave_capacity: usize,
     wave_count: u32,
@@ -555,6 +557,7 @@ impl Pass {
             instances,
             capacity: FIRST_CAPACITY,
             count: 0,
+            corners: Vec::new(),
             waves,
             wave_capacity: FIRST_CAPACITY,
             wave_count: 0,
@@ -570,6 +573,16 @@ impl Pass {
     pub(crate) fn set(&mut self, device: &wgpu::Device, uploads: &mut Uploads, billboards: &[Billboard]) {
         upload(device, uploads, &mut self.instances, &mut self.capacity, billboards);
         self.count = billboards.len() as u32;
+        self.corners.clear();
+        for b in billboards {
+            let (centre, u, v) = (Vec3::from(b.centre), Vec3::from(b.axis_u), Vec3::from(b.axis_v));
+            self.corners.extend([centre - u - v, centre + u - v, centre - u + v, centre + u + v]);
+        }
+    }
+
+    /// The billboards' corners, stage space.
+    pub(crate) fn corners(&self) -> &[Vec3] {
+        &self.corners
     }
 
     /// The water waves' triangles to draw first.

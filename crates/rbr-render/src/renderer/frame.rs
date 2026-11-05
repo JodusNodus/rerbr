@@ -236,7 +236,7 @@ impl Renderer {
             taa.keep(encoder);
             if self.late_effects() {
                 let t = mark(&mut profiler, encoder);
-                self.draw_late_effects(encoder, taa.raw());
+                self.draw_late_effects(encoder, taa.raw(), view_projection);
                 span(&mut profiler, encoder, "particles, rain", t);
             }
         }
@@ -246,7 +246,7 @@ impl Renderer {
             span(&mut profiler, encoder, "taa", t);
             if self.late_effects() && !upscaling {
                 let t = mark(&mut profiler, encoder);
-                self.draw_late_effects(encoder, &self.post.scene);
+                self.draw_late_effects(encoder, &self.post.scene, view_projection);
                 span(&mut profiler, encoder, "particles, rain", t);
             }
         }
@@ -430,7 +430,7 @@ impl Renderer {
     }
 
     /// Draws the rain and the particles over the resolved `scene`, in the unjittered view.
-    fn draw_late_effects(&self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView) {
+    fn draw_late_effects(&self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView, view_projection: Mat4) {
         // On a tall frame the rain's mist and the soft billboards go into the particles' target at half its size,
         // each laid over the frame in its turn (`crate::particle_target`).
         let (Some(target), Some(effects)) = (&self.particle_target, &self.effects) else {
@@ -440,19 +440,30 @@ impl Renderer {
         if !mist && !soft {
             return self.draw_effects(&mut self.effects_pass(encoder, scene));
         }
-        effects.write_reduced(&self.queue, crate::particle_target::reduced(target.size()).unwrap_or_default());
-        target.reduce_depth(encoder);
+        // Only the pixels the billboards cover, unless the mist is over the whole frame.
+        let size = target.size();
+        let whole = [0, 0, size.0, size.1];
+        let billboards = self
+            .particles
+            .as_ref()
+            .filter(|_| soft)
+            .and_then(|particles| crate::particle_target::cover(particles.corners(), view_projection, size));
+        let Some(rect) = (if mist { Some(whole) } else { billboards }) else {
+            return self.draw_effects(&mut self.effects_pass(encoder, scene));
+        };
+        effects.write_reduced(&self.queue, target.half());
+        target.reduce_depth(encoder, rect);
         if mist {
-            target.layer(encoder, scene, |pass| effects.draw_mist(pass, true, target.effects()));
+            target.layer(encoder, scene, whole, |pass| effects.draw_mist(pass, true, target.effects()));
         }
         let mut pass = self.effects_pass(encoder, scene);
         effects.draw_drops(&mut pass);
         let Some(particles) = &self.particles else { return };
         particles.draw_waves(&mut pass);
         drop(pass);
-        if soft {
+        if let Some(rect) = billboards {
             let lamps = self.lamps_light();
-            target.layer(encoder, scene, |pass| particles.draw_soft_reduced(pass, target.effects(), lamps));
+            target.layer(encoder, scene, rect, |pass| particles.draw_soft_reduced(pass, target.effects(), lamps));
         }
     }
 

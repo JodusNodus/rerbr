@@ -6,6 +6,7 @@
 
 use crate::post::SCENE_FORMAT;
 use crate::renderer::{depth_binding, DEPTH_FORMAT};
+use glam::{Mat4, Vec3};
 
 /// The frame's height from which the particles are drawn at half its size: 4K and up, where the half is still about
 /// 1080 lines. A smaller frame draws them at its own size, as before.
@@ -33,6 +34,41 @@ pub(crate) struct ParticleTarget {
 /// The size of the particles' target for a frame of `size`, `None` when they are drawn at the frame's own.
 pub(crate) fn reduced(size: (u32, u32)) -> Option<(u32, u32)> {
     (size.1 >= REDUCE_FROM).then(|| (size.0.div_ceil(2), size.1.div_ceil(2)))
+}
+
+/// A frame's pixels `[x, y, width, height]`.
+pub(crate) type Rect = [u32; 4];
+
+/// The pixels of a frame of `size` that billboards with `corners` (stage space, four each) cover in
+/// `view_projection`, a few more about them; the whole frame when one reaches behind the eye, `None` when none is in
+/// view. Only those pixels are reduced, drawn and laid over: a few puffs far off cost little.
+pub(crate) fn cover(corners: &[Vec3], view_projection: Mat4, size: (u32, u32)) -> Option<Rect> {
+    const MARGIN: f32 = 4.0;
+    let (mut lo, mut hi) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
+    for &corner in corners {
+        let clip = view_projection * corner.extend(1.0);
+        if clip.w <= 1e-3 {
+            return Some([0, 0, size.0, size.1]);
+        }
+        let (x, y) = (clip.x / clip.w, clip.y / clip.w);
+        lo = [lo[0].min(x), lo[1].min(-y)];
+        hi = [hi[0].max(x), hi[1].max(-y)];
+    }
+    let pixels = |ndc: f32, side: u32, margin: f32| ((ndc * 0.5 + 0.5) * side as f32 + margin).clamp(0.0, side as f32);
+    let (x0, x1) = (pixels(lo[0], size.0, -MARGIN).floor(), pixels(hi[0], size.0, MARGIN).ceil());
+    let (y0, y1) = (pixels(lo[1], size.1, -MARGIN).floor(), pixels(hi[1], size.1, MARGIN).ceil());
+    (x1 > x0 && y1 > y0).then(|| [x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32])
+}
+
+/// `rect` of the frame in the reduced target's pixels, a texel more about it (the composite's taps).
+fn halved([x, y, w, h]: Rect, half: (u32, u32)) -> Rect {
+    let (x0, y0) = ((x / 2).saturating_sub(1), (y / 2).saturating_sub(1));
+    let (x1, y1) = (((x + w).div_ceil(2) + 1).min(half.0), ((y + h).div_ceil(2) + 1).min(half.1));
+    [x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)]
+}
+
+fn scissor(pass: &mut wgpu::RenderPass<'_>, [x, y, w, h]: Rect) {
+    pass.set_scissor_rect(x, y, w, h);
 }
 
 impl ParticleTarget {
@@ -174,13 +210,19 @@ impl ParticleTarget {
         self.size
     }
 
+    /// Its own size.
+    pub(crate) fn half(&self) -> (u32, u32) {
+        reduced(self.size).unwrap_or(self.size)
+    }
+
     /// The effects' bind group over the reduced depth.
     pub(crate) fn effects(&self) -> &wgpu::BindGroup {
         &self.effects
     }
 
-    /// Reduces the frame's depth into the target's, for the [`ParticleTarget::layer`]s after it.
-    pub(crate) fn reduce_depth(&self, encoder: &mut wgpu::CommandEncoder) {
+    /// Reduces the frame's depth into the target's within `rect` (of the frame), for the [`ParticleTarget::layer`]s
+    /// after it.
+    pub(crate) fn reduce_depth(&self, encoder: &mut wgpu::CommandEncoder, rect: Rect) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("particles' depth"),
             color_attachments: &[],
@@ -193,17 +235,20 @@ impl ParticleTarget {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        scissor(&mut pass, halved(rect, self.half()));
         pass.set_pipeline(&self.reduce);
         pass.set_bind_group(0, &self.full, &[]);
         pass.draw(0..3, 0..1);
     }
 
     /// Opens the reduced pass for `draw` (with [`ParticleTarget::effects`] and pipelines that keep the transmittance
-    /// in alpha) and lays its result over `scene`, as drawing it there would.
+    /// in alpha) and lays its result over `scene`, as drawing it there would, within `rect` of the frame (which the
+    /// depth was reduced over).
     pub(crate) fn layer(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         scene: &wgpu::TextureView,
+        rect: Rect,
         draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
     ) {
         {
@@ -224,6 +269,7 @@ impl ParticleTarget {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            scissor(&mut pass, halved(rect, self.half()));
             draw(&mut pass);
         }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -239,6 +285,7 @@ impl ParticleTarget {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        scissor(&mut pass, rect);
         pass.set_pipeline(&self.composite);
         pass.set_bind_group(0, &self.group, &[]);
         pass.draw(0..3, 0..1);
@@ -255,5 +302,24 @@ mod tests {
         assert_eq!(reduced((2560, 1440)), None);
         assert_eq!(reduced((3840, 2160)), Some((1920, 1080)));
         assert_eq!(reduced((3841, 2161)), Some((1921, 1081)));
+    }
+
+    #[test]
+    fn the_cover_holds_the_billboards_and_a_margin() {
+        let size = (3840, 2160);
+        let quad =
+            |x: f32, y: f32| [-1.0, 1.0].map(|dx| [-1.0, 1.0].map(|dy| Vec3::new(x + dx * 0.1, y + dy * 0.1, 0.5)));
+        let corners: Vec<Vec3> = quad(0.0, 0.0).into_iter().flatten().collect();
+        // Clip space is the stage's here: x and y -0.1 to 0.1 of NDC.
+        assert_eq!(cover(&corners, Mat4::IDENTITY, size), Some([1724, 968, 392, 224]));
+        assert_eq!(cover(&[], Mat4::IDENTITY, size), None);
+        let behind = [Vec3::ZERO];
+        let flip =
+            Mat4::from_cols_array(&[1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, -1.0]);
+        assert_eq!(cover(&behind, flip, size), Some([0, 0, 3840, 2160]));
+        let off = quad(5.0, 0.0).into_iter().flatten().collect::<Vec<_>>();
+        assert_eq!(cover(&off, Mat4::IDENTITY, size), None);
+        assert_eq!(halved([1724, 968, 392, 224], (1920, 1080)), [861, 483, 198, 114]);
+        assert_eq!(halved([0, 0, 3840, 2160], (1920, 1080)), [0, 0, 1920, 1080]);
     }
 }
