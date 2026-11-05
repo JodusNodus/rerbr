@@ -9,7 +9,8 @@
 //! switched by the race clock (ours, the game's switching not traced, after the electronic start clocks of rallies):
 //! red while the countdown runs, green from the go for [`GREEN_SECONDS`], none after a jump start's go; an unlit
 //! lamp is its texture darkened to [`UNLIT`]. By night and at dusk the digits glow (ours; the game has no night), and
-//! the lit lamps at any hour, through emissive masks written with them (`Views::glows` in `renderer`).
+//! the lit lamps at any hour in their signal's colour, through emissive masks written with them (`Views::glows` in
+//! `renderer`, `backlit` in `shader.wgsl`).
 
 use crate::live::RaceHud;
 use rbr_formats::dds::{self, Format};
@@ -18,8 +19,11 @@ use rbr_formats::dds::{self, Format};
 pub const PLACEHOLDER: &str = "START_CLOCK_DIGITS_PLACEHOLDER.tga";
 /// The digits' texture under `Textures`.
 pub const DIGITS: &str = "start_clock_digits.dds";
-/// The lamps' face textures, green then red, by their `[TextureInfo]` file names' ends.
-pub const LAMPS: [&str; 2] = ["START_CLOCK_GREENLIGHT_ON.tga", "START_CLOCK_REDLIGHT_ON.tga"];
+/// The lamps' face textures, green then red, by their `[TextureInfo]` file names' ends, and their signals' colours
+/// (ours, linear): an LED signal's red, and its green, which leans to blue (about 505 nm). A lit lamp shines in it
+/// (`backlit` in `shader.wgsl`), not in its texture's pale red, which burnt to white at night.
+pub const LAMPS: [(&str, [u8; 3]); 2] =
+    [("START_CLOCK_GREENLIGHT_ON.tga", [0, 255, 90]), ("START_CLOCK_REDLIGHT_ON.tga", [255, 0, 0])];
 /// How long the green lamp stays lit after the go, s.
 pub const GREEN_SECONDS: f32 = 5.0;
 /// An unlit lamp's share of its texture's colour: the dark lens.
@@ -48,12 +52,13 @@ pub fn lamps(race: Option<&RaceHud>) -> [bool; 2] {
     [go, counting]
 }
 
-/// A lamp's face ([`LAMPS`]) and its emissive mask: the texture, darkened when unlit; the mask white when lit.
-pub fn lamp(face: &Rgba, lit: bool) -> (Vec<u8>, Vec<u8>) {
+/// A lamp's face ([`LAMPS`]) and its emissive mask: the texture, darkened when unlit; the mask the lamp's `signal`
+/// colour when lit, else black.
+pub fn lamp(face: &Rgba, lit: bool, signal: [u8; 3]) -> (Vec<u8>, Vec<u8>) {
     let shade = |c: u8| if lit { c } else { (u16::from(c) * UNLIT / 255) as u8 };
     let texels = face.pixels.chunks_exact(4).flat_map(|t| [shade(t[0]), shade(t[1]), shade(t[2]), t[3]]).collect();
-    let glow = if lit { 255 } else { 0 };
-    (texels, [glow, glow, glow, 255].repeat(face.pixels.len() / 4))
+    let [r, g, b] = if lit { signal } else { [0; 3] };
+    (texels, [r, g, b, 255].repeat(face.pixels.len() / 4))
 }
 
 /// A decoded texture's top level.
@@ -201,25 +206,26 @@ impl StartBoard {
     }
 }
 
-/// One of the board's lamps ([`LAMPS`]) and whether it is lit.
+/// One of the board's lamps ([`LAMPS`]), its signal's colour and whether it is lit.
 pub struct StartLamp {
     pub face: Dynamic,
     image: Rgba,
+    signal: [u8; 3],
     lit: bool,
 }
 
 impl StartLamp {
     /// The lamp, unlit.
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, image: Rgba) -> StartLamp {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, image: Rgba, signal: [u8; 3]) -> StartLamp {
         let face = Dynamic::new(device, (image.width, image.height));
-        face.write(queue, lamp(&image, false));
-        StartLamp { face, image, lit: false }
+        face.write(queue, lamp(&image, false, signal));
+        StartLamp { face, image, signal, lit: false }
     }
 
     pub fn set(&mut self, queue: &wgpu::Queue, lit: bool) {
         if lit != self.lit {
             self.lit = lit;
-            self.face.write(queue, lamp(&self.image, lit));
+            self.face.write(queue, lamp(&self.image, lit, self.signal));
         }
     }
 }
@@ -265,11 +271,11 @@ mod tests {
         assert_eq!(lamps(Some(&race(-1.0, true, true))), [false, false]);
     }
 
-    /// An unlit lamp is its texture darkened, with no glow; a lit one its texture, glowing.
+    /// An unlit lamp is its texture darkened, with no glow; a lit one its texture, glowing in its signal's colour.
     #[test]
     fn an_unlit_lamp_is_dark() {
         let face = Rgba { width: 1, height: 1, pixels: vec![255, 100, 0, 255] };
-        assert_eq!(lamp(&face, true), (vec![255, 100, 0, 255], vec![255, 255, 255, 255]));
-        assert_eq!(lamp(&face, false), (vec![64, 25, 0, 255], vec![0, 0, 0, 255]));
+        assert_eq!(lamp(&face, true, [255, 0, 0]), (vec![255, 100, 0, 255], vec![255, 0, 0, 255]));
+        assert_eq!(lamp(&face, false, [255, 0, 0]), (vec![64, 25, 0, 255], vec![0, 0, 0, 255]));
     }
 }
