@@ -56,6 +56,7 @@ if [ "$all" = 1 ]; then
 else
     dependents=""
     for crate in $(sed -n 's|^crates/\(rbr-[a-z-]*\)/.*|\1|p' <<<"$changed" | sort -u); do
+        [ -d "crates/$crate" ] || continue # a deleted crate has no dependents left to check
         tree=$(cargo tree -q -i "$crate" --workspace -e normal,dev --prefix none --format '{p}') ||
             { echo "rust-check: FAIL (cargo tree -i $crate)"; exit 1; }
         dependents+=$'\n'$tree

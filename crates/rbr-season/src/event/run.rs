@@ -1,0 +1,168 @@
+//! Running a stage: the field drives it on the 1.02 AI engine in start order, the AI's services, the bulletins, the
+//! road order and wear, and the adaptive field.
+
+use super::*;
+
+/// The adaptive step: the most a stage moves an entrant's skill.
+pub(super) const ADAPT_STEP: f32 = 0.003;
+
+impl Event {
+    /// The player's stage result: the field drives the same stage with the 1.02 AI engine on `master`, and the turn
+    /// moves on. A retired player is out of the rally: the field drives its remaining stages and the turn goes to the
+    /// rally's end.
+    pub fn stage_done(&mut self, master: &Master, result: PlayerResult) {
+        let Some((rally, stage)) = self.at() else { return };
+        self.results[rally][stage].0 = Some(result);
+        self.drive_field(master, rally, stage);
+        if result.retired {
+            for later in stage + 1..self.rallies[rally].stages.len() {
+                self.drive_field(master, rally, later);
+            }
+            self.turn = Turn::RallyOver { rally };
+            return;
+        }
+        if self.config.adaptive {
+            self.adapt(rally);
+        }
+        self.turn = next_turn(&self.rallies, rally, stage);
+    }
+
+    /// The field's stage, its bulletins and the service after it.
+    fn drive_field(&mut self, master: &Master, rally: usize, stage: usize) {
+        let it = &self.rallies[rally].stages[stage];
+        let (conditions, service_after) = (it.conditions, it.service_after);
+        let mut track = it.track;
+        track.wet = u32::from(conditions == Conditions::Wet);
+        // A damp road costs half the engine's wet penalty.
+        let scale = self.pace * if conditions == Conditions::Damp { 1.045 } else { 1.0 };
+        track.sections.iter_mut().for_each(|s| s.par *= scale);
+        if stage == 0 {
+            field::rally_start(&mut self.contenders);
+            self.costs.iter_mut().for_each(|c| (c.service, c.rally) = (0, 0));
+        }
+        let order = self.start_order(rally, stage);
+        let seed = self
+            .config
+            .seed
+            .wrapping_add((rally as u32 + 1).wrapping_mul(0x9E37_79B1))
+            .wrapping_add((stage as u32 + 1).wrapping_mul(0x85EB_CA6B));
+        let mut rng = CrtRand::srand(seed);
+        let mut log = RunLog::default();
+        let mut out = vec![AiResult::Retired; self.field.len()];
+        for &e in order.iter().flatten() {
+            // Out of the rally for good once retired.
+            if self.results[rally][..stage].iter().any(|(_, ai)| ai.get(e) == Some(&AiResult::Retired)) {
+                continue;
+            }
+            let c = &mut self.contenders[e];
+            let team = &self.teams[c.team.min(self.teams.len() - 1)];
+            out[e] = field::drive_stage(master, &track, stage as u32, e as i32, c, team, &mut rng, &mut log);
+        }
+        let mut news = self.render(&log, stage);
+        // The service after the stage: the AI cars' manager, repairs and late penalty.
+        if let Some(minutes) = service_after {
+            let long = minutes >= 40;
+            let mut rng = CrtRand::srand(seed ^ 0x5E21_1CE0);
+            let mut log = RunLog::default();
+            for &e in order.iter().flatten() {
+                if out[e] == AiResult::Retired {
+                    continue;
+                }
+                let c = &mut self.contenders[e];
+                let t = c.team.min(self.teams.len() - 1);
+                let used = ai::service(
+                    master,
+                    e as i32,
+                    &mut c.driver,
+                    &mut c.car,
+                    &self.teams[t],
+                    &mut self.costs[t],
+                    long,
+                    &mut rng,
+                    &mut log,
+                );
+                self.penalties[rally][e] += ai::service_penalty(e as i32, used, long, &mut log);
+            }
+            log.bulletins.retain(|b| matches!(b, Bulletin::ServicePenalty { .. }));
+            news.extend(self.render(&log, stage));
+        }
+        self.news[rally].extend(news);
+        self.results[rally][stage].1 = out;
+    }
+
+    /// The log as the bulletin lines of stage `stage`, in the engine's order: its bulletins, then the accidents that
+    /// ended a run without one of their own.
+    fn render(&self, log: &RunLog, stage: usize) -> Vec<String> {
+        let name = |id: i32| self.field.get(id as usize).map_or_else(|| "A driver".to_owned(), |e| e.name.clone());
+        let line = |text: String| format!("SS{}: {text}", stage + 1);
+        let mut out = Vec::new();
+        let mut explained = Vec::new();
+        for b in &log.bulletins {
+            match *b {
+                // The manager's orders are the team's business.
+                Bulletin::ManagerOrder { .. } | Bulletin::CarUnlock { .. } | Bulletin::Uneventful { .. } => {}
+                Bulletin::DamageRetire { driver } | Bulletin::Hurt { driver, .. } | Bulletin::Dead { driver, .. } => {
+                    explained.push(driver);
+                    out.push(line(b.text(&name)));
+                }
+                _ => out.push(line(b.text(&name))),
+            }
+        }
+        for a in log.accidents.iter().filter(|a| a.retired && a.accident != 0xff && !explained.contains(&a.driver)) {
+            out.push(line(format!("{} retired after an accident in section {}", name(a.driver), a.section + 1)));
+        }
+        if log.accidents.is_empty() && log.bulletins.iter().all(|b| matches!(b, Bulletin::ManagerOrder { .. })) {
+            out.push(line(Bulletin::Uneventful { stage: stage as u32 }.text(&name)));
+        }
+        out
+    }
+
+    /// What the bulletins reported in rally `rally`, in order: accidents, injuries, broken cars, false starts and late
+    /// services, each with its stage.
+    pub fn bulletins(&self, rally: usize) -> Vec<String> {
+        self.news.get(rally).cloned().unwrap_or_default()
+    }
+
+    /// The start order of `rally`'s `stage`, the player as `None`. The first stage starts by the season points so far
+    /// (the seed's draw for the first rally and for ties); later stages by the rally standings, leader first and the
+    /// retired last.
+    pub fn start_order(&self, rally: usize, stage: usize) -> Vec<Option<usize>> {
+        let mut order: Vec<Option<usize>> = std::iter::once(None).chain((0..self.field.len()).map(Some)).collect();
+        let mut rng = CrtRand::srand(self.config.seed ^ 0x57A2_7001);
+        for i in (1..order.len()).rev() {
+            let j = (rng.draw() as usize) % (i + 1);
+            order.swap(i, j);
+        }
+        if stage > 0 {
+            return self.standings_after(rally, stage).into_iter().map(|row| row.entrant).collect();
+        }
+        if rally > 0 {
+            let points = self.points_through(rally);
+            order.sort_by_key(|who| {
+                std::cmp::Reverse(points.iter().find(|r| r.entrant == *who).map_or(0, |r| r.points))
+            });
+        }
+        order
+    }
+
+    /// The road's wear for the player on `stage` (0 new, 1 normal, 2 worn): the 1.02 rule over the player's start place.
+    pub fn road_wear(&self, rally: usize, stage: usize) -> f32 {
+        let place = self.start_order(rally, stage).iter().position(Option::is_none);
+        road_wear(place) as f32
+    }
+
+    /// Nudges the field toward the player finishing around 2nd to 4th, by at most a small step a stage.
+    fn adapt(&mut self, rally: usize) {
+        let place = self.rally_standings(rally).iter().position(|row| row.entrant.is_none());
+        let Some(place) = place else { return };
+        let delta = if place < 1 {
+            ADAPT_STEP
+        } else if place > 3 {
+            -ADAPT_STEP
+        } else {
+            0.0
+        };
+        // A faster field drives its pars with a smaller pace.
+        self.pace = (self.pace - delta).clamp(PACE_RANGE.0, PACE_RANGE.1);
+    }
+}

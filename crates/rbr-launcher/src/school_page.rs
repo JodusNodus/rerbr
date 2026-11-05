@@ -253,7 +253,7 @@ impl Form {
     pub fn school_page(&mut self, ui: &mut egui::Ui) {
         let data = self.data.clone();
         let saves = SaveDir::new(&self.records());
-        let profile = self.rally.profile.clone();
+        let profile = self.championship.profile.clone();
         let blocker = self.school_blocker();
         let car = self.car().map_or_else(|| "none".to_owned(), car_label);
         let (mut drive, mut to_drive_page) = (None, false);
