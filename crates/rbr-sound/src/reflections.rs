@@ -379,11 +379,12 @@ mod tests {
 
     #[test]
     fn the_gain_falls_with_distance_and_softness_and_is_zero_with_nothing() {
-        let soft = |d: f32| side_gain(&wall(d, 0.5));
-        assert_eq!(soft(1.0), ECHO_GAIN / 2.0);
-        assert_eq!(soft(NEAR), ECHO_GAIN / 2.0);
-        assert!((soft(4.0 * NEAR) - ECHO_GAIN / 8.0).abs() < 1e-6);
-        assert!((side_gain(&wall(NEAR, 0.25)) - ECHO_GAIN / 4.0).abs() < 1e-6);
+        // Under the cap: a soft surface.
+        let soft = |d: f32| side_gain(&wall(d, 0.25));
+        assert_eq!(soft(1.0), ECHO_GAIN / 4.0);
+        assert_eq!(soft(NEAR), ECHO_GAIN / 4.0);
+        assert!((soft(4.0 * NEAR) - ECHO_GAIN / 16.0).abs() < 1e-6);
+        assert!((side_gain(&Side { size: 0.5, ..wall(NEAR, 0.25) }) - ECHO_GAIN / 8.0).abs() < 1e-6);
         // A hard wall at arm's length is held at the cap.
         assert_eq!(side_gain(&wall(1.0, 1.0)), GAIN_CAP);
         assert_eq!(side_gain(&Side::default()), 0.0);
