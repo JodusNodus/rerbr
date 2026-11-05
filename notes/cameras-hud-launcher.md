@@ -141,6 +141,22 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   the season over) takes that season's team, options and car (`SeasonCar::Kept`). `--screenshot` draws it new
   (without and with a saved season), at the welcome, after a wrecked SS1, at SS2, between rallies, the season over
   and (with `--screenshot-damage`) in service.
+- Championship tab's events (ours, `events_page/`, model `rbr_events`; 2026-11-05): the tab opens on preset cards
+  (Quick rally, Weekend, Season, Random, Classic 1.02 season; the Classic card opens the 1.02 season page above,
+  unchanged, with "‹ All events" back), Continue event first when `SavedGames/event-<profile>.txt` exists (carried
+  damage in `.dmg`, the service's late penalty and the tyre in `.ini`: `Event` keeps neither). A preset opens the
+  builder (car through the car browser, `Target::Event`, defaulting to the Drive page's; class = the car's group,
+  only that class's cars fill the field; length, stage pool, surface, time of day, weather, damage, difficulty
+  Gentle/Club/National/Pro, adaptive, field, seed) beside a live summary and Start event. The pool is every listed,
+  startable map (`pool::items`), its length from the driveline (`.trk` kind 0x14, a BTB folder's `driveline.ini`),
+  read on a thread and kept in `<files>/cache/drivelines/<map>.line` (path, size, mtime checked); an unreadable
+  driveline drops the stage (RSF install 2026-11-05: 687 `.trk`, none encrypted, 209 MB). The reference closure runs
+  `pace::reference_time` over the kept points. A stage launches like the Drive page's on the map's weather row of the
+  itinerary's road (nearest row plus `--wetness` when none matches), `--clock`/`--start-time` from its clock, as a
+  championship stage (`--championship professional`, `--championship-damage` the event's), with `--damage-in/-out`
+  and `--result-out` in `<files>/events/`. Screens: welcome, stage card (tyres and setup after a service or at the
+  start, else kept), last stage's result (winner, gap), service (`rally_page::park_card`, the itinerary's minutes),
+  rally over with points, event over. `--screenshot` draws them on `events_page::fixture`'s double (`events*.png`).
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
   their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
