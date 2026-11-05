@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use rbr_formats::data::Data;
 use rbr_gameplay::crt::CrtRand;
 use rbr_gameplay::markers::MarkerSettings;
-use rbr_gameplay::race_options::{ChampionshipOptions, DriverAids, RaceOptions};
+use rbr_gameplay::race_options::{DriverAids, RaceOptions};
 use rbr_gameplay::weather::{Preset, Season};
 use rbr_render::coords;
 use rbr_render::playback::CHASE_FOV_DEGREES;
@@ -15,7 +15,6 @@ use crate::catalog::{self, Catalog, TyreChoice};
 use crate::controls_page::ControlsPage;
 use crate::graphics_page::{Graphics, HudChoice, DEFAULT_GRAPHICS};
 use crate::pages::Page;
-use crate::rally_page::RallyPage;
 use crate::school_page::SchoolPage;
 use crate::setup_page::SetupPage;
 use crate::{install, preview, Form, Paths, Start};
@@ -96,7 +95,6 @@ impl Form {
     ) -> Form {
         // A saved car not in the list gives way to the most recent one that is, else the first that starts.
         let car = pick_car(&catalog.cars, settings.car.iter().chain(&settings.recent_cars));
-        let season_pick = pick_car(&catalog.cars, settings.season_cars.last.iter().chain(&settings.car));
         let default_map = catalog.maps.iter().position(|map| catalog.availability(&season, map).is_ok()).unwrap_or(0);
         let map = settings.map.and_then(|number| catalog.map_index(number)).unwrap_or(default_map);
         let aids = DriverAids::default();
@@ -139,13 +137,6 @@ impl Form {
             callout_distance: settings.callout_distance.unwrap_or(defaults.callout_distance),
             marker_threshold: settings.marker_threshold.unwrap_or(defaults.marker_threshold),
         };
-        let mut rally = RallyPage::new(&data);
-        let championship = ChampionshipOptions::default();
-        rally.options = ChampionshipOptions {
-            skill: settings.championship_skill.unwrap_or(championship.skill),
-            damage: settings.championship_damage.unwrap_or(championship.damage),
-        };
-        rally.team = settings.championship_team.unwrap_or(rally.team);
         let adding = crate::car_packs::Adding::new(&paths.settings.with_file_name(crate::car_packs::DIR));
         let home = paths.settings.parent().unwrap_or(Path::new(".")).to_path_buf();
         let game_root = paths.game_root();
@@ -159,14 +150,10 @@ impl Form {
             season,
             page: Page::Drive,
             setup: SetupPage::new(settings.setups.clone()),
-            rally,
             car,
             map,
             // Filled by `list_cars`.
             car_browser: Default::default(),
-            season_pick,
-            season_cars: settings.season_cars.clone(),
-            season_team_seen: None,
             gearboxes: settings.gearboxes.clone(),
             // Filled by `list_maps`.
             stage_browser: Default::default(),
@@ -353,9 +340,6 @@ impl Form {
             neutral_lock: Some(self.options.aids.neutral_lock),
             clutch_help: Some(self.options.aids.clutch_help),
             ghost: Some(self.ghost.clone()),
-            championship_skill: Some(self.rally.options.skill),
-            championship_damage: Some(self.rally.options.damage),
-            championship_team: Some(self.rally.team),
             install_folder: Some(self.install_folder.trim().to_owned()).filter(|p| !p.is_empty()),
             ngp_physics: Some(self.ngp_physics.trim().to_owned()).filter(|p| !p.is_empty()),
             ngp_dll: Some(self.ngp_dll.path.trim().to_owned()),
@@ -365,7 +349,6 @@ impl Form {
             // The viewer owns these: carried over from the file as it is now.
             ffb_cars: read_settings(&self.paths.settings).ffb_cars,
             camera: read_settings(&self.paths.settings).camera,
-            season_cars: self.season_cars.clone(),
             gearboxes: self.gearboxes.clone(),
             setups: self.setup.choices.clone(),
         };

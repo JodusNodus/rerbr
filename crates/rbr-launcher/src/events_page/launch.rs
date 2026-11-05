@@ -4,8 +4,10 @@
 use std::path::Path;
 
 use rbr_formats::saves::SaveDir;
+use rbr_gameplay::car_damage::CarriedDamage;
 use rbr_gameplay::race_options::{DamageLevel, RaceOptions};
 use rbr_gameplay::weather::{Draws, Preset, Weather};
+use rbr_season::config::Damage;
 use rbr_season::event::{Conditions, Turn};
 
 use super::view::Env;
@@ -17,8 +19,8 @@ use crate::settings::wetness_name;
 use crate::{browser, car_browser, Form};
 
 impl Form {
-    /// The Championship tab outside the 1.02 season: the presets, the builder and the event. An event drives its
-    /// own car (the Drive page's car follows it, as the 1.02 season's does).
+    /// The Championship tab: the presets, the builder and the event. An event drives its own car (the Drive page's
+    /// car follows it).
     pub(crate) fn events_page(&mut self, ui: &mut egui::Ui) {
         if self.events.pool.is_none() {
             let items = super::pool::items(&self.catalog, &self.season);
@@ -60,7 +62,7 @@ impl Form {
             self.launch_blocker()
         };
         let here = self.here();
-        let mut profile = self.rally.profile.clone();
+        let mut profile = self.events.profile.clone();
         let (rows, favourites) = (&self.car_browser, &self.favourite_cars);
         let mut car_field = |ui: &mut egui::Ui, car: usize| {
             rows.row(car).is_some_and(|row| {
@@ -83,7 +85,7 @@ impl Form {
             seed,
         };
         let request = egui::ScrollArea::vertical().id_salt("events").show(ui, |ui| self.events.ui(ui, env)).inner;
-        self.rally.profile = profile;
+        self.events.profile = profile;
         match request {
             Some(Request::Launch(start)) => self.start_event_stage(start),
             Some(Request::Setup) => self.page = crate::pages::Page::Setup,
@@ -123,7 +125,7 @@ impl Form {
     /// Starts an event's stage like the Drive page's Start, on the itinerary's road and clock, the tyre and setup
     /// picked, the event's damage and the files `stage_start` named.
     pub fn start_event_stage(&mut self, start: EventStart) {
-        let EventStart { map, conditions, clock, tyre, setup, args: mut extra } = start;
+        let EventStart { map, conditions, clock, tyre, setup, damage, args: mut extra } = start;
         match self.event_weather(map, conditions) {
             Ok((stage, weather, off)) => {
                 self.map = self.catalog.map_index(map).unwrap_or(self.map);
@@ -132,18 +134,20 @@ impl Form {
                 if let Err(e) = self.setup.choose(&setup) {
                     eprintln!("launcher: setup {}: {e}; the stage keeps the current setup", setup.label());
                 }
-                let saves = SaveDir::new(&self.records()).path.display().to_string();
-                extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.rally.profile.clone()]);
+                // A championship stage is offered to the stage record and the personal best; a trial is practice.
+                if extra.iter().any(|a| a == "--championship") {
+                    let saves = SaveDir::new(&self.records()).path.display().to_string();
+                    extra.extend(["--saves".to_owned(), saves, "--profile".to_owned(), self.events.profile.clone()]);
+                }
                 if off {
                     extra.extend(["--wetness".to_owned(), wetness_name(weather.wetness).to_owned()]);
                 }
                 let minutes = (clock * 60.0).round() as u32 % (24 * 60);
-                let damage =
-                    match extra.iter().position(|a| a == "--championship-damage").and_then(|i| extra.get(i + 1)) {
-                        Some(word) if word == "off" => DamageLevel::Off,
-                        Some(word) if word == "reduced" => DamageLevel::Reduced,
-                        _ => DamageLevel::Realistic,
-                    };
+                let damage = match damage {
+                    Damage::Off => DamageLevel::Off,
+                    Damage::Reduced => DamageLevel::Reduced,
+                    Damage::Realistic => DamageLevel::Realistic,
+                };
                 let options = RaceOptions { weather: Preset::Random, damage, ..self.options };
                 let chosen = std::mem::replace(&mut self.tyre, TyreChoice::Fixed(tyre));
                 if let Some(args) = self.launch_args(stage, options, weather, extra, clock_args(Some(minutes))) {
@@ -159,10 +163,10 @@ impl Form {
     }
 }
 
-/// `--screenshot`: the events on the double ([`super::fixture`]): the presets without and with a saved event, the
-/// builder, and a season's welcome, a stage, a service, the standings later in the rally, the rally's end and the
-/// event's end.
-pub fn shots(form: &mut Form, dir: &Path) -> Result<(), String> {
+/// `--screenshot`: the Championship tab on the double ([`super::fixture`]): the presets without and with a saved
+/// championship, the builder, and a season's welcome, a stage, a service (on the car of `damage`, a damage file),
+/// the standings later in the rally, the rally's end with its trials and the season's end.
+pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), String> {
     use super::fixture::{self, Double};
     use super::model::Play;
     use crate::capture::shot;
@@ -171,14 +175,14 @@ pub fn shots(form: &mut Form, dir: &Path) -> Result<(), String> {
     form.page = crate::pages::Page::Championship;
     form.events.model = &fixture::DOUBLE;
     form.events.pool = Some(super::pool::Pool::Ready(fixture::stages()));
-    let profile = form.rally.profile.clone();
+    let profile = form.events.profile.clone();
     form.events.screenshot_saved(&profile, None);
-    shot(&dir.join("events.png"), |ctx| form.ui(ctx))?;
+    shot(&dir.join("championship.png"), |ctx| form.ui(ctx))?;
     let line = "Season · Rally 2 of 6 · Rally of the Lakes · Stage 3 of 6".to_owned();
     form.events.screenshot_saved(&profile, Some(line));
-    shot(&dir.join("events-saved.png"), |ctx| form.ui(ctx))?;
+    shot(&dir.join("championship-saved.png"), |ctx| form.ui(ctx))?;
     form.events.open_builder(Preset::Weekend, &form.catalog.cars, form.car, 20261105);
-    shot(&dir.join("events-builder.png"), |ctx| form.ui(ctx))?;
+    shot(&dir.join("championship-builder.png"), |ctx| form.ui(ctx))?;
 
     // A season of two rallies in the Drive page's car and its class's cars.
     let mut event = fixture::fixture_event();
@@ -207,23 +211,31 @@ pub fn shots(form: &mut Form, dir: &Path) -> Result<(), String> {
         form.events.screenshot_event(Box::new(Double(play.0.clone())));
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))
     };
-    at(form, &play, "events-welcome")?;
+    at(form, &play, "championship-welcome")?;
     play.turn_done();
     drive(&mut play, 1);
-    at(form, &play, "events-stage")?;
+    at(form, &play, "championship-stage")?;
     drive(&mut play, 1);
-    at(form, &play, "events-service")?;
+    at(form, &play, "championship-service")?;
+    if let Some(path) = damage {
+        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let carried = CarriedDamage::from_bytes(&bytes).ok_or("not a damage file")?;
+        if let Some(run) = form.events.run.as_mut() {
+            run.damage = Some(carried);
+        }
+        form.events.park = None;
+        shot(&dir.join("championship-service-damaged.png"), |ctx| form.ui(ctx))?;
+    }
     play.turn_done();
     drive(&mut play, 2);
-    at(form, &play, "events-standings")?;
+    at(form, &play, "championship-standings")?;
     drive(&mut play, 6);
-    at(form, &play, "events-rally-over")?;
+    at(form, &play, "championship-rally-over")?;
     play.turn_done();
     play.turn_done();
     drive(&mut play, 6);
     play.turn_done();
-    at(form, &play, "events-over")?;
+    at(form, &play, "championship-over")?;
     form.events.screenshot_saved(&profile, None);
-    form.events.view = super::View::Classic;
     Ok(())
 }

@@ -14,6 +14,13 @@ pub trait Play {
     fn rally_standings(&self, rally: usize) -> Vec<Standing>;
     fn points(&self) -> Vec<Standing>;
     fn save(&self) -> String;
+    /// The news since the player's last stage in `rally`, one line each ("Since your last stage").
+    fn bulletins(&self, rally: usize) -> Vec<String>;
+    /// The road order of a stage: the field's entrants (`None` is the player) from first on the road to last. Empty
+    /// when the model keeps none.
+    fn start_order(&self, rally: usize, stage: usize) -> Vec<Option<usize>>;
+    /// How worn the road is for the player at the stage, 0 (clean) to 1 (heavily worn).
+    fn road_wear(&self, rally: usize, stage: usize) -> f32;
 }
 
 impl Play for Event {
@@ -35,7 +42,22 @@ impl Play for Event {
     fn save(&self) -> String {
         Event::save(self)
     }
+    // wired at merge: bulletins, the road order and the road's wear come with `rbr_season`'s next version.
+    fn bulletins(&self, _: usize) -> Vec<String> {
+        Vec::new()
+    }
+    // wired at merge
+    fn start_order(&self, _: usize, _: usize) -> Vec<Option<usize>> {
+        Vec::new()
+    }
+    // wired at merge
+    fn road_wear(&self, _: usize, _: usize) -> f32 {
+        0.0
+    }
 }
+
+/// A team (service crew) the builder offers: its index, name and what its crew does, in words.
+pub type TeamOffer = (usize, String, String);
 
 /// A stage's reference time for the class at a wetness (0 to 1).
 pub type Reference<'a> = &'a dyn Fn(&StageRef, f32) -> f32;
@@ -48,6 +70,8 @@ pub struct Model {
     pub config: fn(Preset, &str, &str, u32) -> EventConfig,
     pub build: Build,
     pub load: fn(&str) -> Result<Box<dyn Play>, String>,
+    /// The teams the builder offers for the service crew.
+    pub team_offers: fn() -> Vec<TeamOffer>,
 }
 
 /// `rbr_season` itself.
@@ -55,4 +79,6 @@ pub const REAL: Model = Model {
     config: |preset, class, car, seed| preset.config(class, car, seed),
     build: |config, stages, cars, reference| Ok(Box::new(Event::build(config, stages, cars, reference)?)),
     load: |text| Ok(Box::new(Event::load(text)?)),
+    // wired at merge: the model's teams.
+    team_offers: Vec::new,
 };

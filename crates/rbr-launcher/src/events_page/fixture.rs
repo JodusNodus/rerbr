@@ -9,9 +9,9 @@ use rbr_season::config::{
 use rbr_season::event::{Conditions, Event, ItineraryStage, PlayerResult, Rally, Standing, Turn};
 use rbr_season::field::{AiResult, Entrant};
 
-use super::model::{Model, Play, Reference};
+use super::model::{Model, Play, Reference, TeamOffer};
 
-pub const DOUBLE: Model = Model { config, build, load };
+pub const DOUBLE: Model = Model { config, build, load, team_offers };
 
 /// The double's save: only the turn, over the fixture event ([`fixture_event`]).
 const SAVED: &str = "double";
@@ -34,6 +34,18 @@ const DRIVERS: [&str; 14] = [
 ];
 const RALLIES: [&str; 6] =
     ["Forest Rally", "Rally of the Lakes", "Mountain Rally", "Coastal Rally", "Rally of the North", "Desert Rally"];
+
+fn team_offers() -> Vec<TeamOffer> {
+    [
+        ("Privateer", "A small crew: slower repairs, a light fee."),
+        ("Works team", "A full crew: repairs run a fifth faster."),
+        ("Factory", "The manufacturer's crew: fast repairs, no margin for lateness."),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (name, words))| (i, (*name).to_owned(), (*words).to_owned()))
+    .collect()
+}
 
 fn config(preset: Preset, class: &str, car: &str, seed: u32) -> EventConfig {
     let base = EventConfig {
@@ -213,6 +225,39 @@ impl Play for Double {
 
     fn save(&self) -> String {
         SAVED.to_owned()
+    }
+
+    fn bulletins(&self, rally: usize) -> Vec<String> {
+        let Some(done) = self.0.results.get(rally).map(Vec::len).filter(|&n| n > 0) else { return Vec::new() };
+        let stage = done - 1;
+        let name = |i: usize| self.0.field[i].name.clone();
+        let mut lines = Vec::new();
+        for (i, result) in self.0.results[rally][stage].1.iter().enumerate() {
+            if *result == AiResult::Retired && (stage == 0 || self.0.results[rally][stage - 1].1[i] != AiResult::Retired)
+            {
+                lines.push(format!("{} retired on SS{}.", name(i), stage + 1));
+            }
+        }
+        let first = self.rally_standings(rally).into_iter().find_map(|l| l.entrant.filter(|_| l.total.is_some()));
+        if let Some(leader) = first {
+            lines.push(format!("{} leads the rally.", name(leader)));
+        }
+        if let Some(minutes) = self.0.rallies[rally].stages[stage].service_after {
+            lines.push(format!("Service next: {minutes} minutes."));
+        }
+        lines
+    }
+
+    fn start_order(&self, _: usize, stage: usize) -> Vec<Option<usize>> {
+        // The player runs further back as the stages go, nearer the front on the first.
+        let mut order: Vec<Option<usize>> = (0..self.0.field.len()).map(Some).collect();
+        order.insert((13usize.saturating_sub(stage * 2)).min(order.len()), None);
+        order
+    }
+
+    fn road_wear(&self, rally: usize, stage: usize) -> f32 {
+        let order = self.start_order(rally, stage);
+        order.iter().position(Option::is_none).map_or(0.0, |at| at as f32 / order.len().max(1) as f32)
     }
 }
 

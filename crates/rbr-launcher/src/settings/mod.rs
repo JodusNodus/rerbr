@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use rbr_formats::ini;
-use rbr_gameplay::race_options::{DamageLevel, Skill};
+use rbr_gameplay::race_options::DamageLevel;
 use rbr_render::bindings::Bindings;
 use rbr_render::camera_prefs::CameraPrefs;
 use rbr_render::coords;
@@ -151,12 +151,6 @@ pub struct Settings {
     pub clutch_help: Option<bool>,
     /// The quick race's ghost (`off`, `best` or a `GhostCars` file name).
     pub ghost: Option<GhostChoice>,
-    /// The Championship page's options for a new season (`rbr_gameplay::race_options::ChampionshipOptions`; ours: the
-    /// game starts every session on `InitSEA`'s Rookie and Realistic).
-    pub championship_skill: Option<Skill>,
-    pub championship_damage: Option<DamageLevel>,
-    /// The team a new season takes (`TEAM_OFFERS`, the team's id 0-6).
-    pub championship_team: Option<u32>,
     /// The RBR install folder (`crate::install`).
     pub install_folder: Option<String>,
     /// NGP's `physics.rbz` (`rbr-standalone --ngp-physics`) when not the install folder's.
@@ -174,63 +168,10 @@ pub struct Settings {
     /// The viewer's camera choices (`[camera]`, `rbr_render::camera_prefs`): the viewer writes them, the launcher
     /// carries them over and resets a car's.
     pub camera: CameraPrefs,
-    /// The championship's picked cars (`[season]`).
-    pub season_cars: SeasonCars,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     pub gearboxes: Gearboxes,
     /// The setup each car drives with on each surface (`[setup]`).
     pub setups: SetupChoices,
-}
-
-/// The championship's picked cars (for a team whose car NGP doesn't drive), by name, kept out of the game's save
-/// (`pf<profile>.rbr` stays the game's): each profile's season car (`profile <name> = <car>`) and the last one picked
-/// (`last = <car>`), ours.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct SeasonCars {
-    pub last: Option<String>,
-    pub profiles: Vec<(String, String)>,
-}
-
-const SEASON: &str = "season";
-
-impl SeasonCars {
-    fn parse(sections: &[ini::Section]) -> SeasonCars {
-        let Some(section) = sections.iter().find(|s| s.name == SEASON) else { return SeasonCars::default() };
-        let profiles = section.entries.iter().filter_map(|(key, car)| {
-            let profile = key.strip_prefix("profile ")?.trim();
-            (!profile.is_empty() && !car.is_empty()).then(|| (profile.to_owned(), car.clone()))
-        });
-        SeasonCars {
-            last: section.get("last").filter(|c| !c.is_empty()).map(str::to_owned),
-            profiles: profiles.collect(),
-        }
-    }
-
-    fn to_text(&self) -> String {
-        if *self == SeasonCars::default() {
-            return String::new();
-        }
-        let last = self.last.iter().map(|car| format!("last = {car}\n"));
-        let profiles = self.profiles.iter().map(|(profile, car)| format!("profile {profile} = {car}\n"));
-        format!("\n[{SEASON}]\n{}", last.chain(profiles).collect::<String>())
-    }
-
-    /// The season car of `profile`.
-    pub fn of(&self, profile: &str) -> Option<&str> {
-        self.profiles.iter().find(|(p, _)| p == profile).map(|(_, car)| car.as_str())
-    }
-
-    /// Forgets the season car of `profile` (its season drives the team's car).
-    pub fn remove(&mut self, profile: &str) {
-        self.profiles.retain(|(p, _)| p != profile);
-    }
-
-    /// Makes `car` the season car of `profile`, and the last one.
-    pub fn set(&mut self, profile: &str, car: &str) {
-        self.profiles.retain(|(p, _)| p != profile);
-        self.profiles.push((profile.to_owned(), car.to_owned()));
-        self.last = Some(car.to_owned());
-    }
 }
 
 /// Each car's gearbox for the advanced H-shifter, the Drive page's choice by car name (`<car> = synchro|dog`,
@@ -485,9 +426,6 @@ impl Settings {
             neutral_lock: launcher.on_off("neutral_lock"),
             clutch_help: launcher.on_off("clutch_help"),
             ghost: launcher.get("ghost").map(|v| GhostChoice::parse(&v)),
-            championship_skill: launcher.choice("championship_skill"),
-            championship_damage: launcher.choice("championship_damage"),
-            championship_team: launcher.number("championship_team").filter(|t| *t < 7),
             install_folder: launcher.word("install_folder"),
             ngp_physics: launcher.word("ngp_physics"),
             ngp_dll: launcher.get("ngp_dll"),
@@ -496,7 +434,6 @@ impl Settings {
             ffb: ffb::Options::parse(text),
             ffb_cars: ffb::CarSensitivity::parse(text),
             camera: CameraPrefs::parse(text),
-            season_cars: SeasonCars::parse(&sections),
             gearboxes: Gearboxes::parse(&sections),
             setups: SetupChoices::parse(&sections),
         }
@@ -556,9 +493,6 @@ impl Settings {
             ("neutral_lock", on_off_text(self.neutral_lock)),
             ("clutch_help", on_off_text(self.clutch_help)),
             ("ghost", self.ghost.as_ref().map(GhostChoice::to_text)),
-            ("championship_skill", choice(self.championship_skill)),
-            ("championship_damage", choice(self.championship_damage)),
-            ("championship_team", self.championship_team.map(|v| v.to_string())),
             ("install_folder", self.install_folder.clone()),
             ("ngp_physics", self.ngp_physics.clone()),
             ("ngp_dll", self.ngp_dll.clone()),
@@ -595,7 +529,6 @@ impl Settings {
         out.push_str(&self.ffb_cars.to_text());
         out.push('\n');
         out.push_str(&self.camera.to_text());
-        out.push_str(&self.season_cars.to_text());
         out.push_str(&self.gearboxes.to_text());
         out.push_str(&self.setups.to_text());
         out
@@ -682,9 +615,6 @@ mod tests {
             neutral_lock: Some(true),
             clutch_help: Some(false),
             ghost: Some(GhostChoice::File("me_54.ghc".into())),
-            championship_skill: Some(Skill::Champion),
-            championship_damage: Some(DamageLevel::Reduced),
-            championship_team: Some(5),
             install_folder: Some("/games/Richard Burns Rally".into()),
             ngp_physics: Some("/games/rbr-ngp/physics.rbz".into()),
             ngp_dll: Some("/games/ngp/Plugins/NGP.dll".into()),
@@ -695,13 +625,6 @@ mod tests {
                 cars: [("rsf-24".to_owned(), [90, 100, 110]), ("COROLLA".to_owned(), [120, 120, 130])].into(),
             },
             camera: CameraPrefs::parse("[camera]\nview = bonnet\nrsf-24 chase = 0 0.5 -1\n"),
-            season_cars: SeasonCars {
-                last: Some("Skoda Fabia R5".into()),
-                profiles: vec![
-                    ("player".into(), "Mitsubishi Lancer Evo IX N4".into()),
-                    ("me".into(), "Skoda Fabia R5".into()),
-                ],
-            },
             gearboxes: Gearboxes(vec![(
                 "Ford Escort Mk II".into(),
                 CarBox { engagement: Engagement::Dog, sequential: false },
@@ -746,23 +669,16 @@ mod tests {
         assert!(
             text.ends_with(
                 "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[camera]\nview = bonnet\n\
-                 rsf-24 chase = 0 0.5 -1\n\n[season]\nlast = Skoda Fabia R5\n\
-                 profile player = Mitsubishi Lancer Evo IX N4\nprofile me = Skoda Fabia R5\n\n\
-                 [gearbox]\nFord Escort Mk II = dog\n\n\
+                 rsf-24 chase = 0 0.5 -1\n\n[gearbox]\nFord Escort Mk II = dog\n\n\
                  [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n"
             ),
             "{text}"
         );
-        assert_eq!(settings.season_cars.of("me"), Some("Skoda Fabia R5"));
         // An older `[ffb] sensitivity_car<id>` reads as `rsf-<id>`, losing to the section's own entry.
         assert_eq!(
             Settings::parse("[ffb]\nsensitivity_car24 = 1,2,3\n[ffb_cars]\nrsf-24 = 90,100,110\n").ffb_cars.cars,
             [("rsf-24".to_owned(), [90, 100, 110])].into()
         );
-        let mut seasons = settings.season_cars.clone();
-        seasons.set("player", "Skoda Fabia R5");
-        assert_eq!(seasons.profiles.len(), 2);
-        assert_eq!(seasons.of("player"), Some("Skoda Fabia R5"));
         // A car without a gearbox is sequential; picking sequential forgets it.
         let mut gearboxes = settings.gearboxes.clone();
         assert_eq!(gearboxes.of("Skoda Fabia R5"), SEQUENTIAL);
@@ -873,9 +789,8 @@ mod tests {
             .viewer_args(Path::new("/l"), 54, &Default::default())
             .is_empty());
         assert_eq!(Settings::parse("[launcher]\ndamage = hard\nclutch_help = yes\n"), Settings::default());
-        assert!(text.contains("championship_skill = champion\nchampionship_damage = reduced\nchampionship_team = 5\n"));
-        assert_eq!(Settings::parse("[launcher]\nchampionship_skill = legend\n"), Settings::default());
-        assert_eq!(Settings::parse("[launcher]\nchampionship_team = 7\n"), Settings::default());
+        // The old 1.02 season's keys are no longer read.
+        assert_eq!(Settings::parse("[launcher]\nchampionship_skill = champion\nchampionship_team = 5\n"), Settings::default());
     }
 
     #[test]
@@ -931,9 +846,6 @@ mod tests {
                 "neutral_lock = on\n",
                 "clutch_help = off\n",
                 "ghost = me_54.ghc\n",
-                "championship_skill = champion\n",
-                "championship_damage = reduced\n",
-                "championship_team = 5\n",
                 "install_folder = /games/Richard Burns Rally\n",
                 "ngp_physics = /games/rbr-ngp/physics.rbz\n",
                 "ngp_dll = /games/ngp/Plugins/NGP.dll\n",
@@ -1034,11 +946,6 @@ mod tests {
                 "view = bonnet\n",
                 "rsf-24 chase = 0 0.5 -1\n",
                 "\n",
-                "[season]\n",
-                "last = Skoda Fabia R5\n",
-                "profile player = Mitsubishi Lancer Evo IX N4\n",
-                "profile me = Skoda Fabia R5\n",
-                "\n",
                 "[gearbox]\n",
                 "Ford Escort Mk II = dog\n",
                 "\n",
@@ -1068,8 +975,6 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 50\n").render_scale, Some(50));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 87\n").render_scale, Some(87));
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 80\n").render_scale, None);
-        assert_eq!(Settings::parse("[launcher]\nchampionship_team = 6\n").championship_team, Some(6));
-        assert_eq!(Settings::parse("[launcher]\nchampionship_team = 7\n").championship_team, None);
         assert_eq!(Settings::parse("[launcher]\nhead_gasket = 0\n").head_gasket, None);
         assert_eq!(Settings::parse("[launcher]\nhead_gasket = -2\n").head_gasket, None);
         assert_eq!(Settings::parse("[launcher]\nhead_gasket = 1\n").head_gasket, Some(1));

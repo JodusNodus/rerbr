@@ -343,8 +343,6 @@ pub enum Target {
     /// The Drive page's.
     #[default]
     Drive,
-    /// The car a new season drives.
-    Season,
     /// The car an event drives (`events_page`).
     Event,
 }
@@ -758,10 +756,10 @@ mod tests {
         browser.refresh(&[], &[]);
         let state = browser.state();
         browser.open = false;
-        browser.open_on(Target::Season, 0, &["Zeta".into()], None);
+        browser.open_on(Target::Event, 0, &["Zeta".into()], None);
         browser.refresh(&[], &[]);
         assert_eq!(browser.state(), state);
-        assert_eq!(browser.target, Target::Season);
+        assert_eq!(browser.target, Target::Event);
         let mut restored = CarBrowser::default();
         let mut rows = rows();
         rows.swap(0, 3);
