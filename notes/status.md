@@ -81,7 +81,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Particles | partial | soft edges; rates against a capture |
 | Skid marks | done | - |
 | Car lights | partial | recordings without live data approximate |
-| Deformation, cracks, detached parts, dirt | partial | door detach |
+| Deformation, cracks, detached parts, dirt | partial | door-detach crash drive (the renderer hangs/detaches doors by DOR1/DET1; no natural detach found yet) |
 | Interactive scenery, fences | done | - |
 | Stage characters, in-car crew, car-flip marshals | done | original run: game captures |
 | Rescue helicopter, bird strike | done | original run: clip orientation |

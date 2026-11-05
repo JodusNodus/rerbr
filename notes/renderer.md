@@ -531,7 +531,14 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 - Cracks (`damage.rs` `Cracks`): code 3 the front window, code 4 a side window or (index 4) both rear halves; slot
   limits 2, 1, 1, 1, 1, 2. The texture is ours, a generated decal at `WS_Broken.dds`'s star positions.
 - Detached parts: moved rigidly by the `DET1` body pose (ours; the game's motion after `OnDetachFromParent` is
-  untraced).
+  untraced). The side doors hang on their hinge while attached: the live process sends their hinge angles
+  (`DOR1`, the hinged bodies' +0x3FC), and the viewer turns each door mesh about the exterior door's node
+  translation by the angle over the rest angle (`coords::door_swing`, mirrored right, `MeshDamage::hinge`); at
+  the rest angle an attached door draws as before, and a detached door leaves `DOR1` for its `DET1` body (whose
+  first placement is the hung one, so there is no one-step pop). Hinge pivots sit at every retail car's door
+  front-outer edge (`tests/car_data.rs`); the swing matches the body's world rotation for a hung door. No
+  natural door detach found yet (the door functor tables want a ~9000-magnitude door-panel impact; the best
+  observed crash gave 8814 on a front table), so a hung or detached door still wants a before/after capture.
 - Dirt (`dirt.rs`): each tyre payload adds `mass * 1e-5`, capped 0.9; `CarPaint` lerps by the `Dirt` map. Ours: the
   colour, tyre dirt by `TireDirt` (never made in 1.02), side and rear glass grime (at most 55 %, the wet mud keeping
   40 % of the reflection).
