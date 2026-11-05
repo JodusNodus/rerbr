@@ -7,8 +7,8 @@
 // when every original byte matches (so the NoSSE exe or any other build is left
 // alone). Results go to RBRRecompHarness.log in the game folder.
 //
-// The transplant, count, shadow and capture modes of the C++ reconstruction live in
-// rbr-recomp's own copy of this plugin; this one keeps only the modes this repo runs.
+// The transplant, count, shadow, capture and load-time dump modes of the C++ reconstruction
+// live in rbr-recomp's own copy of this plugin; this one keeps only the modes this repo runs.
 //
 // If RBRRecompAuto.txt exists ("map car weather tyre", the IRBRGame::StartGame
 // arguments), the stage is started from the main loop as soon as the game accepts
@@ -144,11 +144,6 @@ static void WriteCode(unsigned char* p, const void* src, unsigned n)
     memcpy(p, src, n);
     VirtualProtect(p, n, old, &old);
     FlushInstructionCache(GetCurrentProcess(), p, n);
-}
-
-static void Rel32(unsigned char* at, unsigned target)
-{
-    *(unsigned*)at = target - ((unsigned)at + 4);
 }
 
 // The game folder as the plugin loads. The game moves the current directory into Maps\ while it
@@ -402,101 +397,7 @@ struct MemInfo  // MEMORY_BASIC_INFORMATION
     unsigned base, allocBase, allocProtect, size, state, protect, type;
 };
 
-// ---- load-time dumps (RBRRecompSnapAt.txt) ----
-// Each line of RBRRecompSnapAt.txt is `<address hex> <calls> [arg-offset hex min hex max hex]`:
-// every listed function is patched at load (its entry jumps to a per-function stub), and its first
-// <calls> calls matching the optional 32-bit value range at `[arg0 + offset]` are dumped:
-// RBRRecompSnapAt-<address>-<k>.bin at entry (version 2 header: the entry address as the step,
-// the stack from the entry esp - kSnapBelow to + kSnapAbove, the registers as the call sees them)
-// and RBRRecompSnapAt-<address>-<k>-after.bin on return (no stack). The return address is
-// replaced while the call runs and put back before the function returns, so the stack keeps
-// the value the original leaves. The dump saves and restores the stack below the call, the
-// registers and the x87/SSE state, as SnapStepForward does, so the run stays the original's.
-static const unsigned kSnapAtMax = 32, kSnapAtDepth = 16;
-static unsigned s_snapAtAddr[kSnapAtMax], s_snapAtLimit[kSnapAtMax], s_snapAtSeen[kSnapAtMax], s_snapAtCount;
-static unsigned s_snapAtArgOffset[kSnapAtMax], s_snapAtMin[kSnapAtMax], s_snapAtMaxValue[kSnapAtMax];
-static volatile unsigned s_snapAtIdx;                       // the list entry whose entry stub runs
-static unsigned s_snapAtRetAddr[kSnapAtDepth], s_snapAtRetOrd[kSnapAtDepth],
-    s_snapAtRetIdx[kSnapAtDepth], s_snapAtDepth;
-static unsigned s_snapAtPatchSlot, s_snapAtHook, s_snapAtJump, s_snapAtTarget;  // handed between C and the asm
-static unsigned s_snapAtRegs[8];       // the registers at the stub, pushad order: edi esi ebp esp ebx edx ecx eax
-static unsigned char s_snapAtFlags[2];  // lahf's AH and the overflow flag (seto)
-static __declspec(align(16)) unsigned char s_snapAtFx[512];
-static unsigned SnapAtEntryAddress();  // the naked stubs, below
-static unsigned SnapAtRetAddress();
 static void EnsureSnapBuffers();
-
-static void LoadSnapAt(FILE* log)
-{
-    FILE* f = fopen("RBRRecompSnapAt.txt", "r");
-    if (!f)
-        return;
-    char line[256];
-    while (s_snapAtCount < kSnapAtMax && fgets(line, sizeof(line), f))
-    {
-        unsigned addr, limit, offset, min, max;
-        int fields = sscanf(line, "%x %u %x %x %x", &addr, &limit, &offset, &min, &max);
-        if (fields < 2)
-            continue;
-        unsigned k = s_snapAtCount++;
-        s_snapAtAddr[k] = addr, s_snapAtLimit[k] = limit;
-        if (fields == 5)
-            s_snapAtArgOffset[k] = offset, s_snapAtMin[k] = min, s_snapAtMaxValue[k] = max;
-    }
-    fclose(f);
-    s_snapAtHook = SnapAtRetAddress();
-    fprintf(log, "snapat: %u functions listed for load-time dumps\n", s_snapAtCount);
-}
-
-// Patches every listed function for its dumps: the entry jumps to a per-function stub (the list
-// index and the trampoline below it), which SnapAtEntry runs before the function body. The
-// trampoline replays the entry's first 5 bytes, then jumps back behind the patch, so the run
-// stays the original's. Only list functions whose first instruction boundary is exactly 5 bytes
-// in; the displaced bytes go to the log with each patch, so a bad entry is diagnosable.
-static void StartSnapAtDumps(FILE* log)
-{
-    LoadSnapAt(log);
-    if (!s_snapAtCount)
-        return;
-    EnsureSnapBuffers();
-    if (!s_snapStack)
-    {
-        fprintf(log, "snapat: no memory for the stack copies, off\n");
-        s_snapAtCount = 0;
-        return;
-    }
-    // one trampoline (5 displaced bytes + jmp back) and one 32-byte entry stub per function
-    unsigned char* mem = (unsigned char*)VirtualAlloc(0, 42 * s_snapAtCount,
-        0x3000 /* MEM_COMMIT | MEM_RESERVE */, 0x40 /* PAGE_EXECUTE_READWRITE */);
-    if (!mem)
-    {
-        fprintf(log, "snapat: no memory for the entry stubs, off\n");
-        s_snapAtCount = 0;
-        return;
-    }
-    for (unsigned k = 0; k < s_snapAtCount; k++)
-    {
-        unsigned char* tramp = mem + 42 * k;
-        unsigned char* snap = tramp + 10;
-        memcpy(tramp, (void*)s_snapAtAddr[k], 5);
-        tramp[5] = 0xE9;
-        Rel32(tramp + 6, s_snapAtAddr[k] + 5);
-        snap[0] = 0xC7; snap[1] = 0x05;
-        *(unsigned*)(snap + 2) = (unsigned)&s_snapAtIdx;
-        *(unsigned*)(snap + 6) = k;
-        snap[10] = 0xC7; snap[11] = 0x05;
-        *(unsigned*)(snap + 12) = (unsigned)&s_snapAtTarget;
-        *(unsigned*)(snap + 16) = (unsigned)tramp;
-        snap[20] = 0xE9;
-        Rel32(snap + 21, SnapAtEntryAddress());
-        unsigned char jmp[5] = { 0xE9 };
-        *(unsigned*)(jmp + 1) = (unsigned)snap - (s_snapAtAddr[k] + 5);
-        WriteCode((unsigned char*)s_snapAtAddr[k], jmp, 5);
-        fprintf(log, "snapat: %08x hooked, entry bytes %02x %02x %02x %02x %02x\n", s_snapAtAddr[k],
-            tramp[0], tramp[1], tramp[2], tramp[3], tramp[4]);
-    }
-    EnsureExceptionHandler();
-}
 
 // ---- recorder ----
 // CPhysics vtable 0x0073f98c, slot 2 StepForward(unsigned substeps) 0x005273a0: one
@@ -972,7 +873,6 @@ static unsigned s_snapSteps[64], s_snapCount, s_snapNext;
 // next-step dumps.
 static unsigned s_sessSnap, s_sessSnapFirst, s_sessSnapTick;
 static unsigned s_snapRegs[8], s_snapStackLo, s_snapSubsteps, s_snapStep, s_snapListed;
-static unsigned s_snapVersion = 1;  // 2: a load-time dump (step = entry address, substeps = its ordinal)
 static __declspec(align(16)) unsigned char s_snapFx[512];
 struct SnapRegion
 {
@@ -1074,7 +974,7 @@ static int SnapOpen(const char* format, unsigned step)
 // `stack`: whether the call's stack copy goes in.
 static void SnapClose(int stack)
 {
-    unsigned teb, head[17] = { 0x53524252 /* 'RBRS' */, s_snapVersion, s_snapStep, s_snapSubsteps, GetCurrentThreadId() };
+    unsigned teb, head[17] = { 0x53524252 /* 'RBRS' */, 1, s_snapStep, s_snapSubsteps, GetCurrentThreadId() };
     __asm
     {
         mov eax, fs:[0x18]
@@ -1107,7 +1007,6 @@ static int SnapBegin(void* self, unsigned substeps)
         s_sessSnapFirst = 0;
         if (!want)
             return 0;
-        s_snapVersion = 1;
         s_snapStep = step;
         s_snapSubsteps = substeps;
         s_snapListed = 0;
@@ -1117,7 +1016,6 @@ static int SnapBegin(void* self, unsigned substeps)
     }
     if (!s_play)
         return 0;
-    s_snapVersion = 1;  // a load-time dump before may have left 2
     s_snapStep = StepCounter(self);
     int snap = SnapWanted(s_snapStep);
     s_snapSubsteps = substeps;
@@ -1240,201 +1138,6 @@ static void EnsureSnapBuffers()
         return;
     s_snapKeep = s_snapStack + kSnapStackBytes;
     s_snapRegions = (SnapRegion*)(s_snapKeep + kSnapBelow);
-}
-
-// ---- load-time dumps: the entry and return stubs (see RBRRecompSnapAt.txt above) ----
-// The stubs save the registers and the flags in globals before anything else, then copy the stack
-// (from the call's esp - kSnapBelow to + kSnapAbove) before they push, so the stale bytes below the
-// call stay as the original leaves them: the stack is put back from the copy. The only write to the
-// stack is the return slot (E, the call's esp): the entry stub writes the return stub's address
-// there, and the return stub puts the original return address back. The x87/SSE state is saved in
-// s_snapAtFx. SnapAtDump writes the entry dump and asks the asm for the return hook
-// (s_snapAtPatchSlot); SnapAtAfter writes the after dump and gives the asm the address to return to.
-static void SnapAtDump()
-{
-    const unsigned* regs = s_snapAtRegs;
-    unsigned k = s_snapAtIdx, entry = regs[3];  // the call's esp: its return address is at [entry]
-    s_snapAtPatchSlot = 0;
-    if (s_snapAtSeen[k] >= s_snapAtLimit[k])
-        return;
-    if (s_snapAtMaxValue[k] != 0)
-    {
-        unsigned arg = *(unsigned*)(entry + 4);
-        if (!arg)
-            return;
-        unsigned value = *(unsigned*)(arg + s_snapAtArgOffset[k]);
-        if (value < s_snapAtMin[k] || value > s_snapAtMaxValue[k])
-            return;
-    }
-    unsigned ordinal = ++s_snapAtSeen[k];
-    { char dbg[96]; int n = wsprintfA(dbg, "snapat: entry %08x ordinal %u esp %08x\n", s_snapAtAddr[k], ordinal, entry); AppendLog(dbg, n); }
-    char name[64];
-    wsprintfA(name, "RBRRecompSnapAt-%08x-%u.bin", s_snapAtAddr[k], ordinal);
-    if (!SnapCreate(name))
-        return;
-    s_snapRegs[0] = regs[7], s_snapRegs[1] = regs[6], s_snapRegs[2] = regs[5], s_snapRegs[3] = regs[4];
-    s_snapRegs[4] = entry, s_snapRegs[5] = regs[2], s_snapRegs[6] = regs[1], s_snapRegs[7] = regs[0];
-    s_snapStackLo = entry - kSnapBelow;  // the copy starts there (SnapAtEntry)
-    memcpy(s_snapFx, s_snapAtFx, sizeof(s_snapFx));
-    s_snapVersion = 2, s_snapStep = s_snapAtAddr[k], s_snapSubsteps = ordinal;
-    SnapClose(1);
-    if (s_snapAtDepth < kSnapAtDepth)
-    {
-        unsigned d = s_snapAtDepth++;
-        s_snapAtRetAddr[d] = *(unsigned*)entry;  // the return address the call will return to
-        s_snapAtRetOrd[d] = ordinal;
-        s_snapAtRetIdx[d] = k;
-        s_snapAtPatchSlot = entry;
-    }
-}
-
-// On return: the after dump (the registers as the function returns them, no stack). Returns the
-// address the function returns to.
-static unsigned SnapAtAfter()
-{
-    const unsigned* regs = s_snapAtRegs;  // esp is the caller's: the return address is popped
-    unsigned d = --s_snapAtDepth, k = s_snapAtRetIdx[d];
-    { char dbg[96]; int n = wsprintfA(dbg, "snapat: return %08x esp %08x\n", s_snapAtRetAddr[d], regs[3]); AppendLog(dbg, n); }
-    char name[80];
-    wsprintfA(name, "RBRRecompSnapAt-%08x-%u-after.bin", s_snapAtAddr[k], s_snapAtRetOrd[d]);
-    s_snapRegs[0] = regs[7], s_snapRegs[1] = regs[6], s_snapRegs[2] = regs[5], s_snapRegs[3] = regs[4];
-    s_snapRegs[4] = regs[3], s_snapRegs[5] = regs[2], s_snapRegs[6] = regs[1], s_snapRegs[7] = regs[0];
-    s_snapStackLo = regs[3] - kSnapBelow;
-    memcpy(s_snapFx, s_snapAtFx, sizeof(s_snapFx));
-    s_snapVersion = 2, s_snapStep = s_snapAtAddr[k], s_snapSubsteps = s_snapAtRetOrd[d];
-    if (SnapCreate(name))
-        SnapClose(0);
-    return s_snapAtRetAddr[d];
-}
-
-// The entry stub: the trampoline jumps here with esp = E (the call's esp, [E] the return address).
-// When the dumps for this function are done it goes straight to the function's body.
-static __declspec(naked) void SnapAtEntry()
-{
-    __asm
-    {
-        mov s_snapAtRegs[0], edi
-        mov s_snapAtRegs[4], esi
-        mov s_snapAtRegs[8], ebp
-        mov s_snapAtRegs[12], esp
-        mov s_snapAtRegs[16], ebx
-        mov s_snapAtRegs[20], edx
-        mov s_snapAtRegs[24], ecx
-        mov s_snapAtRegs[28], eax
-        lahf
-        mov byte ptr [s_snapAtFlags], ah
-        seto al
-        mov byte ptr [s_snapAtFlags + 1], al
-        mov eax, [s_snapAtIdx]
-        mov edx, [s_snapAtSeen + eax * 4]
-        cmp edx, [s_snapAtLimit + eax * 4]
-        jae snapat_out
-        lea edx, [esp - 0x3ff00]  // E - kSnapBelow
-        mov s_snapLo, edx
-        mov eax, esp
-    snapat_probe:  // commit the stack down to s_snapLo page by page before copying it
-        sub eax, 0x1000
-        test dword ptr [eax], eax
-        cmp eax, edx
-        ja snapat_probe
-        test dword ptr [edx], eax
-        mov esi, edx
-        mov edi, s_snapStack
-        mov ecx, (0x3ff00 + 0x100) / 4  // kSnapStackBytes
-        rep movsd
-        fxsave s_snapAtFx
-        call SnapAtDump
-        mov esi, s_snapStack
-        mov edi, s_snapLo
-        mov ecx, 0x3ff00 / 4
-        rep movsd
-        mov edx, s_snapAtPatchSlot
-        test edx, edx
-        jz snapat_nohook
-        mov ecx, s_snapAtHook
-        mov [edx], ecx  // the return address: the return stub
-    snapat_nohook:
-        fxrstor s_snapAtFx
-    snapat_out:
-        mov al, byte ptr [s_snapAtFlags + 1]
-        add al, 0x7f  // sets OF when al is 1
-        mov ah, byte ptr [s_snapAtFlags]
-        sahf
-        mov edi, s_snapAtRegs[0]
-        mov esi, s_snapAtRegs[4]
-        mov ebp, s_snapAtRegs[8]
-        mov ebx, s_snapAtRegs[16]
-        mov edx, s_snapAtRegs[20]
-        mov ecx, s_snapAtRegs[24]
-        mov eax, s_snapAtRegs[28]
-        jmp dword ptr [s_snapAtTarget]
-    }
-}
-
-// The return stub: the function returns to it with esp = E + 4. It saves the registers and the flags,
-// copies the stack, dumps the state after the call, then puts the stack back from the copy and the
-// original return address into its slot (E), so the ret below returns to the caller as the original does.
-static __declspec(naked) void SnapAtRet()
-{
-    __asm
-    {
-        mov s_snapAtRegs[0], edi
-        mov s_snapAtRegs[4], esi
-        mov s_snapAtRegs[8], ebp
-        mov s_snapAtRegs[12], esp
-        mov s_snapAtRegs[16], ebx
-        mov s_snapAtRegs[20], edx
-        mov s_snapAtRegs[24], ecx
-        mov s_snapAtRegs[28], eax
-        lahf
-        mov byte ptr [s_snapAtFlags], ah
-        seto al
-        mov byte ptr [s_snapAtFlags + 1], al
-        lea edx, [esp - 0x3ff00]  // E + 4 - kSnapBelow
-        mov s_snapLo, edx
-        mov eax, esp
-    snapatret_probe:
-        sub eax, 0x1000
-        test dword ptr [eax], eax
-        cmp eax, edx
-        ja snapatret_probe
-        test dword ptr [edx], eax
-        mov esi, edx
-        mov edi, s_snapStack
-        mov ecx, (0x3ff00 + 0x100) / 4
-        rep movsd
-        fxsave s_snapAtFx
-        call SnapAtAfter
-        mov s_snapAtJump, eax
-        mov esi, s_snapStack
-        mov edi, s_snapLo
-        mov ecx, 0x3ff00 / 4
-        rep movsd
-        fxrstor s_snapAtFx
-        mov al, byte ptr [s_snapAtFlags + 1]
-        add al, 0x7f
-        mov ah, byte ptr [s_snapAtFlags]
-        sahf
-        push dword ptr [s_snapAtJump]  // into the return slot (E): the ret pops it
-        mov edi, s_snapAtRegs[0]
-        mov esi, s_snapAtRegs[4]
-        mov ebp, s_snapAtRegs[8]
-        mov ebx, s_snapAtRegs[16]
-        mov edx, s_snapAtRegs[20]
-        mov ecx, s_snapAtRegs[24]
-        mov eax, s_snapAtRegs[28]
-        ret
-    }
-}
-
-static unsigned SnapAtEntryAddress()
-{
-    return (unsigned)&SnapAtEntry;
-}
-
-static unsigned SnapAtRetAddress()
-{
-    return (unsigned)&SnapAtRet;
 }
 
 static void LoadSnapshots(FILE* log)
@@ -3920,7 +3623,6 @@ extern "C" __declspec(dllexport) IPlugin* RBR_CreatePlugin(IRBRGame* game)
             ApplyPatches(log);
         if (play)
             fclose(play);
-        StartSnapAtDumps(log);
         StartWriteWatch(log);
         StartFocusHandling(log);
         StartRecorder(log);
