@@ -104,12 +104,14 @@ pub fn scene(lens: &Lens, car: &CarPose, inside: bool, replay: bool) -> Scene {
 }
 
 /// Each wheel's water for the sound (`rbr_sound::tyre::Water`, ours) from the particles' last frame: the puddle depth
-/// the spray's plume takes ([`wheel_spray::puddle`]), the ground's wetness and whether it is loose.
+/// the spray's plume takes ([`wheel_spray::puddle`]), whether it is wet tarmac's film, the ground's wetness and whether
+/// it is loose.
 pub fn water(particles: &Particles) -> [rbr_sound::tyre::Water; 4] {
     particles.wheel_water().map(|w| rbr_sound::tyre::Water {
         puddle: wheel_spray::puddle(w.standing),
         wet: w.ground.wet,
         loose: matches!(w.ground.kind, Kind::Gravel | Kind::Dirt | Kind::Grass),
+        film: w.film,
     })
 }
 

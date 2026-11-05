@@ -75,7 +75,8 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   has one water sample, `Surfaces/Normal/water.wav` (NormalWater and SkidWater, a steady swish), and no wet surface
   loops, so two CC0 Freesound recordings are embedded (`crates/rbr-sound/sounds/CREDITS.md`): three runs of a car
   through water (`Shot::Splash`) and a wet-road pass's peak as a loop (`WheelLoop::Hiss`). Puddle depth is the spray's
-  plume depth (`wheel_spray::puddle`, standing water 0.15 to 0.6; a rut's 0.08 film is 0). Running in: a splash once
+  plume depth (`wheel_spray::puddle`, standing water 0.15 to 0.6; a rut's 0.08 film is 0); wet tarmac's film
+  (`Water::film`, standing 0.5 under `--enhance wet` in wet weather) swishes but never splashes (user decision). Running in: a splash once
   the depth stops rising, if it rose by 0.15 or more times the speed term (2 to 15 m/s), picked in turn (no random
   numbers); in it, the swish on `water.wav`; on a wet road the loop by wetness squared over 2 to 25 m/s, 0.6 of the
   level and 0.78 of the pitch off tarmac. The gush (the rise, decaying as 1.02's wetness) overrides the swish and the

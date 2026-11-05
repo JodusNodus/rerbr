@@ -197,6 +197,8 @@ pub struct WheelSpray {
 pub struct Water {
     pub standing: f32,
     pub ground: Material,
+    /// The standing water is wet tarmac's even film ([`FILM_WATER`]), not a puddle: the sound gives it no splash.
+    pub film: bool,
 }
 
 /// Each wheel's [`Water`] from its frame's payloads (the last of a wheel's), on a car at `pose`; `puddles` when the
@@ -235,8 +237,10 @@ fn wheel_water(p: &TyreParticles, level: f32, puddles: bool, film: bool) -> Opti
     } else {
         0.0
     };
-    let standing = if m.kind == Kind::Water { 1.0 } else { puddle.max(p.splash / FULL_WATER).min(1.0) };
-    Some(Water { standing, ground: m })
+    let splash = p.splash / FULL_WATER;
+    let standing = if m.kind == Kind::Water { 1.0 } else { puddle.max(splash).min(1.0) };
+    let film = film && m.kind == Kind::Tarmac && m.wet >= 1.0 && splash < FILM_WATER;
+    Some(Water { standing, ground: m, film })
 }
 
 /// One wheel's values for a frame.
@@ -953,9 +957,12 @@ mod tests {
         let p =
             |wheel, contact| TyreParticles { wheel, splash: 0.25, surfaces: [wet; 2], contact, ..Default::default() };
         let w = water(&[p(1, true), p(2, false)], &pose, false, false);
-        assert_eq!(w[1], Water { standing: 0.5, ground: ground::material(wet) });
+        assert_eq!(w[1], Water { standing: 0.5, ground: ground::material(wet), film: false });
         assert_eq!((w[0], w[2]), (Water::default(), Water::default()), "no payload, off the ground");
-        assert_eq!(water(&[p(1, true)], &pose, false, true)[1].standing, FILM_WATER.max(0.5));
+        let dry_payload = TyreParticles { splash: 0.0, ..p(1, true) };
+        let filmed = water(&[dry_payload], &pose, false, true)[1];
+        assert_eq!((filmed.standing, filmed.film), (FILM_WATER, true), "the film, told apart");
+        assert!(!water(&[p(1, true)], &pose, false, true)[1].film, "the payload's own splash as deep: a puddle");
     }
 
     #[test]

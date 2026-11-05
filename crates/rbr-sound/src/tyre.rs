@@ -98,6 +98,7 @@ const QUIET: f32 = 0.001;
 ///   them) once the depth stops rising, if it rose by at least [`SPLASH_MIN`] times [`SPLASH_SPEED`], at
 ///   [`SPLASH_GAIN`] times the rise, lower the deeper ([`SPLASH_DROP`]); the rise also sets the gush, which decays as
 ///   1.02's wetness ([`WET_DECAY`] a frame) and ducks the rest while the splash plays;
+/// - wet tarmac's film (`Water::film`) never splashes or gushes: it drives the swish and hiss alone;
 /// - in a puddle: a swish on the wetness voice (`TIRE::SURFACES SkidWater`, the retail `water.wav`) by its depth and
 ///   the speed ([`SWISH_GAIN`]);
 /// - on a wet road: the wet-road loop (`WheelLoop::Hiss`) by the ground's wetness squared ([`HISS_GAIN`]) over
@@ -114,6 +115,9 @@ pub struct Water {
     pub wet: f32,
     /// Gravel, dirt or grass rather than tarmac.
     pub loose: bool,
+    /// The standing water is wet tarmac's even film, not a puddle: it swishes but never splashes, and counts as no
+    /// depth for the next puddle's rise.
+    pub film: bool,
 }
 
 /// The wheel speeds, m/s, over which a puddle splashes from nothing to full (the spray's).
@@ -425,8 +429,9 @@ impl Tyres {
             self.gush[k] = if self.gush[k] * WET_DECAY < QUIET { 0.0 } else { self.gush[k] * WET_DECAY };
         }
         if self.fresh {
-            let deeper = (water.puddle - self.depth[k]).max(0.0) * smoothstep(SPLASH_SPEED, speed);
-            self.depth[k] = water.puddle;
+            let depth = if water.film { 0.0 } else { water.puddle };
+            let deeper = (depth - self.depth[k]).max(0.0) * smoothstep(SPLASH_SPEED, speed);
+            self.depth[k] = depth;
             self.gush[k] = (self.gush[k] + deeper).min(1.0);
             if deeper > 0.0 {
                 self.rise[k] += deeper;
@@ -744,7 +749,7 @@ mod tests {
     fn running_into_a_puddle_splashes_once_the_rise_ends_and_the_gush_ducks_the_swish_and_hiss() {
         let mut tyres = wet_tyres();
         let dry = Water::default();
-        let puddle = Water { puddle: 1.0, wet: 1.0, loose: true };
+        let puddle = Water { puddle: 1.0, wet: 1.0, loose: true, film: false };
         assert_eq!(wet_step(&mut tyres, dry, 20.0), ([(0.0, 1.0), (0.0, 1.0)], vec![]));
         let ([hit, hit_hiss], splashes) = wet_step(&mut tyres, puddle, 20.0);
         assert!(splashes.is_empty(), "the splash waits for the rise to end");
@@ -762,8 +767,28 @@ mod tests {
     }
 
     #[test]
+    fn onto_wet_tarmacs_film_from_gravel_no_splash_or_gush_only_the_swish() {
+        let mut tyres = wet_tyres();
+        let gravel = Water { puddle: 0.0, wet: 1.0, loose: true, film: false };
+        let film = Water { puddle: 0.84, wet: 1.0, loose: false, film: true };
+        wet_step(&mut tyres, gravel, 20.0);
+        for _ in 0..3 {
+            let ([swish, hiss], splashes) = wet_step(&mut tyres, film, 20.0);
+            assert!(splashes.is_empty(), "no splash");
+            // No gush: the swish is at once its full share, the hiss under it.
+            let (share, rest) = water_shares(&film, 20.0, 0.0);
+            assert_eq!((swish.0, hiss.0), (SWISH_GAIN * share, HISS_GAIN * rest));
+        }
+        assert_eq!(tyres.gush[0], 0.0);
+        // From the film into a puddle is a puddle's rise from nothing.
+        let puddle = Water { puddle: 1.0, film: false, ..gravel };
+        wet_step(&mut tyres, puddle, 20.0);
+        assert_eq!(wet_step(&mut tyres, puddle, 20.0).1.len(), 4);
+    }
+
+    #[test]
     fn the_shares_never_stack_past_one() {
-        let water = Water { puddle: 0.5, wet: 1.0, loose: false };
+        let water = Water { puddle: 0.5, wet: 1.0, loose: false, film: false };
         for gush in [0.0, 0.3, 0.6, 1.0] {
             let (swish, hiss) = water_shares(&water, 30.0, gush);
             assert!(gush + swish + hiss <= 1.0 + 1e-6, "{gush} {swish} {hiss}");
@@ -774,7 +799,7 @@ mod tests {
     fn a_shallow_or_slow_puddle_does_not_splash() {
         // A rut's film is no puddle (the spray's depth is 0 under 0.15 standing water): the hiss alone.
         let mut tyres = wet_tyres();
-        let rut = Water { puddle: 0.0, wet: 1.0, loose: true };
+        let rut = Water { puddle: 0.0, wet: 1.0, loose: true, film: false };
         for _ in 0..5 {
             let ([swish, hiss], splashes) = wet_step(&mut tyres, rut, 20.0);
             assert!(splashes.is_empty() && swish.0 == 0.0 && hiss.0 > 0.0);
@@ -790,7 +815,7 @@ mod tests {
     #[test]
     fn the_wet_road_hiss_rises_with_speed_darker_off_tarmac_and_is_silent_dry() {
         let hiss = |water: Water, speed| wet_step(&mut wet_tyres(), water, speed).0[1];
-        let tarmac = Water { puddle: 0.0, wet: 1.0, loose: false };
+        let tarmac = Water { puddle: 0.0, wet: 1.0, loose: false, film: false };
         let gains: Vec<f32> = [2.0, 8.0, 15.0, 20.0, 25.0].iter().map(|&v| hiss(tarmac, v).0).collect();
         assert_eq!(gains[0], 0.0);
         assert!(gains.windows(2).all(|w| w[1] > w[0]), "{gains:?}");
