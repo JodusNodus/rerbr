@@ -8,10 +8,11 @@ use crate::engine::Rng;
 /// alternating with the sample count's parity) that decays by 0.9 a sample, times `g` (`q / 8`) on the two main
 /// streams and `g48` (0-0.99) on the third; `span` is `q % n + n` with `n = trunc((1 - min(amount / 100 + 0.5, 1)) *
 /// 50 + 4)`, 4 for light and heavy rain alike. The streams go through 300 Hz `E32Flt` low-passes at the rain's gain
-/// (`E30Rain::Vf08` 0x4d17e0: 2 outside, 1 in the car, in [`Command::Rain`](crate::voice::Command::Rain)'s gain); the third's cutoff is 0 outside
-/// the car (silent). The original's 24-bit steps (`>> 8` in, `<< 8` out) are taken in floats. Ours: the kernel runs
-/// at the output rate, a drop runs across blocks, the two main streams (which carry the same samples) play in both
-/// channels, and the third is mixed in with them.
+/// (`E30Rain::Vf08` 0x4d17e0: 2 outside, 1 in the car, in [`Command::Rain`](crate::voice::Command::Rain)'s gain); the
+/// third's cutoff is 0 outside the car (silent). The original's 24-bit steps (`>> 8` in, `<< 8` out) are taken in
+/// floats. Ours: the kernel runs at the output rate, a drop runs across blocks, the two main streams (which carry the
+/// same samples) play in both channels, and the third is mixed in with them; in the car the recorded rain plays
+/// instead (`world::cabin_rain`), so the stream plays outside it only.
 #[derive(Debug, Clone)]
 pub(crate) struct Rain {
     pub gain: Gain,

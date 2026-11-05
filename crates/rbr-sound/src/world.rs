@@ -42,9 +42,31 @@ pub const BIRDS: usize = 7;
 /// `+0x74` 30 at 0x4d5c91).
 const SIREN_SPEED: f32 = 70.0;
 const SIREN_DISTANCES: (f32, f32) = (1.0, 30.0);
-/// The rain's gain with the camera in the car and outside (`E30Rain::Vf08`, 0x795e14 and 0x72ad94).
-const RAIN_INSIDE: f32 = 1.0;
+/// The rain's gain with the camera outside the car (`E30Rain::Vf08` 0x72ad94; in the car 1, 0x795e14, which ours
+/// leaves out for [`cabin_rain`]).
 const RAIN_OUTSIDE: f32 = 2.0;
+/// The rain heard in the car (ours, realism: it replaces 1.02's synthesised stream there; outside the car that one
+/// stays). The drops hitting the car go as the glass model's (`rbr_render::glass::model`: 1400 a square metre a
+/// second standing, 50 more per m/s), so as `amount / 100 * (1 + speed / RAIN_SPEED)`, light rain standing 0.5 and
+/// heavy 1. The heavy recording takes over from the light one over 0.5 to 1 of it, by equal power; the level goes as
+/// its square root (drops falling apart add up by power), at most [`CABIN_RAIN_MOST`] of it; the pitch rises by up
+/// to [`CABIN_RAIN_HARDER`] at [`CABIN_RAIN_TOP`] m/s, the drops striking harder.
+const RAIN_SPEED: f32 = 28.0;
+const CABIN_RAIN_GAIN: f32 = 1.6;
+const CABIN_RAIN_MOST: f32 = 3.0;
+const CABIN_RAIN_HARDER: f32 = 0.12;
+const CABIN_RAIN_TOP: f32 = 30.0;
+
+/// The in-car rain's light and heavy gains (before the `Rain` amp) and pitch at rain `amount` (50 light, 100 heavy)
+/// and the car's `speed`, m/s.
+pub fn cabin_rain(amount: f32, speed: f32) -> ([f32; 2], f32) {
+    let speed = speed.max(0.0);
+    let drops = (amount * 0.01 * (1.0 + speed / RAIN_SPEED)).clamp(0.0, CABIN_RAIN_MOST);
+    let heavy = ((drops - 0.5) / 0.5).clamp(0.0, 1.0);
+    let level = drops.sqrt() * CABIN_RAIN_GAIN;
+    let pitch = 1.0 + CABIN_RAIN_HARDER * (speed / CABIN_RAIN_TOP).min(1.0);
+    ([(1.0 - heavy).sqrt() * level, heavy.sqrt() * level], pitch)
+}
 
 /// DirectSound's default max distance (`DS3D_DEFAULTMAXDISTANCE`), which a voice keeps that nobody gives a max:
 /// `E30DXSound`'s `+0x74` (0x4d2940) and `+0x78` (0x4d2970) both call the 3D buffer's `SetMinDistance` (`+0x44`) in
@@ -303,10 +325,13 @@ impl World {
             out.push(Command::Pan { voice: Loop::Siren, pan: pan(scene.listener, scene.right, at) });
         }
 
-        // E30Rain: with rain (not snow) falling, louder outside the car.
+        // E30Rain: with rain (not snow) falling, louder outside the car. Ours: in the car the recorded rain instead
+        // ([`cabin_rain`]).
         if self.sky.rain > 0.0 {
-            let gain = self.gains.rain * if scene.inside { RAIN_INSIDE } else { RAIN_OUTSIDE };
+            let (gains, pitch) = if scene.inside { cabin_rain(self.sky.rain, speed) } else { ([0.0; 2], 1.0) };
+            let gain = if scene.inside { 0.0 } else { self.gains.rain * RAIN_OUTSIDE };
             out.push(Command::Rain { gain, amount: self.sky.rain });
+            out.push(Command::CabinRain { gains: gains.map(|g| g * self.gains.rain), pitch });
         }
         out
     }
@@ -487,6 +512,32 @@ mod tests {
         assert_eq!(Sky::from_weather(3, 2).rain, 50.0);
         assert_eq!(Sky::from_weather(7, 3).rain, 0.0);
         let mut world = World::new(WorldGains::default(), Sky::from_weather(4, 3), Vec::new());
-        assert!(world.step(&Scene::default(), 0.01, || 0).contains(&Command::Rain { gain: 1.0, amount: 100.0 }));
+        let inside = world.step(&Scene { inside: true, ..Scene::default() }, 0.01, || 0);
+        assert!(inside.contains(&Command::Rain { gain: 0.0, amount: 100.0 }));
+        assert!(inside.contains(&Command::CabinRain { gains: [0.0, 1.6], pitch: 1.0 }));
+        let outside = world.step(&Scene { inside: false, ..Scene::default() }, 0.01, || 0);
+        assert!(outside.contains(&Command::Rain { gain: 2.0, amount: 100.0 }));
+        assert!(outside.contains(&Command::CabinRain { gains: [0.0; 2], pitch: 1.0 }));
+        let mut dry = World::new(WorldGains::default(), Sky::from_weather(0, 0), Vec::new());
+        let dry = dry.step(&Scene { inside: true, ..Scene::default() }, 0.01, || 0);
+        assert!(!dry.iter().any(|c| matches!(c, Command::Rain { .. } | Command::CabinRain { .. })));
+    }
+
+    #[test]
+    fn the_rain_in_the_car_grows_with_the_amount_and_the_speed() {
+        let total = |(g, _): ([f32; 2], f32)| (g[0] * g[0] + g[1] * g[1]).sqrt();
+        // Light rain standing plays the light recording, heavy rain the heavy one.
+        assert_eq!(cabin_rain(50.0, 0.0).0[1], 0.0);
+        assert_eq!(cabin_rain(100.0, 0.0).0[0], 0.0);
+        assert!(total(cabin_rain(100.0, 0.0)) > total(cabin_rain(50.0, 0.0)));
+        // Faster: louder, the heavy share up, the pitch up to 12 % from 30 m/s.
+        let (slow, fast) = (cabin_rain(50.0, 0.0), cabin_rain(50.0, 25.0));
+        assert!(total(fast) > total(slow) * 1.3);
+        assert!(fast.0[1] > fast.0[0]);
+        assert_eq!(cabin_rain(100.0, 40.0).1, 1.12);
+        assert_eq!(cabin_rain(100.0, 0.0).1, 1.0);
+        // No rain, no sound; held at the most.
+        assert_eq!(total(cabin_rain(0.0, 30.0)), 0.0);
+        assert_eq!(cabin_rain(100.0, 200.0).0, cabin_rain(100.0, 100.0).0);
     }
 }

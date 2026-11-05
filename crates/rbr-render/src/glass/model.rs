@@ -423,6 +423,9 @@ pub struct Glass {
     /// A side window's (ours): the way the airflow runs along it in the chart, toward the car's back. `None` for the
     /// windscreen, whose airflow runs up and out and which takes the bugs.
     back: Option<Vec2>,
+    /// The splats landed on the glass since the reader last took them, each its big drop's size within
+    /// [`SPLAT_RADIUS`] (0 to 1): for the sound (`crate::sound::glass`), which takes them; nothing here reads them.
+    pub splatted: Vec<f32>,
 }
 
 impl Glass {
@@ -449,6 +452,7 @@ impl Glass {
             blade_water: vec![0.0; wipers.len()],
             wipers,
             back: None,
+            splatted: Vec::new(),
         }
     }
 
@@ -468,6 +472,7 @@ impl Glass {
         self.blade_water.fill(0.0);
         self.strokes = [Stroke::default(); STROKES];
         self.moving = 0.0;
+        self.splatted.clear();
     }
 
     /// The chart point at the middle of film cell `index`, and a cell's size.
@@ -651,6 +656,9 @@ impl Glass {
             };
             let seed = self.rng.unit();
             if inside(at) {
+                if k == 0 {
+                    self.splatted.push((radius - SPLAT_RADIUS[0]) / (SPLAT_RADIUS[1] - SPLAT_RADIUS[0]));
+                }
                 let velocity = self.skid(at, speed.max(0.0));
                 self.drops.push(Drop {
                     at,
@@ -1366,6 +1374,10 @@ mod tests {
         let bow = throw(Thrown { bow: 0.04, ..Thrown::default() });
         let big = |g: &Glass| g.drops.iter().filter(|d| d.kind == Kind::Water && d.radius >= SPLAT_RADIUS[0]).count();
         assert!(big(&bow) >= 10 && bow.mud() == 0, "splats over the bonnet: {}", big(&bow));
+        // Each splat that landed is kept for the sound, one size a splat (500 steps of 0.04, all on the glass).
+        assert_eq!(bow.splatted.len(), 20);
+        assert!(bow.splatted.iter().all(|s| (0.0..=1.0).contains(s)));
+        assert!(wet.splatted.is_empty() && snow.splatted.is_empty());
     }
 
     #[test]

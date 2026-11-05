@@ -70,6 +70,19 @@ Mechanics in `exhaust.rs` (pops, bangs, runs, engine fire, anti-lag) and `effect
 wipers).
 
 - Only the wipers fire in the drives tried (check coverage, not in code).
+- Wipers and splats from the glass (ours, realism, 2026-11-05; `effects::Glass`, `rbr_render::sound::glass`,
+  `Player::set_glass`): with the renderer's glass model the wipers play as its blades move, in the car only, instead of
+  1.02's 0.4 s timer under precipitation (kept without a glass: `rbr-sound`, a car without a windscreen chart). The
+  motor loops while the blades are off the park; each stroke the glass begins (`Glass::stroke_count`) plays one stroke,
+  wet by the water under the sweep (the film's mean over the swept cells plus the share the water, snow and trails
+  cover; fully wet from 0.08) and dry for the rest, by equal power, so the mud-driven auto wipers on dry glass scrape;
+  each puddle splat the glass lands (`Glass::splatted`, its big drop's size) slaps the windscreen once, 0.25 to 0.5,
+  through the cabin low-pass, 30 ms apart within a frame (at most 6 waiting). Splats warmed up after a seek are dropped.
+  Recordings embedded (`data::GlassBank`, `sounds/CREDITS.md`): in-car wipers (strokes and the motor from between them),
+  a dry-glass scrape, a bucket of water hitting a car; the retail `CAR::WIPER` samples stay for 1.02's path. Levels:
+  the motor 0.5 of the `WiperEngine` amp, a stroke 1.6 of the `Wiper` amp (the recordings' loudest 50 ms at -15 and
+  -18 dBFS). Autopilot on wet 52O, GC8, in the car (`/tmp/wipers-rain/`, not kept): with no rain and the wipers on
+  continuous each stroke scrapes about -29 dBFS (20 ms), as loud as the whole mix at idle and 15 dB under it at speed.
 
 ## Tyres and surfaces
 
@@ -161,6 +174,16 @@ Mechanics in `speech` (`Speech::School`), `data::SchoolBank`, the mixer's queue 
 
 Mechanics in `world.rs` (wind, birds, siren) and `mixer/rain.rs`. The siren plays only in `rbr-sound --camera
 trackside` (the binary has no replay cameras); the wind in every camera, the birds outside the car.
+
+- Rain in the car (ours, realism, 2026-11-05; `world::cabin_rain`, `Command::CabinRain`): two recordings from inside
+  parked cars (light rain from the driver's seat, heavy rain on a roof; `sounds/CREDITS.md`) replace 1.02's
+  synthesised stream there; outside the car the synthesised one stays (a 300 Hz rumble, but no outside recording
+  was clearly better, and outside the car the wind and tyres cover it). The drops hitting the car go as the glass
+  model's, `amount / 100 * (1 + speed / 28)` (light standing 0.5, heavy 1); heavy takes over from light over 0.5 to 1
+  by equal power, the level is its square root (at most 3) times 1.6 and the `Rain` amp, the pitch +12 % by 30 m/s.
+  No cabin low-pass (recorded inside). Snow plays none, as before. Same drive, heavy rain: at idle the mix +1.5 dB
+  (+5 dB at 200-600 Hz) over 1.02's stream, at speed +0.2 to 0.5 dB (the engine and tyres cover it); 1.02's light and
+  heavy streams measure the same.
 
 ## Scripted and service park
 

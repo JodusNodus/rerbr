@@ -21,6 +21,12 @@
 //!   (`E88Wiper::Tick` 0x5f8720, `rbr_render::glass::model::Wiping`).
 //!
 //! Ours: the frame clock of the dog rings runs on the physics step, and the effects volume option is 1.
+//!
+//! Ours (realism): with the renderer's glass model ([`Glass`], `rbr_render::glass::model`) the wipers play as its
+//! blades move instead of on 1.02's timer and samples, in the car only: the motor loop while they are off the park,
+//! a stroke at each stroke the glass begins (its `stroke_count`), as recorded on wet glass by the water under the
+//! blades and on dry glass for the rest ([`stroke_gains`]), and water slapping the windscreen at each puddle splat
+//! the glass lands, louder for a bigger one. The recordings are embedded (`data::GlassBank`).
 
 use rbr_recording::sound::Sound;
 
@@ -35,6 +41,41 @@ const COOLER_SCALE: f32 = 0.25;
 const COOLER_QUIET: f32 = 0.001;
 /// Seconds per wiper stroke (`E88Wiper`: 1.3823 rad at 3.4558 rad/s).
 pub const WIPER_STROKE: f32 = 0.4;
+
+/// The wiper motor's gain over the `WiperEngine` amp (ours; the recording is at -24 dBFS RMS).
+const MOTOR_GAIN: f32 = 0.5;
+/// A stroke's gain over the `Wiper` amp (ours; the recordings' loudest 50 ms at -15 dBFS).
+const STROKE_GAIN: f32 = 1.6;
+/// The water under the blades (the glass film's mean over their sweep plus the share the drops cover) at which a
+/// stroke sounds fully wet; below it the dry stroke takes over.
+const WET_FULL: f32 = 0.08;
+/// A splat's gain (ours, the effects' level; the recordings' loudest 0.1 s at -16 dBFS) for the smallest and the
+/// biggest splat ([`Glass::splats`] 0 to 1).
+const SPLAT_GAIN: [f32; 2] = [0.25, 0.5];
+/// Seconds between splats landed in one frame (ours: the glass lands a frame's at once), and the most kept waiting.
+const SPLAT_SPACING: f32 = 0.03;
+const SPLATS_WAITING: usize = 6;
+
+/// The windscreen as the renderer's glass model shows it after a frame (ours): the blades and the water under them,
+/// and the puddle splats it landed since the last frame.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Glass {
+    /// The blades are off the park.
+    pub moving: bool,
+    /// The strokes begun so far, and whether the last sets out from the park (else it turns back).
+    pub strokes: u32,
+    pub out: bool,
+    /// The water under the blades' sweep: the film's mean plus the share the drops cover (0 dry).
+    pub wet: f32,
+    /// Each splat's size, 0 to 1.
+    pub splats: Vec<f32>,
+}
+
+/// A stroke's wet and dry gains (before the `Wiper` amp) with `wet` water under the blades ([`WET_FULL`]).
+pub fn stroke_gains(wet: f32) -> [f32; 2] {
+    let w = (wet / WET_FULL).clamp(0.0, 1.0);
+    [w, 1.0 - w].map(|g| g.sqrt() * STROKE_GAIN)
+}
 
 /// The effects' amps (`audio.ini`).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -64,11 +105,33 @@ pub struct Effects {
     /// The wipers' time running and the direction last played.
     wiper_time: f32,
     wiper_played: Option<bool>,
+    /// The glass model's windscreen (ours; `None`: 1.02's timer; its splats moved to `splats`), the strokes last
+    /// heard, the splats not yet played and the next splat recording (the mixer takes it modulo its bank).
+    glass: Option<Glass>,
+    strokes: Option<u32>,
+    splats: Vec<f32>,
+    next_splat: usize,
+    splat_wait: f32,
+    /// The motor loop runs.
+    motor: bool,
 }
 
 impl Effects {
     pub fn new(gains: EffectGains, dog_rings: usize) -> Effects {
         Effects { gains, dog_rings, ..Effects::default() }
+    }
+
+    /// The windscreen as the glass model shows it after a frame (ours); `None` plays 1.02's wipers. Its splats wait
+    /// for the next step.
+    pub fn set_glass(&mut self, mut glass: Option<Glass>) {
+        if let Some(g) = &mut glass {
+            self.splats.append(&mut g.splats);
+            let over = self.splats.len().saturating_sub(SPLATS_WAITING);
+            self.splats.drain(..over);
+        } else {
+            self.strokes = None;
+        }
+        self.glass = glass;
     }
 
     /// The commands for one step of `dt` seconds: the engine is stopped or not, the camera in the car or not, under
@@ -113,6 +176,11 @@ impl Effects {
         let cooler = if cooler >= COOLER_QUIET { cooler * self.gains.cooler } else { 0.0 };
         out.push(Command::Loop { voice: Loop::Cooler, gain: cooler, pitch: 1.0 });
 
+        // Its splats are taken: the clone allocates nothing.
+        if let Some(glass) = self.glass.clone() {
+            self.glass_step(&glass, inside, dt, &mut out);
+            return out;
+        }
         if precipitation > 0.0 {
             self.wiper_time += dt;
         }
@@ -125,6 +193,39 @@ impl Effects {
             out.push(Command::Shot { shot: stroke, gain: self.gains.wiper });
         }
         out
+    }
+
+    /// The wipers and splats as the glass shows them (ours).
+    fn glass_step(&mut self, glass: &Glass, inside: bool, dt: f32, out: &mut Vec<Command>) {
+        let motor = inside && glass.moving;
+        if motor || self.motor {
+            let gain = if motor { self.gains.wiper_engine * MOTOR_GAIN } else { 0.0 };
+            out.push(Command::Loop { voice: Loop::WiperMotor, gain, pitch: 1.0 });
+        }
+        self.motor = motor;
+        // One stroke a step at most: a jump of several (a replay seek) plays once; fewer (a new glass) plays none.
+        let new_stroke = self.strokes.is_some_and(|last| glass.strokes > last);
+        self.strokes = Some(glass.strokes);
+        if inside && new_stroke {
+            let k = usize::from(glass.out);
+            let [wet, dry] = stroke_gains(glass.wet);
+            for (shot, gain) in [(Shot::WiperWet(k), wet), (Shot::WiperDry(k), dry)] {
+                if gain > 0.0 {
+                    out.push(Command::Shot { shot, gain: gain * self.gains.wiper });
+                }
+            }
+        }
+        // A splat at a time, [`SPLAT_SPACING`] apart; outside the car they are dropped.
+        self.splat_wait -= dt;
+        if !inside {
+            self.splats.clear();
+        } else if self.splat_wait <= 0.0 && !self.splats.is_empty() {
+            let size = self.splats.remove(0);
+            let gain = SPLAT_GAIN[0] + (SPLAT_GAIN[1] - SPLAT_GAIN[0]) * size.clamp(0.0, 1.0);
+            out.push(Command::Shot { shot: Shot::GlassSplat(self.next_splat), gain });
+            self.next_splat = self.next_splat.wrapping_add(1);
+            self.splat_wait = SPLAT_SPACING;
+        }
     }
 }
 
@@ -202,5 +303,103 @@ mod tests {
         assert_eq!(all[1].1, [Shot::WiperEngine, Shot::WiperUp]);
         let mut fx = Effects::new(EffectGains::default(), 8);
         assert!((0..100).all(|_| shots(&fx.step(&dry, false, true, 0.0, 0.01, || 0)).is_empty()));
+    }
+
+    fn motor(commands: &[Command]) -> Option<f32> {
+        commands.iter().find_map(|c| match *c {
+            Command::Loop { voice: Loop::WiperMotor, gain, .. } => Some(gain),
+            _ => None,
+        })
+    }
+
+    /// The glass's blades over `steps` steps of 0.01 s: parked, then out and back at 0.4 s a stroke.
+    fn blades(k: usize, wet: f32) -> Glass {
+        let t = k as f32 * 0.01;
+        let strokes = (t / WIPER_STROKE).ceil() as u32;
+        Glass { moving: t > 0.0 && t < 1.6, strokes: strokes.min(4), out: strokes % 2 == 1, wet, splats: Vec::new() }
+    }
+
+    #[test]
+    fn the_wipers_follow_the_glass_blades() {
+        let dry = sound(&[], 0.0);
+        let mut fx = Effects::new(EffectGains::default(), 8);
+        // Parked: nothing, rain or not.
+        fx.set_glass(Some(Glass::default()));
+        for _ in 0..50 {
+            let out = fx.step(&dry, false, true, 100.0, 0.01, || 0);
+            assert!(shots(&out).is_empty() && motor(&out).is_none(), "{out:?}");
+        }
+        // Moving on wet glass: the motor every step and one wet stroke a stroke, by direction.
+        let mut fx = Effects::new(EffectGains::default(), 8);
+        let mut played = Vec::new();
+        for k in 0..200 {
+            fx.set_glass(Some(blades(k, 0.5)));
+            let out = fx.step(&dry, false, true, 100.0, 0.01, || 0);
+            let moving = blades(k, 0.5).moving;
+            assert_eq!(motor(&out).is_some_and(|g| g > 0.0), moving, "step {k}");
+            played.extend(shots(&out).into_iter().map(|s| (k, s)));
+        }
+        assert_eq!(
+            played,
+            [(1, Shot::WiperWet(1)), (41, Shot::WiperWet(0)), (81, Shot::WiperWet(1)), (121, Shot::WiperWet(0))]
+        );
+        // Parked again: the motor stops once, then nothing.
+        let mut fx = Effects::new(EffectGains::default(), 8);
+        let gains: Vec<Option<f32>> = (0..200)
+            .map(|k| {
+                fx.set_glass(Some(blades(k, 0.5)));
+                motor(&fx.step(&dry, false, true, 100.0, 0.01, || 0))
+            })
+            .collect();
+        let stop = gains.iter().position(|g| *g == Some(0.0)).unwrap();
+        assert!((160..=161).contains(&stop) && gains[stop - 1].is_some_and(|g| g > 0.0), "{stop}");
+        assert!(gains[stop + 1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn dry_glass_squeaks_and_the_wipers_stay_quiet_outside() {
+        let dry = sound(&[], 0.0);
+        let strokes = |wet: f32, inside: bool| {
+            let mut fx = Effects::new(EffectGains::default(), 8);
+            (0..100)
+                .flat_map(|k| {
+                    fx.set_glass(Some(blades(k, wet)));
+                    shots(&fx.step(&dry, false, inside, 0.0, 0.01, || 0))
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(strokes(0.0, true), [Shot::WiperDry(1), Shot::WiperDry(0), Shot::WiperDry(1)]);
+        assert_eq!(strokes(0.02, true).len(), 6, "damp: both");
+        assert!(strokes(0.0, false).is_empty());
+        let [wet, dry] = stroke_gains(0.02);
+        assert!(wet > 0.0 && dry > wet);
+        assert_eq!(stroke_gains(1.0)[1], 0.0);
+    }
+
+    #[test]
+    fn each_splat_slaps_once_in_the_car() {
+        let dry = sound(&[], 0.0);
+        let mut fx = Effects::new(EffectGains::default(), 8);
+        let gain = |c: &[Command]| -> Vec<(Shot, f32)> {
+            c.iter()
+                .filter_map(|c| match *c {
+                    Command::Shot { shot: shot @ Shot::GlassSplat(_), gain } => Some((shot, gain)),
+                    _ => None,
+                })
+                .collect()
+        };
+        // Two in a frame: one each, 30 ms apart; then none until the next frame's.
+        fx.set_glass(Some(Glass { splats: vec![0.0, 1.0], ..Glass::default() }));
+        let played: Vec<(usize, Vec<(Shot, f32)>)> = (0..10)
+            .map(|k| (k, gain(&fx.step(&dry, false, true, 0.0, 0.01, || 0))))
+            .filter(|(_, s)| !s.is_empty())
+            .collect();
+        assert_eq!(played, [(0, vec![(Shot::GlassSplat(0), 0.25)]), (3, vec![(Shot::GlassSplat(1), 0.5)])]);
+        fx.set_glass(Some(Glass { splats: vec![0.5], ..Glass::default() }));
+        assert_eq!(gain(&fx.step(&dry, false, true, 0.0, 0.01, || 0)), [(Shot::GlassSplat(2), 0.375)]);
+        // Outside the car they are dropped.
+        fx.set_glass(Some(Glass { splats: vec![0.5], ..Glass::default() }));
+        assert!(gain(&fx.step(&dry, false, false, 0.0, 0.01, || 0)).is_empty());
+        assert!(gain(&fx.step(&dry, false, true, 0.0, 0.01, || 0)).is_empty());
     }
 }

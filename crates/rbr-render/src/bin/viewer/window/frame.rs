@@ -275,6 +275,7 @@ impl App {
                     ));
                 }
                 sound.set_water(self.scene.particles.as_ref().map(|p| rbr_render::sound::water(&p.particles)));
+                sound.set_glass(self.scene.glass.as_mut().map(rbr_render::sound::glass));
                 let particles = self.scene.particles.as_ref().map(|p| &p.particles);
                 let car = &playback.sample().car;
                 sound.set_verge(rbr_render::sound::verge(particles, self.scene.roadside.as_ref(), car));

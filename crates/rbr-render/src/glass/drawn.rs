@@ -60,6 +60,16 @@ impl Drawn {
         &self.car.windscreen
     }
 
+    /// The windscreen's glass after the last frame drawn (for the sound, `crate::sound::glass`).
+    pub fn glass(&self) -> &Glass {
+        &self.glass
+    }
+
+    /// Takes the windscreen's splats since the last call ([`Glass::splatted`]).
+    pub fn take_splats(&mut self) -> Vec<f32> {
+        std::mem::take(&mut self.glass.splatted)
+    }
+
     /// The glass of car `name` in `precipitation`, with the wiper meshes found among `playback`'s interior parts and
     /// what its windows' faces let through, `tints`, its mud specks as `mud`. `None` (reported on stderr) when the car
     /// has no windscreen part.
@@ -134,8 +144,10 @@ impl Drawn {
     pub fn draw(&mut self, renderer: &mut Renderer, playback: &mut Playback, interior: bool, spray: Option<&Spray>) {
         let samples = playback.samples();
         let index = playback.index();
+        let followed = matches!(self.last,
+            Some((last, step)) if last <= index && index - last <= WARM_UP && samples[last].step == step);
         let first = match self.last {
-            Some((last, step)) if last <= index && index - last <= WARM_UP && samples[last].step == step => last + 1,
+            Some((last, _)) if followed => last + 1,
             _ => {
                 self.glass.clear();
                 self.felt = Vec3::ZERO;
@@ -194,6 +206,10 @@ impl Drawn {
             }
         }
         self.last = Some((index, samples[index].step));
+        // A glass begun again (a seek, a restart) warmed up on frames already gone: no splats from them.
+        if !followed {
+            self.glass.splatted.clear();
+        }
         let phase = self.glass.phase;
         let turn =
             |windscreen: &Windscreen, wipers: &[(Wiper, Vec3)], parts: &[Vec<usize>], playback: &mut Playback| {

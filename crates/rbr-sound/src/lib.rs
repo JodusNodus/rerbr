@@ -296,6 +296,12 @@ impl Player {
         self.models.tyres.set_water(water);
     }
 
+    /// The windscreen as the renderer's glass model shows it after a frame (ours, [`effects::Glass`]): the wipers
+    /// and splats play from it; `None`, the default, plays 1.02's wipers.
+    pub fn set_glass(&mut self, glass: Option<effects::Glass>) {
+        self.models.effects.set_glass(glass);
+    }
+
     /// The car at the verge as the renderer sees it (ours, [`verge::Verge`]); `None`, the default, plays nothing of
     /// it.
     pub fn set_verge(&mut self, verge: Option<verge::Verge>) {
