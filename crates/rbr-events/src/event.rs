@@ -10,10 +10,17 @@ pub struct ItineraryStage {
     pub stage: StageRef,
     /// The start clock (hours, 0 to 24): the launcher passes it as the stage's time of day.
     pub clock: f32,
-    /// The stage's weather row or preset name, as the launcher's Drive page takes it.
-    pub weather: String,
+    pub conditions: Conditions,
     /// The service after this stage (minutes), none when the next stage follows directly.
     pub service_after: Option<u32>,
+}
+
+/// A stage's road and sky, which the launcher maps to the stage's own weathers (a dry, damp or wet row).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Conditions {
+    Dry,
+    Damp,
+    Wet,
 }
 
 /// One rally of the event.
@@ -79,7 +86,8 @@ pub struct Event {
 impl Event {
     /// Builds the event: the itinerary from `stages` (the installed pool) by the config's length, pool, surfaces,
     /// daylight and weather, and the field from `class_cars` (catalog keys of the config's class).
-    /// `reference` gives a stage's reference time for the class (`pace::reference_time` over its driveline).
+    /// `reference` gives a stage's reference time for the class at a wetness (`pace::reference_time` over its
+    /// driveline).
     pub fn build(
         config: EventConfig,
         stages: &[StageRef],
