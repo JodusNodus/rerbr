@@ -10,8 +10,7 @@
 //! Run from the repository root with `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS` set, after `cargo build --release -p rbr-standalone`.
 
 use std::error::Error;
-use std::fs::{self, File};
-use std::io::BufWriter;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use glam::{Mat4, Vec3};
@@ -221,9 +220,5 @@ fn chase(frame: &[u8]) -> Option<FreeFly> {
 }
 
 fn write(path: &Path, pixels: &[u8]) -> Result<(), Box<dyn Error>> {
-    let mut png = png::Encoder::new(BufWriter::new(File::create(path)?), SIZE.0, SIZE.1);
-    png.set_color(png::ColorType::Rgba);
-    png.set_depth(png::BitDepth::Eight);
-    png.write_header()?.write_image_data(pixels)?;
-    Ok(())
+    rbr_render::upscale::write_png(path, SIZE.0, SIZE.1, pixels)
 }

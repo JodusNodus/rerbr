@@ -2,8 +2,7 @@
 //! An optional `--without-actions` captures the HUD alone for before/after comparisons.
 
 use std::error::Error;
-use std::fs::{self, File};
-use std::io::BufWriter;
+use std::fs;
 use std::path::PathBuf;
 
 use glam::Mat4;
@@ -104,10 +103,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             });
         })?;
-        let mut png = png::Encoder::new(BufWriter::new(File::create(out.join(format!("{name}.png")))?), size.0, size.1);
-        png.set_color(png::ColorType::Rgba);
-        png.set_depth(png::BitDepth::Eight);
-        png.write_header()?.write_image_data(&pixels)?;
+        rbr_render::upscale::write_png(&out.join(format!("{name}.png")), size.0, size.1, &pixels)?;
     }
     Ok(())
 }

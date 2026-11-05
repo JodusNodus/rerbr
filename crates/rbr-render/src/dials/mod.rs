@@ -654,20 +654,8 @@ fn read_image(bytes: &[u8], name: &str) -> Option<Rgba> {
     if name.to_ascii_lowercase().ends_with(".dds") {
         return dds::parse(bytes).ok().map(|d| Rgba::decode(&d));
     }
-    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-    decoder.set_transformations(png::Transformations::normalize_to_color8());
-    let mut reader = decoder.read_info().ok()?;
-    let mut pixels = vec![0; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut pixels).ok()?;
-    pixels.truncate(info.buffer_size());
-    let pixels = match info.color_type {
-        png::ColorType::Rgba => pixels,
-        png::ColorType::Rgb => pixels.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
-        png::ColorType::GrayscaleAlpha => pixels.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
-        png::ColorType::Grayscale => pixels.iter().flat_map(|&g| [g, g, g, 255]).collect(),
-        png::ColorType::Indexed => return None,
-    };
-    Some(Rgba { width: info.width, height: info.height, pixels })
+    let (width, height, pixels) = rbr_btb::scene::decode_png(bytes).ok()?;
+    Some(Rgba { width, height, pixels })
 }
 
 #[cfg(test)]

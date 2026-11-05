@@ -2404,7 +2404,6 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "futures-executor",
- "png",
  "rbr-btb",
  "rbr-championship",
  "rbr-formats",
