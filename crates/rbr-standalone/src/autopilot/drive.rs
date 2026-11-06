@@ -144,6 +144,7 @@ pub fn drive(
     flat_out: bool,
     brake_from: Option<f32>,
     circle: Option<Circle>,
+    circle_ramp: Option<f32>,
     trace_speed: Option<&Path>,
     out: &Path,
 ) -> Result<Drove, String> {
@@ -168,6 +169,9 @@ pub fn drive(
         .with_flat_out(flat_out);
     if let Some(circle) = circle {
         driver = driver.with_circle(circle);
+    }
+    if let Some(ramp) = circle_ramp {
+        driver = driver.with_circle_ramp(ramp);
     }
     if let Some(v) = brake_from {
         driver = driver.with_brake_from(v);

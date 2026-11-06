@@ -357,6 +357,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
             args.flat_out,
             args.brake_from,
             args.circle,
+            args.circle_ramp,
             args.trace_speed.as_deref(),
             out,
         )

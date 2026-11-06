@@ -39,6 +39,9 @@ pub struct Args {
     /// `--circle X,Y,R` (with `--autopilot`): drive the steady-state circle of centre X,Y and radius R (m),
     /// counter-clockwise, the target speed ramping up until the car lets go (`Driver::circle`).
     pub circle: Option<autopilot::Circle>,
+    /// `--circle-ramp RATE` (with `--circle`): the circle target's rise in m/s per s (`CIRCLE_RAMP` unless given,
+    /// for repeat runs at a gentler or steeper ramp).
+    pub circle_ramp: Option<f32>,
     /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear and position.
     pub trace_speed: Option<PathBuf>,
     pub boot: bool,
@@ -141,7 +144,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R] [--trace-speed FILE] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -211,6 +214,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--top-speed" => args.top_speed = Some(parsed("--top-speed", &value)?),
             "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
             "--circle" => args.circle = Some(value.parse()?),
+            "--circle-ramp" => args.circle_ramp = Some(parsed("--circle-ramp", &value)?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
             "--aim" => args.aim = Some(value.parse()?),
             "--snapshot" => args.snapshots.push(value),
@@ -442,6 +446,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.circle.is_some() && args.autopilot.is_none() {
         return Err("--circle needs --autopilot".into());
     }
+    if args.circle_ramp.is_some() && args.circle.is_none() {
+        return Err("--circle-ramp needs --circle".into());
+    }
     if args.brake_from.is_some() && args.autopilot.is_none() {
         return Err("--brake-from needs --autopilot".into());
     }
@@ -630,6 +637,9 @@ mod tests {
                     a.circle,
                     Some(autopilot::Circle { center: [-260.0, 120.0], radius: 40.0 })
                 );
+            }),
+            (format!("{BOOT} --circle -260,120,40 --circle-ramp 0.4"), |a| {
+                assert_eq!(a.circle_ramp, Some(0.4));
             }),
             (format!("{LIVE} --replay F --replay-pace free"), |a| {
                 assert_eq!(a.replay_pace, live::Pace::Free)
@@ -836,6 +846,7 @@ mod tests {
             (format!("{REC} --flat-out"), "--flat-out and --trace-speed need --autopilot"),
             (format!("{REC} --trace-speed T"), "--flat-out and --trace-speed need --autopilot"),
             (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
+            (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
             (format!("{REC} --autopilot OUT --circle 0,0"), "--circle 0,0: want X,Y,R with R > 0"),
             (format!("{REC} --autopilot OUT --circle 0,0,-5"), "--circle 0,0,-5: want X,Y,R with R > 0"),

@@ -416,6 +416,8 @@ pub struct Driver<'a> {
     flat_out: bool,
     /// `--circle` (pace measurement): the steady-state circle to steer, if any.
     circle: Option<Circle>,
+    /// `--circle-ramp` (pace measurement): the circle target's rise (m/s per s), `CIRCLE_RAMP` unless given.
+    circle_ramp: f32,
     /// The circle run's ramp clock (s): the target speed rises with it, from the first driven step on.
     circle_t: f32,
     /// `--brake-from` (pace measurement): full brake once the speed reaches this (m/s), if any.
@@ -486,6 +488,7 @@ impl<'a> Driver<'a> {
             against: false,
             flat_out: false,
             circle: None,
+            circle_ramp: CIRCLE_RAMP,
             circle_t: 0.0,
             brake_at: None,
             braking: false,
@@ -592,7 +595,7 @@ impl<'a> Driver<'a> {
     /// `--flat-out`, with no curve, kink, tracking or prop-dodge slowdown; the circle's ramp under `--circle`.
     pub fn target_speed(&self, at: f32) -> f32 {
         if self.circle.is_some() {
-            return self.top.min(CIRCLE_START + CIRCLE_RAMP * self.circle_t);
+            return self.top.min(CIRCLE_START + self.circle_ramp * self.circle_t);
         }
         if self.flat_out {
             return self.top;
@@ -643,6 +646,11 @@ impl<'a> Driver<'a> {
     /// The driver steering the steady-state `circle` (`--circle`, pace measurement) or none.
     pub fn with_circle(self, circle: Circle) -> Self {
         Self { circle: Some(circle), ..self }
+    }
+
+    /// The driver ramping the circle target at `ramp` m/s per s (`--circle-ramp`, repeat runs).
+    pub fn with_circle_ramp(self, ramp: f32) -> Self {
+        Self { circle_ramp: ramp, ..self }
     }
 
     /// The driver braking fully from `v` m/s on (`--brake-from`, pace measurement) or never.

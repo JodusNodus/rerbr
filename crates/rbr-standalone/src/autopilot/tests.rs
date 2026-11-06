@@ -207,6 +207,15 @@ fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
 }
 
 #[test]
+fn circle_ramp_overrides_the_targets_rise() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let mut driver =
+        driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 }).with_circle_ramp(0.4);
+    driver.circle_t = 10.0;
+    assert_eq!(driver.target_speed(0.0), 8.0 + 0.4 * 10.0);
+}
+
+#[test]
 fn lugging_downshifts_in_the_measurement_modes_only() {
     // Loose ground lugs the engine down in too tall a gear (a gravel circle stalls in second at 500
     // rad/s): with full throttle on, below torque and barely moving, the measurement driver (`free`)
