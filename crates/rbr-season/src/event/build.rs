@@ -3,10 +3,10 @@
 
 use super::*;
 
-/// The mid-rally service (minutes).
+/// The mid-leg service (minutes).
 const SERVICE_MID: u32 = 20;
 
-/// The overnight service between a weekend's legs (minutes).
+/// The overnight service between a rally's legs (minutes).
 pub(super) const SERVICE_NIGHT: u32 = 45;
 
 /// The team a roster without teams gets.
@@ -65,26 +65,13 @@ impl Event {
         roster: &Roster,
         profile: &dyn Fn(&StageRef) -> StageProfile,
     ) -> Result<Event, String> {
-        let (rallies, legs): (Vec<u8>, Vec<u8>) = match config.length {
-            Length::Rally { stages: n } => {
-                if n == 0 {
-                    return Err("a rally needs at least one stage".to_owned());
-                }
-                (vec![n], vec![1])
-            }
-            Length::Weekend { stages: n } => {
-                if n == 0 {
-                    return Err("a rally needs at least one stage".to_owned());
-                }
-                (vec![n], vec![2])
-            }
-            Length::Season { rallies: r, stages: n } => {
-                if r == 0 || n == 0 {
-                    return Err("a season needs rallies with stages".to_owned());
-                }
-                (vec![n; r as usize], vec![1; r as usize])
-            }
-        };
+        let Length { rallies, legs, stages: count } = config.length;
+        if rallies == 0 || count == 0 {
+            return Err("an event needs rallies with stages".to_owned());
+        }
+        if legs == 0 || legs > count {
+            return Err("a rally's legs need a stage each".to_owned());
+        }
         let pool = pool_stages(&config, stages);
         if pool.is_empty() {
             return Err("no stages in the pool".to_owned());
@@ -95,7 +82,7 @@ impl Event {
         surfaces.sort_by_key(|s| *s as u8);
         surfaces.dedup_by_key(|s| *s as u8);
         let mut rally_surface = Vec::new();
-        for _ in &rallies {
+        for _ in 0..rallies {
             match config.surfaces {
                 Surfaces::Only(s) => {
                     if !surfaces.contains(&s) {
@@ -107,7 +94,7 @@ impl Event {
             }
         }
         let mut built = Vec::new();
-        for (rally, (&count, &surface)) in rallies.iter().zip(rally_surface.iter()).enumerate() {
+        for &surface in &rally_surface {
             let mut candidates: Vec<&StageRef> = pool.iter().filter(|s| s.surface == surface).copied().collect();
             if candidates.is_empty() {
                 return Err(format!("no {:?} stages in the pool", surface.name()));
@@ -142,8 +129,7 @@ impl Event {
                     None => picked.extend(refill.iter().take(count as usize - picked.len()).cloned()),
                 }
             }
-            let leg_count = legs[rally.min(legs.len() - 1)];
-            built.push(draw_rally(&config, &picked, leg_count, &mut rng, profile));
+            built.push(draw_rally(&config, &picked, legs, &mut rng, profile));
         }
         let (field, contenders) =
             field::field(class_cars, config.field_size as usize, config.difficulty, config.seed ^ 0xF1E1D, roster);
@@ -169,8 +155,13 @@ impl Event {
     }
 }
 
-/// Draws one rally's itinerary: start clocks from 08:00 (21:00 at night) with service gaps, conditions by the
-/// weather (changeable per leg), and the last leg at dusk or night on realistic daylight.
+/// The stages of each of `legs` legs over `stages`, the earlier legs the longer.
+fn leg_sizes(stages: usize, legs: usize) -> Vec<usize> {
+    (0..legs).map(|leg| stages / legs + usize::from(leg < stages % legs)).collect()
+}
+
+/// Draws one rally's itinerary: each leg a day, its start clocks from 08:00 (21:00 at night) with service gaps; the
+/// conditions by the weather (changeable per leg); on realistic daylight the first day's last stages at dusk or night.
 fn draw_rally(
     config: &EventConfig,
     picked: &[StageRef],
@@ -178,11 +169,10 @@ fn draw_rally(
     rng: &mut CrtRand,
     profile: &dyn Fn(&StageRef) -> StageProfile,
 ) -> Rally {
-    let legs = legs.max(1) as usize;
-    let per_leg = picked.len().div_ceil(legs);
+    let sizes = leg_sizes(picked.len(), legs.clamp(1, picked.len().max(1) as u8) as usize);
     // Changeable weather is drawn per leg.
     let mut leg_conditions = Vec::new();
-    for _ in 0..legs {
+    for _ in &sizes {
         leg_conditions.push(match config.weather {
             Weather::Dry => Conditions::Dry,
             Weather::Wet => Conditions::Wet,
@@ -198,47 +188,49 @@ fn draw_rally(
             }
         });
     }
-    let mut clock: f32 = match config.daylight {
+    let morning: f32 = match config.daylight {
         Daylight::Night => 21.0,
         _ => 8.0,
     };
     let mut stages = Vec::new();
-    let last_start = if legs > 1 { (legs - 1) * per_leg } else { picked.len().saturating_sub(2) };
-    for (i, stage) in picked.iter().enumerate() {
-        let leg = (i / per_leg.max(1)).min(legs - 1);
-        let conditions = leg_conditions[leg];
-        let wet = conditions.wetness();
-        let profile = profile(stage);
-        let reference = profile.reference(wet);
-        // Realistic daylight puts the last leg at dusk or night.
-        if matches!(config.daylight, Daylight::Realistic) && i >= last_start && picked.len() > 1 {
-            clock = clock.max(19.0 + 0.5 * (i - last_start) as f32);
+    let mut next = picked.iter();
+    for (leg, &size) in sizes.iter().enumerate() {
+        // A leg is a day: it starts the next morning (evening at night).
+        let mut clock = morning;
+        let dusk_from = size.saturating_sub(2);
+        for pos in 0..size {
+            let Some(stage) = next.next() else { break };
+            let conditions = leg_conditions[leg];
+            let wet = conditions.wetness();
+            let profile = profile(stage);
+            let reference = profile.reference(wet);
+            if matches!(config.daylight, Daylight::Realistic) && leg == 0 && pos >= dusk_from && size > 1 {
+                clock = clock.max(19.0 + 0.5 * (pos - dusk_from) as f32);
+            }
+            let at = clock % 24.0;
+            // The next stage follows the reference time and a gap, longer after a wet stage.
+            clock += reference / 3600.0 + 0.45 + 0.15 * wet;
+            // Services: about 20 minutes mid-leg, 45 overnight at the end of a leg but the last.
+            let last_leg = leg + 1 == sizes.len();
+            let service_after = if pos + 1 == size && !last_leg {
+                Some(SERVICE_NIGHT)
+            } else if pos + 1 == size.div_ceil(2) && !(last_leg && pos + 1 == size) {
+                Some(SERVICE_MID)
+            } else {
+                None
+            };
+            if let Some(m) = service_after {
+                clock += m as f32 / 60.0;
+            }
+            stages.push(ItineraryStage {
+                stage: stage.clone(),
+                clock: at,
+                conditions,
+                reference: profile.dry,
+                track: profile.track(0, PAR_SCALE),
+                service_after,
+            });
         }
-        let at = clock % 24.0;
-        // The next stage follows the reference time and a gap, longer after a wet stage.
-        clock += reference / 3600.0 + 0.45 + 0.15 * wet;
-        // Services: about 20 minutes mid-rally (mid-leg), 45 overnight between a weekend's legs.
-        let end_of_leg = (i + 1) % per_leg.max(1) == 0 && i + 1 < picked.len();
-        let pos = i - leg * per_leg.max(1);
-        let mid_leg = pos + 1 == per_leg.max(1).div_ceil(2);
-        let service_after = if end_of_leg && legs > 1 {
-            Some(SERVICE_NIGHT)
-        } else if end_of_leg || mid_leg {
-            Some(SERVICE_MID)
-        } else {
-            None
-        };
-        if let Some(m) = service_after {
-            clock += m as f32 / 60.0;
-        }
-        stages.push(ItineraryStage {
-            stage: stage.clone(),
-            clock: at,
-            conditions,
-            reference: profile.dry,
-            track: profile.track(0, PAR_SCALE),
-            service_after,
-        });
     }
     Rally { name: rally_name(picked), stages }
 }

@@ -50,7 +50,7 @@ pub fn stages() -> Vec<StageRef> {
 
 /// A built championship on [`stages`] (a season of two rallies of six stages) at its welcome.
 pub fn fixture_event() -> Event {
-    fixture_of(Preset::Season, Length::Season { rallies: 2, stages: 6 })
+    fixture_of(Preset::Season, Length { rallies: 2, legs: 1, stages: 6 })
 }
 
 /// A built championship on [`stages`]: `preset`'s on gravel, `length` long, at its welcome.

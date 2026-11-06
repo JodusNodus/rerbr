@@ -5,7 +5,7 @@ fn config() -> EventConfig {
     EventConfig {
         class: "Rally2".into(),
         car: "rsf-1".into(),
-        length: Length::Rally { stages: 6 },
+        length: Length { rallies: 1, legs: 1, stages: 6 },
         pool: StagePool::All,
         surfaces: Surfaces::Only(Surface::Gravel),
         daylight: Daylight::Day,
@@ -38,12 +38,16 @@ fn the_summary_reads_the_event_at_a_glance() {
     let retail = EventConfig { pool: StagePool::Retail, field_size: 1, ..config() };
     assert_eq!(summary(&retail, Some(&stages)), "6 stages · 60 km · gravel · 1 Rally2 driver");
     let season = EventConfig {
-        length: Length::Season { rallies: 2, stages: 3 },
+        length: Length { rallies: 2, legs: 1, stages: 3 },
         surfaces: Surfaces::Mixed,
         class: String::new(),
         ..config()
     };
     assert_eq!(summary(&season, Some(&stages)), "2 rallies · 6 stages · 108 km · mixed surfaces · 12 drivers");
+    let weekend = EventConfig { length: Length { rallies: 1, legs: 3, stages: 12 }, ..config() };
+    assert_eq!(summary(&weekend, None), "3 legs · 12 stages · gravel · 12 Rally2 drivers");
+    let season = EventConfig { length: Length { rallies: 6, legs: 2, stages: 8 }, ..config() };
+    assert_eq!(summary(&season, None), "6 rallies · 2 legs each · 48 stages · gravel · 12 Rally2 drivers");
     // No stage fits: no length.
     let snow = EventConfig { surfaces: Surfaces::Only(Surface::Snow), ..config() };
     assert_eq!(summary(&snow, Some(&stages)), "6 stages · snow · 12 Rally2 drivers");
@@ -148,7 +152,7 @@ fn a_rally_runs_its_turns_with_service_damage_and_the_late_penalty() {
 #[test]
 fn a_retired_car_is_rebuilt_overnight_and_restarts_the_next_leg() {
     let here = crate::test_dir("championship-super-rally");
-    // A ten-stage weekend: the overnight service after SS5.
+    // Three legs of four stages: the overnight services after SS4 and SS8.
     let mut page = page_on(&here, Preset::Weekend);
     assert!(page.run.as_ref().unwrap().event.config.restart, "the presets restart");
     page.turn_done(&here, "tester");
@@ -160,17 +164,17 @@ fn a_retired_car_is_rebuilt_overnight_and_restarts_the_next_leg() {
     std::fs::write(&out, damage.to_bytes()).unwrap();
     page.stage_closed(&here, "tester");
     let run = page.run.as_ref().unwrap();
-    assert_eq!(run.event.turn, Turn::Service { rally: 0, stage: 4, minutes: 45 });
+    assert_eq!(run.event.turn, Turn::Service { rally: 0, stage: 3, minutes: 45 });
     assert!(run.damage.is_none(), "rebuilt");
-    assert!((0..5).all(|k| run.event.charged(0, k, None).is_some()));
-    assert_eq!(super::view::rejoin(&run.event), Some(5));
+    assert!((0..4).all(|k| run.event.charged(0, k, None).is_some()));
+    assert_eq!(super::view::rejoin(&run.event), Some(4));
     // No park: the restart moves on with the rebuilt car, no damage carried in.
     page.turn_done(&here, "tester");
     assert!(page.run.as_ref().unwrap().damage.is_none());
     let start = page.stage_start(&here).unwrap();
     assert!(!start.args.iter().any(|a| a == "--damage-in"));
     page.abort_stage_start();
-    for time in [300.0, 305.0, 310.0, 315.0, 320.0] {
+    for time in [300.0, 305.0, 310.0, 315.0, 320.0, 325.0, 330.0, 335.0] {
         drive(&mut page, &here, time, None);
         if matches!(page.run.as_ref().unwrap().event.turn, Turn::Service { .. }) {
             page.service_done(&here, "tester", 0.0, CarriedDamage::default());
@@ -179,9 +183,9 @@ fn a_retired_car_is_rebuilt_overnight_and_restarts_the_next_leg() {
     // Classified: the charges and the driven stages make the total.
     let event = &page.run.as_ref().unwrap().event;
     assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
-    let charges: f32 = (0..5).filter_map(|k| event.charged(0, k, None)).sum();
+    let charges: f32 = (0..4).filter_map(|k| event.charged(0, k, None)).sum();
     let mine = event.rally_standings(0).into_iter().find(|l| l.entrant.is_none()).unwrap();
-    assert_eq!(mine.total, Some(charges + 1550.0));
+    assert_eq!(mine.total, Some(charges + 2540.0));
     std::fs::remove_dir_all(&here).unwrap();
 }
 

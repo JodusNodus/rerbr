@@ -495,27 +495,19 @@ fn split(line: &str) -> Vec<String> {
 }
 
 fn length_save(length: &Length) -> String {
-    match length {
-        Length::Rally { stages } => format!("rally:{stages}"),
-        Length::Weekend { stages } => format!("weekend:{stages}"),
-        Length::Season { rallies, stages } => format!("season:{rallies}:{stages}"),
-    }
+    format!("length:{}:{}:{}", length.rallies, length.legs, length.stages)
 }
 
+/// The length; also the older `rally:n` (one leg), `weekend:n` (two) and `season:r:n` (one leg each).
 fn length_load(text: &str) -> Result<Length, String> {
-    let mut it = text.split(':');
-    match (it.next(), it.next(), it.next(), it.next()) {
-        (Some("rally"), Some(n), None, _) => {
-            Ok(Length::Rally { stages: n.parse().map_err(|_| "bad rally length".to_owned())? })
-        }
-        (Some("weekend"), Some(n), None, _) => {
-            Ok(Length::Weekend { stages: n.parse().map_err(|_| "bad weekend length".to_owned())? })
-        }
-        (Some("season"), Some(r), Some(n), None) => Ok(Length::Season {
-            rallies: r.parse().map_err(|_| "bad season rallies".to_owned())?,
-            stages: n.parse().map_err(|_| "bad season stages".to_owned())?,
-        }),
-        _ => Err("bad length".to_owned()),
+    let n = |t: &str| t.parse::<u8>().map_err(|_| format!("bad length {text:?}"));
+    let parts: Vec<&str> = text.split(':').collect();
+    match parts[..] {
+        ["length", r, l, s] => Ok(Length { rallies: n(r)?, legs: n(l)?, stages: n(s)? }),
+        ["rally", s] => Ok(Length { rallies: 1, legs: 1, stages: n(s)? }),
+        ["weekend", s] => Ok(Length { rallies: 1, legs: 2, stages: n(s)? }),
+        ["season", r, s] => Ok(Length { rallies: n(r)?, legs: 1, stages: n(s)? }),
+        _ => Err(format!("bad length {text:?}")),
     }
 }
 

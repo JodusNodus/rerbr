@@ -114,7 +114,7 @@ fn the_itinerary_respects_pool_surface_and_length() {
     let cars = vec!["car".to_owned()];
     // Only gravel, retail only: the two Himalaya stages, twice over for a 4-stage rally.
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length::Rally { stages: 4 };
+    config.length = Length { rallies: 1, legs: 1, stages: 4 };
     config.pool = StagePool::Retail;
     let event = build(config, &pool, &cars);
     assert_eq!(event.rallies.len(), 1);
@@ -124,7 +124,7 @@ fn the_itinerary_respects_pool_surface_and_length() {
     // No repeat while the pool suffices.
     let keys: Vec<&str> = event.rallies[0].stages.iter().map(|s| s.stage.key.as_str()).collect();
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length::Rally { stages: 2 };
+    config.length = Length { rallies: 1, legs: 1, stages: 2 };
     config.pool = StagePool::Retail;
     let event = build(config, &pool, &cars);
     assert_eq!(keys.len(), 4);
@@ -141,7 +141,7 @@ fn a_season_mixes_surfaces_and_a_weekend_has_two_legs() {
     let pool = mixed_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::Season.config("Rally2", "car", 5);
-    config.length = Length::Season { rallies: 4, stages: 2 };
+    config.length = Length { rallies: 4, legs: 1, stages: 2 };
     let event = build(config, &pool, &cars);
     assert_eq!(event.rallies.len(), 4);
     // Each rally keeps one surface.
@@ -150,7 +150,7 @@ fn a_season_mixes_surfaces_and_a_weekend_has_two_legs() {
         assert!(rally.stages.windows(2).all(|w| w[0].stage.surface == w[1].stage.surface));
     }
     let mut config = Preset::Weekend.config("Rally2", "car", 5);
-    config.length = Length::Weekend { stages: 4 };
+    config.length = Length { rallies: 1, legs: 2, stages: 4 };
     let event = build(config, &pool, &cars);
     let nights: Vec<_> = event.rallies[0].stages.iter().filter(|s| s.service_after == Some(45)).collect();
     assert_eq!(nights.len(), 1, "one overnight service between the legs");
@@ -162,7 +162,7 @@ fn clocks_and_conditions_follow_daylight_and_weather() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length::Rally { stages: 3 };
+    config.length = Length { rallies: 1, legs: 1, stages: 3 };
     let event = build(config, &pool, &cars);
     let clocks: Vec<f32> = event.rallies[0].stages.iter().map(|s| s.clock).collect();
     assert!((clocks[0] - 8.0).abs() < 0.01, "{clocks:?}");
@@ -170,7 +170,7 @@ fn clocks_and_conditions_follow_daylight_and_weather() {
     assert!(event.rallies[0].stages.iter().all(|s| s.conditions == Conditions::Dry));
     // Night puts every stage at night.
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length::Rally { stages: 3 };
+    config.length = Length { rallies: 1, legs: 1, stages: 3 };
     config.daylight = Daylight::Night;
     let event = build(config, &pool, &cars);
     assert!(event.rallies[0].stages.iter().all(|s| s.clock >= 21.0 || s.clock < 8.0));
@@ -181,7 +181,7 @@ fn standings_score_the_top_ten_and_retirements() {
     let pool = gravel_pool();
     let cars = vec!["car-a".to_owned(), "car-b".to_owned(), "car-c".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length::Rally { stages: 2 };
+    config.length = Length { rallies: 1, legs: 1, stages: 2 };
     config.field_size = 3;
     let mut event = build(config, &pool, &cars);
     event.turn_done(); // Welcome -> stage 0.
@@ -212,7 +212,7 @@ fn adaptive_moves_the_field_toward_second_to_fourth() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length::Rally { stages: 4 };
+    config.length = Length { rallies: 1, legs: 1, stages: 4 };
     config.field_size = 4;
     config.adaptive = true;
     config.difficulty = 1.0;
@@ -236,7 +236,7 @@ fn the_save_round_trips() {
     let pool = mixed_pool();
     let cars = vec!["car-a".to_owned(), "car|b\\c".to_owned()];
     let mut config = Preset::Season.config("Rally 2", "car|b\\c", 5);
-    config.length = Length::Season { rallies: 2, stages: 3 };
+    config.length = Length { rallies: 2, legs: 1, stages: 3 };
     config.team = 4;
     let mut event = build(config, &pool, &cars);
     event.turn_done();
@@ -277,7 +277,7 @@ fn a_full_season_runs_with_a_fixed_player_time() {
     let pool = gravel_pool();
     let cars = vec!["car-a".to_owned(), "car-b".to_owned()];
     let mut config = Preset::Season.config("Rally2", "car-a", 99);
-    config.length = Length::Season { rallies: 2, stages: 6 };
+    config.length = Length { rallies: 2, legs: 1, stages: 6 };
     config.field_size = 12;
     let mut event = build(config, &pool, &cars);
     let ref_time = event.rallies[0].stages[0].reference;
@@ -305,7 +305,7 @@ fn a_retired_player_ends_the_rally_and_scores_nothing() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 21);
-    config.length = Length::Season { rallies: 2, stages: 4 };
+    config.length = Length { rallies: 2, legs: 1, stages: 4 };
     config.field_size = 8;
     config.restart = false;
     let mut event = build(config, &pool, &cars);
@@ -336,7 +336,7 @@ fn the_start_order_follows_points_then_standings() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 33);
-    config.length = Length::Season { rallies: 2, stages: 3 };
+    config.length = Length { rallies: 2, legs: 1, stages: 3 };
     config.field_size = 6;
     let mut event = build(config, &pool, &cars);
     let first = event.start_order(0, 0);
@@ -400,7 +400,7 @@ fn the_ai_is_serviced_between_stages() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 4);
-    config.length = Length::Rally { stages: 3 };
+    config.length = Length { rallies: 1, legs: 1, stages: 3 };
     config.field_size = 4;
     let mut event = build(config, &pool, &cars);
     event.turn_done();
@@ -427,27 +427,53 @@ fn the_presets_share_the_field_and_differ_in_shape() {
         assert_eq!((c.field_size, c.difficulty, c.adaptive, c.damage), (12, 0.6, false, Damage::Realistic));
     }
     let quick = Preset::QuickRally.config("Rally2", "car", 1);
-    assert_eq!(quick.length, Length::Rally { stages: 6 });
+    assert_eq!(quick.length, Length { rallies: 1, legs: 1, stages: 6 });
     let weekend = Preset::Weekend.config("Rally2", "car", 1);
-    assert_eq!(weekend.length, Length::Weekend { stages: 10 });
+    assert_eq!(weekend.length, Length { rallies: 1, legs: 3, stages: 12 });
     assert_eq!(weekend.daylight, Daylight::Realistic);
+    let championship = Preset::Championship.config("Rally2", "car", 1);
+    assert_eq!(championship.length, Length { rallies: 4, legs: 1, stages: 6 });
     let season = Preset::Season.config("Rally2", "car", 1);
-    assert_eq!(season.length, Length::Season { rallies: 6, stages: 6 });
+    assert_eq!(season.length, Length { rallies: 6, legs: 2, stages: 8 });
     assert_eq!(season.surfaces, Surfaces::Mixed);
-    // Super Rally is on everywhere; only seasons pay the power-stage bonus.
+    // Super Rally is on everywhere; the WRC-style rallies over several legs pay the power stage, one-day ones not.
     assert!(quick.restart && !quick.power_stage);
-    assert!(weekend.restart && !weekend.power_stage);
+    assert!(championship.restart && !championship.power_stage);
+    assert!(weekend.restart && weekend.power_stage);
     assert!(season.restart && season.power_stage);
     for seed in 0..20 {
         let c = Preset::Random.config("Rally2", "car", seed);
-        assert_eq!(c.power_stage, matches!(c.length, Length::Season { .. }), "seed {seed}");
-        assert!(c.restart);
+        assert_eq!(c.power_stage, c.length.legs > 1, "seed {seed}");
+        assert!(c.length.stages >= 2 * c.length.legs && c.restart, "seed {seed}");
     }
+}
+
+#[test]
+fn each_leg_is_a_day_and_a_rallys_legs_split_its_stages() {
+    let mut config = Preset::Weekend.config("Rally2", "car", 3);
+    config.surfaces = crate::config::Surfaces::Only(crate::config::Surface::Gravel);
+    config.length = Length { rallies: 2, legs: 3, stages: 8 };
+    let event = build(config.clone(), &gravel_pool(), &["car".to_owned()]);
+    for rally in &event.rallies {
+        // 3 + 3 + 2, an overnight service after each leg but the last.
+        let ends: Vec<usize> = (0..8).filter(|&k| rally.stages[k].ends_leg()).collect();
+        assert_eq!(ends, [2, 5]);
+        assert!(rally.stages.last().unwrap().service_after.is_none());
+        // Each leg starts the next morning; on realistic daylight the first day's last two run at dusk.
+        let clocks: Vec<f32> = rally.stages.iter().map(|s| s.clock).collect();
+        assert_eq!((clocks[0], clocks[3], clocks[6]), (8.0, 8.0, 8.0), "{clocks:?}");
+        assert!(clocks[1] >= 19.0 && clocks[2] >= 19.5, "{clocks:?}");
+        assert!(clocks[3..].iter().all(|&c| c < 19.0), "{clocks:?}");
+    }
+    config.length.legs = 9;
+    let gravel = gravel_pool();
+    assert!(Event::build(config, &gravel, &["car".to_owned()], &roster(), &profile).is_err());
 }
 
 /// A ten-stage weekend: leg 1 SS1-SS5 (a service after SS3, the overnight service after SS5), leg 2 SS6-SS10.
 fn weekend(seed: u32) -> Event {
     let mut config = Preset::Weekend.config("Rally2", "car", seed);
+    config.length = Length { rallies: 1, legs: 2, stages: 10 };
     config.surfaces = crate::config::Surfaces::Only(crate::config::Surface::Gravel);
     config.field_size = 6;
     let event = build(config, &gravel_pool(), &["car".to_owned()]);
@@ -560,7 +586,7 @@ fn the_power_stage_pays_the_five_fastest_on_the_last_stage() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::QuickRally.config("Rally2", "car", 7);
-    config.length = Length::Rally { stages: 2 };
+    config.length = Length { rallies: 1, legs: 1, stages: 2 };
     config.field_size = 6;
     config.power_stage = true;
     let mut event = build(config, &pool, &cars);
@@ -596,7 +622,7 @@ fn the_save_round_trips_with_restart_and_power_stage() {
     let pool = gravel_pool();
     let cars = vec!["car".to_owned()];
     let mut config = Preset::Season.config("Rally2", "car", 5);
-    config.length = Length::Season { rallies: 1, stages: 2 };
+    config.length = Length { rallies: 1, legs: 1, stages: 2 };
     assert!(config.restart && config.power_stage);
     let mut event = build(config, &pool, &cars);
     event.turn_done();
@@ -607,8 +633,11 @@ fn the_save_round_trips_with_restart_and_power_stage() {
     assert_eq!(head.split('|').count(), 17, "the tag and 16 config fields");
     assert_eq!(Event::load(&text).unwrap(), event);
     // A v3 text (no restart/power fields) loads with both flags off and is otherwise equal.
+    assert!(head.contains("|length:1:1:2|"), "{head}");
+    // A v3 text has the old length words and no restart/power fields.
     let v3: Vec<String> = text
         .replace("rbr-season 4", "rbr-season 3")
+        .replace("|length:1:1:2|", "|rally:2|")
         .lines()
         .map(|line| match line.strip_prefix("C|") {
             Some(rest) => {
@@ -625,6 +654,14 @@ fn the_save_round_trips_with_restart_and_power_stage() {
     expected.config.restart = false;
     expected.config.power_stage = false;
     assert_eq!(old, expected);
+    // The old weekend and season words: two legs, and one leg a rally.
+    for (word, length) in [
+        ("weekend:2", Length { rallies: 1, legs: 2, stages: 2 }),
+        ("season:3:2", Length { rallies: 3, legs: 1, stages: 2 }),
+    ] {
+        let old = Event::load(&v3.join("\n").replace("|rally:2|", &format!("|{word}|"))).unwrap();
+        assert_eq!(old.config.length, length);
+    }
 }
 
 #[test]

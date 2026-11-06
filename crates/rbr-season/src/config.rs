@@ -3,15 +3,14 @@
 pub use rbr_formats::rsf::Surface;
 use rbr_gameplay::crt::CrtRand;
 
-/// How long the event is.
+/// How long the event is: `rallies` rallies of `stages` stages each, every rally over `legs` legs. One rally is an
+/// event of its own; more make a championship with points after each. A leg is a day: an overnight service ends it,
+/// and the next leg starts the next day.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Length {
-    /// One rally of `stages` stages, a service halfway.
-    Rally { stages: u8 },
-    /// One rally over two legs with an overnight service between them, `stages` stages in all.
-    Weekend { stages: u8 },
-    /// `rallies` rallies of `stages` stages each, points after each rally.
-    Season { rallies: u8, stages: u8 },
+pub struct Length {
+    pub rallies: u8,
+    pub legs: u8,
+    pub stages: u8,
 }
 
 /// Which installed stages the itinerary is drawn from.
@@ -33,7 +32,7 @@ pub enum Surfaces {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Daylight {
     Day,
-    /// Mostly day, the rally's last stages at dusk or night.
+    /// Mostly day, the first day's last stages at dusk or night.
     Realistic,
     Night,
 }
@@ -99,7 +98,7 @@ pub struct EventConfig {
     pub difficulty: f32,
     /// The difficulty follows the player's results so the fight stays close.
     pub adaptive: bool,
-    /// The Super Rally rule: a retired player rejoins after the next service.
+    /// The Super Rally rule: a retired crew restarts at the next leg.
     pub restart: bool,
     /// The power-stage rule: the rally's last stage pays 5-4-3-2-1 to its five fastest classified finishers.
     pub power_stage: bool,
@@ -109,21 +108,24 @@ pub struct EventConfig {
     pub seed: u32,
 }
 
-/// The presets the event builder starts from.
+/// The presets the event builder starts from, each after a real format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Preset {
-    /// One gravel rally of six stages.
+    /// A one-day gravel rally of six stages, as most national rallies run.
     QuickRally,
-    /// A two-leg rally of ten stages, the second leg at night.
+    /// A WRC-style round: three legs of four stages, the power stage last.
     Weekend,
-    /// Six rallies of six stages on mixed surfaces.
+    /// Four one-day rallies of six stages on mixed surfaces, as a national championship.
+    Championship,
+    /// Six two-leg rallies of eight stages on mixed surfaces with power stages, as a WRC season shortened.
     Season,
-    /// A random weekend from the seed.
+    /// A random event from the seed.
     Random,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 4] = [Preset::QuickRally, Preset::Weekend, Preset::Season, Preset::Random];
+    pub const ALL: [Preset; 5] =
+        [Preset::QuickRally, Preset::Weekend, Preset::Championship, Preset::Season, Preset::Random];
 
     /// The preset's settings for `class` and `car`.
     pub fn config(self, class: &str, car: &str, seed: u32) -> EventConfig {
@@ -131,7 +133,7 @@ impl Preset {
             class: class.to_owned(),
             car: car.to_owned(),
             team: 0,
-            length: Length::Rally { stages: 6 },
+            length: Length { rallies: 1, legs: 1, stages: 6 },
             pool: StagePool::All,
             surfaces: Surfaces::Only(Surface::Gravel),
             daylight: Daylight::Day,
@@ -146,19 +148,24 @@ impl Preset {
             seed,
         };
         match self {
-            // One gravel rally of six stages.
             Preset::QuickRally => base,
-            // A two-leg rally of ten stages, the second leg at dusk or night, with changeable weather.
+            // The first day ends at dusk; the weather changes by the leg.
             Preset::Weekend => EventConfig {
-                length: Length::Weekend { stages: 10 },
+                length: Length { rallies: 1, legs: 3, stages: 12 },
                 surfaces: Surfaces::Mixed,
                 daylight: Daylight::Realistic,
                 weather: Weather::Changeable,
+                power_stage: true,
                 ..base
             },
-            // Six rallies of six stages on mixed surfaces.
+            Preset::Championship => EventConfig {
+                length: Length { rallies: 4, legs: 1, stages: 6 },
+                surfaces: Surfaces::Mixed,
+                weather: Weather::Changeable,
+                ..base
+            },
             Preset::Season => EventConfig {
-                length: Length::Season { rallies: 6, stages: 6 },
+                length: Length { rallies: 6, legs: 2, stages: 8 },
                 surfaces: Surfaces::Mixed,
                 weather: Weather::Changeable,
                 power_stage: true,
@@ -168,11 +175,13 @@ impl Preset {
             Preset::Random => {
                 let mut rng = CrtRand::srand(seed);
                 let draw = |rng: &mut CrtRand, n: usize| (rng.draw() as usize) % n;
-                let length = match draw(&mut rng, 3) {
-                    0 => Length::Rally { stages: 4 + draw(&mut rng, 5) as u8 },
-                    1 => Length::Weekend { stages: 8 + draw(&mut rng, 5) as u8 },
-                    _ => Length::Season { rallies: 3 + draw(&mut rng, 4) as u8, stages: 4 + draw(&mut rng, 5) as u8 },
+                let rallies = match draw(&mut rng, 3) {
+                    0 | 1 => 1,
+                    _ => 3 + draw(&mut rng, 4) as u8,
                 };
+                let legs = 1 + draw(&mut rng, 3) as u8;
+                let stages = 4 + draw(&mut rng, 5) as u8 + 2 * (legs - 1);
+                let length = Length { rallies, legs, stages };
                 let pool = match draw(&mut rng, 3) {
                     0 => StagePool::Retail,
                     1 => StagePool::Community,
@@ -194,8 +203,8 @@ impl Preset {
                     1 => Weather::Changeable,
                     _ => Weather::Wet,
                 };
-                // A random season pays the power-stage bonus, shorter events do not.
-                let power_stage = matches!(length, Length::Season { .. });
+                // A WRC-style rally over several legs pays the power stage, a one-day rally does not.
+                let power_stage = legs > 1;
                 EventConfig { length, pool, surfaces, daylight, weather, power_stage, ..base }
             }
         }

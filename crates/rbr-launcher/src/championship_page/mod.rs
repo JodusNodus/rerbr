@@ -1,6 +1,6 @@
 //! The Championship tab (ours, `rbr_season`): a rally or a season the player builds from a preset, on any installed
 //! stage (retail, RSF, BTB: [`pool`]), against a field in the car's class. The tab opens on the presets (Quick rally,
-//! Weekend, Season, Random), with Continue first when the profile has a championship. A preset opens the builder with its settings; Start builds the
+//! Rally weekend, Short championship, Season, Random), with Continue first when the profile has a championship. A preset opens the builder with its settings; Start builds the
 //! championship, and the page then runs its turns: the rally's welcome and itinerary, each stage (its conditions, start time,
 //! tyres and setup, then Drive), the standings with gaps and the stage winner after each, the service park where the
 //! itinerary has one (`common::park_card`, the damage carried), the rally's end with its points, and the championship's
@@ -478,9 +478,9 @@ impl ChampionshipPage {
 /// Where the championship stands, for the Continue card: "Season · Rally 2 of 6 · Stage 3 of 6" or "Season · over".
 fn place_line(event: &Event) -> String {
     let kind = match event.config.length {
-        Length::Rally { .. } => "Rally",
-        Length::Weekend { .. } => "Weekend",
-        Length::Season { .. } => "Season",
+        Length { rallies: 2.., .. } => "Season",
+        Length { legs: 2.., .. } => "Weekend",
+        _ => "Rally",
     };
     let mut parts = vec![kind.to_owned()];
     let rally = match event.turn {

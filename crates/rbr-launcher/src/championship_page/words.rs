@@ -16,14 +16,6 @@ pub fn difficulty_word(difficulty: f32) -> &'static str {
     }
 }
 
-/// The rallies and the stages per rally.
-pub fn shape(length: Length) -> (usize, usize) {
-    match length {
-        Length::Rally { stages } | Length::Weekend { stages } => (1, stages as usize),
-        Length::Season { rallies, stages } => (rallies as usize, stages as usize),
-    }
-}
-
 /// The pool's stages the config draws from.
 pub fn eligible<'a>(config: &EventConfig, stages: &'a [StageRef]) -> Vec<&'a StageRef> {
     stages
@@ -43,12 +35,15 @@ pub fn eligible<'a>(config: &EventConfig, stages: &'a [StageRef]) -> Vec<&'a Sta
 /// The builder's summary: "6 stages · 74 km · gravel · 12 Rally2 drivers", the length the pool's average stage
 /// gives (none before the pool is read or without a stage that fits).
 pub fn summary(config: &EventConfig, stages: Option<&[StageRef]>) -> String {
-    let (rallies, per) = shape(config.length);
+    let Length { rallies, legs, stages: per } = config.length;
     let mut parts = Vec::new();
     if rallies > 1 {
         parts.push(format!("{rallies} rallies"));
     }
-    let count = rallies * per;
+    if legs > 1 {
+        parts.push(format!("{legs} legs{}", if rallies > 1 { " each" } else { "" }));
+    }
+    let count = rallies as usize * per as usize;
     parts.push(format!("{count} stage{}", if count == 1 { "" } else { "s" }));
     let fit = stages.map(|s| eligible(config, s)).filter(|s| !s.is_empty());
     if let Some(fit) = fit {

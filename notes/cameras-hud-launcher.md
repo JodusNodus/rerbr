@@ -138,7 +138,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
   `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the
-  keys at its next save). The tab opens on the preset cards (Quick rally, Weekend, Season, Random), Continue first when
+  keys at its next save). The tab opens on the preset cards (Quick rally, Rally weekend, Short championship, Season, Random; the builder sets rallies, legs and stages), Continue first when
   `SavedGames/championship-<profile>.txt` exists (carried damage in `.dmg`, the service's late penalty and the tyre in `.ini`:
   `Event` keeps neither). A preset opens the builder (car through the car browser, `Target::Championship`, defaulting to the
   Drive page's; class = the car's group, only that class's cars fill the field; length, stage pool, surface, time of day,
