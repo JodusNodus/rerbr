@@ -190,11 +190,11 @@ fn standings_score_the_top_ten_and_retirements() {
     event.results[0][0].1 = vec![AiResult::Time(290.0), AiResult::Time(310.0), AiResult::Retired];
     let standings = event.rally_standings(0);
     assert_eq!(standings.len(), 4);
-    assert_eq!(standings[0], Standing { entrant: Some(0), total: Some(290.0), points: 25 });
-    assert_eq!(standings[1], Standing { entrant: None, total: Some(300.0), points: 18 });
+    assert_eq!(standings[0], Standing { entrant: Some(0), total: Some(290.0), points: 25, bonus: 0 });
+    assert_eq!(standings[1], Standing { entrant: None, total: Some(300.0), points: 18, bonus: 0 });
     assert_eq!(standings[2].points, 15);
     // A retired entrant scores nothing, whatever its place.
-    assert_eq!(standings[3], Standing { entrant: Some(2), total: None, points: 0 });
+    assert_eq!(standings[3], Standing { entrant: Some(2), total: None, points: 0, bonus: 0 });
     // The retired AI is out of the rally: still last after stage 2.
     event.turn_done();
     event.stage_done(&master(), PlayerResult { time: 300.0, penalties: 10.0, retired: false });
@@ -244,14 +244,14 @@ fn the_save_round_trips() {
     event.turn_done();
     assert!(!event.bulletins(0).is_empty());
     let text = event.save();
-    assert!(text.starts_with("rbr-season 3\n"));
+    assert!(text.starts_with("rbr-season 4\n"));
     let back = Event::load(&text).unwrap();
     assert_eq!(event, back);
     assert_eq!(Event::load(&back.save()).unwrap(), back);
     assert_eq!(back.config.team, 4);
     assert!(Event::load("bogus").is_err());
     assert!(Event::load("rbr-season 2\nC|x").unwrap_err().contains("older"));
-    assert!(Event::load("rbr-season 3\nbogus|line").is_err());
+    assert!(Event::load("rbr-season 4\nbogus|line").is_err());
 }
 
 /// Drives the whole event with a fixed player time, returning the stages driven.
@@ -286,8 +286,11 @@ fn a_full_season_runs_with_a_fixed_player_time() {
     let points = event.points();
     assert_eq!(points.len(), 13);
     assert!(points.windows(2).all(|w| w[0].points >= w[1].points));
-    // The points go to finishers, 25 + 18 + ... a rally at most.
-    assert!(points.iter().map(|r| r.points).sum::<u32>() <= 2 * (25 + 18 + 15 + 12 + 10 + 8 + 6 + 4 + 2 + 1));
+    // The points go to finishers, 25 + 18 + ... plus the 5 + 4 + ... power-stage bonus a rally at most.
+    assert!(
+        points.iter().map(|r| r.points).sum::<u32>()
+            <= 2 * (25 + 18 + 15 + 12 + 10 + 8 + 6 + 4 + 2 + 1 + 5 + 4 + 3 + 2 + 1)
+    );
     assert!(!event.bulletins(0).is_empty());
     // The AI drove its stages with the engine: the times scatter around the pars.
     let times: Vec<f32> =
@@ -304,6 +307,7 @@ fn a_retired_player_ends_the_rally_and_scores_nothing() {
     let mut config = Preset::QuickRally.config("Rally2", "car", 21);
     config.length = Length::Season { rallies: 2, stages: 4 };
     config.field_size = 8;
+    config.restart = false;
     let mut event = build(config, &pool, &cars);
     event.turn_done();
     event.stage_done(&master(), finish(300.0));
@@ -430,4 +434,172 @@ fn the_presets_share_the_field_and_differ_in_shape() {
     let season = Preset::Season.config("Rally2", "car", 1);
     assert_eq!(season.length, Length::Season { rallies: 6, stages: 6 });
     assert_eq!(season.surfaces, Surfaces::Mixed);
+    // Super Rally is on everywhere; only seasons pay the power-stage bonus.
+    assert!(quick.restart && !quick.power_stage);
+    assert!(weekend.restart && !weekend.power_stage);
+    assert!(season.restart && season.power_stage);
+    for seed in 0..20 {
+        let c = Preset::Random.config("Rally2", "car", seed);
+        assert_eq!(c.power_stage, matches!(c.length, Length::Season { .. }), "seed {seed}");
+        assert!(c.restart);
+    }
+}
+
+fn best_ai(results: &[(Option<PlayerResult>, Vec<AiResult>)], stage: usize) -> Option<f32> {
+    results[stage]
+        .1
+        .iter()
+        .filter_map(|r| match r {
+            AiResult::Time(t) => Some(*t),
+            AiResult::Retired => None,
+        })
+        .reduce(f32::min)
+}
+
+#[test]
+fn a_retired_player_rejoins_after_the_next_service() {
+    let pool = gravel_pool();
+    let cars = vec!["car".to_owned()];
+    let mut config = Preset::QuickRally.config("Rally2", "car", 21);
+    config.length = Length::Rally { stages: 6 };
+    config.field_size = 4;
+    config.adaptive = true;
+    assert!(config.restart);
+    let mut event = build(config, &pool, &cars);
+    // Six stages with the one mid-rally service after the third.
+    assert!(event.rallies[0].stages.iter().enumerate().all(|(i, s)| s.service_after.is_some() == (i == 2)));
+    assert_eq!(event.rejoin_after(0, 0), Some(2));
+    assert_eq!(event.rejoin_after(0, 3), None);
+    let pace = event.pace;
+    event.turn_done();
+    event.stage_done(&master(), PlayerResult { time: 0.0, penalties: 0.0, retired: true });
+    // The field drove to the service; the player sits out two stages and rejoins on the fourth.
+    assert_eq!(event.turn, Turn::Service { rally: 0, stage: 2, minutes: 20 });
+    assert!(event.results[0][1].0.is_none() && event.results[0][2].0.is_none());
+    assert_eq!(event.results[0][1].1.len(), 4);
+    assert_eq!(event.results[0][2].1.len(), 4);
+    assert_eq!(event.charged(0, 3), None);
+    // The missed stages charge the stage's best AI time plus the restart charge (the reference when none finished).
+    for stage in 0..3 {
+        let reference = event.rallies[0].stages[stage].reference;
+        assert_eq!(
+            event.charged(0, stage),
+            Some(best_ai(&event.results[0], stage).unwrap_or(reference) + RESTART_CHARGE)
+        );
+    }
+    // The retirement skips the adaptive field.
+    assert_eq!(event.pace, pace);
+    // The player drives the last three stages and is classified with the charges plus the driven times.
+    let m = master();
+    event.turn_done();
+    assert_eq!(event.turn, Turn::Stage { rally: 0, stage: 3 });
+    event.stage_done(&m, finish(300.0));
+    event.stage_done(&m, finish(310.0));
+    event.stage_done(&m, finish(320.0));
+    assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
+    let charges: f32 = (0..3).map(|s| event.charged(0, s).unwrap()).sum();
+    let rows = event.rally_standings(0);
+    let player = rows.iter().find(|r| r.entrant.is_none()).unwrap();
+    assert_eq!(player.total, Some(charges + 300.0 + 310.0 + 320.0));
+    let place = rows.iter().position(|r| r.entrant.is_none()).unwrap();
+    assert_eq!(player.points, POINTS[place]);
+}
+
+#[test]
+fn a_retired_player_after_the_last_service_is_out() {
+    let pool = gravel_pool();
+    let cars = vec!["car".to_owned()];
+    let mut config = Preset::QuickRally.config("Rally2", "car", 21);
+    config.length = Length::Rally { stages: 6 };
+    config.field_size = 4;
+    assert!(config.restart);
+    let mut event = build(config, &pool, &cars);
+    let m = master();
+    event.turn_done();
+    event.stage_done(&m, finish(300.0));
+    event.stage_done(&m, finish(300.0));
+    event.stage_done(&m, finish(300.0));
+    assert!(matches!(event.turn, Turn::Service { .. }));
+    event.turn_done();
+    event.stage_done(&m, finish(300.0));
+    // Retiring on the fifth stage, after the last service: no rejoin follows.
+    assert_eq!(event.rejoin_after(0, 4), None);
+    event.stage_done(&m, PlayerResult { time: 0.0, penalties: 0.0, retired: true });
+    assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
+    assert!(event.results[0].iter().all(|(_, ai)| ai.len() == 4));
+    let player = event.rally_standings(0).into_iter().find(|r| r.entrant.is_none()).unwrap();
+    assert_eq!((player.total, player.points), (None, 0));
+    assert_eq!(event.charged(0, 4), None);
+}
+
+#[test]
+fn the_power_stage_pays_the_five_fastest_on_the_last_stage() {
+    let pool = gravel_pool();
+    let cars = vec!["car".to_owned()];
+    let mut config = Preset::QuickRally.config("Rally2", "car", 7);
+    config.length = Length::Rally { stages: 2 };
+    config.field_size = 6;
+    config.power_stage = true;
+    let mut event = build(config, &pool, &cars);
+    let m = master();
+    event.turn_done();
+    event.stage_done(&m, finish(300.0));
+    event.turn_done();
+    event.stage_done(&m, finish(300.0));
+    assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
+    // Fixed times: the player ties an entrant for fifth on the last stage, and nobody carries penalties.
+    event.penalties[0] = vec![0.0; 6];
+    event.results[0][0].1 = vec![AiResult::Time(290.0); 6];
+    event.results[0][1].1 = [280.0, 285.0, 290.0, 295.0, 300.0, 310.0].map(AiResult::Time).into();
+    let rows = event.rally_standings(0);
+    let at = |who: Option<usize>| rows.iter().find(|r| r.entrant == who).unwrap().clone();
+    assert_eq!(at(Some(0)), Standing { entrant: Some(0), total: Some(570.0), points: 30, bonus: 5 });
+    assert_eq!(at(Some(1)), Standing { entrant: Some(1), total: Some(575.0), points: 22, bonus: 4 });
+    assert_eq!(at(Some(2)), Standing { entrant: Some(2), total: Some(580.0), points: 18, bonus: 3 });
+    assert_eq!(at(Some(3)), Standing { entrant: Some(3), total: Some(585.0), points: 14, bonus: 2 });
+    // The tie keeps the rows' order: the better-placed entrant takes fifth ahead of the player.
+    assert_eq!(at(Some(4)), Standing { entrant: Some(4), total: Some(590.0), points: 11, bonus: 1 });
+    assert_eq!(at(None), Standing { entrant: None, total: Some(600.0), points: 8, bonus: 0 });
+    assert_eq!(at(Some(5)), Standing { entrant: Some(5), total: Some(600.0), points: 6, bonus: 0 });
+    // Without the power stage every bonus is 0 and the points are the place points.
+    event.config.power_stage = false;
+    let rows = event.rally_standings(0);
+    assert!(rows.iter().all(|r| r.bonus == 0));
+    assert_eq!(rows.iter().map(|r| r.points).collect::<Vec<_>>(), vec![25, 18, 15, 12, 10, 8, 6]);
+}
+
+#[test]
+fn the_save_round_trips_with_restart_and_power_stage() {
+    let pool = gravel_pool();
+    let cars = vec!["car".to_owned()];
+    let mut config = Preset::Season.config("Rally2", "car", 5);
+    config.length = Length::Season { rallies: 1, stages: 2 };
+    assert!(config.restart && config.power_stage);
+    let mut event = build(config, &pool, &cars);
+    event.turn_done();
+    event.stage_done(&master(), finish(300.0));
+    let text = event.save();
+    assert!(text.starts_with("rbr-season 4\n"));
+    let head = text.lines().find(|l| l.starts_with("C|")).unwrap();
+    assert_eq!(head.split('|').count(), 17, "the tag and 16 config fields");
+    assert_eq!(Event::load(&text).unwrap(), event);
+    // A v3 text (no restart/power fields) loads with both flags off and is otherwise equal.
+    let v3: Vec<String> = text
+        .replace("rbr-season 4", "rbr-season 3")
+        .lines()
+        .map(|line| match line.strip_prefix("C|") {
+            Some(rest) => {
+                let mut fields: Vec<&str> = rest.split('|').collect();
+                fields.truncate(fields.len() - 2);
+                format!("C|{}", fields.join("|"))
+            }
+            None => line.to_owned(),
+        })
+        .collect();
+    let old = Event::load(&v3.join("\n")).unwrap();
+    assert!(!old.config.restart && !old.config.power_stage);
+    let mut expected = event.clone();
+    expected.config.restart = false;
+    expected.config.power_stage = false;
+    assert_eq!(old, expected);
 }
