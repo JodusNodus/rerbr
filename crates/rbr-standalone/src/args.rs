@@ -30,6 +30,11 @@ pub struct Args {
     pub replay_pace: live::Pace,
     pub top_speed: Option<f32>,
     pub aim: Option<autopilot::Aim>,
+    /// `--flat-out` (with `--autopilot`): hold full throttle without braking for pace measurement (the steering
+    /// and the gear shifts stay the controller's; `Driver::flat_out`).
+    pub flat_out: bool,
+    /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear and position.
+    pub trace_speed: Option<PathBuf>,
     pub boot: bool,
     pub snapshots: Vec<String>,
     /// The stage's name or path (`stage_files`); for a community stage chosen by folder or id, filled in `main` once
@@ -130,7 +135,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--trace-speed FILE] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -161,9 +166,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             println!("rbr-standalone {}", env!("CARGO_PKG_VERSION"));
             std::process::exit(0);
         }
-        if flag == "--live" || flag == "--boot" {
+        if flag == "--live" || flag == "--boot" || flag == "--flat-out" {
             args.live |= flag == "--live";
             args.boot |= flag == "--boot";
+            args.flat_out |= flag == "--flat-out";
             continue;
         }
         if flag == "--recorded-payload" {
@@ -197,6 +203,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 }
             }
             "--top-speed" => args.top_speed = Some(parsed("--top-speed", &value)?),
+            "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
             "--aim" => args.aim = Some(value.parse()?),
             "--snapshot" => args.snapshots.push(value),
             "--stage" => stage = Some(value),
@@ -421,6 +428,12 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.aim.is_some() && args.autopilot.is_none() {
         return Err("--aim needs --autopilot".into());
     }
+    if (args.flat_out || args.trace_speed.is_some()) && args.autopilot.is_none() {
+        return Err("--flat-out and --trace-speed need --autopilot".into());
+    }
+    if args.flat_out && args.lesson.is_some() {
+        return Err("--flat-out takes no --school (a lesson brakes and stops)".into());
+    }
     let rsf = match (&stage, stage_dir, rsf_stage) {
         (None, Some(dir), None) => Some(rsf::open(&dir)?),
         (None, None, Some(id)) => Some(rsf::find(&rsf_root.ok_or("--rsf-stage needs --rsf-root or RBR_RSF")?, id)?),
@@ -587,6 +600,10 @@ mod tests {
             }),
             (format!("{REC} --autopilot OUT --aim 1,2,7"), |a| {
                 assert_eq!(a.aim, Some(autopilot::Aim { at: [1.0, 2.0], coast: 7 }))
+            }),
+            (format!("{BOOT} --flat-out --trace-speed T"), |a| {
+                assert!(a.flat_out);
+                assert_eq!(a.trace_speed, Some(PathBuf::from("T")));
             }),
             (format!("{LIVE} --replay F --replay-pace free"), |a| {
                 assert_eq!(a.replay_pace, live::Pace::Free)
@@ -790,6 +807,8 @@ mod tests {
             (format!("{LIVE} --frames F --replay G"), "one of --frames-out, --frames, --replay-out and --replay"),
             (format!("{LIVE} --replay F --pilot autopilot"), "--replay takes no --pilot (the replay drives)"),
             (format!("{REC} --aim 1,2"), "--aim needs --autopilot"),
+            (format!("{REC} --flat-out"), "--flat-out and --trace-speed need --autopilot"),
+            (format!("{REC} --trace-speed T"), "--flat-out and --trace-speed need --autopilot"),
             ("--recording R --snapshot S --data D".into(), "--stage, --stage-dir or --rsf-stage is required"),
             (format!("{REC} --stage-dir DIR"), "give one of --stage, --stage-dir and --rsf-stage"),
         ];
@@ -819,6 +838,7 @@ mod tests {
             (format!("{school} 2 --tyre 4"), "--school takes no --tyre (the lesson sets it)"),
             (format!("{school} 2 --championship rookie"), "--school takes no --championship (the lesson sets it)"),
             (format!("{REC} --school 2"), "--school needs --boot"),
+            (format!("{school} 2 --flat-out"), "--flat-out takes no --school (a lesson brakes and stops)"),
         ] {
             assert_eq!(run_str(&argv, None).err().as_deref(), Some(want), "{argv}");
         }

@@ -124,6 +124,11 @@ pub fn from_snapshot<'a>(
     Ok((Live::new(&snap, stage, settings).map_err(|e| format!("{path}: {e}"))?, &bytes[..first.offset], first.control))
 }
 
+/// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
+/// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m) and the
+/// steering (-1-1).
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str";
+
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
 /// its word 6.
@@ -136,6 +141,8 @@ pub fn drive(
     steps: u32,
     top: Option<f32>,
     aim: Option<Aim>,
+    flat_out: bool,
+    trace_speed: Option<&Path>,
     out: &Path,
 ) -> Result<Drove, String> {
     let start = live.next_step();
@@ -156,11 +163,21 @@ pub fn drive(
         Driver::new(&stage.track, stage.track_values.clone(), top.unwrap_or(TOP_SPEED), aim)
             .with_step(live.step_clock().step)
             .with_limit(limit)
-            .with_obstacles(&stage.obstacles),
+            .with_obstacles(&stage.obstacles)
+            .with_flat_out(flat_out),
         &live,
         stage,
     );
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
+    let mut trace = match trace_speed {
+        Some(path) => {
+            let mut file =
+                std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
+            writeln!(file, "{TRACE_HEADER}").map_err(|e| format!("{}: {e}", path.display()))?;
+            Some((file, path.display().to_string(), live.step_clock().step))
+        }
+        None => None,
+    };
     let mut hit: Option<u32> = None;
     let mut last: Option<(Vec<u8>, QuantizedControl)> = None;
     let word6 = read_u32(&control, 24).expect("payload word 6");
@@ -196,6 +213,27 @@ pub fn drive(
             break;
         }
         let sense = sense(&answer, &live);
+        if let Some((trace, path, dt)) = &mut trace {
+            let time = f64::from(step - start) * f64::from(*dt);
+            let thr = f32::from_le_bytes([control[0], control[1], control[2], control[3]]);
+            let brk = f32::from_le_bytes([control[4], control[5], control[6], control[7]]);
+            let steer = f32::from_le_bytes([control[16], control[17], control[18], control[19]]);
+            let at = sense.pose.position;
+            // The distance from the driveline, as the controller's tracking guard reads it (`control`).
+            let line = point(driver.track, sense.parameter);
+            let off = (at[0] - line[0]).hypot(at[1] - line[1]);
+            writeln!(
+                trace,
+                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3}",
+                sense.pose.speed(),
+                sense.gear,
+                sense.engine,
+                at[0],
+                at[1],
+                at[2],
+            )
+            .map_err(|e| format!("{path}: {e}"))?;
+        }
         let speed = sense.pose.speed();
         let off = sub(sense.pose.position, point(driver.track, sense.parameter));
         let height = off[2];

@@ -401,6 +401,9 @@ pub struct Driver<'a> {
     stop: Option<(f32, f32)>,
     /// The drive runs down the driveline, to a stop behind the start.
     against: bool,
+    /// `--flat-out` (pace measurement): hold full throttle without braking; the steering, the traction easing and
+    /// the gear shifts stay the controller's (`target_speed`, `control`).
+    flat_out: bool,
     /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
@@ -440,6 +443,7 @@ impl<'a> Driver<'a> {
             props: Vec::new(),
             stop: None,
             against: false,
+            flat_out: false,
             bands: Vec::new(),
             grip: 1.0,
         }
@@ -539,8 +543,12 @@ impl<'a> Driver<'a> {
         ((LATERAL * grip) / curvature.max(1e-4)).sqrt().min(self.top)
     }
 
-    /// The target speed: the slowest of the curve limits ahead, each reachable by braking.
+    /// The target speed: the slowest of the curve limits ahead, each reachable by braking; the top under
+    /// `--flat-out`, with no curve, kink, tracking or prop-dodge slowdown.
     pub fn target_speed(&self, at: f32) -> f32 {
+        if self.flat_out {
+            return self.top;
+        }
         let braking = BRAKING * self.grip;
         if self.against {
             let stop = self.stop.map_or(0.0, |(_, s)| s);
@@ -577,6 +585,11 @@ impl<'a> Driver<'a> {
     /// The driver for physics steps of `seconds` (the step counts scale to 1.02's 7 ms steps).
     pub fn with_step(self, seconds: f32) -> Self {
         Self { per: (rbr_recording::STEP_SECONDS / seconds).round().max(1.0) as u32, ..self }
+    }
+
+    /// The driver holding full throttle without braking (`--flat-out`, pace measurement) or not.
+    pub fn with_flat_out(self, flat_out: bool) -> Self {
+        Self { flat_out, ..self }
     }
 
     /// The driver for a car whose rev limit is `rpm`.
@@ -659,7 +672,8 @@ impl<'a> Driver<'a> {
             }
         }
         let aimed = self.aim_target(&sense.pose);
-        let swerve = if aimed.is_some() || self.against { 0.0 } else { self.dodge(at, at + look + LEAD) };
+        let swerve =
+            if aimed.is_some() || self.against || self.flat_out { 0.0 } else { self.dodge(at, at + look + LEAD) };
         let target = aimed.unwrap_or_else(|| {
             if self.against {
                 return point(self.track, parameter(&self.values, at - look));
@@ -701,10 +715,10 @@ impl<'a> Driver<'a> {
                 let off = sub(sense.pose.position, point(self.track, sense.parameter));
                 let err = (off[0].hypot(off[1]) - swerve.abs()).abs();
                 let mut want = if finished { 0.0 } else { self.target_speed(at) };
-                if (error * STEER_GAIN).abs() > 1.0 {
+                if !self.flat_out && (error * STEER_GAIN).abs() > 1.0 {
                     want = want.min(FULL_LOCK_TOP * self.grip);
                 }
-                if !finished && err > TRACK_ERR {
+                if !self.flat_out && !finished && err > TRACK_ERR {
                     // The tracking guard: the steered line is the driveline swung by the dodge offset; further from
                     // it than `TRACK_ERR`, the car is sliding, so slow down proportionally until it answers again.
                     want = want.min((speed * TRACK_ERR / err).max(TRACK_MIN));
@@ -718,12 +732,14 @@ impl<'a> Driver<'a> {
                 // line (the gentle pedal below arrives hot and slides wide). Only while tracking well; a sliding
                 // car takes the tracking guard's proportional slow instead of piling on brake in the turn.
                 let mut slow = f32::INFINITY;
-                let mut s = 0.0;
-                while s < KINK_AHEAD {
-                    slow = slow.min(self.curve_limit(at, s, 1.0));
-                    s += PLAN_STEP;
+                if !self.flat_out {
+                    let mut s = 0.0;
+                    while s < KINK_AHEAD {
+                        slow = slow.min(self.curve_limit(at, s, 1.0));
+                        s += PLAN_STEP;
+                    }
                 }
-                let kink = !finished && slow < KINK_SLOW && err < TRACK_ERR && gap < -1.0;
+                let kink = !self.flat_out && !finished && slow < KINK_SLOW && err < TRACK_ERR && gap < -1.0;
                 (throttle, brake) = if finished || want <= 0.0 {
                     (0.0, 1.0)
                 } else if gap > 0.0 {

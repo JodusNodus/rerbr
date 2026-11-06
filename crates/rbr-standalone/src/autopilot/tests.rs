@@ -152,6 +152,34 @@ fn a_stuck_car_backs_up_shifts_back_to_first_and_gives_up_after_the_attempts() {
 }
 
 #[test]
+fn flat_out_holds_the_top_speed_and_never_brakes() {
+    // A hairpin 30 m ahead: the plain driver brakes for it, the flat-out one drives through at the top speed.
+    let hairpin = |x: f32| DriveLineRecord {
+        vectors: [Vec3 { x, y: 0.0, z: 0.0 }, Vec3 { x: 10.0, y: 0.0, z: 0.0 }],
+        value: x,
+        unknown_u16: [0; 2],
+    };
+    let mut track: Vec<_> = (0..10).map(|i| hairpin(10.0 * i as f32)).collect();
+    track[4].vectors[0].y = 30.0;
+    track[5].vectors[0].y = 60.0;
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [20.0, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+    };
+    let mut plain = driver(&track, TOP_SPEED);
+    assert!(plain.target_speed(0.0) < TOP_SPEED);
+    assert!(plain.control(1000, &sense, false).brake > 0);
+    let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
+    assert_eq!(flat.target_speed(0.0), TOP_SPEED);
+    let q = flat.control(1000, &sense, false);
+    assert_eq!((q.throttle, q.brake), (255, 0));
+}
+
+#[test]
 fn a_tangent_far_longer_than_its_chord_does_not_loop() {
     // RSF 302's start: a 10 m segment ending on a 160 m tangent (the next segment's chord).
     let mut track = vec![record(0.0, 0.0), record(10.0, 10.0), record(170.0, 170.0)];
