@@ -2,7 +2,9 @@
 //! [`REDUCE_FROM`] lines or more, the lit soft billboards (`fs_soft`) are drawn into a target of half its width and
 //! height and laid over the frame (`particle_target.wgsl`). They are fill-bound: a puff of spray or dust near the eye
 //! covers much of a 4K frame, many deep. Their light and the frame's transmittance through them add up as drawing them
-//! over the frame does, so the order of the draws before and after them holds.
+//! over the frame does, so the order of the draws before and after them holds. In rain the mist's layer is drawn before
+//! the temporal resolve, which lays it over the frame it writes (`fs_taa_mist`): laid after it, it cost a pass over the
+//! whole frame (0.45 ms at 4K).
 
 use crate::effects::Effects;
 use crate::particles::gpu::Pass;
@@ -14,7 +16,7 @@ use glam::{Mat4, Vec3};
 /// 1080 lines. A smaller frame draws them at its own size, as before.
 pub(crate) const REDUCE_FROM: u32 = 1800;
 
-pub(crate) const SHADER: &str = include_str!("particle_target.wgsl");
+pub(crate) const SHADER: &str = concat!(include_str!("particle_target.wgsl"), include_str!("particle_layer.wgsl"));
 
 /// What the frame's transmittance through the particles starts as: no particle, the frame unchanged.
 const CLEAR: wgpu::Color = wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 1.0 };
@@ -241,6 +243,7 @@ impl ParticleTarget {
     /// and the soft billboards (with the lamps' code when `lamps`) here, each laid over in its turn, the streaks and
     /// the waves at the frame's size between them. `false` when there is neither (nothing drawn: the caller draws
     /// the rest as before).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         &self,
         (queue, encoder): (&wgpu::Queue, &mut wgpu::CommandEncoder),
@@ -249,6 +252,7 @@ impl ParticleTarget {
         particles: Option<&Pass>,
         lamps: bool,
         view_projection: Mat4,
+        mist_laid: bool,
     ) -> bool {
         let mist = effects.rain() > 0.0;
         // Only the pixels the billboards cover; the mist covers the whole frame.
@@ -258,19 +262,37 @@ impl ParticleTarget {
         let Some(rect) = (if mist { Some(whole) } else { billboards }) else {
             return false;
         };
-        effects.write_reduced(queue, self.half());
-        self.reduce_depth(encoder, rect);
-        if mist {
-            self.layer(encoder, scene, whole, |pass| effects.draw_mist(pass, true, &self.effects));
+        if !mist_laid {
+            effects.write_reduced(queue, self.half());
+            self.reduce_depth(encoder, rect);
+            if mist {
+                self.fill(encoder, whole, |pass| effects.draw_mist(pass, true, &self.effects));
+                self.lay(encoder, scene, whole);
+            }
         }
         let mut pass = effects_pass(encoder, scene, depth);
         effects.draw_drops(&mut pass);
         particles.inspect(|p| p.draw_waves(&mut pass));
         drop(pass);
         if let (Some(rect), Some(particles)) = (billboards, particles) {
-            self.layer(encoder, scene, rect, |pass| particles.draw_soft_reduced(pass, &self.effects, lamps));
+            self.fill(encoder, rect, |pass| particles.draw_soft_reduced(pass, &self.effects, lamps));
+            self.lay(encoder, scene, rect);
         }
         true
+    }
+
+    /// Before the temporal resolve, in rain: the depth reduced and the mist's layer drawn, which the resolve lays over
+    /// the frame ([`ParticleTarget::layer_views`]); then [`ParticleTarget::draw`] with `mist_laid`.
+    pub(crate) fn draw_mist(&self, (queue, encoder): (&wgpu::Queue, &mut wgpu::CommandEncoder), effects: &Effects) {
+        let whole = [0, 0, self.size.0, self.size.1];
+        effects.write_reduced(queue, self.half());
+        self.reduce_depth(encoder, whole);
+        self.fill(encoder, whole, |pass| effects.draw_mist(pass, true, &self.effects));
+    }
+
+    /// The reduced depth and the layer's colour, for the resolve's bind group (`fs_taa_mist`).
+    pub(crate) fn layer_views(&self) -> [&wgpu::TextureView; 2] {
+        [&self.depth, &self.colour]
     }
 
     /// Reduces the frame's depth into the target's within `rect` (of the frame), for the [`ParticleTarget::layer`]s
@@ -295,36 +317,31 @@ impl ParticleTarget {
     }
 
     /// Opens the reduced pass for `draw` (with [`ParticleTarget::effects`] and pipelines that keep the transmittance
-    /// in alpha) and lays its result over `scene`, as drawing it there would, within `rect` of the frame (which the
-    /// depth was reduced over).
-    fn layer(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        scene: &wgpu::TextureView,
-        rect: Rect,
-        draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
-    ) {
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("particles at half size"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.colour,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(CLEAR), store: wgpu::StoreOp::Store },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth,
-                    depth_ops: None,
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            scissor(&mut pass, halved(rect, self.half()));
-            draw(&mut pass);
-        }
+    /// in alpha) within `rect` of the frame (which the depth was reduced over).
+    fn fill(&self, encoder: &mut wgpu::CommandEncoder, rect: Rect, draw: impl FnOnce(&mut wgpu::RenderPass<'_>)) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("particles at half size"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &self.colour,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(CLEAR), store: wgpu::StoreOp::Store },
+            })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.depth,
+                depth_ops: None,
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        scissor(&mut pass, halved(rect, self.half()));
+        draw(&mut pass);
+    }
+
+    /// Lays the layer [`ParticleTarget::fill`] drew over `scene` within `rect`, as drawing it there would.
+    fn lay(&self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView, rect: Rect) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("particles' composite"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

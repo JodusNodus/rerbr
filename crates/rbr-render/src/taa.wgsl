@@ -14,7 +14,9 @@
 // opacity in the frame's alpha (`pipelines::alpha_writes`) is a mask, kept in the history's alpha, and where the
 // glass is opaque now or was there the frame is taken new; not where the car is behind it (the dash below the
 // windscreen, the cabin behind the rear window, a lamp's housing), which moves with the glass and what it reflects.
-// The result goes to the post pass's scene and to the next frame's history.
+// The result goes to the post pass's scene and to the next frame's history. In rain at a tall frame's size the mist's
+// half-size layer (`particle_target.rs`, `layer_at` in `particle_layer.wgsl`, appended) is laid over the scene's
+// (`fs_taa_mist`), not the history's.
 // Drawn below the output's size, `fs_upscale` resolves at the output's size instead (after Qualcomm's Snapdragon Game
 // Super Resolution 2, BSD-3): see there.
 
@@ -140,6 +142,25 @@ fn previous_uv(pixel: vec2<i32>, uv: vec2<f32>, here: vec4<f32>) -> vec3<f32> {
 
 @fragment
 fn fs_taa(in: Out) -> Resolved {
+    return resolved(in);
+}
+
+// The mist's layer: the reduced depth and the light and transmittance drawn there.
+@group(1) @binding(0) var layer_depth: texture_depth_2d;
+@group(1) @binding(1) var layer_colour: texture_2d<f32>;
+
+@fragment
+fn fs_taa_mist(in: Out) -> Resolved {
+    var r = resolved(in);
+    let pixel = vec2<i32>(in.position.xy);
+    let layer = layer_at(pixel, textureLoad(depth, pixel, 0), layer_depth, layer_colour);
+    if (t.params.w < 0.5 && !layer.empty) {
+        r.frame = vec4<f32>(r.frame.rgb * layer.over.a + layer.over.rgb, r.frame.a);
+    }
+    return r;
+}
+
+fn resolved(in: Out) -> Resolved {
     let pixel = vec2<i32>(in.position.xy);
     let uv = in.position.xy * t.size.zw;
     // The pixel and its four edge neighbours: the clip's colour box.

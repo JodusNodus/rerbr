@@ -27,7 +27,7 @@ use glam::{Mat4, Vec2, Vec4};
 use crate::post::SCENE_FORMAT;
 use crate::renderer::{depth_binding, texture_entry, TEXTURE};
 
-pub(crate) const SHADER: &str = include_str!("taa.wgsl");
+pub(crate) const SHADER: &str = concat!(include_str!("taa.wgsl"), include_str!("particle_layer.wgsl"));
 /// The new frame's base share of the history.
 const BLEND: f32 = 0.1;
 /// The clip box's half size, in standard deviations of the neighbourhood.
@@ -88,8 +88,12 @@ struct Last {
 
 pub(crate) struct Taa {
     layout: wgpu::BindGroupLayout,
-    /// The resolve at the frame's size (`fs_taa`) and the upscale (`fs_upscale`).
-    pipelines: [wgpu::RenderPipeline; 2],
+    /// The resolve at the frame's size (`fs_taa`), the upscale (`fs_upscale`), and the resolve laying the mist's layer
+    /// over the frame (`fs_taa_mist`).
+    pipelines: [wgpu::RenderPipeline; 3],
+    /// The mist's layer's ([`Taa::set_layer`]), and its bind group.
+    layer_layout: wgpu::BindGroupLayout,
+    layer: Option<wgpu::BindGroup>,
     uniform: wgpu::Buffer,
     sampler: wgpu::Sampler,
     /// The frame's targets.
@@ -153,16 +157,23 @@ impl Taa {
             label: Some("taa"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
         });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("taa"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
+        let layer_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("taa mist"),
+            entries: &[texture_entry(0, depth_binding()), texture_entry(1, TEXTURE)],
         });
+        let pipeline_layout = |groups: &[Option<&wgpu::BindGroupLayout>]| {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("taa"),
+                bind_group_layouts: groups,
+                immediate_size: 0,
+            })
+        };
+        let (plain, mist) = (pipeline_layout(&[Some(&layout)]), pipeline_layout(&[Some(&layout), Some(&layer_layout)]));
         let target = Some(wgpu::ColorTargetState::from(SCENE_FORMAT));
-        let pipelines = ["fs_taa", "fs_upscale"].map(|entry| {
+        let pipelines = [("fs_taa", &plain), ("fs_upscale", &plain), ("fs_taa_mist", &mist)].map(|(entry, layout)| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(entry),
-                layout: Some(&pipeline_layout),
+                layout: Some(layout),
                 vertex: wgpu::VertexState {
                     module: &module,
                     entry_point: Some("vs_full"),
@@ -198,6 +209,8 @@ impl Taa {
         Taa {
             layout,
             pipelines,
+            layer_layout,
+            layer: None,
             uniform,
             sampler,
             targets,
@@ -226,6 +239,21 @@ impl Taa {
     ) {
         self.targets = targets(device, &self.layout, &self.uniform, &self.sampler, [depth, motion], [size, output]);
         (self.size, self.output, self.last) = (size, output, None);
+    }
+
+    /// The mist's layer (`crate::particle_target::ParticleTarget::layer_views`: its depth and colour) that
+    /// [`Taa::resolve`] lays over the frame; `None` without one.
+    pub(crate) fn set_layer(&mut self, device: &wgpu::Device, views: Option<[&wgpu::TextureView; 2]>) {
+        self.layer = views.map(|[depth, colour]| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("taa mist"),
+                layout: &self.layer_layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(depth) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(colour) },
+                ],
+            })
+        });
     }
 
     /// The target the frame is drawn into.
@@ -284,8 +312,9 @@ impl Taa {
         self.last = Some(Last { view_projection, outside });
     }
 
-    /// Resolves the frame in [`Taa::raw`] into `scene` (the output's size) and the next history.
-    pub(crate) fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView) {
+    /// Resolves the frame in [`Taa::raw`] into `scene` (the output's size) and the next history; with `mist`, the mist's
+    /// layer ([`Taa::set_layer`], drawn this frame) laid over `scene`.
+    pub(crate) fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView, mist: bool) {
         let write = 1 - self.current;
         let attachment = |view| {
             Some(wgpu::RenderPassColorAttachment {
@@ -300,8 +329,14 @@ impl Taa {
             color_attachments: &[attachment(scene), attachment(&self.targets.history[write])],
             ..Default::default()
         });
-        pass.set_pipeline(&self.pipelines[usize::from(self.upscaling())]);
         pass.set_bind_group(0, &self.targets.groups[self.current], &[]);
+        match self.layer.as_ref().filter(|_| mist && !self.upscaling()) {
+            Some(layer) => {
+                pass.set_pipeline(&self.pipelines[2]);
+                pass.set_bind_group(1, layer, &[]);
+            }
+            None => pass.set_pipeline(&self.pipelines[usize::from(self.upscaling())]),
+        }
         pass.draw(0..3, 0..1);
         self.current = write;
     }

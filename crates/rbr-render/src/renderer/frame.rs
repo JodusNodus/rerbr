@@ -75,6 +75,7 @@ impl Renderer {
             if let (Some(taa), Some(motion)) = (&mut self.taa, &mut self.motion) {
                 motion.resize(&self.device, size);
                 taa.resize(&self.device, size, output, &self.depth_view, motion.view());
+                taa.set_layer(&self.device, self.particle_target.as_ref().map(|target| target.layer_views()));
             }
         }
         // Under the temporal anti-aliasing the main view's draws are jittered; the sun's cascades, the mirrors and
@@ -236,17 +237,26 @@ impl Renderer {
             taa.keep(encoder);
             if self.late_effects() {
                 let t = mark(&mut profiler, encoder);
-                self.draw_late_effects(encoder, taa.raw(), view_projection);
+                self.draw_late_effects(encoder, taa.raw(), view_projection, false);
                 span(&mut profiler, encoder, "particles, rain", t);
             }
         }
+        // Else in rain on a tall frame the mist's half-size layer is drawn first, and the resolve lays it over the frame.
+        let mist = (self.particle_target.as_ref().zip(self.effects.as_ref()))
+            .filter(|(_, effects)| !upscaling && self.late_effects() && effects.rain() > 0.0)
+            .inspect(|(target, effects)| {
+                let t = mark(&mut profiler, encoder);
+                target.draw_mist((&self.queue, encoder), effects);
+                span(&mut profiler, encoder, "particles, rain", t);
+            })
+            .is_some();
         if let Some(taa) = &mut self.taa {
             let t = mark(&mut profiler, encoder);
-            taa.resolve(encoder, &self.post.scene);
+            taa.resolve(encoder, &self.post.scene, mist);
             span(&mut profiler, encoder, "taa", t);
             if self.late_effects() && !upscaling {
                 let t = mark(&mut profiler, encoder);
-                self.draw_late_effects(encoder, &self.post.scene, view_projection);
+                self.draw_late_effects(encoder, &self.post.scene, view_projection, mist);
                 span(&mut profiler, encoder, "particles, rain", t);
             }
         }
@@ -431,10 +441,17 @@ impl Renderer {
 
     /// Draws the rain and the particles over the resolved `scene`, in the unjittered view: on a tall frame the mist
     /// and the soft billboards at half its size (`crate::particle_target`).
-    fn draw_late_effects(&self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView, view_projection: Mat4) {
+    fn draw_late_effects(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &wgpu::TextureView,
+        view_projection: Mat4,
+        mist_laid: bool,
+    ) {
         let (particles, lamps) = (self.particles.as_ref(), self.lamps_light());
         let reduced = self.particle_target.as_ref().zip(self.effects.as_ref()).is_some_and(|(target, effects)| {
-            target.draw((&self.queue, encoder), [scene, &self.depth_view], effects, particles, lamps, view_projection)
+            let [scene, depth] = [scene, &self.depth_view];
+            target.draw((&self.queue, encoder), [scene, depth], effects, particles, lamps, view_projection, mist_laid)
         });
         if !reduced {
             self.draw_effects(&mut crate::particle_target::effects_pass(encoder, scene, &self.depth_view));
