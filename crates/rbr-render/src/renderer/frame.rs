@@ -1,6 +1,6 @@
 //! Drawing a frame: the passes in order, from the shadow maps to the post pass.
 
-use super::meshes::{Bound, GpuMesh};
+use super::meshes::{Bound, GpuDraw, GpuMesh};
 use super::reflection::{self, REFLECTION_REACH};
 use super::shadows::{Casting, Layers};
 use super::textures::depth_view;
@@ -367,7 +367,8 @@ impl Renderer {
                     true => self.glass.as_ref().and_then(|g| g.own_scene()).expect("made above"),
                     false => resolved,
                 };
-                let stats = self.draw_scene(encoder, [scene, &self.depth_view], view_projection, View::Main, [true; 2]);
+                let (stats, _) =
+                    self.draw_scene(encoder, [scene, &self.depth_view], view_projection, View::Main, [true; 2]);
                 span(profiler, encoder, "scene", t);
                 let t = mark(profiler, encoder);
                 self.draw_over(encoder, resolved, scene, scene);
@@ -376,17 +377,17 @@ impl Renderer {
             }
             // The post pass reads the depth (the metering, the light shafts and the lamps' beams).
             None => {
-                let stats =
+                let (stats, _) =
                     self.draw_scene(encoder, [resolved, &self.depth_view], view_projection, View::Main, [false, true]);
                 span(profiler, encoder, "scene", t);
                 stats
             }
             Some(ssr) => {
                 let levels = [&ssr.levels[0], &self.depth_view];
-                let stats = self.draw_scene(encoder, levels, view_projection, View::Main, [true; 2]);
+                let (stats, later) = self.draw_scene(encoder, levels, view_projection, View::Main, [true; 2]);
                 span(profiler, encoder, "scene", t);
                 let t = mark(profiler, encoder);
-                self.draw_reflections(encoder, ssr, resolved, view_projection);
+                self.draw_reflections(encoder, ssr, resolved, view_projection, &later);
                 span(profiler, encoder, "screen reflections", t);
                 if glass || effects {
                     let t = mark(profiler, encoder);
@@ -478,7 +479,8 @@ impl Renderer {
 
     /// Draws the sky and the meshes `view` shows of `view_projection` into `[target, depth]`. `keep` is whether
     /// passes follow that draw over the frame (the particles, then, are theirs), and whether the depth is stored after
-    /// the pass (the reflections, the effects and the post pass read it).
+    /// the pass (the reflections, the effects and the post pass read it). Gives the meshes of the car's glass it left
+    /// for [`Renderer::draw_car_glass`].
     pub(super) fn draw_scene(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -486,7 +488,7 @@ impl Renderer {
         view_projection: Mat4,
         view: View,
         keep: [bool; 2],
-    ) -> FrameStats {
+    ) -> (FrameStats, Vec<(&GpuMesh, f32)>) {
         let depth_store = if keep[1] { wgpu::StoreOp::Store } else { wgpu::StoreOp::Discard };
         // The temporal anti-aliasing's mask starts clear (`pipelines::alpha_writes`).
         let colour_clear = match view == View::Main && self.taa.is_some() {
@@ -547,6 +549,10 @@ impl Renderer {
             view == View::Main && if masked { mesh.anchor == Anchor::World } else { distance <= PREPASS_REACH }
         };
         let inside = self.in_car(view);
+        // In the car with the screen-space reflections the car's glass ([`car_glass`]) goes in once the rays are
+        // traced ([`Renderer::draw_car_glass`]): where it covers the stage the frame's depth is the stage's, and a ray
+        // that met it there read the glass's colour (the Lancer's red sun strip in the puddles far ahead).
+        let glass_later = view == View::Main && inside && self.screen_reflection.is_some();
         let mut bound = Bound::new(&self.buffers);
         pass.set_bind_group(2, self.sun_mask.group(), &[]);
         let mut prepass: Vec<_> = shown
@@ -584,28 +590,19 @@ impl Renderer {
         // (`Equal` to the prepass) then fails under them: the ground beneath the car is not shaded to be painted over.
         // In a mirror's pass (no prepass) the cabin and the flank hide most of the stage seen from in the car.
         let laid_first = view == View::Main || view.mirror();
-        let opaque_lit = |draw: &super::meshes::GpuDraw| {
-            draw.bind.shade.is_some() && !draw.pipeline.blend && draw.pipeline.depth_write
-        };
+        let opaque_lit =
+            |draw: &GpuDraw| draw.bind.shade.is_some() && !draw.pipeline.blend && draw.pipeline.depth_write;
         let lamps_light = self.lamps_light() && view != View::Probe;
         let mut draw_meshes = |pass: &mut wgpu::RenderPass<'_>, meshes: &[(&GpuMesh, f32)], lit_first: bool| {
             for &(mesh, distance) in meshes {
                 stats.meshes_drawn += usize::from(!lit_first);
                 pass.set_bind_group(0, &self.frames[frame_index(mesh.anchor, mesh.layer)].bind_group, &[]);
                 for draw in mesh.draws.iter().filter(|draw| draw.lod.shows(distance)) {
-                    if (laid_first && opaque_lit(draw)) != lit_first {
+                    if (laid_first && opaque_lit(draw)) != lit_first || (glass_later && car_glass(mesh, draw)) {
                         continue;
                     }
                     let after_prepass = draw.prepassed.is_some() && laid(mesh, distance);
-                    let pipeline = match (&draw.views, &draw.lamps, &draw.prepassed) {
-                        (Some(_), _, Some([_, after])) if after_prepass && !inside => after,
-                        (Some(views), _, _) => &views[usize::from(inside)],
-                        (_, Some([_, after]), _) if lamps_light && after_prepass => after,
-                        (_, Some([main, _]), _) if lamps_light => main,
-                        (_, _, Some([_, after])) if after_prepass => after,
-                        _ => &draw.main,
-                    };
-                    pass.set_pipeline(pipeline);
+                    pass.set_pipeline(pipeline_of(draw, inside, lamps_light, after_prepass));
                     pass.set_bind_group(1, &draw.group, &[]);
                     bound.draw(pass, mesh, draw);
                     stats.draws += 1;
@@ -644,7 +641,46 @@ impl Renderer {
         {
             particles.draw(&mut pass);
         }
-        stats
+        let glass =
+            shown.into_iter().filter(|&(mesh, _)| glass_later && mesh.draws.iter().any(|draw| car_glass(mesh, draw)));
+        (stats, glass.collect())
+    }
+
+    /// Draws the car's glass [`draw_scene`](Renderer::draw_scene) left out of the main view in the car (`glass`, the
+    /// meshes with their distances) over its frame in `target`.
+    pub(super) fn draw_car_glass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        glass: &[(&GpuMesh, f32)],
+    ) {
+        if glass.is_empty() {
+            return;
+        }
+        let colour = self.over_attachment(encoder, target, target);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("car glass"),
+            color_attachments: &[Some(colour)],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: &self.depth_view,
+                depth_ops: None,
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_bind_group(2, self.sun_mask.group(), &[]);
+        let (mut bound, lamps_light) = (Bound::new(&self.buffers), self.lamps_light());
+        for &(mesh, distance) in glass {
+            pass.set_bind_group(0, &self.frames[frame_index(mesh.anchor, mesh.layer)].bind_group, &[]);
+            for draw in mesh.draws.iter().filter(|draw| draw.lod.shows(distance) && car_glass(mesh, draw)) {
+                // Not laid by the prepass, which takes only draws that write depth.
+                pass.set_pipeline(pipeline_of(draw, true, lamps_light, false));
+                pass.set_bind_group(1, &draw.group, &[]);
+                bound.draw(&mut pass, mesh, draw);
+            }
+        }
     }
 
     /// A stage pass into `colour` and `depth` with the depth's `ops`.
@@ -794,6 +830,25 @@ impl Renderer {
             shown.push((mesh, if far { f32::INFINITY } else { distance }));
         }
         shown
+    }
+}
+
+/// A draw of the car's or its crew's that writes colour and no depth: the glass, the interior set's sun strip.
+fn car_glass(mesh: &GpuMesh, draw: &GpuDraw) -> bool {
+    mesh.car && !draw.pipeline.depth_write
+}
+
+/// The pipeline `draw` takes: a lit draw's for a view in the car or outside it (`inside`), an unlit one's with the
+/// lamps' code when they light the frame (`lamps_light`); after the prepass laid its depth (`after_prepass`), the one
+/// that tests against it.
+fn pipeline_of(draw: &GpuDraw, inside: bool, lamps_light: bool, after_prepass: bool) -> &wgpu::RenderPipeline {
+    match (&draw.views, &draw.lamps, &draw.prepassed) {
+        (Some(_), _, Some([_, after])) if after_prepass && !inside => after,
+        (Some(views), _, _) => &views[usize::from(inside)],
+        (_, Some([_, after]), _) if lamps_light && after_prepass => after,
+        (_, Some([main, _]), _) if lamps_light => main,
+        (_, _, Some([_, after])) if after_prepass => after,
+        _ => &draw.main,
     }
 }
 
