@@ -120,8 +120,9 @@ impl Renderer {
         if let Some(particles) = &self.particles {
             particles.prepare(&self.queue, effects_view, &lit);
         }
-        if let Some(glass) = &self.glass {
-            glass.prepare(&self.queue, drawn[0], size, &lit, self.outside_view, self.wetness, self.cascades.as_ref());
+        if let Some(glass) = &mut self.glass {
+            let cascades = self.cascades.as_ref();
+            glass.prepare(&self.device, &self.queue, drawn[0], size, &lit, self.outside_view, self.wetness, cascades);
         }
         let day = self.day_light();
         if let Some(effects) = &mut self.effects {
@@ -394,6 +395,9 @@ impl Renderer {
         scene: &wgpu::TextureView,
         lens: &wgpu::TextureView,
     ) {
+        if let Some(glass) = &self.glass {
+            glass.draw_half(&self.device, encoder, lens, (&self.mirrors.view, &self.mirrors.uniform));
+        }
         let attachment = self.over_attachment(encoder, target, scene);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("glass"),

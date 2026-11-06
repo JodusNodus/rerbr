@@ -102,7 +102,30 @@ const NIGHT_GLOW: [f32; 3] = [0.16, 0.155, 0.14];
 const FIRST_CAPACITY: usize = 1024;
 
 /// The fragment entry points of [`Pass`]'s pipelines.
-const PIPELINES: [&str; 3] = ["fs_main", "fs_film", "fs_pane"];
+const PIPELINES: [&str; 4] = ["fs_main", "fs_film", "fs_pane", "fs_film_half"];
+/// [`PIPELINES`]' film cells, and their composite from the half-size target ([`HALF_FILM_FROM`]).
+const FILM: usize = 1;
+const FILM_HALF: usize = 3;
+
+/// The frame height (pixels) from which the film's cells seen from inside are drawn at half size, for their cost at
+/// 4K (ours): their beads then look as they do at half the height.
+const HALF_FILM_FROM: u32 = 1800;
+
+/// A colour target of `format` and `size` that the glass reads.
+fn half_target(device: &wgpu::Device, format: wgpu::TextureFormat, size: (u32, u32)) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("glass film, half size"),
+            size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&Default::default())
+}
 
 /// Which of [`PIPELINES`] draws a drop of `kind`: the film's cells (4), the panes' cells (6), the rest.
 fn pipeline_of(kind: f32) -> usize {
@@ -117,7 +140,7 @@ fn pipeline_of(kind: f32) -> usize {
 /// other kinds don't run with their registers), the frame's drops and the resolved frame it reads when the renderer
 /// has none.
 pub struct Pass {
-    pipelines: [wgpu::RenderPipeline; 3],
+    pipelines: [wgpu::RenderPipeline; 4],
     /// The drops' runs, in order, and the pipeline of each.
     runs: Vec<(usize, std::ops::Range<u32>)>,
     layout: wgpu::BindGroupLayout,
@@ -131,6 +154,15 @@ pub struct Pass {
     count: u32,
     scene: Option<((u32, u32), wgpu::TextureView)>,
     wipers: Wipers,
+    /// The film's cells at half size ([`HALF_FILM_FROM`]): their pipeline (no depth), the frame's uniform for that
+    /// size, the target of that size while used, and a texel standing in for it in the other draws.
+    half_film: wgpu::RenderPipeline,
+    format: wgpu::TextureFormat,
+    half_uniform: wgpu::Buffer,
+    half: Option<((u32, u32), wgpu::TextureView)>,
+    no_half: wgpu::TextureView,
+    /// Whether this frame draws the film at half size.
+    halved: bool,
 }
 
 impl Pass {
@@ -196,6 +228,15 @@ impl Pass {
                         min_binding_size: None,
                     },
                 ),
+                entry(
+                    7,
+                    wgpu::ShaderStages::FRAGMENT,
+                    wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                ),
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -231,7 +272,7 @@ impl Pass {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let pipeline = |entry_point| {
+        let pipeline = |entry_point, depth: Option<wgpu::TextureFormat>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(entry_point),
                 layout: Some(&pipeline_layout),
@@ -259,8 +300,8 @@ impl Pass {
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                     ..Default::default()
                 },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: depth,
+                depth_stencil: depth.map(|format| wgpu::DepthStencilState {
+                    format,
                     depth_write_enabled: Some(false),
                     depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
                     stencil: Default::default(),
@@ -271,7 +312,17 @@ impl Pass {
                 cache: None,
             })
         };
-        let pipelines = PIPELINES.map(pipeline);
+        let pipelines = PIPELINES.map(|entry_point| pipeline(entry_point, Some(depth)));
+        // The film's cells at half size are drawn whole, under what hides them; `fs_film_half` lays them over the
+        // frame through their quads at full size, depth tested.
+        let half_film = pipeline("fs_film", None);
+        let half_uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("glass frame, half size"),
+            size: std::mem::size_of::<FrameUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let no_half = half_target(device, format, (1, 1));
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass drops"),
             size: (FIRST_CAPACITY * std::mem::size_of::<Drop>()) as u64,
@@ -291,6 +342,12 @@ impl Pass {
             count: 0,
             scene: None,
             wipers: Wipers::default(),
+            half_film,
+            half_uniform,
+            half: None,
+            no_half,
+            halved: false,
+            format,
         }
     }
 
@@ -333,7 +390,8 @@ impl Pass {
     /// The frame's camera, size and light; `wet` how wet the stage is (0 dry, 1 wet).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare(
-        &self,
+        &mut self,
+        device: &wgpu::Device,
         queue: &wgpu::Queue,
         view_projection: Mat4,
         (width, height): (u32, u32),
@@ -358,6 +416,16 @@ impl Pass {
             shadow: [f32::from(u8::from(cascades.is_some())), 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
+        self.halved = !outside && height >= HALF_FILM_FROM && self.runs.iter().any(|(p, _)| *p == FILM);
+        if self.halved {
+            let size = (width.div_ceil(2), height.div_ceil(2));
+            if self.half.as_ref().is_none_or(|(s, _)| *s != size) {
+                self.half = Some((size, half_target(device, self.format, size)));
+            }
+            let (w, h) = (size.0 as f32, size.1 as f32);
+            let half = FrameUniform { screen: [w, h, 1.0 / w, 1.0 / h], ..uniform };
+            queue.write_buffer(&self.half_uniform, 0, bytemuck::bytes_of(&half));
+        }
     }
 
     /// The pass's own resolved frame of `size` (made or remade as needed), for a renderer without one.
@@ -391,6 +459,68 @@ impl Pass {
         self.scene.as_ref().map(|(_, view)| view)
     }
 
+    /// The pass's bind group over `uniform`, reading the resolved frame `scene`, the mirrors' images and views
+    /// `mirrors` and the film at half size `half`.
+    fn group(
+        &self,
+        device: &wgpu::Device,
+        uniform: &wgpu::Buffer,
+        scene: &wgpu::TextureView,
+        (images, views): (&wgpu::TextureView, &wgpu::Buffer),
+        half: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("glass"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(scene) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&self.sun_map) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&self.sun_sampler) },
+                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(images) },
+                wgpu::BindGroupEntry { binding: 6, resource: views.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(half) },
+            ],
+        })
+    }
+
+    /// Draws the film's cells at half size ([`HALF_FILM_FROM`]) when the frame does, before [`Pass::draw`] lays them
+    /// over it; reading the resolved frame `scene` and the mirrors' `mirrors`.
+    pub fn draw_half(
+        &self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &wgpu::TextureView,
+        mirrors: (&wgpu::TextureView, &wgpu::Buffer),
+    ) {
+        let Some((_, target)) = self.half.as_ref().filter(|_| self.halved && self.count > 0) else {
+            return;
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("glass film, half size"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.half_film);
+        pass.set_bind_group(0, &self.group(device, &self.half_uniform, scene, mirrors, &self.no_half), &[]);
+        pass.set_vertex_buffer(0, self.instances.slice(..));
+        for (_, run) in self.runs.iter().filter(|(p, _)| *p == FILM) {
+            pass.draw(0..4, run.clone());
+        }
+    }
+
     /// Draws the drops into `pass`, reading the resolved frame `scene` and the mirrors' images and views `mirrors`
     /// (the windscreen's reflection, `renderer::mirrors`).
     pub fn draw(
@@ -398,28 +528,18 @@ impl Pass {
         device: &wgpu::Device,
         pass: &mut wgpu::RenderPass<'_>,
         scene: &wgpu::TextureView,
-        (images, views): (&wgpu::TextureView, &wgpu::Buffer),
+        mirrors: (&wgpu::TextureView, &wgpu::Buffer),
     ) {
         if self.count == 0 {
             return;
         }
-        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("glass"),
-            layout: &self.layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.uniform.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(scene) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&self.sun_map) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&self.sun_sampler) },
-                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(images) },
-                wgpu::BindGroupEntry { binding: 6, resource: views.as_entire_binding() },
-            ],
-        });
+        let half = self.half.as_ref().filter(|_| self.halved);
+        let group = self.group(device, &self.uniform, scene, mirrors, half.map_or(&self.no_half, |(_, v)| v));
         pass.set_bind_group(0, &group, &[]);
         pass.set_vertex_buffer(0, self.instances.slice(..));
         for (pipeline, run) in &self.runs {
-            pass.set_pipeline(&self.pipelines[*pipeline]);
+            let pipeline = if *pipeline == FILM && half.is_some() { FILM_HALF } else { *pipeline };
+            pass.set_pipeline(&self.pipelines[pipeline]);
             pass.draw(0..4, run.clone());
         }
     }

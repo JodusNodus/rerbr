@@ -61,6 +61,8 @@ struct MirrorViews {
 @group(0) @binding(5) var mirror_images: texture_2d_array<f32>;
 @group(0) @binding(6) var<uniform> mirror_views: MirrorViews;
 const WINDSCREEN_MIRROR: u32 = 4u;
+// The film's cells drawn at half size (`glass::gpu::HALF_FILM_FROM`), premultiplied, for `fs_film_half`.
+@group(0) @binding(7) var half_film: texture_2d<f32>;
 
 struct Instance {
     @location(0) centre: vec3<f32>,
@@ -650,6 +652,12 @@ fn screen_up(o: vec2<f32>, r: f32) -> vec2<f32> {
 @fragment
 fn fs_film(in: Out) -> @location(0) vec4<f32> {
     return film_cell(in);
+}
+
+// The film's cells drawn at half size laid over the frame through their quads, depth tested.
+@fragment
+fn fs_film_half(in: Out) -> @location(0) vec4<f32> {
+    return textureSampleLevel(half_film, scene_sampler, in.position.xy * frame.screen.zw, 0.0);
 }
 
 @fragment
