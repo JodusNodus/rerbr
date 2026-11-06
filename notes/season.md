@@ -52,7 +52,7 @@ the layer only reads drivelines and hands the launcher times, standings and save
   names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). `Length { rallies, legs, stages }`: one
   rally is an event of its own, more a championship; each rally's stages split over its legs (a leg is a day, the
   earlier legs the longer). Presets after real formats: Quick rally 1x1 leg x6 (a national one-day rally), Rally
-  weekend 1x3x12 (a WRC round), Short championship 4x1x6 (a national series), Season 6x2x8; the save's old `rally:n`,
+  weekend 1x3x12 (a WRC round), Short championship 4x1x6 (a national series), Season 6x2x6; the save's old `rally:n`,
   `weekend:n`, `season:r:n` read as one, two and one legs. Each leg starts at 08:00 (21:00 at night; realistic puts the
   first day's last two stages at dusk/night), changeable weather per leg, ~20 min mid-leg services and 45 min overnight
   after each leg but the last. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum

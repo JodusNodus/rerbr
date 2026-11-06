@@ -117,7 +117,7 @@ pub enum Preset {
     Weekend,
     /// Four one-day rallies of six stages on mixed surfaces, as a national championship.
     Championship,
-    /// Six two-leg rallies of eight stages on mixed surfaces with power stages, as a WRC season shortened.
+    /// Six two-leg rallies of six stages on mixed surfaces with power stages, as a WRC season shortened.
     Season,
     /// A random event from the seed.
     Random,
@@ -165,7 +165,7 @@ impl Preset {
                 ..base
             },
             Preset::Season => EventConfig {
-                length: Length { rallies: 6, legs: 2, stages: 8 },
+                length: Length { rallies: 6, legs: 2, stages: 6 },
                 surfaces: Surfaces::Mixed,
                 weather: Weather::Changeable,
                 power_stage: true,

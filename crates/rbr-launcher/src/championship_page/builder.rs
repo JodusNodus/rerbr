@@ -316,7 +316,7 @@ fn preset_text(preset: Preset) -> (&'static str, &'static str, &'static str) {
         Preset::Season => (
             "Season",
             "Six two-day rallies on mixed surfaces with power stages, points after each.",
-            "6 rallies · 48 stages",
+            "6 rallies · 36 stages",
         ),
         Preset::Random => {
             ("Random", "An event drawn from a random seed: its length, stages and weather.", "a surprise")

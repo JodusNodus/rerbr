@@ -46,8 +46,8 @@ fn the_summary_reads_the_event_at_a_glance() {
     assert_eq!(summary(&season, Some(&stages)), "2 rallies · 6 stages · 108 km · mixed surfaces · 12 drivers");
     let weekend = EventConfig { length: Length { rallies: 1, legs: 3, stages: 12 }, ..config() };
     assert_eq!(summary(&weekend, None), "3 legs · 12 stages · gravel · 12 Rally2 drivers");
-    let season = EventConfig { length: Length { rallies: 6, legs: 2, stages: 8 }, ..config() };
-    assert_eq!(summary(&season, None), "6 rallies · 2 legs each · 48 stages · gravel · 12 Rally2 drivers");
+    let season = EventConfig { length: Length { rallies: 6, legs: 2, stages: 6 }, ..config() };
+    assert_eq!(summary(&season, None), "6 rallies · 2 legs each · 36 stages · gravel · 12 Rally2 drivers");
     // No stage fits: no length.
     let snow = EventConfig { surfaces: Surfaces::Only(Surface::Snow), ..config() };
     assert_eq!(summary(&snow, Some(&stages)), "6 stages · snow · 12 Rally2 drivers");

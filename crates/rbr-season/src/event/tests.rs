@@ -434,7 +434,7 @@ fn the_presets_share_the_field_and_differ_in_shape() {
     let championship = Preset::Championship.config("Rally2", "car", 1);
     assert_eq!(championship.length, Length { rallies: 4, legs: 1, stages: 6 });
     let season = Preset::Season.config("Rally2", "car", 1);
-    assert_eq!(season.length, Length { rallies: 6, legs: 2, stages: 8 });
+    assert_eq!(season.length, Length { rallies: 6, legs: 2, stages: 6 });
     assert_eq!(season.surfaces, Surfaces::Mixed);
     // Super Rally is on everywhere; the WRC-style rallies over several legs pay the power stage, one-day ones not.
     assert!(quick.restart && !quick.power_stage);
