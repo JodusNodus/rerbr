@@ -48,7 +48,7 @@ impl Event {
                     })
                     .collect();
                 out.push_str(&format!(
-                    "S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+                    "S|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
                     esc(&s.stage.key),
                     esc(&s.stage.name),
                     esc(&s.stage.family),
@@ -59,7 +59,8 @@ impl Event {
                     conditions_save(s.conditions),
                     s.service_after.map_or(String::new(), |m| m.to_string()),
                     s.reference,
-                    sections.join("|")
+                    sections.join("|"),
+                    s.car_factors.iter().map(f32::to_string).collect::<Vec<_>>().join(",")
                 ));
             }
         }
@@ -254,6 +255,8 @@ impl Event {
                         });
                     }
                     let track = Track { stage: 0, wet: 0, sections: [sections[0], sections[1], sections[2]] };
+                    // Older saves end at the sections: no car factors.
+                    let car_factors = if f.more() { f.list("car factors")? } else { Vec::new() };
                     rally.stages.push(ItineraryStage {
                         stage: StageRef { key, name, family, surface, community, length },
                         clock,
@@ -261,6 +264,7 @@ impl Event {
                         reference,
                         track,
                         service_after,
+                        car_factors,
                     });
                     results.last_mut().ok_or("stage outside a rally".to_owned())?.push((None, Vec::new()));
                 }
@@ -423,6 +427,11 @@ impl<'a> Fields<'a> {
 
     fn raw(&mut self) -> Result<&'a str, String> {
         self.parts.next().map(String::as_str).ok_or_else(|| "a short line".to_owned())
+    }
+
+    /// A field follows.
+    fn more(&self) -> bool {
+        self.parts.len() > 0
     }
 
     fn text(&mut self) -> Result<String, String> {

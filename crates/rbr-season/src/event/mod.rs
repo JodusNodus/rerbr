@@ -32,12 +32,19 @@ pub struct ItineraryStage {
     pub track: Track,
     /// The service after this stage (minutes), none when the next stage follows directly.
     pub service_after: Option<u32>,
+    /// Each entrant's time on this stage over the track's for its car model (`car_pace`), 1 where none is set.
+    pub car_factors: Vec<f32>,
 }
 
 impl ItineraryStage {
     /// The leg ends after this stage: the overnight service follows.
     pub fn ends_leg(&self) -> bool {
         self.service_after.is_some_and(|m| m >= build::SERVICE_NIGHT)
+    }
+
+    /// Entrant `e`'s car factor on this stage.
+    pub fn car_factor(&self, e: usize) -> f32 {
+        self.car_factors.get(e).copied().unwrap_or(1.0)
     }
 }
 

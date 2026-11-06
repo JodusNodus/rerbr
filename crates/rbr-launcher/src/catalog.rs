@@ -12,7 +12,8 @@ use rbr_gameplay::weather::{self, Preset, Season, Weather};
 use crate::car_packs::{self, StoredModel};
 
 /// Each car number's folder in `physics.rbz` (the exe's table at 0x7c18d4).
-const PHYSICS_DIRS: [&str; 8] = ["c_xsara", "h_accent", "mg_zr", "m_lancer", "p_206", "s_i2003", "t_coroll", "s_i2000"];
+pub(crate) const PHYSICS_DIRS: [&str; 8] =
+    ["c_xsara", "h_accent", "mg_zr", "m_lancer", "p_206", "s_i2003", "t_coroll", "s_i2000"];
 
 /// The car numbers NGP's `physics.rbz` at `archive` has NGP cars in: the slots whose `common.lsp` sets NGP's keys
 /// (`*_NGP`); the others keep the stock data, which NGP's physics does not drive. NGP 7.4.778's own package has none

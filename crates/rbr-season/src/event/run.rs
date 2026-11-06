@@ -64,6 +64,7 @@ impl Event {
     fn drive_field(&mut self, master: &Master, rally: usize, stage: usize) {
         let it = &self.rallies[rally].stages[stage];
         let (conditions, service_after) = (it.conditions, it.service_after);
+        let car_factors: Vec<f32> = (0..self.field.len()).map(|e| it.car_factor(e)).collect();
         let mut track = it.track;
         track.wet = u32::from(conditions == Conditions::Wet);
         // A damp road costs half the engine's wet penalty.
@@ -93,7 +94,10 @@ impl Event {
             }
             let c = &mut self.contenders[e];
             let team = &self.teams[c.team.min(self.teams.len() - 1)];
-            out[e] = field::drive_stage(master, &track, stage as u32, e as i32, c, team, &mut rng, &mut log);
+            // The entrant's car model: its pars by the car's pace (the engine itself untouched).
+            let mut own = track;
+            own.sections.iter_mut().for_each(|s| s.par *= car_factors[e]);
+            out[e] = field::drive_stage(master, &own, stage as u32, e as i32, c, team, &mut rng, &mut log);
         }
         let mut news = restarts;
         news.extend(self.render(&log, stage, news.is_empty()));

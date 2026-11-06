@@ -753,3 +753,36 @@ fn an_edited_plan_builds_as_the_player_laid_it_out() {
     plan[1].legs.push(Vec::new());
     assert!(Event::build_planned(config, &plan, &["car".to_owned()], &roster(), &profile).is_err());
 }
+
+#[test]
+fn a_cars_factor_scales_its_crews_times_and_saves() {
+    let pool = gravel_pool();
+    let mut config = Preset::QuickRally.config("Rally2", "car", 12);
+    config.field_size = 4;
+    config.length = Length { rallies: 1, legs: 1, stages: 2 };
+    let cars = vec!["quick".to_owned(), "slow".to_owned()];
+    let plain = build(config.clone(), &pool, &cars);
+    let mut slowed = plain.clone();
+    slowed.set_car_factors(&|_, car| if car == "slow" { 1.2 } else { 1.0 });
+    // Team-mates share a model: entrants 0 and 1 drive one, 2 and 3 the other.
+    let slow: Vec<bool> = slowed.field.iter().map(|e| e.car == "slow").collect();
+    assert_eq!(slow.iter().filter(|s| **s).count(), 2);
+    assert_eq!(Event::load(&slowed.save()).unwrap(), slowed);
+    let m = master();
+    let (mut a, mut b) = (plain, slowed);
+    for e in [&mut a, &mut b] {
+        e.turn_done();
+        e.stage_done(&m, finish(300.0));
+    }
+    let mut compared = [0, 0];
+    for (k, &is_slow) in slow.iter().enumerate() {
+        let (AiResult::Time(x), AiResult::Time(y)) = (&a.results[0][0].1[k], &b.results[0][0].1[k]) else { continue };
+        compared[usize::from(is_slow)] += 1;
+        if is_slow {
+            assert!(y / x > 1.1, "entrant {k}: {x} -> {y}");
+        } else {
+            assert_eq!(x, y, "entrant {k}");
+        }
+    }
+    assert!(compared[0] > 0 && compared[1] > 0, "{compared:?}");
+}

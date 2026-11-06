@@ -84,6 +84,7 @@ impl Form {
         let seed = rbr_season::seed::seed_from_unix_ms(
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64),
         );
+        let archive = self.ngp_archive();
         let env = Env {
             here: &here,
             profile: &mut profile,
@@ -93,6 +94,7 @@ impl Form {
             saved: &saved,
             blocker: blocker.as_ref(),
             seed,
+            archive: Path::new(&archive),
         };
         let request =
             egui::ScrollArea::vertical().id_salt("championship").show(ui, |ui| self.championship.ui(ui, env)).inner;

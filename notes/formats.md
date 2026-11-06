@@ -22,6 +22,7 @@ Parsers: `crates/rbr-formats/src/`; retail tests: `crates/rbr-formats/tests/` (`
 | car model | `.sgc` | `sgc` | `all_retail_sgc_models_parse` | yes |
 | characters | `.sgs`, `.sga` | `sgs`, `sga` | `all_retail_sgs_parse` | skin raw |
 | physics script | `.lsp` | `lsp`, `lsp_keys` | `all_retail_lsp_parse_to_one_list` | yes |
+| NGP car specs | `common.lsp`, `r_<surface>.lsp` | `car_specs` | unit `every_rsf_pack_reads` | headline specs |
 | repair tree | `repair.ini` | `repair` | `all_retail_repair_ini_parse` | yes |
 | menu sprites | `PC_Generic_<w>.bnk` | `bnk` | unit `retail_banks_parse` | yes |
 | sound | `audio.dat` inis, `.eng` | `audio`, `eng` | `audio.rs` | yes |

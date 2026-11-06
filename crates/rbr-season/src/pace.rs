@@ -25,6 +25,9 @@ pub struct ClassPace {
     pub brake: f32,
     /// Top speed (m/s).
     pub top_speed: f32,
+    /// The downforce's grip per (m/s)²: the grip at `v` is `grip · (1 + aero · v²)`. 0 in the class table; a car
+    /// model's own (`car_pace`).
+    pub aero: f32,
 }
 
 /// The sample step along the driveline (m).
@@ -45,49 +48,49 @@ pub fn class_pace(class: &str) -> ClassPace {
     let has = |s: &str| n.contains(s);
     // The top class first: every WRC spelling and Rally1.
     if has("wrc") || has("rally1") || has("rallye1") {
-        return ClassPace { grip: 9.6, accel: 9.2, brake: 11.5, top_speed: 58.0 };
+        return ClassPace { grip: 9.6, accel: 9.2, brake: 11.5, top_speed: 58.0, aero: 0.0 };
     }
     if has("groupb") || has("grpb") {
-        return ClassPace { grip: 9.0, accel: 8.6, brake: 10.6, top_speed: 55.0 };
+        return ClassPace { grip: 9.0, accel: 8.6, brake: 10.6, top_speed: 55.0, aero: 0.0 };
     }
     if has("rgt") {
-        return ClassPace { grip: 8.9, accel: 7.0, brake: 10.0, top_speed: 55.0 };
+        return ClassPace { grip: 8.9, accel: 7.0, brake: 10.0, top_speed: 55.0, aero: 0.0 };
     }
     if has("groupa") || has("grpa") {
-        return ClassPace { grip: 8.6, accel: 6.8, brake: 10.0, top_speed: 53.0 };
+        return ClassPace { grip: 8.6, accel: 6.8, brake: 10.0, top_speed: 53.0, aero: 0.0 };
     }
     if has("s2000") || has("2000") {
-        return ClassPace { grip: 8.6, accel: 6.0, brake: 10.0, top_speed: 50.0 };
+        return ClassPace { grip: 8.6, accel: 6.0, brake: 10.0, top_speed: 50.0, aero: 0.0 };
     }
     if has("n4") || has("r4") || has("groupn") || has("grpn") {
-        return ClassPace { grip: 8.4, accel: 6.4, brake: 9.8, top_speed: 50.0 };
+        return ClassPace { grip: 8.4, accel: 6.4, brake: 9.8, top_speed: 50.0, aero: 0.0 };
     }
     if has("rally2") || has("r5") {
-        return ClassPace { grip: 8.8, accel: 7.2, brake: 10.2, top_speed: 52.0 };
+        return ClassPace { grip: 8.8, accel: 7.2, brake: 10.2, top_speed: 52.0, aero: 0.0 };
     }
     if has("rally3") || has("groupr3") || has("r3") {
-        return ClassPace { grip: 8.2, accel: 6.0, brake: 9.5, top_speed: 49.0 };
+        return ClassPace { grip: 8.2, accel: 6.0, brake: 9.5, top_speed: 49.0, aero: 0.0 };
     }
     if has("kitcar") || has("kit") && has("car") {
-        return ClassPace { grip: 8.0, accel: 5.4, brake: 9.2, top_speed: 48.0 };
+        return ClassPace { grip: 8.0, accel: 5.4, brake: 9.2, top_speed: 48.0, aero: 0.0 };
     }
     if has("rally4") || has("groupr2") || has("r2") {
-        return ClassPace { grip: 7.8, accel: 5.2, brake: 9.0, top_speed: 47.0 };
+        return ClassPace { grip: 7.8, accel: 5.2, brake: 9.0, top_speed: 47.0, aero: 0.0 };
     }
     if has("s1600") || has("1600") {
-        return ClassPace { grip: 7.6, accel: 4.8, brake: 8.8, top_speed: 45.0 };
+        return ClassPace { grip: 7.6, accel: 4.8, brake: 8.8, top_speed: 45.0, aero: 0.0 };
     }
     if has("rally5") || has("groupr1") || has("r1") {
-        return ClassPace { grip: 7.4, accel: 4.4, brake: 8.5, top_speed: 44.0 };
+        return ClassPace { grip: 7.4, accel: 4.4, brake: 8.5, top_speed: 44.0, aero: 0.0 };
     }
     if has("group4") || has("grp4") || has("historic") {
-        return ClassPace { grip: 7.2, accel: 5.0, brake: 8.5, top_speed: 46.0 };
+        return ClassPace { grip: 7.2, accel: 5.0, brake: 8.5, top_speed: 46.0, aero: 0.0 };
     }
     if has("group2") || has("grp2") {
-        return ClassPace { grip: 6.8, accel: 4.5, brake: 8.0, top_speed: 43.0 };
+        return ClassPace { grip: 6.8, accel: 4.5, brake: 8.0, top_speed: 43.0, aero: 0.0 };
     }
     // Middle class: Rally3 pace.
-    ClassPace { grip: 8.2, accel: 6.0, brake: 9.5, top_speed: 49.0 }
+    ClassPace { grip: 8.2, accel: 6.0, brake: 9.5, top_speed: 49.0, aero: 0.0 }
 }
 
 /// The surface's share of the dry-tarmac grip.
@@ -309,7 +312,10 @@ pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class
     let mut limit = vec![0.0f32; samples.len()];
     for (i, &k) in smooth.iter().enumerate() {
         let k = k.abs();
-        limit[i] = if k <= 0.0 { class.top_speed } else { (grip_eff / k).sqrt().min(class.top_speed).max(MIN_CORNER) };
+        // The corner's speed where the grip, the downforce's included, holds the curvature: v² k = grip (1 + aero v²).
+        let hold = k - grip_eff * class.aero;
+        limit[i] =
+            if hold <= 0.0 { class.top_speed } else { (grip_eff / hold).sqrt().min(class.top_speed).max(MIN_CORNER) };
     }
     // Forward pass: the acceleration falls linearly to 0 at top speed.
     let mut speed = vec![0.0f32; samples.len()];
@@ -321,7 +327,8 @@ pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class
     }
     // Backward pass: the braking, scaled with the grip.
     for i in (0..samples.len() - 1).rev() {
-        let v = (speed[i + 1] * speed[i + 1] + 2.0 * brake_eff * STEP).sqrt();
+        let v2 = speed[i + 1] * speed[i + 1];
+        let v = (v2 + 2.0 * brake_eff * (1.0 + class.aero * v2) * STEP).sqrt();
         speed[i] = speed[i].min(v);
     }
     Some(Plan { samples, limit, speed, top_speed: class.top_speed })

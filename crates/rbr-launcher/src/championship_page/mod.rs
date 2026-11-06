@@ -43,6 +43,7 @@ mod launch;
 
 pub use launch::shots;
 mod builder;
+mod car_pace;
 mod cards;
 mod plan;
 pub mod pool;
@@ -261,7 +262,7 @@ impl ChampionshipPage {
     }
 
     /// Start: the championship built on the pool, saved under the profile, at its welcome.
-    pub fn start_event(&mut self, here: &Path, profile: &str, cars: &[Car], stages: &[StageRef]) {
+    pub fn start_event(&mut self, here: &Path, profile: &str, cars: &[Car], stages: &[StageRef], archive: &Path) {
         let Some(config) = self.config.clone() else { return };
         let field = self.field_models(cars, &config.class);
         let cache = here.join(pool::CACHE);
@@ -275,7 +276,9 @@ impl ChampionshipPage {
             Err(e) => Err(format!("the AI tables do not read: {e}")),
         };
         match built {
-            Ok(event) => {
+            Ok(mut event) => {
+                // Each model as quick as its physics, within the class.
+                event.set_car_factors(&car_pace::factors(&cache, class, &field, cars, archive));
                 self.run = Some(Run { event, damage: None, penalty: 0.0, tyre: 3 });
                 (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
                 self.shown = None;

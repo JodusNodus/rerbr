@@ -33,10 +33,19 @@ the layer only reads drivelines and hands the launcher times, standings and save
   are drawn by difficulty with means rising with it (technique 2.9 + 1.1 d, skills 2.6 + d, speed 2 + 1.4 d,
   endurance 3 + 0.8 d, spreads from the retail `aidrv.ini`'s fourteen drivers) and the retail temperament mix (mostly 3,
   then 1, 0, 4). Entrant `i` takes team `i / 2` and that team's car, as the season seats two drivers to a team; team-mates drive
-  the same catalog model, the teams taking the class's models in the seed's order (the AI's pace comes from the
-  roster car, the model is the entry's label). The
+  the same catalog model, the teams taking the class's models in the seed's order (the AI's skill comes from the
+  roster car, its pace on each stage also from the model, `car_pace`). The
   difficulty also sets the field's `pace` over the pars (1 at 1, 1.087 at 0); adaptive moves it 0.003 a stage.
   `Entrant.skill`/`consistency` are display summaries of the driver record.
+- `car_pace`: each field model's pace within the class from its NGP scripts (`rbr_formats::car_specs`: mass, drag
+  area, peak power and rpm up to the limiter, drivetrain loss, driven wheels, downforce at 150 km/h). A standing start
+  in a few lines of physics (drive force the lesser of traction and 0.75 of the wheel power over the speed, less drag
+  and rolling) fitted to the plan's `a(v) = accel (1 - v / top)`; the corners and braking add 0.86 of the downforce as
+  grip (`ClassPace::aero`, grip per (m/s)^2). `for_car` scales the class's accel and top by the car's over the field's
+  mean car, so the class table stays the anchor. A stage's factor for a model is the speed plan's dry time with its
+  pace over the mean car's; `ItineraryStage::car_factors[e]` scales entrant `e`'s section pars before the engine
+  (the engine itself unchanged) and goes in the save's S line (old saves read as 1). The launcher reads a pack's
+  `common.lsp`/`r_tarmac.lsp` or the archive slot's in `physics.rbz`; a model whose specs do not read runs at 1.
 - AI service: after a stage with a service the cars get `ai::service` (the manager's order, repairs at the team's cost
   within 20/40 minutes) and `service_penalty` (10 s per minute late) into `Event.penalties`. Cars are repaired and
   false starts reset at each rally's first stage. A driver who retires is out for the rally.
@@ -92,6 +101,14 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 - Other classes follow by power/weight/grip ratios (WRC 9.6/9.2/11.5/58 down to Group 2 6.8/4.5/8.0/43).
 - Real-world check: fast gravel WRC ~109-126 km/h, twisty tarmac ~89-96, snow ~74-100; Rally2 ~7 % slower,
   Group 2 ~21 % slower.
+- `car_pace` against the NGP physics' own runs (the sweep below, 50 cars): 0-60/100/140 km/h within 7.6 % RMS over
+  29 cars (high-revving cars left out: the autopilot shifts near 7000 rpm, below their power peak; late launches
+  too); grip on the 40 m circle 0.89-0.99 g, within 1.6 % RMS on the downforce alone (`TyrePerformancePct` and the
+  mass showed no effect, so neither is in the model); braking from 100 km/h follows the brakes' hardware (5.5 % RMS),
+  not modelled per car. So in the NGP physics a Group B car holds about as much at low speed as a modern one; the
+  modern car's edge is its aero in the fast corners. Gravel is not yet measured (tarmac only).
+  `examples/car_pace.rs` prints the factors per field on the retail roads: WRC field -1.8 % (2019-20 cars) to
+  +1.7 % (2006); Rally2 within 0.4 %; Group B quattro -3.4 %, Lada +7 %; a mixed field WRC 2019 -2.4 %, Escort +2.1 %.
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
   keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
   hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the

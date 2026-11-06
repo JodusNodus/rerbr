@@ -61,6 +61,7 @@ pub mod audio;
 pub mod bnk;
 pub mod car_pack;
 pub mod car_parts;
+pub mod car_specs;
 pub mod cars;
 pub mod col;
 #[cfg(test)]

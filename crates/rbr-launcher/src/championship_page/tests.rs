@@ -71,7 +71,7 @@ fn page_on(here: &Path, preset: Preset) -> ChampionshipPage {
         ..Car::default()
     }];
     page.open_builder(preset, &cars, 0, 3);
-    page.start_event(here, "tester", &cars, &fixture::stages());
+    page.start_event(here, "tester", &cars, &fixture::stages(), Path::new(""));
     page
 }
 
@@ -321,7 +321,7 @@ fn the_players_own_itinerary_and_field_models_start_the_championship() {
     assert!(page.plan.own());
     // Only the first model in the field.
     page.left_out = vec!["rsf-2".into(), "rsf-3".into()];
-    page.start_event(&here, "tester", &cars, &stages);
+    page.start_event(&here, "tester", &cars, &stages, Path::new(""));
     let event = &page.run.as_ref().unwrap().event;
     assert_eq!(event.rallies[0].stages[0].stage.name, "Pirka Menoko");
     assert_eq!(event.rallies[0].stages.len(), 6);

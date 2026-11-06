@@ -67,6 +67,14 @@ impl Event {
         Event::build_planned(config, &plan, class_cars, roster, profile)
     }
 
+    /// Sets each entrant's car factor on every stage: `factor(stage, car)` for the entrant's car model (a catalog key),
+    /// its time on the stage over the track's.
+    pub fn set_car_factors(&mut self, factor: &dyn Fn(&StageRef, &str) -> f32) {
+        for stage in self.rallies.iter_mut().flat_map(|r| r.stages.iter_mut()) {
+            stage.car_factors = self.field.iter().map(|e| factor(&stage.stage, &e.car)).collect();
+        }
+    }
+
     /// The seed's plan of the event from `stages` (the installed pool) by the config's length, pool and surfaces.
     pub fn plan(config: &EventConfig, stages: &[StageRef]) -> Result<Vec<RallyPlan>, String> {
         let Length { rallies, legs, stages: count } = config.length;
@@ -291,6 +299,7 @@ fn draw_rally(
                 reference: profile.dry,
                 track: profile.track(0, PAR_SCALE),
                 service_after,
+                car_factors: Vec::new(),
             });
         }
     }

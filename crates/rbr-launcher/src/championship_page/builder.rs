@@ -318,7 +318,7 @@ impl ChampionshipPage {
         }
         self.config = Some(edited);
         if let Some(stages) = stages.filter(|_| start) {
-            self.start_event(env.here, env.profile, env.cars, &stages);
+            self.start_event(env.here, env.profile, env.cars, &stages, env.archive);
         }
         request
     }
