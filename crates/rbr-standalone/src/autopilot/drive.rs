@@ -25,7 +25,7 @@ pub enum Pilot<'a> {
     Recording(std::collections::HashMap<u32, [u8; CONTROL_BYTES]>),
     /// The controller, once a frame from the last answer: on the handbrake, revving in neutral, until the start
     /// countdown is out (a jump start would add its penalty), then along the driveline.
-    Autopilot { driver: Driver<'a>, report: u32 },
+    Autopilot { driver: Box<Driver<'a>>, report: u32 },
 }
 
 impl<'a> Pilot<'a> {
@@ -36,7 +36,7 @@ impl<'a> Pilot<'a> {
                 .with_step(live.step_clock().step)
                 .with_limit(rev_limit(live))
                 .with_obstacles(&stage.obstacles);
-            return Ok(Pilot::Autopilot { driver: with_lesson(driver, live, stage), report: 0 });
+            return Ok(Pilot::Autopilot { driver: Box::new(with_lesson(driver, live, stage)), report: 0 });
         }
         let bytes = std::fs::read(what).map_err(|e| format!("--pilot {what}: {e}"))?;
         let frames = rbr_recording::read_all(&bytes).map_err(|e| format!("--pilot {what}: {e}"))?;
@@ -204,8 +204,7 @@ pub fn drive(
         // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
         // finish time). A circle run never finishes (it laps the school compound to the step limit).
         let school = live.school().is_some();
-        let finished =
-            !school && circle.is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
+        let finished = !school && circle.is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }

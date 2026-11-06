@@ -191,11 +191,7 @@ fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
     let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
     // On a 40 m circle about the origin at (40, 0), heading along the counter-clockwise tangent (+y).
     let sense = Sense {
-        pose: CarPose {
-            position: [40.0, 0.0, 0.0],
-            orientation: [0.0, 0.0, 1.0, 0.0],
-            velocity: [0.0, 8.0, 0.0],
-        },
+        pose: CarPose { position: [40.0, 0.0, 0.0], orientation: [0.0, 0.0, 1.0, 0.0], velocity: [0.0, 8.0, 0.0] },
         parameter: 0.5,
         gear: FIRST,
         engine: 500.0,

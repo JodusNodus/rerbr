@@ -839,7 +839,10 @@ mod tests {
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
             (format!("{REC} --autopilot OUT --circle 0,0"), "--circle 0,0: want X,Y,R with R > 0"),
             (format!("{REC} --autopilot OUT --circle 0,0,-5"), "--circle 0,0,-5: want X,Y,R with R > 0"),
-            (format!("{REC} --autopilot OUT --circle 0,0,40 --aim 1,2"), "--circle takes no --aim (it steers the circle itself)"),
+            (
+                format!("{REC} --autopilot OUT --circle 0,0,40 --aim 1,2"),
+                "--circle takes no --aim (it steers the circle itself)",
+            ),
             ("--recording R --snapshot S --data D".into(), "--stage, --stage-dir or --rsf-stage is required"),
             (format!("{REC} --stage-dir DIR"), "give one of --stage, --stage-dir and --rsf-stage"),
         ];
@@ -869,7 +872,10 @@ mod tests {
             (format!("{school} 2 --tyre 4"), "--school takes no --tyre (the lesson sets it)"),
             (format!("{school} 2 --championship rookie"), "--school takes no --championship (the lesson sets it)"),
             (format!("{REC} --school 2"), "--school needs --boot"),
-            (format!("{school} 2 --flat-out"), "--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)"),
+            (
+                format!("{school} 2 --flat-out"),
+                "--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)",
+            ),
         ] {
             assert_eq!(run_str(&argv, None).err().as_deref(), Some(want), "{argv}");
         }

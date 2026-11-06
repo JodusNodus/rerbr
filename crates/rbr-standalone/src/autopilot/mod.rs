@@ -753,17 +753,17 @@ impl<'a> Driver<'a> {
             self.circle_point(&sense.pose, speed, circle)
         } else {
             aimed.unwrap_or_else(|| {
-            if self.against {
-                return point(self.track, parameter(&self.values, at - look));
-            }
-            let u = parameter(&self.values, at + look);
-            let p = point(self.track, u);
-            if swerve == 0.0 {
-                return p;
-            }
-            let ahead = sub(point(self.track, u + 0.01), p);
-            let length = ahead[0].hypot(ahead[1]);
-            [p[0] - swerve * ahead[1] / length, p[1] + swerve * ahead[0] / length, p[2]]
+                if self.against {
+                    return point(self.track, parameter(&self.values, at - look));
+                }
+                let u = parameter(&self.values, at + look);
+                let p = point(self.track, u);
+                if swerve == 0.0 {
+                    return p;
+                }
+                let ahead = sub(point(self.track, u + 0.01), p);
+                let length = ahead[0].hypot(ahead[1]);
+                [p[0] - swerve * ahead[1] / length, p[1] + swerve * ahead[0] / length, p[2]]
             })
         };
         let error = angle(sense.pose.forward(), sub(target, sense.pose.position));
