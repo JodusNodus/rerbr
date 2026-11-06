@@ -141,11 +141,7 @@ pub fn drive(
     steps: u32,
     top: Option<f32>,
     aim: Option<Aim>,
-    flat_out: bool,
-    brake_from: Option<f32>,
-    circle: Option<Circle>,
-    circle_ramp: Option<f32>,
-    trace_speed: Option<&Path>,
+    measure: &Measure,
     out: &Path,
 ) -> Result<Drove, String> {
     let start = live.next_step();
@@ -166,19 +162,19 @@ pub fn drive(
         .with_step(live.step_clock().step)
         .with_limit(limit)
         .with_obstacles(&stage.obstacles)
-        .with_flat_out(flat_out);
-    if let Some(circle) = circle {
+        .with_flat_out(measure.flat_out);
+    if let Some(circle) = measure.circle {
         driver = driver.with_circle(circle);
     }
-    if let Some(ramp) = circle_ramp {
+    if let Some(ramp) = measure.circle_ramp {
         driver = driver.with_circle_ramp(ramp);
     }
-    if let Some(v) = brake_from {
+    if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
     let mut driver = with_lesson(driver, &live, stage);
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
-    let mut trace = match trace_speed {
+    let mut trace = match &measure.trace_speed {
         Some(path) => {
             let mut file =
                 std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
@@ -208,7 +204,7 @@ pub fn drive(
         // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
         // finish time). A circle run never finishes (it laps the school compound to the step limit).
         let school = live.school().is_some();
-        let finished = !school && circle.is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
+        let finished = !school && measure.circle.is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }
@@ -256,7 +252,7 @@ pub fn drive(
             drove.end = why.clone();
             break;
         }
-        if off_road == driver.steps(OFF_ROAD_STEPS) && aim.is_none() && circle.is_none() {
+        if off_road == driver.steps(OFF_ROAD_STEPS) && aim.is_none() && measure.circle.is_none() {
             drove.end = format!(
                 "off the road at step {step} (over {OFF_ROAD} m from the driveline for {OFF_ROAD_STEPS} steps)"
             );

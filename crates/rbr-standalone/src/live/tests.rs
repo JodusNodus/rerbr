@@ -427,11 +427,7 @@ fn the_autopilot_drives_lessons_to_their_saved_verdicts() {
                 150_000,
                 None,
                 None,
-                false,
-                None,
-                None,
-                None,
-                None,
+                &Default::default(),
                 &dir.join("drive.bin"),
             )
             .unwrap();
@@ -610,8 +606,7 @@ fn an_autopilot_playback_starts_on_the_green() {
         let out = std::env::temp_dir().join(format!("rbr-autopilot-green-{}.bin", std::process::id()));
         let neutral = payload(&QuantizedControl::default().car_control(), 0);
         let drove =
-            crate::autopilot::drive(live, &[], neutral, stage, 9000, None, None, false, None, None, None, None, &out)
-                .unwrap();
+            crate::autopilot::drive(live, &[], neutral, stage, 9000, None, None, &Default::default(), &out).unwrap();
         std::fs::remove_file(&out).unwrap();
         assert!(!drove.out.unwrap().result.false_start, "the autopilot jumped the start");
     });

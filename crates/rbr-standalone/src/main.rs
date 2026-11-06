@@ -354,11 +354,13 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
             args.steps as u32,
             args.top_speed,
             args.aim,
-            args.flat_out,
-            args.brake_from,
-            args.circle,
-            args.circle_ramp,
-            args.trace_speed.as_deref(),
+            &autopilot::Measure {
+                flat_out: args.flat_out,
+                brake_from: args.brake_from,
+                circle: args.circle,
+                circle_ramp: args.circle_ramp,
+                trace_speed: args.trace_speed.clone(),
+            },
             out,
         )
     });

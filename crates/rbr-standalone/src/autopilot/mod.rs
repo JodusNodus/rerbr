@@ -430,6 +430,17 @@ pub struct Driver<'a> {
     grip: f32,
 }
 
+/// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from`, `--circle`, `--circle-ramp`,
+/// `--trace-speed`); the default drives as a race.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Measure {
+    pub flat_out: bool,
+    pub brake_from: Option<f32>,
+    pub circle: Option<Circle>,
+    pub circle_ramp: Option<f32>,
+    pub trace_speed: Option<std::path::PathBuf>,
+}
+
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
 /// radius (m). The controller steers a pure pursuit on the circle while the target speed ramps from
 /// `CIRCLE_START` at `CIRCLE_RAMP` (m/s per s) to the top, so the car holds ever faster steady states until it can
