@@ -619,14 +619,17 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     var sun_seen = 1.0;
     var colour: vec3<f32>;
     if (own) {
-        // The sun's or, once it is down, the moon's share past the shadows.
-        sun_seen = own_sun_seen(v, under_cloud);
-        // A crown's own leaves shade it softly, rather than its cards each other (`crown_sun_seen`).
+        // The sun's or, once it is down, the moon's share past the shadows; a crown's own leaves shade it softly,
+        // rather than its cards each other (`crown_sun_seen`). Only the one taken is worked out (both cost a shadow
+        // filter); the crown's radii, from the slopes, in uniform control flow.
+        var radii = vec3<f32>(1.0);
         if (mode.cutout != 0u && !second_draw()) {
-            let crown = crown_sun_seen(v, under_cloud, crown_radii(v));
-            if (is_crown(v)) {
-                sun_seen = crown;
-            }
+            radii = crown_radii(v);
+        }
+        if (!second_draw() && is_crown(v)) {
+            sun_seen = crown_sun_seen(v, under_cloud, radii);
+        } else {
+            sun_seen = own_sun_seen(v, under_cloud);
         }
         // Lit in linear light (`own_light`), then back to the display colour the rest of the frame works in.
         colour = pow(own_light(v, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
@@ -1248,7 +1251,10 @@ fn own_sun_seen(v: VertexOut, under_cloud: f32) -> f32 {
     let near = sun_reach(v.world);
     if (seen > 0.0 && frame.sun_shadow.z == 0.0) {
         let n = select(vec3<f32>(0.0, 1.0, 0.0), normalize(v.normal), dot(v.normal, v.normal) > 1e-8);
-        if (near > 0.0) {
+        // Inside the cascades' reach the world layer's filter is not needed (`mix` at 1).
+        if (near >= 1.0) {
+            seen *= sun_lit(v.world, n);
+        } else if (near > 0.0) {
             seen *= mix(world_lit(v.world, n), sun_lit(v.world, n), near);
         } else {
             seen *= world_lit(v.world, n);
@@ -1317,6 +1323,9 @@ fn crown_sun_seen(v: VertexOut, under_cloud: f32, r: vec3<f32>) -> f32 {
         if (p.layer >= 0) {
             lit = texel_filter(p.uv, p.layer, p.depth);
         }
+    }
+    if (near >= 1.0) {
+        return seen * own * lit;
     }
     return seen * own * mix(world_lit(out, vec3<f32>(0.0)), lit, near);
 }

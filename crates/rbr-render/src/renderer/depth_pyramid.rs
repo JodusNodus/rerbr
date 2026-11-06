@@ -14,7 +14,7 @@ pub(super) struct DepthPyramid {
     halve: wgpu::ComputePipeline,
     /// All the levels, for the trace.
     pub(super) view: wgpu::TextureView,
-    /// Each level's bind group and size: level 0 from the frame's depth, the others from the level below.
+    /// Each dispatch's bind group and size: levels 0 and 1 from the frame's depth, the others from the level below.
     groups: Vec<Level>,
 }
 
@@ -71,12 +71,17 @@ impl DepthPyramid {
         let texture_entry =
             |binding, view| wgpu::BindGroupEntry { binding, resource: wgpu::BindingResource::TextureView(view) };
         let levels: Vec<_> = (0..=LEVELS).map(level).collect();
-        let groups = (0..=LEVELS)
+        // The copy fills levels 0 and 1 at once, a thread to a texel of level 1.
+        let groups = std::iter::once(1)
+            .chain(2..=LEVELS)
             .map(|mip| {
                 let at = mip as usize;
                 let (pipeline, entries) = match mip {
-                    0 => (copy, [texture_entry(1, &levels[0]), texture_entry(2, depth)]),
-                    _ => (halve, [texture_entry(0, &levels[at - 1]), texture_entry(1, &levels[at])]),
+                    1 => (
+                        copy,
+                        vec![texture_entry(1, &levels[0]), texture_entry(2, depth), texture_entry(3, &levels[1])],
+                    ),
+                    _ => (halve, vec![texture_entry(0, &levels[at - 1]), texture_entry(1, &levels[at])]),
                 };
                 let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("depth pyramid"),
@@ -93,8 +98,8 @@ impl DepthPyramid {
     pub(super) fn build(&self, encoder: &mut wgpu::CommandEncoder) {
         let mut pass = encoder
             .begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("depth pyramid"), timestamp_writes: None });
-        for (mip, (group, (width, height))) in self.groups.iter().enumerate() {
-            pass.set_pipeline(if mip == 0 { &self.copy } else { &self.halve });
+        for (k, (group, (width, height))) in self.groups.iter().enumerate() {
+            pass.set_pipeline(if k == 0 { &self.copy } else { &self.halve });
             pass.set_bind_group(0, group, &[]);
             pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
         }

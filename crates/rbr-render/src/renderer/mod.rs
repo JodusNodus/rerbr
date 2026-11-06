@@ -165,6 +165,8 @@ pub struct Renderer {
     world_drawn: Option<Mat4>,
     /// What the cascades' far layer holds ([`sun::FarDrawn`]), drawn again only when it no longer serves the eye.
     far_drawn: Option<sun::FarDrawn>,
+    /// What the second and third cascades hold ([`sun::CascadesDrawn`]).
+    cascades_drawn: sun::CascadesDrawn,
     /// The skid marks ([`crate::skidmarks_pass`]), made by the first [`Renderer::set_skid_marks`] or
     /// [`Renderer::set_tyre_marks`].
     skid_marks: Option<crate::skidmarks_pass::SkidPass>,

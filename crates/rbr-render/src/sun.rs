@@ -257,10 +257,14 @@ pub(crate) fn placeholder(device: &wgpu::Device) -> wgpu::TextureView {
         })
 }
 
-/// The cascades for the view `view_projection` and sunlight travelling along `sun`. Each covers the bounding sphere
-/// of its slice of the view, so its size does not change as the view turns, and its centre moves in whole texels, so
-/// shadow edges do not crawl as the eye moves.
-pub(crate) fn cascades(view_projection: Mat4, sun: Vec3, quality: Quality) -> Cascades {
+/// The points that bound what each cascade holds for a view ([`cascades`]): its slice's corners, the near ones both at
+/// the slice's depth and at its distance (`sun_point` picks the cascade by the distance).
+pub(crate) type Slices = [[Vec3; 12]; 3];
+
+/// The cascades for the view `view_projection` and sunlight travelling along `sun`, and the points their slices of the
+/// view span. Each covers the bounding sphere of its slice of the view, so its size does not change as the view turns,
+/// and its centre moves in whole texels, so shadow edges do not crawl as the eye moves.
+pub(crate) fn cascades(view_projection: Mat4, sun: Vec3, quality: Quality) -> (Cascades, Slices) {
     let inverse = view_projection.inverse();
     let eye = crate::camera::eye(view_projection);
     // The four corner rays of the view and its forward axis.
@@ -276,11 +280,13 @@ pub(crate) fn cascades(view_projection: Mat4, sun: Vec3, quality: Quality) -> Ca
     let mut near = 0.0;
     let mut matrices = [Mat4::IDENTITY; 3];
     let mut texels = [0.0; 3];
+    let mut slices = [[Vec3::ZERO; 12]; 3];
     for (i, &far) in SPLITS.iter().enumerate() {
         let points: Vec<Vec3> = rays
             .iter()
             .flat_map(|&ray| [near, far].map(|distance| eye + ray * (distance / ray.dot(forward))))
             .collect();
+        slices[i] = std::array::from_fn(|k| points.get(k).copied().unwrap_or_else(|| eye + rays[k - 8] * near));
         let centre = points.iter().copied().sum::<Vec3>() / points.len() as f32;
         let radius = points.iter().map(|p| p.distance(centre)).fold(0.0, f32::max).ceil();
         let texel = 2.0 * radius / quality.size as f32;
@@ -293,7 +299,66 @@ pub(crate) fn cascades(view_projection: Mat4, sun: Vec3, quality: Quality) -> Ca
         near = far;
     }
     let (far, far_texel) = self::far(eye, sun, quality.size);
-    Cascades { matrices, texels, far, far_texel }
+    (Cascades { matrices, texels, far, far_texel }, slices)
+}
+
+/// Texels each side of a held cascade's edge that a slice must keep clear of ([`CascadesDrawn::due`]): the filter's
+/// reach (`texel_filter`, 2.5) and the lookup's offset along the normal (1.5).
+const HELD_MARGIN: f32 = 4.0;
+
+/// Each cascade is drawn on the frames whose number is the second modulo the first ([`CascadesDrawn`]): the first
+/// (the car's surroundings, the characters near it) every frame, the second every other frame, the third every fourth
+/// between the second's.
+const TURNS: [(u64, u64); 3] = [(1, 0), (2, 0), (4, 1)];
+
+/// What the cascades were last drawn with (ours): each is drawn on its turns ([`TURNS`]), and between them the frame
+/// reads it through the matrix it was drawn with, while that still holds the view's slice.
+#[derive(Debug, Default)]
+pub(crate) struct CascadesDrawn {
+    held: [Option<HeldCascade>; 3],
+    frame: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct HeldCascade {
+    matrix: Mat4,
+    texel: f32,
+    light: Vec3,
+    size: u32,
+}
+
+impl CascadesDrawn {
+    /// Which of `cascades` (made with [`cascades`] for the slices `slices`, light travelling along `light` and
+    /// `quality`) are drawn this frame; those kept take the matrix and texel they were drawn with.
+    pub(crate) fn due(&mut self, cascades: &mut Cascades, slices: &Slices, light: Vec3, quality: Quality) -> [bool; 3] {
+        let frame = self.frame;
+        self.frame = frame.wrapping_add(1);
+        let inside = 1.0 - 2.0 * HELD_MARGIN / quality.size as f32;
+        std::array::from_fn(|i| {
+            let (every, phase) = TURNS[i];
+            let turn = frame % every == phase;
+            let kept = self.held[i].filter(|held| {
+                !turn
+                    && held.light == light
+                    && held.size == quality.size
+                    && slices[i].iter().all(|&point| {
+                        let p = held.matrix.project_point3(point);
+                        p.x.abs() <= inside && p.y.abs() <= inside && (0.0..=1.0).contains(&p.z)
+                    })
+            });
+            match kept {
+                Some(held) => {
+                    (cascades.matrices[i], cascades.texels[i]) = (held.matrix, held.texel);
+                    false
+                }
+                None => {
+                    let (matrix, texel) = (cascades.matrices[i], cascades.texels[i]);
+                    self.held[i] = Some(HeldCascade { matrix, texel, light, size: quality.size });
+                    true
+                }
+            }
+        })
+    }
 }
 
 /// What the far layer was last drawn with: its clip matrix and texel, the eye, the light's direction and the maps' size.
@@ -413,5 +478,29 @@ mod tests {
         assert!((-drop.y - BACKDROP_DROP).abs() < 1e-3);
         // A low sun's reach stops short of the drop.
         assert!((backdrop_drop(Vec3::new(1.0, -0.05, 0.0)).length() - 2.0 * BACKDROP_DROP).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_outer_cascades_are_drawn_in_turn_while_they_hold_the_view() {
+        let quality = Quality { size: 4096, search_texels: 32.0, soft_texels: 8.0 };
+        let sun = Vec3::new(0.4, -0.7, 0.3).normalize();
+        let view = |x: f32| {
+            let eye = Vec3::new(x, 2.0, 0.0);
+            directx::perspective(1.0, 16.0 / 9.0, 0.1, 1000.0) * view::look_to_mat4(eye, Vec3::Z, Vec3::Y)
+        };
+        let mut drawn = CascadesDrawn::default();
+        let mut due = |x: f32| {
+            let (mut made, slices) = cascades(view(x), sun, quality);
+            drawn.due(&mut made, &slices, sun, quality)
+        };
+        assert_eq!(due(0.0), [true; 3]);
+        // Steps of 20 cm: the outer cascades are kept between their turns.
+        assert_eq!(due(0.2), [true, false, true]);
+        assert_eq!(due(0.4), [true, true, false]);
+        assert_eq!(due(0.6), [true, false, false]);
+        assert_eq!(due(0.8), [true, true, false]);
+        assert_eq!(due(1.0), [true, false, true]);
+        // A cut to another place: all of them again.
+        assert_eq!(due(300.0), [true; 3]);
     }
 }

@@ -16,6 +16,10 @@ struct Exposure {
     adapting: f32,
     // In the in-car view the cabin's own exposure (`cs_meter`), eased as `value`; elsewhere `value`'s.
     cabin: f32,
+    // The frame's terms of `adapting`, which `cs_meter` works out once for the composite's pixels: the rods' white
+    // (`rod_vision`) and the glare's levels' weights summed (`glare_weight`).
+    white: f32,
+    spread: vec3<f32>,
 }
 
 // `cs_meter`'s settings (`post::Meter`).
@@ -308,7 +312,11 @@ fn luminance(c: vec3<f32>) -> f32 {
 
 // The glare's F-number (`GLARE_SHUTTER`).
 fn aperture() -> f32 {
-    let ev100 = log2(max(exposure.adapting, 1e-6) * 100.0 / CALIBRATION);
+    return aperture_at(exposure.adapting);
+}
+
+fn aperture_at(adapting: f32) -> f32 {
+    let ev100 = log2(max(adapting, 1e-6) * 100.0 / CALIBRATION);
     return clamp(sqrt(exp2(ev100) * GLARE_SHUTTER), GLARE_APERTURE.x, GLARE_APERTURE.y);
 }
 
@@ -478,15 +486,23 @@ fn cs_meter(@builtin(local_invocation_index) index: u32) {
         meter_exposure.value = aim;
         meter_exposure.adapting = held;
         meter_exposure.cabin = cabin;
-        return;
+    } else {
+        let speed = select(ADAPT_SPEED.y, ADAPT_SPEED.x, aim < last);
+        let eased = 1.0 - exp(-meter.step * speed);
+        meter_exposure.value = exp2(mix(log2(last), log2(aim), eased));
+        meter_exposure.adapting = exp2(mix(log2(meter_exposure.adapting), log2(held), eased));
+        let cabin_speed = select(ADAPT_SPEED.y, ADAPT_SPEED.x, cabin < meter_exposure.cabin);
+        let cabin_eased = 1.0 - exp(-meter.step * cabin_speed);
+        meter_exposure.cabin = exp2(mix(log2(meter_exposure.cabin), log2(cabin), cabin_eased));
     }
-    let speed = select(ADAPT_SPEED.y, ADAPT_SPEED.x, aim < last);
-    let eased = 1.0 - exp(-meter.step * speed);
-    meter_exposure.value = exp2(mix(log2(last), log2(aim), eased));
-    meter_exposure.adapting = exp2(mix(log2(meter_exposure.adapting), log2(held), eased));
-    let cabin_speed = select(ADAPT_SPEED.y, ADAPT_SPEED.x, cabin < meter_exposure.cabin);
-    let cabin_eased = 1.0 - exp(-meter.step * cabin_speed);
-    meter_exposure.cabin = exp2(mix(log2(meter_exposure.cabin), log2(cabin), cabin_eased));
+    let adapting = max(meter_exposure.adapting, 1e-6);
+    meter_exposure.white = luminance(rod_vision(vec3<f32>(adapting))) / adapting;
+    let n = aperture_at(meter_exposure.adapting);
+    var spread = vec3<f32>(0.0);
+    for (var level = 1u; level <= u32(LEVELS); level++) {
+        spread += glare_weight(f32(textureDimensions(source).y >> level), n);
+    }
+    meter_exposure.spread = spread;
 }
 
 // Whether the pixel at `uv` takes the cabin's exposure: it and its 8 neighbours are the cabin's. The edge's pixels,
@@ -575,22 +591,15 @@ fn fs_composite(v: Out) -> @location(0) vec4<f32> {
         veil = exposure.value / exposed;
     }
     // The chain's levels carry the glare (exposed) and the frame's luminance; the glare takes its light from the scene
-    // (the levels' weights, `glare_weight`, summed).
-    let n = aperture();
-    var spread = vec3<f32>(0.0);
-    for (var level = 1u; level <= u32(LEVELS); level++) {
-        spread += glare_weight(f32(textureDimensions(source).y >> level), n);
-    }
-    var lit = scene * (1.0 - spread) + bloomed.rgb / exposure.value * veil;
+    // (the levels' weights, `glare_weight`, summed: `Exposure::spread`).
+    var lit = scene * (1.0 - exposure.spread) + bloomed.rgb / exposure.value * veil;
     if (SHAFTS) {
         lit += shafts_at(v.uv) * veil;
     }
     // Rod vision (`rod_vision`) on the light in cd/m2, over what it adds to white at the adapting luminance: the
     // exposure meters the cones' light, the rods shift the hues and the light between colours.
     let pre = max(meter.pre_exposure, 1e-12);
-    let adapting = max(exposure.adapting, 1e-6);
-    let white = luminance(rod_vision(vec3<f32>(adapting))) / adapting;
-    lit = rod_vision(lit / pre) * pre / white;
+    lit = rod_vision(lit / pre) * pre / exposure.white;
     // Local exposure (`LOCAL_FROM`).
     let broad = log2(max(bloomed.a / LEVELS * exposed, 1e-9) / KEY);
     let linear = max(lit * exposed * exp2(-LOCAL_GIVE * max(broad - LOCAL_FROM, 0.0)), vec3<f32>(0.0));
