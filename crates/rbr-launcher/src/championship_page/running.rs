@@ -42,7 +42,7 @@ impl ChampionshipPage {
                 ui.add_space(10.0);
             }
             card(ui, |ui| match event.turn {
-                Turn::Welcome { rally } => request = self.welcome_ui(ui, &env, &event, rally),
+                Turn::Welcome { rally } => self.welcome_ui(ui, env.here, env.profile, &event, rally),
                 Turn::Stage { rally, stage } => request = self.stage_ui(ui, &env, &event, rally, stage),
                 Turn::Service { .. } if rejoin(&event).is_some() => self.rejoin_ui(ui, env.here, env.profile, &event),
                 Turn::Service { stage, minutes, .. } => {
@@ -92,8 +92,8 @@ impl ChampionshipPage {
         request
     }
 
-    fn welcome_ui(&mut self, ui: &mut Ui, env: &Env, event: &Event, rally: usize) -> Option<Request> {
-        let r = event.rallies.get(rally)?;
+    fn welcome_ui(&mut self, ui: &mut Ui, here: &Path, profile: &str, event: &Event, rally: usize) {
+        let Some(r) = event.rallies.get(rally) else { return };
         card_title(ui, &format!("Welcome to {}", r.name));
         let length: f32 = r.stages.iter().map(|s| s.stage.length).sum();
         let services = r.stages.iter().filter(|s| s.service_after.is_some()).count();
@@ -115,35 +115,9 @@ impl ChampionshipPage {
             ui.colored_label(STAR, line);
         }
         ui.add_space(10.0);
-        if ui.horizontal(|ui| ui.add_enabled(!self.driving, start_button("Start the rally"))).inner.clicked() {
-            self.turn_done(env.here, env.profile);
+        if ui.horizontal(|ui| ui.add(start_button("Start the rally"))).inner.clicked() {
+            self.turn_done(here, profile);
         }
-        self.practice_ui(ui, env)
-    }
-
-    /// The game's two trials before a rally (`S_YARD_TRIAL`, `S_STAGE_TRIAL`): practice that is not recorded.
-    fn practice_ui(&mut self, ui: &mut Ui, env: &Env) -> Option<Request> {
-        let mut request = None;
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            ui.colored_label(GREY, "Practice first (not recorded):");
-            for (label, yard, tip) in [
-                ("Yard trial", true, "A practice drive in the yard; the championship does not record it"),
-                ("Stage trial", false, "A practice drive on the rally's first stage, on its surface; not recorded"),
-            ] {
-                let trial = ui.add_enabled(!self.driving && env.blocker.is_none(), egui::Button::new(label));
-                if trial.on_hover_text(tip).clicked() {
-                    match self.trial(yard) {
-                        Ok(start) => request = Some(Request::Launch(start)),
-                        Err(e) => self.status = e,
-                    }
-                }
-            }
-        });
-        if let Some(issue) = env.blocker.filter(|_| !self.driving) {
-            ui.colored_label(WARN, &issue.text);
-        }
-        request
     }
 
     /// The service a car retired under Super Rally waits out: it is rebuilt, nothing to repair, and rejoins.
@@ -305,7 +279,30 @@ impl ChampionshipPage {
             self.turn_done(env.here, env.profile);
         }
         if next.is_some() {
-            request = self.practice_ui(ui, env);
+            // The game's two trials (`S_YARD_TRIAL`, `S_STAGE_TRIAL`): practice that is not recorded.
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.colored_label(GREY, "Practice first (not recorded):");
+                for (label, yard, tip) in [
+                    ("Yard trial", true, "A practice drive in the yard; the championship does not record it"),
+                    (
+                        "Stage trial",
+                        false,
+                        "A practice drive on the next rally's first stage, on its surface; not recorded",
+                    ),
+                ] {
+                    let trial = ui.add_enabled(!self.driving && env.blocker.is_none(), egui::Button::new(label));
+                    if trial.on_hover_text(tip).clicked() {
+                        match self.trial(yard) {
+                            Ok(start) => request = Some(Request::Launch(start)),
+                            Err(e) => self.status = e,
+                        }
+                    }
+                }
+            });
+            if let Some(issue) = env.blocker.filter(|_| !self.driving) {
+                ui.colored_label(WARN, &issue.text);
+            }
         }
         request
     }

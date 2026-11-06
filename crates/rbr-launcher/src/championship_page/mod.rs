@@ -12,9 +12,8 @@
 //! restart) on the championship's damage. The damage carried goes in with `--damage-in`; the stage's result and damage come back
 //! through `--result-out` and `--damage-out` in `championship/` in the player's folder.
 //!
-//! Before each rally (at its welcome, and at the end of the one before) the page offers the game's two trials as
-//! practice that is not recorded: a yard trial and a stage trial on the rally's first stage (its surface and road), in
-//! the championship's car, with no championship flags.
+//! Between rallies the page offers the game's two trials as practice that is not recorded: a yard trial and a stage
+//! trial on the next rally's first stage (its surface and road), in the championship's car, with no championship flags.
 //!
 //! One championship per profile: `SavedGames/championship-<profile>.txt` (`Event::save`) in `SavedGames/`, with the carried
 //! damage in `championship-<profile>.dmg` and the service's late penalty still to add and the tyre on the car in
@@ -370,18 +369,14 @@ impl ChampionshipPage {
         (self.driving, self.practice) = (false, false);
     }
 
-    /// A practice trial before a rally, at its welcome or the end of the one before (the game's `S_YARD_TRIAL` on map
-    /// 72, `S_STAGE_TRIAL`): the yard, or the rally's first stage on its road and clock, in the championship's car and
-    /// damage, on the road's tyre and the current setup. No championship flags and no files: it is not recorded.
+    /// A practice trial between rallies (the game's `S_YARD_TRIAL` on map 72, `S_STAGE_TRIAL`): the yard, or the next
+    /// rally's first stage on its road and clock, in the championship's car and damage, on the road's tyre and the current
+    /// setup. No championship flags and no files: it is not recorded.
     pub fn trial(&mut self, yard: bool) -> Result<StageStart, String> {
         let run = self.run.as_ref().ok_or("no championship")?;
         let event = &run.event;
-        let rally = match event.turn {
-            Turn::Welcome { rally } => rally,
-            Turn::RallyOver { rally } => rally + 1,
-            _ => return Err("trials come before a rally".into()),
-        };
-        let next = event.rallies.get(rally).and_then(|r| r.stages.first()).ok_or("no rally follows")?;
+        let Turn::RallyOver { rally } = event.turn else { return Err("trials come between rallies".into()) };
+        let next = event.rallies.get(rally + 1).and_then(|r| r.stages.first()).ok_or("no rally follows")?;
         let (map, surface, conditions, clock) = if yard {
             (YARD, Surface::Gravel, Conditions::Dry, 12.0)
         } else {

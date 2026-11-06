@@ -182,12 +182,7 @@ fn a_trial_between_rallies_is_practice_that_is_not_recorded() {
     let mut page = page(&here);
     let mut event = fixture::fixture_event();
     page.screenshot_event(event.clone());
-    // At the welcome, the trial is the first rally's first stage.
-    assert_eq!(page.trial(false).unwrap().map.to_string(), event.rallies[0].stages[0].stage.key);
-    page.abort_stage_start();
-    event.turn_done();
-    page.screenshot_event(event.clone());
-    assert!(page.trial(false).is_err(), "trials come before a rally");
+    assert!(page.trial(false).is_err(), "trials come between rallies");
     event.turn = Turn::RallyOver { rally: 0 };
     page.screenshot_event(event.clone());
     let stage = page.trial(false).unwrap();
