@@ -458,7 +458,10 @@ impl Form {
             })
         });
         // The browsers are a page's body: leaving the page closes them.
-        self.stage_browser.open &= self.page == Page::Drive;
+        self.stage_browser.open &= match self.stage_browser.target {
+            car_browser::Target::Drive => self.page == Page::Drive,
+            car_browser::Target::Championship => self.page == Page::Championship,
+        };
         self.car_browser.open &= match self.car_browser.target {
             car_browser::Target::Drive => self.page == Page::Drive,
             car_browser::Target::Championship => self.page == Page::Championship,

@@ -60,6 +60,31 @@ pub fn summary(config: &EventConfig, stages: Option<&[StageRef]>) -> String {
     parts.join(" · ")
 }
 
+/// The builder's summary of a plan: "2 rallies · 3 legs · 12 stages · 121 km · gravel · 12 Rally2 drivers".
+pub fn plan_summary(config: &EventConfig, rallies: &[rbr_season::event::RallyPlan]) -> String {
+    let mut parts = Vec::new();
+    if rallies.len() > 1 {
+        parts.push(format!("{} rallies", rallies.len()));
+    }
+    let legs = rallies.iter().map(|r| r.legs.len()).max().unwrap_or(1);
+    if legs > 1 {
+        parts.push(format!("{legs} legs"));
+    }
+    let all: Vec<&StageRef> = rallies.iter().flat_map(|r| r.legs.iter().flatten()).collect();
+    parts.push(format!("{} stage{}", all.len(), if all.len() == 1 { "" } else { "s" }));
+    parts.push(format!("{:.0} km", all.iter().map(|s| s.length).sum::<f32>() / 1000.0));
+    let mut surfaces: Vec<Surface> = all.iter().map(|s| s.surface).collect();
+    surfaces.dedup();
+    parts.push(match surfaces[..] {
+        [surface] => pool::surface_word(surface).to_owned(),
+        _ => "mixed surfaces".to_owned(),
+    });
+    let class = if config.class.is_empty() { String::new() } else { format!("{} ", config.class) };
+    let drivers = config.field_size;
+    parts.push(format!("{drivers} {class}driver{}", if drivers == 1 { "" } else { "s" }));
+    parts.join(" · ")
+}
+
 /// The car's class: its catalog group, "" for none.
 pub fn class_of(car: &Car) -> String {
     car.group.clone().unwrap_or_default()

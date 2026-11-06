@@ -28,6 +28,9 @@ impl Form {
         if self.car_browser.open && self.car_browser.target != car_browser::Target::Drive {
             return self.car_browser_page(ui);
         }
+        if self.stage_browser.open && self.stage_browser.target == car_browser::Target::Championship {
+            return self.stage_browser_page(ui);
+        }
         if self.championship.pool.is_none() {
             let items = super::pool::items(&self.catalog, &self.season);
             let cache = self.here().join(super::pool::CACHE);
@@ -100,6 +103,9 @@ impl Form {
             Some(Request::BrowseCar) => {
                 let car = self.championship.car.unwrap_or(self.car);
                 self.car_browser.open_on(car_browser::Target::Championship, car, &self.favourite_cars, None);
+            }
+            Some(Request::BrowseStage) => {
+                self.stage_browser.open_for(car_browser::Target::Championship, self.map, &self.favourite_maps);
             }
             None => {}
         }

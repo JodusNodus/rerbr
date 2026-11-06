@@ -414,6 +414,8 @@ type Made = (Collection, Filter, Sort, Vec<u32>, Vec<u32>);
 
 pub struct StageBrowser {
     pub open: bool,
+    /// Whose stage it chooses: the Drive page's, or one of the championship's itinerary.
+    pub target: crate::car_browser::Target,
     rows: Vec<StageRow>,
     collection: Collection,
     filter: Filter,
@@ -431,6 +433,7 @@ impl Default for StageBrowser {
     fn default() -> Self {
         StageBrowser {
             open: false,
+            target: crate::car_browser::Target::Drive,
             rows: Vec::new(),
             collection: Collection::All,
             filter: Filter::default(),
@@ -518,6 +521,7 @@ impl StageBrowser {
     /// Opens the browser with `selected` (a catalog position) highlighted: on the favourites when it is one, else
     /// on all stages. `collection` opens it on that instead.
     pub fn open_on(&mut self, selected: usize, favourites: &[u32], collection: Option<Collection>) {
+        self.target = crate::car_browser::Target::Drive;
         let favourite = self.rows.get(selected).is_some_and(|r| favourites.contains(&r.number));
         if !self.visited || collection.is_some() {
             self.collection = collection.unwrap_or(if favourite { Collection::Favourites } else { Collection::All });
@@ -529,6 +533,12 @@ impl StageBrowser {
         self.visited = true;
         self.open = true;
         self.focus = true;
+    }
+
+    /// Opens the browser for `target`, as [`StageBrowser::open_on`].
+    pub fn open_for(&mut self, target: crate::car_browser::Target, selected: usize, favourites: &[u32]) {
+        self.open_on(selected, favourites, None);
+        self.target = target;
     }
 
     /// The list, made again when what it depends on changed; the cursor moves to a stage in it when it is not.

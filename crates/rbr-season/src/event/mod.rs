@@ -12,6 +12,7 @@ use rbr_formats::ai_ini::{Master, Roster, Section, Team, Track};
 use rbr_gameplay::crt::CrtRand;
 
 mod build;
+pub use build::rally_name;
 mod run;
 mod save;
 mod standings;
@@ -46,6 +47,14 @@ pub enum Conditions {
     Dry,
     Damp,
     Wet,
+}
+
+/// One rally as planned, before its clocks, conditions and services: its name and each leg's stages in order. The
+/// seed draws a plan ([`Event::plan`]); the player may edit it before the event is built from it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RallyPlan {
+    pub name: String,
+    pub legs: Vec<Vec<StageRef>>,
 }
 
 /// One rally of the event.

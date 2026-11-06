@@ -54,7 +54,10 @@ the layer only reads drivelines and hands the launcher times, standings and save
   country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), one not yet visited in the event first,
   then one with stages for every loop, the seed drawing among the best. Each leg is a loop of new stages run twice
   with the midday service between the passes (A B C, service, A B C; an odd leg's second pass a stage short), as
-  real rallies run; the surface's other stages fill a small location, and a pool too small runs stages again. Rally
+  real rallies run; the surface's other stages fill a small location, and a pool too small runs stages again. That
+  draw is `Event::plan` (a `RallyPlan` per rally: name, each leg's stages); `Event::build_planned` builds from any plan,
+  the player's own included (clocks, conditions and services by the settings, the conditions from `seed ^ 0x3EA7` so
+  an edited plan keeps the weather; the config's length becomes the plan's rallies, most legs and most stages). Rally
   names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). `Length { rallies, legs, stages }`: one
   rally is an event of its own, more a championship; each rally's stages split over its legs (a leg is a day, the
   earlier legs the longer). Presets after real formats: Quick rally 1x1 leg x6 (a national one-day rally), Rally

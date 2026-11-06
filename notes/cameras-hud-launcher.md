@@ -141,9 +141,11 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   keys at its next save). The tab opens on the preset cards (Quick rally, Rally weekend, Short championship, Season, Random; the builder sets rallies, legs and stages), Continue first when
   `SavedGames/championship-<profile>.txt` exists (carried damage in `.dmg`, the service's late penalty and the tyre in `.ini`:
   `Event` keeps neither). A preset opens the builder (car through the car browser, `Target::Championship`, defaulting to the
-  Drive page's; class = the car's group, only that class's cars fill the field; length, stage pool, surface, time of day,
+  Drive page's; class = the car's group, only that class's cars fill the field, Field cars leaving models out; length, stage pool, surface, time of day,
   weather, damage, skill level, team, difficulty Gentle/Club/National/Pro, adaptive, field, seed) beside a live summary
-  and Start. The skill level is the game's three (`SSKILL`) under `rbr_season` names: Rookie 10 s, Professional 20 s,
+  and Start, the itinerary below (`plan`): the seed's plan, drawn again as the settings change, editable (change a
+  stage through the stage browser, `StageBrowser::target` `Championship`, move, remove, add stages, legs and rallies,
+  rename) and then the player's own until Draw again; Start builds it with `Event::build_planned`. The skill level is the game's three (`SSKILL`) under `rbr_season` names: Rookie 10 s, Professional 20 s,
   Champion 35 s and a stuck car is not helped (`--championship rookie|professional|champion`); the help text shows the
   penalty. The Team row (service crew) lists `rbr_season::team::team_offers` over the roster of `ai.ini`/`aidrv.ini`
   (`EventConfig::team`; `Event::crew()` sets the service park's repair times). The AI tables (`ai::load_ai`) are read

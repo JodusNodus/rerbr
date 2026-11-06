@@ -44,6 +44,7 @@ mod launch;
 pub use launch::shots;
 mod builder;
 mod cards;
+mod plan;
 pub mod pool;
 mod results;
 mod running;
@@ -90,6 +91,8 @@ pub enum Request {
     Setup,
     /// Open the car browser on the builder's car.
     BrowseCar,
+    /// Open the stage browser for the itinerary.
+    BrowseStage,
 }
 
 /// The championship under way and what the launcher keeps beside it.
@@ -115,6 +118,12 @@ pub struct ChampionshipPage {
     pub config: Option<EventConfig>,
     /// The builder's car (the catalog's cars).
     pub car: Option<usize>,
+    /// The builder's itinerary: the seed's plan, or the player's own.
+    plan: plan::Plan,
+    /// Where the stage browser's pick goes in the itinerary.
+    picking: Option<plan::Slot>,
+    /// The class's models the player left out of the field (catalog keys).
+    left_out: Vec<String>,
     pub run: Option<Run>,
     /// The installed stages, read once the tab opens.
     pub pool: Option<Pool>,
@@ -150,6 +159,9 @@ impl ChampionshipPage {
             builder: None,
             config: None,
             car: None,
+            plan: plan::Plan::default(),
+            picking: None,
+            left_out: Vec::new(),
             run: None,
             pool: None,
             saved: None,
@@ -212,6 +224,31 @@ impl ChampionshipPage {
         self.config = Some(preset.config(&class_of(&picked), &picked.key, seed));
         self.builder = Some(Builder { preset });
         self.view = View::Builder;
+        self.plan = plan::Plan::default();
+    }
+
+    /// The stage browser's pick for the itinerary: the pool's stage of the catalog's map `number`.
+    pub fn pick_stage(&mut self, number: u32) {
+        let Some(slot) = self.picking.take() else { return };
+        let key = number.to_string();
+        match self.pool.as_mut().and_then(|p| p.stages()).and_then(|s| s.iter().find(|s| s.key == key)) {
+            Some(stage) => {
+                self.plan.put(slot, stage.clone());
+                self.status.clear();
+            }
+            None => self.status = "That stage cannot run in a championship: its road does not read.".to_owned(),
+        }
+    }
+
+    /// The field's models: the class's, but those left out (all of them if every one is).
+    fn field_models(&self, cars: &[Car], class: &str) -> Vec<String> {
+        let all = class_cars(cars, class);
+        let kept: Vec<String> = all.iter().filter(|k| !self.left_out.contains(k)).cloned().collect();
+        if kept.is_empty() {
+            all
+        } else {
+            kept
+        }
     }
 
     /// The builder's car is now `index`: the class follows it.
@@ -226,11 +263,14 @@ impl ChampionshipPage {
     /// Start: the championship built on the pool, saved under the profile, at its welcome.
     pub fn start_event(&mut self, here: &Path, profile: &str, cars: &[Car], stages: &[StageRef]) {
         let Some(config) = self.config.clone() else { return };
-        let field = class_cars(cars, &config.class);
+        let field = self.field_models(cars, &config.class);
         let cache = here.join(pool::CACHE);
         let class = pace::class_pace(&config.class);
         let stage_profile = |s: &StageRef| pool::profile(&cache, s, &class);
         let built = match &self.ai {
+            Ok((_, roster)) if self.plan.ready() => {
+                Event::build_planned(config, &self.plan.rallies, &field, roster, &stage_profile)
+            }
             Ok((_, roster)) => Event::build(config, stages, &field, roster, &stage_profile),
             Err(e) => Err(format!("the AI tables do not read: {e}")),
         };

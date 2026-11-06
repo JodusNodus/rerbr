@@ -91,6 +91,9 @@ impl ChampionshipPage {
         let teams = self.ai.as_ref().map_or_else(|_| Vec::new(), |(_, roster)| team_offers(roster));
         let (team, mut picked_team) = (config.team as usize, config.team as usize);
         let ai_error = self.ai.as_ref().err().cloned();
+        let mut left_out = std::mem::take(&mut self.left_out);
+        let planned = (!self.plan.rallies.is_empty()).then(|| self.plan.rallies.clone());
+        let plan_ready = self.plan.ready() || !self.plan.own();
         ui.columns(2, |cols| {
             fields(&mut cols[0], "championship-builder", |ui| {
                 ui.label("Car");
@@ -101,6 +104,9 @@ impl ChampionshipPage {
                 ui.label("Class").on_hover_text("Only cars of this class fill the field");
                 let label = |c: String| if c.is_empty() { "No class".to_owned() } else { c };
                 combo(ui, "championship-class", 200.0, &mut config.class, &classes, label);
+                ui.end_row();
+                ui.label("Field cars").on_hover_text("The models the AI crews drive; team-mates share one");
+                models_menu(ui, env.cars, &config.class, &mut left_out);
                 ui.end_row();
                 ui.label("Length");
                 length_row(ui, &mut config.length);
@@ -244,9 +250,14 @@ impl ChampionshipPage {
             let ui = &mut cols[1];
             card(ui, |ui| {
                 card_title(ui, "Summary");
-                ui.label(RichText::new(summary(config, stages.as_deref())).size(16.0).color(Color32::WHITE));
+                let line = match &planned {
+                    Some(rallies) => plan_summary(config, rallies),
+                    None => summary(config, stages.as_deref()),
+                };
+                ui.label(RichText::new(line).size(16.0).color(Color32::WHITE));
                 ui.add_space(4.0);
-                let field = class_cars(env.cars, &config.class).len();
+                let all = class_cars(env.cars, &config.class);
+                let field = all.iter().filter(|k| !left_out.contains(k)).count().max(1).min(all.len());
                 ui.colored_label(
                     GREY,
                     match field {
@@ -273,8 +284,14 @@ impl ChampionshipPage {
                     (None, None) => {}
                 }
                 ui.add_space(10.0);
-                let ready =
-                    fit.is_some_and(|n| n > 0) && is_file_name_part(env.profile) && !driving && ai_error.is_none();
+                if !plan_ready {
+                    ui.colored_label(WARN, "Each rally's legs need a stage.");
+                }
+                let ready = fit.is_some_and(|n| n > 0)
+                    && plan_ready
+                    && is_file_name_part(env.profile)
+                    && !driving
+                    && ai_error.is_none();
                 let go = ui.horizontal(|ui| ui.add_enabled(ready, start_button("Start"))).inner;
                 if saved {
                     ui.colored_label(GREY, format!("Replaces {}'s saved championship.", env.profile));
@@ -289,6 +306,16 @@ impl ChampionshipPage {
             });
         });
         edited.team = picked_team as u8;
+        self.left_out = left_out;
+        if let Some(stages) = &stages {
+            self.plan.follow(&edited, stages);
+            ui.add_space(12.0);
+            section(ui, "Itinerary");
+            if let Some(slot) = super::plan::plan_ui(ui, &mut self.plan, &edited, stages) {
+                self.picking = Some(slot);
+                request = Some(Request::BrowseStage);
+            }
+        }
         self.config = Some(edited);
         if let Some(stages) = stages.filter(|_| start) {
             self.start_event(env.here, env.profile, env.cars, &stages);
@@ -354,4 +381,30 @@ fn length_row(ui: &mut Ui, length: &mut Length) {
         ui.add(DragValue::new(stages).range(2..=20).suffix(suffix));
     });
     *stages = (*stages).max(*legs);
+}
+
+/// The field's models: a menu of the class's, each to keep in or leave out; the last one stays.
+fn models_menu(ui: &mut Ui, cars: &[crate::catalog::Car], class: &str, left_out: &mut Vec<String>) {
+    let all = class_cars(cars, class);
+    let kept = all.iter().filter(|k| !left_out.contains(k)).count();
+    let label = match (kept, all.len()) {
+        (_, 0) => "Your car".to_owned(),
+        (k, n) if k == n || k == 0 => format!("All {n} model{}", if n == 1 { "" } else { "s" }),
+        (k, n) => format!("{k} of {n} models"),
+    };
+    ui.add_enabled_ui(all.len() > 1, |ui| {
+        ui.menu_button(label, |ui| {
+            for key in &all {
+                let mut keep = !left_out.contains(key);
+                let last = keep && kept <= 1;
+                let name = super::view::car_name(cars, key);
+                if ui.add_enabled(!last, egui::Checkbox::new(&mut keep, name)).changed() {
+                    match keep {
+                        true => left_out.retain(|k| k != key),
+                        false => left_out.push(key.clone()),
+                    }
+                }
+            }
+        });
+    });
 }

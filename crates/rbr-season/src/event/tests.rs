@@ -730,3 +730,26 @@ fn the_news_sums_a_drivers_accidents_and_skips_the_minor_ones() {
     assert_eq!(news(&quiet, 0, &name, true), ["SS1: An uneventful stage"]);
     assert!(news(&RunLog::default(), 0, &name, false).is_empty());
 }
+
+#[test]
+fn an_edited_plan_builds_as_the_player_laid_it_out() {
+    let pool = gravel_pool();
+    let config = Preset::Weekend.config("Rally2", "car", 4);
+    let mut plan = Event::plan(&config, &pool).unwrap();
+    assert_eq!(plan.len(), 1);
+    assert_eq!(plan[0].legs.iter().map(Vec::len).collect::<Vec<_>>(), [4, 4, 4]);
+    // The player's own: two rallies, the second renamed, with legs of 1 and 3 stages.
+    plan[0].legs.truncate(1);
+    let own = RallyPlan { name: "Home Rally".into(), legs: vec![vec![pool[0].clone()], pool[3..6].to_vec()] };
+    plan.push(own);
+    let event = Event::build_planned(config.clone(), &plan, &["car".to_owned()], &roster(), &profile).unwrap();
+    assert_eq!(event.config.length, Length { rallies: 2, legs: 2, stages: 4 });
+    assert_eq!(event.rallies[1].name, "Home Rally");
+    let keys: Vec<&str> = event.rallies[1].stages.iter().map(|s| s.stage.key.as_str()).collect();
+    assert_eq!(keys, ["track-4_A", "track-10_A", "track-10_B", "track-10_C"]);
+    assert!(event.rallies[1].stages[0].ends_leg());
+    assert!(event.rallies[0].stages.iter().all(|s| !s.ends_leg()));
+    // Each leg needs a stage.
+    plan[1].legs.push(Vec::new());
+    assert!(Event::build_planned(config, &plan, &["car".to_owned()], &roster(), &profile).is_err());
+}

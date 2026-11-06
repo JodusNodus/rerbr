@@ -298,3 +298,33 @@ fn a_quick_rally_on_the_real_stages_and_ai_plays_through() {
     assert_eq!(Event::load(&event.save()).unwrap(), event);
     std::fs::remove_dir_all(&here).unwrap();
 }
+
+#[test]
+fn the_players_own_itinerary_and_field_models_start_the_championship() {
+    let here = crate::test_dir("championship-own-plan");
+    let mut page = ChampionshipPage::new(&Data::new(here.join("data"), None));
+    page.ai = Ok(fixture::ai());
+    let model =
+        || Ok(rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None });
+    let car = |key: &str| Car { key: key.into(), group: Some("Rally2".into()), model: model(), ..Car::default() };
+    let cars = [car("rsf-1"), car("rsf-2"), car("rsf-3")];
+    page.open_builder(Preset::QuickRally, &cars, 0, 3);
+    let stages = fixture::stages();
+    page.pool = Some(Pool::Ready(stages.clone()));
+    page.plan.follow(page.config.as_ref().unwrap(), &stages);
+    // SS1 changed through the stage browser; a map outside the pool is refused.
+    page.picking = Some(plan::Slot { rally: 0, leg: 0, at: Some(0) });
+    page.pick_stage(99);
+    assert!(!page.status.is_empty() && !page.plan.own());
+    page.picking = Some(plan::Slot { rally: 0, leg: 0, at: Some(0) });
+    page.pick_stage(27);
+    assert!(page.plan.own());
+    // Only the first model in the field.
+    page.left_out = vec!["rsf-2".into(), "rsf-3".into()];
+    page.start_event(&here, "tester", &cars, &stages);
+    let event = &page.run.as_ref().unwrap().event;
+    assert_eq!(event.rallies[0].stages[0].stage.name, "Pirka Menoko");
+    assert_eq!(event.rallies[0].stages.len(), 6);
+    assert!(event.field.iter().all(|e| e.car == "rsf-1"));
+    std::fs::remove_dir_all(&here).unwrap();
+}

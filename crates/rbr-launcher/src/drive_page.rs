@@ -103,7 +103,7 @@ impl Form {
 impl Form {
     /// The quick race: the choices on the left, the previews, the drive's summary and Start on the right.
     pub fn drive_page(&mut self, ui: &mut egui::Ui) {
-        if self.stage_browser.open {
+        if self.stage_browser.open && self.stage_browser.target == Target::Drive {
             return self.stage_browser_page(ui);
         }
         if self.car_browser.open && self.car_browser.target == Target::Drive {
@@ -536,7 +536,7 @@ impl Form {
     }
 
     /// The stage browser in place of the page's body.
-    fn stage_browser_page(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn stage_browser_page(&mut self, ui: &mut egui::Ui) {
         let records = self.records();
         let (catalog, season) = (&self.catalog, &self.season);
         let facts = |row: &StageRow| {
@@ -559,7 +559,10 @@ impl Form {
         };
         match self.stage_browser.ui(ui, env) {
             Some(Action::Choose(index)) => {
-                self.choose_stage(index);
+                match self.stage_browser.target {
+                    Target::Drive => self.choose_stage(index),
+                    Target::Championship => self.championship.pick_stage(self.catalog.maps[index].number),
+                }
                 self.stage_browser.open = false;
             }
             Some(Action::Favourite(number)) => match self.favourite_maps.iter().position(|&n| n == number) {

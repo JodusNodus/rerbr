@@ -27,7 +27,7 @@ fn default_team() -> Team {
 }
 
 /// A rally's name from its stages: the first stage's name without a trailing variant (`II`, `2`, `B`) and `Rally`.
-fn rally_name(stages: &[StageRef]) -> String {
+pub fn rally_name(stages: &[StageRef]) -> String {
     let base = stages.first().map(|s| s.name.as_str()).unwrap_or("Rally");
     let words: Vec<&str> = base.split_whitespace().collect();
     let mut end = words.len();
@@ -55,10 +55,7 @@ fn pool_stages<'a>(config: &EventConfig, stages: &'a [StageRef]) -> Vec<&'a Stag
 }
 
 impl Event {
-    /// Builds the event: the itinerary from `stages` (the installed pool) by the config's length, pool, surfaces,
-    /// daylight and weather, and the field from `class_cars` (catalog keys of the config's class), seated in `roster`'s
-    /// teams and cars. `profile` gives a stage's profile for the class (`track::profile` over its driveline, or
-    /// `StageProfile::flat` without one): its reference times and the AI track the engine drives.
+    /// Builds the event from the seed's plan of `stages` ([`Event::plan`]), then as [`Event::build_planned`].
     pub fn build(
         config: EventConfig,
         stages: &[StageRef],
@@ -66,6 +63,12 @@ impl Event {
         roster: &Roster,
         profile: &dyn Fn(&StageRef) -> StageProfile,
     ) -> Result<Event, String> {
+        let plan = Event::plan(&config, stages)?;
+        Event::build_planned(config, &plan, class_cars, roster, profile)
+    }
+
+    /// The seed's plan of the event from `stages` (the installed pool) by the config's length, pool and surfaces.
+    pub fn plan(config: &EventConfig, stages: &[StageRef]) -> Result<Vec<RallyPlan>, String> {
         let Length { rallies, legs, stages: count } = config.length;
         if rallies == 0 || count == 0 {
             return Err("an event needs rallies with stages".to_owned());
@@ -73,7 +76,7 @@ impl Event {
         if legs == 0 || legs > count {
             return Err("a rally's legs need a stage each".to_owned());
         }
-        let pool = pool_stages(&config, stages);
+        let pool = pool_stages(config, stages);
         if pool.is_empty() {
             return Err("no stages in the pool".to_owned());
         }
@@ -85,11 +88,40 @@ impl Event {
         };
         let sizes = leg_sizes(count as usize, legs as usize);
         let mut visited: Vec<&str> = Vec::new();
-        let mut built = Vec::new();
+        let mut plan = Vec::new();
         for &surface in &rally_surface {
             let picked = pick_stages(&pool, surface, &sizes, &mut visited, &mut rng);
-            built.push(draw_rally(&config, &picked, legs, &mut rng, profile));
+            let mut rest = picked.into_iter();
+            let legs: Vec<Vec<StageRef>> = sizes.iter().map(|&n| rest.by_ref().take(n).collect()).collect();
+            plan.push(RallyPlan { name: rally_name(&legs[0]), legs });
         }
+        Ok(plan)
+    }
+
+    /// Builds the event from `plan`: each rally's clocks, conditions and services by the config's daylight and weather,
+    /// and the field from `class_cars` (catalog keys of the config's class), seated in `roster`'s teams and cars. The
+    /// config's length becomes the plan's (its rallies, most legs and most stages). `profile` gives a stage's profile
+    /// for the class (`track::profile` over its driveline, or `StageProfile::flat` without one): its reference times
+    /// and the AI track the engine drives.
+    pub fn build_planned(
+        mut config: EventConfig,
+        plan: &[RallyPlan],
+        class_cars: &[String],
+        roster: &Roster,
+        profile: &dyn Fn(&StageRef) -> StageProfile,
+    ) -> Result<Event, String> {
+        if plan.is_empty() || plan.iter().any(|r| r.legs.is_empty() || r.legs.iter().any(Vec::is_empty)) {
+            return Err("every rally needs a stage in each leg".to_owned());
+        }
+        let most = |f: &dyn Fn(&RallyPlan) -> usize| plan.iter().map(f).max().unwrap_or(0).min(255) as u8;
+        config.length = Length {
+            rallies: plan.len().min(255) as u8,
+            legs: most(&|r| r.legs.len()),
+            stages: most(&|r| r.legs.iter().map(Vec::len).sum()),
+        };
+        // The conditions draw apart from the plan's, so an edited plan keeps the seed's weather.
+        let mut rng = CrtRand::srand(config.seed ^ 0x3EA7);
+        let built: Vec<Rally> = plan.iter().map(|r| draw_rally(&config, r, &mut rng, profile)).collect();
         let (field, contenders) =
             field::field(class_cars, config.field_size as usize, config.difficulty, config.seed ^ 0xF1E1D, roster);
         let teams = if roster.teams.is_empty() { vec![default_team()] } else { roster.teams.clone() };
@@ -197,15 +229,13 @@ fn leg_sizes(stages: usize, legs: usize) -> Vec<usize> {
 /// conditions by the weather (changeable per leg); on realistic daylight the first day's last stages at dusk or night.
 fn draw_rally(
     config: &EventConfig,
-    picked: &[StageRef],
-    legs: u8,
+    plan: &RallyPlan,
     rng: &mut CrtRand,
     profile: &dyn Fn(&StageRef) -> StageProfile,
 ) -> Rally {
-    let sizes = leg_sizes(picked.len(), legs.clamp(1, picked.len().max(1) as u8) as usize);
     // Changeable weather is drawn per leg.
     let mut leg_conditions = Vec::new();
-    for _ in &sizes {
+    for _ in &plan.legs {
         leg_conditions.push(match config.weather {
             Weather::Dry => Conditions::Dry,
             Weather::Wet => Conditions::Wet,
@@ -226,13 +256,12 @@ fn draw_rally(
         _ => 8.0,
     };
     let mut stages = Vec::new();
-    let mut next = picked.iter();
-    for (leg, &size) in sizes.iter().enumerate() {
+    for (leg, run) in plan.legs.iter().enumerate() {
+        let size = run.len();
         // A leg is a day: it starts the next morning (evening at night).
         let mut clock = morning;
         let dusk_from = size.saturating_sub(2);
-        for pos in 0..size {
-            let Some(stage) = next.next() else { break };
+        for (pos, stage) in run.iter().enumerate() {
             let conditions = leg_conditions[leg];
             let wet = conditions.wetness();
             let profile = profile(stage);
@@ -244,7 +273,7 @@ fn draw_rally(
             // The next stage follows the reference time and a gap, longer after a wet stage.
             clock += reference / 3600.0 + 0.45 + 0.15 * wet;
             // Services: about 20 minutes mid-leg, 45 overnight at the end of a leg but the last.
-            let last_leg = leg + 1 == sizes.len();
+            let last_leg = leg + 1 == plan.legs.len();
             let service_after = if pos + 1 == size && !last_leg {
                 Some(SERVICE_NIGHT)
             } else if pos + 1 == size.div_ceil(2) && !(last_leg && pos + 1 == size) {
@@ -265,5 +294,5 @@ fn draw_rally(
             });
         }
     }
-    Rally { name: rally_name(picked), stages }
+    Rally { name: plan.name.clone(), stages }
 }
