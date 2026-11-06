@@ -84,6 +84,12 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   central ray plus refine, a 1440p-sized trace (ripples lost), one ray a pixel interleaved (sparkle), a mirror ray
   only (another look), finest pyramid level 1 (-0.2 ms, streaks), a longer skip (no gain), normal matching on puddles
   only (softer puddles).
+  The car's glass in the cockpit (2026-11-06, `car_glass` in `renderer/frame.rs`: the car's draws that write no depth,
+  the panes and the interior set's sun strip) goes into the frame after the rays are traced, before the composite: the
+  depth under it is the stage's, so a ray that met the stage there read the glass's colour (the Lancer's red strip in
+  the far puddles, wet 21O). The windscreen's film still sees it; outside the car it stays in the frame (the car's
+  image in the road keeps its windows). 21O cockpit 4K: scene 5.74 to 5.19 ms, screen reflections 1.89 to 2.32, GPU
+  frame within noise; chase and dry byte-identical.
 - `--anti-aliasing taa|off` (`AntiAliasing`, default `Taa`, ours after gp4's `taa.rs`; `4x` parses as `taa`): one
   sample, the main view's projection jittered and resolved into the post pass's scene, sharpened under TAA
   (`taa.rs`, `taa.wgsl`, `post.rs`: Halton 2,3, 8 phases an output pixel, `taa::phases`, 18 at 67 % and 32 at 50 %;

@@ -2,7 +2,7 @@
 
 use super::depth_pyramid::DepthPyramid;
 use super::frame::{mark, span, View};
-use super::meshes::{Bound, GpuDraw};
+use super::meshes::{Bound, GpuDraw, GpuMesh};
 use super::pipelines::{texture_entry, vertex_layout, TEXTURE};
 use super::textures::depth_view;
 use super::{depth_binding, Detail, Renderer, CLEAR_COLOR, DEPTH_FORMAT};
@@ -31,13 +31,15 @@ impl Renderer {
     /// Draws the screen-space reflections ([`ScreenReflection`]) over the frame `draw_scene` kept, and resolves it into
     /// `target`: the water draws, and in wet weather the wet roads, again at half size (full with
     /// [`Detail::Ultra`]; `fs_reflect`, which hides what lies behind the frame's depth),
-    /// then the frame with them laid over is written into `target` (`reflection_composite.wgsl`).
+    /// then the frame with them laid over is written into `target` (`reflection_composite.wgsl`). The car's glass
+    /// `draw_scene` left out (`glass`) goes into the frame in between, unseen by the rays.
     pub(super) fn draw_reflections(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         ssr: &ScreenReflection,
         target: &wgpu::TextureView,
         view_projection: Mat4,
+        glass: &[(&GpuMesh, f32)],
     ) {
         let eye = camera::eye(view_projection);
         let frustum = Frustum::from_view_projection(view_projection);
@@ -62,6 +64,7 @@ impl Renderer {
         }
         // Nothing reflects in view: the frame as drawn.
         if draws.is_empty() {
+            self.draw_car_glass(encoder, &ssr.levels[0], glass);
             let scene = ssr.levels[0].texture();
             encoder.copy_texture_to_texture(
                 scene.as_image_copy(),
@@ -130,6 +133,8 @@ impl Renderer {
             pass.set_bind_group(2, &ssr.trace_group, &[]);
             pass.draw(0..3, 0..1);
         }
+        // The car's glass the rays did not see, under the composite, which lays the reflections over the frame.
+        self.draw_car_glass(encoder, &ssr.levels[0], glass);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("screen-space reflections' composite"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
