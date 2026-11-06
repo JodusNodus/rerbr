@@ -143,8 +143,17 @@ impl Renderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(&ssr.composites[usize::from(split)]);
-        pass.set_bind_group(0, &ssr.composite_group, &[]);
+        match &ssr.resolve_group {
+            Some(group) => {
+                pass.set_pipeline(&ssr.resolve_pipeline);
+                pass.set_bind_group(0, &self.frames[0].bind_group, &[]);
+                pass.set_bind_group(2, group, &[]);
+            }
+            None => {
+                pass.set_pipeline(&ssr.composite);
+                pass.set_bind_group(0, &ssr.composite_group, &[]);
+            }
+        }
         pass.draw(0..3, 0..1);
     }
 
@@ -290,10 +299,13 @@ pub(super) struct ScreenReflection {
     traced: [wgpu::TextureView; 3],
     /// [`Trace::Split`]'s surfaces at the frame's size.
     surface: Option<wgpu::TextureView>,
-    /// The composite, and the split trace's (`OWN`).
-    composites: [wgpu::RenderPipeline; 2],
+    composite: wgpu::RenderPipeline,
     composite_layout: wgpu::BindGroupLayout,
     composite_group: wgpu::BindGroup,
+    /// [`Trace::Split`]'s composite (`fs_resolve`).
+    resolve_pipeline: wgpu::RenderPipeline,
+    resolve_layout: wgpu::BindGroupLayout,
+    resolve_group: Option<wgpu::BindGroup>,
     /// [`Detail::Ultra`] ([`Trace::of`]).
     ultra: bool,
     /// How the rays are traced now.
@@ -312,7 +324,7 @@ const PYRAMID: wgpu::BindingType = wgpu::BindingType::Texture {
 const SCENE_MIPS: u32 = 6;
 /// The traced reflections' format, and their depths'.
 const TRACED: [wgpu::TextureFormat; 3] =
-    [wgpu::TextureFormat::Rgba16Float, wgpu::TextureFormat::R32Float, wgpu::TextureFormat::Rg16Float];
+    [wgpu::TextureFormat::Rgba16Float, wgpu::TextureFormat::R32Float, wgpu::TextureFormat::Rgba16Float];
 /// The composite's shader (`reflection_composite.wgsl`).
 const COMPOSITE: &str = include_str!("../reflection_composite.wgsl");
 
@@ -471,48 +483,78 @@ impl ScreenReflection {
                 ),
                 texture_entry(2, depth_binding()),
                 texture_entry(3, TEXTURE),
-                texture_entry(4, TEXTURE),
-                texture_entry(5, TEXTURE),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("screen-space reflections' composite"),
             source: wgpu::ShaderSource::Wgsl(COMPOSITE.into()),
         });
-        let composite_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let composite = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("screen-space reflections' composite"),
-            bind_group_layouts: &[Some(&composite_layout)],
-            immediate_size: 0,
-        });
-        let composites = [false, true].map(|own| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("screen-space reflections' composite"),
-                layout: Some(&composite_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some("vs_composite"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                primitive: Default::default(),
-                depth_stencil: None,
-                multisample: Default::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some("fs_composite"),
-                    compilation_options: wgpu::PipelineCompilationOptions {
-                        constants: &[("OWN", f64::from(u8::from(own)))],
-                        ..Default::default()
-                    },
-                    // Every pixel written: the frame with its reflection laid over.
-                    targets: &[Some(format.into())],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
+                bind_group_layouts: &[Some(&composite_layout)],
+                immediate_size: 0,
+            })),
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs_composite"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fs_composite"),
+                compilation_options: Default::default(),
+                // Every pixel written: the frame with its reflection laid over.
+                targets: &[Some(format.into())],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        // The split trace's resolve (`fs_resolve`): the frame's levels and depth, the surfaces and the traced targets.
+        let resolve_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("screen-space reflections' resolve"),
+            entries: &[
+                entries[0],
+                entries[1],
+                entries[3],
+                texture_entry(4, TEXTURE),
+                texture_entry(5, PYRAMID),
+                texture_entry(6, TEXTURE),
+            ],
+        });
+        let resolve_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("screen-space reflections' resolve"),
+            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("screen-space reflections' resolve"),
+                bind_group_layouts: &[Some(frame_layout), None, Some(&resolve_layout)],
+                immediate_size: 0,
+            })),
+            vertex: wgpu::VertexState {
+                module: shader,
+                entry_point: Some("vs_screen"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: shader,
+                entry_point: Some("fs_resolve"),
+                compilation_options: Default::default(),
+                targets: &[Some(format.into())],
+            }),
+            multiview_mask: None,
+            cache: None,
         });
         let halver = Halver::new(device, format);
-        let sized = Self::targets(device, [&layout, &composite_layout], format, size, depth, ultra, &pyramid);
+        let sized =
+            Self::targets(device, [&layout, &composite_layout, &resolve_layout], format, size, depth, ultra, &pyramid);
         ScreenReflection {
             pipelines,
             surface_pipeline,
@@ -526,9 +568,12 @@ impl ScreenReflection {
             trace_group: sized.trace_group,
             traced: sized.traced,
             surface: sized.surface,
-            composites,
+            composite,
             composite_layout,
             composite_group: sized.composite_group,
+            resolve_pipeline,
+            resolve_layout,
+            resolve_group: sized.resolve_group,
             ultra,
             trace: sized.trace,
             pyramid,
@@ -545,7 +590,7 @@ impl ScreenReflection {
         self.pyramid.resize(device, size, depth);
         let sized = Self::targets(
             device,
-            [&self.layout, &self.composite_layout],
+            [&self.layout, &self.composite_layout, &self.resolve_layout],
             format,
             size,
             depth,
@@ -557,13 +602,14 @@ impl ScreenReflection {
             (sized.levels, sized.scene, sized.group, sized.trace_group);
         (self.traced, self.surface, self.composite_group, self.trace) =
             (sized.traced, sized.surface, sized.composite_group, sized.trace);
+        self.resolve_group = sized.resolve_group;
     }
 
     /// The targets for frames of `size`: the resolved frame's levels and the bind group that reads them and `depth`;
     /// the traced targets ([`Trace`]) and the composite's bind group; `pyramid`'s levels too.
     fn targets(
         device: &wgpu::Device,
-        [layout, composite_layout]: [&wgpu::BindGroupLayout; 2],
+        [layout, composite_layout, resolve_layout]: [&wgpu::BindGroupLayout; 3],
         format: wgpu::TextureFormat,
         (width, height): (u32, u32),
         depth: &wgpu::TextureView,
@@ -648,11 +694,23 @@ impl ScreenReflection {
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&traced[1]) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&levels[0]) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(surfaces) },
-                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&traced[2]) },
             ],
         });
-        FrameTargets { levels, scene, group, trace_group, traced, surface, composite_group, trace }
+        let resolve_group = surface.as_ref().map(|surface| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("screen-space reflections' resolve"),
+                layout: resolve_layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth) },
+                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(surface) },
+                    wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&traced[0]) },
+                    wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&traced[1]) },
+                    wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&traced[2]) },
+                ],
+            })
+        });
+        FrameTargets { levels, scene, group, trace_group, traced, surface, composite_group, resolve_group, trace }
     }
 }
 
@@ -701,6 +759,7 @@ struct FrameTargets {
     group: wgpu::BindGroup,
     traced: [wgpu::TextureView; 3],
     composite_group: wgpu::BindGroup,
+    resolve_group: Option<wgpu::BindGroup>,
     trace_group: wgpu::BindGroup,
     surface: Option<wgpu::TextureView>,
     trace: Trace,
