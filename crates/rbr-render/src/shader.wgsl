@@ -1251,7 +1251,10 @@ fn own_sun_seen(v: VertexOut, under_cloud: f32) -> f32 {
     let near = sun_reach(v.world);
     if (seen > 0.0 && frame.sun_shadow.z == 0.0) {
         let n = select(vec3<f32>(0.0, 1.0, 0.0), normalize(v.normal), dot(v.normal, v.normal) > 1e-8);
-        if (near > 0.0) {
+        // Inside the cascades' reach the world layer's filter is not needed (`mix` at 1).
+        if (near >= 1.0) {
+            seen *= sun_lit(v.world, n);
+        } else if (near > 0.0) {
             seen *= mix(world_lit(v.world, n), sun_lit(v.world, n), near);
         } else {
             seen *= world_lit(v.world, n);
@@ -1320,6 +1323,9 @@ fn crown_sun_seen(v: VertexOut, under_cloud: f32, r: vec3<f32>) -> f32 {
         if (p.layer >= 0) {
             lit = texel_filter(p.uv, p.layer, p.depth);
         }
+    }
+    if (near >= 1.0) {
+        return seen * own * lit;
     }
     return seen * own * mix(world_lit(out, vec3<f32>(0.0)), lit, near);
 }
