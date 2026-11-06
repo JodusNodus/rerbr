@@ -13,7 +13,15 @@
 //! Calibrated against the NGP physics' own runs of the 50 installed cars (`scripts/car-pace-sweep.sh`,
 //! `notes/season.md` "Calibration"): the standing starts' 0-60, 0-100 and 0-140 km/h within 7.6 % RMS; the 40 m
 //! circle's grip within 1.6 % on the downforce alone (the tyres' `TyrePerformancePct` and the mass showed no effect).
+//!
+//! The speed plan leaves out what makes a car hard to drive on the limit; [`CarPace::handling`] adds it as a time
+//! factor by surface, fitted to the RallySimFans hot laps (players' best times on 519 stages, each car's effect over
+//! the stage and the driver): a rear-driven car loses most and more on the loose, a front-driven one gains a little on
+//! tarmac, and downforce helps beyond its grip in the plan. With it the 42 installed cars on the boards sit within
+//! 1.4 % RMS of their effect on tarmac, 1.9 % on gravel and 2.3 % on snow (2.5, 3.2 and 3.9 % without), past the
+//! offset all cars share.
 
+use crate::config::Surface;
 use crate::pace::ClassPace;
 use rbr_formats::car_specs::{CarSpecs, Drive};
 
@@ -36,6 +44,11 @@ const GEARED_TOP: f32 = 62.0;
 const AERO_GRIP: f32 = 0.86;
 /// The speed `CarSpecs::downforce` is given at (m/s): 150 km/h.
 const DOWNFORCE_SPEED: f32 = 41.666_668;
+/// The handling's log time on tarmac, gravel and snow: for rear drive, for front drive, and per N/kg of downforce at
+/// 150 km/h (the hot laps' fit, `notes/season.md` "Calibration").
+const HANDLING_REAR: [f32; 3] = [0.044, 0.065, 0.082];
+const HANDLING_FRONT: [f32; 3] = [-0.017, 0.009, 0.001];
+const HANDLING_DOWNFORCE: [f32; 3] = [-0.0087, -0.0089, -0.005];
 
 /// A car's straight-line performance as the speed plan takes it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -46,17 +59,36 @@ pub struct Straight {
     pub top: f32,
 }
 
-/// A car's pace: its straight line and the downforce's grip per (m/s)² ([`ClassPace::aero`]).
+/// A car's pace: its straight line, the downforce's grip per (m/s)² ([`ClassPace::aero`]) and its handling's time
+/// factor on tarmac, gravel and snow ([`CarPace::handling`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CarPace {
     pub straight: Straight,
     pub aero: f32,
+    pub handling: [f32; 3],
 }
 
 impl CarPace {
     pub fn of(specs: &CarSpecs) -> CarPace {
         let aero = AERO_GRIP * specs.downforce / (specs.mass * G * DOWNFORCE_SPEED * DOWNFORCE_SPEED);
-        CarPace { straight: straight(specs), aero }
+        let handling = std::array::from_fn(|k| {
+            let drive = match specs.drive {
+                Drive::Rear => HANDLING_REAR[k],
+                Drive::Front => HANDLING_FRONT[k],
+                Drive::All => 0.0,
+            };
+            (drive + HANDLING_DOWNFORCE[k] * specs.downforce / specs.mass).exp()
+        });
+        CarPace { straight: straight(specs), aero, handling }
+    }
+
+    /// The time factor on `surface` for what the speed plan leaves out: the car's drive and downforce on the limit.
+    pub fn handling(&self, surface: Surface) -> f32 {
+        self.handling[match surface {
+            Surface::Tarmac => 0,
+            Surface::Gravel => 1,
+            Surface::Snow => 2,
+        }]
     }
 }
 
@@ -121,11 +153,13 @@ pub fn mean(cars: &[CarPace]) -> Option<CarPace> {
     (!cars.is_empty()).then(|| CarPace {
         straight: Straight { accel: avg(&|c| c.straight.accel), top: avg(&|c| c.straight.top) },
         aero: avg(&|c| c.aero),
+        handling: std::array::from_fn(|k| avg(&|c| c.handling[k])),
     })
 }
 
 /// The class's pace for `car`: the acceleration and top speed scaled by the car's over the field's `mean` car, and
-/// the car's own downforce. The mean car's ([`for_car`] of `mean` itself) is the base its times compare with.
+/// the car's own downforce. The mean car's ([`for_car`] of `mean` itself) is the base its times compare with; the
+/// speed plan's time ratio then takes the handling's ([`CarPace::handling`]) over the mean car's.
 pub fn for_car(class: ClassPace, car: CarPace, mean: CarPace) -> ClassPace {
     ClassPace {
         accel: class.accel * car.straight.accel / mean.straight.accel,
@@ -138,7 +172,6 @@ pub fn for_car(class: ClassPace, car: CarPace, mean: CarPace) -> ClassPace {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Surface;
 
     fn specs(kw: f32, kg: f32, drive: Drive) -> CarSpecs {
         let (drag_area, power, downforce) = (0.8, kw * 1000.0, 0.0);
@@ -164,10 +197,19 @@ mod tests {
         assert!(r5.accel > rwd.accel, "the same power on two driven wheels pulls away slower: {r5:?} {rwd:?}");
         // The field's mean car runs the class's own pace; a quicker one a quicker pace.
         let class = crate::pace::class_pace("Rally2");
-        let pace = |s: Straight| CarPace { straight: s, aero: 0.0 };
+        let pace = |s: Straight| CarPace { straight: s, aero: 0.0, handling: [1.0; 3] };
         let m = mean(&[pace(r5), pace(wrc)]).unwrap();
         assert_eq!(for_car(class, m, m), class);
         assert!(for_car(class, pace(wrc), m).accel > class.accel);
+    }
+
+    #[test]
+    fn rear_drive_costs_most_on_the_loose() {
+        let rear = CarPace::of(&specs(210.0, 1300.0, Drive::Rear));
+        let all = CarPace::of(&specs(210.0, 1300.0, Drive::All));
+        let cost = |s| rear.handling(s) / all.handling(s);
+        assert!(cost(Surface::Tarmac) > 1.0, "{rear:?}");
+        assert!(cost(Surface::Snow) > cost(Surface::Gravel) && cost(Surface::Gravel) > cost(Surface::Tarmac));
     }
 
     #[test]

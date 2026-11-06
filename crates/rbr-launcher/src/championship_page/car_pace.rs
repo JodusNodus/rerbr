@@ -1,6 +1,6 @@
 //! The field's car models as quick as their physics: each model's specs from its physics scripts (a pack's own, or
 //! the NGP archive's slot), its pace in the class (`rbr_season::car_pace`), and each stage's time factor for it, the
-//! speed plan with the car's pace over the plan with the field's mean car.
+//! speed plan with the car's pace over the plan with the field's mean car, times the car's handling over the mean's.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -61,7 +61,8 @@ pub fn factors(
         let key = (stage.key.clone(), car.to_owned());
         *known.borrow_mut().entry(key).or_insert_with(|| {
             let pace = |car| car_pace::for_car(class, car, mean);
-            pool::profile(&cache, stage, &pace(*own)).dry / pool::profile(&cache, stage, &pace(mean)).dry
+            let plan = pool::profile(&cache, stage, &pace(*own)).dry / pool::profile(&cache, stage, &pace(mean)).dry;
+            plan * own.handling(stage.surface) / mean.handling(stage.surface)
         })
     }
 }

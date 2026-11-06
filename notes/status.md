@@ -16,8 +16,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 - **Gameplay loop:** done on the recorded drives (control payload, stage states, timing, time card), plus the
   championship, service park and saves.
 - **Championship (ours):** `crates/rbr-season` builds rallies and seasons from presets on any installed stage, with a
-  curvature pace model calibrated to the 1.02 AI's winning times, a fictional AI field, standings, points and a
-  text save ([season.md](season.md)).
+  curvature pace model calibrated to the 1.02 AI's winning times, the classes and each field car model to the
+  RallySimFans hot laps, a fictional AI field, standings, points and a text save ([season.md](season.md)).
 - **Gate matrix:** the NGP gate is drive2 attempt 5 (snow, Ford Focus RS WRC 06, RSF car 55), physics PASS
   84084/84084 (`harness/rsf_compare.py`), and `harness/matrix.py` (NGP playback-made pairs on NGP's four car slots).
   The 1.02 drives (4 hand-recorded, 35 playback-made) feed only the hybrid check and playback

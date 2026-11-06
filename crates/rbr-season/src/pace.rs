@@ -6,10 +6,12 @@
 //! `sqrt(grip_eff / curvature)`, capped at the class's top speed. A forward pass applies the acceleration (falling
 //! linearly to 0 at top speed) and a backward pass the braking; the time is the trapezoid integral.
 //!
-//! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.75, snow 0.50) and the wetness
-//! (up to -25 % soaked). The class table is anchored to the 1.02 AI's winning times on the retail stages (the
-//! the 1.02 AI's level-2 pars): the top class matches them, the others follow by power, weight and grip
-//! ratios. The calibration is in `notes/season.md`.
+//! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.75, snow 0.50), on the loose by
+//! the class's [`ClassPace::loose`], and by the wetness (up to -25 % soaked). The class table ([`CLASSES`]) is
+//! anchored to the 1.02 AI's winning times on the retail stages (its level-2 pars) in the `WRC 2.0` row, 2003's cars
+//! as 1.02's are; each other row takes the shape of its installed cars' pace in the NGP physics over the anchor's,
+//! scaled to the class's time over it on the RallySimFans hot laps (`examples/class_fit.rs`). A row is the speed
+//! plan's pace, not a car's figures. The calibration is in `notes/season.md`.
 
 use crate::config::Surface;
 use rbr_formats::trk::DriveLineData;
@@ -28,6 +30,9 @@ pub struct ClassPace {
     /// The downforce's grip per (m/s)²: the grip at `v` is `grip · (1 + aero · v²)`. 0 in the class table; a car
     /// model's own (`car_pace`).
     pub aero: f32,
+    /// The share of the surface's grip the class keeps on the loose (gravel and snow): two driven wheels and old
+    /// chassis lose more there than on tarmac.
+    pub loose: f32,
 }
 
 /// The sample step along the driveline (m).
@@ -39,58 +44,64 @@ const SMOOTH: usize = 6;
 /// The slowest corner speed (m/s): below this the plan would crawl through hairpins no car crawls through.
 const MIN_CORNER: f32 = 4.0;
 
+/// A class's row in [`CLASSES`]: its name, the spellings it matches and its pace.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClassRow {
+    pub name: &'static str,
+    /// Matched against the lower-cased alphanumeric spelling, the first row with one contained wins.
+    pub keys: &'static [&'static str],
+    pub pace: ClassPace,
+}
+
+const fn row(
+    name: &'static str,
+    keys: &'static [&'static str],
+    grip: f32,
+    accel: f32,
+    brake: f32,
+    top_speed: f32,
+    loose: f32,
+) -> ClassRow {
+    ClassRow { name, keys, pace: ClassPace { grip, accel, brake, top_speed, aero: 0.0, loose } }
+}
+
+/// The class table, in match order (`super1600` holds an `r1` and `super2000` an `r2`, so they come first). The
+/// plain `WRC` row (2003's cars, `WRC 2.0`) is the anchor, the 1.02 AI's winning times on the retail stages; the
+/// others follow the RallySimFans hot laps' class effects over it (`notes/season.md` "Calibration").
+pub const CLASSES: [ClassRow; 23] = [
+    row("WRC 1.6", &["wrc16", "rally1", "rallye1"], 10.11, 10.64, 12.01, 60.3, 1.011),
+    row("WRC 2.0", &["wrc"], 9.60, 9.20, 11.50, 58.0, 1.000),
+    row("Group B", &["groupb", "grpb"], 8.73, 7.59, 10.06, 55.2, 0.958),
+    row("Group RGT", &["rgt"], 8.54, 7.53, 9.53, 60.1, 0.848),
+    row("Group A7", &["groupa7", "grpa7", "kitcar"], 9.62, 6.30, 9.90, 64.3, 0.903),
+    row("Group A6", &["groupa6", "grpa6"], 8.78, 5.76, 9.04, 61.4, 0.998),
+    row("Group A5", &["groupa5", "grpa5"], 7.66, 5.02, 7.88, 57.3, 0.999),
+    row("Group A8", &["groupa", "grpa"], 8.89, 8.23, 10.48, 56.4, 0.987),
+    row("Super 2000", &["s2000", "2000"], 9.35, 9.00, 11.18, 57.6, 1.005),
+    row("Super 1600", &["s1600", "1600"], 9.69, 5.97, 10.61, 65.9, 0.912),
+    row("Group N4", &["n4", "groupn", "grpn"], 8.98, 7.33, 10.43, 55.6, 0.978),
+    row("Group R4", &["r4"], 9.45, 8.50, 11.38, 57.5, 0.996),
+    row("Rally 2", &["rally2"], 10.28, 9.36, 12.10, 59.9, 1.007),
+    row("Group R5", &["r5"], 9.81, 8.70, 11.40, 58.2, 0.997),
+    row("Rally 3", &["rally3"], 9.67, 7.66, 11.26, 57.5, 0.988),
+    row("Group R3", &["r3"], 9.54, 5.85, 10.98, 65.1, 0.916),
+    row("Rally 4", &["rally4"], 9.94, 5.87, 10.69, 62.3, 0.935),
+    row("Group R2", &["r2"], 9.56, 5.62, 10.73, 57.8, 0.935),
+    row("Rally 5", &["rally5"], 9.74, 5.75, 10.48, 61.7, 0.911),
+    row("Group R1", &["r1"], 8.90, 4.53, 10.33, 50.2, 0.914),
+    row("Group 4", &["group4", "grp4", "historic"], 8.73, 7.19, 9.01, 55.1, 0.967),
+    row("Group 2", &["group2", "grp2"], 7.01, 5.77, 7.23, 49.4, 0.980),
+    // Unknown groups: the middle class, Rally 3's pace.
+    row("", &[""], 9.67, 7.66, 11.26, 57.5, 0.988),
+];
+
 /// The pace of a catalog car group (`Group R5`, `WRC 2.0`, `Group B`, ...); unknown groups get a middle class.
 ///
 /// The match is on the lower-cased alphanumeric spelling, so the sidebar class names (`Rally 2`), the RSF base
 /// groups (`Group R5`) and the per-car groups (`Ford Fiesta R5`) all land in the same table.
 pub fn class_pace(class: &str) -> ClassPace {
     let n: String = class.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
-    let has = |s: &str| n.contains(s);
-    // The top class first: every WRC spelling and Rally1.
-    if has("wrc") || has("rally1") || has("rallye1") {
-        return ClassPace { grip: 9.6, accel: 9.2, brake: 11.5, top_speed: 58.0, aero: 0.0 };
-    }
-    if has("groupb") || has("grpb") {
-        return ClassPace { grip: 9.0, accel: 8.6, brake: 10.6, top_speed: 55.0, aero: 0.0 };
-    }
-    if has("rgt") {
-        return ClassPace { grip: 8.9, accel: 7.0, brake: 10.0, top_speed: 55.0, aero: 0.0 };
-    }
-    if has("groupa") || has("grpa") {
-        return ClassPace { grip: 8.6, accel: 6.8, brake: 10.0, top_speed: 53.0, aero: 0.0 };
-    }
-    if has("s2000") || has("2000") {
-        return ClassPace { grip: 8.6, accel: 6.0, brake: 10.0, top_speed: 50.0, aero: 0.0 };
-    }
-    if has("n4") || has("r4") || has("groupn") || has("grpn") {
-        return ClassPace { grip: 8.4, accel: 6.4, brake: 9.8, top_speed: 50.0, aero: 0.0 };
-    }
-    if has("rally2") || has("r5") {
-        return ClassPace { grip: 8.8, accel: 7.2, brake: 10.2, top_speed: 52.0, aero: 0.0 };
-    }
-    if has("rally3") || has("groupr3") || has("r3") {
-        return ClassPace { grip: 8.2, accel: 6.0, brake: 9.5, top_speed: 49.0, aero: 0.0 };
-    }
-    if has("kitcar") || has("kit") && has("car") {
-        return ClassPace { grip: 8.0, accel: 5.4, brake: 9.2, top_speed: 48.0, aero: 0.0 };
-    }
-    if has("rally4") || has("groupr2") || has("r2") {
-        return ClassPace { grip: 7.8, accel: 5.2, brake: 9.0, top_speed: 47.0, aero: 0.0 };
-    }
-    if has("s1600") || has("1600") {
-        return ClassPace { grip: 7.6, accel: 4.8, brake: 8.8, top_speed: 45.0, aero: 0.0 };
-    }
-    if has("rally5") || has("groupr1") || has("r1") {
-        return ClassPace { grip: 7.4, accel: 4.4, brake: 8.5, top_speed: 44.0, aero: 0.0 };
-    }
-    if has("group4") || has("grp4") || has("historic") {
-        return ClassPace { grip: 7.2, accel: 5.0, brake: 8.5, top_speed: 46.0, aero: 0.0 };
-    }
-    if has("group2") || has("grp2") {
-        return ClassPace { grip: 6.8, accel: 4.5, brake: 8.0, top_speed: 43.0, aero: 0.0 };
-    }
-    // Middle class: Rally3 pace.
-    ClassPace { grip: 8.2, accel: 6.0, brake: 9.5, top_speed: 49.0, aero: 0.0 }
+    CLASSES.iter().find(|r| r.keys.iter().any(|k| n.contains(k))).map_or(CLASSES[CLASSES.len() - 1].pace, |r| r.pace)
 }
 
 /// The surface's share of the dry-tarmac grip.
@@ -289,7 +300,8 @@ pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class
     if samples.len() < 3 {
         return None;
     }
-    let grip_eff = class.grip * surface_grip(surface) * (1.0 - 0.25 * wet);
+    let loose = if surface == Surface::Tarmac { 1.0 } else { class.loose };
+    let grip_eff = class.grip * surface_grip(surface) * loose * (1.0 - 0.25 * wet);
     let brake_eff = class.brake * grip_eff / class.grip;
     // Curvature from the signed heading change per step. The signs are smoothed first over a few metres: the
     // records' lateral jitter weaves left and right and cancels out, while a real corner keeps its sign. Smoothing
@@ -390,12 +402,18 @@ mod tests {
 
     #[test]
     fn every_known_group_lands_in_its_table() {
-        assert_eq!(class_pace("WRC 2.0").top_speed, class_pace("Rally1").top_speed);
-        assert_eq!(class_pace("Group R5").top_speed, class_pace("Rally 2 / R5").top_speed);
-        assert!(class_pace("WRC 1.6").grip > class_pace("Group N4").grip);
-        assert!(class_pace("Group N4").grip > class_pace("Group 2").grip);
-        assert_eq!(class_pace("Group B").accel, class_pace("GroupB").accel);
-        // Unknown groups get the middle class.
+        assert_eq!(class_pace("WRC 1.6"), class_pace("Rally1"));
+        assert_eq!(class_pace("WRC"), class_pace("WRC 2.0"));
+        assert_eq!(class_pace("Rally 2 / R5"), class_pace("Rally2"));
+        assert_eq!(class_pace("Group B"), class_pace("GroupB"));
+        // Spellings holding another's key land in their own row.
+        assert_eq!(class_pace("Super 1600"), CLASSES.iter().find(|r| r.name == "Super 1600").unwrap().pace);
+        assert_eq!(class_pace("Super 2000"), CLASSES.iter().find(|r| r.name == "Super 2000").unwrap().pace);
+        assert_eq!(class_pace("Group A7"), class_pace("Kit Car"));
+        // Every row's own name finds it, and unknown groups get the middle class.
+        for row in CLASSES.iter().filter(|r| !r.name.is_empty()) {
+            assert_eq!(class_pace(row.name), row.pace, "{}", row.name);
+        }
         assert_eq!(class_pace("Flying Saucers"), class_pace("Rally3"));
     }
 

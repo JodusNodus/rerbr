@@ -17,8 +17,8 @@ the layer only reads drivelines and hands the launcher times, standings and save
   jitter weaves left and right and cancels out, while real corners keep their sign. Smoothing the absolute
   curvature instead counts every weave as a corner (found on map 61: 69 rad of smoothed-signed turning vs ~2.5 rad
   net heading change).
-- `grip_eff` = class grip x surface (tarmac 1, gravel 0.75, snow 0.50) x (1 - 0.25 x wetness). Braking scales with
-  the grip.
+- `grip_eff` = class grip x surface (tarmac 1, gravel 0.75, snow 0.50) x the class's `loose` on gravel and snow x
+  (1 - 0.25 x wetness). Braking scales with the grip. The class table is `pace::CLASSES`, matched in order.
 - `track`: a stage's `ai_ini::Track` for the 1.02 engine, from its driveline. Sections are the stage's `.dls` splits
   (the retail `ai.ini` cuts there), thirds without. A section's par is its share of the speed plan's time
   (`PAR_SCALE` 1: the engine's par draws and mistakes net out for the field's best, whose mean lands within 0.2 % of the
@@ -43,9 +43,11 @@ the layer only reads drivelines and hands the launcher times, standings and save
   and rolling) fitted to the plan's `a(v) = accel (1 - v / top)`; the corners and braking add 0.86 of the downforce as
   grip (`ClassPace::aero`, grip per (m/s)^2). `for_car` scales the class's accel and top by the car's over the field's
   mean car, so the class table stays the anchor. A stage's factor for a model is the speed plan's dry time with its
-  pace over the mean car's; `ItineraryStage::car_factors[e]` scales entrant `e`'s section pars before the engine
-  (the engine itself unchanged) and goes in the save's S line (old saves read as 1). The launcher reads a pack's
-  `common.lsp`/`r_tarmac.lsp` or the archive slot's in `physics.rbz`; a model whose specs do not read runs at 1.
+  pace over the mean car's, times the model's handling over the mean car's (`CarPace::handling`, by surface: rear
+  drive, front drive, downforce per kg, fitted to the hot laps); `ItineraryStage::car_factors[e]` scales entrant
+  `e`'s section pars before the engine (the engine itself unchanged) and goes in the save's S line (old saves read
+  as 1). The launcher reads a pack's `common.lsp`/`r_tarmac.lsp` or the archive slot's in `physics.rbz`; a model
+  whose specs do not read runs at 1.
 - AI service: after a stage with a service the cars get `ai::service` (the manager's order, repairs at the team's cost
   within 20/40 minutes) and `service_penalty` (10 s per minute late) into `Event.penalties`. Cars are repaired and
   false starts reset at each rally's first stage. A driver who retires is out for the rally.
@@ -98,9 +100,18 @@ column runs the 1.02 championship AI's best driver (`rbr-season` `ai::stage_time
 seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records within a few seconds everywhere.
 
 - WRC/top class vs the AI, totals: gravel 0.992 (39 stages), tarmac 1.009 (12), snow 0.934 (6); median stage 0.97.
-- Other classes follow by power/weight/grip ratios (WRC 9.6/9.2/11.5/58 down to Group 2 6.8/4.5/8.0/43).
-- Real-world check: fast gravel WRC ~109-126 km/h, twisty tarmac ~89-96, snow ~74-100; Rally2 ~7 % slower,
-  Group 2 ~21 % slower.
+- The anchor is the `WRC 2.0` row (2003's cars, as 1.02's; plain `WRC` too). The others are fitted to the
+  RallySimFans hot laps (557k players' best times on 519 stages, exported by the user, not committed): each car's
+  effect from `log t = stage + driver + car` per surface over each driver's times within 10 % of that car's best on
+  the stage (drivers with 5+ times; residual 2.9-3.3 %), a class's effect the mean of its cars'. `examples/class_fit.rs`
+  takes each class's shape from its installed cars in the NGP sweep (grip, braking, the `car_pace` straight; A5/A6
+  take A7's, Rally 5 Rally 4's, Group 2 Group 4's), scales it to the tarmac effect and sets `loose` to the gravel and
+  snow ones, each within 1 %. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
+  +0.3/-0.3, R4 +1.6/+1.5, S2000 +1.2, Rally 3 +2.7/+2.3, A8 +4.4/+4.5, N4 +6.1, Rally 4 +5.7/+6.5, R3 +6.1/+8.4,
+  Group B +6.6/+7.6, RGT +6.6/+12.6, Group 4 +8.2/+8.7, R2 +8.3/+9.3, A6 +10, R1 +16/+18, A5 +18, Group 2 +21/+20
+  (the old table had Rally 2 7.9 % and Group B 3.7 % behind the top class).
+- Level: on the retail stages the WRC 2.0 reference is ~13 % behind the boards' best time and ~8 % behind the tenth,
+  and about a third of the entries in the class beat it (the 1.02 AI's best ~9 % behind the best).
 - Measured straight-line pace (`scripts/car-pace-sweep.sh`, analysed by `harness/car_pace.py` into
   `/tmp/car-pace/cars.csv`, not committed): every installed car (the 8 archive slots, every RSF pack) from a
   standing boot start on RSF 504's start straight (tarmac, dry), `--flat-out` holding full throttle without braking
@@ -135,6 +146,12 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   so gravel takes no term of its own. Gravel braking 0.61-0.81 g, four-wheel drive ~6 % better, not modelled.
   `examples/car_pace.rs` prints the factors per field on the retail roads: WRC field -1.8 % (2019-20 cars) to
   +1.7 % (2006); Rally2 within 0.4 %; Group B quattro -3.4 %, Lada +7 %; a mixed field WRC 2019 -2.4 %, Escort +2.1 %.
+- `car_pace` against the hot laps' car effects (42 installed cars on the boards, over the Fiesta WRC 2019; the
+  `vs,` lines of `examples/car_pace.rs`): the speed plan alone 2.5/3.2/3.9 % RMS on tarmac/gravel/snow past the
+  shared offset, the players losing far more in rear-driven cars (Porsche, Escort Mk II, M3, Alpine 10-17 %) and in
+  old four-wheel drive than the plan. `CarPace::handling` fits log time on rear drive +4.4/+6.5/+8.2 %, front drive
+  -1.7/+0.9/+0.1 % and -0.9/-0.9/-0.5 % per N/kg of downforce at 150 km/h: 1.4/1.9/2.3 % RMS. So Group B's edge
+  over a modern car is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the Fiesta WRC 2019).
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
   keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
   hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the
