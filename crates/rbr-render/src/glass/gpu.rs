@@ -101,9 +101,25 @@ const DIFFUSE_SHARE: f32 = 0.5;
 const NIGHT_GLOW: [f32; 3] = [0.16, 0.155, 0.14];
 const FIRST_CAPACITY: usize = 1024;
 
-/// The glass pipeline, the frame's drops and the resolved frame it reads when the renderer has none.
+/// The fragment entry points of [`Pass`]'s pipelines.
+const PIPELINES: [&str; 3] = ["fs_main", "fs_film", "fs_pane"];
+
+/// Which of [`PIPELINES`] draws a drop of `kind`: the film's cells (4), the panes' cells (6), the rest.
+fn pipeline_of(kind: f32) -> usize {
+    match kind as u32 {
+        4 => 1,
+        6 => 2,
+        _ => 0,
+    }
+}
+
+/// The glass pipelines (`fs_main`, and `fs_film` and `fs_pane` for the film's and the panes' cells, apart so that the
+/// other kinds don't run with their registers), the frame's drops and the resolved frame it reads when the renderer
+/// has none.
 pub struct Pass {
-    pipeline: wgpu::RenderPipeline,
+    pipelines: [wgpu::RenderPipeline; 3],
+    /// The drops' runs, in order, and the pipeline of each.
+    runs: Vec<(usize, std::ops::Range<u32>)>,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// The sun's cascades (`sun::SunShadow::view`, or a placeholder) and their comparison sampler.
@@ -210,45 +226,52 @@ impl Pass {
             dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
             operation: wgpu::BlendOperation::Add,
         };
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("glass"),
-            layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("glass"),
-                bind_group_layouts: &[Some(&layout)],
-                immediate_size: 0,
-            })),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Drop>() as u64,
-                    step_mode: wgpu::VertexStepMode::Instance,
-                    attributes: &INSTANCE_ATTRIBUTES,
-                })],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState { color: premultiplied, alpha: premultiplied }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleStrip, ..Default::default() },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: depth,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: Default::default(),
-            multiview_mask: None,
-            cache: None,
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
         });
+        let pipeline = |entry_point| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(entry_point),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<Drop>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &INSTANCE_ATTRIBUTES,
+                    })],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(entry_point),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState { color: premultiplied, alpha: premultiplied }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: depth,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let pipelines = PIPELINES.map(pipeline);
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("glass drops"),
             size: (FIRST_CAPACITY * std::mem::size_of::<Drop>()) as u64,
@@ -256,7 +279,8 @@ impl Pass {
             mapped_at_creation: false,
         });
         Pass {
-            pipeline,
+            pipelines,
+            runs: Vec::new(),
             layout,
             sampler,
             sun_map: sun_map.clone(),
@@ -285,6 +309,14 @@ impl Pass {
             uploads.write(&self.instances, 0, bytemuck::cast_slice(drops));
         }
         self.count = drops.len() as u32;
+        self.runs.clear();
+        for (i, drop) in drops.iter().enumerate() {
+            let (pipeline, i) = (pipeline_of(drop.kind), i as u32);
+            match self.runs.last_mut() {
+                Some((last, run)) if *last == pipeline => run.end = i + 1,
+                _ => self.runs.push((pipeline, i..i + 1)),
+            }
+        }
     }
 
     /// The windscreen's wipers: the pane's swept areas seen from inside (kind 6), and where and when the blades last
@@ -384,9 +416,11 @@ impl Pass {
                 wgpu::BindGroupEntry { binding: 6, resource: views.as_entire_binding() },
             ],
         });
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &group, &[]);
         pass.set_vertex_buffer(0, self.instances.slice(..));
-        pass.draw(0..4, 0..self.count);
+        for (pipeline, run) in &self.runs {
+            pass.set_pipeline(&self.pipelines[*pipeline]);
+            pass.draw(0..4, run.clone());
+        }
     }
 }
