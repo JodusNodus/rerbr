@@ -99,6 +99,13 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   with the autopilot shifting and the clutch help on. Columns are the 0-60/100/140/160 km/h times, the speeds at
   10/20/30 s, the top speed and the distance, all inside the flat-out window (first motion to first brake, slide
   or corner; the straight ends at the kink ~600 m out, so the 20/30 s columns stay empty).
+- Measured steady-state grip and braking (same script/CSV): a radius-40 m circle on the map-85 school tarmac
+  with the target speed ramping up (`--circle`), taking the fastest held speed of the first latched hold and
+  v^2/R; and flat-out standstill starts on RSF 568's kilometre start straight (tarmac, dry) with full braking
+  from 100 and 150 km/h (`--brake-from`), taking stopping distance and mean deceleration, crash-stops excluded.
+  No radius-100 m column: no surveyed venue has a 200 m clear flat paved disc (map 85 is fenced into smaller
+  compounds; other discs sit hundreds of metres from spawn through obstacles; Sosnova's files are encrypted).
+  504 cannot host the 150 km/h stop (its kink and roadside trees arrive ~330 m past launch).
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
   keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
   hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the
