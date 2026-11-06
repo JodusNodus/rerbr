@@ -54,11 +54,15 @@ the layer only reads drivelines and hands the launcher times, standings and save
   45 min overnight in a weekend. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
   rally points. Adaptive moves every entrant's skill by at most 0.003 a stage toward the player finishing 2nd-4th.
   A retired player ends the rally (`restart` off): the field's remaining stages are simulated, the turn goes to RallyOver,
-  no points. Super Rally (`EventConfig.restart`, ours, on in every preset): the player rejoins after the next service
-  (`Event::rejoin_after`), the field drives the stages to it, and each stage not completed counts as its best AI time
-  plus 5:00 (`Event::charged`, `RESTART_CHARGE`; the reference plus 5:00 when no one finished); retiring after the
-  rally's last service is out as before. The AI's retirements stay final (the 1.02 engine). Power stage
-  (`EventConfig.power_stage`, ours, on in seasons): the complete rally's last stage pays its five fastest classified
+  no points. Super Rally (`EventConfig.restart`, on in every preset), as the WRC runs it (2005 regulations on: restart
+  at the next leg; current penalty 10 min, after 5 and 7): a crew that retires restarts at the next leg, after the
+  service that ends the leg (`ItineraryStage::ends_leg`, `Event::rejoin_after`), and each stage it did not complete,
+  the retirement's included, counts as that stage's fastest time plus 10:00 (`Event::charged`, `RESTART_CHARGE`; the
+  reference when no one finished). Only weekends have a next leg; a retirement in the last leg is final. The player's
+  car is rebuilt (no park at that service); the AI crews restart the same way (`Event::sits_out`, their cars rebuilt
+  at the leg's end, "restarts under Super Rally" in the news), except the hurt and those excluded for false starts
+  (`AiResult::Out`, "X" in the save). Power stage
+  (`EventConfig.power_stage`, the WRC's 5-4-3-2-1 since 2017, on in seasons): the complete rally's last stage pays its five fastest classified
   5-4-3-2-1 (`POWER_POINTS`, `Standing.bonus`, in `points`; a tie goes to the better placed). Points
   go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 4` head, `3` read with both rules
   off: config with the team and the two rules,

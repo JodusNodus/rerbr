@@ -158,10 +158,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   start, else kept; a Start order line "14th on the road · used road" from `Event::start_order`/`road_wear`: fresh, used or worn; a Rally line, the place and the gaps to the drivers either side), a stage's result (its top five and the
   player's row with gaps, the place on it and the places moved overall, the power stage's bonus; the last stage
   driven, or one picked by its name on the itinerary with "Latest" back), service (`common::park_card`, the itinerary's
-  minutes; under Super Rally a rejoin card instead, no park: the car rebuilt, no `--damage-in`), rally over with points,
+  minutes; at the end of a leg after a retirement under Super Rally a restart card instead, no park: the car rebuilt, no `--damage-in`), rally over with points,
   the stage wins, the podium, the season's title fight ("3rd in the season · 12 pts behind ... · 60 pts still to win")
   and, when a rally follows, "Practice first (not recorded)": a yard trial (map 72) and a stage trial (the rally's first
-  stage, its surface, road and clock; also at each welcome), in the event's car and damage on the road's tyre, with no
+  stage, its surface, road and clock), in the event's car and damage on the road's tyre, with no
   championship flags, no `--saves` and no files; its end changes nothing (`ChampionshipPage::trial`, `practice`), and
   event over (champion, the player's record: rally wins, podiums, stage wins, retirements). The standings show the
   places the last stage moved (⬆/⬇ from NotoEmoji: the default fonts have no ▲), the car on the name's hover, the last
@@ -171,7 +171,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   above the standings. The page holds the real `Event` (no seam): `mod.rs` its turns, `words.rs` the settings' words and
   flags, `view.rs` the screen switch, `builder.rs` the entry and builder, `running.rs` the championship's screens,
   `cards.rs` its cards, `results.rs` what they read from the results, and `common.rs` the shared cards, places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
-  (`championship*.png`, `championship-super-rally.png` a rejoin; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The built-event test (`a_quick_rally_on_the_real_stages_and_ai_plays_through`, `RBR_DATA`) loads the real `ai.ini`,
+  (`championship*.png`, `championship-super-rally.png` a weekend's restart; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The built-event test (`a_quick_rally_on_the_real_stages_and_ai_plays_through`, `RBR_DATA`) loads the real `ai.ini`,
   builds a Quick rally on the installed stages and plays every stage at a fixed pace, saved and read back before SS4 to end as the run never saved.
 - School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
   user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
