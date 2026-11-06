@@ -28,6 +28,14 @@ impl Uploads {
         self.belt.write_buffer(encoder, buffer, offset, size).copy_from_slice(data);
     }
 
+    /// Copies all of `source`, filled elsewhere, into `buffer` at `offset`, with the writes.
+    pub(crate) fn copy(&mut self, source: &wgpu::Buffer, buffer: &wgpu::Buffer, offset: u64) {
+        let encoder = (self.encoder).get_or_insert_with(|| {
+            self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("uploads") })
+        });
+        encoder.copy_buffer_to_buffer(source, 0, buffer, offset, source.size());
+    }
+
     /// The copies of the writes since the last call, to submit before the commands that read them.
     pub(crate) fn take(&mut self) -> Option<wgpu::CommandBuffer> {
         let encoder = self.encoder.take()?;
