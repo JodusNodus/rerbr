@@ -227,7 +227,8 @@ impl Renderer {
     pub fn set_glass(&mut self, drops: &[glass::gpu::Drop], wipers: glass::gpu::Wipers) {
         let pass = self.glass.get_or_insert_with(|| {
             let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
-            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map)
+            let may_halve = self.enhance.detail == Detail::High;
+            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map, may_halve)
         });
         pass.set(&self.device, &mut self.uploads, drops);
         pass.set_wipers(wipers);

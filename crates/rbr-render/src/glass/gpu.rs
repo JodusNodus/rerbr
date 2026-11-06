@@ -107,8 +107,9 @@ const PIPELINES: [&str; 4] = ["fs_main", "fs_film", "fs_pane", "fs_film_half"];
 const FILM: usize = 1;
 const FILM_HALF: usize = 3;
 
-/// The frame height (pixels) from which the film's cells seen from inside are drawn at half size, for their cost at
-/// 4K (ours): their beads then look as they do at half the height.
+/// The frame height (pixels) from which the film's cells seen from inside are drawn at half size under
+/// [`Detail::High`](crate::renderer::Detail::High), for their cost at 4K (ours): their beads then look as they do at half
+/// the height. [`Detail::Ultra`](crate::renderer::Detail::Ultra) keeps them whole.
 const HALF_FILM_FROM: u32 = 1800;
 
 /// A colour target of `format` and `size` that the glass reads.
@@ -161,17 +162,20 @@ pub struct Pass {
     half_uniform: wgpu::Buffer,
     half: Option<((u32, u32), wgpu::TextureView)>,
     no_half: wgpu::TextureView,
-    /// Whether this frame draws the film at half size.
+    /// Whether the film may be drawn at half size ([`HALF_FILM_FROM`]), and whether this frame does.
+    may_halve: bool,
     halved: bool,
 }
 
 impl Pass {
-    /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`.
+    /// The pass for colour targets of `format` and a `depth` attachment, reading the sun's cascades `sun_map`; the film
+    /// is drawn at half size on tall frames if `may_halve` ([`HALF_FILM_FROM`]).
     pub fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         depth: wgpu::TextureFormat,
         sun_map: &wgpu::TextureView,
+        may_halve: bool,
     ) -> Pass {
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry { binding, visibility, ty, count: None };
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -346,6 +350,7 @@ impl Pass {
             half_uniform,
             half: None,
             no_half,
+            may_halve,
             halved: false,
             format,
         }
@@ -416,7 +421,8 @@ impl Pass {
             shadow: [f32::from(u8::from(cascades.is_some())), 0.0, 0.0, 0.0],
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
-        self.halved = !outside && height >= HALF_FILM_FROM && self.runs.iter().any(|(p, _)| *p == FILM);
+        self.halved =
+            self.may_halve && !outside && height >= HALF_FILM_FROM && self.runs.iter().any(|(p, _)| *p == FILM);
         if self.halved {
             let size = (width.div_ceil(2), height.div_ceil(2));
             if self.half.as_ref().is_none_or(|(s, _)| *s != size) {
