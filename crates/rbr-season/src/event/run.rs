@@ -7,19 +7,34 @@ use super::*;
 pub(super) const ADAPT_STEP: f32 = 0.003;
 
 impl Event {
-    /// The first stage at or after `stage` of `rally` with a service after it that a retired player rejoins behind:
-    /// the player sits out `stage + 1..=k` and drives on from `k + 1`. `None` when restart is off or no service follows.
+    /// Super Rally (WRC): a crew that retires on `stage` of `rally` restarts at the next leg. The last stage of the leg
+    /// (the overnight service after it), the crew sitting out to it; `None` when restart is off or no leg follows.
     pub fn rejoin_after(&self, rally: usize, stage: usize) -> Option<usize> {
         if !self.config.restart {
             return None;
         }
         let stages = &self.rallies.get(rally)?.stages;
-        (stage..stages.len()).find(|&k| stages[k].service_after.is_some() && k + 1 < stages.len())
+        (stage..stages.len()).find(|&k| stages[k].ends_leg() && k + 1 < stages.len())
+    }
+
+    /// Whether entrant `e` sits out `rally`'s `stage`, and as what: out for good once hurt or excluded, retired until
+    /// the leg after its retirement (for the rest of the rally without Super Rally or a leg to follow).
+    fn sits_out(&self, rally: usize, stage: usize, e: usize) -> Option<AiResult> {
+        let before = &self.results[rally][..stage];
+        if before.iter().any(|(_, ai)| ai.get(e) == Some(&AiResult::Out)) {
+            return Some(AiResult::Out);
+        }
+        let retired = before.iter().rposition(|(_, ai)| ai.get(e) == Some(&AiResult::Retired))?;
+        match self.rejoin_after(rally, retired) {
+            Some(k) if k < stage => None,
+            _ => Some(AiResult::Retired),
+        }
     }
 
     /// The player's stage result: the field drives the same stage with the 1.02 AI engine on `master`, and the turn
-    /// moves on. A retired player rejoins after the next service under Super Rally (the field drives to it); otherwise
-    /// the player is out of the rally: the field drives its remaining stages and the turn goes to the rally's end.
+    /// moves on. A retired player restarts at the next leg under Super Rally (the field drives to the overnight service);
+    /// otherwise the player is out of the rally: the field drives its remaining stages and the turn goes to the rally's
+    /// end.
     pub fn stage_done(&mut self, master: &Master, result: PlayerResult) {
         let Some((rally, stage)) = self.at() else { return };
         self.results[rally][stage].0 = Some(result);
@@ -67,23 +82,28 @@ impl Event {
         let mut rng = CrtRand::srand(seed);
         let mut log = RunLog::default();
         let mut out = vec![AiResult::Retired; self.field.len()];
+        let mut restarts = Vec::new();
         for &e in order.iter().flatten() {
-            // Out of the rally for good once retired.
-            if self.results[rally][..stage].iter().any(|(_, ai)| ai.get(e) == Some(&AiResult::Retired)) {
+            if let Some(sitting) = self.sits_out(rally, stage, e) {
+                out[e] = sitting;
                 continue;
+            }
+            if stage > 0 && self.results[rally][stage - 1].1.get(e) == Some(&AiResult::Retired) {
+                restarts.push(format!("SS{}: {} restarts under Super Rally", stage + 1, self.field[e].name));
             }
             let c = &mut self.contenders[e];
             let team = &self.teams[c.team.min(self.teams.len() - 1)];
             out[e] = field::drive_stage(master, &track, stage as u32, e as i32, c, team, &mut rng, &mut log);
         }
-        let mut news = self.render(&log, stage, true);
+        let mut news = restarts;
+        news.extend(self.render(&log, stage, news.is_empty()));
         // The service after the stage: the AI cars' manager, repairs and late penalty.
         if let Some(minutes) = service_after {
             let long = minutes >= 40;
             let mut rng = CrtRand::srand(seed ^ 0x5E21_1CE0);
             let mut log = RunLog::default();
             for &e in order.iter().flatten() {
-                if out[e] == AiResult::Retired {
+                if !matches!(out[e], AiResult::Time(_)) {
                     continue;
                 }
                 let c = &mut self.contenders[e];
@@ -103,6 +123,14 @@ impl Event {
             }
             log.bulletins.retain(|b| matches!(b, Bulletin::ServicePenalty { .. }));
             news.extend(self.render(&log, stage, false));
+        }
+        // Overnight the retired cars that restart the next leg are rebuilt.
+        if self.rallies[rally].stages[stage].ends_leg() && self.config.restart {
+            for (e, c) in self.contenders.iter_mut().enumerate() {
+                if !matches!(out[e], AiResult::Time(_)) {
+                    (c.car.parts, c.car.hits) = ([0; 8], [0; 8]);
+                }
+            }
         }
         self.news[rally].extend(news);
         self.results[rally][stage].1 = out;

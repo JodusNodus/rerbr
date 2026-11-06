@@ -134,6 +134,7 @@ impl Event {
                     .map(|r| match r {
                         AiResult::Time(t) => t.to_string(),
                         AiResult::Retired => "R".to_owned(),
+                        AiResult::Out => "X".to_owned(),
                     })
                     .collect();
                 out.push_str(&format!("T|{rally}|{stage}|{p}|{}\n", a.join(",")));
@@ -343,6 +344,7 @@ impl Event {
                         for cell in cells.split(',') {
                             ai.push(match cell {
                                 "R" => AiResult::Retired,
+                                "X" => AiResult::Out,
                                 t => AiResult::Time(t.parse().map_err(|_| "bad AI time".to_owned())?),
                             });
                         }

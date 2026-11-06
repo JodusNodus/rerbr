@@ -109,7 +109,7 @@ fn main() {
                 }
                 let out = event.results[rally]
                     .last()
-                    .map_or(0, |(_, ai)| ai.iter().filter(|r| **r == AiResult::Retired).count());
+                    .map_or(0, |(_, ai)| ai.iter().filter(|r| !matches!(r, AiResult::Time(_))).count());
                 println!("-- {out} of {} entrants retired in the rally --", event.field.len());
                 event.turn_done();
             }

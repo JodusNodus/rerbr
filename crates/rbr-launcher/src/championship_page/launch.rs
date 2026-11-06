@@ -248,9 +248,11 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     drive(&mut event, 6);
     event.turn_done();
     at(form, &event, "championship-over")?;
-    // Super Rally: SS1 left wrecked, the car rebuilt at the service after SS3.
-    let mut event = fresh;
+    // Super Rally on a weekend: SS2 left wrecked, the car rebuilt at the overnight service after SS4.
+    let mut event = fixture::fixture_of(Preset::Weekend, rbr_season::config::Length::Weekend { stages: 8 });
+    (event.config.car, event.config.class) = (fresh.config.car.clone(), fresh.config.class.clone());
     event.turn_done();
+    drive(&mut event, 1);
     event.stage_done(&master, PlayerResult { time: 0.0, penalties: 0.0, retired: true });
     at(form, &event, "championship-super-rally")?;
     form.championship.screenshot_saved(&profile, None);

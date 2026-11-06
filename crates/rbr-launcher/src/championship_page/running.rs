@@ -120,14 +120,15 @@ impl ChampionshipPage {
         }
     }
 
-    /// The service a car retired under Super Rally waits out: it is rebuilt, nothing to repair, and rejoins.
+    /// The end-of-leg service a car retired under Super Rally waits out: it is rebuilt, nothing to repair, and
+    /// restarts the next leg.
     fn rejoin_ui(&mut self, ui: &mut Ui, here: &Path, profile: &str, event: &Event) {
         let Some(next) = rejoin(event) else { return };
         card_title(ui, "Super Rally");
-        ui.label(format!("The car is rebuilt overnight and rejoins on SS{}.", next + 1));
-        ui.colored_label(GREY, "Each stage missed counts as its best time plus 5:00.");
+        ui.label(format!("The car is rebuilt at the end of the leg and restarts the next leg on SS{}.", next + 1));
+        ui.colored_label(GREY, "Each stage not completed counts as its fastest time plus 10:00.");
         ui.add_space(10.0);
-        if ui.horizontal(|ui| ui.add(start_button(&format!("Rejoin on SS{}", next + 1)))).inner.clicked() {
+        if ui.horizontal(|ui| ui.add(start_button(&format!("Restart on SS{}", next + 1)))).inner.clicked() {
             self.turn_done(here, profile);
         }
     }

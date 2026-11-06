@@ -53,28 +53,35 @@ impl Event {
         rows
     }
 
-    /// The Super Rally charge for `rally`'s `stage`: the stage's best finished time plus the restart charge, or the
-    /// stage's reference plus the charge when nobody finished it. `None` without restart, for a finished or unrun
-    /// stage, or when no rejoin follows.
-    pub fn charged(&self, rally: usize, stage: usize) -> Option<f32> {
-        if !self.config.restart {
+    /// The fastest finished time on `rally`'s `stage` (the field is one class).
+    fn fastest(&self, rally: usize, stage: usize) -> Option<f32> {
+        let (player, ai) = self.results.get(rally)?.get(stage)?;
+        let ai = ai.iter().filter_map(|r| match r {
+            AiResult::Time(t) => Some(*t),
+            AiResult::Retired | AiResult::Out => None,
+        });
+        player.filter(|p| !p.retired).map(|p| p.time).into_iter().chain(ai).reduce(f32::min)
+    }
+
+    /// Super Rally's time for `who` (the player as `None`) on `rally`'s `stage`, a stage run that the crew did not
+    /// complete but restarts after: the stage's fastest time plus [`RESTART_CHARGE`] (its reference when no one
+    /// finished). `None` without restart, for a completed or unrun stage, for a crew out for good, or when no leg
+    /// follows.
+    pub fn charged(&self, rally: usize, stage: usize, who: Option<usize>) -> Option<f32> {
+        if !self.config.restart || stage >= run_stages(self.results.get(rally)?) {
             return None;
         }
-        let results = self.results.get(rally)?;
-        if stage >= run_stages(results) {
-            return None;
-        }
-        if results.get(stage)?.0.is_some_and(|p| !p.retired) {
+        let (player, ai) = &self.results[rally][stage];
+        let missed = match who {
+            None => player.is_none_or(|p| p.retired),
+            Some(e) => ai.get(e) == Some(&AiResult::Retired),
+        };
+        if !missed {
             return None;
         }
         self.rejoin_after(rally, stage)?;
-        let times = results[stage].1.iter().filter_map(|r| match r {
-            AiResult::Time(t) => Some(*t),
-            AiResult::Retired => None,
-        });
-        let best = times.reduce(f32::min);
         let reference = self.rallies.get(rally)?.stages.get(stage)?.reference;
-        Some(best.unwrap_or(reference) + RESTART_CHARGE)
+        Some(self.fastest(rally, stage).unwrap_or(reference) + RESTART_CHARGE)
     }
 
     fn player_total(&self, rally: usize, run: usize) -> Option<f32> {
@@ -82,8 +89,8 @@ impl Event {
         for (stage, (result, _)) in self.results[rally].iter().take(run).enumerate() {
             match result {
                 Some(p) if !p.retired => total += p.time + p.penalties,
-                // Under Super Rally a missed stage with a rejoin behind it charges the stage's best time.
-                _ => total += if self.config.restart { self.charged(rally, stage)? } else { return None },
+                // Under Super Rally a stage missed before a restart is charged.
+                _ => total += self.charged(rally, stage, None)?,
             }
         }
         Some(total)
@@ -91,10 +98,10 @@ impl Event {
 
     fn entrant_total(&self, rally: usize, entrant: usize, run: usize) -> Option<f32> {
         let mut total = self.penalties.get(rally).and_then(|p| p.get(entrant)).copied().unwrap_or(0.0);
-        for (_, ai) in self.results[rally].iter().take(run) {
+        for (stage, (_, ai)) in self.results[rally].iter().take(run).enumerate() {
             match ai.get(entrant) {
                 Some(AiResult::Time(t)) => total += t,
-                _ => return None,
+                _ => total += self.charged(rally, stage, Some(entrant))?,
             }
         }
         Some(total)

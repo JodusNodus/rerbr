@@ -116,11 +116,11 @@ pub(super) fn stage_result_ui(ui: &mut Ui, event: &Event, rally: usize, stage: u
                     overall(ui);
                 });
             }
-            None => match event.charged(rally, stage) {
+            None => match event.charged(rally, stage, None) {
                 Some(time) => {
                     _ = ui.colored_label(
                         BAD,
-                        format!("Super Rally: you are charged {}, the best time plus 5:00.", clock(time)),
+                        format!("Super Rally: you are charged {}, the fastest time plus 10:00.", clock(time)),
                     )
                 }
                 None => _ = ui.colored_label(BAD, "You did not finish the stage."),
@@ -138,7 +138,7 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
     let results = driven(event, rally);
     let mark = |k: usize| match results.get(k) {
         Some((Some(p), _)) if !p.retired => StageMark::Done(p.time),
-        Some(_) => event.charged(rally, k).map_or(StageMark::Retired, StageMark::Charged),
+        Some(_) => event.charged(rally, k, None).map_or(StageMark::Retired, StageMark::Charged),
         None => match event.turn {
             Turn::Stage { rally: at, stage } if at == rally && stage == k => StageMark::Next,
             Turn::Service { rally: at, stage, .. } if at == rally && stage + 1 == k => StageMark::Next,
@@ -194,7 +194,7 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
                 match m {
                     StageMark::Done(time) => _ = ui.label(clock(time)),
                     StageMark::Charged(time) => {
-                        let text = "Super Rally: the stage's best time plus 5:00";
+                        let text = "Super Rally: the stage's fastest time plus 10:00";
                         ui.colored_label(BAD, clock(time)).on_hover_text(text);
                     }
                     StageMark::Retired => _ = ui.label("out"),
@@ -214,7 +214,7 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
         let penalties: f32 = results.iter().filter_map(|(p, _)| p.as_ref()).map(|p| p.penalties).sum();
         let driven =
             results.iter().filter_map(|(p, _)| p.as_ref()).filter(|p| !p.retired).map(|p| p.time + p.penalties);
-        let charges = (0..results.len()).filter_map(|k| event.charged(rally, k));
+        let charges = (0..results.len()).filter_map(|k| event.charged(rally, k, None));
         let total: f32 = driven.chain(charges).sum();
         if !results.is_empty() {
             ui.add_space(4.0);

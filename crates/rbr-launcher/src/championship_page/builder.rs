@@ -196,8 +196,8 @@ impl ChampionshipPage {
                 ui.label("Rules");
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut config.restart, "Super Rally").on_hover_text(
-                        "Retire and you rejoin after the next service; each stage missed counts as its best time \
-                         plus 5:00",
+                        "Retire and you restart the next leg (weekends); each stage not completed counts as its \
+                         fastest time plus 10:00",
                     );
                     ui.checkbox(&mut config.power_stage, "Power stage")
                         .on_hover_text("The rally's last stage pays its five fastest 5-4-3-2-1 bonus points");

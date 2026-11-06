@@ -50,11 +50,12 @@ pub fn stages() -> Vec<StageRef> {
 
 /// A built championship on [`stages`] (a season of two rallies of six stages) at its welcome.
 pub fn fixture_event() -> Event {
-    let config = EventConfig {
-        length: Length::Season { rallies: 2, stages: 6 },
-        surfaces: Surfaces::Only(Surface::Gravel),
-        ..Preset::Season.config("Rally2", "", 7)
-    };
+    fixture_of(Preset::Season, Length::Season { rallies: 2, stages: 6 })
+}
+
+/// A built championship on [`stages`]: `preset`'s on gravel, `length` long, at its welcome.
+pub fn fixture_of(preset: Preset, length: Length) -> Event {
+    let config = EventConfig { length, surfaces: Surfaces::Only(Surface::Gravel), ..preset.config("Rally2", "", 7) };
     let cars = ["Skoda Fabia Rally2".to_owned(), "Citroen C3 Rally2".to_owned()];
     let class = class_pace("Rally2");
     let profile = |s: &StageRef| StageProfile::flat(s.length, s.surface, &class);

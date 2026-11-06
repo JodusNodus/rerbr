@@ -7,7 +7,7 @@ use super::*;
 const SERVICE_MID: u32 = 20;
 
 /// The overnight service between a weekend's legs (minutes).
-const SERVICE_NIGHT: u32 = 45;
+pub(super) const SERVICE_NIGHT: u32 = 45;
 
 /// The team a roster without teams gets.
 fn default_team() -> Team {

@@ -53,6 +53,11 @@ fn the_summary_reads_the_event_at_a_glance() {
 
 /// A page on the fixture AI with a pool of the fixture's stages.
 fn page(here: &Path) -> ChampionshipPage {
+    page_on(here, Preset::QuickRally)
+}
+
+/// A page on the fixture AI with `preset`'s championship started.
+fn page_on(here: &Path, preset: Preset) -> ChampionshipPage {
     let mut page = ChampionshipPage::new(&Data::new(here.join("data"), None));
     page.ai = Ok(fixture::ai());
     let cars = [Car {
@@ -61,7 +66,7 @@ fn page(here: &Path) -> ChampionshipPage {
         model: Ok(rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None }),
         ..Car::default()
     }];
-    page.open_builder(Preset::QuickRally, &cars, 0, 3);
+    page.open_builder(preset, &cars, 0, 3);
     page.start_event(here, "tester", &cars, &fixture::stages());
     page
 }
@@ -141,12 +146,13 @@ fn a_rally_runs_its_turns_with_service_damage_and_the_late_penalty() {
 }
 
 #[test]
-fn a_retired_car_is_rebuilt_and_rejoins_under_super_rally() {
+fn a_retired_car_is_rebuilt_overnight_and_restarts_the_next_leg() {
     let here = crate::test_dir("championship-super-rally");
-    let mut page = page(&here);
-    assert!(page.run.as_ref().unwrap().event.config.restart, "the presets rejoin");
+    // A ten-stage weekend: the overnight service after SS5.
+    let mut page = page_on(&here, Preset::Weekend);
+    assert!(page.run.as_ref().unwrap().event.config.restart, "the presets restart");
     page.turn_done(&here, "tester");
-    // SS1 is left wrecked: the field drives on to the service after SS3, where the car is rebuilt.
+    // SS1 is left wrecked: the field drives the rest of the leg, the car is rebuilt overnight.
     let mut damage = CarriedDamage::default();
     damage.service_refresh();
     page.stage_start(&here).unwrap();
@@ -154,25 +160,28 @@ fn a_retired_car_is_rebuilt_and_rejoins_under_super_rally() {
     std::fs::write(&out, damage.to_bytes()).unwrap();
     page.stage_closed(&here, "tester");
     let run = page.run.as_ref().unwrap();
-    assert_eq!(run.event.turn, Turn::Service { rally: 0, stage: 2, minutes: 20 });
+    assert_eq!(run.event.turn, Turn::Service { rally: 0, stage: 4, minutes: 45 });
     assert!(run.damage.is_none(), "rebuilt");
-    assert!((0..3).all(|k| run.event.charged(0, k).is_some()));
-    assert_eq!(super::view::rejoin(&run.event), Some(3));
-    // No park: the rejoin moves on with the rebuilt car, no damage carried in.
+    assert!((0..5).all(|k| run.event.charged(0, k, None).is_some()));
+    assert_eq!(super::view::rejoin(&run.event), Some(5));
+    // No park: the restart moves on with the rebuilt car, no damage carried in.
     page.turn_done(&here, "tester");
     assert!(page.run.as_ref().unwrap().damage.is_none());
     let start = page.stage_start(&here).unwrap();
     assert!(!start.args.iter().any(|a| a == "--damage-in"));
     page.abort_stage_start();
-    for time in [300.0, 305.0, 310.0] {
+    for time in [300.0, 305.0, 310.0, 315.0, 320.0] {
         drive(&mut page, &here, time, None);
+        if matches!(page.run.as_ref().unwrap().event.turn, Turn::Service { .. }) {
+            page.service_done(&here, "tester", 0.0, CarriedDamage::default());
+        }
     }
     // Classified: the charges and the driven stages make the total.
     let event = &page.run.as_ref().unwrap().event;
     assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
-    let charges: f32 = (0..3).filter_map(|k| event.charged(0, k)).sum();
+    let charges: f32 = (0..5).filter_map(|k| event.charged(0, k, None)).sum();
     let mine = event.rally_standings(0).into_iter().find(|l| l.entrant.is_none()).unwrap();
-    assert_eq!(mine.total, Some(charges + 915.0));
+    assert_eq!(mine.total, Some(charges + 1550.0));
     std::fs::remove_dir_all(&here).unwrap();
 }
 

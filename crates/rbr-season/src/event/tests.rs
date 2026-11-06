@@ -445,91 +445,114 @@ fn the_presets_share_the_field_and_differ_in_shape() {
     }
 }
 
-fn best_ai(results: &[(Option<PlayerResult>, Vec<AiResult>)], stage: usize) -> Option<f32> {
-    results[stage]
-        .1
-        .iter()
-        .filter_map(|r| match r {
+/// A ten-stage weekend: leg 1 SS1-SS5 (a service after SS3, the overnight service after SS5), leg 2 SS6-SS10.
+fn weekend(seed: u32) -> Event {
+    let mut config = Preset::Weekend.config("Rally2", "car", seed);
+    config.surfaces = crate::config::Surfaces::Only(crate::config::Surface::Gravel);
+    config.field_size = 6;
+    let event = build(config, &gravel_pool(), &["car".to_owned()]);
+    let ends: Vec<bool> = event.rallies[0].stages.iter().map(|s| s.ends_leg()).collect();
+    assert_eq!(ends, [false, false, false, false, true, false, false, false, false, false]);
+    event
+}
+
+#[test]
+fn a_retired_player_restarts_at_the_next_leg() {
+    let mut event = weekend(21);
+    assert!(event.config.restart);
+    // Not after the mid-leg service: at the next leg, behind the overnight service.
+    assert_eq!(event.rejoin_after(0, 0), Some(4));
+    assert_eq!(event.rejoin_after(0, 4), Some(4));
+    assert_eq!(event.rejoin_after(0, 5), None);
+    let m = master();
+    event.turn_done();
+    event.stage_done(&m, finish(300.0));
+    event.stage_done(&m, PlayerResult { time: 0.0, penalties: 0.0, retired: true });
+    // The field drives to the overnight service; the player sits out SS3-SS5.
+    assert_eq!(event.turn, Turn::Service { rally: 0, stage: 4, minutes: 45 });
+    assert!((2..5).all(|k| event.results[0][k].0.is_none() && event.results[0][k].1.len() == 6));
+    // Each stage not completed, the retirement's included: the stage's fastest time plus ten minutes.
+    assert_eq!(RESTART_CHARGE, 600.0);
+    for stage in 1..5 {
+        let fastest = event.results[0][stage].1.iter().filter_map(|r| match r {
             AiResult::Time(t) => Some(*t),
-            AiResult::Retired => None,
-        })
-        .reduce(f32::min)
-}
-
-#[test]
-fn a_retired_player_rejoins_after_the_next_service() {
-    let pool = gravel_pool();
-    let cars = vec!["car".to_owned()];
-    let mut config = Preset::QuickRally.config("Rally2", "car", 21);
-    config.length = Length::Rally { stages: 6 };
-    config.field_size = 4;
-    config.adaptive = true;
-    assert!(config.restart);
-    let mut event = build(config, &pool, &cars);
-    // Six stages with the one mid-rally service after the third.
-    assert!(event.rallies[0].stages.iter().enumerate().all(|(i, s)| s.service_after.is_some() == (i == 2)));
-    assert_eq!(event.rejoin_after(0, 0), Some(2));
-    assert_eq!(event.rejoin_after(0, 3), None);
-    let pace = event.pace;
-    event.turn_done();
-    event.stage_done(&master(), PlayerResult { time: 0.0, penalties: 0.0, retired: true });
-    // The field drove to the service; the player sits out two stages and rejoins on the fourth.
-    assert_eq!(event.turn, Turn::Service { rally: 0, stage: 2, minutes: 20 });
-    assert!(event.results[0][1].0.is_none() && event.results[0][2].0.is_none());
-    assert_eq!(event.results[0][1].1.len(), 4);
-    assert_eq!(event.results[0][2].1.len(), 4);
-    assert_eq!(event.charged(0, 3), None);
-    // The missed stages charge the stage's best AI time plus the restart charge (the reference when none finished).
-    for stage in 0..3 {
-        let reference = event.rallies[0].stages[stage].reference;
-        assert_eq!(
-            event.charged(0, stage),
-            Some(best_ai(&event.results[0], stage).unwrap_or(reference) + RESTART_CHARGE)
-        );
+            _ => None,
+        });
+        let fastest = fastest.reduce(f32::min).unwrap_or(event.rallies[0].stages[stage].reference);
+        assert_eq!(event.charged(0, stage, None), Some(fastest + RESTART_CHARGE));
     }
-    // The retirement skips the adaptive field.
-    assert_eq!(event.pace, pace);
-    // The player drives the last three stages and is classified with the charges plus the driven times.
-    let m = master();
+    assert_eq!(event.charged(0, 0, None), None, "completed");
+    // The player drives leg 2 and is classified with the charges.
     event.turn_done();
-    assert_eq!(event.turn, Turn::Stage { rally: 0, stage: 3 });
-    event.stage_done(&m, finish(300.0));
-    event.stage_done(&m, finish(310.0));
-    event.stage_done(&m, finish(320.0));
+    assert_eq!(event.turn, Turn::Stage { rally: 0, stage: 5 });
+    for _ in 5..10 {
+        event.stage_done(&m, finish(300.0));
+        if matches!(event.turn, Turn::Service { .. }) {
+            event.turn_done();
+        }
+    }
     assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
-    let charges: f32 = (0..3).map(|s| event.charged(0, s).unwrap()).sum();
+    let charges: f32 = (1..5).map(|s| event.charged(0, s, None).unwrap()).sum();
     let rows = event.rally_standings(0);
-    let player = rows.iter().find(|r| r.entrant.is_none()).unwrap();
-    assert_eq!(player.total, Some(charges + 300.0 + 310.0 + 320.0));
-    let place = rows.iter().position(|r| r.entrant.is_none()).unwrap();
-    assert_eq!(player.points, POINTS[place]);
+    let at = rows.iter().position(|r| r.entrant.is_none()).unwrap();
+    assert_eq!(rows[at].total, Some(charges + 300.0 * 6.0));
+    assert!(rows[at].points >= POINTS.get(at).copied().unwrap_or(0));
 }
 
 #[test]
-fn a_retired_player_after_the_last_service_is_out() {
-    let pool = gravel_pool();
-    let cars = vec!["car".to_owned()];
-    let mut config = Preset::QuickRally.config("Rally2", "car", 21);
-    config.length = Length::Rally { stages: 6 };
-    config.field_size = 4;
-    assert!(config.restart);
-    let mut event = build(config, &pool, &cars);
+fn a_retired_player_in_the_last_leg_is_out() {
+    let mut event = weekend(21);
     let m = master();
     event.turn_done();
-    event.stage_done(&m, finish(300.0));
-    event.stage_done(&m, finish(300.0));
-    event.stage_done(&m, finish(300.0));
-    assert!(matches!(event.turn, Turn::Service { .. }));
-    event.turn_done();
-    event.stage_done(&m, finish(300.0));
-    // Retiring on the fifth stage, after the last service: no rejoin follows.
-    assert_eq!(event.rejoin_after(0, 4), None);
+    while event.turn != (Turn::Stage { rally: 0, stage: 6 }) {
+        match event.turn {
+            Turn::Stage { .. } => event.stage_done(&m, finish(300.0)),
+            _ => event.turn_done(),
+        }
+    }
     event.stage_done(&m, PlayerResult { time: 0.0, penalties: 0.0, retired: true });
     assert_eq!(event.turn, Turn::RallyOver { rally: 0 });
-    assert!(event.results[0].iter().all(|(_, ai)| ai.len() == 4));
+    assert!(event.results[0].iter().all(|(_, ai)| ai.len() == 6));
     let player = event.rally_standings(0).into_iter().find(|r| r.entrant.is_none()).unwrap();
     assert_eq!((player.total, player.points), (None, 0));
-    assert_eq!(event.charged(0, 4), None);
+    assert_eq!(event.charged(0, 6, None), None);
+}
+
+#[test]
+fn a_retired_crew_restarts_at_the_next_leg_and_a_hurt_one_does_not() {
+    let mut event = weekend(3);
+    let m = master();
+    event.turn_done();
+    while event.turn != (Turn::Stage { rally: 0, stage: 4 }) {
+        match event.turn {
+            Turn::Stage { .. } => event.stage_done(&m, finish(300.0)),
+            _ => event.turn_done(),
+        }
+    }
+    // Entrant 0 retired on SS2, entrant 1 hurt there; both sat out SS3 and SS4.
+    for k in 1..4 {
+        event.results[0][k].1[0] = AiResult::Retired;
+        event.results[0][k].1[1] = AiResult::Out;
+    }
+    event.contenders[0].car.parts = [4; 8];
+    // SS5 ends the leg: both still sit out.
+    event.stage_done(&m, finish(300.0));
+    assert_eq!((event.results[0][4].1[0], event.results[0][4].1[1]), (AiResult::Retired, AiResult::Out));
+    // The overnight service rebuilt the retired car; SS6 has the restart and not the hurt crew.
+    assert_eq!(event.contenders[0].car.parts, [0; 8]);
+    event.turn_done();
+    event.stage_done(&m, finish(300.0));
+    assert_ne!(event.results[0][5].1[0], AiResult::Retired, "restarted");
+    assert_eq!(event.results[0][5].1[1], AiResult::Out);
+    assert!(event.bulletins(0).iter().any(|l| l.starts_with("SS6: ") && l.ends_with("restarts under Super Rally")));
+    // The restarted crew is charged for SS2-SS5 and classified while it runs; the hurt one is not.
+    let charged = (1..5).filter_map(|k| event.charged(0, k, Some(0))).count();
+    assert_eq!(charged, 4);
+    assert_eq!(event.charged(0, 1, Some(1)), None);
+    let rows = event.rally_standings(0);
+    let total = |e| rows.iter().find(|r| r.entrant == Some(e)).unwrap().total;
+    assert!(total(1).is_none());
+    assert_eq!(total(0).is_some(), matches!(event.results[0][5].1[0], AiResult::Time(_)));
 }
 
 #[test]

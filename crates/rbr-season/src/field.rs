@@ -31,7 +31,11 @@ pub struct Entrant {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AiResult {
     Time(f32),
+    /// Retired (an accident, a broken car) or sitting out the stages to the next leg: under Super Rally the crew
+    /// restarts there.
     Retired,
+    /// Out of the rally for good: the driver or co-driver hurt, or excluded for false starts.
+    Out,
 }
 
 /// What the engine carries for an entrant over the event: the driver (injuries), the car (damage), the team it drives
@@ -194,8 +198,8 @@ pub fn rally_start(contenders: &mut [Contender]) {
     }
 }
 
-/// One entrant's stage on `track` (the engine at the 1.02 level 2, the par as the track holds it): its time, or
-/// retired. `id` names it in the bulletins; false starts count in the rally.
+/// One entrant's stage on `track` (the engine at the 1.02 level 2, the par as the track holds it): its time, retired,
+/// or out for good (hurt, excluded). `id` names it in the bulletins; false starts count in the rally.
 #[allow(clippy::too_many_arguments)]
 pub fn drive_stage(
     master: &rbr_formats::ai_ini::Master,
@@ -218,10 +222,17 @@ pub fn drive_stage(
             Bulletin::FalseStartRetire { driver: id, stage }
         });
     }
-    if time == RETIRED || time < 0.0 {
-        AiResult::Retired
+    if time != RETIRED && time >= 0.0 {
+        return AiResult::Time(time);
+    }
+    let hurt = log
+        .bulletins
+        .iter()
+        .any(|b| matches!(*b, Bulletin::Hurt { driver, .. } | Bulletin::Dead { driver, .. } if driver == id));
+    if hurt || after > 3 {
+        AiResult::Out
     } else {
-        AiResult::Time(time)
+        AiResult::Retired
     }
 }
 
