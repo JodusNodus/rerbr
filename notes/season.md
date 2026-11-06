@@ -13,18 +13,19 @@ the layer only reads drivelines and hands the launcher times, standings and save
   Hermite through the `.trk` records, tangents fitted as the autopilot fits them; `timed_road` cuts it at the `.dls`
   start and finish and keeps the splits from the start, the one road the launcher, the examples and the tests use). Samples at ~1.5 m; speed limit `sqrt(grip_eff / curvature)` capped at top speed; forward pass with
   acceleration falling linearly to 0 at top speed, backward pass with braking; trapezoid time integral.
-- Curvature is the *signed* heading change, smoothed over ~19 m before taking the absolute: the records' lateral
-  jitter weaves left and right and cancels out, while real corners keep their sign. Smoothing the absolute
-  curvature instead counts every weave as a corner (found on map 61: 69 rad of smoothed-signed turning vs ~2.5 rad
-  net heading change).
-- `grip_eff` = class grip x surface (tarmac 1, gravel 0.75, snow 0.50) x the class's `loose` on gravel and snow x
+- Curvature is the *signed* heading change in the ground plane (x, y; z is up in the `.trk`), smoothed over ~37 m
+  (`SMOOTH` 12, the hot laps' best) before taking the absolute. Until the hot-laps check the plan took x and z, the
+  height for the second axis, so it read the road's climbs and noise as corners (the stage times 13-17 % off the
+  boards per stage, now 6.4-7.3 %).
+- `grip_eff` = class grip x surface (tarmac 1, gravel 0.86, snow 0.85, the hot laps' stage times) x the class's `loose` on gravel and snow x
   (1 - 0.25 x wetness). Braking scales with the grip. The class table is `pace::CLASSES`, matched in order.
 - `track`: a stage's `ai_ini::Track` for the 1.02 engine, from its driveline. Sections are the stage's `.dls` splits
   (the retail `ai.ini` cuts there), thirds without. A section's par is its share of the speed plan's time
   (`PAR_SCALE` 1: the engine's par draws and mistakes net out for the field's best, whose mean lands within 0.2 % of the
   reference, sd 0.002 over the retail stages). Each check describes one half: a straights check (type 3) when the half
-  is 70 %+ long straights (top speed over 150 m+), else curves (type 0, value 3 +/- how tight the corners hold the plan;
-  tightness 0.15 is the retail mean); the second half of a snow section looser than the first takes rough (type 1),
+  is 70 %+ long straights (top speed over 150 m+) or looser than tightness 0.235 (28 % of the retail halves are
+  straights; this cut takes 29 %, half of them retail straights), else curves (type 0); the value is 3 +/- how tight
+  the corners hold the plan against the retail mean of its side (0.18 straights, 0.33 curves); the second half of a snow section looser than the first takes rough (type 1),
   a much looser gravel one obstacles (type 2). Material from the surface, accident table 0 (every retail row uses it).
   `StageProfile::flat` gives a stage without a driveline (BTB) a reference and a middling track from its length.
 - `field`: fictional international crews (nothing from the game's roster, which stays out of the source) drive the
@@ -99,7 +100,14 @@ the layer only reads drivelines and hands the launcher times, standings and save
 column runs the 1.02 championship AI's best driver (`rbr-season` `ai::stage_time`, level 2, dry, mean of 8
 seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records within a few seconds everywhere.
 
-- WRC/top class vs the AI, totals: gravel 0.992 (39 stages), tarmac 1.009 (12), snow 0.934 (6); median stage 0.97.
+- The anchor row vs the 1.02 AI's best driver, totals: gravel 1.001 (39 stages), tarmac 1.060 (12), snow 0.892 (6),
+  1.000 over all; per map against the retail pars (`examples/track.rs`) gravel 1.042 sd 0.044, tarmac 1.065 sd
+  0.018, snow 0.976 sd 0.049. The surfaces apart follow the hot laps, not 1.02's pars: the players in NGP hold snow
+  and gravel at 0.85-0.86 of tarmac's grip (the old 0.75 and 0.50 put gravel 5 % and snow 21 % slow against tarmac).
+- Stages: the boards' stage effect (Fiesta WRC 2019, the hundredth-best driver of those with 50+ times) against the
+  anchor's reference over 244 installed stages: sd 6.4 % tarmac, 6.7 % gravel, 7.3 % snow; the reference sits ~10 %
+  behind that driver on every surface. A pace-note limit on top of the curvature (the `.dls` calls, severity 0-5)
+  gained 0.3 %, not taken.
 - The anchor is the `WRC 2.0` row (2003's cars, as 1.02's; plain `WRC` too). The others are fitted to the
   RallySimFans hot laps (557k players' best times on 519 stages, exported by the user, not committed): each car's
   effect from `log t = stage + driver + car` per surface over each driver's times within 10 % of that car's best on
@@ -110,8 +118,9 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   +0.3/-0.3, R4 +1.6/+1.5, S2000 +1.2, Rally 3 +2.7/+2.3, A8 +4.4/+4.5, N4 +6.1, Rally 4 +5.7/+6.5, R3 +6.1/+8.4,
   Group B +6.6/+7.6, RGT +6.6/+12.6, Group 4 +8.2/+8.7, R2 +8.3/+9.3, A6 +10, R1 +16/+18, A5 +18, Group 2 +21/+20
   (the old table had Rally 2 7.9 % and Group B 3.7 % behind the top class).
-- Level: on the retail stages the WRC 2.0 reference is ~13 % behind the boards' best time and ~8 % behind the tenth,
-  and about a third of the entries in the class beat it (the 1.02 AI's best ~9 % behind the best).
+- Level: on the retail stages the WRC 2.0 reference is ~14 % behind the boards' best time and ~8 % behind the tenth,
+  and 43 % of the entries in the class beat it (the 1.02 AI's best ~9 % behind the best); the other classes sit
+  11-23 % behind their best (median over the retail stages with 100+ entries).
 - Measured straight-line pace (`scripts/car-pace-sweep.sh`, analysed by `harness/car_pace.py` into
   `/tmp/car-pace/cars.csv`, not committed): every installed car (the 8 archive slots, every RSF pack) from a
   standing boot start on RSF 504's start straight (tarmac, dry), `--flat-out` holding full throttle without braking
@@ -144,18 +153,18 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   four- and two-wheel drive alike; the cars' spread there does not follow their specs (the Fiesta WRC 2019 and the
   i20 2020, alike in mass, power and downforce, 12 km/h apart; the holds fall in two groups by how long they last),
   so gravel takes no term of its own. Gravel braking 0.61-0.81 g, four-wheel drive ~6 % better, not modelled.
-  `examples/car_pace.rs` prints the factors per field on the retail roads: WRC field -1.8 % (2019-20 cars) to
-  +1.7 % (2006); Rally2 within 0.4 %; Group B quattro -3.4 %, Lada +7 %; a mixed field WRC 2019 -2.4 %, Escort +2.1 %.
+  `examples/car_pace.rs` prints the factors per field on the retail roads (handling included, gravel/tarmac): WRC
+  field -2.3/-2.2 % (2019-20 cars) to +2.4/+2.3 % (2006); Rally2 within 0.7 %; Group B quattro -6.7/-5.5 %, Porsche
+  +1.2/+0.6 %, Lada +7.1/+6.7 %; a mixed field WRC 2019 -3.7/-3.5 %, Escort Cosworth +3.3/+3.1 %.
 - `car_pace` against the hot laps' car effects (42 installed cars on the boards, over the Fiesta WRC 2019; the
-  `vs,` lines of `examples/car_pace.rs`): the speed plan alone 2.5/3.2/3.9 % RMS on tarmac/gravel/snow past the
+  `vs,` lines of `examples/car_pace.rs`): the speed plan alone 2.5/3.4/3.8 % RMS on tarmac/gravel/snow past the
   shared offset, the players losing far more in rear-driven cars (Porsche, Escort Mk II, M3, Alpine 10-17 %) and in
-  old four-wheel drive than the plan. `CarPace::handling` fits log time on rear drive +4.4/+6.5/+8.2 %, front drive
-  -1.7/+0.9/+0.1 % and -0.9/-0.9/-0.5 % per N/kg of downforce at 150 km/h: 1.4/1.9/2.3 % RMS. So Group B's edge
-  over a modern car is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the Fiesta WRC 2019).
-- Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
-  keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
-  hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the
-  AI, cut per the driveline), each ~30-60 % off while the middle half of stages sits within ~10 %.
+  old four-wheel drive than the plan. `CarPace::handling` fits log time on rear drive +4.6/+6.6/+8.3 %, front drive
+  +0.3/+2.5/+1.7 % and -1.1/-1.1/-0.7 % per N/kg of downforce at 150 km/h: 1.5/2.0/2.3 % RMS left out one at a
+  time. So Group B's edge over a modern car is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the
+  Fiesta WRC 2019).
+- Retail AI checks: straights 28 % of the halves (a half under tightness 0.235 or 70 % long straights), 132/216 check
+  types match the retail rows.
 
 ## Open items
 

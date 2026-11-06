@@ -18,7 +18,7 @@ use crate::pace::{self, ClassPace};
 
 /// The sum of a track's section pars over its reference time. The engine's par draws (negative for a good driver) and
 /// mistakes (rare for one) net out for the field's best driver, whose mean time lands within 0.2 % of the reference
-/// (measured by `examples/track.rs`: 0.984 at a scale of 0.985, sd 0.002 over the retail stages), so the pars are the
+/// (measured by `examples/track.rs`: 0.999 at a scale of 1, sd 0.0015 over the retail stages), so the pars are the
 /// reference's shares as they are.
 pub const PAR_SCALE: f32 = 1.0;
 
@@ -88,8 +88,8 @@ impl StageProfile {
 
     fn checks(&self, s: &SectionShape) -> [(u32, u32); 2] {
         let mut checks = s.halves.map(|h| {
-            if h.straight >= STRAIGHT_SHARE {
-                (3, ((2.0 + 3.0 * h.straight).round() as u32).clamp(1, 5))
+            if h.straight >= STRAIGHT_SHARE || h.tightness < STRAIGHT_TIGHTNESS {
+                (3, ((3.0 + 6.0 * (MEAN_STRAIGHT - h.tightness)).round() as i32).clamp(1, 5) as u32)
             } else {
                 (0, ((3.0 + 6.0 * (h.tightness - MEAN_TIGHTNESS)).round() as i32).clamp(1, 5) as u32)
             }
@@ -112,8 +112,13 @@ impl StageProfile {
 
 /// A half with this share of long straights is a straights check.
 const STRAIGHT_SHARE: f32 = 0.7;
-/// The retail stages' mean tightness (the curves value 3).
-const MEAN_TIGHTNESS: f32 = 0.15;
+/// A half looser than this is a straights check too: the retail rows' straights are their stages' loosest halves
+/// (28 % of the halves; this cut takes 29 %, half of them retail straights against their 28 % base rate).
+const STRAIGHT_TIGHTNESS: f32 = 0.235;
+/// The retail stages' mean tightness of the halves on either side of the cut (the value 3 of each check), so the
+/// values spread as the retail ones do (curves 2/3/4 at 23/61/13 %).
+const MEAN_STRAIGHT: f32 = 0.18;
+const MEAN_TIGHTNESS: f32 = 0.33;
 /// A gravel half looser than this fraction of the section's first half takes the obstacles check.
 const LOOSE_GRAVEL: f32 = 0.4;
 
@@ -175,10 +180,10 @@ mod tests {
         let mut line: Vec<[f32; 3]> = (0..100).map(|i| [i as f32 * 10.0, 0.0, 0.0]).collect();
         for i in 1..=120 {
             let a = i as f32 / 120.0 * std::f32::consts::TAU * 0.5;
-            line.push([1000.0 + 40.0 * a.sin(), 0.0, 40.0 - 40.0 * a.cos()]);
+            line.push([1000.0 + 40.0 * a.sin(), 40.0 - 40.0 * a.cos(), 0.0]);
         }
         let end = *line.last().unwrap();
-        line.extend((1..=100).map(|i| [end[0] - i as f32 * 10.0, 0.0, end[2]]));
+        line.extend((1..=100).map(|i| [end[0] - i as f32 * 10.0, end[1], 0.0]));
         line
     }
 

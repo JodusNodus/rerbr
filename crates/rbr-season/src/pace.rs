@@ -1,12 +1,13 @@
 //! A stage's reference time for a car class (ours): a speed plan along the driveline, each point's speed limited by
 //! the curvature ahead and the class's grip on the surface, with the class's acceleration and braking between them.
 //!
-//! The driveline is sampled about every 1.5 m; the curvature at each sample is the heading change over that step,
-//! smoothed over a few metres so one noisy record cannot set the pace. The speed limit is
+//! The driveline is sampled about every 1.5 m; the curvature at each sample is the heading change over that step in
+//! the ground plane (x and y: z is up in the game's tracks), smoothed over a corner's length so one record cannot set
+//! the pace. The speed limit is
 //! `sqrt(grip_eff / curvature)`, capped at the class's top speed. A forward pass applies the acceleration (falling
 //! linearly to 0 at top speed) and a backward pass the braking; the time is the trapezoid integral.
 //!
-//! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.75, snow 0.50), on the loose by
+//! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.86, snow 0.85), on the loose by
 //! the class's [`ClassPace::loose`], and by the wetness (up to -25 % soaked). The class table ([`CLASSES`]) is
 //! anchored to the 1.02 AI's winning times on the retail stages (its level-2 pars) in the `WRC 2.0` row, 2003's cars
 //! as 1.02's are; each other row takes the shape of its installed cars' pace in the NGP physics over the anchor's,
@@ -37,10 +38,10 @@ pub struct ClassPace {
 
 /// The sample step along the driveline (m).
 pub(crate) const STEP: f32 = 1.5;
-/// The curvature smoothing radius (samples each side): 6 samples at 1.5 m is a ~19 m window, wide enough that
-/// the line's positioning weave cancels out while real corners keep their sign. A lone hairpin still reads slow
-/// (180 degrees over the window is ~7 m/s on gravel); shorter windows count every weave as a corner.
-const SMOOTH: usize = 6;
+/// The curvature smoothing radius (samples each side): 12 samples at 1.5 m is a ~37 m window, about a corner's
+/// length, so the line's records do not set a corner's speed on their own; the RallySimFans hot laps' stage times
+/// are closest with it (`notes/season.md` "Calibration").
+const SMOOTH: usize = 12;
 /// The slowest corner speed (m/s): below this the plan would crawl through hairpins no car crawls through.
 const MIN_CORNER: f32 = 4.0;
 
@@ -69,30 +70,30 @@ const fn row(
 /// plain `WRC` row (2003's cars, `WRC 2.0`) is the anchor, the 1.02 AI's winning times on the retail stages; the
 /// others follow the RallySimFans hot laps' class effects over it (`notes/season.md` "Calibration").
 pub const CLASSES: [ClassRow; 23] = [
-    row("WRC 1.6", &["wrc16", "rally1", "rallye1"], 10.11, 10.64, 12.01, 60.3, 1.011),
-    row("WRC 2.0", &["wrc"], 9.60, 9.20, 11.50, 58.0, 1.000),
-    row("Group B", &["groupb", "grpb"], 8.73, 7.59, 10.06, 55.2, 0.958),
-    row("Group RGT", &["rgt"], 8.54, 7.53, 9.53, 60.1, 0.848),
-    row("Group A7", &["groupa7", "grpa7", "kitcar"], 9.62, 6.30, 9.90, 64.3, 0.903),
-    row("Group A6", &["groupa6", "grpa6"], 8.78, 5.76, 9.04, 61.4, 0.998),
-    row("Group A5", &["groupa5", "grpa5"], 7.66, 5.02, 7.88, 57.3, 0.999),
-    row("Group A8", &["groupa", "grpa"], 8.89, 8.23, 10.48, 56.4, 0.987),
-    row("Super 2000", &["s2000", "2000"], 9.35, 9.00, 11.18, 57.6, 1.005),
-    row("Super 1600", &["s1600", "1600"], 9.69, 5.97, 10.61, 65.9, 0.912),
-    row("Group N4", &["n4", "groupn", "grpn"], 8.98, 7.33, 10.43, 55.6, 0.978),
-    row("Group R4", &["r4"], 9.45, 8.50, 11.38, 57.5, 0.996),
-    row("Rally 2", &["rally2"], 10.28, 9.36, 12.10, 59.9, 1.007),
-    row("Group R5", &["r5"], 9.81, 8.70, 11.40, 58.2, 0.997),
-    row("Rally 3", &["rally3"], 9.67, 7.66, 11.26, 57.5, 0.988),
-    row("Group R3", &["r3"], 9.54, 5.85, 10.98, 65.1, 0.916),
-    row("Rally 4", &["rally4"], 9.94, 5.87, 10.69, 62.3, 0.935),
-    row("Group R2", &["r2"], 9.56, 5.62, 10.73, 57.8, 0.935),
-    row("Rally 5", &["rally5"], 9.74, 5.75, 10.48, 61.7, 0.911),
-    row("Group R1", &["r1"], 8.90, 4.53, 10.33, 50.2, 0.914),
-    row("Group 4", &["group4", "grp4", "historic"], 8.73, 7.19, 9.01, 55.1, 0.967),
-    row("Group 2", &["group2", "grp2"], 7.01, 5.77, 7.23, 49.4, 0.980),
+    row("WRC 1.6", &["wrc16", "rally1", "rallye1"], 9.44, 9.94, 11.22, 58.3, 1.002),
+    row("WRC 2.0", &["wrc"], 8.88, 8.51, 10.64, 55.8, 1.000),
+    row("Group B", &["groupb", "grpb"], 7.98, 6.94, 9.19, 52.8, 0.968),
+    row("Group RGT", &["rgt"], 7.86, 6.94, 8.78, 57.7, 0.858),
+    row("Group A7", &["groupa7", "grpa7", "kitcar"], 8.55, 5.60, 8.79, 60.6, 0.925),
+    row("Group A6", &["groupa6", "grpa6"], 7.80, 5.11, 8.03, 57.9, 1.012),
+    row("Group A5", &["groupa5", "grpa5"], 6.80, 4.46, 7.00, 54.0, 1.014),
+    row("Group A8", &["groupa", "grpa"], 8.20, 7.59, 9.67, 54.2, 0.989),
+    row("Super 2000", &["s2000", "2000"], 8.66, 8.33, 10.35, 55.4, 1.004),
+    row("Super 1600", &["s1600", "1600"], 8.59, 5.29, 9.42, 62.1, 0.938),
+    row("Group N4", &["n4", "groupn", "grpn"], 8.15, 6.66, 9.47, 53.0, 0.990),
+    row("Group R4", &["r4"], 8.69, 7.82, 10.46, 55.2, 1.000),
+    row("Rally 2", &["rally2"], 9.45, 8.61, 11.12, 57.4, 1.009),
+    row("Group R5", &["r5"], 8.98, 7.96, 10.44, 55.7, 1.002),
+    row("Rally 3", &["rally3"], 8.75, 6.94, 10.19, 54.7, 1.002),
+    row("Group R3", &["r3"], 8.48, 5.20, 9.76, 61.4, 0.944),
+    row("Rally 4", &["rally4"], 8.72, 5.15, 9.38, 58.4, 0.966),
+    row("Group R2", &["r2"], 8.36, 4.92, 9.39, 54.1, 0.971),
+    row("Rally 5", &["rally5"], 8.55, 5.04, 9.19, 57.8, 0.944),
+    row("Group R1", &["r1"], 7.61, 3.87, 8.83, 46.4, 0.969),
+    row("Group 4", &["group4", "grp4", "historic"], 7.88, 6.49, 8.13, 52.4, 0.975),
+    row("Group 2", &["group2", "grp2"], 6.33, 5.21, 6.53, 46.9, 0.988),
     // Unknown groups: the middle class, Rally 3's pace.
-    row("", &[""], 9.67, 7.66, 11.26, 57.5, 0.988),
+    row("", &[""], 8.75, 6.94, 10.19, 54.7, 1.002),
 ];
 
 /// The pace of a catalog car group (`Group R5`, `WRC 2.0`, `Group B`, ...); unknown groups get a middle class.
@@ -108,8 +109,8 @@ pub fn class_pace(class: &str) -> ClassPace {
 fn surface_grip(surface: Surface) -> f32 {
     match surface {
         Surface::Tarmac => 1.0,
-        Surface::Gravel => 0.75,
-        Surface::Snow => 0.50,
+        Surface::Gravel => 0.86,
+        Surface::Snow => 0.85,
     }
 }
 
@@ -303,16 +304,15 @@ pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class
     let loose = if surface == Surface::Tarmac { 1.0 } else { class.loose };
     let grip_eff = class.grip * surface_grip(surface) * loose * (1.0 - 0.25 * wet);
     let brake_eff = class.brake * grip_eff / class.grip;
-    // Curvature from the signed heading change per step. The signs are smoothed first over a few metres: the
-    // records' lateral jitter weaves left and right and cancels out, while a real corner keeps its sign. Smoothing
-    // the absolute curvature instead would count every weave as a corner.
+    // Curvature from the signed heading change per step in the ground plane (x, y). The signs are smoothed first: the
+    // records' lateral jitter weaves left and right and cancels out, while a real corner keeps its sign.
     let mut turn = vec![0.0f32; samples.len()];
     for i in 1..samples.len() - 1 {
-        let (ax, az) = (samples[i][0] - samples[i - 1][0], samples[i][2] - samples[i - 1][2]);
-        let (bx, bz) = (samples[i + 1][0] - samples[i][0], samples[i + 1][2] - samples[i][2]);
-        let (la, lb) = ((ax * ax + az * az).sqrt(), (bx * bx + bz * bz).sqrt());
+        let (ax, ay) = (samples[i][0] - samples[i - 1][0], samples[i][1] - samples[i - 1][1]);
+        let (bx, by) = (samples[i + 1][0] - samples[i][0], samples[i + 1][1] - samples[i][1]);
+        let (la, lb) = ((ax * ax + ay * ay).sqrt(), (bx * bx + by * by).sqrt());
         if la > 0.0 && lb > 0.0 {
-            let cross = (ax * bz - az * bx) / (la * lb);
+            let cross = (ax * by - ay * bx) / (la * lb);
             turn[i] = cross.clamp(-1.0, 1.0).asin() / STEP;
         }
     }
@@ -366,7 +366,7 @@ mod tests {
         (0..n)
             .map(|i| {
                 let a = i as f32 / n as f32 * std::f32::consts::TAU;
-                [radius * a.cos(), 0.0, radius * a.sin()]
+                [radius * a.cos(), radius * a.sin(), 0.0]
             })
             .collect()
     }
@@ -397,7 +397,8 @@ mod tests {
         let wet = reference_time(&line, Surface::Gravel, 1.0, &class);
         let snow = reference_time(&line, Surface::Snow, 0.0, &class);
         assert!(dry < wet && wet < snow + dry, "dry {dry} wet {wet} snow {snow}");
-        assert!(snow > dry * 1.1, "snow {snow} should cost over dry {dry}");
+        // Snow on studs holds nearly as much as gravel (the hot laps: 0.85 of tarmac against gravel's 0.86).
+        assert!(snow > dry && snow < dry * 1.05, "snow {snow} against dry gravel {dry}");
     }
 
     #[test]

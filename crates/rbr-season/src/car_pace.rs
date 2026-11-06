@@ -16,10 +16,10 @@
 //!
 //! The speed plan leaves out what makes a car hard to drive on the limit; [`CarPace::handling`] adds it as a time
 //! factor by surface, fitted to the RallySimFans hot laps (players' best times on 519 stages, each car's effect over
-//! the stage and the driver): a rear-driven car loses most and more on the loose, a front-driven one gains a little on
-//! tarmac, and downforce helps beyond its grip in the plan. With it the 42 installed cars on the boards sit within
-//! 1.4 % RMS of their effect on tarmac, 1.9 % on gravel and 2.3 % on snow (2.5, 3.2 and 3.9 % without), past the
-//! offset all cars share.
+//! the stage and the driver): a rear-driven car loses most and more on the loose, a front-driven one some on the
+//! loose, and downforce helps beyond its grip in the plan. With it the 42 installed cars on the boards sit within
+//! 1.5 % RMS of their effect on tarmac, 2.0 % on gravel and 2.3 % on snow left out of the fit one at a time (2.5, 3.4
+//! and 3.8 % without), past the offset all cars share.
 
 use crate::config::Surface;
 use crate::pace::ClassPace;
@@ -46,9 +46,9 @@ const AERO_GRIP: f32 = 0.86;
 const DOWNFORCE_SPEED: f32 = 41.666_668;
 /// The handling's log time on tarmac, gravel and snow: for rear drive, for front drive, and per N/kg of downforce at
 /// 150 km/h (the hot laps' fit, `notes/season.md` "Calibration").
-const HANDLING_REAR: [f32; 3] = [0.044, 0.065, 0.082];
-const HANDLING_FRONT: [f32; 3] = [-0.017, 0.009, 0.001];
-const HANDLING_DOWNFORCE: [f32; 3] = [-0.0087, -0.0089, -0.005];
+const HANDLING_REAR: [f32; 3] = [0.046, 0.066, 0.083];
+const HANDLING_FRONT: [f32; 3] = [0.003, 0.025, 0.017];
+const HANDLING_DOWNFORCE: [f32; 3] = [-0.011, -0.011, -0.007];
 
 /// A car's straight-line performance as the speed plan takes it.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -227,7 +227,7 @@ mod tests {
         // On a road of fast sweepers the downforce wins.
         // A 200 m radius sweeper, three times round.
         let sweeper: Vec<[f32; 3]> =
-            (0..2500).map(|i| i as f32 * 0.0075).map(|t| [200.0 * t.cos(), 0.0, 200.0 * t.sin()]).collect();
+            (0..2500).map(|i| i as f32 * 0.0075).map(|t| [200.0 * t.cos(), 200.0 * t.sin(), 0.0]).collect();
         let time = |p: &ClassPace| crate::pace::reference_time(&sweeper, Surface::Tarmac, 0.0, p);
         assert!(time(&a) < time(&b), "{} {}", time(&a), time(&b));
     }

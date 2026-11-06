@@ -53,10 +53,15 @@ fn generated_tracks_stay_near_the_retail_pars() {
         ratios.entry(surface.name()).or_default().push(total(&generated) / total(retail));
     }
     assert!(ratios.values().map(Vec::len).sum::<usize>() >= 30, "too few retail maps compared: {ratios:?}");
+    // The anchor matches the retail pars over every map; the surfaces apart follow the NGP hot laps, which hold snow
+    // and gravel faster against tarmac than 1.02's pars do (`notes/season.md` "Calibration").
+    let all: Vec<f32> = ratios.values().flatten().copied().collect();
+    let mean = all.iter().sum::<f32>() / all.len() as f32;
+    assert!((0.95..=1.05).contains(&mean), "generated / retail total par {mean:.3} over {} maps", all.len());
     for (surface, v) in &ratios {
         let mean = v.iter().sum::<f32>() / v.len() as f32;
         assert!(
-            (0.95..=1.05).contains(&mean),
+            (0.88..=1.12).contains(&mean),
             "{surface}: generated / retail total par {mean:.3} over {} maps",
             v.len()
         );
