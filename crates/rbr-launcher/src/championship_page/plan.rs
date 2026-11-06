@@ -1,6 +1,7 @@
 //! The builder's itinerary: the seed's plan for the settings, shown before Start, and the player's own once edited.
 //! Each rally's legs list their stages; a stage can be changed (through the stage browser), moved within its leg or
-//! removed, stages and legs added, rallies added, removed and renamed. Draw again goes back to the seed's plan.
+//! removed, stages and legs added, rallies added, removed and renamed. Start empty clears it to one empty rally to
+//! build from scratch; Draw again goes back to the seed's plan.
 
 use egui::{Button, RichText, TextEdit, Ui};
 use rbr_season::config::{EventConfig, Length, StagePool, StageRef, Surfaces};
@@ -91,6 +92,7 @@ enum Edit {
     AddLeg(usize),
     RemoveRally(usize),
     AddRally,
+    Clear,
 }
 
 /// The itinerary: each rally's card. The slot to pick a stage for, when the player asked for the stage browser.
@@ -177,6 +179,9 @@ pub fn plan_ui(ui: &mut Ui, plan: &mut Plan, config: &EventConfig, stages: &[Sta
         if ui.button("Add a rally").on_hover_text("Its stages from the stage browser").clicked() {
             edit = Some(Edit::AddRally);
         }
+        if ui.button("Start empty").on_hover_text("One empty rally, to build your own from scratch").clicked() {
+            edit = Some(Edit::Clear);
+        }
         if plan.own {
             if ui.button("Draw again").clicked() {
                 plan.draw(config, stages);
@@ -200,6 +205,7 @@ fn apply(rallies: &mut Vec<RallyPlan>, edit: Edit) {
         Edit::AddLeg(r) => rallies[r].legs.push(Vec::new()),
         Edit::RemoveRally(r) => _ = rallies.remove(r),
         Edit::AddRally => rallies.push(RallyPlan { name: String::new(), legs: vec![Vec::new()] }),
+        Edit::Clear => *rallies = vec![RallyPlan { name: String::new(), legs: vec![Vec::new()] }],
     }
 }
 
@@ -239,5 +245,11 @@ mod tests {
         assert_eq!(plan.rallies[0].legs[0][0].key, "own");
         plan.draw(&config, &stages);
         assert!(!plan.own() && plan.rallies.len() == 1 && plan.rallies[0].legs[0].len() == 6);
+        // From scratch: one empty rally, not ready until it has a stage.
+        apply(&mut plan.rallies, Edit::Clear);
+        plan.own = true;
+        assert!(plan.rallies.len() == 1 && !plan.ready());
+        plan.put(Slot { rally: 0, leg: 0, at: None }, stage("Falstone"));
+        assert!(plan.ready() && plan.rallies[0].name == "Falstone Rally");
     }
 }
