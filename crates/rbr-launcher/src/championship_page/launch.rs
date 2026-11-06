@@ -205,12 +205,12 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
         entrant.car = cars[k % cars.len()].clone();
     }
     let master = fixture::ai().0;
-    // The player's pace against the reference: 3rd or so, slower on the wet stage.
+    // The player's pace against the reference: mid-field, slower on the wet stage.
     let drive = |event: &mut rbr_season::event::Event, n: usize| {
         for _ in 0..n {
             let rbr_season::event::Turn::Stage { rally, stage } = event.turn else { return };
             let reference = event.rallies[rally].stages[stage].reference;
-            let time = reference * [1.012, 1.004, 1.03, 0.998, 1.01, 1.006][stage % 6];
+            let time = reference * [1.092, 1.084, 1.11, 1.078, 1.09, 1.086][stage % 6];
             event.stage_done(&master, PlayerResult { time, penalties: 0.0, retired: false });
             if matches!(event.turn, rbr_season::event::Turn::Service { .. }) && n > 1 {
                 event.turn_done();

@@ -45,6 +45,7 @@ pub use launch::shots;
 mod builder;
 mod cards;
 pub mod pool;
+mod results;
 mod running;
 mod view;
 mod words;
@@ -133,6 +134,8 @@ pub struct ChampionshipPage {
     pub profile: String,
     /// The bulletins shown in full, not the last few.
     news_all: bool,
+    /// The stage whose times the result card shows, picked on the itinerary; none for the last one driven.
+    shown: Option<(usize, usize)>,
     pub status: String,
 }
 
@@ -159,6 +162,7 @@ impl ChampionshipPage {
             practice: false,
             profile: "player".into(),
             news_all: false,
+            shown: None,
             status: String::new(),
         }
     }
@@ -197,7 +201,7 @@ impl ChampionshipPage {
     pub fn screenshot_event(&mut self, event: Event) {
         let tyre = 3;
         self.run = Some(Run { event, damage: None, penalty: 0.0, tyre });
-        (self.view, self.park, self.tyre, self.driving) = (View::Running, None, None, false);
+        (self.view, self.park, self.tyre, self.driving, self.shown) = (View::Running, None, None, false, None);
     }
 
     /// The builder on `preset`'s settings for the car.
@@ -234,6 +238,7 @@ impl ChampionshipPage {
             Ok(event) => {
                 self.run = Some(Run { event, damage: None, penalty: 0.0, tyre: 3 });
                 (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
+                self.shown = None;
                 self.status.clear();
                 self.save(here, profile);
             }
@@ -255,6 +260,7 @@ impl ChampionshipPage {
                 let (penalty, tyre) = (value("penalty").unwrap_or(0.0), value("tyre").map_or(3, |t: f32| t as u32));
                 self.run = Some(Run { event, damage, penalty, tyre });
                 (self.view, self.tyre, self.setup, self.park) = (View::Running, None, SeasonSetup::Current, None);
+                self.shown = None;
                 self.status.clear();
             }
             Err(e) => self.status = format!("The saved championship does not read: {e}"),
@@ -416,7 +422,7 @@ impl ChampionshipPage {
                 return;
             }
         }
-        self.tyre = None;
+        (self.tyre, self.shown) = (None, None);
         self.save(here, profile);
     }
 
@@ -427,7 +433,7 @@ impl ChampionshipPage {
             (run.damage, run.penalty) = (None, 0.0);
         }
         run.event.turn_done();
-        (self.tyre, self.setup) = (None, SeasonSetup::Current);
+        (self.tyre, self.setup, self.shown) = (None, SeasonSetup::Current, None);
         self.save(here, profile);
     }
 

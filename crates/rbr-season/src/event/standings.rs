@@ -12,7 +12,7 @@ impl Event {
     }
 
     /// Rally `rally`'s standings after its first `run` stages, best first. The points go to the finishers only.
-    pub(super) fn standings_after(&self, rally: usize, run: usize) -> Vec<Standing> {
+    pub fn standings_after(&self, rally: usize, run: usize) -> Vec<Standing> {
         let mut rows = Vec::new();
         rows.push(Standing { entrant: None, total: self.player_total(rally, run), points: 0 });
         for (i, _) in self.field.iter().enumerate() {

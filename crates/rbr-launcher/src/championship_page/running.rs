@@ -8,7 +8,8 @@ use rbr_gameplay::setup::SeasonSetup;
 use rbr_season::event::{Event, Standing, Turn};
 
 use super::cards::*;
-use super::common::{card, card_title, ordinal, park_card, text_of, BAD};
+use super::common::{card, card_title, clock, gap, ordinal, park_card, text_of, BAD};
+use super::results::*;
 use super::view::*;
 use super::*;
 use crate::browser::{GREY, STAR};
@@ -32,8 +33,12 @@ impl ChampionshipPage {
         ui.add_space(8.0);
         ui.columns(2, |cols| {
             let ui = &mut cols[0];
-            if let Some((r, s)) = last_stage(&event) {
-                stage_result_ui(ui, &event, r, s);
+            // The stage picked on the itinerary, else the last one driven while it is news.
+            let picked = self.shown.filter(|&(r, s)| r == rally && s < driven(&event, rally).len());
+            if let Some((r, s)) = picked.or(last_stage(&event)) {
+                if stage_result_ui(ui, &event, r, s, picked.is_some()) {
+                    self.shown = None;
+                }
                 ui.add_space(10.0);
             }
             card(ui, |ui| match event.turn {
@@ -67,7 +72,9 @@ impl ChampionshipPage {
                 ui.colored_label(WARN, &self.status);
             }
             ui.add_space(10.0);
-            itinerary_ui(ui, &event, rally);
+            if let Some(stage) = itinerary_ui(ui, &event, rally, picked.map(|(_, s)| s)) {
+                self.shown = Some((rally, stage));
+            }
             let ui = &mut cols[1];
             if !news.is_empty() {
                 bulletins_ui(ui, &news, &mut self.news_all);
@@ -77,6 +84,8 @@ impl ChampionshipPage {
             if let Some(points) = &points {
                 ui.add_space(10.0);
                 points_ui(ui, &event, points);
+                ui.add_space(10.0);
+                calendar_ui(ui, &event);
             }
         });
         request
@@ -129,7 +138,13 @@ impl ChampionshipPage {
         let choosing = self.choice_before(rally, stage);
         let tyre = self.next_tyre();
         let road = self.run.as_ref().and_then(|r| road_line(&r.event, rally, stage));
+        let rivals = (stage > 0).then(|| rivals_line(event, rally)).flatten();
         fields(ui, "championship-stage", |ui| {
+            if let Some(rivals) = rivals {
+                ui.label("Rally");
+                ui.label(rivals);
+                ui.end_row();
+            }
             if let Some(road) = road {
                 ui.label("Start order");
                 ui.label(road);
@@ -226,6 +241,13 @@ impl ChampionshipPage {
                 RichText::new(format!("You finished {} of {of} · {points} points", ordinal(at))).size(16.0).color(STAR),
             );
         }
+        let wins = stage_winners(event, rally);
+        let mine = wins.iter().filter(|w| **w == Some(None)).count();
+        if mine > 0 {
+            ui.colored_label(GREY, format!("You won {mine} of the rally's {} stages.", wins.len()));
+        }
+        ui.add_space(6.0);
+        podium_ui(ui, event, lines);
         ui.add_space(10.0);
         let next = event.rallies.get(rally + 1);
         let label = match next {
@@ -287,8 +309,19 @@ impl ChampionshipPage {
             };
             ui.label(RichText::new(text).size(17.0).strong().color(STAR));
             if let Some(winner) = lines.first().filter(|l| l.entrant.is_some()) {
-                ui.colored_label(GREY, format!("Winner: {}", driver(event, winner.entrant)));
+                let by = if season { format!(", {} points", winner.points) } else { String::new() };
+                ui.colored_label(
+                    GREY,
+                    format!("{}: {}{by}", if season { "Champion" } else { "Winner" }, driver(event, winner.entrant)),
+                );
             }
+            if season {
+                ui.colored_label(GREY, record_line(&record(event, None)));
+            }
+        }
+        if !season {
+            ui.add_space(6.0);
+            podium_ui(ui, event, rally);
         }
         ui.add_space(10.0);
         let new = ui.horizontal(|ui| {
@@ -348,4 +381,44 @@ fn bulletins_ui(ui: &mut Ui, news: &[String], all: &mut bool) {
             *all = !*all;
         }
     });
+}
+
+/// The stage card's rally line: the player's place and the gaps to the drivers either side, "3rd · 4.2 s behind
+/// T. Moreau · 6.1 s ahead of D. Novak"; none while the player has no total.
+fn rivals_line(event: &Event, rally: usize) -> Option<String> {
+    let r = rivals(&event.rally_standings(rally))?;
+    let mut parts = vec![if r.place == 1 { "Leading".to_owned() } else { ordinal(r.place) }];
+    if let Some((who, by)) = r.ahead {
+        parts.push(format!("{} behind {}", seconds(by), driver(event, who)));
+    }
+    if let Some((who, by)) = r.behind {
+        parts.push(format!("{} ahead of {}", seconds(by), driver(event, who)));
+    }
+    Some(parts.join(" · "))
+}
+
+/// The rally's top three with their totals and gaps.
+fn podium_ui(ui: &mut Ui, event: &Event, lines: &[Standing]) {
+    let best = lines.first().and_then(|l| l.total).unwrap_or(0.0);
+    egui::Grid::new("championship-podium").spacing([12.0, 3.0]).show(ui, |ui| {
+        for (at, line) in lines.iter().take(3).enumerate() {
+            let Some(total) = line.total else { break };
+            ui.colored_label(STAR, format!("{}", at + 1));
+            let name = RichText::new(driver(event, line.entrant));
+            ui.label(if line.entrant.is_none() { name.strong().color(STAR) } else { name });
+            ui.label(clock(total));
+            ui.colored_label(GREY, gap(total, best));
+            ui.end_row();
+        }
+    });
+}
+
+/// The player's season in a line: "2 rally wins · 4 podiums · 11 stage wins · 1 retirement".
+fn record_line(r: &Record) -> String {
+    let count = |n: usize, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
+    let mut parts = vec![count(r.wins, "rally win"), count(r.podiums, "podium"), count(r.stage_wins, "stage win")];
+    if r.retirements > 0 {
+        parts.push(count(r.retirements, "retirement"));
+    }
+    parts.join(" · ")
 }
