@@ -318,8 +318,16 @@ fn puddled(v: VertexOut) -> Puddled {
     let pooled = clamp(shines * PUDDLE_ROAD, 0.0, 1.0);
     var puddle = select(pooled * level, 0.0, drying);
     if (puddle > 0.0) {
-        let stray = puddle_shape(v.world.xz, low, patches, rim, 1.0, mix(PUDDLE_SHARE_ALL, PUDDLE_SHARE, loose)) * (1.0 - tarmac);
-        let shape = max(stray, rut_shape(v, patches, rim, low, 1.0) * loose);
+        // A share of 0 (on tarmac, the stray puddles; off a loose road, the tracks) is not worked out (exact: both
+        // are 0 or more).
+        var stray = 0.0;
+        if (tarmac < 1.0) {
+            stray = puddle_shape(v.world.xz, low, patches, rim, 1.0, mix(PUDDLE_SHARE_ALL, PUDDLE_SHARE, loose)) * (1.0 - tarmac);
+        }
+        var shape = stray;
+        if (loose > 0.0) {
+            shape = max(stray, rut_shape(v, patches, rim, low, 1.0) * loose);
+        }
         puddle *= mix(1.0, TARMAC_HOLLOW, tarmac) * max(shape, smoothstep(PUDDLE_LOW.x, PUDDLE_LOW.y, low - LOOSE_LOW * loose + 0.3 * (patches - 0.5) + 2.0 * PUDDLE_RIM * (rim - 0.5)));
         puddle *= edge_keep(v, PUDDLE_EDGE.x, PUDDLE_EDGE.y, fray);
     }
@@ -356,7 +364,9 @@ fn puddled(v: VertexOut) -> Puddled {
     f *= mix(1.0, PUDDLE_LOOSE, puddle * loose);
     // Shallow water over stones is no mirror: toward a rim the stones break the reflection (`PUDDLE_STONES`).
     let shallow = 1.0 - smoothstep(0.4, 1.0, puddle);
-    f *= 1.0 - PUDDLE_STONES * loose * puddle * shallow * smoothstep(0.35, 0.65, value_noise(v.world / RUT_STONES + vec3<f32>(41.0)));
+    if (loose * puddle * shallow > 0.0) {
+        f *= 1.0 - PUDDLE_STONES * loose * puddle * shallow * smoothstep(0.35, 0.65, value_noise(v.world / RUT_STONES + vec3<f32>(41.0)));
+    }
     let edge = road_edge(v, fray);
     return Puddled(n, f * max(edge, puddle), puddle, wet, margin, edge);
 }
