@@ -194,29 +194,12 @@ impl Event {
                     let weather = weather_load(f.raw()?)?;
                     let damage = damage_load(f.raw()?)?;
                     let difficulty = f.num("difficulty")?;
-                    let adaptive = match f.raw()? {
-                        "1" => true,
-                        "0" => false,
-                        _ => return Err("bad adaptive".to_owned()),
-                    };
+                    let adaptive = f.flag("adaptive")?;
                     let (field_size, seed) = (f.num("field size")?, f.num("seed")?);
                     let skill = skill_load(f.raw()?)?;
                     let team = f.num("team")?;
-                    let (restart, power_stage) = if old {
-                        (false, false)
-                    } else {
-                        let restart = match f.raw()? {
-                            "1" => true,
-                            "0" => false,
-                            _ => return Err("bad restart".to_owned()),
-                        };
-                        let power_stage = match f.raw()? {
-                            "1" => true,
-                            "0" => false,
-                            _ => return Err("bad power stage".to_owned()),
-                        };
-                        (restart, power_stage)
-                    };
+                    let (restart, power_stage) =
+                        if old { (false, false) } else { (f.flag("restart")?, f.flag("power stage")?) };
                     config = Some(EventConfig {
                         class,
                         car,
@@ -251,11 +234,7 @@ impl Event {
                     let name = f.text()?;
                     let family = f.text()?;
                     let surface = surface_load(f.raw()?)?;
-                    let community = match f.raw()? {
-                        "1" => true,
-                        "0" => false,
-                        _ => return Err("bad community".to_owned()),
-                    };
+                    let community = f.flag("community")?;
                     let length = f.num("length")?;
                     let clock = f.num("clock")?;
                     let conditions = conditions_load(f.raw()?)?;
@@ -446,6 +425,15 @@ impl<'a> Fields<'a> {
 
     fn text(&mut self) -> Result<String, String> {
         self.raw().map(str::to_owned)
+    }
+
+    /// A `1` or `0` field.
+    fn flag(&mut self, what: &str) -> Result<bool, String> {
+        match self.raw()? {
+            "1" => Ok(true),
+            "0" => Ok(false),
+            _ => Err(format!("bad {what}")),
+        }
     }
 
     fn num<T: std::str::FromStr>(&mut self, what: &str) -> Result<T, String> {

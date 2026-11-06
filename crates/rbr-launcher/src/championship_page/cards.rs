@@ -70,6 +70,12 @@ pub(super) fn stage_result_ui(ui: &mut Ui, event: &Event, rally: usize, stage: u
         });
         let best = times.first().map_or(0.0, |t| t.1);
         let rows = (0..times.len().min(STAGE_TOP)).chain(mine.filter(|&m| m >= STAGE_TOP));
+        // The power stage's bonus, once the rally is over.
+        let bonus = |who: Option<usize>| {
+            let last = stage + 1 == event.rallies[rally].stages.len() && rally_over(event, rally);
+            let lines = (last && event.config.power_stage).then(|| event.rally_standings(rally));
+            lines.and_then(|lines| lines.iter().find(|l| l.entrant == who).map(|l| l.bonus)).filter(|b| *b > 0)
+        };
         egui::Grid::new(("championship-stage-result", rally, stage)).spacing([12.0, 3.0]).show(ui, |ui| {
             for k in rows {
                 let (who, time) = times[k];
@@ -78,6 +84,7 @@ pub(super) fn stage_result_ui(ui: &mut Ui, event: &Event, rally: usize, stage: u
                 ui.label(if who.is_none() { name.strong().color(STAR) } else { name });
                 ui.label(clock(time));
                 ui.colored_label(GREY, gap(time, best));
+                ui.colored_label(STAR, bonus(who).map_or(String::new(), |b| format!("+{b} pts")));
                 ui.end_row();
             }
         });
@@ -109,7 +116,15 @@ pub(super) fn stage_result_ui(ui: &mut Ui, event: &Event, rally: usize, stage: u
                     overall(ui);
                 });
             }
-            None => _ = ui.colored_label(BAD, "You did not finish the stage."),
+            None => match event.charged(rally, stage) {
+                Some(time) => {
+                    _ = ui.colored_label(
+                        BAD,
+                        format!("Super Rally: you are charged {}, the best time plus 5:00.", clock(time)),
+                    )
+                }
+                None => _ = ui.colored_label(BAD, "You did not finish the stage."),
+            },
         }
     });
     back
@@ -123,7 +138,7 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
     let results = driven(event, rally);
     let mark = |k: usize| match results.get(k) {
         Some((Some(p), _)) if !p.retired => StageMark::Done(p.time),
-        Some(_) => StageMark::Retired,
+        Some(_) => event.charged(rally, k).map_or(StageMark::Retired, StageMark::Charged),
         None => match event.turn {
             Turn::Stage { rally: at, stage } if at == rally && stage == k => StageMark::Next,
             Turn::Service { rally: at, stage, .. } if at == rally && stage + 1 == k => StageMark::Next,
@@ -132,8 +147,8 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
     };
     card(ui, |ui| {
         card_title(ui, "Itinerary");
-        egui::Grid::new("championship-itinerary").num_columns(7).spacing([12.0, 5.0]).show(ui, |ui| {
-            for heading in ["", "", "Stage", "Length", "Start", "Road", "Time"] {
+        egui::Grid::new("championship-itinerary").num_columns(8).spacing([12.0, 5.0]).show(ui, |ui| {
+            for heading in ["", "", "Stage", "", "Length", "Start", "Road", "Time"] {
                 ui.colored_label(GREY, heading);
             }
             ui.end_row();
@@ -141,7 +156,7 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
                 let m = mark(k);
                 let (icon, colour) = match m {
                     StageMark::Done(_) => ("✔", GOOD),
-                    StageMark::Retired => ("✖", WARN),
+                    StageMark::Retired | StageMark::Charged(_) => ("✖", WARN),
                     StageMark::Next => ("▶", STAR),
                     StageMark::Later => ("", GREY),
                 };
@@ -156,6 +171,7 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
                     }
                 };
                 ui.label(strong(format!("SS{}", k + 1)));
+                let power = event.config.power_stage && k + 1 == r.stages.len();
                 if k < results.len() {
                     let name = RichText::new(&s.stage.name);
                     let name = if shown == Some(k) { name.strong().color(STAR) } else { name };
@@ -167,14 +183,23 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
                 } else {
                     ui.label(strong(s.stage.name.clone()));
                 }
+                if power {
+                    ui.colored_label(STAR, "PS").on_hover_text("Power stage: its five fastest score 5-4-3-2-1");
+                } else {
+                    ui.label("");
+                }
                 ui.colored_label(GREY, km(s.stage.length));
                 ui.colored_label(GREY, clock_hm(s.clock));
                 ui.colored_label(GREY, road_word(s.conditions));
-                ui.label(match m {
-                    StageMark::Done(time) => clock(time),
-                    StageMark::Retired => "out".to_owned(),
-                    _ => String::new(),
-                });
+                match m {
+                    StageMark::Done(time) => _ = ui.label(clock(time)),
+                    StageMark::Charged(time) => {
+                        let text = "Super Rally: the stage's best time plus 5:00";
+                        ui.colored_label(BAD, clock(time)).on_hover_text(text);
+                    }
+                    StageMark::Retired => _ = ui.label("out"),
+                    _ => _ = ui.label(""),
+                }
                 ui.end_row();
                 if let Some(minutes) = s.service_after.filter(|_| k + 1 < r.stages.len()) {
                     let at = matches!(event.turn, Turn::Service { rally: a, stage, .. } if a == rally && stage == k);
@@ -187,8 +212,10 @@ pub(super) fn itinerary_ui(ui: &mut Ui, event: &Event, rally: usize, shown: Opti
             }
         });
         let penalties: f32 = results.iter().filter_map(|(p, _)| p.as_ref()).map(|p| p.penalties).sum();
-        let total: f32 =
-            results.iter().filter_map(|(p, _)| p.as_ref()).filter(|p| !p.retired).map(|p| p.time + p.penalties).sum();
+        let driven =
+            results.iter().filter_map(|(p, _)| p.as_ref()).filter(|p| !p.retired).map(|p| p.time + p.penalties);
+        let charges = (0..results.len()).filter_map(|k| event.charged(rally, k));
+        let total: f32 = driven.chain(charges).sum();
         if !results.is_empty() {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
@@ -221,11 +248,12 @@ pub(super) fn standings_ui(ui: &mut Ui, event: &Event, rally: usize, lines: &[St
         }
         let best = lines.iter().filter_map(|l| l.total).fold(f32::INFINITY, f32::min);
         let points = ran == count;
+        let power = points && event.config.power_stage;
         let stage = (!points).then(|| format!("SS{ran}"));
         let before = (ran > 1).then(|| event.standings_after(rally, ran - 1));
         egui::Grid::new("championship-standings").striped(true).spacing([12.0, 3.0]).show(ui, |ui| {
             let headings = ["", "", "Driver"].into_iter().chain(stage.as_deref()).chain(["Total", "Gap"]);
-            for heading in headings.chain(points.then_some("Pts")) {
+            for heading in headings.chain(power.then_some("PS")).chain(points.then_some("Pts")) {
                 ui.colored_label(GREY, heading);
             }
             ui.end_row();
@@ -253,6 +281,9 @@ pub(super) fn standings_ui(ui: &mut Ui, event: &Event, rally: usize, lines: &[St
                         ui.colored_label(GREY, "retired");
                         ui.label("");
                     }
+                }
+                if power {
+                    ui.colored_label(STAR, if line.bonus > 0 { format!("+{}", line.bonus) } else { String::new() });
                 }
                 if points {
                     ui.label(if line.points > 0 { line.points.to_string() } else { String::new() });

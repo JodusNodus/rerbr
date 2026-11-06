@@ -193,6 +193,16 @@ impl ChampionshipPage {
                     ui.colored_label(GREY, format!("help when stuck: {}", assistance_note(config.skill)));
                 });
                 ui.end_row();
+                ui.label("Rules");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut config.restart, "Super Rally").on_hover_text(
+                        "Retire and you rejoin after the next service; each stage missed counts as its best time \
+                         plus 5:00",
+                    );
+                    ui.checkbox(&mut config.power_stage, "Power stage")
+                        .on_hover_text("The rally's last stage pays its five fastest 5-4-3-2-1 bonus points");
+                });
+                ui.end_row();
                 if !teams.is_empty() {
                     ui.label("Team").on_hover_text("The service crew that repairs your car");
                     let (mut team, offers) = (team, &teams);

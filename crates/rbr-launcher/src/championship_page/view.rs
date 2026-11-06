@@ -40,6 +40,12 @@ pub fn step(event: &Event) -> String {
     }
 }
 
+/// The stage a car retired under Super Rally rejoins on, while the turn is the service it waits out.
+pub(super) fn rejoin(event: &Event) -> Option<usize> {
+    let Turn::Service { rally, stage, .. } = event.turn else { return None };
+    event.charged(rally, stage).map(|_| stage + 1)
+}
+
 /// The rally the turn is in (the last one at the championship's end).
 pub(super) fn rally_of(event: &Event) -> usize {
     match event.turn {

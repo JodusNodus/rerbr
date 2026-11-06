@@ -28,33 +28,24 @@ impl Event {
             row.points = if row.total.is_some() { POINTS.get(i).copied().unwrap_or(0) } else { 0 };
         }
         // The power stage: once the rally is complete, its last stage pays the five fastest classified finishers.
-        if self.config.power_stage
-            && self.rallies.get(rally).is_some_and(|r| !r.stages.is_empty() && run == r.stages.len())
-        {
-            let last = run - 1;
-            let mut fastest: Vec<(usize, f32)> = Vec::new();
-            for (at, row) in rows.iter().enumerate() {
-                if row.total.is_none() {
-                    continue;
-                }
-                let time = match row.entrant {
-                    None => match self.results[rally][last].0 {
-                        Some(p) if !p.retired => Some(p.time),
-                        _ => None,
-                    },
-                    Some(e) => match self.results[rally][last].1.get(e) {
-                        Some(AiResult::Time(t)) => Some(*t),
-                        _ => None,
-                    },
-                };
-                if let Some(t) = time {
-                    fastest.push((at, t));
-                }
-            }
-            // The sort is stable: ties keep the rows' order.
+        if self.config.power_stage && self.rallies.get(rally).is_some_and(|r| run > 0 && run == r.stages.len()) {
+            let (player, ai) = &self.results[rally][run - 1];
+            let time = |row: &Standing| match row.entrant {
+                None => player.filter(|p| !p.retired).map(|p| p.time),
+                Some(e) => match ai.get(e) {
+                    Some(AiResult::Time(t)) => Some(*t),
+                    _ => None,
+                },
+            };
+            let mut fastest: Vec<(usize, f32)> = rows
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.total.is_some())
+                .filter_map(|(at, r)| Some((at, time(r)?)))
+                .collect();
+            // The sort is stable: a tie goes to the better placed.
             fastest.sort_by(|a, b| a.1.total_cmp(&b.1));
-            for (place, (at, _)) in fastest.into_iter().take(POWER_POINTS.len()).enumerate() {
-                let bonus = POWER_POINTS[place];
+            for (&(at, _), bonus) in fastest.iter().zip(POWER_POINTS) {
                 rows[at].bonus = bonus;
                 rows[at].points += bonus;
             }
@@ -77,12 +68,11 @@ impl Event {
             return None;
         }
         self.rejoin_after(rally, stage)?;
-        let mut best: Option<f32> = None;
-        for r in &results[stage].1 {
-            if let AiResult::Time(t) = r {
-                best = Some(best.map_or(*t, |b: f32| b.min(*t)));
-            }
-        }
+        let times = results[stage].1.iter().filter_map(|r| match r {
+            AiResult::Time(t) => Some(*t),
+            AiResult::Retired => None,
+        });
+        let best = times.reduce(f32::min);
         let reference = self.rallies.get(rally)?.stages.get(stage)?.reference;
         Some(best.unwrap_or(reference) + RESTART_CHARGE)
     }

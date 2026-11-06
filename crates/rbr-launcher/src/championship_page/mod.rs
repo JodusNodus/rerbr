@@ -394,7 +394,7 @@ impl ChampionshipPage {
 
     /// The viewer closed: the stage's result and damage from `rbr-standalone`'s files (a stage left before the
     /// finish, or a run without the files, is a retire), with the service's penalty, against the stage's reference;
-    /// the championship saved.
+    /// a car retired under Super Rally rebuilt; the championship saved.
     pub fn stage_closed(&mut self, here: &Path, profile: &str) {
         if !std::mem::take(&mut self.driving) || std::mem::take(&mut self.practice) {
             return;
@@ -421,6 +421,10 @@ impl ChampionshipPage {
                 self.status = format!("the AI tables do not read: {e}");
                 return;
             }
+        }
+        // Under Super Rally a retired car is rebuilt for its rejoin after the service.
+        if player.retired && matches!(run.event.turn, Turn::Service { .. }) {
+            run.damage = None;
         }
         (self.tyre, self.shown) = (None, None);
         self.save(here, profile);

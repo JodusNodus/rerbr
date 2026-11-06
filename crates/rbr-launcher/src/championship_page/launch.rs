@@ -45,8 +45,9 @@ impl Form {
             None => false,
         };
         // The service's park opens on the car's repair tree.
+        // A car rebuilt under Super Rally has no park.
         let service = self.championship.run.as_ref().and_then(|r| match r.event.turn {
-            Turn::Service { minutes, .. } => Some(minutes),
+            Turn::Service { minutes, .. } if super::view::rejoin(&r.event).is_none() => Some(minutes),
             _ => None,
         });
         match service {
@@ -204,6 +205,7 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     for (k, entrant) in event.field.iter_mut().enumerate().filter(|_| !cars.is_empty()) {
         entrant.car = cars[k % cars.len()].clone();
     }
+    let fresh = event.clone();
     let master = fixture::ai().0;
     // The player's pace against the reference: mid-field, slower on the wet stage.
     let drive = |event: &mut rbr_season::event::Event, n: usize| {
@@ -246,6 +248,11 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     drive(&mut event, 6);
     event.turn_done();
     at(form, &event, "championship-over")?;
+    // Super Rally: SS1 left wrecked, the car rebuilt at the service after SS3.
+    let mut event = fresh;
+    event.turn_done();
+    event.stage_done(&master, PlayerResult { time: 0.0, penalties: 0.0, retired: true });
+    at(form, &event, "championship-super-rally")?;
     form.championship.screenshot_saved(&profile, None);
     Ok(())
 }

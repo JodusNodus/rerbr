@@ -38,10 +38,12 @@ pub(crate) fn card_title(ui: &mut Ui, title: &str) {
     ui.add_space(2.0);
 }
 
-/// Where a stage stands in a rally: its time once driven, retired, the next, or to come.
+/// Where a stage stands in a rally: its time once driven, the time charged for it under Super Rally, retired, the
+/// next, or to come.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum StageMark {
     Done(f32),
+    Charged(f32),
     Retired,
     Next,
     Later,

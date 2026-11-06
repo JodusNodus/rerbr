@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn rivals_and_place_changes_read_the_standings() {
-        let line = |entrant, total| Standing { entrant, total, points: 0 };
+        let line = |entrant, total| Standing { entrant, total, points: 0, bonus: 0 };
         let before = [line(Some(0), Some(100.0)), line(None, Some(104.0)), line(Some(1), Some(110.0))];
         let now = [line(None, Some(200.0)), line(Some(0), Some(203.5)), line(Some(1), None)];
         assert_eq!(place_change(&before, &now, None), Some(1));
@@ -161,7 +161,8 @@ mod tests {
         let event = played(6, 0.9);
         assert!(rally_over(&event, 0) && !rally_over(&event, 1));
         let finishes = rally_finishes(&event, 0).unwrap();
-        assert_eq!(finishes[0], (None, Finish { place: Some(1), points: 25 }));
+        // 25 for the win, 5 for the power stage.
+        assert_eq!(finishes[0], (None, Finish { place: Some(1), points: 30 }));
         assert!(rally_finishes(&event, 1).is_none());
         let mine = record(&event, None);
         assert_eq!(mine, Record { stage_wins: 6, wins: 1, podiums: 1, retirements: 0, best: Some(1) });
