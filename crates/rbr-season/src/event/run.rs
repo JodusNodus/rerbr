@@ -76,7 +76,7 @@ impl Event {
             let team = &self.teams[c.team.min(self.teams.len() - 1)];
             out[e] = field::drive_stage(master, &track, stage as u32, e as i32, c, team, &mut rng, &mut log);
         }
-        let mut news = self.render(&log, stage);
+        let mut news = self.render(&log, stage, true);
         // The service after the stage: the AI cars' manager, repairs and late penalty.
         if let Some(minutes) = service_after {
             let long = minutes >= 40;
@@ -102,37 +102,16 @@ impl Event {
                 self.penalties[rally][e] += ai::service_penalty(e as i32, used, long, &mut log);
             }
             log.bulletins.retain(|b| matches!(b, Bulletin::ServicePenalty { .. }));
-            news.extend(self.render(&log, stage));
+            news.extend(self.render(&log, stage, false));
         }
         self.news[rally].extend(news);
         self.results[rally][stage].1 = out;
     }
 
-    /// The log as the bulletin lines of stage `stage`, in the engine's order: its bulletins, then the accidents that
-    /// ended a run without one of their own.
-    fn render(&self, log: &RunLog, stage: usize) -> Vec<String> {
+    /// The log as the news of stage `stage` ([`news`]), with the field's names.
+    fn render(&self, log: &RunLog, stage: usize, quiet: bool) -> Vec<String> {
         let name = |id: i32| self.field.get(id as usize).map_or_else(|| "A driver".to_owned(), |e| e.name.clone());
-        let line = |text: String| format!("SS{}: {text}", stage + 1);
-        let mut out = Vec::new();
-        let mut explained = Vec::new();
-        for b in &log.bulletins {
-            match *b {
-                // The manager's orders are the team's business.
-                Bulletin::ManagerOrder { .. } | Bulletin::CarUnlock { .. } | Bulletin::Uneventful { .. } => {}
-                Bulletin::DamageRetire { driver } | Bulletin::Hurt { driver, .. } | Bulletin::Dead { driver, .. } => {
-                    explained.push(driver);
-                    out.push(line(b.text(&name)));
-                }
-                _ => out.push(line(b.text(&name))),
-            }
-        }
-        for a in log.accidents.iter().filter(|a| a.retired && a.accident != 0xff && !explained.contains(&a.driver)) {
-            out.push(line(format!("{} retired after an accident in section {}", name(a.driver), a.section + 1)));
-        }
-        if log.accidents.is_empty() && log.bulletins.iter().all(|b| matches!(b, Bulletin::ManagerOrder { .. })) {
-            out.push(line(Bulletin::Uneventful { stage: stage as u32 }.text(&name)));
-        }
-        out
+        news(log, stage, &name, quiet)
     }
 
     /// What the bulletins reported in rally `rally`, in order: accidents, injuries, broken cars, false starts and late
@@ -183,4 +162,61 @@ impl Event {
         // A faster field drives its pars with a smaller pace.
         self.pace = (self.pace - delta).clamp(PACE_RANGE.0, PACE_RANGE.1);
     }
+}
+
+/// Under this a driver's accident losses on a stage are not news (s).
+pub(super) const MINOR_LOSS: f32 = 5.0;
+
+/// A stage's log as its news lines, "SS2: ...", in the engine's order without the manager's orders: each driver's
+/// accident losses summed into one line where they first lost time (none under [`MINOR_LOSS`]), the first time a
+/// driver was shaken, then broken cars, injuries, false starts, late services, and the accidents that ended a run
+/// without a line of their own. With nothing to tell, "an uneventful stage" when `quiet` (a stage's log, not a
+/// service's).
+pub(super) fn news(log: &RunLog, stage: usize, name: &dyn Fn(i32) -> String, quiet: bool) -> Vec<String> {
+    let line = |text: String| format!("SS{}: {text}", stage + 1);
+    // Each driver's accidents: the time lost and how many.
+    let mut lost: Vec<(i32, f32, usize)> = Vec::new();
+    for b in &log.bulletins {
+        if let Bulletin::Accident { driver, time, .. } = *b {
+            match lost.iter_mut().find(|l| l.0 == driver) {
+                Some(l) => (l.1, l.2) = (l.1 + time, l.2 + 1),
+                None => lost.push((driver, time, 1)),
+            }
+        }
+    }
+    let (mut out, mut explained, mut told) = (Vec::new(), Vec::new(), Vec::new());
+    for b in &log.bulletins {
+        match *b {
+            Bulletin::ManagerOrder { .. } | Bulletin::CarUnlock { .. } | Bulletin::Uneventful { .. } => {}
+            Bulletin::Accident { driver, .. } => {
+                if told.contains(&(driver, 0)) {
+                    continue;
+                }
+                told.push((driver, 0));
+                let Some(&(_, time, n)) = lost.iter().find(|l| l.0 == driver).filter(|l| l.1 >= MINOR_LOSS) else {
+                    continue;
+                };
+                let how = if n == 1 { "an accident".to_owned() } else { format!("{n} accidents") };
+                out.push(line(format!("{} lost {time:.1} s in {how}", name(driver))));
+            }
+            Bulletin::Shaken { driver, .. } => {
+                if !told.contains(&(driver, 1)) {
+                    told.push((driver, 1));
+                    out.push(line(b.text(name)));
+                }
+            }
+            Bulletin::DamageRetire { driver } | Bulletin::Hurt { driver, .. } | Bulletin::Dead { driver, .. } => {
+                explained.push(driver);
+                out.push(line(b.text(name)));
+            }
+            _ => out.push(line(b.text(name))),
+        }
+    }
+    for a in log.accidents.iter().filter(|a| a.retired && a.accident != 0xff && !explained.contains(&a.driver)) {
+        out.push(line(format!("{} retired after an accident in section {}", name(a.driver), a.section + 1)));
+    }
+    if out.is_empty() && quiet {
+        out.push(line(Bulletin::Uneventful { stage: stage as u32 }.text(name)));
+    }
+    out
 }

@@ -1,4 +1,4 @@
-use super::run::ADAPT_STEP;
+use super::run::{news, ADAPT_STEP};
 use super::*;
 use crate::config::{Damage, Preset};
 
@@ -602,4 +602,39 @@ fn the_save_round_trips_with_restart_and_power_stage() {
     expected.config.restart = false;
     expected.config.power_stage = false;
     assert_eq!(old, expected);
+}
+
+#[test]
+fn the_news_sums_a_drivers_accidents_and_skips_the_minor_ones() {
+    use crate::ai::{AccidentRecord, Bulletin, RunLog};
+    let name = |id: i32| format!("D{id}");
+    let accident = |driver, time| Bulletin::Accident { driver, accident: 1, time };
+    let shaken = |driver, section| Bulletin::Shaken { driver, accident: 1, stage: 1, section, injury: 1 };
+    let log = RunLog {
+        bulletins: vec![
+            accident(0, 2.0),
+            accident(1, 1.0),
+            shaken(0, 1),
+            accident(0, 4.0),
+            shaken(0, 2),
+            Bulletin::ManagerOrder { driver: 2, order: 1 },
+            accident(2, 30.0),
+            Bulletin::FalseStart { driver: 1, stage: 1 },
+        ],
+        accidents: vec![AccidentRecord { driver: 3, section: 2, accident: 4, retired: true, time: 0.0 }],
+    };
+    assert_eq!(
+        news(&log, 1, &name, true),
+        [
+            "SS2: D0 lost 6.0 s in 2 accidents",
+            "SS2: D0 was shaken by an accident in section 2",
+            "SS2: D2 lost 30.0 s in an accident",
+            "SS2: D1 jumped the start",
+            "SS2: D3 retired after an accident in section 3",
+        ]
+    );
+    // Only minor losses: an uneventful stage, but not after a service.
+    let quiet = RunLog { bulletins: vec![accident(0, 1.5), accident(1, 0.4)], accidents: Vec::new() };
+    assert_eq!(news(&quiet, 0, &name, true), ["SS1: An uneventful stage"]);
+    assert!(news(&RunLog::default(), 0, &name, false).is_empty());
 }
