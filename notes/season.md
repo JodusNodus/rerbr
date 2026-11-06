@@ -106,6 +106,11 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   No radius-100 m column: no surveyed venue has a 200 m clear flat paved disc (map 85 is fenced into smaller
   compounds; other discs sit hundreds of metres from spawn through obstacles; Sosnova's files are encrypted).
   504 cannot host the 150 km/h stop (its kink and roadside trees arrive ~330 m past launch).
+- Measured the same circle and the 100 km/h braking on dry gravel (`*_gravel` columns, RSF 345 Azov II, same
+  approach): the circle on 345's open start area (the 113/390 school compounds beach the car in deep loose
+  gravel), the braking on its 970 m start straight. A hold needs a clean approach (no beach-and-relaunch, no
+  hot rejoin), angular travel on the circle and no crawl or bog-down, else its columns stay empty with the reason;
+  the controller also downshifts when lugging in the measurement modes (loose ground stalls tall gears).
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
   keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
   hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the

@@ -40,16 +40,22 @@ STEER_HARD = 0.45  # sustained past the first 2 s (the launch correction is over
 CIRC_CX = -260.0
 CIRC_CY = 120.0
 CIRC_R = 40.0
+# Steady-state circle on dry gravel: RSF 345's open start area, CCW, same radius.
+GCIRC_CX = 1051.0
+GCIRC_CY = -166.0
+GCIRC_R = 40.0
 CIRC_LATCH = 1.5  # m from the commanded radius: latched on
 CIRC_BREAK = 3.0  # m from the commanded radius: the slide (sustained)
 CIRC_LATCH_NEED = 2 * STEP_WINDOW  # 2 s on the circle before it counts
 CIRC_BREAK_NEED = STEP_WINDOW // 2  # 0.5 s off it ends the hold
+CIRC_CRAWL = 25.0 / 3.6  # m/s: a hold peaking below this never got going (bogged or power-capped)
+CIRC_DECAY = 1.0  # m/s per s: a hold decaying faster than this (full throttle) is bogging down, not holding
 BRAKE100 = 100.0 / 3.6
 BRAKE150 = 150.0 / 3.6
 BRK_ONSET = 0.05  # sustained brake-pedal travel: braking has started
 STOP_SPEED = 0.35  # m/s, sustained: the car has stopped (the trace prints 3 decimals)
 CRASH_DROP = 25.0  # km/h lost in 0.25 s: a wall, not braking (peaks ~15)
-CRASH_OFF = 3.0  # m off the driveline while braking: left the road
+CRASH_OFF = 4.0  # m off the driveline while braking: left the road (gravel stops wander to 3 m and stay valid)
 
 
 def load_trace(path):
@@ -210,11 +216,25 @@ def analyse_circle(rows, cx=CIRC_CX, cy=CIRC_CY, radius=CIRC_R):
     if launch is None:
         return {"ok": False, "reason": "no launch (never moved)"}
     offc = [math.hypot(row["x"] - cx, row["y"] - cy) - radius for row in rows]
-    latch = sustained([abs(offc[i]) < CIRC_LATCH for i in range(launch, count)],
-                      CIRC_LATCH_NEED)
+    # The latch needs the car to travel the circle, not spin in place (a spin holds its position while
+    # the speed collapses): the unwrapped angle about the centre must advance over the window.
+    ang = [math.atan2(row["y"] - cy, row["x"] - cx) for row in rows]
+    latch = None
+    for i in range(launch, count - CIRC_LATCH_NEED):
+        if all(abs(offc[j]) < CIRC_LATCH for j in range(i, i + CIRC_LATCH_NEED)):
+            turn = sum((ang[j + 1] - ang[j] + math.pi) % (2 * math.pi) - math.pi
+                       for j in range(i, i + CIRC_LATCH_NEED - 1))
+            if abs(turn) > 0.4:
+                latch = i
+                break
     if latch is None:
         return {"ok": False, "reason": "never latched onto the circle"}
-    latch += launch
+    if rows[latch]["t"] - rows[launch]["t"] > 15.0:
+        # A clean approach latches in a few seconds; a later latch follows slides or spins (a hot rejoin).
+        return {"ok": False, "reason": "latched too late (after slides)"}
+    if sustained([v < 3.0 for v in speed[launch:latch]], STEP_WINDOW) is not None:
+        # Stopped before latching: beached and relaunched, so the hold is a recovery acceleration.
+        return {"ok": False, "reason": "stopped before latching (beach and relaunch)"}
     rest = range(latch, count)
     brk = sustained([offc[i] > CIRC_BREAK or offc[i] < -CIRC_BREAK for i in rest],
                     CIRC_BREAK_NEED)
@@ -227,6 +247,24 @@ def analyse_circle(rows, cx=CIRC_CX, cy=CIRC_CY, radius=CIRC_R):
         if mean > best:
             best, ibest = mean, i
         i += STEP_WINDOW // 4
+    if best < CIRC_CRAWL:
+        return {"ok": False, "reason": "never got going on the circle (bogged or power-capped)"}
+    # A hold decaying under full throttle is bogging down, not holding: fit the speed slope over the
+    # hold (excluding the last second, where a genuine slide also scrubs speed).
+    hold_end = max(latch + STEP_WINDOW, min(slid, count) - STEP_WINDOW)
+    n_fit = max(2, (hold_end - latch) // (STEP_WINDOW // 2))
+    xs = [k for k in range(n_fit)]
+    ys = [speed[latch + k * (STEP_WINDOW // 2)] for k in range(n_fit)]
+    slope = 0.0
+    if hold_end - latch >= 2 * STEP_WINDOW:
+        mx = sum(xs) / n_fit
+        denom = sum((x - mx) ** 2 for x in xs)
+        if denom > 0:
+            slope = sum((x - mx) * (y - sum(ys) / n_fit) for x, y in zip(xs, ys)) / denom
+            slope *= STEP_WINDOW / 2  # per sample (0.5 s) to per second
+    mean_thr = sum(rows[k]["thr"] for k in range(latch, hold_end)) / max(1, hold_end - latch)
+    if slope < -CIRC_DECAY and mean_thr > 0.8:
+        return {"ok": False, "reason": "bogged down on the circle (speed decayed under full throttle)"}
     mean_off = sum(abs(offc[i]) for i in range(latch, min(slid, count)))
     mean_off /= max(1, min(slid, count) - latch)
     return {
@@ -341,13 +379,28 @@ def circle_note(result):
     return f"circ r40 {held}{wide}"
 
 
-def brake_note(result, kmh):
+def brake_note(result, kmh, prefix="brk"):
     """Compact brake remark for the CSV notes."""
     if result is None:
-        return f"brk{kmh} not run"
+        return f"{prefix}{kmh} not run"
     if not result["ok"]:
-        return f"brk{kmh}: {result['reason']}"
-    return f"brk{kmh} {result['dist']:.1f}m {result['decel'] / 9.81:.2f}g"
+        return f"{prefix}{kmh}: {result['reason']}"
+    return f"{prefix}{kmh} {result['dist']:.1f}m {result['decel'] / 9.81:.2f}g"
+
+
+def gravel_notes(gcirc, gb100):
+    """Compact gravel remarks for the CSV notes."""
+    parts = []
+    if gcirc is None:
+        parts.append("gcirc r40 not run")
+    elif not gcirc["ok"]:
+        parts.append(f"gcirc r40: {gcirc['reason']}")
+    else:
+        held = f"slide@{gcirc['vmax']:.1f} ({gcirc['latg']:.2f}g)" if gcirc["slid"] \
+            else f"held@{gcirc['vmax']:.1f} to run end (no slide)"
+        parts.append(f"gcirc r40 {held}")
+    parts.append(brake_note(gb100, 100, "gbrk"))
+    return "; ".join(parts)
 
 
 def main():
@@ -373,6 +426,8 @@ def main():
     circles = []
     brakes100 = []
     brakes150 = []
+    gcircles = []
+    gbrakes100 = []
     for car, _kind, _key, _name, _group, _extra in cars:
         rows = load_trace(os.path.join(args.traces, f"{car}.trace"))
         analyses.append(analyse(rows))
@@ -382,6 +437,10 @@ def main():
         brakes100.append(analyse_brake(b100, BRAKE100) if b100 else None)
         b150 = maybe_trace(car, ".brk150")
         brakes150.append(analyse_brake(b150, BRAKE150) if b150 else None)
+        gcirc = maybe_trace(car, ".gcirc")
+        gcircles.append(analyse_circle(gcirc, GCIRC_CX, GCIRC_CY, GCIRC_R) if gcirc else None)
+        gb100 = maybe_trace(car, ".gbrk100")
+        gbrakes100.append(analyse_brake(gb100, BRAKE100) if gb100 else None)
     if args.qualify:
         for (car, _k, _kk, _n, _g, _e), result in zip(cars, analyses):
             if result.get("ok") and result["vtop"] >= 150.0:
@@ -394,8 +453,11 @@ def main():
         out = csv.writer(handle)
         out.writerow(["car", "name", "class", "surface", "stage", "t_0_60", "t_0_100", "t_0_140",
                       "t_0_160", "v10", "v20", "v30", "vtop", "dist", "v_max_r40", "lat_g_r40",
-                      "brake_100_m", "brake_100_decel", "brake_150_m", "brake_150_decel", "notes"])
-        for entry, result, circ, b100, b150 in zip(cars, analyses, circles, brakes100, brakes150):
+                      "brake_100_m", "brake_100_decel", "brake_150_m", "brake_150_decel",
+                      "v_max_r40_gravel", "lat_g_r40_gravel",
+                      "brake_100_m_gravel", "brake_100_decel_gravel", "notes"])
+        rows_out = zip(cars, analyses, circles, brakes100, brakes150, gcircles, gbrakes100)
+        for entry, result, circ, b100, b150, gcirc, gb100 in rows_out:
             car, _kind, _key, name, group, extra = entry
             ended = end_reason(os.path.join(args.traces, f"{car}.log"))
             text = note(result, ended)
@@ -403,12 +465,13 @@ def main():
                 late = (result["launch"] - median_launch) / STEP_WINDOW
                 text += f"; late launch (+{late:.1f}s)"
             text += f"; {circle_note(circ)}; {brake_note(b100, 100)}; {brake_note(b150, 150)}"
+            text += f"; {gravel_notes(gcirc, gb100)}"
             if extra:
                 text = f"{extra}; {text}" if text else extra
             if not result.get("ok"):
                 out.writerow([car, name, group, args.surface, args.stage,
                               "", "", "", "", "", "", "", "", "", "", "",
-                              "", "", "", "", text])
+                              "", "", "", "", "", "", "", "", text])
                 continue
             out.writerow([car, name, group, args.surface, args.stage,
                           fmt_time(result["t60"]), fmt_time(result["t100"]),
@@ -422,6 +485,10 @@ def main():
                           f"{b100['decel'] / 9.81:.2f}" if b100 and b100.get("ok") else "",
                           f"{b150['dist']:.1f}" if b150 and b150.get("ok") else "",
                           f"{b150['decel'] / 9.81:.2f}" if b150 and b150.get("ok") else "",
+                          fmt_speed(gcirc["vmax"]) if gcirc and gcirc.get("ok") else "",
+                          f"{gcirc['latg']:.3f}" if gcirc and gcirc.get("ok") else "",
+                          f"{gb100['dist']:.1f}" if gb100 and gb100.get("ok") else "",
+                          f"{gb100['decel'] / 9.81:.2f}" if gb100 and gb100.get("ok") else "",
                           text])
 
 

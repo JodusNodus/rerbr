@@ -24,11 +24,18 @@
 #   and roadside trees arrive 300 m past launch, so slower accelerators
 #   crash into them while still fast); 568's straight is clear for 1 km.
 #   A crash-stop or an unreached trigger leaves those columns empty.
+# - gravel: the same circle (radius 40 m) on the open start area of RSF stage
+#   345 (Azov II, variant M, gravel, dry; `--circle 1051,-166,40`) and flat-out
+#   standstill starts on 345's 970 m start straight with full braking from
+#   100 km/h: the `*_gravel` columns. The 113/390 rally-school compounds beach
+#   the car in deep loose gravel (unmapped bogs stop it even in first gear at
+#   full revs); 345's compacted start area holds every pilot car to a slide.
 #
 #   scripts/car-pace-sweep.sh [-o DIR] [-j JOBS]
 #
 # DIR (default /tmp/car-pace) holds <car>.{out,trace,log} plus the .circ,
-# .brk100 and .brk150 variants, cars.tsv, cars.csv and meta.txt. Needs
+# .brk100, .brk150, .gcirc and .gbrk100 variants, cars.tsv, cars.csv and
+# meta.txt. Needs
 # dev.env's RBR_DATA, RBR_NGP_PHYSICS and RBR_RSF.
 # The run is bit-reproducible; rerunning overwrites DIR.
 set -euo pipefail
@@ -124,6 +131,10 @@ python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" \
 join -t $'\t' -1 1 -2 1 <(sort "$out/cars.tsv") <(sort "$out/qualify.txt") >"$out/cars150.tsv" || true
 xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".brk150" --rsf-stage 568 --steps 26000 --top-speed 80 --flat-out --brake-from 41.67' <"$out/cars150.tsv" | sort
 
+# Phases 4-5: gravel circle and gravel brake-100 runs (RSF 345, dry gravel).
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".gcirc" --rsf-stage 345 --steps 32000 --top-speed 60 --circle 1051,-166,40' <"$out/cars.tsv" | sort
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".gbrk100" --rsf-stage 345 --steps 26000 --top-speed 80 --flat-out --brake-from 27.78' <"$out/cars.tsv" | sort
+
 python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" --csv "$out/cars.csv"
 {
     echo "rbr-standalone: $("$bin" --version 2>/dev/null || echo ?)"
@@ -135,7 +146,9 @@ python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" -
     echo 'grip: --autopilot OUT --boot --stage track-85_M (--car N | --rsf-car PACK) --steps 32000 --top-speed 60 --circle -260,120,40 --trace-speed TRACE'
     # shellcheck disable=SC2016
     echo 'braking: --autopilot OUT --boot --rsf-stage 568 (--car N | --rsf-car PACK) --steps 26000 --top-speed 80 --flat-out --brake-from 27.78 (100) / 41.67 (150, only if the pace vtop reaches 150) --trace-speed TRACE'
-    echo "stages: RSF 504-O (pace), RSF 568-M (brakes), retail map 85 (circle); all tarmac, dry, good weather, default tyre, game-default aids"
+    # shellcheck disable=SC2016
+    echo 'gravel: --autopilot OUT --boot --rsf-stage 345 (--car N | --rsf-car PACK) --steps 32000 --top-speed 60 --circle 1051,-166,40 --trace-speed TRACE + --steps 26000 --top-speed 80 --flat-out --brake-from 27.78 --trace-speed TRACE'
+    echo "stages: RSF 504-O (pace), RSF 568-M (brakes), retail map 85 (circle), RSF 345-M (gravel circle + brakes); all dry, good weather, default tyre, game-default aids"
 } >"$out/meta.txt"
 rm -f "$out"/*.out
 rm -f "$out"/qualify.csv
