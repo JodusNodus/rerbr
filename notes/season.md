@@ -92,6 +92,13 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 - Other classes follow by power/weight/grip ratios (WRC 9.6/9.2/11.5/58 down to Group 2 6.8/4.5/8.0/43).
 - Real-world check: fast gravel WRC ~109-126 km/h, twisty tarmac ~89-96, snow ~74-100; Rally2 ~7 % slower,
   Group 2 ~21 % slower.
+- Measured straight-line pace (`scripts/car-pace-sweep.sh`, analysed by `harness/car_pace.py` into
+  `/tmp/car-pace/cars.csv`, not committed): every installed car (the 8 archive slots, every RSF pack) from a
+  standing boot start on RSF 504's start straight (tarmac, dry), `--flat-out` holding full throttle without braking
+  (`rbr-standalone --trace-speed` logs time, speed, pedals, gear and position per step), game-default manual gears
+  with the autopilot shifting and the clutch help on. Columns are the 0-60/100/140/160 km/h times, the speeds at
+  10/20/30 s, the top speed and the distance, all inside the flat-out window (first motion to first brake, slide
+  or corner; the straight ends at the kink ~600 m out, so the 20/30 s columns stay empty).
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
   keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
   hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the
