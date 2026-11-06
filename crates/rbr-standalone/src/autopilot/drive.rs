@@ -25,7 +25,7 @@ pub enum Pilot<'a> {
     Recording(std::collections::HashMap<u32, [u8; CONTROL_BYTES]>),
     /// The controller, once a frame from the last answer: on the handbrake, revving in neutral, until the start
     /// countdown is out (a jump start would add its penalty), then along the driveline.
-    Autopilot { driver: Driver<'a>, report: u32 },
+    Autopilot { driver: Box<Driver<'a>>, report: u32 },
 }
 
 impl<'a> Pilot<'a> {
@@ -36,7 +36,7 @@ impl<'a> Pilot<'a> {
                 .with_step(live.step_clock().step)
                 .with_limit(rev_limit(live))
                 .with_obstacles(&stage.obstacles);
-            return Ok(Pilot::Autopilot { driver: with_lesson(driver, live, stage), report: 0 });
+            return Ok(Pilot::Autopilot { driver: Box::new(with_lesson(driver, live, stage)), report: 0 });
         }
         let bytes = std::fs::read(what).map_err(|e| format!("--pilot {what}: {e}"))?;
         let frames = rbr_recording::read_all(&bytes).map_err(|e| format!("--pilot {what}: {e}"))?;
@@ -124,6 +124,11 @@ pub fn from_snapshot<'a>(
     Ok((Live::new(&snap, stage, settings).map_err(|e| format!("{path}: {e}"))?, &bytes[..first.offset], first.control))
 }
 
+/// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
+/// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m) and the
+/// steering (-1-1).
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str";
+
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
 /// its word 6.
@@ -136,6 +141,11 @@ pub fn drive(
     steps: u32,
     top: Option<f32>,
     aim: Option<Aim>,
+    flat_out: bool,
+    brake_from: Option<f32>,
+    circle: Option<Circle>,
+    circle_ramp: Option<f32>,
+    trace_speed: Option<&Path>,
     out: &Path,
 ) -> Result<Drove, String> {
     let start = live.next_step();
@@ -152,15 +162,31 @@ pub fn drive(
     );
     let limit = rev_limit(&live);
     eprintln!("autopilot: rev limit {limit} rpm");
-    let mut driver = with_lesson(
-        Driver::new(&stage.track, stage.track_values.clone(), top.unwrap_or(TOP_SPEED), aim)
-            .with_step(live.step_clock().step)
-            .with_limit(limit)
-            .with_obstacles(&stage.obstacles),
-        &live,
-        stage,
-    );
+    let mut driver = Driver::new(&stage.track, stage.track_values.clone(), top.unwrap_or(TOP_SPEED), aim)
+        .with_step(live.step_clock().step)
+        .with_limit(limit)
+        .with_obstacles(&stage.obstacles)
+        .with_flat_out(flat_out);
+    if let Some(circle) = circle {
+        driver = driver.with_circle(circle);
+    }
+    if let Some(ramp) = circle_ramp {
+        driver = driver.with_circle_ramp(ramp);
+    }
+    if let Some(v) = brake_from {
+        driver = driver.with_brake_from(v);
+    }
+    let mut driver = with_lesson(driver, &live, stage);
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
+    let mut trace = match trace_speed {
+        Some(path) => {
+            let mut file =
+                std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
+            writeln!(file, "{TRACE_HEADER}").map_err(|e| format!("{}: {e}", path.display()))?;
+            Some((file, path.display().to_string(), live.step_clock().step))
+        }
+        None => None,
+    };
     let mut hit: Option<u32> = None;
     let mut last: Option<(Vec<u8>, QuantizedControl)> = None;
     let word6 = read_u32(&control, 24).expect("payload word 6");
@@ -180,9 +206,9 @@ pub fn drive(
         file.write_all(&answer[..FRAME_BYTES]).map_err(failed)?;
         drove.steps += 1;
         // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
-        // finish time).
+        // finish time). A circle run never finishes (it laps the school compound to the step limit).
         let school = live.school().is_some();
-        let finished = !school && pure::time_keeper(live.mem()).card.finish_time.is_some();
+        let finished = !school && circle.is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }
@@ -196,7 +222,32 @@ pub fn drive(
             break;
         }
         let sense = sense(&answer, &live);
+        if let Some((trace, path, dt)) = &mut trace {
+            let time = f64::from(step - start) * f64::from(*dt);
+            let thr = f32::from_le_bytes([control[0], control[1], control[2], control[3]]);
+            let brk = f32::from_le_bytes([control[4], control[5], control[6], control[7]]);
+            let steer = f32::from_le_bytes([control[16], control[17], control[18], control[19]]);
+            let at = sense.pose.position;
+            // The distance from the driveline, as the controller's tracking guard reads it (`control`).
+            let line = point(driver.track, sense.parameter);
+            let off = (at[0] - line[0]).hypot(at[1] - line[1]);
+            writeln!(
+                trace,
+                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3}",
+                sense.pose.speed(),
+                sense.gear,
+                sense.engine,
+                at[0],
+                at[1],
+                at[2],
+            )
+            .map_err(|e| format!("{path}: {e}"))?;
+        }
         let speed = sense.pose.speed();
+        if driver.braking && speed < 0.3 {
+            drove.end = "the brake test is done".to_owned();
+            break;
+        }
         let off = sub(sense.pose.position, point(driver.track, sense.parameter));
         let height = off[2];
         let off = off[0].hypot(off[1]);
@@ -205,7 +256,7 @@ pub fn drive(
             drove.end = why.clone();
             break;
         }
-        if off_road == driver.steps(OFF_ROAD_STEPS) && aim.is_none() {
+        if off_road == driver.steps(OFF_ROAD_STEPS) && aim.is_none() && circle.is_none() {
             drove.end = format!(
                 "off the road at step {step} (over {OFF_ROAD} m from the driveline for {OFF_ROAD_STEPS} steps)"
             );

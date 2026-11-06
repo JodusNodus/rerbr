@@ -90,6 +90,12 @@ const BOG_STEPS: u32 = 100;
 /// Under NGP the throttle while the driven wheels spin (`SLIP`) above `BOG_SPEED`: full throttle spun the rear-driven
 /// Escort Mk II off the road on gravel.
 const TRACTION: f32 = 0.5;
+/// Full throttle in too tall a gear with the engine below torque and the car barely moving: loose ground lugs it
+/// down (gravel circles stall in second at 500 rad/s), so downshift to keep it pulling. Only in the measurement
+/// modes (`free`), so race and lesson driving keep the cruising `SHIFT_DOWN` floor; the tarmac pace and circle
+/// runs never drop here (their second-gear lugging stays above `LUG_SPEED`).
+const LUG_ENGINE: f32 = 600.0;
+const LUG_SPEED: f32 = 12.0;
 const FIRST: u32 = 2;
 const TOP_GEAR: u32 = 7;
 /// Steps driven on (braking) after the finish.
@@ -136,6 +142,10 @@ const TIP: f32 = 0.26;
 const SLIP: f32 = 1.4;
 const RATIO_SPEED: f32 = 3.0;
 const RATIO_SETTLE: u32 = 70;
+/// `--circle`'s target speed (m/s): it starts here and rises at `CIRCLE_RAMP` (m/s per s), so the car settles onto
+/// the circle before the ramp leaves city speeds.
+const CIRCLE_START: f32 = 8.0;
+const CIRCLE_RAMP: f32 = 0.5;
 /// `CCar` +0x4b0 +8: the drive state; its +0x45c the engine speed the VCU reads (`CDrive::Get4520`, 0x504520).
 const DRIVE_STATE: u32 = 0x4b8;
 const DRIVE_ENGINE_SPEED: u32 = 0x45c;
@@ -401,10 +411,46 @@ pub struct Driver<'a> {
     stop: Option<(f32, f32)>,
     /// The drive runs down the driveline, to a stop behind the start.
     against: bool,
+    /// `--flat-out` (pace measurement): hold full throttle without braking; the steering, the traction easing and
+    /// the gear shifts stay the controller's (`target_speed`, `control`).
+    flat_out: bool,
+    /// `--circle` (pace measurement): the steady-state circle to steer, if any.
+    circle: Option<Circle>,
+    /// `--circle-ramp` (pace measurement): the circle target's rise (m/s per s), `CIRCLE_RAMP` unless given.
+    circle_ramp: f32,
+    /// The circle run's ramp clock (s): the target speed rises with it, from the first driven step on.
+    circle_t: f32,
+    /// `--brake-from` (pace measurement): full brake once the speed reaches this (m/s), if any.
+    brake_at: Option<f32>,
+    /// The brake test's brake is on (latched when the speed reaches `brake_at`).
+    braking: bool,
     /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
     grip: f32,
+}
+
+/// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
+/// radius (m). The controller steers a pure pursuit on the circle while the target speed ramps from
+/// `CIRCLE_START` at `CIRCLE_RAMP` (m/s per s) to the top, so the car holds ever faster steady states until it can
+/// no longer hold the radius.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Circle {
+    pub center: [f32; 2],
+    pub radius: f32,
+}
+
+impl std::str::FromStr for Circle {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        let v: Vec<f32> =
+            s.split(',').map(|x| x.parse().map_err(|_| format!("--circle {s}"))).collect::<Result<_, _>>()?;
+        match v[..] {
+            [x, y, r] if r > 0.0 => Ok(Circle { center: [x, y], radius: r }),
+            _ => Err(format!("--circle {s}: want X,Y,R with R > 0")),
+        }
+    }
 }
 
 /// A judged speed band of a rally school lesson's filter bank (a check with both speed bounds, km/h): the car must
@@ -440,6 +486,12 @@ impl<'a> Driver<'a> {
             props: Vec::new(),
             stop: None,
             against: false,
+            flat_out: false,
+            circle: None,
+            circle_ramp: CIRCLE_RAMP,
+            circle_t: 0.0,
+            brake_at: None,
+            braking: false,
             bands: Vec::new(),
             grip: 1.0,
         }
@@ -539,8 +591,15 @@ impl<'a> Driver<'a> {
         ((LATERAL * grip) / curvature.max(1e-4)).sqrt().min(self.top)
     }
 
-    /// The target speed: the slowest of the curve limits ahead, each reachable by braking.
+    /// The target speed: the slowest of the curve limits ahead, each reachable by braking; the top under
+    /// `--flat-out`, with no curve, kink, tracking or prop-dodge slowdown; the circle's ramp under `--circle`.
     pub fn target_speed(&self, at: f32) -> f32 {
+        if self.circle.is_some() {
+            return self.top.min(CIRCLE_START + self.circle_ramp * self.circle_t);
+        }
+        if self.flat_out {
+            return self.top;
+        }
         let braking = BRAKING * self.grip;
         if self.against {
             let stop = self.stop.map_or(0.0, |(_, s)| s);
@@ -577,6 +636,42 @@ impl<'a> Driver<'a> {
     /// The driver for physics steps of `seconds` (the step counts scale to 1.02's 7 ms steps).
     pub fn with_step(self, seconds: f32) -> Self {
         Self { per: (rbr_recording::STEP_SECONDS / seconds).round().max(1.0) as u32, ..self }
+    }
+
+    /// The driver holding full throttle without braking (`--flat-out`, pace measurement) or not.
+    pub fn with_flat_out(self, flat_out: bool) -> Self {
+        Self { flat_out, ..self }
+    }
+
+    /// The driver steering the steady-state `circle` (`--circle`, pace measurement) or none.
+    pub fn with_circle(self, circle: Circle) -> Self {
+        Self { circle: Some(circle), ..self }
+    }
+
+    /// The driver ramping the circle target at `ramp` m/s per s (`--circle-ramp`, repeat runs).
+    pub fn with_circle_ramp(self, ramp: f32) -> Self {
+        Self { circle_ramp: ramp, ..self }
+    }
+
+    /// The driver braking fully from `v` m/s on (`--brake-from`, pace measurement) or never.
+    pub fn with_brake_from(self, v: f32) -> Self {
+        Self { brake_at: Some(v), ..self }
+    }
+
+    /// The driver holds no slowdown: `--flat-out` or `--circle`, where the curve, kink, tracking and prop-dodge
+    /// slowdowns stay off and only the steering, the traction easing and the gear shifts drive.
+    fn free(&self) -> bool {
+        self.flat_out || self.circle.is_some()
+    }
+
+    /// The steering target on `circle`, counter-clockwise: the circle point a lookahead arc ahead of the car's
+    /// nearest circle point (pure pursuit), at the car's height.
+    fn circle_point(&self, pose: &CarPose, speed: f32, circle: Circle) -> [f32; 3] {
+        let dx = pose.position[0] - circle.center[0];
+        let dy = pose.position[1] - circle.center[1];
+        let ahead = (LOOK_BASE + LOOK_TIME * speed) / circle.radius;
+        let (s, c) = (dy.atan2(dx) + ahead).sin_cos();
+        [circle.center[0] + circle.radius * c, circle.center[1] + circle.radius * s, pose.position[2]]
     }
 
     /// The driver for a car whose rev limit is `rpm`.
@@ -639,6 +734,13 @@ impl<'a> Driver<'a> {
             return QuantizedControl { brake: 255, ..QuantizedControl::default() };
         }
         let speed = sense.pose.speed();
+        if self.circle.is_some() {
+            // The ramp runs on the driven steps only (this function is not called while held or pending).
+            self.circle_t += rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+        }
+        if self.brake_at.is_some_and(|v| speed >= v) {
+            self.braking = true;
+        }
         let at = distance(&self.values, sense.parameter);
         let mut look = LOOK_BASE + LOOK_TIME * speed;
         if self.aim.is_none() && !self.against {
@@ -659,24 +761,29 @@ impl<'a> Driver<'a> {
             }
         }
         let aimed = self.aim_target(&sense.pose);
-        let swerve = if aimed.is_some() || self.against { 0.0 } else { self.dodge(at, at + look + LEAD) };
-        let target = aimed.unwrap_or_else(|| {
-            if self.against {
-                return point(self.track, parameter(&self.values, at - look));
-            }
-            let u = parameter(&self.values, at + look);
-            let p = point(self.track, u);
-            if swerve == 0.0 {
-                return p;
-            }
-            let ahead = sub(point(self.track, u + 0.01), p);
-            let length = ahead[0].hypot(ahead[1]);
-            [p[0] - swerve * ahead[1] / length, p[1] + swerve * ahead[0] / length, p[2]]
-        });
+        let swerve =
+            if aimed.is_some() || self.against || self.free() { 0.0 } else { self.dodge(at, at + look + LEAD) };
+        let target = if let Some(circle) = self.circle {
+            self.circle_point(&sense.pose, speed, circle)
+        } else {
+            aimed.unwrap_or_else(|| {
+                if self.against {
+                    return point(self.track, parameter(&self.values, at - look));
+                }
+                let u = parameter(&self.values, at + look);
+                let p = point(self.track, u);
+                if swerve == 0.0 {
+                    return p;
+                }
+                let ahead = sub(point(self.track, u + 0.01), p);
+                let length = ahead[0].hypot(ahead[1]);
+                [p[0] - swerve * ahead[1] / length, p[1] + swerve * ahead[0] / length, p[2]]
+            })
+        };
         let error = angle(sense.pose.forward(), sub(target, sense.pose.position));
         if finished {
             self.mode = Mode::Drive;
-        } else if self.aim.is_none() && self.stop.is_none() {
+        } else if self.aim.is_none() && self.stop.is_none() && !self.braking && self.circle.is_none() {
             self.watch(step, at, sense, error);
         }
         // Counter-clockwise (left) error wants left (negative) steering; backing up, right swings the nose left.
@@ -701,10 +808,10 @@ impl<'a> Driver<'a> {
                 let off = sub(sense.pose.position, point(self.track, sense.parameter));
                 let err = (off[0].hypot(off[1]) - swerve.abs()).abs();
                 let mut want = if finished { 0.0 } else { self.target_speed(at) };
-                if (error * STEER_GAIN).abs() > 1.0 {
+                if !self.free() && (error * STEER_GAIN).abs() > 1.0 {
                     want = want.min(FULL_LOCK_TOP * self.grip);
                 }
-                if !finished && err > TRACK_ERR {
+                if !self.free() && !finished && err > TRACK_ERR {
                     // The tracking guard: the steered line is the driveline swung by the dodge offset; further from
                     // it than `TRACK_ERR`, the car is sliding, so slow down proportionally until it answers again.
                     want = want.min((speed * TRACK_ERR / err).max(TRACK_MIN));
@@ -718,12 +825,14 @@ impl<'a> Driver<'a> {
                 // line (the gentle pedal below arrives hot and slides wide). Only while tracking well; a sliding
                 // car takes the tracking guard's proportional slow instead of piling on brake in the turn.
                 let mut slow = f32::INFINITY;
-                let mut s = 0.0;
-                while s < KINK_AHEAD {
-                    slow = slow.min(self.curve_limit(at, s, 1.0));
-                    s += PLAN_STEP;
+                if !self.free() {
+                    let mut s = 0.0;
+                    while s < KINK_AHEAD {
+                        slow = slow.min(self.curve_limit(at, s, 1.0));
+                        s += PLAN_STEP;
+                    }
                 }
-                let kink = !finished && slow < KINK_SLOW && err < TRACK_ERR && gap < -1.0;
+                let kink = !self.free() && !finished && slow < KINK_SLOW && err < TRACK_ERR && gap < -1.0;
                 (throttle, brake) = if finished || want <= 0.0 {
                     (0.0, 1.0)
                 } else if gap > 0.0 {
@@ -764,11 +873,19 @@ impl<'a> Driver<'a> {
                         || (sense.gear >= FIRST && sense.gear < TOP_GEAR && sense.engine > up && !spinning)
                     {
                         flags = self.shift(step, SHIFT_GAP, 0x01);
-                    } else if sense.gear > FIRST && sense.engine < SHIFT_DOWN {
+                    } else if sense.gear > FIRST
+                        && (sense.engine < SHIFT_DOWN
+                            || (self.free() && self.pulling && sense.engine < LUG_ENGINE && speed < LUG_SPEED))
+                    {
                         flags = self.shift(step, SHIFT_GAP, 0x02);
                     }
                 }
             }
+        }
+        if self.braking {
+            // The brake test: full foot brake with the computed steering (`--brake-from`).
+            throttle = 0.0;
+            brake = 1.0;
         }
         self.pulling = self.mode == Mode::Drive && throttle > 0.0 && brake == 0.0;
         let pedal = |x: f32| (x * 255.0).round() as u8;

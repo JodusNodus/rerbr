@@ -152,6 +152,117 @@ fn a_stuck_car_backs_up_shifts_back_to_first_and_gives_up_after_the_attempts() {
 }
 
 #[test]
+fn flat_out_holds_the_top_speed_and_never_brakes() {
+    // A hairpin 30 m ahead: the plain driver brakes for it, the flat-out one drives through at the top speed.
+    let hairpin = |x: f32| DriveLineRecord {
+        vectors: [Vec3 { x, y: 0.0, z: 0.0 }, Vec3 { x: 10.0, y: 0.0, z: 0.0 }],
+        value: x,
+        unknown_u16: [0; 2],
+    };
+    let mut track: Vec<_> = (0..10).map(|i| hairpin(10.0 * i as f32)).collect();
+    track[4].vectors[0].y = 30.0;
+    track[5].vectors[0].y = 60.0;
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [20.0, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+    };
+    let mut plain = driver(&track, TOP_SPEED);
+    assert!(plain.target_speed(0.0) < TOP_SPEED);
+    assert!(plain.control(1000, &sense, false).brake > 0);
+    let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
+    assert_eq!(flat.target_speed(0.0), TOP_SPEED);
+    let q = flat.control(1000, &sense, false);
+    assert_eq!((q.throttle, q.brake), (255, 0));
+}
+
+#[test]
+fn circle_takes_a_centre_and_a_positive_radius() {
+    assert_eq!("-260,120,40".parse(), Ok(Circle { center: [-260.0, 120.0], radius: 40.0 }));
+    assert!("1,2".parse::<Circle>().is_err());
+    assert!("1,2,-3".parse::<Circle>().is_err());
+}
+
+#[test]
+fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    // On a 40 m circle about the origin at (40, 0), heading along the counter-clockwise tangent (+y).
+    let sense = Sense {
+        pose: CarPose { position: [40.0, 0.0, 0.0], orientation: [0.0, 0.0, 1.0, 0.0], velocity: [0.0, 8.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+    };
+    let mut driver = driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 });
+    assert_eq!(driver.target_speed(0.0), 8.0);
+    let q = driver.control(1000, &sense, false);
+    assert_eq!(q.brake, 0);
+    assert!(q.steering.abs() < 40, "steering {}", q.steering);
+    assert!(driver.circle_t > 0.0);
+    assert!(driver.target_speed(0.0) > 8.0);
+}
+
+#[test]
+fn circle_ramp_overrides_the_targets_rise() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let mut driver =
+        driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 }).with_circle_ramp(0.4);
+    driver.circle_t = 10.0;
+    assert_eq!(driver.target_speed(0.0), 8.0 + 0.4 * 10.0);
+}
+
+#[test]
+fn lugging_downshifts_in_the_measurement_modes_only() {
+    // Loose ground lugs the engine down in too tall a gear (a gravel circle stalls in second at 500
+    // rad/s): with full throttle on, below torque and barely moving, the measurement driver (`free`)
+    // takes a gear down to keep pulling, while the plain driver keeps the cruising floor.
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let lug = |gear: u32, speed: f32, engine: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, 1.0, 0.0], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear,
+        engine,
+        held: false,
+    };
+    let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
+    flat.control(1000, &lug(FIRST, 20.0, 700.0), false);
+    assert!(flat.pulling);
+    let q = flat.control(1200, &lug(FIRST + 2, 10.0, 500.0), false);
+    assert_eq!(q.flags, 0x02);
+    // At circle speed the same engine lug is fine: no pulse.
+    let q = flat.control(1400, &lug(FIRST + 1, 19.0, 500.0), false);
+    assert_eq!(q.flags, 0x00);
+    let mut plain = driver(&track, TOP_SPEED);
+    plain.control(1000, &lug(FIRST, 20.0, 700.0), false);
+    let q = plain.control(1200, &lug(FIRST + 2, 10.0, 500.0), false);
+    assert_eq!(q.flags, 0x00);
+}
+
+#[test]
+fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |speed: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+    };
+    let mut driver = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
+    let q = driver.control(1000, &sense(10.0), false);
+    assert!(!driver.braking);
+    assert_eq!((q.throttle, q.brake), (255, 0));
+    let q = driver.control(1001, &sense(25.0), false);
+    assert!(driver.braking);
+    assert_eq!((q.throttle, q.brake), (0, 255));
+}
+
+#[test]
 fn a_tangent_far_longer_than_its_chord_does_not_loop() {
     // RSF 302's start: a 10 m segment ending on a 160 m tangent (the next segment's chord).
     let mut track = vec![record(0.0, 0.0), record(10.0, 10.0), record(170.0, 170.0)];

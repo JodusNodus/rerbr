@@ -101,12 +101,38 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 - Other classes follow by power/weight/grip ratios (WRC 9.6/9.2/11.5/58 down to Group 2 6.8/4.5/8.0/43).
 - Real-world check: fast gravel WRC ~109-126 km/h, twisty tarmac ~89-96, snow ~74-100; Rally2 ~7 % slower,
   Group 2 ~21 % slower.
-- `car_pace` against the NGP physics' own runs (the sweep below, 50 cars): 0-60/100/140 km/h within 7.6 % RMS over
+- Measured straight-line pace (`scripts/car-pace-sweep.sh`, analysed by `harness/car_pace.py` into
+  `/tmp/car-pace/cars.csv`, not committed): every installed car (the 8 archive slots, every RSF pack) from a
+  standing boot start on RSF 504's start straight (tarmac, dry), `--flat-out` holding full throttle without braking
+  (`rbr-standalone --trace-speed` logs time, speed, pedals, gear and position per step), game-default manual gears
+  with the autopilot shifting and the clutch help on. Columns are the 0-60/100/140/160 km/h times, the speeds at
+  10/20/30 s, the top speed and the distance, all inside the flat-out window (first motion to first brake, slide
+  or corner; the straight ends at the kink ~600 m out, so the 20/30 s columns stay empty).
+- Measured steady-state grip and braking (same script/CSV): a radius-40 m circle on the map-85 school tarmac
+  with the target speed ramping up (`--circle`), taking the fastest held speed of the first latched hold and
+  v^2/R; and flat-out standstill starts on RSF 568's kilometre start straight (tarmac, dry) with full braking
+  from 100 and 150 km/h (`--brake-from`), taking stopping distance and mean deceleration, crash-stops excluded.
+  No radius-100 m column: no surveyed venue has a 200 m clear flat paved disc (map 85 is fenced into smaller
+  compounds; other discs sit hundreds of metres from spawn through obstacles; Sosnova's files are encrypted).
+  504 cannot host the 150 km/h stop (its kink and roadside trees arrive ~330 m past launch).
+- Measured the same circle and the 100 km/h braking on dry gravel (`*_gravel` columns, RSF 345 Azov II, same
+  approach): the circle on 345's open start area (the 113/390 school compounds beach the car in deep loose
+  gravel), the braking on its 970 m start straight. A hold needs a clean approach (no beach-and-relaunch, no
+  hot rejoin), angular travel on the circle and no crawl or bog-down, else its columns stay empty with the reason;
+  the controller also downshifts when lugging in the measurement modes (loose ground stalls tall gears).
+  `--circle-ramp RATE` overrides the circle target's 0.5 m/s-per-s rise for repeatability runs at other ramps.
+  The gravel circle runs at ramp 0.4: the repeatability check re-ran 7 cars at ramps 0.4/0.5/0.6 on two gravel
+  spots, and the gentle ramp is the reproducible quasi-steady one (all 7 within 4 km/h on both spots), while the
+  default 0.5 is a knife-edge on gravel (neutral cars blow through to 65+ pushing, loose ones saw at 52-56).
+- `car_pace` against the NGP physics' own runs (the sweep above, 50 cars): 0-60/100/140 km/h within 7.6 % RMS over
   29 cars (high-revving cars left out: the autopilot shifts near 7000 rpm, below their power peak; late launches
   too); grip on the 40 m circle 0.89-0.99 g, within 1.6 % RMS on the downforce alone (`TyrePerformancePct` and the
   mass showed no effect, so neither is in the model); braking from 100 km/h follows the brakes' hardware (5.5 % RMS),
   not modelled per car. So in the NGP physics a Group B car holds about as much at low speed as a modern one; the
-  modern car's edge is its aero in the fast corners. Gravel is not yet measured (tarmac only).
+  modern car's edge is its aero in the fast corners. On gravel the circle holds 0.62 of the tarmac grip on average,
+  four- and two-wheel drive alike; the cars' spread there does not follow their specs (the Fiesta WRC 2019 and the
+  i20 2020, alike in mass, power and downforce, 12 km/h apart; the holds fall in two groups by how long they last),
+  so gravel takes no term of its own. Gravel braking 0.61-0.81 g, four-wheel drive ~6 % better, not modelled.
   `examples/car_pace.rs` prints the factors per field on the retail roads: WRC field -1.8 % (2019-20 cars) to
   +1.7 % (2006); Rally2 within 0.4 %; Group B quattro -3.4 %, Lada +7 %; a mixed field WRC 2019 -2.4 %, Escort +2.1 %.
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines

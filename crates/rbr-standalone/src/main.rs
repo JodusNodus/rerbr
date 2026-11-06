@@ -309,6 +309,9 @@ fn events(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &Stage
 }
 
 /// `--autopilot OUT`: drives from the snapshot or the boot and writes the playback (`autopilot/`).
+/// `--flat-out` holds full throttle without braking for pace measurement (the steering and the gear shifts stay the
+/// controller's); `--brake-from` brakes fully from a speed to a standstill; `--circle` drives a steady-state circle
+/// with the target speed ramping up; `--trace-speed FILE` writes each step's time, speed, pedals, gear and position.
 fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, stage: &StageData) -> ExitCode {
     let bytes = match &args.recording {
         Some(path) if !args.boot => match std::fs::read(path) {
@@ -343,7 +346,21 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
         if let Some(dir) = &args.saves {
             live.set_saves(stage.saves(dir, args.profile.as_deref())?);
         }
-        autopilot::drive(live, head, control, stage, args.steps as u32, args.top_speed, args.aim, out)
+        autopilot::drive(
+            live,
+            head,
+            control,
+            stage,
+            args.steps as u32,
+            args.top_speed,
+            args.aim,
+            args.flat_out,
+            args.brake_from,
+            args.circle,
+            args.circle_ramp,
+            args.trace_speed.as_deref(),
+            out,
+        )
     });
     match r {
         Ok(d) => {
