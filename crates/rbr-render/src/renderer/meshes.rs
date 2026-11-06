@@ -363,7 +363,7 @@ impl Renderer {
         });
         let tiles = tiles.collect();
         let light = if self.ground_light.is_some() { self.grass_light(&field) } else { Vec::new() };
-        self.grass = Some(crate::grass::Ring::new(field, tiles, light));
+        self.grass = Some(crate::grass::Ring::new(field, tiles, light, Some(self.device.clone())));
     }
 
     /// The light of the corners of `field`'s ground triangles ([`crate::grass::Light`]), read back from the vertex
@@ -446,11 +446,15 @@ impl Renderer {
     /// Fills the grass tile meshes the eye at `eye` now wants ([`crate::grass::Ring::update`]).
     pub(super) fn stream_grass(&mut self, eye: Vec3) {
         let Some(mut ring) = self.grass.take() else { return };
-        for (index, vertices, bounds) in ring.update(eye) {
+        for crate::grass::Filled { mesh: index, vertices, bounds, staged } in ring.update(eye) {
             let mesh = &mut self.meshes[index];
-            if !vertices.is_empty() {
-                let buffer = &self.buffers[mesh.slot.buffer].vertices;
-                self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
+            let buffer = &self.buffers[mesh.slot.buffer].vertices;
+            match staged {
+                Some(staged) => self.uploads.copy(&staged, buffer, vertex_offset(mesh.slot)),
+                None if !vertices.is_empty() => {
+                    self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
+                }
+                None => {}
             }
             mesh.bounds = Some((bounds.center, bounds.half_extent));
             // Only the tile's cards are drawn: past them the mesh holds an earlier tile's.

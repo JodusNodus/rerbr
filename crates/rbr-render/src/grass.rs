@@ -532,11 +532,39 @@ fn slot_mesh(texture: TextureRef, capacity: usize) -> Mesh {
 /// A tile and the share of its cards it is built with: the tile and its [`step_of`].
 type Held = ((i32, i32), u32);
 
-/// A finished tile: its cards' vertices and their bounds.
+/// A finished tile: its cards' vertices and their bounds, and the worker's tiles' vertices already in staging memory.
 struct Done {
     held: Held,
     vertices: Vec<Vertex>,
     bounds: Bounds,
+    staged: Option<wgpu::Buffer>,
+}
+
+/// A tile mesh to fill ([`Ring::update`]): its index in the renderer, its first vertices and their bounds, and the
+/// vertices in a buffer to copy them from when the worker staged them.
+pub(crate) struct Filled {
+    pub(crate) mesh: usize,
+    pub(crate) vertices: Vec<Vertex>,
+    pub(crate) bounds: Bounds,
+    pub(crate) staged: Option<wgpu::Buffer>,
+}
+
+/// `vertices` in a buffer of their own to copy from (`COPY_SRC`), filled on the calling thread: the worker's tiles
+/// take a few megabytes a frame while driving, which cost the frame most of a millisecond to copy into staging memory.
+fn staged(device: &wgpu::Device, vertices: &[Vertex]) -> Option<wgpu::Buffer> {
+    let bytes: &[u8] = bytemuck::cast_slice(vertices);
+    if bytes.is_empty() {
+        return None;
+    }
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("grass tile"),
+        size: bytes.len() as u64,
+        usage: wgpu::BufferUsages::MAP_WRITE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: true,
+    });
+    buffer.slice(..).get_mapped_range_mut().ok()?.copy_from_slice(bytes);
+    buffer.unmap();
+    Some(buffer)
 }
 
 /// A tile mesh: its index in the renderer, how many cards it holds, and the tile it holds.
@@ -561,6 +589,8 @@ pub(crate) struct Ring {
     bare: HashSet<Held>,
     last_eye: Option<Vec3>,
     worker: Option<std::thread::JoinHandle<()>>,
+    /// The worker's device, for a worker started again.
+    device: Option<wgpu::Device>,
 }
 
 impl Drop for Ring {
@@ -578,6 +608,7 @@ impl Drop for Ring {
 fn spawn_worker(
     field: &Arc<Field>,
     light: &Arc<Vec<[Light; 3]>>,
+    device: Option<wgpu::Device>,
 ) -> (std::sync::mpsc::SyncSender<Held>, std::sync::mpsc::Receiver<Done>, Option<std::thread::JoinHandle<()>>) {
     let (jobs, receive) = std::sync::mpsc::sync_channel::<Held>(16);
     let (send, done) = std::sync::mpsc::channel::<Done>();
@@ -588,7 +619,8 @@ fn spawn_worker(
         .spawn(move || {
             while let Ok(held) = receive.recv() {
                 let (vertices, bounds) = tile_vertices(&background.cards_of(held, &worker_light));
-                if send.send(Done { held, vertices, bounds }).is_err() {
+                let staged = device.as_ref().and_then(|device| staged(device, &vertices));
+                if send.send(Done { held, vertices, bounds, staged }).is_err() {
                     break;
                 }
             }
@@ -599,10 +631,15 @@ fn spawn_worker(
 
 impl Ring {
     /// The ring over `meshes`, the renderer's indices of the tile meshes and how many cards each holds, with the light
-    /// of the ground's corners.
-    pub(crate) fn new(field: Arc<Field>, meshes: Vec<(usize, usize)>, light: Vec<[Light; 3]>) -> Ring {
+    /// of the ground's corners; with `device` the worker stages its tiles' vertices ([`Filled::staged`]).
+    pub(crate) fn new(
+        field: Arc<Field>,
+        meshes: Vec<(usize, usize)>,
+        light: Vec<[Light; 3]>,
+        device: Option<wgpu::Device>,
+    ) -> Ring {
         let light = Arc::new(light);
-        let (jobs, done, worker) = spawn_worker(&field, &light);
+        let (jobs, done, worker) = spawn_worker(&field, &light, device.clone());
         Ring {
             field,
             slots: meshes.into_iter().map(|(mesh, capacity)| Slot { mesh, capacity, held: None }).collect(),
@@ -614,6 +651,7 @@ impl Ring {
             bare: HashSet::new(),
             last_eye: None,
             worker,
+            device,
         }
     }
 
@@ -624,11 +662,11 @@ impl Ring {
     /// the worker thread builds the rest. A finished tile takes the smallest mesh that holds its cards, of those
     /// holding no wanted tile (an early one only a free mesh), and uploads are capped a frame ([`UPLOAD_TILES`],
     /// [`UPLOAD_BYTES`]); a tile with no mesh to fit waits for one.
-    pub(crate) fn update(&mut self, eye: Vec3) -> Vec<(usize, Vec<Vertex>, Bounds)> {
+    pub(crate) fn update(&mut self, eye: Vec3) -> Vec<Filled> {
         // The worker dying loses its jobs: start another, so the frame only ever loses far tiles for a frame.
         if self.worker.as_ref().is_some_and(|worker| worker.is_finished()) {
             self.in_flight.clear();
-            let (jobs, done, worker) = spawn_worker(&self.field, &self.light);
+            let (jobs, done, worker) = spawn_worker(&self.field, &self.light, self.device.clone());
             self.jobs = Some(jobs);
             self.done = done;
             self.worker = worker;
@@ -683,7 +721,7 @@ impl Ring {
             }
             if dist < SYNC_DISTANCE && drawn.contains(&h) {
                 let (vertices, bounds) = tile_vertices(&self.field.cards_of(h, &self.light));
-                self.ready.push(Done { held: h, vertices, bounds });
+                self.ready.push(Done { held: h, vertices, bounds, staged: None });
             } else if self.jobs.as_ref().is_some_and(|jobs| jobs.try_send(h).is_ok()) {
                 self.in_flight.insert(h);
             } else {
@@ -723,13 +761,14 @@ impl Ring {
                     bytes += size;
                     slot.held = Some(done.held);
                     let mesh = slot.mesh;
-                    filled.push((mesh, done.vertices, done.bounds));
+                    filled.push(Filled { mesh, vertices: done.vertices, bounds: done.bounds, staged: done.staged });
                     // The tile at its other share draws no more.
                     for other in
                         self.slots.iter_mut().filter(|s| s.mesh != mesh && s.held.is_some_and(|h| h.0 == done.held.0))
                     {
                         other.held = None;
-                        filled.push((other.mesh, Vec::new(), Bounds { center: Vec3::ZERO, half_extent: Vec3::ZERO }));
+                        let bounds = Bounds { center: Vec3::ZERO, half_extent: Vec3::ZERO };
+                        filled.push(Filled { mesh: other.mesh, vertices: Vec::new(), bounds, staged: None });
                     }
                 }
                 _ => self.ready.push(done),

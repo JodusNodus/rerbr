@@ -115,104 +115,109 @@ impl Renderer {
         let lamps_light = self.lamps_light();
         self.lamp_matrix = self.sun.as_ref().filter(|_| lamps_light).and_then(|_| self.lamp_shadow_matrix());
         self.stream_grass(eye);
-        // The sky's tables first: the game's light follows their day light (`game_light`).
         let mut profiler = self.profiler.take();
-        self.update_skylight(&mut profiler);
-        // The reflection cube's faces draw none of these.
-        let (lit, level) = self.game_light();
-        // The effects drawn after the temporal anti-aliasing's resolve keep the view.
-        let effects_view = if self.late_effects() { view_projection } else { drawn[0] };
-        if let Some(particles) = &self.particles {
-            particles.prepare(&self.queue, effects_view, &lit);
-        }
-        if let Some(glass) = &mut self.glass {
-            let cascades = self.cascades.as_ref();
-            glass.prepare(&self.device, &self.queue, drawn[0], size, &lit, self.outside_view, self.wetness, cascades);
-        }
-        let day = self.day_light();
-        if let Some(effects) = &mut self.effects {
-            let cascades = self.cascades.as_ref();
-            effects.set_inside(!self.outside_view);
-            effects.set_cabin_mask(self.cabin_mask.zip(self.car_body));
-            // Without the shadows the lamps light the dust and the snow unshadowed, as before.
-            let lamp = self.lamp_matrix.filter(|_| self.enhance.lighting);
-            effects.update(&self.queue, effects_view, self.time, size, (&lit, level), cascades, lamp, day);
-        }
-        // Without the reflections the glass reads the resolved frame from its own target ([`Renderer::draw_frame`]).
-        if let (Some(pass), None) = (&mut self.glass, &self.screen_reflection) {
-            if pass.active() {
-                pass.scene(&self.device, SCENE_FORMAT, size);
-            }
-        }
-        // What a mark itself costs, to take from the stages' times.
-        let t = mark(&mut profiler, encoder);
-        span(&mut profiler, encoder, "(nothing)", t);
-        // The frame up to the post pass goes in its own command buffer, submitted here after the sun's maps'. Those
-        // depend on nothing else in the frame, so unless profiling another thread records and encodes them meanwhile
-        // (wgpu encodes a command buffer when it is finished).
-        let mut scene_encoder = self.device.create_command_encoder(&Default::default());
-        if !self.dial_draws.is_empty() {
-            let t = mark(&mut profiler, &mut scene_encoder);
-            let pass = self.dial_pass.get_or_insert_with(|| crate::dials::gpu::Pass::new(&self.device));
-            let (targets, draws) = (&self.dial_targets, &self.dial_draws);
-            pass.draw(&self.device, &self.queue, &mut self.uploads, &mut scene_encoder, targets, draws);
-            self.dial_draws.clear();
-            span(&mut profiler, &mut scene_encoder, "dials", t);
-        }
-        // The large writes so far (the car's moving parts, the grass, the drops, the dials') in a submission of their
-        // own: the sun's maps, the reflection cube and the mirrors read them before the scene.
-        if let Some(uploads) = self.uploads.take() {
-            self.queue.submit([uploads]);
-        }
-        let casting = self.sun.as_ref().map(|sun| Casting {
-            meshes: &self.meshes,
-            buffers: &self.buffers,
-            sun,
-            queue: &self.queue,
-        });
         let drop = sun::backdrop_drop(self.shadow_light());
         let layers = Layers { cascades: self.cascades, due, far, lamp: self.lamp_matrix, world, eye, drop };
-        let range = self.sun_range.as_ref().filter(|_| self.cascades.is_some());
-        let device = &self.device;
+        let blocking = profiler.as_ref().is_some_and(Profiler::blocking);
         let stats = std::thread::scope(|scope| {
-            let shadows = match (casting, profiler.as_ref().is_some_and(Profiler::blocking)) {
+            let casting = || {
+                self.sun.as_ref().map(|sun| Casting {
+                    meshes: &self.meshes,
+                    buffers: &self.buffers,
+                    sun,
+                    queue: &self.queue,
+                })
+            };
+            let range = self.sun_range.as_ref().filter(|_| self.cascades.is_some());
+            // The sun's maps depend on nothing else in the frame: unless profiling, another thread records and encodes
+            // them from here (wgpu encodes a command buffer when it is finished) while this one prepares the frame and
+            // records the first mirror; they are submitted before the first submission that reads them.
+            let shadows = match (casting(), blocking) {
                 (Some(casting), false) => {
                     let stamps = profiler.as_mut().and_then(Profiler::shadow_stamps);
+                    let (device, layers) = (&self.device, &layers);
                     Some(scope.spawn(move || {
                         perf_log::name_thread("shadow maps");
                         let _span = perf_log::span("sun cascades and lamp shadow");
                         let mut encoder = device.create_command_encoder(&Default::default());
                         stamps.iter().for_each(|set| encoder.write_timestamp(set, 0));
-                        casting.draw(&mut encoder, &layers, |_, _, _| ());
+                        casting.draw(&mut encoder, layers, |_, _, _| ());
                         range.iter().for_each(|range| range.draw(&mut encoder));
                         stamps.iter().for_each(|set| encoder.write_timestamp(set, 1));
                         encoder.finish()
                     }))
                 }
-                (Some(casting), true) => {
-                    let t = mark(&mut profiler, &mut scene_encoder);
-                    let mut layer = 0;
-                    casting.draw(&mut scene_encoder, &layers, |e, label, start| match start {
-                        true => layer = mark(&mut profiler, e),
-                        false => span(&mut profiler, e, label, layer),
-                    });
-                    range.iter().for_each(|range| range.draw(&mut scene_encoder));
-                    span(&mut profiler, &mut scene_encoder, "sun cascades and lamp shadow", t);
-                    None
-                }
-                (None, _) => None,
+                _ => None,
             };
+            // The sky's tables first: the game's light follows their day light (`game_light`).
+            self.update_skylight(&mut profiler);
+            // The reflection cube's faces draw none of these.
+            let (lit, level) = self.game_light();
+            // The effects drawn after the temporal anti-aliasing's resolve keep the view.
+            let effects_view = if self.late_effects() { view_projection } else { drawn[0] };
+            if let Some(particles) = &self.particles {
+                particles.prepare(&self.queue, effects_view, &lit);
+            }
+            if let Some(glass) = &mut self.glass {
+                let cascades = self.cascades.as_ref();
+                glass.prepare(
+                    &self.device,
+                    &self.queue,
+                    drawn[0],
+                    size,
+                    &lit,
+                    self.outside_view,
+                    self.wetness,
+                    cascades,
+                );
+            }
+            let day = self.day_light();
+            if let Some(effects) = &mut self.effects {
+                let cascades = self.cascades.as_ref();
+                effects.set_inside(!self.outside_view);
+                effects.set_cabin_mask(self.cabin_mask.zip(self.car_body));
+                // Without the shadows the lamps light the dust and the snow unshadowed, as before.
+                let lamp = self.lamp_matrix.filter(|_| self.enhance.lighting);
+                effects.update(&self.queue, effects_view, self.time, size, (&lit, level), cascades, lamp, day);
+            }
+            // Without the reflections the glass reads the resolved frame from its own target ([`Renderer::draw_frame`]).
+            if let (Some(pass), None) = (&mut self.glass, &self.screen_reflection) {
+                if pass.active() {
+                    pass.scene(&self.device, SCENE_FORMAT, size);
+                }
+            }
+            // What a mark itself costs, to take from the stages' times.
+            let t = mark(&mut profiler, encoder);
+            span(&mut profiler, encoder, "(nothing)", t);
+            // The frame up to the post pass goes in its own command buffer, submitted after the sun's maps'.
+            let mut scene_encoder = self.device.create_command_encoder(&Default::default());
+            if !self.dial_draws.is_empty() {
+                let t = mark(&mut profiler, &mut scene_encoder);
+                let pass = self.dial_pass.get_or_insert_with(|| crate::dials::gpu::Pass::new(&self.device));
+                let (targets, draws) = (&self.dial_targets, &self.dial_draws);
+                pass.draw(&self.device, &self.queue, &mut self.uploads, &mut scene_encoder, targets, draws);
+                self.dial_draws.clear();
+                span(&mut profiler, &mut scene_encoder, "dials", t);
+            }
+            // The large writes so far (the car's moving parts, the grass, the drops, the dials') in a submission of their
+            // own: the sun's maps, the reflection cube and the mirrors read them before the scene.
+            if let Some(uploads) = self.uploads.take() {
+                self.queue.submit([uploads]);
+            }
+            if let (Some(casting), true) = (casting(), blocking) {
+                let t = mark(&mut profiler, &mut scene_encoder);
+                let mut layer = 0;
+                casting.draw(&mut scene_encoder, &layers, |e, label, start| match start {
+                    true => layer = mark(&mut profiler, e),
+                    false => span(&mut profiler, e, label, layer),
+                });
+                range.iter().for_each(|range| range.draw(&mut scene_encoder));
+                span(&mut profiler, &mut scene_encoder, "sun cascades and lamp shadow", t);
+            }
             self.update_reflection(&mut profiler);
-            // The mirrors' passes read this frame's sun cascades.
-            let shadows = match shadows {
-                Some(thread) if self.mirrors_due() => {
-                    let _span = perf_log::span("wait for shadow maps");
-                    self.queue.submit([thread.join().expect("the shadow maps' thread")]);
-                    None
-                }
-                shadows => shadows,
-            };
-            self.draw_mirrors(&mut profiler, [view_projection, sky_view_projection]);
+            // The mirrors' passes read this frame's sun cascades: they are submitted before the first.
+            let mut shadows = shadows.map(|thread| move || thread.join().expect("the shadow maps' thread"));
+            self.draw_mirrors(&mut profiler, [view_projection, sky_view_projection], &mut shadows);
             let stats = self.draw_frame(&mut scene_encoder, &mut profiler, drawn[0], drawn[1]);
             if self.motion.is_some() {
                 let t = mark(&mut profiler, &mut scene_encoder);
@@ -222,7 +227,7 @@ impl Renderer {
             let mut span = perf_log::span("finish scene commands");
             let scene = scene_encoder.finish();
             span.next("wait for shadow maps");
-            let shadows = shadows.map(|thread| thread.join().expect("the shadow maps' thread"));
+            let shadows = shadows.map(|join| join());
             span.next("submit scene");
             self.queue.submit(shadows.into_iter().chain([scene]));
             stats
