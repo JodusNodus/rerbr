@@ -84,6 +84,12 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   central ray plus refine, a 1440p-sized trace (ripples lost), one ray a pixel interleaved (sparkle), a mirror ray
   only (another look), finest pyramid level 1 (-0.2 ms, streaks), a longer skip (no gain), normal matching on puddles
   only (softer puddles).
+  The car's glass in the cockpit (2026-11-06, `car_glass` in `renderer/frame.rs`: the car's draws that write no depth,
+  the panes and the interior set's sun strip) goes into the frame after the rays are traced, before the composite: the
+  depth under it is the stage's, so a ray that met the stage there read the glass's colour (the Lancer's red strip in
+  the far puddles, wet 21O). The windscreen's film still sees it; outside the car it stays in the frame (the car's
+  image in the road keeps its windows). 21O cockpit 4K: scene 5.74 to 5.19 ms, screen reflections 1.89 to 2.32, GPU
+  frame within noise; chase and dry byte-identical.
 - `--anti-aliasing taa|off` (`AntiAliasing`, default `Taa`, ours after gp4's `taa.rs`; `4x` parses as `taa`): one
   sample, the main view's projection jittered and resolved into the post pass's scene, sharpened under TAA
   (`taa.rs`, `taa.wgsl`, `post.rs`: Halton 2,3, 8 phases an output pixel, `taa::phases`, 18 at 67 % and 32 at 50 %;
@@ -1323,6 +1329,33 @@ them), the glare chain's taps (pass overhead and the 4K read dominate). Where th
 detail 0.24 ms, the stage's own light 0.17, fog 0.11, the sun share 0.07; post 0.95 ms (tone curve 0.27, glare chain
 0.33, sharpening 0.07); TAA 0.8 (bandwidth: two half-float writes a pixel); light shafts' march 0.52 (the shade-only
 steps 0.13).
+
+CPU frame (2026-11-06; RX 9060 XT radv, 32 threads). Measure the live CPU with a replay video (`viewer --replay FILE
+--video OUT.mp4 --video-span 20,28 --perf-log DIR`): it runs the window's scene update and render each frame, and its
+spans match a live log (finish scene commands 0.9 against 0.82 live). Offscreen `--frames` queues frames without a
+wait and shows 2.2-2.4 ms. Where the live CPU went (user's 4K Loch Ard 127_N wet cockpit drive), mean ms:
+- Scene update 2.84: the glass's drops 1.1 (sim 0.54, layout 0.40, upload 0.18), the car's moving parts 0.7 and the
+  characters' skinning 0.6 (about half each the upload into staging memory), particles 0.43.
+- Render 4.13: grass streaming 1.0 (copying 5-8 MB of rebuilt tiles a frame into staging memory while driving, at the
+  bus's rate: copying in parallel did not help), the wait for the shadow thread 0.8 (it started only after the frame's
+  preparation, and the mirrors waited for it).
+- The input and live-state spikes (p99 4.2, p99.9 6.7): the frame thread locked the sound mixer's mutex (the
+  H-shifter's grind every frame, each sound step), and the audio callback holds it for a whole block's mix.
+
+Kept, each exact (4K and 1440p shots byte-identical). Replay-video medians of 3 interleaved runs, render mean / p99:
+- The sun's maps are recorded from the start of `render()` and submitted with the first mirror. Loch Ard cockpit:
+  1440p 4.57 / 6.18 -> 3.92 / 5.43, 4K 5.12 / 7.35 -> 4.48 / 6.18; the wait 0.65 -> 0.04. The dry chase (no mirrors)
+  is unchanged.
+- The grass worker stages its tiles in buffers of their own (`grass::Filled::staged`), so the frame only records the
+  copy. Loch Ard: 1440p 3.96 -> 3.24, 4K 4.67 -> 3.58; dry 21 chase: 1440p 3.59 -> 2.90, 4K 3.92 -> 3.10.
+- The mixer's commands go through a queue that the callback takes before each block (`rbr-sound` `posted`). The
+  samples are identical (`posted_commands_play_as_applied`). Not measured live yet.
+
+Measured and dropped:
+- The characters, the car's parts and the glass's panes over rayon: means -0.1 to -0.3, but scene-update p99 went from
+  2 to 6-14 ms.
+- Skipping redundant pipeline and bind group sets in the stage passes: no change (wgpu's cost is per draw).
+- A lookup for the grass ring's held tiles: under noise.
 
 ### Benchmark (2026-11-02)
 

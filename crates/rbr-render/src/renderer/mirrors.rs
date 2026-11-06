@@ -159,20 +159,15 @@ impl Renderer {
         }
     }
 
-    /// Whether a mirror's pass is due this frame.
-    pub(super) fn mirrors_due(&self) -> bool {
-        let m = &self.mirrors;
-        let held = m.held.borrow();
-        m.layers().any(|(k, _)| held[k].is_none() || m.due(k, m.frame.get()))
-    }
-
     /// Draws the due mirrors' passes from the main view's `[view_projection, sky_view_projection]`, each in
     /// its own submission (the frame uniforms are rewritten per pass), and writes the views the main view's glass
-    /// samples them by. The particles' uniform is set back to the main view's after.
+    /// samples them by. The particles' uniform is set back to the main view's after. `before` gives the commands
+    /// that go before the first pass's (the sun's maps, which the passes read); it is taken only when a pass is drawn.
     pub(super) fn draw_mirrors(
         &self,
         profiler: &mut Option<Profiler>,
         [view_projection, sky_view_projection]: [Mat4; 2],
+        before: &mut Option<impl FnOnce() -> wgpu::CommandBuffer>,
     ) {
         let m = &self.mirrors;
         if m.rate == Rate::Off && !m.windscreen_on {
@@ -251,7 +246,12 @@ impl Renderer {
             );
             span(profiler, &mut encoder, LABELS[k], layer);
             let done = std::mem::replace(&mut encoder, self.device.create_command_encoder(&Default::default()));
-            self.queue.submit([done.finish()]);
+            let done = done.finish();
+            let before = before.take().map(|commands| {
+                let _span = crate::perf_log::span("wait for shadow maps");
+                commands()
+            });
+            self.queue.submit(before.into_iter().chain([done]));
             held[k] = Some(Held { view_projection: view.view_projection, size: view.size, body, draws });
             drawn = true;
         }

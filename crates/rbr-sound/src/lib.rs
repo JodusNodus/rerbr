@@ -36,6 +36,7 @@ pub mod fmod;
 pub mod impact;
 pub mod menu;
 pub mod mixer;
+mod posted;
 pub mod preview;
 pub mod reflections;
 pub mod scripted;
@@ -62,6 +63,7 @@ use crate::fmod::FmodCar;
 use crate::impact::Impacts;
 use crate::mixer::Mixer;
 pub use crate::mixer::Volumes;
+use crate::posted::Fed;
 pub use crate::scripted::Events;
 use crate::scripted::Scripted;
 use crate::suspension::Suspension;
@@ -227,10 +229,15 @@ impl Models {
     }
 }
 
+/// What [`Player::make`] opens the mixer with: the device's output (none offline), the fed mixer and its queue.
+type Opened = Result<(Option<device::Output>, Arc<Mutex<Fed>>, Arc<Mutex<Vec<Command>>>), String>;
+
 /// One car's sound, playing on the audio device, or rendered by the caller ([`Player::offline`]).
 pub struct Player {
     models: Models,
-    mixer: Arc<Mutex<Mixer>>,
+    mixer: Arc<Mutex<Fed>>,
+    /// The commands for the mixer, taken before its next block ([`posted`]).
+    posted: Arc<Mutex<Vec<Command>>>,
     scene: Scene,
     /// `None` offline.
     output: Option<device::Output>,
@@ -250,8 +257,13 @@ impl Player {
         volumes: Volumes,
     ) -> Result<Player, String> {
         Player::make(data, car, sky, codriver, |bank| {
-            let (output, mixer) = device::Output::start(|rate| mixer(bank, rate, volume, volumes))?;
-            Ok((Some(output), mixer))
+            let mut posted = None;
+            let (output, mixer) = device::Output::start(|rate| {
+                let (fed, queue) = Fed::new(mixer(bank, rate, volume, volumes));
+                posted = Some(queue);
+                fed
+            })?;
+            Ok((Some(output), mixer, posted.expect("the device's mixer")))
         })
     }
 
@@ -266,7 +278,8 @@ impl Player {
         volumes: Volumes,
     ) -> Result<Player, String> {
         Player::make(data, car, sky, codriver, |bank| {
-            Ok((None, Arc::new(Mutex::new(mixer(bank, rate, volume, volumes)))))
+            let (fed, posted) = Fed::new(mixer(bank, rate, volume, volumes));
+            Ok((None, Arc::new(Mutex::new(fed)), posted))
         })
     }
 
@@ -275,19 +288,31 @@ impl Player {
         car: u32,
         sky: Sky,
         codriver: bool,
-        output: impl FnOnce(&CarBank) -> Result<(Option<device::Output>, Arc<Mutex<Mixer>>), String>,
+        output: impl FnOnce(&CarBank) -> Opened,
     ) -> Result<Player, String> {
         let bank = CarBank::load(data, car)?;
-        let (output, mixer) = output(&bank)?;
+        let (output, mixer, posted) = output(&bank)?;
         let mut models = Models::new(&bank, sky, Vec::new());
         models.codriver.muted = !codriver;
-        Ok(Player { models, mixer, scene: Scene::default(), output, school_loaded: false })
+        Ok(Player { models, mixer, posted, scene: Scene::default(), output, school_loaded: false })
+    }
+
+    /// Posts `commands` for the mixer's next block (`posted`).
+    fn post(&self, commands: &[Command]) {
+        let mut posted = posted::lock(&self.posted);
+        posted.extend_from_slice(commands);
+        if posted.len() > posted::MOST {
+            drop(posted);
+            if let Ok(mut fed) = self.mixer.lock() {
+                fed.catch_up();
+            }
+        }
     }
 
     /// Fills `out` with the next samples (an offline player's; a device's own are taken from it).
     pub fn render(&mut self, out: &mut [[f32; 2]]) {
-        if let Ok(mut mixer) = self.mixer.lock() {
-            device::Render::render(&mut *mixer, out);
+        if let Ok(mut fed) = self.mixer.lock() {
+            device::Render::render(&mut *fed, out);
         }
     }
 
@@ -311,17 +336,13 @@ impl Player {
     /// One physics step's inputs.
     pub fn step(&mut self, inputs: &Inputs) {
         let commands = self.models.step(inputs, &self.scene);
-        if let Ok(mut mixer) = self.mixer.lock() {
-            mixer.apply(&commands);
-        }
+        self.post(&commands);
     }
 
     /// Applies `commands` to the mixer (the rally school's speech, which comes from the live record rather than
     /// a step's inputs; the co-driver switch does not mute it, as the original's handler does not test it).
     pub fn apply(&mut self, commands: &[Command]) {
-        if let Ok(mut mixer) = self.mixer.lock() {
-            mixer.apply(commands);
-        }
+        self.post(commands);
     }
 
     /// Swaps the rally school's English samples (`Audio\RS\ENG\<id>.ogg`) into the mixer, once; later calls
@@ -344,15 +365,18 @@ impl Player {
     /// The scripted events since the last call (`rbr_render::characters`).
     pub fn events(&mut self, events: &Events) {
         let commands = self.models.events(events, &self.scene);
-        if let Ok(mut mixer) = self.mixer.lock() {
-            mixer.apply(&commands);
-        }
+        self.post(&commands);
     }
 
     /// Swaps `prepared` into the mixer with `swap`, dropping what it replaces after the lock is released, so
     /// the audio callback never waits on the work.
     fn swap<T, U>(&self, prepared: T, swap: impl FnOnce(&mut Mixer, T) -> U) {
-        let old = if let Ok(mut mixer) = self.mixer.lock() { Some(swap(&mut mixer, prepared)) } else { None };
+        // The commands posted before it apply first, as they would have.
+        let swapped = self.mixer.lock().map(|mut fed| {
+            fed.catch_up();
+            swap(&mut fed.mixer, prepared)
+        });
+        let old = swapped.ok();
         drop(old);
     }
 
@@ -360,7 +384,7 @@ impl Player {
     /// waves are cloned and the mixing tree is built before taking the mixer lock; only the swap runs under it,
     /// and the old bank drops after it is released, so the audio callback never waits on the work.
     pub fn use_fmod(&mut self, car: FmodCar) {
-        let rate = self.mixer.lock().map(|mixer| mixer.rate()).unwrap_or(44100);
+        let rate = self.mixer.lock().map(|fed| fed.mixer.rate()).unwrap_or(44100);
         let prepared = Mixer::prepare_fmod(car.loop_waves(), car.waves.clone(), &car.buses, rate);
         self.swap(prepared, Mixer::swap_fmod);
         self.models.fmod = Some(car);
@@ -386,9 +410,7 @@ impl Player {
     /// The H-shifter's grind at `pitch` (1 = the sample's rate), or silent.
     pub fn grind(&mut self, pitch: Option<f32>) {
         let (gain, pitch) = pitch.map_or((0.0, 1.0), |p| (GRIND_GAIN, p));
-        if let Ok(mut mixer) = self.mixer.lock() {
-            mixer.apply(&[Command::Loop { voice: voice::Loop::Grind, gain, pitch }]);
-        }
+        self.post(&[Command::Loop { voice: voice::Loop::Grind, gain, pitch }]);
     }
 
     /// Pauses or resumes the sound (the viewer's pause menu): the device stops asking the mixer, so every voice and
@@ -466,5 +488,41 @@ mod tests {
         assert_eq!(branches, 6);
         let grass = |c: &Command| matches!(c, Command::Loop { voice: voice::Loop::Grass, gain, .. } if *gain > 0.0);
         assert!(with.iter().any(grass) && !without.iter().any(grass));
+    }
+
+    /// The player's posted commands play as the mixer applying them at once did: the same samples, block for block,
+    /// with a grind and a few steps between blocks.
+    #[test]
+    fn posted_commands_play_as_applied() {
+        let Some(data) = Data::from_env() else {
+            eprintln!("skipping: RBR_DATA is not set");
+            return;
+        };
+        let (rate, volumes) = (44100, Volumes::default());
+        let bank = CarBank::load(&data, 0).unwrap();
+        let mut player = Player::offline(&data, 0, rate, 1.0, Sky::default(), true, volumes).unwrap();
+        let mut models = Models::new(&bank, Sky::default(), Vec::new());
+        let mut direct = mixer(&bank, rate, 1.0, volumes);
+        let mut inputs = Inputs::default();
+        let (mut posted, mut applied) = (vec![[0.0; 2]; 300], vec![[0.0; 2]; 300]);
+        let mut heard = false;
+        for step in 0..400 {
+            inputs.sound.speed = step as f32 * 0.1;
+            player.step(&inputs);
+            direct.apply(&models.step(&inputs, &Scene::default()));
+            if step % 50 == 0 {
+                let pitch = (step % 100 == 0).then_some(1.0 + step as f32 * 0.001);
+                player.grind(pitch);
+                let (gain, pitch) = pitch.map_or((0.0, 1.0), |p| (GRIND_GAIN, p));
+                direct.apply(&[Command::Loop { voice: voice::Loop::Grind, gain, pitch }]);
+            }
+            if step % 3 == 0 {
+                player.render(&mut posted);
+                direct.render(&mut applied);
+                assert_eq!(posted, applied, "step {step}");
+                heard |= applied.iter().any(|s| s[0] != 0.0);
+            }
+        }
+        assert!(heard);
     }
 }

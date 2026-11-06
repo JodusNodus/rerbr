@@ -130,7 +130,10 @@ pub fn render(
                 dials.redraw();
             }
         }
+        // The window's spans: the scene update, and the render (`render_offscreen_with`).
+        let span = rbr_render::perf_log::span("scene update");
         let events = draw_frame(scene, args, &mut renderer, size, t, &mut shown);
+        drop(span);
         if rendered {
             let (view, sky) = views(scene, args, shown, size);
             // Bake the reflection probes after the first rendered frame's sky and shadows.
