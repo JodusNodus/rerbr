@@ -112,6 +112,9 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   hot rejoin), angular travel on the circle and no crawl or bog-down, else its columns stay empty with the reason;
   the controller also downshifts when lugging in the measurement modes (loose ground stalls tall gears).
   `--circle-ramp RATE` overrides the circle target's 0.5 m/s-per-s rise for repeatability runs at other ramps.
+  The gravel circle runs at ramp 0.4: the repeatability check re-ran 7 cars at ramps 0.4/0.5/0.6 on two gravel
+  spots, and the gentle ramp is the reproducible quasi-steady one (all 7 within 4 km/h on both spots), while the
+  default 0.5 is a knife-edge on gravel (neutral cars blow through to 65+ pushing, loose ones saw at 52-56).
 - Residuals are the method's, not the constants': the driveline is a lossy record of the road (dense drivelines
   keep positioning weave the pars ignore; sparse ones cut corners the pars charge for), and the AI pars are
   hand-tuned per track. Outliers: maps 61/66 (fast per the AI, twisty per the driveline) and 54/56 (slow per the

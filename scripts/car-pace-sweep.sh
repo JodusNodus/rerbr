@@ -25,9 +25,12 @@
 #   crash into them while still fast); 568's straight is clear for 1 km.
 #   A crash-stop or an unreached trigger leaves those columns empty.
 # - gravel: the same circle (radius 40 m) on the open start area of RSF stage
-#   345 (Azov II, variant M, gravel, dry; `--circle 1051,-166,40`) and flat-out
-#   standstill starts on 345's 970 m start straight with full braking from
-#   100 km/h: the `*_gravel` columns. The 113/390 rally-school compounds beach
+#   345 (Azov II, variant M, gravel, dry; `--circle 1051,-166,40 --circle-ramp
+#   0.4`) and flat-out standstill starts on 345's 970 m start straight with
+#   full braking from 100 km/h: the `*_gravel` columns. The gentle ramp is the
+#   repeatable quasi-steady one (the default 0.5 is a knife-edge on gravel:
+#   neutral cars blow through to 65+ pushing, loose ones saw at 52-56). The
+#   113/390 rally-school compounds beach
 #   the car in deep loose gravel (unmapped bogs stop it even in first gear at
 #   full revs); 345's compacted start area holds every pilot car to a slide.
 #
@@ -132,7 +135,7 @@ join -t $'\t' -1 1 -2 1 <(sort "$out/cars.tsv") <(sort "$out/qualify.txt") >"$ou
 xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".brk150" --rsf-stage 568 --steps 26000 --top-speed 80 --flat-out --brake-from 41.67' <"$out/cars150.tsv" | sort
 
 # Phases 4-5: gravel circle and gravel brake-100 runs (RSF 345, dry gravel).
-xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".gcirc" --rsf-stage 345 --steps 32000 --top-speed 60 --circle 1051,-166,40' <"$out/cars.tsv" | sort
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".gcirc" --rsf-stage 345 --steps 32000 --top-speed 60 --circle 1051,-166,40 --circle-ramp 0.4' <"$out/cars.tsv" | sort
 xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".gbrk100" --rsf-stage 345 --steps 26000 --top-speed 80 --flat-out --brake-from 27.78' <"$out/cars.tsv" | sort
 
 python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" --csv "$out/cars.csv"
@@ -147,7 +150,7 @@ python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" -
     # shellcheck disable=SC2016
     echo 'braking: --autopilot OUT --boot --rsf-stage 568 (--car N | --rsf-car PACK) --steps 26000 --top-speed 80 --flat-out --brake-from 27.78 (100) / 41.67 (150, only if the pace vtop reaches 150) --trace-speed TRACE'
     # shellcheck disable=SC2016
-    echo 'gravel: --autopilot OUT --boot --rsf-stage 345 (--car N | --rsf-car PACK) --steps 32000 --top-speed 60 --circle 1051,-166,40 --trace-speed TRACE + --steps 26000 --top-speed 80 --flat-out --brake-from 27.78 --trace-speed TRACE'
+    echo 'gravel: --autopilot OUT --boot --rsf-stage 345 (--car N | --rsf-car PACK) --steps 32000 --top-speed 60 --circle 1051,-166,40 --circle-ramp 0.4 --trace-speed TRACE + --steps 26000 --top-speed 80 --flat-out --brake-from 27.78 --trace-speed TRACE'
     echo "stages: RSF 504-O (pace), RSF 568-M (brakes), retail map 85 (circle), RSF 345-M (gravel circle + brakes); all dry, good weather, default tyre, game-default aids"
 } >"$out/meta.txt"
 rm -f "$out"/*.out
