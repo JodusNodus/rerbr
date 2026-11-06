@@ -44,15 +44,32 @@ the layer only reads drivelines and hands the launcher times, standings and save
 - Team crew: `EventConfig.team` is the roster team whose engineer and mechanics scale the player's repair times
   (`Event::crew`, `team::team_offers` describes them in words). Player's car is separate.
 - Bulletins: `Event::bulletins(rally)` renders the engine's `Bulletin` and `AccidentRecord` entries in order, "SS2: name
-  ...", without the manager orders. They are stored as text in the save.
+  ...", without the manager orders (`run::news`): a driver's accidents on a stage summed into one line, totals under
+  5 s left out, the first "shaken" per driver; "an uneventful stage" only from a stage's log with nothing to tell, never
+  a service's. They are stored as text in the save.
 - `event`: per rally one surface (Mixed draws one per rally from the pool's own), one stage family preferred
   (`StageRef::family`: an RSF stage's country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), sampled without repeating unless the pool is too small. Rally
-  names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). Clocks from 08:00 (21:00 at
-  night; realistic puts the last leg at dusk/night), changeable weather per leg, ~20 min mid-rally services and
-  45 min overnight in a weekend. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
+  names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). `Length { rallies, legs, stages }`: one
+  rally is an event of its own, more a championship; each rally's stages split over its legs (a leg is a day, the
+  earlier legs the longer). Presets after real formats: Quick rally 1x1 leg x6 (a national one-day rally), Rally
+  weekend 1x3x12 (a WRC round), Short championship 4x1x6 (a national series), Season 6x2x6; the save's old `rally:n`,
+  `weekend:n`, `season:r:n` read as one, two and one legs. Each leg starts at 08:00 (21:00 at night; realistic puts the
+  first day's last two stages at dusk/night), changeable weather per leg, ~20 min mid-leg services and 45 min overnight
+  after each leg but the last. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
   rally points. Adaptive moves every entrant's skill by at most 0.003 a stage toward the player finishing 2nd-4th.
-  A retired player ends the rally: the field's remaining stages are simulated, the turn goes to RallyOver, no points. Points
-  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 3` head: config with the team,
+  A retired player ends the rally (`restart` off): the field's remaining stages are simulated, the turn goes to RallyOver,
+  no points. Super Rally (`EventConfig.restart`, on in every preset), as the WRC runs it (2005 regulations on: restart
+  at the next leg; current penalty 10 min, after 5 and 7): a crew that retires restarts at the next leg, after the
+  service that ends the leg (`ItineraryStage::ends_leg`, `Event::rejoin_after`), and each stage it did not complete,
+  the retirement's included, counts as that stage's fastest time plus 10:00 (`Event::charged`, `RESTART_CHARGE`; the
+  reference when no one finished). Only rallies of several legs have a next leg; a retirement in the last leg is final. The player's
+  car is rebuilt (no park at that service); the AI crews restart the same way (`Event::sits_out`, their cars rebuilt
+  at the leg's end, "restarts under Super Rally" in the news), except the hurt and those excluded for false starts
+  (`AiResult::Out`, "X" in the save). Power stage
+  (`EventConfig.power_stage`, the WRC's 5-4-3-2-1 since 2017, on in the presets with several legs): the complete rally's last stage pays its five fastest classified
+  5-4-3-2-1 (`POWER_POINTS`, `Standing.bonus`, in `points`; a tie goes to the better placed). Points
+  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 4` head, `3` read with both rules
+  off: config with the team and the two rules,
   pace, itinerary with each stage's family and track, the roster's teams and costs, each entrant's driver/car state and false
   starts, results, AI penalties, bulletins), backslash-escaped, no serde.
 

@@ -33,6 +33,13 @@ pub struct ItineraryStage {
     pub service_after: Option<u32>,
 }
 
+impl ItineraryStage {
+    /// The leg ends after this stage: the overnight service follows.
+    pub fn ends_leg(&self) -> bool {
+        self.service_after.is_some_and(|m| m >= build::SERVICE_NIGHT)
+    }
+}
+
 /// A stage's road and sky, which the launcher maps to the stage's own weathers (a dry, damp or wet row).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Conditions {
@@ -88,10 +95,18 @@ pub struct Standing {
     /// The total time (s) with penalties; `None` once retired.
     pub total: Option<f32>,
     pub points: u32,
+    /// The power stage's points, included in `points`.
+    pub bonus: u32,
 }
 
 /// The points for the top 10 of a rally, modern 25-18-15-12-10-8-6-4-2-1.
 pub const POINTS: [u32; 10] = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+
+/// The power stage's bonus points for its five fastest classified finishers.
+pub const POWER_POINTS: [u32; 5] = [5, 4, 3, 2, 1];
+
+/// Super Rally's penalty (s) on the fastest time of each stage a restarting crew did not complete (WRC: 10 minutes).
+pub const RESTART_CHARGE: f32 = 600.0;
 
 /// The field's pace over its tracks' pars at difficulty `d`: 1 at the top, about 9 % slower at the bottom.
 fn pace_for(difficulty: f32) -> f32 {

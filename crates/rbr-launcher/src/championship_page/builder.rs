@@ -1,7 +1,7 @@
 //! The Championship tab's entry (the presets, Continue first when there is a saved championship) and the builder
 //! (its settings beside the live summary and Start).
 
-use egui::{Color32, RichText, Sense, Slider, Stroke, Ui};
+use egui::{Color32, DragValue, RichText, Sense, Slider, Stroke, Ui};
 use rbr_formats::saves::is_file_name_part;
 use rbr_season::config::{Damage, Daylight, Length, Preset, Skill, StagePool, Surface, Surfaces, Weather};
 use rbr_season::team::team_offers;
@@ -144,7 +144,7 @@ impl ChampionshipPage {
                     &[Daylight::Day, Daylight::Realistic, Daylight::Night],
                     |d| match d {
                         Daylight::Day => "Day",
-                        Daylight::Realistic => "Day, the last stages at dusk",
+                        Daylight::Realistic => "Day, the first day ends at dusk",
                         Daylight::Night => "Night",
                     },
                 );
@@ -191,6 +191,16 @@ impl ChampionshipPage {
                         skill_word,
                     );
                     ui.colored_label(GREY, format!("help when stuck: {}", assistance_note(config.skill)));
+                });
+                ui.end_row();
+                ui.label("Rules");
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut config.restart, "Super Rally").on_hover_text(
+                        "Retire and you restart the next leg (rallies of several legs); each stage not completed counts as its \
+                         fastest time plus 10:00",
+                    );
+                    ui.checkbox(&mut config.power_stage, "Power stage")
+                        .on_hover_text("The rally's last stage pays its five fastest 5-4-3-2-1 bonus points");
                 });
                 ui.end_row();
                 if !teams.is_empty() {
@@ -290,14 +300,27 @@ impl ChampionshipPage {
 /// A preset's card: its name, what it is and its shape.
 fn preset_text(preset: Preset) -> (&'static str, &'static str, &'static str) {
     match preset {
-        Preset::QuickRally => ("Quick rally", "One rally on gravel, service halfway.", "6 stages · about an hour"),
+        Preset::QuickRally => {
+            ("Quick rally", "A one-day rally on gravel, as most national rallies run.", "6 stages · one leg")
+        }
         Preset::Weekend => (
-            "Weekend",
-            "Two legs and an overnight service; the second leg runs into the night.",
-            "10 stages · two legs",
+            "Rally weekend",
+            "A WRC-style round: three days, an overnight service after each, the power stage last.",
+            "12 stages · three legs",
         ),
-        Preset::Season => ("Season", "Six rallies on mixed surfaces, points after each.", "6 rallies · 36 stages"),
-        Preset::Random => ("Random", "A weekend drawn from a random seed: stages, weather, field.", "a surprise"),
+        Preset::Championship => (
+            "Short championship",
+            "Four one-day rallies on mixed surfaces, points after each, as a national series.",
+            "4 rallies · 24 stages",
+        ),
+        Preset::Season => (
+            "Season",
+            "Six two-day rallies on mixed surfaces with power stages, points after each.",
+            "6 rallies · 36 stages",
+        ),
+        Preset::Random => {
+            ("Random", "An event drawn from a random seed: its length, stages and weather.", "a surprise")
+        }
     }
 }
 
@@ -316,23 +339,19 @@ fn button_card(ui: &mut Ui, id: &str, add: impl FnOnce(&mut Ui)) -> bool {
     response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
 }
 
-/// The length's kind, its stages and, for a season, its rallies.
+/// The rallies, each rally's legs (days) and its stages.
 fn length_row(ui: &mut Ui, length: &mut Length) {
-    let (mut kind, mut rallies, mut stages) = match *length {
-        Length::Rally { stages } => (0, 6, stages),
-        Length::Weekend { stages } => (1, 6, stages),
-        Length::Season { rallies, stages } => (2, rallies, stages),
-    };
+    let Length { rallies, legs, stages } = length;
     ui.horizontal(|ui| {
-        combo(ui, "championship-length", 120.0, &mut kind, &[0, 1, 2], |k| ["One rally", "Weekend", "Season"][k]);
-        if kind == 2 {
-            ui.add(Slider::new(&mut rallies, 2..=12).suffix(" rallies"));
-        }
-        ui.add(Slider::new(&mut stages, 2..=16).suffix(if kind == 2 { " stages each" } else { " stages" }));
+        let plural = |n: u8, one: &'static str, more: &'static str| if n == 1 { one } else { more };
+        let suffix = plural(*rallies, " rally", " rallies");
+        ui.add(DragValue::new(rallies).range(1..=12).suffix(suffix))
+            .on_hover_text("One rally, or a championship with points after each");
+        let suffix = plural(*legs, " leg", " legs");
+        ui.add(DragValue::new(legs).range(1..=3).suffix(suffix))
+            .on_hover_text("A leg is a day; an overnight service ends it");
+        let suffix = if *rallies > 1 { " stages each" } else { " stages" };
+        ui.add(DragValue::new(stages).range(2..=20).suffix(suffix));
     });
-    *length = match kind {
-        0 => Length::Rally { stages },
-        1 => Length::Weekend { stages },
-        _ => Length::Season { rallies, stages },
-    };
+    *stages = (*stages).max(*legs);
 }

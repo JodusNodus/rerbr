@@ -67,7 +67,7 @@ fn main() {
         });
     }
     let mut config = Preset::Season.config("Rally 2", "player-car", seed);
-    config.length = Length::Season { rallies: 3, stages: 6 };
+    config.length = Length { rallies: 3, legs: 1, stages: 6 };
     config.team = 3;
     let cars: Vec<String> = (1..=6).map(|k| format!("car-{k}")).collect();
     let mut event = Event::build(config, &stages, &cars, &roster, &|s| profiles[&s.key].clone()).expect("event");
@@ -109,7 +109,7 @@ fn main() {
                 }
                 let out = event.results[rally]
                     .last()
-                    .map_or(0, |(_, ai)| ai.iter().filter(|r| **r == AiResult::Retired).count());
+                    .map_or(0, |(_, ai)| ai.iter().filter(|r| !matches!(r, AiResult::Time(_))).count());
                 println!("-- {out} of {} entrants retired in the rally --", event.field.len());
                 event.turn_done();
             }

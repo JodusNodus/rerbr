@@ -45,8 +45,9 @@ impl Form {
             None => false,
         };
         // The service's park opens on the car's repair tree.
+        // A car rebuilt under Super Rally has no park.
         let service = self.championship.run.as_ref().and_then(|r| match r.event.turn {
-            Turn::Service { minutes, .. } => Some(minutes),
+            Turn::Service { minutes, .. } if super::view::rejoin(&r.event).is_none() => Some(minutes),
             _ => None,
         });
         match service {
@@ -204,13 +205,14 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     for (k, entrant) in event.field.iter_mut().enumerate().filter(|_| !cars.is_empty()) {
         entrant.car = cars[k % cars.len()].clone();
     }
+    let fresh = event.clone();
     let master = fixture::ai().0;
-    // The player's pace against the reference: 3rd or so, slower on the wet stage.
+    // The player's pace against the reference: mid-field, slower on the wet stage.
     let drive = |event: &mut rbr_season::event::Event, n: usize| {
         for _ in 0..n {
             let rbr_season::event::Turn::Stage { rally, stage } = event.turn else { return };
             let reference = event.rallies[rally].stages[stage].reference;
-            let time = reference * [1.012, 1.004, 1.03, 0.998, 1.01, 1.006][stage % 6];
+            let time = reference * [1.092, 1.084, 1.11, 1.078, 1.09, 1.086][stage % 6];
             event.stage_done(&master, PlayerResult { time, penalties: 0.0, retired: false });
             if matches!(event.turn, rbr_season::event::Turn::Service { .. }) && n > 1 {
                 event.turn_done();
@@ -246,6 +248,13 @@ pub fn shots(form: &mut Form, dir: &Path, damage: Option<&Path>) -> Result<(), S
     drive(&mut event, 6);
     event.turn_done();
     at(form, &event, "championship-over")?;
+    // Super Rally on a weekend: SS2 left wrecked, the car rebuilt at the overnight service after SS4.
+    let mut event = fixture::fixture_of(Preset::Weekend, rbr_season::config::Length { rallies: 1, legs: 2, stages: 8 });
+    (event.config.car, event.config.class) = (fresh.config.car.clone(), fresh.config.class.clone());
+    event.turn_done();
+    drive(&mut event, 1);
+    event.stage_done(&master, PlayerResult { time: 0.0, penalties: 0.0, retired: true });
+    at(form, &event, "championship-super-rally")?;
     form.championship.screenshot_saved(&profile, None);
     Ok(())
 }

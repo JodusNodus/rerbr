@@ -8,7 +8,7 @@ impl Event {
         let mut out = format!("{SAVE_HEAD}\n");
         let c = &self.config;
         out.push_str(&format!(
-            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
             esc(&c.class),
             esc(&c.car),
             length_save(&c.length),
@@ -22,7 +22,9 @@ impl Event {
             c.field_size,
             c.seed,
             skill_save(c.skill),
-            c.team
+            c.team,
+            if c.restart { 1 } else { 0 },
+            if c.power_stage { 1 } else { 0 }
         ));
         out.push_str(&format!("P|{}\n", self.pace));
         for rally in &self.rallies {
@@ -132,6 +134,7 @@ impl Event {
                     .map(|r| match r {
                         AiResult::Time(t) => t.to_string(),
                         AiResult::Retired => "R".to_owned(),
+                        AiResult::Out => "X".to_owned(),
                     })
                     .collect();
                 out.push_str(&format!("T|{rally}|{stage}|{p}|{}\n", a.join(",")));
@@ -149,11 +152,15 @@ impl Event {
         out
     }
 
-    /// An event read back from [`Event::save`]'s text.
+    /// An event read back from [`Event::save`]'s text. A `rbr-season 3` text loads too, with restart and the power
+    /// stage off.
     pub fn load(text: &str) -> Result<Event, String> {
         let mut lines = text.lines();
+        // A v3 save has no restart or power-stage fields on its config line.
+        let mut old = false;
         match lines.next() {
             Some(SAVE_HEAD) => {}
+            Some("rbr-season 3") => old = true,
             Some(head) if head.starts_with("rbr-season ") => {
                 return Err(format!("an older save ({head}): not readable"))
             }
@@ -179,7 +186,7 @@ impl Event {
             let mut f = Fields::new(&parts);
             match f.next().unwrap_or("") {
                 "C" => {
-                    f.expect(14, "config")?;
+                    f.expect(if old { 14 } else { 16 }, "config")?;
                     let (class, car) = (f.text()?, f.text()?);
                     let length = length_load(f.raw()?)?;
                     let pool = pool_load(f.raw()?)?;
@@ -188,14 +195,12 @@ impl Event {
                     let weather = weather_load(f.raw()?)?;
                     let damage = damage_load(f.raw()?)?;
                     let difficulty = f.num("difficulty")?;
-                    let adaptive = match f.raw()? {
-                        "1" => true,
-                        "0" => false,
-                        _ => return Err("bad adaptive".to_owned()),
-                    };
+                    let adaptive = f.flag("adaptive")?;
                     let (field_size, seed) = (f.num("field size")?, f.num("seed")?);
                     let skill = skill_load(f.raw()?)?;
                     let team = f.num("team")?;
+                    let (restart, power_stage) =
+                        if old { (false, false) } else { (f.flag("restart")?, f.flag("power stage")?) };
                     config = Some(EventConfig {
                         class,
                         car,
@@ -209,6 +214,8 @@ impl Event {
                         skill,
                         difficulty,
                         adaptive,
+                        restart,
+                        power_stage,
                         field_size,
                         seed,
                     });
@@ -228,11 +235,7 @@ impl Event {
                     let name = f.text()?;
                     let family = f.text()?;
                     let surface = surface_load(f.raw()?)?;
-                    let community = match f.raw()? {
-                        "1" => true,
-                        "0" => false,
-                        _ => return Err("bad community".to_owned()),
-                    };
+                    let community = f.flag("community")?;
                     let length = f.num("length")?;
                     let clock = f.num("clock")?;
                     let conditions = conditions_load(f.raw()?)?;
@@ -341,6 +344,7 @@ impl Event {
                         for cell in cells.split(',') {
                             ai.push(match cell {
                                 "R" => AiResult::Retired,
+                                "X" => AiResult::Out,
                                 t => AiResult::Time(t.parse().map_err(|_| "bad AI time".to_owned())?),
                             });
                         }
@@ -389,7 +393,7 @@ impl Event {
 }
 
 /// The save's first line.
-const SAVE_HEAD: &str = "rbr-season 3";
+const SAVE_HEAD: &str = "rbr-season 4";
 
 /// A save line's fields in order, read as the writer wrote them.
 struct Fields<'a> {
@@ -423,6 +427,15 @@ impl<'a> Fields<'a> {
 
     fn text(&mut self) -> Result<String, String> {
         self.raw().map(str::to_owned)
+    }
+
+    /// A `1` or `0` field.
+    fn flag(&mut self, what: &str) -> Result<bool, String> {
+        match self.raw()? {
+            "1" => Ok(true),
+            "0" => Ok(false),
+            _ => Err(format!("bad {what}")),
+        }
     }
 
     fn num<T: std::str::FromStr>(&mut self, what: &str) -> Result<T, String> {
@@ -482,27 +495,19 @@ fn split(line: &str) -> Vec<String> {
 }
 
 fn length_save(length: &Length) -> String {
-    match length {
-        Length::Rally { stages } => format!("rally:{stages}"),
-        Length::Weekend { stages } => format!("weekend:{stages}"),
-        Length::Season { rallies, stages } => format!("season:{rallies}:{stages}"),
-    }
+    format!("length:{}:{}:{}", length.rallies, length.legs, length.stages)
 }
 
+/// The length; also the older `rally:n` (one leg), `weekend:n` (two) and `season:r:n` (one leg each).
 fn length_load(text: &str) -> Result<Length, String> {
-    let mut it = text.split(':');
-    match (it.next(), it.next(), it.next(), it.next()) {
-        (Some("rally"), Some(n), None, _) => {
-            Ok(Length::Rally { stages: n.parse().map_err(|_| "bad rally length".to_owned())? })
-        }
-        (Some("weekend"), Some(n), None, _) => {
-            Ok(Length::Weekend { stages: n.parse().map_err(|_| "bad weekend length".to_owned())? })
-        }
-        (Some("season"), Some(r), Some(n), None) => Ok(Length::Season {
-            rallies: r.parse().map_err(|_| "bad season rallies".to_owned())?,
-            stages: n.parse().map_err(|_| "bad season stages".to_owned())?,
-        }),
-        _ => Err("bad length".to_owned()),
+    let n = |t: &str| t.parse::<u8>().map_err(|_| format!("bad length {text:?}"));
+    let parts: Vec<&str> = text.split(':').collect();
+    match parts[..] {
+        ["length", r, l, s] => Ok(Length { rallies: n(r)?, legs: n(l)?, stages: n(s)? }),
+        ["rally", s] => Ok(Length { rallies: 1, legs: 1, stages: n(s)? }),
+        ["weekend", s] => Ok(Length { rallies: 1, legs: 2, stages: n(s)? }),
+        ["season", r, s] => Ok(Length { rallies: n(r)?, legs: 1, stages: n(s)? }),
+        _ => Err(format!("bad length {text:?}")),
     }
 }
 
