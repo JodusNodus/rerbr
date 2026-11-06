@@ -56,7 +56,7 @@ struct Targets {
     composite: wgpu::BindGroup,
     /// The light shafts the composite adds (linear light, a quarter of the frame's size; 1x1 without them).
     shafts: wgpu::TextureView,
-    /// `cs_histogram`'s and `cs_meter`'s: the frame and its sampler (none for `cs_meter`), then the depth, the
+    /// `cs_histogram`'s and `cs_meter`'s: the frame and its sampler (the frame alone for `cs_meter`, its height), then the depth, the
     /// exposure, the settings and the bins.
     meter: [[wgpu::BindGroup; 2]; 2],
 }
@@ -274,7 +274,7 @@ impl Post {
         let buffer = |label, size, usage| {
             device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size, usage, mapped_at_creation: false })
         };
-        let exposure = buffer("exposure", 16, wgpu::BufferUsages::STORAGE);
+        let exposure = buffer("exposure", 32, wgpu::BufferUsages::STORAGE);
         let glare = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("post glare"),
             layout: &glare_layout,
@@ -480,7 +480,11 @@ fn targets(
             ),
         ],
         [
-            group(metering, 0, &[]),
+            group(
+                metering,
+                0,
+                &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&scene) }],
+            ),
             group(
                 metering,
                 1,
