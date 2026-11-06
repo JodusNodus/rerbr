@@ -99,6 +99,10 @@ pub struct EventConfig {
     pub difficulty: f32,
     /// The difficulty follows the player's results so the fight stays close.
     pub adaptive: bool,
+    /// The Super Rally rule: a retired player rejoins after the next service.
+    pub restart: bool,
+    /// The power-stage rule: the rally's last stage pays 5-4-3-2-1 to its five fastest classified finishers.
+    pub power_stage: bool,
     /// The AI entrants besides the player.
     pub field_size: u8,
     /// Draws the itinerary, the weather and the field: the same seed and stages build the same event.
@@ -136,6 +140,8 @@ impl Preset {
             skill: Skill::Professional,
             difficulty: 0.6,
             adaptive: false,
+            restart: true,
+            power_stage: false,
             field_size: 12,
             seed,
         };
@@ -155,6 +161,7 @@ impl Preset {
                 length: Length::Season { rallies: 6, stages: 6 },
                 surfaces: Surfaces::Mixed,
                 weather: Weather::Changeable,
+                power_stage: true,
                 ..base
             },
             // A seeded mix of everything else (length, pool, surfaces, daylight, weather).
@@ -187,7 +194,9 @@ impl Preset {
                     1 => Weather::Changeable,
                     _ => Weather::Wet,
                 };
-                EventConfig { length, pool, surfaces, daylight, weather, ..base }
+                // A random season pays the power-stage bonus, shorter events do not.
+                let power_stage = matches!(length, Length::Season { .. });
+                EventConfig { length, pool, surfaces, daylight, weather, power_stage, ..base }
             }
         }
     }

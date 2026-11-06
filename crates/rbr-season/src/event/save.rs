@@ -8,7 +8,7 @@ impl Event {
         let mut out = format!("{SAVE_HEAD}\n");
         let c = &self.config;
         out.push_str(&format!(
-            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
+            "C|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}\n",
             esc(&c.class),
             esc(&c.car),
             length_save(&c.length),
@@ -22,7 +22,9 @@ impl Event {
             c.field_size,
             c.seed,
             skill_save(c.skill),
-            c.team
+            c.team,
+            if c.restart { 1 } else { 0 },
+            if c.power_stage { 1 } else { 0 }
         ));
         out.push_str(&format!("P|{}\n", self.pace));
         for rally in &self.rallies {
@@ -149,11 +151,15 @@ impl Event {
         out
     }
 
-    /// An event read back from [`Event::save`]'s text.
+    /// An event read back from [`Event::save`]'s text. A `rbr-season 3` text loads too, with restart and the power
+    /// stage off.
     pub fn load(text: &str) -> Result<Event, String> {
         let mut lines = text.lines();
+        // A v3 save has no restart or power-stage fields on its config line.
+        let mut old = false;
         match lines.next() {
             Some(SAVE_HEAD) => {}
+            Some("rbr-season 3") => old = true,
             Some(head) if head.starts_with("rbr-season ") => {
                 return Err(format!("an older save ({head}): not readable"))
             }
@@ -179,7 +185,7 @@ impl Event {
             let mut f = Fields::new(&parts);
             match f.next().unwrap_or("") {
                 "C" => {
-                    f.expect(14, "config")?;
+                    f.expect(if old { 14 } else { 16 }, "config")?;
                     let (class, car) = (f.text()?, f.text()?);
                     let length = length_load(f.raw()?)?;
                     let pool = pool_load(f.raw()?)?;
@@ -196,6 +202,21 @@ impl Event {
                     let (field_size, seed) = (f.num("field size")?, f.num("seed")?);
                     let skill = skill_load(f.raw()?)?;
                     let team = f.num("team")?;
+                    let (restart, power_stage) = if old {
+                        (false, false)
+                    } else {
+                        let restart = match f.raw()? {
+                            "1" => true,
+                            "0" => false,
+                            _ => return Err("bad restart".to_owned()),
+                        };
+                        let power_stage = match f.raw()? {
+                            "1" => true,
+                            "0" => false,
+                            _ => return Err("bad power stage".to_owned()),
+                        };
+                        (restart, power_stage)
+                    };
                     config = Some(EventConfig {
                         class,
                         car,
@@ -209,6 +230,8 @@ impl Event {
                         skill,
                         difficulty,
                         adaptive,
+                        restart,
+                        power_stage,
                         field_size,
                         seed,
                     });
@@ -389,7 +412,7 @@ impl Event {
 }
 
 /// The save's first line.
-const SAVE_HEAD: &str = "rbr-season 3";
+const SAVE_HEAD: &str = "rbr-season 4";
 
 /// A save line's fields in order, read as the writer wrote them.
 struct Fields<'a> {
