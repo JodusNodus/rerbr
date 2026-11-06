@@ -619,14 +619,17 @@ fn shade_stage(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
     var sun_seen = 1.0;
     var colour: vec3<f32>;
     if (own) {
-        // The sun's or, once it is down, the moon's share past the shadows.
-        sun_seen = own_sun_seen(v, under_cloud);
-        // A crown's own leaves shade it softly, rather than its cards each other (`crown_sun_seen`).
+        // The sun's or, once it is down, the moon's share past the shadows; a crown's own leaves shade it softly,
+        // rather than its cards each other (`crown_sun_seen`). Only the one taken is worked out (both cost a shadow
+        // filter); the crown's radii, from the slopes, in uniform control flow.
+        var radii = vec3<f32>(1.0);
         if (mode.cutout != 0u && !second_draw()) {
-            let crown = crown_sun_seen(v, under_cloud, crown_radii(v));
-            if (is_crown(v)) {
-                sun_seen = crown;
-            }
+            radii = crown_radii(v);
+        }
+        if (!second_draw() && is_crown(v)) {
+            sun_seen = crown_sun_seen(v, under_cloud, radii);
+        } else {
+            sun_seen = own_sun_seen(v, under_cloud);
         }
         // Lit in linear light (`own_light`), then back to the display colour the rest of the frame works in.
         colour = pow(own_light(v, sun_seen, under_cloud) * albedo, vec3<f32>(1.0 / 2.2));
