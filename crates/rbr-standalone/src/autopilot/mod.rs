@@ -90,6 +90,12 @@ const BOG_STEPS: u32 = 100;
 /// Under NGP the throttle while the driven wheels spin (`SLIP`) above `BOG_SPEED`: full throttle spun the rear-driven
 /// Escort Mk II off the road on gravel.
 const TRACTION: f32 = 0.5;
+/// Full throttle in too tall a gear with the engine below torque and the car barely moving: loose ground lugs it
+/// down (gravel circles stall in second at 500 rad/s), so downshift to keep it pulling. Only in the measurement
+/// modes (`free`), so race and lesson driving keep the cruising `SHIFT_DOWN` floor; the tarmac pace and circle
+/// runs never drop here (their second-gear lugging stays above `LUG_SPEED`).
+const LUG_ENGINE: f32 = 600.0;
+const LUG_SPEED: f32 = 12.0;
 const FIRST: u32 = 2;
 const TOP_GEAR: u32 = 7;
 /// Steps driven on (braking) after the finish.
@@ -859,7 +865,10 @@ impl<'a> Driver<'a> {
                         || (sense.gear >= FIRST && sense.gear < TOP_GEAR && sense.engine > up && !spinning)
                     {
                         flags = self.shift(step, SHIFT_GAP, 0x01);
-                    } else if sense.gear > FIRST && sense.engine < SHIFT_DOWN {
+                    } else if sense.gear > FIRST
+                        && (sense.engine < SHIFT_DOWN
+                            || (self.free() && self.pulling && sense.engine < LUG_ENGINE && speed < LUG_SPEED))
+                    {
                         flags = self.shift(step, SHIFT_GAP, 0x02);
                     }
                 }

@@ -207,6 +207,33 @@ fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
 }
 
 #[test]
+fn lugging_downshifts_in_the_measurement_modes_only() {
+    // Loose ground lugs the engine down in too tall a gear (a gravel circle stalls in second at 500
+    // rad/s): with full throttle on, below torque and barely moving, the measurement driver (`free`)
+    // takes a gear down to keep pulling, while the plain driver keeps the cruising floor.
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let lug = |gear: u32, speed: f32, engine: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, 1.0, 0.0], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear,
+        engine,
+        held: false,
+    };
+    let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
+    flat.control(1000, &lug(FIRST, 20.0, 700.0), false);
+    assert!(flat.pulling);
+    let q = flat.control(1200, &lug(FIRST + 2, 10.0, 500.0), false);
+    assert_eq!(q.flags, 0x02);
+    // At circle speed the same engine lug is fine: no pulse.
+    let q = flat.control(1400, &lug(FIRST + 1, 19.0, 500.0), false);
+    assert_eq!(q.flags, 0x00);
+    let mut plain = driver(&track, TOP_SPEED);
+    plain.control(1000, &lug(FIRST, 20.0, 700.0), false);
+    let q = plain.control(1200, &lug(FIRST + 2, 10.0, 500.0), false);
+    assert_eq!(q.flags, 0x00);
+}
+
+#[test]
 fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
     let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
     let half = std::f32::consts::FRAC_1_SQRT_2;
