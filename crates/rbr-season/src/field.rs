@@ -147,8 +147,9 @@ fn driver(name: &str, codriver: &str, difficulty: f32, rng: &mut CrtRand) -> Dri
     }
 }
 
-/// `size` entrants for `difficulty` (0 to 1), driving `cars` (catalog keys of the class; repeated as needed), seated in
-/// the roster's teams and cars.
+/// `size` entrants for `difficulty` (0 to 1), seated two to a team in the roster's teams and cars. Team-mates drive
+/// the same model, as a works team enters: the teams take `cars` (catalog keys of the class) in the seed's order,
+/// repeated when there are more teams than models.
 pub fn field(
     cars: &[String],
     size: usize,
@@ -162,6 +163,12 @@ pub fn field(
     for i in (1..names.len()).rev() {
         let j = (rng.draw() as usize) % (i + 1);
         names.swap(i, j);
+    }
+    let mut models: Vec<&String> = cars.iter().collect();
+    let mut order = CrtRand::srand(seed ^ 0xCA25);
+    for i in (1..models.len()).rev() {
+        let j = (order.draw() as usize) % (i + 1);
+        models.swap(i, j);
     }
     let mut entrants = Vec::with_capacity(size);
     let mut contenders = Vec::with_capacity(size);
@@ -180,7 +187,7 @@ pub fn field(
         let quality = (driver.technique + driver.speed + driver.skills.iter().sum::<i32>() / 4) as f32 / 15.0;
         entrants.push(Entrant {
             name: name.to_owned(),
-            car: if cars.is_empty() { format!("car-{}", i + 1) } else { cars[i % cars.len()].clone() },
+            car: if models.is_empty() { format!("car-{}", i + 1) } else { models[(i / 2) % models.len()].clone() },
             skill: 0.91 + 0.09 * quality,
             consistency: 0.55 + 0.45 * driver.technique as f32 / 5.0,
         });
@@ -272,8 +279,17 @@ mod tests {
             assert!((1..=5).contains(&c.driver.driver.technique) && c.driver.driver.condition == 9);
             assert!(c.team < 7 && c.car.car.name.starts_with('c'));
         }
-        // Two drivers to a team.
+        // Two drivers to a team, team-mates in the same model, every model entered.
         assert_eq!((c[0].team, c[1].team, c[2].team), (0, 0, 1));
+        assert!(e.chunks(2).all(|pair| pair[0].car == pair[1].car));
+        let models: Vec<String> = (0..5).map(|k| format!("m{k}")).collect();
+        let (e, _) = field(&models, 12, 0.6, 7, &r);
+        let mut entered: Vec<&str> = e.iter().map(|e| e.car.as_str()).collect();
+        entered.dedup();
+        assert_eq!(entered.len(), 6, "{entered:?}");
+        entered.sort();
+        entered.dedup();
+        assert_eq!(entered.len(), 5, "{entered:?}");
     }
 
     #[test]

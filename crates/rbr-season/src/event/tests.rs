@@ -112,28 +112,60 @@ fn finish(time: f32) -> PlayerResult {
 fn the_itinerary_respects_pool_surface_and_length() {
     let pool = mixed_pool();
     let cars = vec!["car".to_owned()];
-    // Only gravel, retail only: the two Himalaya stages, twice over for a 4-stage rally.
+    // Only gravel, retail only: the two Himalaya stages as a loop run twice.
     let mut config = Preset::QuickRally.config("Rally2", "car", 5);
     config.length = Length { rallies: 1, legs: 1, stages: 4 };
     config.pool = StagePool::Retail;
     let event = build(config, &pool, &cars);
     assert_eq!(event.rallies.len(), 1);
-    assert_eq!(event.rallies[0].stages.len(), 4);
     assert!(event.rallies[0].stages.iter().all(|s| !s.stage.community));
     assert!(event.rallies[0].stages.iter().all(|s| s.stage.surface == crate::config::Surface::Gravel));
-    // No repeat while the pool suffices.
     let keys: Vec<&str> = event.rallies[0].stages.iter().map(|s| s.stage.key.as_str()).collect();
-    let mut config = Preset::QuickRally.config("Rally2", "car", 5);
-    config.length = Length { rallies: 1, legs: 1, stages: 2 };
-    config.pool = StagePool::Retail;
-    let event = build(config, &pool, &cars);
-    assert_eq!(keys.len(), 4);
+    assert!(keys.len() == 4 && keys[0] != keys[1] && keys[..2] == keys[2..], "{keys:?}");
+}
+
+#[test]
+fn each_leg_is_a_loop_run_twice_at_one_location_a_round() {
+    // Four locations of three gravel stages: a season of four rallies visits each once.
+    let pool = gravel_pool();
+    let mut config = Preset::Season.config("Rally2", "car", 8);
+    config.surfaces = crate::config::Surfaces::Only(crate::config::Surface::Gravel);
+    config.length = Length { rallies: 4, legs: 1, stages: 5 };
+    let event = build(config.clone(), &pool, &["car".to_owned()]);
+    let mut homes: Vec<&str> = Vec::new();
+    for rally in &event.rallies {
+        // A B C, the midday service, A B.
+        let keys: Vec<&str> = rally.stages.iter().map(|s| s.stage.key.as_str()).collect();
+        assert!(keys[0] != keys[1] && keys[1] != keys[2] && keys[0] != keys[2], "{keys:?}");
+        assert_eq!(keys[..2], keys[3..], "{keys:?}");
+        assert_eq!(rally.stages[2].service_after, Some(20));
+        assert!(rally.stages.iter().all(|s| s.stage.family == rally.stages[0].stage.family), "{keys:?}");
+        homes.push(&rally.stages[0].stage.family);
+    }
+    homes.sort();
+    homes.dedup();
+    assert_eq!(homes.len(), 4, "a location once a season");
+    // Each leg's loop is new: two legs of three, A B A overnight C D C.
+    config.length = Length { rallies: 1, legs: 2, stages: 6 };
+    let event = build(config, &pool, &["car".to_owned()]);
     let keys: Vec<&str> = event.rallies[0].stages.iter().map(|s| s.stage.key.as_str()).collect();
-    assert_eq!(keys.len(), 2);
-    let mut sorted = keys.clone();
-    sorted.sort();
-    sorted.dedup();
-    assert_eq!(sorted.len(), 2, "no repeats when the pool suffices: {keys:?}");
+    assert!(keys[0] != keys[1] && keys[..1] == keys[2..3], "{keys:?}");
+    assert!(keys[3] != keys[4] && keys[3..4] == keys[5..], "{keys:?}");
+    assert!(!keys[..2].contains(&keys[3]) && !keys[..2].contains(&keys[4]), "{keys:?}");
+}
+
+#[test]
+fn a_mixed_season_has_every_surface_of_the_pool() {
+    let pool = mixed_pool();
+    for seed in 0..10 {
+        let mut config = Preset::Season.config("Rally2", "car", seed);
+        config.length = Length { rallies: 3, legs: 1, stages: 2 };
+        let event = build(config, &pool, &["car".to_owned()]);
+        let mut surfaces: Vec<u8> = event.rallies.iter().map(|r| r.stages[0].stage.surface as u8).collect();
+        surfaces.sort();
+        surfaces.dedup();
+        assert_eq!(surfaces.len(), 3, "seed {seed}");
+    }
 }
 
 #[test]

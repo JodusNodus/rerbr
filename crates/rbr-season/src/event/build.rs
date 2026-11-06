@@ -2,6 +2,7 @@
 //! services, and the field seated in the roster's teams and cars.
 
 use super::*;
+use crate::config::Surface;
 
 /// The mid-leg service (minutes).
 const SERVICE_MID: u32 = 20;
@@ -77,58 +78,16 @@ impl Event {
             return Err("no stages in the pool".to_owned());
         }
         let mut rng = CrtRand::srand(config.seed);
-        // Mixed surfaces draw one surface per rally from the pool's own.
-        let mut surfaces: Vec<crate::config::Surface> = pool.iter().map(|s| s.surface).collect();
-        surfaces.sort_by_key(|s| *s as u8);
-        surfaces.dedup_by_key(|s| *s as u8);
-        let mut rally_surface = Vec::new();
-        for _ in 0..rallies {
-            match config.surfaces {
-                Surfaces::Only(s) => {
-                    if !surfaces.contains(&s) {
-                        return Err(format!("no {:?} stages in the pool", s.name()));
-                    }
-                    rally_surface.push(s);
-                }
-                Surfaces::Mixed => rally_surface.push(surfaces[(rng.draw() as usize) % surfaces.len()]),
-            }
-        }
+        let rally_surface = match config.surfaces {
+            Surfaces::Only(s) if pool.iter().any(|p| p.surface == s) => vec![s; rallies as usize],
+            Surfaces::Only(s) => return Err(format!("no {:?} stages in the pool", s.name())),
+            Surfaces::Mixed => calendar(&pool, rallies as usize, &mut rng),
+        };
+        let sizes = leg_sizes(count as usize, legs as usize);
+        let mut visited: Vec<&str> = Vec::new();
         let mut built = Vec::new();
         for &surface in &rally_surface {
-            let mut candidates: Vec<&StageRef> = pool.iter().filter(|s| s.surface == surface).copied().collect();
-            if candidates.is_empty() {
-                return Err(format!("no {:?} stages in the pool", surface.name()));
-            }
-            // Prefer one stage family (the same location): the fullest, ties drawn by the seed.
-            let mut families: Vec<(&str, usize)> = Vec::new();
-            for s in &candidates {
-                let f = s.family.as_str();
-                match families.iter_mut().find(|(k, _)| *k == f) {
-                    Some(slot) => slot.1 += 1,
-                    None => families.push((f, 1)),
-                }
-            }
-            let top = families.iter().map(|(_, n)| *n).max().unwrap_or(0);
-            let fullest: Vec<&str> = families.into_iter().filter(|(_, n)| *n == top).map(|(k, _)| k).collect();
-            let home = fullest[(rng.draw() as usize) % fullest.len()];
-            let refill: Vec<StageRef> = candidates.iter().map(|s| (*s).clone()).collect();
-            let (mut first, mut rest): (Vec<&StageRef>, Vec<&StageRef>) =
-                candidates.drain(..).partition(|s| s.family.as_str() == home);
-            // Shuffle each group with the seed, then take without repeating unless the pool is too small.
-            for group in [&mut first, &mut rest] {
-                for i in (1..group.len()).rev() {
-                    let j = (rng.draw() as usize) % (i + 1);
-                    group.swap(i, j);
-                }
-            }
-            let mut picked: Vec<StageRef> = Vec::new();
-            while picked.len() < count as usize {
-                match first.pop().or_else(|| rest.pop()) {
-                    Some(s) => picked.push((*s).clone()),
-                    // Too small a pool: run the rally's stages again.
-                    None => picked.extend(refill.iter().take(count as usize - picked.len()).cloned()),
-                }
-            }
+            let picked = pick_stages(&pool, surface, &sizes, &mut visited, &mut rng);
             built.push(draw_rally(&config, &picked, legs, &mut rng, profile));
         }
         let (field, contenders) =
@@ -153,6 +112,80 @@ impl Event {
             turn: Turn::Welcome { rally: 0 },
         })
     }
+}
+
+/// Shuffles `items` with the seed.
+fn shuffle<T>(items: &mut [T], rng: &mut CrtRand) {
+    for i in (1..items.len()).rev() {
+        let j = (rng.draw() as usize) % (i + 1);
+        items.swap(i, j);
+    }
+}
+
+/// The locations (stage families) on `surface`, each with its stages, in the pool's order.
+fn locations<'a>(pool: &[&'a StageRef], surface: Surface) -> Vec<(&'a str, Vec<&'a StageRef>)> {
+    let mut found: Vec<(&str, Vec<&StageRef>)> = Vec::new();
+    for s in pool.iter().copied().filter(|s| s.surface == surface) {
+        match found.iter_mut().find(|(k, _)| *k == s.family) {
+            Some((_, stages)) => stages.push(s),
+            None => found.push((s.family.as_str(), vec![s])),
+        }
+    }
+    found
+}
+
+/// A season's surfaces on mixed: as a calendar, every surface of the pool once where the rallies allow, the rest
+/// drawn by how many locations each surface has (gravel mostly, as the WRC's), in a shuffled order.
+fn calendar(pool: &[&StageRef], rallies: usize, rng: &mut CrtRand) -> Vec<Surface> {
+    let mut surfaces: Vec<Surface> = pool.iter().map(|s| s.surface).collect();
+    surfaces.sort_by_key(|s| *s as u8);
+    surfaces.dedup();
+    shuffle(&mut surfaces, rng);
+    let weights: Vec<usize> = surfaces.iter().map(|&s| locations(pool, s).len()).collect();
+    let mut rounds: Vec<Surface> = surfaces.iter().copied().take(rallies).collect();
+    while rounds.len() < rallies {
+        let (mut at, mut k) = ((rng.draw() as usize) % weights.iter().sum::<usize>(), 0);
+        while at >= weights[k] {
+            at -= weights[k];
+            k += 1;
+        }
+        rounds.push(surfaces[k]);
+    }
+    shuffle(&mut rounds, rng);
+    rounds
+}
+
+/// One rally's stages on `surface` for legs of `sizes`. The rally keeps to one location, as real rallies do: one not
+/// yet `visited` this season where the pool allows, with stages enough for a loop each leg where one has. Each leg
+/// is a loop of new stages run twice, the midday service between the passes (the second pass a stage short on an
+/// odd leg); the rest of the surface fills a location too small, and a pool too small runs stages again.
+fn pick_stages<'a>(
+    pool: &[&'a StageRef],
+    surface: Surface,
+    sizes: &[usize],
+    visited: &mut Vec<&'a str>,
+    rng: &mut CrtRand,
+) -> Vec<StageRef> {
+    let loops: Vec<usize> = sizes.iter().map(|n| n.div_ceil(2)).collect();
+    let need: usize = loops.iter().sum();
+    let mut places = locations(pool, surface);
+    // The best places: unvisited first, then those with stages for every loop; the seed draws among them.
+    let rank = |(family, stages): &(&str, Vec<&StageRef>)| (visited.contains(family), stages.len() < need);
+    let best = places.iter().map(rank).min().expect("the surface has stages");
+    places.retain(|p| rank(p) == best);
+    let (home, mut order) = places.swap_remove((rng.draw() as usize) % places.len());
+    visited.push(home);
+    shuffle(&mut order, rng);
+    let mut rest: Vec<&StageRef> = pool.iter().copied().filter(|s| s.surface == surface && s.family != home).collect();
+    shuffle(&mut rest, rng);
+    order.extend(rest);
+    let mut next = order.iter().cycle();
+    let mut picked = Vec::new();
+    for (&size, &first) in sizes.iter().zip(&loops) {
+        let pass: Vec<&StageRef> = next.by_ref().take(first).copied().collect();
+        picked.extend(pass.iter().chain(&pass).take(size).map(|s| (*s).clone()));
+    }
+    picked
 }
 
 /// The stages of each of `legs` legs over `stages`, the earlier legs the longer.

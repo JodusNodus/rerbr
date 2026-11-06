@@ -32,7 +32,9 @@ the layer only reads drivelines and hands the launcher times, standings and save
   retirements, the inspired roll, false starts 10/60/180 s then out, temperaments; wet is the engine's +9 %). Drivers
   are drawn by difficulty with means rising with it (technique 2.9 + 1.1 d, skills 2.6 + d, speed 2 + 1.4 d,
   endurance 3 + 0.8 d, spreads from the retail `aidrv.ini`'s fourteen drivers) and the retail temperament mix (mostly 3,
-  then 1, 0, 4). Entrant `i` takes team `i / 2` and that team's car, as the season seats two drivers to a team. The
+  then 1, 0, 4). Entrant `i` takes team `i / 2` and that team's car, as the season seats two drivers to a team; team-mates drive
+  the same catalog model, the teams taking the class's models in the seed's order (the AI's pace comes from the
+  roster car, the model is the entry's label). The
   difficulty also sets the field's `pace` over the pars (1 at 1, 1.087 at 0); adaptive moves it 0.003 a stage.
   `Entrant.skill`/`consistency` are display summaries of the driver record.
 - AI service: after a stage with a service the cars get `ai::service` (the manager's order, repairs at the team's cost
@@ -47,8 +49,12 @@ the layer only reads drivelines and hands the launcher times, standings and save
   ...", without the manager orders (`run::news`): a driver's accidents on a stage summed into one line, totals under
   5 s left out, the first "shaken" per driver; "an uneventful stage" only from a stage's log with nothing to tell, never
   a service's. They are stored as text in the save.
-- `event`: per rally one surface (Mixed draws one per rally from the pool's own), one stage family preferred
-  (`StageRef::family`: an RSF stage's country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), sampled without repeating unless the pool is too small. Rally
+- `event`: per rally one surface (Mixed as a calendar: every surface of the pool once where the rallies allow, the
+  rest drawn by each surface's number of locations, shuffled) and one location (`StageRef::family`: an RSF stage's
+  country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), one not yet visited in the event first,
+  then one with stages for every loop, the seed drawing among the best. Each leg is a loop of new stages run twice
+  with the midday service between the passes (A B C, service, A B C; an odd leg's second pass a stage short), as
+  real rallies run; the surface's other stages fill a small location, and a pool too small runs stages again. Rally
   names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). `Length { rallies, legs, stages }`: one
   rally is an event of its own, more a championship; each rally's stages split over its legs (a leg is a day, the
   earlier legs the longer). Presets after real formats: Quick rally 1x1 leg x6 (a national one-day rally), Rally
