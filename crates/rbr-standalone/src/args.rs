@@ -33,6 +33,12 @@ pub struct Args {
     /// `--flat-out` (with `--autopilot`): hold full throttle without braking for pace measurement (the steering
     /// and the gear shifts stay the controller's; `Driver::flat_out`).
     pub flat_out: bool,
+    /// `--brake-from M/S` (with `--autopilot`): full foot brake once the speed reaches this, to a standstill
+    /// (`Driver::brake_at`, a pace-measurement brake test; combine with `--flat-out`).
+    pub brake_from: Option<f32>,
+    /// `--circle X,Y,R` (with `--autopilot`): drive the steady-state circle of centre X,Y and radius R (m),
+    /// counter-clockwise, the target speed ramping up until the car lets go (`Driver::circle`).
+    pub circle: Option<autopilot::Circle>,
     /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear and position.
     pub trace_speed: Option<PathBuf>,
     pub boot: bool,
@@ -135,7 +141,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--trace-speed FILE] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R] [--trace-speed FILE] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -203,6 +209,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 }
             }
             "--top-speed" => args.top_speed = Some(parsed("--top-speed", &value)?),
+            "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
+            "--circle" => args.circle = Some(value.parse()?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
             "--aim" => args.aim = Some(value.parse()?),
             "--snapshot" => args.snapshots.push(value),
@@ -431,8 +439,17 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if (args.flat_out || args.trace_speed.is_some()) && args.autopilot.is_none() {
         return Err("--flat-out and --trace-speed need --autopilot".into());
     }
-    if args.flat_out && args.lesson.is_some() {
-        return Err("--flat-out takes no --school (a lesson brakes and stops)".into());
+    if args.circle.is_some() && args.autopilot.is_none() {
+        return Err("--circle needs --autopilot".into());
+    }
+    if args.brake_from.is_some() && args.autopilot.is_none() {
+        return Err("--brake-from needs --autopilot".into());
+    }
+    if (args.flat_out || args.circle.is_some() || args.brake_from.is_some()) && args.lesson.is_some() {
+        return Err("--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)".into());
+    }
+    if args.circle.is_some() && args.aim.is_some() {
+        return Err("--circle takes no --aim (it steers the circle itself)".into());
     }
     let rsf = match (&stage, stage_dir, rsf_stage) {
         (None, Some(dir), None) => Some(rsf::open(&dir)?),
@@ -604,6 +621,15 @@ mod tests {
             (format!("{BOOT} --flat-out --trace-speed T"), |a| {
                 assert!(a.flat_out);
                 assert_eq!(a.trace_speed, Some(PathBuf::from("T")));
+            }),
+            (format!("{BOOT} --flat-out --brake-from 27.78"), |a| {
+                assert_eq!(a.brake_from, Some(27.78));
+            }),
+            (format!("{BOOT} --circle -260,120,40 --top-speed 60"), |a| {
+                assert_eq!(
+                    a.circle,
+                    Some(autopilot::Circle { center: [-260.0, 120.0], radius: 40.0 })
+                );
             }),
             (format!("{LIVE} --replay F --replay-pace free"), |a| {
                 assert_eq!(a.replay_pace, live::Pace::Free)
@@ -809,6 +835,11 @@ mod tests {
             (format!("{REC} --aim 1,2"), "--aim needs --autopilot"),
             (format!("{REC} --flat-out"), "--flat-out and --trace-speed need --autopilot"),
             (format!("{REC} --trace-speed T"), "--flat-out and --trace-speed need --autopilot"),
+            (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
+            (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
+            (format!("{REC} --autopilot OUT --circle 0,0"), "--circle 0,0: want X,Y,R with R > 0"),
+            (format!("{REC} --autopilot OUT --circle 0,0,-5"), "--circle 0,0,-5: want X,Y,R with R > 0"),
+            (format!("{REC} --autopilot OUT --circle 0,0,40 --aim 1,2"), "--circle takes no --aim (it steers the circle itself)"),
             ("--recording R --snapshot S --data D".into(), "--stage, --stage-dir or --rsf-stage is required"),
             (format!("{REC} --stage-dir DIR"), "give one of --stage, --stage-dir and --rsf-stage"),
         ];
@@ -838,7 +869,7 @@ mod tests {
             (format!("{school} 2 --tyre 4"), "--school takes no --tyre (the lesson sets it)"),
             (format!("{school} 2 --championship rookie"), "--school takes no --championship (the lesson sets it)"),
             (format!("{REC} --school 2"), "--school needs --boot"),
-            (format!("{school} 2 --flat-out"), "--flat-out takes no --school (a lesson brakes and stops)"),
+            (format!("{school} 2 --flat-out"), "--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)"),
         ] {
             assert_eq!(run_str(&argv, None).err().as_deref(), Some(want), "{argv}");
         }

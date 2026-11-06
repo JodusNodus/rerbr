@@ -180,6 +180,57 @@ fn flat_out_holds_the_top_speed_and_never_brakes() {
 }
 
 #[test]
+fn circle_takes_a_centre_and_a_positive_radius() {
+    assert_eq!("-260,120,40".parse(), Ok(Circle { center: [-260.0, 120.0], radius: 40.0 }));
+    assert!("1,2".parse::<Circle>().is_err());
+    assert!("1,2,-3".parse::<Circle>().is_err());
+}
+
+#[test]
+fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    // On a 40 m circle about the origin at (40, 0), heading along the counter-clockwise tangent (+y).
+    let sense = Sense {
+        pose: CarPose {
+            position: [40.0, 0.0, 0.0],
+            orientation: [0.0, 0.0, 1.0, 0.0],
+            velocity: [0.0, 8.0, 0.0],
+        },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+    };
+    let mut driver = driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 });
+    assert_eq!(driver.target_speed(0.0), 8.0);
+    let q = driver.control(1000, &sense, false);
+    assert_eq!(q.brake, 0);
+    assert!(q.steering.abs() < 40, "steering {}", q.steering);
+    assert!(driver.circle_t > 0.0);
+    assert!(driver.target_speed(0.0) > 8.0);
+}
+
+#[test]
+fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |speed: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+    };
+    let mut driver = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
+    let q = driver.control(1000, &sense(10.0), false);
+    assert!(!driver.braking);
+    assert_eq!((q.throttle, q.brake), (255, 0));
+    let q = driver.control(1001, &sense(25.0), false);
+    assert!(driver.braking);
+    assert_eq!((q.throttle, q.brake), (0, 255));
+}
+
+#[test]
 fn a_tangent_far_longer_than_its_chord_does_not_loop() {
     // RSF 302's start: a 10 m segment ending on a 160 m tangent (the next segment's chord).
     let mut track = vec![record(0.0, 0.0), record(10.0, 10.0), record(170.0, 170.0)];
