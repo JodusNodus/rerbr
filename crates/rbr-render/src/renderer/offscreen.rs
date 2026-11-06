@@ -56,7 +56,9 @@ impl Renderer {
         let view = target.create_view(&Default::default());
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let started = std::time::Instant::now();
+        let span = crate::perf_log::span("render");
         let stats = self.render(&mut encoder, &view, size, view_projection, sky_view_projection);
+        drop(span);
         if let Some(profiler) = &mut self.profiler {
             profiler.add("frame (profiled)", started.elapsed());
         }
