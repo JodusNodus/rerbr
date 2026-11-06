@@ -231,9 +231,12 @@ fn fs_blur(v: Out) -> @location(0) vec4<f32> {
 // in `BEAM_STEPS` steps spread evenly in the angle the ray sweeps as seen from the lamp (equi-angular sampling, Kulla
 // and Fajardo 2012), so that the metres about the lamp, where its light peaks, get most of them: steps spread along
 // the ray left too few there, which changed with each pixel's depth (rings about the view's centre, bands at the
-// stage's edges). Alpha is the texel's depth, for the composite's upsampling (`shafts_at` in `post.wgsl`).
+// stage's edges). The rear lamps' faint, knee-held light takes `REAR_STEPS` (at 12 they cost as much as the
+// headlights; at 4 a night chase in heavy fog changed by at most 3/255, about the lamps). Alpha is the texel's depth,
+// for the composite's upsampling (`shafts_at` in `post.wgsl`).
 const BEAM_REACH: f32 = 120.0;
 const BEAM_STEPS: i32 = 12;
+const REAR_STEPS: i32 = 4;
 const BEAM_FORWARD: f32 = 0.3;
 const BEAM_AIR: f32 = 0.045;
 const BEAM_NEAR: f32 = 9.0;
@@ -269,8 +272,9 @@ fn fs_beams(v: Out) -> @location(0) vec4<f32> {
         let swept = atan((reach - along) / wide) - first;
         let beam_lamp = lamp.forward.w != 0.0;
         var light = vec3<f32>(0.0);
-        for (var s = 0; s < BEAM_STEPS; s++) {
-            let t = along + wide * tan(first + swept * (f32(s) + 0.5) / f32(BEAM_STEPS));
+        let steps = select(REAR_STEPS, BEAM_STEPS, beam_lamp);
+        for (var s = 0; s < steps; s++) {
+            let t = along + wide * tan(first + swept * (f32(s) + 0.5) / f32(steps));
             let p = eye + dir * t;
             let from_lamp = p - lamp.position.xyz;
             let d2 = dot(from_lamp, from_lamp);
@@ -283,7 +287,7 @@ fn fs_beams(v: Out) -> @location(0) vec4<f32> {
             }
             light += lamp_toward(lamp, p) * (d2 + 0.25) * phase * exp(-air * (sqrt(d2) + t)) * shadow;
         }
-        let lit = light * swept / (wide * f32(BEAM_STEPS)) * air * BEAM_AIR * 0.25;
+        let lit = light * swept / (wide * f32(steps)) * air * BEAM_AIR * 0.25;
         if (beam_lamp) {
             sum += lit;
         } else {
