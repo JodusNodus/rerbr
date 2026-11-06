@@ -66,11 +66,16 @@ impl Renderer {
             if let Some(effects) = &mut self.effects {
                 effects.resize(&self.device, &self.depth_view);
             }
+            self.particle_target = self.effects.as_ref().and_then(|effects| {
+                let reduced = |depth: &wgpu::TextureView| effects.reduced_group(&self.device, depth);
+                crate::particle_target::ParticleTarget::new(&self.device, size, &self.depth_view, reduced)
+            });
             self.sun_mask.resize(&self.device, &self.depth_view, size);
             self.cloud_volume.resize(&self.device, &self.depth_view, size);
             if let (Some(taa), Some(motion)) = (&mut self.taa, &mut self.motion) {
                 motion.resize(&self.device, size);
                 taa.resize(&self.device, size, output, &self.depth_view, motion.view());
+                taa.set_layer(&self.device, self.particle_target.as_ref().map(|target| target.layer_views()));
             }
         }
         // Under the temporal anti-aliasing the main view's draws are jittered; the sun's cascades, the mirrors and
@@ -120,8 +125,9 @@ impl Renderer {
         if let Some(particles) = &self.particles {
             particles.prepare(&self.queue, effects_view, &lit);
         }
-        if let Some(glass) = &self.glass {
-            glass.prepare(&self.queue, drawn[0], size, &lit, self.outside_view, self.wetness, self.cascades.as_ref());
+        if let Some(glass) = &mut self.glass {
+            let cascades = self.cascades.as_ref();
+            glass.prepare(&self.device, &self.queue, drawn[0], size, &lit, self.outside_view, self.wetness, cascades);
         }
         let day = self.day_light();
         if let Some(effects) = &mut self.effects {
@@ -231,17 +237,26 @@ impl Renderer {
             taa.keep(encoder);
             if self.late_effects() {
                 let t = mark(&mut profiler, encoder);
-                self.draw_late_effects(encoder, taa.raw());
+                self.draw_late_effects(encoder, taa.raw(), view_projection, false);
                 span(&mut profiler, encoder, "particles, rain", t);
             }
         }
+        // Else in rain on a tall frame the mist's half-size layer is drawn first, and the resolve lays it over the frame.
+        let mist = (self.particle_target.as_ref().zip(self.effects.as_ref()))
+            .filter(|(_, effects)| !upscaling && self.late_effects() && effects.rain() > 0.0)
+            .inspect(|(target, effects)| {
+                let t = mark(&mut profiler, encoder);
+                target.draw_mist((&self.queue, encoder), effects);
+                span(&mut profiler, encoder, "particles, rain", t);
+            })
+            .is_some();
         if let Some(taa) = &mut self.taa {
             let t = mark(&mut profiler, encoder);
-            taa.resolve(encoder, &self.post.scene);
+            taa.resolve(encoder, &self.post.scene, mist);
             span(&mut profiler, encoder, "taa", t);
             if self.late_effects() && !upscaling {
                 let t = mark(&mut profiler, encoder);
-                self.draw_late_effects(encoder, &self.post.scene);
+                self.draw_late_effects(encoder, &self.post.scene, view_projection, mist);
                 span(&mut profiler, encoder, "particles, rain", t);
             }
         }
@@ -394,6 +409,9 @@ impl Renderer {
         scene: &wgpu::TextureView,
         lens: &wgpu::TextureView,
     ) {
+        if let Some(glass) = &self.glass {
+            glass.draw_half(&self.device, encoder, lens, (&self.mirrors.view, &self.mirrors.uniform));
+        }
         let attachment = self.over_attachment(encoder, target, scene);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("glass"),
@@ -421,26 +439,23 @@ impl Renderer {
         self.taa.is_some() && self.effects.is_some()
     }
 
-    /// Draws the rain and the particles over the resolved `scene`, in the unjittered view.
-    fn draw_late_effects(&self, encoder: &mut wgpu::CommandEncoder, scene: &wgpu::TextureView) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("effects over the resolve"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: scene,
-                depth_slice: None,
-                resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.depth_view,
-                depth_ops: None,
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
+    /// Draws the rain and the particles over the resolved `scene`, in the unjittered view: on a tall frame the mist
+    /// and the soft billboards at half its size (`crate::particle_target`).
+    fn draw_late_effects(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        scene: &wgpu::TextureView,
+        view_projection: Mat4,
+        mist_laid: bool,
+    ) {
+        let (particles, lamps) = (self.particles.as_ref(), self.lamps_light());
+        let reduced = self.particle_target.as_ref().zip(self.effects.as_ref()).is_some_and(|(target, effects)| {
+            let [scene, depth] = [scene, &self.depth_view];
+            target.draw((&self.queue, encoder), [scene, depth], effects, particles, lamps, view_projection, mist_laid)
         });
-        self.draw_effects(&mut pass);
+        if !reduced {
+            self.draw_effects(&mut crate::particle_target::effects_pass(encoder, scene, &self.depth_view));
+        }
     }
 
     /// Draws the rain and the particles into `pass`, which reads the depth: lit and soft with the effects

@@ -456,7 +456,8 @@ pub struct View {
     pub view_projection: Mat4,
     /// The same for the camera-anchored draws (the main view's turned only).
     pub sky_view_projection: Mat4,
-    /// The glass's box on the main view's screen, in pixels: its texture's size.
+    /// The glass's box on the main view's screen, in pixels (at most [`MOST`], and as dense as [`DENSEST`]): its texture's
+    /// size.
     pub size: (u32, u32),
 }
 
@@ -467,6 +468,9 @@ const NEAR_PAST: f32 = 0.01;
 pub const MOST: (u32, u32) = (1024, 512);
 /// Mirror textures go in steps of this, pixels, so that a moving head does not make new ones every frame.
 const STEP: u32 = 32;
+/// The most texels a mirror's image has per screen pixel's height, as screen heights (ours): on a taller screen it is
+/// drawn as on this one and magnified (at 4K two thirds of its pixels' side, the passes being mostly fill).
+pub const DENSEST: u32 = 1440;
 
 /// The view of the glass `placed`, from the main view `view_projection` (and its camera-anchored
 /// `sky_view_projection`) drawn at `screen` pixels: `None` when the glass is behind the eye, turned away, or off
@@ -495,7 +499,8 @@ pub fn view(view_projection: Mat4, sky_view_projection: Mat4, screen: (u32, u32)
     // Its size in pixels, up to a step and at most [`MOST`], and the box grown to it (the image keeps the screen's
     // texel aspect).
     let pixels = (high - low) * 0.5 * Vec2::new(screen.0 as f32, screen.1 as f32);
-    let scale = (MOST.0 as f32 / pixels.x).min(MOST.1 as f32 / pixels.y).min(1.0);
+    let densest = DENSEST as f32 / screen.1 as f32;
+    let scale = (MOST.0 as f32 / pixels.x).min(MOST.1 as f32 / pixels.y).min(densest).min(1.0);
     let side = |p: f32, most: u32| ((p * scale / STEP as f32).ceil() as u32 * STEP).clamp(STEP, most);
     let size = (side(pixels.x, MOST.0), side(pixels.y, MOST.1));
     let half = Vec2::new(size.0 as f32, size.1 as f32) / scale / Vec2::new(screen.0 as f32, screen.1 as f32);

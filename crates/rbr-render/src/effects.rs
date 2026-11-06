@@ -56,6 +56,8 @@ pub(crate) struct Effects {
     /// The frame's uniform as last written, and the mirrors' passes' own (`Effects::write_mirror`).
     written: Uniform,
     mirror_uniform: wgpu::Buffer,
+    /// The particles' reduced target's uniform (`crate::particle_target`): the frame's at its size.
+    reduced_uniform: wgpu::Buffer,
     sampler: wgpu::Sampler,
     sun_map: wgpu::TextureView,
     group: wgpu::BindGroup,
@@ -64,6 +66,8 @@ pub(crate) struct Effects {
     rain: wgpu::RenderPipeline,
     /// The rain's mist, a fullscreen draw over the frame's depth (`fs_mist`).
     mist: wgpu::RenderPipeline,
+    /// The mist into the particles' reduced target.
+    mist_reduced: wgpu::RenderPipeline,
     precipitation: Option<Precipitation>,
     /// The eye and the time of the last frame, and the eye's velocity.
     last: Option<(Vec3, f32)>,
@@ -122,6 +126,7 @@ impl Effects {
             })
         };
         let (uniform, mirror_uniform) = (buffer("effects"), buffer("mirror effects"));
+        let reduced_uniform = buffer("reduced effects");
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("effects sun"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -186,7 +191,7 @@ impl Effects {
                 cache: None,
             })
         };
-        let mist = {
+        let mist_with = |alpha: wgpu::BlendComponent| {
             let options = wgpu::PipelineCompilationOptions { constants: &constants, ..Default::default() };
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("rain mist"),
@@ -203,7 +208,7 @@ impl Effects {
                     compilation_options: options,
                     targets: &[Some(wgpu::ColorTargetState {
                         format,
-                        blend: Some(wgpu::BlendState { color: premultiplied, alpha: premultiplied }),
+                        blend: Some(wgpu::BlendState { color: premultiplied, alpha }),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
@@ -220,17 +225,26 @@ impl Effects {
                 cache: None,
             })
         };
+        // Into the particles' reduced target (`crate::particle_target`) the alpha keeps the transmittance.
+        let transmitted = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Zero,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let (mist, mist_reduced) = (mist_with(premultiplied), mist_with(transmitted));
         Effects {
             layout,
             uniform,
             written: Uniform::default(),
             mirror_uniform,
+            reduced_uniform,
             sampler,
             sun_map: sun_map.clone(),
             group,
             empty,
             rain,
             mist,
+            mist_reduced,
             precipitation: None,
             last: None,
             velocity: Vec3::ZERO,
@@ -356,6 +370,18 @@ impl Effects {
         queue.write_buffer(&self.mirror_uniform, 0, bytes_of(&uniform));
     }
 
+    /// The bind group of the particles' reduced target ([`crate::particle_target`]) reading its `depth`.
+    pub(crate) fn reduced_group(&self, device: &wgpu::Device, depth: &wgpu::TextureView) -> wgpu::BindGroup {
+        bind_group(device, &self.layout, &self.reduced_uniform, &self.sampler, depth, &self.sun_map)
+    }
+
+    /// Writes the reduced target's uniform: the frame's, for a target of `size`.
+    pub(crate) fn write_reduced(&self, queue: &wgpu::Queue, size: (u32, u32)) {
+        let (width, height) = (size.0.max(1) as f32, size.1.max(1) as f32);
+        let uniform = Uniform { screen: [width, height, 1.0 / width, 1.0 / height], ..self.written };
+        queue.write_buffer(&self.reduced_uniform, 0, bytes_of(&uniform));
+    }
+
     /// Draws the rain or snow into a mirror's `pass` with its [`Effects::mirror_group`]: the near layer only, the far
     /// one's drops under a pixel there (it took most of the mirrors' time in rain).
     pub(crate) fn draw_mirror_rain(&self, pass: &mut wgpu::RenderPass<'_>, group: &wgpu::BindGroup) {
@@ -369,12 +395,23 @@ impl Effects {
 
     /// Draws the rain or snow into `pass` (the scene with the depth read only).
     pub(crate) fn draw_rain(&self, pass: &mut wgpu::RenderPass<'_>) {
+        self.draw_mist(pass, false, &self.group);
+        self.draw_drops(pass);
+    }
+
+    /// Draws the rain's mist, when it rains, into `pass`: the frame's with its bind group, or the particles' reduced
+    /// target's (`reduced`, with [`Effects::reduced_group`]'s).
+    pub(crate) fn draw_mist(&self, pass: &mut wgpu::RenderPass<'_>, reduced: bool, group: &wgpu::BindGroup) {
         if self.rain() > 0.0 {
-            pass.set_pipeline(&self.mist);
+            pass.set_pipeline(if reduced { &self.mist_reduced } else { &self.mist });
             pass.set_bind_group(0, &self.empty, &[]);
-            pass.set_bind_group(1, &self.group, &[]);
+            pass.set_bind_group(1, group, &[]);
             pass.draw(0..3, 0..1);
         }
+    }
+
+    /// Draws the drops or flakes into `pass` (the scene with the depth read only).
+    pub(crate) fn draw_drops(&self, pass: &mut wgpu::RenderPass<'_>) {
         self.draw_with(pass, &self.rain, &self.group, NEAR_COUNT + FAR_COUNT);
     }
 

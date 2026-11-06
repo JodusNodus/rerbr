@@ -61,6 +61,8 @@ struct MirrorViews {
 @group(0) @binding(5) var mirror_images: texture_2d_array<f32>;
 @group(0) @binding(6) var<uniform> mirror_views: MirrorViews;
 const WINDSCREEN_MIRROR: u32 = 4u;
+// The film's cells drawn at half size (`glass::gpu::HALF_FILM_FROM`), premultiplied, for `fs_film_half`.
+@group(0) @binding(7) var half_film: texture_2d<f32>;
 
 struct Instance {
     @location(0) centre: vec3<f32>,
@@ -645,17 +647,29 @@ fn screen_up(o: vec2<f32>, r: f32) -> vec2<f32> {
     return vec2<f32>(o.x, -o.y) * (r / max(length(o), 1e-6));
 }
 
+// The film's cells (kind 4) and the panes' (kind 6), each its own pipeline (`glass::gpu::PIPELINES`), so that the
+// other kinds don't run with their registers; `fs_main` draws the rest.
+@fragment
+fn fs_film(in: Out) -> @location(0) vec4<f32> {
+    return film_cell(in);
+}
+
+// The film's cells drawn at half size laid over the frame through their quads, depth tested.
+@fragment
+fn fs_film_half(in: Out) -> @location(0) vec4<f32> {
+    return textureSampleLevel(half_film, scene_sampler, in.position.xy * frame.screen.zw, 0.0);
+}
+
+@fragment
+fn fs_pane(in: Out) -> @location(0) vec4<f32> {
+    return pane(in, mat2x2<f32>(dpdx(in.local), dpdy(in.local)));
+}
+
 @fragment
 fn fs_main(in: Out) -> @location(0) vec4<f32> {
     // The local units per pixel, before any branch (derivatives need uniform control flow).
     let per_pixel = mat2x2<f32>(dpdx(in.local), dpdy(in.local));
     let r = length(in.local);
-    if (in.kind == 6) {
-        return pane(in, per_pixel);
-    }
-    if (in.kind == 4) {
-        return film_cell(in);
-    }
     if (in.kind == 7) {
         return ribbon(in);
     }

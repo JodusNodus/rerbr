@@ -311,12 +311,17 @@ pub struct Pass {
     /// Lit and soft (`fs_soft`), with the effects at group 1 (`Enhance::particles`); `None` without them. The first
     /// is without the lamps' code (by day), the second with it.
     soft: Option<[wgpu::RenderPipeline; 2]>,
+    /// The same into the particles' reduced target (`crate::particle_target`), whose alpha keeps the frame's
+    /// transmittance through them.
+    soft_reduced: Option<[wgpu::RenderPipeline; 2]>,
     wave_pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
     instances: wgpu::Buffer,
     capacity: usize,
     count: u32,
+    /// The billboards' corners, stage space, for the screen they cover (`crate::particle_target::cover`).
+    corners: Vec<Vec3>,
     waves: wgpu::Buffer,
     wave_capacity: usize,
     wave_count: u32,
@@ -438,7 +443,8 @@ impl Pass {
                      vertex: (&str, wgpu::VertexBufferLayout),
                      fragment: &str,
                      topology: wgpu::PrimitiveTopology,
-                     lamps: Option<bool>| {
+                     lamps: Option<bool>,
+                     alpha: wgpu::BlendComponent| {
             let constants = match lamps {
                 Some(lamps) => vec![("LAMPS", f64::from(u8::from(lamps)))],
                 None => vec![],
@@ -465,7 +471,7 @@ impl Pass {
                     },
                     targets: &[Some(wgpu::ColorTargetState {
                         format,
-                        blend: Some(wgpu::BlendState { color: premultiplied, alpha: premultiplied }),
+                        blend: Some(wgpu::BlendState { color: premultiplied, alpha }),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
@@ -487,19 +493,35 @@ impl Pass {
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &INSTANCE_ATTRIBUTES,
         };
-        let soft = effects.map(|effects| {
-            [false, true].map(|lamps| {
-                build(
-                    &[&layout, effects],
-                    ("vs_main", instance_layout()),
-                    "fs_soft",
-                    wgpu::PrimitiveTopology::TriangleStrip,
-                    Some(lamps),
-                )
+        // The reduced target's alpha is the transmittance: each particle takes its share away.
+        let transmitted = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::Zero,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let soft_with = |alpha| {
+            effects.map(|effects| {
+                [false, true].map(|lamps| {
+                    build(
+                        &[&layout, effects],
+                        ("vs_main", instance_layout()),
+                        "fs_soft",
+                        wgpu::PrimitiveTopology::TriangleStrip,
+                        Some(lamps),
+                        alpha,
+                    )
+                })
             })
-        });
-        let pipeline =
-            build(&[&layout], ("vs_main", instance_layout()), "fs_main", wgpu::PrimitiveTopology::TriangleStrip, None);
+        };
+        let (soft, soft_reduced) = (soft_with(premultiplied), soft_with(transmitted));
+        let pipeline = build(
+            &[&layout],
+            ("vs_main", instance_layout()),
+            "fs_main",
+            wgpu::PrimitiveTopology::TriangleStrip,
+            None,
+            premultiplied,
+        );
         let wave_pipeline = build(
             &[&layout],
             (
@@ -513,6 +535,7 @@ impl Pass {
             "fs_wave",
             wgpu::PrimitiveTopology::TriangleList,
             None,
+            premultiplied,
         );
         let buffer = |label: &str, size: usize| {
             device.create_buffer(&wgpu::BufferDescriptor {
@@ -527,12 +550,14 @@ impl Pass {
         Pass {
             pipeline,
             soft,
+            soft_reduced,
             wave_pipeline,
             group,
             uniform,
             instances,
             capacity: FIRST_CAPACITY,
             count: 0,
+            corners: Vec::new(),
             waves,
             wave_capacity: FIRST_CAPACITY,
             wave_count: 0,
@@ -548,6 +573,16 @@ impl Pass {
     pub(crate) fn set(&mut self, device: &wgpu::Device, uploads: &mut Uploads, billboards: &[Billboard]) {
         upload(device, uploads, &mut self.instances, &mut self.capacity, billboards);
         self.count = billboards.len() as u32;
+        self.corners.clear();
+        for b in billboards {
+            let (centre, u, v) = (Vec3::from(b.centre), Vec3::from(b.axis_u), Vec3::from(b.axis_v));
+            self.corners.extend([centre - u - v, centre + u - v, centre - u + v, centre + u + v]);
+        }
+    }
+
+    /// The billboards' corners, stage space.
+    pub(crate) fn corners(&self) -> &[Vec3] {
+        &self.corners
     }
 
     /// The water waves' triangles to draw first.
@@ -596,7 +631,26 @@ impl Pass {
         pass.draw(0..4, 0..self.count);
     }
 
-    fn draw_waves(&self, pass: &mut wgpu::RenderPass<'_>) {
+    /// Whether [`Pass::draw_soft`] draws billboards: the lit soft ones, and any.
+    pub(crate) fn soft_billboards(&self) -> bool {
+        self.soft.is_some() && self.count > 0
+    }
+
+    /// The soft billboards alone into the reduced target's `pass` (`crate::particle_target`), with its effects' bind
+    /// group `effects`; the waves go in [`Pass::draw_waves`] at the frame's size before them.
+    pub(crate) fn draw_soft_reduced(&self, pass: &mut wgpu::RenderPass<'_>, effects: &wgpu::BindGroup, lamps: bool) {
+        let Some(soft) = &self.soft_reduced else { return };
+        if self.count == 0 {
+            return;
+        }
+        pass.set_pipeline(&soft[usize::from(lamps)]);
+        pass.set_bind_group(0, &self.group, &[]);
+        pass.set_bind_group(1, effects, &[]);
+        pass.set_vertex_buffer(0, self.instances.slice(..));
+        pass.draw(0..4, 0..self.count);
+    }
+
+    pub(crate) fn draw_waves(&self, pass: &mut wgpu::RenderPass<'_>) {
         if self.wave_count == 0 {
             return;
         }

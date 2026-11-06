@@ -40,6 +40,7 @@ pub mod lights;
 pub mod live;
 pub mod mirrors;
 mod parallel;
+mod particle_target;
 pub mod particles;
 pub mod perf_log;
 pub mod playback;

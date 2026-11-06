@@ -153,6 +153,8 @@ pub struct Renderer {
     light_shafts: Option<crate::light_shafts::LightShafts>,
     /// `None` unless [`Enhance::particles`].
     effects: Option<Effects>,
+    /// The soft particles' target at half a tall frame's size ([`crate::particle_target`]).
+    particle_target: Option<crate::particle_target::ParticleTarget>,
     /// `None` unless [`Enhance::lighting`].
     sun: Option<SunShadow>,
     /// The sun's cascades for the frame being drawn, `None` when there are none (no sun, or an overcast sky).
@@ -227,7 +229,8 @@ impl Renderer {
     pub fn set_glass(&mut self, drops: &[glass::gpu::Drop], wipers: glass::gpu::Wipers) {
         let pass = self.glass.get_or_insert_with(|| {
             let sun_map = self.sun.as_ref().map_or_else(|| sun::placeholder(&self.device), |sun| sun.view.clone());
-            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map)
+            let may_halve = self.enhance.detail == Detail::High;
+            glass::gpu::Pass::new(&self.device, SCENE_FORMAT, DEPTH_FORMAT, &sun_map, may_halve)
         });
         pass.set(&self.device, &mut self.uploads, drops);
         pass.set_wipers(wipers);

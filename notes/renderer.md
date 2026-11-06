@@ -71,7 +71,19 @@ rbr-recomp `rust/rbr-render/README.md`, `notes/visual-enhancements.md`.
   reflections LA 5.78 to 4.78 ms, LAc 5.14 to 2.58 (+1.57 glass), B 5.90 to 2.76 (+2.40 glass), dry 1.21 to 0.99;
   4K shots RMSE at most 0.00035. Where the full-size trace goes, LA: about 1 ms a pixel whatever the rays (0.76 of it
   `puddled`), 0.7 to 0.8 ms a ray, scene mips 0.33, composite 0.41, pyramid 0.16; the hits' colour fetch is
-  negligible.
+  negligible. Above 1440 rows Ultra traces split (visual trade, user decision 2026-11-06: for everyone, no setting):
+  the reflecting draws write their surface (normal, kind, weight) at full size, the rays go from the 2x2's most
+  reflecting pixel at half size, and each pixel takes the hits by depth and by how like its own normal theirs is
+  (`NORMAL_MATCH`). Then the resolve (`fs_resolve`) rebuilds the hit at the texels' mean hit distance along the
+  mirrored direction of the pixel's own normal and of their mean normal, and adds the frame's brightness difference
+  between the two, kept within the texels' range and at least half their reflection: the ripples come back crisp as at
+  full size (Luceram RMSE 0.0192, Pengonpohja 0.0134; no specks over 30 frames at 60 fps). Screen reflections LA 2.89
+  ms, LAc 1.79, B 1.82; GPU frame LA 19.65 to 17.85. Reading at the pixel's own direction alone was darker and
+  patchier (RMSE 0.033); the colour difference unclamped left lone dark, blue and yellow pixels. Tried and dropped:
+  half size above 1440 rows (LA 2.29 ms, but the ripple in the car's image gone), persistent ray lanes (slower), a
+  central ray plus refine, a 1440p-sized trace (ripples lost), one ray a pixel interleaved (sparkle), a mirror ray
+  only (another look), finest pyramid level 1 (-0.2 ms, streaks), a longer skip (no gain), normal matching on puddles
+  only (softer puddles).
 - `--anti-aliasing taa|off` (`AntiAliasing`, default `Taa`, ours after gp4's `taa.rs`; `4x` parses as `taa`): one
   sample, the main view's projection jittered and resolved into the post pass's scene, sharpened under TAA
   (`taa.rs`, `taa.wgsl`, `post.rs`: Halton 2,3, 8 phases an output pixel, `taa::phases`, 18 at 67 % and 32 at 50 %;
@@ -759,12 +771,41 @@ Wet mist (2026-10-26): it had never shown (edge erosion ate the 0.28-alpha mist)
 alpha, 2.5 s, up to 3.4 m wide, 120/s a wheel at 28 m/s). Damp: a `Haze` pool at a third of the rate, 1.2 s, no
 drops. Additions off unchanged; wet chase within noise of main.
 
+Half-size particles (2026-11-05, `particle_target.rs`): on frames 1800 lines tall or more (4K), the rain's mist and
+the soft billboards are drawn at half the width and height, over the depth reduced to its nearest of each 2x2, into
+a target holding their light and the frame's transmittance (alpha `Zero, OneMinusSrcAlpha`), each laid over the
+frame in its turn (mist, then the full-size streaks and waves, then the billboards, as before) by a depth-weighted
+bilinear upsample (`DEPTH_TOLERANCE` 0.05); only the screen rectangle the billboards' corners cover is reduced, drawn
+and laid, and the composite discards pixels no particle reached. Diagnosis (user's perf log, Loch Ard 127_N wet
+chase, quattro, 4K, RX 9060 XT radv): the steady ~0.9 ms was mostly the fullscreen mist (1.1 ms at 4K, half of it
+its lamps' light; the streaks 0.1 ms), the 5-9 ms spikes the puddle plume and spray puffs near the eye. 4K medians of
+3 interleaved offscreen runs (`--frames 60`, steady frames), "particles, rain" mean before -> after: Loch Ard 127
+light rain chase `--at 6750` 2.43 -> 1.24 ms, bench (Gabiria heavy rain 131 cockpit `--at 5821`) 2.25 -> 1.23,
+dry dusty Odry 462 chase `--at 6053` 1.17 -> 0.51, Helette 580 dry chase 0.01 -> 0.03; scene unchanged. The user's
+replay of that drive (`viewer --replay ... --video --perf-log`, game 0-50 s, 30 fps), mean / p99 / max: chase
+1.65 / 2.96 / 3.43 -> 1.02 / 1.42 / 1.56 ms; cockpit 1.37 / 5.20 / 8.47 -> 0.93 / 1.92 / 2.84. Looks: 11 rain,
+spray, dust, snow and grass shots at 4K RMSE 0 to 0.0062 (the mist at foliage edges against the sky); 8 consecutive
+frames of the rain fly-by and the Odry dust chase without flicker (frame-to-frame RMSE the same as before); 1080p and
+1440p unchanged (byte-identical shots). Tried and dropped: a full-size mist with only the billboards halved (0.55 ms
+more on Loch Ard). In rain the mist's layer is drawn before the temporal resolve, which lays it over the frame it
+writes and not over the history (`fs_taa_mist`, `particle_layer.wgsl`; 2026-11-06): its own pass over the whole frame
+cost 0.45 ms at 4K. Loch Ard / bench "particles, rain" 1.23 / 1.24 -> 0.88 / 0.89 ms, taa +0.04 / +0.03 (the
+layer's "nothing reached" test kept per tap: tested on the blended result instead, the billboards' composite cost
+0.09 ms more); rain shots RMSE 0.0004-0.0006 (1/255 rounding noise on 7% of the pixels: the frame no longer passes
+through a half float between the resolve and the mist).
+
 ## Windscreen and wipers
 
 Cost (2026-11-06, 450 heavy rain cockpit, 4K, RX 9060 XT; by leaving kinds out): the film's cells about 1.8 ms (the
 beads 0.94, their fine layer 0.5, a lens each costing nothing more; the blade's ridge 0.2, the wipe lookup 0.16; raster
 and blend 0.15), the pane's cells 0.8, the drops and ribbons nothing. Shading the sheet's view only where it covers
-anything: no gain. The beads' cost is their squares' lookups, not their lenses.
+anything: no gain. The beads' cost is their squares' lookups, not their lenses. The film and the panes' cells have
+their own pipelines (`fs_film`, `fs_pane`, `gpu::PIPELINES`): RADV stats put the one shader at 60 VGPRs (24 waves), now
+the film 60, the panes and the rest 48 (32 waves); no measurable time gain alone. Under `Detail::High` from 1800 rows
+(4K) the film's cells seen from inside are drawn at half size (`HALF_FILM_FROM`, `Pass::draw_half`) and laid over
+through their full-size quads, depth tested: 450 rain / 127 wet cockpits -0.88 / -0.61 ms, RMSE 0.026 / 0.014, beads
+softer and the smallest fade, no flicker. User decision 2026-11-06: High only, Ultra keeps the film whole. Tried and
+dropped: the fine beads left out at 4K (-0.43 / -0.29 ms; the glass reads much drier).
 
 `glass/`, ours (`glass/model.rs` documents the chart, inputs and wiper schedule: 1.3823/1.3195 rad, 0.4 s each way,
 `--wipers`, key I). Drops are lenses over the resolved frame; a wet film blurs it. Camera dirt on outside views is
@@ -1012,7 +1053,7 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   14 of 255 on 88 pixels of 41M's two characters, unexplained. Contact shading: half size, on the sky's and bounce's
   light only; +0.4 to 0.8 ms over the mask alone (2026-10-25; full size +2 to 3 ms). `Detail::Ultra` reflections
   (2026-10-27): the surroundings cube at 256 texels, a face every frame, the probes baked at 128 texels, and the wet
-  screen-space reflections traced at full size. 41M 1440p: dry +0.05 ms, wet screen reflections 1.75 to 3.4 ms; High
+  screen-space reflections traced at full size (split above 1440 rows, 2026-11-06). 41M 1440p: dry +0.05 ms, wet screen reflections 1.75 to 3.4 ms; High
   byte for byte (6 scenes). Sky domes (`sky_dome.rs`): a world sky face over the stage's middle casts into neither
   the sky's occlusion nor the cascades (39 of 659 readable community variants, e.g. 519, 580); as a caster it left 519 and
   580 black. Under `lighting` the dome is not drawn at all (user decision; 2026-10-27).
@@ -1213,8 +1254,12 @@ launcher "Mirrors" (default every frame). Off: no passes, the frame byte-identic
   (2026-10-31): the windscreen's 1.2-1.5 ms every frame, the mirrors' 0.4-1.0 each; the stage in the windscreen's
   only 0.3 (the cabin hides it, a reach of 10 m costs as 300), the rain in it 0.07. Since drawn every 2nd frame (user's
   call, 2026-10-31): 532 Clio cockpit GPU frame 12.02 to 11.08 ms, mirrors 2.01 to 1.34.
-- At 4K (2026-11-06), tried and dropped: a one-tap sun shadow in the passes (no gain), reach 150 m (no gain), the
-  windscreen's image at a quarter (-0.18 ms of its 1.0 in rain).
+- At 4K (2026-11-06, visual trade, for everyone): images at most as dense as on a 1440-pixel-high screen
+  (`mirrors::DENSEST`; door mirrors were 416x416 and 800x288 at 1:1, the windscreen's 1024x352 stays at `MOST`).
+  Median of 3, 4K: mirrors 127 cockpit 1.68 to 1.21 ms, 450 rain cockpit 0.96 to 0.84. 1080p and 1440p unchanged; 4K
+  cockpit shots RMSE 0.001-0.004, the mirror slightly softer. Tried and dropped: a one-tap sun shadow in the passes (no
+  gain), reach 150 m (no gain), the windscreen's image at a quarter (-0.18 ms of its 1.0 in rain), the grass thinning
+  and ending at 55 m (-0.04 ms, less grass).
 - The passes draw the lit opaque draws (the cabin, the flank) first, as the main view does (2026-11-06): the stage
   behind them fails the depth test. The windscreen's pass was the stage 0.57 ms, the car 0.3 (450 rain, 4K); now 0.99
   to 0.60 ms, 127 cockpit 0.44 to 0.35; 4K cockpit shots byte-identical.
@@ -1253,6 +1298,9 @@ exit, so a killed viewer leaves only the `.log`).
   byte-identical with it on (1080p `--enhance all` screenshot `cmp`). Overhead median +0.08 ms a frame (45O, 7 runs,
   640x360 and 1440p). Untested without a display: the window path (`App::frame` spans, `Renderer::end_frame`
   after the present's submit).
+- `viewer --replay FILE --video OUT --perf-log DIR` logs each rendered frame of the replay offline (header `present
+  mode video`): a live drive's spikes at any size without the window (each frame is read back, so the GPU clocks
+  lower than live: compare runs with each other only).
 - Live, the summary counts from the race's first go (`perf_log::mark`, a `t=…s go` line): the loading, the start
   orbit and the countdown stay in the lines a second only. The summary has p99.9 beside p99.
 
@@ -1267,7 +1315,9 @@ Cuts at 4K (2026-11-06, each byte-identical; RX 9060 XT radv, medians of 3 inter
 pixel works out only the crown's sun share and any other pixel only the shadows' (both were computed, each a 9-tap
 filter: 580 scene -0.15 ms); inside the cascades' reach the world layer's filter is skipped (`mix` at 1: Odry scene
 -0.09, 580 -0.06); the post composite's per-frame terms (the rods' white, the glare's summed weights) come from
-`cs_meter` (-0.03). Measured and dropped: the baked light map read only when used, the march's shade-only steps
+`cs_meter` (-0.03). The lamps' beams in the air take the rear lamps in 4 steps (`REAR_STEPS`, the headlights keep 12;
+visual trade, for everyone): Loch Ard at dusk light shafts 0.61 -> 0.40 ms, a night chase in heavy fog within 3/255.
+Measured and dropped: the baked light map read only when used, the march's shade-only steps
 skipped past `GLOW_REACH`, GT7's second ICtCp intensity alone (all no change: the compiler or the scene already had
 them), the glare chain's taps (pass overhead and the 4K read dominate). Where the time is, 580 grass chase: terrain
 detail 0.24 ms, the stage's own light 0.17, fog 0.11, the sun share 0.07; post 0.95 ms (tone curve 0.27, glare chain
