@@ -567,7 +567,8 @@ impl Renderer {
         }
         // The lit opaque draws (the car's, the characters') go in before the shaded stage draws, whose depth test
         // (`Equal` to the prepass) then fails under them: the ground beneath the car is not shaded to be painted over.
-        let laid_first = view == View::Main;
+        // In a mirror's pass (no prepass) the cabin and the flank hide most of the stage seen from in the car.
+        let laid_first = view == View::Main || view.mirror();
         let opaque_lit = |draw: &super::meshes::GpuDraw| {
             draw.bind.shade.is_some() && !draw.pipeline.blend && draw.pipeline.depth_write
         };
