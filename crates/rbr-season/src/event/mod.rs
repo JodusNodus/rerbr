@@ -88,10 +88,18 @@ pub struct Standing {
     /// The total time (s) with penalties; `None` once retired.
     pub total: Option<f32>,
     pub points: u32,
+    /// The power stage's points, included in `points`.
+    pub bonus: u32,
 }
 
 /// The points for the top 10 of a rally, modern 25-18-15-12-10-8-6-4-2-1.
 pub const POINTS: [u32; 10] = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+
+/// The power stage's bonus points for its five fastest classified finishers.
+pub const POWER_POINTS: [u32; 5] = [5, 4, 3, 2, 1];
+
+/// The seconds added to the stage's best time for each stage missed under Super Rally.
+pub const RESTART_CHARGE: f32 = 300.0;
 
 /// The field's pace over its tracks' pars at difficulty `d`: 1 at the top, about 9 % slower at the bottom.
 fn pace_for(difficulty: f32) -> f32 {

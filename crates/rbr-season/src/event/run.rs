@@ -7,14 +7,32 @@ use super::*;
 pub(super) const ADAPT_STEP: f32 = 0.003;
 
 impl Event {
+    /// The first stage at or after `stage` of `rally` with a service after it that a retired player rejoins behind:
+    /// the player sits out `stage + 1..=k` and drives on from `k + 1`. `None` when restart is off or no service follows.
+    pub fn rejoin_after(&self, rally: usize, stage: usize) -> Option<usize> {
+        if !self.config.restart {
+            return None;
+        }
+        let stages = &self.rallies.get(rally)?.stages;
+        (stage..stages.len()).find(|&k| stages[k].service_after.is_some() && k + 1 < stages.len())
+    }
+
     /// The player's stage result: the field drives the same stage with the 1.02 AI engine on `master`, and the turn
-    /// moves on. A retired player is out of the rally: the field drives its remaining stages and the turn goes to the
-    /// rally's end.
+    /// moves on. A retired player rejoins after the next service under Super Rally (the field drives to it); otherwise
+    /// the player is out of the rally: the field drives its remaining stages and the turn goes to the rally's end.
     pub fn stage_done(&mut self, master: &Master, result: PlayerResult) {
         let Some((rally, stage)) = self.at() else { return };
         self.results[rally][stage].0 = Some(result);
         self.drive_field(master, rally, stage);
         if result.retired {
+            if let Some(k) = self.rejoin_after(rally, stage) {
+                for later in stage + 1..=k {
+                    self.drive_field(master, rally, later);
+                }
+                let minutes = self.rallies[rally].stages[k].service_after.unwrap_or(0);
+                self.turn = Turn::Service { rally, stage: k, minutes };
+                return;
+            }
             for later in stage + 1..self.rallies[rally].stages.len() {
                 self.drive_field(master, rally, later);
             }

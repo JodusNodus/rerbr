@@ -14,9 +14,9 @@ impl Event {
     /// Rally `rally`'s standings after its first `run` stages, best first. The points go to the finishers only.
     pub fn standings_after(&self, rally: usize, run: usize) -> Vec<Standing> {
         let mut rows = Vec::new();
-        rows.push(Standing { entrant: None, total: self.player_total(rally, run), points: 0 });
+        rows.push(Standing { entrant: None, total: self.player_total(rally, run), points: 0, bonus: 0 });
         for (i, _) in self.field.iter().enumerate() {
-            rows.push(Standing { entrant: Some(i), total: self.entrant_total(rally, i, run), points: 0 });
+            rows.push(Standing { entrant: Some(i), total: self.entrant_total(rally, i, run), points: 0, bonus: 0 });
         }
         rows.sort_by(|a, b| match (a.total, b.total) {
             (Some(x), Some(y)) => x.total_cmp(&y),
@@ -27,15 +27,73 @@ impl Event {
         for (i, row) in rows.iter_mut().enumerate() {
             row.points = if row.total.is_some() { POINTS.get(i).copied().unwrap_or(0) } else { 0 };
         }
+        // The power stage: once the rally is complete, its last stage pays the five fastest classified finishers.
+        if self.config.power_stage
+            && self.rallies.get(rally).is_some_and(|r| !r.stages.is_empty() && run == r.stages.len())
+        {
+            let last = run - 1;
+            let mut fastest: Vec<(usize, f32)> = Vec::new();
+            for (at, row) in rows.iter().enumerate() {
+                if row.total.is_none() {
+                    continue;
+                }
+                let time = match row.entrant {
+                    None => match self.results[rally][last].0 {
+                        Some(p) if !p.retired => Some(p.time),
+                        _ => None,
+                    },
+                    Some(e) => match self.results[rally][last].1.get(e) {
+                        Some(AiResult::Time(t)) => Some(*t),
+                        _ => None,
+                    },
+                };
+                if let Some(t) = time {
+                    fastest.push((at, t));
+                }
+            }
+            // The sort is stable: ties keep the rows' order.
+            fastest.sort_by(|a, b| a.1.total_cmp(&b.1));
+            for (place, (at, _)) in fastest.into_iter().take(POWER_POINTS.len()).enumerate() {
+                let bonus = POWER_POINTS[place];
+                rows[at].bonus = bonus;
+                rows[at].points += bonus;
+            }
+        }
         rows
+    }
+
+    /// The Super Rally charge for `rally`'s `stage`: the stage's best finished time plus the restart charge, or the
+    /// stage's reference plus the charge when nobody finished it. `None` without restart, for a finished or unrun
+    /// stage, or when no rejoin follows.
+    pub fn charged(&self, rally: usize, stage: usize) -> Option<f32> {
+        if !self.config.restart {
+            return None;
+        }
+        let results = self.results.get(rally)?;
+        if stage >= run_stages(results) {
+            return None;
+        }
+        if results.get(stage)?.0.is_some_and(|p| !p.retired) {
+            return None;
+        }
+        self.rejoin_after(rally, stage)?;
+        let mut best: Option<f32> = None;
+        for r in &results[stage].1 {
+            if let AiResult::Time(t) = r {
+                best = Some(best.map_or(*t, |b: f32| b.min(*t)));
+            }
+        }
+        let reference = self.rallies.get(rally)?.stages.get(stage)?.reference;
+        Some(best.unwrap_or(reference) + RESTART_CHARGE)
     }
 
     fn player_total(&self, rally: usize, run: usize) -> Option<f32> {
         let mut total = 0.0;
-        for (result, _) in self.results[rally].iter().take(run) {
+        for (stage, (result, _)) in self.results[rally].iter().take(run).enumerate() {
             match result {
                 Some(p) if !p.retired => total += p.time + p.penalties,
-                _ => return None,
+                // Under Super Rally a missed stage with a rejoin behind it charges the stage's best time.
+                _ => total += if self.config.restart { self.charged(rally, stage)? } else { return None },
             }
         }
         Some(total)
@@ -80,6 +138,7 @@ impl Event {
                 entrant: if at == self.field.len() { None } else { Some(at) },
                 total: totals[at],
                 points: won[at],
+                bonus: 0,
             })
             .collect();
         rows.sort_by(|a, b| {
