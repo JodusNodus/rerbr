@@ -1,18 +1,35 @@
 #!/usr/bin/env bash
-# Straight-line pace sweep: flat-out standing starts for pace calibration.
+# Car pace sweep: straight-line pace, steady-state grip and braking.
 #
 # Drives every installed car (the 8 archive slots and every RSF pack with its
-# physics installed) from a standing start on the start straight of RSF stage
-# 504 (Witoszow - Zloty Las, tarmac, dry), full throttle without braking
-# (`rbr-standalone --autopilot --flat-out --trace-speed`), and analyses each
-# trace into one CSV row (harness/car_pace.py): 0-60/100/140/160 km/h times,
-# speeds after 10/20/30 s, top speed and distance, all inside the flat-out
-# window (launch to first brake, slide or corner).
+# physics installed) three ways, all on dry tarmac with default tyres and the
+# game-default aids, and analyses each trace into one CSV row
+# (harness/car_pace.py):
+#
+# - pace: a flat-out standing start on the start straight of RSF stage 504
+#   (Witoszow - Zloty Las, variant O), `--flat-out --trace-speed`: 0-60/100/
+#   140/160 km/h times, speeds after 10/20/30 s, top speed and distance, all
+#   inside the flat-out window (launch to first brake, slide or corner).
+# - grip: a steady-state circle (radius 40 m) on the map-85 rally-school
+#   tarmac with the target speed ramping up (`--circle -260,120,40`): the
+#   first latched hold's fastest held speed and v^2/R grip. No 100 m circle:
+#   no surveyed venue has a 200 m clear flat paved disc (map 85 is fenced
+#   into smaller compounds; 481/Bikernieki/Slovakia-Ring discs sit hundreds
+#   of metres from spawn through obstacles; Sosnova's files are encrypted).
+# - braking: flat-out standstill starts on the 1 km start straight of RSF
+#   stage 568 (Graciosa I, variant M, tarmac, dry) then full braking from
+#   100 km/h (`--brake-from 27.78`) and, for cars whose pace run reaches it,
+#   from 150 km/h (`--brake-from 41.67`): stopping distance and mean
+#   deceleration. The 504 straight cannot host the 150 km/h stop (its kink
+#   and roadside trees arrive 300 m past launch, so slower accelerators
+#   crash into them while still fast); 568's straight is clear for 1 km.
+#   A crash-stop or an unreached trigger leaves those columns empty.
 #
 #   scripts/car-pace-sweep.sh [-o DIR] [-j JOBS]
 #
-# DIR (default /tmp/car-pace) holds <car>.{out,trace,log}, cars.tsv, cars.csv
-# and meta.txt. Needs dev.env's RBR_DATA, RBR_NGP_PHYSICS and RBR_RSF.
+# DIR (default /tmp/car-pace) holds <car>.{out,trace,log} plus the .circ,
+# .brk100 and .brk150 variants, cars.tsv, cars.csv and meta.txt. Needs
+# dev.env's RBR_DATA, RBR_NGP_PHYSICS and RBR_RSF.
 # The run is bit-reproducible; rerunning overwrites DIR.
 set -euo pipefail
 
@@ -27,7 +44,7 @@ while getopts "o:j:h" opt; do
     o) out=$OPTARG ;;
     j) jobs=$OPTARG ;;
     *)
-        sed -n '2,17p' "$0"
+        sed -n '2,31p' "$0"
         exit 2
         ;;
     esac
@@ -72,25 +89,40 @@ for car in sorted(cars, key=lambda c: int(c["id"])):
 EOF
 echo "cars: $(wc -l <"$out/cars.tsv")"
 
-# One drive: manifest line "car kind key ..." (kind slot takes --car, else --rsf-car).
+# One drive: manifest line "car kind key ..." (kind slot takes --car, else
+# --rsf-car); $2 is the run suffix (empty for pace, .circ/.brk100/.brk150)
+# and the rest are the standalone arguments before the car flag.
 drive() {
-    local line=$1 car kind key
+    local line=$1 suffix=$2
+    shift 2
+    local car kind key
     IFS=$'\t' read -r car kind key _ _ _ <<<"$line"
     local flag=--car
     [[ $kind == rsf ]] && flag=--rsf-car
-    timeout 900 "$bin" --autopilot "$out/$car.out" --boot --rsf-stage 504 "$flag" "$key" \
-        --steps 26000 --top-speed 80 --flat-out --trace-speed "$out/$car.trace" \
-        --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS" >"$out/$car.log" 2>&1 || true
-    if [[ -f $out/$car.trace ]]; then
-        echo "$car: $(grep -c '' "$out/$car.trace") trace lines, $(tail -n 1 "$out/$car.log")"
+    timeout 900 "$bin" --autopilot "$out/$car$suffix.out" --boot "$@" "$flag" "$key" \
+        --trace-speed "$out/$car$suffix.trace" --data "$RBR_DATA" \
+        --ngp-physics "$RBR_NGP_PHYSICS" >"$out/$car$suffix.log" 2>&1 || true
+    if [[ -f $out/$car$suffix.trace ]]; then
+        echo "$car$suffix: $(grep -c '' "$out/$car$suffix.trace") trace lines, $(tail -n 1 "$out/$car$suffix.log")"
     else
-        echo "$car: NO TRACE (see $car.log)"
+        echo "$car$suffix: NO TRACE (see $car$suffix.log)"
     fi
 }
 export -f drive
 export bin out RBR_DATA RBR_NGP_PHYSICS
 
-xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0"' <"$out/cars.tsv" | sort
+# Phase 1: flat-out pace runs (their vtop gates the brake-150 runs).
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" "" --rsf-stage 504 --steps 26000 --top-speed 80 --flat-out' <"$out/cars.tsv" | sort
+
+# Phase 2: steady-state circles and brake-100 runs (unconditional).
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".circ" --stage track-85_M --steps 32000 --top-speed 60 --circle -260,120,40' <"$out/cars.tsv" | sort
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".brk100" --rsf-stage 568 --steps 26000 --top-speed 80 --flat-out --brake-from 27.78' <"$out/cars.tsv" | sort
+
+# Phase 3: brake-150 runs for cars whose pace run reaches 150 km/h.
+python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" \
+    --csv "$out/qualify.csv" --qualify >"$out/qualify.txt"
+join -t $'\t' -1 1 -2 1 <(sort "$out/cars.tsv") <(sort "$out/qualify.txt") >"$out/cars150.tsv" || true
+xargs -P "$jobs" -L1 -d '\n' bash -c 'drive "$0" ".brk150" --rsf-stage 568 --steps 26000 --top-speed 80 --flat-out --brake-from 41.67' <"$out/cars150.tsv" | sort
 
 python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" --csv "$out/cars.csv"
 {
@@ -98,8 +130,15 @@ python3 "$root/harness/car_pace.py" --manifest "$out/cars.tsv" --traces "$out" -
     echo "git: $(git -C "$root" rev-parse --short HEAD) $(git -C "$root" status --short | tr '\n' ' ')"
     echo "date: $(date -u +%FT%TZ)"
     # shellcheck disable=SC2016
-    echo 'command: --autopilot OUT --boot --rsf-stage 504 (--car N | --rsf-car PACK) --steps 26000 --top-speed 80 --flat-out --trace-speed TRACE'
-    echo "stage: RSF 504 Witoszow-Zloty-Las variant O (tarmac, dry, good weather, default tyre, game-default aids)"
+    echo 'pace: --autopilot OUT --boot --rsf-stage 504 (--car N | --rsf-car PACK) --steps 26000 --top-speed 80 --flat-out --trace-speed TRACE'
+    # shellcheck disable=SC2016
+    echo 'grip: --autopilot OUT --boot --stage track-85_M (--car N | --rsf-car PACK) --steps 32000 --top-speed 60 --circle -260,120,40 --trace-speed TRACE'
+    # shellcheck disable=SC2016
+    echo 'braking: --autopilot OUT --boot --rsf-stage 568 (--car N | --rsf-car PACK) --steps 26000 --top-speed 80 --flat-out --brake-from 27.78 (100) / 41.67 (150, only if the pace vtop reaches 150) --trace-speed TRACE'
+    echo "stages: RSF 504-O (pace), RSF 568-M (brakes), retail map 85 (circle); all tarmac, dry, good weather, default tyre, game-default aids"
 } >"$out/meta.txt"
 rm -f "$out"/*.out
+rm -f "$out"/qualify.csv
+rm -f "$out"/qualify.txt
+rm -f "$out"/cars150.tsv
 echo "csv: $out/cars.csv"

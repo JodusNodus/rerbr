@@ -12,6 +12,12 @@ brake pedal moving (sustained), the car leaving the driveline (sustained), or
 sustained hard steering past the launch correction (a corner the car threads
 on the road). Everything after the window (slides, crashes, relaunches) is
 ignored, so the metrics only cover full-throttle straight driving.
+
+With <car>.circ.trace present (a `--circle X,Y,R` ramp run) it adds the
+steady-state circle columns: the first latched hold's fastest held speed and
+v^2/R grip. With <car>.brk100/.brk150.trace present (flat-out `--brake-from`
+runs) it adds stopping distance and mean deceleration from 100/150 km/h;
+crash-stops (a wall, not braking) and unreached triggers stay empty.
 """
 
 import argparse
@@ -29,6 +35,21 @@ LAUNCH_SPEED = 0.5  # m/s
 BRAKE_ON = 0.02
 OFF_ROAD = 4.0  # m from the driveline
 STEER_HARD = 0.45  # sustained past the first 2 s (the launch correction is over by then)
+
+# Steady-state circle: map 85 school tarmac, CCW, commanded radius 40 m.
+CIRC_CX = -260.0
+CIRC_CY = 120.0
+CIRC_R = 40.0
+CIRC_LATCH = 1.5  # m from the commanded radius: latched on
+CIRC_BREAK = 3.0  # m from the commanded radius: the slide (sustained)
+CIRC_LATCH_NEED = 2 * STEP_WINDOW  # 2 s on the circle before it counts
+CIRC_BREAK_NEED = STEP_WINDOW // 2  # 0.5 s off it ends the hold
+BRAKE100 = 100.0 / 3.6
+BRAKE150 = 150.0 / 3.6
+BRK_ONSET = 0.05  # sustained brake-pedal travel: braking has started
+STOP_SPEED = 0.35  # m/s, sustained: the car has stopped (the trace prints 3 decimals)
+CRASH_DROP = 25.0  # km/h lost in 0.25 s: a wall, not braking (peaks ~15)
+CRASH_OFF = 3.0  # m off the driveline while braking: left the road
 
 
 def load_trace(path):
@@ -159,6 +180,114 @@ def analyse(rows):
     }
 
 
+def find_launch(speed):
+    """First index of sustained motion, else None."""
+    for i in range(len(speed) - STEP_WINDOW):
+        if speed[i] > LAUNCH_SPEED and min(speed[i : i + STEP_WINDOW]) > 0.4:
+            return i
+    return None
+
+
+def mean_speed(speed, i, need=STEP_WINDOW):
+    """Mean speed over `need` steps from i, else None at the trace end."""
+    if i + need > len(speed):
+        return None
+    return sum(speed[i : i + need]) / need
+
+
+def analyse_circle(rows, cx=CIRC_CX, cy=CIRC_CY, radius=CIRC_R):
+    """Steady-state circle: the first latched hold to its first slide.
+
+    The car latches on (stays within CIRC_LATCH of the commanded radius for
+    2 s) while the target speed ramps up, then slides (stays past CIRC_BREAK
+    for 0.5 s). v_max is the fastest 1 s-mean speed inside that first hold
+    only, so a post-spin rejoin cannot inflate it; without a slide the hold
+    runs to the trace end (flagged). Lateral grip is v^2/R on the commanded
+    radius."""
+    count = len(rows)
+    speed = [row["v"] for row in rows]
+    launch = find_launch(speed)
+    if launch is None:
+        return {"ok": False, "reason": "no launch (never moved)"}
+    offc = [math.hypot(row["x"] - cx, row["y"] - cy) - radius for row in rows]
+    latch = sustained([abs(offc[i]) < CIRC_LATCH for i in range(launch, count)],
+                      CIRC_LATCH_NEED)
+    if latch is None:
+        return {"ok": False, "reason": "never latched onto the circle"}
+    latch += launch
+    rest = range(latch, count)
+    brk = sustained([offc[i] > CIRC_BREAK or offc[i] < -CIRC_BREAK for i in rest],
+                    CIRC_BREAK_NEED)
+    slid = brk + latch if brk is not None else count
+    best = 0.0
+    ibest = latch
+    i = latch
+    while i + STEP_WINDOW <= min(slid, count):
+        mean = mean_speed(speed, i)
+        if mean > best:
+            best, ibest = mean, i
+        i += STEP_WINDOW // 4
+    mean_off = sum(abs(offc[i]) for i in range(latch, min(slid, count)))
+    mean_off /= max(1, min(slid, count) - latch)
+    return {
+        "ok": True,
+        "launch": launch,
+        "latch": (rows[latch]["t"] - rows[launch]["t"]),
+        "vmax": best * 3.6,
+        "latg": (best * best / radius) / 9.81,
+        "slid": brk is not None,
+        "tend": (rows[min(slid, count) - 1]["t"] - rows[launch]["t"]),
+        "mean_off": mean_off,
+    }
+
+
+def analyse_brake(rows, frm):
+    """Flat-out to `frm` m/s, then full braking to a stop.
+
+    Valid only for a clean stop on the road: a 0.25 s speed drop past
+    CRASH_DROP or wandering past CRASH_OFF off the driveline means the car
+    hit something (a wall or tree), so the distance is a crash-stop, not
+    braking, and the columns stay empty."""
+    count = len(rows)
+    speed = [row["v"] for row in rows]
+    launch = find_launch(speed)
+    if launch is None:
+        return {"ok": False, "reason": "no launch (never moved)"}
+    trig = next((i for i in range(launch, count) if speed[i] >= frm), None)
+    if trig is None:
+        return {"ok": False, "reason": f"never reached {frm * 3.6:.0f} km/h",
+                "vmax": max(speed[launch:]) * 3.6}
+    onset = next((i for i in range(trig, count) if rows[i]["brk"] > BRK_ONSET), None)
+    if onset is None:
+        return {"ok": False, "reason": "brake never engaged"}
+    # The run ends at the stop, so only a few slow frames exist; require 6
+    # in a row (a lone dip mid-braking is not a stop).
+    stop = next((i for i in range(onset, count)
+                 if speed[i] < STOP_SPEED and
+                 all(v < STOP_SPEED for v in speed[i:i + 6])), None)
+    if stop is None:
+        return {"ok": False, "reason": "never stopped"}
+    worst_drop = 0.0
+    for i in range(onset, stop - STEP_WINDOW // 4):
+        drop = (speed[i] - speed[i + STEP_WINDOW // 4]) * 3.6
+        worst_drop = max(worst_drop, drop)
+    max_off = max(abs(rows[i]["off"]) for i in range(onset, stop + 1))
+    dist = math.hypot(rows[stop]["x"] - rows[onset]["x"],
+                      rows[stop]["y"] - rows[onset]["y"])
+    if worst_drop > CRASH_DROP or max_off > CRASH_OFF:
+        return {"ok": False, "reason": "hit something while braking",
+                "vmax": speed[trig] * 3.6, "drop": worst_drop, "off": max_off}
+    v0 = speed[onset]
+    return {
+        "ok": True,
+        "launch": launch,
+        "trig_v": speed[trig] * 3.6,
+        "dist": dist,
+        "time": rows[stop]["t"] - rows[onset]["t"],
+        "decel": (v0 * v0) / (2 * dist) if dist > 0 else 0.0,
+    }
+
+
 def end_reason(log_path):
     """The drive's "ended by ..." line, if the log has one."""
     try:
@@ -200,6 +329,27 @@ def note(result, ended):
     return "; ".join(parts)
 
 
+def circle_note(result):
+    """Compact circle remark for the CSV notes."""
+    if result is None:
+        return "circ r40 not run"
+    if not result["ok"]:
+        return f"circ r40: {result['reason']}"
+    held = f"slide@{result['vmax']:.1f} ({result['latg']:.2f}g)" if result["slid"] \
+        else f"held@{result['vmax']:.1f} to run end (no slide)"
+    wide = f", off {result['mean_off']:.1f}m" if result["mean_off"] > 1.0 else ""
+    return f"circ r40 {held}{wide}"
+
+
+def brake_note(result, kmh):
+    """Compact brake remark for the CSV notes."""
+    if result is None:
+        return f"brk{kmh} not run"
+    if not result["ok"]:
+        return f"brk{kmh}: {result['reason']}"
+    return f"brk{kmh} {result['dist']:.1f}m {result['decel'] / 9.81:.2f}g"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True,
@@ -207,41 +357,72 @@ def main():
     parser.add_argument("--traces", required=True, help="directory of <car>.trace (+<car>.log)")
     parser.add_argument("--csv", required=True, help="output CSV path")
     parser.add_argument("--surface", default="tarmac")
-    parser.add_argument("--stage", default="RSF 504 Witoszow-Zloty-Las (O)")
+    parser.add_argument("--stage", default="dry tarmac: 504-O pace, 568-M brakes, map85 circle")
+    parser.add_argument("--qualify", action="store_true",
+                        help="print cars whose pace vtop reaches 150 km/h (brake-150 candidates)")
     args = parser.parse_args()
 
     with open(args.manifest) as handle:
         cars = [line.rstrip("\n").split("\t") for line in handle if line.strip()]
 
+    def maybe_trace(car, suffix):
+        path = os.path.join(args.traces, f"{car}{suffix}.trace")
+        return load_trace(path) if os.path.exists(path) else None
+
     analyses = []
+    circles = []
+    brakes100 = []
+    brakes150 = []
     for car, _kind, _key, _name, _group, _extra in cars:
         rows = load_trace(os.path.join(args.traces, f"{car}.trace"))
         analyses.append(analyse(rows))
+        circ = maybe_trace(car, ".circ")
+        circles.append(analyse_circle(circ) if circ else None)
+        b100 = maybe_trace(car, ".brk100")
+        brakes100.append(analyse_brake(b100, BRAKE100) if b100 else None)
+        b150 = maybe_trace(car, ".brk150")
+        brakes150.append(analyse_brake(b150, BRAKE150) if b150 else None)
+    if args.qualify:
+        for (car, _k, _kk, _n, _g, _e), result in zip(cars, analyses):
+            if result.get("ok") and result["vtop"] >= 150.0:
+                print(car)
+        return
     launched = sorted(a["launch"] for a in analyses if a.get("ok"))
     median_launch = launched[len(launched) // 2] if launched else 0
 
     with open(args.csv, "w", newline="") as handle:
         out = csv.writer(handle)
         out.writerow(["car", "name", "class", "surface", "stage", "t_0_60", "t_0_100", "t_0_140",
-                      "t_0_160", "v10", "v20", "v30", "vtop", "dist", "notes"])
-        for (car, _kind, _key, name, group, extra), result in zip(cars, analyses):
+                      "t_0_160", "v10", "v20", "v30", "vtop", "dist", "v_max_r40", "lat_g_r40",
+                      "brake_100_m", "brake_100_decel", "brake_150_m", "brake_150_decel", "notes"])
+        for entry, result, circ, b100, b150 in zip(cars, analyses, circles, brakes100, brakes150):
+            car, _kind, _key, name, group, extra = entry
             ended = end_reason(os.path.join(args.traces, f"{car}.log"))
             text = note(result, ended)
             if result.get("ok") and result["launch"] - median_launch > STEP_WINDOW:
                 late = (result["launch"] - median_launch) / STEP_WINDOW
                 text += f"; late launch (+{late:.1f}s)"
+            text += f"; {circle_note(circ)}; {brake_note(b100, 100)}; {brake_note(b150, 150)}"
             if extra:
                 text = f"{extra}; {text}" if text else extra
             if not result.get("ok"):
                 out.writerow([car, name, group, args.surface, args.stage,
-                              "", "", "", "", "", "", "", "", "", text])
+                              "", "", "", "", "", "", "", "", "", "", "",
+                              "", "", "", "", text])
                 continue
             out.writerow([car, name, group, args.surface, args.stage,
                           fmt_time(result["t60"]), fmt_time(result["t100"]),
                           fmt_time(result["t140"]), fmt_time(result["t160"]),
                           fmt_speed(result["v10"]), fmt_speed(result["v20"]),
                           fmt_speed(result["v30"]), fmt_speed(result["vtop"]),
-                          f"{result['dist']:.0f}", text])
+                          f"{result['dist']:.0f}",
+                          fmt_speed(circ["vmax"]) if circ and circ.get("ok") else "",
+                          f"{circ['latg']:.3f}" if circ and circ.get("ok") else "",
+                          f"{b100['dist']:.1f}" if b100 and b100.get("ok") else "",
+                          f"{b100['decel'] / 9.81:.2f}" if b100 and b100.get("ok") else "",
+                          f"{b150['dist']:.1f}" if b150 and b150.get("ok") else "",
+                          f"{b150['decel'] / 9.81:.2f}" if b150 and b150.get("ok") else "",
+                          text])
 
 
 if __name__ == "__main__":
