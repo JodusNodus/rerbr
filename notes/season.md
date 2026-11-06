@@ -44,15 +44,24 @@ the layer only reads drivelines and hands the launcher times, standings and save
 - Team crew: `EventConfig.team` is the roster team whose engineer and mechanics scale the player's repair times
   (`Event::crew`, `team::team_offers` describes them in words). Player's car is separate.
 - Bulletins: `Event::bulletins(rally)` renders the engine's `Bulletin` and `AccidentRecord` entries in order, "SS2: name
-  ...", without the manager orders. They are stored as text in the save.
+  ...", without the manager orders (`run::news`): a driver's accidents on a stage summed into one line, totals under
+  5 s left out, the first "shaken" per driver; "an uneventful stage" only from a stage's log with nothing to tell, never
+  a service's. They are stored as text in the save.
 - `event`: per rally one surface (Mixed draws one per rally from the pool's own), one stage family preferred
   (`StageRef::family`: an RSF stage's country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), sampled without repeating unless the pool is too small. Rally
   names from the first stage minus its variant (`Autiovaara II` -> `Autiovaara Rally`). Clocks from 08:00 (21:00 at
   night; realistic puts the last leg at dusk/night), changeable weather per leg, ~20 min mid-rally services and
   45 min overnight in a weekend. Points use the modern 25-18-15-12-10-8-6-4-2-1 top-10 scale per rally; seasons sum
   rally points. Adaptive moves every entrant's skill by at most 0.003 a stage toward the player finishing 2nd-4th.
-  A retired player ends the rally: the field's remaining stages are simulated, the turn goes to RallyOver, no points. Points
-  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 3` head: config with the team,
+  A retired player ends the rally (`restart` off): the field's remaining stages are simulated, the turn goes to RallyOver,
+  no points. Super Rally (`EventConfig.restart`, ours, on in every preset): the player rejoins after the next service
+  (`Event::rejoin_after`), the field drives the stages to it, and each stage not completed counts as its best AI time
+  plus 5:00 (`Event::charged`, `RESTART_CHARGE`; the reference plus 5:00 when no one finished); retiring after the
+  rally's last service is out as before. The AI's retirements stay final (the 1.02 engine). Power stage
+  (`EventConfig.power_stage`, ours, on in seasons): the complete rally's last stage pays its five fastest classified
+  5-4-3-2-1 (`POWER_POINTS`, `Standing.bonus`, in `points`; a tie goes to the better placed). Points
+  go to finishers only. Save is a versioned `|`-separated text format (`rbr-season 4` head, `3` read with both rules
+  off: config with the team and the two rules,
   pace, itinerary with each stage's family and track, the roster's teams and costs, each entrant's driver/car state and false
   starts, results, AI penalties, bulletins), backslash-escaped, no serde.
 
