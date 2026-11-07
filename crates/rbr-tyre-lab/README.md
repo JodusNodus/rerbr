@@ -21,6 +21,18 @@ Nothing here changes what the game computes.
   real per-wheel tyre step (`entries::step` + `entries::relax_count`, exactly
   the wheel step's sequence) under scripted kinematics: validation against the
   sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
+- `src/probe.rs`: the probe-dump parser shared by the examples.
+- `src/brush.rs`: the brush-v0 candidate tyre model (ours, experimental):
+  steady-state brush with combined slip, Grosch-like sliding-speed friction,
+  load/temperature/wear/pressure factors, a wet loss and a single-point
+  transient, with unit tests. The nominal-point calibration lives in
+  `Calibration`, built at run time; only the spec's own constants are
+  hard-coded. Lab code only: nothing is wired into the game.
+- `src/calibrate.rs`: solves the `Calibration` from measured peak, slide and
+  slope targets per axis (nested fixed-point/Newton from round starts), fed
+  values by the caller. No NGP-derived numbers in committed code.
+- `examples/compare.rs`: compares brush-v0 against NGP's sweep and published
+  targets. Writes CSVs plus `summary.md` into the output dir.
 
 ## Use
 
