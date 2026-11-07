@@ -27,6 +27,9 @@
 //!   captured frictions divided by the captured temperature grip.
 //!
 //! Outputs: one CSV per test plus `summary.md` in the output dir (default `/tmp/tyre-lab/ngp-dyn`).
+//! `--fz N` holds another normal force (default 4 kN), `--speed M/S` sets the ramps' speed (default 15), and
+//! `--ramps-only` stops after the two quasi-static ramps: slip angle 0-30 deg (`validation.csv`, with the soil's
+//! lateral force) and slip ratio -1 (locked) to 1 (`validation_long.csv`).
 //!
 //! ```sh
 //! cargo run --release -p rbr-tyre-lab --example ngp_transient -- \
@@ -421,6 +424,9 @@ fn main() {
     let mut out = std::path::PathBuf::from("/tmp/tyre-lab/ngp-dyn");
     let mut sweep = std::path::PathBuf::from("/tmp/tyre-lab/ngp");
     let mut wheel_arg: Option<u32> = None;
+    let mut target_fz = TARGET_FZ;
+    let mut ramp_v = 15.0f32;
+    let mut ramps_only = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -428,6 +434,9 @@ fn main() {
             "--out" => out = args.next().expect("--out DIR").into(),
             "--sweep" => sweep = args.next().expect("--sweep DIR").into(),
             "--wheel" => wheel_arg = Some(args.next().expect("--wheel K").parse().expect("wheel")),
+            "--fz" => target_fz = args.next().expect("--fz N").parse().expect("load"),
+            "--speed" => ramp_v = args.next().expect("--speed M/S").parse().expect("speed"),
+            "--ramps-only" => ramps_only = true,
             _ => panic!("unknown arg {a}"),
         }
     }
@@ -483,12 +492,13 @@ in as zero. Temperatures restored to captured before each validation point and e
         sweep_mu.insert((fz, alpha_bits), v[3].parse().unwrap_or(f32::NAN));
     }
     rig.reset();
-    let (vx0, vz0, spin0) = lateral_kin(15.0, 0.0, r0);
-    let hub15 = rig.bisect_hub(vx0, vz0, spin0, TARGET_FZ);
-    println!("validation hub at 15 m/s for 4 kN: {hub15:.5} m");
-    rig.settle(vx0, vz0, spin0, hub15, 3000);
-    let mut val = String::from("alpha_deg,Fy_N,Fz_N,mu,temp_tread_K,mu_sweep\n");
+    let (vx0, vz0, spin0) = lateral_kin(ramp_v, 0.0, r0);
+    let hub_ramp = rig.bisect_hub(vx0, vz0, spin0, target_fz);
+    println!("validation hub at {ramp_v} m/s for {target_fz} N: {hub_ramp:.5} m");
+    rig.settle(vx0, vz0, spin0, hub_ramp, 3000);
+    let mut val = String::from("alpha_deg,Fy_N,Fz_N,mu,temp_tread_K,mu_sweep,soil_Fy_N\n");
     let mut val_curve: Vec<(f32, f32)> = Vec::new();
+    let mut lat_mu: Vec<(f32, f32)> = Vec::new();
     let (mut worst, mut sum, mut n, mut calpha_num, mut calpha_den) = (0.0f32, 0.0f32, 0u32, 0.0f64, 0.0f64);
     let mut na = 0;
     loop {
@@ -498,13 +508,13 @@ in as zero. Temperatures restored to captured before each validation point and e
         }
         na += 1;
         rig.reset_temps();
-        let (vx, vz, spin) = lateral_kin(15.0, alpha, r0);
+        let (vx, vz, spin) = lateral_kin(ramp_v, alpha, r0);
         let mut f = rig.mem.load_frame(rig.scratch);
         for _ in 0..400 {
-            f = rig.step_once(vx, vz, spin, hub15);
+            f = rig.step_once(vx, vz, spin, hub_ramp);
         }
         let mu = f.scratch.lateral_force.abs() / f.scratch.normal_force;
-        let key = (4000u32, (alpha * 100.0).round() as u32);
+        let key = (target_fz as u32, (alpha * 100.0).round() as u32);
         let mu_s = sweep_mu.get(&key).copied().unwrap_or(f32::NAN);
         if alpha <= 12.0 && mu_s.is_finite() {
             worst = worst.max((mu - mu_s).abs());
@@ -516,12 +526,67 @@ in as zero. Temperatures restored to captured before each validation point and e
             calpha_den += f64::from(alpha.to_radians()).powi(2);
         }
         val_curve.push((alpha, f.scratch.lateral_force));
+        lat_mu.push((alpha, mu));
         val.push_str(&format!(
-            "{alpha:.2},{:.2},{:.1},{mu:.4},{:.2},{mu_s:.4}\n",
-            f.scratch.lateral_force, f.scratch.normal_force, f.state.tread_temperature,
+            "{alpha:.2},{:.2},{:.1},{mu:.4},{:.2},{mu_s:.4},{:.2}\n",
+            f.scratch.lateral_force, f.scratch.normal_force, f.state.tread_temperature, f.scratch.lateral_soil_force,
         ));
     }
     write(&out.join("validation.csv"), &val);
+    let calpha = (calpha_num / calpha_den) as f32;
+    println!("validation: worst |dmu| {worst:.4} mean {:.4} Calpha {calpha:.0} N/rad", sum / n.max(1) as f32);
+    md.push_str(&format!(
+        "## Harness validation (quasi-static ramp at {ramp_v} m/s, Fz = {target_fz} N)\n\n400 steps per 0.25 deg point \
+(with the captured temperatures restored at each point), hub bisected once at 0 deg. \
+Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness {:.0} kN/rad \
+(the 4 kN tarmac sweep: 70.4).\n\n",
+        sum / n.max(1) as f32,
+        calpha / 1000.0,
+    ));
+
+    // --- quasi-static slip-ratio ramp, kappa -1 (locked) to 1, same speed, hub and point length ---------
+    let mut val_long = String::from("kappa,Fx_N,Fz_N,mu,Fy_N\n");
+    let mut kappa_mu: Vec<(f32, f32)> = Vec::new();
+    for nk in 0..=100 {
+        let kappa = -1.0 + nk as f32 * 0.02;
+        rig.reset_temps();
+        let (vx, vz, spin) = long_kin(ramp_v, kappa, r0);
+        let mut f = rig.mem.load_frame(rig.scratch);
+        for _ in 0..400 {
+            f = rig.step_once(vx, vz, spin, hub_ramp);
+        }
+        let mu = f.scratch.longitudinal_force.abs() / f.scratch.normal_force;
+        kappa_mu.push((kappa, mu));
+        val_long.push_str(&format!(
+            "{kappa:.2},{:.2},{:.1},{mu:.4},{:.2}\n",
+            f.scratch.longitudinal_force, f.scratch.normal_force, f.scratch.lateral_force,
+        ));
+    }
+    write(&out.join("validation_long.csv"), &val_long);
+    let peak_of = |pts: &[(f32, f32)]| pts.iter().copied().fold((0.0f32, 0.0f32), |b, p| if p.1 > b.1 { p } else { b });
+    let (a_peak, mu_y) = peak_of(&lat_mu);
+    let mu_y30 = lat_mu.last().map_or(f32::NAN, |p| p.1);
+    let drive: Vec<(f32, f32)> = kappa_mu.iter().copied().filter(|p| p.0 >= 0.0).collect();
+    let brake: Vec<(f32, f32)> = kappa_mu.iter().copied().filter(|p| p.0 <= 0.0).collect();
+    let ((k_drive, mu_drive), (k_brake, mu_brake)) = (peak_of(&drive), peak_of(&brake));
+    let (mu_k1, mu_locked) = (drive.last().map_or(f32::NAN, |p| p.1), brake[0].1);
+    let ramps = format!(
+        "## Ramps (whole step, {ramp_v} m/s, hub for {target_fz} N at 0 deg)\n\n\
+Lateral: peak mu {mu_y:.3} at {a_peak:.2} deg, 30 deg {mu_y30:.3} ({:.3} of peak). \
+Longitudinal: drive peak {mu_drive:.3} at kappa {k_drive:.2}, kappa 1 {mu_k1:.3} ({:.3} of peak); \
+brake peak {mu_brake:.3} at kappa {k_brake:.2}, locked {mu_locked:.3} ({:.3} of peak).\n\n",
+        mu_y30 / mu_y,
+        mu_k1 / mu_drive,
+        mu_locked / mu_brake,
+    );
+    println!("{ramps}");
+    md.push_str(&ramps);
+    if ramps_only {
+        write(&out.join("summary.md"), &md);
+        println!("csv + summary.md in {}", out.display());
+        return;
+    }
+
     // --- (a) lateral step: 0 -> 2 and 0 -> 6 deg at 5, 10, 20, 30 m/s, Fz = 4 kN ----------------
     let mut lat = String::from("V_ms,target_deg,t_s,x_m,Fy_N,Fz_N,sliding_w,sticking_w\n");
     let mut a_md = String::from("## (a) Lateral step response\n\n");
@@ -531,7 +596,7 @@ in as zero. Temperatures restored to captured before each validation point and e
         rig.reset();
         rig.reset_temps();
         let (vx0, vz0, spin0) = lateral_kin(v, 0.0, r0);
-        let hub = rig.bisect_hub(vx0, vz0, spin0, TARGET_FZ);
+        let hub = rig.bisect_hub(vx0, vz0, spin0, target_fz);
         for target in [2.0f32, 6.0] {
             rig.reset();
             rig.reset_temps();
@@ -582,17 +647,6 @@ in as zero. Temperatures restored to captured before each validation point and e
     }
     write(&out.join("lat_step.csv"), &lat);
 
-    let calpha = (calpha_num / calpha_den) as f32;
-    println!("validation: worst |dmu| {worst:.4} mean {:.4} Calpha {calpha:.0} N/rad", sum / n.max(1) as f32);
-    md.push_str(&format!(
-        "## Harness validation (quasi-static ramp at 15 m/s, Fz = 4 kN)\n\n400 steps per 0.25 deg point \
-(with the captured temperatures restored at each point), hub bisected once at 0 deg. \
-Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness {:.0} kN/rad \
-(sweep: {:.1}).\n\n",
-        sum / n.max(1) as f32,
-        calpha / 1000.0,
-        70.4,
-    ));
     md.push_str(&a_md);
 
     // --- (b) longitudinal step: 0 -> 0.03 and 0 -> 0.1 at 10 and 20 m/s -------------------------
@@ -604,7 +658,7 @@ Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness
         rig.reset();
         rig.reset_temps();
         let (vx0, vz0, spin0) = long_kin(v, 0.0, r0);
-        let hub = rig.bisect_hub(vx0, vz0, spin0, TARGET_FZ);
+        let hub = rig.bisect_hub(vx0, vz0, spin0, target_fz);
         for kappa in [0.03f32, 0.1] {
             rig.reset();
             rig.reset_temps();
@@ -657,7 +711,7 @@ Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness
     rig.reset();
     rig.reset_temps();
     let (cx0, cz0, cs0) = lateral_kin(20.0, 0.0, r0);
-    let chub = rig.bisect_hub(cx0, cz0, cs0, TARGET_FZ);
+    let chub = rig.bisect_hub(cx0, cz0, cs0, target_fz);
     // The quasi-static amplitude from short cool holds (400 steps, as in the validation): long settles
     // would warm the surface sector and bias the reference down while the sine runs start cool.
     rig.settle(cx0, cz0, cs0, chub, 3000);
@@ -780,7 +834,7 @@ Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness
         rig.reset();
         rig.reset_temps();
         let (zx, zz, zs) = lateral_kin(v, 0.0, r0);
-        let hub = rig.bisect_hub(zx, zz, zs, TARGET_FZ);
+        let hub = rig.bisect_hub(zx, zz, zs, target_fz);
         let (vx, vz, spin) = lateral_kin(v, 4.0, r0);
         let mut rec: Vec<(f32, f32, f32)> = Vec::new();
         for k in 0..2000u32 {
@@ -808,7 +862,7 @@ Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness
     // Standstill (V = 0, spin 0) with a small lateral push of 5 cm/s.
     rig.reset();
     rig.reset_temps();
-    let hub0 = rig.bisect_hub(0.0, 0.0, 0.0, TARGET_FZ);
+    let hub0 = rig.bisect_hub(0.0, 0.0, 0.0, target_fz);
     let mut push = String::from("t_s,Fy_N,Fz_N,sliding_w,sticking_w\n");
     let mut fy: Vec<f32> = Vec::new();
     for k in 0..1440u32 {
@@ -901,13 +955,13 @@ Worst |mu - mu_sweep| over 0-12 deg: {worst:.4}, mean {:.4}; cornering stiffness
     let (hx, hz, hs) = lateral_kin(20.0, 6.0, r0);
     let (cx, cz, cs) = lateral_kin(20.0, 0.0, r0);
     rig.reset();
-    let mut hub = rig.hold_fz(hx, hz, hs, rig.mem.f32(rig.scratch + 0x3A8), TARGET_FZ);
+    let mut hub = rig.hold_fz(hx, hz, hs, rig.mem.f32(rig.scratch + 0x3A8), target_fz);
     let (_, hot_heat) = phase(&mut rig, &mut heat, "hot_heat", [hx, hz, hs], hub, 20.0, 0.0);
-    hub = rig.hold_fz(cx, cz, cs, hub, TARGET_FZ);
+    hub = rig.hold_fz(cx, cz, cs, hub, target_fz);
     let (_, hot_cool) = phase(&mut rig, &mut heat, "hot_cool", [cx, cz, cs], hub, 20.0, 20.0);
     rig.reset();
     rig.set_cold(293.0);
-    hub = rig.hold_fz(hx, hz, hs, hub, TARGET_FZ);
+    hub = rig.hold_fz(hx, hz, hs, hub, target_fz);
     let (_, cold_heat) = phase(&mut rig, &mut heat, "cold_heat", [hx, hz, hs], hub, 20.0, 0.0);
     write(&out.join("heat.csv"), &heat);
     let tread_of = |trace: &[(f32, f32, f32)]| trace.iter().map(|x| (x.0, x.1)).collect::<Vec<_>>();

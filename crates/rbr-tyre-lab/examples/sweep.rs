@@ -24,6 +24,7 @@ fn main() {
     let mut step = 0u32;
     let mut wheel = 0u32;
     let mut out = std::path::PathBuf::from("/tmp/tyre-lab/ngp");
+    let mut friction: Option<(f32, f32)> = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -31,6 +32,11 @@ fn main() {
             "--step" => step = args.next().expect("--step N").parse().expect("step"),
             "--wheel" => wheel = args.next().expect("--wheel K").parse().expect("wheel"),
             "--out" => out = args.next().expect("--out DIR").into(),
+            "--friction" => {
+                let v = args.next().expect("--friction STATIC,KINETIC");
+                let (s, k) = v.split_once(',').expect("--friction STATIC,KINETIC");
+                friction = Some((s.parse().expect("static"), k.parse().expect("kinetic")));
+            }
             _ => panic!("unknown arg {a}"),
         }
     }
@@ -59,7 +65,7 @@ fn main() {
         }
         speed
     };
-    let base = if step == 0 {
+    let mut base = if step == 0 {
         // First driving wheel-0 dump: the operating point at speed.
         dumps
             .iter()
@@ -80,6 +86,11 @@ fn main() {
     } else {
         dumps.iter().find(|d| d.step == step && d.wheel == wheel).expect("step/wheel not dumped").clone()
     };
+    // A surface no probed run reaches (NGP's material 116, say): its friction in place of the probed one.
+    if let Some((s, k)) = friction {
+        base.static_friction = s;
+        base.kinetic_friction = k;
+    }
     std::fs::create_dir_all(&out).unwrap_or_else(|e| panic!("{}: {e}", out.display()));
     println!(
         "params: step {} wheel {} Fz {:.0} N static {:.4} kinetic {:.4} ref {:.2} temp_grip {:.4} patch {:.4} m R {:.4} m P {:.0} kPa",
