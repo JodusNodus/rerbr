@@ -39,7 +39,11 @@ fn main() {
         for (_, key) in FIELDS {
             let at = FIRST_ENTRY + id * ENTRY + key + 0xc;
             match words.get(&at) {
-                Some(&w) => print!("\t{:.4}", f32::from_bits(w)),
+                // SinkFactor is ~1e-7 on loose ground: print small values in full.
+                Some(&w) => match f32::from_bits(w) {
+                    v if v != 0.0 && v.abs() < 1e-3 => print!("\t{v:e}"),
+                    v => print!("\t{v:.4}"),
+                },
                 None => print!("\t-"),
             }
         }

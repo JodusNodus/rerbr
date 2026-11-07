@@ -13,6 +13,8 @@ Nothing here changes what the game computes.
 - `examples/sweep.rs`: takes a probe dump and sweeps NGP's pure tyre functions
   (`patch_forces`, `friction_limits`, through `rbr-physics`, never copied)
   over slip and load. Writes CSVs plus `summary.md` into the output dir.
+  `--friction S,K` puts a surface's static and kinetic friction in place of
+  the probed one, for a material no run reaches.
 - `rbr-standalone --tyre-image FILE [--tyre-image-step N]` (with `--autopilot`):
   a memory image of the four wheels' tyre footprints (scratch, state, setup,
   wear table, contact record, NGP's `.data`) plus a `txt` sidecar with the
@@ -21,6 +23,9 @@ Nothing here changes what the game computes.
   real per-wheel tyre step (`entries::step` + `entries::relax_count`, exactly
   the wheel step's sequence) under scripted kinematics: validation against the
   sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
+  `--fz N`, `--speed M/S` and `--ramps-only` give the whole step's slip-angle
+  (0-30°) and slip-ratio (locked to 1) ramps at another load and speed, which
+  include the soil's lateral force the pure sweep leaves out.
 - `src/probe.rs`: the probe-dump parser shared by the examples.
 - `brush`, `calibrate`: the brush-v1 tyre model and its calibration solve,
   re-exported from `crates/rbr-tyre` (the game's tyre model, in development,
@@ -54,6 +59,8 @@ cargo run -q --release -p rbr-tyre-lab --example compare -- --probe /tmp/tyre-la
 cargo run -q --release -p rbr-tyre-lab --example racing -- --probe /tmp/tyre-lab/x.probe
 cargo run -q --release -p rbr-tyre-lab --example low_speed -- --probe /tmp/tyre-lab/x.probe
 cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --out /tmp/tyre-lab/ngp-dyn
+cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --sweep /tmp/tyre-lab/ngp \
+    --fz 2000 --speed 25 --ramps-only --out /tmp/tyre-lab/ngp-ramps
 cargo run -q --release -p rbr-tyre-lab --example materials -- "$RBR_NGP_DLL" [ID...]
 ```
 

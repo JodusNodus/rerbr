@@ -20,8 +20,9 @@ step 8000; the sweep calls NGP's own `patch_forces`/`friction_limits` with the p
   lateral peak `CrnMyFct(Fz) · 1.29` = 1.26 at 4 kN.
 - Surface values (`materials` example): tarmac fine clean dry/damp/wet (37/38/39) μs 1.30/1.2025/1.105, μk
   1.04/0.944/0.851, WaterFactor 0/0.25/1; sprinkled and covered 2.5 % and 5 % below clean; gravel fine shallow
-  (17) 0.90/0.756 over soil 0.855/0.664, 9 mm (SinkFactor 0: no soil solve). Wet on the dry tyre: 1.105 × wet slope
-  0.925 = 0.79 of dry, at any speed.
+  (17) 0.90/0.756 over soil 0.855/0.664, 9 mm, SinkFactor 2e-7 (the soil solve runs:
+  [Loose surfaces](#loose-surfaces-ngp-against-published-data)). Wet on the dry tyre: 1.105 × wet slope 0.925 = 0.79
+  of dry, at any speed.
 - The tyre type's friction tables are the same for all 7 kinds; tarmac against gravel comes from the surface values,
   the kind's stiffness and peak slips, and soil (sweep peak μ_y at 4 kN 0.846 / 1.265 = 0.67; skidpad 0.62).
 - Sweep, dry tarmac, 15 m/s: peak μ_y 1.356/1.304/1.265/1.224/1.181 at 2/3/4/5/6 kN (peak Fy ∝ Fz^0.878), peak slip
@@ -333,6 +334,52 @@ Recommendation (1 done, 4 evaluated and not taken, 2026-11-07; 2, 3 and 5 stand)
 Missing: any rally tyre curve; measured combined slip for any racing tyre (TTC combined runs are licence-gated);
 rally g data on tarmac; a verified racing relaxation length; absolute μ against temperature for a slick.
 
+## Loose surfaces: NGP against published data
+
+Runs (2026-11-07, `ngp` physics, Fiesta Rally2): gravel on RSF 345 Azov II (`--circle 1051,-166,40 --circle-ramp
+0.4`, step 6000, Gravel_Fine_Shallow_Dry 17, kind 4); snow on retail map 10 (`track-10_O`, autopilot, step 6000,
+SnowOnGravel_Shallow 101, kind 6), SnowOnIce_Shallow (117, RSF 162 Karlstad, step 21000) within 0.05 of it; tarmac map
+85 as above (step 8000, wheel 1). Ice: material 116 (no name in 1.02's surface table; μ 0.10/0.095, no soil, on the
+RSF 565/614 winter tarmac and in the wet entries of 124/156) met no run, so `sweep --friction 0.1,0.095` on the snow
+frame (its tyre-class factor taken as 1, unverified). "Sweep": pure `patch_forces` at 15 m/s; "step": `ngp_transient
+--ramps-only`, NGP's whole per-wheel step on the run's `--tyre-image`, 15 m/s unless stated; 4 kN unless stated.
+Published values, sources and precision labels from the loose-surface research (`tyre-research/loose/findings.md`).
+
+- Tyre kind: `--tyre N`, else `boot::default_tyre` of the stage's surface (retail `boot::surface(map)`; an RSF stage's
+  own): tarmac 0, gravel 4, snow 6. Materials: the stage's `.mat` entry for the wear and wetness gives each
+  triangle's surface id; NGP's stage init writes those ids' values (`materials`).
+- Soil enters on every loose material: SinkFactor 1.5-5e-7, not 0. At car loads the tyre sinks through 17's 9 mm
+  and 101's 13 mm, so the friction is the hard value; the soil adds a lateral force ∝ density · patch length · sink ·
+  v_lat² (ρ 1300 / 1100): at 30°, 127 / 161 N at 15 m/s, 350 / 444 N at 25 m/s. Its longitudinal force is multiplied
+  by 0 (`tyre::soil`). 30 mm layers (103) sink partly and blend toward the soil friction. Tarmac and 116: SinkFactor
+  0. The step stays within 0.03 μ of the sweep to 12° on gravel (0.013 snow, 0.005 tarmac).
+
+| Property | Published | NGP gravel | NGP snow | NGP ice (116) | Tarmac reference |
+| --- | --- | --- | --- | --- | --- |
+| Peak μ_y | gravel ≲ 0.67 WRC wet loose (CW, quoted; μ inferred), 0.55 wet crushed (TR1011, quoted); packed snow 0.35-0.43, loose 0.28-0.33 (TR0713, table); ice 0.15-0.17 (TR0713, table) | 0.828 sweep, 0.854 step | 0.851, 0.857 | 0.099 | 1.262, 1.266 |
+| Over tarmac | gravel 50-60 % (CW, quoted) | 0.66 | 0.67 | 0.08 | 1 |
+| Peak slip angle | gravel ~12° (CW, quoted), 12.1° (Velenis, MF), dirt 16° (ChassisSim, model input); packed snow 9-17°, loose 16-18° (TR0713, table); ice 4.5-5.1° (TR0713, table) | 13.5° (95 % at 9°); step 14° | 11° (95 % at 7.75°); step 11.25° | 1.25° (95 % at 1°) | 9.5° (6.75°) |
+| μ_y at 30° over peak | gravel 0.63 (CW, quoted; ratio inferred), 0.85 (Velenis, MF); snow no fall to ~17° (TR0713, quoted); ice 0.59 at 20° (TR0713, fig ±0.005) | 0.956; step 0.985, at 25 m/s rising to 30° (0.897) | 0.955; step 0.997, at 25 m/s rising (0.926) | 0.976 at 20°, 0.965 | 0.865 |
+| Peak κ | gravel none open ("0.4-0.7", snippet); snow still rising at 0.30 (Surkutwar, fig ±0.01); ice 0.05 (Ružinskas, quoted) | 0.24 (2 kN 0.16) | 0.22 (0.12-0.30 at 2-6 kN) | 0.04-0.06 | 0.16 |
+| μ_x at κ 1 over peak | gravel 0.75 (Velenis, MF); snow no fall to 0.30 (Surkutwar, fig); ice ~0.5 at 0.45 (Ružinskas, fig ±0.005) | 0.82 sweep and step | 0.85 | 0.93 | 0.78 |
+| Ploughing: locked against peak | gravel: locked stops 25-30 % shorter than ABS, decel 1.25-1.30× (SAE 1999-01-1287, table; ratio inferred); car braking 0.50-0.60 wet crushed (TR1011, table) | locked 0.82 of peak (step 0.82, 0.79 at 25 m/s); game, full brake from 100 km/h on 345: 0.72 g, fronts at κ -0.7 to -0.9 | 0.85 | 0.93 | 0.78; RSF 568 full brake 1.08 g, locked |
+| Peak μ_y at 2/4/6 kN (Fy ∝ Fz^n) | snow no clear loss at 4.6-11 kN (TR0713, inferred, weak); soil lateral coefficient falls slightly at 1-4 kN (El-Razaz review, quoted); gravel none | 0.889/0.828/0.774 (0.875); step 0.913/0.854/0.797 | 0.902/0.851/0.788 (0.881); step 0.928 (rising)/0.857/0.795 | 0.105/0.099/0.092 (0.886) | 1.353/1.262/1.179 (0.877) |
+| Peak μ_x at 2/4/6 kN (Fx ∝ Fz^n) | none | 0.864/0.849/0.845 (0.982) | 0.877/0.870/0.858 (0.979) | 0.101/0.100/0.101 | 1.309/1.292/1.286 (0.984) |
+| Cα/Fz at 4 kN; Cα ∝ Fz^m | initial slope packed snow ~10/rad, ice ~4.6/rad (findings, inferred from figs); gravel none | 9.1/rad; 0.325 | 10.5/rad; 0.338 | the snow tyre's (μ alone changed) | 17.6/rad; 0.359 |
+
+Where NGP sits:
+
+- Level: gravel and snow are one surface to NGP, 0.83-0.86 at 4 kN (0.66-0.67 of tarmac): gravel 1.3-1.5× the
+  published peaks, snow about twice. Ice (116) is 0.10, below the measured 0.15-0.17.
+- Shape: the peak slip angles of gravel (13.5°) and snow (11°) fall inside the published ranges, because the gravel
+  and snow kinds are softer (Cα/Fz 9-10.5 against 17.6); ice peaks at 1.25° against 4-5°, its stiffness being the
+  snow tyre's. Past the peak every loose curve is flat (0.96 of peak at 30° in the sweep) and the soil force makes it
+  flatter or rising, more with speed: like the snow data, flatter than the gravel data (0.63-0.85), and ice does not
+  fall (0.97 against 0.59).
+- Ploughing: none longitudinally (the soil's longitudinal force is zero); a locked wheel keeps 0.82 of the peak on
+  gravel, so it stops longer than one at peak slip, where the published locked wheel stops 25-30 % shorter.
+- Load: the tarmac sensitivity on every surface (same tables): Fy ∝ Fz^0.875-0.886, Fx ∝ Fz^0.98, Cα ∝ Fz^0.33-0.36.
+
 ## Open
 
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
@@ -353,3 +400,6 @@ rally g data on tarmac; a verified racing relaxation length; absolute μ against
   Canudas de Wit's σ_0 181.54 1/m (726 kN/m at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same
   contact; Rill's restored dynamics already give the stick-slip at standstill LuGre adds, so it was not prototyped.
   Camber thrust from MF6.1's camber stiffness.
+- Loose surfaces unmeasured: material 116 in a run (its tyre-class factor, taken as 1), a brake test held at peak
+  slip on gravel (needs a partial pedal, which only the uncommitted debug patch gives), combined slip on gravel and
+  snow, and the soil's lateral force above 25 m/s through the whole car.
