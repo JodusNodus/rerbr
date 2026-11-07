@@ -505,10 +505,13 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
 
 ## Known limits
 
-- The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and
-  anti-lag pops come from its cut firing events. The whine's pitch is the model's shaft speed times 0.78, to stay in
-  the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size for
-  every car. The sound's own anti-lag crackle on a throttle lift still plays on every car, beside the model's pops.
+- The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and the
+  anti-lag pops play while its anti-lag runs, and only then, at the rate and loudness of real rally anti-lag (about 7
+  bangs a second, counted in onboard and roadside videos). The whine's pitch is the model's shaft speed times 0.78, to
+  stay in the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size
+  for every car. Cars whose sound bank has empty backfire events, the Fiesta Rally2 among them, play no anti-lag pops,
+  as under NGP. Until the model's anti-lag first runs, and on cars without anti-lag, the sound's own crackle still
+  plays on a throttle lift.
 - The clutch's capacity is NGP's, sized for its torque. The model's peak torque is the same, so this matters only for
   transient overshoot.
 - Damage, overheating and oil starvation reach the model through NGP's damage factor and the 1.02 sim's friction, as

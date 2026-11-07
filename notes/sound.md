@@ -74,13 +74,36 @@ Mechanics in `engine.rs` (inputs, bank, slew, crossfade, grains, `MixScale`, out
   its boost): `p[2]` its shaft speed times 0.78 (the 1.02 sim's over the model's, 0.79 at the median and 0.78 at the
   99th percentile, Fiesta Rally2 on track-11_O, 90 s of autopilot, both read from the same run), `p[3]` its boost
   over the air (the two already agree: medians 1.54 and 1.62), `p[7]` its valve opening times 1e-4 (the Fiesta
-  Rally2's lift, its `p[7]` with the valve open) and `p[6]` the 1.02 formula on those; `p[4]` 0.95 while anti-lag
-  cuts a firing event (from 0.9 a bank's `exhaustpop` fires; on the 1.02 voices a high pop, a bang and a run), the
-  1.02 sim's misfire word otherwise. The NGP profile's SND1 is unchanged (tested). Same drive, 90 s: blow-offs 16
-  against 7 from the 1.02 sim, bangs 151 against 1; renders `/tmp/turbo-sound-renders/` (not kept). The headless
-  trace carries only `p[0]`, so it needs no change.
-- Open: our anti-lag crackle (`exhaust::AntiLag`) still fires on every lift beside the model's pops (SND1 says
-  nothing of the model); other cars' blow-off valves take the Fiesta Rally2's lift.
+  Rally2's lift, its `p[7]` with the valve open) and `p[6]` the 1.02 formula on those; `p[4]`
+  `rbr_recording::sound::MODEL_ANTI_LAG` (2.0) while the model's anti-lag runs, the 1.02 sim's misfire word
+  otherwise. The 1.02 sim's misfire level is `min(rate * 50, 1)` (`misfire_roll`), so above 1 is only ever the model;
+  the NGP drive below gives at most 0.09. The NGP profile's SND1 is unchanged (tested). Same drive, 90 s: blow-offs 16
+  against 7 from the 1.02 sim. The headless trace carries only `p[0]`, so it needs no change.
+- Anti-lag under the model (ours, realism, 2026-11-07; `exhaust::AntiLag`, `fmod::FmodCar::model_pop`): one source of
+  pops. From the first `MODEL_ANTI_LAG` word on, the crackle plays while the model's anti-lag runs and only then (a
+  lift no longer fires it), 0.04-0.25 s apart (`MODEL_GAP`), at 2.5 times the misfire pops' gain (`MODEL_GAIN`); the
+  word is no misfire (no 1.02 pop, bang or run from it) and ends a misfire's pop run; an FMOD bank's backfire plays
+  each of those pops (`exhaustpop` 0.95 on its step, 0 between). Before the first word (the run's first lift) and on
+  cars without anti-lag the crackle still fires on lifts. NGP's sound is byte-identical (rbr-sound render of an NGP
+  drive). Cars without anti-lag under the model: byte-identical (Golf II GTI 16V).
+- Real anti-lag (evidence for `MODEL_GAP`, `MODEL_GAIN`; onsets of 2-8 kHz energy in 5 ms frames 9 dB (roadside) or
+  5 dB (on board) over the median of the 0.5 s around, grouped into bursts at gaps under 0.4 s; not in code): a VW
+  Polo GTI R5 from the roadside (youtube.com/watch?v=Uv0AmwP-gSA, 523 s) gives 36 bursts of 7.3 bangs/s median (5.8
+  to 9.6 at p25-p75), 0.48 s long median (1.39 max), the bangs 11 dB over the median (16 at p90); a Hyundai i20
+  Rally2 helmet camera on a stage (youtube.com/watch?v=azDl6hZIk3g, 176 s) 30 bursts of 5.8/s (4.5 to 6.9), 0.55 s
+  (1.49 max), 5.9 dB over. Gaps within bursts: p10 0.045 s, median 0.095 (roadside) and 0.165 s (on board), p90
+  0.31-0.34 s. Published ALS guides (MoTeC, Link, rallycars.com, Wikipedia) give no pop rate or level. Whether the
+  rate follows rpm, and how long bangs last on a lift longer than the videos' (about 1.5 s), is not known.
+- Anti-lag, Fiesta Rally2 under the model, autopilot on track-11_O (90 s; inside; `rbr-sound --log` counts): with its
+  FMOD bank nothing is heard before or after (the bank's `backfire_int`/`_ext` events are empty, so NGP's mute takes
+  every 1.02 pop; only 11 of the 57 RSF banks have backfire instruments); on the 1.02 voices (`--no-fmod`) the lift at
+  56-66 s went from 7.4 pop steps/s (bursts of 39-66/s, 2.9 bangs/s) to 2.3/s, the stage at 76-88 s from 15.5/s
+  (bursts of 14-33/s, 9.8 bangs/s) to 3.2/s (bursts of 5.9-8.0/s, 0.2 bangs/s); the pops stand 6.7-8.5 dB over the
+  2-8 kHz median in the car and 9.6-9.8 dB in the chase view (p90 15.7). Focus Mk II RS WRC 2006 (backfire on its
+  `_ext` event), chase: its backfires in bursts of 6.8-9.9/s. Renders `/tmp/als-sound-renders/` (not kept).
+- Open: other cars' blow-off valves take the Fiesta Rally2's lift; whether the crackle should stay on lifts of cars
+  without anti-lag under the model; whether the model's pops should play on the 1.02 voices for banks whose backfire
+  events are empty (NGP mutes them).
 
 ## Exhaust and car effects
 
