@@ -96,11 +96,14 @@ Rill's first-order force dynamics (below). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and
 (-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed by Canudas de Wit's g(Vs) with their v_s and μ_C/μ_S; NGP's temperature grip kept; dry wear
 +10 % at 60 % worn, fading with wetness; wet loss h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 0.7 mm and
-v_p = 6.36 √p (0.75 + 0.25 d); force dynamics F = c u + d u', (v d + f) u' = f v s - v c u per axis (Rill,
-Vehicle Dynamics lecture notes, Hochschule Regensburg 2009, 3.4.2; f = F/s the steady secant, c NGP's carcass, d
-the mean of Rill's passenger values, d_x 500/1500 and d_y 250/600 N/(m/s)), combined force capped at μ Fz as Rill
-caps it; relaxation length (f + v d)/c, the stretched string's C/c at small slip, no other speed term. Calibrated at run time to NGP's lateral peak and slope and
-longitudinal peak at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
+v_p = 6.36 √p (0.75 + 0.25 d); force dynamics F = c u + d u', (v d + f) u' = f v_N s - v c u per axis (Rill,
+Vehicle Dynamics lecture notes, Hochschule Regensburg 2009, 3.4.2 and 4.2.2; f = F/s the steady secant, s made with
+v_N = max(v, 0.5 m/s), v itself the transport speed as in Rill's eqs. 4.20-4.21, so a locked wheel's deflection
+follows the sliding and a stopped one's holds; c_y NGP's carcass, c_x = Cx(Fz0)/(1.44 R) from MF 6.1's longitudinal
+relaxation length at Fz0; d the mean of Rill's passenger values, d_x 500/1500 and d_y 250/600 N/(m/s)), combined
+force and the deflections capped at μ Fz as Rill caps them; relaxation length (f + v d)/c, the stretched string's C/c
+at small slip, no other speed term. Calibrated at run time to NGP's lateral peak and slope and longitudinal peak at
+4 kN, 15 m/s (no NGP values in code). The dynamics reach standstill; the game runs the brush from 2 m/s.
 
 Combined slip (2026-11-07): the adhering part of the patch gives -C_i s_i (1 - ψ)² along the stiffness-weighted
 slip, the sliding part μ Fz ψ² (3 - 2ψ) against the sliding velocity, μ Fz from ψ = 1 (Svendenius, Tire Modeling and
@@ -115,7 +118,8 @@ reread here: the book is not open.
 Ours, not from papers: the wet loss's film ramp, its 0.5 mm, the quadratic and the 0.6 weight, and the wear gain's
 fade with W; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
 excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-0.45 m); taking the longitudinal exponents
-and Kx/Ky as the mean of two road-tyre sets; the carcass damping as the mean of Rill's two passenger values; NGP's carcass stiffnesses and temperature grip.
+and Kx/Ky as the mean of two road-tyre sets; the carcass damping as the mean of Rill's two passenger values; MF 6.1's
+σ_x/R0 for a rally tyre's longitudinal carcass; NGP's lateral carcass stiffness and temperature grip.
 
 Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in brackets where it changed):
 
@@ -126,6 +130,16 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   slip +0.35 against transient -0.12). Steady grip was not short: 1.38 μ peak at κ 0.15, 1.10 at the spin's κ 1.5
   (sliding 6.75 m/s). Rill's dynamics turn it in 3-15 ms; σ_x 1.0-1.6 m at κ 0.02 to 0.25-0.3 m sliding; Rill: σ_x
   passenger 0.7 m, review 0.3-0.8 m; measured σ_y 0.6 m at 0° to 0.1 m at 10° (Rill Fig. 3.43).
+- 2026-11-07, longitudinal carcass (`low_speed` example; quarter car stepped explicitly at 720 Hz, inertia 0.6-4 kg
+  m²): 63 % of a κ 0.05 step after 0.90-0.93 m (Golf) / 0.82-0.85 m (Fiesta) below 10 m/s on NGP's tenth, 0.27-0.30 m
+  with c_x = Cx/(1.44 R) at 1-25 m/s (NGP unscaled 0.09-0.10 m, Rill's 170 kN/m 0.35-0.41 m). From 0.5 to 10 m/s a
+  drive-torque step settles with no step-to-step alternation for every choice (NGP's reason for the tenth, its
+  explicit wheel step, does not return with Rill's damping): from free rolling the wheel slip peaks at 0.30-0.71 m/s
+  against 0.47-0.95 on the tenth and settles within 0.05-0.41 s (0.07-0.51 s), 18-97 crossings of the settled slip in
+  2 s; NGP unscaled rings longer (25-420). Down to standstill with the transport speed restored: pull-away, braking to
+  a stop and holding on a 10 % grade stay stable with no creep beyond the rocking; after an abrupt stop the car rocks
+  on the carcass at 3.5-4 Hz with ζ 0.05-0.07 (Rill's Fig. 4.4: 3.4 Hz, "oscillates some time"), 2-5 mm in the 2 s
+  after.
 - Meets: combined slip at 4 kN, 15 m/s, Fy(κ ±0.25)/Fy(0) 0.283 at 2°, 0.333 at 4°, 0.465 at 8° (Svendenius's
   measured road tyre 0.2-0.3 and 0.29-0.34; NGP 0.40/0.46/0.61; before 0.20/0.24/0.35), Fy/|F| equal to the sliding
   velocity's share once sliding (0.269 at 4°; NGP 0.35); peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry
@@ -159,9 +173,9 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   `load_axis[3]` (the 4 kN design load times the car's mass ratio), 15 m/s, unit surface, stiffness factor 1; t_cal is
   the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed.
 - Dynamics: Rill's carcass deflections per wheel, the model's state (snapshots don't carry it; restart and
-  touch-down zero it). c_x is NGP's speed-scaled torsional stiffness over R² (0.1 of it below 10 m/s), as NGP's own
-  spring takes it, so at small slip the longitudinal relaxation is ~10× longer at low speed (Golf fronts 1.0-1.6 m at
-  4.5 m/s, against a road tyre's 0.3-0.8 m); trail and phase are the steady brush's.
+  touch-down zero it). c_y is NGP's lateral carcass; c_x = Cx(Fz0)/(1.44 R) (2026-11-07; Golf II 200 kN/m, Fiesta
+  Rally2 248 kN/m, against NGP's torsional over R² 640/796 kN/m, a tenth of it below 10 m/s), the same at every speed;
+  trail and phase are the steady brush's.
 - Runs below are `experimental-brush` (realistic engine + brush; `--physics experimental` was this pairing before the
   brush flag split). Golf II GTI 16V, track-41_M climb (gear 2, 4-5 m/s, throttle 0.15-0.5, 10-13 s), front wheel over
   car speed mean/max: NGP 0.98/1.02, realistic + NGP tyre 1.02/1.09; before 1.54/3.04 with a stall at 11.72 s, brush
@@ -182,6 +196,23 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   0.97/1.47, Fiat rears 1.09/3.03 → 1.08/3.03. Full brake from 15 m/s on map 41 (`--brake-from 15`, path length
   to the test's end at 0.3 m/s): 11.77 → 11.79 m, 10.7 m/s² mean, against NGP 12.03 m and experimental 12.10 m
   (10.2 m/s²); all lock. The straight-line numbers barely move, as expected: the change is in combined slip only.
+- 2026-11-07, c_x from MF 6.1's relaxation length, measured before the combined slip change (track-41_M, 3-8 m/s on
+  throttle, driven wheel over 1.1 times the car speed, share of the time, before → now, NGP 7): Golf 0.29 → 0.16 (0.10),
+  Fiesta 0.18 → 0.12 (0.14), Fiat 0.19 → 0.13 (0.07); |Fx - steady Fx|/|steady Fx| 0.48/0.53/0.44 → 0.35/0.37/0.25.
+  Step-to-step Fx ripple there 18-27 → 20-34 N on 1.7-2.0 kN; the wheel-speed 180-360 Hz content is 1.3-1.9 times NGP's
+  in amplitude (1.1-1.4 before), no instability. Golf climb (10-13 s, both fronts, car above 1 m/s) mean/max 0.96/1.23
+  (before 0.97/1.26, NGP 0.95/1.07), no stall. Four-car 600 s split 2 / finish: Fiesta 207.56/304.58, Celica
+  207.72/304.75, Golf 213.86/314.12, Fiat 215.56/316.02; slip > 3 % 1.9/3.6/4.6/5.5 s; over the limit 0.2/0/0/0 s; the
+  Golf stalls only after the finish (engine side). Fiesta 0-100 RSF 504 4.33 s (NGP 4.52). Brake tests from 10 m/s
+  (track-41_M, `--brake-from`; full pedal locks in both physics): stopping times within 0.12 s of NGP's except the
+  Fiesta at 0.35 pedal (1.63 against 2.30 s; the same with Rill's 170 kN/m, the brush before this change not run).
+- 2026-11-07, the brush to standstill (prototype, not committed: weight 1 at every speed on hard surfaces): no
+  instability. Brake tests stop in the same times as with the 2-3 m/s handover; at 0.35 pedal the wheel-speed
+  reversals in the second around the stop fall from NGP's 0.06-0.09 of steps to 0.006-0.03 (NGP's 360 Hz sticking
+  alternation gone) and the rock-back after the stop from 0.16-0.24 to 0.10-0.14 m/s; at full pedal reversals
+  0.004-0.10 against NGP's 0.001-0.07. Held at the start (handbrake, revving) with no drift; track-41_M runs and the
+  Golf climb within 0.1 s and 0.01 of the handover's. Below 2 m/s NGP's `solve_forces` still scales the model's force
+  by its sticking-weight damping and adds its hold torque (the seam), so the brush would not be alone there.
 - Fiesta Rally2, map 41 tarmac, autopilot, before the force dynamics (`ngp` / tyre only / full `experimental`, σ
   without the speed term, engine with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 /
   118.39 / 116.95 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No
@@ -286,7 +317,10 @@ rally g data on tarmac; a verified racing relaxation length; absolute μ against
   7.5 bar (Meccanica 2023).
 - Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest), the film's effect on v_p,
   and a sliding-speed loss for wet roads that fits locked-wheel data.
-- c_x below 10 m/s is NGP's tenth of its torsional stiffness, kept for NGP's explicit wheel step; a rally tyre's own
-  longitudinal carcass stiffness and damping are unpublished.
-- Low speed: LuGre bristle state with the published σ_0 (would also remove NGP's 360 Hz alternation) or NGP's
-  sticking model. Camber thrust from MF6.1's camber stiffness.
+- A rally tyre's own longitudinal carcass stiffness and damping are unpublished: c_x comes from one road set's σ_x/R0
+  (MF 6.1), d_x from Rill's passenger tyres. The lateral carcass stays NGP's (σ_y/R 0.65 against the sets' 1.01-1.84).
+- Low speed (decision): the brush could run to standstill (Rill's restored transport speed, measured above) in place
+  of the 2-3 m/s handover; NGP's sticking-weight damping and hold torque would still act below 2 m/s. LuGre with
+  Canudas de Wit's σ_0 181.54 1/m (726 kN/m at 4 kN, 3-4 times c_x) and σ_1 ~1 would be a second bristle over the same
+  contact; Rill's restored dynamics already give the stick-slip at standstill LuGre adds, so it was not prototyped.
+  Camber thrust from MF6.1's camber stiffness.
