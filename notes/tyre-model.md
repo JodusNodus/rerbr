@@ -79,11 +79,12 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Longitudinal past the peak | road MF sets 0.75-0.87 / 0.69-0.82 at κ 0.5 / 1 (4 kN); racing radial MF 6.2 fit 0.68-0.71 / 0.63-0.66 (Dallara AV-21 front, fit range unstated); locked over peak dry 0.58-0.75 (32-100 km/h) | TNO, Continental, MFeval and IIT sets; JyNing04/Pacejka-tire-model (GitHub); Lambourn & Wesley, TRL PPR496 (2010), abstract |
 | Carcass against pressure | +0.5 bar: σy -12 %, CFy +9.5 %, CFx +3.5 %; the sets' 2.2-2.6 bar cover rally hot pressures (2.0-2.5 bar) | op het Veld (2008) |
 | Camber | camber stiffness Fz (-1.001 + 0.175 dfz) per rad, ~5 % of Ky; car-tyre camber reduction 0.4-0.7 | MF6.1; Romano et al., Meccanica (2021) |
+| Racing slick (rig) | WTCC Yokohama A005 250/660R18: Fy peak at 5-6°, 0.93-0.97 of peak at 10°, 0.89-0.94 at 14°; Cα/Fz 27 /rad new, +6 % at 0.75 mm wear; 1.9 → 2.1 bar: Cα +2.3 %, vertical stiffness 239 → 262 kN/m; grip optimum ≈40 K above track temperature on rig and car; degradation 0.1-0.2 s/lap. Its simulator test plan (Appendix C: baseline, one parameter per stint, fixed lap budget, cockpit A/B toggle) is the template for brush against NGP | Richardson, Chalmers MSc 2017:82 (Cyan Racing), Figs 17, 54, 55, 57 (fig; load not stated), §5.2.4 (quoted) |
 | Rubber friction | no static/kinetic pair: μ(v, T) with flash temperature | Persson, arXiv 1007.2713, cond-mat/0605273; Grosch 1963 (secondary) |
 
-Not found in open sources: rally or racing-radial tyre data (TTC data is licence-gated), the full Gallaway 1979 tyre
-terms, road-sensor damp/wet film thresholds, gravel cut onto tarmac, damp tarmac grip. Those stay calibrated on stage
-times.
+Not found in open sources: rally tyre data, racing-radial data beyond the slick row (TTC data is licence-gated), the
+full Gallaway 1979 tyre terms, road-sensor damp/wet film thresholds, gravel cut onto tarmac, damp tarmac grip. Those
+stay calibrated on stage times.
 
 ## NGP against the targets
 
@@ -519,7 +520,8 @@ lower bound: it includes the pedal rise). Every braking series is road cars on r
 | Ice braking and cornering | car 50-0 km/h: studded 0.23-0.30 g, studless 0.18-0.22 g; best three at −2/−7/−13 °C 0.24/0.28/0.31 g studded, 0.17/0.22/0.26 g studless. Rig, smooth ice −3 °C, 30 km/h, 4.2 kN: μx peak/locked 0.25/0.22 studded, 0.21/0.17 Nordic; μy peak 0.22 at ~5° / 0.19 at 2-3°, at 20° 0.19 / 0.13. NGP: material 116 μ 0.10, tyre peak at 1.25° | Tekniikan Maailma 18/2025 (table, secondary via tyrereviews); VTI R875 Tabell 46, 48, Figur 3 (table; means inferred; fig ±0.01) | `--brake-from` and `--circle` on a 116 surface | a run on material 116 (none met it so far) |
 | Rally braking g, real stage | 0.65 g mean over the 16 longest braking events; lateral 1 s mean p50 0.4 g, p90 0.8-0.95 g; Yaris WRC, Rally Finland 2021 SS7 | RallyDataJunkie merged telemetry, one file (inferred; axes and 0.01 g units inferred) | autopilot on a fast RSF gravel stage, same statistics | per-step g export and a percentile script; the autopilot is not a WRC driver (weak) |
 | Surface change under traffic | braking coefficient 0.50 → 0.57 → 0.60 over three passes in one track; scraped line 0.68-0.74, loose windrow 0.56-0.59 | TR-10-11 Table 3 (table), Fig 13 (quoted) | none | a surface that changes with passes (not checked whether NGP has one) |
-| Per-tyre lateral curve on gravel | max lateral coefficient 0.55 (wet crushed gravel, pea stone); peak slip angle and the fall past it not open | SAE 2010-01-0374 (paywalled; 0.55 quoted in TR-10-11) | sweep on kind 4 against it | the paper |
+| Per-tyre lateral curve on gravel | road AT tyre 235/75R15, 6.7 kN, 1-1.5 m/s, towed lock-to-lock sweep. Free rolling, averaged curve μ_y at 5/10/20/30°: pea stone 0.30/0.44/0.52/0.54, wet gravel 0.22/0.35/0.48/0.53, still rising at 38-39° (max 0.54-0.55; per run 0.57 ±0.01 / 0.60 ±0.02); 90 % of max at 14.5° / 21°, initial slope 3-5 /rad. Front locked (pea stone): μx 0.85 at 0°, 1.5× the lateral max and 1.25-1.47× the traction (0.58-0.68); side force 0.72 sin α (0.23 at 20°, 0.36 at 30°). Circle breakout at 8.5 m/s: front LC 0.55 / 0.43 | Coutermarsh & Shoop SAE 2010-01-0374 Figs 14-17 (fig ±0.004 μ, locked ±0.02; ratios inferred) | sweep on kind 4: shape ratios and Cα/Fz (NGP: 95 % at 9°, 9.1 /rad, locked 0.82 of peak) | none |
+| Per-tyre lateral curves on snow and ice | same rig: max μ_y packed snow 0.40 ±0.03, + 0.5 cm fresh 0.375, wet 0.31, remixed 0.24, fresh 0.22, ice 0.18 ±0.015. Shapes: packed snow 90 % by 7-9°, flat to 26-33° (0.91-0.99 of max); fresh snow (5/15/22 cm) rising to the curve end at 15-19°, deeper lower; remixed snow linear to 33°, no peak; wet snow peaks at 10° and falls to 0.72 at 31°; ice peaks at 4-5°, 0.85 at 16°. Initial slope packed 6-9 /rad, halved by 0.5 cm fresh. Longitudinal (VTI truck, 50 km/h, brush fit): winter tyre on snow μ 0.40-0.41 at 2-6 kN, Cx/Fz 9-14 (24-28 on asphalt), rising to 40 % slip; studded 0.51; ice μ 0.08-0.10, studded 0.16, Cx/Fz 6-7 | SAE 2010-01-0374 Figs 7-8 (fig ±0.006); Svendenius, PhD Lund 2007, Table 7.1 (table) | sweep on kind 6 and 116 | none |
 | Rally studs on ice | protrusion 5.5-7 mm, 18-20 studs in contact; no μ or g open; road-stud fits end at 1.8 mm | press (quoted); VTI meddelande 923 (quoted) | none | data |
 
 Ranking:
@@ -532,7 +534,8 @@ Ranking:
 2. Once tooled: ice (VTI rig and magazine data are solid) once a run reaches material 116.
 3. Weak or shape only: the Velenis trail-brake (normalised inputs, one corner), the WRC telemetry statistics (one car,
    inferred units).
-4. Out of reach: per-tyre gravel curves (paywalled), rally studs (no data), surface change with passes.
+4. Out of reach: per-tyre gravel curves at rally speed or load (only 1-1.5 m/s, one load), rally studs (no data),
+   surface change with passes.
 
 ## Open
 
