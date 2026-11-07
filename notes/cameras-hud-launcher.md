@@ -61,7 +61,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 
 - Controls page, Driver aids: "Engine model", NGP (original) or Realistic (experimental) (`controls_page::EngineModel`,
   `[launcher] engine_model`), passed after `--live` as `--engine-model realistic` to quick races, championship stages
-  and lessons; NGP's adds nothing. A replay's header keeps it (the stepping command).
+  and lessons, with the car's `--car-group` and `--car-year` where the catalog has them (an RSF car both, an added
+  car its group); NGP's adds nothing. A replay's header keeps it (the stepping command).
 
 - The game's quality settings and music are not offered (user decisions).
 - One game folder (user decision 2026-11-04): everything is read from the game folder in use (`Paths::game_root`:
