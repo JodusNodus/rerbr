@@ -66,5 +66,6 @@ Setup includes `Plugins/NGP.dll`, which the launcher finds automatically. If **N
 use its **Browse…** button to select the 7.4.778 package's DLL.
 
 NGP's package brings NGP's physics but no NGP cars. While the game has none, the launcher opens on the **Settings**
-page with gvrc.de's car list: tick the cars you want and press **Download N cars**. **Download cars…** there opens
-it again later.
+page with gvrc.de's car list: tick the cars you want and press **Download N cars**, or press **Download all 102
+cars** (about 1.5 GB). **Download cars…** there opens it again later, where the same button offers the cars not added
+yet.

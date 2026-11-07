@@ -21,7 +21,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use egui::Color32;
@@ -244,6 +245,50 @@ fn download_ngp_to(to: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result
     ngp_install::add_ngp_to(&package, to, report, cancel)
 }
 
+/// The downloads of `cars`, each once (cars share models).
+fn links(cars: &[Entry]) -> Vec<&str> {
+    let mut urls: Vec<&str> = Vec::new();
+    for entry in cars {
+        for url in [Some(&entry.physics), entry.model.as_ref(), entry.banks.as_ref()].into_iter().flatten() {
+            if !urls.contains(&url.as_str()) {
+                urls.push(url);
+            }
+        }
+    }
+    urls
+}
+
+/// The sizes of the downloads of `cars`, asked eight at a time (the list's ~250 take under a second).
+fn sizes_of(cars: &[Entry], cancel: &AtomicBool) -> HashMap<String, u64> {
+    let (agent, urls) = (agent(), links(cars));
+    let (next, sizes) = (AtomicUsize::new(0), Mutex::new(HashMap::new()));
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                while let Some(url) = urls.get(next.fetch_add(1, Ordering::Relaxed)) {
+                    if cancel.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let size = size_of(&agent, url);
+                    sizes.lock().unwrap().insert(url.to_string(), size);
+                }
+            });
+        }
+    });
+    sizes.into_inner().unwrap()
+}
+
+/// The download size of `cars` as shown (` (1.5 GB)`), empty unless every download's size is known.
+fn size_label(cars: &[Entry], sizes: Option<&HashMap<String, u64>>) -> String {
+    let Some(sizes) = sizes else { return String::new() };
+    let each: Option<Vec<u64>> = links(cars).iter().map(|u| sizes.get(*u).copied().filter(|&n| n > 0)).collect();
+    match each.map(|n| n.iter().sum::<u64>() >> 20) {
+        Some(mb) if mb >= 1024 => format!(" ({:.1} GB)", mb as f64 / 1024.0),
+        Some(mb) => format!(" ({} MB)", mb.max(1)),
+        None => String::new(),
+    }
+}
+
 /// Downloads `wanted` into a temp folder in `cars_dir` and adds them there (`car_packs::add_downloads`). One car whose
 /// download fails does not stop the others; a cancel keeps the cars added before.
 pub fn download_cars(
@@ -255,14 +300,7 @@ pub fn download_cars(
     fs::create_dir_all(cars_dir).map_err(|e| format!("{}: {e}", cars_dir.display()))?;
     let temp = Temp::create(cars_dir, "downloading")?;
     let agent = agent();
-    let mut urls: Vec<&str> = Vec::new();
-    for entry in wanted {
-        for url in [Some(&entry.physics), entry.model.as_ref(), entry.banks.as_ref()].into_iter().flatten() {
-            if !urls.contains(&url.as_str()) {
-                urls.push(url);
-            }
-        }
-    }
+    let urls = links(wanted);
     let total = urls.iter().map(|u| size_of(&agent, u)).sum();
     let mut count = Counter { step: "Downloading cars", done: 0, total, report, cancel };
     count.add(0)?;
@@ -372,6 +410,9 @@ pub struct Downloads {
     search: String,
     /// The chosen cars' physics links.
     picked: HashSet<String>,
+    /// Each download's size (0: not said), asked once the list is read.
+    sizes: Option<HashMap<String, u64>>,
+    size_job: Option<Job<HashMap<String, u64>>>,
     confirm_ngp: bool,
     /// The download into the player's folder (`ngp_install::KEPT`).
     ngp_job: Option<Job<()>>,
@@ -403,6 +444,8 @@ impl Downloads {
             car("Mitsubishi Lancer Evo IX N4", "Group N4", "2011"),
         ];
         self.picked = cars[1..3].iter().map(|c| c.physics.clone()).collect();
+        self.sizes =
+            Some(cars.iter().enumerate().map(|(k, c)| (c.physics.clone(), (40 + 25 * k as u64) << 20)).collect());
         self.list = Some(Ok(Catalog { version: "6.175 2025-12-07".into(), ngp: None, cars }));
         (self.open, self.confirm_ngp) = (true, true);
     }
@@ -493,6 +536,10 @@ impl Form {
         if let Some(job) = &mut self.downloads.list_job {
             if let Some(result) = ui.horizontal_wrapped(|ui| job.ui(ui)).inner {
                 self.downloads.list_job = None;
+                if let Ok(catalog) = &result {
+                    let cars = catalog.cars.clone();
+                    self.downloads.size_job = Some(Job::start(move |_, cancel| Ok(sizes_of(&cars, cancel))));
+                }
                 self.downloads.list = Some(result);
                 // Added cars that still lack their group or drive train take them from the finished list.
                 let backfilled = match &self.downloads.list {
@@ -506,12 +553,18 @@ impl Form {
                 }
             }
         }
+        if let Some(result) = self.downloads.size_job.as_mut().map(Job::result) {
+            match result {
+                Some(sizes) => (self.downloads.sizes, self.downloads.size_job) = (sizes.ok(), None),
+                None => ui.ctx().request_repaint_after(std::time::Duration::from_millis(200)),
+            }
+        }
         let added: HashSet<String> =
             self.adding.cars.iter().flat_map(|(name, pack)| [car_packs::words(name), car_packs::words(pack)]).collect();
         let busy = !self.can_add_cars();
         let mut start = None;
         let mut reload = false;
-        let Downloads { list, search, picked, .. } = &mut self.downloads;
+        let Downloads { list, search, picked, sizes, .. } = &mut self.downloads;
         match list {
             None => {}
             Some(Err(e)) => {
@@ -554,8 +607,11 @@ impl Form {
                     }
                 });
                 let wanted: Vec<Entry> = catalog.cars.iter().filter(|c| picked.contains(&c.physics)).cloned().collect();
+                let missing: Vec<Entry> =
+                    catalog.cars.iter().filter(|c| !added.contains(&car_packs::words(&c.name))).cloned().collect();
                 ui.horizontal(|ui| {
-                    let text = format!("Download {} car{}", wanted.len(), if wanted.len() == 1 { "" } else { "s" });
+                    let s = if wanted.len() == 1 { "" } else { "s" };
+                    let text = format!("Download {} car{s}{}", wanted.len(), size_label(&wanted, sizes.as_ref()));
                     if ui.add_enabled(!busy && !wanted.is_empty(), egui::Button::new(text)).clicked() {
                         start = Some(wanted);
                     }
@@ -566,10 +622,20 @@ impl Form {
                         picked.clear();
                     }
                 });
+                if !missing.is_empty() {
+                    let text = match missing.len() == catalog.cars.len() {
+                        true => format!("Download all {} cars", missing.len()),
+                        false => format!("Download the {} cars not added yet", missing.len()),
+                    };
+                    let text = text + &size_label(&missing, sizes.as_ref());
+                    if ui.add_enabled(!busy, egui::Button::new(text)).clicked() {
+                        start = Some(missing);
+                    }
+                }
             }
         }
         if reload {
-            self.downloads.list = None;
+            (self.downloads.list, self.downloads.sizes, self.downloads.size_job) = (None, None, None);
         }
         if let Some(wanted) = start {
             self.downloads.picked.clear();
@@ -599,6 +665,28 @@ mod tests {
         link_model=https://gvrc.de/ngp/models/X.zip\n\n\
         [Car_14]\nname=Ford Fiesta R5\ncat=Group R5\nyear=2014\n\
         link_physics=https://gvrc.de/ngp/physics/Ford%20Fiesta%20R5%20-%20NGP%20Physics.zip\n\n[Misc]\naudio_fmod_url=\n";
+
+    /// A model two cars share counts once; a download of unknown size hides the label.
+    #[test]
+    fn the_download_size_counts_each_file_once() {
+        let car = |physics: &str, model: &str| Entry {
+            name: physics.into(),
+            cat: String::new(),
+            year: String::new(),
+            pack: physics.into(),
+            trans: String::new(),
+            physics: physics.into(),
+            model: Some(model.into()),
+            banks: None,
+        };
+        let cars = [car("a", "m"), car("b", "m")];
+        let sizes: HashMap<String, u64> =
+            [("a", 1 << 20), ("b", 1 << 20), ("m", 1534 << 20)].into_iter().map(|(u, n)| (u.to_owned(), n)).collect();
+        assert_eq!(size_label(&cars, Some(&sizes)), " (1.5 GB)");
+        assert_eq!(size_label(&cars[..1], Some(&HashMap::from([("a".into(), 5 << 20), ("m".into(), 1)]))), " (5 MB)");
+        assert_eq!(size_label(&cars, Some(&HashMap::from([("a".into(), 1)]))), "");
+        assert_eq!(size_label(&cars, None), "");
+    }
 
     #[test]
     fn the_list_gives_ngp_and_the_downloadable_cars() {
