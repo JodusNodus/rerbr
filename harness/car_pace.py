@@ -3,7 +3,7 @@
 
 Each trace is one `--autopilot ... --flat-out --trace-speed` drive: a flat-out
 standing start, one line per physics step
-(`step time speed thr brk gear engine x y z off str`). For every car this
+(`step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr`). For every car this
 prints the launch, the valid flat-out window and the pace metrics; with
 `--csv` it writes one row per car.
 
@@ -66,21 +66,22 @@ def load_trace(path):
             if line.startswith("#") or not line.strip():
                 continue
             fields = line.split()
-            rows.append(
-                {
-                    "step": int(fields[0]),
-                    "t": float(fields[1]),
-                    "v": float(fields[2]),
-                    "thr": float(fields[3]),
-                    "brk": float(fields[4]),
-                    "gear": int(fields[5]),
-                    "eng": float(fields[6]),
-                    "x": float(fields[7]),
-                    "y": float(fields[8]),
-                    "off": float(fields[10]),
-                    "str": float(fields[11]),
-                }
-            )
+            row = {
+                "step": int(fields[0]),
+                "t": float(fields[1]),
+                "v": float(fields[2]),
+                "thr": float(fields[3]),
+                "brk": float(fields[4]),
+                "gear": int(fields[5]),
+                "eng": float(fields[6]),
+                "x": float(fields[7]),
+                "y": float(fields[8]),
+                "off": float(fields[10]),
+                "str": float(fields[11]),
+            }
+            if len(fields) >= 17:  # the wheels' rim speeds (m/s, FL FR RL RR)
+                row["wheels"] = [float(x) for x in fields[13:17]]
+            rows.append(row)
     return rows
 
 
