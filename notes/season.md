@@ -27,7 +27,11 @@ the layer only reads drivelines and hands the launcher times, standings and save
   straights; this cut takes 29 %, half of them retail straights), else curves (type 0); the value is 3 +/- how tight
   the corners hold the plan against the retail mean of its side (0.18 straights, 0.33 curves); the second half of a snow section looser than the first takes rough (type 1),
   a much looser gravel one obstacles (type 2). Material from the surface, accident table 0 (every retail row uses it).
-  `StageProfile::flat` gives a stage without a driveline (BTB) a reference and a middling track from its length.
+  `StageProfile::flat` gives a stage without a driveline a reference and a middling track from its length. A BTB
+  stage is timed on the `.trk` and `.dls` the game drives it with (`rbr_btb::classic::trk`/`dls` from `driveline.ini`
+  and `pacenotes.ini`): over the 38 on the boards (30+ entries) its length is the board's within 0.4 % (median; the
+  whole line was 6.7 % long) and the WRC 2.0 reference over the board sd 5.9/4.4/6.2 % tarmac/gravel/snow, median
+  1.07/1.08/1.06 (the raw points without the spline or the trim: gravel 1.18, sd 9.7 %) (2026-11-07).
 - `field`: fictional international crews (nothing from the game's roster, which stays out of the source) drive the
   1.02 AI engine (`ai::stage_time`: sections, checks, mistakes, accidents with car-part damage and injuries,
   retirements, the inspired roll, false starts 10/60/180 s then out, temperaments; wet is the engine's +9 %). Drivers
@@ -177,7 +181,6 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 
 - A damp road is a flat 4.5 % on the field's pace (half the engine's wet +9 %), not a wet track of its own.
 - The teams' budgets and costs stay as the roster has them for the whole season.
-- BTB stages have no driveline: `StageProfile::flat` from the length, so their pace is an estimate.
 - The generated check types follow the geometry, not the retail ones (below).
 
 ## Generated tracks vs the retail `ai.ini`
