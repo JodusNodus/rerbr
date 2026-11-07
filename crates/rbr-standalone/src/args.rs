@@ -37,13 +37,20 @@ pub struct Args {
     /// `--brake-from M/S` (with `--autopilot`): full foot brake once the speed reaches this, to a standstill
     /// (`Driver::brake_at`, a pace-measurement brake test; combine with `--flat-out`).
     pub brake_from: Option<f32>,
+    /// `--brake-pedal P` (with `--brake-from`): the brake test holds this pedal (0-1, over 0) instead of full.
+    pub brake_pedal: Option<f32>,
+    /// `--brake-slip K` (with `--brake-from`, no `--brake-pedal`): threshold braking, the pedal modulated so the
+    /// most-slipping wheel's slip ratio holds near K (0-1, over 0; `autopilot::Brake::Slip`).
+    pub brake_slip: Option<f32>,
+    /// `--brake-hold S` (with `--brake-from`): the brake stays on S seconds after the stop before the run ends.
+    pub brake_hold: Option<f32>,
     /// `--circle X,Y,R` (with `--autopilot`): drive the steady-state circle of centre X,Y and radius R (m),
     /// counter-clockwise, the target speed ramping up until the car lets go (`Driver::circle`).
     pub circle: Option<autopilot::Circle>,
     /// `--circle-ramp RATE` (with `--circle`): the circle target's rise in m/s per s (`CIRCLE_RAMP` unless given,
     /// for repeat runs at a gentler or steeper ramp).
     pub circle_ramp: Option<f32>,
-    /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear and position.
+    /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear, position and wheel speeds.
     pub trace_speed: Option<PathBuf>,
     /// `--tyre-probe FILE` (with `--autopilot`): read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<PathBuf>,
@@ -151,6 +158,16 @@ fn parsed<T: std::str::FromStr>(flag: &str, value: &str) -> Result<T, String> {
     value.parse().map_err(|_| format!("{flag} {value}"))
 }
 
+/// A pedal or slip ratio: over 0, at most 1.
+fn fraction(flag: &str, value: &str) -> Result<f32, String> {
+    let x: f32 = parsed(flag, value)?;
+    if x > 0.0 && x <= 1.0 {
+        Ok(x)
+    } else {
+        Err(format!("{flag} {value}: over 0, at most 1"))
+    }
+}
+
 /// An aid's `on` or `off`.
 fn on_off(flag: &str, value: &str) -> Result<bool, String> {
     match value {
@@ -169,7 +186,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model on hard surfaces), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K] [--brake-hold S]] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -238,6 +255,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--top-speed" => args.top_speed = Some(parsed("--top-speed", &value)?),
             "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
+            "--brake-pedal" => args.brake_pedal = Some(fraction("--brake-pedal", &value)?),
+            "--brake-slip" => args.brake_slip = Some(fraction("--brake-slip", &value)?),
+            "--brake-hold" => {
+                args.brake_hold = Some(parsed("--brake-hold", &value).and_then(|s: f32| {
+                    (s.is_finite() && s >= 0.0).then_some(s).ok_or(format!("--brake-hold {value}: seconds, 0 or more"))
+                })?)
+            }
             "--circle" => args.circle = Some(value.parse()?),
             "--circle-ramp" => args.circle_ramp = Some(parsed("--circle-ramp", &value)?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
@@ -494,6 +518,14 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.brake_from.is_some() && args.autopilot.is_none() {
         return Err("--brake-from needs --autopilot".into());
     }
+    if (args.brake_pedal.is_some() || args.brake_slip.is_some() || args.brake_hold.is_some())
+        && args.brake_from.is_none()
+    {
+        return Err("--brake-pedal, --brake-slip and --brake-hold need --brake-from".into());
+    }
+    if args.brake_pedal.is_some() && args.brake_slip.is_some() {
+        return Err("--brake-slip takes no --brake-pedal (it moves the pedal itself)".into());
+    }
     if (args.flat_out || args.circle.is_some() || args.brake_from.is_some()) && args.lesson.is_some() {
         return Err("--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)".into());
     }
@@ -691,6 +723,13 @@ mod tests {
             }),
             (format!("{BOOT} --flat-out --brake-from 27.78"), |a| {
                 assert_eq!(a.brake_from, Some(27.78));
+                assert_eq!((a.brake_pedal, a.brake_slip, a.brake_hold), (None, None, None));
+            }),
+            (format!("{BOOT} --brake-from 27.78 --brake-pedal 0.5 --brake-hold 2"), |a| {
+                assert_eq!((a.brake_pedal, a.brake_slip, a.brake_hold), (Some(0.5), None, Some(2.0)));
+            }),
+            (format!("{BOOT} --brake-from 27.78 --brake-slip 0.15"), |a| {
+                assert_eq!((a.brake_pedal, a.brake_slip), (None, Some(0.15)));
             }),
             (format!("{BOOT} --circle -260,120,40 --top-speed 60"), |a| {
                 assert_eq!(
@@ -926,6 +965,18 @@ mod tests {
             (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
             (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
+            (format!("{BOOT} --brake-pedal 0.5"), "--brake-pedal, --brake-slip and --brake-hold need --brake-from"),
+            (format!("{BOOT} --brake-slip 0.1"), "--brake-pedal, --brake-slip and --brake-hold need --brake-from"),
+            (format!("{BOOT} --brake-hold 2"), "--brake-pedal, --brake-slip and --brake-hold need --brake-from"),
+            (
+                format!("{BOOT} --brake-from 20 --brake-pedal 0.5 --brake-slip 0.1"),
+                "--brake-slip takes no --brake-pedal (it moves the pedal itself)",
+            ),
+            (format!("{BOOT} --brake-from 20 --brake-pedal 0"), "--brake-pedal 0: over 0, at most 1"),
+            (format!("{BOOT} --brake-from 20 --brake-pedal 1.5"), "--brake-pedal 1.5: over 0, at most 1"),
+            (format!("{BOOT} --brake-from 20 --brake-slip -0.1"), "--brake-slip -0.1: over 0, at most 1"),
+            (format!("{BOOT} --brake-from 20 --brake-slip x"), "--brake-slip x"),
+            (format!("{BOOT} --brake-from 20 --brake-hold -1"), "--brake-hold -1: seconds, 0 or more"),
             (format!("{REC} --autopilot OUT --circle 0,0"), "--circle 0,0: want X,Y,R with R > 0"),
             (format!("{REC} --autopilot OUT --circle 0,0,-5"), "--circle 0,0,-5: want X,Y,R with R > 0"),
             (
