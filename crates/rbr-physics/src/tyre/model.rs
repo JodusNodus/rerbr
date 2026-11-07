@@ -1,6 +1,6 @@
 //! The seam of a tyre model (ours, experimental, `rbr_tyre`): given one, the tyre step takes the contact patch's forces
-//! from it in place of NGP's sliding model's, blended by the weight it answers with; without one (the default) the
-//! step is NGP's.
+//! from it in place of NGP's sliding model's, blended by the weight it answers with, and `forces::solve_forces` takes
+//! the weight to leave the model's force undamped below 2 m/s; without one (the default) the step is NGP's.
 
 use super::layout::Frame;
 

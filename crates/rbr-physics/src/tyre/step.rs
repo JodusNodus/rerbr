@@ -198,12 +198,14 @@ pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal, tyre_model: Option<M
         f.scratch.stick_phase_b
     };
     f.scratch.slip_phase = f.scratch.sliding_weight * sliding_phase + f.scratch.sticking_weight * sticking_phase;
+    let mut model_weight = 0.0;
     if let Some(tyre_model) = tyre_model {
         if let Some(out) = tyre_model(&model::input(f, a.dt, k, if heat_lerps { k } else { 1.0 })) {
             model::apply(f, &out);
+            model_weight = out.weight;
         }
     }
-    let (force, torque) = forces::solve_forces(f, a.dt, a.torque_in);
+    let (force, torque) = forces::solve_forces(f, a.dt, a.torque_in, model_weight);
 
     // The rolling resistance torque is the x87 term; the float store takes its f32 rounding and the reaction torque
     // adds the torsion torque at 24 bits.

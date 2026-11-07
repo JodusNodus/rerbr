@@ -111,7 +111,7 @@ calibration value, at every load (road sets 288-399 kN/m at 4 kN, measured 163-2
 Rill's passenger values, d_x 500/1500 and d_y 250/600 N/(m/s)), combined force and the deflections capped at μ Fz as
 Rill caps them; relaxation length (f + v d)/c, the stretched string's C/c at small slip, no other speed term. Calibrated
 at run time to NGP's lateral peak and slope and longitudinal peak at 4 kN, 15 m/s (no NGP values in code). The dynamics
-reach standstill; the game runs the brush from 2 m/s.
+reach standstill, and the game runs the brush down to it.
 
 Combined slip (2026-11-07): the adhering part of the patch gives -C_i s_i (1 - ψ)² along the stiffness-weighted
 slip, the sliding part μ Fz ψ² (3 - 2ψ) against the sliding velocity, μ Fz from ψ = 1 (Svendenius, Tire Modeling and
@@ -175,11 +175,24 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 ## In game
 
 - Seam: `rbr_physics::tyre::model` (`ForceInput`, `ForceOutput`, `apply`), asked in `tyre::step` after NGP's sliding
-  solve and the slip phase; `rbr_hybrid::ngp::set_tyre_model` per thread, as the engine's. The model's forces become
-  the deflection and torsion `solve_forces` turns back into them (in-game probe: `lateral_force` equals the model's to
-  the f32). With no model set the code is NGP's: rsf_compare drive2/5 physics PASS 84084/84084, exit 0.
-- Scope: contact speed ≥ 2 m/s (NGP's sliding model alone there) and no soil; the weight rises from 0 at 2 m/s to 1
-  at 3 m/s. Below, and on soil, NGP's.
+  solve and the slip phase; `rbr_hybrid::ngp::set_tyre_model` per thread, as the engine's. The model's forces become the
+  deflection and torsion `solve_forces` turns back into them (in-game probe: `lateral_force` equals the model's to the
+  f32). `solve_forces` takes the model's weight w as an argument: below 2 m/s (NGP's sticking weight > 0) its two
+  damping factors and the sliding weight's scale of the trail and of the carcass offset torque become `1 - (1 -
+  factor)(1 - w)`, so at w = 1 the model's force passes undamped (vector replay: 740 recorded calls with a sticking
+  weight, equal to `-deflection · k` to the bit). Left NGP's: the hold torque (below), the rolling resistance torque (×
+  sliding weight), the sticking load the drive line takes as each wheel's latch bound (`0.025 Fz` × sticking weight;
+  1.02's `CWheel` passes it to `CDrive::SetTwo`, read as `wheel_bias`), NGP's sticking solve itself (still run, then
+  replaced by `apply`). With no model set, or w = 0, the code is NGP's: rsf_compare drive2/5 physics PASS 84084/84084,
+  exit 0.
+- Hold torque (NGP's `hold.rs`, kept): a yaw stiction of the patch about the normal axis, `-900 N·m` times the
+  lateral component of a stored in-plane direction, the component capped at `min(0.3, Fz μk / 45000)` × sticking
+  weight (the direction slips past it), relaxed at (v - 0.3 m/s) dt; it acts only when the sticking weight is above 0
+  (contact speed < 2 m/s). In game 7-13 N·m at the start hold, 10-33 N·m after a stop, 67-90 N·m peak per run. The
+  brush has no bore torque, so it adds what the brush lacks rather than fighting it: scaled by (1 - w) (gone), every
+  stop time within 0.01 s, reversal share within 0.01, rock-back within 10 mm, four-car finishes within 0.04 s
+  (2026-11-07).
+- Scope: hard surfaces (no soil) at every speed, down to standstill, weight 1 (2026-11-07, user). On soil, NGP's.
 - Grip: NGP's static friction (surface, wet or dry, times the temperature grip) times the inclination's table scale
   scales μ_S and μ_C both, so the paper's μ_C/μ_S holds on every surface; NGP's kinetic friction is unused. The wet
   loss and the hydroplaning speed stay off (NGP's wet surface values carry the wet); the dry wear gain and the
@@ -234,13 +247,27 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   full / 0.35 pedal: Golf 1.00/2.18 → 0.99/2.18 s (0.99/2.31), Fiesta 0.90/1.63 → 0.88/1.63 (0.89/2.30), Fiat
   1.09/2.38 → 1.07/2.36 (1.17/2.38); reversals around the stop within 0.008 of before. Fiesta 0-100 RSF 504 4.32 →
   4.33 s (4.52). No instability; the Fiesta's 180-360 Hz content, already 2.3 times NGP's, rises a fifth.
-- 2026-11-07, the brush to standstill (prototype, not committed: weight 1 at every speed on hard surfaces): no
-  instability. Brake tests stop in the same times as with the 2-3 m/s handover; at 0.35 pedal the wheel-speed
-  reversals in the second around the stop fall from NGP's 0.06-0.09 of steps to 0.006-0.03 (NGP's 360 Hz sticking
-  alternation gone) and the rock-back after the stop from 0.16-0.24 to 0.10-0.14 m/s; at full pedal reversals
-  0.004-0.10 against NGP's 0.001-0.07. Held at the start (handbrake, revving) with no drift; track-41_M runs and the
-  Golf climb within 0.1 s and 0.01 of the handover's. Below 2 m/s NGP's `solve_forces` still scales the model's force
-  by its sticking-weight damping and adds its hold torque (the seam), so the brush would not be alone there.
+- 2026-11-07, the brush to standstill (weight 1 at every speed, the seam undamped by w; debug trace, NGP 7 / handover at
+  2-3 m/s → standstill, hold kept; hold scaled by 1 - w in brackets where it differs). Brake from 10 m/s, stop after
+  full / 0.35 pedal: Golf 0.99/2.31 / 0.99/2.18 → 1.04/2.19 s, Fiesta 0.89/2.30 / 0.88/1.63 → 0.83/1.63, Fiat 1.17/2.38
+  / 1.07/2.36 → 1.05/2.33. Wheel-speed reversals in the second around the stop, full: 0.054/0.070/0.001 /
+  0.038/0.029/0.002 → 0.003/0.047/0.003; 0.35: 0.060/0.088/0.063 / 0.061/0.015/0.060 → 0.001/0.007/0.002
+  (0.000/0.016/0.002): NGP's 360 Hz sticking alternation gone. Rock-back after the stop, peak speed and movement in 2 s,
+  full: 0.27/0.29/0.26 m/s 60/51/41 mm / 0.27/0.30/0.27 60/51/41 → 0.15/0.42/0.29 10/30/22 mm; 0.35: 0.18/0.24/0.16
+  30/40/30 / 0.19/0.23/0.16 40/41/30 → 0.14/0.17/0.12 10/10/10 mm (10 mm trace resolution): it starts lower except the
+  Fiesta and the Fiat at full pedal, but rings on the carcass longer (peaks 0.012-0.077 m/s at 0.75-1 s against NGP's
+  0.005-0.015, all under 0.02 m/s by 1.5 s; no drift in the last second). Held at the start (handbrake, revving to
+  785-898 rad/s, 7 s): no drift at the trace's 10 mm; the Fiat rocks at about 5 Hz, ±80 N on each wheel, under 0.01 m/s,
+  dying out by 6 s (NGP 0). track-41_M, 3-8 m/s on throttle, driven over 1.1 times the car Golf 0.128 → 0.128, Fiesta
+  0.107 → 0.102 (0.106), Fiat 0.113 → 0.114 (NGP 0.099/0.141/0.067); wheel-speed reversals there 0.241/0.313/0.217 →
+  0.247/0.307/0.215; 180-360 Hz power 7.6/61/11.6 → 7.8/60/11.6 (NGP 5.4/22/3.1); the pull-away below 3 m/s reverses
+  0.007/0.011 → 0.002/0.007 (Golf/Fiesta), 0-3 m/s 0.61/0.30 → 0.61/0.28 s. Golf climb 10-13 s 0.96/1.19 → 0.96/1.19.
+  Four-car 600 s split 2 / finish: Fiesta 207.09/304.08 → 207.11/304.11, Celica 207.53/304.51 → 207.51/304.47, Golf
+  213.68/313.86 → 213.65/313.84, Fiat 215.28/315.69 → 215.29/315.71; no NaN, slip > 3 % within 0.1 s, the Golf stalls
+  only after the finish. Fiesta 0-100 RSF 504 4.33 → 4.38 s (0-60 1.83 → 1.88; NGP 4.52).
+- The Fiesta's 0.35-pedal stop (1.63 s against NGP's 2.30) is the engine's, not the tyre's: realistic engine with
+  NGP's tyre (`experimental`) 1.65 s; under NGP the car holds 2.93-2.96 m/s for 0.75 s in second gear at 123-125 rad/s
+  until the autopilot shifts down, the realistic engine falls to 107 rad/s and keeps braking (2026-11-07).
 - Fiesta Rally2, map 41 tarmac, autopilot, before the force dynamics (`ngp` / tyre only / full `experimental`, σ
   without the speed term, engine with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 /
   118.39 / 116.95 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No
@@ -453,11 +480,11 @@ Ranking:
   288-399 kN/m, measured 163-234: strong that c_x ≥ 300 kN/m and c_x > c_y, weak on the rally value, range 350-550),
   d_x Rill's passenger tyres' (MF-Swift's residual damping is a template default). The lateral carcass stays NGP's
   (σ_y/R 0.65 against the sets' 1.01-1.84).
-- Low speed (decision): the brush could run to standstill (Rill's restored transport speed, measured above) in place
-  of the 2-3 m/s handover; NGP's sticking-weight damping and hold torque would still act below 2 m/s. LuGre with
-  Canudas de Wit's σ_0 181.54 1/m (726 kN/m at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same
-  contact; Rill's restored dynamics already give the stick-slip at standstill LuGre adds, so it was not prototyped.
-  Camber thrust from MF6.1's camber stiffness.
+- Low speed: the brush's carcass rings after a stop longer than NGP's sticking model settles (ζ 0.05-0.07, lab; in
+  game under 0.02 m/s by 1.5 s) and the Fiat rocks at rest while revving; a low-speed carcass damping is unmeasured.
+  The hold torque and the drive line's sticking load stay NGP's. LuGre with Canudas de Wit's σ_0 181.54 1/m (726 kN/m
+  at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same contact; Rill's restored dynamics already
+  give the stick-slip at standstill LuGre adds, so it was not prototyped. Camber thrust from MF6.1's camber stiffness.
 - Loose surfaces unmeasured: material 116 in a run (its tyre-class factor, taken as 1), combined slip on gravel and
   snow, and the soil's lateral force above 25 m/s through the whole car. Ploughing (locked 25-30 % shorter on
   gravel) is missing in both physics: the declutched brake test stops 10-17 % longer locked.

@@ -54,7 +54,11 @@ pub fn rolling_torque(input: RollingInput) -> f64 {
 /// longitudinal forces are damped, and the pneumatic trail is scaled by the sliding weight. The force is the sum of
 /// the three forces on their axes; the torque is the torsion torque about the lateral axis, the overturning and
 /// lateral-force torque about the rolling axis, and the pneumatic and hold torques about the normal axis.
-pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4) -> (Vec4, Vec4) {
+///
+/// `model_weight` (ours, experimental) is the weight of a tyre model's forces (`super::model`), 0 without one: it
+/// moves each damping factor and the sliding weight's scale of the trail and the carcass offset toward 1, as the model
+/// carries its own carcass damping and trail. At 0 the code is the original's.
+pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4, model_weight: f32) -> (Vec4, Vec4) {
     let round24 = round_x87;
     let (deflection, torsion, radius) = (f.state.lateral_deflection, f.state.torsion_angle, f.state.effective_radius);
     let (sticking, sliding, normal_force) =
@@ -64,6 +68,10 @@ pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4) -> (Vec4, Vec4) {
     let mut lateral_force = 0.0 - deflection * f.scratch.lateral_stiffness * f.scratch.inclination_cos;
     let mut torsion_torque = 0.0 - torsion * f.scratch.torsional_stiffness;
     let mut longitudinal_force = torsion_torque / radius;
+    // A model's weight moves a factor toward 1 (`factor + (1 - factor) w`, written so that w = 1 gives 1 exactly);
+    // without one the factor is the original's, untouched.
+    let toward_model =
+        |factor: f32| if model_weight == 0.0 { factor } else { 1.0 - (1.0 - factor) * (1.0 - model_weight) };
     // The damping runs unless the sticking weight is an equal, ordered zero.
     if sticking != 0.0 {
         if sign(lateral_force) == sign(lateral_velocity) {
@@ -76,18 +84,18 @@ pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4) -> (Vec4, Vec4) {
             } else {
                 v
             };
-            lateral_force *= v * sticking + sliding;
+            lateral_force *= toward_model(v * sticking + sliding);
         }
         if sign(torsion_torque) != sign(f.scratch.spin_slip) {
             let a = abs_asm(f.scratch.spin_slip);
             let d = -1.0 - a * LONGITUDINAL_SLOPE;
             let r = 1.0 / d;
             let y = 1.0 - (r + 1.0);
-            let z = y * sticking + sliding;
+            let z = toward_model(y * sticking + sliding);
             longitudinal_force *= z;
             torsion_torque *= z;
         }
-        f.scratch.pneumatic_trail *= sliding;
+        f.scratch.pneumatic_trail *= toward_model(sliding);
     }
     // The force: the lateral axis scaled by the lateral force, then the rolling axis and the normal axis added.
     let mut force = frame.lateral.scale(lateral_force);
@@ -105,7 +113,7 @@ pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4) -> (Vec4, Vec4) {
     // weight scales. `trail_torque` is the x87 difference of the two products.
     let sgn = sign(longitudinal_velocity) as f64;
     let trail = round24(round24(round24(sgn * f.scratch.pneumatic_trail as f64) * lateral_force as f64));
-    let offset = round24(round24(sliding as f64 * deflection as f64) * longitudinal_force as f64);
+    let offset = round24(round24(toward_model(sliding) as f64 * deflection as f64) * longitudinal_force as f64);
     let trail_torque = round24(trail - offset) as f32;
     let hold_out = hold(HoldInput {
         sticking_weight: sticking,

@@ -88,7 +88,7 @@ pub fn compute_slip<S: TyreStore>(mem: &mut S, this: u32, dir: u32, spin: f32) {
 /// `CScratch::SolveForces (k, out1*, out2*)`: `out2` is read (the asm adds into it), and both are written.
 pub fn solve_forces<S: TyreStore>(mem: &mut S, this: u32, k: f32, out1: u32, out2: u32) -> Result<(), Outside> {
     let out2_in = Vec4::load(mem, out2);
-    let (v1, v2) = with_frame(mem, this, |frame| Ok(forces::solve_forces(frame, k, out2_in)))?;
+    let (v1, v2) = with_frame(mem, this, |frame| Ok(forces::solve_forces(frame, k, out2_in, 0.0)))?;
     v1.store(mem, out1);
     v2.store(mem, out2);
     Ok(())

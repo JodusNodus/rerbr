@@ -595,9 +595,9 @@ throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s tar
 A tyre model is in development and not released: the launcher does not offer it, and `--physics experimental-brush`
 runs it on top of the engine model. It is a brush model, the textbook physical tyre (Pacejka, *Tire and Vehicle
 Dynamics*): the tread is a row of bristles that stick to the road at the front of the contact patch and slide at the
-rear. It takes the place of NGP's sliding model of the contact patch on hard surfaces above 2 m/s, fitted at load to
+rear. It takes the place of NGP's model of the contact patch on hard surfaces at every speed, fitted at load to
 give NGP's peak forces and cornering stiffness, with grip that falls as the tyre slides faster and one friction limit
-shared by braking and cornering. On gravel, snow and at low speed the tyre stays NGP's.
+shared by braking and cornering. On gravel and snow the tyre stays NGP's.
 
 The model, its evidence, its numbers in game and the open questions are in
 [notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.

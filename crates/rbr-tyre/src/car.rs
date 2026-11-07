@@ -1,23 +1,20 @@
 //! The brush (brush-v1, [`crate::brush`]) on a car's wheels, the tyre model the game steps. On a hard surface (no
-//! soil) it takes the contact patch's forces from NGP's sliding model by a weight rising from 0 at 2 m/s, where NGP's
-//! sliding model starts to run alone, to 1 at 3 m/s; elsewhere they stay NGP's. NGP sets the grip: its static friction
-//! (surface, wetness, temperature grip) scales the brush's friction levels, solved per wheel against NGP's own peaks
-//! ([`crate::fit`]). Each wheel's carcass deflections (Rill's first-order force dynamics, [`brush::step_dynamic`]) are
-//! the model's state: they start from zero when the wheel touches down or the brush takes over.
+//! soil) it takes the contact patch's forces at every speed, down to standstill (weight 1); on soil they stay NGP's.
+//! At rest the slips take the brush's rolling-speed floor and the carcass deflections hold (Rill's transport speed);
+//! NGP's torsional stiffness, a tenth below 10 m/s, only carries the force through the seam. NGP sets the grip: its
+//! static friction (surface, wetness, temperature grip) scales the brush's friction levels, solved per wheel against
+//! NGP's own peaks ([`crate::fit`]). Each wheel's carcass deflections (Rill's first-order force dynamics,
+//! [`brush::step_dynamic`]) are the model's state: they start from zero when the wheel touches down or comes off soil.
 
 use crate::brush::{self, Calibration, EvalInput, TransState};
 use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
-
-/// The contact speed (m/s) from which the brush takes a share, and the speed over which it rises to all of it.
-const FROM_SPEED: f32 = 2.0;
-const OVER_SPEED: f32 = 1.0;
 
 /// One wheel's calibration and transient.
 struct Tyre {
     at: u32,
     cal: Calibration,
     state: TransState,
-    /// Whether the brush took a share at the wheel's last step.
+    /// Whether the brush ran at the wheel's last step.
     running: bool,
 }
 
@@ -40,13 +37,12 @@ impl Brush {
 impl Model for Brush {
     fn forces(&mut self, tyre: u32, x: &ForceInput) -> Option<ForceOutput> {
         let t = self.tyres.iter_mut().find(|t| t.at == tyre)?;
-        let weight = ((x.speed - FROM_SPEED) / OVER_SPEED).min(1.0);
         let usable = x.soil_thickness == 0.0
             && x.normal_force > 0.0
             && x.lateral_stiffness > 0.0
             && x.torsional_stiffness > 0.0
             && x.effective_radius > 0.0;
-        if !(weight > 0.0 && usable) {
+        if !usable {
             t.running = false;
             return None;
         }
@@ -85,7 +81,7 @@ impl Model for Brush {
         t.state = state;
         t.running = true;
         Some(ForceOutput {
-            weight,
+            weight: 1.0,
             lateral_force: fy as f32,
             longitudinal_force: fx as f32,
             pneumatic_trail: steady.trail as f32,
@@ -131,14 +127,24 @@ mod tests {
     }
 
     #[test]
-    fn it_takes_over_from_2_to_3_m_s_on_a_hard_surface_only() {
+    fn it_takes_hard_surfaces_at_any_speed_down_to_standstill() {
         let mut b = Brush::new(&[wheel()]).unwrap();
         let at = wheel().tyre;
-        assert_eq!(b.forces(at, &rolling(1.9, 0.05)), None);
         assert_eq!(b.forces(at, &ForceInput { soil_thickness: 0.01, ..rolling(20.0, 0.05) }), None);
         assert_eq!(b.forces(at + 4, &rolling(20.0, 0.05)), None);
-        assert!((b.forces(at, &rolling(2.5, 0.05)).unwrap().weight - 0.5).abs() < 1e-6);
-        assert_eq!(b.forces(at, &rolling(20.0, 0.05)).unwrap().weight, 1.0);
+        for speed in [0.0, 0.3, 1.9, 2.5, 20.0] {
+            let out = b.forces(at, &rolling(speed, 0.05)).unwrap();
+            assert_eq!(out.weight, 1.0, "{speed}");
+            assert!(out.lateral_force.is_finite() && out.longitudinal_force.is_finite(), "{speed} {out:?}");
+        }
+        // At rest (no speed, no spin) with NGP's torsional stiffness at its tenth, a deflection holds.
+        b.restart();
+        let push = ForceInput { torsional_stiffness: 2000.0, ..rolling(1.0, 0.05) };
+        let pushed = (0..720).map(|_| b.forces(at, &push).unwrap()).last().unwrap();
+        let rest = ForceInput { lateral_velocity: 0.0, longitudinal_velocity: 0.0, spin: 0.0, speed: 0.0, ..push };
+        let held = b.forces(at, &rest).unwrap();
+        assert!(held.lateral_force < 0.0 && (held.lateral_force / pushed.lateral_force - 1.0).abs() < 0.05, "{held:?}");
+        assert_eq!(b.forces(at, &rest).unwrap().lateral_force, held.lateral_force);
     }
 
     #[test]
