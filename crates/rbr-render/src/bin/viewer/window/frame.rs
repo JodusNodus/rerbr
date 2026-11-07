@@ -202,7 +202,7 @@ impl App {
                 }
             }
             if let Some(feed) = &self.feed {
-                feed.post(&mut self.controls, &self.held, self.shifter.is_some());
+                feed.post(&mut self.controls, &self.held, self.bindings.shifter.advanced);
             }
             span.next("live link");
             let pumped = process.pump();
