@@ -77,8 +77,13 @@ def bound(text):
 
 
 def run(cmd, log):
+    """Runs `cmd`, then deletes its autopilot output (hundreds of MB a run, unused here)."""
     with open(log, "w") as f:
-        return subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT).returncode
+    out = cmd[cmd.index("--autopilot") + 1]
+    if os.path.exists(out):
+        os.remove(out)
+    return code
 
 
 class Plan:
@@ -311,9 +316,12 @@ def compare(a_path, b_path):
     bands = {r["id"]: (bound(r["low"]), bound(r["high"])) for r in load_targets()}
     print(f"A {a_path} ({a['commit']})\nB {b_path} ({b['commit']})")
     print(f"{'id':40} {'physics':18} {'A':>8} {'B':>8} {'B-A':>8} {'band':>13}  change")
-    for rid in sorted(set(a["values"]) | set(b["values"])):
+    only = sorted(set(a["values"]) ^ set(b["values"]))
+    if only:
+        print(f"measured in one file only (skipped): {', '.join(only)}")
+    for rid in sorted(set(a["values"]) & set(b["values"])):
         low, high = bands.get(rid, (None, None))
-        for p in sorted(set(a["values"].get(rid, {})) | set(b["values"].get(rid, {}))):
+        for p in sorted(set(a["values"][rid]) & set(b["values"][rid])):
             va, vb = a["values"].get(rid, {}).get(p), b["values"].get(rid, {}).get(p)
             sa = verdict(va, low, high)[0] if va is not None else "n/a"
             sb = verdict(vb, low, high)[0] if vb is not None else "n/a"
