@@ -176,9 +176,9 @@ the table until the turbo delivers. On the installed cars:
 | Car | Held, rpm | Most below the table |
 | --- | --- | --- |
 | Fiesta R5 | 250–1250 | 8.5 % |
-| Rally2, WRC 2014–2020, i20, Polo R5, GR Yaris | 250–1250 (i20 to 1500) | 11.8–16.4 % |
+| Rally2, WRC 2014–2020, Polo R5, GR Yaris | 250–1250 | 11.8–16.4 % |
 | Xsara WRC 2006 | 250–1250 | 20.3 % |
-| Focus WRC 2006 | 250–1500 | 26.6 % |
+| Focus WRC 2006 | 250–1250 | 26.5 % |
 | Alpine A110 RGT | 1750 | 11.8 % |
 | Fiesta Rally4, 208 Rally4, Fiesta R2, Delta HF | one point at 2250–2750 | 0.4–2.8 % |
 

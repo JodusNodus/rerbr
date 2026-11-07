@@ -163,7 +163,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   low rpm: tables weaker than physics), K stays. NA cars unchanged. Tested: steady WOT ≤ table + 0.1 % everywhere,
   = table within 0.5 % at every knot not held.
 - Held, 250 rpm steps (with the residual gas): turbo sample 500–1250 rpm (worst 9 % short); R5, Rally2 and WRC
-  2014–2020 250–1250 (8.5–16 %; i20 to 1500); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1500 (27 %); Alpine
+  2014–2020 250–1250 (8.5–16 %); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1250 (27 %; 250–1500 before the retarget fix); Alpine
   A110 RGT 1750 (12 %); Fiesta Rally4 2500 (2.8 %), 208 Rally4 2250 (1.5 %), Fiesta R2 2250 (2.0 %), Delta HF 2750
   (0.4 %). No other car is held.
 - The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
@@ -199,6 +199,18 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000 (0.64 before the retarget fix lowered its 2000 rpm target from 1.93 to 1.70 bar), cable_turbo 0.76 s
   at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
+- The retarget fix changed spool only where the target fell (1750–2250 rpm on the modern turbos; nothing at 1500 or
+  from 2500 up, nothing on Group A). Same turbine, same steady WOT torque; the engine now needs less boost for it at
+  one K, and the boost that 90 % of it needs comes sooner. WOT tip-in from closed to 90 % / settled within 2 %, and 5
+  bar BMEP to 90 %, before → after (s): Fiesta Rally2 1750 1.05/1.40/1.53 → 0.42/0.59/0.65, 2000 0.55/0.67/0.74 →
+  0.37/0.48/0.50, 2250 0.59/0.70/0.48 → 0.51/0.63/0.41 (target 2.09/2.06/2.03 → 1.63/1.76/1.88 bar); Fiesta WRC
+  2019 and i20 WRC 2020 1750 0.88/1.27/1.46 → 0.31/0.46/0.52, 2000 0.47/0.59/0.68 → 0.30/0.40–0.63/0.42; Polo R5
+  1750 0.60/0.85/0.98 → 0.39/0.56/0.63; turbo sample 2000 0.46/0.57/0.64 → 0.33/0.43/0.45; Focus WRC 2006 1500
+  0.62/2.13/1.55 → 0.68/2.38/1.79 (1500 no longer held, so it now reaches the table), 1750 0.67/0.86/1.03 →
+  0.55/0.71/0.86. Celica ST185, cable_turbo unchanged. Before, 1750 was twice as slow as 1500 and 2000 on the
+  Rally2 and WRCs (the inflated target); now tip-in falls smoothly with rpm. No public rally time-to-torque exists
+  to say which is closer to real; the road 1.6 THP holds 20 bar BMEP from 1750 rpm [SAE 2018-01-1423], so a slow
+  spot at 1750 has no support (inferred).
 
 ## Open
 
