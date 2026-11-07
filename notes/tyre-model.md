@@ -146,19 +146,21 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   touch-down zero it). c_x is NGP's speed-scaled torsional stiffness over R² (0.1 of it below 10 m/s), as NGP's own
   spring takes it, so at small slip the longitudinal relaxation is ~10× longer at low speed (Golf fronts 1.0-1.6 m at
   4.5 m/s, against a road tyre's 0.3-0.8 m); trail and phase are the steady brush's.
-- Golf II GTI 16V, track-41_M climb (gear 2, 4-5 m/s, throttle 0.15-0.5, 10-13 s), front wheel over car speed
-  mean/max: NGP 0.98/1.02, realistic + NGP tyre 1.02/1.09; before 1.54/3.04 with a stall at 11.72 s, brush alone
-  1.26/2.51; now 1.03/1.23, brush alone 0.98/1.19, no stall. Fiesta Rally2 8-20 s driven/car mean/max NGP 0.99/1.16,
-  before 1.26/2.82, now 1.01/1.38; Fiat 131 rears 1.14/3.10, 1.14/2.98, 1.19/3.03.
-- track-41_M four-car 600 s, experimental split 2 / finish before → now: Fiesta 207.80/304.88 → 207.97/305.08,
-  Celica 208.15/305.22 → 208.48/305.53, Golf stalled at 161 m → 214.21/314.48 (NGP 222.28/324.24), Fiat
-  214.54/314.89 → 216.44/316.91; slip > 3 % 6.7/4.2/-/5.0 → 3.0/3.5/4.8/5.2 s. Fiesta 0-100 RSF 504 4.33 → 4.35 s
-  (NGP 4.52). After the finish (full brake in fifth from 24 m/s) both physics lock the Golf's fronts; the realistic
-  engine stalls with the clutch in, NGP's idles (engine side, `engine-model.md`).
-- Fiesta Rally2, map 41 tarmac, autopilot, before the force dynamics (`ngp` / tyre only / full `experimental`, σ without the speed term, engine
-  with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 / 118.39 / 116.95 s, no NaN; full
-  brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No measurable step cost (100000
-  steps 31-33 s either way).
+- Runs below are `experimental-brush` (realistic engine + brush; `--physics experimental` was this pairing before the
+  brush flag split). Golf II GTI 16V, track-41_M climb (gear 2, 4-5 m/s, throttle 0.15-0.5, 10-13 s), front wheel over
+  car speed mean/max: NGP 0.98/1.02, realistic + NGP tyre 1.02/1.09; before 1.54/3.04 with a stall at 11.72 s, brush
+  alone 1.26/2.51; now 1.03/1.23, brush alone 0.98/1.19, no stall. Fiesta Rally2 8-20 s driven/car mean/max NGP
+  0.99/1.16, before 1.26/2.82, now 1.01/1.38; Fiat 131 rears 1.14/3.10, 1.14/2.98, 1.19/3.03.
+- track-41_M four-car 600 s, experimental-brush split 2 / finish before → now (NGP 7 210.71/309.01, 212.97/310.91,
+  222.28/324.24, 221.31/323.35): Fiesta 207.80/304.88 → 207.97/305.08, Celica 208.15/305.22 → 208.48/305.53, Golf
+  stalled at 161 m → 214.21/314.48, Fiat 214.54/314.89 → 216.44/316.91; slip > 3 % 6.7/4.2/-/5.0 → 3.0/3.5/4.8/5.2 s;
+  over the limit and rpm over it unchanged. Fiesta 0-100 RSF 504 4.33 → 4.35 s (NGP 4.52). After the finish (full
+  brake in fifth from 24 m/s) both physics lock the Golf's fronts; the realistic engine stalls with the clutch in,
+  NGP's idles (engine side, `engine-model.md`).
+- Fiesta Rally2, map 41 tarmac, autopilot, before the force dynamics (`ngp` / tyre only / full `experimental`, σ
+  without the speed term, engine with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 /
+  118.39 / 116.95 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No
+  measurable step cost (100000 steps 31-33 s either way).
 - Ramped 40 m circle (map 85, `--circle -260,120,40 --circle-ramp 0.25`): NGP and the brush alone hold the same
   steering to the same limit, 8.6 m/s², then both run wide at full lock; the autopilot's steering steps (0.008) hide
   any linear-range difference. Steady state matches by the fit; the differences are in transients, combined slip,

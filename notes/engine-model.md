@@ -245,8 +245,8 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
   438.02 → 437.82 (main's engine changes; the brush is off there), NA cars unchanged.
 - track-41_M (tarmac): exp 1.4–3.1 % sooner to split 2; the exp Golf II GTI stalled at 161 m: braking 0.8 in second
   at 5.5 m/s, engine 494 → 0 rad/s in 0.2 s with the clutch closed (NGP's run passes there and finishes). Cause the
-  brush's force lag (`tyre-model.md`); after its fix (Rill's force dynamics) exp 1.3–3.6 % sooner, Golf 214.21 s,
-  no stall.
+  brush's force lag (`tyre-model.md`); after its fix (Rill's force dynamics) realistic + brush 1.3–3.6 % sooner,
+  Golf 214.21 s, no stall.
 - Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.33 s (4.44 with NGP's tyre); track-64 gravel
   flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant acceleration, −0.66 m/s²)
   ≈ 3.9 s (inferred).
