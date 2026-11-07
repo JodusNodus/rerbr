@@ -32,7 +32,7 @@ same paths.
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
 | Championship (ours): built rallies and seasons, pace model, field, standings, save | `notes/season.md` |
 | ReRBR experimental physics (built on NGP 7): engine models | `notes/engine-model.md` |
-| ReRBR experimental physics: the tyre model (brush-v1); NGP's tyre as it runs, published targets | `notes/tyre-model.md` |
+| Tyre model (brush-v1, in development, not released); NGP's tyre as it runs, published targets | `notes/tyre-model.md` |
 | Cameras, HUD, launcher | `notes/cameras-hud-launcher.md` |
 | Harness, recordings, hybrid check, vectors, masks | `notes/verification.md`, `harness/README.md` |
 | Third-party references and licences | `notes/references/README.md` |
@@ -45,7 +45,7 @@ same paths.
 | `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |
-| `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces above 2 m/s), the second part of ReRBR experimental physics, opt-in (`--physics experimental`) |
+| `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces above 2 m/s): in development, not released, only `--physics experimental-brush` |
 | `crates/rbr-tyre-lab` | Tyre research (ours, experimental): sweeps of NGP's tyre functions, NGP's surface values, the brush against NGP |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |
