@@ -250,14 +250,21 @@ pub struct EvalOutput {
 }
 
 /// Steady-state brush evaluation: Pacejka's theoretical brush model with
-/// combined slip (Tire and Vehicle Dynamics, 3rd ed., ch. 3): theta_i =
-/// C_i/(3 mu Fz) with the directional mu below, psi = sqrt((theta_x sx)^2 +
-/// (theta_y sy)^2); for psi < 1, F = mu Fz (3 psi - 3 psi^2 + psi^3), else
-/// F = mu Fz; F_i = -F theta_i s_i/psi (0 at psi = 0). The friction ellipse
-/// gives the directional mu: mu_dir = 1/sqrt((ex/mu_x)^2 + (ey/mu_y)^2) along
-/// the slip direction e. Aligning moment (pure side-slip form, applied with
-/// psi): Mz = mu Fz a theta_y sy (1 - 3 psi + 3 psi^2 - psi^3) for psi < 1,
-/// else 0; the trail -Mz/Fy tends to a/3 at small slip.
+/// combined slip (Tire and Vehicle Dynamics, 3rd ed., ch. 3), with the
+/// anisotropic stiffnesses split as Svendenius does (Tire Modeling and
+/// Friction Estimation, PhD, Lund 2007, ch. 4: eqs. 4.14, 4.17, 4.18-4.20 and
+/// 4.26-4.28). theta_i = C_i/(3 mu Fz) with the directional mu below, psi =
+/// sqrt((theta_x sx)^2 + (theta_y sy)^2); the adhering part of the patch
+/// gives F_a,i = -C_i s_i (1 - psi)^2, along the stiffness-weighted slip, the
+/// sliding part F_s = mu Fz psi^2 (3 - 2 psi) against the sliding velocity
+/// (the direction of (sx, sy)); from psi = 1 the patch slides whole, mu Fz.
+/// For pure slip the sum is Pacejka's mu Fz (3 psi - 3 psi^2 + psi^3). The
+/// friction ellipse gives the directional mu along the sliding velocity e,
+/// mu_dir = 1/sqrt((ex/mu_x)^2 + (ey/mu_y)^2) (Svendenius's collinear slide
+/// force, eqs. 4.19-4.20). Aligning moment M'_z (eqs. 4.33-4.35; the
+/// deformation torque M''_z is left out): Mz = mu Fz a (1 - psi)^2 (theta_y sy
+/// (1 - 4 psi) + 3 psi^2 sy/|s|) for psi < 1, else 0; for pure side slip mu Fz
+/// a theta_y sy (1 - psi)^3, and the trail -Mz/Fy tends to a/3 at small slip.
 pub fn eval(x: &EvalInput, cal: &Calibration) -> EvalOutput {
     let (vsx, vsy, vr) = slip_velocities(x);
     eval_slip(x, vsx / vr, vsy / vr, vr, cal)
@@ -317,20 +324,24 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     let theta_y = cy / (3.0 * mu * x.fz);
     let (px, py) = (theta_x * sx, theta_y * sy);
     let psi = (px * px + py * py).sqrt();
-    let (f, mz) = if psi < 1.0 && psi > 0.0 {
-        let f = mu * x.fz * (3.0 * psi - 3.0 * psi * psi + psi * psi * psi);
-        let mz = mu * x.fz * x.half_length * theta_y * sy * (1.0 - 3.0 * psi + 3.0 * psi * psi - psi * psi * psi);
-        (f, mz)
-    } else if psi >= 1.0 {
-        (mu * x.fz, 0.0)
+    // Adhesion along the stiffness-weighted slip, C_i s_i (1 - psi)^2; sliding along the sliding velocity (the
+    // direction of (sx, sy)), mu Fz psi^2 (3 - 2 psi); both 0 and mu Fz from psi = 1.
+    let adhesion = if psi < 1.0 { (1.0 - psi) * (1.0 - psi) } else { 0.0 };
+    let sliding = if psi < 1.0 { mu * x.fz * psi * psi * (3.0 - 2.0 * psi) } else { mu * x.fz };
+    let per_s = if s_abs > 0.0 { sliding / s_abs } else { 0.0 };
+    // The secant slip stiffnesses -F_i/s_i: C_i at zero slip.
+    let kx = cx * adhesion + per_s;
+    let ky = cy * adhesion + per_s;
+    let (fx, fy) = (-kx * sx, -ky * sy);
+    // Aligning moment of each part (Svendenius eqs. 4.33-4.35, M'_z only): adhesion mu Fz a theta_y sy (1 - psi)^2
+    // (1 - 4 psi), sliding 3 mu Fz a psi^2 (1 - psi)^2 times its lateral share sy/|s|.
+    let mz = if psi < 1.0 && s_abs > 0.0 {
+        mu * x.fz * x.half_length * adhesion * (theta_y * sy * (1.0 - 4.0 * psi) + 3.0 * psi * psi * sy / s_abs)
     } else {
-        (0.0, 0.0)
+        0.0
     };
-    let (fx, fy) = if psi > 0.0 { (-f * theta_x * sx / psi, -f * theta_y * sy / psi) } else { (0.0, 0.0) };
     let trail = if fy != 0.0 { -mz / fy } else { 0.0 };
-    // F/psi tends to 3 mu Fz at zero slip, so the secants tend to the stiffnesses.
-    let per_psi = if psi > 0.0 { f / psi } else { 3.0 * mu * x.fz };
-    EvalOutput { fx, fy, mz, trail, psi, mu, sx, sy, kx: per_psi * theta_x, ky: per_psi * theta_y }
+    EvalOutput { fx, fy, mz, trail, psi, mu, sx, sy, kx, ky }
 }
 
 /// Relaxation lengths, m: sigma_y = Cy(Fz)/k_y with NGP's carcass lateral
@@ -488,6 +499,47 @@ mod tests {
         assert!((f / (mu * x.fz) - 1.0).abs() < 1e-9, "f {f} mu Fz {}", mu * x.fz);
         // Direction: opposes the sliding velocity.
         assert!(o.fy < 0.0 && o.fx <= 0.0, "fx {} fy {}", o.fx, o.fy);
+    }
+
+    #[test]
+    fn combined_slip_slides_along_the_sliding_velocity() {
+        // Cx = 1.4 Cy (KX_OVER_KY): at 4 deg with 25 % slip the patch slides whole, so the force opposes the
+        // sliding velocity and the side share is its sy/|s|, not the stiffness-weighted slip's (1/1.4 of it).
+        let cal = Calibration { cx0: KX_OVER_KY * 80000.0, ..synth_cal() };
+        let alpha = 4f64.to_radians();
+        let (vlat, vlong) = (15.0 * alpha.sin(), -15.0 * alpha.cos());
+        let mut x = synth_input();
+        (x.vy, x.vx, x.spin) = (vlat, vlong, 1.25 * -vlong / x.radius);
+        let o = eval(&x, &cal);
+        assert!(o.psi > 1.0, "psi {}", o.psi);
+        let share = -o.fy / (o.fx * o.fx + o.fy * o.fy).sqrt();
+        let slide = o.sy / (o.sx * o.sx + o.sy * o.sy).sqrt();
+        assert!((share / slide - 1.0).abs() < 1e-12, "share {share} sliding {slide}");
+        // Partly sliding (1 deg, 1 % slip): between the stiffness-weighted and the sliding direction.
+        let alpha = 1f64.to_radians();
+        let (vlat, vlong) = (15.0 * alpha.sin(), -15.0 * alpha.cos());
+        (x.vy, x.vx, x.spin) = (vlat, vlong, 1.01 * -vlong / x.radius);
+        let o = eval(&x, &cal);
+        assert!(o.psi > 0.0 && o.psi < 1.0, "psi {}", o.psi);
+        let (along_slip, along_stiff) = (o.sy / o.sx, o.sy / (KX_OVER_KY * o.sx));
+        assert!(o.fy / o.fx < along_slip && o.fy / o.fx > along_stiff, "{o:?}");
+    }
+
+    #[test]
+    fn pure_slip_is_pacejkas_cubic() {
+        let cal = synth_cal();
+        for deg in [1.0f64, 3.0, 6.0, 12.0] {
+            let alpha = deg.to_radians();
+            let mut x = synth_input();
+            (x.vy, x.vx) = (15.0 * alpha.sin(), -15.0 * alpha.cos());
+            x.spin = -x.vx / x.radius;
+            let o = eval(&x, &cal);
+            let p = o.psi.min(1.0);
+            let f = o.mu * x.fz * (3.0 * p - 3.0 * p * p + p * p * p);
+            let mz = o.mu * x.fz * x.half_length * p * (1.0 - p).powi(3);
+            assert!((-o.fy / f - 1.0).abs() < 1e-12 && o.fx.abs() < 1e-9, "{deg} {o:?} {f}");
+            assert!((o.mz - mz).abs() < 1e-9, "{deg} {o:?} {mz}");
+        }
     }
 
     #[test]

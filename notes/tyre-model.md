@@ -89,7 +89,9 @@ times.
 
 ## Candidate (brush-v1)
 
-`rbr_tyre::brush` (`calibrate`; the lab's `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3) and
+`rbr_tyre::brush` (`calibrate`; the lab's `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3)
+split as Svendenius splits it (adhesion along the stiffness-weighted slip, sliding against the sliding velocity;
+below) and
 Rill's first-order force dynamics (below). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
 (-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed by Canudas de Wit's g(Vs) with their v_s and μ_C/μ_S; NGP's temperature grip kept; dry wear
@@ -99,6 +101,16 @@ Vehicle Dynamics lecture notes, Hochschule Regensburg 2009, 3.4.2; f = F/s the s
 the mean of Rill's passenger values, d_x 500/1500 and d_y 250/600 N/(m/s)), combined force capped at μ Fz as Rill
 caps it; relaxation length (f + v d)/c, the stretched string's C/c at small slip, no other speed term. Calibrated at run time to NGP's lateral peak and slope and
 longitudinal peak at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
+
+Combined slip (2026-11-07): the adhering part of the patch gives -C_i s_i (1 - ψ)² along the stiffness-weighted
+slip, the sliding part μ Fz ψ² (3 - 2ψ) against the sliding velocity, μ Fz from ψ = 1 (Svendenius, Tire Modeling and
+Friction Estimation, PhD, Lund 2007, eqs. 4.14, 4.17, 4.18-4.20, 4.26-4.28; read in full); the directional μ is the
+ellipse along the sliding velocity, his collinear slide force. The aligning moment is his M'_z (eqs. 4.33-4.35):
+μ Fz a (1 - ψ)² (θ_y s_y (1 - 4ψ) + 3ψ² s_y/|s|); the deformation torque M''_z, ∝ (C_y - C_x), stays out. Pure
+slip is Pacejka's cubic either way, so the curves, the per-wheel fit and the calibration are unchanged (lab CSVs
+identical). Before, the whole force pointed along (C_x s_x, C_y s_y), so at full slide the side share was 1/1.4 of
+the sliding velocity's. Pacejka's own ch. 3 text (isotropic bristles, where both directions coincide) was not
+reread here: the book is not open.
 
 Ours, not from papers: the wet loss's film ramp, its 0.5 mm, the quadratic and the 0.6 weight, and the wear gain's
 fade with W; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
@@ -114,7 +126,10 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   slip +0.35 against transient -0.12). Steady grip was not short: 1.38 μ peak at κ 0.15, 1.10 at the spin's κ 1.5
   (sliding 6.75 m/s). Rill's dynamics turn it in 3-15 ms; σ_x 1.0-1.6 m at κ 0.02 to 0.25-0.3 m sliding; Rill: σ_x
   passenger 0.7 m, review 0.3-0.8 m; measured σ_y 0.6 m at 0° to 0.1 m at 10° (Rill Fig. 3.43).
-- Meets: peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry locked over peak at 10 m/s 0.80 (0.70); braking
+- Meets: combined slip at 4 kN, 15 m/s, Fy(κ ±0.25)/Fy(0) 0.283 at 2°, 0.333 at 4°, 0.465 at 8° (Svendenius's
+  measured road tyre 0.2-0.3 and 0.29-0.34; NGP 0.40/0.46/0.61; before 0.20/0.24/0.35), Fy/|F| equal to the sliding
+  velocity's share once sliding (0.269 at 4°; NGP 0.35); peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry
+  locked over peak at 10 m/s 0.80 (0.70); braking
   peaks within 4 % of NGP's (17 %); Kx/Fz 22 by the |κ| ≤ 0.04 fit, Kx ∝ Fz^1.14; peak Fx ∝ Fz^0.96; Cα ∝ Fz^0.64;
   Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn; peak Fy ∝ Fz^0.85; σ_y 0.20 m at 4 kN
   (σ/R 0.63; NGP 0.17 m; Pacejka 0.12-0.45 m); with the damping 0.20-0.23 m at 5-30 m/s, 63 % of a 2° step in
@@ -158,6 +173,15 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   over the limit and rpm over it unchanged. Fiesta 0-100 RSF 504 4.33 → 4.35 s (NGP 4.52). After the finish (full
   brake in fifth from 24 m/s) both physics lock the Golf's fronts; the realistic engine stalls with the clutch in,
   NGP's idles (engine side, `engine-model.md`).
+- Combined slip along the sliding velocity (2026-11-07), experimental-brush before → after: four-car split 2 /
+  finish Fiesta 207.97/305.08 → 207.60/304.67, Celica 208.48/305.53 → 208.31/305.33, Golf 214.21/314.48 →
+  213.99/314.25, Fiat 216.44/316.91 → 215.63/316.06 (NGP unchanged, 210.71/309.01 and the rest as above); slip > 3 %
+  3.2/3.6/4.8/5.2 s, no NaN; the Golf's 1.5 s under 30 rad/s is the post-finish stall above (321-323 s). Debug trace
+  of the wheel speeds (not committed): Golf climb 10-13 s fronts over car mean/max 0.97/1.26 before and after (NGP
+  0.95/1.07), after in gear 2 below 6 m/s 0.99/1.37 (NGP 0.98/1.11), engine at least 141 rad/s, no stall; Fiesta 8-20 s 0.97/1.46 →
+  0.97/1.47, Fiat rears 1.09/3.03 → 1.08/3.03. Full brake from 15 m/s on map 41 (`--brake-from 15`, path length
+  to the test's end at 0.3 m/s): 11.77 → 11.79 m, 10.7 m/s² mean, against NGP 12.03 m and experimental 12.10 m
+  (10.2 m/s²); all lock. The straight-line numbers barely move, as expected: the change is in combined slip only.
 - Fiesta Rally2, map 41 tarmac, autopilot, before the force dynamics (`ngp` / tyre only / full `experimental`, σ
   without the speed term, engine with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 /
   118.39 / 116.95 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No
@@ -214,22 +238,23 @@ Comparison: NGP and brush-v1 on the Fiesta Rally2 at 4 kN (`racing` example; 15 
 | Cα/Fz, Kx/Fz per rad | A 31-34, 41-47 (MF); B 35-39 at 664 N (fig ±30 %) | Kx/Fz 18.4-32.9 | 17.6, 14.1 | 17.6, 22.0 | no: at 0.6-1.1 kN; scaled to 4 kN by Fz^-0.4 (inferred) ~19 |
 | Lateral over peak | A 0.95 at 17° (fig ±0.03); B 0.96 at 12° (fig); ChassisSim 0.8-0.9 (quoted) | 0.73-0.83 full slide | 0.992 at 12°, 0.968 at 17° | 0.974 / 0.937 (11.2 m/s: 0.979 / 0.945); 0.876 at 30° | up: brush-v1 is inside the racing range to 17° |
 | Longitudinal over peak | A 0.90-0.95 at κ 0.5-1 (fig ±0.05); B 0.93 at κ 0.2 (fig) | 0.65-0.71 | 0.920 at κ 0.5, 0.781 at 1 | 0.861 / 0.786 (11.2 m/s: 0.873 / 0.798) | up: brush-v1 0.05-0.15 below racing |
-| Combined: Fy(25 % slip)/Fy(0) | none open for racing; G (road) 0.2-0.3 at 2°, 0.29-0.34 at 4° (fig ±0.05); Fy/\|F\| at 4° ~0.26 | | 0.40 at 2°, 0.46 at 4°; Fy/\|F\| 0.35 | 0.20, 0.24; Fy/\|F\| 0.196 | none from racing; G puts the target between brush-v1 and NGP |
+| Combined: Fy(25 % slip)/Fy(0) | none open for racing; G (road) 0.2-0.3 at 2°, 0.29-0.34 at 4° (fig ±0.05); Fy/\|F\| at 4° ~0.26 | | 0.40 at 2°, 0.46 at 4°; Fy/\|F\| 0.35 | 0.28, 0.33; Fy/\|F\| 0.269 (before the split 0.20, 0.24; 0.196) | none from racing; brush-v1 now inside G |
 | Relaxation length | Hoosier R25B 0.49-0.50 m (Cal Poly senior project, search excerpt only, its 0.55 s does not fit 40 km/h): not used | 0.12-0.45 m | 0.17 m | 0.20 m | unknown |
 | Grip against temperature | F: GT optimum 95-103 °C core, ~0.6 at 60-65 °C, ~0.75 at 75, ~0.85 above 105 (fig ±0.1); Pirelli RA: 40 K window per compound | passenger optimum 88 °C, width 50 °C | `RubMyFct` 0.838 at 20 °C, 1.0 near 65-85, 0.85 at 130 | NGP's | no: a slick's bell is steeper; rally compounds move the window |
 
-The combined-slip gap has a cause in the model, not in the data: at full slide brush-v1 points the force along the
+The combined-slip gap had a cause in the model, not in the data (fixed 2026-11-07, recommendation 1): at full slide
+brush-v1 pointed the force along the
 stiffness-weighted slip (Cx sx, Cy sy), so with Cx = 1.4 Cy the side share is 1/1.4 of the sliding velocity's
 (0.196 against 0.269 at 4°, 25 %). Friction opposes the sliding velocity (Svendenius ch. 4, eqs. 4.18-4.22; G's
 measured share 0.26 matches the sliding direction).
 
-Recommendation (for the user to decide; `rbr-tyre` unchanged):
+Recommendation (1 done, 4 evaluated and not taken, 2026-11-07; 2, 3 and 5 stand):
 
 1. Combined slip: direct the sliding part of the force along the sliding velocity, keeping the stiffness-weighted
    direction for the adhering part (the BPL / Svendenius construction). At 4° and 25 % that takes the side force
    from 947 N to about 1300 N (inferred: total force unchanged times the sliding share), 0.33 of pure against G's
    0.29-0.34 and NGP's 0.46. The open item "half NGP's side force" becomes about 0.73 of NGP's, and that remainder is
-   backed by measured data.
+   backed by measured data. Done: 1302 N, 0.333 of pure, 0.72 of NGP's ([Candidate](#candidate-brush-v1)).
 2. Sliding over peak: keep. Racing slicks keep 0.93-0.97 of the peak to 12-17° and 0.90-0.95 to κ 1, above the road
    sets; brush-v1 sits between, inside the racing lateral range. A tarmac rally tyre is treaded (at least 17 %
    grooves), between road and slick (inferred). The longitudinal fall is the steeper side; locked-wheel road data
@@ -238,7 +263,13 @@ Recommendation (for the user to decide; `rbr-tyre` unchanged):
    5.6-6.7°) names no tyre; brush-v1's 95 % point, 6.5°, already sits there. Lowering the peak means a cornering
    stiffness above NGP's (peak slip scales with μFz/Cα), giving up the fit to NGP's slope: a product decision.
 4. Load sensitivity, optional: N_MU_Y 0.87 to ~0.82 (racing 0.70-0.84; NGP itself 0.79 above 4 kN); costs 2 % peak
-   μ at 6 kN. Low priority.
+   μ at 6 kN. Low priority. Not taken: tried in the lab, 0.82 holds the 4 kN peak (1.265; the fit is at the design
+   load) and moves the 4-8 kN exponent from 0.845 to 0.800 (NGP 0.787), 6 kN μ 1.188 → 1.166 (NGP 1.181). The
+   evidence for it is weak: the FS exponents (0.70-0.84) are at a tenth of a rally car's loads, where the
+   exponent depends on the load range; D (0.82) is the only figure at rally loads, second-hand, tyre unnamed; E is a
+   model. The one measured road sweep (Goodyear, 0.87) and NGP over the 2-6 kN a rally car runs (0.878) agree with
+   0.87, and 0.82 would take the light (inside, 2 kN) wheel's peak μ further above NGP's (1.407 → ~1.46, NGP
+   1.356). Revisit with a rally or racing tyre's load sweep at 2-8 kN.
 5. Leave peak κ, the stiffness exponents, σ and the temperature grip: racing data do not move them, or are unverified.
 
 Missing: any rally tyre curve; measured combined slip for any racing tyre (TTC combined runs are licence-gated);
@@ -246,8 +277,9 @@ rally g data on tarmac; a verified racing relaxation length; absolute μ against
 
 ## Open
 
-- Driving it: combined slip (half NGP's side force at 4° and 25 % slip, measured road data between the two; see
-  [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel.
+- Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
+  [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
+  deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
   The autopilot's pace is NGP's within 1 %; a driver's view is the next check.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
   stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
