@@ -751,6 +751,17 @@ impl Choice for EngineModel {
     }
 }
 
+impl EngineModel {
+    /// Whether a run on it keeps records (ghosts, the stage record and personal best, championship results): NGP's
+    /// only, while the models are experimental (a user decision; `rbr-standalone` writes no records then either).
+    pub fn keeps_records(self) -> bool {
+        self == EngineModel::Ngp
+    }
+}
+
+/// What the experimental models leave unsaved, shown beside the choice while one is picked.
+pub const ENGINE_NO_RECORDS: &str = "Realistic is experimental: no records, ghosts or championship results are saved.";
+
 /// What the realistic engine model does.
 const ENGINE_HELP: &str = "Realistic gives the engine's torque from a physical model per car in place of NGP's \
      formula: the physics changes, so times and replays are not comparable with NGP. Experimental.";
@@ -760,6 +771,9 @@ fn engine_ui(ui: &mut Ui, engine: &mut EngineModel) {
     ui.horizontal(|ui| {
         ui.label("Engine model");
         combo(ui, "engine-model", None, engine, EngineModel::ALL, EngineModel::label).on_hover_text(ENGINE_HELP);
+        if !engine.keeps_records() {
+            ui.weak(ENGINE_NO_RECORDS);
+        }
     });
 }
 

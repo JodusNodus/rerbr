@@ -500,7 +500,12 @@ impl Form {
         let (stage, weather, preset) = self.selection_from(rand).ok()?;
         // Only the quick race races and keeps a ghost (`rbr_gameplay::ghost::clears`: the championship clears it).
         let words = weather.ghost_words(&self.season);
-        let ghost = self.ghost.viewer_args(&self.records(), stage.map, &words);
+        // An experimental engine model keeps no records: the best ghost is raced, not replaced.
+        let ghost = match self.engine_model.keeps_records() {
+            true => self.ghost.clone(),
+            false => self.ghost.unrecorded(stage.map),
+        };
+        let ghost = ghost.viewer_args(&self.records(), stage.map, &words);
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
         let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.championship.profile.clone()]].concat();
@@ -1450,11 +1455,13 @@ mod tests {
         for (line, wanted) in
             [("", None), ("engine_model = ngp\n", None), ("engine_model = realistic\n", Some("realistic"))]
         {
-            let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n{line}");
+            let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nghost = best\n{line}");
             let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
             let mut form = load(&start, Settings::parse(&text)).unwrap();
             form.read_only = true;
             let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
+            // Only NGP's runs race for the best ghost (`--best-ghost` writes a new best).
+            assert_eq!(quick.contains(&"--best-ghost".to_owned()), wanted.is_none(), "{text}: {quick:?}");
             let (stage, weather) = form.selection().unwrap();
             let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
             let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
@@ -1478,6 +1485,33 @@ mod tests {
                 assert!(!args[..live].contains(&"--engine-model".to_owned()), "{args:?}");
             }
         }
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// With the realistic engine model a championship stage does not start, and says why (no results would be saved);
+    /// the championship is left as it was.
+    #[test]
+    fn a_championship_stage_needs_the_ngp_engine_model() {
+        let (Some(data), Some(patch)) = (env("RBR_DATA"), env("RBR_PATCH")) else {
+            return;
+        };
+        let here = crate::test_dir("command-engine-championship");
+        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+        let mut form = load(&start, Settings::parse("[launcher]\nengine_model = realistic\n")).unwrap();
+        form.read_only = true;
+        assert!(!form.engine_model.keeps_records());
+        let stage = crate::championship_page::StageStart {
+            map: 54,
+            conditions: rbr_season::event::Conditions::Dry,
+            clock: 12.0,
+            tyre: 4,
+            setup: rbr_gameplay::setup::SeasonSetup::Current,
+            damage: rbr_season::config::Damage::Off,
+            args: vec!["--championship".to_owned(), "rookie".to_owned()],
+        };
+        form.start_championship_stage(stage);
+        assert_eq!(form.status, crate::championship_page::launch::CHAMPIONSHIP_NGP_ONLY);
+        assert!(form.child.is_none());
         std::fs::remove_dir_all(&here).unwrap();
     }
 

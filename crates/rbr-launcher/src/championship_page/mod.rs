@@ -39,7 +39,7 @@ use crate::catalog::Car;
 
 mod common;
 pub mod fixture;
-mod launch;
+pub(crate) mod launch;
 
 pub use launch::shots;
 mod builder;
