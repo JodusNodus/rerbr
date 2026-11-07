@@ -196,8 +196,8 @@ Tyre model hook (the second part, `rbr-tyre`, `notes/tyre-model.md`): with a mod
 (`rbr_hybrid::ngp::set_tyre_model`), the tyre step (`rbr_physics::tyre::step`) asks it after the slip phase, with
 NGP's sliding solve already done, and blends its patch forces in by its weight (`rbr_physics::tyre::model::apply`):
 deflection `-(soil + Fy)/(cos·k_lat)` and torsion `-(R·Fx + soil)/k_tors`, so `solve_forces` gives the model's forces;
-trail, phases and friction forces likewise. The damping and hold need a sticking weight, which is 0 where the brush
-runs (contact speed ≥ 2 m/s). With none set the code is NGP's.
+trail, phases and friction forces likewise. Below 2 m/s `solve_forces` takes the model's weight and moves its damping
+factors and trail scale toward 1 by it; NGP's hold torque stays. With none set the code is NGP's.
 
 ### Unreachable guards
 
