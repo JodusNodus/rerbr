@@ -268,15 +268,19 @@ fn limit_boost(spec: &Spec, w_choke: f64, rpm: f64, pi: f64) -> f64 {
     pi
 }
 
-/// The boost targets made consistent with one K: each knot's target scaled by its K over the knots' median from idle
-/// up (the charge a flat K needs), then limited. The first estimate's η_ig leaves out the turbine's back pressure.
+/// The boost targets made consistent with one K: each knot's boost scaled by its K over the knots' median from idle up
+/// (the charge a flat K needs), then limited. The first estimate's η_ig leaves out the turbine's back pressure. The
+/// boost scaled is the one the steady WOT made, if under the target: the charge, and so K, came from it. Scaling the
+/// target there instead inflated an off-boost knot's target (turbo sample 1.90 bar at 1000 rpm for 1.06 made), and the
+/// targets interpolated from it up to the next knot asked for more charge than one K needs, so K dipped on boost
+/// (1.32e6 at 1750 against 1.58e6).
 fn retarget(spec: &mut Spec, car: &Car) {
-    let k: Vec<(f64, f64)> = car
+    let k: Vec<(f64, f64, f64)> = car
         .knots
         .iter()
         .map(|&(rpm, t_wot)| {
-            let out = bare_wot(spec, rpm).1;
-            (rpm, (t_wot + out.friction + out.pumping) / out.charge.max(1e-12))
+            let (s, out) = bare_wot(spec, rpm);
+            (rpm, (t_wot + out.friction + out.pumping) / out.charge.max(1e-12), s.p_boost / P_REF)
         })
         .collect();
     let mut above: Vec<f64> = k.iter().filter(|k| k.0 >= car.rpm_idle).map(|k| k.1).collect();
@@ -287,8 +291,10 @@ fn retarget(spec: &mut Spec, car: &Car) {
     let k_ref = above[above.len() / 2];
     let t = spec.turbo.as_ref().expect("a turbo");
     let w_choke = t.w_choke;
-    let pi: Vec<(f64, f64)> =
-        k.iter().map(|&(rpm, k)| (rpm, limit_boost(spec, w_choke, rpm, t.pi_wot.at(rpm) * k / k_ref))).collect();
+    let pi: Vec<(f64, f64)> = k
+        .iter()
+        .map(|&(rpm, k, made)| (rpm, limit_boost(spec, w_choke, rpm, t.pi_wot.at(rpm).min(made) * k / k_ref)))
+        .collect();
     spec.turbo.as_mut().expect("a turbo").pi_wot = Curve(pi);
 }
 
