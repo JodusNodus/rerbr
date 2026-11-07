@@ -30,6 +30,15 @@ step 8000; the sweep calls NGP's own `patch_forces`/`friction_limits` with the p
   temperature; tread 337 K on the skidpad. Stiffness does not depend on temperature.
 - Wear lowers grip (`WearFtr` 0.95-0.975 times the sector's wear); stiffness does not depend on tread depth.
 - Inclination (`ngp::inclination::grip_scale`): 1.0 at 0°, 0.95 at +5°, 0.8875 at +10°, 1.05 from -5° to -10°.
+- Dynamics, through NGP's own step (`ngp_transient`, `--tyre-image` capture, front right at 4 kN; the quasi-static
+  ramp matches the sweep within 0.0013 μ): a lateral slip step ramps the deflection linearly until the friction
+  curve's force clamps it (63 % after 0.10 m at 2° falling to 0.08 m at 30 m/s, 0.06-0.04 m at 6°; 90/63 ratio 1.4,
+  not an exponential's 2.3), so 2° steer at 20 m/s has no phase lag up to 2 Hz. Longitudinal steps settle in 0.35-0.44
+  m at 10 m/s and 0.03 m at 20 m/s: the torsional stiffness runs at 0.1 at rest to 1 from 20 m/s (`SPEED_KNEE`).
+- Low speed: the sticking model (below 1 m/s, blended to 2 m/s) alternates every step, ±10-40 N at 360 Hz; at
+  standstill a push holds -4 kN with ±14 N.
+- Heat: 6° at 20 m/s for 20 s takes the tread from 293 to 300.7 K (τ 19 s) and grip from 1.017 to 1.059; from the
+  skidpad's 337 K it barely moves (τ 12 s). The tread temperature follows a slow level, not the slip power.
 - Mass: 40 % more mass costs ~4 % lateral μ (1.4^-0.122) and ~0 longitudinally, inside the skidpad spread, which is
   why the season sweep saw no mass term (`season.md`).
 
@@ -61,8 +70,9 @@ No open data for rally tyres, gravel cut onto tarmac or damp tarmac: those stay 
 - Matches: peak-μ load sensitivity (Fz^0.878 against ~0.87), trail a/3, convection exponent, a temperature bell.
 - Off: Cα load exponent 0.36 (0.5-0.65); stiffness blind to temperature, pressure apart, and tread depth; dry wear
   lowers grip (tread loss raises it); wet grip fixed per surface (no speed or film effect); static/kinetic pair;
-  peak slip angle 9.5° at 4 kN (textbook 4-8°, secondary). Relaxation length Cα/k_y 0.14-0.20 m against 0.3-0.9 m
-  measured on a passenger tyre; NGP's effective transient is measured through its step (open).
+  peak slip angle 9.5° at 4 kN (textbook 4-8°, secondary); lateral transient 0.04-0.10 m to 63 %, shrinking with
+  speed, against 0.3-0.9 m growing with speed on a passenger tyre (a rally tyre's stiffer sidewall shortens it; no
+  rally data); the sticking model's 360 Hz alternation; tread warm-up of ~8 K in 20 s of hard cornering.
 
 ## Candidate (brush-v0, lab only)
 
@@ -74,6 +84,5 @@ of σ are assumptions to calibrate.
 
 ## Open
 
-- NGP's effective relaxation length, low-speed blend and heat-up, from its real step (`ngp_transient`).
 - brush-v0 against NGP and the targets (`compare`).
 - Car-level effect needs a hook like the engine model's (`--engine-model`): user decision.
