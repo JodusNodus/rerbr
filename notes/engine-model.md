@@ -257,6 +257,10 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
 
 ## Open
 
+- Golf II GTI stall, track-41_M experimental: the brush tyre's front overspin at low speed and large slip (front wheel
+  over car speed 5.4; NGP 1.07, realistic engine + NGP tyre 1.22, NGP engine + brush 2.98, at 0.15–0.5 throttle in
+  second), then a lock under brake 0.8 with the clutch in (fronts 10.6 → 0 m/s in 0.22 s, car 5.5 m/s); NGP's clutch
+  help opens at 65 rad/s, too late. Owner: the brush tyre (`notes/tyre-model.md`).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
   School]: samples na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,

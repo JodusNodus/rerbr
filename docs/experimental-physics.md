@@ -554,8 +554,10 @@ throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s tar
 
 ## Known limits
 
-- Hard braking in a low gear can stall an NA car: the Golf II GTI 16V stalled on track-41 braking in second at
-  5.5 m/s ("In game").
+- The brush tyre lets a driven wheel overspin at low speed and large slip: on track-41's opening climb the Golf II
+  GTI 16V's front wheels turn 5.4 times as fast as the car at part throttle (1.07 with NGP's physics, 2.98 with
+  NGP's engine and the brush). Braking from that spin locks them with the clutch in, and the engine stalls ("In
+  game").
 - The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and
   anti-lag pops come from its cut firing events. The whine's pitch is the model's shaft speed times 0.78, to stay in
   the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size for
