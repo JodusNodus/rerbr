@@ -605,8 +605,7 @@ mod tests {
 
     #[test]
     fn the_model_s_turbo_takes_the_turbo_words_in_the_1_02_sim_s_units() {
-        let mut sound = Sound::default();
-        sound.engine = std::array::from_fn(|i| (100.0 + i as f32).to_bits());
+        let sound = Sound { engine: std::array::from_fn(|i| (100.0 + i as f32).to_bits()), ..Sound::default() };
         let model = rbr_engine::Telemetry {
             boost_pressure: 2.5e5,
             air_pressure: 1e5,
