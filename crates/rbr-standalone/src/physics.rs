@@ -133,7 +133,7 @@ impl PhysicsStep for Pure<'_> {
 }
 
 /// `--physics` (`profile`) on the car in `playback`, `car` its identity: fresh models of the profile's systems for the
-/// runs on this thread (none for NGP 7's: its engine formula). A car without NGP keeps NGP 7's (said once on stderr).
+/// runs on this thread (none for NGP 7's). A car without NGP keeps NGP 7's (said once on stderr).
 pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car) -> Result<(), String> {
     static WITHOUT_NGP: std::sync::Once = std::sync::Once::new();
     let ngp = rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base);
@@ -147,6 +147,12 @@ pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car)
         name => rbr_engine::model(name, &layout::engine_params(playback, car.clone()))?,
     };
     rbr_hybrid::ngp::set_engine_model(engine);
+    let tyre = match profile.tyre {
+        _ if !ngp => None,
+        "ngp" => None,
+        name => rbr_tyre::model(name, &layout::tyre_wheels(playback))?,
+    };
+    rbr_hybrid::ngp::set_tyre_model(tyre);
     Ok(())
 }
 
