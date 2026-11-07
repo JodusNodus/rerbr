@@ -211,6 +211,7 @@ impl Models {
         }
         out.push(Command::SpeechGap(if inputs.race_time.is_some_and(|t| t <= 0.0) { SPEECH_GAP } else { 0.0 }));
         if let Some(fmod) = &mut self.fmod {
+            fmod.model_pop = self.exhaust.model_pop;
             out.retain(|c| !fmod.replaces(c));
             out.iter_mut().for_each(|c| fmod.mute(c));
             out.push(Command::Gain { voice: voice::Loop::Engine, gain: 0.0 });

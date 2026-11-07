@@ -33,8 +33,8 @@ use rbr_recording::particles::{self, PAYLOAD_BYTES};
 use rbr_recording::pose;
 use rbr_recording::shift::ShiftPoints;
 use rbr_recording::sound::{
-    self, FmodBlock, NgpSound, Sound, TyreMax, CAR_ENGINE, CAR_WHEELS, DAMPER_WORDS, ENGINE_STATE, WHEEL_STRUT,
-    WHEEL_STRUT_VELOCITY,
+    self, FmodBlock, NgpSound, Sound, TyreMax, CAR_ENGINE, CAR_WHEELS, DAMPER_WORDS, ENGINE_STATE, MODEL_ANTI_LAG,
+    WHEEL_STRUT, WHEEL_STRUT_VELOCITY,
 };
 use rbr_recording::splits::{Split, Splits};
 
@@ -369,15 +369,12 @@ const MODEL_TURBO_SPEED: f32 = 0.78;
 /// The blow-off valve's lift fully open in the 1.02 sim's units (state `+0x48`, `TurboBlowOffCoefficient_NGP`): 1e-4 on
 /// the Fiesta Rally2, as SND1 `p[7]` reads with the valve open.
 const BLOW_OFF_LIFT: f32 = 1e-4;
-/// The misfire word of an anti-lag pop: from 0.9 up, so a car's FMOD bank fires its backfire (`exhaustpop`); on the
-/// 1.02 voices a pop from the bank's high samples, a bang and a pop run.
-const MODEL_POP: f32 = 0.95;
 
 /// SND1's turbo words from the engine model's telemetry instead of the 1.02 engine sim's turbo, which runs beside the
 /// model and knows nothing of its boost (ReRBR experimental physics), in the 1.02 sim's units (`Sim7D30` 0x517d30):
 /// `p[2]` the shaft speed (scaled), `p[3]` the boost over the air, `p[7]` the blow-off valve's lift and `p[6]` its
-/// flow, `(boost - air) * lift * 0.05` as the 1.02 sim's; `p[4]` a pop while anti-lag cuts a firing event, the 1.02
-/// sim's misfire word otherwise.
+/// flow, `(boost - air) * lift * 0.05` as the 1.02 sim's; `p[4]` [`MODEL_ANTI_LAG`] while the model's anti-lag runs
+/// (`rbr-sound` plays its pops from it), the 1.02 sim's misfire word otherwise.
 pub(super) fn model_turbo(sound: &mut Sound, model: &rbr_engine::Telemetry) {
     let air = if model.air_pressure > 0.0 { model.air_pressure } else { model.boost_pressure.max(1.0) };
     let lift = model.blow_off * BLOW_OFF_LIFT;
@@ -387,7 +384,7 @@ pub(super) fn model_turbo(sound: &mut Sound, model: &rbr_engine::Telemetry) {
     set(6, (model.boost_pressure - air).max(0.0) * lift * 0.05);
     set(7, lift);
     if model.anti_lag {
-        set(4, if model.cut > 0.0 { MODEL_POP } else { 0.0 });
+        set(4, MODEL_ANTI_LAG);
     }
 }
 
@@ -620,15 +617,15 @@ mod tests {
         let word = |s: &Sound, i: usize| f32::from_bits(s.engine[i]);
         assert_eq!(word(&got, 2), 9000.0 * MODEL_TURBO_SPEED);
         assert_eq!(word(&got, 3), 2.5);
-        assert_eq!(word(&got, 4), MODEL_POP);
+        assert_eq!(word(&got, 4), MODEL_ANTI_LAG);
         assert_eq!(word(&got, 6), 1.5e5 * 0.5 * BLOW_OFF_LIFT * 0.05);
         assert_eq!(word(&got, 7), 0.5 * BLOW_OFF_LIFT);
         for i in [0, 1, 5, 8, 9, 10, 11] {
             assert_eq!(got.engine[i], sound.engine[i], "word {i}");
         }
-        // A fired event in anti-lag is no pop; outside anti-lag the misfire word is the 1.02 sim's.
+        // Anti-lag runs whether or not the step cuts an event; outside it the misfire word is the 1.02 sim's.
         model_turbo(&mut got, &rbr_engine::Telemetry { cut: 0.0, ..model });
-        assert_eq!(word(&got, 4), 0.0);
+        assert_eq!(word(&got, 4), MODEL_ANTI_LAG);
         let mut got = sound;
         model_turbo(&mut got, &rbr_engine::Telemetry { anti_lag: false, ..model });
         assert_eq!(got.engine[4], sound.engine[4]);

@@ -22,9 +22,10 @@
 //! and `state` a random 0.6-1.0 on the update of a shift up, 0.1-0.5 down, else 0; `fluctuation` on the engine
 //! events and the transmission, 1 on a shift, falling to 0 over the event's `fluctuation_length` (a shift waits,
 //! halving them, while one still runs). Ours: `boost` the 1.02 turbo level (`car::turbo_level`), `valve` the 1.02
-//! blow-off volume, `Speed` and the other events' `wheel_speed` the car's speed, `Distance` the camera's distance
-//! from the car, `Event Cone Angle` the angle between the car's back (against its velocity) and the camera (the
-//! banks' `rear` recordings are loud near 0 and their `front` ones near 180).
+//! blow-off volume, `exhaustpop` on an engine model's anti-lag pops ([`FmodCar::model_pop`]), `Speed` and the other
+//! events' `wheel_speed` the car's speed, `Distance` the camera's distance from the car, `Event Cone Angle` the angle
+//! between the car's back (against its velocity) and the camera (the banks' `rear` recordings are loud near 0 and
+//! their `front` ones near 180).
 //!
 //! The daemon pauses the events (`FUN_00408ef0`): the `_int` ones outside the car and the `_ext` ones in it, the wind
 //! outside the car, and the engine, turbo, blow-off and backfire while the engine is stopped; all of them 0.2 s after
@@ -50,7 +51,7 @@ use std::sync::Arc;
 use lewton::audio::{read_audio_packet, PreviousWindowRight};
 use lewton::header::{read_header_ident, read_header_setup};
 use rbr_formats::fmod::{self, interpolate, Bank, Bus, Layer, Property, Sample};
-use rbr_recording::sound::{FmodBlock, Inputs, Sound};
+use rbr_recording::sound::{FmodBlock, Inputs, Sound, MODEL_ANTI_LAG};
 
 use crate::car::{blow_off_volume, turbo_level, BLOW_OFF_CAP, BLOW_OFF_RISE};
 use crate::data::{mono, Wave};
@@ -131,6 +132,14 @@ pub const MUTED: f32 = 0.003;
 const GEAR_CLICK: (f32, f32) = (1.0, MUTED);
 /// The misfire word's threshold for `exhaustpop` (daemon 0x4098d6).
 const EXHAUST_POP: f32 = 0.9;
+/// `exhaustpop` for an engine model's anti-lag pop ([`FmodCar::model_pop`]): inside the banks' backfire regions
+/// (0.9 to 1).
+const MODEL_POP: f32 = 0.95;
+/// An engine recording that plays only off the throttle carries its own crackle when its level in 5 ms frames stands
+/// this many dB over its median at the 95th percentile (ours: the steady overrun recordings of the Fiesta Rally2, Fiesta
+/// R5, Fabia R5 and 208 R2 banks give 2.8 to 4.6 dB, the crackling ones of the Focus Mk II WRC, i20 WRC 2021, Impreza
+/// WRC S9 and Escort Cosworth banks 6.2 to 21; `notes/sound.md`).
+const CRACKLE_SPREAD: f32 = 6.0;
 /// NGP's speeds under this (km/h) are 0 (`0x10147118`).
 const STILL_KMH: f32 = 1.0;
 /// The daemon pauses every event when no command has come for this long (s): its loop waits 200 ms
@@ -145,6 +154,21 @@ const STATE_DOWN: f32 = 0.1;
 const STATE_SPAN: f32 = 0.4;
 /// The daemon's last gear after command 2 (`+0x2cc`, 0x4089b5).
 const START_GEAR: i32 = 1;
+
+/// How far `wave`'s level in 5 ms frames stands over its median at the 95th percentile, dB.
+fn spread(wave: &Wave) -> f32 {
+    let frame = (wave.rate / 200).max(1) as usize;
+    let mut db: Vec<f32> = wave
+        .samples
+        .chunks_exact(frame)
+        .map(|c| 10.0 * (c.iter().map(|x| x * x).sum::<f32>() / frame as f32 + 1e-3).log10())
+        .collect();
+    if db.is_empty() {
+        return 0.0;
+    }
+    db.sort_unstable_by(f32::total_cmp);
+    db[db.len() * 95 / 100] - db[db.len() / 2]
+}
 
 /// One sample mixed down to mono, at the 16-bit scale of the retail waves.
 fn decode(bank: &Bank, sample: &Sample) -> Result<Wave, String> {
@@ -312,7 +336,7 @@ impl Params {
             speed_kmh: kmh(sound.speed),
             distance,
             cone_angle,
-            exhaust_pop: if e(4) >= EXHAUST_POP { e(4) } else { 0.0 },
+            exhaust_pop: if (EXHAUST_POP..MODEL_ANTI_LAG).contains(&e(4)) { e(4) } else { 0.0 },
             brake: block.map_or(0.0, |b| b.brake),
             transmission_kmh: block.map(|b| kmh(b.transmission_speed)),
             wheels_kmh: block.map(|b| b.wheel_speeds.map(kmh)),
@@ -386,6 +410,13 @@ pub struct FmodCar {
     /// The gains that bring the bank's engine to [`LOUDNESS`], in the car and outside (ours).
     trims: [f32; 2],
     rng: Rng,
+    /// The step plays an anti-lag pop of an engine model's (`crate::exhaust::Exhaust::model_pop`; ours): `exhaustpop`
+    /// is [`MODEL_POP`] then and 0 on the other steps of the model's anti-lag, so the backfire plays the pops.
+    pub model_pop: bool,
+    /// The 1.02 pops (`backfire_int`) and bangs (`backfire_ext`) play the model's pops unmuted (ours): the bank has the
+    /// event, so NGP mutes them, but with no instruments, and its engine has no crackle of its own off the throttle
+    /// ([`CRACKLE_SPREAD`]); else the model's pops would be silent or doubled.
+    model_voices: [bool; 2],
 }
 
 impl FmodCar {
@@ -436,8 +467,20 @@ impl FmodCar {
             index.insert(k, waves.len());
             waves.push(Arc::new(wave));
         }
-        let samples = slots.iter().map(|s| s.layer.samples.iter().map(|k| index[k]).collect()).collect();
+        let samples: Vec<Vec<usize>> =
+            slots.iter().map(|s| s.layer.samples.iter().map(|k| index[k]).collect()).collect();
         let event = |role| EVENTS.iter().find(|e| e.1 == role).and_then(|e| bank.event(e.0));
+        let crackle = slots.iter().zip(&samples).any(|(s, list)| {
+            let off_throttle = s.layer.regions.iter().any(|r| bank.params[r.param].name == "throttle" && r.end <= 0.5);
+            matches!(s.role, Role::Engine(_))
+                && off_throttle
+                && list.iter().any(|&w| spread(&waves[w]) > CRACKLE_SPREAD)
+        });
+        let empty = |outside| {
+            let role = Role::Backfire(outside);
+            event(role).is_some_and(|e| e.layers.is_empty()) && !crackle
+        };
+        let model_voices = [empty(false), empty(true)];
         let mut car = FmodCar {
             present: EVENTS.iter().filter(|e| bank.event(e.0).is_some()).map(|e| e.1).collect(),
             in_regions: vec![false; slots.len()],
@@ -457,6 +500,8 @@ impl FmodCar {
             turbo_flow: 0.0,
             trims: [1.0; 2],
             rng: Rng::new(0xf30d),
+            model_pop: false,
+            model_voices,
         };
         // Measured three times, each at the last trim, as the bank's compressors then work.
         car.trims = [false, true].map(|outside| {
@@ -550,14 +595,16 @@ impl FmodCar {
     }
 
     /// Turns `command`, a 1.02 car voice, down to [`MUTED`] when NGP does: the bank has the event it stands in for.
+    /// An engine model's anti-lag pops stay ([`FmodCar::model_voices`]).
     pub fn mute(&self, command: &mut Command) {
         use crate::voice::{Loop, Shot};
         let has = |role| self.present.contains(&role);
+        let muted = |outside: bool| {
+            has(Role::Backfire(outside)) && !(self.model_pop && self.model_voices[usize::from(outside)])
+        };
         let gain = match command {
-            Command::Effect { shot: Shot::ExhaustPop(_) | Shot::Pop(_), gain, .. } if has(Role::Backfire(false)) => {
-                gain
-            }
-            Command::Effect { shot: Shot::Bang(_), gain, .. } if has(Role::Backfire(true)) => gain,
+            Command::Effect { shot: Shot::ExhaustPop(_) | Shot::Pop(_), gain, .. } if muted(false) => gain,
+            Command::Effect { shot: Shot::Bang(_), gain, .. } if muted(true) => gain,
             Command::Effect { shot: Shot::Ignition, gain, .. } if has(Role::Ignition) => gain,
             Command::Effect { shot: Shot::BlowOff, gain, .. } if has(Role::BlowOff(false)) => gain,
             Command::Loop { voice: Loop::Gearbox | Loop::Diff, gain, .. } if has(Role::Transmission) => gain,
@@ -616,6 +663,9 @@ impl FmodCar {
         } else {
             Params::new(sound, inputs.block.as_ref(), scene)
         };
+        if self.model_pop {
+            params.exhaust_pop = MODEL_POP;
+        }
         let starter = sound.drivetrain_f32(9);
         let startup = stopped && starter > 0.0;
         if startup {
@@ -796,6 +846,8 @@ mod tests {
             quiet: 0.0,
             trims: [1.0; 2],
             rng: Rng::new(1),
+            model_pop: false,
+            model_voices: [false; 2],
         }
     }
 
@@ -846,6 +898,15 @@ mod tests {
         assert_eq!(shots(&step(&mut car, &calm, true)), 0);
         assert_eq!(shots(&step(&mut car, &pop, true)), 0, "paused while the engine is stopped");
         assert_eq!(shots(&step(&mut car, &pop, false)), 1);
+        // An engine model's anti-lag word is no misfire: the backfire plays its pops (`model_pop`) alone.
+        let anti_lag = sound(MODEL_ANTI_LAG, 0.0, 20.0);
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 0);
+        car.model_pop = true;
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 1);
+        car.model_pop = false;
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 0);
+        car.model_pop = true;
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 1);
     }
 
     #[test]
@@ -907,6 +968,36 @@ mod tests {
             car.mute(&mut whine);
             assert!(matches!(whine, Command::Loop { gain: MUTED, .. }));
         }
+    }
+
+    #[test]
+    fn an_engine_model_s_pops_play_on_the_1_02_voices_of_empty_backfire_events() {
+        use crate::voice::{Repeat, Shot};
+        let mut car = car(Vec::new(), &[], vec![Role::Backfire(false), Role::Backfire(true)]);
+        car.model_voices = [true, false];
+        let gain = |car: &FmodCar, shot| {
+            let mut c = Command::Effect { shot, gain: 1.0, pitch: 1.0, repeat: Repeat::Overlap };
+            car.mute(&mut c);
+            match c {
+                Command::Effect { gain, .. } => gain,
+                _ => unreachable!(),
+            }
+        };
+        // NGP's mute stands but on the model's pops, and only for the event that allows them.
+        assert_eq!(gain(&car, Shot::Pop(0)), MUTED);
+        car.model_pop = true;
+        assert_eq!((gain(&car, Shot::Pop(0)), gain(&car, Shot::ExhaustPop(1))), (1.0, 1.0));
+        assert_eq!(gain(&car, Shot::Bang(0)), MUTED);
+    }
+
+    #[test]
+    fn an_off_throttle_recording_crackles_when_its_level_jumps() {
+        let steady =
+            Wave { rate: 1000, samples: (0..1000).map(|i| if i % 2 == 0 { 1000.0 } else { -1000.0 }).collect() };
+        let bangs =
+            Wave { rate: 1000, samples: (0..1000).map(|i| if i % 100 < 10 { 8000.0 } else { 500.0 }).collect() };
+        assert!(spread(&steady) < 0.1);
+        assert!(spread(&bangs) > CRACKLE_SPREAD);
     }
 
     fn region(param: usize, start: f32, end: f32) -> Region {

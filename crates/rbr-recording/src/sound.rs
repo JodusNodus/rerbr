@@ -41,6 +41,10 @@ use crate::word;
 pub const SND1: [u8; 4] = *b"SND1";
 /// Engine payload words.
 pub const ENGINE_WORDS: usize = 12;
+/// The misfire word `engine[4]` while an engine model's anti-lag runs (ReRBR experimental physics; `rbr-standalone`
+/// `live/picture.rs` `model_turbo`): above 1, which the 1.02 sim's misfire level never reaches (`min(rate * 50, 1)`,
+/// `rbr_physics::engine_driveline::engine::misfire_roll`), so the sound tells the model's anti-lag from a misfire.
+pub const MODEL_ANTI_LAG: f32 = 2.0;
 /// Drivetrain payload words.
 pub const DRIVETRAIN_WORDS: usize = 14;
 /// Tyre-noise block words, per wheel.

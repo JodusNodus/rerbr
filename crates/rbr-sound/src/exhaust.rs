@@ -8,9 +8,11 @@
 //! update (0x4b0940). A rising engine speed ends the run. Each kind has one voice: a new pop stops the last.
 //!
 //! Ours: a rally car's anti-lag ([`AntiLag`]), a crackle of pops with now and then a bang each time the throttle is
-//! lifted at speed, as the misfire word gives only now and then.
+//! lifted at speed, as the misfire word gives only now and then. Under an engine model (ReRBR experimental physics) the
+//! misfire word says while the model's anti-lag runs ([`MODEL_ANTI_LAG`]); from the first such word on, the crackle
+//! plays while it runs, and only then, at real anti-lag's rate ([`MODEL_GAP`]), so a car has one source of pops.
 
-use rbr_recording::sound::Sound;
+use rbr_recording::sound::{Sound, MODEL_ANTI_LAG};
 
 use crate::engine::Rng;
 use crate::voice::{Command, Repeat, Shot};
@@ -28,9 +30,18 @@ const BURST: (f32, f32) = (0.35, 0.9);
 const GAP: (f32, f32) = (0.03, 0.12);
 const EXHAUST_ONE_IN: u32 = 6;
 const BANG_ONE_IN: u32 = 16;
+/// The gap between pops while an engine model's anti-lag runs, s: the gaps between the bangs of real rally anti-lag
+/// (onsets in two videos, a Polo GTI R5 from the roadside and a Hyundai i20 Rally2 on board: 0.045 s at the 10th
+/// percentile, 0.095-0.165 s median, 0.14-0.18 s mean, about 0.3 s at the 90th; `notes/sound.md`).
+const MODEL_GAP: (f32, f32) = (0.04, 0.25);
 /// The pops' pitch spread, and their gain against the misfire pops'.
 const ALS_PITCH: (f32, f32) = (0.9, 1.1);
 const ALS_GAIN: f32 = 0.45;
+/// Their gain while an engine model's anti-lag runs: its bangs then stand over the rest of the sound as real ones do
+/// (2-8 kHz over its median of the 0.5 s around: about 10 dB median and 15 at the 90th percentile in the chase view,
+/// against 11 and 16 for the Polo R5's from the roadside; 7-8 dB in the car, against 5-6 on the i20 Rally2's helmet
+/// camera; `notes/sound.md`).
+const MODEL_GAIN: f32 = 2.5;
 
 /// The anti-lag's state.
 #[derive(Debug, Clone)]
@@ -55,19 +66,41 @@ impl AntiLag {
     }
 
     /// The step's shots at `throttle` (0-1) and `rpm` over `dt` seconds, from banks of `counts` (`CAR::EXHAUST`,
-    /// `CARn::EXHAUSTNEW`, `CAR::BANGS`) at `gains` (exhaust pop, pop, bang).
-    fn step(&mut self, throttle: f32, rpm: f32, dt: f32, counts: [usize; 3], gains: [f32; 3]) -> Vec<Command> {
-        if throttle >= ARM {
-            self.armed = true;
-        }
-        if throttle > REAPPLY || rpm < END_RPM {
-            self.left = 0.0;
-        }
-        if self.armed && throttle <= LIFT && rpm >= ALS_RPM {
-            self.armed = false;
-            self.left = self.uniform(BURST);
-            self.wait = 0.0;
-        }
+    /// `CARn::EXHAUSTNEW`, `CAR::BANGS`) at `gains` (exhaust pop, pop, bang). `model` is whether an engine model's
+    /// anti-lag runs, once one has run: then it alone starts and ends the pops, [`MODEL_GAP`] apart.
+    fn step(
+        &mut self,
+        throttle: f32,
+        rpm: f32,
+        dt: f32,
+        model: Option<bool>,
+        counts: [usize; 3],
+        gains: [f32; 3],
+    ) -> Vec<Command> {
+        let (gap, level) = match model {
+            Some(running) => {
+                // A start pops at once; the burst lasts while the model's anti-lag runs.
+                if running && self.left <= 0.0 {
+                    self.wait = 0.0;
+                }
+                self.left = if running { f32::INFINITY } else { 0.0 };
+                (MODEL_GAP, MODEL_GAIN)
+            }
+            None => {
+                if throttle >= ARM {
+                    self.armed = true;
+                }
+                if throttle > REAPPLY || rpm < END_RPM {
+                    self.left = 0.0;
+                }
+                if self.armed && throttle <= LIFT && rpm >= ALS_RPM {
+                    self.armed = false;
+                    self.left = self.uniform(BURST);
+                    self.wait = 0.0;
+                }
+                (GAP, ALS_GAIN)
+            }
+        };
         let mut out = Vec::new();
         if self.left <= 0.0 {
             return out;
@@ -77,7 +110,7 @@ impl AntiLag {
         if self.wait > 0.0 {
             return out;
         }
-        self.wait = self.uniform(GAP);
+        self.wait = self.uniform(gap);
         let [exhaust, new, bangs] = counts;
         let pick = self.rng.rand();
         let (shot, gain) = if pick.is_multiple_of(BANG_ONE_IN) && bangs > 0 {
@@ -90,7 +123,7 @@ impl AntiLag {
             return out;
         };
         let pitch = self.uniform(ALS_PITCH);
-        out.push(Command::Effect { shot, gain: gain * ALS_GAIN, pitch, repeat: Repeat::Overlap });
+        out.push(Command::Effect { shot, gain: gain * level, pitch, repeat: Repeat::Overlap });
         out
     }
 }
@@ -191,6 +224,10 @@ pub struct Exhaust {
     /// The last engine speed target, rpm (`+0x41750`, an int).
     rpm: i32,
     anti_lag: AntiLag,
+    /// An engine model's anti-lag has run ([`MODEL_ANTI_LAG`]).
+    model: bool,
+    /// The last step played an anti-lag pop of the model's: an FMOD bank's backfire plays it ([`crate::fmod`]).
+    pub model_pop: bool,
 }
 
 impl Exhaust {
@@ -209,7 +246,12 @@ impl Exhaust {
     ) -> (Vec<Command>, Vec<u32>) {
         let mut out = Vec::new();
         let [exhaust, new, bangs] = self.counts;
-        let misfire = sound.engine_f32(4);
+        let mut misfire = sound.engine_f32(4);
+        let model_anti_lag = misfire >= MODEL_ANTI_LAG;
+        if model_anti_lag {
+            // No misfire: the model's anti-lag, whose pops alone play while it runs, so a misfire's pop run ends.
+            (self.model, self.run, misfire) = (true, None, 0.0);
+        }
         if misfire != 0.0 && exhaust > 0 {
             let index = if misfire > POP_HIGH && exhaust > POP_HIGH_FROM {
                 rand() as usize % (exhaust - POP_HIGH_FROM) + POP_HIGH_FROM
@@ -236,7 +278,10 @@ impl Exhaust {
         }
         self.rpm = rpm as i32;
         let gains = [self.exhaust_pop_gain, self.pop_gain, self.bang_gain];
-        out.extend(self.anti_lag.step(sound.engine_f32(1), rpm, dt, self.counts, gains));
+        let model = self.model.then_some(model_anti_lag);
+        let anti_lag = self.anti_lag.step(sound.engine_f32(1), rpm, dt, model, self.counts, gains);
+        self.model_pop = model_anti_lag && !anti_lag.is_empty();
+        out.extend(anti_lag);
         // The frame update (0x4b0940): at most one pop a frame.
         if let Some(run) = &mut self.run {
             run.wait += (dt * -RUN_RATE) as i32;
@@ -326,6 +371,31 @@ mod tests {
         assert_eq!(pops(&mut e, &at(1.0, 6000.0), 50), 0);
         // Low in the rev range a lift does nothing.
         assert_eq!(pops(&mut e, &at(0.0, 3000.0), 50), 0);
+    }
+
+    #[test]
+    fn an_engine_model_s_anti_lag_alone_pops_once_it_has_run() {
+        let mut e = Exhaust::new([1.0; 4], [11, 11, 6]);
+        let at = |throttle: f32, misfire: f32| {
+            let mut s = sound(6000.0 / RPM_PER_RAD, misfire);
+            s.engine[1] = throttle.to_bits();
+            s
+        };
+        let run = |e: &mut Exhaust, s: &Sound, steps: usize| {
+            let out: Vec<_> = (0..steps).map(|_| (shots(&e.step(s, MIN_RPM, 0.007, || 0).0), e.model_pop)).collect();
+            (out.iter().map(|(o, _)| o.len()).sum::<usize>(), out.iter().filter(|(_, p)| *p).count())
+        };
+        // The model's word: pops at once, then [`MODEL_GAP`] apart (2 s: 8 to 50), all of them the model's, with no
+        // misfire pop, bang or run from the word itself.
+        run(&mut e, &at(1.0, 0.0), 10);
+        let (n, model) = run(&mut e, &at(0.0, MODEL_ANTI_LAG), 286);
+        assert!((8..=50).contains(&n) && model == n, "{n} {model}");
+        // It stops when the model's anti-lag does, and a lift no longer crackles on its own.
+        assert_eq!(run(&mut e, &at(0.0, 0.0), 50), (0, 0));
+        run(&mut e, &at(1.0, 0.0), 10);
+        assert_eq!(run(&mut e, &at(0.0, 0.0), 200), (0, 0));
+        // A misfire still pops as before.
+        assert_eq!(run(&mut e, &at(0.0, 0.5), 1), (1, 0));
     }
 
     #[test]
