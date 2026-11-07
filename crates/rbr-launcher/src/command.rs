@@ -726,6 +726,7 @@ impl Form {
         if self.head_gasket > 1 {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
+        args.extend(self.engine_model.args());
         Some(args)
     }
 
@@ -825,6 +826,7 @@ impl Form {
 mod tests {
     use super::*;
     use crate::catalog::Catalog;
+    use crate::controls_page::EngineModel;
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
@@ -1424,6 +1426,42 @@ mod tests {
         let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
         let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
         assert!(!rally.iter().any(|a| a == "--clock" || a == "--start-time"), "{rally:?}");
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// The realistic engine model reaches `rbr-standalone` (after `--live`) in a quick race, a championship stage
+    /// and a school lesson; NGP's, the default, adds nothing.
+    #[test]
+    fn the_engine_model_reaches_the_stepping_process() {
+        assert!(EngineModel::Ngp.args().is_empty());
+        assert_eq!(EngineModel::Realistic.args(), ["--engine-model", "realistic"]);
+        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
+            return;
+        };
+        let here = crate::test_dir("command-engine");
+        for (line, wanted) in
+            [("", None), ("engine_model = ngp\n", None), ("engine_model = realistic\n", Some("realistic"))]
+        {
+            let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n{line}");
+            let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+            let mut form = load(&start, Settings::parse(&text)).unwrap();
+            form.read_only = true;
+            let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
+            let (stage, weather) = form.selection().unwrap();
+            let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
+            let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
+            let lesson = Lesson::new(0).unwrap();
+            let draws = Draws { row: None, wear: 0 };
+            let (stage, weather) = form.catalog.stage_weather(&form.season, lesson.map(), Preset::Good, draws).unwrap();
+            let car = form.car().cloned().unwrap();
+            let launch = LaunchCar { car, tyre: None, setup: None, school: Some(lesson) };
+            let school = form.launch_with(stage, launch, form.options, weather, Vec::new(), Vec::new()).unwrap();
+            for args in [&quick, &rally, &school] {
+                let live = args.iter().position(|a| a == "--live").unwrap();
+                assert_eq!(value(&args[live..], "--engine-model").as_deref(), wanted, "{text}: {args:?}");
+                assert!(!args[..live].contains(&"--engine-model".to_owned()), "{args:?}");
+            }
+        }
         std::fs::remove_dir_all(&here).unwrap();
     }
 
