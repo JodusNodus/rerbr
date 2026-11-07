@@ -312,7 +312,8 @@ fn events(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &Stage
 /// `--autopilot OUT`: drives from the snapshot or the boot and writes the playback (`autopilot/`).
 /// `--flat-out` holds full throttle without braking for pace measurement (the steering and the gear shifts stay the
 /// controller's); `--brake-from` brakes fully from a speed to a standstill; `--circle` drives a steady-state circle
-/// with the target speed ramping up; `--trace-speed FILE` writes each step's time, speed, pedals, gear and position.
+/// with the target speed ramping up; `--trace-speed FILE` writes each step's time, speed, pedals, gear and position,
+/// and last the engine speed the gear gives with the clutch engaged (0 in neutral).
 fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, stage: &StageData) -> ExitCode {
     let bytes = match &args.recording {
         Some(path) if !args.boot => match std::fs::read(path) {

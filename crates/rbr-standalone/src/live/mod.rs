@@ -102,6 +102,7 @@ use rbr_school::SchoolRun;
 use std::panic::{self, AssertUnwindSafe};
 
 mod picture;
+pub(crate) use picture::gearbox;
 mod realtime;
 mod record;
 mod start;
