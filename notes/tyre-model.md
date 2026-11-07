@@ -494,8 +494,8 @@ It reproduces the tables above: gravel 345 ngp locked 0.77 g, best threshold K 0
 1.09 / 1.31 g, brush 0.97 / 1.27 g; NGP gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a
 flat top), 2/4/6 kN 0.889/0.828/0.774, μ_y(30°)/peak 0.956, μ_x(κ 1)/peak 0.82; tarmac brush 8.75°, Fy(κ 0.25)/Fy(0)
 0.283/0.332, Kx/Fz 21.2 (22.0 by the lab's 0.02-grid fit). Baseline at the branch point (2026-11-08): ngp 21/56,
-experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendenius rows merged (95 rows, 78 measured)
-ngp 28/78, experimental-brush 34/78 (`build/tyre-night/scores/baseline.json`, not in git).
+experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendenius rows merged (95 rows, 75 scored;
+the racing-slick rows are context, not scored) ngp 28/75, experimental-brush 34/75 (`build/tyre-night/scores/baseline.json`, not in git).
 
 ## Open
 
