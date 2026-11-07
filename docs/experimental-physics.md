@@ -215,8 +215,10 @@ The parts of a race ECU that change torque:
 
 - **Idle.** An air loop (proportional and integral) and a fast spark loop (proportional), with gains from the car's
   inertia at 0.5 Hz and 3 Hz. The spark sits 27° retarded at idle (η_ign 0.80), a torque reserve the spark loop can
-  use either way, as production idle control does. The idle air is capped at the plate's area at 10 % position. Cars
-  from before 1987, on carburettors or mechanical injection, have a fixed idle stop and find their idle speed from the
+  use either way, as production idle control does. The idle air is capped at the plate's area at 10 % position, down
+  to 300 rpm under idle; further down the cap falls to the idle air's base at half idle (anti-stall: enough to catch a
+  dip, not to push the car when the clutch drags the engine down). Above idle + 100 rpm the air loop only gives back
+  what it gained, so the air it wound up while a clutch bit doesn't hold the engine over idle. Cars from before 1987, on carburettors or mechanical injection, have a fixed idle stop and find their idle speed from the
   balance of air and friction.
 - **Overrun fuel cut.** On ECU cars, with the pedal under 2 % above idle + 800 rpm. The fuel returns below idle +
   300 rpm or on the pedal. While the fuel is cut, overrun air holds the manifold at 0.2 bar. When the fuel returns that
@@ -439,7 +441,15 @@ at 8500 rpm on an engine of about 600 N·m. At the rev limit ours matches NGP on
 friction is calibrated. On turbo cars ours brakes about half as hard as NGP at high rpm, because of the clamp.
 
 Below idle the figure's curves rise. With the pedal closed the ECU's idle air opens to its ceiling to stop a stall,
-which gives the turbo sample up to +166 N·m at 500 rpm.
+down to 300 rpm under idle, then less: the turbo sample gives +110 N·m at 1000 rpm, +93 at 750 and +51 at 500 (was
++166 at 500 with the whole ceiling at any speed).
+
+In gear with the pedal closed a car creeps at its idle speed in first, as a real one does: on the flat the Fiesta
+Rally2 creeps at 10.8 km/h (idle 1200 rpm; NGP 11.0 km/h), the Fiesta R2 at 9.5 and the Golf II GTI 16V, on its fixed
+idle stop, at 5.5. Braked in gear, it stalls: with the brake rising to full over 16 s the Rally2 stalls at 20 % brake
+with at most 90 N·m from the engine (152 before; NGP at 45 %), about where a car with no engine would stop; the R2 at
+18 % (46 N·m), the Golf at 9 % (23 N·m). The ECU cars still pull away from rest at a closed pedal, with clutch help on
+or off; the Golf needs a touch of throttle.
 
 ### Response
 
@@ -572,7 +582,9 @@ throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s tar
   tables ask for more than that at 1000 rpm, and the model still gives more, so the shortfall is not a reason to add
   low-rpm boost.
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
-- Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
+- Between idle − 300 rpm and idle a closed pedal still gets the whole idle air ceiling, up to +110 N·m on the turbo
+  sample at 1000 rpm. How far below idle a rally ECU's anti-stall reaches is not published; the 300 rpm and the fade to
+  half idle are guesses.
 - On the limiter the torque swings from step to step with the firing rhythm: the model cuts whole firings, rotating
   the cut as ECUs do. In neutral the HUD's rpm bounces 30–110 rpm from frame to frame under the limit; in gear a few
   rpm. The steering force doesn't show it.
@@ -634,6 +646,7 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - Idle spark reserve, arXiv 2012.02859: https://arxiv.org/abs/2012.02859
 - Idle reserve use, US 7418943: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7418943
 - MoTeC M1 idle: https://motec.zendesk.com/hc/en-gb/articles/14575739507727-Checklist-Idle-Setup
+- Link G4+ idle, anti-stall gain: https://www.hpacademy.com/courses/link-g4-plus-software-tutorial/advanced-fuctions-idle-speed-control/
 - Overrun fuel cut, MSExtra: https://www.msextra.com/forums/viewtopic.php?t=33238
 - Decel manifold pressure: https://forums.autosport.com/topic/89377-f1-engines-and-engine-braking/
 - rFactor 2 engine file, coast torque: http://tirewall.net/mh-rf2/vehicle/physics/engine_ini.html
