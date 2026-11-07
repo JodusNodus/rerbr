@@ -23,8 +23,8 @@ Nothing here changes what the game computes.
   sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
 - `src/probe.rs`: the probe-dump parser shared by the examples.
 - `brush`, `calibrate`: the brush-v1 tyre model and its calibration solve,
-  re-exported from `crates/rbr-tyre` (the game's tyre model of ReRBR
-  experimental physics).
+  re-exported from `crates/rbr-tyre` (the game's tyre model, in development,
+  not released: `--physics experimental-brush` only).
 - `examples/compare.rs`: compares brush-v1 against NGP's sweep and published
   targets. Writes CSVs plus `summary.md` into the output dir.
 

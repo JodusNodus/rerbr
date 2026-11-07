@@ -1,10 +1,11 @@
 # Tyre model research (ours, experimental)
 
-Whether a more current tyre model can improve on NGP's, tarmac first. The candidate, brush-v1, runs in the game as
-the tyre model of ReRBR experimental physics (`--physics experimental`, `crates/rbr-tyre`, [In game](#in-game)); NGP's
-tyre stays the bit-exact default. Tools: `rbr-standalone --tyre-probe FILE` (read-only frame
-dumps on `--autopilot` runs) and `crates/rbr-tyre-lab` (`sweep`, `materials`; README). Probe dumps, images and CSVs
-stay in `/tmp/tyre-lab`, never in git.
+Whether a more current tyre model can improve on NGP's, tarmac first. The candidate, brush-v1, runs in the game
+behind a hidden profile, `--physics experimental-brush` (the engine model with the brush; `crates/rbr-tyre`,
+[In game](#in-game)). It is in development and not released: `--physics experimental` and the launcher run NGP's
+tyre (user 2026-11-07). NGP's tyre stays the bit-exact default. Tools: `rbr-standalone --tyre-probe FILE`
+(read-only frame dumps on `--autopilot` runs) and `crates/rbr-tyre-lab` (`sweep`, `materials`; README). Probe dumps,
+images and CSVs stay in `/tmp/tyre-lab`, never in git.
 
 ## NGP's tyre as it runs (7.4.778)
 
@@ -134,10 +135,17 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 - Transient: the single contact point per wheel, the model's state (snapshots don't carry it; restart and touch-down
   zero it). σ_x takes NGP's speed-scaled torsional stiffness (0.1 of it below 10 m/s), as NGP's own spring does, so
   the longitudinal relaxation is ~10× longer at low speed, for NGP's stability.
-- Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental`, σ without the speed term, engine
-  with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 / 118.39 / 116.95 s, no NaN; full
-  brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No measurable step cost (100000
-  steps 31-33 s either way).
+- Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental-brush`, then called
+  `experimental`; σ without the speed term, engine with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m,
+  split 1 118.82 / 118.39 / 116.95 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 /
+  12.6 m/s² mean). No measurable step cost (100000 steps 31-33 s either way).
+- `experimental-brush` (then called `experimental`) against NGP 7, main `0ef55141`, the engine model's four-car runs
+  (`notes/engine-model.md`, In game): track-41_M split 2 / finish, NGP → brush: Fiesta Rally2 210.71 / 309.01 →
+  207.80 / 304.88 s, Celica ST185 212.97 / 310.91 → 208.15 / 305.22, Fiat 131 221.31 / 323.35 → 214.54 / 314.89; slip
+  over 3 % Fiesta 3.6 → 6.7 s, Celica 3.5 → 4.2, Fiat 5.9 → 5.0. The Golf II GTI 16V stalled at 161 m (Open). Against
+  the engine alone (`b97695d86`) the brush changes split 2 by +0.4, +0.1 and −0.4 s. Fiesta Rally2 0-100 km/h on RSF
+  504 (tarmac, +6.7 %): 4.33 s with the brush, 4.44 with NGP's tyre (`96c85981`), NGP 7 4.52. On gravel the brush is
+  off, so its numbers are the engine's.
 - Ramped 40 m circle (map 85, `--circle -260,120,40 --circle-ramp 0.25`): NGP and the brush alone hold the same
   steering to the same limit, 8.6 m/s², then both run wide at full lock; the autopilot's steering steps (0.008) hide
   any linear-range difference. Steady state matches by the fit; the differences are in transients, combined slip,
@@ -145,6 +153,11 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 
 ## Open
 
+- Low-speed overspin, then a stall: on track-41_M's opening climb (`experimental-brush`, `0ef55141`) the Golf II GTI
+  16V's front wheels turn 5.4 times as fast as the car at 0.15–0.5 throttle in second (NGP 7 1.07, realistic engine
+  with NGP's tyre 1.22, NGP's engine with the brush 2.98). Braking at 0.8 from that spin locks them with the clutch in
+  (fronts 10.6 → 0 m/s in 0.22 s, car 5.5 m/s) and the engine falls 494 → 0 rad/s in 0.2 s at 161 m; NGP's clutch help
+  opens at 65 rad/s, too late. With NGP's tyre (`b97695d86`) the Golf passes there and finishes.
 - Driving it: combined slip (half NGP's side force at 4° and 25 % slip) is the largest change a driver would feel.
   The autopilot's pace is NGP's within 1 %; a driver's view is the next check.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's

@@ -246,30 +246,35 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## In game
 
-Numbers in `docs/experimental-physics.md` ("In game"), main `0ef55141`, experimental = realistic + brush; the brush
-is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compare.sh`, `cmp2.py` and
-`run-standing-start.sh` in the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s.
+Numbers in `docs/experimental-physics.md` ("In game"), `b97695d86`, experimental = realistic + NGP's tyre (the brush
+is not released, user 2026-11-07), so every gap is the engine's. Tools `run-stage-compare.sh`, `cmp2.py` and
+`run-standing-start.sh` in the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
+brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
-- track-11_O (gravel) 600 s, four cars: Fiesta exp split 2 436.20 (engine alone, `96c85981`) → 435.66 s, Celica
-  438.02 → 437.82 (main's engine changes; the brush is off there), NA cars unchanged.
-- track-41_M (tarmac): exp 1.4–3.1 % sooner to split 2; the exp Golf II GTI stalls at 161 m: braking 0.8 in second
-  at 5.5 m/s, engine 494 → 0 rad/s in 0.2 s with the clutch closed (NGP's run passes there and finishes). Open.
-- Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.33 s (4.44 with NGP's tyre); track-64 gravel
-  flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant acceleration, −0.66 m/s²)
-  ≈ 3.9 s (inferred).
+- track-11_O (gravel) 600 s, four cars: the same as on `0ef55141` to the 0.01 s (the brush is off on gravel). Exp
+  1.6–4.2 % sooner to split 2.
+- track-41_M (tarmac): exp 1.6–3.7 % sooner to split 2, finishes Fiesta 309.01 / 304.57, Celica 310.91 / 305.17, Golf
+  324.24 / 314.57, Fiat 323.35 / 315.49 s. The Golf II GTI no longer stalls on the opening climb (that stall was the
+  brush's). It stalls after the finish: full brake in fifth on the run-out, wheels locked at 16 m/s, the clutch-engaged
+  speed tracking the engine 464 → 0 rad/s in 0.8 s (trace column `locked`); NGP's Golf in the same stop keeps 89 rad/s
+  with the clutch open. Open.
+- Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.46 s (4.44 at `96c85981`, 4.33 with the brush);
+  track-64 gravel flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant acceleration,
+  −0.66 m/s²) ≈ 4.0 s (inferred).
 - A launch control in the autopilot (hold, slip-held throttle, torque-crossing upshifts at 6386–6587 rpm against
   `SHIFT_UP` 6494; removed) was no faster: 504 4.59 / 4.48, track-64 4.63 / 4.62, 345 4.47 / 4.45 (on `96c85981`).
-  Both tyres pull as hard at 9 m/s of slip as near the peak at launch speeds (504: 10 m/s² while the wheels spin
+  The tyres pull as hard at 9 m/s of slip as near the peak at launch speeds (504: 10 m/s² while the wheels spin
   9 m/s over the car); cutting throttle on slip bogged the turbo to 130 rad/s off boost.
 - Sourced figure: Volkswagen's claim 4.1 s for the Polo GTI R5 (Rally2 class, 1230 kg); no measured Rally2 figure
   found.
 
 ## Open
 
-- Golf II GTI stall, track-41_M experimental: the brush tyre's front overspin at low speed and large slip (front wheel
-  over car speed 5.4; NGP 1.07, realistic engine + NGP tyre 1.22, NGP engine + brush 2.98, at 0.15–0.5 throttle in
-  second), then a lock under brake 0.8 with the clutch in (fronts 10.6 → 0 m/s in 0.22 s, car 5.5 m/s); NGP's clutch
-  help opens at 65 rad/s, too late. Owner: the brush tyre (`notes/tyre-model.md`).
+- Golf II GTI stall under a wheel lock, track-41_M after the finish (`b97695d86`, above): with the realistic engine
+  the clutch stays closed as the locked wheels pull the engine to 0; with NGP's engine the clutch help opens it
+  (65 rad/s, from the earlier stall's trace). Not traced: whether the clutch help reads something the model's engine
+  speed or torque changes, or the model's engine falls too fast for it. The opening-climb stall with the brush is the
+  tyre's (`notes/tyre-model.md`, Open).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
   School]: samples na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
@@ -288,8 +293,9 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
   500. Between idle − 300 and idle the whole ceiling stays.
 - Creep, measured with a test-only autopilot mode (not kept; Telemetry with the torque and idle air): 20 s in
   neutral, first gear, the clutch let out holding 80 % of its speed, 20 s at a closed pedal, then the brake ramped to
-  full over 16 s; the track-85_M circle (-260,120,40; flat), clutch help off, experimental with the brush tyre. The
-  creep on the flat is the gearing's: Fiesta Rally2 10.8 km/h at 1193 rpm (NGP 11.0 at 1215), 10.9 at 1205 from rest
+  full over 16 s; the track-85_M circle (-260,120,40; flat), clutch help off, experimental with the brush tyre (now
+  `experimental-brush`). The creep on the flat is the gearing's: Fiesta Rally2 10.8 km/h at 1193 rpm (NGP 11.0 at
+  1215), 10.9 at 1205 from rest
   (was 11.4 at 1262), 11.0 with clutch help on (was 12.6 at 1397); Fiesta R2 9.5 at 995, from rest 9.6 (was 11.3 at
   1178); Golf II GTI 16V (fixed stop) 5.5 at 655, not from rest without throttle. Stall under the brake: Rally2 at
   brake 0.20 with at most 90 N·m (was 0.23 and 152; NGP 0.45), R2 0.18 and 46 (was 54), Golf 0.09 and 23; with no
