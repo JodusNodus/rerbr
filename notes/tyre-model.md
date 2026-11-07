@@ -343,7 +343,7 @@ SnowOnGravel_Shallow 101, kind 6), SnowOnIce_Shallow (117, RSF 162 Karlstad, ste
 RSF 565/614 winter tarmac and in the wet entries of 124/156) met no run, so `sweep --friction 0.1,0.095` on the snow
 frame (its tyre-class factor taken as 1, unverified). "Sweep": pure `patch_forces` at 15 m/s; "step": `ngp_transient
 --ramps-only`, NGP's whole per-wheel step on the run's `--tyre-image`, 15 m/s unless stated; 4 kN unless stated.
-Published values, sources and precision labels from the loose-surface research (`tyre-research/loose/findings.md`).
+Published values, sources and precision labels from the 2026-11-07 loose-surface research (its files are not in git).
 
 - Tyre kind: `--tyre N`, else `boot::default_tyre` of the stage's surface (retail `boot::surface(map)`; an RSF stage's
   own): tarmac 0, gravel 4, snow 6. Materials: the stage's `.mat` entry for the wear and wetness gives each
