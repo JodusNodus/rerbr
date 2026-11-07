@@ -36,11 +36,13 @@ pub const TAU_EXHAUST: f64 = 0.3;
 const T_EM_IDLE: f64 = 973.15;
 const T_EM_RATED: f64 = 1223.15;
 pub const T_EM_MAX: f64 = 1423.15;
-/// The wastegate: its actuator, s (Gorzelic 2012, 125 ms); its proportional band, Pa (fully open 0.5 bar over the aim),
-/// and integral time, s (inferred: the widest band the samples hold without a limit cycle through the turbo).
+/// The wastegate: its actuator, s (Gorzelic 2012, 125 ms); the electronic gate's proportional band, Pa (fully open
+/// 1 bar over the aim, around its base opening), and integral time, s; the spring gate's band (fully open 0.5 bar over
+/// its aim). Band and time guessed: the narrowest the samples hold without a limit cycle through the turbo.
 pub const TAU_WASTEGATE: f64 = 0.125;
-pub const WASTEGATE_BAND: f64 = 0.5e5;
+pub const WASTEGATE_BAND: f64 = 1.0e5;
 pub const WASTEGATE_TI: f64 = 0.5;
+pub const SPRING_BAND: f64 = 0.5e5;
 /// The blow-off valve opens over 0.3–0.4 bar across the throttle and empties the boost pipe in about 0.1 s (inferred).
 pub const BOV_OPEN: f64 = 0.3e5;
 pub const BOV_FULL: f64 = 0.4e5;
@@ -59,6 +61,8 @@ pub struct Spec {
     /// The turbine's nozzle and the wastegate's full area, m².
     pub a_turbine: f64,
     pub a_wastegate: f64,
+    /// The electronic wastegate's base opening over rpm (its steady WOT opening; empty for a spring gate).
+    pub gate_base: Curve,
     /// The blow-off valve's area, m².
     pub a_bov: f64,
     /// The restrictor's choked flow at the reference air, kg/s (infinite without one).

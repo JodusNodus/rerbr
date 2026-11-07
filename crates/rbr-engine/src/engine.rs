@@ -389,10 +389,17 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         let aim = if anti_lag { x.p_a + ecu::ALS_BOOST } else { t.pi_wot.at(rpm) * x.p_a };
         let e = (s.p_boost - aim) / turbo::WASTEGATE_BAND;
         let command = if spec.class.actuation == Actuation::Dbw || anti_lag {
-            s.wastegate_i = (s.wastegate_i + e * dt / turbo::WASTEGATE_TI).clamp(0.0, 1.0);
-            (e + s.wastegate_i).clamp(0.0, 1.0)
+            // The electronic gate's base opening at this speed (the steady WOT one) plus PI, as boost controllers
+            // run a base duty table with closed-loop trim; the base pre-opens the gate as the boost comes up.
+            let base = if anti_lag { 0.0 } else { t.gate_base.at(rpm) };
+            // Conditional integration: the integral holds while the command is saturated the way it would grow.
+            let raw = base + e + s.wastegate_i;
+            if !((raw <= 0.0 && e < 0.0) || (raw >= 1.0 && e > 0.0)) {
+                s.wastegate_i = (s.wastegate_i + e * dt / turbo::WASTEGATE_TI).clamp(-1.0, 1.0);
+            }
+            (base + e + s.wastegate_i).clamp(0.0, 1.0)
         } else {
-            e.clamp(0.0, 1.0)
+            ((s.p_boost - aim) / turbo::SPRING_BAND).clamp(0.0, 1.0)
         };
         s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / turbo::TAU_WASTEGATE));
         let (p_em, power) = t.turbine(w_exhaust, s.t_em, s.wastegate, x.p_a);

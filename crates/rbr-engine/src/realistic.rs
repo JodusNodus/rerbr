@@ -28,6 +28,11 @@ impl Realistic {
         &self.spec
     }
 
+    /// The engine's constants, to change for a comparison (anti-lag off and the like).
+    pub fn spec_mut(&mut self) -> &mut Spec {
+        &mut self.spec
+    }
+
     pub fn state(&self) -> &State {
         &self.state
     }

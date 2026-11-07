@@ -1,7 +1,7 @@
 //! The calibration: from the car's params to the engine's [`Spec`], at the reference air and oil, by running the
 //! model's own step to steady states (`notes/engine-model.md`), and its report.
 
-use crate::class::{self, Class, Idle};
+use crate::class::{self, Actuation, Class, Idle};
 use crate::curve::Curve;
 use crate::ecu;
 use crate::engine::{self, Out, Spec, State, Step, ETA_V_TURBO, RPM, V_BOOST};
@@ -295,6 +295,7 @@ fn turbo_spec(spec: &Spec, car: &Car) -> turbo::Spec {
         omega_star: turbo::OMEGA_STAR,
         a_turbine: 1e-3,
         a_wastegate: 1e-3,
+        gate_base: Curve::default(),
         a_bov: turbo::Spec::bov_area(v_boost, pi_max),
         w_choke,
         v_boost,
@@ -508,6 +509,11 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     }
     runs = wot_runs(&spec, &car);
     spec.k = identity(&car, &runs);
+    if spec.class.actuation == Actuation::Dbw {
+        if let Some(t) = spec.turbo.as_mut() {
+            t.gate_base = Curve(car.grid.iter().zip(&runs).map(|(k, (s, _))| (k.0, s.wastegate)).collect());
+        }
+    }
     idle_gains(&mut spec, inertia);
 
     // The report.
