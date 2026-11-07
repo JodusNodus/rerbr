@@ -157,7 +157,6 @@ pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car)
 }
 
 /// The car's engine for an engine model, as NGP's car init left it, for `car`.
-#[cfg(test)]
 pub fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_engine::Params {
     layout::engine_params(playback, car)
 }

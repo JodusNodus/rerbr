@@ -95,6 +95,18 @@ const TRACTION: f32 = 0.5;
 /// modes (`free`), so race and lesson driving keep the cruising `SHIFT_DOWN` floor; the tarmac pace and circle
 /// runs never drop here (their second-gear lugging stays above `LUG_SPEED`).
 const LUG_ENGINE: f32 = 600.0;
+/// `--launch RPM` (pace measurement, ours; module comment): the hold's throttle per rad/s under the launch speed, and
+/// how near it (rad/s) the engine must be to select first and to release; the clutch's release time (1.02 steps);
+/// the slip the throttle holds after it, of the car's speed, and at least `LAUNCH_SLIP_MIN` m/s; and the throttle's
+/// rate per second per unit of relative slip error. Guesses, tuned on the Fiesta Rally2's standing starts.
+const LAUNCH_HOLD_GAIN: f32 = 0.02;
+const LAUNCH_BAND: f32 = 30.0;
+const LAUNCH_RELEASE: u32 = 40;
+const LAUNCH_SLIP: f32 = 0.1;
+const LAUNCH_SLIP_MIN: f32 = 1.0;
+const LAUNCH_RATE: f32 = 4.0;
+/// Under `--launch` an upshift comes at most at this share of the rev limit (the limiter cuts above it).
+const LAUNCH_UP_LIMIT: f32 = 0.97;
 const LUG_SPEED: f32 = 12.0;
 const FIRST: u32 = 2;
 const TOP_GEAR: u32 = 7;
@@ -348,6 +360,8 @@ pub struct Sense {
     pub gear: u32,
     /// rad/s.
     pub engine: f32,
+    /// The driven wheels' speed (m/s): the drive's transmission speed (`rbr_recording::sound::FmodBlock`).
+    pub driven: f32,
     /// An outside assistance holds the car (`HELD`).
     pub held: bool,
 }
@@ -359,11 +373,13 @@ pub(crate) fn sense(answer: &[u8], live: &Live) -> Sense {
     let assist = live.game().race_clock().assist_timer;
     let car = &answer[HEADER_BYTES + CONTROL_BYTES..];
     let hud = &answer[FRAME_BYTES..FRAME_BYTES + HUD2_BYTES];
+    let fmod = rbr_recording::sound::FmodBlock::read_from(mem.u32(pure::CAR_PTR), |at| mem.u32(at));
     Sense {
         pose: pose::car_pose(car).expect("car block"),
         parameter: read_f32(car, DRIVELINE_OFFSET).expect("car +0x17c"),
         gear: read_u32(hud, 4).expect("HUD gear"),
         engine: mem.f32(mem.u32(mem.u32(pure::CAR_PTR) + DRIVE_STATE) + DRIVE_ENGINE_SPEED),
+        driven: fmod.transmission_speed,
         held: (0.0..HELD).contains(&assist),
     }
 }
@@ -428,6 +444,44 @@ pub struct Driver<'a> {
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
     grip: f32,
+    /// `--launch RPM` (pace measurement): the launch start and the shift points, if any.
+    launch: Option<Launch>,
+    /// The step the launch's clutch release began, once it has.
+    released: Option<u32>,
+    /// The launch's slip-held throttle (0-1).
+    slip_throttle: f32,
+}
+
+/// `--launch RPM` (pace measurement, ours): a standing start with the revs held at `rpm` (rad/s) on the clutch, a
+/// release over `LAUNCH_RELEASE` steps with the throttle then holding the driven wheels' slip to `LAUNCH_SLIP`, and
+/// each upshift at `shift[gear]` (rad/s), where the next gear's wheel torque overtakes this one's ([`shift_points`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Launch {
+    pub rpm: f32,
+    pub shift: [f32; TOP_GEAR as usize + 1],
+}
+
+/// Each gear's upshift speed (rad/s) from the full-throttle torque curve `knots` (rad/s, any scale) and the gear
+/// ratios (`ratios[FIRST]` first gear, `count` gears with reverse and neutral): the lowest engine speed at or above the
+/// curve's peak where the wheel torque in the next gear, `T(w r1 / r0) r1`, is at least this gear's, `T(w) r0`; at
+/// most `LAUNCH_UP_LIMIT` of `limit` (rad/s). The top gear's is `f32::INFINITY`.
+pub fn shift_points(knots: &[(f32, f32)], ratios: &[f32], count: u32, limit: f32) -> [f32; TOP_GEAR as usize + 1] {
+    let curve = rbr_engine::curve::Curve(knots.iter().map(|&(x, y)| (f64::from(x), f64::from(y))).collect());
+    let torque = |w: f32| curve.at(f64::from(w)) as f32;
+    let peak = knots.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map_or(0.0, |k| k.0);
+    let top = LAUNCH_UP_LIMIT * limit;
+    std::array::from_fn(|g| {
+        let next = g + 1;
+        if g < FIRST as usize || next >= ratios.len() || next as u32 >= count || ratios[next] == 0.0 {
+            return f32::INFINITY;
+        }
+        let (r0, r1) = (ratios[g].abs(), ratios[next].abs());
+        let mut w = peak.min(top);
+        while w < top && torque(w) * r0 > torque(w * r1 / r0) * r1 {
+            w += 1.0;
+        }
+        w.min(top)
+    })
 }
 
 /// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from`, `--circle`, `--circle-ramp`,
@@ -439,6 +493,8 @@ pub struct Measure {
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
+    /// `--launch RPM`: the launch start and the torque-crossing shifts ([`Launch`]).
+    pub launch: Option<f32>,
     /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<std::path::PathBuf>,
     /// `--tyre-image FILE [--tyre-image-step N]`: a memory image of the wheels' tyre footprints (research tooling).
@@ -510,6 +566,9 @@ impl<'a> Driver<'a> {
             braking: false,
             bands: Vec::new(),
             grip: 1.0,
+            launch: None,
+            released: None,
+            slip_throttle: 0.0,
         }
     }
 
@@ -690,6 +749,16 @@ impl<'a> Driver<'a> {
         [circle.center[0] + circle.radius * c, circle.center[1] + circle.radius * s, pose.position[2]]
     }
 
+    /// The driver launching and shifting by `launch` (`--launch`, pace measurement).
+    pub fn with_launch(self, launch: Launch) -> Self {
+        Self { launch: Some(launch), ..self }
+    }
+
+    /// Under `--launch`, the throttle that holds the engine at the launch speed (full without a launch).
+    pub fn hold(&self, engine: f32) -> f32 {
+        self.launch.as_ref().map_or(1.0, |l| (LAUNCH_HOLD_GAIN * (l.rpm - engine)).clamp(0.0, 1.0))
+    }
+
     /// The driver for a car whose rev limit is `rpm`.
     pub fn with_limit(self, rpm: f32) -> Self {
         Self { limit: rpm * std::f32::consts::PI / 30.0, ..self }
@@ -804,6 +873,7 @@ impl<'a> Driver<'a> {
         }
         // Counter-clockwise (left) error wants left (negative) steering; backing up, right swings the nose left.
         let (mut steer, mut throttle, mut brake, mut flags) = ((-error * STEER_GAIN).clamp(-1.0, 1.0), 0.0, 1.0, 0);
+        let mut clutch = 0.0;
         match self.mode {
             Mode::Reverse(_) if sense.gear > REVERSE => {
                 steer = 0.0;
@@ -875,11 +945,37 @@ impl<'a> Driver<'a> {
                 let spinning = sense.engine > SLIP * self.ratio[g] * speed;
                 // NGP's steps (the clutch help above).
                 let ngp = self.per > 1;
-                let bogged = ngp && sense.gear == FIRST && speed < BOG_SPEED && sense.engine < BOG * self.limit;
+                // `--launch` (under NGP): hold the revs on the clutch, select first and release, then hold the slip.
+                let launching = self.launch.as_ref().filter(|_| ngp).map(|l| (l.rpm, l.shift[g]));
+                let mut launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
+                if let Some((rpm, _)) = launching {
+                    let near = (sense.engine - rpm).abs() < LAUNCH_BAND;
+                    match self.released {
+                        None => {
+                            (throttle, clutch, launch) = (self.hold(sense.engine), 1.0, near);
+                            if sense.gear == FIRST && near {
+                                (self.released, self.slip_throttle) = (Some(step), throttle);
+                            }
+                        }
+                        Some(since) => {
+                            let release = (step - since) as f32 / self.steps(LAUNCH_RELEASE) as f32;
+                            clutch = (1.0 - release).max(0.0);
+                            let target = (LAUNCH_SLIP * speed).max(LAUNCH_SLIP_MIN);
+                            let error = (target - (sense.driven - speed)) / target;
+                            let dt = rbr_recording::STEP_SECONDS / self.per as f32;
+                            self.slip_throttle = (self.slip_throttle + LAUNCH_RATE * dt * error).clamp(0.0, 1.0);
+                            throttle = throttle.min(self.slip_throttle);
+                        }
+                    }
+                }
+                let bogged = ngp
+                    && launching.is_none()
+                    && sense.gear == FIRST
+                    && speed < BOG_SPEED
+                    && sense.engine < BOG * self.limit;
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
-                let launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
-                let up = SHIFT_UP.min(UP_LIMIT * self.limit);
-                if ngp && spinning && speed > BOG_SPEED {
+                let up = launching.map_or(SHIFT_UP.min(UP_LIMIT * self.limit), |(_, up)| up);
+                if ngp && launching.is_none() && spinning && speed > BOG_SPEED {
                     throttle = throttle.min(TRACTION);
                 }
                 if !finished {
@@ -910,6 +1006,7 @@ impl<'a> Driver<'a> {
             steering: (steer * 127.5).round().clamp(-127.0, 127.0) as i8,
             throttle: pedal(throttle),
             brake: pedal(brake),
+            clutch: pedal(clutch),
             ..QuantizedControl::default()
         }
     }
