@@ -152,7 +152,11 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The exhaust manifold may reach at most 2× the intake's at steady WOT (inferred, tuner practice: without it the fit took a 7e-5 m²
   nozzle with 7–9 bar of exhaust pressure for 1.5 bar at 1000 rpm; matched turbos run about 1–2).
 - Then each knot's boost target is scaled by K_knot/K_median (the charge one K needs) and limited, and A_t refitted;
-  twice (inferred: the first target's η_ig leaves out the turbine's back pressure).
+  twice (inferred: the first target's η_ig leaves out the turbine's back pressure). The boost scaled is the one the
+  steady WOT made where that is under the target, since the charge and so K came from it (measured: scaling the
+  unreachable target took the turbo sample's 1000 rpm target to 1.90 bar for 1.06 made, the targets interpolated up
+  to 2500 asked for too much charge, and K dipped to 1.32e6 at 1750 against 1.58e6 on boost elsewhere; now 1.58e6
+  from 1750 up, A_t and the held points unchanged).
 - The table is an upper bound everywhere and exact wherever the air path can make it. On a turbo car, at a grid
   point where the steady WOT boost misses 98 % of its target (`ON_BOOST`, this worker's choice), K is held at the median K of the on-boost knots, so the
   steady torque there falls short of the table. Where the identity gives less than the median (Group A, Rally4 at
@@ -192,7 +196,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
 - Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
   to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
-  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.64 s at 2000, cable_turbo 0.76 s
+  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000 (0.64 before the retarget fix lowered its 2000 rpm target from 1.93 to 1.70 bar), cable_turbo 0.76 s
   at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
 
@@ -205,16 +209,39 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.93e6) against 0.9–1.4e6 elsewhere; friction
   (17 N·m, s_f clamped to 2.0) and pumping (10 N·m) are like the others'. At η_ig 0.38 they would idle near 28–30 kPa
   (estimate).
+  The retarget fix leaves it (turbo sample 20.3 kPa before and after: idle sits in the held range, whose K is the
+  on-boost median). A part-load K that keeps the table: K(n, x) = K_wot(n)·f(x), x = m_charge / m_charge,wot(n) at
+  the same rpm, f(1) = 1 (so the identity at WOT, and the hold, are untouched), f falling to about 0.65 at idle
+  load (η_ig 0.57 → 0.38, guess). The idle air, the idle gains, the closed-pedal brake and the DBW part-pedal tests are
+  calibrated after K, so they would follow; aim_open and gate_base read WOT runs only. Not done (nothing reads idle
+  MAP; it would lower part-pedal torque everywhere, a feel change).
 - At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
   idle air at its 10 % ceiling. In gear at low speed this pushes the car.
 - The spring-gate cable_turbo still overshoots 8–14 % from 5000 rpm up.
-- The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm (at 30 % pedal a dip at 1750, a peak at 2000): K steps about 1.6e6 (held, to 1250) → 1.5e6
-  (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
-  same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
+- Fixed: the turbo sample's part-pedal bump at 1500 and dip at 1750 rpm. The cause was the boost target, not the
+  hold: K went 1.68e6 (held) → 1.61e6 (1500) → 1.32e6 (1750) → 1.59e6 (2500) because the targets between the held
+  1000 rpm knot and 2500 were inflated (retarget, above). Now 1.68 → 1.61 → 1.58e6, and the 20 % pedal line at
+  1000–2250 rpm reads 212 216 212 217 210 185 N·m (was 212 216 212 177 195 174). No blend of K across the boundary
+  was needed: the remaining step from the held median to the on-boost K (4–6 %) spreads over the 1500 point.
+- Low-rpm data. No Rally2/R5/WRC dyno sheet, homologation curve or onboard MAP log below 2000 rpm is public (searched
+  M-Sport, Škoda, VW, Hyundai, forums; makers give peak figures only [Škoda Rally2 engine]). The nearest measured
+  data is a road base engine: PSA EP6CDTX 1.6 THP (base of the 208 and C3 Rally2 engines), full-load BMEP about 8 bar
+  at 1000 rpm, 12.5 at 1250, 16–17 at 1500, 20 from 1750 (read off the figure, ±0.5 bar) [SAE 2018-01-1423 fig. 23],
+  i.e. 102, 159, 210 and 254 N·m. Road 1.6 turbos reach their plateau at 1500–1750 rpm [Ford 1.6 EcoBoost],
+  [Hyundai i20 N]. So at 1000 rpm a road engine with a small twin-scroll turbo makes 40 % of its peak; the turbo
+  sample's table asks for 253 N·m (18 bar BMEP, 55 %) and the model gives 234 (18.4 bar at 1.06 bar boost, K at η_ig
+  ≈ 0.57). The data does not support more low-rpm torque: a rally turbo with a 32 mm restrictor spools later than
+  the road one, and an NA 1.6 makes about 11–13 bar. If anything the held points are too strong, through K (the same
+  K as the idle MAP item). A turbine refit for more low-rpm boost was not tried.
 - The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step).
 - No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is the race ECUs' start.
 
 ## Sources
+
+- SAE 2018-01-1423 (EPA/SwRI, PSA EP6CDTX 1.6 THP full load, public domain): https://www.epa.gov/sites/default/files/2018-10/documents/sae-paper-2018-01-1423.pdf
+- Ford 1.6 EcoBoost, ratings: https://fordauthority.com/fmc/ford-motor-company-engines/ford-ecoboost-family/ford-1-6l-ecoboost-engine/
+- Hyundai i20 N, spec sheet: https://www.hyundai.com/content/dam/hyundai/au/en/models/i20-n/2021/images/i20N_Spec-Table_Oct_2021.pdf
+- Škoda Rally2 engine (Fabia RS Rally2): https://cdn.skoda-storyboard.com/2022/06/FABIA_RS_Rally2_Engine.pdf
 
 - Andersson, LiU MSc 2017 (MVEM, orifice, turbo): https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks & Sorenson MVEM: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies

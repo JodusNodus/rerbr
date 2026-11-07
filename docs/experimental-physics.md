@@ -447,7 +447,7 @@ and the manifold's filling. The old sample, with a throttle per cylinder on a ca
 turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.41 s at 3000 rpm
 and 0.34 s at 5000. It overshoots 1.8 % at 2500 rpm and 3.9 % at 6500 rpm, and settles within 2 % in 0.5–1.1 s.
 
-From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.64 s at 2000 rpm and
+From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.45 s at 2000 rpm and
 the cable_turbo sample 0.76 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
 study of a 1.5 L turbo four with a T45 gives 0.54 s at 1000 rpm for the same test. Our rally turbos make almost no
 boost at 1000 rpm, so that point doesn't apply to them.
@@ -506,9 +506,11 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
   transient overshoot.
 - Damage, overheating and oil starvation reach the model through NGP's damage factor and the 1.02 sim's friction, as
   they reach NGP's formula.
-- Modern turbo cars fall 8–27 % short of their table below about 1500 rpm (the held points above).
-- The turbo sample's part-pedal lines bump at 1500 rpm and dip at 1750, where `K` steps between held and on-boost
-  points.
+- Modern turbo cars fall short of their table below about 1500 rpm (the held points above). No rally engine's
+  low-rpm curve is public. The one measured curve of a base engine we found, PSA's road 1.6 THP (the base of the 208
+  and C3 Rally2 engines), makes about 40 % of its peak torque at 1000 rpm and 80 % at 1500 (SAE 2018-01-1423). The
+  tables ask for more than that at 1000 rpm, and the model still gives more, so the shortfall is not a reason to add
+  low-rpm boost.
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
 - A spring wastegate overshoots its boost by 8–13 % from 5000 rpm up.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
@@ -547,6 +549,8 @@ The model, its evidence and the open questions are in [notes/tyre-model.md](../n
 ## Sources
 
 The full list, with the line each one supports, is in [notes/engine-model.md](../notes/engine-model.md#sources).
+
+- SAE 2018-01-1423, full load of PSA's 1.6 THP: https://www.epa.gov/sites/default/files/2018-10/documents/sae-paper-2018-01-1423.pdf
 
 - Andersson, mean-value engine and turbo model, Linköping MSc 2017: https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks and Sorenson, mean-value SI engine model: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
