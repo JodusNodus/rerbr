@@ -418,9 +418,10 @@ and the manifold's filling. The old sample, with a throttle per cylinder on a ca
 turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.41 s at 3000 rpm
 and 0.34 s at 5000. It overshoots 1.8 % at 2500 rpm and 3.9 % at 6500 rpm, and settles within 2 % in 0.5–1.1 s.
 
-From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.89 s at 1500 rpm,
-0.60 s at 2000 and 0.27 s at 3000. Chalmers' GT-Power study of a 1.5 L turbo four with a T45 gives 0.54 s at 1000 rpm
-for the same test. Our rally turbos make almost no boost at 1000 rpm, so that point doesn't apply to them.
+From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.64 s at 2000 rpm and
+the cable_turbo sample 0.76 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
+study of a 1.5 L turbo four with a T45 gives 0.54 s at 1000 rpm for the same test. Our rally turbos make almost no
+boost at 1000 rpm, so that point doesn't apply to them.
 
 ![Anti-lag](images/engine-model/anti-lag.png)
 
@@ -444,6 +445,30 @@ At full pedal in neutral NGP sits on the limit, alternating full torque and brak
 200 rpm under the limit and bounces 12–80 rpm under it on the NA sample. The turbo sample bounces from 97 rpm under
 the limit to 20 over it.
 
+### In game
+
+The autopilot drove each of four RallySimFans cars on stage track-11_O for 600 s, once with NGP 7's physics and once
+with the experimental physics. Three of them are the cars the samples are modelled on. "Over the limit" is the time the
+engine spent above `RPMLimit`. "Slip" is the time in gear, above 3 m/s, with the engine more than 3 % above the speed
+the gear gives with the clutch engaged, out of about 590 s in gear.
+
+| Car | Physics | Split 2 | Highest rpm over the limit | Over the limit | Slip |
+| --- | --- | --- | --- | --- | --- |
+| Fiesta Rally2 | NGP 7 | 442.63 s | +34 | 5.0 s | 3.3 s |
+| | experimental | 439.86 s | +34 | 0.3 s | 4.3 s |
+| Celica ST185 | NGP 7 | 445.47 s | +25 | 5.4 s | 4.6 s |
+| | experimental | 438.02 s | −4 | 0 s | 5.5 s |
+| Golf II GTI 16V | NGP 7 | 466.95 s | +12 | 5.7 s | 6.0 s |
+| | experimental | 447.14 s | −7 | 0 s | 8.6 s |
+| Fiat 131 Abarth | NGP 7 | 463.65 s | +13 | 4.5 s | 7.9 s |
+| | experimental | 448.53 s | −25 | 0 s | 12.3 s |
+
+No run stalled, and every run was still drivable at the end. The experimental limiter keeps every car under its limit
+in gear. The Fiesta's 0.3 s over is its start burnout in neutral. With the experimental physics the turbo cars reached
+split 2 0.6–1.7 % sooner and the NA cars 3.3–4.2 % sooner. The autopilot's caution sets most of its pace, and this is
+one stage and one run per car, so these gaps are not lap times a driver would see. The clutch slips 1–4 s longer per
+run, and the engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
+
 ## Known limits
 
 - The turbo sound still follows the 1.02 engine sim's own turbo.
@@ -455,7 +480,7 @@ the limit to 20 over it.
 - The turbo sample's part-pedal lines bump at 1500 rpm and dip at 1750, where `K` steps between held and on-boost
   points.
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
-- A spring wastegate overshoots its boost by 8–14 % from 5000 rpm up.
+- A spring wastegate overshoots its boost by 8–13 % from 5000 rpm up.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
 - The limiter's torque swings from step to step, since the model fires or cuts a whole step at a time.
 
