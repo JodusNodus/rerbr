@@ -541,9 +541,11 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
         spec.k = identity(&car, &runs);
         held = hold_off_boost(&mut spec, &car, &runs);
     }
-    if spec.class.actuation == Actuation::Dbw && spec.turbo.is_some() {
+    if spec.class.actuation == Actuation::Dbw {
         let open = aim_open(&spec, &car, &runs);
-        spec.turbo.as_mut().unwrap().aim_open = open;
+        if let Some(t) = spec.turbo.as_mut() {
+            t.aim_open = open;
+        }
     }
 
     // The report.
