@@ -27,7 +27,7 @@
 //!
 //! The force dynamics reach standstill (Rill's transport speed restored: a
 //! stopped wheel holds its deflection, a locked one's follows the sliding),
-//! and the game runs the brush down to it on hard surfaces ([`crate::car`]).
+//! and the game runs the brush down to it on hard surfaces ([`crate::car`]; on soil [`crate::loose`]).
 
 // ---------------------------------------------------------------------------
 // Model constants (spec; from papers or ours — never NGP's).
@@ -313,6 +313,15 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
         wet,
         cal,
     );
+    patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy)
+}
+
+/// The brush's patch (see [`eval`]) at the load `fz`, half length `half_length`, slip stiffnesses `cx`, `cy`, axis
+/// frictions `mu_x`, `mu_y` and theoretical slips `sx`, `sy`: the combined slip of the adhering and sliding parts, the
+/// aligning moment and the secant stiffnesses. [`crate::loose`] takes it with its own frictions.
+#[allow(clippy::too_many_arguments)]
+pub fn patch(fz: f64, half_length: f64, cx: f64, cy: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64) -> EvalOutput {
+    let s_abs = (sx * sx + sy * sy).sqrt();
     // Friction ellipse along the theoretical-slip direction.
     let mu = if s_abs > 0.0 {
         let (ex, ey) = (sx / s_abs / mu_x, sy / s_abs / mu_y);
@@ -320,14 +329,14 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     } else {
         mu_y
     };
-    let theta_x = cx / (3.0 * mu * x.fz);
-    let theta_y = cy / (3.0 * mu * x.fz);
+    let theta_x = cx / (3.0 * mu * fz);
+    let theta_y = cy / (3.0 * mu * fz);
     let (px, py) = (theta_x * sx, theta_y * sy);
     let psi = (px * px + py * py).sqrt();
     // Adhesion along the stiffness-weighted slip, C_i s_i (1 - psi)^2; sliding along the sliding velocity (the
     // direction of (sx, sy)), mu Fz psi^2 (3 - 2 psi); both 0 and mu Fz from psi = 1.
     let adhesion = if psi < 1.0 { (1.0 - psi) * (1.0 - psi) } else { 0.0 };
-    let sliding = if psi < 1.0 { mu * x.fz * psi * psi * (3.0 - 2.0 * psi) } else { mu * x.fz };
+    let sliding = if psi < 1.0 { mu * fz * psi * psi * (3.0 - 2.0 * psi) } else { mu * fz };
     let per_s = if s_abs > 0.0 { sliding / s_abs } else { 0.0 };
     // The secant slip stiffnesses -F_i/s_i: C_i at zero slip.
     let kx = cx * adhesion + per_s;
@@ -336,7 +345,7 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     // Aligning moment of each part (Svendenius eqs. 4.33-4.35, M'_z only): adhesion mu Fz a theta_y sy (1 - psi)^2
     // (1 - 4 psi), sliding 3 mu Fz a psi^2 (1 - psi)^2 times its lateral share sy/|s|.
     let mz = if psi < 1.0 && s_abs > 0.0 {
-        mu * x.fz * x.half_length * adhesion * (theta_y * sy * (1.0 - 4.0 * psi) + 3.0 * psi * psi * sy / s_abs)
+        mu * fz * half_length * adhesion * (theta_y * sy * (1.0 - 4.0 * psi) + 3.0 * psi * psi * sy / s_abs)
     } else {
         0.0
     };

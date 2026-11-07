@@ -1,18 +1,22 @@
-//! The brush (brush-v1, [`crate::brush`]) on a car's wheels, the tyre model the game steps. On a hard surface (no
-//! soil) it takes the contact patch's forces at every speed, down to standstill (weight 1); on soil they stay NGP's.
+//! The brush (brush-v1, [`crate::brush`]) on a car's wheels, the tyre model the game steps. It takes the contact
+//! patch's forces at every speed, down to standstill (weight 1): on a hard surface the brush's, on soil (gravel, snow)
+//! the loose-surface tyre's (loose-v1, [`crate::loose`]), with NGP's soil lateral force on top.
 //! At rest the slips take the brush's rolling-speed floor and the carcass deflections hold (Rill's transport speed);
 //! NGP's torsional stiffness, a tenth below 10 m/s, only carries the force through the seam. NGP sets the grip: its
 //! static friction (surface, wetness, temperature grip) scales the brush's friction levels, solved per wheel against
 //! NGP's own peaks ([`crate::fit`]). Each wheel's carcass deflections (Rill's first-order force dynamics,
-//! [`brush::step_dynamic`]) are the model's state: they start from zero when the wheel touches down or comes off soil.
+//! [`brush::step_dynamic`]) are the model's state, on either surface and across the change between them: they start
+//! from zero when the wheel touches down.
 
 use crate::brush::{self, Calibration, EvalInput, TransState};
+use crate::loose::{self, Loose};
 use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
 
 /// One wheel's calibration and transient.
 struct Tyre {
     at: u32,
     cal: Calibration,
+    loose: Loose,
     state: TransState,
     /// Whether the brush ran at the wheel's last step.
     running: bool,
@@ -28,7 +32,11 @@ impl Brush {
     pub fn new(wheels: &[Wheel]) -> Result<Brush, String> {
         let tyres = wheels
             .iter()
-            .map(|w| Ok(Tyre { at: w.tyre, cal: fit::calibration(w)?, state: TransState::default(), running: false }))
+            .map(|w| {
+                let cal = fit::calibration(w)?;
+                let loose = fit::loose(w, &cal)?;
+                Ok(Tyre { at: w.tyre, cal, loose, state: TransState::default(), running: false })
+            })
             .collect::<Result<_, String>>()?;
         Ok(Brush { tyres })
     }
@@ -37,8 +45,7 @@ impl Brush {
 impl Model for Brush {
     fn forces(&mut self, tyre: u32, x: &ForceInput) -> Option<ForceOutput> {
         let t = self.tyres.iter_mut().find(|t| t.at == tyre)?;
-        let usable = x.soil_thickness == 0.0
-            && x.normal_force > 0.0
+        let usable = x.normal_force > 0.0
             && x.lateral_stiffness > 0.0
             && x.torsional_stiffness > 0.0
             && x.effective_radius > 0.0;
@@ -66,7 +73,7 @@ impl Model for Brush {
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
         };
-        let steady = brush::eval(&e, &t.cal);
+        let steady = if x.soil_thickness > 0.0 { loose::eval(&e, &t.loose) } else { brush::eval(&e, &t.cal) };
         // The longitudinal carcass stiffness (ours), at the pressure; the lateral one NGP's.
         let k_x = brush::carcass_x(&t.cal, e.pressure_factor);
         let mut state = t.state;
@@ -130,12 +137,13 @@ mod tests {
     fn it_takes_hard_surfaces_at_any_speed_down_to_standstill() {
         let mut b = Brush::new(&[wheel()]).unwrap();
         let at = wheel().tyre;
-        assert_eq!(b.forces(at, &ForceInput { soil_thickness: 0.01, ..rolling(20.0, 0.05) }), None);
         assert_eq!(b.forces(at + 4, &rolling(20.0, 0.05)), None);
-        for speed in [0.0, 0.3, 1.9, 2.5, 20.0] {
-            let out = b.forces(at, &rolling(speed, 0.05)).unwrap();
-            assert_eq!(out.weight, 1.0, "{speed}");
-            assert!(out.lateral_force.is_finite() && out.longitudinal_force.is_finite(), "{speed} {out:?}");
+        for soil in [0.0, 0.009] {
+            for speed in [0.0, 0.3, 1.9, 2.5, 20.0] {
+                let out = b.forces(at, &ForceInput { soil_thickness: soil, ..rolling(speed, 0.05) }).unwrap();
+                assert_eq!(out.weight, 1.0, "{speed}");
+                assert!(out.lateral_force.is_finite() && out.longitudinal_force.is_finite(), "{speed} {out:?}");
+            }
         }
         // At rest (no speed, no spin) with NGP's torsional stiffness at its tenth, a deflection holds.
         b.restart();
@@ -186,6 +194,66 @@ mod tests {
         b.forces(at, &x);
         b.restart();
         assert_eq!(b.forces(at, &x).unwrap(), first);
+    }
+
+    /// The wheel's steady lateral force after `n` steps of `x` from the state `b` holds.
+    fn settle(b: &mut Brush, x: &ForceInput, n: usize) -> ForceOutput {
+        (0..n).map(|_| b.forces(wheel().tyre, x).unwrap()).last().unwrap()
+    }
+
+    #[test]
+    fn soil_runs_the_loose_tyre_through_the_same_carcass() {
+        let mut b = Brush::new(&[wheel()]).unwrap();
+        let hard = rolling(15.0, 2f32.to_radians());
+        let soil = ForceInput { soil_thickness: 0.009, grip: 0.9, ..hard };
+        let on_hard = settle(&mut b, &hard, 1440);
+        // The change of surface keeps the carcass deflection: below both surfaces' friction the force moves to the
+        // loose tyre's over the relaxation length, not in one step (above the new friction it is cut to it at once).
+        let first = b.forces(wheel().tyre, &soil).unwrap();
+        assert!((first.lateral_force / on_hard.lateral_force - 1.0).abs() < 0.02, "{first:?} {on_hard:?}");
+        let on_soil = settle(&mut b, &soil, 1440);
+        let e = EvalInput {
+            fz: 4000.0,
+            half_length: 0.05,
+            vx: f64::from(soil.longitudinal_velocity),
+            vy: f64::from(soil.lateral_velocity),
+            spin: f64::from(soil.spin),
+            radius: 0.3,
+            bulk_temp: 350.0,
+            tread_remaining: 1.0,
+            pressure: 0.0,
+            pressure_factor: 1.0,
+            wetness: 0.0,
+            temp_grip: 1.0,
+            surf_static: 0.9,
+            surf_kinetic: 0.9,
+        };
+        let steady = loose::eval(&e, &b.tyres[0].loose);
+        assert!((f64::from(on_soil.lateral_force) / steady.fy - 1.0).abs() < 1e-4, "{on_soil:?} {steady:?}");
+        let back = b.forces(wheel().tyre, &hard).unwrap();
+        assert!((back.lateral_force / on_soil.lateral_force - 1.0).abs() < 0.02, "{back:?} {on_soil:?}");
+    }
+
+    #[test]
+    fn a_locked_wheel_on_soil_stops_and_holds_without_creep() {
+        let mut b = Brush::new(&[wheel()]).unwrap();
+        let soil = |speed: f32| ForceInput {
+            soil_thickness: 0.009,
+            grip: 0.9,
+            spin: 0.0,
+            torsional_stiffness: 2000.0,
+            ..rolling(speed, 0.0)
+        };
+        // Sliding locked at 10 m/s the berm brakes it at the plough level; held, the force stays as it was, and with
+        // no sliding at all it neither grows nor flips.
+        let sliding = settle(&mut b, &soil(10.0), 720);
+        let level = b.tyres[0].loose.levels.at(4000.0).1 * 0.9 * 4000.0;
+        assert!((f64::from(sliding.longitudinal_force) / level - loose::PLOUGH).abs() < 1e-3, "{sliding:?}");
+        let crawl = settle(&mut b, &soil(0.05), 720);
+        assert!(crawl.longitudinal_force > 0.0 && crawl.longitudinal_force < sliding.longitudinal_force, "{crawl:?}");
+        let held = b.forces(wheel().tyre, &soil(0.0)).unwrap();
+        let rest: Vec<f32> = (0..720).map(|_| b.forces(wheel().tyre, &soil(0.0)).unwrap().longitudinal_force).collect();
+        assert!(rest.iter().all(|&f| f == held.longitudinal_force), "{held:?}");
     }
 
     #[test]
