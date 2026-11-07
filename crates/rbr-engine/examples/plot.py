@@ -154,13 +154,14 @@ def figures(d, out):
         cmap = plt.get_cmap("viridis")
         # Ours from IdleRPM up: below it the bench holds the idle air wide open, which is the ECU, not the engine.
         titles = ("ours, from IdleRPM up", "NGP's formula (1 − t)·B + t·V")
+        fig.suptitle(CARS[car], fontsize=11)
         for col, (ax, key, title) in enumerate(zip(axes, ("torque", "ngp"), titles)):
             for q in pedals:
                 rows = [r for r in st if r["pedal"] == q and (key == "ngp" or r["rpm"] >= p["idle"])]
                 ax.plot([r["rpm"] for r in rows], [r[key] for r in rows], color=cmap(q), lw=1.4,
                         label=f"{q * 100:.0f} %")
             ax.axhline(0, color="k", lw=0.6)
-            style(ax, "engine speed, rpm", "net torque, N·m" if col == 0 else "", f"{CARS[car]} — {title}")
+            style(ax, "engine speed, rpm", "net torque, N·m" if col == 0 else "", title)
         axes[1].legend(title="pedal", fontsize=7, ncol=2, loc="lower left")
         save(fig, f"torque-by-pedal-{car}.png")
 
