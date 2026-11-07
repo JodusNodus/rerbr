@@ -812,6 +812,8 @@ impl rbr_engine::Model for Governor {
         self.seen.lock().unwrap().push((*input, torque));
         torque
     }
+
+    fn restart(&mut self) {}
 }
 
 /// `n` steps of the boot's car with no throttle for 2000, then full throttle in neutral: each answer is one step.

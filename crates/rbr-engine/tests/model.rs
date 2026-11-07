@@ -273,6 +273,10 @@ fn bits(m: &mut Realistic, p: &Params) -> Vec<u32> {
 fn it_is_deterministic_and_finite_for_any_input() {
     for (name, p, m) in models() {
         assert_eq!(bits(&mut m.clone(), p), bits(&mut m.clone(), p), "{name}");
+        let mut restarted = m.clone();
+        let first = bits(&mut restarted, p);
+        restarted.restart();
+        assert_eq!(bits(&mut restarted, p), first, "{name}: a restart is a new model");
         let mut m = m.clone();
         let odd = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -1.0, -1e30, 1e30, f32::MIN_POSITIVE];
         for &v in &odd {

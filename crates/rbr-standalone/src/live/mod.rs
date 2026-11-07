@@ -175,8 +175,6 @@ pub struct Live<'a> {
     boot_now: f64,
     /// What follows a championship stage (`set_rally_next`): its end page's choice and text.
     rally_next: RallyNext,
-    /// The physics profile and the car it is for (`set_physics`), its models built again at each restart.
-    physics: Option<(crate::profile::Profile, rbr_engine::Car)>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -345,18 +343,9 @@ impl<'a> Live<'a> {
     }
 
     /// The physics profile `profile` (`--physics`) for `car` (its identity) on the loaded car, on this thread's runs,
-    /// its models built again at each restart; NGP 7's replaces nothing.
+    /// its models back to their start at each restart; NGP 7's replaces nothing.
     pub fn set_physics(&mut self, profile: crate::profile::Profile, car: rbr_engine::Car) -> Result<(), String> {
-        self.physics = Some((profile, car));
-        self.fit_physics()
-    }
-
-    /// Fresh models of [`Live::set_physics`]'s profile, on the car in memory.
-    fn fit_physics(&self) -> Result<(), String> {
-        match &self.physics {
-            Some((profile, car)) => crate::physics::fit_physics(&self.playback, *profile, car),
-            None => Ok(()),
-        }
+        crate::physics::fit_physics(&self.playback, profile, &car)
     }
 
     /// What follows the championship stage (`--rally-next`).

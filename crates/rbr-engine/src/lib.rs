@@ -103,6 +103,9 @@ pub trait Model: Send {
     /// what NGP's formula gives before the wrapper's /1.05.
     fn torque(&mut self, input: &Inputs) -> f32;
 
+    /// Back to a new model's state, keeping what it built for the car: the stage's restart.
+    fn restart(&mut self);
+
     /// The state after the last step.
     fn telemetry(&self) -> Telemetry {
         Telemetry::default()

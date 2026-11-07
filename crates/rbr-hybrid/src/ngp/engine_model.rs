@@ -20,6 +20,15 @@ pub fn engine_model_telemetry() -> Option<rbr_engine::Telemetry> {
     MODEL.with_borrow(|m| m.as_ref().map(|m| m.telemetry()))
 }
 
+/// The set model back to a new one's state (the stage's restart), its car's calibration kept.
+pub fn restart_engine_model() {
+    MODEL.with_borrow_mut(|m| {
+        if let Some(m) = m {
+            m.restart();
+        }
+    });
+}
+
 /// Whether a model is set on this thread.
 pub(super) fn is_set() -> bool {
     MODEL.with_borrow(Option::is_some)

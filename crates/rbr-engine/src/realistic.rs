@@ -49,6 +49,11 @@ impl Model for Realistic {
         self.last.torque as f32
     }
 
+    fn restart(&mut self) {
+        self.state = State::new();
+        self.last = Out::default();
+    }
+
     fn telemetry(&self) -> Telemetry {
         let s = &self.state;
         Telemetry {
