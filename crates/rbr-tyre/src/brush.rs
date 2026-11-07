@@ -27,8 +27,7 @@
 //!
 //! The force dynamics reach standstill (Rill's transport speed restored: a
 //! stopped wheel holds its deflection, a locked one's follows the sliding),
-//! but the game still hands the patch to NGP's sticking model below 2-3 m/s
-//! ([`crate::car`]).
+//! and the game runs the brush down to it on hard surfaces ([`crate::car`]).
 
 // ---------------------------------------------------------------------------
 // Model constants (spec; from papers or ours — never NGP's).
