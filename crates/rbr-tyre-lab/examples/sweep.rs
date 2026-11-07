@@ -13,11 +13,11 @@
 //! and mus below use absolute values.
 
 use rbr_physics::ngp::{inclination, outputs};
-use rbr_tyre_lab::probe::{Params, interp, parse_probe, patch_at};
 use rbr_physics::tyre::friction_limits::{BlendPair, LimitsInput};
 use rbr_physics::tyre::patch_forces::{PatchForces, PatchInput};
 use rbr_physics::tyre::slip::slip_directions;
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
+use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
 
 struct LoadBlend {
     weight: f32,
