@@ -180,19 +180,25 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   π_wot(n)·p_a whatever the pedal, so a cable turbo kicks at part throttle.
 - Electronic gate: a base opening by rpm (the steady WOT one) plus PID, band 1 bar, Ti 0.5 s, Td 0.08 s on the boost
   (not the error), conditional integration (inferred: boost controllers run a base duty table with closed-loop trim).
-  Td: tip-ins within 5 % overshoot and settled in 1 s (tuning practice, inferred); 0.05–0.12 s all pass. Spring:
-  P-only, band 0.5 bar, so it overboosts a little. τ 125 ms [Gorzelic]. Bands and Ti guess (a limit cycle at
-  narrower settings).
+  Td: tip-ins within 5 % overshoot and settled in 1 s (tuning practice, inferred); 0.05–0.12 s all pass. Electronic
+  gate τ 125 ms [Gorzelic] (an electronically commanded gate). Spring: P-only, band 0.5 bar, so it overboosts a little.
+  Spring τ 10 ms (inferred: the diaphragm feels the boost through its hose, which carries it within 10 ms over 3 m of
+  6 mm [Thomasson 2014]; a 60 cm³ dome through a 3 mm port lags a 7 bar/s rise about 3 ms; spring and valve ring at
+  about 60 Hz). With the 125 ms of the electronic gate it spiked 15–20 kPa (2.2–2.9 psi) at 5000–6500 rpm, against
+  about 1 psi for a split second on spring gates [enginebasics]; a gate that opens late spikes [Turbosmart spikes].
+  Bands and Ti guess (a limit cycle at narrower settings; none at 10 ms, every 250 rpm at 30/60/100 % pedal).
 - DBW turbo sample, WOT tip-in at a fixed speed, to 90 % / overshoot / settled within 2 %: 2500 0.44 s / 1.8 % /
   0.54 s, 3000 0.41 / 2.1 % / 0.79, 3500 0.40 / 2.2 % / 0.82, 4500 0.37 / 2.2 % / 0.83, 5000 0.34 / 2.4 % / 0.87,
   6500 0.27 / 3.7 % / 1.10 (was 7 % and 17 % with a 0.5 s ring before the derivative). cable_turbo (spring): 3000
-  0.82 / 1.4 % / 1.06, 5000 0.27 / 7.9 % / 0.93, 6500 0.16 / 12.9 % / 0.83. Tested: steady torque at any pedal the same
+  0.83 / 0.3 % / 1.07, 5000 0.27 / 3.1 % / 0.37, 6500 0.15 / 5.0 % / 0.26 (boost +0.3, +2.5, +3.4 kPa; the torque
+  overshoots more than the boost as the opening gate lowers the exhaust pressure). Tested: the boost spikes at most
+  0.1 bar at 3000, 5000 and 6500 rpm. Tested: steady torque at any pedal the same
   within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
   Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
 - Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
   to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
-  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.64 s at 2000, cable_turbo 0.76 s
+  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.64 s at 2000, cable_turbo 0.77 s
   at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
 
@@ -207,7 +213,6 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   (estimate).
 - At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
   idle air at its 10 % ceiling. In gear at low speed this pushes the car.
-- The spring-gate cable_turbo still overshoots 8–14 % from 5000 rpm up.
 - The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm (at 30 % pedal a dip at 1750, a peak at 2000): K steps about 1.6e6 (held, to 1250) → 1.5e6
   (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
   same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
@@ -275,6 +280,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - HPA M1 DBW (throttle aim as airflow): https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-dbw-throttle/
 - EPA Ford 1.6 (steady map): https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
 - Gorzelic 2012, throttle and wastegate: https://public.websites.umich.edu/~annastef/papers_hcci/Gorzelic2012ccdc.pdf
+- Thomasson 2014, pressure delay in hoses (Linköping diss. 1590, sec. 3.3.1): https://www.diva-portal.org/smash/get/diva2:709572/FULLTEXT01.pdf
+- enginebasics, spring gate spike about 1 psi: https://enginebasics.com/Advanced%20Engine%20Tuning/Boost%20Spiking.html
+- Turbosmart spikes (MAP Performance): https://www.maperformance.com/blogs/tech/39579651-boost-spikes-what-are-they-how-do-they-come-about-and-how-to-avoid-them
 - Gears Magazine, idle MAP 31 kPa: https://gearsmagazine.com/magazine/pressure-sensors/
 - MOTOR, idle 27 kPa: https://www.motor.com/magazine-summary/fuel-injection-diagnosis-july-2008/
 - Tuning School, idle 30–50 kPa: https://thetuningschool.com/blogs/news/what-data-is-good-data

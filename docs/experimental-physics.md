@@ -254,7 +254,10 @@ p_aim = p_a + (π_wot(n) · p_a − p_a) · min(1, θ / θ_open(n))
 3000, 0.61 at 5000 and 0.74 at 7000 on the turbo sample. Race ECUs' boost aim tables over rpm and throttle (MoTeC M1,
 Link G4+) reach full aim before full throttle in the same way. On cable cars a spring wastegate aims at full boost
 whatever the pedal, so they kick at part throttle once the turbo lights. That kick is the step in the cable_turbo
-figure's 40 % line at 3250 rpm. A blow-off valve opens at 0.3 bar over the manifold.
+figure's 40 % line at 3250 rpm. The spring gate's diaphragm feels the boost through a short hose, so it opens within
+about 10 ms, where the electronic gate's actuator takes 125 ms. A tip-in at a fixed 5000 or 6500 rpm spikes the boost
+2.5–3.4 kPa (under half a psi) over its steady level; tuners report about 1 psi for a split second on spring gates
+(enginebasics). A blow-off valve opens at 0.3 bar over the manifold.
 
 ### Anti-lag
 
@@ -448,7 +451,7 @@ turbo sample's torque jumps to its off-boost level and then follows the boost, r
 and 0.34 s at 5000. It overshoots 1.8 % at 2500 rpm and 3.9 % at 6500 rpm, and settles within 2 % in 0.5–1.1 s.
 
 From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.64 s at 2000 rpm and
-the cable_turbo sample 0.76 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
+the cable_turbo sample 0.77 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
 study of a 1.5 L turbo four with a T45 gives 0.54 s at 1000 rpm for the same test. Our rally turbos make almost no
 boost at 1000 rpm, so that point doesn't apply to them.
 
@@ -510,7 +513,6 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
 - The turbo sample's part-pedal lines bump at 1500 rpm and dip at 1750, where `K` steps between held and on-boost
   points.
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
-- A spring wastegate overshoots its boost by 8–13 % from 5000 rpm up.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
 - The limiter's torque swings from step to step, since the model fires or cuts a whole step at a time.
 
@@ -551,6 +553,8 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - Andersson, mean-value engine and turbo model, Linköping MSc 2017: https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks and Sorenson, mean-value SI engine model: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
 - Eriksson, turbocharger modelling: https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
+- Boost spikes on spring wastegates, enginebasics: https://enginebasics.com/Advanced%20Engine%20Tuning/Boost%20Spiking.html
+- Pressure delay in hoses, Thomasson 2014 (Linköping dissertation 1590): https://www.diva-portal.org/smash/get/diva2:709572/FULLTEXT01.pdf
 - NASA, choked mass flow: https://www.grc.nasa.gov/www/k-12/airplane/mflchk.html
 - Throttle plate area, US 6591667: https://patents.google.com/patent/US6591667
 - Sandoval–Heywood friction model, as transcribed in ESA.NET: https://github.com/pangtuwi/ESA.NET/pull/223

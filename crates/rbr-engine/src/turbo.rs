@@ -36,16 +36,22 @@ pub const TAU_EXHAUST: f64 = 0.3;
 const T_EM_IDLE: f64 = 973.15;
 const T_EM_RATED: f64 = 1223.15;
 pub const T_EM_MAX: f64 = 1423.15;
-/// The wastegate: its actuator, s (Gorzelic 2012, 125 ms); the electronic gate's proportional band, Pa (fully open
-/// 1 bar over the aim, around its base opening), integral time and derivative time on the boost, s; the spring gate's
-/// band (fully open 0.5 bar over its aim). Band and times guessed: the narrowest band the samples hold without a limit
-/// cycle through the turbo, and the derivative time that keeps a tip-in within 5 % overshoot, settled in 1 s (tuning
-/// practice; 0.05–0.12 s all do at 3000 and 5000 rpm, 0.08 the least overshoot).
+/// The wastegate: the electronic gate's actuator, s (Gorzelic 2012, 125 ms for an electronically commanded gate); its
+/// proportional band, Pa (fully open 1 bar over the aim, around its base opening), integral time and derivative time
+/// on the boost, s; the spring gate's band (fully open 0.5 bar over its aim) and its lag, s. Bands and times guessed:
+/// the narrowest band the samples hold without a limit cycle through the turbo, and the derivative time that keeps a
+/// tip-in within 5 % overshoot, settled in 1 s (tuning practice; 0.05–0.12 s all do at 3000 and 5000 rpm, 0.08 the
+/// least overshoot). A spring gate's diaphragm feels the boost through its hose, with no solenoid or motor: the
+/// pressure crosses 3 m of 6 mm hose within 10 ms (Thomasson 2014), the dome fills in a few ms (inferred: a 60 cm³
+/// dome through a 3 mm port follows a 7 bar/s boost rise about 2 kPa, 3 ms, behind) and the valve's spring and mass
+/// ring at about 60 Hz (inferred), so 10 ms. Spring gates spike about 1 psi for a split second (enginebasics); the
+/// cable_turbo sample's fixed-speed tip-in spikes 0.4–0.5 psi at 5000–6500 rpm (2.2–2.9 psi with the 125 ms lag).
 pub const TAU_WASTEGATE: f64 = 0.125;
 pub const WASTEGATE_BAND: f64 = 1.0e5;
 pub const WASTEGATE_TI: f64 = 0.5;
 pub const WASTEGATE_TD: f64 = 0.08;
 pub const SPRING_BAND: f64 = 0.5e5;
+pub const TAU_SPRING: f64 = 0.01;
 /// The plate's pressure ratio p_im/p_b where it stops controlling the air (inferred).
 pub const AIM_OPEN_RATIO: f64 = 0.95;
 /// The blow-off valve opens over 0.3–0.4 bar across the throttle and empties the boost pipe in about 0.1 s (inferred).
