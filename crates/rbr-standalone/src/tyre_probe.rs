@@ -23,6 +23,28 @@ const MAT_SIZE: u32 = 0x160;
 const MAT_FIRST: u32 = 0x0c;
 /// The tyre scratch in the wheel (`this+0xf00`).
 const SCRATCH: u32 = 0xF00;
+/// The scratch's footprint the lab maps back (`load_frame` reads to `+0x50c`; the record's angle
+/// lives at `+0x5ac`), and the state, setup, wear-table and record sizes it maps with it. NGP's
+/// `.data` words come from `NGP_DATA` whole, as `boot::dump` maps them.
+const SCRATCH_LEN: u32 = 0x600;
+const STATE_LEN: u32 = 0x200;
+const DEF_LEN: u32 = 0x400;
+const WEAR_LEN: usize = 32;
+const RECORD_LEN: u32 = 0x600;
+const NGP_FILE_BASE: u32 = 0x1000_0000;
+/// NGP's `.data` in this run's memory (`NGP_DATA` file words at `runtime::BASE`, `boot::NGP_DATA`).
+const NGP_DATA: (u32, usize) = (0x1017_1000 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE, 0x7000);
+/// NGP's per-car thermal words in its `.data` (`rbr_hybrid::ngp::tuning`), as running addresses.
+const NGP_AIR: u32 = 0x1017_1adc - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
+const NGP_RELAX: u32 = 0x1017_1478 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
+const NGP_FACTOR0: u32 = 0x1017_1470 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
+const NGP_FACTOR1: u32 = 0x1017_1474 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
+/// The wheel's spin (`+0xea0`), its tyre container (`+0x7f4`, the car speed at `+0x15f8`) and the
+/// scratch's convection boost (`+0x1c8`, read when in contact).
+const WHEEL_SPIN: u32 = 0xEA0;
+const WHEEL_TYRE: u32 = 0x7F4;
+const CAR_SPEED: u32 = 0x15F8;
+const SCRATCH_BOOST: u32 = 0x1C8;
 /// Dump every this many steps, plus the final step.
 const EVERY: u32 = 1000;
 
@@ -251,4 +273,80 @@ impl TyreProbe {
         }
         self.file.flush().map_err(failed)
     }
+}
+
+/// A `u32` read that yields `None` when any byte is unmapped (never a panic on a dev capture).
+fn try_u32(mem: &Mem, at: u32) -> Option<u32> {
+    mem.try_read(at, 4).and_then(|b| b.try_into().ok()).map(u32::from_le_bytes)
+}
+
+/// An `f32` read that yields `None` when any byte is unmapped.
+fn try_f32(mem: &Mem, at: u32) -> Option<f32> {
+    try_u32(mem, at).map(f32::from_bits)
+}
+
+/// `--tyre-image FILE` (with `--autopilot`): a memory image of the four wheels' tyre footprints at `step`,
+/// for the lab (`crates/rbr-tyre-lab/examples/ngp_transient.rs`). `FILE` holds records `base size bytes`
+/// (u32 LE each, as `boot::dump` writes them) for each wheel's scratch, state, setup, wear table and contact
+/// record, plus NGP's `.data`; `FILE` with the extension `txt` is a text sidecar with the wheels' addresses
+/// and the thermal scalars the lab's `TyreThermal` needs. Read-only: nothing is written to physics memory.
+/// The image stays out of the repository (the lab reads it from `/tmp/tyre-lab`).
+pub fn write_image(mem: &Mem, step: u32, path: &Path) -> Result<(), String> {
+    let mut out = Vec::new();
+    let mut meta = format!("# step {step}\n");
+    let car = try_u32(mem, CAR_PTR).ok_or("the car's pointer is unmapped")?;
+    meta.push_str(&format!("car: {car:#010x}\n"));
+    for k in 0..4 {
+        let wheel = try_u32(mem, car + WHEELS + 4 * k).ok_or(format!("wheel {k}: unmapped"))?;
+        let scratch_at = wheel + SCRATCH;
+        let (state, def, record, wear) = (
+            try_u32(mem, scratch_at + 0x14).ok_or(format!("wheel {k}: state unmapped"))?,
+            try_u32(mem, scratch_at + 0x10).ok_or(format!("wheel {k}: setup unmapped"))?,
+            try_u32(mem, scratch_at + 0x410).ok_or(format!("wheel {k}: record unmapped"))?,
+            try_u32(mem, scratch_at + 0x414).ok_or(format!("wheel {k}: wear table unmapped"))?,
+        );
+        for (base, len) in [
+            (scratch_at, SCRATCH_LEN),
+            (state, STATE_LEN),
+            (def, DEF_LEN),
+            (wear, WEAR_LEN as u32),
+            (record, RECORD_LEN),
+        ] {
+            let bytes = mem.try_read(base, len as usize).ok_or(format!("wheel {k}: {base:#010x}+{len:#x} unmapped"))?;
+            out.extend(base.to_le_bytes());
+            out.extend(len.to_le_bytes());
+            out.extend(bytes);
+        }
+        let missing = || f32::NAN;
+        let in_contact = try_u32(mem, scratch_at + 0x480).unwrap_or(0);
+        let boost = (in_contact != 0).then(|| try_f32(mem, scratch_at + SCRATCH_BOOST)).flatten();
+        let speed = try_f32(mem, scratch_at + 0x360).unwrap_or_else(missing);
+        let fz = try_f32(mem, scratch_at + 0x314).unwrap_or_else(missing);
+        let spin = try_f32(mem, wheel + WHEEL_SPIN).unwrap_or_else(missing);
+        let car_speed =
+            try_u32(mem, wheel + WHEEL_TYRE).and_then(|t| try_f32(mem, t + CAR_SPEED)).unwrap_or_else(missing);
+        let kind = try_u32(mem, def + 0x1C).unwrap_or(0);
+        meta.push_str(&format!(
+            "wheel {k}: wheel {wheel:#010x} scratch {scratch_at:#010x} state {state:#010x} \
+             def {def:#010x} wear {wear:#010x} record {record:#010x} kind {kind} \
+             spin {spin:.6} car_speed {car_speed:.6} boost {} in_contact {in_contact} fz {fz:.3} speed {speed:.6}\n",
+            boost.map_or("nan".into(), |b| format!("{b:.6}")),
+        ));
+    }
+    let bytes = mem.try_read(NGP_DATA.0, NGP_DATA.1).ok_or("NGP's .data is unmapped (not an NGP run)")?;
+    out.extend(NGP_DATA.0.to_le_bytes());
+    out.extend((NGP_DATA.1 as u32).to_le_bytes());
+    out.extend(bytes);
+    let num = |at| try_f32(mem, at).unwrap_or(f32::NAN);
+    meta.push_str(&format!(
+        "ngp: air {:.3} relax_rate {:.6} factors {:.6} {:.6}\n",
+        num(NGP_AIR),
+        num(NGP_RELAX),
+        num(NGP_FACTOR0),
+        num(NGP_FACTOR1),
+    ));
+    std::fs::write(path, out).map_err(|e| format!("{}: {e}", path.display()))?;
+    let sidecar = path.with_extension("txt");
+    std::fs::write(&sidecar, meta).map_err(|e| format!("{}: {e}", sidecar.display()))?;
+    Ok(())
 }
