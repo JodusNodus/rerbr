@@ -410,7 +410,7 @@ def main():
     parser.add_argument("--traces", required=True, help="directory of <car>.trace (+<car>.log)")
     parser.add_argument("--csv", required=True, help="output CSV path")
     parser.add_argument("--surface", default="tarmac")
-    parser.add_argument("--stage", default="dry tarmac: 504-O pace, 568-M brakes, map85 circle")
+    parser.add_argument("--stage", default="dry tarmac circle (map 85) + dry gravel brakes (map 61)")
     parser.add_argument("--qualify", action="store_true",
                         help="print cars whose pace vtop reaches 150 km/h (brake-150 candidates)")
     args = parser.parse_args()
@@ -429,8 +429,8 @@ def main():
     gcircles = []
     gbrakes100 = []
     for car, _kind, _key, _name, _group, _extra in cars:
-        rows = load_trace(os.path.join(args.traces, f"{car}.trace"))
-        analyses.append(analyse(rows))
+        pace = maybe_trace(car, "")
+        analyses.append(analyse(pace) if pace else {"ok": False, "reason": "pace not run"})
         circ = maybe_trace(car, ".circ")
         circles.append(analyse_circle(circ) if circ else None)
         b100 = maybe_trace(car, ".brk100")
@@ -468,17 +468,16 @@ def main():
             text += f"; {gravel_notes(gcirc, gb100)}"
             if extra:
                 text = f"{extra}; {text}" if text else extra
-            if not result.get("ok"):
-                out.writerow([car, name, group, args.surface, args.stage,
-                              "", "", "", "", "", "", "", "", "", "", "",
-                              "", "", "", "", "", "", "", "", text])
-                continue
+            # Each column stands on its own analysis: a missing pace run
+            # (or any failed run) leaves only its own columns empty.
+            ok = result.get("ok")
             out.writerow([car, name, group, args.surface, args.stage,
-                          fmt_time(result["t60"]), fmt_time(result["t100"]),
-                          fmt_time(result["t140"]), fmt_time(result["t160"]),
-                          fmt_speed(result["v10"]), fmt_speed(result["v20"]),
-                          fmt_speed(result["v30"]), fmt_speed(result["vtop"]),
-                          f"{result['dist']:.0f}",
+                          fmt_time(result.get("t60")), fmt_time(result.get("t100")),
+                          fmt_time(result.get("t140")), fmt_time(result.get("t160")),
+                          fmt_speed(result.get("v10")), fmt_speed(result.get("v20")),
+                          fmt_speed(result.get("v30")),
+                          fmt_speed(result.get("vtop")) if ok else "",
+                          f"{result['dist']:.0f}" if ok else "",
                           fmt_speed(circ["vmax"]) if circ and circ.get("ok") else "",
                           f"{circ['latg']:.3f}" if circ and circ.get("ok") else "",
                           f"{b100['dist']:.1f}" if b100 and b100.get("ok") else "",
