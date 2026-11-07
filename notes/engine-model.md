@@ -190,6 +190,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
   Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
+- Telemetry for the sound (`Telemetry`, never read back): the blow-off valve's opening (0 in anti-lag, stays open
+  while the manifold is under vacuum, as a real one does; tested on a lift at 5000 rpm) and the step's air pressure.
+  `rbr-standalone` `live/picture.rs` `model_turbo` maps it into SND1's turbo words (`notes/sound.md` "Engine").
 - Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
   to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
   0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.64 s at 2000, cable_turbo 0.76 s

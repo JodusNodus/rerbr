@@ -218,6 +218,9 @@ impl Picture {
                         mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                     })
                 };
+                if let Some(model) = rbr_hybrid::ngp::engine_model_telemetry() {
+                    model_turbo(&mut sound, &model);
+                }
                 // The frame's damper payloads: the reset's emitted words, or the memory words where no reset ran.
                 let (dampers, velocity) = dampers;
                 sound.dampers = dampers;
@@ -356,6 +359,36 @@ pub fn lights_event(mem: &Mem) -> Option<[u8; particles::EVENT_PAYLOAD_BYTES]> {
         out[4 * k..4 * k + 4].copy_from_slice(&w.to_le_bytes());
     }
     Some(out)
+}
+
+/// The 1.02 sim's turbo speed over the model's on one drive, so the whine keeps the pitch range `rbr-sound`'s constants
+/// were set for: 0.79 at the median, 0.78 at the 99th percentile (Fiesta Rally2, track-11_O, 90 s of autopilot under
+/// `--physics experimental`, both read from the same run; `notes/sound.md`). The model's shaft runs faster (its design
+/// speed, `rbr_engine::turbo::OMEGA_STAR`, is a guess).
+const MODEL_TURBO_SPEED: f32 = 0.78;
+/// The blow-off valve's lift fully open in the 1.02 sim's units (state `+0x48`, `TurboBlowOffCoefficient_NGP`): 1e-4 on
+/// the Fiesta Rally2, as SND1 `p[7]` reads with the valve open.
+const BLOW_OFF_LIFT: f32 = 1e-4;
+/// The misfire word of an anti-lag pop: from 0.9 up, so a car's FMOD bank fires its backfire (`exhaustpop`); on the
+/// 1.02 voices a pop from the bank's high samples, a bang and a pop run.
+const MODEL_POP: f32 = 0.95;
+
+/// SND1's turbo words from the engine model's telemetry instead of the 1.02 engine sim's turbo, which runs beside the
+/// model and knows nothing of its boost (ReRBR experimental physics), in the 1.02 sim's units (`Sim7D30` 0x517d30):
+/// `p[2]` the shaft speed (scaled), `p[3]` the boost over the air, `p[7]` the blow-off valve's lift and `p[6]` its
+/// flow, `(boost - air) * lift * 0.05` as the 1.02 sim's; `p[4]` a pop while anti-lag cuts a firing event, the 1.02
+/// sim's misfire word otherwise.
+pub(super) fn model_turbo(sound: &mut Sound, model: &rbr_engine::Telemetry) {
+    let air = if model.air_pressure > 0.0 { model.air_pressure } else { model.boost_pressure.max(1.0) };
+    let lift = model.blow_off * BLOW_OFF_LIFT;
+    let mut set = |i: usize, v: f32| sound.engine[i] = v.to_bits();
+    set(2, model.turbo_speed * MODEL_TURBO_SPEED);
+    set(3, model.boost_pressure / air);
+    set(6, (model.boost_pressure - air).max(0.0) * lift * 0.05);
+    set(7, lift);
+    if model.anti_lag {
+        set(4, if model.cut > 0.0 { MODEL_POP } else { 0.0 });
+    }
 }
 
 /// The SND1 payload `sound` with the step's `CSigEngineFire` emits and the frame's tyre block word 1.
@@ -569,6 +602,41 @@ pub fn race_hud(clock: RaceClock, penalties: f32) -> RaceHud {
 mod tests {
     use super::*;
     use rbr_physics::spring_damper::DamperSignal;
+
+    #[test]
+    fn the_model_s_turbo_takes_the_turbo_words_in_the_1_02_sim_s_units() {
+        let mut sound = Sound::default();
+        sound.engine = std::array::from_fn(|i| (100.0 + i as f32).to_bits());
+        let model = rbr_engine::Telemetry {
+            boost_pressure: 2.5e5,
+            air_pressure: 1e5,
+            turbo_speed: 9000.0,
+            blow_off: 0.5,
+            anti_lag: true,
+            cut: 1.0,
+            ..rbr_engine::Telemetry::default()
+        };
+        let mut got = sound;
+        model_turbo(&mut got, &model);
+        let word = |s: &Sound, i: usize| f32::from_bits(s.engine[i]);
+        assert_eq!(word(&got, 2), 9000.0 * MODEL_TURBO_SPEED);
+        assert_eq!(word(&got, 3), 2.5);
+        assert_eq!(word(&got, 4), MODEL_POP);
+        assert_eq!(word(&got, 6), 1.5e5 * 0.5 * BLOW_OFF_LIFT * 0.05);
+        assert_eq!(word(&got, 7), 0.5 * BLOW_OFF_LIFT);
+        for i in [0, 1, 5, 8, 9, 10, 11] {
+            assert_eq!(got.engine[i], sound.engine[i], "word {i}");
+        }
+        // A fired event in anti-lag is no pop; outside anti-lag the misfire word is the 1.02 sim's.
+        model_turbo(&mut got, &rbr_engine::Telemetry { cut: 0.0, ..model });
+        assert_eq!(word(&got, 4), 0.0);
+        let mut got = sound;
+        model_turbo(&mut got, &rbr_engine::Telemetry { anti_lag: false, ..model });
+        assert_eq!(got.engine[4], sound.engine[4]);
+        // Before the model's first step (no air yet) the boost reads as the air's.
+        model_turbo(&mut got, &rbr_engine::Telemetry { air_pressure: 0.0, blow_off: 1.0, ..model });
+        assert_eq!((word(&got, 3), word(&got, 6)), (1.0, 0.0));
+    }
 
     #[test]
     fn damper_frame_prefers_emitted_payloads_and_falls_back_to_memory() {

@@ -60,7 +60,7 @@ What follows from it:
   of mean effective pressure. The coast curve of a real 2.0 L engine in rFactor 2's engine file gives about 3 bar at
   8000 rpm.
 - **No time.** Torque follows the pedal within the step. The 1.02 engine sim still runs underneath and spins its own
-  turbo for the sound, but its torque is discarded.
+  turbo, but its torque is discarded; with our model the turbo sound follows the model's turbo instead.
 
 ## The realistic model
 
@@ -501,7 +501,10 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
 
 ## Known limits
 
-- The turbo sound still follows the 1.02 engine sim's own turbo.
+- The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and
+  anti-lag pops come from its cut firing events. The whine's pitch is the model's shaft speed times 0.78, to stay in
+  the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size for
+  every car. The sound's own anti-lag crackle on a throttle lift still plays on every car, beside the model's pops.
 - The clutch's capacity is NGP's, sized for its torque. The model's peak torque is the same, so this matters only for
   transient overshoot.
 - Damage, overheating and oil starvation reach the model through NGP's damage factor and the 1.02 sim's friction, as
