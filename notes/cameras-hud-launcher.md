@@ -59,6 +59,10 @@ Data in `rbr_formats::rbrhud`, drawing in `rbr_render::dials` (toggle: `dials`);
 Pages and policy in `crates/rbr-launcher/src/` (`main.rs` doc: command line, weather rules, volumes, co-driver
 sources). Start runs the viewer with `rbr-standalone --live --boot` as child processes (`command.rs`).
 
+- Controls page, Driver aids: "Engine model", NGP (original) or Realistic (experimental) (`controls_page::EngineModel`,
+  `[launcher] engine_model`), passed after `--live` as `--engine-model realistic` to quick races, championship stages
+  and lessons; NGP's adds nothing. A replay's header keeps it (the stepping command).
+
 - The game's quality settings and music are not offered (user decisions).
 - One game folder (user decision 2026-11-04): everything is read from the game folder in use (`Paths::game_root`:
   `RBR_RSF` when set, else the game data folder), its plugins and community content with it. A saved `rsf_root`
