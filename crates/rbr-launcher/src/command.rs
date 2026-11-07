@@ -1554,6 +1554,10 @@ mod tests {
                 let dash = case[start + stamp..end].find('-').expect("seconds, then the stage");
                 case.replace_range(start + stamp..start + stamp + dash, "<time>");
             }
+            // The golden is Linux's and Windows': macOS presents with vsync by default and offers HDR.
+            if cfg!(target_os = "macos") {
+                case = case.replace("--present\nfifo\n", "--present\nmailbox\n").replace("--hdr\n", "");
+            }
             cases.push((name, case));
             let _ = std::fs::remove_dir_all(&here);
         }
