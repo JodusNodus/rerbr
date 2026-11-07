@@ -286,6 +286,32 @@ fn the_brake_test_holds_its_partial_pedal() {
     assert_eq!((q.throttle, q.brake), (0, 128));
 }
 
+/// `--brake-declutch`: braking in third with the engine near idle, the plain brake test downshifts with the clutch
+/// out; declutched it holds the clutch in and shifts nothing, before and while braking only the latter.
+#[test]
+fn the_declutched_brake_test_holds_the_clutch_in_and_shifts_no_gear() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |speed: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST + 2,
+        engine: 100.0,
+        held: false,
+        wheels: [0.0; 4],
+    };
+    let mut plain = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
+    let q = plain.control(1000, &sense(25.0), false);
+    assert_eq!((q.brake, q.clutch, q.flags), (255, 0, 0x02));
+    let mut declutched = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0).with_declutch(true);
+    let q = declutched.control(1000, &sense(10.0), false);
+    assert_eq!((q.brake, q.clutch), (0, 0));
+    let q = declutched.control(1001, &sense(25.0), false);
+    assert_eq!((q.brake, q.clutch, q.flags), (255, 255, 0));
+    let q = declutched.control(3000, &sense(5.0), false);
+    assert_eq!((q.brake, q.clutch, q.flags), (255, 255, 0));
+}
+
 /// Threshold braking on a toy wheel at 720 Hz: a 1 kg·m² wheel of 0.3 m on 3000 N, a friction curve peaking at 1.0
 /// at a slip of 0.15 and falling to 0.8 locked, brakes of 3000 N·m at full pedal (four times what locks it), the car
 /// at 20 m/s. From a released pedal the slip settles within 0.01 of the target in 0.3 s, at the curve's peak and on

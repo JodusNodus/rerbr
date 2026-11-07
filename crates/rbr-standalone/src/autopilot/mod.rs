@@ -430,6 +430,8 @@ pub struct Driver<'a> {
     braking: bool,
     /// The brake test's pedal: held (`--brake-pedal`, 1 unless given) or threshold braking (`--brake-slip`).
     brake: Brake,
+    /// `--brake-declutch`: the brake test holds the clutch pedal in and shifts no gear (the engine off the wheels).
+    declutch: bool,
     /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
@@ -437,7 +439,7 @@ pub struct Driver<'a> {
 }
 
 /// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from` and its `--brake-pedal`,
-/// `--brake-slip`, `--brake-hold`, `--circle`, `--circle-ramp`, `--trace-speed`); the default drives as a race.
+/// `--brake-slip`, `--brake-hold`, `--brake-declutch`, `--circle`, `--circle-ramp`, `--trace-speed`); the default drives as a race.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Measure {
     pub flat_out: bool,
@@ -446,6 +448,8 @@ pub struct Measure {
     pub brake_pedal: Option<f32>,
     pub brake_slip: Option<f32>,
     pub brake_hold: Option<f32>,
+    /// `--brake-declutch`.
+    pub brake_declutch: bool,
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
@@ -500,9 +504,10 @@ impl Brake {
 /// Threshold braking's PI controller on the slip error (target minus the most-slipping wheel's slip): the pedal is
 /// the integral, `SLIP_I` pedal per s per unit of error, plus `SLIP_P` times the error. Each step reads the slip
 /// after the step before (one step late, 1/720 s under NGP); the u8 pedal quantizes the sum, not the integral.
-/// Fiesta Rally2 from 100 and 50 km/h (RSF 568 tarmac, 345 gravel; NGP and the brush): within ±0.015 of K = 0.15
-/// mid-stop on tarmac; the most-slipping wheel's slip above 3 m/s, past the onset, averages within 0.011 of K up to
-/// 0.2 (spread 0.006-0.034), within 0.025 at 0.3 (spread 0.04-0.06), and 0.43-0.50 at 0.5 (gravel spread 0.05-0.13).
+/// Fiesta Rally2 from 100 and 50 km/h, declutched (RSF 568 tarmac, 345 gravel; NGP and the brush): the most-slipping
+/// wheel's slip above 3 m/s, past the onset, averages within 0.008 of K for K 0.1-0.7, spread 0.004-0.024 up to K 0.2,
+/// 0.02-0.04 at 0.3 and 0.02-0.09 at 0.5-0.7. In gear with clutch help on, the idling engine turning the wheels
+/// widens it (0.025 off K at 0.3, 0.43-0.50 at 0.5).
 const SLIP_I: f32 = 60.0;
 const SLIP_P: f32 = 1.0;
 /// The slip ratio's floor on the speed (m/s): under it the ratio is (v - ωR) / `SLIP_SPEED`, so the stop's last
@@ -556,6 +561,7 @@ impl<'a> Driver<'a> {
             brake_at: None,
             braking: false,
             brake: Brake::Pedal(1.0),
+            declutch: false,
             bands: Vec::new(),
             grip: 1.0,
         }
@@ -725,6 +731,11 @@ impl<'a> Driver<'a> {
     /// The brake test's pedal (`--brake-pedal`, `--brake-slip`).
     pub fn with_brake(self, brake: Brake) -> Self {
         Self { brake, ..self }
+    }
+
+    /// The brake test with the clutch pedal in and no gear changes from its start (`--brake-declutch`), or not.
+    pub fn with_declutch(self, declutch: bool) -> Self {
+        Self { declutch, ..self }
     }
 
     /// The driver holds no slowdown: `--flat-out` or `--circle`, where the curve, kink, tracking and prop-dodge
@@ -951,9 +962,14 @@ impl<'a> Driver<'a> {
                 }
             }
         }
+        let mut clutch = 0;
         if self.braking {
-            // The brake test: its pedal with the computed steering (`--brake-from`).
+            // The brake test: its pedal with the computed steering (`--brake-from`); declutched, the idling engine
+            // cannot turn the wheels against the brake.
             throttle = 0.0;
+            if self.declutch {
+                (flags, clutch) = (0, 255);
+            }
             brake = match &mut self.brake {
                 Brake::Pedal(pedal) => *pedal,
                 Brake::Slip { target, held } => {
@@ -971,6 +987,7 @@ impl<'a> Driver<'a> {
             steering: (steer * 127.5).round().clamp(-127.0, 127.0) as i8,
             throttle: pedal(throttle),
             brake: pedal(brake),
+            clutch,
             ..QuantizedControl::default()
         }
     }

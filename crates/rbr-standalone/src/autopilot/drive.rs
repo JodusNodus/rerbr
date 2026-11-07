@@ -176,6 +176,7 @@ pub fn drive(
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
+    driver = driver.with_declutch(measure.brake_declutch);
     if let Some(k) = measure.brake_slip {
         driver = driver.with_brake(Brake::slip(k));
     } else if let Some(p) = measure.brake_pedal {

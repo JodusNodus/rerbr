@@ -44,6 +44,10 @@ pub struct Args {
     pub brake_slip: Option<f32>,
     /// `--brake-hold S` (with `--brake-from`): the brake stays on S seconds after the stop before the run ends.
     pub brake_hold: Option<f32>,
+    /// `--brake-declutch` (with `--brake-from` and `--clutch-help off`): the brake test holds the clutch pedal in and
+    /// shifts no gear, so the engine does not drive the braked wheels. NGP's clutch help sets the clutch from the
+    /// engine speed in place of the pedal (`rbr_physics::vcu::clutch`), so the pedal needs it off.
+    pub brake_declutch: bool,
     /// `--circle X,Y,R` (with `--autopilot`): drive the steady-state circle of centre X,Y and radius R (m),
     /// counter-clockwise, the target speed ramping up until the car lets go (`Driver::circle`).
     pub circle: Option<autopilot::Circle>,
@@ -186,7 +190,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model on hard surfaces), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K] [--brake-hold S]] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -221,6 +225,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             args.live |= flag == "--live";
             args.boot |= flag == "--boot";
             args.flat_out |= flag == "--flat-out";
+            continue;
+        }
+        if flag == "--brake-declutch" {
+            args.brake_declutch = true;
             continue;
         }
         if flag == "--recorded-payload" {
@@ -518,10 +526,15 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.brake_from.is_some() && args.autopilot.is_none() {
         return Err("--brake-from needs --autopilot".into());
     }
-    if (args.brake_pedal.is_some() || args.brake_slip.is_some() || args.brake_hold.is_some())
+    if (args.brake_pedal.is_some() || args.brake_slip.is_some() || args.brake_hold.is_some() || args.brake_declutch)
         && args.brake_from.is_none()
     {
-        return Err("--brake-pedal, --brake-slip and --brake-hold need --brake-from".into());
+        return Err("--brake-pedal, --brake-slip, --brake-hold and --brake-declutch need --brake-from".into());
+    }
+    if args.brake_declutch && args.aids.clutch_help {
+        return Err(
+            "--brake-declutch needs --clutch-help off (clutch help sets the clutch in place of the pedal)".into()
+        );
     }
     if args.brake_pedal.is_some() && args.brake_slip.is_some() {
         return Err("--brake-slip takes no --brake-pedal (it moves the pedal itself)".into());
@@ -729,8 +742,9 @@ mod tests {
                 assert_eq!((a.brake_pedal, a.brake_slip, a.brake_hold), (Some(0.5), None, Some(2.0)));
             }),
             (format!("{BOOT} --brake-from 27.78 --brake-slip 0.15"), |a| {
-                assert_eq!((a.brake_pedal, a.brake_slip), (None, Some(0.15)));
+                assert_eq!((a.brake_pedal, a.brake_slip, a.brake_declutch), (None, Some(0.15), false));
             }),
+            (format!("{BOOT} --brake-from 27.78 --brake-declutch --clutch-help off"), |a| assert!(a.brake_declutch)),
             (format!("{BOOT} --circle -260,120,40 --top-speed 60"), |a| {
                 assert_eq!(
                     a.circle,
@@ -965,9 +979,26 @@ mod tests {
             (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
             (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
-            (format!("{BOOT} --brake-pedal 0.5"), "--brake-pedal, --brake-slip and --brake-hold need --brake-from"),
-            (format!("{BOOT} --brake-slip 0.1"), "--brake-pedal, --brake-slip and --brake-hold need --brake-from"),
-            (format!("{BOOT} --brake-hold 2"), "--brake-pedal, --brake-slip and --brake-hold need --brake-from"),
+            (
+                format!("{BOOT} --brake-pedal 0.5"),
+                "--brake-pedal, --brake-slip, --brake-hold and --brake-declutch need --brake-from",
+            ),
+            (
+                format!("{BOOT} --brake-slip 0.1"),
+                "--brake-pedal, --brake-slip, --brake-hold and --brake-declutch need --brake-from",
+            ),
+            (
+                format!("{BOOT} --brake-hold 2"),
+                "--brake-pedal, --brake-slip, --brake-hold and --brake-declutch need --brake-from",
+            ),
+            (
+                format!("{BOOT} --brake-from 20 --brake-declutch"),
+                "--brake-declutch needs --clutch-help off (clutch help sets the clutch in place of the pedal)",
+            ),
+            (
+                format!("{BOOT} --brake-declutch"),
+                "--brake-pedal, --brake-slip, --brake-hold and --brake-declutch need --brake-from",
+            ),
             (
                 format!("{BOOT} --brake-from 20 --brake-pedal 0.5 --brake-slip 0.1"),
                 "--brake-slip takes no --brake-pedal (it moves the pedal itself)",

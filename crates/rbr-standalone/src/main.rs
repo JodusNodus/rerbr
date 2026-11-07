@@ -314,7 +314,7 @@ fn events(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &Stage
 /// `--autopilot OUT`: drives from the snapshot or the boot and writes the playback (`autopilot/`).
 /// `--flat-out` holds full throttle without braking for pace measurement (the steering and the gear shifts stay the
 /// controller's); `--brake-from` brakes fully from a speed to a standstill (`--brake-pedal` at a partial pedal,
-/// `--brake-slip` threshold braking at a slip ratio, `--brake-hold` on the brake for a while after the stop);
+/// `--brake-slip` threshold braking at a slip ratio, `--brake-hold` on the brake for a while after the stop, `--brake-declutch` with the clutch in, which needs `--clutch-help off`);
 /// `--circle` drives a steady-state circle with the target speed ramping up; `--trace-speed FILE` writes each step's
 /// time, speed, pedals, gear and position, the engine speed the gear gives with the clutch engaged (0 in neutral) and
 /// last the wheels' rim speeds.
@@ -368,6 +368,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
                 brake_pedal: args.brake_pedal,
                 brake_slip: args.brake_slip,
                 brake_hold: args.brake_hold,
+                brake_declutch: args.brake_declutch,
                 circle: args.circle,
                 circle_ramp: args.circle_ramp,
                 trace_speed: args.trace_speed.clone(),
