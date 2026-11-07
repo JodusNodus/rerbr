@@ -186,6 +186,10 @@ pub fn drive(
         }
         None => None,
     };
+    let mut probe = match &measure.tyre_probe {
+        Some(path) => Some(crate::tyre_probe::TyreProbe::create(path)?),
+        None => None,
+    };
     let mut hit: Option<u32> = None;
     let mut last: Option<(Vec<u8>, QuantizedControl)> = None;
     let word6 = read_u32(&control, 24).expect("payload word 6");
@@ -204,6 +208,14 @@ pub fn drive(
         }
         file.write_all(&answer[..FRAME_BYTES]).map_err(failed)?;
         drove.steps += 1;
+        if let Some(probe) = &mut probe {
+            probe.step(live.mem(), step, false)?;
+        }
+        if measure.tyre_image_step == Some(step) {
+            let path = measure.tyre_image.as_ref().expect("--tyre-image-step needs --tyre-image");
+            crate::tyre_probe::write_image(live.mem(), step, path)?;
+            eprintln!("autopilot: step {step}: tyre image written to {}", path.display());
+        }
         // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
         // finish time). A circle run never finishes (it laps the school compound to the step limit).
         let school = live.school().is_some();
@@ -301,6 +313,18 @@ pub fn drive(
             );
         }
         control = payload(&q.car_control(), word6);
+    }
+    if let Some(probe) = &mut probe {
+        let step = start + drove.steps.saturating_sub(1);
+        probe.step(live.mem(), step, true)?;
+    }
+    // The transient lab's memory image: at the chosen step, else the final one (read-only, research tooling).
+    if let Some(path) = &measure.tyre_image {
+        if measure.tyre_image_step.is_none() {
+            let step = start + drove.steps.saturating_sub(1);
+            crate::tyre_probe::write_image(live.mem(), step, path)?;
+            eprintln!("autopilot: step {step}: tyre image written to {}", path.display());
+        }
     }
     file.flush().map_err(failed)?;
     drove.out = Some(crate::rally::stage_out(live.mem(), live.game().end_now(), live.game().race_clock().jumped));

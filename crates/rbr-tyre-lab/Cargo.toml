@@ -1,0 +1,10 @@
+[package]
+name = "rbr-tyre-lab"
+version = "0.1.0"
+edition = "2021"
+description = "Research tooling: characterise NGP's tyre model from its runtime parameters (experimental, ours)"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+rbr-physics = { path = "../rbr-physics" }
+rbr-formats = { path = "../rbr-formats" }
