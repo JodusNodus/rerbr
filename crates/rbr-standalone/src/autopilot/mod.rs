@@ -439,6 +439,8 @@ pub struct Measure {
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
+    /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
+    pub tyre_probe: Option<std::path::PathBuf>,
 }
 
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
