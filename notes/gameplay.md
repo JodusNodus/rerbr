@@ -30,6 +30,9 @@ Mechanics in `poll/mod.rs` (devices, actions, `GetActionValue` sets, `Changed`, 
 and `poll/wine.rs` (Proton path, G923 lattice, rest values); NGP additions in `control.rs` and `notes/ngp.md`. Check:
 `rbr_render::bin/input_check` (RSF sessions, "Input chain check").
 
+- Ours, not the game's: an inverted pedal axis (`Invert*Axis`) that has not yet moved twice is not flipped, so it reads 0
+  at load as one not inverted does; the game flips the settling 0 to 1 (pedal pinned until touched). Settled values
+  are unchanged. Test: `an_inverted_pedal_reads_zero_until_it_has_moved_twice`.
 - NGP version addresses (code states 778's only): 779 polls at 0x10006e70, its direct gears at 0x1003c4d0. The strand
   the 1000 Hz thread posts to is 0x10098270 -> 0x10094200 (not in code).
 - RBRControls (the install's) sets properties and FFB on device instances of its own (MOD1: PRP1 9, DEV1 5, no POL1); the

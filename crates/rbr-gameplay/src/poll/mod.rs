@@ -15,7 +15,9 @@
 //!   CLUTCH (`InitImpl` 0x4c28c0), then maps an axis to `(v + 1) / 2` for LEFT, RIGHT, THROTTLE, BRAKE, HANDBRAKE and
 //!   CLUTCH. `IsActionDown` (0x4c25d0) is a press: the value above 0 and changed since the previous poll (0.2 for a
 //!   button; for an axis 1.25 times the poll's rate argument, 0.04 without one, `Changed` 0x4cacb0).
-//! - `Tic` combines them ([`Poll::tic`]); `input.ini`'s `Invert*Axis` flip a value to `1 - v` ([`Invert`]).
+//! - `Tic` combines them ([`Poll::tic`]); `input.ini`'s `Invert*Axis` flip a value to `1 - v` ([`Invert`]). Ours, not
+//!   the game's: a pedal axis that has not yet moved twice is not flipped, so an untouched inverted pedal reads 0, as
+//!   one that is not inverted does (the game flips the settling 0 to 1).
 //! - NGP: IGNITION is a level, the value above 0.99 (`0x4cc3e5` -> NGP's `GetActionValue(12) > 0.99`), and the
 //!   emit (`0x4cc42e`) adds the direct gear actions with the automatic gearbox off ([`Poll::gear_actions`],
 //!   [`crate::control::ngp_direct_gears`]).
@@ -272,6 +274,11 @@ impl Poll {
         self.slots[action].is_some()
     }
 
+    /// Bound to an axis that has not yet moved twice.
+    fn settling(&self, action: usize) -> bool {
+        self.entry(action).is_some_and(|e| e.axis && e.settling())
+    }
+
     /// `CfgReady` (0x4c25a0): bound to an axis.
     fn axis(&self, action: usize) -> bool {
         self.entry(action).is_some_and(|e| e.axis)
@@ -324,7 +331,7 @@ impl Poll {
             negative = brake;
             brake_axis = self.axis(BRAKE);
         }
-        if brake_axis && self.invert.brake {
+        if brake_axis && self.invert.brake && !self.settling(BRAKE) {
             negative = one_minus(negative);
         }
         // +0x18, the poll's throttle.
@@ -334,17 +341,17 @@ impl Poll {
             positive = throttle;
             throttle_axis = self.axis(THROTTLE);
         }
-        if throttle_axis && self.invert.throttle {
+        if throttle_axis && self.invert.throttle && !self.settling(THROTTLE) {
             positive = one_minus(positive);
         }
         let mut handbrake = self.value(HANDBRAKE);
         let handbrake_axis = self.axis(HANDBRAKE);
-        if handbrake_axis && self.invert.handbrake {
+        if handbrake_axis && self.invert.handbrake && !self.settling(HANDBRAKE) {
             handbrake = one_minus(handbrake);
         }
         let mut clutch = self.value(CLUTCH);
         let clutch_axis = self.axis(CLUTCH);
-        if clutch_axis && self.invert.clutch {
+        if clutch_axis && self.invert.clutch && !self.settling(CLUTCH) {
             clutch = one_minus(clutch);
         }
         let steering_axis = self.bound(STEERING);
@@ -456,6 +463,21 @@ mod tests {
         p.invert = Invert { steering: true, throttle: true, ..Invert::default() };
         assert_eq!((p.tic().channels[0], p.tic().channels[1]), (-steering, 0.0));
         assert_eq!(p.tic().select[1], AXIS_CELL);
+    }
+
+    #[test]
+    fn an_inverted_pedal_reads_zero_until_it_has_moved_twice() {
+        // Both pedals rest at raw 0, the end a pedal that is not inverted reads as pressed.
+        let mut p = poll(&[(Z, THROTTLE as u32), (X, HANDBRAKE as u32)]);
+        p.invert = Invert { throttle: true, handbrake: true, ..Invert::default() };
+        let pedals = |p: &Poll| (p.tic().channels[1], p.tic().channels[3]);
+        p.devices[0].update(&state(0, 0, 0), 0.0);
+        assert_eq!(pedals(&p), (0.0, 0.0), "untouched");
+        p.devices[0].update(&state(1000, 1000, 0), 0.0);
+        p.devices[0].update(&state(0, 0, 0), 0.0);
+        assert_eq!(pedals(&p), (0.0, 0.0), "settled, at rest");
+        p.devices[0].update(&state(65535, 65535, 0), 0.0);
+        assert_eq!(pedals(&p), (1.0, 1.0), "pressed");
     }
 
     #[test]
