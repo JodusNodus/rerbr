@@ -80,8 +80,10 @@ Mechanics in `engine.rs` (inputs, bank, slew, crossfade, grains, `MixScale`, out
   the NGP drive below gives at most 0.09. The NGP profile's SND1 is unchanged (tested). Same drive, 90 s: blow-offs 16
   against 7 from the 1.02 sim. The headless trace carries only `p[0]`, so it needs no change.
 - Anti-lag under the model (ours, realism, 2026-11-07; `exhaust::AntiLag`, `fmod::FmodCar::model_pop`): one source of
-  pops. From the first `MODEL_ANTI_LAG` word on, the crackle plays while the model's anti-lag runs and only then (a
-  lift no longer fires it), 0.04-0.25 s apart (`MODEL_GAP`), at 2.5 times the misfire pops' gain (`MODEL_GAIN`); the
+  pops. From the first `MODEL_ANTI_LAG` word on, the crackle plays one burst of 0.3-0.7 s (`MODEL_BURST`) each time
+  the model's anti-lag starts, and only then (a lift no longer fires it), 0.1-0.35 s apart (`MODEL_GAP`), at the
+  misfire pops' gain (`MODEL_GAIN` 1; user 2026-11-07: the real rate and level, 0.04-0.25 s for as long as anti-lag
+  ran at 2.5 times, were too much to listen to); the
   word is no misfire (no 1.02 pop, bang or run from it) and ends a misfire's pop run; an FMOD bank's backfire plays
   each of those pops (`exhaustpop` 0.95 on its step, 0 between). A bank whose backfire event has no instruments
   leaves those pops unmuted on the 1.02 voices (user decision 2026-11-07; NGP's mute stands for everything else),

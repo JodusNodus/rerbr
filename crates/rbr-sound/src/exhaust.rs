@@ -10,7 +10,7 @@
 //! Ours: a rally car's anti-lag ([`AntiLag`]), a crackle of pops with now and then a bang each time the throttle is
 //! lifted at speed, as the misfire word gives only now and then. Under an engine model (ReRBR experimental physics) the
 //! misfire word says while the model's anti-lag runs ([`MODEL_ANTI_LAG`]); from the first such word on, the crackle
-//! plays while it runs, and only then, at real anti-lag's rate ([`MODEL_GAP`]), so a car has one source of pops.
+//! plays one short burst each time it starts ([`MODEL_BURST`]), and only then, so a car has one source of pops.
 
 use rbr_recording::sound::{Sound, MODEL_ANTI_LAG};
 
@@ -30,23 +30,25 @@ const BURST: (f32, f32) = (0.35, 0.9);
 const GAP: (f32, f32) = (0.03, 0.12);
 const EXHAUST_ONE_IN: u32 = 6;
 const BANG_ONE_IN: u32 = 16;
-/// The gap between pops while an engine model's anti-lag runs, s: the gaps between the bangs of real rally anti-lag
-/// (onsets in two videos, a Polo GTI R5 from the roadside and a Hyundai i20 Rally2 on board: 0.045 s at the 10th
-/// percentile, 0.095-0.165 s median, 0.14-0.18 s mean, about 0.3 s at the 90th; `notes/sound.md`).
-const MODEL_GAP: (f32, f32) = (0.04, 0.25);
+/// While an engine model's anti-lag runs: one burst each time it starts, of a random length in `MODEL_BURST` s (real
+/// rally anti-lag pops for a median 0.5 s per lift), its pops a random gap in `MODEL_GAP` apart. Real gaps run
+/// 0.045-0.3 s (10th to 90th percentile; onsets in two videos, a Polo GTI R5 from the roadside and a Hyundai i20
+/// Rally2 on board; `notes/sound.md`); ours are sparser, for listening comfort (user, 2026-11-07).
+const MODEL_BURST: (f32, f32) = (0.3, 0.7);
+const MODEL_GAP: (f32, f32) = (0.1, 0.35);
 /// The pops' pitch spread, and their gain against the misfire pops'.
 const ALS_PITCH: (f32, f32) = (0.9, 1.1);
 const ALS_GAIN: f32 = 0.45;
-/// Their gain while an engine model's anti-lag runs: its bangs then stand over the rest of the sound as real ones do
-/// (2-8 kHz over its median of the 0.5 s around: about 10 dB median and 15 at the 90th percentile in the chase view,
-/// against 11 and 16 for the Polo R5's from the roadside; 7-8 dB in the car, against 5-6 on the i20 Rally2's helmet
-/// camera; `notes/sound.md`).
-const MODEL_GAIN: f32 = 2.5;
+/// Their gain while an engine model's anti-lag runs. 2.5 matched real bangs' level over the rest of the sound (about
+/// 10 dB in the chase view, 7-8 in the car; `notes/sound.md`) but was too much to listen to (user, 2026-11-07).
+const MODEL_GAIN: f32 = 1.0;
 
 /// The anti-lag's state.
 #[derive(Debug, Clone)]
 struct AntiLag {
     armed: bool,
+    /// An engine model's anti-lag ran at the last step.
+    running: bool,
     /// The burst's seconds left, and the seconds to its next pop.
     left: f32,
     wait: f32,
@@ -55,7 +57,7 @@ struct AntiLag {
 
 impl Default for AntiLag {
     fn default() -> Self {
-        AntiLag { armed: false, left: 0.0, wait: 0.0, rng: Rng::new(0xa15) }
+        AntiLag { armed: false, running: false, left: 0.0, wait: 0.0, rng: Rng::new(0xa15) }
     }
 }
 
@@ -79,11 +81,14 @@ impl AntiLag {
     ) -> Vec<Command> {
         let (gap, level) = match model {
             Some(running) => {
-                // A start pops at once; the burst lasts while the model's anti-lag runs.
-                if running && self.left <= 0.0 {
+                // A start pops at once, for one burst; the model's anti-lag ending ends it.
+                if running && !self.running {
+                    self.left = self.uniform(MODEL_BURST);
                     self.wait = 0.0;
+                } else if !running {
+                    self.left = 0.0;
                 }
-                self.left = if running { f32::INFINITY } else { 0.0 };
+                self.running = running;
                 (MODEL_GAP, MODEL_GAIN)
             }
             None => {
@@ -385,11 +390,15 @@ mod tests {
             let out: Vec<_> = (0..steps).map(|_| (shots(&e.step(s, MIN_RPM, 0.007, || 0).0), e.model_pop)).collect();
             (out.iter().map(|(o, _)| o.len()).sum::<usize>(), out.iter().filter(|(_, p)| *p).count())
         };
-        // The model's word: pops at once, then [`MODEL_GAP`] apart (2 s: 8 to 50), all of them the model's, with no
-        // misfire pop, bang or run from the word itself.
+        // The model's word: one burst, popping at once, then [`MODEL_GAP`] apart within [`MODEL_BURST`] (1 to 8 pops
+        // over 2 s of anti-lag), all of them the model's, with no misfire pop, bang or run from the word itself.
         run(&mut e, &at(1.0, 0.0), 10);
         let (n, model) = run(&mut e, &at(0.0, MODEL_ANTI_LAG), 286);
-        assert!((8..=50).contains(&n) && model == n, "{n} {model}");
+        assert!((1..=8).contains(&n) && model == n, "{n} {model}");
+        // Its next start is a new burst.
+        run(&mut e, &at(1.0, 0.0), 10);
+        let (n, model) = run(&mut e, &at(0.0, MODEL_ANTI_LAG), 286);
+        assert!((1..=8).contains(&n) && model == n, "{n} {model}");
         // It stops when the model's anti-lag does, and a lift no longer crackles on its own.
         assert_eq!(run(&mut e, &at(0.0, 0.0), 50), (0, 0));
         run(&mut e, &at(1.0, 0.0), 10);

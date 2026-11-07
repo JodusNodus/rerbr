@@ -569,8 +569,9 @@ throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s tar
   NGP's engine and the brush). Braking from that spin locks them with the clutch in, and the engine stalls ("In
   game").
 - The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and the
-  anti-lag pops play while its anti-lag runs, and only then, at the rate and loudness of real rally anti-lag (about 7
-  bangs a second, counted in onboard and roadside videos). The whine's pitch is the model's shaft speed times 0.78, to
+  anti-lag pops play one short burst (0.3-0.7 s) each time its anti-lag starts, and only then. Real rally anti-lag
+  bangs about 7 times a second for about 0.5 s per lift, louder still (counted in onboard and roadside videos); ours
+  are sparser and quieter, for listening comfort. The whine's pitch is the model's shaft speed times 0.78, to
   stay in the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size
   for every car. A sound bank without backfire sounds, the Fiesta Rally2's among them, plays the pops on the game's
   own pop sounds, which NGP mutes for it, unless its engine recordings already crackle off the throttle. Until the
