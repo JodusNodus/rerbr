@@ -2,24 +2,25 @@
 //!
 //! Research tooling (ours, experimental): reads a `--tyre-probe` dump,
 //! evaluates NGP's pure tyre functions (through `rbr-physics`, never copied)
-//! and the brush-v0 model in `rbr_tyre_lab::brush` over the same slips and
-//! loads, and writes CSVs plus `summary.md` into the output dir (default
-//! `/tmp/tyre-lab/cand`). Lab code only: nothing here changes what the game
-//! computes.
+//! Solves the brush-v0 [`Calibration`][brush::Calibration] at run time from
+//! NGP's swept peaks/slopes and the probe's nominal point (no NGP-derived
+//! numbers live in committed code), evaluates the candidate over the same
+//! slips and loads, and writes CSVs plus `summary.md` into the output dir
+//! (default `/tmp/tyre-lab/cand`). Lab code only: nothing here changes what
+//! the game computes.
 //!
 //! Conventions: NGP signs are kept raw (positive lateral velocity gives
 //! negative lateral force); peaks and mus below use absolute values. The
 //! candidate's inputs are normalised to the nominal point (Ford Fiesta
-//! Rally2, dry tarmac, Fz0 = 4000 N, V = 15 m/s), so every correction factor
-//! is 1 there and the calibration reproduces NGP's peaks by construction.
+//! Rally2, dry tarmac, 4 kN, 15 m/s), so every correction factor is 1 there
+//! and the calibration reproduces NGP's peaks by construction.
 
 use rbr_physics::tyre::friction_limits::BlendPair;
-use rbr_physics::tyre::patch_forces::{PatchForces, PatchInput};
+use rbr_physics::tyre::patch_forces::PatchInput;
 use rbr_physics::tyre::slip::slip_directions;
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
-use rbr_tyre_lab::brush::{
-    self, EvalInput, EvalOutput, CX0, CY0, D_CAL, M_C, N_MU, P_CAL, SURF_K_CAL, SURF_S_CAL, TEMP_GRIP_CAL, T_CAL, V_MIN,
-};
+use rbr_tyre_lab::brush::{self, Calibration, EvalInput, EvalOutput, M_C, N_MU, V_MIN};
+use rbr_tyre_lab::calibrate::{calibrate, CalPoint, CalTargets};
 use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
 
 // ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ fn ngp_forces(
     vlat: f32,
     vlong: f32,
     spin: f32,
-) -> PatchForces {
+) -> rbr_physics::tyre::patch_forces::PatchForces {
     let [lat_share, long_share, _] = slip_directions(spin, vlat, vlong, p.effective_radius);
     let _ = (lat_share, long_share);
     rbr_physics::tyre::patch_forces::patch_forces(&PatchInput {
@@ -110,6 +111,7 @@ struct CandOpts {
     sk: f64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cand_forces(
     base: &Params,
     cloud: &[(f32, f32)],
@@ -118,27 +120,27 @@ fn cand_forces(
     vlong: f64,
     spin: f64,
     o: &CandOpts,
+    cal: &Calibration,
 ) -> EvalOutput {
     let a = f64::from(patch_at(cloud, fz as f32, base.patch_length)) / 2.0;
-    brush::eval(&EvalInput {
-        fz,
-        half_length: a,
-        vx: vlong,
-        vy: vlat,
-        spin,
-        radius: f64::from(base.effective_radius),
-        bulk_temp: o.tb,
-        tread_remaining: o.d,
-        pressure: f64::from(base.air_pressure),
-        wetness: o.w,
-        temp_grip: o.tg,
-        surf_static: o.ss,
-        surf_kinetic: o.sk,
-    })
-}
-
-fn dry_opts() -> CandOpts {
-    CandOpts { tb: T_CAL, d: D_CAL, w: 0.0, tg: TEMP_GRIP_CAL, ss: SURF_S_CAL, sk: SURF_K_CAL }
+    brush::eval(
+        &EvalInput {
+            fz,
+            half_length: a,
+            vx: vlong,
+            vy: vlat,
+            spin,
+            radius: f64::from(base.effective_radius),
+            bulk_temp: o.tb,
+            tread_remaining: o.d,
+            pressure: f64::from(base.air_pressure),
+            wetness: o.w,
+            temp_grip: o.tg,
+            surf_static: o.ss,
+            surf_kinetic: o.sk,
+        },
+        cal,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +176,15 @@ fn log_exponent(fzs: &[f64], vals: &[f64]) -> f64 {
 
 fn write(path: &std::path::Path, text: &str) {
     std::fs::write(path, text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+}
+
+/// First four entries of a probe table as f64 (pads by repeating the last).
+fn arr4(xs: &[f32]) -> [f64; 4] {
+    let mut o = [0.0; 4];
+    for (i, v) in o.iter_mut().enumerate() {
+        *v = f64::from(*xs.get(i).unwrap_or(xs.last().unwrap_or(&0.0)));
+    }
+    o
 }
 
 struct LatRow {
@@ -233,19 +244,17 @@ fn main() {
     let loads = [2000.0f64, 3000.0, 4000.0, 5000.0, 6000.0];
     let r = f64::from(base.effective_radius);
     let v = 15.0;
+    let fz0 = 4000.0;
 
-    // --- lateral sweep, NGP vs candidate ------------------------------------
-    let mut lat_csv = String::from("Fz_N,alpha_deg,Fy_ngp,Fy_cand,mu_ngp,mu_cand,trail_ngp,trail_cand\n");
+    // --- lateral sweep, NGP ------------------------------------------------------
+    let mut lat_csv = String::from("Fz_N,alpha_deg,Fy_ngp,trail_ngp\n");
     let mut lat_rows: Vec<LatRow> = Vec::new();
-    let mut lat_cand_rows: Vec<LatRow> = Vec::new();
     for &fz in &loads {
         let b = blend_at(&base, fz as f32);
         let patch = patch_at(&cloud, fz as f32, base.patch_length);
-        let o = dry_opts();
-        let (mut best_n, mut best_c) = ((0.0f64, 0.0f64), (0.0f64, 0.0f64));
-        let (mut fx_, mut fy_) = (Vec::new(), Vec::new());
-        let (mut cx_, mut cy_) = (Vec::new(), Vec::new());
-        let (mut f30n, mut f30c) = (0.0, 0.0);
+        let mut best = (0.0f64, 0.0f64);
+        let (mut xs, mut ys) = (Vec::new(), Vec::new());
+        let mut f30 = 0.0;
         let mut na = 0;
         loop {
             let alpha = na as f64 * 0.25;
@@ -267,60 +276,32 @@ fn main() {
                 vlong as f32,
                 spin as f32,
             );
-            let c = cand_forces(&base, &cloud, fz, vlat, vlong, spin, &o);
-            let (fyn, fyc) = (f64::from(n.lateral_force).abs(), c.fy.abs());
-            if fyn > best_n.0 {
-                best_n = (fyn, alpha);
-            }
-            if fyc > best_c.0 {
-                best_c = (fyc, alpha);
+            let fyn = f64::from(n.lateral_force).abs();
+            if fyn > best.0 {
+                best = (fyn, alpha);
             }
             if (alpha - 30.0).abs() < 1e-9 {
-                f30n = fyn;
-                f30c = fyc;
+                f30 = fyn;
             }
             if alpha <= 2.0 {
-                fx_.push(rad);
-                fy_.push(f64::from(n.lateral_force).abs());
-                cx_.push(rad);
-                cy_.push(fyc);
+                xs.push(rad);
+                ys.push(fyn);
             }
-            lat_csv.push_str(&format!(
-                "{fz:.0},{alpha:.2},{:.2},{:.2},{:.4},{:.4},{:.5},{:.5}\n",
-                n.lateral_force,
-                c.fy,
-                fyn / fz,
-                fyc / fz,
-                n.pneumatic_trail,
-                c.trail,
-            ));
+            lat_csv.push_str(&format!("{fz:.0},{alpha:.2},{:.2},{:.5}\n", n.lateral_force, n.pneumatic_trail,));
         }
-        lat_rows.push(LatRow { fz, peak: best_n.0, alpha_peak: best_n.1, calpha: fit_slope(&fx_, &fy_), f30: f30n });
-        lat_cand_rows.push(LatRow {
-            fz,
-            peak: best_c.0,
-            alpha_peak: best_c.1,
-            calpha: fit_slope(&cx_, &cy_),
-            f30: f30c,
-        });
+        lat_rows.push(LatRow { fz, peak: best.0, alpha_peak: best.1, calpha: fit_slope(&xs, &ys), f30 });
     }
-    write(&out.join("lat_alpha.csv"), &lat_csv);
 
-    // --- longitudinal sweep --------------------------------------------------
-    let mut lon_csv = String::from("Fz_N,kappa,Fx_ngp,Fx_cand,mu_ngp,mu_cand\n");
+    // --- longitudinal sweep, NGP ---------------------------------------------------
+    let mut lon_csv = String::from("Fz_N,kappa,Fx_ngp\n");
     let mut lon_rows: Vec<LonRow> = Vec::new();
-    let mut lon_cand_rows: Vec<LonRow> = Vec::new();
     for &fz in &loads {
         let b = blend_at(&base, fz as f32);
         let patch = patch_at(&cloud, fz as f32, base.patch_length);
-        let o = dry_opts();
         let (mut bd, mut kd) = (0.0f64, 0.0f64);
         let (mut bb, mut kb) = (0.0f64, 0.0f64);
-        let (mut cd, mut kd_c) = (0.0f64, 0.0f64);
-        let (mut cb, mut kb_c) = (0.0f64, 0.0f64);
-        let (mut fx_, mut fy_) = (Vec::new(), Vec::new());
-        let (mut cx_, mut cy_) = (Vec::new(), Vec::new());
-        let (mut f05n, mut f05c) = (0.0, 0.0);
+        let (mut xs, mut ys) = (Vec::new(), Vec::new());
+        let mut f05 = 0.0;
         let mut nk = 0;
         loop {
             let kappa = -1.0 + nk as f64 * 0.02;
@@ -340,8 +321,7 @@ fn main() {
                 -v as f32,
                 spin as f32,
             );
-            let c = cand_forces(&base, &cloud, fz, 0.0, -v, spin, &o);
-            let (fxn, fxc) = (f64::from(n.longitudinal_force).abs(), c.fx.abs());
+            let fxn = f64::from(n.longitudinal_force).abs();
             if kappa >= 0.0 && fxn > bd {
                 bd = fxn;
                 kd = kappa;
@@ -350,31 +330,17 @@ fn main() {
                 bb = fxn;
                 kb = kappa;
             }
-            if kappa >= 0.0 && fxc > cd {
-                cd = fxc;
-                kd_c = kappa;
-            }
-            if kappa <= 0.0 && fxc > cb {
-                cb = fxc;
-                kb_c = kappa;
-            }
             if (kappa - 0.5).abs() < 1e-9 {
-                f05n = fxn;
-                f05c = fxc;
+                f05 = fxn;
             }
-            if kappa.abs() <= 0.04 && kappa != 0.0 {
-                fx_.push(kappa.abs());
-                fy_.push(fxn);
-                cx_.push(kappa.abs());
-                cy_.push(fxc);
+            // Fit window |kappa| in {0.02, 0.04} by closeness: 0.02 is not
+            // exact in binary, so the raw grid values overshoot 0.04 and a
+            // plain <= comparison silently drops them (leaving a tangent).
+            if ((kappa.abs() - 0.02).abs() < 1e-9 || (kappa.abs() - 0.04).abs() < 1e-9) && kappa != 0.0 {
+                xs.push(kappa.abs());
+                ys.push(fxn);
             }
-            lon_csv.push_str(&format!(
-                "{fz:.0},{kappa:.3},{:.2},{:.2},{:.4},{:.4}\n",
-                n.longitudinal_force,
-                c.fx,
-                fxn / fz,
-                fxc / fz
-            ));
+            lon_csv.push_str(&format!("{fz:.0},{kappa:.3},{:.2}\n", n.longitudinal_force));
         }
         lon_rows.push(LonRow {
             fz,
@@ -382,20 +348,146 @@ fn main() {
             kappa_drive: kd,
             peak_brake: bb,
             kappa_brake: kb,
-            cx: fit_slope(&fx_, &fy_),
-            f05: f05n,
+            cx: fit_slope(&xs, &ys),
+            f05,
         });
+    }
+
+    // --- runtime calibration ---------------------------------------------------------
+    // Nominal point from the probe dump; NGP targets from the sweeps above.
+    let point = CalPoint {
+        t_cal: f64::from(base.tread_temp),
+        d_cal: 1.0 - f64::from(base.wear_op),
+        p_cal: f64::from(base.air_pressure),
+        pf_cal: f64::from(base.stiffness_factor),
+        w_cal: 0.0,
+        surf_s_cal: f64::from(base.static_friction),
+        surf_k_cal: f64::from(base.kinetic_friction),
+        temp_grip_cal: f64::from(base.temperature_grip),
+        stiff_axis: arr4(&base.press_axis),
+        stiff_val: arr4(&base.stf_val),
+    };
+    let targets = CalTargets {
+        fz0,
+        v,
+        peak_lat: lat_rows[2].peak,
+        // Spec calibration: the candidate's slide force is 0.80 x its own
+        // peak (not NGP's slide ratio), per axis.
+        slide_lat: 0.8 * lat_rows[2].peak,
+        fit_lat: lat_rows[2].calpha,
+        peak_lon: lon_rows[2].peak_drive,
+        slide_lon: 0.8 * lon_rows[2].peak_drive,
+        fit_lon: lon_rows[2].cx,
+    };
+    let cal = calibrate(&targets, &point);
+    println!(
+        "calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N/rad, mu_s/mu_k lateral {:.4}/{:.4} (ratio {:.3}), longitudinal {:.4}/{:.4} (ratio {:.3})",
+        cal.cy0,
+        cal.cx0,
+        cal.mu_ys,
+        cal.mu_yk,
+        cal.mu_ys / cal.mu_yk,
+        cal.mu_xs,
+        cal.mu_xk,
+        cal.mu_xs / cal.mu_xk,
+    );
+
+    // Dry nominal options: the probe's own surface and grip, so every factor
+    // is 1 at the nominal point by construction.
+    let dry_opts = || CandOpts {
+        tb: f64::from(base.tread_temp),
+        d: 1.0 - f64::from(base.wear_op),
+        w: 0.0,
+        tg: f64::from(base.temperature_grip),
+        ss: f64::from(base.static_friction),
+        sk: f64::from(base.kinetic_friction),
+    };
+
+    // --- lateral sweep, candidate --------------------------------------------------
+    let mut lat_c_csv = String::from("Fz_N,alpha_deg,Fy_cand,mu_cand,trail_cand\n");
+    let mut lat_cand_rows: Vec<LatRow> = Vec::new();
+    for &fz in &loads {
+        let o = dry_opts();
+        let mut best = (0.0f64, 0.0f64);
+        let (mut xs, mut ys) = (Vec::new(), Vec::new());
+        let mut f30 = 0.0;
+        let mut na = 0;
+        loop {
+            let alpha = na as f64 * 0.25;
+            if alpha > 30.0 {
+                break;
+            }
+            na += 1;
+            let rad = alpha.to_radians();
+            let (vlat, vlong) = (v * rad.sin(), -v * rad.cos());
+            let spin = -vlong / r;
+            let c = cand_forces(&base, &cloud, fz, vlat, vlong, spin, &o, &cal);
+            if c.fy.abs() > best.0 {
+                best = (c.fy.abs(), alpha);
+            }
+            if (alpha - 30.0).abs() < 1e-9 {
+                f30 = c.fy.abs();
+            }
+            if alpha <= 2.0 {
+                xs.push(rad);
+                ys.push(c.fy.abs());
+            }
+            lat_c_csv.push_str(&format!("{fz:.0},{alpha:.2},{:.2},{:.4},{:.5}\n", c.fy, c.fy.abs() / fz, c.trail));
+        }
+        lat_cand_rows.push(LatRow { fz, peak: best.0, alpha_peak: best.1, calpha: fit_slope(&xs, &ys), f30 });
+    }
+    write(&out.join("lat_alpha.csv"), &lat_c_csv);
+
+    // --- longitudinal sweep, candidate -----------------------------------------------
+    let mut lon_c_csv = String::from("Fz_N,kappa,Fx_cand,mu_cand\n");
+    let mut lon_cand_rows: Vec<LonRow> = Vec::new();
+    for &fz in &loads {
+        let o = dry_opts();
+        let (mut cd, mut kd_c) = (0.0f64, 0.0f64);
+        let (mut cb, mut kb_c) = (0.0f64, 0.0f64);
+        let (mut xs, mut ys) = (Vec::new(), Vec::new());
+        let mut f05 = 0.0;
+        let mut nk = 0;
+        loop {
+            let kappa = -1.0 + nk as f64 * 0.02;
+            if kappa > 1.0 + 1e-9 {
+                break;
+            }
+            nk += 1;
+            let spin = (1.0 + kappa) * v / r;
+            let c = cand_forces(&base, &cloud, fz, 0.0, -v, spin, &o, &cal);
+            if kappa >= 0.0 && c.fx.abs() > cd {
+                cd = c.fx.abs();
+                kd_c = kappa;
+            }
+            if kappa <= 0.0 && c.fx.abs() > cb {
+                cb = c.fx.abs();
+                kb_c = kappa;
+            }
+            if (kappa - 0.5).abs() < 1e-9 {
+                f05 = c.fx.abs();
+            }
+            // Same closeness window as the NGP sweep (see above).
+            if ((kappa.abs() - 0.02).abs() < 1e-9 || (kappa.abs() - 0.04).abs() < 1e-9) && kappa != 0.0 {
+                xs.push(kappa.abs());
+                ys.push(c.fx.abs());
+            }
+            lon_c_csv.push_str(&format!("{fz:.0},{kappa:.3},{:.2},{:.4}\n", c.fx, c.fx.abs() / fz));
+        }
         lon_cand_rows.push(LonRow {
             fz,
             peak_drive: cd,
             kappa_drive: kd_c,
             peak_brake: cb,
             kappa_brake: kb_c,
-            cx: fit_slope(&cx_, &cy_),
-            f05: f05c,
+            cx: fit_slope(&xs, &ys),
+            f05,
         });
     }
-    write(&out.join("long_kappa.csv"), &lon_csv);
+    write(&out.join("long_kappa.csv"), &lon_c_csv);
+    // Keep the NGP-only sweep files identical in shape to before.
+    write(&out.join("lat_ngp.csv"), &lat_csv);
+    write(&out.join("long_ngp.csv"), &lon_csv);
 
     // Load exponents.
     let fzs: Vec<f64> = loads.to_vec();
@@ -408,8 +500,8 @@ fn main() {
     let mut speed_csv = String::from("V,peak_mu_ngp,peak_mu_cand\n");
     let mut speed_rows: Vec<(f64, f64, f64)> = Vec::new();
     for vv in [10.0, 15.0, 20.0, 30.0] {
-        let b = blend_at(&base, 4000.0);
-        let patch = patch_at(&cloud, 4000.0, base.patch_length);
+        let b = blend_at(&base, fz0 as f32);
+        let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
         let o = dry_opts();
         let (mut bn, mut bc) = (0.0f64, 0.0f64);
         let mut na = 0;
@@ -427,15 +519,15 @@ fn main() {
                 &b,
                 base.static_friction,
                 base.kinetic_friction,
-                4000.0,
+                fz0 as f32,
                 patch,
                 vlat as f32,
                 vlong as f32,
                 spin as f32,
             );
-            let c = cand_forces(&base, &cloud, 4000.0, vlat, vlong, spin, &o);
-            bn = bn.max(f64::from(n.lateral_force).abs() / 4000.0);
-            bc = bc.max(c.fy.abs() / 4000.0);
+            let c = cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal);
+            bn = bn.max(f64::from(n.lateral_force).abs() / fz0);
+            bc = bc.max(c.fy.abs() / fz0);
         }
         speed_csv.push_str(&format!("{vv:.0},{bn:.4},{bc:.4}\n"));
         speed_rows.push((vv, bn, bc));
@@ -445,8 +537,8 @@ fn main() {
     // --- trail at 1 deg and at the peak (4 kN) -----------------------------------
     let mut trail_csv = String::from("alpha_deg,trail_ngp,trail_cand\n");
     let o = dry_opts();
-    let b = blend_at(&base, 4000.0);
-    let patch = patch_at(&cloud, 4000.0, base.patch_length);
+    let b = blend_at(&base, fz0 as f32);
+    let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
     let mut na = 0;
     loop {
         let alpha = na as f64 * 0.25;
@@ -462,13 +554,13 @@ fn main() {
             &b,
             base.static_friction,
             base.kinetic_friction,
-            4000.0,
+            fz0 as f32,
             patch,
             vlat as f32,
             vlong as f32,
             spin as f32,
         );
-        let c = cand_forces(&base, &cloud, 4000.0, vlat, vlong, spin, &o);
+        let c = cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal);
         trail_csv.push_str(&format!("{alpha:.2},{:.5},{:.5}\n", n.pneumatic_trail, c.trail));
     }
     let at = |alpha: f64| -> (f64, f64) {
@@ -480,18 +572,18 @@ fn main() {
             &b,
             base.static_friction,
             base.kinetic_friction,
-            4000.0,
+            fz0 as f32,
             patch,
             vlat as f32,
             vlong as f32,
             spin as f32,
         );
-        let c = cand_forces(&base, &cloud, 4000.0, vlat, vlong, spin, &o);
+        let c = cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal);
         (f64::from(n.pneumatic_trail), c.trail)
     };
     let (trail_1n, trail_1c) = at(1.0);
     // NGP's trail keeps falling past its force peak (sliding phase), while the
-    // brush moment is 0 once saturated: report each model at its own peak.
+    // brush moment is 0 once saturated: each model at its own peak.
     let (trail_pn, _) = at(lat_rows[2].alpha_peak);
     let (_, trail_pc) = at(lat_cand_rows[2].alpha_peak);
     write(&out.join("trail.csv"), &trail_csv);
@@ -525,12 +617,12 @@ fn main() {
                     vlong as f32,
                     spin as f32,
                 );
-                let c = cand_forces(&base, &cloud, fz, vlat, vlong, spin, &o);
+                let c = cand_forces(&base, &cloud, fz, vlat, vlong, spin, &o, &cal);
                 comb_csv.push_str(&format!(
                     "{afix:.1},{kappa:.3},{:.2},{:.2},{:.2},{:.2}\n",
                     n.longitudinal_force, n.lateral_force, c.fx, c.fy,
                 ));
-                if (fz - 4000.0).abs() < 1e-9 && [-0.25, 0.0, 0.25].contains(&kappa) {
+                if (fz - fz0).abs() < 1e-9 && [-0.25, 0.0, 0.25].contains(&kappa) {
                     comb_rows.push((
                         afix,
                         kappa,
@@ -548,7 +640,7 @@ fn main() {
     // --- relaxation lengths --------------------------------------------------------
     let k_y = f64::from(base.carcass_lat) * f64::from(base.stiffness_factor);
     let k_x = f64::from(base.carcass_tor) * f64::from(base.stiffness_factor) / (r * r);
-    let cy_fz0 = brush::stiffness_at(4000.0, T_CAL, D_CAL, P_CAL, CY0);
+    let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, &cal);
     let ngp_sigma = lat_rows[2].calpha / k_y;
     let mut sigma_csv = String::from("V,sigma_ngp,sigma_cand\n");
     let mut sigma_rows: Vec<(f64, f64)> = Vec::new();
@@ -563,14 +655,15 @@ fn main() {
     // NGP temperature grip: 0.4 tread + 0.6 surface (step.rs weights); the
     // surface term stays at the probe value, the tread term follows RubMyFct.
     let rub = |t: f32| interp(&base.temp_axis, &base.rub_my, t);
-    let grip =
-        |tb: f64| f64::from(base.temperature_grip) + 0.4 * (f64::from(rub(tb as f32)) - f64::from(rub(T_CAL as f32)));
+    let grip = |tb: f64| {
+        f64::from(base.temperature_grip) + 0.4 * (f64::from(rub(tb as f32)) - f64::from(rub(point.t_cal as f32)))
+    };
     let mut temp_csv = String::from("case,calpha_ngp,calpha_cand,mu_ngp,mu_cand\n");
     let mut temp_rows: Vec<(&str, f64, f64, f64, f64)> = Vec::new();
-    for (name, tb) in [("cold 293K", 293.15), ("nominal", T_CAL), ("hot 340K", 340.0)] {
+    for (name, tb) in [("cold 293K", 293.15), ("nominal", point.t_cal), ("hot 340K", 340.0)] {
         let g = grip(tb);
-        let b = blend_at(&base, 4000.0);
-        let patch = patch_at(&cloud, 4000.0, base.patch_length);
+        let b = blend_at(&base, fz0 as f32);
+        let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
         // NGP: stiffness untouched, mu scales with the grip factor.
         let n_peak = {
             let mut best = 0.0f64;
@@ -586,8 +679,8 @@ fn main() {
                 let spin = -vlong / r;
                 let sc = (base.static_friction as f64 * g / f64::from(base.temperature_grip)) as f32;
                 let kc = (base.kinetic_friction as f64 * g / f64::from(base.temperature_grip)) as f32;
-                let n = ngp_forces(&base, &b, sc, kc, 4000.0, patch, vlat as f32, vlong as f32, spin as f32);
-                best = best.max(f64::from(n.lateral_force).abs() / 4000.0);
+                let n = ngp_forces(&base, &b, sc, kc, fz0 as f32, patch, vlat as f32, vlong as f32, spin as f32);
+                best = best.max(f64::from(n.lateral_force).abs() / fz0);
             }
             best
         };
@@ -603,9 +696,9 @@ fn main() {
             let rad = alpha.to_radians();
             let (vlat, vlong) = (v * rad.sin(), -v * rad.cos());
             let spin = -vlong / r;
-            best = best.max(cand_forces(&base, &cloud, 4000.0, vlat, vlong, spin, &o).fy.abs() / 4000.0);
+            best = best.max(cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal).fy.abs() / fz0);
         }
-        let calpha_c = brush::stiffness_at(4000.0, tb, D_CAL, P_CAL, CY0);
+        let calpha_c = brush::stiffness_at(fz0, tb, point.d_cal, point.p_cal, cal.cy0, &cal);
         // NGP cornering stiffness has no bulk-temperature term.
         temp_csv.push_str(&format!("{name},{:.0},{:.0},{:.4},{:.4}\n", lat_rows[2].calpha, calpha_c, n_peak, best));
         temp_rows.push((name, lat_rows[2].calpha, calpha_c, n_peak, best));
@@ -613,14 +706,15 @@ fn main() {
     write(&out.join("temp.csv"), &temp_csv);
 
     // --- new vs 60% worn ---------------------------------------------------------------
-    // NGP: stiffness untouched; surface scales by the class-2 wear term
-    // ((0.95 - 1) * 0.6 + 1 = 0.97). Candidate: own wear factors at d = 0.4.
+    // NGP: stiffness untouched; surface scales by the class-2 wear term at
+    // 0.6. Candidate: own stiffness/friction wear factors at d = 0.4.
     let mut wear_csv = String::from("case,calpha_ngp,calpha_cand,mu_ngp,mu_cand\n");
     let mut wear_rows: Vec<(&str, f64, f64, f64, f64)> = Vec::new();
     for (name, d_cand, wear_ngp) in [("new", 1.0, 0.0f64), ("60pct worn", 0.4, 0.6f64)] {
-        let wf = (0.95 - 1.0) * wear_ngp + 1.0;
-        let b = blend_at(&base, 4000.0);
-        let patch = patch_at(&cloud, 4000.0, base.patch_length);
+        let class = 2usize.min(base.wear_ftr.len().saturating_sub(1));
+        let wf = (base.wear_ftr[class] as f64 - 1.0) * wear_ngp + 1.0;
+        let b = blend_at(&base, fz0 as f32);
+        let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
         let sc = (base.static_friction as f64 * wf) as f32;
         let kc = (base.kinetic_friction as f64 * wf) as f32;
         let mut best_n = 0.0f64;
@@ -635,9 +729,9 @@ fn main() {
             let rad = alpha.to_radians();
             let (vlat, vlong) = (v * rad.sin(), -v * rad.cos());
             let spin = -vlong / r;
-            let n = ngp_forces(&base, &b, sc, kc, 4000.0, patch, vlat as f32, vlong as f32, spin as f32);
+            let n = ngp_forces(&base, &b, sc, kc, fz0 as f32, patch, vlat as f32, vlong as f32, spin as f32);
             let fyn = f64::from(n.lateral_force).abs();
-            best_n = best_n.max(fyn / 4000.0);
+            best_n = best_n.max(fyn / fz0);
             if alpha <= 2.0 {
                 xs.push(rad);
                 ys.push(fyn);
@@ -656,8 +750,8 @@ fn main() {
             let rad = alpha.to_radians();
             let (vlat, vlong) = (v * rad.sin(), -v * rad.cos());
             let spin = -vlong / r;
-            let fyc = cand_forces(&base, &cloud, 4000.0, vlat, vlong, spin, &o).fy.abs();
-            best_c = best_c.max(fyc / 4000.0);
+            let fyc = cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal).fy.abs();
+            best_c = best_c.max(fyc / fz0);
             if alpha <= 2.0 {
                 xc.push(rad);
                 yc.push(fyc);
@@ -676,10 +770,9 @@ fn main() {
 
     // --- wet: peak mu_y vs speed ----------------------------------------------------------
     // NGP surface: stage tag by wetness (damp 38 at W = 0.25, wet 39 at W =
-    // 1, values verified from the DLL: 1.2025/0.944 and 1.105/0.8508), times
-    // the dry tyre's wet slope (additive: base - 0.075 W, class 2) times the
-    // nominal temperature grip times the wear term. Speed-independent.
-    // Candidate: same surface mu plus the hydroplaning-style loss.
+    // 1) times the dry tyre's own wet slope / wear factor from
+    // surface_friction. Speed-independent. Candidate: same surface mu plus
+    // the hydroplaning-style loss.
     let mut wet_csv = String::from("W,V,d,peak_mu_ngp,peak_mu_cand\n");
     let mut wet_rows: Vec<(f64, f64, f64, f64, f64)> = Vec::new();
     for &w in &[0.25, 1.0] {
@@ -700,11 +793,11 @@ fn main() {
                 wetness_second: w as f32,
                 sector_wear: wear_ngp as f32,
             });
-            let ss = tag_s * f64::from(tyre.first) * TEMP_GRIP_CAL;
-            let sk = tag_k * f64::from(tyre.first) * TEMP_GRIP_CAL;
+            let ss = tag_s * f64::from(tyre.first) * f64::from(base.temperature_grip);
+            let sk = tag_k * f64::from(tyre.first) * f64::from(base.temperature_grip);
             for vv in [10.0, 15.0, 20.0, 30.0, 40.0] {
-                let b = blend_at(&base, 4000.0);
-                let patch = patch_at(&cloud, 4000.0, base.patch_length);
+                let b = blend_at(&base, fz0 as f32);
+                let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
                 let mut best_n = 0.0f64;
                 let mut na = 0;
                 loop {
@@ -721,13 +814,13 @@ fn main() {
                         &b,
                         ss as f32,
                         sk as f32,
-                        4000.0,
+                        fz0 as f32,
                         patch,
                         vlat as f32,
                         vlong as f32,
                         spin as f32,
                     );
-                    best_n = best_n.max(f64::from(n.lateral_force).abs() / 4000.0);
+                    best_n = best_n.max(f64::from(n.lateral_force).abs() / fz0);
                 }
                 let o = CandOpts { w, d: d_cand, ss, sk, ..dry_opts() };
                 let mut best_c = 0.0f64;
@@ -741,7 +834,7 @@ fn main() {
                     let rad = alpha.to_radians();
                     let (vlat, vlong) = (vv * rad.sin(), -vv * rad.cos());
                     let spin = -vlong / r;
-                    best_c = best_c.max(cand_forces(&base, &cloud, 4000.0, vlat, vlong, spin, &o).fy.abs() / 4000.0);
+                    best_c = best_c.max(cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal).fy.abs() / fz0);
                 }
                 wet_csv.push_str(&format!("{w:.2},{vv:.0},{dname},{best_n:.4},{best_c:.4}\n"));
                 wet_rows.push((w, vv, d_cand, best_n, best_c));
@@ -749,6 +842,51 @@ fn main() {
         }
     }
     write(&out.join("wet.csv"), &wet_csv);
+
+    // --- locked wheel over peak mu_x at 10 m/s ----------------------------------------------
+    // Vs = 10 m/s at lock (kappa = -1): NGP's sliding mu over its drive peak
+    // vs the candidate's, dry (target <= 0.885: dry ABS beats locked by 13%,
+    // Kebbati et al., Sustainability 15:6945, 2023) and wet (0.24/0.35).
+    // The candidate's V_MU is not retuned for this row; it reports as is.
+    let mut lock_csv = String::from("case,mu_peak_ngp,mu_lock_ngp,mu_peak_cand,mu_lock_cand\n");
+    let mut lock_rows: Vec<(&str, f64, f64, f64, f64)> = Vec::new();
+    for (name, ss, sk, w) in [
+        ("dry", f64::from(base.static_friction), f64::from(base.kinetic_friction), 0.0),
+        (
+            "wet W=1",
+            1.105 * (1.0 + f64::from(base.wet_slope[class_of(&base)]) * 1.0) * f64::from(base.temperature_grip),
+            0.8508 * (1.0 + f64::from(base.wet_slope[class_of(&base)]) * 1.0) * f64::from(base.temperature_grip),
+            1.0,
+        ),
+    ] {
+        let vv = 10.0;
+        let b = blend_at(&base, fz0 as f32);
+        let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
+        // Drive peak at this speed.
+        let mut peak_n = 0.0f64;
+        let mut k = 0.0;
+        while k <= 1.0 {
+            let spin = (1.0 + k) * vv / r;
+            let n = ngp_forces(&base, &b, ss as f32, sk as f32, fz0 as f32, patch, 0.0, -vv as f32, spin as f32);
+            peak_n = peak_n.max(f64::from(n.longitudinal_force).abs() / fz0);
+            k += 0.02;
+        }
+        let n_lock = ngp_forces(&base, &b, ss as f32, sk as f32, fz0 as f32, patch, 0.0, -vv as f32, 0.0);
+        let lock_n = f64::from(n_lock.longitudinal_force).abs() / fz0;
+        let o = CandOpts { w, ss, sk, ..dry_opts() };
+        let mut peak_c = 0.0f64;
+        let mut k = 0.0;
+        while k <= 1.0 {
+            let spin = (1.0 + k) * vv / r;
+            peak_c = peak_c.max(cand_forces(&base, &cloud, fz0, 0.0, -vv, spin, &o, &cal).fx.abs() / fz0);
+            k += 0.02;
+        }
+        let c_lock = cand_forces(&base, &cloud, fz0, 0.0, -vv, 0.0, &o, &cal);
+        let lock_c = c_lock.fx.abs() / fz0;
+        lock_csv.push_str(&format!("{name},{peak_n:.4},{lock_n:.4},{peak_c:.4},{lock_c:.4}\n"));
+        lock_rows.push((name, peak_n, lock_n, peak_c, lock_c));
+    }
+    write(&out.join("locked.csv"), &lock_csv);
 
     // --- step steer: 2 deg at 10/20/30 m/s, distance to 63% -------------------------------
     let mut step_csv = String::from("V,sigma_m,x63_m\n");
@@ -758,13 +896,13 @@ fn main() {
         let vsy = vv * alpha.sin();
         let vx = -vv * alpha.cos();
         let vr = vv * alpha.cos();
-        let cy = brush::stiffness_at(4000.0, T_CAL, D_CAL, P_CAL, CY0);
-        let cx = brush::stiffness_at(4000.0, T_CAL, D_CAL, P_CAL, CX0);
+        let cy = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, &cal);
+        let cx = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cx0, &cal);
         let (sig_y, sig_x) = brush::sigma_lengths(cy, cx, k_y, k_x, vx);
         let o = dry_opts();
         // Steady force at the step slip.
         let spin = -vx / r;
-        let f_ss = cand_forces(&base, &cloud, 4000.0, vv * alpha.sin(), vx, spin, &o).fy.abs();
+        let f_ss = cand_forces(&base, &cloud, fz0, vv * alpha.sin(), vx, spin, &o, &cal).fy.abs();
         let dt = 1.0 / 720.0;
         let mut s = brush::TransState::default();
         let mut dist = 0.0;
@@ -774,7 +912,7 @@ fn main() {
             // velocity the transient state implies (exact in the linear
             // regime where the 63% point sits).
             let vy_in = s.uy / sig_y * vr;
-            let f = cand_forces(&base, &cloud, 4000.0, vy_in, vx, spin, &o).fy.abs();
+            let f = cand_forces(&base, &cloud, fz0, vy_in, vx, spin, &o, &cal).fy.abs();
             dist += vv * dt;
             if f >= 0.63 * f_ss {
                 break;
@@ -789,25 +927,28 @@ fn main() {
     let mut md = String::new();
     md.push_str("# brush-v0 vs NGP vs published targets\n\n");
     md.push_str(&format!(
-        "Nominal point: Ford Fiesta Rally2, dry tarmac, Fz0 4000 N, V = 15 m/s, R {:.4} m, P {:.0} kPa, \
-bulk {:.1} K, tread remaining {:.4}, NGP temp grip {:.4}.\n\n",
+        "Nominal point: Ford Fiesta Rally2, dry tarmac, {:.0} N, V = {:.0} m/s, R {:.4} m, P {:.0} kPa, \
+bulk {:.1} K, tread remaining {:.4}, NGP temp grip {:.4}. Calibration solved at run time from the probe dump \
+and NGP's sweep (no NGP-derived numbers in committed code).\n\n",
+        fz0,
+        v,
         r,
         base.air_pressure / 1000.0,
-        T_CAL,
-        D_CAL,
-        TEMP_GRIP_CAL,
+        point.t_cal,
+        point.d_cal,
+        point.temp_grip_cal,
     ));
     md.push_str(&format!(
         "Calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N/rad, mu_s/mu_k lateral {:.4}/{:.4} (ratio {:.3}), \
 longitudinal {:.4}/{:.4} (ratio {:.3}).\n\n",
-        CY0,
-        CX0,
-        brush::MU_Y_S,
-        brush::MU_Y_K,
-        brush::MU_Y_S / brush::MU_Y_K,
-        brush::MU_X_S,
-        brush::MU_X_K,
-        brush::MU_X_S / brush::MU_X_K,
+        cal.cy0,
+        cal.cx0,
+        cal.mu_ys,
+        cal.mu_yk,
+        cal.mu_ys / cal.mu_yk,
+        cal.mu_xs,
+        cal.mu_xk,
+        cal.mu_xs / cal.mu_xk,
     ));
     md.push_str("Signs: NGP raw (positive lateral velocity -> negative force); peaks/mus are absolute values.\n\n");
 
@@ -861,6 +1002,24 @@ longitudinal {:.4}/{:.4} (ratio {:.3}).\n\n",
     md.push_str(" | brush-v0 ");
     md.push_str(&format!("{:.3} (calibrated to 0.80).\n\n", lon_cand_rows[2].f05 / lon_cand_rows[2].peak_drive));
 
+    md.push_str("## locked wheel over peak mu_x at 10 m/s (Vs = 10 m/s at lock)\n\n");
+    md.push_str(
+        "| | NGP peak | NGP locked | NGP ratio | brush-v0 peak | brush-v0 locked | brush-v0 ratio | target |\n",
+    );
+    md.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+    for (i, (name, pn, ln, pc, lc)) in lock_rows.iter().enumerate() {
+        let target = if i == 0 { "<= 0.885 dry (Kebbati et al.)" } else { "0.69 wet (0.24/0.35)" };
+        md.push_str(&format!(
+            "| {name} | {pn:.3} | {ln:.3} | {:.3} | {pc:.3} | {lc:.3} | {:.3} | {target} |\n",
+            ln / pn,
+            lc / pc,
+        ));
+    }
+    md.push_str(
+        "\nKebbati et al., Sustainability 15:6945, 2023: dry ABS beats locked by 13% at 30-40 km/h. \
+V_MU is not retuned for this row.\n\n",
+    );
+
     md.push_str("## peak mu_y vs speed (4 kN)\n\n");
     md.push_str("| V (m/s) | NGP | brush-v0 |\n| --- | --- | --- |\n");
     for (vv, bn, bc) in &speed_rows {
@@ -908,8 +1067,8 @@ longitudinal {:.4}/{:.4} (ratio {:.3}).\n\n",
         md.push_str(&format!("| {w:.2} | {vv:.0} | {} | {bn:.3} | {bc:.3} |\n", if *d > 0.9 { "new" } else { "worn" }));
     }
     md.push_str(
-        "\nNGP stage values (DLL): dry 1.30/1.04, damp tag 38 1.2025/0.944, wet tag 39 1.105/0.8508; \
-times the dry tyre's wet slope. Candidate: same surface mu plus the hydroplaning-style loss.\n\n",
+        "\nNGP stage values (damp tag 38 / wet tag 39) times the dry tyre's wet slope. \
+Candidate: same surface mu plus the hydroplaning-style loss; the dry-wear gain fades with W.\n\n",
     );
 
     md.push_str("## step steer 2 deg: distance to 63% (brush-v0 transient)\n\n");
@@ -922,11 +1081,16 @@ times the dry tyre's wet slope. Candidate: same surface mu plus the hydroplaning
         "M_C = {M_C} (0.5-0.65 target, Singh & Sivaramakrishnan, Goodyear, arXiv 2305.18422, load sweep); \
 N_MU = {N_MU} (lateral ~0.87 same paper; longitudinal assumed); V_MU = 5 m/s, Lorentzian form assumed \
 (Grosch/Persson direction); film 1.0 mm, ref 0.5 mm, kept 0.4, vp = 6.36 sqrt(p/kPa) (NASA/Horne via \
-Zhang et al., Lubricants 13:76, 2025), tread term (0.6+0.4d) assumed; brush ch. 3 and transient ch. 7 \
-Pacejka 3rd ed.; K_V = 0.021 s (Vera et al., passenger tyre, transfer assumed). \
+Zhang et al., Lubricants 13:76, 2025), tread term (0.6+0.4d) assumed; dry-wear gain 1 + 0.167(1-d)(1-W) \
+assumed (fades in the wet); brush ch. 3 and transient ch. 7 Pacejka 3rd ed.; K_V = 0.021 s \
+(Vera et al., passenger tyre, transfer assumed). \
 V_MIN = {V_MIN} m/s floor; below 2 m/s out of scope (sticking model kept for later).\n"
     ));
     write(&out.join("summary.md"), &md);
     println!("{md}");
     println!("csv + summary.md in {}", out.display());
+}
+
+fn class_of(base: &Params) -> usize {
+    2usize.min(base.wet_slope.len().saturating_sub(1))
 }
