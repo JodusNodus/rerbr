@@ -182,9 +182,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
 - Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
   to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
-  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.89 s at 1500, cable_turbo 0.69 s
-  at 3000. At 1000 rpm both make almost no boost (1.09 and 1.01 bar), so 5 bar BMEP is already near WOT (0.05 and
-  0.01 s); tested ≤ 1.2 s only. Higher up it is faster: turbo sample 0.60 s at 2000, 0.27 s at 3000.
+  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.64 s at 2000, cable_turbo 0.76 s
+  at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
+  almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
 
 ## Open
 
