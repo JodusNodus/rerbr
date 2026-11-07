@@ -56,8 +56,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The idle air adds to the aim; anti-lag's kick overrides it [MoTeC DBW]. Blips and shift cuts come through the
   interface's throttle (NGP's control unit).
 - Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle].
-  Peak net torque at pedal 10/20/30/50 %: na 29/43/54/77 %, turbo 17/42/55/88 %, old 31/47/63/93 %, cable_turbo
-  15/26/45/87 % of max (BeamNG 2023: 49/65/76/91 %).
+  Peak net torque at pedal 10/20/30/50 %: na 25/43/54/77 %, turbo 12/34/48/88 %, old 27/47/63/93 %, cable_turbo
+  13/25/38/88 % of max (BeamNG 2023: 49/65/76/91 %).
 
 ## Torque (`calibrate.rs`, `ecu.rs`)
 
