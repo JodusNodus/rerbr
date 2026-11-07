@@ -63,7 +63,7 @@ example set (255/55R20, Fz0 6752 N, 260 kPa) shipped with MFeval.jl, and PB, the
 | Friction against sliding speed | g(Vs) = μ_C + (μ_S - μ_C) exp(-√(Vs/v_s)), μ_C 0.8, μ_S 1.55, v_s 6.57 m/s | Canudas de Wit et al., VSD 39 (2003) 189-226, eqs. 21-22, Table 1: their distributed LuGre (brush) fitted to straight braking on a dry test track (author preprint HAL-00949740; v_s held fixed in the fit) |
 | Sliding over peak | lateral 0.83 full slide (PB), 0.73 asymptote (MF6.1); longitudinal 0.71 at κ 0.67 (PB), 0.65 (MF6.1); locked over peak dry 0.65 to 0.885, wet 0.64 / 0.69 | sets; Burckhardt 1993 dry/wet asphalt via three reproductions (test speed unstated); Kebbati et al., Sustainability 15:6945 (2023), ABS over locked at 30-40 km/h (secondary read) |
 | Dry friction against speed | peak "relatively unchanged" with speed on dry runways, fast drop wet; Kiencke & Nielsen's factor exp(-c4 Vs), c4 0.02-0.04 s/m | Horne & Leland, NASA TN D-1376 (1962), aircraft tyres; Shadrin et al., IOP Conf. Ser. 832:012011 (2020) (book not read) |
-| Relaxation length | grows with speed: σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m (car tyre bench, ≤2 Hz); motorcycle tyres 0.1-0.4 m, "higher ... at higher speeds"; MF-Swift: independent of V, set by load, slip and pressure; σ/R0 at Fz0 lateral 1.01 / 1.84, longitudinal 1.19 / 1.44 | Vera et al. (2022); Cossalter, Lot & Massaro, Motorcycle Dynamics, ch. 1 (Wiley excerpt); Schmeitz, TNO MF-Tyre/MF-Swift lecture (2013); MF 5.2 truck / MF6.1 sets |
+| Relaxation length | 0.12-0.45 m, longer at higher speed and load, of the order of the wheel radius at Fz0 (Pacejka); grows with speed: σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m (car tyre bench, ≤2 Hz; also with frequency, <0.5 m near 0 Hz to ~1.0 m at 1 Hz); motorcycle tyres 0.1-0.4 m, "higher ... at higher speeds"; MF-Swift: independent of V, set by load, slip and pressure; σ/R0 at Fz0 lateral 1.01 / 1.84, longitudinal 1.19 / 1.44 | Pacejka via Wikipedia "Relaxation length"; Vera et al. (2022); Cossalter, Lot & Massaro, Motorcycle Dynamics, ch. 1 (Wiley excerpt); Schmeitz, TNO MF-Tyre/MF-Swift lecture (2013); MF 5.2 truck / MF6.1 sets |
 | Trail at small slip | a/3 (half contact length a) | brush theory (Pacejka 2012) |
 | Convection | Nu ∝ Re^0.8 (NGP 0.78) | West & Limebeer, VSD 60 (2022) |
 | Hydroplaning speed | v_p = 6.36 √p km/h (p in kPa) for water deeper than the tread grooves; thin films raise it (Huebner: 26.04 WD^-0.259 mph for WD < 0.1 in); 2 of 8 mm tread costs 17-22 % of v_p; μ ≤ 0.05 at total hydroplaning | Horne & Dreher, NASA TN D-2056 (1963), metric form in Zhang et al., Lubricants 13:76 (2025); Gallaway-Huebner via Ketabdari et al., PLOS ONE (2022); ADAC worn-tyre test (2026) |
@@ -93,19 +93,20 @@ single-contact-point transient (ch. 7). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and �
 (-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed by Canudas de Wit's g(Vs) with their v_s and μ_C/μ_S; NGP's temperature grip kept; dry wear
 +10 % at 60 % worn, fading with wetness; wet loss h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 0.7 mm and
-v_p = 6.36 √p (0.75 + 0.25 d); σ = C/k + 0.021 V. Calibrated at run time to NGP's lateral peak and slope and
+v_p = 6.36 √p (0.75 + 0.25 d); σ = C/k, no speed term. Calibrated at run time to NGP's lateral peak and slope and
 longitudinal peak at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
 
 Ours, not from papers: the wet loss's film ramp, its 0.5 mm, the quadratic and the 0.6 weight, and the wear gain's
-fade with W; keeping the passenger tyre's σ speed slope (the evidence is split); taking the longitudinal exponents
+fade with W; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
+excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-0.45 m); taking the longitudinal exponents
 and Kx/Ky as the mean of two road-tyre sets; NGP's carcass stiffnesses and temperature grip.
 
 Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in brackets where it changed):
 
 - Meets: peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry locked over peak at 10 m/s 0.80 (0.70); braking
   peaks within 4 % of NGP's (17 %); Kx/Fz 22 by the |κ| ≤ 0.04 fit, Kx ∝ Fz^1.14; peak Fx ∝ Fz^0.96; Cα ∝ Fz^0.64;
-  Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn; peak Fy ∝ Fz^0.85; σ_y/R 0.96-1.96 at
-  5-20 m/s.
+  Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn; peak Fy ∝ Fz^0.85; σ_y 0.20 m at 4 kN
+  (σ/R 0.63; NGP 0.17 m; Pacejka 0.12-0.45 m), 63 % of a 2° step in 0.18-0.21 m at 10-30 m/s.
 - New behaviour: peak μ_y falls 10 % from 10 to 30 m/s (1.310/1.264/1.231/1.181, NGP flat; Kiencke & Nielsen's
   c4 0.02-0.04 s/m gives 4-8 % at 10 % slip and 20 m/s); wet W = 1 peak 0.99/0.78/0.64 at 10/20/30 m/s against
   NGP's flat 1.00.
@@ -113,7 +114,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   and 0.65-0.71; NGP 0.87/0.92): the published g falls less after the peak than the sets; wet locked over peak 0.77
   (0.64-0.69): the wet adds no sliding-speed loss; the wet loss is the wrong shape: the new tyre loses 18 % from 20
   to 30 m/s (Contidrom: nothing to 100 km/h) and the worn one barely more than new at 30 m/s (Contidrom: 0.52 of
-  new from 100 km/h); peak slip angle 8.75° (6.5-8.5°); σ/R 2.6 at 30 m/s; trail 0 past saturation (NGP 0.004 m).
+  new from 100 km/h); peak slip angle 8.75° (6.5-8.5°); trail 0 past saturation (NGP 0.004 m).
 
 ## In game
 
@@ -133,9 +134,10 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 - Transient: the single contact point per wheel, the model's state (snapshots don't carry it; restart and touch-down
   zero it). σ_x takes NGP's speed-scaled torsional stiffness (0.1 of it below 10 m/s), as NGP's own spring does, so
   the longitudinal relaxation is ~10× longer at low speed, for NGP's stability.
-- Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental`): 150000 steps reach 3007 / 3011
-  / 3027 m, split 1 118.82 / 118.54 / 118.20 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.52 / 9.04 m (11.4 /
-  11.8 / 12.5 m/s² mean). No measurable step cost (100000 steps 31-33 s either way).
+- Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental`, σ without the speed term, engine
+  with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 / 118.39 / 116.95 s, no NaN; full
+  brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No measurable step cost (100000
+  steps 31-33 s either way).
 - Ramped 40 m circle (map 85, `--circle -260,120,40 --circle-ramp 0.25`): NGP and the brush alone hold the same
   steering to the same limit, 8.6 m/s², then both run wide at full lock; the autopilot's steering steps (0.008) hide
   any linear-range difference. Steady state matches by the fit; the differences are in transients, combined slip,
@@ -143,8 +145,11 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 
 ## Open
 
-- Driving it: the 4-9× longer lateral transient is the largest change a driver would feel; whether σ grows with speed
-  is unsettled. The autopilot's pace is NGP's within 1 %; a driver's view is the next check.
+- Driving it: combined slip (half NGP's side force at 4° and 25 % slip) is the largest change a driver would feel.
+  The autopilot's pace is NGP's within 1 %; a driver's view is the next check.
+- σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
+  stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
+  7.5 bar (Meccanica 2023).
 - Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest), the film's effect on v_p,
   and a sliding-speed loss for wet roads that fits locked-wheel data.
 - Low speed: LuGre bristle state with the published σ_0 (would also remove NGP's 360 Hz alternation) or NGP's

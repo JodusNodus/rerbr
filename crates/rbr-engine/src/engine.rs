@@ -247,6 +247,9 @@ pub struct Out {
     pub cut: f64,
     pub retard: f64,
     pub anti_lag: bool,
+    /// The blow-off valve's opening at the step's end, 0..=1 (0 without a turbo), and the air's pressure, Pa.
+    pub blow_off: f64,
+    pub p_a: f64,
     /// The cylinders' air flow, kg/s, and the charge per cycle, kg.
     pub w_cyl: f64,
     pub charge: f64,
@@ -349,15 +352,17 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let n = ((3.0 * dt / tau).ceil() as usize).clamp(1, 16);
     let h = dt / n as f64;
     let mut compressor_power = 0.0;
+    let mut blow_off = 0.0;
     for _ in 0..n {
         let t_im = s.t_im;
         if let Some(t) = &spec.turbo {
             let p_im = s.p_im;
-            let bov = if anti_lag {
+            blow_off = if anti_lag {
                 0.0
             } else {
-                t.a_bov * ((s.p_boost - p_im - turbo::BOV_OPEN) / (turbo::BOV_FULL - turbo::BOV_OPEN)).clamp(0.0, 1.0)
+                ((s.p_boost - p_im - turbo::BOV_OPEN) / (turbo::BOV_FULL - turbo::BOV_OPEN)).clamp(0.0, 1.0)
             };
+            let bov = t.a_bov * blow_off;
             let rate = |p: f64| {
                 let w_c = t.compressor(s.omega_t, p, x.t_a, x.p_a).0;
                 let w_th = gas::orifice(spec.cda * area, p, p_im, t_im);
@@ -415,8 +420,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         } else {
             wot
         };
+        let electronic = spec.class.actuation == Actuation::Dbw || anti_lag;
         let e = (s.p_boost - aim) / turbo::WASTEGATE_BAND;
-        let command = if spec.class.actuation == Actuation::Dbw || anti_lag {
+        let command = if electronic {
             // The electronic gate's base opening at this speed (the steady WOT one) plus PI, as boost controllers
             // run a base duty table with closed-loop trim; the base pre-opens the gate as the boost comes up.
             let base = if anti_lag { 0.0 } else { t.gate_base.at(rpm) };
@@ -436,7 +442,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         } else {
             ((s.p_boost - aim) / turbo::SPRING_BAND).clamp(0.0, 1.0)
         };
-        s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / turbo::TAU_WASTEGATE));
+        // The electronic gate moves through its actuator; the spring gate's diaphragm follows the boost directly.
+        let tau = if electronic { turbo::TAU_WASTEGATE } else { turbo::TAU_SPRING };
+        s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / tau));
         let (p_em, power) = t.turbine(w_exhaust, s.t_em, s.wastegate, x.p_a);
         s.p_em = p_em;
         let energy = 0.5 * turbo::INERTIA * s.omega_t * s.omega_t
@@ -454,7 +462,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let p_ratio = s.p_im / x.p_a;
     let fric = spec.friction(rpm, phi, p_ratio) * fade;
     let pumping = spec.geometry.per_pa() * friction::pmep(s.p_em, s.p_im, x.p_a, rpm, spec.rpm_limit) * fade;
-    let torque = indicated - fric - pumping - x.friction;
+    // The 1.02 sim's friction opposes the motion, as NGP applies it (`direction * friction_torque`): unsigned, an
+    // engine dragged backwards would be pushed on backwards by it.
+    let torque = indicated - fric - pumping - x.friction * fade;
     Out {
         torque,
         indicated,
@@ -463,6 +473,8 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         cut: if combustion { 1.0 - fired } else { 1.0 },
         retard,
         anti_lag,
+        blow_off,
+        p_a: x.p_a,
         w_cyl,
         charge,
     }

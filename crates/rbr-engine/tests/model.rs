@@ -190,6 +190,24 @@ fn a_dbw_turbo_tip_in_barely_overshoots() {
     }
 }
 
+/// A spring gate spikes about 1 psi for a split second (enginebasics): a WOT tip-in at a fixed speed overshoots the
+/// steady boost by at most 0.1 bar.
+#[test]
+fn a_spring_gate_spikes_about_a_psi() {
+    let springs = models()
+        .iter()
+        .filter(|(_, p, m)| p.turbo && m.calibration().class.unwrap().actuation == rbr_engine::class::Actuation::Cable);
+    for (name, _, m) in springs {
+        for n in [3000.0, 5000.0, 6500.0] {
+            let mut m = m.clone();
+            let rows = bench::run(&mut m, n, None, 5.0, |t| if t >= 1.0 { 1.0 } else { 0.0 }, None);
+            let last = rows.last().unwrap().boost;
+            let peak = rows.iter().map(|r| r.boost).fold(f64::MIN, f64::max);
+            assert!(peak - last <= 0.1e5, "{name} {n:.0} rpm: boost peak {peak:.0} Pa over steady {last:.0}");
+        }
+    }
+}
+
 /// The most net torque over rpm (from idle to the limiter) rises with the pedal on every sample.
 #[test]
 fn the_most_torque_rises_with_the_pedal() {
@@ -257,6 +275,72 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
             assert!(rows.iter().any(|r| r.anti_lag), "{name}: no anti-lag");
             let t = time_to(&rows, 4.0, 0.9);
             assert!(t < 0.15, "{name}: re-applied to 90 % in {t:.2} s");
+        }
+    }
+}
+
+/// A lift from steady WOT at 5000 rpm: the blow-off valve opens within 0.1 s and vents the boost (it stays open while
+/// the manifold is under vacuum, as a real one does); with anti-lag running it stays shut. The telemetry reports the
+/// air's pressure.
+#[test]
+fn the_blow_off_valve_vents_a_lift_unless_anti_lag_runs() {
+    use rbr_engine::engine::{step, Step};
+    for (name, p, m) in models() {
+        if !p.turbo {
+            continue;
+        }
+        for anti_lag in [true, false] {
+            let mut m = m.clone();
+            m.spec_mut().class.anti_lag = anti_lag;
+            let spec = m.spec();
+            let (mut s, wot) = calibrate::wot(spec, 5000.0);
+            assert_eq!(wot.blow_off, 0.0, "{name}: open at WOT");
+            let lift = Step::at(5000.0 / RPM, 0.0, calibrate::DT);
+            let open: Vec<f64> = (0..360).map(|_| step(spec, &mut s, &lift).blow_off).collect();
+            if anti_lag {
+                assert!(open.iter().all(|&o| o == 0.0), "{name}: open in anti-lag");
+            } else {
+                let first = open.iter().position(|&o| o >= 0.9);
+                assert!(first.is_some_and(|k| k as f64 * calibrate::DT < 0.1), "{name}: opened late {first:?}");
+                assert!(s.p_boost < 1.1e5, "{name}: {} Pa of boost left after 0.5 s", s.p_boost);
+            }
+        }
+    }
+    let (_, _, m) = models().iter().find(|(_, p, _)| p.turbo).unwrap();
+    let mut m = m.clone();
+    let x = Inputs {
+        dt: 1.0 / 720.0,
+        speed: 300.0,
+        throttle: 1.0,
+        damage: 1.0,
+        pressure: 9e4,
+        temperature: 290.0,
+        engine_temperature: 360.0,
+        ..Inputs::default()
+    };
+    m.torque(&x);
+    assert_eq!(m.telemetry().air_pressure, 9e4);
+}
+
+/// The 1.02 sim's friction opposes the crank's motion: an engine dragged backwards with a large friction gets torque
+/// forwards, never a runaway backwards.
+#[test]
+fn the_1_02_friction_opposes_the_motion() {
+    for (name, _, m) in models() {
+        for speed in [-30.0, 30.0] {
+            let mut m = m.clone();
+            let x = Inputs {
+                dt: 1.0 / 720.0,
+                speed,
+                damage: 1.0,
+                pressure: 1.013e5,
+                temperature: 293.0,
+                engine_temperature: 360.0,
+                friction: 700.0,
+                ..Inputs::default()
+            };
+            let torque = (0..720).map(|_| m.torque(&x)).last().unwrap();
+            assert!(torque * speed < 0.0, "{name} at {speed} rad/s: {torque} N·m");
         }
     }
 }

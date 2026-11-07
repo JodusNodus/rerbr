@@ -95,6 +95,10 @@ pub struct Telemetry {
     pub cut: f32,
     /// Anti-lag is running.
     pub anti_lag: bool,
+    /// The blow-off valve's opening, 0..=1 (0 without a turbo): what vents the boost pipe while the throttle is shut.
+    pub blow_off: f32,
+    /// The air's pressure at the car, Pa (the step's [`Inputs::pressure`]); 0 before the first step.
+    pub air_pressure: f32,
 }
 
 /// An engine model: one per car and run.

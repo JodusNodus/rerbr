@@ -64,6 +64,24 @@ Mechanics in `engine.rs` (inputs, bank, slew, crossfade, grains, `MixScale`, out
   (35_N, 22_N, 4x up to 1.2 on Mont Blanc's walls), 0.1 on 66_E (80 % open) and 0.4-0.8 elsewhere, against 1.02's 1;
   every retail stage but map 69 has scenery.
 
+- The engine payload's turbo words (1.02 `Sim7D30` 0x517d30): `p[2]` the shaft speed (rad/s), `p[3]` the charge
+  over the air, `p[6]` the blow-off flow `(charge - air) * lift * 0.05` and `p[7]` the blow-off valve's lift (state
+  `+0x48`, up to def `+0x68` `TurboBlowOffCoefficient_NGP`, from def `+0x48`/`+0x58` the min/max blow-off pressures;
+  NGP keys at `+0x3c`/`+0x4c`/`+0x5c`, values `+0xc` on). Nothing reads `p[7]`; rbr-recomp names it the wastegate,
+  but the wastegate is def `+0x78`-`+0x98` and does not reach the payload.
+- With an engine model set (ReRBR experimental physics) the live picture writes those words from the model's
+  telemetry (`rbr-standalone` `live/picture.rs` `model_turbo`; the 1.02 sim's turbo runs beside the model unaware of
+  its boost): `p[2]` its shaft speed times 0.78 (the 1.02 sim's over the model's, 0.79 at the median and 0.78 at the
+  99th percentile, Fiesta Rally2 on track-11_O, 90 s of autopilot, both read from the same run), `p[3]` its boost
+  over the air (the two already agree: medians 1.54 and 1.62), `p[7]` its valve opening times 1e-4 (the Fiesta
+  Rally2's lift, its `p[7]` with the valve open) and `p[6]` the 1.02 formula on those; `p[4]` 0.95 while anti-lag
+  cuts a firing event (from 0.9 a bank's `exhaustpop` fires; on the 1.02 voices a high pop, a bang and a run), the
+  1.02 sim's misfire word otherwise. The NGP profile's SND1 is unchanged (tested). Same drive, 90 s: blow-offs 16
+  against 7 from the 1.02 sim, bangs 151 against 1; renders `/tmp/turbo-sound-renders/` (not kept). The headless
+  trace carries only `p[0]`, so it needs no change.
+- Open: our anti-lag crackle (`exhaust::AntiLag`) still fires on every lift beside the model's pops (SND1 says
+  nothing of the model); other cars' blow-off valves take the Fiesta Rally2's lift.
+
 ## Exhaust and car effects
 
 Mechanics in `exhaust.rs` (pops, bangs, runs, engine fire, anti-lag) and `effects.rs` (ignition, dog rings, cooler,

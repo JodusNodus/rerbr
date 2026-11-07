@@ -99,6 +99,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The rF2 SkipBarber's coast line, −21 to −53 N·m at 2000–8000 rpm [rF2 engine.ini], is near the NA samples'
   (`examples/plot.py`).
 - η_m = 1, losses explicit; friction fades to 0 within 5 rad/s of standstill (inferred: no stiction at rest).
+- The 1.02 sim's friction torque (`Inputs::friction`: oil starvation, overheating, damage) opposes the motion with the
+  same fade, as NGP applies it (`direction * friction_torque`, rbr-physics `ngp/engine.rs`). Unsigned, a stalled
+  engine dragged backwards in gear ran away to the −1e4 N·m clamp and drove the car backwards under full brake
+  (found by the creep measurement; `the_1_02_friction_opposes_the_motion`).
 
 ## ECU (`ecu.rs`)
 
@@ -125,7 +129,15 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   rpm under the limit (up to 18 over on the turbo sample); tested within −200..+50. The calibration's WOT runs
   leave the limiter out (the table runs to RPMLimit); the tests compare the table with the limiter in only up to
   RPMLimit − 200.
-  The events are picked by deterministic error diffusion (inferred).
+  The events are picked by deterministic error diffusion (inferred), which carries the fractional events from step
+  to step as ECUs rotate the cut cylinders; a step's torque is its events' fired share, held over steps without an
+  event, so near the limit it swings with the firing rhythm. Bench (720 Hz, the HUD's rpm sampled every 12 steps):
+  in neutral with the car's inertia the rpm moves 12–25 rpm a step and 30–110 rpm a frame (the bounce under the
+  limit); with 1.5 kg·m² (a low gear, guess) at most 2 rpm a step and 8 a frame. A mean-value cut (1 − cut every
+  step) holds the rpm still on the limit, which a real limiter does not (measured). In game (drive2 attempt 5's
+  payload, Focus WRC 2006, `--trace-out`): held at the limit before the start the rpm bounces 7434–7480 (frame steps
+  up to 79 rpm; NGP sits at 7515 and steps up to 146); near the limit in gear the steering force changes per step no
+  more than elsewhere (p99 0.038 against 0.070 at 4000–6900 rpm; NGP 0.025 and 0.027), so FFB does not show it.
 - Shift cut keeps the share TorqueCut, airflow kept [FIA 254A] (S2000 cuts), [CSP powertrain].
 - No combustion below 150 rpm or when stalled [turboford] (crank speeds 150–250 rpm).
 - Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 [MoTeC ALS],
@@ -152,14 +164,18 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The exhaust manifold may reach at most 2× the intake's at steady WOT (inferred, tuner practice: without it the fit took a 7e-5 m²
   nozzle with 7–9 bar of exhaust pressure for 1.5 bar at 1000 rpm; matched turbos run about 1–2).
 - Then each knot's boost target is scaled by K_knot/K_median (the charge one K needs) and limited, and A_t refitted;
-  twice (inferred: the first target's η_ig leaves out the turbine's back pressure).
+  twice (inferred: the first target's η_ig leaves out the turbine's back pressure). The boost scaled is the one the
+  steady WOT made where that is under the target, since the charge and so K came from it (measured: scaling the
+  unreachable target took the turbo sample's 1000 rpm target to 1.90 bar for 1.06 made, the targets interpolated up
+  to 2500 asked for too much charge, and K dipped to 1.32e6 at 1750 against 1.58e6 on boost elsewhere; now 1.58e6
+  from 1750 up, A_t and the held points unchanged).
 - The table is an upper bound everywhere and exact wherever the air path can make it. On a turbo car, at a grid
   point where the steady WOT boost misses 98 % of its target (`ON_BOOST`, this worker's choice), K is held at the median K of the on-boost knots, so the
   steady torque there falls short of the table. Where the identity gives less than the median (Group A, Rally4 at
   low rpm: tables weaker than physics), K stays. NA cars unchanged. Tested: steady WOT ≤ table + 0.1 % everywhere,
   = table within 0.5 % at every knot not held.
 - Held, 250 rpm steps (with the residual gas): turbo sample 500–1250 rpm (worst 9 % short); R5, Rally2 and WRC
-  2014–2020 250–1250 (8.5–16 %; i20 to 1500); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1500 (27 %); Alpine
+  2014–2020 250–1250 (8.5–16 %); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1250 (27 %; 250–1500 before the retarget fix); Alpine
   A110 RGT 1750 (12 %); Fiesta Rally4 2500 (2.8 %), 208 Rally4 2250 (1.5 %), Fiesta R2 2250 (2.0 %), Delta HF 2750
   (0.4 %). No other car is held.
 - The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
@@ -180,21 +196,44 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   π_wot(n)·p_a whatever the pedal, so a cable turbo kicks at part throttle.
 - Electronic gate: a base opening by rpm (the steady WOT one) plus PID, band 1 bar, Ti 0.5 s, Td 0.08 s on the boost
   (not the error), conditional integration (inferred: boost controllers run a base duty table with closed-loop trim).
-  Td: tip-ins within 5 % overshoot and settled in 1 s (tuning practice, inferred); 0.05–0.12 s all pass. Spring:
-  P-only, band 0.5 bar, so it overboosts a little. τ 125 ms [Gorzelic]. Bands and Ti guess (a limit cycle at
-  narrower settings).
+  Td: tip-ins within 5 % overshoot and settled in 1 s (tuning practice, inferred); 0.05–0.12 s all pass. Electronic
+  gate τ 125 ms [Gorzelic] (an electronically commanded gate). Spring: P-only, band 0.5 bar, so it overboosts a little.
+  Spring τ 10 ms (inferred: the diaphragm feels the boost through its hose, which carries it within 10 ms over 3 m of
+  6 mm [Thomasson 2014]; a 60 cm³ dome through a 3 mm port lags a 7 bar/s rise about 3 ms; spring and valve ring at
+  about 60 Hz). With the 125 ms of the electronic gate it spiked 15–20 kPa (2.2–2.9 psi) at 5000–6500 rpm, against
+  about 1 psi for a split second on spring gates [enginebasics]; a gate that opens late spikes [Turbosmart spikes].
+  Bands and Ti guess (a limit cycle at narrower settings; none at 10 ms, every 250 rpm at 30/60/100 % pedal).
 - DBW turbo sample, WOT tip-in at a fixed speed, to 90 % / overshoot / settled within 2 %: 2500 0.44 s / 1.8 % /
   0.54 s, 3000 0.41 / 2.1 % / 0.79, 3500 0.40 / 2.2 % / 0.82, 4500 0.37 / 2.2 % / 0.83, 5000 0.34 / 2.4 % / 0.87,
   6500 0.27 / 3.7 % / 1.10 (was 7 % and 17 % with a 0.5 s ring before the derivative). cable_turbo (spring): 3000
-  0.82 / 1.4 % / 1.06, 5000 0.27 / 7.9 % / 0.93, 6500 0.16 / 12.9 % / 0.83. Tested: steady torque at any pedal the same
+  0.83 / 0.3 % / 1.07, 5000 0.27 / 3.1 % / 0.37, 6500 0.15 / 5.0 % / 0.26 (boost +0.3, +2.5, +3.4 kPa; the torque
+  overshoots more than the boost as the opening gate lowers the exhaust pressure). Tested: the boost spikes at most
+  0.1 bar at 3000, 5000 and 6500 rpm. In game (autopilot, Celica ST185, track-11_O, 600 s, experimental, anti-lag
+  steps left out): at pedal ≥ 0.5 in gear the boost ran over the steady WOT boost at that rpm by more than 10 kPa for
+  15.9 s of 171 s with 125 ms (most 34 kPa), 0.3 s with 10 ms (most 17 kPa); split 2 438.02 against 437.82 s. Tested: steady torque at any pedal the same
   within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
   Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
+- Telemetry for the sound (`Telemetry`, never read back): the blow-off valve's opening (0 in anti-lag, stays open
+  while the manifold is under vacuum, as a real one does; tested on a lift at 5000 rpm) and the step's air pressure.
+  `rbr-standalone` `live/picture.rs` `model_turbo` maps it into SND1's turbo words (`notes/sound.md` "Engine").
 - Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
   to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
-  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.64 s at 2000, cable_turbo 0.76 s
-  at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
+  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000 (0.64 before the
+  retarget fix lowered its 2000 rpm target from 1.93 to 1.70 bar), cable_turbo 0.77 s at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
+- The retarget fix changed spool only where the target fell (1750–2250 rpm on the modern turbos; nothing at 1500 or
+  from 2500 up, nothing on Group A). Same turbine, same steady WOT torque; the engine now needs less boost for it at
+  one K, and the boost that 90 % of it needs comes sooner. WOT tip-in from closed to 90 % / settled within 2 %, and 5
+  bar BMEP to 90 %, before → after (s): Fiesta Rally2 1750 1.05/1.40/1.53 → 0.42/0.59/0.65, 2000 0.55/0.67/0.74 →
+  0.37/0.48/0.50, 2250 0.59/0.70/0.48 → 0.51/0.63/0.41 (target 2.09/2.06/2.03 → 1.63/1.76/1.88 bar); Fiesta WRC
+  2019 and i20 WRC 2020 1750 0.88/1.27/1.46 → 0.31/0.46/0.52, 2000 0.47/0.59/0.68 → 0.30/0.40–0.63/0.42; Polo R5
+  1750 0.60/0.85/0.98 → 0.39/0.56/0.63; turbo sample 2000 0.46/0.57/0.64 → 0.33/0.43/0.45; Focus WRC 2006 1500
+  0.62/2.13/1.55 → 0.68/2.38/1.79 (1500 no longer held, so it now reaches the table), 1750 0.67/0.86/1.03 →
+  0.55/0.71/0.86. Celica ST185, cable_turbo unchanged. Before, 1750 was twice as slow as 1500 and 2000 on the
+  Rally2 and WRCs (the inflated target); now tip-in falls smoothly with rpm. No public rally time-to-torque exists
+  to say which is closer to real; the road 1.6 THP holds 20 bar BMEP from 1750 rpm [SAE 2018-01-1423], so a slow
+  spot at 1750 has no support (inferred).
 
 ## In game
 
@@ -223,18 +262,40 @@ is off on gravel, so gravel numbers compare engines only.
   turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.93e6) against 0.9–1.4e6 elsewhere; friction
   (17 N·m, s_f clamped to 2.0) and pumping (10 N·m) are like the others'. At η_ig 0.38 they would idle near 28–30 kPa
   (estimate).
+  The retarget fix leaves it (turbo sample 20.3 kPa before and after: idle sits in the held range, whose K is the
+  on-boost median). A part-load K that keeps the table: K(n, x) = K_wot(n)·f(x), x = m_charge / m_charge,wot(n) at
+  the same rpm, f(1) = 1 (so the identity at WOT, and the hold, are untouched), f falling to about 0.65 at idle
+  load (η_ig 0.57 → 0.38, guess). The idle air, the idle gains, the closed-pedal brake and the DBW part-pedal tests are
+  calibrated after K, so they would follow; aim_open and gate_base read WOT runs only. Not done (nothing reads idle
+  MAP; it would lower part-pedal torque everywhere, a feel change).
 - At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
   idle air at its 10 % ceiling. In gear at low speed this pushes the car.
-- The spring-gate cable_turbo still overshoots 8–14 % from 5000 rpm up.
-- The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm (at 30 % pedal a dip at 1750, a peak at 2000): K steps about 1.6e6 (held, to 1250) → 1.5e6
-  (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
-  same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
-- The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step).
+- Fixed: the turbo sample's part-pedal bump at 1500 and dip at 1750 rpm. The cause was the boost target, not the
+  hold: K went 1.68e6 (held) → 1.61e6 (1500) → 1.32e6 (1750) → 1.59e6 (2500) because the targets between the held
+  1000 rpm knot and 2500 were inflated (retarget, above). Now 1.68 → 1.61 → 1.58e6, and the 20 % pedal line at
+  1000–2250 rpm reads 212 216 212 217 210 185 N·m (was 212 216 212 177 195 174). No blend of K across the boundary
+  was needed: the remaining step from the held median to the on-boost K (4–6 %) spreads over the 1500 point.
+- Low-rpm data. No Rally2/R5/WRC dyno sheet, homologation curve or onboard MAP log below 2000 rpm is public (searched
+  M-Sport, Škoda, VW, Hyundai, forums; makers give peak figures only [Škoda Rally2 engine]). The nearest measured
+  data is a road base engine: PSA EP6CDTX 1.6 THP (base of the 208 and C3 Rally2 engines), full-load BMEP about 8 bar
+  at 1000 rpm, 12.5 at 1250, 16–17 at 1500, 20 from 1750 (read off the figure, ±0.5 bar) [SAE 2018-01-1423 fig. 23],
+  i.e. 102, 159, 210 and 254 N·m. Road 1.6 turbos reach their plateau at 1500–1750 rpm [Ford 1.6 EcoBoost],
+  [Hyundai i20 N]. So at 1000 rpm a road engine with a small twin-scroll turbo makes 40 % of its peak; the turbo
+  sample's table asks for 253 N·m (18 bar BMEP, 55 %) and the model gives 234 (18.4 bar at 1.06 bar boost, K at η_ig
+  ≈ 0.57). The data does not support more low-rpm torque: a rally turbo with a 32 mm restrictor spools later than
+  the road one, and an NA 1.6 makes about 11–13 bar. If anything the held points are too strong, through K (the same
+  K as the idle MAP item). A turbine refit for more low-rpm boost was not tried.
+- The spark loop saturates (gain about 2°/rpm).
 - No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is the race ECUs' start.
 
 ## Sources
 
 - Volkswagen, Polo GTI R5 0-100 km/h 4.1 s, 1230 kg (maker's claim): https://www.volkswagen-newsroom.com/en/the-new-polo-gti-driving-presentation-2512/the-new-polo-gti-r5-gti-goes-rallying-2567
+- SAE 2018-01-1423 (EPA/SwRI, PSA EP6CDTX 1.6 THP full load, public domain): https://www.epa.gov/sites/default/files/2018-10/documents/sae-paper-2018-01-1423.pdf
+- Ford 1.6 EcoBoost, ratings: https://fordauthority.com/fmc/ford-motor-company-engines/ford-ecoboost-family/ford-1-6l-ecoboost-engine/
+- Hyundai i20 N, spec sheet: https://www.hyundai.com/content/dam/hyundai/au/en/models/i20-n/2021/images/i20N_Spec-Table_Oct_2021.pdf
+- Škoda Rally2 engine (Fabia RS Rally2): https://cdn.skoda-storyboard.com/2022/06/FABIA_RS_Rally2_Engine.pdf
+
 - Andersson, LiU MSc 2017 (MVEM, orifice, turbo): https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks & Sorenson MVEM: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
 - Eriksson, turbo modelling: https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
@@ -294,6 +355,9 @@ is off on gravel, so gravel numbers compare engines only.
 - HPA M1 DBW (throttle aim as airflow): https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-dbw-throttle/
 - EPA Ford 1.6 (steady map): https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
 - Gorzelic 2012, throttle and wastegate: https://public.websites.umich.edu/~annastef/papers_hcci/Gorzelic2012ccdc.pdf
+- Thomasson 2014, pressure delay in hoses (Linköping diss. 1590, sec. 3.3.1): https://www.diva-portal.org/smash/get/diva2:709572/FULLTEXT01.pdf
+- enginebasics, spring gate spike about 1 psi: https://enginebasics.com/Advanced%20Engine%20Tuning/Boost%20Spiking.html
+- Turbosmart spikes (MAP Performance): https://www.maperformance.com/blogs/tech/39579651-boost-spikes-what-are-they-how-do-they-come-about-and-how-to-avoid-them
 - Gears Magazine, idle MAP 31 kPa: https://gearsmagazine.com/magazine/pressure-sensors/
 - MOTOR, idle 27 kPa: https://www.motor.com/magazine-summary/fuel-injection-diagnosis-july-2008/
 - Tuning School, idle 30–50 kPa: https://thetuningschool.com/blogs/news/what-data-is-good-data

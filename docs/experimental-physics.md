@@ -60,7 +60,7 @@ What follows from it:
   of mean effective pressure. The coast curve of a real 2.0 L engine in rFactor 2's engine file gives about 3 bar at
   8000 rpm.
 - **No time.** Torque follows the pedal within the step. The 1.02 engine sim still runs underneath and spins its own
-  turbo for the sound, but its torque is discarded.
+  turbo, but its torque is discarded; with our model the turbo sound follows the model's turbo instead.
 
 ## The realistic model
 
@@ -176,9 +176,9 @@ the table until the turbo delivers. On the installed cars:
 | Car | Held, rpm | Most below the table |
 | --- | --- | --- |
 | Fiesta R5 | 250–1250 | 8.5 % |
-| Rally2, WRC 2014–2020, i20, Polo R5, GR Yaris | 250–1250 (i20 to 1500) | 11.8–16.4 % |
+| Rally2, WRC 2014–2020, Polo R5, GR Yaris | 250–1250 | 11.8–16.4 % |
 | Xsara WRC 2006 | 250–1250 | 20.3 % |
-| Focus WRC 2006 | 250–1500 | 26.6 % |
+| Focus WRC 2006 | 250–1250 | 26.5 % |
 | Alpine A110 RGT | 1750 | 11.8 % |
 | Fiesta Rally4, 208 Rally4, Fiesta R2, Delta HF | one point at 2250–2750 | 0.4–2.8 % |
 
@@ -254,7 +254,11 @@ p_aim = p_a + (π_wot(n) · p_a − p_a) · min(1, θ / θ_open(n))
 3000, 0.61 at 5000 and 0.74 at 7000 on the turbo sample. Race ECUs' boost aim tables over rpm and throttle (MoTeC M1,
 Link G4+) reach full aim before full throttle in the same way. On cable cars a spring wastegate aims at full boost
 whatever the pedal, so they kick at part throttle once the turbo lights. That kick is the step in the cable_turbo
-figure's 40 % line at 3250 rpm. A blow-off valve opens at 0.3 bar over the manifold.
+figure's 40 % line at 3250 rpm. The spring gate's diaphragm feels the boost through a short hose, so it opens within
+about 10 ms, where the electronic gate's actuator takes 125 ms. A tip-in at a fixed 5000 or 6500 rpm spikes the boost
+2.5–3.4 kPa (under half a psi) over its steady level; tuners report about 1 psi for a split second on spring gates
+(enginebasics). On a stage the Celica, with the 125 ms, ran more than 10 kPa over its steady boost for 16 s of the
+171 s it spent at half pedal or more; with the 10 ms, for 0.3 s. A blow-off valve opens at 0.3 bar over the manifold.
 
 ### Anti-lag
 
@@ -447,8 +451,8 @@ and the manifold's filling. The old sample, with a throttle per cylinder on a ca
 turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.41 s at 3000 rpm
 and 0.34 s at 5000. It overshoots 1.8 % at 2500 rpm and 3.9 % at 6500 rpm, and settles within 2 % in 0.5–1.1 s.
 
-From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.64 s at 2000 rpm and
-the cable_turbo sample 0.76 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
+From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.45 s at 2000 rpm and
+the cable_turbo sample 0.77 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
 study of a 1.5 L turbo four with a T45 gives 0.54 s at 1000 rpm for the same test. Our rally turbos make almost no
 boost at 1000 rpm, so that point doesn't apply to them.
 
@@ -544,18 +548,24 @@ speeds (3500–6500 rpm) and other slip targets (10–40 %) were no faster. The 
 
 ## Known limits
 
-- The turbo sound still follows the 1.02 engine sim's own turbo.
+- The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and
+  anti-lag pops come from its cut firing events. The whine's pitch is the model's shaft speed times 0.78, to stay in
+  the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size for
+  every car. The sound's own anti-lag crackle on a throttle lift still plays on every car, beside the model's pops.
 - The clutch's capacity is NGP's, sized for its torque. The model's peak torque is the same, so this matters only for
   transient overshoot.
 - Damage, overheating and oil starvation reach the model through NGP's damage factor and the 1.02 sim's friction, as
   they reach NGP's formula.
-- Modern turbo cars fall 8–27 % short of their table below about 1500 rpm (the held points above).
-- The turbo sample's part-pedal lines bump at 1500 rpm and dip at 1750, where `K` steps between held and on-boost
-  points.
+- Modern turbo cars fall short of their table below about 1500 rpm (the held points above). No rally engine's
+  low-rpm curve is public. The one measured curve of a base engine we found, PSA's road 1.6 THP (the base of the 208
+  and C3 Rally2 engines), makes about 40 % of its peak torque at 1000 rpm and 80 % at 1500 (SAE 2018-01-1423). The
+  tables ask for more than that at 1000 rpm, and the model still gives more, so the shortfall is not a reason to add
+  low-rpm boost.
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
-- A spring wastegate overshoots its boost by 8–13 % from 5000 rpm up.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
-- The limiter's torque swings from step to step, since the model fires or cuts a whole step at a time.
+- On the limiter the torque swings from step to step with the firing rhythm: the model cuts whole firings, rotating
+  the cut as ECUs do. In neutral the HUD's rpm bounces 30–110 rpm from frame to frame under the limit; in gear a few
+  rpm. The steering force doesn't show it.
 
 ## Tyres
 
@@ -573,16 +583,21 @@ Where NGP's tables are fixed, the brush takes measured behaviour:
 - Heavier loads raise the peak force and the cornering stiffness less than in proportion, at rates from a published
   load sweep and two road-tyre data sets.
 - The cornering stiffness falls about 0.45 % per kelvin of tread temperature and rises as the tread wears.
-- The relaxation length grows with speed, as measured on a car tyre bench (Vera et al., 2022).
+
+The relaxation length is the cornering stiffness over the carcass's sideways stiffness, from each car's own tyre data:
+about 0.2 m on the Fiesta Rally2, against NGP's 0.17 m, so turn-in is about as quick as NGP's. A road tyre measured on
+a bench relaxes over a longer distance as speed rises (Vera et al., 2022), but that would put a tarmac rally tyre
+above the 0.12-0.45 m Pacejka gives, and there is no such measurement for a rally tyre, so the model leaves it out.
 
 Each wheel's brush is fitted when the car loads: NGP's own tyre is swept at its design load, and the brush's grip and
 stiffness are solved to give the same peak forces and cornering stiffness there. NGP still sets the grip level (the
 surface, wet or dry, and the tyre's temperature), so a tarmac stage grips about as much as before; the differences
-are in the shape of the force around and beyond the peak, at other loads, and in how fast it builds.
+are in the shape of the force around and beyond the peak, under braking or wheelspin, and at other loads and
+speeds.
 
 Below 2 m/s, where NGP switches to its sticking model, and on gravel, snow and any other surface with a loose layer,
 the tyre is NGP's. Between 2 and 3 m/s the brush takes over gradually. On the autopilot's runs the Fiesta Rally2
-keeps NGP's pace on a tarmac stage within 1 %, and stops from 15 m/s in 3.5 % less distance.
+keeps NGP's pace on a tarmac stage within 1 %, and stops from 15 m/s in 5 % less distance.
 
 The model, its evidence and the open questions are in [notes/tyre-model.md](../notes/tyre-model.md); the code is in
 `crates/rbr-tyre`.
@@ -591,9 +606,13 @@ The model, its evidence and the open questions are in [notes/tyre-model.md](../n
 
 The full list, with the line each one supports, is in [notes/engine-model.md](../notes/engine-model.md#sources).
 
+- SAE 2018-01-1423, full load of PSA's 1.6 THP: https://www.epa.gov/sites/default/files/2018-10/documents/sae-paper-2018-01-1423.pdf
+
 - Andersson, mean-value engine and turbo model, Linköping MSc 2017: https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks and Sorenson, mean-value SI engine model: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
 - Eriksson, turbocharger modelling: https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
+- Boost spikes on spring wastegates, enginebasics: https://enginebasics.com/Advanced%20Engine%20Tuning/Boost%20Spiking.html
+- Pressure delay in hoses, Thomasson 2014 (Linköping dissertation 1590): https://www.diva-portal.org/smash/get/diva2:709572/FULLTEXT01.pdf
 - NASA, choked mass flow: https://www.grc.nasa.gov/www/k-12/airplane/mflchk.html
 - Throttle plate area, US 6591667: https://patents.google.com/patent/US6591667
 - Sandoval–Heywood friction model, as transcribed in ESA.NET: https://github.com/pangtuwi/ESA.NET/pull/223
