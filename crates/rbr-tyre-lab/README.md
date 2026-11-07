@@ -27,6 +27,11 @@ Nothing here changes what the game computes.
   not released: `--physics experimental-brush` only).
 - `examples/compare.rs`: compares brush-v1 against NGP's sweep and published
   targets. Writes CSVs plus `summary.md` into the output dir.
+- `examples/low_speed.rs`: the brush's force dynamics on one wheel, a quarter
+  car stepped explicitly at 720 Hz, for NGP's speed-scaled torsional stiffness,
+  Rill's carcass and the published relaxation length's (the game's), down to
+  standstill: slip steps, the wheel-tyre mode at 0.5-10 m/s, pull-away, braking
+  to a stop and holding on a grade. Prints only.
 - `examples/racing.rs`: brush-v1 and NGP at the conditions of the racing-tyre
   and combined-slip data (`notes/tyre-model.md`, "Racing and rally targets").
   Prints only.
@@ -46,6 +51,7 @@ cargo build --release -p rbr-standalone
 cargo run -q --release -p rbr-tyre-lab --example sweep -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/ngp
 cargo run -q --release -p rbr-tyre-lab --example compare -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/cand
 cargo run -q --release -p rbr-tyre-lab --example racing -- --probe /tmp/tyre-lab/x.probe
+cargo run -q --release -p rbr-tyre-lab --example low_speed -- --probe /tmp/tyre-lab/x.probe
 cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --out /tmp/tyre-lab/ngp-dyn
 cargo run -q --release -p rbr-tyre-lab --example materials -- "$RBR_NGP_DLL" [ID...]
 ```
