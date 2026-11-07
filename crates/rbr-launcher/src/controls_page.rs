@@ -248,14 +248,14 @@ fn invert_flag(invert: &mut Invert, action: Action) -> Option<&mut bool> {
 
 /// Sets `action`'s device input; turning left sets both steering actions to the axis. An axis that went up as
 /// the input was pressed or turned left is inverted: the game's steering is negative to the left, and its pedals
-/// read `(1 - v) / 2`.
+/// read `(1 - v) / 2`. A button is not.
 fn bind(bindings: &mut Bindings, action: Action, moved: Moved) {
     bindings.actions[action as usize].pad = Some(moved.input);
     if action == Action::SteerLeft {
         bindings.actions[Action::SteerRight as usize].pad = Some(moved.input);
     }
-    if let Some(flag) = invert_flag(&mut bindings.invert, action).filter(|_| moved.input.is_axis()) {
-        *flag = moved.up;
+    if let Some(flag) = invert_flag(&mut bindings.invert, action) {
+        *flag = moved.input.is_axis() && moved.up;
     }
 }
 
@@ -731,6 +731,10 @@ mod tests {
         bind(&mut bindings, Action::Handbrake, moved(Object::Button(7), true));
         let i = bindings.invert;
         assert_eq!((i.steering, i.throttle, i.brake, i.handbrake), (false, false, true, false));
+        // A button in place of an inverted pedal clears its invert.
+        bindings.invert.handbrake = true;
+        bind(&mut bindings, Action::Handbrake, moved(Object::Button(7), true));
+        assert!(!bindings.invert.handbrake);
         assert!(!unbound(&bindings));
         // The keys stay.
         assert_eq!(bindings.get(Action::Throttle).key, Some(KeyCode::ArrowUp));
