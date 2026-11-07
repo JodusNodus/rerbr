@@ -127,8 +127,9 @@ pub struct Args {
     /// `--ffb-settings ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD` (with `--trace-out`): the player's settings the
     /// trace's magnitude takes (`rbr_gameplay::ffb::Settings`; default on, 1, normal, no dead zone).
     pub ffb_settings: rbr_gameplay::ffb::Settings,
-    /// `--physics ngp|experimental`: the physics profile (`profile`); `ngp`, the default, steps NGP 7's as it is,
-    /// `experimental` ReRBR experimental physics (built on NGP 7).
+    /// `--physics ngp|experimental|experimental-brush`: the physics profile (`profile`); `ngp`, the default, steps NGP
+    /// 7's as it is, `experimental` ReRBR experimental physics (built on NGP 7), `experimental-brush` it with the brush
+    /// tyre (in development, not released).
     pub physics: Profile,
     /// `--car-group NAME` and `--car-year N`: the car's group and year for the engine model (`rbr_engine::Car`), over
     /// the RSF install's.
@@ -165,7 +166,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --physics ngp|experimental: NGP 7's physics (the default) or ReRBR experimental physics built on NGP 7 (its engine and tyre models in place of NGP's torque formula and its sliding model on hard surfaces), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
+       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model on hard surfaces), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
@@ -835,7 +836,7 @@ mod tests {
             ),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
-            (format!("{LIVE} --physics fast"), "--physics fast: one of ngp, experimental"),
+            (format!("{LIVE} --physics fast"), "--physics fast: one of ngp, experimental, experimental-brush"),
             (format!("{LIVE} --car-year new"), "--car-year new"),
             (format!("{BOOT} --wear muddy"), "--wear muddy: new, normal or worn"),
             (format!("{BOOT} --wetness humid"), "--wetness humid: dry, damp or wet"),

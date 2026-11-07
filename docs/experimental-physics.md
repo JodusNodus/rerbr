@@ -2,9 +2,8 @@
 
 ReRBR runs NGP 7's physics bit for bit by default. The launcher's Settings > Physics row (or `--physics experimental`)
 offers a second choice, "ReRBR experimental (built on NGP 7)": NGP 7 with some of its systems replaced by ours. Today
-it replaces two. A mean-value engine model takes the place of NGP's torque formula, and a brush tyre model takes the
-place of NGP's sliding model of the contact patch on hard surfaces above walking pace ([Tyres](#tyres)). The clutch,
-gearbox, driveline, damage, and the tyres on loose surfaces and at low speed stay NGP's.
+it replaces one: a mean-value engine model takes the place of NGP's torque formula. The clutch, gearbox, driveline,
+tyres and damage stay NGP's. A tyre model is in development and not part of it ([Tyres](#tyres)).
 
 While it is experimental, a run with it saves no records, ghosts or championship results. Its replays carry the choice
 and play back with it.
@@ -490,10 +489,8 @@ the limit to 20 over it.
 
 ### In game
 
-Every number here was measured on main at `0ef55141`, the physics that ships: "NGP 7" is NGP 7's engine and tyre,
-"experimental" is the realistic engine with the brush tyre (`{ engine: "realistic", tyre: "brush" }`). The brush
-acts only on hard surfaces above 2 m/s; on gravel the tyre is NGP's in both, so a gravel number compares the engines
-alone.
+Every number here was measured at `b97695d86`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
+the realistic engine with NGP's tyre (`{ engine: "realistic", tyre: "ngp" }`), so every gap is the engine's.
 
 The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
 tarmac one, track-41 (Cote D'Arbroz, its M variant, as the season's weather loads it), once with NGP 7's physics and
@@ -521,22 +518,23 @@ Tarmac, track-41:
 | Car | Physics | Split 2 | Finish | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 210.71 s | 309.01 s | +25 | 5.0 s | 3.6 s |
-| | experimental | 207.80 s | 304.88 s | +44 | 0.2 s | 6.7 s |
+| | experimental | 207.41 s | 304.57 s | +44 | 0.2 s | 3.0 s |
 | Celica ST185 | NGP 7 | 212.97 s | 310.91 s | +25 | 5.2 s | 3.5 s |
-| | experimental | 208.15 s | 305.22 s | −4 | 0 s | 4.2 s |
+| | experimental | 208.02 s | 305.17 s | −4 | 0 s | 4.0 s |
 | Golf II GTI 16V | NGP 7 | 222.28 s | 324.24 s | +21 | 4.7 s | 4.5 s |
-| | experimental | stalled at 161 m | | | | |
+| | experimental | 214.14 s | 314.57 s | −7 | 0 s | 5.1 s |
 | Fiat 131 Abarth | NGP 7 | 221.31 s | 323.35 s | +13 | 4.2 s | 5.9 s |
-| | experimental | 214.54 s | 314.89 s | −15 | 0 s | 5.0 s |
+| | experimental | 214.91 s | 315.49 s | −15 | 0 s | 6.1 s |
 
-On gravel no run stalled, and every run was still drivable at the end. On tarmac the experimental Golf stalled 12 s
-in: braking at 0.8 in second gear at 5.5 m/s on the opening climb, the engine fell from 494 rad/s to 0 in 0.2 s with
-the clutch still closed, and the autopilot cannot restart it. The experimental limiter keeps every car under its
-limit in gear; the Fiesta's time over is its start burnout in neutral. With the experimental physics the turbo cars
-reached split 2 1.6–1.7 % sooner on gravel and 1.4–2.3 % on tarmac, the NA cars 3.3–4.2 % sooner on gravel and the
-Fiat 3.1 % on tarmac. The autopilot's caution sets most of its pace, and this is one stage and one run per car, so
-these gaps are not lap times a driver would see. On gravel the clutch slips 0.9–4.4 s longer per run, and the
-engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
+Every run finished or ran its 600 s and was still drivable at the end. One engine stalled, after the finish line: the
+experimental Golf, braking at full in fifth on track-41's run-out, locked its wheels at 16 m/s with the clutch still
+closed, and the engine fell from 464 rad/s to 0 in 0.8 s; NGP's Golf, in the same stop, kept 89 rad/s ([Known
+limits](#known-limits)). The experimental limiter keeps every car under its limit in gear; the Fiesta's time over is
+its start burnout in neutral. With the experimental physics the turbo cars reached split 2 1.6–1.7 % sooner on
+gravel and 1.6–2.3 % on tarmac, the NA cars 3.3–4.2 % sooner on gravel and 2.9–3.7 % on tarmac. The autopilot's
+caution sets most of its pace, and this is one stage and one run per car, so these gaps are not lap times a driver
+would see. On gravel the clutch slips 0.9–4.4 s longer per run, on tarmac between 0.6 s shorter and 0.6 s longer,
+and the engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
 
 #### 0 to 100 km/h
 
@@ -548,26 +546,25 @@ stages climb 2–15 % over their first 100 m, and the flattest, track-46, bends 
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
-| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.33 s |
+| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.46 s |
 | track-64, gravel, flat | 4.66 s | 4.63 s |
 | RSF 345, gravel, 4 % downhill | 4.50 s | 4.44 s |
 
-The brush took 0.10 s off the experimental time on RSF 504 (4.44 s with NGP's tyre, before it merged). Taking the
-6.7 % climb's 0.66 m/s² off a constant mean acceleration gives about 3.9 s on flat tarmac (inferred). The nearest
-sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5 (1230 kg,
-272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and M-Sport
+Taking the 6.7 % climb's 0.66 m/s² off a constant mean acceleration gives about 4.0 s on flat tarmac for the
+experimental run (inferred). The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives
+4.1 s for the Polo GTI R5 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and M-Sport
 publishes none for the Fiesta.
 
 A launch control (revs held below the limiter, then the throttle holding the wheel slip) was no faster on any of the
-three: both tyres pull as hard at about 9 m/s of wheelspin as near their peak at these speeds, and cutting the
+three: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these speeds, and cutting the
 throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not the start.
 
 ## Known limits
 
-- The brush tyre lets a driven wheel overspin at low speed and large slip: on track-41's opening climb the Golf II
-  GTI 16V's front wheels turn 5.4 times as fast as the car at part throttle (1.07 with NGP's physics, 2.98 with
-  NGP's engine and the brush). Braking from that spin locks them with the clutch in, and the engine stalls ("In
-  game").
+- Braking hard enough to lock the driven wheels in a high gear can stall the engine where NGP's would not: the
+  experimental Golf II GTI 16V did once, after track-41's finish line ("In game"). The locked wheels pulled the engine
+  down with the clutch closed all the way to 0; in the same stop NGP's engine stayed at 89 rad/s with the clutch
+  open. Why NGP's clutch help did not open the clutch is not yet traced.
 - The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and the
   anti-lag pops play one short burst (0.3-0.7 s) each time its anti-lag starts, and only then. Real rally anti-lag
   bangs about 7 times a second for about 0.5 s per lift, louder still (counted in onboard and roadside videos); ours
@@ -595,38 +592,15 @@ throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s tar
 
 ## Tyres
 
-NGP's tyre builds its forces from tables: for each load, a friction level, a stiffness and the slip at the peak, with
-a fixed curve shape between them. On tarmac we replace that part with a brush model, the textbook physical tyre
-(Pacejka, *Tire and Vehicle Dynamics*): the tread is a row of bristles that stick to the road at the front of the
-contact patch and slide at the rear, and the force follows from how far they bend before they slide. Braking and
-cornering share one friction limit, so a tyre that brakes hard has less left for turning, and the
-force builds up over a short distance of rolling (the relaxation length) instead of at once.
+A tyre model is in development and not released: the launcher does not offer it, and `--physics experimental-brush`
+runs it on top of the engine model. It is a brush model, the textbook physical tyre (Pacejka, *Tire and Vehicle
+Dynamics*): the tread is a row of bristles that stick to the road at the front of the contact patch and slide at the
+rear. It takes the place of NGP's sliding model of the contact patch on hard surfaces above 2 m/s, fitted at load to
+give NGP's peak forces and cornering stiffness, with grip that falls as the tyre slides faster and one friction limit
+shared by braking and cornering. On gravel, snow and at low speed the tyre stays NGP's.
 
-Where NGP's tables are fixed, the brush takes measured behaviour:
-
-- Grip falls as the tyre slides faster, by the friction curve fitted to braking tests on a dry track (Canudas de Wit
-  et al., 2003). A locked wheel grips about 80 % as well as the peak at 10 m/s, more as it slows.
-- Heavier loads raise the peak force and the cornering stiffness less than in proportion, at rates from a published
-  load sweep and two road-tyre data sets.
-- The cornering stiffness falls about 0.45 % per kelvin of tread temperature and rises as the tread wears.
-
-The relaxation length is the cornering stiffness over the carcass's sideways stiffness, from each car's own tyre data:
-about 0.2 m on the Fiesta Rally2, against NGP's 0.17 m, so turn-in is about as quick as NGP's. A road tyre measured on
-a bench relaxes over a longer distance as speed rises (Vera et al., 2022), but that would put a tarmac rally tyre
-above the 0.12-0.45 m Pacejka gives, and there is no such measurement for a rally tyre, so the model leaves it out.
-
-Each wheel's brush is fitted when the car loads: NGP's own tyre is swept at its design load, and the brush's grip and
-stiffness are solved to give the same peak forces and cornering stiffness there. NGP still sets the grip level (the
-surface, wet or dry, and the tyre's temperature), so a tarmac stage grips about as much as before; the differences
-are in the shape of the force around and beyond the peak, under braking or wheelspin, and at other loads and
-speeds.
-
-Below 2 m/s, where NGP switches to its sticking model, and on gravel, snow and any other surface with a loose layer,
-the tyre is NGP's. Between 2 and 3 m/s the brush takes over gradually. On the autopilot's runs the Fiesta Rally2
-keeps NGP's pace on a tarmac stage within 1 %, and stops from 15 m/s in 5 % less distance.
-
-The model, its evidence and the open questions are in [notes/tyre-model.md](../notes/tyre-model.md); the code is in
-`crates/rbr-tyre`.
+The model, its evidence, its numbers in game and the open questions are in
+[notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
 
 ## Sources
 

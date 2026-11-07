@@ -123,9 +123,10 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   torque formula, in NGP's engine wrapper only ([engine-model.md](engine-model.md); explained in
   [docs/experimental-physics.md](../docs/experimental-physics.md), which the launcher links). NGP 7 stays the default and
   bit-exact. While experimental, a run with it saves no records, ghosts or championship results; its replays carry the
-  choice. It replaces the input-side throttle model, which is not merged. The second system is the tyre model
-  (`rbr-tyre`, user 2026-11-07): brush-v1 in place of NGP's sliding model on hard surfaces above 2 m/s, NGP's grip
-  level ([tyre-model.md](tyre-model.md)).
+  choice. It replaces the input-side throttle model, which is not merged. The tyre model
+  (`rbr-tyre`): brush-v1 in place of NGP's sliding model on hard surfaces above 2 m/s, NGP's grip level
+  ([tyre-model.md](tyre-model.md)); in development, not released (user 2026-11-07): only the hidden
+  `--physics experimental-brush` runs it, the launcher does not offer it.
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
   (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
   `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.

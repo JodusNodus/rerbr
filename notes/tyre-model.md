@@ -1,10 +1,11 @@
 # Tyre model research (ours, experimental)
 
-Whether a more current tyre model can improve on NGP's, tarmac first. The candidate, brush-v1, runs in the game as
-the tyre model of ReRBR experimental physics (`--physics experimental`, `crates/rbr-tyre`, [In game](#in-game)); NGP's
-tyre stays the bit-exact default. Tools: `rbr-standalone --tyre-probe FILE` (read-only frame
-dumps on `--autopilot` runs) and `crates/rbr-tyre-lab` (`sweep`, `materials`; README). Probe dumps, images and CSVs
-stay in `/tmp/tyre-lab`, never in git.
+Whether a more current tyre model can improve on NGP's, tarmac first. The candidate, brush-v1, runs in the game
+behind a hidden profile, `--physics experimental-brush` (the engine model with the brush; `crates/rbr-tyre`,
+[In game](#in-game)). It is in development and not released: `--physics experimental` and the launcher run NGP's
+tyre (user 2026-11-07). NGP's tyre stays the bit-exact default. Tools: `rbr-standalone --tyre-probe FILE`
+(read-only frame dumps on `--autopilot` runs) and `crates/rbr-tyre-lab` (`sweep`, `materials`; README). Probe dumps,
+images and CSVs stay in `/tmp/tyre-lab`, never in git.
 
 ## NGP's tyre as it runs (7.4.778)
 
