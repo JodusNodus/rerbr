@@ -525,13 +525,21 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     }
     runs = wot_runs(&spec, &car);
     spec.k = identity(&car, &runs);
-    let held = hold_off_boost(&mut spec, &car, &runs);
+    let mut held = hold_off_boost(&mut spec, &car, &runs);
     if spec.class.actuation == Actuation::Dbw {
         if let Some(t) = spec.turbo.as_mut() {
             t.gate_base = Curve(car.grid.iter().zip(&runs).map(|(k, (s, _))| (k.0, s.wastegate)).collect());
         }
     }
     idle_gains(&mut spec, inertia);
+    if spec.turbo.is_some() {
+        // K again, last: the hold, the gate's base and the idle gains (the idle air a closed-pedal start leaves) move
+        // the steady state near the boost threshold, and the charge's residual gas follows the exhaust pressure (up
+        // to 0.2 % off the table otherwise).
+        runs = wot_runs(&spec, &car);
+        spec.k = identity(&car, &runs);
+        held = hold_off_boost(&mut spec, &car, &runs);
+    }
 
     // The report.
     cal.friction_scale = spec.friction_scale;
