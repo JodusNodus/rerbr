@@ -54,6 +54,8 @@ pub struct Spec {
     /// The design point: the compressor's pressure ratio and flow (kg/s).
     pub pi_star: f64,
     pub w_star: f64,
+    /// The design shaft speed, rad/s.
+    pub omega_star: f64,
     /// The turbine's nozzle and the wastegate's full area, m².
     pub a_turbine: f64,
     pub a_wastegate: f64,
@@ -116,7 +118,7 @@ impl Spec {
     /// (K) through the restrictor: its flow (kg/s, at most the restrictor's choke; the restrictor's loss and the speed
     /// line solved together by bisection on the flow), the power it takes (W) and its outlet temperature (K).
     pub fn compressor(&self, omega: f64, p_out: f64, t_in: f64, p_a: f64) -> (f64, f64, f64) {
-        let nu = omega / OMEGA_STAR;
+        let nu = omega / self.omega_star;
         let cap = self.w_choke * p_a / P_REF;
         let w = if cap.is_finite() {
             if self.line(nu, p_out / self.inlet(cap, p_a)) >= cap {
