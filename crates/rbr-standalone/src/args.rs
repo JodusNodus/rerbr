@@ -145,7 +145,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed and headless runs (default ngp, NGP's; no effect without NGP)
+       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed, autopilot and headless runs, not with --twin (default ngp, NGP's; no effect without NGP)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
@@ -423,6 +423,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if (args.extra_payloads.is_some() || args.wall_clock.is_some()) && !args.recorded_payload {
         return Err("--extra-payloads and --wall-clock need --recorded-payload".into());
+    }
+    if args.twin.is_some() && args.engine_model != "ngp" {
+        return Err("--twin takes no --engine-model (the twin would step the run's model again)".into());
     }
     if args.pilot.is_some() && !args.live {
         return Err("--pilot needs --live".into());
@@ -780,6 +783,10 @@ mod tests {
             (format!("{LIVE} --callout-distance x"), "--callout-distance x"),
             (format!("{LIVE} --marker-threshold x"), "--marker-threshold x"),
             (format!("{BOOT_REC} --twin both"), "--twin both: mem or mem-direct"),
+            (
+                format!("{BOOT_REC} --twin mem --engine-model realistic"),
+                "--twin takes no --engine-model (the twin would step the run's model again)",
+            ),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
             (format!("{LIVE} --engine-model fast"), "--engine-model fast: one of ngp, realistic"),

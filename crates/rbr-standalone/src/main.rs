@@ -342,6 +342,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
         } else {
             autopilot::from_snapshot(&args.snapshots[0], &bytes, &frames, stage, args.marker_settings)?
         };
+        live.set_engine_model(&args.engine_model, race::engine_car(race, stage.car))?;
         // With `--saves` the drive runs on to the race's end, which submits the stage record and the personal best as
         // the live drive does.
         if let Some(dir) = &args.saves {
