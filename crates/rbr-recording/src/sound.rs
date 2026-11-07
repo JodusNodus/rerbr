@@ -4,7 +4,7 @@
 //! ```text
 //! u32 engine[12]      the EngineNoise payload: the engine state's words from +0x2c (CCar +0x690 is the CEngine, its +8
 //!                     the state); p[0] smoothed engine speed rad/s, p[1] throttle, p[2] turbo speed, p[3] boost,
-//!                     p[4] misfire, p[5], p[6] turbo flow, p[7] wastegate, p[8..12] cylinder flags
+//!                     p[4] misfire, p[5], p[6] blow-off flow, p[7] blow-off valve lift, p[8..12] cylinder flags
 //! u32 drivetrain[14]  the DrivetrainState payload as CDrive::M8480 (0x508480) builds it at CDrive +0x1a4 (CCar +0x4b0
 //!                     is the CDrive): p[0] gearbox speed, p[1] gear teeth (int), p[2] diff speed, p[3] diff teeth
 //!                     (int), p[4..7], p[7] |drive +0x37c|, p[8] gear-change flag, p[9], p[10..14] wheel speeds

@@ -945,6 +945,75 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
     });
 }
 
+/// A model of fixed telemetry, for the sound's turbo words: the governor's torque, its turbo in anti-lag.
+struct Turbo(Governor);
+
+impl rbr_engine::Model for Turbo {
+    fn torque(&mut self, input: &rbr_engine::Inputs) -> f32 {
+        self.0.torque(input)
+    }
+
+    fn restart(&mut self) {}
+
+    fn telemetry(&self) -> rbr_engine::Telemetry {
+        rbr_engine::Telemetry {
+            boost_pressure: 2.2e5,
+            air_pressure: 1e5,
+            turbo_speed: 12_000.0,
+            blow_off: 0.25,
+            cut: 1.0,
+            anti_lag: true,
+            ..rbr_engine::Telemetry::default()
+        }
+    }
+}
+
+/// SND1's engine words: with no model (NGP's physics) every one is the engine state's own, as before the model's
+/// hook; with a model set, the turbo words are its telemetry (`picture::model_turbo`) and the rest still the state's.
+#[test]
+fn snd1_s_turbo_words_follow_a_model_and_are_the_engine_s_without_one() {
+    use rbr_recording::sound::Sound;
+    quick_race(|data, stage, race| {
+        let boot = || Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
+        let throttle = QuantizedControl { throttle: 255, ..QuantizedControl::default() };
+        let drive = |live: &mut Live, check: &dyn Fn(Sound, Sound)| {
+            for k in 0..2600 {
+                let control = if k < 2000 { [0; CONTROL_BYTES] } else { payload(&throttle.car_control(), 0) };
+                let answer = live.answer(&control).unwrap();
+                assert!(!live.stopped, "the boot stopped at step {k}");
+                if u32::from_le_bytes(answer[12..16].try_into().unwrap()) == 0 {
+                    continue;
+                }
+                let (_, rest) = answer.split_at(FRAME_BYTES + HUD2_BYTES + DMG1_BYTES);
+                let records = records::read_records(&mut &rest[..]).unwrap();
+                let (_, snd) = records.iter().find(|(tag, _)| *tag == rbr_recording::sound::SND1).unwrap();
+                let mem = &live.playback.pure.mem;
+                let state = Sound::read_from(mem.u32(CAR_PTR), |at| {
+                    mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                });
+                check(Sound::from_bytes(snd).unwrap(), state);
+            }
+        };
+        let mut live = boot();
+        drive(&mut live, &|sent, state| assert_eq!(sent.engine, state.engine));
+        let car = crate::race::engine_car(&crate::args::Args::default(), Some(&race), race.car);
+        let mut live = boot();
+        live.set_physics(crate::profile::Profile::NGP, car.clone()).unwrap();
+        drive(&mut live, &|sent, state| assert_eq!(sent.engine, state.engine));
+
+        let params = crate::physics::engine_params(&boot().playback, car);
+        let governor = Governor { idle: params.idle_speed, top: 0.6 * params.rev_limit, seen: Seen::default() };
+        let model = rbr_engine::Model::telemetry(&Turbo(Governor { seen: Seen::default(), ..governor }));
+        let mut live = boot();
+        rbr_hybrid::ngp::set_engine_model(Some(Box::new(Turbo(governor))));
+        drive(&mut live, &|sent, mut state| {
+            super::picture::model_turbo(&mut state, &model);
+            assert_eq!(sent.engine, state.engine);
+        });
+        rbr_hybrid::ngp::set_engine_model(None);
+    });
+}
+
 /// ReRBR experimental physics (`--physics experimental`, its realistic engine model) on the boot's car: it idles
 /// near `IdleRPM_NGP` in neutral, revs to the limiter on full throttle in neutral, and launches the car in first.
 #[test]

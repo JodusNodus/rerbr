@@ -247,6 +247,9 @@ pub struct Out {
     pub cut: f64,
     pub retard: f64,
     pub anti_lag: bool,
+    /// The blow-off valve's opening at the step's end, 0..=1 (0 without a turbo), and the air's pressure, Pa.
+    pub blow_off: f64,
+    pub p_a: f64,
     /// The cylinders' air flow, kg/s, and the charge per cycle, kg.
     pub w_cyl: f64,
     pub charge: f64,
@@ -349,15 +352,17 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let n = ((3.0 * dt / tau).ceil() as usize).clamp(1, 16);
     let h = dt / n as f64;
     let mut compressor_power = 0.0;
+    let mut blow_off = 0.0;
     for _ in 0..n {
         let t_im = s.t_im;
         if let Some(t) = &spec.turbo {
             let p_im = s.p_im;
-            let bov = if anti_lag {
+            blow_off = if anti_lag {
                 0.0
             } else {
-                t.a_bov * ((s.p_boost - p_im - turbo::BOV_OPEN) / (turbo::BOV_FULL - turbo::BOV_OPEN)).clamp(0.0, 1.0)
+                ((s.p_boost - p_im - turbo::BOV_OPEN) / (turbo::BOV_FULL - turbo::BOV_OPEN)).clamp(0.0, 1.0)
             };
+            let bov = t.a_bov * blow_off;
             let rate = |p: f64| {
                 let w_c = t.compressor(s.omega_t, p, x.t_a, x.p_a).0;
                 let w_th = gas::orifice(spec.cda * area, p, p_im, t_im);
@@ -466,6 +471,8 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         cut: if combustion { 1.0 - fired } else { 1.0 },
         retard,
         anti_lag,
+        blow_off,
+        p_a: x.p_a,
         w_cyl,
         charge,
     }
