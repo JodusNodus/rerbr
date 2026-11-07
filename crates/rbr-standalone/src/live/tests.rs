@@ -832,7 +832,7 @@ fn engine_speed(answer: &[u8]) -> f32 {
 }
 
 /// The engine model's hook (ours, experimental) on the boot's car (slot 5 of `RBR_NGP_PHYSICS`): its params are its
-/// files' values; `--engine-model ngp` drives as no model, bit for bit; a model is asked once a step while the engine
+/// files' values; `--physics ngp` drives as no model, bit for bit; a model is asked once a step while the engine
 /// runs, with the step's inputs (its speed the HUD's within 2 %: the drive's, before the step), and its torque over 1.05 is the wrapper's answer.
 #[test]
 fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
@@ -883,8 +883,8 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
         let n = 2600;
         let ngp = idle_then_revs(&mut boot(), n);
         let mut live = boot();
-        live.set_engine_model("ngp", car.clone()).unwrap();
-        assert!(idle_then_revs(&mut live, n) == ngp, "--engine-model ngp differs from no model");
+        live.set_physics(crate::profile::Profile::NGP, car.clone()).unwrap();
+        assert!(idle_then_revs(&mut live, n) == ngp, "--physics ngp differs from no model");
         let hash = ngp
             .iter()
             .flatten()
@@ -943,21 +943,16 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
     });
 }
 
-/// The realistic engine model (ours, experimental) on the boot's car: it idles near `IdleRPM_NGP` in neutral, revs
-/// to the limiter on full throttle in neutral, and launches the car in first. Skipped while `rbr_engine` has no
-/// realistic model.
+/// ReRBR experimental physics (`--physics experimental`, its realistic engine model) on the boot's car: it idles
+/// near `IdleRPM_NGP` in neutral, revs to the limiter on full throttle in neutral, and launches the car in first.
 #[test]
-fn the_realistic_engine_model_idles_revs_to_the_limiter_and_launches() {
+fn the_experimental_physics_idles_revs_to_the_limiter_and_launches() {
     quick_race(|data, stage, race| {
         let boot = || Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
         let car = crate::race::engine_car(&crate::args::Args::default(), Some(&race), race.car);
         let params = crate::physics::engine_params(&boot().playback, car.clone());
-        if let Err(e) = rbr_engine::model("realistic", &params) {
-            eprintln!("skipped: {e}");
-            return;
-        }
         let mut live = boot();
-        live.set_engine_model("realistic", car).unwrap();
+        live.set_physics(crate::profile::Profile::EXPERIMENTAL, car).unwrap();
         let speeds: Vec<f32> = idle_then_revs(&mut live, 3500).iter().map(|a| engine_speed(a)).collect();
         let idle = speeds[1999];
         let top = speeds[2000..].iter().copied().fold(0.0, f32::max);

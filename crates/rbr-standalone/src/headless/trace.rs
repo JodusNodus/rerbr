@@ -41,8 +41,8 @@ pub struct Hooks<'a> {
     pub trace_out: Option<&'a Path>,
     /// `--ffb-settings`: the player's settings for the trace's magnitude.
     pub ffb: ffb::Settings,
-    /// `--engine-model` other than `ngp`, and the car's identity: the engine model the run steps.
-    pub engine_model: Option<(&'a str, &'a rbr_engine::Car)>,
+    /// `--physics` other than NGP 7's, and the car's identity: the profile the run steps.
+    pub physics: Option<(crate::profile::Profile, &'a rbr_engine::Car)>,
 }
 
 /// `--extra-payloads`: per step (its pre), the payloads emitted before its own, in order.
