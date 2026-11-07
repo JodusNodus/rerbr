@@ -196,6 +196,24 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
 
+## In game
+
+Numbers in `docs/experimental-physics.md` ("In game"), main `96c85981`, experimental = realistic + brush; the brush
+is off on gravel, so gravel numbers compare engines only.
+
+- track-11_O (gravel) 600 s, four cars: unchanged by the brush but the Fiesta's split 2 (436.20 → 436.10 s); tools
+  `run-stage-compare.sh` and `cmp2.py` in the evidence archive.
+- Fiesta Rally2 0-100 km/h, plain flat-out start (`run-standing-start.sh`, `harness/car_pace.py` from 0.5 m/s): RSF
+  504 tarmac +6.7 % NGP 4.52 / exp 4.34 s (4.44 with NGP's tyre); track-64 gravel flat 4.66 / 4.62; RSF 345 gravel
+  −4 % 4.50 / 4.45.
+- Autopilot `--launch 7200,0.2` (hold, slip throttle, torque-crossing upshifts): 4.59 / 4.48, 4.63 / 4.62, 4.47 /
+  4.45: no gain. Both tyres pull as hard at 9 m/s of slip as near the peak at launch speeds (504: 10 m/s² while the
+  wheels spin 9 m/s over the car); a slip throttle cut bogged the turbo to 130 rad/s off boost (hence
+  `LAUNCH_FLOOR`). Launch 3500–7200 rpm, slip 10–40 %: no faster. Torque-crossing shifts 6386–6587 rpm against
+  `SHIFT_UP` 6494.
+- Sourced figure: Volkswagen's claim 4.1 s for the Polo GTI R5 (Rally2 class, 1230 kg); no measured Rally2 figure
+  found. Slope-corrected 504 (constant acceleration, −0.66 m/s²) ≈ 3.9 s (inferred).
+
 ## Open
 
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
@@ -216,6 +234,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## Sources
 
+- Volkswagen, Polo GTI R5 0-100 km/h 4.1 s, 1230 kg (maker's claim): https://www.volkswagen-newsroom.com/en/the-new-polo-gti-driving-presentation-2512/the-new-polo-gti-r5-gti-goes-rallying-2567
 - Andersson, LiU MSc 2017 (MVEM, orifice, turbo): https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks & Sorenson MVEM: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
 - Eriksson, turbo modelling: https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
