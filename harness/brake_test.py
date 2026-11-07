@@ -2,15 +2,19 @@
 
   python3 -I -B harness/brake_test.py --rsf-stage 345 --rsf-car Ford_Fiesta_Rally2_ngp7 --from 27.78 --out DIR
       [--physics ngp|experimental|experimental-brush] [--slip 0.1,0.15,0.2,0.3] [--steps N] [--top-speed M/S]
-      [--jobs N] [--stage NAME] [-- EXTRA rbr-standalone ARGS]
+      [--jobs N] [--stage NAME] [--clutch-out] [-- EXTRA rbr-standalone ARGS]
 
 Each run is `rbr-standalone --autopilot --boot --flat-out --brake-from M/S --trace-speed`: the autopilot drives the
 stage flat out and brakes once the speed is reached (pick a stage whose straight it reaches the speed on). One run
 holds the full pedal (`--brake-pedal 1`, locked wheels); one per slip target K threshold-brakes (`--brake-slip K`:
-one pedal modulated so the most-slipping wheel holds K, a driver's threshold braking, not a per-wheel ABS). For each
-it prints the stopping distance, time and mean deceleration (car_pace.analyse_brake: brake onset to the stop, crash
-stops refused), and the most-slipping wheel's slip while braking over 3 m/s (mean and spread, past the first tenth);
-last the locked distance over the best threshold distance. Traces and logs go to DIR (<run>.trace, <run>.log).
+one pedal modulated so the most-slipping wheel holds K, a driver's threshold braking, not a per-wheel ABS). Every run
+brakes declutched (`--brake-declutch --clutch-help off`: clutch in, no shifts; NGP's clutch help would set the clutch
+from the engine speed in place of the pedal), so the idling engine does not turn the braked wheels; `--clutch-out`
+brakes in gear with clutch help on, as the plain brake test does (the autopilot downshifts, and on gravel the idling
+engine drives the wheels against the brake). For each run it prints the stopping distance, time and mean deceleration
+(car_pace.analyse_brake: brake onset to the stop, crash stops refused) and, while braking over 3 m/s past the first
+tenth, the most-slipping wheel's slip (mean and spread) and the wheels' mean rim speed; last the locked distance over
+the best threshold distance. Traces and logs go to DIR (<run>.trace, <run>.log).
 target/release/rbr-standalone must be built (`cargo build --release -p rbr-standalone`); RBR_DATA, RBR_RSF and
 RBR_NGP_PHYSICS come from dev.env."""
 import argparse
@@ -36,6 +40,7 @@ def command(args, name, brake):
     return ([BIN, "--autopilot", os.path.join(args.out, name + ".out"), "--boot", *stage,
              "--rsf-car", args.rsf_car, "--physics", args.physics, "--steps", str(args.steps),
              "--top-speed", str(args.top_speed), "--flat-out", "--brake-from", str(getattr(args, "from")), *brake,
+             *([] if args.clutch_out else ["--brake-declutch", "--clutch-help", "off"]),
              "--trace-speed", os.path.join(args.out, name + ".trace"), "--data", os.environ["RBR_DATA"],
              "--ngp-physics", os.environ["RBR_NGP_PHYSICS"], *args.extra])
 
@@ -46,14 +51,19 @@ def run(cmd, log):
 
 
 def slip_stats(rows, onset):
-    """The most-slipping wheel's slip 1 - |wR|/v from the brake onset down to SLIP_FROM: mean, spread."""
-    slips = []
+    """From the brake onset down to SLIP_FROM, past the first tenth: the most-slipping wheel's slip 1 - |wR|/v (mean,
+    spread) and the four wheels' mean rim speed |wR| (m/s; near 0 locked)."""
+    window = []
     for row in rows[onset:]:
         if row["v"] < SLIP_FROM:
             break
-        slips.append(max((row["v"] - w) / row["v"] for w in row["wheels"]))
-    body = slips[len(slips) // 10:]
-    return (statistics.mean(body), statistics.pstdev(body)) if body else (None, None)
+        window.append(row)
+    body = window[len(window) // 10:]
+    if not body:
+        return None, None, None
+    slips = [max((row["v"] - w) / row["v"] for w in row["wheels"]) for row in body]
+    rim = statistics.mean(statistics.mean(row["wheels"]) for row in body)
+    return statistics.mean(slips), statistics.pstdev(slips), rim
 
 
 def analyse(path, frm):
@@ -77,6 +87,7 @@ def main():
     parser.add_argument("--steps", type=int, default=30000)
     parser.add_argument("--top-speed", type=float, default=80.0)
     parser.add_argument("--jobs", type=int, default=5)
+    parser.add_argument("--clutch-out", action="store_true", help="brake in gear, without --brake-declutch")
     parser.add_argument("--out", required=True)
     parser.add_argument("extra", nargs="*", help="after --: more rbr-standalone arguments")
     args = parser.parse_args()
@@ -88,8 +99,10 @@ def main():
     runs += [(f"k{k}", ["--brake-slip", k]) for k in args.slip.split(",")]
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         codes = list(pool.map(lambda r: run(command(args, *r), os.path.join(args.out, r[0] + ".log")), runs))
-    print(f"{args.rsf_car} on {args.stage or args.rsf_stage}, {args.physics}, from {frm:.2f} m/s ({frm * 3.6:.0f} km/h)")
-    print(f"{'run':8} {'dist m':>7} {'time s':>7} {'decel g':>8} {'slip':>12}")
+    clutch = "clutch out" if args.clutch_out else "declutched"
+    print(f"{args.rsf_car} on {args.stage or args.rsf_stage}, {args.physics}, {clutch}, "
+          f"from {frm:.2f} m/s ({frm * 3.6:.0f} km/h)")
+    print(f"{'run':8} {'dist m':>7} {'time s':>7} {'decel g':>8} {'slip':>12} {'rim m/s':>7}")
     best = None
     locked = None
     for (name, _), code in zip(runs, codes):
@@ -98,9 +111,9 @@ def main():
         if not result["ok"]:
             print(f"{name:8} {result['reason']}")
             continue
-        mean, sd = result.get("slip", (None, None))
-        slip = f"{mean:.3f}±{sd:.3f}" if mean is not None else "-"
-        print(f"{name:8} {result['dist']:7.1f} {result['time']:7.2f} {result['decel'] / G:8.3f} {slip:>12}")
+        mean, sd, rim = result.get("slip", (None, None, None))
+        slip, rim = (f"{mean:.3f}±{sd:.3f}", f"{rim:.2f}") if mean is not None else ("-", "-")
+        print(f"{name:8} {result['dist']:7.1f} {result['time']:7.2f} {result['decel'] / G:8.3f} {slip:>12} {rim:>7}")
         if name == "locked":
             locked = result
         elif best is None or result["dist"] < best[1]["dist"]:
