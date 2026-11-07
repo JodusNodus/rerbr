@@ -3,6 +3,19 @@
 //! name for a car's [`Params`]; the host builds a fresh one at each start, and steps it once per physics step with
 //! that step's [`Inputs`].
 
+pub mod bench;
+pub mod calibrate;
+pub mod class;
+pub mod curve;
+pub mod ecu;
+pub mod engine;
+pub mod friction;
+pub mod gas;
+pub mod realistic;
+pub mod samples;
+pub mod solve;
+pub mod turbo;
+
 /// The car's engine in physical units, as NGP holds it after its car init, and what the car's metadata tells.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Params {
@@ -101,10 +114,9 @@ pub const NAMES: [&str; 2] = ["ngp", "realistic"];
 
 /// The engine model `name` for a car with these params: `None` for `ngp` (NGP's formula runs as it is).
 pub fn model(name: &str, params: &Params) -> Result<Option<Box<dyn Model>>, String> {
-    let _ = params;
     match name {
         "ngp" => Ok(None),
-        "realistic" => Err("engine model realistic: not built yet".to_owned()),
+        "realistic" => Ok(Some(Box::new(realistic::Realistic::new(params)))),
         _ => Err(format!("engine model {name}: one of {}", NAMES.join(", "))),
     }
 }
