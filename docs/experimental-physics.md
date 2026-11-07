@@ -2,8 +2,9 @@
 
 ReRBR runs NGP 7's physics bit for bit by default. The launcher's Settings > Physics row (or `--physics experimental`)
 offers a second choice, "ReRBR experimental (built on NGP 7)": NGP 7 with some of its systems replaced by ours. Today
-it replaces one, the engine. A mean-value engine model takes the place of NGP's torque formula, and the clutch,
-gearbox, driveline, tyres and damage stay NGP's.
+it replaces two. A mean-value engine model takes the place of NGP's torque formula, and a brush tyre model takes the
+place of NGP's sliding model of the contact patch on hard surfaces above walking pace ([Tyres](#tyres)). The clutch,
+gearbox, driveline, damage, and the tyres on loose surfaces and at low speed stay NGP's.
 
 While it is experimental, a run with it saves no records, ghosts or championship results. Its replays carry the choice
 and play back with it.
@@ -483,6 +484,36 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
 - A spring wastegate overshoots its boost by 8–13 % from 5000 rpm up.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
 - The limiter's torque swings from step to step, since the model fires or cuts a whole step at a time.
+
+## Tyres
+
+NGP's tyre builds its forces from tables: for each load, a friction level, a stiffness and the slip at the peak, with
+a fixed curve shape between them. On tarmac we replace that part with a brush model, the textbook physical tyre
+(Pacejka, *Tire and Vehicle Dynamics*): the tread is a row of bristles that stick to the road at the front of the
+contact patch and slide at the rear, and the force follows from how far they bend before they slide. Braking and
+cornering share one friction limit, so a tyre that brakes hard has less left for turning, and the
+force builds up over a short distance of rolling (the relaxation length) instead of at once.
+
+Where NGP's tables are fixed, the brush takes measured behaviour:
+
+- Grip falls as the tyre slides faster, by the friction curve fitted to braking tests on a dry track (Canudas de Wit
+  et al., 2003). A locked wheel grips about 80 % as well as the peak at 10 m/s, more as it slows.
+- Heavier loads raise the peak force and the cornering stiffness less than in proportion, at rates from a published
+  load sweep and two road-tyre data sets.
+- The cornering stiffness falls about 0.45 % per kelvin of tread temperature and rises as the tread wears.
+- The relaxation length grows with speed, as measured on a car tyre bench (Vera et al., 2022).
+
+Each wheel's brush is fitted when the car loads: NGP's own tyre is swept at its design load, and the brush's grip and
+stiffness are solved to give the same peak forces and cornering stiffness there. NGP still sets the grip level (the
+surface, wet or dry, and the tyre's temperature), so a tarmac stage grips about as much as before; the differences
+are in the shape of the force around and beyond the peak, at other loads, and in how fast it builds.
+
+Below 2 m/s, where NGP switches to its sticking model, and on gravel, snow and any other surface with a loose layer,
+the tyre is NGP's. Between 2 and 3 m/s the brush takes over gradually. On the autopilot's runs the Fiesta Rally2
+keeps NGP's pace on a tarmac stage within 1 %, and stops from 15 m/s in 3.5 % less distance.
+
+The model, its evidence and the open questions are in [notes/tyre-model.md](../notes/tyre-model.md); the code is in
+`crates/rbr-tyre`.
 
 ## Sources
 

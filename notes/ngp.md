@@ -192,6 +192,13 @@ return stay, and the speed ring moves as NGP's formula moves it (idle model only
 air pressure `10171ad8` and temperature `10171adc` (`apply_atmosphere`'s order), engine temperature `CState +0x23c` (K,
 358-363 on slot 5's idle and rev, new every tenth step). With none set the code is NGP's (rsf_compare drive2/5 84084).
 
+Tyre model hook (the second part, `rbr-tyre`, `notes/tyre-model.md`): with a model set on the thread
+(`rbr_hybrid::ngp::set_tyre_model`), the tyre step (`rbr_physics::tyre::step`) asks it after the slip phase, with
+NGP's sliding solve already done, and blends its patch forces in by its weight (`rbr_physics::tyre::model::apply`):
+deflection `-(soil + Fy)/(cos·k_lat)` and torsion `-(R·Fx + soil)/k_tors`, so `solve_forces` gives the model's forces;
+trail, phases and friction forces likewise. The damping and hold need a sticking weight, which is 0 where the brush
+runs (contact speed ≥ 2 m/s). With none set the code is NGP's.
+
 ### Unreachable guards
 
 The bindings in `rbr-hybrid/src/ngp.rs` keep these as declines:

@@ -1,7 +1,8 @@
 # Tyre model research (ours, experimental)
 
-Whether a more current tyre model can improve on NGP's, tarmac first. Research and lab only: nothing here is wired
-into the game, and NGP's tyre stays the bit-exact default. Tools: `rbr-standalone --tyre-probe FILE` (read-only frame
+Whether a more current tyre model can improve on NGP's, tarmac first. The candidate, brush-v1, runs in the game as
+the tyre model of ReRBR experimental physics (`--physics experimental`, `crates/rbr-tyre`, [In game](#in-game)); NGP's
+tyre stays the bit-exact default. Tools: `rbr-standalone --tyre-probe FILE` (read-only frame
 dumps on `--autopilot` runs) and `crates/rbr-tyre-lab` (`sweep`, `materials`; README). Probe dumps, images and CSVs
 stay in `/tmp/tyre-lab`, never in git.
 
@@ -85,9 +86,9 @@ times.
   0.04-0.10 m to 63 %, shrinking with speed (σ/R0 1.0-1.8 in the sets); the sticking model's 360 Hz alternation;
   tread warm-up of ~8 K in 20 s of hard cornering.
 
-## Candidate (brush-v1, lab only)
+## Candidate (brush-v1)
 
-`rbr_tyre_lab::brush` (`calibrate`, `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3) and
+`rbr_tyre::brush` (`calibrate`; the lab's `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3) and
 single-contact-point transient (ch. 7). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
 (-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed by Canudas de Wit's g(Vs) with their v_s and μ_C/μ_S; NGP's temperature grip kept; dry wear
@@ -114,11 +115,32 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   to 30 m/s (Contidrom: nothing to 100 km/h) and the worn one barely more than new at 30 m/s (Contidrom: 0.52 of
   new from 100 km/h); peak slip angle 8.75° (6.5-8.5°); σ/R 2.6 at 30 m/s; trail 0 past saturation (NGP 0.004 m).
 
+## In game
+
+- Seam: `rbr_physics::tyre::model` (`ForceInput`, `ForceOutput`, `apply`), asked in `tyre::step` after NGP's sliding
+  solve and the slip phase; `rbr_hybrid::ngp::set_tyre_model` per thread, as the engine's. The model's forces become
+  the deflection and torsion `solve_forces` turns back into them (in-game probe: `lateral_force` equals the model's to
+  the f32). With no model set the code is NGP's: rsf_compare drive2/5 physics PASS 84084/84084, exit 0.
+- Scope: contact speed ≥ 2 m/s (NGP's sliding model alone there) and no soil; the weight rises from 0 at 2 m/s to 1
+  at 3 m/s. Below, and on soil, NGP's.
+- Grip: NGP's static friction (surface, wet or dry, times the temperature grip) times the inclination's table scale
+  scales μ_S and μ_C both, so the paper's μ_C/μ_S holds on every surface; NGP's kinetic friction is unused. The wet
+  loss and the hydroplaning speed stay off (NGP's wet surface values carry the wet); the dry wear gain and the
+  stiffness's temperature, wear and pressure factors are the brush's.
+- Calibration per wheel at fit (`rbr_tyre::fit`): NGP's `patch_forces` swept from the wheel's own tables at
+  `load_axis[3]` (the 4 kN design load times the car's mass ratio), 15 m/s, unit surface, stiffness factor 1; t_cal is
+  the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed.
+- Transient: the single contact point per wheel, the model's state (snapshots don't carry it; restart and touch-down
+  zero it). σ_x takes NGP's speed-scaled torsional stiffness (0.1 of it below 10 m/s), as NGP's own spring does, so
+  the longitudinal relaxation is ~10× longer at low speed, for NGP's stability.
+- Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental`): 150000 steps reach 3007 / 3011
+  / 3027 m, split 1 118.82 / 118.54 / 118.20 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.52 / 9.04 m (11.4 /
+  11.8 / 12.5 m/s² mean). No measurable step cost (100000 steps 31-33 s either way).
+
 ## Open
 
-- Whether the candidate drives better needs it on the car: a hook like the engine model's (`--engine-model`), user
-  decision. The 4-9× longer lateral transient is the largest change a driver would feel; whether σ grows with speed
-  is unsettled.
+- Driving it: the 4-9× longer lateral transient is the largest change a driver would feel; whether σ grows with speed
+  is unsettled. The autopilot's pace is NGP's within 1 %; a driver's view is the next check.
 - Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest), the film's effect on v_p,
   and a sliding-speed loss for wet roads that fits locked-wheel data.
 - Low speed: LuGre bristle state with the published σ_0 (would also remove NGP's 360 Hz alternation) or NGP's
