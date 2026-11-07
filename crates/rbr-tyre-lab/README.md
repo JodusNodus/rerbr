@@ -13,6 +13,13 @@ Nothing here changes what the game computes.
 - `examples/sweep.rs`: takes a probe dump and sweeps NGP's pure tyre functions
   (`patch_forces`, `friction_limits`, through `rbr-physics`, never copied)
   over slip and load. Writes CSVs plus `summary.md` into the output dir.
+- `src/probe.rs`: the probe-dump parser shared by the examples.
+- `src/brush.rs`: the brush-v0 candidate tyre model (ours, experimental):
+  steady-state brush with combined slip, Grosch-like sliding-speed friction,
+  load/temperature/wear/pressure factors, a wet loss and a single-point
+  transient, with unit tests. Lab code only: nothing is wired into the game.
+- `examples/compare.rs`: compares brush-v0 against NGP's sweep and published
+  targets. Writes CSVs plus `summary.md` into the output dir.
 
 ## Use
 

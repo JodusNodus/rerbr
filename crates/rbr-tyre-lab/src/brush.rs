@@ -132,7 +132,8 @@ pub fn pressure_factor(p: f64) -> f64 {
 /// Stiffness at load `fz`: C0 (Fz/Fz0)^M_C, times the bulk-temperature, wear
 /// and pressure factors normalised to the calibration point.
 pub fn stiffness_at(fz: f64, tb: f64, d: f64, p: f64, c0: f64) -> f64 {
-    c0 * (fz / FZ0).powf(M_C) * (temp_stiffness_factor(tb) / temp_stiffness_factor(T_CAL))
+    c0 * (fz / FZ0).powf(M_C)
+        * (temp_stiffness_factor(tb) / temp_stiffness_factor(T_CAL))
         * (wear_stiffness_factor(d) / wear_stiffness_factor(D_CAL))
         * (pressure_factor(p) / PF_CAL)
 }
@@ -144,10 +145,12 @@ pub fn hydroplaning_speed(p: f64, d: f64) -> f64 {
     6.36 * (p / 1000.0).sqrt() * (0.6 + 0.4 * d) / 3.6
 }
 
-/// Wet loss factor on friction: film h = W * 1.0 mm, loss L = h/(h + 0.5 mm)
-/// * min(1, (V/vp)^2), friction times (1 - 0.6 L). Applied on top of the wet
-/// surface mu. Direction is well established; the film scale, the reference
-/// film and the 0.6 weight are ours.
+/// Wet loss factor on friction (our construction except the speed formula):
+/// the film height is h = W times 1.0 mm, the loss is L = h/(h + 0.5 mm) times
+/// min(1, (V/vp)^2), and friction is multiplied by (1 - 0.6 L), applied on top
+/// of the wet surface mu. The direction (deeper water and lower speed margin
+/// hurt) is well established; the film scale, the reference film and the 0.6
+/// weight are ours.
 pub fn wet_loss(w: f64, v: f64, p: f64, d: f64) -> f64 {
     if w <= 0.0 {
         return 1.0;
@@ -163,6 +166,7 @@ pub fn wet_loss(w: f64, v: f64, p: f64, d: f64) -> f64 {
 /// the surface ratio, NGP's temperature grip factor, the dry-wear term
 /// (1 + 0.167 (1 - d), normalised: +10% peak mu at 60% worn, same paper) and
 /// the wet loss.
+#[allow(clippy::too_many_arguments)]
 pub fn mu_axis(mu_s: f64, mu_k: f64, vs: f64, fz: f64, surf_ratio: f64, temp_grip: f64, d: f64, wet: f64) -> f64 {
     let base = mu_k + (mu_s - mu_k) / (1.0 + (vs / V_MU).powi(2));
     base * (fz / FZ0).powf(N_MU - 1.0)
@@ -239,26 +243,8 @@ pub fn eval(x: &EvalInput) -> EvalOutput {
     let vs = (vsx * vsx + vsy * vsy).sqrt();
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
     let wet = wet_loss(x.wetness, v, x.pressure, x.tread_remaining);
-    let mu_x = mu_axis(
-        MU_X_S,
-        MU_X_K,
-        vs,
-        x.fz,
-        x.surf_kinetic / SURF_K_CAL,
-        x.temp_grip,
-        x.tread_remaining,
-        wet,
-    );
-    let mu_y = mu_axis(
-        MU_Y_S,
-        MU_Y_K,
-        vs,
-        x.fz,
-        x.surf_static / SURF_S_CAL,
-        x.temp_grip,
-        x.tread_remaining,
-        wet,
-    );
+    let mu_x = mu_axis(MU_X_S, MU_X_K, vs, x.fz, x.surf_kinetic / SURF_K_CAL, x.temp_grip, x.tread_remaining, wet);
+    let mu_y = mu_axis(MU_Y_S, MU_Y_K, vs, x.fz, x.surf_static / SURF_S_CAL, x.temp_grip, x.tread_remaining, wet);
     // Friction ellipse along the theoretical-slip direction.
     let s_abs = (sx * sx + sy * sy).sqrt();
     let mu = if s_abs > 0.0 {
@@ -280,11 +266,7 @@ pub fn eval(x: &EvalInput) -> EvalOutput {
     } else {
         (0.0, 0.0)
     };
-    let (fx, fy) = if psi > 0.0 {
-        (-f * theta_x * sx / psi, -f * theta_y * sy / psi)
-    } else {
-        (0.0, 0.0)
-    };
+    let (fx, fy) = if psi > 0.0 { (-f * theta_x * sx / psi, -f * theta_y * sy / psi) } else { (0.0, 0.0) };
     let trail = if fy != 0.0 { -mz / fy } else { 0.0 };
     EvalOutput { fx, fy, mz, trail, psi, mu, sx, sy }
 }
@@ -447,7 +429,7 @@ mod tests {
         let vx = -v * alpha.cos();
         let vr = v * alpha.cos();
         let cy = stiffness_at(FZ0, T_CAL, D_CAL, P_CAL, CY0);
-        let k_y = 418798.281250 * f64::from(PF_CAL);
+        let k_y = 418798.281250 * PF_CAL;
         let (sig_y, _) = sigma_lengths(cy, cy, k_y, 1.0, vx);
         let dt = 1.0 / 720.0;
         let mut s = TransState::default();
