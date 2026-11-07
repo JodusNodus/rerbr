@@ -36,23 +36,20 @@ Nothing here changes what the game computes.
 
 ## Use
 
+In bash, with the paths from `scripts/dev-env.sh` (`--rsf-car` needs `RBR_RSF`; set `RBR_NGP_DLL` to NGP
+7.4.778's `NGP.dll` when neither the data nor the RSF install holds one). One run gives both captures:
+
 ```sh
+. scripts/dev-env.sh
 cargo build --release -p rbr-standalone
-./target/release/rbr-standalone --autopilot OUT --boot --stage track-85_M \
-    --steps 8000 --top-speed 60 --circle -260,120,40 \
-    --rsf-car Ford_Fiesta_Rally2_ngp7 --tyre-probe /tmp/tyre-lab/x.probe \
+./target/release/rbr-standalone --autopilot /tmp/tyre-lab/x.out --boot --stage track-85_M \
+    --steps 8000 --top-speed 60 --circle -260,120,40 --rsf-car Ford_Fiesta_Rally2_ngp7 \
+    --tyre-probe /tmp/tyre-lab/x.probe --tyre-image /tmp/tyre-lab/dyn.img --tyre-image-step 8000 \
     --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS"
-cargo run -q -p rbr-tyre-lab --example sweep -- \
-    --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/ngp
+cargo run -q --release -p rbr-tyre-lab --example sweep -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/ngp
+cargo run -q --release -p rbr-tyre-lab --example compare -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/cand
+cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --out /tmp/tyre-lab/ngp-dyn
+cargo run -q --release -p rbr-tyre-lab --example materials -- "$RBR_NGP_DLL" [ID...]
 ```
 
-```sh
-./target/release/rbr-standalone --autopilot OUT --boot --stage track-85_M \
-    --steps 8000 --top-speed 60 --circle -260,120,40 \
-    --rsf-car Ford_Fiesta_Rally2_ngp7 --tyre-image /tmp/tyre-lab/x.img \
-    --tyre-image-step 8000 --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS"
-cargo run -q -p rbr-tyre-lab --example ngp_transient -- \
-    --image /tmp/tyre-lab/x.img --out /tmp/tyre-lab/ngp-dyn
-```
-
-No game data is committed: probe dumps and CSVs stay in `/tmp/tyre-lab`.
+No game data is committed: dumps, images and CSVs stay in `/tmp/tyre-lab`; `materials` prints only.
