@@ -15,10 +15,13 @@ pub struct Profile {
 impl Profile {
     /// NGP 7's physics, as the original steps it: nothing replaced (the default).
     pub const NGP: Profile = Profile { name: "ngp", engine: "ngp", tyre: "ngp" };
-    /// ReRBR experimental physics, built on NGP 7.
-    pub const EXPERIMENTAL: Profile = Profile { name: "experimental", engine: "realistic", tyre: "brush" };
+    /// ReRBR experimental physics, built on NGP 7: its engine model (released; the launcher's Settings > Physics).
+    pub const EXPERIMENTAL: Profile = Profile { name: "experimental", engine: "realistic", tyre: "ngp" };
+    /// The experimental physics with the brush tyre: in development, not released. Only `--physics
+    /// experimental-brush` reaches it; the launcher does not offer it.
+    pub const EXPERIMENTAL_BRUSH: Profile = Profile { name: "experimental-brush", engine: "realistic", tyre: "brush" };
     /// The profiles `--physics` takes.
-    pub const ALL: [Profile; 2] = [Profile::NGP, Profile::EXPERIMENTAL];
+    pub const ALL: [Profile; 3] = [Profile::NGP, Profile::EXPERIMENTAL, Profile::EXPERIMENTAL_BRUSH];
 
     /// The profile `name` names.
     pub fn named(name: &str) -> Option<Profile> {
@@ -48,7 +51,10 @@ mod tests {
         let experimental = Profile::named("experimental").unwrap();
         assert!(!experimental.is_ngp());
         assert!(rbr_engine::NAMES.contains(&experimental.engine) && experimental.engine != "ngp");
-        assert!(rbr_tyre::NAMES.contains(&experimental.tyre) && experimental.tyre != "ngp");
+        assert_eq!(experimental.tyre, "ngp", "the brush tyre is not released");
+        let brush = Profile::named("experimental-brush").unwrap();
+        assert_eq!(brush.engine, experimental.engine);
+        assert!(rbr_tyre::NAMES.contains(&brush.tyre) && brush.tyre != "ngp");
         assert_eq!(Profile::named("realistic"), None);
     }
 }

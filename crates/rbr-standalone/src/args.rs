@@ -835,7 +835,7 @@ mod tests {
             ),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
-            (format!("{LIVE} --physics fast"), "--physics fast: one of ngp, experimental"),
+            (format!("{LIVE} --physics fast"), "--physics fast: one of ngp, experimental, experimental-brush"),
             (format!("{LIVE} --car-year new"), "--car-year new"),
             (format!("{BOOT} --wear muddy"), "--wear muddy: new, normal or worn"),
             (format!("{BOOT} --wetness humid"), "--wetness humid: dry, damp or wet"),

@@ -12,7 +12,7 @@ pub enum PhysicsProfile {
     /// NGP 7's, as the original drives.
     #[default]
     Ngp,
-    /// ReRBR experimental physics, built on NGP 7: its engine (`rbr_engine`) and tyre (`rbr_tyre`) models.
+    /// ReRBR experimental physics, built on NGP 7: its engine model (`rbr_engine`). The brush tyre is not offered.
     Experimental,
 }
 
