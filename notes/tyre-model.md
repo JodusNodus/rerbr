@@ -404,6 +404,39 @@ Where NGP sits:
 
 - Load: the tarmac sensitivity on every surface (same tables): Fy ∝ Fz^0.875-0.886, Fx ∝ Fz^0.98, Cα ∝ Fz^0.33-0.36.
 
+## Car-level targets on loose surfaces
+
+Measured whole-car behaviour (and per-tyre forces where open) on gravel, snow and ice, to judge a loose-surface tyre
+model against data rather than feel. Research only (2026-11-07, second round); the full findings, sources, digitised
+traces and scripts are kept outside the repository (not in git). Labels as above; g from a stop is v²/2s (inferred, a
+lower bound: it includes the pedal rise). Every braking series is road cars on road tyres; none is a rally tyre.
+
+| Target | Value and conditions | Source (precision) | How ReRBR reproduces it (run, car, metric) | Tooling missing |
+| --- | --- | --- | --- | --- |
+| Locked-wheel braking on gravel | 0.47-0.59 g, 9 light vehicles, 56 km/h, 5 cm #617 crushed limestone, shortest of 3 stops; 0.59-0.66 g, 7 SUVs, pickups and cars, 50 km/h, freshly graded silty sandy gravel; 0.53-0.64, Polo, 40-80 km/h compacted; no speed trend over 40-80 km/h. NGP: 0.72 g from 100 km/h on RSF 345 | NHTSA DOT HS 808 875 Tables A1/A2 (table; g inferred); Macnabb et al. ESV 98-S2-W-36 Table 4 (table, accelerometer); Proctor-Parker SATC 2019 Table 1 (table; g inferred) | `--autopilot --brake-from 15.6` (and 11.1, 22.2) on RSF 345, Fiesta Rally2; mean decel brake to stop from `--trace-speed` | none |
+| Locked over ABS on gravel | decel ratio 1.25 laden / 1.30 light, per car 1.12-1.42; 1.21-1.59 per car. Same method on wet Jennite (hard, SN 30/10): 0.54-0.62. NGP: tyre locked 0.82 of peak (< 1) | NHTSA Tables A1/A2 (table; ratio inferred, reproduces SAE 1999-01-1287 Table 2); Macnabb Table 4 (table; ratio inferred) | the run above against a stop held at peak slip on the same stretch; ratio of mean decel | a brake held near peak slip (partial pedal or an ABS-like hold; only the uncommitted debug patch has partial pedal) |
+| Gravel against tarmac, braking | same car locked gravel / ABS asphalt 0.69-0.84; tarmac reference by the same method: ABS wet asphalt (SN 85/65) 0.69-0.84 g from 80 km/h, dry concrete 0.69-0.88 g from 97 km/h. NGP: 0.72 g gravel / 1.08 g RSF 568 tarmac = 0.67 (different speeds) | Macnabb Tables 3-4 (table; ratio inferred); NHTSA Tables A1/A2 (table; g inferred) | `--brake-from` at one speed on 345 and map 41, same car; ratio | none |
+| Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g. NGP: not measured at car level (tyre peak 0.83) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
+| Trail-brake by an expert on gravel | Group A Impreza STI (AWD, 340 bhp), track gravel, 80-90° corner: 77 → 23 km/h over 1.05-4.05 s (0.51 g mean, 0.66 g peak over 0.5 s), rear-axle slip angle 42° at 4 s, back to 0 by 5 s; pendulum turn −29° → +63°, 0.59 g peak | Velenis et al. MED 2007 Figs 3, 5 (fig ±1 km/h, ±1°; digitised by pixel; inputs normalised); no data release found | RSF Impreza GC8 555 GrpA on a gravel 80-90° corner, inputs of the same shape; speed and rear-axle slip angle traces | a payload writer from an input CSV, assumed steering, brake and throttle scales, a matching corner; shape check only |
+| Snow braking | road winter tyres 0.33-0.45 g (50-0, 35-5, 25-5 km/h, ABS); locked 0.31-0.35 g; trailer μx,max 0.46-0.57, μy,max 0.47-0.56 at 30 km/h, no clear fall past the peak. NGP: tyre peak 0.85; car not measured | Auto Bild 2025, Vi Bilägare 2024-25 (table, secondary); VTI R875 Tabell 55, 60, 62 (table); Sokolovskij 2007 (table), SAE 960652 (quoted) | `--brake-from 13.9` on map 10 (`track-10_O`), Fiesta Rally2; mean decel | none (rally snow tyres are studded: the level is a lower bound) |
+| Ice braking and cornering | car 50-0 km/h: studded 0.23-0.30 g, studless 0.18-0.22 g; best three at −2/−7/−13 °C 0.24/0.28/0.31 g studded, 0.17/0.22/0.26 g studless. Rig, smooth ice −3 °C, 30 km/h, 4.2 kN: μx peak/locked 0.25/0.22 studded, 0.21/0.17 Nordic; μy peak 0.22 at ~5° / 0.19 at 2-3°, at 20° 0.19 / 0.13. NGP: material 116 μ 0.10, tyre peak at 1.25° | Tekniikan Maailma 18/2025 (table, secondary via tyrereviews); VTI R875 Tabell 46, 48, Figur 3 (table; means inferred; fig ±0.01) | `--brake-from` and `--circle` on a 116 surface | a run on material 116 (none met it so far) |
+| Rally braking g, real stage | 0.65 g mean over the 16 longest braking events; lateral 1 s mean p50 0.4 g, p90 0.8-0.95 g; Yaris WRC, Rally Finland 2021 SS7 | RallyDataJunkie merged telemetry, one file (inferred; axes and 0.01 g units inferred) | autopilot on a fast RSF gravel stage, same statistics | per-step g export and a percentile script; the autopilot is not a WRC driver (weak) |
+| Surface change under traffic | braking coefficient 0.50 → 0.57 → 0.60 over three passes in one track; scraped line 0.68-0.74, loose windrow 0.56-0.59 | TR-10-11 Table 3 (table), Fig 13 (quoted) | none | a surface that changes with passes (not checked whether NGP has one) |
+| Per-tyre lateral curve on gravel | max lateral coefficient 0.55 (wet crushed gravel, pea stone); peak slip angle and the fall past it not open | SAE 2010-01-0374 (paywalled; 0.55 quoted in TR-10-11) | sweep on kind 4 against it | the paper |
+| Rally studs on ice | protrusion 5.5-7 mm, 18-20 studs in contact; no μ or g open; road-stud fits end at 1.8 mm | press (quoted); VTI meddelande 923 (quoted) | none | data |
+
+Ranking:
+
+1. Strong and testable now: the locked-wheel level on gravel (three measured series give 0.47-0.66 g at
+   40-80 km/h; NGP's 0.72 g is from 100 km/h on a rally tyre), the gravel/tarmac braking ratio, and the gravel
+   circle (0.43-0.7 g). Snow braking (0.33-0.45 g) also runs now, as a lower bound.
+2. Strongest once tooled: locked over ABS on gravel (1.25-1.30, every car, two programmes; the opposite sign on wet
+   Jennite by the same method): needs a stop held at peak slip. Then ice (VTI rig and magazine data are solid) once
+   a run reaches material 116.
+3. Weak or shape only: the Velenis trail-brake (normalised inputs, one corner), the WRC telemetry statistics (one car,
+   inferred units).
+4. Out of reach: per-tyre gravel curves (paywalled), rally studs (no data), surface change with passes.
+
 ## Open
 
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
