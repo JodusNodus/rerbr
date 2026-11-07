@@ -192,7 +192,8 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   brush has no bore torque, so it adds what the brush lacks rather than fighting it: scaled by (1 - w) (gone), every
   stop time within 0.01 s, reversal share within 0.01, rock-back within 10 mm, four-car finishes within 0.04 s
   (2026-11-07).
-- Scope: hard surfaces (no soil) at every speed, down to standstill, weight 1 (2026-11-07, user). On soil, NGP's.
+- Scope: hard surfaces (no soil) at every speed, down to standstill, weight 1 (2026-11-07, user). On soil loose-v1
+  (2026-11-08, [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
 - Grip: NGP's static friction (surface, wet or dry, times the temperature grip) times the inclination's table scale
   scales μ_S and μ_C both, so the paper's μ_C/μ_S holds on every surface; NGP's kinetic friction is unused. The wet
   loss and the hydroplaning speed stay off (NGP's wet surface values carry the wet); the dry wear gain and the
@@ -411,8 +412,8 @@ Where NGP sits:
   --clutch-help off`, no shifts): the full pedal locks (mean rim speed over 3 m/s 0-0.47 m/s, slip 0.99-1.00), the
   engine runs free of the gear in every locked run. In gear (clutch help on, the plain `--brake-from`), the autopilot
   downshifts and on gravel the idling engine (124-128 rad/s, clutch engaged) turns the braked wheels at ~3 m/s, so
-  that full pedal is brake against engine, not locked. On gravel experimental-brush is NGP's tyre with the realistic
-  engine (the brush is off on soil, `rbr-tyre` `car.rs`); declutched the two agree within 1 %. The force rises with
+  that full pedal is brake against engine, not locked. On gravel experimental-brush was NGP's tyre with the realistic
+  engine (the brush was off on soil before loose-v1); declutched the two agree within 1 %. The force rises with
   slip to K 0.5 on gravel, 0.2-0.3 on tarmac, and no run stops shorter locked.
 
   | Surface | Physics | From | Locked (declutched) | Best threshold (declutched) | Ratio | Ratio in gear |
@@ -431,6 +432,74 @@ Where NGP sits:
   0.72 g, setup not compared.
 
 - Load: the tarmac sensitivity on every surface (same tables): Fy ∝ Fz^0.875-0.886, Fx ∝ Fz^0.98, Cα ∝ Fz^0.33-0.36.
+
+## Loose surfaces: loose-v1
+
+`rbr_tyre::loose` (in development, `--physics experimental-brush` only): the car model (`car.rs`) takes it on every
+soil wheel (`soil_thickness > 0`: gravel and snow) in place of NGP's tyre; NGP's soil lateral force (∝ v_lat²) stays on
+top (`model::apply`), the carcass dynamics (`brush::step_dynamic`) are the brush's and keep their state across a change
+between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP's sweep against it).
+
+- Model: the brush's patch (`brush::patch`, combined slip unchanged) with a flat friction (no fall with sliding speed),
+  plus a berm: from the longitudinal full slide (braking slip |sx| = 3 μ_x Fz/Cx) to lock the braking force rises by a
+  smoothstep in the braking slip to `PLOUGH` 1.3 times the free rolling peak, against the sliding velocity (with the
+  friction). The braking slip takes the speed floored at 0.5 m/s, so the berm fades out at standstill. No berm when
+  driving.
+- Evidence: lateral saturation without a fall to 40° and the normalised curve (Coutermarsh & Shoop, SAE 2010-01-0374,
+  fig ±0.02); locked over ABS decel 1.25 laden / 1.30 light (NHTSA DOT HS 808 875, table); the locked tyre's side
+  force PLOUGH μ sin α, 0.76 of the free rolling peak at 35° (Coutermarsh ~0.4/0.55 = 0.73, fig).
+- Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface
+  (`fit::loose`), linear between, times NGP's grip; the flat brush's peak is μ Fz, so the level needs no solve. The
+  cornering stiffness is re-solved under the flat friction to NGP's slope (0-2°, 4 kN); Cx = 1.4 Cy as the brush's.
+- Ours: the smoothstep's shape (no intermediate slips are published), no berm when driving (the data are braked; a
+  spinning tyre's sinkage resistance is unmeasured), PLOUGH independent of the soil's thickness (data on 5 cm layers,
+  NGP's 9-30 mm) and of speed (no trend at 40-80 km/h), NGP's soil lateral force kept (it is NGP's lateral ploughing:
+  3-4 % of the peak at 30° and 15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5 m/s).
+
+Lab, RSF 345 frame (Fiesta Rally2, wheel 1, gravel 17, static 0.847 after the temperature grip, 4 kN, 15 m/s; NGP /
+loose-v1; NGP's soil force left out of both):
+
+| Property | Published | NGP | loose-v1 |
+| --- | --- | --- | --- |
+| μ_y/peak at 2.5/5/10/15° | pea stone 0.49/0.73/0.91/0.96, wet gravel 0.29/0.49/0.76/0.89 | 0.45/0.74/0.98/1.00 | 0.44/0.73/0.98/1.00 |
+| μ_y at 30/40° over peak | ~1 (no fall to 40°) | 0.956/0.913 | 1.000/1.000 |
+| Peak μ_y, slip angle | 0.54-0.55 (road AT tyre) | 0.829 at 13.75° | 0.829 at 16.5° |
+| μ_x at κ 0.05 / driving peak | none | 0.335 / 0.850 (κ 0.24) | 0.504 / 0.850 (κ ~0.3) |
+| Braking μ_x over peak at κ 0.3/0.5/0.7/1 | locked 1.25-1.30 (car) | 0.99/0.95/0.88/0.82 | 1.02/1.11/1.21/1.30 |
+| Locked μ_y over free rolling peak at 5/10/20/35° | linear, ~0.73 at 35° | 0.18/0.33/0.46/0.54 | 0.12/0.23/0.46/0.76 |
+| Peaks μ_y / μ_x at 2/4/6 kN | | 0.889/0.864, 0.829/0.850, 0.774/0.846 | 0.888/0.882, 0.829/0.850, 0.774/0.846 |
+
+The 2 kN μ_x is 2 % above NGP's: the fit sweeps at stiffness factor 1, the frame's pressure moves NGP's light-load
+longitudinal peak. Snow (map 10, SnowOnGravel_Shallow 101, wheel 1): the same shape, peaks 0.834/0.854 against NGP's
+0.844/0.864 (1 % low, the same cause), not tuned.
+
+In game (2026-11-08, Fiesta Rally2, declutched `harness/brake_test.py`; NGP / experimental-brush before → after; ngp
+traces byte-identical before and after):
+
+| Run | NGP | before | after |
+| --- | --- | --- | --- |
+| 345 from 100 km/h: full pedal | 51.1 m, 0.771 g | 51.2 m, 0.770 g | 39.6 m, 0.995 g (not locked: slip 0.81±0.21) |
+| threshold K 0.3 / 0.5 / 0.7 | 0.803 / 0.847 / 0.820 g | 0.800 / 0.844 / 0.817 g | 0.849 / 0.914 / 0.961 g |
+| full over best threshold, decel | 0.91 | 0.91 | 1.04 (best threshold K 0.7) |
+| 345 from 50 km/h: full pedal | 15.7 m, 0.628 g | 15.6 m, 0.630 g | 10.8 m, 0.912 g (slip 0.75±0.10) |
+| threshold K 0.3 / 0.5 / 0.7 | 0.701 / 0.732 / 0.693 g | 0.705 / 0.738 / 0.703 g | 0.741 / 0.810 / 0.876 g |
+| full over best threshold, decel | 0.86 | 0.85 | 1.04 (K 0.7) |
+| map 10 snow from 50 km/h: full / best threshold | 0.791 / 0.875 g (K 0.5) | not run | 1.072 / 1.043 g (K 0.7; slip 0.77) |
+| 345 circle (`--circle 1051,-166,40 --circle-ramp 0.4`), lateral g | 0.571 | 0.725 | 0.607 |
+| RSF 111 Fraizer Wells II, autopilot finish | 290.32 s | 287.42 s | 286.40 s (-0.35 %) |
+| RSF 112 Hualapai Nation II, autopilot finish | 441.72 s | 437.28 s | 435.27 s (-0.46 %) |
+| 345, held 4 s after a full-pedal stop from 50 km/h: peak speed per 0.5 s | 0.293/0.014/0.001/0 m/s | 0.297/0.012/0.001/0 | 0.298/0.061/0.019/0 |
+
+- The full pedal no longer locks: the berm's force past the peak exceeds the brake torque, so the most-slipping wheel
+  settles at slip 0.75-0.81 mean (the left wheels lock below ~12 m/s, the right ones keep turning, and the autopilot
+  steers against the yaw, up to full lock below 7 m/s).
+  The force rises with slip, so the best threshold is the deepest one and full over best is 1.04, not the published
+  1.25-1.30 locked over ABS: against threshold braking near NGP's peak (K 0.3) it is 1.17 / 1.23.
+- Level: full-pedal braking 0.91-1.0 g on gravel and 1.07 g on snow against the published 0.47-0.66 g (gravel,
+  road tyres) and 0.31-0.45 g (snow): 1.3 times NGP's peak, which is already 1.3-1.5 times the published gravel peaks.
+  The ratio and the level cannot both be met at NGP's grip level.
+- Standstill: no creep (no movement after 1 s at the trace's 10 mm); after a full-pedal stop the carcass rings to 0.06
+  m/s in the second half second (NGP 0.014), gone by 1.5 s, as on tarmac. No NaN in any run.
 
 ## Car-level targets on loose surfaces
 
@@ -486,5 +555,9 @@ Ranking:
   at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same contact; Rill's restored dynamics already
   give the stick-slip at standstill LuGre adds, so it was not prototyped. Camber thrust from MF6.1's camber stiffness.
 - Loose surfaces unmeasured: material 116 in a run (its tyre-class factor, taken as 1), combined slip on gravel and
-  snow, and the soil's lateral force above 25 m/s through the whole car. Ploughing (locked 25-30 % shorter on
-  gravel) is missing in both physics: the declutched brake test stops 10-17 % longer locked.
+  snow, and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
+  test stops 10-17 % longer locked). loose-v1 adds the berm, but at NGP's grip level a 1.3 berm is 0.9-1.1 g, beyond
+  the Fiesta's full-pedal brake torque, so the wheels do not lock and full over best threshold is 1.04 (target 1.2):
+  meeting the published locked level (0.47-0.66 g) and ratio together needs a lower loose grip level (a product
+  decision). Also open: the berm's shape against slip (unpublished), a spinning tyre's sinkage resistance, the berm
+  against the layer's thickness, and snow (same model, not tuned; 1.07 g full pedal against 0.31-0.45 g).

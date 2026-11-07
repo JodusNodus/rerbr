@@ -597,7 +597,9 @@ runs it on top of the engine model. It is a brush model, the textbook physical t
 Dynamics*): the tread is a row of bristles that stick to the road at the front of the contact patch and slide at the
 rear. It takes the place of NGP's model of the contact patch on hard surfaces at every speed, fitted at load to
 give NGP's peak forces and cornering stiffness, with grip that falls as the tyre slides faster and one friction limit
-shared by braking and cornering. On gravel and snow the tyre stays NGP's.
+shared by braking and cornering. On gravel and snow the same tyre keeps NGP's peak grip without falling as it
+slides, and a locked wheel builds a berm of loose material ahead of it that brakes it harder than rolling, as measured
+on gravel.
 
 The model, its evidence, its numbers in game and the open questions are in
 [notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
