@@ -218,6 +218,7 @@ impl Models {
             // NGP sends the daemon its block in app states 1 and 8 only, not in the start orbit (app state 10), where the
             // HUD's countdown has not started.
             let sent = !inputs.countdown.is_some_and(|c| c >= rbr_gameplay::race_clock::COUNTDOWN);
+            fmod.model_pop = self.exhaust.model_pop;
             out.extend(fmod.step(inputs, scene, stopped, sent));
         }
         out

@@ -22,7 +22,7 @@
 //! and `state` a random 0.6-1.0 on the update of a shift up, 0.1-0.5 down, else 0; `fluctuation` on the engine
 //! events and the transmission, 1 on a shift, falling to 0 over the event's `fluctuation_length` (a shift waits,
 //! halving them, while one still runs). Ours: `boost` the 1.02 turbo level (`car::turbo_level`), `valve` the 1.02
-//! blow-off volume, `Speed` and the other events' `wheel_speed` the car's speed, `Distance` the camera's distance
+//! blow-off volume, `exhaustpop` on an engine model's anti-lag pops ([`FmodCar::model_pop`]), `Speed` and the other events' `wheel_speed` the car's speed, `Distance` the camera's distance
 //! from the car, `Event Cone Angle` the angle between the car's back (against its velocity) and the camera (the
 //! banks' `rear` recordings are loud near 0 and their `front` ones near 180).
 //!
@@ -50,7 +50,7 @@ use std::sync::Arc;
 use lewton::audio::{read_audio_packet, PreviousWindowRight};
 use lewton::header::{read_header_ident, read_header_setup};
 use rbr_formats::fmod::{self, interpolate, Bank, Bus, Layer, Property, Sample};
-use rbr_recording::sound::{FmodBlock, Inputs, Sound};
+use rbr_recording::sound::{FmodBlock, Inputs, Sound, MODEL_ANTI_LAG};
 
 use crate::car::{blow_off_volume, turbo_level, BLOW_OFF_CAP, BLOW_OFF_RISE};
 use crate::data::{mono, Wave};
@@ -131,6 +131,9 @@ pub const MUTED: f32 = 0.003;
 const GEAR_CLICK: (f32, f32) = (1.0, MUTED);
 /// The misfire word's threshold for `exhaustpop` (daemon 0x4098d6).
 const EXHAUST_POP: f32 = 0.9;
+/// `exhaustpop` for an engine model's anti-lag pop ([`FmodCar::model_pop`]): inside the banks' backfire regions
+/// (0.9 to 1).
+const MODEL_POP: f32 = 0.95;
 /// NGP's speeds under this (km/h) are 0 (`0x10147118`).
 const STILL_KMH: f32 = 1.0;
 /// The daemon pauses every event when no command has come for this long (s): its loop waits 200 ms
@@ -312,7 +315,7 @@ impl Params {
             speed_kmh: kmh(sound.speed),
             distance,
             cone_angle,
-            exhaust_pop: if e(4) >= EXHAUST_POP { e(4) } else { 0.0 },
+            exhaust_pop: if (EXHAUST_POP..MODEL_ANTI_LAG).contains(&e(4)) { e(4) } else { 0.0 },
             brake: block.map_or(0.0, |b| b.brake),
             transmission_kmh: block.map(|b| kmh(b.transmission_speed)),
             wheels_kmh: block.map(|b| b.wheel_speeds.map(kmh)),
@@ -386,6 +389,9 @@ pub struct FmodCar {
     /// The gains that bring the bank's engine to [`LOUDNESS`], in the car and outside (ours).
     trims: [f32; 2],
     rng: Rng,
+    /// The step plays an anti-lag pop of an engine model's (`crate::exhaust::Exhaust::model_pop`; ours): `exhaustpop`
+    /// is [`MODEL_POP`] then and 0 on the other steps of the model's anti-lag, so the backfire plays the pops.
+    pub model_pop: bool,
 }
 
 impl FmodCar {
@@ -457,6 +463,7 @@ impl FmodCar {
             turbo_flow: 0.0,
             trims: [1.0; 2],
             rng: Rng::new(0xf30d),
+            model_pop: false,
         };
         // Measured three times, each at the last trim, as the bank's compressors then work.
         car.trims = [false, true].map(|outside| {
@@ -616,6 +623,9 @@ impl FmodCar {
         } else {
             Params::new(sound, inputs.block.as_ref(), scene)
         };
+        if self.model_pop {
+            params.exhaust_pop = MODEL_POP;
+        }
         let starter = sound.drivetrain_f32(9);
         let startup = stopped && starter > 0.0;
         if startup {
@@ -796,6 +806,7 @@ mod tests {
             quiet: 0.0,
             trims: [1.0; 2],
             rng: Rng::new(1),
+            model_pop: false,
         }
     }
 
@@ -846,6 +857,15 @@ mod tests {
         assert_eq!(shots(&step(&mut car, &calm, true)), 0);
         assert_eq!(shots(&step(&mut car, &pop, true)), 0, "paused while the engine is stopped");
         assert_eq!(shots(&step(&mut car, &pop, false)), 1);
+        // An engine model's anti-lag word is no misfire: the backfire plays its pops (`model_pop`) alone.
+        let anti_lag = sound(MODEL_ANTI_LAG, 0.0, 20.0);
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 0);
+        car.model_pop = true;
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 1);
+        car.model_pop = false;
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 0);
+        car.model_pop = true;
+        assert_eq!(shots(&step(&mut car, &anti_lag, false)), 1);
     }
 
     #[test]
