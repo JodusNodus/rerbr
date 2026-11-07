@@ -24,7 +24,6 @@ use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
 
 use crate::catalog::Car;
-use crate::pages::{combo, Choice};
 
 /// A binding being set: its action, and for a device input every joystick's values when it began.
 enum Capture {
@@ -410,7 +409,6 @@ impl ControlsPage {
         ffb: &mut ffb::Options,
         aids: &mut DriverAids,
         head_gasket: &mut i32,
-        engine: &mut EngineModel,
         ffb_cars: &mut ffb::CarSensitivity,
         cars: &[Car],
         car: usize,
@@ -451,7 +449,6 @@ impl ControlsPage {
                     shifter_ui(ui, bindings);
                     heading(ui, "Driver aids");
                     aids_ui(ui, aids, head_gasket);
-                    engine_ui(ui, engine);
                     heading(ui, "Force feedback");
                     ffb_ui(ui, ffb);
                     let global = ffb.sensitivity;
@@ -708,73 +705,6 @@ fn aids_ui(ui: &mut Ui, aids: &mut DriverAids, head_gasket: &mut i32) {
     if ui.checkbox(&mut fix, "Head gasket durability fix").on_hover_text(HEAD_GASKET_HELP).changed() {
         *head_gasket = if fix { HEAD_GASKET_FIX } else { 1 };
     }
-}
-
-/// What gives the engine's torque (`rbr-standalone --engine-model`, ours, experimental).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum EngineModel {
-    /// NGP's, as the original drives.
-    #[default]
-    Ngp,
-    /// A physical engine model per car, in place of NGP's torque formula (`rbr_engine`).
-    Realistic,
-}
-
-impl EngineModel {
-    /// `rbr-standalone`'s arguments for it on `car`: none for NGP's, so its command lines stay as they were; else the
-    /// model and the car's group and year where the catalog has them.
-    pub fn args(self, car: &Car) -> Vec<String> {
-        match self {
-            EngineModel::Ngp => Vec::new(),
-            EngineModel::Realistic => {
-                let group = car.group.iter().flat_map(|g| ["--car-group".to_owned(), g.clone()]);
-                let year = car.year.iter().flat_map(|y| ["--car-year".to_owned(), y.to_string()]);
-                ["--engine-model".to_owned(), self.name().to_owned()].into_iter().chain(group).chain(year).collect()
-            }
-        }
-    }
-}
-
-impl Choice for EngineModel {
-    const ALL: &[Self] = &[EngineModel::Ngp, EngineModel::Realistic];
-    fn name(self) -> &'static str {
-        match self {
-            EngineModel::Ngp => "ngp",
-            EngineModel::Realistic => "realistic",
-        }
-    }
-    fn label(self) -> &'static str {
-        match self {
-            EngineModel::Ngp => "NGP (original)",
-            EngineModel::Realistic => "Realistic (experimental)",
-        }
-    }
-}
-
-impl EngineModel {
-    /// Whether a run on it keeps records (ghosts, the stage record and personal best, championship results): NGP's
-    /// only, while the models are experimental (a user decision; `rbr-standalone` writes no records then either).
-    pub fn keeps_records(self) -> bool {
-        self == EngineModel::Ngp
-    }
-}
-
-/// What the experimental models leave unsaved, shown beside the choice while one is picked.
-pub const ENGINE_NO_RECORDS: &str = "Realistic is experimental: no records, ghosts or championship results are saved.";
-
-/// What the realistic engine model does.
-const ENGINE_HELP: &str = "Realistic gives the engine's torque from a physical model per car in place of NGP's \
-     formula: the physics changes, so times and replays are not comparable with NGP. Experimental.";
-
-/// The engine model's dropdown.
-fn engine_ui(ui: &mut Ui, engine: &mut EngineModel) {
-    ui.horizontal(|ui| {
-        ui.label("Engine model");
-        combo(ui, "engine-model", None, engine, EngineModel::ALL, EngineModel::label).on_hover_text(ENGINE_HELP);
-        if !engine.keeps_records() {
-            ui.weak(ENGINE_NO_RECORDS);
-        }
-    });
 }
 
 #[cfg(test)]

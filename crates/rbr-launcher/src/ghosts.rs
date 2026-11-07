@@ -37,7 +37,7 @@ impl GhostChoice {
         }
     }
 
-    /// The choice for a run that keeps no records (an experimental engine model): the best ghost of map `map` raced as
+    /// The choice for a run that keeps no records (the experimental physics): the best ghost of map `map` raced as
     /// a saved one, never replaced.
     pub fn unrecorded(&self, map: u32) -> GhostChoice {
         match self {

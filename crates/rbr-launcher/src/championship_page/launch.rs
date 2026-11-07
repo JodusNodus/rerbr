@@ -145,9 +145,9 @@ impl Form {
     /// picked, the championship's damage and the files `stage_start` named.
     pub fn start_championship_stage(&mut self, start: StageStart) {
         let StageStart { map, conditions, clock, tyre, setup, damage, args: mut extra } = start;
-        // An experimental engine model keeps no championship results: its stages don't start (a trial still does).
+        // The experimental physics keeps no championship results: its stages don't start (a trial still does).
         let recorded = extra.iter().any(|a| a == "--championship");
-        let weather = match self.engine_model.keeps_records() || !recorded {
+        let weather = match self.physics.keeps_records() || !recorded {
             true => self.championship_weather(map, conditions),
             false => Err(CHAMPIONSHIP_NGP_ONLY.to_owned()),
         };
@@ -193,9 +193,9 @@ impl Form {
     }
 }
 
-/// Why a championship stage does not start with an experimental engine model.
-pub const CHAMPIONSHIP_NGP_ONLY: &str = "Championship stages need the NGP engine model (Controls page): Realistic is \
-     experimental and saves no championship results.";
+/// Why a championship stage does not start with the experimental physics.
+pub const CHAMPIONSHIP_NGP_ONLY: &str = "Championship stages need NGP 7 physics (Settings page): the experimental \
+     physics saves no championship results.";
 
 /// `--screenshot`: the Championship tab on a championship built from the fixture's stages ([`super::fixture`]): the presets without and with a saved
 /// championship, the builder, and a season's welcome, a stage, a service (on the car of `damage`, a damage file),

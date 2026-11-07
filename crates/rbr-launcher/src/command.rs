@@ -500,8 +500,8 @@ impl Form {
         let (stage, weather, preset) = self.selection_from(rand).ok()?;
         // Only the quick race races and keeps a ghost (`rbr_gameplay::ghost::clears`: the championship clears it).
         let words = weather.ghost_words(&self.season);
-        // An experimental engine model keeps no records: the best ghost is raced, not replaced.
-        let ghost = match self.engine_model.keeps_records() {
+        // The experimental physics keeps no records: the best ghost is raced, not replaced.
+        let ghost = match self.physics.keeps_records() {
             true => self.ghost.clone(),
             false => self.ghost.unrecorded(stage.map),
         };
@@ -731,7 +731,7 @@ impl Form {
         if self.head_gasket > 1 {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
-        args.extend(self.engine_model.args(car));
+        args.extend(self.physics.args(car));
         Some(args)
     }
 
@@ -831,8 +831,8 @@ impl Form {
 mod tests {
     use super::*;
     use crate::catalog::Catalog;
-    use crate::controls_page::EngineModel;
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
+    use crate::physics::PhysicsProfile;
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
     use rbr_formats::data::Data;
@@ -1435,26 +1435,26 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// The realistic engine model reaches `rbr-standalone` (after `--live`) in a quick race, a championship stage
+    /// The experimental physics reaches `rbr-standalone` (after `--live`) in a quick race, a championship stage
     /// and a school lesson; NGP's, the default, adds nothing.
     #[test]
-    fn the_engine_model_reaches_the_stepping_process() {
+    fn the_physics_reaches_the_stepping_process() {
         // The car's group and year go with the model where the catalog has them: an RSF car both, an added car its
         // group, an archive car neither.
         let rsf = Car { group: Some("Rally 2".into()), year: Some(2019), ..Car::default() };
         let added = Car { group: Some("Group A8".into()), added: true, ..Car::default() };
-        assert!(EngineModel::Ngp.args(&rsf).is_empty());
-        let realistic = ["--engine-model", "realistic"];
+        assert!(PhysicsProfile::Ngp.args(&rsf).is_empty());
+        let realistic = ["--physics", "experimental"];
         let with = |extra: &[&str]| realistic.iter().chain(extra).map(|a| a.to_string()).collect::<Vec<_>>();
-        assert_eq!(EngineModel::Realistic.args(&rsf), with(&["--car-group", "Rally 2", "--car-year", "2019"]));
-        assert_eq!(EngineModel::Realistic.args(&added), with(&["--car-group", "Group A8"]));
-        assert_eq!(EngineModel::Realistic.args(&Car::default()), with(&[]));
+        assert_eq!(PhysicsProfile::Experimental.args(&rsf), with(&["--car-group", "Rally 2", "--car-year", "2019"]));
+        assert_eq!(PhysicsProfile::Experimental.args(&added), with(&["--car-group", "Group A8"]));
+        assert_eq!(PhysicsProfile::Experimental.args(&Car::default()), with(&[]));
         let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
             return;
         };
-        let here = crate::test_dir("command-engine");
+        let here = crate::test_dir("command-physics");
         for (line, wanted) in
-            [("", None), ("engine_model = ngp\n", None), ("engine_model = realistic\n", Some("realistic"))]
+            [("", None), ("physics = ngp\n", None), ("physics = experimental\n", Some("experimental"))]
         {
             let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nghost = best\n{line}");
             let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
@@ -1480,27 +1480,27 @@ mod tests {
             };
             for args in [&quick, &rally, &school] {
                 let live = args.iter().position(|a| a == "--live").unwrap();
-                assert_eq!(value(&args[live..], "--engine-model").as_deref(), wanted, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--physics").as_deref(), wanted, "{text}: {args:?}");
                 assert_eq!(value(&args[live..], "--car-group"), group, "{text}: {args:?}");
                 assert_eq!(value(&args[live..], "--car-year"), year, "{text}: {args:?}");
-                assert!(!args[..live].contains(&"--engine-model".to_owned()), "{args:?}");
+                assert!(!args[..live].contains(&"--physics".to_owned()), "{args:?}");
             }
         }
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// With the realistic engine model a championship stage does not start, and says why (no results would be saved);
+    /// With the experimental physics a championship stage does not start, and says why (no results would be saved);
     /// the championship is left as it was.
     #[test]
-    fn a_championship_stage_needs_the_ngp_engine_model() {
+    fn a_championship_stage_needs_ngp_7_physics() {
         let (Some(data), Some(patch)) = (env("RBR_DATA"), env("RBR_PATCH")) else {
             return;
         };
-        let here = crate::test_dir("command-engine-championship");
+        let here = crate::test_dir("command-physics-championship");
         let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
-        let mut form = load(&start, Settings::parse("[launcher]\nengine_model = realistic\n")).unwrap();
+        let mut form = load(&start, Settings::parse("[launcher]\nphysics = experimental\n")).unwrap();
         form.read_only = true;
-        assert!(!form.engine_model.keeps_records());
+        assert!(!form.physics.keeps_records());
         let stage = crate::championship_page::StageStart {
             map: 54,
             conditions: rbr_season::event::Conditions::Dry,
