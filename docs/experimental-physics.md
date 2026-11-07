@@ -514,7 +514,8 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
   points.
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
-- The limiter's torque swings from step to step, since the model fires or cuts a whole step at a time.
+- On the limiter the torque swings from step to step with the firing rhythm: the model cuts whole firings, rotating
+  the cut as ECUs do. In neutral the HUD's rpm bounces 30–110 rpm from frame to frame under the limit; in gear a few rpm.
 
 ## Tyres
 

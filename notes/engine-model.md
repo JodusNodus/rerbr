@@ -125,7 +125,12 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   rpm under the limit (up to 18 over on the turbo sample); tested within −200..+50. The calibration's WOT runs
   leave the limiter out (the table runs to RPMLimit); the tests compare the table with the limiter in only up to
   RPMLimit − 200.
-  The events are picked by deterministic error diffusion (inferred).
+  The events are picked by deterministic error diffusion (inferred), which carries the fractional events from step
+  to step as ECUs rotate the cut cylinders; a step's torque is its events' fired share, held over steps without an
+  event, so near the limit it swings with the firing rhythm. Bench (720 Hz, the HUD's rpm sampled every 12 steps):
+  in neutral with the car's inertia the rpm moves 12–25 rpm a step and 30–110 rpm a frame (the bounce under the
+  limit); with 1.5 kg·m² (a low gear, guess) at most 2 rpm a step and 8 a frame. A mean-value cut (1 − cut every
+  step) holds the rpm still on the limit, which a real limiter does not (measured).
 - Shift cut keeps the share TorqueCut, airflow kept [FIA 254A] (S2000 cuts), [CSP powertrain].
 - No combustion below 150 rpm or when stalled [turboford] (crank speeds 150–250 rpm).
 - Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 [MoTeC ALS],
@@ -216,7 +221,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm (at 30 % pedal a dip at 1750, a peak at 2000): K steps about 1.6e6 (held, to 1250) → 1.5e6
   (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
   same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
-- The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step).
+- The spark loop saturates (gain about 2°/rpm).
 - No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is the race ECUs' start.
 
 ## Sources
