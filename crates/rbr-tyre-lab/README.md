@@ -42,6 +42,9 @@ Nothing here changes what the game computes.
   on a probe frame on gravel or snow and the published loose-surface curves:
   μ_y(α), μ_x(κ) driving and braking, a locked wheel's side force, the peaks
   against load. Prints only.
+- `examples/scorecard.rs`: the tyre-level numbers of `harness/tyre_scorecard.py`: steady forces of the tyre model
+  a profile runs (`--model ngp|brush`, NGP's where it hands back) on a probed wheel, as `key value` lines. Prints
+  only.
 - `examples/racing.rs`: brush-v1 and NGP at the conditions of the racing-tyre
   and combined-slip data (`notes/tyre-model.md`, "Racing and rally targets").
   Prints only.
