@@ -190,6 +190,24 @@ fn a_dbw_turbo_tip_in_barely_overshoots() {
     }
 }
 
+/// The most net torque over rpm (from idle to the limiter) rises with the pedal on every sample.
+#[test]
+fn the_most_torque_rises_with_the_pedal() {
+    for (name, p, m) in models() {
+        let from = (rpm(p.idle_speed) / 250.0).ceil() * 250.0;
+        let to = rpm(p.rev_limit) - rbr_engine::ecu::LIMITER_RANGE;
+        let most = |pedal: f64| {
+            (0..)
+                .map(|i| from + 250.0 * f64::from(i))
+                .take_while(|&n| n <= to)
+                .map(|n| calibrate::part(m.spec(), n, pedal).1.torque)
+                .fold(f64::MIN, f64::max)
+        };
+        let row: Vec<f64> = (0..=10).map(|k| most(f64::from(k) / 10.0)).collect();
+        assert!(row.windows(2).all(|w| w[1] > w[0]), "{name}: {row:.1?}");
+    }
+}
+
 /// Seconds at a fixed `n` rpm from the steady pedal that gives 5 bar BMEP until 90 % of the steady WOT torque.
 fn spool_at(m: &Realistic, n: f64) -> f64 {
     use rbr_engine::engine::{step, Step};

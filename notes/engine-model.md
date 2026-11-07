@@ -61,7 +61,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The idle air adds to the aim; anti-lag's kick overrides it [MoTeC DBW]. Blips and shift cuts come through the
   interface's throttle (NGP's control unit).
 - Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle].
-  Peak net torque at pedal 10/20/30/50 %: na 24/43/54/77 %, turbo 12/34/48/61 %, old 26/46/63/93 %, cable_turbo
+  Peak net torque at pedal 10/20/30/50 %: na 24/43/54/77 %, turbo 12/34/48/79 %, old 26/46/63/93 %, cable_turbo
   13/25/37/87 % of max (BeamNG 2023: 49/65/76/91 %).
 
 ## Torque (`calibrate.rs`, `ecu.rs`)
@@ -160,9 +160,13 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   Intercooler effectiveness 0.7 (guess).
 - Boost target π_wot(n), first from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the
   restrictor [FIA 261], [FIA 255A], then made consistent with one K (above).
-- Wastegate aim. Electronic (DBW): p_a + (π_wot(n)·p_a − p_a)·θ, θ the throttle's aim position, as race ECUs' boost
-  aim tables over rpm × throttle [HPA M1 boost], [HPA Link boost] (linear shape inferred; the aim position rather
-  than the plate, so a re-apply after anti-lag does not dump the boost while the plate opens). Spring (cable):
+- Wastegate aim. Electronic (DBW): p_a + (π_wot(n)·p_a − p_a)·min(1, θ/θ_open(n)), θ the throttle's aim position,
+  as race ECUs' boost aim tables over rpm × throttle [HPA M1 boost], [HPA Link boost] (inferred: those tables reach
+  full aim before full throttle; we place that point where the plate stops limiting). θ_open(n): at calibration, the
+  lift whose area passes the steady WOT flow at p_im/p_b = 0.95 at that boost (turbo sample 0.24 at 1000 rpm, 0.46
+  at 3000, 0.61 at 5000, 0.74 at 7000). Linear in θ below it (inferred). The aim position rather than the plate, so
+  a re-apply after anti-lag does not dump the boost while the plate opens. A linear aim to θ = 1 flattened mid
+  pedal (40 % 54, 50 % 60 % of max). Spring (cable):
   π_wot(n)·p_a whatever the pedal, so a cable turbo kicks at part throttle.
 - Electronic gate: a base opening by rpm (the steady WOT one) plus PID, band 1 bar, Ti 0.5 s, Td 0.08 s on the boost
   (not the error), conditional integration (inferred: boost controllers run a base duty table with closed-loop trim).
@@ -173,6 +177,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   0.79 s, 5000 2.6 % / 0.88 s, 6500 3.9 % / 1.11 s (was 7 % and 17 % with a 0.5 s ring before the derivative).
   cable_turbo (spring): 1.3 % at 3000, 8.0 % at 5000, 13.8 % at 6500. Tested: steady torque at any pedal the same
   within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
+  Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
 - Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
   to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
@@ -192,7 +197,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
   idle air at its 10 % ceiling. In gear at low speed this pushes the car.
 - The spring-gate cable_turbo still overshoots 8–14 % from 5000 rpm up.
-- The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm: K steps about 1.6e6 (held, to 1250) → 1.5e6
+- The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm (at 30 % pedal a dip at 1750, a peak at 2000): K steps about 1.6e6 (held, to 1250) → 1.5e6
   (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
   same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
 - The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step).

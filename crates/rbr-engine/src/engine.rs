@@ -404,14 +404,16 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         };
         let t_ss = (t.t_em0 + t.t_em_k * w_exhaust + unburnt).min(turbo::T_EM_MAX);
         s.t_em += (t_ss - s.t_em) * (1.0 - exp(-dt / turbo::TAU_EXHAUST));
-        // The electronic gate's aim rises linearly with the throttle's aim position to the WOT boost, as race ECUs'
-        // boost aim tables over rpm and throttle (shape inferred; the aim, not the plate, so a re-apply after anti-lag
+        // The electronic gate's aim rises linearly with the throttle's aim position to the WOT boost at the position
+        // where the plate stops controlling the air (`aim_open`), as race ECUs' boost aim tables over rpm and throttle
+        // reach full aim before full throttle (shape inferred; the aim, not the plate, so a re-apply after anti-lag
         // does not dump the boost while the plate opens); a spring gate aims at the WOT boost whatever the pedal.
         let wot = t.pi_wot.at(rpm) * x.p_a;
         let aim = if anti_lag {
             x.p_a + ecu::ALS_BOOST
         } else if spec.class.actuation == Actuation::Dbw {
-            x.p_a + (wot - x.p_a) * target
+            let open = t.aim_open.at(rpm);
+            x.p_a + (wot - x.p_a) * if open > 0.0 { (target / open).min(1.0) } else { target }
         } else {
             wot
         };

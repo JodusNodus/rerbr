@@ -5,7 +5,7 @@ use crate::class::{self, Actuation, Class, Idle};
 use crate::curve::Curve;
 use crate::ecu;
 use crate::engine::{self, Out, Spec, State, Step, ETA_V_TURBO, RPM, V_BOOST};
-use crate::gas::{AFR, LAMBDA, LHV, PSI_CHOKED, P_REF, R, T_REF};
+use crate::gas::{self, AFR, LAMBDA, LHV, PSI_CHOKED, P_REF, R, T_REF};
 use crate::turbo;
 use crate::Params;
 use libm::{exp, log};
@@ -311,6 +311,7 @@ fn turbo_spec(spec: &Spec, car: &Car) -> turbo::Spec {
         a_turbine: 1e-3,
         a_wastegate: 1e-3,
         gate_base: Curve::default(),
+        aim_open: Curve::default(),
         a_bov: turbo::Spec::bov_area(v_boost, pi_max),
         w_choke,
         v_boost,
@@ -540,6 +541,10 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
         spec.k = identity(&car, &runs);
         held = hold_off_boost(&mut spec, &car, &runs);
     }
+    if spec.class.actuation == Actuation::Dbw && spec.turbo.is_some() {
+        let open = aim_open(&spec, &car, &runs);
+        spec.turbo.as_mut().unwrap().aim_open = open;
+    }
 
     // The report.
     cal.friction_scale = spec.friction_scale;
@@ -570,6 +575,23 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     }
     cal.held = parallel(&held, |&(rpm, t)| (rpm, t, bare_wot(&spec, rpm).1.torque));
     (spec, cal)
+}
+
+/// The throttle position at each grid point where the plate stops controlling the air: at the steady WOT boost and
+/// cylinder flow, the lift whose area passes that flow at p_im/p_b = `AIM_OPEN_RATIO` (inferred: race ECUs' boost
+/// aim tables reach full aim before full throttle; this places that point where the plate stops limiting).
+fn aim_open(spec: &Spec, car: &Car, runs: &[(State, Out)]) -> Curve {
+    Curve(
+        car.grid
+            .iter()
+            .zip(runs)
+            .map(|(g, (s, out))| {
+                let unit = gas::orifice(spec.cda, s.p_boost, turbo::AIM_OPEN_RATIO * s.p_boost, s.t_im);
+                let area = if unit > 0.0 { out.w_cyl / unit - spec.leak } else { 1.0 };
+                (g.0, gas::plate_lift(area).max(0.05))
+            })
+            .collect(),
+    )
 }
 
 /// A turbo's K where its steady WOT boost misses the target (the turbo cannot make that boost at that speed) is held

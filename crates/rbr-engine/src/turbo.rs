@@ -46,6 +46,8 @@ pub const WASTEGATE_BAND: f64 = 1.0e5;
 pub const WASTEGATE_TI: f64 = 0.5;
 pub const WASTEGATE_TD: f64 = 0.08;
 pub const SPRING_BAND: f64 = 0.5e5;
+/// The plate's pressure ratio p_im/p_b where it stops controlling the air (inferred).
+pub const AIM_OPEN_RATIO: f64 = 0.95;
 /// The blow-off valve opens over 0.3–0.4 bar across the throttle and empties the boost pipe in about 0.1 s (inferred).
 pub const BOV_OPEN: f64 = 0.3e5;
 pub const BOV_FULL: f64 = 0.4e5;
@@ -66,6 +68,9 @@ pub struct Spec {
     pub a_wastegate: f64,
     /// The electronic wastegate's base opening over rpm (its steady WOT opening; empty for a spring gate).
     pub gate_base: Curve,
+    /// The electronic gate's full-aim throttle position over rpm: where the plate, at the steady WOT boost and flow,
+    /// holds the manifold at `AIM_OPEN_RATIO` of the boost (empty for a spring gate).
+    pub aim_open: Curve,
     /// The blow-off valve's area, m².
     pub a_bov: f64,
     /// The restrictor's choked flow at the reference air, kg/s (infinite without one).
