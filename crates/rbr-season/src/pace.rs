@@ -3,9 +3,10 @@
 //!
 //! The driveline is sampled about every 1.5 m; the curvature at each sample is the heading change over that step in
 //! the ground plane (x and y: z is up in the game's tracks), smoothed over a corner's length so one record cannot set
-//! the pace. The speed limit is
-//! `sqrt(grip_eff / curvature)`, capped at the class's top speed. A forward pass applies the acceleration (falling
-//! linearly to 0 at top speed) and a backward pass the braking; the time is the trapezoid integral.
+//! the pace. The speed limit is where the grip holds the curvature `k`, `v² k = grip_eff (1 + aero v²)`, capped at
+//! the class's top speed; `aero` is a car model's own downforce ([`ClassPace::aero`]) plus [`COMMIT`], the same for
+//! every class. A forward pass applies the acceleration (falling linearly to 0 at top speed) and a backward pass the
+//! braking, each within what the corner leaves of the grip (the friction circle); the time is the trapezoid integral.
 //!
 //! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.86, snow 0.85), on the loose by
 //! the class's [`ClassPace::loose`], and by the wetness (up to -25 % soaked). The class table ([`CLASSES`]) is
@@ -28,8 +29,8 @@ pub struct ClassPace {
     pub brake: f32,
     /// Top speed (m/s).
     pub top_speed: f32,
-    /// The downforce's grip per (m/s)²: the grip at `v` is `grip · (1 + aero · v²)`. 0 in the class table; a car
-    /// model's own (`car_pace`).
+    /// The car model's own downforce grip per (m/s)²: 0 in the class table, the model's own (`car_pace`). The plan
+    /// adds the shared commitment term [`COMMIT`] on top of it.
     pub aero: f32,
     /// The share of the surface's grip the class keeps on the loose (gravel and snow): two driven wheels and old
     /// chassis lose more there than on tarmac.
@@ -44,6 +45,10 @@ pub(crate) const STEP: f32 = 1.5;
 const SMOOTH: usize = 12;
 /// The slowest corner speed (m/s): below this the plan would crawl through hairpins no car crawls through.
 const MIN_CORNER: f32 = 4.0;
+/// The high-speed grip per (m/s)² every class shares, on top of a car model's own downforce: the hot laps' fast
+/// amateurs hold the fast corners well past the low-speed grip, a driver's term, not a car's (`notes/season.md`
+/// "Calibration").
+const COMMIT: f32 = 2.0e-4;
 
 /// A class's row in [`CLASSES`]: its name, the spellings it matches and its pace.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,30 +75,30 @@ const fn row(
 /// plain `WRC` row (2003's cars, `WRC 2.0`) is the anchor, the 1.02 AI's winning times on the retail stages; the
 /// others follow the RallySimFans hot laps' class effects over it (`notes/season.md` "Calibration").
 pub const CLASSES: [ClassRow; 23] = [
-    row("WRC 1.6", &["wrc16", "rally1", "rallye1"], 9.48, 9.82, 11.25, 58.1, 1.002),
+    row("WRC 1.6", &["wrc16", "rally1", "rallye1"], 9.45, 9.80, 11.22, 58.0, 1.001),
     row("WRC 2.0", &["wrc"], 8.88, 8.51, 10.64, 55.8, 1.000),
-    row("Group B", &["groupb", "grpb"], 7.84, 7.34, 9.27, 53.3, 0.968),
-    row("Group RGT", &["rgt"], 7.86, 6.92, 8.82, 58.0, 0.857),
-    row("Group A7", &["groupa7", "grpa7", "kitcar"], 8.59, 5.46, 9.29, 59.9, 0.923),
-    row("Group A6", &["groupa6", "grpa6"], 8.20, 4.57, 9.27, 51.2, 1.013),
-    row("Group A5", &["groupa5", "grpa5"], 7.41, 4.16, 9.46, 39.1, 1.029),
-    row("Group A8", &["groupa", "grpa"], 8.29, 7.27, 9.63, 54.2, 0.988),
-    row("Super 2000", &["s2000", "2000"], 8.67, 8.31, 10.27, 55.3, 1.004),
-    row("Super 1600", &["s1600", "1600"], 8.61, 5.27, 9.44, 61.9, 0.938),
-    row("Group N4", &["n4", "groupn", "grpn"], 8.30, 6.09, 9.32, 55.1, 0.986),
-    row("Group R4", &["r4"], 8.70, 7.77, 10.62, 55.0, 1.000),
-    row("Rally 2", &["rally2"], 9.46, 8.58, 11.15, 57.3, 1.009),
-    row("Group R5", &["r5"], 9.00, 7.91, 10.47, 55.6, 1.002),
-    row("Rally 3", &["rally3"], 8.76, 6.90, 10.22, 54.5, 1.002),
-    row("Group R3", &["r3"], 8.55, 5.17, 9.59, 59.9, 0.944),
-    row("Rally 4", &["rally4"], 8.72, 5.15, 9.42, 58.2, 0.966),
-    row("Group R2", &["r2"], 8.34, 4.92, 9.52, 54.5, 0.971),
-    row("Rally 5", &["rally5"], 8.68, 4.96, 9.33, 54.8, 0.944),
-    row("Group R1", &["r1"], 7.62, 3.86, 8.86, 46.2, 0.969),
-    row("Group 4", &["group4", "grp4", "historic"], 7.79, 6.67, 8.46, 52.4, 0.976),
-    row("Group 2", &["group2", "grp2"], 7.03, 4.12, 8.97, 38.2, 0.990),
+    row("Group B", &["groupb", "grpb"], 7.89, 7.39, 9.32, 53.4, 0.975),
+    row("Group RGT", &["rgt"], 7.87, 6.93, 8.84, 58.1, 0.876),
+    row("Group A7", &["groupa7", "grpa7", "kitcar"], 8.47, 5.39, 9.17, 59.5, 0.933),
+    row("Group A6", &["groupa6", "grpa6"], 8.10, 4.51, 9.16, 50.9, 1.016),
+    row("Group A5", &["groupa5", "grpa5"], 7.38, 4.14, 9.42, 39.0, 1.033),
+    row("Group A8", &["groupa", "grpa"], 8.29, 7.26, 9.63, 54.1, 0.991),
+    row("Super 2000", &["s2000", "2000"], 8.68, 8.32, 10.28, 55.3, 1.004),
+    row("Super 1600", &["s1600", "1600"], 8.49, 5.20, 9.32, 61.5, 0.946),
+    row("Group N4", &["n4", "groupn", "grpn"], 8.24, 6.05, 9.26, 54.9, 0.990),
+    row("Group R4", &["r4"], 8.70, 7.77, 10.62, 55.0, 1.001),
+    row("Rally 2", &["rally2"], 9.40, 8.52, 11.07, 57.1, 1.007),
+    row("Group R5", &["r5"], 8.95, 7.87, 10.41, 55.4, 1.002),
+    row("Rally 3", &["rally3"], 8.71, 6.86, 10.16, 54.4, 1.003),
+    row("Group R3", &["r3"], 8.45, 5.10, 9.47, 59.5, 0.952),
+    row("Rally 4", &["rally4"], 8.59, 5.07, 9.27, 57.7, 0.971),
+    row("Group R2", &["r2"], 8.25, 4.86, 9.42, 54.2, 0.977),
+    row("Rally 5", &["rally5"], 8.54, 4.88, 9.18, 54.3, 0.952),
+    row("Group R1", &["r1"], 7.55, 3.82, 8.77, 46.0, 0.978),
+    row("Group 4", &["group4", "grp4", "historic"], 7.78, 6.66, 8.45, 52.3, 0.981),
+    row("Group 2", &["group2", "grp2"], 7.02, 4.12, 8.95, 38.2, 0.999),
     // Unknown groups: the middle class, Rally 3's pace.
-    row("", &[""], 8.76, 6.90, 10.22, 54.5, 1.002),
+    row("", &[""], 8.71, 6.86, 10.16, 54.4, 1.003),
 ];
 
 /// The pace of a catalog car group (`Group R5`, `WRC 2.0`, `Group B`, ...); unknown groups get a middle class.
@@ -316,32 +321,36 @@ pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class
             turn[i] = cross.clamp(-1.0, 1.0).asin() / STEP;
         }
     }
-    let mut smooth = vec![0.0f32; samples.len()];
-    for (i, s) in smooth.iter_mut().enumerate() {
-        let (lo, hi) = (i.saturating_sub(SMOOTH), (i + SMOOTH + 1).min(samples.len()));
-        *s = turn[lo..hi].iter().sum::<f32>() / (hi - lo) as f32;
-    }
-    let mut limit = vec![0.0f32; samples.len()];
-    for (i, &k) in smooth.iter().enumerate() {
-        let k = k.abs();
-        // The corner's speed where the grip, the downforce's included, holds the curvature: v² k = grip (1 + aero v²).
-        let hold = k - grip_eff * class.aero;
-        limit[i] =
-            if hold <= 0.0 { class.top_speed } else { (grip_eff / hold).sqrt().min(class.top_speed).max(MIN_CORNER) };
-    }
+    let curve: Vec<f32> = (0..samples.len())
+        .map(|i| {
+            let (lo, hi) = (i.saturating_sub(SMOOTH), (i + SMOOTH + 1).min(samples.len()));
+            (turn[lo..hi].iter().sum::<f32>() / (hi - lo) as f32).abs()
+        })
+        .collect();
+    let aero = class.aero + COMMIT;
+    // The corner's speed where the grip holds the curvature, v² k = grip (1 + aero v²); top speed where any speed holds.
+    let limit: Vec<f32> = curve
+        .iter()
+        .map(|&k| (grip_eff / (k - grip_eff * aero).max(0.0)).sqrt().min(class.top_speed).max(MIN_CORNER))
+        .collect();
+    // What the corner `k` leaves of the grip at speed² `v2` to accelerate or brake (the friction circle).
+    let left = |v2: f32, k: f32| {
+        let (grip, lateral) = (grip_eff * (1.0 + aero * v2), v2 * k);
+        (grip * grip - lateral * lateral).max(0.0).sqrt()
+    };
     // Forward pass: the acceleration falls linearly to 0 at top speed.
     let mut speed = vec![0.0f32; samples.len()];
     speed[0] = limit[0].min(20.0);
     for i in 0..samples.len() - 1 {
-        let a = (class.accel * (1.0 - speed[i] / class.top_speed)).max(0.0);
-        let v = (speed[i] * speed[i] + 2.0 * a * STEP).sqrt();
-        speed[i + 1] = v.min(limit[i + 1]);
+        let v2 = speed[i] * speed[i];
+        let engine = (class.accel * (1.0 - speed[i] / class.top_speed)).max(0.0);
+        speed[i + 1] = (v2 + 2.0 * engine.min(left(v2, curve[i])) * STEP).sqrt().min(limit[i + 1]);
     }
     // Backward pass: the braking, scaled with the grip.
     for i in (0..samples.len() - 1).rev() {
         let v2 = speed[i + 1] * speed[i + 1];
-        let v = (v2 + 2.0 * brake_eff * (1.0 + class.aero * v2) * STEP).sqrt();
-        speed[i] = speed[i].min(v);
+        let brakes = brake_eff * (1.0 + aero * v2);
+        speed[i] = speed[i].min((v2 + 2.0 * brakes.min(left(v2, curve[i + 1])) * STEP).sqrt());
     }
     Some(Plan { samples, limit, speed, top_speed: class.top_speed })
 }
