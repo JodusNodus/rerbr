@@ -1,6 +1,6 @@
 //! Candidate tyre model "brush-v0" (ours, experimental).
 //!
-//! A steady-state brush model with Pacejka's theoretical slips, a Grosch-like
+//! A steady-state brush with Pacejka's theoretical slips, a Grosch-like
 //! sliding-speed friction drop, load-sensitive stiffness and friction, bulk
 //! temperature / wear / pressure factors, a hydroplaning-style wet loss, and a
 //! single-contact-point transient. Pure functions over plain values (`f64` is
@@ -9,15 +9,22 @@
 //! Lab code only: nothing here is wired into the game, and nothing in
 //! `rbr-physics` / `rbr-hybrid` / `rbr-standalone` changes.
 //!
+//! No NGP-derived numbers live in this file: the nominal-point stiffnesses,
+//! friction levels, temperatures, pressures, surface values and the pressure
+//! table all arrive at run time in [`Calibration`] (solved by
+//! `crate::calibrate` from a probe dump and NGP's sweep, or synthetic in
+//! tests). Only the spec's own constants are `const` here: they come from
+//! papers or are ours.
+//!
 //! Sign conventions (checked against NGP's `slip.rs` / `patch_forces.rs` so
 //! the forces oppose sliding exactly as NGP's do: a positive contact-point
 //! lateral velocity gives a negative lateral force, and driving — a positive
-//! slip velocity `Vx + wR` — gives a negative longitudinal force): with forward
-//! motion the contact-point longitudinal velocity `vx` is negative, free
-//! rolling spin is `spin = -vx / R`, and the theoretical slips take the sign
-//! of the sliding velocities, `sx = Vsx / Vr`, `sy = Vsy / Vr`. (An earlier
-//! draft had a minus sign here; that would make the brush push the sliding
-//! contact forward instead of opposing it, contradicting NGP.)
+//! slip velocity `Vsx = Vx + wR` — gives a negative longitudinal force): with
+//! forward motion the contact-point longitudinal velocity `vx` is negative,
+//! free rolling spin is `spin = -vx / R`, and the theoretical slips take the
+//! sign of the sliding velocities, `sx = Vsx / Vr`, `sy = Vsy / Vr`. (An
+//! earlier draft had a minus sign here; that would make the brush push the
+//! sliding contact forward instead of opposing it, contradicting NGP.)
 //!
 //! Below 2 m/s the model is out of scope for v0: there is no sticking
 //! (bristle/LuGre) state, so creep and standstill are not represented. The
@@ -25,47 +32,7 @@
 //! comparison only runs at V >= 2 m/s.
 
 // ---------------------------------------------------------------------------
-// Calibration (nominal point): Ford Fiesta Rally2, dry tarmac, V = 15 m/s.
-// ---------------------------------------------------------------------------
-
-/// Normal load of the nominal point, N.
-pub const FZ0: f64 = 4000.0;
-/// Cornering stiffness at the nominal point, N per unit theoretical slip,
-/// fitted so the brush's least-squares slope over slip angles <= 2 deg equals
-/// NGP's swept slope (70412 N/rad at Fz0, V = 15 m/s, probe pressure /
-/// temperature / wear). Numerical solve; see the calibration test.
-pub const CY0: f64 = 81048.3276;
-/// Traction stiffness at the nominal point, fitted the same way over
-/// |kappa| <= 0.04 to NGP's 56228 N per unit slip ratio.
-pub const CX0: f64 = 63791.4254;
-/// Lateral friction at zero and infinite sliding speed: solved so the
-/// candidate's peak mu_y at Fz0, V = 15 m/s equals NGP's sweep (1.265) and
-/// mu(30 deg slip) / mu_peak = 0.80. Ratio mu_s / mu_k = 1.58: the surface
-/// ratio (1.25) could not give a 0.80 drop with V_MU = 5 m/s, so the
-/// calibration needs otherwise (documented, not tuned to pass).
-pub const MU_Y_S: f64 = 1.3585940;
-pub const MU_Y_K: f64 = 0.8575711;
-/// Longitudinal friction, solved the same way to NGP's peak mu_x (1.295) and
-/// F(kappa = 0.5) / peak = 0.80 (Vs = 7.5 m/s, the same sliding speed as a
-/// 30 deg slip angle at 15 m/s). Ratio mu_s / mu_k = 1.90.
-pub const MU_X_S: f64 = 1.5418187;
-pub const MU_X_K: f64 = 0.8112668;
-/// Bulk tread temperature of the nominal dump, K (probe `temps[0]`).
-pub const T_CAL: f64 = 337.302;
-/// Tread remaining of the nominal dump (1 - wear 0.000878).
-pub const D_CAL: f64 = 0.999122;
-/// Inflation pressure of the nominal dump, Pa, and NGP's StfFct factor there.
-pub const P_CAL: f64 = 200000.0;
-pub const PF_CAL: f64 = 0.966667;
-/// NGP stage values at the nominal point (dry tarmac tag 37, from the DLL):
-/// the inputs are normalised to these, so every factor is 1 at calibration.
-pub const SURF_S_CAL: f64 = 1.30;
-pub const SURF_K_CAL: f64 = 1.04;
-/// NGP temperature grip (RubMyFct blend) at the nominal dump.
-pub const TEMP_GRIP_CAL: f64 = 0.998834;
-
-// ---------------------------------------------------------------------------
-// Model constants (spec; assumptions flagged).
+// Model constants (spec; from papers or ours — never NGP's).
 // ---------------------------------------------------------------------------
 
 /// Load exponent of stiffness: C ~ Fz^M_C. Target 0.5-0.65 from the load
@@ -85,21 +52,58 @@ pub const V_MIN: f64 = 0.5;
 /// sigma_y = -0.14 + 0.021 Vx + 1.9e-4 Fz - 1.6e-8 Fz^2 for a passenger tyre;
 /// transferring the Vx slope to a rally tyre is an assumption).
 pub const K_V: f64 = 0.021;
-/// Water film scale: film height h = W * 1.0 mm. Well-established direction
-/// (deeper water / lower speed margin hurts); the 1.0 mm scale is ours.
+/// Water film scale: film height h = W times 1.0 mm. Well-established
+/// direction (deeper water / lower speed margin hurts); the 1.0 mm scale is
+/// ours.
 pub const FILM_MAX: f64 = 1e-3;
 /// Reference film in the loss blend, 0.5 mm (ours).
 pub const FILM_REF: f64 = 0.5e-3;
 /// Wet friction kept at full hydroplaning (ours).
 pub const WET_KEPT: f64 = 0.4;
-/// NGP's pressure (StfFct) table as dumped by `--tyre-probe` for this car:
-/// factor over pressure, same lerp as NGP.
-pub const STIFF_AXIS: [f64; 4] = [0.0, 150000.0, 300000.0, 500000.0];
-pub const STIFF_VAL: [f64; 4] = [0.5, 0.9, 1.1, 1.2];
+
+// ---------------------------------------------------------------------------
+// Run-time calibration (probed / solved values, never committed).
+// ---------------------------------------------------------------------------
+
+/// Everything the model needs from the nominal operating point: the fitted
+/// stiffnesses, the solved friction levels, the operating conditions every
+/// factor is normalised to, and NGP's pressure (StfFct) table as dumped by
+/// `--tyre-probe`. Built at run time (see `crate::calibrate`); tests use
+/// synthetic round numbers.
+#[derive(Clone, Copy, Debug)]
+pub struct Calibration {
+    /// Normal load of the nominal point, N.
+    pub fz0: f64,
+    /// Cornering / traction stiffness at the nominal point, N per unit
+    /// theoretical slip (fitted, not table values).
+    pub cy0: f64,
+    pub cx0: f64,
+    /// Lateral friction at zero and infinite sliding speed.
+    pub mu_ys: f64,
+    pub mu_yk: f64,
+    /// Longitudinal friction at zero and infinite sliding speed.
+    pub mu_xs: f64,
+    pub mu_xk: f64,
+    /// Bulk tread temperature (K), tread remaining (1 = new), inflation
+    /// pressure (Pa), wetness and NGP temperature grip of the nominal dump.
+    pub t_cal: f64,
+    pub d_cal: f64,
+    pub p_cal: f64,
+    pub pf_cal: f64,
+    pub w_cal: f64,
+    /// Surface static/kinetic mu and NGP temperature grip the inputs are
+    /// normalised to (every factor is 1 at the nominal point).
+    pub surf_s_cal: f64,
+    pub surf_k_cal: f64,
+    pub temp_grip_cal: f64,
+    /// NGP's pressure factor table: factor over pressure, same lerp as NGP.
+    pub stiff_axis: [f64; 4],
+    pub stiff_val: [f64; 4],
+}
 
 /// Bulk-temperature factor on stiffness: f_T = clamp(1 - 0.0045 (Tb -
-/// 293.15), 0.6, 1.2). Same paper, Table 3: cornering stiffness drops 20-25%
-/// from cold to hot, governed by the bulk temperature.
+/// 293.15), 0.6, 1.2). Singh & Sivaramakrishnan, Table 3: cornering stiffness
+/// drops 20-25% from cold to hot, governed by the bulk temperature.
 pub fn temp_stiffness_factor(tb: f64) -> f64 {
     (1.0 - 0.0045 * (tb - 293.15)).clamp(0.6, 1.2)
 }
@@ -113,29 +117,30 @@ pub fn wear_stiffness_factor(d: f64) -> f64 {
 
 /// NGP's pressure factor: linear interpolation on the StfFct table, clamped
 /// ends, as NGP lerps it.
-pub fn pressure_factor(p: f64) -> f64 {
-    if p <= STIFF_AXIS[0] {
-        return STIFF_VAL[0];
+pub fn pressure_factor(p: f64, cal: &Calibration) -> f64 {
+    let (ax, val) = (&cal.stiff_axis, &cal.stiff_val);
+    if p <= ax[0] {
+        return val[0];
     }
-    if p >= STIFF_AXIS[STIFF_AXIS.len() - 1] {
-        return STIFF_VAL[STIFF_VAL.len() - 1];
+    if p >= ax[ax.len() - 1] {
+        return val[val.len() - 1];
     }
-    for k in 0..STIFF_AXIS.len() - 1 {
-        if p <= STIFF_AXIS[k + 1] {
-            let f = (p - STIFF_AXIS[k]) / (STIFF_AXIS[k + 1] - STIFF_AXIS[k]);
-            return (1.0 - f) * STIFF_VAL[k] + STIFF_VAL[k + 1] * f;
+    for k in 0..ax.len() - 1 {
+        if p <= ax[k + 1] {
+            let f = (p - ax[k]) / (ax[k + 1] - ax[k]);
+            return (1.0 - f) * val[k] + val[k + 1] * f;
         }
     }
-    STIFF_VAL[STIFF_VAL.len() - 1]
+    val[val.len() - 1]
 }
 
 /// Stiffness at load `fz`: C0 (Fz/Fz0)^M_C, times the bulk-temperature, wear
 /// and pressure factors normalised to the calibration point.
-pub fn stiffness_at(fz: f64, tb: f64, d: f64, p: f64, c0: f64) -> f64 {
-    c0 * (fz / FZ0).powf(M_C)
-        * (temp_stiffness_factor(tb) / temp_stiffness_factor(T_CAL))
-        * (wear_stiffness_factor(d) / wear_stiffness_factor(D_CAL))
-        * (pressure_factor(p) / PF_CAL)
+pub fn stiffness_at(fz: f64, tb: f64, d: f64, p: f64, c0: f64, cal: &Calibration) -> f64 {
+    c0 * (fz / cal.fz0).powf(M_C)
+        * (temp_stiffness_factor(tb) / temp_stiffness_factor(cal.t_cal))
+        * (wear_stiffness_factor(d) / wear_stiffness_factor(cal.d_cal))
+        * (pressure_factor(p, cal) / cal.pf_cal)
 }
 
 /// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (NASA/Horne, reproduced
@@ -161,18 +166,40 @@ pub fn wet_loss(w: f64, v: f64, p: f64, d: f64) -> f64 {
     1.0 - (1.0 - WET_KEPT) * l
 }
 
-/// Friction magnitude of one axis at sliding speed `vs`: mu_k + (mu_s -
-/// mu_k) / (1 + (Vs/V_MU)^2), times the load sensitivity (Fz/Fz0)^(N_MU-1),
-/// the surface ratio, NGP's temperature grip factor, the dry-wear term
-/// (1 + 0.167 (1 - d), normalised: +10% peak mu at 60% worn, same paper) and
-/// the wet loss.
+/// Dry-wear gain on friction: 1 + 0.167 (1 - d), fading with wetness (times
+/// (1 - W)): worn tread grips more when dry (+10% peak mu at 60% worn, Singh
+/// Table 3) and loses in the wet (carried by the hydroplaning speed there).
+pub fn wear_gain(d: f64, w: f64) -> f64 {
+    1.0 + 0.167 * (1.0 - d) * (1.0 - w)
+}
+
+/// Friction magnitude of one axis at sliding speed `vs`: mu_k (scaled by the
+/// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
+/// kinetic ratio) / (1 + (Vs/V_MU)^2), times the load sensitivity
+/// (Fz/Fz0)^(N_MU-1), NGP's temperature grip factor, the wet-faded dry-wear
+/// gain (normalised) and the wet loss. Both axes scale mu_s with the surface
+/// static ratio and mu_k with the surface kinetic ratio, since the static
+/// scale sets the adhesion ceiling and the kinetic scale the sliding floor.
 #[allow(clippy::too_many_arguments)]
-pub fn mu_axis(mu_s: f64, mu_k: f64, vs: f64, fz: f64, surf_ratio: f64, temp_grip: f64, d: f64, wet: f64) -> f64 {
-    let base = mu_k + (mu_s - mu_k) / (1.0 + (vs / V_MU).powi(2));
-    base * (fz / FZ0).powf(N_MU - 1.0)
-        * surf_ratio
-        * (temp_grip / TEMP_GRIP_CAL)
-        * ((1.0 + 0.167 * (1.0 - d)) / (1.0 + 0.167 * (1.0 - D_CAL)))
+pub fn mu_axis(
+    mu_s: f64,
+    mu_k: f64,
+    vs: f64,
+    fz: f64,
+    stat_ratio: f64,
+    kin_ratio: f64,
+    temp_grip: f64,
+    d: f64,
+    w: f64,
+    wet: f64,
+    cal: &Calibration,
+) -> f64 {
+    let ks = mu_s * stat_ratio;
+    let kk = mu_k * kin_ratio;
+    let base = kk + (ks - kk) / (1.0 + (vs / V_MU).powi(2));
+    base * (fz / cal.fz0).powf(N_MU - 1.0)
+        * (temp_grip / cal.temp_grip_cal)
+        * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal))
         * wet
 }
 
@@ -226,14 +253,14 @@ pub struct EvalOutput {
 /// combined slip (Tire and Vehicle Dynamics, 3rd ed., ch. 3): theta_i =
 /// C_i/(3 mu Fz) with the directional mu below, psi = sqrt((theta_x sx)^2 +
 /// (theta_y sy)^2); for psi < 1, F = mu Fz (3 psi - 3 psi^2 + psi^3), else
-/// F = mu Fz; F_i = -F theta_i s_i / psi (0 at psi = 0). The friction ellipse
+/// F = mu Fz; F_i = -F theta_i s_i/psi (0 at psi = 0). The friction ellipse
 /// gives the directional mu: mu_dir = 1/sqrt((ex/mu_x)^2 + (ey/mu_y)^2) along
 /// the slip direction e. Aligning moment (pure side-slip form, applied with
 /// psi): Mz = mu Fz a theta_y sy (1 - 3 psi + 3 psi^2 - psi^3) for psi < 1,
 /// else 0; the trail -Mz/Fy tends to a/3 at small slip.
-pub fn eval(x: &EvalInput) -> EvalOutput {
-    let cy = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, CY0);
-    let cx = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, CX0);
+pub fn eval(x: &EvalInput, cal: &Calibration) -> EvalOutput {
+    let cy = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, cal.cy0, cal);
+    let cx = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, cal.cx0, cal);
     // Slip velocities (NGP slip.rs long_slip_velocity sign) and rolling speed.
     let vsx = x.vx + x.spin * x.radius;
     let vsy = x.vy;
@@ -243,8 +270,32 @@ pub fn eval(x: &EvalInput) -> EvalOutput {
     let vs = (vsx * vsx + vsy * vsy).sqrt();
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
     let wet = wet_loss(x.wetness, v, x.pressure, x.tread_remaining);
-    let mu_x = mu_axis(MU_X_S, MU_X_K, vs, x.fz, x.surf_kinetic / SURF_K_CAL, x.temp_grip, x.tread_remaining, wet);
-    let mu_y = mu_axis(MU_Y_S, MU_Y_K, vs, x.fz, x.surf_static / SURF_S_CAL, x.temp_grip, x.tread_remaining, wet);
+    let mu_x = mu_axis(
+        cal.mu_xs,
+        cal.mu_xk,
+        vs,
+        x.fz,
+        x.surf_static / cal.surf_s_cal,
+        x.surf_kinetic / cal.surf_k_cal,
+        x.temp_grip,
+        x.tread_remaining,
+        x.wetness,
+        wet,
+        cal,
+    );
+    let mu_y = mu_axis(
+        cal.mu_ys,
+        cal.mu_yk,
+        vs,
+        x.fz,
+        x.surf_static / cal.surf_s_cal,
+        x.surf_kinetic / cal.surf_k_cal,
+        x.temp_grip,
+        x.tread_remaining,
+        x.wetness,
+        wet,
+        cal,
+    );
     // Friction ellipse along the theoretical-slip direction.
     let s_abs = (sx * sx + sy * sy).sqrt();
     let mu = if s_abs > 0.0 {
@@ -304,27 +355,51 @@ pub fn step_transient(s: &mut TransState, vsx: f64, vsy: f64, vr: f64, sigma_x: 
 mod tests {
     use super::*;
 
-    fn cal_input() -> EvalInput {
+    /// Synthetic calibration with round numbers (not NGP's values).
+    fn synth_cal() -> Calibration {
+        Calibration {
+            fz0: 4000.0,
+            cy0: 80000.0,
+            cx0: 60000.0,
+            mu_ys: 1.3,
+            mu_yk: 1.0,
+            mu_xs: 1.3,
+            mu_xk: 1.0,
+            t_cal: 300.0,
+            d_cal: 1.0,
+            p_cal: 200000.0,
+            pf_cal: 1.0,
+            w_cal: 0.0,
+            surf_s_cal: 1.3,
+            surf_k_cal: 1.0,
+            temp_grip_cal: 1.0,
+            stiff_axis: [0.0, 150000.0, 300000.0, 500000.0],
+            stiff_val: [1.0, 1.0, 1.0, 1.0],
+        }
+    }
+
+    fn synth_input() -> EvalInput {
         EvalInput {
-            fz: FZ0,
-            half_length: 0.14531 / 2.0,
+            fz: 4000.0,
+            half_length: 0.07,
             vx: -15.0,
             vy: 0.0,
-            spin: 15.0 / 0.315,
-            radius: 0.315,
-            bulk_temp: T_CAL,
-            tread_remaining: D_CAL,
-            pressure: P_CAL,
+            spin: 15.0 / 0.3,
+            radius: 0.3,
+            bulk_temp: 300.0,
+            tread_remaining: 1.0,
+            pressure: 200000.0,
             wetness: 0.0,
-            temp_grip: TEMP_GRIP_CAL,
-            surf_static: SURF_S_CAL,
-            surf_kinetic: SURF_K_CAL,
+            temp_grip: 1.0,
+            surf_static: 1.3,
+            surf_kinetic: 1.0,
         }
     }
 
     #[test]
     fn zero_slip_gives_zero_force_and_moment() {
-        let o = eval(&cal_input());
+        let cal = synth_cal();
+        let o = eval(&synth_input(), &cal);
         assert!(o.fx.abs() < 1e-9, "fx {}", o.fx);
         assert!(o.fy.abs() < 1e-9, "fy {}", o.fy);
         assert_eq!(o.mz, 0.0);
@@ -333,36 +408,38 @@ mod tests {
 
     #[test]
     fn small_slip_slope_equals_stiffness() {
-        // Lateral: tiny slip angle, slope d|Fy|/dsy -> CY0.
-        let mut x = cal_input();
+        let cal = synth_cal();
+        // Lateral: tiny slip angle, slope d|Fy|/dsy -> cy0.
+        let mut x = synth_input();
         x.vy = 15.0 * 1e-7;
         x.vx = -(15.0f64 * 15.0f64 - x.vy * x.vy).sqrt();
         x.spin = -x.vx / x.radius;
-        let o = eval(&x);
+        let o = eval(&x, &cal);
         let slope = o.fy.abs() / o.sy.abs();
-        assert!((slope / CY0 - 1.0).abs() < 1e-6, "slope {slope} CY0 {CY0}");
-        // Longitudinal: tiny kappa, slope d|Fx|/dsx -> CX0.
-        let mut x = cal_input();
+        assert!((slope / cal.cy0 - 1.0).abs() < 1e-6, "slope {slope} cy0 {}", cal.cy0);
+        // Longitudinal: tiny kappa, slope d|Fx|/dsx -> cx0.
+        let mut x = synth_input();
         let kappa = 1e-7;
         x.spin = (1.0 + kappa) * 15.0 / x.radius;
-        let o = eval(&x);
+        let o = eval(&x, &cal);
         let slope = o.fx.abs() / o.sx.abs();
-        assert!((slope / CX0 - 1.0).abs() < 1e-6, "slope {slope} CX0 {CX0}");
+        assert!((slope / cal.cx0 - 1.0).abs() < 1e-6, "slope {slope} cx0 {}", cal.cx0);
     }
 
     #[test]
     fn full_sliding_gives_mu_fz_along_slip() {
+        let cal = synth_cal();
         // Near-90 deg slip: saturated, force opposes sliding at mu(Vs) Fz.
-        let mut x = cal_input();
+        let mut x = synth_input();
         let alpha = 80.0f64.to_radians();
         x.vy = 15.0 * alpha.sin();
         x.vx = -15.0 * alpha.cos();
         x.spin = -x.vx / x.radius;
-        let o = eval(&x);
+        let o = eval(&x, &cal);
         assert!(o.psi > 1.0, "psi {}", o.psi);
         let f = (o.fx * o.fx + o.fy * o.fy).sqrt();
         let vs = (x.vy * x.vy + (x.vx + x.spin * x.radius).powi(2)).sqrt();
-        let mu = MU_Y_K + (MU_Y_S - MU_Y_K) / (1.0 + (vs / V_MU).powi(2));
+        let mu = cal.mu_yk + (cal.mu_ys - cal.mu_yk) / (1.0 + (vs / V_MU).powi(2));
         assert!((f / (mu * x.fz) - 1.0).abs() < 1e-9, "f {f} mu Fz {}", mu * x.fz);
         // Direction: opposes the sliding velocity.
         assert!(o.fy < 0.0 && o.fx <= 0.0, "fx {} fy {}", o.fx, o.fy);
@@ -370,66 +447,60 @@ mod tests {
 
     #[test]
     fn trail_tends_to_a_over_3_at_small_slip() {
-        let mut x = cal_input();
+        let cal = synth_cal();
+        let mut x = synth_input();
         x.vy = 15.0 * (0.01f64.to_radians()).sin();
         x.vx = -(15.0f64 * 15.0f64 - x.vy * x.vy).sqrt();
         x.spin = -x.vx / x.radius;
-        let o = eval(&x);
+        let o = eval(&x, &cal);
         assert!((o.trail / (x.half_length / 3.0) - 1.0).abs() < 0.005, "trail {}", o.trail);
     }
 
     #[test]
     fn lateral_symmetry() {
-        let mut p = cal_input();
+        let cal = synth_cal();
+        let mut p = synth_input();
         p.vy = 2.0;
         p.spin = -p.vx / p.radius;
-        let mut m = cal_input();
+        let mut m = synth_input();
         m.vy = -2.0;
         m.spin = -m.vx / m.radius;
-        let (op, om) = (eval(&p), eval(&m));
+        let (op, om) = (eval(&p, &cal), eval(&m, &cal));
         assert!((op.fy + om.fy).abs() < 1e-9, "{} {}", op.fy, om.fy);
         assert!((op.mz + om.mz).abs() < 1e-9, "{} {}", op.mz, om.mz);
         assert!((op.fx - om.fx).abs() < 1e-9, "{} {}", op.fx, om.fx);
     }
 
     #[test]
-    fn calibration_reproduces_ngp_peak_at_fz0() {
-        // Lateral sweep: peak |Fy| is NGP's 5058.66 N within 0.5%.
-        let mut best = 0.0f64;
-        for k in 0..=600 {
-            let alpha = k as f64 * 0.05 * std::f64::consts::PI / 180.0;
-            let mut x = cal_input();
-            x.vy = 15.0 * alpha.sin();
-            x.vx = -15.0 * alpha.cos();
-            x.spin = -x.vx / x.radius;
-            best = best.max(eval(&x).fy.abs());
-        }
-        assert!((best / 5058.66 - 1.0).abs() < 0.005, "peak {best}");
-        // Longitudinal sweep, drive side as calibrated: peak |Fx| is NGP's
-        // 5180.26 N within 0.5%. (The braking side peaks ~6% higher: sx =
-        // Vsx/Vr with Vr = |wR| saturates earlier when braking. NGP is
-        // drive/brake symmetric; see the comparison.)
-        let mut best = 0.0f64;
-        let mut k = 0.0;
-        while k <= 1.0 {
-            let mut x = cal_input();
-            x.spin = (1.0 + k) * 15.0 / x.radius;
-            best = best.max(eval(&x).fx.abs());
-            k += 0.005;
-        }
-        assert!((best / 5180.26 - 1.0).abs() < 0.005, "peak {best}");
+    fn static_scales_ceiling_and_kinetic_scales_floor() {
+        // mu_s follows the static ratio, mu_k the kinetic ratio, on each axis:
+        // doubling the static surface mu doubles the zero-speed mu, doubling
+        // the kinetic one doubles the infinite-speed mu.
+        let cal = synth_cal();
+        let slow = mu_axis(1.3, 1.0, 0.0, 4000.0, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        assert!((slow / 2.6 - 1.0).abs() < 1e-12, "slow {slow}");
+        let fast = mu_axis(1.3, 1.0, 1e9, 4000.0, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        assert!((fast / 2.0 - 1.0).abs() < 1e-12, "fast {fast}");
+    }
+
+    #[test]
+    fn wear_gain_fades_with_wetness() {
+        assert!((wear_gain(1.0, 0.0) - 1.0).abs() < 1e-12);
+        assert!((wear_gain(0.4, 0.0) - 1.1002).abs() < 1e-12);
+        assert!((wear_gain(0.4, 1.0) - 1.0).abs() < 1e-12);
     }
 
     #[test]
     fn transient_converges_and_reaches_63_percent_after_sigma() {
+        let cal = synth_cal();
         // 1 deg step at 15 m/s: linear regime, distance to 63% ~= sigma_y.
         let v = 15.0;
         let alpha = 1.0f64.to_radians();
         let vsy = v * alpha.sin();
         let vx = -v * alpha.cos();
         let vr = v * alpha.cos();
-        let cy = stiffness_at(FZ0, T_CAL, D_CAL, P_CAL, CY0);
-        let k_y = 418798.281250 * PF_CAL;
+        let cy = stiffness_at(4000.0, 300.0, 1.0, 200000.0, cal.cy0, &cal);
+        let k_y = 400000.0;
         let (sig_y, _) = sigma_lengths(cy, cy, k_y, 1.0, vx);
         let dt = 1.0 / 720.0;
         let mut s = TransState::default();

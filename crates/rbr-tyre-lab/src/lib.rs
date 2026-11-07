@@ -3,4 +3,5 @@
 //! computes.
 
 pub mod brush;
+pub mod calibrate;
 pub mod probe;
