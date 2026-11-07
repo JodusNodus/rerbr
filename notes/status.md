@@ -120,8 +120,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 - 2026-11-07 (user): an opt-in alternative engine model (ours, experimental; `rbr-engine`, `--engine-model
   realistic`, the launcher's Engine model): a mean-value engine from each car's data in place of NGP's torque
   formula, in NGP's engine wrapper only ([engine-model.md](engine-model.md)). NGP's formula stays the default and
-  bit-exact; drives made with the model replay only with it. It replaces the input-side throttle model, which is not
-  merged.
+  bit-exact. While experimental, a run with the model saves no records, ghosts or championship results (user,
+  2026-11-07); its replays carry the flag. It replaces the input-side throttle model, which is not merged.
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
   (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
   `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.
