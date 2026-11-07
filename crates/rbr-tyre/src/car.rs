@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn it_takes_hard_surfaces_at_any_speed_down_to_standstill() {
+    fn it_takes_every_surface_at_any_speed_down_to_standstill() {
         let mut b = Brush::new(&[wheel()]).unwrap();
         let at = wheel().tyre;
         assert_eq!(b.forces(at + 4, &rolling(20.0, 0.05)), None);
@@ -196,7 +196,7 @@ mod tests {
         assert_eq!(b.forces(at, &x).unwrap(), first);
     }
 
-    /// The wheel's steady lateral force after `n` steps of `x` from the state `b` holds.
+    /// The wheel's output after `n` steps of `x` from the state `b` holds.
     fn settle(b: &mut Brush, x: &ForceInput, n: usize) -> ForceOutput {
         (0..n).map(|_| b.forces(wheel().tyre, x).unwrap()).last().unwrap()
     }
