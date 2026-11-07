@@ -583,7 +583,8 @@ fn main() {
     let mut sigma_csv = String::from("V,sigma_ngp,sigma_y_cand,sigma_x_cand\n");
     let mut sigma_rows: Vec<(f64, f64, f64)> = Vec::new();
     for vv in [5.0, 10.0, 20.0, 30.0] {
-        let (sy, sx) = brush::sigma_lengths(cy_fz0, cx_fz0, k_y, k_x);
+        // At zero slip the secant is the stiffness: Rill's relaxation length C/k + V d/k.
+        let (sy, sx) = brush::sigma_lengths(cy_fz0 + vv * brush::DAMPING_Y, cx_fz0 + vv * brush::DAMPING_X, k_y, k_x);
         sigma_csv.push_str(&format!("{vv:.0},{ngp_sigma:.4},{sy:.4},{sx:.4}\n"));
         sigma_rows.push((vv, sy, sx));
     }
@@ -833,25 +834,17 @@ fn main() {
         let vsy = vv * alpha.sin();
         let vx = -vv * alpha.cos();
         let vr = vv * alpha.cos();
-        let cy = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cy0, M_CY, &cal);
-        let cx = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cx0, M_CX, &cal);
-        let (sig_y, sig_x) = brush::sigma_lengths(cy, cx, k_y, k_x);
         let o = dry_opts();
-        // Steady force at the step slip.
         let spin = -vx / r;
-        let f_ss = cand_forces(&base, &cloud, fz0, vv * alpha.sin(), vx, spin, &o, &cal).fy.abs();
+        let steady = cand_forces(&base, &cloud, fz0, vsy, vx, spin, &o, &cal);
+        let sig_y = (steady.ky + vr * brush::DAMPING_Y) / k_y;
         let dt = 1.0 / 720.0;
         let mut s = brush::TransState::default();
         let mut dist = 0.0;
         for _ in 0..7200 {
-            brush::step_transient(&mut s, 0.0, vsy, vr, sig_x, sig_y, dt);
-            // Force through the transient slip: feed eval the sliding
-            // velocity the transient state implies (exact in the linear
-            // regime where the 63% point sits).
-            let vy_in = s.uy / sig_y * vr;
-            let f = cand_forces(&base, &cloud, fz0, vy_in, vx, spin, &o, &cal).fy.abs();
+            let (_, fy) = brush::step_dynamic(&mut s, &steady, vr, k_x, k_y, steady.mu * fz0, dt);
             dist += vv * dt;
-            if f >= 0.63 * f_ss {
+            if fy / steady.fy >= 0.63 {
                 break;
             }
         }
@@ -1044,10 +1037,13 @@ M_CX = {M_CX}, KX_OVER_KY = {KX_OVER_KY}, N_MU_X = {N_MU_X} (means of the MF 6.1
 Pacejka-book passenger set in Chrono's TMeasy); Stribeck g(Vs) with V_S = {V_S} m/s, Coulomb/static {:.3} \
 (Canudas de Wit et al., VSD 39 (2003), Table 1); film {:.1} mm at W = 1 (measured road films), ref 0.5 mm, \
 kept 0.4 and the quadratic ours; vp = 6.36 sqrt(p/kPa) (Horne) times (0.75 + 0.25 d) (ADAC 2026); dry-wear \
-gain 1 + 0.167(1-d)(1-W) (Singh Table 3; the wet fade ours); brush ch. 3 and transient ch. 7 Pacejka 3rd ed.; \
-sigma = C/k, no speed term (Pacejka ch. 5). V_MIN = {V_MIN} m/s floor; below 2 m/s out of scope.\n",
+gain 1 + 0.167(1-d)(1-W) (Singh Table 3; the wet fade ours); brush ch. 3 Pacejka 3rd ed.; \
+first-order dynamics F = c u + d u' with the secant F/s (Rill, Vehicle Dynamics 2009, 3.4.2), d_x {}, d_y {} N/(m/s) \
+(Rill's passenger tyres), sigma = (F/s + V d)/c. V_MIN = {V_MIN} m/s floor; below 2 m/s out of scope.\n",
         MU_C_OVER_S,
         FILM_MAX * 1e3,
+        brush::DAMPING_X,
+        brush::DAMPING_Y,
     ));
     write(&out.join("summary.md"), &md);
     println!("{md}");

@@ -3,8 +3,9 @@
 //! A steady-state brush with Pacejka's theoretical slips, the Stribeck
 //! friction of Canudas de Wit et al.'s distributed LuGre (brush) tyre model,
 //! load-sensitive stiffness and friction, bulk temperature / wear / pressure
-//! factors, a hydroplaning-style wet loss, and a single-contact-point
-//! transient. Pure functions over plain values, in `f64` with libm's `exp` and
+//! factors, a hydroplaning-style wet loss, and Rill's first-order force
+//! dynamics (carcass spring and damper, relaxation from the secant slip
+//! stiffness). Pure functions over plain values, in `f64` with libm's `exp` and
 //! `pow`: the same bits on every platform, as replays need. The game steps it
 //! through [`crate::car`]; the lab (`rbr-tyre-lab`) compares it with NGP.
 //!
@@ -242,6 +243,10 @@ pub struct EvalOutput {
     pub mu: f64,
     pub sx: f64,
     pub sy: f64,
+    /// The secant slip stiffnesses -F_i/s_i, N per unit theoretical slip (the slip stiffnesses at zero slip, falling
+    /// as the patch slides).
+    pub kx: f64,
+    pub ky: f64,
 }
 
 /// Steady-state brush evaluation: Pacejka's theoretical brush model with
@@ -264,8 +269,8 @@ pub fn slip_velocities(x: &EvalInput) -> (f64, f64, f64) {
     (x.vx + x.spin * x.radius, x.vy, (x.spin * x.radius).abs().max(V_MIN))
 }
 
-/// [`eval`] at the theoretical slips `sx`, `sy` (the transient's, in the
-/// game) and the rolling speed `vr`: the sliding speed is `vr |s|`.
+/// [`eval`] at the theoretical slips `sx`, `sy` and the rolling speed `vr`:
+/// the sliding speed is `vr |s|`.
 pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) -> EvalOutput {
     let cy = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cy0, M_CY, cal);
     let cx = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cx0, M_CX, cal);
@@ -323,7 +328,9 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     };
     let (fx, fy) = if psi > 0.0 { (-f * theta_x * sx / psi, -f * theta_y * sy / psi) } else { (0.0, 0.0) };
     let trail = if fy != 0.0 { -mz / fy } else { 0.0 };
-    EvalOutput { fx, fy, mz, trail, psi, mu, sx, sy }
+    // F/psi tends to 3 mu Fz at zero slip, so the secants tend to the stiffnesses.
+    let per_psi = if psi > 0.0 { f / psi } else { 3.0 * mu * x.fz };
+    EvalOutput { fx, fy, mz, trail, psi, mu, sx, sy, kx: per_psi * theta_x, ky: per_psi * theta_y }
 }
 
 /// Relaxation lengths, m: sigma_y = Cy(Fz)/k_y with NGP's carcass lateral
@@ -333,29 +340,62 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
 /// C/k (Pacejka, ch. 5). No speed term: the one measured (0.021 s times V,
 /// Vera et al., Sensors 22:6380, 2022) is a passenger tyre's with its
 /// excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-
-/// 0.45 m (0.6 m at 20 m/s); MF-Swift has none either (TNO, 2013).
+/// 0.45 m (0.6 m at 20 m/s); MF-Swift has none either (TNO, 2013). These are
+/// the lengths at zero slip without the carcass damping, whose V d/k
+/// [`step_dynamic`] adds (Rill's first-order dynamics).
 pub fn sigma_lengths(cy_fz: f64, cx_fz: f64, k_y: f64, k_x: f64) -> (f64, f64) {
     (cy_fz / k_y, cx_fz / k_x)
 }
 
-/// Single-contact-point transient state (Pacejka, ch. 7): lateral and
-/// longitudinal carcass deflections, m.
+/// Carcass damping against the deflection's rate, N/(m/s), longitudinal and lateral: Rill's passenger-tyre values,
+/// d_x 500 and 1500 N/(m/s) with c_x 160 and 180 kN/m, d_y 250 and 600 N/(m/s) with c_y 180 and 160 kN/m (Vehicle
+/// Dynamics, lecture notes, Hochschule Regensburg 2009, Figs. 4.3, 4.4, 3.45; Wheel Dynamics, DINAME 2007); the
+/// means of each pair (ours: no rally tyre's are published).
+pub const DAMPING_X: f64 = 1000.0;
+pub const DAMPING_Y: f64 = 425.0;
+
+/// The transient state: the carcass deflections along the slips, m (Rill's x_e, y_e). The force they hold is
+/// c u + d u' per axis.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct TransState {
     pub ux: f64,
     pub uy: f64,
 }
 
-/// One transient step at dt = 1/720 s: dv/dt = Vs - (Vr/sigma) v per axis
-/// (deflection grows with the sliding velocity and relaxes exponentially),
-/// integrated with the exact exponential for the linear decay over dt, which
-/// is stable for any sigma. The transient slips v/sigma replace sx/sy in
-/// [`eval`].
-pub fn step_transient(s: &mut TransState, vsx: f64, vsy: f64, vr: f64, sigma_x: f64, sigma_y: f64, dt: f64) {
-    let decay_x = libm::exp(-dt * vr / sigma_x);
-    let decay_y = libm::exp(-dt * vr / sigma_y);
-    s.ux += (vsx * sigma_x / vr - s.ux) * (1.0 - decay_x);
-    s.uy += (vsy * sigma_y / vr - s.uy) * (1.0 - decay_y);
+/// One step of first-order tyre dynamics (Rill, Vehicle Dynamics 2009, section 3.4.2, eqs. 3.164-3.172): per axis
+/// the force is F_D = c u + d u', with the deflection u following (v d + f) u' = f v s - v c u, where s is the
+/// theoretical slip of the steady brush `steady` at the rolling speed v = `vr`, f = F_S/s its secant (`kx`, `ky`),
+/// c the carcass stiffness (`k_x`, `k_y`) and d the damping ([`DAMPING_X`], [`DAMPING_Y`]). The relaxation length
+/// is then v d/c + f/c: the stretched string's C/c at small slip (Pacejka, ch. 5), falling as the patch slides, as
+/// the measured lateral relaxation length does (Rill's Fig. 3.43: about 0.6 m at 0° to 0.1 m at 10°, 4 kN). The
+/// linear decay is integrated with its exact exponential over `dt` (stable for any length), and the combined force
+/// is limited to the steady friction mu Fz (`limit`), as Rill limits it. Gives the longitudinal and lateral forces in
+/// NGP's signs (they oppose the sliding).
+pub fn step_dynamic(
+    st: &mut TransState,
+    steady: &EvalOutput,
+    vr: f64,
+    k_x: f64,
+    k_y: f64,
+    limit: f64,
+    dt: f64,
+) -> (f64, f64) {
+    let axis = |u: &mut f64, f: f64, s: f64, c: f64, d: f64| {
+        let rate = vr * c / (vr * d + f);
+        let settled = f * s / c;
+        let next = settled + (*u - settled) * libm::exp(-rate * dt);
+        let force = c * next + d * rate * (settled - next);
+        *u = next;
+        -force
+    };
+    let fx = axis(&mut st.ux, steady.kx, steady.sx, k_x, DAMPING_X);
+    let fy = axis(&mut st.uy, steady.ky, steady.sy, k_y, DAMPING_Y);
+    let f = (fx * fx + fy * fy).sqrt();
+    if f > limit && f > 0.0 {
+        (fx * limit / f, fy * limit / f)
+    } else {
+        (fx, fy)
+    }
 }
 
 #[cfg(test)]
@@ -495,36 +535,90 @@ mod tests {
         assert!((wear_gain(0.4, 1.0) - 1.0).abs() < 1e-12);
     }
 
-    #[test]
-    fn transient_converges_and_reaches_63_percent_after_sigma() {
-        let cal = synth_cal();
-        // 1 deg step at 15 m/s: linear regime, distance to 63% ~= sigma_y.
-        let v = 15.0;
-        let alpha = 1.0f64.to_radians();
-        let vsy = v * alpha.sin();
-        let vr = v * alpha.cos();
-        let cy = stiffness_at(4000.0, 300.0, 1.0, 1.0, cal.cy0, M_CY, &cal);
-        let k_y = 400000.0;
-        let (sig_y, _) = sigma_lengths(cy, cy, k_y, 1.0);
+    /// The input rolling at 15 m/s with the theoretical slips `sx`, `sy`.
+    fn at_slips(sx: f64, sy: f64) -> EvalInput {
+        let mut x = synth_input();
+        // vr = spin R = 15; Vsx = vx + spin R = sx vr; Vsy = sy vr.
+        x.spin = 15.0 / x.radius;
+        x.vx = (sx - 1.0) * 15.0;
+        x.vy = sy * 15.0;
+        x
+    }
+
+    /// Steps the dynamics on a fixed steady state until the force along `axis` reaches 63 % of the steady one; gives
+    /// the distance rolled at 15 m/s, m, and the state after `settle` more steps.
+    fn rise(steady: &EvalOutput, k: f64, lateral: bool, settle: usize) -> (f64, (f64, f64)) {
         let dt = 1.0 / 720.0;
-        let mut s = TransState::default();
-        // Integrate until the transient slip reaches 63% of steady slip.
+        let target = if lateral { steady.fy } else { steady.fx };
+        let mut st = TransState::default();
         let mut dist = 0.0;
-        let mut ratio = 0.0;
-        for _ in 0..7200 {
-            step_transient(&mut s, 0.0, vsy, vr, 1.0, sig_y, dt);
-            dist += v * dt;
-            ratio = (s.uy / sig_y) / (vsy / vr);
-            if ratio >= 0.63 {
+        let mut f = (0.0, 0.0);
+        let mut reached = None;
+        for n in 0..72000 {
+            f = step_dynamic(&mut st, steady, 15.0, k, k, 1e9, dt);
+            dist += 15.0 * dt;
+            let along = if lateral { f.1 } else { f.0 };
+            if reached.is_none() && along / target >= 0.63 {
+                reached = Some(dist);
+            }
+            if reached.is_some() && n > settle {
                 break;
             }
         }
-        assert!(ratio >= 0.63, "never reached 63%");
-        assert!((dist / sig_y - 1.0).abs() < 0.1, "dist {dist} sigma {sig_y}");
-        // Converges to the steady-state slip.
-        for _ in 0..72000 {
-            step_transient(&mut s, 0.0, vsy, vr, 1.0, sig_y, dt);
+        (reached.expect("never reached 63%"), f)
+    }
+
+    #[test]
+    fn the_dynamics_settle_on_the_steady_force_over_their_relaxation_length() {
+        // 1 deg: linear range, the relaxation length C/k + V d/k (Rill eq. 3.172 at f = C).
+        let cal = synth_cal();
+        let steady = eval(&at_slips(0.0, 1.0f64.to_radians().tan()), &cal);
+        let k = 400000.0;
+        let sigma = (steady.ky + 15.0 * DAMPING_Y) / k;
+        let (dist, f) = rise(&steady, k, true, 7200);
+        assert!((dist / sigma - 1.0).abs() < 0.1, "dist {dist} sigma {sigma}");
+        assert!((f.1 / steady.fy - 1.0).abs() < 1e-9 && f.0.abs() < 1e-9, "{f:?} {steady:?}");
+    }
+
+    #[test]
+    fn sliding_shortens_the_relaxation_length() {
+        // Wheelspin at sx 0.5 (saturated): the secant F/s is a fraction of the stiffness, so the force follows the
+        // slip over a fraction of the small-slip length (the measured lateral length falls the same way, Rill Fig.
+        // 3.43).
+        let cal = synth_cal();
+        let k = 70000.0;
+        let small = eval(&at_slips(0.01, 0.0), &cal);
+        let spin = eval(&at_slips(0.5, 0.0), &cal);
+        assert!(spin.psi > 1.0 && spin.kx < 0.2 * small.kx, "{spin:?}");
+        let (d_small, _) = rise(&small, k, false, 0);
+        let (d_spin, f) = rise(&spin, k, false, 7200);
+        assert!(d_spin < 0.3 * d_small, "spin {d_spin} small {d_small}");
+        assert!((f.0 / spin.fx - 1.0).abs() < 1e-9, "{f:?} {spin:?}");
+    }
+
+    #[test]
+    fn the_force_turns_with_the_slip_within_a_few_steps_when_sliding() {
+        // From settled wheelspin (sx +0.5) to a lock-up's braking slip (-0.5): the force reverses within 20 ms at
+        // 5 m/s on the low-speed carcass stiffness.
+        let cal = synth_cal();
+        let k = 70000.0;
+        let drive = eval(&at_slips(0.5, 0.0), &cal);
+        let brake = eval(&at_slips(-0.5, 0.0), &cal);
+        let dt = 1.0 / 720.0;
+        let mut st = TransState::default();
+        for _ in 0..7200 {
+            step_dynamic(&mut st, &drive, 5.0, k, k, 1e9, dt);
         }
-        assert!(((s.uy / sig_y) / (vsy / vr) - 1.0).abs() < 1e-6);
+        let steps = (1..).find(|_| step_dynamic(&mut st, &brake, 5.0, k, k, 1e9, dt).0 > 0.0).unwrap();
+        assert!(f64::from(steps) * dt < 0.02, "{steps} steps");
+    }
+
+    #[test]
+    fn the_combined_force_is_limited_to_the_friction() {
+        let cal = synth_cal();
+        let steady = eval(&at_slips(0.3, 0.3), &cal);
+        let mut st = TransState { ux: 1.0, uy: 1.0 };
+        let (fx, fy) = step_dynamic(&mut st, &steady, 15.0, 70000.0, 70000.0, 5000.0, 1.0 / 720.0);
+        assert!(((fx * fx + fy * fy).sqrt() / 5000.0 - 1.0).abs() < 1e-12, "{fx} {fy}");
     }
 }

@@ -599,8 +599,8 @@ rear. It takes the place of NGP's sliding model of the contact patch on hard sur
 give NGP's peak forces and cornering stiffness, with grip that falls as the tyre slides faster and one friction limit
 shared by braking and cornering. On gravel, snow and at low speed the tyre stays NGP's.
 
-The model, its evidence, its numbers in game and the open questions (among them a driven wheel that overspins at low
-speed) are in [notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
+The model, its evidence, its numbers in game and the open questions are in
+[notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
 
 ## Sources
 

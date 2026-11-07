@@ -2,10 +2,10 @@
 //! soil) it takes the contact patch's forces from NGP's sliding model by a weight rising from 0 at 2 m/s, where NGP's
 //! sliding model starts to run alone, to 1 at 3 m/s; elsewhere they stay NGP's. NGP sets the grip: its static friction
 //! (surface, wetness, temperature grip) scales the brush's friction levels, solved per wheel against NGP's own peaks
-//! ([`crate::fit`]). Each wheel's transient (Pacejka's single contact point) is the model's state: it starts from zero
-//! when the wheel touches down or the brush takes over.
+//! ([`crate::fit`]). Each wheel's carcass deflections (Rill's first-order force dynamics, [`brush::step_dynamic`]) are
+//! the model's state: they start from zero when the wheel touches down or the brush takes over.
 
-use crate::brush::{self, Calibration, EvalInput, TransState, M_CX, M_CY};
+use crate::brush::{self, Calibration, EvalInput, TransState};
 use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
 
 /// The contact speed (m/s) from which the brush takes a share, and the speed over which it rises to all of it.
@@ -70,17 +70,15 @@ impl Model for Brush {
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
         };
-        let (vsx, vsy, vr) = brush::slip_velocities(&e);
-        let cal = &t.cal;
-        let cy = brush::stiffness_at(e.fz, e.bulk_temp, e.tread_remaining, e.pressure_factor, cal.cy0, M_CY, cal);
-        let cx = brush::stiffness_at(e.fz, e.bulk_temp, e.tread_remaining, e.pressure_factor, cal.cx0, M_CX, cal);
+        let (_, _, vr) = brush::slip_velocities(&e);
+        let steady = brush::eval(&e, &t.cal);
         // The longitudinal carcass stiffness is the torsional one over the radius squared.
         let k_x = f64::from(x.torsional_stiffness) / (e.radius * e.radius);
-        let (sigma_y, sigma_x) = brush::sigma_lengths(cy, cx, f64::from(x.lateral_stiffness), k_x);
         let mut state = t.state;
-        brush::step_transient(&mut state, vsx, vsy, vr, sigma_x, sigma_y, f64::from(x.dt));
-        let o = brush::eval_slip(&e, state.ux / sigma_x, state.uy / sigma_y, vr, cal);
-        if !(o.fx.is_finite() && o.fy.is_finite() && o.trail.is_finite()) {
+        let limit = steady.mu * e.fz;
+        let (fx, fy) =
+            brush::step_dynamic(&mut state, &steady, vr, k_x, f64::from(x.lateral_stiffness), limit, f64::from(x.dt));
+        if !(fx.is_finite() && fy.is_finite() && steady.trail.is_finite()) {
             t.running = false;
             return None;
         }
@@ -88,10 +86,10 @@ impl Model for Brush {
         t.running = true;
         Some(ForceOutput {
             weight,
-            lateral_force: o.fy as f32,
-            longitudinal_force: o.fx as f32,
-            pneumatic_trail: o.trail as f32,
-            phase: o.psi.min(2.0) as f32,
+            lateral_force: fy as f32,
+            longitudinal_force: fx as f32,
+            pneumatic_trail: steady.trail as f32,
+            phase: steady.psi.min(2.0) as f32,
         })
     }
 
@@ -170,10 +168,10 @@ mod tests {
             surf_kinetic: 1.2,
         };
         let steady = brush::eval(&e, &b.tyres[0].cal);
-        // It opposes the sliding, starts small (one step rolls 2.8 cm of a relaxation length of about 0.4 m) and
-        // settles on the steady state.
+        // It opposes the sliding, starts small (the carcass damping's d Vs, 300 N, and one step's 2.8 cm of a
+        // relaxation length of about 0.4 m) and settles on the steady state.
         assert!(last.lateral_force < 0.0, "{last:?}");
-        assert!(first.lateral_force.abs() < 0.1 * last.lateral_force.abs(), "{first:?} {last:?}");
+        assert!(first.lateral_force.abs() < 0.2 * last.lateral_force.abs(), "{first:?} {last:?}");
         assert!((f64::from(last.lateral_force) / steady.fy - 1.0).abs() < 1e-4, "{last:?} {steady:?}");
         assert!(last.longitudinal_force.abs() < 1e-3 * last.lateral_force.abs(), "{last:?}");
         // A touch down or a restart starts it from zero again.
