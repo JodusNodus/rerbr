@@ -20,8 +20,9 @@ step 8000; the sweep calls NGP's own `patch_forces`/`friction_limits` with the p
   lateral peak `CrnMyFct(Fz) · 1.29` = 1.26 at 4 kN.
 - Surface values (`materials` example): tarmac fine clean dry/damp/wet (37/38/39) μs 1.30/1.2025/1.105, μk
   1.04/0.944/0.851, WaterFactor 0/0.25/1; sprinkled and covered 2.5 % and 5 % below clean; gravel fine shallow
-  (17) 0.90/0.756 over soil 0.855/0.664, 9 mm, SinkFactor 2e-7 (the soil solve runs: [Loose surfaces](#loose-surfaces-ngp-against-published-data)). Wet on the dry tyre: 1.105 × wet slope
-  0.925 = 0.79 of dry, at any speed.
+  (17) 0.90/0.756 over soil 0.855/0.664, 9 mm, SinkFactor 2e-7 (the soil solve runs:
+  [Loose surfaces](#loose-surfaces-ngp-against-published-data)). Wet on the dry tyre: 1.105 × wet slope 0.925 = 0.79
+  of dry, at any speed.
 - The tyre type's friction tables are the same for all 7 kinds; tarmac against gravel comes from the surface values,
   the kind's stiffness and peak slips, and soil (sweep peak μ_y at 4 kN 0.846 / 1.265 = 0.67; skidpad 0.62).
 - Sweep, dry tarmac, 15 m/s: peak μ_y 1.356/1.304/1.265/1.224/1.181 at 2/3/4/5/6 kN (peak Fy ∝ Fz^0.878), peak slip
