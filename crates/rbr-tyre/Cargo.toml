@@ -1,0 +1,11 @@
+[package]
+name = "rbr-tyre"
+version = "0.1.0"
+edition = "2021"
+description = "Tyre models (ours, experimental) in place of NGP's sliding model of the contact patch"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+# Pure-Rust maths: the same bits on every platform, unlike the system libm behind f64::exp and f64::powf.
+libm = "0.2.16"
+rbr-physics = { path = "../rbr-physics" }

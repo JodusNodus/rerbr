@@ -1,19 +1,19 @@
-//! Numerical calibration of the brush-v1 [`Calibration`][brush::Calibration].
+//! Numerical calibration of the brush-v1 [`Calibration`].
 //!
-//! Research tooling (ours, experimental): solves the nominal-point
-//! cornering stiffness and the friction levels from measured targets, so no
-//! NGP-derived numbers live in committed code. The caller (e.g.
-//! `examples/compare.rs`) feeds plain values — NGP's swept peak force per
-//! axis and fitted cornering slope — plus the nominal operating point from
-//! the probe dump; the solve itself only evaluates the brush model. The
-//! longitudinal stiffness (`KX_OVER_KY`) and the Coulomb over static ratio
-//! (`MU_C_OVER_S`) are published values, not solved. Lab code only.
+//! Solves the nominal-point cornering stiffness and the friction levels from
+//! measured targets, so no NGP-derived numbers live in committed code. The
+//! caller ([`crate::fit`] in the game, the lab's `examples/compare.rs` on a
+//! probe dump) feeds plain values — NGP's swept peak force per axis and
+//! fitted cornering slope — plus the nominal operating point; the solve itself
+//! only evaluates the brush model. The longitudinal stiffness (`KX_OVER_KY`)
+//! and the Coulomb over static ratio (`MU_C_OVER_S`) are published values, not
+//! solved.
 
-use super::brush::{eval, Calibration, EvalInput, KX_OVER_KY, MU_C_OVER_S};
+use crate::brush::{eval, Calibration, EvalInput, KX_OVER_KY, MU_C_OVER_S};
 
-/// The nominal operating point every factor is normalised to: the probe
-/// dump's tread temperature, tread remaining, pressure, pressure factor,
-/// wetness, surface values, temperature grip, and NGP's pressure table.
+/// The nominal operating point every factor is normalised to: the tread
+/// temperature, tread remaining, pressure and NGP's stiffness factor at it,
+/// wetness, surface values and temperature grip.
 #[derive(Clone, Copy, Debug)]
 pub struct CalPoint {
     pub t_cal: f64,
@@ -24,8 +24,6 @@ pub struct CalPoint {
     pub surf_s_cal: f64,
     pub surf_k_cal: f64,
     pub temp_grip_cal: f64,
-    pub stiff_axis: [f64; 4],
-    pub stiff_val: [f64; 4],
 }
 
 /// Measured targets at load `fz0` and speed `v`: the peak force per axis
@@ -54,14 +52,11 @@ fn trial_cal(cy0: f64, mu_ys: f64, mu_xs: f64, t: &CalTargets, p: &CalPoint) -> 
         mu_xk: MU_C_OVER_S * mu_xs,
         t_cal: p.t_cal,
         d_cal: p.d_cal,
-        p_cal: p.p_cal,
         pf_cal: p.pf_cal,
         w_cal: p.w_cal,
         surf_s_cal: p.surf_s_cal,
         surf_k_cal: p.surf_k_cal,
         temp_grip_cal: p.temp_grip_cal,
-        stiff_axis: p.stiff_axis,
-        stiff_val: p.stiff_val,
     }
 }
 
@@ -69,14 +64,15 @@ fn lat_input(alpha: f64, v: f64, t: &CalTargets, p: &CalPoint) -> EvalInput {
     EvalInput {
         fz: t.fz0,
         half_length: 0.07,
-        vx: -v * alpha.cos(),
-        vy: v * alpha.sin(),
+        vx: -v * libm::cos(alpha),
+        vy: v * libm::sin(alpha),
         // Unit radius: R cancels out of the slips (spin is set from vx).
-        spin: v * alpha.cos(),
+        spin: v * libm::cos(alpha),
         radius: 1.0,
         bulk_temp: p.t_cal,
         tread_remaining: p.d_cal,
         pressure: p.p_cal,
+        pressure_factor: p.pf_cal,
         wetness: p.w_cal,
         temp_grip: p.temp_grip_cal,
         surf_static: p.surf_s_cal,
@@ -96,6 +92,7 @@ fn lon_input(kappa: f64, v: f64, t: &CalTargets, p: &CalPoint) -> EvalInput {
         bulk_temp: p.t_cal,
         tread_remaining: p.d_cal,
         pressure: p.p_cal,
+        pressure_factor: p.pf_cal,
         wetness: p.w_cal,
         temp_grip: p.temp_grip_cal,
         surf_static: p.surf_s_cal,
@@ -184,8 +181,6 @@ mod tests {
             surf_s_cal: 1.3,
             surf_k_cal: 1.0,
             temp_grip_cal: 1.0,
-            stiff_axis: [0.0, 150000.0, 300000.0, 500000.0],
-            stiff_val: [1.0, 1.0, 1.0, 1.0],
         }
     }
 

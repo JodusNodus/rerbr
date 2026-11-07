@@ -8,3 +8,4 @@ license = "GPL-3.0-or-later"
 [dependencies]
 rbr-physics = { path = "../rbr-physics" }
 rbr-formats = { path = "../rbr-formats" }
+rbr-tyre = { path = "../rbr-tyre" }

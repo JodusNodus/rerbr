@@ -2395,6 +2395,7 @@ dependencies = [
  "rbr-gameplay",
  "rbr-physics",
  "rbr-recording",
+ "rbr-tyre",
 ]
 
 [[package]]
@@ -2519,6 +2520,15 @@ dependencies = [
  "rbr-recording",
  "rbr-school",
  "rbr-season",
+ "rbr-tyre",
+]
+
+[[package]]
+name = "rbr-tyre"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "rbr-physics",
 ]
 
 [[package]]
@@ -2527,6 +2537,7 @@ version = "0.1.0"
 dependencies = [
  "rbr-formats",
  "rbr-physics",
+ "rbr-tyre",
 ]
 
 [[package]]

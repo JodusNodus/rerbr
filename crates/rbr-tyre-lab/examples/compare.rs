@@ -87,6 +87,7 @@ fn cand_forces(
             bulk_temp: o.tb,
             tread_remaining: o.d,
             pressure: f64::from(base.air_pressure),
+            pressure_factor: f64::from(base.stiffness_factor),
             wetness: o.w,
             temp_grip: o.tg,
             surf_static: o.ss,
@@ -125,15 +126,6 @@ fn log_exponent(fzs: &[f64], vals: &[f64]) -> f64 {
         sxy += (f.ln() - mx) * (v.ln() - my);
     }
     sxy / sxx
-}
-
-/// First four entries of a probe table as f64 (pads by repeating the last).
-fn arr4(xs: &[f32]) -> [f64; 4] {
-    let mut o = [0.0; 4];
-    for (i, v) in o.iter_mut().enumerate() {
-        *v = f64::from(*xs.get(i).unwrap_or(xs.last().unwrap_or(&0.0)));
-    }
-    o
 }
 
 struct LatRow {
@@ -313,8 +305,6 @@ fn main() {
         surf_s_cal: f64::from(base.static_friction),
         surf_k_cal: f64::from(base.kinetic_friction),
         temp_grip_cal: f64::from(base.temperature_grip),
-        stiff_axis: arr4(&base.press_axis),
-        stiff_val: arr4(&base.stf_val),
     };
     let targets = CalTargets {
         fz0,
@@ -587,8 +577,8 @@ fn main() {
     // --- relaxation lengths --------------------------------------------------------
     let k_y = f64::from(base.carcass_lat) * f64::from(base.stiffness_factor);
     let k_x = f64::from(base.carcass_tor) * f64::from(base.stiffness_factor) / (r * r);
-    let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, M_CY, &cal);
-    let cx_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cx0, M_CX, &cal);
+    let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cy0, M_CY, &cal);
+    let cx_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cx0, M_CX, &cal);
     let ngp_sigma = lat_rows[2].calpha / k_y;
     let mut sigma_csv = String::from("V,sigma_ngp,sigma_y_cand,sigma_x_cand\n");
     let mut sigma_rows: Vec<(f64, f64, f64)> = Vec::new();
@@ -646,7 +636,7 @@ fn main() {
             let spin = -vlong / r;
             best = best.max(cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal).fy.abs() / fz0);
         }
-        let calpha_c = brush::stiffness_at(fz0, tb, point.d_cal, point.p_cal, cal.cy0, M_CY, &cal);
+        let calpha_c = brush::stiffness_at(fz0, tb, point.d_cal, point.pf_cal, cal.cy0, M_CY, &cal);
         // NGP cornering stiffness has no bulk-temperature term.
         temp_csv.push_str(&format!("{name},{:.0},{:.0},{:.4},{:.4}\n", lat_rows[2].calpha, calpha_c, n_peak, best));
         temp_rows.push((name, lat_rows[2].calpha, calpha_c, n_peak, best));
@@ -843,8 +833,8 @@ fn main() {
         let vsy = vv * alpha.sin();
         let vx = -vv * alpha.cos();
         let vr = vv * alpha.cos();
-        let cy = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, M_CY, &cal);
-        let cx = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cx0, M_CX, &cal);
+        let cy = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cy0, M_CY, &cal);
+        let cx = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cx0, M_CX, &cal);
         let (sig_y, sig_x) = brush::sigma_lengths(cy, cx, k_y, k_x, vx);
         let o = dry_opts();
         // Steady force at the step slip.

@@ -1,9 +1,8 @@
-//! Research tooling (ours, experimental): NGP tyre characterisation and the
-//! brush-v1 candidate model. Lab code only: nothing here changes what the game
-//! computes.
+//! Research tooling (ours, experimental): NGP tyre characterisation, and the
+//! brush-v1 model (`rbr_tyre`) against it. Lab code only: nothing here changes
+//! what the game computes.
 
-pub mod brush;
-pub mod calibrate;
+pub use rbr_tyre::{brush, calibrate};
 pub mod ngp;
 pub mod probe;
 

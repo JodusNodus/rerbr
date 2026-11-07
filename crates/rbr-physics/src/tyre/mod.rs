@@ -13,6 +13,7 @@ pub mod hold;
 pub mod layout;
 pub mod locate;
 pub mod material;
+pub mod model;
 pub mod noise_signal;
 pub mod output_block;
 pub mod patch_forces;

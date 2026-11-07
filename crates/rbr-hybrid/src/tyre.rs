@@ -328,7 +328,7 @@ fn solve_patch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// and its outputs are stored after the frame.
 pub(crate) fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let ngp = crate::ngp::thermal(ctx, r.ecx)?;
-    frame(entries::step(&mut ctx.mem, r.ecx, &r.stack, &ngp))?;
+    crate::ngp::with_tyre_model(r.ecx, |model| frame(entries::step(&mut ctx.mem, r.ecx, &r.stack, &ngp, model)))?;
     Ok(Return::void(0, 0x40))
 }
 

@@ -329,7 +329,7 @@ impl Rig {
         self.words[2] = hub.to_bits();
         self.words[3] = self.slip_scale.to_bits();
         let words = self.words;
-        entries::step(&mut self.mem, self.scratch, &words, &self.thermal)
+        entries::step(&mut self.mem, self.scratch, &words, &self.thermal, None)
             .expect("the flat-road step stays in the frame");
         entries::relax_count(&mut self.mem, self.scratch, DT, &self.thermal);
         let angle = self.mem.f32(self.record + 0x5AC) + spin * DT;
