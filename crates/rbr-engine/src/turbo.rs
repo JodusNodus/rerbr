@@ -1,43 +1,43 @@
 //! The turbocharger: a normalised compressor map, the turbine and wastegate nozzles, the shaft, the exhaust
-//! temperature and the restrictor (report §5; Andersson 2017 / Eriksson–Nielsen MVEM).
+//! temperature and the restrictor (Andersson 2017 / Eriksson–Nielsen MVEM).
 
 use crate::curve::Curve;
 use crate::gas::{self, CP_AIR, CP_EXHAUST, KAPPA_AIR, KAPPA_EXHAUST, PSI_CHOKED, P_REF, R, T_REF};
 use libm::{pow, sqrt};
 
-/// The speed line's droop a and the flow of its peak w0, of W/(W*·ν) (report §5.2).
+/// The speed line's droop a and the flow of its peak w0, of W/(W*·ν) (normalised map after GT-Power; guess).
 const DROOP: f64 = 0.6;
 const W0: f64 = 0.7;
 const SURGE_BAND: f64 = 0.05;
-/// Compressor efficiency: peak 0.75 at 0.8 W* and 0.9 Π*, 0.6 at the map's edges, at least 0.4 (report §5.2).
+/// Compressor efficiency: peak 0.75 at 0.8 W* and 0.9 Π*, 0.6 at the map's edges, at least 0.4 (guess).
 const ETA_C_MAX: f64 = 0.75;
 const ETA_C_EDGE: f64 = 0.15;
 const ETA_C_MIN: f64 = 0.4;
-/// The design shaft speed, rad/s (report §5.2, inferred).
+/// The design shaft speed, rad/s (guess).
 pub const OMEGA_STAR: f64 = 15_000.0;
-/// The turbine's efficiency, turbine and bearings' mechanical losses apart (report §5.2).
+/// The turbine's efficiency, turbine and bearings' mechanical losses apart (guess).
 pub const ETA_T: f64 = 0.65;
-/// Shaft inertia, kg·m² (R1 §4.1: 5.5e-6 to 1.2e-5).
+/// Shaft inertia, kg·m² (Chalmers T45 1.16e-5, GT1548 5.5e-6).
 pub const INERTIA: f64 = 1e-5;
 /// Bearing losses: a·ω + b·ω² + 100 W static (rF2 `TurboFriction`, `TurboStaticFrictionWatts`).
 const LOSS_A: f64 = 0.002;
 const LOSS_B: f64 = 2.5e-6;
 const LOSS_STATIC: f64 = 100.0;
-/// The intercooler's effectiveness (report (a)).
+/// The intercooler's effectiveness (guess).
 pub const INTERCOOLER: f64 = 0.7;
-/// The restrictor's discharge coefficient and its loss k_r at choke: p_in = p_a·(1 − k_r·(W/W_choke)²) (report §5.4
-/// step 5; k_r inferred: a venturi recovers most of its throat's drop).
+/// The restrictor's discharge coefficient and its loss k_r at choke: p_in = p_a·(1 − k_r·(W/W_choke)²) (guess;
+/// k_r inferred: a venturi recovers most of its throat's drop).
 const RESTRICTOR_CD: f64 = 0.95;
 const RESTRICTOR_LOSS: f64 = 0.2;
-/// Exhaust temperature: first order 0.3 s; 950 °C at the rated flow (report (b)), 700 °C at no flow (inferred: from
+/// Exhaust temperature: first order 0.3 s; 950 °C at the rated flow (guess), 700 °C at no flow (inferred: from
 /// 400 °C the line's slope gave the steady WOT boost two branches; `notes/engine-model.md`), at most
-/// 1150 °C (R1 §4.2).
+/// 1150 °C (MoTeC anti-lag limits).
 pub const TAU_EXHAUST: f64 = 0.3;
 const T_EM_IDLE: f64 = 973.15;
 const T_EM_RATED: f64 = 1223.15;
 pub const T_EM_MAX: f64 = 1423.15;
-/// The wastegate: its actuator, s (R1 §4.1, 125 ms); its proportional band, Pa (fully open 0.5 bar over the aim), and
-/// integral time, s (inferred: the widest band the samples hold without a limit cycle through the turbo).
+/// The wastegate: its actuator, s (Gorzelic 2012, 125 ms); its proportional band, Pa (fully open 0.5 bar over the aim),
+/// and integral time, s (inferred: the widest band the samples hold without a limit cycle through the turbo).
 pub const TAU_WASTEGATE: f64 = 0.125;
 pub const WASTEGATE_BAND: f64 = 0.5e5;
 pub const WASTEGATE_TI: f64 = 0.5;

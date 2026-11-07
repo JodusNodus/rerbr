@@ -15,7 +15,8 @@ pub const KAPPA_EXHAUST: f64 = 0.33 / 1.33;
 /// The reference air the calibration runs in: 101325 Pa, 293.15 K.
 pub const P_REF: f64 = 101_325.0;
 pub const T_REF: f64 = 293.15;
-/// Gasoline's lower heating value, J/kg, the stoichiometric air-fuel ratio and the full-load λ (report §2.1).
+/// Gasoline's lower heating value, J/kg, the stoichiometric air-fuel ratio and the full-load λ (generic; λ:
+/// x-engineer).
 pub const LHV: f64 = 43.4e6;
 pub const AFR: f64 = 14.7;
 pub const LAMBDA: f64 = 0.88;
@@ -24,11 +25,11 @@ pub const LAMBDA: f64 = 0.88;
 pub const PI_CHOKED: f64 = 0.528_281_787_717_174_2;
 /// Ψ at and below [`PI_CHOKED`].
 pub const PSI_CHOKED: f64 = 0.684_731_456_377_270_5;
-/// Above this ratio Ψ is a line to 0 at Π = 1, so its slope stays finite near equal pressures (R1 §1.3).
+/// Above this ratio Ψ is a line to 0 at Π = 1, so its slope stays finite near equal pressures (inferred).
 const PI_LINEAR: f64 = 0.98;
 /// Ψ(0.98).
 const PSI_LINEAR: f64 = 0.197_845_550_570_656;
-/// The closed plate's angle, degrees (US 6591667, R1 §1.2), and its cosine.
+/// The closed plate's angle, degrees (US 6591667), and its cosine.
 const THETA_CLOSED: f64 = 7.0;
 const COS_CLOSED: f64 = 0.992_546_151_641_322;
 
@@ -77,7 +78,7 @@ pub fn upstream_pressure(cda: f64, flow: f64, p_down: f64, t: f64) -> f64 {
 }
 
 /// The open area of a butterfly as a fraction of the bore, 1 − cos θ/cos θ_cl with θ = 7° + 83°·`lift` (US 6591667,
-/// R1 §1.2).
+/// `notes/engine-model.md`).
 pub fn plate_area(lift: f64) -> f64 {
     let theta = (THETA_CLOSED + (90.0 - THETA_CLOSED) * lift.clamp(0.0, 1.0)).to_radians();
     1.0 - cos(theta) / COS_CLOSED

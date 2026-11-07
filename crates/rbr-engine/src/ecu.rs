@@ -1,15 +1,16 @@
 //! The control unit: idle, overrun fuel cut, the rev limiter's firing events, the shift cut, anti-lag and the
-//! electronic throttle (report §2.3, §3, §4, §5.6; R1 §3, §4.2, §5).
+//! electronic throttle (sources in `notes/engine-model.md`).
 
 use libm::exp;
 
-/// Spark torque ratio η_ign = max(0, 1 − 2.8e-4·Δθ²), Δθ degrees from MBT (report §2.3: 1 % at 6°).
+/// Spark torque ratio η_ign = max(0, 1 − 2.8e-4·Δθ²), Δθ degrees from MBT (MIT 2.61: 1 % at 5–7°; quadratic, US
+/// 6363317).
 pub const SPARK_C: f64 = 2.8e-4;
 pub fn spark_efficiency(retard: f64) -> f64 {
     (1.0 - SPARK_C * retard * retard).max(0.0)
 }
 
-/// Idle: 10° base retard, the spark free 10° earlier and 15° later (report §3); the loops' bandwidths, Hz
+/// Idle: 10° base retard, the spark free 10° earlier and 15° later (MoTeC idle setup); the loops' bandwidths, Hz
 /// (inferred), and the idle air's ceiling, the plate's area at 10 % position (Haltech's DBW idle maximum starts at
 /// about 10 %, HPA webinar 138).
 pub const IDLE_RETARD: f64 = 10.0;
@@ -22,7 +23,8 @@ pub const IDLE_AIR_MAX_LIFT: f64 = 0.10;
 pub const IDLE_BAND: f64 = 800.0;
 /// The idle air loop integrates only below idle + 100 rpm (inferred: no wind-down while the overrun air decays).
 pub const IDLE_INTEGRATE: f64 = 100.0;
-/// Overrun fuel cut: pedal under 0.02 above idle + 800 rpm, resumed below idle + 300 rpm or on the pedal (R1 §3).
+/// Overrun fuel cut: pedal under 0.02 above idle + 800 rpm, resumed below idle + 300 rpm or on the pedal (stealth316,
+/// MSExtra, Hondata).
 pub const PEDAL_CLOSED: f64 = 0.02;
 pub const DFCO_ON: f64 = 800.0;
 pub const DFCO_OFF: f64 = 300.0;
@@ -34,12 +36,12 @@ pub const OVERRUN_RPM: f64 = 3000.0;
 pub const OVERRUN_TAU: f64 = 0.5;
 /// DBW: throttle aim = pedal^1.3 (HPA webinar 138: 40 % pedal about 30 % throttle; inferred exponent through it).
 pub const DBW_EXPONENT: f64 = 1.3;
-/// Rev limiter: ignition cut 0 → 100 % over 200 rpm above the limit, then fuel cut (MoTeC M1 defaults, report §4).
+/// Rev limiter: ignition cut 0 → 100 % over 200 rpm above the limit, then fuel cut (MoTeC M1 defaults, HPA).
 pub const LIMITER_RANGE: f64 = 200.0;
-/// No combustion below this speed, rpm (report §3).
+/// No combustion below this speed, rpm (cranking speeds 150–250 rpm, turboford).
 pub const FIRE_RPM: f64 = 150.0;
-/// Anti-lag (report §5.6, R1 §4.2): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most 3 s,
-/// re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
+/// Anti-lag (MoTeC anti-lag setup, Link forum): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most
+/// 3 s, re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
 /// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the unburnt fuel burning in the
 /// manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
 pub const ALS_ARM: f64 = 0.45;
@@ -52,7 +54,7 @@ pub const ALS_TRIM: f64 = 0.2;
 pub const ALS_CUT: f64 = 0.3;
 pub const ALS_BOOST: f64 = 1.2e5;
 pub const ALS_BURN: f64 = 0.6;
-/// The electronic throttle: 30 ms first order, 40 ms full travel (R1 §5, `throttle/model` M4).
+/// The electronic throttle: 30 ms first order, 40 ms full travel (Gorzelic 2012).
 const ETB_TAU: f64 = 0.03;
 const ETB_TRAVEL: f64 = 0.04;
 

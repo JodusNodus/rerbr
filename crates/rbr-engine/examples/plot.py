@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 d = sys.argv[1]
 litres = dict(a.split(":") for a in sys.argv[2:])
-# rF2 SkipBarber 2.0 L coast torque (report §1.1), N·m at rpm.
+# rF2 SkipBarber 2.0 L coast torque (rF2 engine.ini doc), N·m at rpm.
 RF2 = [(2000, -20.8), (4000, -29.9), (6000, -40.7), (8000, -52.6)]
 for f in sorted(os.listdir(d)):
     if not f.endswith("_steady.csv"):

@@ -1,5 +1,5 @@
 //! The calibration: from the car's params to the engine's [`Spec`], at the reference air and oil, by running the
-//! model's own step to steady states (report §1.4, §2.2, §3, §5.4), and its report.
+//! model's own step to steady states (`notes/engine-model.md`), and its report.
 
 use crate::class::{self, Class, Idle};
 use crate::curve::Curve;
@@ -13,7 +13,8 @@ use std::f64::consts::PI;
 
 /// The calibration's step, s (NGP's).
 pub const DT: f64 = 1.0 / 720.0;
-/// The boost target's assumptions: η_ig 0.38, η_v 0.95, and the cap without a class one (report §5.4).
+/// The boost target's assumptions: η_ig 0.38, η_v 0.95, and the cap without a class one (η_ig 0.38 a textbook example;
+/// guess).
 const PI_ETA_IG: f64 = 0.38;
 const PI_CAP: f64 = 2.5;
 /// The restrictor's flow margin (inferred: the boost target stays just under the restrictor's choke).
@@ -28,7 +29,7 @@ const DRIVE_RATIO_MAX: f64 = 2.0;
 /// K's grid between the knots, rpm (inferred: the turbo's boost rises faster between knots than K could follow
 /// linearly from the knots alone).
 const GRID: f64 = 250.0;
-/// The implied η_ig·η_v's plausible band (report §2.2).
+/// The implied η_ig·η_v's plausible band (guess).
 const ETA_BAND: (f64, f64) = (0.30, 0.55);
 
 /// What the calibration found, for the curves, the tests and the log.
@@ -100,7 +101,7 @@ impl Car {
         if knots.is_empty() {
             knots.push((0.0, max_torque));
         }
-        // R1 (b): V_d from MaxTorque at 125 N·m/L (NA) or 200 (turbo) without a volume.
+        // Inferred: V_d from MaxTorque at 125 N·m/L (NA) or 200 (turbo) without a volume.
         let v_d = 4.0 * positive(p.cylinder_volume, max_torque / if p.turbo { 200.0 } else { 125.0 } / 4000.0);
         let table = Curve(knots.clone());
         let (first, last) = (knots[0].0, knots[knots.len() - 1].0);
@@ -200,7 +201,7 @@ fn parallel<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R>
     })
 }
 
-/// K at each grid point from the identity T_wot = T_ig − T_fric − T_pump (report §2.2).
+/// K at each grid point from the identity T_wot = T_ig − T_fric − T_pump (inferred: the table holds exactly).
 fn identity(car: &Car, runs: &[(State, Out)]) -> Curve {
     Curve(
         car.grid
@@ -213,7 +214,8 @@ fn identity(car: &Car, runs: &[(State, Out)]) -> Curve {
     )
 }
 
-/// The NA η_v(n): the shape of T_ig,wot = table + friction, peak 1, at least 0.5 (brief).
+/// The NA η_v(n): the shape of T_ig,wot = table + friction, peak 1, at least 0.5 (inferred: the table's shape is mostly
+/// breathing).
 fn na_eta_v(spec: &Spec, car: &Car) -> Curve {
     let t: Vec<(f64, f64)> = car.knots.iter().map(|&(rpm, tq)| (rpm, tq + spec.friction(rpm, 1.0, 1.0))).collect();
     let max = t.iter().map(|k| k.1).fold(f64::MIN, f64::max).max(1e-9);
@@ -221,7 +223,7 @@ fn na_eta_v(spec: &Spec, car: &Car) -> Curve {
 }
 
 /// The boost target at each knot from T_wot with η_ig 0.38 and η_v 0.95, clipped to [1, cap] and by the
-/// restrictor (report §5.4 steps 1, 5).
+/// restrictor.
 fn boost_targets(spec: &Spec, car: &Car, w_choke: f64) -> Curve {
     let fuel_mep = P_REF / (R * T_REF) * LHV / (LAMBDA * AFR);
     Curve(
@@ -305,10 +307,10 @@ fn turbo_spec(spec: &Spec, car: &Car) -> turbo::Spec {
 
 /// The turbine's nozzle that makes K as flat as the turbo allows: K is the fuel's energy times the combustion's
 /// efficiency per kg of air, nearly constant over rpm, so the boost (not K) should carry the table's shape. Minimises
-/// the spread of ln K (sum of squares about its mean) at the knots from idle up, each from a fresh engine's tip-in, with the exhaust manifold at
-/// most [`DRIVE_RATIO_MAX`] times the intake's; a scan over the nozzle's
-/// logarithm, then golden-section around the best. The wastegate port is 3 nozzles (inferred: room to hold the target
-/// at rated flow; larger ports raised the boost loop's gain into a limit cycle).
+/// the spread of ln K (sum of squares about its mean) at the knots from idle up, each from a fresh engine's tip-in,
+/// with the exhaust manifold at most [`DRIVE_RATIO_MAX`] times the intake's; a scan over the nozzle's logarithm, then
+/// golden-section around the best. The wastegate port is 3 nozzles (inferred: room to hold the target at rated flow;
+/// larger ports raised the boost loop's gain into a limit cycle).
 fn size_turbine(spec: &mut Spec, car: &Car, cal: &mut Calibration, around: Option<f64>) {
     // The knots and every 500 rpm between them from idle up: points between the knots keep the nozzle off the edge
     // where a spool just fails to reach a knot's boost.
@@ -391,7 +393,7 @@ fn set_turbine(spec: &mut Spec, area: f64) {
     t.a_wastegate = WASTEGATE_PORTS * area;
 }
 
-/// The idle air whose steady idle at IdleRPM has net 0 (report §3), bisection; the surplus at 0 air.
+/// The idle air whose steady idle at IdleRPM has net 0, bisection; the surplus at 0 air.
 fn idle_air(spec: &Spec) -> (f64, f64) {
     let mut st = State::new();
     let mut net = |a: f64| {

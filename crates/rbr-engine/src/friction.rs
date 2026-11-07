@@ -1,4 +1,4 @@
-//! Friction (Sandoval–Heywood, SAE 2003-01-0725) with the oil's viscosity, and pumping (report §1.1–1.3).
+//! Friction (Sandoval–Heywood, SAE 2003-01-0725) with the oil's viscosity, and pumping (`notes/engine-model.md`).
 
 use libm::{exp, pow, sqrt};
 use std::f64::consts::PI;
@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 /// The reference oil temperature, K (90 °C, the model's warm engine).
 pub const T_OIL_REF: f64 = 363.0;
 
-/// Vogel oil viscosity, Pa·s: μ = 0.00862·exp(2040/(T − 89.6)) (report §1.2, a fit to Anton Paar's 10W-40).
+/// Vogel oil viscosity, Pa·s: μ = 0.00862·exp(2040/(T − 89.6)) (a fit to Anton Paar's 10W-40).
 fn viscosity(t: f64) -> f64 {
     0.00862 * exp(2040.0 / (t - 89.6))
 }
@@ -17,7 +17,7 @@ pub fn phi(t: f64) -> f64 {
     sqrt(viscosity(t) / viscosity(T_OIL_REF))
 }
 
-/// The engine's geometry for the friction terms (report §1.4): bore = stroke from the cylinder's volume, a DOHC
+/// The engine's geometry for the friction terms: bore = stroke from the cylinder's volume, a DOHC
 /// four-valve head with direct-acting buckets.
 #[derive(Clone, Copy, Debug)]
 pub struct Geometry {
@@ -74,7 +74,7 @@ impl Geometry {
 }
 
 /// The pumping mean effective pressure, Pa: (p_em − p_im) plus the valves' and ports' flow loss
-/// 0.2 bar·(p_im/p_a)·(n/n_limit)² (report §1.3).
+/// 0.2 bar·(p_im/p_a)·(n/n_limit)² (generic form, TAMU; 0.2 bar guessed).
 pub fn pmep(p_em: f64, p_im: f64, p_a: f64, rpm: f64, rpm_limit: f64) -> f64 {
     let r = rpm / rpm_limit;
     p_em - p_im + 0.2e5 * (p_im / p_a) * r * r

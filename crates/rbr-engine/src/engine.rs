@@ -1,5 +1,5 @@
 //! The mean-value engine: its derived constants ([`Spec`]), its state and one step (Hendricks; Eriksson–Nielsen
-//! MVEM as in Andersson 2017; report (a)).
+//! MVEM as in Andersson 2017).
 
 use crate::class::{Actuation, Class, Idle, Intake};
 use crate::curve::Curve;
@@ -12,20 +12,21 @@ use std::f64::consts::PI;
 
 /// rpm per rad/s.
 pub const RPM: f64 = 30.0 / PI;
-/// Throttle discharge coefficients: one throttle 0.80, a throttle per cylinder 0.85 (R1 §1.2, §1.6).
+/// Throttle discharge coefficients: one throttle 0.80, a throttle per cylinder 0.85 (0.8 from throttle-body fits; 0.85
+/// guess).
 const C_D_SINGLE: f64 = 0.80;
 const C_D_PER_CYLINDER: f64 = 0.85;
-/// A throttle per cylinder is at least 45 mm (R1 (b)).
+/// A throttle per cylinder is at least 45 mm (guess).
 const PER_CYLINDER_BORE: f64 = 0.045;
 /// Manifold volume over displacement: one throttle 0.8, a throttle per cylinder 0.3, turbo after the throttle 1.0
-/// (R1 §1.4); the boost pipe 2.0 (inferred).
+/// (guess); the boost pipe 2.0 (guess).
 const V_IM_SINGLE: f64 = 0.8;
 const V_IM_PER_CYLINDER: f64 = 0.3;
 const V_IM_TURBO: f64 = 1.0;
 pub const V_BOOST: f64 = 2.0;
-/// A turbo's volumetric efficiency (report (b)).
+/// A turbo's volumetric efficiency (guess).
 pub const ETA_V_TURBO: f64 = 0.95;
-/// NA exhaust back pressure p_a + 0.15 bar·(W/W_rated)² (report (b)).
+/// NA exhaust back pressure p_a + 0.15 bar·(W/W_rated)² (guess).
 const NA_BACK_PRESSURE: f64 = 0.15e5;
 /// Below this speed (rad/s) friction and pumping fade to 0 with the speed's sign (inferred: no stiction).
 const FRICTION_FADE: f64 = 5.0;

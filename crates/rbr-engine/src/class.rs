@@ -1,6 +1,5 @@
-//! What the car's group, year and turbo flag tell of its engine's hardware (report §6 decision rules 1–9 on the RSF
-//! group names), and a few facts by folder no rule can know (sources in `notes/engine-model.md`, from R1's
-//! `cars.md`).
+//! What the car's group, year and turbo flag tell of its engine's hardware (the FIA articles per class mapped onto the
+//! RSF group names), and a few facts by folder no rule can know (sources in `notes/engine-model.md`).
 
 use crate::Car;
 
@@ -63,7 +62,7 @@ fn middle_year(group: &str) -> u32 {
     }
 }
 
-/// The FIA restrictor for a turbo of this group and year (R1 §4.3), m.
+/// The FIA restrictor for a turbo of this group and year (FIA articles 254, 255, 255A, 260, 261; rallycars.com), m.
 fn restrictor(group: &str, year: u32) -> Option<f64> {
     let mm = match group {
         "Group A7" | "Group A8" => match year {
@@ -86,8 +85,8 @@ fn restrictor(group: &str, year: u32) -> Option<f64> {
     Some(mm / 1000.0)
 }
 
-/// Facts by folder (without `_ngp6`/`_ngp7`) that the rules cannot know (R1 `cars.md`): cylinders where they are not
-/// 4, and the sourced exceptions to the rules.
+/// Facts by folder (without `_ngp6`/`_ngp7`) that the rules cannot know (tech-racingcars, FIA 260, Wikipedia;
+/// `notes/engine-model.md`): cylinders where they are not 4, and the sourced exceptions to the rules.
 struct Fact {
     folder: &'static str,
     cylinders: Option<u32>,
@@ -141,7 +140,7 @@ fn key(folder: &str) -> &str {
     folder.strip_suffix("_ngp6").or_else(|| folder.strip_suffix("_ngp7")).unwrap_or(folder)
 }
 
-/// The class of `car` with NGP's turbo flag `turbo` (report §6 rules 1–9, the brief's additions, then [`FACTS`]).
+/// The class of `car` with NGP's turbo flag `turbo` (the class rules, then [`FACTS`]; `notes/engine-model.md`).
 pub fn classify(car: &Car, turbo: bool) -> Class {
     let group = car.group.as_deref().unwrap_or("");
     let known = !group.is_empty();
@@ -158,37 +157,37 @@ pub fn classify(car: &Car, turbo: bool) -> Class {
     };
     if turbo {
         match group {
-            // Rule 4: Group B turbo, cable, no restrictor; anti-lag (recirculation) on the Audi from 1985.
+            // Group B turbo, cable, no restrictor; anti-lag (recirculation) on the Audi from 1985.
             "Group B" => class.anti_lag = car.folder.starts_with("Audi") && year >= 1985,
-            // Rule 5: Group A turbo, cable, restrictor by year, anti-lag from 1992.
+            // Group A turbo, cable, restrictor by year, anti-lag from 1992.
             "Group A7" | "Group A8" => class.anti_lag = year >= 1992,
-            // Rule 6: WRC, DBW from 1999, anti-lag; 2.5 bar from 2011 (FIA 255A), about 4 bar before (report §5.5).
+            // WRC, DBW from 1999, anti-lag; 2.5 bar from 2011 (FIA 255A), about 4 bar before (forum reports, guess).
             "WRC 2.0" | "WRC 1.6" => {
                 class.actuation = if year >= 1999 { Actuation::Dbw } else { Actuation::Cable };
                 class.anti_lag = true;
                 class.boost_cap = Some(if year >= 2011 { 2.5 } else { 4.0 });
             }
-            // Rule 7: Group N and R4 on a road base, DBW from 2008, anti-lag.
+            // Group N and R4 on a road base, DBW from 2008, anti-lag.
             "Group N4" | "Group R4" => {
                 class.actuation = if year >= 2008 { Actuation::Dbw } else { Actuation::Cable };
                 class.anti_lag = true;
             }
-            // Rule 8: the modern turbo classes, DBW, anti-lag, 2.5 bar; R1–R3 turbos (R3T, NGP's turbo R2) with them.
+            // The modern turbo classes, DBW, anti-lag, 2.5 bar; R1–R3 turbos (R3T, NGP's turbo R2) with them.
             "Group R5" | "Rally 2" | "Rally 3" | "Rally 4" | "Group RGT" | "Group R1" | "Group R2" | "Group R3" => {
                 class.actuation = Actuation::Dbw;
                 class.anti_lag = true;
                 class.boost_cap = Some(2.5);
             }
-            // Rule 9: an unknown turbo, cable without anti-lag.
+            // An unknown turbo, cable without anti-lag.
             _ => {}
         }
         class.restrictor = restrictor(group, year);
     } else {
         match group {
-            // Rules 1–2 and the brief: the old and the high-revving NA classes have a throttle per cylinder.
+            // Inferred: the old and the high-revving NA classes have a throttle per cylinder.
             "Group 4" | "Group B" | "Group A8" | "Super 2000" => class.intake = Intake::PerCylinder,
             "Group A7" if year >= 1993 => class.intake = Intake::PerCylinder,
-            // Rule 3: the R classes' road engines, DBW from 2008.
+            // The R classes' road engines, DBW from 2008.
             "Group R1" | "Group R2" | "Group R3" | "Rally 4" if year >= 2008 => class.actuation = Actuation::Dbw,
             _ => {}
         }
