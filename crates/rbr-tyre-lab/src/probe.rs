@@ -182,3 +182,20 @@ pub fn patch_at(cloud: &[(f32, f32)], fz: f32, fallback: f32) -> f32 {
     let ys: Vec<f32> = cloud.iter().map(|c| c.1).collect();
     interp(&xs, &ys, fz)
 }
+
+/// The game's tyre model's view of the probed wheel (`rbr_tyre::Wheel`): its tables.
+pub fn wheel(p: &Params) -> rbr_tyre::Wheel {
+    rbr_tyre::Wheel {
+        tyre: 0,
+        reference_friction: p.reference_friction,
+        load_axis: p.load_axis.clone(),
+        cornering_friction: p.crn_my.clone(),
+        traction_friction: p.trc_my.clone(),
+        cornering_peak_slip: p.crn_pk.clone(),
+        traction_peak_slip: p.trc_pk.clone(),
+        cornering_stiffness: p.crn_stf.clone(),
+        traction_stiffness: p.trc_stf.clone(),
+        temperature_axis: p.temp_axis.clone(),
+        rubber_friction: p.rub_my.clone(),
+    }
+}

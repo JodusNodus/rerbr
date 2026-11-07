@@ -38,6 +38,10 @@ Nothing here changes what the game computes.
   the calibration pressure), down to standstill: slip steps, the wheel-tyre
   mode at 0.5-10 m/s, pull-away, braking to a stop and holding on a grade.
   Prints only.
+- `examples/loose.rs`: loose-v1 (the game's tyre on soil) against NGP's sweep
+  on a probe frame on gravel or snow and the published loose-surface curves:
+  μ_y(α), μ_x(κ) driving and braking, a locked wheel's side force, the peaks
+  against load. Prints only.
 - `examples/racing.rs`: brush-v1 and NGP at the conditions of the racing-tyre
   and combined-slip data (`notes/tyre-model.md`, "Racing and rally targets").
   Prints only.
@@ -57,6 +61,7 @@ cargo build --release -p rbr-standalone
 cargo run -q --release -p rbr-tyre-lab --example sweep -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/ngp
 cargo run -q --release -p rbr-tyre-lab --example compare -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/cand
 cargo run -q --release -p rbr-tyre-lab --example racing -- --probe /tmp/tyre-lab/x.probe
+cargo run -q --release -p rbr-tyre-lab --example loose -- --probe /tmp/tyre-lab/gravel.probe --wheel 1
 cargo run -q --release -p rbr-tyre-lab --example low_speed -- --probe /tmp/tyre-lab/x.probe
 cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --out /tmp/tyre-lab/ngp-dyn
 cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --sweep /tmp/tyre-lab/ngp \
