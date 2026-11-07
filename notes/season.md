@@ -112,9 +112,10 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   RallySimFans hot laps (557k players' best times on 519 stages, exported by the user, not committed): each car's
   effect from `log t = stage + driver + car` per surface over each driver's times within 10 % of that car's best on
   the stage (drivers with 5+ times; residual 2.9-3.3 %), a class's effect the mean of its cars'. `examples/class_fit.rs`
-  takes each class's shape from its installed cars in the NGP sweep (grip, braking, the `car_pace` straight; A5/A6
-  take A7's, Rally 5 Rally 4's, Group 2 Group 4's), scales it to the tarmac effect and sets `loose` to the gravel and
-  snow ones, each within 1 %. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
+  takes each class's shape from its cars in the NGP sweep (grip, braking, the `car_pace` straight; geometric means
+  over the 102 added packs since 2026-11-07, every class measured: A5 and Group 2 top out at ~0.73 of WRC 2.0, where
+  the A7 and Group 4 shapes they borrowed before said 1.09 and 0.98), scales it to the tarmac effect and sets `loose`
+  to the gravel and snow ones, each within 1.1 %. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
   +0.3/-0.3, R4 +1.6/+1.5, S2000 +1.2, Rally 3 +2.7/+2.3, A8 +4.4/+4.5, N4 +6.1, Rally 4 +5.7/+6.5, R3 +6.1/+8.4,
   Group B +6.6/+7.6, RGT +6.6/+12.6, Group 4 +8.2/+8.7, R2 +8.3/+9.3, A6 +10, R1 +16/+18, A5 +18, Group 2 +21/+20
   (the old table had Rally 2 7.9 % and Group B 3.7 % behind the top class).
