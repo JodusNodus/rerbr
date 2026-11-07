@@ -1,8 +1,9 @@
 //! Fits the class table (`rbr_season::pace::CLASSES`) to class effects: each class's time over the anchor class
 //! (`WRC 2.0`) on tarmac, gravel and snow, as the RallySimFans hot laps give them (`notes/season.md` "Calibration";
 //! the CSV is the boards' and stays out of git). On the retail stages' roads, from the class's measured shape, a
-//! uniform speed scale `c` (grip, accel and brake times `c²`, top speed times `c`, every time over `c`) meets the
-//! tarmac effect, then `loose` the mean of the gravel and snow ones; the rows print as the table's source.
+//! uniform speed scale `c` (grip, accel and brake times `c²`, top speed times `c`, every time over `c`, repeated as
+//! the plan's shared high-speed grip does not scale) meets the tarmac effect, then `loose` the mean of the gravel and
+//! snow ones; the rows print as the table's source.
 //!
 //! Run with `bash -c 'source scripts/dev-env.sh; cargo run -p rbr-season --example class_fit -- EFFECTS.csv'`
 //! (`RBR_DATA`; the CSV's lines `class,tarmac,gravel,snow[,grip,brake,accel,top]`, the last four the shape of the
@@ -78,14 +79,18 @@ fn main() {
             },
             None => row.pace,
         };
-        let c = ratio(&p, 0, Surface::Tarmac) / tarmac;
-        let scaled = ClassPace {
-            grip: p.grip * c * c,
-            accel: p.accel * c * c,
-            brake: p.brake * c * c,
-            top_speed: p.top_speed * c,
-            ..p
-        };
+        // The plan's shared high-speed grip does not scale with `c`: a few rounds settle it.
+        let mut scaled = p;
+        for _ in 0..6 {
+            let c = ratio(&scaled, 0, Surface::Tarmac) / tarmac;
+            scaled = ClassPace {
+                grip: scaled.grip * c * c,
+                accel: scaled.accel * c * c,
+                brake: scaled.brake * c * c,
+                top_speed: scaled.top_speed * c,
+                ..scaled
+            };
+        }
         // The loose share: bisection on the mean of the gravel and snow misses.
         let miss = |l: f32| -> f32 {
             let q = ClassPace { loose: l, ..scaled };
@@ -102,7 +107,7 @@ fn main() {
         }
         let fit = ClassPace { loose: 0.5 * (lo + hi), ..scaled };
         println!(
-            "    row({:?}, {:?}, {:.2}, {:.2}, {:.2}, {:.1}, {:.3}, {:?}), // {:+.1} / {:+.1} / {:+.1} %",
+            "    row({:?}, {:?}, {:.2}, {:.2}, {:.2}, {:.1}, {:.3}), // {:+.1} / {:+.1} / {:+.1} %",
             row.name,
             row.keys,
             fit.grip,
@@ -110,7 +115,6 @@ fn main() {
             fit.brake,
             fit.top_speed,
             fit.loose,
-            fit.aero,
             100.0 * (ratio(&fit, 0, Surface::Tarmac) / tarmac - 1.0),
             100.0 * (ratio(&fit, 1, Surface::Gravel) / gravel - 1.0),
             100.0 * (ratio(&fit, 2, Surface::Snow) / snow - 1.0),

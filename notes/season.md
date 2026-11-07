@@ -11,7 +11,7 @@ the layer only reads drivelines and hands the launcher times, standings and save
 
 - `pace`: a quasi-static speed plan along the driveline's Hermite spline (`driveline_points`: the game's own
   Hermite through the `.trk` records, tangents fitted as the autopilot fits them; `timed_road` cuts it at the `.dls`
-  start and finish and keeps the splits from the start, the one road the launcher, the examples and the tests use). Samples at ~1.5 m; speed limit `sqrt(grip_eff / curvature)` capped at top speed, the grip growing with the square of the speed on the anchor's aero; forward pass with
+  start and finish and keeps the splits from the start, the one road the launcher, the examples and the tests use). Samples at ~1.5 m; speed limit `sqrt(grip_eff / curvature)` capped at top speed, the grip growing with the square of the speed (`COMMIT` 2.0e-4 for every class, plus a car model's own downforce); forward pass with
   acceleration falling linearly to 0 at top speed and the backward pass with braking each within what the corner leaves of the grip (the friction circle); trapezoid time integral.
 - Curvature is the *signed* heading change in the ground plane (x, y; z is up in the `.trk`), smoothed over ~37 m
   (`SMOOTH` 12, the hot laps' best) before taking the absolute. Until the hot-laps check the plan took x and z, the
@@ -111,9 +111,12 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 - Stages: the boards' stage effect (Fiesta WRC 2019, the hundredth-best driver of those with 50+ times) against the
   anchor's reference over 244 installed stages: sd 6.3 % tarmac, 6.1 % gravel, 6.5 % snow; the reference sits ~10 %
   behind that driver on every surface. The acceleration and the braking share one grip budget with the cornering
-  (the friction circle: no new parameters, -0.2 % held-out), and the anchor carries an effective aero of 2.0e-4
-  (downforce plus the fast amateurs' commitment in the fast corners, fitted once: -0.3 % more held-out, consistent
-  across surfaces, seeds and countries). Tried and left out, one line each: a pace-note limit on top of the
+  (the friction circle: no new parameters; alone 6.4/6.5/7.0 %), and every class's plan grows its grip by
+  `1 + COMMIT v²`, `COMMIT` 2.0e-4 (the fast amateurs' commitment in the fast corners, a driver term, so shared;
+  held-out 6.45 -> 5.98 % with the coupling, consistent across surfaces, seeds and countries). The fit keeps
+  improving to 5e-4 (gravel/snow 5.9 %), so 2.0e-4 is a cap, above the cars' hardware (0.6e-4 2003, 1.3e-4 the 2019
+  boards' car), not an optimum. On the anchor alone it made the class effects follow the stage's speed (Rally 2 over
+  the anchor spread 1.2 % across stages, shared 0.3 %). Tried and left out, one line each: a pace-note limit on top of the
   curvature (the `.dls` calls, severity 0-5) gained 0.3 %; grade in the longitudinal budget no gain (grades are small
   and climb/descent cancel); standing start (0 m/s) neutral; smoothing 16 better on tarmac/snow but worse on
   gravel; a braking margin below the hardware slower on gravel/snow only and unphysical on tarmac; a crest cap from
@@ -127,8 +130,8 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   takes each class's shape from its cars in the NGP sweep (grip, braking, the `car_pace` straight; geometric means
   over the 102 added packs since 2026-11-07, every class measured: A5 and Group 2 top out at ~0.70 of WRC 2.0, where
   the A7 and Group 4 shapes they borrowed before said 1.09 and 0.98), scales it to the tarmac effect and sets `loose`
-  to the gravel and snow ones, each within 1.1 %. The anchor keeps its fitted aero; the other rows keep 0 and take
-  their cars' own downforce through `car_pace`. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
+  to the gravel and snow ones, each within 1.1 %. The plan's `COMMIT` is in every row's fit (`class_fit`
+  repeats the scale, as it does not scale); the rows' `aero` is 0 and a car model adds its own through `car_pace`. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
   +0.3/-0.3, R4 +1.6/+1.5, S2000 +1.2, Rally 3 +2.7/+2.3, A8 +4.4/+4.5, N4 +6.1, Rally 4 +5.7/+6.5, R3 +6.1/+8.4,
   Group B +6.6/+7.6, RGT +6.6/+12.6, Group 4 +8.2/+8.7, R2 +8.3/+9.3, A6 +10, R1 +16/+18, A5 +18, Group 2 +21/+20
   (the old table had Rally 2 7.9 % and Group B 3.7 % behind the top class).
@@ -177,11 +180,11 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   field -2.3/-2.2 % (2019-20 cars) to +2.4/+2.3 % (2006); Rally2 within 0.7 %; Group B quattro -6.7/-5.5 %, Porsche
   +1.2/+0.6 %, Lada +7.1/+6.7 %; a mixed field WRC 2019 -3.7/-3.5 %, Escort Cosworth +3.3/+3.1 %.
 - `car_pace` against the hot laps' car effects (42 installed cars on the boards, over the Fiesta WRC 2019; the
-  `vs,` lines of `examples/car_pace.rs`): the speed plan alone 2.7/3.5/3.9 % RMS on tarmac/gravel/snow past the
+  `vs,` lines of `examples/car_pace.rs`): the speed plan alone 2.6/3.4/3.8 % RMS on tarmac/gravel/snow past the
   shared offset, the players losing far more in rear-driven cars (Porsche, Escort Mk II, M3, Alpine 10-17 %) and in
   old four-wheel drive than the plan. `CarPace::handling` fits log time on rear drive +4.6/+6.6/+8.3 %, front drive
   +0.3/+2.5/+1.7 % and -1.1/-1.1/-0.7 % per N/kg of downforce at 150 km/h: 1.5/2.0/2.3 % RMS left out one at a
-  time. So Group B's edge over a modern car is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the
+  time (fitted before the coupled plan; in sample under it 1.4/1.7/2.0 %, the constants kept). So Group B's edge over a modern car is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the
   Fiesta WRC 2019).
 - Retail AI checks: straights 28 % of the halves (a half under tightness 0.235 or 70 % long straights), 118/216 check
   types match the retail rows (132/216 before the faster plan; the rows are hand-set and barely follow the geometry).
