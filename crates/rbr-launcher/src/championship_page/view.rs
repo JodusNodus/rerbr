@@ -28,6 +28,8 @@ pub struct Env<'a> {
     pub seed: u32,
     /// NGP's `physics.rbz`: the archive cars' physics, for the field's pace.
     pub archive: &'a Path,
+    /// The pack cars' earlier keys and theirs now (`Catalog::renamed`), for a championship saved before.
+    pub renamed: &'a [(String, String)],
 }
 
 /// The step of the championship's turn: "Before the start", "Stage 3 of 6", "Service before stage 3 of 6", ...

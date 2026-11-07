@@ -233,8 +233,8 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
 - Ours: the viewer's pause menu and end page hold the wheel at 0 (`Wheel::set_paused`): a step record already on its
   way when the process pauses would otherwise set the last driving force again.
 - Per car (ours, 2026-11-03): each car's own sensitivities live in the launcher settings' `[ffb_cars]`
-  (`rbr_render::ffb::CarSensitivity`, by `camera_prefs::car_key`; an older `[ffb]` `sensitivity_car<id>` reads as
-  `rsf-<id>`), set on the launcher's Controls page ("Force feedback per car", with a one-off import of
+  (`rbr_render::ffb::CarSensitivity`, by the car's key: the launcher's `--car-key`, a pack car's `pack-<pack>`;
+  an older `[ffb]` `sensitivity_car<id>` reads as `rsf-<id>`, which the launcher moves to the pack key), set on the launcher's Controls page ("Force feedback per car", with a one-off import of
   `rallysimfans_personal.ini`'s) and on the pause menu's Force feedback page (`hud::ffb_page`, the drive's surface
   only). The launcher passes the car's own as `--ffb-sensitivity`. A change in the pause menu takes effect at once in
   the viewer: FFB1 carries the surface NGP's car took its percentage by (`def + 0x44c0`, `ngp::ffb::surface`; snow on

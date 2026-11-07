@@ -52,6 +52,7 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     let root = paths.game_root();
     catalog.set_community_stages(&root);
     catalog.set_community_cars(&paths.data, &root, &here.join(crate::car_packs::DIR));
+    move_renamed_keys(&mut settings, &catalog.renamed);
     catalog.offer(&catalog::ngp_cars(Path::new(&or_folder(settings.ngp_physics.as_deref(), &folder.ngp_physics))));
     let data = Data::new(&paths.data, paths.patch.clone());
     let season = Season::load(&data)?;
@@ -62,6 +63,19 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     let startable = catalog.startable_maps(&season);
     eprintln!("launcher: {} cars, {}/{} maps startable", catalog.cars.len(), startable.len(), catalog.maps.len());
     Ok(Form::new(catalog, &settings, paths, data, season, folder))
+}
+
+/// The FFB sensitivities and camera nudges saved under a pack car's earlier key (`Catalog::renamed`) go to its key
+/// now (at the load for the form, at each save for the file, which the viewer reads); one already there stays.
+fn move_renamed_keys(settings: &mut Settings, renamed: &[(String, String)]) {
+    for (old, now) in renamed {
+        if let Some(value) = settings.ffb_cars.cars.remove(old) {
+            settings.ffb_cars.cars.entry(now.clone()).or_insert(value);
+        }
+        if let Some(nudges) = settings.camera.cars.remove(old) {
+            settings.camera.cars.entry(now.clone()).or_insert(nudges);
+        }
+    }
 }
 
 /// With neither NGP path set, NGP 7.4.778's copy downloaded before, when the player's folder `here` keeps it
@@ -274,6 +288,8 @@ impl Form {
         if self.read_only {
             return false;
         }
+        let mut viewer = read_settings(&self.paths.settings);
+        move_renamed_keys(&mut viewer, &self.catalog.renamed);
         let settings = Settings {
             car: self.car().map(|c| c.name.clone()),
             map: Some(self.catalog.maps[self.map].number),
@@ -350,9 +366,9 @@ impl Form {
             engine_model: Some(self.engine_model),
             bindings: self.bindings.clone(),
             ffb: self.ffb.clone(),
-            // The viewer owns these: carried over from the file as it is now.
-            ffb_cars: read_settings(&self.paths.settings).ffb_cars,
-            camera: read_settings(&self.paths.settings).camera,
+            // The viewer owns these: carried over from the file as it is now, earlier car keys moved.
+            ffb_cars: viewer.ffb_cars,
+            camera: viewer.camera,
             gearboxes: self.gearboxes.clone(),
             setups: self.setup.choices.clone(),
         };
@@ -367,6 +383,19 @@ mod tests {
 
     /// NGP 7.4.778's kept copy (with the real DLL: `RBR_NGP_DLL`, or the data's) fills both NGP paths while
     /// neither is set.
+    /// Saved FFB sensitivities and camera nudges follow a car to its new key; one already there stays.
+    #[test]
+    fn saved_car_settings_move_to_the_new_keys() {
+        let mut settings = Settings::parse(
+            "[ffb_cars]\nrsf-24 = 90,100,110\nrsf-1 = 1,2,3\npack-b = 7,8,9\n[camera]\nrsf-24 chase = 0 0.5 -1\n",
+        );
+        let renamed = [("rsf-24", "pack-a"), ("rsf-1", "pack-b")].map(|(a, b)| (a.to_owned(), b.to_owned()));
+        move_renamed_keys(&mut settings, &renamed);
+        let ffb: Vec<(&str, [i32; 3])> = settings.ffb_cars.cars.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        assert_eq!(ffb, [("pack-a", [90, 100, 110]), ("pack-b", [7, 8, 9])]);
+        assert_eq!(settings.camera.cars.keys().collect::<Vec<_>>(), ["pack-a"]);
+    }
+
     #[test]
     fn a_kept_ngp_fills_unset_paths() {
         let data = Data::from_env().unwrap_or_else(|| Data::new("", None));
@@ -387,7 +416,8 @@ mod tests {
         assert_eq!((chosen.ngp_dll, chosen.ngp_physics.as_deref()), (None, Some("/games/ngp/physics.rbz")));
         std::fs::remove_dir_all(&here).unwrap();
     }
-    /// Saving carries the viewer's `[ffb_cars]` over from the file as it is, leaving the form's own alone.
+    /// Saving carries the viewer's `[ffb_cars]` over from the file as it is, leaving the form's own alone, earlier
+    /// car keys moved.
     #[test]
     fn saving_carries_the_viewer_s_ffb_cars_over() {
         let here = crate::test_dir("settings-ffb-cars-carry");
@@ -397,6 +427,7 @@ mod tests {
             cars: vec![Car { name: "COROLLA".into(), ..Default::default() }],
             all_cars: Vec::new(),
             unlisted: Vec::new(),
+            renamed: Vec::new(),
             maps: vec![catalog::Map {
                 number: 54,
                 stages: vec![catalog::Stage { name: "track-54_O".into(), map: 54, letter: 'O' }],
@@ -423,6 +454,11 @@ mod tests {
         let text = std::fs::read_to_string(&settings).unwrap();
         assert!(text.contains("[ffb_cars]\nrsf-24 = 90,100,110\n"), "{text}");
         assert!(!text.contains("COROLLA"), "{text}");
+        // A car's earlier key is written as its key now: the viewer reads the file.
+        form.catalog.renamed = vec![("rsf-24".into(), "pack-evo".into())];
+        assert!(form.save());
+        let text = std::fs::read_to_string(&settings).unwrap();
+        assert!(text.contains("[ffb_cars]\npack-evo = 90,100,110\n") && !text.contains("rsf-24"), "{text}");
         std::fs::remove_dir_all(&here).unwrap();
     }
 }

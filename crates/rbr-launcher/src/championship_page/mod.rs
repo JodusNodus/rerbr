@@ -289,12 +289,20 @@ impl ChampionshipPage {
         }
     }
 
-    /// Continue: the profile's saved championship, its carried damage and state.
-    pub fn continue_event(&mut self, here: &Path, profile: &str) {
+    /// Continue: the profile's saved championship, its carried damage and state; its car keys of before
+    /// (`renamed`, `Catalog::renamed`) are today's.
+    pub fn continue_event(&mut self, here: &Path, profile: &str, renamed: &[(String, String)]) {
         let (save, dmg, state) = Self::files(here, profile);
         let loaded = std::fs::read_to_string(&save).map_err(|e| format!("{}: {e}", save.display()));
         match loaded.and_then(|text| Event::load(&text)) {
-            Ok(event) => {
+            Ok(mut event) => {
+                let rekey = |key: &mut String| {
+                    if let Some((_, now)) = renamed.iter().find(|(old, _)| old == key) {
+                        *key = now.clone();
+                    }
+                };
+                rekey(&mut event.config.car);
+                event.field.iter_mut().for_each(|e| rekey(&mut e.car));
                 let damage = std::fs::read(&dmg).ok().and_then(|b| CarriedDamage::from_bytes(&b));
                 let state = std::fs::read_to_string(&state).unwrap_or_default();
                 let value = |key: &str| {

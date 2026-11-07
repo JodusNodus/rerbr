@@ -8,3 +8,6 @@ license = "GPL-3.0-or-later"
 [dependencies]
 # Pure-Rust maths: the same bits on every platform, unlike the system libm behind f64::exp and f64::powf.
 libm = "0.2.16"
+
+[dev-dependencies]
+rbr-formats = { path = "../rbr-formats" }

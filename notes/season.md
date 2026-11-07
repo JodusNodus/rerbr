@@ -112,9 +112,10 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   RallySimFans hot laps (557k players' best times on 519 stages, exported by the user, not committed): each car's
   effect from `log t = stage + driver + car` per surface over each driver's times within 10 % of that car's best on
   the stage (drivers with 5+ times; residual 2.9-3.3 %), a class's effect the mean of its cars'. `examples/class_fit.rs`
-  takes each class's shape from its installed cars in the NGP sweep (grip, braking, the `car_pace` straight; A5/A6
-  take A7's, Rally 5 Rally 4's, Group 2 Group 4's), scales it to the tarmac effect and sets `loose` to the gravel and
-  snow ones, each within 1 %. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
+  takes each class's shape from its cars in the NGP sweep (grip, braking, the `car_pace` straight; geometric means
+  over the 102 added packs since 2026-11-07, every class measured: A5 and Group 2 top out at ~0.73 of WRC 2.0, where
+  the A7 and Group 4 shapes they borrowed before said 1.09 and 0.98), scales it to the tarmac effect and sets `loose`
+  to the gravel and snow ones, each within 1.1 %. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
   +0.3/-0.3, R4 +1.6/+1.5, S2000 +1.2, Rally 3 +2.7/+2.3, A8 +4.4/+4.5, N4 +6.1, Rally 4 +5.7/+6.5, R3 +6.1/+8.4,
   Group B +6.6/+7.6, RGT +6.6/+12.6, Group 4 +8.2/+8.7, R2 +8.3/+9.3, A6 +10, R1 +16/+18, A5 +18, Group 2 +21/+20
   (the old table had Rally 2 7.9 % and Group B 3.7 % behind the top class).
@@ -144,6 +145,12 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   The gravel circle runs at ramp 0.4: the repeatability check re-ran 7 cars at ramps 0.4/0.5/0.6 on two gravel
   spots, and the gentle ramp is the reproducible quasi-steady one (all 7 within 4 km/h on both spots), while the
   default 0.5 is a knife-edge on gravel (neutral cars blow through to 65+ pushing, loose ones saw at 52-56).
+- No-RSF cars: the same script now sweeps the added-cars folder's 102 packs (`--car-pack`/`--car-model` under NGP
+  7.4.778, no archive slots, no RSF cache) on the unchanged stages (RSF 504/568/345, retail map 85) into
+  `/tmp/car-pace-all/cars.csv`. Retail stages cannot host the runs (longest tarmac flat-out window ~185 m on map 45;
+  no school compound like 345; no start-point option), so the RSF install stays a stage source. Over the 42 shared
+  packs (same revisions) every numeric column is identical, traces byte-identical. Three light FWD cars (500 R3T,
+  Fiesta R2 Mk VIII, Clio IV R3T) bog at 504's start and leave the pace columns empty.
 - `car_pace` against the NGP physics' own runs (the sweep above, 50 cars): 0-60/100/140 km/h within 7.6 % RMS over
   29 cars (high-revving cars left out: the autopilot shifts near 7000 rpm, below their power peak; late launches
   too); grip on the 40 m circle 0.89-0.99 g, within 1.6 % RMS on the downforce alone (`TyrePerformancePct` and the

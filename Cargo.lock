@@ -2364,6 +2364,7 @@ name = "rbr-engine"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "rbr-formats",
 ]
 
 [[package]]

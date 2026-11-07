@@ -195,7 +195,7 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
     let mut imported = 0;
     for car in cars {
         let crate::catalog::Physics::Pack(_) = car.physics else { continue };
-        let Some(id) = car.key.strip_prefix("rsf-").and_then(|s| s.parse::<u32>().ok()) else { continue };
+        let Some(id) = car.rsf_id else { continue };
         let own = Sources { car: personal(&personal_ini, id), ..sources.clone() }.resolve(SLOT).sensitivity;
         if own != global {
             ffb_cars.cars.insert(car.key.clone(), own);
@@ -848,19 +848,20 @@ mod tests {
             slot: 5,
             name: name.into(),
             physics: crate::catalog::Physics::Pack(root.join("pack")),
-            key: format!("rsf-{id}"),
+            key: format!("pack-{}", name.to_lowercase()),
+            rsf_id: Some(id),
             ..Car::default()
         };
         let cars = vec![pack(88, "Evo"), pack(87, "Same")];
         let global = [280, 250, 280];
-        let mut ffb_cars = ffb::CarSensitivity { cars: [("rsf-88".to_owned(), [1, 2, 3])].into() };
+        let mut ffb_cars = ffb::CarSensitivity { cars: [("pack-evo".to_owned(), [1, 2, 3])].into() };
         let n = import_ffb_cars(&root.display().to_string(), &cars, global, &mut ffb_cars);
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(n, 1);
         // Car 88's gravel is RSF's own, its other surfaces the install's global; car 87 matches the launcher's
         // global and is left out, and the stale entry is overwritten.
-        assert_eq!(ffb_cars.cars, [("rsf-88".to_owned(), [300, 250, 280])].into());
-        assert_eq!(car_display("rsf-88", &cars), "Evo");
+        assert_eq!(ffb_cars.cars, [("pack-evo".to_owned(), [300, 250, 280])].into());
+        assert_eq!(car_display("pack-evo", &cars), "Evo");
         assert_eq!(car_display("rsf-1", &cars), "rsf-1");
     }
 

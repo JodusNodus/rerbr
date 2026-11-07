@@ -38,6 +38,8 @@ impl Form {
         }
         let event_car = self.championship.run.as_ref().map(|r| r.event.config.car.clone());
         let car_missing = match &event_car {
+            // The copy chosen stays when RSF and the added cars both have the car (one key).
+            Some(key) if self.car().is_some_and(|c| c.key == *key) => false,
             Some(key) => match self.catalog.cars.iter().position(|c| c.key == *key) {
                 Some(i) => {
                     self.car = i;
@@ -95,6 +97,7 @@ impl Form {
             blocker: blocker.as_ref(),
             seed,
             archive: Path::new(&archive),
+            renamed: &self.catalog.renamed,
         };
         let request =
             egui::ScrollArea::vertical().id_salt("championship").show(ui, |ui| self.championship.ui(ui, env)).inner;
