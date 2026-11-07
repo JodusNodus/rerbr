@@ -398,9 +398,10 @@ fn log_line(inputs: &Inputs, commands: &[Command], fmod: Option<&rbr_sound::fmod
         })
         .collect();
     cells.push(shots.join(" "));
-    // The FMOD bank's wheel, transmission and engine loops (summed gains) and gear one-shots (slot@gain), by slot role.
+    // The FMOD bank's wheel, transmission and engine loops (summed gains) and gear and backfire one-shots
+    // (slot:gain), by slot role.
     let (mut wheel, mut trans, mut engine) = (0.0f32, 0.0f32, 0.0f32);
-    let mut gear = Vec::new();
+    let (mut gear, mut backfire) = (Vec::new(), Vec::new());
     if let Some(car) = fmod {
         use rbr_sound::fmod::Role;
         for c in commands {
@@ -414,16 +415,16 @@ fn log_line(inputs: &Inputs, commands: &[Command], fmod: Option<&rbr_sound::fmod
                         _ => {}
                     }
                 }
-                Command::FmodShot { slot: Some(slot), gain, .. }
-                    if car.slots.get(usize::from(slot)).is_some_and(|s| matches!(s.role, Role::Gear(_))) =>
-                {
-                    gear.push(format!("{slot}:{gain}"));
-                }
+                Command::FmodShot { slot: Some(slot), gain, .. } => match car.slots.get(usize::from(slot)).map(|s| s.role) {
+                    Some(Role::Gear(_)) => gear.push(format!("{slot}:{gain}")),
+                    Some(Role::Backfire(_)) => backfire.push(format!("{slot}:{gain}")),
+                    _ => {}
+                },
                 _ => {}
             }
         }
     }
-    cells.extend([wheel.to_string(), trans.to_string(), engine.to_string(), gear.join(" ")]);
+    cells.extend([wheel.to_string(), trans.to_string(), engine.to_string(), gear.join(" "), backfire.join(" ")]);
     cells.join(",")
 }
 
@@ -526,7 +527,7 @@ fn run() -> Result<(), String> {
             writeln!(
                 file,
                 "step,rpm,load,gearbox_gain,gearbox_pitch,diff_gain,diff_pitch,turbo_gain,turbo_pitch,wind_gain,wind_pitch,\
-                 siren_gain,siren_pitch,tyres,rumble,wetness,surface,shots,fmod_wheel,fmod_trans,fmod_engine,fmod_gear"
+                 siren_gain,siren_pitch,tyres,rumble,wetness,surface,shots,fmod_wheel,fmod_trans,fmod_engine,fmod_gear,fmod_backfire"
             )
             .map_err(|e| e.to_string())?;
             Some(std::io::BufWriter::new(file))
