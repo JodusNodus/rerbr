@@ -10,13 +10,14 @@ pub fn spark_efficiency(retard: f64) -> f64 {
 }
 
 /// Idle: 10° base retard, the spark free 10° earlier and 15° later (report §3); the loops' bandwidths, Hz
-/// (inferred), and the idle air's ceiling, 15 % throttle (MoTeC: DBW idle at most 10–15 %, report §3).
+/// (inferred), and the idle air's ceiling, the plate's area at 10 % position (Haltech's DBW idle maximum starts at
+/// about 10 %, HPA webinar 138).
 pub const IDLE_RETARD: f64 = 10.0;
 pub const IDLE_ADVANCE_ROOM: f64 = 10.0;
 pub const IDLE_RETARD_ROOM: f64 = 15.0;
 pub const IDLE_AIR_HZ: f64 = 0.5;
 pub const IDLE_SPARK_HZ: f64 = 3.0;
-pub const IDLE_AIR_MAX_LIFT: f64 = 0.15;
+pub const IDLE_AIR_MAX_LIFT: f64 = 0.10;
 /// The idle loops run with the pedal closed below idle + 800 rpm (the overrun cut's band, inferred).
 pub const IDLE_BAND: f64 = 800.0;
 /// The idle air loop integrates only below idle + 100 rpm (inferred: no wind-down while the overrun air decays).
@@ -38,14 +39,14 @@ pub const LIMITER_RANGE: f64 = 200.0;
 /// No combustion below this speed, rpm (report §3).
 pub const FIRE_RPM: f64 = 150.0;
 /// Anti-lag (report §5.6, R1 §4.2): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most 3 s,
-/// re-armed by a pedal over 0.3; the throttle open 15 % of its area, 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost
-/// aim, 60 % of the unburnt fuel burning in the manifold. The kick is an area (lift 0.31): 15 % lift opens 5 % of
-/// the area, which held 0.3 bar in the manifold and let the turbo run down (`notes/engine-model.md`).
+/// re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
+/// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the unburnt fuel burning in the
+/// manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
 pub const ALS_ARM: f64 = 0.45;
 pub const ALS_LIFT: f64 = 0.1;
 pub const ALS_REARM: f64 = 0.3;
 pub const ALS_TIMEOUT: f64 = 3.0;
-pub const ALS_AREA: f64 = 0.15;
+pub const ALS_AREA: f64 = 0.2;
 pub const ALS_RETARD: f64 = 60.0;
 pub const ALS_TRIM: f64 = 0.2;
 pub const ALS_CUT: f64 = 0.3;

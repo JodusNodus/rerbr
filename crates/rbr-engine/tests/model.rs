@@ -3,7 +3,6 @@
 
 use rbr_engine::bench::{self, inputs, Row};
 use rbr_engine::calibrate;
-use rbr_engine::class::Actuation;
 use rbr_engine::engine::RPM;
 use rbr_engine::realistic::Realistic;
 use rbr_engine::{samples, Inputs, Model, Params};
@@ -146,10 +145,7 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
             let rows = bench::run(&mut s, 4500.0, None, 7.0, program, None);
             assert!(rows.iter().any(|r| r.anti_lag), "{name}: no anti-lag");
             let t = time_to(&rows, 4.0, 0.9);
-            // The brief asks under 0.15 s. The cable car's turbo runs down under a 15 % area kick (1.46 bar after
-            // 1 s) and takes 0.17 s; a 20 % kick holds 2.2 bar and passes (`notes/engine-model.md`, open).
-            let bound = if m.calibration().class.unwrap().actuation == Actuation::Dbw { 0.15 } else { 0.2 };
-            assert!(t < bound, "{name}: re-applied to 90 % in {t:.2} s");
+            assert!(t < 0.15, "{name}: re-applied to 90 % in {t:.2} s");
         }
     }
 }
