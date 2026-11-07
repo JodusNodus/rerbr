@@ -22,9 +22,10 @@
 //! and `state` a random 0.6-1.0 on the update of a shift up, 0.1-0.5 down, else 0; `fluctuation` on the engine
 //! events and the transmission, 1 on a shift, falling to 0 over the event's `fluctuation_length` (a shift waits,
 //! halving them, while one still runs). Ours: `boost` the 1.02 turbo level (`car::turbo_level`), `valve` the 1.02
-//! blow-off volume, `exhaustpop` on an engine model's anti-lag pops ([`FmodCar::model_pop`]), `Speed` and the other events' `wheel_speed` the car's speed, `Distance` the camera's distance
-//! from the car, `Event Cone Angle` the angle between the car's back (against its velocity) and the camera (the
-//! banks' `rear` recordings are loud near 0 and their `front` ones near 180).
+//! blow-off volume, `exhaustpop` on an engine model's anti-lag pops ([`FmodCar::model_pop`]), `Speed` and the other
+//! events' `wheel_speed` the car's speed, `Distance` the camera's distance from the car, `Event Cone Angle` the angle
+//! between the car's back (against its velocity) and the camera (the banks' `rear` recordings are loud near 0 and
+//! their `front` ones near 180).
 //!
 //! The daemon pauses the events (`FUN_00408ef0`): the `_int` ones outside the car and the `_ext` ones in it, the wind
 //! outside the car, and the engine, turbo, blow-off and backfire while the engine is stopped; all of them 0.2 s after
