@@ -2389,6 +2389,7 @@ dependencies = [
 name = "rbr-hybrid"
 version = "0.1.0"
 dependencies = [
+ "rbr-engine",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-physics",
