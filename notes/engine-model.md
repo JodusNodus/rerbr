@@ -99,6 +99,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The rF2 SkipBarber's coast line, −21 to −53 N·m at 2000–8000 rpm [rF2 engine.ini], is near the NA samples'
   (`examples/plot.py`).
 - η_m = 1, losses explicit; friction fades to 0 within 5 rad/s of standstill (inferred: no stiction at rest).
+- The 1.02 sim's friction torque (`Inputs::friction`: oil starvation, overheating, damage) opposes the motion with the
+  same fade, as NGP applies it (`direction * friction_torque`, rbr-physics `ngp/engine.rs`). Unsigned, a stalled
+  engine dragged backwards in gear ran away to the −1e4 N·m clamp and drove the car backwards under full brake
+  (found by the creep measurement; `the_1_02_friction_opposes_the_motion`).
 
 ## ECU (`ecu.rs`)
 

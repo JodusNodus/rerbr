@@ -543,16 +543,21 @@ Where NGP's tables are fixed, the brush takes measured behaviour:
 - Heavier loads raise the peak force and the cornering stiffness less than in proportion, at rates from a published
   load sweep and two road-tyre data sets.
 - The cornering stiffness falls about 0.45 % per kelvin of tread temperature and rises as the tread wears.
-- The relaxation length grows with speed, as measured on a car tyre bench (Vera et al., 2022).
+
+The relaxation length is the cornering stiffness over the carcass's sideways stiffness, from each car's own tyre data:
+about 0.2 m on the Fiesta Rally2, against NGP's 0.17 m, so turn-in is about as quick as NGP's. A road tyre measured on
+a bench relaxes over a longer distance as speed rises (Vera et al., 2022), but that would put a tarmac rally tyre
+above the 0.12-0.45 m Pacejka gives, and there is no such measurement for a rally tyre, so the model leaves it out.
 
 Each wheel's brush is fitted when the car loads: NGP's own tyre is swept at its design load, and the brush's grip and
 stiffness are solved to give the same peak forces and cornering stiffness there. NGP still sets the grip level (the
 surface, wet or dry, and the tyre's temperature), so a tarmac stage grips about as much as before; the differences
-are in the shape of the force around and beyond the peak, at other loads, and in how fast it builds.
+are in the shape of the force around and beyond the peak, under braking or wheelspin, and at other loads and
+speeds.
 
 Below 2 m/s, where NGP switches to its sticking model, and on gravel, snow and any other surface with a loose layer,
 the tyre is NGP's. Between 2 and 3 m/s the brush takes over gradually. On the autopilot's runs the Fiesta Rally2
-keeps NGP's pace on a tarmac stage within 1 %, and stops from 15 m/s in 3.5 % less distance.
+keeps NGP's pace on a tarmac stage within 1 %, and stops from 15 m/s in 5 % less distance.
 
 The model, its evidence and the open questions are in [notes/tyre-model.md](../notes/tyre-model.md); the code is in
 `crates/rbr-tyre`.
