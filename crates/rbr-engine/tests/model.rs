@@ -33,11 +33,20 @@ fn table(p: &Params, n: f64) -> f64 {
 }
 
 /// The table is an upper bound everywhere (every 250 rpm and at the knots) and met at every knot except a turbo's
-/// held ones, where the turbo cannot make the boost the table asks for.
+/// held ones, where the turbo cannot make the boost the table asks for. The rev limiter cuts from 200 rpm below
+/// RPMLimit, so there the engine without it (the calibration's) meets the table.
 #[test]
 fn steady_wot_meets_the_table_on_boost_and_never_beats_it() {
     for (name, p, m) in models() {
         let held = &m.calibration().held;
+        let cut = rpm(p.rev_limit) - rbr_engine::ecu::LIMITER_RANGE;
+        let is_held = |n: f64| held.iter().any(|h| (h.0 - n).abs() < 1.0);
+        for &(n, want, got) in m.calibration().wot.iter().filter(|k| k.0 >= 150.0 && !is_held(k.0)) {
+            assert!(
+                (got - want).abs() <= 0.005 * want,
+                "{name} {n:.0} rpm without the limiter: {got:.2} for {want:.2}"
+            );
+        }
         let last = p.torque_knots.iter().map(|k| rpm(k.0)).fold(0.0, f64::max);
         let mut points: Vec<f64> = (1..).map(|i| f64::from(i) * 250.0).take_while(|&n| n <= last).collect();
         points.extend(p.torque_knots.iter().map(|k| rpm(k.0)).filter(|&n| n >= 150.0));
@@ -46,7 +55,7 @@ fn steady_wot_meets_the_table_on_boost_and_never_beats_it() {
             let got = calibrate::wot(m.spec(), n).1.torque;
             assert!(got <= want + 0.001 * want.abs(), "{name} {n:.0} rpm: {got:.2} over the table's {want:.2}");
             let knot = p.torque_knots.iter().any(|k| (rpm(k.0) - n).abs() < 1e-6);
-            if knot && !held.iter().any(|h| (h.0 - n).abs() < 1.0) {
+            if knot && n <= cut && !is_held(n) {
                 assert!((got - want).abs() <= 0.005 * want, "{name} {n:.0} rpm: {got:.2} for {want:.2}");
             }
         }
@@ -91,7 +100,7 @@ fn the_limiter_holds_wot_in_neutral() {
         let mut m = m.clone();
         let rows = bench::run(&mut m, rpm(p.idle_speed), Some(f64::from(p.inertia)), 6.0, |_| 1.0, None);
         let (lo, hi) = settled(&rows, 4.0);
-        assert!(lo > limit - 100.0 && hi < limit + 250.0, "{name}: {lo:.0}..{hi:.0} at a {limit:.0} limit");
+        assert!(lo > limit - 200.0 && hi < limit + 50.0, "{name}: {lo:.0}..{hi:.0} at a {limit:.0} limit");
     }
 }
 
@@ -123,7 +132,8 @@ fn part_throttle_never_beats_wot_and_a_closed_pedal_holds_idle() {
         let t = calibrate::part(spec, idle, 0.0).1.torque;
         assert!(t.abs() < 1.0, "{name}: closed pedal at idle {t:.1}");
         let mut n = 1000.0;
-        while n <= rpm(p.rev_limit) {
+        // Up to the limiter's range: inside it the cut, not the pedal, sets the torque.
+        while n <= rpm(p.rev_limit) - rbr_engine::ecu::LIMITER_RANGE {
             let wot = calibrate::wot(spec, n).1.torque;
             for k in 0..10 {
                 let pedal = f64::from(k) / 10.0;

@@ -28,6 +28,8 @@ pub const V_BOOST: f64 = 2.0;
 pub const ETA_V_TURBO: f64 = 0.95;
 /// NA exhaust back pressure p_a + 0.15 bar·(W/W_rated)² (guess).
 const NA_BACK_PRESSURE: f64 = 0.15e5;
+/// The residual gas's ratio of specific heats in the ideal-cycle η_v (guess: the exhaust's 1.3 rather than air's 1.4).
+const GAMMA_RESIDUAL: f64 = 1.3;
 /// Below this speed (rad/s) friction and pumping fade to 0 with the speed's sign (inferred: no stiction).
 const FRICTION_FADE: f64 = 5.0;
 
@@ -98,14 +100,23 @@ impl Spec {
         }
     }
 
-    /// The cylinders' air flow at manifold pressure `p` (Pa), `rpm` and charge temperature `t`, kg/s.
-    pub fn cylinder_flow(&self, p: f64, rpm: f64, t: f64) -> f64 {
-        self.eta_v.at(rpm) * p * self.geometry.v_d * rpm.max(0.0) / (120.0 * R * t)
+    /// The residual gas's share of η_v, the ideal cycle's (r_c − (p_em/p_im)^(1/γ))/(r_c − 1) (Heywood; the
+    /// pressure factor of arXiv 2012.02859's η_v): exhaust left in the cylinder at a low manifold pressure displaces
+    /// fresh charge. 1 at p_em = p_im, at least 0.
+    pub fn residual(&self, p: f64, p_em: f64) -> f64 {
+        let r_c = self.geometry.r_c;
+        ((r_c - pow(p_em.max(0.0) / p.max(1.0), 1.0 / GAMMA_RESIDUAL)) / (r_c - 1.0)).max(0.0)
+    }
+
+    /// The cylinders' air flow at manifold pressure `p` and exhaust pressure `p_em` (Pa), `rpm` and charge
+    /// temperature `t`, kg/s.
+    pub fn cylinder_flow(&self, p: f64, p_em: f64, rpm: f64, t: f64) -> f64 {
+        self.charge(p, p_em, rpm, t) * rpm.max(0.0) / 120.0
     }
 
     /// The air trapped per cycle (all cylinders), kg.
-    pub fn charge(&self, p: f64, rpm: f64, t: f64) -> f64 {
-        self.eta_v.at(rpm) * p * self.geometry.v_d / (R * t)
+    pub fn charge(&self, p: f64, p_em: f64, rpm: f64, t: f64) -> f64 {
+        self.eta_v.at(rpm) * self.residual(p, p_em) * p * self.geometry.v_d / (R * t)
     }
 
     /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`.
@@ -127,6 +138,8 @@ pub struct Step {
     pub friction: f64,
     pub stalled: bool,
     pub t_oil: f64,
+    /// The rev limiter acts (off only for the calibration's engine, whose table runs to the limit).
+    pub limiter: bool,
 }
 
 impl Step {
@@ -142,6 +155,7 @@ impl Step {
             t_a: T_REF,
             friction: 0.0,
             stalled: false,
+            limiter: true,
             t_oil: friction::T_OIL_REF,
         }
     }
@@ -161,6 +175,7 @@ impl Step {
             friction: finite(i.friction, 0.0).clamp(-1e4, 1e4),
             stalled: i.stalled,
             t_oil: f64::from(i.engine_temperature),
+            limiter: true,
         }
     }
 }
@@ -299,7 +314,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     };
     // While the loop runs at idle the base retard holds the reserve; elsewhere (off idle) the spark is at MBT.
     let retard = if anti_lag || idle_loop { retard } else { 0.0 };
-    let limiter = ((rpm - spec.rpm_limit) / ecu::LIMITER_RANGE).clamp(0.0, 1.0);
+    let limiter = if x.limiter { ((rpm - spec.rpm_limit) / ecu::LIMITER_RANGE + 1.0).clamp(0.0, 1.0) } else { 0.0 };
     let mut cut = limiter;
     if x.shift_cut {
         cut = cut.max(1.0 - spec.torque_cut);
@@ -307,7 +322,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     if anti_lag {
         cut = cut.max(ecu::ALS_CUT);
     }
-    let fuel = !(dfco || x.stalled || rpm > spec.rpm_limit + ecu::LIMITER_RANGE);
+    let fuel = !(dfco || x.stalled || (x.limiter && rpm > spec.rpm_limit + ecu::LIMITER_FUEL));
 
     // Throttle.
     let other = spec.leak + idle_air;
@@ -328,6 +343,8 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let area = gas::plate_area(s.plate) + other;
 
     let boost_before = s.p_boost;
+    // The exhaust pressure of the last step (it follows from this step's flow).
+    let p_em = s.p_em;
     // Air path: boost pipe then manifold, sub-stepped when the manifold is fast.
     let eta_v = spec.eta_v.at(rpm);
     let tau = spec.v_im * 120.0 / (eta_v * spec.geometry.v_d * rpm.max(300.0));
@@ -360,12 +377,13 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         let p_up = if spec.turbo.is_some() { s.p_boost } else { x.p_a };
         let t_up = s.t_im;
         let rate = |p: f64| {
-            R * t_up / spec.v_im * (gas::orifice(spec.cda * area, p_up, p, t_up) - spec.cylinder_flow(p, rpm, t_up))
+            R * t_up / spec.v_im
+                * (gas::orifice(spec.cda * area, p_up, p, t_up) - spec.cylinder_flow(p, p_em, rpm, t_up))
         };
         s.p_im = implicit(s.p_im, h, rate);
     }
-    let w_cyl = spec.cylinder_flow(s.p_im, rpm, s.t_im);
-    let charge = spec.charge(s.p_im, rpm, s.t_im);
+    let w_cyl = spec.cylinder_flow(s.p_im, p_em, rpm, s.t_im);
+    let charge = spec.charge(s.p_im, p_em, rpm, s.t_im);
 
     // Firing events and indicated torque.
     let fired = s.events.step(f64::from(spec.class.cylinders) * rpm / 120.0 * dt, cut);

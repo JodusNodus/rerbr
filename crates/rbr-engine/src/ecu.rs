@@ -37,8 +37,11 @@ pub const OVERRUN_RPM: f64 = 3000.0;
 pub const OVERRUN_TAU: f64 = 0.5;
 /// DBW: throttle aim = pedal^1.3 (HPA webinar 138: 40 % pedal about 30 % throttle; inferred exponent through it).
 pub const DBW_EXPONENT: f64 = 1.3;
-/// Rev limiter: ignition cut 0 → 100 % over 200 rpm above the limit, then fuel cut (MoTeC M1 defaults, HPA).
+/// Rev limiter, Link's convention: ignition cut 0 → 100 % over the 200 rpm below the limit, fuel cut from 100 rpm above
+/// it (Link G4+ control range 200 rpm, settling 100–150 rpm under the limit, hard cut +50 to +200; HPA webinars 084 and
+/// 171), so RPMLimit is the cap, as NGP and the class rules read it.
 pub const LIMITER_RANGE: f64 = 200.0;
+pub const LIMITER_FUEL: f64 = 100.0;
 /// No combustion below this speed, rpm (cranking speeds 150–250 rpm, turboford).
 pub const FIRE_RPM: f64 = 150.0;
 /// Anti-lag (MoTeC anti-lag setup, Link forum): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most

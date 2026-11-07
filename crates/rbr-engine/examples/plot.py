@@ -1,7 +1,7 @@
 """Plots of examples/curves.rs's CSVs.
 
 python3 -I plot.py DIR [car:litres ...]: a panel sheet per car, DIR/<car>.png.
-python3 -I plot.py --figures DIR OUT: the figures of docs/engine-model.md from the sample cars' CSVs.
+python3 -I plot.py --figures DIR OUT: the figures of docs/experimental-physics.md from the sample cars' CSVs.
 """
 import csv, sys, os, collections
 import matplotlib
@@ -62,7 +62,7 @@ def per_car(d, litres):
         print(os.path.join(d, car + ".png"))
 
 
-# ---- The figures for docs/engine-model.md: python3 -I plot.py --figures CSV_DIR OUT_DIR (sample cars only). ----
+# ---- The figures for docs/experimental-physics.md: python3 -I plot.py --figures CSV_DIR OUT_DIR (sample cars only). ----
 
 CARS = {"old": "old: Group 4 NA, cable, ITBs, idle stop", "na": "na: modern NA, DBW",
         "turbo": "turbo: Rally2-like, DBW, anti-lag", "cable_turbo": "cable_turbo: Group A turbo, cable, spring gate"}
@@ -248,7 +248,8 @@ def figures(d, out):
         ax.legend(fontsize=7, loc="upper left")
     save(fig, "idle-and-rev.png")
 
-    # 6. The limiter in neutral at full pedal: rpm and torque, ours against NGP's hard cut.
+    # 6. The limiter in neutral at full pedal: rpm and torque, ours (Link's convention: the ignition cut ramps over the
+    # 200 rpm below RPMLimit) against NGP's hard cut.
     cars = [c for c in ("na", "turbo") if c in data]
     fig, axes = plt.subplots(2, len(cars), figsize=(11, 5.6), sharex=True)
     for col, car in enumerate(cars):
@@ -259,11 +260,13 @@ def figures(d, out):
         axes[0][col].plot([a for a, _, _ in sim], [b for _, b, _ in sim], "--", color=COLOURS["ngp"],
                           label="NGP (replica)")
         axes[0][col].axhline(p["rev_limit"], color="#bbbbbb", lw=0.8, label="RPMLimit")
+        axes[0][col].axhspan(p["rev_limit"] - 200, p["rev_limit"], color="#eeeeee",
+                             label="ignition cut 0 → 100 % (fuel cut from +100)")
         axes[1][col].plot([r["time"] for r in rows], [r["torque"] for r in rows], color=COLOURS[car], lw=0.6,
                           label="ours")
         axes[1][col].plot([a for a, _, _ in sim], [c for _, _, c in sim], "--", color=COLOURS["ngp"], lw=0.8,
                           label="NGP (replica)")
-        style(axes[0][col], "", "rpm", f"{car}: full pedal in neutral")
+        style(axes[0][col], "", "rpm", f"{car}: full pedal in neutral, cut over RPMLimit − 200 to RPMLimit")
         style(axes[1][col], "time, s", "net torque, N·m")
         for ax in (axes[0][col], axes[1][col]):
             ax.set_xlim(0.5, 3.0)

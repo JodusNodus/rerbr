@@ -62,7 +62,7 @@ pub struct Calibration {
     pub design_ratio: f64,
     /// η_ig·η_v implied at the torque peak.
     pub eta_ig_v: f64,
-    /// Steady WOT at each knot: rpm, the table's torque and the model's (N·m).
+    /// Steady WOT at each knot without the rev limiter: rpm, the table's torque and the model's (N·m).
     pub wot: Vec<(f64, f64, f64)>,
     /// Turbo: the grid points (rpm) where the boost misses its target and K is held, with the table's torque and the
     /// model's (N·m); the model falls short of the table there.
@@ -189,9 +189,19 @@ pub fn wot(spec: &Spec, rpm: f64) -> (State, Out) {
     part(spec, rpm, 1.0)
 }
 
+/// The steady WOT of the engine without its rev limiter (see [`part`]): the table runs to RPMLimit, and the limiter
+/// cuts from 200 rpm below it.
+fn bare_wot(spec: &Spec, rpm: f64) -> (State, Out) {
+    let mut s = State::new();
+    let x = Step { limiter: false, ..Step::at(rpm / RPM, 0.0, DT) };
+    steady_at(spec, &mut s, &x);
+    let out = steady_at(spec, &mut s, &Step { pedal: 1.0, ..x });
+    (s, out)
+}
+
 /// The steady WOT runs at every grid point: their states and outputs.
 fn wot_runs(spec: &Spec, car: &Car) -> Vec<(State, Out)> {
-    parallel(&car.grid, |&(rpm, _)| wot(spec, rpm))
+    parallel(&car.grid, |&(rpm, _)| bare_wot(spec, rpm))
 }
 
 /// `f` over `items` on the machine's threads, in order (each item's run is independent, so the result is the same
@@ -265,7 +275,7 @@ fn retarget(spec: &mut Spec, car: &Car) {
         .knots
         .iter()
         .map(|&(rpm, t_wot)| {
-            let out = wot(spec, rpm).1;
+            let out = bare_wot(spec, rpm).1;
             (rpm, (t_wot + out.friction + out.pumping) / out.charge.max(1e-12))
         })
         .collect();
@@ -329,7 +339,7 @@ fn size_turbine(spec: &mut Spec, car: &Car, cal: &mut Calibration, around: Optio
     let spread = |x: f64| {
         let mut s = spec.clone();
         set_turbine(&mut s, exp(x));
-        let runs = parallel(&knots, |&(rpm, _)| wot(&s, rpm));
+        let runs = parallel(&knots, |&(rpm, _)| bare_wot(&s, rpm));
         let mut logs = Vec::with_capacity(knots.len());
         for (&(_, t_wot), (st, out)) in knots.iter().zip(runs) {
             if st.p_em > DRIVE_RATIO_MAX * st.p_im {
@@ -467,7 +477,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     let inertia = positive(params.inertia, 0.15);
     let peak_power = car.knots.iter().map(|k| k.0 * k.1).fold(0.0, f64::max);
     let rpm_power = car.knots.iter().find(|k| k.0 * k.1 >= peak_power).map_or(car.rpm_limit, |k| k.0);
-    spec.w_rated = (spec.cylinder_flow(P_REF, rpm_power, T_REF)).max(1e-4);
+    spec.w_rated = (spec.cylinder_flow(P_REF, P_REF, rpm_power, T_REF)).max(1e-4);
     if params.turbo {
         spec.turbo = Some(turbo_spec(&spec, &car));
     }
@@ -477,10 +487,10 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     for _ in 0..3 {
         if !params.turbo {
             spec.eta_v = na_eta_v(&spec, &car);
-            spec.w_rated = spec.cylinder_flow(P_REF, rpm_power, T_REF).max(1e-4);
+            spec.w_rated = spec.cylinder_flow(P_REF, P_REF, rpm_power, T_REF).max(1e-4);
         }
         let choked = spec.cda * P_REF / (R * T_REF).sqrt() * PSI_CHOKED;
-        let total = spec.cylinder_flow(ecu::OVERRUN_P * P_REF, ecu::OVERRUN_RPM, T_REF) / choked;
+        let total = spec.cylinder_flow(ecu::OVERRUN_P * P_REF, P_REF, ecu::OVERRUN_RPM, T_REF) / choked;
         spec.overrun_air = total;
         let (_, out) = closed(&spec, car.rpm_limit);
         let fric = out.friction / spec.friction_scale;
@@ -539,7 +549,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
         cal.design_ratio = t.pi_star;
     }
     // Steady WOT at the knots with the final spec, and η_ig·η_v at the torque peak.
-    let runs: Vec<(State, Out)> = car.knots.iter().map(|&(rpm, _)| wot(&spec, rpm)).collect();
+    let runs: Vec<(State, Out)> = car.knots.iter().map(|&(rpm, _)| bare_wot(&spec, rpm)).collect();
     cal.wot = car.knots.iter().zip(&runs).map(|(k, (_, out))| (k.0, k.1, out.torque)).collect();
     let (i, &(rpm_peak, t_peak)) =
         car.knots.iter().enumerate().max_by(|a, b| a.1 .1.total_cmp(&b.1 .1)).expect("a knot");
@@ -550,7 +560,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     if !(ETA_BAND.0..=ETA_BAND.1).contains(&cal.eta_ig_v) {
         cal.flags.push(format!("η_ig·η_v {:.2} at {rpm_peak:.0} rpm outside 0.30–0.55", cal.eta_ig_v));
     }
-    cal.held = parallel(&held, |&(rpm, t)| (rpm, t, wot(&spec, rpm).1.torque));
+    cal.held = parallel(&held, |&(rpm, t)| (rpm, t, bare_wot(&spec, rpm).1.torque));
     (spec, cal)
 }
 
