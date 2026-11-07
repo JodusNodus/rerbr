@@ -76,13 +76,32 @@ No open data for rally tyres, gravel cut onto tarmac or damp tarmac: those stay 
 
 ## Candidate (brush-v0, lab only)
 
-Brush model with combined slip and a/3 trail, stiffness ∝ Fz^0.6 with bulk temperature, tread depth and NGP's
-pressure factor, μ ∝ Fz^-0.13 falling with sliding speed, NGP's temperature grip kept, dry wear +10 % at 60 % worn,
-wet speed loss from the hydroplaning speed, first-order relaxation σ = C/k + 0.021 V; below 2 m/s not modelled
-(NGP's sticking model or a bristle state later). The wet loss magnitudes, the sliding-speed shape and the speed term
-of σ are assumptions to calibrate.
+`rbr_tyre_lab::brush` (`calibrate`, `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3) and
+single-contact-point transient (ch. 7); stiffness ∝ Fz^0.6 times bulk temperature (-0.45 %/K), tread depth
+(2.6/(d + 1.6)) and NGP's pressure factor; μ ∝ Fz^-0.13, falling with sliding speed (μ_k + (μ_s - μ_k)/(1 +
+(Vs/5)²)); NGP's temperature grip kept; dry wear +10 % at 60 % worn, fading with wetness; wet loss
+h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 1 mm and v_p from the hydroplaning speed times (0.6 + 0.4 d);
+σ = C/k + 0.021 V. Calibrated at run time to NGP at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
+Ours, not from papers: the sliding-speed law and its 5 m/s, the wet film scale and weights, the tread term of v_p,
+the transfer of the passenger tyre's σ speed slope to a rally tyre, the longitudinal load exponent.
+
+Against NGP on the Fiesta Rally2 (`compare` summary):
+
+- Meets by construction: Cα ∝ Fz^0.64; Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn;
+  peak Fy ∝ Fz^0.845; σ_y 0.31/0.41/0.62/0.83 m at 5/10/20/30 m/s (step steer 63 % at 0.36/0.56/0.75 m against NGP's
+  ~0.08); slide over peak 0.80 at 30°.
+- New behaviour: peak μ_y falls with speed (1.306/1.265/1.224/1.152 at 10/15/20/30 m/s, NGP flat); wet W = 1 peak
+  0.98/0.76/0.60 at 10/20/30 m/s against NGP's flat 1.00 (magnitudes ours).
+- Misses: peak slip ratio 0.18-0.22 (textbook 0.05-0.15, NGP 0.12-0.16): the brush peaks at 3μFz/C, so Cx
+  calibrated to NGP's traction stiffness is too soft; braking peaks 0-17 % above NGP's (theoretical slip over |ωR|);
+  locked over peak μ_x at 10 m/s 0.695 dry, 0.651 wet (NGP 0.78/0.75; Kebbati et al., Sustainability 15:6945 (2023):
+  dry ≤ 0.885, wet 0.69): the sliding-speed drop is too steep; trail 0 past saturation (NGP 0.004 m).
 
 ## Open
 
-- brush-v0 against NGP and the targets (`compare`).
-- Car-level effect needs a hook like the engine model's (`--engine-model`): user decision.
+- Whether brush-v0 drives better needs it on the car: a hook like the engine model's (`--engine-model`), user
+  decision. The 4-8× longer lateral transient is the largest change a driver would feel, and its evidence is a
+  passenger tyre.
+- Before that: Cx from the peak slip ratio instead of NGP's traction stiffness; a gentler sliding-speed drop (the
+  locked-wheel ratio); low speed (keep NGP's sticking model or a bristle state, which would also remove NGP's 360 Hz
+  alternation).
