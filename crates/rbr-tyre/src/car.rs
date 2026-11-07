@@ -70,12 +70,12 @@ impl Model for Brush {
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
         };
-        let (_, _, vr) = brush::slip_velocities(&e);
         let steady = brush::eval(&e, &t.cal);
-        // The longitudinal carcass stiffness is the torsional one over the radius squared.
-        let k_x = f64::from(x.torsional_stiffness) / (e.radius * e.radius);
+        // The longitudinal carcass from the published relaxation length, at the pressure; the lateral one NGP's.
+        let k_x = brush::carcass_x(&t.cal, e.radius, e.pressure_factor);
         let mut state = t.state;
         let limit = steady.mu * e.fz;
+        let vr = e.spin * e.radius;
         let (fx, fy) =
             brush::step_dynamic(&mut state, &steady, vr, k_x, f64::from(x.lateral_stiffness), limit, f64::from(x.dt));
         if !(fx.is_finite() && fy.is_finite() && steady.trail.is_finite()) {

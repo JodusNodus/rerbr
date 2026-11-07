@@ -25,9 +25,10 @@
 //! earlier draft had a minus sign here; that would make the brush push the
 //! sliding contact forward instead of opposing it, contradicting NGP.)
 //!
-//! Below 2 m/s the model is out of scope: there is no sticking
-//! (bristle/LuGre) state, so creep and standstill are not represented. NGP's
-//! sticking model keeps them (the game blends the brush in over 2-3 m/s).
+//! The force dynamics reach standstill (Rill's transport speed restored: a
+//! stopped wheel holds its deflection, a locked one's follows the sliding),
+//! but the game still hands the patch to NGP's sticking model below 2-3 m/s
+//! ([`crate::car`]).
 
 // ---------------------------------------------------------------------------
 // Model constants (spec; from papers or ours — never NGP's).
@@ -353,6 +354,21 @@ pub fn sigma_lengths(cy_fz: f64, cx_fz: f64, k_y: f64, k_x: f64) -> (f64, f64) {
 /// means of each pair (ours: no rally tyre's are published).
 pub const DAMPING_X: f64 = 1000.0;
 pub const DAMPING_Y: f64 = 425.0;
+/// Longitudinal relaxation length at the nominal load over the tyre's radius: MF 6.1's (the example 255/55R20 set
+/// shipped with MFeval.jl), 1.44. The carcass's longitudinal stiffness follows from it, c_x = Cx(Fz0)/(1.44 R), and
+/// stays fixed at every speed and load, so sigma_x = Cx/c_x grows with the load (Pacejka: "longer at higher ...
+/// load"). On the Golf II and Fiesta Rally2 c_x is 200-250 kN/m, between Rill's passenger carcasses (160 and 180
+/// kN/m) and MF 6.1's own (Kx/Fz 32.9 over 1.44 R0: about 390 kN/m, R0 inferred from the size), and sigma_x 0.45 m at
+/// small slip and the nominal load, at the top of Pacejka's 0.12-0.45 m and inside Rill's 0.3-0.8 m. Taking one road
+/// set's ratio for a rally tyre is ours (no rally tyre's is published). It replaces NGP's speed-scaled torsional
+/// stiffness (a tenth below 10 m/s: sigma_x 0.9 m at 5 % slip, 1.0-1.6 m at 2 %, on the Golf's fronts).
+pub const SIGMA_X_OVER_R: f64 = 1.44;
+
+/// The longitudinal carcass stiffness, N/m, of a tyre of radius `radius` (m) at the pressure factor `pf` (NGP's
+/// StfFct, as the slip stiffnesses take it): [`SIGMA_X_OVER_R`].
+pub fn carcass_x(cal: &Calibration, radius: f64, pf: f64) -> f64 {
+    cal.cx0 * (pf / cal.pf_cal) / (SIGMA_X_OVER_R * radius)
+}
 
 /// The transient state: the carcass deflections along the slips, m (Rill's x_e, y_e). The force they hold is
 /// c u + d u' per axis.
@@ -363,14 +379,17 @@ pub struct TransState {
 }
 
 /// One step of first-order tyre dynamics (Rill, Vehicle Dynamics 2009, section 3.4.2, eqs. 3.164-3.172): per axis
-/// the force is F_D = c u + d u', with the deflection u following (v d + f) u' = f v s - v c u, where s is the
-/// theoretical slip of the steady brush `steady` at the rolling speed v = `vr`, f = F_S/s its secant (`kx`, `ky`),
-/// c the carcass stiffness (`k_x`, `k_y`) and d the damping ([`DAMPING_X`], [`DAMPING_Y`]). The relaxation length
-/// is then v d/c + f/c: the stretched string's C/c at small slip (Pacejka, ch. 5), falling as the patch slides, as
-/// the measured lateral relaxation length does (Rill's Fig. 3.43: about 0.6 m at 0° to 0.1 m at 10°, 4 kN). The
-/// linear decay is integrated with its exact exponential over `dt` (stable for any length), and the combined force
-/// is limited to the steady friction mu Fz (`limit`), as Rill limits it. Gives the longitudinal and lateral forces in
-/// NGP's signs (they oppose the sliding).
+/// the force is F_D = c u + d u', with the deflection u following (v d + f) u' = f v_N s - v c u, where s is the
+/// theoretical slip of the steady brush `steady`, made with the rolling speed floored at [`V_MIN`] (v_N, Rill's
+/// modified slip), f = F_S/s its secant (`kx`, `ky`), c the carcass stiffness (`k_x`, `k_y`), d the damping
+/// ([`DAMPING_X`], [`DAMPING_Y`]) and v the rolling speed `vr` itself (Rill's eqs. 4.20-4.21: the transport speed
+/// restored, so a locked wheel's deflection follows the sliding, u' = -v_s, and at standstill it holds, u' = 0). The
+/// relaxation length is then v d/c + f/c: the stretched string's C/c at small slip (Pacejka, ch. 5), falling as the
+/// patch slides, as the measured lateral relaxation length does (Rill's Fig. 3.43: about 0.6 m at 0° to 0.1 m at 10°,
+/// 4 kN). The linear decay is integrated with its exact exponential over `dt` (stable for any length), and the
+/// combined force is limited to the steady friction mu Fz (`limit`), the deflections with it, as Rill limits them
+/// (eq. 4.22: "supplemented by appropriate if statements"). Gives the longitudinal and lateral forces in NGP's signs
+/// (they oppose the sliding).
 pub fn step_dynamic(
     st: &mut TransState,
     steady: &EvalOutput,
@@ -380,17 +399,28 @@ pub fn step_dynamic(
     limit: f64,
     dt: f64,
 ) -> (f64, f64) {
+    let vr = vr.abs();
+    let vn = vr.max(V_MIN);
     let axis = |u: &mut f64, f: f64, s: f64, c: f64, d: f64| {
-        let rate = vr * c / (vr * d + f);
-        let settled = f * s / c;
-        let next = settled + (*u - settled) * libm::exp(-rate * dt);
-        let force = c * next + d * rate * (settled - next);
+        // u' = drive - rate u, with drive = f v_N s / (v d + f).
+        let den = vr * d + f;
+        let (rate, drive) = if den > 0.0 { (vr * c / den, f * vn * s / den) } else { (0.0, 0.0) };
+        let x = rate * dt;
+        // The exact solution over dt: u e^-x + drive (1 - e^-x)/rate, the last term tending to drive dt as rate -> 0.
+        let held = if x > 1e-12 { -libm::expm1(-x) / rate } else { dt };
+        let next = *u * libm::exp(-x) + drive * held;
+        let force = c * next + d * (drive - rate * next);
         *u = next;
         -force
     };
     let fx = axis(&mut st.ux, steady.kx, steady.sx, k_x, DAMPING_X);
     let fy = axis(&mut st.uy, steady.ky, steady.sy, k_y, DAMPING_Y);
-    let f = (fx * fx + fy * fy).sqrt();
+    let elastic = (k_x * st.ux).hypot(k_y * st.uy);
+    if elastic > limit && elastic > 0.0 {
+        st.ux *= limit / elastic;
+        st.uy *= limit / elastic;
+    }
+    let f = fx.hypot(fy);
     if f > limit && f > 0.0 {
         (fx * limit / f, fy * limit / f)
     } else {
@@ -620,5 +650,98 @@ mod tests {
         let mut st = TransState { ux: 1.0, uy: 1.0 };
         let (fx, fy) = step_dynamic(&mut st, &steady, 15.0, 70000.0, 70000.0, 5000.0, 1.0 / 720.0);
         assert!(((fx * fx + fy * fy).sqrt() / 5000.0 - 1.0).abs() < 1e-12, "{fx} {fy}");
+    }
+
+    /// The synthetic tyre's longitudinal carcass stiffness at radius 0.3 m.
+    fn c_x() -> f64 {
+        carcass_x(&synth_cal(), 0.3, 1.0)
+    }
+
+    /// The steady brush at car speed `v` (m/s) and wheel surface speed `wr` (m/s), radius 0.3 m, straight ahead.
+    fn rolling(v: f64, wr: f64) -> EvalOutput {
+        let mut x = synth_input();
+        x.vx = -v;
+        x.spin = wr / x.radius;
+        eval(&x, &synth_cal())
+    }
+
+    #[test]
+    fn the_longitudinal_relaxation_length_is_the_carcass_s_at_any_speed() {
+        // Small slip: sigma_x = (Cx + V d_x)/c_x, C/c 1.44 R at the nominal load at any low speed (NGP's torsional
+        // stiffness, a tenth below 10 m/s, made it ten times longer there).
+        let dt = 1.0 / 720.0;
+        let c = c_x();
+        for v in [1.0, 3.0, 8.0] {
+            let steady = rolling(v, v * 1.002);
+            let mut st = TransState::default();
+            let n = (1..100000)
+                .find(|_| step_dynamic(&mut st, &steady, v * 1.002, c, 400000.0, 1e9, dt).0 / steady.fx >= 0.63)
+                .unwrap();
+            let sigma = (steady.kx + v * 1.002 * DAMPING_X) / c;
+            let dist = f64::from(n) * dt * v * 1.002;
+            assert!((steady.kx / c / (SIGMA_X_OVER_R * 0.3) - 1.0).abs() < 0.03, "C/c {}", steady.kx / c);
+            // The damper's share of the force, d u', comes at once, so 63 % comes a little early at speed.
+            assert!((0.8..1.05).contains(&(dist / sigma)), "V {v}: {dist} m against {sigma} m");
+        }
+    }
+
+    #[test]
+    fn a_locked_wheel_s_deflection_follows_the_sliding_and_a_stopped_one_holds() {
+        // Rill eqs. 4.20-4.22: at zero rolling speed the deflection grows with the sliding speed (u' = -v_s, here
+        // 0.2 m/s for 10 ms: 2 mm) and stays when the sliding stops, holding the force.
+        let dt = 1.0 / 720.0;
+        let mut st = TransState::default();
+        let sliding = rolling(0.2, 0.0);
+        for _ in 0..(720 / 100) {
+            step_dynamic(&mut st, &sliding, 0.0, c_x(), 400000.0, 1e9, dt);
+        }
+        assert!((st.ux / (-0.2 * 7.0 * dt) - 1.0).abs() < 0.01, "ux {}", st.ux);
+        let held = st.ux;
+        let stopped = rolling(0.0, 0.0);
+        let mut f = (0.0, 0.0);
+        for _ in 0..7200 {
+            f = step_dynamic(&mut st, &stopped, 0.0, c_x(), 400000.0, 1e9, dt);
+        }
+        assert_eq!(st.ux, held);
+        assert!((f.0 / (-c_x() * held) - 1.0).abs() < 1e-12, "{f:?}");
+    }
+
+    #[test]
+    fn the_deflection_is_limited_with_the_force() {
+        // A locked wheel sliding on: the deflection stops at the friction's, so the force does not outlast the slide.
+        let dt = 1.0 / 720.0;
+        let mut st = TransState::default();
+        let sliding = rolling(3.0, 0.0);
+        let limit = sliding.mu * 4000.0;
+        for _ in 0..720 {
+            step_dynamic(&mut st, &sliding, 0.0, c_x(), 400000.0, limit, dt);
+        }
+        assert!((st.ux.abs() * c_x() / limit - 1.0).abs() < 1e-9, "ux {}", st.ux);
+    }
+
+    #[test]
+    fn a_wheel_stepped_explicitly_settles_without_alternating_from_5_m_s_to_rest() {
+        // The reason NGP cuts its torsional stiffness at low speed is its explicit wheel step. Rill's carcass with its
+        // damping, stepped the same way at 720 Hz (inertia 0.6 kg m², radius 0.3 m, a drive torque of 1 kN at the
+        // contact), settles on the steady slip with no step-to-step alternation at 0.5 to 5 m/s.
+        let dt = 1.0 / 720.0;
+        for v in [0.5, 1.0, 2.0, 5.0] {
+            let (r, inertia, torque) = (0.3, 0.6, 1000.0 * 0.3);
+            let mut st = TransState::default();
+            let mut w = v / r;
+            let mut slip = Vec::new();
+            for _ in 0..1440 {
+                let steady = rolling(v, w * r);
+                let (fx, _) = step_dynamic(&mut st, &steady, w * r, c_x(), 400000.0, steady.mu * 4000.0, dt);
+                w += dt * (torque + r * fx) / inertia;
+                slip.push(w * r - v);
+            }
+            let tail = &slip[1080..];
+            let mean = tail.iter().sum::<f64>() / tail.len() as f64;
+            let alternation = tail.windows(3).map(|s| (s[2] - 2.0 * s[1] + s[0]).abs()).fold(0.0, f64::max);
+            let spread = tail.iter().map(|s| (s - mean).abs()).fold(0.0, f64::max);
+            assert!(mean > 0.0 && spread < 0.01 * mean, "V {v}: slip {mean} spread {spread}");
+            assert!(alternation < 1e-4 * mean, "V {v}: alternation {alternation}");
+        }
     }
 }
