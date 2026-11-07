@@ -22,8 +22,22 @@ pub const IDLE_SPARK_HZ: f64 = 3.0;
 pub const IDLE_AIR_MAX_LIFT: f64 = 0.10;
 /// The idle loops run with the pedal closed below idle + 800 rpm (the overrun cut's band, inferred).
 pub const IDLE_BAND: f64 = 800.0;
-/// The idle air loop integrates only below idle + 100 rpm (inferred: no wind-down while the overrun air decays).
+/// The idle air loop integrates below idle + 100 rpm; above, a positive integral only bleeds to 0 (inferred: no
+/// wind-down while the overrun air decays, no held wind-up after a clutch's bite).
 pub const IDLE_INTEGRATE: f64 = 100.0;
+/// Anti-stall: the idle air's reach above its feed-forward, whole down to idle − `ANTI_STALL_FULL` rpm, none at
+/// `ANTI_STALL_ZERO` of idle, linear between. Link's anti-stall adds idle valve opening from 150 rpm under the
+/// target, within the valve's clamp (HPA Link idle); that it fades lower is inferred: an engine dragged far under
+/// idle is loaded, not dipping, and a real one stalls. The 300 rpm and the half are guesses.
+pub const ANTI_STALL_FULL: f64 = 300.0;
+pub const ANTI_STALL_ZERO: f64 = 0.5;
+pub fn anti_stall(rpm: f64, idle: f64) -> f64 {
+    let (hi, lo) = (idle - ANTI_STALL_FULL, ANTI_STALL_ZERO * idle);
+    if hi <= lo {
+        return 1.0;
+    }
+    ((rpm - lo) / (hi - lo)).clamp(0.0, 1.0)
+}
 /// Overrun fuel cut: pedal under 0.02 above idle + 800 rpm, resumed below idle + 300 rpm or on the pedal (stealth316,
 /// MSExtra, Hondata).
 pub const PEDAL_CLOSED: f64 = 0.02;

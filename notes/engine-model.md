@@ -110,10 +110,19 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   0.75 [arXiv 2012.02859], idle control uses at most about 30 % of the reserve [US 7418943]) with −10/+15° room
   [MoTeC idle], [HPA M1 idle], [US 7143741]. Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz (spark) (guess: no
   published gains [Yildiz]). Spark P-only (inferred: a spark integrator fights the air loop).
-- The loop runs with a closed pedal below idle + 800 rpm, integrates only below idle + 100 rpm (inferred: no
-  wind-down while the overrun air decays).
+- The loop runs with a closed pedal below idle + 800 rpm and integrates below idle + 100 rpm; above, a positive
+  integral only bleeds to 0 (inferred: no wind-down while the overrun air decays, and no wind-up from a clutch's bite
+  held over idle: before, the Fiesta Rally2 pulled away at a closed pedal crept at 1262–1397 rpm, idle 1200, now 1205).
+  Tested: after 3 s at 80 % of idle, 10 s at idle + 150 rpm brings the idle air under its feed-forward.
 - Idle air ceiling: the plate's area at 10 % position, every ECU car [HPA 138] (Haltech's DBW idle maximum starts at
-  about 10 %); [Link idle] idles at 3.5 %.
+  about 10 %); [Link idle] idles at 3.5 %. Anti-stall: the ceiling's reach above the feed-forward is whole down to
+  idle − 300 rpm and falls linearly to none at half idle (`ecu::anti_stall`). Link's anti-stall gain adds idle valve
+  opening from 150 rpm under the target, within the valve's clamp [HPA Link idle]; the fade lower is inferred (an
+  engine dragged far under idle is loaded, not dipping; braked in gear a real one stalls), 300 rpm and the half are
+  guess. A lower ceiling (7 % position) left the Escort Cosworth, Delta HF and Celica ST185 with their idle air at it;
+  a cap on the idle loop's net torque is not how ECUs control idle and stopped clutch help's pull-away (measured).
+  Tested: every ECU sample at 0.3 and 0.5 of idle gets only the feed-forward, at idle − 300 the whole ceiling; every
+  RSF car idles under the ceiling.
 - DFCO (ECU cars): pedal < 0.02 and n > idle + 800 rpm; resumes below idle + 300 rpm or on the pedal [stealth316],
   [MSExtra], [Hondata].
 - Overrun air while the fuel is cut: real ECUs open an idle valve or dashpot on decel [MoTeC FK8R]. Sized so the
@@ -274,8 +283,18 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
   load (η_ig 0.57 → 0.38, guess). The idle air, the idle gains, the closed-pedal brake and the DBW part-pedal tests are
   calibrated after K, so they would follow; aim_open and gate_base read WOT runs only. Not done (nothing reads idle
   MAP; it would lower part-pedal torque everywhere, a feel change).
-- At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
-  idle air at its 10 % ceiling. In gear at low speed this pushes the car.
+- Closed pedal below idle at a fixed speed, N·m, before → after the anti-stall fade: turbo sample 168 → 51 at 500
+  rpm, 139 → 93 at 750, 110 at 1000; na 65 → 27 at 500; Fiesta Rally2 165 → 51, 136 → 91, 107; Fiesta R2 53 → 22 at
+  500. Between idle − 300 and idle the whole ceiling stays.
+- Creep, measured with a test-only autopilot mode (not kept; Telemetry with the torque and idle air): 20 s in
+  neutral, first gear, the clutch let out holding 80 % of its speed, 20 s at a closed pedal, then the brake ramped to
+  full over 16 s; the track-85_M circle (-260,120,40; flat), clutch help off, experimental with the brush tyre. The
+  creep on the flat is the gearing's: Fiesta Rally2 10.8 km/h at 1193 rpm (NGP 11.0 at 1215), 10.9 at 1205 from rest
+  (was 11.4 at 1262), 11.0 with clutch help on (was 12.6 at 1397); Fiesta R2 9.5 at 995, from rest 9.6 (was 11.3 at
+  1178); Golf II GTI 16V (fixed stop) 5.5 at 655, not from rest without throttle. Stall under the brake: Rally2 at
+  brake 0.20 with at most 90 N·m (was 0.23 and 152; NGP 0.45), R2 0.18 and 46 (was 54), Golf 0.09 and 23; with no
+  engine a car stops at about 0.19 from that speed (inferred from the ramp). Real creep is the idle speed in first
+  (inferred: the load on the flat is about 10 N·m); no rally figure is published.
 - Fixed: the turbo sample's part-pedal bump at 1500 and dip at 1750 rpm. The cause was the boost target, not the
   hold: K went 1.68e6 (held) → 1.61e6 (1500) → 1.32e6 (1750) → 1.59e6 (2500) because the targets between the held
   1000 rpm knot and 2500 were inflated (retarget, above). Now 1.68 → 1.61 → 1.58e6, and the 20 % pedal line at
@@ -329,6 +348,7 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
 - US 7418943, idle reserve use: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7418943
 - Yildiz, idle plant: https://web.mit.edu/aaclab/pdfs/Yildiray%20Yildiz%20TCST.pdf
 - Link idle: https://forums.linkecu.com/topic/17853-e-throttle-idle-problems/
+- HPA Link idle, anti-stall gain: https://www.hpacademy.com/courses/link-g4-plus-software-tutorial/advanced-fuctions-idle-speed-control/
 - stealth316, DFCO: https://www.stealth316.com/2-rpmfuelcut.htm
 - MSExtra, DFCO: https://www.msextra.com/forums/viewtopic.php?t=33238
 - Hondata, DFCO: https://www.hondata.com/help/kmanager/advancedparameters.htm

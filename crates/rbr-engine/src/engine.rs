@@ -253,6 +253,8 @@ pub struct Out {
     /// The cylinders' air flow, kg/s, and the charge per cycle, kg.
     pub w_cyl: f64,
     pub charge: f64,
+    /// The ECU's idle and overrun air, a share of the full throttle's area.
+    pub idle_air: f64,
 }
 
 /// One implicit Euler step of dp/dt = f(p): the root of p' = p + h·f(p') between p and p + h·f(p) (stable and
@@ -295,13 +297,24 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let idle_loop = ecu_idle && !dfco && pedal < ecu::PEDAL_CLOSED && rpm < spec.rpm_idle + ecu::IDLE_BAND;
     let idle_air = if idle_loop {
         let low = -spec.idle_air;
-        let high = spec.idle_air_max - spec.idle_air;
+        // Anti-stall: the air above the feed-forward is whole down to idle − 300 rpm, then falls to none at half idle,
+        // so an engine the clutch drags down (braking in gear) gets the air to catch a dip, not to push the car.
+        let ceiling =
+            spec.idle_air + (spec.idle_air_max - spec.idle_air).max(0.0) * ecu::anti_stall(rpm, spec.rpm_idle);
+        let high = ceiling - spec.idle_air;
         // Conditional integration: above idle + 100 rpm (the overrun air still decaying, a fall towards idle) the
-        // integral holds, so it does not wind down and undershoot (inferred).
-        if rpm < spec.rpm_idle + ecu::IDLE_INTEGRATE {
-            s.idle_i = (s.idle_i + spec.idle_ki * error * dt).clamp(low, high);
+        // integral only bleeds what it gained, down to 0, so it neither winds down and undershoots nor holds a wind-up
+        // from a clutch's bite above idle (inferred).
+        let step = spec.idle_ki * error * dt;
+        s.idle_i = if rpm < spec.rpm_idle + ecu::IDLE_INTEGRATE {
+            s.idle_i + step
+        } else if s.idle_i > 0.0 {
+            (s.idle_i + step).max(0.0)
+        } else {
+            s.idle_i
         }
-        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(0.0, spec.idle_air_max) + s.overrun
+        .clamp(low, high);
+        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(0.0, ceiling) + s.overrun
     } else {
         s.idle_i = 0.0;
         spec.idle_air + s.overrun
@@ -477,5 +490,6 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         p_a: x.p_a,
         w_cyl,
         charge,
+        idle_air,
     }
 }

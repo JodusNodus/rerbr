@@ -3,6 +3,7 @@
 
 use rbr_engine::bench::{self, inputs, Row};
 use rbr_engine::calibrate;
+use rbr_engine::class::Idle;
 use rbr_engine::engine::RPM;
 use rbr_engine::realistic::Realistic;
 use rbr_engine::{samples, Inputs, Model, Params};
@@ -392,5 +393,38 @@ fn it_is_deterministic_and_finite_for_any_input() {
             }
         }
         let _ = Realistic::new(&Params::default()).calibration();
+    }
+}
+
+/// Anti-stall: with the pedal closed at half idle and below, the ECU's air is the feed-forward's, no more (an engine
+/// dragged that far is loaded, and the idle air would push the car); at idle − 300 rpm it has the whole ceiling.
+#[test]
+fn a_closed_pedal_far_below_idle_gets_only_the_feed_forward_air() {
+    for (name, p, m) in models().iter().filter(|(_, _, m)| m.calibration().class.unwrap().idle == Idle::Ecu) {
+        let idle = rpm(p.idle_speed);
+        for n in [0.3 * idle, 0.5 * idle] {
+            let out = calibrate::part(m.spec(), n, 0.0).1;
+            assert!(out.idle_air <= m.spec().idle_air + 1e-9, "{name}: {n:.0} rpm: idle air {}", out.idle_air);
+        }
+        let out = calibrate::part(m.spec(), idle - 300.0, 0.0).1;
+        assert!(out.idle_air > 0.99 * m.spec().idle_air_max, "{name}: idle − 300 rpm: idle air {}", out.idle_air);
+    }
+}
+
+/// A pull-away at a closed pedal: the clutch's bite holds the engine at 80 % of idle for 3 s (the idle air winds
+/// up), then the car carries it to idle + 150 rpm (in game the Fiesta Rally2 lurched to 1375 rpm and crept there,
+/// its idle 1200): the wound-up air bleeds off, so the engine comes back to idle rather than being held over it.
+#[test]
+fn idle_air_wound_up_by_a_clutch_bite_bleeds_off_above_idle() {
+    for (name, p, m) in models().iter().filter(|(_, _, m)| m.calibration().class.unwrap().idle == Idle::Ecu) {
+        let idle = rpm(p.idle_speed);
+        let mut m = m.clone();
+        let wound = bench::run(&mut m, 0.8 * idle, None, 3.0, |_| 0.0, None);
+        let rows = bench::run(&mut m, idle + 150.0, None, 10.0, |_| 0.0, None);
+        let (before, after) = (wound.last().unwrap(), rows.last().unwrap());
+        let (ff, air) = (m.spec().idle_air, m.out().idle_air);
+        assert!(before.torque > 0.0, "{name}: no wind-up at the bite ({:.1} N·m)", before.torque);
+        assert!(air <= ff, "{name}: idle + 150 rpm after the bite: idle air {air:.4}, its feed-forward {ff:.4}");
+        assert!(after.torque < 0.0, "{name}: idle + 150 rpm after the bite: {:.1} N·m", after.torque);
     }
 }

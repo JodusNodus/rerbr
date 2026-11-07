@@ -1,4 +1,5 @@
-//! Every installed RSF car calibrates and reproduces its table; prints each car's s_f, η_ig·η_v, class and flags.
+//! Every installed RSF car calibrates, reproduces its table and idles under its idle air's ceiling; prints each car's
+//! s_f, η_ig·η_v, class and flags.
 //! Ignored unless `RBR_RSF` is set: `RBR_RSF=... cargo test -p rbr-engine --test rsf_cars -- --nocapture`.
 
 mod rsf;
@@ -49,6 +50,9 @@ fn every_installed_car_calibrates_and_reproduces_its_table() {
             class.cylinders,
             c.flags
         );
+        if c.flags.iter().any(|f| f.contains("idle air at its ceiling")) {
+            misses.push(format!("{folder}: idle air at its ceiling (no anti-stall reserve)"));
+        }
         if over > 0.001 {
             misses.push(format!("{folder}: WOT over the table by {:.2} %", 100.0 * over));
         }
