@@ -63,6 +63,8 @@ struct CandOpts {
     tg: f64,
     ss: f64,
     sk: f64,
+    /// Whether the brush's own wet loss applies (the game leaves it off).
+    hp: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -90,6 +92,7 @@ fn cand_forces(
             pressure: f64::from(base.air_pressure),
             pressure_factor: f64::from(base.stiffness_factor),
             wetness: o.w,
+            hydroplaning: o.hp,
             temp_grip: o.tg,
             surf_static: o.ss,
             surf_kinetic: o.sk,
@@ -335,6 +338,7 @@ fn main() {
         tg: f64::from(base.temperature_grip),
         ss: f64::from(base.static_friction),
         sk: f64::from(base.kinetic_friction),
+        hp: true,
     };
 
     // --- lateral sweep, candidate --------------------------------------------------
@@ -832,11 +836,11 @@ fn main() {
 
     // --- TRL PPR496: braked peak and locked mu_x at 32/64/100 km/h ----------------------------
     // As the PFT (ASTM E274) measures them: the wheel braked at constant speed to its peak, then locked (Vs = V).
-    // The brush sees the surface as the game gives it (NGP's wet surface friction, wetness 0 into the brush).
+    // The brush sees the surface as the game gives it: NGP's wet surface friction and the wetness, its wet loss off.
     let mut trl_csv = String::from("case,kmh,peak_ngp,lock_ngp,peak_cand,lock_cand\n");
     let mut trl_rows: Vec<(&str, f64, f64, f64, f64, f64)> = Vec::new();
     for (name, ss, sk, w) in [lock_cases[0], lock_cases[1]] {
-        let o = CandOpts { w: if w > 0.0 { GAME_WETNESS } else { 0.0 }, ss, sk, ..dry_opts() };
+        let o = CandOpts { w, ss, sk, hp: false, ..dry_opts() };
         let b = blend_at(&base, fz0 as f32);
         let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
         for kmh in [32.0, 64.0, 100.0] {
@@ -1111,10 +1115,6 @@ V_MIN = {V_MIN} m/s floor in the slips (Rill's v_N).\n",
     println!("{md}");
     println!("csv + summary.md in {}", out.display());
 }
-
-/// The wetness the game gives the brush on a wet surface (`rbr_tyre::car`): none, NGP's wet surface friction carries
-/// the wet.
-const GAME_WETNESS: f64 = 0.0;
 
 fn class_of(base: &Params) -> usize {
     2usize.min(base.wet_slope.len().saturating_sub(1))
