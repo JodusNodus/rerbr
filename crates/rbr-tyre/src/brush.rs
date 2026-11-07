@@ -65,12 +65,6 @@ pub const V_S: f64 = 6.57;
 pub const MU_C_OVER_S: f64 = 0.8 / 1.55;
 /// Floor of the rolling speed, m/s (keeps the theoretical slips finite).
 pub const V_MIN: f64 = 0.5;
-/// Relaxation speed coefficient K_V, s (Vera et al., Sensors 22:6380, 2022:
-/// sigma_y = -0.14 + 0.021 Vx + 1.9e-4 Fz - 1.6e-8 Fz^2 on a car tyre bench).
-/// Motorcycle tyres also relax over longer distances at speed (Cossalter, Lot
-/// & Massaro, Motorcycle Dynamics, ch. 1); MF-Swift has no speed term (TNO,
-/// 2013). Keeping the slope for a rally tyre is ours.
-pub const K_V: f64 = 0.021;
 /// Water film at W = 1: h = W times 0.7 mm. Measured films on drained
 /// highways: 0.18 mm at 1.5 mm/h rain, 0.56-0.85 mm at 7.8-10.2 mm/h (PLOS
 /// ONE 2025, Table 2); ASTM E274 wets to ~0.5 mm (secondary).
@@ -332,13 +326,16 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     EvalOutput { fx, fy, mz, trail, psi, mu, sx, sy }
 }
 
-/// Relaxation lengths, m: sigma_y = Cy(Fz)/k_y + K_V |Vx| with NGP's carcass
-/// lateral stiffness k_y (times the pressure factor); sigma_x = Cx(Fz)/k_x +
-/// K_V |Vx| with k_x = NGP's torsional stiffness / R^2 (the torsion torque
-/// -torsion * k_tors acts as -torsion/R * k_tors/R longitudinally). K_V from
-/// Vera et al. (passenger tyre; transfer assumed).
-pub fn sigma_lengths(cy_fz: f64, cx_fz: f64, k_y: f64, k_x: f64, vx: f64) -> (f64, f64) {
-    (cy_fz / k_y + K_V * vx.abs(), cx_fz / k_x + K_V * vx.abs())
+/// Relaxation lengths, m: sigma_y = Cy(Fz)/k_y with NGP's carcass lateral
+/// stiffness k_y (times the pressure factor), sigma_x = Cx(Fz)/k_x with k_x =
+/// NGP's torsional stiffness / R^2 (the torsion torque -torsion * k_tors acts
+/// as -torsion/R * k_tors/R longitudinally): the stretched string's sigma =
+/// C/k (Pacejka, ch. 5). No speed term: the one measured (0.021 s times V,
+/// Vera et al., Sensors 22:6380, 2022) is a passenger tyre's with its
+/// excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-
+/// 0.45 m (0.6 m at 20 m/s); MF-Swift has none either (TNO, 2013).
+pub fn sigma_lengths(cy_fz: f64, cx_fz: f64, k_y: f64, k_x: f64) -> (f64, f64) {
+    (cy_fz / k_y, cx_fz / k_x)
 }
 
 /// Single-contact-point transient state (Pacejka, ch. 7): lateral and
@@ -505,11 +502,10 @@ mod tests {
         let v = 15.0;
         let alpha = 1.0f64.to_radians();
         let vsy = v * alpha.sin();
-        let vx = -v * alpha.cos();
         let vr = v * alpha.cos();
         let cy = stiffness_at(4000.0, 300.0, 1.0, 1.0, cal.cy0, M_CY, &cal);
         let k_y = 400000.0;
-        let (sig_y, _) = sigma_lengths(cy, cy, k_y, 1.0, vx);
+        let (sig_y, _) = sigma_lengths(cy, cy, k_y, 1.0);
         let dt = 1.0 / 720.0;
         let mut s = TransState::default();
         // Integrate until the transient slip reaches 63% of steady slip.

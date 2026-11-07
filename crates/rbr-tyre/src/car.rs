@@ -76,7 +76,7 @@ impl Model for Brush {
         let cx = brush::stiffness_at(e.fz, e.bulk_temp, e.tread_remaining, e.pressure_factor, cal.cx0, M_CX, cal);
         // The longitudinal carcass stiffness is the torsional one over the radius squared.
         let k_x = f64::from(x.torsional_stiffness) / (e.radius * e.radius);
-        let (sigma_y, sigma_x) = brush::sigma_lengths(cy, cx, f64::from(x.lateral_stiffness), k_x, e.vx);
+        let (sigma_y, sigma_x) = brush::sigma_lengths(cy, cx, f64::from(x.lateral_stiffness), k_x);
         let mut state = t.state;
         brush::step_transient(&mut state, vsx, vsy, vr, sigma_x, sigma_y, f64::from(x.dt));
         let o = brush::eval_slip(&e, state.ux / sigma_x, state.uy / sigma_y, vr, cal);
@@ -170,9 +170,10 @@ mod tests {
             surf_kinetic: 1.2,
         };
         let steady = brush::eval(&e, &b.tyres[0].cal);
-        // It opposes the sliding, starts small and settles on the steady state.
+        // It opposes the sliding, starts small (one step rolls 2.8 cm of a relaxation length of about 0.4 m) and
+        // settles on the steady state.
         assert!(last.lateral_force < 0.0, "{last:?}");
-        assert!(first.lateral_force.abs() < 0.05 * last.lateral_force.abs(), "{first:?} {last:?}");
+        assert!(first.lateral_force.abs() < 0.1 * last.lateral_force.abs(), "{first:?} {last:?}");
         assert!((f64::from(last.lateral_force) / steady.fy - 1.0).abs() < 1e-4, "{last:?} {steady:?}");
         assert!(last.longitudinal_force.abs() < 1e-3 * last.lateral_force.abs(), "{last:?}");
         // A touch down or a restart starts it from zero again.
