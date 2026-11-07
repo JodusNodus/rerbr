@@ -38,6 +38,9 @@ Nothing here changes what the game computes.
   the calibration pressure), down to standstill: slip steps, the wheel-tyre
   mode at 0.5-10 m/s, pull-away, braking to a stop and holding on a grade.
   Prints only.
+- `examples/scorecard.rs`: the tyre-level numbers of `harness/tyre_scorecard.py`: steady forces of the tyre model
+  a profile runs (`--model ngp|brush`, NGP's where it hands back) on a probed wheel, as `key value` lines. Prints
+  only.
 - `examples/racing.rs`: brush-v1 and NGP at the conditions of the racing-tyre
   and combined-slip data (`notes/tyre-model.md`, "Racing and rally targets").
   Prints only.
