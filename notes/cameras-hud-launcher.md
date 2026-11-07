@@ -59,11 +59,12 @@ Data in `rbr_formats::rbrhud`, drawing in `rbr_render::dials` (toggle: `dials`);
 Pages and policy in `crates/rbr-launcher/src/` (`main.rs` doc: command line, weather rules, volumes, co-driver
 sources). Start runs the viewer with `rbr-standalone --live --boot` as child processes (`command.rs`).
 
-- Controls page, Driver aids: "Engine model", NGP (original) or Realistic (experimental) (`controls_page::EngineModel`,
-  `[launcher] engine_model`), passed after `--live` as `--engine-model realistic` to quick races, championship stages
-  and lessons, with the car's `--car-group` and `--car-year` where the catalog has them (an RSF car both, an added
+- Settings page, Physics (after the co-driver): NGP 7 (original) or ReRBR experimental (built on NGP 7), with a "What
+  is this?" link to `docs/experimental-physics.md` on GitHub (`physics::PhysicsProfile`, `[launcher] physics = ngp |
+  experimental`), passed after `--live` as `--physics experimental` to quick races, championship stages and lessons,
+  with the car's `--car-group` and `--car-year` where the catalog has them (an RSF car both, an added
   car its group); NGP's adds nothing. A replay's header keeps it (the stepping command).
-  While the models are experimental a non-NGP run keeps no records (user decision): `rbr-standalone` makes `--saves`
+  ReRBR experimental physics keeps no records (user decision): `rbr-standalone` makes `--saves`
   dry (stage record, personal best, lesson verdict; `Args::keeps_records`), the quick race races the best ghost as
   `--ghost` and never `--best-ghost`, and championship stages refuse to start (trials still run); `.rrp` replays work.
 
