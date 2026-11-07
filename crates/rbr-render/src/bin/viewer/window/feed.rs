@@ -38,8 +38,9 @@ struct State {
     flags: u32,
     /// The held keys as the keyboard's device state.
     keys: Option<Box<[u8; 256]>>,
-    /// The advanced H-shifter selects: no direct gear actions.
-    shifter: bool,
+    /// The advanced H-shifter: no direct gear actions, as its shifter selects (an H-pattern car) or the gear up and down
+    /// actions shift (a sequential one).
+    advanced: bool,
     /// The last poll: each action's device input and the controls.
     pads: [f32; ACTIONS],
     polled: Controls,
@@ -67,10 +68,10 @@ impl Feed {
     }
 
     /// The frame's controls: their flags are sent once (and cleared here), the rest stand until the next post.
-    pub fn post(&self, controls: &mut Controls, held: &HashSet<KeyCode>, shifter: bool) {
+    pub fn post(&self, controls: &mut Controls, held: &HashSet<KeyCode>, advanced: bool) {
         let mut state = self.shared.lock().unwrap();
         state.flags |= std::mem::take(&mut controls.flags);
-        (state.base, state.shifter) = (*controls, shifter);
+        (state.base, state.advanced) = (*controls, advanced);
         if let Some(keys) = state.keys.as_mut() {
             keyboard_state(held, keys);
         }
@@ -111,14 +112,14 @@ fn run(shared: &Mutex<State>, stop: &AtomicBool, bindings: &Bindings, script: Op
     let mut pads = [0.0; ACTIONS];
     while !stop.load(Ordering::Relaxed) {
         let start = Instant::now();
-        let (sender, base, shifter) = {
+        let (sender, base, advanced) = {
             let mut state = shared.lock().unwrap();
             let flags = std::mem::take(&mut state.flags);
             keys.copy_from_slice(state.keys.as_deref().unwrap_or(&[0; 256]));
-            (state.sender.clone(), Controls { flags, ..state.base }, state.shifter)
+            (state.sender.clone(), Controls { flags, ..state.base }, state.advanced)
         };
         let mut controls = input.controls(&keys, base, &mut pads);
-        if shifter {
+        if advanced {
             (controls.gears_held, controls.gears_bound) = (0, 0);
         }
         let now = Instant::now();
