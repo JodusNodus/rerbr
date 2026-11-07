@@ -721,11 +721,16 @@ pub enum EngineModel {
 }
 
 impl EngineModel {
-    /// `rbr-standalone`'s arguments for it: none for NGP's, so its command lines stay as they were.
-    pub fn args(self) -> Vec<String> {
+    /// `rbr-standalone`'s arguments for it on `car`: none for NGP's, so its command lines stay as they were; else the
+    /// model and the car's group and year where the catalog has them.
+    pub fn args(self, car: &Car) -> Vec<String> {
         match self {
             EngineModel::Ngp => Vec::new(),
-            EngineModel::Realistic => vec!["--engine-model".to_owned(), self.name().to_owned()],
+            EngineModel::Realistic => {
+                let group = car.group.iter().flat_map(|g| ["--car-group".to_owned(), g.clone()]);
+                let year = car.year.iter().flat_map(|y| ["--car-year".to_owned(), y.to_string()]);
+                ["--engine-model".to_owned(), self.name().to_owned()].into_iter().chain(group).chain(year).collect()
+            }
         }
     }
 }

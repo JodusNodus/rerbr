@@ -726,7 +726,7 @@ impl Form {
         if self.head_gasket > 1 {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
-        args.extend(self.engine_model.args());
+        args.extend(self.engine_model.args(car));
         Some(args)
     }
 
@@ -1433,8 +1433,16 @@ mod tests {
     /// and a school lesson; NGP's, the default, adds nothing.
     #[test]
     fn the_engine_model_reaches_the_stepping_process() {
-        assert!(EngineModel::Ngp.args().is_empty());
-        assert_eq!(EngineModel::Realistic.args(), ["--engine-model", "realistic"]);
+        // The car's group and year go with the model where the catalog has them: an RSF car both, an added car its
+        // group, an archive car neither.
+        let rsf = Car { group: Some("Rally 2".into()), year: Some(2019), ..Car::default() };
+        let added = Car { group: Some("Group A8".into()), added: true, ..Car::default() };
+        assert!(EngineModel::Ngp.args(&rsf).is_empty());
+        let realistic = ["--engine-model", "realistic"];
+        let with = |extra: &[&str]| realistic.iter().chain(extra).map(|a| a.to_string()).collect::<Vec<_>>();
+        assert_eq!(EngineModel::Realistic.args(&rsf), with(&["--car-group", "Rally 2", "--car-year", "2019"]));
+        assert_eq!(EngineModel::Realistic.args(&added), with(&["--car-group", "Group A8"]));
+        assert_eq!(EngineModel::Realistic.args(&Car::default()), with(&[]));
         let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
             return;
         };
@@ -1456,9 +1464,17 @@ mod tests {
             let car = form.car().cloned().unwrap();
             let launch = LaunchCar { car, tyre: None, setup: None, school: Some(lesson) };
             let school = form.launch_with(stage, launch, form.options, weather, Vec::new(), Vec::new()).unwrap();
+            let picked = form.car().cloned().unwrap();
+            assert!(picked.group.is_some() && picked.year.is_some(), "{picked:?}");
+            let (group, year) = match wanted {
+                Some(_) => (picked.group.clone(), picked.year.map(|y| y.to_string())),
+                None => (None, None),
+            };
             for args in [&quick, &rally, &school] {
                 let live = args.iter().position(|a| a == "--live").unwrap();
                 assert_eq!(value(&args[live..], "--engine-model").as_deref(), wanted, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--car-group"), group, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--car-year"), year, "{text}: {args:?}");
                 assert!(!args[..live].contains(&"--engine-model".to_owned()), "{args:?}");
             }
         }
