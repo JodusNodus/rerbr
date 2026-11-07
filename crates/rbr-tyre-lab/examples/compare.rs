@@ -18,7 +18,8 @@
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
 use rbr_tyre_lab::brush::{
-    self, Calibration, EvalInput, EvalOutput, FILM_MAX, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X, N_MU_Y, V_MIN, V_S,
+    self, Calibration, EvalInput, EvalOutput, FILM_MAX, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X, N_MU_Y,
+    SPEED_DECAY, STRIBECK_EXP, V_MIN, V_S,
 };
 use rbr_tyre_lab::calibrate::{calibrate, CalPoint, CalTargets};
 use rbr_tyre_lab::ngp::{blend_at, patch_input, LoadBlend};
@@ -1091,8 +1092,9 @@ Published checks: a new summer tyre brakes from 100 km/h on a watered track at t
     md.push_str(&format!(
         "M_CY = {M_CY}, N_MU_Y = {N_MU_Y} (Singh & Sivaramakrishnan, Goodyear, arXiv 2305.18422, load sweep); \
 M_CX = {M_CX}, KX_OVER_KY = {KX_OVER_KY}, N_MU_X = {N_MU_X} (means of the MF 6.1 255/55R20 example set and the \
-Pacejka-book passenger set in Chrono's TMeasy); Stribeck g(Vs) with V_S = {V_S} m/s, Coulomb/static {:.3} \
-(Canudas de Wit et al., VSD 39 (2003), Table 1); film {:.1} mm at W = 1 (measured road films), ref 0.5 mm, \
+Pacejka-book passenger set in Chrono's TMeasy); generalised Stribeck g(Vs) with V_S = {V_S} m/s, exponent \
+{STRIBECK_EXP}, Coulomb/static {:.3} (Olsson et al. 1998), times exp(-{SPEED_DECAY} Vs) (Burckhardt), fitted to TRL \
+PPR496's locked and peak friction; film {:.1} mm at W = 1 (measured road films), ref 0.5 mm, \
 kept 0.4 and the quadratic ours; vp = 6.36 sqrt(p/kPa) (Horne) times (0.75 + 0.25 d) (ADAC 2026); dry-wear \
 gain 1 + 0.167(1-d)(1-W) (Singh Table 3; the wet fade ours); brush ch. 3 Pacejka 3rd ed.; \
 first-order dynamics F = c u + d u' with the secant F/s (Rill, Vehicle Dynamics 2009, 3.4.2), d_x {}, d_y {} N/(m/s) \
