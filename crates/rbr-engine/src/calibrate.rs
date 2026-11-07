@@ -26,6 +26,8 @@ const WASTEGATE_PORTS: f64 = 3.0;
 /// The largest exhaust over intake manifold pressure at steady WOT (inferred: matched turbos run 1–2; a smaller
 /// nozzle buys low-rpm boost with back pressure no real turbine is sized for).
 const DRIVE_RATIO_MAX: f64 = 2.0;
+/// A steady WOT boost at least this share of its target is on boost.
+const ON_BOOST: f64 = 0.98;
 /// K's grid between the knots, rpm (inferred: the turbo's boost rises faster between knots than K could follow
 /// linearly from the knots alone).
 const GRID: f64 = 250.0;
@@ -62,6 +64,9 @@ pub struct Calibration {
     pub eta_ig_v: f64,
     /// Steady WOT at each knot: rpm, the table's torque and the model's (N·m).
     pub wot: Vec<(f64, f64, f64)>,
+    /// Turbo: the grid points (rpm) where the boost misses its target and K is held, with the table's torque and the
+    /// model's (N·m); the model falls short of the table there.
+    pub held: Vec<(f64, f64, f64)>,
     /// Anything outside its expected range.
     pub flags: Vec<String>,
 }
@@ -498,6 +503,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     // K, then the idle air (which needs K), then K again with the idle air in the WOT area.
     let mut runs = wot_runs(&spec, &car);
     spec.k = identity(&car, &runs);
+    hold_off_boost(&mut spec, &car, &runs);
     let (a, surplus) = idle_air(&spec);
     spec.idle_air = a;
     cal.idle_surplus = surplus;
@@ -509,6 +515,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     }
     runs = wot_runs(&spec, &car);
     spec.k = identity(&car, &runs);
+    let held = hold_off_boost(&mut spec, &car, &runs);
     if spec.class.actuation == Actuation::Dbw {
         if let Some(t) = spec.turbo.as_mut() {
             t.gate_base = Curve(car.grid.iter().zip(&runs).map(|(k, (s, _))| (k.0, s.wastegate)).collect());
@@ -543,5 +550,45 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     if !(ETA_BAND.0..=ETA_BAND.1).contains(&cal.eta_ig_v) {
         cal.flags.push(format!("η_ig·η_v {:.2} at {rpm_peak:.0} rpm outside 0.30–0.55", cal.eta_ig_v));
     }
+    cal.held = parallel(&held, |&(rpm, t)| (rpm, t, wot(&spec, rpm).1.torque));
     (spec, cal)
+}
+
+/// A turbo's K where its steady WOT boost misses the target (the turbo cannot make that boost at that speed) is held
+/// at the median of the on-boost knots' K, so the table is an upper bound there rather than met by an inflated K
+/// (`notes/engine-model.md`). Where the identity gives less than the median (a table weaker than
+/// physics) K stays. The held grid points with the table's torque.
+fn hold_off_boost(spec: &mut Spec, car: &Car, runs: &[(State, Out)]) -> Vec<(f64, f64)> {
+    let Some(t) = &spec.turbo else { return Vec::new() };
+    let on = |rpm: f64, s: &State| s.p_boost >= ON_BOOST * t.pi_wot.at(rpm) * P_REF;
+    let mut ks: Vec<f64> = car
+        .grid
+        .iter()
+        .zip(runs)
+        .zip(&spec.k.0)
+        .filter(|((g, (s, _)), _)| g.0 >= ecu::FIRE_RPM && car.knots.contains(g) && on(g.0, s))
+        .map(|(_, k)| k.1)
+        .collect();
+    if ks.is_empty() {
+        return Vec::new();
+    }
+    ks.sort_by(f64::total_cmp);
+    let median = ks[ks.len() / 2];
+    let mut held = Vec::new();
+    let k: Vec<(f64, f64)> = car
+        .grid
+        .iter()
+        .zip(runs)
+        .zip(&spec.k.0)
+        .map(|((g, (s, _)), &(rpm, k))| {
+            if g.0 >= ecu::FIRE_RPM && !on(g.0, s) && k > median {
+                held.push(*g);
+                (rpm, median)
+            } else {
+                (rpm, k)
+            }
+        })
+        .collect();
+    spec.k = Curve(k);
+    held
 }

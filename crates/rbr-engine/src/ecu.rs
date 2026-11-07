@@ -10,10 +10,11 @@ pub fn spark_efficiency(retard: f64) -> f64 {
     (1.0 - SPARK_C * retard * retard).max(0.0)
 }
 
-/// Idle: 10° base retard, the spark free 10° earlier and 15° later (MoTeC idle setup); the loops' bandwidths, Hz
-/// (inferred), and the idle air's ceiling, the plate's area at 10 % position (Haltech's DBW idle maximum starts at
-/// about 10 %, HPA webinar 138).
-pub const IDLE_RETARD: f64 = 10.0;
+/// Idle: 27° base retard, a torque reserve with η_ign about 0.8 (an MPC idle's spark-efficiency setpoint 0.75,
+/// arXiv 2012.02859; idle control uses at most about 30 % of the reserve, US 7418943), the spark free 10° earlier and
+/// 15° later (MoTeC idle setup); the loops' bandwidths, Hz (inferred), and the idle air's ceiling, the plate's area at
+/// 10 % position (Haltech's DBW idle maximum starts at about 10 %, HPA webinar 138).
+pub const IDLE_RETARD: f64 = 27.0;
 pub const IDLE_ADVANCE_ROOM: f64 = 10.0;
 pub const IDLE_RETARD_ROOM: f64 = 15.0;
 pub const IDLE_AIR_HZ: f64 = 0.5;
