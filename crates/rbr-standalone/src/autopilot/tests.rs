@@ -46,6 +46,7 @@ fn a_straight_plans_the_top_speed_and_steers_ahead() {
         gear: FIRST,
         engine: 500.0,
         held: false,
+        wheels: [0.0; 4],
     };
     let q = driver.control(1000, &sense, false);
     assert_eq!(q.steering, 0);
@@ -79,7 +80,7 @@ fn a_car_leaning_to_its_right_steers_right() {
         velocity: [10.0, 0.0, 0.0],
     };
     assert!((lean(&pose) - 0.4f32.sin()).abs() < 1e-5, "{}", lean(&pose));
-    let sense = Sense { pose, parameter: 0.5, gear: FIRST, engine: 500.0, held: false };
+    let sense = Sense { pose, parameter: 0.5, gear: FIRST, engine: 500.0, held: false, wheels: [0.0; 4] };
     assert_eq!(driver.control(1000, &sense, false).steering, 127);
 }
 
@@ -94,6 +95,7 @@ fn under_ngp_a_standing_start_revs_in_neutral_and_a_bogged_car_starts_again() {
         gear,
         engine,
         held: false,
+        wheels: [0.0; 4],
     };
     let gap = driver.steps(SHIFT_GAP);
     let q = driver.control(gap, &sense(0.0, FIRST - 1, 105.0), false);
@@ -119,6 +121,7 @@ fn a_stuck_car_backs_up_shifts_back_to_first_and_gives_up_after_the_attempts() {
         gear,
         engine: 800.0,
         held: false,
+        wheels: [0.0; 4],
     };
     driver.control(1, &sense(10.0, 4), false);
     let mut step = 2;
@@ -169,6 +172,7 @@ fn flat_out_holds_the_top_speed_and_never_brakes() {
         gear: FIRST,
         engine: 500.0,
         held: false,
+        wheels: [0.0; 4],
     };
     let mut plain = driver(&track, TOP_SPEED);
     assert!(plain.target_speed(0.0) < TOP_SPEED);
@@ -196,6 +200,7 @@ fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
         gear: FIRST,
         engine: 500.0,
         held: false,
+        wheels: [0.0; 4],
     };
     let mut driver = driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 });
     assert_eq!(driver.target_speed(0.0), 8.0);
@@ -227,6 +232,7 @@ fn lugging_downshifts_in_the_measurement_modes_only() {
         gear,
         engine,
         held: false,
+        wheels: [0.0; 4],
     };
     let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
     flat.control(1000, &lug(FIRST, 20.0, 700.0), false);
@@ -252,6 +258,7 @@ fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
         gear: FIRST,
         engine: 500.0,
         held: false,
+        wheels: [0.0; 4],
     };
     let mut driver = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
     let q = driver.control(1000, &sense(10.0), false);
@@ -260,6 +267,89 @@ fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
     let q = driver.control(1001, &sense(25.0), false);
     assert!(driver.braking);
     assert_eq!((q.throttle, q.brake), (0, 255));
+}
+
+#[test]
+fn the_brake_test_holds_its_partial_pedal() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [25.0, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST,
+        engine: 500.0,
+        held: false,
+        wheels: [0.0; 4],
+    };
+    let mut driver = driver(&track, 80.0).with_brake_from(20.0).with_brake(Brake::Pedal(0.5));
+    let q = driver.control(1000, &sense, false);
+    assert_eq!((q.throttle, q.brake), (0, 128));
+}
+
+/// `--brake-declutch`: braking in third with the engine near idle, the plain brake test downshifts with the clutch
+/// out; declutched it holds the clutch in and shifts nothing, before and while braking only the latter.
+#[test]
+fn the_declutched_brake_test_holds_the_clutch_in_and_shifts_no_gear() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |speed: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST + 2,
+        engine: 100.0,
+        held: false,
+        wheels: [0.0; 4],
+    };
+    let mut plain = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
+    let q = plain.control(1000, &sense(25.0), false);
+    assert_eq!((q.brake, q.clutch, q.flags), (255, 0, 0x02));
+    let mut declutched = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0).with_declutch(true);
+    let q = declutched.control(1000, &sense(10.0), false);
+    assert_eq!((q.brake, q.clutch), (0, 0));
+    let q = declutched.control(1001, &sense(25.0), false);
+    assert_eq!((q.brake, q.clutch, q.flags), (255, 255, 0));
+    let q = declutched.control(3000, &sense(5.0), false);
+    assert_eq!((q.brake, q.clutch, q.flags), (255, 255, 0));
+}
+
+/// Threshold braking on a toy wheel at 720 Hz: a 1 kg·m² wheel of 0.3 m on 3000 N, a friction curve peaking at 1.0
+/// at a slip of 0.15 and falling to 0.8 locked, brakes of 3000 N·m at full pedal (four times what locks it), the car
+/// at 20 m/s. From a released pedal the slip settles within 0.01 of the target in 0.3 s, at the curve's peak and on
+/// its falling side, with the pedal off its stops; past the peak the full pedal would lock the wheel.
+#[test]
+fn threshold_braking_holds_the_slip_target() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let (v, radius, inertia, load, torque, dt) = (20.0f32, 0.3f32, 1.0f32, 3000.0f32, 3000.0f32, 1.0f32 / 720.0);
+    let mu = |s: f32| if s < 0.15 { s / 0.15 * (2.0 - s / 0.15) } else { 1.0 - 0.2 * (s - 0.15) / 0.85 };
+    for target in [0.1, 0.15, 0.3] {
+        let mut driver = driver(&track, 80.0).with_step(dt).with_brake_from(10.0).with_brake(Brake::slip(target));
+        let mut omega = v / radius;
+        let mut worst: f32 = 0.0;
+        for k in 0..720 {
+            let sense = Sense {
+                pose: CarPose {
+                    position: [5.0, 0.0, 0.0],
+                    orientation: [0.0, 0.0, half, half],
+                    velocity: [v, 0.0, 0.0],
+                },
+                parameter: 0.5,
+                gear: FIRST,
+                engine: 500.0,
+                held: false,
+                wheels: [omega * radius; 4],
+            };
+            let q = driver.control(1000 + k, &sense, false);
+            let slip = 1.0 - omega * radius / v;
+            if k >= 216 {
+                worst = worst.max((slip - target).abs());
+                assert!((1..255).contains(&q.brake), "K {target}: the pedal {} at step {k}", q.brake);
+            }
+            let fx = mu(slip.clamp(0.0, 1.0)) * load;
+            omega = (omega + (fx * radius - torque * f32::from(q.brake) / 255.0) / inertia * dt).max(0.0);
+        }
+        assert!(worst < 0.01, "K {target}: off by {worst}");
+    }
 }
 
 #[test]
@@ -331,6 +421,7 @@ fn an_outside_assistance_hold_brakes_and_ends_the_recovery() {
         gear: FIRST - 1,
         engine: 100.0,
         held: true,
+        wheels: [0.0; 4],
     };
     let q = driver.control(1000, &sense, false);
     assert_eq!((q.flags, q.throttle, q.brake), (0, 0, 255));

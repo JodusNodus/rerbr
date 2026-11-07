@@ -124,13 +124,14 @@ pub fn from_snapshot<'a>(
     Ok((Live::new(&snap, stage, settings).map_err(|e| format!("{path}: {e}"))?, &bytes[..first.offset], first.control))
 }
 
-/// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
-/// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m) and the
-/// steering (-1-1).
 /// The car's drive (`CDrive`, car +0x4b0), whose gearbox gives the trace's locked engine speed.
 const CAR_DRIVE: u32 = 0x4b0;
 
-const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked";
+/// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
+/// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m), the
+/// steering (-1-1), the engine speed the gear gives with the clutch engaged (rad/s, 0 in neutral) and the wheels'
+/// rim speeds |ωR| (m/s, FL FR RL RR, `Sense::wheels`).
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr";
 
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
@@ -175,6 +176,15 @@ pub fn drive(
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
+    driver = driver.with_declutch(measure.brake_declutch);
+    if let Some(k) = measure.brake_slip {
+        driver = driver.with_brake(Brake::slip(k));
+    } else if let Some(p) = measure.brake_pedal {
+        driver = driver.with_brake(Brake::Pedal(p));
+    }
+    // The brake test's end: the steps on the brake after the stop (`--brake-hold`), and those taken so far.
+    let hold = measure.brake_hold.map_or(0, |s| (s / live.step_clock().step).round() as u32);
+    let mut held = 0;
     let mut driver = with_lesson(driver, &live, stage);
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
     let mut trace = match &measure.trace_speed {
@@ -248,7 +258,8 @@ pub fn drive(
             let locked = u8::try_from(sense.gear).ok().filter(|&g| g >= 2).and_then(|g| gearbox.engine_speed(g));
             writeln!(
                 trace,
-                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0}",
+                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0} {:.3} {:.3} \
+                 {:.3} {:.3}",
                 sense.pose.speed(),
                 sense.gear,
                 sense.engine,
@@ -256,13 +267,20 @@ pub fn drive(
                 at[1],
                 at[2],
                 locked.unwrap_or(0.0),
+                sense.wheels[0],
+                sense.wheels[1],
+                sense.wheels[2],
+                sense.wheels[3],
             )
             .map_err(|e| format!("{path}: {e}"))?;
         }
         let speed = sense.pose.speed();
-        if driver.braking && speed < 0.3 {
-            drove.end = "the brake test is done".to_owned();
-            break;
+        if driver.braking && (held > 0 || speed < 0.3) {
+            if held == hold {
+                drove.end = "the brake test is done".to_owned();
+                break;
+            }
+            held += 1;
         }
         let off = sub(sense.pose.position, point(driver.track, sense.parameter));
         let height = off[2];

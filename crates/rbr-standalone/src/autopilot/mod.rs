@@ -37,6 +37,7 @@ use rbr_gameplay::control::QuantizedControl;
 use rbr_hybrid::pure;
 use rbr_recording::hud::HUD2_BYTES;
 use rbr_recording::pose::{self, CarPose};
+use rbr_recording::sound::FmodBlock;
 use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHEEL_BYTES};
 
 mod drive;
@@ -350,6 +351,8 @@ pub struct Sense {
     pub engine: f32,
     /// An outside assistance holds the car (`HELD`).
     pub held: bool,
+    /// The wheels' rim speeds |ωR| (m/s, FL FR RL RR), as the FMOD block reads them after the step.
+    pub wheels: [f32; 4],
 }
 
 /// The car's sense from an answer's frame and HUD record, and the drive's engine speed as the VCU reads it (the drive
@@ -365,6 +368,7 @@ pub(crate) fn sense(answer: &[u8], live: &Live) -> Sense {
         gear: read_u32(hud, 4).expect("HUD gear"),
         engine: mem.f32(mem.u32(mem.u32(pure::CAR_PTR) + DRIVE_STATE) + DRIVE_ENGINE_SPEED),
         held: (0.0..HELD).contains(&assist),
+        wheels: FmodBlock::read_from(mem.u32(pure::CAR_PTR), |a| mem.u32(a)).wheel_speeds.map(f32::abs),
     }
 }
 
@@ -420,22 +424,32 @@ pub struct Driver<'a> {
     circle_ramp: f32,
     /// The circle run's ramp clock (s): the target speed rises with it, from the first driven step on.
     circle_t: f32,
-    /// `--brake-from` (pace measurement): full brake once the speed reaches this (m/s), if any.
+    /// `--brake-from` (pace measurement): brake once the speed reaches this (m/s), if any.
     brake_at: Option<f32>,
     /// The brake test's brake is on (latched when the speed reaches `brake_at`).
     braking: bool,
+    /// The brake test's pedal: held (`--brake-pedal`, 1 unless given) or threshold braking (`--brake-slip`).
+    brake: Brake,
+    /// `--brake-declutch`: the brake test holds the clutch pedal in and shifts no gear (the engine off the wheels).
+    declutch: bool,
     /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
     grip: f32,
 }
 
-/// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from`, `--circle`, `--circle-ramp`,
-/// `--trace-speed`); the default drives as a race.
+/// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from` and its `--brake-pedal`,
+/// `--brake-slip`, `--brake-hold`, `--brake-declutch`, `--circle`, `--circle-ramp`, `--trace-speed`); the default drives as a race.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Measure {
     pub flat_out: bool,
     pub brake_from: Option<f32>,
+    /// `--brake-pedal P`, `--brake-slip K` (`Brake`) and `--brake-hold S` (s on the brake after the stop).
+    pub brake_pedal: Option<f32>,
+    pub brake_slip: Option<f32>,
+    pub brake_hold: Option<f32>,
+    /// `--brake-declutch`.
+    pub brake_declutch: bool,
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
@@ -467,6 +481,44 @@ impl std::str::FromStr for Circle {
             _ => Err(format!("--circle {s}: want X,Y,R with R > 0")),
         }
     }
+}
+
+/// The brake test's pedal (`--brake-from`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Brake {
+    /// `--brake-pedal P`: this pedal (0-1) held to the stop (1, full, unless given).
+    Pedal(f32),
+    /// `--brake-slip K`: threshold braking, the pedal modulated so the most-slipping wheel's slip ratio holds near
+    /// `target` (a driver's threshold braking: one pedal for the four wheels, not a per-wheel ABS). `held` is the
+    /// controller's integral, the pedal it settles on.
+    Slip { target: f32, held: f32 },
+}
+
+impl Brake {
+    /// Threshold braking at slip ratio `target`, from a released pedal.
+    pub fn slip(target: f32) -> Self {
+        Brake::Slip { target, held: 0.0 }
+    }
+}
+
+/// Threshold braking's PI controller on the slip error (target minus the most-slipping wheel's slip): the pedal is
+/// the integral, `SLIP_I` pedal per s per unit of error, plus `SLIP_P` times the error. Each step reads the slip
+/// after the step before (one step late, 1/720 s under NGP); the u8 pedal quantizes the sum, not the integral.
+/// Fiesta Rally2 from 100 and 50 km/h, declutched (RSF 568 tarmac, 345 gravel; NGP and the brush): the most-slipping
+/// wheel's slip above 3 m/s, past the onset, averages within 0.008 of K for K 0.1-0.7, spread 0.004-0.024 up to K 0.2,
+/// 0.02-0.04 at 0.3 and 0.02-0.09 at 0.5-0.7. In gear with clutch help on, the idling engine turning the wheels
+/// widens it (0.025 off K at 0.3, 0.43-0.50 at 0.5).
+const SLIP_I: f32 = 60.0;
+const SLIP_P: f32 = 1.0;
+/// The slip ratio's floor on the speed (m/s): under it the ratio is (v - ωR) / `SLIP_SPEED`, so the stop's last
+/// metre neither divides by zero nor takes the wheel speeds' noise as slip.
+const SLIP_SPEED: f32 = 1.0;
+
+/// The most-slipping wheel's slip ratio under braking, 1 - |ωR| / v, the car's speed for each wheel's ground speed
+/// (a straight stop).
+fn slip(sense: &Sense) -> f32 {
+    let v = sense.pose.speed();
+    sense.wheels.iter().map(|&w| (v - w) / v.max(SLIP_SPEED)).fold(f32::NEG_INFINITY, f32::max)
 }
 
 /// A judged speed band of a rally school lesson's filter bank (a check with both speed bounds, km/h): the car must
@@ -508,6 +560,8 @@ impl<'a> Driver<'a> {
             circle_t: 0.0,
             brake_at: None,
             braking: false,
+            brake: Brake::Pedal(1.0),
+            declutch: false,
             bands: Vec::new(),
             grip: 1.0,
         }
@@ -672,6 +726,16 @@ impl<'a> Driver<'a> {
     /// The driver braking fully from `v` m/s on (`--brake-from`, pace measurement) or never.
     pub fn with_brake_from(self, v: f32) -> Self {
         Self { brake_at: Some(v), ..self }
+    }
+
+    /// The brake test's pedal (`--brake-pedal`, `--brake-slip`).
+    pub fn with_brake(self, brake: Brake) -> Self {
+        Self { brake, ..self }
+    }
+
+    /// The brake test with the clutch pedal in and no gear changes from its start (`--brake-declutch`), or not.
+    pub fn with_declutch(self, declutch: bool) -> Self {
+        Self { declutch, ..self }
     }
 
     /// The driver holds no slowdown: `--flat-out` or `--circle`, where the curve, kink, tracking and prop-dodge
@@ -898,10 +962,23 @@ impl<'a> Driver<'a> {
                 }
             }
         }
+        let mut clutch = 0;
         if self.braking {
-            // The brake test: full foot brake with the computed steering (`--brake-from`).
+            // The brake test: its pedal with the computed steering (`--brake-from`); declutched, the idling engine
+            // cannot turn the wheels against the brake.
             throttle = 0.0;
-            brake = 1.0;
+            if self.declutch {
+                (flags, clutch) = (0, 255);
+            }
+            brake = match &mut self.brake {
+                Brake::Pedal(pedal) => *pedal,
+                Brake::Slip { target, held } => {
+                    let error = *target - slip(sense);
+                    let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+                    *held = (*held + SLIP_I * error * dt).clamp(0.0, 1.0);
+                    (*held + SLIP_P * error).clamp(0.0, 1.0)
+                }
+            };
         }
         self.pulling = self.mode == Mode::Drive && throttle > 0.0 && brake == 0.0;
         let pedal = |x: f32| (x * 255.0).round() as u8;
@@ -910,6 +987,7 @@ impl<'a> Driver<'a> {
             steering: (steer * 127.5).round().clamp(-127.0, 127.0) as i8,
             throttle: pedal(throttle),
             brake: pedal(brake),
+            clutch,
             ..QuantizedControl::default()
         }
     }
