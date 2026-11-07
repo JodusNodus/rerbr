@@ -410,7 +410,7 @@ def main():
     parser.add_argument("--traces", required=True, help="directory of <car>.trace (+<car>.log)")
     parser.add_argument("--csv", required=True, help="output CSV path")
     parser.add_argument("--surface", default="tarmac")
-    parser.add_argument("--stage", default="dry tarmac circle (map 85) + dry gravel brakes (map 61)")
+    parser.add_argument("--stage", default="dry tarmac: 504-O pace, 568-M brakes, map85 circle")
     parser.add_argument("--qualify", action="store_true",
                         help="print cars whose pace vtop reaches 150 km/h (brake-150 candidates)")
     args = parser.parse_args()
