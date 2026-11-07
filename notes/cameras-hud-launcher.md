@@ -63,6 +63,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `[launcher] engine_model`), passed after `--live` as `--engine-model realistic` to quick races, championship stages
   and lessons, with the car's `--car-group` and `--car-year` where the catalog has them (an RSF car both, an added
   car its group); NGP's adds nothing. A replay's header keeps it (the stepping command).
+  While the models are experimental a non-NGP run keeps no records (user decision): `rbr-standalone` makes `--saves`
+  dry (stage record, personal best, lesson verdict; `Args::keeps_records`), the quick race races the best ghost as
+  `--ghost` and never `--best-ghost`, and championship stages refuse to start (trials still run); `.rrp` replays work.
 
 - The game's quality settings and music are not offered (user decisions).
 - One game folder (user decision 2026-11-04): everything is read from the game folder in use (`Paths::game_root`:
