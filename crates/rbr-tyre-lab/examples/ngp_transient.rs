@@ -42,6 +42,7 @@ use rbr_physics::ngp::heat::{Airflow, TyreShape, TyreThermal};
 use rbr_physics::tyre::layout::{entries, Frame, WORDS};
 use rbr_physics::tyre::material::Material;
 use rbr_physics::tyre::store::TyreStore;
+use rbr_tyre_lab::write;
 
 /// The physics step, s.
 const DT: f32 = 1.0 / 720.0;
@@ -412,13 +413,6 @@ fn lateral_kin(v: f32, alpha_deg: f32, r: f32) -> (f32, f32, f32) {
 /// World `(vx, vz)` and spin at `v` m/s and slip ratio `kappa` (straight ahead).
 fn long_kin(v: f32, kappa: f32, r: f32) -> (f32, f32, f32) {
     (0.0, v, (1.0 + kappa) * v / r)
-}
-
-fn write(path: &std::path::Path, text: &str) {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()));
-    }
-    std::fs::write(path, text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
 }
 
 fn main() {

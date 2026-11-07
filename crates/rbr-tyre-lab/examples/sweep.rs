@@ -12,95 +12,12 @@
 //! force, and driving (faster spin) gives a negative longitudinal force. Peaks
 //! and mus below use absolute values.
 
-use rbr_physics::ngp::{inclination, outputs};
-use rbr_physics::tyre::friction_limits::{BlendPair, LimitsInput};
-use rbr_physics::tyre::patch_forces::{PatchForces, PatchInput};
-use rbr_physics::tyre::slip::slip_directions;
+use rbr_physics::ngp::inclination;
+use rbr_physics::tyre::patch_forces::PatchForces;
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
-use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
-
-struct LoadBlend {
-    weight: f32,
-    tables: [BlendPair; 4],
-    crn_stf: f32,
-    trc_stf: f32,
-}
-
-fn blend_at(p: &Params, fz: f32) -> LoadBlend {
-    // Segment on the load axis (clamped ends, same order as `locate`).
-    let ax = &p.load_axis;
-    let n = ax.len();
-    let (lo, hi, frac) = if fz <= ax[0] {
-        (0, 0, 0.0)
-    } else if fz >= ax[n - 1] {
-        (n - 1, n - 1, 0.0)
-    } else {
-        let mut lo = 0;
-        for k in 0..n - 1 {
-            if fz >= ax[k] && fz <= ax[k + 1] {
-                lo = k;
-                break;
-            }
-        }
-        let f = (fz - ax[lo]) / (ax[lo + 1] - ax[lo]);
-        (lo, lo + 1, f)
-    };
-    let pair = |t: &[f32]| BlendPair { at_a: t[lo], at_b: t[hi] };
-    LoadBlend {
-        weight: frac,
-        tables: [pair(&p.crn_my), pair(&p.trc_my), pair(&p.crn_pk), pair(&p.trc_pk)],
-        crn_stf: ((1.0 - frac) * p.crn_stf[lo] + p.crn_stf[hi] * frac) * p.stiffness_factor,
-        trc_stf: ((1.0 - frac) * p.trc_stf[lo] + p.trc_stf[hi] * frac) * p.stiffness_factor,
-    }
-}
-
-fn patch_input(p: &Params, b: &LoadBlend, fz: f32, patch: f32, vlat: f32, vlong: f32, spin: f32) -> PatchInput {
-    PatchInput {
-        speed: (vlat * vlat + vlong * vlong).sqrt(),
-        lateral_velocity: vlat,
-        longitudinal_velocity: vlong,
-        spin,
-        effective_radius: p.effective_radius,
-        static_friction: p.static_friction,
-        kinetic_friction: p.kinetic_friction,
-        reference_friction: p.reference_friction,
-        normal_force: fz,
-        cornering_stiffness: b.crn_stf,
-        traction_stiffness: b.trc_stf,
-        inclination_sin: 0.0,
-        patch_length: patch,
-        sink_depth: 0.0,
-        weight: b.weight,
-        tables: b.tables,
-    }
-}
-
-fn limits_at(
-    p: &Params,
-    b: &LoadBlend,
-    vlat: f32,
-    vlong: f32,
-    spin: f32,
-) -> rbr_physics::tyre::friction_limits::FrictionLimits {
-    let [lat_share, long_share, _] = slip_directions(spin, vlat, vlong, p.effective_radius);
-    outputs::friction_limits(&LimitsInput {
-        weight: b.weight,
-        cornering_friction: b.tables[0],
-        traction_friction: b.tables[1],
-        cornering_peak_slip: b.tables[2],
-        traction_peak_slip: b.tables[3],
-        lateral_share: lat_share,
-        longitudinal_share: long_share,
-        static_scale: p.static_friction * p.reference_friction,
-        kinetic_scale: p.kinetic_friction * p.reference_friction,
-        cornering_stiffness: b.crn_stf,
-        traction_stiffness: b.trc_stf,
-    })
-}
-
-fn write(path: &std::path::Path, text: &str) {
-    std::fs::write(path, text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-}
+use rbr_tyre_lab::ngp::{blend_at, limits_at, patch_input};
+use rbr_tyre_lab::probe::{interp, parse_probe, patch_at};
+use rbr_tyre_lab::write;
 
 fn main() {
     let mut probe = String::new();
