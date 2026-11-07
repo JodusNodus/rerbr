@@ -144,6 +144,11 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   The gravel circle runs at ramp 0.4: the repeatability check re-ran 7 cars at ramps 0.4/0.5/0.6 on two gravel
   spots, and the gentle ramp is the reproducible quasi-steady one (all 7 within 4 km/h on both spots), while the
   default 0.5 is a knife-edge on gravel (neutral cars blow through to 65+ pushing, loose ones saw at 52-56).
+- No-RSF successor: the same script now sweeps the added-cars folder's 102 packs (no RSF install, NGP 7.4.778)
+  into `/tmp/car-pace-retail/cars.csv`, keeping only the map-85 tarmac circle and map-61 gravel braking (pace and
+  tarmac braking need a ~1 km tarmac straight, longest retail ~185 m on map 45; no school compound matches 345's
+  compacted gravel). Over the 42 shared packs (same revisions): tarmac-grip ratios identical (corr 1.000, sd 0.000);
+  gravel-brake ratios not comparable (corr 0.20, sd 0.10; map 61 kicks +6 % uphill past ~250 m, inflating slow cars).
 - `car_pace` against the NGP physics' own runs (the sweep above, 50 cars): 0-60/100/140 km/h within 7.6 % RMS over
   29 cars (high-revving cars left out: the autopilot shifts near 7000 rpm, below their power peak; late launches
   too); grip on the 40 m circle 0.89-0.99 g, within 1.6 % RMS on the downforce alone (`TyrePerformancePct` and the
