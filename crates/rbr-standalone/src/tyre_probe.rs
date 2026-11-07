@@ -8,21 +8,19 @@ use std::path::Path;
 
 use rbr_hybrid::pure::CAR_PTR;
 use rbr_physics::mem::Mem;
+use rbr_physics::physics_core::layout::material;
 use rbr_physics::tyre::layout::{Table, WORDS};
 use rbr_physics::tyre::store::TyreStore;
+use rbr_physics::wheel::layout::{BLOCK_TAG_1, BLOCK_TAG_2, BLOCK_WEIGHT, CAR, DEF_MATERIALS, TYRE_SCRATCH};
 
 /// The wheel pointers in the car (`car+0x470`, `ngp::layout::car_init::WHEELS`).
 const WHEELS: u32 = 0x470;
-/// The middle ray block (`o+0xc20`, `probe::PROBE_BLOCK_2`): its weight (`+0x34`) and tags (`+0x38`, `+0x3c`).
+/// The middle ray block (`o+0xc20`, `wheel::layout::probe`'s `PROBE_BLOCK_2`): its weight and tags.
 const BLOCK_2: u32 = 0xC20;
-/// The physics definition global (`g_1659b6c`); the material manager is at its `+0x18`.
+/// The physics definition global (`g_1659b6c`); the material manager is at its `DEF_MATERIALS`.
 const CDEF_GLOBAL: u32 = 0x0165_9b6c;
-const DEF_MATERIALS: u32 = 0x18;
-/// A material entry's size (`CMaterial`, 0x160); the first is at the manager's `+0xc`.
-const MAT_SIZE: u32 = 0x160;
-const MAT_FIRST: u32 = 0x0c;
-/// The tyre scratch in the wheel (`this+0xf00`).
-const SCRATCH: u32 = 0xF00;
+/// A material's flags byte past its entry (the `CBitField` value at `+0x14c + 0xc`).
+const MAT_FLAGS: u32 = 0x158;
 /// The scratch's footprint the lab maps back (`load_frame` reads to `+0x50c`; the record's angle
 /// lives at `+0x5ac`), and the state, setup, wear-table and record sizes it maps with it. NGP's
 /// `.data` words come from `NGP_DATA` whole, as `boot::dump` maps them.
@@ -39,10 +37,9 @@ const NGP_AIR: u32 = 0x1017_1adc - NGP_FILE_BASE + rbr_physics::ngp::layout::run
 const NGP_RELAX: u32 = 0x1017_1478 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
 const NGP_FACTOR0: u32 = 0x1017_1470 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
 const NGP_FACTOR1: u32 = 0x1017_1474 - NGP_FILE_BASE + rbr_physics::ngp::layout::runtime::BASE;
-/// The wheel's spin (`+0xea0`), its tyre container (`+0x7f4`, the car speed at `+0x15f8`) and the
-/// scratch's convection boost (`+0x1c8`, read when in contact).
+/// The wheel's spin (`+0xea0`), the car's speed (`+0x15f8` of the wheel's car) and the scratch's
+/// convection boost (`+0x1c8`, read when in contact).
 const WHEEL_SPIN: u32 = 0xEA0;
-const WHEEL_TYRE: u32 = 0x7F4;
 const CAR_SPEED: u32 = 0x15F8;
 const SCRATCH_BOOST: u32 = 0x1C8;
 /// Dump every this many steps, plus the final step.
@@ -96,16 +93,17 @@ impl TyreProbe {
         writeln!(self.file, "# step {step} car {car:#010x}").map_err(failed)?;
         for k in 0..4 {
             let wheel = mem.u32(car + WHEELS + 4 * k);
-            let scratch_at = wheel + SCRATCH;
+            let scratch_at = wheel + TYRE_SCRATCH;
             let def = mem.u32(scratch_at + 0x10);
             let frame = mem.load_frame(scratch_at);
             let (s, st, d) = (&frame.scratch, &frame.state, &frame.setup);
             writeln!(self.file, "wheel: {k} scratch {scratch_at:#010x} def {def:#010x}").map_err(failed)?;
-            let (tag1, tag2) = (mem.u32(wheel + BLOCK_2 + 0x38), mem.u32(wheel + BLOCK_2 + 0x3C));
-            writeln!(self.file, "block_tags: {tag1} {tag2} {:.6}", mem.f32(wheel + BLOCK_2 + 0x34),).map_err(failed)?;
+            let block = wheel + BLOCK_2;
+            let (tag1, tag2) = (mem.u32(block + BLOCK_TAG_1), mem.u32(block + BLOCK_TAG_2));
+            writeln!(self.file, "block_tags: {tag1} {tag2} {:.6}", mem.f32(block + BLOCK_WEIGHT)).map_err(failed)?;
             let manager = mem.u32(CDEF_GLOBAL) + DEF_MATERIALS;
             for tag in [tag1, tag2, 0] {
-                let entry = manager + MAT_FIRST + tag * MAT_SIZE;
+                let entry = material::entry(manager, tag);
                 writeln!(
                     self.file,
                     "mat_entry {tag}: {:.6} {:.6} {:.6} {:.6} {:.6} {:.6} {:#010x} {:#010x} flag:{:#04x}",
@@ -117,7 +115,7 @@ impl TyreProbe {
                     mem.f32(entry + 0xF8),
                     mem.u32(entry + 0x144),
                     mem.u32(entry + 0x148),
-                    mem.u8(manager + tag * MAT_SIZE + 0x164),
+                    mem.u8(entry + MAT_FLAGS),
                 )
                 .map_err(failed)?;
             }
@@ -298,7 +296,7 @@ pub fn write_image(mem: &Mem, step: u32, path: &Path) -> Result<(), String> {
     meta.push_str(&format!("car: {car:#010x}\n"));
     for k in 0..4 {
         let wheel = try_u32(mem, car + WHEELS + 4 * k).ok_or(format!("wheel {k}: unmapped"))?;
-        let scratch_at = wheel + SCRATCH;
+        let scratch_at = wheel + TYRE_SCRATCH;
         let (state, def, record, wear) = (
             try_u32(mem, scratch_at + 0x14).ok_or(format!("wheel {k}: state unmapped"))?,
             try_u32(mem, scratch_at + 0x10).ok_or(format!("wheel {k}: setup unmapped"))?,
@@ -323,8 +321,7 @@ pub fn write_image(mem: &Mem, step: u32, path: &Path) -> Result<(), String> {
         let speed = try_f32(mem, scratch_at + 0x360).unwrap_or_else(missing);
         let fz = try_f32(mem, scratch_at + 0x314).unwrap_or_else(missing);
         let spin = try_f32(mem, wheel + WHEEL_SPIN).unwrap_or_else(missing);
-        let car_speed =
-            try_u32(mem, wheel + WHEEL_TYRE).and_then(|t| try_f32(mem, t + CAR_SPEED)).unwrap_or_else(missing);
+        let car_speed = try_u32(mem, wheel + CAR).and_then(|c| try_f32(mem, c + CAR_SPEED)).unwrap_or_else(missing);
         let kind = try_u32(mem, def + 0x1C).unwrap_or(0);
         meta.push_str(&format!(
             "wheel {k}: wheel {wheel:#010x} scratch {scratch_at:#010x} state {state:#010x} \
