@@ -184,6 +184,14 @@ Death and idle-table lookup (`1004b8e0`, jmp `0x4e6657`): `rbr-hybrid/src/ngp.rs
 `engine_dies`), `ngp::engine`. Every car
 has 10-15 idle knots (42 community cars, `physics.rbz` 13-15); 0 and 1 come only from patched snapshots.
 
+Engine model hook (the first part of ReRBR experimental physics (built on NGP 7), `rbr-engine`,
+`notes/engine-model.md`): with a model set on the thread (`rbr_hybrid::ngp::set_engine_model`, `rbr-standalone
+--physics experimental`, whose profile names each system's model, `rbr-standalone/src/profile.rs`) the running engine's torque is the model's over
+1.05 in place of `ngp_engine::torque`; wear, death, the ring block, the atmosphere, `Sim8E20` and the not-running
+return stay, and the speed ring moves as NGP's formula moves it (idle model only), giving the model the stall. Inputs:
+air pressure `10171ad8` and temperature `10171adc` (`apply_atmosphere`'s order), engine temperature `CState +0x23c` (K,
+358-363 on slot 5's idle and rev, new every tenth step). With none set the code is NGP's (rsf_compare drive2/5 84084).
+
 ### Unreachable guards
 
 The bindings in `rbr-hybrid/src/ngp.rs` keep these as declines:

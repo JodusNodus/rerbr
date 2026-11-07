@@ -500,7 +500,12 @@ impl Form {
         let (stage, weather, preset) = self.selection_from(rand).ok()?;
         // Only the quick race races and keeps a ghost (`rbr_gameplay::ghost::clears`: the championship clears it).
         let words = weather.ghost_words(&self.season);
-        let ghost = self.ghost.viewer_args(&self.records(), stage.map, &words);
+        // The experimental physics keeps no records: the best ghost is raced, not replaced.
+        let ghost = match self.physics.keeps_records() {
+            true => self.ghost.clone(),
+            false => self.ghost.unrecorded(stage.map),
+        };
+        let ghost = ghost.viewer_args(&self.records(), stage.map, &words);
         // The quick race keeps the stage record and the personal best in the game's save files of the player's folder.
         let saves = ["--saves".to_owned(), SaveDir::new(&self.records()).path.display().to_string()];
         let mut extra = [saves.as_slice(), &["--profile".to_owned(), self.championship.profile.clone()]].concat();
@@ -726,6 +731,7 @@ impl Form {
         if self.head_gasket > 1 {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
+        args.extend(self.physics.args(car));
         Some(args)
     }
 
@@ -826,6 +832,7 @@ mod tests {
     use super::*;
     use crate::catalog::Catalog;
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
+    use crate::physics::PhysicsProfile;
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
     use rbr_formats::data::Data;
@@ -1425,6 +1432,87 @@ mod tests {
         let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
         let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
         assert!(!rally.iter().any(|a| a == "--clock" || a == "--start-time"), "{rally:?}");
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// The experimental physics reaches `rbr-standalone` (after `--live`) in a quick race, a championship stage
+    /// and a school lesson; NGP's, the default, adds nothing.
+    #[test]
+    fn the_physics_reaches_the_stepping_process() {
+        // The car's group and year go with the model where the catalog has them: an RSF car both, an added car its
+        // group, an archive car neither.
+        let rsf = Car { group: Some("Rally 2".into()), year: Some(2019), ..Car::default() };
+        let added = Car { group: Some("Group A8".into()), added: true, ..Car::default() };
+        assert!(PhysicsProfile::Ngp.args(&rsf).is_empty());
+        let realistic = ["--physics", "experimental"];
+        let with = |extra: &[&str]| realistic.iter().chain(extra).map(|a| a.to_string()).collect::<Vec<_>>();
+        assert_eq!(PhysicsProfile::Experimental.args(&rsf), with(&["--car-group", "Rally 2", "--car-year", "2019"]));
+        assert_eq!(PhysicsProfile::Experimental.args(&added), with(&["--car-group", "Group A8"]));
+        assert_eq!(PhysicsProfile::Experimental.args(&Car::default()), with(&[]));
+        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
+            return;
+        };
+        let here = crate::test_dir("command-physics");
+        for (line, wanted) in
+            [("", None), ("physics = ngp\n", None), ("physics = experimental\n", Some("experimental"))]
+        {
+            let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nghost = best\n{line}");
+            let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+            let mut form = load(&start, Settings::parse(&text)).unwrap();
+            form.read_only = true;
+            let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
+            // Only NGP's runs race for the best ghost (`--best-ghost` writes a new best).
+            assert_eq!(quick.contains(&"--best-ghost".to_owned()), wanted.is_none(), "{text}: {quick:?}");
+            let (stage, weather) = form.selection().unwrap();
+            let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
+            let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
+            let lesson = Lesson::new(0).unwrap();
+            let draws = Draws { row: None, wear: 0 };
+            let (stage, weather) = form.catalog.stage_weather(&form.season, lesson.map(), Preset::Good, draws).unwrap();
+            let car = form.car().cloned().unwrap();
+            let launch = LaunchCar { car, tyre: None, setup: None, school: Some(lesson) };
+            let school = form.launch_with(stage, launch, form.options, weather, Vec::new(), Vec::new()).unwrap();
+            let picked = form.car().cloned().unwrap();
+            assert!(picked.group.is_some() && picked.year.is_some(), "{picked:?}");
+            let (group, year) = match wanted {
+                Some(_) => (picked.group.clone(), picked.year.map(|y| y.to_string())),
+                None => (None, None),
+            };
+            for args in [&quick, &rally, &school] {
+                let live = args.iter().position(|a| a == "--live").unwrap();
+                assert_eq!(value(&args[live..], "--physics").as_deref(), wanted, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--car-group"), group, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--car-year"), year, "{text}: {args:?}");
+                assert!(!args[..live].contains(&"--physics".to_owned()), "{args:?}");
+            }
+        }
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// With the experimental physics a championship stage does not start, and says why (no results would be saved);
+    /// the championship is left as it was.
+    #[test]
+    fn a_championship_stage_needs_ngp_7_physics() {
+        let (Some(data), Some(patch)) = (env("RBR_DATA"), env("RBR_PATCH")) else {
+            return;
+        };
+        let here = crate::test_dir("command-physics-championship");
+        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+        let mut form = load(&start, Settings::parse("[launcher]\nphysics = experimental\n")).unwrap();
+        form.read_only = true;
+        assert!(!form.physics.keeps_records());
+        let stage = crate::championship_page::StageStart {
+            map: 54,
+            conditions: rbr_season::event::Conditions::Dry,
+            clock: 12.0,
+            tyre: 4,
+            setup: rbr_gameplay::setup::SeasonSetup::Current,
+            damage: rbr_season::config::Damage::Off,
+            args: vec!["--championship".to_owned(), "rookie".to_owned()],
+        };
+        form.start_championship_stage(stage);
+        assert_eq!(form.status, crate::championship_page::launch::CHAMPIONSHIP_NGP_ONLY);
+        assert!(form.child.is_none());
         std::fs::remove_dir_all(&here).unwrap();
     }
 

@@ -117,6 +117,13 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 
 ## Decisions
 
+- 2026-11-07 (user): an opt-in experimental physics, "ReRBR experimental (built on NGP 7)" (ours; the launcher's
+  Settings > Physics, `--physics experimental`): NGP 7's physics with some systems replaced by ours, one crate and one
+  seam each. The first is the engine model (`rbr-engine`): a mean-value engine from each car's data in place of NGP's
+  torque formula, in NGP's engine wrapper only ([engine-model.md](engine-model.md); explained in
+  [docs/experimental-physics.md](../docs/experimental-physics.md), which the launcher links). NGP 7 stays the default and
+  bit-exact. While experimental, a run with it saves no records, ghosts or championship results; its replays carry the
+  choice. It replaces the input-side throttle model, which is not merged.
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
   (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
   `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.

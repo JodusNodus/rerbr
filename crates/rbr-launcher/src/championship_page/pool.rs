@@ -1,8 +1,9 @@
 //! The championship's stage pool: the catalog's stages that can start (retail, RSF, BTB) as `rbr_season::config::StageRef`s,
 //! each with its surface, whether it is a community one, and its length from its timed road (the `.trk` driveline
-//! between the `.dls` start and finish, as `rbr_season::pace::timed_road` times it; a BTB folder's `driveline.ini`). A full RSF install has hundreds of stages: the drivelines are read on a
-//! thread once and kept in the player's folder (`cache/drivelines/<map>.line`, with the source's path, size and time,
-//! so a changed stage is read again); a stage whose driveline does not read (RSF-encrypted, missing) is left out. The
+//! between the `.dls` start and finish, as `rbr_season::pace::timed_road` times it; a BTB folder's the same, from the
+//! `.trk` and `.dls` its `driveline.ini` and `pacenotes.ini` build). A full RSF install has hundreds of stages: the
+//! drivelines are read on a thread once and kept in the player's folder (`cache/drivelines/<map>.line`, with the
+//! source's and its markers' path, size and time, so a changed stage is read again); a stage whose driveline does not read (RSF-encrypted, missing) is left out. The
 //! reference times read the kept driveline back.
 
 use std::path::{Path, PathBuf};
@@ -101,7 +102,7 @@ fn source_file(data: &Data, source: &Source) -> Option<PathBuf> {
     }
 }
 
-/// What a kept driveline was read from: the file's path, size and modification time.
+/// What a kept driveline was read from: the file's path, size and modification time (the source's and its markers').
 fn fingerprint(path: &Path) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
     let time = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
@@ -110,19 +111,26 @@ fn fingerprint(path: &Path) -> Option<String> {
 
 /// The stage's timed road, from the source file.
 fn read_driveline(path: &Path, source: &Source) -> Option<TimedRoad> {
+    let line = |bytes: &[u8]| {
+        trk::parse(bytes).ok()?.chunks.into_iter().find_map(|c| match c.payload {
+            trk::ChunkPayload::DriveLine(d) => Some(d),
+            _ => None,
+        })
+    };
     let road = match source {
         Source::Trk(_) => {
             let bytes = std::fs::read(path).ok().filter(|b| !stage_files::encrypted(b))?;
-            let line = trk::parse(&bytes).ok()?.chunks.into_iter().find_map(|c| match c.payload {
-                trk::ChunkPayload::DriveLine(d) => Some(d),
-                _ => None,
-            })?;
             let markers = std::fs::read(path.with_extension("dls")).ok().and_then(|b| markers::parse(&b).ok());
-            pace::timed_road(&line, markers.as_ref())
+            pace::timed_road(&line(&bytes)?, markers.as_ref())
         }
+        // The `.trk` driveline and `.dls` markers the game drives the stage with (`rbr_btb::stage::prepare`), so it
+        // is timed as the others are: the spline between the start and the finish.
         Source::Btb(folder) => {
-            let line = rbr_btb::track::Track::open(folder).ok()?.driveline().ok()?;
-            TimedRoad { points: line.points.iter().map(|p| p.position.map(|v| v as f32)).collect(), splits: Vec::new() }
+            let track = rbr_btb::track::Track::open(folder).ok()?;
+            let trk = rbr_btb::classic::trk(&track.driveline().ok()?.points, 0, &[]);
+            let notes = track.pace_notes().ok();
+            let markers = notes.and_then(|n| markers::parse(&rbr_btb::classic::dls(&n.notes)).ok());
+            pace::timed_road(&line(&trk)?, markers.as_ref())
         }
     };
     (road.points.len() >= 2).then_some(road)
@@ -169,7 +177,12 @@ fn write_cached(cache: &Path, key: &str, print: &str, road: &TimedRoad) -> std::
 /// The item's timed road, kept or read (and kept); `None` when it does not read.
 fn driveline(data: &Data, cache: &Path, item: &Item) -> Option<TimedRoad> {
     let path = source_file(data, &item.source)?;
-    let print = fingerprint(&path)?;
+    // The start and finish come from the markers' file: a `.trk`'s `.dls`, a BTB folder's `pacenotes.ini`.
+    let marks = match &item.source {
+        Source::Trk(_) => path.with_extension("dls"),
+        Source::Btb(_) => path.with_file_name("pacenotes.ini"),
+    };
+    let print = format!("{}|{}", fingerprint(&path)?, fingerprint(&marks).unwrap_or_default());
     if let Some(road) = read_cached(cache, &item.stage.key, Some(&print)) {
         return Some(road);
     }
@@ -328,5 +341,22 @@ mod tests {
         let again = read(&data, &cache, found, &done, &stop);
         assert!((again[0].length - 10.0).abs() < 1e-3, "{}", again[0].length);
         std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// A BTB folder is timed as the game drives it: the driveline's spline between its pace notes' start and finish.
+    #[test]
+    fn a_btb_road_runs_from_its_start_to_its_finish_note() {
+        let folder = crate::test_dir("pool-btb-road");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("track.ini"), "[INFO]\nname=T\nphysics=gravel\n").unwrap();
+        let points: String =
+            (0..11).map(|k| format!("K{k}={},0,0,100,0,0,{},0\n", 100 * k, 100 * k)).collect::<Vec<_>>().concat();
+        std::fs::write(folder.join("driveline.ini"), format!("[DRIVELINE]\ncount=11\n{points}")).unwrap();
+        let notes = "[PACENOTES]\ncount=2\n[P0]\ntype=21\ndistance=100\nflag=0\n[P1]\ntype=22\ndistance=900\nflag=0\n";
+        std::fs::write(folder.join("pacenotes.ini"), notes).unwrap();
+        let road = read_driveline(&folder.join("driveline.ini"), &Source::Btb(folder.clone())).unwrap();
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert!((rbr_season::pace::path_length(&road.points) - 800.0).abs() < 1.0, "{:?}", road.points.len());
+        assert!(road.points.len() > 11, "the spline's samples, not the 11 points");
     }
 }
