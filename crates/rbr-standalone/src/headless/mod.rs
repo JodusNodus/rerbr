@@ -589,7 +589,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::
         }
     };
     let mask = pure::static_mask(&frames);
-    let car = crate::race::engine_car(race, stage.car);
+    let car = crate::race::engine_car(args, race, stage.car);
     let mut ok = true;
     let boot = ["boot".to_string()];
     let sources: &[String] = if args.boot { &boot } else { &args.snapshots };

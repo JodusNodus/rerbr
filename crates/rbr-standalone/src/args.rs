@@ -123,6 +123,10 @@ pub struct Args {
     /// `--engine-model NAME` (ours, experimental): the engine model in place of NGP's torque formula
     /// (`rbr_engine::model`); `ngp`, the default, leaves NGP's.
     pub engine_model: String,
+    /// `--car-group NAME` and `--car-year N`: the car's group and year for the engine model (`rbr_engine::Car`), over
+    /// the RSF install's.
+    pub car_group: Option<String>,
+    pub car_year: Option<u32>,
 }
 
 /// `value` for `flag` as a number: the flag names a bad value.
@@ -145,7 +149,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed, autopilot and headless runs, not with --twin (default ngp, NGP's; no effect without NGP)
+       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed, autopilot and headless runs, not with --twin (default ngp, NGP's; no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
@@ -262,6 +266,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--setup" => args.setup = Some(PathBuf::from(value)),
             "--ngp-physics" => args.ngp_physics = Some(PathBuf::from(value)),
             "--rsf-car" => args.rsf_car = Some(value),
+            "--car-group" => args.car_group = Some(value),
+            "--car-year" => args.car_year = Some(parsed("--car-year", &value)?),
             "--engine-model" if rbr_engine::NAMES.contains(&value.as_str()) => args.engine_model = value,
             "--engine-model" => return Err(format!("--engine-model {value}: one of {}", rbr_engine::NAMES.join(", "))),
             "--ffb-sensitivity" => {
@@ -631,6 +637,9 @@ mod tests {
             (format!("{LIVE} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
             (format!("{BOOT} --engine-model ngp"), |a| assert_eq!(a.engine_model, "ngp")),
             (format!("{REC} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
+            (format!("{LIVE} --car-group Rally_2 --car-year 2019"), |a| {
+                assert_eq!((a.car_group.as_deref(), a.car_year), (Some("Rally_2"), Some(2019)))
+            }),
             (format!("{REC} --top-speed 12.5"), |a| assert_eq!(a.top_speed, Some(12.5))),
             (format!("{REC} --autopilot OUT --aim 1,2"), |a| {
                 assert_eq!(a.aim, Some(autopilot::Aim { at: [1.0, 2.0], coast: 0 }))
@@ -790,6 +799,7 @@ mod tests {
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
             (format!("{LIVE} --engine-model fast"), "--engine-model fast: one of ngp, realistic"),
+            (format!("{LIVE} --car-year new"), "--car-year new"),
             (format!("{BOOT} --wear muddy"), "--wear muddy: new, normal or worn"),
             (format!("{BOOT} --wetness humid"), "--wetness humid: dry, damp or wet"),
             (format!("{BOOT} --surface ice"), "--surface ice: gravel, tarmac or snow"),

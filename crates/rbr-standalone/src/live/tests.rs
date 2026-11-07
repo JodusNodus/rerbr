@@ -851,7 +851,7 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
         let close = |a: f32, b: f32| (a - b).abs() <= 1e-5 * b.abs().max(1.0);
 
         let boot = || Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
-        let car = crate::race::engine_car(Some(&race), race.car);
+        let car = crate::race::engine_car(&crate::args::Args::default(), Some(&race), race.car);
         assert_eq!(car, rbr_engine::Car { folder: "s_i2003".into(), ..rbr_engine::Car::default() });
         let params = crate::physics::engine_params(&boot().playback, car.clone());
         let torque_knots: Vec<(f32, f32)> = (0..16)
@@ -950,7 +950,7 @@ fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
 fn the_realistic_engine_model_idles_revs_to_the_limiter_and_launches() {
     quick_race(|data, stage, race| {
         let boot = || Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
-        let car = crate::race::engine_car(Some(&race), race.car);
+        let car = crate::race::engine_car(&crate::args::Args::default(), Some(&race), race.car);
         let params = crate::physics::engine_params(&boot().playback, car.clone());
         if let Err(e) = rbr_engine::model("realistic", &params) {
             eprintln!("skipped: {e}");

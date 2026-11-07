@@ -143,21 +143,101 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
 }
 
 /// The car's identity for an engine model (`rbr_engine::Car`): a pack car's folder (an RSF car's under
-/// `rsfdata/cars/`, without `.zip`) with its group and year when the RSF install (`RBR_RSF`) lists it, else the slot's
-/// physics folder (`t_coroll`).
-pub fn engine_car(race: Option<&boot::Race>, slot: u32) -> rbr_engine::Car {
+/// `rsfdata/cars/`, without `.zip`), else the slot's physics folder (`t_coroll`); its group and year from
+/// `--car-group` and `--car-year` (the launcher's catalog), else from the RSF install listing the pack ([`rsf_root`],
+/// else `RBR_RSF`).
+pub fn engine_car(args: &Args, race: Option<&boot::Race>, slot: u32) -> rbr_engine::Car {
+    let given = |group: Option<String>, year: Option<u32>| (args.car_group.clone().or(group), args.car_year.or(year));
     let Some(car) = race.and_then(|race| race.car_pack.as_ref()) else {
         let folder = setup::CAR_FOLDERS
             .get(slot as usize)
             .map_or(format!("car {slot}"), |dir| dir.trim_start_matches("Physics/").trim_end_matches('/').to_string());
-        return rbr_engine::Car { folder, ..rbr_engine::Car::default() };
+        let (group, year) = given(None, None);
+        return rbr_engine::Car { folder, group, year };
     };
-    let name = car.pack.path().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let path = car.pack.path();
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let folder = match &car.pack {
         car_pack::Pack::Zip(_) => name.strip_suffix(".zip").map(str::to_string).unwrap_or(name),
         car_pack::Pack::Dir(_) => name,
     };
-    let rsf = std::env::var_os("RBR_RSF").and_then(|root| rsf::Install::open(Path::new(&root)).ok());
-    let listed = rsf.as_ref().and_then(|rsf| rsf.find_pack(car.pack.path()));
-    rbr_engine::Car { group: listed.and_then(|c| c.group.clone()), year: listed.and_then(|c| c.year), folder }
+    let (group, year) = if args.car_group.is_some() && args.car_year.is_some() {
+        given(None, None)
+    } else {
+        let listed = |root: &Path| {
+            let install = rsf::Install::open(root).ok()?;
+            install.find_pack(path).map(|c| (c.group.clone(), c.year))
+        };
+        let env = std::env::var_os("RBR_RSF");
+        let found = rsf_root(path).and_then(listed).or_else(|| env.as_deref().map(Path::new).and_then(listed));
+        let (group, year) = found.unwrap_or_default();
+        given(group, year)
+    };
+    rbr_engine::Car { folder, group, year }
+}
+
+/// The RSF install holding the pack at `path`: `<root>` of `<root>/rsfdata/cars/<pack>`.
+fn rsf_root(path: &Path) -> Option<&Path> {
+    let cars = path.parent()?;
+    let rsfdata = cars.parent()?;
+    let named = |p: &Path, name: &str| p.file_name().is_some_and(|n| n.eq_ignore_ascii_case(name));
+    (named(cars, "cars") && named(rsfdata, "rsfdata")).then(|| rsfdata.parent()).flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn an_rsf_pack_s_install_is_two_folders_up() {
+        let root = rsf_root(Path::new("/games/rbr/rsfdata/cars/Ford_Fiesta_Rally2_ngp7.zip"));
+        assert_eq!(root, Some(Path::new("/games/rbr")));
+        assert_eq!(rsf_root(Path::new("/games/rbr/RSFdata/Cars/pack")), Some(Path::new("/games/rbr")));
+        assert_eq!(rsf_root(Path::new("/home/me/packs/pack")), None);
+        assert_eq!(rsf_root(Path::new("pack")), None);
+    }
+
+    /// A pack car's group and year: the flags over the install that holds the pack, which comes before `RBR_RSF`.
+    #[test]
+    fn a_pack_car_s_group_and_year_come_from_the_flags_else_its_install() {
+        let root = std::env::temp_dir().join(format!("rbr-engine-car-{}", std::process::id()));
+        let cache = root.join("rsfdata/cache");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::create_dir_all(root.join("rsfdata/cars/My_Car_ngp7")).unwrap();
+        let files = [
+            ("cars.json", r#"[{"id":"7","name":"My Car","path":"My_Car_ngp7","base_group_id":"3","carmodel_id":"1"}]"#),
+            ("cargroups.json", r#"[{"id":"3","name":"Rally 2"}]"#),
+            ("cars_data.json", r#"[{"car_id":"7","year":"2019"}]"#),
+            ("carmodels.json", "[]"),
+        ];
+        for (name, text) in files {
+            std::fs::write(cache.join(name), text).unwrap();
+        }
+        let pack = car_pack::Pack::open(&root.join("rsfdata/cars/My_Car_ngp7")).unwrap();
+        let ngp = PathBuf::from("physics.rbz");
+        let weather =
+            Weather { map: 54, row: None, letter: 0, cloud: 0, cloud_letter: 0, preset: 0, wetness: 0, wear: 0 };
+        let race = boot::Race {
+            car_pack: Some(boot::CarPack { pack, tyre_brand: "pirelli" }),
+            ..boot::Race::quick_race(54, car_pack::SLOT, 4, weather, ngp)
+        };
+        let car = |group: Option<&str>, year| {
+            let args = Args { car_group: group.map(str::to_owned), car_year: year, ..Args::default() };
+            engine_car(&args, Some(&race), car_pack::SLOT)
+        };
+        let folder = "My_Car_ngp7".to_owned();
+        let listed = rbr_engine::Car { folder: folder.clone(), group: Some("Rally 2".into()), year: Some(2019) };
+        assert_eq!(car(None, None), listed);
+        assert_eq!(car(Some("Group A8"), None), rbr_engine::Car { group: Some("Group A8".into()), ..listed.clone() });
+        assert_eq!(car(None, Some(1998)), rbr_engine::Car { year: Some(1998), ..listed.clone() });
+        let given = rbr_engine::Car { folder, group: Some("WRC 2.0".into()), year: Some(2001) };
+        assert_eq!(car(Some("WRC 2.0"), Some(2001)), given);
+        std::fs::remove_dir_all(&root).unwrap();
+
+        // A slot car: its folder, and the flags alone.
+        let args = Args { car_group: Some("Group N".into()), ..Args::default() };
+        let slot = rbr_engine::Car { folder: "s_i2003".into(), group: Some("Group N".into()), year: None };
+        assert_eq!(engine_car(&args, None, 5), slot);
+    }
 }
