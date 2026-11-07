@@ -106,6 +106,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
 - Added cars (gvrc.de packs in the player's `cars/`, listed in `cars/cars.ini`) keep their group and drive
   train from the list's `cat`/`trans` (`RallyN` as `Rally N`, bare `A5`..`A8` as `Group A5`..;
   `car_packs::backfill`), so the browser classes and drive-filters them like the other pack cars.
+- gvrc.de's list (6.175) gives 102 NGP cars, all 22 classes, ~1.5 GiB; all 102 add with their own model and drive
+  headless (20000 steps on track-10_O) from retail data and gvrc's NGP alone, no RSF (2026-11-07). A physics zip's
+  pack is the folder holding `common.lsp`; folders beside it are dropped (the Fiesta Rally2 and i20 N Rally2 zips
+  carry a stray `<pack> - rev1/`). The original eight (`cat=Original`) are the 2004 retail physics, not NGP's.
 - Stage and car pickers retain collection, search, filters, sort, highlight and scroll on reopening and restart
   (`[stage_browser]` / `[car_browser]` in the player's settings, `browser_state`); highlights use map numbers
   and car names across rescans; Favourites shortcuts still open that collection explicitly (2026-11-01).

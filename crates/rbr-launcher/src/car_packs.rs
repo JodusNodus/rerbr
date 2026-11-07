@@ -96,30 +96,34 @@ struct PhysicsZip {
 }
 
 impl PhysicsZip {
-    /// The zip at `path`: its files in one `<pack>/` folder (as RSF's `rsfdata/cars/<pack>.zip`), or at its top (the
-    /// pack folder is then the download's name, `_` for spaces).
+    /// The zip at `path`: its files at its top (the pack folder is then the download's name, `_` for spaces), or in
+    /// the `<pack>/` folder holding `common.lsp` (as RSF's `rsfdata/cars/<pack>.zip`). Folders beside that one are
+    /// left out: gvrc.de's Fiesta Rally2 and i20 N Rally2 add a `<pack> - rev1/` holding only an old about file.
     fn open(path: &Path) -> Result<PhysicsZip, Fail> {
         let error = |e: String| format!("{}: {e}", path.display());
         let mut files = Vec::new();
-        let mut size = 0;
         for entry in crate::archive::zip_entries(path).map_err(error)? {
             let parts = entry.parts.ok_or_else(|| error(format!("a bad entry path {}", entry.name)))?;
             if !entry.dir {
-                size += entry.size;
-                files.push(parts);
+                files.push((parts, entry.size));
             }
         }
-        let first = files.first().map(|p| p[0].clone()).unwrap_or_default();
-        let nested = files.iter().all(|p| p.len() > 1 && p[0] == first);
-        let download = path.file_name().and_then(|n| strip_end(n.to_str()?, PHYSICS)).unwrap_or_default();
-        let folder = match nested {
-            true => first,
-            false => download.replace(' ', "_"),
+        let common = |p: &[String], depth: usize| p.len() == depth && p[depth - 1].eq_ignore_ascii_case("common.lsp");
+        let nested = match files.iter().any(|(p, _)| common(p, 1)) {
+            true => None,
+            false => files.iter().find(|(p, _)| common(p, 2)).map(|(p, _)| p[0].clone()),
         };
+        let download = path.file_name().and_then(|n| strip_end(n.to_str()?, PHYSICS)).unwrap_or_default();
+        let folder = nested.clone().unwrap_or_else(|| download.replace(' ', "_"));
         let folder = safe_folder(&folder).ok_or_else(|| error(format!("a bad pack folder name {folder}")))?;
-        let entries: Vec<_> =
-            files.into_iter().map(|p| (p.clone(), if nested { p[1..].to_vec() } else { p })).collect();
-        if !entries.iter().any(|(_, p)| p.len() == 1 && p[0].eq_ignore_ascii_case("common.lsp")) {
+        let kept: Vec<_> = match &nested {
+            Some(top) => files.into_iter().filter(|(p, _)| p.len() > 1 && p[0] == *top).collect(),
+            None => files,
+        };
+        let size = kept.iter().map(|(_, n)| n).sum();
+        let below = if nested.is_some() { 1 } else { 0 };
+        let entries: Vec<_> = kept.into_iter().map(|(p, _)| (p.clone(), p[below..].to_vec())).collect();
+        if !entries.iter().any(|(_, p)| common(p, 1)) {
             return Err(error("no common.lsp: is it an NGP physics pack?".into()));
         }
         Ok(PhysicsZip { path: path.to_owned(), folder, entries, size })
@@ -755,6 +759,26 @@ mod tests {
             zip.write_all(text.as_bytes()).unwrap();
         }
         zip.finish().unwrap();
+    }
+
+    /// A pack folder with a stray folder beside it (gvrc.de's Fiesta Rally2): the pack's files alone are kept.
+    #[test]
+    fn a_stray_folder_beside_the_pack_is_left_out() {
+        let root = crate::test_dir("car-stray");
+        let path = root.join(format!("Ford Fiesta Rally2{PHYSICS}"));
+        let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+        let options = zip::write::SimpleFileOptions::default();
+        for name in ["Pack/common.lsp", "Pack/setups/d_gravel.lsp", "Pack - rev1/Ford Fiesta Rally2"] {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(b"x").unwrap();
+        }
+        zip.finish().unwrap();
+        let pack = PhysicsZip::open(&path).unwrap();
+        assert_eq!(pack.folder, "Pack");
+        let below: Vec<String> = pack.entries.iter().map(|(_, p)| p.join("/")).collect();
+        assert_eq!(below, ["common.lsp", "setups/d_gravel.lsp"]);
+        assert_eq!(pack.size, 2);
+        fs::remove_dir_all(&root).unwrap();
     }
 
     /// A model download: `<Model> - Model.7z` holding `Cars/<folder>/<file>.sgc` and a texture.
