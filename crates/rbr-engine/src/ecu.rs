@@ -28,13 +28,14 @@ pub const LIMITER_RANGE: f64 = 200.0;
 /// No combustion below this speed, rpm (report §3).
 pub const FIRE_RPM: f64 = 150.0;
 /// Anti-lag (report §5.6, R1 §4.2): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most 3 s,
-/// re-armed by a pedal over 0.3; plate 15 %, 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the
-/// unburnt fuel burning in the manifold.
+/// re-armed by a pedal over 0.3; the throttle open 15 % of its area, 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost
+/// aim, 60 % of the unburnt fuel burning in the manifold. The kick is an area (lift 0.31): 15 % lift opens 5 % of
+/// the area, which held 0.3 bar in the manifold and let the turbo run down (`notes/engine-model.md`).
 pub const ALS_ARM: f64 = 0.45;
 pub const ALS_LIFT: f64 = 0.1;
 pub const ALS_REARM: f64 = 0.3;
 pub const ALS_TIMEOUT: f64 = 3.0;
-pub const ALS_PLATE: f64 = 0.15;
+pub const ALS_AREA: f64 = 0.15;
 pub const ALS_RETARD: f64 = 60.0;
 pub const ALS_TRIM: f64 = 0.2;
 pub const ALS_CUT: f64 = 0.3;

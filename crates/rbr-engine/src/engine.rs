@@ -347,7 +347,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         }
     };
     if anti_lag {
-        target = target.max(ecu::ALS_PLATE);
+        target = target.max(gas::plate_lift(ecu::ALS_AREA));
     }
     s.plate = match spec.class.actuation {
         Actuation::Cable => target,
