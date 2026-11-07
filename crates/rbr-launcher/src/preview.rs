@@ -410,9 +410,12 @@ impl StagePictures {
     }
 }
 
+/// A car's frames' key: a pack car's model file, which RSF's and the added copy of one car (one key) may not share.
 fn car_key(car: &Car) -> String {
     match &car.physics {
-        catalog::Physics::Pack(_) => format!("pack {}", car.key),
+        catalog::Physics::Pack(_) => {
+            format!("pack {} {}", car.key, car.model_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default())
+        }
         catalog::Physics::Archive => car.name.clone(),
     }
 }

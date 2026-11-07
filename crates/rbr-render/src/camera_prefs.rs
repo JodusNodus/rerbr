@@ -9,12 +9,12 @@
 //! head = off
 //! COROLLA cockpit = 0 0.04 -0.1 -2
 //! COROLLA bonnet = 0 0.02 0
-//! rsf-24 chase = 0 0.5 -1
+//! pack-mitsubishilancerevoixn4 chase = 0 0.5 -1
 //! ```
 //!
-//! A car is its `Cars.ini` folder for the game's cars and `rsf-<id>` for an RSF car ([`car_key`]). A nudge is
-//! right, up and forward in metres in the car's frame, and for the fixed views optionally a tilt in degrees up,
-//! written only when it is not 0; the chase takes up (its height) and forward (nearer the car;
+//! A car is the launcher's `--car-key` (a pack car's `pack-<pack>`), else its `Cars.ini` folder ([`car_key`]). A
+//! nudge is right, up and forward in metres in the car's frame, and for the fixed views optionally a tilt in degrees
+//! up, written only when it is not 0; the chase takes up (its height) and forward (nearer the car;
 //! [`crate::game_camera::Settings::nudged`]). `head = off` keeps the in-car view fixed to the car ([`crate::head`];
 //! on unless set off, from the pause menu's Camera page or the launcher's Graphics page).
 
@@ -49,12 +49,9 @@ pub struct CameraPrefs {
     pub cars: BTreeMap<String, Nudges>,
 }
 
-/// The key of a car: `rsf-<id>` for an RSF car, else the game car's folder in capitals.
-pub fn car_key(folder: &str, rsf_id: Option<u32>) -> String {
-    match rsf_id {
-        Some(id) => format!("rsf-{id}"),
-        None => folder.to_ascii_uppercase(),
-    }
+/// The key of a game car without the launcher's `--car-key`: its folder in capitals.
+pub fn car_key(folder: &str) -> String {
+    folder.to_ascii_uppercase()
 }
 
 impl CameraPrefs {
@@ -270,7 +267,6 @@ mod tests {
 
     #[test]
     fn car_keys() {
-        assert_eq!(car_key("corolla", None), "COROLLA");
-        assert_eq!(car_key("evo_IX", Some(24)), "rsf-24");
+        assert_eq!(car_key("corolla"), "COROLLA");
     }
 }

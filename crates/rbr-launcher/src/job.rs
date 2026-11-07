@@ -50,8 +50,8 @@ impl<T: Send + 'static> Job<T> {
         Job { progress, cancel, thread: Some(thread) }
     }
 
-    /// The work's result, once it has ended.
-    fn result(&mut self) -> Option<Result<T, Fail>> {
+    /// The work's result, once it has ended (for work shown without a progress line).
+    pub fn result(&mut self) -> Option<Result<T, Fail>> {
         if !self.thread.as_ref()?.is_finished() {
             return None;
         }
