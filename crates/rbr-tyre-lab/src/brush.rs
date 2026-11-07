@@ -1,10 +1,11 @@
-//! Candidate tyre model "brush-v0" (ours, experimental).
+//! Candidate tyre model "brush-v1" (ours, experimental).
 //!
-//! A steady-state brush with Pacejka's theoretical slips, a Grosch-like
-//! sliding-speed friction drop, load-sensitive stiffness and friction, bulk
-//! temperature / wear / pressure factors, a hydroplaning-style wet loss, and a
-//! single-contact-point transient. Pure functions over plain values (`f64` is
-//! fine here: nothing in the lab needs bit-exactness).
+//! A steady-state brush with Pacejka's theoretical slips, the Stribeck
+//! friction of Canudas de Wit et al.'s distributed LuGre (brush) tyre model,
+//! load-sensitive stiffness and friction, bulk temperature / wear / pressure
+//! factors, a hydroplaning-style wet loss, and a single-contact-point
+//! transient. Pure functions over plain values (`f64` is fine here: nothing
+//! in the lab needs bit-exactness).
 //!
 //! Lab code only: nothing here is wired into the game, and nothing in
 //! `rbr-physics` / `rbr-hybrid` / `rbr-standalone` changes.
@@ -35,27 +36,49 @@
 // Model constants (spec; from papers or ours — never NGP's).
 // ---------------------------------------------------------------------------
 
-/// Load exponent of stiffness: C ~ Fz^M_C. Target 0.5-0.65 from the load
-/// sweep of Singh & Sivaramakrishnan (Goodyear, arXiv 2305.18422).
-pub const M_C: f64 = 0.6;
-/// Load exponent of peak force: peak F ~ Fz^N_MU. Lateral target ~0.87 from
-/// the same paper's load sweep; the longitudinal value is an assumption
-/// (flagged: no separate source).
-pub const N_MU: f64 = 0.87;
-/// Sliding-speed scale of the Grosch-like drop, m/s. Direction (falling with
-/// sliding speed) follows Grosch/Persson; the value and the Lorentzian form
-/// are our assumption.
-pub const V_MU: f64 = 5.0;
+// The two published Magic Formula sets used below for the longitudinal axis:
+// the MF 6.1 example set (255/55R20, Fz0 6752 N, 260 kPa) shipped with
+// MFeval.jl, read in full, and the passenger set Chrono's TMeasy
+// `GuessPassCar70Par` normalises "from Pacejka book" data (provenance
+// secondary). Means of the two are used; the note gives both.
+
+/// Load exponent of the cornering stiffness, Cy ~ Fz^M_CY: 0.6 from the load
+/// sweep of Singh & Sivaramakrishnan (Goodyear, arXiv 2305.18422); the two
+/// sets give 0.47 and 0.69.
+pub const M_CY: f64 = 0.6;
+/// Load exponent of the longitudinal slip stiffness, Cx ~ Fz^M_CX: mean of the
+/// sets' 1.31 and 1.08 (brush theory, C = 2 c_p a^2 with a^2 ~ Fz, gives 1).
+pub const M_CX: f64 = 1.2;
+/// Longitudinal over cornering stiffness at the nominal load: mean of the
+/// sets' 1.62 and 1.15.
+pub const KX_OVER_KY: f64 = 1.4;
+/// Load exponent of the lateral peak force, Fy ~ Fz^N_MU_Y: ~0.87 from the
+/// Goodyear load sweep.
+pub const N_MU_Y: f64 = 0.87;
+/// Load exponent of the longitudinal peak force: the sets' longitudinal
+/// friction falls with load at 0.72 and 0.39 of the lateral rate (mean 0.55),
+/// so 1 - 0.55 (1 - N_MU_Y) = 0.93.
+pub const N_MU_X: f64 = 0.93;
+/// Stribeck velocity of the friction curve g(Vs) = mu_C + (mu_S - mu_C)
+/// exp(-sqrt(Vs / V_S)), m/s, and its Coulomb over static ratio: Canudas de
+/// Wit, Tsiotras, Velenis, Basset & Gissinger, Vehicle System Dynamics 39
+/// (2003) 189-226, eqs. 21-22 and Table 1 (mu_C 0.8, mu_S 1.55, v_s 6.57 m/s),
+/// their distributed LuGre (brush) model fitted to straight-line braking on a
+/// dry test track. The level (mu_S) is calibrated; shape and ratio are theirs.
+pub const V_S: f64 = 6.57;
+pub const MU_C_OVER_S: f64 = 0.8 / 1.55;
 /// Floor of the rolling speed, m/s (keeps the theoretical slips finite).
 pub const V_MIN: f64 = 0.5;
 /// Relaxation speed coefficient K_V, s (Vera et al., Sensors 22:6380, 2022:
-/// sigma_y = -0.14 + 0.021 Vx + 1.9e-4 Fz - 1.6e-8 Fz^2 for a passenger tyre;
-/// transferring the Vx slope to a rally tyre is an assumption).
+/// sigma_y = -0.14 + 0.021 Vx + 1.9e-4 Fz - 1.6e-8 Fz^2 on a car tyre bench).
+/// Motorcycle tyres also relax over longer distances at speed (Cossalter, Lot
+/// & Massaro, Motorcycle Dynamics, ch. 1); MF-Swift has no speed term (TNO,
+/// 2013). Keeping the slope for a rally tyre is ours.
 pub const K_V: f64 = 0.021;
-/// Water film scale: film height h = W times 1.0 mm. Well-established
-/// direction (deeper water / lower speed margin hurts); the 1.0 mm scale is
-/// ours.
-pub const FILM_MAX: f64 = 1e-3;
+/// Water film at W = 1: h = W times 0.7 mm. Measured films on drained
+/// highways: 0.18 mm at 1.5 mm/h rain, 0.56-0.85 mm at 7.8-10.2 mm/h (PLOS
+/// ONE 2025, Table 2); ASTM E274 wets to ~0.5 mm (secondary).
+pub const FILM_MAX: f64 = 0.7e-3;
 /// Reference film in the loss blend, 0.5 mm (ours).
 pub const FILM_REF: f64 = 0.5e-3;
 /// Wet friction kept at full hydroplaning (ours).
@@ -134,27 +157,28 @@ pub fn pressure_factor(p: f64, cal: &Calibration) -> f64 {
     val[val.len() - 1]
 }
 
-/// Stiffness at load `fz`: C0 (Fz/Fz0)^M_C, times the bulk-temperature, wear
-/// and pressure factors normalised to the calibration point.
-pub fn stiffness_at(fz: f64, tb: f64, d: f64, p: f64, c0: f64, cal: &Calibration) -> f64 {
-    c0 * (fz / cal.fz0).powf(M_C)
+/// Stiffness at load `fz`: C0 (Fz/Fz0)^m (`M_CY` or `M_CX`), times the
+/// bulk-temperature, wear and pressure factors normalised to the calibration
+/// point.
+pub fn stiffness_at(fz: f64, tb: f64, d: f64, p: f64, c0: f64, m: f64, cal: &Calibration) -> f64 {
+    c0 * (fz / cal.fz0).powf(m)
         * (temp_stiffness_factor(tb) / temp_stiffness_factor(cal.t_cal))
         * (wear_stiffness_factor(d) / wear_stiffness_factor(cal.d_cal))
         * (pressure_factor(p, cal) / cal.pf_cal)
 }
 
-/// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (NASA/Horne, reproduced
-/// in Zhang et al., Lubricants 13:76, 2025), times (0.6 + 0.4 d) for tread
-/// depth. The tread term is ours.
+/// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (Horne's deep-water
+/// law, NASA TN D-2056; metric form in Zhang et al., Lubricants 13:76, 2025),
+/// times (0.75 + 0.25 d) for tread depth: ADAC's 2026 worn-tyre test lost
+/// 17-22 % of the longitudinal aquaplaning speed at 2 of ~8 mm (d = 0.25).
 pub fn hydroplaning_speed(p: f64, d: f64) -> f64 {
-    6.36 * (p / 1000.0).sqrt() * (0.6 + 0.4 * d) / 3.6
+    6.36 * (p / 1000.0).sqrt() * (0.75 + 0.25 * d) / 3.6
 }
 
-/// Wet loss factor on friction (our construction except the speed formula):
-/// the film height is h = W times 1.0 mm, the loss is L = h/(h + 0.5 mm) times
-/// min(1, (V/vp)^2), and friction is multiplied by (1 - 0.6 L), applied on top
-/// of the wet surface mu. The direction (deeper water and lower speed margin
-/// hurt) is well established; the film scale, the reference film and the 0.6
+/// Wet loss factor on friction, applied on top of the wet surface mu: the
+/// loss is L = h/(h + 0.5 mm) times min(1, (V/vp)^2) with the film h = W times
+/// 0.7 mm, and friction is multiplied by (1 - 0.6 L). Film and vp are
+/// sourced (above); the ramp, its 0.5 mm, the quadratic shape and the 0.6
 /// weight are ours.
 pub fn wet_loss(w: f64, v: f64, p: f64, d: f64) -> f64 {
     if w <= 0.0 {
@@ -175,17 +199,19 @@ pub fn wear_gain(d: f64, w: f64) -> f64 {
 
 /// Friction magnitude of one axis at sliding speed `vs`: mu_k (scaled by the
 /// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
-/// kinetic ratio) / (1 + (Vs/V_MU)^2), times the load sensitivity
-/// (Fz/Fz0)^(N_MU-1), NGP's temperature grip factor, the wet-faded dry-wear
-/// gain (normalised) and the wet loss. Both axes scale mu_s with the surface
-/// static ratio and mu_k with the surface kinetic ratio, since the static
-/// scale sets the adhesion ceiling and the kinetic scale the sliding floor.
+/// kinetic ratio) exp(-sqrt(Vs/V_S)), times the load sensitivity
+/// (Fz/Fz0)^(n-1) (`N_MU_Y` or `N_MU_X`), NGP's temperature grip factor, the
+/// wet-faded dry-wear gain (normalised) and the wet loss. Both axes scale
+/// mu_s with the surface static ratio and mu_k with the surface kinetic
+/// ratio, since the static scale sets the adhesion ceiling and the kinetic
+/// scale the sliding floor.
 #[allow(clippy::too_many_arguments)]
 pub fn mu_axis(
     mu_s: f64,
     mu_k: f64,
     vs: f64,
     fz: f64,
+    n: f64,
     stat_ratio: f64,
     kin_ratio: f64,
     temp_grip: f64,
@@ -196,8 +222,8 @@ pub fn mu_axis(
 ) -> f64 {
     let ks = mu_s * stat_ratio;
     let kk = mu_k * kin_ratio;
-    let base = kk + (ks - kk) / (1.0 + (vs / V_MU).powi(2));
-    base * (fz / cal.fz0).powf(N_MU - 1.0)
+    let base = kk + (ks - kk) * (-(vs / V_S).sqrt()).exp();
+    base * (fz / cal.fz0).powf(n - 1.0)
         * (temp_grip / cal.temp_grip_cal)
         * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal))
         * wet
@@ -259,8 +285,8 @@ pub struct EvalOutput {
 /// psi): Mz = mu Fz a theta_y sy (1 - 3 psi + 3 psi^2 - psi^3) for psi < 1,
 /// else 0; the trail -Mz/Fy tends to a/3 at small slip.
 pub fn eval(x: &EvalInput, cal: &Calibration) -> EvalOutput {
-    let cy = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, cal.cy0, cal);
-    let cx = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, cal.cx0, cal);
+    let cy = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, cal.cy0, M_CY, cal);
+    let cx = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure, cal.cx0, M_CX, cal);
     // Slip velocities (NGP slip.rs long_slip_velocity sign) and rolling speed.
     let vsx = x.vx + x.spin * x.radius;
     let vsy = x.vy;
@@ -275,6 +301,7 @@ pub fn eval(x: &EvalInput, cal: &Calibration) -> EvalOutput {
         cal.mu_xk,
         vs,
         x.fz,
+        N_MU_X,
         x.surf_static / cal.surf_s_cal,
         x.surf_kinetic / cal.surf_k_cal,
         x.temp_grip,
@@ -288,6 +315,7 @@ pub fn eval(x: &EvalInput, cal: &Calibration) -> EvalOutput {
         cal.mu_yk,
         vs,
         x.fz,
+        N_MU_Y,
         x.surf_static / cal.surf_s_cal,
         x.surf_kinetic / cal.surf_k_cal,
         x.temp_grip,
@@ -439,7 +467,7 @@ mod tests {
         assert!(o.psi > 1.0, "psi {}", o.psi);
         let f = (o.fx * o.fx + o.fy * o.fy).sqrt();
         let vs = (x.vy * x.vy + (x.vx + x.spin * x.radius).powi(2)).sqrt();
-        let mu = cal.mu_yk + (cal.mu_ys - cal.mu_yk) / (1.0 + (vs / V_MU).powi(2));
+        let mu = cal.mu_yk + (cal.mu_ys - cal.mu_yk) * (-(vs / V_S).sqrt()).exp();
         assert!((f / (mu * x.fz) - 1.0).abs() < 1e-9, "f {f} mu Fz {}", mu * x.fz);
         // Direction: opposes the sliding velocity.
         assert!(o.fy < 0.0 && o.fx <= 0.0, "fx {} fy {}", o.fx, o.fy);
@@ -477,9 +505,9 @@ mod tests {
         // doubling the static surface mu doubles the zero-speed mu, doubling
         // the kinetic one doubles the infinite-speed mu.
         let cal = synth_cal();
-        let slow = mu_axis(1.3, 1.0, 0.0, 4000.0, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        let slow = mu_axis(1.3, 1.0, 0.0, 4000.0, N_MU_Y, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((slow / 2.6 - 1.0).abs() < 1e-12, "slow {slow}");
-        let fast = mu_axis(1.3, 1.0, 1e9, 4000.0, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        let fast = mu_axis(1.3, 1.0, 1e9, 4000.0, N_MU_Y, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((fast / 2.0 - 1.0).abs() < 1e-12, "fast {fast}");
     }
 
@@ -499,7 +527,7 @@ mod tests {
         let vsy = v * alpha.sin();
         let vx = -v * alpha.cos();
         let vr = v * alpha.cos();
-        let cy = stiffness_at(4000.0, 300.0, 1.0, 200000.0, cal.cy0, &cal);
+        let cy = stiffness_at(4000.0, 300.0, 1.0, 200000.0, cal.cy0, M_CY, &cal);
         let k_y = 400000.0;
         let (sig_y, _) = sigma_lengths(cy, cy, k_y, 1.0, vx);
         let dt = 1.0 / 720.0;

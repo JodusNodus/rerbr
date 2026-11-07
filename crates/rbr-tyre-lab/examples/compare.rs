@@ -1,8 +1,8 @@
-//! Compare the brush-v0 candidate against NGP's swept tyre and published targets.
+//! Compare the brush-v1 candidate against NGP's swept tyre and published targets.
 //!
 //! Research tooling (ours, experimental): reads a `--tyre-probe` dump,
 //! evaluates NGP's pure tyre functions (through `rbr-physics`, never copied)
-//! Solves the brush-v0 [`Calibration`][brush::Calibration] at run time from
+//! Solves the brush-v1 [`Calibration`][brush::Calibration] at run time from
 //! NGP's swept peaks/slopes and the probe's nominal point (no NGP-derived
 //! numbers live in committed code), evaluates the candidate over the same
 //! slips and loads, and writes CSVs plus `summary.md` into the output dir
@@ -17,7 +17,9 @@
 
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
-use rbr_tyre_lab::brush::{self, Calibration, EvalInput, EvalOutput, M_C, N_MU, V_MIN};
+use rbr_tyre_lab::brush::{
+    self, Calibration, EvalInput, EvalOutput, FILM_MAX, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X, N_MU_Y, V_MIN, V_S,
+};
 use rbr_tyre_lab::calibrate::{calibrate, CalPoint, CalTargets};
 use rbr_tyre_lab::ngp::{blend_at, patch_input, LoadBlend};
 use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
@@ -318,25 +320,19 @@ fn main() {
         fz0,
         v,
         peak_lat: lat_rows[2].peak,
-        // Spec calibration: the candidate's slide force is 0.80 x its own
-        // peak (not NGP's slide ratio), per axis.
-        slide_lat: 0.8 * lat_rows[2].peak,
         fit_lat: lat_rows[2].calpha,
         peak_lon: lon_rows[2].peak_drive,
-        slide_lon: 0.8 * lon_rows[2].peak_drive,
-        fit_lon: lon_rows[2].cx,
     };
     let cal = calibrate(&targets, &point);
     println!(
-        "calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N/rad, mu_s/mu_k lateral {:.4}/{:.4} (ratio {:.3}), longitudinal {:.4}/{:.4} (ratio {:.3})",
+        "calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N (x {KX_OVER_KY}), mu_s/mu_k lateral {:.4}/{:.4}, longitudinal {:.4}/{:.4} (ratio {:.3})",
         cal.cy0,
         cal.cx0,
         cal.mu_ys,
         cal.mu_yk,
-        cal.mu_ys / cal.mu_yk,
         cal.mu_xs,
         cal.mu_xk,
-        cal.mu_xs / cal.mu_xk,
+        MU_C_OVER_S,
     );
 
     // Dry nominal options: the probe's own surface and grip, so every factor
@@ -442,6 +438,10 @@ fn main() {
     let n_cand = log_exponent(&fzs, &lat_cand_rows.iter().map(|x| x.peak).collect::<Vec<_>>());
     let e_ngp = log_exponent(&fzs, &lat_rows.iter().map(|x| x.calpha).collect::<Vec<_>>());
     let e_cand = log_exponent(&fzs, &lat_cand_rows.iter().map(|x| x.calpha).collect::<Vec<_>>());
+    let nx_ngp = log_exponent(&fzs, &lon_rows.iter().map(|x| x.peak_drive).collect::<Vec<_>>());
+    let nx_cand = log_exponent(&fzs, &lon_cand_rows.iter().map(|x| x.peak_drive).collect::<Vec<_>>());
+    let ex_ngp = log_exponent(&fzs, &lon_rows.iter().map(|x| x.cx).collect::<Vec<_>>());
+    let ex_cand = log_exponent(&fzs, &lon_cand_rows.iter().map(|x| x.cx).collect::<Vec<_>>());
 
     // --- peak mu_y vs speed ----------------------------------------------------
     let mut speed_csv = String::from("V,peak_mu_ngp,peak_mu_cand\n");
@@ -587,14 +587,15 @@ fn main() {
     // --- relaxation lengths --------------------------------------------------------
     let k_y = f64::from(base.carcass_lat) * f64::from(base.stiffness_factor);
     let k_x = f64::from(base.carcass_tor) * f64::from(base.stiffness_factor) / (r * r);
-    let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, &cal);
+    let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, M_CY, &cal);
+    let cx_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cx0, M_CX, &cal);
     let ngp_sigma = lat_rows[2].calpha / k_y;
-    let mut sigma_csv = String::from("V,sigma_ngp,sigma_cand\n");
-    let mut sigma_rows: Vec<(f64, f64)> = Vec::new();
+    let mut sigma_csv = String::from("V,sigma_ngp,sigma_y_cand,sigma_x_cand\n");
+    let mut sigma_rows: Vec<(f64, f64, f64)> = Vec::new();
     for vv in [5.0, 10.0, 20.0, 30.0] {
-        let (sy, _) = brush::sigma_lengths(cy_fz0, cy_fz0, k_y, k_x, vv);
-        sigma_csv.push_str(&format!("{vv:.0},{ngp_sigma:.4},{sy:.4}\n"));
-        sigma_rows.push((vv, sy));
+        let (sy, sx) = brush::sigma_lengths(cy_fz0, cx_fz0, k_y, k_x, vv);
+        sigma_csv.push_str(&format!("{vv:.0},{ngp_sigma:.4},{sy:.4},{sx:.4}\n"));
+        sigma_rows.push((vv, sy, sx));
     }
     write(&out.join("sigma.csv"), &sigma_csv);
 
@@ -645,7 +646,7 @@ fn main() {
             let spin = -vlong / r;
             best = best.max(cand_forces(&base, &cloud, fz0, vlat, vlong, spin, &o, &cal).fy.abs() / fz0);
         }
-        let calpha_c = brush::stiffness_at(fz0, tb, point.d_cal, point.p_cal, cal.cy0, &cal);
+        let calpha_c = brush::stiffness_at(fz0, tb, point.d_cal, point.p_cal, cal.cy0, M_CY, &cal);
         // NGP cornering stiffness has no bulk-temperature term.
         temp_csv.push_str(&format!("{name},{:.0},{:.0},{:.4},{:.4}\n", lat_rows[2].calpha, calpha_c, n_peak, best));
         temp_rows.push((name, lat_rows[2].calpha, calpha_c, n_peak, best));
@@ -792,9 +793,8 @@ fn main() {
 
     // --- locked wheel over peak mu_x at 10 m/s ----------------------------------------------
     // Vs = 10 m/s at lock (kappa = -1): NGP's sliding mu over its drive peak
-    // vs the candidate's, dry (target <= 0.885: dry ABS beats locked by 13%,
-    // Kebbati et al., Sustainability 15:6945, 2023) and wet (0.24/0.35).
-    // The candidate's V_MU is not retuned for this row; it reports as is.
+    // vs the candidate's, dry and wet, against the published ratios in the
+    // summary.
     let mut lock_csv = String::from("case,mu_peak_ngp,mu_lock_ngp,mu_peak_cand,mu_lock_cand\n");
     let mut lock_rows: Vec<(&str, f64, f64, f64, f64)> = Vec::new();
     for (name, ss, sk, w) in [
@@ -843,8 +843,8 @@ fn main() {
         let vsy = vv * alpha.sin();
         let vx = -vv * alpha.cos();
         let vr = vv * alpha.cos();
-        let cy = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, &cal);
-        let cx = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cx0, &cal);
+        let cy = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cy0, M_CY, &cal);
+        let cx = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.p_cal, cal.cx0, M_CX, &cal);
         let (sig_y, sig_x) = brush::sigma_lengths(cy, cx, k_y, k_x, vx);
         let o = dry_opts();
         // Steady force at the step slip.
@@ -872,7 +872,7 @@ fn main() {
 
     // --- summary ------------------------------------------------------------------------------
     let mut md = String::new();
-    md.push_str("# brush-v0 vs NGP vs published targets\n\n");
+    md.push_str("# brush-v1 vs NGP vs published targets\n\n");
     md.push_str(&format!(
         "Nominal point: Ford Fiesta Rally2, dry tarmac, {:.0} N, V = {:.0} m/s, R {:.4} m, P {:.0} kPa, \
 bulk {:.1} K, tread remaining {:.4}, NGP temp grip {:.4}. Calibration solved at run time from the probe dump \
@@ -886,76 +886,88 @@ and NGP's sweep (no NGP-derived numbers in committed code).\n\n",
         point.temp_grip_cal,
     ));
     md.push_str(&format!(
-        "Calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N/rad, mu_s/mu_k lateral {:.4}/{:.4} (ratio {:.3}), \
-longitudinal {:.4}/{:.4} (ratio {:.3}).\n\n",
-        cal.cy0,
-        cal.cx0,
-        cal.mu_ys,
-        cal.mu_yk,
-        cal.mu_ys / cal.mu_yk,
-        cal.mu_xs,
-        cal.mu_xk,
-        cal.mu_xs / cal.mu_xk,
+        "Calibrated to NGP's lateral peak and slope and longitudinal peak: Cy0 {:.1} N/rad; Cx0 {:.1} N \
+({KX_OVER_KY} Cy0, published); mu_s/mu_k lateral {:.4}/{:.4}, longitudinal {:.4}/{:.4} (Coulomb/static \
+{:.3}, published).\n\n",
+        cal.cy0, cal.cx0, cal.mu_ys, cal.mu_yk, cal.mu_xs, cal.mu_xk, MU_C_OVER_S,
     ));
     md.push_str("Signs: NGP raw (positive lateral velocity -> negative force); peaks/mus are absolute values.\n\n");
 
     md.push_str("## peak mu_y vs load (V = 15 m/s)\n\n");
-    md.push_str("| Fz (N) | NGP | brush-v0 | target |\n| --- | --- | --- | --- |\n");
+    md.push_str("| Fz (N) | NGP | brush-v1 | target |\n| --- | --- | --- | --- |\n");
     for (n, c) in lat_rows.iter().zip(lat_cand_rows.iter()) {
         md.push_str(&format!("| {:.0} | {:.3} | {:.3} | |\n", n.fz, n.peak / n.fz, c.peak / c.fz));
     }
     md.push_str(&format!(
-        "\nLoad exponent peak Fy ~ Fz^n: NGP {n_ngp:.3} | brush-v0 {n_cand:.3} | ~0.87 \
+        "\nLoad exponent peak Fy ~ Fz^n: NGP {n_ngp:.3} | brush-v1 {n_cand:.3} | ~0.87 \
 (Singh & Sivaramakrishnan load sweep).\n\n"
     ));
 
     md.push_str("## cornering stiffness vs load (fit over alpha <= 2 deg)\n\n");
-    md.push_str("| Fz (N) | NGP C_alpha | brush-v0 C_alpha |\n| --- | --- | --- |\n");
+    md.push_str("| Fz (N) | NGP C_alpha | brush-v1 C_alpha |\n| --- | --- | --- |\n");
     for (n, c) in lat_rows.iter().zip(lat_cand_rows.iter()) {
         md.push_str(&format!("| {:.0} | {:.0} | {:.0} |\n", n.fz, n.calpha, c.calpha));
     }
     md.push_str(&format!(
-        "\nLoad exponent C_alpha ~ Fz^m: NGP {e_ngp:.3} | brush-v0 {e_cand:.3} (M_C = {M_C}) | 0.5-0.65 (same paper).\n\n"
+        "\nLoad exponent C_alpha ~ Fz^m: NGP {e_ngp:.3} | brush-v1 {e_cand:.3} (M_CY = {M_CY}) | ~0.6 (same paper); \
+0.47/0.69 (MF 6.1 255/55R20 example / Pacejka-book passenger set).\n\n"
     ));
 
     md.push_str("## peak slip angle (lateral) and peak slip ratio (longitudinal)\n\n");
     md.push_str(
-        "| Fz (N) | NGP alpha | brush-v0 alpha | NGP kappa drive/brake | brush-v0 kappa drive/brake | target |\n",
+        "| Fz (N) | NGP alpha | brush-v1 alpha | NGP kappa drive/brake | brush-v1 kappa drive/brake | target |\n",
     );
     md.push_str("| --- | --- | --- | --- | --- | --- |\n");
     for (((n, c), l), lc) in lat_rows.iter().zip(lat_cand_rows.iter()).zip(lon_rows.iter()).zip(lon_cand_rows.iter()) {
         md.push_str(&format!(
-            "| {:.0} | {:.2} deg | {:.2} deg | {:.3}/{:.3} | {:.3}/{:.3} | 4-8 deg / 0.05-0.15 (Pacejka 2012, secondary) |\n",
+            "| {:.0} | {:.2} deg | {:.2} deg | {:.3}/{:.3} | {:.3}/{:.3} | 6.5/8.5 deg, 0.094/0.139 at Fz0 (MF 6.1 / Pacejka-book sets) |\n",
             l.fz, n.alpha_peak, c.alpha_peak, l.kappa_drive, l.kappa_brake, lc.kappa_drive, lc.kappa_brake,
         ));
     }
+    md.push_str(&format!(
+        "\nLoad exponent peak Fx ~ Fz^n: NGP {nx_ngp:.3} | brush-v1 {nx_cand:.3} (N_MU_X = {N_MU_X}) | 0.85/0.95 \
+(MF 6.1 / Pacejka-book sets, from Fz0 to 2 Fz0).\n"
+    ));
     md.push_str("\n## traction stiffness vs load (fit over |kappa| <= 0.04) and brake peaks\n\n");
-    md.push_str("| Fz (N) | NGP C_x | brush-v0 C_x | NGP brake peak (N) | brush-v0 brake peak (N) |\n| --- | --- | --- | --- | --- |\n");
+    md.push_str("| Fz (N) | NGP C_x | brush-v1 C_x | NGP brake peak (N) | brush-v1 brake peak (N) |\n| --- | --- | --- | --- | --- |\n");
     for (l, lc) in lon_rows.iter().zip(lon_cand_rows.iter()) {
         md.push_str(&format!(
             "| {:.0} | {:.0} | {:.0} | {:.0} @ {:.3} | {:.0} @ {:.3} |\n",
             l.fz, l.cx, lc.cx, l.peak_brake, l.kappa_brake, lc.peak_brake, lc.kappa_brake,
         ));
     }
-    md.push_str("\n## mu_slide(30 deg)/mu_peak at 15 m/s, 4 kN\n\n");
-    md.push_str("| | NGP | brush-v0 | target |\n| --- | --- | --- | --- |\n");
     md.push_str(&format!(
-        "| ratio | {:.3} | {:.3} | 0.7-0.85 (Pacejka 2012) |\n\n",
+        "\nC_x/Fz at 4 kN: NGP {:.1} | brush-v1 {:.1} | 32.9/18.4 at Fz0 (MF 6.1 / Pacejka-book sets). Load exponent \
+C_x ~ Fz^m: NGP {ex_ngp:.3} | brush-v1 {ex_cand:.3} (M_CX = {M_CX}) | 1.31/1.08.\n",
+        lon_rows[2].cx / fz0,
+        lon_cand_rows[2].cx / fz0,
+    ));
+    md.push_str("\n## mu_slide(30 deg)/mu_peak at 15 m/s, 4 kN\n\n");
+    md.push_str("| | NGP | brush-v1 | target |\n| --- | --- | --- | --- |\n");
+    md.push_str(&format!(
+        "| ratio | {:.3} | {:.3} | 0.83 full slide (Pacejka-book set); 0.73 asymptote (MF 6.1 set) |\n\n",
         lat_rows[2].f30 / lat_rows[2].peak,
         lat_cand_rows[2].f30 / lat_cand_rows[2].peak,
     ));
     md.push_str("Longitudinal F(kappa = 0.5)/peak: NGP ");
     md.push_str(&format!("{:.3}", lon_rows[2].f05 / lon_rows[2].peak_drive));
-    md.push_str(" | brush-v0 ");
-    md.push_str(&format!("{:.3} (calibrated to 0.80).\n\n", lon_cand_rows[2].f05 / lon_cand_rows[2].peak_drive));
+    md.push_str(" | brush-v1 ");
+    md.push_str(&format!(
+        "{:.3}; 0.71 at kappa 0.67 (Pacejka-book set), 0.65 asymptote (MF 6.1 set).\n\n",
+        lon_cand_rows[2].f05 / lon_cand_rows[2].peak_drive
+    ));
 
     md.push_str("## locked wheel over peak mu_x at 10 m/s (Vs = 10 m/s at lock)\n\n");
     md.push_str(
-        "| | NGP peak | NGP locked | NGP ratio | brush-v0 peak | brush-v0 locked | brush-v0 ratio | target |\n",
+        "| | NGP peak | NGP locked | NGP ratio | brush-v1 peak | brush-v1 locked | brush-v1 ratio | target |\n",
     );
     md.push_str("| --- | --- | --- | --- | --- | --- | --- | --- |\n");
     for (i, (name, pn, ln, pc, lc)) in lock_rows.iter().enumerate() {
-        let target = if i == 0 { "<= 0.885 dry (Kebbati et al.)" } else { "0.69 wet (0.24/0.35)" };
+        let target = if i == 0 {
+            "0.65 (Burckhardt) to 0.885 (Kebbati et al.)"
+        } else {
+            "0.64 (Burckhardt), 0.69 (Kebbati et al.)"
+        };
         md.push_str(&format!(
             "| {name} | {pn:.3} | {ln:.3} | {:.3} | {pc:.3} | {lc:.3} | {:.3} | {target} |\n",
             ln / pn,
@@ -963,17 +975,18 @@ longitudinal {:.4}/{:.4} (ratio {:.3}).\n\n",
         ));
     }
     md.push_str(
-        "\nKebbati et al., Sustainability 15:6945, 2023: dry ABS beats locked by 13% at 30-40 km/h. \
-V_MU is not retuned for this row.\n\n",
+        "\nKebbati et al., Sustainability 15:6945, 2023: ABS over locked at 30-40 km/h, mean deceleration (secondary \
+read). Burckhardt (1993) dry/wet asphalt curves at s = 1 over their peak, via three reproductions; test speed not \
+stated.\n\n",
     );
 
     md.push_str("## peak mu_y vs speed (4 kN)\n\n");
-    md.push_str("| V (m/s) | NGP | brush-v0 |\n| --- | --- | --- |\n");
+    md.push_str("| V (m/s) | NGP | brush-v1 |\n| --- | --- | --- |\n");
     for (vv, bn, bc) in &speed_rows {
         md.push_str(&format!("| {vv:.0} | {bn:.3} | {bc:.3} |\n"));
     }
     md.push_str("\n## pneumatic trail at 4 kN (m)\n\n");
-    md.push_str("| | NGP | brush-v0 |\n| --- | --- | --- |\n");
+    md.push_str("| | NGP | brush-v1 |\n| --- | --- | --- |\n");
     md.push_str(&format!("| at 1 deg | {trail_1n:.4} | {trail_1c:.4} |\n"));
     md.push_str(&format!(
         "| at own peak ({:.2}/{:.2} deg) | {trail_pn:.4} | {trail_pc:.4} |\n\n",
@@ -982,56 +995,69 @@ V_MU is not retuned for this row.\n\n",
 
     md.push_str("## combined slip at 4 kN: |Fy|, |Fx| (N) at fixed slip angle\n\n");
     md.push_str(
-        "| alpha | kappa | NGP Fy | brush-v0 Fy | NGP Fx | brush-v0 Fx |\n| --- | --- | --- | --- | --- | --- |\n",
+        "| alpha | kappa | NGP Fy | brush-v1 Fy | NGP Fx | brush-v1 Fx |\n| --- | --- | --- | --- | --- | --- |\n",
     );
     for (afix, kappa, fyn, fxn, fyc, fxc) in &comb_rows {
         md.push_str(&format!("| {afix:.1} deg | {kappa:.2} | {fyn:.0} | {fyc:.0} | {fxn:.0} | {fxc:.0} |\n"));
     }
     md.push_str("\n## relaxation length sigma_y at 4 kN (m)\n\n");
-    md.push_str("| V (m/s) | NGP (C_alpha/k_y) | brush-v0 |\n| --- | --- | --- |\n");
-    for (vv, sy) in &sigma_rows {
-        md.push_str(&format!("| {vv:.0} | {ngp_sigma:.3} | {sy:.3} |\n"));
+    md.push_str("| V (m/s) | NGP (C_alpha/k_y) | brush-v1 sigma_y | sigma_y/R | brush-v1 sigma_x | sigma_x/R |\n");
+    md.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    for (vv, sy, sx) in &sigma_rows {
+        md.push_str(&format!("| {vv:.0} | {ngp_sigma:.3} | {sy:.3} | {:.2} | {sx:.3} | {:.2} |\n", sy / r, sx / r));
     }
-    md.push_str("\nTarget 0.3-0.9 m for a passenger tyre (Vera et al., Sensors 22:6380, 2022); transfer to a rally tyre assumed. NGP is quasi-static here.\n\n");
+    md.push_str(
+        "\nPublished sigma/R0 at the nominal load: lateral 1.01/1.84, longitudinal 1.19/1.44 (MF 5.2 truck / MF 6.1 \
+255/55R20 example sets); 0.3-0.9 m growing with speed on a passenger tyre bench (Vera et al., Sensors 22:6380, \
+2022). NGP is quasi-static here.\n\n",
+    );
 
     md.push_str("## bulk temperature: cold 293 K vs hot 340 K (4 kN, 15 m/s)\n\n");
-    md.push_str("| | NGP C_alpha | brush-v0 C_alpha | NGP mu_peak | brush-v0 mu_peak |\n| --- | --- | --- | --- |\n");
+    md.push_str(
+        "| | NGP C_alpha | brush-v1 C_alpha | NGP mu_peak | brush-v1 mu_peak |\n| --- | --- | --- | --- | --- |\n",
+    );
     for (name, cn, cc, mn, mc) in &temp_rows {
         md.push_str(&format!("| {name} | {cn:.0} | {cc:.0} | {mn:.3} | {mc:.3} |\n"));
     }
     md.push_str("\nTarget: C_alpha drops 20-25% cold->hot (Singh Table 3).\n\n");
 
     md.push_str("## new vs 60% worn (4 kN, 15 m/s, dry)\n\n");
-    md.push_str("| | NGP C_alpha | brush-v0 C_alpha | NGP mu_peak | brush-v0 mu_peak |\n| --- | --- | --- | --- |\n");
+    md.push_str(
+        "| | NGP C_alpha | brush-v1 C_alpha | NGP mu_peak | brush-v1 mu_peak |\n| --- | --- | --- | --- | --- |\n",
+    );
     for (name, cn, cc, mn, mc) in &wear_rows {
         md.push_str(&format!("| {name} | {cn:.0} | {cc:.0} | {mn:.3} | {mc:.3} |\n"));
     }
     md.push_str("\nTarget: +30% C_alpha / +10% dry peak mu at 60% worn (Singh Table 3).\n\n");
 
     md.push_str("## wet: peak mu_y vs speed (4 kN)\n\n");
-    md.push_str("| W | V | tread | NGP | brush-v0 |\n| --- | --- | --- | --- | --- |\n");
+    md.push_str("| W | V | tread | NGP | brush-v1 |\n| --- | --- | --- | --- | --- |\n");
     for (w, vv, d, bn, bc) in &wet_rows {
         md.push_str(&format!("| {w:.2} | {vv:.0} | {} | {bn:.3} | {bc:.3} |\n", if *d > 0.9 { "new" } else { "worn" }));
     }
     md.push_str(
         "\nNGP stage values (damp tag 38 / wet tag 39) times the dry tyre's wet slope. \
-Candidate: same surface mu plus the hydroplaning-style loss; the dry-wear gain fades with W.\n\n",
+Candidate: same surface mu plus the hydroplaning-style loss; the dry-wear gain fades with W. \
+Published checks: a new summer tyre brakes from 100 km/h on a watered track at the same mean mu as from 80 \
+(0.98/0.97); at 1.6 mm it keeps 0.69 of new from 80 km/h and 0.52 from 100 (Continental Contidrom, AUTO BILD).\n\n",
     );
 
-    md.push_str("## step steer 2 deg: distance to 63% (brush-v0 transient)\n\n");
+    md.push_str("## step steer 2 deg: distance to 63% (brush-v1 transient)\n\n");
     md.push_str("| V (m/s) | sigma_y (m) | x63 (m) |\n| --- | --- | --- |\n");
     for (vv, sy, x) in &step_rows {
         md.push_str(&format!("| {vv:.0} | {sy:.3} | {x:.3} |\n"));
     }
     md.push_str("\n## constants and sources\n\n");
     md.push_str(&format!(
-        "M_C = {M_C} (0.5-0.65 target, Singh & Sivaramakrishnan, Goodyear, arXiv 2305.18422, load sweep); \
-N_MU = {N_MU} (lateral ~0.87 same paper; longitudinal assumed); V_MU = 5 m/s, Lorentzian form assumed \
-(Grosch/Persson direction); film 1.0 mm, ref 0.5 mm, kept 0.4, vp = 6.36 sqrt(p/kPa) (NASA/Horne via \
-Zhang et al., Lubricants 13:76, 2025), tread term (0.6+0.4d) assumed; dry-wear gain 1 + 0.167(1-d)(1-W) \
-assumed (fades in the wet); brush ch. 3 and transient ch. 7 Pacejka 3rd ed.; K_V = 0.021 s \
-(Vera et al., passenger tyre, transfer assumed). \
-V_MIN = {V_MIN} m/s floor; below 2 m/s out of scope (sticking model kept for later).\n"
+        "M_CY = {M_CY}, N_MU_Y = {N_MU_Y} (Singh & Sivaramakrishnan, Goodyear, arXiv 2305.18422, load sweep); \
+M_CX = {M_CX}, KX_OVER_KY = {KX_OVER_KY}, N_MU_X = {N_MU_X} (means of the MF 6.1 255/55R20 example set and the \
+Pacejka-book passenger set in Chrono's TMeasy); Stribeck g(Vs) with V_S = {V_S} m/s, Coulomb/static {:.3} \
+(Canudas de Wit et al., VSD 39 (2003), Table 1); film {:.1} mm at W = 1 (measured road films), ref 0.5 mm, \
+kept 0.4 and the quadratic ours; vp = 6.36 sqrt(p/kPa) (Horne) times (0.75 + 0.25 d) (ADAC 2026); dry-wear \
+gain 1 + 0.167(1-d)(1-W) (Singh Table 3; the wet fade ours); brush ch. 3 and transient ch. 7 Pacejka 3rd ed.; \
+K_V = 0.021 s (Vera et al., passenger tyre bench). V_MIN = {V_MIN} m/s floor; below 2 m/s out of scope.\n",
+        MU_C_OVER_S,
+        FILM_MAX * 1e3,
     ));
     write(&out.join("summary.md"), &md);
     println!("{md}");

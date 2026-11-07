@@ -22,16 +22,16 @@ Nothing here changes what the game computes.
   the wheel step's sequence) under scripted kinematics: validation against the
   sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
 - `src/probe.rs`: the probe-dump parser shared by the examples.
-- `src/brush.rs`: the brush-v0 candidate tyre model (ours, experimental):
-  steady-state brush with combined slip, Grosch-like sliding-speed friction,
+- `src/brush.rs`: the brush-v1 candidate tyre model (ours, experimental):
+  steady-state brush with combined slip, a published Stribeck friction curve,
   load/temperature/wear/pressure factors, a wet loss and a single-point
   transient, with unit tests. The nominal-point calibration lives in
-  `Calibration`, built at run time; only the spec's own constants are
+  `Calibration`, built at run time; only published (or flagged) constants are
   hard-coded. Lab code only: nothing is wired into the game.
-- `src/calibrate.rs`: solves the `Calibration` from measured peak, slide and
-  slope targets per axis (nested fixed-point/Newton from round starts), fed
+- `src/calibrate.rs`: solves the `Calibration` from the lateral peak and
+  slope and the longitudinal peak (fixed points from round starts), fed
   values by the caller. No NGP-derived numbers in committed code.
-- `examples/compare.rs`: compares brush-v0 against NGP's sweep and published
+- `examples/compare.rs`: compares brush-v1 against NGP's sweep and published
   targets. Writes CSVs plus `summary.md` into the output dir.
 
 ## Use
