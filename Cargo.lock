@@ -2512,6 +2512,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-tyre-lab"
+version = "0.1.0"
+dependencies = [
+ "rbr-formats",
+ "rbr-physics",
+]
+
+[[package]]
 name = "read-fonts"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
