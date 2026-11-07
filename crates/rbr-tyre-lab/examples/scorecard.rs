@@ -218,7 +218,7 @@ fn main() {
     for (k, name) in [(0, "2k"), (2, "4k"), (4, "6k")] {
         out(&format!("peak_mu_y_{name}"), lat_peaks[k] / LOADS[k]);
     }
-    out("calpha_per_fz_4k", calphas[2] / LOADS[2]);
+    out("peak_mu_x_6k_over_2k", lon_peaks[4] / LOADS[4] / (lon_peaks[0] / LOADS[0]));
     out("kx_per_fz_4k", kxs[2] / LOADS[2]);
     out("kx_over_ky_4k", kxs[2] / calphas[2]);
     out("comb_a2_4k", t.combined(4000.0, 2.0, -0.25));
@@ -231,8 +231,11 @@ fn main() {
         out(&format!("peak_alpha_{name}"), at);
         let a95 = lat.iter().find(|(_, m)| *m >= 0.95 * pk).map_or(f32::NAN, |x| x.0);
         out(&format!("alpha95_{name}"), a95);
+        let a90 = lat.iter().find(|(_, m)| *m >= 0.9 * pk).map_or(f32::NAN, |x| x.0);
+        out(&format!("alpha90_{name}"), a90);
+        out(&format!("calpha_per_fz_{name}"), slope(&fit_angles, |a| t.mu_y(fz, a.to_degrees())));
         for (deg, m) in &lat {
-            if [2.5, 5.0, 10.0, 15.0, 17.0, 20.0, 25.0, 30.0, 40.0].contains(deg) {
+            if [2.5, 5.0, 10.0, 14.0, 15.0, 16.0, 17.0, 20.0, 25.0, 30.0, 40.0].contains(deg) {
                 out(&format!("mu_y_rel_a{deg}_{name}"), m / pk);
             }
         }
@@ -246,11 +249,13 @@ fn main() {
         for k in [0.3f32, 0.45, 0.5] {
             out(&format!("mu_x_rel_k{k}_brake_{name}"), t.mu_x(fz, -k) / brake);
         }
+        out(&format!("mu_x_k0.4_over_k0.1_brake_{name}"), t.mu_x(fz, -0.4) / t.mu_x(fz, -0.1));
         out(&format!("mu_x_rel_k0.5_drive_{name}"), t.mu_x(fz, 0.5) / drive);
         out(&format!("mu_x_rel_k1_drive_{name}"), t.mu_x(fz, 1.0) / drive);
         let (locked_x, _) = t.locked(fz, 0.0);
         out(&format!("mu_x_locked_{name}"), locked_x);
         out(&format!("mu_x_locked_rel_{name}"), locked_x / brake);
+        out(&format!("mu_x_locked_over_drive_peak_{name}"), locked_x / drive);
         out(&format!("mu_x_locked_over_peak_mu_y_{name}"), locked_x / pk);
         // The locked tyre's side force against the free rolling one's, 1-40° of slip angle.
         let worst = lat
@@ -261,5 +266,11 @@ fn main() {
             .fold(0.0f32, f32::max);
         out(&format!("locked_mu_y_over_free_max_{name}"), worst);
         out(&format!("locked_mu_y_a35_over_peak_{name}"), t.locked(fz, 35.0).1 / pk);
+        let (l20, l30) = (t.locked(fz, 20.0).1, t.locked(fz, 30.0).1);
+        out(&format!("locked_mu_y_a20_{name}"), l20);
+        out(&format!("locked_mu_y_a30_{name}"), l30);
+        // The mean over 20° and 30° of the locked side force over the free rolling one's.
+        let free = |deg: f32| lat.iter().find(|(a, _)| *a == deg).map_or(f32::NAN, |x| x.1);
+        out(&format!("locked_mu_y_over_free_a20_30_{name}"), (l20 / free(20.0) + l30 / free(30.0)) / 2.0);
     }
 }

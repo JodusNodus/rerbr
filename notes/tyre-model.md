@@ -473,7 +473,7 @@ Ranking:
 `harness/tyre_scorecard.py` scores the physics against `data/tyre-targets.csv` (one row per target from the tables
 above, `id,surface,level,metric,conditions,low,high,unit,source,precision,how`; inclusive bands, an empty bound open;
 `how` `none` where nothing measures it yet). Default `--physics ngp,experimental-brush`; `--quick` (tyre rows and the
-50 km/h gravel and tarmac brake rows, ~70 s), the full run ~5 min with 16 jobs; `--only REGEX`, `--json OUT`,
+50 km/h gravel and tarmac brake rows, ~70 s), the full run 3.5-5.5 min with 16 jobs; `--only REGEX`, `--json OUT`,
 `--compare A.json B.json`. Fiesta Rally2 throughout. The `how` keys:
 
 - `tyre:SURFACE:KEY`: the lab's `scorecard` example on a probed wheel (tarmac map 85 circle wheel 1 at step 8000;
@@ -494,7 +494,8 @@ It reproduces the tables above: gravel 345 ngp locked 0.77 g, best threshold K 0
 1.09 / 1.31 g, brush 0.97 / 1.27 g; NGP gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a
 flat top), 2/4/6 kN 0.889/0.828/0.774, μ_y(30°)/peak 0.956, μ_x(κ 1)/peak 0.82; tarmac brush 8.75°, Fy(κ 0.25)/Fy(0)
 0.283/0.332, Kx/Fz 21.2 (22.0 by the lab's 0.02-grid fit). Baseline at the branch point (2026-11-08): ngp 21/56,
-experimental-brush 26/56 PASS (`build/tyre-night/scores/baseline.json`, not in git).
+experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendenius rows merged (95 rows, 78 measured)
+ngp 28/78, experimental-brush 34/78 (`build/tyre-night/scores/baseline.json`, not in git).
 
 ## Open
 
