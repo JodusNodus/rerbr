@@ -102,7 +102,7 @@ fn main() {
         }
         let fit = ClassPace { loose: 0.5 * (lo + hi), ..scaled };
         println!(
-            "    row({:?}, {:?}, {:.2}, {:.2}, {:.2}, {:.1}, {:.3}), // {:+.1} / {:+.1} / {:+.1} %",
+            "    row({:?}, {:?}, {:.2}, {:.2}, {:.2}, {:.1}, {:.3}, {:?}), // {:+.1} / {:+.1} / {:+.1} %",
             row.name,
             row.keys,
             fit.grip,
@@ -110,6 +110,7 @@ fn main() {
             fit.brake,
             fit.top_speed,
             fit.loose,
+            fit.aero,
             100.0 * (ratio(&fit, 0, Surface::Tarmac) / tarmac - 1.0),
             100.0 * (ratio(&fit, 1, Surface::Gravel) / gravel - 1.0),
             100.0 * (ratio(&fit, 2, Surface::Snow) / snow - 1.0),
