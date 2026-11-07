@@ -87,8 +87,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## ECU (`ecu.rs`)
 
-- Idle: PI on air, P on spark, 10° base retard with −10/+15° room [MoTeC idle], [HPA M1 idle], [US 7143741],
-  [US 7418943]. Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz (spark) (guess: no
+- Idle: PI on air, P on spark, 27° base retard (η_ign 0.80, a torque reserve: an MPC idle holds spark efficiency
+  0.75 [arXiv 2012.02859], idle control uses at most about 30 % of the reserve [US 7418943]) with −10/+15° room
+  [MoTeC idle], [HPA M1 idle], [US 7143741]. Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz (spark) (guess: no
   published gains [Yildiz]). Spark P-only (inferred: a spark integrator fights the air loop).
 - The loop runs with a closed pedal below idle + 800 rpm, integrates only below idle + 100 rpm (inferred: no
   wind-down while the overrun air decays).
@@ -127,14 +128,22 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   efficiency per kg of air, nearly constant over rpm, so the boost should carry the table's shape). It minimises the
   squared deviations of ln K at the knots and every 500 rpm from idle up, each from a fresh engine's tip-in: a scan on
   ln A_t over 5e-5–1e-2 m², then golden section.
-- The exhaust manifold may reach at most 2× the intake's at steady WOT (inferred: without it the fit took a 7e-5 m²
+- The exhaust manifold may reach at most 2× the intake's at steady WOT (inferred, tuner practice: without it the fit took a 7e-5 m²
   nozzle with 7–9 bar of exhaust pressure for 1.5 bar at 1000 rpm; matched turbos run about 1–2).
 - Then each knot's boost target is scaled by K_knot/K_median (the charge one K needs) and limited, and A_t refitted;
   twice (inferred: the first target's η_ig leaves out the turbine's back pressure).
-- The wastegate port is 3 nozzles (guess: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
+- The table is an upper bound everywhere and exact wherever the air path can make it. On a turbo car, at a grid
+  point where the steady WOT boost misses 98 % of its target, K is held at the median K of the on-boost knots, so the
+  steady torque there falls short of the table. Where the identity gives less than the median (Group A, Rally4 at
+  low rpm: tables weaker than physics), K stays. NA cars unchanged. Tested: steady WOT ≤ table + 0.1 % everywhere,
+  = table within 0.5 % at every knot not held.
+- Held, 250 rpm steps: turbo sample 250–1250 rpm (worst 11 % short); Rally2, R5 and WRC 2014–2020 250–1250 (12–20 %);
+  Xsara WRC 2006 250–1250 (23 %); Focus WRC 2006 250–1500 (28 %); Alpine A110 RGT 1750 (12 %); Fiesta Rally4 2500
+  (3 %). No other car is held.
+- The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
 - ω* does not change K (10 000–20 000 rad/s moved the spread in the third decimal); it sets the spool time through
-  ½Jω² (measured).
-- Shaft inertia 1e-5 kg·m² [Chalmers] (T45 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W [rF2 engine.ini].
+  ½Jω² (measured). Kept at 15 000.
+- Shaft inertia 1e-5 kg·m² [Chalmers] (their T45: 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W [rF2 engine.ini].
 - Exhaust temperature affine in flow, 700 °C at 0 (guess), 950 °C rated, capped at 1150 °C, τ 0.3 s (guess).
   Intercooler effectiveness 0.7 (guess).
 - Boost target π_wot(n), first from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the
@@ -145,19 +154,20 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   duty table with closed-loop trim). Spring (cable): P-only, band 0.5 bar, so it overboosts a little. τ 125 ms
   [Gorzelic]. Bands and Ti guess (a limit cycle at narrower settings).
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
-- Tip-in at fixed speed to 90 % of steady torque, turbo sample: 0.33 s at 2500 rpm, 0.28 s at 3500 and 4500 (about
-  half the torque arrives at once, the engine at 1 bar); [Chalmers] GT-Power gives 0.54–1.0 s on a road 1.5 L.
+- Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
+  to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
+  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.89 s at 1500, cable_turbo 0.69 s
+  at 3000. At 1000 rpm both make almost no boost (1.09 and 1.01 bar), so 5 bar BMEP is already near WOT (0.05 and
+  0.01 s); tested ≤ 1.2 s only. Higher up it is faster: turbo sample 0.60 s at 2000, 0.27 s at 3000.
 
 ## Open
 
-- The samples now spool to 90 % in about 0.3 s at 4000 rpm, faster than the brief's 0.4–1.2 s; the test allows
-  0.2 s. ω* 20 000 or a larger shaft inertia would slow it.
-- Below the boost the turbo's table still asks for (the turbo sample at 1000 rpm, Rally2-type tables at 500–1500
-  rpm), K stays inflated to keep the table exact: a flat K would give 75–87 % of the table there. Group A and Rally4
-  tables are weaker than physics at low rpm (a flat K would give 120–157 %).
-- Every car idles below 25–45 kPa, the usual SI idle [Gears], [MOTOR], [Tuning School]: modern turbos 11–15 kPa,
-  Rally3/4 17–19, Group A turbos and NA 20–24. The inflated K near idle and the friction clamp (s_f 2.0) both lower it.
-- At a fixed speed below idle the closed pedal gives up to +196 N·m (turbo sample, 500 rpm; na 73 N·m) with the
+- The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
+- Idle MAP with the 27° reserve, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning School]: samples na
+  29.0, old 22.6, cable_turbo 24.9, turbo 15.0 kPa; RSF modern turbos (Rally2, R5, WRC) 15–17, Group N and R4 16–17,
+  Rally3/4 and R1 20–26, Group A, B, 4 and S1600/S2000/R2/R3 22–30. The friction clamp (s_f 2.0) still lowers it on
+  the turbos.
+- At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
   idle air at its 10 % ceiling. In gear at low speed this pushes the car.
 - Turbo tip-ins overshoot: the turbo sample's torque peaks 7 % over steady at 3000 rpm and 17 % at 5000 and 6500.
 - Part-pedal steady curves of the turbo sample still notch near 3250–3500 rpm at 30–40 % pedal.
@@ -189,6 +199,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - MoTeC idle: https://motec.zendesk.com/hc/en-gb/articles/14575739507727-Checklist-Idle-Setup
 - HPA M1 idle: https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-idle-speed-control/
 - US 7143741, idle reserve: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7143741
+- arXiv 2012.02859, idle spark-efficiency setpoint: https://arxiv.org/abs/2012.02859
 - US 7418943, idle reserve use: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7418943
 - Yildiz, idle plant: https://web.mit.edu/aaclab/pdfs/Yildiray%20Yildiz%20TCST.pdf
 - Link idle: https://forums.linkecu.com/topic/17853-e-throttle-idle-problems/
