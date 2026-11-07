@@ -44,64 +44,82 @@ step 8000; the sweep calls NGP's own `patch_forces`/`friction_limits` with the p
 
 ## Published targets
 
-Read in full unless marked. Sources are cited once per row.
+Read in full unless marked; numbers only, no parameter files copied. Two Magic Formula sets recur: MF6.1, the MF 6.1
+example set (255/55R20, Fz0 6752 N, 260 kPa) shipped with MFeval.jl, and PB, the passenger set Chrono's TMeasy
+`GuessPassCar70Par` normalises from Pacejka's book data (code read, provenance secondary). Downloads stay in
+`/tmp/tyre-research`.
 
 | Effect | Target | Source |
 | --- | --- | --- |
-| Peak μ against load | μ ∝ Fz^-0.13 (1.30 at 2 kN to 1.05 at 10 kN, read from a figure) | Singh & Sivaramakrishnan (Goodyear), arXiv 2305.18422, Figs. 15-16 |
-| Cα against load | ∝ Fz^~0.6 (read from a figure) | same |
-| Cα: pressure / tread / heat | +10 % for +20 % pressure; +30 % at 60 % less tread; -20-25 % cold to hot (bulk temperature) | same, Table 3 |
-| Peak μ: pressure / tread / heat | small; +10 % at 60 % less tread (dry); -10 % cold to hot (surface temperature) | same, Table 3 |
+| Peak μ against load | lateral μ ∝ Fz^-0.13 (figure); longitudinal falls at 0.72 / 0.39 of the lateral rate | Singh & Sivaramakrishnan (Goodyear), arXiv 2305.18422, Figs. 15-16; MF6.1 / PB |
+| Stiffness against load | Cα ∝ Fz^~0.6 (figure; sets 0.47 / 0.69); Kx ∝ Fz^1.31 / 1.08 | Goodyear; MF6.1 / PB |
+| Longitudinal stiffness | Kx/Fz 32.9 / 18.4, Kx/Ky 1.62 / 1.15 at Fz0 | MF6.1 / PB |
+| Peak slip | 6.5° / 8.5°, κ 0.094 / 0.139 at Fz0 | MF6.1 / PB |
+| Cα: pressure / tread / heat | +10 % for +20 % pressure; +30 % at 60 % less tread; -20-25 % cold to hot (bulk temperature) | Goodyear, Table 3 |
+| Peak μ: pressure / tread / heat | small; +10 % at 60 % less tread (dry); -10 % cold to hot (surface temperature) | same |
 | Grip against temperature | passenger tyre 0.7 to 1.05 warming, optimum 88 °C, width 50 °C | Vera et al., Sensors 22:6380 (2022) |
 | Which temperature | grip follows the tread core, stiffness the carcass | Farroni et al., Appl. Sci. 10:1604 (2020) (TRT); contradicts Goodyear's surface-for-μ; both bound NGP's 0.6/0.4 blend |
-| Relaxation length | σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m: 0.3-0.9 m, linear in speed | Vera et al. (2022), passenger tyre, ≤2 Hz |
-| Sliding over peak μ | 0.7-0.85 dry | textbook (Pacejka 2012), not re-read |
-| Peak slip | 4-8°, 0.05-0.15 | textbook, not re-read |
+| Friction against sliding speed | g(Vs) = μ_C + (μ_S - μ_C) exp(-√(Vs/v_s)), μ_C 0.8, μ_S 1.55, v_s 6.57 m/s | Canudas de Wit et al., VSD 39 (2003) 189-226, eqs. 21-22, Table 1: their distributed LuGre (brush) fitted to straight braking on a dry test track (author preprint HAL-00949740; v_s held fixed in the fit) |
+| Sliding over peak | lateral 0.83 full slide (PB), 0.73 asymptote (MF6.1); longitudinal 0.71 at κ 0.67 (PB), 0.65 (MF6.1); locked over peak dry 0.65 to 0.885, wet 0.64 / 0.69 | sets; Burckhardt 1993 dry/wet asphalt via three reproductions (test speed unstated); Kebbati et al., Sustainability 15:6945 (2023), ABS over locked at 30-40 km/h (secondary read) |
+| Dry friction against speed | peak "relatively unchanged" with speed on dry runways, fast drop wet; Kiencke & Nielsen's factor exp(-c4 Vs), c4 0.02-0.04 s/m | Horne & Leland, NASA TN D-1376 (1962), aircraft tyres; Shadrin et al., IOP Conf. Ser. 832:012011 (2020) (book not read) |
+| Relaxation length | grows with speed: σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m (car tyre bench, ≤2 Hz); motorcycle tyres 0.1-0.4 m, "higher ... at higher speeds"; MF-Swift: independent of V, set by load, slip and pressure; σ/R0 at Fz0 lateral 1.01 / 1.84, longitudinal 1.19 / 1.44 | Vera et al. (2022); Cossalter, Lot & Massaro, Motorcycle Dynamics, ch. 1 (Wiley excerpt); Schmeitz, TNO MF-Tyre/MF-Swift lecture (2013); MF 5.2 truck / MF6.1 sets |
 | Trail at small slip | a/3 (half contact length a) | brush theory (Pacejka 2012) |
 | Convection | Nu ∝ Re^0.8 (NGP 0.78) | West & Limebeer, VSD 60 (2022) |
-| Wet against speed | μ falls with speed and film; steepest under ~1 mm | Wiese et al., Vehicles 3:6 (2021); Zhao et al. IJTST 2024 (abstract only) |
-| Hydroplaning speed | v_p = 6.36 √p km/h (p in kPa) | NASA (Horne), checked in Zhang et al., Lubricants 13:76 (2025) |
+| Hydroplaning speed | v_p = 6.36 √p km/h (p in kPa) for water deeper than the tread grooves; thin films raise it (Huebner: 26.04 WD^-0.259 mph for WD < 0.1 in); 2 of 8 mm tread costs 17-22 % of v_p; μ ≤ 0.05 at total hydroplaning | Horne & Dreher, NASA TN D-2056 (1963), metric form in Zhang et al., Lubricants 13:76 (2025); Gallaway-Huebner via Ketabdari et al., PLOS ONE (2022); ADAC worn-tyre test (2026) |
+| Wet films and speed | road films 0.18 mm in light rain, 0.56-0.85 mm in heavy (drained highways); damp braking μ only slightly above wet; a new tyre brakes from 100 km/h on a watered track at the mean μ it has from 80 (0.98/0.97), at 1.6 mm it keeps 0.69 / 0.52 of new | PLOS ONE (2025), Table 2; TN D-1376; Continental Contidrom via AUTO BILD |
+| Wet against slip speed | F(S) = F60 exp((60 - S)/S_p), S_p = 14.2 + 89.7 MPD km/h (smooth test tyre); on the one road with both, S_p 67 predicted against ~220 km/h in locked-wheel data, so not used | ASTM E1960 via two Virginia Tech theses; Rajapakshe et al., Dyna 176 (2012) |
+| Low speed | lumped/distributed LuGre: σ_0 181.54 1/m, σ_2 0.0018 s/m, σ_1 ~1 (dynamic fit); MF fades forces below 1 m/s (VXLOW), no standstill | Canudas de Wit et al. (2003), Tables 1, 3; MFeval.jl |
+| Camber | camber stiffness Fz (-1.001 + 0.175 dfz) per rad, ~5 % of Ky; car-tyre camber reduction 0.4-0.7 | MF6.1; Romano et al., Meccanica (2021) |
 | Rubber friction | no static/kinetic pair: μ(v, T) with flash temperature | Persson, arXiv 1007.2713, cond-mat/0605273; Grosch 1963 (secondary) |
 
-No open data for rally tyres, gravel cut onto tarmac or damp tarmac: those stay calibrated on stage times, not papers.
+Not found in open sources: rally or racing-radial tyre data (TTC data is licence-gated), the full Gallaway 1979 tyre
+terms, road-sensor damp/wet film thresholds, gravel cut onto tarmac, damp tarmac grip. Those stay calibrated on stage
+times.
 
 ## NGP against the targets
 
 - Matches: peak-μ load sensitivity (Fz^0.878 against ~0.87), trail a/3, convection exponent, a temperature bell.
-- Off: Cα load exponent 0.36 (0.5-0.65); stiffness blind to temperature, pressure apart, and tread depth; dry wear
-  lowers grip (tread loss raises it); wet grip fixed per surface (no speed or film effect); static/kinetic pair;
-  peak slip angle 9.5° at 4 kN (textbook 4-8°, secondary); lateral transient 0.04-0.10 m to 63 %, shrinking with
-  speed, against 0.3-0.9 m growing with speed on a passenger tyre (a rally tyre's stiffer sidewall shortens it; no
-  rally data); the sticking model's 360 Hz alternation; tread warm-up of ~8 K in 20 s of hard cornering.
+- Off: Cα load exponent 0.36 (0.47-0.69); Kx/Fz 14 at 4 kN (18.4-32.9), Kx ∝ Fz^0.35 (1.08-1.31); stiffness blind to
+  temperature, pressure apart, and tread depth; dry wear lowers grip (tread loss raises it); wet grip fixed per
+  surface (no speed or film effect); static/kinetic pair; peak slip angle 9.5° at 4 kN (6.5-8.5°); lateral transient
+  0.04-0.10 m to 63 %, shrinking with speed (σ/R0 1.0-1.8 in the sets); the sticking model's 360 Hz alternation;
+  tread warm-up of ~8 K in 20 s of hard cornering.
 
-## Candidate (brush-v0, lab only)
+## Candidate (brush-v1, lab only)
 
 `rbr_tyre_lab::brush` (`calibrate`, `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3) and
-single-contact-point transient (ch. 7); stiffness ∝ Fz^0.6 times bulk temperature (-0.45 %/K), tread depth
-(2.6/(d + 1.6)) and NGP's pressure factor; μ ∝ Fz^-0.13, falling with sliding speed (μ_k + (μ_s - μ_k)/(1 +
-(Vs/5)²)); NGP's temperature grip kept; dry wear +10 % at 60 % worn, fading with wetness; wet loss
-h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 1 mm and v_p from the hydroplaning speed times (0.6 + 0.4 d);
-σ = C/k + 0.021 V. Calibrated at run time to NGP at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
-Ours, not from papers: the sliding-speed law and its 5 m/s, the wet film scale and weights, the tread term of v_p,
-the transfer of the passenger tyre's σ speed slope to a rally tyre, the longitudinal load exponent.
+single-contact-point transient (ch. 7). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
+(-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
+against sliding speed by Canudas de Wit's g(Vs) with their v_s and μ_C/μ_S; NGP's temperature grip kept; dry wear
++10 % at 60 % worn, fading with wetness; wet loss h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 0.7 mm and
+v_p = 6.36 √p (0.75 + 0.25 d); σ = C/k + 0.021 V. Calibrated at run time to NGP's lateral peak and slope and
+longitudinal peak at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
 
-Against NGP on the Fiesta Rally2 (`compare` summary):
+Ours, not from papers: the wet loss's film ramp, its 0.5 mm, the quadratic and the 0.6 weight, and the wear gain's
+fade with W; keeping the passenger tyre's σ speed slope (the evidence is split); taking the longitudinal exponents
+and Kx/Ky as the mean of two road-tyre sets; NGP's carcass stiffnesses and temperature grip.
 
-- Meets by construction: Cα ∝ Fz^0.64; Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn;
-  peak Fy ∝ Fz^0.845; σ_y 0.31/0.41/0.62/0.83 m at 5/10/20/30 m/s (step steer 63 % at 0.36/0.56/0.75 m against NGP's
-  ~0.08); slide over peak 0.80 at 30°.
-- New behaviour: peak μ_y falls with speed (1.306/1.265/1.224/1.152 at 10/15/20/30 m/s, NGP flat); wet W = 1 peak
-  0.98/0.76/0.60 at 10/20/30 m/s against NGP's flat 1.00 (magnitudes ours).
-- Misses: peak slip ratio 0.18-0.22 (textbook 0.05-0.15, NGP 0.12-0.16): the brush peaks at 3μFz/C, so Cx
-  calibrated to NGP's traction stiffness is too soft; braking peaks 0-17 % above NGP's (theoretical slip over |ωR|);
-  locked over peak μ_x at 10 m/s 0.695 dry, 0.651 wet (NGP 0.78/0.75; Kebbati et al., Sustainability 15:6945 (2023):
-  dry ≤ 0.885, wet 0.69): the sliding-speed drop is too steep; trail 0 past saturation (NGP 0.004 m).
+Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in brackets where it changed):
+
+- Meets: peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry locked over peak at 10 m/s 0.80 (0.70); braking
+  peaks within 4 % of NGP's (17 %); Kx/Fz 22 by the |κ| ≤ 0.04 fit, Kx ∝ Fz^1.14; peak Fx ∝ Fz^0.96; Cα ∝ Fz^0.64;
+  Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn; peak Fy ∝ Fz^0.85; σ_y/R 0.96-1.96 at
+  5-20 m/s.
+- New behaviour: peak μ_y falls 10 % from 10 to 30 m/s (1.310/1.264/1.231/1.181, NGP flat; Kiencke & Nielsen's
+  c4 0.02-0.04 s/m gives 4-8 % at 10 % slip and 20 m/s); wet W = 1 peak 0.99/0.78/0.64 at 10/20/30 m/s against
+  NGP's flat 1.00.
+- Outside the published values: slide over peak 0.88 lateral at 30° and 0.86 longitudinal at κ 0.5 (sets 0.73-0.83
+  and 0.65-0.71; NGP 0.87/0.92): the published g falls less after the peak than the sets; wet locked over peak 0.77
+  (0.64-0.69): the wet adds no sliding-speed loss; the wet loss is the wrong shape: the new tyre loses 18 % from 20
+  to 30 m/s (Contidrom: nothing to 100 km/h) and the worn one barely more than new at 30 m/s (Contidrom: 0.52 of
+  new from 100 km/h); peak slip angle 8.75° (6.5-8.5°); σ/R 2.6 at 30 m/s; trail 0 past saturation (NGP 0.004 m).
 
 ## Open
 
-- Whether brush-v0 drives better needs it on the car: a hook like the engine model's (`--engine-model`), user
-  decision. The 4-8× longer lateral transient is the largest change a driver would feel, and its evidence is a
-  passenger tyre.
-- Before that: Cx from the peak slip ratio instead of NGP's traction stiffness; a gentler sliding-speed drop (the
-  locked-wheel ratio); low speed (keep NGP's sticking model or a bristle state, which would also remove NGP's 360 Hz
-  alternation).
+- Whether the candidate drives better needs it on the car: a hook like the engine model's (`--engine-model`), user
+  decision. The 4-9× longer lateral transient is the largest change a driver would feel; whether σ grows with speed
+  is unsettled.
+- Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest), the film's effect on v_p,
+  and a sliding-speed loss for wet roads that fits locked-wheel data.
+- Low speed: LuGre bristle state with the published σ_0 (would also remove NGP's 360 Hz alternation) or NGP's
+  sticking model. Camber thrust from MF6.1's camber stiffness.
