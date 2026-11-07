@@ -362,7 +362,7 @@ Published values, sources and precision labels from the 2026-11-07 loose-surface
 | μ_y at 30° over peak | gravel 0.63 (CW, quoted; ratio inferred), 0.85 (Velenis, MF); snow no fall to ~17° (TR0713, quoted); ice 0.59 at 20° (TR0713, fig ±0.005) | 0.956; step 0.985, at 25 m/s rising to 30° (0.897) | 0.955; step 0.997, at 25 m/s rising (0.926) | 0.976 at 20°, 0.965 | 0.865 |
 | Peak κ | gravel none open ("0.4-0.7", snippet); snow still rising at 0.30 (Surkutwar, fig ±0.01); ice 0.05 (Ružinskas, quoted) | 0.24 (2 kN 0.16) | 0.22 (0.12-0.30 at 2-6 kN) | 0.04-0.06 | 0.16 |
 | μ_x at κ 1 over peak | gravel 0.75 (Velenis, MF); snow no fall to 0.30 (Surkutwar, fig); ice ~0.5 at 0.45 (Ružinskas, fig ±0.005) | 0.82 sweep and step | 0.85 | 0.93 | 0.78 |
-| Ploughing: locked against peak | gravel: locked stops 25-30 % shorter than ABS, decel 1.25-1.30× (SAE 1999-01-1287, table; ratio inferred); car braking 0.50-0.60 wet crushed (TR1011, table) | locked 0.82 of peak (step 0.82, 0.79 at 25 m/s); game, full brake from 100 km/h on 345: 0.72 g, fronts at κ -0.7 to -0.9 | 0.85 | 0.93 | 0.78; RSF 568 full brake 1.08 g, locked |
+| Ploughing: locked against peak | gravel: locked stops 25-30 % shorter than ABS, decel 1.25-1.30× (SAE 1999-01-1287, table; ratio inferred); car braking 0.50-0.60 wet crushed (TR1011, table) | locked 0.82 of peak (step 0.82, 0.79 at 25 m/s); game, brake test on 345 from 100 / 50 km/h: full pedal 0.80 / 0.63 g, 4 / 6 % longer than the best threshold braking (K 0.5, 0.83 / 0.67 g); the full pedal leaves the most-slipping wheel at slip 0.83 / 0.57, the rim speeds near 3 m/s | 0.85 | 0.93 | 0.78; RSF 568 full pedal 1.11 / 1.16 g, 17 / 5 % longer than threshold at K 0.3 (1.30 / 1.22 g) |
 | Peak μ_y at 2/4/6 kN (Fy ∝ Fz^n) | snow no clear loss at 4.6-11 kN (TR0713, inferred, weak); soil lateral coefficient falls slightly at 1-4 kN (El-Razaz review, quoted); gravel none | 0.889/0.828/0.774 (0.875); step 0.913/0.854/0.797 | 0.902/0.851/0.788 (0.881); step 0.928 (rising)/0.857/0.795 | 0.105/0.099/0.092 (0.886) | 1.353/1.262/1.179 (0.877) |
 | Peak μ_x at 2/4/6 kN (Fx ∝ Fz^n) | none | 0.864/0.849/0.845 (0.982) | 0.877/0.870/0.858 (0.979) | 0.101/0.100/0.101 | 1.309/1.292/1.286 (0.984) |
 | Cα/Fz at 4 kN; Cα ∝ Fz^m | initial slope packed snow ~10/rad, ice ~4.6/rad (findings, inferred from figs); gravel none | 9.1/rad; 0.325 | 10.5/rad; 0.338 | the snow tyre's (μ alone changed) | 17.6/rad; 0.359 |
@@ -378,6 +378,24 @@ Where NGP sits:
   fall (0.97 against 0.59).
 - Ploughing: none longitudinally (the soil's longitudinal force is zero); a locked wheel keeps 0.82 of the peak on
   gravel, so it stops longer than one at peak slip, where the published locked wheel stops 25-30 % shorter.
+- Brake test (2026-11-07, `harness/brake_test.py`, Fiesta Rally2, `--flat-out --top-speed 80`, full pedal against
+  `--brake-slip` K 0.1-0.7; ratio = full-pedal distance / best threshold distance): on gravel the force rises with slip
+  to K 0.5, and no run stops shorter on the full pedal.
+
+  | Surface | Physics | From | Full pedal | Best threshold | Ratio |
+  | --- | --- | --- | --- | --- | --- |
+  | gravel 345 | ngp | 100 km/h | 49.4 m, 0.80 g | K 0.5: 47.6 m, 0.83 g | 1.04 |
+  | gravel 345 | ngp | 50 km/h | 15.6 m, 0.63 g | K 0.5: 14.7 m, 0.67 g | 1.06 |
+  | gravel 345 | experimental-brush | 100 km/h | 50.8 m, 0.78 g | K 0.5: 46.9 m, 0.84 g | 1.08 |
+  | gravel 345 | experimental-brush | 50 km/h | 15.6 m, 0.63 g | K 0.5: 13.6 m, 0.72 g | 1.14 |
+  | tarmac 568 | ngp | 100 km/h | 35.6 m, 1.11 g | K 0.3: 30.4 m, 1.30 g | 1.17 |
+  | tarmac 568 | ngp | 50 km/h | 8.5 m, 1.16 g | K 0.3: 8.1 m, 1.22 g | 1.05 |
+  | tarmac 568 | experimental-brush | 100 km/h | 40.1 m, 0.98 g | K 0.15-0.2: 31.2 m, 1.26 g | 1.29 |
+  | tarmac 568 | experimental-brush | 50 km/h | 8.7 m, 1.14 g | K 0.2: 7.9 m, 1.24 g | 1.09 |
+
+  Published gravel: 0.70-0.75. Mean slip of the most-slipping wheel on the full pedal, from 100 / 50 km/h: NGP gravel
+  0.83 / 0.57 (rim speeds held near 3 m/s, not locked), tarmac 0.99 / 0.54; brush gravel 0.98 / 0.96, tarmac 1.00 /
+  0.90.
 - Load: the tarmac sensitivity on every surface (same tables): Fy ∝ Fz^0.875-0.886, Fx ∝ Fz^0.98, Cα ∝ Fz^0.33-0.36.
 
 ## Open
@@ -400,6 +418,6 @@ Where NGP sits:
   Canudas de Wit's σ_0 181.54 1/m (726 kN/m at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same
   contact; Rill's restored dynamics already give the stick-slip at standstill LuGre adds, so it was not prototyped.
   Camber thrust from MF6.1's camber stiffness.
-- Loose surfaces unmeasured: material 116 in a run (its tyre-class factor, taken as 1), a brake test held at peak
-  slip on gravel (needs a partial pedal, which only the uncommitted debug patch gives), combined slip on gravel and
-  snow, and the soil's lateral force above 25 m/s through the whole car.
+- Loose surfaces unmeasured: material 116 in a run (its tyre-class factor, taken as 1), combined slip on gravel and
+  snow, and the soil's lateral force above 25 m/s through the whole car. Ploughing (locked 25-30 % shorter on
+  gravel) is missing in both physics: the brake test stops 4-14 % longer locked.
