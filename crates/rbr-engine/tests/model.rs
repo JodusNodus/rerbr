@@ -322,6 +322,29 @@ fn the_blow_off_valve_vents_a_lift_unless_anti_lag_runs() {
     assert_eq!(m.telemetry().air_pressure, 9e4);
 }
 
+/// The 1.02 sim's friction opposes the crank's motion: an engine dragged backwards with a large friction gets torque
+/// forwards, never a runaway backwards.
+#[test]
+fn the_1_02_friction_opposes_the_motion() {
+    for (name, _, m) in models() {
+        for speed in [-30.0, 30.0] {
+            let mut m = m.clone();
+            let x = Inputs {
+                dt: 1.0 / 720.0,
+                speed,
+                damage: 1.0,
+                pressure: 1.013e5,
+                temperature: 293.0,
+                engine_temperature: 360.0,
+                friction: 700.0,
+                ..Inputs::default()
+            };
+            let torque = (0..720).map(|_| m.torque(&x)).last().unwrap();
+            assert!(torque * speed < 0.0, "{name} at {speed} rad/s: {torque} N·m");
+        }
+    }
+}
+
 fn bits(m: &mut Realistic, p: &Params) -> Vec<u32> {
     let idle = rpm(p.idle_speed);
     bench::run(m, idle, Some(f64::from(p.inertia)), 3.0, |t| if (0.5..1.5).contains(&t) { 1.0 } else { 0.0 }, None)
