@@ -1,6 +1,6 @@
 [package]
 name = "rbr-launcher"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 edition = "2021"
 description = "Launcher window: pick a car, stage, weather and resolution, then start the viewer in live mode on rbr-standalone"
 license = "GPL-3.0-or-later"

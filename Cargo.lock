@@ -2400,7 +2400,7 @@ dependencies = [
 
 [[package]]
 name = "rbr-launcher"
-version = "0.1.0-alpha.3"
+version = "0.1.0-alpha.4"
 dependencies = [
  "egui",
  "egui-wgpu",
