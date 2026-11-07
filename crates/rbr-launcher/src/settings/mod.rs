@@ -20,6 +20,7 @@ use crate::catalog::{Car, TyreChoice, WEARS};
 use crate::ghosts::GhostChoice;
 use crate::graphics_page::{WetRoads, FRAME_CAPS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES};
 use crate::pages::Choice;
+use crate::physics::PhysicsProfile;
 use crate::time_of_day::StartTime;
 #[cfg(test)]
 use rbr_gameplay::weather::Preset;
@@ -162,6 +163,8 @@ pub struct Settings {
     /// NGP's `headGasketDurability` (`rbr-standalone --head-gasket-durability`; 1, NGP's default, leaves the engine
     /// as it is).
     pub head_gasket: Option<i32>,
+    /// The physics (`rbr-standalone --physics`); none for NGP 7's.
+    pub physics: Option<PhysicsProfile>,
     pub bindings: Bindings,
     pub ffb: ffb::Options,
     /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `rbr_render::ffb::CarSensitivity`): the viewer owns
@@ -433,6 +436,7 @@ impl Settings {
             ngp_physics: launcher.word("ngp_physics"),
             ngp_dll: launcher.get("ngp_dll"),
             head_gasket: launcher.number("head_gasket").filter(|v| *v >= 1),
+            physics: launcher.choice("physics"),
             bindings: Bindings::parse(text),
             ffb: ffb::Options::parse(text),
             ffb_cars: ffb::CarSensitivity::parse(text),
@@ -500,6 +504,7 @@ impl Settings {
             ("ngp_physics", self.ngp_physics.clone()),
             ("ngp_dll", self.ngp_dll.clone()),
             ("head_gasket", self.head_gasket.map(|v| v.to_string())),
+            ("physics", choice(self.physics)),
             ("render_scale", self.render_scale.map(|v| v.to_string())),
             ("wet_roads", choice(self.wet_roads)),
             ("detail", choice(self.detail)),
@@ -624,6 +629,7 @@ mod tests {
             ngp_physics: Some("/games/rbr-ngp/physics.rbz".into()),
             ngp_dll: Some("/games/ngp/Plugins/NGP.dll".into()),
             head_gasket: Some(10),
+            physics: Some(PhysicsProfile::Experimental),
             bindings: Bindings { input_rate: 500, ..Default::default() },
             ffb: ffb::Options { rate: 500, ..Default::default() },
             ffb_cars: ffb::CarSensitivity {
@@ -858,6 +864,7 @@ mod tests {
                 "ngp_physics = /games/rbr-ngp/physics.rbz\n",
                 "ngp_dll = /games/ngp/Plugins/NGP.dll\n",
                 "head_gasket = 10\n",
+                "physics = experimental\n",
                 "render_scale = 75\n",
                 "wet_roads = low\n",
                 "detail = ultra\n",
@@ -987,6 +994,8 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nhead_gasket = 0\n").head_gasket, None);
         assert_eq!(Settings::parse("[launcher]\nhead_gasket = -2\n").head_gasket, None);
         assert_eq!(Settings::parse("[launcher]\nhead_gasket = 1\n").head_gasket, Some(1));
+        assert_eq!(Settings::parse("[launcher]\nphysics = ngp\n").physics, Some(PhysicsProfile::Ngp));
+        assert_eq!(Settings::parse("[launcher]\nphysics = turbo\n").physics, None);
         assert_eq!(Settings::parse("[launcher]\ntyre = 6\n").tyre, Some(TyreChoice::Fixed(6)));
         assert_eq!(Settings::parse("[launcher]\ntyre = 7\n").tyre, None);
         assert_eq!(Settings::parse("[launcher]\nmap = abc\n").map, None);

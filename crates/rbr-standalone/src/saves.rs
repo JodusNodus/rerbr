@@ -148,4 +148,17 @@ mod tests {
         assert!(saves.written());
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    /// A dry run (a replay, an experimental engine model) compares its finish with the record and writes no file.
+    #[test]
+    fn a_dry_finish_is_compared_and_not_written() {
+        let dir = std::env::temp_dir().join(format!("rbr-saves-dry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let times = vec![StageTimes { stage: 11, splits: [60.0, 120.0], finish: 185.0 }];
+        let mut saves = Saves::open(&dir, Some("Ann"), &times, 11, 0).unwrap().dry();
+        saves.finish([50.0, 100.0, 150.0]).unwrap();
+        assert_eq!(saves.standing().verdict, Verdict::StageRecord);
+        assert!(!dir.join("pfresult.rst").exists() && !dir.join("pfAnn.rbr").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

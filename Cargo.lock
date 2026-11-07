@@ -2360,6 +2360,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rbr-engine"
+version = "0.1.0"
+dependencies = [
+ "libm",
+ "rbr-formats",
+]
+
+[[package]]
 name = "rbr-formats"
 version = "0.1.0"
 dependencies = [
@@ -2382,6 +2390,7 @@ dependencies = [
 name = "rbr-hybrid"
 version = "0.1.0"
 dependencies = [
+ "rbr-engine",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-physics",
@@ -2502,6 +2511,7 @@ name = "rbr-standalone"
 version = "0.1.0"
 dependencies = [
  "rbr-counters",
+ "rbr-engine",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-hybrid",

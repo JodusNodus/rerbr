@@ -102,6 +102,7 @@ use rbr_school::SchoolRun;
 use std::panic::{self, AssertUnwindSafe};
 
 mod picture;
+pub(crate) use picture::gearbox;
 mod realtime;
 mod record;
 mod start;
@@ -339,6 +340,12 @@ impl<'a> Live<'a> {
     pub fn set_start_clock(&mut self, seconds: f32) {
         self.time_of_day = Some(seconds);
         self.initial_time_of_day = Some(seconds);
+    }
+
+    /// The physics profile `profile` (`--physics`) for `car` (its identity) on the loaded car, on this thread's runs,
+    /// its models back to their start at each restart; NGP 7's replaces nothing.
+    pub fn set_physics(&mut self, profile: crate::profile::Profile, car: rbr_engine::Car) -> Result<(), String> {
+        crate::physics::fit_physics(&self.playback, profile, &car)
     }
 
     /// What follows the championship stage (`--rally-next`).

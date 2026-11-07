@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 rbr-season = { path = "../rbr-season" }
 rbr-counters = { path = "../rbr-counters" }
+rbr-engine = { path = "../rbr-engine" }
 rbr-formats = { path = "../rbr-formats" }
 rbr-gameplay = { path = "../rbr-gameplay" }
 rbr-hybrid = { path = "../rbr-hybrid" }

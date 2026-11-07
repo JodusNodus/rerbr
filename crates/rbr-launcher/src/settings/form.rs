@@ -271,6 +271,7 @@ impl Form {
             ffb: settings.ffb.clone(),
             ffb_cars: settings.ffb_cars.clone(),
             head_gasket: settings.head_gasket.unwrap_or(1),
+            physics: settings.physics.unwrap_or_default(),
             controls: ControlsPage::new(),
             read_only: false,
         };
@@ -362,6 +363,7 @@ impl Form {
             ngp_physics: Some(self.ngp_physics.trim().to_owned()).filter(|p| !p.is_empty()),
             ngp_dll: Some(self.ngp_dll.path.trim().to_owned()),
             head_gasket: Some(self.head_gasket),
+            physics: Some(self.physics),
             bindings: self.bindings.clone(),
             ffb: self.ffb.clone(),
             // The viewer owns these: carried over from the file as it is now, earlier car keys moved.

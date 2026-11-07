@@ -17,6 +17,7 @@ use rbr_hybrid::pure::{self, Playback, ReadTrace, Stopped};
 use rbr_recording::sound::TyreMax;
 
 use crate::boot;
+use crate::profile::Profile;
 use crate::stage::StageData;
 use crate::twin::Twin;
 
@@ -129,6 +130,36 @@ impl PhysicsStep for Pure<'_> {
     fn drive_line_point(&self, distance: f32) -> Option<[f32; 3]> {
         Some(layout::drive_line_point(self.playback, distance))
     }
+}
+
+/// `--physics` (`profile`) on the car in `playback`, `car` its identity: fresh models of the profile's systems for the
+/// runs on this thread (none for NGP 7's: its engine formula). A car without NGP keeps NGP 7's (said once on stderr).
+pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car) -> Result<(), String> {
+    static WITHOUT_NGP: std::sync::Once = std::sync::Once::new();
+    let ngp = rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base);
+    if !ngp && !profile.is_ngp() {
+        let name = profile.name;
+        WITHOUT_NGP.call_once(|| eprintln!("rbr-standalone: --physics {name}: the car runs without NGP, no effect"));
+    }
+    let engine = match profile.engine {
+        _ if !ngp => None,
+        "ngp" => None,
+        name => rbr_engine::model(name, &layout::engine_params(playback, car.clone()))?,
+    };
+    rbr_hybrid::ngp::set_engine_model(engine);
+    Ok(())
+}
+
+/// The car's engine for an engine model, as NGP's car init left it, for `car`.
+#[cfg(test)]
+pub fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_engine::Params {
+    layout::engine_params(playback, car)
+}
+
+/// The engine wrapper's last answer as the drive step took it (its ratio ring's newest entry).
+#[cfg(test)]
+pub fn ratio_ring_newest(playback: &Playback) -> f32 {
+    layout::ratio_ring_newest(playback)
 }
 
 /// Why a step's panic stopped the run: the pure host's stop, or a port's own failure.

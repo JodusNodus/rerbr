@@ -37,6 +37,15 @@ impl GhostChoice {
         }
     }
 
+    /// The choice for a run that keeps no records (the experimental physics): the best ghost of map `map` raced as
+    /// a saved one, never replaced.
+    pub fn unrecorded(&self, map: u32) -> GhostChoice {
+        match self {
+            GhostChoice::Best => GhostChoice::File(rbr_formats::ghost::SavedGhost::file_name(BEST_GHOST, map)),
+            other => other.clone(),
+        }
+    }
+
     /// The viewer's arguments for map `map`: `--best-ghost` with the weather words a new best keeps, or `--ghost` with
     /// the file (none when the file is gone).
     pub fn viewer_args(&self, here: &Path, map: u32, weather: &rbr_formats::ghost::Weather) -> Vec<String> {
@@ -107,6 +116,24 @@ mod tests {
         assert_eq!(ghost_words(&here, "me_54.ghc"), Some(weather));
         assert_eq!(ghost_words(&here, "gone_54.ghc"), None);
         assert_eq!(ghost_files(&here, 54), ["me_54.ghc"]);
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// A run that keeps no records races the best ghost when there is one, without `--best-ghost` (which writes a new
+    /// best); the other choices are as they were.
+    #[test]
+    fn an_unrecorded_run_races_the_best_ghost_without_replacing_it() {
+        let here = crate::test_dir("ghost-unrecorded");
+        let dir = here.join(GHOST_DIR);
+        std::fs::create_dir_all(&dir).unwrap();
+        let words = rbr_formats::ghost::Weather::default();
+        assert_eq!(GhostChoice::Best.unrecorded(54), GhostChoice::File("Best_54.ghc".into()));
+        assert!(GhostChoice::Best.unrecorded(54).viewer_args(&here, 54, &words).is_empty());
+        std::fs::write(dir.join("Best_54.ghc"), b"").unwrap();
+        let best = dir.join("Best_54.ghc").display().to_string();
+        assert_eq!(GhostChoice::Best.unrecorded(54).viewer_args(&here, 54, &words), ["--ghost".to_owned(), best]);
+        assert_eq!(GhostChoice::Off.unrecorded(54), GhostChoice::Off);
+        assert_eq!(GhostChoice::File("me_54.ghc".into()).unrecorded(54), GhostChoice::File("me_54.ghc".into()));
         std::fs::remove_dir_all(&here).unwrap();
     }
 }

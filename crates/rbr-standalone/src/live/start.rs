@@ -242,6 +242,8 @@ impl<'a> Live<'a> {
     pub fn restart(&mut self) {
         self.playback.pure.restore(&self.initial);
         self.game = self.initial_game.clone();
+        // The models' state is their own, not in the memory: back to the stage start's, the car's calibration kept.
+        rbr_hybrid::ngp::restart_engine_model();
         self.school.clone_from(&self.initial_school);
         if let Some(saves) = self.saves.as_mut() {
             saves.rearm();
