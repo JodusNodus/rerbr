@@ -173,9 +173,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   Td: tip-ins within 5 % overshoot and settled in 1 s (tuning practice, inferred); 0.05–0.12 s all pass. Spring:
   P-only, band 0.5 bar, so it overboosts a little. τ 125 ms [Gorzelic]. Bands and Ti guess (a limit cycle at
   narrower settings).
-- DBW turbo sample, WOT tip-in at a fixed speed, overshoot / settled within 2 %: 2500 1.8 % / 0.51 s, 3000 2.1 % /
-  0.79 s, 5000 2.6 % / 0.88 s, 6500 3.9 % / 1.11 s (was 7 % and 17 % with a 0.5 s ring before the derivative).
-  cable_turbo (spring): 1.3 % at 3000, 8.0 % at 5000, 13.8 % at 6500. Tested: steady torque at any pedal the same
+- DBW turbo sample, WOT tip-in at a fixed speed, to 90 % / overshoot / settled within 2 %: 2500 0.44 s / 1.8 % /
+  0.54 s, 3000 0.41 / 2.1 % / 0.79, 3500 0.40 / 2.2 % / 0.82, 4500 0.37 / 2.2 % / 0.83, 5000 0.34 / 2.4 % / 0.87,
+  6500 0.27 / 3.7 % / 1.10 (was 7 % and 17 % with a 0.5 s ring before the derivative). cable_turbo (spring): 3000
+  0.82 / 1.4 % / 1.06, 5000 0.27 / 7.9 % / 0.93, 6500 0.16 / 12.9 % / 0.83. Tested: steady torque at any pedal the same
   within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
   Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
@@ -188,7 +189,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 ## Open
 
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
-- Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
+- Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
   School]: samples na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
   Group N and R4 22–23, Rally3/4 and R1 25–31, Group A, B, 4 and S1600/S2000/R2/R3 23–34. K dominates on the modern
   turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.93e6) against 0.9–1.4e6 elsewhere; friction
