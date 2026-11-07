@@ -15,7 +15,7 @@
 //! car, moved on once the car is 70 m past it, which plays the replay's birds, far wind and the `.dls` siren
 //! spheres. `--no-codriver` turns the pace notes off. `--volumes` gives the player's volume options for the engine, the co-driver,
 //! the effects and the tyres (`rbr_sound::mixer::Volumes`; default 1 each). `--log` writes each step's voice commands as CSV (step, rpm after the slew, load, then the gain and pitch
-//! of the gearbox, diff, turbo, wind and siren loops, the summed tyre, rumble and wetness gains, the first wheel's surface id, and the one-shots, effects (`shot:gain@pitch`) and speech). `--from` starts the WAV at
+//! of the gearbox, diff, turbo, wind and siren loops, the summed tyre, rumble and wetness gains, the first wheel's surface id, the one-shots, effects (`shot:gain@pitch`) and speech, an FMOD bank's loops and one-shots, and SND1's throttle and misfire words). `--from` starts the WAV at
 //! second S of the drive (the steps before it still run). `--events` plays the scripted events of a CSV
 //! (`frame,kind,x,y,z`; kind `heli`, `bird` or `call`, the frame the recording's, the point in the physics frame), as
 //! `rbr-render`'s `scripted_events` example writes them. `--poses` writes the car's position and forward each step
@@ -415,16 +415,20 @@ fn log_line(inputs: &Inputs, commands: &[Command], fmod: Option<&rbr_sound::fmod
                         _ => {}
                     }
                 }
-                Command::FmodShot { slot: Some(slot), gain, .. } => match car.slots.get(usize::from(slot)).map(|s| s.role) {
-                    Some(Role::Gear(_)) => gear.push(format!("{slot}:{gain}")),
-                    Some(Role::Backfire(_)) => backfire.push(format!("{slot}:{gain}")),
-                    _ => {}
-                },
+                Command::FmodShot { slot: Some(slot), gain, .. } => {
+                    match car.slots.get(usize::from(slot)).map(|s| s.role) {
+                        Some(Role::Gear(_)) => gear.push(format!("{slot}:{gain}")),
+                        Some(Role::Backfire(_)) => backfire.push(format!("{slot}:{gain}")),
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
         }
     }
     cells.extend([wheel.to_string(), trans.to_string(), engine.to_string(), gear.join(" "), backfire.join(" ")]);
+    // SND1's throttle and misfire words.
+    cells.extend([1, 4].map(|i| inputs.sound.engine_f32(i).to_string()));
     cells.join(",")
 }
 
@@ -527,7 +531,7 @@ fn run() -> Result<(), String> {
             writeln!(
                 file,
                 "step,rpm,load,gearbox_gain,gearbox_pitch,diff_gain,diff_pitch,turbo_gain,turbo_pitch,wind_gain,wind_pitch,\
-                 siren_gain,siren_pitch,tyres,rumble,wetness,surface,shots,fmod_wheel,fmod_trans,fmod_engine,fmod_gear,fmod_backfire"
+                 siren_gain,siren_pitch,tyres,rumble,wetness,surface,shots,fmod_wheel,fmod_trans,fmod_engine,fmod_gear,fmod_backfire,throttle,misfire"
             )
             .map_err(|e| e.to_string())?;
             Some(std::io::BufWriter::new(file))
