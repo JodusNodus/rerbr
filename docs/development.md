@@ -111,7 +111,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 | [`rbr-sound`](../crates/rbr-sound) | gameplay sound | [sound.md](../notes/sound.md) |
 | [`rbr-gameplay`](../crates/rbr-gameplay) | the gameplay loop: input to car control, frame clock, stage states, timing, race flow, records | [gameplay.md](../notes/gameplay.md) |
 | [`rbr-season`](../crates/rbr-season) | the championship (ours): built rallies and seasons on any installed stage, the 1.02 AI engine, service park, field, standings, event save | [season.md](../notes/season.md) |
-| [`rbr-school`](../crates/rbr-school) | the rally school (experimental): the lessons, their filter bank and verdict, as a mode on the stage loop | [gameplay.md](../notes/gameplay.md#rally-school-experimental) |
+| [`rbr-school`](../crates/rbr-school) | the rally school: the lessons, their filter bank and verdict, as a mode on the stage loop | [gameplay.md](../notes/gameplay.md#rally-school) |
 | [`rbr-formats`](../crates/rbr-formats) | readers for the game's files and the community layouts, one module per format | [formats.md](../notes/formats.md) |
 | [`rbr-btb`](../crates/rbr-btb) | BTB stages (experimental): their folders, meshes, the stage files built from them, and their scene | [btb.md](../notes/btb.md) |
 | [`rbr-standalone`](../crates/rbr-standalone) | the physics process: `--live` steps the car for the viewer, `--boot` checks a recording | [physics.md](../notes/physics.md) |

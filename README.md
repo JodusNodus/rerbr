@@ -37,7 +37,7 @@ The whole set of 36: [docs/shots](docs/shots/README.md); frames from real drives
 
 ## Status
 
-Works today: every retail stage, the community stages (BTB stages experimentally), the quick race and the championship, the rally school (experimentally), NGP physics with the
+Works today: every retail stage, the community stages (BTB stages experimentally), the quick race and the championship, the rally school, NGP physics with the
 community cars, the HUD and pace notes, the co-driver, sound, wheels and force feedback. Drives are saved as
 ReRBR replays (`.rrp`), with playback and video export from the Replays tab.
 

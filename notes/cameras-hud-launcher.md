@@ -196,9 +196,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   `cards.rs` its cards, `results.rs` what they read from the results, and `common.rs` the shared cards, places, times and the service park. `--screenshot` draws them on an event the real `Event::build` makes from `championship_page::fixture`'s stages and AI stand-in
   (`championship*.png`, `championship-super-rally.png` a weekend's restart; `--screenshot-damage FILE` adds `championship-service-damaged.png`). The built-event test (`a_quick_rally_on_the_real_stages_and_ai_plays_through`, `RBR_DATA`) loads the real `ai.ini`,
   builds a Quick rally on the installed stages and plays every stage at a fixed pace, saved and read back before SS4 to end as the run never saved.
-- School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), tagged experimental (`Page::experimental`,
-  user decision 2026-11-04: the judging is not checked against the original yet): the 17 rally-school lessons in
-  their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
+- School tab, after Championship (`pages::Page::TABS`, `school_page.rs`), no longer tagged experimental (user decision
+  2026-11-07): the 17 rally-school lessons in their Basic/Advanced groups with each group's passed count (all open, user decision), each row its number in
   the group, title and grade pips; the detail its label (`RSM_LESSON_NRB/A`, the table's period dropped), title,
   instruction, cone guide with coloured markers (`brief_keys`), surface (from the lesson's setup file), the
   pass/perfect times from the map's `.dls` `Driveline` stream header (both 0: Untimed), the best result, the Drive

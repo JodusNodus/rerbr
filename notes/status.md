@@ -57,7 +57,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Game flow state machine | done | - |
 | G Rally, service park, tyre and setup choice | done | original run: time-out message, NGP tyre rows; recce/shakedown |
 | G Championship season, AI, forecast, offers, trials | done | original run: a season golden, the original reading our save |
-| G Rally school | partial (experimental): all 17 lessons, demonstration, ride, speech, failure reasons, replay with Richard's ghost (ours) | an original school drive to check the judging, the ghost's timing and the brief's camera |
+| G Rally school | partial: all 17 lessons, demonstration, ride, speech, failure reasons, replay with Richard's ghost (ours) | an original school drive to check the judging, the ghost's timing and the brief's camera |
 | G Unlocks, RB Challenge, hot seat | out | - |
 | Profiles and save files | done | which profile options the launcher shows (user) |
 | G Default setup, option selection | done | - |

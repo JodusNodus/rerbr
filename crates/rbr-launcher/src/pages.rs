@@ -45,12 +45,6 @@ impl Page {
         (Page::Settings, "Settings"),
     ];
 
-    /// Whether the page's tab is tagged experimental: the rally school, whose judging is not checked against the
-    /// original yet.
-    pub fn experimental(self) -> bool {
-        self == Page::School
-    }
-
     /// The page a shortcut opens: Ctrl+1 to Ctrl+8 (Cmd on macOS) a tab, Ctrl+Tab or Ctrl+Page Down the next,
     /// Ctrl+Shift+Tab or Ctrl+Page Up the one before.
     fn shortcut(self, input: &mut egui::InputState) -> Option<Page> {
@@ -398,26 +392,8 @@ impl Form {
                     ui.add_space(20.0);
                     let mut open = ui.input_mut(|i| self.page.shortcut(i));
                     for (n, (page, name)) in Page::TABS.into_iter().enumerate() {
-                        let mut label = egui::text::LayoutJob::default();
-                        RichText::new(name).size(15.5).append_to(
-                            &mut label,
-                            ui.style(),
-                            egui::FontSelection::Default,
-                            egui::Align::Center,
-                        );
-                        if page.experimental() {
-                            RichText::new(" experimental").size(11.5).color(WARN).append_to(
-                                &mut label,
-                                ui.style(),
-                                egui::FontSelection::Default,
-                                egui::Align::Center,
-                            );
-                        }
-                        let tab = egui::Button::selectable(self.page == page, label);
-                        let mut key = format!("{}+{}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }, n + 1);
-                        if page.experimental() {
-                            key += " · experimental: not yet checked against the original game";
-                        }
+                        let tab = egui::Button::selectable(self.page == page, RichText::new(name).size(15.5));
+                        let key = format!("{}+{}", if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" }, n + 1);
                         if ui.add(tab.min_size(egui::vec2(0.0, 28.0))).on_hover_text(key).clicked() {
                             open = Some(page);
                         }

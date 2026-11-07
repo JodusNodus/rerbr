@@ -106,7 +106,7 @@ path (`--seed` is the viewer's). Evidence drives: `drive-rcv-help-corolla-34`, `
 - The flip spectators are five `load_car_flipN.lua`, cosmetic; `run_car_flip.lua` never runs.
 - Bird strike feeds only the sound. Crash-site scripts are unused in retail.
 
-## Rally school (experimental)
+## Rally school
 
 Mechanics in the `rbr-school` crate (lessons, the `.dls` `Driveline` filter bank, its listeners, `EvalFilters`,
 the awards), a mode on the stage loop: `SchoolRun` is a `rbr_gameplay::mode::ModeRules` the host passes to
