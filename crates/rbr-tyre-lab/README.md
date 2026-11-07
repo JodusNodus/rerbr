@@ -13,6 +13,14 @@ Nothing here changes what the game computes.
 - `examples/sweep.rs`: takes a probe dump and sweeps NGP's pure tyre functions
   (`patch_forces`, `friction_limits`, through `rbr-physics`, never copied)
   over slip and load. Writes CSVs plus `summary.md` into the output dir.
+- `rbr-standalone --tyre-image FILE [--tyre-image-step N]` (with `--autopilot`):
+  a memory image of the four wheels' tyre footprints (scratch, state, setup,
+  wear table, contact record, NGP's `.data`) plus a `txt` sidecar with the
+  addresses and thermal scalars. Read-only, as the probe.
+- `examples/ngp_transient.rs`: loads the image into a `Mem` and runs NGP's
+  real per-wheel tyre step (`entries::step` + `entries::relax_count`, exactly
+  the wheel step's sequence) under scripted kinematics: validation against the
+  sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
 
 ## Use
 
@@ -24,6 +32,15 @@ cargo build --release -p rbr-standalone
     --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS"
 cargo run -q -p rbr-tyre-lab --example sweep -- \
     --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/ngp
+```
+
+```sh
+./target/release/rbr-standalone --autopilot OUT --boot --stage track-85_M \
+    --steps 8000 --top-speed 60 --circle -260,120,40 \
+    --rsf-car Ford_Fiesta_Rally2_ngp7 --tyre-image /tmp/tyre-lab/x.img \
+    --tyre-image-step 8000 --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS"
+cargo run -q -p rbr-tyre-lab --example ngp_transient -- \
+    --image /tmp/tyre-lab/x.img --out /tmp/tyre-lab/ngp-dyn
 ```
 
 No game data is committed: probe dumps and CSVs stay in `/tmp/tyre-lab`.
