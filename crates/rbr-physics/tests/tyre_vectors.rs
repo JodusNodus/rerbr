@@ -394,7 +394,20 @@ fn solve_forces_matches_original_calls() {
         let this = c.args[0];
         let out2 = Vec4::load(mem, c.args[3]);
         let mut frame = mem.load_frame(this);
-        let (out1, out2) = forces::solve_forces(&mut frame, arg_f32(c, 1), out2);
+        // A tyre model at full weight (ours): no damping, the trail unscaled, whatever the sticking weight.
+        let mut model = frame;
+        forces::solve_forces(&mut model, arg_f32(c, 1), out2, 1.0);
+        let s = &frame.scratch;
+        let lateral = 0.0 - frame.state.lateral_deflection * s.lateral_stiffness * s.inclination_cos;
+        let torsion = 0.0 - frame.state.torsion_angle * s.torsional_stiffness;
+        let same = |a: f32, b: f32| a.to_bits() == b.to_bits() || (a.is_nan() && b.is_nan());
+        // (A NaN weight or spin slip, which only fuzzed records hold, makes the factors NaN either way.)
+        if [s.sliding_weight, s.sticking_weight, s.spin_slip].iter().all(|x| x.is_finite()) {
+            assert!(same(model.scratch.lateral_force, lateral), "{} {lateral}", model.scratch.lateral_force);
+            assert!(same(model.scratch.torsion_torque, torsion), "{} {torsion}", model.scratch.torsion_torque);
+            assert!(same(model.scratch.pneumatic_trail, s.pneumatic_trail));
+        }
+        let (out1, out2) = forces::solve_forces(&mut frame, arg_f32(c, 1), out2, 0.0);
         mem.store_frame(this, &frame);
         out1.store(mem, c.args[2]);
         out2.store(mem, c.args[3]);
