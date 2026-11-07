@@ -8,13 +8,15 @@ pub struct Profile {
     pub name: &'static str,
     /// The engine model (`rbr_engine::model`): `ngp` is NGP's torque formula.
     pub engine: &'static str,
+    /// The tyre model (`rbr_tyre::model`): `ngp` is NGP's sliding model of the contact patch.
+    pub tyre: &'static str,
 }
 
 impl Profile {
     /// NGP 7's physics, as the original steps it: nothing replaced (the default).
-    pub const NGP: Profile = Profile { name: "ngp", engine: "ngp" };
+    pub const NGP: Profile = Profile { name: "ngp", engine: "ngp", tyre: "ngp" };
     /// ReRBR experimental physics, built on NGP 7.
-    pub const EXPERIMENTAL: Profile = Profile { name: "experimental", engine: "realistic" };
+    pub const EXPERIMENTAL: Profile = Profile { name: "experimental", engine: "realistic", tyre: "brush" };
     /// The profiles `--physics` takes.
     pub const ALL: [Profile; 2] = [Profile::NGP, Profile::EXPERIMENTAL];
 
@@ -46,6 +48,7 @@ mod tests {
         let experimental = Profile::named("experimental").unwrap();
         assert!(!experimental.is_ngp());
         assert!(rbr_engine::NAMES.contains(&experimental.engine) && experimental.engine != "ngp");
+        assert!(rbr_tyre::NAMES.contains(&experimental.tyre) && experimental.tyre != "ngp");
         assert_eq!(Profile::named("realistic"), None);
     }
 }

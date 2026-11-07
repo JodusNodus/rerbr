@@ -4,6 +4,7 @@ use rbr_gameplay::control::CarControl;
 use rbr_gameplay::stage::{State, LOAD_SUBSTEPS};
 use rbr_hybrid::pure::{self, Playback, CAR_PTR};
 use rbr_physics::mem::Mem;
+use rbr_physics::tyre::store::TyreStore;
 use rbr_recording::sound::{TyreMax, CAR_WHEELS, WHEEL_TYRE_SCRATCH};
 use rbr_recording::{read_f32, CONTROL_BYTES};
 
@@ -39,6 +40,14 @@ pub(super) fn accumulate_tyre_terms(playback: &Playback, tyre_max: &mut TyreMax)
             tyre_max.add(k, term);
         }
     }
+}
+
+/// The car's wheels' tyres, for a tyre model: each one's scratch with its type's tables, as NGP's car init left them.
+pub(super) fn tyre_wheels(playback: &Playback) -> Vec<rbr_tyre::Wheel> {
+    let mem = &playback.pure.mem;
+    let car = mem.u32(CAR_PTR);
+    let wheels = (0..4).map(|k| mem.u32(car + CAR_WHEELS + 4 * k)).filter(|&w| w != 0);
+    wheels.map(|w| w + WHEEL_TYRE_SCRATCH).map(|t| rbr_tyre::Wheel::new(t, &mem.load_frame(t).setup)).collect()
 }
 
 /// `CDriveLine::Sample` (0x50b180) on the physics' drive line (the object 0x1659184 points to) at `distance`: its

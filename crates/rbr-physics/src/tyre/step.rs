@@ -16,6 +16,7 @@ use super::layout::{
     StepArgs, StepOut, Table,
 };
 use super::locate::locate;
+use super::model::{self, Model};
 use super::noise_signal::fill_noise_signal;
 use super::output_block::{clamp01, write_output_block, OutputBlock};
 use super::sliding;
@@ -57,7 +58,9 @@ fn no_contact(f: &mut Frame, a: &StepArgs) -> StepOut {
 /// step (NGP's wrapper restores the setup's tables afterwards: they are not stored here), the temperature grip scales
 /// the kinetic friction in place of the static one a second time (1.02 scales the static one twice), and the output
 /// scale is 0.025.
-pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal) -> Result<StepOut, Outside> {
+///
+/// `tyre_model` (ours, experimental, none in the original) takes the contact patch's forces after NGP's sliding model.
+pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal, tyre_model: Option<Model>) -> Result<StepOut, Outside> {
     let round24 = round_x87;
     if f.state.started == 0 {
         f.state.started_dirty = 1;
@@ -195,6 +198,11 @@ pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal) -> Result<StepOut, O
         f.scratch.stick_phase_b
     };
     f.scratch.slip_phase = f.scratch.sliding_weight * sliding_phase + f.scratch.sticking_weight * sticking_phase;
+    if let Some(tyre_model) = tyre_model {
+        if let Some(out) = tyre_model(&model::input(f, a.dt, k, if heat_lerps { k } else { 1.0 })) {
+            model::apply(f, &out);
+        }
+    }
     let (force, torque) = forces::solve_forces(f, a.dt, a.torque_in);
 
     // The rolling resistance torque is the x87 term; the float store takes its f32 rounding and the reaction torque

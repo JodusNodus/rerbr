@@ -10,6 +10,7 @@ use super::{Outside, StepArgs};
 use crate::math::vec::Vec4;
 use crate::ngp::heat::TyreThermal;
 use crate::tyre::grip::GripInput;
+use crate::tyre::model::Model;
 use crate::tyre::solve::Contact;
 use crate::tyre::store::TyreStore;
 use crate::tyre::{
@@ -267,10 +268,16 @@ pub fn solve_patch<S: TyreStore>(mem: &mut S, this: u32) -> Result<(), Outside> 
 }
 
 /// `CScratch::Step`: its 16 stack words are loaded once, `Step` runs on the frame, and its outputs are stored after
-/// the frame.
-pub fn step<S: TyreStore>(mem: &mut S, this: u32, words: &[u32], ngp: &TyreThermal) -> Result<(), Outside> {
+/// the frame. `tyre_model` (ours, experimental) takes the contact patch's forces ([`step::step`]).
+pub fn step<S: TyreStore>(
+    mem: &mut S,
+    this: u32,
+    words: &[u32],
+    ngp: &TyreThermal,
+    tyre_model: Option<Model>,
+) -> Result<(), Outside> {
     let (args, ptrs): (StepArgs, _) = mem.load_step(&words[..16]);
-    let out = with_frame(mem, this, |frame| step::step(frame, &args, ngp))?;
+    let out = with_frame(mem, this, |frame| step::step(frame, &args, ngp, tyre_model))?;
     mem.store_step(&ptrs, &out);
     Ok(())
 }

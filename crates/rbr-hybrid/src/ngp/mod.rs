@@ -9,6 +9,7 @@ mod engine;
 mod engine_model;
 mod steps;
 mod tuning;
+mod tyre_model;
 
 pub(crate) use calls::Call;
 
@@ -21,6 +22,8 @@ pub(crate) use tuning::{
     clutch_scale, damage_tuning, damper_step, drag_factor, drive_split, engine_tuning, probe_tuning, step_slip,
     thermal, vcu_tuning, wheel_tuning,
 };
+pub(crate) use tyre_model::with_tyre_model;
+pub use tyre_model::{restart_tyre_model, set_tyre_model};
 
 use crate::{Binding, Ctx};
 

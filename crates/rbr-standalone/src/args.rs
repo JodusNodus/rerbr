@@ -45,6 +45,12 @@ pub struct Args {
     pub circle_ramp: Option<f32>,
     /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear and position.
     pub trace_speed: Option<PathBuf>,
+    /// `--tyre-probe FILE` (with `--autopilot`): read-only dumps of each wheel's tyre frame (research tooling).
+    pub tyre_probe: Option<PathBuf>,
+    /// `--tyre-image FILE` (with `--autopilot`): a memory image of the wheels' tyre footprints at
+    /// `--tyre-image-step N` (the final step unless given) for the transient lab (research tooling).
+    pub tyre_image: Option<PathBuf>,
+    pub tyre_image_step: Option<u32>,
     pub boot: bool,
     pub snapshots: Vec<String>,
     /// The stage's name or path (`stage_files`); for a community stage chosen by folder or id, filled in `main` once
@@ -159,10 +165,10 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --physics ngp|experimental: NGP 7's physics (the default) or ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
+       --physics ngp|experimental: NGP 7's physics (the default) or ReRBR experimental physics built on NGP 7 (its engine and tyre models in place of NGP's torque formula and its sliding model on hard surfaces), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -234,6 +240,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--circle" => args.circle = Some(value.parse()?),
             "--circle-ramp" => args.circle_ramp = Some(parsed("--circle-ramp", &value)?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
+            "--tyre-probe" => args.tyre_probe = Some(PathBuf::from(value)),
+            "--tyre-image" => args.tyre_image = Some(PathBuf::from(value)),
+            "--tyre-image-step" => args.tyre_image_step = Some(parsed("--tyre-image-step", &value)?),
             "--aim" => args.aim = Some(value.parse()?),
             "--snapshot" => args.snapshots.push(value),
             "--stage" => stage = Some(value),
@@ -467,8 +476,13 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.aim.is_some() && args.autopilot.is_none() {
         return Err("--aim needs --autopilot".into());
     }
-    if (args.flat_out || args.trace_speed.is_some()) && args.autopilot.is_none() {
-        return Err("--flat-out and --trace-speed need --autopilot".into());
+    if (args.flat_out || args.trace_speed.is_some() || args.tyre_probe.is_some() || args.tyre_image.is_some())
+        && args.autopilot.is_none()
+    {
+        return Err("--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot".into());
+    }
+    if args.tyre_image_step.is_some() && args.tyre_image.is_none() {
+        return Err("--tyre-image-step needs --tyre-image".into());
     }
     if args.circle.is_some() && args.autopilot.is_none() {
         return Err("--circle needs --autopilot".into());
@@ -666,6 +680,13 @@ mod tests {
             (format!("{BOOT} --flat-out --trace-speed T"), |a| {
                 assert!(a.flat_out);
                 assert_eq!(a.trace_speed, Some(PathBuf::from("T")));
+            }),
+            (format!("{BOOT} --tyre-probe P"), |a| {
+                assert_eq!(a.tyre_probe, Some(PathBuf::from("P")));
+            }),
+            (format!("{BOOT} --tyre-image IMG --tyre-image-step 4000"), |a| {
+                assert_eq!(a.tyre_image, Some(PathBuf::from("IMG")));
+                assert_eq!(a.tyre_image_step, Some(4000));
             }),
             (format!("{BOOT} --flat-out --brake-from 27.78"), |a| {
                 assert_eq!(a.brake_from, Some(27.78));
@@ -887,8 +908,20 @@ mod tests {
             (format!("{LIVE} --frames F --replay G"), "one of --frames-out, --frames, --replay-out and --replay"),
             (format!("{LIVE} --replay F --pilot autopilot"), "--replay takes no --pilot (the replay drives)"),
             (format!("{REC} --aim 1,2"), "--aim needs --autopilot"),
-            (format!("{REC} --flat-out"), "--flat-out and --trace-speed need --autopilot"),
-            (format!("{REC} --trace-speed T"), "--flat-out and --trace-speed need --autopilot"),
+            (format!("{REC} --flat-out"), "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot"),
+            (
+                format!("{REC} --trace-speed T"),
+                "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot",
+            ),
+            (
+                format!("{REC} --tyre-probe P"),
+                "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot",
+            ),
+            (
+                format!("{REC} --tyre-image IMG"),
+                "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot",
+            ),
+            (format!("{BOOT} --tyre-image-step 9"), "--tyre-image-step needs --tyre-image"),
             (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
             (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),

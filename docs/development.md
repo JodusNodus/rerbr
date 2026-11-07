@@ -116,6 +116,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 | [`rbr-btb`](../crates/rbr-btb) | BTB stages (experimental): their folders, meshes, the stage files built from them, and their scene | [btb.md](../notes/btb.md) |
 | [`rbr-standalone`](../crates/rbr-standalone) | the physics process: `--live` steps the car for the viewer, `--boot` checks a recording | [physics.md](../notes/physics.md) |
 | [`rbr-engine`](../crates/rbr-engine) | engine models in place of NGP's torque formula: the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) | [engine-model.md](../notes/engine-model.md) |
+| [`rbr-tyre`](../crates/rbr-tyre) | tyre models in place of NGP's sliding model of the contact patch: the second part of ReRBR experimental physics, opt-in (`--physics experimental`) | [tyre-model.md](../notes/tyre-model.md) |
 | [`rbr-physics`](../crates/rbr-physics) | NGP 7.4.778's physics; `ports.csv` lists the ported functions | [physics.md](../notes/physics.md), [ngp.md](../notes/ngp.md) |
 | [`rbr-hybrid`](../crates/rbr-hybrid) | the pure step, and the bindings that run the ports inside the original's step (`bound.csv`) | [verification.md](../notes/verification.md) |
 | [`rbr-recording`](../crates/rbr-recording) | readers for the recordings, live records and replays | [verification.md](../notes/verification.md) |
