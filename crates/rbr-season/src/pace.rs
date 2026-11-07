@@ -1,16 +1,12 @@
 //! A stage's reference time for a car class (ours): a speed plan along the driveline, each point's speed limited by
 //! the curvature ahead and the class's grip on the surface, with the class's acceleration and braking between them.
 //!
-//! The acceleration and the braking share one grip budget with the cornering (the friction circle): what the corner
-//! takes, the exit and the entry cannot use. The grip grows with the square of the speed: the car model's own
-//! downforce ([`ClassPace::aero`) plus one plan-level commitment term ([`COMMIT`]): the fast amateurs of the hot laps
-//! hold the fast corners well past the standing-start grip, in every class.
-//!
 //! The driveline is sampled about every 1.5 m; the curvature at each sample is the heading change over that step in
 //! the ground plane (x and y: z is up in the game's tracks), smoothed over a corner's length so one record cannot set
-//! the pace. The speed limit is
-//! `sqrt(grip_eff / curvature)`, capped at the class's top speed. A forward pass applies the acceleration (falling
-//! linearly to 0 at top speed) and a backward pass the braking; the time is the trapezoid integral.
+//! the pace. The speed limit is where the grip holds the curvature `k`, `v² k = grip_eff (1 + aero v²)`, capped at
+//! the class's top speed; `aero` is a car model's own downforce ([`ClassPace::aero`]) plus [`COMMIT`], the same for
+//! every class. A forward pass applies the acceleration (falling linearly to 0 at top speed) and a backward pass the
+//! braking, each within what the corner leaves of the grip (the friction circle); the time is the trapezoid integral.
 //!
 //! `grip_eff` scales the class's dry-tarmac grip by the surface (tarmac 1, gravel 0.86, snow 0.85), on the loose by
 //! the class's [`ClassPace::loose`], and by the wetness (up to -25 % soaked). The class table ([`CLASSES`]) is
@@ -49,9 +45,9 @@ pub(crate) const STEP: f32 = 1.5;
 const SMOOTH: usize = 12;
 /// The slowest corner speed (m/s): below this the plan would crawl through hairpins no car crawls through.
 const MIN_CORNER: f32 = 4.0;
-/// The shared high-speed grip per (m/s)²: every class's grip grows by `1 + (aero + COMMIT) · v²`. The fast amateurs'
-/// commitment in the fast corners, fitted once to the hot laps (`notes/season.md` "Calibration"); a driver term,
-/// so it applies to every class alike, under each car model's own downforce.
+/// The high-speed grip per (m/s)² every class shares, on top of a car model's own downforce: the hot laps' fast
+/// amateurs hold the fast corners well past the low-speed grip, a driver's term, not a car's (`notes/season.md`
+/// "Calibration").
 const COMMIT: f32 = 2.0e-4;
 
 /// A class's row in [`CLASSES`]: its name, the spellings it matches and its pace.
@@ -325,44 +321,36 @@ pub(crate) fn plan(driveline: &[[f32; 3]], surface: Surface, wetness: f32, class
             turn[i] = cross.clamp(-1.0, 1.0).asin() / STEP;
         }
     }
-    let mut smooth = vec![0.0f32; samples.len()];
-    for (i, s) in smooth.iter_mut().enumerate() {
-        let (lo, hi) = (i.saturating_sub(SMOOTH), (i + SMOOTH + 1).min(samples.len()));
-        *s = turn[lo..hi].iter().sum::<f32>() / (hi - lo) as f32;
-    }
+    let curve: Vec<f32> = (0..samples.len())
+        .map(|i| {
+            let (lo, hi) = (i.saturating_sub(SMOOTH), (i + SMOOTH + 1).min(samples.len()));
+            (turn[lo..hi].iter().sum::<f32>() / (hi - lo) as f32).abs()
+        })
+        .collect();
     let aero = class.aero + COMMIT;
-    let mut curve = vec![0.0f32; samples.len()];
-    let mut limit = vec![0.0f32; samples.len()];
-    for (i, &k) in smooth.iter().enumerate() {
-        let k = k.abs();
-        curve[i] = k;
-        // The corner's speed where the grip, the high-speed share included, holds the curvature: v² k = grip (1 + aero v²).
-        let hold = k - grip_eff * aero;
-        limit[i] =
-            if hold <= 0.0 { class.top_speed } else { (grip_eff / hold).sqrt().min(class.top_speed).max(MIN_CORNER) };
-    }
-    // Forward pass: the acceleration falls linearly to 0 at top speed, within what the corner leaves of the grip.
+    // The corner's speed where the grip holds the curvature, v² k = grip (1 + aero v²); top speed where any speed holds.
+    let limit: Vec<f32> = curve
+        .iter()
+        .map(|&k| (grip_eff / (k - grip_eff * aero).max(0.0)).sqrt().min(class.top_speed).max(MIN_CORNER))
+        .collect();
+    // What the corner `k` leaves of the grip at speed² `v2` to accelerate or brake (the friction circle).
+    let left = |v2: f32, k: f32| {
+        let (grip, lateral) = (grip_eff * (1.0 + aero * v2), v2 * k);
+        (grip * grip - lateral * lateral).max(0.0).sqrt()
+    };
+    // Forward pass: the acceleration falls linearly to 0 at top speed.
     let mut speed = vec![0.0f32; samples.len()];
     speed[0] = limit[0].min(20.0);
     for i in 0..samples.len() - 1 {
-        let grip = grip_eff * (1.0 + aero * speed[i] * speed[i]);
-        let lateral = speed[i] * speed[i] * curve[i];
-        let avail = (grip * grip - lateral * lateral).max(0.0).sqrt();
+        let v2 = speed[i] * speed[i];
         let engine = (class.accel * (1.0 - speed[i] / class.top_speed)).max(0.0);
-        let a = engine.min(avail);
-        let v = (speed[i] * speed[i] + 2.0 * a * STEP).sqrt();
-        speed[i + 1] = v.min(limit[i + 1]);
+        speed[i + 1] = (v2 + 2.0 * engine.min(left(v2, curve[i])) * STEP).sqrt().min(limit[i + 1]);
     }
-    // Backward pass: the braking, scaled with the grip, within the same budget.
+    // Backward pass: the braking, scaled with the grip.
     for i in (0..samples.len() - 1).rev() {
         let v2 = speed[i + 1] * speed[i + 1];
-        let grip = grip_eff * (1.0 + aero * v2);
-        let lateral = v2 * curve[i + 1];
-        let avail = (grip * grip - lateral * lateral).max(0.0).sqrt();
         let brakes = brake_eff * (1.0 + aero * v2);
-        let b = brakes.min(avail);
-        let v = (v2 + 2.0 * b * STEP).sqrt();
-        speed[i] = speed[i].min(v);
+        speed[i] = speed[i].min((v2 + 2.0 * brakes.min(left(v2, curve[i + 1])) * STEP).sqrt());
     }
     Some(Plan { samples, limit, speed, top_speed: class.top_speed })
 }

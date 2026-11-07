@@ -11,8 +11,11 @@ the layer only reads drivelines and hands the launcher times, standings and save
 
 - `pace`: a quasi-static speed plan along the driveline's Hermite spline (`driveline_points`: the game's own
   Hermite through the `.trk` records, tangents fitted as the autopilot fits them; `timed_road` cuts it at the `.dls`
-  start and finish and keeps the splits from the start, the one road the launcher, the examples and the tests use). Samples at ~1.5 m; speed limit `sqrt(grip_eff / curvature)` capped at top speed, the grip growing with the square of the speed (`COMMIT` 2.0e-4 for every class, plus a car model's own downforce); forward pass with
-  acceleration falling linearly to 0 at top speed and the backward pass with braking each within what the corner leaves of the grip (the friction circle); trapezoid time integral.
+  start and finish and keeps the splits from the start, the one road the launcher, the examples and the tests use).
+  Samples at ~1.5 m; the speed limit is where the grip holds the curvature, `v² k = grip_eff (1 + aero v²)`, capped
+  at top speed (`aero` = `COMMIT` 2.0e-4 for every class plus a car model's own downforce); a forward pass with the
+  acceleration falling linearly to 0 at top speed and a backward pass with the braking, each within what the corner
+  leaves of the grip (the friction circle); trapezoid time integral.
 - Curvature is the *signed* heading change in the ground plane (x, y; z is up in the `.trk`), smoothed over ~37 m
   (`SMOOTH` 12, the hot laps' best) before taking the absolute. Until the hot-laps check the plan took x and z, the
   height for the second axis, so it read the road's climbs and noise as corners (the stage times 13-17 % off the
@@ -24,7 +27,7 @@ the layer only reads drivelines and hands the launcher times, standings and save
   (`PAR_SCALE` 1: the engine's par draws and mistakes net out for the field's best, whose mean lands within 0.2 % of the
   reference, sd 0.002 over the retail stages). Each check describes one half: a straights check (type 3) when the half
   is 70 %+ long straights (top speed over 150 m+) or looser than tightness 0.235 (28 % of the retail halves are
-  straights; this cut takes 45 % under the faster plan, two fifths of them retail straights), else curves (type 0); the value is 3 +/- how tight
+  straights; this cut takes 45 %, two fifths of them retail straights), else curves (type 0); the value is 3 +/- how tight
   the corners hold the plan against the retail mean of its side (0.18 straights, 0.33 curves); the second half of a snow section looser than the first takes rough (type 1),
   a much looser gravel one obstacles (type 2). Material from the surface, accident table 0 (every retail row uses it).
   `StageProfile::flat` gives a stage without a driveline a reference and a middling track from its length. A BTB
@@ -110,19 +113,14 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   and gravel at 0.85-0.86 of tarmac's grip (the old 0.75 and 0.50 put gravel 5 % and snow 21 % slow against tarmac).
 - Stages: the boards' stage effect (Fiesta WRC 2019, the hundredth-best driver of those with 50+ times) against the
   anchor's reference over 244 installed stages: sd 6.3 % tarmac, 6.1 % gravel, 6.5 % snow; the reference sits ~10 %
-  behind that driver on every surface. The acceleration and the braking share one grip budget with the cornering
-  (the friction circle: no new parameters; alone 6.4/6.5/7.0 %), and every class's plan grows its grip by
-  `1 + COMMIT v²`, `COMMIT` 2.0e-4 (the fast amateurs' commitment in the fast corners, a driver term, so shared;
-  held-out 6.45 -> 5.98 % with the coupling, consistent across surfaces, seeds and countries). The fit keeps
-  improving to 5e-4 (gravel/snow 5.9 %), so 2.0e-4 is a cap, above the cars' hardware (0.6e-4 2003, 1.3e-4 the 2019
-  boards' car), not an optimum. On the anchor alone it made the class effects follow the stage's speed (Rally 2 over
-  the anchor spread 1.2 % across stages, shared 0.3 %). Tried and left out, one line each: a pace-note limit on top of the
-  curvature (the `.dls` calls, severity 0-5) gained 0.3 %; grade in the longitudinal budget no gain (grades are small
-  and climb/descent cancel); standing start (0 m/s) neutral; smoothing 16 better on tarmac/snow but worse on
-  gravel; a braking margin below the hardware slower on gravel/snow only and unphysical on tarmac; a crest cap from
-  the vertical curvature never binds at physical scales; abs-smoothed curvature for chicanes far worse (it reads
-  the records' jitter as corners); MIN_CORNER and top-speed variants dead once coupled; the road-length labels'
-  noise (up to +7 % on some stages) correlates but is the labels', not the road's.
+  behind that driver on every surface. The friction circle alone (no parameters) gives 6.4/6.5/7.0 %; `COMMIT`
+  (the fast amateurs' commitment in the fast corners, a driver term, so every class's) the rest: held-out 6.45 ->
+  5.98 % (5-fold x 3 seeds and by country, every surface). The fit keeps improving to 5e-4 (gravel/snow 5.9 %), so
+  2.0e-4 is a cap above the cars' hardware (0.6e-4 2003, 1.3e-4 the boards' 2019 car), not an optimum; on the anchor
+  alone it made the class effects follow the stage's speed (Rally 2 over the anchor, sd across stages 1.2 %, shared
+  0.3 %). No gain: a pace-note limit (the `.dls` severities, 0.3 %), grade in the budget, a standing start, other
+  smoothing, a braking margin, a crest cap, abs-smoothed curvature (reads the records' jitter as corners, far worse),
+  `MIN_CORNER` and top speed variants; the road-length labels' noise (up to +7 %) is RSF's, not the road's.
 - The anchor is the `WRC 2.0` row (2003's cars, as 1.02's; plain `WRC` too). The others are fitted to the
   RallySimFans hot laps (557k players' best times on 519 stages, exported by the user, not committed): each car's
   effect from `log t = stage + driver + car` per surface over each driver's times within 10 % of that car's best on
@@ -130,8 +128,8 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   takes each class's shape from its cars in the NGP sweep (grip, braking, the `car_pace` straight; geometric means
   over the 102 added packs since 2026-11-07, every class measured: A5 and Group 2 top out at ~0.70 of WRC 2.0, where
   the A7 and Group 4 shapes they borrowed before said 1.09 and 0.98), scales it to the tarmac effect and sets `loose`
-  to the gravel and snow ones, each within 1.1 %. The plan's `COMMIT` is in every row's fit (`class_fit`
-  repeats the scale, as it does not scale); the rows' `aero` is 0 and a car model adds its own through `car_pace`. Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
+  to the gravel and snow ones, each within 1.1 % (the rows' `aero` is 0; `COMMIT` does not scale, so the fit
+  repeats the scale). Effects over WRC 2.0, tarmac/gravel: WRC 1.6 -3.9/-4.4 %, Rally 2 -2.5/-3.4, R5
   +0.3/-0.3, R4 +1.6/+1.5, S2000 +1.2, Rally 3 +2.7/+2.3, A8 +4.4/+4.5, N4 +6.1, Rally 4 +5.7/+6.5, R3 +6.1/+8.4,
   Group B +6.6/+7.6, RGT +6.6/+12.6, Group 4 +8.2/+8.7, R2 +8.3/+9.3, A6 +10, R1 +16/+18, A5 +18, Group 2 +21/+20
   (the old table had Rally 2 7.9 % and Group B 3.7 % behind the top class).
@@ -184,10 +182,10 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
   shared offset, the players losing far more in rear-driven cars (Porsche, Escort Mk II, M3, Alpine 10-17 %) and in
   old four-wheel drive than the plan. `CarPace::handling` fits log time on rear drive +4.6/+6.6/+8.3 %, front drive
   +0.3/+2.5/+1.7 % and -1.1/-1.1/-0.7 % per N/kg of downforce at 150 km/h: 1.5/2.0/2.3 % RMS left out one at a
-  time (fitted before the coupled plan; in sample under it 1.4/1.7/2.0 %, the constants kept). So Group B's edge over a modern car is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the
-  Fiesta WRC 2019).
+  time (fitted before the coupled plan; in sample under it 1.4/1.7/2.0 %, kept). So Group B's edge over a modern car
+  is lost on the loose (Audi S1 +4.1 % on tarmac, +5.7 % on gravel over the Fiesta WRC 2019).
 - Retail AI checks: straights 28 % of the halves (a half under tightness 0.235 or 70 % long straights), 118/216 check
-  types match the retail rows (132/216 before the faster plan; the rows are hand-set and barely follow the geometry).
+  types match the retail rows (132/216 before the coupled plan; the retail rows barely follow the geometry, below).
 
 ## Open items
 
@@ -200,7 +198,8 @@ seeds) over the dry `ai.ini` rows; it matches the `times.ini` developer records 
 `examples/track.rs` (reads the install's `ai.ini` at run time, nothing kept) builds each retail map's track for the WRC
 class and compares (36 maps, dry rows, `timed_road`): material 108/108; section share of the stage |generated - retail|
 0.010; total par generated / retail gravel 1.034 (sd 0.037), snow 0.973 (0.045), tarmac 1.070 (0.021), the same
-residuals as the pace model's; `tests/retail_tracks.rs` keeps the materials and each surface's mean within 0.95-1.05; check types 118/216 and type with value within 1 114/216. The retail checks are hand-set and barely follow
+residuals as the pace model's; `tests/retail_tracks.rs` keeps the materials, the mean within 0.95-1.05 and each
+surface's within 0.88-1.12; check types 118/216 and type with value within 1 114/216. The retail checks are hand-set and barely follow
 the geometry (type 0 vs 3 halves have near-equal tightness and straight share), so a constant (0, 3) would score about
 as well; the generator keeps the rules above for their plausibility, not their match. `examples/season.rs` runs a
 three-rally season on the retail stages with a fixed player time and prints standings, bulletins and retirements.
