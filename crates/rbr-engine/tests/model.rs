@@ -135,6 +135,51 @@ fn part_throttle_never_beats_wot_and_a_closed_pedal_holds_idle() {
     }
 }
 
+fn dbw_turbos() -> impl Iterator<Item = &'static (&'static str, Params, Realistic)> {
+    models()
+        .iter()
+        .filter(|(_, p, m)| p.turbo && m.calibration().class.unwrap().actuation == rbr_engine::class::Actuation::Dbw)
+}
+
+/// The electronic gate's aim follows the plate, so a part pedal has one steady state whichever way it is approached.
+#[test]
+fn a_dbw_turbo_part_pedal_is_the_same_from_closed_and_from_wot() {
+    for (name, p, m) in dbw_turbos() {
+        let spec = m.spec();
+        let mut n = (rpm(p.idle_speed) / 250.0).ceil() * 250.0;
+        while n <= rpm(p.rev_limit) {
+            for k in 0..=10 {
+                let pedal = f64::from(k) / 10.0;
+                let up = calibrate::part(spec, n, pedal).1.torque;
+                let down = calibrate::steady(spec, &mut calibrate::wot(spec, n).0, n, pedal).torque;
+                let band = 0.02 * up.abs().max(down.abs()) + 1.0;
+                assert!(
+                    (up - down).abs() <= band,
+                    "{name} {n:.0} rpm pedal {pedal}: {up:.1} from closed, {down:.1} from WOT"
+                );
+            }
+            n += 250.0;
+        }
+    }
+}
+
+/// A tuned electronic gate: a WOT tip-in at a fixed speed overshoots its steady torque by at most 5 % and stays within
+/// 2 % of it from 1 s on (inferred, tuning practice).
+#[test]
+fn a_dbw_turbo_tip_in_barely_overshoots() {
+    for (name, _, m) in dbw_turbos() {
+        for n in [3000.0, 5000.0] {
+            let mut m = m.clone();
+            let rows = bench::run(&mut m, n, None, 5.0, |t| if t >= 1.0 { 1.0 } else { 0.0 }, None);
+            let last = rows.last().unwrap().torque;
+            let peak = rows.iter().map(|r| r.torque).fold(f64::MIN, f64::max);
+            assert!(peak <= 1.05 * last, "{name} {n:.0} rpm: peak {peak:.1} over steady {last:.1}");
+            let off = rows.iter().filter(|r| r.time >= 2.0).map(|r| (r.torque - last).abs()).fold(0.0, f64::max);
+            assert!(off <= 0.02 * last, "{name} {n:.0} rpm: {off:.1} off steady {last:.1} after 1 s");
+        }
+    }
+}
+
 /// Seconds at a fixed `n` rpm from the steady pedal that gives 5 bar BMEP until 90 % of the steady WOT torque.
 fn spool_at(m: &Realistic, n: f64) -> f64 {
     use rbr_engine::engine::{step, Step};

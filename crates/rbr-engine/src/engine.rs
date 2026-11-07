@@ -327,6 +327,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     };
     let area = gas::plate_area(s.plate) + other;
 
+    let boost_before = s.p_boost;
     // Air path: boost pipe then manifold, sub-stepped when the manifold is fast.
     let eta_v = spec.eta_v.at(rpm);
     let tau = spec.v_im * 120.0 / (eta_v * spec.geometry.v_d * rpm.max(300.0));
@@ -385,19 +386,35 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         };
         let t_ss = (t.t_em0 + t.t_em_k * w_exhaust + unburnt).min(turbo::T_EM_MAX);
         s.t_em += (t_ss - s.t_em) * (1.0 - exp(-dt / turbo::TAU_EXHAUST));
-        // Both gates aim at the WOT boost whatever the pedal (inferred: rally ECUs map pedal to position).
-        let aim = if anti_lag { x.p_a + ecu::ALS_BOOST } else { t.pi_wot.at(rpm) * x.p_a };
+        // The electronic gate's aim rises linearly with the throttle's aim position to the WOT boost, as race ECUs'
+        // boost aim tables over rpm and throttle (shape inferred; the aim, not the plate, so a re-apply after anti-lag
+        // does not dump the boost while the plate opens); a spring gate aims at the WOT boost whatever the pedal.
+        let wot = t.pi_wot.at(rpm) * x.p_a;
+        let aim = if anti_lag {
+            x.p_a + ecu::ALS_BOOST
+        } else if spec.class.actuation == Actuation::Dbw {
+            x.p_a + (wot - x.p_a) * target
+        } else {
+            wot
+        };
         let e = (s.p_boost - aim) / turbo::WASTEGATE_BAND;
         let command = if spec.class.actuation == Actuation::Dbw || anti_lag {
             // The electronic gate's base opening at this speed (the steady WOT one) plus PI, as boost controllers
             // run a base duty table with closed-loop trim; the base pre-opens the gate as the boost comes up.
             let base = if anti_lag { 0.0 } else { t.gate_base.at(rpm) };
             // Conditional integration: the integral holds while the command is saturated the way it would grow.
-            let raw = base + e + s.wastegate_i;
+            // A derivative on the boost (not the error, so no kick from the aim) opens the gate as the boost
+            // rises fast, before it overshoots.
+            let d = if dt > 0.0 {
+                turbo::WASTEGATE_TD * (s.p_boost - boost_before) / (dt * turbo::WASTEGATE_BAND)
+            } else {
+                0.0
+            };
+            let raw = base + e + d + s.wastegate_i;
             if !((raw <= 0.0 && e < 0.0) || (raw >= 1.0 && e > 0.0)) {
                 s.wastegate_i = (s.wastegate_i + e * dt / turbo::WASTEGATE_TI).clamp(-1.0, 1.0);
             }
-            (base + e + s.wastegate_i).clamp(0.0, 1.0)
+            (base + e + d + s.wastegate_i).clamp(0.0, 1.0)
         } else {
             ((s.p_boost - aim) / turbo::SPRING_BAND).clamp(0.0, 1.0)
         };

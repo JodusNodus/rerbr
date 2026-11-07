@@ -152,9 +152,11 @@ def figures(d, out):
         fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True)
         pedals = sorted({r["pedal"] for r in st})
         cmap = plt.get_cmap("viridis")
-        for col, (ax, key, title) in enumerate(zip(axes, ("torque", "ngp"), ("ours", "NGP's formula (1 − t)·B + t·V"))):
+        # Ours from IdleRPM up: below it the bench holds the idle air wide open, which is the ECU, not the engine.
+        titles = ("ours, from IdleRPM up", "NGP's formula (1 − t)·B + t·V")
+        for col, (ax, key, title) in enumerate(zip(axes, ("torque", "ngp"), titles)):
             for q in pedals:
-                rows = [r for r in st if r["pedal"] == q]
+                rows = [r for r in st if r["pedal"] == q and (key == "ngp" or r["rpm"] >= p["idle"])]
                 ax.plot([r["rpm"] for r in rows], [r[key] for r in rows], color=cmap(q), lw=1.4,
                         label=f"{q * 100:.0f} %")
             ax.axhline(0, color="k", lw=0.6)

@@ -37,11 +37,14 @@ const T_EM_IDLE: f64 = 973.15;
 const T_EM_RATED: f64 = 1223.15;
 pub const T_EM_MAX: f64 = 1423.15;
 /// The wastegate: its actuator, s (Gorzelic 2012, 125 ms); the electronic gate's proportional band, Pa (fully open
-/// 1 bar over the aim, around its base opening), and integral time, s; the spring gate's band (fully open 0.5 bar over
-/// its aim). Band and time guessed: the narrowest the samples hold without a limit cycle through the turbo.
+/// 1 bar over the aim, around its base opening), integral time and derivative time on the boost, s; the spring gate's
+/// band (fully open 0.5 bar over its aim). Band and times guessed: the narrowest band the samples hold without a limit
+/// cycle through the turbo, and the derivative time that keeps a tip-in within 5 % overshoot, settled in 1 s (tuning
+/// practice; 0.05–0.12 s all do at 3000 and 5000 rpm, 0.08 the least overshoot).
 pub const TAU_WASTEGATE: f64 = 0.125;
 pub const WASTEGATE_BAND: f64 = 1.0e5;
 pub const WASTEGATE_TI: f64 = 0.5;
+pub const WASTEGATE_TD: f64 = 0.08;
 pub const SPRING_BAND: f64 = 0.5e5;
 /// The blow-off valve opens over 0.3–0.4 bar across the throttle and empties the boost pipe in about 0.1 s (inferred).
 pub const BOV_OPEN: f64 = 0.3e5;
