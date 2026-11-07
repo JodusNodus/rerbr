@@ -49,8 +49,7 @@ fn closed_throttle_at_the_limit_brakes_with_the_brake_coefficient() {
         if c.friction_scale != c.friction_scale_raw {
             continue;
         }
-        let mut s = rbr_engine::engine::State::new();
-        let got = calibrate::steady(m.spec(), &mut s, rpm(p.rev_limit), 0.0).torque;
+        let got = calibrate::closed(m.spec(), rpm(p.rev_limit)).1.torque;
         let want = -f64::from(p.brake_coefficient * p.max_torque);
         assert!((got - want).abs() <= 0.005 * want.abs(), "{name}: {got:.2} for {want:.2}");
     }
@@ -88,7 +87,9 @@ fn the_limiter_holds_wot_in_neutral() {
 #[test]
 fn the_overrun_cut_never_drives() {
     for (name, p, m) in models() {
-        if m.calibration().class.unwrap().anti_lag {
+        // Anti-lag keeps firing, and a fixed-stop car has no overrun cut: its idle circuit keeps fuelling.
+        let class = m.calibration().class.unwrap();
+        if class.anti_lag || class.idle == rbr_engine::class::Idle::Stop {
             continue;
         }
         let idle = rpm(p.idle_speed);
@@ -98,6 +99,26 @@ fn the_overrun_cut_never_drives() {
             let rows = bench::run(&mut m, n, None, 3.0, |t| if t < 1.0 { 1.0 } else { 0.0 }, None);
             let worst = rows.iter().filter(|r| r.time >= 1.0).map(|r| r.torque).fold(f64::MIN, f64::max);
             assert!(worst <= 0.0, "{name} at {n:.0}: {worst:.1}");
+            n += 500.0;
+        }
+    }
+}
+
+#[test]
+fn part_throttle_never_beats_wot_and_a_closed_pedal_holds_idle() {
+    for (name, p, m) in models() {
+        let spec = m.spec();
+        let idle = rpm(p.idle_speed);
+        let t = calibrate::part(spec, idle, 0.0).1.torque;
+        assert!(t.abs() < 1.0, "{name}: closed pedal at idle {t:.1}");
+        let mut n = 1000.0;
+        while n <= rpm(p.rev_limit) {
+            let wot = calibrate::wot(spec, n).1.torque;
+            for k in 0..10 {
+                let pedal = f64::from(k) / 10.0;
+                let t = calibrate::part(spec, n, pedal).1.torque;
+                assert!(t <= wot + 1e-3 * wot.abs() + 0.1, "{name} {n:.0} rpm pedal {pedal}: {t:.1} over WOT {wot:.1}");
+            }
             n += 500.0;
         }
     }

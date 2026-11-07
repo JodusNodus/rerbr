@@ -7,6 +7,7 @@
 mod rsf;
 
 use rbr_engine::bench::{self, Row};
+use rbr_engine::calibrate;
 use rbr_engine::engine::RPM;
 use rbr_engine::realistic::Realistic;
 use rbr_engine::{samples, Params};
@@ -29,14 +30,12 @@ fn ngp(p: &Params, omega: f64, t: f64) -> f64 {
 fn steady(p: &Params) -> String {
     let mut out = String::from("rpm,pedal,torque,ngp\n");
     let top = f64::from(p.rev_limit) * RPM + 500.0;
-    let seconds = if p.turbo { 4.0 } else { 1.5 };
+    let m = Realistic::new(p);
     for k in 0..=10 {
         let pedal = f64::from(k) / 10.0;
-        let mut m = Realistic::new(p);
         let mut rpm = 500.0;
         while rpm <= top {
-            let rows = bench::run(&mut m, rpm, None, seconds, |_| pedal, None);
-            let t = rows.last().map_or(0.0, |r| r.torque);
+            let t = calibrate::part(m.spec(), rpm, pedal).1.torque;
             let _ = writeln!(out, "{rpm},{pedal},{t:.3},{:.3}", ngp(p, rpm / RPM, pedal));
             rpm += 250.0;
         }

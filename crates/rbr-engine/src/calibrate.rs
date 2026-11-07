@@ -13,10 +13,6 @@ use std::f64::consts::PI;
 
 /// The calibration's step, s (NGP's).
 pub const DT: f64 = 1.0 / 720.0;
-/// The control unit's overrun air: closed pedal, fuel cut, 3000 rpm gives the manifold 0.2·p_a (report §1.3: decel
-/// vacuum 17–23 kPa; MoTeC's overrun throttle aim, R1 §3).
-const LEAK_RPM: f64 = 3000.0;
-const LEAK_P: f64 = 0.2;
 /// The boost target's assumptions: η_ig 0.38, η_v 0.95, and the cap without a class one (report §5.4).
 const PI_ETA_IG: f64 = 0.38;
 const PI_CAP: f64 = 2.5;
@@ -127,10 +123,13 @@ impl Car {
 
 /// Runs the engine at a fixed `rpm` and `pedal` for `seconds` from `state`; the last step's output.
 pub fn settle(spec: &Spec, state: &mut State, rpm: f64, pedal: f64, seconds: f64) -> Out {
-    let x = Step::at(rpm / RPM, pedal, DT);
+    run(spec, state, &Step::at(rpm / RPM, pedal, DT), seconds)
+}
+
+fn run(spec: &Spec, state: &mut State, x: &Step, seconds: f64) -> Out {
     let mut out = Out::default();
     for _ in 0..(seconds / DT).ceil() as usize {
-        out = engine::step(spec, state, &x);
+        out = engine::step(spec, state, x);
     }
     out
 }
@@ -138,10 +137,14 @@ pub fn settle(spec: &Spec, state: &mut State, rpm: f64, pedal: f64, seconds: f64
 /// Runs the engine at a fixed `rpm` and `pedal` from `state` until it is steady: the pressures and the turbo's
 /// speed move less than 1e-5 of themselves (and 1 Pa, 1 rad/s) over 0.25 s (at least 0.5 s, at most 30 s).
 pub fn steady(spec: &Spec, state: &mut State, rpm: f64, pedal: f64) -> Out {
-    let mut out = settle(spec, state, rpm, pedal, 0.25);
+    steady_at(spec, state, &Step::at(rpm / RPM, pedal, DT))
+}
+
+fn steady_at(spec: &Spec, state: &mut State, x: &Step) -> Out {
+    let mut out = run(spec, state, x, 0.25);
     for _ in 0..120 {
         let before = *state;
-        out = settle(spec, state, rpm, pedal, 0.25);
+        out = run(spec, state, x, 0.25);
         let moved = |a: f64, b: f64, floor: f64| (a - b).abs() > 1e-5 * a.abs() + floor;
         if !(moved(state.p_im, before.p_im, 1.0)
             || moved(state.p_boost, before.p_boost, 1.0)
@@ -153,20 +156,26 @@ pub fn steady(spec: &Spec, state: &mut State, rpm: f64, pedal: f64) -> Out {
     out
 }
 
-/// The steady closed-pedal, overrun cut state at `rpm`.
-fn closed(spec: &Spec, rpm: f64) -> (State, Out) {
+/// The steady closed pedal at `rpm` with the fuel cut (no combustion; ECU cars hold their overrun air).
+pub fn closed(spec: &Spec, rpm: f64) -> (State, Out) {
     let mut s = State::new();
-    let out = steady(spec, &mut s, rpm, 0.0);
+    let x = Step { stalled: true, ..Step::at(rpm / RPM, 0.0, DT) };
+    let out = steady_at(spec, &mut s, &x);
     (s, out)
 }
 
-/// The steady WOT at `rpm` a tip-in from a steady closed pedal reaches (the turbo's boost has two branches near its
-/// threshold; this is the one a spool reaches).
-pub fn wot(spec: &Spec, rpm: f64) -> (State, Out) {
+/// The steady `pedal` at `rpm` that a tip-in from a fresh engine's steady closed pedal reaches (the turbo's boost has
+/// two branches near its threshold; this is the one a spool reaches).
+pub fn part(spec: &Spec, rpm: f64, pedal: f64) -> (State, Out) {
     let mut s = State::new();
     steady(spec, &mut s, rpm, 0.0);
-    let out = steady(spec, &mut s, rpm, 1.0);
+    let out = steady(spec, &mut s, rpm, pedal);
     (s, out)
+}
+
+/// The steady WOT at `rpm` (see [`part`]).
+pub fn wot(spec: &Spec, rpm: f64) -> (State, Out) {
+    part(spec, rpm, 1.0)
 }
 
 /// The steady WOT runs at every grid point: their states and outputs.
@@ -369,7 +378,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
             spec.w_rated = spec.cylinder_flow(P_REF, rpm_power, T_REF).max(1e-4);
         }
         let choked = spec.cda * P_REF / (R * T_REF).sqrt() * PSI_CHOKED;
-        let total = spec.cylinder_flow(LEAK_P * P_REF, LEAK_RPM, T_REF) / choked;
+        let total = spec.cylinder_flow(ecu::OVERRUN_P * P_REF, ecu::OVERRUN_RPM, T_REF) / choked;
         spec.overrun_air = total;
         let (_, out) = closed(&spec, car.rpm_limit);
         let fric = out.friction / spec.friction_scale;
@@ -399,24 +408,10 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
     spec.k = identity(&car, &runs);
     idle_gains(&mut spec, inertia);
 
-    // The DBW request's ends (the closed one first, while the pedal still sets the plate).
-    let top = car.rpm_limit + 1000.0;
-    let mut s = State::new();
-    spec.p_closed = Curve(
-        (0..=(top / 500.0) as usize)
-            .map(|i| {
-                let rpm = i as f64 * 500.0;
-                steady(&spec, &mut s, rpm, 0.0);
-                (rpm, s.p_im)
-            })
-            .collect(),
-    );
-    spec.p_wot = Curve(car.grid.iter().zip(&runs).map(|(k, (s, _))| (k.0, s.p_im)).collect());
-
     // The report.
     cal.friction_scale = spec.friction_scale;
     cal.leak = spec.leak;
-    cal.overrun_air = spec.overrun_air;
+    cal.overrun_air = if class.idle == Idle::Ecu { spec.overrun_air } else { 0.0 };
     cal.idle_air = spec.idle_air;
     cal.idle_kp = spec.idle_kp;
     cal.idle_ki = spec.idle_ki;

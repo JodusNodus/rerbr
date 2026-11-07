@@ -61,9 +61,6 @@ pub struct Spec {
     pub k: Curve,
     /// The air flow at rated power, kg/s (NA back pressure).
     pub w_rated: f64,
-    /// The steady manifold pressure over rpm at WOT and closed pedal at the reference air, Pa (the DBW request).
-    pub p_wot: Curve,
-    pub p_closed: Curve,
 }
 
 impl Spec {
@@ -97,8 +94,6 @@ impl Spec {
             friction_scale: 1.0,
             k: Curve::default(),
             w_rated: 1.0,
-            p_wot: Curve::default(),
-            p_closed: Curve::default(),
         }
     }
 
@@ -115,36 +110,6 @@ impl Spec {
     /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`.
     pub fn friction(&self, rpm: f64, phi: f64, p_ratio: f64) -> f64 {
         self.friction_scale * self.geometry.per_pa() * self.geometry.fmep(rpm, phi, p_ratio)
-    }
-
-    /// The idle air when the loop is off: the overrun air during the overrun cut, else the feed-forward.
-    fn idle_air_open(&self, overrun: bool) -> f64 {
-        if overrun && self.class.idle == Idle::Ecu {
-            self.overrun_air
-        } else {
-            self.idle_air
-        }
-    }
-
-    /// The open area (fraction of the throttle) that holds `p` steady at `rpm` from `p_up`: the orifice balance.
-    fn area_for(&self, p: f64, p_up: f64, rpm: f64, t: f64) -> f64 {
-        let per_area = gas::orifice(self.cda, p_up, p, t);
-        if per_area > 0.0 {
-            self.cylinder_flow(p, rpm, t) / per_area
-        } else {
-            0.0
-        }
-    }
-
-    /// The DBW plate's lift for the request `p_req` between the closed pedal's `p_closed` and WOT: the area that
-    /// holds `p_req` less the area that holds `p_closed` (which the leak and the idle air give), so a closed pedal
-    /// closes the plate; fully open when the request is out of reach.
-    fn lift_for(&self, p_req: f64, p_closed: f64, p_up: f64, rpm: f64, t: f64) -> f64 {
-        if p_req >= 0.995 * p_up {
-            return 1.0;
-        }
-        let area = self.area_for(p_req, p_up, rpm, t) - self.area_for(p_closed.min(p_req), p_up, rpm, t);
-        gas::plate_lift(area)
     }
 }
 
@@ -208,8 +173,10 @@ pub struct State {
     pub t_im: f64,
     /// The throttle plate's lift.
     pub plate: f64,
-    /// The idle air loop's integral, the overrun cut and the firing events.
+    /// The idle air loop's integral, the overrun air's share above the idle feed-forward (decaying once the overrun
+    /// cut ends), the overrun cut and the firing events.
     pub idle_i: f64,
+    pub overrun: f64,
     pub dfco: bool,
     pub events: Events,
     pub anti_lag: AntiLag,
@@ -232,6 +199,7 @@ impl State {
             t_im: T_REF,
             plate: 0.0,
             idle_i: 0.0,
+            overrun: 0.0,
             dfco: false,
             events: Events::new(),
             anti_lag: AntiLag::default(),
@@ -291,22 +259,33 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         Some(_) if spec.class.anti_lag => s.anti_lag.step(pedal, rpm, spec.rpm_limit, dt),
         _ => false,
     };
-    if pedal >= ecu::PEDAL_CLOSED || rpm < spec.rpm_idle + ecu::DFCO_OFF {
+    if !ecu_idle || pedal >= ecu::PEDAL_CLOSED || rpm < spec.rpm_idle + ecu::DFCO_OFF {
         s.dfco = false;
     } else if rpm > spec.rpm_idle + ecu::DFCO_ON {
         s.dfco = true;
     }
     let dfco = s.dfco && !anti_lag;
     let error = (spec.rpm_idle - rpm) / spec.rpm_idle;
-    let idle_loop = ecu_idle && pedal < ecu::PEDAL_CLOSED && rpm < spec.rpm_idle + ecu::IDLE_BAND;
+    // The overrun air holds the manifold while the fuel is cut, then hands over to the idle loop by decaying.
+    if dfco {
+        let share = spec.eta_v.at(rpm) * rpm / (spec.eta_v.at(ecu::OVERRUN_RPM) * ecu::OVERRUN_RPM);
+        s.overrun = (spec.overrun_air * share - spec.idle_air).max(0.0);
+    } else {
+        s.overrun *= exp(-dt / ecu::OVERRUN_TAU);
+    }
+    let idle_loop = ecu_idle && !dfco && pedal < ecu::PEDAL_CLOSED && rpm < spec.rpm_idle + ecu::IDLE_BAND;
     let idle_air = if idle_loop {
         let low = -spec.idle_air;
         let high = spec.idle_air_max - spec.idle_air;
-        s.idle_i = (s.idle_i + spec.idle_ki * error * dt).clamp(low, high);
-        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(0.0, spec.idle_air_max)
+        // Conditional integration: above idle + 100 rpm (the overrun air still decaying, a fall towards idle) the
+        // integral holds, so it does not wind down and undershoot (inferred).
+        if rpm < spec.rpm_idle + ecu::IDLE_INTEGRATE {
+            s.idle_i = (s.idle_i + spec.idle_ki * error * dt).clamp(low, high);
+        }
+        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(0.0, spec.idle_air_max) + s.overrun
     } else {
         s.idle_i = 0.0;
-        spec.idle_air_open(dfco)
+        spec.idle_air + s.overrun
     };
     let retard = if anti_lag {
         ecu::ALS_RETARD
@@ -327,24 +306,16 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     if anti_lag {
         cut = cut.max(ecu::ALS_CUT);
     }
-    let fuel = !(dfco || rpm > spec.rpm_limit + ecu::LIMITER_RANGE);
+    let fuel = !(dfco || x.stalled || rpm > spec.rpm_limit + ecu::LIMITER_RANGE);
 
     // Throttle.
-    let scale = x.p_a / P_REF;
-    let p_up = if spec.turbo.is_some() { s.p_boost } else { x.p_a };
     let other = spec.leak + idle_air;
     let mut target = match spec.class.actuation {
         Actuation::Cable => match spec.class.intake {
             Intake::Single => pedal,
             Intake::PerCylinder => pow(pedal, 1.6),
         },
-        Actuation::Dbw if pedal >= 1.0 || spec.p_wot.0.is_empty() => pedal,
-        Actuation::Dbw => {
-            let p_closed = spec.p_closed.at(rpm) * scale;
-            let p_wot = spec.p_wot.at(rpm) * if spec.turbo.is_some() { 1.0 } else { scale };
-            let p_req = p_closed + pedal * (p_wot - p_closed);
-            spec.lift_for(p_req, p_closed, p_up, rpm, s.t_im)
-        }
+        Actuation::Dbw => pow(pedal, ecu::DBW_EXPONENT),
     };
     if anti_lag {
         target = target.max(gas::plate_lift(ecu::ALS_AREA));
@@ -413,20 +384,8 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         };
         let t_ss = (t.t_em0 + t.t_em_k * w_exhaust + unburnt).min(turbo::T_EM_MAX);
         s.t_em += (t_ss - s.t_em) * (1.0 - exp(-dt / turbo::TAU_EXHAUST));
-        let pi_wot = t.pi_wot.at(rpm);
-        let aim = if anti_lag {
-            x.p_a + ecu::ALS_BOOST
-        } else {
-            match spec.class.actuation {
-                Actuation::Dbw if pedal >= 1.0 || spec.p_wot.0.is_empty() => pi_wot * P_REF,
-                Actuation::Dbw => {
-                    let p_closed = spec.p_closed.at(rpm) * scale;
-                    let p_req = p_closed + pedal * (spec.p_wot.at(rpm) - p_closed);
-                    (1.08 * p_req).clamp(x.p_a, (pi_wot * P_REF).max(x.p_a))
-                }
-                Actuation::Cable => x.p_a + (pi_wot - 1.0) * P_REF,
-            }
-        };
+        // Both gates aim at the WOT boost whatever the pedal (inferred: rally ECUs map pedal to position).
+        let aim = if anti_lag { x.p_a + ecu::ALS_BOOST } else { t.pi_wot.at(rpm) * x.p_a };
         let e = (s.p_boost - aim) / turbo::WASTEGATE_BAND;
         let command = if spec.class.actuation == Actuation::Dbw || anti_lag {
             s.wastegate_i = (s.wastegate_i + e * dt / turbo::WASTEGATE_TI).clamp(0.0, 1.0);

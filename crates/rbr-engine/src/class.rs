@@ -8,7 +8,7 @@ use crate::Car;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Actuation {
     Cable,
-    /// Drive-by-wire with a torque request (ME7 `mivbeg`).
+    /// Drive-by-wire: the plate aims at a position from the pedal, behind the electronic throttle's lag.
     Dbw,
 }
 

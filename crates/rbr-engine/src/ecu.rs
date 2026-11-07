@@ -19,10 +19,20 @@ pub const IDLE_SPARK_HZ: f64 = 3.0;
 pub const IDLE_AIR_MAX_LIFT: f64 = 0.15;
 /// The idle loops run with the pedal closed below idle + 800 rpm (the overrun cut's band, inferred).
 pub const IDLE_BAND: f64 = 800.0;
+/// The idle air loop integrates only below idle + 100 rpm (inferred: no wind-down while the overrun air decays).
+pub const IDLE_INTEGRATE: f64 = 100.0;
 /// Overrun fuel cut: pedal under 0.02 above idle + 800 rpm, resumed below idle + 300 rpm or on the pedal (R1 §3).
 pub const PEDAL_CLOSED: f64 = 0.02;
 pub const DFCO_ON: f64 = 800.0;
 pub const DFCO_OFF: f64 = 300.0;
+/// The overrun air: with the fuel cut the manifold holds 0.2·p_a (decel vacuum 17–23 kPa), sized at 3000 rpm and
+/// opened in proportion to the cylinders' flow at other speeds, so the hold is the same at every speed.
+pub const OVERRUN_P: f64 = 0.2;
+pub const OVERRUN_RPM: f64 = 3000.0;
+/// The overrun air's decay once the cut ends, s: a dashpot's or idle valve's hand-over to the idle loop (inferred).
+pub const OVERRUN_TAU: f64 = 0.5;
+/// DBW: throttle aim = pedal^1.3 (HPA webinar 138: 40 % pedal about 30 % throttle; inferred exponent through it).
+pub const DBW_EXPONENT: f64 = 1.3;
 /// Rev limiter: ignition cut 0 → 100 % over 200 rpm above the limit, then fuel cut (MoTeC M1 defaults, report §4).
 pub const LIMITER_RANGE: f64 = 200.0;
 /// No combustion below this speed, rpm (report §3).
