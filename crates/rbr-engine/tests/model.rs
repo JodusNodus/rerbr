@@ -261,6 +261,49 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
     }
 }
 
+/// A lift from steady WOT at 5000 rpm: the blow-off valve opens within 0.1 s and vents the boost (it stays open while
+/// the manifold is under vacuum, as a real one does); with anti-lag running it stays shut. The telemetry reports the
+/// air's pressure.
+#[test]
+fn the_blow_off_valve_vents_a_lift_unless_anti_lag_runs() {
+    use rbr_engine::engine::{step, Step};
+    for (name, p, m) in models() {
+        if !p.turbo {
+            continue;
+        }
+        for anti_lag in [true, false] {
+            let mut m = m.clone();
+            m.spec_mut().class.anti_lag = anti_lag;
+            let spec = m.spec();
+            let (mut s, wot) = calibrate::wot(spec, 5000.0);
+            assert_eq!(wot.blow_off, 0.0, "{name}: open at WOT");
+            let lift = Step::at(5000.0 / RPM, 0.0, calibrate::DT);
+            let open: Vec<f64> = (0..360).map(|_| step(spec, &mut s, &lift).blow_off).collect();
+            if anti_lag {
+                assert!(open.iter().all(|&o| o == 0.0), "{name}: open in anti-lag");
+            } else {
+                let first = open.iter().position(|&o| o >= 0.9);
+                assert!(first.is_some_and(|k| k as f64 * calibrate::DT < 0.1), "{name}: opened late {first:?}");
+                assert!(s.p_boost < 1.1e5, "{name}: {} Pa of boost left after 0.5 s", s.p_boost);
+            }
+        }
+    }
+    let (_, _, m) = models().iter().find(|(_, p, _)| p.turbo).unwrap();
+    let mut m = m.clone();
+    let x = Inputs {
+        dt: 1.0 / 720.0,
+        speed: 300.0,
+        throttle: 1.0,
+        damage: 1.0,
+        pressure: 9e4,
+        temperature: 290.0,
+        engine_temperature: 360.0,
+        ..Inputs::default()
+    };
+    m.torque(&x);
+    assert_eq!(m.telemetry().air_pressure, 9e4);
+}
+
 fn bits(m: &mut Realistic, p: &Params) -> Vec<u32> {
     let idle = rpm(p.idle_speed);
     bench::run(m, idle, Some(f64::from(p.inertia)), 3.0, |t| if (0.5..1.5).contains(&t) { 1.0 } else { 0.0 }, None)

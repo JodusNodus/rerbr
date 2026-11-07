@@ -63,6 +63,8 @@ impl Model for Realistic {
             plate: s.plate as f32,
             cut: self.last.cut as f32,
             anti_lag: self.last.anti_lag,
+            blow_off: self.last.blow_off as f32,
+            air_pressure: self.last.p_a as f32,
         }
     }
 }
