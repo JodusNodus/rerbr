@@ -257,7 +257,8 @@ whatever the pedal, so they kick at part throttle once the turbo lights. That ki
 figure's 40 % line at 3250 rpm. The spring gate's diaphragm feels the boost through a short hose, so it opens within
 about 10 ms, where the electronic gate's actuator takes 125 ms. A tip-in at a fixed 5000 or 6500 rpm spikes the boost
 2.5–3.4 kPa (under half a psi) over its steady level; tuners report about 1 psi for a split second on spring gates
-(enginebasics). A blow-off valve opens at 0.3 bar over the manifold.
+(enginebasics). On a stage the Celica, with the 125 ms, ran more than 10 kPa over its steady boost for 16 s of the
+171 s it spent at half pedal or more; with the 10 ms, for 0.3 s. A blow-off valve opens at 0.3 bar over the manifold.
 
 ### Anti-lag
 
@@ -515,7 +516,8 @@ run, and the engine's mean distance from the clutch-engaged speed stays at most 
 - Modern turbo cars idle at 20–22 kPa of manifold pressure against the usual 25–45 kPa of a spark-ignition idle.
 - Below idle a closed pedal pushes with the idle air at its ceiling, up to +166 N·m on the turbo sample at 500 rpm.
 - On the limiter the torque swings from step to step with the firing rhythm: the model cuts whole firings, rotating
-  the cut as ECUs do. In neutral the HUD's rpm bounces 30–110 rpm from frame to frame under the limit; in gear a few rpm.
+  the cut as ECUs do. In neutral the HUD's rpm bounces 30–110 rpm from frame to frame under the limit; in gear a few
+  rpm. The steering force doesn't show it.
 
 ## Tyres
 

@@ -130,7 +130,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   event, so near the limit it swings with the firing rhythm. Bench (720 Hz, the HUD's rpm sampled every 12 steps):
   in neutral with the car's inertia the rpm moves 12–25 rpm a step and 30–110 rpm a frame (the bounce under the
   limit); with 1.5 kg·m² (a low gear, guess) at most 2 rpm a step and 8 a frame. A mean-value cut (1 − cut every
-  step) holds the rpm still on the limit, which a real limiter does not (measured).
+  step) holds the rpm still on the limit, which a real limiter does not (measured). In game (drive2 attempt 5's
+  payload, Focus WRC 2006, `--trace-out`): held at the limit before the start the rpm bounces 7434–7480 (frame steps
+  up to 79 rpm; NGP sits at 7515 and steps up to 146); near the limit in gear the steering force changes per step no
+  more than elsewhere (p99 0.038 against 0.070 at 4000–6900 rpm; NGP 0.025 and 0.027), so FFB does not show it.
 - Shift cut keeps the share TorqueCut, airflow kept [FIA 254A] (S2000 cuts), [CSP powertrain].
 - No combustion below 150 rpm or when stalled [turboford] (crank speeds 150–250 rpm).
 - Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 [MoTeC ALS],
@@ -197,7 +200,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   6500 0.27 / 3.7 % / 1.10 (was 7 % and 17 % with a 0.5 s ring before the derivative). cable_turbo (spring): 3000
   0.83 / 0.3 % / 1.07, 5000 0.27 / 3.1 % / 0.37, 6500 0.15 / 5.0 % / 0.26 (boost +0.3, +2.5, +3.4 kPa; the torque
   overshoots more than the boost as the opening gate lowers the exhaust pressure). Tested: the boost spikes at most
-  0.1 bar at 3000, 5000 and 6500 rpm. Tested: steady torque at any pedal the same
+  0.1 bar at 3000, 5000 and 6500 rpm. In game (autopilot, Celica ST185, track-11_O, 600 s, experimental, anti-lag
+  steps left out): at pedal ≥ 0.5 in gear the boost ran over the steady WOT boost at that rpm by more than 10 kPa for
+  15.9 s of 171 s with 125 ms (most 34 kPa), 0.3 s with 10 ms (most 17 kPa); split 2 438.02 against 437.82 s. Tested: steady torque at any pedal the same
   within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
   Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
