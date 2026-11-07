@@ -218,6 +218,7 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             live::Live::new(&snap, stage, args.marker_settings).map_err(|e| format!("{path}: {e}"))?
         };
         live.set_direct(args.direct);
+        live.set_engine_model(&args.engine_model, race::engine_car(race, stage.car))?;
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
             live.set_saves(if args.replay.is_some() { saves.dry() } else { saves });

@@ -783,3 +783,215 @@ fn a_call_for_help_while_moving_asks_to_stop_and_the_drive_goes_on() {
         assert!(!live.stopped, "the run stopped");
     });
 }
+
+/// The value after `key` in an `.lsp` file's tree, first occurrence.
+fn lsp_value(nodes: &[rbr_formats::lsp::Node], key: &str) -> Option<f32> {
+    use rbr_formats::lsp::Node;
+    nodes.iter().enumerate().find_map(|(k, node)| match (node, nodes.get(k + 1)) {
+        (Node::Atom(atom), Some(Node::Atom(value))) if atom == key => value.parse().ok(),
+        (Node::List(list), _) => lsp_value(list, key),
+        _ => None,
+    })
+}
+
+/// What a test engine model saw and answered at each step.
+type Seen = std::sync::Arc<std::sync::Mutex<Vec<(rbr_engine::Inputs, f32)>>>;
+
+/// A test engine model: a governor at the idle speed with the throttle closed and at `top` with it open, logging its
+/// inputs and torques.
+struct Governor {
+    idle: f32,
+    top: f32,
+    seen: Seen,
+}
+
+impl rbr_engine::Model for Governor {
+    fn torque(&mut self, input: &rbr_engine::Inputs) -> f32 {
+        let target = self.idle + input.throttle * (self.top - self.idle);
+        let torque = if input.speed < target { 60.0 } else { -40.0 };
+        self.seen.lock().unwrap().push((*input, torque));
+        torque
+    }
+}
+
+/// `n` steps of the boot's car with no throttle for 2000, then full throttle in neutral: each answer is one step.
+fn idle_then_revs(live: &mut Live, n: usize) -> Vec<Vec<u8>> {
+    let throttle = QuantizedControl { throttle: 255, ..QuantizedControl::default() };
+    (0..n)
+        .map(|k| {
+            let control = if k < 2000 { [0; CONTROL_BYTES] } else { payload(&throttle.car_control(), 0) };
+            let answer = live.answer(&control).unwrap();
+            assert!(!live.stopped, "the NGP live boot stopped at step {k}");
+            answer
+        })
+        .collect()
+}
+
+fn engine_speed(answer: &[u8]) -> f32 {
+    Hud::read(&mut &answer[FRAME_BYTES..]).unwrap().engine_speed
+}
+
+/// The engine model's hook (ours, experimental) on the boot's car (slot 5 of `RBR_NGP_PHYSICS`): its params are its
+/// files' values; `--engine-model ngp` drives as no model, bit for bit; a model is asked once a step while the engine
+/// runs, with the step's inputs (its speed the HUD's within 2 %: the drive's, before the step), and its torque over 1.05 is the wrapper's answer.
+#[test]
+fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
+    quick_race(|data, stage, race| {
+        let dir = rbr_gameplay::setup::CAR_FOLDERS[race.car as usize];
+        let file = |name: &str| {
+            let mut zip = rbr_formats::rbz::open(&race.ngp_physics).unwrap();
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut rbr_formats::rbz::by_name(&mut zip, name).unwrap(), &mut text).unwrap();
+            rbr_formats::lsp::parse(&text).unwrap()
+        };
+        let (common, options) = (file(&format!("{dir}common.lsp")), file(&format!("{dir}r_{}.lsp", race.surface)));
+        let value =
+            |nodes: &[rbr_formats::lsp::Node], key: &str| lsp_value(nodes, key).unwrap_or_else(|| panic!("{key}"));
+        let rad_s = |rpm: f32| rpm * std::f32::consts::PI / 30.0;
+        let close = |a: f32, b: f32| (a - b).abs() <= 1e-5 * b.abs().max(1.0);
+
+        let boot = || Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
+        let car = crate::race::engine_car(Some(&race), race.car);
+        assert_eq!(car, rbr_engine::Car { folder: "s_i2003".into(), ..rbr_engine::Car::default() });
+        let params = crate::physics::engine_params(&boot().playback, car.clone());
+        let torque_knots: Vec<(f32, f32)> = (0..16)
+            .map(|k| (rad_s(value(&common, &format!("Tq_{k:02}_RPM_NGP"))), value(&common, &format!("Tq_{k:02}_NGP"))))
+            .enumerate()
+            .filter(|&(k, (_, y))| k == 0 || y > 0.0)
+            .map(|(_, knot)| knot)
+            .collect();
+        eprintln!("{dir}: {params:?}");
+        assert_eq!(params.torque_knots.len(), torque_knots.len(), "{params:?}");
+        for (got, want) in params.torque_knots.iter().zip(&torque_knots) {
+            assert!(close(got.0, want.0) && got.1 == want.1, "knot {got:?}, want {want:?}");
+        }
+        for (what, got, want) in [
+            ("max_torque", params.max_torque, value(&options, "MaxTorque_NGP")),
+            ("rev_limit", params.rev_limit, rad_s(value(&common, "RPMLimit"))),
+            ("idle_speed", params.idle_speed, rad_s(value(&options, "IdleRPM_NGP"))),
+            ("brake_coefficient", params.brake_coefficient, value(&options, "BrakeCoefficient_NGP") / 100.0),
+            ("cylinder_volume", params.cylinder_volume, value(&common, "CylinderVolume_NGP")),
+            ("inlet_area", params.inlet_area, value(&common, "InletPipeArea_NGP")),
+            ("torque_cut", params.torque_cut, value(&common, "TorqueCut_NGP")),
+            ("inertia", params.inertia, value(&common, "EngineInertia") + value(&common, "GearBoxInertiaIn")),
+        ] {
+            assert!(close(got, want), "{what}: {got}, want {want}");
+        }
+        assert_eq!(params.turbo, value(&common, "EngineType_NGP") as u32 & 1 != 0);
+
+        // No model and `ngp` drive alike; a model set and taken off again leaves NGP's formula.
+        let n = 2600;
+        let ngp = idle_then_revs(&mut boot(), n);
+        let mut live = boot();
+        live.set_engine_model("ngp", car.clone()).unwrap();
+        assert!(idle_then_revs(&mut live, n) == ngp, "--engine-model ngp differs from no model");
+        let hash = ngp
+            .iter()
+            .flatten()
+            .fold(0xcbf2_9ce4_8422_2325u64, |h, &b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3));
+        eprintln!("NGP's drive: {n} answers, FNV-1a {hash:016x}");
+
+        // The governor: each running step asks it once, with the step's inputs, and the drive takes its torque.
+        let seen = Seen::default();
+        let mut live = boot();
+        let governor = Governor { idle: params.idle_speed, top: 0.6 * params.rev_limit, seen: seen.clone() };
+        rbr_hybrid::ngp::set_engine_model(Some(Box::new(governor)));
+        let throttle = QuantizedControl { throttle: 255, ..QuantizedControl::default() };
+        let mut answers = Vec::new();
+        for k in 0..n {
+            let control = if k < 2000 { [0; CONTROL_BYTES] } else { payload(&throttle.car_control(), 0) };
+            answers.push(live.answer(&control).unwrap());
+            assert!(!live.stopped, "the governed boot stopped at step {k}");
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen.len(), k + 1, "the model's calls by step {k}");
+            let torque = seen[k].1;
+            let taken = crate::physics::ratio_ring_newest(&live.playback);
+            let want = rbr_physics::engine_driveline::drive_step::ratio_input(rbr_physics::ngp::engine::output(torque));
+            assert_eq!(taken.to_bits(), want.to_bits(), "step {k}: the drive took {taken} for {torque} N·m");
+        }
+        rbr_hybrid::ngp::set_engine_model(None);
+        let seen = seen.lock().unwrap();
+        let temperatures: std::collections::BTreeSet<u32> =
+            seen.iter().map(|(i, _)| i.engine_temperature.to_bits()).collect();
+        for (k, (input, _)) in seen.iter().enumerate() {
+            assert!(close(input.dt, 1.0 / 720.0), "step {k}: dt {}", input.dt);
+            assert!((90_000.0..110_000.0).contains(&input.pressure), "step {k}: {input:?}");
+            assert!((270.0..310.0).contains(&input.temperature), "step {k}: {input:?}");
+            assert!((270.0..450.0).contains(&input.engine_temperature), "step {k}: {input:?}");
+            assert!(input.damage == 1.0 && !input.stalled && !input.shift_cut, "step {k}: {input:?}");
+            assert!(input.friction.is_finite() && input.friction >= 0.0, "step {k}: {input:?}");
+            let pedal = if k < 2000 { input.throttle < 0.2 } else { k < 2100 || input.throttle > 0.9 };
+            assert!(pedal, "step {k}: throttle {}", input.throttle);
+            if k > 0 {
+                let hud = engine_speed(&answers[k - 1]);
+                let near = (input.speed - hud).abs() < 0.02 * hud.abs().max(10.0);
+                assert!(near, "step {k}: the model's speed {}, the HUD's {hud}", input.speed);
+            }
+        }
+        let (first, last) = (seen[0].0, seen[n - 1].0);
+        eprintln!(
+            "first {first:?}\nlast {last:?}\n{} engine temperatures; idle {} rad/s, top {} rad/s",
+            temperatures.len(),
+            engine_speed(&answers[1999]),
+            engine_speed(&answers[n - 1])
+        );
+        assert!(temperatures.len() > 1, "the engine temperature never moved");
+        let idle = engine_speed(&answers[1999]);
+        assert!((idle - params.idle_speed).abs() < 0.1 * params.idle_speed, "governed idle at {idle} rad/s");
+        let top = engine_speed(&answers[n - 1]);
+        assert!((top - 0.6 * params.rev_limit).abs() < 0.1 * params.rev_limit, "governed top at {top} rad/s");
+    });
+}
+
+/// The realistic engine model (ours, experimental) on the boot's car: it idles near `IdleRPM_NGP` in neutral, revs
+/// to the limiter on full throttle in neutral, and launches the car in first. Skipped while `rbr_engine` has no
+/// realistic model.
+#[test]
+fn the_realistic_engine_model_idles_revs_to_the_limiter_and_launches() {
+    quick_race(|data, stage, race| {
+        let boot = || Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
+        let car = crate::race::engine_car(Some(&race), race.car);
+        let params = crate::physics::engine_params(&boot().playback, car.clone());
+        if let Err(e) = rbr_engine::model("realistic", &params) {
+            eprintln!("skipped: {e}");
+            return;
+        }
+        let mut live = boot();
+        live.set_engine_model("realistic", car).unwrap();
+        let speeds: Vec<f32> = idle_then_revs(&mut live, 3500).iter().map(|a| engine_speed(a)).collect();
+        let idle = speeds[1999];
+        let top = speeds[2000..].iter().copied().fold(0.0, f32::max);
+        eprintln!(
+            "realistic: idle {idle} rad/s (IdleRPM {}), top {top} rad/s (limit {})",
+            params.idle_speed, params.rev_limit
+        );
+        assert!((idle - params.idle_speed).abs() < 0.15 * params.idle_speed, "idle at {idle} rad/s");
+        assert!(top > 0.9 * params.rev_limit && top < 1.05 * params.rev_limit, "full throttle up to {top} rad/s");
+
+        // The autopilot's way off the line: full throttle in neutral, a shift-up pulse into first, then full
+        // throttle (shifting at idle stalls NGP's engines).
+        live.restart();
+        let go = QuantizedControl { throttle: 255, ..QuantizedControl::default() };
+        let first = QuantizedControl { flags: 0x01, ..go };
+        let mut held = [0.0; 3];
+        for k in 0..4500 {
+            let control = match k {
+                0..2000 => [0; CONTROL_BYTES],
+                2500 => payload(&first.car_control(), 0),
+                _ => payload(&go.car_control(), 0),
+            };
+            let answer = live.answer(&control).unwrap();
+            assert!(!live.stopped, "the realistic boot stopped at step {k}");
+            let pose = pose::car_pose(&answer[HEADER_BYTES + CONTROL_BYTES..]).unwrap();
+            match k {
+                1999 => held = pose.position,
+                4499 => {
+                    let moved = (0..3).map(|i| (pose.position[i] - held[i]).powi(2)).sum::<f32>().sqrt();
+                    eprintln!("realistic: the car moved {moved} m in 2.8 s from the shift into first");
+                    assert!(moved > 3.0, "the car moved {moved} m under throttle");
+                }
+                _ => {}
+            }
+        }
+    });
+}

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use rbr_formats::data::Data;
 use rbr_formats::lsp::{self, Node};
-use rbr_formats::{rsf, stage_files};
+use rbr_formats::{car_pack, rsf, stage_files};
 use rbr_gameplay::race_options::{DamageLevel, DriverAids, RaceOptions};
 use rbr_gameplay::setup::{self, Setup};
 use rbr_gameplay::weather::{self, CrtRand, Draws, Preset, Season, Weather};
@@ -140,4 +140,24 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         (None, None) => race,
     };
     Ok((data, Some(race)))
+}
+
+/// The car's identity for an engine model (`rbr_engine::Car`): a pack car's folder (an RSF car's under
+/// `rsfdata/cars/`, without `.zip`) with its group and year when the RSF install (`RBR_RSF`) lists it, else the slot's
+/// physics folder (`t_coroll`).
+pub fn engine_car(race: Option<&boot::Race>, slot: u32) -> rbr_engine::Car {
+    let Some(car) = race.and_then(|race| race.car_pack.as_ref()) else {
+        let folder = setup::CAR_FOLDERS
+            .get(slot as usize)
+            .map_or(format!("car {slot}"), |dir| dir.trim_start_matches("Physics/").trim_end_matches('/').to_string());
+        return rbr_engine::Car { folder, ..rbr_engine::Car::default() };
+    };
+    let name = car.pack.path().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let folder = match &car.pack {
+        car_pack::Pack::Zip(_) => name.strip_suffix(".zip").map(str::to_string).unwrap_or(name),
+        car_pack::Pack::Dir(_) => name,
+    };
+    let rsf = std::env::var_os("RBR_RSF").and_then(|root| rsf::Install::open(Path::new(&root)).ok());
+    let listed = rsf.as_ref().and_then(|rsf| rsf.find_pack(car.pack.path()));
+    rbr_engine::Car { group: listed.and_then(|c| c.group.clone()), year: listed.and_then(|c| c.year), folder }
 }

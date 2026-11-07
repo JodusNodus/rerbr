@@ -131,6 +131,36 @@ impl PhysicsStep for Pure<'_> {
     }
 }
 
+/// `--engine-model NAME` (ours, experimental, `rbr_engine::model`) on the car in `playback`, `car` its identity: a
+/// fresh model for the runs on this thread (none for `ngp`, NGP's formula). A car without NGP keeps its engine (said
+/// once on stderr).
+pub fn fit_engine_model(playback: &Playback, name: &str, car: &rbr_engine::Car) -> Result<(), String> {
+    static WITHOUT_NGP: std::sync::Once = std::sync::Once::new();
+    let model = if name == "ngp" {
+        None
+    } else if !rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base) {
+        WITHOUT_NGP
+            .call_once(|| eprintln!("rbr-standalone: --engine-model {name}: the car runs without NGP, no effect"));
+        None
+    } else {
+        rbr_engine::model(name, &layout::engine_params(playback, car.clone()))?
+    };
+    rbr_hybrid::ngp::set_engine_model(model);
+    Ok(())
+}
+
+/// The car's engine for an engine model, as NGP's car init left it, for `car`.
+#[cfg(test)]
+pub fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_engine::Params {
+    layout::engine_params(playback, car)
+}
+
+/// The engine wrapper's last answer as the drive step took it (its ratio ring's newest entry).
+#[cfg(test)]
+pub fn ratio_ring_newest(playback: &Playback) -> f32 {
+    layout::ratio_ring_newest(playback)
+}
+
 /// Why a step's panic stopped the run: the pure host's stop, or a port's own failure.
 pub fn why(e: &(dyn Any + Send)) -> String {
     match e.downcast_ref::<Stopped>() {

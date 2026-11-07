@@ -120,6 +120,9 @@ pub struct Args {
     /// `--ffb-settings ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD` (with `--trace-out`): the player's settings the
     /// trace's magnitude takes (`rbr_gameplay::ffb::Settings`; default on, 1, normal, no dead zone).
     pub ffb_settings: rbr_gameplay::ffb::Settings,
+    /// `--engine-model NAME` (ours, experimental): the engine model in place of NGP's torque formula
+    /// (`rbr_engine::model`); `ngp`, the default, leaves NGP's.
+    pub engine_model: String,
 }
 
 /// `value` for `flag` as a number: the flag names a bad value.
@@ -142,6 +145,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
+       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed and headless runs (default ngp, NGP's; no effect without NGP)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
@@ -158,7 +162,7 @@ pub fn args() -> Result<Args, String> {
 /// `args()` of `argv`: the command line as `Args`.
 fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     // The command line so far; the stage, the data and the championship options are computed below.
-    let mut args = Args { steps: 30, direct: true, ..Args::default() };
+    let mut args = Args { steps: 30, direct: true, engine_model: "ngp".into(), ..Args::default() };
     let mut stage: Option<String> = None;
     let (mut stage_dir, mut rsf_stage): (Option<PathBuf>, Option<u32>) = (None, None);
     let mut rsf_root = std::env::var_os("RBR_RSF").map(PathBuf::from);
@@ -258,6 +262,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--setup" => args.setup = Some(PathBuf::from(value)),
             "--ngp-physics" => args.ngp_physics = Some(PathBuf::from(value)),
             "--rsf-car" => args.rsf_car = Some(value),
+            "--engine-model" if rbr_engine::NAMES.contains(&value.as_str()) => args.engine_model = value,
+            "--engine-model" => return Err(format!("--engine-model {value}: one of {}", rbr_engine::NAMES.join(", "))),
             "--ffb-sensitivity" => {
                 args.ffb_sensitivity =
                     Some(percentages(&value).ok_or(format!("--ffb-sensitivity {value}: three percentages, G,T,S"))?)
@@ -618,6 +624,10 @@ mod tests {
             (LIVE.into(), live),
             (format!("{REC} --autopilot OUT"), |a| assert_eq!(a.autopilot, Some(PathBuf::from("OUT")))),
             (format!("{LIVE} --pilot autopilot"), |a| assert_eq!(a.pilot.as_deref(), Some("autopilot"))),
+            (LIVE.into(), |a| assert_eq!(a.engine_model, "ngp")),
+            (format!("{LIVE} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
+            (format!("{BOOT} --engine-model ngp"), |a| assert_eq!(a.engine_model, "ngp")),
+            (format!("{REC} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
             (format!("{REC} --top-speed 12.5"), |a| assert_eq!(a.top_speed, Some(12.5))),
             (format!("{REC} --autopilot OUT --aim 1,2"), |a| {
                 assert_eq!(a.aim, Some(autopilot::Aim { at: [1.0, 2.0], coast: 0 }))
@@ -772,6 +782,7 @@ mod tests {
             (format!("{BOOT_REC} --twin both"), "--twin both: mem or mem-direct"),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
+            (format!("{LIVE} --engine-model fast"), "--engine-model fast: one of ngp, realistic"),
             (format!("{BOOT} --wear muddy"), "--wear muddy: new, normal or worn"),
             (format!("{BOOT} --wetness humid"), "--wetness humid: dry, damp or wet"),
             (format!("{BOOT} --surface ice"), "--surface ice: gravel, tarmac or snow"),

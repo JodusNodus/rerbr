@@ -2510,6 +2510,7 @@ name = "rbr-standalone"
 version = "0.1.0"
 dependencies = [
  "rbr-counters",
+ "rbr-engine",
  "rbr-formats",
  "rbr-gameplay",
  "rbr-hybrid",

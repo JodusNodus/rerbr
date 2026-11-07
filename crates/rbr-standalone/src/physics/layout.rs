@@ -59,6 +59,84 @@ pub(super) fn drive_gear(playback: &Playback) -> u32 {
     mem.u32(mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8) + 0x570)
 }
 
+/// The car's engine (`CEngine`, car +0x690): its definition at +4.
+const CAR_ENGINE_DEF: u32 = 0x694;
+/// `CEngine::CDef` members after NGP's car init (`rbr_physics::ngp::layout::car_init`; key + 0xc,
+/// `data/ngp-lsp-keys.md`): the torque curve's 16 knots (`Tq_xx_RPM_NGP` +0x2250 + 0x20 k, their `Tq_xx_NGP` 0x10 on).
+const DEF_TORQUE_KNOTS: u32 = 0x2250;
+const DEF_CYLINDER_VOLUME: u32 = 0x2650;
+const DEF_INLET_PIPE_AREA: u32 = 0x26d8;
+/// `EngineType_NGP`, of which the init leaves bit 0 (the turbo).
+const DEF_ENGINE_TYPE: u32 = 0x26f8;
+/// `TorqueCut_NGP`, the wrapper's scale during the shift cooldown (0.5 when not above 0).
+const DEF_TORQUE_CUT: u32 = 0x283c;
+/// The drive's definition (car +0x4b0, its +4): `EngineInertia` and `GearBoxInertiaIn` (`CReal`s at +0x658 and +0x668,
+/// `data/physics-lsp-fields.md`), what the crank's speed divides by (`drive_worker`).
+const CAR_DRIVE_DEF: u32 = 0x4b4;
+const DRIVE_ENGINE_INERTIA: u32 = 0x664;
+const DRIVE_GEARBOX_INERTIA_IN: u32 = 0x674;
+/// The `CCompleteCarSetupOptions` pointer, and its engine options' `IdleRPM_NGP`, `MaxTorque_NGP` and
+/// `BrakeCoefficient_NGP` (u32; the last in percent).
+const SETUP_OPTIONS: u32 = 0x7e_cd04;
+const OPTIONS_IDLE_RPM: u32 = 0x13c0;
+const OPTIONS_MAX_TORQUE: u32 = 0x13d0;
+const OPTIONS_BRAKE_COEFFICIENT: u32 = 0x13e0;
+/// The VCU's definition (car +0x850) +0x188: `RPMLimit`, rpm.
+const CAR_VCU_DEF: u32 = 0x850;
+const VCU_RPM_LIMIT: u32 = 0x188;
+/// NGP's engine mode word (`0x101767d4`, the whole `EngineType_NGP`): with bit 1 the init turned the knots' rpm to
+/// rad/s.
+const NGP_ENGINE_MODES: u32 = 0x1017_67d4;
+
+/// The car's engine as NGP's car init left it, in physical units, for `car`.
+pub(super) fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_engine::Params {
+    use rbr_physics::ngp::layout::car_init::Data;
+    let mem = &playback.pure.mem;
+    let car_at = mem.u32(CAR_PTR);
+    let def = mem.u32(car_at + CAR_ENGINE_DEF);
+    let drive_def = mem.u32(car_at + CAR_DRIVE_DEF);
+    let options = mem.u32(SETUP_OPTIONS);
+    let rad_s = |rpm: f32| rpm * std::f32::consts::PI / 30.0;
+    let converted = mem.u32(Data { base: playback.pure.ngp_base }.at(NGP_ENGINE_MODES)) & 2 != 0;
+    // The first knot and those with a positive value, skipping a speed within 1e-9 of the last, as the init's idle
+    // table takes them.
+    let mut torque_knots: Vec<(f32, f32)> = Vec::new();
+    for k in 0..16 {
+        let at = def + DEF_TORQUE_KNOTS + 0x20 * k;
+        let (x, y) = (mem.f32(at), mem.f32(at + 0x10));
+        let x = if converted { x } else { rad_s(x) };
+        if (k == 0 || y > 0.0)
+            && torque_knots.last().is_none_or(|&(last, _)| (f64::from(x) - f64::from(last)).abs() >= 1e-9)
+        {
+            torque_knots.push((x, y));
+        }
+    }
+    let torque_cut = mem.f32(def + DEF_TORQUE_CUT);
+    rbr_engine::Params {
+        torque_knots,
+        max_torque: mem.u32(options + OPTIONS_MAX_TORQUE) as f32,
+        rev_limit: rad_s(mem.f32(mem.u32(car_at + CAR_VCU_DEF) + VCU_RPM_LIMIT)),
+        idle_speed: rad_s(mem.u32(options + OPTIONS_IDLE_RPM) as f32),
+        brake_coefficient: mem.u32(options + OPTIONS_BRAKE_COEFFICIENT) as f32 / 100.0,
+        turbo: mem.u32(def + DEF_ENGINE_TYPE) & 1 != 0,
+        cylinder_volume: mem.f32(def + DEF_CYLINDER_VOLUME),
+        inlet_area: mem.f32(def + DEF_INLET_PIPE_AREA),
+        torque_cut: if torque_cut > 0.0 { torque_cut } else { 0.5 },
+        inertia: mem.f32(drive_def + DRIVE_ENGINE_INERTIA) + mem.f32(drive_def + DRIVE_GEARBOX_INERTIA_IN),
+        car,
+    }
+}
+
+/// The drive's ratio ring's newest entry: the engine wrapper's last answer as the drive step took it
+/// (`drive_step::ratio_input`).
+#[cfg(test)]
+pub(super) fn ratio_ring_newest(playback: &Playback) -> f32 {
+    use rbr_physics::engine_driveline::layout::{ratio_ring_at, RatioRing};
+    let mem = &playback.pure.mem;
+    let ring = RatioRing::load(mem, ratio_ring_at(mem.u32(mem.u32(CAR_PTR) + 0x4b0 + 8)));
+    ring.values[ring.index as usize]
+}
+
 /// The state goes where the control emit reads its slot (S2).
 pub(super) fn set_app_state(playback: &Playback, state: State) {
     pure::set_app_state(&mut playback.pure.mem.clone(), state.value());
