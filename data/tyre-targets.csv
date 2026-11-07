@@ -28,10 +28,10 @@ gravel-pea-peak-alpha,gravel,tyre,peak slip angle,pea stone; LT235/75R15 AT 241 
 gravel-pea-mu-y25-over-peak,gravel,tyre,μ_y(25°)/peak μ_y,pea stone; AT tyre 6.7 kN; saturated by 20-25°,0.98,,ratio,SAE 2010-01-0374,inferred,tyre:gravel:mu_y_rel_a25_6k7
 gravel-pea-mu-y30-over-peak,gravel,tyre,μ_y(30°)/peak μ_y,pea stone; AT tyre 6.7 kN,0.95,,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a30_6k7
 gravel-pea-mu-y40-over-peak,gravel,tyre,μ_y(40°)/peak μ_y,pea stone; AT tyre 6.7 kN; does not fall to 40°,0.95,,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a40_6k7
-gravel-pea-mu-y-a2.5,gravel,tyre,μ_y(2.5°)/peak μ_y,pea stone; AT tyre 6.7 kN,0.47,0.51,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a2.5_6k7
-gravel-pea-mu-y-a5,gravel,tyre,μ_y(5°)/peak μ_y,pea stone; AT tyre 6.7 kN,0.71,0.75,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a5_6k7
-gravel-pea-mu-y-a10,gravel,tyre,μ_y(10°)/peak μ_y,pea stone; AT tyre 6.7 kN,0.89,0.93,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a10_6k7
-gravel-pea-mu-y-a15,gravel,tyre,μ_y(15°)/peak μ_y,pea stone; AT tyre 6.7 kN,0.94,0.98,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a15_6k7
+gravel-pea-mu-y-a2.5,gravel,tyre,μ_y(2.5°)/peak μ_y,pea stone; AT tyre 6.7 kN; task brief values: the note's Figs 14-17 reading gives 0.55 at 5° and 0.81 at 10° (open),0.47,0.51,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a2.5_6k7
+gravel-pea-mu-y-a5,gravel,tyre,μ_y(5°)/peak μ_y,pea stone; AT tyre 6.7 kN; task brief values: the note's Figs 14-17 reading gives 0.55 at 5° and 0.81 at 10° (open),0.71,0.75,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a5_6k7
+gravel-pea-mu-y-a10,gravel,tyre,μ_y(10°)/peak μ_y,pea stone; AT tyre 6.7 kN; task brief values: the note's Figs 14-17 reading gives 0.55 at 5° and 0.81 at 10° (open),0.89,0.93,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a10_6k7
+gravel-pea-mu-y-a15,gravel,tyre,μ_y(15°)/peak μ_y,pea stone; AT tyre 6.7 kN; task brief values: the note's Figs 14-17 reading gives 0.55 at 5° and 0.81 at 10° (open),0.94,0.98,ratio,SAE 2010-01-0374,fig ±0.02,tyre:gravel:mu_y_rel_a15_6k7
 gravel-wet-mu-y-a2.5,gravel,tyre,μ_y(2.5°)/peak μ_y,wet gravel; AT tyre 6.7 kN; no wet gravel run yet,0.27,0.31,ratio,SAE 2010-01-0374,fig ±0.02,none
 gravel-wet-mu-y-a5,gravel,tyre,μ_y(5°)/peak μ_y,wet gravel; AT tyre 6.7 kN; no wet gravel run yet,0.47,0.51,ratio,SAE 2010-01-0374,fig ±0.02,none
 gravel-wet-mu-y-a10,gravel,tyre,μ_y(10°)/peak μ_y,wet gravel; AT tyre 6.7 kN; no wet gravel run yet,0.74,0.78,ratio,SAE 2010-01-0374,fig ±0.02,none
