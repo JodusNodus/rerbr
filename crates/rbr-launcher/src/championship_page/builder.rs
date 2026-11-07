@@ -37,7 +37,7 @@ impl ChampionshipPage {
                         ui.label(RichText::new(line).size(16.0));
                         ui.add_space(8.0);
                         if ui.horizontal(|ui| ui.add(start_button("Continue"))).inner.clicked() {
-                            self.continue_event(env.here, env.profile);
+                            self.continue_event(env.here, env.profile, env.renamed);
                         }
                     }
                     Err(e) => _ = ui.colored_label(WARN, format!("The saved championship does not read: {e}")),

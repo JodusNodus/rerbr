@@ -57,6 +57,17 @@ const RETAIL: [(&str, &str, &str, Drive); 8] = [
 /// The class for cars without one: the added cars' packs have none.
 const OTHER: &str = "Other";
 
+/// Where the car comes from, as the detail panel says it: the same car can be both RSF's and added (one key,
+/// [`catalog::pack_key`]), listed twice.
+fn source(car: &Car) -> String {
+    match (&car.physics, car.rsf_id) {
+        (catalog::Physics::Archive, _) => format!("RBR 1.02, slot {}", car.slot),
+        (_, _) if car.added => "Added, in your cars folder".to_owned(),
+        (_, Some(id)) => format!("RallySimFans install, car {id}"),
+        (_, None) => "RallySimFans install".to_owned(),
+    }
+}
+
 /// Which wheels drive the car.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Drive {
@@ -135,7 +146,7 @@ impl CarRow {
         let problem = car.unavailable();
         let (title, group, source, drive, model) = match &car.physics {
             catalog::Physics::Pack(_) => {
-                let source = match car.key.strip_prefix("rsf-") {
+                let source = match car.rsf_id {
                     Some(id) if !car.added => format!("RSF {id}"),
                     _ => "Added".to_owned(),
                 };
@@ -630,11 +641,14 @@ impl CarBrowser {
         ui.set_width(preview::WIDTH);
         ui.add_space(6.0);
         ui.label(RichText::new(&row.title).size(22.0).strong());
-        ui.label(RichText::new(row.detail()).color(GREY));
+        ui.label(RichText::new(&row.group).color(GREY));
         ui.add_space(6.0);
         env.previews.car_ui(ui, car, env.root);
         ui.add_space(6.0);
         egui::Grid::new("facts").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+            ui.label(RichText::new("Source").color(GREY));
+            ui.label(source(car));
+            ui.end_row();
             ui.label(RichText::new("Drive").color(GREY));
             ui.label(row.drive.map_or("unknown", Drive::label));
             ui.end_row();

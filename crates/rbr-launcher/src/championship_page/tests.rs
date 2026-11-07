@@ -141,7 +141,7 @@ fn a_rally_runs_its_turns_with_service_damage_and_the_late_penalty() {
     let mut again = ChampionshipPage::new(&Data::new(here.join("data"), None));
     again.ai = Ok(fixture::ai());
     assert!(again.saved_event(&here, "tester").is_some());
-    again.continue_event(&here, "tester");
+    again.continue_event(&here, "tester", &[]);
     assert!(again.run.as_ref().is_some_and(|r| r.damage.is_some()));
     again.leave_event(&here, "tester");
     assert!(!save.exists() && !dmg.exists() && !state.exists());
@@ -327,4 +327,19 @@ fn the_players_own_itinerary_and_field_models_start_the_championship() {
     assert_eq!(event.rallies[0].stages.len(), 6);
     assert!(event.field.iter().all(|e| e.car == "rsf-1"));
     std::fs::remove_dir_all(&here).unwrap();
+}
+
+/// A car RSF and the added cars both have is one key, so one model of the field.
+#[test]
+fn a_car_listed_twice_is_one_model_of_the_field() {
+    let car = |name: &str, key: &str| Car {
+        name: name.into(),
+        key: key.into(),
+        group: Some("Group B".into()),
+        model: Ok(rbr_formats::car_pack::Model { entry: rbr_formats::car_pack::model_entry("a", "a"), fallback: None }),
+        ..Car::default()
+    };
+    let cars =
+        [car("Audi quattro A2 GrpB", "pack-a2"), car("Audi quattro A2 group B", "pack-a2"), car("M1", "pack-m1")];
+    assert_eq!(super::words::class_cars(&cars, "Group B"), ["pack-a2", "pack-m1"]);
 }

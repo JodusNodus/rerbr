@@ -283,7 +283,7 @@ An RSF install races a chosen car in slot 5 (`rsf::cars`: the pack copied into `
 rewritten as `rsf::model_entry` builds it; read in place, nothing written). The slot is RSF's, not the car's identity:
 `rsf::select` takes no slot, the pack names the car (`--rsf-car`, which replaces `--car`), its tyres are Pirelli's
 (`Selected::tyre_brand`, the game's brand for slot 5), its repair tree its pack's `repair.ini` (`Pack::read`, the
-slot's tree only when the pack has none), and the launcher keys its setups by `rsf-<id>`: slot files
+slot's tree only when the pack has none), and the launcher keyed its setups by `rsf-<id>` (pack keys since 2026-11-07, `notes/cameras-hud-launcher.md`): slot files
 `rsf-<id>slot<n>_<name>.lsp`, named setups in `Physics/rsf-<id>/Setups`, with what was saved as car 5 still offered
 (read only) to every community car without its own. The records keep the game's car word, 5 (the profile and result files
 hold a number only). The launcher hides the retail slot 5 beside community cars: in the install's `physics.rbz` it is the community car

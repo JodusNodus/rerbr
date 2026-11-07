@@ -102,7 +102,7 @@ evo_IX
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --weather
 wet
 --size
@@ -184,7 +184,7 @@ off
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --saves
 <here>/NGP/SavedGames
 --profile
@@ -206,7 +206,7 @@ evo_IX
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --weather
 dry
 --size
@@ -293,7 +293,7 @@ on
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --saves
 <here>/NGP/SavedGames
 --profile
@@ -404,7 +404,7 @@ evo_IX
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --weather
 damp
 --size
@@ -489,7 +489,7 @@ on
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --saves
 <here>/NGP/SavedGames
 --profile
@@ -511,7 +511,7 @@ evo_IX
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --weather
 dry
 --size
@@ -596,7 +596,7 @@ on
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --saves
 <here>/NGP/SavedGames
 --profile
@@ -618,7 +618,7 @@ evo_IX
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --weather
 damp
 --size
@@ -699,7 +699,7 @@ on
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --saves
 <here>/NGP/SavedGames
 --profile
@@ -725,7 +725,7 @@ evo_IX
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --weather
 damp
 --size
@@ -806,7 +806,7 @@ on
 --car-bank
 <rsf>/AudioFMOD/Lancer_Evo_IX_X.bank
 --car-key
-rsf-24
+pack-mitsubishilancerevoixn4
 --saves
 <here>/NGP/SavedGames
 --profile

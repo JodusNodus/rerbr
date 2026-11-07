@@ -71,9 +71,11 @@ pub struct Car {
     /// Its model's `.sgc` path (absolute): the folder holding its `Cars\` folder is the root it resolves
     /// under. None for an archive car, and when there is no model.
     pub model_path: Option<PathBuf>,
-    /// The key its setups, camera nudges, FFB sensitivities and ghosts are saved under: an archive car's folder,
-    /// upper case; a pack car's `rsf-<id>` (`camera_prefs::car_key`).
+    /// The key its camera nudges, FFB sensitivities and championship entries are saved under: an archive car's
+    /// folder, upper case; a pack car's [`pack_key`], the same whether RSF's cache or the added cars have it.
     pub key: String,
+    /// Its RSF car number, for an RSF cache car (the source shown, RSF's own per-car settings).
+    pub rsf_id: Option<u32>,
     pub group: Option<String>,
     /// The words for its drive train (`FWD`, `AWD with torque split`), when the source names them.
     pub drive_train: Option<String>,
@@ -92,6 +94,7 @@ impl Default for Car {
             model: Err(String::new()),
             model_path: None,
             key: String::new(),
+            rsf_id: None,
             group: None,
             drive_train: None,
             bank: None,
@@ -102,11 +105,15 @@ impl Default for Car {
 
 impl Car {
     /// The keys its setups are saved under (the game's slot files and the `Physics/<key>/Setups` folder), its own
-    /// first. An archive car's is its number; a pack car's is its own key, then `5`: the setups saved before pack
-    /// cars had keys of their own, offered to every pack car.
+    /// first. An archive car's is its number; a pack car's is its own key, an RSF car's `rsf-<number>` (its key
+    /// before [`pack_key`]), then `5`: the setups saved before pack cars had keys of their own, offered to every pack
+    /// car.
     pub fn setup_keys(&self) -> Vec<String> {
         match &self.physics {
-            Physics::Pack(_) => vec![self.key.clone(), car_pack::SLOT.to_string()],
+            Physics::Pack(_) => {
+                let rsf = self.rsf_id.map(|id| format!("rsf-{id}"));
+                [Some(self.key.clone()), rsf, Some(car_pack::SLOT.to_string())].into_iter().flatten().collect()
+            }
             Physics::Archive => vec![self.slot.to_string()],
         }
     }
@@ -160,7 +167,8 @@ fn rsf_cars(install: &Path, root: &Path) -> Result<Vec<Car>, String> {
                 physics: Physics::Pack(path),
                 model,
                 model_path,
-                key: format!("rsf-{}", car.id),
+                key: pack_key(&car.pack),
+                rsf_id: Some(car.id),
                 group: car.group.clone(),
                 drive_train: car.drive_train.clone(),
                 bank: rsf.audio_bank(car),
@@ -168,6 +176,15 @@ fn rsf_cars(install: &Path, root: &Path) -> Result<Vec<Car>, String> {
             }
         })
         .collect())
+}
+
+/// A pack car's key: `pack-` and its pack folder's letters and digits, lower case, without RSF's `_ngp<N>` end, so
+/// RSF's `Audi_quattro_A2_GrpB_ngp6` and gvrc.de's `Audi quattro A2 GrpB` are one car (`pack-audiquattroa2grpb`).
+/// Keys before were `rsf-<number>`, RSF's car number or the added cars' own count ([`Catalog::renamed`]).
+pub fn pack_key(pack: &str) -> String {
+    let words: String = pack.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    let end = words.rfind("ngp").filter(|&at| words[at + 3..].bytes().all(|b| b.is_ascii_digit()));
+    format!("pack-{}", &words[..end.unwrap_or(words.len())])
 }
 
 /// The pack car the added row `stored` names, raced in slot 5, its model checked against the added cars' folder
@@ -192,7 +209,8 @@ fn added_car(cars: &Path, retail: &[cars::CarEntry], stored: &car_packs::StoredC
         physics: Physics::Pack(path),
         model,
         model_path,
-        key: format!("rsf-{}", stored.id),
+        key: pack_key(&stored.pack),
+        rsf_id: None,
         group: stored.group.clone(),
         drive_train: stored.drive_train.clone(),
         bank: stored.audio.as_deref().and_then(|a| rbr_formats::cars::resolve(cars, &format!("AudioFMOD\\{a}.bank"))),
@@ -339,6 +357,9 @@ pub struct Catalog {
     /// The retail maps the launcher does not list ([`Catalog::hide_unlisted`]): the rally school's, which the School
     /// page starts, and the test maps.
     pub unlisted: Vec<Map>,
+    /// The pack cars' keys before [`pack_key`] (`rsf-<number>`) and theirs now, for the saved settings and
+    /// championships: RSF's numbers first; an added car's own count only where no RSF car has that number.
+    pub renamed: Vec<(String, String)>,
 }
 
 impl Catalog {
@@ -378,7 +399,7 @@ impl Catalog {
                 Map { number, stages, origin: Origin::Retail }
             })
             .collect();
-        Ok(Catalog { cars: Vec::new(), all_cars: cars, maps, unlisted: Vec::new() })
+        Ok(Catalog { cars: Vec::new(), all_cars: cars, maps, unlisted: Vec::new(), renamed: Vec::new() })
     }
 
     /// Moves the maps the launcher does not list ([`is_listed`]) out of `maps` into `unlisted`.
@@ -431,10 +452,18 @@ impl Catalog {
         let pack_name = |c: &Car| -> Option<String> {
             Some(c.pack()?.file_name()?.to_string_lossy().trim_end_matches(".zip").to_lowercase())
         };
+        let rsf = self.all_cars.iter().filter_map(|c| Some((c.rsf_id?, c.key.clone())));
+        self.renamed = rsf.map(|(id, key)| (format!("rsf-{id}"), key)).collect();
+        let stored = car_packs::list(added);
+        for car in &stored {
+            let old = format!("rsf-{}", car.id);
+            if !self.renamed.iter().any(|(k, _)| *k == old) {
+                self.renamed.push((old, pack_key(&car.pack)));
+            }
+        }
         match retail_entries(install) {
             Ok(retail) => {
-                let cars: Vec<Car> =
-                    car_packs::list(added).into_iter().map(|s| added_car(added, &retail, &s)).collect();
+                let cars: Vec<Car> = stored.iter().map(|s| added_car(added, &retail, s)).collect();
                 let added: Vec<(Option<String>, String)> =
                     cars.iter().map(|c| (pack_name(c), c.name.to_lowercase())).collect();
                 let kept = |c: &Car| {
@@ -725,7 +754,7 @@ pub fn car_label(car: &Car) -> String {
     match &car.physics {
         Physics::Pack(_) if car.added => format!("{} ({group}, added)", car.name),
         Physics::Pack(_) => {
-            format!("{} ({group}, RSF {})", car.name, car.key.strip_prefix("rsf-").unwrap_or("?"))
+            format!("{} ({group}, RSF {})", car.name, car.rsf_id.map_or("?".to_owned(), |id| id.to_string()))
         }
         Physics::Archive => format!("{} ({})", car.name, car.slot),
     }
@@ -769,8 +798,8 @@ mod tests {
         };
         let car = |slot| Car { slot, name: "Evo".into(), ..Car::default() };
         assert_eq!(car(6).setup_keys(), ["6"]);
-        assert_eq!(pack("rsf-24").setup_keys(), ["rsf-24", "5"]);
-        assert_eq!(pack("rsf-25").setup_keys(), ["rsf-25", "5"]);
+        assert_eq!(pack("pack-evo").setup_keys(), ["pack-evo", "5"]);
+        assert_eq!(Car { rsf_id: Some(24), ..pack("pack-evo") }.setup_keys(), ["pack-evo", "rsf-24", "5"]);
     }
 
     /// NGP's archive slots are offered, the others hidden; with RSF cars the archive slot 5 is too.
@@ -852,6 +881,18 @@ mod tests {
         let want = [("Evo IX N4 (gvrc)", true), ("Ford Fiesta Rally2", true), ("Alpine A110", true)];
         assert_eq!(listed, want.map(|(n, a)| (n.to_owned(), a)));
         assert_eq!(car_label(&catalog.all_cars[2]), "Alpine A110 (no group, added)");
+        // Keys are the packs', RSF's car and the added one alike; the old `rsf-<n>` keys go to them, RSF's numbers
+        // first and an added car's count only where RSF has no such number.
+        let keys: Vec<&str> = catalog.all_cars.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(keys, ["pack-evoixn4", "pack-fordfiestarally2", "pack-alpine"]);
+        let renamed = [
+            ("rsf-24", "pack-evoixn4"),
+            ("rsf-81", "pack-f"),
+            ("rsf-1", "pack-evoixn4"),
+            ("rsf-2", "pack-fordfiestarally2"),
+            ("rsf-3", "pack-alpine"),
+        ];
+        assert_eq!(catalog.renamed, renamed.map(|(a, b)| (a.to_owned(), b.to_owned())));
         // Without RSF the added ones; the retail slot 5 stays offered (it is not RSF's last pick).
         catalog.set_community_cars(&install, " ", &added);
         assert_eq!(catalog.all_cars.len(), 3);
@@ -860,6 +901,16 @@ mod tests {
         catalog.offer(&[5]);
         assert_eq!(catalog.cars.len(), 4);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// RSF's and gvrc.de's packs of one car are one key; `ngp` stays inside a name.
+    #[test]
+    fn pack_keys_drop_rsf_s_ngp_end() {
+        assert_eq!(pack_key("Audi_quattro_A2_GrpB_ngp6"), "pack-audiquattroa2grpb");
+        assert_eq!(pack_key("Audi quattro A2 GrpB"), "pack-audiquattroa2grpb");
+        assert_eq!(pack_key("Mitsubishi Lancer Evo X R4 (V1.2)"), "pack-mitsubishilancerevoxr4v12");
+        assert_eq!(pack_key("Ngp_Car_ngp"), "pack-ngpcar");
+        assert_eq!(pack_key("ngp6"), "pack-");
     }
 
     /// A BTB stage offers the rows of map 41 (every variant, good and bad) under its own number, one stage file (M)

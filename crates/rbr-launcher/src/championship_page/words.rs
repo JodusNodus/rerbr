@@ -98,9 +98,16 @@ pub fn classes(cars: &[Car]) -> Vec<String> {
     classes
 }
 
-/// The keys of the cars of `class` that can start: the field's cars.
+/// The keys of the cars of `class` that can start, each once: the field's cars.
 pub fn class_cars(cars: &[Car], class: &str) -> Vec<String> {
-    cars.iter().filter(|c| c.unavailable().is_none() && class_of(c) == class).map(|c| c.key.clone()).collect()
+    let mut keys: Vec<String> = Vec::new();
+    // A car both RSF and the added cars have is listed twice under one key: one model of the field.
+    for car in cars.iter().filter(|c| c.unavailable().is_none() && class_of(c) == class) {
+        if !keys.contains(&car.key) {
+            keys.push(car.key.clone());
+        }
+    }
+    keys
 }
 
 /// A road's wetness for the reference time (0 dry to 1 wet), and as the game's 0, 1, 2.
