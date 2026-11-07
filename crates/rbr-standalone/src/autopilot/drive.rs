@@ -126,11 +126,11 @@ pub fn from_snapshot<'a>(
 
 /// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
 /// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m) and the
-/// steering (-1-1).
+/// steering (-1-1), the locked engine speed (rad/s) and the driven wheels' speed (m/s).
 /// The car's drive (`CDrive`, car +0x4b0), whose gearbox gives the trace's locked engine speed.
 const CAR_DRIVE: u32 = 0x4b0;
 
-const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked";
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked driven";
 
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
@@ -175,14 +175,16 @@ pub fn drive(
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
-    if let Some(rpm) = measure.launch {
+    if let Some((rpm, slip)) = measure.launch {
         let mem = live.mem();
         let gearbox = crate::live::gearbox(mem, mem.u32(pure::CAR_PTR) + CAR_DRIVE);
         let rad_s = std::f32::consts::PI / 30.0;
         let shift = shift_points(&live.torque_knots(), &gearbox.ratios, gearbox.count, limit * rad_s);
         let rpm_of = |w: &f32| (w / rad_s).round();
-        eprintln!("autopilot: launch at {rpm} rpm, upshifts at {:?} rpm", shift.iter().map(rpm_of).collect::<Vec<_>>());
-        driver = driver.with_launch(Launch { rpm: rpm * rad_s, shift });
+        let slip = slip.unwrap_or(LAUNCH_SLIP);
+        let shifts: Vec<f32> = shift.iter().map(rpm_of).collect();
+        eprintln!("autopilot: launch at {rpm} rpm, slip {slip}, upshifts at {shifts:?} rpm");
+        driver = driver.with_launch(Launch { rpm: rpm * rad_s, slip, shift });
     }
     let mut driver = with_lesson(driver, &live, stage);
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
@@ -257,7 +259,7 @@ pub fn drive(
             let locked = u8::try_from(sense.gear).ok().filter(|&g| g >= 2).and_then(|g| gearbox.engine_speed(g));
             writeln!(
                 trace,
-                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0}",
+                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0} {:.3}",
                 sense.pose.speed(),
                 sense.gear,
                 sense.engine,
@@ -265,6 +267,7 @@ pub fn drive(
                 at[1],
                 at[2],
                 locked.unwrap_or(0.0),
+                sense.driven,
             )
             .map_err(|e| format!("{path}: {e}"))?;
         }

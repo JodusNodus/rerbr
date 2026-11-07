@@ -31,6 +31,10 @@
 //! neutral before it selects first, a car bogged in first goes back to neutral and starts again, the throttle
 //! eases while the wheels spin, and a recovery backs up no faster than `REVERSE_TOP`. NGP's clutch help closes the clutch from idle, where the Escort Mk II and the 208 R2
 //! have too little torque to pull away, and they sat in first at the clutch help's speed.
+//!
+//! `--launch` (pace measurement, under NGP): a standing start with the revs held on the clutch, the throttle then
+//! holding the driven wheels' slip, and upshifts where the next gear's wheel torque on the car's full-throttle table
+//! overtakes this one's ([`Launch`]).
 
 use rbr_formats::trk::{DriveLineRecord, Vec3};
 use rbr_gameplay::control::QuantizedControl;
@@ -95,19 +99,23 @@ const TRACTION: f32 = 0.5;
 /// modes (`free`), so race and lesson driving keep the cruising `SHIFT_DOWN` floor; the tarmac pace and circle
 /// runs never drop here (their second-gear lugging stays above `LUG_SPEED`).
 const LUG_ENGINE: f32 = 600.0;
-/// `--launch RPM` (pace measurement, ours; module comment): the hold's throttle per rad/s under the launch speed, and
-/// how near it (rad/s) the engine must be to select first and to release; the clutch's release time (1.02 steps);
-/// the slip the throttle holds after it, of the car's speed, and at least `LAUNCH_SLIP_MIN` m/s; and the throttle's
-/// rate per second per unit of relative slip error. Guesses, tuned on the Fiesta Rally2's standing starts.
+const LUG_SPEED: f32 = 12.0;
+/// `--launch RPM[,SLIP]` (pace measurement, ours; module comment): the hold's throttle per rad/s under the launch
+/// speed, and how near it (rad/s) the engine must be to select first and to release; the clutch pedal's release time
+/// (1.02 steps; with NGP's clutch help on, the help's own ramp releases); the slip the throttle holds after it, of the
+/// car's speed (unless SLIP), and at least `LAUNCH_SLIP_MIN` m/s; the throttle's rate per second per unit of relative
+/// slip error; and the engine speed, of the launch speed, under which the throttle opens whatever the slip (cutting
+/// it there bogged the Fiesta Rally2 to 130 rad/s on RSF 504, its turbo off boost). Guesses, tuned on the Fiesta
+/// Rally2's standing starts.
 const LAUNCH_HOLD_GAIN: f32 = 0.02;
 const LAUNCH_BAND: f32 = 30.0;
 const LAUNCH_RELEASE: u32 = 40;
-const LAUNCH_SLIP: f32 = 0.1;
+pub const LAUNCH_SLIP: f32 = 0.2;
 const LAUNCH_SLIP_MIN: f32 = 1.0;
 const LAUNCH_RATE: f32 = 4.0;
+const LAUNCH_FLOOR: f32 = 0.6;
 /// Under `--launch` an upshift comes at most at this share of the rev limit (the limiter cuts above it).
 const LAUNCH_UP_LIMIT: f32 = 0.97;
-const LUG_SPEED: f32 = 12.0;
 const FIRST: u32 = 2;
 const TOP_GEAR: u32 = 7;
 /// Steps driven on (braking) after the finish.
@@ -453,11 +461,13 @@ pub struct Driver<'a> {
 }
 
 /// `--launch RPM` (pace measurement, ours): a standing start with the revs held at `rpm` (rad/s) on the clutch, a
-/// release over `LAUNCH_RELEASE` steps with the throttle then holding the driven wheels' slip to `LAUNCH_SLIP`, and
+/// release over `LAUNCH_RELEASE` steps with the throttle then holding the driven wheels' slip to `slip`, and
 /// each upshift at `shift[gear]` (rad/s), where the next gear's wheel torque overtakes this one's ([`shift_points`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Launch {
     pub rpm: f32,
+    /// The slip target, of the car's speed.
+    pub slip: f32,
     pub shift: [f32; TOP_GEAR as usize + 1],
 }
 
@@ -493,8 +503,8 @@ pub struct Measure {
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
-    /// `--launch RPM`: the launch start and the torque-crossing shifts ([`Launch`]).
-    pub launch: Option<f32>,
+    /// `--launch RPM[,SLIP]`: the launch start and the torque-crossing shifts ([`Launch`]).
+    pub launch: Option<(f32, Option<f32>)>,
     /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<std::path::PathBuf>,
     /// `--tyre-image FILE [--tyre-image-step N]`: a memory image of the wheels' tyre footprints (research tooling).
@@ -946,22 +956,26 @@ impl<'a> Driver<'a> {
                 // NGP's steps (the clutch help above).
                 let ngp = self.per > 1;
                 // `--launch` (under NGP): hold the revs on the clutch, select first and release, then hold the slip.
-                let launching = self.launch.as_ref().filter(|_| ngp).map(|l| (l.rpm, l.shift[g]));
+                let launching = self.launch.as_ref().filter(|_| ngp).map(|l| (l.rpm, l.slip, l.shift[g]));
                 let mut launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
-                if let Some((rpm, _)) = launching {
+                if let Some((rpm, slip, _)) = launching {
                     let near = (sense.engine - rpm).abs() < LAUNCH_BAND;
                     match self.released {
                         None => {
                             (throttle, clutch, launch) = (self.hold(sense.engine), 1.0, near);
                             if sense.gear == FIRST && near {
-                                (self.released, self.slip_throttle) = (Some(step), throttle);
+                                (self.released, self.slip_throttle) = (Some(step), 1.0);
                             }
                         }
                         Some(since) => {
                             let release = (step - since) as f32 / self.steps(LAUNCH_RELEASE) as f32;
                             clutch = (1.0 - release).max(0.0);
-                            let target = (LAUNCH_SLIP * speed).max(LAUNCH_SLIP_MIN);
-                            let error = (target - (sense.driven - speed)) / target;
+                            let target = (slip * speed).max(LAUNCH_SLIP_MIN);
+                            let mut error = ((target - (sense.driven - speed)) / target).clamp(-1.0, 1.0);
+                            if sense.engine < LAUNCH_FLOOR * rpm {
+                                // Bogging: the engine and its turbo come back before the slip.
+                                error = 1.0;
+                            }
                             let dt = rbr_recording::STEP_SECONDS / self.per as f32;
                             self.slip_throttle = (self.slip_throttle + LAUNCH_RATE * dt * error).clamp(0.0, 1.0);
                             throttle = throttle.min(self.slip_throttle);
@@ -974,7 +988,7 @@ impl<'a> Driver<'a> {
                     && speed < BOG_SPEED
                     && sense.engine < BOG * self.limit;
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
-                let up = launching.map_or(SHIFT_UP.min(UP_LIMIT * self.limit), |(_, up)| up);
+                let up = launching.map_or(SHIFT_UP.min(UP_LIMIT * self.limit), |(_, _, up)| up);
                 if ngp && launching.is_none() && spinning && speed > BOG_SPEED {
                     throttle = throttle.min(TRACTION);
                 }

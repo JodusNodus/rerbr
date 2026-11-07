@@ -363,7 +363,7 @@ fn shift_points_fall_where_the_next_gears_wheel_torque_overtakes() {
 #[test]
 fn a_launch_holds_the_revs_on_the_clutch_releases_and_holds_the_slip() {
     let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
-    let launch = Launch { rpm: 450.0, shift: [f32::INFINITY; TOP_GEAR as usize + 1] };
+    let launch = Launch { rpm: 450.0, slip: LAUNCH_SLIP, shift: [f32::INFINITY; TOP_GEAR as usize + 1] };
     let mut driver =
         driver(&track, TOP_SPEED).with_step(1.0 / 720.0).with_limit(8500.0).with_flat_out(true).with_launch(launch);
     let half = std::f32::consts::FRAC_1_SQRT_2;
@@ -396,6 +396,9 @@ fn a_launch_holds_the_revs_on_the_clutch_releases_and_holds_the_slip() {
         throttle = q.throttle;
     }
     assert!(throttle < 128, "{throttle}");
+    // A bogging engine takes the throttle back whatever the slip.
+    step += 1;
+    assert!(driver.control(step, &sense(2.0, 8.0, FIRST, 200.0), false).throttle > throttle);
     for _ in 0..2000 {
         step += 1;
         throttle = driver.control(step, &sense(10.0, 10.2, FIRST, 500.0), false).throttle;
