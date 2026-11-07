@@ -468,6 +468,36 @@ Ranking:
 4. Out of reach: per-tyre gravel curves at rally speed or load (only 1-1.5 m/s, one load), rally studs (no data),
    surface change with passes.
 
+## Scorecard
+
+`harness/tyre_scorecard.py` scores the physics against `data/tyre-targets.csv` (one row per target from the tables
+above, `id,surface,level,metric,conditions,low,high,unit,source,precision,how`; inclusive bands, an empty bound open;
+`how` `none` where nothing measures it yet). Default `--physics ngp,experimental-brush`; `--quick` (tyre rows and the
+50 km/h gravel and tarmac brake rows, ~70 s), the full run 3.5-5.5 min with 16 jobs; `--only REGEX`, `--json OUT`,
+`--compare A.json B.json`. Fiesta Rally2 throughout. The `how` keys:
+
+- `tyre:SURFACE:KEY`: the lab's `scorecard` example on a probed wheel (tarmac map 85 circle wheel 1 at step 8000;
+  gravel RSF 345 circle wheel 0 at step 6000; snow map 10 wheel 0 at step 6000; ice the snow wheel with 116's
+  0.10/0.095 on a hard surface). It builds the profile's `rbr_tyre::model` from the wheel's tables as the game does
+  and lets its dynamics settle 2 s at each slip; where the model hands back (`ngp`, soil under the brush) NGP's
+  `patch_forces` answer. So a loose model added in `rbr-tyre` is scored with no change here; a new model name needs
+  its line in `TYRE_MODEL`. Steady forces at 15 m/s, flat, no sinking and no soil force (the sweep, not
+  `ngp_transient`'s whole step); the pea-stone rows (measured at 1-1.5 m/s) are taken at 15 m/s and 6.7 kN.
+- `tyre-ratio:A/B:KEY`: surface A's key over B's.
+- `brake:SURFACE:KMH:locked_g|best_g|ratio`: `brake_test.py`'s declutched runs (gravel RSF 345, tarmac RSF 568, snow
+  map 10), full pedal against slip targets 0.1-0.7; ratio = locked decel / best threshold decel (one pedal, not ABS).
+- `brake-ratio:A/B:KMH:X/Y`, `circle:gravel:lat_g` (`car_pace.analyse_circle` on the gravel probe run, 40000 steps,
+  ramp 0.4). The circle's slide speed also depends on the engine holding the ramp: on gravel experimental-brush runs
+  NGP's tyre yet gives 0.73 g against ngp's 0.57 (vmax 61 against 54 km/h), so read that row as car, not tyre.
+
+It reproduces the tables above: gravel 345 ngp locked 0.77 g, best threshold K 0.5 0.85 g from 100 km/h; tarmac 568
+1.09 / 1.31 g, brush 0.97 / 1.27 g; NGP gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a
+flat top), 2/4/6 kN 0.889/0.828/0.774, μ_y(30°)/peak 0.956, μ_x(κ 1)/peak 0.82; tarmac brush 8.75°, Fy(κ 0.25)/Fy(0)
+0.283/0.332, Kx/Fz 21.2 (22.0 by the lab's 0.02-grid fit). Baseline at the branch point (2026-11-08): ngp 21/56,
+experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendenius rows merged (95 rows, 75 scored;
+the racing-slick rows are context, not scored) ngp 28/75, experimental-brush 34/75
+(`build/tyre-night/scores/baseline.json`, not in git).
+
 ## Open
 
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
