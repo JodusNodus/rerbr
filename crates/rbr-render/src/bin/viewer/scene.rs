@@ -175,7 +175,7 @@ fn load_scene<'scope, 'env>(
     progress: &mut dyn FnMut(Step),
 ) -> Result<Scene, String> {
     let error = |e: car::Error| e.to_string();
-    let car_key = args.pack_car.key.clone().or_else(|| args.car.as_deref().map(|car| camera_prefs::car_key(car, None)));
+    let car_key = args.pack_car.key.clone().or_else(|| args.car.as_deref().map(camera_prefs::car_key));
     let started = args.live.as_deref().map_or([100; 3], rbr_render::ffb::started);
     let ffb =
         rbr_render::ffb::Session::load(args.bindings_file.as_deref(), car_key.clone(), args.ffb.sensitivity, started);

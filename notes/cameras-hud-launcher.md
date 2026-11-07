@@ -130,8 +130,16 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   car ranges, not NGP's; user decision 2026-11-04).
   The older `[launcher] setup` (one name for every car) is no longer read. No save slots (user decision
   2026-11-04). Earlier versions' files are listed read only: a pack car's `<files>/SavedGames/<pack>/`, the
-  `Physics/<key>/Setups/` of `Car::setup_keys` (`rsf-<id>`, then 5; a retail car its number's), and their slot files
+  `Physics/<key>/Setups/` of `Car::setup_keys` (its key, an RSF car's `rsf-<id>`, then 5; a retail car its number's), and their slot files
   `SavedGames/<key>slot<n>_*.lsp`. The championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
+- Car keys (2026-11-07): a pack car's key (camera nudges, `[ffb_cars]`, `--car-key`, championship entries) is
+  `catalog::pack_key`, `pack-` and its pack folder's letters and digits without RSF's `_ngp<N>`, so RSF's and the
+  added copy of a car are one key (all 102 of gvrc.de's list match RSF's packs this way). Before, it was
+  `rsf-<number>`: RSF's car number, or the added cars' own count, which collided with RSF's (13 cars here).
+  `Catalog::renamed` maps the old keys (RSF numbers first, an added count only where RSF has no such number); the
+  settings' sections move at load and at each save, a continued championship's car keys at its load. A car both
+  sources have stays listed twice (user decision 2026-11-07), one model of a championship field
+  (`class_cars`); the detail panel's Source row says which copy it is.
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.
