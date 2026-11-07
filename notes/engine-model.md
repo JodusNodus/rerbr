@@ -33,7 +33,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 - Orifice flow with Ψ choked below 0.528 (generic) [NASA], [Andersson]; Ψ linear from Π 0.98 to 1 (inferred:
   a finite slope near equal pressures).
-- Plate area 1 − cos θ/cos 7°, θ = 7° + 83°·lift [US 6591667].
+- Plate area 1 − cos θ/cos 7°, θ = 7° + 83°·lift [US 6591667]. Its flow bench gives C_D 0.70–0.77 at 0–25° from
+  closed and a leak of about 5 mm² (60 mm bore); C_D 0.8 and no leak about cancel at light pedal.
+- Torque from MAP at part load checked against [EPA Ford 1.6]: the 2013 1.6 EcoBoost makes 27 % of its 100 kPa torque
+  at 50 kPa and none at 24–26 kPa (2500 rpm); the na sample 28 % at 47 kPa.
 - C_D 0.80 one throttle (inferred: fits are about 0.8 at WOT [C_D estimation]); 0.85 per cylinder (guess); at least
   45 mm per cylinder (guess).
 - Manifold 0.8·V_d one throttle, 0.3·V_d per cylinder, 1.0·V_d turbo, boost pipe 2.0·V_d (guess: ITBs have no
@@ -53,16 +56,23 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 ## Throttle (`engine.rs`, `ecu.rs`)
 
 - Cable: lift = pedal, pedal^1.6 per cylinder (guess: progressive linkages), no lag.
-- DBW: plate aim = pedal^1.3, then the ETB (30 ms first order, 40 ms full travel) [Gorzelic]. Rally ECUs map pedal to
+- DBW: plate aim = pedal, then the ETB (30 ms first order, 40 ms full travel) [Gorzelic]. Race ECUs map pedal to
   throttle position (MoTeC, Link, Haltech, Life Racing on M-Sport R5, Marelli) [MoTeC DBW], [Link e-throttle],
-  [Haltech DBW], [Life Racing], [Marelli]; torque requests are road (ME7) and F1 [Bosch ME7], [F1 torque map].
-  The translation sits below 1:1, 40 % pedal → about 30 % throttle [HPA 138]; 1.3 is the exponent through that
-  point (inferred).
+  [Haltech DBW], [Life Racing], [Marelli]; torque requests are road (ME7) and F1 [Bosch ME7], [F1 torque map]. Their
+  translation tables start at 1:1 (Link, Haltech); MoTeC M1 aims at a share of airflow through its throttle area
+  table, which opens the plate more than 1:1 at small openings [HPA M1 DBW]. No rally map is public. HPA 138's 40 %
+  pedal → 30 % throttle (pedal^1.3, used before) is a Haltech street 350Z tuned to hold a steady speed [HPA 138]; with
+  it the DBW samples gave about half BeamNG's power at 10–20 % pedal.
 - The idle air adds to the aim; anti-lag's kick overrides it [MoTeC DBW]. Blips and shift cuts come through the
   interface's throttle (NGP's control unit).
 - Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle].
-  Peak net torque at pedal 10/20/30/50 %: na 24/43/54/77 %, turbo 12/34/48/79 %, old 26/46/63/93 %, cable_turbo
-  13/25/37/87 % of max (BeamNG 2023: 49/65/76/91 %).
+  Most net power from IdleRPM up at pedal 10/20/30/50 %, % of the WOT's: na 9/23/43/80, turbo 8/20/47/87, old
+  5/18/43/91, cable_turbo 3/11/21/75 (BeamNG 2023, its power plot: 9/25/43/69). Torque, % of MaxTorque: na
+  40/53/65/86, turbo 27/47/63/91, old 26/46/63/93, cable_turbo 13/25/37/87 (BeamNG 49/65/76/91).
+- BeamNG's curve is not measured: [Heusinkveld], whom the post credits, measured sims, and his proposed shape is a
+  chart that "might also be completely fictional". Its lines are most likely before friction and engine braking,
+  which its engine code applies apart [BeamNG friction] (inferred); its power plot's 0 % line repeats the torque
+  plot's values on the kW axis.
 
 ## Torque (`calibrate.rs`, `ecu.rs`)
 
@@ -202,7 +212,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
   same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
 - The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step).
-- DBW part pedal gives less torque than BeamNG's 2023 curves (table above).
+- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is the race ECUs' start.
 
 ## Sources
 
@@ -260,6 +270,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - HPA Link boost target (rpm × throttle): https://www.hpacademy.com/courses/link-g4-plus-software-tutorial/advanced-fuctions-closed-loop-boost-control/
 - HPA 138, DBW webinar: https://www.hpacademy.com/previous-webinars/138-tuning-drive-by-wire-throttle-control/
 - BeamNG throttle curves: https://beamng.com/game/news/blog/throttle-torque-curves/
+- Heusinkveld, sims' throttle models: https://www.youtube.com/watch?v=0gW-cbSX3Uc
+- BeamNG friction (forum reading of its engine code): https://www.beamng.com/threads/engine-braking-calculations-wrong.94673/
+- HPA M1 DBW (throttle aim as airflow): https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-dbw-throttle/
+- EPA Ford 1.6 (steady map): https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
 - Gorzelic 2012, throttle and wastegate: https://public.websites.umich.edu/~annastef/papers_hcci/Gorzelic2012ccdc.pdf
 - Gears Magazine, idle MAP 31 kPa: https://gearsmagazine.com/magazine/pressure-sensors/
 - MOTOR, idle 27 kPa: https://www.motor.com/magazine-summary/fuel-injection-diagnosis-july-2008/

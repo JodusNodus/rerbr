@@ -109,17 +109,19 @@ pedal ──► ECU ──► throttle plate ──► intake manifold ──►
 A cable car's plate follows the pedal. A car with a throttle per cylinder (carburettor chokes, slides, individual
 throttle bodies) has a progressive linkage, plate = pedal^1.6.
 
-A drive-by-wire car maps the pedal to a plate position, pedal^1.3, and the throttle motor follows it with a 30 ms lag
-and needs at least 40 ms for full travel. Rally ECUs work by position. Life Racing (M-Sport's R5 and Rally2 cars),
-MoTeC, Link, Haltech and Marelli all map pedal to throttle position, and HP Academy's typical calibration sits below
-one to one, 40 % pedal giving about 30 % throttle. pedal^1.3 passes through that point. Torque-request pedals belong
-to road cars' Bosch ME7 and to F1.
+A drive-by-wire car's plate also follows the pedal, through a throttle motor with a 30 ms lag that needs at least
+40 ms for full travel. Race ECUs work by position. Life Racing (M-Sport's R5 and Rally2 cars), MoTeC, Link, Haltech
+and Marelli all map pedal to throttle position through a table. Link's and Haltech's tables start at one to one.
+MoTeC M1 aims at a share of the airflow, which opens the plate more than the pedal at small openings. No rally team's
+map is public, so ours is the one to one start. Torque-request pedals belong to road cars' Bosch ME7 and to F1.
 
 The ECU's idle air adds to the plate's aim and anti-lag's kick overrides it. Blips and shift cuts still come from
 NGP's control unit through the throttle it passes on.
 
 The plate's open area grows as `1 − cos θ / cos 7°`, from 7° closed to 90° open (US 6591667). At 10 % of its travel a
-plate opens about 3 % of its area, at 30 % about 14 %, at 50 % about 33 %.
+plate opens about 3 % of its area, at 30 % about 14 %, at 50 % about 33 %. The same patent's flow bench gives a
+discharge coefficient of 0.70–0.77 at small openings, a few percent under our 0.8, and a leak of about 5 mm² that we
+leave out. At light pedal the two about cancel.
 
 ### Manifold
 
@@ -309,7 +311,9 @@ How firm each part is:
 | Idle loops | MoTeC M1 and HP Academy idle setup; the reserve from an idle control paper (arXiv 2012.02859) and US 7418943 | manufacturer docs and papers; loop gains ours |
 | Overrun fuel cut | MSExtra, Hondata and tuner thresholds | tuner docs |
 | Rev limiter | Link G4+ limiter (HP Academy webinars 084 and 171) | tuner docs |
-| Pedal map | MoTeC, Link, Haltech, Life Racing and Marelli docs; HP Academy webinar 138 for 40 % → 30 % | manufacturer and tuner docs; the exponent is ours |
+| Pedal map | MoTeC, Link, Haltech, Life Racing and Marelli docs: position tables starting at one to one, MoTeC M1 by airflow | manufacturer and tuner docs; no rally map is public |
+| Plate flow at small openings | US 6591667's flow bench: C_D 0.70–0.77, a 5 mm² leak | measured, one 60 mm throttle |
+| Torque at part load | EPA's steady map of the 2013 Ford 1.6 EcoBoost: 27 % of its 100 kPa torque at 50 kPa (ours 28 % at 47 kPa) | measured, one road engine |
 | Boost aim by throttle | MoTeC M1 and Link boost aim tables (HP Academy courses) | tuner docs; where full aim starts is ours |
 | Class rules | FIA articles 254, 254A, 255, 255A, 260, 261; rallycars.com's restrictor list | regulations |
 | Turbo maps | generic normalised shapes, sized per car | inferred: no rally turbo map is public |
@@ -361,31 +365,55 @@ then fall, the shape BeamNG's 2016 and 2023 models are built to give. In ours it
 plate. On the old sample the power above the closed-throttle line stays at 9.8–10.1 kW from 3000 to 8000 rpm at
 10 % pedal, and at 36–38 kW at 20 %.
 
-![Most torque at each pedal](images/engine-model/max-torque-by-pedal.png)
+![Most torque and power at each pedal](images/engine-model/max-torque-by-pedal.png)
 
-The most net torque each pedal position gives at any rpm from idle up, as a share of peak torque:
+The most net power each pedal position gives at any rpm from idle up, as a share of the full pedal's:
 
 | Pedal | NGP | old | na | turbo | cable_turbo | BeamNG 2023 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 10 % | 0–2 % | 26 % | 24 % | 12 % | 13 % | 49 % |
-| 20 % | 6–10 % | 46 % | 43 % | 34 % | 25 % | 65 % |
-| 30 % | 14–21 % | 63 % | 54 % | 48 % | 37 % | 76 % |
-| 40 % | 26–32 % | 81 % | 65 % | 64 % | 68 % | 84 % |
-| 50 % | 38–43 % | 93 % | 77 % | 79 % | 87 % | 91 % |
-| 60 % | 51–55 % | 97 % | 87 % | 92 % | 93 % | 95 % |
-| 70 % | 63–66 % | 98 % | 94 % | 97 % | 97 % | 98 % |
-| 80 % | 75–77 % | 98 % | 97 % | 99 % | 98 % | 99 % |
+| 10 % | 0–1 % | 5 % | 9 % | 8 % | 3 % | 9 % |
+| 20 % | 2–8 % | 18 % | 23 % | 20 % | 11 % | 25 % |
+| 30 % | 12–19 % | 43 % | 43 % | 47 % | 21 % | 43 % |
+| 40 % | 23–31 % | 74 % | 64 % | 72 % | 47 % | 57 % |
+| 50 % | 36–42 % | 91 % | 80 % | 87 % | 75 % | 69 % |
+| 60 % | 48–53 % | 97 % | 89 % | 97 % | 88 % | 80 % |
+| 70 % | 61–65 % | 99 % | 94 % | 98 % | 93 % | 89 % |
+| 80 % | 74–77 % | 99 % | 97 % | 99 % | 97 % | 94 % |
 
-BeamNG's values are read from its published plot. The NGP column spans the four samples.
+And the most net torque, as a share of peak torque:
 
-Ours sits between the two and closer to BeamNG. Below 30 % pedal it gives clearly less than BeamNG's curve. Two
-things in ours cause that, both from the hardware. A butterfly at 10 % of its travel opens only about 3 % of its area,
-and the rally ECUs' pedal maps sit below one to one. BeamNG's post gives no measured data behind its curve, and we have
-no measured part-throttle map of a rally engine to settle it.
+| Pedal | NGP | old | na | turbo | cable_turbo | BeamNG 2023 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10 % | 0–2 % | 26 % | 40 % | 27 % | 13 % | 49 % |
+| 20 % | 6–10 % | 46 % | 53 % | 47 % | 25 % | 65 % |
+| 30 % | 14–21 % | 63 % | 65 % | 63 % | 37 % | 76 % |
+| 40 % | 26–32 % | 81 % | 76 % | 78 % | 68 % | 84 % |
+| 50 % | 38–43 % | 93 % | 86 % | 91 % | 87 % | 91 % |
+| 60 % | 51–55 % | 97 % | 92 % | 97 % | 93 % | 95 % |
+| 70 % | 63–66 % | 98 % | 96 % | 98 % | 97 % | 98 % |
+| 80 % | 75–77 % | 98 % | 98 % | 99 % | 98 % | 99 % |
 
-A light pedal at high rpm brakes in ours, since the air through a small opening sets the indicated power and friction
-and pumping take their share first. BeamNG's 10 % line stays at +25 N·m at 8500 rpm. Its plots may show torque before
-friction, and the post doesn't say.
+BeamNG's values are read from its published plots, and the NGP columns span the four samples. Power compares better:
+at light pedal the torque share mostly says how strong a car's full-throttle curve is near idle, where every light
+pedal line meets it.
+
+On power, the drive-by-wire samples follow BeamNG up to 30 % pedal and give more from 40 % up. Two samples give less at
+light pedal, for reasons in their hardware. The old car's throttles per cylinder sit on a progressive linkage. The
+cable turbo makes its full power on boost, and at light pedal it is an NA engine until the turbo spins. BeamNG scales
+power with the pedal whatever the turbo does.
+
+An earlier version mapped the drive-by-wire pedal as pedal^1.3, from HP Academy's drive-by-wire webinar (40 % pedal,
+about 30 % throttle), and gave about half BeamNG's power at 10–20 % pedal. That calibration is a Haltech on a street
+Nissan 350Z, shaped to hold a steady speed on the road. The rest of the chain checks out against measurements: the
+plate flow above, and EPA's steady map of the 2013 Ford 1.6 EcoBoost, which makes 27 % of its 100 kPa torque at
+50 kPa of manifold pressure where ours makes 28 % at 47 kPa.
+
+BeamNG's curve isn't measured data either. Niels Heusinkveld, whose research the post credits, measured other sims,
+not cars. Of the chart behind his proposed shape he says it "might also be completely fictional". Forum readings of
+BeamNG's engine code have it apply friction and engine braking apart from these curves, so the plotted lines are most
+likely torque before friction. Net, its 10 % line would brake at 8500 rpm, as ours does, since the air through a small
+opening sets the indicated power and friction and pumping take their share first. Its power plot's 0 % line repeats
+the torque plot's values on the kW axis.
 
 ### Engine braking
 
@@ -448,14 +476,15 @@ the limit to 20 over it.
 ### In game
 
 The autopilot drove each of four RallySimFans cars on stage track-11_O for 600 s, once with NGP 7's physics and once
-with the experimental physics. Three of them are the cars the samples are modelled on. "Over the limit" is the time the
+with the experimental physics. Three of them are the cars the samples are modelled on. Only the Fiesta has
+drive-by-wire, and its experimental run is with the one to one pedal map. "Over the limit" is the time the
 engine spent above `RPMLimit`. "Slip" is the time in gear, above 3 m/s, with the engine more than 3 % above the speed
 the gear gives with the clutch engaged, out of about 590 s in gear.
 
 | Car | Physics | Split 2 | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 442.63 s | +34 | 5.0 s | 3.3 s |
-| | experimental | 439.86 s | +34 | 0.3 s | 4.3 s |
+| | experimental | 436.20 s | +34 | 0.3 s | 4.1 s |
 | Celica ST185 | NGP 7 | 445.47 s | +25 | 5.4 s | 4.6 s |
 | | experimental | 438.02 s | −4 | 0 s | 5.5 s |
 | Golf II GTI 16V | NGP 7 | 466.95 s | +12 | 5.7 s | 6.0 s |
@@ -465,8 +494,8 @@ the gear gives with the clutch engaged, out of about 590 s in gear.
 
 No run stalled, and every run was still drivable at the end. The experimental limiter keeps every car under its limit
 in gear. The Fiesta's 0.3 s over is its start burnout in neutral. With the experimental physics the turbo cars reached
-split 2 0.6–1.7 % sooner and the NA cars 3.3–4.2 % sooner. The autopilot's caution sets most of its pace, and this is
-one stage and one run per car, so these gaps are not lap times a driver would see. The clutch slips 1–4 s longer per
+split 2 1.5–1.7 % sooner and the NA cars 3.3–4.2 % sooner. The autopilot's caution sets most of its pace, and this is
+one stage and one run per car, so these gaps are not lap times a driver would see. The clutch slips 0.8–4.4 s longer per
 run, and the engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
 
 ## Known limits
@@ -523,5 +552,8 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - FIA Article 255A (2016), WRC: https://www.fia.com/sites/default/files/255a_2016-corrected_16.12.2015.pdf
 - FIA Article 260 (2021), R1–R3, Rally3–5: https://www.fia.com/sites/default/files/260_2021_wmsc_2020.12.16.pdf
 - FIA Article 261 (2023), Rally2: https://www.fia.com/sites/default/files/261_2023.pdf
+- MoTeC M1 drive-by-wire, throttle aim as airflow (HP Academy): https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-dbw-throttle/
+- EPA engine benchmarking, 2013 Ford 1.6 L EcoBoost steady map: https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
 - BeamNG.drive, modelling part-throttle torque curves: https://beamng.com/game/news/blog/throttle-torque-curves/
 - Niels Heusinkveld, throttle models in sims: https://www.youtube.com/watch?v=0gW-cbSX3Uc
+- BeamNG engine braking and friction, a forum reading of its engine code: https://www.beamng.com/threads/engine-braking-calculations-wrong.94673/

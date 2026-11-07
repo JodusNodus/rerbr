@@ -35,8 +35,6 @@ pub const OVERRUN_P: f64 = 0.2;
 pub const OVERRUN_RPM: f64 = 3000.0;
 /// The overrun air's decay once the cut ends, s: a dashpot's or idle valve's hand-over to the idle loop (inferred).
 pub const OVERRUN_TAU: f64 = 0.5;
-/// DBW: throttle aim = pedal^1.3 (HPA webinar 138: 40 % pedal about 30 % throttle; inferred exponent through it).
-pub const DBW_EXPONENT: f64 = 1.3;
 /// Rev limiter, Link's convention: ignition cut 0 → 100 % over the 200 rpm below the limit, fuel cut from 100 rpm above
 /// it (Link G4+ control range 200 rpm, settling 100–150 rpm under the limit, hard cut +50 to +200; HPA webinars 084 and
 /// 171), so RPMLimit is the cap, as NGP and the class rules read it.

@@ -3,7 +3,7 @@
 python3 -I plot.py DIR [car:litres ...]: a panel sheet per car, DIR/<car>.png.
 python3 -I plot.py --figures DIR OUT: the figures of docs/experimental-physics.md from the sample cars' CSVs.
 """
-import csv, sys, os, collections
+import csv, sys, os, collections, math
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -69,6 +69,8 @@ CARS = {"old": "old: Group 4 NA, cable, ITBs, idle stop", "na": "na: modern NA, 
 COLOURS = {"old": "#8c564b", "na": "#1f77b4", "turbo": "#d62728", "cable_turbo": "#ff7f0e", "ngp": "#555555"}
 # BeamNG 2023, read from the figure Torque-Throttle.png of https://beamng.com/game/news/blog/throttle-torque-curves/.
 BEAMNG = [(10, 49), (20, 65), (30, 76), (40, 84), (50, 91), (60, 95), (70, 98), (80, 99), (90, 100), (100, 100)]
+# The most power at each pedal, % of the 100 % line's 493 kW, read from the same post's Power-Throttle.png.
+BEAMNG_POWER = [(10, 9), (20, 25), (30, 43), (40, 57), (50, 69), (60, 80), (70, 89), (80, 94), (90, 98), (100, 100)]
 DT = 1.0 / 720.0
 
 
@@ -165,25 +167,33 @@ def figures(d, out):
         axes[1].legend(title="pedal", fontsize=7, ncol=2, loc="lower left")
         save(fig, f"torque-by-pedal-{car}.png")
 
-    # 2. The most net torque over rpm at each pedal, as a share of MaxTorque.
-    fig, ax = plt.subplots(figsize=(11, 4.6))
-    shares = {}
+    # 2. The most net torque and power over rpm at each pedal, as shares of the full pedal's.
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
+    shares, powers = {}, {}
     for car, (st, _, p) in data.items():
-        pts = []
+        pts, pws = [], []
+        kw = lambda r, key: r[key] * r["rpm"] * math.pi / 30.0
+        top = {key: max(kw(r, key) for r in st if r["pedal"] == 1.0 and r["rpm"] >= p["idle"]) for key in ("torque", "ngp")}
         for q in sorted({r["pedal"] for r in st}):
             rows = [r for r in st if r["pedal"] == q and r["rpm"] >= p["idle"]]
             pts.append((q * 100, 100 * max(r["torque"] for r in rows) / p["max_torque"],
                         100 * max(r["ngp"] for r in rows) / p["max_torque"]))
-        shares[car] = pts
-        ax.plot([a for a, _, _ in pts], [b for _, b, _ in pts], "o-", color=COLOURS[car], label=f"ours, {car}")
-    first = next(iter(shares.values()))
-    ax.plot([a for a, _, _ in first], [c for _, _, c in first], "s--", color=COLOURS["ngp"],
-            label="NGP's formula (the same for every car)")
-    ax.plot([a for a, _ in BEAMNG], [b for _, b in BEAMNG], "^:", color="k", label="BeamNG 2023 (read from its figure)")
-    ax.plot([0, 100], [0, 100], color="#bbbbbb", lw=0.8, label="1:1")
-    style(ax, "pedal, %", "most net torque from IdleRPM up, % of MaxTorque", "Most torque at each pedal")
-    ax.set_xlim(0, 100)
-    ax.legend(fontsize=8)
+            pws.append((q * 100, 100 * max(kw(r, "torque") for r in rows) / top["torque"],
+                        100 * max(kw(r, "ngp") for r in rows) / top["ngp"]))
+        shares[car], powers[car] = pts, pws
+        for ax, v in zip(axes, (pts, pws)):
+            ax.plot([a for a, _, _ in v], [b for _, b, _ in v], "o-", color=COLOURS[car], label=f"ours, {car}")
+    for ax, v, beamng, what in ((axes[0], shares, BEAMNG, "torque, % of MaxTorque"),
+                                (axes[1], powers, BEAMNG_POWER, "power, % of the full pedal's")):
+        first = next(iter(v.values()))
+        ax.plot([a for a, _, _ in first], [c for _, _, c in first], "s--", color=COLOURS["ngp"],
+                label="NGP's formula (the first sample)")
+        ax.plot([a for a, _ in beamng], [b for _, b in beamng], "^:", color="k",
+                label="BeamNG 2023 (read from its figure)")
+        ax.plot([0, 100], [0, 100], color="#bbbbbb", lw=0.8, label="1:1")
+        style(ax, "pedal, %", f"most net {what}", f"Most {what.split(',')[0]} at each pedal, from IdleRPM up")
+        ax.set_xlim(0, 100)
+    axes[1].legend(fontsize=8)
     save(fig, "max-torque-by-pedal.png")
 
     # 3. Engine braking: closed pedal, ours against NGP's line B and rF2's SkipBarber scaled by displacement.
@@ -279,6 +289,9 @@ def figures(d, out):
         print(path)
     print("\nmost net torque by pedal, % of MaxTorque (ours per car; NGP):")
     for car, pts in shares.items():
+        print(car, " ".join(f"{a:.0f}:{b:.0f}" for a, b, _ in pts), "| NGP", " ".join(f"{c:.0f}" for _, _, c in pts))
+    print("\nmost net power by pedal, % of the full pedal's (ours per car; NGP):")
+    for car, pts in powers.items():
         print(car, " ".join(f"{a:.0f}:{b:.0f}" for a, b, _ in pts), "| NGP", " ".join(f"{c:.0f}" for _, _, c in pts))
     print("\nclosed pedal, N·m at rpm: ours / NGP / rF2 scaled")
     for car, rows in braking.items():
