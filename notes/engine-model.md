@@ -252,8 +252,10 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
 
 - track-11_O (gravel) 600 s, four cars: Fiesta exp split 2 436.20 (engine alone, `96c85981`) → 435.66 s, Celica
   438.02 → 437.82 (main's engine changes; the brush is off there), NA cars unchanged.
-- track-41_M (tarmac): exp 1.4–3.1 % sooner to split 2; the exp Golf II GTI stalls at 161 m: braking 0.8 in second
-  at 5.5 m/s, engine 494 → 0 rad/s in 0.2 s with the clutch closed (NGP's run passes there and finishes). Open.
+- track-41_M (tarmac): exp 1.4–3.1 % sooner to split 2; the exp Golf II GTI stalled at 161 m: braking 0.8 in second
+  at 5.5 m/s, engine 494 → 0 rad/s in 0.2 s with the clutch closed (NGP's run passes there and finishes). Cause the
+  brush's force lag (`tyre-model.md`); after its fix (Rill's force dynamics) realistic + brush 1.3–3.6 % sooner,
+  Golf 214.21 s, no stall.
 - Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.33 s (4.44 with NGP's tyre); track-64 gravel
   flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant acceleration, −0.66 m/s²)
   ≈ 3.9 s (inferred).
@@ -266,10 +268,10 @@ is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compa
 
 ## Open
 
-- Golf II GTI stall, track-41_M experimental: the brush tyre's front overspin at low speed and large slip (front wheel
-  over car speed 5.4; NGP 1.07, realistic engine + NGP tyre 1.22, NGP engine + brush 2.98, at 0.15–0.5 throttle in
-  second), then a lock under brake 0.8 with the clutch in (fronts 10.6 → 0 m/s in 0.22 s, car 5.5 m/s); NGP's clutch
-  help opens at 65 rad/s, too late. Owner: the brush tyre (`notes/tyre-model.md`).
+- A wheel locked under braking with the clutch in stalls the realistic engine: the Golf II GTI after track-41_M's
+  finish, full brake in fifth from 24 m/s, fronts locked at 20 m/s, engine 0 (NGP's physics locks them too and
+  idles at 89 rad/s); NGP's clutch help opens at 65 rad/s, too late. The Golf's stall on the climb was the brush's
+  (fixed, `tyre-model.md`).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
   School]: samples na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
