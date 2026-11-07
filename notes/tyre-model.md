@@ -89,24 +89,35 @@ times.
 ## Candidate (brush-v1)
 
 `rbr_tyre::brush` (`calibrate`; the lab's `examples/compare.rs`). Pacejka's brush with combined slip (ch. 3) and
-single-contact-point transient (ch. 7). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
+Rill's first-order force dynamics (below). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
 (-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed by Canudas de Wit's g(Vs) with their v_s and μ_C/μ_S; NGP's temperature grip kept; dry wear
 +10 % at 60 % worn, fading with wetness; wet loss h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 0.7 mm and
-v_p = 6.36 √p (0.75 + 0.25 d); σ = C/k, no speed term. Calibrated at run time to NGP's lateral peak and slope and
+v_p = 6.36 √p (0.75 + 0.25 d); force dynamics F = c u + d u', (v d + f) u' = f v s - v c u per axis (Rill,
+Vehicle Dynamics lecture notes, Hochschule Regensburg 2009, 3.4.2; f = F/s the steady secant, c NGP's carcass, d
+the mean of Rill's passenger values, d_x 500/1500 and d_y 250/600 N/(m/s)), combined force capped at μ Fz as Rill
+caps it; relaxation length (f + v d)/c, the stretched string's C/c at small slip, no other speed term. Calibrated at run time to NGP's lateral peak and slope and
 longitudinal peak at 4 kN, 15 m/s (no NGP values in code). Below 2 m/s not modelled.
 
 Ours, not from papers: the wet loss's film ramp, its 0.5 mm, the quadratic and the 0.6 weight, and the wear gain's
 fade with W; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
 excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-0.45 m); taking the longitudinal exponents
-and Kx/Ky as the mean of two road-tyre sets; NGP's carcass stiffnesses and temperature grip.
+and Kx/Ky as the mean of two road-tyre sets; the carcass damping as the mean of Rill's two passenger values; NGP's carcass stiffnesses and temperature grip.
 
 Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in brackets where it changed):
 
+- 2026-11-07, low speed (Golf II GTI 16V, track-41_M climb, realistic engine): the earlier transient (a lag on the
+  slip, σ = C/c, rate V_r/σ) ran σ_x 1-2.8 m at 4-7 m/s on NGP's low-speed carcass and almost froze as the wheel
+  locked (V_r → 0.5 m/s): after a spin-to-brake reversal the force kept the wrong sign 0.21-0.33 s (lab, fronts at
+  2.4-3.5 kN, 4.5 m/s, wheel 2.5 → 0.5 times the car) and drove a wheel-diff oscillation (FL +11 to -6 m/s, steady
+  slip +0.35 against transient -0.12). Steady grip was not short: 1.38 μ peak at κ 0.15, 1.10 at the spin's κ 1.5
+  (sliding 6.75 m/s). Rill's dynamics turn it in 3-15 ms; σ_x 1.0-1.6 m at κ 0.02 to 0.25-0.3 m sliding; Rill: σ_x
+  passenger 0.7 m, review 0.3-0.8 m; measured σ_y 0.6 m at 0° to 0.1 m at 10° (Rill Fig. 3.43).
 - Meets: peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry locked over peak at 10 m/s 0.80 (0.70); braking
   peaks within 4 % of NGP's (17 %); Kx/Fz 22 by the |κ| ≤ 0.04 fit, Kx ∝ Fz^1.14; peak Fx ∝ Fz^0.96; Cα ∝ Fz^0.64;
   Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn; peak Fy ∝ Fz^0.85; σ_y 0.20 m at 4 kN
-  (σ/R 0.63; NGP 0.17 m; Pacejka 0.12-0.45 m), 63 % of a 2° step in 0.18-0.21 m at 10-30 m/s.
+  (σ/R 0.63; NGP 0.17 m; Pacejka 0.12-0.45 m); with the damping 0.20-0.23 m at 5-30 m/s, 63 % of a 2° step in
+  0.17-0.18 m at 10-30 m/s (0.18-0.21 m before).
 - New behaviour: peak μ_y falls 10 % from 10 to 30 m/s (1.310/1.264/1.231/1.181, NGP flat; Kiencke & Nielsen's
   c4 0.02-0.04 s/m gives 4-8 % at 10 % slip and 20 m/s); wet W = 1 peak 0.99/0.78/0.64 at 10/20/30 m/s against
   NGP's flat 1.00.
@@ -131,10 +142,20 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 - Calibration per wheel at fit (`rbr_tyre::fit`): NGP's `patch_forces` swept from the wheel's own tables at
   `load_axis[3]` (the 4 kN design load times the car's mass ratio), 15 m/s, unit surface, stiffness factor 1; t_cal is
   the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed.
-- Transient: the single contact point per wheel, the model's state (snapshots don't carry it; restart and touch-down
-  zero it). σ_x takes NGP's speed-scaled torsional stiffness (0.1 of it below 10 m/s), as NGP's own spring does, so
-  the longitudinal relaxation is ~10× longer at low speed, for NGP's stability.
-- Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental`, σ without the speed term, engine
+- Dynamics: Rill's carcass deflections per wheel, the model's state (snapshots don't carry it; restart and
+  touch-down zero it). c_x is NGP's speed-scaled torsional stiffness over R² (0.1 of it below 10 m/s), as NGP's own
+  spring takes it, so at small slip the longitudinal relaxation is ~10× longer at low speed (Golf fronts 1.0-1.6 m at
+  4.5 m/s, against a road tyre's 0.3-0.8 m); trail and phase are the steady brush's.
+- Golf II GTI 16V, track-41_M climb (gear 2, 4-5 m/s, throttle 0.15-0.5, 10-13 s), front wheel over car speed
+  mean/max: NGP 0.98/1.02, realistic + NGP tyre 1.02/1.09; before 1.54/3.04 with a stall at 11.72 s, brush alone
+  1.26/2.51; now 1.03/1.23, brush alone 0.98/1.19, no stall. Fiesta Rally2 8-20 s driven/car mean/max NGP 0.99/1.16,
+  before 1.26/2.82, now 1.01/1.38; Fiat 131 rears 1.14/3.10, 1.14/2.98, 1.19/3.03.
+- track-41_M four-car 600 s, experimental split 2 / finish before → now: Fiesta 207.80/304.88 → 207.97/305.08,
+  Celica 208.15/305.22 → 208.48/305.53, Golf stalled at 161 m → 214.21/314.48 (NGP 222.28/324.24), Fiat
+  214.54/314.89 → 216.44/316.91; slip > 3 % 6.7/4.2/-/5.0 → 3.0/3.5/4.8/5.2 s. Fiesta 0-100 RSF 504 4.33 → 4.35 s
+  (NGP 4.52). After the finish (full brake in fifth from 24 m/s) both physics lock the Golf's fronts; the realistic
+  engine stalls with the clutch in, NGP's idles (engine side, `engine-model.md`).
+- Fiesta Rally2, map 41 tarmac, autopilot, before the force dynamics (`ngp` / tyre only / full `experimental`, σ without the speed term, engine
   with the light pedal): 150000 steps reach 3007 / 3017 / 3066 m, split 1 118.82 / 118.39 / 116.95 s, no NaN; full
   brake from 15 m/s stops in 9.86 / 9.40 / 8.96 m (11.4 / 12.0 / 12.6 m/s² mean). No measurable step cost (100000
   steps 31-33 s either way).
@@ -152,5 +173,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   7.5 bar (Meccanica 2023).
 - Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest), the film's effect on v_p,
   and a sliding-speed loss for wet roads that fits locked-wheel data.
+- c_x below 10 m/s is NGP's tenth of its torsional stiffness, kept for NGP's explicit wheel step; a rally tyre's own
+  longitudinal carcass stiffness and damping are unpublished.
 - Low speed: LuGre bristle state with the published σ_0 (would also remove NGP's 360 Hz alternation) or NGP's
   sticking model. Camber thrust from MF6.1's camber stiffness.
