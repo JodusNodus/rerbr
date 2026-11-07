@@ -211,6 +211,7 @@ impl Models {
         }
         out.push(Command::SpeechGap(if inputs.race_time.is_some_and(|t| t <= 0.0) { SPEECH_GAP } else { 0.0 }));
         if let Some(fmod) = &mut self.fmod {
+            fmod.model_pop = self.exhaust.model_pop;
             out.retain(|c| !fmod.replaces(c));
             out.iter_mut().for_each(|c| fmod.mute(c));
             out.push(Command::Gain { voice: voice::Loop::Engine, gain: 0.0 });
@@ -218,7 +219,6 @@ impl Models {
             // NGP sends the daemon its block in app states 1 and 8 only, not in the start orbit (app state 10), where the
             // HUD's countdown has not started.
             let sent = !inputs.countdown.is_some_and(|c| c >= rbr_gameplay::race_clock::COUNTDOWN);
-            fmod.model_pop = self.exhaust.model_pop;
             out.extend(fmod.step(inputs, scene, stopped, sent));
         }
         out
