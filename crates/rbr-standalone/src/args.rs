@@ -129,6 +129,15 @@ pub struct Args {
     pub car_year: Option<u32>,
 }
 
+impl Args {
+    /// Whether the run writes its records (`--saves`: the stage record, the personal best, a lesson's verdict): not a
+    /// replay (`--replay`), and not with an engine model other than NGP's while the models are experimental (a user
+    /// decision); the records are still compared.
+    pub fn keeps_records(&self) -> bool {
+        self.replay.is_none() && self.engine_model == "ngp"
+    }
+}
+
 /// `value` for `flag` as a number: the flag names a bad value.
 fn parsed<T: std::str::FromStr>(flag: &str, value: &str) -> Result<T, String> {
     value.parse().map_err(|_| format!("{flag} {value}"))
@@ -149,7 +158,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed, autopilot and headless runs, not with --twin (default ngp, NGP's; no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's)
+       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed, autopilot and headless runs, not with --twin (default ngp, NGP's; no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); a model other than ngp writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
@@ -637,6 +646,10 @@ mod tests {
             (format!("{LIVE} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
             (format!("{BOOT} --engine-model ngp"), |a| assert_eq!(a.engine_model, "ngp")),
             (format!("{REC} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
+            (LIVE.into(), |a| assert!(a.keeps_records())),
+            (format!("{LIVE} --engine-model ngp"), |a| assert!(a.keeps_records())),
+            (format!("{LIVE} --engine-model realistic"), |a| assert!(!a.keeps_records())),
+            (format!("{LIVE} --replay F"), |a| assert!(!a.keeps_records())),
             (format!("{LIVE} --car-group Rally_2 --car-year 2019"), |a| {
                 assert_eq!((a.car_group.as_deref(), a.car_year), (Some("Rally_2"), Some(2019)))
             }),
