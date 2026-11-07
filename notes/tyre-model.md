@@ -446,9 +446,12 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   smoothstep in the braking slip to `PLOUGH` 1.3 times the free rolling peak, against the sliding velocity (with the
   friction). The braking slip takes the speed floored at 0.5 m/s, so the berm fades out at standstill. No berm when
   driving.
-- Evidence: lateral saturation without a fall to 40° and the normalised curve (Coutermarsh & Shoop, SAE 2010-01-0374,
-  fig ±0.02); locked over ABS decel 1.25 laden / 1.30 light (NHTSA DOT HS 808 875, table); the locked tyre's side
-  force PLOUGH μ sin α, 0.76 of the free rolling peak at 35° (Coutermarsh ~0.4/0.55 = 0.73, fig).
+- Evidence: lateral saturation without a fall to 38° (Coutermarsh & Shoop, SAE 2010-01-0374, Fig. 15); locked over
+  ABS decel 1.25 laden / 1.30 light (NHTSA DOT HS 808 875, table); the locked tyre's side force PLOUGH μ sin α
+  against Coutermarsh's 0.72 sin α over a free rolling 0.55 (1.31 sin α, Fig. 16); their locked μ_x 0.85 is 1.5 times
+  the lateral max, above PLOUGH.
+- Shape below the peak: the slope is NGP's (9.1 per rad on gravel), so μ_y reaches 0.73 of the peak at 5° against the
+  road AT tyre's 0.56 (pea stone) / 0.40 (wet gravel), initial slope 3-5 per rad; a rally tyre's is unpublished.
 - Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface
   (`fit::loose`), linear between, times NGP's grip; the flat brush's peak is μ Fz, so the level needs no solve. The
   cornering stiffness is re-solved under the flat friction to NGP's slope (0-2°, 4 kN); Cx = 1.4 Cy as the brush's.
@@ -462,12 +465,12 @@ loose-v1; NGP's soil force left out of both):
 
 | Property | Published | NGP | loose-v1 |
 | --- | --- | --- | --- |
-| μ_y/peak at 2.5/5/10/15° | pea stone 0.49/0.73/0.91/0.96, wet gravel 0.29/0.49/0.76/0.89 | 0.45/0.74/0.98/1.00 | 0.44/0.73/0.98/1.00 |
-| μ_y at 30/40° over peak | ~1 (no fall to 40°) | 0.956/0.913 | 1.000/1.000 |
+| μ_y/peak at 5/10/20/30° | pea stone 0.56/0.81/0.96/1.00, wet gravel 0.40/0.64/0.87/0.96 | 0.74/0.98/0.99/0.96 | 0.73/0.98/1.00/1.00 |
+| μ_y at 40° over peak | ~1 (no fall to 38°) | 0.913 | 1.000 |
 | Peak μ_y, slip angle | 0.54-0.55 (road AT tyre) | 0.829 at 13.75° | 0.829 at 16.5° |
 | μ_x at κ 0.05 / driving peak | none | 0.335 / 0.850 (κ 0.24) | 0.504 / 0.850 (κ ~0.3) |
 | Braking μ_x over peak at κ 0.3/0.5/0.7/1 | locked 1.25-1.30 (car) | 0.99/0.95/0.88/0.82 | 1.02/1.11/1.21/1.30 |
-| Locked μ_y over free rolling peak at 5/10/20/35° | linear, ~0.73 at 35° | 0.18/0.33/0.46/0.54 | 0.12/0.23/0.46/0.76 |
+| Locked μ_y over free rolling peak at 5/10/20/35° | 1.31 sin α: 0.11/0.23/0.45/0.75 | 0.18/0.33/0.46/0.54 | 0.12/0.23/0.46/0.76 |
 | Peaks μ_y / μ_x at 2/4/6 kN | | 0.889/0.864, 0.829/0.850, 0.774/0.846 | 0.888/0.882, 0.829/0.850, 0.774/0.846 |
 
 The 2 kN μ_x is 2 % above NGP's: the fit sweeps at stiffness factor 1, the frame's pressure moves NGP's light-load

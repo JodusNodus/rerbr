@@ -7,9 +7,9 @@
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
 //! - Lateral: saturates without falling. Coutermarsh & Shoop (SAE 2010-01-0374, CRREL CIV, LT235/75R15, 241 kPa,
-//!   6.7 kN, 1-1.5 m/s, fig ±0.02): on wet gravel and pea stone μ_y saturates at 0.54-0.55 by 20-25° and does not fall
-//!   to 40°; little hysteresis on soil. The cornering slope stays NGP's: the stiffness is solved for it under the flat
-//!   friction ([`calibrate`]).
+//!   6.7 kN, 1-1.5 m/s, Fig. 15, fig ±0.004): on pea stone and wet gravel μ_y saturates at 0.54-0.55 by 20-25° and does
+//!   not fall to 38°; little hysteresis on soil. The cornering slope stays NGP's (about twice that road tyre's 3-5 per
+//!   rad): the stiffness is solved for it under the flat friction ([`calibrate`]).
 //! - Longitudinal: past the free rolling peak the braking force keeps rising, to [`PLOUGH`] times the peak at lock: the
 //!   material builds up ahead of a locked tyre (a berm) and stops it harder than rolling (NHTSA DOT HS 808 875 /
 //!   SAE 1999-01-1287, 9 cars, 56 km/h, 5 cm crushed limestone: locked over ABS decel 1.25 laden, 1.30 light, per car
@@ -19,7 +19,7 @@
 //!   slip builds no berm here: the data are braked, and the motion resistance of a spinning tyre's sinkage is not.
 //! - Combined: the berm acts against the sliding velocity, with the friction (Svendenius's collinear slide), so a
 //!   locked tyre's side force is PLOUGH μ sin α, linear in the slip angle and below free rolling at every angle
-//!   (Coutermarsh: ~0.4 at 35° against 0.54-0.55 free rolling, 0.73; here 1.3 sin 35° = 0.75).
+//!   (Coutermarsh, Fig. 16, fig ±0.02: 0.72 sin α against a free rolling 0.55, 1.31 sin α of it; here 1.3 sin α).
 //!
 //! Ours: the smoothstep, no berm when driving, PLOUGH the published cars' 1.25-1.30, and the berm independent of the
 //! soil's thickness (the measured layers are 5 cm and graded gravel; NGP's 9-30 mm) and of speed (no speed trend in the
@@ -226,8 +226,8 @@ pub(crate) mod tests {
             last = f;
         }
         assert!((fy(40.0) / peak - 1.0).abs() < 1e-9);
-        // Normalised by the peak, at 2.5/5/10/15°: Coutermarsh's pea stone 0.49/0.73/0.91/0.96, wet gravel
-        // 0.29/0.49/0.76/0.89 (fig ±0.02); here a stiffness of 9 per rad.
+        // Normalised by the peak at 2.5/5/10/15°, at a stiffness of 9 per rad (NGP's gravel tyre's); Coutermarsh's
+        // softer road tyre (3-5 per rad) has pea stone 0.56/0.81 of its peak at 5/10°.
         let shape: Vec<f64> = [2.5, 5.0, 10.0, 15.0].iter().map(|&a| fy(a) / peak).collect();
         assert!(shape[0] > 0.35 && shape[0] < 0.5 && shape[2] > 0.85 && shape[3] > 0.95, "{shape:?}");
     }

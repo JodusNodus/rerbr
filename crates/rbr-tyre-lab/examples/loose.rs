@@ -116,12 +116,14 @@ fn main() {
     let peaks = [true, false].map(|ngp| lab.lat_peak(ngp, fz));
     println!("\n## μ_y against slip angle (free rolling); over peak; Coutermarsh pea stone / wet gravel over peak");
     println!("| α° | NGP | loose-v1 | NGP/peak | loose/peak | published/peak |\n| --- | --- | --- | --- | --- | --- |");
+    // Coutermarsh & Shoop Fig. 15 (fig ±0.004): pea stone 0.30/0.44/0.52/0.54, wet gravel 0.22/0.35/0.48/0.53 at
+    // 5/10/20/30°, max 0.54 / 0.55, still rising at 38°.
     let published = |a: f64| match a as i32 {
-        2 => "0.49 / 0.29",
-        5 => "0.73 / 0.49",
-        10 => "0.91 / 0.76",
-        15 => "0.96 / 0.89",
-        20..=40 => "~1, no fall to 40°",
+        5 => "0.56 / 0.40",
+        10 => "0.81 / 0.64",
+        20 => "0.96 / 0.87",
+        30 => "1.00 / 0.96",
+        35..=40 => "~1, no fall to 38°",
         _ => "",
     };
     for a in [1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0] {
@@ -139,7 +141,7 @@ fn main() {
     }
     println!(
         "driving peak μ_x: NGP {:.3} at κ {}, loose-v1 {:.3} at κ {}; locked over the driving peak NGP {:.3}, loose-v1 {:.3} \
-         (published 1.25-1.30 car, Coutermarsh locked 0.85 over traction 0.58-0.68)",
+         (published 1.25-1.30 car; Coutermarsh locked 0.85, 1.25-1.47 times the traction, 1.5 times the lateral max)",
         drive[0].0,
         drive[0].1,
         drive[1].0,
@@ -148,7 +150,7 @@ fn main() {
         lab.mu(false, fz, 0.0, -1.0).1.abs() / drive[1].0
     );
 
-    println!("\n## Locked wheel: μ_y against slip angle, and over the free rolling lateral peak (Coutermarsh ~0.4/0.55 = 0.73 at 35°)");
+    println!("\n## Locked wheel: μ_y against slip angle, and over the free rolling lateral peak (Coutermarsh 0.72 sin α over 0.55: 1.31 sin α)");
     println!("| α° | NGP | loose-v1 | NGP/peak | loose/peak |\n| --- | --- | --- | --- | --- |");
     for a in [5.0, 10.0, 20.0, 35.0] {
         let (n, l) = (lab.mu(true, fz, a, -1.0).0, lab.mu(false, fz, a, -1.0).0);
