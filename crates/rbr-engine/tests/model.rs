@@ -12,16 +12,18 @@ use std::sync::OnceLock;
 /// Every sample calibrated once.
 fn models() -> &'static [(&'static str, Params, Realistic)] {
     static MODELS: OnceLock<Vec<(&'static str, Params, Realistic)>> = OnceLock::new();
-    MODELS.get_or_init(|| samples::all().into_iter().map(|(n, p)| { let m = Realistic::new(&p); (n, p, m) }).collect())
+    MODELS.get_or_init(|| {
+        samples::all()
+            .into_iter()
+            .map(|(n, p)| {
+                let m = Realistic::new(&p);
+                (n, p, m)
+            })
+            .collect()
+    })
 }
 
-fn model(name: &str) -> (Params, Realistic) {
-    let (_, p, m) = models().iter().find(|m| m.0 == name).expect("a sample");
-    (p.clone(), m.clone())
-}
-
-fn rpm(p: &Params, w: f32) -> f64 {
-    let _ = p;
+fn rpm(w: f32) -> f64 {
     f64::from(w) * RPM
 }
 
@@ -29,7 +31,7 @@ fn rpm(p: &Params, w: f32) -> f64 {
 fn steady_wot_reproduces_the_table_at_every_knot() {
     for (name, p, m) in models() {
         for &(w, tq) in &p.torque_knots {
-            let n = rpm(p, w);
+            let n = rpm(w);
             if n < 150.0 {
                 continue;
             }
@@ -48,7 +50,7 @@ fn closed_throttle_at_the_limit_brakes_with_the_brake_coefficient() {
             continue;
         }
         let mut s = rbr_engine::engine::State::new();
-        let got = calibrate::steady(m.spec(), &mut s, rpm(p, p.rev_limit), 0.0).torque;
+        let got = calibrate::steady(m.spec(), &mut s, rpm(p.rev_limit), 0.0).torque;
         let want = -f64::from(p.brake_coefficient * p.max_torque);
         assert!((got - want).abs() <= 0.005 * want.abs(), "{name}: {got:.2} for {want:.2}");
     }
@@ -61,7 +63,7 @@ fn settled(rows: &[Row], from: f64) -> (f64, f64) {
 #[test]
 fn it_idles_in_neutral_and_recovers_from_a_dip() {
     for (name, p, m) in models() {
-        let idle = rpm(p, p.idle_speed);
+        let idle = rpm(p.idle_speed);
         let band = if m.calibration().class.unwrap().idle == rbr_engine::class::Idle::Ecu { 50.0 } else { 150.0 };
         let mut m = m.clone();
         let rows = bench::run(&mut m, idle * 1.3, Some(f64::from(p.inertia)), 12.0, |_| 0.0, Some((6.0, 300.0)));
@@ -75,9 +77,9 @@ fn it_idles_in_neutral_and_recovers_from_a_dip() {
 #[test]
 fn the_limiter_holds_wot_in_neutral() {
     for (name, p, m) in models() {
-        let limit = rpm(p, p.rev_limit);
+        let limit = rpm(p.rev_limit);
         let mut m = m.clone();
-        let rows = bench::run(&mut m, rpm(p, p.idle_speed), Some(f64::from(p.inertia)), 6.0, |_| 1.0, None);
+        let rows = bench::run(&mut m, rpm(p.idle_speed), Some(f64::from(p.inertia)), 6.0, |_| 1.0, None);
         let (lo, hi) = settled(&rows, 4.0);
         assert!(lo > limit - 100.0 && hi < limit + 250.0, "{name}: {lo:.0}..{hi:.0} at a {limit:.0} limit");
     }
@@ -89,9 +91,9 @@ fn the_overrun_cut_never_drives() {
         if m.calibration().class.unwrap().anti_lag {
             continue;
         }
-        let idle = rpm(p, p.idle_speed);
+        let idle = rpm(p.idle_speed);
         let mut n = idle + 900.0;
-        while n < rpm(p, p.rev_limit) {
+        while n < rpm(p.rev_limit) {
             let mut m = m.clone();
             let rows = bench::run(&mut m, n, None, 3.0, |t| if t < 1.0 { 1.0 } else { 0.0 }, None);
             let worst = rows.iter().filter(|r| r.time >= 1.0).map(|r| r.torque).fold(f64::MIN, f64::max);
@@ -132,7 +134,7 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
 }
 
 fn bits(m: &mut Realistic, p: &Params) -> Vec<u32> {
-    let idle = rpm(p, p.idle_speed);
+    let idle = rpm(p.idle_speed);
     bench::run(m, idle, Some(f64::from(p.inertia)), 3.0, |t| if (0.5..1.5).contains(&t) { 1.0 } else { 0.0 }, None)
         .iter()
         .map(|r| (r.torque as f32).to_bits())
