@@ -71,8 +71,8 @@ impl Model for Brush {
             surf_kinetic: f64::from(x.grip),
         };
         let steady = brush::eval(&e, &t.cal);
-        // The longitudinal carcass from the published relaxation length, at the pressure; the lateral one NGP's.
-        let k_x = brush::carcass_x(&t.cal, e.radius, e.pressure_factor);
+        // The longitudinal carcass stiffness (ours), at the pressure; the lateral one NGP's.
+        let k_x = brush::carcass_x(&t.cal, e.pressure_factor);
         let mut state = t.state;
         let limit = steady.mu * e.fz;
         let vr = e.spin * e.radius;

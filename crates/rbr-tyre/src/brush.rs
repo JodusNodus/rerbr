@@ -346,9 +346,8 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
 }
 
 /// Relaxation lengths, m: sigma_y = Cy(Fz)/k_y with NGP's carcass lateral
-/// stiffness k_y (times the pressure factor), sigma_x = Cx(Fz)/k_x with k_x =
-/// NGP's torsional stiffness / R^2 (the torsion torque -torsion * k_tors acts
-/// as -torsion/R * k_tors/R longitudinally): the stretched string's sigma =
+/// stiffness k_y (times the pressure factor), sigma_x = Cx(Fz)/k_x with k_x
+/// the longitudinal carcass ([`carcass_x`]): the stretched string's sigma =
 /// C/k (Pacejka, ch. 5). No speed term: the one measured (0.021 s times V,
 /// Vera et al., Sensors 22:6380, 2022) is a passenger tyre's with its
 /// excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-
@@ -365,20 +364,20 @@ pub fn sigma_lengths(cy_fz: f64, cx_fz: f64, k_y: f64, k_x: f64) -> (f64, f64) {
 /// means of each pair (ours: no rally tyre's are published).
 pub const DAMPING_X: f64 = 1000.0;
 pub const DAMPING_Y: f64 = 425.0;
-/// Longitudinal relaxation length at the nominal load over the tyre's radius: MF 6.1's (the example 255/55R20 set
-/// shipped with MFeval.jl), 1.44. The carcass's longitudinal stiffness follows from it, c_x = Cx(Fz0)/(1.44 R), and
-/// stays fixed at every speed and load, so sigma_x = Cx/c_x grows with the load (Pacejka: "longer at higher ...
-/// load"). On the Golf II and Fiesta Rally2 c_x is 200-250 kN/m, between Rill's passenger carcasses (160 and 180
-/// kN/m) and MF 6.1's own (Kx/Fz 32.9 over 1.44 R0: about 390 kN/m, R0 inferred from the size), and sigma_x 0.45 m at
-/// small slip and the nominal load, at the top of Pacejka's 0.12-0.45 m and inside Rill's 0.3-0.8 m. Taking one road
-/// set's ratio for a rally tyre is ours (no rally tyre's is published). It replaces NGP's speed-scaled torsional
-/// stiffness (a tenth below 10 m/s: sigma_x 0.9 m at 5 % slip, 1.0-1.6 m at 2 %, on the Golf's fronts).
-pub const SIGMA_X_OVER_R: f64 = 1.44;
+/// Longitudinal carcass stiffness at the calibration pressure, N/m: 450 kN/m (ours; no race or rally carcass data is
+/// open, range 350-550). Published c_x at 4 kN: MF-Swift overall stiffness with sigma = K/c (Besselink, Schmeitz &
+/// Pacejka, VSD 48 S1, 2010, eqs. 17-20), TNO 205/60R15 382, MF 6.1 255/55R20 358 (MFeval.jl's example; MFeval
+/// 4.0's 399), IIT Madras 245/60R16 288 kN/m; measured, TU/e Flatplank 225/50R17 214-234 kN/m (op het Veld 2008,
+/// Table 4.2), P245/70R15 static 163-188 kN/m (NHTSA "The Pneumatic Tire", Table 9.1). c_x/c_y is 1.3-2.75 in every
+/// set. c_x rises only 5-9 % from 4 to 6 kN, so it is held constant and sigma_x = Cx/c_x grows with the load: about
+/// 0.2 m at 4 kN. It replaces MF 6.1's sigma_x/R0 (1.44 at Fz0), which halved c_x: that ratio goes with the set's
+/// Kx of 222 kN at Fz0 (Kx/Fz 32.9 at 6.75 kN), more than twice ours at 4 kN.
+pub const CARCASS_X: f64 = 450_000.0;
 
-/// The longitudinal carcass stiffness, N/m, of a tyre of radius `radius` (m) at the pressure factor `pf` (NGP's
-/// StfFct, as the slip stiffnesses take it): [`SIGMA_X_OVER_R`].
-pub fn carcass_x(cal: &Calibration, radius: f64, pf: f64) -> f64 {
-    cal.cx0 * (pf / cal.pf_cal) / (SIGMA_X_OVER_R * radius)
+/// The longitudinal carcass stiffness, N/m, at the pressure factor `pf` (NGP's StfFct): [`CARCASS_X`] moved with
+/// the slip stiffnesses, as NGP's stiffness factor moves c_y. No load term.
+pub fn carcass_x(cal: &Calibration, pf: f64) -> f64 {
+    CARCASS_X * (pf / cal.pf_cal)
 }
 
 /// The transient state: the carcass deflections along the slips, m (Rill's x_e, y_e). The force they hold is
@@ -704,9 +703,9 @@ mod tests {
         assert!(((fx * fx + fy * fy).sqrt() / 5000.0 - 1.0).abs() < 1e-12, "{fx} {fy}");
     }
 
-    /// The synthetic tyre's longitudinal carcass stiffness at radius 0.3 m.
+    /// The synthetic tyre's longitudinal carcass stiffness.
     fn c_x() -> f64 {
-        carcass_x(&synth_cal(), 0.3, 1.0)
+        carcass_x(&synth_cal(), 1.0)
     }
 
     /// The steady brush at car speed `v` (m/s) and wheel surface speed `wr` (m/s), radius 0.3 m, straight ahead.
@@ -719,8 +718,8 @@ mod tests {
 
     #[test]
     fn the_longitudinal_relaxation_length_is_the_carcass_s_at_any_speed() {
-        // Small slip: sigma_x = (Cx + V d_x)/c_x, C/c 1.44 R at the nominal load at any low speed (NGP's torsional
-        // stiffness, a tenth below 10 m/s, made it ten times longer there).
+        // Small slip: sigma_x = (Cx + V d_x)/c_x, C/c = Cx/CARCASS_X at the nominal load at any low speed (NGP's
+        // torsional stiffness, a tenth below 10 m/s, made it ten times longer there).
         let dt = 1.0 / 720.0;
         let c = c_x();
         for v in [1.0, 3.0, 8.0] {
@@ -731,7 +730,7 @@ mod tests {
                 .unwrap();
             let sigma = (steady.kx + v * 1.002 * DAMPING_X) / c;
             let dist = f64::from(n) * dt * v * 1.002;
-            assert!((steady.kx / c / (SIGMA_X_OVER_R * 0.3) - 1.0).abs() < 0.03, "C/c {}", steady.kx / c);
+            assert!((steady.kx / c / (synth_cal().cx0 / CARCASS_X) - 1.0).abs() < 0.03, "C/c {}", steady.kx / c);
             // The damper's share of the force, d u', comes at once, so 63 % comes a little early at speed.
             assert!((0.8..1.05).contains(&(dist / sigma)), "V {v}: {dist} m against {sigma} m");
         }
