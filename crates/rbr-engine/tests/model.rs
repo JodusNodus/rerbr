@@ -190,6 +190,24 @@ fn a_dbw_turbo_tip_in_barely_overshoots() {
     }
 }
 
+/// A spring gate spikes about 1 psi for a split second (enginebasics): a WOT tip-in at a fixed speed overshoots the
+/// steady boost by at most 0.1 bar.
+#[test]
+fn a_spring_gate_spikes_about_a_psi() {
+    let springs = models()
+        .iter()
+        .filter(|(_, p, m)| p.turbo && m.calibration().class.unwrap().actuation == rbr_engine::class::Actuation::Cable);
+    for (name, _, m) in springs {
+        for n in [3000.0, 5000.0, 6500.0] {
+            let mut m = m.clone();
+            let rows = bench::run(&mut m, n, None, 5.0, |t| if t >= 1.0 { 1.0 } else { 0.0 }, None);
+            let last = rows.last().unwrap().boost;
+            let peak = rows.iter().map(|r| r.boost).fold(f64::MIN, f64::max);
+            assert!(peak - last <= 0.1e5, "{name} {n:.0} rpm: boost peak {peak:.0} Pa over steady {last:.0}");
+        }
+    }
+}
+
 /// The most net torque over rpm (from idle to the limiter) rises with the pedal on every sample.
 #[test]
 fn the_most_torque_rises_with_the_pedal() {

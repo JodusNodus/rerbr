@@ -415,8 +415,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         } else {
             wot
         };
+        let electronic = spec.class.actuation == Actuation::Dbw || anti_lag;
         let e = (s.p_boost - aim) / turbo::WASTEGATE_BAND;
-        let command = if spec.class.actuation == Actuation::Dbw || anti_lag {
+        let command = if electronic {
             // The electronic gate's base opening at this speed (the steady WOT one) plus PI, as boost controllers
             // run a base duty table with closed-loop trim; the base pre-opens the gate as the boost comes up.
             let base = if anti_lag { 0.0 } else { t.gate_base.at(rpm) };
@@ -436,7 +437,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         } else {
             ((s.p_boost - aim) / turbo::SPRING_BAND).clamp(0.0, 1.0)
         };
-        s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / turbo::TAU_WASTEGATE));
+        // The electronic gate moves through its actuator; the spring gate's diaphragm follows the boost directly.
+        let tau = if electronic { turbo::TAU_WASTEGATE } else { turbo::TAU_SPRING };
+        s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / tau));
         let (p_em, power) = t.turbine(w_exhaust, s.t_em, s.wastegate, x.p_a);
         s.p_em = p_em;
         let energy = 0.5 * turbo::INERTIA * s.omega_t * s.omega_t
