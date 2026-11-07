@@ -374,7 +374,7 @@ impl Form {
             self.start_time,
         );
         let old_paths = self.ngp_physics.clone();
-        let old_head_gasket = (self.head_gasket, self.engine_model);
+        let old_head_gasket = (self.head_gasket, self.physics);
         let old_car_picks = self.gearboxes.clone();
         let old_folder = self.install_folder.clone();
         let old_recent = (self.recent_cars.clone(), self.recent_maps.clone(), self.favourite_maps.clone());
@@ -483,7 +483,6 @@ impl Form {
                         &mut self.ffb,
                         &mut self.options.aids,
                         &mut self.head_gasket,
-                        &mut self.engine_model,
                         &mut self.ffb_cars,
                         &self.catalog.cars,
                         car,
@@ -547,7 +546,7 @@ impl Form {
             || old_setup != self.setup.choices
             || old_ghost != self.ghost
             || old_paths != self.ngp_physics.clone()
-            || old_head_gasket != (self.head_gasket, self.engine_model)
+            || old_head_gasket != (self.head_gasket, self.physics)
             || old_car_picks != self.gearboxes
             || old_graphics
                 != (
@@ -691,7 +690,7 @@ mod tests {
         round_trips(DamageLevel::Safe);
         round_trips(Skill::Rookie);
         round_trips(Detail::High);
-        round_trips(crate::controls_page::EngineModel::Ngp);
+        round_trips(crate::physics::PhysicsProfile::Ngp);
     }
 
     /// The first start opens on Settings while NGP, a car or a program is missing, with the fix for it, and on Drive

@@ -134,6 +134,7 @@ mod handles;
 mod headless;
 mod live;
 mod physics;
+mod profile;
 mod race;
 mod rally;
 mod saves;
@@ -218,7 +219,7 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             live::Live::new(&snap, stage, args.marker_settings).map_err(|e| format!("{path}: {e}"))?
         };
         live.set_direct(args.direct);
-        live.set_engine_model(&args.engine_model, race::engine_car(args, race, stage.car))?;
+        live.set_physics(args.physics, race::engine_car(args, race, stage.car))?;
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
             live.set_saves(if args.keeps_records() { saves } else { saves.dry() });
@@ -312,7 +313,8 @@ fn events(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &Stage
 /// `--autopilot OUT`: drives from the snapshot or the boot and writes the playback (`autopilot/`).
 /// `--flat-out` holds full throttle without braking for pace measurement (the steering and the gear shifts stay the
 /// controller's); `--brake-from` brakes fully from a speed to a standstill; `--circle` drives a steady-state circle
-/// with the target speed ramping up; `--trace-speed FILE` writes each step's time, speed, pedals, gear and position.
+/// with the target speed ramping up; `--trace-speed FILE` writes each step's time, speed, pedals, gear and position,
+/// and last the engine speed the gear gives with the clutch engaged (0 in neutral).
 fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, stage: &StageData) -> ExitCode {
     let bytes = match &args.recording {
         Some(path) if !args.boot => match std::fs::read(path) {
@@ -342,7 +344,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
         } else {
             autopilot::from_snapshot(&args.snapshots[0], &bytes, &frames, stage, args.marker_settings)?
         };
-        live.set_engine_model(&args.engine_model, race::engine_car(args, race, stage.car))?;
+        live.set_physics(args.physics, race::engine_car(args, race, stage.car))?;
         // With `--saves` the drive runs on to the race's end, which submits the stage record and the personal best as
         // the live drive does.
         if let Some(dir) = &args.saves {

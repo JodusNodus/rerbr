@@ -17,6 +17,7 @@ use rbr_hybrid::pure::{self, Playback, ReadTrace, Stopped};
 use rbr_recording::sound::TyreMax;
 
 use crate::boot;
+use crate::profile::Profile;
 use crate::stage::StageData;
 use crate::twin::Twin;
 
@@ -131,21 +132,21 @@ impl PhysicsStep for Pure<'_> {
     }
 }
 
-/// `--engine-model NAME` (ours, experimental, `rbr_engine::model`) on the car in `playback`, `car` its identity: a
-/// fresh model for the runs on this thread (none for `ngp`, NGP's formula). A car without NGP keeps its engine (said
-/// once on stderr).
-pub fn fit_engine_model(playback: &Playback, name: &str, car: &rbr_engine::Car) -> Result<(), String> {
+/// `--physics` (`profile`) on the car in `playback`, `car` its identity: fresh models of the profile's systems for the
+/// runs on this thread (none for NGP 7's: its engine formula). A car without NGP keeps NGP 7's (said once on stderr).
+pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car) -> Result<(), String> {
     static WITHOUT_NGP: std::sync::Once = std::sync::Once::new();
-    let model = if name == "ngp" {
-        None
-    } else if !rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base) {
-        WITHOUT_NGP
-            .call_once(|| eprintln!("rbr-standalone: --engine-model {name}: the car runs without NGP, no effect"));
-        None
-    } else {
-        rbr_engine::model(name, &layout::engine_params(playback, car.clone()))?
+    let ngp = rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base);
+    if !ngp && !profile.is_ngp() {
+        let name = profile.name;
+        WITHOUT_NGP.call_once(|| eprintln!("rbr-standalone: --physics {name}: the car runs without NGP, no effect"));
+    }
+    let engine = match profile.engine {
+        _ if !ngp => None,
+        "ngp" => None,
+        name => rbr_engine::model(name, &layout::engine_params(playback, car.clone()))?,
     };
-    rbr_hybrid::ngp::set_engine_model(model);
+    rbr_hybrid::ngp::set_engine_model(engine);
     Ok(())
 }
 

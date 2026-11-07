@@ -148,6 +148,7 @@ mod job;
 mod ngp_dll;
 mod ngp_install;
 mod pages;
+mod physics;
 mod preview;
 mod replay_page;
 mod school_page;
@@ -585,8 +586,8 @@ struct Form {
     ffb_cars: rbr_render::ffb::CarSensitivity,
     /// NGP's `headGasketDurability` for every drive (1 leaves the engine as it is).
     head_gasket: i32,
-    /// The engine model for every drive (`rbr-standalone --engine-model`).
-    engine_model: controls_page::EngineModel,
+    /// The physics for every drive (`rbr-standalone --physics`).
+    physics: physics::PhysicsProfile,
     controls: ControlsPage,
     /// Never writes the settings file (`--command`, `--screenshot`).
     read_only: bool,

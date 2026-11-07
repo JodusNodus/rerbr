@@ -7,6 +7,7 @@ use rbr_gameplay::markers::MarkerSettings;
 use rbr_gameplay::race_options::{ChampionshipOptions, DamageLevel, DriverAids, Skill};
 use rbr_school::Lesson;
 
+use crate::profile::Profile;
 use crate::{autopilot, live};
 
 /// The command line. `--live` takes no value; the other flags take one.
@@ -120,9 +121,9 @@ pub struct Args {
     /// `--ffb-settings ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD` (with `--trace-out`): the player's settings the
     /// trace's magnitude takes (`rbr_gameplay::ffb::Settings`; default on, 1, normal, no dead zone).
     pub ffb_settings: rbr_gameplay::ffb::Settings,
-    /// `--engine-model NAME` (ours, experimental): the engine model in place of NGP's torque formula
-    /// (`rbr_engine::model`); `ngp`, the default, leaves NGP's.
-    pub engine_model: String,
+    /// `--physics ngp|experimental`: the physics profile (`profile`); `ngp`, the default, steps NGP 7's as it is,
+    /// `experimental` ReRBR experimental physics (built on NGP 7).
+    pub physics: Profile,
     /// `--car-group NAME` and `--car-year N`: the car's group and year for the engine model (`rbr_engine::Car`), over
     /// the RSF install's.
     pub car_group: Option<String>,
@@ -131,10 +132,10 @@ pub struct Args {
 
 impl Args {
     /// Whether the run writes its records (`--saves`: the stage record, the personal best, a lesson's verdict): not a
-    /// replay (`--replay`), and not with an engine model other than NGP's while the models are experimental (a user
-    /// decision); the records are still compared.
+    /// replay (`--replay`), and not with ReRBR experimental physics (a user decision); the records are still
+    /// compared.
     pub fn keeps_records(&self) -> bool {
-        self.replay.is_none() && self.engine_model == "ngp"
+        self.replay.is_none() && self.physics.is_ngp()
     }
 }
 
@@ -158,7 +159,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --engine-model ngp|realistic (ours, experimental): the engine model in place of NGP's torque formula, on live, replayed, autopilot and headless runs, not with --twin (default ngp, NGP's; no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); a model other than ngp writes no records (--saves compares only)
+       --physics ngp|experimental: NGP 7's physics (the default) or ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--data DIR]
@@ -175,7 +176,7 @@ pub fn args() -> Result<Args, String> {
 /// `args()` of `argv`: the command line as `Args`.
 fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     // The command line so far; the stage, the data and the championship options are computed below.
-    let mut args = Args { steps: 30, direct: true, engine_model: "ngp".into(), ..Args::default() };
+    let mut args = Args { steps: 30, direct: true, ..Args::default() };
     let mut stage: Option<String> = None;
     let (mut stage_dir, mut rsf_stage): (Option<PathBuf>, Option<u32>) = (None, None);
     let mut rsf_root = std::env::var_os("RBR_RSF").map(PathBuf::from);
@@ -277,8 +278,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--rsf-car" => args.rsf_car = Some(value),
             "--car-group" => args.car_group = Some(value),
             "--car-year" => args.car_year = Some(parsed("--car-year", &value)?),
-            "--engine-model" if rbr_engine::NAMES.contains(&value.as_str()) => args.engine_model = value,
-            "--engine-model" => return Err(format!("--engine-model {value}: one of {}", rbr_engine::NAMES.join(", "))),
+            "--physics" => {
+                let names = Profile::ALL.map(|p| p.name).join(", ");
+                args.physics = Profile::named(&value).ok_or(format!("--physics {value}: one of {names}"))?
+            }
             "--ffb-sensitivity" => {
                 args.ffb_sensitivity =
                     Some(percentages(&value).ok_or(format!("--ffb-sensitivity {value}: three percentages, G,T,S"))?)
@@ -439,8 +442,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if (args.extra_payloads.is_some() || args.wall_clock.is_some()) && !args.recorded_payload {
         return Err("--extra-payloads and --wall-clock need --recorded-payload".into());
     }
-    if args.twin.is_some() && args.engine_model != "ngp" {
-        return Err("--twin takes no --engine-model (the twin would step the run's model again)".into());
+    if args.twin.is_some() && !args.physics.is_ngp() {
+        return Err("--twin takes no --physics experimental (the twin would step the run's models again)".into());
     }
     if args.pilot.is_some() && !args.live {
         return Err("--pilot needs --live".into());
@@ -642,13 +645,13 @@ mod tests {
             (LIVE.into(), live),
             (format!("{REC} --autopilot OUT"), |a| assert_eq!(a.autopilot, Some(PathBuf::from("OUT")))),
             (format!("{LIVE} --pilot autopilot"), |a| assert_eq!(a.pilot.as_deref(), Some("autopilot"))),
-            (LIVE.into(), |a| assert_eq!(a.engine_model, "ngp")),
-            (format!("{LIVE} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
-            (format!("{BOOT} --engine-model ngp"), |a| assert_eq!(a.engine_model, "ngp")),
-            (format!("{REC} --engine-model realistic"), |a| assert_eq!(a.engine_model, "realistic")),
+            (LIVE.into(), |a| assert_eq!(a.physics, Profile::NGP)),
+            (format!("{LIVE} --physics experimental"), |a| assert_eq!(a.physics, Profile::EXPERIMENTAL)),
+            (format!("{BOOT} --physics ngp"), |a| assert_eq!(a.physics, Profile::NGP)),
+            (format!("{REC} --physics experimental"), |a| assert_eq!(a.physics, Profile::EXPERIMENTAL)),
             (LIVE.into(), |a| assert!(a.keeps_records())),
-            (format!("{LIVE} --engine-model ngp"), |a| assert!(a.keeps_records())),
-            (format!("{LIVE} --engine-model realistic"), |a| assert!(!a.keeps_records())),
+            (format!("{LIVE} --physics ngp"), |a| assert!(a.keeps_records())),
+            (format!("{LIVE} --physics experimental"), |a| assert!(!a.keeps_records())),
             (format!("{LIVE} --replay F"), |a| assert!(!a.keeps_records())),
             (format!("{LIVE} --car-group Rally_2 --car-year 2019"), |a| {
                 assert_eq!((a.car_group.as_deref(), a.car_year), (Some("Rally_2"), Some(2019)))
@@ -806,12 +809,12 @@ mod tests {
             (format!("{LIVE} --marker-threshold x"), "--marker-threshold x"),
             (format!("{BOOT_REC} --twin both"), "--twin both: mem or mem-direct"),
             (
-                format!("{BOOT_REC} --twin mem --engine-model realistic"),
-                "--twin takes no --engine-model (the twin would step the run's model again)",
+                format!("{BOOT_REC} --twin mem --physics experimental"),
+                "--twin takes no --physics experimental (the twin would step the run's models again)",
             ),
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
-            (format!("{LIVE} --engine-model fast"), "--engine-model fast: one of ngp, realistic"),
+            (format!("{LIVE} --physics fast"), "--physics fast: one of ngp, experimental"),
             (format!("{LIVE} --car-year new"), "--car-year new"),
             (format!("{BOOT} --wear muddy"), "--wear muddy: new, normal or worn"),
             (format!("{BOOT} --wetness humid"), "--wetness humid: dry, damp or wet"),

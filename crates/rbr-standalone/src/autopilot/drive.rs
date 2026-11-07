@@ -127,7 +127,10 @@ pub fn from_snapshot<'a>(
 /// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
 /// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m) and the
 /// steering (-1-1).
-const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str";
+/// The car's drive (`CDrive`, car +0x4b0), whose gearbox gives the trace's locked engine speed.
+const CAR_DRIVE: u32 = 0x4b0;
+
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked";
 
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
@@ -227,15 +230,20 @@ pub fn drive(
             // The distance from the driveline, as the controller's tracking guard reads it (`control`).
             let line = point(driver.track, sense.parameter);
             let off = (at[0] - line[0]).hypot(at[1] - line[1]);
+            // The engine speed the gear gives with the clutch engaged (0 in neutral): above it the clutch slips.
+            let mem = live.mem();
+            let gearbox = crate::live::gearbox(mem, mem.u32(pure::CAR_PTR) + CAR_DRIVE);
+            let locked = u8::try_from(sense.gear).ok().filter(|&g| g >= 2).and_then(|g| gearbox.engine_speed(g));
             writeln!(
                 trace,
-                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3}",
+                "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0}",
                 sense.pose.speed(),
                 sense.gear,
                 sense.engine,
                 at[0],
                 at[1],
                 at[2],
+                locked.unwrap_or(0.0),
             )
             .map_err(|e| format!("{path}: {e}"))?;
         }
