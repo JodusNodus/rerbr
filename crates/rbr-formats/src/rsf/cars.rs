@@ -34,6 +34,8 @@ pub struct Car {
     pub audio: Option<String>,
     /// `cars_data.json` `drive_train` (`FWD`, `RWD`, `AWD with torque split`), when the file has the car.
     pub drive_train: Option<String>,
+    /// `cars_data.json` `year` (`2019`), when the file has the car and a year for it.
+    pub year: Option<u32>,
 }
 
 /// A model of RSF's `carmodels.json`: `Cars/<path>/<filename>.sgc`.
@@ -77,6 +79,11 @@ fn drive_trains(rows: &[Row]) -> HashMap<u32, String> {
     rows.iter().filter_map(known).collect()
 }
 
+/// The `year` of each car of `cars_data.json`'s rows, by car id.
+fn years(rows: &[Row]) -> HashMap<u32, u32> {
+    rows.iter().filter_map(|d| Some((number(d, "car_id")?, number(d, "year")?))).collect()
+}
+
 impl Install {
     /// The RSF install at `root` (the game folder holding `Cars/` and `rsfdata/`).
     pub fn open(root: &Path) -> Result<Install, String> {
@@ -86,7 +93,8 @@ impl Install {
             .iter()
             .filter_map(|g| Some((number(g, "id")?, text(g, "name"))))
             .collect();
-        let drive_trains = drive_trains(&json(&cache.join("cars_data.json")).unwrap_or_default());
+        let cars_data = json(&cache.join("cars_data.json")).unwrap_or_default();
+        let (drive_trains, years) = (drive_trains(&cars_data), years(&cars_data));
         let cars = json(&cache.join("cars.json"))?
             .iter()
             .filter_map(|c| {
@@ -100,6 +108,7 @@ impl Install {
                     revision: text(c, "rev"),
                     audio: c.get("audio").filter(|a| !a.is_empty()).cloned(),
                     drive_train: number(c, "id").and_then(|id| drive_trains.get(&id).cloned()),
+                    year: number(c, "id").and_then(|id| years.get(&id).copied()),
                 })
             })
             .collect();
@@ -683,6 +692,12 @@ mod tests {
         assert_eq!(drive_trains(&data), HashMap::from([(8, "AWD with torque split".to_owned())]));
     }
 
+    #[test]
+    fn a_cars_year_is_in_cars_data() {
+        let data = rows(r#"[{"car_id":"8","year":"2014"},{"car_id":"9","year":""},{"car_id":"10"}]"#);
+        assert_eq!(years(&data), HashMap::from([(8, 2014)]));
+    }
+
     /// Every pack of `RBR_RSF` (an RSF install, or the samples) reads, and each cache car finds its pack or says why.
     #[test]
     fn rsf_install_cars_and_packs() {
@@ -708,6 +723,9 @@ mod tests {
             }
         }
         assert!(packs > 0, "no pack under rsfdata/cars");
+        if install.root.join("rsfdata/cache/cars_data.json").is_file() {
+            assert!(install.cars.iter().any(|c| c.year.is_some()), "no car of cars.json has a year in cars_data.json");
+        }
     }
 
     /// The samples' Fiesta Rally3 has `.rsfconfig` selecting `Pajari_Monte`: its six textures come from that skin, the

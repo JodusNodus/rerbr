@@ -726,6 +726,7 @@ impl Form {
         if self.head_gasket > 1 {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
+        args.extend(self.engine_model.args(car));
         Some(args)
     }
 
@@ -825,6 +826,7 @@ impl Form {
 mod tests {
     use super::*;
     use crate::catalog::Catalog;
+    use crate::controls_page::EngineModel;
     use crate::graphics_page::{Quality, DEFAULT_GRAPHICS};
     use crate::settings::{load, Settings, SEQUENTIAL};
     use crate::{install, Paths, Start, SETTINGS_FILE};
@@ -1424,6 +1426,58 @@ mod tests {
         let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
         let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
         assert!(!rally.iter().any(|a| a == "--clock" || a == "--start-time"), "{rally:?}");
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// The realistic engine model reaches `rbr-standalone` (after `--live`) in a quick race, a championship stage
+    /// and a school lesson; NGP's, the default, adds nothing.
+    #[test]
+    fn the_engine_model_reaches_the_stepping_process() {
+        // The car's group and year go with the model where the catalog has them: an RSF car both, an added car its
+        // group, an archive car neither.
+        let rsf = Car { group: Some("Rally 2".into()), year: Some(2019), ..Car::default() };
+        let added = Car { group: Some("Group A8".into()), added: true, ..Car::default() };
+        assert!(EngineModel::Ngp.args(&rsf).is_empty());
+        let realistic = ["--engine-model", "realistic"];
+        let with = |extra: &[&str]| realistic.iter().chain(extra).map(|a| a.to_string()).collect::<Vec<_>>();
+        assert_eq!(EngineModel::Realistic.args(&rsf), with(&["--car-group", "Rally 2", "--car-year", "2019"]));
+        assert_eq!(EngineModel::Realistic.args(&added), with(&["--car-group", "Group A8"]));
+        assert_eq!(EngineModel::Realistic.args(&Car::default()), with(&[]));
+        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
+            return;
+        };
+        let here = crate::test_dir("command-engine");
+        for (line, wanted) in
+            [("", None), ("engine_model = ngp\n", None), ("engine_model = realistic\n", Some("realistic"))]
+        {
+            let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n{line}");
+            let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+            let mut form = load(&start, Settings::parse(&text)).unwrap();
+            form.read_only = true;
+            let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
+            let (stage, weather) = form.selection().unwrap();
+            let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
+            let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
+            let lesson = Lesson::new(0).unwrap();
+            let draws = Draws { row: None, wear: 0 };
+            let (stage, weather) = form.catalog.stage_weather(&form.season, lesson.map(), Preset::Good, draws).unwrap();
+            let car = form.car().cloned().unwrap();
+            let launch = LaunchCar { car, tyre: None, setup: None, school: Some(lesson) };
+            let school = form.launch_with(stage, launch, form.options, weather, Vec::new(), Vec::new()).unwrap();
+            let picked = form.car().cloned().unwrap();
+            assert!(picked.group.is_some() && picked.year.is_some(), "{picked:?}");
+            let (group, year) = match wanted {
+                Some(_) => (picked.group.clone(), picked.year.map(|y| y.to_string())),
+                None => (None, None),
+            };
+            for args in [&quick, &rally, &school] {
+                let live = args.iter().position(|a| a == "--live").unwrap();
+                assert_eq!(value(&args[live..], "--engine-model").as_deref(), wanted, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--car-group"), group, "{text}: {args:?}");
+                assert_eq!(value(&args[live..], "--car-year"), year, "{text}: {args:?}");
+                assert!(!args[..live].contains(&"--engine-model".to_owned()), "{args:?}");
+            }
+        }
         std::fs::remove_dir_all(&here).unwrap();
     }
 

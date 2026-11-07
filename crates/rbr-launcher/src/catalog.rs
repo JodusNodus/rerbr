@@ -75,6 +75,8 @@ pub struct Car {
     /// upper case; a pack car's `rsf-<id>` (`camera_prefs::car_key`).
     pub key: String,
     pub group: Option<String>,
+    /// Its year (RSF's `cars_data.json`), when the source has it: none for an archive or added car.
+    pub year: Option<u32>,
     /// The words for its drive train (`FWD`, `AWD with torque split`), when the source names them.
     pub drive_train: Option<String>,
     /// Its FMOD bank, when it has one and it is installed. None for an archive car.
@@ -93,6 +95,7 @@ impl Default for Car {
             model_path: None,
             key: String::new(),
             group: None,
+            year: None,
             drive_train: None,
             bank: None,
             added: false,
@@ -162,6 +165,7 @@ fn rsf_cars(install: &Path, root: &Path) -> Result<Vec<Car>, String> {
                 model_path,
                 key: format!("rsf-{}", car.id),
                 group: car.group.clone(),
+                year: car.year,
                 drive_train: car.drive_train.clone(),
                 bank: rsf.audio_bank(car),
                 added: false,
@@ -194,6 +198,7 @@ fn added_car(cars: &Path, retail: &[cars::CarEntry], stored: &car_packs::StoredC
         model_path,
         key: format!("rsf-{}", stored.id),
         group: stored.group.clone(),
+        year: None,
         drive_train: stored.drive_train.clone(),
         bank: stored.audio.as_deref().and_then(|a| rbr_formats::cars::resolve(cars, &format!("AudioFMOD\\{a}.bank"))),
         added: true,

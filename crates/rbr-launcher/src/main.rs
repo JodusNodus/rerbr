@@ -585,6 +585,8 @@ struct Form {
     ffb_cars: rbr_render::ffb::CarSensitivity,
     /// NGP's `headGasketDurability` for every drive (1 leaves the engine as it is).
     head_gasket: i32,
+    /// The engine model for every drive (`rbr-standalone --engine-model`).
+    engine_model: controls_page::EngineModel,
     controls: ControlsPage,
     /// Never writes the settings file (`--command`, `--screenshot`).
     read_only: bool,

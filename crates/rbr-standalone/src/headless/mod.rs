@@ -30,7 +30,7 @@ use rbr_recording::{Frame, CONTROL_BYTES};
 
 use crate::args::Args;
 use crate::boot;
-use crate::physics::{boot_playback, chain, load_substeps, run_guarded, sample, why, Pure, DT};
+use crate::physics::{boot_playback, chain, fit_engine_model, load_substeps, run_guarded, sample, why, Pure, DT};
 use crate::stage::StageData;
 use crate::twin::{self, Twin};
 
@@ -291,6 +291,9 @@ pub fn run(
         None => None,
     };
     compare.mask_ngp_padding();
+    if let Some((name, car)) = hooks.engine_model {
+        fit_engine_model(&playback, name, car)?;
+    }
     let mut trace_out = hooks.trace_out.map(Trace::create).transpose()?;
     // The first frame the pure physics runs.
     let first = frames
@@ -586,6 +589,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::
         }
     };
     let mask = pure::static_mask(&frames);
+    let car = crate::race::engine_car(args, race, stage.car);
     let mut ok = true;
     let boot = ["boot".to_string()];
     let sources: &[String] = if args.boot { &boot } else { &args.snapshots };
@@ -606,6 +610,7 @@ pub fn run_all(args: &Args, data: &Data, stage: &StageData, race: Option<&boot::
                 wall_clock: clock.as_ref(),
                 trace_out: args.trace_out.as_deref(),
                 ffb: args.ffb_settings,
+                engine_model: (args.engine_model != "ngp").then_some((args.engine_model.as_str(), &car)),
             };
             run(
                 source,

@@ -174,6 +174,8 @@ pub struct Live<'a> {
     boot_now: f64,
     /// What follows a championship stage (`set_rally_next`): its end page's choice and text.
     rally_next: RallyNext,
+    /// The engine model's name and the car it is for (`set_engine_model`), built again at each restart.
+    engine_model: Option<(String, rbr_engine::Car)>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -339,6 +341,21 @@ impl<'a> Live<'a> {
     pub fn set_start_clock(&mut self, seconds: f32) {
         self.time_of_day = Some(seconds);
         self.initial_time_of_day = Some(seconds);
+    }
+
+    /// Ours, experimental: the engine model `name` (`rbr_engine::model`) for `car` (its identity) on the loaded car,
+    /// on this thread's runs, and again at each restart; `ngp` leaves NGP's formula.
+    pub fn set_engine_model(&mut self, name: &str, car: rbr_engine::Car) -> Result<(), String> {
+        self.engine_model = Some((name.to_string(), car));
+        self.fit_engine_model()
+    }
+
+    /// A fresh engine model from [`Live::set_engine_model`]'s choice, on the car in memory.
+    fn fit_engine_model(&self) -> Result<(), String> {
+        match &self.engine_model {
+            Some((name, car)) => crate::physics::fit_engine_model(&self.playback, name, car),
+            None => Ok(()),
+        }
     }
 
     /// What follows the championship stage (`--rally-next`).

@@ -218,9 +218,10 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             live::Live::new(&snap, stage, args.marker_settings).map_err(|e| format!("{path}: {e}"))?
         };
         live.set_direct(args.direct);
+        live.set_engine_model(&args.engine_model, race::engine_car(args, race, stage.car))?;
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
-            live.set_saves(if args.replay.is_some() { saves.dry() } else { saves });
+            live.set_saves(if args.keeps_records() { saves } else { saves.dry() });
         }
         // The start board's clock: `--start-time` (a championship stage's from the season, a quick race's time of
         // day), else the time of day by the race's cloud letter (`weather::start_clock`).
@@ -341,10 +342,12 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
         } else {
             autopilot::from_snapshot(&args.snapshots[0], &bytes, &frames, stage, args.marker_settings)?
         };
+        live.set_engine_model(&args.engine_model, race::engine_car(args, race, stage.car))?;
         // With `--saves` the drive runs on to the race's end, which submits the stage record and the personal best as
         // the live drive does.
         if let Some(dir) = &args.saves {
-            live.set_saves(stage.saves(dir, args.profile.as_deref())?);
+            let saves = stage.saves(dir, args.profile.as_deref())?;
+            live.set_saves(if args.keeps_records() { saves } else { saves.dry() });
         }
         autopilot::drive(
             live,

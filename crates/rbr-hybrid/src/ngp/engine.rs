@@ -8,6 +8,7 @@ use rbr_physics::ngp::starter;
 use crate::{Ctx, Decline, Regs, Return};
 
 use super::address::{at, WALL_CLOCK};
+use super::engine_model;
 use super::f;
 use super::steps::apply_atmosphere;
 
@@ -57,6 +58,15 @@ const IDLE_TABLE: u32 = 0x1017_67e8;
 /// The idle table's lookup (slot 5 of its vtable).
 const TABLE_LOOKUP: u32 = 0x1004_a700;
 
+/// The air at the car as `apply_atmosphere` leaves it beside the density (`0x10171ae0`): pressure (Pa) and temperature
+/// (K).
+const AIR_PRESSURE: u32 = 0x1017_1ad8;
+
+const AIR_TEMPERATURE: u32 = 0x1017_1adc;
+
+/// `CEngine::CState` +0x23c: the 1.02 sim's engine temperature (K, its heat step's, every tenth step).
+const ENGINE_TEMPERATURE: u32 = 0x23c;
+
 /// NGP's own CRT `operator new` (cdecl: size).
 pub(crate) const OPERATOR_NEW: u32 = 0x1011_fe32;
 
@@ -64,7 +74,8 @@ pub(crate) const OPERATOR_NEW: u32 = 0x1011_fe32;
 /// (`rbr_physics::ngp::engine`) around the ported `Sim8E20`. When the engine dies it emits the engine fire through
 /// NGP's emit wrapper ([`engine_dies`]). Declines (before any writes) when the speed ring would grow its map, or for
 /// an idle table of another class: neither occurs (`notes/ngp.md`, "Unreachable guards"). A block the ring's new entry
-/// needs is allocated first, through NGP's `operator new`, as `push_back` does.
+/// needs is allocated first, through NGP's `operator new`, as `push_back` does. With an engine model set on the
+/// thread ([`engine_model`]) the running engine's torque is the model's, over 1.05 as NGP's.
 pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let engine = r.ecx;
     let [dt, speed, ..] = r.stack.map(f);
@@ -128,6 +139,27 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
             damage_b: m.f32(health_at + 0x60),
         },
     };
+    if engine_model::is_set() {
+        // Ours, experimental: the model's torque in place of NGP's formula. NGP's stall history moves as the formula
+        // moves it (under the idle model only) and gives the model the stall.
+        let history = i.modes & ngp_engine::IDLE_MODEL_MODE != 0 && i.has_idle_table;
+        let stalled = history && ring_shift(&mut ctx.mem, ring, speed, i.stall_speed) && i.stall_speed > speed;
+        let m = &ctx.mem;
+        let input = rbr_engine::Inputs {
+            dt,
+            speed,
+            throttle: i.throttle,
+            shift_cut: i.shift_cooldown > 0.0,
+            damage: ngp_engine::damage_factor(&i.damage),
+            pressure: m.f32(at(AIR_PRESSURE).unwrap()),
+            temperature: m.f32(at(AIR_TEMPERATURE).unwrap()),
+            friction: i.friction_torque,
+            stalled,
+            engine_temperature: m.f32(e8 + ENGINE_TEMPERATURE),
+        };
+        let v = engine_model::torque(&input).expect("a model is set");
+        return Ok(Return::float(ngp_engine::output(v), 8));
+    }
     // The table's two vectors (begin, end), read at knot slots as the lookup asks (`ngp_engine::idle_table_lookup`).
     let [xs, end, ys] = if table != 0 { [8, 0xc, 0x14].map(|o| m.u32(table + o)) } else { [0; 3] };
     let n = (end.wrapping_sub(xs) / 8) as usize;

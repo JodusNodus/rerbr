@@ -232,6 +232,7 @@ impl<'a> Live<'a> {
             initial,
             initial_game,
             boot_now: 0.0,
+            engine_model: None,
         }
     }
 
@@ -242,6 +243,10 @@ impl<'a> Live<'a> {
     pub fn restart(&mut self) {
         self.playback.pure.restore(&self.initial);
         self.game = self.initial_game.clone();
+        // The model's state is its own, not in the memory: a fresh one for the stage start.
+        if let Err(e) = self.fit_engine_model() {
+            eprintln!("rbr-standalone: the restart's engine model: {e}");
+        }
         self.school.clone_from(&self.initial_school);
         if let Some(saves) = self.saves.as_mut() {
             saves.rearm();

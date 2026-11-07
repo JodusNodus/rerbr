@@ -6,6 +6,7 @@ mod address;
 mod calls;
 mod damper;
 mod engine;
+mod engine_model;
 mod steps;
 mod tuning;
 
@@ -14,6 +15,7 @@ pub(crate) use calls::Call;
 pub(crate) use address::{at, is_file, is_ngp, only, trampolines};
 pub use address::{base_in, file, file_at, original_for, runs_ngp, set_wall_clock, Scope};
 pub(crate) use engine::{engine_wrapper, starter_step, OPERATOR_NEW};
+pub use engine_model::{engine_model_telemetry, set_engine_model};
 pub(crate) use steps::{curve_term, CURVE_TERM};
 pub(crate) use tuning::{
     clutch_scale, damage_tuning, damper_step, drag_factor, drive_split, engine_tuning, probe_tuning, step_slip,
