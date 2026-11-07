@@ -175,15 +175,6 @@ pub fn drive(
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
-    if let Some(rpm) = measure.launch {
-        let mem = live.mem();
-        let gearbox = crate::live::gearbox(mem, mem.u32(pure::CAR_PTR) + CAR_DRIVE);
-        let rad_s = std::f32::consts::PI / 30.0;
-        let shift = shift_points(&live.torque_knots(), &gearbox.ratios, gearbox.count, limit * rad_s);
-        let rpm_of = |w: &f32| (w / rad_s).round();
-        eprintln!("autopilot: launch at {rpm} rpm, upshifts at {:?} rpm", shift.iter().map(rpm_of).collect::<Vec<_>>());
-        driver = driver.with_launch(Launch { rpm: rpm * rad_s, shift });
-    }
     let mut driver = with_lesson(driver, &live, stage);
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
     let mut trace = match &measure.trace_speed {
@@ -302,8 +293,7 @@ pub fn drive(
         // would add its penalty (and its playback would take it again under `--live --pilot` or in the game), with the
         // engine revved in neutral (NGP's clutch help stalls a car put into first at idle, `notes/ngp.md`).
         let q = if live.game().race_clock().start_pending(live.game().assist_settings()) {
-            let throttle = (driver.hold(sense.engine) * 255.0).round() as u8;
-            QuantizedControl { handbrake: 255, throttle, ..QuantizedControl::default() }
+            QuantizedControl { handbrake: 255, throttle: 255, ..QuantizedControl::default() }
         } else {
             driver.control(step + 1, &sense, finished)
         };

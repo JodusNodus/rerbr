@@ -37,9 +37,6 @@ pub struct Args {
     /// `--brake-from M/S` (with `--autopilot`): full foot brake once the speed reaches this, to a standstill
     /// (`Driver::brake_at`, a pace-measurement brake test; combine with `--flat-out`).
     pub brake_from: Option<f32>,
-    /// `--launch RPM` (with `--flat-out`, under NGP): a launch start with the revs held at RPM on the clutch, then the
-    /// slip held by the throttle, and upshifts where the next gear's wheel torque is higher (`autopilot::Launch`).
-    pub launch: Option<f32>,
     /// `--circle X,Y,R` (with `--autopilot`): drive the steady-state circle of centre X,Y and radius R (m),
     /// counter-clockwise, the target speed ramping up until the car lets go (`Driver::circle`).
     pub circle: Option<autopilot::Circle>,
@@ -171,7 +168,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental: NGP 7's physics (the default) or ReRBR experimental physics built on NGP 7 (its engine and tyre models in place of NGP's torque formula and its sliding model on hard surfaces), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--launch RPM]] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S] [--circle X,Y,R [--circle-ramp RATE]] [--trace-speed FILE] [--tyre-probe FILE] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -240,7 +237,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--top-speed" => args.top_speed = Some(parsed("--top-speed", &value)?),
             "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
-            "--launch" => args.launch = Some(parsed("--launch", &value)?),
             "--circle" => args.circle = Some(value.parse()?),
             "--circle-ramp" => args.circle_ramp = Some(parsed("--circle-ramp", &value)?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
@@ -494,9 +490,6 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.circle_ramp.is_some() && args.circle.is_none() {
         return Err("--circle-ramp needs --circle".into());
     }
-    if args.launch.is_some() && !args.flat_out {
-        return Err("--launch needs --flat-out".into());
-    }
     if args.brake_from.is_some() && args.autopilot.is_none() {
         return Err("--brake-from needs --autopilot".into());
     }
@@ -694,9 +687,6 @@ mod tests {
             (format!("{BOOT} --tyre-image IMG --tyre-image-step 4000"), |a| {
                 assert_eq!(a.tyre_image, Some(PathBuf::from("IMG")));
                 assert_eq!(a.tyre_image_step, Some(4000));
-            }),
-            (format!("{BOOT} --flat-out --launch 4500"), |a| {
-                assert_eq!(a.launch, Some(4500.0));
             }),
             (format!("{BOOT} --flat-out --brake-from 27.78"), |a| {
                 assert_eq!(a.brake_from, Some(27.78));
@@ -933,7 +923,6 @@ mod tests {
             ),
             (format!("{BOOT} --tyre-image-step 9"), "--tyre-image-step needs --tyre-image"),
             (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
-            (format!("{BOOT} --launch 4500"), "--launch needs --flat-out"),
             (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
             (format!("{REC} --autopilot OUT --circle 0,0"), "--circle 0,0: want X,Y,R with R > 0"),

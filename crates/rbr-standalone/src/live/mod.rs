@@ -292,11 +292,6 @@ impl<'a> Live<'a> {
         self.school.as_ref()
     }
 
-    /// The car's full-throttle torque curve as NGP's car init left it (rad/s, a share of `MaxTorque_NGP`).
-    pub fn torque_knots(&self) -> Vec<(f32, f32)> {
-        crate::physics::engine_params(&self.playback, rbr_engine::Car::default()).torque_knots
-    }
-
     /// The pure physics' memory after the last step.
     pub fn mem(&self) -> &Mem {
         &self.playback.pure.mem

@@ -45,7 +45,6 @@ fn a_straight_plans_the_top_speed_and_steers_ahead() {
         parameter: 0.5,
         gear: FIRST,
         engine: 500.0,
-        driven: 0.0,
         held: false,
     };
     let q = driver.control(1000, &sense, false);
@@ -80,7 +79,7 @@ fn a_car_leaning_to_its_right_steers_right() {
         velocity: [10.0, 0.0, 0.0],
     };
     assert!((lean(&pose) - 0.4f32.sin()).abs() < 1e-5, "{}", lean(&pose));
-    let sense = Sense { pose, parameter: 0.5, gear: FIRST, engine: 500.0, driven: 0.0, held: false };
+    let sense = Sense { pose, parameter: 0.5, gear: FIRST, engine: 500.0, held: false };
     assert_eq!(driver.control(1000, &sense, false).steering, 127);
 }
 
@@ -94,7 +93,6 @@ fn under_ngp_a_standing_start_revs_in_neutral_and_a_bogged_car_starts_again() {
         parameter: 0.5,
         gear,
         engine,
-        driven: 0.0,
         held: false,
     };
     let gap = driver.steps(SHIFT_GAP);
@@ -120,7 +118,6 @@ fn a_stuck_car_backs_up_shifts_back_to_first_and_gives_up_after_the_attempts() {
         parameter: 0.5,
         gear,
         engine: 800.0,
-        driven: 0.0,
         held: false,
     };
     driver.control(1, &sense(10.0, 4), false);
@@ -171,7 +168,6 @@ fn flat_out_holds_the_top_speed_and_never_brakes() {
         parameter: 0.5,
         gear: FIRST,
         engine: 500.0,
-        driven: 0.0,
         held: false,
     };
     let mut plain = driver(&track, TOP_SPEED);
@@ -199,7 +195,6 @@ fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
         parameter: 0.5,
         gear: FIRST,
         engine: 500.0,
-        driven: 0.0,
         held: false,
     };
     let mut driver = driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 });
@@ -231,7 +226,6 @@ fn lugging_downshifts_in_the_measurement_modes_only() {
         parameter: 0.5,
         gear,
         engine,
-        driven: 0.0,
         held: false,
     };
     let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
@@ -257,7 +251,6 @@ fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
         parameter: 0.5,
         gear: FIRST,
         engine: 500.0,
-        driven: 0.0,
         held: false,
     };
     let mut driver = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
@@ -337,68 +330,10 @@ fn an_outside_assistance_hold_brakes_and_ends_the_recovery() {
         parameter: 0.5,
         gear: FIRST - 1,
         engine: 100.0,
-        driven: 0.0,
         held: true,
     };
     let q = driver.control(1000, &sense, false);
     assert_eq!((q.flags, q.throttle, q.brake), (0, 0, 255));
     assert_eq!((driver.mode, driver.slow), (Mode::Drive, 0));
     assert_eq!(driver.control(1001, &Sense { held: false, ..sense }, false).flags, 0x01);
-}
-
-#[test]
-fn shift_points_fall_where_the_next_gears_wheel_torque_overtakes() {
-    // Torque falls linearly from 1 at 400 rad/s to 0.5 at 800: in a 2:1.5 pair the crossing T(w) 2 = T(0.75 w) 1.5
-    // solves 2 (1.5 - w/800) = 1.5 (1.5 - 0.75 w/800), w = 800 * 0.75 / 0.875.
-    let knots = [(100.0, 0.5), (400.0, 1.0), (800.0, 0.5)];
-    let ratios = [-3.0, 0.0, 2.0, 1.5, 1.2, 0.0, 0.0, 0.0];
-    let shift = shift_points(&knots, &ratios, 5, 900.0);
-    assert!((shift[FIRST as usize] - 800.0 * 0.75 / 0.875).abs() <= 1.0, "{shift:?}");
-    // A flat curve never crosses: the shift waits for the limiter's margin; the last gear has none.
-    let flat = shift_points(&[(100.0, 1.0), (900.0, 1.0)], &ratios, 5, 900.0);
-    assert_eq!(flat[FIRST as usize], LAUNCH_UP_LIMIT * 900.0);
-    assert_eq!((flat[FIRST as usize + 2], flat[0], flat[1]), (f32::INFINITY, f32::INFINITY, f32::INFINITY));
-}
-
-#[test]
-fn a_launch_holds_the_revs_on_the_clutch_releases_and_holds_the_slip() {
-    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
-    let launch = Launch { rpm: 450.0, shift: [f32::INFINITY; TOP_GEAR as usize + 1] };
-    let mut driver =
-        driver(&track, TOP_SPEED).with_step(1.0 / 720.0).with_limit(8500.0).with_flat_out(true).with_launch(launch);
-    let half = std::f32::consts::FRAC_1_SQRT_2;
-    let sense = |speed: f32, driven: f32, gear: u32, engine: f32| Sense {
-        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [speed, 0.0, 0.0] },
-        parameter: 0.5,
-        gear,
-        engine,
-        driven,
-        held: false,
-    };
-    // In neutral the throttle holds the revs and first waits for them; over them, the throttle closes.
-    assert_eq!(driver.hold(450.0 + 100.0), 0.0);
-    let gap = driver.steps(SHIFT_GAP);
-    let q = driver.control(gap, &sense(0.0, 0.0, FIRST - 1, 300.0), false);
-    assert_eq!((q.flags, q.throttle, q.clutch), (0, 255, 255));
-    assert_eq!(driver.control(gap + 1, &sense(0.0, 0.0, FIRST - 1, 445.0), false).flags, 0x01);
-    // In first at the revs the clutch releases over `LAUNCH_RELEASE` steps.
-    let q = driver.control(gap + 2, &sense(0.0, 0.0, FIRST, 445.0), false);
-    assert_eq!(q.clutch, 255);
-    let half_way = gap + 2 + driver.steps(LAUNCH_RELEASE) / 2;
-    assert_eq!(driver.control(half_way, &sense(0.5, 0.6, FIRST, 440.0), false).clutch, 128);
-    // Spinning far over the slip target, the throttle falls step by step; under it, it rises again to full.
-    let mut step = half_way;
-    let mut throttle = 255;
-    for _ in 0..200 {
-        step += 1;
-        let q = driver.control(step, &sense(2.0, 8.0, FIRST, 500.0), false);
-        assert!(q.throttle <= throttle);
-        throttle = q.throttle;
-    }
-    assert!(throttle < 128, "{throttle}");
-    for _ in 0..2000 {
-        step += 1;
-        throttle = driver.control(step, &sense(10.0, 10.2, FIRST, 500.0), false).throttle;
-    }
-    assert_eq!(throttle, 255);
 }
