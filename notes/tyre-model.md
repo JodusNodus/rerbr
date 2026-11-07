@@ -567,6 +567,16 @@ experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendeniu
 the racing-slick rows are context, not scored) ngp 28/75, experimental-brush 34/75
 (`build/tyre-night/scores/baseline.json`, not in git).
 
+TRL PPR496 rows (2026-11-08): `tarmac-KMH` / `tarmac-wet-KMH` run the tarmac wheel at 32/64/100 km/h (`--speed`), the
+wet ones with `--water 1` (WaterFactor 1 on the dry friction level: the rows are ratios). Tarmac rows (34 scored),
+experimental-brush before → after the TRL friction curve and wet Coulomb loss: 14 → 19 PASS (ngp 9); MISS → PASS
+locked over peak at 64 and 100 km/h, wet at 32, wet locked 100/32, peak Fx load exponent, car locked over threshold
+from 50 km/h; PASS → MISS combined at 4° (0.332 → 0.349, band 0.29-0.34, fig ±0.05); still MISS peak 100/32 0.909 →
+0.968 (0.97), wet at 64/100 0.766/0.757 → 0.583/0.552 (0.52-0.57/0.49-0.52; 0.558/0.523 in the lab on NGP's wet
+material), peak slip angle 8.75° → 9.5° on this wheel (5.6-8.5). The car row from 100 km/h measures a locked run that
+leaves the line (In game).
+
+
 ## Open
 
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
