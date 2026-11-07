@@ -27,6 +27,9 @@ Nothing here changes what the game computes.
   experimental physics).
 - `examples/compare.rs`: compares brush-v1 against NGP's sweep and published
   targets. Writes CSVs plus `summary.md` into the output dir.
+- `examples/racing.rs`: brush-v1 and NGP at the conditions of the racing-tyre
+  and combined-slip data (`notes/tyre-model.md`, "Racing and rally targets").
+  Prints only.
 
 ## Use
 
@@ -42,6 +45,7 @@ cargo build --release -p rbr-standalone
     --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS"
 cargo run -q --release -p rbr-tyre-lab --example sweep -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/ngp
 cargo run -q --release -p rbr-tyre-lab --example compare -- --probe /tmp/tyre-lab/x.probe --out /tmp/tyre-lab/cand
+cargo run -q --release -p rbr-tyre-lab --example racing -- --probe /tmp/tyre-lab/x.probe
 cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/tyre-lab/dyn.img --out /tmp/tyre-lab/ngp-dyn
 cargo run -q --release -p rbr-tyre-lab --example materials -- "$RBR_NGP_DLL" [ID...]
 ```
