@@ -576,8 +576,9 @@ fn main() {
 
     // --- relaxation lengths --------------------------------------------------------
     let k_y = f64::from(base.carcass_lat) * f64::from(base.stiffness_factor);
-    // The game's longitudinal carcass: from MF 6.1's relaxation length, at the pressure factor (`rbr_tyre::car`).
-    let k_x = brush::carcass_x(&cal, r, f64::from(base.stiffness_factor));
+    // The game's longitudinal carcass stiffness (ours, 450 kN/m at the calibration pressure), at the pressure
+    // factor (`rbr_tyre::car`).
+    let k_x = brush::carcass_x(&cal, f64::from(base.stiffness_factor));
     let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cy0, M_CY, &cal);
     let cx_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cx0, M_CX, &cal);
     let ngp_sigma = lat_rows[2].calpha / k_y;
@@ -1040,14 +1041,14 @@ Pacejka-book passenger set in Chrono's TMeasy); Stribeck g(Vs) with V_S = {V_S} 
 kept 0.4 and the quadratic ours; vp = 6.36 sqrt(p/kPa) (Horne) times (0.75 + 0.25 d) (ADAC 2026); dry-wear \
 gain 1 + 0.167(1-d)(1-W) (Singh Table 3; the wet fade ours); brush ch. 3 Pacejka 3rd ed.; \
 first-order dynamics F = c u + d u' with the secant F/s (Rill, Vehicle Dynamics 2009, 3.4.2), d_x {}, d_y {} N/(m/s) \
-(Rill's passenger tyres), c_x {:.0} N/m (sigma_x {} R at Fz0, MF 6.1), c_y NGP's carcass, sigma = (F/s + V d)/c. \
+(Rill's passenger tyres), c_x {:.0} N/m (ours: 450 kN/m at the calibration pressure; MF-Swift sets 288-399 kN/m, \
+measured 163-234 kN/m), c_y NGP's carcass, sigma = (F/s + V d)/c. \
 V_MIN = {V_MIN} m/s floor in the slips (Rill's v_N).\n",
         MU_C_OVER_S,
         FILM_MAX * 1e3,
         brush::DAMPING_X,
         brush::DAMPING_Y,
         k_x,
-        brush::SIGMA_X_OVER_R,
     ));
     write(&out.join("summary.md"), &md);
     println!("{md}");

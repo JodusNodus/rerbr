@@ -6,10 +6,9 @@
 //! the game does (`rbr_tyre::fit`), and prints a table per scenario. Nothing here changes what the game computes.
 //!
 //! Carcass choices: `ngp` NGP's torsional stiffness over R² scaled 0.1 at rest to 1 from 20 m/s (the brush before
-//! 2026-11-08), `ngp-full` the same unscaled, `rill` Rill's passenger carcass (170 kN/m), `mf` [`brush::carcass_x`]
-//! (MF 6.1's relaxation length, now). Dynamics: `floor` the rolling speed
-//! floored at `V_MIN` in the deflection's decay as well (before), `rill` the transport speed restored (Rill's eqs.
-//! 4.20-4.21, now).
+//! 2026-11-08), `ngp-full` the same unscaled, `rill` Rill's passenger carcass (170 kN/m), `game` the game's
+//! [`brush::carcass_x`] (450 kN/m at the calibration pressure). Dynamics: `floor` the rolling speed floored at `V_MIN`
+//! in the deflection's decay as well (before), `rill` the transport speed restored (Rill's eqs. 4.20-4.21, now).
 
 use rbr_tyre::brush::{self, Calibration, EvalInput, TransState, V_MIN};
 use rbr_tyre::Wheel;
@@ -23,7 +22,7 @@ enum Carcass {
     Ngp,
     NgpFull,
     Rill,
-    Mf,
+    Game,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -51,7 +50,7 @@ impl Tyre {
             Carcass::NgpFull => full,
             // Rill's passenger carcasses, 160 and 180 kN/m: their mean.
             Carcass::Rill => 170_000.0 * sf,
-            Carcass::Mf => brush::carcass_x(&self.cal, self.r(), sf),
+            Carcass::Game => brush::carcass_x(&self.cal, sf),
         }
     }
 
@@ -87,7 +86,7 @@ impl Tyre {
         let mut st = TransState::default();
         let mut f = 0.0;
         for _ in 0..20000 {
-            f = self.force(&mut st, Carcass::Mf, Dyn::Rill, v, w);
+            f = self.force(&mut st, Carcass::Game, Dyn::Rill, v, w);
         }
         f
     }
@@ -123,7 +122,7 @@ fn crossings(xs: &[f64]) -> usize {
 }
 
 const CARCASSES: [(Carcass, &str); 4] =
-    [(Carcass::Ngp, "ngp"), (Carcass::NgpFull, "ngp-full"), (Carcass::Rill, "rill"), (Carcass::Mf, "mf")];
+    [(Carcass::Ngp, "ngp"), (Carcass::NgpFull, "ngp-full"), (Carcass::Rill, "rill"), (Carcass::Game, "game")];
 
 fn main() {
     let mut probe = String::from("/tmp/tyre-lab/x.probe");
@@ -147,18 +146,18 @@ fn main() {
     let m = t.fz / G;
     let mu_fz = t.steady(10.0, 10.0 * 1.15 / r).abs();
     println!(
-        "wheel 0: Fz {:.0} N, R {r:.3} m, k_y {:.0} N/m, k_x ngp full {:.0} / rill {:.0} / mf {:.0} N/m, Cx(Fz) {:.0} N, peak Fx ~{mu_fz:.0} N",
+        "wheel 0: Fz {:.0} N, R {r:.3} m, k_y {:.0} N/m, k_x ngp full {:.0} / rill {:.0} / game {:.0} N/m, Cx(Fz) {:.0} N, peak Fx ~{mu_fz:.0} N",
         t.fz,
         t.k_y(),
         t.k_x(Carcass::NgpFull, 30.0),
         t.k_x(Carcass::Rill, 0.0),
-        t.k_x(Carcass::Mf, 0.0),
+        t.k_x(Carcass::Game, 0.0),
         brush::stiffness_at(t.fz, cal.t_cal, 1.0, f64::from(t.p.stiffness_factor), cal.cx0, brush::M_CX, &cal),
     );
 
     // 1. Kinematic slip step: kappa 0.05 at fixed speeds, distance to 63 % of the steady force.
     println!("\n## Slip step kappa 0.05 (kinematic): distance to 63 % of the steady force, m");
-    println!("| V m/s | ngp | ngp-full | rill | mf |\n| --- | --- | --- | --- | --- |");
+    println!("| V m/s | ngp | ngp-full | rill | game |\n| --- | --- | --- | --- | --- |");
     for v in [1.0, 2.0, 3.0, 5.0, 8.0, 15.0, 25.0] {
         let w = v * 1.05 / r;
         let target = t.steady(v, w);
@@ -180,7 +179,7 @@ fn main() {
         "oscillation's crossings of the settled value in 2 s, HF (RMS of the step-to-step second difference of wR over"
     );
     println!("the last second, m/s).\n");
-    println!("| V m/s | inertia | ngp | ngp-full | rill | mf |\n| --- | --- | --- | --- | --- | --- |");
+    println!("| V m/s | inertia | ngp | ngp-full | rill | game |\n| --- | --- | --- | --- | --- | --- |");
     for v in [0.5, 1.0, 2.0, 3.0, 5.0, 10.0] {
         for inertia in [0.6, 1.2, 4.0] {
             let cells: Vec<String> = CARCASSES
