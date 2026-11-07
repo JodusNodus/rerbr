@@ -3,7 +3,6 @@
 
 use rbr_engine::bench::{self, inputs, Row};
 use rbr_engine::calibrate;
-use rbr_engine::class::Actuation;
 use rbr_engine::engine::RPM;
 use rbr_engine::realistic::Realistic;
 use rbr_engine::{samples, Inputs, Model, Params};
@@ -27,17 +26,38 @@ fn rpm(w: f32) -> f64 {
     f64::from(w) * RPM
 }
 
+/// The table's torque at `n` rpm, N·m.
+fn table(p: &Params, n: f64) -> f64 {
+    let knots = p.torque_knots.iter().map(|&(w, q)| (rpm(w), f64::from(q * p.max_torque))).collect();
+    rbr_engine::curve::Curve(knots).at(n)
+}
+
+/// The table is an upper bound everywhere (every 250 rpm and at the knots) and met at every knot except a turbo's
+/// held ones, where the turbo cannot make the boost the table asks for. The rev limiter cuts from 200 rpm below
+/// RPMLimit, so there the engine without it (the calibration's) meets the table.
 #[test]
-fn steady_wot_reproduces_the_table_at_every_knot() {
+fn steady_wot_meets_the_table_on_boost_and_never_beats_it() {
     for (name, p, m) in models() {
-        for &(w, tq) in &p.torque_knots {
-            let n = rpm(w);
-            if n < 150.0 {
-                continue;
-            }
-            let want = f64::from(tq * p.max_torque);
+        let held = &m.calibration().held;
+        let cut = rpm(p.rev_limit) - rbr_engine::ecu::LIMITER_RANGE;
+        let is_held = |n: f64| held.iter().any(|h| (h.0 - n).abs() < 1.0);
+        for &(n, want, got) in m.calibration().wot.iter().filter(|k| k.0 >= 150.0 && !is_held(k.0)) {
+            assert!(
+                (got - want).abs() <= 0.005 * want,
+                "{name} {n:.0} rpm without the limiter: {got:.2} for {want:.2}"
+            );
+        }
+        let last = p.torque_knots.iter().map(|k| rpm(k.0)).fold(0.0, f64::max);
+        let mut points: Vec<f64> = (1..).map(|i| f64::from(i) * 250.0).take_while(|&n| n <= last).collect();
+        points.extend(p.torque_knots.iter().map(|k| rpm(k.0)).filter(|&n| n >= 150.0));
+        for n in points {
+            let want = table(p, n);
             let got = calibrate::wot(m.spec(), n).1.torque;
-            assert!((got - want).abs() <= 0.005 * want, "{name} {n:.0} rpm: {got:.2} for {want:.2}");
+            assert!(got <= want + 0.001 * want.abs(), "{name} {n:.0} rpm: {got:.2} over the table's {want:.2}");
+            let knot = p.torque_knots.iter().any(|k| (rpm(k.0) - n).abs() < 1e-6);
+            if knot && n <= cut && !is_held(n) {
+                assert!((got - want).abs() <= 0.005 * want, "{name} {n:.0} rpm: {got:.2} for {want:.2}");
+            }
         }
     }
 }
@@ -80,7 +100,7 @@ fn the_limiter_holds_wot_in_neutral() {
         let mut m = m.clone();
         let rows = bench::run(&mut m, rpm(p.idle_speed), Some(f64::from(p.inertia)), 6.0, |_| 1.0, None);
         let (lo, hi) = settled(&rows, 4.0);
-        assert!(lo > limit - 100.0 && hi < limit + 250.0, "{name}: {lo:.0}..{hi:.0} at a {limit:.0} limit");
+        assert!(lo > limit - 200.0 && hi < limit + 50.0, "{name}: {lo:.0}..{hi:.0} at a {limit:.0} limit");
     }
 }
 
@@ -112,7 +132,8 @@ fn part_throttle_never_beats_wot_and_a_closed_pedal_holds_idle() {
         let t = calibrate::part(spec, idle, 0.0).1.torque;
         assert!(t.abs() < 1.0, "{name}: closed pedal at idle {t:.1}");
         let mut n = 1000.0;
-        while n <= rpm(p.rev_limit) {
+        // Up to the limiter's range: inside it the cut, not the pedal, sets the torque.
+        while n <= rpm(p.rev_limit) - rbr_engine::ecu::LIMITER_RANGE {
             let wot = calibrate::wot(spec, n).1.torque;
             for k in 0..10 {
                 let pedal = f64::from(k) / 10.0;
@@ -122,6 +143,91 @@ fn part_throttle_never_beats_wot_and_a_closed_pedal_holds_idle() {
             n += 500.0;
         }
     }
+}
+
+fn dbw_turbos() -> impl Iterator<Item = &'static (&'static str, Params, Realistic)> {
+    models()
+        .iter()
+        .filter(|(_, p, m)| p.turbo && m.calibration().class.unwrap().actuation == rbr_engine::class::Actuation::Dbw)
+}
+
+/// The electronic gate's aim follows the plate, so a part pedal has one steady state whichever way it is approached.
+#[test]
+fn a_dbw_turbo_part_pedal_is_the_same_from_closed_and_from_wot() {
+    for (name, p, m) in dbw_turbos() {
+        let spec = m.spec();
+        let mut n = (rpm(p.idle_speed) / 250.0).ceil() * 250.0;
+        while n <= rpm(p.rev_limit) {
+            for k in 0..=10 {
+                let pedal = f64::from(k) / 10.0;
+                let up = calibrate::part(spec, n, pedal).1.torque;
+                let down = calibrate::steady(spec, &mut calibrate::wot(spec, n).0, n, pedal).torque;
+                let band = 0.02 * up.abs().max(down.abs()) + 1.0;
+                assert!(
+                    (up - down).abs() <= band,
+                    "{name} {n:.0} rpm pedal {pedal}: {up:.1} from closed, {down:.1} from WOT"
+                );
+            }
+            n += 250.0;
+        }
+    }
+}
+
+/// A tuned electronic gate: a WOT tip-in at a fixed speed overshoots its steady torque by at most 5 % and stays within
+/// 2 % of it from 1 s on (inferred, tuning practice).
+#[test]
+fn a_dbw_turbo_tip_in_barely_overshoots() {
+    for (name, _, m) in dbw_turbos() {
+        for n in [3000.0, 5000.0] {
+            let mut m = m.clone();
+            let rows = bench::run(&mut m, n, None, 5.0, |t| if t >= 1.0 { 1.0 } else { 0.0 }, None);
+            let last = rows.last().unwrap().torque;
+            let peak = rows.iter().map(|r| r.torque).fold(f64::MIN, f64::max);
+            assert!(peak <= 1.05 * last, "{name} {n:.0} rpm: peak {peak:.1} over steady {last:.1}");
+            let off = rows.iter().filter(|r| r.time >= 2.0).map(|r| (r.torque - last).abs()).fold(0.0, f64::max);
+            assert!(off <= 0.02 * last, "{name} {n:.0} rpm: {off:.1} off steady {last:.1} after 1 s");
+        }
+    }
+}
+
+/// The most net torque over rpm (from idle to the limiter) rises with the pedal on every sample.
+#[test]
+fn the_most_torque_rises_with_the_pedal() {
+    for (name, p, m) in models() {
+        let from = (rpm(p.idle_speed) / 250.0).ceil() * 250.0;
+        let to = rpm(p.rev_limit) - rbr_engine::ecu::LIMITER_RANGE;
+        let most = |pedal: f64| {
+            (0..)
+                .map(|i| from + 250.0 * f64::from(i))
+                .take_while(|&n| n <= to)
+                .map(|n| calibrate::part(m.spec(), n, pedal).1.torque)
+                .fold(f64::MIN, f64::max)
+        };
+        let row: Vec<f64> = (0..=10).map(|k| most(f64::from(k) / 10.0)).collect();
+        assert!(row.windows(2).all(|w| w[1] > w[0]), "{name}: {row:.1?}");
+    }
+}
+
+/// Seconds at a fixed `n` rpm from the steady pedal that gives 5 bar BMEP until 90 % of the steady WOT torque.
+fn spool_at(m: &Realistic, n: f64) -> f64 {
+    use rbr_engine::engine::{step, Step};
+    let spec = m.spec();
+    let aim = 5e5 * m.calibration().displacement / (4.0 * std::f64::consts::PI);
+    let (mut lo, mut hi) = (0.0, 1.0);
+    for _ in 0..30 {
+        let mid = 0.5 * (lo + hi);
+        if calibrate::part(spec, n, mid).1.torque < aim {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let mut s = calibrate::part(spec, n, hi).0;
+    let wot = calibrate::wot(spec, n).1.torque;
+    let x = Step::at(n / RPM, 1.0, calibrate::DT);
+    (1..=(5.0 / calibrate::DT) as usize)
+        .find(|_| step(spec, &mut s, &x).torque >= 0.9 * wot)
+        .map_or(f64::INFINITY, |i| i as f64 * calibrate::DT)
 }
 
 /// Seconds from `from` until the torque first reaches `share` of the run's last value.
@@ -136,20 +242,21 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
         if !p.turbo {
             continue;
         }
-        let mut s = m.clone();
-        let rows = bench::run(&mut s, 4000.0, None, 6.0, |t| if t >= 2.0 { 1.0 } else { 0.0 }, None);
-        let t = time_to(&rows, 2.0, 0.9);
-        assert!((0.4..=1.2).contains(&t), "{name}: spool to 90 % in {t:.2} s");
+        // Chalmers (GT-Power, a road 1.5 L four, T45 at 1.16e-5 kg·m² against our 1e-5): at 1000 rpm from 5 bar BMEP
+        // to 90 % of the steady WOT torque in 0.54 s (1.0 s on a three, 0.68 s with half the inertia). A rally turbo
+        // makes almost no boost at 1000 rpm, so the same case also runs at the first 500 rpm step with 1.5 bar.
+        let t = spool_at(m, 1000.0);
+        assert!(t <= 1.2, "{name}: 5 bar BMEP to 90 % at 1000 rpm in {t:.2} s");
+        let n = (2..).map(|i| f64::from(i) * 500.0).find(|&n| calibrate::wot(m.spec(), n).0.p_boost >= 1.5e5).unwrap();
+        let t = spool_at(m, n);
+        assert!((0.4..=1.2).contains(&t), "{name}: 5 bar BMEP to 90 % at {n:.0} rpm in {t:.2} s");
         if m.calibration().class.unwrap().anti_lag {
             let mut s = m.clone();
             let program = |t: f64| if (3.0..4.0).contains(&t) { 0.0 } else { 1.0 };
             let rows = bench::run(&mut s, 4500.0, None, 7.0, program, None);
             assert!(rows.iter().any(|r| r.anti_lag), "{name}: no anti-lag");
             let t = time_to(&rows, 4.0, 0.9);
-            // The brief asks under 0.15 s. The cable car's turbo runs down under a 15 % area kick (1.46 bar after
-            // 1 s) and takes 0.17 s; a 20 % kick holds 2.2 bar and passes (`notes/engine-model.md`, open).
-            let bound = if m.calibration().class.unwrap().actuation == Actuation::Dbw { 0.15 } else { 0.2 };
-            assert!(t < bound, "{name}: re-applied to 90 % in {t:.2} s");
+            assert!(t < 0.15, "{name}: re-applied to 90 % in {t:.2} s");
         }
     }
 }

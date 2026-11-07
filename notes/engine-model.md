@@ -10,7 +10,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - f64 inside, f32 at the interface; `libm` for every transcendental; no allocation, hashing, time or randomness per
   step (inferred: bit-identical on every platform). `tests/model.rs` checks two runs give the same bits and any input
   (NaN, infinities, 0 or negative dt and speed) gives finite torque.
-- Calibration about 2 s per turbo car, 30 ms per NA car (release); a step about 2.4 µs (measured).
+- Calibration about 1.3 s per turbo car (its steady runs on threads, each independent, so the bits do not depend on
+  them), 30 ms per NA car (release); a step about 2.4 µs (measured). Steady means the pressures and the turbo's speed
+  move under 1e-4 of themselves over 0.25 s (inferred).
 
 ## Class (`class.rs`)
 
@@ -36,10 +38,15 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   45 mm per cylinder (guess).
 - Manifold 0.8·V_d one throttle, 0.3·V_d per cylinder, 1.0·V_d turbo, boost pipe 2.0·V_d (guess: ITBs have no
   plenum [HPA Alpha-N]; Rally2 caps the restrictor-to-plate volume at 20 L [FIA 261]).
-- W_cyl = η_v·p·V_d·n/(120RT) and the manifold filling dp/dt = RT/V·(W_in − W_cyl) (generic) [Andersson],
+- W_cyl = η_v·η_res·p·V_d·n/(120RT) and the manifold filling dp/dt = RT/V·(W_in − W_cyl) (generic) [Andersson],
   [Hendricks]. Fully implicit Euler, root-solved per sub-step (inferred: the linearly implicit step overshot a
   per-cylinder tip-in to 2.4 bar).
 - η_v: turbo 0.95 flat (guess); NA the WOT table's shape (inferred: the table is mostly breathing).
+- Residual gas: η_res = (r_c − (p_em/p_im)^(1/γ))/(r_c − 1), the ideal cycle's (generic, Heywood; the pressure
+  factor of [arXiv 2012.02859]'s η_v), r_c 11 NA, 9.5 turbo, γ 1.3 (guess: the residual is exhaust; 1.4 for air),
+  p_em of the last step. 1 at p_em = p_im; at idle 0.71 (modern turbos) to 0.87. In W_cyl and the charge; K
+  recalibrates. On turbos the identity runs once more last (after the hold, the gate's base and the idle gains),
+  since the state now feeds back on the charge through p_em (0.16 % off the table otherwise).
 - No leak; idle air instead (inferred: the plate formula closes at 7°, and a sized leak idled every sample
   55–95 N·m fast).
 
@@ -54,8 +61,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The idle air adds to the aim; anti-lag's kick overrides it [MoTeC DBW]. Blips and shift cuts come through the
   interface's throttle (NGP's control unit).
 - Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle].
-  Peak net torque at pedal 10/20/30/50 %: na 29/43/54/77 %, turbo 17/42/55/88 %, old 31/47/63/93 %, cable_turbo
-  15/26/45/87 % of max (BeamNG 2023: 49/65/76/91 %).
+  Peak net torque at pedal 10/20/30/50 %: na 24/43/54/77 %, turbo 12/34/48/79 %, old 26/46/63/93 %, cable_turbo
+  13/25/37/87 % of max (BeamNG 2023: 49/65/76/91 %).
 
 ## Torque (`calibrate.rs`, `ecu.rs`)
 
@@ -85,12 +92,14 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## ECU (`ecu.rs`)
 
-- Idle: PI on air, P on spark, 10° base retard with −10/+15° room [MoTeC idle], [HPA M1 idle], [US 7143741],
-  [US 7418943]. Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz (spark) (guess: no
+- Idle: PI on air, P on spark, 27° base retard (η_ign 0.80, a torque reserve: an MPC idle holds spark efficiency
+  0.75 [arXiv 2012.02859], idle control uses at most about 30 % of the reserve [US 7418943]) with −10/+15° room
+  [MoTeC idle], [HPA M1 idle], [US 7143741]. Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz (spark) (guess: no
   published gains [Yildiz]). Spark P-only (inferred: a spark integrator fights the air loop).
 - The loop runs with a closed pedal below idle + 800 rpm, integrates only below idle + 100 rpm (inferred: no
   wind-down while the overrun air decays).
-- Idle air ceiling 15 % lift [HPA 138] (Haltech DBW idle about 10 %), [Link idle] (3.5 %).
+- Idle air ceiling: the plate's area at 10 % position, every ECU car [HPA 138] (Haltech's DBW idle maximum starts at
+  about 10 %); [Link idle] idles at 3.5 %.
 - DFCO (ECU cars): pedal < 0.02 and n > idle + 800 rpm; resumes below idle + 300 rpm or on the pedal [stealth316],
   [MSExtra], [Hondata].
 - Overrun air while the fuel is cut: real ECUs open an idle valve or dashpot on decel [MoTeC FK8R]. Sized so the
@@ -99,13 +108,19 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - When the fuel returns, the overrun air decays to the idle feed-forward with τ 0.5 s (guess), so no air step.
 - Fixed-stop cars have no DFCO (inferred: carbs and mechanical injection keep fuelling through the idle circuit;
   the decel cut-off solenoids were for road emissions).
-- Limiter: ignition cut 0→100 % over RPMLimit + 200 rpm, then fuel [HPA M1 limits], [HPA 171], [Haltech limiter].
+- Limiter, Link's convention: ignition cut 0→100 % from RPMLimit − 200 rpm to RPMLimit, fuel cut from RPMLimit +
+  100 [HPA 084], [HPA 171] (Link G4+: 200 rpm control range settling 100–150 rpm under the limit, hard cut +50 to
+  +200), so RPMLimit is the cap as NGP and the class rules read it (MoTeC's ramp above the limit [HPA M1 limits] let
+  every car run 2–3 % over: Fiesta Rally3 805.6 rad/s on a 785.4 limit in game). Neutral WOT holds the samples 4–99
+  rpm under the limit (up to 18 over on the turbo sample); tested within −200..+50. The calibration's WOT runs
+  leave the limiter out (the table runs to RPMLimit); the tests compare the table with the limiter in only up to
+  RPMLimit − 200.
   The events are picked by deterministic error diffusion (inferred).
 - Shift cut keeps the share TorqueCut, airflow kept [FIA 254A] (S2000 cuts), [CSP powertrain].
 - No combustion below 150 rpm or when stalled [turboford] (crank speeds 150–250 rpm).
 - Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 [MoTeC ALS],
-  [Link ALS timeout]. Kick 15 % of the throttle area (lift 0.31) [Link e-throttle ALS] (kicks 10–25 %). As an area
-  (inferred: a 15 % lift opens 5 % of the area, the turbo ran down). Retard 60° [Link retard] (−25 to −50°; 60
+  [Link ALS timeout]. Kick 20 % of the throttle area [Link e-throttle ALS] (about 20 % kick, 25 % in the closed-pedal
+  cells). As an area (inferred: a 15 % lift opens 5 % of the area, and the turbo ran down). Retard 60° [Link retard] (−25 to −50°; 60
   guess). Fuel +20 %, cut 30 % [Link e-throttle ALS], [HPA ALS]. Boost aim 1.2 bar gauge (guess). 60 % of the
   unburnt fuel burns in the manifold (guess). The BOV stays shut (inferred: ALS needs the charge).
 
@@ -119,31 +134,73 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Restrictor choked flow (generic) [NASA], C_D 0.95, 20 % pressure loss (guess), solved with the compressor by root
   finding (inferred: a two-step oscillation otherwise). Sizes by group and year [rallycars restrictors], [FIA 261],
   [FIA 255A], [FIA 254].
-- Turbine nozzle with Ψ, η_t 0.65 (guess) [Andersson]. A_t: the largest nozzle whose cold spool reaches 0.9·π_max
-  at the spool knot (inferred). The wastegate area equals A_t (guess).
-- Shaft inertia 1e-5 kg·m² [Chalmers] (T45 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W [rF2 engine.ini].
+- Turbine nozzle with Ψ, η_t 0.65 (guess) [Andersson].
+- A_t is fitted so K is as flat as the turbo allows (inferred: K is the fuel's energy times the combustion's
+  efficiency per kg of air, nearly constant over rpm, so the boost should carry the table's shape). It minimises the
+  squared deviations of ln K at the knots and every 500 rpm from idle up, each from a fresh engine's tip-in: a scan on
+  ln A_t over 5e-5–1e-2 m², then golden section.
+- The exhaust manifold may reach at most 2× the intake's at steady WOT (inferred, tuner practice: without it the fit took a 7e-5 m²
+  nozzle with 7–9 bar of exhaust pressure for 1.5 bar at 1000 rpm; matched turbos run about 1–2).
+- Then each knot's boost target is scaled by K_knot/K_median (the charge one K needs) and limited, and A_t refitted;
+  twice (inferred: the first target's η_ig leaves out the turbine's back pressure).
+- The table is an upper bound everywhere and exact wherever the air path can make it. On a turbo car, at a grid
+  point where the steady WOT boost misses 98 % of its target (`ON_BOOST`, this worker's choice), K is held at the median K of the on-boost knots, so the
+  steady torque there falls short of the table. Where the identity gives less than the median (Group A, Rally4 at
+  low rpm: tables weaker than physics), K stays. NA cars unchanged. Tested: steady WOT ≤ table + 0.1 % everywhere,
+  = table within 0.5 % at every knot not held.
+- Held, 250 rpm steps (with the residual gas): turbo sample 500–1250 rpm (worst 9 % short); R5, Rally2 and WRC
+  2014–2020 250–1250 (8.5–16 %; i20 to 1500); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1500 (27 %); Alpine
+  A110 RGT 1750 (12 %); Fiesta Rally4 2500 (2.8 %), 208 Rally4 2250 (1.5 %), Fiesta R2 2250 (2.0 %), Delta HF 2750
+  (0.4 %). No other car is held.
+- The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
+- ω* does not change K (10 000–20 000 rad/s moved the spread in the third decimal); it sets the spool time through
+  ½Jω² (measured). Kept at 15 000.
+- Shaft inertia 1e-5 kg·m² [Chalmers] (their T45: 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W [rF2 engine.ini].
 - Exhaust temperature affine in flow, 700 °C at 0 (guess), 950 °C rated, capped at 1150 °C, τ 0.3 s (guess).
   Intercooler effectiveness 0.7 (guess).
-- Boost target π_wot(n) from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the restrictor
-  [FIA 261], [FIA 255A].
-- Wastegate: both aim at π_wot(n)·p_a whatever the pedal (inferred: rally ECUs map pedal to position, and the
-  turbo of a pedal-mapped car is held at its WOT boost [passionford]). Electronic (DBW): PI, band 0.5 bar, Ti 0.5 s.
-  Spring (cable): P-only. τ 125 ms [Gorzelic]. Band and Ti guess (a limit cycle at narrower settings).
+- Boost target π_wot(n), first from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the
+  restrictor [FIA 261], [FIA 255A], then made consistent with one K (above).
+- Wastegate aim. Electronic (DBW): p_a + (π_wot(n)·p_a − p_a)·min(1, θ/θ_open(n)), θ the throttle's aim position,
+  as race ECUs' boost aim tables over rpm × throttle [HPA M1 boost], [HPA Link boost] (inferred: those tables reach
+  full aim before full throttle; we place that point where the plate stops limiting). θ_open(n): at calibration, the
+  lift whose area passes the steady WOT flow at p_im/p_b = 0.95 at that boost (turbo sample 0.24 at 1000 rpm, 0.46
+  at 3000, 0.61 at 5000, 0.74 at 7000). Linear in θ below it (inferred). The aim position rather than the plate, so
+  a re-apply after anti-lag does not dump the boost while the plate opens. A linear aim to θ = 1 flattened mid
+  pedal (40 % 54, 50 % 60 % of max). Spring (cable):
+  π_wot(n)·p_a whatever the pedal, so a cable turbo kicks at part throttle.
+- Electronic gate: a base opening by rpm (the steady WOT one) plus PID, band 1 bar, Ti 0.5 s, Td 0.08 s on the boost
+  (not the error), conditional integration (inferred: boost controllers run a base duty table with closed-loop trim).
+  Td: tip-ins within 5 % overshoot and settled in 1 s (tuning practice, inferred); 0.05–0.12 s all pass. Spring:
+  P-only, band 0.5 bar, so it overboosts a little. τ 125 ms [Gorzelic]. Bands and Ti guess (a limit cycle at
+  narrower settings).
+- DBW turbo sample, WOT tip-in at a fixed speed, overshoot / settled within 2 %: 2500 1.8 % / 0.51 s, 3000 2.1 % /
+  0.79 s, 5000 2.6 % / 0.88 s, 6500 3.9 % / 1.11 s (was 7 % and 17 % with a 0.5 s ring before the derivative).
+  cable_turbo (spring): 1.3 % at 3000, 8.0 % at 5000, 13.8 % at 6500. Tested: steady torque at any pedal the same
+  within 2 % + 1 N·m from closed or from WOT, every 250 rpm from idle and every 10 % (worst 1.7 %, near zero torque).
+  Tested too: the most torque over rpm (idle to RPMLimit − 200) rises with every 10 % of pedal on every sample.
 - Blow-off: opens at 0.3 bar over the manifold, full at 0.4 bar, empties the pipe in about 0.1 s (guess).
-- Spool from closed to WOT at 4000 rpm reaches 90 % in about 0.65 s [Chalmers] (GT-Power 0.54–1.0 s).
+- Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
+  to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
+  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.89 s at 1500, cable_turbo 0.69 s
+  at 3000. At 1000 rpm both make almost no boost (1.09 and 1.01 bar), so 5 bar BMEP is already near WOT (0.05 and
+  0.01 s); tested ≤ 1.2 s only. Higher up it is faster: turbo sample 0.60 s at 2000, 0.27 s at 3000.
 
 ## Open
 
-- The cable turbo sample (Group A8 1993) re-applies after a 1 s anti-lag lift in 0.17 s (the brief: under 0.15 s).
-  Under the 15 % area kick its turbo runs down to 1.46 bar; a 20 % kick holds 2.2 bar and passes. The test allows
-  cable cars 0.2 s.
-- Turbo part-pedal steady curves dip near the boost threshold, which is sharp (about 1.4 bar at 3000 rpm, at target
-  by 3250–3500 rpm). K jumps about −30 % across it.
-- At a fixed speed below idle, the closed pedal gives up to +220 N·m (turbo sample, 750 rpm), because the idle loop
-  opens to its 15 % ceiling. In gear at low speed this pushes the car.
-- The turbo sample idles at a 10 kPa manifold: the high low-rpm K needs little air.
-- The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step). The
-  wastegate overshoots about 5 %.
+- The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
+- Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
+  School]: samples na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
+  Group N and R4 22–23, Rally3/4 and R1 25–31, Group A, B, 4 and S1600/S2000/R2/R3 23–34. K dominates on the modern
+  turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.93e6) against 0.9–1.4e6 elsewhere; friction
+  (17 N·m, s_f clamped to 2.0) and pumping (10 N·m) are like the others'. At η_ig 0.38 they would idle near 28–30 kPa
+  (estimate).
+- At a fixed speed below idle the closed pedal gives up to +166 N·m (turbo sample, 500 rpm; na 65 N·m) with the
+  idle air at its 10 % ceiling. In gear at low speed this pushes the car.
+- The spring-gate cable_turbo still overshoots 8–14 % from 5000 rpm up.
+- The turbo sample's part-pedal curves bump at 1500 and dip at 1750 rpm (at 30 % pedal a dip at 1750, a peak at 2000): K steps about 1.6e6 (held, to 1250) → 1.5e6
+  (1500, off boost but under the median, so kept) → 1.3e6 (1750, on boost). At part pedal the boost is about the
+  same at each speed, so torque follows K; at WOT the boost rises about 1.5 → 2.1 bar and covers it.
+- The spark loop saturates (gain about 2°/rpm). The limiter's torque swings each step (mean value per step).
 - DBW part pedal gives less torque than BeamNG's 2023 curves (table above).
 
 ## Sources
@@ -171,6 +228,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - MoTeC idle: https://motec.zendesk.com/hc/en-gb/articles/14575739507727-Checklist-Idle-Setup
 - HPA M1 idle: https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-idle-speed-control/
 - US 7143741, idle reserve: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7143741
+- arXiv 2012.02859, idle spark-efficiency setpoint: https://arxiv.org/abs/2012.02859
 - US 7418943, idle reserve use: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7418943
 - Yildiz, idle plant: https://web.mit.edu/aaclab/pdfs/Yildiray%20Yildiz%20TCST.pdf
 - Link idle: https://forums.linkecu.com/topic/17853-e-throttle-idle-problems/
@@ -180,6 +238,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - MoTeC FK8R, overrun throttle aim: https://www.milspecwiring.com/assets/images/11401_honda_civic_fk8r_kit.pdf
 - Autosport, decel vacuum: https://forums.autosport.com/topic/89377-f1-engines-and-engine-braking/
 - HPA M1 limits: https://www.hpacademy.com/courses/motec-m1-software-tutorial/setting-up-m1-for-your-engine-engine-speed-limits/
+- HPA 084, Link limiter: https://www.hpacademy.com/previous-webinars/084-link-g4-rev-limit-configuration/
 - HPA 171, limiter: https://www.hpacademy.com/previous-webinars/171-configuring-the-ultimate-rpm-limiter/
 - Haltech limiter: https://support.haltech.com/portal/en/kb/articles/main-limiter
 - CSP powertrain, cuts keep airflow: https://github.com/AssettoCN/ac-docs/blob/main/docs/en/car/physics/powertrain.md
@@ -196,9 +255,14 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Marelli SRG-48x: https://aviorace.com/wp-content/uploads/2020/12/SRG-48X-p118.pdf
 - Bosch ME7 torque structure: https://www.rbracing-rsr.com/turbo/indian_chief/Bosch_ME7_Torque.pdf
 - F1 torque map: https://www.formula1-dictionary.net/engine_torque_map.html
+- HPA M1 boost aim (rpm × throttle): https://www.hpacademy.com/courses/boost-control/motec-m1-closed-loop-boost-control-tuning/
+- HPA Link boost target (rpm × throttle): https://www.hpacademy.com/courses/link-g4-plus-software-tutorial/advanced-fuctions-closed-loop-boost-control/
 - HPA 138, DBW webinar: https://www.hpacademy.com/previous-webinars/138-tuning-drive-by-wire-throttle-control/
 - BeamNG throttle curves: https://beamng.com/game/news/blog/throttle-torque-curves/
 - Gorzelic 2012, throttle and wastegate: https://public.websites.umich.edu/~annastef/papers_hcci/Gorzelic2012ccdc.pdf
+- Gears Magazine, idle MAP 31 kPa: https://gearsmagazine.com/magazine/pressure-sensors/
+- MOTOR, idle 27 kPa: https://www.motor.com/magazine-summary/fuel-injection-diagnosis-july-2008/
+- Tuning School, idle 30–50 kPa: https://thetuningschool.com/blogs/news/what-data-is-good-data
 - Chalmers, tip-in and T45 inertia: https://publications.lib.chalmers.se/records/fulltext/255844/255844.pdf
 - GT1548 inertia: https://doi.org/10.3390/app10217452
 - Brunel, normalised maps: https://bura.brunel.ac.uk/bitstream/2438/14007/1/IMechE%20Turbo%20Conf%202012%20-%20TURBOCHARGER%20MATCHING%20METHODOLOGY.pdf

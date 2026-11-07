@@ -1,5 +1,5 @@
 //! The mean-value engine: its derived constants ([`Spec`]), its state and one step (Hendricks; Eriksson–Nielsen
-//! MVEM as in Andersson 2017; report (a)).
+//! MVEM as in Andersson 2017).
 
 use crate::class::{Actuation, Class, Idle, Intake};
 use crate::curve::Curve;
@@ -12,21 +12,24 @@ use std::f64::consts::PI;
 
 /// rpm per rad/s.
 pub const RPM: f64 = 30.0 / PI;
-/// Throttle discharge coefficients: one throttle 0.80, a throttle per cylinder 0.85 (R1 §1.2, §1.6).
+/// Throttle discharge coefficients: one throttle 0.80, a throttle per cylinder 0.85 (0.8 from throttle-body fits; 0.85
+/// guess).
 const C_D_SINGLE: f64 = 0.80;
 const C_D_PER_CYLINDER: f64 = 0.85;
-/// A throttle per cylinder is at least 45 mm (R1 (b)).
+/// A throttle per cylinder is at least 45 mm (guess).
 const PER_CYLINDER_BORE: f64 = 0.045;
 /// Manifold volume over displacement: one throttle 0.8, a throttle per cylinder 0.3, turbo after the throttle 1.0
-/// (R1 §1.4); the boost pipe 2.0 (inferred).
+/// (guess); the boost pipe 2.0 (guess).
 const V_IM_SINGLE: f64 = 0.8;
 const V_IM_PER_CYLINDER: f64 = 0.3;
 const V_IM_TURBO: f64 = 1.0;
 pub const V_BOOST: f64 = 2.0;
-/// A turbo's volumetric efficiency (report (b)).
+/// A turbo's volumetric efficiency (guess).
 pub const ETA_V_TURBO: f64 = 0.95;
-/// NA exhaust back pressure p_a + 0.15 bar·(W/W_rated)² (report (b)).
+/// NA exhaust back pressure p_a + 0.15 bar·(W/W_rated)² (guess).
 const NA_BACK_PRESSURE: f64 = 0.15e5;
+/// The residual gas's ratio of specific heats in the ideal-cycle η_v (guess: the exhaust's 1.3 rather than air's 1.4).
+const GAMMA_RESIDUAL: f64 = 1.3;
 /// Below this speed (rad/s) friction and pumping fade to 0 with the speed's sign (inferred: no stiction).
 const FRICTION_FADE: f64 = 5.0;
 
@@ -97,14 +100,23 @@ impl Spec {
         }
     }
 
-    /// The cylinders' air flow at manifold pressure `p` (Pa), `rpm` and charge temperature `t`, kg/s.
-    pub fn cylinder_flow(&self, p: f64, rpm: f64, t: f64) -> f64 {
-        self.eta_v.at(rpm) * p * self.geometry.v_d * rpm.max(0.0) / (120.0 * R * t)
+    /// The residual gas's share of η_v, the ideal cycle's (r_c − (p_em/p_im)^(1/γ))/(r_c − 1) (Heywood; the
+    /// pressure factor of arXiv 2012.02859's η_v): exhaust left in the cylinder at a low manifold pressure displaces
+    /// fresh charge. 1 at p_em = p_im, at least 0.
+    pub fn residual(&self, p: f64, p_em: f64) -> f64 {
+        let r_c = self.geometry.r_c;
+        ((r_c - pow(p_em.max(0.0) / p.max(1.0), 1.0 / GAMMA_RESIDUAL)) / (r_c - 1.0)).max(0.0)
+    }
+
+    /// The cylinders' air flow at manifold pressure `p` and exhaust pressure `p_em` (Pa), `rpm` and charge
+    /// temperature `t`, kg/s.
+    pub fn cylinder_flow(&self, p: f64, p_em: f64, rpm: f64, t: f64) -> f64 {
+        self.charge(p, p_em, rpm, t) * rpm.max(0.0) / 120.0
     }
 
     /// The air trapped per cycle (all cylinders), kg.
-    pub fn charge(&self, p: f64, rpm: f64, t: f64) -> f64 {
-        self.eta_v.at(rpm) * p * self.geometry.v_d / (R * t)
+    pub fn charge(&self, p: f64, p_em: f64, rpm: f64, t: f64) -> f64 {
+        self.eta_v.at(rpm) * self.residual(p, p_em) * p * self.geometry.v_d / (R * t)
     }
 
     /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`.
@@ -126,6 +138,8 @@ pub struct Step {
     pub friction: f64,
     pub stalled: bool,
     pub t_oil: f64,
+    /// The rev limiter acts (off only for the calibration's engine, whose table runs to the limit).
+    pub limiter: bool,
 }
 
 impl Step {
@@ -141,6 +155,7 @@ impl Step {
             t_a: T_REF,
             friction: 0.0,
             stalled: false,
+            limiter: true,
             t_oil: friction::T_OIL_REF,
         }
     }
@@ -160,6 +175,7 @@ impl Step {
             friction: finite(i.friction, 0.0).clamp(-1e4, 1e4),
             stalled: i.stalled,
             t_oil: f64::from(i.engine_temperature),
+            limiter: true,
         }
     }
 }
@@ -298,7 +314,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     };
     // While the loop runs at idle the base retard holds the reserve; elsewhere (off idle) the spark is at MBT.
     let retard = if anti_lag || idle_loop { retard } else { 0.0 };
-    let limiter = ((rpm - spec.rpm_limit) / ecu::LIMITER_RANGE).clamp(0.0, 1.0);
+    let limiter = if x.limiter { ((rpm - spec.rpm_limit) / ecu::LIMITER_RANGE + 1.0).clamp(0.0, 1.0) } else { 0.0 };
     let mut cut = limiter;
     if x.shift_cut {
         cut = cut.max(1.0 - spec.torque_cut);
@@ -306,7 +322,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     if anti_lag {
         cut = cut.max(ecu::ALS_CUT);
     }
-    let fuel = !(dfco || x.stalled || rpm > spec.rpm_limit + ecu::LIMITER_RANGE);
+    let fuel = !(dfco || x.stalled || (x.limiter && rpm > spec.rpm_limit + ecu::LIMITER_FUEL));
 
     // Throttle.
     let other = spec.leak + idle_air;
@@ -326,6 +342,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     };
     let area = gas::plate_area(s.plate) + other;
 
+    let boost_before = s.p_boost;
+    // The exhaust pressure of the last step (it follows from this step's flow).
+    let p_em = s.p_em;
     // Air path: boost pipe then manifold, sub-stepped when the manifold is fast.
     let eta_v = spec.eta_v.at(rpm);
     let tau = spec.v_im * 120.0 / (eta_v * spec.geometry.v_d * rpm.max(300.0));
@@ -358,12 +377,13 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         let p_up = if spec.turbo.is_some() { s.p_boost } else { x.p_a };
         let t_up = s.t_im;
         let rate = |p: f64| {
-            R * t_up / spec.v_im * (gas::orifice(spec.cda * area, p_up, p, t_up) - spec.cylinder_flow(p, rpm, t_up))
+            R * t_up / spec.v_im
+                * (gas::orifice(spec.cda * area, p_up, p, t_up) - spec.cylinder_flow(p, p_em, rpm, t_up))
         };
         s.p_im = implicit(s.p_im, h, rate);
     }
-    let w_cyl = spec.cylinder_flow(s.p_im, rpm, s.t_im);
-    let charge = spec.charge(s.p_im, rpm, s.t_im);
+    let w_cyl = spec.cylinder_flow(s.p_im, p_em, rpm, s.t_im);
+    let charge = spec.charge(s.p_im, p_em, rpm, s.t_im);
 
     // Firing events and indicated torque.
     let fired = s.events.step(f64::from(spec.class.cylinders) * rpm / 120.0 * dt, cut);
@@ -384,14 +404,39 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         };
         let t_ss = (t.t_em0 + t.t_em_k * w_exhaust + unburnt).min(turbo::T_EM_MAX);
         s.t_em += (t_ss - s.t_em) * (1.0 - exp(-dt / turbo::TAU_EXHAUST));
-        // Both gates aim at the WOT boost whatever the pedal (inferred: rally ECUs map pedal to position).
-        let aim = if anti_lag { x.p_a + ecu::ALS_BOOST } else { t.pi_wot.at(rpm) * x.p_a };
+        // The electronic gate's aim rises linearly with the throttle's aim position to the WOT boost at the position
+        // where the plate stops controlling the air (`aim_open`), as race ECUs' boost aim tables over rpm and throttle
+        // reach full aim before full throttle (shape inferred; the aim, not the plate, so a re-apply after anti-lag
+        // does not dump the boost while the plate opens); a spring gate aims at the WOT boost whatever the pedal.
+        let wot = t.pi_wot.at(rpm) * x.p_a;
+        let aim = if anti_lag {
+            x.p_a + ecu::ALS_BOOST
+        } else if spec.class.actuation == Actuation::Dbw {
+            let open = t.aim_open.at(rpm);
+            x.p_a + (wot - x.p_a) * if open > 0.0 { (target / open).min(1.0) } else { target }
+        } else {
+            wot
+        };
         let e = (s.p_boost - aim) / turbo::WASTEGATE_BAND;
         let command = if spec.class.actuation == Actuation::Dbw || anti_lag {
-            s.wastegate_i = (s.wastegate_i + e * dt / turbo::WASTEGATE_TI).clamp(0.0, 1.0);
-            (e + s.wastegate_i).clamp(0.0, 1.0)
+            // The electronic gate's base opening at this speed (the steady WOT one) plus PI, as boost controllers
+            // run a base duty table with closed-loop trim; the base pre-opens the gate as the boost comes up.
+            let base = if anti_lag { 0.0 } else { t.gate_base.at(rpm) };
+            // Conditional integration: the integral holds while the command is saturated the way it would grow.
+            // A derivative on the boost (not the error, so no kick from the aim) opens the gate as the boost
+            // rises fast, before it overshoots.
+            let d = if dt > 0.0 {
+                turbo::WASTEGATE_TD * (s.p_boost - boost_before) / (dt * turbo::WASTEGATE_BAND)
+            } else {
+                0.0
+            };
+            let raw = base + e + d + s.wastegate_i;
+            if !((raw <= 0.0 && e < 0.0) || (raw >= 1.0 && e > 0.0)) {
+                s.wastegate_i = (s.wastegate_i + e * dt / turbo::WASTEGATE_TI).clamp(-1.0, 1.0);
+            }
+            (base + e + d + s.wastegate_i).clamp(0.0, 1.0)
         } else {
-            e.clamp(0.0, 1.0)
+            ((s.p_boost - aim) / turbo::SPRING_BAND).clamp(0.0, 1.0)
         };
         s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / turbo::TAU_WASTEGATE));
         let (p_em, power) = t.turbine(w_exhaust, s.t_em, s.wastegate, x.p_a);
