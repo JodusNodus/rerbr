@@ -136,6 +136,10 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 - Fiesta Rally2, map 41 tarmac, autopilot (`ngp` / tyre only / full `experimental`): 150000 steps reach 3007 / 3011
   / 3027 m, split 1 118.82 / 118.54 / 118.20 s, no NaN; full brake from 15 m/s stops in 9.86 / 9.52 / 9.04 m (11.4 /
   11.8 / 12.5 m/s² mean). No measurable step cost (100000 steps 31-33 s either way).
+- Ramped 40 m circle (map 85, `--circle -260,120,40 --circle-ramp 0.25`): NGP and the brush alone hold the same
+  steering to the same limit, 8.6 m/s², then both run wide at full lock; the autopilot's steering steps (0.008) hide
+  any linear-range difference. Steady state matches by the fit; the differences are in transients, combined slip,
+  speed, load and temperature (lab tables above).
 
 ## Open
 
