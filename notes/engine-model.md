@@ -237,21 +237,23 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## In game
 
-Numbers in `docs/experimental-physics.md` ("In game"), main `96c85981`, experimental = realistic + brush; the brush
-is off on gravel, so gravel numbers compare engines only.
+Numbers in `docs/experimental-physics.md` ("In game"), main `0ef55141`, experimental = realistic + brush; the brush
+is off on gravel, so gravel numbers compare engines only. Tools `run-stage-compare.sh`, `cmp2.py` and
+`run-standing-start.sh` in the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s.
 
-- track-11_O (gravel) 600 s, four cars: unchanged by the brush but the Fiesta's split 2 (436.20 → 436.10 s); tools
-  `run-stage-compare.sh` and `cmp2.py` in the evidence archive.
-- Fiesta Rally2 0-100 km/h, plain flat-out start (`run-standing-start.sh`, `harness/car_pace.py` from 0.5 m/s): RSF
-  504 tarmac +6.7 % NGP 4.52 / exp 4.34 s (4.44 with NGP's tyre); track-64 gravel flat 4.66 / 4.62; RSF 345 gravel
-  −4 % 4.50 / 4.45.
-- Autopilot `--launch 7200,0.2` (hold, slip throttle, torque-crossing upshifts): 4.59 / 4.48, 4.63 / 4.62, 4.47 /
-  4.45: no gain. Both tyres pull as hard at 9 m/s of slip as near the peak at launch speeds (504: 10 m/s² while the
-  wheels spin 9 m/s over the car); a slip throttle cut bogged the turbo to 130 rad/s off boost (hence
-  `LAUNCH_FLOOR`). Launch 3500–7200 rpm, slip 10–40 %: no faster. Torque-crossing shifts 6386–6587 rpm against
-  `SHIFT_UP` 6494.
+- track-11_O (gravel) 600 s, four cars: Fiesta exp split 2 436.20 (engine alone, `96c85981`) → 435.66 s, Celica
+  438.02 → 437.82 (main's engine changes; the brush is off there), NA cars unchanged.
+- track-41_M (tarmac): exp 1.4–3.1 % sooner to split 2; the exp Golf II GTI stalls at 161 m: braking 0.8 in second
+  at 5.5 m/s, engine 494 → 0 rad/s in 0.2 s with the clutch closed (NGP's run passes there and finishes). Open.
+- Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.33 s (4.44 with NGP's tyre); track-64 gravel
+  flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant acceleration, −0.66 m/s²)
+  ≈ 3.9 s (inferred).
+- A launch control in the autopilot (hold, slip-held throttle, torque-crossing upshifts at 6386–6587 rpm against
+  `SHIFT_UP` 6494; removed) was no faster: 504 4.59 / 4.48, track-64 4.63 / 4.62, 345 4.47 / 4.45 (on `96c85981`).
+  Both tyres pull as hard at 9 m/s of slip as near the peak at launch speeds (504: 10 m/s² while the wheels spin
+  9 m/s over the car); cutting throttle on slip bogged the turbo to 130 rad/s off boost.
 - Sourced figure: Volkswagen's claim 4.1 s for the Polo GTI R5 (Rally2 class, 1230 kg); no measured Rally2 figure
-  found. Slope-corrected 504 (constant acceleration, −0.66 m/s²) ≈ 3.9 s (inferred).
+  found.
 
 ## Open
 

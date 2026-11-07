@@ -480,74 +480,82 @@ the limit to 20 over it.
 
 ### In game
 
-Every number here was measured on main at `96c85981`, the physics that ships: "NGP 7" is NGP 7's engine and tyre,
+Every number here was measured on main at `0ef55141`, the physics that ships: "NGP 7" is NGP 7's engine and tyre,
 "experimental" is the realistic engine with the brush tyre (`{ engine: "realistic", tyre: "brush" }`). The brush
 acts only on hard surfaces above 2 m/s; on gravel the tyre is NGP's in both, so a gravel number compares the engines
 alone.
 
-The autopilot drove each of four RallySimFans cars on stage track-11_O (Mustaselka, gravel) for 600 s, once with
-NGP 7's physics and once with the experimental physics. Three of them are the cars the samples are modelled on. Only
-the Fiesta has drive-by-wire, and its experimental run is with the one to one pedal map. "Over the limit" is the time
-the engine spent above `RPMLimit`. "Slip" is the time in gear, above 3 m/s, with the engine more than 3 % above the
-speed the gear gives with the clutch engaged, out of about 590 s in gear.
+The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
+tarmac one, track-41 (Cote D'Arbroz, its M variant, as the season's weather loads it), once with NGP 7's physics and
+once with the experimental physics. Three of them are the cars the samples are modelled on. Only the Fiesta has
+drive-by-wire, and its experimental run is with the one to one pedal map. "Over the limit" is the time the engine
+spent above `RPMLimit`. "Slip" is the time in gear, above 3 m/s, with the engine more than 3 % above the speed the
+gear gives with the clutch engaged, out of about 590 s in gear on gravel and 305–325 s on tarmac (track-41 finishes
+in about 5 minutes).
+
+Gravel, track-11_O:
 
 | Car | Physics | Split 2 | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 442.63 s | +34 | 5.0 s | 3.3 s |
-| | experimental | 436.10 s | +34 | 0.3 s | 4.1 s |
+| | experimental | 435.66 s | +34 | 0.3 s | 4.3 s |
 | Celica ST185 | NGP 7 | 445.47 s | +25 | 5.4 s | 4.6 s |
-| | experimental | 438.02 s | −4 | 0 s | 5.5 s |
+| | experimental | 437.82 s | −4 | 0 s | 5.5 s |
 | Golf II GTI 16V | NGP 7 | 466.95 s | +12 | 5.7 s | 6.0 s |
 | | experimental | 447.14 s | −7 | 0 s | 8.6 s |
 | Fiat 131 Abarth | NGP 7 | 463.65 s | +13 | 4.5 s | 7.9 s |
 | | experimental | 448.53 s | −25 | 0 s | 12.3 s |
 
-Against the same runs with the engine model alone (NGP's tyre), only the Fiesta's split 2 moved, from 436.20 s: the
-stage is gravel. No run stalled, and every run was still drivable at the end. The experimental limiter keeps every
-car under its limit in gear. The Fiesta's 0.3 s over is its start burnout in neutral. With the experimental physics
-the turbo cars reached split 2 1.5–1.7 % sooner and the NA cars 3.3–4.2 % sooner. The autopilot's caution sets most
-of its pace, and this is one stage and one run per car, so these gaps are not lap times a driver would see. The
-clutch slips 0.8–4.4 s longer per run, and the engine's mean distance from the clutch-engaged speed stays at most
-2.6 rad/s.
+Tarmac, track-41:
+
+| Car | Physics | Split 2 | Finish | Highest rpm over the limit | Over the limit | Slip |
+| --- | --- | --- | --- | --- | --- | --- |
+| Fiesta Rally2 | NGP 7 | 210.71 s | 309.01 s | +25 | 5.0 s | 3.6 s |
+| | experimental | 207.80 s | 304.88 s | +44 | 0.2 s | 6.7 s |
+| Celica ST185 | NGP 7 | 212.97 s | 310.91 s | +25 | 5.2 s | 3.5 s |
+| | experimental | 208.15 s | 305.22 s | −4 | 0 s | 4.2 s |
+| Golf II GTI 16V | NGP 7 | 222.28 s | 324.24 s | +21 | 4.7 s | 4.5 s |
+| | experimental | stalled at 161 m | | | | |
+| Fiat 131 Abarth | NGP 7 | 221.31 s | 323.35 s | +13 | 4.2 s | 5.9 s |
+| | experimental | 214.54 s | 314.89 s | −15 | 0 s | 5.0 s |
+
+On gravel no run stalled, and every run was still drivable at the end. On tarmac the experimental Golf stalled 12 s
+in: braking at 0.8 in second gear at 5.5 m/s on the opening climb, the engine fell from 494 rad/s to 0 in 0.2 s with
+the clutch still closed, and the autopilot cannot restart it. The experimental limiter keeps every car under its
+limit in gear; the Fiesta's time over is its start burnout in neutral. With the experimental physics the turbo cars
+reached split 2 1.6–1.7 % sooner on gravel and 1.4–2.3 % on tarmac, the NA cars 3.3–4.2 % sooner on gravel and the
+Fiat 3.1 % on tarmac. The autopilot's caution sets most of its pace, and this is one stage and one run per car, so
+these gaps are not lap times a driver would see. On gravel the clutch slips 0.9–4.4 s longer per run, and the
+engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
 
 #### 0 to 100 km/h
 
 The autopilot's flat-out standing starts with the Fiesta Rally2 (`--flat-out`), timed from the first move over
-0.5 m/s (`harness/car_pace.py`). The plain start revs to the limiter in neutral on the handbrake and drops into first
-at full throttle; NGP's clutch help then closes the clutch. No installed tarmac stage starts flat: the retail French
+0.5 m/s (`harness/car_pace.py`). The start revs to the limiter in neutral on the handbrake and drops into first at
+full throttle; NGP's clutch help then closes the clutch. No installed tarmac stage starts flat: the retail French
 stages climb 2–15 % over their first 100 m, and the flattest, track-46, bends before 100 km/h; RSF 504 climbs
-6.7 %. Retail track-64 (Hualapai Nation,
-gravel) is flat (0.0 % over its first 100 m) and straight for 100 m.
+6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat (0.0 % over its first 100 m) and straight for 100 m.
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
-| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.34 s |
-| track-64, gravel, flat | 4.66 s | 4.62 s |
-| RSF 345, gravel, 4 % downhill | 4.50 s | 4.45 s |
+| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.33 s |
+| track-64, gravel, flat | 4.66 s | 4.63 s |
+| RSF 345, gravel, 4 % downhill | 4.50 s | 4.44 s |
 
-On RSF 504 the brush took 0.10 s off the experimental time (4.44 s with NGP's tyre, before it merged); the gravel
-times are as they were with NGP's tyre. Taking the 6.7 % climb's 0.66 m/s² off a constant mean acceleration gives about 3.9 s on flat tarmac
-(inferred). The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the
-Polo GTI R5 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car
-was found, and M-Sport publishes none for the Fiesta.
+The brush took 0.10 s off the experimental time on RSF 504 (4.44 s with NGP's tyre, before it merged). Taking the
+6.7 % climb's 0.66 m/s² off a constant mean acceleration gives about 3.9 s on flat tarmac (inferred). The nearest
+sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5 (1230 kg,
+272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and M-Sport
+publishes none for the Fiesta.
 
-A launch start (`--launch 7200,0.2`: revs held at 7200 rpm, then the throttle holding 20 % wheel slip, and upshifts
-where the next gear's wheel torque on the car's table is higher) gave no gain:
-
-| Stage | NGP 7 | Experimental |
-| --- | --- | --- |
-| RSF 504, tarmac | 4.59 s | 4.48 s |
-| track-64, gravel | 4.63 s | 4.62 s |
-| RSF 345, gravel | 4.47 s | 4.45 s |
-
-In the traces both tyres drive as hard at a large slip as near their peak at these speeds (the plain start
-spins the wheels 9 m/s faster than the car on RSF 504 and still pulls 10 m/s²), so its wheelspin costs nothing,
-and a throttle cut costs boost: cutting it on slip bogged the turbo engine to 130 rad/s. Lower launch
-speeds (3500–6500 rpm) and other slip targets (10–40 %) were no faster. The torque-crossing upshifts fall at
-6390–6590 rpm, within 100 rpm of the autopilot's own 6494 rpm. The gap to a 3.5 s target is not the start.
+A launch control (revs held below the limiter, then the throttle holding the wheel slip) was no faster on any of the
+three: both tyres pull as hard at about 9 m/s of wheelspin as near their peak at these speeds, and cutting the
+throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not the start.
 
 ## Known limits
 
+- Hard braking in a low gear can stall an NA car: the Golf II GTI 16V stalled on track-41 braking in second at
+  5.5 m/s ("In game").
 - The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and
   anti-lag pops come from its cut firing events. The whine's pitch is the model's shaft speed times 0.78, to stay in
   the range the 1.02 sim's turbo gave the sound. The blow-off's loudness takes the Fiesta Rally2's valve size for
