@@ -557,6 +557,20 @@ struct Form {
     max_fps: u32,
     /// The driving window fills the monitor (`viewer --fullscreen`); `size` applies when off.
     fullscreen: bool,
+    /// Triple screens (`viewer --triple`); the field of view is the centre screen's.
+    triple: bool,
+    /// Each screen's diagonal (inches), frame (millimetres) and eye distance (centimetres).
+    triple_diagonal: f32,
+    triple_bezel: f32,
+    triple_distance: f32,
+    /// The side screens' turn, degrees; none faces them at the eye (`viewer --triple`'s `auto`).
+    triple_angle: Option<f32>,
+    /// The three monitors' names (left, centre, right, `viewer --triple-monitors`); none: one wide display.
+    triple_monitors: Option<[String; 3]>,
+    /// The monitor names winit sees now, for the Displays dropdowns (never saved).
+    monitors: Vec<String>,
+    /// The current monitor's aspect, for the true field of view; 16:9 without one.
+    monitor_aspect: f32,
     /// The driving window shows the highlights past an HDR display's SDR white (`viewer --hdr`).
     hdr: bool,
     /// The viewer writes a performance log to the player's `logs` folder (`viewer --perf-log`).
