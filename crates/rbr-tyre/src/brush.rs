@@ -388,7 +388,8 @@ pub struct EvalOutput {
 /// force, eqs. 4.19-4.20). Aligning moment M'_z (eqs. 4.33-4.35; the
 /// deformation torque M''_z is left out): Mz = mu Fz a (1 - psi)^2 (theta_y sy
 /// (1 - 4 psi) + 3 psi^2 sy/|s|) for psi < 1, else 0; for pure side slip mu Fz
-/// a theta_y sy (1 - psi)^3, and the trail -Mz/Fy tends to a/3 at small slip.
+/// a theta_y sy (1 - psi)^3, and the trail -Mz/Fy tends to a/3 at small slip. [`eval_slip`]
+/// takes [`affine_trail`] in its place (the patch's M'_z stays loose-v1's).
 pub fn eval(x: &EvalInput, cal: &Calibration) -> EvalOutput {
     let (vsx, vsy, vr) = slip_velocities(x);
     eval_slip(x, vsx / vr, vsy / vr, vr, cal)
@@ -441,7 +442,20 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     };
     let rest = mu_y_at(0.0);
     let mu_y = rest - LATERAL_FALL * (rest - mu_y_at(vs));
-    patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy)
+    affine_trail(patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy), x.half_length)
+}
+
+/// The aligning moment on a hard surface with the affine trail Hsu & Gerdes take (Y.-H. J. Hsu, PhD Stanford 2009,
+/// eq. 2.13; Hsu, Laws & Gerdes, IEEE TCST 18:4, 2010): a/3 at zero slip, falling linearly to 0 where the patch
+/// slides whole, t = a/3 (1 - psi) with psi the combined slip [`patch`] solves, and Mz = -t Fy. They found the
+/// parabolic-pressure brush's trail (the patch's M'_z, t = a/3 (1 - psi)^3 / (1 - psi + psi^2/3)) "less accurate in
+/// practice than the accompanying force model" and validated the affine one against their test car's steering
+/// torque up to the limit on pavement and gravel. Same t0 and the same zero at full sliding; in between the trail
+/// falls less, so Mz peaks at psi 0.37 instead of 0.25 and higher, 0.158 μ Fz a instead of 27/256 (the Magic Formula
+/// sets: 0.19-0.26). Loose surfaces keep the patch's M'_z.
+pub fn affine_trail(out: EvalOutput, half_length: f64) -> EvalOutput {
+    let trail = if out.psi < 1.0 { half_length / 3.0 * (1.0 - out.psi) } else { 0.0 };
+    EvalOutput { mz: -trail * out.fy, trail, ..out }
 }
 
 /// The brush's patch (see [`eval`]) at the load `fz`, half length `half_length`, slip stiffnesses `cx`, `cy`, axis
@@ -764,10 +778,32 @@ mod tests {
             let o = eval(&x, &cal);
             let p = o.psi.min(1.0);
             let f = o.mu * x.fz * (3.0 * p - 3.0 * p * p + p * p * p);
-            let mz = o.mu * x.fz * x.half_length * p * (1.0 - p).powi(3);
+            // The affine trail's moment; the patch's own M'_z is brush theory's.
+            let mz = x.half_length / 3.0 * (1.0 - p) * f;
             assert!((-o.fy / f - 1.0).abs() < 1e-12 && o.fx.abs() < 1e-9, "{deg} {o:?} {f}");
             assert!((o.mz - mz).abs() < 1e-9, "{deg} {o:?} {mz}");
         }
+    }
+
+    #[test]
+    fn affine_trail_peaks_later_and_higher_than_the_patch() {
+        // Pure side slip at psi: brush theory's Mz/(mu Fz a) = psi (1 - psi)^3, peak 27/256 at 0.25; the affine
+        // trail's (1 - psi)(3 psi - 3 psi^2 + psi^3)/3, peak 0.158 at 0.37.
+        let (fz, a, c) = (4000.0, 0.07, 70000.0);
+        let mut best = (0.0, 0.0, 0.0, 0.0);
+        for i in 1..1000 {
+            let sy = 3.0 * fz / c * f64::from(i) / 1000.0;
+            let p = patch(fz, a, c, c, 1.0, 1.0, 0.0, sy);
+            let q = affine_trail(p, a);
+            if p.mz > best.0 {
+                (best.0, best.1) = (p.mz, p.psi);
+            }
+            if q.mz > best.2 {
+                (best.2, best.3) = (q.mz, q.psi);
+            }
+        }
+        assert!((best.0 / (fz * a) - 27.0 / 256.0).abs() < 1e-4 && (best.1 - 0.25).abs() < 0.002, "{best:?}");
+        assert!((best.2 / (fz * a) - 0.1577).abs() < 5e-4 && (best.3 - 0.37).abs() < 0.01, "{best:?}");
     }
 
     #[test]

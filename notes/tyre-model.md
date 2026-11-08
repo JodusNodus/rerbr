@@ -137,7 +137,12 @@ Friction Estimation, PhD, Lund 2007, eqs. 4.14, 4.17, 4.18-4.20, 4.26-4.28; read
 ellipse along the sliding velocity, his collinear slide force. The aligning moment is his M'_z (eqs. 4.33-4.35):
 μ Fz a (1 - ψ)² (θ_y s_y (1 - 4ψ) + 3ψ² s_y/|s|); the deformation torque M''_z, ∝ (C_y - C_x), stays out. Its a is
 NGP's patch half length times (Fz/Fz0)^0.35 (2026-11-08, `brush::trail_half_length`): the MF sets' t0/a grows with load
-(above), brush theory's a/3 holds at the design load only; forces unchanged (a enters Mz alone). Pure
+(above), brush theory's a/3 holds at the design load only; forces unchanged (a enters Mz alone). On a hard surface
+the trail is Hsu & Gerdes's affine one in place of M'_z's (2026-11-08, `brush::affine_trail`): t = a/3 (1 - ψ), Mz =
+-t Fy, the same t0 and zero at full slide, Mz peak 0.158 μ Fz a at ψ 0.37 (M'_z: 27/256 at 0.25). They found the
+parabolic brush's trail less accurate in practice than its force model and validated the affine one on their car's
+steering torque to the limit (Y.-H. J. Hsu, PhD Stanford 2009, eq. 2.13 and ch. 4; IEEE TCST 18:4, 2010). Loose
+surfaces keep M'_z. Pure
 slip is Pacejka's cubic either way, so the curves, the per-wheel fit and the calibration are unchanged (lab CSVs
 identical). Before, the whole force pointed along (C_x s_x, C_y s_y), so at full slide the side share was 1/1.4 of
 the sliding velocity's. Pacejka's own ch. 3 text (isotropic bristles, where both directions coincide) was not
@@ -1063,20 +1068,31 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
 - Shape: peak slip angle 9.5° both (5.6-8.5); combined Fy(κ 0.25)/Fy(0) at 4° 0.463 / 0.349 (0.29-0.34, fig ±0.05);
   Kx/Fz 14.0 / 21.2 (18.4-32.9); peak Fx ∝ Fz^0.985 / 0.935 (0.90-0.95).
 - Aligning moment (the lab's `Tyre::aligning`: the torque `solve_forces` applies above 2 m/s, trail × Fy less the
-  carcass offset Fy/k_y × Fx, flat): t0/a 0.319 / 0.302 (0.36-0.51; brush theory a/3 at the design load); t0 ∝
+  carcass offset Fy/k_y × Fx, flat): t0/a 0.319 / 0.316 (0.36-0.51; brush theory a/3 at the design load); t0 ∝
   Fz^0.585 / 0.949 (0.90-1.05); patch half length ∝ Fz^0.57 both (NGP's contact geometry, the front axle's clean
   frames at 1.6-5.5 kN, local 0.55-0.58; 0.55-0.65); Mz peak ∝ Fz^1.25 / 1.79 (1.60-1.95) (2026-11-08: the lab took
   the patch from wheel 0's frames alone, 2.3-3.9 kN, and held the end length beyond, which read as Fz^0.30 and put t0
-  at Fz^0.31 / 0.69 and the Mz peak at Fz^0.98 / 1.54; the game was never short); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75° on the
-  0.25° grid); Mz to 0 never / at 1.13 (0.78-1.73: NGP's trail keeps 0.004 m at 10°, Mz 0.30 of its peak there); peak
-  Mz/(μ Fz a) 0.163 / 0.107 (0.19-0.26). Combined at 4°, κ ∓0.05 (context): ngp 0.60 / 1.23, brush -0.15 / 1.41,
-  both lower under braking, as the carcass offset makes them (NGP's trail barely falls with κ, 0.92 of pure at 0.05;
-  the brush's 0.61-0.71, the MF sets' αeq 0.26-0.42). Ice: Mz peak at 0.25° / 1.25° (brush theory: a quarter of the
+  at Fz^0.31 / 0.69 and the Mz peak at Fz^0.98 / 1.54; the game was never short); Mz peak at 0.421 / 0.410 of the Fy peak's angle (0.29-0.41; the brush's 4.0° against 9.75° on the
+  0.25° grid, scored MISS by 0.0003; 0.282 with M'_z); Mz to 0 never / at 1.18 (0.78-1.73: NGP's trail keeps 0.004 m at 10°, Mz 0.30 of its peak there); peak
+  Mz/(μ Fz a) 0.163 / 0.159 (0.19-0.26; 0.106 with M'_z). Combined at 4°, κ ∓0.05 (context): ngp 0.60 / 1.23, brush 0.26 /
+  1.13 (-0.11 / 1.38 with M'_z), both lower under braking, as the carcass offset makes them (NGP's trail barely falls with κ, 0.92 of pure at 0.05;
+  the brush's 0.61-0.71 with M'_z, the MF sets' αeq 0.26-0.42). Ice: Mz peak at 0.25° / 1.75° (1.25° with M'_z; brush theory: a quarter of the
   full-slide angle); gravel and snow Mz peak at 0.42 / 0.25 and 0.50 / 0.25 of the Fy peak's angle.
-- In game (`--trace-speed`'s `ffb` column, the filtered steering torque before NGP's curve; r40 circle ramp, map 85):
-  mean torque per 1 m/s bin, ngp / brush, 147 / 152 at 0.35 g, 190 / 176 at 0.54 g, 224 / 203 at 0.70 g (the peak),
-  186 / 176 at 0.78 g and 120 / 154 at 0.85 g as the fronts saturate: both go light before the limit, the brush by
-  24 % against NGP's 46 %; the trail's load exponent moves it under 1 %.
+- In game (`--trace-speed`'s `ffb` column, the filtered steering torque before NGP's curve; 2026-11-08, r40 circle
+  ramp on map 85 made uniform dry tarmac, `--material-as 37`, limit ~1.2 g; the plain circle crosses a patch of peak
+  μ_y ~0.8, which the earlier "brush goes light 24 % against NGP's 46 %" mixed in): a scratch build with the tyre's
+  normal-axis torque zeroed keeps 60-75 % of the column on all cars (the suspension's caster and jacking through Fy
+  and Fz, NGP's car data), so the tyre's Mz is a quarter to a third of what the wheel feels. Peak torque ngp / brush
+  before / brush now (Fiesta Rally2 4WD, Golf II FWD, Escort Mk II RWD): 279 / 241 / 284 at 1.10-1.15 g, 107 / 89 /
+  105 at 0.87-0.92 g, 65 / 54 / 69 at 0.9-1.07 g; at the limit 206-212 / 178-195 / 176-200 (-25 / -24 / -35 %), 56-62
+  / 49-53 / 49-54 (-45 / -43 / -53 %), 62 / 46 / 62 (-5 / -15 / -10 %). Before, the brush's Mz share peaked at 0.6-0.7
+  of the limit and fell 70 % (NGP's at 0.85, -50 %); its fall was never smaller than NGP's, its level 10-20 % lower
+  at 0.4-1.0 g. With the affine trail the brush is within 4 % of NGP's at 0.4-1.0 g on all three and falls further at
+  the limit. Real car (Hsu, PhD 2009, Figs 2.12-2.14: P1, steer by wire, 10 m/s ramp steer on pavement, front axle
+  load-cell torque incl. mechanical trail 0.026 m against t0 0.023 m; fig ±20 N m, ±0.05 g): torque peaks ~280 N m
+  at 0.70-0.80 g (0.75-0.85 of the 0.95 g limit, α_f 4-5° against the Fy peak's ~8-10°), 225 at 0.90 g (-20 %),
+  180-200 when the limit is first reached (-30 %), 100 well past (α_f 17°, -64 %). The game's mechanical share is
+  larger and its torque peaks later (0.79-0.91 of the limit, both models).
 
 Ice (16 scored, the probe and brake rows on 116; ngp / experimental-brush): peak slip angle 0.75° / 4.5° (4.5-5.1),
 5.0° at 6.7 kN for the brush (4-5); peak κ 0.02 / 0.06 (0.04-0.06); Cα/Fz 0-2° fit 3.72 / 2.43 (3.7-5.5); Kx/Fz 2.86
@@ -1140,12 +1156,13 @@ rows unchanged.
   Wong's Goodyear data disagree on whether braking or driving raises it, so neither M''_z (bristle, Svendenius eqs.
   4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
   (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
-- Aligning moment level and patch: t0/a 0.30 against the sets' 0.36-0.51 and peak Mz/(μ Fz a) 0.107 against 0.19-0.26
-  stay brush theory's (below; meeting them would make the steering 1.2-2.4 times heavier near the Mz peak). In game
-  (`ffb` column, Fiesta Rally2, map 41) the brush's torque is about 10 % lighter than NGP's at 0.3-0.8 g (mean |ffb|
-  126 / 183 / 224 against 138 / 209 / 249), and NGP's curve output is above 0.95 on 19 % of the steps against 21 %
-  (r40 circle on map 85: 64 % against 83 %) at the default S 105, under 1 % at 250 % tarmac (S 262.5); the 10000
-  clamp is never reached (2026-11-08).
+- Aligning moment level and patch: t0/a 0.32 against the sets' 0.36-0.51 stays brush theory's a/3; peak Mz/(μ Fz a)
+  0.159 with the affine trail (2026-11-08) against 0.19-0.26 (0.107 with M'_z). In game (`ffb` column, map 41, 600 s
+  autopilot, mean |ffb| at 0.3-0.4 / 0.4-0.5 / 0.5-0.6 / 0.6-0.7 g, ngp / brush with M'_z / affine): Fiesta Rally2
+  138 / 126 / 132, 169 / 154 / 165, 209 / 182 / 199, 236 / 213 / 238; Golf II 55 / 49 / 52, 70 / 64 / 69, 85 / 73 /
+  81, 108 / 86 / 97: +7-8 % over the band's steps against M'_z (+5 % at 0.3 g, +12 % at 0.65 g), within 6 % of NGP's.
+  NGP's curve output above 0.95 on 21 / 19 / 21 % of the Fiesta's steps at the default S 105, under 1 % at S 262.5;
+  the 10000 clamp is never reached. Autopilot pace unchanged (Fiesta 304.00 → 304.03 s, Golf 314.09 → 314.09).
   The load dependence is in band: NGP's patch grows ∝ Fz^0.57 (MF-Swift 0.59-0.64), so with the trail's own
   (Fz/Fz0)^0.35 t0 ∝ Fz^0.95.
   The level through physics (2026-11-08, numeric brush, 4 kN, a 0.074 m, Cy 70.4 kN/rad, μ 1.26; prototype, not
