@@ -5,21 +5,25 @@
   python3 -I -B harness/tyre_scorecard.py --compare A.json B.json
 
 Every target row whose `how` is not `none` is measured for each physics and printed with its band, PASS or MISS and
-how far outside the band it lies (bands are inclusive; an empty bound is open). The `how` keys:
+how far outside the band it lies (bands are inclusive; an empty bound is open). A row with both bounds empty is
+context: measured and printed (CTX), not scored. The `how` keys:
 
   tyre:SURFACE:KEY        a key of the rbr-tyre-lab `scorecard` example (steady forces of the tyre model the physics
                           runs, NGP's where it hands back) on the probed wheel of SURFACE: tarmac (map 85, wheel 1 at
                           step 8000 of the r40 circle), gravel (RSF 345, wheel 0 at step 6000 of the r40 circle), snow
                           (map 10, wheel 0 at step 6000), ice (map 85 iced whole, `--material-as 116`: NGP's
                           material 116 through the tarmac tyre's class factor, as on RSF 565/614; wheel 1 at step
-                          8000 of the r40 circle)
+                          8000 of the r40 circle); tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h,
+                          the latter with WaterFactor 1 on the dry friction level
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
-                          the slip targets), ratio (locked decel over best threshold decel); gravel RSF 345, tarmac RSF
-                          568, snow map 10, ice RSF 504's start straight iced from the brake onset (`--material-as
-                          116`: the run-up on its tarmac; off the road is ice too, so a stop may wander 15 m off the
-                          driveline), its decel taken on the flat (less g times the straight's 6.6 % rise; a reset by
-                          the game, as on RSF 568 where a locked car drifts into the edge, is refused)
+                          the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
+                          over the threshold run at slip K's: an ABS holds low slip, not the best K); gravel RSF 345,
+                          tarmac RSF 568, snow map 10, ice RSF 504's start straight iced from the brake onset
+                          (`--material-as 116`: the run-up on its tarmac; off the road is ice too, so a stop may
+                          wander 15 m off the driveline), its decel taken on the flat (less g times the straight's
+                          6.6 % rise; a reset by the game, as on RSF 568 where a locked car drifts into the edge, is
+                          refused)
   brake-ratio:A/B:KMH:X/Y surface A's X decel (locked, best) over surface B's Y decel
   circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s)
 
@@ -62,6 +66,11 @@ PROBES = {
                 circle=["--circle", "-260,120,40"], wheel=1, at=8000),
 }
 TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []), "ice": ("ice", [])}
+# TRL PPR496's test speeds (32/64/100 km/h) on the tarmac wheel, dry and with WaterFactor 1 (the dry friction level
+# kept: the rows are ratios).
+for _kmh in (32, 64, 100):
+    TYRE_SURFACES[f"tarmac-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}"])
+    TYRE_SURFACES[f"tarmac-wet-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1"])
 # The brake runs per surface: the stage, the extra rbr-standalone flags, the steps, how far off the driveline a valid
 # stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
 BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}
@@ -205,7 +214,7 @@ class Plan:
 
     def brake_g(self, surface, kmh, what):
         b = self.brake[(surface, kmh)]
-        name = "locked" if what == "locked" else b["best"]
+        name = {"locked": "locked", "best": b["best"]}.get(what, what)
         run_ = b["runs"].get(name) if name else None
         if not run_ or "g" not in run_:
             raise LookupError(f"{surface} {kmh} km/h {what}: " + (run_ or {}).get("error", "no threshold run"))
@@ -228,6 +237,8 @@ class Plan:
             surface, kmh, what = rest.split(":")
             if what == "ratio":
                 return self.brake_g(surface, int(kmh), "locked") / self.brake_g(surface, int(kmh), "best")
+            if what.startswith("ratio_k"):
+                return self.brake_g(surface, int(kmh), "locked") / self.brake_g(surface, int(kmh), what[6:])
             return self.brake_g(surface, int(kmh), what.removesuffix("_g"))
         if kind == "brake-ratio":
             pair, kmh, xy = rest.split(":")
@@ -245,7 +256,9 @@ class Plan:
 
 
 def verdict(value, low, high):
-    """PASS or MISS and the signed distance outside the band (0 inside)."""
+    """PASS or MISS and the signed distance outside the band (0 inside); CTX for a context row (no band)."""
+    if low is None and high is None:
+        return "CTX", 0.0
     if low is not None and value < low:
         return "MISS", value - low
     if high is not None and value > high:
@@ -311,12 +324,13 @@ def score(args):
                 continue
             status, out = verdict(value, low, high)
             print(f"{row['id']:40} {p:18} {value:8.3f} {band_text(low, high):>13} {status:4} "
-                  f"{'' if status == 'PASS' else f'{out:+8.3f}':>8}")
+                  f"{'' if status != 'MISS' else f'{out:+8.3f}':>8}")
             values[row["id"]][p] = value
-    counts = {p: sum(1 for r in rows if values[r["id"]][p] is not None and
+    scored = [r for r in rows if bound(r["low"]) is not None or bound(r["high"]) is not None]
+    counts = {p: sum(1 for r in scored if values[r["id"]][p] is not None and
                      verdict(values[r["id"]][p], bound(r["low"]), bound(r["high"]))[0] == "PASS") for p in plans}
     for p in plans:
-        print(f"{p}: {counts[p]}/{len(rows)} PASS")
+        print(f"{p}: {counts[p]}/{len(scored)} PASS")
     if args.json:
         out = {"commit": commit(),
                "settings": {"physics": physics, "car": CAR, "quick": args.quick, "only": args.only, "slips": slips,

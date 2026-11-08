@@ -9,6 +9,7 @@ use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 
 use crate::brush::Calibration;
 use crate::calibrate::{calibrate, CalPoint, CalTargets};
+use crate::loose::{self, Levels, Loose};
 use crate::Wheel;
 
 /// The sweeps' speed, m/s (ours, as the lab's).
@@ -41,6 +42,20 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
         temp_grip_cal: 1.0,
     };
     Ok(calibrate(&targets, &point))
+}
+
+/// The loose-surface tyre for `w` on its brush calibration `cal` ([`crate::loose`]): NGP's free rolling peaks at each
+/// positive load of the wheel's axis, on the unit surface, and its cornering slope at the nominal load.
+pub fn loose(w: &Wheel, cal: &Calibration) -> Result<Loose, String> {
+    let mut levels = Levels::default();
+    for &fz in w.load_axis.iter().filter(|&&fz| fz > 0.0) {
+        let t = targets(w, fz)?;
+        levels.load.push(t.fz0);
+        levels.lateral.push(t.peak_lat / t.fz0);
+        levels.longitudinal.push(t.peak_lon / t.fz0);
+    }
+    let slope = targets(w, cal.fz0 as f32)?.fit_lat;
+    Ok(loose::calibrate(cal, levels, slope, SPEED))
 }
 
 /// NGP's targets at `fz0`: the lateral peak over 0 to 30° of slip angle, the least-squares cornering slope over 0 to
@@ -162,6 +177,7 @@ pub(crate) mod tests {
                 pressure: 0.0,
                 pressure_factor: 1.0,
                 wetness: 0.0,
+                hydroplaning: false,
                 temp_grip: 1.0,
                 surf_static: 1.0,
                 surf_kinetic: 1.0,
@@ -174,6 +190,20 @@ pub(crate) mod tests {
         let alphas = (1..=8).map(|k| (f64::from(k) * 0.25).to_radians());
         let (sxy, sxx) = alphas.fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * lateral(a), sxx + a * a));
         assert!((sxy / sxx / t.fit_lat - 1.0).abs() < 0.01, "slope {} NGP {}", sxy / sxx, t.fit_lat);
+    }
+
+    #[test]
+    fn the_loose_tyre_takes_ngp_s_peaks_at_each_load_and_its_slope() {
+        let w = wheel();
+        let cal = calibration(&w).unwrap();
+        let l = loose(&w, &cal).unwrap();
+        assert_eq!(l.levels.load, [1000.0, 2500.0, 4000.0, 6000.0, 8000.0]);
+        for (k, &fz) in l.levels.load.iter().enumerate() {
+            let t = targets(&w, fz as f32).unwrap();
+            assert_eq!((l.levels.lateral[k], l.levels.longitudinal[k]), (t.peak_lat / fz, t.peak_lon / fz));
+        }
+        let slope = targets(&w, 4000.0).unwrap().fit_lat;
+        assert!((crate::loose::cornering_slope(&l, SPEED) / slope - 1.0).abs() < 1e-9);
     }
 
     #[test]

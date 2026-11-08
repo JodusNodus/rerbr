@@ -13,8 +13,9 @@ from the engine speed in place of the pedal), so the idling engine does not turn
 brakes in gear with clutch help on, as the plain brake test does (the autopilot downshifts, and on gravel the idling
 engine drives the wheels against the brake). For each run it prints the stopping distance, time and mean deceleration
 (car_pace.analyse_brake: brake onset to the stop, crash stops and the game's resets refused; "flat g" with the
-road's rise over the stop removed) and, while braking over 3 m/s past the first
-tenth, the most-slipping wheel's slip (mean and spread) and the wheels' mean rim speed; last the locked distance over
+road's rise over the stop removed) and, while braking over 3 m/s past the first tenth, the most-slipping wheel's slip
+(mean and spread), the wheels' mean rim speed and the deceleration through 32, 64 and 100 km/h (±1.5 m/s, TRL
+PPR496's speeds: a locked run's friction at that sliding speed, aero drag included); last the locked distance over
 the best threshold distance. Traces and logs go to DIR (<run>.trace, <run>.log).
 target/release/rbr-standalone must be built (`cargo build --release -p rbr-standalone`); RBR_DATA, RBR_RSF and
 RBR_NGP_PHYSICS come from dev.env."""
@@ -33,6 +34,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN = os.path.join(REPO, "target", "release", "rbr-standalone")
 G = 9.80665
 SLIP_FROM = 3.0  # m/s: the slip statistics stop here (the ratio is noise near the stop)
+BANDS = (32 / 3.6, 64 / 3.6, 100 / 3.6)  # m/s: the deceleration at TRL PPR496's test speeds (32, 64, 100 km/h)
+BAND_HALF = 1.5  # m/s either side of a band's centre
 
 
 def command(args, name, brake):
@@ -67,12 +70,23 @@ def slip_stats(rows, onset):
     return statistics.mean(slips), statistics.pstdev(slips), rim
 
 
+def band_decel(rows, onset, centre, half=BAND_HALF):
+    """Mean deceleration (m/s^2) while the speed falls from centre + half to centre - half past the brake onset (the
+    car's friction at that sliding speed when locked), or None if the run does not cross the band."""
+    hi = next((i for i in range(onset, len(rows)) if rows[i]["v"] <= centre + half), None)
+    lo = next((i for i in range(hi or onset, len(rows)) if rows[i]["v"] <= centre - half), None) if hi else None
+    if hi is None or lo is None or hi == onset or rows[lo]["t"] <= rows[hi]["t"]:
+        return None
+    return (rows[hi]["v"] - rows[lo]["v"]) / (rows[lo]["t"] - rows[hi]["t"])
+
+
 def analyse(path, frm, max_off=car_pace.CRASH_OFF):
     rows = car_pace.load_trace(path)
     result = car_pace.analyse_brake(rows, frm, max_off)
     if result["ok"] and "wheels" in rows[0]:
         onset = next(i for i in range(result["launch"], len(rows)) if rows[i]["brk"] > car_pace.BRK_ONSET)
         result["slip"] = slip_stats(rows, onset)
+        result["bands"] = [band_decel(rows, onset, c) for c in BANDS]
     return result
 
 
@@ -103,7 +117,8 @@ def main():
     clutch = "clutch out" if args.clutch_out else "declutched"
     print(f"{args.rsf_car} on {args.stage or args.rsf_stage}, {args.physics}, {clutch}, "
           f"from {frm:.2f} m/s ({frm * 3.6:.0f} km/h)")
-    print(f"{'run':8} {'dist m':>7} {'time s':>7} {'decel g':>8} {'flat g':>7} {'slip':>12} {'rim m/s':>7}")
+    print(f"{'run':8} {'dist m':>7} {'time s':>7} {'decel g':>8} {'flat g':>7} {'slip':>12} {'rim m/s':>7}  "
+          "g at 32/64/100 km/h")
     best = None
     locked = None
     for (name, _), code in zip(runs, codes):
@@ -114,8 +129,9 @@ def main():
             continue
         mean, sd, rim = result.get("slip", (None, None, None))
         slip, rim = (f"{mean:.3f}±{sd:.3f}", f"{rim:.2f}") if mean is not None else ("-", "-")
+        bands = " ".join(f"{b / G:.3f}" if b else "-" for b in result.get("bands", ()))
         print(f"{name:8} {result['dist']:7.1f} {result['time']:7.2f} {result['decel'] / G:8.3f} "
-              f"{result['decel_flat'] / G:7.3f} {slip:>12} {rim:>7}")
+              f"{result['decel_flat'] / G:7.3f} {slip:>12} {rim:>7}  {bands}")
         if name == "locked":
             locked = result
         elif best is None or result["dist"] < best[1]["dist"]:

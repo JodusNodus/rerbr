@@ -45,6 +45,7 @@ impl Lab {
                 pressure: f64::from(p.air_pressure),
                 pressure_factor: f64::from(p.stiffness_factor),
                 wetness: 0.0,
+                hydroplaning: true,
                 temp_grip: f64::from(p.temperature_grip),
                 surf_static: f64::from(p.static_friction),
                 surf_kinetic: f64::from(p.kinetic_friction),
