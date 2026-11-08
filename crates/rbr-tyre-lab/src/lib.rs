@@ -5,6 +5,7 @@
 pub use rbr_tyre::{brush, calibrate};
 pub mod ngp;
 pub mod probe;
+pub mod steady;
 
 /// Writes `text` to `path`, creating its folder; panics with the path on failure (lab output).
 pub fn write(path: &std::path::Path, text: &str) {
