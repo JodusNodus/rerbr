@@ -57,6 +57,9 @@ pub struct Args {
     /// `--circle-ramp RATE` (with `--circle`): the circle target's rise in m/s per s (`CIRCLE_RAMP` unless given,
     /// for repeat runs at a gentler or steeper ramp).
     pub circle_ramp: Option<f32>,
+    /// `--circle-past T` (with `--circle`, limit tests): past the circle's limit, hold throttle T (0-1) with no brake
+    /// or gear change while the pursuit steers on (`autopilot::Driver::with_circle_past`).
+    pub circle_past: Option<f32>,
     /// `--plan LAT,BRAKE` (with `--autopilot`, limit runs): the speed plan's dry lateral and braking acceleration in
     /// m/s² in place of the controller's own (`autopilot::Plan`).
     pub plan: Option<autopilot::Plan>,
@@ -201,7 +204,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -284,6 +287,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--circle" => args.circle = Some(value.parse()?),
             "--circle-ramp" => args.circle_ramp = Some(parsed("--circle-ramp", &value)?),
+            "--circle-past" => {
+                args.circle_past = Some(parsed("--circle-past", &value).and_then(|t: f32| {
+                    (0.0..=1.0).contains(&t).then_some(t).ok_or(format!("--circle-past {value}: a throttle, 0-1"))
+                })?)
+            }
             "--plan" => args.plan = Some(value.parse()?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
             "--tyre-probe" => args.tyre_probe = Some(PathBuf::from(value)),
@@ -547,6 +555,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.circle_ramp.is_some() && args.circle.is_none() {
         return Err("--circle-ramp needs --circle".into());
     }
+    if args.circle_past.is_some() && args.circle.is_none() {
+        return Err("--circle-past needs --circle".into());
+    }
     if args.brake_from.is_some() && args.autopilot.is_none() {
         return Err("--brake-from needs --autopilot".into());
     }
@@ -799,6 +810,7 @@ mod tests {
             (format!("{BOOT} --circle -260,120,40 --circle-ramp 0.4"), |a| {
                 assert_eq!(a.circle_ramp, Some(0.4));
             }),
+            (format!("{BOOT} --circle -260,120,40 --circle-past 0"), |a| assert_eq!(a.circle_past, Some(0.0))),
             (format!("{BOOT} --plan 8.5,6"), |a| {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));
             }),
@@ -1029,6 +1041,7 @@ mod tests {
             (format!("{REC} --material-as 116"), "--material-as needs --boot"),
             (format!("{REC} --material-as ice"), "--material-as ice: a material id"),
             (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
+            (format!("{REC} --circle-past 1"), "--circle-past needs --circle"),
             (format!("{REC} --plan 8,6"), "--plan needs --autopilot"),
             (format!("{BOOT} --plan 8"), "--plan 8: want LAT,BRAKE in m/s², both over 0"),
             (format!("{BOOT} --plan 8,0"), "--plan 8,0: want LAT,BRAKE in m/s², both over 0"),

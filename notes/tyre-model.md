@@ -330,6 +330,65 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   any linear-range difference. Steady state matches by the fit; the differences are in transients, combined slip,
   speed, load and temperature (lab tables above).
 
+- Past the limit (2026-11-08, `harness/limit_recovery.py`: map 85 r40 circle, every material as tarmac 37
+  (`--material-as 37`: the circle crosses loose gravel 189/181 at its south-west, μs 0.875, soil 6.5 mm, which loose-v1
+  takes under the brush), ramped at 0.5 m/s per s until the car first runs 1 m wide, then `--circle-past T` holds
+  throttle T with the pursuit steering on; RSF 568's start straight resets the car 2.4 m off its line, so no open-loop
+  step steer at speed). Limit 77-81 km/h, 1.19-1.28 g in every physics. After a lift (T 0): lateral g kept (lowest
+  0.25 s mean in 1.5 s over the limit's) / widest m / back within 0.5 m s / peak sideslip °, ngp; experimental (NGP's
+  tyre); brush before V_SHAPE; brush with it (5fff12c2): Fiesta Rally2 0.89/1.6/1.7/5.6; 0.89/2.0/2.0/4.7;
+  0.80/4.2/3.1/2.9; 0.79/2.8/2.6/3.3. Golf II 0.79/2.0/2.3/3.3; 0.75/3.0/2.8/3.3; 0.72/6.4/4.1/3.6;
+  0.66/6.0/4.0/3.4. Escort Mk II: experimental 0.79/2.2/2.4/52 (ngp never ran wide on the ramp); brush spins (180°)
+  before and after. Full throttle (T 1): the Golf spins under the brush before (180°) and after (99°), not under NGP's
+  tyre (17-29°); the Fiesta spins under ngp and the brush. A scratch build with the lateral friction flat with sliding
+  speed (bound, not committed: μ_y(30°)/peak at 15 m/s leaves the band) gives 0.91/1.7/1.7 (Fiesta), 0.87/2.9/2.3
+  (Golf), the Escort back in 1.8 s without spinning, and a limit 4-7 % above NGP's: on clean tarmac at 80 km/h the
+  friction's fall past the peak is what makes the brush less forgiving; V_SHAPE takes the speed out of it and leaves
+  the fall with slip the 15 m/s curve has. Not the cause there: carcass dynamics, camber thrust, Cα's load exponent,
+  Kx/Ky, μ's load exponent, trail (scratch builds, each within 0.7° of sideslip on the stage's own surface). On the
+  stage's own surface (with the gravel) the brush's car slid rear first (onset sideslip 11-13° against 1-2°): that is
+  loose-v1 against NGP's soil on the patch, not tarmac.
+- Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
+  friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
+  15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
+  PASS; locked over peak at 100 km/h 0.668 → 0.656, wet 0.505 → 0.495, wet peak 100/32 0.951 → 0.970, all in band);
+  map 41 600 s Fiesta Rally2 304.03 → 304.03 s, Golf II 314.11 → 314.09 (ngp 309.01, 324.24).
+- Lateral past-peak shape (2026-11-08, `brush::LATERAL_FALL` 0.65, user decision): the lateral axis takes 0.65 of the
+  friction's fall with sliding speed, the longitudinal axis all of it, so a locked wheel braking straight keeps the TRL
+  fit. μ_y(30°)/peak at 4 kN, 15 m/s 0.833 → 0.893, chosen at the band's upper end (0.73-0.90) on weaker sources: TRR
+  621 (bias tyre, flat belt, 48 km/h) ~1.0 at 30°, Persson 2011 (model) 0.97 at 25°, NGP 0.865, against the road MF
+  sets' full slide 0.73-0.83. Scorecard against main 83 → 85/112: μ_y(30°)/peak +0.060 (PASS), peak slip angle 9.50 →
+  9.75° (MISS, band 5.6-8.5), Mz to 0 at 1.13 → 1.10 of the Fy peak's angle, Mz peak at 0.289 → 0.282 of it (MISS),
+  peak μ_y per +0.5 bar 0.27 → 0.18 %, ice μ_y(20°)/peak 0.907 → 0.940 and end over max 0.943 → 0.963 (both MISS
+  before; the ice tyre is the tarmac brush), ice locked over threshold 0.807 → 0.812 (MISS → PASS); TRL locked rows
+  and the brake-test car rows within 0.005 of 5fff12c2. Clean-tarmac recovery after a lift (kept g / widest m / back
+  s): Fiesta 0.87/2.1/2.1 (5fff12c2 0.79/2.8/2.6, ngp 0.89/1.6/1.7), Golf 0.74/4.0/3.2 (0.66/6.0/4.0; ngp
+  0.79/2.0/2.3), Escort 0.77/4.1/never, peak sideslip 97° (spun 180° before; experimental 0.79/2.2/2.4, 52°); full
+  throttle: Golf 38° and back on line never (99° spin before; ngp 17°), Fiesta 39° and back in 4.8 s (54°, never),
+  Escort still spins. Limit 82.8/78.7/76.4 km/h, 1.29/1.25/1.19 g (ngp Fiesta 1.27, Golf 1.20). Map 41 600 s: Fiesta
+  304.00 s, Golf 314.09.
+- Rolling sideways against locked, data (2026-11-08): TRR 621 (1976, Calspan flat belt, J78-15 bias-belted, 6.2 kN,
+  48 km/h only, dry SN85; fig ±0.02): μ_y 0.84 at 16°, ~0.87 near 30°, ~0.80 at 60-72°, ~0.82 at 90° (= the locked
+  wheel's sideways value), braking peak 0.84 / locked 0.74 quoted; so 30°/peak ~1.0 against the brush's 0.80 at 54
+  km/h and NGP's 0.865, and at one speed the rolling slide sits at the locked value of a similar sliding speed.
+  Persson, J. Phys. Condens. Matter 23 (2011) 015003 (model, flash temperature, tread at 60-80 °C; fig ±0.02): μ_x at
+  25 % slip 1.38/1.37/1.40 at 10/30/40 m/s, μ_y 25°/peak 0.97 at 27 m/s; the cold-rubber benefit of a fresh element
+  lasts 0.2-2 mm of sliding, so contact time alone does not hold grip at 10-30°. Gent & Walter, NHTSA DOT HS 810 561
+  (2006) ch. 8: dry peak lateral "not likely to change much with speed", the back slope expected steeper with speed
+  (a sketch from locked-wheel data, not measured). Every published MF set read (27 `.tir` on GitHub, MFeval, Chrono)
+  has LMUV 0 or none. Cabrera et al., Sensors 18:896 (2018), locked 205/65R15 on dry asphalt: μ = 0.640 + 0.262
+  exp(-0.081 v km/h), flat above ~40 km/h (table), unlike TRL's. Pottinger, Marshall & Arnold, SAE 760029 (1976,
+  GR70-15, 10-121 km/h, read in full): F_y at 1° +8-9 % per tenfold speed, the speed effect insignificant beyond about
+  4° (quoted; no larger angles tested). Pacejka, Tyre and Vehicle Dynamics 2nd ed. (2006) eq. 3.116: μ = μ0/(1 + a_μ
+  V_s), a_μ 0.03 s/m in his tread-simulation example (a model, "typical especially for wet roads"; the peak "will
+  decrease when the speed of travel is increased", not shown); MF's λ_μV (eq. 4.E7, μ/(1 + λ_μV V_s/V_0)) is 0 unless
+  a slippery surface is meant. The brush's curve is close to that example: at V_s 7.5 m/s 0.81 of μ_S against 0.82.
+  Selig et al., Tire Sci. Technol. 42 (2014) 216 (summer tyre on P80 corundum, flat-bed, 16.6 m/s only): cornering
+  heats the tread surface from 36 to 75 °C at 10° and 9 kN and the measured μ_y falls below the braking curve's level,
+  faster with slip than flash heating alone predicts (fig). Nakanishi et al., VSD 62 (2024) 2401 (slick, drum, 100
+  km/h, 0-4° only): the fitted friction scale falls with slip angle, attributed to heat. No open two-speed measurement
+  of a rolling tyre at 10-30° on dry tarmac was found.
+
 ### A/B protocol (a driver, tarmac)
 
 After Richardson's simulator plan (Chalmers 2017, Appendix C: baseline stint, one parameter per stint, a fixed lap
@@ -1107,6 +1166,10 @@ rows unchanged.
   brush 21) 0.18-0.50 s, a build with NGP's Kx: the brush's driven wheels slip a third less on throttle. Ruled out
   (builds, not committed): NGP's Cα load exponent (within 0.04 s); no carcass dynamics above 3 m/s and a friction flat
   with sliding speed are faster still. 0.1-0.2 % unattributed.
+- Past the limit on tarmac (user, 2026-11-08: "the slip was very immediate, and then it's pretty much impossible to
+  get grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide
+  after a lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test
+  is next; a rolling tyre's measured past-peak shape at speed would settle the value.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 5 % per +0.5 bar (2026-11-08;
   op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar, Meccanica 2023):
   meeting the sources needs Cα to fall with pressure, as theirs does at 4 kN while Goodyear's rises near nominal
