@@ -68,6 +68,8 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Dry friction against speed | peak "relatively unchanged" with speed on dry runways, fast drop wet; Kiencke & Nielsen's factor exp(-c4 Vs), c4 0.02-0.04 s/m | Horne & Leland, NASA TN D-1376 (1962), aircraft tyres; Shadrin et al., IOP Conf. Ser. 832:012011 (2020) (book not read) |
 | Relaxation length | 0.12-0.45 m, longer at higher speed and load, of the order of the wheel radius at Fz0 (Pacejka); grows with speed: σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m (car tyre bench, ≤2 Hz; also with frequency, <0.5 m near 0 Hz to ~1.0 m at 1 Hz); motorcycle tyres 0.1-0.4 m, "higher ... at higher speeds"; MF-Swift: independent of V, set by load, slip and pressure; σ/R0 at Fz0 lateral 1.01 / 1.84, longitudinal 1.19 / 1.44 | Pacejka via Wikipedia "Relaxation length"; Vera et al. (2022); Cossalter, Lot & Massaro, Motorcycle Dynamics, ch. 1 (Wiley excerpt); Schmeitz, TNO MF-Tyre/MF-Swift lecture (2013); MF 5.2 truck / MF6.1 sets |
 | Trail at small slip | a/3 (half contact length a) | brush theory (Pacejka 2012) |
+| Aligning moment, pure slip | at 4 kN: t0/a 0.42 / 0.51 / 0.36 (t0 at ±0.5°, a the MF-Swift contact length from Q_RA1/2); t0 ∝ Fz^0.93 / 0.93 / 1.01 over 2-6 kN, a ∝ Fz^0.60 / 0.64 / 0.59; Mz peak ∝ Fz^1.64 / 1.90 / 1.90, peak Mz/(μ_y Fz a) 0.19 / 0.26 / 0.20 (brush theory 27/256 = 0.105); Mz peak at 0.30 / 0.37 / 0.35 of the Fy peak's slip angle, Mz back to 0 at 0.78 / 1.73 / 1.19 of it, slightly negative or 0 beyond. Measured Goodyear Wrangler P225/75R15 (48 km/h, ~6 kN): Mz peak 3.7° against the Fy peak at 9-11°, 0 at 13-15°, never negative | TNO 205/60R15 / Continental 225/50R18 (MF-Tool 6.2) / MF6.1, evaluated with MF 6.1's Mz (MF/model; the KT_MF_Tool 245/60R16 template copies TNO's and is left out); Svendenius, PhD Lund 2007, Fig 5.4 (NHTSA data, fig ±0.25°) |
+| Aligning moment, combined | Mz(κ)/Mz(0) at 4°, κ ∓0.05, 4 kN: braking 0.62 / 1.29 / 0.40, driving -0.07 / -0.63 / 0.44 (MF 6.1's combined Mz has one fitted term, s·Fx; MF6.1's is 0). The fitted s puts braking above driving; Wong (Goodyear data) says driving raises and braking lowers Mz, as a carcass lateral deflection under Fx does. Conflict: not scored. Low μ: the trail falls to 0 at the full-slide angle, ∝ μ (Hsu, Laws & Gerdes, IEEE TCST 18:4, 2010, on dry gravel; model, no Mz numbers); no open Mz data on snow, ice or gravel | same sets (MF/model); Wong, Theory of Ground Vehicles ch. 1 (secondary, not read) |
 | Contact patch, braking | static ink print 205/55R16 at 4821 N, 240 kPa: 147 mm long, 161 mm wide (NGP's tarmac patch at 4.8 kN, 200 kPa: ~0.165 m, 12 % longer, as the lower pressure suggests; the brush's a is half of it); ABS car 100-0 km/h on ten such tyres 36.3-41.7 m, 0.94-1.08 g mean (v²/2s, pedal rise included: a lower bound for a rally tarmac tyre) | Liang et al., Adv. Mech. Eng. 12(12) (2020), doi 10.1177/1687814020981173 (table; g inferred) |
 
 | Convection | Nu ∝ Re^0.8 (NGP 0.78) | West & Limebeer, VSD 60 (2022) |
@@ -124,7 +126,9 @@ Combined slip (2026-11-07): the adhering part of the patch gives -C_i s_i (1 - �
 slip, the sliding part μ Fz ψ² (3 - 2ψ) against the sliding velocity, μ Fz from ψ = 1 (Svendenius, Tire Modeling and
 Friction Estimation, PhD, Lund 2007, eqs. 4.14, 4.17, 4.18-4.20, 4.26-4.28; read in full); the directional μ is the
 ellipse along the sliding velocity, his collinear slide force. The aligning moment is his M'_z (eqs. 4.33-4.35):
-μ Fz a (1 - ψ)² (θ_y s_y (1 - 4ψ) + 3ψ² s_y/|s|); the deformation torque M''_z, ∝ (C_y - C_x), stays out. Pure
+μ Fz a (1 - ψ)² (θ_y s_y (1 - 4ψ) + 3ψ² s_y/|s|); the deformation torque M''_z, ∝ (C_y - C_x), stays out. Its a is
+NGP's patch half length times (Fz/Fz0)^0.35 (2026-11-08, `brush::trail_half_length`): the MF sets' t0/a grows with load
+(above), brush theory's a/3 holds at the design load only; forces unchanged (a enters Mz alone). Pure
 slip is Pacejka's cubic either way, so the curves, the per-wheel fit and the calibration are unchanged (lab CSVs
 identical). Before, the whole force pointed along (C_x s_x, C_y s_y), so at full slide the side share was 1/1.4 of
 the sliding velocity's. Pacejka's own ch. 3 text (isotropic bristles, where both directions coincide) was not
@@ -757,6 +761,23 @@ experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendeniu
 the racing-slick rows are context, not scored) ngp 28/75, experimental-brush 34/75
 (`build/tyre-night/scores/baseline.json`, not in git).
 
+Aligning moment rows (2026-11-08, `tarmac-mz-*`; the context rows on gravel, snow and ice): the lab's `Tyre::aligning`
+is the torque `solve_forces` applies above 2 m/s, trail × Fy less the carcass offset (Fy/k_y × Fx), flat. Tarmac, ngp /
+experimental-brush (band): t0/a 0.319 / 0.302 (0.36-0.51); t0 ∝ Fz^0.307 / 0.694 (0.90-1.05; brush 0.344 before the
+trail's load exponent); patch half length ∝ Fz^0.30 both (NGP's contact geometry; 0.55-0.65); Mz peak ∝ Fz^0.975 /
+1.535 (1.60-1.95; brush 1.185 before); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75°
+on the 0.25° grid); Mz to 0 never / at 1.13 (0.78-1.73: NGP's trail keeps 0.004 m at 10°, Mz 0.30 of its peak there);
+peak Mz/(μ Fz a) 0.163 / 0.107 (0.19-0.26). Combined at 4°, κ ∓0.05: ngp 0.60 / 1.23, brush -0.15 / 1.41: both lower
+under braking, as the carcass offset makes them (NGP's trail barely falls with κ, 0.92 of pure at 0.05; the brush's
+0.61-0.71, the MF sets' αeq 0.26-0.42). Ice: Mz peak at 0.25° / 1.25° (brush theory: a quarter of the full-slide
+angle); gravel and snow Mz peak at 0.42 / 0.25 and 0.50 / 0.25 of the Fy peak's angle. Every other row unchanged by the
+trail's load exponent (quick run before/after).
+
+In game (`--trace-speed`'s `ffb` column, the filtered steering torque before NGP's curve; r40 circle ramp, map 85,
+Fiesta Rally2): mean torque per 1 m/s bin on the circle, ngp / brush, 147 / 152 at 0.35 g, 190 / 176 at 0.54 g, 224 /
+203 at 0.70 g (the peak), then 186 / 176 at 0.78 g and 120 / 154 at 0.85 g as the fronts saturate: both go light
+before the limit, the brush by 24 % against NGP's 46 %; the trail's load exponent moves it under 1 %.
+
 TRL PPR496 rows (2026-11-08): `tarmac-KMH` / `tarmac-wet-KMH` run the tarmac wheel at 32/64/100 km/h (`--speed`), the
 wet ones with `--water 1` (WaterFactor 1 on the dry friction level: the rows are ratios). Tarmac rows (25 scored),
 experimental-brush before → after the TRL friction curve and wet Coulomb loss: 14 → 19 PASS (ngp 9); MISS → PASS
@@ -808,7 +829,14 @@ locked).
 
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
-  deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
+  deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment. Combined Mz: the MF sets' fitted s·Fx and
+  Wong's Goodyear data disagree on whether braking or driving raises it, so neither M''_z (bristle, Svendenius eqs.
+  4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
+  (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
+- Aligning moment level and patch: t0/a 0.30 against the sets' 0.36-0.51 and peak Mz/(μ Fz a) 0.107 against 0.19-0.26
+  would make the steering 1.2-2.4 times heavier near the Mz peak than NGP's: a force-feedback level decision, left. The
+  trail's load exponent stays short (0.69 against 0.90-1.05) because NGP's patch grows ∝ Fz^0.30 (MF-Swift 0.6); the
+  brush cannot take its own contact length without NGP's patch at the design load (not in `Wheel`).
   Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
   304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
   315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
