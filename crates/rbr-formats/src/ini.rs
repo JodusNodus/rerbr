@@ -89,6 +89,47 @@ pub fn replace_section(file: &str, name: &str, section: &str) -> String {
     out
 }
 
+/// `file` with `key = value` in its `[name]` section: the key's first line replaced, else the line added at the
+/// section's end, else the section appended; the rest kept line for line.
+pub fn set_value(file: &str, name: &str, key: &str, value: &str) -> String {
+    let line_of = |k: &str| format!("{k} = {value}\n");
+    let mut out = String::new();
+    let (mut inside, mut done) = (false, false);
+    for line in file.lines() {
+        if let Some((header, _)) = line.trim().strip_prefix('[').and_then(|rest| rest.split_once(']')) {
+            if inside && !done {
+                insert_before_blank(&mut out, &line_of(key));
+                done = true;
+            }
+            inside = header.trim() == name;
+        } else if inside && !done {
+            if let Some((k, _)) = line.split_once('=').filter(|(k, _)| k.trim().eq_ignore_ascii_case(key)) {
+                out.push_str(&line_of(k.trim()));
+                done = true;
+                continue;
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if inside && !done {
+        insert_before_blank(&mut out, &line_of(key));
+    } else if !done {
+        if !out.is_empty() && !out.ends_with("\n\n") {
+            out.push('\n');
+        }
+        out.push_str(&format!("[{name}]\n{}", line_of(key)));
+    }
+    out
+}
+
+/// Adds `line` to `out` before the blank lines it ends with.
+fn insert_before_blank(out: &mut String, line: &str) {
+    let kept = out.trim_end_matches('\n').len() + 1;
+    let at = kept.min(out.len());
+    out.insert_str(at, line);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +178,24 @@ mod tests {
         assert_eq!(sections[0].entries, vec![entry("A", "1")]);
         assert_eq!(sections[1].name, "T");
         assert_eq!(sections[1].get("B"), Some("2"));
+    }
+
+    #[test]
+    fn a_value_is_set_in_its_section() {
+        let file = "[ffb]\nenabled = 1\nStrength = 1\n\n[camera]\nview = chase\n";
+        assert_eq!(
+            set_value(file, "ffb", "strength", "0.5"),
+            "[ffb]\nenabled = 1\nStrength = 0.5\n\n[camera]\nview = chase\n"
+        );
+        assert_eq!(
+            set_value(file, "camera", "head", "off"),
+            "[ffb]\nenabled = 1\nStrength = 1\n\n[camera]\nview = chase\nhead = off\n"
+        );
+        assert_eq!(
+            set_value("[ffb]\nrate = 9\n\n[x]\n", "ffb", "inverse", "0"),
+            "[ffb]\nrate = 9\ninverse = 0\n\n[x]\n"
+        );
+        assert_eq!(set_value("[x]\na = 1\n", "ffb", "strength", "0.5"), "[x]\na = 1\n\n[ffb]\nstrength = 0.5\n");
+        assert_eq!(set_value("", "ffb", "strength", "0.5"), "[ffb]\nstrength = 0.5\n");
     }
 }

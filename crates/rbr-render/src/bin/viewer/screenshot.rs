@@ -11,6 +11,7 @@ use rbr_counters::{Counts, Mark};
 use rbr_formats::data::Data;
 use rbr_recording::pose::CarPose;
 use rbr_render::hud::camera_page::CameraPage;
+use rbr_render::hud::ffb_page::FfbPage;
 use rbr_render::hud::pause::{self, Outcome, PauseMenu};
 use rbr_render::hud::results::{self, ResultsMenu};
 use rbr_render::hud::school;
@@ -34,8 +35,10 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     let view = scene.cameras.start_view(args.view);
     let menu = match (&scene.live, &args.pause_menu) {
         (Some(live), Some(moves)) => {
+            // The Force feedback page as with a wheel, once the drive said the car's surface.
+            let ffb = live.hud.ffb_surface.map(|surface| FfbPage::of(&scene.ffb, surface));
             let mut menu =
-                PauseMenu::open(live.menu, CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head()), None);
+                PauseMenu::open(live.menu, CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head()), ffb);
             if moves.iter().any(|&nav| matches!(menu.nav(nav), Some(Outcome::Chosen(_)))) {
                 return Err("--pause-menu: the moves close the menu".into());
             }

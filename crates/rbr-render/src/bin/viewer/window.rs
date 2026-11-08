@@ -314,6 +314,8 @@ impl ApplicationHandler for App {
 
     /// The live input's timing, while the Wayland connection its feedback shares is still open.
     fn exiting(&mut self, _: &ActiveEventLoop) {
+        // The drive's end for the automatic force-feedback sensitivity.
+        self.scene.ffb.finish();
         if let (Some(path), Some(splits)) =
             (&self.save_replay, self.scene.live.as_ref().and_then(|live| live.splits.as_ref()))
         {

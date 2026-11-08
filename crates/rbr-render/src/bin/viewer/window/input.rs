@@ -113,6 +113,8 @@ impl App {
     pub fn restart_live(&mut self) {
         // A restart brings the brief, and the school demo, back.
         self.demo = None;
+        // The drive so far ends: its samples go into the car's reference.
+        self.scene.ffb.finish();
         let (Some(process), Some(playback)) = (&mut self.scene.live, &mut self.scene.playback) else {
             return;
         };
@@ -203,10 +205,8 @@ impl App {
             return;
         };
         // The Force feedback page with the wheel's force on, once the live process said the car's surface.
-        let ffb = (process.hud.ffb_surface.zip(self.wheel.as_ref())).map(|(surface, _)| {
-            let (session, surface) = (&self.scene.ffb, surface.min(2) as usize);
-            FfbPage::new(surface, session.now()[surface], session.own(), session.global[surface])
-        });
+        let ffb = (process.hud.ffb_surface.zip(self.wheel.as_ref()))
+            .map(|(surface, _)| FfbPage::of(&self.scene.ffb, surface));
         self.menu = Some(PauseMenu::open(
             process.menu,
             CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head()),
@@ -247,22 +247,47 @@ impl App {
         }
     }
 
-    /// Keeps the sensitivity the Force feedback page set for the car (or drops the car's own) and writes it to the
-    /// file; the wheel takes it with the next frame ([`Self::wheel_sensitivity`]).
+    /// Keeps what the Force feedback page set: the strength, and the car's sensitivity (or drops the car's own), and
+    /// writes them to the file; the wheel takes the strength at once and the sensitivity with the next frame
+    /// ([`Self::ffb_frame`]).
     fn ffb_changed(&mut self) {
         let Some(page) = self.menu.as_ref().and_then(PauseMenu::ffb) else {
             return;
         };
-        let (surface, value) = (page.surface, page.own.then_some(page.value));
-        self.scene.ffb.set(surface, value);
+        let (surface, session) = (page.surface, &mut self.scene.ffb);
+        // The page shows the strength in whole percent: changed only when the player moved it.
+        if page.strength != (session.strength * 100.0).round() as i32 {
+            let strength = page.strength as f32 / 100.0;
+            session.set_strength(strength);
+            if let Some(wheel) = &self.wheel {
+                wheel.set_strength(strength);
+            }
+        }
+        if (page.own, page.value) != (session.own(), session.now()[surface]) {
+            session.set(surface, page.own.then_some(page.value));
+        }
     }
 
-    /// Points the wheel's force at the car's sensitivity now on the drive's surface, from the one NGP's car started
-    /// with (`ffb::reshape`).
-    pub fn wheel_sensitivity(&self) {
-        let (Some(wheel), Some(process)) = (&self.wheel, &self.scene.live) else { return };
+    /// The frame's force feedback: the drive's steering-load sample (kept while racing a live NGP drive above
+    /// `load::MIN_SPEED`, not paused, not a replay), the drive's end at the stage result, and the wheel's
+    /// force pointed at the car's sensitivity now on the drive's surface, from the one NGP's car started with
+    /// (`ffb::reshape`).
+    pub fn ffb_frame(&mut self, dt: f32) {
+        let Some(process) = &self.scene.live else { return };
         let Some(surface) = process.hud.ffb_surface.map(|s| s.min(2) as usize) else { return };
-        wheel.set_sensitivity(self.scene.ffb.started[surface], self.scene.ffb.now()[surface]);
+        let paused = self.menu.is_some() || self.results.is_some();
+        let racing = process.hud.race.is_some_and(|race| race.running);
+        let kept = !self.replay && !paused && racing && process.hud.speed > rbr_render::ffb::load::MIN_SPEED;
+        let session = &mut self.scene.ffb;
+        if let Some(force) = process.hud.force.filter(|_| kept) {
+            session.frame(surface, force, dt, true);
+        }
+        if self.results.is_some() || process.splits.as_ref().is_some_and(|s| s.over) {
+            session.finish();
+        }
+        if let Some(wheel) = &self.wheel {
+            wheel.set_sensitivity(session.started[surface], session.now()[surface]);
+        }
     }
 
     /// Shows the view, the car's nudges and the head the Camera page set, and writes them to the file.

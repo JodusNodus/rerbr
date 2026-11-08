@@ -56,24 +56,39 @@ const SHIFTER: [(Action, &str); 9] = [
 /// How often the joysticks are looked for again while nothing is being set (a wheel plugged in).
 const RESCAN: Duration = Duration::from_secs(2);
 
-/// The force feedback: on or off, the strength, the direction and NGP's sensitivity per surface.
-fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options) {
+/// The force feedback: on or off, the strength, the direction and NGP's sensitivity per surface. The strength is
+/// written to the settings file at once, as the pause menu's Force feedback page does while driving.
+fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut ffb.settings.enabled, "on");
         ui.add_enabled_ui(ffb.settings.enabled, |ui| {
-            ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
+            let strength =
+                ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
+            if strength.on_hover_text(STRENGTH_HELP).changed() && !read_only {
+                write_strength(settings, ffb.settings.strength);
+            }
             ui.checkbox(&mut ffb.settings.inverse, "inverse");
         });
     });
+    ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
     ui.add_enabled_ui(ffb.settings.enabled, |ui| {
         ui.horizontal(|ui| {
-            ui.label("sensitivity %").on_hover_text(SENSITIVITY_HELP);
+            ui.label("Sensitivity for cars without their own").on_hover_text(SENSITIVITY_HELP);
             for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
                 ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
                     .on_hover_text(SENSITIVITY_HELP);
             }
         });
     });
+}
+
+/// Writes the strength into the settings file's `[ffb]`, the rest of the file kept.
+fn write_strength(settings: &Path, strength: f32) {
+    let file = std::fs::read_to_string(settings).unwrap_or_default();
+    let text = rbr_formats::ini::set_value(&file, "ffb", "strength", &strength.to_string());
+    if let Err(e) = std::fs::write(settings, text) {
+        eprintln!("launcher: {}: {e}", settings.display());
+    }
 }
 
 /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `ffb::CarSensitivity`): one row per listed car (its
@@ -86,6 +101,7 @@ fn ffb_cars_ui(
     on: bool,
     global: [i32; 3],
     ffb_cars: &mut ffb::CarSensitivity,
+    loads: &ffb::Loads,
     cars: &[Car],
     car: usize,
     root: &str,
@@ -107,10 +123,14 @@ fn ffb_cars_ui(
         for (key, values) in ffb_cars.cars.iter_mut() {
             ui.horizontal(|ui| {
                 ui.label(car_display(key, cars));
-                for (value, surface) in values.iter_mut().zip(ffb::SURFACES) {
+                for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
+                    let help = match maxed_out(loads, key, k, *value) {
+                        Some(n) => format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here."),
+                        None => SENSITIVITY_HELP.to_owned(),
+                    };
                     changed |= ui
                         .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                        .on_hover_text(SENSITIVITY_HELP)
+                        .on_hover_text(help)
                         .changed();
                 }
                 if ui.small_button("Remove").clicked() {
@@ -150,6 +170,10 @@ fn ffb_cars_ui(
                 changed |= n > 0;
             }
         });
+        ui.label(
+            RichText::new("Hover a value for how often the wheel maxed out; adjust in the pause menu while driving.")
+                .color(Color32::GRAY),
+        );
         if let Some(status) = &*ffb_status {
             ui.label(RichText::new(status).color(Color32::GRAY));
         }
@@ -157,6 +181,13 @@ fn ffb_cars_ui(
             write_ffb_cars(settings, ffb_cars);
         }
     });
+}
+
+/// How often the wheel maxed out, percent, at `value` over car `key`'s tracked driving on `surface` (`ffb::load`),
+/// with enough of it.
+fn maxed_out(loads: &ffb::Loads, key: &str, surface: usize, value: i32) -> Option<i32> {
+    let load = loads.of(key, surface).filter(|l| l.seconds() >= ffb::load::ADVICE_SECONDS)?;
+    load.maxed_out(value).map(|share| (share * 100.0).round() as i32)
 }
 
 /// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
@@ -205,8 +236,9 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
 }
 
 /// NGP's force-feedback sensitivity per surface (`ffb::Options::sensitivity`), in its readme's words.
-const SENSITIVITY_HELP: &str = "NGP's force feedback sensitivity per surface. Below 100 the force is stronger and \
-     less precise, and big hits are flattened; above 100 it is lighter, with more detail and sharper peaks.";
+const SENSITIVITY_HELP: &str = "How much of a car's steering force fits before the wheel maxes out. Higher: lighter, \
+     more detail. Lower: heavier, maxes out sooner.";
+const STRENGTH_HELP: &str = "Strength: how heavy the wheel feels, for every car.";
 /// The rows' label column and the live bars' width.
 const ROW_LABEL: f32 = 110.0;
 const BAR: f32 = 110.0;
@@ -410,6 +442,7 @@ impl ControlsPage {
         aids: &mut DriverAids,
         head_gasket: &mut i32,
         ffb_cars: &mut ffb::CarSensitivity,
+        ffb_load: &ffb::Loads,
         cars: &[Car],
         car: usize,
         root: &str,
@@ -450,10 +483,11 @@ impl ControlsPage {
                     heading(ui, "Driver aids");
                     aids_ui(ui, aids, head_gasket);
                     heading(ui, "Force feedback");
-                    ffb_ui(ui, ffb);
+                    ffb_ui(ui, ffb, settings, read_only);
                     let global = ffb.sensitivity;
                     let on = ffb.settings.enabled;
-                    ffb_cars_ui(ui, on, global, ffb_cars, cars, car, root, settings, read_only, &mut self.ffb_status);
+                    let status = &mut self.ffb_status;
+                    ffb_cars_ui(ui, on, global, ffb_cars, ffb_load, cars, car, root, settings, read_only, status);
                 });
             });
             ui.add_space(8.0);
@@ -713,6 +747,17 @@ mod tests {
     use rbr_render::bindings::Device;
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };
+
+    /// The per-car hover: each surface with 20 s of driving, at the car's own sensitivity there.
+    #[test]
+    fn the_per_car_hover_says_how_often_the_wheel_maxed_out() {
+        let loads = ffb::Loads::parse(
+            "[ffb_load]\nrsf-81 gravel = 0,0,0,0,0,0,0,0,200\nrsf-81 tarmac = 0,300\nrsf-81 snow = 10\n",
+        );
+        // x 42.5 maxes out at 30 %, not at 100 %; snow has 1 s only.
+        assert_eq!((maxed_out(&loads, "rsf-81", 0, 30), maxed_out(&loads, "rsf-81", 1, 100)), (Some(100), Some(0)));
+        assert_eq!((maxed_out(&loads, "rsf-81", 2, 100), maxed_out(&loads, "rsf-1", 0, 100)), (None, None));
+    }
 
     fn moved(object: Object, up: bool) -> Moved {
         Moved { input: PadInput { device: G923, object }, up }

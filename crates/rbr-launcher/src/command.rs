@@ -818,6 +818,8 @@ impl Form {
                 let saved = crate::settings::read_settings(&self.paths.settings);
                 self.head = !saved.camera.head_off;
                 self.ffb_cars = saved.ffb_cars;
+                self.ffb_load = saved.ffb_load;
+                self.ffb.settings.strength = saved.ffb.settings.strength;
                 if !replay {
                     self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
                 }
@@ -877,7 +879,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 8] = [
+    const COMMAND_CASES: [(&str, &str); 9] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -910,6 +912,12 @@ mod tests {
             "force feedback per car",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\n\
              sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n",
+        ),
+        (
+            "force feedback per car, its steering load tracked",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\n\
+             sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n\
+             [ffb_load]\nrsf-24 gravel = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6000\n",
         ),
     ];
 

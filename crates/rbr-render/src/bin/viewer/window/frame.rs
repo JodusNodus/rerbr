@@ -163,7 +163,7 @@ impl App {
         if !self.replay {
             self.sync_results();
         }
-        self.wheel_sensitivity();
+        self.ffb_frame(dt);
         if self.menu.is_none() {
             self.advance_demo(dt);
         }

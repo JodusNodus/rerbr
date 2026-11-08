@@ -177,8 +177,7 @@ fn load_scene<'scope, 'env>(
     let error = |e: car::Error| e.to_string();
     let car_key = args.pack_car.key.clone().or_else(|| args.car.as_deref().map(camera_prefs::car_key));
     let started = args.live.as_deref().map_or([100; 3], rbr_render::ffb::started);
-    let ffb =
-        rbr_render::ffb::Session::load(args.bindings_file.as_deref(), car_key.clone(), args.ffb.sensitivity, started);
+    let ffb = rbr_render::ffb::Session::load(args.bindings_file.as_deref(), car_key.clone(), &args.ffb, started);
     let cameras = camera_prefs::Session::load(args.cameras.as_deref(), car_key);
     if (args.drive.is_some() || args.live.is_some()) && (args.stage.is_none() || args.car.is_none()) {
         return Err("--drive and --live need a stage and --car".to_owned());
