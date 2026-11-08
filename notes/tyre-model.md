@@ -496,6 +496,13 @@ Sources:
   tread windows 20-60 °C (RA9) to 70-110 °C (RA5), hot 2.0-2.5 bar. Michelin 2023-24 pressures: asphalt rally hot
   2.0-2.3 bar, cold at least 1.6. FIA tread rule (2006 copy): at least 17 % grooves of 5.5 mm. Track cars on
   semi-slicks (Darkside Developments, VBOX, single-session peaks): 1.32-1.53 g lateral, 1.17-1.47 g braking.
+- Drifting: Hindiyeh, "Dynamics and control of drifting in automobiles", PhD Stanford 2013 (Gerdes lab): P1 (RWD,
+  1724 kg) on gravel over asphalt at 8 m/s, lumped-axle Fiala brush fitted to ramp steers (Table 2.2, Figs 2.13-2.14):
+  µ 0.55 with no discernible peak over sliding, Cα 120/175 kN/rad front/rear (Cα/Fz ~15/19 per rad at static loads,
+  inferred). Combined slip is modelled (friction circle), not measured; the drift equilibrium (β -20.4°, r 0.6 rad/s,
+  FxR 2293 N; Table 4.3) fits a rear µ 0.53, a derate of 0.96 where the friction circle at that drive gives 0.89
+  (inferred; lumped, includes load transfer). Drift equilibria are open-loop unstable; the rear drive force holds the
+  sideslip (Ch. 3-5). Not a tarmac source.
 
 Rally on tarmac: no Rally1/Rally2/R5 g data, logger trace or g-g diagram is open (searched telemetry overlays,
 WRC+ graphics, team and engineer publications); the only rally numbers are the ChassisSim model inputs. Combined
