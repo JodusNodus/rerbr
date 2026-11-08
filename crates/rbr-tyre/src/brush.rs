@@ -173,6 +173,22 @@ pub fn low_mu_stiffness_factor(mu: f64) -> f64 {
     }
 }
 
+/// Camber stiffness over cornering stiffness, C_gamma / C_alpha: 0.05. MF 6.1's example set (255/55R20, 260 kPa) has
+/// K_y,gamma0 = Fz (PKY6 + PKY7 dfz) at 0.047-0.052 of K_y,alpha from 2 to 6.75 kN at 2.0-2.6 bar (1.07 Fz per rad at
+/// 4 kN, 2.6 bar); MF 5.2's truck set 0.061. Pacejka's brush gives eps a/(3R) for a parabolic camber deflection, with
+/// the camber reduction factor eps 0.4-0.7 for car and truck tyres (Romano, Timpone, Bruzelius & Jacobson,
+/// Meccanica 2021, as quoted): 0.031-0.055 at a 0.074 m half patch on a 0.315 m wheel. NGP's sliding model takes
+/// 0.1 of the inclination's sine off the slip.
+pub const CAMBER_OVER_CORNERING: f64 = 0.05;
+
+/// The camber's share of the lateral slip velocity, m/s, at the inclination's sine `sin` (NGP's sign: negative with
+/// the top leaning in) and the rolling speed `vr`, m/s: -[`CAMBER_OVER_CORNERING`] sin |vr|, an equivalent slip as
+/// MF's horizontal shift is, so the thrust is C_gamma sin at small slip and goes once the patch slides whole. It grows
+/// with rolling only: none at standstill or locked.
+pub fn camber_slip_velocity(sin: f64, vr: f64) -> f64 {
+    -CAMBER_OVER_CORNERING * sin * vr.abs()
+}
+
 /// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (Horne's deep-water
 /// law, NASA TN D-2056; metric form in Zhang et al., Lubricants 13:76, 2025),
 /// times (0.75 + 0.25 d) for tread depth: ADAC's 2026 worn-tyre test lost
