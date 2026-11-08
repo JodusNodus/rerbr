@@ -91,6 +91,26 @@ const BOG_STEPS: u32 = 100;
 /// Under NGP the throttle while the driven wheels spin (`SLIP`) above `BOG_SPEED`: full throttle spun the rear-driven
 /// Escort Mk II off the road on gravel.
 const TRACTION: f32 = 0.5;
+/// Race driving under NGP (ours, not the measurement modes or lessons): braking in gear, with a wheel past
+/// `LOCK_SLIP` and the engine dragged by the wheels (within `DRAGGED` rad/s of the speed the gear gives the drive)
+/// under `DECLUTCH` rad/s (where the Celica's clutch help is fully open, `notes/ngp.md`, "Controls under NGP"), the
+/// controller selects neutral until the brake comes off, then the gear that keeps the engine over `SHIFT_DOWN`. Braked
+/// fronts that creep instead of locking (loose-v1's flat friction, the Golf II on RSF 104 at 4450 m) keep NGP's
+/// driveline clutch-locked and drag the engine to a stall despite the clutch help; the clutch pedal does nothing while
+/// the clutch help sets the clutch (`rbr_physics::vcu::clutch`), so neutral stands in for the driver's declutch.
+const DECLUTCH: f32 = 89.0;
+const DRAGGED: f32 = 10.0;
+const LOCK_SLIP: f32 = 0.5;
+/// A stalled engine (under `STALLED` rad/s) is restarted: brake, neutral, and the ignition held for `CRANK_HOLD` 1.02
+/// steps of every `CRANK_CYCLE` (NGP's starter cranks from 0.5 s to 2.5 s of a hold, then the ignition must clear),
+/// until the engine runs over `STARTED` rad/s; the standing start (or the gear for the speed) then pulls away.
+const STALLED: f32 = 30.0;
+const STARTED: f32 = 60.0;
+const CRANK_HOLD: u32 = 370;
+const CRANK_CYCLE: u32 = 400;
+/// The payload's gear select (flag 0x04 with the gear byte, `rbr_physics::vcu::dispatch`), and neutral's gear.
+const SELECT: u8 = 0x04;
+const NEUTRAL: u32 = 1;
 /// Full throttle in too tall a gear with the engine below torque and the car barely moving: loose ground lugs it
 /// down (gravel circles stall in second at 500 rad/s), so downshift to keep it pulling. Only in the measurement
 /// modes (`free`), so race and lesson driving keep the cruising `SHIFT_DOWN` floor; the tarmac pace and circle
@@ -147,6 +167,8 @@ const RATIO_SETTLE: u32 = 70;
 /// the circle before the ramp leaves city speeds.
 const CIRCLE_START: f32 = 8.0;
 const CIRCLE_RAMP: f32 = 0.5;
+/// `CCar` +0x4b0: the drive (`CDrive`), whose gearbox gives the engine speed of the drive's speed in gear.
+const CAR_DRIVE: u32 = 0x4b0;
 /// `CCar` +0x4b0 +8: the drive state; its +0x45c the engine speed the VCU reads (`CDrive::Get4520`, 0x504520).
 const DRIVE_STATE: u32 = 0x4b8;
 const DRIVE_ENGINE_SPEED: u32 = 0x45c;
@@ -353,6 +375,8 @@ pub struct Sense {
     pub held: bool,
     /// The wheels' rim speeds |ωR| (m/s, FL FR RL RR), as the FMOD block reads them after the step.
     pub wheels: [f32; 4],
+    /// The engine speed the gear gives the drive's speed (rad/s, 0 out of a forward gear): above it the clutch slips.
+    pub geared: f32,
 }
 
 /// The car's sense from an answer's frame and HUD record, and the drive's engine speed as the VCU reads it (the drive
@@ -362,13 +386,16 @@ pub(crate) fn sense(answer: &[u8], live: &Live) -> Sense {
     let assist = live.game().race_clock().assist_timer;
     let car = &answer[HEADER_BYTES + CONTROL_BYTES..];
     let hud = &answer[FRAME_BYTES..FRAME_BYTES + HUD2_BYTES];
+    let gear = read_u32(hud, 4).expect("HUD gear");
+    let gearbox = crate::live::gearbox(mem, mem.u32(pure::CAR_PTR) + CAR_DRIVE);
     Sense {
         pose: pose::car_pose(car).expect("car block"),
         parameter: read_f32(car, DRIVELINE_OFFSET).expect("car +0x17c"),
-        gear: read_u32(hud, 4).expect("HUD gear"),
+        gear,
         engine: mem.f32(mem.u32(mem.u32(pure::CAR_PTR) + DRIVE_STATE) + DRIVE_ENGINE_SPEED),
         held: (0.0..HELD).contains(&assist),
         wheels: FmodBlock::read_from(mem.u32(pure::CAR_PTR), |a| mem.u32(a)).wheel_speeds.map(f32::abs),
+        geared: u8::try_from(gear).ok().filter(|&g| g >= 2).and_then(|g| gearbox.engine_speed(g)).unwrap_or(0.0),
     }
 }
 
@@ -437,6 +464,12 @@ pub struct Driver<'a> {
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
     grip: f32,
+    /// A rally school lesson drives (`in_lesson`): no declutch under braking or restart (`DECLUTCH`, `STALLED`).
+    lesson: bool,
+    /// Neutral is held under braking or for a restart (`DECLUTCH`, `STALLED`).
+    neutral: bool,
+    /// Steps since the restart of a stalled engine began (`STALLED`), while it lasts.
+    crank: Option<u32>,
 }
 
 /// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from` and its `--brake-pedal`,
@@ -609,6 +642,9 @@ impl<'a> Driver<'a> {
             declutch: false,
             bands: Vec::new(),
             grip: 1.0,
+            lesson: false,
+            neutral: false,
+            crank: None,
         }
     }
 
@@ -621,6 +657,11 @@ impl<'a> Driver<'a> {
     /// its window, braking for it from ahead.
     pub fn with_bands(self, bands: Vec<SpeedBand>) -> Self {
         Self { bands, ..self }
+    }
+
+    /// The driver in a rally school lesson.
+    pub fn in_lesson(self) -> Self {
+        Self { lesson: true, ..self }
     }
 
     /// The driver keeping off the brakes before the driveline distance `brake_from`, then stopping at `at` and
@@ -810,6 +851,14 @@ impl<'a> Driver<'a> {
     /// The driver for a car whose rev limit is `rpm`.
     pub fn with_limit(self, rpm: f32) -> Self {
         Self { limit: rpm * std::f32::consts::PI / 30.0, ..self }
+    }
+
+    /// The highest gear learnt to keep the engine over `SHIFT_DOWN` at `speed` (m/s), else first.
+    fn gear_for(&self, speed: f32) -> u32 {
+        (FIRST..=TOP_GEAR)
+            .rev()
+            .find(|&g| self.ratio[g as usize].is_finite() && self.ratio[g as usize] * speed > SHIFT_DOWN)
+            .unwrap_or(FIRST)
     }
 
     /// `n` 1.02 steps in this run's steps.
@@ -1051,6 +1100,34 @@ impl<'a> Driver<'a> {
                 }
             };
         }
+        let (mut aux, mut select) = (0, 0);
+        if self.per > 1 && !self.lesson && !self.free() && self.brake_at.is_none() {
+            // Race driving under NGP: restart a stalled engine, and hold neutral while locked wheels drag the engine
+            // under braking (`DECLUTCH`, `STALLED`).
+            self.crank = match self.crank {
+                None if sense.engine.abs() < STALLED && !finished => Some(0),
+                Some(n) if sense.engine < STARTED => Some(n + 1),
+                _ => None,
+            };
+            let dragged = sense.gear >= FIRST
+                && sense.engine < DECLUTCH
+                && (sense.engine - sense.geared).abs() < DRAGGED
+                && slip(sense) > LOCK_SLIP;
+            let hold = self.crank.is_some() || (self.mode == Mode::Drive && brake > 0.0 && (self.neutral || dragged));
+            if hold {
+                flags = 0;
+                if sense.gear != NEUTRAL && (!self.neutral || step >= self.shifted + self.steps(RECOVER_GAP)) {
+                    (flags, select, self.shifted) = (SELECT, NEUTRAL, step);
+                }
+            } else if self.neutral && self.mode == Mode::Drive && sense.gear < FIRST && speed > BOG_SPEED {
+                (flags, select, self.shifted) = (SELECT, self.gear_for(speed), step);
+            }
+            self.neutral = hold;
+            if let Some(n) = self.crank {
+                (throttle, brake, self.slow) = (0.0, 1.0, 0);
+                aux = u8::from(n % self.steps(CRANK_CYCLE) < self.steps(CRANK_HOLD));
+            }
+        }
         self.pulling = self.mode == Mode::Drive && throttle > 0.0 && brake == 0.0;
         let pedal = |x: f32| (x * 255.0).round() as u8;
         QuantizedControl {
@@ -1059,6 +1136,8 @@ impl<'a> Driver<'a> {
             throttle: pedal(throttle),
             brake: pedal(brake),
             clutch,
+            aux,
+            gear: select as u8,
             ..QuantizedControl::default()
         }
     }
