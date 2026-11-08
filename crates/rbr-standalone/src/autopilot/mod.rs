@@ -23,6 +23,13 @@
 //! wheels spin (engine speed over `SLIP` times the lowest engine speed per m/s seen in the gear): shifting up on
 //! wheelspin left cars in a high gear in slides and on climbs, where they stalled or rolled (track-25_O, track-35_N).
 //!
+//! Limit runs (ours, `--plan LAT,BRAKE`, test tooling for `harness/limit_pace.py`): the speed plan takes the given
+//! lateral and braking acceleration (m/s²) in place of `LATERAL` and `BRAKING` (the wetness's grip still scales them;
+//! `--top-speed` sets the top), and the race pedal stays under threshold braking's at `PLAN_SLIP`: at the car's limits
+//! the plain pedal locked the fronts entering corners. The kink scan keeps `LATERAL` (geometry), and the look-ahead,
+//! `FULL_LOCK_TOP`, the steering gain and the anti-stall logic are unchanged. Without the flag the drive is the
+//! default's, byte for byte.
+//!
 //! On RSF stages (ours): the target swings around heavy props near the driveline (`HEAVY`),
 //! a driveline segment that loops is flattened (`LOOP`, `BACK`), and a car leaning over steers towards its low side
 //! (`TIP`).
@@ -57,8 +64,8 @@ const LOOK_BASE: f32 = 3.0;
 const LOOK_TIME: f32 = 0.5;
 /// Steering per radian of heading error to the target (full lock at about 20 degrees).
 const STEER_GAIN: f32 = 3.0;
-/// The speed plan: lateral and braking acceleration (m/s²), the default top speed (m/s, `--top-speed`), and how far
-/// ahead it looks (m).
+/// The speed plan: lateral and braking acceleration (m/s², `--plan` in their place), the default top speed (m/s,
+/// `--top-speed`), and how far ahead it looks (m).
 const LATERAL: f32 = 5.0;
 const BRAKING: f32 = 4.0;
 const TOP_SPEED: f32 = 30.0;
@@ -469,6 +476,10 @@ pub struct Driver<'a> {
     bands: Vec<SpeedBand>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
     grip: f32,
+    /// The speed plan's dry lateral and braking acceleration (m/s²): `LATERAL` and `BRAKING`, or `--plan`'s.
+    plan: Plan,
+    /// `--plan`: the race pedal's cap, the threshold controller's integral (`PLAN_SLIP`); none without the flag.
+    antilock: Option<f32>,
     /// A rally school lesson drives (`in_lesson`): no declutch under braking or restart (`DECLUTCH`, `STALLED`).
     lesson: bool,
     /// Neutral is held under braking or for a restart (`DECLUTCH`, `STALLED`).
@@ -506,6 +517,8 @@ pub struct Measure {
     /// `--material-as ID` (a test surface): every material of the stage takes material ID's values, from the start,
     /// or with `--brake-from` from the brake onset (the run-up on the stage's own surfaces, the stop on ID's).
     pub material_as: Option<u32>,
+    /// `--plan LAT,BRAKE`: the speed plan's lateral and braking acceleration (`Plan`).
+    pub plan: Option<Plan>,
 }
 
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
@@ -527,6 +540,32 @@ impl std::str::FromStr for Circle {
         match v[..] {
             [x, y, r] if r > 0.0 => Ok(Circle { center: [x, y], radius: r }),
             _ => Err(format!("--circle {s}: want X,Y,R with R > 0")),
+        }
+    }
+}
+
+/// `--plan LAT,BRAKE` (limit runs, `harness/limit_pace.py`): the speed plan's dry lateral and braking acceleration
+/// (m/s², both over 0) in place of `LATERAL` and `BRAKING`; the wetness's grip still scales them. Nothing else of the
+/// controller changes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Plan {
+    pub lateral: f32,
+    pub braking: f32,
+}
+
+impl Plan {
+    pub const DEFAULT: Plan = Plan { lateral: LATERAL, braking: BRAKING };
+}
+
+impl std::str::FromStr for Plan {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        let v: Vec<f32> =
+            s.split(',').map(|x| x.parse().map_err(|_| format!("--plan {s}"))).collect::<Result<_, _>>()?;
+        match v[..] {
+            [lateral, braking] if lateral > 0.0 && braking > 0.0 => Ok(Plan { lateral, braking }),
+            _ => Err(format!("--plan {s}: want LAT,BRAKE in m/s², both over 0")),
         }
     }
 }
@@ -606,6 +645,10 @@ fn abs_step(target: f32, scale: [f32; 4], slips: [f32; 4], dt: f32) -> [f32; 4] 
 /// widens it (0.025 off K at 0.3, 0.43-0.50 at 0.5).
 const SLIP_I: f32 = 60.0;
 const SLIP_P: f32 = 1.0;
+/// `--plan`'s race braking: the pedal stays under threshold braking's at this slip ratio (most-slipping wheel). At
+/// the plan's limit the plain pedal (up to 0.8) locked the fronts entering corners under load transfer (Fiesta Rally2
+/// on RSF 524 at 3980 m, ngp, plan 5.6/8.1: fronts 1.3 and 4.1 m/s at 15.6 m/s, then off the line at full lock).
+const PLAN_SLIP: f32 = 0.2;
 /// The slip ratio's floor on the speed (m/s): under it the ratio is (v - ωR) / `SLIP_SPEED`, so the stop's last
 /// metre neither divides by zero nor takes the wheel speeds' noise as slip.
 const SLIP_SPEED: f32 = 1.0;
@@ -660,6 +703,8 @@ impl<'a> Driver<'a> {
             declutch: false,
             bands: Vec::new(),
             grip: 1.0,
+            plan: Plan::DEFAULT,
+            antilock: None,
             lesson: false,
             neutral: false,
             dragging: 0,
@@ -670,6 +715,12 @@ impl<'a> Driver<'a> {
     /// The driver on a surface with `grip` of the dry grip (1 dry, less on a damp or wet race: `with_lesson`).
     pub fn with_grip(self, grip: f32) -> Self {
         Self { grip, ..self }
+    }
+
+    /// The driver planning its speed with `plan`'s lateral and braking acceleration (`--plan`) in place of `LATERAL`
+    /// and `BRAKING`.
+    pub fn with_plan(self, plan: Plan) -> Self {
+        Self { plan, antilock: Some(1.0), ..self }
     }
 
     /// The driver holding the lesson's judged speed bands (`bands`): the target speed stays under each band's top in
@@ -754,16 +805,16 @@ impl<'a> Driver<'a> {
         (to[0].hypot(to[1]) < AIM_RANGE && ahead).then_some([at[0], at[1], pose.position[2]])
     }
 
-    /// The curve limit `s` metres ahead of `at`: the lateral limit there (at `grip` of the dry grip), uncapped by
-    /// braking. The kink scan passes 1.0: a kink is sharp geometry whatever the grip, and the grip scales the plan
-    /// and the full-lock cap separately.
-    fn curve_limit(&self, at: f32, s: f32, grip: f32) -> f32 {
+    /// The curve limit `s` metres ahead of `at`: the speed that holds `lateral` (m/s²) there, uncapped by braking.
+    /// The plan passes its own lateral at the wetness's grip; the kink scan passes the dry `LATERAL` whatever the
+    /// grip or `--plan`: a kink is sharp geometry, and `KINK_SLOW` is set on that scale.
+    fn curve_limit(&self, at: f32, s: f32, lateral: f32) -> f32 {
         let u = |d: f32| parameter(&self.values, at + d);
         let (a, b, c) =
             (point(self.track, u(s)), point(self.track, u(s + PLAN_STEP)), point(self.track, u(s + 2.0 * PLAN_STEP)));
         let turn = angle(sub(b, a), sub(c, b)).abs();
         let curvature = turn / PLAN_STEP;
-        ((LATERAL * grip) / curvature.max(1e-4)).sqrt().min(self.top)
+        (lateral / curvature.max(1e-4)).sqrt().min(self.top)
     }
 
     /// The target speed: the slowest of the curve limits ahead, each reachable by braking; the top under
@@ -775,7 +826,8 @@ impl<'a> Driver<'a> {
         if self.flat_out {
             return self.top;
         }
-        let braking = BRAKING * self.grip;
+        let braking = self.plan.braking * self.grip;
+        let lateral = self.plan.lateral * self.grip;
         if self.against {
             let stop = self.stop.map_or(0.0, |(_, s)| s);
             return self.top.min((2.0 * braking * (at - stop).max(0.0)).sqrt());
@@ -783,7 +835,7 @@ impl<'a> Driver<'a> {
         let mut target = self.top;
         let mut s = 0.0;
         while s < PLAN_AHEAD {
-            let limit = self.curve_limit(at, s, self.grip);
+            let limit = self.curve_limit(at, s, lateral);
             target = target.min((limit * limit + 2.0 * braking * s).sqrt());
             s += PLAN_STEP;
         }
@@ -1029,7 +1081,7 @@ impl<'a> Driver<'a> {
                 if !self.free() {
                     let mut s = 0.0;
                     while s < KINK_AHEAD {
-                        slow = slow.min(self.curve_limit(at, s, 1.0));
+                        slow = slow.min(self.curve_limit(at, s, LATERAL));
                         s += PLAN_STEP;
                     }
                 }
@@ -1045,6 +1097,17 @@ impl<'a> Driver<'a> {
                 } else {
                     (0.0, (-0.15 * gap).min(0.8))
                 };
+                if let Some(held) = &mut self.antilock {
+                    // `--plan`: the pedal held under the threshold controller's at `PLAN_SLIP` (`Brake::Slip`'s law).
+                    if brake > 0.0 && !finished {
+                        let error = PLAN_SLIP - slip(sense);
+                        let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+                        *held = (*held + SLIP_I * error * dt).clamp(0.0, 1.0);
+                        brake = brake.min((*held + SLIP_P * error).clamp(0.0, 1.0));
+                    } else {
+                        *held = 1.0;
+                    }
+                }
                 let g = sense.gear.min(TOP_GEAR) as usize;
                 // NGP's clutch help opens the clutch below about 100 rad/s even under a light throttle (`notes/ngp.md`,
                 // "Controls under NGP"), so a run of NGP's steps learns only above the downshift speed.
