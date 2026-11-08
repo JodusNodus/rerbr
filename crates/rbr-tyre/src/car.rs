@@ -49,6 +49,7 @@ impl Model for Brush {
         if !(t.running && x.touching) {
             t.state = TransState::default();
         }
+        let pressure_factor = f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale);
         let e = EvalInput {
             fz: f64::from(x.normal_force),
             half_length: f64::from(x.patch_length) / 2.0,
@@ -60,15 +61,17 @@ impl Model for Brush {
             tread_remaining: f64::from(x.tread_left),
             // The wet loss stays NGP's (its wet surface friction): the pressure only enters the brush's.
             pressure: 0.0,
-            pressure_factor: f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale),
+            // NGP's stiffness factor at the pressure, and the slip stiffnesses' fall on a low-friction surface (ice).
+            pressure_factor: pressure_factor * brush::low_mu_stiffness_factor(f64::from(x.grip)),
             wetness: 0.0,
             temp_grip: 1.0,
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
         };
         let steady = brush::eval(&e, &t.cal);
-        // The longitudinal carcass stiffness (ours), at the pressure; the lateral one NGP's.
-        let k_x = brush::carcass_x(&t.cal, e.pressure_factor);
+        // The longitudinal carcass stiffness (ours), at the pressure (the carcass does not soften on ice); the lateral
+        // one NGP's.
+        let k_x = brush::carcass_x(&t.cal, pressure_factor);
         let mut state = t.state;
         let limit = steady.mu * e.fz;
         let vr = e.spin * e.radius;
