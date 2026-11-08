@@ -16,6 +16,8 @@ pub struct Material {
     /// The first stage's colour texture (`baseColorMap`, `colorMap` or `diffuseMap`), a level path, maybe without its
     /// extension.
     pub color_map: Option<String>,
+    /// The first stage's `opacityMap`: the alpha kept apart from the colour.
+    pub opacity_map: Option<String>,
     /// The colour factor (`baseColorFactor` or `diffuseColor`), RGBA.
     pub color: Option<[f32; 4]>,
     pub translucent: bool,
@@ -63,6 +65,7 @@ fn parse(key: &str, m: &Json) -> Material {
         name,
         ground: m.get("groundType").and_then(Json::str).map(str::to_owned),
         color_map: stage_str("baseColorMap").or_else(|| stage_str("colorMap")).or_else(|| stage_str("diffuseMap")),
+        opacity_map: stage_str("opacityMap"),
         color,
         translucent: m.get("translucent").and_then(Json::flag).unwrap_or(false),
         alpha_test: m.get("alphaTest").and_then(Json::flag).unwrap_or(false),

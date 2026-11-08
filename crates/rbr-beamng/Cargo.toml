@@ -17,4 +17,5 @@ path = "src/bin/beamng_stage.rs"
 rbr-btb = { path = "../rbr-btb" }
 rbr-formats = { path = "../rbr-formats" }
 ruzstd = "0.8"
+texpresso = { version = "2.0.2", features = ["rayon"] }
 zip = { version = "9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }

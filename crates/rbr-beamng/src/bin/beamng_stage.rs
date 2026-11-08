@@ -12,30 +12,18 @@ fn main() {
 }
 
 const USAGE: &str = "usage: beamng-stage --zip LEVEL.zip --mission MISSION_FOLDER [--out DIR] [--name NAME] \
-[--skip TEXT]... [--draw-corridor M] [--collision-corridor M] [--detail-lod M] [--prepare DIR --maps DIR]
+[--skip TEXT]... [--draw-corridor M] [--reach TEXT=M]... [--lod TEXT=M]... [--collision-corridor M]
+       [--detail-lod M] [--prepare DIR --maps DIR]
+       beamng-stage --track FOLDER --prepare DIR --maps DIR
        beamng-stage --zip LEVEL.zip --shapes | --shape PATH | --mission M --probe SHAPE_TEXT
 
 Converts a BeamNG level mod (your own copy) and one of its time-trial missions to a BTB stage folder,
 <out>/RX_CONTENT/Tracks/<name>/, which the launcher lists. The output is for your own use: level mods'
 licences usually forbid sharing modified versions. --out defaults to the launcher's files folder's
 `converted` (RERBR_HOME, else the platform's data folder: ~/.local/share/rerbr on Linux). --skip leaves
-shapes whose path contains TEXT undrawn (people, animated rides).";
-
-/// The launcher's files folder (`rbr-launcher`'s `home::dir`): `$RERBR_HOME`, else the platform's user data folder.
-fn launcher_home() -> Option<PathBuf> {
-    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if let Some(dir) = var("RERBR_HOME") {
-        return Some(dir);
-    }
-    match std::env::consts::OS {
-        "windows" => var("APPDATA").map(|d| d.join("ReRBR")),
-        "macos" => var("HOME").map(|h| h.join("Library/Application Support/ReRBR")),
-        _ => var("XDG_DATA_HOME")
-            .filter(|d| d.is_absolute())
-            .or_else(|| var("HOME").map(|h| h.join(".local/share")))
-            .map(|d| d.join("rerbr")),
-    }
-}
+shapes whose path contains TEXT undrawn (people, animated rides). --draw-corridor M draws shapes within M metres of
+the driveline, --reach TEXT=M those whose path contains TEXT within M instead; --lod TEXT=M draws them only up to M
+metres from the eye (the last matching rule wins).";
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -47,8 +35,11 @@ fn run() -> Result<(), String> {
     let mut out = None;
     let mut name = None;
     let mut skip = Vec::new();
-    let mut prepare = None;
+    let mut reach = Vec::new();
+    let mut lod = Vec::new();
+    let mut prepare_dir = None;
     let mut maps = None;
+    let mut track = None;
     let mut numbers: Vec<(String, f64)> = Vec::new();
     while let Some(a) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{a} needs a value"));
@@ -61,8 +52,15 @@ fn run() -> Result<(), String> {
             "--out" => out = Some(PathBuf::from(value()?)),
             "--name" => name = Some(value()?),
             "--skip" => skip.push(value()?),
-            "--prepare" => prepare = Some(PathBuf::from(value()?)),
+            "--reach" | "--lod" => {
+                let v = value()?;
+                let (text, m) = v.rsplit_once('=').ok_or_else(|| format!("{a} {v}: needs TEXT=METRES"))?;
+                let m: f64 = m.parse().map_err(|_| format!("{a} {v}: not a number: {m}"))?;
+                if a == "--reach" { &mut reach } else { &mut lod }.push((text.to_owned(), m));
+            }
+            "--prepare" => prepare_dir = Some(PathBuf::from(value()?)),
             "--maps" => maps = Some(PathBuf::from(value()?)),
+            "--track" => track = Some(PathBuf::from(value()?)),
             "--draw-corridor" | "--collision-corridor" | "--detail-lod" => {
                 let v = value()?;
                 numbers.push((a.clone(), v.parse().map_err(|_| format!("{a}: not a number: {v}"))?));
@@ -73,6 +71,9 @@ fn run() -> Result<(), String> {
             }
             _ => return Err(format!("unknown argument {a}\n{USAGE}")),
         }
+    }
+    if let Some(folder) = track {
+        return prepare(&folder, prepare_dir.ok_or("--track needs --prepare DIR")?, maps);
     }
     let zip = zip.ok_or_else(|| format!("--zip LEVEL.zip is required\n{USAGE}"))?;
     if shapes || dump.is_some() || probe.is_some() {
@@ -91,11 +92,13 @@ fn run() -> Result<(), String> {
     let mission = mission.ok_or_else(|| format!("--mission is required\n{USAGE}"))?;
     let out = match out {
         Some(o) => o,
-        None => launcher_home().ok_or("no files folder (set --out or RERBR_HOME)")?.join("converted"),
+        None => rbr_btb::converted::root().ok_or("no files folder (set --out or RERBR_HOME)")?,
     };
     let mut options = convert::Options::new(&mission, &out);
     options.name = name;
     options.skip = skip;
+    options.reach = reach;
+    options.lod = lod;
     for (k, v) in numbers {
         match k.as_str() {
             "--draw-corridor" => options.draw_corridor = v,
@@ -105,14 +108,19 @@ fn run() -> Result<(), String> {
     }
     let report = convert::convert(&zip, &options)?;
     println!("{}", report.folder.display());
-    if let Some(dir) = prepare {
-        // A test aid: the stage files the launcher's Start builds, under a fixed number.
-        let maps = maps.ok_or("--prepare needs --maps (the install's Maps folder)")?;
-        let track = rbr_btb::track::Track::open(&report.folder)?;
-        let started = std::time::Instant::now();
-        let name = rbr_btb::stage::prepare(&track, 1_999_999, &maps, &dir)?;
-        println!("{name} ({:.1} s)", started.elapsed().as_secs_f64());
+    match prepare_dir {
+        Some(dir) => prepare(&report.folder, dir, maps),
+        None => Ok(()),
     }
+}
+
+/// A test aid: the stage files the launcher's Start builds from `folder`, under a fixed number, into `dir`.
+fn prepare(folder: &std::path::Path, dir: PathBuf, maps: Option<PathBuf>) -> Result<(), String> {
+    let maps = maps.ok_or("--prepare needs --maps (the install's Maps folder)")?;
+    let track = rbr_btb::track::Track::open(folder)?;
+    let started = std::time::Instant::now();
+    let name = rbr_btb::stage::prepare(&track, 1_999_999, &maps, &dir)?;
+    println!("{name} ({:.1} s)", started.elapsed().as_secs_f64());
     Ok(())
 }
 

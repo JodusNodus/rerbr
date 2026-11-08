@@ -79,6 +79,30 @@ pub fn make(archive: &mut Archive, entry: Option<&str>, name: &str, color: [f32;
     }
 }
 
+/// The texture for a material with an opacity map at `opacity`: the colour at `entry` (else `color` all over) with
+/// the opacity as its alpha ([`crate::cutout::merge`]), `how` `cut out`; the plain [`make`] when either does not
+/// decode (a BC7 colour), its `how` saying so.
+pub fn make_cut_out(archive: &mut Archive, entry: Option<&str>, opacity: &str, name: &str, color: [f32; 4]) -> Texture {
+    let decoded = |archive: &mut Archive, e: &str| archive.read(e).ok().and_then(|b| crate::cutout::decode(&b));
+    let Some(alpha) = decoded(archive, opacity) else {
+        let mut t = make(archive, entry, name, color);
+        t.how = format!("{} (opacity map not decoded)", t.how);
+        return t;
+    };
+    let base = match entry {
+        Some(e) => match decoded(archive, e) {
+            Some(image) => Some(image),
+            None => {
+                let mut t = make(archive, entry, name, color);
+                t.how = format!("{} (colour not decoded, no cut-out)", t.how);
+                return t;
+            }
+        },
+        None => None,
+    };
+    Texture { file: format!("{name}.dds"), bytes: crate::cutout::merge(base, color, &alpha), how: "cut out".into() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

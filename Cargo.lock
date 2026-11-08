@@ -2349,6 +2349,7 @@ dependencies = [
  "rbr-btb",
  "rbr-formats",
  "ruzstd",
+ "texpresso",
  "zip",
 ]
 
