@@ -34,12 +34,24 @@ const SPLIT: u32 = 0x17;
 const END: u32 = 0x18;
 /// The driveline begins this far before the start position.
 const LEAD: f64 = 50.0;
+/// How far from the eye a forest item is drawn unless a `--lod` rule says otherwise, metres.
+const FOREST_LOD: f64 = 500.0;
+/// Forest items within this plan distance of the driveline are drawn in full detail up close, metres.
+const FOREST_NEAR: f64 = 15.0;
+/// Forest kinds lower than this (metres) are plants: drawn in their least detail, only within PLANT_CORRIDOR of the
+/// driveline, up to PLANT_LOD from the eye.
+const PLANT_HEIGHT: f64 = 3.0;
+const PLANT_CORRIDOR: f64 = 30.0;
+const PLANT_LOD: f64 = 150.0;
+/// How far from the eye a forest item is drawn in full detail, metres.
+const FOREST_DETAIL: f64 = 150.0;
 /// Plan tile size of the written objects, metres.
 const TILE: f64 = 100.0;
 
 #[derive(Debug, Clone)]
 pub struct Options {
-    /// The mission folder in the zip (`gameplay/missions/<level>/timeTrial/<mission>`).
+    /// The mission folder in the zip (`gameplay/missions/<level>/timeTrial/<mission>`), or a race file
+    /// (`levels/<level>/quickrace/<race>.race.json`).
     pub mission: String,
     /// The stage folder's name; default the mission's.
     pub name: Option<String>,
@@ -57,6 +69,10 @@ pub struct Options {
     pub lod: Vec<(String, f64)>,
     /// Plan distance within which collision is kept, metres.
     pub collision_corridor: f64,
+    /// Plan distance from the driveline within which forest items are drawn (a `--reach` rule overrides), metres.
+    pub forest_corridor: f64,
+    /// The most forest triangles drawn: items nearest the driveline first.
+    pub forest_budget: usize,
     /// Drawn objects whose material's triangles average under this area (m²) are drawn only to [`Options::detail_lod`].
     pub detail_area: f64,
     pub detail_lod: f64,
@@ -83,6 +99,8 @@ impl Options {
             reach: Vec::new(),
             lod: Vec::new(),
             collision_corridor: 60.0,
+            forest_corridor: 80.0,
+            forest_budget: 6_000_000,
             detail_area: 0.02,
             detail_lod: 400.0,
             trees: Vec::new(),
@@ -156,6 +174,10 @@ impl Corridor {
         Corridor { cell, cells }
     }
 
+    fn holds_point(&self, p: [f64; 3]) -> bool {
+        self.cells.contains(&((p[0] / self.cell).floor() as i64, (p[1] / self.cell).floor() as i64))
+    }
+
     fn holds(&self, t: &Triangle) -> bool {
         t.pos
             .iter()
@@ -210,6 +232,22 @@ impl Frame {
         [(p[0] - self.origin[0]) as f32, p[2] as f32, (p[1] - self.origin[1]) as f32]
     }
 
+    /// A BeamNG transform (row-major 3x4) as a row-major Direct3D placement of geometry in the stage's axes: the
+    /// linear part with y and z swapped on both sides, transposed; the translation `position` in the stage frame.
+    fn placement(&self, m: &[[f64; 4]; 3], position: [f64; 3]) -> [f32; 16] {
+        const SWAP: [usize; 3] = [0, 2, 1];
+        let t = self.point(position);
+        let mut out = [0.0f32; 16];
+        for row in 0..3 {
+            for col in 0..3 {
+                out[row * 4 + col] = m[SWAP[col]][SWAP[row]] as f32;
+            }
+        }
+        out[12..15].copy_from_slice(&t);
+        out[15] = 1.0;
+        out
+    }
+
     fn normal(n: [f32; 3]) -> [f32; 3] {
         [n[0], n[2], n[1]]
     }
@@ -251,7 +289,7 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     let scene = Scene::read(&mut archive, &level)?;
     let mats = materials::read(&mut archive, &level)?;
     let grounds = materials::ground_models(&mut archive, &level)?;
-    let race = Race::parse(&archive.read_text(&format!("{}/race.race.json", options.mission))?)?;
+    let race = Race::parse(&archive.read_text(&race_file(&options.mission))?)?;
     let course = course::course(&scene, &race)?;
     let mut report = Report::default();
     let mut say = |s: String| {
@@ -274,8 +312,13 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     let frame = Frame { origin: [ext(0).round(), ext(1).round()] };
 
     let shown = |s: &level::Static| !scene.in_hidden_group(&s.parent);
-    let reaches: std::collections::BTreeSet<u64> =
-        options.reach.iter().map(|r| r.1).chain([options.draw_corridor]).map(f64::to_bits).collect();
+    let reaches: std::collections::BTreeSet<u64> = options
+        .reach
+        .iter()
+        .map(|r| r.1)
+        .chain([options.draw_corridor, options.forest_corridor])
+        .map(f64::to_bits)
+        .collect();
     let draw_corridors: HashMap<u64, Corridor> =
         reaches.into_iter().map(|r| (r, Corridor::new(&course.line.points, f64::from_bits(r)))).collect();
     let col_corridor = Corridor::new(&course.line.points, options.collision_corridor);
@@ -295,13 +338,7 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     for st in scene.statics.iter().filter(|s| shown(s)) {
         let path = st.cdae_path();
         if !shapes.contains_key(&path) {
-            // A level without BeamNG's built `.cdae` ships the Collada source.
-            let dae = st.shape.trim_start_matches('/');
-            let shape = if let Some(entry) = archive.find(&path).map(str::to_owned) {
-                crate::cdae::parse(&archive.read(&entry)?)
-            } else if let Some(entry) = archive.find(dae).map(str::to_owned).filter(|_| dae != path) {
-                crate::dae::parse(&String::from_utf8_lossy(&archive.read(&entry)?))
-            } else {
+            let Some(shape) = load_shape(&mut archive, st) else {
                 *skipped.entry(format!("{path} (missing)")).or_default() += 1;
                 continue;
             };
@@ -364,6 +401,106 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
             }
         }
     }
+    // The level's forest: each kind's drawn parts once per detail (its most and its least detailed level), in the
+    // stage's axes about its origin, per material. An item within its draw corridor is a placement of the least
+    // detailed kind out to its `LODOut`; one within FOREST_NEAR of the driveline is drawn in full detail up to
+    // FOREST_DETAIL from the eye and in the least beyond.
+    let mut forest_kinds: BTreeMap<(String, bool), Vec<(String, Builder)>> = BTreeMap::new();
+    let mut forest_placed: BTreeMap<(String, bool, u32, u32), Vec<[f32; 16]>> = BTreeMap::new();
+    let near = Corridor::new(&course.line.points, FOREST_NEAR);
+    let plants = Corridor::new(&course.line.points, PLANT_CORRIDOR);
+    // Per item: distance from the driveline over its height (a tall tree stands out from further), triangles,
+    // placement keys, placement.
+    type Key = (String, bool, u32, u32);
+    let mut candidates: Vec<(f64, usize, Vec<Key>, [f32; 16])> = Vec::new();
+    for item in crate::forest::items(&mut archive, &level)? {
+        let path = item.cdae_path();
+        if options.skip.iter().any(|k| path.to_lowercase().contains(&k.to_lowercase())) {
+            continue;
+        }
+        let corridor = &draw_corridors[&rule(&options.reach, &path).unwrap_or(options.forest_corridor).to_bits()];
+        if !corridor.holds_point(item.position) {
+            continue;
+        }
+        if !forest_kinds.contains_key(&(path.clone(), true)) {
+            let at_origin = level::Static::placed(&item.shape, None, None, None);
+            let shape = match load_shape(&mut archive, &item) {
+                Some(Ok(shape)) => Some(shape),
+                Some(Err(e)) => {
+                    *skipped.entry(format!("{path} ({e})")).or_default() += 1;
+                    None
+                }
+                None => {
+                    *skipped.entry(format!("{path} (missing)")).or_default() += 1;
+                    None
+                }
+            };
+            for (full, detail) in [(true, Detail::Visible), (false, Detail::Lowest)] {
+                let parts = shape.as_ref().map(|s| world::parts(s, &at_origin, detail)).unwrap_or_default();
+                let mut by_material: BTreeMap<String, Builder> = BTreeMap::new();
+                for part in &parts {
+                    for t in &part.triangles {
+                        let name = t.material.and_then(|m| part.materials.get(m as usize)).cloned().unwrap_or_default();
+                        let b = by_material
+                            .entry(name.to_lowercase())
+                            .or_insert_with(|| Builder { weld: true, ..Builder::default() });
+                        add(b, Frame { origin: [0.0, 0.0] }, t, true);
+                    }
+                }
+                forest_kinds.insert((path.clone(), full), by_material.into_iter().collect());
+            }
+        }
+        if forest_kinds[&(path.clone(), false)].is_empty() {
+            continue;
+        }
+        // Low plants (bushes, ferns) only by the road and up close.
+        let height = forest_kinds[&(path.clone(), true)]
+            .iter()
+            .flat_map(|(_, b)| b.positions.iter().map(|p| p[1]))
+            .fold(0.0f32, f32::max) as f64
+            * item.scale[2];
+        let low = height < PLANT_HEIGHT;
+        if low && !plants.holds_point(item.position) {
+            continue;
+        }
+        let lod = rule(&options.lod, &path).unwrap_or(if low { PLANT_LOD } else { FOREST_LOD }).round().max(1.0) as u32;
+        let placement = frame.placement(&item.transform(), item.position);
+        let (detail, cut) = (FOREST_DETAIL as u32, (FOREST_DETAIL as u32).min(lod));
+        let keys = if !low && near.holds_point(item.position) {
+            let mut k = vec![(path.clone(), true, 0, cut)];
+            if lod > detail {
+                k.push((path.clone(), false, detail, lod));
+            }
+            k
+        } else {
+            vec![(path.clone(), false, 0, lod)]
+        };
+        let tris =
+            |full: bool| -> usize { forest_kinds[&(path.clone(), full)].iter().map(|(_, b)| b.triangles.len()).sum() };
+        let cost = keys.iter().map(|k| tris(k.1)).sum::<usize>();
+        candidates.push((course.line.project(item.position).1 / height.max(1.0), cost, keys, placement));
+    }
+    // Nearest the driveline for their height first, within the triangle budget.
+    candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let (mut spent, mut reached, mut dropped) = (0usize, 0.0f64, 0usize);
+    for (distance, cost, keys, placement) in candidates {
+        if spent + cost > options.forest_budget {
+            dropped += 1;
+            continue;
+        }
+        spent += cost;
+        reached = distance;
+        for k in keys {
+            forest_placed.entry(k).or_default().push(placement);
+        }
+    }
+    if dropped > 0 {
+        say(format!(
+            "forest: {dropped} items left out past {reached:.1} m from the driveline per metre of height (budget {} triangles)",
+            options.forest_budget
+        ));
+    }
+
     for (name, (id, n)) in &surfaces {
         say(format!("collision {name}: surface {id}, {n} triangles"));
     }
@@ -447,7 +584,8 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     // Cut-outs made, by colour and opacity entry: materials sharing both share the file.
     let mut cut_outs: HashMap<(Option<String>, String), textures::Texture> = HashMap::new();
     let mut material_of: HashMap<String, String> = HashMap::new();
-    let mut by_name: Vec<&String> = drawn.keys().map(|(_, m, _)| m).collect();
+    let mut by_name: Vec<&String> =
+        drawn.keys().map(|(_, m, _)| m).chain(forest_kinds.values().flatten().map(|(m, _)| m)).collect();
     by_name.sort();
     by_name.dedup();
     for name in by_name {
@@ -473,6 +611,9 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
             None => textures::make(&mut archive, entry.as_deref(), &unique(&stem), color),
         };
         *hows.entry(tex.how.clone()).or_default() += 1;
+        if tex.how.starts_with("flat") {
+            say(format!("texture {}: {name} (colour map {:?})", tex.how, m.color_map));
+        }
         let section = format!("beamng\\{}", safe(name));
         write_material(&mut sections, &section, &tex.file, see_through);
         names.push(section.clone());
@@ -576,8 +717,37 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
             retail_triangles += part.triangles.len() * placements.len();
         }
     }
+    // The forest: per kind, detail and distance band, one placement file and an object per material of the kind.
+    let (mut forest_items, mut forest_triangles) = (0, 0);
+    let mut forest_weight: HashMap<String, usize> = HashMap::new();
+    for (k, ((path, full, lod_in, lod_out), placements)) in forest_placed.iter().enumerate() {
+        let xform = format!("forest_{k}");
+        zw.start_file(format!("Objects/{xform}.xform"), deflate).map_err(zerr)?;
+        zw.write_all(&placements.iter().flatten().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>())
+            .map_err(|e| e.to_string())?;
+        let entries = format!(
+            "LODIn={lod_in}\nLODOut={lod_out}\nVisible=1\nDrawInstanced=0\nMoveable=0\nShadowCaster=1\nCollisionModel=-1\n"
+        );
+        for (p, (name, b)) in forest_kinds[&(path.clone(), *full)].iter().enumerate() {
+            put(&mut zw, &format!("{xform}_{p}"), b, &material_of[name], (&xform, placements.len()), &entries)?;
+            forest_triangles += b.triangles.len() * placements.len();
+        }
+        if *lod_in == 0 {
+            forest_items += placements.len();
+        }
+        let n: usize = forest_kinds[&(path.clone(), *full)].iter().map(|(_, b)| b.triangles.len()).sum();
+        *forest_weight.entry(path.rsplit('/').next().unwrap_or(path).to_owned()).or_default() += n * placements.len();
+    }
     zw.finish().map_err(zerr)?;
     say(format!("objects: {count} ({detail_objects} drawn to {} m only)", options.detail_lod));
+    say(format!(
+        "forest: {forest_items} items of {} kinds within the draw corridor, {forest_triangles} triangles",
+        forest_kinds.values().filter(|k| !k.is_empty()).count()
+    ));
+    let mut heaviest: Vec<(String, usize)> = forest_weight.into_iter().collect();
+    heaviest.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let heaviest: Vec<String> = heaviest.iter().take(6).map(|(k, n)| format!("{k} {n}")).collect();
+    say(format!("forest's heaviest kinds (triangles): {}", heaviest.join(", ")));
     if let Some(library) = &options.retail {
         let per_kind: Vec<String> = (0..kinds.len())
             .map(|k| {
@@ -690,8 +860,39 @@ fn write_material(out: &mut String, section: &str, texture: &str, transparent: b
     );
 }
 
-/// The mission's name from its `info.json`, else its folder name.
+/// The shape a static draws: BeamNG's built `.cdae`, else (none, or one this reader does not read) the `.dae` source
+/// a level may ship instead; `None` when neither is in the zip.
+fn load_shape(archive: &mut Archive, st: &level::Static) -> Option<Result<crate::cdae::Shape, String>> {
+    let path = st.cdae_path();
+    let dae = st.shape.trim_start_matches('/');
+    let built = archive.find(&path).map(str::to_owned).map(|e| archive.read(&e).and_then(|b| crate::cdae::parse(&b)));
+    if matches!(built, Some(Ok(_))) || dae == path {
+        return built;
+    }
+    match archive.find(dae).map(str::to_owned) {
+        Some(e) => Some(archive.read(&e).and_then(|b| crate::dae::parse(&String::from_utf8_lossy(&b)))),
+        None => built,
+    }
+}
+
+/// The race file of a mission folder, or the race file itself.
+pub fn race_file(mission: &str) -> String {
+    let mission = mission.trim_end_matches('/');
+    if mission.ends_with(".race.json") {
+        mission.to_owned()
+    } else {
+        format!("{mission}/race.race.json")
+    }
+}
+
+/// The mission's name from its `info.json`, else its folder name; a race file's level and file name.
 fn mission_name(archive: &mut Archive, mission: &str) -> String {
+    if let Some(race) = mission.strip_suffix(".race.json") {
+        let mut parts = race.rsplit('/');
+        let stem = parts.next().unwrap_or(race);
+        let level = parts.nth(1).unwrap_or_default();
+        return format!("{level}_{stem}");
+    }
     let folder = mission.rsplit('/').next().unwrap_or(mission).to_owned();
     archive
         .read_text(&format!("{mission}/info.json"))
@@ -746,10 +947,13 @@ fn staged(course: &Course) -> Staged {
 }
 
 /// The two splits a stage times (the HUD, `EndRace` and the results carry two, as every retail stage has): of
-/// `splits`, the pair nearest a third and two thirds of the way from `start` to `finish`; all of them when two or
-/// fewer.
+/// `splits`, the pair nearest a third and two thirds of the way from `start` to `finish`; all of them when one or
+/// two; a third and two thirds when the race has none (a quick race's start and finish only).
 fn two_splits(splits: &[f64], start: f64, finish: f64) -> Vec<f64> {
     let at = |share: f64| start + (finish - start) * share;
+    if splits.is_empty() {
+        return vec![at(1.0 / 3.0), at(2.0 / 3.0)];
+    }
     let pairs = (0..splits.len()).flat_map(|i| (i + 1..splits.len()).map(move |j| (splits[i], splits[j])));
     pairs
         .min_by(|a, b| {
@@ -804,6 +1008,7 @@ mod tests {
         assert_eq!(two_splits(&[4000.0, 7200.0, 13500.0, 17000.0], 0.0, 21000.0), [7200.0, 13500.0]);
         assert_eq!(two_splits(&[100.0, 200.0, 300.0], 0.0, 300.0), [100.0, 200.0]);
         assert_eq!(two_splits(&[500.0], 0.0, 900.0), [500.0]);
+        assert_eq!(two_splits(&[], 0.0, 900.0), [300.0, 600.0]);
     }
 
     #[test]

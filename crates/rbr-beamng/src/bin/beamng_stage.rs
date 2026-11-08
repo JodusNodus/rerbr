@@ -11,17 +11,19 @@ fn main() {
     }
 }
 
-const USAGE: &str = "usage: beamng-stage --zip LEVEL.zip --mission MISSION_FOLDER [--out DIR] [--name NAME] \
-[--skip TEXT]... [--draw-corridor M] [--reach TEXT=M]... [--lod TEXT=M]... [--collision-corridor M]
+const USAGE: &str = "usage: beamng-stage --zip LEVEL.zip --mission MISSION_FOLDER|RACE.race.json [--out DIR] [--name NAME] \
+[--skip TEXT]... [--draw-corridor M] [--reach TEXT=M]... [--lod TEXT=M]... [--collision-corridor M] [--forest-corridor M] [--forest-budget TRIANGLES]
        [--detail-lod M] [--trees TEXT]... [--trees-from STAGE] [--prepare DIR --maps DIR]
        beamng-stage --track FOLDER --prepare DIR --maps DIR
        beamng-stage --zip LEVEL.zip --shapes | --shape PATH | --mission M --probe SHAPE_TEXT
 
-Converts a BeamNG level mod (your own copy) and one of its time-trial missions to a BTB stage folder,
+Converts a BeamNG level mod (your own copy) and one of its time-trial missions (or a\n`quickrace/*.race.json`) to a BTB stage folder,
 <out>/RX_CONTENT/Tracks/<name>/, which the launcher lists. The output is for your own use: level mods'
 licences usually forbid sharing modified versions. --out defaults to the launcher's files folder's
 `converted` (RERBR_HOME, else the platform's data folder: ~/.local/share/rerbr on Linux). --skip leaves
-shapes whose path contains TEXT undrawn (people, animated rides). --draw-corridor M draws shapes within M metres of
+shapes whose path contains TEXT undrawn (people, animated rides). --draw-corridor M draws shapes (--forest-corridor M,
+default 80, the forest items, nearest first up to
+--forest-budget triangles, default 6000000) within M metres of
 the driveline, --reach TEXT=M those whose path contains TEXT within M instead; --lod TEXT=M draws them only up to M
 metres from the eye (the last matching rule wins). --trees-from STAGE (a retail stage of your install, `track-44_O`,
 in --maps or $RBR_DATA/Maps) replaces the trees of the shapes whose path contains a --trees TEXT with that stage's
@@ -67,7 +69,7 @@ fn run() -> Result<(), String> {
             "--prepare" => prepare_dir = Some(PathBuf::from(value()?)),
             "--maps" => maps = Some(PathBuf::from(value()?)),
             "--track" => track = Some(PathBuf::from(value()?)),
-            "--draw-corridor" | "--collision-corridor" | "--detail-lod" => {
+            "--draw-corridor" | "--collision-corridor" | "--forest-corridor" | "--forest-budget" | "--detail-lod" => {
                 let v = value()?;
                 numbers.push((a.clone(), v.parse().map_err(|_| format!("{a}: not a number: {v}"))?));
             }
@@ -128,6 +130,8 @@ fn run() -> Result<(), String> {
         match k.as_str() {
             "--draw-corridor" => options.draw_corridor = v,
             "--collision-corridor" => options.collision_corridor = v,
+            "--forest-corridor" => options.forest_corridor = v,
+            "--forest-budget" => options.forest_budget = v as usize,
             _ => options.detail_lod = v,
         }
     }
@@ -227,7 +231,7 @@ fn probe_road(archive: &mut Archive, mission: &str, visual: &str) -> Result<(), 
     let scene = level::Scene::read(archive, &level)?;
     let mats = materials::read(archive, &level)?;
     let grounds = materials::ground_models(archive, &level)?;
-    let race = Race::parse(&archive.read_text(&format!("{}/race.race.json", mission.trim_end_matches('/')))?)?;
+    let race = Race::parse(&archive.read_text(&convert::race_file(mission))?)?;
     let c = course::course(&scene, &race)?;
     println!("level {level}: {} statics, {} roads", scene.statics.len(), scene.roads.len());
     println!(

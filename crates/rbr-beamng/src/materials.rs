@@ -41,7 +41,8 @@ pub fn read(archive: &mut Archive, level: &str) -> Result<HashMap<String, Materi
     for file in files {
         let doc = json::parse(&archive.read_text(&file)?).map_err(|e| format!("{file}: {e}"))?;
         for (key, m) in doc.members() {
-            if m.get("class").and_then(Json::str) != Some("Material") {
+            // Some levels write the class in lower case (2K-Irohazaka's `material`).
+            if !m.get("class").and_then(Json::str).is_some_and(|c| c.eq_ignore_ascii_case("Material")) {
                 continue;
             }
             let material = parse(key, m);

@@ -7,6 +7,7 @@ pub mod convert;
 pub mod course;
 pub mod cutout;
 pub mod dae;
+pub mod forest;
 pub mod json;
 pub mod level;
 pub mod materials;

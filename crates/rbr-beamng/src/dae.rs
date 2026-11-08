@@ -1,7 +1,8 @@
 //! Collada shapes (`.dae`) as a [`Shape`], for levels that ship no `.cdae` (BeamNG builds those on first load). What
 //! Blender exports: `<triangles>` and `<polylist>` over `<float_array>` sources, nodes with a `<matrix>`. Each
-//! instanced geometry becomes one object of one detail level, its node's matrix baked into the vertices; corners are
-//! unshared (a triangle soup), wound clockwise and with `v` flipped as Torque imports them.
+//! instanced geometry becomes one object, its node's matrix baked into the vertices; under a `start01` node a name's
+//! trailing number is its detail size (`a400`; `Colmesh-1` collision), else it joins the most detailed level. Corners
+//! are unshared (a triangle soup), wound clockwise and with `v` flipped as Torque imports them.
 
 use crate::cdae::{Detail, Mesh, Node, Object, Primitive, Shape};
 use quick_xml::events::Event;
@@ -88,21 +89,17 @@ pub fn parse(xml: &str) -> Result<Shape, String> {
     let y_up = all.iter().any(|e| e.name == "up_axis" && e.text.trim() == "Y_UP");
     let base: Mat = if y_up { [[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 1.0, 0.0, 0.0], ID[3]] } else { ID };
 
-    let mut shape = Shape {
-        nodes: vec![Node { name: 0, parent: -1 }],
-        rotations: vec![[0.0, 0.0, 0.0, 1.0]],
-        translations: vec![[0.0; 3]],
-        names: vec!["root".into(), "detail1".into()],
-        details: vec![Detail { name: 1, sub_shape: 0, object_detail: 0, size: 1.0 }],
-        sub_shape_first_object: vec![0],
-        ..Shape::default()
-    };
+    let mut materials = Vec::new();
     let mut material_index: HashMap<String, u32> = HashMap::new();
+    // Every instanced geometry: its node's name, detail size and mesh.
+    let mut found: Vec<(String, f32, Mesh)> = Vec::new();
 
-    // Nodes of the scene with their world matrices.
+    // Nodes of the scene with their world matrices and whether they hang under Torque's `start01` (whose children
+    // name their detail size).
     let scene = doc.kid("scene").and_then(|s| s.kid("instance_visual_scene")).and_then(|i| i.attr("url")).and_then(get);
-    let mut stack: Vec<(&El, Mat)> = scene.map(|s| s.kids("node").map(|n| (n, base)).collect()).unwrap_or_default();
-    while let Some((node, parent)) = stack.pop() {
+    let mut stack: Vec<(&El, Mat, bool)> =
+        scene.map(|s| s.kids("node").map(|n| (n, base, false)).collect()).unwrap_or_default();
+    while let Some((node, parent, under_start)) = stack.pop() {
         let mut m = parent;
         if let Some(mx) = node.kid("matrix") {
             let v: Vec<f64> = mx.numbers();
@@ -110,7 +107,10 @@ pub fn parse(xml: &str) -> Result<Shape, String> {
                 m = mul(&m, &std::array::from_fn(|i| std::array::from_fn(|j| v[i * 4 + j])));
             }
         }
-        stack.extend(node.kids("node").map(|n| (n, m)));
+        let name = node.attr("name").unwrap_or("object");
+        let start = name.to_lowercase().starts_with("start");
+        stack.extend(node.kids("node").map(|n| (n, m, start)));
+        let size = if under_start { detail_size(name) } else { None };
         for inst in node.kids("instance_geometry") {
             let Some(geom) = inst.attr("url").and_then(get) else { continue };
             let Some(mesh) = geom.kid("mesh") else { continue };
@@ -123,15 +123,60 @@ pub fn parse(xml: &str) -> Result<Shape, String> {
                 let name = get(target).and_then(|t| t.attr("name")).unwrap_or(target.trim_start_matches('#'));
                 symbols.insert(b.attr("symbol").unwrap_or_default(), name.to_owned());
             }
-            let out = geometry(mesh, &m, &get, &symbols, &mut shape.materials, &mut material_index);
-            let name = shape.names.len() as i32;
-            shape.names.push(node.attr("name").unwrap_or("object").to_owned());
-            shape.objects.push(Object { name, mesh_count: 1, start_mesh: shape.meshes.len() as i32, node: 0 });
-            shape.meshes.push(out);
+            let out = geometry(mesh, &m, &get, &symbols, &mut materials, &mut material_index);
+            found.push((name.to_owned(), size.unwrap_or(f32::NAN), out));
         }
     }
-    shape.sub_shape_object_count = vec![shape.objects.len() as i32];
+    // Geometry without a size of its own joins the most detailed level.
+    let top = found.iter().map(|f| f.1).filter(|s| *s >= 0.0).fold(1.0f32, f32::max);
+    let mut sizes: Vec<f32> = found.iter().map(|f| if f.1.is_nan() { top } else { f.1 }).collect();
+    let mut levels = sizes.clone();
+    levels.sort_by(|a, b| b.total_cmp(a));
+    levels.dedup();
+    let mut shape = Shape {
+        nodes: vec![Node { name: 0, parent: -1 }],
+        rotations: vec![[0.0, 0.0, 0.0, 1.0]],
+        translations: vec![[0.0; 3]],
+        names: vec!["root".into()],
+        sub_shape_first_object: vec![0],
+        sub_shape_object_count: vec![found.len() as i32],
+        materials,
+        ..Shape::default()
+    };
+    for (d, &size) in levels.iter().enumerate() {
+        shape.details.push(Detail { name: shape.names.len() as i32, sub_shape: 0, object_detail: d as i32, size });
+        shape.names.push(format!("detail{size}"));
+    }
+    // Each object holds a mesh in its own level's slot, null meshes in the others.
+    for ((name, _, mesh), size) in found.into_iter().zip(sizes.drain(..)) {
+        let slot = levels.iter().position(|&l| l == size).unwrap_or(0);
+        let start = shape.meshes.len() as i32;
+        let mut mesh = Some(mesh);
+        for d in 0..levels.len() {
+            let null = || Mesh { kind: 4, ..Mesh::default() };
+            shape.meshes.push(if d == slot { mesh.take().unwrap_or_else(null) } else { null() });
+        }
+        shape.objects.push(Object {
+            name: shape.names.len() as i32,
+            mesh_count: levels.len() as i32,
+            start_mesh: start,
+            node: 0,
+        });
+        shape.names.push(name);
+    }
     Ok(shape)
+}
+
+/// Torque's detail size from a node name under `start01`: a trailing number (`tree_a400` 400), negative after a
+/// minus (`Colmesh-1`, collision).
+fn detail_size(name: &str) -> Option<f32> {
+    let digits = name.len() - name.trim_end_matches(|c: char| c.is_ascii_digit()).len();
+    if digits == 0 {
+        return None;
+    }
+    let (head, number) = name.split_at(name.len() - digits);
+    let n: f32 = number.parse().ok()?;
+    Some(if head.ends_with('-') { -n } else { n })
 }
 
 fn geometry<'a>(
@@ -254,5 +299,40 @@ mod tests {
         assert_eq!(m.triangles().len(), 2);
         assert_eq!(m.verts[0], [10.0, 0.0, 0.0]);
         assert_eq!(m.verts[1], [11.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn detail_sizes_from_names() {
+        assert_eq!(super::detail_size("tro_tree_2_mediuma400"), Some(400.0));
+        assert_eq!(super::detail_size("Colmesh_tro_bush_small-1"), Some(-1.0));
+        assert_eq!(super::detail_size("road"), None);
+    }
+}
+
+#[cfg(test)]
+mod probe {
+    #[test]
+    #[ignore]
+    fn lod_triangles() {
+        let Some(dir) = std::env::var_os("DAE_DIR") else { return };
+        for e in std::fs::read_dir(dir).unwrap().flatten() {
+            let s = super::parse(&std::fs::read_to_string(e.path()).unwrap()).unwrap();
+            let per: Vec<String> = s
+                .details
+                .iter()
+                .map(|d| {
+                    let n: usize = s
+                        .objects
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(o, _)| s.object_meshes(o))
+                        .filter(|(_, dd)| std::ptr::eq(*dd, d))
+                        .map(|(m, _)| s.meshes[m].indices.len() / 3)
+                        .sum();
+                    format!("{}:{n}", d.size)
+                })
+                .collect();
+            println!("{} {}", e.file_name().to_string_lossy(), per.join(" "));
+        }
     }
 }

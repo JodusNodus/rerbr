@@ -11,6 +11,8 @@ pub enum Detail {
     Visible,
     /// The collision levels (negative size, `Collision-*`), all of them.
     Collision,
+    /// The least detailed drawn level that holds triangles (per subshape).
+    Lowest,
 }
 
 /// One world triangle, corners in the mesh's winding.
@@ -37,6 +39,28 @@ pub struct Part {
 fn details(shape: &Shape, want: Detail) -> Vec<usize> {
     match want {
         Detail::Collision => (0..shape.details.len()).filter(|&d| shape.details[d].size < 0.0).collect(),
+        Detail::Lowest => {
+            let filled = |d: usize| {
+                (0..shape.objects.len()).any(|o| {
+                    shape
+                        .object_meshes(o)
+                        .iter()
+                        .any(|(m, dd)| std::ptr::eq(*dd, &shape.details[d]) && !shape.meshes[*m].indices.is_empty())
+                })
+            };
+            let mut out: Vec<usize> = Vec::new();
+            for (i, d) in shape.details.iter().enumerate() {
+                if d.size < 0.0 || !filled(i) {
+                    continue;
+                }
+                match out.iter_mut().find(|j| shape.details[**j].sub_shape == d.sub_shape) {
+                    Some(j) if shape.details[*j].size > d.size => *j = i,
+                    Some(_) => {}
+                    None => out.push(i),
+                }
+            }
+            out
+        }
         Detail::Visible => {
             // Per subshape, the largest drawn size.
             let mut out: Vec<usize> = Vec::new();

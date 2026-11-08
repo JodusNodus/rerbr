@@ -31,6 +31,25 @@ impl Static {
         })
     }
 
+    /// A placed shape from its JSON `position`, `rotationMatrix` and `scale` (one number or three).
+    pub fn placed(
+        shape: &str,
+        position: Option<&Json>,
+        rotation_matrix: Option<&Json>,
+        scale: Option<&Json>,
+    ) -> Static {
+        Static {
+            name: String::new(),
+            parent: String::new(),
+            shape: shape.to_owned(),
+            position: vec3(position, [0.0; 3]),
+            rotation: rotation(rotation_matrix),
+            scale: scale.and_then(Json::num).map_or_else(|| vec3(scale, [1.0; 3]), |n| [n; 3]),
+            collision_type: None,
+            hidden: false,
+        }
+    }
+
     /// The shape file the game loads for `shape`: the `.cdae` next to the `.dae`.
     pub fn cdae_path(&self) -> String {
         let s = self.shape.trim_start_matches('/');
