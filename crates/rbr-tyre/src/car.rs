@@ -16,8 +16,9 @@ use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
 struct Tyre {
     at: u32,
     cal: Calibration,
-    /// The cornering stiffness of NGP's own slope ([`fit::ngp_calibration`]), which ice falls from.
-    cy0_ngp: f64,
+    /// The slip stiffnesses (cornering, longitudinal) of NGP's own slope ([`fit::ngp_calibration`]), which ice falls
+    /// from.
+    ngp: (f64, f64),
     loose: Loose,
     state: TransState,
     /// Whether the brush ran at the wheel's last step.
@@ -36,9 +37,16 @@ impl Brush {
             .iter()
             .map(|w| {
                 let cal = fit::calibration(w)?;
-                let cy0_ngp = fit::ngp_calibration(w)?.cy0;
+                let ngp = fit::ngp_calibration(w)?;
                 let loose = fit::loose(w)?;
-                Ok(Tyre { at: w.tyre, cal, cy0_ngp, loose, state: TransState::default(), running: false })
+                Ok(Tyre {
+                    at: w.tyre,
+                    cal,
+                    ngp: (ngp.cy0, ngp.cx0),
+                    loose,
+                    state: TransState::default(),
+                    running: false,
+                })
             })
             .collect::<Result<_, String>>()?;
         Ok(Brush { tyres })
@@ -89,8 +97,10 @@ impl Model for Brush {
         let steady = if soil {
             loose::eval(&e, &t.loose, loose::gravel_share(x.surface_classes, x.surface_blend))
         } else {
-            let cy0 = brush::low_mu_cornering_stiffness(f64::from(x.grip), t.cal.cy0, t.cy0_ngp);
-            brush::eval(&e, &Calibration { cy0, ..t.cal })
+            let grip = f64::from(x.grip);
+            let cy0 = brush::low_mu_slip_stiffness(grip, t.cal.cy0, t.ngp.0);
+            let cx0 = brush::low_mu_slip_stiffness(grip, t.cal.cx0, t.ngp.1);
+            brush::eval(&e, &Calibration { cy0, cx0, ..t.cal })
         };
         // The carcass stiffnesses at the pressure (the carcass does not soften on ice): the longitudinal one ours, the
         // lateral one NGP's moved to the published pressure law.
