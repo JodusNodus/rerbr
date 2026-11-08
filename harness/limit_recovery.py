@@ -2,7 +2,7 @@
 
   python3 -I -B harness/limit_recovery.py --out DIR [--physics ngp,experimental-brush]
       [--cars Ford_Fiesta_Rally2_ngp7,VW_Golf_II_GTI_16V_GrpA_ngp6,Ford_Escort_Mk_II_RS_Grp4_ngp6] [--throttle 0,1]
-      [--stage track-85_M] [--circle -260,120,40] [--ramp 0.5] [--steps 30000] [--jobs 6] [--analyse-only]
+      [--stage track-85_M] [--circle -260,120,40] [--ramp 0.5] [--steps 30000] [--jobs 6] [--analyse-only] [--bin PATH]
 
 Each run is `rbr-standalone --autopilot --boot --circle X,Y,R --circle-past T --trace-speed`: the car ramps up on the
 circle until it first runs 1 m wide (past the limit), then holds throttle T (0 lifts, 1 holds full throttle) with no
@@ -14,7 +14,8 @@ off its line (outside assistance), so the manoeuvre has to stay on the circle. T
 Per run, from the onset (the first step 1 m wide): the speed and the lateral g at the limit (the 0.25 s mean of
 |glat| at its highest in the 3 s before), the lateral g kept (the lowest 0.25 s mean in the 1.5 s after over the
 limit's), the widest the car runs (m outside the circle) and when, the time back within 0.5 m of the circle
-(recovered; none if never), the peak body sideslip (deg, |beta|), and spun (|beta| over 60 deg at any point after).
+(recovered; never if not), the body sideslip at the onset and its peak (deg, |beta|), and spun (|beta| over 60 deg),
+all within 6 s of the onset.
 Traces and logs go to DIR. target/release/rbr-standalone must be built; RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come
 from dev.env."""
 import argparse
@@ -33,11 +34,12 @@ G = 9.80665
 MEAN = 0.25  # s: the lateral g's moving mean
 BEFORE, AFTER = 3.0, 1.5  # s: the limit's window before the onset, the kept grip's after it
 BACK = 0.5  # m: back on the circle
+WINDOW = 6.0  # s after the onset the widest, the sideslip and the spin are looked for
 SPUN = 60.0  # deg of body sideslip
 
 
 def command(args, car, physics, throttle, name):
-    return [BIN, "--autopilot", os.path.join(args.out, name + ".out"), "--boot", "--stage", args.stage,
+    return [args.bin, "--autopilot", os.path.join(args.out, name + ".out"), "--boot", "--stage", args.stage,
             "--rsf-car", car, "--physics", physics, "--steps", str(args.steps), "--top-speed", "60",
             "--circle", args.circle, "--circle-ramp", str(args.ramp), "--circle-past", str(throttle),
             "--trace-speed", os.path.join(args.out, name + ".trace"), "--data", os.environ["RBR_DATA"],
@@ -81,11 +83,11 @@ def analyse(rows, cx, cy, radius):
     limit = max(mean(i) for i in before)
     kept = min(mean(i) for i in after) / limit
     wide = [math.hypot(r["x"] - cx, r["y"] - cy) - radius for r in rows]
-    tail = range(onset, len(rows))
+    tail = range(onset, min(len(rows), onset + round(WINDOW / dt)))
     widest = max(tail, key=lambda i: wide[i])
-    back = next((i for i in range(widest, len(rows)) if wide[i] < BACK), None)
+    back = next((i for i in range(widest, tail.stop) if wide[i] < BACK), None)
     beta = max(abs(math.degrees(rows[i]["beta"])) for i in tail)
-    return dict(v=rows[onset]["v"] * 3.6, limit=limit, kept=kept, widest=wide[widest],
+    return dict(beta0=abs(math.degrees(rows[onset]["beta"])), v=rows[onset]["v"] * 3.6, limit=limit, kept=kept, widest=wide[widest],
                 at=rows[widest]["t"] - rows[onset]["t"],
                 back=None if back is None else rows[back]["t"] - rows[onset]["t"], beta=beta, spun=beta > SPUN,
                 left=rows[-1]["t"] - rows[onset]["t"])
@@ -104,6 +106,7 @@ def main():
     parser.add_argument("--steps", type=int, default=30000)
     parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--analyse-only", action="store_true")
+    parser.add_argument("--bin", default=BIN, help="the rbr-standalone to run (a variant's build)")
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
     runs = [(car, physics, t, f"{car.split('_ngp')[0]}-{physics}-t{t}") for car in args.cars.split(",")
@@ -116,7 +119,7 @@ def main():
             if code:
                 print(f"{r[3]}: exit {code} (see its log)")
     cx, cy, radius = (float(x) for x in args.circle.split(","))
-    print(f"{'run':58} {'km/h':>5} {'lat g':>6} {'kept':>5} {'wide m':>6} {'at s':>5} {'back s':>6} {'beta':>5} spun")
+    print(f"{'run':58} {'km/h':>5} {'lat g':>6} {'kept':>5} {'wide m':>6} {'at s':>5} {'back s':>6} {'beta0':>5} {'beta':>5} spun")
     for car, physics, t, name in runs:
         path = os.path.join(args.out, name + ".trace")
         a = analyse(load(path), cx, cy, radius) if os.path.exists(path) else None
@@ -125,7 +128,7 @@ def main():
             continue
         back = "never" if a["back"] is None else f"{a['back']:.2f}"
         print(f"{name:58} {a['v']:5.1f} {a['limit']:6.3f} {a['kept']:5.2f} {a['widest']:6.2f} {a['at']:5.2f} "
-              f"{back:>6} {a['beta']:5.1f} {'yes' if a['spun'] else 'no'}")
+              f"{back:>6} {a['beta0']:5.1f} {a['beta']:5.1f} {'yes' if a['spun'] else 'no'}")
 
 
 if __name__ == "__main__":
