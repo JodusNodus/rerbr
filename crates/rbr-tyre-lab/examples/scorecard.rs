@@ -15,7 +15,7 @@
 //! (the probed friction level kept).
 
 use rbr_tyre::Wheel;
-use rbr_tyre_lab::probe::{parse_probe, Params};
+use rbr_tyre_lab::probe::{parse_probe, patch_at, Params};
 use rbr_tyre_lab::steady::{grid, peak, Tyre};
 
 /// The loads of the load exponents, N, and the curves' loads (4 kN, and 6.7 kN of SAE 2010-01-0374).
@@ -129,6 +129,34 @@ fn main() {
     out("kx_over_ky_4k", kxs[2] / calphas[2]);
     out("comb_a2_4k", t.combined(4000.0, 2.0, -0.25));
     out("comb_a4_4k", t.combined(4000.0, 4.0, -0.25));
+
+    // The aligning moment the game applies (trail torque less the carcass offset; `Tyre::aligning`), 4 kN.
+    let fz = 4000.0;
+    let a = patch_at(&cloud, fz, p.patch_length) / 2.0;
+    let mzs: Vec<(f32, f32)> = angles().map(|d| (d, t.mz(fz, d, 0.0))).collect();
+    let (mz_pk, mz_at) = mzs.iter().fold((0.0, 0.0), |b, &(d, m)| if m > b.0 { (m, d) } else { b });
+    let (fy_pk, fy_at) = peak(angles(), |d| t.mu_y(fz, d));
+    let small = 0.5f32;
+    let trail0 = t.mz(fz, small, 0.0) / (t.mu_y(fz, small) * fz);
+    out("trail0_4k", trail0);
+    out("trail0_over_a_4k", trail0 / a);
+    out("mz_peak_alpha_4k", mz_at);
+    out("mz_peak_alpha_over_fy_4k", mz_at / fy_at);
+    out("mz_peak_per_mu_fz_a_4k", mz_pk / (fy_pk * fz * a));
+    let zero = mzs.iter().find(|(d, m)| *d > mz_at && *m <= 0.0).map_or(f32::NAN, |x| x.0);
+    out("mz_zero_alpha_over_fy_4k", zero / fy_at);
+    let mz_peaks: Vec<f32> = LOADS.iter().map(|&l| peak(grid(0.0, 15.0, 0.25), |d| t.mz(l, d, 0.0)).0).collect();
+    out("n_mz_peak", exponent(&LOADS, &mz_peaks));
+    let trails: Vec<f32> = LOADS.iter().map(|&l| t.mz(l, small, 0.0) / (t.mu_y(l, small) * l)).collect();
+    out("n_trail0", exponent(&LOADS, &trails));
+    let halves: Vec<f32> = LOADS.iter().map(|&l| patch_at(&cloud, l, p.patch_length) / 2.0).collect();
+    out("n_half_length", exponent(&LOADS, &halves));
+    for deg in [2.0f32, 4.0] {
+        let pure = t.mz(fz, deg, 0.0);
+        for (k, name) in [(-0.05f32, "brake"), (0.05, "drive")] {
+            out(&format!("mz_comb_a{deg}_{name}_k0.05_4k"), t.mz(fz, deg, k) / pure);
+        }
+    }
 
     for (fz, name) in CURVES {
         let lat: Vec<(f32, f32)> = angles().map(|a| (a, t.mu_y(fz, a))).collect();
