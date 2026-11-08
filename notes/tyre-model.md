@@ -125,7 +125,7 @@ below), Cx = 1.4 Cy at Fz0 (`KX_OVER_KY`, so also 1.3 times that of NGP's slope)
 times grip/0.55 on NGP's slope's Cy and Cx (ice, [Ice](#ice-material-116); the 1.3 fades out from grip ~0.75 down to 0.55); peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed g(Vs) = (μ_C + (μ_S - μ_C) exp(-(Vs/7 m/s)³)) exp(-0.008 Vs), μ_C/μ_S 0.8, μ_C lowered
 0.25 (1 - exp(-Vs/7 m/s)) at W = 1 (below); NGP's temperature grip kept; dry wear
-+10 % at 60 % worn, fading with wetness; partial hydroplaning (below); force dynamics F = c u + d u', (v d + f) u' = f v_N s - v c u per axis (Rill,
++10 % at 60 % worn, fading with wetness; the wet peak's thin-film loss with speed and partial hydroplaning (below); force dynamics F = c u + d u', (v d + f) u' = f v_N s - v c u per axis (Rill,
 Vehicle Dynamics lecture notes, Hochschule Regensburg 2009, 3.4.2 and 4.2.2; f = F/s the steady secant, s made with
 v_N = max(v, 0.5 m/s), v itself the transport speed
  as in Rill's eqs. 4.20-4.21, so a locked wheel's deflection
@@ -173,7 +173,14 @@ EcoContact 6 225/45 R18, 80-0 km/h, 0.80, table), 3 mm from 80 0.90 (report 0.89
 1.6 mm. Rejected: grooves alone (2.3 m/s, lifted at 7 v_on) lifted a bald tyre's patch at standstill; a faster
 drainage (3 m/s, lifted at 5 v_on: new nil to 123 km/h) put 3 mm at 0.93. Horne's v_p (water deeper than the grooves,
 ADAC's 17-22 % lost at 2 of 8 mm) is not the regime of the game's films and is not used; the seam carries no
-pressure. The game's tread starts new (`--wear` is the road's), so in game the term only acts above 94 km/h.
+pressure. Thin film (2026-11-08, `tyre/wet-speed`): the whole friction falls by 0.0074 W per m/s over 60 km/h
+(`brush::thin_film`, never below 0.05), fitted to Reimpell & Sponagel's wet peak at the game's 0.7 mm (0.5 / 1 mm
+interpolated: 0.922 / 0.833 of 60 km/h at 100 / 140 km/h; the fit 0.918 / 0.836); v is the speed over the road, the
+speed the patch meets the film at, locked or rolling (the sliding speed at the peak, 1-3 m/s, does not grow with
+it). It takes over the new tread's own partial hydroplaning: the factor is thin_film × wet_loss(d) / wet_loss(new)
+(`brush::wet_speed_factor`), so a new tyre takes the thin film alone (no 1.5 % at 100 km/h on top) and a worn one its
+hydroplaning against new on top, as the Contidrom fit is (worn over new). The game's tread starts new (`--wear` is
+the road's), so in game the wet speed loss is the thin film's.
 
 Camber and pressure (2026-11-08): the inclination's sine (`ForceInput::inclination_sin`, read-only at the seam) adds
 -0.05 sin γ |ωR| to the lateral slip velocity, MF's horizontal shift as an equivalent slip: C_γ = 0.05 Cy at small
@@ -191,7 +198,9 @@ the Fiesta's 2.0 bar (0.967) c_y is 2.3 % below NGP's and c_x 441 kN/m (435 befo
 Ours, not from papers: the friction curve's four values and the wet Coulomb loss and its speed scale (fits to one
 tyre's trailer data, two surfaces); the partial hydroplaning's drainage speed 2.1 m/s, its linear ramp to 5 v_on, the
 texture depth 0.7 mm within the published range and the 8 mm new groove depth (fits to two braking tests, three tread depths, film unknown: taken as the game's
-0.7 mm), and the wear gain's fade with W; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
+0.7 mm), the wear gain's fade with W, the thin film's linearity in W (Reimpell's 0.2 mm keeps 0.99 / 0.97 at 100 /
+140 km/h, W 0.25's 0.175 mm 0.979 / 0.959: within the figure's ±0.02, his loss grows faster than linear below 0.5 mm)
+and its product with the worn tread's hydroplaning against new; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
 excitation frequency mixed in, and puts a rally tyre above Pacejka's 0.12-0.45 m); taking the longitudinal exponents
 and Kx/Ky as the mean of two road-tyre sets; the carcass damping as the mean of Rill's two passenger values; the
 longitudinal carcass's 450 kN/m (above the road sets; c_x/c_y 1.07-1.37 against NGP's lateral carcass); NGP's
@@ -346,6 +355,21 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   (0.67-0.78: MISS). Worn, lab, eb at 2 mm tread over 20 km/h: 0.83 / 0.75 / 0.58 at 50 / 60 / 80 (Klempau 1 mm
   film, smooth road: 0.90 / 0.82 / 0.59). Map 41 autopilot pace (s, dry / damp / wet): ngp 309.01 / 338.51 / 381.43,
   eb 303.66 / 330.92 / 371.30 (wet +23 %, damp +9 %, both physics; the speed plan's, no rally reference).
+- Thin film (2026-11-08, `tyre/wet-speed`, against main 0fb71ed8, Fiesta Rally2). Lab (tarmac wheel, 4 kN, new): eb
+  braked peak at 100 / 140 km/h over 60 wet 0.984 / 0.884 → 0.918 / 0.837 (Reimpell 0.89-0.94 / 0.78-0.87: MISS →
+  PASS), damp 0.999 → 0.978 / 0.958 (0.2 mm 0.99 / 0.97), 180 km/h wet 0.784 → 0.755; dry bit-equal; worn (2 mm) wet
+  over new unchanged below 94 km/h, so 2 mm at 50 / 60 / 80 km/h over 20 0.83 / 0.75 / 0.58 → 0.83 / 0.75 / 0.56
+  (computed: the thin film's 0.959 at 80; Klempau 0.90 / 0.82 / 0.59). In game, best of threshold and ABS over dry: from 50 km/h (41_M) unchanged (damp
+  0.915, wet 0.78: no loss below 60 km/h); from 100 km/h (117, threshold / ABS) damp 0.91 / 0.91 → 0.90 / 0.90, wet
+  0.78 / 0.74 → 0.75 / 0.72, so wet from 100 is now 0.96 of wet from 50 (was 1.00). Map 41 autopilot pace (s, damp /
+  wet): Fiesta 330.92 / 371.30 → 330.90 / 371.32, Golf II 340.79 / 381.92 → 341.15 / 381.95 (Golf dry 313.78; ngp
+  324.24 / 353.52 / 398.24): 41_M wet tops out at 88 km/h and the autopilot brakes above 60 km/h 4-6 % of the time.
+- Level test (2026-11-08, `tyre/wet-speed`, drive test only, not merged: `RERBR_TEST_WET_LEVEL=A` scales the brush's
+  hard-surface friction by 1 - A min(1, W / 0.25)), A 0.08: from 50 km/h (41_M) best over dry damp 0.915 → 0.85,
+  wet 0.78 → 0.66 (the wet ABS and threshold runs fall more than 8 %: k 0.1 0.51 g), locked damp over dry 0.88 →
+  0.82 (0.67-0.78: still MISS); from 100 km/h (117, threshold / ABS) damp 0.835 / 0.81, wet 0.67 / 0.66 (bands
+  0.70-0.85, 0.65-0.80). Pace (damp / wet): Fiesta 331.22 / 372.01, Golf II 343.95 / 387.03 (+0.1-0.2 % and
+  +0.8-1.3 % over the thin film alone: the autopilot's speed plan barely reads the grip).
 - The Fiesta's 0.35-pedal stop (1.63 s against NGP's 2.30) is the engine's, not the tyre's: realistic engine with
   NGP's tyre (`experimental`) 1.65 s; under NGP the car holds 2.93-2.96 m/s for 0.75 s in second gear at 123-125 rad/s
   until the autopilot shifts down, the realistic engine falls to 107 rad/s and keeps braking (2026-11-07).
@@ -1235,6 +1259,12 @@ road texture's drainage; the wet tyre rows rerun); the five new
 wet rows (above) pass under the brush, ngp misses the three tread rows; every dry row and the brake, circle and coast
 rows unchanged.
 
+Thin film (2026-11-08, `tyre/wet-speed`, full run against main 0fb71ed8; 89/112 PASS before and after, ngp 38/112):
+seven wet rows move, all in band: TRL wet peak 100/32 0.977 → 0.911 (0.76-1.00), wet locked 100/32 0.730 → 0.680
+(0.56-0.81), wet locked over peak at 100 0.491 → 0.490 (0.49-0.52, at the edge, as before); Contidrom new 100 over 80
+0.997 → 0.979 (0.97-1.0), 1.6 mm from 80 / 100 0.682 / 0.516 → 0.680 / 0.510, 3 mm 0.895 → 0.894. Every other row
+bit-equal.
+
 ### A per-wheel ABS in the brake test
 
 - Hook: `rbr_hybrid::ngp::set_brake_scale` (thread-local, `None` by default) multiplies each wheel's pedal pressure
@@ -1309,13 +1339,12 @@ rows unchanged.
   op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar, Meccanica 2023):
   meeting the sources needs Cα to fall with pressure, as theirs does at 4 kN while Goodyear's rises near nominal
   load and NGP's rises. Kx against pressure: NGP's +4.4 % per +0.5 bar against MF 6.1's -15 % (one set).
-- Wet and damp (research and check above, 2026-11-08), options for the brush only: (a) shape, a thin-film peak loss
-  with speed, 1 - 0.0075 W max(0, v - 16.7 m/s) (W 1: 0.92 at 100, 0.83 at 140 km/h of the 60 km/h peak, Reimpell's
-  0.5-1 mm), folding in the new tread's partial hydroplaning (it would otherwise count twice above 94 km/h); lab stop
-  100/80 0.997 → ~0.98 estimated (band 0.97-1.0), the worn rows ratios of two stops on the same factor; (b) level, a damp/wet
-  loss saturating at damp, μ × (1 - a min(1, W/0.25)), a 0.08: damp 0.915 → 0.84, wet 0.78 → 0.72 of dry (bands
-  0.70-0.85, 0.65-0.80): changes the grip level on damp and wet (a product decision); scorecard ratio rows unchanged.
-  Recommended: (a); (b) only if the user wants the level moved off NGP's. Wanted: Gengenbach (ATZ 70, 1968), Bachmann
+- Wet and damp (research and check above, 2026-11-08): (a), the thin film, is in (`tyre/wet-speed`, above). (b), the
+  level, is a drive-test switch only (`RERBR_TEST_WET_LEVEL`, In game): μ × (1 - a min(1, W/0.25)), a 0.08 puts
+  damp at 0.81-0.85 and wet at 0.66-0.67 of dry in game (bands 0.70-0.85, 0.65-0.80; the lab's 0.84 / 0.72 estimate
+  was the peak's); it moves the grip level off NGP's on damp and wet, the user's decision after driving it. The thin
+  film's form is linear in W: Reimpell's loss grows faster than linear below 0.5 mm (Beautru's critical depth
+  0.15-0.34 mm), so W 0.25 may lose 1 % too much. Wanted: Gengenbach (ATZ 70, 1968), Bachmann
   (VDI 12, 1998), Veith (ASTM STP 793), Oh & Lee (Adv. Mech. Eng. 2014, doi:10.1155/2014/260428).
 - Wet: the partial hydroplaning's onset and ramp rest on two ABS braking tests that disagree at 1.6 mm (AUTO BILD
   0.69, Continental's report 0.80 of new from 80 km/h; films unstated) and on an 8 mm new groove depth; a rally
