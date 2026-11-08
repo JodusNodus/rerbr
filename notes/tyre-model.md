@@ -763,7 +763,7 @@ the ±1 m mean is within 0.4 mm of the probe's wheel mean on every stage; RSF 34
   (quoted). A rigid wheel in dense sand over a rigid base: drawbar pull at high slip non-monotonic in the layer's
   thickness (J. Terramech. 1994, "Travelling performance of a wheel on a finite thickness ground", abstract only;
   longitudinal, not a tyre). Snow's 0.5 cm of fresh snow halving the initial slope (SAE 2010-01-0374) is snow.
-- Decision (T20): loose-v1 stays independent of the thickness. The stages do put 9-30 mm under the wheels, but the
+- Decision (2026-11-08): loose-v1 stays independent of the thickness. The stages do put 9-30 mm under the wheels, but the
   data give only a level, and the level is NGP's. A windrow less grippy than the line (published 0.80; NGP's deeper
   against shallow 0.97) would be a grip-level change: the user's decision.
 
