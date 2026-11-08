@@ -442,6 +442,13 @@ impl Catalog {
         self.maps.extend(crate::btb::maps(Path::new(root.trim()), |n| taken.contains(&n)));
     }
 
+    /// Adds the BTB stages under `root` (`<root>/RX_CONTENT/Tracks/*`): the ones `beamng-stage` converts into the
+    /// player's folder ([`crate::btb::CONVERTED`]).
+    pub fn add_btb_root(&mut self, root: &Path) {
+        let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
+        self.maps.extend(crate::btb::maps(root, |n| taken.contains(&n)));
+    }
+
     /// Replaces the pack cars by those of RSF's cache in the game folder `dir` (none without one; none, with the
     /// reason on stderr, when it doesn't read), then the added cars of `added` (`car_packs::DIR`). A car both have (by pack
     /// folder or name) is the added one: the player downloaded it over RSF's, which is back once it is removed.

@@ -383,7 +383,7 @@ fn load_mesh(name: &str, bytes: &[u8], maps: &Maps, d3dx: D3dx) -> Result<Mesh, 
     })
 }
 
-/// The faces of every `CollisionModel=0` object, clone by clone, in the order the plugin gathers them.
+/// The faces of every `CollisionModel=0` object (visible, or invisible with ReRBR's `CollisionOnly=1`), clone by clone, in the order the plugin gathers them.
 fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
     let objects = track.objects()?;
     // A material whose diffuse texture `Textures.zip` lacks loads without one: its meshes get no map.
@@ -405,7 +405,8 @@ fn gather(track: &Track, d3dx: D3dx) -> Result<Vec<Face>, String> {
     let mut zip = rbz::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut meshes: HashMap<String, Mesh> = HashMap::new();
     let mut faces = Vec::new();
-    for object in objects.iter().filter(|o| o.collision_model == Some(0) && o.visible != Some(false)) {
+    let collides = |o: &&crate::track::Object| o.visible != Some(false) || o.collision_only;
+    for object in objects.iter().filter(|o| o.collision_model == Some(0)).filter(collides) {
         let key = object.file.to_lowercase();
         if !meshes.contains_key(&key) {
             let bytes = scene::read_entry(&mut zip, &format!("Objects/{}.x", object.file))?;
