@@ -8,10 +8,11 @@
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
 //!   cargo run --release -p rbr-tyre-lab --example scorecard -- --probe P [--step N --wheel K] [--model ngp|brush]
-//!       [--speed M/S] [--friction S,K]
+//!       [--speed M/S] [--friction S,K] [--water W]
 //!
 //! `--friction S,K` puts a surface's static and kinetic friction in place of the probed one on a hard surface (no
-//! soil), for a material no run reaches (NGP's ice, 116).
+//! soil), for a material no run reaches (NGP's ice, 116). `--water W` gives the model the surface's `WaterFactor` W
+//! (the probed friction level kept).
 
 use rbr_physics::tyre::patch_forces::patch_forces;
 use rbr_tyre::{ForceInput, Model, Wheel};
@@ -32,6 +33,7 @@ struct Tyre<'a> {
     soil: f32,
     model: Option<Box<dyn Model>>,
     speed: f32,
+    water: f32,
 }
 
 impl Tyre<'_> {
@@ -57,6 +59,7 @@ impl Tyre<'_> {
             tread_temperature: p.tread_temp,
             tread_left: 1.0 - p.wear_op,
             soil_thickness: self.soil,
+            water_factor: self.water,
             lateral_stiffness: p.carcass_lat * p.stiffness_factor,
             torsional_stiffness: p.carcass_tor * p.stiffness_factor,
         };
@@ -136,7 +139,7 @@ fn grid(from: f32, to: f32, step: f32) -> impl Iterator<Item = f32> {
 
 fn main() {
     let (mut probe, mut step, mut wheel) = (String::new(), None, 0u32);
-    let (mut model, mut speed, mut friction) = (String::from("ngp"), 15.0f32, None);
+    let (mut model, mut speed, mut friction, mut water) = (String::from("ngp"), 15.0f32, None, 0.0f32);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -146,6 +149,7 @@ fn main() {
             "--wheel" => wheel = value().parse().expect("--wheel K"),
             "--model" => model = value(),
             "--speed" => speed = value().parse().expect("--speed M/S"),
+            "--water" => water = value().parse().expect("--water W"),
             "--friction" => {
                 let v = value();
                 let (s, k) = v.split_once(',').expect("--friction STATIC,KINETIC");
@@ -193,10 +197,10 @@ fn main() {
         rubber_friction: p.rub_my.clone(),
     };
     let built = rbr_tyre::model(&model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
-    let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed };
+    let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water };
     let out = |k: &str, v: f32| println!("{k} {v:.4}");
     println!(
-        "# step {} wheel {} model {model} speed {speed} static {:.4} kinetic {:.4} soil {soil:.4} temp_grip {:.4}",
+        "# step {} wheel {} model {model} speed {speed} static {:.4} kinetic {:.4} soil {soil:.4} water {water} temp_grip {:.4}",
         t.p.step, t.p.wheel, t.p.static_friction, t.p.kinetic_friction, t.p.temperature_grip
     );
 

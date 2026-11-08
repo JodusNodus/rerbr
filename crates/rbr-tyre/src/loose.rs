@@ -128,6 +128,7 @@ fn cal_input(cal: &Calibration, v: f64, alpha: f64) -> EvalInput {
         pressure: 0.0,
         pressure_factor: cal.pf_cal,
         wetness: cal.w_cal,
+        hydroplaning: false,
         temp_grip: cal.temp_grip_cal,
         surf_static: cal.surf_s_cal,
         surf_kinetic: cal.surf_k_cal,

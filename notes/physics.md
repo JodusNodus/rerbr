@@ -273,6 +273,12 @@ load as hard collision. Placements to solids in `stage/layout/placement.rs` (`E4
 has inverse mass 0 and never wakes; props sleep in list460 until a contact wakes them (`E38_004FCA20` 0x4fca20),
 then emit `CSigSolidGeneralState` from `CSolid::Vf28` (0x52c620), id = handle `0x9c40` + the `.lbs` (1,6) record
 index. A contact's surface is the mesh material byte (`0x79` Bendable_Tree, tested by `E37Flag4AC0` 0x4f4ac0).
+Surface wetness: the `.mat` entry named with the race's wear and wetness words maps cells to material tags (wet tarmac
+37/38/39 dry/damp/wet); `CWheel::Unk9900` passes each tag's class (`entry+0x148`) and `WaterFactor` (`entry+0xe8`, 0
+dry to 1 wet) to `CScratch::BlendTable` and blends the same `+0xe8` into the tyre's copy (`scratch+0x288`), so there is
+no second wetness. RSF 122 / 117 wet: tags 39 / 71, WaterFactor 1. 12 RSF stages (457 460 468 479 480 553 554 564 568
+569 584 585) have no wet entry: wet builds no table and every cell is tag 0 (μs 0.95, WaterFactor 0) (`--tyre-probe`,
+2026-11-08).
 Fences (`.fnc`) are cloth and never touch the car.
 
 ## Damage

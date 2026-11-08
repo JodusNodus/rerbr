@@ -65,10 +65,12 @@ impl Model for Brush {
             radius: f64::from(x.effective_radius),
             bulk_temp: f64::from(x.tread_temperature),
             tread_remaining: f64::from(x.tread_left),
-            // The wet loss stays NGP's (its wet surface friction): the pressure only enters the brush's.
+            // NGP's wet surface friction carries the wet level, so the brush's wet loss stays off: the pressure only
+            // enters the brush's. The wetness lowers its sliding friction and fades its dry-wear gain.
             pressure: 0.0,
             pressure_factor: f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale),
-            wetness: 0.0,
+            wetness: f64::from(x.water_factor),
+            hydroplaning: false,
             temp_grip: 1.0,
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
@@ -128,6 +130,7 @@ mod tests {
             tread_temperature: 350.0,
             tread_left: 1.0,
             soil_thickness: 0.0,
+            water_factor: 0.0,
             lateral_stiffness: 150000.0,
             torsional_stiffness: 20000.0,
         }
@@ -156,6 +159,18 @@ mod tests {
     }
 
     #[test]
+    fn a_wet_surface_lowers_the_locked_wheel_s_friction() {
+        // Locked at 20 m/s on the same grip, settled: wet slides at less of it than dry.
+        let locked = |water_factor: f32| {
+            let mut b = Brush::new(&[wheel()]).unwrap();
+            let x = ForceInput { spin: 0.0, water_factor, ..rolling(20.0, 0.0) };
+            (0..720).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap().longitudinal_force
+        };
+        let (dry, wet) = (locked(0.0), locked(1.0));
+        assert!(wet > 0.0 && wet / dry < 0.9, "dry {dry} wet {wet}");
+    }
+
+    #[test]
     fn the_force_builds_over_the_relaxation_length_to_the_steady_brush() {
         let mut b = Brush::new(&[wheel()]).unwrap();
         let at = wheel().tyre;
@@ -177,6 +192,7 @@ mod tests {
             pressure: 0.0,
             pressure_factor: 1.0,
             wetness: 0.0,
+            hydroplaning: false,
             temp_grip: 1.0,
             surf_static: 1.2,
             surf_kinetic: 1.2,
@@ -224,6 +240,7 @@ mod tests {
             pressure: 0.0,
             pressure_factor: 1.0,
             wetness: 0.0,
+            hydroplaning: false,
             temp_grip: 1.0,
             surf_static: 0.9,
             surf_kinetic: 0.9,

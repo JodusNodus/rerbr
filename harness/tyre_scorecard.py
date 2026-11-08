@@ -11,7 +11,9 @@ context: measured and printed (CTX), not scored. The `how` keys:
   tyre:SURFACE:KEY        a key of the rbr-tyre-lab `scorecard` example (steady forces of the tyre model the physics
                           runs, NGP's where it hands back) on the probed wheel of SURFACE: tarmac (map 85, wheel 1 at
                           step 8000 of the r40 circle), gravel (RSF 345, wheel 0 at step 6000 of the r40 circle), snow
-                          (map 10, wheel 0 at step 6000), ice (the snow wheel with NGP's material 116, 0.10/0.095)
+                          (map 10, wheel 0 at step 6000), ice (the snow wheel with NGP's material 116, 0.10/0.095);
+                          tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h, the latter with
+                          WaterFactor 1 on the dry friction level
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
@@ -58,6 +60,11 @@ PROBES = {
 }
 TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []),
                  "ice": ("snow", ["--friction", "0.1,0.095"])}
+# TRL PPR496's test speeds (32/64/100 km/h) on the tarmac wheel, dry and with WaterFactor 1 (the dry friction level
+# kept: the rows are ratios).
+for _kmh in (32, 64, 100):
+    TYRE_SURFACES[f"tarmac-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}"])
+    TYRE_SURFACES[f"tarmac-wet-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1"])
 BRAKE_STAGES = {"gravel": {"rsf_stage": 345, "stage": None}, "tarmac": {"rsf_stage": 568, "stage": None},
                 "snow": {"rsf_stage": None, "stage": "track-10_O"}}
 SLIPS = "0.1,0.15,0.2,0.3,0.5,0.7"

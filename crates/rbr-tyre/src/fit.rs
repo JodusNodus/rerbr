@@ -177,6 +177,7 @@ pub(crate) mod tests {
                 pressure: 0.0,
                 pressure_factor: 1.0,
                 wetness: 0.0,
+                hydroplaning: false,
                 temp_grip: 1.0,
                 surf_static: 1.0,
                 surf_kinetic: 1.0,
