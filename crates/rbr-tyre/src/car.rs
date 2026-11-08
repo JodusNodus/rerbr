@@ -60,9 +60,11 @@ impl Model for Brush {
         let soil = x.soil_thickness > 0.0;
         // NGP's stiffness factor at the pressure, and on a hard surface the slip stiffnesses' fall on low friction (ice).
         let low_mu = if soil { 1.0 } else { brush::low_mu_stiffness_factor(f64::from(x.grip)) };
+        let fz = f64::from(x.normal_force);
         let e = EvalInput {
-            fz: f64::from(x.normal_force),
-            half_length: f64::from(x.patch_length) / 2.0,
+            fz,
+            // The aligning moment's half length: the patch's, with the trail's own load dependence.
+            half_length: brush::trail_half_length(f64::from(x.patch_length) / 2.0, fz, t.cal.fz0),
             vx: f64::from(x.longitudinal_velocity),
             // The inclination's camber thrust as a lateral slip velocity of the rolling tyre.
             vy: f64::from(x.lateral_velocity)

@@ -3,7 +3,7 @@
 
 Each trace is one `--autopilot ... --flat-out --trace-speed` drive: a flat-out
 standing start, one line per physics step
-(`step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr`). For every car this
+(`step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr ffb`). For every car this
 prints the launch, the valid flat-out window and the pace metrics; with
 `--csv` it writes one row per car.
 

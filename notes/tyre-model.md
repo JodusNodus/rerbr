@@ -76,6 +76,8 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Dry friction against speed | peak "relatively unchanged" with speed on dry runways, fast drop wet; Kiencke & Nielsen's factor exp(-c4 Vs), c4 0.02-0.04 s/m | Horne & Leland, NASA TN D-1376 (1962), aircraft tyres; Shadrin et al., IOP Conf. Ser. 832:012011 (2020) (book not read) |
 | Relaxation length | 0.12-0.45 m, longer at higher speed and load, of the order of the wheel radius at Fz0 (Pacejka); grows with speed: σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m (car tyre bench, ≤2 Hz; also with frequency, <0.5 m near 0 Hz to ~1.0 m at 1 Hz); motorcycle tyres 0.1-0.4 m, "higher ... at higher speeds"; MF-Swift: independent of V, set by load, slip and pressure; σ/R0 at Fz0 lateral 1.01 / 1.84, longitudinal 1.19 / 1.44 | Pacejka via Wikipedia "Relaxation length"; Vera et al. (2022); Cossalter, Lot & Massaro, Motorcycle Dynamics, ch. 1 (Wiley excerpt); Schmeitz, TNO MF-Tyre/MF-Swift lecture (2013); MF 5.2 truck / MF6.1 sets |
 | Trail at small slip | a/3 (half contact length a) | brush theory (Pacejka 2012) |
+| Aligning moment, pure slip | at 4 kN: t0/a 0.42 / 0.51 / 0.36 (t0 at ±0.5°, a the MF-Swift contact length from Q_RA1/2); t0 ∝ Fz^0.93 / 0.93 / 1.01 over 2-6 kN, a ∝ Fz^0.60 / 0.64 / 0.59; Mz peak ∝ Fz^1.64 / 1.90 / 1.90, peak Mz/(μ_y Fz a) 0.19 / 0.26 / 0.20 (brush theory 27/256 = 0.105); Mz peak at 0.30 / 0.37 / 0.35 of the Fy peak's slip angle, Mz back to 0 at 0.78 / 1.73 / 1.19 of it, slightly negative or 0 beyond. Measured Goodyear Wrangler P225/75R15 (48 km/h, ~6 kN): Mz peak 3.7° against the Fy peak at 9-11°, 0 at 13-15°, never negative | TNO 205/60R15 / Continental 225/50R18 (MF-Tool 6.2) / MF6.1, evaluated with MF 6.1's Mz (MF/model; the KT_MF_Tool 245/60R16 template copies TNO's and is left out); Svendenius, PhD Lund 2007, Fig 5.4 (NHTSA data, fig ±0.25°) |
+| Aligning moment, combined | Mz(κ)/Mz(0) at 4°, κ ∓0.05, 4 kN: braking 0.62 / 1.29 / 0.40, driving -0.07 / -0.63 / 0.44 (MF 6.1's combined Mz has one fitted term, s·Fx; MF6.1's is 0). The fitted s puts braking above driving; Wong (Goodyear data) says driving raises and braking lowers Mz, as a carcass lateral deflection under Fx does. Conflict: not scored. Low μ: the trail falls to 0 at the full-slide angle, ∝ μ (Hsu, Laws & Gerdes, IEEE TCST 18:4, 2010, on dry gravel; model, no Mz numbers); no open Mz data on snow, ice or gravel | same sets (MF/model); Wong, Theory of Ground Vehicles ch. 1 (secondary, not read) |
 | Contact patch, braking | static ink print 205/55R16 at 4821 N, 240 kPa: 147 mm long, 161 mm wide (NGP's tarmac patch at 4.8 kN, 200 kPa: ~0.165 m, 12 % longer, as the lower pressure suggests; the brush's a is half of it); ABS car 100-0 km/h on ten such tyres 36.3-41.7 m, 0.94-1.08 g mean (v²/2s, pedal rise included: a lower bound for a rally tarmac tyre) | Liang et al., Adv. Mech. Eng. 12(12) (2020), doi 10.1177/1687814020981173 (table; g inferred) |
 
 | Convection | Nu ∝ Re^0.8 (NGP 0.78) | West & Limebeer, VSD 60 (2022) |
@@ -134,7 +136,9 @@ Combined slip (2026-11-07): the adhering part of the patch gives -C_i s_i (1 - �
 slip, the sliding part μ Fz ψ² (3 - 2ψ) against the sliding velocity, μ Fz from ψ = 1 (Svendenius, Tire Modeling and
 Friction Estimation, PhD, Lund 2007, eqs. 4.14, 4.17, 4.18-4.20, 4.26-4.28; read in full); the directional μ is the
 ellipse along the sliding velocity, his collinear slide force. The aligning moment is his M'_z (eqs. 4.33-4.35):
-μ Fz a (1 - ψ)² (θ_y s_y (1 - 4ψ) + 3ψ² s_y/|s|); the deformation torque M''_z, ∝ (C_y - C_x), stays out. Pure
+μ Fz a (1 - ψ)² (θ_y s_y (1 - 4ψ) + 3ψ² s_y/|s|); the deformation torque M''_z, ∝ (C_y - C_x), stays out. Its a is
+NGP's patch half length times (Fz/Fz0)^0.35 (2026-11-08, `brush::trail_half_length`): the MF sets' t0/a grows with load
+(above), brush theory's a/3 holds at the design load only; forces unchanged (a enters Mz alone). Pure
 slip is Pacejka's cubic either way, so the curves, the per-wheel fit and the calibration are unchanged (lab CSVs
 identical). Before, the whole force pointed along (C_x s_x, C_y s_y), so at full slide the side share was 1/1.4 of
 the sliding velocity's. Pacejka's own ch. 3 text (isotropic bristles, where both directions coincide) was not
@@ -665,15 +669,38 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
 - Robustness (2026-11-08, the autopilot to the finish, 5 cars × 5 stages, ngp and eb): Golf II (FWD), 131 Abarth and
   M3 E30 (RWD), Fiesta Rally2 and Celica ST185 (AWD), on RSF 104 and 111 (gravel), track-11_O (gravel), track-10_O
   (snow) and RSF 389 (snow). 24/25 finish under both. No NaN. Recoveries are alike (track-10_O: eb 6, ngp 5). eb is
-  faster everywhere: 1.1-2.3 % on RSF, 1.8-4.3 % on retail, over 3 % for the M3, the 131 and the Golf on
-  track-10/11_O. The flat loose friction holds its peak through the slide (NGP's falls).
-- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m. Braking at a 0.8 pedal at full lock (4450 m, 12 m/s),
-  the fronts creep at 0.4-0.9 m/s (slip 0.93-0.96, on the berm's ramp). The engine in fourth follows them through the
-  clutch help's 89 rad/s to 0 and stays stalled; the autopilot has no restart. ngp and experimental (NGP's tyre, ReRBR's
-  engine) lock both fronts at the same corner to 0 m/s, the engine idles at 89 rad/s, and both finish (282.12 /
-  277.27 s). Likely cause: a force rising with slip up to lock lets a partial pedal hold the wheel just short of lock.
-  Why the clutch help does not open there is not traced. Not changed: changing the berm's shape reopens the round 2
-  trade-off.
+  faster everywhere: 1.1-2.3 % on RSF and 1.8-4.3 % on retail. Split on track-10/11_O with `experimental` (NGP's
+  tyre, ReRBR's engine), M3 / 131 / Golf: ngp → experimental -3.2/-3.0, -3.6/-3.0, -3.0/-4.1 %, the engine model;
+  experimental → eb -0.5/-0.2, +1.9/-0.2, -1.0/-0.2 %, loose-v1. The gap is the engine's, as on tarmac.
+- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m. It brakes at a 0.8 pedal at full lock (4450 m, 12
+  m/s). The fronts creep at 0.4-0.9 m/s (slip 0.93-0.96) and the engine in fourth follows them down to 0 and stalls.
+  The autopilot has no restart. ngp and experimental lock both fronts at the same corner to 0 m/s at about 113 rad/s.
+  The engine separates, idles at 82-89 rad/s, and both finish (282.12 / 277.27 s). Traced with a debug build
+  (2026-11-08):
+  - The clutch help works as ported: `vcu::step::step_basic` sends slip 0 down to 99.5 rad/s, then ramps to 1 (open)
+    at 89 rad/s.
+  - Even so, the engine speed stays equal to the gear's speed of the creeping fronts down to about 5 rad/s. NGP's
+    driveline stays clutch-locked, its engine speed following the drive's, while the driven wheels turn. With the
+    wheels at 0 it lets go.
+  - Under ReRBR's engine the dragged engine gives -15 to -0.3 N·m. NGP's stall history (`stall_speed`) then marks it
+    stalled, and the model's torque stays 0.
+  - The creep is loose-v1's flat friction, not the berm: no fall from the peak to sliding, so a brake torque near the
+    peak does not run the wheel into lock (NGP's force falls past its peak). A berm built only at slip ≥ 0.99, none
+    at the corner, creeps the same (0.6-0.7 m/s, engine 24-27 rad/s) and DNFs at the same step.
+  - Neither the port nor the engine model is wrong. The fix belongs to the autopilot: declutch, or go to neutral,
+    when the driven wheels lock under braking, and restart a stalled engine. A driver declutches.
+- A berm built over sliding distance (2026-11-08, prototype, not adopted; `/tmp` patch only):
+  - Model: per-wheel state b. It grows toward 1 over the patch length (2a, the soil a locked tyre sweeps once) of
+    sliding while the braking slip is past the ramp's start, and washes out over 5 cm of rolling (the measured
+    layer). The force is (PLOUGH − 1)·b on the patch's, faded at standstill as before.
+  - Its steady state at slip s is s / (s + 3.6(1 − s)), 0.79 at 0.93, close to the ramp's 0.72, so it behaves like
+    the ramp.
+  - Golf RSF 104: DNF at the same step for the ramp, washout 5 cm, washout 1 cm, and building only from slip 0.99.
+  - Fiesta, 345, 50 km/h, declutched, full pedal, locked over the best target (k0.7), deceleration: ramp 0.892 g
+    (1.16, slips 0.94±0.05), distance 5 cm 0.889 g (1.16, 0.93±0.07), from 0.99 0.870 g (1.13, 0.95±0.06). No variant
+    locks every wheel at full pedal: the berm's force past lock exceeds the brake torque.
+  - Golf and Celica on RSF 104/111/389: stage times within 0.05 s of the ramp for every variant. Not committed: it
+    fixes nothing and adds a state.
 - Scorecard (`build/tyre-night/scores/loose-v1.json` at the merge of main c03bc2b8, `--compare baseline.json`):
   experimental-brush 34/75 → 43/85, ngp 28/75 → 31/85 (both gain the two gravel K 0.2 rows; main's tarmac and wet
   work moves the tarmac and ice rows). New passes: circle 0.609 g, locked over K 0.2 1.37 / 1.27,
@@ -779,6 +806,23 @@ experimental-brush 26/56 PASS; with the digitised SAE 2010-01-0374 and Svendeniu
 the racing-slick rows are context, not scored) ngp 28/75, experimental-brush 34/75
 (`build/tyre-night/scores/baseline.json`, not in git).
 
+Aligning moment rows (2026-11-08, `tarmac-mz-*`; the context rows on gravel, snow and ice): the lab's `Tyre::aligning`
+is the torque `solve_forces` applies above 2 m/s, trail × Fy less the carcass offset (Fy/k_y × Fx), flat. Tarmac, ngp /
+experimental-brush (band): t0/a 0.319 / 0.302 (0.36-0.51); t0 ∝ Fz^0.307 / 0.694 (0.90-1.05; brush 0.344 before the
+trail's load exponent); patch half length ∝ Fz^0.30 both (NGP's contact geometry; 0.55-0.65); Mz peak ∝ Fz^0.975 /
+1.535 (1.60-1.95; brush 1.185 before); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75°
+on the 0.25° grid); Mz to 0 never / at 1.13 (0.78-1.73: NGP's trail keeps 0.004 m at 10°, Mz 0.30 of its peak there);
+peak Mz/(μ Fz a) 0.163 / 0.107 (0.19-0.26). Combined at 4°, κ ∓0.05: ngp 0.60 / 1.23, brush -0.15 / 1.41: both lower
+under braking, as the carcass offset makes them (NGP's trail barely falls with κ, 0.92 of pure at 0.05; the brush's
+0.61-0.71, the MF sets' αeq 0.26-0.42). Ice: Mz peak at 0.25° / 1.25° (brush theory: a quarter of the full-slide
+angle); gravel and snow Mz peak at 0.42 / 0.25 and 0.50 / 0.25 of the Fy peak's angle. Every other row unchanged by the
+trail's load exponent (quick run before/after).
+
+In game (`--trace-speed`'s `ffb` column, the filtered steering torque before NGP's curve; r40 circle ramp, map 85,
+Fiesta Rally2): mean torque per 1 m/s bin on the circle, ngp / brush, 147 / 152 at 0.35 g, 190 / 176 at 0.54 g, 224 /
+203 at 0.70 g (the peak), then 186 / 176 at 0.78 g and 120 / 154 at 0.85 g as the fronts saturate: both go light
+before the limit, the brush by 24 % against NGP's 46 %; the trail's load exponent moves it under 1 %.
+
 TRL PPR496 rows (2026-11-08): `tarmac-KMH` / `tarmac-wet-KMH` run the tarmac wheel at 32/64/100 km/h (`--speed`), the
 wet ones with `--water 1` (WaterFactor 1 on the dry friction level: the rows are ratios). Tarmac rows (25 scored),
 experimental-brush before → after the TRL friction curve and wet Coulomb loss: 14 → 19 PASS (ngp 9); MISS → PASS
@@ -840,7 +884,14 @@ ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilo
 
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
-  deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
+  deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment. Combined Mz: the MF sets' fitted s·Fx and
+  Wong's Goodyear data disagree on whether braking or driving raises it, so neither M''_z (bristle, Svendenius eqs.
+  4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
+  (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
+- Aligning moment level and patch: t0/a 0.30 against the sets' 0.36-0.51 and peak Mz/(μ Fz a) 0.107 against 0.19-0.26
+  would make the steering 1.2-2.4 times heavier near the Mz peak than NGP's: a force-feedback level decision, left. The
+  trail's load exponent stays short (0.69 against 0.90-1.05) because NGP's patch grows ∝ Fz^0.30 (MF-Swift 0.6); the
+  brush cannot take its own contact length without NGP's patch at the design load (not in `Wheel`).
   Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
   304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
   315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
@@ -880,6 +931,7 @@ ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilo
   tyre's sinkage resistance, the berm against the layer's thickness, and snow (same model, not tuned; 1.06 g full
   pedal against 0.31-0.35 g).
 - loose-v1 open items:
-  - A partial pedal holds a wheel creeping on the berm's ramp, and the engine stalls through the clutch help (the
-    Golf, RSF 104; [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
-  - Eb is 1-4 % faster than ngp on soil.
+  - Braked fronts creep under the flat friction and drag the clutch-locked engine to a stall (the Golf, RSF 104;
+    [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)). The fix is the autopilot's: declutch when the driven wheels
+    lock, and restart.
+  - Eb's 1-4 % over ngp on soil is the engine model's (3-4 %); loose-v1 adds -1.0 to +1.9 %.
