@@ -135,6 +135,24 @@ pub fn from_snapshot<'a>(
 /// 0 on the first line).
 const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr ffb glong glat";
 
+/// `--circle-past`'s trace columns: the seconds since the car first ran wide (-1 before), the heading of the car's
+/// forward axis in the ground plane (rad, counter-clockwise from +x, unwrapped by the reader) and the body sideslip
+/// (rad, the ground velocity's angle from the forward axis, counter-clockwise positive; [`yaw_and_sideslip`]).
+const PAST_HEADER: &str = " since yaw beta";
+
+/// The heading of the car's forward axis in the ground plane and the angle from it to the ground velocity (rad,
+/// counter-clockwise positive, z up; 0 under 0.5 m/s).
+fn yaw_and_sideslip(pose: &rbr_recording::pose::CarPose) -> (f32, f32) {
+    let f = pose.forward();
+    let yaw = f[1].atan2(f[0]);
+    let [vx, vy, _] = pose.velocity;
+    if vx.hypot(vy) < 0.5 {
+        return (yaw, 0.0);
+    }
+    let beta = (f[0] * vy - f[1] * vx).atan2(f[0] * vx + f[1] * vy);
+    (yaw, beta)
+}
+
 /// What an accelerometer at the car's centre reads, g, along the body's forward (`-Y`) and `+X` axes (left in a
 /// right-handed frame; the lateral sign is not proven, `rbr_recording::pose`): the velocity's change over `dt` less
 /// gravity (z-up, the physics' 9.81 m/s²), so a level brake reads negative `glong`.
@@ -186,6 +204,9 @@ pub fn drive(
     if let Some(ramp) = measure.circle_ramp {
         driver = driver.with_circle_ramp(ramp);
     }
+    if let Some(throttle) = measure.circle_past {
+        driver = driver.with_circle_past(throttle);
+    }
     if let Some(plan) = measure.plan {
         eprintln!("autopilot: the plan's lateral {} m/s², braking {} m/s² (--plan)", plan.lateral, plan.braking);
         driver = driver.with_plan(plan);
@@ -218,7 +239,8 @@ pub fn drive(
         Some(path) => {
             let mut file =
                 std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
-            writeln!(file, "{TRACE_HEADER}").map_err(|e| format!("{}: {e}", path.display()))?;
+            let extra = if measure.circle_past.is_some() { PAST_HEADER } else { "" };
+            writeln!(file, "{TRACE_HEADER}{extra}").map_err(|e| format!("{}: {e}", path.display()))?;
             Some((file, path.display().to_string(), live.step_clock().step, None))
         }
         None => None,
@@ -296,7 +318,7 @@ pub fn drive(
             let mem = live.mem();
             let (glong, glat) = before.map_or((0.0, 0.0), |v| specific_force(&sense.pose, v, *dt));
             *before = Some(sense.pose.velocity);
-            writeln!(
+            write!(
                 trace,
                 "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0} {:.3} {:.3} \
                  {:.3} {:.3} {:.3} {glong:.4} {glat:.4}",
@@ -314,6 +336,13 @@ pub fn drive(
                 mem.ffb_torque(mem.u32(pure::CAR_PTR)).value,
             )
             .map_err(|e| format!("{path}: {e}"))?;
+            if measure.circle_past.is_some() {
+                let (yaw, beta) = yaw_and_sideslip(&sense.pose);
+                writeln!(trace, " {:.4} {yaw:.5} {beta:.5}", driver.past_since().unwrap_or(-1.0))
+                    .map_err(|e| format!("{path}: {e}"))?;
+            } else {
+                writeln!(trace).map_err(|e| format!("{path}: {e}"))?;
+            }
         }
         let speed = sense.pose.speed();
         if driver.braking && (held > 0 || speed < 0.3) {
