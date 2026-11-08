@@ -117,9 +117,9 @@ stay calibrated on stage times.
 split as Svendenius splits it (adhesion along the stiffness-weighted slip, sliding against the sliding velocity;
 below) and
 Rill's first-order force dynamics (below). Cy ∝ Fz^0.6 at 1.3 times NGP's 0-2° slope (`brush::CORNERING_OVER_NGP`,
-below), Cx = 1.4 times the Cy of NGP's own slope at Fz0 and ∝ Fz^1.2, both times bulk temperature
+below), Cx = 1.4 Cy at Fz0 (`KX_OVER_KY`, so also 1.3 times that of NGP's slope) and ∝ Fz^1.2, both times bulk temperature
 (-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor, and on a hard surface below NGP's grip 0.55
-times grip/0.55 on NGP's slope's Cy (ice, [Ice](#ice-material-116); the 1.3 fades out from grip ~0.75 down to 0.55); peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
+times grip/0.55 on NGP's slope's Cy and Cx (ice, [Ice](#ice-material-116); the 1.3 fades out from grip ~0.75 down to 0.55); peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed g(Vs) = (μ_C + (μ_S - μ_C) exp(-(Vs/7 m/s)³)) exp(-0.008 Vs), μ_C/μ_S 0.8, μ_C lowered
 0.25 (1 - exp(-Vs/7 m/s)) at W = 1 (below); NGP's temperature grip kept; dry wear
 +10 % at 60 % worn, fading with wetness; partial hydroplaning (below); force dynamics F = c u + d u', (v d + f) u' = f v_N s - v c u per axis (Rill,
@@ -383,11 +383,23 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   angle, combined Fy(κ 0.25)/Fy(0) at 4° 0.350 → 0.293, Mz peak at 0.410 → 0.393 of the Fy peak's angle; PASS → MISS:
   Kx/Ky 1.231 → 0.925, band 1.15-1.62; at 2/6 kN by the load exponents 0.88/1.50 → 0.67/1.12); combined at 2° 0.296 →
   0.227, camber stiffness 0.84 → 1.11 per rad (0.55-1.27); every gravel and snow value bit-equal, ice within 0.5 %
-  (`brush::low_mu_cornering_stiffness`: below grip 0.55 the Cy of NGP's slope). Limit recovery (r40, uniform 37, kept g
+  (`brush::low_mu_slip_stiffness`: below grip 0.55 the Cy of NGP's slope). Limit recovery (r40, uniform 37, kept g
   / widest m / back s, lift / full throttle): Fiesta 0.85/2.0/2.1 → 0.84/2.3/2.2, full throttle 42° → spun (150°);
   Golf 0.74/3.9/3.1 → 0.75/4.0/3.2, 38 → 45°; Escort spins in all four runs, the lift run 4.3 → 11.6 m wide. r40
   ramp mean |ffb| per 0.1 g within 6 % at 0.3-0.7 g, +8-10 % on the Fiesta at 0.7-1.0 g and the Golf's +15 % at
   0.9-1.0 g, peak 256 → 268 / 103 → 103 / 69 → 68 (Fiesta / Golf / Escort); map 41 600 s mean |ffb| at 0.3-0.7 g -1 to -6 %, pace Fiesta 304.03 → 303.85 s, Golf 314.09 → 314.09.
+- Longitudinal stiffness 1.3 times NGP's fit as well (2026-11-08, user-approved; `fit::calibration` returns the stiff
+  calibration whole: Cx = `KX_OVER_KY` Cy, μ_x solved for NGP's longitudinal peak; below grip 0.55 Cx of NGP's slope,
+  `brush::low_mu_slip_stiffness`). Scorecard 87 → 89/112 (MISS → PASS: Kx/Ky 0.925 → 1.168, band 1.15-1.62; Kx/Fz
+  21.2 → 26.8 against road c0x 23.8-42.8); peak κ 0.110 → 0.090 at 4 kN (R888R 0.08-0.10); Kx load exponent 1.13 →
+  1.10; TRL locked/peak, wet and worn stops within 0.006; tarmac car locked/ABS 50 km/h 0.832 → 0.841, ABS 0.15
+  1.314 → 1.293 g, threshold κ 0.1 from 100 km/h 1.057 → 1.171 g, locked 0.974 → 0.970 g; combined Mz at 4°
+  braking (context) 0.098 → -0.120; gravel, snow and ice brake rows bit-equal, ice c0x 2.523 → 2.514; ice coast crr
+  0.002 → 0.048 (the run-up on tarmac launches differently and the autopilot leaves the iced road; both MISS).
+  Traction, RSF 568 flat out, 0-100 km/h: Fiesta 4.117 → 4.082 s, Golf 6.794 → 6.778 s. Limit recovery (r40,
+  uniform 37): Fiesta full throttle spun (150°) → 45° and not back, lift 2.3 → 2.3 m wide; Golf lift 4.0 → 4.5 m wide,
+  full throttle 45 → 43°; Escort spins in both as before. Map 41 600 s: pace Fiesta 303.85 → 303.67 s, Golf 314.09 →
+  313.78; mean |ffb| at 0.3-0.7 g +0.5 to -2.8 % (Fiesta), -0.3 to -3.1 % (Golf).
 - Rolling sideways against locked, data (2026-11-08): TRR 621 (1976, Calspan flat belt, J78-15 bias-belted, 6.2 kN,
   48 km/h only, dry SN85; fig ±0.02): μ_y 0.84 at 16°, ~0.87 near 30°, ~0.80 at 60-72°, ~0.82 at 90° (= the locked
   wheel's sideways value), braking peak 0.84 / locked 0.74 quoted; so 30°/peak ~1.0 against the brush's 0.80 at 54
@@ -452,7 +464,7 @@ force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front 
   Rear over front axle force at 2° at the laps' loads 1.29-1.47 / 1.16-1.39 against a load ratio of 1.5-1.7, so the
   rear runs 1.12 / 1.28 of the front's slip angle (laps' medians 1.55/1.38°, 1.80/1.41°). In game the loaded outer
   rear (4.5-6 kN, driving) gives |Fy|/Fz 0.48/0.82/1.03 at 2/4/6° against 0.45/0.75/0.94, as the lab (5.5 kN).
-- Under power: Kx (brush 21, NGP 14 per Fz; data 18.4-32.9) halves the rear's slip ratio at the same drive force
+- Under power: Kx (brush 21, 27 with Cx 1.3 times NGP's slope's since 2026-11-08; NGP 14 per Fz; data 18.4-32.9) halves the rear's slip ratio at the same drive force
   (lap medians 0.022 / 0.042 at Fx/Fz 0.3-0.6); at a given drive force the lateral force below the peak is within 3 %
   at 4 kN. Past 15° under drive the brush keeps less (Fx/Fz 0.45, 4 kN: 1.130/1.082/0.987 against 1.157/1.134/1.060 at
   15/20/30°) at 1.6-3× NGP's κ.
@@ -677,8 +689,8 @@ Where NGP sits:
   and the game resets it (outside assistance, code 2); 504 rises 6.6 % over the stop (345 falls 2.4 %), so the decel
   is taken on the flat (car_pace `decel_flat`, less g · rise / distance): ngp 0.096 g at K 0.1 on 504 (raw 0.162);
   by the same correction 0.091 on 568 and 0.079 on 345.
-- The brush on ice: below NGP's grip 0.55 its slip stiffnesses, on the Cy of NGP's own slope, scale with grip/0.55
-  (`brush::low_mu_stiffness_factor`, `low_mu_cornering_stiffness`; the 1.3 over NGP's slope fades out from ~0.75;
+- The brush on ice: below NGP's grip 0.55 its slip stiffnesses, on the Cy and Cx of NGP's own slope, scale with
+  grip/0.55 (`brush::low_mu_stiffness_factor`, `low_mu_slip_stiffness`; the 1.3 over NGP's slope fades out from ~0.75;
   no tarmac material reaches it: the lowest hard surface, 0.68 class 2, is 0.57 on a cold tarmac tyre; a snow tyre on
   wet low-grip tarmac can reach 0.43). Evidence: Svendenius Table 7.1 brush fits at 4 kN, winter tyre C0x 25-27.6 on
   asphalt (μ 1.0-1.2; wet stiffer than dry), 16 on wet basalt (μ 0.27), 6.25 on ice (μ 0.078): knee 0.55 with an
@@ -1154,7 +1166,7 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
   NGP side holds the probed friction, so its tread does not move it). The car row from 100 km/h is not
   scored (`how` none): its locked run leaves the line (In game).
 - Shape: peak slip angle 9.5° both (5.6-8.5; the brush 7.0° with `CORNERING_OVER_NGP`, 2026-11-08); combined Fy(κ
-  0.25)/Fy(0) at 4° 0.463 / 0.349 (0.29-0.34, fig ±0.05; 0.293 with it); Kx/Fz 14.0 / 21.2 (18.4-32.9); peak Fx ∝ Fz^0.985 / 0.935 (0.90-0.95).
+  0.25)/Fy(0) at 4° 0.463 / 0.349 (0.29-0.34, fig ±0.05; 0.293 with it); Kx/Fz 14.0 / 21.2 (18.4-32.9; 26.8 with Cx 1.3 times, 2026-11-08); peak Fx ∝ Fz^0.985 / 0.935 (0.90-0.95).
 - Aligning moment (the lab's `Tyre::aligning`: the torque `solve_forces` applies above 2 m/s, trail × Fy less the
   carcass offset Fy/k_y × Fx, flat): t0/a 0.319 / 0.316 (0.36-0.51; brush theory a/3 at the design load); t0 ∝
   Fz^0.585 / 0.949 (0.90-1.05); patch half length ∝ Fz^0.57 both (NGP's contact geometry, the front axle's clean
@@ -1238,9 +1250,9 @@ rows unchanged.
 
 ## Open
 
-- Kx/Ky with the cornering stiffness 1.3 times NGP's slope: 0.93 at 4 kN (band 1.15-1.62; 0.67 / 1.12 at 2 / 6 kN by
-  the load exponents): Cx and peak κ stay those of NGP's fit. Cx 1.3 times too would restore 1.23 and move peak κ
-  (0.11) toward the R888R's 0.08-0.10; not tried. Cold class-2 surfaces (grip 0.57-0.75) get part of the 1.3 only.
+- Kx/Ky 1.17 at 4 kN with both stiffnesses 1.3 times NGP's slope's, near the band's foot (1.15-1.62); Kx's
+  pressure dependence (+4.0 % per +0.5 bar against MF 6.1's -15 %) is still NGP's. Cold class-2 surfaces (grip
+  0.57-0.75) get part of the 1.3 only.
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
   deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment. Combined Mz: the MF sets' fitted s·Fx and
