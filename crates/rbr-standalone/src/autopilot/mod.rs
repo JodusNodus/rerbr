@@ -463,6 +463,9 @@ pub struct Driver<'a> {
     circle_ramp: f32,
     /// The circle run's ramp clock (s): the target speed rises with it, from the first driven step on.
     circle_t: f32,
+    /// `--circle-past T` (limit tests, `PAST_WIDE`): the throttle past the limit, and the seconds since the car first
+    /// ran wide (negative before).
+    past: Option<(f32, f32)>,
     /// `--brake-from` (pace measurement): brake once the speed reaches this (m/s), if any.
     brake_at: Option<f32>,
     /// The brake test's brake is on (latched when the speed reaches `brake_at`).
@@ -506,6 +509,8 @@ pub struct Measure {
     pub brake_declutch: bool,
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
+    /// `--circle-past T` (`PAST_WIDE`).
+    pub circle_past: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
     /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<std::path::PathBuf>,
@@ -569,6 +574,16 @@ impl std::str::FromStr for Plan {
         }
     }
 }
+
+/// `--circle-past T` (with `--circle`, limit tests): once the car first runs `PAST_WIDE` m outside the circle (past the
+/// limit, the ramp still rising), the throttle is held at T (0-1; 0 lifts) with no brake and no gear change for the
+/// rest of the run, while the pure pursuit keeps steering for the circle (it countersteers a car whose nose points
+/// inside the target, as a driver would). Whether and how fast the car regains the circle, and the grip it keeps
+/// past the limit, are the measure (`harness/limit_recovery.py`).
+const PAST_WIDE: f32 = 1.0;
+/// `--circle-past` looks for the limit only after this many seconds of the ramp (the car settles onto the circle
+/// from the start first).
+const PAST_SETTLE: f32 = 10.0;
 
 /// The brake test's pedal (`--brake-from`).
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -697,6 +712,7 @@ impl<'a> Driver<'a> {
             circle: None,
             circle_ramp: CIRCLE_RAMP,
             circle_t: 0.0,
+            past: None,
             brake_at: None,
             braking: false,
             brake: Brake::Pedal(1.0),
@@ -878,6 +894,16 @@ impl<'a> Driver<'a> {
     /// The driver ramping the circle target at `ramp` m/s per s (`--circle-ramp`, repeat runs).
     pub fn with_circle_ramp(self, ramp: f32) -> Self {
         Self { circle_ramp: ramp, ..self }
+    }
+
+    /// The driver holding `throttle` once past the circle's limit (`--circle-past`, limit tests).
+    pub fn with_circle_past(self, throttle: f32) -> Self {
+        Self { past: Some((throttle, -1.0)), ..self }
+    }
+
+    /// `--circle-past`: the seconds since the car first ran wide, else `None`.
+    pub fn past_since(&self) -> Option<f32> {
+        self.past.map(|(_, t)| t).filter(|&t| t >= 0.0)
     }
 
     /// The driver braking fully from `v` m/s on (`--brake-from`, pace measurement) or never.
@@ -1211,6 +1237,20 @@ impl<'a> Driver<'a> {
             if let Some(n) = self.crank {
                 (throttle, brake, self.slow) = (0.0, 1.0, 0);
                 aux = u8::from(n % self.steps(CRANK_CYCLE) < self.steps(CRANK_HOLD));
+            }
+        }
+        if let (Some((held, t)), Some(circle)) = (&mut self.past, self.circle) {
+            // `--circle-past`: from the first time the car runs `PAST_WIDE` m wide, its throttle with no brake and no
+            // gear change; the steering stays the pursuit's.
+            let wide = (sense.pose.position[0] - circle.center[0]).hypot(sense.pose.position[1] - circle.center[1])
+                - circle.radius;
+            if *t >= 0.0 {
+                *t += rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+            } else if wide > PAST_WIDE && self.circle_t > PAST_SETTLE {
+                *t = 0.0;
+            }
+            if *t >= 0.0 {
+                (throttle, brake, flags, select) = (*held, 0.0, 0, 0);
             }
         }
         self.pulling = self.mode == Mode::Drive && throttle > 0.0 && brake == 0.0;
