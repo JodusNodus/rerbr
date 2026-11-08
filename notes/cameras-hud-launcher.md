@@ -179,7 +179,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   --at N`) draws the Nth answer headless, the way a live screenshot draws the Nth payload: the replay
   runs back to back (`--replay-pace free`), not in lockstep (`--frames -` takes no `--replay` beside it);
   `--at-drive` takes no `--replay`. `rbr-standalone --live ... --replay F --replay-pace free --replay-trace OUT`
-  writes each stepped frame's car and tyres as text (research, read-only; `replay_trace.rs`).
+  writes each stepped frame's car and tyres as text (research, read-only; `replay_trace.rs`). `--replay-tyre STEP:MODEL` (research) runs the replay checked to
+  STEP, then fits the tyre model MODEL (`ngp`, `brush`) afresh and runs the drive's inputs on uncompared.
 - Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'
   `championship_*` keys and `[season]` section are no longer read (the files are left alone; the settings file drops the

@@ -444,6 +444,25 @@ force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front 
   0.15, then the S-bend's change of direction took the rear from 2° to 46° in 1 s through a lift and 8° of
   counter-steer; ~17 s lost. Not a like-for-like comparison; it fits the known fall past the peak ("Past the limit on
   tarmac", Open).
+- The spin from the drive's own state (2026-11-08, T26; `--replay-tyre STEP:MODEL` on the brush replay, the user's
+  inputs run on open loop from STEP with a fresh tyre model, same engine): from nine entry points 418.0-421.6 s
+  (2.2-0.1 s before the change of direction) NGP's tyre spins from 6, the brush from 8 (the fresh brush reproduces the
+  drive's spin; from 420.5 s it stays at 41°). The outcome flips between neighbouring entry points under either tyre:
+  open-loop inputs made for one slide do not separate the tyres there. Where they part (switch at 421.1 s, NGP
+  recovers): in 421.5-421.85 s, throttle 0.4-0.8, rear α 7-10°, κ 0.02-0.14, the brush's rear axle holds μ_y
+  1.07-1.09 against NGP's 0.98-1.03 (light inner rear at 1-2 kN: |Fy|/Fz 1.09-1.13 against 0.95, the brush's
+  μ ∝ Fz^-0.13) and its front axle drops to 0.26 against 0.64, so the yaw rate swings from +9 to -69 °/s against -52;
+  the rear then sits at its peak (μ 1.04-1.12, α 10-46°) and cannot stop the yaw. A pendulum on the catch, not the
+  rear letting go under drive. Variants switched in the same way all spin 9/9 (lateral fall 0.55, μ_y(30°)/peak about
+  0.91; fall 1.0, 0.833; the sliding force turned toward the lateral axis, direction (s_x, 1.3 s_y)). The r40 limit
+  test (`limit_recovery.py --material-as 37`, kept g / widest m / back s / peak β, lift; full throttle) brush now:
+  Fiesta 0.85/2.0/2.05/4.0°; 0.82/14.3/never/41.6° (ngp spins, 93°); Golf 0.74/3.9/3.1/3.1°; 0.81/17.1/never/37.5°
+  (ngp 16.5°); Escort: ngp never past the limit, the brush spins. Fall 0.55: Fiesta full throttle back in 4.9 s at 37°, Golf 33.7°, Escort lift
+  81° (100°), within a few % elsewhere; direction 1.3: Fiesta full throttle spins (77°). Not committed: no variant
+  turns the snap and the data do not single one out. The autopilot's own speed plan at 10-14 m/s² (`--plan`, first
+  2.3 km, Alpine, 170-180 km/h) slides no car past 10° of sideslip in any physics (peak brush 5.9°, ngp 7.4°), so it
+  is no closed-loop test here. Back to back on the drive: `rbr-standalone ARGS --replay F --replay-pace free
+  --replay-tyre 304712:ngp` against `:brush` (ARGS the program arguments the replay stores after `--live PROGRAM`; step 304712 is 421.1 s).
 
 ## Racing and rally targets
 
