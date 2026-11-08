@@ -104,7 +104,8 @@ stay calibrated on stage times.
 split as Svendenius splits it (adhesion along the stiffness-weighted slip, sliding against the sliding velocity;
 below) and
 Rill's first-order force dynamics (below). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
-(-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
+(-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor, and on a hard surface below NGP's grip 0.55
+times grip/0.55 (ice, [Ice](#ice-material-116)); peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
 against sliding speed g(Vs) = (μ_C + (μ_S - μ_C) exp(-(Vs/7 m/s)³)) exp(-0.008 Vs), μ_C/μ_S 0.8, μ_C lowered 18 % at
 W = 1 (below); NGP's temperature grip kept; dry wear
 +10 % at 60 % worn, fading with wetness; wet loss h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 0.7 mm and
@@ -441,9 +442,8 @@ rally g data on tarmac; a verified racing relaxation length; absolute μ against
 Runs (2026-11-07, `ngp` physics, Fiesta Rally2): gravel on RSF 345 Azov II (`--circle 1051,-166,40 --circle-ramp
 0.4`, step 6000, Gravel_Fine_Shallow_Dry 17, kind 4); snow on retail map 10 (`track-10_O`, autopilot, step 6000,
 SnowOnGravel_Shallow 101, kind 6), SnowOnIce_Shallow (117, RSF 162 Karlstad, step 21000) within 0.05 of it; tarmac map
-85 as above (step 8000, wheel 1). Ice: material 116 (no name in 1.02's surface table; μ 0.10/0.095, no soil, on the
-RSF 565/614 winter tarmac and in the wet entries of 124/156) met no run, so `sweep --friction 0.1,0.095` on the snow
-frame (its tyre-class factor taken as 1, unverified). "Sweep": pure `patch_forces` at 15 m/s; "step": `ngp_transient
+85 as above (step 8000, wheel 1). Ice (material 116): map 85 iced whole (`--material-as 116`, [Ice](#ice-material-116)),
+the circle's wheel 1 at step 8000, the tarmac tyre at 0.0949/0.0902. "Sweep": pure `patch_forces` at 15 m/s; "step": `ngp_transient
 --ramps-only`, NGP's whole per-wheel step on the run's `--tyre-image`, 15 m/s unless stated; 4 kN unless stated.
 Published values, sources and precision labels from the 2026-11-07 loose-surface research (its files are not in git).
 
@@ -458,24 +458,24 @@ Published values, sources and precision labels from the 2026-11-07 loose-surface
 
 | Property | Published | NGP gravel | NGP snow | NGP ice (116) | Tarmac reference |
 | --- | --- | --- | --- | --- | --- |
-| Peak μ_y | gravel ≲ 0.67 WRC wet loose (CW, quoted; μ inferred), 0.55 wet crushed (TR1011, quoted); packed snow 0.35-0.43, loose 0.28-0.33 (TR0713, table); ice 0.15-0.17 (TR0713, table) | 0.828 sweep, 0.854 step | 0.851, 0.857 | 0.099 | 1.262, 1.266 |
+| Peak μ_y | gravel ≲ 0.67 WRC wet loose (CW, quoted; μ inferred), 0.55 wet crushed (TR1011, quoted); packed snow 0.35-0.43, loose 0.28-0.33 (TR0713, table); ice 0.15-0.17 (TR0713, table) | 0.828 sweep, 0.854 step | 0.851, 0.857 | 0.094 | 1.262, 1.266 |
 | Over tarmac | gravel 50-60 % (CW, quoted) | 0.66 | 0.67 | 0.08 | 1 |
-| Peak slip angle | gravel ~12° (CW, quoted), 12.1° (Velenis, MF), dirt 16° (ChassisSim, model input); packed snow 9-17°, loose 16-18° (TR0713, table); ice 4.5-5.1° (TR0713, table) | 13.5° (95 % at 9°); step 14° | 11° (95 % at 7.75°); step 11.25° | 1.25° (95 % at 1°) | 9.5° (6.75°) |
-| μ_y at 30° over peak | gravel 0.63 (CW, quoted; ratio inferred), 0.85 (Velenis, MF); snow no fall to ~17° (TR0713, quoted); ice 0.59 at 20° (TR0713, fig ±0.005) | 0.956; step 0.985, at 25 m/s rising to 30° (0.897) | 0.955; step 0.997, at 25 m/s rising (0.926) | 0.976 at 20°, 0.965 | 0.865 |
-| Peak κ | gravel none open ("0.4-0.7", snippet); snow still rising at 0.30 (Surkutwar, fig ±0.01); ice 0.05 (Ružinskas, quoted) | 0.24 (2 kN 0.16) | 0.22 (0.12-0.30 at 2-6 kN) | 0.04-0.06 | 0.16 |
-| μ_x at κ 1 over peak | gravel 0.75 (Velenis, MF); snow no fall to 0.30 (Surkutwar, fig); ice ~0.5 at 0.45 (Ružinskas, fig ±0.005) | 0.82 sweep and step | 0.85 | 0.93 | 0.78 |
+| Peak slip angle | gravel ~12° (CW, quoted), 12.1° (Velenis, MF), dirt 16° (ChassisSim, model input); packed snow 9-17°, loose 16-18° (TR0713, table); ice 4.5-5.1° (TR0713, table) | 13.5° (95 % at 9°); step 14° | 11° (95 % at 7.75°); step 11.25° | 0.75° (95 % at 0.5°) | 9.5° (6.75°) |
+| μ_y at 30° over peak | gravel 0.63 (CW, quoted; ratio inferred), 0.85 (Velenis, MF); snow no fall to ~17° (TR0713, quoted); ice 0.59 at 20° (TR0713, fig ±0.005) | 0.956; step 0.985, at 25 m/s rising to 30° (0.897) | 0.955; step 0.997, at 25 m/s rising (0.926) | 0.966 at 20°, 0.950 | 0.865 |
+| Peak κ | gravel none open ("0.4-0.7", snippet); snow still rising at 0.30 (Surkutwar, fig ±0.01); ice 0.05 (Ružinskas, quoted) | 0.24 (2 kN 0.16) | 0.22 (0.12-0.30 at 2-6 kN) | 0.02 | 0.16 |
+| μ_x at κ 1 over peak | gravel 0.75 (Velenis, MF); snow no fall to 0.30 (Surkutwar, fig); ice ~0.5 at 0.45 (Ružinskas, fig ±0.005) | 0.82 sweep and step | 0.85 | 0.92 | 0.78 |
 | Ploughing: locked against peak | gravel: locked stops 25-30 % shorter than ABS, decel 1.25-1.30× (SAE 1999-01-1287, table; ratio inferred); car braking 0.50-0.60 wet crushed (TR1011, table) | locked 0.82 of peak (step 0.82, 0.79 at 25 m/s); game, brake test on 345 declutched from 100 / 50 km/h: locked 0.77 / 0.63 g, 10 / 17 % longer than the best threshold braking (K 0.5, 0.85 / 0.73 g) | 0.85 | 0.93 | 0.78; RSF 568 locked 1.09 / 1.06 g, 21 / 19 % longer than threshold at K 0.3 (1.31 / 1.26 g) |
-| Peak μ_y at 2/4/6 kN (Fy ∝ Fz^n) | snow no clear loss at 4.6-11 kN (TR0713, inferred, weak); soil lateral coefficient falls slightly at 1-4 kN (El-Razaz review, quoted); gravel none | 0.889/0.828/0.774 (0.875); step 0.913/0.854/0.797 | 0.902/0.851/0.788 (0.881); step 0.928 (rising)/0.857/0.795 | 0.105/0.099/0.092 (0.886) | 1.353/1.262/1.179 (0.877) |
-| Peak μ_x at 2/4/6 kN (Fx ∝ Fz^n) | none | 0.864/0.849/0.845 (0.982) | 0.877/0.870/0.858 (0.979) | 0.101/0.100/0.101 | 1.309/1.292/1.286 (0.984) |
-| Cα/Fz at 4 kN; Cα ∝ Fz^m | initial slope packed snow ~10/rad, ice ~4.6/rad (findings, inferred from figs); gravel none | 9.1/rad; 0.325 | 10.5/rad; 0.338 | the snow tyre's (μ alone changed) | 17.6/rad; 0.359 |
+| Peak μ_y at 2/4/6 kN (Fy ∝ Fz^n) | snow no clear loss at 4.6-11 kN (TR0713, inferred, weak); soil lateral coefficient falls slightly at 1-4 kN (El-Razaz review, quoted); gravel none | 0.889/0.828/0.774 (0.875); step 0.913/0.854/0.797 | 0.902/0.851/0.788 (0.881); step 0.928 (rising)/0.857/0.795 | 0.099/0.094/0.087 (0.891) | 1.353/1.262/1.179 (0.877) |
+| Peak μ_x at 2/4/6 kN (Fx ∝ Fz^n) | none | 0.864/0.849/0.845 (0.982) | 0.877/0.870/0.858 (0.979) | 0.101/0.100/0.101 (snow tyre, earlier sweep); n 0.993 on the tarmac tyre | 1.309/1.292/1.286 (0.984) |
+| Cα/Fz at 4 kN; Cα ∝ Fz^m | initial slope packed snow ~10/rad, ice ~4.6/rad (findings, inferred from figs); gravel none | 9.1/rad; 0.325 | 10.5/rad; 0.338 | 3.7/rad (0-2° fit, past the peak: the tarmac tyre's 17.6 on 0.095); 0.876 | 17.6/rad; 0.359 |
 
 Where NGP sits:
 
 - Level: gravel and snow are one surface to NGP, 0.83-0.86 at 4 kN (0.66-0.67 of tarmac): gravel 1.3-1.5× the
-  published peaks, snow about twice. Ice (116) is 0.10, below the measured 0.15-0.17.
+  published peaks, snow about twice. Ice (116) is 0.094 on the tarmac tyre, below the measured 0.15-0.17.
 - Shape: the peak slip angles of gravel (13.5°) and snow (11°) fall inside the published ranges, because the gravel
-  and snow kinds are softer (Cα/Fz 9-10.5 against 17.6); ice peaks at 1.25° against 4-5°, its stiffness being the
-  snow tyre's. Past the peak every loose curve is flat (0.96 of peak at 30° in the sweep) and the soil force makes it
+  and snow kinds are softer (Cα/Fz 9-10.5 against 17.6); ice peaks at 0.75° against 4-5°, its stiffness being the
+  tarmac tyre's (NGP's stiffness is the tyre's on every surface). Past the peak every loose curve is flat (0.96 of peak at 30° in the sweep) and the soil force makes it
   flatter or rising, more with speed: like the snow data, flatter than the gravel data (0.63-0.85), and ice does not
   fall (0.97 against 0.59).
 - Ploughing: none longitudinally (the soil's longitudinal force is zero); a locked wheel keeps 0.82 of the peak on
@@ -506,6 +506,38 @@ Where NGP sits:
   0.72 g, setup not compared.
 
 - Load: the tarmac sensitivity on every surface (same tables): Fy ∝ Fz^0.875-0.886, Fx ∝ Fz^0.98, Cα ∝ Fz^0.33-0.36.
+
+### Ice (material 116)
+
+- Where: the RSF stages 565/614 (Legazpi-Gabiria winter, tarmac), 3 % of each `.mat` entry's cells, long stretches
+  of the second half (614: all four wheels on 116 at steps 137000-140000 of an autopilot run); 563 Toivonvaara's
+  damp-new entry blends it 0.77 into soil 103 (snow, NGP's soil path). 124/156's wet entries list it, but 60000
+  autopilot steps on them met none. Scan: `.mat` class bytes; runs: `--tyre-probe` `block_tags` (2026-11-08).
+- Tyre and factor: 565/614 run the tarmac tyre (type 0, the stage's surface). 116's surface class is 5 (`materials`
+  example's `class` column, `+0x148`), whose base factor is 0.95 on the tarmac tyre and 1.0 on the gravel and snow
+  tyres (probe `tyre_classes`). In the run, static 0.0896 = 0.10 · 0.95 · temperature grip 0.946 (cold tyre, 316 K).
+  The scorecard's "factor taken as 1" is replaced by this run.
+- Tooling: `rbr-standalone --material-as 116` (autopilot, test only) gives every material 116's tyre values
+  (`ngp::layout::stage::materials_as`: friction, soil, bump, water, rolling resistance and the class; collision values
+  and flags stay each material's), from the start or with `--brake-from` from the brake onset: no 565/614 stretch is
+  flat or straight enough to stop on from 50 km/h (~60-100 m), and the iced launch spins on the brush. Probe: map 85
+  circle iced; brake: RSF 504's start straight, the run-up on its tarmac. On 568 a locked car drifts 2 m off the line
+  and the game resets it (outside assistance, code 2); 504 rises 6.6 % over the stop (345 falls 2.4 %), so the decel
+  is taken on the flat (car_pace `decel_flat`, less g · rise / distance): ngp 0.096 g at K 0.1 on 504 (raw 0.162);
+  by the same correction 0.091 on 568 and 0.079 on 345.
+- The brush on ice: below NGP's grip 0.55 its slip stiffnesses scale with grip/0.55 (`brush::low_mu_stiffness_factor`;
+  no tarmac material reaches it: the lowest hard surface, 0.68 class 2, is 0.57 on a cold tarmac tyre; a snow tyre on
+  wet low-grip tarmac can reach 0.43). Evidence: Svendenius Table 7.1 brush fits at 4 kN, winter tyre C0x 25-27.6 on
+  asphalt (μ 1.0-1.2; wet stiffer than dry), 16 on wet basalt (μ 0.27), 6.25 on ice (μ 0.078): knee 0.55 with an
+  exponent 0.76 through all three; summer tyre 0.09 of asphalt's on ice (exponent 1.2); 1 is ours, between. Before,
+  the tarmac tyre's stiffness (Cα/Fz 17.6) at μ 0.095 slid whole at 0.75-1°; the peak level stays NGP's (0.0948
+  against 0.0938 at 4 kN).
+- Trade-off: with NGP's level (0.094, the data 0.15-0.18) the peak slip angle and the initial slope cannot both
+  match (the brush slides whole at tan α = 3 μ/(C/Fz)): exponent 0.76 gives 2.75° and a 0-2° slope 3.2 /rad, 1.0 gives
+  4.25-4.5° and 2.4-2.5 /rad, 1.2 gives 5.75° and 1.9 /rad (lab, the probed wheel, 4 kN, on the friction curve before the TRL refit; 1.0 gives 4.5° and 2.43 /rad on the
+  current one). The peak angle was kept; the
+  model's own Cx/Fz at zero slip is about 4.3 (Svendenius 3.6-6.7), the scorecard's κ 0.02-0.04 fit (2.5) lies past the
+  linear part on ice.
 
 ## Loose surfaces: loose-v1
 
@@ -617,7 +649,7 @@ lower bound: it includes the pedal rise). Every braking series is road cars on r
 | Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g. NGP: not measured at car level (tyre peak 0.83) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
 | Trail-brake by an expert on gravel | Group A Impreza STI (AWD, 340 bhp), track gravel, 80-90° corner: 77 → 23 km/h over 1.05-4.05 s (0.51 g mean, 0.66 g peak over 0.5 s), rear-axle slip angle 42° at 4 s, back to 0 by 5 s; pendulum turn −29° → +63°, 0.59 g peak | Velenis et al. MED 2007 Figs 3, 5 (fig ±1 km/h, ±1°; digitised by pixel; inputs normalised); no data release found | RSF Impreza GC8 555 GrpA on a gravel 80-90° corner, inputs of the same shape; speed and rear-axle slip angle traces | a payload writer from an input CSV, assumed steering, brake and throttle scales, a matching corner; shape check only |
 | Snow braking | road winter tyres 0.33-0.45 g (50-0, 35-5, 25-5 km/h, ABS); locked 0.31-0.35 g; trailer μx,max 0.46-0.57, μy,max 0.47-0.56 at 30 km/h, no clear fall past the peak. NGP: tyre peak 0.85; car not measured | Auto Bild 2025, Vi Bilägare 2024-25 (table, secondary); VTI R875 Tabell 55, 60, 62 (table); Sokolovskij 2007 (table), SAE 960652 (quoted) | `--brake-from 13.9` on map 10 (`track-10_O`), Fiesta Rally2; mean decel | none (rally snow tyres are studded: the level is a lower bound) |
-| Ice braking and cornering | car 50-0 km/h: studded 0.23-0.30 g, studless 0.18-0.22 g; best three at −2/−7/−13 °C 0.24/0.28/0.31 g studded, 0.17/0.22/0.26 g studless. Rig, smooth ice −3 °C, 30 km/h, 4.2 kN: μx peak/locked 0.25/0.22 studded, 0.21/0.17 Nordic; μy peak 0.22 at ~5° / 0.19 at 2-3°, at 20° 0.19 / 0.13. NGP: material 116 μ 0.10, tyre peak at 1.25° | Tekniikan Maailma 18/2025 (table, secondary via tyrereviews); VTI R875 Tabell 46, 48, Figur 3 (table; means inferred; fig ±0.01) | `--brake-from` and `--circle` on a 116 surface | a run on material 116 (none met it so far) |
+| Ice braking and cornering | car 50-0 km/h: studded 0.23-0.30 g, studless 0.18-0.22 g; best three at −2/−7/−13 °C 0.24/0.28/0.31 g studded, 0.17/0.22/0.26 g studless. Rig, smooth ice −3 °C, 30 km/h, 4.2 kN: μx peak/locked 0.25/0.22 studded, 0.21/0.17 Nordic; μy peak 0.22 at ~5° / 0.19 at 2-3°, at 20° 0.19 / 0.13. NGP: material 116 μ 0.10 (0.095 on the tarmac tyre), tyre peak at 0.75°; car from 50 km/h on the flat 0.096 g best threshold, 0.095 g locked (ratio 0.99); experimental-brush 0.100 / 0.081 g (0.81) | Tekniikan Maailma 18/2025 (table, secondary via tyrereviews); VTI R875 Tabell 46, 48, Figur 3 (table; means inferred; fig ±0.01) | `brake_test.py` on RSF 504 with `-- --material-as 116` (iced from the brake onset; `decel_flat`); map 85 circle iced (`--circle -260,120,40 --material-as 116`) | a flat iced straight (504 rises 6.6 %); no car lateral g target on ice |
 | Rally braking g, real stage | 0.65 g mean over the 16 longest braking events; lateral 1 s mean p50 0.4 g, p90 0.8-0.95 g; Yaris WRC, Rally Finland 2021 SS7 | RallyDataJunkie merged telemetry, one file (inferred; axes and 0.01 g units inferred) | autopilot on a fast RSF gravel stage, same statistics | per-step g export and a percentile script; the autopilot is not a WRC driver (weak) |
 | Surface change under traffic | braking coefficient 0.50 → 0.57 → 0.60 over three passes in one track; scraped line 0.68-0.74, loose windrow 0.56-0.59 | TR-10-11 Table 3 (table), Fig 13 (quoted) | none | a surface that changes with passes (not checked whether NGP has one) |
 | Per-tyre lateral curve on gravel | road AT tyre 235/75R15, 6.7 kN, 1-1.5 m/s, towed lock-to-lock sweep. Free rolling, averaged curve μ_y at 5/10/20/30°: pea stone 0.30/0.44/0.52/0.54, wet gravel 0.22/0.35/0.48/0.53, still rising at 38-39° (max 0.54-0.55; per run 0.57 ±0.01 / 0.60 ±0.02); 90 % of max at 14.5° / 21°, initial slope 3-5 /rad. Front locked (pea stone): μx 0.85 at 0°, 1.5× the lateral max and 1.25-1.47× the traction (0.58-0.68); side force 0.72 sin α (0.23 at 20°, 0.36 at 30°). Circle breakout at 8.5 m/s: front LC 0.55 / 0.43 | Coutermarsh & Shoop SAE 2010-01-0374 Figs 14-17 (fig ±0.004 μ, locked ±0.02; ratios inferred) | sweep on kind 4: shape ratios and Cα/Fz (NGP: 95 % at 9°, 9.1 /rad, locked 0.82 of peak) | none |
@@ -631,7 +663,8 @@ Ranking:
    on gravel (three measured series give 0.47-0.66 g at 40-80 km/h; NGP 0.63 g from 50 km/h, at the top, on a rally
    tyre); the gravel/tarmac braking ratio; and the gravel circle (0.43-0.7 g). Snow braking (0.33-0.45 g) also runs
    now, as a lower bound.
-2. Once tooled: ice (VTI rig and magazine data are solid) once a run reaches material 116.
+2. Ice (VTI rig and magazine data are solid): runs on material 116 now (`--material-as 116`); the level is NGP's
+   (0.10 against 0.18-0.30 g), so the shape and ratio rows carry the comparison.
 3. Weak or shape only: the Velenis trail-brake (normalised inputs, one corner), the WRC telemetry statistics (one car,
    inferred units).
 4. Out of reach: per-tyre gravel curves at rally speed or load (only 1-1.5 m/s, one load), rally studs (no data),
@@ -646,15 +679,16 @@ above, `id,surface,level,metric,conditions,low,high,unit,source,precision,how`; 
 `--compare A.json B.json`. Fiesta Rally2 throughout. The `how` keys:
 
 - `tyre:SURFACE:KEY`: the lab's `scorecard` example on a probed wheel (tarmac map 85 circle wheel 1 at step 8000;
-  gravel RSF 345 circle wheel 0 at step 6000; snow map 10 wheel 0 at step 6000; ice the snow wheel with 116's
-  0.10/0.095 on a hard surface). It builds the profile's `rbr_tyre::model` from the wheel's tables as the game does
+  gravel RSF 345 circle wheel 0 at step 6000; snow map 10 wheel 0 at step 6000; ice map 85's circle iced whole with `--material-as 116`, wheel 1 at
+  step 8000, the tarmac tyre as on RSF 565/614). It builds the profile's `rbr_tyre::model` from the wheel's tables as the game does
   and lets its dynamics settle 2 s at each slip; where the model hands back (`ngp`, soil under the brush) NGP's
   `patch_forces` answer. So a loose model added in `rbr-tyre` is scored with no change here; a new model name needs
   its line in `TYRE_MODEL`. Steady forces at 15 m/s, flat, no sinking and no soil force (the sweep, not
   `ngp_transient`'s whole step); the pea-stone rows (measured at 1-1.5 m/s) are taken at 15 m/s and 6.7 kN.
 - `tyre-ratio:A/B:KEY`: surface A's key over B's.
 - `brake:SURFACE:KMH:locked_g|best_g|ratio|ratio_kK`: `brake_test.py`'s declutched runs (gravel RSF 345, tarmac RSF
-  568, snow map 10), full pedal against slip targets 0.1-0.7; ratio = locked decel / best threshold decel, ratio_kK
+  568, snow map 10, ice RSF 504 iced from the brake onset, its decel on the flat, slip targets 0.05-0.3), full pedal
+  against slip targets 0.1-0.7; ratio = locked decel / best threshold decel, ratio_kK
   locked over the target K's (one pedal, not ABS). The locked-over-ABS rows take K 0.2, the low slip an ABS holds;
   the best-target ratios stay as context rows (both bounds empty: printed CTX, not scored). One pedal at K 0.2
   under-brakes the less slipping wheels, so it is a weak ABS: NGP, with no berm, scores 1.18 / 1.28 on gravel.
@@ -678,6 +712,15 @@ from 50 km/h; PASS → MISS combined at 4° (0.332 → 0.349, band 0.29-0.34, fi
 0.968 (0.97), wet at 64/100 0.766/0.757 → 0.583/0.552 (0.52-0.57/0.49-0.52; 0.558/0.523 in the lab on NGP's wet
 material), peak slip angle 8.75° → 9.5° on this wheel (5.6-8.5). The car row from 100 km/h is not scored (`how` none): its locked run
 leaves the line (In game).
+
+Ice rows (2026-11-08, at the merge of main 48469277; 16 scored): the probe and brake rows on 116 replace the snow
+wheel with the friction set. experimental-brush before → after the low-friction stiffness: 43 → 45/89 PASS (ngp
+31/89), only ice rows move. MISS → PASS peak slip angle 1.0° → 4.5° (4.5-5.1) and 1.0° → 5.0° at 6.7 kN (4-5), peak κ
+0.01 → 0.06 (0.04-0.06); PASS → MISS Cα/Fz 0-2° fit 3.81 → 2.43 (3.7-5.5); still MISS Kx/Fz 2.89 → 2.52 (3.6-6.7),
+μ_y(20°)/peak 0.90 → 0.91 (0.59-0.86), locked/peak 0.71 → 0.72 (0.81-0.88), car locked/threshold 0.809 (0.81-0.88;
+unchanged, as are the car decels: the stops find the peak whatever the stiffness), and the levels (NGP's). Tarmac,
+gravel and snow rows identical; snow braking from 50 km/h ngp 0.875 / 0.791 g, brush 0.922 / 1.059 g (threshold /
+locked).
 
 
 ## Open
@@ -708,8 +751,10 @@ leaves the line (In game).
   The hold torque and the drive line's sticking load stay NGP's. LuGre with Canudas de Wit's σ_0 181.54 1/m (726 kN/m
   at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same contact; Rill's restored dynamics already
   give the stick-slip at standstill LuGre adds, so it was not prototyped. Camber thrust from MF6.1's camber stiffness.
-- Loose surfaces unmeasured: material 116 in a run (its tyre-class factor, taken as 1), combined slip on gravel and
-  snow, and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
+- Ice: NGP's level (0.094) against the measured 0.15-0.18 keeps the brush's peak slip angle and initial slope from both
+  matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
+  0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
+- Loose surfaces unmeasured: combined slip on gravel and snow, and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target, but at NGP's grip level the locked braking is 0.89-0.98 g against the published 0.47-0.66 g;
   meeting the level needs a lower loose grip level (a product decision, the trade-off table in

@@ -72,4 +72,7 @@ cargo run -q --release -p rbr-tyre-lab --example ngp_transient -- --image /tmp/t
 cargo run -q --release -p rbr-tyre-lab --example materials -- "$RBR_NGP_DLL" [ID...]
 ```
 
+`materials` prints each id's friction, soil and water values and its surface class (the tyre's per-class factor).
+An ice probe: the autopilot line above with `--material-as 116` (every material takes NGP's ice values).
+
 No game data is committed: dumps, images and CSVs stay in `/tmp/tyre-lab`; `materials` prints only.
