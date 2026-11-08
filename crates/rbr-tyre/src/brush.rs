@@ -152,6 +152,27 @@ pub fn stiffness_at(fz: f64, tb: f64, d: f64, pf: f64, c0: f64, m: f64, cal: &Ca
         * (pf / cal.pf_cal)
 }
 
+/// Slip stiffness on low-friction hard surfaces (ice): below the surface static friction [`LOW_MU_KNEE`] the brush's
+/// slip stiffnesses scale with (mu / knee)^[`LOW_MU_EXPONENT`]; above it they do not move. Svendenius's brush fits at
+/// 4 kN (PhD, Lund 2007, Table 7.1, VTI BV12), winter tyre: C0x 25-27.6 on dry and wet asphalt (mu 1.2 / 1.0, the wet
+/// one stiffer: no fall over the tarmac range), 16 on wet basalt (mu 0.27), 6.25 on ice (mu 0.078), 0.58 and 0.23 of
+/// asphalt's, which the knee 0.55 with an exponent 0.76 passes through; his summer tyre keeps 0.09 on ice (mu 0.077),
+/// an exponent 1.2 with that knee. The exponent is 1 (ours, between the two tyres): below the knee the peak slip
+/// stays the knee's, so ice (NGP's 0.10) peaks near 4°, as measured (4-5°: TR0713; SAE 2010-01-0374 Fig 8). Snow is
+/// not fitted (soil: NGP's force there).
+pub const LOW_MU_KNEE: f64 = 0.55;
+pub const LOW_MU_EXPONENT: f64 = 1.0;
+
+/// The factor on the slip stiffnesses at the surface static friction `mu` (NGP's grip): 1 from [`LOW_MU_KNEE`] up,
+/// and for a non-positive `mu`.
+pub fn low_mu_stiffness_factor(mu: f64) -> f64 {
+    if mu > 0.0 && mu < LOW_MU_KNEE {
+        libm::pow(mu / LOW_MU_KNEE, LOW_MU_EXPONENT)
+    } else {
+        1.0
+    }
+}
+
 /// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (Horne's deep-water
 /// law, NASA TN D-2056; metric form in Zhang et al., Lubricants 13:76, 2025),
 /// times (0.75 + 0.25 d) for tread depth: ADAC's 2026 worn-tyre test lost
@@ -519,6 +540,18 @@ mod tests {
             surf_static: 1.3,
             surf_kinetic: 1.0,
         }
+    }
+
+    #[test]
+    fn the_stiffness_falls_below_the_knee_only() {
+        for mu in [0.0, -1.0, LOW_MU_KNEE, 0.68, 1.105, 1.3] {
+            assert_eq!(low_mu_stiffness_factor(mu), 1.0, "{mu}");
+        }
+        // Between Svendenius's tyres on ice (mu 0.078): winter 0.23, summer 0.09 of asphalt's.
+        let ice = low_mu_stiffness_factor(0.078);
+        assert!(ice > 0.09 && ice < 0.23, "{ice}");
+        assert!((low_mu_stiffness_factor(0.275) - 0.5).abs() < 1e-12);
+        assert!(low_mu_stiffness_factor(0.5) < 1.0 && low_mu_stiffness_factor(0.5) > low_mu_stiffness_factor(0.1));
     }
 
     #[test]

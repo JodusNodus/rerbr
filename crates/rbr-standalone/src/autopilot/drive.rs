@@ -6,6 +6,8 @@ use std::path::Path;
 use rbr_gameplay::control::QuantizedControl;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_hybrid::pure;
+use rbr_physics::ngp::layout::stage as ngp_stage;
+use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::snapshot::Snapshot;
 use rbr_recording::{read_u32, Frame, CONTROL_BYTES, HEADER_BYTES};
 
@@ -205,8 +207,18 @@ pub fn drive(
     let word6 = read_u32(&control, 24).expect("payload word 6");
     let mut drove = Drove { start, steps: 0, finish: None, end: format!("the step limit ({steps})"), out: None };
     let mut off_road = 0;
+    let mut material_as = measure.material_as;
     for k in 0..steps {
         let step = start + k;
+        if let Some(id) = material_as.filter(|_| measure.brake_from.is_none() || driver.braking) {
+            // The pure memory's handle shares its bytes: the write lands in the next step's stage.
+            let mut mem = live.mem().clone();
+            let tables = rbr_formats::ngp::current().expect("boot loaded NGP data");
+            let def = physics_layout::cdef_global(&mem);
+            ngp_stage::materials_as(&mut mem, def, tables, id);
+            eprintln!("autopilot: step {step}: every material takes material {id}'s values (--material-as)");
+            material_as = None;
+        }
         let answer = live.answer(&control)?;
         if live.stopped() {
             drove.end = format!("the pure step stopped at step {step} (stderr)");
