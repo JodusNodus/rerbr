@@ -563,9 +563,10 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   Senatore & Sandu, J. Terramech. 48 (2011); Wong's K values not read). α0 from Coutermarsh & Shoop Fig. 15 (fig
   ±0.004): pea stone 6.28° (rms 0.0012 over 1-38°; the brush's cubic 0.0165, the law integrated over a uniform patch
   0.0098), wet gravel 9.7° (0.0015); in K terms, about the half patch times tan α0 (~11 mm at a 0.2 m patch,
-  inferred). One α0 for every gravel (dry, damp, wet: wet gravel's 9.7° is a different soil, silty sand, not NGP's
-  wetness). The slope follows the level (μ Fz/tan α0: 6.0 /rad at 6.7 kN, NGP 6.6); the level is approached, never
-  peaked (0.995 at 30°). Snow (class 3: SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls), grass (5), rock (4) and
+  inferred). α0 follows the surface's WaterFactor (`ForceInput::water_factor`; NGP's wet gravel materials carry 1,
+  damp 0.25, dry 0: `materials` example, ids 2-51), linear from 6.3° to 9.7° (`loose::gravel_alpha0_deg`; ours: the
+  form, and Fig. 15's wet gravel is another soil, a silty sand, standing in for wet gravel). The slope follows the level
+  (μ Fz/tan α0: 6.0 /rad at 6.7 kN, NGP 6.6); the level is approached, never peaked (0.995 at 30°, 0.973 wet). Snow (class 3: SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls), grass (5), rock (4) and
   rough (0) keep the flat brush: packed snow's own α0 is 3.6° (Fig. 8, rms 0.0042), which at NGP's snow level doubles
   NGP's slope (snow-calpha-per-fz 8-12 would miss), while the brush at NGP's slope passes α90 (9.0 in 7-9°).
 - Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface
@@ -692,6 +693,8 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   0-40° argmax is 40°, against the pea-stone curve still rising at 38° (that row and pea-peak-alpha ≥ 15 conflict).
   Still misses locked decel 0.882 / 0.908 g (0.47-0.66), locked side force at 30° (0.33-0.39), μ_y(30°) over peak 0.995
   (rally 0.63-0.85, against the pea stone's ≥ 0.97), snow peak κ, and every absolute gravel and snow level (NGP's).
+  Both conflicting rows were split by speed on 2026-11-08 (Gravel at stage speed, below): ngp / eb now pass
+  gravel-cw-mu-y30-over-peak 0.956 / 0.973, gravel-cw-alpha90 7.5 (MISS) / 21.0°.
 - Gravel's shear law in game (2026-11-08, main 4bb4c042 → this, experimental-brush; ngp unchanged by construction):
   Fiesta Rally2 RSF 345 from 50 km/h declutched, full pedal 0.892 → 0.882 g, wheel slip 0.943 → 0.946 (the wheels still
   do not lock fully, as before); ABS K 0.15 0.645 → 0.576 g (its wheels' mean slip 0.08-0.13: below the slower rise's
@@ -710,6 +713,38 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   On gravel the law costs 0.45-1.85 s (0.2-0.7 %), eb stays 1.0-1.3 % ahead of ngp; snow is byte-for-byte main's. The
   Golf's RSF 104 DNF is the autopilot's (stuck at 4488 m in both, above). These runs used α0 6.28°; 6.3° moves the
   scorecard rows by ≤ 0.002.
+- Gravel at stage speed (2026-11-08, `tyre/gravel-speed`): Croft-White's WRC curves (PhD, Cranfield 2006, Figs
+  4.29-4.33; rear tyre, static Fz 3 kN, full stage speed, wet loose gravel and dry tarmac), digitised by pixel, the
+  scatter folded by sign, percentiles per 2° bin (fig ±0.05, inferred). Gravel, 28-32° over the 10-24° maximum,
+  p50/p75/p90: 0.96/1.06/0.97 and 1.05/1.06/1.05 (two runs); 90 % reached at 9-11° (p75) to 15-21° (median). Tarmac by
+  the same method: Correvit (Fig. 4.29) 0.76/0.77/0.74 at 28-32°, β sensor (Fig. 4.30) 0.71/0.83/0.82 at 26-28°,
+  against the bench data's 0.73-0.90 (tarmac-mu-y30-over-peak; NGP 0.865, the brush 0.833): the method does not
+  overstate the fall. The text's "1250 N at 30°" (0.63) is outside the figures' envelope (a few sparse traces). So the
+  stage-speed rows (`gravel-cw-*`, at 20 m/s, 4 kN, WaterFactor 1) are 0.93-1.00 and 9-22°, the argmax and Velenis
+  rows context. The gravel shape rows are taken at their rig's 1.5 m/s (`gravel-1.5`, `gravel-wet-1.5`). No other
+  gravel tyre force against speed was found (two searches; Krueger, Auburn MSc, an ATV tyre on a towed gravel rig, not
+  read).
+- Not adopted (2026-11-08, `tyre/gravel-speed`): a peak with a fall toward stage speed (the task's premise, CW's text
+  0.63): the digitised curves have none, and the shear law passes both ends. Wet α0 on the lateral axis only
+  (longitudinal kept dry): wet 345 locked over ABS K 0.15 1.651 against 1.894 both axes (main 1.648); no wet-gravel
+  braking data choose between them, both axes keep the law's one K.
+- Wet gravel (2026-11-08, `tyre/gravel-speed`, main 8e65298c → wet α0, experimental-brush; dry gravel and snow
+  byte-identical, traces compared on RSF 104 for all three cars, ngp identical): scorecard 76 → 80/112 (ngp 37/112),
+  the four wet-gravel rows MISS → PASS (0.327/0.547/0.798/0.912 → 0.227/0.404/0.648/0.797 at 2.5/5/10/15°), CW rows
+  0.995 → 0.973 and 14.25 → 21.0°. Fiesta Rally2 RSF 345 `--wetness wet` from 50 km/h declutched: locked 0.820 →
+  0.815 g, ABS K 0.15 0.497 → 0.430 g (locked over ABS 1.648 → 1.894), K 0.2 0.479 → 0.388 g; r40 circle wet: main no
+  latch, now 0.415 g (dry 0.664 both). Standstill after the stop, peak speed per half second, wet: full pedal
+  0.112/0.026/0.008/0.003/0 → 0.068/0.011/0.003/0 m/s, 0.35 pedal 0.097/0.020/0.010/0.005/0.004/0.011/0.087/0.012 →
+  0.094/0.024/0/0. Stage times (s), wet: ngp / main eb / eb; dry eb as main (RSF 111 287.08/286.37/298.19, 389
+  176.75/177.40/183.42, track-11_O 636.60/640.27/652.44 for Fiesta/Celica/Golf):
+
+  | Car | RSF 104 wet | RSF 111 wet |
+  | --- | --- | --- |
+  | Fiesta Rally2 | 326.73 / 323.70 / 326.46 | 358.89 / 352.46 / 354.62 |
+  | Celica ST185 | 326.72 / 324.40 / 328.15 | 360.57 / 355.63 / 357.91 |
+  | Golf II GTI 16V | 341.95 / 336.43 / 339.42 | 375.50 / 366.33 / 368.72 |
+
+  Wet α0 costs eb 2.2-3.7 s (0.6-1.2 %); eb stays 0.1-1.8 % ahead of ngp on wet, except the Celica on 104 (0.4 % behind).
 - Not adopted (2026-11-08): the exponential approach on the brush's own stiffness (NGP's slope, u = 3ψ, the brush's
   adhesion/sliding split): pea stone 0.38/0.61/0.85/0.95 at 6.7 kN and 0.98 at 20°, all four pea rows still miss; one
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
@@ -802,8 +837,9 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   `rbr_tyre::model` from the wheel's tables as the game does (the brush, and loose-v1 on soil, under
   experimental-brush) and lets its dynamics settle 2 s at each slip; where the model hands back (`ngp`) NGP's
   `patch_forces` answer. A new model name needs its line in `TYRE_MODEL`. Steady forces at 15 m/s, flat, no sinking
-  and no soil force (the sweep, not `ngp_transient`'s whole step); the pea-stone rows (measured at 1-1.5 m/s) are
-  taken at 15 m/s and 6.7 kN. Braking peaks (`peak_mu_x_brake_*`, `peak_kappa_*`, `mu_x_rel_k*_brake_*`,
+  and no soil force (the sweep, not `ngp_transient`'s whole step); the gravel shape rows (Coutermarsh, measured at 1-1.5
+  m/s) are taken at 1.5 m/s (`gravel-1.5`, wet `gravel-wet-1.5` with WaterFactor 1) and 6.7 kN, Croft-White's at 20 m/s
+  (`gravel-wet-20`). Braking peaks (`peak_mu_x_brake_*`, `peak_kappa_*`, `mu_x_rel_k*_brake_*`,
   `mu_x_locked_rel_*`, the longitudinal load exponent) are the maximum over a braking slip of 0 to loose-v1's
   `BERM_FROM` 0.8, the free rolling side's peak before the berm; locked is κ -1. NGP's and the brush's braking peaks
   lie below 0.8 on all four probes (their keys equal the 0-1 maximum's, lab on the same probes).

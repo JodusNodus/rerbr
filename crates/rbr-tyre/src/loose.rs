@@ -12,7 +12,12 @@
 //!   tan [`GRAVEL_ALPHA0_DEG`] ([`shear`]). Coutermarsh & Shoop (SAE 2010-01-0374, CRREL CIV, LT235/75R15, 241 kPa,
 //!   6.7 kN, 1-1.5 m/s, Fig. 15, fig ±0.004): pea stone over its maximum 0.33/0.55/0.80/0.91 at 2.5/5/10/15°, still
 //!   rising to 38°, fits it with α0 6.28° (rms 0.0012; the brush's cubic 0.0165, the law integrated over a uniform
-//!   patch 0.0098); wet gravel fits 9.7°. No peak, no fall; the level is approached (0.995 at 30°). The slope follows
+//!   patch 0.0098); wet gravel fits 9.7° (0.23/0.40/0.65/0.79). α0 follows NGP's WaterFactor, 6.3° dry to 9.7° wet,
+//!   linear (ours; [`gravel_alpha0_deg`]). No peak, no fall; the level is approached (0.995 at 30°, 0.973 wet). At
+//!   stage speed the one curve, Croft-White's WRC telemetry on wet loose gravel (PhD, Cranfield 2006, Figs 4.32-4.33,
+//!   digitised: fig ±0.05, inferred), saturates by 9-22° (90 %) and does not fall to 32° (0.96-1.06 of the 10-24°
+//!   maximum; his tarmac curves fall to 0.71-0.83 by the same method, the bench data's 0.73-0.90), so the law takes no
+//!   speed. The slope follows
 //!   the level, μ Fz / tan α0 (6.0 per rad at 6.7 kN against NGP's 6.6), not NGP's stiffness. The longitudinal side
 //!   takes the same law with the brush's Cx/Cy ([`KX_OVER_KY`]) at the axes' levels, so the braking force keeps
 //!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
