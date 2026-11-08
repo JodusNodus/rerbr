@@ -90,7 +90,7 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Carcass damping | MF-Swift residual d_x 690-1060, d_y 300-1000 N·s/m, from the template's 0.002 s on the stiffness (not measured) | same sets |
 | Longitudinal past the peak | road MF sets 0.75-0.87 / 0.69-0.82 at κ 0.5 / 1 (4 kN); racing radial MF 6.2 fit 0.68-0.71 / 0.63-0.66 (Dallara AV-21 front, fit range unstated); locked over peak: next row | TNO, Continental, MFeval and IIT sets; JyNing04/Pacejka-tire-model (GitHub) |
 | Braked peak and locked against speed | car tyre 195/55R15 on a towed ASTM E274 trailer, braked at constant speed to lock, 32/64/100 km/h, hot rolled (HRA) and stone mastic (SMA) asphalt: dry peak 0.93/0.98/1.12 HRA, 1.13/1.16/1.10 SMA; dry locked 0.77/0.74/0.75 HRA, 0.83/0.77/0.66 SMA; wet (~1 mm water) peak 1.00/1.02/1.00 HRA, 0.99/0.93/0.76 SMA; wet locked 0.64/0.58/0.52 HRA, 0.66/0.48/0.37 SMA. So locked over peak dry 0.73-0.82 / 0.66-0.76 / 0.59-0.67, wet 0.64-0.67 / 0.52-0.57 / 0.49-0.52; locked 64/32 dry 0.93-0.96, 100/32 dry 0.78-0.97, wet 0.56-0.81; peak 100/32 dry 0.97-1.20. Three sport motorcycle tyres within ~0.1 of it except the dry HRA peak (+0.2). A car with ABS from 64 km/h on the dry SMA: 1.11 g (MFDD), PFT peak 1.13, locked 0.68 | Lambourn & Wesley, TRL PPR496 (2010), Figs 6-13 (fig ±0.02), text, Table 1 (table); read in full |
-| Carcass against pressure | +0.5 bar: σy -12 %, CFy +9.5 %, CFx +3.5 %; the sets' 2.2-2.6 bar cover rally hot pressures (2.0-2.5 bar) | op het Veld (2008) |
+| Carcass against pressure | +0.5 bar: σy -12 %, CFy +9.5 %, CFx +3.5 %; the sets' 2.2-2.6 bar cover rally hot pressures (2.0-2.5 bar). Race tyre 325/660R13, manufacturer's static deflection at ~1.2/1.55/1.9 bar: d ln k / d ln p lateral 0.36, longitudinal 0.08, torsional 0.41, so +8 % / +2 % / +10 % over a rally tyre's +25 % (2.0 to 2.5 bar) | op het Veld (2008); Stocco, Biral & Bertolazzi, Math. Comput. Simul. 223 (2024) 654-676, doi 10.1016/j.matcom.2024.04.020, Fig. 10 (normalised at 2.25 bar; fig ±0.01, pressures read ±5 kPa) |
 | Camber | camber stiffness Fz (-1.001 + 0.175 dfz)(1 - 0.81 dpi) per rad: 1.07 Fz at 4 kN, 2.6 bar (1.27 at 2.0 bar), 0.047-0.052 of Kyα at 2-6.75 kN; MF 5.2 truck 0.061; brush ε a/(3R) with the camber reduction ε 0.4-0.7 for car tyres (0.031-0.055 at the Fiesta's a/(3R) 0.078) | MF6.1 / MF5.2 sets; Romano et al., Meccanica (2021) (quoted) |
 | Pressure, MF 6.1 at 4 kN | +0.5 bar from 2.0-2.6 bar: Kyα -11 to -14 %, Kx -14 to -17 %, c_y +13-16 %, c_x +4.2-4.4 %, σ_y -21 to -26 %, peak μ +1.5-2.5 %; Goodyear: Cα falls with pressure at light loads and rises at heavy ones, peak μ no clear trend | MF6.1 (PPY*, PPX*, PCFY3, PCFX3); Goodyear arXiv 2305.18422 Figs 9-10 |
 | Racing slick (rig) | WTCC Yokohama A005 250/660R18: Fy peak at 5-6°, 0.93-0.97 of peak at 10°, 0.89-0.94 at 14°; Cα/Fz 27 /rad new, +6 % at 0.75 mm wear; 1.9 → 2.1 bar: Cα +2.3 %, vertical stiffness 239 → 262 kN/m; grip optimum ≈40 K above track temperature on rig and car; degradation 0.1-0.2 s/lap. Its simulator test plan (Appendix C: baseline, one parameter per stint, fixed lap budget, cockpit A/B toggle) is the template for brush against NGP | Richardson, Chalmers MSc 2017:82 (Cyan Racing), Figs 17, 54, 55, 57 (fig; load not stated), §5.2.4 (quoted) |
@@ -169,6 +169,8 @@ slip, gone once the patch slides whole, none at standstill or locked (MF 6.1 0.0
 a/(3R) 0.031-0.055; NGP 0.1). The carcass stiffens with pressure faster than the slip stiffness laterally and slower
 longitudinally: per +0.5 bar c_y +9.5 % (op het Veld) / +13-16 % (MF 6.1), c_x +3.5 % / +4.2-4.4 %; NGP's factor rises
 6.9 % from 2.0 bar, so c_y and c_x go as its powers 1.7 and 0.6 (the means), and σ_y = Cy/c_y shortens with pressure.
+A race tyre's static carcass (Stocco et al. 2024, Fig. 10) gives +8 % / +2 % over the same +25 %: the same split, at
+the low end; the powers stay.
 The slip stiffnesses keep NGP's factor: at 4 kN the sources disagree on Cα's sign (MF 6.1 -11 to -14 %, op het
 Veld's σ_y and CFy -4 %, Goodyear +10 % per +20 % near nominal load), so σ_y shortens 5 %, not the sources' 12-26 %.
 Kx keeps NGP's +4.4 % against MF 6.1's -15 % (one set). At the calibration pressure (factor 1) nothing moves; at
@@ -1093,7 +1095,11 @@ rows unchanged.
   0.355-0.369 for a string length 0.05-0.4 m but peak Mz/(μ Fz a) only 0.109-0.113; a flatter pressure than the
   parabola raises the peak (1-u⁴ 0.132, 1-u⁸ 0.155, uniform 0.187, with the string and 1-u⁴ 0.139) but moves the Fy
   peak to 14-20° and the Mz peak to 0.11-0.19 of it. No sourced mechanism reaches 0.19-0.26 with the force curves
-  kept, so the level stays brush theory's.
+  kept, so the level stays brush theory's. Stocco et al. 2024 (flexible-carcass brush with a quartic pressure, eq. 7)
+  give no route either: in the rigid brush, pure side slip, their convexity λ 4.05 (a literature estimate, not
+  fitted; λ 12 is the parabola, 0.105) gives 0.123, and λ 0 (1-u⁴) gives 0.132; moving the pressure centre 0.02 of
+  the patch forward, as rolling resistance does, gives 0.108, rearward 0.138; their flexible carcass lowers Mz at
+  high load (Fig. 9); and their Mz fits are their weakest, with the race tyre's axes hidden.
   Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
   304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
   315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
