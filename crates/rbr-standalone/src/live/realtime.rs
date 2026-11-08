@@ -349,13 +349,14 @@ pub enum Pace {
 /// start) in place of the viewer's input, each run as the clock ran it and compared with the drive's substeps and
 /// digest. The viewer's PAUSE and RESUME stop and go on, RESTART starts the replay over; at its end the clock waits
 /// for a RESTART or the input's end, or under [`Pace::Free`] the run ends. Returns the run and the comparison's line;
-/// an error at the first frame that differs.
+/// an error at the first frame that differs. `trace` gets each frame that stepped (`--replay-trace`).
 pub fn serve_replay<'a>(
     mut live: Live<'a>,
     frames: &[Logged],
     input: impl Read + Send + 'static,
     mut output: impl Write,
     pace: Pace,
+    mut trace: Option<&mut crate::replay_trace::ReplayTrace>,
 ) -> Result<(Live<'a>, String), String> {
     let (first, rest) = frames.split_first().ok_or("the replay has no frames")?;
     let shared = spawn_reader(input);
@@ -440,6 +441,9 @@ pub fn serve_replay<'a>(
             (next, steps) = (next + 1, steps + u64::from(substeps));
             if substeps > 0 {
                 write(&mut output, &step_record(&live, 0).to_bytes()).map_err(|e| e.to_string())?;
+                if let Some(trace) = trace.as_deref_mut() {
+                    trace.frame(&live, substeps, &live.control)?;
+                }
             }
             let input = match Payload::read(&frame.payload) {
                 Ok(Payload::Input(input)) => input,

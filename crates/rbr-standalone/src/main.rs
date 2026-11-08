@@ -70,7 +70,8 @@
 //! `--replay-out FILE` appends the clock's frames, restarts marked, to a replay the viewer started, and `--replay FILE`
 //! runs the replay's frames of its last start in place of the viewer's input, on the clock (`--replay-pace clock`, the
 //! viewer's PAUSE, RESUME and RESTART as in a drive) or back to back (`free`, for a video), compared frame by frame.
-//! A replay writes no files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
+//! `--replay-trace FILE` (with `--replay`) writes the car's state and each wheel's tyre after each frame
+//! (`replay_trace.rs`, research tooling, read-only). A replay writes no other files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
 //!
 //! `--events-out FILE` (with `--boot --recording X`) runs the recording's controls through the live boot and writes the
 //! PTC1 and PEV1 records of each step it answers (`events_out.rs`): the viewer's playback takes the lamps from them.
@@ -137,6 +138,7 @@ mod physics;
 mod profile;
 mod race;
 mod rally;
+mod replay_trace;
 mod saves;
 mod stage;
 mod twin;
@@ -245,7 +247,10 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
             let replay = Replay::read(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
             let output = std::io::BufWriter::new(std::io::stdout());
-            let (_, line) = live::serve_replay(live, &replay.frames, std::io::stdin(), output, args.replay_pace)?;
+            let mut trace = args.replay_trace.as_deref().map(replay_trace::ReplayTrace::create).transpose()?;
+            let (_, line) =
+                live::serve_replay(live, &replay.frames, std::io::stdin(), output, args.replay_pace, trace.as_mut())?;
+            trace.map(replay_trace::ReplayTrace::finish).transpose()?;
             eprintln!("rbr-standalone: --replay: {line}");
             return Ok(());
         } else if let Some(path) = &args.frames {

@@ -181,9 +181,8 @@ impl Picture {
         dampers: ([[u32; DAMPER_WORDS]; 4], [f32; 4]),
     ) -> Self {
         let car = mem.u32(CAR_PTR);
-        let state = mem.u32(car + CAR_DRIVE + DRIVE_STATE);
         let hud = Hud {
-            gear: mem.u32(state + STATE_GEAR),
+            gear: hud_gear(mem),
             engine_speed: mem.f32(mem.u32(car + CAR_ENGINE + ENGINE_STATE) + STATE_ENGINE_SPEED),
             speed: f32::from_bits(mem.u32(car + CAR_SPEED)),
             race: Some(race),
@@ -262,6 +261,11 @@ pub fn hub_offsets(mem: &Mem) -> [f32; 4] {
         let tail = read(car + CAR_WHEELS + 4 * k as u32).filter(|&w| w != 0).and_then(|w| read(w + TYRE_TAIL));
         tail.filter(|&t| t != 0).and_then(|t| read(t + TAIL_HUB_OFFSET)).map_or(0.0, f32::from_bits)
     })
+}
+
+/// The gear the HUD shows ([`CAR_DRIVE`], [`STATE_GEAR`]).
+pub fn hud_gear(mem: &Mem) -> u32 {
+    mem.u32(mem.u32(mem.u32(CAR_PTR) + CAR_DRIVE + DRIVE_STATE) + STATE_GEAR)
 }
 
 /// The GBX1 record of the drive at `drive` (`CDrive`; its definition at +4, its state at +8).
