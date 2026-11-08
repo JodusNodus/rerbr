@@ -6,6 +6,7 @@ pub mod brush;
 pub mod calibrate;
 pub mod car;
 pub mod fit;
+pub mod loose;
 
 use rbr_physics::tyre::layout::{Setup, Table};
 pub use rbr_physics::tyre::model::{ForceInput, ForceOutput};

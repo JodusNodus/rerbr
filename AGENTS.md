@@ -45,7 +45,7 @@ same paths.
 | `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |
-| `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces, to standstill): in development, not released, only `--physics experimental-brush` |
+| `crates/rbr-tyre` | Tyre models in place of NGP's sliding model of the contact patch (brush-v1 on hard surfaces, loose-v1 on soil, to standstill): in development, not released, only `--physics experimental-brush` |
 | `crates/rbr-tyre-lab` | Tyre research (ours, experimental): sweeps of NGP's tyre functions, NGP's surface values, the brush against NGP |
 | `crates/rbr-hybrid` | Ports bound into the original's step in the emulator (`bound.csv`), and the pure step |
 | `crates/rbr-gameplay` | Gameplay loop: input to car control, tick, stage events, timing, race flow |

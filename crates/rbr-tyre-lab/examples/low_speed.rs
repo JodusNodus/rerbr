@@ -11,7 +11,6 @@
 //! in the deflection's decay as well (before), `rill` the transport speed restored (Rill's eqs. 4.20-4.21, now).
 
 use rbr_tyre::brush::{self, Calibration, EvalInput, TransState, V_MIN};
-use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{parse_probe, Params};
 
 const DT: f64 = 1.0 / 720.0;
@@ -93,22 +92,6 @@ impl Tyre {
     }
 }
 
-fn wheel_of(p: &Params) -> Wheel {
-    Wheel {
-        tyre: 0,
-        reference_friction: p.reference_friction,
-        load_axis: p.load_axis.clone(),
-        cornering_friction: p.crn_my.clone(),
-        traction_friction: p.trc_my.clone(),
-        cornering_peak_slip: p.crn_pk.clone(),
-        traction_peak_slip: p.trc_pk.clone(),
-        cornering_stiffness: p.crn_stf.clone(),
-        traction_stiffness: p.trc_stf.clone(),
-        temperature_axis: p.temp_axis.clone(),
-        rubber_friction: p.rub_my.clone(),
-    }
-}
-
 /// RMS of the second difference of `xs`: the step-to-step alternation.
 fn hf(xs: &[f64]) -> f64 {
     let n = xs.len().saturating_sub(2).max(1) as f64;
@@ -141,7 +124,7 @@ fn main() {
         .find(|d| d.wheel == 0 && d.load_axis.len() == 8 && d.normal_force > 0.0 && d.patch_length > 0.0)
         .expect("no wheel-0 dump")
         .clone();
-    let cal = rbr_tyre::fit::calibration(&wheel_of(&p)).expect("calibration");
+    let cal = rbr_tyre::fit::calibration(&rbr_tyre_lab::probe::wheel(&p)).expect("calibration");
     let t = Tyre { cal, fz: f64::from(p.normal_force), p };
     let r = t.r();
     let m = t.fz / G;

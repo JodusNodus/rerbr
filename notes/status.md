@@ -124,7 +124,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   [docs/experimental-physics.md](../docs/experimental-physics.md), which the launcher links). NGP 7 stays the default and
   bit-exact. While experimental, a run with it saves no records, ghosts or championship results; its replays carry the
   choice. It replaces the input-side throttle model, which is not merged. The tyre model
-  (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to standstill, NGP's grip level
+  (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to standstill, loose-v1 on soil, NGP's grip level
   ([tyre-model.md](tyre-model.md)); in development, not released (user 2026-11-07): only the hidden
   `--physics experimental-brush` runs it, the launcher does not offer it.
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
