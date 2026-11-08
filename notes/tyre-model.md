@@ -671,6 +671,11 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
     at the corner, creeps the same (0.6-0.7 m/s, engine 24-27 rad/s) and DNFs at the same step.
   - Neither the port nor the engine model is wrong. The fix belongs to the autopilot: declutch, or go to neutral,
     when the driven wheels lock under braking, and restart a stalled engine. A driver declutches.
+  - Fixed by the autopilot (2026-11-08): in a race under NGP it selects neutral while the braked wheels drag the
+    engine under 89 rad/s for 4 steps (the clutch pedal does nothing while the clutch help sets the clutch) and
+    restarts a stalled engine on the ignition. The Golf now finishes RSF 104 under eb in 275.34 s. In the sweep, all
+    27 ngp runs keep their times exactly. eb moves on the Golf track-10_O (+1.21 s, +0.31 %, neutral at a front lock in
+    first) and the Celica RSF 104 (+0.06 s); the other 25 runs are unchanged.
 - Not adopted (2026-11-08, prototype): a berm built over sliding distance (per-wheel state growing over the patch
   length 2a of sliding past the ramp's start, washing out over 5 cm of rolling). Its steady state s / (s + 3.6(1 - s))
   (0.79 at slip 0.93 against the ramp's 0.72) behaves like the ramp: the Golf on RSF 104 DNFs at the same step (washout
@@ -948,7 +953,4 @@ rows unchanged.
   tyre's sinkage resistance, the berm against the layer's thickness, and snow (same model, not tuned; 1.06 g full
   pedal against 0.31-0.35 g).
 - loose-v1 open items:
-  - Braked fronts creep under the flat friction and drag the clutch-locked engine to a stall (the Golf, RSF 104;
-    [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)). The fix is the autopilot's: declutch when the driven wheels
-    lock, and restart.
   - Eb's 1-4 % over ngp on soil is the engine model's (3-4 %); loose-v1 adds -1.0 to +1.9 %.

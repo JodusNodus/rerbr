@@ -127,9 +127,6 @@ pub fn from_snapshot<'a>(
     Ok((Live::new(&snap, stage, settings).map_err(|e| format!("{path}: {e}"))?, &bytes[..first.offset], first.control))
 }
 
-/// The car's drive (`CDrive`, car +0x4b0), whose gearbox gives the trace's locked engine speed.
-const CAR_DRIVE: u32 = 0x4b0;
-
 /// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
 /// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m), the
 /// steering (-1-1), the engine speed the gear gives with the clutch engaged (rad/s, 0 in neutral), the wheels'
@@ -280,10 +277,7 @@ pub fn drive(
             // The distance from the driveline, as the controller's tracking guard reads it (`control`).
             let line = point(driver.track, sense.parameter);
             let off = (at[0] - line[0]).hypot(at[1] - line[1]);
-            // The engine speed the gear gives with the clutch engaged (0 in neutral): above it the clutch slips.
             let mem = live.mem();
-            let gearbox = crate::live::gearbox(mem, mem.u32(pure::CAR_PTR) + CAR_DRIVE);
-            let locked = u8::try_from(sense.gear).ok().filter(|&g| g >= 2).and_then(|g| gearbox.engine_speed(g));
             writeln!(
                 trace,
                 "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0} {:.3} {:.3} \
@@ -294,7 +288,7 @@ pub fn drive(
                 at[0],
                 at[1],
                 at[2],
-                locked.unwrap_or(0.0),
+                sense.geared,
                 sense.wheels[0],
                 sense.wheels[1],
                 sense.wheels[2],
@@ -394,6 +388,7 @@ fn with_lesson<'a>(driver: Driver<'a>, live: &Live, stage: &StageData) -> Driver
     };
     let driver = driver.with_grip(grip);
     let Some(bank) = live.school().map(|s| s.bank()) else { return driver };
+    let driver = driver.in_lesson();
     let bands: Vec<SpeedBand> = bank
         .checks
         .iter()

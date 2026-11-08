@@ -47,6 +47,7 @@ fn a_straight_plans_the_top_speed_and_steers_ahead() {
         engine: 500.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let q = driver.control(1000, &sense, false);
     assert_eq!(q.steering, 0);
@@ -80,7 +81,7 @@ fn a_car_leaning_to_its_right_steers_right() {
         velocity: [10.0, 0.0, 0.0],
     };
     assert!((lean(&pose) - 0.4f32.sin()).abs() < 1e-5, "{}", lean(&pose));
-    let sense = Sense { pose, parameter: 0.5, gear: FIRST, engine: 500.0, held: false, wheels: [0.0; 4] };
+    let sense = Sense { pose, parameter: 0.5, gear: FIRST, engine: 500.0, held: false, wheels: [0.0; 4], geared: 0.0 };
     assert_eq!(driver.control(1000, &sense, false).steering, 127);
 }
 
@@ -96,6 +97,7 @@ fn under_ngp_a_standing_start_revs_in_neutral_and_a_bogged_car_starts_again() {
         engine,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let gap = driver.steps(SHIFT_GAP);
     let q = driver.control(gap, &sense(0.0, FIRST - 1, 105.0), false);
@@ -122,6 +124,7 @@ fn a_stuck_car_backs_up_shifts_back_to_first_and_gives_up_after_the_attempts() {
         engine: 800.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     driver.control(1, &sense(10.0, 4), false);
     let mut step = 2;
@@ -173,6 +176,7 @@ fn flat_out_holds_the_top_speed_and_never_brakes() {
         engine: 500.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let mut plain = driver(&track, TOP_SPEED);
     assert!(plain.target_speed(0.0) < TOP_SPEED);
@@ -201,6 +205,7 @@ fn the_circle_ramps_the_target_speed_and_steers_its_pursuit() {
         engine: 500.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let mut driver = driver(&track, 60.0).with_circle(Circle { center: [0.0, 0.0], radius: 40.0 });
     assert_eq!(driver.target_speed(0.0), 8.0);
@@ -233,6 +238,7 @@ fn lugging_downshifts_in_the_measurement_modes_only() {
         engine,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let mut flat = driver(&track, TOP_SPEED).with_flat_out(true);
     flat.control(1000, &lug(FIRST, 20.0, 700.0), false);
@@ -259,6 +265,7 @@ fn the_brake_test_brakes_fully_from_its_speed_to_a_standstill() {
         engine: 500.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let mut driver = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
     let q = driver.control(1000, &sense(10.0), false);
@@ -280,6 +287,7 @@ fn the_brake_test_holds_its_partial_pedal() {
         engine: 500.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let mut driver = driver(&track, 80.0).with_brake_from(20.0).with_brake(Brake::Pedal(0.5));
     let q = driver.control(1000, &sense, false);
@@ -299,6 +307,7 @@ fn the_declutched_brake_test_holds_the_clutch_in_and_shifts_no_gear() {
         engine: 100.0,
         held: false,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let mut plain = driver(&track, 80.0).with_flat_out(true).with_brake_from(20.0);
     let q = plain.control(1000, &sense(25.0), false);
@@ -338,6 +347,7 @@ fn threshold_braking_holds_the_slip_target() {
                 engine: 500.0,
                 held: false,
                 wheels: [omega * radius; 4],
+                geared: 0.0,
             };
             let q = driver.control(1000 + k, &sense, false);
             let slip = 1.0 - omega * radius / v;
@@ -387,6 +397,7 @@ fn the_abs_holds_each_wheels_slip_from_free_rolling() {
                 engine: 500.0,
                 held: false,
                 wheels: [0.94 * omega * radius; 4],
+                geared: 0.0,
             };
             let q = driver.control(1000 + k, &sense, false);
             let scale = driver.brake_scale().expect("braking with the ABS")[0];
@@ -474,9 +485,89 @@ fn an_outside_assistance_hold_brakes_and_ends_the_recovery() {
         engine: 100.0,
         held: true,
         wheels: [0.0; 4],
+        geared: 0.0,
     };
     let q = driver.control(1000, &sense, false);
     assert_eq!((q.flags, q.throttle, q.brake), (0, 0, 255));
     assert_eq!((driver.mode, driver.slow), (Mode::Drive, 0));
     assert_eq!(driver.control(1001, &Sense { held: false, ..sense }, false).flags, 0x01);
+}
+
+/// Under NGP, braking from 12 m/s in third on a locked wheel: an engine the wheels drag under `DECLUTCH` for
+/// `DRAG_STEPS` takes neutral,
+/// held with no other shift while the brake stays on, then the learnt gear for the speed once it comes off. An engine
+/// already off the wheels (the gear's speed far from it), the plain 1.02 step and the brake test take none.
+#[test]
+fn under_ngp_braking_on_a_dragged_engine_holds_neutral_until_the_brake_comes_off() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |speed: f32, gear: u32, engine: f32, geared: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [speed, 0.0, 0.0] },
+        parameter: 0.5,
+        gear,
+        engine,
+        held: false,
+        wheels: [1.0, 1.0, speed, speed],
+        geared,
+    };
+    let ngp = |top: f32| driver(&track, top).with_step(1.0 / 720.0).with_limit(7000.0);
+    let mut d = ngp(5.0);
+    d.ratio[FIRST as usize + 1] = 40.0;
+    let drag = d.steps(DRAG_STEPS);
+    for k in 1..drag {
+        assert_eq!(d.control(10_000 - drag + k, &sense(12.0, FIRST + 2, 80.0, 79.0), false).flags & SELECT, 0);
+    }
+    let q = d.control(10_000, &sense(12.0, FIRST + 2, 80.0, 79.0), false);
+    assert!(q.brake > 0);
+    assert_eq!((q.flags, q.gear, q.aux), (SELECT, NEUTRAL as u8, 0));
+    // Held while braking: no pulse while the gear reads neutral, the select again if it has not taken.
+    assert_eq!(d.control(10_001, &sense(11.0, NEUTRAL, 85.0, 0.0), false).flags, 0);
+    let q = d.control(10_001 + d.steps(RECOVER_GAP), &sense(10.0, FIRST + 2, 85.0, 120.0), false);
+    assert_eq!((q.flags, q.gear), (SELECT, NEUTRAL as u8));
+    // The brake off at 10 m/s: second keeps the engine over `SHIFT_DOWN` (40 rad/s per m/s).
+    d.top = 30.0;
+    let q = d.control(20_000, &sense(10.0, NEUTRAL, 85.0, 0.0), false);
+    assert_eq!((q.brake, q.flags, q.gear), (0, SELECT, FIRST as u8 + 1));
+    assert!(!d.neutral);
+
+    let none =
+        |mut d: Driver, sense: &Sense| (0..2 * drag).all(|k| d.control(10_000 + k, sense, false).flags & SELECT == 0);
+    assert!(none(ngp(5.0), &sense(12.0, FIRST + 2, 80.0, 20.0)));
+    let dragged = sense(12.0, FIRST + 2, 80.0, 79.0);
+    assert!(none(driver(&track, 5.0), &dragged));
+    assert!(none(ngp(80.0).with_flat_out(true).with_brake_from(10.0), &dragged));
+}
+
+/// Under NGP a stalled engine is restarted: brake, neutral, the ignition held `CRANK_HOLD` of every `CRANK_CYCLE`
+/// steps, until the engine runs; a stuck count does not build meanwhile. After the finish it stays off.
+#[test]
+fn under_ngp_a_stalled_engine_is_restarted_on_the_ignition() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |gear: u32, engine: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [0.0; 3] },
+        parameter: 0.5,
+        gear,
+        engine,
+        held: false,
+        wheels: [0.0; 4],
+        geared: 0.0,
+    };
+    let mut d = driver(&track, TOP_SPEED).with_step(1.0 / 720.0).with_limit(7000.0);
+    d.moved = true;
+    let q = d.control(10_000, &sense(FIRST + 1, 0.0), false);
+    assert_eq!((q.throttle, q.brake, q.aux, q.flags, q.gear), (0, 255, 1, SELECT, NEUTRAL as u8));
+    let (hold, cycle) = (d.steps(CRANK_HOLD), d.steps(CRANK_CYCLE));
+    let ignition: Vec<u8> = (1..=cycle).map(|k| d.control(10_000 + k, &sense(NEUTRAL, 0.0), false).aux).collect();
+    assert_eq!(ignition.iter().filter(|&&a| a == 1).count() as u32, hold);
+    assert_eq!((ignition[hold as usize - 2], ignition[hold as usize - 1], ignition[cycle as usize - 1]), (1, 0, 1));
+    assert_eq!(d.slow, 0);
+    // Cranking under `STARTED` goes on; over it the drive takes over (the standing start revs in neutral).
+    assert_eq!(d.control(20_000, &sense(NEUTRAL, 50.0), false).aux, 1);
+    let q = d.control(20_001, &sense(NEUTRAL, 100.0), false);
+    assert_eq!((q.aux, q.brake, q.throttle), (0, 0, 255));
+    assert_eq!(d.crank, None);
+
+    let mut done = driver(&track, TOP_SPEED).with_step(1.0 / 720.0).with_limit(7000.0);
+    assert_eq!(done.control(10_000, &sense(FIRST + 1, 0.0), true).aux, 0);
 }
