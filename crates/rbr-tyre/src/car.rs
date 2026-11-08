@@ -192,6 +192,23 @@ mod tests {
     }
 
     #[test]
+    fn on_ice_the_side_force_builds_over_a_wider_slip_angle() {
+        // The settled side force over its friction limit at 1° and 4°. On ice (0.095) the slip stiffness is 0.095/0.55
+        // of tarmac's: over the friction it stays 1.2/0.55 = 2.2 times tarmac's (without the fall 12.6 times, and 1°
+        // would slide whole), so ice takes half tarmac's slip angle to its peak.
+        let share = |grip: f32, deg: f32| {
+            let mut b = Brush::new(&[wheel()]).unwrap();
+            let x = ForceInput { grip, ..rolling(15.0, deg.to_radians()) };
+            let f = (0..1440).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap();
+            f.lateral_force.abs() / (grip * x.normal_force)
+        };
+        let (tarmac, ice) = ((share(1.2, 1.0), share(1.2, 4.0)), (share(0.095, 1.0), share(0.095, 4.0)));
+        let ratio = ice.0 / tarmac.0;
+        assert!(ice.0 < 0.6 && (1.6..2.4).contains(&ratio), "tarmac {tarmac:?} ice {ice:?}");
+        assert!(ice.1 > 0.9 && tarmac.1 < 0.8, "tarmac {tarmac:?} ice {ice:?}");
+    }
+
+    #[test]
     fn the_names_build_their_models() {
         assert!(crate::model("ngp", &[wheel()]).unwrap().is_none());
         assert!(crate::model("brush", &[wheel()]).unwrap().is_some());
