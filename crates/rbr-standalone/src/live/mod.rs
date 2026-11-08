@@ -102,7 +102,7 @@ use rbr_school::SchoolRun;
 use std::panic::{self, AssertUnwindSafe};
 
 mod picture;
-pub(crate) use picture::gearbox;
+pub(crate) use picture::{gearbox, hud_gear};
 mod realtime;
 mod record;
 mod start;
@@ -346,6 +346,11 @@ impl<'a> Live<'a> {
     /// its models back to their start at each restart; NGP 7's replaces nothing.
     pub fn set_physics(&mut self, profile: crate::profile::Profile, car: rbr_engine::Car) -> Result<(), String> {
         crate::physics::fit_physics(&self.playback, profile, &car)
+    }
+
+    /// `--replay-tyre`: the tyre model `name` on the loaded car from this step on ([`crate::physics::switch_tyre_model`]).
+    pub fn switch_tyre_model(&self, name: &str) -> Result<(), String> {
+        crate::physics::switch_tyre_model(&self.playback, name)
     }
 
     /// What follows the championship stage (`--rally-next`).

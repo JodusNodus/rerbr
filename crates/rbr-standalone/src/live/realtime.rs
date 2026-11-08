@@ -349,13 +349,15 @@ pub enum Pace {
 /// start) in place of the viewer's input, each run as the clock ran it and compared with the drive's substeps and
 /// digest. The viewer's PAUSE and RESUME stop and go on, RESTART starts the replay over; at its end the clock waits
 /// for a RESTART or the input's end, or under [`Pace::Free`] the run ends. Returns the run and the comparison's line;
-/// an error at the first frame that differs.
+/// an error at the first frame that differs. `trace` gets each frame that stepped (`--replay-trace`).
 pub fn serve_replay<'a>(
     mut live: Live<'a>,
     frames: &[Logged],
     input: impl Read + Send + 'static,
     mut output: impl Write,
     pace: Pace,
+    mut trace: Option<&mut crate::replay_trace::ReplayTrace>,
+    tyre: Option<(u32, &str)>,
 ) -> Result<(Live<'a>, String), String> {
     let (first, rest) = frames.split_first().ok_or("the replay has no frames")?;
     let shared = spawn_reader(input);
@@ -387,6 +389,8 @@ pub fn serve_replay<'a>(
     let mut answering = start(&mut live, &mut output)?;
     let period = Duration::from_secs_f64(f64::from(live.clock.step));
     let (mut next, mut steps) = (0, 0u64);
+    // `--replay-tyre`: once the tyre model changes, the drive's inputs run on uncompared.
+    let mut free = false;
     'run: loop {
         let feed = wake.wait_while(lock.lock().unwrap(), |f| !f.running && f.end.is_none()).unwrap();
         if feed.end.is_some() {
@@ -436,10 +440,20 @@ pub fn serve_replay<'a>(
                 }
             }
             let (_, substeps) = live.run(&frame.payload, frame.periods, false)?;
-            compare(&live, next + 1, frame, substeps)?;
+            if !free {
+                compare(&live, next + 1, frame, substeps)?;
+            }
+            if let Some((at, model)) = tyre.filter(|&(at, _)| !free && live.next_step() >= at) {
+                live.switch_tyre_model(model)?;
+                free = true;
+                eprintln!("rbr-standalone: --replay-tyre: {model} from step {} (asked {at})", live.next_step());
+            }
             (next, steps) = (next + 1, steps + u64::from(substeps));
             if substeps > 0 {
                 write(&mut output, &step_record(&live, 0).to_bytes()).map_err(|e| e.to_string())?;
+                if let Some(trace) = trace.as_deref_mut() {
+                    trace.frame(&live, substeps, &live.control)?;
+                }
             }
             let input = match Payload::read(&frame.payload) {
                 Ok(Payload::Input(input)) => input,
@@ -450,7 +464,11 @@ pub fn serve_replay<'a>(
             }
         }
     }
-    Ok((live, format!("{} of {} frames ({steps} steps) run, all equal", next + 1, frames.len())))
+    let equal = match tyre {
+        Some((at, model)) if free => format!("equal to step {at}, then tyre model {model}"),
+        _ => "all equal".to_owned(),
+    };
+    Ok((live, format!("{} of {} frames ({steps} steps) run, {equal}", next + 1, frames.len())))
 }
 
 /// The clock's figures, printed at the end.

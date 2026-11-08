@@ -29,6 +29,12 @@ pub struct Args {
     pub replay_out: Option<PathBuf>,
     pub replay: Option<PathBuf>,
     pub replay_pace: live::Pace,
+    /// `--replay-trace FILE` (with `--replay`): the car and tyres after each frame (`replay_trace`).
+    pub replay_trace: Option<PathBuf>,
+    /// `--replay-tyre STEP:MODEL` (with `--replay`, research): from the run's step STEP the tyre model is MODEL
+    /// (`rbr_tyre::model`'s names: `ngp` NGP's sliding model, `brush` a fresh brush) and the frames are no longer
+    /// compared, so the drive's own inputs run on into a tyre change from the drive's exact state (`live::serve_replay`).
+    pub replay_tyre: Option<(u32, String)>,
     pub top_speed: Option<f32>,
     pub aim: Option<autopilot::Aim>,
     /// `--flat-out` (with `--autopilot`): hold full throttle without braking for pace measurement (the steering
@@ -206,7 +212,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
-       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
+       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
        -V, --version prints the version
        -h, --help prints this text";
@@ -261,6 +267,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--frames" => args.frames = Some(value),
             "--replay-out" => args.replay_out = Some(PathBuf::from(value)),
             "--replay" => args.replay = Some(PathBuf::from(value)),
+            "--replay-trace" => args.replay_trace = Some(PathBuf::from(value)),
+            "--replay-tyre" => {
+                let (step, model) = value.split_once(':').ok_or("--replay-tyre takes STEP:MODEL")?;
+                args.replay_tyre = Some((parsed("--replay-tyre", step)?, model.to_owned()));
+            }
             "--replay-pace" => {
                 args.replay_pace = match value.as_str() {
                     "clock" => live::Pace::Clock,
@@ -528,6 +539,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let logs = [args.frames_out.is_some(), args.frames.is_some(), args.replay_out.is_some(), args.replay.is_some()];
     if logs.into_iter().filter(|&on| on).count() > 1 {
         return Err("one of --frames-out, --frames, --replay-out and --replay".into());
+    }
+    if (args.replay_trace.is_some() || args.replay_tyre.is_some()) && args.replay.is_none() {
+        return Err("--replay-trace and --replay-tyre need --replay".into());
     }
     if args.replay.is_some() && args.pilot.is_some() {
         return Err("--replay takes no --pilot (the replay drives)".into());
@@ -815,8 +829,12 @@ mod tests {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));
             }),
             (BOOT.into(), |a| assert_eq!(a.plan, None)),
-            (format!("{LIVE} --replay F --replay-pace free"), |a| {
-                assert_eq!(a.replay_pace, live::Pace::Free)
+            (format!("{LIVE} --replay F --replay-pace free --replay-trace T"), |a| {
+                assert_eq!(a.replay_pace, live::Pace::Free);
+                assert_eq!(a.replay_trace, Some(PathBuf::from("T")))
+            }),
+            (format!("{LIVE} --replay F --replay-tyre 300000:ngp"), |a| {
+                assert_eq!(a.replay_tyre, Some((300000, "ngp".to_owned())))
             }),
             (format!("{BOOT} --dispatch pure"), |a| assert!(!a.direct)),
             (format!("{BOOT} --car 5"), |a| assert_eq!(a.car, Some(5))),
@@ -1022,6 +1040,7 @@ mod tests {
             (format!("{REC} --replay-out F"), "--replay-out and --replay need --live"),
             (format!("{LIVE} --frames F --replay G"), "one of --frames-out, --frames, --replay-out and --replay"),
             (format!("{LIVE} --replay F --pilot autopilot"), "--replay takes no --pilot (the replay drives)"),
+            (format!("{LIVE} --replay-trace T"), "--replay-trace and --replay-tyre need --replay"),
             (format!("{REC} --aim 1,2"), "--aim needs --autopilot"),
             (format!("{REC} --flat-out"), "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot"),
             (

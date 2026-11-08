@@ -135,9 +135,10 @@ pub fn from_snapshot<'a>(
 /// 0 on the first line).
 const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr ffb glong glat";
 
-/// `--circle-past`'s trace columns: the seconds since the car first ran wide (-1 before), the heading of the car's
-/// forward axis in the ground plane (rad, counter-clockwise from +x, unwrapped by the reader) and the body sideslip
-/// (rad, the ground velocity's angle from the forward axis, counter-clockwise positive; [`yaw_and_sideslip`]).
+/// The trace's last columns: the seconds since the car first ran wide on `--circle-past` (-1 before and without it),
+/// the heading of the car's forward axis in the ground plane (rad, counter-clockwise from +x, unwrapped by the reader)
+/// and the body sideslip (rad, the ground velocity's angle from the forward axis, counter-clockwise positive;
+/// [`yaw_and_sideslip`]).
 const PAST_HEADER: &str = " since yaw beta";
 
 /// The heading of the car's forward axis in the ground plane and the angle from it to the ground velocity (rad,
@@ -239,8 +240,7 @@ pub fn drive(
         Some(path) => {
             let mut file =
                 std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
-            let extra = if measure.circle_past.is_some() { PAST_HEADER } else { "" };
-            writeln!(file, "{TRACE_HEADER}{extra}").map_err(|e| format!("{}: {e}", path.display()))?;
+            writeln!(file, "{TRACE_HEADER}{PAST_HEADER}").map_err(|e| format!("{}: {e}", path.display()))?;
             Some((file, path.display().to_string(), live.step_clock().step, None))
         }
         None => None,
@@ -336,13 +336,9 @@ pub fn drive(
                 mem.ffb_torque(mem.u32(pure::CAR_PTR)).value,
             )
             .map_err(|e| format!("{path}: {e}"))?;
-            if measure.circle_past.is_some() {
-                let (yaw, beta) = yaw_and_sideslip(&sense.pose);
-                writeln!(trace, " {:.4} {yaw:.5} {beta:.5}", driver.past_since().unwrap_or(-1.0))
-                    .map_err(|e| format!("{path}: {e}"))?;
-            } else {
-                writeln!(trace).map_err(|e| format!("{path}: {e}"))?;
-            }
+            let (yaw, beta) = yaw_and_sideslip(&sense.pose);
+            writeln!(trace, " {:.4} {yaw:.5} {beta:.5}", driver.past_since().unwrap_or(-1.0))
+                .map_err(|e| format!("{path}: {e}"))?;
         }
         let speed = sense.pose.speed();
         if driver.braking && (held > 0 || speed < 0.3) {

@@ -418,6 +418,52 @@ lines.
    wet (TRL PPR496), combined slip at 2-8° (Svendenius), peak slip angle and κ, over peak at 30° and κ 0.5/1, σ_y.
    A preference for one physics where the rows differ points at the property behind it.
 
+### A player's laps: Nordschleife, Alpine A110 Rally RGT (RWD)
+
+Two laps by the user (2026-11-08, main 5af50f40, BTB `track-1654149_M`, 20.76 km dry, sequential, no aids): brush
+559.80 s with 10 s of penalties, `experimental` (NGP's tyre) 522.41 s. Their words: "NGP definitely stepped out more,
+had to do more corrections". States: `rbr-standalone --live ... --replay F --replay-pace free --replay-trace OUT`
+(each frame's car and tyres; both replays all frames equal, finish times as in `.rrp.splits`); slip angle
+`atan(-vlat/vlong)`, κ `-vslip/vlong` from the scratch's contact velocities; lab `drive_force` (|Fy|/Fz at a given drive
+force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front + 1°, at > 36 km/h.
+
+- Counts (brush / NGP): 58 / 69 events (2.8 / 3.3 per km); rear α > 8° for 29 / 58 s; counter-steer > 3° of road
+  wheel for 16 / 39 s; steering reversals of ≥ 4° of wheel 104 / 147. Mean steady-throttle event 0.57 / 1.13 s, rear
+  peak 9.5 / 12.6°, counter-steer 3.4 / 6.3°; power 0.77 / 0.89 s, 13.3 / 12.4°, 4.1 / 7.4°; lift-off 1 / 4 events.
+  At 13 corners driven alike (speed within 6 %, throttle within 0.15) NGP's rear went 2-11° further in 11 of them
+  (e.g. 8.1 km, 96/92 km/h, throttle 0.6: rear 6.7 / 17.0°, counter-steer 0.5 / 13.6°).
+- Onset (part throttle, 80-180 km/h): the cornering stiffness's load exponent (brush 0.64, NGP 0.36, data 0.47-0.69).
+  Rear over front axle force at 2° at the laps' loads 1.29-1.47 / 1.16-1.39 against a load ratio of 1.5-1.7, so the
+  rear runs 1.12 / 1.28 of the front's slip angle (laps' medians 1.55/1.38°, 1.80/1.41°). In game the loaded outer
+  rear (4.5-6 kN, driving) gives |Fy|/Fz 0.48/0.82/1.03 at 2/4/6° against 0.45/0.75/0.94, as the lab (5.5 kN).
+- Under power: Kx (brush 21, NGP 14 per Fz; data 18.4-32.9) halves the rear's slip ratio at the same drive force
+  (lap medians 0.022 / 0.042 at Fx/Fz 0.3-0.6); at a given drive force the lateral force below the peak is within 3 %
+  at 4 kN. Past 15° under drive the brush keeps less (Fx/Fz 0.45, 4 kN: 1.130/1.082/0.987 against 1.157/1.134/1.060 at
+  15/20/30°) at 1.6-3× NGP's κ.
+- The brush's one spin (15.7 km): 11 km/h faster than the NGP lap (165-177 km/h), full throttle at rear α 9.6° and κ
+  0.15, then the S-bend's change of direction took the rear from 2° to 46° in 1 s through a lift and 8° of
+  counter-steer; ~17 s lost. Not a like-for-like comparison; it fits the known fall past the peak ("Past the limit on
+  tarmac", Open).
+- The spin from the drive's own state (2026-11-08, T26; `--replay-tyre STEP:MODEL` on the brush replay, the user's
+  inputs run on open loop from STEP with a fresh tyre model, same engine): from nine entry points 418.0-421.6 s
+  (2.2-0.1 s before the change of direction) NGP's tyre spins from 6, the brush from 8 (the fresh brush reproduces the
+  drive's spin; from 420.5 s it stays at 41°). The outcome flips between neighbouring entry points under either tyre:
+  open-loop inputs made for one slide do not separate the tyres there. Where they part (switch at 421.1 s, NGP
+  recovers): in 421.5-421.85 s, throttle 0.4-0.8, rear α 7-10°, κ 0.02-0.14, the brush's rear axle holds μ_y
+  1.07-1.09 against NGP's 0.98-1.03 (light inner rear at 1-2 kN: |Fy|/Fz 1.09-1.13 against 0.95, the brush's
+  μ ∝ Fz^-0.13) and its front axle drops to 0.26 against 0.64, so the yaw rate swings from +9 to -69 °/s against -52;
+  the rear then sits at its peak (μ 1.04-1.12, α 10-46°) and cannot stop the yaw. A pendulum on the catch, not the
+  rear letting go under drive. Variants switched in the same way all spin 9/9 (lateral fall 0.55, μ_y(30°)/peak about
+  0.91; fall 1.0, 0.833; the sliding force turned toward the lateral axis, direction (s_x, 1.3 s_y)). The r40 limit
+  test (`limit_recovery.py --material-as 37`, kept g / widest m / back s / peak β, lift; full throttle) brush now:
+  Fiesta 0.85/2.0/2.05/4.0°; 0.82/14.3/never/41.6° (ngp spins, 93°); Golf 0.74/3.9/3.1/3.1°; 0.81/17.1/never/37.5°
+  (ngp 16.5°); Escort: ngp never past the limit, the brush spins. Fall 0.55: Fiesta full throttle back in 4.9 s at 37°, Golf 33.7°, Escort lift
+  81° (100°), within a few % elsewhere; direction 1.3: Fiesta full throttle spins (77°). Not committed: no variant
+  turns the snap and the data do not single one out. The autopilot's own speed plan at 10-14 m/s² (`--plan`, first
+  2.3 km, Alpine, 170-180 km/h) slides no car past 10° of sideslip in any physics (peak brush 5.9°, ngp 7.4°), so it
+  is no closed-loop test here. Back to back on the drive: `rbr-standalone ARGS --replay F --replay-pace free
+  --replay-tyre 304712:ngp` against `:brush` (ARGS the program arguments the replay stores after `--live PROGRAM`; step 304712 is 421.1 s).
+
 ## Racing and rally targets
 
 No open rally-tyre force data exists, and no open measured racing data reaches a rally car's loads except one
