@@ -100,6 +100,16 @@ pub fn blend_tags<S: WheelStore>(host: &mut impl BlendCalls, mem: &mut S, this: 
     mem.set_f32(this + UNK_C0C, z);
 }
 
+/// The surface classes (`+0x148`) of the two materials the last `blend_tags` blended on the wheel whose tyre scratch is
+/// at `scratch`, and the second one's weight: what the tyre type's surface friction took. Read only (ours, for a tyre
+/// model: `rbr_physics::tyre::model::ForceInput::surface_classes`).
+pub fn surface_classes(mem: &Mem, scratch: u32) -> ([u32; 2], f32) {
+    let this = scratch.wrapping_sub(TYRE_SCRATCH);
+    let manager = mem.world_def() + DEF_MATERIALS;
+    let class = |tag: u32| mem.u32(material::tag_entry(mem, manager, tag) + 0x148);
+    ([class(mem.u32(this + UNK_C04)), class(mem.u32(this + UNK_C08))], mem.f32(this + UNK_C0C))
+}
+
 /// `CWheel::Unk9660` (0x539660, `uint_select`, thiscall with `p` and `n`): `sector::pick_sector` of `this+0x5ac`, written
 /// to `p` in the asm's order (`p[0]`, the float fraction at `p[2]`, then `p[1]`). Returns the wrap count.
 pub fn uint_select<S: WheelStore>(mem: &mut S, this: u32, p: u32, n: u32) -> u32 {

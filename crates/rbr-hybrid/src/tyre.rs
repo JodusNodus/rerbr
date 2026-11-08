@@ -328,7 +328,15 @@ fn solve_patch(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// and its outputs are stored after the frame.
 pub(crate) fn step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let ngp = crate::ngp::thermal(ctx, r.ecx)?;
-    crate::ngp::with_tyre_model(r.ecx, |model| frame(entries::step(&mut ctx.mem, r.ecx, &r.stack, &ngp, model)))?;
+    // A tyre model also reads the wheel's surface classes (read only).
+    let surface = if crate::ngp::tyre_model_set() {
+        rbr_physics::wheel::layout::surface_classes(&ctx.mem, r.ecx)
+    } else {
+        ([rbr_physics::tyre::model::UNKNOWN_CLASS; 2], 0.0)
+    };
+    crate::ngp::with_tyre_model(r.ecx, surface, |model| {
+        frame(entries::step(&mut ctx.mem, r.ecx, &r.stack, &ngp, model))
+    })?;
     Ok(Return::void(0, 0x40))
 }
 
