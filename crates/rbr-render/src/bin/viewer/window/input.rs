@@ -255,8 +255,9 @@ impl App {
             return;
         };
         let (surface, session) = (page.surface, &mut self.scene.ffb);
-        let strength = page.strength as f32 / 100.0;
-        if strength != session.strength {
+        // The page shows the strength in whole percent: changed only when the player moved it.
+        if page.strength != (session.strength * 100.0).round() as i32 {
+            let strength = page.strength as f32 / 100.0;
             session.set_strength(strength);
             if let Some(wheel) = &self.wheel {
                 wheel.set_strength(strength);
