@@ -13,7 +13,7 @@ fn main() {
 
 const USAGE: &str = "usage: beamng-stage --zip LEVEL.zip --mission MISSION_FOLDER [--out DIR] [--name NAME] \
 [--skip TEXT]... [--draw-corridor M] [--reach TEXT=M]... [--lod TEXT=M]... [--collision-corridor M]
-       [--detail-lod M] [--prepare DIR --maps DIR]
+       [--detail-lod M] [--trees TEXT]... [--trees-from STAGE] [--prepare DIR --maps DIR]
        beamng-stage --track FOLDER --prepare DIR --maps DIR
        beamng-stage --zip LEVEL.zip --shapes | --shape PATH | --mission M --probe SHAPE_TEXT
 
@@ -23,7 +23,9 @@ licences usually forbid sharing modified versions. --out defaults to the launche
 `converted` (RERBR_HOME, else the platform's data folder: ~/.local/share/rerbr on Linux). --skip leaves
 shapes whose path contains TEXT undrawn (people, animated rides). --draw-corridor M draws shapes within M metres of
 the driveline, --reach TEXT=M those whose path contains TEXT within M instead; --lod TEXT=M draws them only up to M
-metres from the eye (the last matching rule wins).";
+metres from the eye (the last matching rule wins). --trees-from STAGE (a retail stage of your install, `track-44_O`,
+in --maps or $RBR_DATA/Maps) replaces the trees of the shapes whose path contains a --trees TEXT with that stage's
+trees: each tree by the retail one nearest its height, tree-line cards by retail trees along their foot.";
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
@@ -40,6 +42,8 @@ fn run() -> Result<(), String> {
     let mut prepare_dir = None;
     let mut maps = None;
     let mut track = None;
+    let mut trees = Vec::new();
+    let mut trees_from = None;
     let mut numbers: Vec<(String, f64)> = Vec::new();
     while let Some(a) = args.next() {
         let mut value = || args.next().ok_or_else(|| format!("{a} needs a value"));
@@ -52,6 +56,8 @@ fn run() -> Result<(), String> {
             "--out" => out = Some(PathBuf::from(value()?)),
             "--name" => name = Some(value()?),
             "--skip" => skip.push(value()?),
+            "--trees" => trees.push(value()?),
+            "--trees-from" => trees_from = Some(value()?),
             "--reach" | "--lod" => {
                 let v = value()?;
                 let (text, m) = v.rsplit_once('=').ok_or_else(|| format!("{a} {v}: needs TEXT=METRES"))?;
@@ -99,6 +105,25 @@ fn run() -> Result<(), String> {
     options.skip = skip;
     options.reach = reach;
     options.lod = lod;
+    if let Some(stage) = trees_from {
+        if trees.is_empty() {
+            return Err("--trees-from needs --trees TEXT (the shapes holding the trees)".into());
+        }
+        let maps = maps.clone().or_else(|| std::env::var_os("RBR_DATA").map(|d| PathBuf::from(d).join("Maps")));
+        let maps = maps.ok_or("--trees-from needs --maps DIR or RBR_DATA")?;
+        let started = std::time::Instant::now();
+        let library = rbr_beamng::trees::library(&maps, &stage)?;
+        eprintln!(
+            "beamng-stage: {stage}: {} tree kinds ({} trees, spacing {:.1} m, heights {}) in {:.1} s",
+            library.kinds.len(),
+            library.trees,
+            library.spacing,
+            library.kinds.iter().map(|k| format!("{:.1}", k.height)).collect::<Vec<_>>().join("/"),
+            started.elapsed().as_secs_f64()
+        );
+        options.retail = Some(library);
+    }
+    options.trees = trees;
     for (k, v) in numbers {
         match k.as_str() {
             "--draw-corridor" => options.draw_corridor = v,

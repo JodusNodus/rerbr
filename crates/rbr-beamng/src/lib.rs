@@ -14,6 +14,7 @@ pub mod pacenotes;
 pub mod race;
 pub mod road;
 pub mod textures;
+pub mod trees;
 pub mod world;
 pub mod xwrite;
 pub mod zipfs;

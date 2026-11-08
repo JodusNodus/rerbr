@@ -60,6 +60,10 @@ pub struct Options {
     /// Drawn objects whose material's triangles average under this area (m²) are drawn only to [`Options::detail_lod`].
     pub detail_area: f64,
     pub detail_lod: f64,
+    /// Shapes whose path contains any of these hold trees that [`Options::retail`]'s replace ([`crate::trees::split`]).
+    pub trees: Vec<String>,
+    /// The retail trees (`--trees-from`); `None` leaves the level's trees as they are.
+    pub retail: Option<crate::trees::Library>,
 }
 
 /// The value of the last rule whose text `path` contains (case-insensitive).
@@ -81,6 +85,8 @@ impl Options {
             collision_corridor: 60.0,
             detail_area: 0.02,
             detail_lod: 400.0,
+            trees: Vec::new(),
+            retail: None,
         }
     }
 }
@@ -283,6 +289,9 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     let mut skipped: BTreeMap<String, usize> = BTreeMap::new();
     let mut per_shape: BTreeMap<String, usize> = BTreeMap::new();
     let mut shapes: HashMap<String, crate::cdae::Shape> = HashMap::new();
+    // Retail trees per kind and `LODOut`: their placements.
+    let mut planted: BTreeMap<(usize, u32), Vec<[f32; 16]>> = BTreeMap::new();
+    let mut replaced = crate::trees::Split::default();
     for st in scene.statics.iter().filter(|s| shown(s)) {
         let path = st.cdae_path();
         if !shapes.contains_key(&path) {
@@ -320,10 +329,31 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         }
         let corridor = &draw_corridors[&rule(&options.reach, &path).unwrap_or(options.draw_corridor).to_bits()];
         let lod = rule(&options.lod, &path).map_or(0, |m| m.round().max(1.0) as u32);
+        let trees = options.trees.iter().any(|k| path.to_lowercase().contains(&k.to_lowercase()));
+        let retail = options.retail.as_ref().filter(|_| trees);
         for part in world::parts(shape, st, Detail::Visible) {
-            for t in part.triangles.iter().filter(|t| corridor.holds(t)) {
+            let material =
+                |t: &Triangle| t.material.and_then(|m| part.materials.get(m as usize)).cloned().unwrap_or_default();
+            let mut kept: Vec<&Triangle> = part.triangles.iter().filter(|t| corridor.holds(t)).collect();
+            if let Some(library) = retail {
+                let see_through =
+                    |t: &Triangle| mats.get(&material(t).to_lowercase()).is_some_and(|m| m.translucent || m.alpha_test);
+                let cut: Vec<bool> = kept.iter().map(|t| see_through(t)).collect();
+                let positions: Vec<[[f64; 3]; 3]> = kept.iter().map(|t| t.pos).collect();
+                let split = crate::trees::split(&positions, &cut, library.spacing, library.lowest());
+                for spot in &split.spots {
+                    let (kind, matrix) =
+                        library.place(frame.point(spot.foot), spot.height, crate::trees::seed_of(spot.foot));
+                    planted.entry((kind, lod)).or_default().push(matrix);
+                }
+                kept = split.kept.iter().map(|&i| kept[i]).collect();
+                replaced.spots.extend(split.spots);
+                replaced.from_cards += split.from_cards;
+                replaced.cards += split.cards;
+            }
+            for t in kept {
                 *per_shape.entry(path.clone()).or_default() += 1;
-                let name = t.material.and_then(|m| part.materials.get(m as usize)).cloned().unwrap_or_default();
+                let name = material(t);
                 let b = drawn.entry((tile_of(t), name.to_lowercase(), lod));
                 add(b.or_insert_with(|| Builder { weld: true, ..Builder::default() }), frame, t, true);
             }
@@ -449,6 +479,20 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     for (how, n) in &hows {
         say(format!("textures {how}: {n}"));
     }
+    // The retail kinds' textures, as they are, and their materials (`retail\\<file>`).
+    let kinds = options.retail.as_ref().map_or(&[][..], |l| &l.kinds[..]);
+    let mut retail_material: HashMap<String, String> = HashMap::new();
+    for part in kinds.iter().flat_map(|k| &k.parts) {
+        let file = format!("retail_{}", safe(&part.texture));
+        if retail_material.contains_key(&file) {
+            continue;
+        }
+        let section = format!("retail\\{}", safe(&part.texture));
+        write_material(&mut sections, &section, &file, true);
+        names.push(section.clone());
+        textures.push(textures::Texture { file: file.clone(), bytes: part.image.clone(), how: "retail".into() });
+        retail_material.insert(file, section);
+    }
 
     // Objects.
     let mut objects = String::new();
@@ -465,7 +509,12 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         .collect();
     zw.start_file("Objects/identity.xform", deflate).map_err(zerr)?;
     zw.write_all(&identity).map_err(|e| e.to_string())?;
-    let mut put = |zw: &mut zip::ZipWriter<std::fs::File>, file: &str, b: &Builder, material: &str, entries: &str| {
+    let mut put = |zw: &mut zip::ZipWriter<std::fs::File>,
+                   file: &str,
+                   b: &Builder,
+                   material: &str,
+                   (xform, clones): (&str, usize),
+                   entries: &str| {
         let x = xwrite::write(&XMesh {
             positions: &b.positions,
             normals: &b.normals,
@@ -475,14 +524,14 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         });
         zw.start_file(format!("Objects/{file}.x"), deflate).map_err(zerr)?;
         zw.write_all(&x).map_err(|e| e.to_string())?;
-        let _ = write!(objects, "\n[Object_{count}]\nfile={file}\nxform=identity\ncloneCount=1\n{entries}");
+        let _ = write!(objects, "\n[Object_{count}]\nfile={file}\nxform={xform}\ncloneCount={clones}\n{entries}");
         count += 1;
         Ok::<(), String>(())
     };
     for (((tx, ty), id), b) in &col {
         let entries =
             "LODIn=0\nVisible=0\nDrawInstanced=0\nMoveable=0\nShadowCaster=0\nCollisionModel=0\nCollisionOnly=1\n";
-        put(&mut zw, &format!("col_{tx}_{ty}_{id}"), b, &format!("collision\\surface_{id}"), entries)?;
+        put(&mut zw, &format!("col_{tx}_{ty}_{id}"), b, &format!("collision\\surface_{id}"), ("identity", 1), entries)?;
     }
     let mut detail_objects = 0;
     for (index, (((tx, ty), name, lod), b)) in drawn.iter().enumerate() {
@@ -497,10 +546,52 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         };
         let entries =
             format!("LODIn=0\n{lod}Visible=1\nDrawInstanced=0\nMoveable=0\nShadowCaster=1\nCollisionModel=-1\n");
-        put(&mut zw, &format!("draw_{tx}_{ty}_{index}"), b, &material_of[name], &entries)?;
+        put(&mut zw, &format!("draw_{tx}_{ty}_{index}"), b, &material_of[name], ("identity", 1), &entries)?;
+    }
+    // Retail trees: per kind and `LODOut`, one placement file, and an object per part of the kind.
+    let mut retail_triangles = 0;
+    for ((kind, lod), placements) in &planted {
+        let xform = format!("trees_{kind}_{lod}");
+        zw.start_file(format!("Objects/{xform}.xform"), deflate).map_err(zerr)?;
+        zw.write_all(&placements.iter().flatten().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>())
+            .map_err(|e| e.to_string())?;
+        let lod = if *lod > 0 { format!("LODOut={lod}\n") } else { String::new() };
+        let entries =
+            format!("LODIn=0\n{lod}Visible=1\nDrawInstanced=0\nMoveable=0\nShadowCaster=1\nCollisionModel=-1\n");
+        for (p, part) in kinds[*kind].parts.iter().enumerate() {
+            let b = Builder {
+                positions: part.positions.clone(),
+                normals: vec![[0.0, 1.0, 0.0]; part.positions.len()],
+                uvs: part.uvs.clone(),
+                triangles: part.triangles.clone(),
+                ..Builder::default()
+            };
+            let material = &retail_material[&format!("retail_{}", safe(&part.texture))];
+            put(&mut zw, &format!("{xform}_{p}"), &b, material, (&xform, placements.len()), &entries)?;
+            retail_triangles += part.triangles.len() * placements.len();
+        }
     }
     zw.finish().map_err(zerr)?;
     say(format!("objects: {count} ({detail_objects} drawn to {} m only)", options.detail_lod));
+    if let Some(library) = &options.retail {
+        let per_kind: Vec<String> = (0..kinds.len())
+            .map(|k| {
+                let n: usize = planted.iter().filter(|((kk, _), _)| *kk == k).map(|(_, p)| p.len()).sum();
+                format!("{:.1} m x{n}", kinds[k].height)
+            })
+            .collect();
+        say(format!(
+            "retail trees from {}: {} kinds of its {} trees, spacing {:.1} m; {} placed ({} along {} tree-line cards), {retail_triangles} triangles; by kind {}",
+            library.stage,
+            kinds.len(),
+            library.trees,
+            library.spacing,
+            replaced.spots.len(),
+            replaced.from_cards,
+            replaced.cards,
+            per_kind.join(", ")
+        ));
+    }
 
     let textures_zip = folder.join("Textures.zip");
     let mut tw = zip::ZipWriter::new(
