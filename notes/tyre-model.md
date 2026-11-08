@@ -104,7 +104,8 @@ stay calibrated on stage times.
 split as Svendenius splits it (adhesion along the stiffness-weighted slip, sliding against the sliding velocity;
 below) and
 Rill's first-order force dynamics (below). Cy ∝ Fz^0.6, Cx = 1.4 Cy at Fz0 and ∝ Fz^1.2, both times bulk temperature
-(-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93; friction
+(-0.45 %/K), tread depth (2.6/(d + 1.6)) and NGP's pressure factor; peak Fy ∝ Fz^0.87, Fx ∝ Fz^0.93, times a load
+level that puts the peaks on NGP's at each load of the wheel's axis (In game, Calibration); friction
 against sliding speed g(Vs) = (μ_C + (μ_S - μ_C) exp(-(Vs/7 m/s)³)) exp(-0.008 Vs), μ_C/μ_S 0.8, μ_C lowered 18 % at
 W = 1 (below); NGP's temperature grip kept; dry wear
 +10 % at 60 % worn, fading with wetness; wet loss h/(h + 0.5 mm) · min(1, (V/v_p)²) · 0.6 with h = W · 0.7 mm and
@@ -237,7 +238,18 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   stiffness's temperature, wear and pressure factors are the brush's.
 - Calibration per wheel at fit (`rbr_tyre::fit`): NGP's `patch_forces` swept from the wheel's own tables at
   `load_axis[3]` (the 4 kN design load times the car's mass ratio), 15 m/s, unit surface, stiffness factor 1; t_cal is
-  the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed.
+  the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed. Load level (2026-11-08): the
+  same sweep at each positive load of the axis and half the first, a multiplier per axis solved so the brush's free
+  rolling peaks (lateral, driving) are NGP's there, linear between (`brush::LoadLevel`); the sweeps' kinetic friction
+  is the brush's μ_C/μ_S 0.8 (NGP's driving peak takes the kinetic friction at light loads: at kinetic 1 it is 5 %
+  higher at 1 kN, 3 % at 2 kN, the same from 3 kN). Lab `envelope` on the Fiesta Rally2's map 41 probe (grip 1.27,
+  15 m/s), brush over NGP before → after: 1.5-8 kN μ_y +0.1 to +5.7 % → -1.5 to +0.3 %, μ_x driving -4.2 to +3.3 % →
+  -1.9 to -0.6 %, braking -3.8 to +4.6 % → -0.8 to +0.2 %; mean over the probe's frames (Fiesta / Golf II, every
+  wheel, 2.4-4.9 / 1.6-3.9 kN 10-90 %) μ_y +1.0/+1.5 → -0.1/0.0 %, μ_x driving +0.2/+0.4 → -0.8/-0.7 %, braking
+  +0.8/+1.0 → -0.1/-0.1 %. The residual -1 % is the grip: the brush's peak is not proportional to it (the peak's
+  sliding speed grows with μ), NGP's nearly is. Against speed the brush's peak falls (TRL curve, Candidate): at 4 kN
+  +2.3 % at 5 m/s to -5.1 % at 30 m/s lateral; against tread temperature at the grip held -1.4 to +0.8 % (300-390 K,
+  the stiffness's temperature factor).
 - Dynamics: Rill's carcass deflections per wheel, the model's state (snapshots don't carry it; restart and
   touch-down zero it). c_y is NGP's lateral carcass; c_x 450 kN/m times the pressure factor over its calibration
   value (2026-11-07; Golf II 447 kN/m, Fiesta Rally2 435 kN/m, c_x/c_y 1.37/1.07; NGP's torsional over R² 640/796
@@ -677,7 +689,9 @@ locked over peak at 64 and 100 km/h, wet at 32, wet locked 100/32, peak Fx load 
 from 50 km/h; PASS → MISS combined at 4° (0.332 → 0.349, band 0.29-0.34, fig ±0.05); still MISS peak 100/32 0.909 →
 0.968 (0.97), wet at 64/100 0.766/0.757 → 0.583/0.552 (0.52-0.57/0.49-0.52; 0.558/0.523 in the lab on NGP's wet
 material), peak slip angle 8.75° → 9.5° on this wheel (5.6-8.5). The car row from 100 km/h is not scored (`how` none): its locked run
-leaves the line (In game).
+leaves the line (In game). The load level (2026-11-08) takes the peak Fx load exponent to NGP's 0.98 (0.935 → 0.982,
+band 0.90-0.95: PASS → MISS; peak Fy 0.859 → 0.873, still PASS): experimental-brush 43 → 42/85, NGP's rows and the
+loose ones unchanged.
 
 
 ## Open
@@ -685,10 +699,19 @@ leaves the line (In game).
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
   deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
-  The autopilot is 1.6-3.2 % faster on the brush than on NGP (map 41 tarmac, `--autopilot`, finish times ngp /
-  brush: Fiesta Rally2 309.01 / 304.02 s, Celica ST185 310.91 / 304.50, Golf II 324.24 / 313.81, 131 Abarth 323.35 /
-  315.46; 2026-11-08); main's brush before the TRL friction curve gave the same within 0.1 %, so the gap is older than
-  that curve. A driver's view is the next check.
+  The autopilot is 1.6-3.2 % faster on the brush than on NGP (map 41 tarmac, 600 s, finish ngp / experimental /
+  experimental-brush, 2026-11-08, main 48469277: Fiesta Rally2 309.01 / 304.61 / 304.06 s, Celica ST185 310.91 /
+  305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 / 315.49 / 315.15). The engine takes 89-96 %
+  of it (1.4-3.0 %); the tyre 0.1-0.25 % (0.34-0.79 s; a ±0.1 m/s change of the autopilot's top speed moves a finish
+  0.04 s at most). The autopilot plans 5 m/s² lateral and 4 m/s² braking, under half the grip, so the grip level
+  barely enters: the load level above moved the finishes -0.01 to +0.06 s. Counterfactual builds (not committed),
+  experimental → brush variant: the longitudinal slip stiffness as NGP's (Kx/Fz 14, ∝ Fz^0.35, against the brush's
+  21, ∝ Fz^1.14; published 18.4-32.9, NGP below) 0.34/0.54/0.37/-0.14 s, so Kx is 0.14-0.49 s of the tyre's share:
+  the brush's driven wheels slip a third less on full throttle at 10-30 m/s (1.5-3 % more acceleration there), less
+  slip power lost; with Cα ∝ Fz^0.36 as NGP's as well, the same within 0.04 s; steady forces above 3 m/s (no carcass
+  dynamics) 0.21-0.61 s faster still, and a friction flat with sliding speed 0.04-0.49 s faster: the dynamics and the
+  speed term cost the brush time. The 0.1-0.2 % left (three cars) is unattributed shape; combined slip at small slips
+  and the cornering curve between 2° and the peak are untested. Shape, data-backed: unchanged.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
   stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
   7.5 bar (Meccanica 2023).
