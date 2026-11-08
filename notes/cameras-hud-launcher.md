@@ -146,6 +146,18 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   settings' sections move at load and at each save, a continued championship's car keys at its load. A car both
   sources have stays listed twice (user decision 2026-11-07), one model of a championship field
   (`class_cars`); the detail panel's Source row says which copy it is.
+- Force feedback (2026-11-08): the Controls page's "automatic sensitivity per car" (`[ffb] auto`, default 1;
+  `ngp.md` "Force feedback"). On, the global row is "until learned %", and "Force feedback per car" lists each car
+  that learned or has a trim, and the selected car: per surface the percentage it starts with ("learning" without a
+  reference) and its trim (`[ffb_trim]`, × 50-200 %), with Forget dropping its references (`[ffb_auto]`, trims kept).
+  Off, the page and the start are as before. Every launch path (`launch_args`: quick race, championship) passes
+  `ffb::launch`. The strength is written to the file on change; the save carries `[ffb] strength`, `[ffb_cars]`,
+  `[ffb_auto]` and `[ffb_trim]` over from the file, and the form reloads them when the viewer exits.
+- The pause menu's Force feedback page (`hud::ffb_page`, with a wheel, once FFB1 says the surface): Sensitivity (manual:
+  the car's percentage; automatic: its trim, showing the percentage or "learning N/60 s"), Strength (every car, 0-100 %
+  by 5, live through `Wheel::set_strength`, `[ffb] strength`), a line "Wheel maxed out: N % of the last minute" (kept
+  frames of the last 60 kept seconds with |force after the reshape| > 0.95, before the strength), Reset (every car's
+  percentage, or the trim to 100) and Done. `viewer --screenshot --pause-menu dde` draws it (no wheel needed).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.

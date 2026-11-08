@@ -45,7 +45,7 @@ The physics is NGP 7.4.778's; the gameplay (weather draws, race flow, damage, se
 Settings > Physics also offers ReRBR experimental physics, opt-in and built on NGP 7: a realistic engine model in
 place of NGP's torque formula ([docs/experimental-physics.md](docs/experimental-physics.md)).
 Ours, not in 1.02: the launcher in place of the game's menus, the season's car (the game drives your team's), the HUD
-and end screens, the wiper switch, the look-back key, the "Best" ghost, night, working mirrors, and the renderer
+and end screens, force-feedback sensitivity learned per car from your driving (on by default, Controls page), the wiper switch, the look-back key, the "Best" ghost, night, working mirrors, and the renderer
 additions on the Graphics & sound page, set by a quality preset or one by one. The stage always draws at the game's highest quality.
 
 Left out on purpose: original `.rpl` playback, replay cameras and filters, music, co-driver languages other than
