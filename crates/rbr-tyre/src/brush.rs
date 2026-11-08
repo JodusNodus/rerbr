@@ -76,14 +76,33 @@ pub fn trail_half_length(half_length: f64, fz: f64, fz0: f64) -> f64 {
 /// locked wheel kept 0.76 of it at 100. Ours: the four values fitted to Lambourn & Wesley, TRL PPR496 (2010), a car
 /// tyre braked at constant speed to lock on dry asphalt (fig ±0.02): the peak holds with speed (0.97-1.20 times its
 /// 32 km/h value at 100) while the locked friction falls, 0.73-0.82 of the peak at 32 km/h, 0.66-0.76 at 64,
-/// 0.59-0.67 at 100. The level (mu_S) is calibrated. A rolling tyre sliding sideways takes the same curve at its
-/// sliding speed V sin(alpha): whether a rolling slide loses as a locked wheel does is unmeasured in open data (one
-/// speed, TRR 621: about the locked value); in the r40 circle at 70 km/h a lateral friction flat with sliding speed
-/// left the car's slide past the limit unchanged (`notes/tyre-model.md`, In game).
+/// 0.59-0.67 at 100. The level (mu_S) is calibrated. A rolling tyre takes it at a sliding speed scaled to its slip
+/// above [`V_SHAPE`] ([`friction_sliding_speed`]): no open measurement has a rolling tyre losing with speed past the
+/// peak as a locked wheel does (SAE 760029: no speed effect beyond 4°; TRR 621 at one speed).
 pub const V_S: f64 = 7.0;
 pub const STRIBECK_EXP: f64 = 3.0;
 pub const MU_C_OVER_S: f64 = 0.8;
 pub const SPEED_DECAY: f64 = 0.008;
+
+/// The rolling speed, m/s, above which the friction's sliding speed scales with the theoretical slip instead of the
+/// patch's sliding speed ([`friction_sliding_speed`]): MF 6.1's reference speed LONGVL (16.7 m/s, the example set
+/// shipped with MFeval.jl), the speed its slip curves are fitted at. The published MF sets give a rolling tyre's force
+/// against slip with no speed term (λ_μV, LMUV, 0 or absent in every set read: 27 `.tir` files on GitHub, MFeval,
+/// Chrono), Pottinger, Marshall & Arnold (SAE 760029, 10-121 km/h) find the speed effect on lateral force
+/// insignificant beyond about 4°, and TRR 621 (1976, flat belt, dry, 48 km/h) has a rolling tyre at 30° at its peak.
+/// So above this speed a rolling tyre keeps its slip curve's shape, and the locked wheel (rolling speed 0) keeps the
+/// TRL fit's fall with sliding speed. Ours: the scale; the choice of the knee at the reference speed.
+pub const V_SHAPE: f64 = 16.7;
+
+/// The sliding speed the friction takes, m/s, at the patch's sliding speed `vs` and the rolling speed `vr`: `vs` up to
+/// [`V_SHAPE`], then `vs` times V_SHAPE / `vr` (the theoretical slip |s| = vs / vr times V_SHAPE).
+pub fn friction_sliding_speed(vs: f64, vr: f64) -> f64 {
+    if vr > V_SHAPE {
+        vs * V_SHAPE / vr
+    } else {
+        vs
+    }
+}
 
 /// The friction at sliding speed `vs`, m/s, between its level at rest `mu_s` and its Coulomb level `mu_k`.
 pub fn friction_at(mu_s: f64, mu_k: f64, vs: f64) -> f64 {
@@ -372,12 +391,12 @@ pub fn slip_velocities(x: &EvalInput) -> (f64, f64, f64) {
 }
 
 /// [`eval`] at the theoretical slips `sx`, `sy` and the rolling speed `vr`:
-/// the sliding speed is `vr |s|`.
+/// the sliding speed is `vr |s|`, the friction's [`friction_sliding_speed`] of it.
 pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) -> EvalOutput {
     let cy = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cy0, M_CY, cal);
     let cx = stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cx0, M_CX, cal);
     let s_abs = (sx * sx + sy * sy).sqrt();
-    let vs = vr * s_abs;
+    let vs = friction_sliding_speed(vr * s_abs, vr);
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
     let wet = if x.hydroplaning { wet_loss(x.wetness, v, x.tread_remaining) } else { 1.0 };
     let mu_x = mu_axis(
@@ -651,6 +670,23 @@ mod tests {
         let o = eval(&x, &cal);
         let slope = o.fx.abs() / o.sx.abs();
         assert!((slope / cal.cx0 - 1.0).abs() < 1e-6, "slope {slope} cx0 {}", cal.cx0);
+    }
+
+    #[test]
+    fn above_the_shape_speed_a_rolling_tyre_keeps_its_slip_curve_and_a_locked_one_its_sliding_speed() {
+        let cal = synth_cal();
+        let mu_y = |v: f64, deg: f64| {
+            let a = deg.to_radians();
+            let mut x = synth_input();
+            (x.vy, x.vx) = (v * a.sin(), -v * a.cos());
+            x.spin = -x.vx / x.radius;
+            -eval(&x, &cal).fy / x.fz
+        };
+        // Free rolling at 20° and 25 / 35 m/s (rolling speed over V_SHAPE): the same force.
+        assert!((mu_y(25.0, 20.0) / mu_y(35.0, 20.0) - 1.0).abs() < 1e-9);
+        // Locked (no spin, the rolling speed floored at V_MIN): the sliding speed is the patch's.
+        assert_eq!(friction_sliding_speed(27.8, V_MIN), 27.8);
+        assert_eq!(friction_sliding_speed(10.0, 33.4), 10.0 * V_SHAPE / 33.4);
     }
 
     #[test]
