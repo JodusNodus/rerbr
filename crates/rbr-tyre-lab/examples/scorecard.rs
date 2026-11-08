@@ -9,11 +9,13 @@
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
 //!   cargo run --release -p rbr-tyre-lab --example scorecard -- --probe P [--step N --wheel K] [--model ngp|brush]
-//!       [--speed M/S] [--friction S,K] [--water W]
+//!       [--speed M/S] [--friction S,K] [--water W] [--tread D]
 //!
 //! `--friction S,K` puts a surface's static and kinetic friction in place of the probed one on a hard surface (no
 //! soil), for a material no run reaches (NGP's ice, 116). `--water W` gives the model the surface's `WaterFactor` W
-//! (the probed friction level kept).
+//! (the probed friction level kept), and with it the key `stop_mu_x_4k`: the mean braked peak μ_x of a stop from
+//! `--speed`, v0² / (2 ∫ v / μ dv) over the peaks at eight speeds (the measure of a wet braking test's mean μ).
+//! `--tread D` puts the tread remaining D (1 new) in place of the probed wheel's.
 
 use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
@@ -37,6 +39,7 @@ fn exponent(xs: &[f32], ys: &[f32]) -> f32 {
 fn main() {
     let (mut probe, mut step, mut wheel) = (String::new(), None, 0u32);
     let (mut model, mut speed, mut friction, mut water) = (String::from("ngp"), 15.0f32, None, 0.0f32);
+    let mut tread = None;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -47,6 +50,7 @@ fn main() {
             "--model" => model = value(),
             "--speed" => speed = value().parse().expect("--speed M/S"),
             "--water" => water = value().parse().expect("--water W"),
+            "--tread" => tread = Some(value().parse::<f32>().expect("--tread D")),
             "--friction" => {
                 let v = value();
                 let (s, k) = v.split_once(',').expect("--friction STATIC,KINETIC");
@@ -65,6 +69,9 @@ fn main() {
     }
     .unwrap_or_else(|| panic!("{probe}: no usable dump for wheel {wheel} at step {step:?}"))
     .clone();
+    if let Some(d) = tread {
+        p.wear_op = 1.0 - d;
+    }
     // The soil thickness under the wheel: the surface line's sixth field.
     let soil = text
         .split("# step")
@@ -132,6 +139,26 @@ fn main() {
     let camber = t.camber_per_fz(4000.0);
     out("camber_per_fz_4k", camber);
     out("camber_over_calpha_4k", camber / t.calpha_per_fz(4000.0));
+    // A wet stop from the speed: the braked peak at eight speeds up to it, μ at the lowest held below it.
+    if water > 0.0 {
+        let n = 8;
+        let peaks: Vec<(f32, f32)> = (1..=n)
+            .map(|i| {
+                t.speed = speed * i as f32 / n as f32;
+                (t.speed, peak(brake_kappas(), |k| t.mu_x(4000.0, -k)).0)
+            })
+            .collect();
+        t.speed = speed;
+        // ∫ v / μ dv by trapezoids from 0 (the integrand 0 there).
+        let mut prev = (0.0f32, 0.0f32);
+        let mut integral = 0.0f32;
+        for &(v, mu) in &peaks {
+            let g = v / mu;
+            integral += (v - prev.0) * (g + prev.1) / 2.0;
+            prev = (v, g);
+        }
+        out("stop_mu_x_4k", speed * speed / (2.0 * integral));
+    }
     // Inflation pressure: +0.5 bar on the probed pressure (NGP's stiffness factor at it; the patch length stays the
     // probe's), the change in per cent.
     let mut q = p.clone();
