@@ -1033,7 +1033,10 @@ mod tests {
             (format!("{BOOT} --plan 8"), "--plan 8: want LAT,BRAKE in m/s², both over 0"),
             (format!("{BOOT} --plan 8,0"), "--plan 8,0: want LAT,BRAKE in m/s², both over 0"),
             (format!("{BOOT} --plan 8,6 --flat-out"), "--plan takes no --flat-out or --circle (they plan no speed)"),
-            (format!("{BOOT} --plan 8,6 --circle 0,0,40"), "--plan takes no --flat-out or --circle (they plan no speed)"),
+            (
+                format!("{BOOT} --plan 8,6 --circle 0,0,40"),
+                "--plan takes no --flat-out or --circle (they plan no speed)",
+            ),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
             (
                 format!("{BOOT} --brake-pedal 0.5"),
