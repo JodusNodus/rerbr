@@ -18,8 +18,11 @@ pub struct Static {
     pub scale: [f64; 3],
     /// `collisionType`: `None` makes the shape non-solid.
     pub collision_type: Option<String>,
-    /// `isRenderEnabled` false or `hidden`: never drawn in the game.
+    /// `hidden`: never drawn in the game.
     pub hidden: bool,
+    /// `isRenderEnabled` false: not drawn by the level's own account, though some levels set it on every shape they
+    /// draw (Akina).
+    pub render_disabled: bool,
 }
 
 impl Static {
@@ -29,6 +32,26 @@ impl Static {
             let r = self.rotation[i];
             [r[0] * self.scale[0], r[1] * self.scale[1], r[2] * self.scale[2], self.position[i]]
         })
+    }
+
+    /// A placed shape from its JSON `position`, `rotationMatrix` and `scale` (one number or three).
+    pub fn placed(
+        shape: &str,
+        position: Option<&Json>,
+        rotation_matrix: Option<&Json>,
+        scale: Option<&Json>,
+    ) -> Static {
+        Static {
+            name: String::new(),
+            parent: String::new(),
+            shape: shape.to_owned(),
+            position: vec3(position, [0.0; 3]),
+            rotation: rotation(rotation_matrix),
+            scale: scale.and_then(Json::num).map_or_else(|| vec3(scale, [1.0; 3]), |n| [n; 3]),
+            collision_type: None,
+            hidden: false,
+            render_disabled: false,
+        }
     }
 
     /// The shape file the game loads for `shape`: the `.cdae` next to the `.dae`.
@@ -140,7 +163,8 @@ impl Scene {
                 rotation: rotation(o.get("rotationMatrix")),
                 scale: vec3(o.get("scale"), [1.0; 3]),
                 collision_type: o.get("collisionType").and_then(Json::str).map(str::to_owned),
-                hidden: flag("isRenderEnabled") == Some(false) || flag("hidden") == Some(true),
+                hidden: flag("hidden") == Some(true),
+                render_disabled: flag("isRenderEnabled") == Some(false),
             }),
             "DecalRoad" => self.roads.push(Road {
                 name,

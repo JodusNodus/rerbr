@@ -115,7 +115,9 @@ impl Line {
         let mut width = Vec::with_capacity(count + 1);
         for k in 0..=count {
             let d = (k as f64 * step).min(length);
-            let s = if forward { from + d } else { from - d }.rem_euclid(total);
+            // Wrap only past the ends: a run ending exactly at the end of an open line stays there.
+            let s = if forward { from + d } else { from - d };
+            let s = if (0.0..=total).contains(&s) { s } else { s.rem_euclid(total) };
             points.push(self.sample(s).0);
             width.push(self.width_at(s));
         }
@@ -158,6 +160,9 @@ mod tests {
         let back = line.stretch(15.0, 10.0, false, 2.5);
         assert_eq!(back.points.len(), 5);
         assert!((back.points[4][0] - 5.0).abs() < 1e-6);
+        // A run to the very end stays at the end.
+        let to_end = line.stretch(5.0, 15.0, true, 2.5);
+        assert!((to_end.length() - 15.0).abs() < 1e-6);
     }
 
     #[test]

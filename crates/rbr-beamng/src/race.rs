@@ -77,6 +77,30 @@ impl Race {
         })
     }
 
+    /// A race along `points` (a road's nodes, in driving order) for a level without one: path nodes 20 m in from
+    /// each end and at the middle, the start position on the first.
+    pub fn along(points: &[[f64; 3]]) -> Result<Race, String> {
+        let plan = |a: &[f64; 3], b: &[f64; 3]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
+        let mut arc = vec![0.0];
+        for w in points.windows(2) {
+            arc.push(arc.last().unwrap() + plan(&w[0], &w[1]));
+        }
+        let total = *arc.last().ok_or("an empty road")?;
+        if total < 100.0 {
+            return Err(format!("the road is {total:.0} m long"));
+        }
+        let at = |s: f64| points[arc.iter().position(|&a| a >= s).unwrap_or(points.len() - 1)];
+        let node = |id: i64, pos: [f64; 3]| PathNode { id, name: format!("node {id}"), pos, radius: 5.0, split: false };
+        Ok(Race {
+            nodes: vec![node(0, at(20.0)), node(1, at(total * 0.5)), node(2, at(total - 20.0))],
+            segments: vec![(0, 1), (1, 2)],
+            starts: vec![StartPosition { id: 0, name: "start".into(), pos: at(20.0), rot: [0.0, 0.0, 0.0, 1.0] }],
+            start_node: 0,
+            default_start: 0,
+            closed: false,
+        })
+    }
+
     /// The path nodes in driving order from the start node, following the segments (each node once).
     pub fn ordered_nodes(&self) -> Vec<&PathNode> {
         let mut out = Vec::new();
