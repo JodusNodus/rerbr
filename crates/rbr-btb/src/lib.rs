@@ -18,6 +18,7 @@ pub enum D3dx {
 
 pub mod classic;
 pub mod col;
+pub mod converted;
 pub mod ids;
 pub mod ksh;
 pub mod scene;

@@ -66,9 +66,6 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
     maps
 }
 
-/// The folder in the player's folder that `beamng-stage` (`rbr-beamng`) converts levels into, a second BTB root.
-pub const CONVERTED: &str = "converted";
-
 /// The first of the numbers [`synthetic`] gives: above any RSF id.
 pub const SYNTHETIC: u32 = 1_000_000;
 

@@ -443,7 +443,7 @@ impl Catalog {
     }
 
     /// Adds the BTB stages under `root` (`<root>/RX_CONTENT/Tracks/*`): the ones `beamng-stage` converts into the
-    /// player's folder ([`crate::btb::CONVERTED`]).
+    /// player's folder ([`rbr_btb::converted::FOLDER`]).
     pub fn add_btb_root(&mut self, root: &Path) {
         let taken: Vec<u32> = self.maps.iter().chain(&self.unlisted).map(|m| m.number).collect();
         self.maps.extend(crate::btb::maps(root, |n| taken.contains(&n)));

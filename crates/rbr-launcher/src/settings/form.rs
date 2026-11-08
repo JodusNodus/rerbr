@@ -51,7 +51,7 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     catalog.hide_unlisted();
     let root = paths.game_root();
     catalog.set_community_stages(&root);
-    catalog.add_btb_root(&here.join(crate::btb::CONVERTED));
+    catalog.add_btb_root(&here.join(rbr_btb::converted::FOLDER));
     catalog.set_community_cars(&paths.data, &root, &here.join(crate::car_packs::DIR));
     move_renamed_keys(&mut settings, &catalog.renamed);
     catalog.offer(&catalog::ngp_cars(Path::new(&or_folder(settings.ngp_physics.as_deref(), &folder.ngp_physics))));

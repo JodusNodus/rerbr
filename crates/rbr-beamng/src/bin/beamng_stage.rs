@@ -25,22 +25,6 @@ shapes whose path contains TEXT undrawn (people, animated rides). --draw-corrido
 the driveline, --reach TEXT=M those whose path contains TEXT within M instead; --lod TEXT=M draws them only up to M
 metres from the eye (the last matching rule wins).";
 
-/// The launcher's files folder (`rbr-launcher`'s `home::dir`): `$RERBR_HOME`, else the platform's user data folder.
-fn launcher_home() -> Option<PathBuf> {
-    let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if let Some(dir) = var("RERBR_HOME") {
-        return Some(dir);
-    }
-    match std::env::consts::OS {
-        "windows" => var("APPDATA").map(|d| d.join("ReRBR")),
-        "macos" => var("HOME").map(|h| h.join("Library/Application Support/ReRBR")),
-        _ => var("XDG_DATA_HOME")
-            .filter(|d| d.is_absolute())
-            .or_else(|| var("HOME").map(|h| h.join(".local/share")))
-            .map(|d| d.join("rerbr")),
-    }
-}
-
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let mut zip = None;
@@ -108,7 +92,7 @@ fn run() -> Result<(), String> {
     let mission = mission.ok_or_else(|| format!("--mission is required\n{USAGE}"))?;
     let out = match out {
         Some(o) => o,
-        None => launcher_home().ok_or("no files folder (set --out or RERBR_HOME)")?.join("converted"),
+        None => rbr_btb::converted::root().ok_or("no files folder (set --out or RERBR_HOME)")?,
     };
     let mut options = convert::Options::new(&mission, &out);
     options.name = name;
