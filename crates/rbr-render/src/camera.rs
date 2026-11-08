@@ -4,6 +4,7 @@
 //! towards +x.
 
 use crate::coords;
+use crate::triple::{Rig, Screen};
 use glam::{Mat3, Mat4, Vec3, Vec4};
 
 /// Pitch limit, radians, so the view never flips over the top.
@@ -136,6 +137,12 @@ impl Orbit {
     pub fn sky_view_projection(&self, fov: f32, aspect: f32) -> Mat4 {
         coords::projection(fov, aspect) * coords::sky_view_matrix(self.target - self.eye())
     }
+
+    /// The camera as a [`Lens`]: y up, horizontal field of view `fov` (radians) and [`coords::NEAR`].
+    pub fn lens(&self, fov: f32) -> Lens {
+        let eye = self.eye();
+        Lens { eye, forward: (self.target - eye).normalize(), up: Vec3::Y, fov, near: coords::NEAR }
+    }
 }
 
 /// A camera with its own up and near plane: the views of a car, the fixed ones rolling with it.
@@ -165,6 +172,18 @@ impl Lens {
     /// View-to-clip matrix for an image `aspect` wide per high.
     pub fn projection(&self, aspect: f32) -> Mat4 {
         coords::perspective(self.fov, aspect, self.near)
+    }
+
+    /// The frame's views, each its world-to-clip and sky matrices: one for a single screen of `aspect`, else the left,
+    /// centre and right screens of `rig` ([`crate::triple`]), each `aspect` wide per high, the centre one at the lens's
+    /// field of view.
+    pub fn views(&self, rig: Option<&Rig>, aspect: f32) -> Vec<(Mat4, Mat4)> {
+        let Some(rig) = rig else { return vec![(self.view_projection(aspect), self.sky_view_projection(aspect))] };
+        let screen = |screen: Screen| {
+            let (projection, forward) = (screen.projection(self.near), screen.forward(self.forward, self.up));
+            (projection * look_to(self.eye, forward, self.up), projection * look_to(Vec3::ZERO, forward, self.up))
+        };
+        rig.screens(self.fov, aspect).map(screen).to_vec()
     }
 }
 
@@ -220,6 +239,20 @@ mod tests {
         let camera = FreeFly::looking_along(Vec3::new(10.0, 2.0, -3.0), Vec3::new(0.6, 0.2, 0.8));
         let eye = eye(camera.view_projection(coords::FOV_DEGREES.to_radians(), 16.0 / 9.0));
         assert!((eye - Vec3::new(10.0, 2.0, -3.0)).length() < 1e-3, "{eye}");
+    }
+
+    #[test]
+    fn a_triple_rigs_centre_view_is_the_single_view() {
+        let lens = FreeFly::looking_along(Vec3::new(3.0, 1.0, -2.0), Vec3::new(0.6, 0.2, 0.8)).lens(1.0);
+        let rig = Rig { diagonal: 27.0, bezel: 10.0, distance: 70.0, angle: None };
+        let (single, triple) = (lens.views(None, 16.0 / 9.0), lens.views(Some(&rig), 16.0 / 9.0));
+        assert_eq!(triple.len(), 3);
+        let diff = |a: Mat4, b: Mat4| (a - b).abs().to_cols_array().into_iter().fold(0.0, f32::max);
+        assert!(diff(single[0].0, triple[1].0) < 1e-5 && diff(single[0].1, triple[1].1) < 1e-5);
+        // Every view looks from the lens's eye; the right one turned right.
+        assert!(triple.iter().all(|(view, _)| (eye(*view) - lens.eye).length() < 1e-3));
+        let (ahead, right) = (|view: Mat4| view.row(3).truncate().normalize(), lens.up.cross(lens.forward));
+        assert!(ahead(triple[2].0).dot(right) > 0.3 && ahead(triple[0].0).dot(right) < -0.3);
     }
 
     #[test]
