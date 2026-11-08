@@ -597,8 +597,15 @@ impl Session {
         let learn = self.car.as_deref().is_none_or(|c| self.autos.reference(c, surface).is_none());
         let (started, shaped) = (self.started[surface], reshape(force, self.started[surface], self.wheel(surface)));
         let drive = self.drive.get_or_insert_with(|| Drive::new(surface));
-        if drive.surface == surface {
-            drive.frame(force, shaped, started, dt, kept, learn);
+        if drive.surface != surface {
+            return;
+        }
+        let learning = drive.learned.is_none();
+        drive.frame(force, shaped, started, dt, kept, learn);
+        if let (true, Some((r, _))) = (learning, drive.learned) {
+            let p = auto::effective(r.x, self.trim(surface));
+            let car = self.car.as_deref().unwrap_or("?");
+            eprintln!("viewer: force feedback of {car} on {} learned: {:.1}, {p} %", SURFACES[surface], r.x);
         }
     }
 
