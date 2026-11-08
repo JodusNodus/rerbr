@@ -41,6 +41,9 @@ pub struct Params {
     pub stf_val: Vec<f32>,
     pub tread_temp: f32,
     pub water_factor: f32,
+    /// The surface classes of the middle ray block's two materials (`block_tags`, `mat_entry`) and the second's weight.
+    pub surface_classes: [u32; 2],
+    pub surface_blend: f32,
     pub wear_op: f32,
     /// Contact speed from the dump's `slip_op` line, m/s.
     pub speed: f32,
@@ -124,6 +127,15 @@ pub fn parse_probe(text: &str) -> (Vec<Params>, Vec<(f32, f32)>) {
                 let _ = i;
             }
         }
+        let tags: Vec<&str> = m.get("block_tags").map_or(vec![], |t| t.split_whitespace().collect());
+        let class = |tag: Option<&&str>| {
+            let entry = tag.and_then(|t| m.get(&format!("mat_entry {t}")));
+            let hex = entry.and_then(|e| e.split_whitespace().rev().nth(1));
+            hex.and_then(|h| u32::from_str_radix(h.trim_start_matches("0x"), 16).ok())
+                .unwrap_or(rbr_physics::tyre::model::UNKNOWN_CLASS)
+        };
+        let surface_classes = [class(tags.first()), class(tags.get(1))];
+        let surface_blend = tags.get(2).and_then(|w| w.parse().ok()).unwrap_or(0.0);
         let wear_line = parse_floats(&get(m, "wear"));
         let slip_op = parse_floats(&get(m, "slip_op"));
         let p = Params {
@@ -158,6 +170,8 @@ pub fn parse_probe(text: &str) -> (Vec<Params>, Vec<(f32, f32)>) {
             stf_val: table(m, "stiffness_factor"),
             tread_temp: temps.first().copied().unwrap_or(337.0),
             water_factor: surf.get(6).copied().unwrap_or(0.0),
+            surface_classes,
+            surface_blend,
             wear_op: wear_line.first().copied().unwrap_or(0.0),
             speed: slip_op.first().copied().unwrap_or(0.0),
         };

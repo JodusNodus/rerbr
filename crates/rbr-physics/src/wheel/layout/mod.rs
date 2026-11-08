@@ -12,7 +12,8 @@ mod store;
 mod wheel_calls;
 
 pub use copy_and_emit::{
-    blend_tags, copy_cf30, embedded_dispatch, table_lerp_pair, tire_emit, uint_select, DefCopyCalls, Ported,
+    blend_tags, copy_cf30, embedded_dispatch, surface_classes, table_lerp_pair, tire_emit, uint_select, DefCopyCalls,
+    Ported,
 };
 pub use ctors::{
     cdef_ctor, cdef_unk20, cdef_unk4c, construct_options, damage_zero, finish, new_cdef, new_wheel, refresh_travel,

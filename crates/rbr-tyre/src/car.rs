@@ -73,17 +73,21 @@ impl Model for Brush {
             radius: f64::from(x.effective_radius),
             bulk_temp: f64::from(x.tread_temperature),
             tread_remaining: f64::from(x.tread_left),
-            // NGP's wet surface friction carries the wet level, so the brush's wet loss stays off: the pressure only
-            // enters the brush's. The wetness lowers its sliding friction and fades its dry-wear gain.
+            // NGP's wet surface friction carries the wet level; the wetness lowers the brush's sliding friction, fades
+            // its dry-wear gain and, against the tread's drainage, lifts the patch at speed (partial hydroplaning).
             pressure: 0.0,
             pressure_factor: pressure_factor * low_mu,
             wetness: f64::from(x.water_factor),
-            hydroplaning: false,
+            hydroplaning: true,
             temp_grip: 1.0,
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
         };
-        let steady = if soil { loose::eval(&e, &t.loose) } else { brush::eval(&e, &t.cal) };
+        let steady = if soil {
+            loose::eval(&e, &t.loose, loose::gravel_share(x.surface_classes, x.surface_blend))
+        } else {
+            brush::eval(&e, &t.cal)
+        };
         // The carcass stiffnesses at the pressure (the carcass does not soften on ice): the longitudinal one ours, the
         // lateral one NGP's moved to the published pressure law.
         let k_x = brush::carcass_x(&t.cal, pressure_factor);
@@ -141,6 +145,8 @@ mod tests {
             soil_thickness: 0.0,
             water_factor: 0.0,
             inclination_sin: 0.0,
+            surface_classes: [rbr_physics::tyre::model::UNKNOWN_CLASS; 2],
+            surface_blend: 0.0,
             lateral_stiffness: 150000.0,
             torsional_stiffness: 20000.0,
         }
@@ -151,9 +157,11 @@ mod tests {
         let mut b = Brush::new(&[wheel()]).unwrap();
         let at = wheel().tyre;
         assert_eq!(b.forces(at + 4, &rolling(20.0, 0.05)), None);
-        for soil in [0.0, 0.009] {
+        let gravel = [loose::GRAVEL_CLASS; 2];
+        for (soil, surface_classes) in [(0.0, gravel), (0.009, [3, 3]), (0.009, gravel)] {
             for speed in [0.0, 0.3, 1.9, 2.5, 20.0] {
-                let out = b.forces(at, &ForceInput { soil_thickness: soil, ..rolling(speed, 0.05) }).unwrap();
+                let x = ForceInput { soil_thickness: soil, surface_classes, ..rolling(speed, 0.05) };
+                let out = b.forces(at, &x).unwrap();
                 assert_eq!(out.weight, 1.0, "{speed}");
                 assert!(out.lateral_force.is_finite() && out.longitudinal_force.is_finite(), "{speed} {out:?}");
             }
@@ -255,7 +263,7 @@ mod tests {
             surf_static: 0.9,
             surf_kinetic: 0.9,
         };
-        let steady = loose::eval(&e, &b.tyres[0].loose);
+        let steady = loose::eval(&e, &b.tyres[0].loose, 0.0);
         assert!((f64::from(on_soil.lateral_force) / steady.fy - 1.0).abs() < 1e-4, "{on_soil:?} {steady:?}");
         let back = b.forces(wheel().tyre, &hard).unwrap();
         assert!((back.lateral_force / on_soil.lateral_force - 1.0).abs() < 0.02, "{back:?} {on_soil:?}");

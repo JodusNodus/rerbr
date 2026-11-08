@@ -3,7 +3,7 @@
 
 use std::cell::RefCell;
 
-use rbr_physics::tyre::model::Model as Forces;
+use rbr_physics::tyre::model::{ForceInput, Model as Forces};
 use rbr_tyre::Model;
 
 thread_local! {
@@ -25,10 +25,17 @@ pub fn restart_tyre_model() {
     });
 }
 
-/// `run` with the set model's forces for the tyre at `tyre` (`None` without one).
-pub(crate) fn with_tyre_model<T>(tyre: u32, run: impl FnOnce(Option<Forces>) -> T) -> T {
+/// Whether a model is set.
+pub(crate) fn tyre_model_set() -> bool {
+    MODEL.with_borrow(Option::is_some)
+}
+
+/// `run` with the set model's forces for the tyre at `tyre` (`None` without one), the input's surface classes and
+/// blend `surface` (`ForceInput::surface_classes`, which NGP's step leaves unknown).
+pub(crate) fn with_tyre_model<T>(tyre: u32, surface: ([u32; 2], f32), run: impl FnOnce(Option<Forces>) -> T) -> T {
+    let (surface_classes, surface_blend) = surface;
     MODEL.with_borrow_mut(|m| match m {
-        Some(m) => run(Some(&mut |x| m.forces(tyre, x))),
+        Some(m) => run(Some(&mut |x| m.forces(tyre, &ForceInput { surface_classes, surface_blend, ..*x }))),
         None => run(None),
     })
 }

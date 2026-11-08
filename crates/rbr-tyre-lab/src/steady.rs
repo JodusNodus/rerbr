@@ -58,6 +58,8 @@ impl Tyre<'_> {
             soil_thickness: self.soil,
             water_factor: self.water,
             inclination_sin: self.camber,
+            surface_classes: p.surface_classes,
+            surface_blend: p.surface_blend,
             lateral_stiffness: p.carcass_lat * p.stiffness_factor,
             torsional_stiffness: p.carcass_tor * p.stiffness_factor,
         };
