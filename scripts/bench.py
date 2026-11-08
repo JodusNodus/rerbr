@@ -3,9 +3,9 @@
 most and the frame rate uncapped, timed by the viewer's performance log from the race's go for --seconds.
 
     scripts/bench.py [--out DIR] [--runs N] [--seconds S] [--size WxH] [--build DIR] [--home DIR] [--args STRING]
-                     [--dry] [--compare OLD_DIR]
+                     [--stage N] [--car NAME] [--dry] [--compare OLD_DIR]
 
-Each run is the launcher's Start command for SCENE, its settings fixed in a temporary files folder as render-shots.py
+Each run is the launcher's Start command for SCENE (--stage and --car put another map number or car in it), its settings fixed in a temporary files folder as render-shots.py
 does and the wheel's force feedback off, with `--view`, `--perf-log`, `--quit-after go+S`, the replay saved in the
 run's folder and `rbr-standalone --pilot autopilot`. Fullscreen at the display's size unless --size asks for a window.
 Prints each run and the median over the runs: average fps, the 1% and 0.1% lows (fps at the 99th and 99.9th
@@ -216,9 +216,12 @@ def main():
     ap.add_argument('--build', default=ROOT / 'target/release', type=Path, help='folder with rerbr, viewer, rbr-standalone')
     ap.add_argument('--home', help="the player's files folder (default $RERBR_HOME or ~/.local/share/rerbr)")
     ap.add_argument('--args', action='append', default=[], metavar='STRING', help='extra viewer arguments, shell-split; repeatable')
+    ap.add_argument('--stage', type=int, help=f"the launcher's map number instead of {SCENE['stage']}")
+    ap.add_argument('--car', help=f"instead of {SCENE['car']!r}")
     ap.add_argument('--dry', action='store_true', help='print the command instead of running it')
     ap.add_argument('--compare', type=Path, metavar='OLD_DIR', help='print the result in --out against an earlier one and exit')
     a = ap.parse_args()
+    SCENE.update({k: v for k, v in (('stage', a.stage), ('car', a.car)) if v is not None})
     if a.compare:
         new, old = (json.loads((d / 'result.json').read_text()) for d in (a.out, a.compare))
         return compare(new, old)
