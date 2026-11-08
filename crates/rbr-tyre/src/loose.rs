@@ -81,9 +81,9 @@ pub fn braking_slip(vsx: f64, vx: f64) -> f64 {
     }
 }
 
-/// Gravel's shear law reaches 1 - 1/e of the friction at the slip angle `GRAVEL_ALPHA0`, rad ([`shear`]): Coutermarsh
-/// & Shoop's pea stone (Fig. 15) fitted, 6.28° (rms 0.0012 μ/max over 1-38°).
-pub const GRAVEL_ALPHA0: f64 = 6.28 * std::f64::consts::PI / 180.0;
+/// Gravel's shear law reaches 1 - 1/e of the friction at this slip angle, degrees ([`shear`]): Coutermarsh & Shoop's
+/// pea stone (Fig. 15) fitted: 6.28° (rms 0.0012 μ/max over 1-38°), rounded.
+pub const GRAVEL_ALPHA0_DEG: f64 = 6.3;
 
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
 pub const GRAVEL_CLASS: u32 = 1;
@@ -96,7 +96,7 @@ pub fn gravel_share(classes: [u32; 2], blend: f32) -> f64 {
 }
 
 /// The secant slip stiffness, N per unit slip, of gravel's shear law (Janosi-Hanamoto's form): the force μ Fz (1 -
-/// exp(-u)) along the theoretical slip `s`, u = |(sx/s0x, sy/s0)| with s0 = tan [`GRAVEL_ALPHA0`] and s0x the
+/// exp(-u)) along the theoretical slip `s`, u = |(sx/s0x, sy/s0)| with s0 = tan [`GRAVEL_ALPHA0_DEG`] and s0x the
 /// longitudinal one that keeps the brush's [`KX_OVER_KY`] at the axes' levels `mu_x`, `mu_y`; `mu` the friction along
 /// `s`. Both axes take it as their secant (-F_i/s_i).
 pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64) -> f64 {
@@ -104,7 +104,7 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64) -> f64 {
     if s_abs <= 0.0 {
         return 0.0;
     }
-    let s0 = libm::tan(GRAVEL_ALPHA0);
+    let s0 = libm::tan(GRAVEL_ALPHA0_DEG.to_radians());
     let s0x = s0 * mu_x / (KX_OVER_KY * mu_y);
     mu * fz * -libm::expm1(-(sx / s0x).hypot(sy / s0)) / s_abs
 }
@@ -288,7 +288,7 @@ pub(crate) mod tests {
         let fy = |a: f64| on(&c, 4000.0, 15.0, a, 0.0, 1.0, 1.0).fy.abs() / peak;
         // Coutermarsh & Shoop's pea stone over its maximum at 2.5/5/10/15° (Fig. 15): 0.33/0.55/0.80/0.91.
         for (a, pea) in [(2.5, 0.33), (5.0, 0.55), (10.0, 0.80), (15.0, 0.91)] {
-            let law = -libm::expm1(-libm::tan(f64::to_radians(a)) / libm::tan(GRAVEL_ALPHA0));
+            let law = -libm::expm1(-libm::tan(f64::to_radians(a)) / libm::tan(GRAVEL_ALPHA0_DEG.to_radians()));
             assert!((fy(a) - law).abs() < 1e-9 && (fy(a) - pea).abs() < 0.01, "{a}: {}", fy(a));
         }
         let mut last = 0.0;
@@ -300,7 +300,7 @@ pub(crate) mod tests {
         assert!(last > 0.999 && last < 1.0, "{last}");
         // The longitudinal side takes the same law at its own level; half a share is halfway between the laws.
         let fx = |k: f64, g: f64| on(&c, 4000.0, 15.0, 0.0, k, 1.0, g).fx.abs() / (0.84 * 4000.0);
-        let s0x = libm::tan(GRAVEL_ALPHA0) * 0.84 / (KX_OVER_KY * 0.85);
+        let s0x = libm::tan(GRAVEL_ALPHA0_DEG.to_radians()) * 0.84 / (KX_OVER_KY * 0.85);
         assert!((fx(0.5, 1.0) - -libm::expm1(-(0.5 / 1.5) / s0x)).abs() < 1e-9);
         assert!((fx(0.05, 0.5) - (fx(0.05, 0.0) + fx(0.05, 1.0)) / 2.0).abs() < 1e-9);
         assert_eq!(gravel_share([GRAVEL_CLASS, 3], 0.25), 0.75);
