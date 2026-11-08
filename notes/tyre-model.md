@@ -780,7 +780,7 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
   0.902 (0.86-0.98); wet locked over peak 0.780 / 0.659, 0.546, 0.506 (0.64-0.67, 0.52-0.57, 0.49-0.52; 0.583, 0.552 with the
   constant Coulomb loss before 2026-11-08); wet locked 100/32 1.000 / 0.735 (0.56-0.81); wet peak 100/32 1.000 /
   0.956 (0.76-1.00). Contidrom (`tarmac-wet-80`, `tarmac-wet-KMH-worn`: `--tread 0.2`, key `stop_mu_x_4k`, the mean
-  braked peak of a stop; `tarmac-wet-80-3mm`: `--tread 0.375`): new 100 over 80 1.000 / 0.992 (0.97-1.0), 1.6 mm
+  braked peak of a stop; `tarmac-wet-80-3mm`: `--tread 0.375`): new 100 over 80 1.000 / 0.991 (0.97-1.0), 1.6 mm
   over new from 80 / 100 1.000 / 0.681, 0.543 (0.66-0.83, 0.49-0.55), 3 mm from 80 1.000 / 0.91 (0.87-0.91; the lab's
   NGP side holds the probed friction, so its tread does not move it). The car row from 100 km/h is not
   scored (`how` none): its locked run leaves the line (In game).
@@ -819,6 +819,11 @@ experimental-brush 49 → 52/99 PASS (ngp 33/99), before → camber thrust → c
 at 0°, as set (-3.9°/-1.2°) and -4° (`--setup`): slide at 0.880/0.875/0.876 g brush (0.880/0.875/0.875 before),
 ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilot's noise. With main's aligning rows
 merged: 52/106 (ngp 33/106), the ice row back at 0.807.
+
+Wet rows (2026-11-08, `tyre/wet-shape`, full run against 4bb4c042): experimental-brush 52/103 → 59/108 PASS (ngp
+33/103 → 35/108); MISS → PASS TRL wet locked over peak at 64 / 100 km/h 0.583 / 0.552 → 0.546 / 0.506; the five new
+wet rows (above) pass under the brush, ngp misses the three tread rows; every dry row and the brake, circle and coast
+rows unchanged.
 
 ### A per-wheel ABS in the brake test
 
