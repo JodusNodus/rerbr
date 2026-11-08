@@ -133,7 +133,11 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
   level's before); 21 (Falstone) 5.2-30.5 m of 3880, 4.4 m, 18742 placed, 125076 triangles. In view at
   start/Flugplatz/Karussell/Döttinger Höhe 0.70/0.54/0.20/0.81 M (without: 0.70/0.56/0.22/0.84 M). 44 is the
   Eifel's mix of conifers and broadleaves, 21 conifers only. Conversion 27 s, 4.2 GB peak; `beamng-stage` 2.8 MB to
-  5.1 MB with `rbr-render` linked, and it runs without a display (no GPU or window opened). Frame rate not measured.
+  5.1 MB with `rbr-render` linked, and it runs without a display (no GPU or window opened). Without `--trees-from`
+  the output is byte-identical to the converter before the trees (7dce8603^, all 10 files, 2026-11-08). Frame rate with
+  retail trees (the converted folder of 2026-11-08 20:23; `bench.py --stage 1654149 --car "Ford Fiesta Rally2"`, 3 x
+  90 s, 1920x1080 with no display output on, so relative only): avg 179.8 fps, 1 % low 154.9, GPU 5.27 ms, against the
+  bench's own scene 143.0 / 119.5 / 6.68 the same night; only the first 1.4 km (bench.py has no later start).
 - Captures (`viewer --camera EYE,DIRECTION`, the second triple a direction): start, Flugplatz (2.4 km), the
   Karussell approach (11.9 km), Döttinger Höhe (18.1 km), all with 0 missing textures.
 

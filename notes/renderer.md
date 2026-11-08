@@ -1368,6 +1368,9 @@ rain 7.57, 417 rain 7.25, 417 day 6.24, Peklo (133) snow 5.82. Live, one run eac
 Cars on 450 rain at 4K: Fiat 131 19.37 ms, Clio Rally3 18.08, GC8 18.14, Fiesta Rally2 17.77, Yaris 17.72, i20 WRC
 16.94. So: 450, heavy rain, 10:00, Fiat 131 Abarth, cockpit. Baseline (cachy, 3840x2160, Mailbox: radv on niri offers
 no Immediate): 54.7 fps, 1% low 42.2, 0.1% low 35.5, p50 18.26 ms, GPU 17.93 ms (GPU-bound), 1535 m driven.
+It needs a display output on (2026-11-08, sway, monitor asleep: `swaymsg -t get_outputs` empty): fullscreen then
+draws 1920x1080 to no screen, a `--size` window comes out 1x1 (bench.py fails the run), and a window whose output went
+away mid-run stopped drawing and never quit (bench.py ends a run after 420 s plus `--seconds`).
 Pacing and latency (2026-11-02): the perf log's `frame change` row (each frame's time against the one before) and
 `RBR_LATENCY=frames`' "any input -> on screen" (from every ms of the drive from the go until the first frame that read
 input after it was on screen, by Wayland's presentation feedback). SwayFX 0.6 (sway 1.12), same machine and scene, one
