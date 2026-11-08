@@ -188,6 +188,31 @@ fn flat_out_holds_the_top_speed_and_never_brakes() {
 }
 
 #[test]
+fn plan_takes_two_positive_rates() {
+    assert_eq!("8.5,6".parse(), Ok(Plan { lateral: 8.5, braking: 6.0 }));
+    assert!("8.5".parse::<Plan>().is_err());
+    assert!("8.5,-1".parse::<Plan>().is_err());
+    assert_eq!(Plan::DEFAULT, Plan { lateral: LATERAL, braking: BRAKING });
+}
+
+#[test]
+fn the_plan_scales_the_curve_limit_and_the_braking_and_the_grip_still_scales_it() {
+    // A hairpin at 40-50 m on a straight: its limit and the braking ramp before it set the target ahead of it.
+    let mut track: Vec<_> = (0..20).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    track[5].vectors[0].y = 30.0;
+    let base = driver(&track, 60.0);
+    let doubled = driver(&track, 60.0).with_plan(Plan { lateral: 2.0 * LATERAL, braking: 2.0 * BRAKING });
+    // Doubling both rates doubles v² everywhere on the plan (the cap at the top aside).
+    let (v0, v1) = (base.target_speed(0.0), doubled.target_speed(0.0));
+    assert!(v0 < 30.0, "{v0}");
+    assert!((v1 * v1 / (v0 * v0) - 2.0).abs() < 1e-3, "{v0} {v1}");
+    // Half the grip on the doubled plan is the default plan.
+    assert_eq!(doubled.with_grip(0.5).target_speed(0.0), v0);
+    // The default plan is the constants'.
+    assert_eq!(driver(&track, 60.0).with_plan(Plan::DEFAULT).target_speed(0.0), v0);
+}
+
+#[test]
 fn circle_takes_a_centre_and_a_positive_radius() {
     assert_eq!("-260,120,40".parse(), Ok(Circle { center: [-260.0, 120.0], radius: 40.0 }));
     assert!("1,2".parse::<Circle>().is_err());

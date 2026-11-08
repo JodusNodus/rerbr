@@ -186,6 +186,10 @@ pub fn drive(
     if let Some(ramp) = measure.circle_ramp {
         driver = driver.with_circle_ramp(ramp);
     }
+    if let Some(plan) = measure.plan {
+        eprintln!("autopilot: the plan's lateral {} m/s², braking {} m/s² (--plan)", plan.lateral, plan.braking);
+        driver = driver.with_plan(plan);
+    }
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
