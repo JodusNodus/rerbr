@@ -146,22 +146,22 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   settings' sections move at load and at each save, a continued championship's car keys at its load. A car both
   sources have stays listed twice (user decision 2026-11-07), one model of a championship field
   (`class_cars`); the detail panel's Source row says which copy it is.
-- Force feedback (2026-11-08): the Controls page says what Strength does ("how heavy the wheel feels. All cars."),
-  the global row reads "Sensitivity for cars without their own", and each listed car shows "maxed out: <surface>
-  N %" at its own sensitivity for each surface with 20 s of tracked load (`[ffb_load]`, `ngp.md` "Force feedback";
-  hover: adjust in the pause menu while driving). The strength is written to the file on change; the save carries
-  `[ffb] strength`, `[ffb_cars]` and `[ffb_load]` over from the file, and the form reloads them when the viewer exits.
-  `--ffb-sensitivity` is unchanged.
+- Force feedback (2026-11-08): the Controls page says what Strength does ("how heavy the wheel feels, for every
+  car"), the global row reads "Sensitivity for cars without their own", and a listed car's sensitivity says on hover
+  how often the wheel maxed out at it over the car's tracked load on that surface (20 s or more, `[ffb_load]`,
+  `ngp.md` "Force feedback"), with a caption to adjust in the pause menu while driving. The strength is written to the
+  file on change; the save carries `[ffb] strength`, `[ffb_cars]` and `[ffb_load]` over from the file, and the form
+  reloads them when the viewer exits. `--ffb-sensitivity` is unchanged.
 - The pause menu's Force feedback page (`hud::ffb_page`, with a wheel, once FFB1 says the surface): Sensitivity (the
-  car's percentage), Strength (every car, 0-100 % by 5, live through `Wheel::set_strength`, `[ffb] strength`), "Use
-  suggested (X %)" (sets Sensitivity on the player's select; shown with 20 s of load and a suggestion other than the
-  sensitivity), Reset (every car's percentage) and Done, with a line saying what the selected row does. Under them a
-  380×110 graph: NGP's curve at the percentage shown (wheel force over steering load), the car's stored load on the
-  surface plus this drive's as bars, the maxed-out region (force > 95 %) shaded, and a legend. Then one advice line
-  from one criterion, the sensitivity against the suggestion (`load::advice`: under 20 s "drive a bit more"; below
-  0.85× raise, worded "maxes out often" only from 5 % maxed out; above 1.15× lower or raise Strength; else good),
-  each with the maxed-out share, and a guide: set Strength once, then Sensitivity per car until the wheel rarely maxes
-  out. Nothing changes without the player. `viewer --screenshot --pause-menu dde` draws it (no wheel needed).
+  car's percentage), "Use suggested (X %)" (sets Sensitivity on the player's select; shown with 20 s of load and a
+  suggestion other than the sensitivity; "the most" at 500 %), Strength (every car, 0-100 % by 5, live through
+  `Wheel::set_strength`, `[ffb] strength`), "Use the global sensitivity" (the car's own dropped) and Done, with a line
+  saying what the selected row does. Under them a 420×110 graph: NGP's curve at the percentage shown (wheel force over
+  steering load), the car's stored load on the surface plus this drive's as bars (square-root heights), the
+  maxed-out region (force > 95 %) shaded. Then one status line (`load::advice`, in order: under 20 s drive more;
+  maxed out 5 % or more, raise to the suggestion; above 1.2× the suggestion, lower or raise Strength; else good) and a
+  guide: set Strength once, then Sensitivity per car until the wheel rarely maxes out. Nothing changes without the
+  player. `viewer --screenshot --pause-menu dde` draws it (no wheel needed).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.

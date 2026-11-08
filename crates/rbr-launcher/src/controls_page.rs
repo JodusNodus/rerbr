@@ -123,20 +123,20 @@ fn ffb_cars_ui(
         for (key, values) in ffb_cars.cars.iter_mut() {
             ui.horizontal(|ui| {
                 ui.label(car_display(key, cars));
-                for (value, surface) in values.iter_mut().zip(ffb::SURFACES) {
+                for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
+                    let help = match maxed_out(loads, key, k, *value) {
+                        Some(n) => format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here."),
+                        None => SENSITIVITY_HELP.to_owned(),
+                    };
                     changed |= ui
                         .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                        .on_hover_text(SENSITIVITY_HELP)
+                        .on_hover_text(help)
                         .changed();
                 }
                 if ui.small_button("Remove").clicked() {
                     remove = Some(key.clone());
                 }
             });
-            if let Some(line) = maxed_out(loads, key, *values) {
-                ui.label(RichText::new(line).color(Color32::GRAY).small())
-                    .on_hover_text("Adjust in the pause menu while driving.");
-            }
         }
         if let Some(key) = remove {
             ffb_cars.cars.remove(&key);
@@ -170,6 +170,10 @@ fn ffb_cars_ui(
                 changed |= n > 0;
             }
         });
+        ui.label(
+            RichText::new("Hover a value for how often the wheel maxed out; adjust in the pause menu while driving.")
+                .color(Color32::GRAY),
+        );
         if let Some(status) = &*ffb_status {
             ui.label(RichText::new(status).color(Color32::GRAY));
         }
@@ -179,17 +183,11 @@ fn ffb_cars_ui(
     });
 }
 
-/// How often the wheel maxes out at car `key`'s `values` over its tracked driving (`ffb::load`), on each surface with
-/// enough of it: "maxed out: gravel 12 %, tarmac 3 %".
-fn maxed_out(loads: &ffb::Loads, key: &str, values: [i32; 3]) -> Option<String> {
-    let parts: Vec<String> = (0..3)
-        .filter_map(|k| {
-            let load = loads.of(key, k).filter(|l| l.seconds() >= ffb::load::ADVICE_SECONDS)?;
-            let share = load.maxed_out(values[k])?;
-            Some(format!("{} {} %", ffb::SURFACES[k], (share * 100.0).round() as i32))
-        })
-        .collect();
-    (!parts.is_empty()).then(|| format!("maxed out: {}", parts.join(", ")))
+/// How often the wheel maxed out, percent, at `value` over car `key`'s tracked driving on `surface` (`ffb::load`),
+/// with enough of it.
+fn maxed_out(loads: &ffb::Loads, key: &str, surface: usize, value: i32) -> Option<i32> {
+    let load = loads.of(key, surface).filter(|l| l.seconds() >= ffb::load::ADVICE_SECONDS)?;
+    load.maxed_out(value).map(|share| (share * 100.0).round() as i32)
 }
 
 /// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
@@ -240,7 +238,7 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
 /// NGP's force-feedback sensitivity per surface (`ffb::Options::sensitivity`), in its readme's words.
 const SENSITIVITY_HELP: &str = "How much of a car's steering force fits before the wheel maxes out. Higher: lighter, \
      more detail. Lower: heavier, maxes out sooner.";
-const STRENGTH_HELP: &str = "Strength: how heavy the wheel feels. All cars.";
+const STRENGTH_HELP: &str = "Strength: how heavy the wheel feels, for every car.";
 /// The rows' label column and the live bars' width.
 const ROW_LABEL: f32 = 110.0;
 const BAR: f32 = 110.0;
@@ -750,15 +748,15 @@ mod tests {
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };
 
-    /// The per-car line: each surface with 20 s of driving, at the car's own sensitivity there.
+    /// The per-car hover: each surface with 20 s of driving, at the car's own sensitivity there.
     #[test]
-    fn the_per_car_line_says_how_often_the_wheel_maxes_out() {
+    fn the_per_car_hover_says_how_often_the_wheel_maxed_out() {
         let loads = ffb::Loads::parse(
             "[ffb_load]\nrsf-81 gravel = 0,0,0,0,0,0,0,0,200\nrsf-81 tarmac = 0,300\nrsf-81 snow = 10\n",
         );
         // x 42.5 maxes out at 30 %, not at 100 %; snow has 1 s only.
-        assert_eq!(maxed_out(&loads, "rsf-81", [30, 100, 100]), Some("maxed out: gravel 100 %, tarmac 0 %".into()));
-        assert_eq!(maxed_out(&loads, "rsf-1", [100; 3]), None);
+        assert_eq!((maxed_out(&loads, "rsf-81", 0, 30), maxed_out(&loads, "rsf-81", 1, 100)), (Some(100), Some(0)));
+        assert_eq!((maxed_out(&loads, "rsf-81", 2, 100), maxed_out(&loads, "rsf-1", 0, 100)), (None, None));
     }
 
     fn moved(object: Object, up: bool) -> Moved {
