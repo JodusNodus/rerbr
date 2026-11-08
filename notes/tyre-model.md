@@ -575,7 +575,7 @@ experimental-brush before → after the TRL friction curve and wet Coulomb loss:
 locked over peak at 64 and 100 km/h, wet at 32, wet locked 100/32, peak Fx load exponent, car locked over threshold
 from 50 km/h; PASS → MISS combined at 4° (0.332 → 0.349, band 0.29-0.34, fig ±0.05); still MISS peak 100/32 0.909 →
 0.968 (0.97), wet at 64/100 0.766/0.757 → 0.583/0.552 (0.52-0.57/0.49-0.52; 0.558/0.523 in the lab on NGP's wet
-material), peak slip angle 8.75° → 9.5° on this wheel (5.6-8.5). The car row from 100 km/h measures a locked run that
+material), peak slip angle 8.75° → 9.5° on this wheel (5.6-8.5). The car row from 100 km/h is not scored (`how` none): its locked run
 leaves the line (In game).
 
 
@@ -584,7 +584,10 @@ leaves the line (In game).
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
   deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
-  The autopilot's pace is NGP's within 1 %; a driver's view is the next check.
+  The autopilot is 1.6-3.2 % faster on the brush than on NGP (map 41 tarmac, `--autopilot`, finish times ngp /
+  brush: Fiesta Rally2 309.01 / 304.02 s, Celica ST185 310.91 / 304.50, Golf II 324.24 / 313.81, 131 Abarth 323.35 /
+  315.46; 2026-11-08); main's brush before the TRL friction curve gave the same within 0.1 %, so the gap is older than
+  that curve. A driver's view is the next check.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
   stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
   7.5 bar (Meccanica 2023).
