@@ -490,7 +490,9 @@ Sources:
   combined slip of a Goodyear Wrangler RT/S P225/75R15 (NHTSA data, 48 km/h, 2.4 bar, 5.3-5.5 kN). A road
   all-terrain tyre: the only measured combined-slip data found.
 - Rally: ChassisSim, "The vehicle dynamics of rallying" (Nowlan, blog PDF): a 1300 kg AWD car at 1 g, tarmac peak slip
-  6° (model inputs, "in the ball park"); a road racing tyre loses 10-20 % past the peak. Pirelli P Zero RA datasheet:
+  6° (model inputs, "in the ball park"); a road racing tyre loses 10-20 % past the peak; its "rally tyre" (Fig 5b, an
+  input curve, peak 6°) keeps 0.97/0.94/0.90/0.87 at 8.6/11.4/17.1/20°, its "road course tyre" (Fig 5a) 0.73 at 8.4°;
+  its only measured data are Croft-White's (Fig 2). Pirelli P Zero RA datasheet:
   tread windows 20-60 °C (RA9) to 70-110 °C (RA5), hot 2.0-2.5 bar. Michelin 2023-24 pressures: asphalt rally hot
   2.0-2.3 bar, cold at least 1.6. FIA tread rule (2006 copy): at least 17 % grooves of 5.5 mm. Track cars on
   semi-slicks (Darkside Developments, VBOX, single-session peaks): 1.32-1.53 g lateral, 1.17-1.47 g braking.
@@ -509,7 +511,7 @@ Comparison: NGP and brush-v1 on the Fiesta Rally2 at 4 kN (`racing` example; 15 
 | Peak κ | A 0.08-0.12 (fig); B 0.10-0.12 drive, 0.13-0.18 brake (fig); E 0.10-0.11 | 0.094-0.139 | 0.16 | 0.12 drive / 0.10 brake | no |
 | Cα ∝ Fz^m | A 0.87 (MF); B ~0.56 (fig ±30 %) | 0.47-0.69 | 0.36 | 0.64 | no (spread) |
 | Cα/Fz, Kx/Fz per rad | A 31-34, 41-47 (MF); B 35-39 at 664 N (fig ±30 %) | Kx/Fz 18.4-32.9 | 17.6, 14.1 | 17.6, 22.0 | no: at 0.6-1.1 kN; scaled to 4 kN by Fz^-0.4 (inferred) ~19 |
-| Lateral over peak | A 0.95 at 17° (fig ±0.03); B 0.96 at 12° (fig); ChassisSim 0.8-0.9 (quoted) | 0.73-0.83 full slide | 0.992 at 12°, 0.968 at 17° | 0.974 / 0.937 (11.2 m/s: 0.979 / 0.945); 0.876 at 30° | up: brush-v1 is inside the racing range to 17° |
+| Lateral over peak | A 0.95 at 17° (fig ±0.03); B 0.96 at 12° (fig); ChassisSim rally input curve 0.90 at 17° | 0.73-0.83 full slide | 0.992 at 12°, 0.968 at 17° | 0.974 / 0.937 (11.2 m/s: 0.979 / 0.945); 0.876 at 30° | up: brush-v1 is inside the racing range to 17° |
 | Longitudinal over peak | A 0.90-0.95 at κ 0.5-1 (fig ±0.05); B 0.93 at κ 0.2 (fig) | 0.71-0.85 at κ 0.5-1 (asymptote 0.65) | 0.920 at κ 0.5, 0.781 at 1 | 0.861 / 0.786 (11.2 m/s: 0.873 / 0.798) | up: brush-v1 0.05-0.15 below racing |
 | Combined: Fy(25 % slip)/Fy(0) | none open for racing; G (road) 0.2-0.3 at 2°, 0.29-0.34 at 4° (fig ±0.05); Fy/\|F\| at 4° ~0.26 | | 0.40 at 2°, 0.46 at 4°; Fy/\|F\| 0.35 | 0.28, 0.33; Fy/\|F\| 0.269 (before the split 0.20, 0.24; 0.196) | none from racing; brush-v1 now inside G |
 | Relaxation length | Hoosier R25B 0.49-0.50 m (Cal Poly senior project, search excerpt only, its 0.55 s does not fit 40 km/h): not used | 0.12-0.45 m | 0.17 m | 0.20 m | unknown |
