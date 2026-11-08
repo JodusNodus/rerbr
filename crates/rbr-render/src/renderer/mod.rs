@@ -50,7 +50,7 @@ pub(crate) use meshes::mesh_bounds;
 use meshes::{GpuMesh, MeshBuffers};
 pub use offscreen::ReadbackError;
 use pipelines::Context;
-pub(crate) use pipelines::{texture_entry, vertex_layout, SHADER, TEXTURE};
+pub(crate) use pipelines::{cutout, texture_entry, vertex_layout, SHADER, TEXTURE};
 #[cfg(test)]
 pub(crate) use reflection::BLIT;
 use reflection::{Reflection, ScreenReflection};

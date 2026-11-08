@@ -2355,6 +2355,7 @@ dependencies = [
  "bcdec_rs",
  "rbr-btb",
  "rbr-formats",
+ "rbr-render",
  "ruzstd",
  "texpresso",
  "zip",
