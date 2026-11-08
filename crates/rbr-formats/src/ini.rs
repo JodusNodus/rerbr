@@ -191,7 +191,10 @@ mod tests {
             set_value(file, "camera", "head", "off"),
             "[ffb]\nenabled = 1\nStrength = 1\n\n[camera]\nview = chase\nhead = off\n"
         );
-        assert_eq!(set_value("[ffb]\nrate = 9\n\n[x]\n", "ffb", "auto", "0"), "[ffb]\nrate = 9\nauto = 0\n\n[x]\n");
+        assert_eq!(
+            set_value("[ffb]\nrate = 9\n\n[x]\n", "ffb", "inverse", "0"),
+            "[ffb]\nrate = 9\ninverse = 0\n\n[x]\n"
+        );
         assert_eq!(set_value("[x]\na = 1\n", "ffb", "strength", "0.5"), "[x]\na = 1\n\n[ffb]\nstrength = 0.5\n");
         assert_eq!(set_value("", "ffb", "strength", "0.5"), "[ffb]\nstrength = 0.5\n");
     }

@@ -250,26 +250,25 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
   `1 - (1 - |f|)^(p0 / p)` (`ffb::reshape`, exact for NGP's curve: `S` scales by `p / p0`); NGP's car keeps `p0`
   until the next drive, restarts included. A Yaris (RSF car 107) at the global 280 % gravel was heavier than RSF's
   own 352 % for it (user report, 2026-11-03).
-- Automatic sensitivity (ours, 2026-11-08; `rbr_render::ffb::auto`, `AutoCars`; launcher `[ffb] auto`, default 1):
+- Steering load (ours, 2026-11-08; `rbr_render::ffb::load`, `Loads`, `[ffb_load]`): tracked and shown, never applied
+  (user decision 2026-11-08: no setting changes by itself).
   - Why: the cars' steering torque differs about 4× at the same grip. r40 circle on map 85 tarmac, 24 RSF cars: the
     filtered `T` at 0.5 g is 44 (Porsche 911 SC RS, S 75) to 182-184 (Fiesta and GR Yaris Rally2, S 105); at 100 %
     the force there is 0.73 (Escort Mk II) to 0.99; the steps above 0.3 g with the force over 0.95 are 0 for the
     classic cars, 0.36-0.46 for R5 and WRC, 0.75-0.89 for Rally2 and Rally3 (local scripts `ffb-cars/runs.py`,
     `analyse2.py`; `S` per car `ForceFeedbackSensitivity_NGP`, 75-130).
   - Statistic: `x = |T| 100 / S_car = (p0 / 100) ln(1 - |f|) / ln 0.975`, from FFB1's force `f` at the started
-    percentage `p0` (`|f| ≥ 0.9999` skipped); a car's reference is the 90th percentile of `x` over the kept frames
-    (live NGP drive, racing, not paused, not a replay, above 10 m/s), per surface. Check (autopilot, map 41 tarmac and
-    RSF 104 gravel, 6 cars, 150000 steps, `stage_runs.py`): the p90 is 0.66-0.75 (tarmac) and 0.70-0.84 (gravel) of
-    the car's circle `x` at 0.5 g, within about ±10 % against the raw 4×. Smoke test (viewer, Fiesta Rally2, 417
-    tarmac, autopilot): `x` 96.6 at `p0` 250 and at 353 alike.
-  - Rule: `p = 100 x ln 0.975 / ln(1 - 0.5)` (≈ 3.653 x, the reference at force 0.5), times the player's trim / 100
-    (50-200 %), clamped to 10-1000 %. The launcher passes it as `--ffb-sensitivity` (`ffb::launch`); a surface with no
-    reference takes the manual one (the car's `[ffb_cars]`, else the global).
-  - Learning (`ffb::Session`): no reference at the start, after 60 s kept the drive's p90 is the reference and the
-    wheel moves to its percentage over 3 s (`reshape`, NGP keeps `p0`), once per drive; with one, no change during
-    the drive. At the drive's end (stage result, restart, exit) with 20 s kept it blends into the stored one by
-    seconds, resting on at most 600 s, written to `[ffb_auto]` (`x/seconds` per surface). Not split by physics
-    profile: the brush's torque is about 10 % lighter and the blend absorbs it.
+    percentage `p0` (`|f| ≥ 0.9999` skipped), over kept frames (live NGP drive, racing, not paused, not a replay,
+    above 10 m/s). The force at any percentage `p` follows from `x` alone: `1 - 0.975^(100 x / p)`. Smoke test
+    (viewer, Fiesta Rally2, 417 tarmac, autopilot): the same `x` (p90 96.6) at `p0` 250 and 353.
+  - Stored per car and surface (`<car key> <surface> = ...`): tenths of a second per bin of 5 in `x`, 0-400 and one
+    bin past it. A drive with 20 s kept adds its own at its end (stage result, restart, exit); past 600 s the sum is
+    scaled down to 600 s, so recent driving weighs more. Not split by physics profile (the brush's torque is about
+    10 % lighter).
+  - Shown: "maxed out" is the share with the force over 0.95 at the sensitivity shown; "suggested" puts the 90th
+    percentile at force 0.5 (`p = 100 x ln 0.975 / ln 0.5` ≈ 3.653 x, to 5 %, within 10-500 %). Check (autopilot,
+    map 41 tarmac and RSF 104 gravel, 6 cars, 150000 steps, `stage_runs.py`): the p90 is 0.66-0.75 (tarmac) and
+    0.70-0.84 (gravel) of the car's circle `x` at 0.5 g, within about ±10 % against the raw 4×.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only

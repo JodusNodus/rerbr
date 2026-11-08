@@ -723,7 +723,7 @@ impl Form {
         args.splice(live..live, viewer_extra);
         args.extend(extra);
         args.extend(["--ngp-physics".to_owned(), self.ngp_archive()]);
-        let sensitivity = rbr_render::ffb::launch(&self.ffb, &self.ffb_cars, &self.ffb_auto, Some(&car.key));
+        let sensitivity = self.ffb_cars.of(Some(&car.key), self.ffb.sensitivity);
         if sensitivity != [100; 3] {
             let [gravel, tarmac, snow] = sensitivity;
             args.extend(["--ffb-sensitivity".to_owned(), format!("{gravel},{tarmac},{snow}")]);
@@ -818,7 +818,7 @@ impl Form {
                 let saved = crate::settings::read_settings(&self.paths.settings);
                 self.head = !saved.camera.head_off;
                 self.ffb_cars = saved.ffb_cars;
-                self.ffb_auto = saved.ffb_auto;
+                self.ffb_load = saved.ffb_load;
                 self.ffb.settings.strength = saved.ffb.settings.strength;
                 if !replay {
                     self.championship.stage_closed(&self.here(), &self.championship.profile.clone());
@@ -879,7 +879,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 10] = [
+    const COMMAND_CASES: [(&str, &str); 9] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -914,16 +914,10 @@ mod tests {
              sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n",
         ),
         (
-            "force feedback manual, a learned reference unused",
-            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\nauto = 0\n\
-             sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n\
-             [ffb_auto]\nrsf-24 = 120.0/600, 120.0/600, 0/0\n[ffb_trim]\nrsf-24 = 110,100,100\n",
-        ),
-        (
-            "force feedback automatic, learned on gravel and tarmac",
+            "force feedback per car, its steering load tracked",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\n\
              sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n\
-             [ffb_auto]\nrsf-24 = 120.0/600, 120.0/600, 0/0\n[ffb_trim]\nrsf-24 = 110,100,100\n",
+             [ffb_load]\nrsf-24 gravel = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6000\n",
         ),
     ];
 
