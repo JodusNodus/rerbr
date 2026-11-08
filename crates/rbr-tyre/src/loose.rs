@@ -181,6 +181,7 @@ pub(crate) mod tests {
             surf_s_cal: 1.0,
             surf_k_cal: 1.0,
             temp_grip_cal: 1.0,
+            load_level: brush::LoadLevel::default(),
         };
         let levels = Levels {
             load: vec![2000.0, 4000.0, 6000.0],

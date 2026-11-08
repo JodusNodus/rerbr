@@ -1,14 +1,15 @@
 //! The brush's calibration on one wheel: NGP's peak forces and cornering slope, swept with its own patch forces
 //! (`rbr_physics::tyre::patch_forces`) from the wheel's tables at the nominal load, then solved for
-//! ([`crate::calibrate`]). The point is a unit surface (static and kinetic friction 1), so the game scales the brush's
-//! friction by NGP's static friction there; the stiffness factor is 1, and the tread new and at the temperature of the
-//! rubber's best friction.
+//! ([`crate::calibrate`]), and at each load of the axis for the brush's load level. The point is a unit surface (static
+//! friction 1; kinetic the brush's own Coulomb ratio, [`HARD_KINETIC`]), so the game scales the brush's friction by
+//! NGP's static friction there; the stiffness factor is 1, and the tread new and at the temperature of the rubber's
+//! best friction.
 
 use rbr_physics::tyre::friction_limits::BlendPair;
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 
-use crate::brush::Calibration;
-use crate::calibrate::{calibrate, CalPoint, CalTargets};
+use crate::brush::{Calibration, MU_C_OVER_S};
+use crate::calibrate::{calibrate, load_level, CalPoint, CalTargets};
 use crate::loose::{self, Levels, Loose};
 use crate::Wheel;
 
@@ -16,6 +17,13 @@ use crate::Wheel;
 const SPEED: f64 = 15.0;
 /// The nominal load's entry in the load axis.
 const NOMINAL_LOAD: usize = 3;
+/// The kinetic friction of the brush's sweeps (static 1): the brush's own Coulomb over static ratio. NGP's driving peak
+/// takes the kinetic friction at light loads (Fiesta Rally2, kinetic 1 against 0.8: 5 % higher at 1 kN, 3 % at 2 kN,
+/// the same from 3 kN), so a sweep at kinetic 1 put the brush's light-load longitudinal level above NGP's on tarmac
+/// (1.04/1.30 = 0.8).
+const HARD_KINETIC: f32 = MU_C_OVER_S as f32;
+/// The loose tyre's sweeps' kinetic friction: the unit surface.
+const LOOSE_KINETIC: f32 = 1.0;
 
 /// The brush's calibration for `w`.
 pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
@@ -29,7 +37,7 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
         _ => best,
     });
     let t_cal = f64::from(best.ok_or_else(|| fail("no rubber friction table"))?.1);
-    let targets = targets(w, fz0)?;
+    let nominal = targets(w, fz0, HARD_KINETIC)?;
     let point = CalPoint {
         t_cal,
         d_cal: 1.0,
@@ -41,27 +49,36 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
         surf_k_cal: 1.0,
         temp_grip_cal: 1.0,
     };
-    Ok(calibrate(&targets, &point))
+    let cal = calibrate(&nominal, &point);
+    // The axis's positive loads and half the first (NGP's tables run on to the load 0 entry); past the ends the power
+    // laws alone.
+    let loads = load_targets(w, HARD_KINETIC)?;
+    let below = targets(w, loads[0].fz0 as f32 / 2.0, HARD_KINETIC)?;
+    Ok(Calibration { load_level: load_level(&cal, &[&[below], &loads[..]].concat(), &point), ..cal })
+}
+
+/// NGP's targets at each positive load of the wheel's axis, at the kinetic friction `kinetic`.
+fn load_targets(w: &Wheel, kinetic: f32) -> Result<Vec<CalTargets>, String> {
+    w.load_axis.iter().filter(|&&fz| fz > 0.0).map(|&fz| targets(w, fz, kinetic)).collect()
 }
 
 /// The loose-surface tyre for `w` on its brush calibration `cal` ([`crate::loose`]): NGP's free rolling peaks at each
 /// positive load of the wheel's axis, on the unit surface, and its cornering slope at the nominal load.
 pub fn loose(w: &Wheel, cal: &Calibration) -> Result<Loose, String> {
     let mut levels = Levels::default();
-    for &fz in w.load_axis.iter().filter(|&&fz| fz > 0.0) {
-        let t = targets(w, fz)?;
+    for t in load_targets(w, LOOSE_KINETIC)? {
         levels.load.push(t.fz0);
         levels.lateral.push(t.peak_lat / t.fz0);
         levels.longitudinal.push(t.peak_lon / t.fz0);
     }
-    let slope = targets(w, cal.fz0 as f32)?.fit_lat;
+    let slope = targets(w, cal.fz0 as f32, LOOSE_KINETIC)?.fit_lat;
     Ok(loose::calibrate(cal, levels, slope, SPEED))
 }
 
 /// NGP's targets at `fz0`: the lateral peak over 0 to 30° of slip angle, the least-squares cornering slope over 0 to
-/// 2°, and the longitudinal peak over a slip ratio of 0 to 1 when driving.
-fn targets(w: &Wheel, fz0: f32) -> Result<CalTargets, String> {
-    let base = patch_at(w, fz0)?;
+/// 2°, and the longitudinal peak over a slip ratio of 0 to 1 when driving, at the kinetic friction `kinetic`.
+fn targets(w: &Wheel, fz0: f32, kinetic: f32) -> Result<CalTargets, String> {
+    let base = PatchInput { kinetic_friction: kinetic, ..patch_at(w, fz0)? };
     let at = |vlat: f64, vlong: f64, spin: f64| -> PatchForces {
         let (vlat, vlong) = (vlat as f32, vlong as f32);
         patch_forces(&PatchInput {
@@ -162,7 +179,7 @@ pub(crate) mod tests {
     fn the_brush_takes_ngp_s_lateral_peak_and_slope_at_the_nominal_load() {
         let w = wheel();
         let cal = calibration(&w).unwrap();
-        let t = targets(&w, 4000.0).unwrap();
+        let t = targets(&w, 4000.0, HARD_KINETIC).unwrap();
         assert_eq!((cal.fz0, cal.t_cal, cal.pf_cal, cal.surf_s_cal), (4000.0, 350.0, 1.0, 1.0));
         let lateral = |alpha: f64| {
             let x = EvalInput {
@@ -193,16 +210,52 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_brush_takes_ngp_s_peaks_at_each_load() {
+        let w = wheel();
+        let cal = calibration(&w).unwrap();
+        assert_eq!(cal.load_level.load[..cal.load_level.n], [500.0, 1000.0, 2500.0, 4000.0, 6000.0, 8000.0]);
+        let at = |fz: f64, vy: f64, vx: f64, spin: f64| EvalInput {
+            fz,
+            half_length: 0.05,
+            vx,
+            vy,
+            spin,
+            radius: 1.0,
+            bulk_temp: 350.0,
+            tread_remaining: 1.0,
+            pressure: 0.0,
+            pressure_factor: 1.0,
+            wetness: 0.0,
+            hydroplaning: false,
+            temp_grip: 1.0,
+            surf_static: 1.0,
+            surf_kinetic: 1.0,
+        };
+        for fz in [500.0, 1000.0, 2500.0, 6000.0, 8000.0] {
+            let t = targets(&w, fz as f32, HARD_KINETIC).unwrap();
+            let lat = (0..=300)
+                .map(|k| (f64::from(k) * 0.1).to_radians())
+                .map(|a| eval(&at(fz, SPEED * a.sin(), -SPEED * a.cos(), SPEED * a.cos()), &cal).fy.abs())
+                .fold(0.0, f64::max);
+            let lon = (0..=200)
+                .map(|k| eval(&at(fz, 0.0, -SPEED, (1.0 + f64::from(k) * 0.005) * SPEED), &cal).fx.abs())
+                .fold(0.0, f64::max);
+            assert!((lat / t.peak_lat - 1.0).abs() < 0.002, "{fz} lateral {lat} NGP {}", t.peak_lat);
+            assert!((lon / t.peak_lon - 1.0).abs() < 0.002, "{fz} longitudinal {lon} NGP {}", t.peak_lon);
+        }
+    }
+
+    #[test]
     fn the_loose_tyre_takes_ngp_s_peaks_at_each_load_and_its_slope() {
         let w = wheel();
         let cal = calibration(&w).unwrap();
         let l = loose(&w, &cal).unwrap();
         assert_eq!(l.levels.load, [1000.0, 2500.0, 4000.0, 6000.0, 8000.0]);
         for (k, &fz) in l.levels.load.iter().enumerate() {
-            let t = targets(&w, fz as f32).unwrap();
+            let t = targets(&w, fz as f32, LOOSE_KINETIC).unwrap();
             assert_eq!((l.levels.lateral[k], l.levels.longitudinal[k]), (t.peak_lat / fz, t.peak_lon / fz));
         }
-        let slope = targets(&w, 4000.0).unwrap().fit_lat;
+        let slope = targets(&w, 4000.0, LOOSE_KINETIC).unwrap().fit_lat;
         assert!((crate::loose::cornering_slope(&l, SPEED) / slope - 1.0).abs() < 1e-9);
     }
 

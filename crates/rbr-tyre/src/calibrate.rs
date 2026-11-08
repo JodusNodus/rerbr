@@ -9,7 +9,7 @@
 //! and the Coulomb over static ratio (`MU_C_OVER_S`) are published values, not
 //! solved.
 
-use crate::brush::{eval, Calibration, EvalInput, KX_OVER_KY, MU_C_OVER_S};
+use crate::brush::{eval, Calibration, EvalInput, LoadLevel, KX_OVER_KY, LOAD_POINTS, MU_C_OVER_S};
 
 /// The nominal operating point every factor is normalised to: the tread
 /// temperature, tread remaining, pressure and NGP's stiffness factor at it,
@@ -57,6 +57,7 @@ fn trial_cal(cy0: f64, mu_ys: f64, mu_xs: f64, t: &CalTargets, p: &CalPoint) -> 
         surf_s_cal: p.surf_s_cal,
         surf_k_cal: p.surf_k_cal,
         temp_grip_cal: p.temp_grip_cal,
+        load_level: LoadLevel::default(),
     }
 }
 
@@ -105,18 +106,22 @@ fn lon_input(kappa: f64, v: f64, t: &CalTargets, p: &CalPoint) -> EvalInput {
 /// Lateral peak over a fine grid and the least-squares slope over alpha <=
 /// 2 deg.
 fn lat_peak_fit(cy0: f64, mu_ys: f64, t: &CalTargets, p: &CalPoint) -> (f64, f64) {
-    let cal = trial_cal(cy0, mu_ys, 1.0, t, p);
+    lat_peak_fit_of(&trial_cal(cy0, mu_ys, 1.0, t, p), t, p)
+}
+
+/// [`lat_peak_fit`] of `cal` at the targets' load.
+fn lat_peak_fit_of(cal: &Calibration, t: &CalTargets, p: &CalPoint) -> (f64, f64) {
     let mut peak = 0.0f64;
     let mut a = 0.0f64;
     while a <= 30.0 {
-        peak = peak.max(eval(&lat_input(a.to_radians(), t.v, t, p), &cal).fy.abs());
+        peak = peak.max(eval(&lat_input(a.to_radians(), t.v, t, p), cal).fy.abs());
         a += 0.05;
     }
     let (mut sxy, mut sxx) = (0.0, 0.0);
     let mut k = 1;
     while k as f64 * 0.25 <= 2.0 + 1e-9 {
         let alpha = k as f64 * 0.25 * std::f64::consts::PI / 180.0;
-        let f = eval(&lat_input(alpha, t.v, t, p), &cal).fy.abs();
+        let f = eval(&lat_input(alpha, t.v, t, p), cal).fy.abs();
         sxy += alpha * f;
         sxx += alpha * alpha;
         k += 1;
@@ -126,11 +131,15 @@ fn lat_peak_fit(cy0: f64, mu_ys: f64, t: &CalTargets, p: &CalPoint) -> (f64, f64
 
 /// Longitudinal drive-side peak over a fine grid.
 fn lon_peak(cy0: f64, mu_xs: f64, t: &CalTargets, p: &CalPoint) -> f64 {
-    let cal = trial_cal(cy0, 1.0, mu_xs, t, p);
+    lon_peak_of(&trial_cal(cy0, 1.0, mu_xs, t, p), t, p)
+}
+
+/// [`lon_peak`] of `cal` at the targets' load.
+fn lon_peak_of(cal: &Calibration, t: &CalTargets, p: &CalPoint) -> f64 {
     let mut peak = 0.0f64;
     let mut k = 0.0f64;
     while k <= 1.0 {
-        peak = peak.max(eval(&lon_input(k, t.v, t, p), &cal).fx.abs());
+        peak = peak.max(eval(&lon_input(k, t.v, t, p), cal).fx.abs());
         k += 0.005;
     }
     peak
@@ -167,6 +176,19 @@ pub fn calibrate(t: &CalTargets, p: &CalPoint) -> Calibration {
     let mu_ys = scale_to(t.peak_lat, mu_ys, &|m| lat_peak_fit(cy0, m, t, p).0);
     let mu_xs = scale_to(t.peak_lon, 1.3, &|m| lon_peak(cy0, m, t, p));
     trial_cal(cy0, mu_ys, mu_xs, t, p)
+}
+
+/// The [`LoadLevel`] that puts `cal`'s free rolling peaks (lateral, longitudinal driving) on the targets' at each of
+/// their loads (rising; the first [`LOAD_POINTS`]): each multiplier solved alone, as the nominal point's level is.
+pub fn load_level(cal: &Calibration, loads: &[CalTargets], p: &CalPoint) -> LoadLevel {
+    let mut level = LoadLevel { n: loads.len().min(LOAD_POINTS), ..LoadLevel::default() };
+    for (k, t) in loads.iter().take(LOAD_POINTS).enumerate() {
+        let at = |y: f64, x: f64| Calibration { load_level: LoadLevel::constant(y, x), ..*cal };
+        level.load[k] = t.fz0;
+        level.lateral[k] = scale_to(t.peak_lat, 1.0, &|m| lat_peak_fit_of(&at(m, 1.0), t, p).0);
+        level.longitudinal[k] = scale_to(t.peak_lon, 1.0, &|m| lon_peak_of(&at(1.0, m), t, p));
+    }
+    level
 }
 
 #[cfg(test)]
