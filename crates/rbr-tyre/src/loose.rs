@@ -12,7 +12,12 @@
 //!   tan [`GRAVEL_ALPHA0_DEG`] ([`shear`]). Coutermarsh & Shoop (SAE 2010-01-0374, CRREL CIV, LT235/75R15, 241 kPa,
 //!   6.7 kN, 1-1.5 m/s, Fig. 15, fig ±0.004): pea stone over its maximum 0.33/0.55/0.80/0.91 at 2.5/5/10/15°, still
 //!   rising to 38°, fits it with α0 6.28° (rms 0.0012; the brush's cubic 0.0165, the law integrated over a uniform
-//!   patch 0.0098); wet gravel fits 9.7°. No peak, no fall; the level is approached (0.995 at 30°). The slope follows
+//!   patch 0.0098); wet gravel fits 9.7° (0.23/0.40/0.65/0.79). α0 follows NGP's WaterFactor, 6.3° dry to 9.7° wet,
+//!   linear (ours; [`gravel_alpha0_deg`]). No peak, no fall; the level is approached (0.995 at 30°, 0.973 wet). At
+//!   stage speed the one curve, Croft-White's WRC telemetry on wet loose gravel (PhD, Cranfield 2006, Figs 4.32-4.33,
+//!   digitised: fig ±0.05, inferred), saturates by 9-22° (90 %) and does not fall to 32° (0.96-1.06 of the 10-24°
+//!   maximum; his tarmac curves fall to 0.71-0.83 by the same method, the bench data's 0.73-0.90), so the law takes no
+//!   speed. The slope follows
 //!   the level, μ Fz / tan α0 (6.0 per rad at 6.7 kN against NGP's 6.6), not NGP's stiffness. The longitudinal side
 //!   takes the same law with the brush's Cx/Cy ([`KX_OVER_KY`]) at the axes' levels, so the braking force keeps
 //!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
@@ -92,9 +97,17 @@ pub fn braking_slip(vsx: f64, vx: f64) -> f64 {
     }
 }
 
-/// Gravel's shear law reaches 1 - 1/e of the friction at this slip angle, degrees ([`shear`]): Coutermarsh & Shoop's
-/// pea stone (Fig. 15) fitted: 6.28° (rms 0.0012 μ/max over 1-38°), rounded.
+/// Gravel's shear law reaches 1 - 1/e of the friction at this slip angle on dry gravel, degrees ([`shear`]):
+/// Coutermarsh & Shoop's pea stone (Fig. 15) fitted: 6.28° (rms 0.0012 μ/max over 1-38°), rounded.
 pub const GRAVEL_ALPHA0_DEG: f64 = 6.3;
+/// The same on wet gravel (NGP's WaterFactor 1): Coutermarsh & Shoop's wet gravel (Fig. 15) fitted: 9.7° (rms 0.0015).
+pub const GRAVEL_WET_ALPHA0_DEG: f64 = 9.7;
+
+/// Gravel's α0, degrees ([`shear`]), at the surface's `wetness` (NGP's WaterFactor, 0 dry, 0.25 damp, 1 wet): linear
+/// between [`GRAVEL_ALPHA0_DEG`] and [`GRAVEL_WET_ALPHA0_DEG`] (ours: the damp point is unmeasured).
+pub fn gravel_alpha0_deg(wetness: f64) -> f64 {
+    GRAVEL_ALPHA0_DEG + (GRAVEL_WET_ALPHA0_DEG - GRAVEL_ALPHA0_DEG) * wetness.clamp(0.0, 1.0)
+}
 
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
 pub const GRAVEL_CLASS: u32 = 1;
@@ -107,15 +120,15 @@ pub fn gravel_share(classes: [u32; 2], blend: f32) -> f64 {
 }
 
 /// The secant slip stiffness, N per unit slip, of gravel's shear law (Janosi-Hanamoto's form): the force μ Fz (1 -
-/// exp(-u)) along the theoretical slip `s`, u = |(sx/s0x, sy/s0)| with s0 = tan [`GRAVEL_ALPHA0_DEG`] and s0x the
-/// longitudinal one that keeps the brush's [`KX_OVER_KY`] at the axes' levels `mu_x`, `mu_y`; `mu` the friction along
-/// `s`. Both axes take it as their secant (-F_i/s_i).
-pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64) -> f64 {
+/// exp(-u)) along the theoretical slip `s`, u = |(sx/s0x, sy/s0)| with s0 = tan `alpha0_deg` ([`gravel_alpha0_deg`])
+/// and s0x the longitudinal one that keeps the brush's [`KX_OVER_KY`] at the axes' levels `mu_x`, `mu_y`; `mu` the
+/// friction along `s`. Both axes take it as their secant (-F_i/s_i).
+pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_deg: f64) -> f64 {
     let s_abs = sx.hypot(sy);
     if s_abs <= 0.0 {
         return 0.0;
     }
-    let s0 = libm::tan(GRAVEL_ALPHA0_DEG.to_radians());
+    let s0 = libm::tan(alpha0_deg.to_radians());
     let s0x = s0 * mu_x / (KX_OVER_KY * mu_y);
     mu * fz * -libm::expm1(-(sx / s0x).hypot(sy / s0)) / s_abs
 }
@@ -134,7 +147,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64) -> EvalOutput {
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if gravel > 0.0 {
-        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy);
+        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(x.wetness));
         out.kx += (k - out.kx) * gravel;
         out.ky += (k - out.ky) * gravel;
         out.fx = -out.kx * sx;
@@ -316,6 +329,32 @@ pub(crate) mod tests {
         assert!((fx(0.05, 0.5) - (fx(0.05, 0.0) + fx(0.05, 1.0)) / 2.0).abs() < 1e-9);
         assert_eq!(gravel_share([GRAVEL_CLASS, 3], 0.25), 0.75);
         assert_eq!(gravel_share([3, 3], 0.5), 0.0);
+    }
+
+    #[test]
+    fn wet_gravel_rises_slower_by_the_water_factor() {
+        let c = loose();
+        let peak = 0.85 * 4000.0;
+        let fy = |a: f64, w: f64| {
+            let r = a.to_radians();
+            let x = EvalInput {
+                vy: 15.0 * r.sin(),
+                vx: -15.0 * r.cos(),
+                spin: 15.0 * r.cos() / 0.3,
+                radius: 0.3,
+                wetness: w,
+                ..cal_input(&c.cal, 15.0, r)
+            };
+            eval(&x, &c, 1.0).fy.abs() / peak
+        };
+        // Coutermarsh & Shoop's wet gravel over its maximum at 2.5/5/10/15° (Fig. 15): 0.23/0.40/0.65/0.79.
+        for (a, wet) in [(2.5, 0.23), (5.0, 0.40), (10.0, 0.65), (15.0, 0.79)] {
+            assert!((fy(a, 1.0) - wet).abs() < 0.01, "{a}: {}", fy(a, 1.0));
+        }
+        assert_eq!(fy(10.0, 0.0), on(&c, 4000.0, 15.0, 10.0, 0.0, 1.0, 1.0).fy.abs() / peak);
+        assert!(fy(10.0, 0.25) < fy(10.0, 0.0) && fy(10.0, 0.25) > fy(10.0, 1.0));
+        assert_eq!(gravel_alpha0_deg(0.25), 6.3 + 3.4 * 0.25);
+        assert_eq!(gravel_alpha0_deg(2.0), GRAVEL_WET_ALPHA0_DEG);
     }
 
     #[test]
