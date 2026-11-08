@@ -13,8 +13,8 @@ pub struct Material {
     pub map_to: String,
     /// `groundType`: the ground model of faces with this material.
     pub ground: Option<String>,
-    /// The first stage's colour texture (`baseColorMap`, `colorMap` or `diffuseMap`), a level path, maybe without its
-    /// extension.
+    /// The colour texture (`baseColorMap`, `colorMap` or `diffuseMap`) of the first stage that has one (Akina's ground
+    /// has only a detail map in its first), a level path, maybe without its extension.
     pub color_map: Option<String>,
     /// The first stage's `opacityMap`: the alpha kept apart from the colour.
     pub opacity_map: Option<String>,
@@ -54,7 +54,8 @@ pub fn read(archive: &mut Archive, level: &str) -> Result<HashMap<String, Materi
 
 fn parse(key: &str, m: &Json) -> Material {
     let name = m.get("name").and_then(Json::str).unwrap_or(key).to_owned();
-    let stage = m.get("Stages").map(Json::arr).and_then(|s| s.first());
+    let stages = m.get("Stages").map(Json::arr).unwrap_or_default();
+    let stage = stages.first();
     let stage_str = |k: &str| stage.and_then(|s| s.get(k)).and_then(Json::str).map(str::to_owned);
     let color = stage
         .and_then(|s| s.get("baseColorFactor").or_else(|| s.get("diffuseColor")))
@@ -65,7 +66,11 @@ fn parse(key: &str, m: &Json) -> Material {
         map_to: m.get("mapTo").and_then(Json::str).unwrap_or(&name).to_owned(),
         name,
         ground: m.get("groundType").and_then(Json::str).map(str::to_owned),
-        color_map: stage_str("baseColorMap").or_else(|| stage_str("colorMap")).or_else(|| stage_str("diffuseMap")),
+        color_map: stages.iter().find_map(|st| {
+            ["baseColorMap", "colorMap", "diffuseMap"]
+                .iter()
+                .find_map(|k| st.get(k).and_then(Json::str).map(str::to_owned))
+        }),
         opacity_map: stage_str("opacityMap"),
         color,
         translucent: m.get("translucent").and_then(Json::flag).unwrap_or(false),

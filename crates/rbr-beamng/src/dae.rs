@@ -308,31 +308,3 @@ mod tests {
         assert_eq!(super::detail_size("road"), None);
     }
 }
-
-#[cfg(test)]
-mod probe {
-    #[test]
-    #[ignore]
-    fn lod_triangles() {
-        let Some(dir) = std::env::var_os("DAE_DIR") else { return };
-        for e in std::fs::read_dir(dir).unwrap().flatten() {
-            let s = super::parse(&std::fs::read_to_string(e.path()).unwrap()).unwrap();
-            let per: Vec<String> = s
-                .details
-                .iter()
-                .map(|d| {
-                    let n: usize = s
-                        .objects
-                        .iter()
-                        .enumerate()
-                        .flat_map(|(o, _)| s.object_meshes(o))
-                        .filter(|(_, dd)| std::ptr::eq(*dd, d))
-                        .map(|(m, _)| s.meshes[m].indices.len() / 3)
-                        .sum();
-                    format!("{}:{n}", d.size)
-                })
-                .collect();
-            println!("{} {}", e.file_name().to_string_lossy(), per.join(" "));
-        }
-    }
-}

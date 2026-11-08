@@ -73,6 +73,19 @@ fn chained(roads: &[&Road]) -> Vec<Road> {
     out
 }
 
+/// The longest drivable road of the scene, joined pieces included, as its nodes' positions; reversed on `reverse`.
+pub fn longest_road(scene: &Scene, reverse: bool) -> Option<Vec<[f64; 3]>> {
+    let roads: Vec<&Road> = scene.roads.iter().filter(|r| r.drivability > 0.0 && r.nodes.len() >= 2).collect();
+    let chains = chained(&roads);
+    let length = |r: &Road| Line::spline(&r.nodes, r.looped, STEP).length();
+    let best = roads.iter().copied().chain(&chains).max_by(|a, b| length(a).total_cmp(&length(b)))?;
+    let mut points: Vec<[f64; 3]> = best.nodes.iter().map(|n| [n[0], n[1], n[2]]).collect();
+    if reverse {
+        points.reverse();
+    }
+    Some(points)
+}
+
 /// The course of `race` on the scene's roads.
 pub fn course(scene: &Scene, race: &Race) -> Result<Course, String> {
     let roads: Vec<&Road> = scene.roads.iter().filter(|r| r.drivability > 0.0 && r.nodes.len() >= 2).collect();

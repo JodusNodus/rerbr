@@ -18,8 +18,11 @@ pub struct Static {
     pub scale: [f64; 3],
     /// `collisionType`: `None` makes the shape non-solid.
     pub collision_type: Option<String>,
-    /// `isRenderEnabled` false or `hidden`: never drawn in the game.
+    /// `hidden`: never drawn in the game.
     pub hidden: bool,
+    /// `isRenderEnabled` false: not drawn by the level's own account, though some levels set it on every shape they
+    /// draw (Akina).
+    pub render_disabled: bool,
 }
 
 impl Static {
@@ -47,6 +50,7 @@ impl Static {
             scale: scale.and_then(Json::num).map_or_else(|| vec3(scale, [1.0; 3]), |n| [n; 3]),
             collision_type: None,
             hidden: false,
+            render_disabled: false,
         }
     }
 
@@ -159,7 +163,8 @@ impl Scene {
                 rotation: rotation(o.get("rotationMatrix")),
                 scale: vec3(o.get("scale"), [1.0; 3]),
                 collision_type: o.get("collisionType").and_then(Json::str).map(str::to_owned),
-                hidden: flag("isRenderEnabled") == Some(false) || flag("hidden") == Some(true),
+                hidden: flag("hidden") == Some(true),
+                render_disabled: flag("isRenderEnabled") == Some(false),
             }),
             "DecalRoad" => self.roads.push(Road {
                 name,

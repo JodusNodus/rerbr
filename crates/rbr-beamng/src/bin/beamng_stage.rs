@@ -11,17 +11,19 @@ fn main() {
     }
 }
 
-const USAGE: &str = "usage: beamng-stage --zip LEVEL.zip --mission MISSION_FOLDER|RACE.race.json [--out DIR] [--name NAME] \
-[--skip TEXT]... [--draw-corridor M] [--reach TEXT=M]... [--lod TEXT=M]... [--collision-corridor M] [--forest-corridor M] [--forest-budget TRIANGLES]
+const USAGE: &str = "usage: beamng-stage --zip LEVEL.zip --mission MISSION_FOLDER|RACE.race.json|road|road:reverse [--out DIR] [--name NAME] \
+[--skip TEXT]... [--draw-corridor M] [--reach TEXT=M]... [--lod TEXT=M]... [--collision-corridor M] [--forest-corridor M] [--forest-budget TRIANGLES] [--draw-disabled]
        [--detail-lod M] [--trees TEXT]... [--trees-from STAGE] [--prepare DIR --maps DIR]
        beamng-stage --track FOLDER --prepare DIR --maps DIR
        beamng-stage --zip LEVEL.zip --shapes | --shape PATH | --mission M --probe SHAPE_TEXT
 
-Converts a BeamNG level mod (your own copy) and one of its time-trial missions (or a\n`quickrace/*.race.json`) to a BTB stage folder,
+Converts a BeamNG level mod (your own copy) and one of its time-trial missions (or a\n`quickrace/*.race.json`, or `road`: the longest AI road from its first node, `road:reverse` from its last) to a BTB
+stage folder,
 <out>/RX_CONTENT/Tracks/<name>/, which the launcher lists. The output is for your own use: level mods'
 licences usually forbid sharing modified versions. --out defaults to the launcher's files folder's
 `converted` (RERBR_HOME, else the platform's data folder: ~/.local/share/rerbr on Linux). --skip leaves
-shapes whose path contains TEXT undrawn (people, animated rides). --draw-corridor M draws shapes (--forest-corridor M,
+shapes whose path contains TEXT undrawn (people, animated rides); --draw-disabled draws the shapes set
+`isRenderEnabled` false too (Akina sets it on all it draws). --draw-corridor M draws shapes (--forest-corridor M,
 default 80, the forest items, nearest first up to
 --forest-budget triangles, default 6000000) within M metres of
 the driveline, --reach TEXT=M those whose path contains TEXT within M instead; --lod TEXT=M draws them only up to M
@@ -35,6 +37,7 @@ fn run() -> Result<(), String> {
     let mut shapes = false;
     let mut dump = None;
     let mut mission = None;
+    let mut draw_disabled = false;
     let mut probe = None;
     let mut out = None;
     let mut name = None;
@@ -52,6 +55,7 @@ fn run() -> Result<(), String> {
         match a.as_str() {
             "--zip" => zip = Some(PathBuf::from(value()?)),
             "--shapes" => shapes = true,
+            "--draw-disabled" => draw_disabled = true,
             "--shape" => dump = Some(value()?),
             "--mission" => mission = Some(value()?),
             "--probe" => probe = Some(value()?),
@@ -126,6 +130,7 @@ fn run() -> Result<(), String> {
         options.retail = Some(library);
     }
     options.trees = trees;
+    options.draw_disabled = draw_disabled;
     for (k, v) in numbers {
         match k.as_str() {
             "--draw-corridor" => options.draw_corridor = v,

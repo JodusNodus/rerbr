@@ -51,7 +51,8 @@ const TILE: f64 = 100.0;
 #[derive(Debug, Clone)]
 pub struct Options {
     /// The mission folder in the zip (`gameplay/missions/<level>/timeTrial/<mission>`), or a race file
-    /// (`levels/<level>/quickrace/<race>.race.json`).
+    /// (`levels/<level>/quickrace/<race>.race.json`), or `road` (`road:reverse`): along the level's longest drivable
+    /// road from its first node (its last).
     pub mission: String,
     /// The stage folder's name; default the mission's.
     pub name: Option<String>,
@@ -71,6 +72,8 @@ pub struct Options {
     pub collision_corridor: f64,
     /// Plan distance from the driveline within which forest items are drawn (a `--reach` rule overrides), metres.
     pub forest_corridor: f64,
+    /// Draw the shapes with `isRenderEnabled` false too (a level that sets it on all it draws).
+    pub draw_disabled: bool,
     /// The most forest triangles drawn: items nearest the driveline first.
     pub forest_budget: usize,
     /// Drawn objects whose material's triangles average under this area (m²) are drawn only to [`Options::detail_lod`].
@@ -101,6 +104,7 @@ impl Options {
             collision_corridor: 60.0,
             forest_corridor: 80.0,
             forest_budget: 6_000_000,
+            draw_disabled: false,
             detail_area: 0.02,
             detail_lod: 400.0,
             trees: Vec::new(),
@@ -183,6 +187,22 @@ impl Corridor {
             .iter()
             .any(|p| self.cells.contains(&((p[0] / self.cell).floor() as i64, (p[1] / self.cell).floor() as i64)))
     }
+}
+
+/// A forest object's key: shape path, full detail, `LODIn`, `LODOut`.
+type ForestKey = (String, bool, u32, u32);
+
+/// A forest item up for drawing.
+struct Candidate {
+    /// Distance from the driveline over its height (a tall tree stands out from further): lower first.
+    rank: f64,
+    /// Its least detail: keys and triangles.
+    plain: (Vec<ForestKey>, usize),
+    /// Full detail up close and the least beyond, for an item by the road.
+    full: Option<(Vec<ForestKey>, usize)>,
+    placement: [f32; 16],
+    /// Drawn, and whether in full detail.
+    taken: Option<bool>,
 }
 
 /// One object being built: deduplicated vertices and triangles.
@@ -289,7 +309,14 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     let scene = Scene::read(&mut archive, &level)?;
     let mats = materials::read(&mut archive, &level)?;
     let grounds = materials::ground_models(&mut archive, &level)?;
-    let race = Race::parse(&archive.read_text(&race_file(&options.mission))?)?;
+    let race = match options.mission.as_str() {
+        m @ ("road" | "road:reverse") => {
+            let points =
+                course::longest_road(&scene, m.ends_with("reverse")).ok_or("no drivable DecalRoad in the level")?;
+            Race::along(&points)?
+        }
+        m => Race::parse(&archive.read_text(&race_file(m))?)?,
+    };
     let course = course::course(&scene, &race)?;
     let mut report = Report::default();
     let mut say = |s: String| {
@@ -364,7 +391,9 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
                 }
             }
         }
-        let skip = st.hidden || options.skip.iter().any(|k| path.to_lowercase().contains(&k.to_lowercase()));
+        let skip = st.hidden
+            || (st.render_disabled && !options.draw_disabled)
+            || options.skip.iter().any(|k| path.to_lowercase().contains(&k.to_lowercase()));
         if skip {
             *skipped.entry(path).or_default() += 1;
             continue;
@@ -406,13 +435,10 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     // detailed kind out to its `LODOut`; one within FOREST_NEAR of the driveline is drawn in full detail up to
     // FOREST_DETAIL from the eye and in the least beyond.
     let mut forest_kinds: BTreeMap<(String, bool), Vec<(String, Builder)>> = BTreeMap::new();
-    let mut forest_placed: BTreeMap<(String, bool, u32, u32), Vec<[f32; 16]>> = BTreeMap::new();
+    let mut forest_placed: BTreeMap<ForestKey, Vec<[f32; 16]>> = BTreeMap::new();
     let near = Corridor::new(&course.line.points, FOREST_NEAR);
     let plants = Corridor::new(&course.line.points, PLANT_CORRIDOR);
-    // Per item: distance from the driveline over its height (a tall tree stands out from further), triangles,
-    // placement keys, placement.
-    type Key = (String, bool, u32, u32);
-    let mut candidates: Vec<(f64, usize, Vec<Key>, [f32; 16])> = Vec::new();
+    let mut candidates: Vec<Candidate> = Vec::new();
     for item in crate::forest::items(&mut archive, &level)? {
         let path = item.cdae_path();
         if options.skip.iter().any(|k| path.to_lowercase().contains(&k.to_lowercase())) {
@@ -466,40 +492,66 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         let lod = rule(&options.lod, &path).unwrap_or(if low { PLANT_LOD } else { FOREST_LOD }).round().max(1.0) as u32;
         let placement = frame.placement(&item.transform(), item.position);
         let (detail, cut) = (FOREST_DETAIL as u32, (FOREST_DETAIL as u32).min(lod));
-        let keys = if !low && near.holds_point(item.position) {
+        let tris =
+            |full: bool| -> usize { forest_kinds[&(path.clone(), full)].iter().map(|(_, b)| b.triangles.len()).sum() };
+        let plain = (vec![(path.clone(), false, 0, lod)], tris(false));
+        let full = (!low && near.holds_point(item.position)).then(|| {
             let mut k = vec![(path.clone(), true, 0, cut)];
             if lod > detail {
                 k.push((path.clone(), false, detail, lod));
             }
-            k
-        } else {
-            vec![(path.clone(), false, 0, lod)]
+            let cost = k.iter().map(|k| tris(k.1)).sum::<usize>();
+            (k, cost)
+        });
+        candidates.push(Candidate {
+            rank: course.line.project(item.position).1 / height.max(1.0),
+            plain,
+            full,
+            placement,
+            taken: None,
+        });
+    }
+    // Within the triangle budget, nearest the driveline for their height first: the least detail for most of the
+    // budget, then full detail for the items by the road, then the least detail for more items.
+    candidates.sort_by(|a, b| a.rank.total_cmp(&b.rank));
+    let budget = options.forest_budget;
+    let mut spent = 0usize;
+    let fill = |candidates: &mut [Candidate], spent: &mut usize, upto: usize| {
+        for c in candidates.iter_mut().filter(|c| c.taken.is_none()) {
+            if *spent + c.plain.1 <= upto {
+                *spent += c.plain.1;
+                c.taken = Some(false);
+            }
+        }
+    };
+    fill(&mut candidates, &mut spent, budget * 6 / 10);
+    for c in candidates.iter_mut().filter(|c| c.taken == Some(false)) {
+        if let Some((_, cost)) = &c.full {
+            if spent - c.plain.1 + cost <= budget {
+                spent = spent - c.plain.1 + cost;
+                c.taken = Some(true);
+            }
+        }
+    }
+    fill(&mut candidates, &mut spent, budget);
+    let (mut dropped, mut full_items) = (0usize, 0usize);
+    for c in candidates {
+        let keys = match c.taken {
+            None => {
+                dropped += 1;
+                continue;
+            }
+            Some(true) => {
+                full_items += 1;
+                c.full.map(|f| f.0).unwrap_or_default()
+            }
+            Some(false) => c.plain.0,
         };
-        let tris =
-            |full: bool| -> usize { forest_kinds[&(path.clone(), full)].iter().map(|(_, b)| b.triangles.len()).sum() };
-        let cost = keys.iter().map(|k| tris(k.1)).sum::<usize>();
-        candidates.push((course.line.project(item.position).1 / height.max(1.0), cost, keys, placement));
-    }
-    // Nearest the driveline for their height first, within the triangle budget.
-    candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let (mut spent, mut reached, mut dropped) = (0usize, 0.0f64, 0usize);
-    for (distance, cost, keys, placement) in candidates {
-        if spent + cost > options.forest_budget {
-            dropped += 1;
-            continue;
-        }
-        spent += cost;
-        reached = distance;
         for k in keys {
-            forest_placed.entry(k).or_default().push(placement);
+            forest_placed.entry(k).or_default().push(c.placement);
         }
     }
-    if dropped > 0 {
-        say(format!(
-            "forest: {dropped} items left out past {reached:.1} m from the driveline per metre of height (budget {} triangles)",
-            options.forest_budget
-        ));
-    }
+    say(format!("forest: {full_items} items in full detail up close, {dropped} left out (budget {budget} triangles)"));
 
     for (name, (id, n)) in &surfaces {
         say(format!("collision {name}: surface {id}, {n} triangles"));
@@ -545,7 +597,7 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         line.len()
     ));
 
-    let folder_name = options.name.clone().unwrap_or_else(|| mission_name(&mut archive, &options.mission));
+    let folder_name = options.name.clone().unwrap_or_else(|| mission_name(&mut archive, &level, &options.mission));
     let folder = options.out.join("RX_CONTENT").join("Tracks").join(safe(&folder_name));
     std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
 
@@ -886,7 +938,10 @@ pub fn race_file(mission: &str) -> String {
 }
 
 /// The mission's name from its `info.json`, else its folder name; a race file's level and file name.
-fn mission_name(archive: &mut Archive, mission: &str) -> String {
+fn mission_name(archive: &mut Archive, level: &str, mission: &str) -> String {
+    if mission.starts_with("road") {
+        return format!("{level}_{}", mission.replace(':', "_"));
+    }
     if let Some(race) = mission.strip_suffix(".race.json") {
         let mut parts = race.rsplit('/');
         let stem = parts.next().unwrap_or(race);
