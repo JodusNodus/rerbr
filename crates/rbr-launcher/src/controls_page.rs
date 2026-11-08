@@ -73,7 +73,7 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
     });
     ui.add_enabled_ui(ffb.settings.enabled, |ui| {
         ui.checkbox(&mut ffb.auto, "automatic sensitivity per car").on_hover_text(AUTO_HELP);
-        ui.label(RichText::new(AUTO_HELP).color(Color32::GRAY));
+        ui.add(egui::Label::new(RichText::new(AUTO_HELP).color(Color32::GRAY)).wrap());
         ui.horizontal(|ui| {
             let (label, help) =
                 if ffb.auto { ("until learned %", UNTIL_LEARNED_HELP) } else { ("sensitivity %", SENSITIVITY_HELP) };
@@ -100,44 +100,39 @@ fn write_strength(settings: &Path, strength: f32) {
 /// without a reference) and its trim, and Forget, which drops what it learned. Every edit is written to the settings
 /// file at once, that car's entry only (the viewer writes the same sections while driving).
 fn ffb_auto_ui(ui: &mut Ui, autos: &mut ffb::AutoCars, cars: &[Car], car: usize, settings: &Path) {
-    ui.label(RichText::new(PER_CAR_AUTO_HELP).color(Color32::GRAY));
+    ui.add(egui::Label::new(RichText::new(PER_CAR_AUTO_HELP).color(Color32::GRAY)).wrap());
     let selected = cars.get(car).map(|c| c.key.clone());
     let mut keys: Vec<String> = autos.references.keys().chain(autos.trims.keys()).cloned().collect();
     keys.extend(selected);
     keys.sort();
     keys.dedup();
     let mut changed = None;
-    egui::Grid::new("ffb auto").num_columns(5).spacing([12.0, 4.0]).show(ui, |ui| {
-        ui.label("");
-        for surface in ffb::SURFACES {
-            ui.label(surface);
-        }
-        ui.end_row();
-        for key in &keys {
+    for key in &keys {
+        ui.horizontal(|ui| {
             ui.label(car_display(key, cars));
-            for surface in 0..3 {
-                ui.horizontal(|ui| {
-                    match autos.effective(key, surface) {
-                        Some(p) => ui.label(format!("{p} %")),
-                        None => ui.label(RichText::new("learning").color(Color32::GRAY)),
-                    }
-                    .on_hover_text("The sensitivity this car starts with on this surface, its trim applied");
-                    let mut trim = autos.trim(key, surface);
-                    let edit = DragValue::new(&mut trim).range(ffb::auto::TRIM_RANGE).prefix("trim ").suffix(" %");
-                    if ui.add(edit).on_hover_text(TRIM_HELP).changed() {
-                        autos.set_trim(key, surface, trim);
-                        changed = Some(key.clone());
-                    }
-                });
-            }
             let learned = autos.references.contains_key(key);
             if ui.add_enabled(learned, egui::Button::new("Forget").small()).on_hover_text(FORGET_HELP).clicked() {
                 autos.references.remove(key);
                 changed = Some(key.clone());
             }
-            ui.end_row();
-        }
-    });
+        });
+        ui.horizontal(|ui| {
+            for (surface, name) in ffb::SURFACES.into_iter().enumerate() {
+                let start = match autos.effective(key, surface) {
+                    Some(p) => RichText::new(format!("{name} {p} %")),
+                    None => RichText::new(format!("{name} learning")).color(Color32::GRAY),
+                };
+                ui.label(start).on_hover_text("The sensitivity this car starts with on this surface, its trim applied");
+                let mut trim = autos.trim(key, surface);
+                let edit = DragValue::new(&mut trim).range(ffb::auto::TRIM_RANGE).prefix("×").suffix(" %");
+                if ui.add(edit).on_hover_text(TRIM_HELP).changed() {
+                    autos.set_trim(key, surface, trim);
+                    changed = Some(key.clone());
+                }
+                ui.add_space(4.0);
+            }
+        });
+    }
     if let Some(key) = changed {
         write_ffb_auto(settings, &key, autos);
     }
@@ -154,14 +149,13 @@ fn write_ffb_auto(settings: &Path, key: &str, autos: &ffb::AutoCars) {
 }
 
 const STRENGTH_HELP: &str = "How heavy the wheel is, for every car: 1 is the wheel's full force.";
-const AUTO_HELP: &str = "Automatic evens out the steering weight between cars, learned from your own driving; the \
+const AUTO_HELP: &str = "Automatic evens out the steering weight between cars, learned from your own driving. The \
      strength sets how heavy the wheel is.";
 const UNTIL_LEARNED_HELP: &str = "NGP's force feedback sensitivity per surface for a car that has not learned its own \
      there yet (the car's own manual one when it has one). Below 100 the force is stronger, above 100 lighter.";
-const PER_CAR_AUTO_HELP: &str = "Each car learns its sensitivity on a surface in its first minute of driving there, \
-     and keeps refining it at the end of each drive. The trim makes a car lighter (above 100) or stronger (below \
-     100); the pause menu's Force feedback page sets it while driving.";
-const TRIM_HELP: &str = "Percent of the learned sensitivity: above 100 lighter, below 100 stronger.";
+const PER_CAR_AUTO_HELP: &str = "A car learns its sensitivity on a surface in its first minute there and refines it \
+     after each drive. The trim (×) makes it lighter above 100 %, stronger below; the pause menu sets it too.";
+const TRIM_HELP: &str = "The trim, percent of the learned sensitivity: above 100 lighter, below 100 stronger.";
 const FORGET_HELP: &str = "Forgets what this car learned: it learns again on its next drives. Its trims stay.";
 
 /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `ffb::CarSensitivity`): one row per listed car (its
