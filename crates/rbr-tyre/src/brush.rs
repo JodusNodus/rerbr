@@ -104,6 +104,16 @@ pub fn friction_sliding_speed(vs: f64, vr: f64) -> f64 {
     }
 }
 
+/// The share of the friction's fall with sliding speed ([`friction_at`], with the wet Coulomb loss) the lateral axis
+/// takes; the longitudinal axis takes it whole, so a locked wheel braking straight keeps the TRL fit. Past the peak a
+/// rolling tyre's side force falls less than the locked wheel's braking friction: TRR 621 (1976, Calspan flat belt,
+/// bias-belted, dry, 48 km/h) about 1.0 of the peak at 30° and 0.94 at 90°; Persson (J. Phys. Condens. Matter 23,
+/// 2011, a model with flash temperature) 0.97 at 25°; NGP 0.865 at 30°; the road MF sets' full slide 0.73-0.83. With
+/// the whole fall the brush gave 0.833 at 30° (4 kN, 15 m/s). The value puts it at 0.89, the scorecard band's upper end
+/// (0.73-0.90), on those weaker sources: a user decision (2026-11-08), made for a car that is easier to catch past the
+/// limit on fast tarmac.
+pub const LATERAL_FALL: f64 = 0.65;
+
 /// The friction at sliding speed `vs`, m/s, between its level at rest `mu_s` and its Coulomb level `mu_k`.
 pub fn friction_at(mu_s: f64, mu_k: f64, vs: f64) -> f64 {
     (mu_k + (mu_s - mu_k) * libm::exp(-libm::pow(vs / V_S, STRIBECK_EXP))) * libm::exp(-SPEED_DECAY * vs)
@@ -413,20 +423,24 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
         wet,
         cal,
     );
-    let mu_y = mu_axis(
-        cal.mu_ys,
-        cal.mu_yk,
-        vs,
-        x.fz,
-        N_MU_Y,
-        x.surf_static / cal.surf_s_cal,
-        x.surf_kinetic / cal.surf_k_cal,
-        x.temp_grip,
-        x.tread_remaining,
-        x.wetness,
-        wet,
-        cal,
-    );
+    let mu_y_at = |vs: f64| {
+        mu_axis(
+            cal.mu_ys,
+            cal.mu_yk,
+            vs,
+            x.fz,
+            N_MU_Y,
+            x.surf_static / cal.surf_s_cal,
+            x.surf_kinetic / cal.surf_k_cal,
+            x.temp_grip,
+            x.tread_remaining,
+            x.wetness,
+            wet,
+            cal,
+        )
+    };
+    let rest = mu_y_at(0.0);
+    let mu_y = rest - LATERAL_FALL * (rest - mu_y_at(vs));
     patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy)
 }
 
@@ -702,10 +716,17 @@ mod tests {
         assert!(o.psi > 1.0, "psi {}", o.psi);
         let f = (o.fx * o.fx + o.fy * o.fy).sqrt();
         let vs = (x.vy * x.vy + (x.vx + x.spin * x.radius).powi(2)).sqrt();
-        let mu = friction_at(cal.mu_ys, cal.mu_yk, vs);
+        // The lateral axis takes LATERAL_FALL of the friction's fall with sliding speed.
+        let mu = cal.mu_ys - LATERAL_FALL * (cal.mu_ys - friction_at(cal.mu_ys, cal.mu_yk, vs));
         assert!((f / (mu * x.fz) - 1.0).abs() < 1e-9, "f {f} mu Fz {}", mu * x.fz);
         // Direction: opposes the sliding velocity.
         assert!(o.fy < 0.0 && o.fx <= 0.0, "fx {} fy {}", o.fx, o.fy);
+        // Locked straight (no spin, no side slip): the longitudinal axis keeps the whole fall.
+        let mut x = synth_input();
+        x.spin = 0.0;
+        let o = eval(&x, &cal);
+        let mu = friction_at(cal.mu_xs, cal.mu_xk, 15.0);
+        assert!((o.fx.abs() / (mu * x.fz) - 1.0).abs() < 1e-9, "fx {} mu Fz {}", o.fx, mu * x.fz);
     }
 
     #[test]
