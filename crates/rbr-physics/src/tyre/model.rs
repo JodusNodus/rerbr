@@ -35,6 +35,10 @@ pub struct ForceInput {
     pub soil_thickness: f32,
     /// The surface's wetness, 0 dry to 1 wet (`WaterFactor`).
     pub water_factor: f32,
+    /// The sine of the tyre's inclination to the ground, in the wheel's frame: negative with its top leaning towards
+    /// the car (negative camber), whose thrust then points inwards (NGP's sliding model takes `0.1` of it off the
+    /// lateral slip).
+    pub inclination_sin: f32,
     /// The surface classes of the two materials the wheel's surface blends (each material's `+0x148`, the index of the
     /// tyre type's per-class base friction: 1 gravel, 3 snow) and the second one's weight, 0 to 1. NGP's step does not
     /// read them: [`input`] leaves them unknown ([`UNKNOWN_CLASS`]), the host fills them in.
@@ -88,6 +92,7 @@ pub fn input(f: &Frame, dt: f32, grip_scale: f32, stiffness_scale: f32) -> Force
         tread_left: if depth > 0.0 { s.tread_remaining / depth } else { 1.0 },
         soil_thickness: s.soil_thickness,
         water_factor: s.water_factor,
+        inclination_sin: s.inclination_sin,
         surface_classes: [UNKNOWN_CLASS; 2],
         surface_blend: 0.0,
         lateral_stiffness: s.inclination_cos * s.lateral_stiffness,
