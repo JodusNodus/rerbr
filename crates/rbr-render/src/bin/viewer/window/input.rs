@@ -203,10 +203,8 @@ impl App {
             return;
         };
         // The Force feedback page with the wheel's force on, once the live process said the car's surface.
-        let ffb = (process.hud.ffb_surface.zip(self.wheel.as_ref())).map(|(surface, _)| {
-            let (session, surface) = (&self.scene.ffb, surface.min(2) as usize);
-            FfbPage::new(surface, session.now()[surface], session.own(), session.global[surface])
-        });
+        let ffb = (process.hud.ffb_surface.zip(self.wheel.as_ref()))
+            .map(|(surface, _)| FfbPage::of(&self.scene.ffb, surface));
         self.menu = Some(PauseMenu::open(
             process.menu,
             CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head()),

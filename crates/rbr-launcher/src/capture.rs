@@ -32,6 +32,9 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         form.page = page;
         shot(&dir.join(format!("{name}.png")), |ctx| form.ui(ctx))?;
     }
+    // The Controls page whole, its force feedback per car included.
+    form.page = Page::Controls;
+    shot_sized(&dir.join("controls-whole.png"), (SIZE.0, 1000), |ctx| form.ui(ctx))?;
     // The Drive page with the Custom weather, its controls closed and open.
     let saved =
         (form.clouds, form.precipitation, form.fog, form.wetness, form.options.weather, form.weather_row.clone());
@@ -103,9 +106,21 @@ pub fn shot(path: &Path, ui: impl FnMut(&egui::Context)) -> Result<(), String> {
     Ok(())
 }
 
+/// [`shot`] at `size` (a page taller than [`SIZE`], whole).
+fn shot_sized(path: &Path, size: (u32, u32), ui: impl FnMut(&egui::Context)) -> Result<(), String> {
+    let rgba = draw_sized(size, ui)?;
+    write_png_sized(path, size, &rgba)?;
+    eprintln!("launcher: wrote {}", path.display());
+    Ok(())
+}
+
 /// Draws `ui` into an RGBA image of [`SIZE`]: a few passes, so the layout settles, and the last one drawn.
-pub fn draw(mut ui: impl FnMut(&egui::Context)) -> Result<Vec<u8>, String> {
-    let (width, height) = SIZE;
+pub fn draw(ui: impl FnMut(&egui::Context)) -> Result<Vec<u8>, String> {
+    draw_sized(SIZE, ui)
+}
+
+/// [`draw`] at `size`.
+fn draw_sized((width, height): (u32, u32), mut ui: impl FnMut(&egui::Context)) -> Result<Vec<u8>, String> {
     let instance = rbr_render::renderer::instance();
     let adapter = block_on(instance.request_adapter(&Default::default())).map_err(|e| e.to_string())?;
     let (device, queue) =
@@ -188,8 +203,12 @@ pub fn draw(mut ui: impl FnMut(&egui::Context)) -> Result<Vec<u8>, String> {
 
 /// Writes `rgba` (the capture's size) to `path`, making its folder first.
 pub fn write_png(path: &Path, rgba: &[u8]) -> Result<(), String> {
+    write_png_sized(path, SIZE, rgba)
+}
+
+fn write_png_sized(path: &Path, (width, height): (u32, u32), rgba: &[u8]) -> Result<(), String> {
     path.parent().map_or(Ok(()), std::fs::create_dir_all).map_err(|e| format!("{}: {e}", path.display()))?;
-    rbr_render::upscale::write_png(path, SIZE.0, SIZE.1, rgba).map_err(|e| format!("{}: {e}", path.display()))
+    rbr_render::upscale::write_png(path, width, height, rgba).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 #[cfg(test)]

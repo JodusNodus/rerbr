@@ -6,7 +6,7 @@
 
 use super::camera_page::Moved;
 use super::pause::Nav;
-use crate::ffb::{SENSITIVITY_RANGE, SURFACES};
+use crate::ffb::{Session, SENSITIVITY_RANGE, SURFACES};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 
 const PANEL: Color32 = Color32::from_rgba_premultiplied(10, 10, 12, 220);
@@ -43,6 +43,12 @@ pub struct FfbPage {
 impl FfbPage {
     pub fn new(surface: usize, value: i32, own: bool, global: i32) -> FfbPage {
         FfbPage { surface, value, own, global, row: 0 }
+    }
+
+    /// The page for the drive's car on `surface` (FFB1's: 0 gravel, 1 tarmac, 2 snow).
+    pub fn of(session: &Session, surface: u32) -> FfbPage {
+        let surface = surface.min(2) as usize;
+        FfbPage::new(surface, session.now()[surface], session.own(), session.global[surface])
     }
 
     /// The selected row.
