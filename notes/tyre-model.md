@@ -593,9 +593,10 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
 - Standstill: no creep (no movement after 1 s at the trace's 10 mm); after a full-pedal stop from 50 km/h the carcass
   rings to 0.06 m/s in the second half second (NGP 0.014), gone by 1.5 s, as on tarmac (berm from the full slide). No
   NaN in any run.
-- Scorecard (`build/tyre-night/scores/loose-v1.json`, `--compare baseline.json`): experimental-brush 34/75 → 39/77,
-  ngp 28/75 → 30/77 (both gain the two K 0.2 rows). New passes: circle 0.609 g, locked over K 0.2 1.37 / 1.27,
-  locked over lateral max 1.457, locked over traction 1.300, gravel over tarmac braking 0.769, snow C0x 11.0, snow
+- Scorecard (`build/tyre-night/scores/loose-v1.json` at the merge of main c03bc2b8, `--compare baseline.json`):
+  experimental-brush 34/75 → 43/85, ngp 28/75 → 31/85 (both gain the two gravel K 0.2 rows; main's tarmac and wet
+  work moves the tarmac and ice rows). New passes: circle 0.609 g, locked over K 0.2 1.37 / 1.27,
+  locked over lateral max 1.457, locked over traction 1.300, gravel over tarmac braking 0.749, snow C0x 11.0, snow
   rising to 40 % 1.087, snow peak κ 1. New misses: locked decel at 50 km/h 0.892 g (0.47-0.66), locked side force
   at 30° 0.532 (0.33-0.39; over rolling 0.599 passes), the slope at 6.7 kN 7.37 /rad (≤ 7: fitted at 4 kN, Cy ∝
   Fz^0.6), snow μ_x at κ 0.3 over peak 0.769 (lock is the peak). Still missed: μ_y over max at 5/10/20° 0.68/0.95/1.00
