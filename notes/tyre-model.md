@@ -919,6 +919,13 @@ rows unchanged.
   would make the steering 1.2-2.4 times heavier near the Mz peak than NGP's: a force-feedback level decision, left.
   The load dependence is in band: NGP's patch grows ∝ Fz^0.57 (MF-Swift 0.59-0.64), so with the trail's own
   (Fz/Fz0)^0.35 t0 ∝ Fz^0.95.
+  The level through physics (2026-11-08, numeric brush, 4 kN, a 0.074 m, Cy 70.4 kN/rad, μ 1.26; prototype, not
+  built): the bristles on a stretched-string carcass (Svendenius eq. 4.62, Pacejka's string), tread stiffness from
+  Cx = 2a²c_p (isotropic rubber, his eq. 4.70) and the string's foundation set so Cy stays NGP's, give t0/a
+  0.355-0.369 for a string length 0.05-0.4 m but peak Mz/(μ Fz a) only 0.109-0.113; a flatter pressure than the
+  parabola raises the peak (1-u⁴ 0.132, 1-u⁸ 0.155, uniform 0.187, with the string and 1-u⁴ 0.139) but moves the Fy
+  peak to 14-20° and the Mz peak to 0.11-0.19 of it. No sourced mechanism reaches 0.19-0.26 with the force curves
+  kept, so the level stays brush theory's.
   Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
   304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
   315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
