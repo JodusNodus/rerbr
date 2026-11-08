@@ -78,7 +78,8 @@
 //! The bindings (`--bindings`) may move both keys or add a wheel button to them.
 //! `--cameras <ini>` keeps the player's camera choices in the file's `[camera]` section (`rbr_render::camera_prefs`;
 //! the launcher passes its `launcher-settings.ini`): the view C last chose (the start view unless `--view` is given)
-//! and each car's nudges, which the pause menu's Camera page sets (`rbr_render::hud::camera_page`). A HUD (`rbr_render::hud`) shows the
+//! and each car's nudges, which the pause menu's Camera page sets (`rbr_render::hud::camera_page`); its field of view
+//! goes to the file's `[launcher] fov` or `chase_fov` (the launcher's `--fov` and `--chase-fov`). A HUD (`rbr_render::hud`) shows the
 //! race clock (live) or the drive time (playback), speed, gear, engine speed and the controls fed to the step.
 //!
 //! `--live <command>` (with `--car` and a stage; the rest of the line is the command) drives the car by keyboard

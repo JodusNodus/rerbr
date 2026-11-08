@@ -17,6 +17,9 @@
 //! up, written only when it is not 0; the chase takes up (its height) and forward (nearer the car;
 //! [`crate::game_camera::Settings::nudged`]). `head = off` keeps the in-car view fixed to the car ([`crate::head`];
 //! on unless set off, from the pause menu's Camera page or the launcher's Graphics page).
+//!
+//! The Camera page's fields of view go to the launcher's own keys instead, `fov` and `chase_fov` in `[launcher]`
+//! ([`Session::save_fov`]), the ones its Graphics page sets and the viewer takes as `--fov` and `--chase-fov`.
 
 use crate::game_camera::Settings;
 use crate::playback::Playback;
@@ -32,6 +35,8 @@ pub const SECTION: &str = "camera";
 pub const STEP: f32 = 0.02;
 pub const CHASE_STEP: f32 = 0.1;
 pub const TILT_STEP: f32 = 0.5;
+/// One step of the Camera page's field of view, degrees.
+pub const FOV_STEP: f32 = 1.0;
 /// How far a fixed view moves from the car's own place, m, and tilts, degrees, each way (ours: keeps a typo from
 /// losing the car).
 pub const REACH: f32 = 1.0;
@@ -181,11 +186,22 @@ impl Session {
 
     /// Writes the choices into the file's `[camera]` section, the rest of the file kept.
     pub fn save(&self) {
+        self.write(|file| self.prefs.replace_in(file));
+    }
+
+    /// Writes a field of view the Camera page set, radians, as the launcher's `key` (`fov` or `chase_fov`) in whole
+    /// degrees, the rest of the file kept.
+    pub fn save_fov(&self, key: &str, fov: f32) {
+        let degrees = fov.to_degrees().round().to_string();
+        self.write(|file| rbr_formats::ini::set_value(file, "launcher", key, &degrees));
+    }
+
+    fn write(&self, change: impl FnOnce(&str) -> String) {
         let Some(path) = &self.path else {
             return;
         };
         let file = std::fs::read_to_string(path).unwrap_or_default();
-        if let Err(e) = std::fs::write(path, self.prefs.replace_in(&file)) {
+        if let Err(e) = std::fs::write(path, change(&file)) {
             eprintln!("viewer: {}: {e}", path.display());
         }
     }
@@ -256,10 +272,12 @@ mod tests {
         session.set(CarView::Cockpit, nudges, false);
         session.save();
         session.chose(CarView::Bumper);
+        session.save_fov("chase_fov", 80.0f32.to_radians());
         let again = Session::load(Some(&path), Some("COROLLA".into()));
         assert_eq!((again.start_view(None), again.nudges(), again.head()), (CarView::Bumper, nudges, false));
         assert_eq!(again.start_view(Some(CarView::Chase)), CarView::Chase);
-        assert!(std::fs::read_to_string(&path).unwrap().starts_with("[launcher]\ncar = COROLLA\n\n[camera]\n"));
+        let file = std::fs::read_to_string(&path).unwrap();
+        assert!(file.starts_with("[launcher]\ncar = COROLLA\nchase_fov = 80\n\n[camera]\n"), "{file}");
         // Another car has none.
         assert_eq!(Session::load(Some(&path), Some("XSARA".into())).nudges(), Nudges::default());
         std::fs::remove_file(&path).unwrap();

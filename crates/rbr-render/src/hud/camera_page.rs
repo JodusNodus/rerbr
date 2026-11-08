@@ -1,11 +1,14 @@
 //! The pause menu's Camera page, ours (`crate::hud::pause`): a panel at the bottom of the screen over the paused view,
-//! which sets the view and this car's nudges of it ([`crate::camera_prefs`]). Its rows: the view, then sideways,
-//! height, forward and tilt for the cockpit, bonnet and bumper, or height and distance for the chase, the head on or
-//! off for the cockpit ([`crate::head`]), then Reset (the view back to the car's own) and Done. Up and Down pick a
-//! row, Left and Right change it; the select acts on Reset and Done, and the back returns to the menu's first page.
+//! which sets the view and this car's nudges of it ([`crate::camera_prefs`]). Its rows: the view, its field of view
+//! ([`Fov`]: the chase's, or the one of the cockpit, bonnet and bumper), then sideways, height, forward and tilt for
+//! the cockpit, bonnet and bumper, or height and distance for the chase, the head on or off for the cockpit
+//! ([`crate::head`]), then Reset (the view back to the car's own place; the field of view and the head stay) and Done.
+//! Up and Down pick a row, Left and Right change it; the select acts on Reset and Done, and the back returns to the
+//! menu's first page.
 
 use super::pause::Nav;
-use crate::camera_prefs::{Nudges, CHASE_STEP, REACH, STEP, TILT_REACH, TILT_STEP};
+use crate::camera_prefs::{Nudges, CHASE_STEP, FOV_STEP, REACH, STEP, TILT_REACH, TILT_STEP};
+use crate::coords::FOV_RANGE_DEGREES;
 use crate::game_camera::Settings;
 use crate::views::{CarView, Nudge};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
@@ -21,6 +24,8 @@ const ROW: f32 = 26.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Row {
     View,
+    /// The view's field of view.
+    Fov,
     Sideways,
     Height,
     Forward,
@@ -37,6 +42,7 @@ impl Row {
     fn label(self) -> &'static str {
         match self {
             Row::View => "View",
+            Row::Fov => "Field of view",
             Row::Sideways => "Sideways",
             Row::Height => "Height",
             Row::Forward => "Forward",
@@ -52,12 +58,58 @@ impl Row {
 /// The rows `view` has, top to bottom.
 pub fn rows(view: CarView) -> &'static [Row] {
     match view {
-        CarView::Chase => &[Row::View, Row::Height, Row::Distance, Row::Reset, Row::Done],
-        CarView::Cockpit => {
-            &[Row::View, Row::Sideways, Row::Height, Row::Forward, Row::Tilt, Row::Head, Row::Reset, Row::Done]
-        }
-        _ => &[Row::View, Row::Sideways, Row::Height, Row::Forward, Row::Tilt, Row::Reset, Row::Done],
+        CarView::Chase => &[Row::View, Row::Fov, Row::Height, Row::Distance, Row::Reset, Row::Done],
+        CarView::Cockpit => &[
+            Row::View,
+            Row::Fov,
+            Row::Sideways,
+            Row::Height,
+            Row::Forward,
+            Row::Tilt,
+            Row::Head,
+            Row::Reset,
+            Row::Done,
+        ],
+        _ => &[Row::View, Row::Fov, Row::Sideways, Row::Height, Row::Forward, Row::Tilt, Row::Reset, Row::Done],
     }
+}
+
+/// The horizontal fields of view, radians: the cockpit's, bonnet's and bumper's (`viewer --fov`, which the free camera
+/// takes too) and the chase's (`--chase-fov`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fov {
+    pub views: f32,
+    pub chase: f32,
+}
+
+impl Default for Fov {
+    fn default() -> Fov {
+        Fov { views: crate::coords::FOV_DEGREES.to_radians(), chase: crate::playback::CHASE_FOV_DEGREES.to_radians() }
+    }
+}
+
+impl Fov {
+    /// The one `view` is drawn with.
+    pub fn of(self, view: CarView) -> f32 {
+        match view {
+            CarView::Chase => self.chase,
+            _ => self.views,
+        }
+    }
+
+    /// These with `view`'s set to `fov`.
+    fn with(self, view: CarView, fov: f32) -> Fov {
+        match view {
+            CarView::Chase => Fov { chase: fov, ..self },
+            _ => Fov { views: fov, ..self },
+        }
+    }
+}
+
+/// `fov` (radians) one [`FOV_STEP`] to `sign`'s side, in whole degrees within [`FOV_RANGE_DEGREES`].
+fn stepped(fov: f32, sign: f32) -> f32 {
+    let (lo, hi) = FOV_RANGE_DEGREES.into_inner();
+    (fov.to_degrees() + sign * FOV_STEP).round().clamp(lo, hi).to_radians()
 }
 
 /// What a move on the page did.
@@ -69,18 +121,19 @@ pub enum Moved {
     Left,
 }
 
-/// The page: the view shown, the car's nudges, the head and the selected row.
+/// The page: the view shown, the car's nudges, the head, the fields of view and the selected row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CameraPage {
     pub view: CarView,
     pub nudges: Nudges,
     pub head: bool,
+    pub fov: Fov,
     row: usize,
 }
 
 impl CameraPage {
-    pub fn new(view: CarView, nudges: Nudges, head: bool) -> CameraPage {
-        CameraPage { view, nudges, head, row: 0 }
+    pub fn new(view: CarView, nudges: Nudges, head: bool, fov: Fov) -> CameraPage {
+        CameraPage { view, nudges, head, fov, row: 0 }
     }
 
     /// The selected row.
@@ -104,6 +157,14 @@ impl CameraPage {
             (Nav::Left | Nav::Right, Row::Head) => {
                 self.head = !self.head;
                 return Some(Moved::Changed);
+            }
+            (Nav::Left | Nav::Right, Row::Fov) => {
+                let sign = if nav == Nav::Right { 1.0 } else { -1.0 };
+                let fov = self.fov.with(self.view, stepped(self.fov.of(self.view), sign));
+                return (fov != self.fov).then(|| {
+                    self.fov = fov;
+                    Moved::Changed
+                });
             }
             (Nav::Left | Nav::Right, row) => {
                 let sign = if nav == Nav::Right { 1.0 } else { -1.0 };
@@ -177,6 +238,7 @@ fn value(page: &CameraPage, row: Row) -> String {
         Row::Height => signed(shift.y * 100.0, 0, " cm"),
         Row::Forward => signed(shift.z * 100.0, 0, " cm"),
         Row::Tilt => signed(tilt, 1, "\u{b0}"),
+        Row::Fov => format!("{:.0}\u{b0}", page.fov.of(page.view).to_degrees()),
         Row::Head => if page.head { "On" } else { "Off" }.into(),
         Row::Reset | Row::Done => String::new(),
     }
@@ -223,7 +285,7 @@ mod tests {
     use glam::Vec3;
 
     fn page(view: CarView) -> CameraPage {
-        CameraPage::new(view, Nudges::default(), true)
+        CameraPage::new(view, Nudges::default(), true, Fov::default())
     }
 
     /// Moves `page` to `row`.
@@ -237,7 +299,7 @@ mod tests {
     fn each_view_has_its_rows_and_the_view_row_cycles() {
         let mut p = page(CarView::Cockpit);
         let names = |p: &CameraPage| rows(p.view).iter().map(|&r| value(p, r)).collect::<Vec<_>>();
-        assert_eq!(names(&p), ["Cockpit", "0 cm", "0 cm", "0 cm", "0\u{b0}", "On", "", ""]);
+        assert_eq!(names(&p), ["Cockpit", "50\u{b0}", "0 cm", "0 cm", "0 cm", "0\u{b0}", "On", "", ""]);
         to(&mut p, Row::Head);
         assert_eq!(p.nav(Nav::Left), Some(Moved::Changed));
         assert_eq!(value(&p, Row::Head), "Off");
@@ -247,7 +309,7 @@ mod tests {
         to(&mut p, Row::View);
         assert_eq!(p.nav(Nav::Left), Some(Moved::Changed));
         assert_eq!(p.view, CarView::Chase);
-        assert_eq!(rows(p.view), [Row::View, Row::Height, Row::Distance, Row::Reset, Row::Done]);
+        assert_eq!(rows(p.view), [Row::View, Row::Fov, Row::Height, Row::Distance, Row::Reset, Row::Done]);
         assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
         assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
         assert_eq!(p.view, CarView::Bonnet);
@@ -315,6 +377,40 @@ mod tests {
         assert!(max < 100, "{max}");
         let near = Settings::default().nudged(p.nudges[CarView::Chase.index()].shift).radius;
         assert!((near - Settings::RADIUS_RANGE.start()).abs() < CHASE_STEP, "{near}");
+    }
+
+    #[test]
+    fn the_field_of_view_steps_the_view_s_own_in_whole_degrees_within_the_range() {
+        let mut p = page(CarView::Bonnet);
+        to(&mut p, Row::Fov);
+        assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
+        assert_eq!(value(&p, Row::Fov), "51\u{b0}");
+        assert_eq!(p.fov, Fov { views: 51.0f32.to_radians(), ..Fov::default() });
+        // The cockpit and bumper share it; the chase has its own.
+        to(&mut p, Row::View);
+        p.nav(Nav::Left);
+        assert_eq!((p.view, value(&p, Row::Fov)), (CarView::Cockpit, "51\u{b0}".into()));
+        p.nav(Nav::Left);
+        to(&mut p, Row::Fov);
+        assert_eq!((p.view, value(&p, Row::Fov)), (CarView::Chase, "65\u{b0}".into()));
+        let steps = (0..100).filter(|_| p.nav(Nav::Right).is_some()).count();
+        assert_eq!((steps, p.fov.chase), (55, 120.0f32.to_radians()), "stops at the range's end");
+        assert_eq!(p.fov.views, 51.0f32.to_radians());
+        // Reset leaves it.
+        to(&mut p, Row::Reset);
+        assert_eq!(p.nav(Nav::Select), None);
+        assert_eq!(p.fov.chase, 120.0f32.to_radians());
+        // A field of view off the grid (the file's 72.5) goes onto it with the first step; unmoved, it stays as given.
+        let mut p = CameraPage::new(
+            CarView::Cockpit,
+            Nudges::default(),
+            true,
+            Fov { views: 72.5f32.to_radians(), ..Fov::default() },
+        );
+        assert_eq!(p.fov.views, 72.5f32.to_radians());
+        to(&mut p, Row::Fov);
+        p.nav(Nav::Left);
+        assert_eq!(p.fov.views, 72.0f32.to_radians());
     }
 
     #[test]

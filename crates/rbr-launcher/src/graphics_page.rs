@@ -406,14 +406,15 @@ impl Form {
 
         section(ui, "Camera");
         fields(ui, "camera", |ui| {
-            let tip =
-                "The horizontal field of view of the in-car views and the free camera; the chase view has its own below";
+            let tip = "The horizontal field of view of the in-car views and the free camera; the chase view has its \
+                       own below. The pause menu's Camera page sets it too";
             ui.label("Field of view").on_hover_text(tip);
             ui.add(egui::Slider::new(&mut self.fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
                 .on_hover_text(tip);
             ui.end_row();
 
-            let tip = "The horizontal field of view of the chase view (65 by default)";
+            let tip = "The horizontal field of view of the chase view (65 by default). The pause menu's Camera page \
+                       sets it too";
             ui.label("Chase field of view").on_hover_text(tip);
             ui.add(egui::Slider::new(&mut self.chase_fov, coords::FOV_RANGE_DEGREES).step_by(1.0).suffix("°"))
                 .on_hover_text(tip);

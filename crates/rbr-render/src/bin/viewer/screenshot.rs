@@ -10,7 +10,7 @@ use glam::Mat4;
 use rbr_counters::{Counts, Mark};
 use rbr_formats::data::Data;
 use rbr_recording::pose::CarPose;
-use rbr_render::hud::camera_page::CameraPage;
+use rbr_render::hud::camera_page::{CameraPage, Fov};
 use rbr_render::hud::ffb_page::FfbPage;
 use rbr_render::hud::pause::{self, Outcome, PauseMenu};
 use rbr_render::hud::results::{self, ResultsMenu};
@@ -37,8 +37,9 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         (Some(live), Some(moves)) => {
             // The Force feedback page as with a wheel, once the drive said the car's surface.
             let ffb = live.hud.ffb_surface.map(|surface| FfbPage::of(&scene.ffb, surface));
-            let mut menu =
-                PauseMenu::open(live.menu, CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head()), ffb);
+            let fov = Fov { views: fov, chase: args.chase_fov };
+            let camera = CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head(), fov);
+            let mut menu = PauseMenu::open(live.menu, camera, ffb);
             if moves.iter().any(|&nav| matches!(menu.nav(nav), Some(Outcome::Chosen(_)))) {
                 return Err("--pause-menu: the moves close the menu".into());
             }
@@ -46,13 +47,15 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         }
         _ => None,
     };
-    // The Camera page's view and nudges, shown as the window shows them (the file is not written).
+    // The Camera page's view, nudges and fields of view, shown as the window shows them (the file is not written).
     let page = menu.as_ref().and_then(PauseMenu::camera);
     let view = page.map_or(view, |page| page.view);
+    let fov = page.map_or(fov, |page| page.fov.views);
     if let Some(page) = page {
         scene.cameras.set(page.view, page.nudges, page.head);
         if let (Some(mounts), Some(playback)) = (&mut scene.mounts, &mut scene.playback) {
             scene.cameras.apply(mounts, playback);
+            playback.chase_fov = page.fov.chase;
         }
     }
     let size = args.size.unwrap_or(SIZE);

@@ -817,6 +817,8 @@ impl Form {
                 // The pause menu's Camera and Force feedback pages may have changed them.
                 let saved = crate::settings::read_settings(&self.paths.settings);
                 self.head = !saved.camera.head_off;
+                self.fov = saved.fov.unwrap_or(self.fov);
+                self.chase_fov = saved.chase_fov.unwrap_or(self.chase_fov);
                 self.ffb_cars = saved.ffb_cars;
                 self.ffb_load = saved.ffb_load;
                 self.ffb.settings.strength = saved.ffb.settings.strength;

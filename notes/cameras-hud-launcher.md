@@ -32,6 +32,10 @@ Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of vi
   `rbr_render::car::camera_sections`). One looking more than 30 degrees to the side is not taken (the Porsche 911 GT3
   RS (2010) RGT pack ships a `Cam_internal` 60 degrees left; the 43 installed others are within 5, 2026-11-01).
 - The X-key adjust mode is gone; an old `camera adjust` line is ignored (not in code).
+- Field of view on the pause menu's Camera page (ours, 2026-11-08): the shown view's, in 1-degree steps over 30 to 120;
+  the cockpit, bonnet and bumper share one (`--fov`), the chase has its own (`--chase-fov`). Written at once to the
+  launcher's `[launcher] fov` / `chase_fov` (one setting with the Graphics page's sliders; the launcher rereads it
+  when the viewer exits). Reset leaves it.
 - In-car head (ours, `rbr_render::head`): over the game's seat shake, the view keeps the horizon steadier, on the
   physics clock (same at any frame rate, in replays and videos); a look into corners and slides was dropped (user,
   2026-11-01: motion sickness). On by default;

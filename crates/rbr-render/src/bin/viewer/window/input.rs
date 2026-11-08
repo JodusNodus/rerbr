@@ -4,7 +4,7 @@ use super::App;
 use crate::args::Args;
 use rbr_gameplay::pause_menu::{Item, Page};
 use rbr_render::bindings::Action;
-use rbr_render::hud::camera_page::CameraPage;
+use rbr_render::hud::camera_page::{CameraPage, Fov};
 use rbr_render::hud::ffb_page::FfbPage;
 use rbr_render::hud::pause::{Nav, Outcome, PauseMenu};
 use rbr_render::live::{self, Controls, Live};
@@ -201,6 +201,7 @@ impl App {
     /// Opens the pause menu and pauses the drive: the process's clock stopped (`Live::pause`), the sound stopped
     /// where it is, the wheel's force at 0, and the viewer's clocks (the characters, the renderer's time) held.
     pub fn open_menu(&mut self) {
+        let fov = self.drawn_fov();
         let Some(process) = &mut self.scene.live else {
             return;
         };
@@ -209,7 +210,7 @@ impl App {
             .map(|(surface, _)| FfbPage::of(&self.scene.ffb, surface));
         self.menu = Some(PauseMenu::open(
             process.menu,
-            CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head()),
+            CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head(), fov),
             ffb,
         ));
         process.pause();
@@ -290,11 +291,27 @@ impl App {
         }
     }
 
-    /// Shows the view, the car's nudges and the head the Camera page set, and writes them to the file.
+    /// The fields of view drawn now: the fixed views' and the chase's.
+    fn drawn_fov(&self) -> Fov {
+        let chase = self.scene.playback.as_ref().map_or(Fov::default().chase, |playback| playback.chase_fov);
+        Fov { views: self.fov, chase }
+    }
+
+    /// Shows the view, the car's nudges, the head and the fields of view the Camera page set, and writes them to the
+    /// file.
     fn camera_changed(&mut self) {
         let Some(page) = self.menu.as_ref().and_then(PauseMenu::camera) else {
             return;
         };
+        let (now, fov) = (self.drawn_fov(), page.fov);
+        if fov.views != now.views {
+            self.fov = fov.views;
+            self.scene.cameras.save_fov("fov", fov.views);
+        }
+        if let Some(playback) = self.scene.playback.as_mut().filter(|_| fov.chase != now.chase) {
+            playback.chase_fov = fov.chase;
+            self.scene.cameras.save_fov("chase_fov", fov.chase);
+        }
         self.view = page.view;
         self.scene.cameras.set(page.view, page.nudges, page.head);
         self.scene.cameras.save();
