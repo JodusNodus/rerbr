@@ -89,9 +89,13 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
   built in 1.5 s; drawn 2.73 M triangles (road, grass, signs, additions; rails, trees, people, GP left out by
   `--skip`). Map 41's fences sit over 900 m from the driveline with nothing under them.
 - Autopilot (Fiesta Rally2, NGP, `--top-speed 50`, `--result-out`): start to finish in 913.8 s race time (3 min 14 s
-  of wall time), at most 3.7 m off the driveline; split 1 164.0 s (3839 m), split 2 313.3 s (7017 m). The mission's
-  four splits are four split keys, but 1.02's race flow times three on the HUD (`RaceFlow` `splits: [f32; 3]`) and
-  ends the race with two (`EndRace`), so the third shows and the fourth is never timed.
+  of wall time), at most 3.7 m off the driveline; split 1 313.3 s (7017 m), split 2 511.2 s (11584 m).
+- Splits: two, the mission's `useAsSplit` nodes nearest a third and two thirds of the stage (`convert::two_splits`;
+  all when two or fewer), as every retail stage has: 1.02's race flow times three on the HUD (`RaceFlow` `splits:
+  [f32; 3]`) but ends the race with two (`EndRace`), so of the Nordschleife's four the third showed and the fourth
+  was never timed.
+- Open: the grass ground looks pale and flat; the bench covers only the first 1.3 km (Döttinger Höhe has the most in
+  view).
 - Captures (`viewer --camera EYE,DIRECTION`, the second triple a direction): start, Flugplatz (2.4 km), the
   Karussell approach (11.9 km), Döttinger Höhe (18.1 km), all with 0 missing textures.
 
