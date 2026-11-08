@@ -3,7 +3,8 @@
 //!
 //! Research tooling (ours, experimental). `--model` is the profile's `rbr_tyre` model name (`ngp`, `brush`): the
 //! model is built by `rbr_tyre::model` from the wheel's tables, as the game builds it, and asked at each slip; where it
-//! gives `None` (NGP's: `ngp`, or soil under the brush) NGP's own `patch_forces` answer, as in the game's seam. The
+//! gives `None` (NGP's: `ngp`) NGP's own `patch_forces` answer, as in the game's seam (the brush takes soil with
+//! loose-v1). The
 //! model's force dynamics settle for `SETTLE` steps at each slip. Flat road, no sinking, no soil force: NGP's side is
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
@@ -15,8 +16,8 @@
 //! (the probed friction level kept).
 
 use rbr_tyre::Wheel;
-use rbr_tyre_lab::probe::{parse_probe, patch_at, Params};
-use rbr_tyre_lab::steady::{grid, peak, Tyre};
+use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
+use rbr_tyre_lab::steady::{grid, peak, slope, Tyre};
 
 /// The loads of the load exponents, N, and the curves' loads (4 kN, and 6.7 kN of SAE 2010-01-0374).
 const LOADS: [f32; 5] = [2000.0, 3000.0, 4000.0, 5000.0, 6000.0];
@@ -31,12 +32,6 @@ fn exponent(xs: &[f32], ys: &[f32]) -> f32 {
     let sxy: f64 = lx.iter().zip(&ly).map(|(x, y)| (x - mx) * (y - my)).sum();
     let sxx: f64 = lx.iter().map(|x| (x - mx).powi(2)).sum();
     (sxy / sxx) as f32
-}
-
-/// Least-squares slope through the origin of `f` over `xs`.
-fn slope(xs: &[f32], mut f: impl FnMut(f32) -> f32) -> f32 {
-    let (sxy, sxx) = xs.iter().fold((0.0, 0.0), |(sxy, sxx), &x| (sxy + x * f(x), sxx + x * x));
-    sxy / sxx
 }
 
 fn main() {
@@ -99,7 +94,7 @@ fn main() {
         rubber_friction: p.rub_my.clone(),
     };
     let built = rbr_tyre::model(&model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
-    let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water };
+    let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water, camber: 0.0 };
     let out = |k: &str, v: f32| println!("{k} {v:.4}");
     println!(
         "# step {} wheel {} model {model} speed {speed} static {:.4} kinetic {:.4} soil {soil:.4} water {water} temp_grip {:.4}",
@@ -108,12 +103,16 @@ fn main() {
 
     let angles = || grid(0.0, 40.0, 0.25);
     let kappas = || grid(0.0, 1.0, 0.01);
+    // Braking peaks are taken over the braking slip 0 to loose-v1's `BERM_FROM` (0.8): the free rolling side's peak,
+    // before the berm, so under loose-v1 they are not the lock (that is `mu_x_locked_*`, κ -1). NGP's and the brush's
+    // braking peaks lie below 0.8 on every probed surface.
+    let brake_kappas = || grid(0.0, rbr_tyre::loose::BERM_FROM as f32, 0.01);
     let fit_angles: Vec<f32> = grid(0.25, 2.0, 0.25).map(f32::to_radians).collect();
     let fit_kappas = [0.02f32, 0.04];
     let (mut lat_peaks, mut lon_peaks, mut calphas, mut kxs) = (vec![], vec![], vec![], vec![]);
     for &fz in &LOADS {
         lat_peaks.push(peak(angles(), |a| t.mu_y(fz, a)).0 * fz);
-        lon_peaks.push(peak(kappas(), |k| t.mu_x(fz, -k)).0.max(peak(kappas(), |k| t.mu_x(fz, k)).0) * fz);
+        lon_peaks.push(peak(brake_kappas(), |k| t.mu_x(fz, -k)).0.max(peak(kappas(), |k| t.mu_x(fz, k)).0) * fz);
         calphas.push(slope(&fit_angles, |a| t.mu_y(fz, a.to_degrees()) * fz));
         kxs.push(slope(&fit_kappas, |k| (t.mu_x(fz, k) + t.mu_x(fz, -k)) / 2.0 * fz));
     }
@@ -129,6 +128,22 @@ fn main() {
     out("kx_over_ky_4k", kxs[2] / calphas[2]);
     out("comb_a2_4k", t.combined(4000.0, 2.0, -0.25));
     out("comb_a4_4k", t.combined(4000.0, 4.0, -0.25));
+    // Camber: the camber stiffness at 4 kN, and over the cornering stiffness.
+    let camber = t.camber_per_fz(4000.0);
+    out("camber_per_fz_4k", camber);
+    out("camber_over_calpha_4k", camber / t.calpha_per_fz(4000.0));
+    // Inflation pressure: +0.5 bar on the probed pressure (NGP's stiffness factor at it; the patch length stays the
+    // probe's), the change in per cent.
+    let mut q = p.clone();
+    q.stiffness_factor = interp(&p.press_axis, &p.stf_val, p.air_pressure + 50000.0);
+    let model_q = rbr_tyre::model(&model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
+    let mut tq = Tyre { p: &q, cloud: &cloud, soil, model: model_q, speed, water, camber: 0.0 };
+    let pct = |a: f32, b: f32| (b / a - 1.0) * 100.0;
+    out("calpha_dp05_4k", pct(t.calpha_per_fz(4000.0), tq.calpha_per_fz(4000.0)));
+    out("kx_dp05_4k", pct(t.kx_per_fz(4000.0), tq.kx_per_fz(4000.0)));
+    out("sigma_y_dp05_4k", pct(t.x63_y(4000.0, 1.0), tq.x63_y(4000.0, 1.0)));
+    let peak_y = |t: &mut Tyre| peak(angles(), |a| t.mu_y(4000.0, a)).0;
+    out("peak_mu_y_dp05_4k", pct(peak_y(&mut t), peak_y(&mut tq)));
 
     // The aligning moment the game applies (trail torque less the carcass offset; `Tyre::aligning`), 4 kN.
     let fz = 4000.0;
@@ -174,7 +189,7 @@ fn main() {
             }
         }
         let (drive, kd) = peak(kappas(), |k| t.mu_x(fz, k));
-        let (brake, kb) = peak(kappas(), |k| t.mu_x(fz, -k));
+        let (brake, kb) = peak(brake_kappas(), |k| t.mu_x(fz, -k));
         out(&format!("peak_mu_x_drive_{name}"), drive);
         out(&format!("peak_kappa_drive_{name}"), kd);
         out(&format!("peak_mu_x_brake_{name}"), brake);

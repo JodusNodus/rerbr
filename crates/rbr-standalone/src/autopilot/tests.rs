@@ -362,6 +362,13 @@ fn threshold_braking_holds_the_slip_target() {
     }
 }
 
+/// A wheel standing still through the ABS's lift (rim speed 0) keeps the raw reference: its slip stays finite.
+#[test]
+fn the_abs_takes_the_raw_reference_for_a_wheel_still_in_the_lift() {
+    let slips = abs_slips([9.5, 9.5, 5.0, 0.0], 10.0, [9.5, 9.5, 0.0, 0.0], 10.0);
+    assert_eq!(slips, [0.0, 0.0, 0.5, 1.0]);
+}
+
 /// The per-wheel ABS on threshold braking's toy wheel, its rim speed read 6 % low (as NGP's free wheels read on gravel,
 /// `ABS_LIFT`): the lift releases the brake and learns the reading; then the pedal is full and the wheel's pressure
 /// scale holds its true slip within the band of the target, on the curve's rising side and at its peak (past it, the

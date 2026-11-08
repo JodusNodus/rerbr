@@ -316,8 +316,8 @@ fn events(args: &Args, out: &Path, data: &Data, race: &boot::Race, stage: &Stage
 /// controller's); `--brake-from` brakes fully from a speed to a standstill (`--brake-pedal` at a partial pedal,
 /// `--brake-slip` threshold braking at a slip ratio, `--brake-abs` a per-wheel ABS at one, `--brake-hold` on the brake for a while after the stop, `--brake-declutch` with the clutch in, which needs `--clutch-help off`);
 /// `--circle` drives a steady-state circle with the target speed ramping up; `--trace-speed FILE` writes each step's
-/// time, speed, pedals, gear and position, the engine speed the gear gives with the clutch engaged (0 in neutral) and
-/// last the wheels' rim speeds.
+/// time, speed, pedals, gear and position, the engine speed the gear gives with the clutch engaged (0 in neutral), the
+/// wheels' rim speeds and last the steering's filtered force-feedback torque (`ffb`; `autopilot/drive.rs`).
 fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, stage: &StageData) -> ExitCode {
     let bytes = match &args.recording {
         Some(path) if !args.boot => match std::fs::read(path) {

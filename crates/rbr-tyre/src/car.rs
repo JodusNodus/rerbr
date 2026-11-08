@@ -66,7 +66,9 @@ impl Model for Brush {
             // The aligning moment's half length: the patch's, with the trail's own load dependence.
             half_length: brush::trail_half_length(f64::from(x.patch_length) / 2.0, fz, t.cal.fz0),
             vx: f64::from(x.longitudinal_velocity),
-            vy: f64::from(x.lateral_velocity),
+            // The inclination's camber thrust as a lateral slip velocity of the rolling tyre.
+            vy: f64::from(x.lateral_velocity)
+                + brush::camber_slip_velocity(f64::from(x.inclination_sin), f64::from(x.spin * x.effective_radius)),
             spin: f64::from(x.spin),
             radius: f64::from(x.effective_radius),
             bulk_temp: f64::from(x.tread_temperature),
@@ -82,14 +84,14 @@ impl Model for Brush {
             surf_kinetic: f64::from(x.grip),
         };
         let steady = if soil { loose::eval(&e, &t.loose) } else { brush::eval(&e, &t.cal) };
-        // The longitudinal carcass stiffness (ours), at the pressure (the carcass does not soften on ice); the lateral
-        // one NGP's.
+        // The carcass stiffnesses at the pressure (the carcass does not soften on ice): the longitudinal one ours, the
+        // lateral one NGP's moved to the published pressure law.
         let k_x = brush::carcass_x(&t.cal, pressure_factor);
+        let k_y = brush::carcass_y(&t.cal, f64::from(x.lateral_stiffness), pressure_factor);
         let mut state = t.state;
         let limit = steady.mu * e.fz;
         let vr = e.spin * e.radius;
-        let (fx, fy) =
-            brush::step_dynamic(&mut state, &steady, vr, k_x, f64::from(x.lateral_stiffness), limit, f64::from(x.dt));
+        let (fx, fy) = brush::step_dynamic(&mut state, &steady, vr, k_x, k_y, limit, f64::from(x.dt));
         if !(fx.is_finite() && fy.is_finite() && steady.trail.is_finite()) {
             t.running = false;
             return None;
@@ -138,6 +140,7 @@ mod tests {
             tread_left: 1.0,
             soil_thickness: 0.0,
             water_factor: 0.0,
+            inclination_sin: 0.0,
             lateral_stiffness: 150000.0,
             torsional_stiffness: 20000.0,
         }
@@ -295,6 +298,26 @@ mod tests {
         let ratio = ice.0 / tarmac.0;
         assert!(ice.0 < 0.6 && (1.6..2.4).contains(&ratio), "tarmac {tarmac:?} ice {ice:?}");
         assert!(ice.1 > 0.9 && tarmac.1 < 0.8, "tarmac {tarmac:?} ice {ice:?}");
+    }
+
+    #[test]
+    fn negative_camber_pushes_inwards_while_rolling_only() {
+        // The wheel's frame: a positive lateral velocity is outwards and gives a negative (inward) force. Negative
+        // camber pushes inwards as 0.05 of its sine in slip would: -2° as 0.1° of slip angle.
+        let settled = |x: ForceInput| {
+            let mut b = Brush::new(&[wheel()]).unwrap();
+            (0..1440).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap().lateral_force
+        };
+        let incl = (-2f32).to_radians().sin();
+        let at = |deg: f32, sin: f32| settled(ForceInput { inclination_sin: sin, ..rolling(15.0, deg.to_radians()) });
+        assert_eq!(at(0.0, 0.0), 0.0);
+        let (thrust, slip) = (at(0.0, incl), at(0.1, 0.0));
+        assert!(thrust < 0.0 && (thrust / slip - 1.0).abs() < 0.01, "{thrust} {slip}");
+        // Past the peak the patch slides whole and the camber adds nothing (but its share of the sliding speed).
+        let (slide, upright) = (at(20.0, incl), at(20.0, 0.0));
+        assert!((slide / upright - 1.0).abs() < 0.002, "{slide} {upright}");
+        // At rest the camber builds no deflection.
+        assert_eq!(settled(ForceInput { inclination_sin: incl, ..rolling(0.0, 0.0) }), 0.0);
     }
 
     #[test]

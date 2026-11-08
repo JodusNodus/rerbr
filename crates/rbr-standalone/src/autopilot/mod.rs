@@ -572,6 +572,15 @@ const ABS_BAND: f32 = 0.02;
 const ABS_DUMP: f32 = 20.0;
 const ABS_APPLY: f32 = 5.0;
 
+/// The wheels' slip ratios from free rolling at speed `v`: each rim speed against `v` times its free-rolling ratio,
+/// the lift's `sum` over `n` steps. A wheel whose rim never turned in the lift (sum 0) keeps the raw ratio 1.
+fn abs_slips(wheels: [f32; 4], v: f32, sum: [f32; 4], n: f32) -> [f32; 4] {
+    std::array::from_fn(|k| {
+        let free = if sum[k] > 0.0 { sum[k] / n } else { 1.0 };
+        1.0 - wheels[k] / (v * free)
+    })
+}
+
 /// The per-wheel ABS's step: the scales after `dt` s from `scale` at the wheels' `slips` from free rolling.
 fn abs_step(target: f32, scale: [f32; 4], slips: [f32; 4], dt: f32) -> [f32; 4] {
     std::array::from_fn(|k| {
@@ -1101,7 +1110,7 @@ impl<'a> Driver<'a> {
                         0.0
                     } else {
                         let n = (steps - steps / 2).max(1) as f32;
-                        let slips = std::array::from_fn(|k| 1.0 - sense.wheels[k] / (v * free[k] / n));
+                        let slips = abs_slips(sense.wheels, v, *free, n);
                         *scale = abs_step(*target, *scale, slips, dt);
                         1.0
                     }

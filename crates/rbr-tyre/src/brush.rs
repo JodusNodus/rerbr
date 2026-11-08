@@ -119,10 +119,11 @@ pub struct Calibration {
     /// theoretical slip (fitted, not table values).
     pub cy0: f64,
     pub cx0: f64,
-    /// Lateral friction at zero and infinite sliding speed.
+    /// Lateral friction's static and kinetic levels (the Stribeck curve's ends before `SPEED_DECAY`, which takes the
+    /// friction toward 0 at high sliding speed).
     pub mu_ys: f64,
     pub mu_yk: f64,
-    /// Longitudinal friction at zero and infinite sliding speed.
+    /// Longitudinal friction's static and kinetic levels (as the lateral ones).
     pub mu_xs: f64,
     pub mu_xk: f64,
     /// Bulk tread temperature (K), tread remaining (1 = new), NGP's
@@ -170,7 +171,7 @@ pub fn stiffness_at(fz: f64, tb: f64, d: f64, pf: f64, c0: f64, m: f64, cal: &Ca
 /// asphalt's, which the knee 0.55 with an exponent 0.76 passes through; his summer tyre keeps 0.09 on ice (mu 0.077),
 /// an exponent 1.2 with that knee. The exponent is 1 (ours, between the two tyres): below the knee the peak slip
 /// stays the knee's, so ice (NGP's 0.10) peaks near 4°, as measured (4-5°: TR0713; SAE 2010-01-0374 Fig 8). Snow is
-/// not fitted (soil: NGP's force there).
+/// soil: loose-v1 (`crate::loose`), not this factor.
 pub const LOW_MU_KNEE: f64 = 0.55;
 pub const LOW_MU_EXPONENT: f64 = 1.0;
 
@@ -182,6 +183,22 @@ pub fn low_mu_stiffness_factor(mu: f64) -> f64 {
     } else {
         1.0
     }
+}
+
+/// Camber stiffness over cornering stiffness, C_gamma / C_alpha: 0.05. MF 6.1's example set (255/55R20, 260 kPa) has
+/// K_y,gamma0 = Fz (PKY6 + PKY7 dfz) at 0.047-0.052 of K_y,alpha from 2 to 6.75 kN at 2.0-2.6 bar (1.07 Fz per rad at
+/// 4 kN, 2.6 bar); MF 5.2's truck set 0.061. Pacejka's brush gives eps a/(3R) for a parabolic camber deflection, with
+/// the camber reduction factor eps 0.4-0.7 for car and truck tyres (Romano, Timpone, Bruzelius & Jacobson,
+/// Meccanica 2021, as quoted): 0.031-0.055 at a 0.074 m half patch on a 0.315 m wheel. NGP's sliding model takes
+/// 0.1 of the inclination's sine off the slip.
+pub const CAMBER_OVER_CORNERING: f64 = 0.05;
+
+/// The camber's share of the lateral slip velocity, m/s, at the inclination's sine `sin` (NGP's sign: negative with
+/// the top leaning in) and the rolling speed `vr`, m/s: -[`CAMBER_OVER_CORNERING`] sin |vr|, an equivalent slip as
+/// MF's horizontal shift is, so the thrust is C_gamma sin at small slip and goes once the patch slides whole. It grows
+/// with rolling only: none at standstill or locked.
+pub fn camber_slip_velocity(sin: f64, vr: f64) -> f64 {
+    -CAMBER_OVER_CORNERING * sin * vr.abs()
 }
 
 /// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (Horne's deep-water
@@ -435,10 +452,26 @@ pub const DAMPING_Y: f64 = 425.0;
 /// Kx of 222 kN at Fz0 (Kx/Fz 32.9 at 6.75 kN), more than twice ours at 4 kN.
 pub const CARCASS_X: f64 = 450_000.0;
 
-/// The longitudinal carcass stiffness, N/m, at the pressure factor `pf` (NGP's StfFct): [`CARCASS_X`] moved with
-/// the slip stiffnesses, as NGP's stiffness factor moves c_y. No load term.
+/// The carcass stiffnesses against the inflation pressure, as powers of NGP's stiffness factor `pf` (StfFct, which
+/// moves the slip stiffnesses and NGP's own carcass alike): the carcass stiffens faster than the slip stiffness
+/// laterally and slower longitudinally. Per +0.5 bar c_y +9.5 % (op het Veld, MSc TU/e 2008, Flatplank, measured) and
+/// +13-16 % (MF 6.1's PCFY3 at 2.6-2.0 bar), c_x +3.5 % and +4.2-4.4 % (PCFX3); NGP's factor (one table for every
+/// tyre, 0.9 at 1.5 bar to 1.1 at 3 bar) rises 6.9 % from 2.0 bar, so the means, +12 % and +3.9 %, are its powers 1.7
+/// and 0.6. So the lateral relaxation length C_y/c_y shortens with pressure, as both sources' does (-12 % and -21 to
+/// -26 %), though less: their cornering stiffness falls with pressure at 4 kN, NGP's rises (the data disagree there).
+pub const CARCASS_Y_PRESSURE: f64 = 1.7;
+pub const CARCASS_X_PRESSURE: f64 = 0.6;
+
+/// The longitudinal carcass stiffness, N/m, at the pressure factor `pf`: [`CARCASS_X`] times its pressure power
+/// ([`CARCASS_X_PRESSURE`]). No load term.
 pub fn carcass_x(cal: &Calibration, pf: f64) -> f64 {
-    CARCASS_X * (pf / cal.pf_cal)
+    CARCASS_X * libm::pow(pf / cal.pf_cal, CARCASS_X_PRESSURE)
+}
+
+/// The lateral carcass stiffness, N/m, at the pressure factor `pf`, from NGP's `k_y` at it (which moves with `pf`):
+/// moved to its pressure power ([`CARCASS_Y_PRESSURE`]).
+pub fn carcass_y(cal: &Calibration, k_y: f64, pf: f64) -> f64 {
+    k_y * libm::pow(pf / cal.pf_cal, CARCASS_Y_PRESSURE - 1.0)
 }
 
 /// The transient state: the carcass deflections along the slips, m (Rill's x_e, y_e). The force they hold is
@@ -812,6 +845,17 @@ mod tests {
         let mut st = TransState { ux: 1.0, uy: 1.0 };
         let (fx, fy) = step_dynamic(&mut st, &steady, 15.0, 70000.0, 70000.0, 5000.0, 1.0 / 720.0);
         assert!(((fx * fx + fy * fy).sqrt() / 5000.0 - 1.0).abs() < 1e-12, "{fx} {fy}");
+    }
+
+    #[test]
+    fn the_lateral_relaxation_length_shortens_with_pressure() {
+        // NGP's factor +6.9 % (2.0 to 2.5 bar): c_y +12 %, c_x +3.9 %, both unchanged at the calibration pressure.
+        let (cal, pf) = (synth_cal(), 1.0667);
+        assert_eq!((carcass_x(&cal, 1.0), carcass_y(&cal, 150e3, 1.0)), (CARCASS_X, 150e3));
+        let (cy, cx) = (carcass_y(&cal, 150e3 * pf, pf) / 150e3, carcass_x(&cal, pf) / CARCASS_X);
+        assert!((cy - 1.116).abs() < 0.002 && (cx - 1.0396).abs() < 0.001, "{cy} {cx}");
+        // sigma_y = C_y/c_y: the slip stiffness moves with the factor, the carcass faster.
+        assert!(pf / cy < 0.96);
     }
 
     /// The synthetic tyre's longitudinal carcass stiffness.
