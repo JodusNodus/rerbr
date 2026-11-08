@@ -590,9 +590,31 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   autopilot never settles on the circle), RSF 111 +0.6 %, RSF 112 +1.4 % (berm from the full slide) to +10 % (berm
   from 0.8 or flat: splits 107.7 / 292.0 against 105.9 / 273.8, time lost in the second section; the autopilot is
   not tuned to the grip). The grip level is the user's decision (2026-11-08: stays NGP's for now).
-- Standstill: no creep (no movement after 1 s at the trace's 10 mm); after a full-pedal stop from 50 km/h the carcass
-  rings to 0.06 m/s in the second half second (NGP 0.014), gone by 1.5 s, as on tarmac (berm from the full slide). No
-  NaN in any run.
+- Standstill (berm from 0.8, Fiesta Rally2, RSF 345 gravel): no creep, no movement after 1 s. After a stop from 50
+  km/h, the peak speed per half second is 0.292/0.015/0.006/0 m/s at full pedal (NGP 0.293/0.014/0.001/0) and
+  0.296/0.029/0.003/0 at a 0.35 pedal (NGP 0.296/0.043/0.001). From the full slide it rang to 0.061/0.019.
+- Snow (lab, map 10 wheel 1, static 0.852, 4 kN, 15 m/s): μ_y over peak at 5/10/20/30/40° is NGP
+  0.800/0.998/0.980/0.955/0.922 and loose-v1 0.721/0.972/1.000/1.000/1.000. Peak μ_y: NGP 0.844 at 11°, loose-v1
+  0.834 at 17.5°. Braking over the driving peak at κ -0.5/-0.9/-1: loose-v1 1.000/1.150/1.300, NGP 0.959/0.854/0.844.
+  Locked side force over peak at 5/10/20°: loose-v1 0.116/0.231/0.454, NGP 0.152/0.288/0.442.
+- Soil↔hard in game (RSF 469/473, tarmac and gravel mixed, soil 0-30 mm, Fiesta Rally2, the autopilot): there are
+  9-22 changes per run above 2 m/s, most at road edges or bumps, where Fz jumps. Where Fz is steady (< 20 %), μ steps
+  by -0.057 to +0.070 at the change: loose-v1's flat friction against the brush's fall with sliding speed, plus the
+  surface's grip. At the changes |ΔF|/Fz stays within the run's spread (p99 0.18 elsewhere). No oscillation: 0-1
+  reversals over 0.01 in 40 steps, except in sideways crashes at 10-18 kN, which come from the terrain. Stage times:
+  469 eb 274.26 s against ngp 285.09 s. On 473 eb finished in 294.43 s; ngp ended on its roof at 257 m (the autopilot).
+- Robustness (2026-11-08, the autopilot to the finish, 5 cars × 5 stages, ngp and eb): Golf II (FWD), 131 Abarth and
+  M3 E30 (RWD), Fiesta Rally2 and Celica ST185 (AWD), on RSF 104 and 111 (gravel), track-11_O (gravel), track-10_O
+  (snow) and RSF 389 (snow). 24/25 finish under both. No NaN. Recoveries are alike (track-10_O: eb 6, ngp 5). eb is
+  faster everywhere: 1.1-2.3 % on RSF, 1.8-4.3 % on retail, over 3 % for the M3, the 131 and the Golf on
+  track-10/11_O. The flat loose friction holds its peak through the slide (NGP's falls).
+- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m. Braking at a 0.8 pedal at full lock (4450 m, 12 m/s),
+  the fronts creep at 0.4-0.9 m/s (slip 0.93-0.96, on the berm's ramp). The engine in fourth follows them through the
+  clutch help's 89 rad/s to 0 and stays stalled; the autopilot has no restart. ngp and experimental (NGP's tyre, ReRBR's
+  engine) lock both fronts at the same corner to 0 m/s, the engine idles at 89 rad/s, and both finish (282.12 /
+  277.27 s). Likely cause: a force rising with slip up to lock lets a partial pedal hold the wheel just short of lock.
+  Why the clutch help does not open there is not traced. Not changed: changing the berm's shape reopens the round 2
+  trade-off.
 - Scorecard (`build/tyre-night/scores/loose-v1.json` at the merge of main c03bc2b8, `--compare baseline.json`):
   experimental-brush 34/75 → 43/85, ngp 28/75 → 31/85 (both gain the two gravel K 0.2 rows; main's tarmac and wet
   work moves the tarmac and ice rows). New passes: circle 0.609 g, locked over K 0.2 1.37 / 1.27,
@@ -717,3 +739,13 @@ leaves the line (In game).
   ABS model for the locked-over-ABS ratio (one pedal at K 0.2 under-brakes, so NGP scores 1.18-1.30 too), a spinning
   tyre's sinkage resistance, the berm against the layer's thickness, and snow (same model, not tuned; 1.06 g full
   pedal against 0.31-0.35 g).
+- loose-v1 open items:
+  - A partial pedal holds a wheel creeping on the berm's ramp, and the engine stalls through the clutch help (the
+    Golf, RSF 104; [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
+  - Eb is 1-4 % faster than ngp on soil.
+- A per-wheel ABS for the brake test (not built):
+  - Hook: `brake_step` has one call site, `rbr-hybrid/src/ngp/steps.rs`, for every dispatch. A thread-local
+    per-wheel pedal scale beside `set_tyre_model` would multiply `pedal_pressure` (`x + 0x60`) only when set. Unset,
+    the read is untouched, so ngp stays bit-exact (rsf_compare and the hybrid check prove it).
+  - Controller: an autopilot `Brake::Abs` cuts each wheel's scale above its slip target and restores it below.
+  - Measurement: a `brake_test.py` mode and an `abs_kK` scorecard key.
