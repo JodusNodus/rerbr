@@ -931,8 +931,10 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
   Kx/Fz 14.0 / 21.2 (18.4-32.9); peak Fx ∝ Fz^0.985 / 0.935 (0.90-0.95).
 - Aligning moment (the lab's `Tyre::aligning`: the torque `solve_forces` applies above 2 m/s, trail × Fy less the
   carcass offset Fy/k_y × Fx, flat): t0/a 0.319 / 0.302 (0.36-0.51; brush theory a/3 at the design load); t0 ∝
-  Fz^0.307 / 0.694 (0.90-1.05); patch half length ∝ Fz^0.30 both (NGP's contact geometry; 0.55-0.65); Mz peak ∝
-  Fz^0.975 / 1.535 (1.60-1.95); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75° on the
+  Fz^0.585 / 0.949 (0.90-1.05); patch half length ∝ Fz^0.57 both (NGP's contact geometry, the front axle's clean
+  frames at 1.6-5.5 kN, local 0.55-0.58; 0.55-0.65); Mz peak ∝ Fz^1.25 / 1.79 (1.60-1.95) (2026-11-08: the lab took
+  the patch from wheel 0's frames alone, 2.3-3.9 kN, and held the end length beyond, which read as Fz^0.30 and put t0
+  at Fz^0.31 / 0.69 and the Mz peak at Fz^0.98 / 1.54; the game was never short); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75° on the
   0.25° grid); Mz to 0 never / at 1.13 (0.78-1.73: NGP's trail keeps 0.004 m at 10°, Mz 0.30 of its peak there); peak
   Mz/(μ Fz a) 0.163 / 0.107 (0.19-0.26). Combined at 4°, κ ∓0.05 (context): ngp 0.60 / 1.23, brush -0.15 / 1.41,
   both lower under braking, as the carcass offset makes them (NGP's trail barely falls with κ, 0.92 of pure at 0.05;
@@ -1006,9 +1008,20 @@ rows unchanged.
   4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
   (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
 - Aligning moment level and patch: t0/a 0.30 against the sets' 0.36-0.51 and peak Mz/(μ Fz a) 0.107 against 0.19-0.26
-  would make the steering 1.2-2.4 times heavier near the Mz peak than NGP's: a force-feedback level decision, left. The
-  trail's load exponent stays short (0.69 against 0.90-1.05) because NGP's patch grows ∝ Fz^0.30 (MF-Swift 0.6); the
-  brush cannot take its own contact length without NGP's patch at the design load (not in `Wheel`).
+  stay brush theory's (below; meeting them would make the steering 1.2-2.4 times heavier near the Mz peak). In game
+  (`ffb` column, Fiesta Rally2, map 41) the brush's torque is about 10 % lighter than NGP's at 0.3-0.8 g (mean |ffb|
+  126 / 183 / 224 against 138 / 209 / 249), and NGP's curve output is above 0.95 on 19 % of the steps against 21 %
+  (r40 circle on map 85: 64 % against 83 %) at the default S 105, under 1 % at 250 % tarmac (S 262.5); the 10000
+  clamp is never reached (2026-11-08).
+  The load dependence is in band: NGP's patch grows ∝ Fz^0.57 (MF-Swift 0.59-0.64), so with the trail's own
+  (Fz/Fz0)^0.35 t0 ∝ Fz^0.95.
+  The level through physics (2026-11-08, numeric brush, 4 kN, a 0.074 m, Cy 70.4 kN/rad, μ 1.26; prototype, not
+  built): the bristles on a stretched-string carcass (Svendenius eq. 4.62, Pacejka's string), tread stiffness from
+  Cx = 2a²c_p (isotropic rubber, his eq. 4.70) and the string's foundation set so Cy stays NGP's, give t0/a
+  0.355-0.369 for a string length 0.05-0.4 m but peak Mz/(μ Fz a) only 0.109-0.113; a flatter pressure than the
+  parabola raises the peak (1-u⁴ 0.132, 1-u⁸ 0.155, uniform 0.187, with the string and 1-u⁴ 0.139) but moves the Fy
+  peak to 14-20° and the Mz peak to 0.11-0.19 of it. No sourced mechanism reaches 0.19-0.26 with the force curves
+  kept, so the level stays brush theory's.
   Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
   304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
   315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
