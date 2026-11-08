@@ -18,7 +18,8 @@
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
 use rbr_tyre_lab::brush::{
-    self, Calibration, EvalInput, EvalOutput, FILM_MAX, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X, N_MU_Y, V_MIN, V_S,
+    self, Calibration, EvalInput, EvalOutput, FILM_MAX, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X, N_MU_Y,
+    SPEED_DECAY, STRIBECK_EXP, V_MIN, V_S,
 };
 use rbr_tyre_lab::calibrate::{calibrate, CalPoint, CalTargets};
 use rbr_tyre_lab::ngp::{blend_at, patch_input, LoadBlend};
@@ -62,6 +63,8 @@ struct CandOpts {
     tg: f64,
     ss: f64,
     sk: f64,
+    /// Whether the brush's own wet loss applies (the game leaves it off).
+    hp: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -89,6 +92,7 @@ fn cand_forces(
             pressure: f64::from(base.air_pressure),
             pressure_factor: f64::from(base.stiffness_factor),
             wetness: o.w,
+            hydroplaning: o.hp,
             temp_grip: o.tg,
             surf_static: o.ss,
             surf_kinetic: o.sk,
@@ -334,6 +338,7 @@ fn main() {
         tg: f64::from(base.temperature_grip),
         ss: f64::from(base.static_friction),
         sk: f64::from(base.kinetic_friction),
+        hp: true,
     };
 
     // --- lateral sweep, candidate --------------------------------------------------
@@ -790,7 +795,7 @@ fn main() {
     // summary.
     let mut lock_csv = String::from("case,mu_peak_ngp,mu_lock_ngp,mu_peak_cand,mu_lock_cand\n");
     let mut lock_rows: Vec<(&str, f64, f64, f64, f64)> = Vec::new();
-    for (name, ss, sk, w) in [
+    let lock_cases = [
         ("dry", f64::from(base.static_friction), f64::from(base.kinetic_friction), 0.0),
         (
             "wet W=1",
@@ -798,7 +803,8 @@ fn main() {
             0.8508 * (1.0 + f64::from(base.wet_slope[class_of(&base)]) * 1.0) * f64::from(base.temperature_grip),
             1.0,
         ),
-    ] {
+    ];
+    for (name, ss, sk, w) in lock_cases {
         let vv = 10.0;
         let b = blend_at(&base, fz0 as f32);
         let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
@@ -827,6 +833,35 @@ fn main() {
         lock_rows.push((name, peak_n, lock_n, peak_c, lock_c));
     }
     write(&out.join("locked.csv"), &lock_csv);
+
+    // --- TRL PPR496: braked peak and locked mu_x at 32/64/100 km/h ----------------------------
+    // As the PFT (ASTM E274) measures them: the wheel braked at constant speed to its peak, then locked (Vs = V).
+    // The brush sees the surface as the game gives it: NGP's wet surface friction and the wetness, its wet loss off.
+    let mut trl_csv = String::from("case,kmh,peak_ngp,lock_ngp,peak_cand,lock_cand\n");
+    let mut trl_rows: Vec<(&str, f64, f64, f64, f64, f64)> = Vec::new();
+    for (name, ss, sk, w) in [lock_cases[0], lock_cases[1]] {
+        let o = CandOpts { w, ss, sk, hp: false, ..dry_opts() };
+        let b = blend_at(&base, fz0 as f32);
+        let patch = patch_at(&cloud, fz0 as f32, base.patch_length);
+        for kmh in [32.0, 64.0, 100.0] {
+            let vv = kmh / 3.6;
+            let (mut peak_n, mut peak_c) = (0.0f64, 0.0f64);
+            let mut k = 0.0;
+            while k <= 1.0 {
+                let spin = (1.0 - k) * vv / r;
+                let n = ngp_forces(&base, &b, ss as f32, sk as f32, fz0 as f32, patch, 0.0, -vv as f32, spin as f32);
+                peak_n = peak_n.max(f64::from(n.longitudinal_force).abs() / fz0);
+                peak_c = peak_c.max(cand_forces(&base, &cloud, fz0, 0.0, -vv, spin, &o, &cal).fx.abs() / fz0);
+                k += 0.005;
+            }
+            let n = ngp_forces(&base, &b, ss as f32, sk as f32, fz0 as f32, patch, 0.0, -vv as f32, 0.0);
+            let lock_n = f64::from(n.longitudinal_force).abs() / fz0;
+            let lock_c = cand_forces(&base, &cloud, fz0, 0.0, -vv, 0.0, &o, &cal).fx.abs() / fz0;
+            trl_csv.push_str(&format!("{name},{kmh:.0},{peak_n:.4},{lock_n:.4},{peak_c:.4},{lock_c:.4}\n"));
+            trl_rows.push((name, kmh, peak_n, lock_n, peak_c, lock_c));
+        }
+    }
+    write(&out.join("trl.csv"), &trl_csv);
 
     // --- step steer: 2 deg at 10/20/30 m/s, distance to 63% -------------------------------
     let mut step_csv = String::from("V,sigma_m,x63_m\n");
@@ -965,6 +1000,31 @@ read). Burckhardt (1993) dry/wet asphalt curves at s = 1 over their peak, via th
 stated.\n\n",
     );
 
+    md.push_str("## braked peak and locked mu_x against speed (4 kN; TRL PPR496's test)\n\n");
+    md.push_str(
+        "| surface | km/h | NGP peak | NGP locked | NGP ratio | brush-v1 peak | brush-v1 locked | brush-v1 ratio | \
+TRL car tyre locked/peak |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
+    );
+    for (name, kmh, pn, ln, pc, lc) in &trl_rows {
+        let target = match (name.starts_with("dry"), *kmh as i32) {
+            (true, 32) => "0.73-0.82",
+            (true, 64) => "0.66-0.76",
+            (true, _) => "0.59-0.67",
+            (false, 32) => "0.64-0.67",
+            (false, 64) => "0.52-0.57",
+            (false, _) => "0.49-0.52",
+        };
+        md.push_str(&format!(
+            "| {name} | {kmh:.0} | {pn:.3} | {ln:.3} | {:.3} | {pc:.3} | {lc:.3} | {:.3} | {target} |\n",
+            ln / pn,
+            lc / pc
+        ));
+    }
+    md.push_str(
+        "\nLambourn & Wesley, TRL PPR496 (2010), Figs 6-13 and text: a 195/55R15 car tyre on a towed ASTM E274 \
+trailer, braked at constant speed to lock, dry and ~1 mm water, hot rolled and stone mastic asphalt (fig ±0.02). \
+The wet row is the game's: NGP's wet surface friction, the brush's own wet terms as the game runs them.\n\n",
+    );
     md.push_str("## peak mu_y vs speed (4 kN)\n\n");
     md.push_str("| V (m/s) | NGP | brush-v1 |\n| --- | --- | --- |\n");
     for (vv, bn, bc) in &speed_rows {
@@ -1036,8 +1096,9 @@ Published checks: a new summer tyre brakes from 100 km/h on a watered track at t
     md.push_str(&format!(
         "M_CY = {M_CY}, N_MU_Y = {N_MU_Y} (Singh & Sivaramakrishnan, Goodyear, arXiv 2305.18422, load sweep); \
 M_CX = {M_CX}, KX_OVER_KY = {KX_OVER_KY}, N_MU_X = {N_MU_X} (means of the MF 6.1 255/55R20 example set and the \
-Pacejka-book passenger set in Chrono's TMeasy); Stribeck g(Vs) with V_S = {V_S} m/s, Coulomb/static {:.3} \
-(Canudas de Wit et al., VSD 39 (2003), Table 1); film {:.1} mm at W = 1 (measured road films), ref 0.5 mm, \
+Pacejka-book passenger set in Chrono's TMeasy); generalised Stribeck g(Vs) with V_S = {V_S} m/s, exponent \
+{STRIBECK_EXP}, Coulomb/static {:.3} (Olsson et al. 1998), times exp(-{SPEED_DECAY} Vs) (Burckhardt), fitted to TRL \
+PPR496's locked and peak friction; film {:.1} mm at W = 1 (measured road films), ref 0.5 mm, \
 kept 0.4 and the quadratic ours; vp = 6.36 sqrt(p/kPa) (Horne) times (0.75 + 0.25 d) (ADAC 2026); dry-wear \
 gain 1 + 0.167(1-d)(1-W) (Singh Table 3; the wet fade ours); brush ch. 3 Pacejka 3rd ed.; \
 first-order dynamics F = c u + d u' with the secant F/s (Rill, Vehicle Dynamics 2009, 3.4.2), d_x {}, d_y {} N/(m/s) \

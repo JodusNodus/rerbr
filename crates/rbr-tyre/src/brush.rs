@@ -1,7 +1,7 @@
 //! Candidate tyre model "brush-v1" (ours, experimental).
 //!
-//! A steady-state brush with Pacejka's theoretical slips, the Stribeck
-//! friction of Canudas de Wit et al.'s distributed LuGre (brush) tyre model,
+//! A steady-state brush with Pacejka's theoretical slips, the generalised
+//! Stribeck friction of the LuGre brush tyre models (shape fitted to TRL locked-wheel data),
 //! load-sensitive stiffness and friction, bulk temperature / wear / pressure
 //! factors, a hydroplaning-style wet loss, and Rill's first-order force
 //! dynamics (carcass spring and damper, relaxation from the secant slip
@@ -56,14 +56,26 @@ pub const N_MU_Y: f64 = 0.87;
 /// friction falls with load at 0.72 and 0.39 of the lateral rate (mean 0.55),
 /// so 1 - 0.55 (1 - N_MU_Y) = 0.93.
 pub const N_MU_X: f64 = 0.93;
-/// Stribeck velocity of the friction curve g(Vs) = mu_C + (mu_S - mu_C)
-/// exp(-sqrt(Vs / V_S)), m/s, and its Coulomb over static ratio: Canudas de
-/// Wit, Tsiotras, Velenis, Basset & Gissinger, Vehicle System Dynamics 39
-/// (2003) 189-226, eqs. 21-22 and Table 1 (mu_C 0.8, mu_S 1.55, v_s 6.57 m/s),
-/// their distributed LuGre (brush) model fitted to straight-line braking on a
-/// dry test track. The level (mu_S) is calibrated; shape and ratio are theirs.
-pub const V_S: f64 = 6.57;
-pub const MU_C_OVER_S: f64 = 0.8 / 1.55;
+/// The friction curve against sliding speed: the generalised Stribeck curve mu_C + (mu_S - mu_C) exp(-(Vs /
+/// V_S)^STRIBECK_EXP) (Olsson, Astrom, Canudas de Wit, Gafvert & Lischinsky, "Friction models and friction
+/// compensation", European Journal of Control 4, 1998) times Burckhardt's speed factor exp(-SPEED_DECAY Vs)
+/// (Kiencke & Nielsen's c4, 0.02-0.04 s/m in their full model). Canudas de Wit et al. (VSD 39, 2003) fitted the
+/// Stribeck curve alone, exponent 1/2, V_S 6.57 m/s, mu_C/mu_S 0.8/1.55, to braking on a dry track; their square
+/// root falls fastest over the peak's few m/s of sliding, so the braked peak fell 9 % from 32 to 100 km/h and the
+/// locked wheel kept 0.76 of it at 100. Ours: the four values fitted to Lambourn & Wesley, TRL PPR496 (2010), a car
+/// tyre braked at constant speed to lock on dry asphalt (fig ±0.02): the peak holds with speed (0.97-1.20 times its
+/// 32 km/h value at 100) while the locked friction falls, 0.73-0.82 of the peak at 32 km/h, 0.66-0.76 at 64,
+/// 0.59-0.67 at 100. The level (mu_S) is calibrated.
+pub const V_S: f64 = 7.0;
+pub const STRIBECK_EXP: f64 = 3.0;
+pub const MU_C_OVER_S: f64 = 0.8;
+pub const SPEED_DECAY: f64 = 0.008;
+
+/// The friction at sliding speed `vs`, m/s, between its level at rest `mu_s` and its Coulomb level `mu_k`.
+pub fn friction_at(mu_s: f64, mu_k: f64, vs: f64) -> f64 {
+    (mu_k + (mu_s - mu_k) * libm::exp(-libm::pow(vs / V_S, STRIBECK_EXP))) * libm::exp(-SPEED_DECAY * vs)
+}
+
 /// Floor of the rolling speed, m/s (keeps the theoretical slips finite).
 pub const V_MIN: f64 = 0.5;
 /// Water film at W = 1: h = W times 0.7 mm. Measured films on drained
@@ -74,6 +86,11 @@ pub const FILM_MAX: f64 = 0.7e-3;
 pub const FILM_REF: f64 = 0.5e-3;
 /// Wet friction kept at full hydroplaning (ours).
 pub const WET_KEPT: f64 = 0.4;
+/// The Coulomb level's loss on a wet surface, times the wetness W: water lubricates the sliding rubber, so the locked
+/// friction falls with speed faster wet than dry while the peak holds. Ours, fitted to Lambourn & Wesley, TRL PPR496
+/// (2010), the car tyre under ~1 mm of water (ASTM E274), hot rolled and stone mastic asphalt: locked over braked
+/// peak 0.64-0.67 at 32 km/h, 0.52-0.57 at 64, 0.49-0.52 at 100 (dry 0.73-0.82, 0.66-0.76, 0.59-0.67; fig ±0.02).
+pub const WET_COULOMB_LOSS: f64 = 0.18;
 
 // ---------------------------------------------------------------------------
 // Run-time calibration (probed / solved values, never committed).
@@ -167,9 +184,10 @@ pub fn wear_gain(d: f64, w: f64) -> f64 {
 
 /// Friction magnitude of one axis at sliding speed `vs`: mu_k (scaled by the
 /// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
-/// kinetic ratio) exp(-sqrt(Vs/V_S)), times the load sensitivity
+/// kinetic ratio) at the sliding speed ([`friction_at`]), times the load sensitivity
 /// (Fz/Fz0)^(n-1) (`N_MU_Y` or `N_MU_X`), NGP's temperature grip factor, the
-/// wet-faded dry-wear gain (normalised) and the wet loss. Both axes scale
+/// wet-faded dry-wear gain (normalised) and the wet loss; the wetness `w` lowers mu_k ([`WET_COULOMB_LOSS`],
+/// normalised). Both axes scale
 /// mu_s with the surface static ratio and mu_k with the surface kinetic
 /// ratio, since the static scale sets the adhesion ceiling and the kinetic
 /// scale the sliding floor.
@@ -189,8 +207,8 @@ pub fn mu_axis(
     cal: &Calibration,
 ) -> f64 {
     let ks = mu_s * stat_ratio;
-    let kk = mu_k * kin_ratio;
-    let base = kk + (ks - kk) * libm::exp(-(vs / V_S).sqrt());
+    let kk = mu_k * kin_ratio * (1.0 - WET_COULOMB_LOSS * w) / (1.0 - WET_COULOMB_LOSS * cal.w_cal);
+    let base = friction_at(ks, kk, vs);
     base * libm::pow(fz / cal.fz0, n - 1.0)
         * (temp_grip / cal.temp_grip_cal)
         * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal))
@@ -219,6 +237,9 @@ pub struct EvalInput {
     pub pressure: f64,
     pub pressure_factor: f64,
     pub wetness: f64,
+    /// Whether the wet loss ([`wet_loss`]: the film and the hydroplaning speed) applies; the game leaves it to NGP's
+    /// wet surface friction.
+    pub hydroplaning: bool,
     /// NGP's temperature grip factor (RubMyFct blend, kept as in NGP).
     pub temp_grip: f64,
     /// Surface static/kinetic mu (NGP stage values, e.g. dry 1.30/1.04).
@@ -284,7 +305,7 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     let s_abs = (sx * sx + sy * sy).sqrt();
     let vs = vr * s_abs;
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
-    let wet = wet_loss(x.wetness, v, x.pressure, x.tread_remaining);
+    let wet = if x.hydroplaning { wet_loss(x.wetness, v, x.pressure, x.tread_remaining) } else { 1.0 };
     let mu_x = mu_axis(
         cal.mu_xs,
         cal.mu_xk,
@@ -474,6 +495,7 @@ mod tests {
             pressure: 200000.0,
             pressure_factor: 1.0,
             wetness: 0.0,
+            hydroplaning: true,
             temp_grip: 1.0,
             surf_static: 1.3,
             surf_kinetic: 1.0,
@@ -523,7 +545,7 @@ mod tests {
         assert!(o.psi > 1.0, "psi {}", o.psi);
         let f = (o.fx * o.fx + o.fy * o.fy).sqrt();
         let vs = (x.vy * x.vy + (x.vx + x.spin * x.radius).powi(2)).sqrt();
-        let mu = cal.mu_yk + (cal.mu_ys - cal.mu_yk) * (-(vs / V_S).sqrt()).exp();
+        let mu = friction_at(cal.mu_ys, cal.mu_yk, vs);
         assert!((f / (mu * x.fz) - 1.0).abs() < 1e-9, "f {f} mu Fz {}", mu * x.fz);
         // Direction: opposes the sliding velocity.
         assert!(o.fy < 0.0 && o.fx <= 0.0, "fx {} fy {}", o.fx, o.fy);
@@ -600,12 +622,39 @@ mod tests {
     fn static_scales_ceiling_and_kinetic_scales_floor() {
         // mu_s follows the static ratio, mu_k the kinetic ratio, on each axis:
         // doubling the static surface mu doubles the zero-speed mu, doubling
-        // the kinetic one doubles the infinite-speed mu.
+        // the kinetic one doubles the fast-sliding mu (past the Stribeck fall, under the speed decay alone).
         let cal = synth_cal();
         let slow = mu_axis(1.3, 1.0, 0.0, 4000.0, N_MU_Y, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((slow / 2.6 - 1.0).abs() < 1e-12, "slow {slow}");
-        let fast = mu_axis(1.3, 1.0, 1e9, 4000.0, N_MU_Y, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
-        assert!((fast / 2.0 - 1.0).abs() < 1e-12, "fast {fast}");
+        let fast = mu_axis(1.3, 1.0, 100.0, 4000.0, N_MU_Y, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        assert!((fast / (2.0 * libm::exp(-SPEED_DECAY * 100.0)) - 1.0).abs() < 1e-12, "fast {fast}");
+    }
+
+    /// Braked at constant speed `v` on wetness `w` to its peak and locked, as TRL's trailer does: (peak, locked)
+    /// friction. The wet loss is off, as in the game.
+    fn braked_peak_and_locked(v: f64, w: f64, cal: &Calibration) -> (f64, f64) {
+        let x = EvalInput { vx: -v, wetness: w, hydroplaning: false, ..synth_input() };
+        let at = |k: f64| eval(&EvalInput { spin: (1.0 - k) * v / x.radius, ..x }, cal).fx.abs() / x.fz;
+        ((0..=200).map(|i| at(i as f64 * 0.005)).fold(0.0, f64::max), at(1.0))
+    }
+
+    #[test]
+    fn the_braked_peak_holds_with_speed_and_the_locked_friction_falls_as_trl_measured() {
+        // Lambourn & Wesley, TRL PPR496: a car tyre on asphalt, the peak 0.97-1.20 times its 32 km/h value at 100
+        // (dry); locked over peak 0.73-0.82 at 32 km/h and 0.59-0.67 at 100 dry, 0.64-0.67 and 0.49-0.52 wet (fig
+        // ±0.02).
+        let cal = Calibration { cx0: KX_OVER_KY * 80000.0, mu_xk: MU_C_OVER_S * 1.3, ..synth_cal() };
+        let (p32, l32) = braked_peak_and_locked(32.0 / 3.6, 0.0, &cal);
+        let (p100, l100) = braked_peak_and_locked(100.0 / 3.6, 0.0, &cal);
+        assert!((0.71..=0.84).contains(&(l32 / p32)), "32 km/h {l32} / {p32}");
+        assert!((0.57..=0.69).contains(&(l100 / p100)), "100 km/h {l100} / {p100}");
+        assert!((0.95..=1.2).contains(&(p100 / p32)), "peak {p100} / {p32}");
+        // Wet: the same peak, the locked friction lower.
+        let (wp32, wl32) = braked_peak_and_locked(32.0 / 3.6, 1.0, &cal);
+        let (wp100, wl100) = braked_peak_and_locked(100.0 / 3.6, 1.0, &cal);
+        assert!((wp32 / p32 - 1.0).abs() < 0.01 && (wp100 / p100 - 1.0).abs() < 0.01, "{wp32} {wp100}");
+        assert!((0.62..=0.69).contains(&(wl32 / wp32)), "wet 32 km/h {wl32} / {wp32}");
+        assert!((0.47..=0.58).contains(&(wl100 / wp100)), "wet 100 km/h {wl100} / {wp100}");
     }
 
     #[test]

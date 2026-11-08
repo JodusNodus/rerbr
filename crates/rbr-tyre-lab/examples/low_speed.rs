@@ -72,6 +72,7 @@ impl Tyre {
             pressure: 0.0,
             pressure_factor: f64::from(self.p.stiffness_factor),
             wetness: 0.0,
+            hydroplaning: true,
             temp_grip: 1.0,
             surf_static: 1.0,
             surf_kinetic: 1.0,
