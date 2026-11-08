@@ -6,12 +6,15 @@
 //! level stored row by row with no padding. Retail: 3,485 files, all DXT1 or DXT3, four mip levels,
 //! at most 2048 pixels wide, dimensions multiples of four (`all_retail_dds_parse`). Layout:
 //! `notes/formats.md` "Textures and sprites". Community car models (RSF's) also use DXT5 (BC3, interpolated alpha, 16 bytes per block).
+//! A DX10 header (FourCC `DX10` and a 20-byte extension) is read for BC1, BC2, BC3 and BC7 (converted BeamNG levels).
 
 use std::fmt::{self, Display, Formatter};
 
 const MAGIC: &[u8; 4] = b"DDS ";
 /// Magic plus the 124-byte header.
 const HEADER_LEN: usize = 128;
+/// The `DDS_HEADER_DXT10` extension after the header when the FourCC is `DX10`: its first word is the `DXGI_FORMAT`.
+const DX10_LEN: usize = 20;
 const HEADER_SIZE: u32 = 124;
 const PIXEL_FORMAT_SIZE: u32 = 32;
 /// `DDS_PIXELFORMAT` `dwFlags` bits: `dwFourCC` is valid; the RGB masks are (`DDPF_RGB`).
@@ -45,6 +48,8 @@ pub enum Format {
     Dxt5,
     /// 32-bit texels stored R, G, B, A (`D3DFMT_A8B8G8R8`). Not in retail; one community stage texture uses it.
     Rgba8,
+    /// BC7 (DX10 header, `DXGI_FORMAT_BC7_UNORM` 98 or `_SRGB` 99), 16 bytes per block. BeamNG levels use it.
+    Bc7,
 }
 
 impl Format {
@@ -52,7 +57,7 @@ impl Format {
     pub fn block_len(self) -> usize {
         match self {
             Format::Dxt1 => 8,
-            Format::Dxt3 | Format::Dxt5 => 16,
+            Format::Dxt3 | Format::Dxt5 | Format::Bc7 => 16,
             Format::Rgba8 => 4,
         }
     }
@@ -169,7 +174,21 @@ pub fn parse(bytes: &[u8]) -> Result<Dds<'_>, Error> {
     let flags = u32_at(bytes, OFFSET_PF_FLAGS);
     let fourcc: [u8; 4] = bytes[OFFSET_FOURCC..OFFSET_FOURCC + 4].try_into().expect("four bytes");
     let masks = std::array::from_fn(|i| u32_at(bytes, OFFSET_RGBA_MASKS + 4 * i));
-    let format = if flags & PF_FOURCC != 0 {
+    let mut start = HEADER_LEN;
+    let format = if flags & PF_FOURCC != 0 && &fourcc == b"DX10" {
+        start += DX10_LEN;
+        if bytes.len() < start {
+            return Err(Error::Truncated { len: bytes.len() });
+        }
+        // The `_SRGB` variants read as the plain ones: the renderer samples colour textures as unorm.
+        match u32_at(bytes, HEADER_LEN) {
+            71 | 72 => Format::Dxt1,
+            74 | 75 => Format::Dxt3,
+            77 | 78 => Format::Dxt5,
+            98 | 99 => Format::Bc7,
+            _ => return Err(Error::Format { fourcc }),
+        }
+    } else if flags & PF_FOURCC != 0 {
         match &fourcc {
             b"DXT1" => Format::Dxt1,
             b"DXT3" => Format::Dxt3,
@@ -198,7 +217,7 @@ pub fn parse(bytes: &[u8]) -> Result<Dds<'_>, Error> {
         return Err(Error::Header { what: "mip count" });
     }
 
-    let data = &bytes[HEADER_LEN..];
+    let data = &bytes[start..];
     let expected: usize = (0..mip_count)
         .map(|level| level_len(width >> level, height >> level, format))
         .sum::<Option<usize>>()
@@ -420,6 +439,34 @@ mod tests {
         assert_eq!(sizes, vec![32, 8]);
         bytes[OFFSET_RGBA_MASKS..OFFSET_RGBA_MASKS + 4].copy_from_slice(&0xff_0000u32.to_le_bytes());
         assert_eq!(parse(&bytes), Err(Error::Format { fourcc: [0; 4] }));
+    }
+
+    #[test]
+    fn dx10_headers_read_bc1_and_bc7() {
+        // An 8x8 file with one level: the legacy header with FourCC `DX10`, the 20-byte extension, then the blocks.
+        let dx10 = |dxgi: u32, block: usize| {
+            let mut bytes = dxt1(8, 8, 1)[..HEADER_LEN].to_vec();
+            bytes[OFFSET_FOURCC..OFFSET_FOURCC + 4].copy_from_slice(b"DX10");
+            let mut ext = [0u8; DX10_LEN];
+            ext[..4].copy_from_slice(&dxgi.to_le_bytes());
+            bytes.extend_from_slice(&ext);
+            bytes.extend(std::iter::repeat_n(7u8, 4 * block));
+            bytes
+        };
+        for (dxgi, block, format) in [(72, 8, Format::Dxt1), (75, 16, Format::Dxt3), (77, 16, Format::Dxt5)] {
+            let bytes = dx10(dxgi, block);
+            let dds = parse(&bytes).unwrap();
+            assert_eq!((dds.format, dds.data.len()), (format, 4 * block));
+        }
+        for dxgi in [98, 99] {
+            let bytes = dx10(dxgi, 16);
+            let dds = parse(&bytes).unwrap();
+            assert_eq!((dds.format, dds.data.len(), dds.data[0]), (Format::Bc7, 64, 7));
+        }
+        // BC5 (83) and BC6H (95) stay unread; a cut extension is truncated.
+        assert_eq!(parse(&dx10(83, 16)), Err(Error::Format { fourcc: *b"DX10" }));
+        assert_eq!(parse(&dx10(95, 16)), Err(Error::Format { fourcc: *b"DX10" }));
+        assert_eq!(parse(&dx10(98, 16)[..HEADER_LEN + 10]), Err(Error::Truncated { len: HEADER_LEN + 10 }));
     }
 
     #[test]

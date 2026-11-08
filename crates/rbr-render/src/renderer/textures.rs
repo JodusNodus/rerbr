@@ -336,13 +336,17 @@ pub(crate) fn dds_texture(device: &wgpu::Device, queue: &wgpu::Queue, dds: &dds:
     if !dds.width.is_multiple_of(edge) || !dds.height.is_multiple_of(edge) {
         let (width, height) = (dds.width as usize, dds.height as usize);
         let bc = match dds.format {
-            Format::Dxt1 => texpresso::Format::Bc1,
-            Format::Dxt3 => texpresso::Format::Bc2,
-            Format::Dxt5 => texpresso::Format::Bc3,
+            Format::Dxt1 => Some(texpresso::Format::Bc1),
+            Format::Dxt3 => Some(texpresso::Format::Bc2),
+            Format::Dxt5 => Some(texpresso::Format::Bc3),
             Format::Rgba8 => unreachable!("plain texels are whole blocks"),
+            Format::Bc7 => None,
         };
-        let mut rgba = vec![0u8; width * height * 4];
-        bc.decompress(dds.levels()[0].data, width, height, &mut rgba);
+        let mut rgba = vec![128u8; width * height * 4];
+        match bc {
+            Some(bc) => bc.decompress(dds.levels()[0].data, width, height, &mut rgba),
+            None => eprintln!("dds: a {}x{} BC7 texture is not whole blocks, drawn flat", dds.width, dds.height),
+        }
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dds rgba"),
             size: wgpu::Extent3d { width: dds.width, height: dds.height, depth_or_array_layers: 1 },
@@ -375,6 +379,7 @@ pub(crate) fn dds_texture(device: &wgpu::Device, queue: &wgpu::Queue, dds: &dds:
         Format::Dxt3 => wgpu::TextureFormat::Bc2RgbaUnorm,
         Format::Dxt5 => wgpu::TextureFormat::Bc3RgbaUnorm,
         Format::Rgba8 => wgpu::TextureFormat::Rgba8Unorm,
+        Format::Bc7 => wgpu::TextureFormat::Bc7RgbaUnorm,
     };
     let levels = dds.levels();
     let most = device.limits().max_texture_dimension_2d;

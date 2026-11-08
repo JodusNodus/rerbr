@@ -28,6 +28,7 @@ pub(crate) fn window(dds: &dds::Dds) -> Option<[f32; 4]> {
         Format::Dxt3 => texpresso::Format::Bc2.decompress(level.data, w, h, &mut rgba),
         Format::Dxt5 => texpresso::Format::Bc3.decompress(level.data, w, h, &mut rgba),
         Format::Rgba8 => rgba.copy_from_slice(level.data.get(..w * h * 4)?),
+        Format::Bc7 => return None,
     }
     let luma: Vec<f32> = rgba
         .chunks_exact(4)

@@ -1419,7 +1419,7 @@ fn all_retail_dds_parse() {
             match dds.format {
                 dds::Format::Dxt1 => dxt1 += 1,
                 dds::Format::Dxt3 => dxt3 += 1,
-                dds::Format::Dxt5 | dds::Format::Rgba8 => panic!("retail has only DXT1 and DXT3"),
+                dds::Format::Dxt5 | dds::Format::Rgba8 | dds::Format::Bc7 => panic!("retail has only DXT1 and DXT3"),
             }
             files += 1;
             levels += chain.len();

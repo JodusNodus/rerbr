@@ -123,6 +123,9 @@ pub(crate) fn decode_blocks(width: u32, height: u32, format: dds::Format, data: 
     if format == dds::Format::Rgba8 {
         return Some(data.to_vec());
     }
+    if format == dds::Format::Bc7 {
+        return None;
+    }
     if format == dds::Format::Dxt5 {
         let mut rgba = vec![0u8; w * h * 4];
         texpresso::Format::Bc3.decompress(data, w, h, &mut rgba);
@@ -138,7 +141,7 @@ pub(crate) fn decode_blocks(width: u32, height: u32, format: dds::Format, data: 
         }
         let (alpha, colour) = match format {
             dds::Format::Dxt3 => (Some(&block[..8]), &block[8..]),
-            dds::Format::Dxt1 | dds::Format::Dxt5 | dds::Format::Rgba8 => (None, block),
+            dds::Format::Dxt1 | dds::Format::Dxt5 | dds::Format::Rgba8 | dds::Format::Bc7 => (None, block),
         };
         let c0 = u16::from_le_bytes([colour[0], colour[1]]);
         let c1 = u16::from_le_bytes([colour[2], colour[3]]);
