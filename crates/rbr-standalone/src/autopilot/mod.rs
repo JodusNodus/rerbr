@@ -23,6 +23,13 @@
 //! wheels spin (engine speed over `SLIP` times the lowest engine speed per m/s seen in the gear): shifting up on
 //! wheelspin left cars in a high gear in slides and on climbs, where they stalled or rolled (track-25_O, track-35_N).
 //!
+//! Limit runs (ours, `--plan LAT,BRAKE`, test tooling for `harness/limit_pace.py`): the speed plan takes the given
+//! lateral and braking acceleration (m/s²) in place of `LATERAL` and `BRAKING` (the wetness's grip still scales them;
+//! `--top-speed` sets the top), and the race pedal stays under threshold braking's at `PLAN_SLIP`: at the car's limits
+//! the plain pedal locked the fronts entering corners. The kink scan keeps `LATERAL` (geometry), and the look-ahead,
+//! `FULL_LOCK_TOP`, the steering gain and the anti-stall logic are unchanged. Without the flag the drive is the
+//! default's, byte for byte.
+//!
 //! On RSF stages (ours): the target swings around heavy props near the driveline (`HEAVY`),
 //! a driveline segment that loops is flattened (`LOOP`, `BACK`), and a car leaning over steers towards its low side
 //! (`TIP`).
