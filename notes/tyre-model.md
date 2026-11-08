@@ -460,7 +460,7 @@ Published values, sources and precision labels from the 2026-11-07 loose-surface
 | Peak μ_y | gravel ≲ 0.67 WRC wet loose (CW, quoted; μ inferred), 0.55 wet crushed (TR1011, quoted); packed snow 0.35-0.43, loose 0.28-0.33 (TR0713, table); ice 0.15-0.17 (TR0713, table) | 0.828 sweep, 0.854 step | 0.851, 0.857 | 0.094 | 1.262, 1.266 |
 | Over tarmac | gravel 50-60 % (CW, quoted) | 0.66 | 0.67 | 0.08 | 1 |
 | Peak slip angle | gravel ~12° (CW, quoted), 12.1° (Velenis, MF), dirt 16° (ChassisSim, model input); packed snow 9-17°, loose 16-18° (TR0713, table); ice 4.5-5.1° (TR0713, table) | 13.5° (95 % at 9°); step 14° | 11° (95 % at 7.75°); step 11.25° | 0.75° (95 % at 0.5°) | 9.5° (6.75°) |
-| μ_y at 30° over peak | gravel 0.63 (CW, quoted; ratio inferred), 0.85 (Velenis, MF); snow no fall to ~17° (TR0713, quoted); ice 0.59 at 20° (TR0713, fig ±0.005) | 0.956; step 0.985, at 25 m/s rising to 30° (0.897) | 0.955; step 0.997, at 25 m/s rising (0.926) | 0.966 at 20°, 0.950 | 0.865 |
+| μ_y at 30° over peak | gravel 0.63 (CW's text; his figures digitised 0.96-1.06, fig ±0.05, inferred: [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)), 0.85 (Velenis, MF); snow no fall to ~17° (TR0713, quoted); ice 0.59 at 20° (TR0713, fig ±0.005) | 0.956; step 0.985, at 25 m/s rising to 30° (0.897) | 0.955; step 0.997, at 25 m/s rising (0.926) | 0.966 at 20°, 0.950 | 0.865 |
 | Peak κ | gravel none open ("0.4-0.7", snippet); snow still rising at 0.30 (Surkutwar, fig ±0.01); ice 0.05 (Ružinskas, quoted) | 0.24 (2 kN 0.16) | 0.22 (0.12-0.30 at 2-6 kN) | 0.02 | 0.16 |
 | μ_x at κ 1 over peak | gravel 0.75 (Velenis, MF); snow no fall to 0.30 (Surkutwar, fig); ice ~0.5 at 0.45 (Ružinskas, fig ±0.005) | 0.82 sweep and step | 0.85 | 0.92 | 0.78 |
 | Ploughing: locked against peak | gravel: locked stops 25-30 % shorter than ABS, decel 1.25-1.30× (SAE 1999-01-1287, table; ratio inferred); car braking 0.50-0.60 wet crushed (TR1011, table) | locked 0.82 of peak (step 0.82, 0.79 at 25 m/s); game, brake test on 345 declutched from 100 / 50 km/h: locked 0.77 / 0.63 g, 10 / 17 % longer than the best threshold braking (K 0.5, 0.85 / 0.73 g) | 0.85 | 0.93 | 0.78; RSF 568 locked 1.09 / 1.06 g, 21 / 19 % longer than threshold at K 0.3 (1.31 / 1.26 g) |
@@ -475,7 +475,7 @@ Where NGP sits:
 - Shape: the peak slip angles of gravel (13.5°) and snow (11°) fall inside the published ranges, because the gravel
   and snow kinds are softer (Cα/Fz 9-10.5 against 17.6); ice peaks at 0.75° against 4-5°, its stiffness being the
   tarmac tyre's (NGP's stiffness is the tyre's on every surface). Past the peak every loose curve is flat (0.96 of peak at 30° in the sweep) and the soil force makes it
-  flatter or rising, more with speed: like the snow data, flatter than the gravel data (0.63-0.85), and ice does not
+  flatter or rising, more with speed: like the snow data and the gravel data (CW's figures digitised, Coutermarsh), and ice does not
   fall (0.97 against 0.59).
 - Ploughing: none longitudinally (the soil's longitudinal force is zero); a locked wheel keeps 0.82 of the peak on
   gravel, so it stops longer than one at peak slip (10-17 % in the declutched brake test below), where the published
