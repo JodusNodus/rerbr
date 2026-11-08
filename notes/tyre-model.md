@@ -621,18 +621,12 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
     at the corner, creeps the same (0.6-0.7 m/s, engine 24-27 rad/s) and DNFs at the same step.
   - Neither the port nor the engine model is wrong. The fix belongs to the autopilot: declutch, or go to neutral,
     when the driven wheels lock under braking, and restart a stalled engine. A driver declutches.
-- A berm built over sliding distance (2026-11-08, prototype, not adopted; `/tmp` patch only):
-  - Model: per-wheel state b. It grows toward 1 over the patch length (2a, the soil a locked tyre sweeps once) of
-    sliding while the braking slip is past the ramp's start, and washes out over 5 cm of rolling (the measured
-    layer). The force is (PLOUGH − 1)·b on the patch's, faded at standstill as before.
-  - Its steady state at slip s is s / (s + 3.6(1 − s)), 0.79 at 0.93, close to the ramp's 0.72, so it behaves like
-    the ramp.
-  - Golf RSF 104: DNF at the same step for the ramp, washout 5 cm, washout 1 cm, and building only from slip 0.99.
-  - Fiesta, 345, 50 km/h, declutched, full pedal, locked over the best target (k0.7), deceleration: ramp 0.892 g
-    (1.16, slips 0.94±0.05), distance 5 cm 0.889 g (1.16, 0.93±0.07), from 0.99 0.870 g (1.13, 0.95±0.06). No variant
-    locks every wheel at full pedal: the berm's force past lock exceeds the brake torque.
-  - Golf and Celica on RSF 104/111/389: stage times within 0.05 s of the ramp for every variant. Not committed: it
-    fixes nothing and adds a state.
+- Not adopted (2026-11-08, prototype): a berm built over sliding distance (per-wheel state growing over the patch
+  length 2a of sliding past the ramp's start, washing out over 5 cm of rolling). Its steady state s / (s + 3.6(1 - s))
+  (0.79 at slip 0.93 against the ramp's 0.72) behaves like the ramp: the Golf on RSF 104 DNFs at the same step (washout
+  5 cm, 1 cm, or building only from slip 0.99); Fiesta 345 from 50 km/h, full pedal 0.870-0.889 g against the ramp's
+  0.892 g (locked over best 1.13-1.16), no variant locks every wheel; Golf and Celica stage times on RSF 104/111/389
+  within 0.05 s. It fixes nothing and adds a state.
 - Scorecard (experimental-brush, [Scorecard](#scorecard)): passes circle 0.663 g, locked over ABS K 0.15 1.40 / 1.20
   (50 / 80 km/h), locked over lateral max 1.457, locked over traction 1.300, gravel over tarmac braking 0.749, snow
   C0x 11.0, snow rising to 40 % 1.087, snow μ_x at κ 0.3 over the braking peak 1.000; misses locked decel 0.892 /
