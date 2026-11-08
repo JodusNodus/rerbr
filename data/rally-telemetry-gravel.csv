@@ -1,0 +1,25 @@
+source,stage,driver,car,moving_s,v_mean_kmh,v_max_kmh,brake_events,brake_g_speed_16,brake_g_acc_16,brake_peak_g_16,lat_p50,lat_p90,lat_p99,long_slope,lat_slope,gps_lat_p90,gg30_lat,gg30_decel,gg60_lat,gg60_decel,gg90_lat,gg90_decel,gg120_lat,gg120_decel,gg150_lat,gg150_decel
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Breen,Hyundai i20 Coupe WRC,343,127,196,54,0.73,0.45,0.83,0.39,0.87,1.22,0.53,0.83,1.00,0.95,0.70,0.96,0.98,1.14,1.16,1.08,0.99,1.01,0.26
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Evans,Toyota Yaris WRC,398,127,199,55,0.62,0.53,1.06,0.43,0.92,1.28,0.56,0.85,1.01,0.98,0.85,1.05,1.31,1.13,0.99,1.28,1.02,1.06,0.42
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Fourmaux,Ford Fiesta WRC,411,119,202,48,0.57,0.57,1.06,0.37,0.82,1.18,0.54,0.81,0.93,0.78,0.89,1.04,1.02,1.02,1.09,1.06,0.91,1.03,0.47
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Greensmith,Ford Fiesta WRC,443,122,201,47,0.59,0.54,0.99,0.40,0.83,1.14,0.55,0.82,0.90,1.05,0.77,1.12,1.15,1.14,1.06,1.01,1.06,0.95,0.36
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Katsuta,Toyota Yaris WRC,358,123,199,50,0.53,0.53,0.81,0.34,0.80,1.15,0.62,0.77,0.97,0.93,0.68,1.06,0.92,0.97,1.11,0.97,1.06,0.89,0.48
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Lappi,Toyota Yaris WRC,417,125,202,53,0.41,0.41,1.06,0.45,0.91,1.40,0.62,0.85,0.94,0.97,1.27,1.06,1.27,1.01,1.14,1.35,1.10,1.11,0.70
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Ogier,Toyota Yaris WRC,411,126,198,42,0.61,0.62,1.01,0.39,0.92,1.27,0.66,0.84,0.92,0.93,0.48,0.97,1.08,1.00,1.14,1.33,0.94,1.12,0.64
+telemetry,Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km),Rovanperä,Toyota Yaris WRC,416,127,200,46,0.64,0.59,0.91,0.41,0.90,1.29,0.49,0.81,0.99,1.02,0.79,1.01,1.22,1.15,1.04,1.19,0.96,1.11,0.62
+ReRBR,RSF 524 Hassi (7.78 km),autopilot experimental-brush,Ford_Fiesta_Rally2_ngp7,346,81,110,45,0.44,0.46,0.50,0.24,0.39,0.47,,,,0.51,0.70,0.44,0.52,0.34,0.44,,,,
+ReRBR,RSF 524 Hassi (7.78 km),autopilot ngp,Ford_Fiesta_Rally2_ngp7,350,80,108,39,0.44,0.46,0.49,0.24,0.37,0.43,,,,0.44,0.58,0.40,0.52,0.32,0.46,,,,
+ReRBR,RSF 524 Hassi (7.78 km),autopilot experimental-brush,Ford_Fiesta_WRC_2019_ngp6,344,82,111,49,0.40,0.43,0.47,0.25,0.39,0.48,,,,0.49,0.66,0.44,0.51,0.35,0.44,,,,
+ReRBR,RSF 524 Hassi (7.78 km),autopilot ngp,Ford_Fiesta_WRC_2019_ngp6,347,81,108,44,0.44,0.45,0.46,0.23,0.37,0.43,,,,0.46,0.57,0.40,0.53,0.32,0.44,,,,
+ReRBR,RSF 524 Hassi (7.78 km),autopilot experimental-brush,Hyundai_i20_Coupe_WRC_2020_ngp6,343,82,111,51,0.43,0.46,0.48,0.24,0.40,0.48,,,,0.49,0.60,0.44,0.50,0.34,0.44,,,,
+ReRBR,RSF 524 Hassi (7.78 km),autopilot ngp,Hyundai_i20_Coupe_WRC_2020_ngp6,347,81,108,44,0.44,0.45,0.46,0.23,0.37,0.43,,,,0.45,0.57,0.40,0.52,0.32,0.43,,,,
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Breen,Citroen C3 WRC,348,94,185,48,0.46,0.37,0.83,0.28,0.73,1.01,0.58,0.66,0.96,0.84,0.83,0.97,0.93,0.91,0.94,0.82,0.65,0.79,0.62
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Evans,Ford Fiesta WRC,306,100,185,49,0.44,0.46,0.86,0.33,0.78,1.13,0.62,0.72,0.96,0.90,0.96,1.10,0.99,1.04,0.82,0.91,0.61,0.76,0.36
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Hanninen,Toyota Yaris WRC,306,99,197,40,0.58,0.53,0.88,0.34,0.82,1.07,0.51,0.75,0.99,0.95,0.90,0.93,0.92,1.00,0.73,1.01,0.59,0.75,0.20
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Lappi,Toyota Yaris WRC,298,95,184,43,0.55,0.47,0.90,0.27,0.76,0.99,0.59,0.72,0.96,0.87,0.87,0.93,0.83,0.88,0.89,0.88,0.78,0.72,0.36
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Meeke,Citroen C3 WRC,337,97,182,51,0.48,0.36,0.71,0.32,0.74,1.03,0.74,0.59,1.01,0.83,0.90,0.96,0.84,0.96,0.89,0.86,0.59,0.80,0.45
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Mikkelsen,Hyundai i20 Coupe WRC,304,98,183,37,0.90,0.53,0.81,0.27,0.73,1.02,0.55,0.66,1.00,0.91,0.91,0.89,0.93,0.95,0.81,0.82,0.20,0.71,0.45
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Neuville,Hyundai i20 Coupe WRC,297,97,184,46,0.62,0.52,0.77,0.34,0.81,1.00,0.58,0.67,0.98,0.89,0.81,0.96,0.88,0.94,0.93,0.94,0.63,0.74,0.51
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Ogier,Ford Fiesta WRC,337,98,187,47,0.65,0.59,0.80,0.27,0.74,0.96,0.68,0.65,0.94,0.86,0.72,0.91,1.01,0.93,0.80,0.90,0.86,0.58,0.49
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Paddon,Hyundai i20 Coupe WRC,336,96,182,42,0.71,0.61,0.94,0.29,0.74,0.95,0.63,0.61,0.97,0.93,0.81,0.82,0.93,0.97,0.89,0.89,1.08,0.69,0.32
+telemetry,Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km),Sordo,Hyundai i20 Coupe WRC,336,97,184,46,0.77,0.55,0.83,0.34,0.75,1.08,0.63,0.68,1.02,0.96,0.81,1.02,0.86,0.93,0.90,0.93,0.76,0.58,0.50

@@ -42,7 +42,7 @@ const NGP_FACTOR1: u32 = 0x1017_1474 - NGP_FILE_BASE + rbr_physics::ngp::layout:
 const WHEEL_SPIN: u32 = 0xEA0;
 const CAR_SPEED: u32 = 0x15F8;
 const SCRATCH_BOOST: u32 = 0x1C8;
-/// Dump every this many steps, plus the final step.
+/// Dump every this many steps (unless `--tyre-probe-every`), plus the final step.
 const EVERY: u32 = 1000;
 
 /// A material value's byte offset in the material block, from `WORDS`.
@@ -68,19 +68,20 @@ fn table_line(out: &mut impl Write, name: &str, t: &Table) -> std::io::Result<()
 pub struct TyreProbe {
     file: std::io::BufWriter<std::fs::File>,
     path: String,
+    every: u32,
 }
 
 impl TyreProbe {
-    /// Open `path` for the dump.
-    pub fn create(path: &Path) -> Result<Self, String> {
+    /// Open `path` for the dump, one every `every` steps ([`EVERY`] if `None`).
+    pub fn create(path: &Path, every: Option<u32>) -> Result<Self, String> {
         let file =
             std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
-        Ok(TyreProbe { file, path: path.display().to_string() })
+        Ok(TyreProbe { file, path: path.display().to_string(), every: every.unwrap_or(EVERY) })
     }
 
-    /// Dump after the step at `step` when it is due (`EVERY`), or always when `last`.
+    /// Dump after the step at `step` when it is due (every `every` steps), or always when `last`.
     pub fn step(&mut self, mem: &Mem, step: u32, last: bool) -> Result<(), String> {
-        if !last && !step.is_multiple_of(EVERY) {
+        if !last && !step.is_multiple_of(self.every) {
             return Ok(());
         }
         self.dump(mem, step)

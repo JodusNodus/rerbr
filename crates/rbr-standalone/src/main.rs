@@ -374,6 +374,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
                 circle_ramp: args.circle_ramp,
                 trace_speed: args.trace_speed.clone(),
                 tyre_probe: args.tyre_probe.clone(),
+                tyre_probe_every: args.tyre_probe_every,
                 tyre_image: args.tyre_image.clone(),
                 tyre_image_step: args.tyre_image_step,
                 material_as: args.material_as,
