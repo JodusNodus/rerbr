@@ -49,6 +49,9 @@ Nothing here changes what the game computes.
   braking) against load, speed and tread temperature, small slips, the friction circle, and with `--frames` the
   peaks at the loads and speeds of every frame in the probe dump. Prints only. Both examples ask the model through
   `src/steady.rs`, as the game's seam does.
+- `examples/drive_force.rs`: |Fy|/Fz and the slip ratio at a given drive or braking force Fx/Fz, against slip angle
+  and load, NGP's tyre against a profile's model on a probed wheel (the throttle sets the force, not the slip).
+  Prints only.
 - `examples/racing.rs`: brush-v1 and NGP at the conditions of the racing-tyre
   and combined-slip data (`notes/tyre-model.md`, "Racing and rally targets").
   Prints only.
