@@ -156,6 +156,17 @@ pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car)
     Ok(())
 }
 
+/// `--replay-tyre`: the tyre model `name` (`rbr_tyre::model`'s names) fitted afresh to the car in `playback`, in place of
+/// the profile's from this step on (research; a car without NGP keeps NGP 7's).
+pub fn switch_tyre_model(playback: &Playback, name: &str) -> Result<(), String> {
+    let tyre = match rbr_hybrid::ngp::runs_ngp(playback.pure.ngp_base) {
+        true => rbr_tyre::model(name, &layout::tyre_wheels(playback))?,
+        false => None,
+    };
+    rbr_hybrid::ngp::set_tyre_model(tyre);
+    Ok(())
+}
+
 /// The car's engine for an engine model, as NGP's car init left it, for `car`.
 #[cfg(test)]
 pub fn engine_params(playback: &Playback, car: rbr_engine::Car) -> rbr_engine::Params {

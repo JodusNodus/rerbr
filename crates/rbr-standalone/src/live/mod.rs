@@ -348,6 +348,11 @@ impl<'a> Live<'a> {
         crate::physics::fit_physics(&self.playback, profile, &car)
     }
 
+    /// `--replay-tyre`: the tyre model `name` on the loaded car from this step on ([`crate::physics::switch_tyre_model`]).
+    pub fn switch_tyre_model(&self, name: &str) -> Result<(), String> {
+        crate::physics::switch_tyre_model(&self.playback, name)
+    }
+
     /// What follows the championship stage (`--rally-next`).
     pub fn set_rally_next(&mut self, next: RallyNext) {
         self.rally_next = next;

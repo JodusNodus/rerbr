@@ -71,7 +71,7 @@
 //! runs the replay's frames of its last start in place of the viewer's input, on the clock (`--replay-pace clock`, the
 //! viewer's PAUSE, RESUME and RESTART as in a drive) or back to back (`free`, for a video), compared frame by frame.
 //! `--replay-trace FILE` (with `--replay`) writes the car's state and each wheel's tyre after each frame
-//! (`replay_trace.rs`, research tooling, read-only). A replay writes no other files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
+//! (`replay_trace.rs`, research tooling, read-only). `--replay-tyre STEP:MODEL` changes the tyre model at STEP and runs the drive's inputs on uncompared (research). A replay writes no other files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
 //!
 //! `--events-out FILE` (with `--boot --recording X`) runs the recording's controls through the live boot and writes the
 //! PTC1 and PEV1 records of each step it answers (`events_out.rs`): the viewer's playback takes the lamps from them.
@@ -248,8 +248,16 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             let replay = Replay::read(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
             let output = std::io::BufWriter::new(std::io::stdout());
             let mut trace = args.replay_trace.as_deref().map(replay_trace::ReplayTrace::create).transpose()?;
-            let (_, line) =
-                live::serve_replay(live, &replay.frames, std::io::stdin(), output, args.replay_pace, trace.as_mut())?;
+            let tyre = args.replay_tyre.as_ref().map(|(at, model)| (*at, model.as_str()));
+            let (_, line) = live::serve_replay(
+                live,
+                &replay.frames,
+                std::io::stdin(),
+                output,
+                args.replay_pace,
+                trace.as_mut(),
+                tyre,
+            )?;
             trace.map(replay_trace::ReplayTrace::finish).transpose()?;
             eprintln!("rbr-standalone: --replay: {line}");
             return Ok(());
