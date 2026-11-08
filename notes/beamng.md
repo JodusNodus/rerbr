@@ -32,8 +32,8 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
   `translucent` or `alphaTest` (trees, bushes, fences, graffiti, dirt edges, kerb lines, the racing groove, tyre
   walls). Opacity maps are BC5 (`BC5U`, the first channel is the opacity) or PNG; their colour maps BC7 (41), DXT5 or
   PNG (4), or none (3: a `baseColorFactor` all over). `cutout` puts the opacity into the colour's alpha and encodes
-  DXT5 with mips (texpresso); BC7 decodes with `bc7` (ours, the format's tables: 9.36 M blocks of the level's 52 BC7
-  files equal `bcdec_rs`'s, checked outside the repository).
+  DXT5 with mips (texpresso); BC7 decodes with `bcdec_rs` (MIT; the RBR_BEAMNG test decodes every
+  `.dds` of the level).
 - Forests: `*.forest4.json` (NDJSON `{type, pos, rotationMatrix, scale}`), `*.forest.json` v2 (`instances` by type,
   `pos, quat, scale` rows) and `art/forest/managedItemData.json` (`shapeFile` per type). The Nordschleife's 45 forest
   items name BeamNG's own tree shapes, which the zip does not hold: not drawn (its trees are the `Treez` and

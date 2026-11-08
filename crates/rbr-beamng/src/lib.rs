@@ -2,7 +2,6 @@
 //! Nothing of a level is ever part of ReRBR: the readers here take a level zip and the conversion writes a stage
 //! folder the existing BTB path plays (`rbr_btb`). Findings: `notes/beamng.md`.
 
-pub mod bc7;
 pub mod cdae;
 pub mod convert;
 pub mod course;
