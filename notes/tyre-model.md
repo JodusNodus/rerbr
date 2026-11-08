@@ -850,7 +850,8 @@ experimental-brush 49 → 52/99 PASS (ngp 33/99), before → camber thrust → c
 -14; ngp +4.4); PASS Cα +5.8 % (-14 to +12.5, sources disagree; ngp +5.6), peak μ_y +0.3 % (±3). Car rows within
 0.005 except the gravel circle (car, not tyre) 0.609 → 0.667 → 0.620 g. Map 85 ramped circle with the setup's camber
 at 0°, as set (-3.9°/-1.2°) and -4° (`--setup`): slide at 0.880/0.875/0.876 g brush (0.880/0.875/0.875 before),
-ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilot's noise.
+ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilot's noise. With main's aligning rows
+merged: 52/106 (ngp 33/106), the ice row back at 0.807.
 
 ### A per-wheel ABS in the brake test
 
