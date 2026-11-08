@@ -175,26 +175,41 @@ pub fn parse_probe(text: &str) -> (Vec<Params>, Vec<(f32, f32)>) {
             wear_op: wear_line.first().copied().unwrap_or(0.0),
             speed: slip_op.first().copied().unwrap_or(0.0),
         };
-        // Patch cloud: wheel 0, clean soil (thickness field index 5 of surface line).
-        if *w == 0 && surf.get(5).copied().unwrap_or(1.0) == 0.0 && p.normal_force > 0.0 {
+        // Patch cloud: the front axle (wheels 0 and 1, one tyre), clean soil (thickness field index 5 of surface line).
+        if *w <= 1 && surf.get(5).copied().unwrap_or(1.0) == 0.0 && p.normal_force > 0.0 && p.patch_length > 0.0 {
             cloud.push((p.normal_force, p.patch_length));
         }
         out.push(p);
     }
     let _ = order;
     cloud.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    cloud.dedup_by(|a, b| a.0 == b.0);
     (out, cloud)
 }
 
-/// Patch length at `fz`: linear interpolation of the probe's clean-soil cloud,
-/// else the probed operating patch length (gravel never runs clean soil).
+/// Patch length at `fz`: linear interpolation of the probe's clean-soil cloud, and outside it the end's length times
+/// the cloud's power law in load (NGP's contact geometry: ∝ Fz^0.57 on the Fiesta Rally2's tarmac tyre at 1.6-5.5 kN);
+/// else the probed operating patch length (gravel never runs clean soil). The run's loads cover only part of the
+/// 2-6 kN the lab sweeps: holding the end length there made the patch look ∝ Fz^0.30.
 pub fn patch_at(cloud: &[(f32, f32)], fz: f32, fallback: f32) -> f32 {
-    if cloud.is_empty() {
-        return fallback;
+    let (Some(&first), Some(&last)) = (cloud.first(), cloud.last()) else { return fallback };
+    if cloud.len() < 2 || (fz > first.0 && fz < last.0) {
+        let xs: Vec<f32> = cloud.iter().map(|c| c.0).collect();
+        let ys: Vec<f32> = cloud.iter().map(|c| c.1).collect();
+        return interp(&xs, &ys, fz);
     }
-    let xs: Vec<f32> = cloud.iter().map(|c| c.0).collect();
-    let ys: Vec<f32> = cloud.iter().map(|c| c.1).collect();
-    interp(&xs, &ys, fz)
+    let end = if fz <= first.0 { first } else { last };
+    end.1 * (fz / end.0).powf(load_exponent(cloud))
+}
+
+/// The least-squares slope of ln(patch length) against ln(load) over the cloud.
+fn load_exponent(cloud: &[(f32, f32)]) -> f32 {
+    let n = cloud.len() as f64;
+    let (lx, ly): (Vec<f64>, Vec<f64>) = cloud.iter().map(|c| (f64::from(c.0).ln(), f64::from(c.1).ln())).unzip();
+    let (mx, my) = (lx.iter().sum::<f64>() / n, ly.iter().sum::<f64>() / n);
+    let sxy: f64 = lx.iter().zip(&ly).map(|(x, y)| (x - mx) * (y - my)).sum();
+    let sxx: f64 = lx.iter().map(|x| (x - mx).powi(2)).sum();
+    (sxy / sxx) as f32
 }
 
 /// The game's tyre model's view of the probed wheel (`rbr_tyre::Wheel`): its tables.
@@ -211,5 +226,21 @@ pub fn wheel(p: &Params) -> rbr_tyre::Wheel {
         traction_stiffness: p.trc_stf.clone(),
         temperature_axis: p.temp_axis.clone(),
         rubber_friction: p.rub_my.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::patch_at;
+
+    #[test]
+    fn the_patch_follows_the_clouds_power_law_outside_it() {
+        // A cloud on 0.1 (Fz/4000)^0.5 from 2 to 4 kN.
+        let cloud: Vec<(f32, f32)> =
+            [2000.0f32, 3000.0, 4000.0].iter().map(|&f| (f, 0.1 * (f / 4000.0).sqrt())).collect();
+        assert!((patch_at(&cloud, 6000.0, 0.0) - 0.1 * 1.5f32.sqrt()).abs() < 1e-5);
+        assert!((patch_at(&cloud, 1000.0, 0.0) - 0.05).abs() < 1e-5);
+        assert_eq!(patch_at(&cloud, 3000.0, 0.0), cloud[1].1);
+        assert_eq!(patch_at(&[], 3000.0, 0.2), 0.2);
     }
 }
