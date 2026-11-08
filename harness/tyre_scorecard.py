@@ -15,7 +15,8 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           material 116 through the tarmac tyre's class factor, as on RSF 565/614; wheel 1 at step
                           8000 of the r40 circle); tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h,
                           the latter with WaterFactor 1 on the dry friction level; tarmac-wet-80, and
-                          tarmac-wet-80-worn / tarmac-wet-100-worn at tread remaining 0.2 (`--tread`)
+                          tarmac-wet-80-worn / tarmac-wet-100-worn at tread remaining 0.2 (`--tread`),
+                          tarmac-wet-80-3mm at 0.375
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
@@ -78,10 +79,11 @@ TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("s
 for _kmh in (32, 64, 100):
     TYRE_SURFACES[f"tarmac-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}"])
     TYRE_SURFACES[f"tarmac-wet-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1"])
-# Contidrom's wet stops from 80 and 100 km/h, new and at 1.6 of 8 mm (tread remaining 0.2).
+# The wet stops of Contidrom and Continental's 2021 report from 80 and 100 km/h: new, 1.6 mm (tread remaining 0.2), 3 mm.
 TYRE_SURFACES["tarmac-wet-80"] = ("tarmac", ["--speed", f"{80 / 3.6:.4f}", "--water", "1"])
 for _kmh in (80, 100):
     TYRE_SURFACES[f"tarmac-wet-{_kmh}-worn"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1", "--tread", "0.2"])
+TYRE_SURFACES["tarmac-wet-80-3mm"] = ("tarmac", ["--speed", f"{80 / 3.6:.4f}", "--water", "1", "--tread", "0.375"])
 # The brake runs per surface: the stage, the extra rbr-standalone flags, the steps, how far off the driveline a valid
 # stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
 BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}

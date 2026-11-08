@@ -97,12 +97,14 @@ pub const FILM_MAX: f64 = 0.7e-3;
 /// worn-tyre test; tread remaining `d` scales it.
 pub const TREAD_NEW: f64 = 8.0e-3;
 /// Drainage speed of the tread, m/s: partial hydroplaning sets in at v_on = DRAIN_SPEED times the groove depth over
-/// the film ([`wet_loss`]). Ours, fitted with [`LIFT_AT`] to Contidrom via AUTO BILD (road tyres braked on a watered
-/// track, quoted): new (8 mm) loses nothing to 100 km/h (mean μ of the stop from 100 over from 80 0.97-0.98), 1.6 mm
-/// keeps 0.69 / 0.52 of new from 80 / 100 km/h; v_on 34 m/s new, 6.9 m/s at 1.6 mm on the 0.7 mm film.
-pub const DRAIN_SPEED: f64 = 3.0;
+/// the film ([`wet_loss`]). Ours, fitted with [`LIFT_AT`] to road tyres braked with ABS on watered asphalt, mean μ of
+/// the stop against new: Contidrom via AUTO BILD (quoted), new (8 mm) from 100 km/h as from 80 (0.97-0.98), 1.6 mm
+/// 0.69 / 0.52 of new from 80 / 100 km/h; Continental's test report 2021_100 (EcoContact 6 225/45 R18, 80-0 km/h,
+/// table), 3 mm 0.89, 1.6 mm 0.80. v_on 26 m/s new, 5.3 m/s at 1.6 mm on the 0.7 mm film. A faster drainage (3 m/s,
+/// lifted at 5 v_on: new nil to 123 km/h) put 3 mm at 0.93.
+pub const DRAIN_SPEED: f64 = 2.3;
 /// Speed over v_on at which the patch is wholly lifted (ours, with [`DRAIN_SPEED`]).
-pub const LIFT_AT: f64 = 5.0;
+pub const LIFT_AT: f64 = 7.0;
 /// Wet friction kept at total hydroplaning: μ ≤ 0.05 (Horne & Dreher, NASA TN D-2056, 1963).
 pub const WET_KEPT: f64 = 0.05;
 /// The Coulomb level's loss on a wet surface at fast sliding, times the wetness W: water lubricates the sliding
@@ -221,8 +223,8 @@ pub fn camber_slip_velocity(sin: f64, vr: f64) -> f64 {
 /// remaining `d` (1 new): the grooves (d times [`TREAD_NEW`]) drain the film (h = W times [`FILM_MAX`]) below
 /// v_on = [`DRAIN_SPEED`] times groove depth over film; above it the lifted share of the patch grows linearly to the
 /// whole patch at [`LIFT_AT`] v_on, where [`WET_KEPT`] of the friction is left. So nothing on a dry surface, nothing
-/// for a new tyre to 123 km/h on the 0.7 mm film (5 % at 150), and a worn one loses from low speed: at 1.6 mm 0.48 /
-/// 0.27 of new at 80 / 100 km/h. The onset follows the drainage, not Horne's deep-water speed (water deeper than the
+/// for a new tyre to 95 km/h on the 0.7 mm film (1 % at 100, 9 % at 150), and a worn one loses from low speed: at
+/// 1.6 mm 0.49 / 0.32 of new at 80 / 100 km/h, at 3 mm 0.80 / 0.71. The onset follows the drainage, not Horne's deep-water speed (water deeper than the
 /// grooves, which the game's films never reach); ADAC's 17-22 % of v_p lost at 2 of 8 mm is that regime.
 pub fn wet_loss(w: f64, v: f64, d: f64) -> f64 {
     if w <= 0.0 {
@@ -763,7 +765,7 @@ mod tests {
     }
 
     #[test]
-    fn partial_hydroplaning_spares_a_new_tyre_and_takes_a_worn_one_as_contidrom_measured() {
+    fn partial_hydroplaning_spares_a_new_tyre_and_takes_a_worn_one_as_measured() {
         // Mean friction of a stop from `v0` (v0² / 2 ∫ v / μ dv) relative to a tyre that loses nothing.
         let stop = |v0: f64, d: f64| {
             let n = 2000;
@@ -778,12 +780,15 @@ mod tests {
             v0 * v0 / (2.0 * s)
         };
         let (v80, v100) = (80.0 / 3.6, 100.0 / 3.6);
-        // Dry, or new to 100 km/h on the full film: nothing.
+        // Dry: nothing; new to 100 km/h on the full film: 1 % at most.
         assert_eq!(wet_loss(0.0, 60.0, 0.2), 1.0);
-        assert_eq!(wet_loss(1.0, v100, 1.0), 1.0);
-        // Continental Contidrom via AUTO BILD: 1.6 of 8 mm keeps 0.69 / 0.52 of new from 80 / 100 km/h (quoted).
-        let (w80, w100) = (stop(v80, 0.2), stop(v100, 0.2));
-        assert!((0.66..=0.72).contains(&w80) && (0.49..=0.55).contains(&w100), "{w80} {w100}");
+        assert_eq!(wet_loss(1.0, v80, 1.0), 1.0);
+        assert!(wet_loss(1.0, v100, 1.0) > 0.99);
+        // Contidrom via AUTO BILD: 1.6 of 8 mm keeps 0.69 / 0.52 of new from 80 / 100 km/h (quoted); Continental's
+        // 2021 report from 80: 1.6 mm 0.80, 3 mm 0.89 (table).
+        let (w80, w100, t80) = (stop(v80, 0.2), stop(v100, 0.2), stop(v80, 3.0 / 8.0));
+        assert!((0.66..=0.83).contains(&w80) && (0.49..=0.55).contains(&w100), "{w80} {w100}");
+        assert!((0.87..=0.91).contains(&t80), "{t80}");
         // A thinner film drains to a higher speed; nothing below the onset.
         assert!(wet_loss(0.5, v80, 0.2) > wet_loss(1.0, v80, 0.2));
         assert_eq!(wet_loss(1.0, 5.0, 0.2), 1.0);
