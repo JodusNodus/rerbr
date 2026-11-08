@@ -206,6 +206,10 @@ def run_once(a, home, run_dir, extra):
             # The window closed (by the compositor or a key) or never drew, as when no display output is on.
             why += f' ({session[-1]}: closed, or no frame shown; is a display on?)'
         sys.exit(f'{run_dir.name}: {why} after {time.time() - began:.0f} s; {run_dir / "viewer.log"}:\n{output[-1500:]}')
+    window = log['header'].get('window', '')
+    if a.size and window.split()[:1] != [a.size]:
+        # A compositor with no output on (the display asleep or unplugged) gives the window 1x1.
+        sys.exit(f'{run_dir.name}: the window was {window or "unknown"}, not {a.size} (is a display on?)')
     if log['seconds'] < a.seconds * 0.9:
         sys.exit(f"{run_dir.name}: timed {log['seconds']:.0f} of {a.seconds} s (the window closed early?)")
     f = figures(log, output)
