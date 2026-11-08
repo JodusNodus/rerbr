@@ -24,9 +24,9 @@
 //!   locked tyre's side force is PLOUGH μ sin α, linear in the slip angle and below free rolling at every angle
 //!   (Coutermarsh, Fig. 16, fig ±0.02: 0.72 sin α against a free rolling 0.55, 1.31 sin α of it; here 1.3 sin α).
 //!
-//! Ours: the smoothstep and its start at a braking slip of 0.8, no berm when driving, PLOUGH the published cars' 1.25-1.30, and the berm independent of the
-//! soil's thickness (the measured layers are 5 cm and graded gravel; NGP's 9-30 mm) and of speed (no speed trend in the
-//! locked-wheel data, 40-80 km/h).
+//! Ours: the smoothstep and its start at a braking slip of 0.8, no berm when driving, PLOUGH the published cars'
+//! 1.25-1.30, and the berm independent of the soil's thickness (the measured layers are 5 cm and graded gravel; NGP's
+//! 9-30 mm) and of speed (no speed trend in the locked-wheel data, 40-80 km/h).
 
 use crate::brush::{self, Calibration, EvalInput, EvalOutput, KX_OVER_KY, M_CX, M_CY, V_MIN};
 
