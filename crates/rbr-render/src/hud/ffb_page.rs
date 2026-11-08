@@ -181,6 +181,10 @@ fn status(page: &FfbPage) -> String {
             "The wheel maxes out often ({} % of your driving): raise Sensitivity to about {to} %",
             percent(maxed)
         ),
+        Advice::High(maxed, to) => format!(
+            "Your usual cornering sits high in the wheel's range (maxed out {} %): raise Sensitivity to about {to} %",
+            percent(maxed)
+        ),
         Advice::Lower(to) => {
             format!(
                 "Your cornering uses little of the wheel's range: lower Sensitivity to about {to} %, or raise Strength"
@@ -371,11 +375,15 @@ mod tests {
             "The wheel maxes out often (100 % of your driving): raise Sensitivity to about 155 %"
         );
         assert_eq!(
-            status(&page(190, 30.0)),
+            status(&page(100, 30.0)),
+            "Your usual cornering sits high in the wheel's range (maxed out 0 %): raise Sensitivity to about 155 %"
+        );
+        assert_eq!(
+            status(&page(220, 30.0)),
             "Your cornering uses little of the wheel's range: lower Sensitivity to about 155 %, or raise Strength"
         );
-        // Below the suggestion and rarely maxed out is good, as at or a little above it.
-        for value in [100, 155, 185] {
+        // Near the suggestion, a little below or above it, is good.
+        for value in [110, 155, 215] {
             assert_eq!(status(&page(value, 30.0)), "Good: your usual cornering sits mid-range (maxed out 0 %)");
         }
         // The graph reaches past where the wheel maxes out.

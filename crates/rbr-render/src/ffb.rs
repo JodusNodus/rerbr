@@ -327,8 +327,12 @@ pub mod load {
     pub const ADVICE_SECONDS: f32 = 20.0;
     /// From this share maxed out the wheel maxes out often.
     pub const OFTEN: f32 = 0.05;
-    /// Above this times the suggested percentage the player's cornering uses little of the wheel's range.
-    pub const HIGH: f32 = 1.2;
+    /// Below this times the suggested percentage the player's usual cornering sits high in the wheel's range; above
+    /// [`HIGH`] times it, the cornering uses little of the range. Between them the usual cornering (the load's 90th
+    /// percentile) takes 0.39-0.63 of the wheel's force, `1 - 0.5^(1/r)` at `r` times the suggestion, so a player near
+    /// the suggestion is left alone: the suggestion's half force is a rule of thumb, not a target.
+    pub const LOW: f32 = 0.7;
+    pub const HIGH: f32 = 1.4;
 
     /// What the player could do at percentage `current` with the load `load`.
     #[derive(Debug, Clone, Copy, PartialEq)]
@@ -337,6 +341,9 @@ pub mod load {
         DriveMore(f32),
         /// The wheel maxes out often (the share): raise to the suggestion.
         Raise(f32, i32),
+        /// The usual cornering sits high in the range, though the wheel rarely maxes out (the share): raise to the
+        /// suggestion.
+        High(f32, i32),
         /// The cornering uses little of the range: lower to the suggestion.
         Lower(i32),
         /// Mid-range (the maxed-out share).
@@ -344,7 +351,7 @@ pub mod load {
     }
 
     /// The advice, its rules in order: under [`ADVICE_SECONDS`] of load, drive more; maxed out [`OFTEN`] or more,
-    /// raise; above [`HIGH`] times the suggestion, lower; else good.
+    /// raise; below [`LOW`] times the suggestion, raise (high in the range); above [`HIGH`] times it, lower; else good.
     pub fn advice(load: &Load, current: i32, range: std::ops::RangeInclusive<i32>) -> Advice {
         let (seconds, maxed) = (load.seconds(), load.maxed_out(current).unwrap_or(0.0));
         let Some(to) = suggested(load, range).filter(|_| seconds >= ADVICE_SECONDS) else {
@@ -352,6 +359,8 @@ pub mod load {
         };
         if maxed >= OFTEN {
             Advice::Raise(maxed, to)
+        } else if percent(current) < LOW * to as f32 {
+            Advice::High(maxed, to)
         } else if percent(current) > HIGH * to as f32 {
             Advice::Lower(to)
         } else {
@@ -926,15 +935,12 @@ mod tests {
         l.add(40.0, 15.0);
         assert_eq!(load::advice(&l, 100, SENSITIVITY_RANGE), Advice::DriveMore(15.0));
         l.add(40.0, 15.0);
-        // The p90 is x 42.5: suggested 155 %. 1.2 times it is 186.
+        // The p90 is x 42.5: suggested 155 %. 0.7 and 1.4 times it are 108.5 and 217.
         assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(155));
-        assert_eq!(
-            load::advice(&l, 100, SENSITIVITY_RANGE),
-            Advice::Good(0.0),
-            "below the suggestion, rarely maxed out"
-        );
-        assert_eq!(load::advice(&l, 185, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 190, SENSITIVITY_RANGE), Advice::Lower(155));
+        assert_eq!(load::advice(&l, 105, SENSITIVITY_RANGE), Advice::High(0.0, 155), "high, rarely maxed out");
+        assert_eq!(load::advice(&l, 110, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 215, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 220, SENSITIVITY_RANGE), Advice::Lower(155));
         // x 42.5 maxes out at 30 %: raise, whatever else.
         assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 155));
         // 5 % maxed out (x 397.5 at 200 %) is often; just under is not.
