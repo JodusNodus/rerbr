@@ -506,6 +506,16 @@ Sources:
 - Not used: Racecar Engineering, "Tyre dynamics" (Campbell-Brennan, 2020), an introduction: its "around six degrees"
   peak is an illustrative curve from Balkwill, Performance Vehicle Dynamics (2017; tyre unstated); its longitudinal
   peak at slip ratio "0.3-0.4" contradicts every set above (0.08-0.18).
+- Semi-slick on tarmac: MegaRide with Calspan, "Tire Performance Evaluation: Comparing Indoor Test Bench and Outdoor
+  Model-Based Vehicle Testing Methodologies" (megaride.eu, 2024), Toyo Proxes R888R 195/50 R16 on a Fiat 124 Spider,
+  MF 5.2 fits from track data (Circuito del Sele, 75 °C, 2.2 bar) and from Calspan's flat track (sandpaper), Fig 12
+  (fig ±5 %): μ_y 1.36 / 1.50 at 1 kN, 1.20 / 1.29 at 4 kN, 1.13 / 1.19 at 5.5 kN (outdoor / indoor; μ ∝ Fz^-0.11 /
+  -0.14); K_y at 4 kN ~1560 / 1530 N/deg, Cα/Fz 22.3 / 21.9 per rad (NGP 17.6, 1.27 / 1.24 times), K_y ∝ Fz^~0.8 /
+  ~0.6 over 2-5 kN; lateral peak near 6-7° at 4 kN (fig ±1°), at 20° 0.86-0.90 of it at 4 kN, 0.80 indoor at
+  5.5 kN; longitudinal peak near κ 0.08-0.10 (Fig 8). A track tyre at NGP's grip level, measured on asphalt: the
+  closest data to a tarmac rally tyre found.
+- Not used: Edy's "Pacejka '94 parameters explained" (edy.es), a game-tuning guide: its "typical ranges" are not
+  measurements.
 
 Rally on tarmac: no Rally1/Rally2/R5 g data, logger trace or g-g diagram is open (searched telemetry overlays,
 WRC+ graphics, team and engineer publications); the only rally numbers are the ChassisSim model inputs. Combined
