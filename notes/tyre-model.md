@@ -237,7 +237,11 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   stiffness's temperature, wear and pressure factors are the brush's.
 - Calibration per wheel at fit (`rbr_tyre::fit`): NGP's `patch_forces` swept from the wheel's own tables at
   `load_axis[3]` (the 4 kN design load times the car's mass ratio), 15 m/s, unit surface, stiffness factor 1; t_cal is
-  the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed.
+  the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed. The level away from the design
+  load is the brush's published load sensitivity (lab `envelope`, Fiesta Rally2 map 41 probe, grip 1.27, 15 m/s:
+  1.5-8 kN μ_y +0.1 to +5.7 % over NGP's, μ_x driving -4.2 to +3.3 %; mean over the probe's frames μ_y +1.0 %). NGP's
+  level at each load was tried and rejected (2026-11-08): pace -0.01 to +0.06 s, peak Fx load exponent 0.982 against
+  the published 0.90-0.95.
 - Dynamics: Rill's carcass deflections per wheel, the model's state (snapshots don't carry it; restart and
   touch-down zero it). c_y is NGP's lateral carcass; c_x 450 kN/m times the pressure factor over its calibration
   value (2026-11-07; Golf II 447 kN/m, Fiesta Rally2 435 kN/m, c_x/c_y 1.37/1.07; NGP's torsional over R² 640/796
@@ -707,10 +711,13 @@ leaves the line (In game).
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
   deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
-  The autopilot is 1.6-3.2 % faster on the brush than on NGP (map 41 tarmac, `--autopilot`, finish times ngp /
-  brush: Fiesta Rally2 309.01 / 304.02 s, Celica ST185 310.91 / 304.50, Golf II 324.24 / 313.81, 131 Abarth 323.35 /
-  315.46; 2026-11-08); main's brush before the TRL friction curve gave the same within 0.1 %, so the gap is older than
-  that curve. A driver's view is the next check.
+  Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
+  304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
+  315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
+  and 4 m/s² braking, under half the grip. Of the tyre's share, Kx (shape, data-backed: NGP 14 Fz, published 18.4-32.9,
+  brush 21) 0.18-0.50 s, a build with NGP's Kx: the brush's driven wheels slip a third less on throttle. Ruled out
+  (builds, not committed): NGP's Cα load exponent (within 0.04 s); no carcass dynamics above 3 m/s and a friction flat
+  with sliding speed are faster still. 0.1-0.2 % unattributed.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
   stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
   7.5 bar (Meccanica 2023).
