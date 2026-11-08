@@ -26,10 +26,18 @@ pub struct Tyre<'a> {
 impl Tyre<'_> {
     /// Steady (Fx, Fy) at `fz` for the contact velocities and spin (NGP's signs).
     pub fn forces(&mut self, fz: f32, vlat: f32, vlong: f32, spin: f32) -> (f32, f32) {
+        let (fx, fy, _) = self.contact(fz, vlat, vlong, spin);
+        (fx, fy)
+    }
+
+    /// Steady (Fx, Fy, pneumatic trail) at `fz` for the contact velocities and spin (NGP's signs), the trail blended
+    /// by the model's weight as the seam blends it.
+    pub fn contact(&mut self, fz: f32, vlat: f32, vlong: f32, spin: f32) -> (f32, f32, f32) {
         let p = self.p;
         let patch = patch_at(self.cloud, fz, p.patch_length);
         let ngp = patch_forces(&patch_input(p, &blend_at(p, fz), fz, patch, vlat, vlong, spin));
-        let Some(model) = self.model.as_mut() else { return (ngp.longitudinal_force, ngp.lateral_force) };
+        let ngp_out = (ngp.longitudinal_force, ngp.lateral_force, ngp.pneumatic_trail);
+        let Some(model) = self.model.as_mut() else { return ngp_out };
         let x = ForceInput {
             dt: DT,
             touching: true,
@@ -61,10 +69,33 @@ impl Tyre<'_> {
         match last {
             Some(o) => {
                 let mix = |n: f32, m: f32| n + (m - n) * o.weight;
-                (mix(ngp.longitudinal_force, o.longitudinal_force), mix(ngp.lateral_force, o.lateral_force))
+                (
+                    mix(ngp.longitudinal_force, o.longitudinal_force),
+                    mix(ngp.lateral_force, o.lateral_force),
+                    mix(ngp.pneumatic_trail, o.pneumatic_trail),
+                )
             }
-            None => (ngp.longitudinal_force, ngp.lateral_force),
+            None => ngp_out,
         }
+    }
+
+    /// The steady aligning moment the game applies about the contact normal, N·m, positive when it turns the wheel
+    /// toward its velocity (reduces the slip angle), and the lateral force, N (NGP's sign): `solve_forces`' trail
+    /// torque above 2 m/s, the trail times the lateral force less the carcass offset, the lateral deflection (the
+    /// lateral force over the carcass's lateral stiffness, flat) times the longitudinal force.
+    pub fn aligning(&mut self, fz: f32, vlat: f32, vlong: f32, spin: f32) -> (f32, f32) {
+        let (fx, fy, trail) = self.contact(fz, vlat, vlong, spin);
+        let deflection = -fy / (self.p.carcass_lat * self.p.stiffness_factor);
+        let torque = vlong.signum() * trail * fy - deflection * fx;
+        (-torque * vlong.signum() * vlat.signum(), fy)
+    }
+
+    /// The aligning moment (see [`Tyre::aligning`]) at the slip angle `deg` and the slip ratio `kappa` (0 free
+    /// rolling, negative braking), the contact speed held.
+    pub fn mz(&mut self, fz: f32, deg: f32, kappa: f32) -> f32 {
+        let (v, a) = (self.speed, deg.to_radians());
+        let (vlat, vlong) = (v * a.sin(), -v * a.cos());
+        self.aligning(fz, vlat, vlong, (1.0 + kappa) * (-vlong) / self.p.effective_radius).0
     }
 
     /// |Fy|/Fz free rolling at the slip angle `deg`.

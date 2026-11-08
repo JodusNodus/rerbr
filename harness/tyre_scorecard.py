@@ -41,6 +41,7 @@ import argparse
 import concurrent.futures
 import csv
 import json
+import math
 import os
 import re
 import subprocess
@@ -301,6 +302,8 @@ def verdict(value, low, high):
     """PASS or MISS and the signed distance outside the band (0 inside); CTX for a context row (no band)."""
     if low is None and high is None:
         return "CTX", 0.0
+    if math.isnan(value):  # not reached (e.g. an aligning moment that never changes sign)
+        return "MISS", value
     if low is not None and value < low:
         return "MISS", value - low
     if high is not None and value > high:

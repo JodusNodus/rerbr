@@ -56,6 +56,17 @@ pub const N_MU_Y: f64 = 0.87;
 /// friction falls with load at 0.72 and 0.39 of the lateral rate (mean 0.55),
 /// so 1 - 0.55 (1 - N_MU_Y) = 0.93.
 pub const N_MU_X: f64 = 0.93;
+/// Load exponent of the pneumatic trail at small slip over the half contact length, t0/a ∝ Fz^M_TRAIL: brush theory's
+/// a/3 holds at one load only; the Magic Formula sets give 0.33 (TNO 205/60R15), 0.30 (Continental 225/50R18) and
+/// 0.42 (MF 6.1 255/55R20) over 2-6 kN, a from their MF-Swift contact length (Q_RA1, Q_RA2), t0 from QBZ/QCZ/QDZ/QEZ;
+/// with their a ∝ Fz^0.6 the trail grows ∝ Fz^0.93-1.01. The mean (ours).
+pub const M_TRAIL: f64 = 0.35;
+
+/// The half length the aligning moment takes at the load `fz`, from the contact patch's half length `half_length`
+/// and the calibration load `fz0`: the patch's, times (Fz/Fz0)^[`M_TRAIL`], so the trail is a/3 at Fz0.
+pub fn trail_half_length(half_length: f64, fz: f64, fz0: f64) -> f64 {
+    half_length * libm::pow(fz / fz0, M_TRAIL)
+}
 /// The friction curve against sliding speed: the generalised Stribeck curve mu_C + (mu_S - mu_C) exp(-(Vs /
 /// V_S)^STRIBECK_EXP) (Olsson, Astrom, Canudas de Wit, Gafvert & Lischinsky, "Friction models and friction
 /// compensation", European Journal of Control 4, 1998) times Burckhardt's speed factor exp(-SPEED_DECAY Vs)
