@@ -11,11 +11,12 @@
 //! - Drawn: the visible detail of every shown shape not in a hidden group or left out by `skip`, within the draw
 //!   corridor, one object per tile and material; drawing never collides (`CollisionModel=-1`).
 //! - Driveline: the course ([`crate::course`]) from 50 m before the start, its heights on the collision; pace notes
-//!   hold only the start, splits, finish and end of stage.
+//!   the start, splits, finish and end of stage and the notes [`crate::pacenotes`] reads from its shape.
 
 use crate::course::{self, Course};
 use crate::level::{self, Scene};
 use crate::materials::{self, Material};
+use crate::pacenotes;
 use crate::race::Race;
 use crate::textures;
 use crate::world::{self, Detail, Grid, Triangle};
@@ -48,11 +49,23 @@ pub struct Options {
     pub skip: Vec<String>,
     /// Plan distance from the driveline within which shapes are drawn, metres.
     pub draw_corridor: f64,
+    /// `(text, metres)`: shapes whose path contains the text (case-insensitive) are drawn within that plan distance
+    /// of the driveline instead of [`Options::draw_corridor`]; the last match wins.
+    pub reach: Vec<(String, f64)>,
+    /// `(text, metres)`: shapes whose path contains the text are drawn only up to that distance from the eye
+    /// (`LODOut`); the last match wins.
+    pub lod: Vec<(String, f64)>,
     /// Plan distance within which collision is kept, metres.
     pub collision_corridor: f64,
     /// Drawn objects whose material's triangles average under this area (m²) are drawn only to [`Options::detail_lod`].
     pub detail_area: f64,
     pub detail_lod: f64,
+}
+
+/// The value of the last rule whose text `path` contains (case-insensitive).
+fn rule(rules: &[(String, f64)], path: &str) -> Option<f64> {
+    let path = path.to_lowercase();
+    rules.iter().rev().find(|(k, _)| path.contains(&k.to_lowercase())).map(|r| r.1)
 }
 
 impl Options {
@@ -63,6 +76,8 @@ impl Options {
             out: out.to_owned(),
             skip: Vec::new(),
             draw_corridor: 150.0,
+            reach: Vec::new(),
+            lod: Vec::new(),
             collision_corridor: 60.0,
             detail_area: 0.02,
             detail_lod: 400.0,
@@ -78,31 +93,33 @@ pub struct Report {
 }
 
 /// The RBR surface id for a BeamNG ground model (resolved through the level's own models to a built-in one), and
-/// whether the face is a wall: asphalt is tarmac fine clean (37), kerbs and metal decks tarmac medium (65),
-/// cobbles and concrete slabs tarmac coarse (69), grass medium (105), gravel traps gravel fine deep (9), dirt medium
-/// (141); a face without a model is a metal barrier (64) when steep, else BeamNG's default asphalt.
+/// whether the face is a wall. By static friction against BeamNG's asphalt (0.98) and NGP's against tarmac fine clean
+/// (1.30), `notes/beamng.md` "Surfaces": asphalt tarmac fine clean (37); kerbs (0.96) tarmac medium clean (65, 1.275);
+/// cobbles and rock (0.93) tarmac coarse clean (69, 1.25); a metal tread (1.0) tarmac fine clean; grass (0.61, 3-5 cm)
+/// grass soft (113, 0.70, 3 cm); gravel and sand (0.6-0.69, 10 cm) gravel fine deeper (1, 0.8725, 2.5 cm); dirt
+/// (0.68-0.70) dirt hard (133, 0.84), mud dirt soft (149). A wall (steep) without a road-like model is a metal barrier
+/// (64); a flat face without a known model BeamNG's default asphalt.
 pub fn surface(ground: Option<&str>, steep: bool) -> u8 {
     let g = ground.unwrap_or("").to_uppercase();
     let has = |k: &str| g.contains(k);
-    if g.is_empty() {
-        return if steep { 64 } else { 37 };
-    }
-    if has("RUMBLE") || has("CONCRETE") {
+    if has("ASPHALT") {
+        37
+    } else if has("RUMBLE") || has("CONCRETE") {
         65
-    } else if has("METAL") {
-        if steep {
-            64
-        } else {
-            65
-        }
+    } else if has("METAL") && !steep {
+        37
     } else if has("COBBLE") || has("ROCK") || has("STONE") {
         69
     } else if has("GRASS") || has("FOLIAGE") || has("MOSS") {
-        105
+        113
     } else if has("GRAVEL") || has("SAND") {
-        9
-    } else if has("DIRT") || has("MUD") || has("SOIL") {
-        141
+        1
+    } else if has("MUD") {
+        149
+    } else if has("DIRT") || has("SOIL") {
+        133
+    } else if steep {
+        64
     } else {
         37
     }
@@ -116,7 +133,8 @@ struct Corridor {
 
 impl Corridor {
     fn new(line: &[[f64; 3]], reach: f64) -> Corridor {
-        let cell = 5.0;
+        // Cells a tenth of the reach (at least 5 m) keep a wide corridor's set small.
+        let cell = (reach / 10.0).max(5.0);
         let r = (reach / cell).ceil() as i64;
         let mut cells = std::collections::HashSet::new();
         for p in line.iter().step_by(2) {
@@ -146,13 +164,26 @@ struct Builder {
     normals: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
     triangles: Vec<[u32; 3]>,
-    seen: HashMap<[u32; 8], u32>,
+    seen: HashMap<[i32; 8], u32>,
     area: f64,
+    weld: bool,
 }
 
 impl Builder {
     fn vertex(&mut self, p: [f32; 3], n: [f32; 3], uv: [f32; 2]) -> u32 {
-        let key = [p[0], p[1], p[2], n[0], n[1], n[2], uv[0], uv[1]].map(f32::to_bits);
+        // Drawn corners within 1 mm, 1/256 of a normal and 1/4096 of a texture share a vertex (the level's meshes
+        // repeat each corner per triangle: 18.0 M corners became 8.5 M vertices); collision keeps exact corners.
+        let q = |v: f32, s: f32| if self.weld { (v * s).round() as i32 } else { v.to_bits() as i32 };
+        let key = [
+            q(p[0], 1000.0),
+            q(p[1], 1000.0),
+            q(p[2], 1000.0),
+            q(n[0], 256.0),
+            q(n[1], 256.0),
+            q(n[2], 256.0),
+            q(uv[0], 4096.0),
+            q(uv[1], 4096.0),
+        ];
         *self.seen.entry(key).or_insert_with(|| {
             self.positions.push(p);
             self.normals.push(n);
@@ -237,14 +268,18 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     let frame = Frame { origin: [ext(0).round(), ext(1).round()] };
 
     let shown = |s: &level::Static| !scene.in_hidden_group(&s.parent);
-    let draw_corridor = Corridor::new(&course.line.points, options.draw_corridor);
+    let reaches: std::collections::BTreeSet<u64> =
+        options.reach.iter().map(|r| r.1).chain([options.draw_corridor]).map(f64::to_bits).collect();
+    let draw_corridors: HashMap<u64, Corridor> =
+        reaches.into_iter().map(|r| (r, Corridor::new(&course.line.points, f64::from_bits(r)))).collect();
     let col_corridor = Corridor::new(&course.line.points, options.collision_corridor);
 
     // Collision: per tile and surface.
     let mut col: BTreeMap<((i64, i64), u8), Builder> = BTreeMap::new();
     let mut col_triangles: Vec<Triangle> = Vec::new();
     let mut surfaces: BTreeMap<String, (u8, usize)> = BTreeMap::new();
-    let mut drawn: BTreeMap<((i64, i64), String), Builder> = BTreeMap::new();
+    // Per tile, material and `LODOut` (whole metres, 0 for none given).
+    let mut drawn: BTreeMap<((i64, i64), String, u32), Builder> = BTreeMap::new();
     let mut skipped: BTreeMap<String, usize> = BTreeMap::new();
     let mut per_shape: BTreeMap<String, usize> = BTreeMap::new();
     let mut shapes: HashMap<String, crate::cdae::Shape> = HashMap::new();
@@ -283,11 +318,14 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
             *skipped.entry(path).or_default() += 1;
             continue;
         }
+        let corridor = &draw_corridors[&rule(&options.reach, &path).unwrap_or(options.draw_corridor).to_bits()];
+        let lod = rule(&options.lod, &path).map_or(0, |m| m.round().max(1.0) as u32);
         for part in world::parts(shape, st, Detail::Visible) {
-            for t in part.triangles.iter().filter(|t| draw_corridor.holds(t)) {
+            for t in part.triangles.iter().filter(|t| corridor.holds(t)) {
                 *per_shape.entry(path.clone()).or_default() += 1;
                 let name = t.material.and_then(|m| part.materials.get(m as usize)).cloned().unwrap_or_default();
-                add(drawn.entry((tile_of(t), name.to_lowercase())).or_default(), frame, t, true);
+                let b = drawn.entry((tile_of(t), name.to_lowercase(), lod));
+                add(b.or_insert_with(|| Builder { weld: true, ..Builder::default() }), frame, t, true);
             }
         }
     }
@@ -371,8 +409,10 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         map_count += 1;
     }
     let mut hows: BTreeMap<String, usize> = BTreeMap::new();
+    // Cut-outs made, by colour and opacity entry: materials sharing both share the file.
+    let mut cut_outs: HashMap<(Option<String>, String), textures::Texture> = HashMap::new();
     let mut material_of: HashMap<String, String> = HashMap::new();
-    let mut by_name: Vec<&String> = drawn.keys().map(|(_, m)| m).collect();
+    let mut by_name: Vec<&String> = drawn.keys().map(|(_, m, _)| m).collect();
     by_name.sort();
     by_name.dedup();
     for name in by_name {
@@ -383,10 +423,23 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
             .and_then(|e| e.rsplit('/').next())
             .map_or_else(|| safe(name), |f| safe(f.rsplit_once('.').map_or(f, |(s, _)| s)));
         let color = m.color.unwrap_or([0.5, 0.5, 0.5, 1.0]);
-        let tex = textures::make(&mut archive, entry.as_deref(), &unique(&stem), color);
+        let see_through = m.translucent || m.alpha_test;
+        let opacity =
+            m.opacity_map.as_deref().filter(|_| see_through).and_then(|p| textures::find(&archive, &level, p));
+        let tex = match opacity {
+            Some(o) => match cut_outs.get(&(entry.clone(), o.clone())) {
+                Some(t) => t.clone(),
+                None => {
+                    let t = textures::make_cut_out(&mut archive, entry.as_deref(), &o, &unique(&stem), color);
+                    cut_outs.insert((entry.clone(), o), t.clone());
+                    t
+                }
+            },
+            None => textures::make(&mut archive, entry.as_deref(), &unique(&stem), color),
+        };
         *hows.entry(tex.how.clone()).or_default() += 1;
         let section = format!("beamng\\{}", safe(name));
-        write_material(&mut sections, &section, &tex.file, m.translucent || m.alpha_test);
+        write_material(&mut sections, &section, &tex.file, see_through);
         names.push(section.clone());
         material_of.insert(name.clone(), section);
         if !textures.iter().any(|t| t.file == tex.file) {
@@ -432,9 +485,11 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         put(&mut zw, &format!("col_{tx}_{ty}_{id}"), b, &format!("collision\\surface_{id}"), entries)?;
     }
     let mut detail_objects = 0;
-    for (index, (((tx, ty), name), b)) in drawn.iter().enumerate() {
+    for (index, (((tx, ty), name, lod), b)) in drawn.iter().enumerate() {
         let small = b.area / (b.triangles.len().max(1) as f64) < options.detail_area;
-        let lod = if small {
+        let lod = if *lod > 0 {
+            format!("LODOut={lod}\n")
+        } else if small {
             detail_objects += 1;
             format!("LODOut={}\n", options.detail_lod)
         } else {
@@ -484,14 +539,22 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
         let _ = writeln!(dl, "K{i}={}, {}, {}, {}, {}, {}, {}, 0", q[0], q[1], q[2], t[0], t[1], t[2], at.at[i]);
     }
     write("driveline.ini", dl)?;
-    let mut notes = vec![(START, stage.start)];
-    notes.extend(stage.splits.iter().map(|&s| (SPLIT, s)));
-    notes.push((FINISH, stage.finish));
-    notes.push((END, length.min(at.at.last().copied().unwrap_or(length))));
+    let mut notes = vec![(START, 0, stage.start)];
+    notes.extend(stage.splits.iter().map(|&s| (SPLIT, 0, s)));
+    notes.push((FINISH, 0, stage.finish));
+    notes.push((END, 0, length.min(at.at.last().copied().unwrap_or(length))));
+    let called = pacenotes::notes(&line, &at.at, stage.start, stage.finish);
+    notes.extend(called.iter().map(|n| (n.tag, n.flags, n.distance)));
+    notes.sort_by(|a, b| a.2.total_cmp(&b.2));
     let mut pn = format!("[PACENOTES]\ncount={}\n", notes.len());
-    for (i, (tag, d)) in notes.iter().enumerate() {
-        let _ = write!(pn, "\n[P{i}]\ntype={tag}\ndistance={d:.3}\nflag=0\n");
+    for (i, (tag, flags, d)) in notes.iter().enumerate() {
+        let _ = write!(pn, "\n[P{i}]\ntype={tag}\ndistance={d:.3}\nflag={flags}\n");
     }
+    let mut kinds: BTreeMap<u32, usize> = BTreeMap::new();
+    for n in &called {
+        *kinds.entry(n.tag).or_default() += 1;
+    }
+    say(format!("pace notes: {} ({kinds:?} by tag)", called.len()));
     write("pacenotes.ini", pn)?;
     // Spawn: the race's start position on the collision, facing along the course.
     let start = [course.start[0], course.start[1], ground(course.start)];
@@ -625,10 +688,12 @@ mod tests {
         assert_eq!(surface(Some("ASPHALT"), false), 37);
         assert_eq!(surface(Some("RUMBLE_STRIP"), false), 65);
         assert_eq!(surface(Some("COBBLESTONE"), false), 69);
-        assert_eq!(surface(Some("GRASS"), false), 105);
-        assert_eq!(surface(Some("GRAVEL"), false), 9);
-        assert_eq!(surface(Some("DIRT_DUSTY"), false), 141);
+        assert_eq!(surface(Some("GRASS"), false), 113);
+        assert_eq!(surface(Some("GRAVEL"), false), 1);
+        assert_eq!(surface(Some("DIRT_DUSTY"), false), 133);
+        assert_eq!(surface(Some("METAL_TREAD"), false), 37);
         assert_eq!(surface(Some("METAL_TREAD"), true), 64);
+        assert_eq!(surface(Some("SOFT_COLLISION_GENERAL"), true), 64);
         assert_eq!(surface(None, true), 64);
         assert_eq!(surface(None, false), 37);
     }
