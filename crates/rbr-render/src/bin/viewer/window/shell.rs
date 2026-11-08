@@ -11,6 +11,7 @@ use rbr_render::hud::Overlay;
 use rbr_render::icon;
 use rbr_render::present::Acquired;
 use rbr_render::renderer::{self, Gpu};
+use rbr_render::triple::Rig;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -58,9 +59,8 @@ impl Viewer {
     /// The loaded scene's drive, in the loading screen's window.
     fn run(&self, shell: Shell, Loaded { scene, renderer, sound }: Loaded) -> App {
         let args = &*self.args;
-        let Shell { window, surface, config, stale, gpu, overlay, sides, .. } = shell;
+        let Shell { window, surface, config, stale, gpu, overlay, rig, sides, .. } = shell;
         let camera = start_camera(&scene.stage, scene.chase);
-        let rig = args.triple;
         let running = Running { window, surface, config, stale, gpu, renderer, camera, overlay, rig, sides };
         App::new(scene, args, sound, running, self.data.clone())
     }
@@ -146,7 +146,9 @@ struct Shell {
     stale: bool,
     gpu: Gpu,
     overlay: Overlay,
-    /// The side screens' windows (`--triple-monitors`), left and right.
+    /// Triple screens (`--triple`, unless its monitors are missing), and the side screens' windows
+    /// (`--triple-monitors`), left and right.
+    rig: Option<Rig>,
     sides: Vec<Side>,
     /// The window holds a triple screen's three views (`--triple` without `--triple-monitors`).
     spanned: bool,
@@ -164,9 +166,18 @@ impl Shell {
         let attributes =
             winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, icon::APP_ID, icon::APP_ID);
         // A triple screen's own monitors (`--triple-monitors`): the main window on the centre one, a side's on each other.
-        let monitors = match (&args.triple, &args.triple_monitors) {
+        // Without them (a replay watched away from the rig) the window shows one screen.
+        let mut rig = args.triple;
+        let monitors = match (&rig, &args.triple_monitors) {
             (Some(_), Some(names)) => {
-                Some(names.iter().map(|name| triple::monitor(event_loop, name)).collect::<Result<Vec<_>, _>>()?)
+                match names.iter().map(|name| triple::monitor(event_loop, name)).collect::<Result<Vec<_>, _>>() {
+                    Ok(monitors) => Some(monitors),
+                    Err(e) => {
+                        eprintln!("viewer: {e}; drawing one screen");
+                        rig = None;
+                        None
+                    }
+                }
             }
             _ => None,
         };
@@ -227,8 +238,8 @@ impl Shell {
                 .collect::<Result<Vec<_>, _>>()?,
             None => Vec::new(),
         };
-        let spanned = args.triple.is_some() && sides.is_empty();
-        Ok(Shell { window, surface, config, stale, gpu, overlay, sides, spanned })
+        let spanned = rig.is_some() && sides.is_empty();
+        Ok(Shell { window, surface, config, stale, gpu, overlay, rig, sides, spanned })
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
