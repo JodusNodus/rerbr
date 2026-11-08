@@ -72,6 +72,8 @@ pub struct Options {
     pub collision_corridor: f64,
     /// Plan distance from the driveline within which forest items are drawn (a `--reach` rule overrides), metres.
     pub forest_corridor: f64,
+    /// Re-mesh the road band's collision (`remesh`): on unless `--no-remesh`.
+    pub remesh_road: bool,
     /// Draw the shapes with `isRenderEnabled` false too (a level that sets it on all it draws).
     pub draw_disabled: bool,
     /// The most forest triangles drawn: items nearest the driveline first.
@@ -105,6 +107,7 @@ impl Options {
             forest_corridor: 80.0,
             forest_budget: 6_000_000,
             draw_disabled: false,
+            remesh_road: true,
             detail_area: 0.02,
             detail_lod: 400.0,
             trees: Vec::new(),
@@ -362,6 +365,51 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     // Retail trees per kind and `LODOut`: their placements.
     let mut planted: BTreeMap<(usize, u32), Vec<[f32; 16]>> = BTreeMap::new();
     let mut replaced = crate::trees::Split::default();
+    // The road band's collision, re-meshed from the level's (`remesh`), its materials by name.
+    let by_band = Corridor::new(&course.line.points, crate::remesh::REACH);
+    let mut names: Vec<String> = Vec::new();
+    let road_band = if options.remesh_road {
+        let mut level: Vec<Triangle> = Vec::new();
+        for st in scene.statics.iter().filter(|s| shown(s)) {
+            let path = st.cdae_path();
+            if !shapes.contains_key(&path) {
+                let Some(shape) = load_shape(&mut archive, st) else { continue };
+                shapes.insert(path.clone(), shape.map_err(|e| format!("{path}: {e}"))?);
+            }
+            let Some(detail) = collision_detail(st, &shapes[&path]) else { continue };
+            for part in world::parts(&shapes[&path], st, detail) {
+                for t in part.triangles.iter().filter(|t| by_band.holds(t)) {
+                    let name = t.material.and_then(|m| part.materials.get(m as usize)).cloned().unwrap_or_default();
+                    let index = names.iter().position(|n| *n == name).unwrap_or_else(|| {
+                        names.push(name);
+                        names.len() - 1
+                    });
+                    level.push(Triangle { material: Some(index as u32), ..*t });
+                }
+            }
+        }
+        let surface = crate::remesh::build(&course.line, &Grid::new(level.iter().collect(), 4.0));
+        say(format!(
+            "road re-mesh: {} triangles in {} sections, {:.1}% of {} samples off the road",
+            surface.triangles.len(),
+            surface.written,
+            surface.missing as f64 * 100.0 / surface.samples.max(1) as f64,
+            surface.samples
+        ));
+        Some(surface)
+    } else {
+        None
+    };
+    let mut replaced_faces = 0usize;
+    let mut collide = |t: &Triangle, name: &str| {
+        let ground = mats.get(&name.to_lowercase()).and_then(|m| m.ground.clone());
+        let ground = ground.map(|g| grounds.get(&g.to_uppercase()).cloned().unwrap_or(g));
+        let id = surface(ground.as_deref(), t.normal()[2].abs() < 0.3);
+        let entry = surfaces.entry(format!("{name} ({})", ground.unwrap_or_default())).or_insert((id, 0));
+        entry.1 += 1;
+        add(col.entry((tile_of(t), id)).or_default(), frame, t, false);
+        col_triangles.push(*t);
+    };
     for st in scene.statics.iter().filter(|s| shown(s)) {
         let path = st.cdae_path();
         if !shapes.contains_key(&path) {
@@ -372,22 +420,22 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
             shapes.insert(path.clone(), shape.map_err(|e| format!("{path}: {e}"))?);
         }
         let shape = &shapes[&path];
-        let solid = st.collision_type.as_deref().is_none_or(|c| !c.eq_ignore_ascii_case("none"));
-        let has_collision = shape.details.iter().any(|d| d.size < 0.0);
-        let visible_collides = st.collision_type.as_deref().is_some_and(|c| c.to_lowercase().starts_with("visible"));
-        let col_detail =
-            if visible_collides { Some(Detail::Visible) } else { has_collision.then_some(Detail::Collision) };
-        if let Some(detail) = col_detail.filter(|_| solid) {
+        if let Some(detail) = collision_detail(st, shape) {
             for part in world::parts(shape, st, detail) {
                 for t in part.triangles.iter().filter(|t| col_corridor.holds(t)) {
                     let name = t.material.and_then(|m| part.materials.get(m as usize)).cloned().unwrap_or_default();
-                    let ground = mats.get(&name.to_lowercase()).and_then(|m| m.ground.clone());
-                    let ground = ground.map(|g| grounds.get(&g.to_uppercase()).cloned().unwrap_or(g));
-                    let id = surface(ground.as_deref(), t.normal()[2].abs() < 0.3);
-                    let entry = surfaces.entry(format!("{name} ({})", ground.unwrap_or_default())).or_insert((id, 0));
-                    entry.1 += 1;
-                    add(col.entry((tile_of(t), id)).or_default(), frame, t, false);
-                    col_triangles.push(*t);
+                    // Under the road band: replaced; across its edge: its corners within the band on it.
+                    let mut t = *t;
+                    if let Some(band) = &road_band {
+                        if t.normal()[2].abs() > 0.85 && band.replaces(&t) {
+                            replaced_faces += 1;
+                            continue;
+                        }
+                        for p in &mut t.pos {
+                            p[2] = band.settled(*p).unwrap_or(p[2]);
+                        }
+                    }
+                    collide(&t, &name);
                 }
             }
         }
@@ -429,6 +477,12 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
                 add(b.or_insert_with(|| Builder { weld: true, ..Builder::default() }), frame, t, true);
             }
         }
+    }
+    if let Some(band) = &road_band {
+        for t in &band.triangles {
+            collide(t, t.material.map_or("", |m| names[m as usize].as_str()));
+        }
+        say(format!("road re-mesh: {replaced_faces} level faces under it replaced"));
     }
     // The level's forest: each kind's drawn parts once per detail (its most and its least detailed level), in the
     // stage's axes about its origin, per material. An item within its draw corridor is a placement of the least
@@ -925,6 +979,16 @@ fn load_shape(archive: &mut Archive, st: &level::Static) -> Option<Result<crate:
         Some(e) => Some(archive.read(&e).and_then(|b| crate::dae::parse(&String::from_utf8_lossy(&b)))),
         None => built,
     }
+}
+
+/// The detail a placed shape collides with: its visible one for a `Visible Mesh` collision type, else its collision
+/// levels when it has any; `None` for a shape set not to collide (`collisionType` `None`).
+fn collision_detail(st: &level::Static, shape: &crate::cdae::Shape) -> Option<Detail> {
+    let solid = st.collision_type.as_deref().is_none_or(|c| !c.eq_ignore_ascii_case("none"));
+    let has_collision = shape.details.iter().any(|d| d.size < 0.0);
+    let visible_collides = st.collision_type.as_deref().is_some_and(|c| c.to_lowercase().starts_with("visible"));
+    let detail = if visible_collides { Some(Detail::Visible) } else { has_collision.then_some(Detail::Collision) };
+    detail.filter(|_| solid)
 }
 
 /// The race file of a mission folder, or the race file itself.
