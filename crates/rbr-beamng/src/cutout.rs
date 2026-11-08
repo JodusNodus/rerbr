@@ -38,9 +38,7 @@ pub fn decode(bytes: &[u8]) -> Option<Image> {
     let level = file.levels().into_iter().next()?;
     let format = match file.format {
         dds::Format::Rgba8 => return Some((file.width, file.height, level.data.to_vec())),
-        dds::Format::Bc7 => {
-            return crate::bc7::decode(level.data, file.width, file.height).map(|t| (file.width, file.height, t))
-        }
+        dds::Format::Bc7 => return bc7(level.data, file.width, file.height).map(|t| (file.width, file.height, t)),
         dds::Format::Dxt1 => texpresso::Format::Bc1,
         dds::Format::Dxt3 => texpresso::Format::Bc2,
         dds::Format::Dxt5 => texpresso::Format::Bc3,
@@ -48,6 +46,24 @@ pub fn decode(bytes: &[u8]) -> Option<Image> {
     let mut rgba = vec![0; (file.width * file.height * 4) as usize];
     format.decompress(level.data, file.width as usize, file.height as usize, &mut rgba);
     Some((file.width, file.height, rgba))
+}
+
+/// BC7 blocks as RGBA8 (bcdec).
+fn bc7(data: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    let (w, h) = (width as usize, height as usize);
+    let bw = w.div_ceil(4);
+    let data = data.get(..bw * h.div_ceil(4) * 16)?;
+    let mut out = vec![0u8; w * h * 4];
+    let mut texels = [0u8; 64];
+    for (k, block) in data.chunks_exact(16).enumerate() {
+        bcdec_rs::bc7(block, &mut texels, 16);
+        let (bx, by) = (k % bw * 4, k / bw * 4);
+        for row in 0..4.min(h - by) {
+            let n = 4.min(w - bx) * 4;
+            out[((by + row) * w + bx) * 4..][..n].copy_from_slice(&texels[row * 16..][..n]);
+        }
+    }
+    Some(out)
 }
 
 /// The colour (`None`: `factor` all over, at the opacity map's size) with the opacity map's red channel, resampled to
@@ -137,5 +153,19 @@ mod tests {
         assert_eq!((dds.width, dds.height, dds.format, dds.mip_count), (8, 8, dds::Format::Dxt5, 4));
         let (_, _, rgba) = decode(&file).unwrap();
         assert_eq!((rgba[3], rgba[7 * 4 + 3], rgba[1]), (0, 255, 128));
+    }
+
+    #[test]
+    fn a_bc7_block_of_one_colour() {
+        // Mode 6 (bit 6 set), both endpoints (127, 0, 127, 127) with p-bits 1: every texel (255, 1, 255, 255).
+        let mut value: u128 = 1 << 6;
+        let mut at = 7;
+        for c in [127u128, 0, 127, 127] {
+            value |= (c | c << 7) << at;
+            at += 14;
+        }
+        value |= 0b11 << at;
+        let texels = bc7(&value.to_le_bytes(), 4, 4).unwrap();
+        assert!(texels.chunks(4).all(|t| t == [255, 1, 255, 255]), "{texels:?}");
     }
 }
