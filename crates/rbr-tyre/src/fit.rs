@@ -41,7 +41,18 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
         surf_k_cal: 1.0,
         temp_grip_cal: 1.0,
     };
-    Ok(calibrate(&targets, &point))
+    let base = calibrate(&targets, &point);
+    // Drive test only, not for merge: RERBR_TEST_CY_SCALE stiffens the lateral slip stiffness by that factor, keeping
+    // the grip level and the longitudinal stiffness and grip; the loose tyre solves its own (fit::loose).
+    let scale = std::env::var("RERBR_TEST_CY_SCALE").ok().and_then(|v| v.parse::<f64>().ok());
+    Ok(match scale.filter(|&s| s > 0.0 && s != 1.0) {
+        Some(s) => {
+            let stiff = calibrate(&CalTargets { fit_lat: targets.fit_lat * s, ..targets }, &point);
+            eprintln!("RERBR_TEST_CY_SCALE {s}: cy0 {:.0} -> {:.0}, mu_ys {:.4} -> {:.4}", base.cy0, stiff.cy0, base.mu_ys, stiff.mu_ys);
+            Calibration { cx0: base.cx0, mu_xs: base.mu_xs, mu_xk: base.mu_xk, ..stiff }
+        }
+        None => base,
+    })
 }
 
 /// The loose-surface tyre for `w` on its brush calibration `cal` ([`crate::loose`]): NGP's free rolling peaks at each
