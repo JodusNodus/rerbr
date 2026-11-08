@@ -1100,6 +1100,76 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   ramp 0.25 the "slide" is the autopilot weaving inward (4 m inside, steering crossing over) at 0.44 g, not grip: the
   circle row reads the car and the controller together.
 
+## Loose levels: rally data against the game (2026-11-08)
+
+Research (2026-11-08, third round; downloads outside the repository) and a check on main 0fb71ed8. Labels as above.
+
+| Quantity | Published | Source (precision) |
+| --- | --- | --- |
+| Rally-tyre level on gravel | none quantified: no tyre-maker, team or test number for a rally tyre against a road or AT tyre; AT tyres on gravel, ABS, 0.52-0.56 g from 40 km/h, 0.66-0.73 g from 80 km/h | tyre magazines (secondary, g inferred from distances) |
+| Locked over ABS on gravel | 1.25 (locked 0.58 g, 30 mph, "peak friction at 100 percent slip", locked fronts "plow aside the looser material"); 1.18-1.40 over 9 cases, locked 0.61-0.64 g at 60-80 km/h | Clemett & Moules, HRR 477 (1973) Table 1 (table, g inferred); Proctor-Parker & Stopforth, SATC 2019 Table 1 (table) |
+| Studded snow tyres on compacted snow (0 °C) | peak traction rib 0.28-0.32, snow tyre 0.34-0.41, studded 0.57-0.60; spinning 0.12-0.16 / 0.13-0.15 / 0.28-0.43; braking peaks at 40-60 % slip on snow and studded tyres, "the differences between these maximum values and ... 100 percent slip are small"; locked/peak rib 0.82, chained rising to 1.47 at lock | Ichihara & Mizoguchi, HRB SR 115 (1969-70) Tables 4-5, Fig 2 (table, quoted, fig ±0.02) |
+| Snow, road winter tyres | ABS 0.405 g mean (25-5 km/h, ≥ 20 runs), FWD traction 0.227 g; studded and Nordic studless equal on snow (-0.07 m/s², not significant); car on 7.7-15.4 m circles 0.25-0.40 g on snow, 0.1-0.2 g on ice | VTI R875 §3 (table); Lu 1994 via WSDOT T2695 (secondary) |
+| Ice, studded against not (road studs 1.1-1.8 mm) | 0 °C smooth ice: optimum slip 0.09-0.11 / 0.14-0.21, locked 0.10-0.12 / 0.12-0.19, cornering 0.12 / 0.16-0.17; -1 to -14 °C: locked 0.10-0.14 / 0.12-0.19, cornering 0.21-0.25 / 0.21-0.26; skid trailer, ice above 30 °F locked 0.10 / 0.14, below 20 °F 0.21 / 0.29; studs under 0.6-0.9 mm protrusion act as none | Nordström & Samuelsson 1991 via WSDOT T2695 Table 4 (table, secondary); Burnett & Kearney, HRR 136 (1966) (table); VTI meddelande 923 (quoted) |
+| Rally studs | FIA: ≤ 20 studs per dm of circumference, length ≤ 20 mm, ≤ 4 g, protrusion free (WRC: 5.5-7 mm, 384 per tyre, 145 mm tread); no μ or g. A WRC engineer: studded "more lateral grip and stopping power on ice than ... on gravel", traction lower; drivers: "similar or slightly more than a gravel tyre on gravel" | Rally Sweden 2025 SR Art. 7.5 (quoted); RallySport Magazine 2007 (quoted, secondary); Pirelli 2021 (snippet) |
+| Combined slip on soft soil | α 6°: braking at 0.57 of the pure side force costs 16 % of it (light braking raises it), driving at 0.71 costs 24 %; α 25°, 35 % driving slip: Fy 0.67 of the lightly braked, Fx/Fz ≈ 0.27, \|F\| 0.87 of the pure lateral (inside a circle); max Fx > max Fy (an ellipse) | Janosi, Kamm & Wray 1981 (truck tyre, scarified sandy soil) and Krick 1973 (tractor tyre, sandy loam), both via El-Razaz PhD Leeds 1988 Figs 6.16, 6.40 (fig ±30 lbf / ±5 kp, secondary) |
+| Driven tyre, traction against slip | dense sand: peak 0.63 at ~35 %, 0.87 of it at 80 %; shallow snow 0.40 at 15 %, 0.63 of it at 80 %; loose sand rising to 100 %; sand rig: pull peak at 15-25 % slip, 0.63-0.78 of it at 48-60 %; gravel: none | CRREL 95-1 Fig 18 (schematic, fig ±0.02); WES TR 3-666 Plate 5 (fig ±4 lb), §34 (quoted) |
+
+No open WRC telemetry for Rally Sweden or the Arctic (RallyDataJunkie's scraper broke before Sweden 2022); the
+WRC+ Finland 2021 files' first samples are time-compressed (0-60 km/h in 0.5 s), so they give no launch.
+
+Game (Fiesta Rally2 4WD and Escort Mk II Grp4 RWD, ngp / experimental-brush; decel on the flat, `decel_flat`;
+gravel RSF 345, snow map 10 for braking and RSF 345 under `--material-as 101 --tyre 6` for the circle, ice RSF 568 or
+map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h; scorecard rows as in
+[Scorecard](#scorecard)):
+
+| Surface | Quantity | ngp | experimental-brush | Band | Moves it |
+| --- | --- | --- | --- | --- | --- |
+| gravel | tyre peak μ_y | 0.828 | 0.828 | ≲ 0.67 (CW, one rally tyre): MISS both | level |
+| gravel | circle, Rally2 / Escort | 0.571 / ~0.48 | 0.664 / ~0.54 | 0.43-0.7 road and CW: PASS; WRC telemetry 1 s p90 0.74-0.89 above both | level and shape (Escort: no latched hold, a v²/R read, weak) |
+| gravel | locked 50 / 80 / 100 km/h, Rally2 | 0.69 / 0.75 / 0.78 | 0.93 / 0.95 / 0.99 | road 0.47-0.66 (lower bound); WRC 0.8-1.0 (inferred), telemetry 0.5 s peak 0.83-1.06: brush PASS, ngp low | level and shape (berm) |
+| gravel | locked 50 / 80, Escort | 0.67 / 0.76 | 0.82 / 0.85 | as above | as above |
+| gravel | locked over ABS K 0.15, Rally2 50 / 80; Escort | 1.10 / 1.08; 1.01 / 1.07 | 1.53 / 1.34; 1.25 / 1.20 | 1.12-1.59 (+ 1.18-1.40, 1.25 new): brush PASS, ngp MISS | shape |
+| gravel | traction 0-40 km/h, Rally2 / Escort | 0.73 / 0.39 g | 0.90 / 0.51 g | none for a car; gravel over tarmac 0.66 / 0.62 ngp, 0.86 / 0.88 brush | shape: loose-v1 holds the peak at full spin, NGP falls to 0.82 |
+| snow | tyre peak μ_y / μ_x | 0.85 / 0.87 | 0.84 / 0.86 | road 0.28-0.57: MISS; studded rally ≈ gravel (quoted): about NGP's | level |
+| snow | circle, Rally2 | 0.48 | 0.55 | road 0.25-0.40: above | level |
+| snow | locked 50 / 80, Rally2; Escort | 0.79 / 0.78; 0.73 / 0.77 | 1.07 / 1.08; 0.95 / 0.94 | road 0.31-0.35 (lower bound) | level and shape (berm) |
+| snow | locked over ABS, Rally2 50 / 80; Escort | 0.98 / 1.06; 1.05 / 1.00 | 1.17 / 1.27; 1.42 / 1.13 | road winter 0.8-0.95 (locked 0.31-0.35 over ABS 0.33-0.45, inferred); studded "small" difference; chains 1.47: brush above | shape (berm on snow, ours) |
+| snow | traction 0-40, Rally2 / Escort | 0.74 / 0.42 | 0.88 / 0.49 | road FWD 0.23; studded peak 0.57-0.60, spinning 0.28-0.43 | level and shape |
+| ice | tyre peak μ_y (tarmac tyre, unstudded) | 0.094 | 0.094 | -3 °C 0.15-0.18: MISS; 0 °C smooth ice unstudded cornering 0.12, optimum 0.09-0.11: about NGP's | level (the temperature) |
+| ice | car best / locked 50 km/h, Rally2 | 0.096 / 0.095 | 0.100 / 0.081 | studless car 0.18-0.22 (-2 to -13 °C); locked 0.10-0.12 at 0 °C | level |
+| ice | launch 0-20 km/h, Rally2; Escort | 0.08 g; does not move | 0.06 g; does not move | | open |
+
+- Gravel: no case to lower the level. The one rally-tyre level (CW ≲ 0.67) sits under the WRC telemetry's lateral
+  and braking, and the published car braking is road cars on road tyres. The berm is in band against four
+  programmes now (1.18-1.40, 1.25, 1.25-1.30, 1.12-1.59).
+- Snow: NGP gives snow the gravel level, and the only rally-stud statements put a studded tyre on snow and ice at or
+  above a gravel tyre on gravel. The road-tyre bands are lower bounds. The berm on snow is ours and not supported:
+  winter and studded tyres peak at 40-60 % slip with locked about equal, so loose-v1's snow locked over ABS of
+  1.13-1.42 sits above the road data (≤ 1). Locked, snow out-brakes gravel by 14 % under both physics (map 10 against 345's deeper soil).
+- Ice: material 116 runs the tarmac tyre (RSF 565/614, unstudded). Its 0.094 is the 0 °C smooth-ice value
+  (Nordström, unstudded); the -3 °C band is a colder ice. The RWD Escort on 568 iced does not leave the line under
+  either physics: rears spinning at 20-49 m/s in gears 2-6 for 13 s at 0.000 m/s, the 4WD Fiesta does. Cause not
+  traced.
+- Combined slip: the brush already loses more side force driving than braking at the same slip (α 6°, κ ±0.05: 0.98
+  / 1.03; NGP symmetric 0.96). Its |F| stays on the circle (α 25°, κ 0.3: 1.02 of the pure lateral, NGP 1.02), where
+  soft soil falls inside it (0.87). Soil is not gravel, so no change.
+
+Proposal (no implementation; evidence first):
+
+1. Snow shape (brush only, class 3): a berm of 1.0-1.1 in place of 1.3. Evidence: SR 115 (peak at 40-60 %, locked
+   about equal), road winter locked/ABS ≤ 1. Expected (the PLOUGH 1.0 row of the loose-v1 trade-off): snow full
+   pedal 1.06 → ~0.92 g, locked/ABS ~1.0, gravel unchanged. Driver test first: a snow hairpin braked locked against
+   threshold.
+2. Gravel shape (brush only, weak): a driven fall past the peak to ~0.85 of it at full spin (dense sand 0.87 at 80 %,
+   sand rig 0.63-0.78 at 48-60 %, none on gravel). Expected (estimated, × 0.85-0.9 of the spinning wheels' share): the Rally2's 0-40 km/h 0.90 → ~0.80 g, Escort
+   0.51 → ~0.46. Driver test: power slides out of slow gravel corners and a standing start. Wanted before: a gravel
+   traction-slip curve (Zeng et al. 2022, J. Terramech. 104).
+3. Level: none recommended. Gravel and snow stay NGP's (the rally data do not sit below them). Ice 116 at 0.094 fits
+   0 °C ice for an unstudded tyre. A colder ice level, or studded rally tyres on 116, would be a level decision.
+4. Scorecard: the snow level rows (road tyres) to lower bounds or context; new rows for locked/ABS on snow
+   (≤ 1.0, road) and gravel (1.18-1.40, SATC).
+
 ## Rolling resistance
 
 - What NGP applies: a torque on the wheel, `-(patch_length · RollingResistance / 2) · Fz · sliding_weight · sgn(ω)`
@@ -1339,7 +1409,8 @@ rows unchanged.
 - Ice: NGP's level (0.094) against the measured 0.15-0.18 keeps the brush's peak slip angle and initial slope from both
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
-- Loose surfaces unmeasured: combined slip on gravel and snow, and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
+- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; the berm on snow and a driven fall on gravel are the shape candidates; the RWD launch on 116 is open.
+- Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a
   lower bound for a rally tyre) and inside the 0.8-1.0 g inferred for a WRC car; the tyre's lateral peak 0.83 is above
