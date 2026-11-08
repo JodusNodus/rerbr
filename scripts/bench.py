@@ -52,6 +52,9 @@ RUNS = 3
 SECONDS = 90
 # Lines of the slowest GPU passes and CPU spans printed.
 TOP = 8
+# Seconds a run may take beyond --seconds: the longest load seen (5 min, a cold cache) and margin. A viewer whose
+# window loses its output mid-run (the display sleeps or is unplugged) can stop drawing for good and never quit.
+LOAD_LIMIT = 420
 
 
 def bench_command(build, lines, run_dir, seconds, extra):
@@ -184,15 +187,24 @@ def run_once(a, home, run_dir, extra):
         began = time.time()
         # The viewer times its frames to the screen (`RBR_LATENCY`), without MangoHud's overlay (play.sh's reason).
         env.update(RBR_LATENCY='frames', MANGOHUD='0')
-        done = subprocess.run(command, env=env, capture_output=True, text=True)
-        output = done.stderr + done.stdout
+        try:
+            done = subprocess.run(command, env=env, capture_output=True, text=True, timeout=LOAD_LIMIT + a.seconds)
+            code, output = done.returncode, done.stderr + done.stdout
+        except subprocess.TimeoutExpired as e:
+            text = [x.decode(errors='replace') if isinstance(x, bytes) else x or '' for x in (e.stderr, e.stdout)]
+            code, output = 'timeout', ''.join(text)
         (run_dir / 'viewer.log').write_text(shlex.join(command) + '\n\n' + output)
     finally:
         subprocess.run(['rm', '-rf', tmp])
     logs = sorted(run_dir.glob('perf-*.log'))
     log = parse_log(logs[-1]) if logs else None
-    if done.returncode or not log:
-        why = f'exit {done.returncode}' if done.returncode else 'no race go in the perf log'
+    if code or not log:
+        why = {0: 'no race go in the perf log', 'timeout': f'no exit in {LOAD_LIMIT + a.seconds} s'}
+        why = why.get(code, f'exit {code}')
+        session = re.findall(r'^Session: .*', logs[-1].read_text(), re.M) if logs else []
+        if session:
+            # The window closed (by the compositor or a key) or never drew, as when no display output is on.
+            why += f' ({session[-1]}: closed, or no frame shown; is a display on?)'
         sys.exit(f'{run_dir.name}: {why} after {time.time() - began:.0f} s; {run_dir / "viewer.log"}:\n{output[-1500:]}')
     if log['seconds'] < a.seconds * 0.9:
         sys.exit(f"{run_dir.name}: timed {log['seconds']:.0f} of {a.seconds} s (the window closed early?)")
