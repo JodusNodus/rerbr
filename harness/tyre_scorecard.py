@@ -10,11 +10,16 @@ how far outside the band it lies (bands are inclusive; an empty bound is open). 
   tyre:SURFACE:KEY        a key of the rbr-tyre-lab `scorecard` example (steady forces of the tyre model the physics
                           runs, NGP's where it hands back) on the probed wheel of SURFACE: tarmac (map 85, wheel 1 at
                           step 8000 of the r40 circle), gravel (RSF 345, wheel 0 at step 6000 of the r40 circle), snow
-                          (map 10, wheel 0 at step 6000), ice (the snow wheel with NGP's material 116, 0.10/0.095)
+                          (map 10, wheel 0 at step 6000), ice (map 85 iced whole, `--material-as 116`: NGP's
+                          material 116 through the tarmac tyre's class factor, as on RSF 565/614; wheel 1 at step
+                          8000 of the r40 circle)
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel); gravel RSF 345, tarmac RSF
-                          568, snow map 10
+                          568, snow map 10, ice RSF 504's start straight iced from the brake onset (`--material-as
+                          116`: the run-up on its tarmac; off the road is ice too, so a stop may wander 15 m off the
+                          driveline), its decel taken on the flat (less g times the straight's 6.6 % rise; a reset by
+                          the game, as on RSF 568 where a locked car drifts into the edge, is refused)
   brake-ratio:A/B:KMH:X/Y surface A's X decel (locked, best) over surface B's Y decel
   circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s)
 
@@ -53,11 +58,18 @@ PROBES = {
     "gravel": dict(stage=["--rsf-stage", "345"], steps=40000,
                    circle=["--circle", "1051,-166,40", "--circle-ramp", "0.4"], wheel=0, at=6000),
     "snow": dict(stage=["--stage", "track-10_O"], steps=6000, circle=[], wheel=0, at=6000),
+    "ice": dict(stage=["--stage", "track-85_M", "--material-as", "116"], steps=8000,
+                circle=["--circle", "-260,120,40"], wheel=1, at=8000),
 }
-TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []),
-                 "ice": ("snow", ["--friction", "0.1,0.095"])}
-BRAKE_STAGES = {"gravel": {"rsf_stage": 345, "stage": None}, "tarmac": {"rsf_stage": 568, "stage": None},
-                "snow": {"rsf_stage": None, "stage": "track-10_O"}}
+TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []), "ice": ("ice", [])}
+# The brake runs per surface: the stage, the extra rbr-standalone flags, the steps, how far off the driveline a valid
+# stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
+BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}
+BRAKE_STAGES = {"gravel": {**BRAKE, "rsf_stage": 345, "stage": None},
+                "tarmac": {**BRAKE, "rsf_stage": 568, "stage": None},
+                "snow": {**BRAKE, "rsf_stage": None, "stage": "track-10_O"},
+                "ice": {**BRAKE, "rsf_stage": 504, "stage": None, "extra": ["--material-as", "116"],
+                        "max_off": 15.0, "slips": "0.05,0.1,0.2,0.3", "flat": True}}
 SLIPS = "0.1,0.15,0.2,0.3,0.5,0.7"
 QUICK_SLIPS = "0.2,0.3,0.5"
 
@@ -125,12 +137,18 @@ class Plan:
 
     def brake_jobs(self, surface, kmh):
         frm = round(kmh / 3.6, 2)
-        args = types.SimpleNamespace(rsf_car=CAR, physics=self.physics, steps=30000, top_speed=80.0, clutch_out=False,
-                                     out=self.work, extra=[], **BRAKE_STAGES[surface], **{"from": frm})
-        runs = [("locked", ["--brake-pedal", "1"])] + [(f"k{k}", ["--brake-slip", k]) for k in self.slips.split(",")]
+        b = BRAKE_STAGES[surface]
+        args = types.SimpleNamespace(rsf_car=CAR, physics=self.physics, steps=b["steps"], top_speed=80.0,
+                                     clutch_out=False, out=self.work, extra=b["extra"], rsf_stage=b["rsf_stage"],
+                                     stage=b["stage"], **{"from": frm})
+        runs = [("locked", ["--brake-pedal", "1"])] + [(f"k{k}", ["--brake-slip", k])
+                                                       for k in self.slips_of(surface).split(",")]
         for name, brake in runs:
             full = f"brake-{surface}-{kmh}-{name}"
             yield brake_test.command(args, full, brake), os.path.join(self.work, full + ".log")
+
+    def slips_of(self, surface):
+        return BRAKE_STAGES[surface]["slips"] or self.slips
 
     def jobs(self):
         out = [self.probe_job(s) for s in sorted(self.probes)]
@@ -163,12 +181,14 @@ class Plan:
         for surface, kmh in sorted(self.brakes):
             frm = round(kmh / 3.6, 2)
             runs = {}
-            for name in ["locked"] + [f"k{k}" for k in self.slips.split(",")]:
+            b = BRAKE_STAGES[surface]
+            for name in ["locked"] + [f"k{k}" for k in self.slips_of(surface).split(",")]:
                 trace = os.path.join(self.work, f"brake-{surface}-{kmh}-{name}.trace")
-                result = brake_test.analyse(trace, frm) if os.path.exists(trace) else {"ok": False,
-                                                                                       "reason": "no trace"}
-                runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result["decel"] / G}
-                              if result["ok"] else {"error": result["reason"]})
+                result = (brake_test.analyse(trace, frm, b["max_off"]) if os.path.exists(trace)
+                          else {"ok": False, "reason": "no trace"})
+                decel = "decel_flat" if b["flat"] else "decel"
+                runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result[decel] / G,
+                               "grade": result["grade"]} if result["ok"] else {"error": result["reason"]})
             ok = {k: v for k, v in runs.items() if k != "locked" and "g" in v}
             best = min(ok, key=lambda k: ok[k]["dist"]) if ok else None
             self.brake[(surface, kmh)] = {"runs": runs, "best": best}

@@ -55,6 +55,8 @@ BRAKE150 = 150.0 / 3.6
 BRK_ONSET = 0.05  # sustained brake-pedal travel: braking has started
 STOP_SPEED = 0.35  # m/s, sustained: the car has stopped (the trace prints 3 decimals)
 CRASH_DROP = 25.0  # km/h lost in 0.25 s: a wall, not braking (peaks ~15)
+G = 9.80665
+RESET_JUMP = 0.5  # m in one step: the game moved the car (outside assistance), not the car itself
 CRASH_OFF = 4.0  # m off the driveline while braking: left the road (gravel stops wander to 3 m and stay valid)
 
 
@@ -76,6 +78,7 @@ def load_trace(path):
                 "eng": float(fields[6]),
                 "x": float(fields[7]),
                 "y": float(fields[8]),
+                "z": float(fields[9]),
                 "off": float(fields[10]),
                 "str": float(fields[11]),
             }
@@ -280,13 +283,16 @@ def analyse_circle(rows, cx=CIRC_CX, cy=CIRC_CY, radius=CIRC_R):
     }
 
 
-def analyse_brake(rows, frm):
+def analyse_brake(rows, frm, max_off=CRASH_OFF):
     """Flat-out to `frm` m/s, then full braking to a stop.
 
     Valid only for a clean stop on the road: a 0.25 s speed drop past
-    CRASH_DROP or wandering past CRASH_OFF off the driveline means the car
-    hit something (a wall or tree), so the distance is a crash-stop, not
-    braking, and the columns stay empty."""
+    CRASH_DROP or wandering past `max_off` (CRASH_OFF) off the driveline means
+    the car hit something (a wall or tree), so the distance is a crash-stop,
+    not braking, and the columns stay empty. A stage iced whole
+    (`--material-as 116`) takes a wider `max_off`: off the road is ice too.
+    A jump of the car's position past RESET_JUMP in one step is the game's
+    reset (outside assistance), not a stop, and refused too."""
     count = len(rows)
     speed = [row["v"] for row in rows]
     launch = find_launch(speed)
@@ -310,20 +316,30 @@ def analyse_brake(rows, frm):
     for i in range(onset, stop - STEP_WINDOW // 4):
         drop = (speed[i] - speed[i + STEP_WINDOW // 4]) * 3.6
         worst_drop = max(worst_drop, drop)
-    max_off = max(abs(rows[i]["off"]) for i in range(onset, stop + 1))
+    off = max(abs(rows[i]["off"]) for i in range(onset, stop + 1))
     dist = math.hypot(rows[stop]["x"] - rows[onset]["x"],
                       rows[stop]["y"] - rows[onset]["y"])
-    if worst_drop > CRASH_DROP or max_off > CRASH_OFF:
+    jump = max(math.hypot(rows[i + 1]["x"] - rows[i]["x"], rows[i + 1]["y"] - rows[i]["y"])
+               for i in range(onset, min(stop + 1, count - 1)))
+    if jump > RESET_JUMP:
+        return {"ok": False, "reason": "reset by the game while braking", "vmax": speed[trig] * 3.6}
+    if worst_drop > CRASH_DROP or off > max_off:
         return {"ok": False, "reason": "hit something while braking",
-                "vmax": speed[trig] * 3.6, "drop": worst_drop, "off": max_off}
+                "vmax": speed[trig] * 3.6, "drop": worst_drop, "off": off}
     v0 = speed[onset]
+    rise = rows[stop]["z"] - rows[onset]["z"]
+    decel = (v0 * v0) / (2 * dist) if dist > 0 else 0.0
     return {
         "ok": True,
         "launch": launch,
         "trig_v": speed[trig] * 3.6,
         "dist": dist,
         "time": rows[stop]["t"] - rows[onset]["t"],
-        "decel": (v0 * v0) / (2 * dist) if dist > 0 else 0.0,
+        "decel": decel,
+        # The road's grade over the stop (rise over distance) and the decel it leaves on a flat road: the stop's
+        # energy less the climb's, g rise / dist (the car's z, its suspension's pitch included).
+        "grade": rise / dist if dist > 0 else 0.0,
+        "decel_flat": decel - G * rise / dist if dist > 0 else 0.0,
     }
 
 
