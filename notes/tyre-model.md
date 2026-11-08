@@ -353,8 +353,17 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   (2006) ch. 8: dry peak lateral "not likely to change much with speed", the back slope expected steeper with speed
   (a sketch from locked-wheel data, not measured). Every published MF set read (27 `.tir` on GitHub, MFeval, Chrono)
   has LMUV 0 or none. Cabrera et al., Sensors 18:896 (2018), locked 205/65R15 on dry asphalt: μ = 0.640 + 0.262
-  exp(-0.081 v km/h), flat above ~40 km/h (table), unlike TRL's. No open two-speed measurement of a rolling tyre at
-  10-30° on dry tarmac was found.
+  exp(-0.081 v km/h), flat above ~40 km/h (table), unlike TRL's. Pottinger, Marshall & Arnold, SAE 760029 (1976,
+  GR70-15, 10-121 km/h, read in full): F_y at 1° +8-9 % per tenfold speed, the speed effect insignificant beyond about
+  4° (quoted; no larger angles tested). Pacejka, Tyre and Vehicle Dynamics 2nd ed. (2006) eq. 3.116: μ = μ0/(1 + a_μ
+  V_s), a_μ 0.03 s/m in his tread-simulation example (a model, "typical especially for wet roads"; the peak "will
+  decrease when the speed of travel is increased", not shown); MF's λ_μV (eq. 4.E7, μ/(1 + λ_μV V_s/V_0)) is 0 unless
+  a slippery surface is meant. The brush's curve is close to that example: at V_s 7.5 m/s 0.81 of μ_S against 0.82.
+  Selig et al., Tire Sci. Technol. 42 (2014) 216 (summer tyre on P80 corundum, flat-bed, 16.6 m/s only): cornering
+  heats the tread surface from 36 to 75 °C at 10° and 9 kN and the measured μ_y falls below the braking curve's level,
+  faster with slip than flash heating alone predicts (fig). Nakanishi et al., VSD 62 (2024) 2401 (slick, drum, 100
+  km/h, 0-4° only): the fitted friction scale falls with slip angle, attributed to heat. No open two-speed measurement
+  of a rolling tyre at 10-30° on dry tarmac was found.
 
 ### A/B protocol (a driver, tarmac)
 
