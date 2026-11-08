@@ -34,7 +34,7 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
     }
     // The Controls page whole, its force feedback per car included.
     form.page = Page::Controls;
-    shot_sized(&dir.join("controls-whole.png"), (SIZE.0, 1100), |ctx| form.ui(ctx))?;
+    shot_sized(&dir.join("controls-whole.png"), (1180, 1100), |ctx| form.ui(ctx))?;
     // The Drive page with the Custom weather, its controls closed and open.
     let saved =
         (form.clouds, form.precipitation, form.fog, form.wetness, form.options.weather, form.weather_row.clone());

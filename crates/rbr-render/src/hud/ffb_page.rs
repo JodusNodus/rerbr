@@ -1,15 +1,16 @@
 //! The pause menu's Force feedback page, ours (`crate::hud::pause`): a panel at the bottom of the screen over the
 //! paused view (`crate::ffb::Session`). Its rows: this car's NGP sensitivity on the drive's surface, the wheel's
-//! strength (every car's), Reset (the car back to the sensitivities every car takes) and Done. Under them a graph of
-//! NGP's curve at the sensitivity shown over the player's steering load with this car on this surface
-//! (`crate::ffb::load`), the region where the wheel maxes out shaded, how often it would max out, and a suggested
-//! sensitivity that is only a hint. Up and Down pick a row, Left and Right change the value by [`STEP`]; the select
-//! acts on Reset and Done, and the back returns to the menu's first page. A change takes effect on the paused drive
-//! (`crate::ffb::reshape`, `Wheel::set_strength`) and is kept.
+//! strength (every car's), "Use suggested" when there is a suggestion other than the sensitivity, Reset (the car
+//! back to the sensitivities every car takes) and Done; a line under them says what the selected one does. Under them
+//! a graph of NGP's curve at the sensitivity shown over the player's steering load with this car on this surface
+//! (`crate::ffb::load`), the region where the wheel maxes out shaded, and one line of advice
+//! (`load::advice`). Up and Down pick a row, Left and Right change the value by [`STEP`]; the select acts on Use
+//! suggested, Reset and Done, and the back returns to the menu's first page. A change takes effect on the paused
+//! drive (`crate::ffb::reshape`, `Wheel::set_strength`) and is kept; nothing changes without the player.
 
 use super::camera_page::Moved;
 use super::pause::Nav;
-use crate::ffb::load::{self, Load};
+use crate::ffb::load::{self, Advice, Load};
 use crate::ffb::{Session, SENSITIVITY_RANGE, SURFACES};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, Vec2};
 use std::ops::RangeInclusive;
@@ -20,10 +21,10 @@ const HINT: Color32 = Color32::from_gray(160);
 const SELECTED: Color32 = Color32::from_rgb(200, 60, 40);
 const BARS: Color32 = Color32::from_rgba_premultiplied(90, 110, 140, 200);
 const MAXED: Color32 = Color32::from_rgba_premultiplied(70, 16, 12, 110);
-const WIDTH: f32 = 420.0;
+const WIDTH: f32 = 460.0;
 const ROW: f32 = 26.0;
 /// The graph's height, pixels.
-const GRAPH: f32 = 120.0;
+const GRAPH: f32 = 110.0;
 
 /// One step of the sensitivity and the strength, percent.
 pub const STEP: i32 = 5;
@@ -35,11 +36,11 @@ const STRENGTH: RangeInclusive<i32> = 0..=100;
 pub enum Row {
     Sensitivity,
     Strength,
+    /// Sets the sensitivity to the suggestion.
+    UseSuggested,
     Reset,
     Done,
 }
-
-const ROWS: [Row; 4] = [Row::Sensitivity, Row::Strength, Row::Reset, Row::Done];
 
 /// The page: the drive's surface (0 gravel, 1 tarmac, 2 snow), the car's sensitivity on it, whether the car has its
 /// own, the one every car takes, the strength, the player's load with the car on the surface, and the selected row.
@@ -52,13 +53,13 @@ pub struct FfbPage {
     /// The wheel's strength, percent.
     pub strength: i32,
     load: Load,
-    row: usize,
+    row: Row,
 }
 
 impl FfbPage {
     /// A page at full strength with no load tracked.
     pub fn new(surface: usize, value: i32, own: bool, global: i32) -> FfbPage {
-        FfbPage { surface, value, own, global, strength: 100, load: Load::default(), row: 0 }
+        FfbPage { surface, value, own, global, strength: 100, load: Load::default(), row: Row::Sensitivity }
     }
 
     /// The page for the drive's car on `surface` (FFB1's: 0 gravel, 1 tarmac, 2 snow).
@@ -70,21 +71,41 @@ impl FfbPage {
 
     /// The selected row.
     pub fn row(&self) -> Row {
-        ROWS[self.row]
+        self.row
+    }
+
+    /// The suggestion, when there is driving enough to give one.
+    fn suggested(&self) -> Option<i32> {
+        load::suggested(&self.load, SENSITIVITY_RANGE).filter(|_| self.load.seconds() >= load::ADVICE_SECONDS)
+    }
+
+    /// The rows shown: Use suggested only with a suggestion other than the sensitivity.
+    fn rows(&self) -> Vec<Row> {
+        let suggest = self.suggested().is_some_and(|p| p != self.value);
+        [Row::Sensitivity, Row::Strength, Row::UseSuggested, Row::Reset, Row::Done]
+            .into_iter()
+            .filter(|&r| r != Row::UseSuggested || suggest)
+            .collect()
     }
 
     /// Takes one move.
     pub fn nav(&mut self, nav: Nav) -> Option<Moved> {
-        let n = ROWS.len();
+        let rows = self.rows();
+        let (n, at) = (rows.len(), rows.iter().position(|&r| r == self.row).unwrap_or(0));
         let by = if nav == Nav::Right { STEP } else { -STEP };
-        match (nav, self.row()) {
-            (Nav::Up, _) => self.row = (self.row + n - 1) % n,
-            (Nav::Down, _) => self.row = (self.row + 1) % n,
+        match (nav, self.row) {
+            (Nav::Up, _) => self.row = rows[(at + n - 1) % n],
+            (Nav::Down, _) => self.row = rows[(at + 1) % n],
             (Nav::Back, _) | (Nav::Select, Row::Done) => return Some(Moved::Left),
             (Nav::Select, Row::Reset) => {
                 let changed = self.own;
                 (self.value, self.own) = (self.global, false);
                 return changed.then_some(Moved::Changed);
+            }
+            (Nav::Select, Row::UseSuggested) => {
+                let to = self.suggested()?;
+                (self.value, self.own, self.row) = (to, true, Row::Sensitivity);
+                return Some(Moved::Changed);
             }
             (Nav::Left | Nav::Right, Row::Sensitivity) => {
                 let value = (self.value + by).clamp(*SENSITIVITY_RANGE.start(), *SENSITIVITY_RANGE.end());
@@ -108,10 +129,15 @@ impl FfbPage {
     }
 }
 
+fn surface(page: &FfbPage) -> &'static str {
+    SURFACES[page.surface.min(2)]
+}
+
 fn label(page: &FfbPage, row: Row) -> String {
     match row {
-        Row::Sensitivity => format!("Sensitivity, {}", SURFACES[page.surface.min(2)]),
-        Row::Strength => "Strength, every car".into(),
+        Row::Sensitivity => format!("Sensitivity, {}", surface(page)),
+        Row::Strength => "Strength".into(),
+        Row::UseSuggested => format!("Use suggested ({} %)", page.suggested().unwrap_or(page.value)),
         Row::Reset => "Reset to every car's".into(),
         Row::Done => "Done".into(),
     }
@@ -121,40 +147,77 @@ fn value(page: &FfbPage, row: Row) -> String {
     match row {
         Row::Sensitivity => format!("{} %{}", page.value, if page.own { "" } else { " (every car's)" }),
         Row::Strength => format!("{} %", page.strength),
-        Row::Reset | Row::Done => String::new(),
+        Row::UseSuggested | Row::Reset | Row::Done => String::new(),
     }
 }
 
-/// The lines under the graph: how often the wheel maxes out at the sensitivity shown, and the suggestion.
-fn notes(page: &FfbPage) -> [String; 2] {
-    let surface = SURFACES[page.surface.min(2)];
-    match page.load.maxed_out(page.value) {
-        Some(share) => [
-            format!("Maxed out {} % of your driving (this car, {surface})", (share * 100.0).round() as i32),
-            load::suggested(&page.load, SENSITIVITY_RANGE)
-                .map_or(String::new(), |p| format!("Suggested {p} % (your usual cornering at half force)")),
-        ],
-        None => [format!("No driving tracked yet (this car, {surface})"), String::new()],
+/// What the selected row does, in one line.
+fn help(page: &FfbPage) -> String {
+    match page.row {
+        Row::Sensitivity => format!(
+            "How much of this car's steering force fits before the wheel maxes out (this car, {}). Higher: lighter, \
+             more detail. Lower: heavier, maxes out sooner.",
+            surface(page)
+        ),
+        Row::Strength => "How heavy the wheel feels. All cars.".into(),
+        Row::UseSuggested => "Sets Sensitivity to the suggestion. You can change it again.".into(),
+        Row::Reset => "This car back to the sensitivity every car takes.".into(),
+        Row::Done => "Back to the menu.".into(),
     }
 }
 
-/// The graph's ratio range: past where the wheel maxes out at `p`, and past the load's last bin, within the bins.
+/// From this share maxed out, the advice to raise says the wheel maxes out often.
+const OFTEN: f32 = 0.05;
+
+/// The advice at the sensitivity shown.
+fn status(page: &FfbPage) -> String {
+    let percent = |share: f32| (share * 100.0).round() as i32;
+    match load::advice(&page.load, page.value, SENSITIVITY_RANGE) {
+        Advice::DriveMore(seconds) => format!(
+            "Drive a bit more on {} to see your load ({}/{} s).",
+            surface(page),
+            seconds.floor() as i32,
+            load::ADVICE_SECONDS as i32
+        ),
+        Advice::Raise(maxed, to) if maxed >= OFTEN => format!(
+            "The wheel maxes out often ({} % of your driving): raise Sensitivity to about {to} %.",
+            percent(maxed)
+        ),
+        // Below the suggestion and yet rarely maxed out: no claim the data does not make.
+        Advice::Raise(maxed, to) => format!(
+            "Your usual cornering sits high in the wheel's range (maxed out {} %): raise Sensitivity to about {to} %.",
+            percent(maxed)
+        ),
+        Advice::Lower(to) => {
+            format!("Your cornering uses little of the wheel's range: lower Sensitivity to about {to} %, or raise Strength.")
+        }
+        Advice::Good(maxed) => {
+            format!("Good: your usual cornering sits mid-range (maxed out {} %).", percent(maxed))
+        }
+    }
+}
+
+/// The page's guide at the bottom.
+const GUIDE: &str = "Set Strength once for your wheel. Then for each car, adjust Sensitivity until the wheel rarely \
+                     maxes out.";
+
+/// The graph's load range: past where the wheel maxes out at the sensitivity shown, and past the load's last bin.
 fn x_range(page: &FfbPage) -> f32 {
     let maxed = load::ratio_at(load::MAXED, page.value);
     let last = page.load.tenths.iter().rposition(|t| *t > 0.0).map_or(0.0, |k| (k + 1) as f32 * load::BIN);
     (maxed * 1.4).max(last * 1.05).clamp(20.0, load::BINS as f32 * load::BIN)
 }
 
-/// Draws the graph into `rect`: the load's bars, the maxed-out region and NGP's curve at the sensitivity shown.
+/// Draws the graph into `rect`: the load's bars, the maxed-out region and NGP's curve at the sensitivity shown; its
+/// legend under it.
 fn graph(painter: &egui::Painter, rect: Rect, page: &FfbPage) {
     let x_max = x_range(page);
     let at =
         |x: f32, f: f32| Pos2::new(rect.min.x + rect.width() * (x / x_max).min(1.0), rect.max.y - rect.height() * f);
+    let small = FontId::proportional(11.0);
     let maxed = load::ratio_at(load::MAXED, page.value);
     if maxed < x_max {
         painter.rect_filled(Rect::from_min_max(at(maxed, 1.0), rect.max), 0.0, MAXED);
-        let small = FontId::proportional(11.0);
-        painter.text(at(maxed, 1.0) + Vec2::new(4.0, 2.0), Align2::LEFT_TOP, "maxed out", small, HINT);
     }
     let top = page.load.tenths.iter().copied().fold(0.0, f32::max);
     for (k, t) in page.load.tenths.iter().enumerate().filter(|(_, t)| **t > 0.0) {
@@ -170,17 +233,48 @@ fn graph(painter: &egui::Painter, rect: Rect, page: &FfbPage) {
     painter.add(Shape::line(curve, Stroke::new(2.0, TEXT)));
     painter.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, HINT));
     painter.line_segment([rect.left_bottom(), rect.left_top()], Stroke::new(1.0, HINT));
-    let small = FontId::proportional(11.0);
-    painter.text(rect.left_top() + Vec2::new(4.0, 0.0), Align2::LEFT_TOP, "wheel force 100 %", small.clone(), HINT);
+    painter.text(rect.left_top() + Vec2::new(4.0, 0.0), Align2::LEFT_TOP, "wheel force", small.clone(), HINT);
     painter.text(rect.right_bottom() + Vec2::new(0.0, 2.0), Align2::RIGHT_TOP, "steering load", small.clone(), HINT);
-    painter.text(rect.left_bottom() + Vec2::new(0.0, 2.0), Align2::LEFT_TOP, "bars: your driving", small, HINT);
+    // The legend: bars, the line, the shaded area.
+    let mut x = rect.min.x;
+    let y = rect.max.y + 22.0;
+    let swatch = |x: f32| Rect::from_min_size(Pos2::new(x, y - 4.0), Vec2::new(10.0, 8.0));
+    for (kind, text) in [(0, "your driving"), (1, "wheel force at this sensitivity"), (2, "maxed out")] {
+        match kind {
+            0 => _ = painter.rect_filled(swatch(x), 0.0, BARS),
+            1 => _ = painter.line_segment([Pos2::new(x, y), Pos2::new(x + 10.0, y)], Stroke::new(2.0, TEXT)),
+            _ => _ = painter.rect_filled(swatch(x), 0.0, Color32::from_rgb(150, 40, 30)),
+        }
+        let r = painter.text(Pos2::new(x + 14.0, y), Align2::LEFT_CENTER, text, small.clone(), HINT);
+        x = r.max.x + 14.0;
+    }
+}
+
+/// Lays `text` out wrapped to the panel's inner width.
+fn wrapped(painter: &egui::Painter, text: String, size: f32, color: Color32) -> std::sync::Arc<egui::Galley> {
+    painter.layout(text, FontId::proportional(size), color, WIDTH - 40.0)
 }
 
 /// Draws the page at the bottom of the screen, over the undimmed view.
 pub fn paint(ctx: &egui::Context, page: &FfbPage) {
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("ffb page")));
     let screen = ctx.content_rect();
-    let size = Vec2::new(WIDTH, 80.0 + ROW * ROWS.len() as f32 + GRAPH + 22.0 + 2.0 * 18.0);
+    let rows = page.rows();
+    let help = wrapped(&painter, help(page), 13.0, HINT);
+    let status = wrapped(&painter, status(page), 14.0, TEXT);
+    let guide = wrapped(&painter, GUIDE.into(), 12.0, HINT);
+    let nav = "Up/Down choose    Left/Right change    Enter select    Esc back";
+    let height = 38.0
+        + ROW * rows.len() as f32
+        + help.size().y
+        + 10.0
+        + GRAPH
+        + 36.0
+        + status.size().y
+        + 10.0
+        + guide.size().y
+        + 30.0;
+    let size = Vec2::new(WIDTH, height);
     let panel = Rect::from_min_size(Pos2::new(screen.center().x - WIDTH / 2.0, screen.max.y - size.y - 16.0), size);
     painter.rect_filled(panel, 8.0, PANEL);
     let mut at = Pos2::new(panel.min.x + 20.0, panel.min.y + 10.0);
@@ -188,7 +282,7 @@ pub fn paint(ctx: &egui::Context, page: &FfbPage) {
     painter.text(Pos2::new(panel.center().x, at.y), Align2::CENTER_TOP, title, FontId::proportional(18.0), TEXT);
     at.y += 28.0;
     let font = FontId::proportional(16.0);
-    for row in ROWS {
+    for row in rows {
         let line = Rect::from_min_size(at, Vec2::new(WIDTH - 40.0, ROW - 4.0));
         let selected = row == page.row();
         if selected {
@@ -203,18 +297,17 @@ pub fn paint(ctx: &egui::Context, page: &FfbPage) {
         }
         at.y += ROW;
     }
-    at.y += 6.0;
+    let help_height = help.size().y;
+    painter.galley(at, help, HINT);
+    at.y += help_height + 10.0;
     graph(&painter, Rect::from_min_size(at, Vec2::new(WIDTH - 40.0, GRAPH)), page);
-    at.y += GRAPH + 18.0;
-    for note in notes(page) {
-        painter.text(at, Align2::LEFT_TOP, note, FontId::proportional(14.0), TEXT);
-        at.y += 18.0;
-    }
-    let hints = ["Above 100 lighter, below 100 stronger", "Up/Down choose    Left/Right change    Esc back"];
-    for (k, hint) in hints.into_iter().enumerate() {
-        let at = Pos2::new(panel.center().x, panel.max.y - 8.0 - 16.0 * (1 - k) as f32);
-        painter.text(at, Align2::CENTER_BOTTOM, hint, FontId::proportional(12.0), HINT);
-    }
+    at.y += GRAPH + 36.0;
+    let status_height = status.size().y;
+    painter.galley(at, status, TEXT);
+    at.y += status_height + 10.0;
+    painter.galley(at, guide, HINT);
+    let bottom = Pos2::new(panel.center().x, panel.max.y - 8.0);
+    painter.text(bottom, Align2::CENTER_BOTTOM, nav, FontId::proportional(12.0), HINT);
 }
 
 #[cfg(test)]
@@ -267,28 +360,53 @@ mod tests {
         assert_eq!(p.strength, 0);
     }
 
-    #[test]
-    fn the_notes_follow_the_sensitivity_shown() {
+    /// A page on tarmac at `value` over a load of `seconds` at x 42.5 (suggested 155 %).
+    fn page(value: i32, seconds: f32) -> FfbPage {
         let mut session = Session::load(None, Some("rsf-81".into()), &Options::default(), [100; 3]);
-        let page = FfbPage::of(&session, 1);
-        assert_eq!(notes(&page), ["No driving tracked yet (this car, tarmac)".to_owned(), String::new()]);
         let mut stored = Load::default();
-        stored.add(40.0, 80.0);
+        stored.add(40.0, seconds);
         session.loads.cars.insert(("rsf-81".into(), 1), stored);
-        // This drive's frames count too: x 142.5 maxes out at 100 %, not at 200 %.
-        for _ in 0..20 {
-            session.frame(1, load::force(141.0, 100), 1.0, true);
-        }
-        let mut page = FfbPage::of(&session, 1);
+        FfbPage { value, own: true, ..FfbPage::of(&session, 1) }
+    }
+
+    #[test]
+    fn the_status_says_what_to_do() {
+        assert_eq!(status(&page(100, 12.5)), "Drive a bit more on tarmac to see your load (12/20 s).");
         assert_eq!(
-            notes(&page),
-            [
-                "Maxed out 20 % of your driving (this car, tarmac)".to_owned(),
-                "Suggested 500 % (your usual cornering at half force)".to_owned()
-            ]
+            status(&page(30, 30.0)),
+            "The wheel maxes out often (100 % of your driving): raise Sensitivity to about 155 %."
         );
-        page.value = 200;
-        assert_eq!(notes(&page)[0], "Maxed out 0 % of your driving (this car, tarmac)");
-        assert!(x_range(&page) > load::ratio_at(load::MAXED, 200));
+        assert_eq!(
+            status(&page(200, 30.0)),
+            "Your cornering uses little of the wheel's range: lower Sensitivity to about 155 %, or raise Strength."
+        );
+        assert_eq!(status(&page(150, 30.0)), "Good: your usual cornering sits mid-range (maxed out 0 %).");
+        // Below the suggestion but rarely maxed out.
+        assert_eq!(
+            status(&page(100, 30.0)),
+            "Your usual cornering sits high in the wheel's range (maxed out 0 %): raise Sensitivity to about 155 %."
+        );
+        // The graph reaches past where the wheel maxes out.
+        assert!(x_range(&page(200, 30.0)) > load::ratio_at(load::MAXED, 200));
+    }
+
+    #[test]
+    fn use_suggested_is_one_select_away() {
+        // Not with too little driving, nor at the suggestion already.
+        assert!(!page(100, 12.5).rows().contains(&Row::UseSuggested));
+        assert!(!page(155, 30.0).rows().contains(&Row::UseSuggested));
+        let mut p = page(100, 30.0);
+        assert_eq!(p.rows(), [Row::Sensitivity, Row::Strength, Row::UseSuggested, Row::Reset, Row::Done]);
+        p.nav(Nav::Down);
+        p.nav(Nav::Down);
+        assert_eq!((p.row(), label(&p, Row::UseSuggested)), (Row::UseSuggested, "Use suggested (155 %)".into()));
+        assert_eq!(p.nav(Nav::Select), Some(Moved::Changed));
+        assert_eq!((p.value, p.own, p.row()), (155, true, Row::Sensitivity));
+        assert!(!p.rows().contains(&Row::UseSuggested));
+        assert_eq!(help(&p).lines().count(), 1);
+        assert!(help(&p)
+            .starts_with("How much of this car's steering force fits before the wheel maxes out (this car, tarmac)."));
+        p.nav(Nav::Down);
+        assert_eq!(help(&p), "How heavy the wheel feels. All cars.");
     }
 }

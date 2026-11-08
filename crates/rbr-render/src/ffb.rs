@@ -323,6 +323,42 @@ pub mod load {
         }
     }
 
+    /// The fewest seconds of a car's load the page gives advice from.
+    pub const ADVICE_SECONDS: f32 = 20.0;
+    /// Below this share of the suggested percentage the wheel maxes out too often; above [`HIGH`] the player's
+    /// cornering uses little of its range.
+    pub const LOW: f32 = 0.85;
+    pub const HIGH: f32 = 1.15;
+
+    /// What the player could do at percentage `current` with the load `load` (one criterion: `current` against
+    /// [`suggested`]).
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum Advice {
+        /// Too little driving yet: the seconds so far.
+        DriveMore(f32),
+        /// The wheel maxes out often (the share): raise to the suggestion.
+        Raise(f32, i32),
+        /// The cornering uses little of the range: lower to the suggestion.
+        Lower(i32),
+        /// Mid-range (the maxed-out share).
+        Good(f32),
+    }
+
+    pub fn advice(load: &Load, current: i32, range: std::ops::RangeInclusive<i32>) -> Advice {
+        let (seconds, maxed) = (load.seconds(), load.maxed_out(current).unwrap_or(0.0));
+        let Some(to) = suggested(load, range).filter(|_| seconds >= ADVICE_SECONDS) else {
+            return Advice::DriveMore(seconds);
+        };
+        let ratio = percent(current) / to as f32;
+        if ratio < LOW {
+            Advice::Raise(maxed, to)
+        } else if ratio > HIGH {
+            Advice::Lower(to)
+        } else {
+            Advice::Good(maxed)
+        }
+    }
+
     /// The percentage that puts the player's usual cornering in `load` (its 90th percentile) at half force, to the
     /// nearest 5 within `range`: a hint, never applied.
     pub fn suggested(load: &Load, range: std::ops::RangeInclusive<i32>) -> Option<i32> {
@@ -881,6 +917,23 @@ mod tests {
         small.add(22.0, 10.0);
         assert_eq!(load::suggested(&small, SENSITIVITY_RANGE), Some(80));
         assert_eq!(load::suggested(&Load::default(), SENSITIVITY_RANGE), None);
+    }
+
+    #[test]
+    fn the_advice_compares_the_sensitivity_with_the_suggestion() {
+        use load::Advice;
+        let mut l = Load::default();
+        l.add(40.0, 15.0);
+        assert_eq!(load::advice(&l, 100, SENSITIVITY_RANGE), Advice::DriveMore(15.0));
+        l.add(40.0, 15.0);
+        // The p90 is x 42.5: suggested 155 %; 0.85 and 1.15 of it are 131.75 and 178.25.
+        assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(155));
+        assert!(matches!(load::advice(&l, 130, SENSITIVITY_RANGE), Advice::Raise(_, 155)));
+        assert!(matches!(load::advice(&l, 135, SENSITIVITY_RANGE), Advice::Good(_)));
+        assert!(matches!(load::advice(&l, 175, SENSITIVITY_RANGE), Advice::Good(_)));
+        assert_eq!(load::advice(&l, 180, SENSITIVITY_RANGE), Advice::Lower(155));
+        // The share maxed out is the evidence: x 42.5 maxes out at 30 %.
+        assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 155));
     }
 
     #[test]

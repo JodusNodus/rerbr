@@ -265,8 +265,8 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     bin past it. A drive with 20 s kept adds its own at its end (stage result, restart, exit); past 600 s the sum is
     scaled down to 600 s, so recent driving weighs more. Not split by physics profile (the brush's torque is about
     10 % lighter).
-  - Shown: "maxed out" is the share with the force over 0.95 at the sensitivity shown; "suggested" puts the 90th
-    percentile at force 0.5 (`p = 100 x ln 0.975 / ln 0.5` ≈ 3.653 x, to 5 %, within 10-500 %). Check (autopilot,
+  - Shown (pause menu, Controls page): "maxed out" is the share with the force over 0.95 at the sensitivity shown;
+    "suggested" (a hint, set only by the player's "Use suggested") puts the 90th percentile at force 0.5 (`p = 100 x ln 0.975 / ln 0.5` ≈ 3.653 x, to 5 %, within 10-500 %). Check (autopilot,
     map 41 tarmac and RSF 104 gravel, 6 cars, 150000 steps, `stage_runs.py`): the p90 is 0.66-0.75 (tarmac) and
     0.70-0.84 (gravel) of the car's circle `x` at 0.5 g, within about ±10 % against the raw 4×.
 

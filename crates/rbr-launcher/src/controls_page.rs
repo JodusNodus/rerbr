@@ -64,15 +64,16 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
         ui.add_enabled_ui(ffb.settings.enabled, |ui| {
             let strength =
                 ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
-            if strength.changed() && !read_only {
+            if strength.on_hover_text(STRENGTH_HELP).changed() && !read_only {
                 write_strength(settings, ffb.settings.strength);
             }
             ui.checkbox(&mut ffb.settings.inverse, "inverse");
         });
     });
+    ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
     ui.add_enabled_ui(ffb.settings.enabled, |ui| {
         ui.horizontal(|ui| {
-            ui.label("sensitivity %").on_hover_text(SENSITIVITY_HELP);
+            ui.label("Sensitivity for cars without their own").on_hover_text(SENSITIVITY_HELP);
             for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
                 ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
                     .on_hover_text(SENSITIVITY_HELP);
@@ -122,17 +123,20 @@ fn ffb_cars_ui(
         for (key, values) in ffb_cars.cars.iter_mut() {
             ui.horizontal(|ui| {
                 ui.label(car_display(key, cars));
-                for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
-                    let help = maxed_out_help(loads, key, k, *value);
+                for (value, surface) in values.iter_mut().zip(ffb::SURFACES) {
                     changed |= ui
                         .add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                        .on_hover_text(help)
+                        .on_hover_text(SENSITIVITY_HELP)
                         .changed();
                 }
                 if ui.small_button("Remove").clicked() {
                     remove = Some(key.clone());
                 }
             });
+            if let Some(line) = maxed_out(loads, key, *values) {
+                ui.label(RichText::new(line).color(Color32::GRAY).small())
+                    .on_hover_text("Adjust in the pause menu while driving.");
+            }
         }
         if let Some(key) = remove {
             ffb_cars.cars.remove(&key);
@@ -175,16 +179,17 @@ fn ffb_cars_ui(
     });
 }
 
-/// [`SENSITIVITY_HELP`], and how often the wheel would max out at `value` in car `key`'s tracked driving on
-/// `surface` (`ffb::load`), when there is some.
-fn maxed_out_help(loads: &ffb::Loads, key: &str, surface: usize, value: i32) -> String {
-    match loads.of(key, surface).and_then(|load| load.maxed_out(value)) {
-        Some(share) => format!(
-            "{SENSITIVITY_HELP}\n\nAt {value} % the wheel maxes out {} % of your driving with this car here.",
-            (share * 100.0).round() as i32
-        ),
-        None => SENSITIVITY_HELP.to_owned(),
-    }
+/// How often the wheel maxes out at car `key`'s `values` over its tracked driving (`ffb::load`), on each surface with
+/// enough of it: "maxed out: gravel 12 %, tarmac 3 %".
+fn maxed_out(loads: &ffb::Loads, key: &str, values: [i32; 3]) -> Option<String> {
+    let parts: Vec<String> = (0..3)
+        .filter_map(|k| {
+            let load = loads.of(key, k).filter(|l| l.seconds() >= ffb::load::ADVICE_SECONDS)?;
+            let share = load.maxed_out(values[k])?;
+            Some(format!("{} {} %", ffb::SURFACES[k], (share * 100.0).round() as i32))
+        })
+        .collect();
+    (!parts.is_empty()).then(|| format!("maxed out: {}", parts.join(", ")))
 }
 
 /// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
@@ -233,8 +238,9 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
 }
 
 /// NGP's force-feedback sensitivity per surface (`ffb::Options::sensitivity`), in its readme's words.
-const SENSITIVITY_HELP: &str = "NGP's force feedback sensitivity per surface. Below 100 the force is stronger and \
-     less precise, and big hits are flattened; above 100 it is lighter, with more detail and sharper peaks.";
+const SENSITIVITY_HELP: &str = "How much of a car's steering force fits before the wheel maxes out. Higher: lighter, \
+     more detail. Lower: heavier, maxes out sooner.";
+const STRENGTH_HELP: &str = "Strength: how heavy the wheel feels. All cars.";
 /// The rows' label column and the live bars' width.
 const ROW_LABEL: f32 = 110.0;
 const BAR: f32 = 110.0;
@@ -743,6 +749,17 @@ mod tests {
     use rbr_render::bindings::Device;
 
     const G923: Device = Device { vendor: 0x046d, product: 0xc266, index: 0 };
+
+    /// The per-car line: each surface with 20 s of driving, at the car's own sensitivity there.
+    #[test]
+    fn the_per_car_line_says_how_often_the_wheel_maxes_out() {
+        let loads = ffb::Loads::parse(
+            "[ffb_load]\nrsf-81 gravel = 0,0,0,0,0,0,0,0,200\nrsf-81 tarmac = 0,300\nrsf-81 snow = 10\n",
+        );
+        // x 42.5 maxes out at 30 %, not at 100 %; snow has 1 s only.
+        assert_eq!(maxed_out(&loads, "rsf-81", [30, 100, 100]), Some("maxed out: gravel 100 %, tarmac 0 %".into()));
+        assert_eq!(maxed_out(&loads, "rsf-1", [100; 3]), None);
+    }
 
     fn moved(object: Object, up: bool) -> Moved {
         Moved { input: PadInput { device: G923, object }, up }
