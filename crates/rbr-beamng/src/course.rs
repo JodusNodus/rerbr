@@ -57,13 +57,13 @@ fn chained(roads: &[&Road]) -> Vec<Road> {
                 })
                 .filter(|c| c.2 < JOIN)
                 .min_by(|a, b| a.2.total_cmp(&b.2));
-            let Some((j, reversed, gap)) = next else { break };
+            let Some((j, reversed, _)) = next else { break };
             used[j] = true;
             let mut more = open[j].nodes.clone();
             if reversed {
                 more.reverse();
             }
-            nodes.extend(more.into_iter().skip(usize::from(gap < 1.0)));
+            join(&mut nodes, more);
             names.push(open[j].name.clone());
         }
         if names.len() > 1 {
@@ -71,6 +71,33 @@ fn chained(roads: &[&Road]) -> Vec<Road> {
         }
     }
     out
+}
+
+/// `more` appended to `nodes`. Pieces may overlap (Irohazaka's by 2-3 m, Nagao's): the chain's last nodes past the
+/// piece's start and the piece's first nodes not ahead of the chain's end, within [`JOIN`] of the join, are left out,
+/// else the line doubles back.
+fn join(nodes: &mut Vec<[f64; 4]>, mut more: Vec<[f64; 4]>) {
+    // Whether `to` lies ahead of `from` along the plan direction `a` to `b`, and their distance.
+    let ahead = |from: &[f64; 4], to: &[f64; 4], a: &[f64; 4], b: &[f64; 4]| {
+        let d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+        (d[0] * (b[0] - a[0]) + d[1] * (b[1] - a[1]) > 0.0, (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt())
+    };
+    while nodes.len() >= 2 && more.len() >= 2 {
+        let (past, gap) = ahead(&more[0], &nodes[nodes.len() - 1], &more[0], &more[1]);
+        if !past || gap >= JOIN {
+            break;
+        }
+        nodes.pop();
+    }
+    while nodes.len() >= 2 && more.len() >= 2 {
+        let n = nodes.len();
+        let (beyond, gap) = ahead(&nodes[n - 1], &more[0], &nodes[n - 2], &nodes[n - 1]);
+        if beyond || gap >= JOIN {
+            break;
+        }
+        more.remove(0);
+    }
+    nodes.extend(more);
 }
 
 /// The longest drivable road of the scene, joined pieces included, as its nodes' positions; reversed on `reverse`.
@@ -141,4 +168,32 @@ pub fn course(scene: &Scene, race: &Race) -> Result<Course, String> {
     splits.sort_by(f64::total_cmp);
     let (_, heading) = stage.sample(0.0);
     Ok(Course { road: road.name.clone(), fit, start: start.pos, heading, splits, closed, line: stage })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn road(name: &str, xs: &[f64]) -> Road {
+        Road {
+            name: name.into(),
+            parent: String::new(),
+            nodes: xs.iter().map(|&x| [x, 0.0, 0.0, 5.0]).collect(),
+            looped: false,
+            drivability: 1.0,
+        }
+    }
+
+    #[test]
+    fn overlapping_pieces_join_without_doubling_back() {
+        // The first runs 3 m past the second's start; the second starts 3 m before the first's end.
+        let (a, b) = (road("a", &[0.0, 20.0, 40.0, 43.0]), road("b", &[40.0, 60.0, 80.0]));
+        let chain = &chained(&[&a, &b])[0];
+        let xs: Vec<f64> = chain.nodes.iter().map(|n| n[0]).collect();
+        assert_eq!(xs, [0.0, 20.0, 40.0, 60.0, 80.0]);
+        // Ends a metre apart, in line: kept both.
+        let (a, b) = (road("a", &[0.0, 20.0]), road("b", &[21.0, 40.0]));
+        let xs: Vec<f64> = chained(&[&a, &b])[0].nodes.iter().map(|n| n[0]).collect();
+        assert_eq!(xs, [0.0, 20.0, 21.0, 40.0]);
+    }
 }

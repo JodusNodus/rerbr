@@ -63,6 +63,8 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
   those in the corridor: Irohazaka all 2842, Akagi 7664 of 16358, Nagao 6795 of 26482, Akina 2478 of 43906.
 - Autopilot (NGP car 2, `--top-speed 25`, 2026-11-08), at most 1.5 m off the driveline: Irohazaka 1.1 km, Akina
   3.6 km and split 1, Akagi 2.2 km and split 1, Nagao 1.8 km. Frame rate not measured.
+- Joined road pieces overlap (Irohazaka's by 2-3 m at 2100 m and 3870 m, Nagao's at 1238, 2555 and 4113 m): the line
+  turned back on itself 175-180° and the autopilot stalled there; `course::join` leaves out the overlap (2026-11-08).
 - Frame `(x - ox, z, y - oy)`, `(ox, oy)` the course's plan centre (680, 264). Collision mesh within 60 m of the
   driveline as `Visible=0`, `CollisionOnly=1` objects (100 m tiles per surface), each surface a material whose `mat.ini`
   map is the RBR id in all cells; drawn shapes as `CollisionModel=-1`, one object per 100 m tile, material and
