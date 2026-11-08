@@ -8,8 +8,9 @@ use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
 use rbr_render::present::Present;
 use rbr_render::renderer::{Detail, Reflections};
+use rbr_render::triple::Rig;
 
-use crate::pages::{combo, fields, section, Choice, DRIVE_FIELDS, FIELD};
+use crate::pages::{combo, fields, section, Choice, DRIVE_FIELDS, FIELD, WARN};
 use crate::Form;
 
 /// The Quality section's choices: the renderer's additions (`viewer --enhance`), the wet roads (`--enhance wet` and
@@ -231,6 +232,18 @@ fn present_label(present: Present) -> (&'static str, &'static str) {
 /// The frame caps offered, frames a second (`viewer --max-fps`); 0, the first, is none.
 pub const FRAME_CAPS: [u32; 7] = [0, 30, 60, 90, 120, 144, 240];
 
+/// Triple screens (ours, `viewer --triple`): three like screens side by side, the side ones turned towards the
+/// player. Each screen's diagonal in inches (10 to 65, 27 by default), the frame around each screen's image in
+/// millimetres (0 to 60, 10 by default), the eye to the centre screen in centimetres (30 to 200, 70 by default),
+/// and the side screens' turn in degrees (`None`: facing the eye, the default; 0 to 90).
+pub const TRIPLE_DIAGONAL_DEFAULT: f32 = 27.0;
+pub const TRIPLE_DIAGONAL_RANGE: std::ops::RangeInclusive<f32> = 10.0..=65.0;
+pub const TRIPLE_BEZEL_DEFAULT: f32 = 10.0;
+pub const TRIPLE_BEZEL_RANGE: std::ops::RangeInclusive<f32> = 0.0..=60.0;
+pub const TRIPLE_DISTANCE_DEFAULT: f32 = 70.0;
+pub const TRIPLE_DISTANCE_RANGE: std::ops::RangeInclusive<f32> = 30.0..=200.0;
+pub const TRIPLE_ANGLE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=rbr_render::triple::MAX_ANGLE;
+
 /// A frame cap's label.
 fn cap_label(fps: u32) -> String {
     match fps {
@@ -404,6 +417,8 @@ impl Form {
             ui.end_row();
         });
 
+        self.triple_fields(ui);
+
         section(ui, "Camera");
         fields(ui, "camera", |ui| {
             let tip = "The horizontal field of view of the in-car views and the free camera; the chase view has its \
@@ -504,6 +519,149 @@ impl Form {
             ui.add(egui::Slider::new(&mut self.tyres_volume, 0.0..=MAX_GROUP_VOLUME).max_decimals(2));
             ui.end_row();
         });
+    }
+
+    /// The triple-screen rig from the Triple screens section, when triple screens are on (`viewer --triple`).
+    pub fn triple_rig(&self) -> Option<Rig> {
+        self.triple.then_some(Rig {
+            diagonal: self.triple_diagonal,
+            bezel: self.triple_bezel,
+            distance: self.triple_distance,
+            angle: self.triple_angle,
+        })
+    }
+
+    /// The Triple screens section: the rig's geometry, the monitors, and the true field of view at the seat.
+    fn triple_fields(&mut self, ui: &mut egui::Ui) {
+        section(ui, "Triple screens");
+        fields(ui, "triple", |ui| {
+            let tip = "Three like screens side by side, the side ones turned towards you, each drawing its own \
+                       view from your seat. The field-of-view sliders set the centre screen's view";
+            ui.label("Triple screens").on_hover_text(tip);
+            ui.checkbox(&mut self.triple, "three screens").on_hover_text(tip);
+            ui.end_row();
+            if !self.triple {
+                return;
+            }
+            let tip = "Each screen's diagonal";
+            ui.label("Screen size").on_hover_text(tip);
+            ui.add(egui::Slider::new(&mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE).step_by(1.0).suffix(" in"))
+                .on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "The frame around each screen's image: two of them part neighbouring images";
+            ui.label("Bezel").on_hover_text(tip);
+            ui.add(egui::Slider::new(&mut self.triple_bezel, TRIPLE_BEZEL_RANGE).step_by(1.0).suffix(" mm"))
+                .on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "From your eyes to the centre screen";
+            ui.label("Distance").on_hover_text(tip);
+            ui.add(egui::Slider::new(&mut self.triple_distance, TRIPLE_DISTANCE_RANGE).step_by(1.0).suffix(" cm"))
+                .on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "How far each side screen is turned towards you from the centre screen's plane. Auto faces \
+                       their middles at your eyes at this distance";
+            ui.label("Side angle").on_hover_text(tip);
+            let rig = self.triple_rig().unwrap_or(Rig {
+                diagonal: TRIPLE_DIAGONAL_DEFAULT,
+                bezel: TRIPLE_BEZEL_DEFAULT,
+                distance: TRIPLE_DISTANCE_DEFAULT,
+                angle: None,
+            });
+            let auto_degrees = Rig { angle: None, ..rig }.side_angle(self.monitor_aspect).to_degrees();
+            let mut auto = self.triple_angle.is_none();
+            let mut degrees = self.triple_angle.unwrap_or(auto_degrees);
+            ui.horizontal(|ui| {
+                if ui.checkbox(&mut auto, "Auto").on_hover_text(tip).changed() {
+                    self.triple_angle = if auto { None } else { Some(degrees) };
+                }
+                ui.add_enabled_ui(!auto, |ui| {
+                    ui.add(egui::Slider::new(&mut degrees, TRIPLE_ANGLE_RANGE).step_by(1.0).suffix("°"));
+                });
+            });
+            if !auto {
+                self.triple_angle = Some(degrees);
+            }
+            ui.end_row();
+
+            let tip = "One borderless fullscreen window a monitor, or one window split in thirds on a spanned \
+                       display such as NVIDIA Surround or AMD Eyefinity";
+            ui.label("Displays").on_hover_text(tip);
+            let names = self.monitors.clone();
+            let three = self.triple_monitors.is_some();
+            ui.vertical(|ui| {
+                if ui.radio(!three, "One wide display (Surround / Eyefinity)").on_hover_text(tip).clicked() {
+                    self.triple_monitors = None;
+                }
+                if ui.radio(three, "Three monitors").on_hover_text(tip).clicked() && self.triple_monitors.is_none() {
+                    self.triple_monitors = Some([
+                        names.first().cloned().unwrap_or_default(),
+                        names.get(1).cloned().unwrap_or_default(),
+                        names.get(2).cloned().unwrap_or_default(),
+                    ]);
+                }
+                if let Some(monitors) = &mut self.triple_monitors {
+                    for (n, slot) in monitors.iter_mut().enumerate() {
+                        let side = ["Left", "Centre", "Right"][n];
+                        let mut options = names.clone();
+                        if !slot.is_empty() && !options.contains(slot) {
+                            options.push(slot.clone());
+                        }
+                        ui.horizontal(|ui| {
+                            ui.label(side);
+                            ComboBox::from_id_salt(format!("triple monitor {n}"))
+                                .width(QUALITY_FIELD)
+                                .selected_text(if slot.is_empty() { side.to_owned() } else { slot.clone() })
+                                .show_ui(ui, |ui| {
+                                    for name in &options {
+                                        ui.selectable_value(slot, name.clone(), name);
+                                    }
+                                });
+                        });
+                    }
+                    if names.len() < 3 {
+                        ui.colored_label(
+                            WARN,
+                            format!(
+                                "Only {} monitor{} in reach: plug in three to drive one window a monitor",
+                                names.len(),
+                                if names.len() == 1 { "" } else { "s" }
+                            ),
+                        );
+                    }
+                }
+            });
+            ui.end_row();
+
+            if let Some(rig) = self.triple_rig() {
+                let tip = "The centre screen's horizontal field of view that shows the world at its true size at \
+                           this distance";
+                let fov = rig.true_fov(self.monitor_aspect).to_degrees();
+                ui.label("True field of view").on_hover_text(tip);
+                ui.horizontal(|ui| {
+                    let mut text = format!("{fov:.0}° at this distance");
+                    if self.triple_angle.is_none() {
+                        let side = rig.side_angle(self.monitor_aspect).to_degrees();
+                        text += &format!(", side screens at {side:.0}°");
+                    }
+                    ui.label(text).on_hover_text(tip);
+                    let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
+                    if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
+                        self.fov =
+                            fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
+                    }
+                });
+                ui.end_row();
+            }
+        });
+        if self.triple {
+            ui.colored_label(
+                Color32::GRAY,
+                "The field-of-view sliders set the centre screen's field of view in triple mode.",
+            );
+        }
     }
 
     /// The Quality section: the presets, then each choice with its tip on hover.

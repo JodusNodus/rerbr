@@ -14,6 +14,7 @@ use rbr_gameplay::weather::{self, Draws, Preset, Weather};
 use rbr_render::glass::model::Switch;
 use rbr_render::renderer::{Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
+use rbr_render::triple::Rig;
 use rbr_school::Lesson;
 use rbr_sound::mixer::Volumes;
 
@@ -69,6 +70,20 @@ fn perf_log_args(on: bool, dir: &Path) -> Vec<String> {
     } else {
         Vec::new()
     }
+}
+
+/// The viewer's triple-screen arguments for `rig`: `--triple` with the rig's text when on (windowed or
+/// fullscreen), and `--triple-monitors` with the three monitors' names when on, fullscreen and set (one
+/// borderless fullscreen window a monitor; without it, triple renders into the one window split in thirds).
+pub fn triple_args(rig: Option<Rig>, monitors: Option<&[String; 3]>, fullscreen: bool) -> Vec<String> {
+    let Some(rig) = rig else { return Vec::new() };
+    let mut args = vec!["--triple".to_owned(), rig.arg()];
+    if fullscreen {
+        if let Some(monitors) = monitors {
+            args.extend(["--triple-monitors".to_owned(), monitors.join(",")]);
+        }
+    }
+    args
 }
 
 /// The viewer's `--render-scale` arguments for `percent`, none at full size.
@@ -690,6 +705,7 @@ impl Form {
         let max_fps = (self.max_fps > 0).then(|| ["--max-fps".to_owned(), self.max_fps.to_string()]);
         let mirrors = ["--mirrors".to_owned(), self.graphics.mirrors.name()];
         let fullscreen = self.fullscreen.then(|| "--fullscreen".to_owned());
+        let triple = triple_args(self.triple_rig(), self.triple_monitors.as_ref(), self.fullscreen);
         let hdr = (self.hdr && rbr_render::present::HDR_OFFERED).then(|| "--hdr".to_owned());
         let perf_log = perf_log_args(self.perf_log, &self.logs_dir());
         let upscale = (self.upscale_textures && self.upscaler)
@@ -715,6 +731,7 @@ impl Form {
             .chain(max_fps.into_iter().flatten())
             .chain(mirrors)
             .chain(fullscreen)
+            .chain(triple)
             .chain(hdr)
             .chain(perf_log)
             .chain(upscale.into_iter().flatten())
@@ -881,7 +898,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 9] = [
+    const COMMAND_CASES: [(&str, &str); 11] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -904,6 +921,16 @@ mod tests {
         (
             "RSF car and stage",
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 129\nngp_physics = {ngp}\nghost = best\n",
+        ),
+        (
+            "triple screens",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ntriple = on\ntriple_diagonal = 32\n\
+             triple_bezel = 8\ntriple_distance = 65\ntriple_angle = 45\nfullscreen = off\n",
+        ),
+        (
+            "triple screens on three monitors",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\ntriple = on\n\
+             triple_monitors = HDMI-1,DP-1,HDMI-2\n",
         ),
         (
             "force feedback sensitivity",
@@ -1391,6 +1418,26 @@ mod tests {
         assert_eq!(args(Some("Janne")), format!("{head} Janne {tail}"));
         assert_eq!(args(Some(ORIGINAL_VOICE)), "");
         std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// Triple screens reach the viewer as `--triple` with the rig's text, and `--triple-monitors` with the three
+    /// names when on, fullscreen and set; off, nothing.
+    #[test]
+    fn triple_args_name_the_rig_and_its_monitors() {
+        use rbr_render::triple::Rig;
+        let rig = Rig { diagonal: 27.0, bezel: 10.0, distance: 70.0, angle: None };
+        let monitors = ["HDMI-1".to_owned(), "DP-1".to_owned(), "HDMI-2".to_owned()];
+        assert!(triple_args(None, None, true).is_empty());
+        assert!(triple_args(None, Some(&monitors), true).is_empty());
+        assert_eq!(triple_args(Some(rig), None, true), ["--triple", &rig.arg()]);
+        assert_eq!(triple_args(Some(rig), None, false), ["--triple", &rig.arg()]);
+        let turned = Rig { angle: Some(45.0), ..rig };
+        assert_eq!(
+            triple_args(Some(turned), Some(&monitors), true),
+            ["--triple", "27,10,70,45", "--triple-monitors", "HDMI-1,DP-1,HDMI-2"]
+        );
+        // Windowed, the monitors stay out: triple renders into the one window split in thirds.
+        assert_eq!(triple_args(Some(turned), Some(&monitors), false), ["--triple", "27,10,70,45"]);
     }
 
     #[test]

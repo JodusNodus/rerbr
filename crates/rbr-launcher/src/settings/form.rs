@@ -13,7 +13,9 @@ use rbr_sound::custom_codriver;
 
 use crate::catalog::{self, Catalog, TyreChoice};
 use crate::controls_page::ControlsPage;
-use crate::graphics_page::{Graphics, HudChoice, DEFAULT_GRAPHICS};
+use crate::graphics_page::{
+    Graphics, HudChoice, DEFAULT_GRAPHICS, TRIPLE_BEZEL_DEFAULT, TRIPLE_DIAGONAL_DEFAULT, TRIPLE_DISTANCE_DEFAULT,
+};
 use crate::pages::Page;
 use crate::school_page::SchoolPage;
 use crate::setup_page::SetupPage;
@@ -250,6 +252,14 @@ impl Form {
             present: settings.present.map_or_else(Present::default, Present::offered),
             max_fps: settings.max_fps.unwrap_or(0),
             fullscreen: settings.fullscreen.unwrap_or(true),
+            triple: settings.triple.unwrap_or(false),
+            triple_diagonal: settings.triple_diagonal.unwrap_or(TRIPLE_DIAGONAL_DEFAULT),
+            triple_bezel: settings.triple_bezel.unwrap_or(TRIPLE_BEZEL_DEFAULT),
+            triple_distance: settings.triple_distance.unwrap_or(TRIPLE_DISTANCE_DEFAULT),
+            triple_angle: settings.triple_angle.unwrap_or(None),
+            triple_monitors: settings.triple_monitors.clone(),
+            monitors: Vec::new(),
+            monitor_aspect: 16.0 / 9.0,
             hdr: settings.hdr.unwrap_or(false),
             perf_log: settings.perf_log.unwrap_or(false),
             start_time: settings.start_time.unwrap_or_default(),
@@ -352,6 +362,12 @@ impl Form {
             present: Some(self.present),
             max_fps: Some(self.max_fps),
             fullscreen: Some(self.fullscreen),
+            triple: Some(self.triple),
+            triple_diagonal: Some(self.triple_diagonal),
+            triple_bezel: Some(self.triple_bezel),
+            triple_distance: Some(self.triple_distance),
+            triple_angle: Some(self.triple_angle),
+            triple_monitors: self.triple_monitors.clone(),
             hdr: Some(self.hdr),
             perf_log: Some(self.perf_log),
             start_time: Some(self.start_time),
