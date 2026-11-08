@@ -617,8 +617,9 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   the peak exceeds the brake torque: the wheels settle at slip 0.5-0.8, one side locks, the autopilot steers against
   the yaw (full lock below 7 m/s at 100 km/h), and the deepest target is the best (1.04).
 - K 0.2 is not an ABS: the one pedal holds the most-slipping wheel at 0.2 and under-brakes the rest, so NGP, with no
-  berm, also scores 1.18 / 1.30 locked over K 0.2. The scorecard's locked-over-ABS rows take K 0.2 (the low slip an
-  ABS holds) and keep the best target as context; neither separates the models well.
+  berm, also scores 1.18 / 1.30 locked over K 0.2. The scorecard's locked-over-ABS rows now take the per-wheel ABS
+  at K 0.15 ([A per-wheel ABS in the brake test](#a-per-wheel-abs-in-the-brake-test)); K 0.2 and the best target
+  stay as context.
 - Level: every NGP-level variant brakes 0.77-1.0 g on gravel and 0.92-1.07 g on snow, against 0.47-0.66 / 0.31-0.35 g:
   NGP's loose peak is already 1.3-1.5 times the published gravel peaks. Peaks × 0.75 (gravel peak ≈ 0.62, inside
   0.54-0.67) with the berm brakes 0.73-0.87 g and locks every wheel, the ratio 1.24-1.29 against the best target; flat
@@ -670,7 +671,7 @@ lower bound: it includes the pedal rise). Every braking series is road cars on r
 | Target | Value and conditions | Source (precision) | How ReRBR reproduces it (run, car, metric) | Tooling missing |
 | --- | --- | --- | --- | --- |
 | Locked-wheel braking on gravel | 0.47-0.59 g, 9 light vehicles, 56 km/h, 5 cm #617 crushed limestone, shortest of 3 stops; 0.59-0.66 g, 7 SUVs, pickups and cars, 50 km/h, freshly graded silty sandy gravel; 0.53-0.64, Polo, 40-80 km/h compacted; no speed trend over 40-80 km/h. NGP (declutched brake test, RSF 345): 0.63 g from 50 km/h, 0.77 g from 100 km/h | NHTSA DOT HS 808 875 Tables A1/A2 (table; g inferred); Macnabb et al. ESV 98-S2-W-36 Table 4 (table, accelerometer); Proctor-Parker SATC 2019 Table 1 (table; g inferred) | `harness/brake_test.py` on RSF 345 from 40-80 km/h, Fiesta Rally2; the locked run's mean decel | none |
-| Locked over ABS on gravel | decel ratio 1.25 laden / 1.30 light, per car 1.12-1.42; 1.21-1.59 per car. Same method on wet Jennite (hard, SN 30/10): 0.54-0.62. NGP: tyre locked 0.82 of peak; brake test locked over best threshold decel 0.86 (50 km/h) / 0.91 (100 km/h) | NHTSA Tables A1/A2 (table; ratio inferred, reproduces SAE 1999-01-1287 Table 2); Macnabb Table 4 (table; ratio inferred) | `harness/brake_test.py`: declutched locked against `--brake-slip` K 0.1-0.7 on the same stretch; ratio of mean decel | none (one pedal: a driver's threshold braking, not per-wheel ABS) |
+| Locked over ABS on gravel | decel ratio 1.25 laden / 1.30 light, per car 1.12-1.42; 1.21-1.59 per car. Same method on wet Jennite (hard, SN 30/10): 0.54-0.62. NGP: tyre locked 0.82 of peak; brake test locked over best threshold decel 0.86 (50 km/h) / 0.91 (100 km/h) | NHTSA Tables A1/A2 (table; ratio inferred, reproduces SAE 1999-01-1287 Table 2); Macnabb Table 4 (table; ratio inferred) | `harness/brake_test.py`: declutched locked against `--brake-abs` K 0.15 (per-wheel ABS) on the same stretch; ratio of mean decel | none |
 | Gravel against tarmac, braking | same car locked gravel / ABS asphalt 0.69-0.84; tarmac reference by the same method: ABS wet asphalt (SN 85/65) 0.69-0.84 g from 80 km/h, dry concrete 0.69-0.88 g from 97 km/h. NGP, declutched, same speeds: locked gravel (345) / locked tarmac (568) 0.71 at 100 km/h, 0.59 at 50; locked gravel / best threshold tarmac 0.59 / 0.50 (rally tyres, the published pairs road tyres) | Macnabb Tables 3-4 (table; ratio inferred); NHTSA Tables A1/A2 (table; g inferred) | `harness/brake_test.py` at one speed on 345 and 568, same car; ratio | none |
 | Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g. NGP: not measured at car level (tyre peak 0.83) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
 | Trail-brake by an expert on gravel | Group A Impreza STI (AWD, 340 bhp), track gravel, 80-90° corner: 77 → 23 km/h over 1.05-4.05 s (0.51 g mean, 0.66 g peak over 0.5 s), rear-axle slip angle 42° at 4 s, back to 0 by 5 s; pendulum turn −29° → +63°, 0.59 g peak | Velenis et al. MED 2007 Figs 3, 5 (fig ±1 km/h, ±1°; digitised by pixel; inputs normalised); no data release found | RSF Impreza GC8 555 GrpA on a gravel 80-90° corner, inputs of the same shape; speed and rear-axle slip angle traces | a payload writer from an input CSV, assumed steering, brake and throttle scales, a matching corner; shape check only |
@@ -736,12 +737,12 @@ above, `id,surface,level,metric,conditions,low,high,unit,source,precision,how`; 
   its line in `TYRE_MODEL`. Steady forces at 15 m/s, flat, no sinking and no soil force (the sweep, not
   `ngp_transient`'s whole step); the pea-stone rows (measured at 1-1.5 m/s) are taken at 15 m/s and 6.7 kN.
 - `tyre-ratio:A/B:KEY`: surface A's key over B's.
-- `brake:SURFACE:KMH:locked_g|best_g|ratio|ratio_kK`: `brake_test.py`'s declutched runs (gravel RSF 345, tarmac RSF
-  568, snow map 10, ice RSF 504 iced from the brake onset, its decel on the flat, slip targets 0.05-0.3), full pedal
-  against slip targets 0.1-0.7; ratio = locked decel / best threshold decel, ratio_kK
-  locked over the target K's (one pedal, not ABS). The locked-over-ABS rows take K 0.2, the low slip an ABS holds;
-  the best-target ratios stay as context rows (both bounds empty: printed CTX, not scored). One pedal at K 0.2
-  under-brakes the less slipping wheels, so it is a weak ABS: NGP, with no berm, scores 1.18 / 1.28 on gravel.
+- `brake:SURFACE:KMH:locked_g|best_g|ratio|ratio_kK|ratio_absK`: `brake_test.py`'s declutched runs (gravel RSF 345,
+  tarmac RSF 568, snow map 10, ice RSF 504 iced from the brake onset, its decel on the flat, slip targets 0.05-0.3),
+  full pedal against slip targets 0.1-0.7; ratio = locked decel / best threshold decel, ratio_kK locked over the
+  target K's (one pedal), ratio_absK locked over the per-wheel ABS at K (`--brake-abs`, a run per K the rows name).
+  The locked-over-ABS rows (gravel 50/80, tarmac 50) take ABS K 0.15; the K 0.2 and best-target ratios stay as
+  context rows (both bounds empty: printed CTX, not scored).
 - `coast:SURFACE:crr|crr_free`: `coast_test.py` from 60 km/h (tarmac RSF 568, gravel RSF 345, snow map 10, ice RSF
   568 on 116 from the lift; [Rolling resistance](#rolling-resistance)).
 - `brake-ratio:A/B:KMH:X/Y`, `circle:gravel:lat_g` (`car_pace.analyse_circle` on the gravel probe run, 40000 steps,
@@ -774,6 +775,34 @@ unchanged, as are the car decels: the stops find the peak whatever the stiffness
 gravel and snow rows identical; snow braking from 50 km/h ngp 0.875 / 0.791 g, brush 0.922 / 1.059 g (threshold /
 locked).
 
+
+### A per-wheel ABS in the brake test
+
+- Hook: `rbr_hybrid::ngp::set_brake_scale` (thread-local, `None` by default) multiplies each wheel's pedal pressure
+  (`x + 0x60`) at `brake_step`'s one call site (`rbr-hybrid/src/ngp/steps.rs`). Unset, the read is NGP's: rsf_compare
+  drive2/5 physics 84084/84084 and the merge gate equal. Only the autopilot sets it, for one drive (NGP cars only).
+- Controller (`--brake-abs K`, `autopilot::Brake::Abs`): a 0.2 s declutched lift first, whose second half gives each
+  wheel's free-rolling |ωR| / v (an ABS learns its rolling radii); then the full pedal, and each step (720 Hz) a
+  wheel more than 0.02 over K from free rolling has its pressure scale dumped at 20 /s, one more than 0.02 under
+  reapplied at 5 /s, in between held. The reference matters: declutched coasts read 1 - |ωR| / v 0.054-0.061 on 345
+  gravel and 0.022-0.028 on 568 tarmac at every speed over 4 m/s; the raw ratio at K 0.15 is free-rolling 0.09 on
+  gravel and gave NGP 1.67-1.80.
+- K 0.15: the middle of the 0.1-0.2 slip a 1990s ABS regulates about (Burckhardt 1993), as the NHTSA and Macnabb
+  fleets ran.
+- Measured (Fiesta Rally2, declutched; locked g, ABS K 0.15 g, locked / ABS; best single-pedal target's ratio):
+
+| | gravel 50 | gravel 80 | tarmac 50 | tarmac 80 |
+| --- | --- | --- | --- | --- |
+| ngp | 0.628, 0.573, **1.095**; 0.858 | 0.708, 0.658, **1.076**; 0.857 | 1.062, 1.232, **0.862**; 0.844 | 1.086, 1.295, 0.839; 0.834 |
+| experimental-brush | 0.892, 0.644, **1.385**; 1.162 | 0.926, 0.772, **1.199**; 1.077 | 1.093, 1.316, **0.831**; 0.849 | 1.041, 1.330, 0.783; 0.792 |
+
+  Targets: gravel 1.12-1.59 (ngp MISS by 0.03 / 0.04, brush PASS), tarmac 0.58-0.885 (both PASS; wet Jennite by the
+  gravel method 0.54-0.62). At K 0.1 / 0.2 gravel gives ngp 1.33 / 0.99 (50) and the brush 1.57 / 1.34: the ratio
+  follows K steeply on NGP's gravel curve, so the band call for ngp rests on K.
+- Wheels under ABS K 0.15 (slip from free rolling, mean; cycle rate, upward crossings of K + 0.02): fronts 0.12-0.14,
+  3-13 Hz (ngp gravel 3-8, tarmac 7-10; brush gravel 6-10, tarmac 8-13); rears 0.09-0.13, at full pressure most of
+  the stop (the brake balance leaves them under K), 0-4 Hz. The law dumps at K + 0.02, so the fronts hold 0.01-0.02
+  under K. Unit check: `the_abs_holds_each_wheels_slip_from_free_rolling` (toy wheel, rim read 6 % low).
 
 ## Open
 
@@ -814,16 +843,10 @@ locked).
   single-pedal target, but at NGP's grip level the locked braking is 0.89-0.98 g against the published 0.47-0.66 g;
   meeting the level needs a lower loose grip level (a product decision, the trade-off table in
   [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)). Also open: the berm's shape against slip (unpublished), an
-  ABS model for the locked-over-ABS ratio (one pedal at K 0.2 under-brakes, so NGP scores 1.18-1.30 too), a spinning
+  ABS's own μ-slip on gravel (the scorecard's ABS is ours, K 0.15 from free rolling), a spinning
   tyre's sinkage resistance, the berm against the layer's thickness, and snow (same model, not tuned; 1.06 g full
   pedal against 0.31-0.35 g).
 - loose-v1 open items:
   - A partial pedal holds a wheel creeping on the berm's ramp, and the engine stalls through the clutch help (the
     Golf, RSF 104; [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
   - Eb is 1-4 % faster than ngp on soil.
-- A per-wheel ABS for the brake test (not built):
-  - Hook: `brake_step` has one call site, `rbr-hybrid/src/ngp/steps.rs`, for every dispatch. A thread-local
-    per-wheel pedal scale beside `set_tyre_model` would multiply `pedal_pressure` (`x + 0x60`) only when set. Unset,
-    the read is untouched, so ngp stays bit-exact (rsf_compare and the hybrid check prove it).
-  - Controller: an autopilot `Brake::Abs` cuts each wheel's scale above its slip target and restores it below.
-  - Measurement: a `brake_test.py` mode and an `abs_kK` scorecard key.

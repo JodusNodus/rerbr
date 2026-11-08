@@ -18,7 +18,8 @@ context: measured and printed (CTX), not scored. The `how` keys:
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
-                          over the threshold run at slip K's: an ABS holds low slip, not the best K); gravel RSF 345,
+                          over the threshold run at slip K's, one pedal), ratio_absK (locked decel over the per-wheel
+                          ABS run at K's, `--brake-abs K`: a run per K the rows name); gravel RSF 345,
                           tarmac RSF 568, snow map 10, ice RSF 504's start straight iced from the brake onset
                           (`--material-as 116`: the run-up on its tarmac; off the road is ice too, so a stop may
                           wander 15 m off the driveline), its decel taken on the flat (less g times the straight's
@@ -101,7 +102,7 @@ def load_targets():
 
 def quick_row(row):
     how = row["how"]
-    return how.startswith("tyre") or re.fullmatch(r"brake:(gravel|tarmac):50:\w+", how) is not None
+    return how.startswith("tyre") or re.fullmatch(r"brake:(gravel|tarmac):50:[\w.]+", how) is not None
 
 
 def bound(text):
@@ -124,6 +125,7 @@ class Plan:
     def __init__(self, physics, hows, work, slips):
         self.physics, self.work, self.slips = physics, work, slips
         self.probes, self.tyres, self.brakes, self.coasts, self.circle = set(), set(), set(), set(), False
+        self.abs = {}  # (surface, km/h): the per-wheel ABS targets K the rows name
         for how in hows:
             kind, rest = how.split(":", 1)
             if kind == "tyre":
@@ -131,8 +133,10 @@ class Plan:
             elif kind == "tyre-ratio":
                 self.tyres.update(rest.split(":")[0].split("/"))
             elif kind == "brake":
-                surface, kmh, _ = rest.split(":")
+                surface, kmh, what = rest.split(":")
                 self.brakes.add((surface, int(kmh)))
+                if what.startswith("ratio_abs"):
+                    self.abs.setdefault((surface, int(kmh)), set()).add(what[9:])
             elif kind == "brake-ratio":
                 pair, kmh, _ = rest.split(":")
                 self.brakes.update((s, int(kmh)) for s in pair.split("/"))
@@ -163,8 +167,7 @@ class Plan:
         args = types.SimpleNamespace(rsf_car=CAR, physics=self.physics, steps=b["steps"], top_speed=80.0,
                                      clutch_out=False, out=self.work, extra=b["extra"], rsf_stage=b["rsf_stage"],
                                      stage=b["stage"], **{"from": frm})
-        runs = [("locked", ["--brake-pedal", "1"])] + [(f"k{k}", ["--brake-slip", k])
-                                                       for k in self.slips_of(surface).split(",")]
+        runs = brake_test.runs_for(self.slips_of(surface), self.abs_of(surface, kmh))
         for name, brake in runs:
             full = f"brake-{surface}-{kmh}-{name}"
             yield brake_test.command(args, full, brake), os.path.join(self.work, full + ".log")
@@ -185,6 +188,9 @@ class Plan:
 
     def slips_of(self, surface):
         return BRAKE_STAGES[surface]["slips"] or self.slips
+
+    def abs_of(self, surface, kmh):
+        return ",".join(sorted(self.abs.get((surface, kmh), ())))
 
     def jobs(self):
         out = [self.probe_job(s) for s in sorted(self.probes)]
@@ -218,14 +224,17 @@ class Plan:
             frm = round(kmh / 3.6, 2)
             runs = {}
             b = BRAKE_STAGES[surface]
-            for name in ["locked"] + [f"k{k}" for k in self.slips_of(surface).split(",")]:
+            for name, _ in brake_test.runs_for(self.slips_of(surface), self.abs_of(surface, kmh)):
                 trace = os.path.join(self.work, f"brake-{surface}-{kmh}-{name}.trace")
-                result = (brake_test.analyse(trace, frm, b["max_off"]) if os.path.exists(trace)
+                target = float(name[3:]) if name.startswith("abs") else None
+                result = (brake_test.analyse(trace, frm, target, max_off=b["max_off"]) if os.path.exists(trace)
                           else {"ok": False, "reason": "no trace"})
                 decel = "decel_flat" if b["flat"] else "decel"
                 runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result[decel] / G,
                                "grade": result["grade"]} if result["ok"] else {"error": result["reason"]})
-            ok = {k: v for k, v in runs.items() if k != "locked" and "g" in v}
+                if result.get("wheels"):
+                    runs[name]["wheels"] = result["wheels"]  # each wheel's mean slip and ABS cycle rate (Hz)
+            ok = {k: v for k, v in runs.items() if k.startswith("k") and "g" in v}
             best = min(ok, key=lambda k: ok[k]["dist"]) if ok else None
             self.brake[(surface, kmh)] = {"runs": runs, "best": best}
 
@@ -264,7 +273,7 @@ class Plan:
             surface, kmh, what = rest.split(":")
             if what == "ratio":
                 return self.brake_g(surface, int(kmh), "locked") / self.brake_g(surface, int(kmh), "best")
-            if what.startswith("ratio_k"):
+            if what.startswith(("ratio_k", "ratio_abs")):
                 return self.brake_g(surface, int(kmh), "locked") / self.brake_g(surface, int(kmh), what[6:])
             return self.brake_g(surface, int(kmh), what.removesuffix("_g"))
         if kind == "brake-ratio":
