@@ -584,6 +584,8 @@ fn main() {
     // The game's longitudinal carcass stiffness (ours, 450 kN/m at the calibration pressure), at the pressure
     // factor (`rbr_tyre::car`).
     let k_x = brush::carcass_x(&cal, f64::from(base.stiffness_factor));
+    // The brush's lateral carcass: NGP's moved to the published pressure law (`rbr_tyre::car`).
+    let k_y_cand = brush::carcass_y(&cal, k_y, f64::from(base.stiffness_factor));
     let cy_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cy0, M_CY, &cal);
     let cx_fz0 = brush::stiffness_at(fz0, point.t_cal, point.d_cal, point.pf_cal, cal.cx0, M_CX, &cal);
     let ngp_sigma = lat_rows[2].calpha / k_y;
@@ -591,7 +593,8 @@ fn main() {
     let mut sigma_rows: Vec<(f64, f64, f64)> = Vec::new();
     for vv in [5.0, 10.0, 20.0, 30.0] {
         // At zero slip the secant is the stiffness: Rill's relaxation length C/k + V d/k.
-        let (sy, sx) = brush::sigma_lengths(cy_fz0 + vv * brush::DAMPING_Y, cx_fz0 + vv * brush::DAMPING_X, k_y, k_x);
+        let (sy, sx) =
+            brush::sigma_lengths(cy_fz0 + vv * brush::DAMPING_Y, cx_fz0 + vv * brush::DAMPING_X, k_y_cand, k_x);
         sigma_csv.push_str(&format!("{vv:.0},{ngp_sigma:.4},{sy:.4},{sx:.4}\n"));
         sigma_rows.push((vv, sy, sx));
     }
@@ -874,12 +877,12 @@ fn main() {
         let o = dry_opts();
         let spin = -vx / r;
         let steady = cand_forces(&base, &cloud, fz0, vsy, vx, spin, &o, &cal);
-        let sig_y = (steady.ky + vr * brush::DAMPING_Y) / k_y;
+        let sig_y = (steady.ky + vr * brush::DAMPING_Y) / k_y_cand;
         let dt = 1.0 / 720.0;
         let mut s = brush::TransState::default();
         let mut dist = 0.0;
         for _ in 0..7200 {
-            let (_, fy) = brush::step_dynamic(&mut s, &steady, vr, k_x, k_y, steady.mu * fz0, dt);
+            let (_, fy) = brush::step_dynamic(&mut s, &steady, vr, k_x, k_y_cand, steady.mu * fz0, dt);
             dist += vv * dt;
             if fy / steady.fy >= 0.63 {
                 break;

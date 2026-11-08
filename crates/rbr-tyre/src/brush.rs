@@ -440,10 +440,26 @@ pub const DAMPING_Y: f64 = 425.0;
 /// Kx of 222 kN at Fz0 (Kx/Fz 32.9 at 6.75 kN), more than twice ours at 4 kN.
 pub const CARCASS_X: f64 = 450_000.0;
 
-/// The longitudinal carcass stiffness, N/m, at the pressure factor `pf` (NGP's StfFct): [`CARCASS_X`] moved with
-/// the slip stiffnesses, as NGP's stiffness factor moves c_y. No load term.
+/// The carcass stiffnesses against the inflation pressure, as powers of NGP's stiffness factor `pf` (StfFct, which
+/// moves the slip stiffnesses and NGP's own carcass alike): the carcass stiffens faster than the slip stiffness
+/// laterally and slower longitudinally. Per +0.5 bar c_y +9.5 % (op het Veld, MSc TU/e 2008, Flatplank, measured) and
+/// +13-16 % (MF 6.1's PCFY3 at 2.6-2.0 bar), c_x +3.5 % and +4.2-4.4 % (PCFX3); NGP's factor (one table for every
+/// tyre, 0.9 at 1.5 bar to 1.1 at 3 bar) rises 6.9 % from 2.0 bar, so the means, +12 % and +3.9 %, are its powers 1.7
+/// and 0.6. So the lateral relaxation length C_y/c_y shortens with pressure, as both sources' does (-12 % and -21 to
+/// -26 %), though less: their cornering stiffness falls with pressure at 4 kN, NGP's rises (the data disagree there).
+pub const CARCASS_Y_PRESSURE: f64 = 1.7;
+pub const CARCASS_X_PRESSURE: f64 = 0.6;
+
+/// The longitudinal carcass stiffness, N/m, at the pressure factor `pf`: [`CARCASS_X`] times its pressure power
+/// ([`CARCASS_X_PRESSURE`]). No load term.
 pub fn carcass_x(cal: &Calibration, pf: f64) -> f64 {
-    CARCASS_X * (pf / cal.pf_cal)
+    CARCASS_X * libm::pow(pf / cal.pf_cal, CARCASS_X_PRESSURE)
+}
+
+/// The lateral carcass stiffness, N/m, at the pressure factor `pf`, from NGP's `k_y` at it (which moves with `pf`):
+/// moved to its pressure power ([`CARCASS_Y_PRESSURE`]).
+pub fn carcass_y(cal: &Calibration, k_y: f64, pf: f64) -> f64 {
+    k_y * libm::pow(pf / cal.pf_cal, CARCASS_Y_PRESSURE - 1.0)
 }
 
 /// The transient state: the carcass deflections along the slips, m (Rill's x_e, y_e). The force they hold is
@@ -817,6 +833,17 @@ mod tests {
         let mut st = TransState { ux: 1.0, uy: 1.0 };
         let (fx, fy) = step_dynamic(&mut st, &steady, 15.0, 70000.0, 70000.0, 5000.0, 1.0 / 720.0);
         assert!(((fx * fx + fy * fy).sqrt() / 5000.0 - 1.0).abs() < 1e-12, "{fx} {fy}");
+    }
+
+    #[test]
+    fn the_lateral_relaxation_length_shortens_with_pressure() {
+        // NGP's factor +6.9 % (2.0 to 2.5 bar): c_y +12 %, c_x +3.9 %, both unchanged at the calibration pressure.
+        let (cal, pf) = (synth_cal(), 1.0667);
+        assert_eq!((carcass_x(&cal, 1.0), carcass_y(&cal, 150e3, 1.0)), (CARCASS_X, 150e3));
+        let (cy, cx) = (carcass_y(&cal, 150e3 * pf, pf) / 150e3, carcass_x(&cal, pf) / CARCASS_X);
+        assert!((cy - 1.116).abs() < 0.002 && (cx - 1.0396).abs() < 0.001, "{cy} {cx}");
+        // sigma_y = C_y/c_y: the slip stiffness moves with the factor, the carcass faster.
+        assert!(pf / cy < 0.96);
     }
 
     /// The synthetic tyre's longitudinal carcass stiffness.

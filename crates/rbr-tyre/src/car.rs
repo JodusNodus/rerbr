@@ -82,14 +82,14 @@ impl Model for Brush {
             surf_kinetic: f64::from(x.grip),
         };
         let steady = if soil { loose::eval(&e, &t.loose) } else { brush::eval(&e, &t.cal) };
-        // The longitudinal carcass stiffness (ours), at the pressure (the carcass does not soften on ice); the lateral
-        // one NGP's.
+        // The carcass stiffnesses at the pressure (the carcass does not soften on ice): the longitudinal one ours, the
+        // lateral one NGP's moved to the published pressure law.
         let k_x = brush::carcass_x(&t.cal, pressure_factor);
+        let k_y = brush::carcass_y(&t.cal, f64::from(x.lateral_stiffness), pressure_factor);
         let mut state = t.state;
         let limit = steady.mu * e.fz;
         let vr = e.spin * e.radius;
-        let (fx, fy) =
-            brush::step_dynamic(&mut state, &steady, vr, k_x, f64::from(x.lateral_stiffness), limit, f64::from(x.dt));
+        let (fx, fy) = brush::step_dynamic(&mut state, &steady, vr, k_x, k_y, limit, f64::from(x.dt));
         if !(fx.is_finite() && fy.is_finite() && steady.trail.is_finite()) {
             t.running = false;
             return None;
