@@ -6,6 +6,7 @@ use std::path::Path;
 use rbr_gameplay::control::QuantizedControl;
 use rbr_gameplay::markers::MarkerSettings;
 use rbr_hybrid::pure;
+use rbr_physics::car_body::store::CarStore;
 use rbr_physics::ngp::layout::stage as ngp_stage;
 use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::snapshot::Snapshot;
@@ -131,9 +132,10 @@ const CAR_DRIVE: u32 = 0x4b0;
 
 /// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
 /// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m), the
-/// steering (-1-1), the engine speed the gear gives with the clutch engaged (rad/s, 0 in neutral) and the wheels'
-/// rim speeds |ωR| (m/s, FL FR RL RR, `Sense::wheels`).
-const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr";
+/// steering (-1-1), the engine speed the gear gives with the clutch engaged (rad/s, 0 in neutral), the wheels'
+/// rim speeds |ωR| (m/s, FL FR RL RR, `Sense::wheels`) and the steering's filtered force-feedback torque (car `+0xaec`,
+/// before NGP's curve; read only).
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr ffb";
 
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
@@ -271,7 +273,7 @@ pub fn drive(
             writeln!(
                 trace,
                 "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0} {:.3} {:.3} \
-                 {:.3} {:.3}",
+                 {:.3} {:.3} {:.3}",
                 sense.pose.speed(),
                 sense.gear,
                 sense.engine,
@@ -283,6 +285,7 @@ pub fn drive(
                 sense.wheels[1],
                 sense.wheels[2],
                 sense.wheels[3],
+                mem.ffb_torque(mem.u32(pure::CAR_PTR)).value,
             )
             .map_err(|e| format!("{path}: {e}"))?;
         }
