@@ -968,7 +968,11 @@ rows unchanged.
   4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
   (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
 - Aligning moment level and patch: t0/a 0.30 against the sets' 0.36-0.51 and peak Mz/(μ Fz a) 0.107 against 0.19-0.26
-  would make the steering 1.2-2.4 times heavier near the Mz peak than NGP's: a force-feedback level decision, left.
+  stay brush theory's (below; meeting them would make the steering 1.2-2.4 times heavier near the Mz peak). In game
+  (`ffb` column, Fiesta Rally2, map 41) the brush's torque is about 10 % lighter than NGP's at 0.3-0.8 g (mean |ffb|
+  126 / 183 / 224 against 138 / 209 / 249), and NGP's curve output is above 0.95 on 19 % of the steps against 21 %
+  (r40 circle on map 85: 64 % against 83 %) at the default S 105, under 1 % at 250 % tarmac (S 262.5); the 10000
+  clamp is never reached (2026-11-08).
   The load dependence is in band: NGP's patch grows ∝ Fz^0.57 (MF-Swift 0.59-0.64), so with the trail's own
   (Fz/Fz0)^0.35 t0 ∝ Fz^0.95.
   The level through physics (2026-11-08, numeric brush, 4 kN, a 0.074 m, Cy 70.4 kN/rad, μ 1.26; prototype, not
