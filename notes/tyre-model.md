@@ -634,7 +634,8 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   at 0.75 brakes 0.55-0.70 g, inside the band, with no ploughing. The cost: the circle at 0.547 g or no latch (the
   autopilot never settles on the circle), RSF 111 +0.6 %, RSF 112 +1.4 % (berm from the full slide) to +10 % (berm
   from 0.8 or flat: splits 107.7 / 292.0 against 105.9 / 273.8, time lost in the second section; the autopilot is
-  not tuned to the grip). The grip level is the user's decision (2026-11-08: stays NGP's for now).
+  not tuned to the grip). The grip level is the user's decision (2026-11-08: stays NGP's for now; the gravel
+  braking and road-tyre rows are lower bounds for a rally tyre, [Car-level targets](#car-level-targets-on-loose-surfaces)).
 - Standstill (berm from 0.8, Fiesta Rally2, RSF 345 gravel): no creep, no movement after 1 s. After a stop from 50
   km/h, the peak speed per half second is 0.292/0.015/0.006/0 m/s at full pedal (NGP 0.293/0.014/0.001/0) and
   0.296/0.029/0.003/0 at a 0.35 pedal (NGP 0.296/0.043/0.001). From the full slide it rang to 0.061/0.019.
@@ -720,6 +721,11 @@ Measured whole-car behaviour (and per-tyre forces where open) on gravel, snow an
 model against data rather than feel. Research only (2026-11-07, second round); the full findings, sources, digitised
 traces and scripts are kept outside the repository (not in git). Labels as above; g from a stop is v²/2s (inferred, a
 lower bound: it includes the pedal rise). Every braking series is road cars on road tyres; none is a rally tyre.
+The scorecard takes those gravel levels as lower bounds for a rally tyre (decision 2026-11-08): a raced line alone
+grips about 1.2 times the loose windrow (TR-10-11 Table 3), and a WRC car's 0.6-0.7 g lateral (CW) times the measured
+locked/lateral 1.3-1.5 gives 0.8-1.0 g locked (inferred). CW's WRC tyre μ_y ≲ 0.67, the one rally-tyre level, stays an
+upper bound. NGP gives a car's tyre no era: `Performance_NGP` is 1.0 on 38 of the 42 RSF cars (Group B and Group 4
+alike), 0.95 on the two R1 cars, 0.985 front / 1.015 rear on both 911s.
 
 | Target | Value and conditions | Source (precision) | How ReRBR reproduces it (run, car, metric) | Tooling missing |
 | --- | --- | --- | --- | --- |
@@ -946,9 +952,11 @@ rows unchanged.
   0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
 - Loose surfaces unmeasured: combined slip on gravel and snow, and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
-  single-pedal target, but at NGP's grip level the locked braking is 0.89-0.98 g against the published 0.47-0.66 g;
-  meeting the level needs a lower loose grip level (a product decision, the trade-off table in
-  [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)). Also open: the berm's shape against slip (unpublished), an
+  single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a
+  lower bound for a rally tyre) and inside the 0.8-1.0 g inferred for a WRC car; the tyre's lateral peak 0.83 is above
+  CW's ≲ 0.67 for a WRC tyre while the car's 0.663 g is inside CW's 0.6-0.7 g. A lower loose level is a product
+  decision (the trade-off table in [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)). Also open: the berm's shape
+  against slip (unpublished), an
   ABS's own μ-slip on gravel (the scorecard's ABS is ours, K 0.15 from free rolling), a spinning
   tyre's sinkage resistance, the berm against the layer's thickness, and snow (same model, not tuned; 1.06 g full
   pedal against 0.31-0.35 g).
