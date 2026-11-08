@@ -124,7 +124,7 @@ impl Form {
         self.codriver_section(ui);
 
         // The physics every drive runs.
-        crate::physics::physics_section(ui, &mut self.physics);
+        crate::physics::physics_section(ui, &mut self.physics, self.session_physics);
 
         ui.add_space(6.0);
         egui::CollapsingHeader::new("Advanced").show(ui, |ui| {

@@ -501,7 +501,7 @@ impl Form {
         // Only the quick race races and keeps a ghost (`rbr_gameplay::ghost::clears`: the championship clears it).
         let words = weather.ghost_words(&self.season);
         // The experimental physics keeps no records: the best ghost is raced, not replaced.
-        let ghost = match self.physics.keeps_records() {
+        let ghost = match self.drive_physics().keeps_records() {
             true => self.ghost.clone(),
             false => self.ghost.unrecorded(stage.map),
         };
@@ -731,7 +731,7 @@ impl Form {
         if self.head_gasket > 1 {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
-        args.extend(self.physics.args(car));
+        args.extend(self.drive_physics().args(car));
         Some(args)
     }
 
@@ -850,6 +850,7 @@ mod tests {
             settings,
             data,
             patch,
+            physics: None,
         }
     }
 
@@ -1453,13 +1454,22 @@ mod tests {
             return;
         };
         let here = crate::test_dir("command-physics");
-        for (line, wanted) in
-            [("", None), ("physics = ngp\n", None), ("physics = experimental\n", Some("experimental"))]
-        {
+        // `rerbr --physics` drives over the saved choice for the session; the saved choice stays.
+        let brush = Some(PhysicsProfile::ExperimentalBrush);
+        for (line, session, wanted) in [
+            ("", None, None),
+            ("physics = ngp\n", None, None),
+            ("physics = experimental\n", None, Some("experimental")),
+            ("physics = ngp\n", brush, Some("experimental-brush")),
+        ] {
             let text = format!("[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nghost = best\n{line}");
-            let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+            let start = Start {
+                physics: session,
+                ..start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)))
+            };
             let mut form = load(&start, Settings::parse(&text)).unwrap();
             form.read_only = true;
+            assert_eq!(form.physics == PhysicsProfile::Ngp, line != "physics = experimental\n", "{text}");
             let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
             // Only NGP's runs race for the best ghost (`--best-ghost` writes a new best).
             assert_eq!(quick.contains(&"--best-ghost".to_owned()), wanted.is_none(), "{text}: {quick:?}");

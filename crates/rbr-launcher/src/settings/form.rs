@@ -62,7 +62,8 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     }
     let startable = catalog.startable_maps(&season);
     eprintln!("launcher: {} cars, {}/{} maps startable", catalog.cars.len(), startable.len(), catalog.maps.len());
-    Ok(Form::new(catalog, &settings, paths, data, season, folder))
+    let form = Form::new(catalog, &settings, paths, data, season, folder);
+    Ok(Form { session_physics: start.physics, ..form })
 }
 
 /// The FFB sensitivities and camera nudges saved under a pack car's earlier key (`Catalog::renamed`) go to its key
@@ -272,6 +273,7 @@ impl Form {
             ffb_cars: settings.ffb_cars.clone(),
             head_gasket: settings.head_gasket.unwrap_or(1),
             physics: settings.physics.unwrap_or_default(),
+            session_physics: None,
             controls: ControlsPage::new(),
             read_only: false,
         };

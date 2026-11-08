@@ -1,5 +1,6 @@
 //! The physics the launcher drives with (Settings page): NGP 7's, or ReRBR experimental physics (built on NGP 7),
-//! `rbr-standalone --physics`.
+//! `rbr-standalone --physics`. The brush tyre in development is not offered there: `rerbr --physics
+//! experimental-brush` drives it for one session, unsaved.
 
 use egui::Ui;
 
@@ -12,8 +13,11 @@ pub enum PhysicsProfile {
     /// NGP 7's, as the original drives.
     #[default]
     Ngp,
-    /// ReRBR experimental physics, built on NGP 7: its engine model (`rbr_engine`). The brush tyre is not offered.
+    /// ReRBR experimental physics, built on NGP 7: its engine model (`rbr_engine`).
     Experimental,
+    /// The same with the brush tyre in development (`rbr_tyre`): only from `rerbr --physics experimental-brush`, never
+    /// offered or saved.
+    ExperimentalBrush,
 }
 
 /// Where the experimental physics is explained.
@@ -28,7 +32,7 @@ impl PhysicsProfile {
     pub fn args(self, car: &Car) -> Vec<String> {
         match self {
             PhysicsProfile::Ngp => Vec::new(),
-            PhysicsProfile::Experimental => {
+            PhysicsProfile::Experimental | PhysicsProfile::ExperimentalBrush => {
                 let group = car.group.iter().flat_map(|g| ["--car-group".to_owned(), g.clone()]);
                 let year = car.year.iter().flat_map(|y| ["--car-year".to_owned(), y.to_string()]);
                 ["--physics".to_owned(), self.name().to_owned()].into_iter().chain(group).chain(year).collect()
@@ -41,6 +45,13 @@ impl PhysicsProfile {
     pub fn keeps_records(self) -> bool {
         self == PhysicsProfile::Ngp
     }
+
+    /// `rerbr --physics NAME`'s profile: any of them, the brush tyre included.
+    pub fn from_flag(name: &str) -> Option<Self> {
+        [PhysicsProfile::Ngp, PhysicsProfile::Experimental, PhysicsProfile::ExperimentalBrush]
+            .into_iter()
+            .find(|p| p.name() == name)
+    }
 }
 
 impl Choice for PhysicsProfile {
@@ -49,19 +60,21 @@ impl Choice for PhysicsProfile {
         match self {
             PhysicsProfile::Ngp => "ngp",
             PhysicsProfile::Experimental => "experimental",
+            PhysicsProfile::ExperimentalBrush => "experimental-brush",
         }
     }
     fn label(self) -> &'static str {
         match self {
             PhysicsProfile::Ngp => "NGP 7 (original)",
             PhysicsProfile::Experimental => "ReRBR experimental (built on NGP 7)",
+            PhysicsProfile::ExperimentalBrush => "ReRBR experimental with the brush tyre (in development)",
         }
     }
 }
 
-/// The Settings page's Physics row: the choice, the link to its explanation, and while the experimental physics is
-/// picked what it leaves unsaved.
-pub fn physics_section(ui: &mut Ui, physics: &mut PhysicsProfile) {
+/// The Settings page's Physics row: the choice, the link to its explanation, the session's `rerbr --physics` when it
+/// overrides the choice, and while the experimental physics drives what it leaves unsaved.
+pub fn physics_section(ui: &mut Ui, physics: &mut PhysicsProfile, session: Option<PhysicsProfile>) {
     section(ui, "Physics");
     fields(ui, "physics", |ui| {
         ui.label("Model");
@@ -72,10 +85,37 @@ pub fn physics_section(ui: &mut Ui, physics: &mut PhysicsProfile) {
             }
         });
         ui.end_row();
-        if !physics.keeps_records() {
+        if let Some(session) = session {
+            ui.label("");
+            ui.weak(format!("This session: {} (rerbr --physics {})", session.label(), session.name()));
+            ui.end_row();
+        }
+        if !session.unwrap_or(*physics).keeps_records() {
             ui.label("");
             ui.weak(NO_RECORDS);
             ui.end_row();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PhysicsProfile;
+    use crate::catalog::Car;
+    use crate::pages::Choice;
+
+    /// The brush tyre comes only from `rerbr --physics`: the Settings page neither offers nor reads it back.
+    #[test]
+    fn the_brush_tyre_is_a_session_flag_only() {
+        assert_eq!(PhysicsProfile::from_flag("experimental-brush"), Some(PhysicsProfile::ExperimentalBrush));
+        assert_eq!(PhysicsProfile::from_flag("ngp"), Some(PhysicsProfile::Ngp));
+        assert_eq!(PhysicsProfile::from_flag("experimental"), Some(PhysicsProfile::Experimental));
+        assert_eq!(PhysicsProfile::from_flag("brush"), None);
+        assert!(!PhysicsProfile::ALL.contains(&PhysicsProfile::ExperimentalBrush));
+        assert_eq!(PhysicsProfile::parse("experimental-brush"), None);
+        assert!(!PhysicsProfile::ExperimentalBrush.keeps_records());
+        let car = Car { group: Some("Rally 2".into()), year: Some(2019), ..Car::default() };
+        let args = ["--physics", "experimental-brush", "--car-group", "Rally 2", "--car-year", "2019"];
+        assert_eq!(PhysicsProfile::ExperimentalBrush.args(&car), args.map(String::from));
+    }
 }

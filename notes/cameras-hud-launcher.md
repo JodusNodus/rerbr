@@ -63,7 +63,9 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   is this?" link to `docs/experimental-physics.md` on GitHub (`physics::PhysicsProfile`, `[launcher] physics = ngp |
   experimental`), passed after `--live` as `--physics experimental` to quick races, championship stages and lessons,
   with the car's `--car-group` and `--car-year` where the catalog has them (an RSF car both, an added
-  car its group); NGP's adds nothing. A replay's header keeps it (the stepping command).
+  car its group); NGP's adds nothing. A replay's header keeps it (the stepping command). `rerbr --physics NAME`
+  (`scripts/launcher.sh` passes it) drives `ngp`, `experimental` or `experimental-brush` (the brush tyre, not offered
+  on the page) for the session over the saved choice, never saved; the Settings page says so under the choice.
   ReRBR experimental physics keeps no records (user decision): `rbr-standalone` makes `--saves`
   dry (stage record, personal best, lesson verdict; `Args::keeps_records`), the quick race races the best ghost as
   `--ghost` and never `--best-ghost`, and championship stages refuse to start (trials still run); `.rrp` replays work.
