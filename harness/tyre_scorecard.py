@@ -33,10 +33,10 @@ context: measured and printed (CTX), not scored. The `how` keys:
 
 The car is the Fiesta Rally2 (`--rsf-car Ford_Fiesta_Rally2_ngp7`). --quick keeps the tyre rows and the 50 km/h brake
 rows on gravel and tarmac, with three slip targets. --json writes the values per id and physics, the raw measurements,
-the commit and the settings; --compare prints the changes between two such files. Runs go to --work (default
-/tmp/tyre-scorecard/<physics>/). target/release/rbr-standalone and the lab example must be built (`cargo build
---release -p rbr-standalone`, `cargo build --release -p rbr-tyre-lab --example scorecard`); RBR_DATA, RBR_RSF and
-RBR_NGP_PHYSICS come from dev.env."""
+the commit, the settings and the bands; --compare prints the changes between two such files, each scored on its own
+bands (a changed band is flagged). Runs go to --work (default /tmp/tyre-scorecard/<physics>/).
+target/release/rbr-standalone and the lab example must be built (`cargo build --release -p rbr-standalone`, `cargo
+build --release -p rbr-tyre-lab --example scorecard`); RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come from dev.env."""
 import argparse
 import concurrent.futures
 import csv
@@ -389,29 +389,42 @@ def score(args):
 
 
 def compare(a_path, b_path):
+    """Each file's values against its own stored bands (the targets file's for a file without them); a row whose band
+    changed is printed with both bands and `band` in its change."""
     with open(a_path) as f:
         a = json.load(f)
     with open(b_path) as f:
         b = json.load(f)
-    bands = {r["id"]: (bound(r["low"]), bound(r["high"])) for r in load_targets()}
+    current = {r["id"]: (bound(r["low"]), bound(r["high"])) for r in load_targets()}
+
+    def bands(x):
+        stored = x.get("bands")
+        return {rid: tuple(v) for rid, v in stored.items()} if stored is not None else current
+
+    bands_a, bands_b = bands(a), bands(b)
     print(f"A {a_path} ({a['commit']})\nB {b_path} ({b['commit']})")
     print(f"{'id':40} {'physics':18} {'A':>8} {'B':>8} {'B-A':>8} {'band':>13}  change")
     only = sorted(set(a["values"]) ^ set(b["values"]))
     if only:
         print(f"measured in one file only (skipped): {', '.join(only)}")
     for rid in sorted(set(a["values"]) & set(b["values"])):
-        low, high = bands.get(rid, (None, None))
+        band_a, band_b = bands_a.get(rid, (None, None)), bands_b.get(rid, (None, None))
+        moved = band_a != band_b
         for p in sorted(set(a["values"][rid]) & set(b["values"][rid])):
-            va, vb = a["values"].get(rid, {}).get(p), b["values"].get(rid, {}).get(p)
-            sa = verdict(va, low, high)[0] if va is not None else "n/a"
-            sb = verdict(vb, low, high)[0] if vb is not None else "n/a"
-            if va is not None and vb is not None and abs(vb - va) < 5e-4 and sa == sb:
+            va, vb = a["values"][rid].get(p), b["values"][rid].get(p)
+            sa = verdict(va, *band_a)[0] if va is not None else "n/a"
+            sb = verdict(vb, *band_b)[0] if vb is not None else "n/a"
+            close = va is not None and vb is not None and (abs(vb - va) < 5e-4 or math.isnan(va) and math.isnan(vb))
+            if close and sa == sb and not moved:
                 continue
             fa = f"{va:8.3f}" if va is not None else f"{'n/a':>8}"
             fb = f"{vb:8.3f}" if vb is not None else f"{'n/a':>8}"
             fd = f"{vb - va:+8.3f}" if va is not None and vb is not None else f"{'':>8}"
             change = f"{sa} -> {sb}" if sa != sb else sb
-            print(f"{rid:40} {p:18} {fa} {fb} {fd} {band_text(low, high):>13}  {change}")
+            band = band_text(*band_b)
+            if moved:
+                band, change = f"{band_text(*band_a)} -> {band}", f"{change} (band)"
+            print(f"{rid:40} {p:18} {fa} {fb} {fd} {band:>13}  {change}")
 
 
 def main():

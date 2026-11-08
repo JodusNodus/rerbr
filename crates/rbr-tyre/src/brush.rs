@@ -119,10 +119,11 @@ pub struct Calibration {
     /// theoretical slip (fitted, not table values).
     pub cy0: f64,
     pub cx0: f64,
-    /// Lateral friction at zero and infinite sliding speed.
+    /// Lateral friction's static and kinetic levels (the Stribeck curve's ends before `SPEED_DECAY`, which takes the
+    /// friction toward 0 at high sliding speed).
     pub mu_ys: f64,
     pub mu_yk: f64,
-    /// Longitudinal friction at zero and infinite sliding speed.
+    /// Longitudinal friction's static and kinetic levels (as the lateral ones).
     pub mu_xs: f64,
     pub mu_xk: f64,
     /// Bulk tread temperature (K), tread remaining (1 = new), NGP's
@@ -170,7 +171,7 @@ pub fn stiffness_at(fz: f64, tb: f64, d: f64, pf: f64, c0: f64, m: f64, cal: &Ca
 /// asphalt's, which the knee 0.55 with an exponent 0.76 passes through; his summer tyre keeps 0.09 on ice (mu 0.077),
 /// an exponent 1.2 with that knee. The exponent is 1 (ours, between the two tyres): below the knee the peak slip
 /// stays the knee's, so ice (NGP's 0.10) peaks near 4°, as measured (4-5°: TR0713; SAE 2010-01-0374 Fig 8). Snow is
-/// not fitted (soil: NGP's force there).
+/// soil: loose-v1 (`crate::loose`), not this factor.
 pub const LOW_MU_KNEE: f64 = 0.55;
 pub const LOW_MU_EXPONENT: f64 = 1.0;
 

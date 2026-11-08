@@ -45,14 +45,23 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
 }
 
 /// The loose-surface tyre for `w` on its brush calibration `cal` ([`crate::loose`]): NGP's free rolling peaks at each
-/// positive load of the wheel's axis, on the unit surface, and its cornering slope at the nominal load.
+/// positive load of the wheel's axis where they are positive, on the unit surface, and its cornering slope at the
+/// nominal load. A load whose peaks are not positive is skipped; with none left, the first load's error.
 pub fn loose(w: &Wheel, cal: &Calibration) -> Result<Loose, String> {
     let mut levels = Levels::default();
+    let mut error = None;
     for &fz in w.load_axis.iter().filter(|&&fz| fz > 0.0) {
-        let t = targets(w, fz)?;
-        levels.load.push(t.fz0);
-        levels.lateral.push(t.peak_lat / t.fz0);
-        levels.longitudinal.push(t.peak_lon / t.fz0);
+        match targets(w, fz) {
+            Ok(t) => {
+                levels.load.push(t.fz0);
+                levels.lateral.push(t.peak_lat / t.fz0);
+                levels.longitudinal.push(t.peak_lon / t.fz0);
+            }
+            Err(e) => error = error.or(Some(e)),
+        }
+    }
+    if levels.load.is_empty() {
+        return Err(error.unwrap_or_else(|| format!("tyre at {:#010x}: no positive load", w.tyre)));
     }
     let slope = targets(w, cal.fz0 as f32)?.fit_lat;
     Ok(loose::calibrate(cal, levels, slope, SPEED))
@@ -204,6 +213,20 @@ pub(crate) mod tests {
         }
         let slope = targets(&w, 4000.0).unwrap().fit_lat;
         assert!((crate::loose::cornering_slope(&l, SPEED) / slope - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_loose_tyre_skips_loads_without_ngp_peaks() {
+        let w = wheel();
+        let cal = calibration(&w).unwrap();
+        let mut zero_at_1k = wheel();
+        zero_at_1k.cornering_friction[1] = 0.0;
+        zero_at_1k.traction_friction[1] = 0.0;
+        let l = loose(&zero_at_1k, &cal).unwrap();
+        assert_eq!(l.levels.load, [2500.0, 4000.0, 6000.0, 8000.0]);
+        assert_eq!(l.levels.lateral, loose(&w, &cal).unwrap().levels.lateral[1..]);
+        let none = Wheel { cornering_friction: vec![0.0; 6], traction_friction: vec![0.0; 6], ..wheel() };
+        assert!(loose(&none, &cal).is_err());
     }
 
     #[test]

@@ -277,8 +277,8 @@ Surface wetness: the `.mat` entry named with the race's wear and wetness words m
 37/38/39 dry/damp/wet); `CWheel::Unk9900` passes each tag's class (`entry+0x148`) and `WaterFactor` (`entry+0xe8`, 0
 dry to 1 wet) to `CScratch::BlendTable` and blends the same `+0xe8` into the tyre's copy (`scratch+0x288`), so there is
 no second wetness. RSF 122 / 117 wet: tags 39 / 71, WaterFactor 1. 12 RSF stages (457 460 468 479 480 553 554 564 568
-569 584 585) have no wet entry: wet builds no table and every cell is tag 0 (μs 0.95, WaterFactor 0) (`--tyre-probe`,
-2026-11-08).
+569 584 585) have no wet entry: wet builds no table and every cell is tag 0 (μs 0.95, class 0, WaterFactor 0: on the tarmac tyre, class base factor 0.90,
+a static 0.83 after the temperature grip) (`--tyre-probe`, `materials` example, 2026-11-08).
 Fences (`.fnc`) are cloth and never touch the car.
 
 ## Damage

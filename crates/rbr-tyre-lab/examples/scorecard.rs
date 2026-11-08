@@ -3,7 +3,8 @@
 //!
 //! Research tooling (ours, experimental). `--model` is the profile's `rbr_tyre` model name (`ngp`, `brush`): the
 //! model is built by `rbr_tyre::model` from the wheel's tables, as the game builds it, and asked at each slip; where it
-//! gives `None` (NGP's: `ngp`, or soil under the brush) NGP's own `patch_forces` answer, as in the game's seam. The
+//! gives `None` (NGP's: `ngp`) NGP's own `patch_forces` answer, as in the game's seam (the brush takes soil with
+//! loose-v1). The
 //! model's force dynamics settle for `SETTLE` steps at each slip. Flat road, no sinking, no soil force: NGP's side is
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
@@ -102,12 +103,16 @@ fn main() {
 
     let angles = || grid(0.0, 40.0, 0.25);
     let kappas = || grid(0.0, 1.0, 0.01);
+    // Braking peaks are taken over the braking slip 0 to loose-v1's `BERM_FROM` (0.8): the free rolling side's peak,
+    // before the berm, so under loose-v1 they are not the lock (that is `mu_x_locked_*`, κ -1). NGP's and the brush's
+    // braking peaks lie below 0.8 on every probed surface.
+    let brake_kappas = || grid(0.0, rbr_tyre::loose::BERM_FROM as f32, 0.01);
     let fit_angles: Vec<f32> = grid(0.25, 2.0, 0.25).map(f32::to_radians).collect();
     let fit_kappas = [0.02f32, 0.04];
     let (mut lat_peaks, mut lon_peaks, mut calphas, mut kxs) = (vec![], vec![], vec![], vec![]);
     for &fz in &LOADS {
         lat_peaks.push(peak(angles(), |a| t.mu_y(fz, a)).0 * fz);
-        lon_peaks.push(peak(kappas(), |k| t.mu_x(fz, -k)).0.max(peak(kappas(), |k| t.mu_x(fz, k)).0) * fz);
+        lon_peaks.push(peak(brake_kappas(), |k| t.mu_x(fz, -k)).0.max(peak(kappas(), |k| t.mu_x(fz, k)).0) * fz);
         calphas.push(slope(&fit_angles, |a| t.mu_y(fz, a.to_degrees()) * fz));
         kxs.push(slope(&fit_kappas, |k| (t.mu_x(fz, k) + t.mu_x(fz, -k)) / 2.0 * fz));
     }
@@ -184,7 +189,7 @@ fn main() {
             }
         }
         let (drive, kd) = peak(kappas(), |k| t.mu_x(fz, k));
-        let (brake, kb) = peak(kappas(), |k| t.mu_x(fz, -k));
+        let (brake, kb) = peak(brake_kappas(), |k| t.mu_x(fz, -k));
         out(&format!("peak_mu_x_drive_{name}"), drive);
         out(&format!("peak_kappa_drive_{name}"), kd);
         out(&format!("peak_mu_x_brake_{name}"), brake);
