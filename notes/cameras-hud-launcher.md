@@ -268,3 +268,7 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 - `hdr` (`viewer --hdr`, Graphics > Display > HDR) defaults off: the highlights past an HDR display's SDR white where the
   surface has extended-range sRGB (macOS EDR), else the viewer draws SDR (2026-11-05; renderer note, `hdr` row). Offered
   and passed on macOS only (`present::HDR_OFFERED`): DX12 has no such space, Windows' Vulkan drivers scRGB and PQ only.
+- Triple screens (`viewer --triple`, Graphics > Triple screens): `triple` (off), `triple_diagonal` (27 in, 10-65),
+  `triple_bezel` (10 mm, 0-60), `triple_distance` (70 cm, 30-200), `triple_angle` (`auto` or 0-90, the side screens'
+  turn), `triple_monitors` (left,centre,right names; unset: one window split in thirds, with fullscreen one window
+  a monitor). The FOV sliders set the centre screen's field of view in triple mode.
