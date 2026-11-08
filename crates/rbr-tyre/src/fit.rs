@@ -1,4 +1,5 @@
-//! The brush's calibration on one wheel: NGP's peak forces and cornering slope, swept with its own patch forces
+//! The brush's calibration on one wheel: NGP's peak forces and cornering slope (the brush's slope
+//! [`CORNERING_OVER_NGP`] times it), swept with its own patch forces
 //! (`rbr_physics::tyre::patch_forces`) from the wheel's tables at the nominal load, then solved for
 //! ([`crate::calibrate`]). The point is a unit surface (static and kinetic friction 1), so the game scales the brush's
 //! friction by NGP's static friction there; the stiffness factor is 1, and the tread new and at the temperature of the
