@@ -458,6 +458,9 @@ pub struct Measure {
     /// `--tyre-image FILE [--tyre-image-step N]`: a memory image of the wheels' tyre footprints (research tooling).
     pub tyre_image: Option<std::path::PathBuf>,
     pub tyre_image_step: Option<u32>,
+    /// `--material-as ID` (a test surface): every material of the stage takes material ID's values, from the start,
+    /// or with `--brake-from` from the brake onset (the run-up on the stage's own surfaces, the stop on ID's).
+    pub material_as: Option<u32>,
 }
 
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
