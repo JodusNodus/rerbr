@@ -721,11 +721,14 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   against the bench data's 0.73-0.90 (tarmac-mu-y30-over-peak; NGP 0.865, the brush 0.833): the method does not
   overstate the fall. The text's "1250 N at 30°" (0.63) is outside the figures' envelope (a few sparse traces). So the
   stage-speed rows (`gravel-cw-*`, at 20 m/s, 4 kN, WaterFactor 1) are 0.93-1.00 and 9-22°, the argmax and Velenis
-  rows context. The gravel shape rows are taken at their rig's 1.5 m/s (`gravel-1.5`, `gravel-wet-1.5`). No other
+  rows context. The saturation angle is the first slip angle at 90 % of the maximum (lab `alpha90`, maximum over
+  0-40°; figures, of the 10-32° plateau). CW's median rise fits the shear law with α0 8-12° at stage speed, as
+  Coutermarsh's wet gravel does (9.7°) at 1-1.5 m/s: the rise shows little speed dependence, so α0 follows the water
+  and not the speed. The gravel shape rows are taken at their rig's 1.5 m/s (`gravel-1.5`, `gravel-wet-1.5`). No other
   gravel tyre force against speed was found (two searches; Krueger, Auburn MSc, an ATV tyre on a towed gravel rig, not
   read).
-- Not adopted (2026-11-08, `tyre/gravel-speed`): a peak with a fall toward stage speed (the task's premise, CW's text
-  0.63): the digitised curves have none, and the shear law passes both ends. Wet α0 on the lateral axis only
+- Not adopted (2026-11-08, `tyre/gravel-speed`): a peak with a fall toward stage speed: CW's digitised p75/p90
+  envelope stays flat from 12° to 32°, and his text's 0.63 lies outside it; the shear law passes both ends. Wet α0 on the lateral axis only
   (longitudinal kept dry): wet 345 locked over ABS K 0.15 1.651 against 1.894 both axes (main 1.648); no wet-gravel
   braking data choose between them, both axes keep the law's one K.
 - Wet gravel (2026-11-08, `tyre/gravel-speed`, main 8e65298c → wet α0, experimental-brush; dry gravel and snow
