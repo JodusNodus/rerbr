@@ -165,6 +165,7 @@ fn texels_at(stage: &Stage, texture: TextureRef, widest: u32) -> Option<(usize, 
         Format::Dxt3 => texpresso::Format::Bc2,
         Format::Dxt5 => texpresso::Format::Bc3,
         Format::Rgba8 => return Some((level.width as usize, level.data.to_vec())),
+        Format::Bc7 => return None,
     };
     let (width, height) = (level.width.max(4) as usize, level.height.max(4) as usize);
     let mut rgba = vec![0; width * height * 4];

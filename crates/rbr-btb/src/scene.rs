@@ -387,6 +387,8 @@ pub fn alpha(bytes: &[u8]) -> Alpha {
                 (0..16).for_each(|t| count(palette[(bits >> (3 * t) & 7) as usize]));
             }
         }
+        // BC7's alpha is not decoded on the CPU: taken as opaque.
+        dds::Format::Bc7 => {}
         // A block with `c0 <= c1` and an index of 3 is transparent.
         dds::Format::Dxt1 => {
             for block in level.data.chunks_exact(8) {

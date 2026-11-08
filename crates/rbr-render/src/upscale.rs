@@ -177,9 +177,9 @@ pub fn stage_textures(stage: &Stage) -> BTreeMap<TextureRef, u32> {
         .collect()
 }
 
-/// A `.dds` file's larger side, `None` where it does not read.
+/// A `.dds` file's larger side, `None` where it does not read or is BC7 (left as it is).
 fn larger_side(bytes: &[u8]) -> Option<u32> {
-    dds::parse(bytes).ok().map(|dds| dds.width.max(dds.height))
+    dds::parse(bytes).ok().filter(|dds| dds.format != Format::Bc7).map(|dds| dds.width.max(dds.height))
 }
 
 /// A texture to upscale: its `.dds` file, the larger side it is upscaled from and the largest side it gets.
@@ -282,8 +282,9 @@ fn bc(format: Format) -> texpresso::Format {
     match format {
         Format::Dxt1 => texpresso::Format::Bc1,
         Format::Dxt3 => texpresso::Format::Bc2,
-        // Plain RGBA (community stages' and cars') is packed as DXT5, which keeps its alpha.
-        Format::Dxt5 | Format::Rgba8 => texpresso::Format::Bc3,
+        // Plain RGBA (community stages' and cars') is packed as DXT5, which keeps its alpha. BC7 is never decoded or
+        // encoded here ([`larger_side`], [`with_block_mips`] leave it as it is).
+        Format::Dxt5 | Format::Rgba8 | Format::Bc7 => texpresso::Format::Bc3,
     }
 }
 
@@ -314,7 +315,7 @@ pub fn encode(format: Format, mut width: u32, mut height: u32, mut rgba: Vec<u8>
     let fourcc = match format {
         Format::Dxt1 => b"DXT1",
         Format::Dxt3 => b"DXT3",
-        Format::Dxt5 | Format::Rgba8 => b"DXT5",
+        Format::Dxt5 | Format::Rgba8 | Format::Bc7 => b"DXT5",
     };
     let mut header = [0u32; 32];
     header[0] = u32::from_le_bytes(*b"DDS ");
@@ -338,20 +339,25 @@ pub fn encode(format: Format, mut width: u32, mut height: u32, mut rgba: Vec<u8>
 }
 
 /// A block-compressed file with its mip chain completed down to 1x1, each new level the box-filtered one above
-/// re-encoded in the file's format (the stored levels stay as they are): `None` when it is plain RGBA, already has
+/// re-encoded in the file's format (the stored levels stay as they are): `None` when it is plain RGBA or BC7, already has
 /// every level or is under 8 texels. Some RSF cars' 4096x4096 liveries have no levels and alias in the distance; the
 /// stage textures keep 4 (a 512x512 one stops at 64x64), so far ground shimmers.
 pub fn with_block_mips(bytes: &[u8]) -> Option<Vec<u8>> {
     let file = dds::parse(bytes).ok()?;
     let levels = file.levels();
     let last = levels.last()?;
-    if file.format == Format::Rgba8 || (last.width == 1 && last.height == 1) || file.width.max(file.height) < 8 {
+    if matches!(file.format, Format::Rgba8 | Format::Bc7)
+        || (last.width == 1 && last.height == 1)
+        || file.width.max(file.height) < 8
+    {
         return None;
     }
     let stored: usize = levels.iter().map(|l| l.data.len()).sum();
     let (mut width, mut height) = (last.width, last.height);
     let mut rgba = decompress(file.format, last.data, width, height);
-    let mut out = bytes[..128 + stored].to_vec();
+    // The header, with a DX10 file's 20-byte extension.
+    let header = if bytes[84..88] == *b"DX10" { 148 } else { 128 };
+    let mut out = bytes[..header + stored].to_vec();
     let mut count = levels.len() as u32;
     while width > 1 || height > 1 {
         (width, height, rgba) = half(width, height, &rgba);
@@ -433,6 +439,25 @@ mod tests {
         assert_eq!((dds.width, dds.mip_count, dds.levels()[0].data), (16, 5, top.as_slice()));
         // Already mipped: left as it is.
         assert_eq!(with_block_mips(&bytes), None);
+    }
+
+    #[test]
+    fn a_dx10_block_file_keeps_its_header() {
+        let full = file(16);
+        let top = dds::parse(&full).unwrap().levels()[0].data.to_vec();
+        let mut one = full[..128].to_vec();
+        one[28..32].copy_from_slice(&1u32.to_le_bytes());
+        one[84..88].copy_from_slice(b"DX10");
+        one.extend_from_slice(&72u32.to_le_bytes()); // DXGI_FORMAT_BC1_UNORM_SRGB
+        one.extend_from_slice(&[0; 16]);
+        one.extend_from_slice(&top);
+        let bytes = with_block_mips(&one).unwrap();
+        let dds = dds::parse(&bytes).unwrap();
+        assert_eq!((dds.format, dds.mip_count, dds.levels()[0].data), (Format::Dxt1, 5, top.as_slice()));
+        // BC7 is left as it is.
+        one[128..132].copy_from_slice(&98u32.to_le_bytes());
+        one.extend_from_slice(&top);
+        assert_eq!(with_block_mips(&one), None);
     }
 
     #[test]

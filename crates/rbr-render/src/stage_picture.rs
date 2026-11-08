@@ -186,6 +186,7 @@ pub fn decode(dds: &dds::Dds, widest: u32) -> Option<Pixels> {
         Format::Dxt3 => texpresso::Format::Bc2,
         Format::Dxt5 => texpresso::Format::Bc3,
         Format::Rgba8 => return Some((width, height, level.data.get(..width * height * 4)?.to_vec())),
+        Format::Bc7 => return None,
     };
     let mut rgba = vec![0u8; width * height * 4];
     bc.decompress(level.data, width, height, &mut rgba);

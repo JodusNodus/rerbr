@@ -83,6 +83,11 @@ impl Rgba {
                 pixels.copy_from_slice(&data[..len]);
                 return Rgba { width: dds.width, height: dds.height, pixels };
             }
+            Format::Bc7 => {
+                eprintln!("dds: a BC7 texture is not decoded on the CPU, drawn flat");
+                pixels.fill(128);
+                return Rgba { width: dds.width, height: dds.height, pixels };
+            }
         };
         bc.decompress(data, width, height, &mut pixels);
         Rgba { width: dds.width, height: dds.height, pixels }
