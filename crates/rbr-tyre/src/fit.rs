@@ -7,7 +7,7 @@
 use rbr_physics::tyre::friction_limits::BlendPair;
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 
-use crate::brush::Calibration;
+use crate::brush::{Calibration, CORNERING_OVER_NGP};
 use crate::calibrate::{calibrate, CalPoint, CalTargets};
 use crate::loose::{self, Levels, Loose};
 use crate::Wheel;
@@ -17,8 +17,25 @@ const SPEED: f64 = 15.0;
 /// The nominal load's entry in the load axis.
 const NOMINAL_LOAD: usize = 3;
 
-/// The brush's calibration for `w`.
+/// The brush's calibration for `w`: NGP's lateral peak and its cornering slope over 0 to 2° times
+/// [`CORNERING_OVER_NGP`], with the longitudinal stiffness and friction of NGP's slope (the calibration of NGP's own
+/// slope, [`ngp_calibration`]).
 pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
+    let (targets, point) = setup(w)?;
+    let ngp = calibrate(&targets, &point);
+    let stiff = calibrate(&CalTargets { fit_lat: targets.fit_lat * CORNERING_OVER_NGP, ..targets }, &point);
+    Ok(Calibration { cx0: ngp.cx0, mu_xs: ngp.mu_xs, mu_xk: ngp.mu_xk, ..stiff })
+}
+
+/// The brush calibrated on NGP's own cornering slope at `w`'s nominal load: the longitudinal side of
+/// [`calibration`], and the start of the loose tyre's ([`loose`]).
+pub fn ngp_calibration(w: &Wheel) -> Result<Calibration, String> {
+    let (targets, point) = setup(w)?;
+    Ok(calibrate(&targets, &point))
+}
+
+/// NGP's targets at `w`'s nominal load and the calibration point there.
+fn setup(w: &Wheel) -> Result<(CalTargets, CalPoint), String> {
     let fail = |what: &str| format!("tyre at {:#010x}: {what}", w.tyre);
     let nominal = w.load_axis.get(NOMINAL_LOAD.min(w.load_axis.len().max(1) - 1)).copied();
     let fz0 = nominal.filter(|&fz| fz > 0.0).ok_or_else(|| fail(&format!("nominal load {nominal:?}")))?;
@@ -29,7 +46,6 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
         _ => best,
     });
     let t_cal = f64::from(best.ok_or_else(|| fail("no rubber friction table"))?.1);
-    let targets = targets(w, fz0)?;
     let point = CalPoint {
         t_cal,
         d_cal: 1.0,
@@ -41,24 +57,15 @@ pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
         surf_k_cal: 1.0,
         temp_grip_cal: 1.0,
     };
-    let base = calibrate(&targets, &point);
-    // Drive test only, not for merge: RERBR_TEST_CY_SCALE stiffens the lateral slip stiffness by that factor, keeping
-    // the grip level and the longitudinal stiffness and grip; the loose tyre solves its own (fit::loose).
-    let scale = std::env::var("RERBR_TEST_CY_SCALE").ok().and_then(|v| v.parse::<f64>().ok());
-    Ok(match scale.filter(|&s| s > 0.0 && s != 1.0) {
-        Some(s) => {
-            let stiff = calibrate(&CalTargets { fit_lat: targets.fit_lat * s, ..targets }, &point);
-            eprintln!("RERBR_TEST_CY_SCALE {s}: cy0 {:.0} -> {:.0}, mu_ys {:.4} -> {:.4}", base.cy0, stiff.cy0, base.mu_ys, stiff.mu_ys);
-            Calibration { cx0: base.cx0, mu_xs: base.mu_xs, mu_xk: base.mu_xk, ..stiff }
-        }
-        None => base,
-    })
+    Ok((targets(w, fz0)?, point))
 }
 
-/// The loose-surface tyre for `w` on its brush calibration `cal` ([`crate::loose`]): NGP's free rolling peaks at each
-/// positive load of the wheel's axis where they are positive, on the unit surface, and its cornering slope at the
-/// nominal load. A load whose peaks are not positive is skipped; with none left, the first load's error.
-pub fn loose(w: &Wheel, cal: &Calibration) -> Result<Loose, String> {
+/// The loose-surface tyre for `w` ([`crate::loose`]): NGP's free rolling peaks at each positive load of the wheel's
+/// axis where they are positive, on the unit surface, and its cornering slope at the nominal load, solved from
+/// [`ngp_calibration`] (not [`CORNERING_OVER_NGP`]'s). A load whose peaks are not positive is skipped; with none left,
+/// the first load's error.
+pub fn loose(w: &Wheel) -> Result<Loose, String> {
+    let cal = ngp_calibration(w)?;
     let mut levels = Levels::default();
     let mut error = None;
     for &fz in w.load_axis.iter().filter(|&&fz| fz > 0.0) {
@@ -75,7 +82,7 @@ pub fn loose(w: &Wheel, cal: &Calibration) -> Result<Loose, String> {
         return Err(error.unwrap_or_else(|| format!("tyre at {:#010x}: no positive load", w.tyre)));
     }
     let slope = targets(w, cal.fz0 as f32)?.fit_lat;
-    Ok(loose::calibrate(cal, levels, slope, SPEED))
+    Ok(loose::calibrate(&cal, levels, slope, SPEED))
 }
 
 /// NGP's targets at `fz0`: the lateral peak over 0 to 30° of slip angle, the least-squares cornering slope over 0 to
@@ -179,7 +186,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_brush_takes_ngp_s_lateral_peak_and_slope_at_the_nominal_load() {
+    fn the_brush_takes_ngp_s_lateral_peak_and_stiffer_slope_at_the_nominal_load() {
         let w = wheel();
         let cal = calibration(&w).unwrap();
         let t = targets(&w, 4000.0).unwrap();
@@ -209,14 +216,18 @@ pub(crate) mod tests {
         // The least-squares slope over 0 to 2°, as the targets take NGP's.
         let alphas = (1..=8).map(|k| (f64::from(k) * 0.25).to_radians());
         let (sxy, sxx) = alphas.fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * lateral(a), sxx + a * a));
-        assert!((sxy / sxx / t.fit_lat - 1.0).abs() < 0.01, "slope {} NGP {}", sxy / sxx, t.fit_lat);
+        let slope = CORNERING_OVER_NGP * t.fit_lat;
+        assert!((sxy / sxx / slope - 1.0).abs() < 0.01, "slope {} target {slope}", sxy / sxx);
+        // The longitudinal side is the calibration on NGP's own slope.
+        let ngp = ngp_calibration(&w).unwrap();
+        assert_eq!((cal.cx0, cal.mu_xs, cal.mu_xk), (ngp.cx0, ngp.mu_xs, ngp.mu_xk));
+        assert!(cal.cy0 > ngp.cy0);
     }
 
     #[test]
     fn the_loose_tyre_takes_ngp_s_peaks_at_each_load_and_its_slope() {
         let w = wheel();
-        let cal = calibration(&w).unwrap();
-        let l = loose(&w, &cal).unwrap();
+        let l = loose(&w).unwrap();
         assert_eq!(l.levels.load, [1000.0, 2500.0, 4000.0, 6000.0, 8000.0]);
         for (k, &fz) in l.levels.load.iter().enumerate() {
             let t = targets(&w, fz as f32).unwrap();
@@ -229,15 +240,14 @@ pub(crate) mod tests {
     #[test]
     fn the_loose_tyre_skips_loads_without_ngp_peaks() {
         let w = wheel();
-        let cal = calibration(&w).unwrap();
         let mut zero_at_1k = wheel();
         zero_at_1k.cornering_friction[1] = 0.0;
         zero_at_1k.traction_friction[1] = 0.0;
-        let l = loose(&zero_at_1k, &cal).unwrap();
+        let l = loose(&zero_at_1k).unwrap();
         assert_eq!(l.levels.load, [2500.0, 4000.0, 6000.0, 8000.0]);
-        assert_eq!(l.levels.lateral, loose(&w, &cal).unwrap().levels.lateral[1..]);
+        assert_eq!(l.levels.lateral, loose(&w).unwrap().levels.lateral[1..]);
         let none = Wheel { cornering_friction: vec![0.0; 6], traction_friction: vec![0.0; 6], ..wheel() };
-        assert!(loose(&none, &cal).is_err());
+        assert!(loose(&none).is_err());
     }
 
     #[test]

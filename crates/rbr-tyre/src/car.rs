@@ -34,7 +34,7 @@ impl Brush {
             .iter()
             .map(|w| {
                 let cal = fit::calibration(w)?;
-                let loose = fit::loose(w, &cal)?;
+                let loose = fit::loose(w)?;
                 Ok(Tyre { at: w.tyre, cal, loose, state: TransState::default(), running: false })
             })
             .collect::<Result<_, String>>()?;
@@ -244,8 +244,9 @@ mod tests {
         // The change of surface keeps the carcass deflection: below both surfaces' friction the force moves to the
         // loose tyre's over the relaxation length, not in one step (above the new friction it is cut to it at once).
         let first = b.forces(wheel().tyre, &soil).unwrap();
-        assert!((first.lateral_force / on_hard.lateral_force - 1.0).abs() < 0.02, "{first:?} {on_hard:?}");
         let on_soil = settle(&mut b, &soil, 1440);
+        let gap = (on_soil.lateral_force - on_hard.lateral_force).abs();
+        assert!((first.lateral_force - on_hard.lateral_force).abs() < 0.2 * gap, "{first:?} {on_hard:?} {on_soil:?}");
         let e = EvalInput {
             fz: 4000.0,
             half_length: 0.05,
@@ -266,7 +267,7 @@ mod tests {
         let steady = loose::eval(&e, &b.tyres[0].loose, 0.0);
         assert!((f64::from(on_soil.lateral_force) / steady.fy - 1.0).abs() < 1e-4, "{on_soil:?} {steady:?}");
         let back = b.forces(wheel().tyre, &hard).unwrap();
-        assert!((back.lateral_force / on_soil.lateral_force - 1.0).abs() < 0.02, "{back:?} {on_soil:?}");
+        assert!((back.lateral_force - on_soil.lateral_force).abs() < 0.2 * gap, "{back:?} {on_soil:?} {on_hard:?}");
     }
 
     #[test]
@@ -293,9 +294,9 @@ mod tests {
 
     #[test]
     fn on_ice_the_side_force_builds_over_a_wider_slip_angle() {
-        // The settled side force over its friction limit at 1° and 4°. On ice (0.095) the slip stiffness is 0.095/0.55
-        // of tarmac's: over the friction it stays 1.2/0.55 = 2.2 times tarmac's (without the fall 12.6 times, and 1°
-        // would slide whole), so ice takes half tarmac's slip angle to its peak.
+        // The settled side force over its friction limit at 1° and 4°. On ice (0.095) the slip stiffness is
+        // 0.095/LOW_MU_KNEE (0.715) of tarmac's: over the friction it stays 1.2/0.715 = 1.7 times tarmac's (without the
+        // fall 12.6 times, and 1° would slide whole), so ice takes about 0.6 of tarmac's slip angle to its peak.
         let share = |grip: f32, deg: f32| {
             let mut b = Brush::new(&[wheel()]).unwrap();
             let x = ForceInput { grip, ..rolling(15.0, deg.to_radians()) };
@@ -304,8 +305,8 @@ mod tests {
         };
         let (tarmac, ice) = ((share(1.2, 1.0), share(1.2, 4.0)), (share(0.095, 1.0), share(0.095, 4.0)));
         let ratio = ice.0 / tarmac.0;
-        assert!(ice.0 < 0.6 && (1.6..2.4).contains(&ratio), "tarmac {tarmac:?} ice {ice:?}");
-        assert!(ice.1 > 0.9 && tarmac.1 < 0.8, "tarmac {tarmac:?} ice {ice:?}");
+        assert!(ice.0 < 0.6 && (1.4..1.8).contains(&ratio), "tarmac {tarmac:?} ice {ice:?}");
+        assert!(ice.1 > 0.9 && tarmac.1 < 0.9, "tarmac {tarmac:?} ice {ice:?}");
     }
 
     #[test]
