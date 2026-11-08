@@ -1,7 +1,8 @@
 //! Prints the surface materials NGP's stage init writes (`rbr_physics::ngp::layout::stage::stage_init`, the 778/779
 //! table) for the given material ids: static and kinetic friction, their soil values, soil thickness, water factor
 //! and rolling resistance. `cargo run -p rbr-tyre-lab --example materials -- NGP_DLL [ID...]` (default: the tarmac
-//! and gravel ids). Values stay on stdout: nothing from the DLL is written to the repository.
+//! and gravel ids), and each one's surface class (`+0x148`, the index of the tyre type's per-class base friction, wet
+//! slope and wear factor). Values stay on stdout: nothing from the DLL is written to the repository.
 
 use std::collections::BTreeMap;
 
@@ -19,6 +20,8 @@ const FIELDS: [(&str, u32); 8] = [
     ("WaterFactor", 0xdc),
     ("RollingResistance", 0xec),
 ];
+/// The material's surface class word, from the entry's start (`tyre_probe.rs` `mat_entry`).
+const CLASS: u32 = 0x148;
 const DEFAULT_IDS: [u32; 15] = [37, 38, 39, 45, 46, 47, 53, 54, 55, 65, 66, 67, 17, 18, 19];
 
 fn main() {
@@ -33,7 +36,7 @@ fn main() {
     for (name, _) in FIELDS {
         print!("\t{name}");
     }
-    println!();
+    println!("\tclass");
     for id in ids {
         print!("{id}");
         for (_, key) in FIELDS {
@@ -47,6 +50,9 @@ fn main() {
                 None => print!("\t-"),
             }
         }
-        println!();
+        match words.get(&(FIRST_ENTRY + id * ENTRY + CLASS)) {
+            Some(w) => println!("\t{w}"),
+            None => println!("\t-"),
+        }
     }
 }

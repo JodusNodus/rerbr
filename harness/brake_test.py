@@ -15,12 +15,13 @@ brakes declutched (`--brake-declutch --clutch-help off`: clutch in, no shifts; N
 from the engine speed in place of the pedal), so the idling engine does not turn the braked wheels; `--clutch-out`
 brakes in gear with clutch help on, as the plain brake test does (the autopilot downshifts, and on gravel the idling
 engine drives the wheels against the brake). For each run it prints the stopping distance, time and mean deceleration
-(car_pace.analyse_brake: brake onset to the stop, crash stops refused) and, while braking over 3 m/s past the first
-tenth, the most-slipping wheel's slip (mean and spread), the wheels' mean rim speed and the deceleration through
-32, 64 and 100 km/h (±1.5 m/s, TRL PPR496's speeds: a locked run's friction at that sliding speed, aero drag
-included), and for the ABS runs each wheel's mean slip (FL FR RL RR) and its cycle rate (Hz: crossings of K + 0.02
-upwards, ABS_BAND's dump threshold, per s); last the locked distance over the best threshold distance and the locked
-decel over each ABS run's. Traces and logs go to DIR (<run>.trace, <run>.log).
+(car_pace.analyse_brake: brake onset to the stop, crash stops and the game's resets refused; "flat g" with the
+road's rise over the stop removed) and, while braking over 3 m/s past the first tenth, the most-slipping wheel's slip
+(mean and spread), the wheels' mean rim speed and the deceleration through 32, 64 and 100 km/h (±1.5 m/s, TRL
+PPR496's speeds: a locked run's friction at that sliding speed, aero drag included), and for the ABS runs each
+wheel's mean slip (FL FR RL RR) and its cycle rate (Hz: crossings of K + 0.02 upwards, ABS_BAND's dump threshold, per
+s); last the locked distance over the best threshold distance and the locked decel over each ABS run's. Traces and
+logs go to DIR (<run>.trace, <run>.log).
 target/release/rbr-standalone must be built (`cargo build --release -p rbr-standalone`); RBR_DATA, RBR_RSF and
 RBR_NGP_PHYSICS come from dev.env."""
 import argparse
@@ -107,11 +108,11 @@ def band_decel(rows, onset, centre, half=BAND_HALF):
     return (rows[hi]["v"] - rows[lo]["v"]) / (rows[lo]["t"] - rows[hi]["t"])
 
 
-def analyse(path, frm, abs_target=None):
+def analyse(path, frm, abs_target=None, max_off=car_pace.CRASH_OFF):
     """car_pace.analyse_brake with the slip statistics and the band decelerations; with `abs_target` (an ABS run's K)
     also each wheel's mean slip and cycle rate (`wheel_stats`)."""
     rows = car_pace.load_trace(path)
-    result = car_pace.analyse_brake(rows, frm)
+    result = car_pace.analyse_brake(rows, frm, max_off)
     if result["ok"] and "wheels" in rows[0]:
         onset = next(i for i in range(result["launch"], len(rows)) if rows[i]["brk"] > car_pace.BRK_ONSET)
         result["slip"] = slip_stats(rows, onset)
@@ -156,7 +157,8 @@ def main():
     clutch = "clutch out" if args.clutch_out else "declutched"
     print(f"{args.rsf_car} on {args.stage or args.rsf_stage}, {args.physics}, {clutch}, "
           f"from {frm:.2f} m/s ({frm * 3.6:.0f} km/h)")
-    print(f"{'run':8} {'dist m':>7} {'time s':>7} {'decel g':>8} {'slip':>12} {'rim m/s':>7}  g at 32/64/100 km/h")
+    print(f"{'run':8} {'dist m':>7} {'time s':>7} {'decel g':>8} {'flat g':>7} {'slip':>12} {'rim m/s':>7}  "
+          "g at 32/64/100 km/h")
     best = None
     locked = None
     abs_runs = []
@@ -171,8 +173,8 @@ def main():
         mean, sd, rim = result.get("slip", (None, None, None))
         slip, rim = (f"{mean:.3f}±{sd:.3f}", f"{rim:.2f}") if mean is not None else ("-", "-")
         bands = " ".join(f"{b / G:.3f}" if b else "-" for b in result.get("bands", ()))
-        print(f"{name:8} {result['dist']:7.1f} {result['time']:7.2f} {result['decel'] / G:8.3f} {slip:>12} {rim:>7}  "
-              f"{bands}")
+        print(f"{name:8} {result['dist']:7.1f} {result['time']:7.2f} {result['decel'] / G:8.3f} "
+              f"{result['decel_flat'] / G:7.3f} {slip:>12} {rim:>7}  {bands}")
         if result.get("wheels"):
             print(f"{'':8} wheels slip / cycles Hz: " + "  ".join(f"{m:.3f}/{hz:.1f}" for m, hz in result["wheels"]))
         if name == "locked":

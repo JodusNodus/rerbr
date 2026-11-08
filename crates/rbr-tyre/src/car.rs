@@ -56,6 +56,10 @@ impl Model for Brush {
         if !(t.running && x.touching) {
             t.state = TransState::default();
         }
+        let pressure_factor = f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale);
+        let soil = x.soil_thickness > 0.0;
+        // NGP's stiffness factor at the pressure, and on a hard surface the slip stiffnesses' fall on low friction (ice).
+        let low_mu = if soil { 1.0 } else { brush::low_mu_stiffness_factor(f64::from(x.grip)) };
         let e = EvalInput {
             fz: f64::from(x.normal_force),
             half_length: f64::from(x.patch_length) / 2.0,
@@ -68,16 +72,17 @@ impl Model for Brush {
             // NGP's wet surface friction carries the wet level, so the brush's wet loss stays off: the pressure only
             // enters the brush's. The wetness lowers its sliding friction and fades its dry-wear gain.
             pressure: 0.0,
-            pressure_factor: f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale),
+            pressure_factor: pressure_factor * low_mu,
             wetness: f64::from(x.water_factor),
             hydroplaning: false,
             temp_grip: 1.0,
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
         };
-        let steady = if x.soil_thickness > 0.0 { loose::eval(&e, &t.loose) } else { brush::eval(&e, &t.cal) };
-        // The longitudinal carcass stiffness (ours), at the pressure; the lateral one NGP's.
-        let k_x = brush::carcass_x(&t.cal, e.pressure_factor);
+        let steady = if soil { loose::eval(&e, &t.loose) } else { brush::eval(&e, &t.cal) };
+        // The longitudinal carcass stiffness (ours), at the pressure (the carcass does not soften on ice); the lateral
+        // one NGP's.
+        let k_x = brush::carcass_x(&t.cal, pressure_factor);
         let mut state = t.state;
         let limit = steady.mu * e.fz;
         let vr = e.spin * e.radius;
@@ -271,6 +276,23 @@ mod tests {
         let held = b.forces(wheel().tyre, &soil(0.0)).unwrap();
         let rest: Vec<f32> = (0..720).map(|_| b.forces(wheel().tyre, &soil(0.0)).unwrap().longitudinal_force).collect();
         assert!(rest.iter().all(|&f| f == held.longitudinal_force), "{held:?}");
+    }
+
+    #[test]
+    fn on_ice_the_side_force_builds_over_a_wider_slip_angle() {
+        // The settled side force over its friction limit at 1° and 4°. On ice (0.095) the slip stiffness is 0.095/0.55
+        // of tarmac's: over the friction it stays 1.2/0.55 = 2.2 times tarmac's (without the fall 12.6 times, and 1°
+        // would slide whole), so ice takes half tarmac's slip angle to its peak.
+        let share = |grip: f32, deg: f32| {
+            let mut b = Brush::new(&[wheel()]).unwrap();
+            let x = ForceInput { grip, ..rolling(15.0, deg.to_radians()) };
+            let f = (0..1440).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap();
+            f.lateral_force.abs() / (grip * x.normal_force)
+        };
+        let (tarmac, ice) = ((share(1.2, 1.0), share(1.2, 4.0)), (share(0.095, 1.0), share(0.095, 4.0)));
+        let ratio = ice.0 / tarmac.0;
+        assert!(ice.0 < 0.6 && (1.6..2.4).contains(&ratio), "tarmac {tarmac:?} ice {ice:?}");
+        assert!(ice.1 > 0.9 && tarmac.1 < 0.8, "tarmac {tarmac:?} ice {ice:?}");
     }
 
     #[test]

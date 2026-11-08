@@ -11,16 +11,24 @@ context: measured and printed (CTX), not scored. The `how` keys:
   tyre:SURFACE:KEY        a key of the rbr-tyre-lab `scorecard` example (steady forces of the tyre model the physics
                           runs, NGP's where it hands back) on the probed wheel of SURFACE: tarmac (map 85, wheel 1 at
                           step 8000 of the r40 circle), gravel (RSF 345, wheel 0 at step 6000 of the r40 circle), snow
-                          (map 10, wheel 0 at step 6000), ice (the snow wheel with NGP's material 116, 0.10/0.095);
-                          tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h, the latter with
-                          WaterFactor 1 on the dry friction level
+                          (map 10, wheel 0 at step 6000), ice (map 85 iced whole, `--material-as 116`: NGP's
+                          material 116 through the tarmac tyre's class factor, as on RSF 565/614; wheel 1 at step
+                          8000 of the r40 circle); tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h,
+                          the latter with WaterFactor 1 on the dry friction level
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
                           over the threshold run at slip K's: an ABS holds low slip, not the best K); gravel RSF 345,
-                          tarmac RSF 568, snow map 10
+                          tarmac RSF 568, snow map 10, ice RSF 504's start straight iced from the brake onset
+                          (`--material-as 116`: the run-up on its tarmac; off the road is ice too, so a stop may
+                          wander 15 m off the driveline), its decel taken on the flat (less g times the straight's
+                          6.6 % rise; a reset by the game, as on RSF 568 where a locked car drifts into the edge, is
+                          refused)
   brake-ratio:A/B:KMH:X/Y surface A's X decel (locked, best) over surface B's Y decel
   circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s)
+  coast:SURFACE:KEY       coast_test.py's declutched coast from 60 km/h to 10 km/h: crr (the rolling coefficient with
+                          the car file's drag held), crr_free (the free fit's); tarmac RSF 568, gravel RSF 345, snow
+                          map 10, ice RSF 568 iced from the lift (`--material-as 116`: the same road as tarmac)
 
 The car is the Fiesta Rally2 (`--rsf-car Ford_Fiesta_Rally2_ngp7`). --quick keeps the tyre rows and the 50 km/h brake
 rows on gravel and tarmac, with three slip targets. --json writes the values per id and physics, the raw measurements,
@@ -42,6 +50,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dev_env  # noqa: E402,F401  (dev.env: RBR_DATA, RBR_RSF, RBR_NGP_PHYSICS)
 import brake_test  # noqa: E402
 import car_pace  # noqa: E402
+import coast_test  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGETS = os.path.join(REPO, "data", "tyre-targets.csv")
@@ -57,16 +66,30 @@ PROBES = {
     "gravel": dict(stage=["--rsf-stage", "345"], steps=40000,
                    circle=["--circle", "1051,-166,40", "--circle-ramp", "0.4"], wheel=0, at=6000),
     "snow": dict(stage=["--stage", "track-10_O"], steps=6000, circle=[], wheel=0, at=6000),
+    "ice": dict(stage=["--stage", "track-85_M", "--material-as", "116"], steps=8000,
+                circle=["--circle", "-260,120,40"], wheel=1, at=8000),
 }
-TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []),
-                 "ice": ("snow", ["--friction", "0.1,0.095"])}
+TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []), "ice": ("ice", [])}
 # TRL PPR496's test speeds (32/64/100 km/h) on the tarmac wheel, dry and with WaterFactor 1 (the dry friction level
 # kept: the rows are ratios).
 for _kmh in (32, 64, 100):
     TYRE_SURFACES[f"tarmac-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}"])
     TYRE_SURFACES[f"tarmac-wet-{_kmh}"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1"])
-BRAKE_STAGES = {"gravel": {"rsf_stage": 345, "stage": None}, "tarmac": {"rsf_stage": 568, "stage": None},
-                "snow": {"rsf_stage": None, "stage": "track-10_O"}}
+# The brake runs per surface: the stage, the extra rbr-standalone flags, the steps, how far off the driveline a valid
+# stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
+BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}
+BRAKE_STAGES = {"gravel": {**BRAKE, "rsf_stage": 345, "stage": None},
+                "tarmac": {**BRAKE, "rsf_stage": 568, "stage": None},
+                "snow": {**BRAKE, "rsf_stage": None, "stage": "track-10_O"},
+                "ice": {**BRAKE, "rsf_stage": 504, "stage": None, "extra": ["--material-as", "116"],
+                        "max_off": 15.0, "slips": "0.05,0.1,0.2,0.3", "flat": True}}
+# The coast-downs per surface (coast_test.py): the stage, the extra rbr-standalone flags and the off-line limit.
+COAST_FROM = 16.67  # m/s: 60 km/h
+COAST = {"steps": 80000, "extra": [], "max_off": car_pace.CRASH_OFF}
+COAST_STAGES = {"tarmac": {**COAST, "rsf_stage": 568, "stage": None},
+                "gravel": {**COAST, "rsf_stage": 345, "stage": None},
+                "snow": {**COAST, "rsf_stage": None, "stage": "track-10_O"},
+                "ice": {**COAST, "rsf_stage": 568, "stage": None, "extra": ["--material-as", "116"], "max_off": 15.0}}
 SLIPS = "0.1,0.15,0.2,0.3,0.5,0.7"
 QUICK_SLIPS = "0.2,0.3,0.5"
 
@@ -100,7 +123,7 @@ class Plan:
 
     def __init__(self, physics, hows, work, slips):
         self.physics, self.work, self.slips = physics, work, slips
-        self.probes, self.tyres, self.brakes, self.circle = set(), set(), set(), False
+        self.probes, self.tyres, self.brakes, self.coasts, self.circle = set(), set(), set(), set(), False
         for how in hows:
             kind, rest = how.split(":", 1)
             if kind == "tyre":
@@ -113,13 +136,15 @@ class Plan:
             elif kind == "brake-ratio":
                 pair, kmh, _ = rest.split(":")
                 self.brakes.update((s, int(kmh)) for s in pair.split("/"))
+            elif kind == "coast":
+                self.coasts.add(rest.split(":")[0])
             elif kind == "circle":
                 self.circle = True
                 self.probes.add("gravel")
             else:
                 sys.exit(f"unknown how {how}")
         self.probes.update(TYRE_SURFACES[s][0] for s in self.tyres)
-        self.tyre, self.brake, self.lat_g = {}, {}, None
+        self.tyre, self.brake, self.coast, self.lat_g = {}, {}, {}, None
 
     def env_args(self):
         return ["--data", os.environ["RBR_DATA"], "--ngp-physics", os.environ["RBR_NGP_PHYSICS"]]
@@ -134,18 +159,38 @@ class Plan:
 
     def brake_jobs(self, surface, kmh):
         frm = round(kmh / 3.6, 2)
-        args = types.SimpleNamespace(rsf_car=CAR, physics=self.physics, steps=30000, top_speed=80.0, clutch_out=False,
-                                     out=self.work, extra=[], **BRAKE_STAGES[surface], **{"from": frm})
-        runs = [("locked", ["--brake-pedal", "1"])] + [(f"k{k}", ["--brake-slip", k]) for k in self.slips.split(",")]
+        b = BRAKE_STAGES[surface]
+        args = types.SimpleNamespace(rsf_car=CAR, physics=self.physics, steps=b["steps"], top_speed=80.0,
+                                     clutch_out=False, out=self.work, extra=b["extra"], rsf_stage=b["rsf_stage"],
+                                     stage=b["stage"], **{"from": frm})
+        runs = [("locked", ["--brake-pedal", "1"])] + [(f"k{k}", ["--brake-slip", k])
+                                                       for k in self.slips_of(surface).split(",")]
         for name, brake in runs:
             full = f"brake-{surface}-{kmh}-{name}"
             yield brake_test.command(args, full, brake), os.path.join(self.work, full + ".log")
+
+    def coast_job(self, surface):
+        c = COAST_STAGES[surface]
+        args = types.SimpleNamespace(rsf_car=CAR, physics=self.physics, steps=c["steps"], top_speed=80.0,
+                                     clutch_out=False, out=self.work, extra=c["extra"], rsf_stage=c["rsf_stage"],
+                                     stage=c["stage"], **{"from": COAST_FROM})
+        name = f"coast-{surface}"
+        return coast_test.command(args, name), os.path.join(self.work, name + ".log")
+
+    def read_coasts(self):
+        for surface in sorted(self.coasts):
+            trace = os.path.join(self.work, f"coast-{surface}.trace")
+            self.coast[surface] = (coast_test.analyse(trace, COAST_FROM, CAR, max_off=COAST_STAGES[surface]["max_off"])
+                                   if os.path.exists(trace) else {"ok": False, "reason": "no trace"})
+
+    def slips_of(self, surface):
+        return BRAKE_STAGES[surface]["slips"] or self.slips
 
     def jobs(self):
         out = [self.probe_job(s) for s in sorted(self.probes)]
         for surface, kmh in sorted(self.brakes):
             out += list(self.brake_jobs(surface, kmh))
-        return out
+        return out + [self.coast_job(s) for s in sorted(self.coasts)]
 
     def tyre_job(self, surface):
         probe, extra = TYRE_SURFACES[surface]
@@ -172,12 +217,14 @@ class Plan:
         for surface, kmh in sorted(self.brakes):
             frm = round(kmh / 3.6, 2)
             runs = {}
-            for name in ["locked"] + [f"k{k}" for k in self.slips.split(",")]:
+            b = BRAKE_STAGES[surface]
+            for name in ["locked"] + [f"k{k}" for k in self.slips_of(surface).split(",")]:
                 trace = os.path.join(self.work, f"brake-{surface}-{kmh}-{name}.trace")
-                result = brake_test.analyse(trace, frm) if os.path.exists(trace) else {"ok": False,
-                                                                                       "reason": "no trace"}
-                runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result["decel"] / G}
-                              if result["ok"] else {"error": result["reason"]})
+                result = (brake_test.analyse(trace, frm, max_off=b["max_off"]) if os.path.exists(trace)
+                          else {"ok": False, "reason": "no trace"})
+                decel = "decel_flat" if b["flat"] else "decel"
+                runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result[decel] / G,
+                               "grade": result["grade"]} if result["ok"] else {"error": result["reason"]})
             ok = {k: v for k, v in runs.items() if k != "locked" and "g" in v}
             best = min(ok, key=lambda k: ok[k]["dist"]) if ok else None
             self.brake[(surface, kmh)] = {"runs": runs, "best": best}
@@ -224,6 +271,12 @@ class Plan:
             pair, kmh, xy = rest.split(":")
             (a, b), (x, y) = pair.split("/"), xy.split("/")
             return self.brake_g(a, int(kmh), x) / self.brake_g(b, int(kmh), y)
+        if kind == "coast":
+            surface, key = rest.split(":")
+            c = self.coast[surface]
+            if not c["ok"]:
+                raise LookupError(c["reason"])
+            return c[key]
         if kind == "circle":
             if "lat_g" not in self.lat_g:
                 raise LookupError(self.lat_g["error"])
@@ -231,7 +284,7 @@ class Plan:
         raise LookupError(f"unknown how {how}")
 
     def raw(self):
-        return {"tyre": self.tyre, "circle": self.lat_g,
+        return {"tyre": self.tyre, "circle": self.lat_g, "coast": self.coast,
                 "brake": {f"{s}:{k}": v for (s, k), v in self.brake.items()}}
 
 
@@ -287,6 +340,7 @@ def score(args):
         for surface in sorted(plan.tyres):
             plan.read_tyre(surface)
         plan.read_brakes()
+        plan.read_coasts()
         if plan.circle:
             plan.read_circle()
 
