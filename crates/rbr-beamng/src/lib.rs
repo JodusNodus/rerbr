@@ -6,6 +6,7 @@ pub mod cdae;
 pub mod convert;
 pub mod course;
 pub mod cutout;
+pub mod dae;
 pub mod json;
 pub mod level;
 pub mod materials;

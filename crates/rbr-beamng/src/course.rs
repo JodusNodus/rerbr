@@ -33,15 +33,58 @@ fn worst_distance(line: &Line, race: &Race) -> f64 {
     race.nodes.iter().map(|n| line.project(n.pos).1).fold(0.0, f64::max)
 }
 
+/// Ends of two open roads closer than this join them into one.
+const JOIN: f64 = 15.0;
+
+/// Open roads joined end to start (a level may split one AI road into pieces): from each road, the nearest unused
+/// road whose start or end (then reversed) lies within [`JOIN`] of the chain's end, until none does.
+fn chained(roads: &[&Road]) -> Vec<Road> {
+    let dist =
+        |a: &[f64; 4], b: &[f64; 4]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+    let open: Vec<&Road> = roads.iter().copied().filter(|r| !r.looped).collect();
+    let mut out = Vec::new();
+    for (i, first) in open.iter().enumerate() {
+        let mut used = vec![false; open.len()];
+        used[i] = true;
+        let mut nodes = first.nodes.clone();
+        let mut names = vec![first.name.clone()];
+        loop {
+            let end = *nodes.last().unwrap();
+            let next = (0..open.len())
+                .filter(|&j| !used[j])
+                .flat_map(|j| {
+                    [(j, false, dist(&end, &open[j].nodes[0])), (j, true, dist(&end, open[j].nodes.last().unwrap()))]
+                })
+                .filter(|c| c.2 < JOIN)
+                .min_by(|a, b| a.2.total_cmp(&b.2));
+            let Some((j, reversed, gap)) = next else { break };
+            used[j] = true;
+            let mut more = open[j].nodes.clone();
+            if reversed {
+                more.reverse();
+            }
+            nodes.extend(more.into_iter().skip(usize::from(gap < 1.0)));
+            names.push(open[j].name.clone());
+        }
+        if names.len() > 1 {
+            out.push(Road { name: names.join("+"), nodes, ..(*first).clone() });
+        }
+    }
+    out
+}
+
 /// The course of `race` on the scene's roads.
 pub fn course(scene: &Scene, race: &Race) -> Result<Course, String> {
     let roads: Vec<&Road> = scene.roads.iter().filter(|r| r.drivability > 0.0 && r.nodes.len() >= 2).collect();
+    let chains = chained(&roads);
     let (road, line, fit) = roads
         .iter()
+        .copied()
+        .chain(&chains)
         .map(|r| {
             let line = Line::spline(&r.nodes, r.looped, STEP);
             let fit = worst_distance(&line, race);
-            (*r, line, fit)
+            (r, line, fit)
         })
         .min_by(|a, b| a.2.total_cmp(&b.2))
         .ok_or("no drivable DecalRoad in the level")?;

@@ -42,6 +42,14 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
 
 ## Conversion
 
+- Collada (`dae.rs`): a level with no `.cdae` for a shape (BeamNG builds them on first load) reads its `.dae`
+  (Blender's `<triangles>`/`<polylist>`, node matrices baked in, `v` flipped, wound clockwise). The 2K touge levels
+  (Techeyy, e.g. 2K-Irohazaka) ship only `.dae` for road, ground, base and signs, their tree `.cdae` are v26 (not read).
+- AI roads split into pieces: open drivable roads whose ends lie within 15 m are also tried joined
+  (`course::chained`). Irohazaka's 4 pieces give its downhill 6.7 km, worst node 1.5 m off (one piece: 895 m);
+  Nordschleife unchanged (`aiRoad`, 2.0 m). Its races are `quickrace/*.race.json`, not missions: for now copied into
+  a mission folder of a copy of the zip. Autopilot (NGP car 2, `--top-speed 30`) drove 1.1 km of it on the
+  collision (2026-11-08).
 - Frame `(x - ox, z, y - oy)`, `(ox, oy)` the course's plan centre (680, 264). Collision mesh within 60 m of the
   driveline as `Visible=0`, `CollisionOnly=1` objects (100 m tiles per surface), each surface a material whose `mat.ini`
   map is the RBR id in all cells; drawn shapes as `CollisionModel=-1`, one object per 100 m tile, material and

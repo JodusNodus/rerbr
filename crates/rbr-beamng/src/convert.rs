@@ -295,12 +295,17 @@ pub fn convert(zip: &Path, options: &Options) -> Result<Report, String> {
     for st in scene.statics.iter().filter(|s| shown(s)) {
         let path = st.cdae_path();
         if !shapes.contains_key(&path) {
-            let Some(entry) = archive.find(&path).map(str::to_owned) else {
+            // A level without BeamNG's built `.cdae` ships the Collada source.
+            let dae = st.shape.trim_start_matches('/');
+            let shape = if let Some(entry) = archive.find(&path).map(str::to_owned) {
+                crate::cdae::parse(&archive.read(&entry)?)
+            } else if let Some(entry) = archive.find(dae).map(str::to_owned).filter(|_| dae != path) {
+                crate::dae::parse(&String::from_utf8_lossy(&archive.read(&entry)?))
+            } else {
                 *skipped.entry(format!("{path} (missing)")).or_default() += 1;
                 continue;
             };
-            shapes
-                .insert(path.clone(), crate::cdae::parse(&archive.read(&entry)?).map_err(|e| format!("{path}: {e}"))?);
+            shapes.insert(path.clone(), shape.map_err(|e| format!("{path}: {e}"))?);
         }
         let shape = &shapes[&path];
         let solid = st.collision_type.as_deref().is_none_or(|c| !c.eq_ignore_ascii_case("none"));
