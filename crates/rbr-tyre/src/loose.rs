@@ -6,10 +6,21 @@
 //! - Level: NGP's. The free rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
-//! - Lateral: saturates without falling. Coutermarsh & Shoop (SAE 2010-01-0374, CRREL CIV, LT235/75R15, 241 kPa,
-//!   6.7 kN, 1-1.5 m/s, Fig. 15, fig ±0.004): on pea stone and wet gravel μ_y saturates at 0.54-0.55 by 20-25° and does
-//!   not fall to 38°; little hysteresis on soil. The cornering slope stays NGP's (about twice that road tyre's 3-5 per
-//!   rad): the stiffness is solved for it under the flat friction ([`calibrate`]).
+//! - Shape below the level, gravel: Janosi-Hanamoto's shear law of soil (τ = τ_max (1 - exp(-j/K)); Wong, Theory of
+//!   Ground Vehicles, not read: secondary via Senatore & Sandu, J. Terramech. 48, 2011) with the shear displacement
+//!   taken as the theoretical slip times a fixed length: μ Fz (1 - exp(-u)) along the slip, u the slip over
+//!   tan [`GRAVEL_ALPHA0_DEG`] ([`shear`]). Coutermarsh & Shoop (SAE 2010-01-0374, CRREL CIV, LT235/75R15, 241 kPa,
+//!   6.7 kN, 1-1.5 m/s, Fig. 15, fig ±0.004): pea stone over its maximum 0.33/0.55/0.80/0.91 at 2.5/5/10/15°, still
+//!   rising to 38°, fits it with α0 6.28° (rms 0.0012; the brush's cubic 0.0165, the law integrated over a uniform
+//!   patch 0.0098); wet gravel fits 9.7°. No peak, no fall; the level is approached (0.995 at 30°). The slope follows
+//!   the level, μ Fz / tan α0 (6.0 per rad at 6.7 kN against NGP's 6.6), not NGP's stiffness. The longitudinal side
+//!   takes the same law with the brush's Cx/Cy ([`KX_OVER_KY`]) at the axes' levels, so the braking force keeps
+//!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
+//!   [`GRAVEL_CLASS`], `Gravel_*`), by their share in the wheel's material blend ([`gravel_share`]).
+//! - Shape, snow and the other soils: the brush's patch with a flat friction: the brush's peak is μ Fz exactly. Packed
+//!   snow rises faster (Coutermarsh Fig. 8: 90 % by 7-9°; α0 3.6° at a slope NGP's level doubles) and the brush at
+//!   NGP's slope gives it (α90 9°). The cornering slope stays NGP's (about twice that road tyre's 3-5 per rad): the
+//!   stiffness is solved for it under the flat friction ([`calibrate`]).
 //! - Longitudinal: past the free rolling peak the braking force keeps rising, to [`PLOUGH`] times the peak at lock: the
 //!   material builds up ahead of a locked tyre (a berm) and stops it harder than rolling (NHTSA DOT HS 808 875 /
 //!   SAE 1999-01-1287, 9 cars, 56 km/h, 5 cm crushed limestone: locked over ABS decel 1.25 laden, 1.30 light, per car
