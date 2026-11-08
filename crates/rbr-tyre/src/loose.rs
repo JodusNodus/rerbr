@@ -81,9 +81,38 @@ pub fn braking_slip(vsx: f64, vx: f64) -> f64 {
     }
 }
 
+/// Gravel's shear law reaches 1 - 1/e of the friction at the slip angle `GRAVEL_ALPHA0`, rad ([`shear`]): Coutermarsh
+/// & Shoop's pea stone (Fig. 15) fitted, 6.28° (rms 0.0012 μ/max over 1-38°).
+pub const GRAVEL_ALPHA0: f64 = 6.28 * std::f64::consts::PI / 180.0;
+
+/// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
+pub const GRAVEL_CLASS: u32 = 1;
+
+/// The share of gravel in the wheel's blend of two materials of `classes`, the second weighted `blend`.
+pub fn gravel_share(classes: [u32; 2], blend: f32) -> f64 {
+    let is = |c: u32| if c == GRAVEL_CLASS { 1.0 } else { 0.0 };
+    let z = f64::from(blend).clamp(0.0, 1.0);
+    is(classes[0]) * (1.0 - z) + is(classes[1]) * z
+}
+
+/// The secant slip stiffness, N per unit slip, of gravel's shear law (Janosi-Hanamoto's form): the force μ Fz (1 -
+/// exp(-u)) along the theoretical slip `s`, u = |(sx/s0x, sy/s0)| with s0 = tan [`GRAVEL_ALPHA0`] and s0x the
+/// longitudinal one that keeps the brush's [`KX_OVER_KY`] at the axes' levels `mu_x`, `mu_y`; `mu` the friction along
+/// `s`. Both axes take it as their secant (-F_i/s_i).
+pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64) -> f64 {
+    let s_abs = sx.hypot(sy);
+    if s_abs <= 0.0 {
+        return 0.0;
+    }
+    let s0 = libm::tan(GRAVEL_ALPHA0);
+    let s0x = s0 * mu_x / (KX_OVER_KY * mu_y);
+    mu * fz * -libm::expm1(-(sx / s0x).hypot(sy / s0)) / s_abs
+}
+
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
-/// `mu` is the directional friction including the berm (the force's limit).
-pub fn eval(x: &EvalInput, c: &Loose) -> EvalOutput {
+/// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]); the rest takes the
+/// brush's. `mu` is the directional friction including the berm (the force's limit).
+pub fn eval(x: &EvalInput, c: &Loose, gravel: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);
     let cal = &c.cal;
@@ -93,6 +122,14 @@ pub fn eval(x: &EvalInput, c: &Loose) -> EvalOutput {
     let grip = (x.surf_static / cal.surf_s_cal) * (x.temp_grip / cal.temp_grip_cal);
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
+    if gravel > 0.0 {
+        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy);
+        out.kx += (k - out.kx) * gravel;
+        out.ky += (k - out.ky) * gravel;
+        out.fx = -out.kx * sx;
+        out.fy = -out.ky * sy;
+        out.trail = if out.fy != 0.0 { -out.mz / out.fy } else { 0.0 };
+    }
     // The berm: from BERM_FROM, or the braking slip of the longitudinal full slide (|sx| = 3 mu_x Fz / Cx) if later, to
     // lock.
     let s_abs = sx.hypot(sy);
@@ -139,7 +176,7 @@ fn cal_input(cal: &Calibration, v: f64, alpha: f64) -> EvalInput {
 pub fn cornering_slope(c: &Loose, v: f64) -> f64 {
     let (sxy, sxx) = (1..=8)
         .map(|k| (f64::from(k) * 0.25).to_radians())
-        .fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * eval(&cal_input(&c.cal, v, a), c).fy.abs(), sxx + a * a));
+        .fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * eval(&cal_input(&c.cal, v, a), c, 0.0).fy.abs(), sxx + a * a));
     sxy / sxx
 }
 
@@ -191,8 +228,13 @@ pub(crate) mod tests {
     }
 
     /// At load `fz`, speed `v`, slip angle `alpha` (deg) and slip ratio `kappa` (-1 locked), on a surface of grip
-    /// `grip`.
+    /// `grip`, under the brush's law.
     fn at(c: &Loose, fz: f64, v: f64, alpha: f64, kappa: f64, grip: f64) -> EvalOutput {
+        on(c, fz, v, alpha, kappa, grip, 0.0)
+    }
+
+    /// As [`at`], with a share `gravel` of gravel's shear law.
+    fn on(c: &Loose, fz: f64, v: f64, alpha: f64, kappa: f64, grip: f64, gravel: f64) -> EvalOutput {
         let a = alpha.to_radians();
         let vx = -v * a.cos();
         let x = EvalInput {
@@ -205,7 +247,7 @@ pub(crate) mod tests {
             surf_kinetic: grip,
             ..cal_input(&c.cal, v, a)
         };
-        eval(&x, c)
+        eval(&x, c, gravel)
     }
 
     #[test]
@@ -240,6 +282,32 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn gravel_rises_by_the_shear_law_to_the_level() {
+        let c = loose();
+        let peak = 0.85 * 4000.0;
+        let fy = |a: f64| on(&c, 4000.0, 15.0, a, 0.0, 1.0, 1.0).fy.abs() / peak;
+        // Coutermarsh & Shoop's pea stone over its maximum at 2.5/5/10/15° (Fig. 15): 0.33/0.55/0.80/0.91.
+        for (a, pea) in [(2.5, 0.33), (5.0, 0.55), (10.0, 0.80), (15.0, 0.91)] {
+            let law = -libm::expm1(-libm::tan(f64::to_radians(a)) / libm::tan(GRAVEL_ALPHA0));
+            assert!((fy(a) - law).abs() < 1e-9 && (fy(a) - pea).abs() < 0.01, "{a}: {}", fy(a));
+        }
+        let mut last = 0.0;
+        for k in 0..=400 {
+            let f = fy(f64::from(k) * 0.1);
+            assert!(f > last || k == 0, "{k}");
+            last = f;
+        }
+        assert!(last > 0.999 && last < 1.0, "{last}");
+        // The longitudinal side takes the same law at its own level; half a share is halfway between the laws.
+        let fx = |k: f64, g: f64| on(&c, 4000.0, 15.0, 0.0, k, 1.0, g).fx.abs() / (0.84 * 4000.0);
+        let s0x = libm::tan(GRAVEL_ALPHA0) * 0.84 / (KX_OVER_KY * 0.85);
+        assert!((fx(0.5, 1.0) - -libm::expm1(-(0.5 / 1.5) / s0x)).abs() < 1e-9);
+        assert!((fx(0.05, 0.5) - (fx(0.05, 0.0) + fx(0.05, 1.0)) / 2.0).abs() < 1e-9);
+        assert_eq!(gravel_share([GRAVEL_CLASS, 3], 0.25), 0.75);
+        assert_eq!(gravel_share([3, 3], 0.5), 0.0);
+    }
+
+    #[test]
     fn the_braking_force_rises_past_the_peak_to_the_berm_at_lock() {
         let c = loose();
         for v in [5.0, 15.0, 25.0] {
@@ -266,9 +334,9 @@ pub(crate) mod tests {
     fn a_locked_tyre_side_force_follows_the_sliding_velocity_below_free_rolling() {
         let c = loose();
         let peak = 0.85 * 4000.0;
-        for a in [5.0, 10.0, 20.0, 35.0] {
-            let locked = at(&c, 4000.0, 15.0, a, -1.0, 1.0);
-            let free = at(&c, 4000.0, 15.0, a, 0.0, 1.0);
+        for (a, gravel) in [5.0, 10.0, 20.0, 35.0].into_iter().flat_map(|a| [(a, 0.0), (a, 1.0)]) {
+            let locked = on(&c, 4000.0, 15.0, a, -1.0, 1.0, gravel);
+            let free = on(&c, 4000.0, 15.0, a, 0.0, 1.0, gravel);
             assert!(locked.fy.abs() < free.fy.abs(), "{a}");
             // PLOUGH mu sin(alpha), mu along the sliding velocity between the axes' peaks.
             let share = locked.fy.abs() / locked.fx.hypot(locked.fy);

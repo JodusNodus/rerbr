@@ -10,12 +10,14 @@ use std::collections::BTreeMap;
 /// `0x160` apart, each `CReal`'s value 0xc past its key offset (`data/physics-lsp-fields.md`, `CMaterial`).
 const FIRST_ENTRY: u32 = 0x18 + 0xc;
 const ENTRY: u32 = 0x160;
-const FIELDS: [(&str, u32); 8] = [
+const FIELDS: [(&str, u32); 10] = [
     ("myStatic", 0x3c),
     ("myKinetic", 0x4c),
     ("myStaticSoil", 0x5c),
     ("myKineticSoil", 0x6c),
     ("SinkFactor", 0x7c),
+    ("x8c", 0x8c),
+    ("x9c", 0x9c),
     ("SoilThickness", 0xac),
     ("WaterFactor", 0xdc),
     ("RollingResistance", 0xec),

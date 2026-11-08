@@ -35,11 +35,19 @@ pub struct ForceInput {
     pub soil_thickness: f32,
     /// The surface's wetness, 0 dry to 1 wet (`WaterFactor`).
     pub water_factor: f32,
+    /// The surface classes of the two materials the wheel's surface blends (each material's `+0x148`, the index of the
+    /// tyre type's per-class base friction: 1 gravel, 3 snow) and the second one's weight, 0 to 1. NGP's step does not
+    /// read them: [`input`] leaves them unknown ([`UNKNOWN_CLASS`]), the host fills them in.
+    pub surface_classes: [u32; 2],
+    pub surface_blend: f32,
     /// The carcass's lateral stiffness times the inclination's cosine, N/m, and its torsional stiffness, N·m/rad, as
     /// NGP's sliding model takes them (the torsional one reduced at low speed).
     pub lateral_stiffness: f32,
     pub torsional_stiffness: f32,
 }
+
+/// A surface class [`input`] does not know.
+pub const UNKNOWN_CLASS: u32 = u32::MAX;
 
 /// A tyre model's forces at the step.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,6 +88,8 @@ pub fn input(f: &Frame, dt: f32, grip_scale: f32, stiffness_scale: f32) -> Force
         tread_left: if depth > 0.0 { s.tread_remaining / depth } else { 1.0 },
         soil_thickness: s.soil_thickness,
         water_factor: s.water_factor,
+        surface_classes: [UNKNOWN_CLASS; 2],
+        surface_blend: 0.0,
         lateral_stiffness: s.inclination_cos * s.lateral_stiffness,
         torsional_stiffness: s.torsional_stiffness,
     }
