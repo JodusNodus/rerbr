@@ -73,6 +73,7 @@ fn move_renamed_keys(settings: &mut Settings, renamed: &[(String, String)]) {
         if let Some(value) = settings.ffb_cars.cars.remove(old) {
             settings.ffb_cars.cars.entry(now.clone()).or_insert(value);
         }
+        settings.ffb_auto.rename(old, now);
         if let Some(nudges) = settings.camera.cars.remove(old) {
             settings.camera.cars.entry(now.clone()).or_insert(nudges);
         }
@@ -271,6 +272,7 @@ impl Form {
             bindings: settings.bindings.clone(),
             ffb: settings.ffb.clone(),
             ffb_cars: settings.ffb_cars.clone(),
+            ffb_auto: settings.ffb_auto.clone(),
             head_gasket: settings.head_gasket.unwrap_or(1),
             physics: settings.physics.unwrap_or_default(),
             session_physics: None,
@@ -367,9 +369,14 @@ impl Form {
             head_gasket: Some(self.head_gasket),
             physics: Some(self.physics),
             bindings: self.bindings.clone(),
-            ffb: self.ffb.clone(),
+            // The strength too: the pause menu sets it while driving, the Controls page writes it at once.
+            ffb: rbr_render::ffb::Options {
+                settings: rbr_gameplay::ffb::Settings { strength: viewer.ffb.settings.strength, ..self.ffb.settings },
+                ..self.ffb.clone()
+            },
             // The viewer owns these: carried over from the file as it is now, earlier car keys moved.
             ffb_cars: viewer.ffb_cars,
+            ffb_auto: viewer.ffb_auto,
             camera: viewer.camera,
             gearboxes: self.gearboxes.clone(),
             setups: self.setup.choices.clone(),
@@ -418,8 +425,8 @@ mod tests {
         assert_eq!((chosen.ngp_dll, chosen.ngp_physics.as_deref()), (None, Some("/games/ngp/physics.rbz")));
         std::fs::remove_dir_all(&here).unwrap();
     }
-    /// Saving carries the viewer's `[ffb_cars]` over from the file as it is, leaving the form's own alone, earlier
-    /// car keys moved.
+    /// Saving carries the viewer's `[ffb_cars]`, `[ffb_auto]`, `[ffb_trim]` and strength over from the file as it
+    /// is, leaving the form's own alone, earlier car keys moved.
     #[test]
     fn saving_carries_the_viewer_s_ffb_cars_over() {
         let here = crate::test_dir("settings-ffb-cars-carry");
@@ -456,11 +463,26 @@ mod tests {
         let text = std::fs::read_to_string(&settings).unwrap();
         assert!(text.contains("[ffb_cars]\nrsf-24 = 90,100,110\n"), "{text}");
         assert!(!text.contains("COROLLA"), "{text}");
+        // The viewer's automatic references, trims and strength are carried over the same way.
+        let viewer = rbr_render::ffb::AutoCars::parse(
+            "[ffb_auto]\nrsf-24 = 0/0, 120.0/300, 0/0\n[ffb_trim]\nrsf-24 = 100,90,100\n",
+        );
+        let file = rbr_formats::ini::set_value(&viewer.replace_in(&text), "ffb", "strength", "0.35");
+        std::fs::write(&settings, file).unwrap();
+        form.ffb.settings.strength = 0.8;
+        form.ffb.sensitivity = [280, 250, 280];
+        form.ffb_auto = Default::default();
+        assert!(form.save());
+        let saved = read_settings(&settings);
+        assert_eq!((saved.ffb.settings.strength, saved.ffb.sensitivity), (0.35, [280, 250, 280]));
+        assert_eq!(saved.ffb_auto, viewer);
         // A car's earlier key is written as its key now: the viewer reads the file.
         form.catalog.renamed = vec![("rsf-24".into(), "pack-evo".into())];
         assert!(form.save());
         let text = std::fs::read_to_string(&settings).unwrap();
         assert!(text.contains("[ffb_cars]\npack-evo = 90,100,110\n") && !text.contains("rsf-24"), "{text}");
+        assert!(text.contains("[ffb_auto]\npack-evo = 0/0, 120.0/300, 0/0\n"), "{text}");
+        assert!(text.contains("[ffb_trim]\npack-evo = 100,90,100\n"), "{text}");
         std::fs::remove_dir_all(&here).unwrap();
     }
 }

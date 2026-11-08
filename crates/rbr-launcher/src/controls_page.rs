@@ -56,25 +56,113 @@ const SHIFTER: [(Action, &str); 9] = [
 /// How often the joysticks are looked for again while nothing is being set (a wheel plugged in).
 const RESCAN: Duration = Duration::from_secs(2);
 
-/// The force feedback: on or off, the strength, the direction and NGP's sensitivity per surface.
-fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options) {
+/// The force feedback: on or off, the strength, the direction, automatic or manual sensitivity and NGP's sensitivity
+/// per surface (every car's in manual mode; in automatic mode a car's until it learned its own). The strength is
+/// written to the settings file at once, as the pause menu's Force feedback page does while driving.
+fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut ffb.settings.enabled, "on");
         ui.add_enabled_ui(ffb.settings.enabled, |ui| {
-            ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
+            let strength =
+                ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
+            if strength.on_hover_text(STRENGTH_HELP).changed() && !read_only {
+                write_strength(settings, ffb.settings.strength);
+            }
             ui.checkbox(&mut ffb.settings.inverse, "inverse");
         });
     });
     ui.add_enabled_ui(ffb.settings.enabled, |ui| {
+        ui.checkbox(&mut ffb.auto, "automatic sensitivity per car").on_hover_text(AUTO_HELP);
+        ui.label(RichText::new(AUTO_HELP).color(Color32::GRAY));
         ui.horizontal(|ui| {
-            ui.label("sensitivity %").on_hover_text(SENSITIVITY_HELP);
+            let (label, help) =
+                if ffb.auto { ("until learned %", UNTIL_LEARNED_HELP) } else { ("sensitivity %", SENSITIVITY_HELP) };
+            ui.label(label).on_hover_text(help);
             for (value, surface) in ffb.sensitivity.iter_mut().zip(ffb::SURFACES) {
                 ui.add(DragValue::new(value).range(ffb::SENSITIVITY_RANGE).prefix(format!("{surface} ")))
-                    .on_hover_text(SENSITIVITY_HELP);
+                    .on_hover_text(help);
             }
         });
     });
 }
+
+/// Writes the strength into the settings file's `[ffb]`, the rest of the file kept.
+fn write_strength(settings: &Path, strength: f32) {
+    let file = std::fs::read_to_string(settings).unwrap_or_default();
+    let text = rbr_formats::ini::set_value(&file, "ffb", "strength", &strength.to_string());
+    if let Err(e) = std::fs::write(settings, text) {
+        eprintln!("launcher: {}: {e}", settings.display());
+    }
+}
+
+/// Each car's automatic sensitivity (`[ffb_auto]`, `[ffb_trim]`, `ffb::AutoCars`): one row per car that learned or
+/// has a trim, and the Drive page's selected car `car`, with per surface the percentage it starts with ("learning"
+/// without a reference) and its trim, and Forget, which drops what it learned. Every edit is written to the settings
+/// file at once, that car's entry only (the viewer writes the same sections while driving).
+fn ffb_auto_ui(ui: &mut Ui, autos: &mut ffb::AutoCars, cars: &[Car], car: usize, settings: &Path) {
+    ui.label(RichText::new(PER_CAR_AUTO_HELP).color(Color32::GRAY));
+    let selected = cars.get(car).map(|c| c.key.clone());
+    let mut keys: Vec<String> = autos.references.keys().chain(autos.trims.keys()).cloned().collect();
+    keys.extend(selected);
+    keys.sort();
+    keys.dedup();
+    let mut changed = None;
+    egui::Grid::new("ffb auto").num_columns(5).spacing([12.0, 4.0]).show(ui, |ui| {
+        ui.label("");
+        for surface in ffb::SURFACES {
+            ui.label(surface);
+        }
+        ui.end_row();
+        for key in &keys {
+            ui.label(car_display(key, cars));
+            for surface in 0..3 {
+                ui.horizontal(|ui| {
+                    match autos.effective(key, surface) {
+                        Some(p) => ui.label(format!("{p} %")),
+                        None => ui.label(RichText::new("learning").color(Color32::GRAY)),
+                    }
+                    .on_hover_text("The sensitivity this car starts with on this surface, its trim applied");
+                    let mut trim = autos.trim(key, surface);
+                    let edit = DragValue::new(&mut trim).range(ffb::auto::TRIM_RANGE).prefix("trim ").suffix(" %");
+                    if ui.add(edit).on_hover_text(TRIM_HELP).changed() {
+                        autos.set_trim(key, surface, trim);
+                        changed = Some(key.clone());
+                    }
+                });
+            }
+            let learned = autos.references.contains_key(key);
+            if ui.add_enabled(learned, egui::Button::new("Forget").small()).on_hover_text(FORGET_HELP).clicked() {
+                autos.references.remove(key);
+                changed = Some(key.clone());
+            }
+            ui.end_row();
+        }
+    });
+    if let Some(key) = changed {
+        write_ffb_auto(settings, &key, autos);
+    }
+}
+
+/// Writes car `key`'s entries of `autos` into the settings file's `[ffb_auto]` and `[ffb_trim]`, the rest kept.
+fn write_ffb_auto(settings: &Path, key: &str, autos: &ffb::AutoCars) {
+    let file = std::fs::read_to_string(settings).unwrap_or_default();
+    let mut now = ffb::AutoCars::parse(&file);
+    now.take_car(key, autos);
+    if let Err(e) = std::fs::write(settings, now.replace_in(&file)) {
+        eprintln!("launcher: {}: {e}", settings.display());
+    }
+}
+
+const STRENGTH_HELP: &str = "How heavy the wheel is, for every car: 1 is the wheel's full force.";
+const AUTO_HELP: &str = "Automatic evens out the steering weight between cars, learned from your own driving; the \
+     strength sets how heavy the wheel is.";
+const UNTIL_LEARNED_HELP: &str = "NGP's force feedback sensitivity per surface for a car that has not learned its own \
+     there yet (the car's own manual one when it has one). Below 100 the force is stronger, above 100 lighter.";
+const PER_CAR_AUTO_HELP: &str = "Each car learns its sensitivity on a surface in its first minute of driving there, \
+     and keeps refining it at the end of each drive. The trim makes a car lighter (above 100) or stronger (below \
+     100); the pause menu's Force feedback page sets it while driving.";
+const TRIM_HELP: &str = "Percent of the learned sensitivity: above 100 lighter, below 100 stronger.";
+const FORGET_HELP: &str = "Forgets what this car learned: it learns again on its next drives. Its trims stay.";
 
 /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `ffb::CarSensitivity`): one row per listed car (its
 /// name when a car of `cars` has the key, else the key itself), the Drive page's selected car `car` added with the
@@ -410,6 +498,7 @@ impl ControlsPage {
         aids: &mut DriverAids,
         head_gasket: &mut i32,
         ffb_cars: &mut ffb::CarSensitivity,
+        ffb_auto: &mut ffb::AutoCars,
         cars: &[Car],
         car: usize,
         root: &str,
@@ -450,10 +539,16 @@ impl ControlsPage {
                     heading(ui, "Driver aids");
                     aids_ui(ui, aids, head_gasket);
                     heading(ui, "Force feedback");
-                    ffb_ui(ui, ffb);
+                    ffb_ui(ui, ffb, settings, read_only);
                     let global = ffb.sensitivity;
                     let on = ffb.settings.enabled;
-                    ffb_cars_ui(ui, on, global, ffb_cars, cars, car, root, settings, read_only, &mut self.ffb_status);
+                    if ffb.auto {
+                        heading(ui, "Force feedback per car");
+                        ui.add_enabled_ui(on && !read_only, |ui| ffb_auto_ui(ui, ffb_auto, cars, car, settings));
+                    } else {
+                        let status = &mut self.ffb_status;
+                        ffb_cars_ui(ui, on, global, ffb_cars, cars, car, root, settings, read_only, status);
+                    }
                 });
             });
             ui.add_space(8.0);

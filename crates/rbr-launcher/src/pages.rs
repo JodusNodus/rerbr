@@ -460,6 +460,7 @@ impl Form {
                         &mut self.options.aids,
                         &mut self.head_gasket,
                         &mut self.ffb_cars,
+                        &mut self.ffb_auto,
                         &self.catalog.cars,
                         car,
                         &root,

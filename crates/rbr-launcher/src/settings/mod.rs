@@ -170,6 +170,10 @@ pub struct Settings {
     /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `rbr_render::ffb::CarSensitivity`): the viewer owns
     /// it while driving, the launcher carries it over and the Controls page edits it.
     pub ffb_cars: ffb::CarSensitivity,
+    /// Each car's automatic force-feedback state (`[ffb_auto]`, `[ffb_trim]`, `rbr_render::ffb::AutoCars`): the
+    /// viewer learns the references and sets the trims while driving, the launcher carries them over and the Controls
+    /// page edits them.
+    pub ffb_auto: ffb::AutoCars,
     /// The viewer's camera choices (`[camera]`, `rbr_render::camera_prefs`): the viewer writes them, the launcher
     /// carries them over and resets a car's.
     pub camera: CameraPrefs,
@@ -440,6 +444,7 @@ impl Settings {
             bindings: Bindings::parse(text),
             ffb: ffb::Options::parse(text),
             ffb_cars: ffb::CarSensitivity::parse(text),
+            ffb_auto: ffb::AutoCars::parse(text),
             camera: CameraPrefs::parse(text),
             gearboxes: Gearboxes::parse(&sections),
             setups: SetupChoices::parse(&sections),
@@ -536,6 +541,8 @@ impl Settings {
         out.push_str(&self.ffb.to_text());
         out.push('\n');
         out.push_str(&self.ffb_cars.to_text());
+        out.push('\n');
+        out.push_str(&self.ffb_auto.to_text());
         out.push('\n');
         out.push_str(&self.camera.to_text());
         out.push_str(&self.gearboxes.to_text());
@@ -635,6 +642,9 @@ mod tests {
             ffb_cars: ffb::CarSensitivity {
                 cars: [("rsf-24".to_owned(), [90, 100, 110]), ("COROLLA".to_owned(), [120, 120, 130])].into(),
             },
+            ffb_auto: ffb::AutoCars::parse(
+                "[ffb_auto]\nrsf-24 = 145.2/320, 0/0, 0/0\n[ffb_trim]\nrsf-24 = 100,110,100\n",
+            ),
             camera: CameraPrefs::parse("[camera]\nview = bonnet\nrsf-24 chase = 0 0.5 -1\n"),
             gearboxes: Gearboxes(vec![(
                 "Ford Escort Mk II".into(),
@@ -679,7 +689,8 @@ mod tests {
         let text = settings.to_text();
         assert!(
             text.ends_with(
-                "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[camera]\nview = bonnet\n\
+                "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[ffb_auto]\nrsf-24 = 145.2/320, 0/0, 0/0\n\n\
+                 [ffb_trim]\nrsf-24 = 100,110,100\n\n[camera]\nview = bonnet\n\
                  rsf-24 chase = 0 0.5 -1\n\n[gearbox]\nFord Escort Mk II = dog\n\n\
                  [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n"
             ),
@@ -953,10 +964,17 @@ mod tests {
                 "sensitivity_snow = 100\n",
                 "rotation = \n",
                 "rotation_per_car = 0\n",
+                "auto = 1\n",
                 "\n",
                 "[ffb_cars]\n",
                 "COROLLA = 120,120,130\n",
                 "rsf-24 = 90,100,110\n",
+                "\n",
+                "[ffb_auto]\n",
+                "rsf-24 = 145.2/320, 0/0, 0/0\n",
+                "\n",
+                "[ffb_trim]\n",
+                "rsf-24 = 100,110,100\n",
                 "\n",
                 "[camera]\n",
                 "view = bonnet\n",

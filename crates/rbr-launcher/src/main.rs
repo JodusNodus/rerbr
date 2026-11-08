@@ -595,6 +595,8 @@ struct Form {
     ffb: rbr_render::ffb::Options,
     /// Each car's own force-feedback sensitivity (the settings file's `[ffb_cars]` section).
     ffb_cars: rbr_render::ffb::CarSensitivity,
+    /// Each car's automatic force-feedback state (the settings file's `[ffb_auto]` and `[ffb_trim]` sections).
+    ffb_auto: rbr_render::ffb::AutoCars,
     /// NGP's `headGasketDurability` for every drive (1 leaves the engine as it is).
     head_gasket: i32,
     /// The physics for every drive (`rbr-standalone --physics`), as saved.
