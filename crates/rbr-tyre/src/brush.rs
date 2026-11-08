@@ -434,6 +434,16 @@ pub fn step_dynamic(
     let fx = axis(&mut st.ux, steady.kx, steady.sx, k_x, DAMPING_X);
     let fy = axis(&mut st.uy, steady.ky, steady.sy, k_y, DAMPING_Y);
     let elastic = (k_x * st.ux).hypot(k_y * st.uy);
+    let steady_force = steady.fx.hypot(steady.fy);
+    if elastic > limit && steady_force > 0.0 {
+        // Sliding at the limit: the carcass holds the steady force's direction (the friction's, against the sliding
+        // velocity). Scaling the deflections alone would keep the direction their integration took, weighted by the
+        // carcass stiffnesses: a locked wheel's (v = 0, u' the sliding velocity) would point along c_x v_sx, c_y v_sy.
+        let r = limit / steady_force;
+        st.ux = -steady.fx * r / k_x;
+        st.uy = -steady.fy * r / k_y;
+        return (steady.fx * r, steady.fy * r);
+    }
     if elastic > limit && elastic > 0.0 {
         st.ux *= limit / elastic;
         st.uy *= limit / elastic;

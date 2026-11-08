@@ -502,6 +502,17 @@ traces byte-identical before and after):
 - Level: full-pedal braking 0.91-1.0 g on gravel and 1.07 g on snow against the published 0.47-0.66 g (gravel,
   road tyres) and 0.31-0.45 g (snow): 1.3 times NGP's peak, which is already 1.3-1.5 times the published gravel peaks.
   The ratio and the level cannot both be met at NGP's grip level.
+- Carcass at the limit (`brush::step_dynamic`, both surfaces): sliding at the limit, the deflections now take the
+  steady force's direction. Before, a locked wheel's deflection integrated the sliding velocity weighted by c_x/c_y
+  (450 kN/m against NGP's lateral carcass), so its side force at 20° was 0.197 against the steady 0.37 (scorecard
+  rows); now equal. Stage times, circle and brake tests unchanged to the printed digits.
+- Scorecard (`harness/tyre_scorecard.py`, main 2d221086 baseline → loose-v1, experimental-brush; `build/tyre-night/
+  scores/loose-v1.json`): 34/75 → 37/77. New passes: car circle 0.607 g, locked over lateral max 1.457, locked over
+  traction 1.300, gravel/tarmac braking 0.782, snow C0x, snow rising to 40 %, snow peak κ. New misses: car locked decel
+  at 50 km/h 0.912 g (0.47-0.66, the level), locked side force at 30° 0.532 (0.33-0.39, the level: ratio over rolling
+  0.599 passes), the slope at 6.7 kN 7.37 /rad (≤ 7: fitted at 4 kN, Cy ∝ Fz^0.6), snow μ_x at κ 0.3 over peak 0.786
+  (the berm makes lock the peak). Still missed: μ_y over max at 5/10/20° 0.68/0.95/1.00 (NGP's slope), every absolute
+  gravel and snow level.
 - Standstill: no creep (no movement after 1 s at the trace's 10 mm); after a full-pedal stop the carcass rings to 0.06
   m/s in the second half second (NGP 0.014), gone by 1.5 s, as on tarmac. No NaN in any run.
 
