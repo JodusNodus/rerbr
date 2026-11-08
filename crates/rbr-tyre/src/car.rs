@@ -73,12 +73,12 @@ impl Model for Brush {
             radius: f64::from(x.effective_radius),
             bulk_temp: f64::from(x.tread_temperature),
             tread_remaining: f64::from(x.tread_left),
-            // NGP's wet surface friction carries the wet level, so the brush's wet loss stays off: the pressure only
-            // enters the brush's. The wetness lowers its sliding friction and fades its dry-wear gain.
+            // NGP's wet surface friction carries the wet level; the wetness lowers the brush's sliding friction, fades
+            // its dry-wear gain and, against the tread's drainage, lifts the patch at speed (partial hydroplaning).
             pressure: 0.0,
             pressure_factor: pressure_factor * low_mu,
             wetness: f64::from(x.water_factor),
-            hydroplaning: false,
+            hydroplaning: true,
             temp_grip: 1.0,
             surf_static: f64::from(x.grip),
             surf_kinetic: f64::from(x.grip),
