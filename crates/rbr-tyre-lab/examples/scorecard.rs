@@ -3,7 +3,8 @@
 //!
 //! Research tooling (ours, experimental). `--model` is the profile's `rbr_tyre` model name (`ngp`, `brush`): the
 //! model is built by `rbr_tyre::model` from the wheel's tables, as the game builds it, and asked at each slip; where it
-//! gives `None` (NGP's: `ngp`, or soil under the brush) NGP's own `patch_forces` answer, as in the game's seam. The
+//! gives `None` (NGP's: `ngp`) NGP's own `patch_forces` answer, as in the game's seam (the brush takes soil with
+//! loose-v1). The
 //! model's force dynamics settle for `SETTLE` steps at each slip. Flat road, no sinking, no soil force: NGP's side is
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
