@@ -601,15 +601,38 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
 - Robustness (2026-11-08, the autopilot to the finish, 5 cars × 5 stages, ngp and eb): Golf II (FWD), 131 Abarth and
   M3 E30 (RWD), Fiesta Rally2 and Celica ST185 (AWD), on RSF 104 and 111 (gravel), track-11_O (gravel), track-10_O
   (snow) and RSF 389 (snow). 24/25 finish under both. No NaN. Recoveries are alike (track-10_O: eb 6, ngp 5). eb is
-  faster everywhere: 1.1-2.3 % on RSF, 1.8-4.3 % on retail, over 3 % for the M3, the 131 and the Golf on
-  track-10/11_O. The flat loose friction holds its peak through the slide (NGP's falls).
-- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m. Braking at a 0.8 pedal at full lock (4450 m, 12 m/s),
-  the fronts creep at 0.4-0.9 m/s (slip 0.93-0.96, on the berm's ramp). The engine in fourth follows them through the
-  clutch help's 89 rad/s to 0 and stays stalled; the autopilot has no restart. ngp and experimental (NGP's tyre, ReRBR's
-  engine) lock both fronts at the same corner to 0 m/s, the engine idles at 89 rad/s, and both finish (282.12 /
-  277.27 s). Likely cause: a force rising with slip up to lock lets a partial pedal hold the wheel just short of lock.
-  Why the clutch help does not open there is not traced. Not changed: changing the berm's shape reopens the round 2
-  trade-off.
+  faster everywhere: 1.1-2.3 % on RSF and 1.8-4.3 % on retail. Split on track-10/11_O with `experimental` (NGP's
+  tyre, ReRBR's engine), M3 / 131 / Golf: ngp → experimental -3.2/-3.0, -3.6/-3.0, -3.0/-4.1 %, the engine model;
+  experimental → eb -0.5/-0.2, +1.9/-0.2, -1.0/-0.2 %, loose-v1. The gap is the engine's, as on tarmac.
+- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m. It brakes at a 0.8 pedal at full lock (4450 m, 12
+  m/s). The fronts creep at 0.4-0.9 m/s (slip 0.93-0.96) and the engine in fourth follows them down to 0 and stalls.
+  The autopilot has no restart. ngp and experimental lock both fronts at the same corner to 0 m/s at about 113 rad/s.
+  The engine separates, idles at 82-89 rad/s, and both finish (282.12 / 277.27 s). Traced with a debug build
+  (2026-11-08):
+  - The clutch help works as ported: `vcu::step::step_basic` sends slip 0 down to 99.5 rad/s, then ramps to 1 (open)
+    at 89 rad/s.
+  - Even so, the engine speed stays equal to the gear's speed of the creeping fronts down to about 5 rad/s. NGP's
+    driveline stays clutch-locked, its engine speed following the drive's, while the driven wheels turn. With the
+    wheels at 0 it lets go.
+  - Under ReRBR's engine the dragged engine gives -15 to -0.3 N·m. NGP's stall history (`stall_speed`) then marks it
+    stalled, and the model's torque stays 0.
+  - The creep is loose-v1's flat friction, not the berm: no fall from the peak to sliding, so a brake torque near the
+    peak does not run the wheel into lock (NGP's force falls past its peak). A berm built only at slip ≥ 0.99, none
+    at the corner, creeps the same (0.6-0.7 m/s, engine 24-27 rad/s) and DNFs at the same step.
+  - Neither the port nor the engine model is wrong. The fix belongs to the autopilot: declutch, or go to neutral,
+    when the driven wheels lock under braking, and restart a stalled engine. A driver declutches.
+- A berm built over sliding distance (2026-11-08, prototype, not adopted; `/tmp` patch only):
+  - Model: per-wheel state b. It grows toward 1 over the patch length (2a, the soil a locked tyre sweeps once) of
+    sliding while the braking slip is past the ramp's start, and washes out over 5 cm of rolling (the measured
+    layer). The force is (PLOUGH − 1)·b on the patch's, faded at standstill as before.
+  - Its steady state at slip s is s / (s + 3.6(1 − s)), 0.79 at 0.93, close to the ramp's 0.72, so it behaves like
+    the ramp.
+  - Golf RSF 104: DNF at the same step for the ramp, washout 5 cm, washout 1 cm, and building only from slip 0.99.
+  - Fiesta, 345, 50 km/h, declutched, full pedal, locked over the best target (k0.7), deceleration: ramp 0.892 g
+    (1.16, slips 0.94±0.05), distance 5 cm 0.889 g (1.16, 0.93±0.07), from 0.99 0.870 g (1.13, 0.95±0.06). No variant
+    locks every wheel at full pedal: the berm's force past lock exceeds the brake torque.
+  - Golf and Celica on RSF 104/111/389: stage times within 0.05 s of the ramp for every variant. Not committed: it
+    fixes nothing and adds a state.
 - Scorecard (experimental-brush, [Scorecard](#scorecard)): passes circle 0.663 g, locked over ABS K 0.15 1.40 / 1.20
   (50 / 80 km/h), locked over lateral max 1.457, locked over traction 1.300, gravel over tarmac braking 0.749, snow
   C0x 11.0, snow rising to 40 % 1.087, snow μ_x at κ 0.3 over the braking peak 1.000; misses locked decel 0.892 /
@@ -832,6 +855,7 @@ Gravel and snow under loose-v1: [Loose surfaces: loose-v1](#loose-surfaces-loose
   tyre's sinkage resistance, the berm against the layer's thickness, and snow (same model, not tuned; 1.06 g full
   pedal against 0.31-0.35 g).
 - loose-v1 open items:
-  - A partial pedal holds a wheel creeping on the berm's ramp, and the engine stalls through the clutch help (the
-    Golf, RSF 104; [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
-  - Eb is 1-4 % faster than ngp on soil.
+  - Braked fronts creep under the flat friction and drag the clutch-locked engine to a stall (the Golf, RSF 104;
+    [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)). The fix is the autopilot's: declutch when the driven wheels
+    lock, and restart.
+  - Eb's 1-4 % over ngp on soil is the engine model's (3-4 %); loose-v1 adds -1.0 to +1.9 %.
