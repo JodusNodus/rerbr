@@ -30,11 +30,8 @@ impl Form {
         let Some(monitor) = window.current_monitor().or_else(|| window.available_monitors().next()) else {
             return;
         };
-        let size = monitor.size();
-        if size.height > 0 {
-            self.monitor_aspect = size.width as f32 / size.height as f32;
-        }
         let full = monitor.size();
+        self.monitor = Some((full.width, full.height));
         let mut sizes: Vec<(u32, u32)> = monitor
             .video_modes()
             .map(|m| (m.size().width, m.size().height))

@@ -569,8 +569,8 @@ struct Form {
     triple_monitors: Option<[String; 3]>,
     /// The monitor names winit sees now, for the Displays dropdowns (never saved).
     monitors: Vec<String>,
-    /// The current monitor's aspect, for the true field of view; 16:9 without one.
-    monitor_aspect: f32,
+    /// The current monitor's size, for the true field of view (never saved).
+    monitor: Option<(u32, u32)>,
     /// The driving window shows the highlights past an HDR display's SDR white (`viewer --hdr`).
     hdr: bool,
     /// The viewer writes a performance log to the player's `logs` folder (`viewer --perf-log`).

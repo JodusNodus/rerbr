@@ -244,6 +244,21 @@ pub const TRIPLE_DISTANCE_DEFAULT: f32 = 70.0;
 pub const TRIPLE_DISTANCE_RANGE: std::ops::RangeInclusive<f32> = 30.0..=200.0;
 pub const TRIPLE_ANGLE_RANGE: std::ops::RangeInclusive<f32> = 0.0..=rbr_render::triple::MAX_ANGLE;
 
+/// `names` once each monitor is picked: `viewer --triple-monitors` takes three.
+fn picked(names: Option<&[String; 3]>) -> Option<&[String; 3]> {
+    names.filter(|names| names.iter().all(|name| !name.is_empty()))
+}
+
+/// One screen's aspect on a display or window `whole` pixels: all of it with a window a monitor (`per_monitor`),
+/// else a third of it.
+fn screen_aspect(whole: (u32, u32), per_monitor: bool) -> f32 {
+    let aspect = whole.0 as f32 / whole.1.max(1) as f32;
+    match per_monitor {
+        true => aspect,
+        false => aspect / 3.0,
+    }
+}
+
 /// A frame cap's label.
 fn cap_label(fps: u32) -> String {
     match fps {
@@ -523,12 +538,32 @@ impl Form {
 
     /// The triple-screen rig from the Triple screens section, when triple screens are on (`viewer --triple`).
     pub fn triple_rig(&self) -> Option<Rig> {
-        self.triple.then_some(Rig {
+        self.triple.then(|| self.rig())
+    }
+
+    /// The Triple screens section's rig.
+    fn rig(&self) -> Rig {
+        Rig {
             diagonal: self.triple_diagonal,
             bezel: self.triple_bezel,
             distance: self.triple_distance,
             angle: self.triple_angle,
-        })
+        }
+    }
+
+    /// The three monitors' names once each is picked (`viewer --triple-monitors`).
+    pub fn triple_monitors(&self) -> Option<&[String; 3]> {
+        picked(self.triple_monitors.as_ref())
+    }
+
+    /// One screen's aspect as the viewer will draw it on the monitor (fullscreen) or the window; 16:9 before the
+    /// monitor is known.
+    fn screen_aspect(&self) -> f32 {
+        match (self.fullscreen, self.monitor) {
+            (true, Some(monitor)) => screen_aspect(monitor, self.triple_monitors().is_some()),
+            (true, None) => 16.0 / 9.0,
+            (false, _) => screen_aspect(self.size, false),
+        }
     }
 
     /// The Triple screens section: the rig's geometry, the monitors, and the true field of view at the seat.
@@ -564,13 +599,8 @@ impl Form {
             let tip = "How far each side screen is turned towards you from the centre screen's plane. Auto faces \
                        their middles at your eyes at this distance";
             ui.label("Side angle").on_hover_text(tip);
-            let rig = self.triple_rig().unwrap_or(Rig {
-                diagonal: TRIPLE_DIAGONAL_DEFAULT,
-                bezel: TRIPLE_BEZEL_DEFAULT,
-                distance: TRIPLE_DISTANCE_DEFAULT,
-                angle: None,
-            });
-            let auto_degrees = Rig { angle: None, ..rig }.side_angle(self.monitor_aspect).to_degrees();
+            let aspect = self.screen_aspect();
+            let auto_degrees = Rig { angle: None, ..self.rig() }.side_angle(aspect).to_degrees();
             let mut auto = self.triple_angle.is_none();
             let mut degrees = self.triple_angle.unwrap_or(auto_degrees);
             ui.horizontal(|ui| {
@@ -635,26 +665,24 @@ impl Form {
             });
             ui.end_row();
 
-            if let Some(rig) = self.triple_rig() {
-                let tip = "The centre screen's horizontal field of view that shows the world at its true size at \
-                           this distance";
-                let fov = rig.true_fov(self.monitor_aspect).to_degrees();
-                ui.label("True field of view").on_hover_text(tip);
-                ui.horizontal(|ui| {
-                    let mut text = format!("{fov:.0}° at this distance");
-                    if self.triple_angle.is_none() {
-                        let side = rig.side_angle(self.monitor_aspect).to_degrees();
-                        text += &format!(", side screens at {side:.0}°");
-                    }
-                    ui.label(text).on_hover_text(tip);
-                    let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
-                    if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
-                        self.fov =
-                            fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
-                    }
-                });
-                ui.end_row();
-            }
+            let rig = self.rig();
+            let tip = "The centre screen's horizontal field of view that shows the world at its true size at \
+                       this distance";
+            let fov = rig.true_fov(aspect).to_degrees();
+            ui.label("True field of view").on_hover_text(tip);
+            ui.horizontal(|ui| {
+                let mut text = format!("{fov:.0}° at this distance");
+                if self.triple_angle.is_none() {
+                    let side = rig.side_angle(aspect).to_degrees();
+                    text += &format!(", side screens at {side:.0}°");
+                }
+                ui.label(text).on_hover_text(tip);
+                let tip = "Sets the in-car views' field of view below to this, rounded to whole degrees";
+                if ui.button("Use for in-car views").on_hover_text(tip).clicked() {
+                    self.fov = fov.clamp(*coords::FOV_RANGE_DEGREES.start(), *coords::FOV_RANGE_DEGREES.end()).round();
+                }
+            });
+            ui.end_row();
         });
         if self.triple {
             ui.colored_label(
@@ -799,4 +827,24 @@ impl Form {
 
 fn size_label((w, h): (u32, u32)) -> String {
     format!("{w} x {h}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn triple_monitors_go_once_all_three_are_picked() {
+        let names = ["DP-1".to_owned(), String::new(), "DP-2".to_owned()];
+        assert_eq!(picked(Some(&names)), None);
+        let names = ["DP-1".to_owned(), "DP-3".to_owned(), "DP-2".to_owned()];
+        assert_eq!(picked(Some(&names)), Some(&names));
+    }
+
+    #[test]
+    fn a_triple_screen_is_a_third_of_a_spanned_display() {
+        let wide = 16.0 / 9.0;
+        assert!((screen_aspect((5760, 1080), false) - wide).abs() < 1e-6);
+        assert!((screen_aspect((1920, 1080), true) - wide).abs() < 1e-6);
+    }
 }
