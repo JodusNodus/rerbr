@@ -20,6 +20,7 @@ original (`play.sh`, `record.sh`, `slots.sh`, `matrix.py`, `apitrace.sh`) need t
 | `matrix.py` | stage × car pairs end to end (Rust autopilot, NGP original, Rust check) |
 | `brake_test.py` | the autopilot's brake test, full pedal against threshold braking at slip targets: stopping distance, time, g |
 | `coast_test.py` | the autopilot's declutched coast-down: the car's rolling coefficient with the car file's drag held, and a free a + b v² fit |
+| `rally_gg.py` | whole-car g on a stage: `run` drives cars × physics over an RSF stage with the autopilot (`--trace-speed`'s `glong glat`), `stats` gives braking events, lateral 1 s percentiles and the g-g envelope per speed bin from traces and WRC+ merged telemetry CSVs, filtered alike ([tyre-model.md](../notes/tyre-model.md#real-stage-telemetry-wrc-gravel)) |
 | `tyre_scorecard.py` | the tyre physics against the published targets (`data/tyre-targets.csv`) per physics profile: PASS/MISS table, `--json`, `--compare A B`, `--quick` ([tyre-model.md](../notes/tyre-model.md#scorecard)) |
 | `diverge.py` | first differing step between two recordings; `--mask` writes the noise mask |
 | `session.py` | RSS1 session files of an RSF session (`scripts/rsf-session.sh`): reader and summary; the format is its docstring ([verification.md](../notes/verification.md#rsf-sessions)) |
