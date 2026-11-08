@@ -229,7 +229,8 @@ pub fn stiffness_at(fz: f64, tb: f64, d: f64, pf: f64, c0: f64, m: f64, cal: &Ca
 /// Cα/Fz is 17.6 per rad at 4 kN with its peak at 9.5° (the scorecard's band 5.6-8.5°); a semi-slick at NGP's grip
 /// level, Toyo R888R 195/50 R16 (MegaRide with Calspan 2024, MF 5.2 fits from track and flat-track data, fig ±5 %),
 /// has 22.3 / 21.9 per rad there (1.27 / 1.24 times NGP's) and peaks near 6-7°. 1.3 is what a driver judged on the
-/// Nordschleife (2026-11-08); the brush peaks at 7.1° at 4 kN with it (9.5° without).
+/// Nordschleife (2026-11-08); the brush peaks at 7.0° at 4 kN with it (9.75° without; scorecard, 0.25° grid). On low
+/// friction it fades out ([`low_mu_cornering_stiffness`]).
 pub const CORNERING_OVER_NGP: f64 = 1.3;
 
 /// Slip stiffness on low-friction hard surfaces (ice): below the surface static friction [`LOW_MU_KNEE`] the brush's
@@ -239,10 +240,9 @@ pub const CORNERING_OVER_NGP: f64 = 1.3;
 /// asphalt's, which a knee 0.55 with an exponent 0.76 passes through; his summer tyre keeps 0.09 on ice (mu 0.077),
 /// an exponent 1.2 with that knee. The exponent is 1 (ours, between the two tyres): below the knee the peak slip
 /// stays the knee's, so ice (NGP's 0.10) peaks near 4°, as measured (4-5°: TR0713; SAE 2010-01-0374 Fig 8). The knee
-/// is 0.55 on NGP's cornering stiffness, times [`CORNERING_OVER_NGP`] with the brush's, so the cornering stiffness and
-/// peak slip angle on ice stay those of the 0.55 knee on NGP's. Snow is soil: loose-v1 (`crate::loose`), not this
-/// factor.
-pub const LOW_MU_KNEE: f64 = 0.55 * CORNERING_OVER_NGP;
+/// is set on NGP's cornering slope: the brush's stiffness over NGP's fades out above it
+/// ([`low_mu_cornering_stiffness`]). Snow is soil: loose-v1 (`crate::loose`), not this factor.
+pub const LOW_MU_KNEE: f64 = 0.55;
 pub const LOW_MU_EXPONENT: f64 = 1.0;
 
 /// The factor on the slip stiffnesses at the surface static friction `mu` (NGP's grip): 1 from [`LOW_MU_KNEE`] up,
@@ -252,6 +252,22 @@ pub fn low_mu_stiffness_factor(mu: f64) -> f64 {
         libm::pow(mu / LOW_MU_KNEE, LOW_MU_EXPONENT)
     } else {
         1.0
+    }
+}
+
+/// The cornering stiffness at the calibration point, N/rad, on a hard surface of static friction `mu` (NGP's grip),
+/// for the brush's `cy0` and `cy0_ngp` of NGP's own cornering slope ([`crate::fit::ngp_calibration`]), to be taken
+/// with [`low_mu_stiffness_factor`] on both axes. On low friction the stiffness over NGP's ([`CORNERING_OVER_NGP`])
+/// goes: the product is min(`cy0`, `cy0_ngp` mu / [`LOW_MU_KNEE`]) at the exponent 1, `cy0` down to the knee times
+/// `cy0` / `cy0_ngp` (about 0.75: the brush's `cy0` is 1.35-1.4 times NGP's slope's for 1.3 times the slope), and
+/// below the knee what it was on NGP's slope (Svendenius's fall, above), so ice keeps its peak slip angle.
+pub fn low_mu_cornering_stiffness(mu: f64, cy0: f64, cy0_ngp: f64) -> f64 {
+    if mu > LOW_MU_KNEE {
+        cy0.min(cy0_ngp * libm::pow(mu / LOW_MU_KNEE, LOW_MU_EXPONENT))
+    } else if mu > 0.0 {
+        cy0_ngp.min(cy0)
+    } else {
+        cy0
     }
 }
 
@@ -670,14 +686,29 @@ mod tests {
 
     #[test]
     fn the_stiffness_falls_below_the_knee_only() {
-        for mu in [0.0, -1.0, LOW_MU_KNEE, 0.72, 1.105, 1.3] {
+        for mu in [0.0, -1.0, LOW_MU_KNEE, 0.68, 1.105, 1.3] {
             assert_eq!(low_mu_stiffness_factor(mu), 1.0, "{mu}");
         }
         // Between Svendenius's tyres on ice (mu 0.078): winter 0.23, summer 0.09 of asphalt's.
         let ice = low_mu_stiffness_factor(0.078);
         assert!(ice > 0.09 && ice < 0.23, "{ice}");
-        assert!((low_mu_stiffness_factor(LOW_MU_KNEE / 2.0) - 0.5).abs() < 1e-12);
+        assert!((low_mu_stiffness_factor(0.275) - 0.5).abs() < 1e-12);
         assert!(low_mu_stiffness_factor(0.5) < 1.0 && low_mu_stiffness_factor(0.5) > low_mu_stiffness_factor(0.1));
+    }
+
+    #[test]
+    fn the_stiffness_over_ngp_s_goes_down_to_the_knee() {
+        let (cy0, ngp) = (1.3e5, 1e5);
+        let at = |mu: f64| low_mu_cornering_stiffness(mu, cy0, ngp) * low_mu_stiffness_factor(mu);
+        for mu in [0.0, -1.0, 0.72, 1.105] {
+            assert_eq!(at(mu), cy0, "{mu}");
+        }
+        // NGP's slope's on ice, and continuous through both corners.
+        for mu in [0.078, 0.3, LOW_MU_KNEE] {
+            assert!((at(mu) / (ngp * low_mu_stiffness_factor(mu)) - 1.0).abs() < 1e-12, "{mu}");
+        }
+        assert!((at(LOW_MU_KNEE * 1.3) / cy0 - 1.0).abs() < 1e-12);
+        assert!((at(0.6) / (ngp * 0.6 / LOW_MU_KNEE) - 1.0).abs() < 1e-12);
     }
 
     #[test]
