@@ -130,9 +130,21 @@ pub fn from_snapshot<'a>(
 /// A `--trace-speed FILE` line: the step, its seconds since the run's first step, the speed (m/s), the pedals
 /// (0-1), the gear, the engine speed (rad/s), the position (m), the distance from the driveline (m), the
 /// steering (-1-1), the engine speed the gear gives with the clutch engaged (rad/s, 0 in neutral), the wheels'
-/// rim speeds |ωR| (m/s, FL FR RL RR, `Sense::wheels`) and the steering's filtered force-feedback torque (car `+0xaec`,
-/// before NGP's curve; read only).
-const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr ffb";
+/// rim speeds |ωR| (m/s, FL FR RL RR, `Sense::wheels`), the steering's filtered force-feedback torque (car `+0xaec`,
+/// before NGP's curve; read only) and the car's specific force along its forward and left axes (g, [`specific_force`];
+/// 0 on the first line).
+const TRACE_HEADER: &str = "# step time speed thr brk gear engine x y z off str locked wfl wfr wrl wrr ffb glong glat";
+
+/// What an accelerometer at the car's centre reads, g, along the body's forward (`-Y`) and `+X` axes (left in a
+/// right-handed frame; the lateral sign is not proven, `rbr_recording::pose`): the velocity's change over `dt` less
+/// gravity (z-up, the physics' 9.81 m/s²), so a level brake reads negative `glong`.
+fn specific_force(pose: &rbr_recording::pose::CarPose, before: [f32; 3], dt: f32) -> (f32, f32) {
+    const GRAVITY: f32 = 9.81;
+    let a =
+        std::array::from_fn::<f32, 3, _>(|i| (pose.velocity[i] - before[i]) / dt + if i == 2 { GRAVITY } else { 0.0 });
+    let along = |axis: [f32; 3]| (a[0] * axis[0] + a[1] * axis[1] + a[2] * axis[2]) / GRAVITY;
+    (along(pose.forward()), along(pose.rotate([1.0, 0.0, 0.0])))
+}
 
 /// Drives `live` from its next step for at most `steps` steps, at most `top` m/s ([`TOP_SPEED`] if `None`), and writes
 /// the playback to `out`: `head`, then the live steps. The first step takes `control`; the controller's payloads keep
@@ -203,12 +215,12 @@ pub fn drive(
             let mut file =
                 std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
             writeln!(file, "{TRACE_HEADER}").map_err(|e| format!("{}: {e}", path.display()))?;
-            Some((file, path.display().to_string(), live.step_clock().step))
+            Some((file, path.display().to_string(), live.step_clock().step, None))
         }
         None => None,
     };
     let mut probe = match &measure.tyre_probe {
-        Some(path) => Some(crate::tyre_probe::TyreProbe::create(path)?),
+        Some(path) => Some(crate::tyre_probe::TyreProbe::create(path, measure.tyre_probe_every)?),
         None => None,
     };
     let mut hit: Option<u32> = None;
@@ -268,7 +280,7 @@ pub fn drive(
             break;
         }
         let sense = sense(&answer, &live);
-        if let Some((trace, path, dt)) = &mut trace {
+        if let Some((trace, path, dt, before)) = &mut trace {
             let time = f64::from(step - start) * f64::from(*dt);
             let thr = f32::from_le_bytes([control[0], control[1], control[2], control[3]]);
             let brk = f32::from_le_bytes([control[4], control[5], control[6], control[7]]);
@@ -278,10 +290,12 @@ pub fn drive(
             let line = point(driver.track, sense.parameter);
             let off = (at[0] - line[0]).hypot(at[1] - line[1]);
             let mem = live.mem();
+            let (glong, glat) = before.map_or((0.0, 0.0), |v| specific_force(&sense.pose, v, *dt));
+            *before = Some(sense.pose.velocity);
             writeln!(
                 trace,
                 "{step} {time:.4} {:.3} {thr:.3} {brk:.3} {} {:.0} {:.2} {:.2} {:.2} {off:.2} {steer:.3} {:.0} {:.3} {:.3} \
-                 {:.3} {:.3} {:.3}",
+                 {:.3} {:.3} {:.3} {glong:.4} {glat:.4}",
                 sense.pose.speed(),
                 sense.gear,
                 sense.engine,

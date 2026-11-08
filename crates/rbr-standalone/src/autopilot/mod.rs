@@ -498,6 +498,8 @@ pub struct Measure {
     pub trace_speed: Option<std::path::PathBuf>,
     /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<std::path::PathBuf>,
+    /// `--tyre-probe-every N`: the probe's interval in steps.
+    pub tyre_probe_every: Option<u32>,
     /// `--tyre-image FILE [--tyre-image-step N]`: a memory image of the wheels' tyre footprints (research tooling).
     pub tyre_image: Option<std::path::PathBuf>,
     pub tyre_image_step: Option<u32>,

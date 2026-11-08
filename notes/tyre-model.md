@@ -555,7 +555,7 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   ABS decel 1.25 laden / 1.30 light (NHTSA DOT HS 808 875, table), the berm "ahead of a locked tyre" (quoted); the
   locked tyre's side force PLOUGH μ sin α against Coutermarsh's 0.72 sin α over a free rolling 0.55 (1.31 sin α, Fig.
   16); their locked μ_x 0.85 is 1.5 times the lateral max, above PLOUGH.
-- Gravel's shape (2026-11-08, `loose::shear`): on NGP's gravel materials (surface class 1, `Gravel_*` ids 1-51, by
+- Gravel's shape (2026-11-08, `loose::shear`): on NGP's gravel materials (surface class 1, `Gravel_*` ids 1-51 and 153-199, by
   their share in the wheel's two-material blend; the class reaches the model through `ForceInput::surface_classes`,
   read by the host from the wheel's last `blend_tags`, `wheel::layout::surface_classes`) the patch's force is μ Fz (1 -
   exp(-u)) along the theoretical slip, u = |(sx/s0x, sy/s0)|, s0 = tan 6.3°, s0x keeping the brush's Cx/Cy 1.4 at the
@@ -750,6 +750,58 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
   1.44 at 80, everything else as adopted.
 
+### The soil's depth: NGP's materials and the surface across the road
+
+2026-11-08. NGP's soil materials (lab `materials`, NGP 7.4.778's stage init, dry; damp / wet take μ × 0.925 / 0.85,
+WaterFactor 0.25 / 1 and SoilDensity +100 / +200; names from `lsp_keys.rs`):
+
+| Ids (dry) | Materials | μs / μk | soil μs / μk | Thickness | SinkFactor | Class |
+| --- | --- | --- | --- | --- | --- | --- |
+| 17, 21, 49 | Gravel Fine / Medium / Coarse Shallow | 0.900 / 0.895 / 0.8925, μk 0.75 | 0.855 / 0.664 (17) | 9 / 9 / 15 mm | 1.5-2e-7 | 1 |
+| 9, 13, 41 | Gravel Fine / Medium / Coarse Deep | 0.885 / 0.880 / 0.8775 | 0.832 / 0.646 (9) | 17.5 / 17.5 / 22.5 mm | 2e-7 | 1 |
+| 1, 5, 33 | Gravel Fine / Medium / Coarse Deeper | 0.8725 / 0.8675 / 0.865 | 0.811 / 0.631 (1) | 25 / 25 / 30 mm | 2.5e-7 | 1 |
+| 153, 177-199 | `Gravel_Fine_Shallow_Dry_Clone`, `US2_` (fine) and `BR2_` (coarse) Shallow / Deep / Deeper | within 0.015 of the base names | | the base names' (US2 9/17.5/25, BR2 15/22.5/30 mm) | 1.5-2.5e-7 | 1 |
+| 133, 141, 149, 161 | Dirt Hard / Medium / Soft, Dirt_Hard clone | 0.84 / 0.80 / 0.76 | | 9 (damp 12, wet 15) / 15 / 20 mm | 2-3e-7 | 4 |
+| 56, 97-115 | Rock_Small; Grass Hard / Medium / Soft | 0.795; 0.65 / 0.675 / 0.70 | | 20; 20 / 25 / 30 mm | 3-8e-7 | 4; 5 |
+| 101-103, 117-119, 62, 88 | SnowOnGravel / SnowOnIce Shallow / Medium / Deep; Snowwall, its bottom | 0.86-0.84 / 0.91-0.87; 0.87 | | 13 / 20 / 30 mm; 30 mm | 1.5-2e-7 | 3 |
+| 129-139 | Rough, VeryRough | 0.65-0.70 | | 30 mm | 2-4e-7 | 0 |
+
+Gravel's level falls 3 % from shallow to deeper and its RollingResistance rises 0.060 / 0.065 / 0.070. Class 1 is
+every gravel above (1-51, 153-155, 177-199), so the shear law covers RSF 104's BR2 gravels. In NGP the thickness
+already acts: thin layers are sunk through (the hard values), 30 mm layers blend toward the soil friction, and the
+soil's lateral force grows with the sink ([Loose surfaces: NGP](#loose-surfaces-ngp-against-published-data)).
+
+Under the path (Fiesta Rally2 autopilot under `ngp`, `.mat` new dry; lab `surface_across` every 2 m at 0, ±1, ±2,
+±3 m from the car's path, thickness the blend's, linear in its weight as the probe's `surface:` line shows to 5e-7;
+the ±1 m mean is within 0.4 mm of the probe's wheel mean on every stage; RSF 345 its first 10.2 km of 19.5):
+
+| Stage | Under the line (share) | Line mean, p10-p90 | Gravel only ±2 / ±3 m | 100 m means along |
+| --- | --- | --- | --- | --- |
+| RSF 104 | BR2 Deeper 34 %, Deep 27 %, Coarse Shallow 18 %, BR2 Shallow 13 % | 22.5 mm, 15-29.5 | 23.1-23.4 / 24.4-24.5 mm (gravel 20-23 % of ±3 m, the rest grass 30 mm) | 17.7-28.6 mm |
+| RSF 111 | Fine Shallow 86 %, Medium Shallow 14 % | 9.0 mm, 9-9 | 9.0 / 9.8-9.9 mm | 9.0-11.0 mm |
+| RSF 345 | Fine Deep 63 %, Fine Shallow 37 % | 14.3 mm, 9-17.5 | 17.8-19.7 / 21.6-22.4 mm (Fine Deeper; gravel 35-47 % of ±3 m) | 9.0-17.5 mm |
+| RSF 389 (snow) | SnowOnIce Shallow 100 % | 13 mm | 13 / 13 mm (all materials) | 13 mm |
+| track-11_O (snow) | SnowOnGravel Medium 76 %, Shallow 21 % | 18.6 mm, 14.5-20 | 19.5-24.1 / 23.4-28.8 mm (all materials; Snowwall_Bottom 30 mm) | 13.3-21.7 mm |
+
+- Across: the stages make the verge deeper than the line (gravel at ±3 m 2-8 mm deeper on 104/345, 1 mm on 111),
+  and RSF 345 changes the depth along the road (Fine Deep and Fine Shallow alternate, 9 against 17.5 mm).
+- Passes: nothing changes in a run. NGP's sheet lookup reads the `.mat` cells loaded at the start
+  (`ngp::layout::material::sample_slot`); the only variant is the entry the wear word picks at the load (new, normal,
+  worn; a season draws normal or worn, `rbr_gameplay::weather`). Worn moves the line on 104 22.5 → 19.4 mm (wheel
+  tracks ±1 m 17.5 mm, centre 19.5, verge 24), on 111 9.0 → 13.6 mm (deeper), on track-11_O 18.6 → 14.6 mm; 345's
+  entries are one map. The direction is each stage author's, not a scraped line.
+- Published depth dependence (earlier research, TR-10-11, SAE 2010-01-0374, a 2026-11-08 search): no depth law for the
+  shape (α0, initial slope) or the berm on gravel. What exists is the level: pea stone traction 0.58-0.68 "depending
+  upon the depth of stone", higher where little stone (Coutermarsh & Shoop, quoted, depth not measured); braking
+  0.50 → 0.57 → 0.60 as the ruts deepen 1.9 → 3.4 cm (TR-10-11 Table 3, table); the scraped line 0.68-0.74 against
+  the windrow 0.56-0.59 (Fig 13, quoted; ratio 0.80 inferred); deep pea stone over 20 cm rolling resistance 0.16
+  (quoted). A rigid wheel in dense sand over a rigid base: drawbar pull at high slip non-monotonic in the layer's
+  thickness (J. Terramech. 1994, "Travelling performance of a wheel on a finite thickness ground", abstract only;
+  longitudinal, not a tyre). Snow's 0.5 cm of fresh snow halving the initial slope (SAE 2010-01-0374) is snow.
+- Decision (2026-11-08): loose-v1 stays independent of the thickness. The stages do put 9-30 mm under the wheels, but the
+  data give only a level, and the level is NGP's. A windrow less grippy than the line (published 0.80; NGP's deeper
+  against shallow 0.97) would be a grip-level change: the user's decision.
+
 ## Car-level targets on loose surfaces
 
 Measured whole-car behaviour (and per-tyre forces where open) on gravel, snow and ice, to judge a loose-surface tyre
@@ -767,12 +819,12 @@ alike), 0.95 on the two R1 cars, 0.985 front / 1.015 rear on both 911s.
 | Locked-wheel braking on gravel | 0.47-0.59 g, 9 light vehicles, 56 km/h, 5 cm #617 crushed limestone, shortest of 3 stops; 0.59-0.66 g, 7 SUVs, pickups and cars, 50 km/h, freshly graded silty sandy gravel; 0.53-0.64, Polo, 40-80 km/h compacted; no speed trend over 40-80 km/h. NGP (declutched brake test, RSF 345): 0.63 g from 50 km/h, 0.77 g from 100 km/h | NHTSA DOT HS 808 875 Tables A1/A2 (table; g inferred); Macnabb et al. ESV 98-S2-W-36 Table 4 (table, accelerometer); Proctor-Parker SATC 2019 Table 1 (table; g inferred) | `harness/brake_test.py` on RSF 345 from 40-80 km/h, Fiesta Rally2; the locked run's mean decel | none |
 | Locked over ABS on gravel | decel ratio 1.25 laden / 1.30 light, per car 1.12-1.42; 1.21-1.59 per car. Same method on wet Jennite (hard, SN 30/10): 0.54-0.62. NGP: tyre locked 0.82 of peak; brake test locked over best threshold decel 0.86 (50 km/h) / 0.91 (100 km/h) | NHTSA Tables A1/A2 (table; ratio inferred, reproduces SAE 1999-01-1287 Table 2); Macnabb Table 4 (table; ratio inferred) | `harness/brake_test.py`: declutched locked against `--brake-abs` K 0.15 (per-wheel ABS) on the same stretch; ratio of mean decel | none |
 | Gravel against tarmac, braking | same car locked gravel / ABS asphalt 0.69-0.84; tarmac reference by the same method: ABS wet asphalt (SN 85/65) 0.69-0.84 g from 80 km/h, dry concrete 0.69-0.88 g from 97 km/h. NGP, declutched, same speeds: locked gravel (345) / locked tarmac (568) 0.71 at 100 km/h, 0.59 at 50; locked gravel / best threshold tarmac 0.59 / 0.50 (rally tyres, the published pairs road tyres) | Macnabb Tables 3-4 (table; ratio inferred); NHTSA Tables A1/A2 (table; g inferred) | `harness/brake_test.py` at one speed on 345 and 568, same car; ratio | none |
-| Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g. NGP: not measured at car level (tyre peak 0.83) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
+| Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g (CW; the WRC+ telemetry's 1 s p90 is 0.73-0.92 g, row below). ReRBR, ramp 0.4, ngp / experimental-brush: Fiesta Rally2 0.571 / 0.664 g, i20 Coupe WRC 2020 0.587 / 0.739, Fiesta WRC 2019 0.749 / 0.423 (single runs; ramp 0.25 gives 0.36-0.47 g, an inward weave of the autopilot, [Real stage telemetry](#real-stage-telemetry-wrc-gravel)) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
 | Trail-brake by an expert on gravel | Group A Impreza STI (AWD, 340 bhp), track gravel, 80-90° corner: 77 → 23 km/h over 1.05-4.05 s (0.51 g mean, 0.66 g peak over 0.5 s), rear-axle slip angle 42° at 4 s, back to 0 by 5 s; pendulum turn −29° → +63°, 0.59 g peak | Velenis et al. MED 2007 Figs 3, 5 (fig ±1 km/h, ±1°; digitised by pixel; inputs normalised); no data release found | RSF Impreza GC8 555 GrpA on a gravel 80-90° corner, inputs of the same shape; speed and rear-axle slip angle traces | a payload writer from an input CSV, assumed steering, brake and throttle scales, a matching corner; shape check only |
 | Snow braking | road winter tyres 0.33-0.45 g (50-0, 35-5, 25-5 km/h, ABS); locked 0.31-0.35 g; trailer μx,max 0.46-0.57, μy,max 0.47-0.56 at 30 km/h, no clear fall past the peak. NGP: tyre peak 0.85; car not measured | Auto Bild 2025, Vi Bilägare 2024-25 (table, secondary); VTI R875 Tabell 55, 60, 62 (table); Sokolovskij 2007 (table), SAE 960652 (quoted) | `--brake-from 13.9` on map 10 (`track-10_O`), Fiesta Rally2; mean decel | none (rally snow tyres are studded: the level is a lower bound) |
 | Ice braking and cornering | car 50-0 km/h: studded 0.23-0.30 g, studless 0.18-0.22 g; best three at −2/−7/−13 °C 0.24/0.28/0.31 g studded, 0.17/0.22/0.26 g studless. Rig, smooth ice −3 °C, 30 km/h, 4.2 kN: μx peak/locked 0.25/0.22 studded, 0.21/0.17 Nordic; μy peak 0.22 at ~5° / 0.19 at 2-3°, at 20° 0.19 / 0.13. NGP: material 116 μ 0.10 (0.095 on the tarmac tyre), tyre peak at 0.75°; car from 50 km/h on the flat 0.096 g best threshold, 0.095 g locked (ratio 0.99); experimental-brush 0.100 / 0.081 g (0.81) | Tekniikan Maailma 18/2025 (table, secondary via tyrereviews); VTI R875 Tabell 46, 48, Figur 3 (table; means inferred; fig ±0.01) | `brake_test.py` on RSF 504 with `-- --material-as 116` (iced from the brake onset; `decel_flat`); map 85 circle iced (`--circle -260,120,40 --material-as 116`) | a flat iced straight (504 rises 6.6 %); no car lateral g target on ice |
-| Rally braking g, real stage | 0.65 g mean over the 16 longest braking events; lateral 1 s mean p50 0.4 g, p90 0.8-0.95 g; Yaris WRC, Rally Finland 2021 SS7 | RallyDataJunkie merged telemetry, one file (inferred; axes and 0.01 g units inferred) | autopilot on a fast RSF gravel stage, same statistics | per-step g export and a percentile script; the autopilot is not a WRC driver (weak) |
-| Surface change under traffic | braking coefficient 0.50 → 0.57 → 0.60 over three passes in one track; scraped line 0.68-0.74, loose windrow 0.56-0.59 | TR-10-11 Table 3 (table), Fig 13 (quoted) | none | a surface that changes with passes (not checked whether NGP has one) |
+| Rally braking and lateral g, real stage | WRC 2017-21 cars, 18 drives on two gravel stages (medians, range): 16 longest braking events 0.60 g (0.41-0.90) from the speed, peak 0.5 s 0.83-1.06 g; lateral 1 s p50 / p90 / p99 0.40 / 0.89 / 1.25 g Finland, 0.30 / 0.74 / 1.02 g Wales; g-g p95 of \|lat\| about 1.0 g from 30 to 150 km/h. ReRBR autopilot, RSF 524 Hassi, 3 cars × ngp / experimental-brush: braking 0.40-0.44 g, lateral p50 / p90 / p99 0.24 / 0.38 / 0.45 g, the autopilot's plan (4 / 5 m/s²) | WRC+ merged telemetry via RallyDataJunkie, Rally Finland 2021 SS7, Wales Rally GB 2017 SS10 (10 Hz; units and axes inferred, lateral checked against GPS) | `harness/rally_gg.py run` and `stats` (`data/rally-telemetry-gravel.csv`) | a driver at the car's limit: the autopilot plans 0.41 g braking and 0.51 g lateral, so the stage runs measure it, not the tyre (weak) |
+| Surface change under traffic | braking coefficient 0.50 → 0.57 → 0.60 over three passes in one track; scraped line 0.68-0.74, loose windrow 0.56-0.59 | TR-10-11 Table 3 (table), Fig 13 (quoted) | none | a surface that changes with passes: NGP has none (only the `.mat` wear entry at the load, [the soil's depth](#the-soils-depth-ngps-materials-and-the-surface-across-the-road)) |
 | Per-tyre lateral curve on gravel | road AT tyre 235/75R15, 6.7 kN, 1-1.5 m/s, towed lock-to-lock sweep. Free rolling, averaged curve μ_y at 5/10/20/30°: pea stone 0.30/0.44/0.52/0.54, wet gravel 0.22/0.35/0.48/0.53, still rising at 38-39° (max 0.54-0.55; per run 0.57 ±0.01 / 0.60 ±0.02); 90 % of max at 14.5° / 21°, initial slope 3-5 /rad. Front locked (pea stone): μx 0.85 at 0°, 1.5× the lateral max and 1.25-1.47× the traction (0.58-0.68); side force 0.72 sin α (0.23 at 20°, 0.36 at 30°). Circle breakout at 8.5 m/s: front LC 0.55 / 0.43 | Coutermarsh & Shoop SAE 2010-01-0374 Figs 14-17 (fig ±0.004 μ, locked ±0.02; ratios inferred) | sweep on kind 4: shape ratios and Cα/Fz (NGP: 95 % at 9°, 9.1 /rad, locked 0.82 of peak) | none |
 | Per-tyre lateral curves on snow and ice | same rig: max μ_y packed snow 0.40 ±0.03, + 0.5 cm fresh 0.375, wet 0.31, remixed 0.24, fresh 0.22, ice 0.18 ±0.015. Shapes: packed snow 90 % by 7-9°, flat to 26-33° (0.91-0.99 of max); fresh snow (5/15/22 cm) rising to the curve end at 15-19°, deeper lower; remixed snow linear to 33°, no peak; wet snow peaks at 10° and falls to 0.72 at 31°; ice peaks at 4-5°, 0.85 at 16°. Initial slope packed 6-9 /rad, halved by 0.5 cm fresh. Longitudinal (VTI truck, 50 km/h, brush fit): winter tyre on snow μ 0.40-0.41 at 2-6 kN, Cx/Fz 9-14 (24-28 on asphalt), rising to 40 % slip; studded 0.51; ice μ 0.08-0.10, studded 0.16, Cx/Fz 6-7 | SAE 2010-01-0374 Figs 7-8 (fig ±0.006); Svendenius, PhD Lund 2007, Table 7.1 (table) | sweep on kind 6 and 116 | none |
 | Rally studs on ice | protrusion 5.5-7 mm, 18-20 studs in contact; no μ or g open; road-stud fits end at 1.8 mm | press (quoted); VTI meddelande 923 (quoted) | none | data |
@@ -786,10 +838,50 @@ Ranking:
    now, as a lower bound.
 2. Ice (VTI rig and magazine data are solid): runs on material 116 now (`--material-as 116`); the level is NGP's
    (0.10 against 0.18-0.30 g), so the shape and ratio rows carry the comparison.
-3. Weak or shape only: the Velenis trail-brake (normalised inputs, one corner), the WRC telemetry statistics (one car,
-   inferred units).
+3. Weak or shape only: the Velenis trail-brake (normalised inputs, one corner), the WRC telemetry statistics (18
+   drives, inferred units; the autopilot drives under its own plan, not at the limit).
 4. Out of reach: per-tyre gravel curves at rally speed or load (only 1-1.5 m/s, one load), rally studs (no data),
    surface change with passes.
+
+## Real stage telemetry (WRC, gravel)
+
+Research (2026-11-08); raw files outside the repository, derived figures per drive in `data/rally-telemetry-gravel.csv`,
+`harness/rally_gg.py` (definitions in its docstring).
+
+- Data: WRC+ merged telemetry as RallyDataJunkie republished it (the code MIT, the data with no stated licence; no
+  feed after 2021). `df_telemetrymergeddata_SS<n>_<driver>.csv`: 10 Hz (15 % of steps 0.2 s), rows newest first;
+  `speed` km/h (integrates to the GPS path within 0.3 %), `accx` lateral +left and `accy` longitudinal
+  +deceleration, both read as 0.01 g (inferred), `brk`/`throttle` 0-100, `rpm`, `gear`, `kms` 0.1 km, GPS. Single
+  samples reach 10 g (a 3-sample median takes them out). Used: Rally Finland 2021 SS7 Kakaristo-Hassi 1 (18.17 km;
+  Yaris WRC ×5, i20 Coupe WRC, Fiesta WRC ×2) and Wales Rally GB 2017 SS10 Gartheiniog 1 (12.61 km; C3, Fiesta, Yaris,
+  i20 WRC, 10 drives); cars from the entry lists (memory, not in the data). Monte-Carlo 2018 exists (tarmac/snow);
+  no open Rally2/R5 file with acceleration (WRC2's are 6.4 s GPS points).
+- Unit checks over 1 s: `accx` against v times the GPS course's rate, slope 0.77-0.85 (Finland) / 0.59-0.75 (Wales),
+  r 0.85-0.92: the 0.01 g lateral unit holds within the GPS's smoothing. `-accy` against the speed's rate, slope
+  0.49-0.74, and it lags the speed by about 0.5 s: the longitudinal channel reads low or filtered (inferred), so
+  braking is taken from the speed.
+- Figures (medians over the drives, range): 16 longest braking events 0.60 g from the speed (0.41-0.73 Finland,
+  0.44-0.90 Wales), 0.54 / 0.53 g from `accy`, peak 0.5 s mean 1.00 / 0.83 g. Lateral 1 s p50 / p90 / p99 0.40 /
+  0.89 / 1.25 g Finland (mean 125 km/h), 0.30 / 0.74 / 1.02 g Wales (97 km/h). g-g p95 over 0.5 s means, \|lat\|
+  / decel, per 30-60/60-90/90-120/120-150/150+ km/h: Finland 0.96/1.04/1.07/1.14/1.04 and 0.78/1.11/1.10/1.00/0.47;
+  Wales 0.90/0.95/0.94/0.90/0.73 and 0.85/0.93/0.89/0.64/0.45. The lateral level is flat with speed from 30 km/h
+  (where aero is small) to 150 km/h, so most of it is not downforce; specific force includes road camber and roll.
+- ReRBR (`rally_gg.py run`, RSF 524 Hassi, 7.78 km, Finnish gravel; trace columns `glong glat`, the specific force on
+  the body axes): i20 Coupe WRC 2020, Fiesta WRC 2019, Fiesta Rally2, ngp / experimental-brush: 346-353 s, mean 80-82
+  km/h, top 108-111 (the autopilot's 30 m/s), braking 16 longest 0.40-0.44 g, lateral p50 / p90 / p99 0.23-0.25 /
+  0.37-0.40 / 0.43-0.48 g, g-g p95 \|lat\| 0.44-0.51 / 0.40-0.44 / 0.32-0.35 g. These are the autopilot's plan
+  (`BRAKING` 4 m/s², `LATERAL` 5 m/s²), equal across cars and physics: the stage runs cannot rank the tyre until a
+  driver runs at the limit. Against the telemetry the real WRC drives brake 1.4 times and corner 1.9-2.3 times (p90)
+  harder.
+- The r40 circle (Fiesta Rally2, RSF 345, ramp 0.4, `--tyre-probe-every 10`, 1 s means; experimental-brush, ngp the
+  same pattern): through the hold the front axle works harder (front α 7-19°, Fy/Fz 0.47-0.62; rear α 3-9°, 0.28-0.51):
+  the car runs wide on the front. At the break (24-26 s) both axles go to 21-27° with throttle 0.3-0.4, |F|/Fz 0.69-0.86
+  per wheel. Loads: inner 1.8-2.1 kN, outer 5.0-5.3 kN on both axles (static 3.8 front, 3.1 rear). The four wheels'
+  combined Σ\|F\|/ΣFz is 0.75 against the loads' own peaks Σμ(Fz)Fz/ΣFz ≈ 0.82 (peaks 0.89/0.83/0.77 at 2/4/6 kN):
+  the load spread costs about 0.02 (0.84 at the mean 3.5 kN), the tyres reach about 0.9 of their peak, and the driving force takes the rest, so
+  Σ\|Fy\|/ΣFz is 0.65-0.66 and `glat` 0.71-0.75 g. A 0.83 tyre at 4 kN is consistent with 0.663 g at the car. At
+  ramp 0.25 the "slide" is the autopilot weaving inward (4 m inside, steering crossing over) at 0.44 g, not grip: the
+  circle row reads the car and the controller together.
 
 ## Rolling resistance
 
@@ -875,8 +967,10 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
   Kx/Fz 14.0 / 21.2 (18.4-32.9); peak Fx ∝ Fz^0.985 / 0.935 (0.90-0.95).
 - Aligning moment (the lab's `Tyre::aligning`: the torque `solve_forces` applies above 2 m/s, trail × Fy less the
   carcass offset Fy/k_y × Fx, flat): t0/a 0.319 / 0.302 (0.36-0.51; brush theory a/3 at the design load); t0 ∝
-  Fz^0.307 / 0.694 (0.90-1.05); patch half length ∝ Fz^0.30 both (NGP's contact geometry; 0.55-0.65); Mz peak ∝
-  Fz^0.975 / 1.535 (1.60-1.95); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75° on the
+  Fz^0.585 / 0.949 (0.90-1.05); patch half length ∝ Fz^0.57 both (NGP's contact geometry, the front axle's clean
+  frames at 1.6-5.5 kN, local 0.55-0.58; 0.55-0.65); Mz peak ∝ Fz^1.25 / 1.79 (1.60-1.95) (2026-11-08: the lab took
+  the patch from wheel 0's frames alone, 2.3-3.9 kN, and held the end length beyond, which read as Fz^0.30 and put t0
+  at Fz^0.31 / 0.69 and the Mz peak at Fz^0.98 / 1.54; the game was never short); Mz peak at 0.421 / 0.289 of the Fy peak's angle (0.29-0.41; the brush's 2.75° on the
   0.25° grid); Mz to 0 never / at 1.13 (0.78-1.73: NGP's trail keeps 0.004 m at 10°, Mz 0.30 of its peak there); peak
   Mz/(μ Fz a) 0.163 / 0.107 (0.19-0.26). Combined at 4°, κ ∓0.05 (context): ngp 0.60 / 1.23, brush -0.15 / 1.41,
   both lower under braking, as the carcass offset makes them (NGP's trail barely falls with κ, 0.92 of pure at 0.05;
@@ -950,9 +1044,20 @@ rows unchanged.
   4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
   (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
 - Aligning moment level and patch: t0/a 0.30 against the sets' 0.36-0.51 and peak Mz/(μ Fz a) 0.107 against 0.19-0.26
-  would make the steering 1.2-2.4 times heavier near the Mz peak than NGP's: a force-feedback level decision, left. The
-  trail's load exponent stays short (0.69 against 0.90-1.05) because NGP's patch grows ∝ Fz^0.30 (MF-Swift 0.6); the
-  brush cannot take its own contact length without NGP's patch at the design load (not in `Wheel`).
+  stay brush theory's (below; meeting them would make the steering 1.2-2.4 times heavier near the Mz peak). In game
+  (`ffb` column, Fiesta Rally2, map 41) the brush's torque is about 10 % lighter than NGP's at 0.3-0.8 g (mean |ffb|
+  126 / 183 / 224 against 138 / 209 / 249), and NGP's curve output is above 0.95 on 19 % of the steps against 21 %
+  (r40 circle on map 85: 64 % against 83 %) at the default S 105, under 1 % at 250 % tarmac (S 262.5); the 10000
+  clamp is never reached (2026-11-08).
+  The load dependence is in band: NGP's patch grows ∝ Fz^0.57 (MF-Swift 0.59-0.64), so with the trail's own
+  (Fz/Fz0)^0.35 t0 ∝ Fz^0.95.
+  The level through physics (2026-11-08, numeric brush, 4 kN, a 0.074 m, Cy 70.4 kN/rad, μ 1.26; prototype, not
+  built): the bristles on a stretched-string carcass (Svendenius eq. 4.62, Pacejka's string), tread stiffness from
+  Cx = 2a²c_p (isotropic rubber, his eq. 4.70) and the string's foundation set so Cy stays NGP's, give t0/a
+  0.355-0.369 for a string length 0.05-0.4 m but peak Mz/(μ Fz a) only 0.109-0.113; a flatter pressure than the
+  parabola raises the peak (1-u⁴ 0.132, 1-u⁸ 0.155, uniform 0.187, with the string and 1-u⁴ 0.139) but moves the Fy
+  peak to 14-20° and the Mz peak to 0.11-0.19 of it. No sourced mechanism reaches 0.19-0.26 with the force curves
+  kept, so the level stays brush theory's.
   Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
   304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
   315.49 / 315.15: the engine 89-96 % of the gap (1.4-3.0 %), the tyre 0.1-0.25 %. The autopilot plans 5 m/s² lateral
