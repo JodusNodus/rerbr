@@ -179,12 +179,22 @@ pub fn drive(
     driver = driver.with_declutch(measure.brake_declutch);
     if let Some(k) = measure.brake_slip {
         driver = driver.with_brake(Brake::slip(k));
+    } else if let Some(k) = measure.brake_abs {
+        driver = driver.with_brake(Brake::abs(k));
     } else if let Some(p) = measure.brake_pedal {
         driver = driver.with_brake(Brake::Pedal(p));
     }
     // The brake test's end: the steps on the brake after the stop (`--brake-hold`), and those taken so far.
     let hold = measure.brake_hold.map_or(0, |s| (s / live.step_clock().step).round() as u32);
     let mut held = 0;
+    // The per-wheel ABS's scales (`Brake::Abs`) stay on this thread's steps only for this drive, however it ends.
+    struct ClearBrakeScale;
+    impl Drop for ClearBrakeScale {
+        fn drop(&mut self) {
+            rbr_hybrid::ngp::set_brake_scale(None);
+        }
+    }
+    let _clear = ClearBrakeScale;
     let mut driver = with_lesson(driver, &live, stage);
     eprintln!("autopilot: {} heavy props by the driveline", driver.props.len());
     let mut trace = match &measure.trace_speed {
@@ -315,6 +325,7 @@ pub fn drive(
         } else {
             driver.control(step + 1, &sense, finished)
         };
+        rbr_hybrid::ngp::set_brake_scale(driver.brake_scale());
         last = Some((answer[..FRAME_BYTES].to_vec(), q));
         if k % 500 == 0 {
             eprintln!(

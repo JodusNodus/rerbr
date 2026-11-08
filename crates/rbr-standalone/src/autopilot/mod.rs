@@ -428,7 +428,8 @@ pub struct Driver<'a> {
     brake_at: Option<f32>,
     /// The brake test's brake is on (latched when the speed reaches `brake_at`).
     braking: bool,
-    /// The brake test's pedal: held (`--brake-pedal`, 1 unless given) or threshold braking (`--brake-slip`).
+    /// The brake test's pedal: held (`--brake-pedal`, 1 unless given), threshold braking (`--brake-slip`) or the
+    /// per-wheel ABS (`--brake-abs`).
     brake: Brake,
     /// `--brake-declutch`: the brake test holds the clutch pedal in and shifts no gear (the engine off the wheels).
     declutch: bool,
@@ -439,7 +440,7 @@ pub struct Driver<'a> {
 }
 
 /// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from` and its `--brake-pedal`,
-/// `--brake-slip`, `--brake-hold`, `--brake-declutch`, `--circle`, `--circle-ramp`, `--trace-speed`); the default drives as a race.
+/// `--brake-slip`, `--brake-abs`, `--brake-hold`, `--brake-declutch`, `--circle`, `--circle-ramp`, `--trace-speed`); the default drives as a race.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Measure {
     pub flat_out: bool,
@@ -447,6 +448,8 @@ pub struct Measure {
     /// `--brake-pedal P`, `--brake-slip K` (`Brake`) and `--brake-hold S` (s on the brake after the stop).
     pub brake_pedal: Option<f32>,
     pub brake_slip: Option<f32>,
+    /// `--brake-abs K` (`Brake::Abs`).
+    pub brake_abs: Option<f32>,
     pub brake_hold: Option<f32>,
     /// `--brake-declutch`.
     pub brake_declutch: bool,
@@ -492,6 +495,10 @@ pub enum Brake {
     /// `target` (a driver's threshold braking: one pedal for the four wheels, not a per-wheel ABS). `held` is the
     /// controller's integral, the pedal it settles on.
     Slip { target: f32, held: f32 },
+    /// `--brake-abs K`: a per-wheel ABS, the full pedal with each wheel's pressure scaled (`scale`, FL FR RL RR, 0-1)
+    /// so its slip ratio holds near `target` (`ABS_BAND`, `ABS_DUMP`, `ABS_APPLY`). The scales go to the brake step
+    /// through `rbr_hybrid::ngp::set_brake_scale` (NGP cars only).
+    Abs { target: f32, scale: [f32; 4] },
 }
 
 impl Brake {
@@ -499,6 +506,40 @@ impl Brake {
     pub fn slip(target: f32) -> Self {
         Brake::Slip { target, held: 0.0 }
     }
+
+    /// The per-wheel ABS at slip ratio `target`, from the full pressure on every wheel.
+    pub fn abs(target: f32) -> Self {
+        Brake::Abs { target, scale: [1.0; 4] }
+    }
+}
+
+/// The per-wheel ABS's law, a two-threshold pressure modulator as a simple ABS valve block runs it: each step, a
+/// wheel whose slip ratio is over `target + ABS_BAND` has its pressure dumped at `ABS_DUMP` (scale per s), one under
+/// `target - ABS_BAND` has it reapplied at `ABS_APPLY`, and in between it holds. Dumping faster than reapplying, as
+/// real ABS does, cycles each wheel about the target (measured cycle rates in `notes/tyre-model.md`, "A per-wheel ABS
+/// in the brake test"; a real ABS cycles at ~5-15 Hz). Each step reads the slip after the step before.
+const ABS_BAND: f32 = 0.02;
+const ABS_DUMP: f32 = 20.0;
+const ABS_APPLY: f32 = 5.0;
+
+/// Each wheel's slip ratio under braking, 1 - |ωR| / v, the car's speed for its ground speed (a straight stop).
+fn wheel_slips(sense: &Sense) -> [f32; 4] {
+    let v = sense.pose.speed();
+    sense.wheels.map(|w| (v - w) / v.max(SLIP_SPEED))
+}
+
+/// The per-wheel ABS's step: the scales after `dt` s from `scale` at the wheels' `slips` (`ABS_BAND`).
+fn abs_step(target: f32, scale: [f32; 4], slips: [f32; 4], dt: f32) -> [f32; 4] {
+    std::array::from_fn(|k| {
+        let rate = if slips[k] > target + ABS_BAND {
+            -ABS_DUMP
+        } else if slips[k] < target - ABS_BAND {
+            ABS_APPLY
+        } else {
+            0.0
+        };
+        (scale[k] + rate * dt).clamp(0.0, 1.0)
+    })
 }
 
 /// Threshold braking's PI controller on the slip error (target minus the most-slipping wheel's slip): the pedal is
@@ -517,8 +558,7 @@ const SLIP_SPEED: f32 = 1.0;
 /// The most-slipping wheel's slip ratio under braking, 1 - |ωR| / v, the car's speed for each wheel's ground speed
 /// (a straight stop).
 fn slip(sense: &Sense) -> f32 {
-    let v = sense.pose.speed();
-    sense.wheels.iter().map(|&w| (v - w) / v.max(SLIP_SPEED)).fold(f32::NEG_INFINITY, f32::max)
+    wheel_slips(sense).into_iter().fold(f32::NEG_INFINITY, f32::max)
 }
 
 /// A judged speed band of a rally school lesson's filter bank (a check with both speed bounds, km/h): the car must
@@ -731,6 +771,14 @@ impl<'a> Driver<'a> {
     /// The brake test's pedal (`--brake-pedal`, `--brake-slip`).
     pub fn with_brake(self, brake: Brake) -> Self {
         Self { brake, ..self }
+    }
+
+    /// The per-wheel ABS's pressure scales for the next step (`Brake::Abs` while the brake test brakes), else `None`.
+    pub fn brake_scale(&self) -> Option<[f32; 4]> {
+        match self.brake {
+            Brake::Abs { scale, .. } if self.braking => Some(scale),
+            _ => None,
+        }
     }
 
     /// The brake test with the clutch pedal in and no gear changes from its start (`--brake-declutch`), or not.
@@ -977,6 +1025,11 @@ impl<'a> Driver<'a> {
                     let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
                     *held = (*held + SLIP_I * error * dt).clamp(0.0, 1.0);
                     (*held + SLIP_P * error).clamp(0.0, 1.0)
+                }
+                Brake::Abs { target, scale } => {
+                    let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+                    *scale = abs_step(*target, *scale, wheel_slips(sense), dt);
+                    1.0
                 }
             };
         }
