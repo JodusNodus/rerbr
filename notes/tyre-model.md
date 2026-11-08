@@ -353,6 +353,20 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
   PASS; locked over peak at 100 km/h 0.668 → 0.656, wet 0.505 → 0.495, wet peak 100/32 0.951 → 0.970, all in band);
   map 41 600 s Fiesta Rally2 304.03 → 304.03 s, Golf II 314.11 → 314.09 (ngp 309.01, 324.24).
+- Lateral past-peak shape (2026-11-08, `brush::LATERAL_FALL` 0.65, user decision): the lateral axis takes 0.65 of the
+  friction's fall with sliding speed, the longitudinal axis all of it, so a locked wheel braking straight keeps the TRL
+  fit. μ_y(30°)/peak at 4 kN, 15 m/s 0.833 → 0.893, chosen at the band's upper end (0.73-0.90) on weaker sources: TRR
+  621 (bias tyre, flat belt, 48 km/h) ~1.0 at 30°, Persson 2011 (model) 0.97 at 25°, NGP 0.865, against the road MF
+  sets' full slide 0.73-0.83. Scorecard against main 83 → 85/112: μ_y(30°)/peak +0.060 (PASS), peak slip angle 9.50 →
+  9.75° (MISS, band 5.6-8.5), Mz to 0 at 1.13 → 1.10 of the Fy peak's angle, Mz peak at 0.289 → 0.282 of it (MISS),
+  peak μ_y per +0.5 bar 0.27 → 0.18 %, ice μ_y(20°)/peak 0.907 → 0.940 and end over max 0.943 → 0.963 (both MISS
+  before; the ice tyre is the tarmac brush), ice locked over threshold 0.807 → 0.812 (MISS → PASS); TRL locked rows
+  and the brake-test car rows within 0.005 of 5fff12c2. Clean-tarmac recovery after a lift (kept g / widest m / back
+  s): Fiesta 0.87/2.1/2.1 (5fff12c2 0.79/2.8/2.6, ngp 0.89/1.6/1.7), Golf 0.74/4.0/3.2 (0.66/6.0/4.0; ngp
+  0.79/2.0/2.3), Escort 0.77/4.1/never, peak sideslip 97° (spun 180° before; experimental 0.79/2.2/2.4, 52°); full
+  throttle: Golf 38° and back on line never (99° spin before; ngp 17°), Fiesta 39° and back in 4.8 s (54°, never),
+  Escort still spins. Limit 82.8/78.7/76.4 km/h, 1.29/1.25/1.19 g (ngp Fiesta 1.27, Golf 1.20). Map 41 600 s: Fiesta
+  304.00 s, Golf 314.09.
 - Rolling sideways against locked, data (2026-11-08): TRR 621 (1976, Calspan flat belt, J78-15 bias-belted, 6.2 kN,
   48 km/h only, dry SN85; fig ±0.02): μ_y 0.84 at 16°, ~0.87 near 30°, ~0.80 at 60-72°, ~0.82 at 90° (= the locked
   wheel's sideways value), braking peak 0.84 / locked 0.74 quoted; so 30°/peak ~1.0 against the brush's 0.80 at 54
@@ -1153,11 +1167,9 @@ rows unchanged.
   (builds, not committed): NGP's Cα load exponent (within 0.04 s); no carcass dynamics above 3 m/s and a friction flat
   with sliding speed are faster still. 0.1-0.2 % unattributed.
 - Past the limit on tarmac (user, 2026-11-08: "the slip was very immediate, and then it's pretty much impossible to
-  get grip back"): with V_SHAPE the Fiesta runs 2.8 m wide after a lift against NGP's 1.6 m, the Golf 6.0 against
-  2.0, the Escort still spins; a lateral friction flat with sliding speed matches NGP's (In game, "Past the limit") but
-  takes μ_y(30°)/peak at 15 m/s out of the band (0.73-0.90). Whether a rolling tyre's side force falls past the peak
-  with slip as the brush's does (0.95 at 17°, 0.83 at 30°) or flatter (TRR 621's bias tyre ~1.0 at 30°, Persson's
-  model 0.97 at 25°) is the open call; the road MF sets' full-slide 0.73-0.83 is the band's low end.
+  get grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide
+  after a lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test
+  is next; a rolling tyre's measured past-peak shape at speed would settle the value.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 5 % per +0.5 bar (2026-11-08;
   op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar, Meccanica 2023):
   meeting the sources needs Cα to fall with pressure, as theirs does at 4 kN while Goodyear's rises near nominal
