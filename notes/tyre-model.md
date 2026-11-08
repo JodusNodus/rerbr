@@ -503,6 +503,9 @@ Sources:
   FxR 2293 N; Table 4.3) fits a rear µ 0.53, a derate of 0.96 where the friction circle at that drive gives 0.89
   (inferred; lumped, includes load transfer). Drift equilibria are open-loop unstable; the rear drive force holds the
   sideslip (Ch. 3-5). Not a tarmac source.
+- Not used: Racecar Engineering, "Tyre dynamics" (Campbell-Brennan, 2020), an introduction: its "around six degrees"
+  peak is an illustrative curve from Balkwill, Performance Vehicle Dynamics (2017; tyre unstated); its longitudinal
+  peak at slip ratio "0.3-0.4" contradicts every set above (0.08-0.18).
 
 Rally on tarmac: no Rally1/Rally2/R5 g data, logger trace or g-g diagram is open (searched telemetry overlays,
 WRC+ graphics, team and engineer publications); the only rally numbers are the ChassisSim model inputs. Combined
