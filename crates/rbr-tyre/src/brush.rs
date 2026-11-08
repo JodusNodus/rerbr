@@ -126,53 +126,6 @@ pub struct Calibration {
     pub surf_s_cal: f64,
     pub surf_k_cal: f64,
     pub temp_grip_cal: f64,
-    /// The friction's load sensitivity beyond the power laws: NGP's peaks at each load (none: the power laws alone).
-    pub load_level: LoadLevel,
-}
-
-/// The most loads a [`LoadLevel`] holds (NGP's load axis has 8 entries).
-pub const LOAD_POINTS: usize = 8;
-
-/// Multipliers on each axis's friction at loads, on top of the power laws (`N_MU_Y`, `N_MU_X`): solved at fit so the
-/// brush's free rolling peaks are NGP's at each load of the wheel's axis (`crate::calibrate::load_level`), so its grip
-/// level follows NGP's over the load and not only at the nominal point. Linear between the loads, the ends held (past
-/// them the power laws carry on); without loads 1.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct LoadLevel {
-    pub n: usize,
-    /// The loads, N, rising.
-    pub load: [f64; LOAD_POINTS],
-    pub lateral: [f64; LOAD_POINTS],
-    pub longitudinal: [f64; LOAD_POINTS],
-}
-
-impl LoadLevel {
-    /// The same multipliers at every load.
-    pub fn constant(lateral: f64, longitudinal: f64) -> LoadLevel {
-        LoadLevel {
-            n: 1,
-            lateral: [lateral; LOAD_POINTS],
-            longitudinal: [longitudinal; LOAD_POINTS],
-            ..LoadLevel::default()
-        }
-    }
-
-    /// The lateral and longitudinal multipliers at `fz`.
-    pub fn at(&self, fz: f64) -> (f64, f64) {
-        let (l, y, x, n) = (&self.load, &self.lateral, &self.longitudinal, self.n);
-        if n == 0 {
-            return (1.0, 1.0);
-        }
-        if n == 1 || fz <= l[0] {
-            return (y[0], x[0]);
-        }
-        if fz >= l[n - 1] {
-            return (y[n - 1], x[n - 1]);
-        }
-        let k = (0..n - 1).find(|&k| fz <= l[k + 1]).unwrap_or(n - 2);
-        let f = (fz - l[k]) / (l[k + 1] - l[k]);
-        (y[k] + (y[k + 1] - y[k]) * f, x[k] + (x[k + 1] - x[k]) * f)
-    }
 }
 
 /// Bulk-temperature factor on stiffness: f_T = clamp(1 - 0.0045 (Tb -
@@ -232,7 +185,7 @@ pub fn wear_gain(d: f64, w: f64) -> f64 {
 /// Friction magnitude of one axis at sliding speed `vs`: mu_k (scaled by the
 /// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
 /// kinetic ratio) at the sliding speed ([`friction_at`]), times the load sensitivity
-/// `load` (the axis's (Fz/Fz0)^(n-1), `N_MU_Y` or `N_MU_X`, times its [`LoadLevel`]), NGP's temperature grip factor, the
+/// (Fz/Fz0)^(n-1) (`N_MU_Y` or `N_MU_X`), NGP's temperature grip factor, the
 /// wet-faded dry-wear gain (normalised) and the wet loss; the wetness `w` lowers mu_k ([`WET_COULOMB_LOSS`],
 /// normalised). Both axes scale
 /// mu_s with the surface static ratio and mu_k with the surface kinetic
@@ -243,7 +196,8 @@ pub fn mu_axis(
     mu_s: f64,
     mu_k: f64,
     vs: f64,
-    load: f64,
+    fz: f64,
+    n: f64,
     stat_ratio: f64,
     kin_ratio: f64,
     temp_grip: f64,
@@ -255,7 +209,10 @@ pub fn mu_axis(
     let ks = mu_s * stat_ratio;
     let kk = mu_k * kin_ratio * (1.0 - WET_COULOMB_LOSS * w) / (1.0 - WET_COULOMB_LOSS * cal.w_cal);
     let base = friction_at(ks, kk, vs);
-    base * load * (temp_grip / cal.temp_grip_cal) * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal)) * wet
+    base * libm::pow(fz / cal.fz0, n - 1.0)
+        * (temp_grip / cal.temp_grip_cal)
+        * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal))
+        * wet
 }
 
 /// What one steady-state evaluation reads.
@@ -349,13 +306,12 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     let vs = vr * s_abs;
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
     let wet = if x.hydroplaning { wet_loss(x.wetness, v, x.pressure, x.tread_remaining) } else { 1.0 };
-    let (level_y, level_x) = cal.load_level.at(x.fz);
-    let load = |n: f64, level: f64| libm::pow(x.fz / cal.fz0, n - 1.0) * level;
     let mu_x = mu_axis(
         cal.mu_xs,
         cal.mu_xk,
         vs,
-        load(N_MU_X, level_x),
+        x.fz,
+        N_MU_X,
         x.surf_static / cal.surf_s_cal,
         x.surf_kinetic / cal.surf_k_cal,
         x.temp_grip,
@@ -368,7 +324,8 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
         cal.mu_ys,
         cal.mu_yk,
         vs,
-        load(N_MU_Y, level_y),
+        x.fz,
+        N_MU_Y,
         x.surf_static / cal.surf_s_cal,
         x.surf_kinetic / cal.surf_k_cal,
         x.temp_grip,
@@ -541,7 +498,6 @@ mod tests {
             surf_s_cal: 1.3,
             surf_k_cal: 1.0,
             temp_grip_cal: 1.0,
-            load_level: LoadLevel::default(),
         }
     }
 
@@ -687,9 +643,9 @@ mod tests {
         // doubling the static surface mu doubles the zero-speed mu, doubling
         // the kinetic one doubles the fast-sliding mu (past the Stribeck fall, under the speed decay alone).
         let cal = synth_cal();
-        let slow = mu_axis(1.3, 1.0, 0.0, 1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        let slow = mu_axis(1.3, 1.0, 0.0, 4000.0, N_MU_Y, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((slow / 2.6 - 1.0).abs() < 1e-12, "slow {slow}");
-        let fast = mu_axis(1.3, 1.0, 100.0, 1.0, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        let fast = mu_axis(1.3, 1.0, 100.0, 4000.0, N_MU_Y, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((fast / (2.0 * libm::exp(-SPEED_DECAY * 100.0)) - 1.0).abs() < 1e-12, "fast {fast}");
     }
 
