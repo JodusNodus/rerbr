@@ -76,7 +76,10 @@ pub fn trail_half_length(half_length: f64, fz: f64, fz0: f64) -> f64 {
 /// locked wheel kept 0.76 of it at 100. Ours: the four values fitted to Lambourn & Wesley, TRL PPR496 (2010), a car
 /// tyre braked at constant speed to lock on dry asphalt (fig ±0.02): the peak holds with speed (0.97-1.20 times its
 /// 32 km/h value at 100) while the locked friction falls, 0.73-0.82 of the peak at 32 km/h, 0.66-0.76 at 64,
-/// 0.59-0.67 at 100. The level (mu_S) is calibrated.
+/// 0.59-0.67 at 100. The level (mu_S) is calibrated. A rolling tyre sliding sideways takes the same curve at its
+/// sliding speed V sin(alpha): whether a rolling slide loses as a locked wheel does is unmeasured in open data (one
+/// speed, TRR 621: about the locked value); in the r40 circle at 70 km/h a lateral friction flat with sliding speed
+/// left the car's slide past the limit unchanged (`notes/tyre-model.md`, In game).
 pub const V_S: f64 = 7.0;
 pub const STRIBECK_EXP: f64 = 3.0;
 pub const MU_C_OVER_S: f64 = 0.8;
