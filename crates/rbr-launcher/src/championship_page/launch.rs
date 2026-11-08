@@ -147,7 +147,7 @@ impl Form {
         let StageStart { map, conditions, clock, tyre, setup, damage, args: mut extra } = start;
         // The experimental physics keeps no championship results: its stages don't start (a trial still does).
         let recorded = extra.iter().any(|a| a == "--championship");
-        let weather = match self.physics.keeps_records() || !recorded {
+        let weather = match self.drive_physics().keeps_records() || !recorded {
             true => self.championship_weather(map, conditions),
             false => Err(CHAMPIONSHIP_NGP_ONLY.to_owned()),
         };

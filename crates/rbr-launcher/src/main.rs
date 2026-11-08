@@ -204,6 +204,8 @@ them (rsfdata/, Maps/<id>-<name>/, Cars/).
                             patch files)
   --viewer PATH             the viewer (default: next to the launcher)
   --standalone PATH         rbr-standalone (default: next to the launcher)
+  --physics NAME            drive ngp, experimental or experimental-brush (the brush tyre in development, not offered
+                            on the Settings page) for this session, over the Settings page's choice; never saved
   --list                    print the startable maps and cars, the unavailable maps and cars, and what the install lacks, and exit
   --command                 print the viewer command Start runs with the saved selection (RBR_DATA= and RBR_PATCH=,
                             the program, one argument a line), and exit
@@ -386,6 +388,8 @@ struct Start {
     settings: PathBuf,
     data: Option<PathBuf>,
     patch: Option<PathBuf>,
+    /// `--physics NAME`: the session's physics over the saved choice (unsaved).
+    physics: Option<physics::PhysicsProfile>,
 }
 
 /// The start, `--list`, `--command`, `--screenshot` and `--screenshot-damage`.
@@ -401,6 +405,7 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
     let (mut list, mut command) = (false, false);
     let mut screenshot = None;
     let mut rally_damage = None;
+    let mut physics = None;
     while let Some(flag) = args.next() {
         if flag == "--help" || flag == "-h" {
             println!("{USAGE}");
@@ -418,10 +423,16 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
             "--standalone" => standalone = value,
             "--screenshot" => screenshot = Some(value),
             "--screenshot-damage" => rally_damage = Some(value),
+            "--physics" => {
+                let name = value.to_string_lossy();
+                let wrong = || format!("--physics {name}: ngp, experimental or experimental-brush");
+                physics = Some(physics::PhysicsProfile::from_flag(&name).ok_or_else(wrong)?);
+            }
             _ => return Err(format!("unknown argument {flag}\n{USAGE}")),
         }
     }
-    let start = Start { viewer, standalone, settings: home.join(SETTINGS_FILE), data, patch: env("RBR_PATCH") };
+    let settings = home.join(SETTINGS_FILE);
+    let start = Start { viewer, standalone, settings, data, patch: env("RBR_PATCH"), physics };
     Ok((start, list, command, screenshot, rally_damage))
 }
 
@@ -586,8 +597,10 @@ struct Form {
     ffb_cars: rbr_render::ffb::CarSensitivity,
     /// NGP's `headGasketDurability` for every drive (1 leaves the engine as it is).
     head_gasket: i32,
-    /// The physics for every drive (`rbr-standalone --physics`).
+    /// The physics for every drive (`rbr-standalone --physics`), as saved.
     physics: physics::PhysicsProfile,
+    /// `rerbr --physics`: the session's physics over the saved one (never saved).
+    session_physics: Option<physics::PhysicsProfile>,
     controls: ControlsPage,
     /// Never writes the settings file (`--command`, `--screenshot`).
     read_only: bool,
@@ -620,6 +633,11 @@ impl Form {
     /// The selected car, none when NGP drives none.
     fn car(&self) -> Option<&catalog::Car> {
         self.catalog.cars.get(self.car)
+    }
+
+    /// The physics the drives run: the session's `--physics`, else the saved choice.
+    fn drive_physics(&self) -> physics::PhysicsProfile {
+        self.session_physics.unwrap_or(self.physics)
     }
 
     /// NGP's `physics.rbz`: the field's, else the install folder's.

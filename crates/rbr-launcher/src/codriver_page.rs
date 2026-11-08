@@ -492,6 +492,7 @@ mod tests {
             settings: home.join(SETTINGS_FILE),
             data: Some(PathBuf::from(&data)),
             patch: Some(PathBuf::from(&patch)),
+            physics: None,
         };
         // The owned packs drive when chosen, over the game folder's plugin.
         let settings = Settings {
@@ -591,6 +592,7 @@ mod tests {
             settings: home.join(SETTINGS_FILE),
             data: Some(PathBuf::from(&data)),
             patch: Some(PathBuf::from(&patch)),
+            physics: None,
         };
         let settings = Settings {
             map: Some(54),
