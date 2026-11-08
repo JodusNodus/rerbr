@@ -644,6 +644,26 @@ struct Staged {
 /// short of its first point, the finish 30 m before its end; an open course's starts at the start and its finish is
 /// 30 m before its end.
 fn staged(course: &Course) -> Staged {
+    let mut staged = staged_all(course);
+    staged.splits = two_splits(&staged.splits, staged.start, staged.finish);
+    staged
+}
+
+/// The two splits a stage times (the HUD, `EndRace` and the results carry two, as every retail stage has): of
+/// `splits`, the pair nearest a third and two thirds of the way from `start` to `finish`; all of them when two or
+/// fewer.
+fn two_splits(splits: &[f64], start: f64, finish: f64) -> Vec<f64> {
+    let at = |share: f64| start + (finish - start) * share;
+    let pairs = (0..splits.len()).flat_map(|i| (i + 1..splits.len()).map(move |j| (splits[i], splits[j])));
+    pairs
+        .min_by(|a, b| {
+            let off = |(x, y): (f64, f64)| (x - at(1.0 / 3.0)).abs() + (y - at(2.0 / 3.0)).abs();
+            off(*a).total_cmp(&off(*b))
+        })
+        .map_or_else(|| splits.to_vec(), |(x, y)| vec![x, y])
+}
+
+fn staged_all(course: &Course) -> Staged {
     let c = &course.line;
     let total = c.length();
     if course.closed {
@@ -682,6 +702,13 @@ fn staged(course: &Course) -> Staged {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn two_splits_nearest_the_thirds() {
+        assert_eq!(two_splits(&[3839.0, 7017.0, 11584.0, 16680.0], 50.0, 20762.0), [7017.0, 11584.0]);
+        assert_eq!(two_splits(&[100.0, 200.0, 300.0], 0.0, 300.0), [100.0, 200.0]);
+        assert_eq!(two_splits(&[500.0], 0.0, 900.0), [500.0]);
+    }
 
     #[test]
     fn ground_models_map_to_surfaces() {
