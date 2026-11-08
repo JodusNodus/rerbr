@@ -32,7 +32,15 @@ step 8000; the sweep calls NGP's own `patch_forces`/`friction_limits` with the p
 - Temperature: `RubMyFct` 0.838 at 20 °C, 1.0 near 65-85 °C, 0.85 at 130 °C, on 0.6 sector surface + 0.4 tread
   temperature; tread 337 K on the skidpad. Stiffness does not depend on temperature.
 - Wear lowers grip (`WearFtr` 0.95-0.975 times the sector's wear); stiffness does not depend on tread depth.
-- Inclination (`ngp::inclination::grip_scale`): 1.0 at 0°, 0.95 at +5°, 0.8875 at +10°, 1.05 from -5° to -10°.
+- Inclination (`ngp::inclination::grip_scale`): 1.0 at 0°, 0.95 at +5°, 0.8875 at +10°, 1.05 from -5° to -10°, on the
+  cornering friction table only. Camber thrust: `patch_forces` takes 0.1 of the inclination's sine off the lateral
+  slip, so C_γ is 0.094-0.098 of Cα, C_γ/Fz 2.61/1.71/1.34 per rad at 2/4/6 kN (lab `camber_pressure`, 1° slip ±1°);
+  the step's clamp (`grip::clamp_deflection`) holds no force while the offset slip and the sliding disagree (|α| <
+  0.1 |γ|). The wheel's frame has its lateral axis outwards on either side and the inclination negative with the top
+  in (Fiesta Rally2 at rest -1.6 to -2.2°, map 85 circle probe), so negative camber pushes inwards.
+- Pressure: the stiffness factor (0.5/0.9/1.1/1.2 at 0/1.5/3/5 bar, one table for every tyre) scales Cα, Kx and
+  the lateral and torsional carcass alike, and the air pressure the vertical stiffness (patch length). +0.5 bar from
+  2.0 at 4 kN: Cα +5.6 %, Kx +4.4 %, σ_y -0.8 % (the ramp's 63 % distance), peak μ 0 (patch length held).
 - Dynamics, through NGP's own step (`ngp_transient`, `--tyre-image` capture, front right at 4 kN; the quasi-static
   ramp matches the sweep within 0.0013 μ): a lateral slip step ramps the deflection linearly until the friction
   curve's force clamps it (63 % after 0.10 m at 2° falling to 0.08 m at 30 m/s, 0.06-0.04 m at 6°; 90/63 ratio 1.4,
@@ -81,7 +89,8 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Longitudinal past the peak | road MF sets 0.75-0.87 / 0.69-0.82 at κ 0.5 / 1 (4 kN); racing radial MF 6.2 fit 0.68-0.71 / 0.63-0.66 (Dallara AV-21 front, fit range unstated); locked over peak: next row | TNO, Continental, MFeval and IIT sets; JyNing04/Pacejka-tire-model (GitHub) |
 | Braked peak and locked against speed | car tyre 195/55R15 on a towed ASTM E274 trailer, braked at constant speed to lock, 32/64/100 km/h, hot rolled (HRA) and stone mastic (SMA) asphalt: dry peak 0.93/0.98/1.12 HRA, 1.13/1.16/1.10 SMA; dry locked 0.77/0.74/0.75 HRA, 0.83/0.77/0.66 SMA; wet (~1 mm water) peak 1.00/1.02/1.00 HRA, 0.99/0.93/0.76 SMA; wet locked 0.64/0.58/0.52 HRA, 0.66/0.48/0.37 SMA. So locked over peak dry 0.73-0.82 / 0.66-0.76 / 0.59-0.67, wet 0.64-0.67 / 0.52-0.57 / 0.49-0.52; locked 64/32 dry 0.93-0.96, 100/32 dry 0.78-0.97, wet 0.56-0.81; peak 100/32 dry 0.97-1.20. Three sport motorcycle tyres within ~0.1 of it except the dry HRA peak (+0.2). A car with ABS from 64 km/h on the dry SMA: 1.11 g (MFDD), PFT peak 1.13, locked 0.68 | Lambourn & Wesley, TRL PPR496 (2010), Figs 6-13 (fig ±0.02), text, Table 1 (table); read in full |
 | Carcass against pressure | +0.5 bar: σy -12 %, CFy +9.5 %, CFx +3.5 %; the sets' 2.2-2.6 bar cover rally hot pressures (2.0-2.5 bar) | op het Veld (2008) |
-| Camber | camber stiffness Fz (-1.001 + 0.175 dfz) per rad, ~5 % of Ky; car-tyre camber reduction 0.4-0.7 | MF6.1; Romano et al., Meccanica (2021) |
+| Camber | camber stiffness Fz (-1.001 + 0.175 dfz)(1 - 0.81 dpi) per rad: 1.07 Fz at 4 kN, 2.6 bar (1.27 at 2.0 bar), 0.047-0.052 of Kyα at 2-6.75 kN; MF 5.2 truck 0.061; brush ε a/(3R) with the camber reduction ε 0.4-0.7 for car tyres (0.031-0.055 at the Fiesta's a/(3R) 0.078) | MF6.1 / MF5.2 sets; Romano et al., Meccanica (2021) (quoted) |
+| Pressure, MF 6.1 at 4 kN | +0.5 bar from 2.0-2.6 bar: Kyα -11 to -14 %, Kx -14 to -17 %, c_y +13-16 %, c_x +4.2-4.4 %, σ_y -21 to -26 %, peak μ +1.5-2.5 %; Goodyear: Cα falls with pressure at light loads and rises at heavy ones, peak μ no clear trend | MF6.1 (PPY*, PPX*, PCFY3, PCFX3); Goodyear arXiv 2305.18422 Figs 9-10 |
 | Racing slick (rig) | WTCC Yokohama A005 250/660R18: Fy peak at 5-6°, 0.93-0.97 of peak at 10°, 0.89-0.94 at 14°; Cα/Fz 27 /rad new, +6 % at 0.75 mm wear; 1.9 → 2.1 bar: Cα +2.3 %, vertical stiffness 239 → 262 kN/m; grip optimum ≈40 K above track temperature on rig and car; degradation 0.1-0.2 s/lap. Its simulator test plan (Appendix C: baseline, one parameter per stint, fixed lap budget, cockpit A/B toggle) is the template for brush against NGP | Richardson, Chalmers MSc 2017:82 (Cyan Racing), Figs 17, 54, 55, 57 (fig; load not stated), §5.2.4 (quoted) |
 | Rubber friction | no static/kinetic pair: μ(v, T) with flash temperature | Persson, arXiv 1007.2713, cond-mat/0605273; Grosch 1963 (secondary) |
 
@@ -113,10 +122,11 @@ v_p = 6.36 √p (0.75 + 0.25 d); force dynamics F = c u + d u', (v d + f) u' = f
 Vehicle Dynamics lecture notes, Hochschule Regensburg 2009, 3.4.2 and 4.2.2; f = F/s the steady secant, s made with
 v_N = max(v, 0.5 m/s), v itself the transport speed
  as in Rill's eqs. 4.20-4.21, so a locked wheel's deflection
-follows the sliding and a stopped one's holds; c_y NGP's carcass, c_x 450 kN/m times the pressure factor over its
-calibration value, at every load (road sets 288-399 kN/m at 4 kN, measured 163-234, c_x/c_y 1.3-2.75); d the mean of
+follows the sliding and a stopped one's holds; c_y NGP's carcass and c_x 450 kN/m, times NGP's pressure factor over
+its calibration value to the powers 0.7 and 0.6 (c_y as NGP's to the power 1.7; below), at every load (road sets 288-399 kN/m at 4 kN, measured 163-234, c_x/c_y 1.3-2.75); d the mean of
 Rill's passenger values, d_x 500/1500 and d_y 250/600 N/(m/s)), combined force and the deflections capped at μ Fz as
-Rill caps them; relaxation length (f + v d)/c, the stretched string's C/c at small slip, no other speed term. Calibrated
+Rill caps them; relaxation length (f + v d)/c, the stretched string's C/c at small slip, no other speed term; camber
+thrust 0.05 of Cy per unit inclination sine (below). Calibrated
 at run time to NGP's lateral peak and slope and longitudinal peak at 4 kN, 15 m/s (no NGP values in code). The dynamics
 reach standstill, and the game runs the brush down to it.
 
@@ -137,6 +147,17 @@ friction falls. Canudas de Wit's own fit (exponent 1/2, v_s 6.57 m/s, μ_C/μ_S 
 1-3 m/s of sliding, so the braked peak fell 9 % from 32 to 100 km/h and the locked wheel kept 0.76 of it at 100.
 Wet: the wetness W (NGP's `WaterFactor`, at the seam) lowers μ_C by 18 % W, fitted to TRL's wet locked over peak; the
 peak barely moves (Vs at the peak is in the curve's flat part).
+
+Camber and pressure (2026-11-08): the inclination's sine (`ForceInput::inclination_sin`, read-only at the seam) adds
+-0.05 sin γ |ωR| to the lateral slip velocity, MF's horizontal shift as an equivalent slip: C_γ = 0.05 Cy at small
+slip, gone once the patch slides whole, none at standstill or locked (MF 6.1 0.047-0.052, MF 5.2 0.061, brush ε
+a/(3R) 0.031-0.055; NGP 0.1). The carcass stiffens with pressure faster than the slip stiffness laterally and slower
+longitudinally: per +0.5 bar c_y +9.5 % (op het Veld) / +13-16 % (MF 6.1), c_x +3.5 % / +4.2-4.4 %; NGP's factor rises
+6.9 % from 2.0 bar, so c_y and c_x go as its powers 1.7 and 0.6 (the means), and σ_y = Cy/c_y shortens with pressure.
+The slip stiffnesses keep NGP's factor: at 4 kN the sources disagree on Cα's sign (MF 6.1 -11 to -14 %, op het
+Veld's σ_y and CFy -4 %, Goodyear +10 % per +20 % near nominal load), so σ_y shortens 5 %, not the sources' 12-26 %.
+Kx keeps NGP's +4.4 % against MF 6.1's -15 % (one set). At the calibration pressure (factor 1) nothing moves; at
+the Fiesta's 2.0 bar (0.967) c_y is 2.3 % below NGP's and c_x 441 kN/m (435 before).
 
 Ours, not from papers: the friction curve's four values and the wet Coulomb loss (fits to one tyre's trailer data,
 two surfaces); the wet loss's film ramp, its 0.5 mm, the quadratic and the 0.6 weight, and the wear gain's
@@ -229,7 +250,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
 - Scope: hard surfaces (no soil) at every speed, down to standstill, weight 1 (2026-11-07, user). On soil loose-v1
   (2026-11-08, [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
 - Grip: NGP's static friction (surface, wet or dry, times the temperature grip) times the inclination's table scale
-  scales μ_S and μ_C both, so the fitted μ_C/μ_S holds on every surface; NGP's kinetic friction is unused. The wet
+  (NGP's acts on its cornering table only, the brush's on both axes: ±1 % per degree to 5°) scales μ_S and μ_C both, so the fitted μ_C/μ_S holds on every surface; NGP's kinetic friction is unused. The wet
   loss and the hydroplaning speed stay off (NGP's wet surface values carry the wet level); the surface's
   `WaterFactor` (`ForceInput::water_factor`, 2026-11-08) lowers μ_C and fades the dry wear gain. Retail wet tarmac
   carries it (track-41_M wet 1.0, track-85_M 0.92-0.98), and so do RSF wet stages with a wet `.mat` entry (122, 117:
@@ -244,8 +265,9 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   level at each load was tried and rejected (2026-11-08): pace -0.01 to +0.06 s, peak Fx load exponent 0.982 against
   the published 0.90-0.95.
 - Dynamics: Rill's carcass deflections per wheel, the model's state (snapshots don't carry it; restart and
-  touch-down zero it). c_y is NGP's lateral carcass; c_x 450 kN/m times the pressure factor over its calibration
-  value (2026-11-07; Golf II 447 kN/m, Fiesta Rally2 435 kN/m, c_x/c_y 1.37/1.07; NGP's torsional over R² 640/796
+  touch-down zero it). c_y is NGP's lateral carcass, c_x 450 kN/m, each moved with the pressure factor by its power
+  (2026-11-08, [Candidate](#candidate-brush-v1); before, c_x 450 kN/m times the pressure factor over its calibration
+  value: 2026-11-07; Golf II 447 kN/m, Fiesta Rally2 435 kN/m, c_x/c_y 1.37/1.07; NGP's torsional over R² 640/796
   kN/m, a tenth of it below 10 m/s), the same at every speed and load;
   trail and phase are the steady brush's.
 - Runs below are `experimental-brush` (realistic engine + brush; `--physics experimental` was this pairing before the
@@ -776,6 +798,16 @@ gravel and snow rows identical; snow braking from 50 km/h ngp 0.875 / 0.791 g, b
 locked).
 
 
+Camber and pressure rows (2026-11-08; lab keys `camber_per_fz_4k`, `camber_over_calpha_4k`, `*_dp05_4k`: +0.5 bar on
+the probe's 2.0 bar through NGP's stiffness factor, patch length held; σ_y as the 63 % distance of a 1° step):
+experimental-brush 49 → 52/99 PASS (ngp 33/99), before → camber thrust → carcass pressure law. MISS → PASS C_γ/Fz
+0.017 → 0.842 (0.55-1.27; ngp 1.706), C_γ/Cα 0.001 → 0.049 (0.031-0.061; ngp 0.097), ice locked over threshold
+0.809 → 0.811 (0.81-0.88, at the edge); still MISS σ_y -0.6 → -5.1 % (-26 to -12; ngp -0.8), Kx +4.9 % (MF 6.1 -17 to
+-14; ngp +4.4); PASS Cα +5.8 % (-14 to +12.5, sources disagree; ngp +5.6), peak μ_y +0.3 % (±3). Car rows within
+0.005 except the gravel circle (car, not tyre) 0.609 → 0.667 → 0.620 g. Map 85 ramped circle with the setup's camber
+at 0°, as set (-3.9°/-1.2°) and -4° (`--setup`): slide at 0.880/0.875/0.876 g brush (0.880/0.875/0.875 before),
+ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilot's noise.
+
 ### A per-wheel ABS in the brake test
 
 - Hook: `rbr_hybrid::ngp::set_brake_scale` (thread-local, `None` by default) multiplies each wheel's pedal pressure
@@ -816,9 +848,10 @@ locked).
   brush 21) 0.18-0.50 s, a build with NGP's Kx: the brush's driven wheels slip a third less on throttle. Ruled out
   (builds, not committed): NGP's Cα load exponent (within 0.04 s); no carcass dynamics above 3 m/s and a friction flat
   with sliding speed are faster still. 0.1-0.2 % unattributed.
-- σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
-  stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
-  7.5 bar (Meccanica 2023).
+- σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 5 % per +0.5 bar (2026-11-08;
+  op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar, Meccanica 2023):
+  meeting the sources needs Cα to fall with pressure, as theirs does at 4 kN while Goodyear's rises near nominal
+  load and NGP's rises. Kx against pressure: NGP's +4.4 % per +0.5 bar against MF 6.1's -15 % (one set).
 - Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest) and the film's effect on
   v_p. Wet on the 12 RSF stages without a wet `.mat` entry (568 among them) falls back to material 0 (μs 0.95, dry):
   whether the original does the same, and whether the launcher should offer wet there, is open.
@@ -834,7 +867,7 @@ locked).
   game under 0.02 m/s by 1.5 s) and the Fiat rocks at rest while revving; a low-speed carcass damping is unmeasured.
   The hold torque and the drive line's sticking load stay NGP's. LuGre with Canudas de Wit's σ_0 181.54 1/m (726 kN/m
   at 4 kN, 1.6 times c_x) and σ_1 ~1 would be a second bristle over the same contact; Rill's restored dynamics already
-  give the stick-slip at standstill LuGre adds, so it was not prototyped. Camber thrust from MF6.1's camber stiffness.
+  give the stick-slip at standstill LuGre adds, so it was not prototyped.
 - Ice: NGP's level (0.094) against the measured 0.15-0.18 keeps the brush's peak slip angle and initial slope from both
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
