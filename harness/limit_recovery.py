@@ -43,7 +43,8 @@ def command(args, car, physics, throttle, name):
             "--rsf-car", car, "--physics", physics, "--steps", str(args.steps), "--top-speed", "60",
             "--circle", args.circle, "--circle-ramp", str(args.ramp), "--circle-past", str(throttle),
             "--trace-speed", os.path.join(args.out, name + ".trace"), "--data", os.environ["RBR_DATA"],
-            "--ngp-physics", os.environ["RBR_NGP_PHYSICS"]]
+            "--ngp-physics", os.environ["RBR_NGP_PHYSICS"],
+            *(["--material-as", str(args.material_as)] if args.material_as is not None else [])]
 
 
 def run(cmd, log, out):
@@ -106,8 +107,13 @@ def main():
     parser.add_argument("--steps", type=int, default=30000)
     parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--analyse-only", action="store_true")
+    parser.add_argument("--material-as", type=int, default=37,
+                        help="every material takes this one's values (37 tarmac fine clean dry: map 85's r40 circle "
+                             "crosses loose gravel, 189/181, at its south-west); -1 for the stage's own")
     parser.add_argument("--bin", default=BIN, help="the rbr-standalone to run (a variant's build)")
     args = parser.parse_args()
+    if args.material_as is not None and args.material_as < 0:
+        args.material_as = None
     os.makedirs(args.out, exist_ok=True)
     runs = [(car, physics, t, f"{car.split('_ngp')[0]}-{physics}-t{t}") for car in args.cars.split(",")
             for physics in args.physics.split(",") for t in args.throttle.split(",")]
