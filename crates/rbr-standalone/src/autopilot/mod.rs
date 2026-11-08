@@ -471,6 +471,8 @@ pub struct Driver<'a> {
     grip: f32,
     /// The speed plan's dry lateral and braking acceleration (m/s²): `LATERAL` and `BRAKING`, or `--plan`'s.
     plan: Plan,
+    /// `--plan`: the race pedal's cap, the threshold controller's integral (`PLAN_SLIP`); none without the flag.
+    antilock: Option<f32>,
     /// A rally school lesson drives (`in_lesson`): no declutch under braking or restart (`DECLUTCH`, `STALLED`).
     lesson: bool,
     /// Neutral is held under braking or for a restart (`DECLUTCH`, `STALLED`).
@@ -636,6 +638,10 @@ fn abs_step(target: f32, scale: [f32; 4], slips: [f32; 4], dt: f32) -> [f32; 4] 
 /// widens it (0.025 off K at 0.3, 0.43-0.50 at 0.5).
 const SLIP_I: f32 = 60.0;
 const SLIP_P: f32 = 1.0;
+/// `--plan`'s race braking: the pedal stays under threshold braking's at this slip ratio (most-slipping wheel). At
+/// the plan's limit the plain pedal (up to 0.8) locked the fronts entering corners under load transfer (Fiesta Rally2
+/// on RSF 524 at 3980 m, ngp, plan 5.6/8.1: fronts 1.3 and 4.1 m/s at 15.6 m/s, then off the line at full lock).
+const PLAN_SLIP: f32 = 0.2;
 /// The slip ratio's floor on the speed (m/s): under it the ratio is (v - ωR) / `SLIP_SPEED`, so the stop's last
 /// metre neither divides by zero nor takes the wheel speeds' noise as slip.
 const SLIP_SPEED: f32 = 1.0;
@@ -691,6 +697,7 @@ impl<'a> Driver<'a> {
             bands: Vec::new(),
             grip: 1.0,
             plan: Plan::DEFAULT,
+            antilock: None,
             lesson: false,
             neutral: false,
             dragging: 0,
@@ -706,7 +713,7 @@ impl<'a> Driver<'a> {
     /// The driver planning its speed with `plan`'s lateral and braking acceleration (`--plan`) in place of `LATERAL`
     /// and `BRAKING`.
     pub fn with_plan(self, plan: Plan) -> Self {
-        Self { plan, ..self }
+        Self { plan, antilock: Some(1.0), ..self }
     }
 
     /// The driver holding the lesson's judged speed bands (`bands`): the target speed stays under each band's top in
@@ -1083,6 +1090,17 @@ impl<'a> Driver<'a> {
                 } else {
                     (0.0, (-0.15 * gap).min(0.8))
                 };
+                if let Some(held) = &mut self.antilock {
+                    // `--plan`: the pedal held under the threshold controller's at `PLAN_SLIP` (`Brake::Slip`'s law).
+                    if brake > 0.0 && !finished {
+                        let error = PLAN_SLIP - slip(sense);
+                        let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+                        *held = (*held + SLIP_I * error * dt).clamp(0.0, 1.0);
+                        brake = brake.min((*held + SLIP_P * error).clamp(0.0, 1.0));
+                    } else {
+                        *held = 1.0;
+                    }
+                }
                 let g = sense.gear.min(TOP_GEAR) as usize;
                 // NGP's clutch help opens the clutch below about 100 rad/s even under a light throttle (`notes/ngp.md`,
                 // "Controls under NGP"), so a run of NGP's steps learns only above the downshift speed.
