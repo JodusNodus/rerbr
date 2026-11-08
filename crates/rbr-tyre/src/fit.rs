@@ -1,4 +1,4 @@
-//! The brush's calibration on one wheel: NGP's peak forces and cornering slope (the brush's slope
+//! The brush's calibration on one wheel: NGP's peak forces and cornering slope (the brush's slip stiffnesses
 //! [`CORNERING_OVER_NGP`] times it), swept with its own patch forces
 //! (`rbr_physics::tyre::patch_forces`) from the wheel's tables at the nominal load, then solved for
 //! ([`crate::calibrate`]). The point is a unit surface (static and kinetic friction 1), so the game scales the brush's
@@ -18,18 +18,16 @@ const SPEED: f64 = 15.0;
 /// The nominal load's entry in the load axis.
 const NOMINAL_LOAD: usize = 3;
 
-/// The brush's calibration for `w`: NGP's lateral peak and its cornering slope over 0 to 2° times
-/// [`CORNERING_OVER_NGP`], with the longitudinal stiffness and friction of NGP's slope (the calibration of NGP's own
-/// slope, [`ngp_calibration`]).
+/// The brush's calibration for `w`: NGP's peak forces and its cornering slope over 0 to 2° times
+/// [`CORNERING_OVER_NGP`], the longitudinal stiffness [`crate::brush::KX_OVER_KY`] times the cornering one (so 1.3
+/// times that of NGP's slope as well), its friction solved for NGP's longitudinal peak.
 pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
     let (targets, point) = setup(w)?;
-    let ngp = calibrate(&targets, &point);
-    let stiff = calibrate(&CalTargets { fit_lat: targets.fit_lat * CORNERING_OVER_NGP, ..targets }, &point);
-    Ok(Calibration { cx0: ngp.cx0, mu_xs: ngp.mu_xs, mu_xk: ngp.mu_xk, ..stiff })
+    Ok(calibrate(&CalTargets { fit_lat: targets.fit_lat * CORNERING_OVER_NGP, ..targets }, &point))
 }
 
-/// The brush calibrated on NGP's own cornering slope at `w`'s nominal load: the longitudinal side of
-/// [`calibration`], and the start of the loose tyre's ([`loose`]).
+/// The brush calibrated on NGP's own cornering slope at `w`'s nominal load: the slip stiffnesses low friction falls
+/// back to (`crate::car`), and the start of the loose tyre's ([`loose`]).
 pub fn ngp_calibration(w: &Wheel) -> Result<Calibration, String> {
     let (targets, point) = setup(w)?;
     Ok(calibrate(&targets, &point))
@@ -187,31 +185,29 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_brush_takes_ngp_s_lateral_peak_and_stiffer_slope_at_the_nominal_load() {
+    fn the_brush_takes_ngp_s_peaks_and_stiffer_slopes_at_the_nominal_load() {
         let w = wheel();
         let cal = calibration(&w).unwrap();
         let t = targets(&w, 4000.0).unwrap();
         assert_eq!((cal.fz0, cal.t_cal, cal.pf_cal, cal.surf_s_cal), (4000.0, 350.0, 1.0, 1.0));
-        let lateral = |alpha: f64| {
-            let x = EvalInput {
-                fz: 4000.0,
-                half_length: 0.05,
-                vx: -SPEED * alpha.cos(),
-                vy: SPEED * alpha.sin(),
-                spin: SPEED * alpha.cos(),
-                radius: 1.0,
-                bulk_temp: 350.0,
-                tread_remaining: 1.0,
-                pressure: 0.0,
-                pressure_factor: 1.0,
-                wetness: 0.0,
-                hydroplaning: false,
-                temp_grip: 1.0,
-                surf_static: 1.0,
-                surf_kinetic: 1.0,
-            };
-            eval(&x, &cal).fy.abs()
+        let input = |alpha: f64| EvalInput {
+            fz: 4000.0,
+            half_length: 0.05,
+            vx: -SPEED * alpha.cos(),
+            vy: SPEED * alpha.sin(),
+            spin: SPEED * alpha.cos(),
+            radius: 1.0,
+            bulk_temp: 350.0,
+            tread_remaining: 1.0,
+            pressure: 0.0,
+            pressure_factor: 1.0,
+            wetness: 0.0,
+            hydroplaning: false,
+            temp_grip: 1.0,
+            surf_static: 1.0,
+            surf_kinetic: 1.0,
         };
+        let lateral = |alpha: f64| eval(&input(alpha), &cal).fy.abs();
         let peak = (0..=300).map(|k| lateral((f64::from(k) * 0.1).to_radians())).fold(0.0, f64::max);
         assert!((peak / t.peak_lat - 1.0).abs() < 0.01, "peak {peak} NGP {}", t.peak_lat);
         // The least-squares slope over 0 to 2°, as the targets take NGP's.
@@ -219,10 +215,16 @@ pub(crate) mod tests {
         let (sxy, sxx) = alphas.fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * lateral(a), sxx + a * a));
         let slope = CORNERING_OVER_NGP * t.fit_lat;
         assert!((sxy / sxx / slope - 1.0).abs() < 0.01, "slope {} target {slope}", sxy / sxx);
-        // The longitudinal side is the calibration on NGP's own slope.
+        // The longitudinal stiffness is KX_OVER_KY times the stiffer cornering one, at NGP's longitudinal peak.
+        assert_eq!(cal.cx0, crate::brush::KX_OVER_KY * cal.cy0);
+        let longitudinal = |kappa: f64| {
+            let x = EvalInput { vy: 0.0, vx: -SPEED, spin: (1.0 + kappa) * SPEED, ..input(0.0) };
+            eval(&x, &cal).fx.abs()
+        };
+        let peak = (0..=200).map(|k| longitudinal(f64::from(k) * 0.005)).fold(0.0, f64::max);
+        assert!((peak / t.peak_lon - 1.0).abs() < 0.01, "peak {peak} NGP {}", t.peak_lon);
         let ngp = ngp_calibration(&w).unwrap();
-        assert_eq!((cal.cx0, cal.mu_xs, cal.mu_xk), (ngp.cx0, ngp.mu_xs, ngp.mu_xk));
-        assert!(cal.cy0 > ngp.cy0);
+        assert!(cal.cy0 > ngp.cy0 && cal.cx0 > ngp.cx0);
     }
 
     #[test]
