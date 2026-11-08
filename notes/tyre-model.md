@@ -86,6 +86,9 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Wet against dry, car braking | ABS stops on the same tyre and speeds, μ = v²/2gd (means, not peaks): UHP road wet/dry 0.66-0.79 at 100-0 km/h (14 tyre-car pairs, middle ~0.71; SportContact 7 0.71/0.78, Hankook S1 evo Z 0.79); semi-slicks 0.54-0.66 (Cup 2, A052 0.66; Trofeo RS, Cup 2 R 0.54; slick wet 0.35); wet 80-0 against dry 100-0: road 0.73-0.80, semis 0.48-0.59 (several mm water). Water depth unstated (R117 test 1.0 ± 0.5 mm). Band for a performance tarmac tyre 0.65-0.80; a treaded rally tyre ~0.65-0.75 (inferred). NGP's 0.79, at any speed, is the band's top | AUTO BILD sportscars 2024 (AMG GT), 2025 (Emira) (table); Track Day 2026 (M2) via Tyre Reviews (quoted, search extract); sport auto 2018 (quoted; wet speed inferred); ADAC 2024 (quoted) |
 | Damp against dry and wet | μmax on a macro- and microrough road, film < 10 µm: 0.8/0.7 of dry at 60/100 km/h; 1.5 mm 0.6/0.4; 5 mm 0.5/0.1. MXV3A dry 1-1.3, damp draining mix 0.7, 2 mm wet asphalt 0.6; on a damp draining mix a competition compound 0.8 against car 0.6-0.7. Rubber slider (DFT, 40 km/h) keeps ~0.82 of dry to ~0.3 mm, then 0.28 by 0.5 mm; critical depth 0.34/0.31/0.15 mm at 20/40/60 km/h. NGP damp 0.92 is above all of them | Michelin, "The tyre: Grip" (2001), pp. 29, 59 (table, rounded); Beautru et al., SURF 2012, Figs 10a, 13 (fig ±0.03) |
 | Wet against slip speed | F(S) = F60 exp((60 - S)/S_p), S_p = 14.2 + 89.7 MPD km/h (smooth test tyre); on the one road with both, S_p 67 predicted against ~220 km/h in locked-wheel data, so not used | ASTM E1960 via two Virginia Tech theses; Rajapakshe et al., Dyna 176 (2012) |
+| Wet peak against speed and film | car tyre peak μ ("Haftreibungszahl"), all films ~0.755 at 60 km/h; at 100 / 140 km/h: 0.2 mm 0.745 / 0.73, 0.5 mm 0.71 / 0.655, 1 mm 0.675 / 0.59, 2 mm 0.60 / 0.375, 3 mm 0.41 / 0.14 (so 100/60: 0.99, 0.94, 0.89, 0.79; 140/60: 0.97, 0.87, 0.78). Wet peak independent of film and speed to ~50 km/h (Veith). Summer 195/65 R15, 3-5 mm tread, film 0-1 mm, MPD 0.6: wet/dry peak ~0.86 at 30-80 km/h, each falling 0.03-0.06 over it. Same size at 2 mm tread, 1 mm film over MPD 0.58, 5 kN: 0.98/0.88/0.80/0.58 at 20/50/60/80 km/h | Reimpell & Sponagel, Fahrwerktechnik: Reifen und Räder (1986), via Müller et al., FAT-Schriftenreihe 299, Abb. 21b (fig ±0.02, reproduction of an older figure, probably Gengenbach 1968); Veith, ASTM STP 793 (1983) via Beautru 2012 (quoted); Klempau, diss. TU Darmstadt (2004), Abb. 71, 72 (fig ±0.02) |
+| Rain to film, damp | 2.5 % cross-fall, 3.5-7 m flow path, texture 0.5 mm: film over the aggregate tops (Gallaway) ~0 at 2-10 mm/h, 0.24-0.50 mm at 25 mm/h, 0.62-1.0 mm at 50 mm/h; over the mean profile (Ross & Russam) 0.09-0.12 / 0.19-0.26 / 0.29-0.40 mm at 2 / 10 / 25 mm/h. So ≥ 0.5 mm is heavy rain, ruts or puddles. Road sensors: damp from 10 µm, wet from 0.1 mm (Lufft MARWIS defaults); a road looking black without a shiny film read 0.08 mm | Gallaway et al., TTI 138-5 (1979), metric form as TII/Arup give it (inferred: computed); Ross & Russam, RRL (1968) via PMC8253438 (inferred: computed, the slope's unit unconfirmed); MARWIS manual (table); Sandberg et al., rolling resistance in wet (quoted) |
+| Damp against dry (more) | damp asphalt: peak 0.79 at κ ~0.07 against dry 1.13 at ~0.15 (0.70), locked 0.58 against 0.86 (0.67), speed unstated. Peak against a reflection sensor's wetness, 195/65 R15: asphalt concrete 1.15 dry, ~0.97 damp, 0.95 wet (0.84, 0.83), other surfaces ~1.1, ~0.83, ~0.78 (0.75, 0.71): most of the loss comes at damp. Locked, damp 0.70 flat from 20 to 100 km/h against dry 0.90 (0.78), wet 0.61 → 0.33. So damp ≈ 0.70-0.85 of dry at the peak, 1.0-1.15 of wet at low speed, without a speed effect | Bachmann, diss. TU Darmstadt (1998), via FAT 299 Abb. 19 (fig ±0.02) and Klempau (2004) Abb. 16 (fig ±0.03); Reimpell & Sponagel (1986) via FAT 299 Abb. 20b (fig ±0.02) |
 | Low speed | lumped/distributed LuGre: σ_0 181.54 1/m, σ_2 0.0018 s/m, σ_1 ~1 (dynamic fit); MF fades forces below 1 m/s (VXLOW), no standstill | Canudas de Wit et al. (2003), Tables 1, 3; MFeval.jl |
 | Longitudinal carcass | c_x at 4 kN (MF-Swift overall stiffness, σ = K/c): TNO 205/60R15 382 kN/m (σx 0.23 m), MF6.1 358 (σx 0.32 m; MFeval 4.0's fit 399), IIT Madras 245/60R16 288; measured 225/50R17 214-234 kN/m (1.9-3.0 bar), P245/70R15 static 163-188 kN/m; c_x/c_y 1.3-2.75 in every set; +5-9 % from 4 to 6 kN | Besselink, Schmeitz & Pacejka, VSD 48 S1 (2010), eqs. 17-20, on the sets; op het Veld, MSc TU/e (2008), Flatplank, Table 4.2; Gent & Walter, The Pneumatic Tire, NHTSA DOT HS 810 561 (2006), Table 9.1 |
 | Lateral carcass | road sets σy 0.34-0.75 m at 4 kN (c_y 109-273 kN/m); the two 50-series tyres relax longest, so low profile alone does not shorten σy | same sets; op het Veld; Gent & Walter ch. 8 |
@@ -99,7 +102,7 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Rubber friction | no static/kinetic pair: μ(v, T) with flash temperature | Persson, arXiv 1007.2713, cond-mat/0605273; Grosch 1963 (secondary) |
 
 Not found in open sources: rally tyre data, racing-radial data beyond the slick row (TTC data is licence-gated), the
-full Gallaway 1979 tyre terms, road-sensor damp/wet film thresholds, gravel cut onto tarmac, damp tarmac grip. Those
+full Gallaway 1979 tyre terms, gravel cut onto tarmac, a rally tyre's wet or damp grip. Those
 stay calibrated on stage times.
 
 ## NGP against the targets
@@ -331,6 +334,18 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   (41_M), 0.654 → 0.644 (122), 0.690 → 0.682 (117) g; best threshold within 0.02 g (new tyres, ≤ 80 km/h). NGP from
   80 km/h locked at 64: 0.775 (122), 0.796 (117). Autopilot pace on wet track-41_M: Fiesta Rally2 371.74 → 371.44 s
   (NGP 381.43), Celica ST185 375.93 → 375.93 s (NGP 385.34).
+- Wet and damp against the research (2026-11-08, `tyre/wet-research`, main fa211dfb, Fiesta Rally2, no model change).
+  `--wetness damp` on track-41_M puts the road on tarmac fine clean damp (38: μs 1.2025, WaterFactor 0.25), wet on 39
+  (1.105, 1); RSF 117 the same way (65/69 → 66/70 → 67/71, the same 0.925 / 0.85 and 0.25 / 1). In game, with the
+  tarmac tyre's own wet slope, the best of ABS K 0.15 and threshold braking from 50 km/h (41_M) over dry: ngp damp 0.915,
+  wet 0.80; eb 0.915, 0.78; from 100 km/h (117, threshold K 0.2 / ABS): ngp 0.91 / 0.92, 0.77 / 0.75; eb 0.91, 0.78 /
+  0.74. Against damp 0.70-0.85 of dry: MISS (both; NGP's surface values); wet 0.65-0.80: PASS. Wet over dry no lower
+  from 100 than from 50 km/h (hydroplaning only past 94 km/h on new tread): against the wet peak's 0.89-0.94 at 100 of
+  its 60 km/h value (0.5-1 mm films): MISS (lab: eb peak 100/60 0.985, 140/60 0.89, band 0.78-0.87; ngp 1.00 at any
+  speed). Damp flat with speed: PASS (eb peak 0.99 to 50 m/s). Locked damp over dry, 50 km/h: ngp 0.90, eb 0.88
+  (0.67-0.78: MISS). Worn, lab, eb at 2 mm tread over 20 km/h: 0.83 / 0.75 / 0.58 at 50 / 60 / 80 (Klempau 1 mm
+  film, smooth road: 0.90 / 0.82 / 0.59). Map 41 autopilot pace (s, dry / damp / wet): ngp 309.01 / 338.51 / 381.43,
+  eb 303.66 / 330.92 / 371.30 (wet +23 %, damp +9 %, both physics; the speed plan's, no rally reference).
 - The Fiesta's 0.35-pedal stop (1.63 s against NGP's 2.30) is the engine's, not the tyre's: realistic engine with
   NGP's tyre (`experimental`) 1.65 s; under NGP the car holds 2.93-2.96 m/s for 0.75 s in second gear at 123-125 rad/s
   until the autopilot shifts down, the realistic engine falls to 107 rad/s and keeps braking (2026-11-07).
@@ -1294,6 +1309,14 @@ rows unchanged.
   op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar, Meccanica 2023):
   meeting the sources needs Cα to fall with pressure, as theirs does at 4 kN while Goodyear's rises near nominal
   load and NGP's rises. Kx against pressure: NGP's +4.4 % per +0.5 bar against MF 6.1's -15 % (one set).
+- Wet and damp (research and check above, 2026-11-08), options for the brush only: (a) shape, a thin-film peak loss
+  with speed, 1 - 0.0075 W max(0, v - 16.7 m/s) (W 1: 0.92 at 100, 0.83 at 140 km/h of the 60 km/h peak, Reimpell's
+  0.5-1 mm), folding in the new tread's partial hydroplaning (it would otherwise count twice above 94 km/h); lab stop
+  100/80 0.997 → ~0.98 estimated (band 0.97-1.0), the worn rows ratios of two stops on the same factor; (b) level, a damp/wet
+  loss saturating at damp, μ × (1 - a min(1, W/0.25)), a 0.08: damp 0.915 → 0.84, wet 0.78 → 0.72 of dry (bands
+  0.70-0.85, 0.65-0.80): changes the grip level on damp and wet (a product decision); scorecard ratio rows unchanged.
+  Recommended: (a); (b) only if the user wants the level moved off NGP's. Wanted: Gengenbach (ATZ 70, 1968), Bachmann
+  (VDI 12, 1998), Veith (ASTM STP 793), Oh & Lee (Adv. Mech. Eng. 2014, doi:10.1155/2014/260428).
 - Wet: the partial hydroplaning's onset and ramp rest on two ABS braking tests that disagree at 1.6 mm (AUTO BILD
   0.69, Continental's report 0.80 of new from 80 km/h; films unstated) and on an 8 mm new groove depth; a rally
   tarmac tyre's (FIA: at least 17 % grooves of 5.5 mm) would set the onset lower (v_on 19 m/s new at 5.5 mm). No open data on a new tyre's wet peak above 100 km/h, nor on the
