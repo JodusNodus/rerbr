@@ -3,7 +3,7 @@
 //! A steady-state brush with Pacejka's theoretical slips, the generalised
 //! Stribeck friction of the LuGre brush tyre models (shape fitted to TRL locked-wheel data),
 //! load-sensitive stiffness and friction, bulk temperature / wear / pressure
-//! factors, a hydroplaning-style wet loss, and Rill's first-order force
+//! factors, a partial-hydroplaning wet loss, and Rill's first-order force
 //! dynamics (carcass spring and damper, relaxation from the secant slip
 //! stiffness). Pure functions over plain values, in `f64` with libm's `exp` and
 //! `pow`: the same bits on every platform, as replays need. The game steps it
@@ -93,15 +93,31 @@ pub const V_MIN: f64 = 0.5;
 /// highways: 0.18 mm at 1.5 mm/h rain, 0.56-0.85 mm at 7.8-10.2 mm/h (PLOS
 /// ONE 2025, Table 2); ASTM E274 wets to ~0.5 mm (secondary).
 pub const FILM_MAX: f64 = 0.7e-3;
-/// Reference film in the loss blend, 0.5 mm (ours).
-pub const FILM_REF: f64 = 0.5e-3;
-/// Wet friction kept at full hydroplaning (ours).
-pub const WET_KEPT: f64 = 0.4;
-/// The Coulomb level's loss on a wet surface, times the wetness W: water lubricates the sliding rubber, so the locked
-/// friction falls with speed faster wet than dry while the peak holds. Ours, fitted to Lambourn & Wesley, TRL PPR496
-/// (2010), the car tyre under ~1 mm of water (ASTM E274), hot rolled and stone mastic asphalt: locked over braked
-/// peak 0.64-0.67 at 32 km/h, 0.52-0.57 at 64, 0.49-0.52 at 100 (dry 0.73-0.82, 0.66-0.76, 0.59-0.67; fig ±0.02).
-pub const WET_COULOMB_LOSS: f64 = 0.18;
+/// Groove depth of a new tyre, 8 mm: the new road tyres of Continental's Contidrom test (AUTO BILD) and ADAC's 2026
+/// worn-tyre test; tread remaining `d` scales it.
+pub const TREAD_NEW: f64 = 8.0e-3;
+/// Drainage speed of the tread, m/s: partial hydroplaning sets in at v_on = DRAIN_SPEED times the groove depth over
+/// the film ([`wet_loss`]). Ours, fitted with [`LIFT_AT`] to Contidrom via AUTO BILD (road tyres braked on a watered
+/// track, quoted): new (8 mm) loses nothing to 100 km/h (mean μ of the stop from 100 over from 80 0.97-0.98), 1.6 mm
+/// keeps 0.69 / 0.52 of new from 80 / 100 km/h; v_on 34 m/s new, 6.9 m/s at 1.6 mm on the 0.7 mm film.
+pub const DRAIN_SPEED: f64 = 3.0;
+/// Speed over v_on at which the patch is wholly lifted (ours, with [`DRAIN_SPEED`]).
+pub const LIFT_AT: f64 = 5.0;
+/// Wet friction kept at total hydroplaning: μ ≤ 0.05 (Horne & Dreher, NASA TN D-2056, 1963).
+pub const WET_KEPT: f64 = 0.05;
+/// The Coulomb level's loss on a wet surface at fast sliding, times the wetness W: water lubricates the sliding
+/// rubber, the more the faster it slides, so the locked friction falls with speed faster wet than dry while the peak
+/// holds. The loss at the sliding speed Vs is WET_COULOMB_LOSS (1 - exp(-Vs / V_S)) ([`wet_coulomb_loss`]): 0.18 at
+/// 32 km/h, 0.23 at 64, 0.25 at 100. Ours, fitted to Lambourn & Wesley, TRL PPR496 (2010), the car tyre under ~1 mm
+/// of water (ASTM E274), hot rolled and stone mastic asphalt: locked over braked peak 0.64-0.67 at 32 km/h, 0.52-0.57
+/// at 64, 0.49-0.52 at 100 (dry 0.73-0.82, 0.66-0.76, 0.59-0.67; fig ±0.02). The scale is the Stribeck speed
+/// [`V_S`]. A constant loss (0.18, before 2026-11-08) left the probed tyre 0.03-0.04 above TRL at 64 and 100 km/h.
+pub const WET_COULOMB_LOSS: f64 = 0.25;
+
+/// The Coulomb level's loss at the sliding speed `vs`, m/s, on a fully wet surface ([`WET_COULOMB_LOSS`]).
+pub fn wet_coulomb_loss(vs: f64) -> f64 {
+    WET_COULOMB_LOSS * (1.0 - libm::exp(-vs / V_S))
+}
 
 // ---------------------------------------------------------------------------
 // Run-time calibration (probed / solved values, never committed).
@@ -201,32 +217,25 @@ pub fn camber_slip_velocity(sin: f64, vr: f64) -> f64 {
     -CAMBER_OVER_CORNERING * sin * vr.abs()
 }
 
-/// Hydroplaning speed: vp = 6.36 sqrt(p in kPa) km/h (Horne's deep-water
-/// law, NASA TN D-2056; metric form in Zhang et al., Lubricants 13:76, 2025),
-/// times (0.75 + 0.25 d) for tread depth: ADAC's 2026 worn-tyre test lost
-/// 17-22 % of the longitudinal aquaplaning speed at 2 of ~8 mm (d = 0.25).
-pub fn hydroplaning_speed(p: f64, d: f64) -> f64 {
-    6.36 * (p / 1000.0).sqrt() * (0.75 + 0.25 * d) / 3.6
-}
-
-/// Wet loss factor on friction, applied on top of the wet surface mu: the
-/// loss is L = h/(h + 0.5 mm) times min(1, (V/vp)^2) with the film h = W times
-/// 0.7 mm, and friction is multiplied by (1 - 0.6 L). Film and vp are
-/// sourced (above); the ramp, its 0.5 mm, the quadratic shape and the 0.6
-/// weight are ours.
-pub fn wet_loss(w: f64, v: f64, p: f64, d: f64) -> f64 {
+/// Partial hydroplaning on a road film, the factor on friction at the wetness `w`, the speed `v`, m/s, and the tread
+/// remaining `d` (1 new): the grooves (d times [`TREAD_NEW`]) drain the film (h = W times [`FILM_MAX`]) below
+/// v_on = [`DRAIN_SPEED`] times groove depth over film; above it the lifted share of the patch grows linearly to the
+/// whole patch at [`LIFT_AT`] v_on, where [`WET_KEPT`] of the friction is left. So nothing on a dry surface, nothing
+/// for a new tyre to 123 km/h on the 0.7 mm film (5 % at 150), and a worn one loses from low speed: at 1.6 mm 0.48 /
+/// 0.27 of new at 80 / 100 km/h. The onset follows the drainage, not Horne's deep-water speed (water deeper than the
+/// grooves, which the game's films never reach); ADAC's 17-22 % of v_p lost at 2 of 8 mm is that regime.
+pub fn wet_loss(w: f64, v: f64, d: f64) -> f64 {
     if w <= 0.0 {
         return 1.0;
     }
-    let h = w * FILM_MAX;
-    let vp = hydroplaning_speed(p, d);
-    let l = h / (h + FILM_REF) * ((v / vp) * (v / vp)).min(1.0);
-    1.0 - (1.0 - WET_KEPT) * l
+    let v_on = DRAIN_SPEED * d.max(0.0) * TREAD_NEW / (w * FILM_MAX);
+    let lifted = if v_on > 0.0 { ((v / v_on - 1.0) / (LIFT_AT - 1.0)).clamp(0.0, 1.0) } else { 1.0 };
+    1.0 - (1.0 - WET_KEPT) * lifted
 }
 
 /// Dry-wear gain on friction: 1 + 0.167 (1 - d), fading with wetness (times
 /// (1 - W)): worn tread grips more when dry (+10% peak mu at 60% worn, Singh
-/// Table 3) and loses in the wet (carried by the hydroplaning speed there).
+/// Table 3) and loses in the wet (carried by the partial hydroplaning there, [`wet_loss`]).
 pub fn wear_gain(d: f64, w: f64) -> f64 {
     1.0 + 0.167 * (1.0 - d) * (1.0 - w)
 }
@@ -235,8 +244,8 @@ pub fn wear_gain(d: f64, w: f64) -> f64 {
 /// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
 /// kinetic ratio) at the sliding speed ([`friction_at`]), times the load sensitivity
 /// (Fz/Fz0)^(n-1) (`N_MU_Y` or `N_MU_X`), NGP's temperature grip factor, the
-/// wet-faded dry-wear gain (normalised) and the wet loss; the wetness `w` lowers mu_k ([`WET_COULOMB_LOSS`],
-/// normalised). Both axes scale
+/// wet-faded dry-wear gain (normalised) and the wet loss; the wetness `w` lowers mu_k by its loss at the sliding speed
+/// ([`wet_coulomb_loss`], normalised). Both axes scale
 /// mu_s with the surface static ratio and mu_k with the surface kinetic
 /// ratio, since the static scale sets the adhesion ceiling and the kinetic
 /// scale the sliding floor.
@@ -256,7 +265,8 @@ pub fn mu_axis(
     cal: &Calibration,
 ) -> f64 {
     let ks = mu_s * stat_ratio;
-    let kk = mu_k * kin_ratio * (1.0 - WET_COULOMB_LOSS * w) / (1.0 - WET_COULOMB_LOSS * cal.w_cal);
+    let loss = wet_coulomb_loss(vs);
+    let kk = mu_k * kin_ratio * (1.0 - loss * w) / (1.0 - loss * cal.w_cal);
     let base = friction_at(ks, kk, vs);
     base * libm::pow(fz / cal.fz0, n - 1.0)
         * (temp_grip / cal.temp_grip_cal)
@@ -278,16 +288,15 @@ pub struct EvalInput {
     /// Wheel spin, rad/s, and effective radius, m.
     pub spin: f64,
     pub radius: f64,
-    /// Bulk tread temperature, K; tread remaining 1 = new; pressure, Pa, and
-    /// NGP's stiffness factor at it (StfFct); surface wetness 0..1 (NGP
-    /// WaterFactor).
+    /// Bulk tread temperature, K; tread remaining 1 = new; pressure, Pa (no term reads it: the seam carries none),
+    /// and NGP's stiffness factor at it (StfFct); surface wetness 0..1 (NGP WaterFactor).
     pub bulk_temp: f64,
     pub tread_remaining: f64,
     pub pressure: f64,
     pub pressure_factor: f64,
     pub wetness: f64,
-    /// Whether the wet loss ([`wet_loss`]: the film and the hydroplaning speed) applies; the game leaves it to NGP's
-    /// wet surface friction.
+    /// Whether the partial hydroplaning ([`wet_loss`]: the film against the tread's drainage) applies (the game's
+    /// brush: yes).
     pub hydroplaning: bool,
     /// NGP's temperature grip factor (RubMyFct blend, kept as in NGP).
     pub temp_grip: f64,
@@ -354,7 +363,7 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     let s_abs = (sx * sx + sy * sy).sqrt();
     let vs = vr * s_abs;
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
-    let wet = if x.hydroplaning { wet_loss(x.wetness, v, x.pressure, x.tread_remaining) } else { 1.0 };
+    let wet = if x.hydroplaning { wet_loss(x.wetness, v, x.tread_remaining) } else { 1.0 };
     let mu_x = mu_axis(
         cal.mu_xs,
         cal.mu_xk,
@@ -751,6 +760,34 @@ mod tests {
         assert!((wp32 / p32 - 1.0).abs() < 0.01 && (wp100 / p100 - 1.0).abs() < 0.01, "{wp32} {wp100}");
         assert!((0.62..=0.69).contains(&(wl32 / wp32)), "wet 32 km/h {wl32} / {wp32}");
         assert!((0.47..=0.58).contains(&(wl100 / wp100)), "wet 100 km/h {wl100} / {wp100}");
+    }
+
+    #[test]
+    fn partial_hydroplaning_spares_a_new_tyre_and_takes_a_worn_one_as_contidrom_measured() {
+        // Mean friction of a stop from `v0` (v0² / 2 ∫ v / μ dv) relative to a tyre that loses nothing.
+        let stop = |v0: f64, d: f64| {
+            let n = 2000;
+            let s: f64 = (0..n)
+                .map(|i| {
+                    let v = (i as f64 + 0.5) / n as f64 * v0;
+                    v / wet_loss(1.0, v, d)
+                })
+                .sum::<f64>()
+                * v0
+                / n as f64;
+            v0 * v0 / (2.0 * s)
+        };
+        let (v80, v100) = (80.0 / 3.6, 100.0 / 3.6);
+        // Dry, or new to 100 km/h on the full film: nothing.
+        assert_eq!(wet_loss(0.0, 60.0, 0.2), 1.0);
+        assert_eq!(wet_loss(1.0, v100, 1.0), 1.0);
+        // Continental Contidrom via AUTO BILD: 1.6 of 8 mm keeps 0.69 / 0.52 of new from 80 / 100 km/h (quoted).
+        let (w80, w100) = (stop(v80, 0.2), stop(v100, 0.2));
+        assert!((0.66..=0.72).contains(&w80) && (0.49..=0.55).contains(&w100), "{w80} {w100}");
+        // A thinner film drains to a higher speed; nothing below the onset.
+        assert!(wet_loss(0.5, v80, 0.2) > wet_loss(1.0, v80, 0.2));
+        assert_eq!(wet_loss(1.0, 5.0, 0.2), 1.0);
+        assert!((wet_loss(1.0, 1000.0, 0.2) - WET_KEPT).abs() < 1e-12);
     }
 
     #[test]
