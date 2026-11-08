@@ -21,7 +21,7 @@
 //!   the level, μ Fz / tan α0 (6.0 per rad at 6.7 kN against NGP's 6.6), not NGP's stiffness. The longitudinal side
 //!   takes the same law with the brush's Cx/Cy ([`KX_OVER_KY`]) at the axes' levels, so the braking force keeps
 //!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
-//!   [`GRAVEL_CLASS`], `Gravel_*`), by their share in the wheel's material blend ([`gravel_share`]).
+//!   [`GRAVEL_CLASS`], `Gravel_*`), by their share in the wheel's material blend ([`class_share`]).
 //! - Shape, snow and the other soils: the brush's patch with a flat friction: the brush's peak is μ Fz exactly. Packed
 //!   snow rises faster (Coutermarsh Fig. 8: 90 % by 7-9°; α0 3.6° at a slope NGP's level doubles) and the brush at
 //!   NGP's slope gives it (α90 9°). The cornering slope stays NGP's (about twice that road tyre's 3-5 per rad): the
@@ -36,6 +36,11 @@
 //!   locked tyre's berm, and a berm that grows from the full slide holds the wheels off lock at the Fiesta's full-pedal
 //!   brake torque (note, "Loose surfaces: loose-v1"). Driving
 //!   slip builds no berm here: the data are braked, and the motion resistance of a spinning tyre's sinkage is not.
+//! - Snow (surface class [`SNOW_CLASS`], by its share in the blend): the berm is [`SNOW_PLOUGH`] in place of PLOUGH.
+//!   Ichihara & Mizoguchi (HRB SR 115, 1969-70, Fig. 3, fig ±0.02): studded snow tyres on normal compacted snow at 20
+//!   km/h hold 0.36-0.42 at 15-20 % slip, peak 0.42-0.445 at 40-60 % and lock at 0.40-0.43: locked over the 15-20 %
+//!   slip 1.02-1.08, over the peak 0.95-0.97 ("small" differences, their text); snow tyres 0.74-0.95 of the 20 % value.
+//!   NHTSA's berm is graded gravel; compacted snow shears off rather than heaping. A rally tyre on snow is studded.
 //! - Combined: the berm acts against the sliding velocity, with the friction (Svendenius's collinear slide), so a
 //!   locked tyre's side force is PLOUGH μ sin α, linear in the slip angle and below free rolling at every angle
 //!   (Coutermarsh, Fig. 16, fig ±0.02: 0.72 sin α against a free rolling 0.55, 1.31 sin α of it; here 1.3 sin α).
@@ -48,6 +53,10 @@ use crate::brush::{self, Calibration, EvalInput, EvalOutput, KX_OVER_KY, M_CX, M
 
 /// The braking force of a locked tyre over its free rolling peak on loose surfaces (NHTSA: 1.25 laden, 1.30 light).
 pub const PLOUGH: f64 = 1.3;
+/// The braking force of a locked tyre over its free rolling peak on snow (surface class [`SNOW_CLASS`]): studded snow
+/// tyres on compacted snow lock at 1.02-1.08 of their force at 15-20 % slip (Ichihara & Mizoguchi, HRB SR 115, Fig. 3,
+/// fig ±0.02), the middle taken.
+pub const SNOW_PLOUGH: f64 = 1.05;
 /// The braking slip the berm starts to grow from (ours: near lock, where the tread stops rolling over the material).
 pub const BERM_FROM: f64 = 0.8;
 
@@ -111,10 +120,12 @@ pub fn gravel_alpha0_deg(wetness: f64) -> f64 {
 
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
 pub const GRAVEL_CLASS: u32 = 1;
+/// NGP's surface class of its snow materials (SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls).
+pub const SNOW_CLASS: u32 = 3;
 
-/// The share of gravel in the wheel's blend of two materials of `classes`, the second weighted `blend`.
-pub fn gravel_share(classes: [u32; 2], blend: f32) -> f64 {
-    let is = |c: u32| if c == GRAVEL_CLASS { 1.0 } else { 0.0 };
+/// The share of surface class `class` in the wheel's blend of two materials of `classes`, the second weighted `blend`.
+pub fn class_share(classes: [u32; 2], blend: f32, class: u32) -> f64 {
+    let is = |c: u32| if c == class { 1.0 } else { 0.0 };
     let z = f64::from(blend).clamp(0.0, 1.0);
     is(classes[0]) * (1.0 - z) + is(classes[1]) * z
 }
@@ -135,8 +146,9 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_de
 
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
 /// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]); the rest takes the
-/// brush's. `mu` is the directional friction including the berm (the force's limit).
-pub fn eval(x: &EvalInput, c: &Loose, gravel: f64) -> EvalOutput {
+/// brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is [`PLOUGH`]. `mu` is the directional
+/// friction including the berm (the force's limit).
+pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);
     let cal = &c.cal;
@@ -161,7 +173,8 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64) -> EvalOutput {
     let start = (full / (1.0 + full)).max(BERM_FROM);
     let b = braking_slip(vsx, x.vx);
     let t = if start < 1.0 { ((b - start) / (1.0 - start)).clamp(0.0, 1.0) } else { 0.0 };
-    let berm = (PLOUGH - 1.0) * t * t * (3.0 - 2.0 * t);
+    let plough = PLOUGH + (SNOW_PLOUGH - PLOUGH) * snow.clamp(0.0, 1.0);
+    let berm = (plough - 1.0) * t * t * (3.0 - 2.0 * t);
     if berm > 0.0 && s_abs > 0.0 {
         let per_s = berm * out.mu * x.fz / s_abs;
         out.kx += per_s;
@@ -198,9 +211,9 @@ fn cal_input(cal: &Calibration, v: f64, alpha: f64) -> EvalInput {
 
 /// The least-squares cornering slope over 0 to 2° (in 0.25°) at the calibration point, as `crate::fit` takes NGP's.
 pub fn cornering_slope(c: &Loose, v: f64) -> f64 {
-    let (sxy, sxx) = (1..=8)
-        .map(|k| (f64::from(k) * 0.25).to_radians())
-        .fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * eval(&cal_input(&c.cal, v, a), c, 0.0).fy.abs(), sxx + a * a));
+    let (sxy, sxx) = (1..=8).map(|k| (f64::from(k) * 0.25).to_radians()).fold((0.0, 0.0), |(sxy, sxx), a| {
+        (sxy + a * eval(&cal_input(&c.cal, v, a), c, 0.0, 0.0).fy.abs(), sxx + a * a)
+    });
     sxy / sxx
 }
 
@@ -271,7 +284,7 @@ pub(crate) mod tests {
             surf_kinetic: grip,
             ..cal_input(&c.cal, v, a)
         };
-        eval(&x, c, gravel)
+        eval(&x, c, gravel, 0.0)
     }
 
     #[test]
@@ -327,8 +340,9 @@ pub(crate) mod tests {
         let s0x = libm::tan(GRAVEL_ALPHA0_DEG.to_radians()) * 0.84 / (KX_OVER_KY * 0.85);
         assert!((fx(0.5, 1.0) - -libm::expm1(-(0.5 / 1.5) / s0x)).abs() < 1e-9);
         assert!((fx(0.05, 0.5) - (fx(0.05, 0.0) + fx(0.05, 1.0)) / 2.0).abs() < 1e-9);
-        assert_eq!(gravel_share([GRAVEL_CLASS, 3], 0.25), 0.75);
-        assert_eq!(gravel_share([3, 3], 0.5), 0.0);
+        assert_eq!(class_share([GRAVEL_CLASS, SNOW_CLASS], 0.25, GRAVEL_CLASS), 0.75);
+        assert_eq!(class_share([SNOW_CLASS, SNOW_CLASS], 0.5, GRAVEL_CLASS), 0.0);
+        assert_eq!(class_share([GRAVEL_CLASS, SNOW_CLASS], 0.25, SNOW_CLASS), 0.25);
     }
 
     #[test]
@@ -345,7 +359,7 @@ pub(crate) mod tests {
                 wetness: w,
                 ..cal_input(&c.cal, 15.0, r)
             };
-            eval(&x, &c, 1.0).fy.abs() / peak
+            eval(&x, &c, 1.0, 0.0).fy.abs() / peak
         };
         // Coutermarsh & Shoop's wet gravel over its maximum at 2.5/5/10/15° (Fig. 15): 0.23/0.40/0.65/0.79.
         for (a, wet) in [(2.5, 0.23), (5.0, 0.40), (10.0, 0.65), (15.0, 0.79)] {
@@ -378,6 +392,18 @@ pub(crate) mod tests {
             assert!((fx(1.0) / -peak - 1.0).abs() < 1e-9, "{v}");
             assert!((fx(0.3) / -peak - 1.0).abs() < 1e-9, "{v}");
         }
+    }
+
+    #[test]
+    fn snow_takes_its_own_berm_by_its_share() {
+        let c = loose();
+        let locked = |snow: f64| {
+            let x = EvalInput { spin: 0.0, surf_static: 0.9, surf_kinetic: 0.9, ..cal_input(&c.cal, 15.0, 0.0) };
+            eval(&x, &c, 0.0, snow).fx / (0.84 * 0.9 * 4000.0)
+        };
+        assert!((locked(1.0) - SNOW_PLOUGH).abs() < 1e-9);
+        assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0).abs() < 1e-9);
+        assert!((locked(0.0) - PLOUGH).abs() < 1e-9);
     }
 
     #[test]
