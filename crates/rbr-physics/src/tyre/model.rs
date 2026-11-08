@@ -35,6 +35,10 @@ pub struct ForceInput {
     pub soil_thickness: f32,
     /// The surface's wetness, 0 dry to 1 wet (`WaterFactor`).
     pub water_factor: f32,
+    /// The sine of the tyre's inclination to the ground, in the wheel's frame: negative with its top leaning towards
+    /// the car (negative camber), whose thrust then points inwards (NGP's sliding model takes `0.1` of it off the
+    /// lateral slip).
+    pub inclination_sin: f32,
     /// The carcass's lateral stiffness times the inclination's cosine, N/m, and its torsional stiffness, N·m/rad, as
     /// NGP's sliding model takes them (the torsional one reduced at low speed).
     pub lateral_stiffness: f32,
@@ -80,6 +84,7 @@ pub fn input(f: &Frame, dt: f32, grip_scale: f32, stiffness_scale: f32) -> Force
         tread_left: if depth > 0.0 { s.tread_remaining / depth } else { 1.0 },
         soil_thickness: s.soil_thickness,
         water_factor: s.water_factor,
+        inclination_sin: s.inclination_sin,
         lateral_stiffness: s.inclination_cos * s.lateral_stiffness,
         torsional_stiffness: s.torsional_stiffness,
     }

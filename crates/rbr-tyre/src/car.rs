@@ -136,6 +136,7 @@ mod tests {
             tread_left: 1.0,
             soil_thickness: 0.0,
             water_factor: 0.0,
+            inclination_sin: 0.0,
             lateral_stiffness: 150000.0,
             torsional_stiffness: 20000.0,
         }
