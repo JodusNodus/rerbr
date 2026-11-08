@@ -486,7 +486,8 @@ fn an_outside_assistance_hold_brakes_and_ends_the_recovery() {
     assert_eq!(driver.control(1001, &Sense { held: false, ..sense }, false).flags, 0x01);
 }
 
-/// Under NGP, braking from 12 m/s in third on a locked wheel: an engine the wheels drag under `DECLUTCH` takes neutral,
+/// Under NGP, braking from 12 m/s in third on a locked wheel: an engine the wheels drag under `DECLUTCH` for
+/// `DRAG_STEPS` takes neutral,
 /// held with no other shift while the brake stays on, then the learnt gear for the speed once it comes off. An engine
 /// already off the wheels (the gear's speed far from it), the plain 1.02 step and the brake test take none.
 #[test]
@@ -505,6 +506,10 @@ fn under_ngp_braking_on_a_dragged_engine_holds_neutral_until_the_brake_comes_off
     let ngp = |top: f32| driver(&track, top).with_step(1.0 / 720.0).with_limit(7000.0);
     let mut d = ngp(5.0);
     d.ratio[FIRST as usize + 1] = 40.0;
+    let drag = d.steps(DRAG_STEPS);
+    for k in 1..drag {
+        assert_eq!(d.control(10_000 - drag + k, &sense(12.0, FIRST + 2, 80.0, 79.0), false).flags & SELECT, 0);
+    }
     let q = d.control(10_000, &sense(12.0, FIRST + 2, 80.0, 79.0), false);
     assert!(q.brake > 0);
     assert_eq!((q.flags, q.gear, q.aux), (SELECT, NEUTRAL as u8, 0));
@@ -518,12 +523,12 @@ fn under_ngp_braking_on_a_dragged_engine_holds_neutral_until_the_brake_comes_off
     assert_eq!((q.brake, q.flags, q.gear), (0, SELECT, FIRST as u8 + 1));
     assert!(!d.neutral);
 
-    let separated = sense(12.0, FIRST + 2, 80.0, 20.0);
-    assert_eq!(ngp(5.0).control(10_000, &separated, false).flags & SELECT, 0);
+    let none =
+        |mut d: Driver, sense: &Sense| (0..2 * drag).all(|k| d.control(10_000 + k, sense, false).flags & SELECT == 0);
+    assert!(none(ngp(5.0), &sense(12.0, FIRST + 2, 80.0, 20.0)));
     let dragged = sense(12.0, FIRST + 2, 80.0, 79.0);
-    assert_eq!(driver(&track, 5.0).control(10_000, &dragged, false).flags & SELECT, 0);
-    let mut test = ngp(80.0).with_flat_out(true).with_brake_from(10.0);
-    assert_eq!(test.control(10_000, &dragged, false).flags & SELECT, 0);
+    assert!(none(driver(&track, 5.0), &dragged));
+    assert!(none(ngp(80.0).with_flat_out(true).with_brake_from(10.0), &dragged));
 }
 
 /// Under NGP a stalled engine is restarted: brake, neutral, the ignition held `CRANK_HOLD` of every `CRANK_CYCLE`

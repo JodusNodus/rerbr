@@ -31,6 +31,9 @@
 //! neutral before it selects first, a car bogged in first goes back to neutral and starts again, the throttle
 //! eases while the wheels spin, and a recovery backs up no faster than `REVERSE_TOP`. NGP's clutch help closes the clutch from idle, where the Escort Mk II and the 208 R2
 //! have too little torque to pull away, and they sat in first at the clutch help's speed.
+//! In a race under NGP, an engine the braked wheels drag under the clutch help's speed takes neutral until the brake
+//! comes off, and a stalled engine is restarted on the ignition (`DECLUTCH`, `STALLED`): the Golf II on RSF 104 under
+//! `experimental-brush` stalled at 4450 m, where loose-v1's braked fronts creep, and never restarted.
 
 use rbr_formats::trk::{DriveLineRecord, Vec3};
 use rbr_gameplay::control::QuantizedControl;
@@ -93,13 +96,15 @@ const BOG_STEPS: u32 = 100;
 const TRACTION: f32 = 0.5;
 /// Race driving under NGP (ours, not the measurement modes or lessons): braking in gear, with a wheel past
 /// `LOCK_SLIP` and the engine dragged by the wheels (within `DRAGGED` rad/s of the speed the gear gives the drive)
-/// under `DECLUTCH` rad/s (where the Celica's clutch help is fully open, `notes/ngp.md`, "Controls under NGP"), the
-/// controller selects neutral until the brake comes off, then the gear that keeps the engine over `SHIFT_DOWN`. Braked
+/// under `DECLUTCH` rad/s (where the Celica's clutch help is fully open, `notes/ngp.md`, "Controls under NGP") for
+/// `DRAG_STEPS` 1.02 steps in a row (a downshift into first on track-10_O dips the Golf to 81 rad/s for 6 NGP steps
+/// under ngp, then the wheels pull it up again), the controller selects neutral until the brake comes off, then the gear that keeps the engine over `SHIFT_DOWN`. Braked
 /// fronts that creep instead of locking (loose-v1's flat friction, the Golf II on RSF 104 at 4450 m) keep NGP's
 /// driveline clutch-locked and drag the engine to a stall despite the clutch help; the clutch pedal does nothing while
 /// the clutch help sets the clutch (`rbr_physics::vcu::clutch`), so neutral stands in for the driver's declutch.
 const DECLUTCH: f32 = 89.0;
 const DRAGGED: f32 = 10.0;
+const DRAG_STEPS: u32 = 4;
 const LOCK_SLIP: f32 = 0.5;
 /// A stalled engine (under `STALLED` rad/s) is restarted: brake, neutral, and the ignition held for `CRANK_HOLD` 1.02
 /// steps of every `CRANK_CYCLE` (NGP's starter cranks from 0.5 s to 2.5 s of a hold, then the ignition must clear),
@@ -468,6 +473,8 @@ pub struct Driver<'a> {
     lesson: bool,
     /// Neutral is held under braking or for a restart (`DECLUTCH`, `STALLED`).
     neutral: bool,
+    /// Steps in a row the wheels have dragged the engine under braking (`DECLUTCH`).
+    dragging: u32,
     /// Steps since the restart of a stalled engine began (`STALLED`), while it lasts.
     crank: Option<u32>,
 }
@@ -644,6 +651,7 @@ impl<'a> Driver<'a> {
             grip: 1.0,
             lesson: false,
             neutral: false,
+            dragging: 0,
             crank: None,
         }
     }
@@ -1109,11 +1117,14 @@ impl<'a> Driver<'a> {
                 Some(n) if sense.engine < STARTED => Some(n + 1),
                 _ => None,
             };
-            let dragged = sense.gear >= FIRST
+            let braking = self.mode == Mode::Drive && brake > 0.0;
+            let dragged = braking
+                && sense.gear >= FIRST
                 && sense.engine < DECLUTCH
                 && (sense.engine - sense.geared).abs() < DRAGGED
                 && slip(sense) > LOCK_SLIP;
-            let hold = self.crank.is_some() || (self.mode == Mode::Drive && brake > 0.0 && (self.neutral || dragged));
+            self.dragging = if dragged { self.dragging + 1 } else { 0 };
+            let hold = self.crank.is_some() || (braking && (self.neutral || self.dragging >= self.steps(DRAG_STEPS)));
             if hold {
                 flags = 0;
                 if sense.gear != NEUTRAL && (!self.neutral || step >= self.shifted + self.steps(RECOVER_GAP)) {
