@@ -9,8 +9,8 @@ Each run is `rbr-standalone --autopilot --boot --flat-out --brake-from M/S --tra
 stage flat out and brakes once the speed is reached (pick a stage whose straight it reaches the speed on). One run
 holds the full pedal (`--brake-pedal 1`, locked wheels); one per slip target K threshold-brakes (`--brake-slip K`:
 one pedal modulated so the most-slipping wheel holds K, a driver's threshold braking, not a per-wheel ABS); one per
-ABS target K (`--abs`, `--brake-abs K`: the full pedal, each wheel's pressure modulated about K, a per-wheel ABS;
-NGP cars only). Every run
+ABS target K (`--abs`, `--brake-abs K`: after a 0.2 s lift for each wheel's free-rolling reference, the full pedal
+with each wheel's pressure modulated about K from free rolling, a per-wheel ABS; NGP cars only). Every run
 brakes declutched (`--brake-declutch --clutch-help off`: clutch in, no shifts; NGP's clutch help would set the clutch
 from the engine speed in place of the pedal), so the idling engine does not turn the braked wheels; `--clutch-out`
 brakes in gear with clutch help on, as the plain brake test does (the autopilot downshifts, and on gravel the idling
@@ -19,9 +19,9 @@ engine drives the wheels against the brake). For each run it prints the stopping
 road's rise over the stop removed) and, while braking over 3 m/s past the first tenth, the most-slipping wheel's slip
 (mean and spread), the wheels' mean rim speed and the deceleration through 32, 64 and 100 km/h (±1.5 m/s, TRL
 PPR496's speeds: a locked run's friction at that sliding speed, aero drag included), and for the ABS runs each
-wheel's mean slip (FL FR RL RR) and its cycle rate (Hz: crossings of K + 0.02 upwards, ABS_BAND's dump threshold, per
-s); last the locked distance over the best threshold distance and the locked decel over each ABS run's. Traces and
-logs go to DIR (<run>.trace, <run>.log).
+wheel's mean slip from free rolling (FL FR RL RR) and its cycle rate (Hz: crossings of K + 0.02 upwards, ABS_BAND's
+dump threshold, per s); last the locked distance over the best threshold distance and the locked decel over each ABS
+run's. Traces and logs go to DIR (<run>.trace, <run>.log).
 target/release/rbr-standalone must be built (`cargo build --release -p rbr-standalone`); RBR_DATA, RBR_RSF and
 RBR_NGP_PHYSICS come from dev.env."""
 import argparse
@@ -84,15 +84,23 @@ def braking_window(rows, onset):
 
 
 def wheel_stats(rows, onset, target):
-    """Each wheel's mean slip over the braking window and its ABS cycle rate (upward crossings of target + ABS_BAND
-    per s)."""
+    """Each wheel's mean slip from free rolling over the braking window and its ABS cycle rate (upward crossings of
+    target + ABS_BAND per s). Free rolling is the ABS's own reference: each wheel's |wR| / v over the second half of
+    the lift before the onset (the autopilot's ABS_LIFT)."""
     body = braking_window(rows, onset)
-    if len(body) < 2:
+    lift = []
+    for row in reversed(rows[:onset]):
+        if row["thr"] > 0:
+            break
+        lift.append(row)
+    lift = lift[:len(lift) // 2]
+    if len(body) < 2 or not lift:
         return None
     span = body[-1]["t"] - body[0]["t"]
     out = []
     for k in range(4):
-        slips = [(row["v"] - row["wheels"][k]) / row["v"] for row in body]
+        free = statistics.mean(row["wheels"][k] / row["v"] for row in lift)
+        slips = [1 - row["wheels"][k] / (row["v"] * free) for row in body]
         ups = sum(1 for a, b in zip(slips, slips[1:]) if a <= target + ABS_BAND < b)
         out.append((statistics.mean(slips), ups / span))
     return out

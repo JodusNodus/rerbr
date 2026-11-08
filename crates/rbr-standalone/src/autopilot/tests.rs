@@ -352,6 +352,51 @@ fn threshold_braking_holds_the_slip_target() {
     }
 }
 
+/// The per-wheel ABS on threshold braking's toy wheel, its rim speed read 6 % low (as NGP's free wheels read on gravel,
+/// `ABS_LIFT`): the lift releases the brake and learns the reading; then the pedal is full and the wheel's pressure
+/// scale holds its true slip within the band of the target, on the curve's rising side and at its peak (past it, the
+/// wheel cycles about the target as a real ABS does).
+#[test]
+fn the_abs_holds_each_wheels_slip_from_free_rolling() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let (v, radius, inertia, load, torque, dt) = (20.0f32, 0.3f32, 1.0f32, 3000.0f32, 3000.0f32, 1.0f32 / 720.0);
+    let mu = |s: f32| if s < 0.15 { s / 0.15 * (2.0 - s / 0.15) } else { 1.0 - 0.2 * (s - 0.15) / 0.85 };
+    for target in [0.1, 0.15] {
+        let mut driver = driver(&track, 80.0).with_step(dt).with_brake_from(10.0).with_brake(Brake::abs(target));
+        // The lift's steps on the controller's clock (1.02's step over the physics steps per one).
+        let lift = (ABS_LIFT / (rbr_recording::STEP_SECONDS / driver.per as f32)).round() as u32;
+        let mut omega = v / radius;
+        let mut worst: f32 = 0.0;
+        for k in 0..lift + 720 {
+            let sense = Sense {
+                pose: CarPose {
+                    position: [5.0, 0.0, 0.0],
+                    orientation: [0.0, 0.0, half, half],
+                    velocity: [v, 0.0, 0.0],
+                },
+                parameter: 0.5,
+                gear: FIRST,
+                engine: 500.0,
+                held: false,
+                wheels: [0.94 * omega * radius; 4],
+            };
+            let q = driver.control(1000 + k, &sense, false);
+            let scale = driver.brake_scale().expect("braking with the ABS")[0];
+            assert_eq!(q.brake, if k < lift { 0 } else { 255 }, "K {target}: the pedal at step {k}");
+            let slip = 1.0 - omega * radius / v;
+            if k >= lift + 216 {
+                worst = worst.max((slip - target).abs());
+                assert!(scale > 0.0 && scale < 1.0, "K {target}: the scale {scale} at step {k}");
+            }
+            let fx = mu(slip.clamp(0.0, 1.0)) * load;
+            let brake = torque * f32::from(q.brake) / 255.0 * scale;
+            omega = (omega + (fx * radius - brake) / inertia * dt).max(0.0);
+        }
+        assert!(worst < ABS_BAND + 0.01, "K {target}: off by {worst}");
+    }
+}
+
 #[test]
 fn a_tangent_far_longer_than_its_chord_does_not_loop() {
     // RSF 302's start: a 10 m segment ending on a 160 m tangent (the next segment's chord).

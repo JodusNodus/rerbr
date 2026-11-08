@@ -499,9 +499,10 @@ pub enum Brake {
     /// controller's integral, the pedal it settles on.
     Slip { target: f32, held: f32 },
     /// `--brake-abs K`: a per-wheel ABS, the full pedal with each wheel's pressure scaled (`scale`, FL FR RL RR, 0-1)
-    /// so its slip ratio holds near `target` (`ABS_BAND`, `ABS_DUMP`, `ABS_APPLY`). The scales go to the brake step
-    /// through `rbr_hybrid::ngp::set_brake_scale` (NGP cars only).
-    Abs { target: f32, scale: [f32; 4] },
+    /// so its slip ratio from free rolling holds near `target` (`ABS_LIFT`, `ABS_BAND`, `ABS_DUMP`, `ABS_APPLY`).
+    /// `free` sums each wheel's free-rolling |ωR| / v over the lift, `lift` counts its steps. The scales go to the
+    /// brake step through `rbr_hybrid::ngp::set_brake_scale` (NGP cars only).
+    Abs { target: f32, scale: [f32; 4], free: [f32; 4], lift: u32 },
 }
 
 impl Brake {
@@ -512,9 +513,15 @@ impl Brake {
 
     /// The per-wheel ABS at slip ratio `target`, from the full pressure on every wheel.
     pub fn abs(target: f32) -> Self {
-        Brake::Abs { target, scale: [1.0; 4] }
+        Brake::Abs { target, scale: [1.0; 4], free: [0.0; 4], lift: 0 }
     }
 }
+
+/// The per-wheel ABS's reference (s): before braking it lifts off for this long, declutched, and takes each wheel's
+/// free-rolling |ωR| / v over the second half (the wheels settle in ~50 ms), as an ABS learns its wheels' rolling
+/// radii. The rim speed |ωR| is not the ground speed of a free wheel: declutched coasts read 1 - |ωR| / v 0.054-0.061
+/// on RSF 345 gravel and 0.022-0.028 on RSF 568 tarmac at every speed over 4 m/s, NGP and the brush alike.
+const ABS_LIFT: f32 = 0.2;
 
 /// The per-wheel ABS's law, a two-threshold pressure modulator as a simple ABS valve block runs it: each step, a
 /// wheel whose slip ratio is over `target + ABS_BAND` has its pressure dumped at `ABS_DUMP` (scale per s), one under
@@ -525,13 +532,7 @@ const ABS_BAND: f32 = 0.02;
 const ABS_DUMP: f32 = 20.0;
 const ABS_APPLY: f32 = 5.0;
 
-/// Each wheel's slip ratio under braking, 1 - |ωR| / v, the car's speed for its ground speed (a straight stop).
-fn wheel_slips(sense: &Sense) -> [f32; 4] {
-    let v = sense.pose.speed();
-    sense.wheels.map(|w| (v - w) / v.max(SLIP_SPEED))
-}
-
-/// The per-wheel ABS's step: the scales after `dt` s from `scale` at the wheels' `slips` (`ABS_BAND`).
+/// The per-wheel ABS's step: the scales after `dt` s from `scale` at the wheels' `slips` from free rolling.
 fn abs_step(target: f32, scale: [f32; 4], slips: [f32; 4], dt: f32) -> [f32; 4] {
     std::array::from_fn(|k| {
         let rate = if slips[k] > target + ABS_BAND {
@@ -561,7 +562,8 @@ const SLIP_SPEED: f32 = 1.0;
 /// The most-slipping wheel's slip ratio under braking, 1 - |ωR| / v, the car's speed for each wheel's ground speed
 /// (a straight stop).
 fn slip(sense: &Sense) -> f32 {
-    wheel_slips(sense).into_iter().fold(f32::NEG_INFINITY, f32::max)
+    let v = sense.pose.speed();
+    sense.wheels.iter().map(|&w| (v - w) / v.max(SLIP_SPEED)).fold(f32::NEG_INFINITY, f32::max)
 }
 
 /// A judged speed band of a rally school lesson's filter bank (a check with both speed bounds, km/h): the car must
@@ -1029,10 +1031,23 @@ impl<'a> Driver<'a> {
                     *held = (*held + SLIP_I * error * dt).clamp(0.0, 1.0);
                     (*held + SLIP_P * error).clamp(0.0, 1.0)
                 }
-                Brake::Abs { target, scale } => {
+                Brake::Abs { target, scale, free, lift } => {
                     let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
-                    *scale = abs_step(*target, *scale, wheel_slips(sense), dt);
-                    1.0
+                    let steps = (ABS_LIFT / dt).round() as u32;
+                    let v = sense.pose.speed().max(SLIP_SPEED);
+                    if *lift < steps {
+                        // The lift: no brake, the free-rolling reference summed over its second half.
+                        *lift += 1;
+                        if *lift > steps / 2 {
+                            *free = std::array::from_fn(|k| free[k] + sense.wheels[k] / v);
+                        }
+                        0.0
+                    } else {
+                        let n = (steps - steps / 2).max(1) as f32;
+                        let slips = std::array::from_fn(|k| 1.0 - sense.wheels[k] / (v * free[k] / n));
+                        *scale = abs_step(*target, *scale, slips, dt);
+                        1.0
+                    }
                 }
             };
         }
