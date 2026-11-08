@@ -15,13 +15,16 @@
 //!   SAE 1999-01-1287, 9 cars, 56 km/h, 5 cm crushed limestone: locked over ABS decel 1.25 laden, 1.30 light, per car
 //!   1.12-1.42; Macnabb ESV 98 1.21-1.59; Coutermarsh: locked fronts on pea stone Fx/Fz 0.85 against a free rolling
 //!   lateral peak 0.54-0.57 and a traction coefficient 0.58-0.68). The berm grows with the braking slip
-//!   ([`braking_slip`]) from the patch's full slide to lock (smoothstep; no intermediate points are published). Driving
+//!   ([`braking_slip`]) from [`BERM_FROM`] (or the patch's full slide, if later) to lock, a smoothstep; between the
+//!   full slide and there the force stays at the peak. No intermediate points are published; NHTSA's mechanism is the
+//!   locked tyre's berm, and a berm that grows from the full slide holds the wheels off lock at the Fiesta's full-pedal
+//!   brake torque (note, "Loose surfaces: loose-v1"). Driving
 //!   slip builds no berm here: the data are braked, and the motion resistance of a spinning tyre's sinkage is not.
 //! - Combined: the berm acts against the sliding velocity, with the friction (Svendenius's collinear slide), so a
 //!   locked tyre's side force is PLOUGH μ sin α, linear in the slip angle and below free rolling at every angle
 //!   (Coutermarsh, Fig. 16, fig ±0.02: 0.72 sin α against a free rolling 0.55, 1.31 sin α of it; here 1.3 sin α).
 //!
-//! Ours: the smoothstep, no berm when driving, PLOUGH the published cars' 1.25-1.30, and the berm independent of the
+//! Ours: the smoothstep and its start at a braking slip of 0.8, no berm when driving, PLOUGH the published cars' 1.25-1.30, and the berm independent of the
 //! soil's thickness (the measured layers are 5 cm and graded gravel; NGP's 9-30 mm) and of speed (no speed trend in the
 //! locked-wheel data, 40-80 km/h).
 
@@ -29,6 +32,8 @@ use crate::brush::{self, Calibration, EvalInput, EvalOutput, KX_OVER_KY, M_CX, M
 
 /// The braking force of a locked tyre over its free rolling peak on loose surfaces (NHTSA: 1.25 laden, 1.30 light).
 pub const PLOUGH: f64 = 1.3;
+/// The braking slip the berm starts to grow from (ours: near lock, where the tread stops rolling over the material).
+pub const BERM_FROM: f64 = 0.8;
 
 /// NGP's free rolling peak friction on a unit surface at each load: lateral and longitudinal (driving).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -88,10 +93,11 @@ pub fn eval(x: &EvalInput, c: &Loose) -> EvalOutput {
     let grip = (x.surf_static / cal.surf_s_cal) * (x.temp_grip / cal.temp_grip_cal);
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
-    // The berm: from the braking slip of the longitudinal full slide (|sx| = 3 mu_x Fz / Cx) to lock.
+    // The berm: from BERM_FROM, or the braking slip of the longitudinal full slide (|sx| = 3 mu_x Fz / Cx) if later, to
+    // lock.
     let s_abs = sx.hypot(sy);
     let full = 3.0 * mu_x * x.fz / cx;
-    let start = full / (1.0 + full);
+    let start = (full / (1.0 + full)).max(BERM_FROM);
     let b = braking_slip(vsx, x.vx);
     let t = if start < 1.0 { ((b - start) / (1.0 - start)).clamp(0.0, 1.0) } else { 0.0 };
     let berm = (PLOUGH - 1.0) * t * t * (3.0 - 2.0 * t);
@@ -247,6 +253,8 @@ pub(crate) mod tests {
                 last = f;
             }
             assert!((fx(-1.0) / peak - PLOUGH).abs() < 1e-9, "{v}");
+            // Flat at the peak from the full slide to BERM_FROM.
+            assert!((fx(-0.5) / peak - 1.0).abs() < 1e-9 && (fx(-BERM_FROM) / peak - 1.0).abs() < 1e-9, "{v}");
             // Driving: flat at the peak, no berm.
             assert!((fx(1.0) / -peak - 1.0).abs() < 1e-9, "{v}");
             assert!((fx(0.3) / -peak - 1.0).abs() < 1e-9, "{v}");
@@ -276,7 +284,8 @@ pub(crate) mod tests {
         // Locked, the berm fades out over the last V_MIN of speed; stopped, nothing.
         let locked = |v: f64| at(&c, 4000.0, v, 0.0, -1.0, 1.0).fx / (0.84 * 4000.0);
         assert!((locked(0.5) - PLOUGH).abs() < 1e-9);
-        assert!(locked(0.25) < PLOUGH && locked(0.25) > 1.0);
+        assert!(locked(0.45) < PLOUGH && locked(0.45) > 1.0);
+        assert_eq!(locked(0.25), 1.0);
         assert!(locked(0.01) < 0.3 && locked(0.01) > 0.0);
         let stopped = at(&c, 4000.0, 0.0, 0.0, 0.0, 1.0);
         assert_eq!((stopped.fx, stopped.fy), (0.0, 0.0));
