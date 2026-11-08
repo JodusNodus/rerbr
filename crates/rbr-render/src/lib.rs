@@ -26,7 +26,7 @@ pub mod dirt;
 mod effects;
 pub mod fences;
 pub mod ffb;
-mod foliage;
+pub mod foliage;
 pub mod game_camera;
 pub mod ghost;
 pub mod glass;

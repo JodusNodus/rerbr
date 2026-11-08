@@ -170,7 +170,7 @@ pub(super) fn prepassed(state: &DrawState, lighting: bool, cabin: bool) -> bool 
 }
 
 /// An opaque alpha-tested draw (`cutout` in `shader.wgsl`): the object lanes' foliage, fences and spectators.
-pub(super) fn cutout(state: &DrawState) -> bool {
+pub(crate) fn cutout(state: &DrawState) -> bool {
     !state.blend && state.alpha_ref.is_some()
 }
 

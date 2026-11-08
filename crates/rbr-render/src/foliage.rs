@@ -11,7 +11,7 @@ use crate::stage::{Draw, Image, Mesh, Stage, TextureRef, Vertex};
 use glam::{Vec2, Vec3, Vec3Swizzles};
 use rbr_formats::dds::{self, Format};
 use rbr_formats::stage_files;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Mutex;
 
 /// Plants lower than this, metres, are grass. Plant heights on three stages dip between 1.5 and 2 m, between the
@@ -420,6 +420,96 @@ pub(crate) fn with_plants<'a>(
         }
     }
     vertices
+}
+
+/// A plant of a stage ([`plants`]) as plain data: its box, whether it is a crown, and its triangles per texture.
+pub struct Plant {
+    pub low: [f32; 3],
+    pub high: [f32; 3],
+    pub crown: bool,
+    pub parts: Vec<PlantPart>,
+}
+
+/// A plant's triangles of one texture, in the stage frame.
+pub struct PlantPart {
+    /// The texture's file name ([`Plants::images`]).
+    pub texture: String,
+    pub positions: Vec<[f32; 3]>,
+    pub uvs: Vec<[f32; 2]>,
+    pub indices: Vec<u32>,
+}
+
+/// A plant's parts being gathered ([`plants`]): per texture, its part and the mesh's vertices renumbered in it.
+type PartsOf = HashMap<TextureRef, (usize, HashMap<u32, u32>)>;
+
+/// A stage's plants and the bytes of the stage `.dds` textures they use, once each by file name.
+pub struct Plants {
+    pub plants: Vec<Plant>,
+    pub images: BTreeMap<String, Vec<u8>>,
+}
+
+/// The plants of `stage`'s world meshes (its textures loaded, [`Stage::load_textures`]), as the lighting finds them
+/// ([`trees`] over the cut-out draws [`cut_out`] picks): for tools outside the renderer, which change nothing in it.
+pub fn plants(stage: &Stage) -> Plants {
+    let cutout = |draw: &Draw| crate::renderer::cutout(&draw.state);
+    let cut = cut_out(stage, cutout);
+    let plant = |draw: &Draw| cut.get(&draw.state.textures[0]?).filter(|_| cutout(draw));
+    let mut out = Vec::new();
+    let mut images = BTreeMap::new();
+    for mesh in stage.meshes.iter().filter(|mesh| {
+        mesh.anchor == crate::stage::Anchor::World
+            && !mesh.draws.iter().all(|draw| draw.lod == crate::stage::Lod::Close)
+            && !crate::fences::is_fence(mesh)
+    }) {
+        let trees = trees(mesh, plant);
+        // Per tree, its parts by texture, each with its vertices renumbered.
+        let mut of_tree: HashMap<usize, (usize, PartsOf)> = HashMap::new();
+        for draw in mesh.draws.iter().filter(|draw| plant(draw).is_some()) {
+            let Some(texture) = draw.state.textures[0] else { continue };
+            for triangle in mesh.indices[draw.indices.clone()].chunks_exact(3) {
+                let Some(Some(on)) = trees.of.get(triangle[0] as usize) else { continue };
+                let tree = &trees.trees[on.tree];
+                if !tree.plant {
+                    continue;
+                }
+                let (k, parts) = of_tree.entry(on.tree).or_insert_with(|| {
+                    out.push(Plant {
+                        low: tree.low.to_array(),
+                        high: tree.high.to_array(),
+                        crown: tree.crown(),
+                        parts: Vec::new(),
+                    });
+                    (out.len() - 1, HashMap::new())
+                });
+                let found = &mut out[*k];
+                let (part, renumber) = parts.entry(texture).or_insert_with(|| {
+                    let name = stage.texture_names.get(&texture).map(|n| n.file_name.clone()).unwrap_or_default();
+                    if let Some(Image::Dds(bytes)) = stage.textures.get(&texture).and_then(|t| t.image.as_ref()) {
+                        images.entry(name.clone()).or_insert_with(|| bytes.clone());
+                    }
+                    found.parts.push(PlantPart {
+                        texture: name,
+                        positions: Vec::new(),
+                        uvs: Vec::new(),
+                        indices: Vec::new(),
+                    });
+                    (found.parts.len() - 1, HashMap::new())
+                });
+                let part = &mut found.parts[*part];
+                for &i in triangle {
+                    let next = part.positions.len() as u32;
+                    let j = *renumber.entry(i).or_insert_with(|| {
+                        let v = &mesh.vertices[i as usize];
+                        part.positions.push(v.position);
+                        part.uvs.push(v.uv0);
+                        next
+                    });
+                    part.indices.push(j);
+                }
+            }
+        }
+    }
+    Plants { plants: out, images }
 }
 
 /// Whether a plant piece spanning `low` to `high` is a crown ([`with_plants`]).

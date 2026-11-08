@@ -37,7 +37,7 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
 - Forests: `*.forest4.json` (NDJSON `{type, pos, rotationMatrix, scale}`), `*.forest.json` v2 (`instances` by type,
   `pos, quat, scale` rows) and `art/forest/managedItemData.json` (`shapeFile` per type). The Nordschleife's 45 forest
   items name BeamNG's own tree shapes, which the zip does not hold: not drawn (its trees are the `Treez` and
-  `Vegetation24` shapes). The level's terrain (`theTerrain.ter`) is not in the zip either; its own ground mesh ends
+  `Vegetation24` shapes); `--trees-from` leaves them out too (no shape, no height of their own). The level's terrain (`theTerrain.ter`) is not in the zip either; its own ground mesh ends
   about 100 m from the road (2.38 M of its 2.41 M triangles lie within 100 m), so there are no far hills to draw.
 
 ## Conversion
@@ -96,6 +96,23 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
   was never timed.
 - Open: the grass ground looks pale and flat; the bench covers only the first 1.3 km (Döttinger Höhe has the most in
   view).
+- Retail trees (`--trees-from STAGE --trees TEXT`, `trees.rs`; without `--trees-from` the output is unchanged): the
+  retail stage's plants as the lighting finds them (`rbr_render::foliage::plants`: cut-out pieces grouped into trees,
+  crowns), those 5 m or taller with stage textures, grouped by textures, triangles and height into kinds (the 16 most
+  placed); spacing the median nearest-neighbour distance of its trees. In the `--trees` shapes: an object up to 30 m
+  across holding see-through triangles is one tree (`Treez`: trunk, limbs and leaf cards that need not touch), wider
+  objects split into connected pieces; a piece 40 m or longer is a tree-line card, retail trees along its foot (corners
+  with a corner 1 m or more above within 1 m) at the spacing, as tall as the card there; pieces lower than the
+  shortest kind less 20 % stay (bushes), as does everything not see-through (water). Each tree takes a kind within
+  20 % of its height (by a seed of its foot), else the nearest, scaled within 20 % and turned by the seed; one `.x`
+  per kind and texture, one `.xform` per kind and `LODOut`. Retail 3 to 5 m plants (saplings, a third of 44's) left
+  out: as the lowest kind they took the level's bushes for trees.
+- Nordschleife with `--trees Treez --trees Vegetation24` (2026-11-08): 44 (Joux Plane) 16 kinds 5.0-16.8 m of its 7366
+  trees, spacing 3.9 m, 19916 placed (3712 along 52 cards), 121848 triangles, 7.41 M drawn in all (7.33 M of the
+  level's before); 21 (Falstone) 5.2-30.5 m of 3880, 4.4 m, 18742 placed, 125076 triangles. In view at
+  start/Flugplatz/Karussell/Döttinger Höhe 0.70/0.54/0.20/0.81 M (without: 0.70/0.56/0.22/0.84 M). 44 is the
+  Eifel's mix of conifers and broadleaves, 21 conifers only. Conversion 27 s, 4.2 GB peak; `beamng-stage` 2.8 MB to
+  5.1 MB with `rbr-render` linked, and it runs without a display (no GPU or window opened). Frame rate not measured.
 - Captures (`viewer --camera EYE,DIRECTION`, the second triple a direction): start, Flugplatz (2.4 km), the
   Karussell approach (11.9 km), Döttinger Höhe (18.1 km), all with 0 missing textures.
 
