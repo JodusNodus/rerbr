@@ -580,20 +580,35 @@ impl Form {
             }
             let tip = "Each screen's diagonal";
             ui.label("Screen size").on_hover_text(tip);
-            ui.add(egui::Slider::new(&mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE).step_by(1.0).suffix(" in"))
-                .on_hover_text(tip);
+            ui.add(
+                egui::Slider::new(&mut self.triple_diagonal, TRIPLE_DIAGONAL_RANGE)
+                    .step_by(1.0)
+                    .fixed_decimals(0)
+                    .suffix(" in"),
+            )
+            .on_hover_text(tip);
             ui.end_row();
 
             let tip = "The frame around each screen's image: two of them part neighbouring images";
             ui.label("Bezel").on_hover_text(tip);
-            ui.add(egui::Slider::new(&mut self.triple_bezel, TRIPLE_BEZEL_RANGE).step_by(1.0).suffix(" mm"))
-                .on_hover_text(tip);
+            ui.add(
+                egui::Slider::new(&mut self.triple_bezel, TRIPLE_BEZEL_RANGE)
+                    .step_by(1.0)
+                    .fixed_decimals(0)
+                    .suffix(" mm"),
+            )
+            .on_hover_text(tip);
             ui.end_row();
 
             let tip = "From your eyes to the centre screen";
             ui.label("Distance").on_hover_text(tip);
-            ui.add(egui::Slider::new(&mut self.triple_distance, TRIPLE_DISTANCE_RANGE).step_by(1.0).suffix(" cm"))
-                .on_hover_text(tip);
+            ui.add(
+                egui::Slider::new(&mut self.triple_distance, TRIPLE_DISTANCE_RANGE)
+                    .step_by(1.0)
+                    .fixed_decimals(0)
+                    .suffix(" cm"),
+            )
+            .on_hover_text(tip);
             ui.end_row();
 
             let tip = "How far each side screen is turned towards you from the centre screen's plane. Auto faces \
@@ -633,33 +648,26 @@ impl Form {
                     ]);
                 }
                 if let Some(monitors) = &mut self.triple_monitors {
-                    for (n, slot) in monitors.iter_mut().enumerate() {
-                        let side = ["Left", "Centre", "Right"][n];
-                        let mut options = names.clone();
-                        if !slot.is_empty() && !options.contains(slot) {
-                            options.push(slot.clone());
-                        }
-                        ui.horizontal(|ui| {
+                    egui::Grid::new("triple monitors").show(ui, |ui| {
+                        for (slot, side) in monitors.iter_mut().zip(["Left", "Centre", "Right"]) {
+                            let mut options = names.clone();
+                            if !slot.is_empty() && !options.contains(slot) {
+                                options.push(slot.clone());
+                            }
                             ui.label(side);
-                            ComboBox::from_id_salt(format!("triple monitor {n}"))
+                            ComboBox::from_id_salt(("triple monitor", side))
                                 .width(QUALITY_FIELD)
-                                .selected_text(if slot.is_empty() { side.to_owned() } else { slot.clone() })
+                                .selected_text(if slot.is_empty() { "Pick one" } else { slot.as_str() })
                                 .show_ui(ui, |ui| {
                                     for name in &options {
                                         ui.selectable_value(slot, name.clone(), name);
                                     }
                                 });
-                        });
-                    }
+                            ui.end_row();
+                        }
+                    });
                     if names.len() < 3 {
-                        ui.colored_label(
-                            WARN,
-                            format!(
-                                "Only {} monitor{} in reach: plug in three to drive one window a monitor",
-                                names.len(),
-                                if names.len() == 1 { "" } else { "s" }
-                            ),
-                        );
+                        ui.colored_label(WARN, format!("{} of 3 monitors connected", names.len()));
                     }
                 }
             });
