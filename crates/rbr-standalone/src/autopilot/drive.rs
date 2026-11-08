@@ -219,13 +219,17 @@ pub fn drive(
     let word6 = read_u32(&control, 24).expect("payload word 6");
     let mut drove = Drove { start, steps: 0, finish: None, end: format!("the step limit ({steps})"), out: None };
     let mut off_road = 0;
-    let mut material_as = measure.material_as;
+    let mut material_as = match measure.material_as {
+        Some(id) => {
+            Some((id, rbr_formats::ngp::current().ok_or("--material-as: NGP's data is not loaded (--ngp-physics)")?))
+        }
+        None => None,
+    };
     for k in 0..steps {
         let step = start + k;
-        if let Some(id) = material_as.filter(|_| measure.brake_from.is_none() || driver.braking) {
+        if let Some((id, tables)) = material_as.filter(|_| measure.brake_from.is_none() || driver.braking) {
             // The pure memory's handle shares its bytes: the write lands in the next step's stage.
             let mut mem = live.mem().clone();
-            let tables = rbr_formats::ngp::current().expect("boot loaded NGP data");
             let def = physics_layout::cdef_global(&mem);
             ngp_stage::materials_as(&mut mem, def, tables, id);
             eprintln!("autopilot: step {step}: every material takes material {id}'s values (--material-as)");
