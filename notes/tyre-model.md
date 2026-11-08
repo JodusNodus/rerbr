@@ -696,6 +696,30 @@ Ranking:
 4. Out of reach: per-tyre gravel curves at rally speed or load (only 1-1.5 m/s, one load), rally studs (no data),
    surface change with passes.
 
+## Rolling resistance
+
+- What NGP applies: a torque on the wheel, `-(patch_length · RollingResistance / 2) · Fz · sliding_weight · sgn(ω)`
+  (`tyre::forces::rolling_torque`; kept under the brush), the material's `RollingResistance`: tarmac fine (37) 0.04,
+  gravel (17 / 9 / 1) 0.060 / 0.065 / 0.070, snow (101) 0.08, ice (116) 0.02 (`--tyre-probe` `surface:`). Over the
+  radius that is 0.0089 Fz on tarmac (patch 0.14-0.16 m, R 0.315 m), 0.020-0.028 on gravel (the patch lengthens as
+  the tyre sinks 9-25 mm), 0.027 on snow, 0.0044 on ice. The soil's drag (`soil_op`) is 0 rolling straight.
+- Car level (`harness/coast_test.py`: the brake test's declutched run with a pedal rounding to 0, the coast from 60
+  to 10 km/h cut into 10 m pieces, each piece's energy loss less the grade, corners over 0.5 m/s² left out, the drag
+  ρ Cd A / 2m of the car file held, the median), Fiesta Rally2, ngp / experimental-brush (2026-11-08): tarmac RSF 568
+  0.0066 / 0.0065, gravel RSF 345 0.0180 / 0.0179, snow map 10 0.024 / 0.023, ice (568 on 116) 0.0025 / 0.0022;
+  spread of the pieces 0.0004-0.0018. Less the drag, tarmac stays flat 0.006-0.0075 from 5 to 26 m/s, and a free
+  a + b v² fit from 100 km/h gives b 0.30e-3 /m against the car file's 0.32e-3 (body mass, ρ at 90 m): the drag is
+  the file's. The car's level sits 0.002-0.003 g under the torque's Fz share on every surface (0.74 of it on
+  tarmac, 0.57 on ice); not traced.
+- Published (`data/tyre-targets.csv`, `coast:SURFACE:crr`): road cars coasting on Swedish roads Cr = 0.00912 +
+  2.1e-5 IRI v + 0.00172 MPD (VTI 748A 2012), 0.010-0.0135 smooth to rough; EU label C1 class A ≤ 0.0065 on the
+  ISO 28580 drum; gravel 0.016 (Team O'Neil dry) and 0.018 (MPG, ≤ 10 cm pea stone), 0.16 in pea stone over 20 cm
+  (ERDC/CRREL TR-10-11, text), rolled gravel 0.02 (Bosch); fresh snow 11-22 cm, snow alone, leading tyre
+  0.024-0.127, trailing 0.017 (CRREL 95-7 Table 3); hard-packed snow near the hard surface's (VTI 971A); no car
+  coast-down on ice found (the ice band is the VTI model with no texture, inferred). Gravel and snow PASS, tarmac
+  0.0066 just under the inferred 0.007 floor, ice 0.0025 against 0.007-0.013 (weak data: NGP's 116 halves tarmac's
+  RollingResistance).
+
 ## Scorecard
 
 `harness/tyre_scorecard.py` scores the physics against `data/tyre-targets.csv` (one row per target from the tables
@@ -718,6 +742,8 @@ above, `id,surface,level,metric,conditions,low,high,unit,source,precision,how`; 
   locked over the target K's (one pedal, not ABS). The locked-over-ABS rows take K 0.2, the low slip an ABS holds;
   the best-target ratios stay as context rows (both bounds empty: printed CTX, not scored). One pedal at K 0.2
   under-brakes the less slipping wheels, so it is a weak ABS: NGP, with no berm, scores 1.18 / 1.28 on gravel.
+- `coast:SURFACE:crr|crr_free`: `coast_test.py` from 60 km/h (tarmac RSF 568, gravel RSF 345, snow map 10, ice RSF
+  568 on 116 from the lift; [Rolling resistance](#rolling-resistance)).
 - `brake-ratio:A/B:KMH:X/Y`, `circle:gravel:lat_g` (`car_pace.analyse_circle` on the gravel probe run, 40000 steps,
   ramp 0.4). The circle's slide speed also depends on the engine holding the ramp: on gravel experimental-brush runs
   NGP's tyre yet gives 0.73 g against ngp's 0.57 (vmax 61 against 54 km/h), so read that row as car, not tyre.
