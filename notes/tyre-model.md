@@ -721,19 +721,10 @@ loose ones unchanged.
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
   deformation torque M''_z (∝ C_y - C_x) is left out of the aligning moment; no measured combined Mz was checked.
-  The autopilot is 1.6-3.2 % faster on the brush than on NGP (map 41 tarmac, 600 s, finish ngp / experimental /
-  experimental-brush, 2026-11-08, main 48469277: Fiesta Rally2 309.01 / 304.61 / 304.06 s, Celica ST185 310.91 /
-  305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 / 315.49 / 315.15). The engine takes 89-96 %
-  of it (1.4-3.0 %); the tyre 0.1-0.25 % (0.34-0.79 s; a ±0.1 m/s change of the autopilot's top speed moves a finish
-  0.04 s at most). The autopilot plans 5 m/s² lateral and 4 m/s² braking, under half the grip, so the grip level
-  barely enters: the load level above moved the finishes -0.01 to +0.06 s. Counterfactual builds (not committed),
-  experimental → brush variant: the longitudinal slip stiffness as NGP's (Kx/Fz 14, ∝ Fz^0.35, against the brush's
-  21, ∝ Fz^1.14; published 18.4-32.9, NGP below) 0.34/0.54/0.37/-0.14 s, so Kx is 0.14-0.49 s of the tyre's share:
-  the brush's driven wheels slip a third less on full throttle at 10-30 m/s (1.5-3 % more acceleration there), less
-  slip power lost; with Cα ∝ Fz^0.36 as NGP's as well, the same within 0.04 s; steady forces above 3 m/s (no carcass
-  dynamics) 0.21-0.61 s faster still, and a friction flat with sliding speed 0.04-0.49 s faster: the dynamics and the
-  speed term cost the brush time. The 0.1-0.2 % left (three cars) is unattributed shape; combined slip at small slips
-  and the cornering curve between 2° and the peak are untested. Shape, data-backed: unchanged.
+  Autopilot pace, map 41, 600 s, finish ngp / experimental / experimental-brush (2026-11-08): Fiesta Rally2 309.01 /
+  304.61 / 304.06 s, Celica ST185 310.91 / 305.17 / 304.48, Golf II 324.24 / 314.57 / 313.77, 131 Abarth 323.35 /
+  315.49 / 315.15: engine 1.4-3.0 %, tyre 0.1-0.25 %, of which Kx (shape, data-backed) 0.14-0.49 s; no level error
+  over 1 % at the operating loads and speeds (lab `envelope`, after the load level).
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours does not shorten with pressure (NGP's
   stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
   7.5 bar (Meccanica 2023).
