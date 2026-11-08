@@ -10,19 +10,21 @@ best threshold braking g from 80 km/h (brake_test.py's declutched runs, slip tar
 mean decel, the road's grade in). It writes DIR/limits.json.
 
 `search` drives the stage once per factor F with the autopilot's speed plan at F times the car's limits
-(`--plan LAT,BRAKE` = F x lateral g x G, F x braking g x G, m/s²) and `--top-speed` (m/s, 60 by default: above
+(`--plan LAT,BRAKE` = F x lateral g x G, F x braking g x G, m/s²; with `--brake-factor B`, B in place of F on the
+braking, for a car whose circle reads off) and `--top-speed` (m/s, 60 by default: above
 any car's top here, so the plan and the car limit the speed, not the cap), with `--trace-speed`, to
 DIR/<car>.<physics>.f<F>.trace (log .log). A run is clean when the car finishes, is not retired, the log has no
 recovery ("backing up"), outside assistance or end other than the finish, and the trace's distance from the
 driveline (`off`, the controller's tracking error) stays under MAX_OFF m all the way (the default runs keep under
 1 m; a car further out than MAX_OFF has run wide of the line, typically off the road's edge on a 6-8 m gravel road).
-The fastest clean run per car × physics is the chosen plan; DIR/search.csv lists every run, DIR/chosen.txt the
+The fastest clean run per car × physics is the chosen plan; DIR/search.csv lists every run in DIR of the cars and physics given (earlier calls' too), DIR/chosen.txt the
 chosen traces (feed them to `rally_gg.py stats`). Runs with a log that already ends are not run again.
 target/release/rbr-standalone must be built; RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come from dev.env.
 """
 import argparse
 import concurrent.futures
 import csv
+import glob
 import json
 import os
 import re
@@ -136,13 +138,13 @@ def judge(name, max_off_limit):
 
 def search(args):
     lim = json.load(open(os.path.join(args.out, "limits.json")))
-    jobs, names = [], []
+    jobs = []
     for car, physics in pairs(args):
         lg, bg = lim[f"{car}.{physics}"]["lat_g"], lim[f"{car}.{physics}"]["brake_g"]
         for f in args.factors.split(","):
-            name = os.path.join(args.out, f"{car}.{physics}.f{f}")
-            plan = f"{float(f) * lg * G:.3f},{float(f) * bg * G:.3f}"
-            names.append((car, physics, f, plan, name))
+            fb = args.brake_factor or f
+            name = os.path.join(args.out, f"{car}.{physics}.f{f}" + (f"b{fb}" if args.brake_factor else ""))
+            plan = f"{float(f) * lg * G:.3f},{float(fb) * bg * G:.3f}"
             if os.path.exists(name + ".log") and "ended by" in open(name + ".log").read():
                 continue
             jobs.append(([BIN, "--autopilot", "/dev/null", "--boot", "--rsf-stage", str(args.rsf_stage),
@@ -151,10 +153,15 @@ def search(args):
                           *env_args()], name + ".log"))
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         list(pool.map(run, jobs))
+    # Every run in DIR of these cars and physics, this call's and earlier ones'.
+    done = []
+    for car, physics in pairs(args):
+        for log in sorted(glob.glob(os.path.join(glob.escape(args.out), f"{car}.{physics}.f*.log"))):
+            name = log[:-4]
+            plan = re.search(r"lateral ([0-9.]+) m/s², braking ([0-9.]+) m/s² \(--plan\)", open(log).read())
+            done.append((car, physics, name.rsplit(".f", 1)[1], f"{plan.group(1)},{plan.group(2)}" if plan else "?", name))
     rows, best = [], {}
-    for car, physics, f, plan, name in names:
-        if not os.path.exists(name + ".log"):
-            continue
+    for car, physics, f, plan, name in done:
         clean, time, why, worst = judge(name, args.max_off)
         rows.append([car, physics, f, plan, f"{time:.2f}" if time else "", clean, f"{worst:.2f}", why])
         key = (car, physics)
@@ -187,6 +194,7 @@ def main():
     s.add_argument("--top-speed", type=float, default=60.0)
     s.add_argument("--steps", type=int, default=500000)
     s.add_argument("--max-off", type=float, default=MAX_OFF)
+    s.add_argument("--brake-factor", help="hold the braking factor here (the factors then scale the lateral only)")
     args = parser.parse_args()
     if not os.path.exists(BIN):
         sys.exit(f"{BIN}: build it first (cargo build --release -p rbr-standalone)")
