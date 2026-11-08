@@ -230,10 +230,10 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   scales μ_S and μ_C both, so the fitted μ_C/μ_S holds on every surface; NGP's kinetic friction is unused. The wet
   loss and the hydroplaning speed stay off (NGP's wet surface values carry the wet level); the surface's
   `WaterFactor` (`ForceInput::water_factor`, 2026-11-08) lowers μ_C and fades the dry wear gain. Retail wet tarmac
-  carries it (track-41_M wet 1.0, track-85_M 0.92-0.98); RSF wet stages do not: on RSF 568 `--wetness wet` the
-  material stays the dry one (WaterFactor 0, static 0.83) and the wet comes from the surface class's wetness in
-  `CScratch::BlendTable`, which the seam does not see. The dry wear gain and the stiffness's temperature, wear and
-  pressure factors are the brush's.
+  carries it (track-41_M wet 1.0, track-85_M 0.92-0.98), and so do RSF wet stages with a wet `.mat` entry (122, 117:
+  1.0); `BlendTable`'s wetness is the same word ([physics.md](physics.md), Scenery). RSF 568 has no wet entry: wet
+  there is the fallback material 0 (static 0.83, WaterFactor 0), not a wet surface. The dry wear gain and the
+  stiffness's temperature, wear and pressure factors are the brush's.
 - Calibration per wheel at fit (`rbr_tyre::fit`): NGP's `patch_forces` swept from the wheel's own tables at
   `load_axis[3]` (the 4 kN design load times the car's mass ratio), 15 m/s, unit surface, stiffness factor 1; t_cal is
   the temperature of `RubMyFct`'s best friction. Nothing NGP-derived is committed.
@@ -311,7 +311,9 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   physics: the locked fronts cannot steer and the car leaves the line (3.5 m off on 568, "hit something" on 568, 320,
   482). Wet, retail track-41_M (WaterFactor 1) from 50 km/h: locked at 32 km/h 0.845 → 0.730 g against best 1.07,
   0.79 → 0.68 (NGP 0.817/1.024, 0.80; TRL wet 0.64-0.67); whole locked stop from 30 km/h 0.887 → 0.822 g. RSF 568 wet
-  is unchanged (no WaterFactor, above): locked over best 0.79/0.73 at 32/64 km/h (TRL 0.64-0.67/0.52-0.57).
+  is the fallback material 0 (no wet `.mat` entry, above): locked over best 0.79/0.73 at 32/64 km/h. RSF wet tarmac
+  with WaterFactor 1, from 50 km/h, locked over best threshold at 32 km/h, dry → wet: 122 0.76 → 0.65 (NGP 0.78 →
+  0.79), 117 0.79 → 0.67 (NGP 0.79 → 0.77); TRL dry 0.73-0.82, wet 0.64-0.67.
 - The Fiesta's 0.35-pedal stop (1.63 s against NGP's 2.30) is the engine's
 , not the tyre's: realistic engine with
   NGP's tyre (`experimental`) 1.65 s; under NGP the car holds 2.93-2.96 m/s for 0.75 s in second gear at 123-125 rad/s
@@ -338,8 +340,8 @@ lines.
    the two X and Y at random and keeps the key until the end.
 2. Fixed: car Ford Fiesta Rally2 (`Ford_Fiesta_Rally2_ngp7`; a second session on a rear-drive car, the Fiat 131),
    setup, tyre, weather and wetness; stages RSF 568 SS Graciosa I (dry), retail track-41_M dry, then track-41_M with
-   `--wetness wet` (retail wet tarmac carries `WaterFactor`, so the brush's wet term acts there; on RSF wet stages it
-   does not).
+   `--wetness wet` (wet tarmac carries `WaterFactor`, so the brush's wet term acts there; RSF 568 has no wet
+   surface, so use a stage with one, e.g. RSF 122).
 3. Session per stage: one familiarisation run on X; stints X, Y, X, Y of 3 timed runs each (the repeat catches
    learning); the same run budget for every stint; nothing else changes between stints.
 4. Log per run: stage time and splits (`--result-out`), the replay the viewer records, and the driver's 1-5 marks and
@@ -592,9 +594,8 @@ leaves the line (In game).
   stiffness factor scales C and k alike); racing bicycle tyres relax over almost twice the distance at 3.5 bar as at
   7.5 bar (Meccanica 2023).
 - Wet: a published partial-hydroplaning shape (onset near v_p, not quadratic from rest) and the film's effect on
-  v_p. The wet Coulomb loss (TRL fit) reaches the brush through `WaterFactor` only; RSF wet stages keep WaterFactor 0
-  and set the surface class's wetness in `CScratch::BlendTable`'s arguments (1.02 code, not in the tyre's frame), so
-  there the brush slides wet like dry. Carrying that wetness to the seam means finding where the caller keeps it.
+  v_p. Wet on the 12 RSF stages without a wet `.mat` entry (568 among them) falls back to material 0 (μs 0.95, dry):
+  whether the original does the same, and whether the launcher should offer wet there, is open.
 - The brake test from 100 km/h: locked fronts cannot steer and the car leaves the line on every stage tried (568,
   320, 482); the TRL 100 km/h point is checked in the lab only. A straight, flat stretch or a held heading would
   fix it.
