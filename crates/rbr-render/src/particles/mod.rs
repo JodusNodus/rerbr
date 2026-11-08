@@ -654,14 +654,13 @@ impl Drawn {
             renderer.set_tyre_marks(&marks.quads());
         }
         let followed = started.elapsed();
-        let billboards = self.particles.billboards(view_projection, |id| self.sprites.layer(id));
-        let waves = self.particles.waves(|id| self.sprites.layer(id));
+        let billboards = self.view(renderer, view_projection);
         if std::env::var_os("RBR_PARTICLES_TIMING").is_some() {
             let steps = playback.index().abs_diff(from).min(WARM_UP);
             eprintln!(
                 "particles: {} alive, {steps} steps followed in {followed:?}, {} billboards built in {:?}",
                 self.particles.sim.count(),
-                billboards.len(),
+                billboards,
                 started.elapsed() - followed
             );
             for pool in self.particles.sim.pools.iter().filter(|p| !p.particles.is_empty()) {
@@ -669,14 +668,27 @@ impl Drawn {
                 eprintln!("particles:   {} {} alive, first at {first:.2}", pool.def.name, pool.particles.len());
             }
         }
-        renderer.set_particles(&self.sprites, &billboards, &waves);
         renderer.set_car_dirt(self.particles.spray.car(playback.index(), self.particles.dust));
+    }
+
+    /// Gives `renderer` the billboards seen with `view_projection` (each of a triple screen's views its own, after
+    /// [`Drawn::draw`] followed the drive); their count.
+    pub fn view(&self, renderer: &mut Renderer, view_projection: Mat4) -> usize {
+        let billboards = self.particles.billboards(view_projection, |id| self.sprites.layer(id));
+        let waves = self.particles.waves(|id| self.sprites.layer(id));
+        renderer.set_particles(&self.sprites, &billboards, &waves);
+        billboards.len()
     }
 }
 
-/// The camera a view-projection looks from: its eye, and its right and up axes from the matrix's first two rows.
+/// The camera a view-projection looks from: its eye, and its right and up axes from the matrix's first two rows, less
+/// their share along the view's axis (the fourth row) that an off-axis view (a triple screen's side) adds.
 pub fn facing(view_projection: Mat4) -> Facing {
-    let row = |i: usize| view_projection.row(i).truncate().normalize_or_zero();
+    let forward = view_projection.row(3).truncate().normalize_or_zero();
+    let row = |i: usize| {
+        let row = view_projection.row(i).truncate();
+        (row - forward * row.dot(forward)).normalize_or_zero()
+    };
     Facing { eye: crate::camera::eye(view_projection), right: row(0), up: row(1) }
 }
 

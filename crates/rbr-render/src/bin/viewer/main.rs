@@ -178,6 +178,7 @@ mod replay;
 mod scene;
 mod screenshot;
 mod shown;
+mod triple;
 mod video;
 mod window;
 

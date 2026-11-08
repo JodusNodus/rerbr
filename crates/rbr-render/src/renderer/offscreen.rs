@@ -1,6 +1,7 @@
 //! Drawing a frame into a texture and reading its pixels back.
 
 use super::frame::FrameStats;
+use super::views::FrameView;
 use super::Renderer;
 use glam::Mat4;
 
@@ -42,6 +43,18 @@ impl Renderer {
         sky_view_projection: Mat4,
         overlay: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView),
     ) -> Result<(FrameStats, Vec<u8>), ReadbackError> {
+        let views = [(view_projection, sky_view_projection)];
+        self.render_offscreen_view(size, FrameView { views: &views, index: 0, first: true, at: None }, overlay)
+    }
+
+    /// [`Renderer::render_offscreen_with`] for one of a frame's views ([`Renderer::render_view`]; its
+    /// [`FrameView::at`] is not taken).
+    pub fn render_offscreen_view(
+        &mut self,
+        size: (u32, u32),
+        frame_view: FrameView<'_>,
+        overlay: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView),
+    ) -> Result<(FrameStats, Vec<u8>), ReadbackError> {
         let (width, height) = size;
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("offscreen"),
@@ -57,7 +70,7 @@ impl Renderer {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         let started = std::time::Instant::now();
         let span = crate::perf_log::span("render");
-        let stats = self.render(&mut encoder, &view, size, view_projection, sky_view_projection);
+        let stats = self.render_view(&mut encoder, &view, size, FrameView { at: None, ..frame_view });
         drop(span);
         if let Some(profiler) = &mut self.profiler {
             profiler.add("frame (profiled)", started.elapsed());

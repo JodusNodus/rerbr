@@ -288,7 +288,7 @@ fn draw_frame(
         None => views(scene, args, *shown, size),
     };
     if let Some(characters) = &mut scene.characters {
-        characters.apply(renderer, view_projection);
+        characters.apply(renderer, &[view_projection]);
     }
     draw_particles(scene, renderer, view_projection);
     draw_car(scene, renderer, *shown, ChaseLook::default(), args.fov);
@@ -297,7 +297,7 @@ fn draw_frame(
         ghost.apply(renderer, playback, hud, view_projection);
     }
     if let (Some(drawn), Some(playback)) = (&mut scene.fences, &scene.playback) {
-        drawn.draw(renderer, playback, view_projection);
+        drawn.draw(renderer, playback, &[view_projection]);
     }
     if let (Some(dials), Some(playback)) = (&mut scene.dials, &scene.playback) {
         dials.update(&dial_values(playback, scene.live.as_ref()), Some(1.0 / args.video_fps), renderer);

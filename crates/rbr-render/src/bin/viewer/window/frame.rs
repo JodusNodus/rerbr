@@ -7,6 +7,7 @@ use crate::draw::{
 };
 use crate::scene::take_damage;
 use crate::shown::{self, Feedback};
+use crate::triple;
 use gilrs::ev::filter::Filter;
 use rbr_recording::pose::CarPose;
 use rbr_render::bindings::{self, Action};
@@ -17,6 +18,7 @@ use rbr_render::hud::{self as hud_overlay};
 use rbr_render::live::{self};
 use rbr_render::perf_log;
 use rbr_render::present::Acquired;
+use rbr_render::renderer::FrameView;
 use rbr_render::shifter;
 use rbr_render::views::Shown;
 use std::time::{Duration, Instant};
@@ -173,7 +175,8 @@ impl App {
         let speed = WALK_SPEED * if self.held.contains(&KeyCode::ShiftLeft) { FAST_FACTOR } else { 1.0 };
         let movement = movement(&self.held);
         let (width, height) = (running.config.width, running.config.height);
-        let aspect = width as f32 / height as f32;
+        // One screen's size: the window's, or a third of it holding a triple screen's three views.
+        let screen = triple::screen((width, height), running.spanned());
         let mut live_failed = false;
         if self.menu.is_some() {
             // Paused: the stepping process's clock is stopped, so its game, clocks and car stand still.
@@ -327,21 +330,25 @@ impl App {
             Some((car, ride)) => draw_demo(&mut self.scene, &mut running.renderer, *ride, car, self.look, fov),
             None => draw_car(&mut self.scene, &mut running.renderer, self.shown, self.look, fov),
         };
-        let (view_projection, sky_view_projection) = match (&mut self.scene.orbit, car_lens) {
+        let lens = match (&mut self.scene.orbit, car_lens) {
             (Some(orbit), _) => {
                 orbit.zoom((movement.forward * -ZOOM_RATE * dt).exp());
-                (orbit.view_projection(fov, aspect), orbit.sky_view_projection(fov, aspect))
+                orbit.lens(fov)
             }
-            (None, Some(lens)) => (lens.view_projection(aspect), lens.sky_view_projection(aspect)),
+            (None, Some(lens)) => lens,
             (None, None) => {
                 if self.scene.playback.is_none() {
                     running.camera.step(movement, speed * dt);
                 }
-                (running.camera.view_projection(fov, aspect), running.camera.sky_view_projection(fov, aspect))
+                running.camera.lens(fov)
             }
         };
+        // The frame's views: the one, or a triple screen's left, centre and right.
+        let (views, centre) = triple::views(&lens, running.rig.as_ref(), screen);
+        let view_projections: Vec<_> = views.iter().map(|&(view_projection, _)| view_projection).collect();
+        let view_projection = view_projections[centre];
         if let Some(characters) = &mut self.scene.characters {
-            characters.apply(&mut running.renderer, view_projection);
+            characters.apply(&mut running.renderer, &view_projections);
         }
         if let (Some(ghost), Some(playback)) = (&mut self.scene.ghost, &self.scene.playback) {
             let hud = rbr_render::ghost::hud_time(self.scene.live.as_ref());
@@ -349,13 +356,17 @@ impl App {
         }
         draw_particles(&mut self.scene, &mut running.renderer, view_projection);
         if let (Some(drawn), Some(playback)) = (&mut self.scene.fences, &self.scene.playback) {
-            drawn.draw(&mut running.renderer, playback, view_projection);
+            drawn.draw(&mut running.renderer, playback, &view_projections);
         }
-        let Some(frame) = frame else {
+        // The side screens' windows' textures (`--triple-monitors`); without one of them the frame is not drawn.
+        let device = &running.gpu.device;
+        let sides: Option<Vec<_>> = running.sides.iter_mut().map(|side| side.acquire(device)).collect();
+        let (Some(frame), Some(sides)) = (frame, sides) else {
             running.renderer.skip_frame();
             return;
         };
         let view = frame.texture.create_view(&Default::default());
+        let side_views: Vec<_> = sides.iter().map(|side| side.texture.create_view(&Default::default())).collect();
         let mut encoder = running.gpu.device.create_command_encoder(&Default::default());
         let paused = self.paused + self.paused_at.map_or(Duration::ZERO, |at| at.elapsed());
         let elapsed = self.started.elapsed() - paused;
@@ -373,7 +384,21 @@ impl App {
             dials.update(&dial_values(playback, self.scene.live.as_ref()), Some(dt), &mut running.renderer);
         }
         span.next("render");
-        running.renderer.render(&mut encoder, &view, (width, height), view_projection, sky_view_projection);
+        // Each view into its window, or into its third of the window (cleared first: a width not of three leaves
+        // columns no view draws); the centre's first, then the others, each submitted before the next.
+        let spanned = running.spanned();
+        if spanned {
+            triple::clear(&mut encoder, &view);
+        }
+        let target = |index: usize| match (spanned, index.cmp(&centre)) {
+            (true, _) => (&view, Some(triple::spanned_at(index, screen))),
+            (false, std::cmp::Ordering::Less) => (&side_views[0], None),
+            (false, std::cmp::Ordering::Greater) => (&side_views[1], None),
+            (false, std::cmp::Ordering::Equal) => (&view, None),
+        };
+        let (target_view, at) = target(centre);
+        let frame_view = FrameView { views: &views, index: centre, first: true, at };
+        running.renderer.render_view(&mut encoder, target_view, screen, frame_view);
         span.next("HUD");
         let readout =
             self.scene.playback.as_ref().filter(|_| self.scene.hud.show && demo_ride.is_none()).map(|playback| {
@@ -382,6 +407,8 @@ impl App {
                 readout(playback, live, shown, bindings, self.scene.hud, fps)
             });
         if readout.is_some() || self.menu.is_some() || self.results.is_some() || demo_ride.is_some() {
+            // Spanned, the HUD and the menus go on the centre screen.
+            running.overlay.set_region(spanned.then(|| super::shell::spanned_region((width, height))));
             let (gpu, menu) = (&running.gpu, &self.menu);
             running.overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, (width, height), |ctx, hud| {
                 readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
@@ -394,6 +421,19 @@ impl App {
         }
         span.next("submit");
         running.gpu.queue.submit([encoder.finish()]);
+        for index in triple::order(views.len()).skip(1) {
+            span.next("render");
+            // Each view's particles face it.
+            if let Some(drawn) = &self.scene.particles {
+                drawn.view(&mut running.renderer, views[index].0);
+            }
+            let (target_view, at) = target(index);
+            let mut encoder = running.gpu.device.create_command_encoder(&Default::default());
+            let frame_view = FrameView { views: &views, index, first: false, at };
+            running.renderer.render_view(&mut encoder, target_view, screen, frame_view);
+            span.next("submit");
+            running.gpu.queue.submit([encoder.finish()]);
+        }
         let submitted = Instant::now();
         if let Some(pacer) = &mut self.pacer {
             pacer.submitted(&running.gpu.queue, self.presented, self.last_frame, submitted);
@@ -406,6 +446,10 @@ impl App {
         }
         running.window.pre_present_notify();
         running.gpu.queue.present(frame);
+        for (side, frame) in running.sides.iter().zip(sides) {
+            side.window.pre_present_notify();
+            running.gpu.queue.present(frame);
+        }
         let feedback = self.feedback.as_mut().map(shown::Shown::take).unwrap_or_default();
         if let Some(pacer) = &mut self.pacer {
             for &(frame, shown) in &feedback {

@@ -13,6 +13,7 @@ use crate::latency::Latency;
 use crate::pacer::Pacer;
 use crate::scene::Scene;
 use crate::shown::{self};
+use crate::triple::Side;
 use feed::Feed;
 use gilrs::ev::filter::Repeat;
 use gilrs::Gilrs;
@@ -29,6 +30,7 @@ use rbr_render::perf_log;
 use rbr_render::playback::ChaseLook;
 use rbr_render::renderer::{Gpu, Renderer};
 use rbr_render::shifter::Shifter;
+use rbr_render::triple::Rig;
 use rbr_render::views::{CarView, Shown};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -103,6 +105,17 @@ pub(super) struct Running {
     camera: FreeFly,
     /// The HUD, drawn with a drive.
     overlay: Overlay,
+    /// Triple screens (`--triple`): the rig, and the side screens' windows (`--triple-monitors`; none: the window
+    /// holds the three).
+    rig: Option<Rig>,
+    sides: Vec<Side>,
+}
+
+impl Running {
+    /// Whether the window holds a triple screen's three views.
+    fn spanned(&self) -> bool {
+        self.rig.is_some() && self.sides.is_empty()
+    }
 }
 pub struct App {
     /// What the viewer shows.
@@ -328,7 +341,7 @@ impl ApplicationHandler for App {
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let events = perf_log::span("window events");
         match event {
             WindowEvent::CloseRequested => {
@@ -337,6 +350,10 @@ impl ApplicationHandler for App {
             }
             WindowEvent::Resized(size) => {
                 let running = &mut self.running;
+                if let Some(side) = running.sides.iter_mut().find(|side| side.window.id() == id) {
+                    side.resize(&running.gpu.device, size);
+                    return;
+                }
                 running.config.width = size.width.max(1);
                 running.config.height = size.height.max(1);
                 running.stale = !rbr_render::present::configure(&running.surface, &running.gpu.device, &running.config);

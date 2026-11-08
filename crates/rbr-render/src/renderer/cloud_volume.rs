@@ -136,6 +136,15 @@ struct Passes {
     previous: Cell<Option<Mat4>>,
 }
 
+/// A view's march from frame to frame: its images and domes, the frames marched, the image last written and the last
+/// rotation-only clip matrix ([`CloudVolume::exchange`]).
+pub(super) struct CloudHistory {
+    targets: Targets,
+    frame: u32,
+    current: usize,
+    previous: Option<Mat4>,
+}
+
 /// What the march reads besides the depth and its history.
 struct Resources {
     shape: wgpu::TextureView,
@@ -219,6 +228,30 @@ impl CloudVolume {
     /// The sky draw's group 1: the image the last march wrote.
     pub(super) fn sky_group(&self) -> &wgpu::BindGroup {
         self.passes.as_ref().map_or(&self.placeholder, |p| &p.targets.sky[p.current.get()])
+    }
+
+    /// Puts `history` in place of the drawn view's (a fresh one for the frame's `depth` of `size` when `None`) and
+    /// gives the drawn view's back: a triple screen's views each march their own (`super::views`). `None` without the
+    /// clouds.
+    pub(super) fn exchange(
+        &mut self,
+        device: &wgpu::Device,
+        history: Option<CloudHistory>,
+        (depth, size): (&wgpu::TextureView, (u32, u32)),
+    ) -> Option<CloudHistory> {
+        let p = self.passes.as_mut()?;
+        let history = history.unwrap_or_else(|| CloudHistory {
+            targets: Targets::new(device, (&p.march_layout, &self.sky_layout), &p.resources, depth, size),
+            frame: 0,
+            current: 0,
+            previous: None,
+        });
+        Some(CloudHistory {
+            targets: std::mem::replace(&mut p.targets, history.targets),
+            frame: p.frame.replace(history.frame),
+            current: p.current.replace(history.current),
+            previous: p.previous.replace(history.previous),
+        })
     }
 
     pub(super) fn resize(&mut self, device: &wgpu::Device, depth: &wgpu::TextureView, size: (u32, u32)) {

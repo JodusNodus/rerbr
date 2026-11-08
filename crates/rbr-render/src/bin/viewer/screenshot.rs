@@ -6,10 +6,12 @@ use crate::draw::{
     step_characters,
 };
 use crate::scene::Scene;
+use crate::triple;
 use glam::Mat4;
 use rbr_counters::{Counts, Mark};
 use rbr_formats::data::Data;
 use rbr_recording::pose::CarPose;
+use rbr_render::camera::Lens;
 use rbr_render::hud::camera_page::{CameraPage, Fov};
 use rbr_render::hud::ffb_page::FfbPage;
 use rbr_render::hud::pause::{self, Outcome, PauseMenu};
@@ -19,7 +21,7 @@ use rbr_render::hud::stock::Stock;
 use rbr_render::hud::{self as hud_overlay, Overlay};
 use rbr_render::perf_log;
 use rbr_render::playback::ChaseLook;
-use rbr_render::renderer::{self, Gpu, Renderer};
+use rbr_render::renderer::{self, FrameView, Gpu, Renderer};
 use rbr_render::views::Shown;
 use std::error::Error;
 use std::fs::File;
@@ -127,7 +129,8 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         if let Some(playback) = &mut scene.playback {
             playback.follow_cameras(shown.swing(), args.look_back);
         }
-        let aspect = size.0 as f32 / size.1 as f32;
+        // One screen's size: the image's, or a third of it for a triple screen's three views side by side.
+        let screen = triple::screen(size, args.triple.is_some());
         // The school demo replaces the player's camera: the chase follows the demo car, the ride watches
         // from the cockpit (or the bonnet).
         let demo_lens = match (&demo, scene.playback.as_ref(), scene.mounts.as_ref()) {
@@ -137,15 +140,16 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             (Some((false, car)), Some(playback), _) => Some(playback.camera_at(car, look).lens(playback.chase_fov)),
             _ => None,
         };
-        let (view_projection, sky_view_projection) = match camera {
-            Some(camera) => (camera.view_projection(fov, aspect), camera.sky_view_projection(fov, aspect)),
-            None => match demo_lens {
-                Some(lens) => (lens.view_projection(aspect), lens.sky_view_projection(aspect)),
-                None => view_projections(scene, shown, look, fov, aspect),
-            },
+        let lens = match (camera, demo_lens) {
+            (Some(camera), _) => camera.lens(fov),
+            (None, Some(lens)) => lens,
+            (None, None) => lens(scene, shown, look, fov),
         };
+        let (views, centre) = triple::views(&lens, args.triple.as_ref(), screen);
+        let view_projections: Vec<_> = views.iter().map(|&(view_projection, _)| view_projection).collect();
+        let (view_projection, sky_view_projection) = views[centre];
         if let Some(characters) = &mut scene.characters {
-            characters.apply(&mut renderer, view_projection);
+            characters.apply(&mut renderer, &view_projections);
         }
         // The particles first: the glass takes their tyre spray.
         draw_particles(scene, &mut renderer, view_projection);
@@ -181,7 +185,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             ghost.apply(&mut renderer, playback, hud, view_projection);
         }
         if let (Some(drawn), Some(playback)) = (&mut scene.fences, &scene.playback) {
-            drawn.draw(&mut renderer, playback, view_projection);
+            drawn.draw(&mut renderer, playback, &view_projections);
         }
         if let (Some(dials), Some(playback)) = (&mut scene.dials, &scene.playback) {
             dials.update(&dial_values(playback, scene.live.as_ref()), None, &mut renderer);
@@ -195,28 +199,39 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         // The probes show a first frame's sky and shadows (as the window's load draws them).
         if shot == 0 && renderer.has_probes() {
-            renderer.render_offscreen(size, view_projection, sky_view_projection)?;
+            renderer.render_offscreen(screen, view_projection, sky_view_projection)?;
             renderer.bake_probes();
         }
         if frames > 0 && shot == 0 {
-            time_frames(&gpu, &mut renderer, format, size, (view_projection, sky_view_projection), args)?;
+            time_frames(&gpu, &mut renderer, format, screen, (view_projection, sky_view_projection), args)?;
         }
-        let (stats, pixels) =
-            renderer.render_offscreen_with(size, view_projection, sky_view_projection, |encoder, target| {
-                overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, size, |ctx, hud| {
-                    readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
-                    menu.iter().for_each(|m| pause::paint(ctx, m));
-                    if menu.is_none() {
-                        if let Some(actions) = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu)) {
-                            results::paint(ctx, &actions);
-                        }
+        // The centre view first (a triple screen's draws what the views share), then the others beside it.
+        let frame_view = FrameView { views: &views, index: centre, first: true, at: None };
+        let (stats, pixels) = renderer.render_offscreen_view(screen, frame_view, |encoder, target| {
+            overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, screen, |ctx, hud| {
+                readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
+                menu.iter().for_each(|m| pause::paint(ctx, m));
+                if menu.is_none() {
+                    if let Some(actions) = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu)) {
+                        results::paint(ctx, &actions);
                     }
-                    if let Some(ride) = demo_ride {
-                        demo_hint(ctx, ride);
-                    }
-                });
-            })?;
+                }
+                if let Some(ride) = demo_ride {
+                    demo_hint(ctx, ride);
+                }
+            });
+        })?;
         eprintln!("screenshot: {stats:?}");
+        let mut images = vec![(centre, pixels)];
+        for index in triple::order(views.len()).skip(1) {
+            if let Some(drawn) = &scene.particles {
+                drawn.view(&mut renderer, views[index].0);
+            }
+            let frame_view = FrameView { views: &views, index, first: false, at: None };
+            images.push((index, renderer.render_offscreen_view(screen, frame_view, |_, _| {})?.1));
+        }
+        images.sort_by_key(|&(index, _)| index);
+        let (size, pixels) = side_by_side(screen, &images.into_iter().map(|(_, pixels)| pixels).collect::<Vec<_>>());
         let path = match args.sequence {
             0 => path.to_path_buf(),
             _ => {
@@ -340,17 +355,29 @@ fn draw_only(
 /// The view-projection and the sky's view-projection for the scene's camera at horizontal field of view `fov` and
 /// `aspect`: the orbit camera when there is one, otherwise the stage start view.
 pub fn view_projections(scene: &Scene, shown: Shown, look: ChaseLook, fov: f32, aspect: f32) -> (Mat4, Mat4) {
+    let lens = lens(scene, shown, look, fov);
+    (lens.view_projection(aspect), lens.sky_view_projection(aspect))
+}
+
+/// The scene's camera at horizontal field of view `fov` ([`view_projections`]).
+fn lens(scene: &Scene, shown: Shown, look: ChaseLook, fov: f32) -> Lens {
     match (&scene.orbit, &scene.playback, &scene.mounts) {
-        (Some(orbit), _, _) => (orbit.view_projection(fov, aspect), orbit.sky_view_projection(fov, aspect)),
+        (Some(orbit), _, _) => orbit.lens(fov),
         (None, Some(playback), Some(mounts)) => {
-            let lens = shown.lens(playback, mounts, scripted_camera(scene.characters.as_ref()).2, look, fov);
-            (lens.view_projection(aspect), lens.sky_view_projection(aspect))
+            shown.lens(playback, mounts, scripted_camera(scene.characters.as_ref()).2, look, fov)
         }
-        _ => {
-            let camera = start_camera(&scene.stage, scene.chase);
-            (camera.view_projection(fov, aspect), camera.sky_view_projection(fov, aspect))
-        }
+        _ => start_camera(&scene.stage, scene.chase).lens(fov),
     }
+}
+
+/// One image of `images` of `screen` pixels each (RGBA rows), left to right, and its size.
+fn side_by_side(screen: (u32, u32), images: &[Vec<u8>]) -> ((u32, u32), Vec<u8>) {
+    let row = screen.0 as usize * 4;
+    let pixels = (0..screen.1 as usize)
+        .flat_map(|y| images.iter().flat_map(move |image| &image[y * row..(y + 1) * row]))
+        .copied()
+        .collect();
+    ((screen.0 * images.len() as u32, screen.1), pixels)
 }
 
 /// Writes the colour without the alpha channel. The game's back buffer is `D3DFMT_X8R8G8B8` (the capture's

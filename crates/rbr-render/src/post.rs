@@ -339,13 +339,15 @@ impl Post {
         &self.targets.shafts
     }
 
-    /// Writes the frame in [`Post::scene`] into `target`, its exposure eased from the last frame's to `time`
-    /// (seconds); `cabin_depth` in the in-car view ([`cabin_depth`]), else 0; graded by the frame's `conditions`.
+    /// Writes the frame in [`Post::scene`] into `target`, all of it, or keeping the rest, into its part `viewport` (x,
+    /// y, width and height in pixels: a spanned display's third, `crate::triple`); its exposure eased from the last frame's
+    /// to `time` (seconds: a later view of the same frame keeps the first's); `cabin_depth` in the in-car view
+    /// ([`cabin_depth`]), else 0; graded by the frame's `conditions`.
     pub(crate) fn draw(
         &mut self,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        target: &wgpu::TextureView,
+        (target, viewport): (&wgpu::TextureView, Option<[u32; 4]>),
         time: f32,
         cabin_depth: f32,
         conditions: Conditions,
@@ -405,7 +407,25 @@ impl Post {
             pass(encoder, &t.levels[index - 1], wgpu::LoadOp::Load, &self.up, &[&t.sources[index + 1]]);
         }
         let composite = &self.composite[usize::from(cabin_depth > 0.0)];
-        pass(encoder, target, clear, composite, &[&t.sources[0], &t.composite]);
+        let Some([x, y, width, height]) = viewport else {
+            pass(encoder, target, clear, composite, &[&t.sources[0], &t.composite]);
+            return;
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("post"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+            })],
+            ..Default::default()
+        });
+        pass.set_viewport(x as f32, y as f32, width as f32, height as f32, 0.0, 1.0);
+        pass.set_pipeline(composite);
+        pass.set_bind_group(0, &t.sources[0], &[]);
+        pass.set_bind_group(1, &t.composite, &[]);
+        pass.draw(0..3, 0..1);
     }
 }
 

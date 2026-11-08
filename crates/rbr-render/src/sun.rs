@@ -257,36 +257,43 @@ pub(crate) fn placeholder(device: &wgpu::Device) -> wgpu::TextureView {
         })
 }
 
-/// The points that bound what each cascade holds for a view ([`cascades`]): its slice's corners, the near ones both at
-/// the slice's depth and at its distance (`sun_point` picks the cascade by the distance).
-pub(crate) type Slices = [[Vec3; 12]; 3];
+/// The points that bound what each cascade holds for the views ([`cascades`]): each view's slice's corners, the near
+/// ones both at the slice's depth and at its distance (`sun_point` picks the cascade by the distance).
+pub(crate) type Slices = [Vec<Vec3>; 3];
 
-/// The cascades for the view `view_projection` and sunlight travelling along `sun`, and the points their slices of the
-/// view span. Each covers the bounding sphere of its slice of the view, so its size does not change as the view turns,
-/// and its centre moves in whole texels, so shadow edges do not crawl as the eye moves.
-pub(crate) fn cascades(view_projection: Mat4, sun: Vec3, quality: Quality) -> (Cascades, Slices) {
-    let inverse = view_projection.inverse();
-    let eye = crate::camera::eye(view_projection);
-    // The four corner rays of the view and its forward axis.
-    let corner = |x: f32, y: f32| {
-        let near = inverse.project_point3(Vec3::new(x, y, 1.0));
-        let far = inverse.project_point3(Vec3::new(x, y, 0.0));
-        (far - near).normalize()
-    };
-    let rays = [corner(-1.0, -1.0), corner(1.0, -1.0), corner(-1.0, 1.0), corner(1.0, 1.0)];
-    let forward = (rays[0] + rays[1] + rays[2] + rays[3]).normalize();
+/// The cascades for the views `views` (one eye: a single view, or a triple screen's three, `crate::triple`) and
+/// sunlight travelling along `sun`, and the points their slices of the views span. Each covers the bounding sphere of
+/// its slices of the views, so its size does not change as the view turns, and its centre moves in whole texels, so
+/// shadow edges do not crawl as the eye moves.
+pub(crate) fn cascades(views: &[Mat4], sun: Vec3, quality: Quality) -> (Cascades, Slices) {
+    let eye = crate::camera::eye(views[0]);
+    // Each view's four corner rays and its forward axis.
+    let axes: Vec<([Vec3; 4], Vec3)> = views
+        .iter()
+        .map(|view_projection| {
+            let inverse = view_projection.inverse();
+            let corner = |x: f32, y: f32| {
+                let near = inverse.project_point3(Vec3::new(x, y, 1.0));
+                let far = inverse.project_point3(Vec3::new(x, y, 0.0));
+                (far - near).normalize()
+            };
+            let rays = [corner(-1.0, -1.0), corner(1.0, -1.0), corner(-1.0, 1.0), corner(1.0, 1.0)];
+            (rays, (rays[0] + rays[1] + rays[2] + rays[3]).normalize())
+        })
+        .collect();
     let up = if sun.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
     let light = view::look_to_mat4(Vec3::ZERO, sun, up);
     let mut near = 0.0;
     let mut matrices = [Mat4::IDENTITY; 3];
     let mut texels = [0.0; 3];
-    let mut slices = [[Vec3::ZERO; 12]; 3];
+    let mut slices: Slices = Default::default();
     for (i, &far) in SPLITS.iter().enumerate() {
-        let points: Vec<Vec3> = rays
-            .iter()
-            .flat_map(|&ray| [near, far].map(|distance| eye + ray * (distance / ray.dot(forward))))
-            .collect();
-        slices[i] = std::array::from_fn(|k| points.get(k).copied().unwrap_or_else(|| eye + rays[k - 8] * near));
+        let mut points = Vec::with_capacity(8 * axes.len());
+        for (rays, forward) in &axes {
+            let corners = rays.iter().flat_map(|&ray| [near, far].map(|d| eye + ray * (d / ray.dot(*forward))));
+            points.extend(corners);
+            slices[i].extend(points[points.len() - 8..].iter().copied().chain(rays.map(|ray| eye + ray * near)));
+        }
         let centre = points.iter().copied().sum::<Vec3>() / points.len() as f32;
         let radius = points.iter().map(|p| p.distance(centre)).fold(0.0, f32::max).ceil();
         let texel = 2.0 * radius / quality.size as f32;
@@ -490,7 +497,7 @@ mod tests {
         };
         let mut drawn = CascadesDrawn::default();
         let mut due = |x: f32| {
-            let (mut made, slices) = cascades(view(x), sun, quality);
+            let (mut made, slices) = cascades(&[view(x)], sun, quality);
             drawn.due(&mut made, &slices, sun, quality)
         };
         assert_eq!(due(0.0), [true; 3]);

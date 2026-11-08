@@ -5,6 +5,7 @@ use super::reflection::{self, REFLECTION_REACH};
 use super::shadows::{Casting, Layers};
 use super::textures::depth_view;
 use super::uniforms::frame_index;
+use super::views::FrameView;
 use super::{Renderer, CLEAR_COLOR};
 use crate::atmosphere::Atmosphere;
 use crate::camera::{self, Frustum};
@@ -43,6 +44,23 @@ impl Renderer {
         view_projection: Mat4,
         sky_view_projection: Mat4,
     ) -> FrameStats {
+        let views = [(view_projection, sky_view_projection)];
+        self.render_view(encoder, target, size, FrameView { views: &views, index: 0, first: true, at: None })
+    }
+
+    /// [`Renderer::render`] for one of a frame's views ([`FrameView`]; a triple screen's, `crate::triple`), each the
+    /// same `size`, into `target` or its part at [`FrameView::at`]. The caller submits `encoder` before drawing the
+    /// next view, whose writes would overwrite this one's.
+    pub fn render_view(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        size: (u32, u32),
+        frame_view: FrameView<'_>,
+    ) -> FrameStats {
+        let (view_projection, sky_view_projection) = frame_view.matrices();
+        let first = frame_view.first;
+        self.switch_view(frame_view.index);
         let output = size;
         let size = match self.render_scale {
             scale if scale < 1.0 => {
@@ -53,6 +71,7 @@ impl Renderer {
         };
         if (size, output) != (self.depth_size, self.output_size) {
             (self.depth_size, self.output_size) = (size, output);
+            self.drop_parked();
             self.depth_view = depth_view(&self.device, size);
             if let Some(ssr) = &mut self.screen_reflection {
                 ssr.resize(&self.device, SCENE_FORMAT, size, &self.depth_view);
@@ -82,11 +101,15 @@ impl Renderer {
         // the light shafts keep the view.
         let shift = self.taa.as_mut().map_or(Mat4::IDENTITY, crate::taa::Taa::begin);
         let drawn = [shift * view_projection, shift * sky_view_projection];
-        self.prepare_motion(view_projection);
-        // At night the moon casts them (`sun_direction` is the moon's then).
+        self.prepare_motion(view_projection, first);
+        // At night the moon casts them (`sun_direction` is the moon's then), fitted to every view of the frame and drawn
+        // with its first.
         let (light, quality, eye) = (self.shadow_light(), self.sun_quality(), camera::eye(view_projection));
-        let made = self.enhance.lighting.then(|| sun::cascades(view_projection, light, quality));
-        self.cascades = made.map(|(cascades, _)| cascades);
+        let made =
+            (self.enhance.lighting && first).then(|| sun::cascades(&frame_view.view_projections(), light, quality));
+        if first {
+            self.cascades = made.as_ref().map(|(cascades, _)| *cascades);
+        }
         // The second and third cascades are drawn in turn ([`sun::CascadesDrawn`]), the far layer again only once it
         // no longer serves the eye ([`sun::FarDrawn::kept`]); until then the frame reads them through the matrix they
         // were drawn with.
@@ -114,21 +137,23 @@ impl Renderer {
         }
         let lamps_light = self.lamps_light();
         self.lamp_matrix = self.sun.as_ref().filter(|_| lamps_light).and_then(|_| self.lamp_shadow_matrix());
-        self.stream_grass(eye);
+        if first {
+            self.stream_grass(eye);
+        }
         let mut profiler = self.profiler.take();
         let drop = sun::backdrop_drop(self.shadow_light());
         let layers = Layers { cascades: self.cascades, due, far, lamp: self.lamp_matrix, world, eye, drop };
         let blocking = profiler.as_ref().is_some_and(Profiler::blocking);
         let stats = std::thread::scope(|scope| {
             let casting = || {
-                self.sun.as_ref().map(|sun| Casting {
+                self.sun.as_ref().filter(|_| first).map(|sun| Casting {
                     meshes: &self.meshes,
                     buffers: &self.buffers,
                     sun,
                     queue: &self.queue,
                 })
             };
-            let range = self.sun_range.as_ref().filter(|_| self.cascades.is_some());
+            let range = self.sun_range.as_ref().filter(|_| first && self.cascades.is_some());
             // The sun's maps depend on nothing else in the frame: unless profiling, another thread records and encodes
             // them from here (wgpu encodes a command buffer when it is finished) while this one prepares the frame and
             // records the first mirror; they are submitted before the first submission that reads them.
@@ -214,10 +239,12 @@ impl Renderer {
                 range.iter().for_each(|range| range.draw(&mut scene_encoder));
                 span(&mut profiler, &mut scene_encoder, "sun cascades and lamp shadow", t);
             }
-            self.update_reflection(&mut profiler);
             // The mirrors' passes read this frame's sun cascades: they are submitted before the first.
             let mut shadows = shadows.map(|thread| move || thread.join().expect("the shadow maps' thread"));
-            self.draw_mirrors(&mut profiler, [view_projection, sky_view_projection], &mut shadows);
+            if first {
+                self.update_reflection(&mut profiler);
+                self.draw_mirrors(&mut profiler, frame_view.views, view_projection, &mut shadows);
+            }
             let stats = self.draw_frame(&mut scene_encoder, &mut profiler, drawn[0], drawn[1]);
             if self.motion.is_some() {
                 let t = mark(&mut profiler, &mut scene_encoder);
@@ -302,7 +329,8 @@ impl Renderer {
             }
         }
         let t = mark(&mut profiler, encoder);
-        self.post.draw(&self.queue, encoder, target, self.time, cabin_depth, conditions);
+        let viewport = frame_view.at.map(|(x, y)| [x, y, output.0, output.1]);
+        self.post.draw(&self.queue, encoder, (target, viewport), self.time, cabin_depth, conditions);
         span(&mut profiler, encoder, "post (bloom, tone)", t);
         self.profiler = profiler;
         stats

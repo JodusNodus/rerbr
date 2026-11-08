@@ -4,6 +4,7 @@ use crate::args::Args;
 use crate::draw::start_camera;
 use crate::loading::{Loaded, Loading};
 use crate::screenshot::SIZE;
+use crate::triple::{self, Side};
 use rbr_formats::data::Data;
 use rbr_render::hud::stock::Stock;
 use rbr_render::hud::Overlay;
@@ -57,15 +58,11 @@ impl Viewer {
     /// The loaded scene's drive, in the loading screen's window.
     fn run(&self, shell: Shell, Loaded { scene, renderer, sound }: Loaded) -> App {
         let args = &*self.args;
-        let Shell { window, surface, config, stale, gpu, overlay } = shell;
+        let Shell { window, surface, config, stale, gpu, overlay, sides, .. } = shell;
         let camera = start_camera(&scene.stage, scene.chase);
-        App::new(
-            scene,
-            args,
-            sound,
-            Running { window, surface, config, stale, gpu, renderer, camera, overlay },
-            self.data.clone(),
-        )
+        let rig = args.triple;
+        let running = Running { window, surface, config, stale, gpu, renderer, camera, overlay, rig, sides };
+        App::new(scene, args, sound, running, self.data.clone())
     }
 }
 
@@ -78,7 +75,9 @@ impl ApplicationHandler for Viewer {
             Ok(shell) => {
                 let (gpu, config) = (shell.gpu.clone(), &shell.config);
                 let (args, data, fmod_bank) = (self.args.clone(), self.data.clone(), self.fmod_bank.clone());
-                let loading = Loading::start(args, data, fmod_bank, gpu, config.format, (config.width, config.height));
+                // The first frame warms up at one screen's size (a third of a window holding a triple screen's three).
+                let screen = triple::screen((config.width, config.height), shell.spanned);
+                let loading = Loading::start(args, data, fmod_bank, gpu, config.format, screen);
                 self.phase = Phase::Loading(Box::new((shell, loading)));
             }
             Err(error) => self.fail(event_loop, error.to_string()),
@@ -97,7 +96,10 @@ impl ApplicationHandler for Viewer {
                 event: KeyEvent { physical_key: PhysicalKey::Code(KeyCode::Escape), state: ElementState::Pressed, .. },
                 ..
             } => event_loop.exit(),
-            WindowEvent::Resized(size) => shell.resize(size),
+            WindowEvent::Resized(size) => match shell.sides.iter_mut().find(|side| side.window.id() == id) {
+                Some(side) => side.resize(&shell.gpu.device, size),
+                None => shell.resize(size),
+            },
             WindowEvent::RedrawRequested => shell.draw_loading(loading),
             _ => {}
         }
@@ -144,6 +146,10 @@ struct Shell {
     stale: bool,
     gpu: Gpu,
     overlay: Overlay,
+    /// The side screens' windows (`--triple-monitors`), left and right.
+    sides: Vec<Side>,
+    /// The window holds a triple screen's three views (`--triple` without `--triple-monitors`).
+    spanned: bool,
 }
 
 impl Shell {
@@ -153,14 +159,24 @@ impl Shell {
             Some((width, height)) => attributes.with_inner_size(PhysicalSize::new(width, height)),
             None => attributes.with_inner_size(LogicalSize::new(SIZE.0, SIZE.1)),
         };
-        // Borderless on the current monitor: the surface follows the monitor's size (`WindowEvent::Resized`), and a
-        // Wayland compositor can scan it out directly.
-        let attributes = attributes.with_fullscreen(args.fullscreen.then_some(Fullscreen::Borderless(None)));
         // The Wayland app id and the X11 class (one field in winit), which compositor rules can match.
         #[cfg(all(unix, not(target_vendor = "apple"), not(target_os = "android")))]
         let attributes =
             winit::platform::wayland::WindowAttributesExtWayland::with_name(attributes, icon::APP_ID, icon::APP_ID);
-        let window = Arc::new(event_loop.create_window(attributes)?);
+        // A triple screen's own monitors (`--triple-monitors`): the main window on the centre one, a side's on each other.
+        let monitors = match (&args.triple, &args.triple_monitors) {
+            (Some(_), Some(names)) => {
+                Some(names.iter().map(|name| triple::monitor(event_loop, name)).collect::<Result<Vec<_>, _>>()?)
+            }
+            _ => None,
+        };
+        // Borderless on the current monitor: the surface follows the monitor's size (`WindowEvent::Resized`), and a
+        // Wayland compositor can scan it out directly.
+        let fullscreen = match &monitors {
+            Some(monitors) => Some(Fullscreen::Borderless(Some(monitors[1].clone()))),
+            None => args.fullscreen.then_some(Fullscreen::Borderless(None)),
+        };
+        let window = Arc::new(event_loop.create_window(attributes.clone().with_fullscreen(fullscreen))?);
         let instance = renderer::instance();
         // Kept to the process's end: dropped with the window, the Vulkan loader unloaded the driver, its layers and
         // itself while the exit handlers they had registered (MangoHud's, set by `MANGOHUD=1`) were still to run, and
@@ -202,7 +218,17 @@ impl Shell {
             }
         }
         let overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
-        Ok(Shell { window, surface, config, stale, gpu, overlay })
+        let sides = match monitors {
+            Some(monitors) => [&monitors[0], &monitors[2]]
+                .into_iter()
+                .map(|monitor| {
+                    Side::open(event_loop, attributes.clone(), monitor.clone(), (&instance, &gpu.device), &config)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            None => Vec::new(),
+        };
+        let spanned = args.triple.is_some() && sides.is_empty();
+        Ok(Shell { window, surface, config, stale, gpu, overlay, sides, spanned })
     }
 
     fn resize(&mut self, size: PhysicalSize<u32>) {
@@ -210,7 +236,16 @@ impl Shell {
         self.config.height = size.height.max(1);
         self.stale = !rbr_render::present::configure(&self.surface, &self.gpu.device, &self.config);
     }
+}
 
+/// The centre screen of a window split in three: where the HUD and the menus go.
+pub(super) fn spanned_region(size: (u32, u32)) -> [u32; 4] {
+    let screen = triple::screen(size, true);
+    let (x, y) = triple::spanned_at(1, screen);
+    [x, y, screen.0, screen.1]
+}
+
+impl Shell {
     /// A frame of the loading screen: black under it.
     fn draw_loading(&mut self, loading: &mut Loading) {
         if self.stale {
@@ -241,10 +276,15 @@ impl Shell {
             ..Default::default()
         });
         let size = (self.config.width, self.config.height);
+        // Spanned, the loading screen goes on the centre screen.
+        self.overlay.set_region(self.spanned.then(|| spanned_region(size)));
         self.overlay
             .draw_with(&self.gpu.device, &self.gpu.queue, &mut encoder, &view, size, |ctx, _| loading.paint(ctx));
         self.gpu.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.gpu.queue.present(frame);
+        for side in &mut self.sides {
+            side.clear((&self.gpu.device, &self.gpu.queue));
+        }
     }
 }
