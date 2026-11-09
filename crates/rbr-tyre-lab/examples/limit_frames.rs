@@ -1,6 +1,8 @@
 //! Each probed wheel through a window of a run (`--tyre-probe` dumps): the game's operating point and force, and the
 //! steady answer of NGP's tyre and of a profile's model at the same inputs, with the brush's friction, ψ and sliding
 //! speed and both tyres' peak μ_y and its slip angle at the wheel's load and speed. Prints one line per wheel and dump.
+//! The right-hand wheels' (1, 3) contact frame is the left's turned half round (their contact velocity, spin and forces
+//! all negated: α near 160-180° as read); α, κ and the force ratios print in the left wheels' frame.
 //!
 //! Research tooling (ours, experimental): for the circle's limit (`harness/limit_recovery.py`), which axle saturates
 //! first and whether the model's rear gives less side force than NGP's at the same load and slip angle.
@@ -58,8 +60,10 @@ fn main() {
         let (vlat, vlong, spin, camber) = (slip[1], slip[2], slip[3], slip[8]);
         let fz = p.normal_force;
         let v = vlat.hypot(vlong);
-        let alpha = vlat.atan2(-vlong).to_degrees();
-        let kappa = (spin * p.effective_radius + vlong) / (-vlong).max(0.5);
+        // The printed frame: the right-hand wheels' turned back to the left's (the models take the dump's own).
+        let side = if p.wheel % 2 == 1 { -1.0 } else { 1.0 };
+        let alpha = (side * vlat).atan2(-side * vlong).to_degrees();
+        let kappa = (side * (spin * p.effective_radius + vlong)) / (-side * vlong).max(0.5);
         let model_of = |name: &str, p: &Params| {
             rbr_tyre::model(name, &[wheel(p)], &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"))
         };
@@ -110,10 +114,10 @@ fn main() {
             alpha,
             kappa,
             camber.asin().to_degrees(),
-            force[0] / fz,
-            force[1] / fz,
-            fy_n / fz,
-            fy_m / fz,
+            side * force[0] / fz,
+            side * force[1] / fz,
+            side * fy_n / fz,
+            side * fy_m / fz,
             e.mu,
             e.psi,
             vsx.hypot(vsy),

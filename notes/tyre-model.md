@@ -1519,9 +1519,10 @@ now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identica
   map 85 (z 3.4 m all round) under gravel 17 with the dry gravel tyre (`limit_pace` `gravel-flat`), snow 101 with the
   snow tyre (`snow-flat`), tarmac 37 (`tarmac`); 345's damp tyre 4 there reads 3 % under tyre 3 (0.936 / 0.935).
 - Flat r40 circles, Fiesta Rally2, kinematic / glat / glat ÷ kinematic: gravel 0.971 / 0.920 / 0.95 and 0.955 / 0.877
-  / 0.92; snow 0.952 / 0.893 / 0.94 and 0.982 / 0.900 / 0.92; tarmac 1.282 / 1.181 / 0.92 and 1.327 / 1.186 / 0.89.
-  glat ≈ the path's own v²/r (0.98-1.01): the row overstates an accelerometer by 5-11 % because the car runs 1-3 m
-  wide of the commanded radius; roll and sideslip (β 7-9° ngp, 11-14° brush) cancel. r25 / r40 and ramps 0.2-0.8
+  / 0.92; snow 0.952 / 0.893 / 0.94 and 0.982 / 0.900 / 0.92; tarmac 1.282 / 1.181 / 0.92 and 1.327 / 1.186 / 0.89
+  (before T55's limit hold, which takes tarmac to 1.334 / 1.254 and 1.333 / 1.234: "Why the flat r40 tarmac circle
+  lost it"). glat ≈ the path's own v²/r (0.98-1.01): the row overstates an accelerometer by 5-11 % because the car
+  runs 1-3 m wide of the commanded radius; roll and sideslip (β 7-9° ngp, 11-14° brush) cancel. r25 / r40 and ramps 0.2-0.8
   move it ±3 % (gravel kinematic 0.95-1.00, glat 0.86-0.92; tarmac 1.22-1.37 / 1.14-1.21); r60 does not fit the pad.
 - At the flat gravel limit all four tyres run at 0.93-1.02 of NGP's own peak at their load (`limit_frames`): ngp
   fronts 1.01-1.02, rears 0.96-1.02, Σ|F|/ΣFz 0.872 against Σμ(Fz)Fz/ΣFz 0.873; brush fronts 0.99-1.02, rears
@@ -2075,10 +2076,16 @@ stays the untuned brush's. The table's model column is the brush before the mode
   winds the steering on (0.25 → 0.77) as the speed ramps once the fronts reach their peak (~6° at 21.5 m/s), and the
   fastest second falls in that slide, so the row reads μ_y near 22°, which the slide grip sets, not the peak. The
   Escort Mk II (RWD) holds a power drift instead (β -17°): fronts at 5.7-6.2° (0.77 of the peak, use 0.96-0.99), rears
-  at 20-22° with 0.16-0.66 drive slip (use 0.79-0.97); glat 1.090 / 1.117 / 1.123 g (-2.4 %). Recommendation (not
-  done: the autopilot and the circle method are out of scope): cap the circle tracker's steering near the front's peak
-  slip angle (as a driver would hold it), or score the hold before the fronts pass ~1.5 times their peak angle; as it
-  is, the circle row measures the slide grip.
+  at 20-22° with 0.16-0.66 drive slip (use 0.79-0.97); glat 1.090 / 1.117 / 1.123 g (-2.4 %). Since T55
+  (2026-11-09) the circle holds the steering once more steering stops buying lateral acceleration
+  (`autopilot/limit.rs`: over 2 s the inward steering up ≥ 0.05 of lock while the lateral g rose under a quarter of
+  its relative rise, within 0.95 of the run's best g, for 0.5 s; the same for every model, no tyre constant), and the
+  ramp runs the car wide. The circle now measures the car at its front limit: tarmac, fastest second (ngp / brush),
+  steering 0.38 / 0.31, outer front 10.8° / 7.2° (1.05 / 0.95 of its peak angle, use 1.00 / 0.98), inner front 11.1° /
+  7.3° (1.9 / 1.2, use 0.97), rears 0.5-0.7 of their peak (use 0.83-0.97); glat 1.181 → 1.254 and 1.143 → 1.234 g,
+  kinematic 1.282 → 1.334 and 1.321 → 1.333; gravel-flat and snow-flat within 1.6 % (glat 0.916 / 0.923, 0.885 /
+  0.889). The Escort never triggers it (its steering unwinds into countersteer as the rears saturate): traces
+  byte-identical. RSF 345's sloped circle unchanged (its swings sit below 0.95 of the best g).
 
 ## Open
 
