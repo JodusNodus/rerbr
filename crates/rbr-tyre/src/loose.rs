@@ -12,8 +12,9 @@
 //!   tan [`GRAVEL_ALPHA0_DEG`] ([`shear`]). Coutermarsh & Shoop (SAE 2010-01-0374, CRREL CIV, LT235/75R15, 241 kPa,
 //!   6.7 kN, 1-1.5 m/s, Fig. 15, fig ±0.004): pea stone over its maximum 0.33/0.55/0.80/0.91 at 2.5/5/10/15°, still
 //!   rising to 38°, fits it with α0 6.28° (rms 0.0012; the brush's cubic 0.0165, the law integrated over a uniform
-//!   patch 0.0098); wet gravel fits 9.7° (0.23/0.40/0.65/0.79). α0 follows NGP's WaterFactor, 6.3° dry to 9.7° wet,
-//!   linear (ours; [`gravel_alpha0_deg`]). No peak, no fall; the level is approached (0.995 at 30°, 0.973 wet). At
+//!   patch 0.0098); wet gravel fits 9.7° (0.23/0.40/0.65/0.79). That is NGP's deeper gravel (25-30 mm); a shallower
+//!   loose layer builds force faster, dry α0 3.4° at 9 mm and 4.8° at 17.5 mm ([`GRAVEL_DEPTH_ALPHA0_DEG`]), and
+//!   NGP's WaterFactor scales it by up to 9.7 / 6.3, linear (ours; [`gravel_alpha0_deg`]). No peak, no fall; the level is approached (0.995 at 30°, 0.973 wet). At
 //!   stage speed the one curve, Croft-White's WRC telemetry on wet loose gravel (PhD, Cranfield 2006, Figs 4.32-4.33,
 //!   digitised: fig ±0.05, inferred), saturates by 9-22° (90 %) and does not fall to 32° (0.96-1.06 of the 10-24°
 //!   maximum; his tarmac curves fall to 0.71-0.83 by the same method, the bench data's 0.73-0.90), so the law takes no
@@ -108,16 +109,34 @@ pub fn braking_slip(vsx: f64, vx: f64) -> f64 {
     }
 }
 
-/// Gravel's shear law reaches 1 - 1/e of the friction at this slip angle on dry gravel, degrees ([`shear`]):
-/// Coutermarsh & Shoop's pea stone (Fig. 15) fitted: 6.28° (rms 0.0012 μ/max over 1-38°), rounded.
+/// Gravel's shear law reaches 1 - 1/e of the friction at this slip angle on dry deep gravel, degrees ([`shear`]):
+/// Coutermarsh & Shoop's pea stone (Fig. 15, a loose layer 4-9.5 cm deep on recycled asphalt, TR-10-11) fitted: 6.28°
+/// (rms 0.0012 μ/max over 1-38°), rounded. NGP's deeper gravel (25-30 mm) takes it ([`GRAVEL_DEPTH_ALPHA0_DEG`]).
 pub const GRAVEL_ALPHA0_DEG: f64 = 6.3;
 /// The same on wet gravel (NGP's WaterFactor 1): Coutermarsh & Shoop's wet gravel (Fig. 15) fitted: 9.7° (rms 0.0015).
+/// Its ratio to [`GRAVEL_ALPHA0_DEG`] scales every depth's dry α0.
 pub const GRAVEL_WET_ALPHA0_DEG: f64 = 9.7;
+/// Dry gravel's α0, degrees, at NGP's loose layer depths, m (`SoilThickness`; shallow 9-15, deep 17.5-22.5, deeper
+/// 25-30 mm): linear between, the ends held. A thin layer on a packed base builds force faster than a deep one (ours,
+/// the size; the direction: the initial slope rises with the soil's strength, Gee-Clough & Sommer 1981 via El-Razaz
+/// 1988; gravel's exponential rate 2.7 times a ploughed field's, Metz 1993; a firm gravel lot over asphalt at α90
+/// 2.6-3.3°, Hindiyeh 2013). The anchors are fitted to the α90 at 4 kN, 15 m/s, dry (`force_sweep` on RSF 345's
+/// gravel probe): 9 mm 8° (between the firm lot and Croft-White's WRC on a stage road, ~12°), 17.5 mm 11° (that
+/// road), 25 mm 14.25° (pea stone).
+pub const GRAVEL_DEPTH_ALPHA0_DEG: [(f64, f64); 3] = [(0.009, 3.4), (0.0175, 4.8), (0.025, GRAVEL_ALPHA0_DEG)];
 
-/// Gravel's α0, degrees ([`shear`]), at the surface's `wetness` (NGP's WaterFactor, 0 dry, 0.25 damp, 1 wet): linear
-/// between [`GRAVEL_ALPHA0_DEG`] and [`GRAVEL_WET_ALPHA0_DEG`] (ours: the damp point is unmeasured).
-pub fn gravel_alpha0_deg(wetness: f64) -> f64 {
-    GRAVEL_ALPHA0_DEG + (GRAVEL_WET_ALPHA0_DEG - GRAVEL_ALPHA0_DEG) * wetness.clamp(0.0, 1.0)
+/// Gravel's α0, degrees ([`shear`]), at the loose layer's `depth` (m, NGP's blended `SoilThickness`,
+/// [`GRAVEL_DEPTH_ALPHA0_DEG`]) and the surface's `wetness` (NGP's WaterFactor, 0 dry, 0.25 damp, 1 wet): the depth's
+/// dry α0 times 1 to [`GRAVEL_WET_ALPHA0_DEG`] / [`GRAVEL_ALPHA0_DEG`], linear in the wetness (ours: the damp point is
+/// unmeasured).
+pub fn gravel_alpha0_deg(depth: f64, wetness: f64) -> f64 {
+    let a = &GRAVEL_DEPTH_ALPHA0_DEG;
+    let dry = match a.iter().position(|&(d, _)| depth < d) {
+        Some(0) => a[0].1,
+        Some(k) => a[k - 1].1 + (a[k].1 - a[k - 1].1) * (depth - a[k - 1].0) / (a[k].0 - a[k - 1].0),
+        None => a[a.len() - 1].1,
+    };
+    dry * (1.0 + (GRAVEL_WET_ALPHA0_DEG / GRAVEL_ALPHA0_DEG - 1.0) * wetness.clamp(0.0, 1.0))
 }
 
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
@@ -148,10 +167,10 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_de
 }
 
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
-/// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]); the rest takes the
-/// brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is [`PLOUGH`]. `mu` is the directional
+/// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]) at the loose layer's
+/// `depth` (m); the rest takes the brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is [`PLOUGH`]. `mu` is the directional
 /// friction including the berm (the force's limit).
-pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64) -> EvalOutput {
+pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);
     let cal = &c.cal;
@@ -162,7 +181,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64) -> EvalOutput {
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if gravel > 0.0 {
-        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(x.wetness), c.shear_stiffness);
+        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(depth, x.wetness), c.shear_stiffness);
         out.kx += (k - out.kx) * gravel;
         out.ky += (k - out.ky) * gravel;
         out.fx = -out.kx * sx;
@@ -215,7 +234,7 @@ fn cal_input(cal: &Calibration, v: f64, alpha: f64) -> EvalInput {
 /// The least-squares cornering slope over 0 to 2° (in 0.25°) at the calibration point, as `crate::fit` takes NGP's.
 pub fn cornering_slope(c: &Loose, v: f64) -> f64 {
     let (sxy, sxx) = (1..=8).map(|k| (f64::from(k) * 0.25).to_radians()).fold((0.0, 0.0), |(sxy, sxx), a| {
-        (sxy + a * eval(&cal_input(&c.cal, v, a), c, 0.0, 0.0).fy.abs(), sxx + a * a)
+        (sxy + a * eval(&cal_input(&c.cal, v, a), c, 0.0, 0.0, 0.0).fy.abs(), sxx + a * a)
     });
     sxy / sxx
 }
@@ -273,7 +292,10 @@ pub(crate) mod tests {
         on(c, fz, v, alpha, kappa, grip, 0.0)
     }
 
-    /// As [`at`], with a share `gravel` of gravel's shear law.
+    /// The loose layer's depth of NGP's deeper gravel, m: pea stone's α0 ([`GRAVEL_ALPHA0_DEG`]).
+    const DEEP: f64 = 0.025;
+
+    /// As [`at`], with a share `gravel` of gravel's shear law on deeper gravel.
     fn on(c: &Loose, fz: f64, v: f64, alpha: f64, kappa: f64, grip: f64, gravel: f64) -> EvalOutput {
         let a = alpha.to_radians();
         let vx = -v * a.cos();
@@ -287,7 +309,7 @@ pub(crate) mod tests {
             surf_kinetic: grip,
             ..cal_input(&c.cal, v, a)
         };
-        eval(&x, c, gravel, 0.0)
+        eval(&x, c, gravel, 0.0, DEEP)
     }
 
     #[test]
@@ -362,7 +384,7 @@ pub(crate) mod tests {
                 wetness: w,
                 ..cal_input(&c.cal, 15.0, r)
             };
-            eval(&x, &c, 1.0, 0.0).fy.abs() / peak
+            eval(&x, &c, 1.0, 0.0, DEEP).fy.abs() / peak
         };
         // Coutermarsh & Shoop's wet gravel over its maximum at 2.5/5/10/15° (Fig. 15): 0.23/0.40/0.65/0.79.
         for (a, wet) in [(2.5, 0.23), (5.0, 0.40), (10.0, 0.65), (15.0, 0.79)] {
@@ -370,8 +392,41 @@ pub(crate) mod tests {
         }
         assert_eq!(fy(10.0, 0.0), on(&c, 4000.0, 15.0, 10.0, 0.0, 1.0, 1.0).fy.abs() / peak);
         assert!(fy(10.0, 0.25) < fy(10.0, 0.0) && fy(10.0, 0.25) > fy(10.0, 1.0));
-        assert_eq!(gravel_alpha0_deg(0.25), 6.3 + 3.4 * 0.25);
-        assert_eq!(gravel_alpha0_deg(2.0), GRAVEL_WET_ALPHA0_DEG);
+        assert!((gravel_alpha0_deg(DEEP, 0.25) - (6.3 + 3.4 * 0.25)).abs() < 1e-12);
+        assert!((gravel_alpha0_deg(0.03, 2.0) - GRAVEL_WET_ALPHA0_DEG).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_shallow_layer_builds_force_faster() {
+        // The law alone, α90 = atan(ln 10 tan α0): 7.8° at 9 mm (8° in the patch with its carcass), 11° at 17.5 mm,
+        // 14.25° from 25 mm, dry.
+        let alpha90 = |depth: f64| (std::f64::consts::LN_10 * gravel_alpha0_deg(depth, 0.0).to_radians().tan()).atan();
+        for (depth, target) in [(0.0, 7.8), (0.009, 7.8), (0.0175, 11.0), (0.025, 14.25), (0.03, 14.25)] {
+            assert!((alpha90(depth).to_degrees() - target).abs() < 0.1, "{depth}: {}", alpha90(depth).to_degrees());
+        }
+        // Linear between the anchors: Coarse Shallow (15 mm) and Coarse Deep (22.5 mm).
+        assert!((gravel_alpha0_deg(0.015, 0.0) - (3.4 + 1.4 * 6.0 / 8.5)).abs() < 1e-12);
+        assert!((gravel_alpha0_deg(0.0225, 0.0) - (4.8 + 1.5 * 5.0 / 7.5)).abs() < 1e-12);
+        // The wet ratio on top of each depth's dry α0.
+        for depth in [0.009, 0.0175, 0.025] {
+            let r = gravel_alpha0_deg(depth, 1.0) / gravel_alpha0_deg(depth, 0.0);
+            assert!((r - GRAVEL_WET_ALPHA0_DEG / GRAVEL_ALPHA0_DEG).abs() < 1e-12);
+        }
+        // In the patch: the shallow layer's force at 5° is above the deep one's, both reach the level.
+        let c = loose();
+        let x = |a: f64| {
+            let r = f64::to_radians(a);
+            EvalInput {
+                vy: 15.0 * r.sin(),
+                vx: -15.0 * r.cos(),
+                spin: 15.0 * r.cos() / 0.3,
+                radius: 0.3,
+                ..cal_input(&c.cal, 15.0, r)
+            }
+        };
+        let fy = |a: f64, depth: f64| eval(&x(a), &c, 1.0, 0.0, depth).fy.abs() / (0.85 * 4000.0);
+        assert!(fy(5.0, 0.009) > fy(5.0, 0.0175) && fy(5.0, 0.0175) > fy(5.0, DEEP));
+        assert!(fy(40.0, 0.009) > 0.999 && fy(40.0, DEEP) > 0.999);
     }
 
     #[test]
@@ -402,7 +457,7 @@ pub(crate) mod tests {
         let c = loose();
         let locked = |snow: f64| {
             let x = EvalInput { spin: 0.0, surf_static: 0.9, surf_kinetic: 0.9, ..cal_input(&c.cal, 15.0, 0.0) };
-            eval(&x, &c, 0.0, snow).fx / (0.84 * 0.9 * 4000.0)
+            eval(&x, &c, 0.0, snow, 0.0).fx / (0.84 * 0.9 * 4000.0)
         };
         assert!((locked(1.0) - SNOW_PLOUGH).abs() < 1e-9);
         assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0).abs() < 1e-9);
