@@ -2283,8 +2283,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
   Weak: φV per tyre type is from rules and one maker's text, k from two drum and trailer tests on other roads.
   Wanted: a wet against dry rally or race tyre test at a known film; Veith & Pottinger, "Tire wet traction:
   operational severity and its influence on performance", The Physics of Tire Traction (Plenum, 1974), doi
-  10.1007/978-1-4757-1370-1_2 (paywalled: open against closed patterns at more speeds and depths); Heinz & Grosch,
-  Rubber Chem. Technol. 80 (2007) 580-607, doi 10.5254/1.3548182 (paywalled: compound tan δ against tyre wet braking).
+  10.1007/978-1-4757-1370-1_2 (paywalled: open against closed patterns at more speeds and depths). Heinz & Grosch
+  (Rubber Chem. Technol. 80 (2007) 580-607) since read: T61's entry below.
 - Damp tarmac tyre (2026-11-09, T61, `tyre/damp-tyre`, a user decision, experimental-brush only): NGP's damp tarmac
   tyre (kind 1, base 1, slope -0.075, design wetness 0.5 on class 2) ties the dry tyre on damp (both 0.98125) and is
   never the best choice. On the tarmac class's share its factor is now the dry tyre's times R(W)
