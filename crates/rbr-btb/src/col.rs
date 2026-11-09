@@ -201,11 +201,12 @@ fn tree_size(n: &Node) -> u32 {
     }
 }
 
-/// A cell's triangle indices and faces, in the cell's face order.
+/// A cell's triangle indices and faces, in the cell's face order, and the UV of each vertex table entry.
 struct Table<'a> {
     all: &'a [Face],
     order: Vec<u32>,
     index: Vec<u16>,
+    uv: Vec<[f32; 2]>,
     next: usize,
 }
 
@@ -227,13 +228,7 @@ fn write_tree(n: &Node, at: u32, t: &mut Table, out: &mut Vec<u8>) {
             let map = f.map.max(0) as u8;
             out.extend_from_slice(&[map, map]);
             // The nibbles come from the table entry the (16-bit) index names.
-            let nib: Vec<u8> = slots
-                .iter()
-                .map(|&s| {
-                    let entry = i[s] as usize;
-                    nibbles(t.all[t.order[entry / 3] as usize].uv[entry % 3])
-                })
-                .collect();
+            let nib: Vec<u8> = slots.iter().map(|&s| nibbles(t.uv[i[s] as usize])).collect();
             out.extend_from_slice(&nib);
             out.extend_from_slice(&nib);
         }
@@ -254,36 +249,54 @@ fn write_tree(n: &Node, at: u32, t: &mut Table, out: &mut Vec<u8>) {
 }
 
 /// One cell (`DumpBranch` 0x10026860): the vertex table of its faces and its subtree, the root first.
-fn cell(root: &Node, path: u32, all: &[Face]) -> Result<Vec<u8>, String> {
+///
+/// The plugin's table holds (position, uv) per face corner in record order, and a corner indexes its first equal
+/// entry in 16 bits: past 21845 faces a new corner's index wraps (the collision there is wrong). With `share` (a
+/// converted stage) such a cell's table holds each distinct corner once (the loader needs only the vertices'
+/// address), unless even those number over 65536.
+fn cell(root: &Node, path: u32, all: &[Face], share: bool) -> Result<Vec<u8>, String> {
     let mut order = Vec::new();
     collect(root, &mut order);
-    let count = order.len() as u32 * 3;
+    let corners: Vec<([f32; 3], [f32; 2])> =
+        order.iter().flat_map(|&f| (0..3).map(move |k| (all[f as usize].pos[k], all[f as usize].uv[k]))).collect();
+    let key = |(p, uv): &([f32; 3], [f32; 2])| {
+        let b = |v: f32| if v == 0.0 { 0 } else { v.to_bits() };
+        [b(p[0]), b(p[1]), b(p[2]), b(uv[0]), b(uv[1])]
+    };
+    let mut first: HashMap<[u32; 5], u32> = HashMap::with_capacity(corners.len());
+    let index: Vec<u32> =
+        corners.iter().enumerate().map(|(slot, c)| *first.entry(key(c)).or_insert(slot as u32)).collect();
+    let (table, index): (Vec<_>, Vec<u16>) = if !share || index.iter().all(|&i| i <= 0xffff) || first.len() > 0x1_0000 {
+        (corners, index.iter().map(|&i| i as u16).collect())
+    } else {
+        let mut table = Vec::with_capacity(first.len());
+        let mut rank: HashMap<[u32; 5], u16> = HashMap::with_capacity(first.len());
+        let index = corners
+            .iter()
+            .map(|c| {
+                *rank.entry(key(c)).or_insert_with(|| {
+                    table.push(*c);
+                    (table.len() - 1) as u16
+                })
+            })
+            .collect();
+        (table, index)
+    };
+    let count = table.len() as u32;
     let mut out = Vec::new();
     for w in [0x104, path, count, 0x14, count * 12 + 0x14] {
         put(&mut out, w);
     }
-    // The table holds (position, uv) per face corner in record order; a corner indexes its first equal entry.
-    let key = |p: [f32; 3], uv: [f32; 2]| {
-        let b = |v: f32| if v == 0.0 { 0 } else { v.to_bits() };
-        [b(p[0]), b(p[1]), b(p[2]), b(uv[0]), b(uv[1])]
-    };
-    let mut first: HashMap<[u32; 5], u32> = HashMap::with_capacity(count as usize);
-    let mut index = Vec::with_capacity(count as usize);
-    for &f in &order {
-        let f = &all[f as usize];
-        for k in 0..3 {
-            for v in f.pos[k] {
-                out.extend_from_slice(&v.to_le_bytes());
-            }
-            let slot = index.len() as u32;
-            // The plugin stores the table index in 16 bits: a cell over 65536 vertices wraps.
-            index.push(*first.entry(key(f.pos[k], f.uv[k])).or_insert(slot) as u16);
+    for (p, _) in &table {
+        for v in p {
+            out.extend_from_slice(&v.to_le_bytes());
         }
     }
     put_bounds(&mut out, root);
     put(&mut out, 0x20_0000);
     put(&mut out, NODE);
-    write_tree(root, NODE, &mut Table { all, order, index, next: 0 }, &mut out);
+    let uv = table.iter().map(|c| c.1).collect();
+    write_tree(root, NODE, &mut Table { all, order, index, uv, next: 0 }, &mut out);
     Ok(out)
 }
 
@@ -443,19 +456,28 @@ pub fn build(track: &Track) -> Result<Vec<u8>, String> {
     build_with(track, D3dx::Windows)
 }
 
-/// The stage's `col.col` under the given D3DX.
+/// The stage's `col.col` under the given D3DX. A converted stage (one with `CollisionOnly` objects) shares corners
+/// in its full cells ([`cell`]); any other stage's file equals the plugin's.
 pub fn build_with(track: &Track, d3dx: D3dx) -> Result<Vec<u8>, String> {
-    let faces = gather(track, d3dx)?;
+    let share = track.objects()?.iter().any(|o| o.collision_only);
+    from_faces(&gather(track, d3dx)?, share)
+}
+
+/// The `col.col` of the gathered faces.
+fn from_faces(faces: &[Face], share: bool) -> Result<Vec<u8>, String> {
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
     let mut root = Node::new((0..faces.len() as u32).collect());
-    root.split(&faces, &cents)?;
+    root.split(faces, &cents)?;
     if root.children.is_none() {
         return Err("fewer than nine collision triangles".into());
     }
     let mut list = Vec::new();
     regions(&root, 0, 0, &mut list);
-    let cells =
-        list.iter().filter(|(n, _)| !n.leaf).map(|&(n, path)| cell(n, path, &faces)).collect::<Result<Vec<_>, _>>()?;
+    let cells = list
+        .iter()
+        .filter(|(n, _)| !n.leaf)
+        .map(|&(n, path)| cell(n, path, faces, share))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut tree = Vec::new();
     put_bounds(&mut tree, &root);
@@ -482,4 +504,53 @@ pub fn build_with(track: &Track, d3dx: D3dx) -> Result<Vec<u8>, String> {
         out.extend_from_slice(c);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A flat grid of `n` x `n` squares 0.5 m wide, two faces each, every corner shared with the neighbours.
+    fn grid(n: usize) -> Vec<Face> {
+        let p = |i: usize, j: usize| [i as f32 * 0.5, j as f32 * 0.5, 0.0];
+        (0..n * n)
+            .flat_map(|k| {
+                let (i, j) = (k % n, k / n);
+                [[p(i, j), p(i + 1, j), p(i + 1, j + 1)], [p(i, j), p(i + 1, j + 1), p(i, j + 1)]]
+            })
+            .map(|pos| Face { pos, uv: [[0.0; 2]; 3], map: 0 })
+            .collect()
+    }
+
+    /// Each face as its corners' bits, sorted, in sorted order.
+    fn sorted(faces: impl Iterator<Item = [[f32; 3]; 3]>) -> Vec<[[u32; 3]; 3]> {
+        let mut out: Vec<[[u32; 3]; 3]> = faces
+            .map(|f| {
+                let mut c = f.map(|p| p.map(f32::to_bits));
+                c.sort();
+                c
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn a_cell_past_21845_faces_writes_each_corner_once() {
+        // 20000 faces in two cells: the plugin's table, three entries a face. 51200: the plugin's table wraps; a
+        // converted stage's holds each corner once.
+        for (n, share) in [(100, true), (160, false), (160, true)] {
+            let faces = grid(n);
+            let file = rbr_formats::col::parse(&from_faces(&faces, share).unwrap()).unwrap();
+            let fullest = file.cells.iter().max_by_key(|c| c.tree.triangles.len()).unwrap();
+            assert_eq!(fullest.tree.triangles.len() > 21845, n == 160, "{n}");
+            assert_eq!(fullest.vertices.len() < 3 * fullest.tree.triangles.len(), n == 160 && share, "{n} {share}");
+            let read = file
+                .cells
+                .iter()
+                .flat_map(|c| c.tree.triangles.iter().map(|t| t.vertices.map(|i| c.vertices[i as usize])));
+            let same = sorted(read) == sorted(faces.iter().map(|f| f.pos));
+            assert_eq!(same, n == 100 || share, "{n} {share}: the faces read back");
+        }
+    }
 }
