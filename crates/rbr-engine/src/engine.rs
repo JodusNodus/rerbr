@@ -58,7 +58,7 @@ pub struct Spec {
     pub idle_kp: f64,
     pub idle_ki: f64,
     pub spark_kp: f64,
-    /// The friction scale s_f.
+    /// The friction scale s_f at RPMLimit (see [`Self::friction`]).
     pub friction_scale: f64,
     /// K(n) over rpm, J per kg of air.
     pub k: Curve,
@@ -119,9 +119,13 @@ impl Spec {
         self.eta_v.at(rpm) * self.residual(p, p_em) * p * self.geometry.v_d / (R * t)
     }
 
-    /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`.
+    /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`:
+    /// Sandoval's FMEP scaled by 1 + (s_f − 1)·(n/n_lim)², so s_f at the limit and Sandoval's own at low speed, where
+    /// it meets road engines' fuel-cut braking (EPA; the share over Sandoval growing with n² is inferred).
     pub fn friction(&self, rpm: f64, phi: f64, p_ratio: f64) -> f64 {
-        self.friction_scale * self.geometry.per_pa() * self.geometry.fmep(rpm, phi, p_ratio)
+        let x = rpm / self.rpm_limit;
+        let scale = 1.0 + (self.friction_scale - 1.0) * x * x;
+        scale * self.geometry.per_pa() * self.geometry.fmep(rpm, phi, p_ratio)
     }
 }
 

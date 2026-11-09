@@ -19,8 +19,8 @@ bounds empty is context: measured and printed (CTX), not scored. The `how` keys:
                           idle_map, idle_exhaust (at IdleRPM, closed pedal), fired_map_min (the lowest manifold
                           pressure at a closed pedal with the fuel on, idle + 50..700 rpm), cut_exhaust_3000 (the
                           closed_bmep_3000 run's exhaust), exhaust_015_1500 (pedal 0.15), exhaust_rated (WOT at the
-                          grid speed of the most power), spool_first (5 bar BMEP to 90 % of the steady WOT torque at the
-                          first 500 rpm step with 1.5 bar of steady WOT boost)
+                          grid speed of the most power), spool_N (at N rpm, from the steady pedal for 5 bar BMEP to 90 %
+                          of the steady WOT torque)
   model:KEY               the model's constants: bearing_loss_80k (W), inertia (kg·m²), lambda
   class:GROUP:YEAR:restrictor_mm  the class's restrictor for a turbo of that group and year, mm (0: none)
 

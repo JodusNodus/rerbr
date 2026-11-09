@@ -112,7 +112,11 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Pumping (p_em − p_im) + 0.2 bar·(p_im/p_a)·(n/n_lim)² (generic form [TAMU], [Moretto]; 0.2 bar guess in the
   report's 0.1–0.3). NA p_em = p_a + 0.15 bar·(W/W_rated)² (guess).
 - s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0 (inferred:
-  NGP's one braking point; friction models need a scale [ecu-lab]).
+  NGP's one braking point; friction models need a scale [ecu-lab]). The scale is 1 + (s_f − 1)·(n/n_lim)², so s_f at
+  the limit and Sandoval's own FMEP at low speed (inferred: Sandoval at s_f 1 meets the road engines' rubbing
+  friction from their fuel-cut points, 0.5–0.7 bar at 2000 rpm [EPA], and NGP's NA braking line gives −1.09 bar at
+  2000 on the na sample; the share over Sandoval growing with n² is ours). With one flat scale the ECU samples braked
+  1.4–1.7× the road engines below 5000 rpm.
 - BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car
   clamps (raw 2.3–4.9), NA cars are 1.32–1.87 (`tests/rsf_cars.rs`). The clamp's 2.0 is a guess and sets the friction
   of every installed turbo car; through the identity it also raises their K.
@@ -409,8 +413,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   lowest fired loads sit at 9–34 kPa (most 15–26) and their fuel-cut points at 16–43 kPa [EPA]; race ECUs hold a
   throttle aim minimum on overrun [MoTeC FK8R]. Fixed-stop cars on overrun hold 6–14 kPa at 2000–7000 rpm. Not
   changed.
-- The ECU samples brake 1.4–1.7× harder than the road engines at a closed pedal below 5000 rpm ("Against measured
-  engines"); the scale comes from NGP's braking at the limit, which no measured race engine checks.
+- Closed-pedal braking at 2000–5000 rpm still runs 0.2–0.4 bar over the road engines' with the fuel cut (Scorecard):
+  the pumping at the 0.2·p_a overrun air is 0.8 bar, and Sandoval's FMEP for a 1.6 L four is over the road engines'
+  0.5–0.7 bar at 2000 rpm. The limit point is NGP's, which no measured race engine checks.
 
 ## Sources
 

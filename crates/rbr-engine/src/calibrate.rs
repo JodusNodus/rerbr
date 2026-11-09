@@ -500,6 +500,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
         let total = spec.cylinder_flow(ecu::OVERRUN_P * P_REF, P_REF, ecu::OVERRUN_RPM, T_REF) / choked;
         spec.overrun_air = total;
         let (_, out) = closed(&spec, car.rpm_limit);
+        // At the limit the scale is s_f itself.
         let fric = out.friction / spec.friction_scale;
         cal.friction_scale_raw = (car.brake * car.max_torque - out.pumping) / fric.max(1e-9);
         spec.friction_scale = cal.friction_scale_raw.clamp(0.6, 2.0);

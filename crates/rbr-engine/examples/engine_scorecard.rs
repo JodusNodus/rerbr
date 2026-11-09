@@ -133,11 +133,8 @@ fn measure(p: &Params) -> Vec<(&'static str, f64)> {
         let rated = c.wot.iter().map(|k| (k.0 * k.2, k.0)).fold((0.0, 0.0), |a, b| if b.0 > a.0 { b } else { a }).1;
         out.push(("rated_rpm", rated));
         out.push(("exhaust_rated", celsius(&calibrate::wot(spec, rated).0)));
-        out.push(("spool_1000", spool(spec, v_d, 1000.0)));
-        let first = (2..30).map(|i| f64::from(i) * 500.0).find(|&n| calibrate::wot(spec, n).0.p_boost >= 1.5e5);
-        if let Some(n) = first {
-            out.push(("spool_first_rpm", n));
-            out.push(("spool_first", spool(spec, v_d, n)));
+        for (rpm, key) in [(1000.0, "spool_1000"), (2000.0, "spool_2000"), (3000.0, "spool_3000")] {
+            out.push((key, spool(spec, v_d, rpm)));
         }
     }
     out
