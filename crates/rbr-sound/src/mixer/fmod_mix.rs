@@ -4,8 +4,6 @@
 //! ([`rbr_formats::fmod::Bus`]). The buses are mono (the voices are), at FMOD's scale (a full-scale sample is 1);
 //! the master goes out on the car's side.
 
-use std::sync::Arc;
-
 use rbr_formats::fmod::Bus;
 
 use super::dsp::{Chain, Stage};
@@ -190,7 +188,7 @@ const DISTANCE: f32 = 6.0;
 pub(crate) fn fmod_loudness(car: &FmodCar, outside: bool, trim: f32) -> f32 {
     let angles: &[f32] = if outside { &ANGLES } else { &[0.0] };
     let distance = if outside { DISTANCE } else { 0.0 };
-    let waves: Vec<(Arc<crate::data::Wave>, Option<usize>)> = car.loop_waves();
+    let waves = car.loop_waves();
     let (settle, measure) = ((SETTLE_S * LOUDNESS_RATE as f32) as usize, (MEASURE_S * LOUDNESS_RATE as f32) as usize);
     let mut energy = Vec::new();
     for &rpm in &RPMS {
@@ -202,9 +200,9 @@ pub(crate) fn fmod_loudness(car: &FmodCar, outside: bool, trim: f32) -> f32 {
                 for command in car.engine_at(&params, outside) {
                     match command {
                         Command::FmodLoop { slot, gain, pitch, .. } if gain > 0.0 => {
-                            let (wave, bus) = &waves[usize::from(slot)];
+                            let (list, bus) = &waves[usize::from(slot)];
                             let gain = Gain { now: gain * trim, target: gain * trim };
-                            let voice = LoopVoice { wave: wave.clone(), pitch, gain, ..LoopVoice::default() };
+                            let voice = LoopVoice { pitch, gain, ..LoopVoice::playlist(list.clone(), slot.into()) };
                             voices.push((voice, bus.unwrap_or(tree.master)));
                         }
                         Command::FmodBus { bus, gain } => {

@@ -860,7 +860,7 @@ impl Mixer {
 
     /// Gives an FMOD bank's slots their loops and buses, the mixer its recordings and the bank's mixing tree
     /// ([`Command::FmodLoop`], [`Command::FmodBus`], [`Command::FmodEffect`], [`Command::FmodShot`]).
-    pub fn set_fmod(&mut self, loops: Vec<(Arc<Wave>, Option<usize>)>, waves: Vec<Arc<Wave>>, buses: &[Bus]) {
+    pub fn set_fmod(&mut self, loops: Vec<(Vec<Arc<Wave>>, Option<usize>)>, waves: Vec<Arc<Wave>>, buses: &[Bus]) {
         drop(self.swap_fmod(Self::prepare_fmod(loops, waves, buses, self.rate)));
     }
 
@@ -870,7 +870,7 @@ impl Mixer {
     }
 
     pub(crate) fn prepare_fmod(
-        loops: Vec<(Arc<Wave>, Option<usize>)>,
+        loops: Vec<(Vec<Arc<Wave>>, Option<usize>)>,
         waves: Vec<Arc<Wave>>,
         buses: &[Bus],
         rate: u32,
@@ -879,7 +879,8 @@ impl Mixer {
         let master = tree.master;
         let loops = loops
             .into_iter()
-            .map(|(wave, bus)| (LoopVoice { wave, pitch: 1.0, ..LoopVoice::default() }, bus.unwrap_or(master)))
+            .enumerate()
+            .map(|(k, (list, bus))| (LoopVoice::playlist(list, k as u32), bus.unwrap_or(master)))
             .collect();
         PreparedFmod { loops, waves, tree }
     }

@@ -139,9 +139,36 @@ pub(crate) struct LoopVoice {
     pub pan: f32,
     /// The in-car low-pass, when it takes one.
     pub low_pass: Option<OnePole>,
+    /// An FMOD multi instrument's recordings ([`LoopVoice::playlist`]): at each wrap the next is one of the others.
+    pub playlist: Vec<Arc<Wave>>,
+    /// The playlist's entry playing, and the state that picks the next (xorshift).
+    pub entry: usize,
+    pub pick: u32,
 }
 
 impl LoopVoice {
+    /// A loop over an FMOD multi instrument's playlist, from its first entry; each time an entry ends another is
+    /// picked at random, never the one that ended (ours: FMOD's random and shuffle modes are not told apart).
+    /// `seed` keeps the picks of different voices apart.
+    pub(crate) fn playlist(waves: Vec<Arc<Wave>>, seed: u32) -> LoopVoice {
+        let wave = waves.first().cloned().unwrap_or_default();
+        let playlist = if waves.len() > 1 && waves.iter().all(|w| !w.samples.is_empty()) { waves } else { Vec::new() };
+        LoopVoice { wave, pitch: 1.0, playlist, pick: seed.wrapping_mul(0x9e37_79b9) | 1, ..LoopVoice::default() }
+    }
+
+    /// The playlist's next entry, at a wrap.
+    fn next_entry(&mut self) {
+        let n = self.playlist.len();
+        if n < 2 {
+            return;
+        }
+        self.pick ^= self.pick << 13;
+        self.pick ^= self.pick >> 17;
+        self.pick ^= self.pick << 5;
+        self.entry = (self.entry + 1 + self.pick as usize % (n - 1)) % n;
+        self.wave = self.playlist[self.entry].clone();
+    }
+
     /// Whether it sounds (or is fading in or out).
     pub(crate) fn audible(&mut self) -> bool {
         if self.wave.samples.is_empty() || (self.gain.target == 0.0 && self.gain.now.abs() < 1e-5) {
@@ -168,13 +195,22 @@ impl LoopVoice {
         if !self.audible() {
             return;
         }
-        let n = self.wave.samples.len() as f64;
-        let step = f64::from(self.pitch) * f64::from(self.wave.rate) / f64::from(rate);
+        let mut n = self.wave.samples.len() as f64;
+        let mut step = f64::from(self.pitch) * f64::from(self.wave.rate) / f64::from(rate);
         for i in 0..len {
             let s = interpolate(&self.wave.samples, true, self.pos, step);
             let s = self.low_pass.as_mut().map_or(s, |f| f.run(s));
             f(i, s * self.gain.next(k));
-            self.pos = (self.pos + step) % n;
+            self.pos += step;
+            if self.pos >= n {
+                self.pos %= n;
+                if !self.playlist.is_empty() {
+                    self.next_entry();
+                    n = self.wave.samples.len() as f64;
+                    step = f64::from(self.pitch) * f64::from(self.wave.rate) / f64::from(rate);
+                    self.pos %= n;
+                }
+            }
         }
     }
 }
@@ -409,6 +445,18 @@ mod tests {
     }
 
     #[test]
+    fn a_playlist_loop_plays_another_entry_at_each_wrap() {
+        let waves: Vec<_> = (0..3).map(|k| Arc::new(Wave { rate: 100, samples: vec![k as f32 + 1.0; 4] })).collect();
+        let mut voice = LoopVoice { gain: Gain { now: 1.0, target: 1.0 }, ..LoopVoice::playlist(waves, 7) };
+        let mut out = vec![0.0; 40];
+        voice.add_mono(&mut out, 100, 1.0, 1.0);
+        let entries: Vec<f32> = out.chunks(4).map(|c| c[1]).collect();
+        assert_eq!(entries[0], 1.0, "{entries:?}");
+        assert!(entries.windows(2).all(|w| w[0] != w[1]), "{entries:?}");
+        assert!((1..=3).all(|k| entries.contains(&(k as f32))), "{entries:?}");
+    }
+
+    #[test]
     fn loops_play_at_their_pitch_and_side() {
         // A 200 Hz sample at half pitch into 100 Hz: one sample a frame, wrapping at the end.
         let wave = Wave { rate: 200, samples: (0..100).map(|i| i as f32).collect() };
@@ -418,7 +466,7 @@ mod tests {
             gain: Gain { now: 1.0, target: 1.0 },
             pos: 0.0,
             pan: 0.5,
-            low_pass: None,
+            ..LoopVoice::default()
         };
         let mut out = vec![[0.0; 2]; 110];
         voice.add(&mut out, 100, 1.0);

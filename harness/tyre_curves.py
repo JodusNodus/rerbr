@@ -1,4 +1,4 @@
-"""tyre_curves.py: the tyre figures of docs/experimental-physics.md, NGP's tyre and the brush side by side, as SVG.
+"""tyre_curves.py: the tyre figures of docs/tyre-model.md, NGP's tyre and the brush side by side, as SVG.
 
   python3 -I -B harness/tyre_curves.py --probes DIR [--figures docs/images/tyre-model]
 

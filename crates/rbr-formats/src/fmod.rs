@@ -10,8 +10,10 @@
 //! - `WAV ` a waveform: id, u16, u32, u32 index in the FSB5;
 //! - `LIST WAIT` a waveform instrument: `WAIB` (id, waveform id), `INST`, `PRPS`; `LIST MUIT` a multi instrument:
 //!   `MUIB` (id), `PLST` (u32 mode, u32, list of {instrument id, f32 percent}), `INST`, `PRPS`;
-//! - `INST` an instrument's settings: f32 volume (dB) at 16, f32 pitch (semitones) at 20, the auto-pitch parameter
-//!   id at 53 with its reference value at 69 and the pitch at 0 at 73, and the track it plays on at 83;
+//! - `INST` an instrument's settings: f32 volume (dB) at 16, f32 pitch (semitones) at 20, i32 loop count at 24 (-1
+//!   loops for ever; 0 on every gear, ignition and blow-off instrument of the RSF banks), f32 trigger probability
+//!   (percent) at 33, the auto-pitch parameter id at 53 with its reference value at 69 and the pitch at 0 at 73, and
+//!   the track it plays on at 83;
 //! - the mixing tree's buses, each with a `BUS` and a `PRPS`: `LIST GBUS` a track or a mixer group (`GBSB`: id, u16,
 //!   parent id), `LIST IBUS` an event's input to the mixer (`IBSB`, the same), `LIST RBUS` a return (`RBSB`, the
 //!   same) and `LIST MBUS` an event's master track or the mixer's master bus (`MBSB`: id). `BUS` is a u8, a u32,
@@ -180,6 +182,10 @@ pub struct Layer {
     /// The instrument's volume, dB.
     pub volume_db: f32,
     pub semitones: f32,
+    /// How many times it plays again after the first (-1: for ever; a multi instrument: each time its next entry).
+    pub loop_count: i32,
+    /// The chance it plays when its regions are entered, percent.
+    pub probability: f32,
     pub automations: Vec<Automation>,
     pub bus: Option<usize>,
 }
@@ -762,6 +768,8 @@ fn layers(
                 auto_pitch,
                 volume_db: f32_at(inst, 16).ok_or_else(short)?,
                 semitones: f32_at(inst, 20).ok_or_else(short)?,
+                loop_count: u32_at(inst, 24).ok_or_else(short)? as i32,
+                probability: f32_at(inst, 33).ok_or_else(short)?,
                 automations: automations.get(&id).cloned().unwrap_or_default(),
                 bus: track.and_then(|t| bus_index.get(&t).copied()),
             };
@@ -936,6 +944,14 @@ mod tests {
             for s in &bank.samples {
                 assert!([PCM16, VORBIS].contains(&s.codec), "{name} {}: codec {}", s.name, s.codec);
                 assert!(s.vorbis_crc.is_some() == (s.codec == VORBIS) && !s.data.is_empty(), "{name} {}", s.name);
+            }
+            // Loop counts and trigger chances in range; the ignition plays once.
+            for e in &bank.events {
+                for l in &e.layers {
+                    let once = e.name != "event:/ignition" || l.loop_count == 0;
+                    assert!((-1..=16).contains(&l.loop_count) && once, "{name} {}: loop {}", e.name, l.loop_count);
+                    assert!(l.probability > 0.0 && l.probability <= 100.0, "{name} {}: {}", e.name, l.probability);
+                }
             }
             for event in ["event:/engine_int", "event:/engine_ext"] {
                 let e = bank.event(event).unwrap_or_else(|| panic!("{name}: no {event}"));
