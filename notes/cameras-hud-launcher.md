@@ -145,6 +145,18 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   2026-11-04). Earlier versions' files are listed read only: a pack car's `<files>/SavedGames/<pack>/`, the
   `Physics/<key>/Setups/` of `Car::setup_keys` (its key, an RSF car's `rsf-<id>`, then 5; a retail car its number's), and their slot files
   `SavedGames/<key>slot<n>_*.lsp`. The championship's setup row before a stage is default, current or a saved setup (`SeasonSetup::Saved`).
+- Car setup page layout (`setup_page/`, 2026-11-09, ours): a map of the car from above (`board.rs`) picks the area: a
+  chip per area with its leading values and its count of differing lines, leaders to the parts it sets; the parts
+  show values (bar weight = anti-roll stiffness in its range, diff fill = locking torque, disc glow = brake share)
+  and are outlined orange where their own values differ. Every value is compared with a setup the player picks
+  (default, as opened, or a saved one; `Compare`): each track carries the comparison's tick and the stretch to it,
+  the number its signed difference, the left column lists the differing lines (an axle changed alike is one line, a
+  diff map one line) each with its way back (`values.rs`). Per-wheel areas edit an axle's two wheels together
+  while they agree (a difference always shows both). Diagrams per area (`charts.rs`): spring coil-overs and their
+  front share, the dampers' force over wheel speed, camber from the front, brake and anti-roll balance bars, the
+  diff maps' lock curves dragged by the game's steps. Hints under each value are general rules of thumb, except
+  the handbrake release and left-foot threshold, which say what `rbr_physics::vcu::locks` does. `--screenshot` also
+  writes `setup-changed-<n>.png` with some values stepped.
 - Car keys (2026-11-07): a pack car's key (camera nudges, `[ffb_cars]`, `--car-key`, championship entries) is
   `catalog::pack_key`, `pack-` and its pack folder's letters and digits without RSF's `_ngp<N>`, so RSF's and the
   added copy of a car are one key (all 102 of gvrc.de's list match RSF's packs this way). Before, it was

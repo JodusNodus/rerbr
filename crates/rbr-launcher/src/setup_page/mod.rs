@@ -1,6 +1,8 @@
 //! The Car setup page: the manager of the car's saved setups on the stage's surface. It opens one (or the default),
 //! edits its values grouped by area, within the car options' ranges and by the game's steps (`rbr_gameplay::setup`),
-//! and saves them in the game's `Setups/*.lsp` format. The Drive page picks the one to drive with
+//! and saves them in the game's `Setups/*.lsp` format. The areas are picked on a map of the car (`board`), each
+//! value is drawn against a comparison the player picks (`values`, `editor`), and the areas' diagrams (`charts`)
+//! show what the values do. The Drive page picks the one to drive with
 //! ([`SetupPage::choice_ui`]), kept per car and surface (`[setup]` of the settings, [`SetupChoices`]).
 //!
 //! Ours are `setups/<car>/<surface>_<name>.lsp` in the player's folder for every car (`<car>`: a pack car's
