@@ -1505,8 +1505,8 @@ What it means for the model:
 Research (2026-11-09, main d903fe5a). Real times are from juwra.com, fia.com, Wikipedia and rally-maps.com. RSF ids and
 lengths are from `stages_data.json`. Game: the default autopilot to the finish, dry, Fiesta Rally2 (ngp7) and i20 Coupe
 WRC 2020 (ngp6, the WRC-class NGP car installed). Single runs, no recoveries. Ratios eb/ngp are Rally2 / i20, with
-eb/experimental (the tyre alone) in brackets. RSF's best is not public: its hotlap rank shows "Please login." to
-visitors, and its stage list shows only the default time.
+eb/experimental (the tyre alone) in brackets. RSF's best needs a login ("Please login." to visitors); the user's
+saved rank pages are read below.
 
 | RSF id, length | Real stage | Winner, time, car | Match | eb/ngp (eb/exp) |
 | --- | --- | --- | --- | --- |
@@ -1525,9 +1525,24 @@ visitors, and its stage list shows only the default time.
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs
   (`limit_pace.py`), whose single-run scatter (5-15 s on 7.8 km) is larger than the effect.
-- Real against RSF: open until RSF's best is read for the same class. Classes: RSF "WRC 2.0" for the 2017-21 WRC and
-  Rally1 rows, "Group R5" for Rally2, "Group B" for 611. Same tarmac route, one class apart: Rally1 2025 is 35.4 s/km
-  and Rally2 2024 is 36.6 s/km, so Rally2 is 3.4 % slower.
+- Real against RSF (2026-11-09; the user's saved NGP7 hotlap rank pages, read for car and finish time only, no names
+  kept; NGP7 is `ngp` physics). Best / top-10 median per class, s, and over the real reference:
+
+  | Stage (entries) | Real reference | RSF WRC 2017-21 | RSF Rally2/R5 | Fiesta Rally2 |
+  | --- | --- | --- | --- | --- |
+  | 562 Aguimes-Santa Lucia 2025, tarmac (1452) | WRC2 2025 SS14 548.0 (top 5 551.6), Rally1 530.1 | 520.7 / 532.4 (0.982 / 1.004 of Rally1) | 526.6 / 534.5 (0.961 / 0.975) | 549.1 / 559.3 (n 66) |
+  | 524 Hassi, gravel (1796) | Evans 206.7 flying (Yaris WRC); Rally2 220.9 (implied μ × 0.93, estimate) | 197.4 / 202.3 (0.955 / 0.979) | 205.8 / 208.7 (0.932 / 0.945) | 212.4 / 219.7 (n 55) |
+  | 422 Torsby 2018, snow (206; route +1.9 %) | Lappi 361.2 Sunday (Paddon 383.8 Friday) | 308.7 / 318.6 (0.855 / 0.882) | 320.3 / 331.3 | 343.2 (n 6) |
+  | 531 Aittajarvi, snow (496) | Rovanperä 602.4, Evans 607.5 | 550.2 / 571.7 (0.913 / 0.949) | 552.0 / 563.1 | 581.5 (n 17) |
+
+  Tarmac, where the car-level grip matches ([Car-level grip in the same terms](#car-level-grip-in-the-same-terms)),
+  is the control: the sim's best Rally2 runs 2.5-4 % under the real WRC2 times. Gravel sits 2-3 % beyond that
+  control (against the Rally2 estimate; the WRC row the same once Evans's flying start is allowed for, RSF's runs
+  start standing): inside the ±5 % below, so no sign that NGP's gravel grip is low. Snow sits 5-12 % beyond it
+  (Torsby on a longer route, Aittajarvi less): with f 0.6-0.8 corner-limited that is roughly 10-30 % more μ than the
+  real cars used, the same sign as the flat circle's 1.2 (inferred; real snow varies with fresh snow, ice and stud
+  wear, and a sim leans on snowbanks without risk). The Fiesta Rally2 has few entries (top drivers pick the Fabia RS
+  Rally2), so its rows are not a car comparison.
 - Reading a gap: if a share f of the stage time is corner-limited, Δt/t ≈ −f/2 · Δμ/μ. So a 5 % time gap is 10 % μ
   at f = 1 and 20 % at f = 0.5 (fast Finnish gravel averages 134 km/h). The time gap also contains the driver, the car
   and the route version. A sim's best knows the stage from hundreds of runs, takes no risk and runs on a fixed road;
