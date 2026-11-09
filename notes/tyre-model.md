@@ -1086,7 +1086,7 @@ alike), 0.95 on the two R1 cars, 0.985 front / 1.015 rear on both 911s.
 | Locked-wheel braking on gravel | 0.47-0.59 g, 9 light vehicles, 56 km/h, 5 cm #617 crushed limestone, shortest of 3 stops; 0.59-0.66 g, 7 SUVs, pickups and cars, 50 km/h, freshly graded silty sandy gravel; 0.53-0.64, Polo, 40-80 km/h compacted; no speed trend over 40-80 km/h. NGP (declutched brake test, RSF 345): 0.63 g from 50 km/h, 0.77 g from 100 km/h | NHTSA DOT HS 808 875 Tables A1/A2 (table; g inferred); Macnabb et al. ESV 98-S2-W-36 Table 4 (table, accelerometer); Proctor-Parker SATC 2019 Table 1 (table; g inferred) | `harness/brake_test.py` on RSF 345 from 40-80 km/h, Fiesta Rally2; the locked run's mean decel | none |
 | Locked over ABS on gravel | decel ratio 1.25 laden / 1.30 light, per car 1.12-1.42; 1.21-1.59 per car. Same method on wet Jennite (hard, SN 30/10): 0.54-0.62. NGP: tyre locked 0.82 of peak; brake test locked over best threshold decel 0.86 (50 km/h) / 0.91 (100 km/h) | NHTSA Tables A1/A2 (table; ratio inferred, reproduces SAE 1999-01-1287 Table 2); Macnabb Table 4 (table; ratio inferred) | `harness/brake_test.py`: declutched locked against `--brake-abs` K 0.15 (per-wheel ABS) on the same stretch; ratio of mean decel | none |
 | Gravel against tarmac, braking | same car locked gravel / ABS asphalt 0.69-0.84; tarmac reference by the same method: ABS wet asphalt (SN 85/65) 0.69-0.84 g from 80 km/h, dry concrete 0.69-0.88 g from 97 km/h. NGP, declutched, same speeds: locked gravel (345) / locked tarmac (568) 0.71 at 100 km/h, 0.59 at 50; locked gravel / best threshold tarmac 0.59 / 0.50 (rally tyres, the published pairs road tyres) | Macnabb Tables 3-4 (table; ratio inferred); NHTSA Tables A1/A2 (table; g inferred) | `harness/brake_test.py` at one speed on 345 and 568, same car; ratio | none |
-| Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g (CW; the WRC+ telemetry's 1 s p90 is 0.73-0.92 g, row below). ReRBR, ramp 0.4, ngp / experimental-brush: Fiesta Rally2 0.571 / 0.664 g, i20 Coupe WRC 2020 0.587 / 0.739, Fiesta WRC 2019 0.749 / 0.423 (single runs; ramp 0.25 gives 0.36-0.47 g, an inward weave of the autopilot, [Real stage telemetry](#real-stage-telemetry-wrc-gravel)) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
+| Car lateral g on gravel | 0.43-0.54 g, CIV, rally drivers, hard turn at ~48 km/h, pea stone (CIV lateral coefficient 0.35-0.41 on the same passes); Explorer 0.405 / 0.536 g at 48 / 64 km/h entry; WRC 0.6-0.7 g (CW: a peak body lateral on wet loose gravel, not a steady dry limit; the WRC+ telemetry's 1 s p90 is 0.73-0.92 g, row below). ReRBR on RSF 345's sloped circle (terrain, not grip; flat circle 0.94-0.99 g, [Car-level grip in the same terms](#car-level-grip-in-the-same-terms)), ramp 0.4, ngp / experimental-brush: Fiesta Rally2 0.571 / 0.664 g, i20 Coupe WRC 2020 0.587 / 0.739, Fiesta WRC 2019 0.749 / 0.423 (single runs; ramp 0.25 gives 0.36-0.47 g, an inward weave of the autopilot, [Real stage telemetry](#real-stage-telemetry-wrc-gravel)) | TR-10-11 Fig 12 (fig ±0.01), Table 6 (table); Croft-White (quoted) | `--circle 1051,-166,40 --circle-ramp 0.4` on 345, Fiesta Rally2; steady lateral g before it runs wide | none |
 | Trail-brake by an expert on gravel | Group A Impreza STI (AWD, 340 bhp), track gravel, 80-90° corner: 77 → 23 km/h over 1.05-4.05 s (0.51 g mean, 0.66 g peak over 0.5 s), rear-axle slip angle 42° at 4 s, back to 0 by 5 s; pendulum turn −29° → +63°, 0.59 g peak | Velenis et al. MED 2007 Figs 3, 5 (fig ±1 km/h, ±1°; digitised by pixel; inputs normalised); no data release found | RSF Impreza GC8 555 GrpA on a gravel 80-90° corner, inputs of the same shape; speed and rear-axle slip angle traces | a payload writer from an input CSV, assumed steering, brake and throttle scales, a matching corner; shape check only |
 | Snow braking | road winter tyres 0.33-0.45 g (50-0, 35-5, 25-5 km/h, ABS); locked 0.31-0.35 g; trailer μx,max 0.46-0.57, μy,max 0.47-0.56 at 30 km/h, no clear fall past the peak. NGP: tyre peak 0.85; car not measured | Auto Bild 2025, Vi Bilägare 2024-25 (table, secondary); VTI R875 Tabell 55, 60, 62 (table); Sokolovskij 2007 (table), SAE 960652 (quoted) | `--brake-from 13.9` on map 10 (`track-10_O`), Fiesta Rally2; mean decel | none (rally snow tyres are studded: the level is a lower bound) |
 | Ice braking and cornering | car 50-0 km/h: studded 0.23-0.30 g, studless 0.18-0.22 g; best three at −2/−7/−13 °C 0.24/0.28/0.31 g studded, 0.17/0.22/0.26 g studless. Rig, smooth ice −3 °C, 30 km/h, 4.2 kN: μx peak/locked 0.25/0.22 studded, 0.21/0.17 Nordic; μy peak 0.22 at ~5° / 0.19 at 2-3°, at 20° 0.19 / 0.13. NGP: material 116 μ 0.10 (0.095 on the tarmac tyre), tyre peak at 0.75°; car from 50 km/h on the flat 0.096 g best threshold, 0.095 g locked (ratio 0.99); experimental-brush 0.100 / 0.081 g (0.81) | Tekniikan Maailma 18/2025 (table, secondary via tyrereviews); VTI R875 Tabell 46, 48, Figur 3 (table; means inferred; fig ±0.01) | `brake_test.py` on RSF 504 with `-- --material-as 116` (iced from the brake onset; `decel_flat`); map 85 circle iced (`--circle -260,120,40 --material-as 116`) | a flat iced straight (504 rises 6.6 %); no car lateral g target on ice |
@@ -1174,7 +1174,9 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   limits (0.57-0.75 g against 0.9-1.1 g real: the physics, not the driver); aero (the real 150-200 km/h sections are
   not reached here); and the driver, a WRC driver on a recce'd stage against a controller.
 - The r40 circle (Fiesta Rally2, RSF 345, ramp 0.4, `--tyre-probe-every 10`, 1 s means; experimental-brush, ngp the
-  same pattern): through the hold the front axle works harder (front α 7-19°, Fy/Fz 0.47-0.62; rear α 3-9°, 0.28-0.51):
+  same pattern; superseded: the circle lies on an 11.9° slope and its hold ends running downhill, so the front limit
+  and the 0.9 of the peak below are terrain; flat, all four tyres reach 0.93-1.02 of their peak, [Car-level grip in
+  the same terms](#car-level-grip-in-the-same-terms)): through the hold the front axle works harder (front α 7-19°, Fy/Fz 0.47-0.62; rear α 3-9°, 0.28-0.51):
   the car runs wide on the front. At the break (24-26 s) both axles go to 21-27° with throttle 0.3-0.4, |F|/Fz 0.69-0.86
   per wheel. Loads: inner 1.8-2.1 kN, outer 5.0-5.3 kN on both axles (static 3.8 front, 3.1 rear). The four wheels'
   combined Σ\|F\|/ΣFz is 0.75 against the loads' own peaks Σμ(Fz)Fz/ΣFz ≈ 0.82 (peaks 0.89/0.83/0.77 at 2/4/6 kN):
@@ -1351,19 +1353,19 @@ Per stage (CSV): best and top-5 times, μ for both, `split_mu` (sections between
 moves, the direction, the RC1 μ beside.
 
 - Answer (Rally2, car level, uncertainty from the calibration's transfer ±10 % and the stages' spread): gravel on
-  Finnish roads about 1.0 g (0.93-1.15) against the game's 0.571 (ngp) / 0.664 (brush): the game's gravel is 0.55-0.65
-  of the real. Snow (Sweden) about 0.75 g (0.69-0.85) against 0.48 / 0.55: 0.64-0.73. Tarmac 1.0-1.4 g by road
-  against the game's 1.19-1.28: in range. Ratios inside one calibration: snow over gravel 0.74 real (0.68-0.85 by
-  year) against the game's 0.84 / 0.83; tarmac over gravel 1.0-1.4 real against 2.1-2.2 (ngp) / 1.8-1.9 (brush).
-  Braking through the 0.5 s peak ratio (0.92 / 0.81): gravel 0.92 g, snow 0.68 g, tarmac 1.09 g real, against the
+  Finnish roads about 1.0 g (0.93-1.15), snow (Sweden) about 0.75 g (0.69-0.85), tarmac 1.0-1.4 g by road. The game
+  side of this table (gravel and snow circles 0.571 / 0.664 and 0.48 / 0.55) is RSF 345's sloped circle, terrain and
+  not grip: in the same terms on a flat circle the game is 0.86-0.90 of the real on gravel, above it on snow, in
+  range on tarmac ([Car-level grip in the same terms](#car-level-grip-in-the-same-terms)). Real ratios inside one
+  calibration: snow over gravel 0.74 (0.68-0.85 by year), tarmac over gravel 1.0-1.4. Braking through the 0.5 s peak ratio (0.92 / 0.81): gravel 0.92 g, snow 0.68 g, tarmac 1.09 g real, against the
   game's threshold rows above (the model's μ_x = μ_y makes this weaker than the lateral).
 - What moves it most: the line (road width): Finland's against Monte's ratio is 10 %, the stages' ratios ±10 %;
   then μ_x/μ_y ±3 %; the car's parameters under 1 % each. Not covered: the real lateral g includes road camber and
   ruts the cars lean on (the game's flat circle has none; RSF 345's lies on a slope, [Car-level grip in the same
   terms](#car-level-grip-in-the-same-terms)); one calibration rally per surface, both with WRC cars, not
   Rally2; no snow telemetry (Sweden takes Finland's ratio, Monte's gives +11 %).
-- Level: no recommendation; the data say the game's gravel and snow car-level grip sit well below the real Rally2's
-  and its tarmac at it, with the gaps above. The level is the user's decision.
+- Level: no recommendation; the gaps in the same terms are in [Car-level grip in the same
+  terms](#car-level-grip-in-the-same-terms). The level is the user's decision.
 
 ## Car-level grip in the same terms
 
