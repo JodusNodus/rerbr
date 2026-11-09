@@ -784,18 +784,21 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   ±0.004): pea stone 6.28° (rms 0.0012 over 1-38°; the brush's cubic 0.0165, the law integrated over a uniform patch
   0.0098), wet gravel 9.7° (0.0015); in K terms, about the half patch times tan α0 (~11 mm at a 0.2 m patch,
   inferred). α0 follows the surface's WaterFactor (`ForceInput::water_factor`; NGP's wet gravel materials carry 1,
-  damp 0.25, dry 0: `materials` example, ids 2-51), linear from 6.3° to 9.7° (`loose::gravel_alpha0_deg`; ours: the
-  form, and Fig. 15's wet gravel is another soil, a silty sand, standing in for wet gravel). The slope follows the level
+  damp 0.25, dry 0: `materials` example, ids 2-51), linear from 1 to 9.7/6.3 times the dry α0 (`loose::gravel_alpha0_deg`;
+  ours: the form, and Fig. 15's wet gravel is another soil, a silty sand, standing in for wet gravel). The dry α0
+  follows the loose layer's depth (2026-11-09, [below](#the-soils-depth-ngps-materials-and-the-surface-across-the-road)):
+  6.3° is pea stone's and NGP's deeper gravel's (25-30 mm). The slope follows the level
   (μ Fz/tan α0: 6.0 /rad at 6.7 kN, NGP 6.6); the level is approached, never peaked (0.995 at 30°, 0.973 wet). Snow (class 3: SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls), grass (5), rock (4) and
   rough (0) keep the flat brush: packed snow's own α0 is 3.6° (Fig. 8, rms 0.0042), which at NGP's snow level doubles
   NGP's slope (snow-calpha-per-fz 8-12 would miss), while the brush at NGP's slope passes α90 (9.0 in 7-9°).
 - Firm gravel (context, 2026-11-09): Hindiyeh & Gerdes 2014 (JDSMC 136 051015, §2; Stanford's P1, RWD, 1724 kg) fit
   Fiala per axle from steady cornering on a gravel lot, μ 0.55, highly variable: C_α/Fz 15.4 front / 19.2 rear per
   rad, full slide at 6.1 / 4.9°, 90 % at 3.3 / 2.6° (an exponential law's α0 ~1.1-1.4°; axle-lumped, so a tyre's own
-  is stiffer). Ours at 4 kN, 15 m/s, dry (`gravel-firm-*`, context): ngp 9.1 per rad, α90 7.5°; brush 6.6, 14.25°.
+  is stiffer). Ours at 4 kN, 15 m/s, dry (`gravel-firm-*`, context, the probe's 9 mm): ngp 9.1 per rad, α90 7.5°;
+  brush 11.2, 8.0° (before α0 by depth 6.6, 14.25°).
   Gravel's shape spans about 5x between a firm lot and loose pea stone (α0 6.3°); the brush sits at the loose end,
   NGP between. A firm stage (packed base, thin loose top) may build force faster than the brush does. Candidate,
-  not done: α0 by NGP's soil depth (shallow `Gravel_*` firmer). Their drift held β 20° at 8 m/s with 12° of
+  done 2026-11-09: α0 by NGP's soil depth (shallow `Gravel_*` firmer). Their drift held β 20° at 8 m/s with 12° of
   countersteer for 30 s within 3-5° (the controller's equilibrium: rear drive 0.46 of the rear's μ Fz, the front
   near saturation). Velenis, Tsiotras & Lu (ECC 2007) is simulation only: its MF (Table I: B 7, C 1.6, D 0.52) is
   the "Velenis MF" model input of `gravel-peak-slip-angle` and `gravel-mu-y30-over-peak`.
@@ -1087,9 +1090,48 @@ the ±1 m mean is within 0.4 mm of the probe's wheel mean on every stage; RSF 34
   (quoted). A rigid wheel in dense sand over a rigid base: drawbar pull at high slip non-monotonic in the layer's
   thickness (J. Terramech. 1994, "Travelling performance of a wheel on a finite thickness ground", abstract only;
   longitudinal, not a tyre). Snow's 0.5 cm of fresh snow halving the initial slope (SAE 2010-01-0374) is snow.
-- Decision (2026-11-08): loose-v1 stays independent of the thickness. The stages do put 9-30 mm under the wheels, but the
-  data give only a level, and the level is NGP's. A windrow less grippy than the line (published 0.80; NGP's deeper
-  against shallow 0.97) would be a grip-level change: the user's decision.
+- Decision (2026-11-08, shape superseded 2026-11-09 below): the level and the berm stay independent of the
+  thickness; a windrow less grippy than the line (published 0.80; NGP's deeper against shallow 0.97) would be a
+  grip-level change: the user's decision.
+
+Gravel's shape by the depth (2026-11-09, `loose::GRAVEL_DEPTH_ALPHA0_DEG`). Evidence for the build-up against the
+loose layer (labels as above):
+
+- No source measures C_α/Fz or α90 against a gravel layer's depth. The direction, firmer builds faster: loam bin at
+  cone index 150-900 kPa, initial slope B·LFCmax = 2.18 + 0.38 EMOB (significant at 2 %, ~2.3 → 10 /rad), LFCmax no
+  significant trend (Gee-Clough & Sommer 1981 via El-Razaz, Leeds PhD 1988, Fig 2.5; quoted, fig ±0.3); McAllister's
+  38 field soils the same sign (ibid., quoted); Metz's B gravel 0.19, meadow 0.15, ploughed 0.07 per deg (table);
+  pea stone α0 ~6° against loose wet gravel ~11° (Coutermarsh Fig. 15, confounded with moisture and site).
+- The layers: TR-10-11's pea stone (Coutermarsh's curve) lay 4-9.5 cm deep on recycled asphalt, over 20 cm in places;
+  Clegg CBR 4-15 loose against 67-188 for the exposed competent layer (p. 18, Table A2; quoted, table). Hindiyeh's
+  lot is "a layer of gravel with asphalt underneath", swept bare in places (quoted; α90 2.6-3.3° per axle).
+  Krueger's ATV tyre on 25-50 mm loose limestone over a very stiff base: C_α/Fz 4.6 / 3.1 / 2.4 /rad at 50 / 185 /
+  320 lbf (Fig 3.32, fig ±0.5 lbf/deg). El-Razaz's Schwanghart (7.50-16 tractor tyre) on gravel: 0.33-0.50 peak at
+  15-25°, ~3-3.5 /rad (Fig 2.7, fig ±0.05). Holloway 1989 (via McIntyre Fig 52): an ATV tyre on clay/gravel still
+  rising at 15° (fig ±0.03). Croft-White, Roodt, SATC, McIntyre's clay, CRREL 95-1, ERDC 3-666: no depth or firmness
+  link to the build-up (Roodt: more and coarser loose chips on a sealed road give a lower locked μ, level only).
+  Macnabb's PDF was not on disk.
+- Model: dry α0 3.4° at 9 mm, 4.8° at 17.5 mm, 6.3° from 25 mm, linear between, the ends held, on NGP's blended
+  `SoilThickness` (`ForceInput::soil_thickness`, scratch `+0x258`, already in the model's input: no new layout), times
+  the wet ratio 9.7/6.3 by the WaterFactor. Anchors (ours, the direction from the evidence above): 9 mm α90 8° between
+  the firm lot (3°) and Croft-White's stage road (~12°, very wet: ~8° dry by the wet ratio), 17.5 mm 11° that road,
+  25 mm pea stone (its layer is deeper than NGP's deepest). Fitted with `force_sweep --soil` on the scorecard's gravel
+  probe (4 kN, 15 m/s): α90 / C_α/Fz dry 8.0° / 11.2, 10.25° / 9.1 (15 mm), 11.0° / 8.4, 13.25° / 7.2 (22.5 mm),
+  14.25° / 6.6; wet (WaterFactor 1) 12.0° / 7.8, 15.25° / 6.2, 16.75° / 5.8, 19.75° / 4.8, 21.0° / 4.5; ngp 7.5° / 9.1
+  on every depth. A grass or snow blend raises the blended thickness (grass 30 mm).
+- Depth shares along the driveline (lab `surface_across DATA STAGE driveline`, every 2 m, the blend's weights, `.mat`
+  new dry; the driveline gives RSF 345 40/60 % shallow/deep, 14.1 mm against the autopilot line's 37/63 %, 14.3 mm),
+  shallow 9-15 / deep 17.5-22.5 / deeper 25-30 mm of the gravel: retail 24 gravel stages (133 km) 33 / 48 / 19 %
+  (UK 20-25 mostly deeper, means 19-25 mm; Australia 31-36 deep, 16-18 mm; Japan 51-56 mixed, 17-18 mm; USA 61-66
+  shallow, 9-14 mm); RSF 146 installed gravel stages (802 km) 46 / 35 / 19 %, 67 stages mostly shallow, 52 deep, 27
+  deeper (10 over half non-gravel). So under the line two thirds of the gravel driven is firmer than pea stone.
+- In game (Fiesta Rally2, experimental-brush, single runs, before → after): scorecard (gravel, `--jobs 6`) 33/35 PASS
+  both, ngp rows bit-equal; flat r40 circle (map 85) under 17 (9 mm) 0.955 → 0.994 g, under 9 (17.5 mm) 0.978 →
+  0.986, under 1 (25 mm) 0.972 → 0.972; RSF 345 circle 0.664 → 0.667; locked over ABS K 0.15 on 345 50 / 80 km/h
+  1.529 / 1.340 → 1.442 / 1.292; `gravel-peak-kappa` 0.58 → 0.42 (band 0.4-0.7, the 9 mm probe); `gravel-cw-alpha90`
+  21 → 12°. Brake test from 50 km/h, RSF 111 (9 mm): ABS 0.760 → 0.845 g, locked 0.948 → 0.955, locked over ABS
+  1.247 → 1.130 (band 1.12-1.59); RSF 105 (17.5 mm): ABS 0.703 → 0.677, locked 0.957 → 0.944, locked over ABS 1.361
+  → 1.394 (its K 0.3 run 0.80 → 0.64 g ends on grass 97: the approach, not the law, which is at its level by κ 0.3).
 
 ## Car-level targets on loose surfaces
 
@@ -1741,8 +1783,9 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   experimental-brush) and lets its dynamics settle 2 s at each slip; where the model hands back (`ngp`) NGP's
   `patch_forces` answer. A new model name needs its line in `TYRE_MODEL`. Steady forces at 15 m/s, flat, no sinking
   and no soil force (the sweep, not `ngp_transient`'s whole step); the gravel shape rows (Coutermarsh, measured at 1-1.5
-  m/s) are taken at 1.5 m/s (`gravel-1.5`, wet `gravel-wet-1.5` with WaterFactor 1) and 6.7 kN, Croft-White's at 20 m/s
-  (`gravel-wet-20`). Braking peaks (`peak_mu_x_brake_*`, `peak_kappa_*`, `mu_x_rel_k*_brake_*`,
+  m/s) are taken at 1.5 m/s (`gravel-1.5`, wet `gravel-wet-1.5` with WaterFactor 1) and 6.7 kN on a 25 mm layer
+  (`--soil`: pea stone's was 4-9.5 cm), Croft-White's at 20 m/s (`gravel-wet-20`) on the probe's 9 mm; `gravel-deep` /
+  `gravel-deeper` the probe on 17.5 / 25 mm (`gravel-depth-alpha90-*`, context). Braking peaks (`peak_mu_x_brake_*`, `peak_kappa_*`, `mu_x_rel_k*_brake_*`,
   `mu_x_locked_rel_*`, the longitudinal load exponent) are the maximum over a braking slip of 0 to loose-v1's
   `BERM_FROM` 0.8, the free rolling side's peak before the berm; locked is κ -1. NGP's and the brush's braking peaks
   lie below 0.8 on all four probes (their keys equal the 0-1 maximum's, lab on the same probes).
