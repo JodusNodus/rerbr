@@ -255,7 +255,7 @@ pub struct SetupPage {
     /// What the editor's values are compared with, and its values.
     compare: Compare,
     base: Setup,
-    /// Per wheel area (`editor::wheel_areas`), front and rear: whether the left and right wheels are set together.
+    /// By `values::WHEEL_AREAS`, front and rear: whether the left and right wheels are set together.
     linked: [[bool; 2]; 4],
     area: Area,
     map: usize,

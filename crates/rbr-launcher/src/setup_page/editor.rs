@@ -6,7 +6,7 @@ use egui::{vec2, Align2, Color32, CornerRadius, DragValue, FontId, Rect, RichTex
 use rbr_gameplay::setup::{Area, Range, Setup, Spec, MAP_POINTS};
 
 use super::charts::{self, Damper, Spring, BASE, DIFF, FRONT, REAR};
-use super::values::{values, with_values, AXLES, MAP_NAMES};
+use super::values::{values, with_values, AXLES, MAP_NAMES, WHEEL_AREAS};
 use super::SetupPage;
 use crate::pages::combo;
 
@@ -313,7 +313,7 @@ impl SetupPage {
             return;
         }
         ui.add_space(8.0);
-        if per_wheel_area(area) {
+        if WHEEL_AREAS.contains(&area) {
             self.wheel_rows(ui, area);
         } else {
             self.rows(ui, area);
@@ -595,18 +595,9 @@ impl SetupPage {
     }
 }
 
-/// Whether the area's values are per wheel.
-fn per_wheel_area(area: Area) -> bool {
-    wheel_areas().contains(&area)
-}
-
-fn wheel_areas() -> [Area; 4] {
-    [Area::Tyres, Area::Springs, Area::Dampers, Area::Geometry]
-}
-
 /// The per-wheel area's slot in [`SetupPage::linked`].
 fn wheel_area(area: Area) -> usize {
-    wheel_areas().iter().position(|a| *a == area).unwrap_or(0)
+    WHEEL_AREAS.iter().position(|a| *a == area).unwrap_or(0)
 }
 
 fn capital(word: &str) -> String {
@@ -616,5 +607,60 @@ fn capital(word: &str) -> String {
 
 /// Every per-wheel area's axles set together where the setup's left and right are alike.
 pub(super) fn linked_for(setup: &Setup, specs: &[(Spec, Range)]) -> [[bool; 2]; 4] {
-    wheel_areas().map(|area| SetupPage::alike(setup, specs, area))
+    WHEEL_AREAS.map(|area| SetupPage::alike(setup, specs, area))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs `ui` in a fixed area at the top left for each pass's pointer events.
+    fn passes(passes: &[Vec<egui::Event>], mut draw: impl FnMut(&mut Ui)) {
+        let ctx = egui::Context::default();
+        for events in passes {
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(400.0, 100.0))),
+                events: events.clone(),
+                ..Default::default()
+            };
+            let mut output = ctx.run_pass(input, |ctx| {
+                egui::Area::new(egui::Id::new("track")).fixed_pos(egui::Pos2::ZERO).show(ctx, |ui| draw(ui));
+            });
+            output.textures_delta.clear();
+        }
+    }
+
+    fn click(x: f32) -> Vec<Vec<egui::Event>> {
+        let pos = egui::pos2(x, TRACK.y / 2.0);
+        let button = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        vec![vec![], vec![egui::Event::PointerMoved(pos)], vec![button(true)], vec![button(false)], vec![]]
+    }
+
+    /// A click on the track takes the game's steps toward it: three quarters along 0..1 by 0.1 is 0.7 or 0.8, never
+    /// a value between the steps; a fixed range takes no clicks.
+    #[test]
+    fn a_click_on_the_track_steps_toward_it() {
+        let range = Range { min: 0.0, max: 1.0, step: 0.1, wrap: false };
+        let mut value = 0.2;
+        let x = 7.0 + (TRACK.x - 14.0) * 0.75;
+        passes(&click(x), |ui| {
+            track(ui, &mut value, 0.2, range, FRONT);
+        });
+        let steps = (value - 0.2) / 0.1;
+        assert!((steps - steps.round()).abs() < 1e-4 && (0.69..=0.81).contains(&value), "{value}");
+        assert_eq!(value, range.toward(0.2, 0.75));
+    }
+
+    #[test]
+    fn a_difference_shows_more_decimals_rather_than_none() {
+        assert_eq!(signed(0.6, 0), "+1");
+        assert_eq!(signed(0.46, 0), "+0.5");
+        assert_eq!(signed(-0.02, 1), "-0.02");
+        assert_eq!(signed(0.0001, 0), "+0.000");
+    }
 }

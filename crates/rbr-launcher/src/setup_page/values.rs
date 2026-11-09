@@ -39,9 +39,12 @@ pub fn with_values(setup: &Setup, list: &[f32]) -> Setup {
     out
 }
 
-/// Whether the spec's values are per wheel (the tyre, spring, damper and geometry pages).
+/// The areas whose values are per wheel.
+pub const WHEEL_AREAS: [Area; 4] = [Area::Tyres, Area::Springs, Area::Dampers, Area::Geometry];
+
+/// Whether the spec's values are per wheel.
 pub fn per_wheel(spec: &Spec) -> bool {
-    matches!(spec.area, Area::Tyres | Area::Springs | Area::Dampers | Area::Geometry)
+    WHEEL_AREAS.contains(&spec.area)
 }
 
 /// A line of the differences.

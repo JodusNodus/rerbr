@@ -8,6 +8,7 @@ use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense,
 use rbr_gameplay::setup::{Area, Spec};
 
 use super::charts::{DIFF, FRONT, REAR};
+use super::values::WHEEL_AREAS;
 
 /// The board's size.
 pub const SIZE: egui::Vec2 = vec2(372.0, 330.0);
@@ -16,8 +17,6 @@ const CHIP: egui::Vec2 = vec2(114.0, 46.0);
 const HALF: f32 = 50.0;
 const LENGTH: f32 = 306.0;
 const AXLES: [f32; 2] = [64.0, 244.0];
-/// The per-wheel areas, in [`Differs::corners`] order.
-const WHEEL_AREAS: [Area; 4] = [Area::Tyres, Area::Springs, Area::Dampers, Area::Geometry];
 
 /// What the board shows of the setup.
 pub struct View {
@@ -37,7 +36,7 @@ pub struct View {
 /// The parts whose values differ from the comparison.
 #[derive(Debug, Default, PartialEq)]
 pub struct Differs {
-    /// By [`WHEEL_AREAS`], by wheel.
+    /// By [`WHEEL_AREAS`] and wheel.
     corners: [[bool; 4]; 4],
     bars: [bool; 2],
     brakes: [bool; 2],
