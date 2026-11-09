@@ -43,10 +43,12 @@ impl Geometry {
     }
 
     /// Sandoval–Heywood FMEP, Pa, at `rpm` (at least 300, where the 1 + 500/N boundary terms stop growing), the
-    /// viscosity scale `phi` and the intake over ambient pressure `p_ratio` (ring gas loading). Terms (ESA.NET
-    /// FrictionModel.cs after the Sandoval thesis eqs. 7.b–11): crankshaft, reciprocating, ring gas loading,
-    /// valvetrain (flat follower C_ff 133, C_oh 0.5, C_om 10.7), auxiliaries; bearings D_b 0.67B, L_b 0.25B,
-    /// D_r 0.59B, L_r 0.22B, n_b = n_c + 1, 2(n_c + 1) cam bearings, valve lift 0.11B.
+    /// viscosity scale `phi` and the intake over ambient pressure `p_ratio` (ring gas loading). Terms (SAE
+    /// 2003-01-0725 App. B, eq. 6–14; ring tension and roughness ratios 1): crankshaft, reciprocating, ring gas
+    /// loading, valvetrain (Table 3's DOHC direct acting: C_ff 133, C_oh 0.5, C_om 10.7), auxiliaries (eq. 14, refitted
+    /// to SI engines' oil pump, water pump and alternator; Patton's 6.23 + 5.22e-3·N − 1.79e-7·N² was fitted with
+    /// diesels); bearings D_b 0.67B, L_b 0.25B, D_r 0.59B, L_r 0.22B, n_b = n_c + 1, 2(n_c + 1) cam bearings, valve
+    /// lift 0.11B.
     pub fn fmep(&self, rpm: f64, phi: f64, p_ratio: f64) -> f64 {
         let n = rpm.max(300.0);
         let (b, s, nc) = (self.bore, self.bore, self.cylinders);
@@ -68,7 +70,7 @@ impl Geometry {
             + 133.0 * boundary * nv / (s * nc)
             + 0.5 * phi * pow(lv, 1.5) * sqrt(n) * nv / (b * s * nc)
             + 10.7 * boundary * lv * nv / (s * nc);
-        let aux = 6.23 + 5.22e-3 * n - 1.79e-7 * n * n;
+        let aux = 8.3155 + 1.86e-3 * n + 7.45e-7 * n * n;
         (crank + recip + gas + valve + aux) * 1000.0
     }
 }
@@ -84,12 +86,13 @@ pub fn pmep(p_em: f64, p_im: f64, p_a: f64, rpm: f64, rpm_limit: f64) -> f64 {
 mod tests {
     use super::*;
 
-    /// The report's worked example (`fric.py`): 2.0 L, B = S = 86 mm, p_i/p_a 0.2, warm oil.
+    /// The report's worked example (`fric.py`): 2.0 L, B = S = 86 mm, p_i/p_a 0.2, warm oil; its totals 64, 120 and
+    /// 215 kPa with eq. 14's auxiliaries in place of Patton's (−0.4, +3.4 and +34.4 kPa).
     #[test]
     fn the_worked_example_matches_the_report() {
         let g = Geometry { v_d: 4.0 * PI / 4.0 * 0.086 * 0.086 * 0.086, cylinders: 4.0, bore: 86.0, r_c: 11.0 };
         // fric.py uses L_v = 10 mm; ours is 0.11·B = 9.46 mm, so allow a little.
-        for (rpm, kpa) in [(1000.0, 64.0), (4000.0, 120.0), (8000.0, 215.0)] {
+        for (rpm, kpa) in [(1000.0, 63.6), (4000.0, 123.4), (8000.0, 249.4)] {
             let got = g.fmep(rpm, 1.0, 0.2) / 1000.0;
             assert!((got - kpa).abs() < 0.04 * kpa, "{rpm}: {got}");
         }
