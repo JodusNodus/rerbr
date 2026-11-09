@@ -1116,6 +1116,17 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   (Paige-Green), 0.6-0.8 where water makes a slurry of the fines (CRREL, MgCl); damp × 1.0 is unaffected (no damp test;
   the MgCl humidity loss is the salt's), and wet × 0.85 sits inside the 0.76-0.90 of the two gravel-road data sets (×
   0.95 would sit above both).
+- Damp gravel at the dry level (2026-11-09, T59, `tyre/gravel-damp`, a user decision, experimental-brush only):
+  `loose::gravel_damp_level` scales the loose level by 1 + (1/0.925 - 1) times the damp tent (`brush::damp_weight`: 1
+  at W 0.25, 0 dry and wet, linear between) times the gravel class's share; grass, rock, snow, tarmac, the tyre's own
+  wet slope and the wet α0 unchanged. Materials (`materials` example, every class-1 id: 1-51, 153-155, 177-199): damp
+  is the dry static and soil static × 0.9250 (±0.0001, the print's rounding), wet × 0.850 fine, 0.845 medium, 0.8525
+  coarse. Evidence: Moyer's sprinkled gravel locked 1.06-1.18 of dry, no damp loss measured, wet roads 0.76-0.90 of dry
+  (above). Fiesta Rally2, RSF 345 from 50 km/h declutched, brush, damp before → after (dry): locked 0.863 → 0.897 g
+  (0.892), best threshold (K 0.7) 0.714 → 0.784 (0.767), ABS K 0.15 0.560 → 0.618 (0.624); ngp, brush dry and wet,
+  `experimental` damp traces bit-equal. Flat gravel circle (map 85 under 17 / 18, tyre 3, r 40, ramp 0.4), kin g
+  damp 0.888 → 0.979 (dry 0.987). Scorecard: `gravel-car-damp-over-dry-locked-50` 0.968 → 1.006,
+  `-best-50` 0.931 → 1.022 (context; the threshold's best K is a single run each); no other row moves.
 - Not adopted (2026-11-08): the exponential approach on the brush's own stiffness (NGP's slope, u = 3ψ, the brush's
   adhesion/sliding split): pea stone 0.38/0.61/0.85/0.95 at 6.7 kN and 0.98 at 20°, all four pea rows still miss; one
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
@@ -1123,7 +1134,7 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
 
 ### The soil's depth: NGP's materials and the surface across the road
 
-2026-11-08. NGP's soil materials (lab `materials`, NGP 7.4.778's stage init, dry; damp / wet take μ × 0.925 / 0.85,
+2026-11-08. NGP's soil materials (lab `materials`, NGP 7.4.778's stage init, dry; damp / wet take μ × 0.925 / 0.845-0.8525,
 WaterFactor 0.25 / 1 and SoilDensity +100 / +200; names from `lsp_keys.rs`):
 
 | Ids (dry) | Materials | μs / μk | soil μs / μk | Thickness | SinkFactor | Class |

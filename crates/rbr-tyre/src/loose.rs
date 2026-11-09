@@ -6,6 +6,7 @@
 //! - Level: NGP's. The free rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
+//!   Damp gravel takes NGP's dry level back ([`gravel_damp_level`]); wet keeps NGP's.
 //! - Shape below the level, gravel: Janosi-Hanamoto's shear law of soil (τ = τ_max (1 - exp(-j/K)); Wong, Theory of
 //!   Ground Vehicles, not read: secondary via Senatore & Sandu, J. Terramech. 48, 2011) with the shear displacement
 //!   taken as the theoretical slip times a fixed length: μ Fz (1 - exp(-u)) along the slip, u the slip over
