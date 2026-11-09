@@ -12,7 +12,7 @@ tarmac-mu-x-k05-over-peak,tarmac,tyre,μ_x(κ -0.5)/peak μ_x braking,4 kN 15 m/
 tarmac-mu-x-locked-over-peak,tarmac,tyre,μ_x locked/peak μ_x braking,4 kN 15 m/s; dry road tyres 32-100 km/h,0.58,0.885,ratio,Burckhardt 1993 (three reproductions); Lambourn & Wesley TRL PPR496,quoted,tyre:tarmac:mu_x_locked_rel_4k
 tarmac-combined-a2,tarmac,tyre,Fy(κ -0.25)/Fy(κ 0) at α 2°,4 kN 15 m/s; measured road all-terrain tyre P225/75R15 at 5.3-5.5 kN 48 km/h,0.20,0.30,ratio,Svendenius PhD Lund 2007 Figs 5.2 5.5 5.7 (G),fig ±0.05,tyre:tarmac:comb_a2_4k
 tarmac-combined-a4,tarmac,tyre,Fy(κ -0.25)/Fy(κ 0) at α 4°,4 kN 15 m/s; same tyre,0.29,0.34,ratio,Svendenius PhD Lund 2007 (G),fig ±0.05,tyre:tarmac:comb_a4_4k
-tarmac-relaxation-length,tarmac,tyre,lateral relaxation length,Fz0; road tyres; grows with speed and load,0.12,0.45,m,Pacejka via Wikipedia; Vera et al. 2022,quoted,none
+tarmac-relaxation-length,tarmac,tyre,lateral relaxation length,Fz0; road tyres; grows with speed and load,0.12,0.45,m,Pacejka via Wikipedia; Alcázar Vargas et al. 2022,quoted,none
 tarmac-calpha-cold-to-hot,tarmac,tyre,Cα hot/cold,bulk temperature cold to hot; road tyre,0.75,0.80,ratio,Goodyear Table 3,table,none
 tarmac-hydroplaning-speed,tarmac,tyre,hydroplaning speed over √p,water deeper than the grooves,6.36,6.36,km/h/√kPa,Horne & Dreher NASA TN D-2056,quoted,none
 tarmac-wet-speed-loss,tarmac,tyre,new tyre wet braking μ 100 km/h over 80 km/h,"watered track; new road tyre (8 mm); lab: mean braked peak of a stop (stop_mu_x_4k), WaterFactor 1 (film 0.7 mm)",0.97,1.0,ratio,Continental Contidrom via AUTO BILD,quoted,tyre-ratio:tarmac-wet-100/tarmac-wet-80:stop_mu_x_4k
