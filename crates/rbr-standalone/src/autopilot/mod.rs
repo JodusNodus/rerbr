@@ -51,6 +51,7 @@ use rbr_recording::sound::FmodBlock;
 use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHEEL_BYTES};
 
 mod drive;
+pub mod race;
 
 pub use drive::{drive, from_snapshot, Pilot};
 
@@ -491,11 +492,14 @@ pub struct Driver<'a> {
     dragging: u32,
     /// Steps since the restart of a stalled engine began (`STALLED`), while it lasts.
     crank: Option<u32>,
+    /// `--race`: the line and its plan, and the steps each guard held the speed under the plan (full lock, tracking).
+    race: Option<race::Line>,
+    pub guarded: [u32; 2],
 }
 
 /// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from` and its `--brake-pedal`,
 /// `--brake-slip`, `--brake-abs`, `--brake-hold`, `--brake-declutch`, `--circle`, `--circle-ramp`, `--trace-speed`); the default drives as a race.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct Measure {
     pub flat_out: bool,
     pub brake_from: Option<f32>,
@@ -524,6 +528,8 @@ pub struct Measure {
     pub material_as: Option<u32>,
     /// `--plan LAT,BRAKE`: the speed plan's lateral and braking acceleration (`Plan`).
     pub plan: Option<Plan>,
+    /// `--race LAT,BRAKE,SLIP`: race driving on a line across the road at the car's limits (`race`).
+    pub race: Option<race::Race>,
 }
 
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
@@ -725,7 +731,20 @@ impl<'a> Driver<'a> {
             neutral: false,
             dragging: 0,
             crank: None,
+            race: None,
+            guarded: [0; 2],
         }
+    }
+
+    /// The driver racing on `line` (`--race`): its steering target and speed plan replace the driveline's, and the
+    /// brake stays under threshold braking's at the line's slip, as `--plan`'s does at `PLAN_SLIP`.
+    pub fn with_race(self, line: race::Line) -> Self {
+        Self { race: Some(line), antilock: Some(1.0), ..self }
+    }
+
+    /// The heavy props by the driveline (`with_obstacles`).
+    fn props(&self) -> &[Placed] {
+        &self.props
     }
 
     /// The driver on a surface with `grip` of the dry grip (1 dry, less on a damp or wet race: `with_lesson`).
@@ -841,6 +860,9 @@ impl<'a> Driver<'a> {
         }
         if self.flat_out {
             return self.top;
+        }
+        if let Some(line) = &self.race {
+            return line.speed(at).min(self.top);
         }
         let braking = self.plan.braking * self.grip;
         let lateral = self.plan.lateral * self.grip;
@@ -1022,7 +1044,7 @@ impl<'a> Driver<'a> {
         }
         let at = distance(&self.values, sense.parameter);
         let mut look = LOOK_BASE + LOOK_TIME * speed;
-        if self.aim.is_none() && !self.against {
+        if self.aim.is_none() && !self.against && self.race.is_none() {
             // Pull the target nearer through windings: while the driveline ahead turns away, aim at its near part.
             let mut turn = 0.0;
             let mut s = LOOK_BASE;
@@ -1040,10 +1062,15 @@ impl<'a> Driver<'a> {
             }
         }
         let aimed = self.aim_target(&sense.pose);
-        let swerve =
-            if aimed.is_some() || self.against || self.free() { 0.0 } else { self.dodge(at, at + look + LEAD) };
+        let swerve = if aimed.is_some() || self.against || self.free() || self.race.is_some() {
+            0.0
+        } else {
+            self.dodge(at, at + look + LEAD)
+        };
         let target = if let Some(circle) = self.circle {
             self.circle_point(&sense.pose, speed, circle)
+        } else if let Some(line) = &self.race {
+            line.point(at + look)
         } else {
             aimed.unwrap_or_else(|| {
                 if self.against {
@@ -1067,6 +1094,11 @@ impl<'a> Driver<'a> {
         }
         // Counter-clockwise (left) error wants left (negative) steering; backing up, right swings the nose left.
         let (mut steer, mut throttle, mut brake, mut flags) = ((-error * STEER_GAIN).clamp(-1.0, 1.0), 0.0, 1.0, 0);
+        if let Some(line) = &mut self.race {
+            if line.loose() && self.mode == Mode::Drive && speed > 3.0 {
+                steer = line.steer(at, &sense.pose, rbr_recording::STEP_SECONDS / self.per.max(1) as f32);
+            }
+        }
         match self.mode {
             Mode::Reverse(_) if sense.gear > REVERSE => {
                 steer = 0.0;
@@ -1085,15 +1117,30 @@ impl<'a> Driver<'a> {
             Mode::Forward | Mode::Drive => {
                 self.mode = Mode::Drive;
                 let off = sub(sense.pose.position, point(self.track, sense.parameter));
-                let err = (off[0].hypot(off[1]) - swerve.abs()).abs();
-                let mut want = if finished { 0.0 } else { self.target_speed(at) };
-                if !self.free() && (error * STEER_GAIN).abs() > 1.0 {
+                let err = match &self.race {
+                    Some(line) => race::off_line(line, at, sense.pose.position),
+                    None => (off[0].hypot(off[1]) - swerve.abs()).abs(),
+                };
+                // Race: the plan's speed `ANTICIPATE` s ahead; full lock is the race steering's.
+                let (ahead, lock, track_err) = match &self.race {
+                    Some(_) => (speed * race::ANTICIPATE, steer.abs() >= 1.0, race::TRACK_ERR),
+                    None => (0.0, (error * STEER_GAIN).abs() > 1.0, TRACK_ERR),
+                };
+                let mut want = if finished { 0.0 } else { self.target_speed(at + ahead) };
+                let planned = want;
+                if !self.free() && lock {
                     want = want.min(FULL_LOCK_TOP * self.grip);
+                    if self.race.is_some() && want < planned {
+                        self.guarded[0] += 1;
+                    }
                 }
-                if !self.free() && !finished && err > TRACK_ERR {
+                if !self.free() && !finished && err > track_err {
                     // The tracking guard: the steered line is the driveline swung by the dodge offset; further from
                     // it than `TRACK_ERR`, the car is sliding, so slow down proportionally until it answers again.
-                    want = want.min((speed * TRACK_ERR / err).max(TRACK_MIN));
+                    want = want.min((speed * track_err / err).max(TRACK_MIN));
+                    if self.race.is_some() && want < planned {
+                        self.guarded[1] += 1;
+                    }
                 }
                 let lean = lean(&sense.pose);
                 if lean.abs() > TIP {
@@ -1104,7 +1151,7 @@ impl<'a> Driver<'a> {
                 // line (the gentle pedal below arrives hot and slides wide). Only while tracking well; a sliding
                 // car takes the tracking guard's proportional slow instead of piling on brake in the turn.
                 let mut slow = f32::INFINITY;
-                if !self.free() {
+                if !self.free() && self.race.is_none() {
                     let mut s = 0.0;
                     while s < KINK_AHEAD {
                         slow = slow.min(self.curve_limit(at, s, LATERAL));
@@ -1112,7 +1159,9 @@ impl<'a> Driver<'a> {
                     }
                 }
                 let kink = !self.free() && !finished && slow < KINK_SLOW && err < TRACK_ERR && gap < -1.0;
-                (throttle, brake) = if finished || want <= 0.0 {
+                (throttle, brake) = if let (Some(line), false) = (&self.race, finished) {
+                    race::pedals(gap, race::sideslip(&sense.pose), line.loose())
+                } else if finished || want <= 0.0 {
                     (0.0, 1.0)
                 } else if gap > 0.0 {
                     ((0.4 + 0.2 * gap).min(1.0), 0.0)
@@ -1124,9 +1173,11 @@ impl<'a> Driver<'a> {
                     (0.0, (-0.15 * gap).min(0.8))
                 };
                 if let Some(held) = &mut self.antilock {
-                    // `--plan`: the pedal held under the threshold controller's at `PLAN_SLIP` (`Brake::Slip`'s law).
+                    // `--plan`, `--race`: the pedal held under the threshold controller's at `PLAN_SLIP` or the line's
+                    // slip (`Brake::Slip`'s law).
                     if brake > 0.0 && !finished {
-                        let error = PLAN_SLIP - slip(sense);
+                        let target = self.race.as_ref().map_or(PLAN_SLIP, |line| line.slip);
+                        let error = target - slip(sense);
                         let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
                         *held = (*held + SLIP_I * error * dt).clamp(0.0, 1.0);
                         brake = brake.min((*held + SLIP_P * error).clamp(0.0, 1.0));

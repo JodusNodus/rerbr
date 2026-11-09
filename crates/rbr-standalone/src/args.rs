@@ -69,6 +69,10 @@ pub struct Args {
     /// `--plan LAT,BRAKE` (with `--autopilot`, limit runs): the speed plan's dry lateral and braking acceleration in
     /// m/s² in place of the controller's own (`autopilot::Plan`).
     pub plan: Option<autopilot::Plan>,
+    /// `--race LAT,BRAKE,SLIP` (with `--autopilot`, test tooling): race driving on a line across the road's width at the
+    /// car's measured lateral and braking acceleration (m/s²) and best braking slip (`autopilot::race`), the top 60 m/s
+    /// unless `--top-speed`.
+    pub race: Option<autopilot::race::Limits>,
     /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear, position and wheel speeds.
     pub trace_speed: Option<PathBuf>,
     /// `--tyre-probe FILE` (with `--autopilot` or `--replay-trace`): read-only dumps of each wheel's tyre frame
@@ -211,7 +215,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -306,6 +310,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 })?)
             }
             "--plan" => args.plan = Some(value.parse()?),
+            "--race" => args.race = Some(value.parse()?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
             "--tyre-probe" => args.tyre_probe = Some(PathBuf::from(value)),
             "--tyre-probe-every" => args.tyre_probe_every = Some(parsed("--tyre-probe-every", &value)?),
@@ -619,6 +624,20 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.plan.is_some() && (args.flat_out || args.circle.is_some()) {
         return Err("--plan takes no --flat-out or --circle (they plan no speed)".into());
     }
+    if args.race.is_some()
+        && (args.autopilot.is_none()
+            || args.plan.is_some()
+            || args.flat_out
+            || args.circle.is_some()
+            || args.brake_from.is_some()
+            || args.aim.is_some()
+            || args.lesson.is_some())
+    {
+        return Err(
+            "--race needs --autopilot, and takes no --plan, --flat-out, --circle, --brake-from, --aim or --school"
+                .into(),
+        );
+    }
     let rsf = match (&stage, stage_dir, rsf_stage) {
         (None, Some(dir), None) => Some(rsf::open(&dir)?),
         (None, None, Some(id)) => Some(rsf::find(&rsf_root.ok_or("--rsf-stage needs --rsf-root or RBR_RSF")?, id)?),
@@ -843,6 +862,10 @@ mod tests {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));
             }),
             (BOOT.into(), |a| assert_eq!(a.plan, None)),
+            (format!("{BOOT} --race 11.3,11.5,0.3"), |a| {
+                assert_eq!(a.race, Some(autopilot::race::Limits { lateral: 11.3, braking: 11.5, slip: 0.3 }));
+            }),
+            (BOOT.into(), |a| assert_eq!(a.race, None)),
             (format!("{LIVE} --replay F --replay-pace free --replay-trace T"), |a| {
                 assert_eq!(a.replay_pace, live::Pace::Free);
                 assert_eq!(a.replay_trace, Some(PathBuf::from("T")))
@@ -1085,6 +1108,23 @@ mod tests {
             (
                 format!("{BOOT} --plan 8,6 --circle 0,0,40"),
                 "--plan takes no --flat-out or --circle (they plan no speed)",
+            ),
+            (format!("{BOOT} --race 11,11"), "--race 11,11: want LAT,BRAKE,SLIP: m/s² over 0 and a slip ratio in 0-1"),
+            (
+                format!("{BOOT} --race 11,11,1"),
+                "--race 11,11,1: want LAT,BRAKE,SLIP: m/s² over 0 and a slip ratio in 0-1",
+            ),
+            (
+                format!("{REC} --race 11,11,0.3"),
+                "--race needs --autopilot, and takes no --plan, --flat-out, --circle, --brake-from, --aim or --school",
+            ),
+            (
+                format!("{BOOT} --race 11,11,0.3 --plan 8,6"),
+                "--race needs --autopilot, and takes no --plan, --flat-out, --circle, --brake-from, --aim or --school",
+            ),
+            (
+                format!("{BOOT} --race 11,11,0.3 --circle 0,0,40"),
+                "--race needs --autopilot, and takes no --plan, --flat-out, --circle, --brake-from, --aim or --school",
             ),
             (format!("{REC} --brake-from 27.78"), "--brake-from needs --autopilot"),
             (
