@@ -77,7 +77,7 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Relaxation length | 0.12-0.45 m, longer at higher speed and load, of the order of the wheel radius at Fz0 (Pacejka); grows with speed: σ_y = -0.14 + 0.021 V + 1.9e-4 Fz - 1.6e-8 Fz² m (car tyre bench, ≤2 Hz; also with frequency, <0.5 m near 0 Hz to ~1.0 m at 1 Hz); motorcycle tyres 0.1-0.4 m, "higher ... at higher speeds"; MF-Swift: independent of V, set by load, slip and pressure; σ/R0 at Fz0 lateral 1.01 / 1.84, longitudinal 1.19 / 1.44 | Pacejka via Wikipedia "Relaxation length"; Vera et al. (2022); Cossalter, Lot & Massaro, Motorcycle Dynamics, ch. 1 (Wiley excerpt); Schmeitz, TNO MF-Tyre/MF-Swift lecture (2013); MF 5.2 truck / MF6.1 sets |
 | Trail at small slip | a/3 (half contact length a) | brush theory (Pacejka 2012) |
 | Aligning moment, pure slip | at 4 kN: t0/a 0.42 / 0.51 / 0.36 (t0 at ±0.5°, a the MF-Swift contact length from Q_RA1/2); t0 ∝ Fz^0.93 / 0.93 / 1.01 over 2-6 kN, a ∝ Fz^0.60 / 0.64 / 0.59; Mz peak ∝ Fz^1.64 / 1.90 / 1.90, peak Mz/(μ_y Fz a) 0.19 / 0.26 / 0.20 (brush theory 27/256 = 0.105); Mz peak at 0.30 / 0.37 / 0.35 of the Fy peak's slip angle, Mz back to 0 at 0.78 / 1.73 / 1.19 of it, slightly negative or 0 beyond. Measured Goodyear Wrangler P225/75R15 (48 km/h, ~6 kN): Mz peak 3.7° against the Fy peak at 9-11°, 0 at 13-15°, never negative | TNO 205/60R15 / Continental 225/50R18 (MF-Tool 6.2) / MF6.1, evaluated with MF 6.1's Mz (MF/model; the KT_MF_Tool 245/60R16 template copies TNO's and is left out); Svendenius, PhD Lund 2007, Fig 5.4 (NHTSA data, fig ±0.25°) |
-| Aligning moment, combined | Mz(κ)/Mz(0) at 4°, κ ∓0.05, 4 kN: braking 0.62 / 1.29 / 0.40, driving -0.07 / -0.63 / 0.44 (MF 6.1's combined Mz has one fitted term, s·Fx; MF6.1's is 0). The fitted s puts braking above driving; Wong (Goodyear data) says driving raises and braking lowers Mz, as a carcass lateral deflection under Fx does. Conflict: not scored. Low μ: the trail falls to 0 at the full-slide angle, ∝ μ (Hsu, Laws & Gerdes, IEEE TCST 18:4, 2010, on dry gravel; model, no Mz numbers); no open Mz data on snow, ice or gravel | same sets (MF/model); Wong, Theory of Ground Vehicles ch. 1 (secondary, not read) |
+| Aligning moment, combined | Mz(κ)/Mz(0) at 4°, κ ∓0.05, 4 kN: braking 0.62 / 1.29 / 0.40, driving -0.07 / -0.63 / 0.44 (MF 6.1's combined Mz has one fitted term, s·Fx; MF6.1's is 0). The fitted s puts braking above driving; Wong (Goodyear data) says driving raises and braking lowers Mz, as a carcass lateral deflection under Fx does. Conflict: not scored. Low μ: the trail falls to 0 at the full-slide angle, ∝ μ (Hsu, Laws & Gerdes, IEEE TCST 18:4, 2010, on dry gravel; model, no Mz numbers); no open Mz data on snow, ice or gravel | same sets (MF/model); Wong, Theory of Ground Vehicles 3rd ed. §1.4.2 (read 2026-11-09: one qualitative sentence, no data or reference) |
 | Contact patch, braking | static ink print 205/55R16 at 4821 N, 240 kPa: 147 mm long, 161 mm wide (NGP's tarmac patch at 4.8 kN, 200 kPa: ~0.165 m, 12 % longer, as the lower pressure suggests; the brush's a is half of it); ABS car 100-0 km/h on ten such tyres 36.3-41.7 m, 0.94-1.08 g mean (v²/2s, pedal rise included: a lower bound for a rally tarmac tyre) | Liang et al., Adv. Mech. Eng. 12(12) (2020), doi 10.1177/1687814020981173 (table; g inferred) |
 
 | Convection | Nu ∝ Re^0.8 (NGP 0.78) | West & Limebeer, VSD 60 (2022) |
@@ -1244,7 +1244,7 @@ map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h;
   slows at 0.017 g to a stop, from 4 m/s it gains 0.027 g (brush 0.017). Both off: 0.025 g from rest. Tooling
   checked: 116's values copy (μ 0.10/0.095, rolling 0.02, class 5; its collision values change nothing), throttle
   0.3 stays put too. BMW M3 E30 frozen, both Porsche 911 SC creep 0.02 m/s and stop. A real RWD car would crawl
-  (free-rolling drag ~0.01-0.015 Fz; reasoning, no source). Either change is the integrator's or the drive line's,
+  (free-rolling drag ~0.013-0.0145 Fz at walking pace: radial car tyres, smooth road, Wong Fig. 1.3, eq. 1.1, [Wong](#wong-theory-ground-vehicles-against-the-open-items-2026-11-09)). Either change is the integrator's or the drive line's,
   not the brush's: open as a decision.
 - Combined slip: the brush already loses more side force driving than braking at the same slip (α 6°, κ ±0.05: 0.98
   / 1.03; NGP symmetric 0.96). Its |F| stays on the circle (α 25°, κ 0.3: 1.02 of the pure lateral, NGP 1.02), where
@@ -1286,6 +1286,65 @@ loose-v1](#loose-surfaces-loose-v1); 2 measured in a drive-test build, below):
    (`snow-lat-max-packed`, `snow-long-mu-winter`); new `snow-car-locked-over-abs-50/80` 1.00-1.10 (studded, SR 115
    Fig. 3, 1.02-1.08 ± 0.02; road winter ≤ 1.0 below); gravel's 1.18-1.40 (SATC) is context
    (`gravel-car-locked-over-abs-satc-80`): it lies inside the scored 1.12-1.59 on the same run.
+
+## Wong, Theory of Ground Vehicles, against the open items (2026-11-09)
+
+J. Y. Wong, Theory of Ground Vehicles, 3rd ed. (Wiley), a scan read page by page (`research/wong`, notes only); book
+page numbers. Labels as above; "inferred (ours)" marks our own integration of his equations.
+
+| Quantity | Published | Source (precision) |
+| --- | --- | --- |
+| Shear deformation modulus K, Janosi-Hanamoto τ = τmax (1 - e^(-j/K)) (soils "type A") | firm sandy terrain 10 mm, loose sand 25 mm, clay at maximum compaction 6 mm, undisturbed fresh snow 25-50 mm; "may be a function of normal pressure" (bevameter plates and rings, 3-70 kPa); worked example on snow (n 1.6, φ 19.7°) K 50 mm; no gravel | Wong pp. 145-148, eq. 2.56, Example 2.3 (text values) |
+| Shear with a hump ("type C": compact sand, silt, loam, frozen snow), eq. 2.61 | displacement at the peak Kω 27-71 mm and residual over peak Kr 0.38-0.72 (firm mineral terrain); firm snow Kω 22 mm, Kr 0.66 | Wong p. 149 (text values) |
+| K fitted at vehicle scale | rubber-padded track on a paved road, μ 0.9, K 75 mm (deduced from a turning test) | Wong p. 412 (text; a whole-vehicle fit, lumps the running gear's compliance) |
+| Braking effort against skid, loose gravel, 64 km/h | bias-ply 7.75-14 car tyre: 0.36 / 0.42 / 0.45 / 0.455 / 0.47 / 0.51 at 10 / 20 / 40 / 60 / 80 / 100 %, no peak below lock; over the 40-60 % plateau 0.80 / 0.93 / 1 / 1.04 / 1.13; locked over plateau 1.13 (band 1.0-1.29 from the band's width), the rise steep only past ~85 % | Wong Fig. 1.18 (SAE, ref. 1.17; fig ±0.02, band width 0.05) |
+| Braking effort against skid, dry bitumen 64 km/h / glare ice 32 km/h | dry peak 0.80-0.85 at 15-20 %, locked 0.76-0.81 (0.95 of peak); ice peak 0.10-0.12 at 10-15 %, 0.08-0.10 at 50 %, locked 0.08-0.10 (0.8-0.9 of peak) | same figure (fig ±0.02) |
+| Peak / sliding road adhesion (average) | asphalt and concrete dry 0.8-0.9 / 0.75; asphalt wet 0.5-0.7 / 0.45-0.6; concrete wet 0.8 / 0.7; gravel 0.6 / 0.55; earth road dry 0.68 / 0.65, wet 0.55 / 0.4-0.5; snow hard-packed 0.2 / 0.15; ice 0.1 / 0.07 | Wong Table 1.2 (table, secondary: his ref. 1.12; tyre and speed unstated) |
+| Rolling resistance against speed, hard surface | radial car tyres, rated load and pressure, smooth road: f_r = 0.0136 + 0.40e-7 V² (V km/h, to 150), band 0.013-0.0145 at 0-50 km/h; bias 0.0169 + 0.19e-6 V²; Table 1.1: concrete/asphalt 0.013, rolled gravel 0.02, tarmacadam 0.025, unpaved road 0.05, field 0.1-0.35; a car tyre's at -10 °C shoulder temperature ~2.3 times its 60 °C value | Wong Fig. 1.3, eqs. 1.1-1.2 (Bosch, fit; fig ±0.0005), Table 1.1 (Bosch 1996, table), p. 14 / Fig. 1.12 (text) |
+| Tractor drawbar pull against slip, agricultural soil | 2WD and 4WD tractors, dry loam stubble and wet clayey loam: slip rises slowly, then the curves turn vertical at the maximum pull and run to 60-80 % slip with no visible fall in pull (net traction) | Wong Fig. 4.6 (IMechE, ref. 4.6; fig ±0.5 kN; a drawbar-controlled test cannot hold a falling branch, weak) |
+| Driven tyre on type-C soil, traction against slip | inferred (ours: eq. 2.61 over a uniform 0.2 m patch, j = i x, Wong's track method eqs. 2.69-2.71): peak 0.83-0.85 of τmax A at slip 0.21-0.32 (Kω 27 mm) to 0.56-0.84 (Kω 71 mm); full slip over the peak 0.65-0.92 (Kω 27) and 0.91-1.0 (Kω 71); firm snow peak at 0.23, full slip 0.86 of it | inferred from Wong p. 149 values |
+| Combined slip, hard surface | radial car tyre (165-15, 2.45 kN, 40 km/h): cornering force at a given α about the same braking and driving; bias-ply: higher braking than driving; envelope a friction ellipse | Wong Fig. 1.39, p. 52 (NBS Monograph 122; figure, qualitative) |
+| Aligning moment, combined | "the effect of a driving torque is to increase the aligning torque for a given slip angle, while a braking torque has the opposite effect"; no figure, no numbers, no reference on the sentence | Wong p. 40 (quoted) |
+| Wet peak against speed, tread pattern (water depth unstated) | wet gravel ribbed 0.37 → 0.33, ribbed-siped 0.45 → 0.43, smooth 0.37 → 0.24 from 48 to 100 km/h; wet asphalt (axis read off the gravel panel's scale) ribbed ~1.0 → 0.63, siped 0.87 → 0.62, smooth 0.92 → ~0.07 | Wong Fig. 1.47 (NBS Monograph 122; fig ±0.03) |
+| Wet side force over dry against speed, 1.02 mm water | 4-groove tread, textured concrete: ~0.99 at 16, ~0.80 at 64, ~0.62 at 100, ~0.45 at 135 km/h; smooth concrete 0.85 at 16, ~0.1 at 105; smooth tread lower. 7.62 mm water: both treads at 0 by ~90 km/h (Horne's speed) | Wong Fig. 1.51 (Horne & Joyner, SAE, ref. 1.34; fig ±3 %) |
+| Wet peak, tread depth (car tyres) | 7 mm tread 0.92 at 50 → 0.90 at 100 km/h; 0 mm 0.85 → 0.61; sliding 7 mm 0.62 → 0.37 | Wong Fig. 1.52 (ref. 1.8; fig ±0.02; water depth unstated) |
+| Hydroplaning speed | V_p = 6.34 √p km/h (p kPa), 88 km/h at 193 kPa; Horne & Joyner's aircraft-to-car data on the curve; with water shallower than the grooves "a generally accepted theory has yet to be evolved" | Wong eq. 1.90, Fig. 1.50, p. 69 (formula, quoted) |
+
+What it means for the model:
+
+1. K (gravel α0): support. With the law integrated over a uniform patch (Wong eq. 2.71) the initial slope is τmax A
+   L/(2K), so loose-v1's s0 = tan α0 maps to K = a tan α0: gravel 6.3° → 11 mm, wet 9.7° → 17 mm at a = 0.1 m, inside
+   firm sand (10) to loose sand (25 mm); no gravel K is given. Packed snow's 3.6° → 6.3 mm sits far below fresh snow's
+   25-50 mm but near firm snow's type-C rise (Kω 22 mm, so a type-A fit to the rise ≈ Kω/3 ≈ 7 mm, inferred). Plate K
+   is measured at 3-70 kPa, under a tyre's pressure, and Wong's paved-road K of 75 mm shows fitted K lumps the running
+   gear's compliance: order of magnitude only, nothing to change (snow stays on the flat brush).
+2. Driven tyre: no measured tyre curve on soil. Tractor data show no fall in net pull to 60-80 % slip (weak); type-C
+   soils give an inferred fall at full slip to 0.65-1.0 of the peak, firm snow 0.86, with the peak at slip 0.21-0.32 on
+   Kω 27 mm terrain. The drive-test WIP (`tyre/loose-shape`, fall from 0.3 to F 0.85) lies inside both; nothing to
+   score, nothing to change. Sinkage grows continuously with shear displacement (slip sinkage, Fig. 2.49, plates).
+3. Combined slip on deformable terrain: nothing (Wong treats wheels on soil in pure slip; skid-steering of tracks uses
+   one isotropic K on the resultant displacement, eqs. 6.36, 6.43). On hard surfaces Fig. 1.39 matches the brush's
+   mild asymmetry for a bias-ply tyre and NGP's symmetry for a radial: context.
+4. Aligning moment, combined: the "Wong" side of the conflict is one qualitative sentence with no data or reference
+   in the 3rd edition; it cannot score the row. The row stays unscored; the MF sets' fitted s·Fx remains the only
+   numbers, and they are one fitted term.
+5. Hard surfaces: Table 1.2's gravel 0.6, packed snow 0.2 and ice 0.1 are road-tyre averages; NGP's gravel and snow
+   0.83-0.85 stay above them as before (level stays NGP's), ice 0.094 meets 0.1. Fig. 1.18's loose gravel supports
+   loose-v1's shape on two counts: the rise (0.80 / 0.93 of the plateau at 10 / 20 % against the shear law's 0.71 /
+   0.92 at s0x 0.081) and a berm rising late, past ~85 % slip, to 1.13 (1.0-1.29) at lock at 64 km/h. loose-v1's
+   PLOUGH 1.3 is at the band's top; the car-level locked/ABS rows stay the scored ones. A tyre-level row
+   `gravel-locked-over-plateau` 1.0-1.29 (bias-ply road tyre, one figure) could be scored from the lab sweep (loose-v1
+   1.30 at κ 1 over κ 0.5: on the edge; NGP 0.82/0.95 = 0.86: MISS). Ice sliding over peak: Table 1.2 0.70 (the brush's
+   0.72) against Fig. 1.18 0.8-0.9 (the Open item's 0.81-0.88): split, no change. Rolling resistance: the walking-pace
+   value of a free radial car tyre on a smooth road is 0.013-0.0145 Fz (Fig. 1.3), sourcing the RWD-on-ice item's
+   0.01-0.015: NGP's 0.086 Fz free-wheel drag under 2 m/s is 6 times it. Tarmac 0.013 (Bosch) is above the car's
+   coast-down 0.0066, as VTI's 0.010-0.0135 already said; nothing on ice.
+6. Wet: Horne's v_p (6.34 √p) agrees with the model's 6.36 √p within rounding. Fig. 1.51 at 1.02 mm (wet over dry 0.80
+   at 64, 0.62 at 100 km/h, a 1960s 4-groove tyre) falls earlier and further than the thin film at 0.7 mm (0.918 at 100
+   over 60): consistent with a deeper film and an older tread, no contradiction. Fig. 1.52 (7 mm tread: 0.98 at 100
+   over 50; 0 mm 0.72) agrees with a new tread losing little on thin water. Wet gravel (Fig. 1.47) loses only 4-11 %
+   from 48 to 100 km/h with a patterned tyre: support for loose-v1 having no wet speed fade (`loose.rs`,
+   `hydroplaning: false`). Nothing changes.
 
 ## Rolling resistance
 
