@@ -2298,8 +2298,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
   → 1.058 / 1.230, damp 0.874 / 1.071 → 0.935 / 1.134, wet 0.773 / 1.061 → 0.758 / 1.040 (`--tyre 0` damp 0.872 /
   1.066, `--tyre 2` 0.843 / 1.036: the damp tyre now best on damp). RSF 568 dry 1.042 / 1.242 → 1.063 / 1.264; its
   damp and wet are the class-0 fallback (no change). ngp, experimental, brush `--tyre 0` / `2` traces bit-equal,
-  scorecard unchanged. Heinz & Grosch (row above) give compound alone 95-120 % on wet roads, most within ±8 %: the +8
-  % is inside, though their data are wet traction, not damp.
+  scorecard unchanged. Heinz & Grosch (row above) give compound alone 95-120 % on wet roads, most within ±8 %: the
+  +8 % is inside, though their data are wet traction, not damp.
 - The brake test from 100 km/h: locked fronts cannot steer and the car leaves the line on every stage tried (568,
   320, 482); the TRL 100 km/h point is checked in the lab only. A straight, flat stretch or a held heading would
   fix it.
