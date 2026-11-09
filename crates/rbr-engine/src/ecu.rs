@@ -62,8 +62,8 @@ pub const LIMITER_FUEL: f64 = 100.0;
 pub const FIRE_RPM: f64 = 150.0;
 /// Anti-lag (MoTeC anti-lag setup, Link forum): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most
 /// 3 s, re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
-/// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the unburnt fuel burning in the
-/// manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
+/// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the cut firings' fuel burning in
+/// the manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
 pub const ALS_ARM: f64 = 0.45;
 pub const ALS_LIFT: f64 = 0.1;
 pub const ALS_REARM: f64 = 0.3;

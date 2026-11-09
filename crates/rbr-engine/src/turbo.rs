@@ -30,13 +30,18 @@ pub const INTERCOOLER: f64 = 0.7;
 /// k_r inferred: a venturi recovers most of its throat's drop).
 const RESTRICTOR_CD: f64 = 0.95;
 const RESTRICTOR_LOSS: f64 = 0.2;
-/// Exhaust temperature: first order 0.3 s; 950 °C at the rated flow (guess), 700 °C at no flow (inferred: from
-/// 400 °C the line's slope gave the steady WOT boost two branches; `notes/engine-model.md`), at most
-/// 1150 °C (MoTeC anti-lag limits).
+/// Exhaust temperature: first order 0.3 s; affine in the exhaust flow, 950 °C at the rated flow (guess) and 520 °C at
+/// none (EPA's four road turbos, 849 fired points: 520 °C at no flow and 940 °C at the most, rms 85 K), at most
+/// 1150 °C (MoTeC anti-lag limits). Cylinders that pump air without burning it leave it at 300 °C (EPA's road turbos
+/// under the fuel cut, 199–422 °C at the turbine), and half the work the spark's retard takes reaches the turbine
+/// (inferred: EPA's Ford 1.6 and 2.7 retarded 27–44° at their lightest loads ran 70–142 K over their neighbours near
+/// MBT, 0.23–0.63 of that work).
 pub const TAU_EXHAUST: f64 = 0.3;
-const T_EM_IDLE: f64 = 973.15;
+const T_EM_IDLE: f64 = 793.15;
 const T_EM_RATED: f64 = 1223.15;
 pub const T_EM_MAX: f64 = 1423.15;
+pub const T_EM_MOTORED: f64 = 573.15;
+pub const RETARD_EXHAUST: f64 = 0.5;
 /// The wastegate: the electronic gate's actuator, s (Gorzelic 2012, 125 ms for an electronically commanded gate); its
 /// proportional band, Pa (fully open 1 bar over the aim, around its base opening), integral time and derivative time
 /// on the boost, s; the spring gate's band (fully open 0.5 bar over its aim) and its lag, s. Bands and times guessed:

@@ -420,13 +420,16 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let w_fuel = if fuel { w_cyl * trim / (LAMBDA * AFR) } else { 0.0 };
     let w_exhaust = w_cyl + w_fuel;
     if let Some(t) = &spec.turbo {
-        let burnt = if combustion { spark * fired } else { 0.0 };
-        let unburnt = if w_exhaust > 0.0 {
-            (1.0 - burnt) * w_fuel * LHV * ecu::ALS_BURN / (w_exhaust * crate::gas::CP_EXHAUST)
-        } else {
-            0.0
-        };
-        let t_ss = (t.t_em0 + t.t_em_k * w_exhaust + unburnt).min(turbo::T_EM_MAX);
+        // The cylinders that fire leave the line's temperature, and the work their retard takes partly heats the
+        // exhaust; those that do not leave the air motored, and their fuel partly burns in the manifold (anti-lag,
+        // the cuts).
+        let burnt = if combustion { fired } else { 0.0 };
+        let heat = |power: f64| if w_exhaust > 0.0 { power / (w_exhaust * crate::gas::CP_EXHAUST) } else { 0.0 };
+        let retard_heat = heat(burnt * (1.0 - spark) * spec.k.at(rpm) * w_cyl * turbo::RETARD_EXHAUST);
+        let unburnt = heat((1.0 - burnt) * w_fuel * LHV * ecu::ALS_BURN);
+        let line = t.t_em0 + t.t_em_k * w_exhaust;
+        let t_ss =
+            (turbo::T_EM_MOTORED + burnt * (line - turbo::T_EM_MOTORED) + retard_heat + unburnt).min(turbo::T_EM_MAX);
         s.t_em += (t_ss - s.t_em) * (1.0 - exp(-dt / turbo::TAU_EXHAUST));
         // The electronic gate's aim rises linearly with the throttle's aim position to the WOT boost at the position
         // where the plate stops controlling the air (`aim_open`), as race ECUs' boost aim tables over rpm and throttle

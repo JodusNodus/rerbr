@@ -190,7 +190,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   turbo ran down). Retard 60° (guess): Link's retard table is an offset, −25 to −50° typical [Link retard]; the same
   user ran about −50°. Fuel +20 %, cut 30 % (guess): that user ran a cut of about 60 and fuel 0–2 % [Link ALS forum];
   others keep up to 40–80 % of the fuel limit on the lowest throttle row [HPA ALS]. Boost aim 1.2 bar gauge (guess).
-  60 % of the unburnt fuel burns in the manifold (guess). The BOV stays shut (inferred: ALS needs the charge).
+  60 % of the cut firings' fuel burns in the manifold (guess), and the retard's lost work heats the exhaust as at idle
+  (Turbo); the exhaust sits at the 1150 °C cap within 1 s. The BOV stays shut (inferred: ALS needs the charge).
 
 ## Turbo (`turbo.rs`)
 
@@ -235,9 +236,18 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed), power (W, ramps up linearly with speed)",
   and `TurboStaticFrictionWatts=100`, which "prevents numerical problems at low spool speeds" [rF2 engine.ini]. The
   static 100 W stops the shaft at idle and at a closed pedal (ω_t 0 on both turbo samples).
-- Exhaust temperature affine in flow, 700 °C at 0 (inferred: from 400 °C the line's slope gave the steady WOT boost
-  two branches; road engines run 200–520 °C at idle and on the fuel cut [EPA]), 950 °C rated (guess), capped at
-  1150 °C (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess).
+- Exhaust temperature affine in flow for the firings that burn, 520 °C at 0 and 950 °C rated, capped at 1150 °C
+  (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess). The 520 °C is the intercept of a
+  line through EPA's four road turbos' 849 fired points (940 °C at the most flow, rms 85 K; turbine inlet against
+  exhaust flow over the engine's most) [EPA]; 950 °C rated is a guess. Firings that do not burn (the fuel cut, cut
+  events) leave the air at 300 °C (EPA's fuel-cut points at the turbine 199–422 °C), their fuel burning in the
+  manifold at anti-lag's 60 %. Half the work the retard takes heats the exhaust: (1 − η_ign)·K·W_cyl·0.5 (inferred:
+  EPA's Ford 1.6 and 2.7 retarded 27–44° at their lightest loads, 1000–1750 rpm, ran 70–142 K over their neighbours
+  near MBT, 0.23–0.63 of that work). Before (700 °C at 0, the anti-lag term on the retard, no motored temperature)
+  the turbo samples idled at 1035 °C and ran 707 °C under the fuel cut; now 598–661 and 301. With 400 °C an older
+  model (no residual gas, before the retarget) gave the steady WOT boost two branches; 520 °C passes the path test.
+  The shaft's spin-down after a lift without anti-lag (4500 rpm fixed, from WOT: stopped within 0.8 s) is set by the
+  compressor's work and the losses, the same before and after; no measured spin-down was found.
   Intercooler effectiveness 0.7 (guess).
 - Boost target π_wot(n), first from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the
   restrictor [FIA 261], [FIA 255A], then made consistent with one K (above).
@@ -407,11 +417,10 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   K as the idle MAP item). A turbine refit for more low-rpm boost was not tried.
 - The spark loop saturates (gain 0.49–0.65°/rpm on the samples, `spark_kp` over IdleRPM).
 - No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is a guess.
-- Exhaust heat ("Against measured engines"): the turbo samples' exhaust is 500–700 K over road engines' at idle and
-  300–500 K under the fuel cut. Two causes: the 700 °C intercept at no flow (chosen for one steady WOT branch; 400 °C
-  gave two), held with no combustion too, and the unburnt term, written for anti-lag, which also turns the idle retard
-  into manifold heat (+330 K for 27°, the road data about +180 K). It drives the turbine on a lift; the shaft still
-  stops at idle (static loss). Not changed.
+- Exhaust (Scorecard): the turbo samples idle at 661 °C against road idles of 296–430 °C at the ports and the Ford
+  1.6's 593–657 °C retarded at its lightest loads, and run 564 °C at pedal 0.15, 1500 rpm against 585–732 °C at the
+  same BMEP on four road turbos. One line over the flow share cannot hold both: a rally engine's rated flow is about
+  2.5 bar's, so a given load is a smaller share of it than on a road engine (inferred).
 - Closed-pedal braking at 2000–5000 rpm still runs 0.2–0.4 bar over the road engines' with the fuel cut (Scorecard):
   the pumping at the 0.2·p_a overrun air is 0.8 bar, and Sandoval's FMEP for a 1.6 L four is over the road engines'
   0.5–0.7 bar at 2000 rpm. The limit point is NGP's, which no measured race engine checks.
