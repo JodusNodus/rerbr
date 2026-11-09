@@ -38,15 +38,14 @@ const ETA_BAND: (f64, f64) = (0.30, 0.55);
 /// pumping at 6000 rpm (5.1 bar) were over the 3.8 its restrictor leaves, its closed pedal over EPA's road engines'
 /// (turbos among them) and its friction's growth over the published 2.1–2.7 (`notes/engine-model.md`).
 const TURBO_FRICTION_MAX: f64 = 1.0;
-/// The fuel–air cycle's indicated efficiency at φ 1/λ = 1.136: 0.400 at r_c 9.5 and 0.419 at 11 (Heywood fig. 5-9,
-/// p_1 1 atm, T_1 388 K, 5 % residual), the most any engine converts.
-const ETA_FUEL_AIR: [(f64, f64); 2] = [(9.5, 0.400), (11.0, 0.419)];
+/// The fuel–air cycle's indicated efficiency at φ 1/λ = 1.136: 0.344 at r_c 6, 0.383 at 8, 0.400 at 9.5 and 0.419
+/// at 11 (Heywood fig. 5-9, p_1 1 atm, T_1 388 K, 5 % residual), the most any engine converts.
+const ETA_FUEL_AIR: [(f64, f64); 4] = [(6.0, 0.344), (8.0, 0.383), (9.5, 0.400), (11.0, 0.419)];
 
 /// The most work per kg of air K may give at compression ratio `r_c`, J/kg: the fuel–air cycle's efficiency on the
 /// fuel at λ, LHV/(AFR·λ) per kg of air.
 pub fn k_max(r_c: f64) -> f64 {
-    let [(r0, e0), (r1, e1)] = ETA_FUEL_AIR;
-    (e0 + (r_c - r0) * (e1 - e0) / (r1 - r0)) * LHV / (AFR * LAMBDA)
+    Curve(ETA_FUEL_AIR.to_vec()).at(r_c) * LHV / (AFR * LAMBDA)
 }
 
 /// What the calibration found, for the curves, the tests and the log.

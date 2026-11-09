@@ -303,7 +303,8 @@ fn the_blow_off_valve_vents_a_lift_unless_anti_lag_runs() {
             } else {
                 let first = open.iter().position(|&o| o >= 0.9);
                 assert!(first.is_some_and(|k| k as f64 * calibrate::DT < 0.1), "{name}: opened late {first:?}");
-                assert!(s.p_boost < 1.15e5, "{name}: {} Pa of boost left after 0.5 s", s.p_boost);
+                let left = s.p_boost - rbr_engine::gas::P_REF;
+                assert!(left < 0.15e5, "{name}: {left} Pa of boost left after 0.5 s");
             }
         }
     }

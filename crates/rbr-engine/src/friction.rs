@@ -31,10 +31,10 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn new(v_d: f64, cylinders: u32, turbo: bool) -> Self {
+    pub fn new(v_d: f64, cylinders: u32, r_c: f64) -> Self {
         let v_cyl = v_d / f64::from(cylinders);
         let bore = pow(4.0 * v_cyl / PI, 1.0 / 3.0) * 1000.0;
-        Self { v_d, cylinders: f64::from(cylinders), bore, r_c: if turbo { 9.5 } else { 11.0 } }
+        Self { v_d, cylinders: f64::from(cylinders), bore, r_c }
     }
 
     /// N·m per Pa of mean effective pressure: V_d/(4π).
