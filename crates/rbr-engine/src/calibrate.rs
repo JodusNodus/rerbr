@@ -33,6 +33,16 @@ const ON_BOOST: f64 = 0.98;
 const GRID: f64 = 250.0;
 /// The implied η_ig·η_v's plausible band (guess).
 const ETA_BAND: (f64, f64) = (0.30, 0.55);
+/// The fuel–air cycle's indicated efficiency at φ 1/λ = 1.136: 0.400 at r_c 9.5 and 0.419 at 11 (Heywood fig. 5-9,
+/// p_1 1 atm, T_1 388 K, 5 % residual), the most any engine converts.
+const ETA_FUEL_AIR: [(f64, f64); 2] = [(9.5, 0.400), (11.0, 0.419)];
+
+/// The most work per kg of air K may give at compression ratio `r_c`, J/kg: the fuel–air cycle's efficiency on the
+/// fuel at λ, LHV/(AFR·λ) per kg of air.
+pub fn k_max(r_c: f64) -> f64 {
+    let [(r0, e0), (r1, e1)] = ETA_FUEL_AIR;
+    (e0 + (r_c - r0) * (e1 - e0) / (r1 - r0)) * LHV / (AFR * LAMBDA)
+}
 
 /// What the calibration found, for the curves, the tests and the log.
 #[derive(Clone, Debug, Default)]
@@ -518,9 +528,20 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
             size_turbine(&mut spec, &car, &mut cal, Some(a));
         }
     }
-    // K, then the idle air (which needs K), then K again with the idle air in the WOT area.
+    // K, an NA engine's held under the fuel–air cycle by its charge, then the idle air (which needs K), then K again
+    // with the idle air in the WOT area.
     let mut runs = wot_runs(&spec, &car);
     spec.k = identity(&car, &runs);
+    for _ in 0..3 {
+        if !breathe(&mut spec, &car) {
+            break;
+        }
+        spec.w_rated = spec.cylinder_flow(P_REF, P_REF, rpm_power, T_REF).max(1e-4);
+        let choked = spec.cda * P_REF / (R * T_REF).sqrt() * PSI_CHOKED;
+        spec.overrun_air = spec.cylinder_flow(ecu::OVERRUN_P * P_REF, P_REF, ecu::OVERRUN_RPM, T_REF) / choked;
+        runs = wot_runs(&spec, &car);
+        spec.k = identity(&car, &runs);
+    }
     hold_off_boost(&mut spec, &car, &runs);
     let (a, surplus) = idle_air(&spec);
     spec.idle_air = a;
@@ -601,6 +622,28 @@ fn aim_open(spec: &Spec, car: &Car, runs: &[(State, Out)]) -> Curve {
             })
             .collect(),
     )
+}
+
+/// An NA engine's K over [`k_max`] goes to the charge: η_v at that grid point scaled by K/K_max (inferred: no engine
+/// beats the fuel–air cycle, and race NA engines breathe over 1). A turbo's K stays: there the excess comes with the
+/// boost cap, the restrictor, the turbine's sizing and the friction scale together (`notes/engine-model.md`, open
+/// items). Returns whether η_v moved.
+fn breathe(spec: &mut Spec, car: &Car) -> bool {
+    if spec.turbo.is_some() {
+        return false;
+    }
+    let k_max = k_max(spec.geometry.r_c);
+    let moved = spec.k.0.iter().any(|&(_, k)| k > k_max * (1.0 + 1e-4));
+    if moved {
+        spec.eta_v = Curve(
+            car.grid
+                .iter()
+                .zip(&spec.k.0)
+                .map(|(g, &(_, k))| (g.0, spec.eta_v.at(g.0) * (k / k_max).max(1.0)))
+                .collect(),
+        );
+    }
+    moved
 }
 
 /// A turbo's K where its steady WOT boost misses the target (the turbo cannot make that boost at that speed) is held
