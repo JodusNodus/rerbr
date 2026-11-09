@@ -212,7 +212,7 @@ fn load_exponent(cloud: &[(f32, f32)]) -> f32 {
     (sxy / sxx) as f32
 }
 
-/// The game's tyre model's view of the probed wheel (`rbr_tyre::Wheel`): its tables.
+/// The game's tyre model's view of the probed wheel (`rbr_tyre::Wheel`): its tables and surface friction.
 pub fn wheel(p: &Params) -> rbr_tyre::Wheel {
     rbr_tyre::Wheel {
         tyre: 0,
@@ -226,6 +226,9 @@ pub fn wheel(p: &Params) -> rbr_tyre::Wheel {
         traction_stiffness: p.trc_stf.clone(),
         temperature_axis: p.temp_axis.clone(),
         rubber_friction: p.rub_my.clone(),
+        class_friction: std::array::from_fn(|k| p.sfric.get(k).copied().unwrap_or(0.0)),
+        class_wet_slope: std::array::from_fn(|k| p.wet_slope.get(k).copied().unwrap_or(0.0)),
+        design_wetness: p.design_wetness,
     }
 }
 

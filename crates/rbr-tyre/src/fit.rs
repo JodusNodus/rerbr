@@ -234,6 +234,7 @@ pub(crate) mod tests {
             traction_stiffness: vec![20000.0, 40000.0, 60000.0, 75000.0, 90000.0, 100000.0],
             temperature_axis: vec![250.0, 300.0, 350.0, 400.0],
             rubber_friction: vec![0.8, 0.95, 1.0, 0.9],
+            ..Wheel::default()
         }
     }
 
