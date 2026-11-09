@@ -1769,6 +1769,42 @@ bit-equal.
   the stop (the brake balance leaves them under K), 0-4 Hz. The law dumps at K + 0.02, so the fronts hold 0.01-0.02
   under K. Unit check: `the_abs_holds_each_wheels_slip_from_free_rolling` (toy wheel, rim read 6 % low).
 
+## Experimental tuning
+
+Controls a driver sets per drive to feel the brush (`rbr_tyre::Tuning`, `rbr-standalone --tyre-tuning KEY=VALUE,...`,
+experimental-brush only, refused under the other physics; the launcher's Settings > Experimental tuning). At the model's
+values every force is the untuned brush's, bit for bit (factors exact at 1, the slide grip unset): main's and the
+branch's autopilot traces cmp equal on RSF 562, 524, map 85's flat gravel circle and an RSF 568 brake test, ngp and
+experimental-brush (2026-11-09). The replay's header keeps the values (`replay_gg.py` prints them): a tuned drive
+replays all 42617 frames equal; without the flag it differs at the go. No records either way (the experimental
+physics keeps none); championship stages and trials run untuned.
+
+| Key | Range | Maps to | Also moves |
+| --- | --- | --- | --- |
+| `slide-grip` | 0.70-0.95, model 0.886 | μ_y(30°)/peak at 4 kN, 15 m/s, free rolling, on the calibration point: the lateral Coulomb level over the static one (model `MU_C_OVER_S` 0.8) solved per wheel by bisection over 0.05-1.0, the peak and slope solved again (`fit::calibration`) | the locked side force past the peak (`locked_mu_y_a30_4k` 0.432 / 0.477 / 0.486 at 0.70 / model / 0.95); peak angle 7.0° to 7.25° from 0.92. Braking unchanged (only the lateral axis's level moves): peak μ_x brake 1.2921, locked over peak 0.718, Cα and Kx within 0.1 % |
+| `tarmac`, `gravel`, `snow`, `ice` | ×0.70-1.30 | NGP's grip handed to the brush (static friction) by the wheel's surface: hard surfaces of class 5 (material 116) ice, other hard tarmac; soil of class 3 snow, other soil (gravel, grass, rock) gravel; a two-material blend by its class shares | the slopes that follow the level: gravel's shear law and ice's low-μ stiffness ×F; tarmac Cα/Fz 22.9 → 21.7 / 23.8 at 0.8 / 1.2 (the brush's 0-2° slope bends with μ). NGP's soil force on top is not scaled |
+| `stiffness` | ×0.70-1.30 | the slip stiffnesses: the brush's cornering slope target (`CORNERING_OVER_NGP` × F, Cx = `KX_OVER_KY` Cy), NGP's slope ice falls back to, loose-v1's slope and gravel's shear law (s0 / F); the peaks solved again | the peak slip (7.0° → 10.75° / 4.75° at 0.7 / 1.3) and the relaxation length σ = C/k with it (0.249 → 0.164 / 0.353 m) |
+| `response` | ×0.5-2.0 | the relaxation lengths: both carcass stiffnesses over F (the damping's V d/c with them) | nothing steady |
+
+Each control does what it says (lab `scorecard --tuning` on the scorecard's probes, Fiesta Rally2, 4 kN, 15 m/s; the
+circles `car_grip.py` r40 on map 85, flat):
+
+| Control | Model | Set | Reads |
+| --- | --- | --- | --- |
+| slide grip (`mu_y_rel_a30_4k`) | 0.8865 | 0.70 / 0.75 / 0.82 / 0.886 / 0.92 / 0.95 | 0.7047 / 0.7545 / 0.8240 / 0.8895 / 0.9231 / 0.9528 |
+| tarmac grip, peak μ_y 4 kN | 1.271 | ×0.8 / ×1.2 | 1.020 / 1.520 (×0.803 / ×1.196) |
+| gravel grip, peak μ_y | 0.828 | ×0.8 / ×1.2 | 0.663 / 0.994 |
+| snow grip, peak μ_y | 0.842 | ×0.8 / ×1.2 | 0.674 / 1.010 |
+| ice grip, peak μ_y | 0.0941 | ×0.8 / ×1.2 | 0.0753 / 0.1129 |
+| circle kin g, gravel / snow / tarmac flat | 0.955 / 0.982 / 1.327 | ×0.8 | 0.767 / 0.766 / 1.065 (×0.80 / 0.78 / 0.80) |
+| same | | ×1.2 | 1.130 / 1.124 / 1.584 (×1.18 / 1.14 / 1.19) |
+| stiffness, Cα/Fz tarmac / gravel / snow / ice | 22.94 / 6.64 / 8.63 / 2.42 | ×0.7 / ×1.3 | 15.58 / 4.82 / 6.05 / - and 31.12 / 8.33 / 11.22 / 2.82 |
+| response, σ_y (63 % of a 1° step) tarmac / gravel | 0.249 / 0.104 m | ×0.5 / ×2 | 0.1245 / 0.053 and 0.498 / 0.208 m |
+
+The slide grip is solved on the calibration point (unit surface, best temperature, pressure factor 1) and read on the
+probed wheel; the two agree within 0.004. The lab's peak μ per wheel for `replay_gg.py`'s tyre use (`limit_frames`)
+stays the untuned brush's.
+
 ## Open
 
 - Kx/Ky 1.17 at 4 kN with both stiffnesses 1.3 times NGP's slope's, near the band's foot (1.15-1.62); Kx's
