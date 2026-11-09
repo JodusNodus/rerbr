@@ -133,20 +133,24 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   dominates: [Guzzella] eq. 2.107 gives 0.9 bar for a motored SI engine at closed throttle, ours 0.82–0.85 at
   20 kPa. WOT mechanical efficiency on the NA samples 0.89 at 2000 rpm and 0.79–0.81 at rated ([Heywood] p. 49:
   typically 0.90 and 0.75).
-- s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0 (inferred:
+- s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0, a turbo's at
+  most 1 (below) (inferred:
   NGP's one braking point; friction models need a scale [ecu-lab]). The scale is 1 + (s_f − 1)·(n/n_lim)², so s_f at
   the limit and Sandoval's own FMEP at low speed (inferred: Sandoval at s_f 1 meets the road engines' rubbing
   friction from their fuel-cut points, 0.5–0.7 bar at 2000 rpm [EPA], and NGP's NA braking line gives −1.09 bar at
   2000 on the na sample; the share over Sandoval growing with n² is ours). With one flat scale the ECU samples braked
   1.4–1.7× the road engines below 5000 rpm. Friction from 2000 to 6000 rpm grows 2.15× and 2.66× on Sandoval's
   3.0 L (figs. 8, 6), 2.5–2.7× with WOT pumping motored ([Heywood] eq. 13.6, [Patton] figs. 18–19): the NA samples
-  2.15–2.3, every turbo at the clamp 3.0–3.1 (Scorecard). [Guzzella] eq. 2.112's friction over Sandoval's grows as
+  2.15–2.3, the turbos at s_f 1 1.96–2.02 (Sandoval's model on a 1.6–2.0 L four grows less than his 3.0 L V6; 3.0–3.1
+  at the old clamp of 2). [Guzzella] eq. 2.112's friction over Sandoval's grows as
   n^2.1–2.3, the shape the n² scale takes (its level, 1.3× at 2000 rpm and 2.5× at 6000, is no road engine's here).
-- BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car
-  clamps (raw 2.3–4.9), NA cars are 1.32–1.87 (`tests/rsf_cars.rs`). The clamp's 2.0 is a guess and sets the friction
-  of every installed turbo car; through the identity it also raises their K. The restrictor bounds it: the Rally2's
-  214 kW at 6000 rpm through 0.183 kg/s (32 mm choked, C_D 0.95) at the fuel–air cycle's 1.34 MJ/kg leaves at most
-  3.8 bar for friction and pumping; the model has 3.25 + 1.85.
+- BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car's
+  fit is 2.07–4.39, the NA cars' 1.12–1.58 (`tests/rsf_cars.rs`). A turbo's s_f is at most 1, Sandoval's engine (was
+  the 2.0 clamp, a guess): the restrictor bounds it, the Rally2's 214 kW at 6000 rpm through 0.183 kg/s (32 mm
+  choked, C_D 0.95) at the fuel–air cycle's 1.34 MJ/kg leaving at most 3.8 bar for friction and pumping (at 2:
+  3.25 + 1.85; at 1: 1.98 + 1.84). At 1 the turbo samples' closed pedal is −1.62, −2.06 and −2.34 bar at 2000, 4000
+  and 5000 rpm (at 2: −1.67, −2.42, −3.00), against EPA's road engines' −1.08..−1.48, −1.74..−2.00 and −2.16..−2.50
+  (two turbos among them), and 35–44 % of NGP's braking at the limit (60–76 % at 2).
 - The rF2 SkipBarber's coast line, −21 to −53 N·m at 2000–8000 rpm [rF2 engine.ini], is near the NA samples'
   (`examples/plot.py`).
 - η_m = 1, losses explicit; friction fades to 0 within 5 rad/s of standstill (inferred: no stiction at rest).
@@ -267,11 +271,14 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   spooled at 2000 rpm in 0.46–0.53 s (below), against [Chalmers]' 0.62–1.02 s at 2100–2400 rpm; now 0.64–0.74 s.
   On a lift at 5000 rpm without anti-lag the turbo sample keeps 0.09 bar of boost after 0.5 s (under 0.09 before;
   tested under 0.15).
-- Losses 0.002ω + 2.5e-6ω² + 100 W, our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any
-  speed), power (W, ramps up linearly with speed)", and `TurboStaticFrictionWatts=100`, which "prevents numerical
-  problems at low spool speeds" [rF2 engine.ini]. The static 100 W stops the shaft at idle and at a closed pedal
-  (ω_t 0 on both turbo samples). At 80 000 rpm they take 292 W, between the two rigs' 95 W [Chung 2017] and about
-  350–500 W [Perge 2017] (oil 90 °C and 50–90 °C).
+- Losses 0.002ω + 2.5e-6ω², our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed),
+  power (W, ramps up linearly with speed)" [rF2 engine.ini]. Its `TurboStaticFrictionWatts=100`, which "prevents
+  numerical problems at low spool speeds", is left out: a constant power is a torque without bound as the shaft
+  slows, and it stopped the shaft at idle and at a closed pedal. Without it the turbo samples' shaft idles at
+  3300–3500 rpm ([Guzzella] p. 50: at idle the speed "can fall below 10 000 rpm"; no measured idle speed found). At
+  80 000 rpm the losses take 192 W (292 with the 100 W), between the two rigs' 95 W [Chung 2017] and about 350–500 W
+  [Perge 2017] (oil 90 °C and 50–90 °C). The slow shaft at idle took the calibration's steady test longest, so it
+  stops at 10 rad/s of shaft speed per 0.25 s (1 before; results move about 1e-4, the idle shaft 80 rpm).
 - Exhaust temperature affine in flow for the firings that burn, 520 °C at 0 and 950 °C rated, capped at 1150 °C
   (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess). The 520 °C is the intercept of a
   line through EPA's four road turbos' 849 fired points (940 °C at the most flow, rms 85 K; turbine inlet against
@@ -431,9 +438,6 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   and the spool at 2000 rpm 0.63–0.73 → 0.38–0.43 s (Chalmers 0.54–1.60). It needs the turbine sized with the charge,
   and the friction scale (above: at the clamp the friction alone grows 3.0–3.1× from 2000 to 6000 rpm, road 2.1–2.7×,
   and the Rally2's restrictor leaves 3.8 bar for friction and pumping at 6000, the model 5.1). Not done.
-- The turbo's shaft stops at idle (idle-shaft rows 0 rpm): the 100 W static loss outweighs the turbine there, so a
-  tip-in from idle spools from rest. [Guzzella] p. 50: at idle the speed "can fall below 10 000 rpm"; no measured idle
-  speed found.
 - Manifold volume: one throttle 0.8·V_d against [Guzzella]'s V6 at 2.1·V_d (measured τ about 2.5× ours); one engine
   with long runners, so not changed.
 - Modern turbos idle at 16.1–16.7 kPa (Rally2, R5, WRC 2006–2020 on RSF; 20–22 before the friction followed rpm),
