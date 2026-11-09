@@ -1530,6 +1530,13 @@ saved rank pages are read below.
 | 615, 19957 m (snow) | Arctic Rally Finland 2021 SS4/7 Kaihuavaara, 19.91 km (27.93 km in the January Arctic Lapland Rally) | Evans 546.6 s, Rovanperä 548.8 (Yaris WRC) | +0.2 %, good | not used: the autopilot crawls (24-94 s under 5 m/s, spinning at a climb at 4.1 km); raw 1.182 / 0.953 |
 | 422, 9742 m (snow) | Rally Sweden 2018 SS8/19 Torsby, 9.56 km | Paddon 383.8 s (Friday 16:56), Lappi 361.2 (Sunday, power stage) | +1.9 %, fair | 0.983 / 0.985 (0.999 / 0.998) |
 
+- The user's Hassi drives by hand (2026-11-09, experimental-brush, dry; Fiesta Rally2 with 4 recoveries, stopped at
+  7.3 km; GR Yaris Rally2 clean to 5.9 km, splits 89.8 / 177.5 s against RSF's Rally2 median 84.3 / 165.7 under
+  ngp): lateral 1 s p90 / p99 0.83 / 1.05 g (glat) in both, g-g p95 |lat| 0.92-1.03 g at 60-150 km/h (Finland 2021
+  WRC 0.89 / 1.25 and 1.04-1.14; a Rally2 at × 0.93 about 0.83 and 0.97-1.06; the at-limit autopilot 0.52-0.57 and
+  0.39-0.70); tyres in the hardest 5 %: car 0.99-1.03 of the peak, Yaris front / rear 0.98 / 0.98, Fiesta 1.05 / 0.94;
+  braking 16 longest 0.64-0.65 g (WRC 0.60), 0.5 s peak 0.69-0.79 (WRC 1.00). A driver reaches the tyres' peak and a
+  real Rally2's cornering g on the brush's gravel level, the rear's reserve included (`replay_gg.py`).
 - The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs
