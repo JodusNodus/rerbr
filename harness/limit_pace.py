@@ -1,13 +1,17 @@
 """limit_pace.py: the autopilot at each car's own limits on a stage, for the stage statistics against real drives.
 
-  python3 -I -B harness/limit_pace.py limits --out DIR [--cars A,B] [--physics ngp,experimental-brush] [--jobs N]
-  python3 -I -B harness/limit_pace.py search --out DIR [--rsf-stage 524] [--factors 0.8,0.9,1.0,1.1]
+  python3 -I -B harness/limit_pace.py limits --out DIR [--surface gravel|snow|tarmac] [--cars A,B]
+      [--physics ngp,experimental-brush] [--jobs N]
+  python3 -I -B harness/limit_pace.py search --out DIR [--surface S] [--rsf-stage 524] [--factors 0.8,0.9,1.0,1.1]
       [--top-speed 60] [--steps N] [--max-off M] [--cars A,B] [--physics P,Q] [--jobs N]
 
 `limits` measures each car × physics on RSF 345 (gravel, `tyre_scorecard.py`'s gravel stage): the r40 circle's
 lateral g (`--circle 1051,-166,40 --circle-ramp 0.4`, car_pace.analyse_circle, the scorecard's circle key) and the
 best threshold braking g from 80 km/h (brake_test.py's declutched runs, slip targets SLIPS: the shortest clean stop's
-mean decel, the road's grade in). It writes DIR/limits.json.
+mean decel, the road's grade in). It writes DIR/limits.json. `--surface S` measures S's limits instead (SURFACES:
+snow's circle RSF 345 under material 101 with the snow tyre, braking map 10; gravel-flat and snow-flat the circle on
+flat map 85; tarmac's circle map 85's under tarmac 37, braking RSF 568), keyed `<car>.<physics>.<S>` in the same
+file; `search --surface S` plans with them.
 
 `search` drives the stage once per factor F with the autopilot's speed plan at F times the car's limits
 (`--plan LAT,BRAKE` = F x lateral g x G, F x braking g x G, m/s²; with `--brake-factor B`, B in place of F on the
@@ -42,6 +46,35 @@ BIN = brake_test.BIN
 G = brake_test.G
 CIRCLE = ["--circle", f"{car_pace.GCIRC_CX:.0f},{car_pace.GCIRC_CY:.0f},{car_pace.GCIRC_R:.0f}", "--circle-ramp", "0.4"]
 LIMIT_STAGE = 345
+# `--surface`: the circle (stage flags, circle flags, centre and radius) and the braking stage (rsf id or stage name)
+# per surface, as tyre_scorecard.py and notes/tyre-model.md "Loose levels" measure them: snow's circle is RSF 345's
+# under material 101 (map 10's SnowOnGravel_Shallow) with the snow tyre, its braking map 10; tarmac's circle map 85's
+# under tarmac 37 (the circle crosses loose gravel 189/181 at its south-west; limit_recovery.py's), ramp 0.5, its
+# braking RSF 568.
+SURFACES = {
+    "gravel": dict(circle_stage=["--rsf-stage", str(LIMIT_STAGE)], circle=CIRCLE,
+                   centre=(car_pace.GCIRC_CX, car_pace.GCIRC_CY, car_pace.GCIRC_R), brake_rsf=LIMIT_STAGE,
+                   brake_stage=None),
+    "snow": dict(circle_stage=["--rsf-stage", str(LIMIT_STAGE), "--material-as", "101", "--tyre", "6"],
+                 circle=CIRCLE, centre=(car_pace.GCIRC_CX, car_pace.GCIRC_CY, car_pace.GCIRC_R), brake_rsf=None,
+                 brake_stage="track-10_O"),
+    # RSF 345's circle lies on an 11.9° (21 %) slope (z 9.6-24.5 m over the lap; plane fit, rms 0.5 m): the flat ones
+    # are map 85's (z 3.4 m all round) under gravel 17 (RSF 345's, fine shallow) with the dry gravel tyre, and under
+    # snow 101 with the snow tyre.
+    "gravel-flat": dict(circle_stage=["--stage", "track-85_M", "--material-as", "17", "--tyre", "3"],
+                        circle=["--circle", f"{car_pace.CIRC_CX:.0f},{car_pace.CIRC_CY:.0f},{car_pace.CIRC_R:.0f}",
+                                "--circle-ramp", "0.4"],
+                        centre=(car_pace.CIRC_CX, car_pace.CIRC_CY, car_pace.CIRC_R), brake_rsf=LIMIT_STAGE,
+                        brake_stage=None),
+    "snow-flat": dict(circle_stage=["--stage", "track-85_M", "--material-as", "101", "--tyre", "6"],
+                      circle=["--circle", f"{car_pace.CIRC_CX:.0f},{car_pace.CIRC_CY:.0f},{car_pace.CIRC_R:.0f}",
+                              "--circle-ramp", "0.4"],
+                      centre=(car_pace.CIRC_CX, car_pace.CIRC_CY, car_pace.CIRC_R), brake_rsf=None,
+                      brake_stage="track-10_O"),
+    "tarmac": dict(circle_stage=["--stage", "track-85_M", "--material-as", "37"],
+                   circle=["--circle", f"{car_pace.CIRC_CX:.0f},{car_pace.CIRC_CY:.0f},{car_pace.CIRC_R:.0f}"],
+                   centre=(car_pace.CIRC_CX, car_pace.CIRC_CY, car_pace.CIRC_R), brake_rsf=568, brake_stage=None),
+}
 BRAKE_FROM = 22.22  # m/s: 80 km/h
 SLIPS = "0.1,0.15,0.2,0.3,0.5"
 MAX_OFF = 3.0  # m
@@ -65,27 +98,35 @@ def pairs(args):
     return [(car, physics) for car in args.cars.split(",") for physics in args.physics.split(",")]
 
 
+def lim_key(car, physics, surface):
+    """limits.json's key (and the limit runs' file stem) of a car x physics on `surface`."""
+    return f"{car}.{physics}" + ("" if surface == "gravel" else f".{surface}")
+
+
 def limits(args):
     os.makedirs(args.out, exist_ok=True)
+    sf = SURFACES[args.surface]
     jobs = []
     for car, physics in pairs(args):
-        name = os.path.join(args.out, f"circle.{car}.{physics}")
-        jobs.append(([BIN, "--autopilot", "/dev/null", "--boot", "--rsf-stage", str(LIMIT_STAGE), "--rsf-car", car,
-                      "--physics", physics, "--steps", "40000", "--top-speed", "60", *CIRCLE,
+        name = os.path.join(args.out, f"circle.{lim_key(car, physics, args.surface)}")
+        jobs.append(([BIN, "--autopilot", "/dev/null", "--boot", *sf["circle_stage"], "--rsf-car", car,
+                      "--physics", physics, "--steps", "40000", "--top-speed", "60", *sf["circle"],
                       "--trace-speed", name + ".trace", *env_args()], name + ".log"))
-        work = os.path.join(args.out, f"brake.{car}.{physics}")
+        work = os.path.join(args.out, f"brake.{lim_key(car, physics, args.surface)}")
         os.makedirs(work, exist_ok=True)
         b = types.SimpleNamespace(rsf_car=car, physics=physics, steps=30000, top_speed=80.0, clutch_out=False,
-                                  out=work, extra=[], rsf_stage=LIMIT_STAGE, stage=None, **{"from": BRAKE_FROM})
+                                  out=work, extra=[], rsf_stage=sf["brake_rsf"], stage=sf["brake_stage"],
+                                  **{"from": BRAKE_FROM})
         for run_name, brake in brake_test.runs_for(SLIPS, ""):
             jobs.append((brake_test.command(b, run_name, brake), os.path.join(work, run_name + ".log")))
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         list(pool.map(run, jobs))
-    out = {}
+    path = os.path.join(args.out, "limits.json")
+    out = json.load(open(path)) if os.path.exists(path) else {}
     for car, physics in pairs(args):
-        r = car_pace.analyse_circle(car_pace.load_trace(os.path.join(args.out, f"circle.{car}.{physics}.trace")),
-                                    car_pace.GCIRC_CX, car_pace.GCIRC_CY, car_pace.GCIRC_R)
-        work = os.path.join(args.out, f"brake.{car}.{physics}")
+        k = lim_key(car, physics, args.surface)
+        r = car_pace.analyse_circle(car_pace.load_trace(os.path.join(args.out, f"circle.{k}.trace")), *sf["centre"])
+        work = os.path.join(args.out, f"brake.{k}")
         stops = {}
         for run_name, _ in brake_test.runs_for(SLIPS, ""):
             trace = os.path.join(work, run_name + ".trace")
@@ -93,14 +134,14 @@ def limits(args):
             if s["ok"]:
                 stops[run_name] = s
         best = min((k for k in stops if k != "locked"), key=lambda k: stops[k]["dist"], default=None)
-        out[f"{car}.{physics}"] = {
+        out[k] = {
             "lat_g": r["latg"] if r["ok"] else None, "circle_vmax_kmh": r.get("vmax"),
             "brake_g": stops[best]["decel"] / G if best else None, "brake_run": best,
             "locked_g": stops["locked"]["decel"] / G if "locked" in stops else None,
         }
-        print(f"{car} {physics}: circle {out[f'{car}.{physics}']['lat_g']} g, best threshold {best} "
-              f"{out[f'{car}.{physics}']['brake_g']} g, locked {out[f'{car}.{physics}']['locked_g']} g")
-    with open(os.path.join(args.out, "limits.json"), "w") as f:
+        print(f"{car} {physics} {args.surface}: circle {out[k]['lat_g']} g, best threshold {best} "
+              f"{out[k]['brake_g']} g, locked {out[k]['locked_g']} g")
+    with open(path, "w") as f:
         json.dump(out, f, indent=1)
 
 
@@ -140,7 +181,8 @@ def search(args):
     lim = json.load(open(os.path.join(args.out, "limits.json")))
     jobs = []
     for car, physics in pairs(args):
-        lg, bg = lim[f"{car}.{physics}"]["lat_g"], lim[f"{car}.{physics}"]["brake_g"]
+        k = lim_key(car, physics, args.surface)
+        lg, bg = lim[k]["lat_g"], lim[k]["brake_g"]
         for f in args.factors.split(","):
             fb = args.brake_factor or f
             name = os.path.join(args.out, f"{car}.{physics}.f{f}" + (f"b{fb}" if args.brake_factor else ""))
@@ -188,6 +230,8 @@ def main():
         p.add_argument("--cars", default=rally_gg.CARS)
         p.add_argument("--physics", default="ngp,experimental-brush")
         p.add_argument("--jobs", type=int, default=6)
+        p.add_argument("--surface", choices=sorted(SURFACES), default="gravel",
+                       help="the limits' surface (SURFACES): limits measures it, search plans with it")
     s = sub.choices["search"]
     s.add_argument("--rsf-stage", type=int, default=524)
     s.add_argument("--factors", default="0.8,0.9,1.0,1.1")

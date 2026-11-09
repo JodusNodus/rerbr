@@ -280,6 +280,9 @@ def analyse_circle(rows, cx=CIRC_CX, cy=CIRC_CY, radius=CIRC_R):
         "slid": brk is not None,
         "tend": (rows[min(slid, count) - 1]["t"] - rows[launch]["t"]),
         "mean_off": mean_off,
+        "i_latch": latch,
+        "i_best": ibest,  # the fastest 1 s window's first row (vmax, latg)
+        "i_end": min(slid, count),
     }
 
 
