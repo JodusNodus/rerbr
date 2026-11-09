@@ -22,7 +22,6 @@
 //! `--tread D` puts the tread remaining D (1 new) in place of the probed wheel's. `--tuning` tunes the brush as
 //! `rbr-standalone --tyre-tuning` does (`rbr_tyre::Tuning`).
 
-use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
 use rbr_tyre_lab::steady::{grid, peak, slope, Tyre};
 
@@ -98,19 +97,7 @@ fn main() {
     } else {
         soil_as.unwrap_or(soil)
     };
-    let w = Wheel {
-        tyre: 0,
-        reference_friction: p.reference_friction,
-        load_axis: p.load_axis.clone(),
-        cornering_friction: p.crn_my.clone(),
-        traction_friction: p.trc_my.clone(),
-        cornering_peak_slip: p.crn_pk.clone(),
-        traction_peak_slip: p.trc_pk.clone(),
-        cornering_stiffness: p.crn_stf.clone(),
-        traction_stiffness: p.trc_stf.clone(),
-        temperature_axis: p.temp_axis.clone(),
-        rubber_friction: p.rub_my.clone(),
-    };
+    let w = rbr_tyre_lab::probe::wheel(&p);
     let built = rbr_tyre::model(&model, std::slice::from_ref(&w), &tuning).unwrap_or_else(|e| panic!("{e}"));
     let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water, camber: 0.0 };
     let out = |k: &str, v: f32| println!("{k} {v:.4}");

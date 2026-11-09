@@ -47,7 +47,19 @@ pub(super) fn tyre_wheels(playback: &Playback) -> Vec<rbr_tyre::Wheel> {
     let mem = &playback.pure.mem;
     let car = mem.u32(CAR_PTR);
     let wheels = (0..4).map(|k| mem.u32(car + CAR_WHEELS + 4 * k)).filter(|&w| w != 0);
-    wheels.map(|w| w + WHEEL_TYRE_SCRATCH).map(|t| rbr_tyre::Wheel::new(t, &mem.load_frame(t).setup)).collect()
+    wheels
+        .map(|w| w + WHEEL_TYRE_SCRATCH)
+        .map(|t| {
+            // The type's surface friction words (`load_surface_input`): base and wet slope per class, design wetness.
+            let def = mem.u32(t + rbr_physics::tyre::layout::DEF);
+            rbr_tyre::Wheel {
+                class_friction: std::array::from_fn(|k| mem.f32(def + 0x2C4 + 4 * k as u32)),
+                class_wet_slope: std::array::from_fn(|k| mem.f32(def + 0x2E0 + 4 * k as u32)),
+                design_wetness: mem.f32(def + 0x2DC),
+                ..rbr_tyre::Wheel::new(t, &mem.load_frame(t).setup)
+            }
+        })
+        .collect()
 }
 
 /// `CDriveLine::Sample` (0x50b180) on the physics' drive line (the object 0x1659184 points to) at `distance`: its

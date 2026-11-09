@@ -390,6 +390,30 @@ pub fn damp_weight(w: f64) -> f64 {
     (w / DAMP_W).min((1.0 - w) / (1.0 - DAMP_W)).clamp(0.0, 1.0)
 }
 
+/// NGP's tarmac surface class (a material's `+0x148`).
+pub const TARMAC_CLASS: u32 = 2;
+
+/// The damp tarmac tyre's factor over the dry tyre's on the same tarmac road, R(W), linear in W through
+/// 1 - 0.075 × 0.25 dry (NGP's form with design wetness 0.25), 1 / 0.925 at damp ([`DAMP_W`]: what the wet tyre
+/// gains over the dry one on a wet road) and (1 - 0.075 × 0.75) / 0.925 wet (NGP's form with design wetness 0.25).
+/// A user decision (2026-11-09): NGP's damp tyre ties the dry one on damp and is never the best choice.
+pub fn damp_tyre_ratio(w: f64) -> f64 {
+    let (dry, damp, wet) = (1.0 - 0.075 * 0.25, 1.0 / 0.925, (1.0 - 0.075 * 0.75) / 0.925);
+    let w = w.clamp(0.0, 1.0);
+    match w <= DAMP_W {
+        true => dry + (damp - dry) * w / DAMP_W,
+        false => damp + (wet - damp) * (w - DAMP_W) / (1.0 - DAMP_W),
+    }
+}
+
+/// The damp tarmac tyre's level on the tarmac class at the wetness `w`: the dry tyre's factor there (NGP's `base` +
+/// `slope` W, design wetness 0) times [`damp_tyre_ratio`], over NGP's own factor of the tyre (`base` + `slope`
+/// |`design` - W|), which NGP's grip carries.
+pub fn damp_tyre_level(w: f64, base: f64, slope: f64, design: f64) -> f64 {
+    let w = w.clamp(0.0, 1.0);
+    (base + slope * w) * damp_tyre_ratio(w) / (base + slope * (design - w).abs())
+}
+
 /// Dry-wear gain on friction: 1 + 0.167 (1 - d), fading with wetness (times
 /// (1 - W)): worn tread grips more when dry (+10% peak mu at 60% worn, Singh
 /// Table 3) and loses in the wet (carried by the partial hydroplaning there, [`wet_loss`]).
@@ -1073,6 +1097,24 @@ mod tests {
             assert!(level <= last + 1e-12 && level >= 0.788 - 1e-12, "W {w}: {level}");
             last = level;
         }
+    }
+
+    #[test]
+    fn the_damp_tyre_gains_on_damp_tarmac_what_the_wet_tyre_gains_on_wet() {
+        assert!((damp_tyre_ratio(0.0) - 0.98125).abs() < 1e-15);
+        assert!((damp_tyre_ratio(DAMP_W) - 1.0 / 0.925).abs() < 1e-15);
+        assert!((damp_tyre_ratio(1.0) - 0.94375 / 0.925).abs() < 1e-15);
+        assert!((damp_tyre_ratio(0.125) - (0.98125 + 1.0 / 0.925) / 2.0).abs() < 1e-15);
+        assert!((damp_tyre_ratio(0.625) - (1.0 / 0.925 + 0.94375 / 0.925) / 2.0).abs() < 1e-15);
+        // NGP's damp tarmac tyre (base 1, slope -0.075, design 0.5): the factor moves to the dry tyre's times R.
+        let level = |w: f64| damp_tyre_level(w, 1.0, -0.075, 0.5);
+        assert!((level(0.0) - 0.98125 / 0.9625).abs() < 1e-15);
+        assert!((level(DAMP_W) - 0.98125 / 0.925 / 0.98125).abs() < 1e-15);
+        assert!((level(1.0) - 0.94375 / 0.9625).abs() < 1e-15);
+        // Against the dry tyre on a dry road with the brush's damp loss (0.82 / 0.818 of dry today).
+        assert!((0.9625 * level(0.0) - 0.981).abs() < 0.001);
+        assert!((0.82 * level(DAMP_W) - 0.886).abs() < 0.001);
+        assert!((0.818 * level(1.0) - 0.802).abs() < 0.001);
     }
 
     #[test]

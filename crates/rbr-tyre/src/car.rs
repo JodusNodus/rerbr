@@ -21,6 +21,9 @@ struct Tyre {
     /// from.
     ngp: (f64, f64),
     loose: Loose,
+    /// NGP's damp tarmac tyre's base, wet slope and design wetness on the tarmac class ([`brush::damp_tyre_level`]);
+    /// `None` for every other tyre.
+    damp_tarmac: Option<(f64, f64, f64)>,
     state: TransState,
     /// Whether the brush ran at the wheel's last step.
     running: bool,
@@ -46,6 +49,11 @@ impl Brush {
                     cal,
                     ngp: (ngp.cy0 * tuning.stiffness, ngp.cx0 * tuning.stiffness),
                     loose,
+                    damp_tarmac: w.is_damp_tarmac().then(|| {
+                        let class = brush::TARMAC_CLASS as usize;
+                        let base = f64::from(w.class_friction[class]);
+                        (base, f64::from(w.class_wet_slope[class]), f64::from(w.design_wetness))
+                    }),
                     state: TransState::default(),
                     running: false,
                 })
@@ -71,7 +79,12 @@ impl Model for Brush {
         }
         let pressure_factor = f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale);
         let soil = x.soil_thickness > 0.0;
-        let grip = f64::from(x.grip) * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
+        let mut grip = f64::from(x.grip) * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
+        // NGP's damp tarmac tyre on its tarmac share: the dry tyre's factor times R(W) in place of NGP's.
+        if let Some((base, slope, design)) = t.damp_tarmac {
+            let share = loose::class_share(x.surface_classes, x.surface_blend, brush::TARMAC_CLASS);
+            grip *= 1.0 + (brush::damp_tyre_level(f64::from(x.water_factor), base, slope, design) - 1.0) * share;
+        }
         // NGP's stiffness factor at the pressure, and on a hard surface the slip stiffnesses' fall on low friction (ice).
         let low_mu = if soil { 1.0 } else { brush::low_mu_stiffness_factor(grip) };
         let fz = f64::from(x.normal_force);
@@ -274,6 +287,41 @@ mod tests {
         };
         let (one, two) = (steps(base), steps(Tuning { response: 2.0, ..base }));
         assert!((f64::from(two) / f64::from(one) - 2.0).abs() < 0.15, "{one} {two}");
+    }
+
+    #[test]
+    fn the_damp_tarmac_tyre_takes_the_dry_tyre_s_factor_times_r_on_tarmac_only() {
+        // NGP's tarmac tyres' surface words (probe `tyre_classes`): damp (kind 1), damp gravel (kind 4).
+        let damp = Wheel {
+            class_friction: [0.925, 0.925, 1.0, 0.55, 0.925, 0.975],
+            class_wet_slope: [-0.075, -0.075, -0.075, 0.0, -0.075, -0.075],
+            design_wetness: 0.5,
+            ..wheel()
+        };
+        let gravel = Wheel { class_friction: [1.0, 1.0, 0.85, 0.625, 1.0, 1.0], ..damp.clone() };
+        assert!(damp.is_damp_tarmac() && !gravel.is_damp_tarmac() && !wheel().is_damp_tarmac());
+        let lateral = |w: &Wheel, x: &ForceInput| {
+            f64::from(
+                settle(&mut Brush::new(std::slice::from_ref(w), &Tuning::default()).unwrap(), x, 2000).lateral_force,
+            )
+        };
+        // Sliding whole (20°), the force follows the grip: the tarmac share takes the level, nothing else moves.
+        for (water_factor, blend, level) in [(0.0, 0.0, 0.98125 / 0.9625), (0.25, 0.0, 1.0 / 0.925), (0.25, 0.5, 0.0)] {
+            let x = ForceInput {
+                water_factor,
+                surface_classes: [brush::TARMAC_CLASS, 0],
+                surface_blend: blend,
+                ..rolling(15.0, 20f32.to_radians())
+            };
+            let level = if blend == 0.0 { level } else { 1.0 + (1.0 / 0.925 - 1.0) / 2.0 };
+            assert!(
+                (lateral(&damp, &x) / lateral(&wheel(), &x) - level).abs() < 0.01,
+                "W {water_factor} blend {blend}"
+            );
+            assert_eq!(lateral(&gravel, &x), lateral(&wheel(), &x));
+        }
+        let x = ForceInput { water_factor: 0.25, surface_classes: [0, 0], ..rolling(15.0, 20f32.to_radians()) };
+        assert_eq!(lateral(&damp, &x), lateral(&wheel(), &x));
     }
 
     /// The wheel's output after `n` steps of `x` from the state `b` holds.

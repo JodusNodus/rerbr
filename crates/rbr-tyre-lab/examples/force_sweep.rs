@@ -14,7 +14,6 @@
 //! `--soil M` puts the loose layer's depth M (m) in place of the probed one's, `--water W` gives the models the
 //! surface's `WaterFactor` W.
 
-use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{parse_probe, Params};
 use rbr_tyre_lab::steady::{grid, Tyre};
 
@@ -65,19 +64,7 @@ fn main() {
         .and_then(|s| s.split_whitespace().nth(5)?.parse::<f32>().ok())
         .unwrap_or(0.0);
     let soil = soil_as.unwrap_or(soil);
-    let w = Wheel {
-        tyre: 0,
-        reference_friction: p.reference_friction,
-        load_axis: p.load_axis.clone(),
-        cornering_friction: p.crn_my.clone(),
-        traction_friction: p.trc_my.clone(),
-        cornering_peak_slip: p.crn_pk.clone(),
-        traction_peak_slip: p.trc_pk.clone(),
-        cornering_stiffness: p.crn_stf.clone(),
-        traction_stiffness: p.trc_stf.clone(),
-        temperature_axis: p.temp_axis.clone(),
-        rubber_friction: p.rub_my.clone(),
-    };
+    let w = rbr_tyre_lab::probe::wheel(&p);
     println!(
         "# step {} wheel {} fz {fz} speed {speed} static {:.4} soil {soil:.4} water {water}",
         p.step, p.wheel, p.static_friction
