@@ -198,7 +198,7 @@ the road's), so in game the wet speed loss is the thin film's.
 
 Camber and pressure (2026-11-08): the inclination's sine (`ForceInput::inclination_sin`, read-only at the seam) adds
 -0.05 sin γ |ωR| to the lateral slip velocity, MF's horizontal shift as an equivalent slip: C_γ = 0.05 Cy at small
-slip, gone once the patch slides whole, none at standstill or locked (MF 6.1 0.047-0.052, MF 5.2 0.061, brush (1-ε)
+slip, gone once the patch slides whole, none at standstill or locked (MF 6.1 0.047-0.052, MF 5.2 0.061 at its truck Fz0 of 9.4 kN, 0.027 at 4 kN, brush (1-ε)
 a/(3R) 0.023-0.047; NGP 0.1). The carcass stiffens with pressure faster than the slip stiffness laterally and slower
 longitudinally: per +0.5 bar c_y +9.5 % (op het Veld) / +13-16 % (MF 6.1), c_x +3.5 % / +4.2-4.4 %; NGP's factor rises
 6.9 % from 2.0 bar, so c_y and c_x go as its powers 1.7 and 0.6 (the means), and σ_y = Cy/c_y shortens with pressure.
