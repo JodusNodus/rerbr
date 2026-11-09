@@ -16,6 +16,8 @@
 //! championship offers the stage's default, the current setup or a saved one before each stage
 //! (`CSeasonChooseSetupUI`, [`SetupPage::choose`]).
 
+mod charts;
+
 use std::path::{Path, PathBuf};
 
 use egui::{ComboBox, DragValue, RichText, Ui};
