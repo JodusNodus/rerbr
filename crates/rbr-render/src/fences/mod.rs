@@ -291,6 +291,7 @@ fn mesh(line: &Line) -> Mesh {
         vertices,
         indices,
         draws,
+        sun_cascades: true,
     }
 }
 

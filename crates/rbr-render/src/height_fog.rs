@@ -244,6 +244,7 @@ mod tests {
                 .collect(),
             indices: Vec::new(),
             draws: Vec::new(),
+            sun_cascades: true,
         };
         // A valley floor at 0 m and a ridge at 100 m (its tree tops at 120 m) 64 m east; a sky face and camera-anchored
         // clouds far below, and stray vertices far off, which do not count.

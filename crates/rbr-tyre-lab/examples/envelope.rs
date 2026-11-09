@@ -71,7 +71,7 @@ fn main() {
     .clone();
     /// The probed wheel `p` under the model `name`, built from its own tables, at 15 m/s.
     fn tyre<'a>(p: &'a Params, cloud: &'a [(f32, f32)], name: &str) -> Tyre<'a> {
-        let model = rbr_tyre::model(name, &[wheel(p)]).unwrap_or_else(|e| panic!("{e}"));
+        let model = rbr_tyre::model(name, &[wheel(p)], &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"));
         Tyre { p, cloud, soil: 0.0, model, speed: 15.0, water: 0.0, camber: 0.0 }
     }
     let (mut n, mut m) = (tyre(&p, &cloud, "ngp"), tyre(&p, &cloud, &model));

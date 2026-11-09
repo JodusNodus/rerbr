@@ -60,7 +60,9 @@ fn main() {
         let v = vlat.hypot(vlong);
         let alpha = vlat.atan2(-vlong).to_degrees();
         let kappa = (spin * p.effective_radius + vlong) / (-vlong).max(0.5);
-        let model_of = |name: &str, p: &Params| rbr_tyre::model(name, &[wheel(p)]).unwrap_or_else(|e| panic!("{e}"));
+        let model_of = |name: &str, p: &Params| {
+            rbr_tyre::model(name, &[wheel(p)], &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"))
+        };
         let mk = |name: &str| Tyre {
             p,
             cloud: &cloud,
@@ -76,7 +78,7 @@ fn main() {
         let peak_n = peak(grid(0.5, 20.0, 0.25), |a| n.mu_y(fz, a)).0;
         let peak_m = peak(grid(0.5, 20.0, 0.25), |a| m.mu_y(fz, a)).0;
         // The brush's own friction, ψ and sliding speed at the frame, its input as the game's seam builds it.
-        let cal = rbr_tyre::fit::calibration(&wheel(p)).unwrap_or_else(|e| panic!("{e}"));
+        let cal = rbr_tyre::fit::calibration(&wheel(p), &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"));
         let x = EvalInput {
             fz: f64::from(fz),
             half_length: brush::trail_half_length(

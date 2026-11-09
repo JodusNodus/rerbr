@@ -100,7 +100,8 @@ fn main() {
 
 /// The tyre under test: `p` under the model `name` built from the wheel's tables `w`.
 fn build<'a>(p: &'a Params, cloud: &'a [(f32, f32)], name: &str, w: &Wheel, speed: f32) -> Tyre<'a> {
-    let model = rbr_tyre::model(name, std::slice::from_ref(w)).unwrap_or_else(|e| panic!("{e}"));
+    let model =
+        rbr_tyre::model(name, std::slice::from_ref(w), &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"));
     Tyre { p, cloud, soil: 0.0, model, speed, water: 0.0, camber: 0.0 }
 }
 

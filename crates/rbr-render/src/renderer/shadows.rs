@@ -163,7 +163,9 @@ impl Casting<'_> {
         drawn.extend(world.map(|m| ("sun world layer", crate::sun::WORLD, m, None, drop)));
         for (label, index, matrix, eye, drop) in drawn {
             around(encoder, label, true);
-            self.draw_layer(encoder, index, matrix, eye, drop);
+            // A mesh may stay out of the near cascades ([`GpuMesh::sun_cascades`]); every other layer takes it.
+            let near = index < crate::sun::FAR;
+            self.draw_layer_of(encoder, index, matrix, eye, drop, |mesh| !near || mesh.sun_cascades);
             around(encoder, label, false);
         }
     }

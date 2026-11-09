@@ -76,6 +76,12 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   ReRBR experimental physics keeps no records (user decision): `rbr-standalone` makes `--saves`
   dry (stage record, personal best, lesson verdict; `Args::keeps_records`), the quick race races the best ghost as
   `--ghost` and never `--best-ghost`, and championship stages refuse to start (trials still run); `.rrp` replays work.
+- Experimental tuning (`tyre_tuning.rs`, under Physics while the session drives `experimental-brush`): sliders for
+  the brush's slide grip, grip per surface, cornering stiffness and response, Reset to model; saved as `[launcher]
+  tyre_tuning = KEY=VALUE,...` (only the values off the model's), passed after `--live` as `--tyre-tuning` (so the
+  replay's header keeps it), never to championship stages or trials (`start_championship_stage` runs untuned). The
+  Drive page says "Experimental tuning active" while one is off ([tyre-model.md](tyre-model.md#experimental-tuning)).
+  Captures: `rerbr --screenshot` `settings-whole.png`, `drive-weather-custom.png`.
 
 - The game's quality settings and music are not offered (user decisions).
 - One game folder (user decision 2026-11-04): everything is read from the game folder in use (`Paths::game_root`:
@@ -182,7 +188,8 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   --at N`) draws the Nth answer headless, the way a live screenshot draws the Nth payload: the replay
   runs back to back (`--replay-pace free`), not in lockstep (`--frames -` takes no `--replay` beside it);
   `--at-drive` takes no `--replay`. `rbr-standalone --live ... --replay F --replay-pace free --replay-trace OUT`
-  writes each stepped frame's car and tyres as text (research, read-only; `replay_trace.rs`). `--replay-tyre STEP:MODEL` (research) runs the replay checked to
+  writes each stepped frame's car and tyres as text (research, read-only; `replay_trace.rs`; with `--tyre-probe F
+  [--tyre-probe-every N]` the tyre frames as the autopilot's probe, `harness/replay_gg.py`). `--replay-tyre STEP:MODEL` (research) runs the replay checked to
   STEP, then fits the tyre model MODEL (`ngp`, `brush`) afresh and runs the drive's inputs on uncompared.
 - Championship tab (`championship_page/`, on `rbr_season::event::Event`; 2026-11-05): the one mode of the tab; the classic 1.02 season
   page (`rally_page`) is gone from the launcher, and its saves in `SavedGames/pf<profile>.rbr` and the settings'

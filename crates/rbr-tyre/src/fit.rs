@@ -8,9 +8,10 @@
 use rbr_physics::tyre::friction_limits::BlendPair;
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 
-use crate::brush::{Calibration, CORNERING_OVER_NGP};
-use crate::calibrate::{calibrate, CalPoint, CalTargets};
+use crate::brush::{eval, Calibration, EvalInput, CORNERING_OVER_NGP};
+use crate::calibrate::{calibrate, calibrate_with, CalPoint, CalTargets};
 use crate::loose::{self, Levels, Loose};
+use crate::tuning::Tuning;
 use crate::Wheel;
 
 /// The sweeps' speed, m/s (ours, as the lab's).
@@ -20,11 +21,65 @@ const NOMINAL_LOAD: usize = 3;
 
 /// The brush's calibration for `w`: NGP's peak forces and its cornering slope over 0 to 2° times
 /// [`CORNERING_OVER_NGP`], the longitudinal stiffness [`crate::brush::KX_OVER_KY`] times the cornering one (so 1.3
-/// times that of NGP's slope as well), its friction solved for NGP's longitudinal peak.
-pub fn calibration(w: &Wheel) -> Result<Calibration, String> {
+/// times that of NGP's slope as well), its friction solved for NGP's longitudinal peak. `tuning`'s stiffness
+/// multiplies the slope, and its slide grip, when set, takes the lateral Coulomb level that gives it
+/// ([`slide_grip`]), each with the peaks solved again.
+pub fn calibration(w: &Wheel, tuning: &Tuning) -> Result<Calibration, String> {
     let (targets, point) = setup(w)?;
-    Ok(calibrate(&CalTargets { fit_lat: targets.fit_lat * CORNERING_OVER_NGP, ..targets }, &point))
+    let targets = CalTargets { fit_lat: targets.fit_lat * CORNERING_OVER_NGP * tuning.stiffness, ..targets };
+    let mut cal = calibrate(&targets, &point);
+    if let Some(want) = tuning.slide_grip {
+        // The ratio barely moves with the level the solve restores: three rounds settle it.
+        for _ in 0..3 {
+            let (mut lo, mut hi) = (SLIDE_COULOMB.0, SLIDE_COULOMB.1);
+            for _ in 0..50 {
+                let c_y = (lo + hi) / 2.0;
+                match slide_grip(&Calibration { mu_yk: c_y * cal.mu_ys, ..cal }) < want {
+                    true => lo = c_y,
+                    false => hi = c_y,
+                }
+            }
+            cal = calibrate_with(&targets, &point, (lo + hi) / 2.0);
+        }
+    }
+    Ok(cal)
 }
+
+/// The lateral Coulomb level over the static one the slide grip is solved within: the fall's whole range on the
+/// tuning's ([`crate::tuning::SLIDE_GRIP`] lies inside it), the model's
+/// [`crate::brush::MU_C_OVER_S`] at 0.886.
+const SLIDE_COULOMB: (f64, f64) = (0.05, 1.0);
+
+/// The slide grip of `cal` (the tuning's [`Tuning::slide_grip`]): μ_y at 30° over its peak (0 to 30° by 0.05°), at
+/// 4 kN and 15 m/s, free rolling, on the calibration point's unit surface.
+pub fn slide_grip(cal: &Calibration) -> f64 {
+    let fy = |deg: f64| {
+        let a = deg.to_radians();
+        let x = EvalInput {
+            fz: SLIDE_LOAD,
+            half_length: 0.07,
+            vx: -SPEED * libm::cos(a),
+            vy: SPEED * libm::sin(a),
+            spin: SPEED * libm::cos(a),
+            radius: 1.0,
+            bulk_temp: cal.t_cal,
+            tread_remaining: cal.d_cal,
+            pressure: 0.0,
+            pressure_factor: cal.pf_cal,
+            wetness: cal.w_cal,
+            hydroplaning: true,
+            temp_grip: cal.temp_grip_cal,
+            surf_static: cal.surf_s_cal,
+            surf_kinetic: cal.surf_k_cal,
+        };
+        eval(&x, cal).fy.abs()
+    };
+    let peak = (0..=600).map(|k| fy(f64::from(k) * 0.05)).fold(0.0, f64::max);
+    fy(30.0) / peak
+}
+
+/// The slide grip's load, N (the scorecard's).
+const SLIDE_LOAD: f64 = 4000.0;
 
 /// The brush calibrated on NGP's own cornering slope at `w`'s nominal load: the slip stiffnesses low friction falls
 /// back to (`crate::car`), and the start of the loose tyre's ([`loose`]).
@@ -62,8 +117,8 @@ fn setup(w: &Wheel) -> Result<(CalTargets, CalPoint), String> {
 /// The loose-surface tyre for `w` ([`crate::loose`]): NGP's free rolling peaks at each positive load of the wheel's
 /// axis where they are positive, on the unit surface, and its cornering slope at the nominal load, solved from
 /// [`ngp_calibration`] (not [`CORNERING_OVER_NGP`]'s). A load whose peaks are not positive is skipped; with none left,
-/// the first load's error.
-pub fn loose(w: &Wheel) -> Result<Loose, String> {
+/// the first load's error. `tuning`'s stiffness multiplies the slope and gravel's shear law's stiffness.
+pub fn loose(w: &Wheel, tuning: &Tuning) -> Result<Loose, String> {
     let cal = ngp_calibration(w)?;
     let mut levels = Levels::default();
     let mut error = None;
@@ -80,8 +135,8 @@ pub fn loose(w: &Wheel) -> Result<Loose, String> {
     if levels.load.is_empty() {
         return Err(error.unwrap_or_else(|| format!("tyre at {:#010x}: no positive load", w.tyre)));
     }
-    let slope = targets(w, cal.fz0 as f32)?.fit_lat;
-    Ok(loose::calibrate(&cal, levels, slope, SPEED))
+    let slope = targets(w, cal.fz0 as f32)?.fit_lat * tuning.stiffness;
+    Ok(Loose { shear_stiffness: tuning.stiffness, ..loose::calibrate(&cal, levels, slope, SPEED) })
 }
 
 /// NGP's targets at `fz0`: the lateral peak over 0 to 30° of slip angle, the least-squares cornering slope over 0 to
@@ -187,7 +242,7 @@ pub(crate) mod tests {
     #[test]
     fn the_brush_takes_ngp_s_peaks_and_stiffer_slopes_at_the_nominal_load() {
         let w = wheel();
-        let cal = calibration(&w).unwrap();
+        let cal = calibration(&w, &Tuning::default()).unwrap();
         let t = targets(&w, 4000.0).unwrap();
         assert_eq!((cal.fz0, cal.t_cal, cal.pf_cal, cal.surf_s_cal), (4000.0, 350.0, 1.0, 1.0));
         let input = |alpha: f64| EvalInput {
@@ -230,7 +285,7 @@ pub(crate) mod tests {
     #[test]
     fn the_loose_tyre_takes_ngp_s_peaks_at_each_load_and_its_slope() {
         let w = wheel();
-        let l = loose(&w).unwrap();
+        let l = loose(&w, &Tuning::default()).unwrap();
         assert_eq!(l.levels.load, [1000.0, 2500.0, 4000.0, 6000.0, 8000.0]);
         for (k, &fz) in l.levels.load.iter().enumerate() {
             let t = targets(&w, fz as f32).unwrap();
@@ -246,17 +301,65 @@ pub(crate) mod tests {
         let mut zero_at_1k = wheel();
         zero_at_1k.cornering_friction[1] = 0.0;
         zero_at_1k.traction_friction[1] = 0.0;
-        let l = loose(&zero_at_1k).unwrap();
+        let l = loose(&zero_at_1k, &Tuning::default()).unwrap();
         assert_eq!(l.levels.load, [2500.0, 4000.0, 6000.0, 8000.0]);
-        assert_eq!(l.levels.lateral, loose(&w).unwrap().levels.lateral[1..]);
+        assert_eq!(l.levels.lateral, loose(&w, &Tuning::default()).unwrap().levels.lateral[1..]);
         let none = Wheel { cornering_friction: vec![0.0; 6], traction_friction: vec![0.0; 6], ..wheel() };
-        assert!(loose(&none).is_err());
+        assert!(loose(&none, &Tuning::default()).is_err());
+    }
+
+    #[test]
+    fn the_tuning_sets_the_slide_grip_and_the_stiffness_and_keeps_the_peaks() {
+        let w = wheel();
+        let model = calibration(&w, &Tuning::default()).unwrap();
+        let t = targets(&w, 4000.0).unwrap();
+        let lateral = |cal: &Calibration, deg: f64| {
+            let a = deg.to_radians();
+            let x = EvalInput {
+                fz: 4000.0,
+                half_length: 0.07,
+                vx: -SPEED * a.cos(),
+                vy: SPEED * a.sin(),
+                spin: SPEED * a.cos(),
+                radius: 1.0,
+                bulk_temp: cal.t_cal,
+                tread_remaining: 1.0,
+                pressure: 0.0,
+                pressure_factor: 1.0,
+                wetness: 0.0,
+                hydroplaning: true,
+                temp_grip: 1.0,
+                surf_static: 1.0,
+                surf_kinetic: 1.0,
+            };
+            eval(&x, cal).fy.abs()
+        };
+        let peak = |cal: &Calibration| (0..=300).map(|k| lateral(cal, f64::from(k) * 0.1)).fold(0.0, f64::max);
+        for want in [0.70, 0.75, 0.82, 0.92, 0.95] {
+            let cal = calibration(&w, &Tuning { slide_grip: Some(want), ..Tuning::default() }).unwrap();
+            assert!((slide_grip(&cal) - want).abs() < 0.002, "{want}: {}", slide_grip(&cal));
+            assert!((peak(&cal) / t.peak_lat - 1.0).abs() < 0.01, "{want}: the peak stays NGP's");
+            let near = |a: f64, b: f64| (a / b - 1.0).abs() < 0.005;
+            assert!(near(cal.mu_xk, model.mu_xk) && near(cal.cy0, model.cy0), "{want}: the braking axis stays");
+        }
+        let stiff = calibration(&w, &Tuning { stiffness: 1.2, ..Tuning::default() }).unwrap();
+        let slope = |cal: &Calibration| {
+            let (sxy, sxx) = (1..=8).map(|k| f64::from(k) * 0.25).fold((0.0, 0.0), |(sxy, sxx), d| {
+                (sxy + d.to_radians() * lateral(cal, d), sxx + d.to_radians() * d.to_radians())
+            });
+            sxy / sxx
+        };
+        assert!((slope(&stiff) / slope(&model) / 1.2 - 1.0).abs() < 1e-6, "{} {}", slope(&stiff), slope(&model));
+        assert!((peak(&stiff) / t.peak_lat - 1.0).abs() < 0.01);
+        let l = loose(&w, &Tuning { stiffness: 1.2, ..Tuning::default() }).unwrap();
+        assert!((crate::loose::cornering_slope(&l, SPEED) / t.fit_lat / 1.2 - 1.0).abs() < 1e-9);
+        assert_eq!(l.shear_stiffness, 1.2);
     }
 
     #[test]
     fn a_wheel_without_tables_is_refused() {
-        assert!(calibration(&Wheel { load_axis: vec![], ..wheel() }).is_err());
-        assert!(calibration(&Wheel { rubber_friction: vec![], ..wheel() }).is_err());
-        assert!(calibration(&Wheel { cornering_friction: vec![1.0], ..wheel() }).is_err());
+        assert!(calibration(&Wheel { load_axis: vec![], ..wheel() }, &Tuning::default()).is_err());
+        assert!(calibration(&Wheel { rubber_friction: vec![], ..wheel() }, &Tuning::default()).is_err());
+        assert!(calibration(&Wheel { cornering_friction: vec![1.0], ..wheel() }, &Tuning::default()).is_err());
     }
 }

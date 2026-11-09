@@ -769,6 +769,7 @@ mod tests {
                 },
                 lod: Lod::Always,
             }],
+            sun_cascades: true,
         }
     }
 

@@ -1,4 +1,4 @@
-//! `--tyre-probe FILE` (with `--autopilot`): read-only dumps of each wheel's tyre
+//! `--tyre-probe FILE` (with `--autopilot` or `--replay-trace`): read-only dumps of each wheel's tyre
 //! `Frame` at intervals of the drive, as `name: values` lines. Research tooling
 //! for the NGP tyre characterisation: reads physics memory after the step,
 //! never writes it.
@@ -82,6 +82,14 @@ impl TyreProbe {
     /// Dump after the step at `step` when it is due (every `every` steps), or always when `last`.
     pub fn step(&mut self, mem: &Mem, step: u32, last: bool) -> Result<(), String> {
         if !last && !step.is_multiple_of(self.every) {
+            return Ok(());
+        }
+        self.dump(mem, step)
+    }
+
+    /// Dump after a frame of `substeps` steps ending at `step` when a due step fell in it (`--replay-trace`).
+    pub fn frame(&mut self, mem: &Mem, step: u32, substeps: u32) -> Result<(), String> {
+        if step / self.every == step.saturating_sub(substeps) / self.every {
             return Ok(());
         }
         self.dump(mem, step)

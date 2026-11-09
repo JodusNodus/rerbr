@@ -1371,8 +1371,8 @@ moves, the direction, the RC1 μ beside.
 
 Research (2026-11-09, main 9158d147): the game's Fiesta Rally2 against real Rally2 in accelerometer terms. Tools:
 `harness/car_grip.py` (circles: kinematic v²/R, `glat` over the same 1 s, path g, sideslip), `limit_pace.py --surface`,
-`rally_gg.py stats --speed-lag`, rbr-tyre's `RERBR_TEST_BRUSH_MU=F` (test tooling, experimental-brush only: the
-brush's grip × F; unset, traces byte-identical). Runs and scripts outside the repository. ngp / experimental-brush.
+`rally_gg.py stats --speed-lag`, the brush's grip × F (then the test variable `RERBR_TEST_BRUSH_MU=F`, every surface;
+now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identical). Runs and scripts outside the repository. ngp / experimental-brush.
 
 - RSF 345's r40 circle (the old gravel row, the snow circle under 101) lies on an 11.9° (21 %) slope: z 9.6-24.5 m
   over the lap (plane fit, rms 0.5 m); the hold covers 30-180° of the lap and ends running downhill at ~13.5 m/s
@@ -1418,8 +1418,32 @@ brush's grip × F; unset, traces byte-identical). Runs and scripts outside the r
   tarmac 1.24-1.28 / 1.29-1.33 Rally2/R5, 1.27 / 1.31-1.33 WRC; snow within 3 % of gravel. Rally2 over WRC 0.97-0.98
   (ngp) and 0.96-1.00 (brush) on gravel, 0.97-1.01 on tarmac, against the real 0.93. The wide NGP spread (Fiesta WRC
   0.749, i20 0.587) and the brush's Fiesta WRC 0.423 (a 3.3 s hold) are RSF 345's slope (hold lengths 3-19 s); flat,
-  the six cars lie within 5 %, so no tyre, setup or aero value is needed to explain it; the WRC cars' aero and power do
-  not act at the circle's 70 km/h. Fix: the scored row reads the flat circle (done).
+  the six cars lie within 5 %, so no tyre, setup or aero value is needed to explain it; at the circle's 70 km/h the
+  WRC cars' extra downforce over the Rally2's is ~1 % of the weight and their power does not act. Fix: the scored row
+  reads the flat circle (done).
+- Aero (2026-11-09): NGP's downforce (`rbr_physics::ngp::downforce`) is the car's `FrontDownforce_NGP` /
+  `RearDownforce_NGP` at 150 km/h on the square of the speed along the car's axis (+0x15f8), so cos²β with sideslip
+  (-7 % at 15°), the split fixed; the drag (`car_body::drag`) is Cd·A on the velocity, yaw-free. Fiesta Rally2 (RSF
+  `common.lsp`): 1395 + 1705 N (ClA ≈ 3.0 m², 45 % front), Cd·A 0.78 m², 1431 kg: 22 % of the weight at 150 km/h,
+  4.8 % at the gravel circle's 70 km/h and 6.4 % at tarmac's 81 (Fiesta WRC 2019: 1800 + 1900 N, 27 % at 150). Two
+  hand drives of 524 (`replay_gg`'s traces, 1 s means) carry ΣFz +2.4 / +3.8 kN from 12-20 to 32-40 m/s (the
+  downforce alone +1.9; the rest the road's compressions).
+  So ~4 % of the gravel circle's g and ~5 % of tarmac's is downforce (estimated: the load × car_pace's `AERO_GRIP`
+  0.86); the real Rally2 figures carry little at those speeds, and `implied_grip.py`'s Rally2 (ClA 0.2, swept 0-0.5)
+  read on game times credits the game's downforce to its μ. No published Rally2 downforce found. Dominy & Richardson
+  (SAE 2004-01-3508, Durham; 20 % generic 2004 WRC model, moving ground, rear wing): datum ClA 0.75 m², Cd·A 0.85 m²
+  (Table 2: −2050 / 2333 N at 67 m/s, 1300 kg), a quarter of NGP's Rally2 downforce. With yaw (Fig. 10, 14, read ±10
+  %, moving ground, clearances 8-14 mm model scale): at 15° drag +35-60 %, total downforce −20-40 %, the front's
+  −80-100 % (at 14 mm gone), the rear's about unchanged: the centre of pressure moves back; a fixed ground shows much
+  less. Their lap simulation (Table 3's 2.08 km stage, 78.2 s loose, loose μ = half of tarmac's by assumption): zero-yaw
+  aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
+  only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
+- Steady drift in a model, no measurement (Chaichaowarat & Wannasuphoprasit, SAE 2013-01-0001; RWD single-track
+  model, no load transfer, 1250 kg, Table 1; MF fits of a P225/60R16 from Nicolas-Comstock 1972, Table 2, which give
+  μ_y peak 0.98 at 9°, μ_y(30°)/peak 0.85-0.86, locked/peak 0.81, peak κ 0.15: NGP's shape, inside the tarmac band):
+  the speed is nearly flat in sideslip (Fig. 6, read ±0.3 km/h): r10 m 34.0 km/h at β 4°, ~33 at 20°; r22 m 50.2 at
+  β 15° (counter-steer, the best), 49.8-50.2 over 5-20°; ~0.90 g both; counter-steer from β 13° / 11.5° (Fig. 5),
+  rear κ 0.2-0.33 at 15-20° (Fig. 7). With a tyre that keeps ~0.85 at 30°, a steady slide costs ≤ 3 % of speed.
 - Brush grip × F on the flat circles (glat at F 0.8 / 0.9 / 1 / 1.1 / 1.2): gravel 0.709 / 0.783 / 0.877 / 0.960 /
   1.038, snow 0.711 / 0.814 / 0.900 / 0.978 / 1.029, tarmac 0.940 / 1.069 / 1.186 / 1.329 / 1.452: 0.82 g (gravel,
   snow) and 1.3 g (tarmac) per unit F, near proportional.
@@ -1440,6 +1464,15 @@ brush's grip × F; unset, traces byte-identical). Runs and scripts outside the r
   `snow-car-lateral-rally2`, `tarmac-car-lateral-rally2-narrow` / `-wide` (flat circle glat), the braking rows
   (`*-car-braking-rally2`, weak: μ_x = μ_y and a 0.5 s peak against a stop's mean), `car-class-ratio-rally2-wrc`
   (none: two cars).
+- A player's drive in these terms (2026-11-09): `harness/replay_gg.py REPLAY.rrp... [AUTOPILOT.trace...] --out DIR`
+  (a copy of the launcher's `.rrp`; the header names the physics, car and stage) runs the replay with
+  `--replay-trace` and `--tyre-probe` (every 144 steps) and prints time, km, outside assistance, the largest distance
+  off the driveline (the car's parameter on the `.trk` spline), rally_gg's braking and lateral figures (glat and
+  kinematic) and each wheel's |F|/Fz over `limit_frames`' peak at its load (hardest 5 % by Σ|F|/ΣFz / median). A
+  replay stays exact on any build whose physics matches the drive's (621 brush of 2026-11-08 22:28 on main 5f4c3209:
+  all 346920 frames equal); otherwise it stops at the first differing frame (a Falstone brush drive of 13:37, before
+  that day's brush changes: frame 22931) and the figures cover the frames before it. Autopilot 562 at f0.75 b0.6, ngp
+  / brush: wheels 0.98/0.98/0.93/0.92 and 0.98/0.98/0.94/0.93 of their peak in the hardest 5 %, 0.53-0.60 at the median.
 
 ## Wong, Theory of Ground Vehicles, against the open items (2026-11-09)
 
@@ -1505,8 +1538,8 @@ What it means for the model:
 Research (2026-11-09, main d903fe5a). Real times are from juwra.com, fia.com, Wikipedia and rally-maps.com. RSF ids and
 lengths are from `stages_data.json`. Game: the default autopilot to the finish, dry, Fiesta Rally2 (ngp7) and i20 Coupe
 WRC 2020 (ngp6, the WRC-class NGP car installed). Single runs, no recoveries. Ratios eb/ngp are Rally2 / i20, with
-eb/experimental (the tyre alone) in brackets. RSF's best is not public: its hotlap rank shows "Please login." to
-visitors, and its stage list shows only the default time.
+eb/experimental (the tyre alone) in brackets. RSF's best needs a login ("Please login." to visitors); the user's
+saved rank pages are read below.
 
 | RSF id, length | Real stage | Winner, time, car | Match | eb/ngp (eb/exp) |
 | --- | --- | --- | --- | --- |
@@ -1521,13 +1554,35 @@ visitors, and its stage list shows only the default time.
 | 615, 19957 m (snow) | Arctic Rally Finland 2021 SS4/7 Kaihuavaara, 19.91 km (27.93 km in the January Arctic Lapland Rally) | Evans 546.6 s, Rovanperä 548.8 (Yaris WRC) | +0.2 %, good | not used: the autopilot crawls (24-94 s under 5 m/s, spinning at a climb at 4.1 km); raw 1.182 / 0.953 |
 | 422, 9742 m (snow) | Rally Sweden 2018 SS8/19 Torsby, 9.56 km | Paddon 383.8 s (Friday 16:56), Lappi 361.2 (Sunday, power stage) | +1.9 %, fair | 0.983 / 0.985 (0.999 / 0.998) |
 
+- The user's Hassi drives by hand (2026-11-09, experimental-brush, dry; Fiesta Rally2 with 4 recoveries, stopped at
+  7.3 km; GR Yaris Rally2 clean to 5.9 km, splits 89.8 / 177.5 s against RSF's Rally2 median 84.3 / 165.7 under
+  ngp): lateral 1 s p90 / p99 0.83 / 1.05 g (glat) in both, g-g p95 |lat| 0.92-1.03 g at 60-150 km/h (Finland 2021
+  WRC 0.89 / 1.25 and 1.04-1.14; a Rally2 at × 0.93 about 0.83 and 0.97-1.06; the at-limit autopilot 0.52-0.57 and
+  0.39-0.70); tyres in the hardest 5 %: car 0.99-1.03 of the peak, Yaris front / rear 0.98 / 0.98, Fiesta 1.05 / 0.94;
+  braking 16 longest 0.64-0.65 g (WRC 0.60), 0.5 s peak 0.69-0.79 (WRC 1.00). A driver reaches the tyres' peak and a
+  real Rally2's cornering g on the brush's gravel level, the rear's reserve included (`replay_gg.py`).
 - The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs
   (`limit_pace.py`), whose single-run scatter (5-15 s on 7.8 km) is larger than the effect.
-- Real against RSF: open until RSF's best is read for the same class. Classes: RSF "WRC 2.0" for the 2017-21 WRC and
-  Rally1 rows, "Group R5" for Rally2, "Group B" for 611. Same tarmac route, one class apart: Rally1 2025 is 35.4 s/km
-  and Rally2 2024 is 36.6 s/km, so Rally2 is 3.4 % slower.
+- Real against RSF (2026-11-09; the user's saved NGP7 hotlap rank pages, read for car and finish time only, no names
+  kept; NGP7 is `ngp` physics). Best / top-10 median per class, s, and over the real reference:
+
+  | Stage (entries) | Real reference | RSF WRC 2017-21 | RSF Rally2/R5 | Fiesta Rally2 |
+  | --- | --- | --- | --- | --- |
+  | 562 Aguimes-Santa Lucia 2025, tarmac (1452) | WRC2 2025 SS14 548.0 (top 5 551.6), Rally1 530.1 | 520.7 / 532.4 (0.982 / 1.004 of Rally1) | 526.6 / 534.5 (0.961 / 0.975) | 549.1 / 559.3 (n 66) |
+  | 524 Hassi, gravel (1796) | Evans 206.7 flying (Yaris WRC); Rally2 220.9 (implied μ × 0.93, estimate) | 197.4 / 202.3 (0.955 / 0.979) | 205.8 / 208.7 (0.932 / 0.945) | 212.4 / 219.7 (n 55) |
+  | 422 Torsby 2018, snow (206; route +1.9 %) | Lappi 361.2 Sunday (Paddon 383.8 Friday) | 308.7 / 318.6 (0.855 / 0.882) | 320.3 / 331.3 | 343.2 (n 6) |
+  | 531 Aittajarvi, snow (496) | Rovanperä 602.4, Evans 607.5 | 550.2 / 571.7 (0.913 / 0.949) | 552.0 / 563.1 | 581.5 (n 17) |
+
+  Tarmac, where the car-level grip matches ([Car-level grip in the same terms](#car-level-grip-in-the-same-terms)),
+  is the control: the sim's best Rally2 runs 2.5-4 % under the real WRC2 times. Gravel sits 2-3 % beyond that
+  control (against the Rally2 estimate; the WRC row the same once Evans's flying start is allowed for, RSF's runs
+  start standing): inside the ±5 % below, so no sign that NGP's gravel grip is low. Snow sits 5-12 % beyond it
+  (Torsby on a longer route, Aittajarvi less): with f 0.6-0.8 corner-limited that is roughly 10-30 % more μ than the
+  real cars used, the same sign as the flat circle's 1.2 (inferred; real snow varies with fresh snow, ice and stud
+  wear, and a sim leans on snowbanks without risk). The Fiesta Rally2 has few entries (top drivers pick the Fabia RS
+  Rally2), so its rows are not a car comparison.
 - Reading a gap: if a share f of the stage time is corner-limited, Δt/t ≈ −f/2 · Δμ/μ. So a 5 % time gap is 10 % μ
   at f = 1 and 20 % at f = 0.5 (fast Finnish gravel averages 134 km/h). The time gap also contains the driver, the car
   and the route version. A sim's best knows the stage from hundreds of runs, takes no risk and runs on a fixed road;
@@ -1603,10 +1658,32 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   gravel / snow tyre, `tarmac` map 85 under 37; `kin_g`, `glat_g`, `path_g`, `glat_p95`, `beta_deg`;
   [Car-level grip in the same terms](#car-level-grip-in-the-same-terms)).
 
-Counts (2026-11-08, `tyre/review-fixes`, full run; 112 rows, 97 scored): ngp 31/97, experimental-brush 48/97 PASS. It
-reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, circle 0.571 g (loose-v1 0.663); NGP gravel
-peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ 1)/peak
-0.82; tarmac brush peak κ 0.11, Fy(κ 0.25)/Fy(0) 0.296/0.349 at 2°/4°, Kx/Fz 21.2.
+Counts (2026-11-09, main b9bbe63d run as 5f4c3209, main plus tooling; full run `--jobs 4`; 162 rows, 141 measured,
+112 scored, 29 context): ngp 41/112, experimental-brush 93/112 PASS (2026-11-08 `tyre/review-fixes`: 31/97, 48/97).
+Since then:
+
+- New rows (19 scored): ngp 6 PASS (`gravel-cw-mu-y30-over-peak`, `snow-car-locked-over-abs-80`,
+  `tarmac-calpha-pressure`, `tarmac-peak-mu-y-pressure`, `tarmac-trl-wet-peak-100-over-32`, `tarmac-wet-speed-loss`),
+  13 MISS; brush 17 PASS, MISS `tarmac-kx-pressure`, `tarmac-sigma-y-pressure`. 10 new context rows (the Rally2 car
+  rows, `gravel-car-lateral-g-rsf345`, `-wrc-stage`, `gravel-car-locked-over-abs-satc-80`).
+- Moved to context (both physics): `gravel-mu-y30-over-peak`, `gravel-peak-slip-angle` (gravel shape rows at their
+  sources' speeds), `snow-lat-max-packed`, `snow-long-mu-winter` (road-tyre snow levels).
+- Band changes (no model change): road-tyre gravel and snow levels became lower bounds: MISS → PASS
+  `gravel-car-locked-decel-80` ngp, `gravel-car-locked-decel-50/80` brush, `gravel-locked-lat-20deg` both,
+  `gravel-locked-lat-30deg` brush, `gravel-locked-mux` brush, `gravel-traction` both, `snow-peak-mu-x` both,
+  `snow-peak-mu-y` both; `gravel-lat-end-over-max` 0.63-1 → 0.97-1: ngp PASS → MISS (0.960);
+  `gravel-car-lateral-g` reads the flat circle (0.971 / 0.955, PASS as before).
+- Model changes (brush, MISS → PASS): loose-v1's shear law on gravel (`gravel-pea-mu-y-a2.5/5/10/15`,
+  `gravel-lat-ratio-5/10/20deg`, `gravel-lat-slope`, `gravel-lat-alpha90`, `gravel-peak-kappa`); the wet law
+  (`tarmac-trl-wet-locked-over-peak-64/100`); `V_SHAPE` (`tarmac-trl-peak-100-over-32` 0.968 → 0.992);
+  `CORNERING_OVER_NGP` and Cx 1.3 (`tarmac-peak-slip-angle` 9.5 → 7.0°, `tarmac-combined-a4` 0.349 → 0.292,
+  `tarmac-long-c0x-road` 21.2 → 26.8); the ice knee scaled with it (`ice-car-locked-over-threshold-50` 0.809 →
+  0.812). Lab: the aligning patch over the front axle's frames (`tarmac-mz-half-length-load-exponent` both, brush
+  `tarmac-mz-peak-load-exponent`, `-trail0-load-exponent`, `-peak-alpha-over-fy`). No PASS → MISS from a model.
+
+It reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, the 345 circle 0.571 g (brush 0.664); NGP
+gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ
+1)/peak 0.82; tarmac brush peak κ 0.09, Fy(κ 0.25)/Fy(0) 0.226/0.292 at 2°/4°, Kx/Fz 26.8.
 
 Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
 
@@ -1715,6 +1792,42 @@ bit-equal.
   3-13 Hz (ngp gravel 3-8, tarmac 7-10; brush gravel 6-10, tarmac 8-13); rears 0.09-0.13, at full pressure most of
   the stop (the brake balance leaves them under K), 0-4 Hz. The law dumps at K + 0.02, so the fronts hold 0.01-0.02
   under K. Unit check: `the_abs_holds_each_wheels_slip_from_free_rolling` (toy wheel, rim read 6 % low).
+
+## Experimental tuning
+
+Controls a driver sets per drive to feel the brush (`rbr_tyre::Tuning`, `rbr-standalone --tyre-tuning KEY=VALUE,...`,
+experimental-brush only, refused under the other physics; the launcher's Settings > Experimental tuning). At the model's
+values every force is the untuned brush's, bit for bit (factors exact at 1, the slide grip unset): main's and the
+branch's autopilot traces cmp equal on RSF 562, 524, map 85's flat gravel circle and an RSF 568 brake test, ngp and
+experimental-brush (2026-11-09). The replay's header keeps the values (`replay_gg.py` prints them): a tuned drive
+replays all 42617 frames equal; without the flag it differs at the go. No records either way (the experimental
+physics keeps none); championship stages and trials run untuned.
+
+| Key | Range | Maps to | Also moves |
+| --- | --- | --- | --- |
+| `slide-grip` | 0.70-0.95, model 0.886 | μ_y(30°)/peak at 4 kN, 15 m/s, free rolling, on the calibration point: the lateral Coulomb level over the static one (model `MU_C_OVER_S` 0.8) solved per wheel by bisection over 0.05-1.0, the peak and slope solved again (`fit::calibration`) | the locked side force past the peak (`locked_mu_y_a30_4k` 0.432 / 0.477 / 0.486 at 0.70 / model / 0.95); peak angle 7.0° to 7.25° from 0.92. Braking unchanged (only the lateral axis's level moves): peak μ_x brake 1.2921, locked over peak 0.718, Cα and Kx within 0.1 % |
+| `tarmac`, `gravel`, `snow`, `ice` | ×0.70-1.30 | NGP's grip handed to the brush (static friction) by the wheel's surface: hard surfaces of class 5 (material 116) ice, other hard tarmac; soil of class 3 snow, other soil (gravel, grass, rock) gravel; a two-material blend by its class shares | the slopes that follow the level: gravel's shear law and ice's low-μ stiffness ×F; tarmac Cα/Fz 22.9 → 21.7 / 23.8 at 0.8 / 1.2 (the brush's 0-2° slope bends with μ). NGP's soil force on top is not scaled |
+| `stiffness` | ×0.70-1.30 | the slip stiffnesses: the brush's cornering slope target (`CORNERING_OVER_NGP` × F, Cx = `KX_OVER_KY` Cy), NGP's slope ice falls back to, loose-v1's slope and gravel's shear law (s0 / F); the peaks solved again | the peak slip (7.0° → 10.75° / 4.75° at 0.7 / 1.3) and the relaxation length σ = C/k with it (0.249 → 0.164 / 0.353 m) |
+| `response` | ×0.5-2.0 | the relaxation lengths: both carcass stiffnesses over F (the damping's V d/c with them) | nothing steady |
+
+Each control does what it says (lab `scorecard --tuning` on the scorecard's probes, Fiesta Rally2, 4 kN, 15 m/s; the
+circles `car_grip.py` r40 on map 85, flat):
+
+| Control | Model | Set | Reads |
+| --- | --- | --- | --- |
+| slide grip (`mu_y_rel_a30_4k`) | 0.8865 | 0.70 / 0.75 / 0.82 / 0.886 / 0.92 / 0.95 | 0.7047 / 0.7545 / 0.8240 / 0.8895 / 0.9231 / 0.9528 |
+| tarmac grip, peak μ_y 4 kN | 1.271 | ×0.8 / ×1.2 | 1.020 / 1.520 (×0.803 / ×1.196) |
+| gravel grip, peak μ_y | 0.828 | ×0.8 / ×1.2 | 0.663 / 0.994 |
+| snow grip, peak μ_y | 0.842 | ×0.8 / ×1.2 | 0.674 / 1.010 |
+| ice grip, peak μ_y | 0.0941 | ×0.8 / ×1.2 | 0.0753 / 0.1129 |
+| circle kin g, gravel / snow / tarmac flat | 0.955 / 0.982 / 1.327 | ×0.8 | 0.767 / 0.766 / 1.065 (×0.80 / 0.78 / 0.80) |
+| same | | ×1.2 | 1.130 / 1.124 / 1.584 (×1.18 / 1.14 / 1.19) |
+| stiffness, Cα/Fz tarmac / gravel / snow / ice | 22.94 / 6.64 / 8.63 / 2.42 | ×0.7 / ×1.3 | 15.58 / 4.82 / 6.05 / - and 31.12 / 8.33 / 11.22 / 2.82 |
+| response, σ_y (63 % of a 1° step) tarmac / gravel | 0.249 / 0.104 m | ×0.5 / ×2 | 0.1245 / 0.053 and 0.498 / 0.208 m |
+
+The slide grip is solved on the calibration point (unit surface, best temperature, pressure factor 1) and read on the
+probed wheel; the two agree within 0.005. The lab's peak μ per wheel for `replay_gg.py`'s tyre use (`limit_frames`)
+stays the untuned brush's.
 
 ## Open
 

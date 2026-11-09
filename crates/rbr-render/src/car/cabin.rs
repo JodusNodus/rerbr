@@ -615,6 +615,7 @@ mod tests {
                 lod: Lod::Always,
             }],
             vertices,
+            sun_cascades: true,
         }
     }
 

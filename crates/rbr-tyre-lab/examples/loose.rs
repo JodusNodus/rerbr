@@ -106,7 +106,7 @@ fn main() {
         .expect("no dump of the wheel in contact")
         .clone();
     let w = wheel(&p);
-    let loose = rbr_tyre::fit::loose(&w).expect("loose calibration");
+    let loose = rbr_tyre::fit::loose(&w, &rbr_tyre::Tuning::default()).expect("loose calibration");
     println!(
         "step {} wheel {wheel_no}: static {:.3} kinetic {:.3} (after the temperature grip {:.3}), tread {:.1} K, {fz} N, {v} m/s",
         p.step, p.static_friction, p.kinetic_friction, p.temperature_grip, p.tread_temp

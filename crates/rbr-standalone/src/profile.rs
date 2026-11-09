@@ -1,8 +1,10 @@
 //! Physics profiles (`--physics`): NGP 7's, or ReRBR experimental physics (built on NGP 7), each naming the model of
 //! every system ReRBR can replace. A new system is one more field, set in each profile.
 
+use rbr_tyre::Tuning;
+
 /// The model of each system a run steps.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Profile {
     /// `--physics`'s name for it.
     pub name: &'static str,
@@ -10,16 +12,20 @@ pub struct Profile {
     pub engine: &'static str,
     /// The tyre model (`rbr_tyre::model`): `ngp` is NGP's sliding model of the contact patch.
     pub tyre: &'static str,
+    /// `--tyre-tuning`: the brush's experimental tuning (`rbr_tyre::Tuning`), the model's in every profile.
+    pub tyre_tuning: Tuning,
 }
 
 impl Profile {
     /// NGP 7's physics, as the original steps it: nothing replaced (the default).
-    pub const NGP: Profile = Profile { name: "ngp", engine: "ngp", tyre: "ngp" };
+    pub const NGP: Profile = Profile { name: "ngp", engine: "ngp", tyre: "ngp", tyre_tuning: Tuning::MODEL };
     /// ReRBR experimental physics, built on NGP 7: its engine model (released; the launcher's Settings > Physics).
-    pub const EXPERIMENTAL: Profile = Profile { name: "experimental", engine: "realistic", tyre: "ngp" };
+    pub const EXPERIMENTAL: Profile =
+        Profile { name: "experimental", engine: "realistic", tyre: "ngp", tyre_tuning: Tuning::MODEL };
     /// The experimental physics with the brush tyre: in development, not released. Only `--physics
     /// experimental-brush` reaches it; the launcher does not offer it.
-    pub const EXPERIMENTAL_BRUSH: Profile = Profile { name: "experimental-brush", engine: "realistic", tyre: "brush" };
+    pub const EXPERIMENTAL_BRUSH: Profile =
+        Profile { name: "experimental-brush", engine: "realistic", tyre: "brush", tyre_tuning: Tuning::MODEL };
     /// The profiles `--physics` takes.
     pub const ALL: [Profile; 3] = [Profile::NGP, Profile::EXPERIMENTAL, Profile::EXPERIMENTAL_BRUSH];
 

@@ -73,7 +73,7 @@ fn main() {
         .unwrap_or_else(|| panic!("{probe}: no usable dump for wheel {wheel_k}"))
         .clone();
     let tyre = |name: &str| {
-        let model = rbr_tyre::model(name, &[wheel(&p)]).unwrap_or_else(|e| panic!("{e}"));
+        let model = rbr_tyre::model(name, &[wheel(&p)], &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"));
         Tyre { p: &p, cloud: &cloud, soil: 0.0, model, speed, water: 0.0, camber: 0.0 }
     };
     let (mut n, mut m) = (tyre("ngp"), tyre(&model));

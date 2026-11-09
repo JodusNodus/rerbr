@@ -124,7 +124,8 @@ fn main() {
         .find(|d| d.wheel == 0 && d.load_axis.len() == 8 && d.normal_force > 0.0 && d.patch_length > 0.0)
         .expect("no wheel-0 dump")
         .clone();
-    let cal = rbr_tyre::fit::calibration(&rbr_tyre_lab::probe::wheel(&p)).expect("calibration");
+    let cal =
+        rbr_tyre::fit::calibration(&rbr_tyre_lab::probe::wheel(&p), &rbr_tyre::Tuning::default()).expect("calibration");
     let t = Tyre { cal, fz: f64::from(p.normal_force), p };
     let r = t.r();
     let m = t.fz / G;
