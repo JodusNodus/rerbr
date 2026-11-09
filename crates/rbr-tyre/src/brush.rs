@@ -128,25 +128,38 @@ pub const FILM_MAX: f64 = 0.7e-3;
 /// Groove depth of a new tyre, 8 mm: the new road tyres of Continental's Contidrom test (AUTO BILD) and ADAC's 2026
 /// worn-tyre test; tread remaining `d` scales it.
 pub const TREAD_NEW: f64 = 8.0e-3;
-/// Mean profile depth of the road's macrotexture, 0.7 mm, which drains with the grooves: Swedish state roads MPD
-/// 0.4 (smooth) to 2 mm (rough) (Hammarström et al., VTI rapport 748A, 2012, via Trupia et al., Int J LCA 2017);
-/// the value within that range is ours, the best fit of [`DRAIN_SPEED`] and [`LIFT_AT`]. It keeps a bald tyre's
-/// friction at standstill.
+/// Mean profile depth of the road's macrotexture, 0.7 mm, which drains with the grooves and keeps a lifted patch's
+/// asperities in contact ([`TEXTURE_LIFT`]): Swedish state roads MPD 0.4 (smooth) to 2 mm (rough) (Hammarström et
+/// al., VTI rapport 748A, 2012, via Trupia et al., Int J LCA 2017); the value within that range is ours. It keeps a
+/// bald tyre's friction at standstill.
 pub const ROAD_TEXTURE: f64 = 0.7e-3;
 /// Total hydroplaning speed, m/s: Horne's v_p = 6.36 sqrt(p in kPa) km/h at 200 kPa (90 km/h; NASA TN D-2056, metric
 /// form in Zhang et al., Lubricants 13:76, 2025), for water deeper than the grooves. The patch lifts whole no slower
 /// (the seam carries no pressure: a rally tyre's 2.0-2.3 bar hot gives 90-96 km/h).
 pub const V_TOTAL: f64 = 24.98;
-/// Drainage speed of the tread, m/s: partial hydroplaning sets in at v_on = DRAIN_SPEED times the drained depth
-/// (groove depth plus [`ROAD_TEXTURE`]) over the film ([`wet_loss`]). Ours, fitted with [`LIFT_AT`] to road tyres braked with ABS on watered asphalt, mean μ of
-/// the stop against new: Contidrom via AUTO BILD (quoted), new (8 mm) from 100 km/h as from 80 (0.97-0.98), 1.6 mm
-/// 0.69 / 0.52 of new from 80 / 100 km/h; Continental's test report 2021_100 (EcoContact 6 225/45 R18, 80-0 km/h,
-/// table), 3 mm 0.89, 1.6 mm 0.80. v_on 26 m/s new, 6.9 m/s at 1.6 mm, 2.1 m/s bald on the 0.7 mm film. Grooves
-/// alone (2.3 m/s, lifted at 7 v_on) lifted a bald tyre's patch at standstill; a faster drainage (3 m/s, lifted at
-/// 5 v_on: new nil to 123 km/h) put 3 mm at 0.93.
-pub const DRAIN_SPEED: f64 = 2.1;
-/// Speed over v_on at which the patch is wholly lifted, unless [`V_TOTAL`] is higher (ours, with [`DRAIN_SPEED`]).
-pub const LIFT_AT: f64 = 5.0;
+/// Drainage speed of the tread, m/s: partial hydroplaning sets in at v_on = DRAIN_SPEED times the drained depth D
+/// (groove depth plus the road's texture) over the game's film [`FILM_MAX`], times (FILM_MAX / h)^[`FILM_EXP`] on a
+/// film h ([`partial_lift`]). Ours, fitted with [`LIFT_AT`] and [`TEXTURE_LIFT`] (least squares on worn over new
+/// friction, each set at its own film and texture) to three data sets: a drum without texture (Williams & Evans,
+/// ASTM STP 793, 1983: 155 SR13 worn to ~1.5 mm, braking peak at 60-120 km/h on 0.2-1 mm, fig ±0.02), a Dutch
+/// trailer on four roads (SWOV R-73-08, 1973: 2 mm, 50 / 100 km/h, sprayed 0.3 / 0.6 mm on texture ~0.6 mm, table)
+/// and Dijks (TRR 621, 1977: UK peak, 2 / 1 / 0 mm, 0.5 mm, 50-130 km/h; German lateral, 2 / 0 mm, 1.5 mm, 40-80
+/// km/h; fig ±0.02). On the game's road (0.7 mm film and texture) v_on is 24 m/s at 2 mm, 21 at 1.6 mm, 78 new and
+/// 6.3 bald. Before 2026-11-09: v_on ∝ D / h (2.1 m/s, lifted at 5 v_on, fitted to ABS stops of unknown film,
+/// Contidrom via AUTO BILD and Continental's report 2021_100), which lost earlier and more than all three sets (2 mm
+/// on 0.7 mm at 40 / 60 / 80 km/h 0.91 / 0.75 / 0.59 of new, Dijks 0.99 / 0.94 / 0.90 on 1.5 mm).
+pub const DRAIN_SPEED: f64 = 6.3;
+/// The onset's film exponent: v_on ∝ h^-0.43, the drum's half-loss speed against the film (Williams & Evans: ~90 /
+/// 80 / 67 km/h on 0.5 / 0.7 / 1 mm; Gallaway-Huebner's -0.26 for deep water, via Ketabdari et al., PLOS ONE 2022).
+pub const FILM_EXP: f64 = 0.43;
+/// Speed over v_on at which a patch on a road without texture is wholly lifted (the drum: half lost within ~1.6 v_on),
+/// unless [`V_TOTAL`] is higher (ours, with [`DRAIN_SPEED`]).
+pub const LIFT_AT: f64 = 2.2;
+/// The road texture's share of the speed of whole lift, m/s, at a texture and film of 0.7 mm, ∝ texture and
+/// h^-[`FILM_EXP`]: the texture's asperities pierce the film and keep a lifted patch in contact, so on a road the
+/// loss grows slowly past the onset (Dijks: a bald tyre on 0.5 mm keeps 0.52 of new at 130 km/h, on 1.5 mm 0.73 at
+/// 80) where the drum's collapses (ours, with [`DRAIN_SPEED`]).
+pub const TEXTURE_LIFT: f64 = 50.0;
 /// Wet friction kept at total hydroplaning: μ ≤ 0.05 (Horne & Dreher, NASA TN D-2056, 1963).
 pub const WET_KEPT: f64 = 0.05;
 /// The Coulomb level's loss on a wet surface at fast sliding, times the wetness W: water lubricates the sliding
@@ -290,21 +303,33 @@ pub fn camber_slip_velocity(sin: f64, vr: f64) -> f64 {
     -CAMBER_OVER_CORNERING * sin * vr.abs()
 }
 
-/// Partial hydroplaning on a road film, the factor on friction at the wetness `w`, the speed `v`, m/s, and the tread
-/// remaining `d` (1 new): the grooves (d times [`TREAD_NEW`]) and the road's texture ([`ROAD_TEXTURE`]) drain the film
-/// (h = W times [`FILM_MAX`]) below v_on = [`DRAIN_SPEED`] times drained depth over film; above it the lifted share of
-/// the patch grows linearly to the whole patch at [`LIFT_AT`] v_on or [`V_TOTAL`], the higher, where [`WET_KEPT`] of
-/// the friction is left. So nothing on a dry surface, nothing for a new tyre to 94 km/h on the 0.7 mm film (1.5 % at
-/// 100, 14 % at 150), and a worn one loses from lower speeds: at 1.6 mm 0.76 / 0.47 / 0.28 of new at 50 / 80 / 100
-/// km/h, at 3 mm 0.94 / 0.76 / 0.64; a bald one from 8 km/h, 0.51 at 50, whole at 90. The onset follows the drainage;
+/// Partial hydroplaning, the factor on friction at the speed `v`, m/s, with the groove depth `tread`, the road's
+/// texture depth `texture` and the film `film`, m: the grooves and the texture drain the film below v_on =
+/// [`DRAIN_SPEED`] D / [`FILM_MAX`] (FILM_MAX / h)^[`FILM_EXP`] (D = tread plus texture); above it the lifted share of
+/// the patch grows linearly to the whole patch at [`LIFT_AT`] v_on plus the texture's [`TEXTURE_LIFT`] (texture /
+/// FILM_MAX) (FILM_MAX / h)^FILM_EXP, or [`V_TOTAL`], the higher, where [`WET_KEPT`] of the friction is left. 1 with
+/// no film.
+pub fn partial_lift(v: f64, tread: f64, texture: f64, film: f64) -> f64 {
+    if film <= 0.0 {
+        return 1.0;
+    }
+    let thin = libm::pow(FILM_MAX / film, FILM_EXP);
+    let v_on = DRAIN_SPEED * (tread.max(0.0) + texture) / FILM_MAX * thin;
+    let v_whole = (LIFT_AT * v_on + TEXTURE_LIFT * texture / FILM_MAX * thin).max(V_TOTAL);
+    let lifted = ((v - v_on) / (v_whole - v_on)).clamp(0.0, 1.0);
+    1.0 - (1.0 - WET_KEPT) * lifted
+}
+
+/// Partial hydroplaning on the game's road ([`partial_lift`]) at the wetness `w` (film W times [`FILM_MAX`], texture
+/// [`ROAD_TEXTURE`]), the speed `v`, m/s, and the tread remaining `d` (1 new, grooves d times [`TREAD_NEW`]). Nothing
+/// on a dry surface, nothing for a new tyre to 280 km/h on the 0.7 mm film; worn over new at 2 mm 0.96 / 0.86 at 100
+/// / 130 km/h, at 1.6 mm 0.98 / 0.91 / 0.80 at 80 / 100 / 130, bald 0.92 / 0.83 / 0.74 / 0.65 at 40 / 60 / 80 / 100.
 /// Horne's speed only bounds the total lift (ADAC's 17-22 % of v_p lost at 2 of 8 mm is deep water, not modelled).
 pub fn wet_loss(w: f64, v: f64, d: f64) -> f64 {
     if w <= 0.0 {
         return 1.0;
     }
-    let v_on = DRAIN_SPEED * (d.max(0.0) * TREAD_NEW + ROAD_TEXTURE) / (w * FILM_MAX);
-    let lifted = ((v - v_on) / ((LIFT_AT * v_on).max(V_TOTAL) - v_on)).clamp(0.0, 1.0);
-    1.0 - (1.0 - WET_KEPT) * lifted
+    partial_lift(v, d * TREAD_NEW, ROAD_TEXTURE, w * FILM_MAX)
 }
 
 /// The wet peak's loss with speed on a thin film, per m/s over [`THIN_FILM_FROM`] at W = 1: the film is squeezed out
@@ -328,7 +353,7 @@ pub fn thin_film(w: f64, v: f64) -> f64 {
 /// the thin film's loss ([`thin_film`], a new tyre's, as Reimpell's curves are) times the partial hydroplaning of the
 /// tread `d` relative to a new tread's ([`wet_loss`] at `d` over at 1). The thin film takes over the new tread's own
 /// partial hydroplaning (both count the patch's film above 60 km/h, so a new tyre takes [`thin_film`] alone), and a
-/// worn tread keeps its partial hydroplaning against new: [`wet_loss`]'s fit is to stops of worn over new tyres. `v`
+/// worn tread keeps its partial hydroplaning against new: [`wet_loss`]'s fit is to worn over new friction. `v`
 /// is the speed over the road (the contact point's), the speed the patch meets the film at, rolling or locked:
 /// Reimpell's curves are against travel speed, and the sliding speed at the peak (1-3 m/s) does not grow with it.
 /// 1 on a dry surface.
@@ -971,46 +996,55 @@ mod tests {
 
     #[test]
     fn partial_hydroplaning_spares_a_new_tyre_and_takes_a_worn_one_as_measured() {
-        // Mean friction of a stop from `v0` (v0² / 2 ∫ v / μ dv) relative to a tyre that loses nothing.
-        let stop = |v0: f64, d: f64| {
-            let n = 2000;
-            let s: f64 = (0..n)
-                .map(|i| {
-                    let v = (i as f64 + 0.5) / n as f64 * v0;
-                    v / wet_loss(1.0, v, d)
-                })
-                .sum::<f64>()
-                * v0
-                / n as f64;
-            v0 * v0 / (2.0 * s)
+        // Worn over new at each set's tread, texture and film (mm), speed (km/h): measured, and the band the model
+        // keeps to (±0.1, the sets' spread; SWOV's 0.6 mm cell, inferred from its means, and Dijks' 130 km/h ±0.15).
+        let worn = |tread: f64, tex: f64, film: f64, kmh: f64| {
+            let at = |t: f64| partial_lift(kmh / 3.6, t * 1e-3, tex * 1e-3, film * 1e-3);
+            at(tread) / at(8.0)
         };
+        #[rustfmt::skip]
+        let sets: [(f64, f64, f64, f64, f64, f64); 16] = [
+            // Williams & Evans' drum (no texture), ~1.5 mm worn.
+            (1.5, 0.0, 0.5, 60.0, 0.96, 0.1), (1.5, 0.0, 0.5, 80.0, 0.68, 0.1), (1.5, 0.0, 0.5, 100.0, 0.34, 0.1),
+            (1.5, 0.0, 0.7, 60.0, 0.85, 0.1), (1.5, 0.0, 0.7, 80.0, 0.49, 0.1), (1.5, 0.0, 0.7, 100.0, 0.24, 0.1),
+            (1.5, 0.0, 1.0, 60.0, 0.67, 0.1), (1.5, 0.0, 1.0, 80.0, 0.20, 0.1),
+            // SWOV, 2 mm on texture ~0.6 mm.
+            (2.0, 0.6, 0.3, 100.0, 0.96, 0.1), (2.0, 0.6, 0.6, 100.0, 0.82, 0.16),
+            // Dijks: UK 2 mm on 0.5 mm, German lateral 2 mm and bald on 1.5 mm.
+            (2.0, 0.7, 0.5, 80.0, 0.97, 0.1), (2.0, 0.7, 0.5, 130.0, 0.83, 0.15),
+            (2.0, 0.7, 1.5, 40.0, 0.99, 0.1), (2.0, 0.7, 1.5, 60.0, 0.94, 0.1), (2.0, 0.7, 1.5, 80.0, 0.90, 0.1),
+            (0.0, 0.7, 1.5, 80.0, 0.73, 0.15),
+        ];
+        for (tread, tex, film, kmh, measured, band) in sets {
+            let model = worn(tread, tex, film, kmh);
+            assert!(
+                (model - measured).abs() <= band,
+                "{tread} mm on {film} mm at {kmh} km/h: {model} against {measured}"
+            );
+        }
+        // The drum's thinnest film (0.2 mm): no loss to 80 km/h (measured above new).
+        assert_eq!(worn(1.5, 0.0, 0.2, 80.0), 1.0);
+        // Dry: nothing; new on the full film: nothing to 280 km/h.
         let (v80, v100) = (80.0 / 3.6, 100.0 / 3.6);
-        // Dry: nothing; new to 100 km/h on the full film: 2 % at most.
         assert_eq!(wet_loss(0.0, 60.0, 0.2), 1.0);
-        assert_eq!(wet_loss(1.0, v80, 1.0), 1.0);
-        assert!(wet_loss(1.0, v100, 1.0) > 0.98);
-        // Contidrom via AUTO BILD: 1.6 of 8 mm keeps 0.69 / 0.52 of new from 80 / 100 km/h (quoted); Continental's
-        // 2021 report from 80: 1.6 mm 0.80, 3 mm 0.89 (table).
-        let (w80, w100, t80) = (stop(v80, 0.2), stop(v100, 0.2), stop(v80, 3.0 / 8.0));
-        assert!((0.66..=0.83).contains(&w80) && (0.49..=0.55).contains(&w100), "{w80} {w100}");
-        assert!((0.87..=0.91).contains(&t80), "{t80}");
+        assert_eq!(wet_loss(1.0, 280.0 / 3.6, 1.0), 1.0);
         // A thinner film drains to a higher speed; nothing below the onset.
-        assert!(wet_loss(0.5, v80, 0.2) > wet_loss(1.0, v80, 0.2));
-        assert_eq!(wet_loss(1.0, 5.0, 0.2), 1.0);
+        assert!(wet_loss(0.5, v100, 0.2) > wet_loss(1.0, v100, 0.2) && wet_loss(1.0, v100, 0.2) < 1.0);
+        assert_eq!(wet_loss(1.0, v80 - 3.0, 0.2), 1.0);
         assert!((wet_loss(1.0, 1000.0, 0.2) - WET_KEPT).abs() < 1e-12);
     }
 
     #[test]
     fn a_bald_tyre_keeps_its_friction_at_standstill_and_loses_it_gradually() {
-        // The road's texture drains under a bald tyre: nothing lost at rest or walking pace, a gradual fall, whole
-        // only at Horne's total hydroplaning speed.
+        // The road's texture drains under a bald tyre and keeps its lifted patch in contact: nothing lost at rest or
+        // walking pace, a gradual fall (Dijks: 0.96 / 0.80 / 0.52 of new at 50 / 80 / 130 km/h on 0.5 mm).
         assert_eq!(wet_loss(1.0, 0.0, 0.0), 1.0);
-        assert_eq!(wet_loss(1.0, 2.0, 0.0), 1.0);
+        assert_eq!(wet_loss(1.0, 6.0, 0.0), 1.0);
         let at = |kmh: f64| wet_loss(1.0, kmh / 3.6, 0.0);
-        assert!(at(30.0) > 0.7 && (0.45..0.6).contains(&at(50.0)) && at(80.0) > WET_KEPT + 0.05, "{}", at(50.0));
-        assert!((wet_loss(1.0, V_TOTAL, 0.0) - WET_KEPT).abs() < 1e-12);
+        assert!(at(50.0) > 0.85 && (0.65..0.8).contains(&at(80.0)) && (0.4..0.6).contains(&at(130.0)), "{}", at(80.0));
+        assert!((wet_loss(1.0, 300.0, 0.0) - WET_KEPT).abs() < 1e-12);
         // Monotone in speed and in tread.
-        for i in 0..60 {
+        for i in 0..80 {
             let v = i as f64;
             assert!(wet_loss(1.0, v + 1.0, 0.0) <= wet_loss(1.0, v, 0.0));
             assert!(wet_loss(1.0, v, 0.0) <= wet_loss(1.0, v, 0.2) && wet_loss(1.0, v, 0.2) <= wet_loss(1.0, v, 1.0));
