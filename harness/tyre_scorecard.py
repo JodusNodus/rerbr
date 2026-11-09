@@ -29,7 +29,11 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           6.6 % rise; a reset by the game, as on RSF 568 where a locked car drifts into the edge, is
                           refused)
   brake-ratio:A/B:KMH:X/Y surface A's X decel (locked, best) over surface B's Y decel
-  circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s)
+  circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s; on an
+                          11.9° slope, notes/tyre-model.md "Car-level grip in the same terms")
+  circle:SURFACE:KEY      car_grip.py's r40 circle on a flat SURFACE (gravel-flat, snow-flat: map 85 under material
+                          17 / 101 with the gravel / snow tyre, ramp 0.4; tarmac: map 85 under 37, ramp 0.5): kin_g
+                          (v²/R, the circle row's), glat_g (the body-axis specific force over the same 1 s), path_g
   coast:SURFACE:KEY       coast_test.py's declutched coast from 60 km/h to 10 km/h: crr (the rolling coefficient with
                           the car file's drag held), crr_free (the free fit's); tarmac RSF 568, gravel RSF 345, snow
                           map 10, ice RSF 568 iced from the lift (`--material-as 116`: the same road as tarmac)
@@ -54,6 +58,7 @@ import types
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dev_env  # noqa: E402,F401  (dev.env: RBR_DATA, RBR_RSF, RBR_NGP_PHYSICS)
 import brake_test  # noqa: E402
+import car_grip  # noqa: E402
 import car_pace  # noqa: E402
 import coast_test  # noqa: E402
 
@@ -139,6 +144,7 @@ class Plan:
     def __init__(self, physics, hows, work, slips):
         self.physics, self.work, self.slips = physics, work, slips
         self.probes, self.tyres, self.brakes, self.coasts, self.circle = set(), set(), set(), set(), False
+        self.circles = set()  # circle:SURFACE:KEY other than RSF 345's gravel probe (car_grip.py's runs)
         self.abs = {}  # (surface, km/h): the per-wheel ABS targets K the rows name
         for how in hows:
             kind, rest = how.split(":", 1)
@@ -156,13 +162,15 @@ class Plan:
                 self.brakes.update((s, int(kmh)) for s in pair.split("/"))
             elif kind == "coast":
                 self.coasts.add(rest.split(":")[0])
+            elif kind == "circle" and rest.split(":")[0] != "gravel":
+                self.circles.add(rest.split(":")[0])
             elif kind == "circle":
                 self.circle = True
                 self.probes.add("gravel")
             else:
                 sys.exit(f"unknown how {how}")
         self.probes.update(TYRE_SURFACES[s][0] for s in self.tyres)
-        self.tyre, self.brake, self.coast, self.lat_g = {}, {}, {}, None
+        self.tyre, self.brake, self.coast, self.lat_g, self.circle_of = {}, {}, {}, None, {}
 
     def env_args(self):
         return ["--data", os.environ["RBR_DATA"], "--ngp-physics", os.environ["RBR_NGP_PHYSICS"]]
@@ -210,7 +218,21 @@ class Plan:
         out = [self.probe_job(s) for s in sorted(self.probes)]
         for surface, kmh in sorted(self.brakes):
             out += list(self.brake_jobs(surface, kmh))
-        return out + [self.coast_job(s) for s in sorted(self.coasts)]
+        out += [self.coast_job(s) for s in sorted(self.coasts)]
+        return out + [self.circle_job(s) for s in sorted(self.circles)]
+
+    def circle_job(self, surface):
+        trace = os.path.join(self.work, f"circle-{surface}.trace")
+        cmd = car_grip.command(CAR, self.physics, surface, 40, car_grip.own_ramp(surface), trace)
+        cmd[cmd.index("--autopilot") + 1] = trace[:-6] + ".out"  # run() deletes it
+        return cmd, trace[:-6] + ".log"
+
+    def read_circles(self):
+        for surface in sorted(self.circles):
+            trace = os.path.join(self.work, f"circle-{surface}.trace")
+            cx, cy, r = car_grip.limit_pace.SURFACES[surface]["centre"]
+            self.circle_of[surface] = (car_grip.analyse(trace, cx, cy, r) if os.path.exists(trace)
+                                       else {"ok": False, "why": "no trace"})
 
     def tyre_job(self, surface):
         probe, extra = TYRE_SURFACES[surface]
@@ -300,6 +322,12 @@ class Plan:
             if not c["ok"]:
                 raise LookupError(c["reason"])
             return c[key]
+        if kind == "circle" and rest.split(":")[0] != "gravel":
+            surface, key = rest.split(":")
+            c = self.circle_of[surface]
+            if not c["ok"]:
+                raise LookupError(c["why"])
+            return c[key]
         if kind == "circle":
             if "lat_g" not in self.lat_g:
                 raise LookupError(self.lat_g["error"])
@@ -307,7 +335,7 @@ class Plan:
         raise LookupError(f"unknown how {how}")
 
     def raw(self):
-        return {"tyre": self.tyre, "circle": self.lat_g, "coast": self.coast,
+        return {"tyre": self.tyre, "circle": self.lat_g, "circles": self.circle_of, "coast": self.coast,
                 "brake": {f"{s}:{k}": v for (s, k), v in self.brake.items()}}
 
 
@@ -368,6 +396,7 @@ def score(args):
         plan.read_coasts()
         if plan.circle:
             plan.read_circle()
+        plan.read_circles()
 
     values = {}
     print(f"{'id':40} {'physics':18} {'value':>8} {'band':>13} {'':4} {'out':>8}")
