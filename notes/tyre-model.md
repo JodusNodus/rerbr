@@ -67,7 +67,7 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Stiffness against load | over 2-6 kN: Cα ∝ Fz^0.83-0.85 (figure; ~0.6-0.7 only over 2-10 kN), sets 0.91 MF6.1 / 0.69 PB / 0.56 TNO / 0.73 Continental; Kx (|κ| ≤ 0.04 fit) ∝ Fz^1.13 / 1.08 / 1.16 / 1.14 | Goodyear Figs. 9, 15a; MF6.1 / PB / TNO / Continental sets |
 | Longitudinal stiffness | Kx/Fz 32.9 / 18.4, Kx/Ky 1.62 / 1.15 at Fz0 | MF6.1 / PB |
 | Peak slip | 6.5° / 8.5°, κ 0.094 / 0.139 at Fz0 | MF6.1 / PB |
-| Cα: pressure / tread / heat | +10 % for +20 % pressure (load not stated; Fig. 9 falls with pressure up to nominal load, -12 % at 100 % and about -20 % at 67 % for 33 → 41 psi); +30 % at 60 % less tread; -20-25 % cold to hot (bulk temperature) | Goodyear, Table 3 |
+| Cα: pressure / tread / heat | +10 % for +20 % pressure (load not stated; Fig. 9 falls with pressure up to nominal load, -12 % at 100 % and -19.5 % at 67 % for 33 → 41 psi, -18 % per +0.5 bar: `tarmac-calpha-pressure`'s low end); +30 % at 60 % less tread; -20-25 % cold to hot (bulk temperature) | Goodyear, Table 3 |
 | Peak μ: pressure / tread / heat | small; +10 % at 60 % less tread (dry); -10 % cold to hot (surface temperature) | same |
 | Grip against temperature | passenger tyre 0.7 to 1.05 warming, optimum 88 °C, width 50 °C | Alcázar Vargas et al., Sensors 22:6380 (2022) |
 | Which temperature | grip follows the tread core, stiffness the carcass | Farroni et al., Appl. Sci. 10:1604 (2020) (TRT); contradicts Goodyear's surface-for-μ; both bound NGP's 0.6/0.4 blend |
