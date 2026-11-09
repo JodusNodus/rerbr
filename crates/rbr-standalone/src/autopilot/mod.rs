@@ -51,6 +51,7 @@ use rbr_recording::sound::FmodBlock;
 use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHEEL_BYTES};
 
 mod drive;
+mod limit;
 pub mod race;
 
 pub use drive::{drive, from_snapshot, Pilot};
@@ -467,6 +468,10 @@ pub struct Driver<'a> {
     /// `--circle-past T` (limit tests, `PAST_WIDE`): the throttle past the limit, and the seconds since the car first
     /// ran wide (negative before).
     past: Option<(f32, f32)>,
+    /// `--circle` without `--circle-past`: the hold at the limit (`limit`), and the inward steering the last control
+    /// held (of full lock).
+    hold: limit::LimitHold,
+    inward: f32,
     /// `--brake-from` (pace measurement): brake once the speed reaches this (m/s), if any.
     brake_at: Option<f32>,
     /// The brake test's brake is on (latched when the speed reaches `brake_at`).
@@ -535,7 +540,8 @@ pub struct Measure {
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
 /// radius (m). The controller steers a pure pursuit on the circle while the target speed ramps from
 /// `CIRCLE_START` at `CIRCLE_RAMP` (m/s per s) to the top, so the car holds ever faster steady states until it can
-/// no longer hold the radius.
+/// no longer hold the radius. Once more steering stops buying lateral acceleration the steering is held there
+/// (`limit`, not under `--circle-past`), so the car runs wide at its limit instead of sliding round on more lock.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Circle {
     pub center: [f32; 2],
@@ -587,8 +593,8 @@ impl std::str::FromStr for Plan {
 /// inside the target, as a driver would). Whether and how fast the car regains the circle, and the grip it keeps
 /// past the limit, are the measure (`harness/limit_recovery.py`).
 const PAST_WIDE: f32 = 1.0;
-/// `--circle-past` looks for the limit only after this many seconds of the ramp (the car settles onto the circle
-/// from the start first).
+/// `--circle-past` looks for the limit, and `--circle`'s hold (`limit`) for steering that no longer buys lateral
+/// acceleration, only after this many seconds of the ramp (the car settles onto the circle from the start first).
 const PAST_SETTLE: f32 = 10.0;
 
 /// The brake test's pedal (`--brake-from`).
@@ -719,6 +725,8 @@ impl<'a> Driver<'a> {
             circle_ramp: CIRCLE_RAMP,
             circle_t: 0.0,
             past: None,
+            hold: limit::LimitHold::default(),
+            inward: 0.0,
             brake_at: None,
             braking: false,
             brake: Brake::Pedal(1.0),
@@ -1035,9 +1043,23 @@ impl<'a> Driver<'a> {
             return QuantizedControl { brake: 255, ..QuantizedControl::default() };
         }
         let speed = sense.pose.speed();
+        let mut cap = None;
         if self.circle.is_some() {
             // The ramp runs on the driven steps only (this function is not called while held or pending).
-            self.circle_t += rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+            let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+            self.circle_t += dt;
+            // Armed once settled on the circle and above the ramp's start (a spun car's crawl is no limit).
+            let armed = self.circle_t > PAST_SETTLE && speed > CIRCLE_START;
+            let set;
+            (cap, set) = self.hold.observe(sense.pose.velocity, self.inward, dt, armed);
+            if set && self.past.is_none() {
+                eprintln!(
+                    "autopilot: step {step}: at the circle's limit (steering {:.3} no longer buys lateral \
+                     acceleration, {:.3} g at {speed:.2} m/s): steering held there",
+                    cap.unwrap_or(0.0),
+                    self.hold.lateral().unwrap_or(0.0) / 9.81,
+                );
+            }
         }
         if self.brake_at.is_some_and(|v| speed >= v) {
             self.braking = true;
@@ -1141,6 +1163,10 @@ impl<'a> Driver<'a> {
                     if self.race.is_some() && want < planned {
                         self.guarded[1] += 1;
                     }
+                }
+                if let (Some(cap), None) = (cap, self.past) {
+                    // `--circle`: steering no longer buys lateral acceleration (`limit`); the speed ramp runs wide.
+                    steer = steer.max(-cap);
                 }
                 let lean = lean(&sense.pose);
                 if lean.abs() > TIP {
@@ -1305,6 +1331,7 @@ impl<'a> Driver<'a> {
             }
         }
         self.pulling = self.mode == Mode::Drive && throttle > 0.0 && brake == 0.0;
+        self.inward = -steer;
         let pedal = |x: f32| (x * 255.0).round() as u8;
         QuantizedControl {
             flags,
