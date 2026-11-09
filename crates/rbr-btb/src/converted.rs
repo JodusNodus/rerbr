@@ -1,7 +1,8 @@
-//! Where converted stages go (`beamng-stage`, `notes/beamng.md`): the [`FOLDER`] in the player's folder, a second BTB
-//! root the launcher lists. The player's folder (the launcher's files: settings, saves, records) is the platform's user
-//! data folder (macOS `~/Library/Application Support/ReRBR`, Windows `%APPDATA%\ReRBR`, Linux `$XDG_DATA_HOME/rerbr`,
-//! default `~/.local/share/rerbr`), or `$RERBR_HOME`; the launcher and the converter both take it from here.
+//! Where converted stages go (converters such as `beamng-stage`, in its own repository): the [`FOLDER`] in the
+//! player's folder, a second BTB root the launcher lists. The player's folder (the launcher's files: settings, saves,
+//! records) is the platform's user data folder (macOS `~/Library/Application Support/ReRBR`, Windows
+//! `%APPDATA%\ReRBR`, Linux `$XDG_DATA_HOME/rerbr`, default `~/.local/share/rerbr`), or `$RERBR_HOME`; the launcher
+//! and the converters take it from here.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
