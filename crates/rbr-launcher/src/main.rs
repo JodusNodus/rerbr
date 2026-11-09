@@ -157,6 +157,7 @@ mod settings_page;
 mod setup_page;
 mod stage_browser;
 mod time_of_day;
+mod tyre_tuning;
 mod update;
 mod upscaler;
 mod window;
@@ -617,6 +618,8 @@ struct Form {
     physics: physics::PhysicsProfile,
     /// `rerbr --physics`: the session's physics over the saved one (never saved).
     session_physics: Option<physics::PhysicsProfile>,
+    /// The brush tyre's experimental tuning (`tyre_tuning`), as saved.
+    tyre_tuning: rbr_tyre::Tuning,
     controls: ControlsPage,
     /// Never writes the settings file (`--command`, `--screenshot`).
     read_only: bool,

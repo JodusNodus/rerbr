@@ -287,6 +287,7 @@ impl Form {
             head_gasket: settings.head_gasket.unwrap_or(1),
             physics: settings.physics.unwrap_or_default(),
             session_physics: None,
+            tyre_tuning: settings.tyre_tuning.unwrap_or_default(),
             controls: ControlsPage::new(),
             read_only: false,
         };
@@ -385,6 +386,7 @@ impl Form {
             ngp_dll: Some(self.ngp_dll.path.trim().to_owned()),
             head_gasket: Some(self.head_gasket),
             physics: Some(self.physics),
+            tyre_tuning: Some(self.tyre_tuning).filter(|t| !t.is_default()),
             bindings: self.bindings.clone(),
             // The strength too: the pause menu sets it while driving, the Controls page writes it at once.
             ffb: rbr_render::ffb::Options {

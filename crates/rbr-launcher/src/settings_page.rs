@@ -125,6 +125,7 @@ impl Form {
 
         // The physics every drive runs.
         crate::physics::physics_section(ui, &mut self.physics, self.session_physics);
+        crate::tyre_tuning::tuning_section(ui, self.drive_physics(), &mut self.tyre_tuning);
 
         ui.add_space(6.0);
         egui::CollapsingHeader::new("Advanced").show(ui, |ui| {
