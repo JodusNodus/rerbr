@@ -157,7 +157,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## Turbo (`turbo.rs`)
 
-- Compressor, turbine, shaft and wastegate equations (generic) [Andersson], [Eriksson turbo].
+- Compressor, turbine, shaft and wastegate equations (generic) [Andersson], [Moraal turbo].
 - Normalised maps from a design point at peak power [Brunel], [US 12056425] (generic). Speed line scaled by
   ν = (ω/ω*)², the fan law (inferred). ω* 15 000 rad/s (guess).
 - Continuous surge band 0.05 (guess). Efficiency ellipse in flow only, η_c 0.75 peak, 0.4 floor (guess). The Π axis
@@ -329,7 +329,7 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
 - Andersson, LiU MSc 2017 (MVEM, orifice, turbo): https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks & Sorenson MVEM: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
-- Eriksson, turbo modelling: https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
+- Moraal & Kolmanovsky, turbo modelling (SAE 1999-01-0908): https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
 - NASA, choked flow: https://www.grc.nasa.gov/www/k-12/airplane/mflchk.html
 - US 6591667, plate area: https://patents.google.com/patent/US6591667
 - C_D estimation: https://www.researchgate.net/publication/224181168_Estimation_of_automotive_engine_parameters_Part_I_Discharge_coefficient_of_throttle_body

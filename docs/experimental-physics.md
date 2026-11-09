@@ -668,7 +668,7 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 
 - Andersson, mean-value engine and turbo model, Linköping MSc 2017: https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks and Sorenson, mean-value SI engine model: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies
-- Eriksson, turbocharger modelling: https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
+- Moraal & Kolmanovsky, turbocharger modelling (SAE 1999-01-0908): https://www.researchgate.net/publication/244520704_Turbocharger_Modeling_for_Automotive_Control_Applications
 - Boost spikes on spring wastegates, enginebasics: https://enginebasics.com/Advanced%20Engine%20Tuning/Boost%20Spiking.html
 - Pressure delay in hoses, Thomasson 2014 (Linköping dissertation 1590): https://www.diva-portal.org/smash/get/diva2:709572/FULLTEXT01.pdf
 - NASA, choked mass flow: https://www.grc.nasa.gov/www/k-12/airplane/mflchk.html
