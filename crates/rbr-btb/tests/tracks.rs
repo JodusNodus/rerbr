@@ -90,7 +90,7 @@ fn cached_builds_match_and_parse() {
 
         // mat: the nine identical entries from the surface maps; missing maps and rows read zero.
         let maps = track.surface_maps().unwrap();
-        let built_mat = classic::mat(&maps.maps);
+        let built_mat = classic::mat(&maps);
         assert_eq!(Some(built_mat.clone()), want_mat, "{}: mat.mat", track.name);
         mat::parse(&built_mat).unwrap_or_else(|e| panic!("{}: built mat: {e}", track.name));
 

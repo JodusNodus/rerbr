@@ -49,7 +49,7 @@ pub fn prepare(track: &Track, number: u32, maps: &Path, out: &Path) -> Result<St
     };
     write("lbs", classic::lbs(&track.spawn()?))?;
     write("dls", classic::dls(&track.pace_notes()?.notes))?;
-    write("mat", classic::mat(&track.surface_maps()?.maps))?;
+    write("mat", classic::mat(&track.surface_maps()?))?;
     write("trk", classic::trk_from(track, crate::D3dx::Windows)?)?;
     write("col", crate::col::build(track)?)?;
     for ext in RETAIL {
