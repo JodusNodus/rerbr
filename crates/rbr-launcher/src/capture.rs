@@ -89,6 +89,12 @@ pub fn pages(form: &mut Form, dir: &Path, rally_damage: Option<PathBuf>) -> Resu
         form.setup.show_area(area);
         shot(&dir.join(format!("setup-{n}.png")), |ctx| form.ui(ctx))?;
     }
+    // The areas again with some values stepped away from the comparison's.
+    form.setup.screenshot_changes();
+    for (n, area) in rbr_gameplay::setup::Area::ALL.into_iter().enumerate() {
+        form.setup.show_area(area);
+        shot_sized(&dir.join(format!("setup-changed-{n}.png")), (1100, 1000), |ctx| form.ui(ctx))?;
+    }
     // The Championship tab: the presets, the builder and an event's turns (with the damage file's car in its service).
     crate::championship_page::shots(form, dir, rally_damage.as_deref())?;
     Ok(())
