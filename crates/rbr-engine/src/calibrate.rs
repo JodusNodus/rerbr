@@ -33,6 +33,11 @@ const ON_BOOST: f64 = 0.98;
 const GRID: f64 = 250.0;
 /// The implied η_ig·η_v's plausible band (guess).
 const ETA_BAND: (f64, f64) = (0.30, 0.55);
+/// A turbo's friction scale at most: Sandoval's engine itself. NGP's braking (BrakeCoefficient·MaxTorque) grows with the
+/// boosted torque, friction does not: every installed turbo's fit is 2.07–4.39, and at 2 the Rally2's friction and
+/// pumping at 6000 rpm (5.1 bar) were over the 3.8 its restrictor leaves, its closed pedal over EPA's road engines'
+/// (turbos among them) and its friction's growth over the published 2.1–2.7 (`notes/engine-model.md`).
+const TURBO_FRICTION_MAX: f64 = 1.0;
 /// The fuel–air cycle's indicated efficiency at φ 1/λ = 1.136: 0.400 at r_c 9.5 and 0.419 at 11 (Heywood fig. 5-9,
 /// p_1 1 atm, T_1 388 K, 5 % residual), the most any engine converts.
 const ETA_FUEL_AIR: [(f64, f64); 2] = [(9.5, 0.400), (11.0, 0.419)];
@@ -51,7 +56,7 @@ pub struct Calibration {
     /// Displacement (m³) and bore = stroke (mm).
     pub displacement: f64,
     pub bore: f64,
-    /// The friction scale and its value before the 0.6–2.0 clamp.
+    /// The friction scale and its value before the clamp (0.6–2.0, a turbo's at most 1).
     pub friction_scale: f64,
     pub friction_scale_raw: f64,
     /// The leak and the idle air, fractions of the throttle's area; the idle loops' gains.
@@ -513,7 +518,7 @@ pub fn calibrate(params: &Params) -> (Spec, Calibration) {
         // At the limit the scale is s_f itself.
         let fric = out.friction / spec.friction_scale;
         cal.friction_scale_raw = (car.brake * car.max_torque - out.pumping) / fric.max(1e-9);
-        spec.friction_scale = cal.friction_scale_raw.clamp(0.6, 2.0);
+        spec.friction_scale = cal.friction_scale_raw.clamp(0.6, if params.turbo { TURBO_FRICTION_MAX } else { 2.0 });
     }
     if cal.friction_scale_raw != spec.friction_scale {
         cal.flags.push(format!("friction scale {:.2} clamped", cal.friction_scale_raw));
