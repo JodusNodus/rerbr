@@ -1243,9 +1243,10 @@ traces and scripts are kept outside the repository (not in git). Labels as above
 lower bound: it includes the pedal rise). Every braking series is road cars on road tyres; none is a rally tyre.
 The scorecard takes those gravel levels as lower bounds for a rally tyre (decision 2026-11-08): a raced line alone
 grips about 1.2 times the loose windrow (TR-10-11 Table 3), and a WRC car's 0.6-0.7 g lateral (CW) times the measured
-locked/lateral 1.3-1.5 gives 0.8-1.0 g locked (inferred). CW's WRC tyre μ_y ≲ 0.67, the one rally-tyre level, stays an
-upper bound. NGP gives a car's tyre no era: `Performance_NGP` is 1.0 on 38 of the 42 RSF cars (Group B and Group 4
-alike), 0.95 on the two R1 cars, 0.985 front / 1.015 rear on both 911s.
+locked/lateral 1.3-1.5 gives 0.8-1.0 g locked (inferred). CW's WRC tyre μ_y ≲ 0.67 stayed an upper bound until
+2026-11-09 (a very wet, loose road: lower bound only, the level against real Rally2). NGP gives a car's tyre no era:
+`Performance_NGP` is 1.0 on 38 of the 42 RSF cars (Group B and Group 4 alike), 0.95 on the two R1 cars, 0.985 front /
+1.015 rear on both 911s.
 
 | Target | Value and conditions | Source (precision) | How ReRBR reproduces it (run, car, metric) | Tooling missing |
 | --- | --- | --- | --- | --- |
@@ -1627,10 +1628,16 @@ now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identica
   gravel road near Malaga (February 2005, 14 runs, 60-140 km/h, two drivers' runs plotted), quoted in §4.5.2 as a
   check on the bicycle-model tyre forces; tarmac (dry, Barcelona 2006) ~1.4 g. Not a steady dry limit:
   `gravel-car-lateral-g` keeps the road cars' 0.43 as its lower bound, no upper bound, on the flat circle; the RSF 345
-  run is context (`gravel-car-lateral-g-rsf345`). Context rows (not scored): `gravel-car-lateral-rally2`,
-  `snow-car-lateral-rally2`, `tarmac-car-lateral-rally2-narrow` / `-wide` (flat circle glat), the braking rows
+  run is context (`gravel-car-lateral-g-rsf345`). Context rows (not scored): `tarmac-car-lateral-rally2-narrow` /
+  `-wide` (flat circle glat; the game's 1.23-1.25 g lies between the two event groups), the braking rows
   (`*-car-braking-rally2`, weak: μ_x = μ_y and a 0.5 s peak against a stop's mean), `car-class-ratio-rally2-wrc`
   (none: two cars).
+- Scored against real Rally2 (2026-11-09): `gravel-car-lateral-rally2` (0.93-1.15 g) and `snow-car-lateral-rally2`
+  (0.69-0.85 g) on the flat circle's glat; the level's reference for a rally tyre. CW's ≲0.67 and 50-60 % come from a
+  very wet, loose road, so `gravel-peak-mu-y` and `gravel-over-tarmac-peak-mu-y` keep only their lower bounds (road
+  and AT tyres, CW). After T55's hold, ngp / brush: gravel 0.916 / 0.923 g (MISS, 0.90 of the real), snow 0.885 /
+  0.889 g (MISS, 1.18 of it), tarmac 1.254 / 1.234 g; gravel over tarmac on the circles 0.73 / 0.75 against 0.72-0.82
+  (implied μ, Finland over Spain and Canarias).
 - A player's drive in these terms (2026-11-09): `harness/replay_gg.py REPLAY.rrp... [AUTOPILOT.trace...] --out DIR`
   (a copy of the launcher's `.rrp`; the header names the physics, car and stage) runs the replay with
   `--replay-trace` and `--tyre-probe` (every 144 steps) and prints time, km, outside assistance, the largest distance
