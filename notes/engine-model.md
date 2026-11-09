@@ -17,21 +17,33 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 ## Class (`class.rs`)
 
 - Actuation, ALS, restrictor and boost cap by RSF group and year: the FIA articles per class [FIA 254], [FIA 254A],
-  [FIA 255], [FIA 255A], [FIA 260], [FIA 261], [rallycars restrictors]; DBW from 1999 in WRC [Impreza WRC]; the year from `cars_data.json`, else
-  the group's middle era (inferred: the RSF list has years for nearly every car).
-- A throttle per cylinder for NA Group 4, Group B, Group A8, Super 2000, Group A7 from 1993 (inferred from the
-  engines in [tech-racingcars 911], [tech-racingcars Golf] and [HPA Alpha-N]: carburettor chokes, slides, ITBs).
+  [FIA 255], [FIA 255A], [FIA 260], [FIA 261] and Appendix J 1985–2001 [Appendix J]; DBW from 1999 in WRC
+  [Impreza WRC]; the year from `cars_data.json`, else the group's middle era (inferred: the RSF list has years for
+  nearly every car).
+- Appendix J 1985–2001 names no boost limit for Groups N and A ("this pressure is free" in 1986; from 1987 the
+  wastegate may be made adjustable), no anti-lag and no ban on drive-by-wire (fly-by-wire is banned from 1995 only in
+  cross-country, trucks and GT); Group N may fit a homologated mechanical throttle kit to a road car's motorised
+  throttle from 2001 [Appendix J]. So anti-lag from 1992 on Group A and from 1985 on the Audi rest on the cars'
+  history, not on a rule: Toyota says its ST205 (late 1994) "pioneered the use of anti-lag boost technology"
+  [ST205 anti-lag], and Sainz's 1994 works Escort Cosworth has one now [Bonhams Escort]; the 1992 start is a guess.
+- A throttle per cylinder for NA Group 4, Group B, Group A8, Super 2000, Group A7 from 1993 (inferred: race NA
+  engines of those classes ran twin-choke carburettors, mechanical-injection slides or ITBs, which tuners run on
+  alpha-N [HPA Alpha-N]). The 911 SC RS (Group B) has Kugelfischer mechanical injection; the road 911 SC, whose
+  intake the Group 4 car's page gives, is K-Jetronic, one throttle [tech-racingcars 911] (open).
 - An ECU idle loop from 1987, a fixed idle stop before (inferred: carburettors and mechanical injection).
 - Facts by folder: cylinders (Audi A2 5 [tech-racingcars Audi A2]; 911 SC, SC RS 6 [tech-racingcars 911]; Fiesta
-  Rally3, Rally3 Evo, Rally4, 208 Rally4, GR Yaris Rally2 3 [FIA 260], [GR Yaris]); Evo IX N4 cable
-  [rallycars Group N]; Clio III R3 DBW [tech-racingcars Clio R3]; Golf II GTI 16V K-Jetronic, fixed stop
-  [tech-racingcars Golf]; Fiesta R2 NA without anti-lag [Group R].
-- WRC boost cap 2.5 bar abs from 2011 [FIA 255A]; 4.0 bar before (guess, from forum reports of 3–4 bar
-  [NASIOC WRC], [Kosunen]).
+  Rally3, Rally3 Evo, Rally4, 208 Rally4, GR Yaris Rally2 3 [Fiesta Rally3], [Fiesta Rally4], [208 Rally4],
+  [GR Yaris]); Evo IX N4 cable (Group N keeps the series accelerator cable [FIA 254] 6.1; the road Evo VIII and IX
+  share cable MN100169 [Evo cable]); Clio III R3 DBW (inferred: the road Clio 3 RS has a motorised throttle
+  [Clio 3 RS throttle]; nothing public on the R3); Golf II GTI 16V K-Jetronic, fixed stop (inferred from the
+  mechanical injection) [tech-racingcars Golf]; Fiesta R2 NA [Group R], so no anti-lag.
+- WRC boost cap 2.5 bar abs from 2011 [FIA 255A]; 4.0 bar before (guess: forum reports of 3–4 bar [NASIOC WRC],
+  [passionford], both unreachable at the 2026-11 audit).
 
 ## Air path (`gas.rs`, `engine.rs`)
 
-- Orifice flow with Ψ choked below 0.528 (generic) [NASA], [Andersson]; Ψ linear from Π 0.98 to 1 (inferred:
+- Orifice flow with Ψ choked below (2/(γ+1))^(γ/(γ−1)) = 0.528 at γ 1.4 (generic; [NASA] gives the choked flow,
+  [Andersson] the Ψ); Ψ linear from Π 0.98 to 1 (inferred:
   a finite slope near equal pressures).
 - Plate area 1 − cos θ/cos 7°, θ = 7° + 83°·lift [US 6591667]. Its flow bench gives C_D 0.70–0.77 at 0–25° from
   closed and a leak of about 5 mm² (60 mm bore); C_D 0.8 and no leak about cancel at light pedal.
@@ -39,8 +51,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   at 50 kPa and none at 24–26 kPa (2500 rpm); the na sample 28 % at 47 kPa.
 - C_D 0.80 one throttle (inferred: fits are about 0.8 at WOT [C_D estimation]); 0.85 per cylinder (guess); at least
   45 mm per cylinder (guess).
-- Manifold 0.8·V_d one throttle, 0.3·V_d per cylinder, 1.0·V_d turbo, boost pipe 2.0·V_d (guess: ITBs have no
-  plenum [HPA Alpha-N]; Rally2 caps the restrictor-to-plate volume at 20 L [FIA 261]).
+- Manifold 0.8·V_d one throttle, 0.3·V_d per cylinder, 1.0·V_d turbo, boost pipe 2.0·V_d (guess: ITBs have only
+  their runners after the plate (inferred); Rally2 caps the restrictor-to-plate volume at 20 L [FIA 261]).
 - W_cyl = η_v·η_res·p·V_d·n/(120RT) and the manifold filling dp/dt = RT/V·(W_in − W_cyl) (generic) [Andersson],
   [Hendricks]. Fully implicit Euler, root-solved per sub-step (inferred: the linearly implicit step overshot a
   per-cylinder tip-in to 2.4 bar).
@@ -56,46 +68,54 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 ## Throttle (`engine.rs`, `ecu.rs`)
 
 - Cable: lift = pedal, pedal^1.6 per cylinder (guess: progressive linkages), no lag.
-- DBW: plate aim = pedal, then the ETB (30 ms first order, 40 ms full travel) [Gorzelic]. Race ECUs map pedal to
-  throttle position (MoTeC, Link, Haltech, Life Racing on M-Sport R5, Marelli) [MoTeC DBW], [Link e-throttle],
-  [Haltech DBW], [Life Racing], [Marelli]; torque requests are road (ME7) and F1 [Bosch ME7], [F1 torque map]. Their
-  translation tables start at 1:1 (Link, Haltech); MoTeC M1 aims at a share of airflow through its throttle area
-  table, which opens the plate more than 1:1 at small openings [HPA M1 DBW]. No rally map is public. HPA 138's 40 %
+- DBW: plate aim = pedal, then the ETB, 30 ms first order and 40 ms full travel (guess; [Gorzelic] model the throttle
+  as a 40 ms first-order lag, "taken at 40 msec", an assumption). Race ECUs set the plate
+  from the pedal through a table: Link over pedal and rpm [Link e-throttle], Haltech [Haltech DBW]; Marelli's
+  SRG-48x drives a DBW motor [Marelli]; [MoTeC DBW] and [Life Racing] (M-Sport R5) were unreachable at the 2026-11
+  audit. Torque requests are road (ME7) and F1 [Bosch ME7], [F1 torque map]. The 1:1 start is ours (guess: neither
+  source shows a default). MoTeC M1 aims at a share of airflow through its throttle area table [HPA M1 DBW], which
+  opens the plate more than 1:1 at small openings (inferred). No rally map is public. HPA 138's 40 %
   pedal → 30 % throttle (pedal^1.3, used before) is a Haltech street 350Z tuned to hold a steady speed [HPA 138]; with
   it the DBW samples gave about half BeamNG's power at 10–20 % pedal.
-- The idle air adds to the aim; anti-lag's kick overrides it [MoTeC DBW]. Blips and shift cuts come through the
-  interface's throttle (NGP's control unit).
+- The idle air adds to the aim; anti-lag's kick overrides it (inferred; [MoTeC DBW] unreachable). Blips and shift cuts
+  come through the interface's throttle (NGP's control unit).
 - Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle].
   Most net power from IdleRPM up at pedal 10/20/30/50 %, % of the WOT's: na 9/23/43/80, turbo 8/20/47/87, old
   5/18/43/91, cable_turbo 3/11/21/75 (BeamNG 2023, its power plot: 9/25/43/69). Torque, % of MaxTorque: na
   40/53/65/86, turbo 27/47/63/91, old 26/46/63/93, cable_turbo 13/25/37/87 (BeamNG 49/65/76/91).
-- BeamNG's curve is not measured: [Heusinkveld], whom the post credits, measured sims, and his proposed shape is a
-  chart that "might also be completely fictional". Its lines are most likely before friction and engine braking,
-  which its engine code applies apart [BeamNG friction] (inferred); its power plot's 0 % line repeats the torque
-  plot's values on the kW axis.
+- BeamNG's curve is not measured: [Heusinkveld], whom the post credits, read the part-throttle curves of 12 sims (his
+  video's chapter "How I Got Data and Disclaimer") and proposes a shape; no dyno data. Its lines are most likely before
+  friction and engine braking, which its engine code applies apart [BeamNG friction] (inferred); its power plot's 0 %
+  line repeats the torque plot's values on the kW axis.
 
 ## Torque (`calibrate.rs`, `ecu.rs`)
 
-- T_ig = K(n)·m_charge/(4π)·η_ign·(1 − cut)·damage (generic: Willans, fuel-to-torque at fixed λ [Moretto], [Guzzella]).
+- T_ig = K(n)·m_charge/(4π)·η_ign·(1 − cut)·damage (generic: Willans, fuel-to-torque at fixed λ [Guzzella]; [Moretto]
+  fits it on a diesel).
 - K from the identity K = 4π(T_wot + friction + pumping)/charge, so steady WOT reproduces the table exactly
   (inferred). K is calibrated on a 250 rpm grid and every knot, from a fresh engine's tip-in (inferred: a turbo's
   steady boost depends on the path near its threshold).
 - η_ign = max(0, 1 − 2.8e-4·Δθ²): about 1 % at 6° from MBT [MIT 2.61], quadratic [US 6363317].
-- λ 0.88 at full load [x-engineer]; η_ig 0.38 for the boost target (weak) [Chegg]; LHV 43.4 MJ/kg, AFR 14.7
+- λ 0.88 (guess, used at every load): [x-engineer] gives λ 0.86 for maximum power; the road 1.6 EcoBoost runs
+  λ 0.95–1.00 at full load and 1.00 at part load [EPA Ford 1.6]. It enters the boost target and the exhaust's flow
+  and heat, not the torque (K absorbs it). η_ig 0.38 for the boost target (weak) [Chegg]; LHV 43.4 MJ/kg, AFR 14.7
   (generic).
 
 ## Friction and pumping (`friction.rs`)
 
 - Sandoval–Heywood FMEP terms, DOHC buckets, the default bearing ratios [Sandoval], [ESA.NET]; the worked example is
   reproduced within 4 % (test).
-- Oil: φ = √(μ(T)/μ(363 K)), Vogel μ = 0.00862·exp(2040/(T − 89.6)), fitted to 10W-40 [Anton Paar]; cold friction
-  up to 2.5× warm [cold friction].
+- Oil: φ = √(μ(T)/μ(363 K)), Vogel μ = 0.00862·exp(2040/(T − 89.6)) mPa·s, fitted to 10W-40 [Anton Paar]. With 20 °C oil
+  the model's FMEP is 1.6× warm at 1000 rpm to 2.4× at 7000 (φ 3.6 on the hydrodynamic terms); [cold friction]: up
+  to 2.5× at about 20 °C (after Will et al.), and FMEP ∝ μ^n, n 0.19–0.24 for gasoline engines (1.6–1.9× for this
+  oil). In game the 1.02 sim's engine runs at 358–363 K, so this rarely acts.
 - Pumping (p_em − p_im) + 0.2 bar·(p_im/p_a)·(n/n_lim)² (generic form [TAMU], [Moretto]; 0.2 bar guess in the
   report's 0.1–0.3). NA p_em = p_a + 0.15 bar·(W/W_rated)² (guess).
 - s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0 (inferred:
   NGP's one braking point; friction models need a scale [ecu-lab]).
 - BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car
-  clamps (raw 2.3–4.9), NA cars are 1.30–1.87 (`tests/rsf_cars.rs`).
+  clamps (raw 2.3–4.9), NA cars are 1.32–1.87 (`tests/rsf_cars.rs`). The clamp's 2.0 is a guess and sets the friction
+  of every installed turbo car; through the identity it also raises their K.
 - The rF2 SkipBarber's coast line, −21 to −53 N·m at 2000–8000 rpm [rF2 engine.ini], is near the NA samples'
   (`examples/plot.py`).
 - η_m = 1, losses explicit; friction fades to 0 within 5 rad/s of standstill (inferred: no stiction at rest).
@@ -106,10 +126,12 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## ECU (`ecu.rs`)
 
-- Idle: PI on air, P on spark, 27° base retard (η_ign 0.80, a torque reserve: an MPC idle holds spark efficiency
-  0.75 [arXiv 2012.02859], idle control uses at most about 30 % of the reserve [US 7418943]) with −10/+15° room
-  [MoTeC idle], [HPA M1 idle], [US 7143741]. Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz (spark) (guess: no
-  published gains [Yildiz]). Spark P-only (inferred: a spark integrator fights the air loop).
+- Idle: PI on air, P on spark, 27° base retard (η_ign 0.80, a torque reserve: an MPC idle holds spark efficiency 0.75
+  [arXiv 2012.02859], idle control uses at most about 30 % of the reserve [US 7418943], a reserve by retard
+  [US 7143741]) with −10/+15° room (guess). MoTeC M1's idle timing target is 10–15° BTDC, under the main table, with
+  a minimum of 0–5° and the main table as the maximum [HPA M1 idle]; road engines' warm idles run −2 to 9° BTDC
+  (Mazda 2.5 −1.9 to 4.7°, Toyota 2.5 8.9° [EPA]). Gains from the linearised idle and the car's inertia at 0.5 Hz (air) and 3 Hz
+  (spark) (guess: no published gains [Yildiz]). Spark P-only (inferred: a spark integrator fights the air loop).
 - The loop runs with a closed pedal below idle + 800 rpm and integrates below idle + 100 rpm; above, a positive
   integral only bleeds to 0 (inferred: no wind-down while the overrun air decays, and no wind-up from a clutch's bite
   held over idle: before, the Fiesta Rally2 pulled away at a closed pedal crept at 1262–1397 rpm, idle 1200, now 1205).
@@ -123,10 +145,11 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   a cap on the idle loop's net torque is not how ECUs control idle and stopped clutch help's pull-away (measured).
   Tested: every ECU sample at 0.3 and 0.5 of idle gets only the feed-forward, at idle − 300 the whole ceiling; every
   RSF car idles under the ceiling.
-- DFCO (ECU cars): pedal < 0.02 and n > idle + 800 rpm; resumes below idle + 300 rpm or on the pedal [stealth316],
-  [MSExtra], [Hondata].
+- DFCO (ECU cars): pedal < 0.02 and n > idle + 800 rpm; resumes below idle + 300 rpm or on the pedal (thresholds
+  guess; cut and resume speeds with hysteresis [stealth316], [MSExtra], Hondata's cut by MAP over rpm [Hondata]).
 - Overrun air while the fuel is cut: real ECUs open an idle valve or dashpot on decel [MoTeC FK8R]. Sized so the
-  manifold holds 0.2·p_a (decel vacuum 17–23 kPa [Autosport decel]), at every speed (inferred: area in proportion
+  manifold holds 0.2·p_a (decel vacuum 17–23 kPa [Autosport decel]; EPA's fuel-cut points: Mazda 2.5T 17–26 kPa,
+  Honda 1.5T 25–43 kPa at 1000–5000 rpm [EPA]), at every speed (inferred: area in proportion
   to the cylinders' flow, as a throttle-aim-by-rpm table). The s_f point uses it.
 - When the fuel returns, the overrun air decays to the idle feed-forward with τ 0.5 s (guess), so no air step.
 - Fixed-stop cars have no DFCO (inferred: carbs and mechanical injection keep fuelling through the idle circuit;
@@ -147,24 +170,33 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   payload, Focus WRC 2006, `--trace-out`): held at the limit before the start the rpm bounces 7434–7480 (frame steps
   up to 79 rpm; NGP sits at 7515 and steps up to 146); near the limit in gear the steering force changes per step no
   more than elsewhere (p99 0.038 against 0.070 at 4000–6900 rpm; NGP 0.025 and 0.027), so FFB does not show it.
-- Shift cut keeps the share TorqueCut, airflow kept [FIA 254A] (S2000 cuts), [CSP powertrain].
+- Shift cut keeps the share TorqueCut, airflow kept: S2000 cuts ignition or injection only [FIA 254A], and the
+  throttle stays open on such cuts [CSP powertrain].
 - No combustion below 150 rpm or when stalled [turboford] (crank speeds 150–250 rpm).
-- Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 [MoTeC ALS],
-  [Link ALS timeout]. Kick 20 % of the throttle area [Link e-throttle ALS] (about 20 % kick, 25 % in the closed-pedal
-  cells). As an area (inferred: a 15 % lift opens 5 % of the area, and the turbo ran down). Retard 60° [Link retard] (−25 to −50°; 60
-  guess). Fuel +20 %, cut 30 % [Link e-throttle ALS], [HPA ALS]. Boost aim 1.2 bar gauge (guess). 60 % of the
-  unburnt fuel burns in the manifold (guess). The BOV stays shut (inferred: ALS needs the charge).
+- Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 (guess). Link
+  enables it above an rpm and a throttle and holds it for a deactivation time after both fall under them
+  [Link ALS manual], 5 s typical [HPA Link ALS]; [MoTeC ALS] was unreachable at the 2026-11 audit. Kick 20 % of the
+  throttle area: a Link user's about 20 % [Link ALS forum]; [Link e-throttle ALS] (about 20 %, 25 % in the
+  closed-pedal cells) was unreachable at the audit. As an area (inferred: a 15 % lift opens 5 % of the area, and the
+  turbo ran down). Retard 60° (guess): Link's retard table is an offset, −25 to −50° typical [Link retard]; the same
+  user ran about −50°. Fuel +20 %, cut 30 % (guess): that user ran a cut of about 60 and fuel 0–2 % [Link ALS forum];
+  others keep up to 40–80 % of the fuel limit on the lowest throttle row [HPA ALS]. Boost aim 1.2 bar gauge (guess).
+  60 % of the unburnt fuel burns in the manifold (guess). The BOV stays shut (inferred: ALS needs the charge).
 
 ## Turbo (`turbo.rs`)
 
 - Compressor, turbine, shaft and wastegate equations (generic) [Andersson], [Moraal turbo].
-- Normalised maps from a design point at peak power [Brunel], [US 12056425] (generic). Speed line scaled by
-  ν = (ω/ω*)², the fan law (inferred). ω* 15 000 rad/s (guess).
+- Normalised maps scaled to the engine (generic): maps scaled by the engine's power ratio [US 12056425], maps normalised
+  by their peak efficiency [Brunel]; the design point at peak power is ours (inferred). Speed lines by the fan law, flow
+  ∝ ν and pressure rise ∝ ν², ν = ω/ω* (inferred). ω* 15 000 rad/s (guess).
 - Continuous surge band 0.05 (guess). Efficiency ellipse in flow only, η_c 0.75 peak, 0.4 floor (guess). The Π axis
   made the steady state bistable (inferred).
 - Restrictor choked flow (generic) [NASA], C_D 0.95, 20 % pressure loss (guess), solved with the compressor by root
-  finding (inferred: a two-step oscillation otherwise). Sizes by group and year [rallycars restrictors], [FIA 261],
-  [FIA 255A], [FIA 254].
+  finding (inferred: a two-step oscillation otherwise). Sizes by group and year: none before 1990 and none on Group B;
+  Group A 40 mm 1990–91, 38 mm 1992–94, 34 mm from 1995 (WRC from 1997 the same, as Group A cars); Group N 40, 36 and
+  32 mm the same years [Appendix J], 33 mm from 2010 [Impreza N2010], [FIA 254]; WRC 1.6 33 mm, 36 mm from 2017
+  [FIA 255A], [World Rally Car]; Rally2 32 mm [FIA 261]. [rallycars restrictors]' 38/36/34 mm (1992/1994/1995) mixes
+  Group A's 38 and 34 with Group N's 36. The class gives Group N and R4 32 mm before 2005 and 33 after (open).
 - Turbine nozzle with Ψ, η_t 0.65 (guess) [Andersson].
 - A_t is fitted so K is as flat as the turbo allows (inferred: K is the fuel's energy times the combustion's
   efficiency per kg of air, nearly constant over rpm, so the boost should carry the table's shape). It minimises the
@@ -190,8 +222,13 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
 - ω* does not change K (10 000–20 000 rad/s moved the spread in the third decimal); it sets the spool time through
   ½Jω² (measured). Kept at 15 000.
-- Shaft inertia 1e-5 kg·m² [Chalmers] (their T45: 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W [rF2 engine.ini].
-- Exhaust temperature affine in flow, 700 °C at 0 (guess), 950 °C rated, capped at 1150 °C, τ 0.3 s (guess).
+- Shaft inertia 1e-5 kg·m² [Chalmers] (their T45: 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W, our reading
+  of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed), power (W, ramps up linearly with speed)",
+  and `TurboStaticFrictionWatts=100`, which "prevents numerical problems at low spool speeds" [rF2 engine.ini]. The
+  static 100 W stops the shaft at idle and at a closed pedal (ω_t 0 on both turbo samples).
+- Exhaust temperature affine in flow, 700 °C at 0 (inferred: from 400 °C the line's slope gave the steady WOT boost
+  two branches; road engines run 200–520 °C at idle and on the fuel cut [EPA]), 950 °C rated (guess), capped at
+  1150 °C (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess).
   Intercooler effectiveness 0.7 (guess).
 - Boost target π_wot(n), first from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the
   restrictor [FIA 261], [FIA 255A], then made consistent with one K (above).
@@ -226,8 +263,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Telemetry for the sound (`Telemetry`, never read back): the blow-off valve's opening (0 in anti-lag, stays open
   while the manifold is under vacuum, as a real one does; tested on a lift at 5000 rpm) and the step's air pressure.
   `rbr-standalone` `live/picture.rs` `model_turbo` maps it into SND1's turbo words (`notes/sound.md` "Engine").
-- Spool, the [Chalmers] case (GT-Power, road 1.5 L four, T45): at a fixed speed from the steady pedal for 5 bar BMEP
-  to 90 % of the steady WOT torque, 0.54 s at 1000 rpm (1.0 s on a three, 0.68 s with half the inertia). Tested
+- Spool, the [Chalmers] case (GT-Power): at a fixed speed from the steady pedal for 5 bar BMEP to 90 % of the steady
+  WOT torque, at 1000 rpm Volvo's 2.0 L four (its turbo not given) takes 0.54 s, their 1.5 L three with a T45
+  (1.157e-5 kg·m²) 1.00 s, and 0.68 s at 0.050 kg·cm² (Table 17). Tested
   0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000 (0.64 before the
   retarget fix lowered its 2000 rpm target from 1.93 to 1.70 bar), cable_turbo 0.77 s at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
@@ -243,6 +281,35 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   Rally2 and WRCs (the inflated target); now tip-in falls smoothly with rpm. No public rally time-to-torque exists
   to say which is closer to real; the road 1.6 THP holds 20 bar BMEP from 1750 rpm [SAE 2018-01-1423], so a slow
   spot at 1750 has no support (inferred).
+
+## Against measured engines
+
+EPA's steady maps of nine road engines [EPA] (2026-11, `/tmp` analysis, not kept) against the samples, warm, steady at
+a fixed speed (a probe over `rbr_engine`, not kept). Road engines run λ 1 and EGR and are not race engines; they
+bound the physics, not the calibration.
+
+- BMEP at 100 kPa MAP, 1500 / 2500 rpm: road turbos 8.7–11.0 / 7.6–9.3 bar (Ford 1.6 8.68 / 9.26, Ford 2.7 8.92 /
+  7.62, Honda 1.5 10.95 / 8.07, Mazda 2.5T 9.20 / 8.88); turbo sample 15.5 / 14.0, cable_turbo 9.8 / 12.2. At
+  90 kPa, 2500 rpm: road NA 7.8–9.3 (Chevy 2.5 7.79, Mazda 2.0 9.12, Mazda 2.5 9.32); na sample 8.1. The turbo
+  sample's K (η_ig ≈ 0.57) gives 1.4–1.8× the road turbos' torque at 100 kPa. The table asks for a high K: a Rally2's
+  432 N·m from 1620 cc is 33.5 bar BMEP, at least 13.4 bar per bar at the 2.5 bar abs cap [Škoda Rally2 engine],
+  [FIA 261].
+- Share of the 100 kPa torque at 50 kPa, 2500 rpm: road turbos 27 % (Honda 42 %); turbo sample 39 %, na 33 %. Zero
+  torque at 18.5–27.2 kPa on the road engines; turbo sample 20.6, na 25.2 kPa.
+- Warm idle MAP: Toyota 2.5 22.3 kPa (777 rpm), Mazda 2.5 23.4–25.6 (670–700), Mazda 2.0 28.5 (767); samples na
+  33.2, old 27.1, cable_turbo 30.0, turbo 20.3; RSF modern turbos 20–22. Idle spark −1.9 to 8.9° BTDC on those
+  three.
+- Closed pedal with the fuel cut, BMEP at 2000 / 4000 / 5000 rpm: road −1.1 to −1.5 / −1.7 to −2.0 / −2.2 to −2.5
+  bar at 16–43 kPa MAP (Chevy 2.5, Honda 1.5T, Mazda 2.5, Mazda 2.5T, Toyota 2.5); ECU samples na −2.17 / −2.84,
+  turbo −2.43 / −3.23 / −3.67, cable_turbo −2.39 / −3.22, so 1.4–1.7× (s_f, from NGP's braking at the limit,
+  1.3–2.0). old (fixed stop, fuelled) −1.11 / −2.17. EPA's points stop at 5000–5760 rpm, NGP's is at the limit.
+- Exhaust (turbine inlet on turbos, ports on NA): idle 317–430 °C (NA), 470–515 °C at the Ford 1.6's lightest loads
+  at 1000 rpm, 199–266 °C (Honda) and 329–422 °C (Mazda 2.5T) under the fuel cut; the turbo samples 1035–1037 °C at
+  idle and 705–715 °C under the fuel cut. Part load matches: turbo sample 727 °C at pedal 0.15, 1500 rpm (163 N·m),
+  the Ford 1.6 732–783 °C near that load. Retard heats the exhaust: the Ford 1.6 at 2500 rpm light load
+  620–680 °C, retarded 720–854 °C (about +180 K for 27°). The model's unburnt term (anti-lag's, which takes the idle
+  retard too) adds about +330 K at idle for 27°, on a 700 °C intercept.
+- Full-load λ: road turbos 0.91–1.01, NA 0.73–1.06 (ours 0.88).
 
 ## In game
 
@@ -276,10 +343,11 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   them too and idles at 89 rad/s with the clutch open); NGP's clutch help opens at 65 rad/s, too late. Not traced why
   it never opens with the model's engine. The Golf's stall on the climb was the brush's (fixed, `tyre-model.md`).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
-- Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against the usual SI idle 25–45 kPa [Gears], [MOTOR], [Tuning
-  School]: samples na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
+- Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against
+  warm road idles of 22.3–28.5 kPa [EPA] and tuners' 27, 31 and 30–50 kPa [MOTOR], [Gears], [Tuning School]: samples
+  na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
   Group N and R4 22–23, Rally3/4 and R1 25–31, Group A, B, 4 and S1600/S2000/R2/R3 23–34. K dominates on the modern
-  turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.93e6) against 0.9–1.4e6 elsewhere; friction
+  turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.95e6) against 0.9–1.4e6 elsewhere; friction
   (17 N·m, s_f clamped to 2.0) and pumping (10 N·m) are like the others'. At η_ig 0.38 they would idle near 28–30 kPa
   (estimate).
   The retarget fix leaves it (turbo sample 20.3 kPa before and after: idle sits in the held range, whose K is the
@@ -316,8 +384,23 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   ≈ 0.57). The data does not support more low-rpm torque: a rally turbo with a 32 mm restrictor spools later than
   the road one, and an NA 1.6 makes about 11–13 bar. If anything the held points are too strong, through K (the same
   K as the idle MAP item). A turbine refit for more low-rpm boost was not tried.
-- The spark loop saturates (gain about 2°/rpm).
-- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is the race ECUs' start.
+- The spark loop saturates (gain 0.49–0.65°/rpm on the samples, `spark_kp` over IdleRPM).
+- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is a guess.
+- Exhaust heat ("Against measured engines"): the turbo samples' exhaust is 500–700 K over road engines' at idle and
+  300–500 K under the fuel cut. Two causes: the 700 °C intercept at no flow (chosen for one steady WOT branch; 400 °C
+  gave two), held with no combustion too, and the unburnt term, written for anti-lag, which also turns the idle retard
+  into manifold heat (+330 K for 27°, the road data about +180 K). It drives the turbine on a lift; the shaft still
+  stops at idle (static loss). Not changed.
+- Held over idle at a closed pedal with the fuel on (under idle + 800 rpm, where DFCO starts), the idle loop can take
+  the idle air to 0 (`engine.rs` `low = -spec.idle_air`; the integral below idle + 100, the P term above): the ECU
+  samples' manifold falls to 4.5–8 kPa at idle + 50, 100, 500 and 700 rpm, 12–20 kPa at + 200 and 300. Road engines'
+  lowest fired loads sit at 9–34 kPa (most 15–26) and their fuel-cut points at 16–43 kPa [EPA]; race ECUs hold a
+  throttle aim minimum on overrun [MoTeC FK8R]. Fixed-stop cars on overrun hold 6–14 kPa at 2000–7000 rpm. Not
+  changed.
+- Group N restrictor by year: Appendix J has 40 mm in 1990–91 and 36 mm in 1992–94, and Group N went from 32 to
+  33 mm in 2010, not 2005 (Turbo, restrictor sizes); the class gives 32 mm before 2005 and 33 after. Not changed.
+- The ECU samples brake 1.4–1.7× harder than the road engines at a closed pedal below 5000 rpm ("Against measured
+  engines"); the scale comes from NGP's braking at the limit, which no measured race engine checks.
 
 ## Sources
 
@@ -338,7 +421,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - ESA.NET FrictionModel.cs (Sandoval eqs. 7.b–11): https://github.com/pangtuwi/ESA.NET/pull/223
 - ecu-lab, friction scale: https://github.com/DNiev/ecu-lab/pull/138
 - Anton Paar, oil viscosity: https://wiki.anton-paar.com/us-en/engine-oil/
-- cold friction: https://www.sciencedirect.com/science/article/pii/S0196890414001939
+- cold friction: Roberts, Brooks & Shipway 2014, Internal combustion engine cold-start efficiency: a review, Energy
+  Conversion and Management 82, doi:10.1016/j.enconman.2014.03.002 (open access):
+  https://www.sciencedirect.com/science/article/pii/S0196890414001939
 - TAMU, pumping: https://oaktrust.library.tamu.edu/server/api/core/bitstreams/161c947f-2eff-48dd-8bf4-80912a8bec75/content
 - Moretto 2024, Willans: https://www.dora.lib4ri.ch/empa/dload/empa:36100/PDF/Moretto-2024-A_method_to_quantify_the-(published_version).pdf
 - Guzzella & Onder: https://link.springer.com/chapter/10.1007/978-3-642-10775-7_2
@@ -347,7 +432,6 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - x-engineer, λ: https://x-engineer.org/air-fuel-ratio/
 - Chegg, η_ig 0.38: https://www.chegg.com/homework-help/questions-and-answers/18-gross-indicated-fuel-conversion-efficiency-4-stroke-s-engine-nf-g-038-equivalence-ratio-q73413709
 - rF2 engine.ini: http://tirewall.net/mh-rf2/vehicle/physics/engine_ini.html
-- MoTeC idle: https://motec.zendesk.com/hc/en-gb/articles/14575739507727-Checklist-Idle-Setup
 - HPA M1 idle: https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-idle-speed-control/
 - US 7143741, idle reserve: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7143741
 - arXiv 2012.02859, idle spark-efficiency setpoint: https://arxiv.org/abs/2012.02859
@@ -363,11 +447,12 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - HPA M1 limits: https://www.hpacademy.com/courses/motec-m1-software-tutorial/setting-up-m1-for-your-engine-engine-speed-limits/
 - HPA 084, Link limiter: https://www.hpacademy.com/previous-webinars/084-link-g4-rev-limit-configuration/
 - HPA 171, limiter: https://www.hpacademy.com/previous-webinars/171-configuring-the-ultimate-rpm-limiter/
-- Haltech limiter: https://support.haltech.com/portal/en/kb/articles/main-limiter
 - CSP powertrain, cuts keep airflow: https://github.com/AssettoCN/ac-docs/blob/main/docs/en/car/physics/powertrain.md
 - turboford, cranking: https://www.turboford.org/thread-cranking-rpm
 - MoTeC ALS: https://motec.zendesk.com/hc/en-gb/articles/14565159804687-Checklist-Anti-Lag-Setup
-- Link ALS timeout: https://forums.linkecu.com/topic/6254-anti-lag-settings/
+- Link ALS forum (a Link user's settings, 2016): https://forums.linkecu.com/topic/6254-anti-lag-settings/
+- Link ALS manual (G4+ help, anti-lag settings): https://www.akao.co.uk/manuals/Link%20G4+%20Manual/antilag_settings.htm
+- HPA Link ALS (G4+ tutorial, deactivation time): https://www.hpacademy.com/courses/link-g4-plus-software-tutorial/advanced-fuctions-anti-lag/
 - Link e-throttle ALS: https://forums.linkecu.com/topic/14055-e-throttle-antilag-setup/
 - Link retard table: https://www.akao.co.uk/manuals/Link%20G4+%20Manual/antilagretardtable.htm
 - HPA ALS: https://www.hpacademy.com/forum/motec-m1-software-tutorial/show/als-anti-lag-on-link-ecus/
@@ -386,6 +471,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - BeamNG friction (forum reading of its engine code): https://www.beamng.com/threads/engine-braking-calculations-wrong.94673/
 - HPA M1 DBW (throttle aim as airflow): https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-dbw-throttle/
 - EPA Ford 1.6 (steady map): https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
+- EPA, engine test data packages on the same page (steady maps, idle and fuel-cut points): 2013 Chevrolet 2.5
+  LCV, 2013 Ford 1.6 EcoBoost, 2015 Ford 2.7 EcoBoost, 2016 Honda 1.5 L15B7, 2014 Mazda 2.0 and 2018 2.5
+  Skyactiv-G, 2016 Mazda 2.5 Turbo, 2018 Toyota 2.5 A25A-FKS
 - Gorzelic 2012, throttle and wastegate: https://public.websites.umich.edu/~annastef/papers_hcci/Gorzelic2012ccdc.pdf
 - Thomasson 2014, pressure delay in hoses (Linköping diss. 1590, sec. 3.3.1): https://www.diva-portal.org/smash/get/diva2:709572/FULLTEXT01.pdf
 - enginebasics, spring gate spike about 1 psi: https://enginebasics.com/Advanced%20Engine%20Tuning/Boost%20Spiking.html
@@ -399,9 +487,15 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - US 12056425, map scaling: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12056425
 - passionford, WRC wastegate: https://passionford.com/forum/general-car-related-discussion/391631-wrc-rally-car-turbo-s-and-power.html
 - NASIOC, WRC boost: https://forums.nasioc.com/forums/showthread.php?t=781478
-- Kosunen, WRC boost: https://www.kosunenracing.com/ega.html
 - rallycars, restrictors: https://rallycars.com/technical-stuff/fia-turbo-restrictors/
-- rallycars, Group N: https://rallycars.com/technical-stuff/fia-group-n/
+- Appendix J 1985–2001 (FIA Historic Database, English, e.g. 1992 Art. 254 6.1 and 255 5.1.8.3):
+  https://historicdb.fia.com/regulations/period-appendix-j (1992:
+  https://historicdb.fia.com/sites/default/files/regulations/1440578063/appendix_j_1992.pdf; 1995:
+  https://historicdb.fia.com/sites/default/files/regulations/1440582215/appendix_j_1995_low.pdf)
+- ST205 anti-lag (Toyota UK): https://mag.toyota.co.uk/tales-from-the-trophy-cabinet-toyotas-top-14-rally-cars/
+- Bonhams Escort (ex-Sainz 1994 works Escort Cosworth, "An ALS (Anti Lag System) is fitted"): https://cars.bonhams.com/auction/21735/lot/235/ex-carlos-sainz1994-ford-escort-cosworth-works-rally-car-chassis-no-wfobxxgkabrl-92667-engine-no-rl-92667/
+- Impreza N2010, Group N 32 → 33 mm (RallySport Magazine, 2010-01-19): https://rallysportmag.com/prodrive-launch-subaru-impreza-n2010/
+- World Rally Car, 33 → 36 mm in 2017: https://en.wikipedia.org/wiki/World_Rally_Car
 - Impreza WRC (DBW 1999): https://en.wikipedia.org/wiki/Subaru_Impreza_WRC
 - Group R: https://en.wikipedia.org/wiki/Group_R
 - FIA 254: https://www.fia.com/sites/default/files/254_2019_wmsc_2018.12.05.pdf
@@ -412,6 +506,10 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - FIA 261 (Rally2): https://www.fia.com/sites/default/files/261_2023.pdf
 - tech-racingcars Audi A2: http://tech-racingcars.wikidot.com/audi-quattro-a2
 - tech-racingcars 911: http://tech-racingcars.wikidot.com/porsche-911-sc
-- tech-racingcars Clio R3: https://tech-racingcars.wikidot.com/renault-clio-iii-r3
 - tech-racingcars Golf: http://tech-racingcars.wikidot.com/vw-golf-mk-ii-gti-16v
 - GR Yaris Rally2: https://en.wikipedia.org/wiki/Toyota_GR_Yaris_Rally2
+- Fiesta Rally3 (1.5 EcoBoost, inline 3): https://en.wikipedia.org/wiki/Ford_Fiesta_Rally3
+- Fiesta Rally4 (1.0 EcoBoost, 3 cylinders): https://en.wikipedia.org/wiki/Ford_Fiesta_Rally4
+- 208 Rally4 (PSA EB, 3 cylinders): https://en.wikipedia.org/wiki/Peugeot_208_Rally4
+- Evo cable (Mitsubishi MN100169, Evo VIII and IX): https://www.extremepsi.com/Mitsubishi-OEM-Accelerator-Throttle-Cable-Mitsubishi-Lancer-EVO-VIII-and-IX.html
+- Clio 3 RS throttle ("boîtier papillon motorisé", Renault 82 00 110 998): https://saboulautosport.com/pieces-d-occasion-rs/1044-papillon-electrique-clio-3-rs-phase-1-phase-2-clio-2-rs-phase-2-phase-3-0000000003377.html
