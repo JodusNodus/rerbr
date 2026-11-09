@@ -485,7 +485,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let phi = friction::phi(x.t_oil);
     let p_ratio = s.p_im / x.p_a;
     let fric = spec.friction(rpm, phi, p_ratio) * fade;
-    let pumping = spec.geometry.per_pa() * friction::pmep(s.p_em, s.p_im, x.p_a, rpm, spec.rpm_limit) * fade;
+    let pumping = spec.geometry.per_pa() * spec.geometry.pmep(s.p_em, s.p_im, x.p_a, rpm) * fade;
     // The 1.02 sim's friction opposes the motion, as NGP applies it (`direction * friction_torque`): unsigned, an
     // engine dragged backwards would be pushed on backwards by it.
     let torque = indicated - fric - pumping - x.friction * fade;

@@ -73,14 +73,27 @@ impl Geometry {
         let aux = 8.3155 + 1.86e-3 * n + 7.45e-7 * n * n;
         (crank + recip + gas + valve + aux) * 1000.0
     }
+
+    /// The pumping mean effective pressure, Pa: the manifolds' difference p_em − p_im plus the flow loss across each
+    /// set of two valves, 3.0e-3 kPa·s²/m²·S_p²/(n_v²·r⁴) at wide-open throttle, r the valve's diameter over the bore,
+    /// D_iv = 6.11 + 0.313B and D_ev = 4.14 + 0.286B mm (SAE 2003-01-0725 App. B; SAE 890836 p. 10, the four-valve
+    /// survey). Patton derives each as Δp ∝ ṁ²/(ρA²) with ṁ ∝ (p_i/p_a)·S_p; with the density where the gas passes, the
+    /// intake's scales with p_im/p_a and the exhaust's with (p_im/p_a)²·p_a/p_em (inferred: the published
+    /// (p_i/p_a)² at an NA engine's wide-open throttle, and a turbo's boost and exhaust pressure). The exhaust
+    /// system's own loss is in p_em.
+    pub fn pmep(&self, p_em: f64, p_im: f64, p_a: f64, rpm: f64) -> f64 {
+        let sp = 2.0 * self.bore / 1000.0 * rpm.max(0.0) / 60.0;
+        let x = p_im.max(0.0) / p_a;
+        let valves = |d: f64| VALVE_LOSS * sp * sp / (4.0 * pow(d / self.bore, 4.0));
+        let intake = valves(6.11 + 0.313 * self.bore);
+        let exhaust = valves(4.14 + 0.286 * self.bore);
+        p_em - p_im + intake * x + exhaust * x * x * p_a / p_em.max(1.0)
+    }
 }
 
-/// The pumping mean effective pressure, Pa: (p_em − p_im) plus the valves' and ports' flow loss
-/// 0.2 bar·(p_im/p_a)·(n/n_limit)² (generic form, TAMU; 0.2 bar guessed).
-pub fn pmep(p_em: f64, p_im: f64, p_a: f64, rpm: f64, rpm_limit: f64) -> f64 {
-    let r = rpm / rpm_limit;
-    p_em - p_im + 0.2e5 * (p_im / p_a) * r * r
-}
+/// The valves' flow loss constant, Pa·s²/m² (3.0e-3 kPa·s²/m², SAE 2003-01-0725 App. B; Patton's 4.12e-3 came from
+/// diesels, and SI motoring tests allowed 3e-3, SAE 890836 p. 10).
+const VALVE_LOSS: f64 = 3.0;
 
 #[cfg(test)]
 mod tests {
@@ -96,6 +109,19 @@ mod tests {
             let got = g.fmep(rpm, 1.0, 0.2) / 1000.0;
             assert!((got - kpa).abs() < 0.04 * kpa, "{rpm}: {got}");
         }
+    }
+
+    /// At an NA engine's wide-open throttle the valves' losses are App. B's: 2.0 L, B = S = 86 mm, 7000 rpm.
+    #[test]
+    fn the_valve_losses_are_sandovals_at_wide_open_throttle() {
+        let g = Geometry { v_d: 4.0 * PI / 4.0 * 0.086 * 0.086 * 0.086, cylinders: 4.0, bore: 86.0, r_c: 11.0 };
+        let sp: f64 = 2.0 * 0.086 * 7000.0 / 60.0;
+        let (r_i, r_e): (f64, f64) = ((6.11 + 0.313 * 86.0) / 86.0, (4.14 + 0.286 * 86.0) / 86.0);
+        let kpa = 3.0e-3 * sp * sp / (4.0 * r_i.powi(4)) + 3.0e-3 * sp * sp / (4.0 * r_e.powi(4));
+        assert!((kpa - 38.1).abs() < 0.1, "{kpa}");
+        assert!((g.pmep(101_325.0, 101_325.0, 101_325.0, 7000.0) / 1000.0 - kpa).abs() < 1e-9);
+        // A closed pedal's losses are the vacuum's.
+        assert!(g.pmep(101_325.0, 20e3, 101_325.0, 5000.0) - 81_325.0 < 3e3);
     }
 
     #[test]
