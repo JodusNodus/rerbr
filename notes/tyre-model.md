@@ -1474,6 +1474,62 @@ now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identica
   that day's brush changes: frame 22931) and the figures cover the frames before it. Autopilot 562 at f0.75 b0.6, ngp
   / brush: wheels 0.98/0.98/0.93/0.92 and 0.98/0.98/0.94/0.93 of their peak in the hardest 5 %, 0.53-0.60 at the median.
 
+## Race autopilot
+
+Test tooling (2026-11-09, branch autopilot/race-line): `rbr-standalone --autopilot OUT --race LAT,BRAKE,SLIP`
+(`crates/rbr-standalone/src/autopilot/race.rs`) drives at the car's measured limits so stage times can be read against
+real ones. LAT, BRAKE: the flat circle's lateral and the threshold stop's braking acceleration (m/s²), SLIP the stop's
+best slip (`limit_pace.py limits --surface`; Fiesta Rally2 ngp / brush: tarmac 1.282 / 1.327 g, 1.303 / 1.315 g, slip
+0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; snow-flat 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by
+one factor f. The line is a minimum-curvature line within the road's edges less 1.4 m: the road comes from the `.col`
+triangles under NGP's material sheets, scanned across the driveline every 2 m (road p10/p50 width 562 4.6/5.2 m, 524
+4.2/5.3, 422 3.8/4.8). The speed plan runs on that line with a friction ellipse in braking, held 0.15 s ahead.
+Braking is under the `--plan` threshold controller at SLIP. On tarmac the default's heading law steers to the line. On
+a loose surface (SLIP over 0.4) a curvature tracker steers it and the throttle eases past 0.06 rad of sideslip. The
+default's law countersteers all sideslip, and in gravel's steady drift that held the steering at 0.2-0.4 while the
+car ran wide. The tracker cost 11 s on 562 under ngp and spun the brush car. Gears, traction, recovery: the
+default's. Without the flag every output is byte for byte the same (traces and `.out` of 562, 524, RSF 345's circle
+and a brake stop).
+
+- Split, Fiesta Rally2 ngp. Point mass at the measured limits on 562: on the default's driven path 603.8 s, on the
+  line 539.0 s (−10.7 %), with unlimited power on the path 555.2 s. The default drive takes 903.5 s, so the speed plan
+  and the default's guards cost ~300 s, the line ~65 s and power ~50 s. 524 at 0.92/0.83 g: path 248.6 s, line
+  218.3 s (−12.2 %), default 353.5 s.
+- Inside the race run on 562: the plan on the line at f0.9 without acceleration limits is 519.3 s, and the run takes
+  589.2 s. With the run's own full-throttle acceleration (p90 by speed) the plan gives 603 s against the run's 606 s,
+  so the controller is within 0.5 % and the remaining ~70 s is power: ~110 W/kg flat from 4300 to 6200 rpm, and the
+  stage climbs 250 m. Traction and shifting sit inside that envelope and are not separated.
+- Settings tried on 562: a tracking guard at 1.2 m costs 4 s; anticipation of 0.1 / 0.15 / 0.25 s gives 592 / 589 /
+  594 s, and none gives 611 s with recoveries; a margin of 1.0-1.4 m drives alike and 2.2 m costs 30 s.
+- Tarmac calibration, 562 at f0.9, clean (finished, no recovery, within 4.1 m of the driveline): ngp 589.2 s, brush
+  587.7 s. Real Rally2 is 543.1 / 547.6 / 548.0 s, so ngp is 7.5-8.5 % over and the brush 7.2-8.2 % over. Implied μ
+  (`implied_grip.py`, Canarias SS14 as drawn): ngp 0.911, brush 0.916, real 1.09-1.11. f0.92 gives 585.4 s; f0.95
+  and f1 leave the line (path glat 1.18 g against the circle's 1.28).
+- Tyre use on 562 in the hardest 5 % of moments (glat 1.03 / 1.06 g; `limit_frames`, NGP's peak): front 0.88 / 0.91,
+  rear 0.84 / 0.87, car 0.84 / 0.88, a wheel ≥ 0.95 in 73 % of them; 0.65-0.67 at the median. The car falls short of
+  0.9 because tracking runs out above f0.92, and the straights are power-limited.
+- Loose, same parameters, f the largest clean of 0.4-0.6.
+  - 524 ngp: f0.55 gives 278.4 s (f0.6: 4 recoveries), against a real Rally2 equivalent of 220.9 s (+26 %). Implied
+    μ 0.602 (273.4 s less the 5 s spur) against the real 1.013. Tyre use 0.77 / 0.82, car 0.77 at 0.68 g.
+  - 524 brush: no clean f from 0.4 to 0.6. The car swings into a sideslip pendulum of ±0.5-0.7 rad on part throttle
+    at ~19 m/s; at f0.4 near 2220 m it runs 6 m wide and stops. The default drive is clean, 349.2 s.
+  - 422 ngp: f0.55 gives 428.5 s (f0.6 rolls), against Paddon's 383.8 s (WRC) (+11.6 %). Tyre use 0.81 / 0.82, car
+    0.80. The default drive takes 650.8 s.
+  - 422 brush: f0.45 gives 453.6 s; f0.5 rolls and f0.55 has 3 recoveries. Tyre use 0.72 / 0.71. The default drive
+    takes 639.9 s.
+  - There is no route for 422, so no μ.
+- What limits 422 (T44): the drive braked at slip 0.2, tarmac's best stop, which is weak on snow, so it arrived 1.5-2
+  m/s over the plan. The heading law then countersteered the drift to full lock, and the full-lock guard (5 m/s) and
+  the tracking guard slowed it hard while it slid wide on the 4.8 m road. The race mode brakes at the stop's slip
+  (0.5) and steers loose surfaces with the tracker; it counts full lock on its own steering. At f0.55 the guards held
+  1660 steps (full lock) and 0 (tracking). `--plan`'s fixed `PLAN_SLIP` 0.2 is the same limit on loose surfaces. It
+  is research tooling, not the default drive, so it is left unchanged.
+- Reading: on tarmac the car-level grip carries a power-limited car to within ~8 % of the real time at 0.9 of the
+  measured limits. On gravel and snow the controller's clean limit (0.55 of the circle's g, tyres at 0.77-0.82 of
+  their peak) sets the time, so the 26 % / 12 % gaps bound the grip deficit from above and do not measure it. A point
+  mass at the full measured 0.92 g on 524's line gives 218.3 s, the real 220.9 s. An autopilot is not a driver.
+- Not run: a second car on 562, which needs its own tarmac limits.
+
 ## Wong, Theory of Ground Vehicles, against the open items (2026-11-09)
 
 J. Y. Wong, Theory of Ground Vehicles, 3rd ed. (Wiley), a scan read page by page (`research/wong`, notes only); book
