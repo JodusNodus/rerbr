@@ -71,7 +71,8 @@ pub struct Args {
     pub plan: Option<autopilot::Plan>,
     /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear, position and wheel speeds.
     pub trace_speed: Option<PathBuf>,
-    /// `--tyre-probe FILE` (with `--autopilot`): read-only dumps of each wheel's tyre frame (research tooling).
+    /// `--tyre-probe FILE` (with `--autopilot` or `--replay-trace`): read-only dumps of each wheel's tyre frame
+    /// (research tooling).
     pub tyre_probe: Option<PathBuf>,
     /// `--tyre-probe-every N` (with `--tyre-probe`): a dump every N steps (`tyre_probe::EVERY` unless given).
     pub tyre_probe_every: Option<u32>,
@@ -549,10 +550,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.aim.is_some() && args.autopilot.is_none() {
         return Err("--aim needs --autopilot".into());
     }
-    if (args.flat_out || args.trace_speed.is_some() || args.tyre_probe.is_some() || args.tyre_image.is_some())
-        && args.autopilot.is_none()
-    {
-        return Err("--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot".into());
+    if (args.flat_out || args.trace_speed.is_some() || args.tyre_image.is_some()) && args.autopilot.is_none() {
+        return Err("--flat-out, --trace-speed and --tyre-image need --autopilot".into());
+    }
+    if args.tyre_probe.is_some() && args.autopilot.is_none() && args.replay_trace.is_none() {
+        return Err("--tyre-probe needs --autopilot or --replay-trace".into());
     }
     if args.tyre_probe_every.is_some_and(|n| n == 0) || (args.tyre_probe_every.is_some() && args.tyre_probe.is_none()) {
         return Err("--tyre-probe-every needs --tyre-probe and a count over 0".into());
@@ -833,6 +835,9 @@ mod tests {
                 assert_eq!(a.replay_pace, live::Pace::Free);
                 assert_eq!(a.replay_trace, Some(PathBuf::from("T")))
             }),
+            (format!("{LIVE} --replay F --replay-trace T --tyre-probe P --tyre-probe-every 72"), |a| {
+                assert_eq!((a.tyre_probe, a.tyre_probe_every), (Some(PathBuf::from("P")), Some(72)))
+            }),
             (format!("{LIVE} --replay F --replay-tyre 300000:ngp"), |a| {
                 assert_eq!(a.replay_tyre, Some((300000, "ngp".to_owned())))
             }),
@@ -1042,19 +1047,11 @@ mod tests {
             (format!("{LIVE} --replay F --pilot autopilot"), "--replay takes no --pilot (the replay drives)"),
             (format!("{LIVE} --replay-trace T"), "--replay-trace and --replay-tyre need --replay"),
             (format!("{REC} --aim 1,2"), "--aim needs --autopilot"),
-            (format!("{REC} --flat-out"), "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot"),
-            (
-                format!("{REC} --trace-speed T"),
-                "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot",
-            ),
-            (
-                format!("{REC} --tyre-probe P"),
-                "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot",
-            ),
-            (
-                format!("{REC} --tyre-image IMG"),
-                "--flat-out, --trace-speed, --tyre-probe and --tyre-image need --autopilot",
-            ),
+            (format!("{REC} --flat-out"), "--flat-out, --trace-speed and --tyre-image need --autopilot"),
+            (format!("{REC} --trace-speed T"), "--flat-out, --trace-speed and --tyre-image need --autopilot"),
+            (format!("{REC} --tyre-probe P"), "--tyre-probe needs --autopilot or --replay-trace"),
+            (format!("{LIVE} --replay F --tyre-probe P"), "--tyre-probe needs --autopilot or --replay-trace"),
+            (format!("{REC} --tyre-image IMG"), "--flat-out, --trace-speed and --tyre-image need --autopilot"),
             (format!("{BOOT} --tyre-image-step 9"), "--tyre-image-step needs --tyre-image"),
             (format!("{REC} --circle 0,0,40"), "--circle needs --autopilot"),
             (format!("{REC} --material-as 116"), "--material-as needs --boot"),
