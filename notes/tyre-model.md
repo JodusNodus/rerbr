@@ -1108,14 +1108,14 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   wet gravel (another site and soil) and Croft-White's wet stage (α0 8-12°). Proposal (the user's decision): the
   evidence supports a smaller wet loss on well-graded gravel, damp × 1.0 and wet × 0.95 (Moyer's locked and sideways
   means, NHTSA's 0.95), keeping × 0.85 only if "wet" means a saturated silty road; and, if wet keeps × 0.85, the brush's
-  wet α0 could go to dry's. No change made.
-  Two more sources (T58, 2026-11-09): Warner 1983 prints Baker's table first-hand (Ref. 1 p. 210, basis still unknown;
-  loose wet ≥ dry) and has no gravel tests of its own. González 2015 sprinkles MgCl-treated roads: wet over normal 0.78
-  well-graded, 0.77 loose on a hard base, 0.60 sealed (fines crust; same section, inferred), and their review gives
-  Paige-Green's gravel roads 0.90 wet over dry (different sections). Both keep T57's picture: no loss on clean wetted
-  gravel (Moyer), ~0.9 on ordinary gravel roads tested wet (Paige-Green), 0.6-0.8 where water makes a slurry of the fines
-  (CRREL, MgCl); damp × 1.0 is unaffected (no damp test; the MgCl humidity loss is the salt's), and wet × 0.85 sits
-  inside the 0.76-0.90 of the two gravel-road data sets (× 0.95 would sit above both).
+  wet α0 could go to dry's. No change made. Two more sources (T58, 2026-11-09): Warner 1983 prints Baker's table
+  first-hand (Ref. 1 p. 210, basis still unknown; loose wet ≥ dry) and has no gravel tests of its own. González 2015
+  sprinkles MgCl-treated roads: wet over normal 0.78 well-graded, 0.77 loose on a hard base, 0.60 sealed (fines crust;
+  same section, inferred), and their review gives Paige-Green's gravel roads 0.90 wet over dry (different sections).
+  Both keep T57's picture: no loss on clean wetted gravel (Moyer), ~0.9 on ordinary gravel roads tested wet
+  (Paige-Green), 0.6-0.8 where water makes a slurry of the fines (CRREL, MgCl); damp × 1.0 is unaffected (no damp test;
+  the MgCl humidity loss is the salt's), and wet × 0.85 sits inside the 0.76-0.90 of the two gravel-road data sets (×
+  0.95 would sit above both).
 - Not adopted (2026-11-08): the exponential approach on the brush's own stiffness (NGP's slope, u = 3ψ, the brush's
   adhesion/sliding split): pea stone 0.38/0.61/0.85/0.95 at 6.7 kN and 0.98 at 20°, all four pea rows still miss; one
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
