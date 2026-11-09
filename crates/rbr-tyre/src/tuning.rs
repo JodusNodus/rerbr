@@ -1,7 +1,7 @@
 //! Experimental tuning of the brush (ours): a few of the model's values a driver sets per drive to feel their effect
 //! (`rbr-standalone --tyre-tuning`, the launcher's "Experimental tuning"). Each default is the model as it is, and at
-//! the defaults every force is the untuned brush's, bit for bit: the factors are exact at 1 and the slide grip is
-//! the model's own fall when unset.
+//! the defaults every force is the untuned brush's, bit for bit: the factors are exact at 1 and the slide grip unset is
+//! the model's [`SLIDE_GRIP_MODEL`].
 
 use std::fmt;
 
@@ -9,7 +9,7 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Tuning {
     /// Slide grip on hard surfaces: μ_y at 30° over its peak at 4 kN, 15 m/s, dry tarmac (the lab's
-    /// `tarmac-mu-y30-over-peak`). `None`: the model's (about 0.886). Set, the lateral axis's Coulomb level over its
+    /// `tarmac-mu-y30-over-peak`). `None`: the model's, [`SLIDE_GRIP_MODEL`]. The lateral axis's Coulomb level over its
     /// static one is solved per wheel for it ([`crate::fit::calibration`]); the peak stays NGP's.
     pub slide_grip: Option<f64>,
     /// Factors on the grip NGP hands the brush by the surface: tarmac (hard surfaces but ice), gravel (soil but snow:
@@ -39,8 +39,10 @@ impl Default for Tuning {
 
 /// The slide grip's range.
 pub const SLIDE_GRIP: (f64, f64) = (0.70, 0.95);
-/// The model's own slide grip (the lab's `tarmac-mu-y30-over-peak` on the scorecard's tarmac wheel, 2026-11-09).
-pub const SLIDE_GRIP_MODEL: f64 = 0.886;
+/// The model's slide grip, solved per wheel: a user decision (2026-11-09, driven at 0.83 on the tuning panel, in place
+/// of LATERAL_FALL's own 0.886). Road tyres 0.73-0.83, racing tyres 0.80-0.90 (`tarmac-mu-y30-over-peak`); WRC tarmac
+/// telemetry 0.71-0.83 (Croft-White 2006 Figs 4.29-4.30, `gravel-cw-mu-y30-over-peak`).
+pub const SLIDE_GRIP_MODEL: f64 = 0.83;
 /// The grip factors' range, per surface.
 pub const GRIP: (f64, f64) = (0.70, 1.30);
 /// The stiffness factor's range.
