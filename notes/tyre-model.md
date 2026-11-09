@@ -2015,8 +2015,21 @@ stays the untuned brush's. The table's model column is the brush before the mode
   (f36c3a34, before / after): 90/111 both; `tarmac-mu-y30-over-peak` 0.886 → 0.834 (read on the probe); ice
   μ_y(20°)/peak 0.940 → 0.915 and its end over max 0.963 → 0.949 (both still MISS, toward the band); ice coast crr
   0.033 → 0.002 (MISS both); braking within 0.4 %. The flat r40 tarmac circle 1.187 → 1.143 g (ngp 1.181; real
-  narrow-tarmac Rally2 1.0-1.2 g, context), presumably the tyres past the peak where the fall is now steeper (not
-  traced). The solve costs about 0.1 s per wheel when a brush is built (lab, two builds: 2.8 → 3.0 s).
+  narrow-tarmac Rally2 1.0-1.2 g, context). The solve costs about 0.1 s per wheel when a brush is built (lab, two
+  builds: 2.8 → 3.0 s).
+- Why the flat r40 tarmac circle lost it (T54, 2026-11-09; `car_grip.py`'s hold, probes every 36 steps,
+  `limit_frames` per wheel, |F|/Fz over the model's own peak μ_y at the wheel's load; brush 0.83 / brush
+  `slide-grip=0.886` / ngp): the circle is front-limited and the autopilot holds the fronts far past their peak. Over
+  the fastest second the Fiesta Rally2's fronts run at 22-24° slip angle (3.0-3.8 times their peak angle, 6-7.6°),
+  sliding whole (ψ 3-4), with 0.09-0.15 drive slip; tyre use 0.87 / 0.90-0.92 / 0.94-0.96. The rears stay below the
+  peak (3.5-4.8°, 0.5-0.7 of it; use 0.84-0.91 / 0.87-0.92 / 0.76-0.97). glat 1.143 / 1.195 / 1.181 g. The tracker
+  winds the steering on (0.25 → 0.77) as the speed ramps once the fronts reach their peak (~6° at 21.5 m/s), and the
+  fastest second falls in that slide, so the row reads μ_y near 22°, which the slide grip sets, not the peak. The
+  Escort Mk II (RWD) holds a power drift instead (β -17°): fronts at 5.7-6.2° (0.77 of the peak, use 0.96-0.99), rears
+  at 20-22° with 0.16-0.66 drive slip (use 0.79-0.97); glat 1.090 / 1.117 / 1.123 g (-2.4 %). Recommendation (not
+  done: the autopilot and the circle method are out of scope): cap the circle tracker's steering near the front's peak
+  slip angle (as a driver would hold it), or score the hold before the fronts pass ~1.5 times their peak angle; as it
+  is, the circle row measures the slide grip.
 
 ## Open
 
@@ -2029,6 +2042,20 @@ stays the untuned brush's. The table's model column is the brush before the mode
   Wong's Goodyear data disagree on whether braking or driving raises it, so neither M''_z (bristle, Svendenius eqs.
   4.37-4.39, braking lowers Mz with C_x > C_y) nor the longitudinal half of the carcass torque Fx Fy (1/c_x - 1/c_y)
   (his eq. 4.72, which would cancel NGP's offset to within 10 % at c_x 450, c_y 405 kN/m) was added (2026-11-08).
+- `tarmac-combined-a4` 0.292 against 0.23-0.27 (T54, 2026-11-09; no model change). At κ -0.25, α 4° the patch slides
+  whole (θ_x s_x ≈ 2.3), so Fy/Fy0 is the sliding velocity's lateral share (0.269) times |F|/Fy0 (1.086); Kx/Ky,
+  the adhesion split and the carcass do not enter, and the axis frictions there are isotropic (μ_x(κ -0.25) 1.232,
+  μ_y(15°) 1.220, the same sliding speed). Svendenius's points (Fig 5.5 redigitised: ±4° at 22.5 % 0.25 / 0.26,
+  Fig 5.7: Fy/|F| 0.18-0.24 at 25 %) point the force 10-30 % more longitudinally than their sliding velocity, while
+  their |F|/Fy0 is 1.15 (higher than ours); his own models through those data give 0.31. Lab, the alternatives costed
+  (a4 / a2 / locked μ_y at 30°, 4 kN): now 0.292 / 0.225 / 0.467; MDR anisotropic sliding friction (his eq. 4.22)
+  0.289 / 0.223 / 0.486 (the brush's frictions are isotropic, so it barely moves); the whole sliding force along the
+  stiffness-weighted slip (Dugoff's direction, the brush before 2026-11-07) 0.215 / 0.164 / 0.360 (below the band,
+  and the locked wheel's force no longer opposes its velocity, locked μ_y -23 % at 4 kN, -41 % at 6.7 kN). The
+  published MF sets' fitted combined weighting G_yκ at 4 kN, α 4°, κ -0.25 gives 0.34-0.50 (MF 6.1 example 0.40,
+  TNO 205/60R15 0.41, Continental 225/50R18 0.34, MF 5.2 example 0.50; their μ_x/μ_y 1.07-1.21), above the brush. So
+  the one measured tyre is below every physical model and the MF sets above the brush; only a fitted direction
+  factor would put it in the band.
 - Aligning moment level and patch: t0/a 0.32 against the sets' 0.36-0.51 stays brush theory's a/3; peak Mz/(μ Fz a)
   0.159 with the affine trail (2026-11-08) against 0.19-0.26 (0.107 with M'_z). In game (`ffb` column, map 41, 600 s
   autopilot, mean |ffb| at 0.3-0.4 / 0.4-0.5 / 0.5-0.6 / 0.6-0.7 g, ngp / brush with M'_z / affine): Fiesta Rally2

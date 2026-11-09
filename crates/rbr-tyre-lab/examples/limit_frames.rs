@@ -1,6 +1,6 @@
 //! Each probed wheel through a window of a run (`--tyre-probe` dumps): the game's operating point and force, and the
 //! steady answer of NGP's tyre and of a profile's model at the same inputs, with the brush's friction, ψ and sliding
-//! speed and both tyres' peak μ_y at the wheel's load and speed. Prints one line per wheel and dump.
+//! speed and both tyres' peak μ_y and its slip angle at the wheel's load and speed. Prints one line per wheel and dump.
 //!
 //! Research tooling (ours, experimental): for the circle's limit (`harness/limit_recovery.py`), which axle saturates
 //! first and whether the model's rear gives less side force than NGP's at the same load and slip angle.
@@ -48,7 +48,7 @@ fn main() {
     let (dumps, cloud) = parse_probe(&text);
     let ops = raw(&text);
     println!(
-        "# step wheel Fz alpha_deg kappa camber_deg | game Fy/Fz Fx/Fz | ngp Fy/Fz | {model} Fy/Fz mu psi vs | peak mu_y ngp {model} at Fz, v"
+        "# step wheel Fz alpha_deg kappa camber_deg | game Fy/Fz Fx/Fz | ngp Fy/Fz | {model} Fy/Fz mu psi vs | peak mu_y ngp {model} at Fz, v | their slip angles, deg"
     );
     for p in dumps.iter().filter(|d| (from..=to).contains(&d.step) && d.load_axis.len() == 8) {
         let Some([slip, force]) = ops.get(&(p.step, p.wheel)) else { continue };
@@ -75,8 +75,8 @@ fn main() {
         let (mut n, mut m) = (mk("ngp"), mk(&model));
         let (_, fy_n) = n.forces(fz, vlat, vlong, spin);
         let (_, fy_m) = m.forces(fz, vlat, vlong, spin);
-        let peak_n = peak(grid(0.5, 20.0, 0.25), |a| n.mu_y(fz, a)).0;
-        let peak_m = peak(grid(0.5, 20.0, 0.25), |a| m.mu_y(fz, a)).0;
+        let (peak_n, at_n) = peak(grid(0.5, 20.0, 0.25), |a| n.mu_y(fz, a));
+        let (peak_m, at_m) = peak(grid(0.5, 20.0, 0.25), |a| m.mu_y(fz, a));
         // The brush's own friction, ψ and sliding speed at the frame, its input as the game's seam builds it.
         let cal = rbr_tyre::fit::calibration(&wheel(p), &rbr_tyre::Tuning::default()).unwrap_or_else(|e| panic!("{e}"));
         let x = EvalInput {
@@ -103,7 +103,7 @@ fn main() {
         let e = brush::eval(&x, &cal);
         let (vsx, vsy, _) = brush::slip_velocities(&x);
         println!(
-            "{} {} {:.0} {:+.2} {:+.3} {:+.2} | {:+.3} {:+.3} | {:+.3} | {:+.3} {:.3} {:.2} {:.2} | {:.3} {:.3} {:.1}",
+            "{} {} {:.0} {:+.2} {:+.3} {:+.2} | {:+.3} {:+.3} | {:+.3} | {:+.3} {:.3} {:.2} {:.2} | {:.3} {:.3} {:.1} | {:.2} {:.2}",
             p.step,
             p.wheel,
             fz,
@@ -119,7 +119,9 @@ fn main() {
             vsx.hypot(vsy),
             peak_n,
             peak_m,
-            v
+            v,
+            at_n,
+            at_m
         );
     }
 }
