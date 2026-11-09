@@ -624,7 +624,7 @@ mod tests {
                 ..Default::default()
             };
             let mut output = ctx.run_pass(input, |ctx| {
-                egui::Area::new(egui::Id::new("track")).fixed_pos(egui::Pos2::ZERO).show(ctx, |ui| draw(ui));
+                egui::Area::new(egui::Id::unique("track")).fixed_pos(egui::Pos2::ZERO).show(ctx, |ui| draw(ui));
             });
             output.textures_delta.clear();
         }
