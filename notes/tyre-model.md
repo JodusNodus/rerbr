@@ -1110,7 +1110,8 @@ loose layer (labels as above):
   15-25°, ~3-3.5 /rad (Fig 2.7, fig ±0.05). Holloway 1989 (via McIntyre Fig 52): an ATV tyre on clay/gravel still
   rising at 15° (fig ±0.03). Croft-White, Roodt, SATC, McIntyre's clay, CRREL 95-1, ERDC 3-666: no depth or firmness
   link to the build-up (Roodt: more and coarser loose chips on a sealed road give a lower locked μ, level only).
-  Macnabb's PDF was not on disk.
+  Macnabb (ESV 98, ABS on a recently graded loose gravel road, silty sand with gravel): braking only, no lateral
+  curve and no layer depth (its depth column is the tread's).
 - Model: dry α0 3.4° at 9 mm, 4.8° at 17.5 mm, 6.3° from 25 mm, linear between, the ends held, on NGP's blended
   `SoilThickness` (`ForceInput::soil_thickness`, scratch `+0x258`, already in the model's input: no new layout), times
   the wet ratio 9.7/6.3 by the WaterFactor. Anchors (ours, the direction from the evidence above): 9 mm α90 8° between
@@ -1118,7 +1119,9 @@ loose layer (labels as above):
   25 mm pea stone (its layer is deeper than NGP's deepest). Fitted with `force_sweep --soil` on the scorecard's gravel
   probe (4 kN, 15 m/s): α90 / C_α/Fz dry 8.0° / 11.2, 10.25° / 9.1 (15 mm), 11.0° / 8.4, 13.25° / 7.2 (22.5 mm),
   14.25° / 6.6; wet (WaterFactor 1) 12.0° / 7.8, 15.25° / 6.2, 16.75° / 5.8, 19.75° / 4.8, 21.0° / 4.5; ngp 7.5° / 9.1
-  on every depth. A grass or snow blend raises the blended thickness (grass 30 mm).
+  on every depth. Caveat: Croft-White's ~12° is a wet road, ~8° dry by our weak wet/dry ratio, so a dry gravel
+  road's α90 is 8-12° and the anchors inside that span are ours. A gravel edge blended with grass (30 mm) takes the
+  blend's thickness: a softer verge.
 - Depth shares along the driveline (lab `surface_across DATA STAGE driveline`, every 2 m, the blend's weights, `.mat`
   new dry; the driveline gives RSF 345 40/60 % shallow/deep, 14.1 mm against the autopilot line's 37/63 %, 14.3 mm),
   shallow 9-15 / deep 17.5-22.5 / deeper 25-30 mm of the gravel: retail 24 gravel stages (133 km) 33 / 48 / 19 %
