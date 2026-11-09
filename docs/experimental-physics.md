@@ -651,6 +651,9 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - MoTeC M1 boost aim: https://www.hpacademy.com/courses/boost-control/motec-m1-closed-loop-boost-control-tuning/
 - Link G4+ boost target: https://www.hpacademy.com/courses/link-g4-plus-software-tutorial/advanced-fuctions-closed-loop-boost-control/
 - Turbo tip-in times and inertia, Chalmers: https://publications.lib.chalmers.se/records/fulltext/255844/255844.pdf
+- Turbo rotor inertia and bearing friction, Perge et al. 2017 (Lubricants 5(3) 29): https://doi.org/10.3390/lubricants5030029
+- Turbo bearing friction, Chung et al. 2017 (KAIS 18(1) 585): https://doi.org/10.5762/kais.2017.18.1.585
+- Turbo rotor inertia of a 2.0 L engine, Chung & Lee 2016 (Trans. KSAE 24(1) 33): https://doi.org/10.7467/KSAE.2016.24.1.033
 - MoTeC anti-lag: https://motec.zendesk.com/hc/en-gb/articles/14565159804687-Checklist-Anti-Lag-Setup
 - Link e-throttle anti-lag: https://forums.linkecu.com/topic/14055-e-throttle-antilag-setup/
 - Ignition cuts and exhaust flow, CSP's powertrain notes: https://github.com/AssettoCN/ac-docs/blob/main/docs/en/car/physics/powertrain.md
@@ -661,7 +664,7 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - FIA Article 260 (2021), R1–R3, Rally3–5: https://www.fia.com/sites/default/files/260_2021_wmsc_2020.12.16.pdf
 - FIA Article 261 (2023), Rally2: https://www.fia.com/sites/default/files/261_2023.pdf
 - MoTeC M1 drive-by-wire, throttle aim as airflow (HP Academy): https://www.hpacademy.com/courses/motec-m1-software-tutorial/additional-functions-dbw-throttle/
-- EPA engine benchmarking, 2013 Ford 1.6 L EcoBoost steady map: https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
+- EPA engine benchmarking, steady maps of nine road engines (2013 Ford 1.6 L EcoBoost and others): https://www.epa.gov/vehicle-and-fuel-emissions-testing/benchmarking-advanced-low-emission-light-duty-vehicle-technology
 - BeamNG.drive, modelling part-throttle torque curves: https://beamng.com/game/news/blog/throttle-torque-curves/
 - Niels Heusinkveld, throttle models in sims: https://www.youtube.com/watch?v=0gW-cbSX3Uc
 - BeamNG engine braking and friction, a forum reading of its engine code: https://www.beamng.com/threads/engine-braking-calculations-wrong.94673/
