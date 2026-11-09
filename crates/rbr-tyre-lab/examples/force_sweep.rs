@@ -1,6 +1,6 @@
 //! Steady force sweeps per model on a probed wheel, as CSV: the lateral force over the slip angle at fixed slip ratios
 //! (default), or with `--long` the longitudinal force over the slip ratio at fixed slip angles. The curves of
-//! `docs/experimental-physics.md`'s tyre figures (`harness/tyre_curves.py`).
+//! `docs/tyre-model.md`'s tyre figures (`harness/tyre_curves.py`).
 //!
 //! Research tooling (ours, experimental): the wheel as `scorecard` sets it up (the probe's dump, the soil under it),
 //! NGP's tyre (`ngp`) and the profile models (`brush`) as `steady::Tyre`s at one load and contact speed. Forces in N,
