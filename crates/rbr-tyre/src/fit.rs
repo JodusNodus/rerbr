@@ -11,7 +11,7 @@ use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 use crate::brush::{eval, Calibration, EvalInput, CORNERING_OVER_NGP};
 use crate::calibrate::{calibrate, calibrate_with, CalPoint, CalTargets};
 use crate::loose::{self, Levels, Loose};
-use crate::tuning::Tuning;
+use crate::tuning::{Tuning, SLIDE_GRIP_MODEL};
 use crate::Wheel;
 
 /// The sweeps' speed, m/s (ours, as the lab's).
@@ -21,36 +21,34 @@ const NOMINAL_LOAD: usize = 3;
 
 /// The brush's calibration for `w`: NGP's peak forces and its cornering slope over 0 to 2° times
 /// [`CORNERING_OVER_NGP`], the longitudinal stiffness [`crate::brush::KX_OVER_KY`] times the cornering one (so 1.3
-/// times that of NGP's slope as well), its friction solved for NGP's longitudinal peak. `tuning`'s stiffness
-/// multiplies the slope, and its slide grip, when set, takes the lateral Coulomb level that gives it
-/// ([`slide_grip`]), each with the peaks solved again.
+/// times that of NGP's slope as well), its friction solved for NGP's longitudinal peak, and the lateral Coulomb level
+/// solved for the slide grip ([`slide_grip`]: `tuning`'s, else [`SLIDE_GRIP_MODEL`]). `tuning`'s stiffness multiplies
+/// the slope; the peaks are solved again with each.
 pub fn calibration(w: &Wheel, tuning: &Tuning) -> Result<Calibration, String> {
     let (targets, point) = setup(w)?;
     let targets = CalTargets { fit_lat: targets.fit_lat * CORNERING_OVER_NGP * tuning.stiffness, ..targets };
     let mut cal = calibrate(&targets, &point);
-    if let Some(want) = tuning.slide_grip {
-        // The ratio barely moves with the level the solve restores: three rounds settle it.
-        for _ in 0..3 {
-            let (mut lo, mut hi) = (SLIDE_COULOMB.0, SLIDE_COULOMB.1);
-            for _ in 0..50 {
-                let c_y = (lo + hi) / 2.0;
-                match slide_grip(&Calibration { mu_yk: c_y * cal.mu_ys, ..cal }) < want {
-                    true => lo = c_y,
-                    false => hi = c_y,
-                }
+    let want = tuning.slide_grip.unwrap_or(SLIDE_GRIP_MODEL);
+    // The ratio barely moves with the level the solve restores: three rounds settle it.
+    for _ in 0..3 {
+        let (mut lo, mut hi) = (SLIDE_COULOMB.0, SLIDE_COULOMB.1);
+        for _ in 0..50 {
+            let c_y = (lo + hi) / 2.0;
+            match slide_grip(&Calibration { mu_yk: c_y * cal.mu_ys, ..cal }) < want {
+                true => lo = c_y,
+                false => hi = c_y,
             }
-            cal = calibrate_with(&targets, &point, (lo + hi) / 2.0);
         }
+        cal = calibrate_with(&targets, &point, (lo + hi) / 2.0);
     }
     Ok(cal)
 }
 
-/// The lateral Coulomb level over the static one the slide grip is solved within: the fall's whole range on the
-/// tuning's ([`crate::tuning::SLIDE_GRIP`] lies inside it), the model's
-/// [`crate::brush::MU_C_OVER_S`] at 0.886.
+/// The lateral Coulomb level over the static one the slide grip is solved within: the fall's whole range
+/// ([`crate::tuning::SLIDE_GRIP`] lies inside it).
 const SLIDE_COULOMB: (f64, f64) = (0.05, 1.0);
 
-/// The slide grip of `cal` (the tuning's [`Tuning::slide_grip`]): μ_y at 30° over its peak (0 to 30° by 0.05°), at
+/// The slide grip of `cal` ([`Tuning::slide_grip`]): μ_y at 30° over its peak (0 to 30° by 0.05°), at
 /// 4 kN and 15 m/s, free rolling, on the calibration point's unit surface.
 pub fn slide_grip(cal: &Calibration) -> f64 {
     let fy = |deg: f64| {

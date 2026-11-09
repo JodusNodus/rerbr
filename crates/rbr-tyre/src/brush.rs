@@ -109,9 +109,9 @@ pub fn friction_sliding_speed(vs: f64, vr: f64) -> f64 {
 /// rolling tyre's side force falls less than the locked wheel's braking friction: TRR 621 (1976, Calspan flat belt,
 /// bias-belted, dry, 48 km/h) about 1.0 of the peak at 30° and 0.94 at 90°; Persson (J. Phys. Condens. Matter 23,
 /// 2011, a model with flash temperature) 0.97 at 25°; NGP 0.865 at 30°; the road MF sets' full slide 0.73-0.83. With
-/// the whole fall the brush gave 0.833 at 30° (4 kN, 15 m/s). The value puts it at 0.89, the scorecard band's upper end
-/// (0.73-0.90), on those weaker sources: a user decision (2026-11-08), made for a car that is easier to catch past the
-/// limit on fast tarmac.
+/// the whole fall the brush gave 0.833 at 30° (4 kN, 15 m/s); this share gave 0.886 (a user decision, 2026-11-08).
+/// The level at 30° is now the slide grip's, solved per wheel ([`crate::tuning::SLIDE_GRIP_MODEL`]); this share
+/// shapes the fall with sliding speed on the way there.
 pub const LATERAL_FALL: f64 = 0.65;
 
 /// The friction at sliding speed `vs`, m/s, between its level at rest `mu_s` and its Coulomb level `mu_k`.

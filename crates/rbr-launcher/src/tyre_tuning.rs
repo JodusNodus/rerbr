@@ -36,7 +36,7 @@ pub fn tuning_section(ui: &mut Ui, physics: PhysicsProfile, tuning: &mut Tuning)
         let mut slide = tuning.slide_grip.unwrap_or(tuning::SLIDE_GRIP_MODEL);
         let (lo, hi) = tuning::SLIDE_GRIP;
         let tip = "Side grip left at 30° of slip over the peak (dry tarmac, 4 kN, 54 km/h): lower slides away \
-                   sooner past the limit. The model's 0.886; road tyres 0.73-0.83, racing tyres 0.80-0.90.";
+                   sooner past the limit. The model's 0.83; road tyres 0.73-0.83, racing tyres 0.80-0.90.";
         if ui.add(Slider::new(&mut slide, lo..=hi).step_by(0.001).fixed_decimals(3)).on_hover_text(tip).changed() {
             let slide = (slide * 1000.0).round() / 1000.0;
             tuning.slide_grip = (slide != tuning::SLIDE_GRIP_MODEL).then_some(slide);

@@ -1985,7 +1985,7 @@ physics keeps none); championship stages and trials run untuned.
 
 | Key | Range | Maps to | Also moves |
 | --- | --- | --- | --- |
-| `slide-grip` | 0.70-0.95, model 0.886 | μ_y(30°)/peak at 4 kN, 15 m/s, free rolling, on the calibration point: the lateral Coulomb level over the static one (model `MU_C_OVER_S` 0.8) solved per wheel by bisection over 0.05-1.0, the peak and slope solved again (`fit::calibration`) | the locked side force past the peak (`locked_mu_y_a30_4k` 0.432 / 0.477 / 0.486 at 0.70 / model / 0.95); peak angle 7.0° to 7.25° from 0.92. Braking unchanged (only the lateral axis's level moves): peak μ_x brake 1.2921, locked over peak 0.718, Cα and Kx within 0.1 % |
+| `slide-grip` | 0.70-0.95, model 0.83 (solved untuned too) | μ_y(30°)/peak at 4 kN, 15 m/s, free rolling, on the calibration point: the lateral Coulomb level over the static one (`MU_C_OVER_S` 0.8 before the solve) solved per wheel by bisection over 0.05-1.0, the peak and slope solved again (`fit::calibration`) | the locked side force past the peak (`locked_mu_y_a30_4k` 0.432 / 0.477 / 0.486 at 0.70 / model / 0.95); peak angle 7.0° to 7.25° from 0.92. Braking unchanged (only the lateral axis's level moves): peak μ_x brake 1.2921, locked over peak 0.718, Cα and Kx within 0.1 % |
 | `tarmac`, `gravel`, `snow`, `ice` | ×0.70-1.30 | NGP's grip handed to the brush (static friction) by the wheel's surface: hard surfaces of class 5 (material 116) ice, other hard tarmac; soil of class 3 snow, other soil (gravel, grass, rock) gravel; a two-material blend by its class shares | the slopes that follow the level: gravel's shear law and ice's low-μ stiffness ×F; tarmac Cα/Fz 22.9 → 21.7 / 23.8 at 0.8 / 1.2 (the brush's 0-2° slope bends with μ). NGP's soil force on top is not scaled |
 | `stiffness` | ×0.70-1.30 | the slip stiffnesses: the brush's cornering slope target (`CORNERING_OVER_NGP` × F, Cx = `KX_OVER_KY` Cy), NGP's slope ice falls back to, loose-v1's slope and gravel's shear law (s0 / F); the peaks solved again | the peak slip (7.0° → 10.75° / 4.75° at 0.7 / 1.3) and the relaxation length σ = C/k with it (0.249 → 0.164 / 0.353 m) |
 | `response` | ×0.5-2.0 | the relaxation lengths: both carcass stiffnesses over F (the damping's V d/c with them) | nothing steady |
@@ -2007,7 +2007,16 @@ circles `car_grip.py` r40 on map 85, flat):
 
 The slide grip is solved on the calibration point (unit surface, best temperature, pressure factor 1) and read on the
 probed wheel; the two agree within 0.005. The lab's peak μ per wheel for `replay_gg.py`'s tyre use (`limit_frames`)
-stays the untuned brush's.
+stays the untuned brush's. The table's model column is the brush before the model took 0.83.
+
+- The model's slide grip is 0.83 (2026-11-09, a user decision after driving 0.83 on the panel): the solve runs
+  untuned too (`tuning::SLIDE_GRIP_MODEL`), in place of `LATERAL_FALL`'s own 0.886. It is road tyres' top (0.73-0.83),
+  racing tyres' lower part (0.80-0.90) and the top of Croft-White's WRC tarmac 0.71-0.83. Scorecard, experimental-brush
+  (f36c3a34, before / after): 90/111 both; `tarmac-mu-y30-over-peak` 0.886 → 0.834 (read on the probe); ice
+  μ_y(20°)/peak 0.940 → 0.915 and its end over max 0.963 → 0.949 (both still MISS, toward the band); ice coast crr
+  0.033 → 0.002 (MISS both); braking within 0.4 %. The flat r40 tarmac circle 1.187 → 1.143 g (ngp 1.181; real
+  narrow-tarmac Rally2 1.0-1.2 g, context), presumably the tyres past the peak where the fall is now steeper (not
+  traced). The solve costs about 0.1 s per wheel when a brush is built (lab, two builds: 2.8 → 3.0 s).
 
 ## Open
 
