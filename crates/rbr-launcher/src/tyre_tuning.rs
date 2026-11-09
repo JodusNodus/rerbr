@@ -37,7 +37,7 @@ pub fn tuning_section(ui: &mut Ui, physics: PhysicsProfile, tuning: &mut Tuning)
         let (lo, hi) = tuning::SLIDE_GRIP;
         let tip = "Side grip left at 30° of slip over the peak (dry tarmac, 4 kN, 54 km/h): lower slides away \
                    sooner past the limit. The model's 0.886; road tyres 0.73-0.83, racing tyres 0.80-0.90.";
-        if ui.add(Slider::new(&mut slide, lo..=hi).step_by(0.005).fixed_decimals(3)).on_hover_text(tip).changed() {
+        if ui.add(Slider::new(&mut slide, lo..=hi).step_by(0.001).fixed_decimals(3)).on_hover_text(tip).changed() {
             let slide = (slide * 1000.0).round() / 1000.0;
             tuning.slide_grip = (slide != tuning::SLIDE_GRIP_MODEL).then_some(slide);
         }
@@ -91,5 +91,18 @@ mod tests {
         assert!(args(brush, &Tuning::default()).is_empty());
         assert!(args(PhysicsProfile::Experimental, &tuned).is_empty());
         assert!(args(PhysicsProfile::Ngp, &tuned).is_empty());
+    }
+
+    #[test]
+    fn drawing_the_section_leaves_the_values_as_they_are() {
+        // A slider snaps its value to its step when drawn: the model's slide grip must lie on it.
+        for before in [Tuning::default(), Tuning { slide_grip: Some(0.82), gravel: 0.9, ..Tuning::default() }] {
+            let mut t = before;
+            egui::Context::default()
+                .run_ui(egui::RawInput::default(), |ui| tuning_section(ui, PhysicsProfile::ExperimentalBrush, &mut t))
+                .textures_delta
+                .clear();
+            assert_eq!(t, before);
+        }
     }
 }
