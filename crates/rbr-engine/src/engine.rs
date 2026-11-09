@@ -291,20 +291,24 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     }
     let dfco = s.dfco && !anti_lag;
     let error = (spec.rpm_idle - rpm) / spec.rpm_idle;
-    // The overrun air holds the manifold while the fuel is cut, then hands over to the idle loop by decaying.
+    // The overrun air at this speed (it holds OVERRUN_P·p_a): it holds the manifold while the fuel is cut, then hands
+    // over to the idle loop by decaying.
+    let overrun_air =
+        spec.overrun_air * spec.eta_v.at(rpm) * rpm / (spec.eta_v.at(ecu::OVERRUN_RPM) * ecu::OVERRUN_RPM);
     if dfco {
-        let share = spec.eta_v.at(rpm) * rpm / (spec.eta_v.at(ecu::OVERRUN_RPM) * ecu::OVERRUN_RPM);
-        s.overrun = (spec.overrun_air * share - spec.idle_air).max(0.0);
+        s.overrun = (overrun_air - spec.idle_air).max(0.0);
     } else {
         s.overrun *= exp(-dt / ecu::OVERRUN_TAU);
     }
     let idle_loop = ecu_idle && !dfco && pedal < ecu::PEDAL_CLOSED && rpm < spec.rpm_idle + ecu::IDLE_BAND;
     let idle_air = if idle_loop {
-        let low = -spec.idle_air;
         // Anti-stall: the air above the feed-forward is whole down to idle − 300 rpm, then falls to none at half idle,
         // so an engine the clutch drags down (braking in gear) gets the air to catch a dip, not to push the car.
         let ceiling =
             spec.idle_air + (spec.idle_air_max - spec.idle_air).max(0.0) * ecu::anti_stall(rpm, spec.rpm_idle);
+        // Over idle the loop closes the air down to the floor, not shut.
+        let floor = (overrun_air * ecu::IDLE_FLOOR_P / ecu::OVERRUN_P).min(spec.idle_air).min(ceiling);
+        let low = floor - spec.idle_air;
         let high = ceiling - spec.idle_air;
         // Conditional integration: above idle + 100 rpm (the overrun air still decaying, a fall towards idle) the
         // integral only bleeds what it gained, down to 0, so it neither winds down and undershoots nor holds a wind-up
@@ -318,7 +322,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
             s.idle_i
         }
         .clamp(low, high);
-        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(0.0, ceiling) + s.overrun
+        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(floor, ceiling) + s.overrun
     } else {
         s.idle_i = 0.0;
         spec.idle_air + s.overrun

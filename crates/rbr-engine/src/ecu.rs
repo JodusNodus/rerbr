@@ -49,6 +49,10 @@ pub const OVERRUN_P: f64 = 0.2;
 pub const OVERRUN_RPM: f64 = 3000.0;
 /// The overrun air's decay once the cut ends, s: a dashpot's or idle valve's hand-over to the idle loop (inferred).
 pub const OVERRUN_TAU: f64 = 0.5;
+/// The idle loop's least air over idle with the fuel on: what holds 0.1·p_a at any speed, as the overrun air (road
+/// engines' lowest fired loads are 9.2–34 kPa, EPA; race ECUs hold a throttle aim minimum, MoTeC FK8R; the level is
+/// ours, under every sample's idle need).
+pub const IDLE_FLOOR_P: f64 = 0.1;
 /// Rev limiter, Link's convention: ignition cut 0 → 100 % over the 200 rpm below the limit, fuel cut from 100 rpm above
 /// it (Link G4+ control range 200 rpm, settling 100–150 rpm under the limit, hard cut +50 to +200; HPA webinars 084 and
 /// 171), so RPMLimit is the cap, as NGP and the class rules read it.

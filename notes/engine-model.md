@@ -140,6 +140,11 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   integral only bleeds to 0 (inferred: no wind-down while the overrun air decays, and no wind-up from a clutch's bite
   held over idle: before, the Fiesta Rally2 pulled away at a closed pedal crept at 1262–1397 rpm, idle 1200, now 1205).
   Tested: after 3 s at 80 % of idle, 10 s at idle + 150 rpm brings the idle air under its feed-forward.
+- Over idle the loop closes the air down to a floor, the air that holds 0.1·p_a at that speed (sized as the overrun
+  air), not to 0 (road engines' lowest fired loads 9.2–34 kPa [EPA]; race ECUs hold a throttle aim minimum on overrun
+  [MoTeC FK8R]; 0.1 is ours, under every sample's idle need). Before, the manifold fell to 4.5–8 kPa at idle + 50 to
+  + 700 rpm with the fuel on; now 12.6–13.1 kPa at the lowest (Scorecard). A blip's fall back within 50 rpm of idle
+  in neutral is the same within 0.15 s.
 - Idle air ceiling: the plate's area at 10 % position, every ECU car [HPA 138] (Haltech's DBW idle maximum starts at
   about 10 %); [Link idle] idles at 3.5 %. Anti-stall: the ceiling's reach above the feed-forward is whole down to
   idle − 300 rpm and falls linearly to none at half idle (`ecu::anti_stall`). Link's anti-stall gain adds idle valve
@@ -407,12 +412,6 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   gave two), held with no combustion too, and the unburnt term, written for anti-lag, which also turns the idle retard
   into manifold heat (+330 K for 27°, the road data about +180 K). It drives the turbine on a lift; the shaft still
   stops at idle (static loss). Not changed.
-- Held over idle at a closed pedal with the fuel on (under idle + 800 rpm, where DFCO starts), the idle loop can take
-  the idle air to 0 (`engine.rs` `low = -spec.idle_air`; the integral below idle + 100, the P term above): the ECU
-  samples' manifold falls to 4.5–8 kPa at idle + 50, 100, 500 and 700 rpm, 12–20 kPa at + 200 and 300. Road engines'
-  lowest fired loads sit at 9–34 kPa (most 15–26) and their fuel-cut points at 16–43 kPa [EPA]; race ECUs hold a
-  throttle aim minimum on overrun [MoTeC FK8R]. Fixed-stop cars on overrun hold 6–14 kPa at 2000–7000 rpm. Not
-  changed.
 - Closed-pedal braking at 2000–5000 rpm still runs 0.2–0.4 bar over the road engines' with the fuel cut (Scorecard):
   the pumping at the 0.2·p_a overrun air is 0.8 bar, and Sandoval's FMEP for a 1.6 L four is over the road engines'
   0.5–0.7 bar at 2000 rpm. The limit point is NGP's, which no measured race engine checks.
