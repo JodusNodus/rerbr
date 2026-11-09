@@ -17,8 +17,11 @@ const ETA_C_MIN: f64 = 0.4;
 pub const OMEGA_STAR: f64 = 15_000.0;
 /// The turbine's efficiency, turbine and bearings' mechanical losses apart (guess).
 pub const ETA_T: f64 = 0.65;
-/// Shaft inertia, kg·m² (Chalmers T45 1.16e-5, GT1548 5.5e-6).
-pub const INERTIA: f64 = 1e-5;
+/// Shaft inertia, kg·m²: Perge 2017's measured passenger-car rotor with a 52 mm compressor (measured rotors 1.70e-5 and,
+/// a 2.0 L engine's, 2.72e-5, Chung 2016; Chalmers' T45 1.16e-5 and GT1548 5.5e-6 for smaller engines). With 1e-5 the
+/// samples spooled from 5 bar BMEP to 90 % at 2000 rpm in 0.46–0.53 s, against GT-Power's 0.62–1.02 s for road
+/// turbos at 2100–2400 rpm (Chalmers); now 0.64–0.74 s.
+pub const INERTIA: f64 = 1.7e-5;
 /// Bearing losses: a·ω + b·ω² + 100 W static (our reading of rF2's `TurboFriction`, a torque and a power that ramps
 /// with speed; its `TurboStaticFrictionWatts` is there against numerical problems at low spool speeds).
 const LOSS_A: f64 = 0.002;

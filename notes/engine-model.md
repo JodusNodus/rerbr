@@ -232,10 +232,16 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
 - ω* does not change K (10 000–20 000 rad/s moved the spread in the third decimal); it sets the spool time through
   ½Jω² (measured). Kept at 15 000.
-- Shaft inertia 1e-5 kg·m² [Chalmers] (their T45: 1.16e-5), [GT1548]. Losses 0.002ω + 2.5e-6ω² + 100 W, our reading
-  of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed), power (W, ramps up linearly with speed)",
-  and `TurboStaticFrictionWatts=100`, which "prevents numerical problems at low spool speeds" [rF2 engine.ini]. The
-  static 100 W stops the shaft at idle and at a closed pedal (ω_t 0 on both turbo samples).
+- Shaft inertia 1.7e-5 kg·m², a measured passenger-car rotor with a 52 mm compressor [Perge 2017] (a 2.0 L engine's
+  2.72e-5 [Chung 2016]; [Chalmers]' T45 1.16e-5 and [GT1548] 5.5e-6 for smaller engines). With 1e-5 the samples
+  spooled at 2000 rpm in 0.46–0.53 s (below), against [Chalmers]' 0.62–1.02 s at 2100–2400 rpm; now 0.64–0.74 s.
+  On a lift at 5000 rpm without anti-lag the turbo sample keeps 0.09 bar of boost after 0.5 s (under 0.09 before;
+  tested under 0.15).
+- Losses 0.002ω + 2.5e-6ω² + 100 W, our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any
+  speed), power (W, ramps up linearly with speed)", and `TurboStaticFrictionWatts=100`, which "prevents numerical
+  problems at low spool speeds" [rF2 engine.ini]. The static 100 W stops the shaft at idle and at a closed pedal
+  (ω_t 0 on both turbo samples). At 80 000 rpm they take 292 W, between the two rigs' 95 W [Chung 2017] and about
+  350–500 W [Perge 2017] (oil 90 °C and 50–90 °C).
 - Exhaust temperature affine in flow for the firings that burn, 520 °C at 0 and 950 °C rated, capped at 1150 °C
   (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess). The 520 °C is the intercept of a
   line through EPA's four road turbos' 849 fired points (940 °C at the most flow, rms 85 K; turbine inlet against
@@ -284,7 +290,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   `rbr-standalone` `live/picture.rs` `model_turbo` maps it into SND1's turbo words (`notes/sound.md` "Engine").
 - Spool, the [Chalmers] case (GT-Power): at a fixed speed from the steady pedal for 5 bar BMEP to 90 % of the steady
   WOT torque, at 1000 rpm Volvo's 2.0 L four (its turbo not given) takes 0.54 s, their 1.5 L three with a T45
-  (1.157e-5 kg·m²) 1.00 s, and 0.68 s at 0.050 kg·cm² (Table 17). Tested
+  (1.157e-5 kg·m²) 1.00 s, and 0.68 s at 0.050 kg·cm² (Table 17); 0.87–1.60 s at 1500–1800 rpm and 0.62–1.02 s at
+  2100–2400 on the same engines (Tables 15–16). The figures below are with the old 1e-5 rotor. Tested
   0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000 (0.64 before the
   retarget fix lowered its 2000 rpm target from 1.93 to 1.70 bar), cable_turbo 0.77 s at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
@@ -303,31 +310,33 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## Against measured engines
 
-EPA's steady maps of nine road engines [EPA] (2026-11, `/tmp` analysis, not kept) against the samples, warm, steady at
-a fixed speed (a probe over `rbr_engine`, not kept). Road engines run λ 1 and EGR and are not race engines; they
-bound the physics, not the calibration.
+EPA's steady maps of nine road engines [EPA] (2026-11; the Scorecard below scores them, with the samples and the
+Fiesta Rally2), warm, steady at a fixed speed. Road engines run λ 1, EGR and VVT and are not race engines; they bound
+the physics, not the calibration. "Was" is before this round (`a5ea4790`).
 
 - BMEP at 100 kPa MAP, 1500 / 2500 rpm: road turbos 8.7–11.0 / 7.6–9.3 bar (Ford 1.6 8.68 / 9.26, Ford 2.7 8.92 /
-  7.62, Honda 1.5 10.95 / 8.07, Mazda 2.5T 9.20 / 8.88); turbo sample 15.5 / 14.0, cable_turbo 9.8 / 12.2. At
-  90 kPa, 2500 rpm: road NA 7.8–9.3 (Chevy 2.5 7.79, Mazda 2.0 9.12, Mazda 2.5 9.32); na sample 8.1. The turbo
-  sample's K (η_ig ≈ 0.57) gives 1.4–1.8× the road turbos' torque at 100 kPa. The table asks for a high K: a Rally2's
-  432 N·m from 1620 cc is 33.5 bar BMEP, at least 13.4 bar per bar at the 2.5 bar abs cap [Škoda Rally2 engine],
-  [FIA 261].
-- Share of the 100 kPa torque at 50 kPa, 2500 rpm: road turbos 27 % (Honda 42 %); turbo sample 39 %, na 33 %. Zero
-  torque at 18.5–27.2 kPa on the road engines; turbo sample 20.6, na 25.2 kPa.
-- Warm idle MAP: Toyota 2.5 22.3 kPa (777 rpm), Mazda 2.5 23.4–25.6 (670–700), Mazda 2.0 28.5 (767); samples na
-  33.2, old 27.1, cable_turbo 30.0, turbo 20.3; RSF modern turbos 20–22. Idle spark −1.9 to 8.9° BTDC on those
-  three.
-- Closed pedal with the fuel cut, BMEP at 2000 / 4000 / 5000 rpm: road −1.1 to −1.5 / −1.7 to −2.0 / −2.2 to −2.5
-  bar at 16–43 kPa MAP (Chevy 2.5, Honda 1.5T, Mazda 2.5, Mazda 2.5T, Toyota 2.5); ECU samples na −2.17 / −2.84,
-  turbo −2.43 / −3.23 / −3.67, cable_turbo −2.39 / −3.22, so 1.4–1.7× (s_f, from NGP's braking at the limit,
-  1.3–2.0). old (fixed stop, fuelled) −1.11 / −2.17. EPA's points stop at 5000–5760 rpm, NGP's is at the limit.
-- Exhaust (turbine inlet on turbos, ports on NA): idle 317–430 °C (NA), 470–515 °C at the Ford 1.6's lightest loads
-  at 1000 rpm, 199–266 °C (Honda) and 329–422 °C (Mazda 2.5T) under the fuel cut; the turbo samples 1035–1037 °C at
-  idle and 705–715 °C under the fuel cut. Part load matches: turbo sample 727 °C at pedal 0.15, 1500 rpm (163 N·m),
-  the Ford 1.6 732–783 °C near that load. Retard heats the exhaust: the Ford 1.6 at 2500 rpm light load
-  620–680 °C, retarded 720–854 °C (about +180 K for 27°). The model's unburnt term (anti-lag's, which takes the idle
-  retard too) adds about +330 K at idle for 27°, on a 700 °C intercept.
+  7.62, Honda 1.5 10.95 / 8.07, Mazda 2.5T 9.20 / 8.88); turbo sample 16.5 / 14.9 (was 15.5 / 14.0), Fiesta Rally2
+  14.9 at 2500, cable_turbo 9.8 / 12.7. At 90 kPa, 2500 rpm: road NA 7.8–9.3 (Chevy 2.5 7.79, Mazda 2.0 9.12, Mazda
+  2.5 9.32); na 8.2, old 7.8. The table sets the torque per bar of boost: a Rally2's 432 N·m from 1620 cc is 33.5 bar
+  BMEP, at least 13.4 bar per bar at the 2.5 bar abs cap [Škoda Rally2 engine], [FIA 261]; road turbos make about
+  9–10. K as an efficiency (K·AFR·λ/LHV) at 4000 rpm: road 0.36–0.44 (gross indicated, from their fuel-cut friction
+  and turbine pressure); turbo sample 0.48, Fiesta Rally2 0.48, na 0.44, old 0.41, cable_turbo 0.38.
+- Share of the 100 kPa torque at 50 kPa, 2500 rpm: road turbos 27 % (Honda 42 %); turbo sample 43 %, Rally2 43 %,
+  cable_turbo 39 %. Zero torque at 18.5–27.2 kPa on the road engines; na 21.6, old 22.0, cable_turbo 18.5, turbo and
+  Rally2 16.2–16.3 (was 20.4–25.2).
+- Warm idle MAP: Toyota 2.5 22.3 kPa (777 rpm), Mazda 2.5 23.4–25.6 (670–700), Mazda 2.0 28.5 (767); na 28.4, old
+  24.6, cable_turbo 24.4, turbo and Rally2 16.3 (was 33.2, 27.1, 30.0, 20.3 and 20.6). Idle spark −1.9 to 8.9° BTDC
+  on those three.
+- Closed pedal with the fuel cut, BMEP at 2000 / 4000 / 5000 rpm: road −1.08 to −1.48 / −1.74 to −2.00 / −2.16 to
+  −2.50 bar at 16–43 kPa MAP (Chevy 2.5, Honda 1.5T, Mazda 2.5, Mazda 2.5T, Toyota 2.5); na −1.66 / −2.22 / −2.60,
+  turbo −1.68 / −2.37 / −2.88, cable_turbo −1.66 / −2.36 / −2.88 (was −2.17 to −2.43 / −2.84 to −3.23 / −3.21 to
+  −3.67); old (fixed stop, fuelled) −0.92 / −1.83 / −2.24. EPA's points stop at 5000–5760 rpm, NGP's is at the limit.
+  The manifold on the overrun cut at 2000 rpm: road 15.8–26.5 kPa, ours 20.3.
+- Exhaust (turbine inlet on turbos, ports on NA): warm idle 296–430 °C at the NA ports; the turbos' lightest loads at
+  1000–1300 rpm 340–518 °C near MBT and 593–657 °C on the Ford 1.6 retarded to −10 to −11.5°; under the fuel cut
+  199–266 °C (Honda) and 329–422 °C (Mazda 2.5T); at 12.7–13.2 bar BMEP, 1500 rpm 585–732 °C; at the most flow
+  828–954 °C. Turbo sample: idle 661 °C, fuel cut 300, pedal 0.15 at 1500 rpm (12.8 bar) 564, rated 899
+  (was 1035, 708, 727, 924); cable_turbo idle 598, rated 968.
 - Full-load λ: road turbos 0.91–1.01, NA 0.73–1.06 (ours 0.88).
 
 ## Scorecard
@@ -345,8 +354,9 @@ group and year. The Rally2 rows are the Fiesta Rally2 (`Ford_Fiesta_Rally2_ngp7`
 ## In game
 
 Numbers in `docs/experimental-physics.md` ("In game"), `b97695d86`, experimental = realistic + NGP's tyre (the brush
-is not released, user 2026-11-07), so every gap is the engine's. Tools `run-stage-compare.sh`, `cmp2.py` and
-`run-standing-start.sh` in the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
+is not released, user 2026-11-07), so every gap is the engine's. Not re-run after the friction by rpm, the idle
+floor, the exhaust heat and the 1.7e-5 rotor. Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-start.sh` in
+the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
 brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
 - track-11_O (gravel) 600 s, four cars: the same as on `0ef55141` to the 0.01 s (the brush is off on gravel). Exp
@@ -374,19 +384,13 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   them too and idles at 89 rad/s with the clutch open); NGP's clutch help opens at 65 rad/s, too late. Not traced why
   it never opens with the model's engine. The Golf's stall on the climb was the brush's (fixed, `tyre-model.md`).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
-- Modern turbos idle at 20–22 kPa, left so (below). Idle MAP with the 27° reserve and the residual gas, against
-  warm road idles of 22.3–28.5 kPa [EPA] and tuners' 27, 31 and 30–50 kPa [MOTOR], [Gears], [Tuning School]: samples
-  na 33.2, old 27.1, cable_turbo 30.0, turbo 20.3 kPa; RSF modern turbos (Rally2, R5, WRC) 20–22,
-  Group N and R4 22–23, Rally3/4 and R1 25–31, Group A, B, 4 and S1600/S2000/R2/R3 23–34. K dominates on the modern
-  turbos: 1.6–1.7e6 J/kg at idle (η_ig ≈ 0.57 of the stoichiometric 2.95e6) against 0.9–1.4e6 elsewhere; friction
-  (17 N·m, s_f clamped to 2.0) and pumping (10 N·m) are like the others'. At η_ig 0.38 they would idle near 28–30 kPa
-  (estimate).
-  The retarget fix leaves it (turbo sample 20.3 kPa before and after: idle sits in the held range, whose K is the
-  on-boost median). A part-load K that keeps the table: K(n, x) = K_wot(n)·f(x), x = m_charge / m_charge,wot(n) at
-  the same rpm, f(1) = 1 (so the identity at WOT, and the hold, are untouched), f falling to about 0.65 at idle
-  load (η_ig 0.57 → 0.38, guess). The idle air, the idle gains, the closed-pedal brake and the DBW part-pedal tests are
-  calibrated after K, so they would follow; aim_open and gate_base read WOT runs only. Not done (nothing reads idle
-  MAP; it would lower part-pedal torque everywhere, a feel change).
+- Modern turbos idle at 16.1–16.7 kPa (Rally2, R5, WRC 2006–2020 on RSF; 20–22 before the friction followed rpm),
+  under warm road idles of 22.3–28.5 kPa [EPA] and tuners' 27, 31 and 30–50 kPa [MOTOR], [Gears], [Tuning School];
+  every RSF car 16.1–31.5 kPa, the NA ones 21.5–31.5 (`tests/rsf_cars.rs`). The turbo sample and the Fiesta Rally2
+  make no torque at 16.2–16.3 kPa at 2500 rpm (road 18.5–27.2). Cause: the table's torque per bar of boost (K at
+  4000 rpm 0.48 as an efficiency, road 0.36–0.44) over Sandoval's friction at low speed. EPA's road K is flat with
+  load (Willans), so a part-load K under the WOT one has no support (proposed before, not done); race cams' overlap,
+  which raises tuners' idles to 30–50 kPa, is not modelled. Not changed.
 - Closed pedal below idle at a fixed speed, N·m, before → after the anti-stall fade: turbo sample 168 → 51 at 500
   rpm, 139 → 93 at 750, 110 at 1000; na 65 → 27 at 500; Fiesta Rally2 165 → 51, 136 → 91, 107; Fiesta R2 53 → 22 at
   500. Between idle − 300 and idle the whole ceiling stays.

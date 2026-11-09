@@ -192,10 +192,12 @@ square engine. The viscosity follows the 1.02 engine sim's engine temperature th
 engine at 20 °C has 1.6–2.4 times the friction of a warm one (a review of cold-start studies, Roberts et al. 2014,
 gives up to 2.5 times). In game the 1.02 sim's engine runs at 85–90 °C, so this rarely acts.
 
-One factor per car scales the whole curve. It is set so that a closed throttle at the rev limit, with the fuel cut,
+One factor per car scales the curve at the rev limit. It is set so that a closed throttle there, with the fuel cut,
 brakes with the car's own `BrakeCoefficient · MaxTorque`, the one braking point NGP gives, and it is clamped to
 0.6–2. The installed NA cars land at 1.32–1.87. Every installed turbo car asks for 2.3–4.9 and gets 2, since NGP's
-figure is a share of the boosted torque.
+figure is a share of the boosted torque. Below the limit the factor falls toward 1 with the square of the speed, so
+at low rpm the friction is Sandoval's own, which matches what EPA's road engines lose with the fuel cut at 2000 rpm.
+With one factor everywhere the samples braked 1.4–1.7 times as hard as those engines below 5000 rpm.
 
 ### Pumping
 
@@ -207,8 +209,9 @@ PMEP = (p_em − p_im) + 0.2 bar · (p_im / p_a) · (n / n_limit)²
 ```
 
 On overrun, ECU cars cut the fuel and hold the manifold near 0.2 bar with extra air, as real ECUs do (tuners read
-17–23 kPa of decel manifold pressure; EPA's road engines sit at 16–43 kPa with the fuel cut). Friction and pumping
-together are the engine braking.
+17–23 kPa of decel manifold pressure; EPA's road engines sit at 16–43 kPa with the fuel cut). Just over idle, with the
+fuel still on, the idle loop closes its air down to what holds 0.1 bar, not shut; road engines never run under
+9 kPa fired. Friction and pumping together are the engine braking.
 
 ### ECU
 
@@ -234,7 +237,8 @@ The parts of a race ECU that change torque:
 
 A compressor, a turbine and the shaft between them, with a wastegate, a blow-off valve and an intercooler of
 effectiveness 0.7. No rally turbo's map is public, so the compressor and turbine follow generic normalised maps, with
-a design speed of 15 000 rad/s and a shaft inertia of 1e-5 kg·m² (Chalmers' T45 has 1.16e-5). The model sizes them
+a design speed of 15 000 rad/s and a shaft inertia of 1.7e-5 kg·m², a measured passenger-car rotor (Perge et al.
+2017; Chalmers' T45 has 1.16e-5). The model sizes them
 per car at load:
 
 1. The boost target at each rpm is the boost the table's torque needs, capped by the class (2.5 bar absolute on the
@@ -311,7 +315,7 @@ How firm each part is:
 | Residual gas | the ideal cycle (Heywood) | textbook formula; compression ratios guessed |
 | Volumetric efficiency | the NA table's shape; 0.95 on turbos | inferred |
 | Friction components | Sandoval–Heywood (SAE 2003-01-0725), from an open implementation that cites the thesis page by page; its worked example reproduced within 4 % | published model; the paper itself is paywalled |
-| Friction level | one point per car, NGP's braking at the limit, clamped to 0.6–2 | the car's data, partly |
+| Friction level | one point per car, NGP's braking at the limit, clamped to 0.6–2; Sandoval's own at low rpm | the car's data, partly; low rpm against EPA's fuel-cut braking |
 | Oil viscosity | a Vogel fit through Anton Paar's 10W-40 data | measured data |
 | Pumping | the textbook form; its 0.2 bar flow loss picked from a 0.1–0.3 range | textbook form, guessed constant |
 | Overrun manifold pressure 0.2 bar | tuners' decel figures, 17–23 kPa; EPA's road engines 16–43 kPa with the fuel cut | practitioner, measured road engines |
@@ -321,20 +325,23 @@ How firm each part is:
 | Rev limiter | Link G4+ limiter (HP Academy webinars 084 and 171) | tuner docs |
 | Pedal map | Link and Haltech set the throttle from the pedal through a table, MoTeC M1 by airflow | tuner docs; the one to one start is ours, no rally map is public |
 | Plate flow at small openings | US 6591667's flow bench: C_D 0.70–0.77, a 5 mm² leak | measured, one 60 mm throttle |
-| Torque at part load | EPA's steady maps of nine road engines: zero torque at 18.5–27.2 kPa (ours 20.6–25.2), the turbos 27 % of their 100 kPa torque at 50 kPa (Honda 42 %; ours 33–39 %) | measured, road engines |
+| Torque at part load | EPA's steady maps of nine road engines: zero torque at 18.5–27.2 kPa (ours 16.2–22.0), the turbos 27 % of their 100 kPa torque at 50 kPa (Honda 42 %; ours 39–43 %) | measured, road engines |
 | Torque per charge on turbos | the table: a Rally2 makes 33.5 bar BMEP at no more than 2.5 bar abs | the car's data; on the turbo sample 1.4–1.8 times the road turbos' torque at 100 kPa |
-| Exhaust temperature | 950 °C at rated flow, 700 °C at none | guessed; matches EPA's road turbos at part load, 300–700 K hot at idle and on the fuel cut |
+| Exhaust temperature | a line through EPA's four road turbos, 520 °C at no flow; 300 °C where nothing burns; half the retard's lost work; 950 °C at rated flow | measured road engines; the rated point and the retard share inferred |
 | Boost aim by throttle | MoTeC M1 and Link boost aim tables (HP Academy courses) | tuner docs; where full aim starts is ours |
-| Class rules | FIA articles 254, 254A, 255, 255A, 260, 261; Appendix J 1985–2001 for the restrictor history | regulations; anti-lag and drive-by-wire years from the cars' history |
+| Class rules | FIA articles 254, 254A, 255, 255A, 260, 261; Appendix J 1985–2001 for the restrictor history (Group N 40, 36, 32 mm, 33 from 2010) | regulations; anti-lag and drive-by-wire years from the cars' history |
 | Turbo maps | generic normalised shapes, sized per car | inferred: no rally turbo map is public |
-| Shaft inertia, spool | Chalmers' GT-Power study: a 2.0 L four 0.54 s to 90 % at 1000 rpm, a 1.5 L three with a T45 1.00 s | published simulation |
+| Shaft inertia, spool | Chalmers' GT-Power study: a 2.0 L four 0.54 s to 90 % at 1000 rpm, a 1.5 L three with a T45 1.00 s, 0.62–1.02 s at 2100–2400 rpm; measured rotors 1.7e-5 and 2.7e-5 kg·m² (ours 1.7e-5); bearing loss 95–500 W at 80 000 rpm on two rigs (ours 292 W) | published simulation and measurements |
 | Anti-lag | Link settings: a kick of about 20 %, retard of 25–50° from the base, a hold of about 5 s after a lift | settings documented; our retard, fuel, cut, 3 s, boost aim and burn share guessed |
 | Drive-by-wire on modern rally cars | the era and the road engines; homologated ECU actuators | inferred: no team says it outright |
 
-No measured engine-braking curve of a race engine is public, so the friction level rests on NGP's own figure,
-checked against a published rFactor 2 coast curve of a real 2.0 L engine. EPA's road engines brake −1.1 to −1.5 bar
-BMEP at 2000 rpm and −1.7 to −2.0 at 4000 with the fuel cut; the ECU samples brake 1.4–1.7 times that. Turbo maps
-and spool rates are generic. Anti-lag's real torque on overrun is unpublished.
+No measured engine-braking curve of a race engine is public, so the friction level at the limit rests on NGP's own
+figure, checked against a published rFactor 2 coast curve of a real 2.0 L engine. EPA's road engines brake −1.1 to
+−1.5 bar BMEP at 2000 rpm and −1.7 to −2.0 at 4000 with the fuel cut; the ECU samples brake about −1.66 and −2.2 to
+−2.4. Turbo maps and spool rates are generic. Anti-lag's real torque on overrun is unpublished.
+
+`harness/engine_scorecard.py` scores the model against these published figures, row by row, from
+`data/engine-targets.csv` (`notes/engine-model.md`, "Scorecard").
 
 ## Compared with NGP and BeamNG
 
@@ -433,18 +440,22 @@ Closed pedal, N·m, ours / NGP / the rFactor 2 2.0 L coast curve scaled by displ
 
 | Sample | 2000 rpm | 4000 rpm | 6000 rpm | 8000 rpm |
 | --- | --- | --- | --- | --- |
-| old | −17.6 / −15.8 / −20.8 | −34.4 / −31.5 / −29.8 | −47.6 / −47.3 / −40.6 | −60.2 / −63.1 / −52.5 |
-| na | −27.7 / −13.9 / −16.6 | −36.2 / −27.8 / −23.9 | −45.7 / −41.7 / −32.6 | −55.9 / −55.6 / −42.1 |
-| turbo | −32.0 / −30.7 / −16.6 | −41.2 / −61.3 / −23.9 | −52.6 / −92.0 / −32.6 | −64.8 / −115.0 / −42.1 |
-| cable_turbo | −38.0 / −30.7 / −20.8 | −51.1 / −61.3 / −29.9 | −66.0 / −92.0 / −40.7 | −82.1 / −115.0 / −52.5 |
+| old | −14.6 / −15.8 / −20.8 | −29.0 / −31.5 / −29.8 | −42.4 / −47.3 / −40.6 | −58.8 / −63.1 / −52.5 |
+| na | −21.1 / −13.9 / −16.6 | −28.2 / −27.8 / −23.9 | −39.1 / −41.7 / −32.6 | −55.1 / −55.6 / −42.1 |
+| turbo | −15.1 / −30.7 / −16.6 | −30.2 / −61.3 / −23.9 | −45.0 / −92.0 / −32.6 | −68.5 / −115.0 / −42.1 |
+| cable_turbo | −26.4 / −30.7 / −20.8 | −37.6 / −61.3 / −29.9 | −56.5 / −92.0 / −40.7 | −86.7 / −115.0 / −52.5 |
+
+Each figure is a fresh engine held at that speed. The turbo sample's 2000 rpm is exactly its idle + 800 rpm, where
+the overrun cut has not started, so it keeps its fuel there; come down from higher it brakes with −21.4 N·m.
 
 NGP's braking line goes through zero at 0 rpm. Ours has a large part that doesn't fall with rpm, friction and pumping
 at a closed throttle, and so does BeamNG's 0 % line, which runs almost flat from about −70 N·m at 500 rpm to −90 N·m
 at 8500 rpm on an engine of about 600 N·m. At the rev limit ours matches NGP on NA cars, since that is where the
-friction is calibrated. On turbo cars ours brakes about half as hard as NGP at high rpm, because of the clamp.
+friction is calibrated, and at 2000–4000 rpm the NA sample sits near NGP and the rFactor 2 curve. On turbo cars ours
+brakes about half as hard as NGP at high rpm, because of the clamp.
 
 Below idle the figure's curves rise. With the pedal closed the ECU's idle air opens to its ceiling to stop a stall,
-down to 300 rpm under idle, then less: the turbo sample gives +110 N·m at 1000 rpm, +93 at 750 and +51 at 500 (was
+down to 300 rpm under idle, then less: the turbo sample gives +118 N·m at 1000 rpm, +94 at 750 and +37 at 500 (was
 +166 at 500 with the whole ceiling at any speed).
 
 In gear with the pedal closed a car creeps at its idle speed in first, as a real one does: on the flat the Fiesta
@@ -459,22 +470,22 @@ or off; the Golf needs a touch of throttle.
 ![Tip-in at fixed rpm](images/engine-model/tip-in.png)
 
 NGP's torque follows the pedal within the step and its turbo cars have no lag. In ours, from a closed pedal to full
-pedal at a fixed speed, the drive-by-wire NA sample reaches 90 % of its torque in 25–28 ms, the throttle motor's lag
+pedal at a fixed speed, the drive-by-wire NA sample reaches 90 % of its torque in 24–29 ms, the throttle motor's lag
 and the manifold's filling. The old sample, with a throttle per cylinder on a cable, gets there within the step. The
-turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.41 s at 3000 rpm
-and 0.34 s at 5000. It overshoots 1.8 % at 2500 rpm and 3.9 % at 6500 rpm, and settles within 2 % in 0.5–1.1 s.
+turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.62 s at 3000 rpm
+and 0.49 s at 5000. It overshoots 1.3 % at 2500 rpm and 2.6 % at 6500 rpm, and settles within 2 % in 0.6–1.2 s.
 
-From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.45 s at 2000 rpm and
-the cable_turbo sample 0.77 s at 3000, each at its first speed with 1.5 bar of full-throttle boost. Chalmers' GT-Power
-study gives, for the same test at 1000 rpm, 0.54 s for Volvo's 2.0 L turbo four and 1.00 s for a 1.5 L three with a
-T45 (0.68 s with less than half its inertia). Our rally turbos make almost no boost at 1000 rpm, so that point doesn't
-apply to them.
+From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.64 s at 2000 rpm and
+the cable_turbo sample 1.18 s at 3000. Chalmers' GT-Power study gives, for the same test, 0.54 s for Volvo's 2.0 L
+turbo four and 1.00 s for a 1.5 L three with a T45 at 1000 rpm (0.68 s with less than half its inertia), and
+0.62–1.02 s on those engines at 2100–2400 rpm. Our rally turbos make almost no boost at 1000 rpm, so that point
+doesn't apply to them. With the earlier rotor of 1e-5 kg·m² the samples took 0.46 s at 2000 rpm.
 
 ![Anti-lag](images/engine-model/anti-lag.png)
 
-Lift for a second at 4500 rpm and re-apply. Without anti-lag the boost falls to ambient and the torque takes 0.48 s
+Lift for a second at 4500 rpm and re-apply. Without anti-lag the boost falls to ambient and the torque takes 0.68 s
 to come back to 90 %. With it the boost stays above 2.2 bar and the torque is back to 90 % in 0.09 s. Lifted, the
-engine brakes a little harder with anti-lag than without (−50 against −44 N·m).
+engine brakes a little harder with anti-lag than without (−39 against −33 N·m).
 
 ### Idle and the rev limiter
 
@@ -482,8 +493,8 @@ engine brakes a little harder with anti-lag than without (−50 against −44 N�
 
 The figure runs each sample in neutral with the car's inertia: idle, a 300 rpm dip at 3 s, then full pedal from 6.0 to
 6.3 s. NGP's lines come from a replica of its formula. The ECU cars pull the dip back to within 20 rpm of idle in
-about 0.3 s. The old car, with its fixed idle stop, takes 1.1 s to come within 50 rpm, a little longer than NGP. After
-the blip the NA car falls faster than NGP, from its stronger braking at low rpm. The turbo car reaches 5800 rpm in the
+about 0.3 s. The old car, with its fixed idle stop, takes 1.4 s to come within 50 rpm, longer than NGP. After the
+blip the NA car falls faster than NGP, from its stronger braking at low rpm. The turbo car reaches 5500 rpm in the
 0.3 s blip where NGP reaches the limiter, because its turbo hasn't spooled.
 
 ![Rev limiter](images/engine-model/limiter.png)
@@ -496,6 +507,8 @@ the limit to 20 over it.
 
 Every number here was measured at `b97695d86`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
 the realistic engine with NGP's tyre (`{ engine: "realistic", tyre: "ngp" }`), so every gap is the engine's.
+These runs predate the friction that follows rpm, the idle air's floor, the exhaust heat by firing and the heavier
+turbo rotor (2026-11); they were not re-run.
 
 The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
 tarmac one, track-41 (Cote D'Arbroz, its M variant, as the season's weather loads it), once with NGP 7's physics and
@@ -587,12 +600,14 @@ throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s tar
   and C3 Rally2 engines), makes about 40 % of its peak torque at 1000 rpm and 80 % at 1500 (SAE 2018-01-1423). The
   tables ask for more than that at 1000 rpm, and the model still gives more, so the shortfall is not a reason to add
   low-rpm boost.
-- Modern turbo cars idle at 20–22 kPa of manifold pressure; EPA's warm road engines idle at 22–29 kPa.
-- The turbo cars' exhaust runs 1035 °C at idle and about 710 °C on the fuel cut, against 320–520 °C and 200–420 °C
-  on EPA's road engines. Anti-lag's unburnt-fuel heat also takes the idle retard, and the no-flow intercept of 700 °C
-  is a guess. Part load matches.
-- Held over idle with a closed pedal and the fuel on, the idle loop can close its air entirely and the manifold falls
-  to 4.5–8 kPa; road engines don't go under 9 kPa fired.
+- Modern turbo cars idle at about 16.3 kPa of manifold pressure and make no torque at 16.2–16.3 kPa at 2500 rpm; EPA's
+  warm road engines idle at 22–29 kPa and make none at 18.5–27.2. The rally tables ask for about 13 bar of BMEP per
+  bar of boost (a Rally2's 33.5 bar at the 2.5 bar cap), well over road turbos', so little air turns the friction
+  over. Before the friction followed rpm they idled at 20–22 kPa, from twice Sandoval's friction at idle.
+- Closed-pedal braking still runs 0.2–0.4 bar of BMEP over EPA's road engines at 2000–5000 rpm.
+- The turbo cars' exhaust runs about 660 °C at idle, against 296–430 °C at road engines' ports and up to 657 °C on a
+  road turbo retarded at its lightest loads, and about 565 °C at light part load against 585–732 °C on road turbos at
+  the same BMEP. One line over the share of the rated flow cannot hold both.
 - Between idle − 300 rpm and idle a closed pedal still gets the whole idle air ceiling, up to +110 N·m on the turbo
   sample at 1000 rpm. How far below idle a rally ECU's anti-stall reaches is not published; the 300 rpm and the fade to
   half idle are guesses.
