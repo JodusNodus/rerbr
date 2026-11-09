@@ -62,7 +62,7 @@ fn middle_year(group: &str) -> u32 {
     }
 }
 
-/// The FIA restrictor for a turbo of this group and year (FIA articles 254, 255, 255A, 260, 261; rallycars.com), m.
+/// The FIA restrictor for a turbo of this group and year (Appendix J 1990–2001; FIA 254, 255, 255A, 260, 261), m.
 fn restrictor(group: &str, year: u32) -> Option<f64> {
     let mm = match group {
         "Group A7" | "Group A8" => match year {
@@ -74,8 +74,14 @@ fn restrictor(group: &str, year: u32) -> Option<f64> {
         "WRC 2.0" => 34.0,
         "WRC 1.6" if year <= 2016 => 33.0,
         "WRC 1.6" => 36.0,
-        "Group N4" | "Group R4" if year < 2005 => 32.0,
-        "Group N4" | "Group R4" => 33.0,
+        // Group N as Group A's years (Appendix J), 33 mm from 2010 (RallySport Magazine 2010-01-19).
+        "Group N4" | "Group R4" => match year {
+            ..=1989 => return None,
+            1990..=1991 => 40.0,
+            1992..=1994 => 36.0,
+            1995..=2009 => 32.0,
+            _ => 33.0,
+        },
         "Group R5" | "Rally 2" => 32.0,
         "Rally 3" if year <= 2021 => 30.0,
         "Rally 3" => 31.0,
@@ -85,7 +91,7 @@ fn restrictor(group: &str, year: u32) -> Option<f64> {
     Some(mm / 1000.0)
 }
 
-/// Facts by folder (without `_ngp6`/`_ngp7`) that the rules cannot know (tech-racingcars, FIA 260, Wikipedia;
+/// Facts by folder (without `_ngp6`/`_ngp7`) that the rules cannot know (tech-racingcars, FIA 254, Wikipedia;
 /// `notes/engine-model.md`): cylinders where they are not 4, and the sourced exceptions to the rules.
 struct Fact {
     folder: &'static str,

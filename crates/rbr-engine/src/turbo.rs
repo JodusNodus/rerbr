@@ -9,7 +9,7 @@ use libm::{pow, sqrt};
 const DROOP: f64 = 0.6;
 const W0: f64 = 0.7;
 const SURGE_BAND: f64 = 0.05;
-/// Compressor efficiency: peak 0.75 at 0.8 W* and 0.9 Π*, 0.6 at the map's edges, at least 0.4 (guess).
+/// Compressor efficiency over flow only: peak 0.75 at 0.8 W*, 0.6 at 0 and 1.6 W*, at least 0.4 (guess).
 const ETA_C_MAX: f64 = 0.75;
 const ETA_C_EDGE: f64 = 0.15;
 const ETA_C_MIN: f64 = 0.4;
@@ -17,9 +17,13 @@ const ETA_C_MIN: f64 = 0.4;
 pub const OMEGA_STAR: f64 = 15_000.0;
 /// The turbine's efficiency, turbine and bearings' mechanical losses apart (guess).
 pub const ETA_T: f64 = 0.65;
-/// Shaft inertia, kg·m² (Chalmers T45 1.16e-5, GT1548 5.5e-6).
-pub const INERTIA: f64 = 1e-5;
-/// Bearing losses: a·ω + b·ω² + 100 W static (rF2 `TurboFriction`, `TurboStaticFrictionWatts`).
+/// Shaft inertia, kg·m²: Perge 2017's measured passenger-car rotor with a 52 mm compressor (measured rotors 1.70e-5 and,
+/// a 2.0 L engine's, 2.72e-5, Chung 2016; Chalmers' T45 1.16e-5 and GT1548 5.5e-6 for smaller engines). With 1e-5 the
+/// samples spooled from 5 bar BMEP to 90 % at 2000 rpm in 0.46–0.53 s, against GT-Power's 0.62–1.02 s for road
+/// turbos at 2100–2400 rpm (Chalmers); now 0.64–0.74 s.
+pub const INERTIA: f64 = 1.7e-5;
+/// Bearing losses: a·ω + b·ω² + 100 W static (our reading of rF2's `TurboFriction`, a torque and a power that ramps
+/// with speed; its `TurboStaticFrictionWatts` is there against numerical problems at low spool speeds).
 const LOSS_A: f64 = 0.002;
 const LOSS_B: f64 = 2.5e-6;
 const LOSS_STATIC: f64 = 100.0;
@@ -29,13 +33,18 @@ pub const INTERCOOLER: f64 = 0.7;
 /// k_r inferred: a venturi recovers most of its throat's drop).
 const RESTRICTOR_CD: f64 = 0.95;
 const RESTRICTOR_LOSS: f64 = 0.2;
-/// Exhaust temperature: first order 0.3 s; 950 °C at the rated flow (guess), 700 °C at no flow (inferred: from
-/// 400 °C the line's slope gave the steady WOT boost two branches; `notes/engine-model.md`), at most
-/// 1150 °C (MoTeC anti-lag limits).
+/// Exhaust temperature: first order 0.3 s; affine in the exhaust flow, 950 °C at the rated flow (guess) and 520 °C at
+/// none (EPA's four road turbos, 849 fired points: 520 °C at no flow and 940 °C at the most, rms 85 K), at most
+/// 1150 °C (MoTeC anti-lag limits). Cylinders that pump air without burning it leave it at 300 °C (EPA's road turbos
+/// under the fuel cut, 199–422 °C at the turbine), and half the work the spark's retard takes reaches the turbine
+/// (inferred: EPA's Ford 1.6 and 2.7 retarded 27–44° at their lightest loads ran 70–142 K over their neighbours near
+/// MBT, 0.23–0.63 of that work).
 pub const TAU_EXHAUST: f64 = 0.3;
-const T_EM_IDLE: f64 = 973.15;
+const T_EM_IDLE: f64 = 793.15;
 const T_EM_RATED: f64 = 1223.15;
 pub const T_EM_MAX: f64 = 1423.15;
+pub const T_EM_MOTORED: f64 = 573.15;
+pub const RETARD_EXHAUST: f64 = 0.5;
 /// The wastegate: the electronic gate's actuator, s (Gorzelic 2012, 125 ms for an electronically commanded gate); its
 /// proportional band, Pa (fully open 1 bar over the aim, around its base opening), integral time and derivative time
 /// on the boost, s; the spring gate's band (fully open 0.5 bar over its aim) and its lag, s. Bands and times guessed:

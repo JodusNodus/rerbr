@@ -261,9 +261,9 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
         if !p.turbo {
             continue;
         }
-        // Chalmers (GT-Power, a road 1.5 L four, T45 at 1.16e-5 kg·m² against our 1e-5): at 1000 rpm from 5 bar BMEP
-        // to 90 % of the steady WOT torque in 0.54 s (1.0 s on a three, 0.68 s with half the inertia). A rally turbo
-        // makes almost no boost at 1000 rpm, so the same case also runs at the first 500 rpm step with 1.5 bar.
+        // Chalmers (GT-Power, Table 17): at 1000 rpm from 5 bar BMEP to 90 % of the steady WOT torque, Volvo's 2.0 L
+        // four 0.54 s, their 1.5 L three with a T45 at 1.157e-5 kg·m² (ours 1.7e-5) 1.00 s, 0.68 s at 0.50e-5. A rally
+        // turbo makes almost no boost at 1000 rpm, so the same case also runs at the first 500 rpm step with 1.5 bar.
         let t = spool_at(m, 1000.0);
         assert!(t <= 1.2, "{name}: 5 bar BMEP to 90 % at 1000 rpm in {t:.2} s");
         let n = (2..).map(|i| f64::from(i) * 500.0).find(|&n| calibrate::wot(m.spec(), n).0.p_boost >= 1.5e5).unwrap();
@@ -280,9 +280,9 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
     }
 }
 
-/// A lift from steady WOT at 5000 rpm: the blow-off valve opens within 0.1 s and vents the boost (it stays open while
-/// the manifold is under vacuum, as a real one does); with anti-lag running it stays shut. The telemetry reports the
-/// air's pressure.
+/// A lift from steady WOT at 5000 rpm: the blow-off valve opens within 0.1 s and vents the boost to under 0.15 bar
+/// within 0.5 s, the compressor still running down (it stays open while the manifold is under vacuum, as a real one
+/// does); with anti-lag running it stays shut. The telemetry reports the air's pressure.
 #[test]
 fn the_blow_off_valve_vents_a_lift_unless_anti_lag_runs() {
     use rbr_engine::engine::{step, Step};
@@ -303,7 +303,7 @@ fn the_blow_off_valve_vents_a_lift_unless_anti_lag_runs() {
             } else {
                 let first = open.iter().position(|&o| o >= 0.9);
                 assert!(first.is_some_and(|k| k as f64 * calibrate::DT < 0.1), "{name}: opened late {first:?}");
-                assert!(s.p_boost < 1.1e5, "{name}: {} Pa of boost left after 0.5 s", s.p_boost);
+                assert!(s.p_boost < 1.15e5, "{name}: {} Pa of boost left after 0.5 s", s.p_boost);
             }
         }
     }

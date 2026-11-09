@@ -49,6 +49,10 @@ pub const OVERRUN_P: f64 = 0.2;
 pub const OVERRUN_RPM: f64 = 3000.0;
 /// The overrun air's decay once the cut ends, s: a dashpot's or idle valve's hand-over to the idle loop (inferred).
 pub const OVERRUN_TAU: f64 = 0.5;
+/// The idle loop's least air over idle with the fuel on: what holds 0.1·p_a at any speed, as the overrun air (road
+/// engines' lowest fired loads are 9.2–34 kPa, EPA; race ECUs hold a throttle aim minimum, MoTeC FK8R; the level is
+/// ours, under every sample's idle need).
+pub const IDLE_FLOOR_P: f64 = 0.1;
 /// Rev limiter, Link's convention: ignition cut 0 → 100 % over the 200 rpm below the limit, fuel cut from 100 rpm above
 /// it (Link G4+ control range 200 rpm, settling 100–150 rpm under the limit, hard cut +50 to +200; HPA webinars 084 and
 /// 171), so RPMLimit is the cap, as NGP and the class rules read it.
@@ -58,8 +62,8 @@ pub const LIMITER_FUEL: f64 = 100.0;
 pub const FIRE_RPM: f64 = 150.0;
 /// Anti-lag (MoTeC anti-lag setup, Link forum): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most
 /// 3 s, re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
-/// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the unburnt fuel burning in the
-/// manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
+/// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the cut firings' fuel burning in
+/// the manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
 pub const ALS_ARM: f64 = 0.45;
 pub const ALS_LIFT: f64 = 0.1;
 pub const ALS_REARM: f64 = 0.3;
@@ -70,7 +74,8 @@ pub const ALS_TRIM: f64 = 0.2;
 pub const ALS_CUT: f64 = 0.3;
 pub const ALS_BOOST: f64 = 1.2e5;
 pub const ALS_BURN: f64 = 0.6;
-/// The electronic throttle: 30 ms first order, 40 ms full travel (Gorzelic 2012).
+/// The electronic throttle: 30 ms first order, 40 ms full travel (guess; Gorzelic 2012 model it as a 40 ms first-order
+/// lag).
 const ETB_TAU: f64 = 0.03;
 const ETB_TRAVEL: f64 = 0.04;
 

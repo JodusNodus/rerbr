@@ -58,7 +58,7 @@ pub struct Spec {
     pub idle_kp: f64,
     pub idle_ki: f64,
     pub spark_kp: f64,
-    /// The friction scale s_f.
+    /// The friction scale s_f at RPMLimit (see [`Self::friction`]).
     pub friction_scale: f64,
     /// K(n) over rpm, J per kg of air.
     pub k: Curve,
@@ -119,9 +119,13 @@ impl Spec {
         self.eta_v.at(rpm) * self.residual(p, p_em) * p * self.geometry.v_d / (R * t)
     }
 
-    /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`.
+    /// Friction, N·m (positive, against rotation), at `rpm`, viscosity scale `phi`, intake over ambient `p_ratio`:
+    /// Sandoval's FMEP scaled by 1 + (s_f − 1)·(n/n_lim)², so s_f at the limit and Sandoval's own at low speed, where
+    /// it meets road engines' fuel-cut braking (EPA; the share over Sandoval growing with n² is inferred).
     pub fn friction(&self, rpm: f64, phi: f64, p_ratio: f64) -> f64 {
-        self.friction_scale * self.geometry.per_pa() * self.geometry.fmep(rpm, phi, p_ratio)
+        let x = rpm / self.rpm_limit;
+        let scale = 1.0 + (self.friction_scale - 1.0) * x * x;
+        scale * self.geometry.per_pa() * self.geometry.fmep(rpm, phi, p_ratio)
     }
 }
 
@@ -287,20 +291,24 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     }
     let dfco = s.dfco && !anti_lag;
     let error = (spec.rpm_idle - rpm) / spec.rpm_idle;
-    // The overrun air holds the manifold while the fuel is cut, then hands over to the idle loop by decaying.
+    // The overrun air at this speed (it holds OVERRUN_P·p_a): it holds the manifold while the fuel is cut, then hands
+    // over to the idle loop by decaying.
+    let overrun_air =
+        spec.overrun_air * spec.eta_v.at(rpm) * rpm / (spec.eta_v.at(ecu::OVERRUN_RPM) * ecu::OVERRUN_RPM);
     if dfco {
-        let share = spec.eta_v.at(rpm) * rpm / (spec.eta_v.at(ecu::OVERRUN_RPM) * ecu::OVERRUN_RPM);
-        s.overrun = (spec.overrun_air * share - spec.idle_air).max(0.0);
+        s.overrun = (overrun_air - spec.idle_air).max(0.0);
     } else {
         s.overrun *= exp(-dt / ecu::OVERRUN_TAU);
     }
     let idle_loop = ecu_idle && !dfco && pedal < ecu::PEDAL_CLOSED && rpm < spec.rpm_idle + ecu::IDLE_BAND;
     let idle_air = if idle_loop {
-        let low = -spec.idle_air;
         // Anti-stall: the air above the feed-forward is whole down to idle − 300 rpm, then falls to none at half idle,
         // so an engine the clutch drags down (braking in gear) gets the air to catch a dip, not to push the car.
         let ceiling =
             spec.idle_air + (spec.idle_air_max - spec.idle_air).max(0.0) * ecu::anti_stall(rpm, spec.rpm_idle);
+        // Over idle the loop closes the air down to the floor, not shut.
+        let floor = (overrun_air * ecu::IDLE_FLOOR_P / ecu::OVERRUN_P).min(spec.idle_air).min(ceiling);
+        let low = floor - spec.idle_air;
         let high = ceiling - spec.idle_air;
         // Conditional integration: above idle + 100 rpm (the overrun air still decaying, a fall towards idle) the
         // integral only bleeds what it gained, down to 0, so it neither winds down and undershoots nor holds a wind-up
@@ -314,7 +322,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
             s.idle_i
         }
         .clamp(low, high);
-        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(0.0, ceiling) + s.overrun
+        (spec.idle_air + spec.idle_kp * error + s.idle_i).clamp(floor, ceiling) + s.overrun
     } else {
         s.idle_i = 0.0;
         spec.idle_air + s.overrun
@@ -412,13 +420,16 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let w_fuel = if fuel { w_cyl * trim / (LAMBDA * AFR) } else { 0.0 };
     let w_exhaust = w_cyl + w_fuel;
     if let Some(t) = &spec.turbo {
-        let burnt = if combustion { spark * fired } else { 0.0 };
-        let unburnt = if w_exhaust > 0.0 {
-            (1.0 - burnt) * w_fuel * LHV * ecu::ALS_BURN / (w_exhaust * crate::gas::CP_EXHAUST)
-        } else {
-            0.0
-        };
-        let t_ss = (t.t_em0 + t.t_em_k * w_exhaust + unburnt).min(turbo::T_EM_MAX);
+        // The cylinders that fire leave the line's temperature, and the work their retard takes partly heats the
+        // exhaust; those that do not leave the air motored, and their fuel partly burns in the manifold (anti-lag,
+        // the cuts).
+        let burnt = if combustion { fired } else { 0.0 };
+        let heat = |power: f64| if w_exhaust > 0.0 { power / (w_exhaust * crate::gas::CP_EXHAUST) } else { 0.0 };
+        let retard_heat = heat(burnt * (1.0 - spark) * spec.k.at(rpm) * w_cyl * turbo::RETARD_EXHAUST);
+        let unburnt = heat((1.0 - burnt) * w_fuel * LHV * ecu::ALS_BURN);
+        let line = t.t_em0 + t.t_em_k * w_exhaust;
+        let t_ss =
+            (turbo::T_EM_MOTORED + burnt * (line - turbo::T_EM_MOTORED) + retard_heat + unburnt).min(turbo::T_EM_MAX);
         s.t_em += (t_ss - s.t_em) * (1.0 - exp(-dt / turbo::TAU_EXHAUST));
         // The electronic gate's aim rises linearly with the throttle's aim position to the WOT boost at the position
         // where the plate stops controlling the air (`aim_open`), as race ECUs' boost aim tables over rpm and throttle
@@ -474,7 +485,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     let phi = friction::phi(x.t_oil);
     let p_ratio = s.p_im / x.p_a;
     let fric = spec.friction(rpm, phi, p_ratio) * fade;
-    let pumping = spec.geometry.per_pa() * friction::pmep(s.p_em, s.p_im, x.p_a, rpm, spec.rpm_limit) * fade;
+    let pumping = spec.geometry.per_pa() * spec.geometry.pmep(s.p_em, s.p_im, x.p_a, rpm) * fade;
     // The 1.02 sim's friction opposes the motion, as NGP applies it (`direction * friction_torque`): unsigned, an
     // engine dragged backwards would be pushed on backwards by it.
     let torque = indicated - fric - pumping - x.friction * fade;

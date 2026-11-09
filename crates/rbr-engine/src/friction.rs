@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 /// The reference oil temperature, K (90 °C, the model's warm engine).
 pub const T_OIL_REF: f64 = 363.0;
 
-/// Vogel oil viscosity, Pa·s: μ = 0.00862·exp(2040/(T − 89.6)) (a fit to Anton Paar's 10W-40).
+/// Vogel oil viscosity, mPa·s: μ = 0.00862·exp(2040/(T − 89.6)) (a fit to Anton Paar's 10W-40; only its ratio is used).
 fn viscosity(t: f64) -> f64 {
     0.00862 * exp(2040.0 / (t - 89.6))
 }
@@ -43,10 +43,12 @@ impl Geometry {
     }
 
     /// Sandoval–Heywood FMEP, Pa, at `rpm` (at least 300, where the 1 + 500/N boundary terms stop growing), the
-    /// viscosity scale `phi` and the intake over ambient pressure `p_ratio` (ring gas loading). Terms (ESA.NET
-    /// FrictionModel.cs after the Sandoval thesis eqs. 7.b–11): crankshaft, reciprocating, ring gas loading,
-    /// valvetrain (flat follower C_ff 133, C_oh 0.5, C_om 10.7), auxiliaries; bearings D_b 0.67B, L_b 0.25B,
-    /// D_r 0.59B, L_r 0.22B, n_b = n_c + 1, 2(n_c + 1) cam bearings, valve lift 0.11B.
+    /// viscosity scale `phi` and the intake over ambient pressure `p_ratio` (ring gas loading). Terms (SAE
+    /// 2003-01-0725 App. B, eq. 6–14; ring tension and roughness ratios 1): crankshaft, reciprocating, ring gas
+    /// loading, valvetrain (Table 3's DOHC direct acting: C_ff 133, C_oh 0.5, C_om 10.7), auxiliaries (eq. 14, refitted
+    /// to SI engines' oil pump, water pump and alternator; Patton's 6.23 + 5.22e-3·N − 1.79e-7·N² was fitted with
+    /// diesels); bearings D_b 0.67B, L_b 0.25B, D_r 0.59B, L_r 0.22B, n_b = n_c + 1, 2(n_c + 1) cam bearings, valve
+    /// lift 0.11B.
     pub fn fmep(&self, rpm: f64, phi: f64, p_ratio: f64) -> f64 {
         let n = rpm.max(300.0);
         let (b, s, nc) = (self.bore, self.bore, self.cylinders);
@@ -68,31 +70,58 @@ impl Geometry {
             + 133.0 * boundary * nv / (s * nc)
             + 0.5 * phi * pow(lv, 1.5) * sqrt(n) * nv / (b * s * nc)
             + 10.7 * boundary * lv * nv / (s * nc);
-        let aux = 6.23 + 5.22e-3 * n - 1.79e-7 * n * n;
+        let aux = 8.3155 + 1.86e-3 * n + 7.45e-7 * n * n;
         (crank + recip + gas + valve + aux) * 1000.0
+    }
+
+    /// The pumping mean effective pressure, Pa: the manifolds' difference p_em − p_im plus the flow loss across each
+    /// set of two valves, 3.0e-3 kPa·s²/m²·S_p²/(n_v²·r⁴) at wide-open throttle, r the valve's diameter over the bore,
+    /// D_iv = 6.11 + 0.313B and D_ev = 4.14 + 0.286B mm (SAE 2003-01-0725 App. B; SAE 890836 p. 10, the four-valve
+    /// survey). Patton derives each as Δp ∝ ṁ²/(ρA²) with ṁ ∝ (p_i/p_a)·S_p; with the density where the gas passes, the
+    /// intake's scales with p_im/p_a and the exhaust's with (p_im/p_a)²·p_a/p_em (inferred: the published
+    /// (p_i/p_a)² at an NA engine's wide-open throttle, and a turbo's boost and exhaust pressure). The exhaust
+    /// system's own loss is in p_em.
+    pub fn pmep(&self, p_em: f64, p_im: f64, p_a: f64, rpm: f64) -> f64 {
+        let sp = 2.0 * self.bore / 1000.0 * rpm.max(0.0) / 60.0;
+        let x = p_im.max(0.0) / p_a;
+        let valves = |d: f64| VALVE_LOSS * sp * sp / (4.0 * pow(d / self.bore, 4.0));
+        let intake = valves(6.11 + 0.313 * self.bore);
+        let exhaust = valves(4.14 + 0.286 * self.bore);
+        p_em - p_im + intake * x + exhaust * x * x * p_a / p_em.max(1.0)
     }
 }
 
-/// The pumping mean effective pressure, Pa: (p_em − p_im) plus the valves' and ports' flow loss
-/// 0.2 bar·(p_im/p_a)·(n/n_limit)² (generic form, TAMU; 0.2 bar guessed).
-pub fn pmep(p_em: f64, p_im: f64, p_a: f64, rpm: f64, rpm_limit: f64) -> f64 {
-    let r = rpm / rpm_limit;
-    p_em - p_im + 0.2e5 * (p_im / p_a) * r * r
-}
+/// The valves' flow loss constant, Pa·s²/m² (3.0e-3 kPa·s²/m², SAE 2003-01-0725 App. B; Patton's 4.12e-3 came from
+/// diesels, and SI motoring tests allowed 3e-3, SAE 890836 p. 10).
+const VALVE_LOSS: f64 = 3.0;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The report's worked example (`fric.py`): 2.0 L, B = S = 86 mm, p_i/p_a 0.2, warm oil.
+    /// The report's worked example (`fric.py`): 2.0 L, B = S = 86 mm, p_i/p_a 0.2, warm oil; its totals 64, 120 and
+    /// 215 kPa with eq. 14's auxiliaries in place of Patton's (−0.4, +3.4 and +34.4 kPa).
     #[test]
     fn the_worked_example_matches_the_report() {
         let g = Geometry { v_d: 4.0 * PI / 4.0 * 0.086 * 0.086 * 0.086, cylinders: 4.0, bore: 86.0, r_c: 11.0 };
         // fric.py uses L_v = 10 mm; ours is 0.11·B = 9.46 mm, so allow a little.
-        for (rpm, kpa) in [(1000.0, 64.0), (4000.0, 120.0), (8000.0, 215.0)] {
+        for (rpm, kpa) in [(1000.0, 63.6), (4000.0, 123.4), (8000.0, 249.4)] {
             let got = g.fmep(rpm, 1.0, 0.2) / 1000.0;
             assert!((got - kpa).abs() < 0.04 * kpa, "{rpm}: {got}");
         }
+    }
+
+    /// At an NA engine's wide-open throttle the valves' losses are App. B's: 2.0 L, B = S = 86 mm, 7000 rpm.
+    #[test]
+    fn the_valve_losses_are_sandovals_at_wide_open_throttle() {
+        let g = Geometry { v_d: 4.0 * PI / 4.0 * 0.086 * 0.086 * 0.086, cylinders: 4.0, bore: 86.0, r_c: 11.0 };
+        let sp: f64 = 2.0 * 0.086 * 7000.0 / 60.0;
+        let (r_i, r_e): (f64, f64) = ((6.11 + 0.313 * 86.0) / 86.0, (4.14 + 0.286 * 86.0) / 86.0);
+        let kpa = 3.0e-3 * sp * sp / (4.0 * r_i.powi(4)) + 3.0e-3 * sp * sp / (4.0 * r_e.powi(4));
+        assert!((kpa - 38.1).abs() < 0.1, "{kpa}");
+        assert!((g.pmep(101_325.0, 101_325.0, 101_325.0, 7000.0) / 1000.0 - kpa).abs() < 1e-9);
+        // A closed pedal's losses are the vacuum's.
+        assert!(g.pmep(101_325.0, 20e3, 101_325.0, 5000.0) - 81_325.0 < 3e3);
     }
 
     #[test]
