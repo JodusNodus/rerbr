@@ -1418,8 +1418,26 @@ brush's grip × F; unset, traces byte-identical). Runs and scripts outside the r
   tarmac 1.24-1.28 / 1.29-1.33 Rally2/R5, 1.27 / 1.31-1.33 WRC; snow within 3 % of gravel. Rally2 over WRC 0.97-0.98
   (ngp) and 0.96-1.00 (brush) on gravel, 0.97-1.01 on tarmac, against the real 0.93. The wide NGP spread (Fiesta WRC
   0.749, i20 0.587) and the brush's Fiesta WRC 0.423 (a 3.3 s hold) are RSF 345's slope (hold lengths 3-19 s); flat,
-  the six cars lie within 5 %, so no tyre, setup or aero value is needed to explain it; the WRC cars' aero and power do
-  not act at the circle's 70 km/h. Fix: the scored row reads the flat circle (done).
+  the six cars lie within 5 %, so no tyre, setup or aero value is needed to explain it; at the circle's 70 km/h the
+  WRC cars' extra downforce over the Rally2's is ~1 % of the weight and their power does not act. Fix: the scored row
+  reads the flat circle (done).
+- Aero (2026-11-09): NGP's downforce (`rbr_physics::ngp::downforce`) is the car's `FrontDownforce_NGP` /
+  `RearDownforce_NGP` at 150 km/h on the square of the speed along the car's axis (+0x15f8), so cos²β with sideslip
+  (-7 % at 15°), the split fixed; the drag (`car_body::drag`) is Cd·A on the velocity, yaw-free. Fiesta Rally2 (RSF
+  `common.lsp`): 1395 + 1705 N (ClA ≈ 3.0 m², 45 % front), Cd·A 0.78 m², 1431 kg: 22 % of the weight at 150 km/h,
+  4.8 % at the gravel circle's 70 km/h and 6.4 % at tarmac's 81 (Fiesta WRC 2019: 1800 + 1900 N, 27 % at 150). Two
+  hand drives of 524 (`replay_gg`'s traces, 1 s means) carry ΣFz +2.4 / +3.8 kN from 12-20 to 32-40 m/s (the
+  downforce alone +1.9; the rest the road's compressions).
+  So ~4 % of the gravel circle's g and ~5 % of tarmac's is downforce (estimated: the load × car_pace's `AERO_GRIP`
+  0.86); the real Rally2 figures carry little at those speeds, and `implied_grip.py`'s Rally2 (ClA 0.2, swept 0-0.5)
+  read on game times credits the game's downforce to its μ. No published Rally2 downforce found. Dominy & Richardson
+  (SAE 2004-01-3508, Durham; 20 % generic 2004 WRC model, moving ground, rear wing): datum ClA 0.75 m², Cd·A 0.85 m²
+  (Table 2: −2050 / 2333 N at 67 m/s, 1300 kg), a quarter of NGP's Rally2 downforce. With yaw (Fig. 10, 14, read ±10
+  %, moving ground, clearances 8-14 mm model scale): at 15° drag +35-60 %, total downforce −20-40 %, the front's
+  −80-100 % (at 14 mm gone), the rear's about unchanged: the centre of pressure moves back; a fixed ground shows much
+  less. Their lap simulation (Table 3's 2.08 km stage, 78.2 s loose, loose μ = half of tarmac's by assumption): zero-yaw
+  aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
+  only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
 - Brush grip × F on the flat circles (glat at F 0.8 / 0.9 / 1 / 1.1 / 1.2): gravel 0.709 / 0.783 / 0.877 / 0.960 /
   1.038, snow 0.711 / 0.814 / 0.900 / 0.978 / 1.029, tarmac 0.940 / 1.069 / 1.186 / 1.329 / 1.452: 0.82 g (gravel,
   snow) and 1.3 g (tarmac) per unit F, near proportional.
