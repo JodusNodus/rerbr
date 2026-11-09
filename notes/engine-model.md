@@ -196,7 +196,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   Group A 40 mm 1990–91, 38 mm 1992–94, 34 mm from 1995 (WRC from 1997 the same, as Group A cars); Group N 40, 36 and
   32 mm the same years [Appendix J], 33 mm from 2010 [Impreza N2010], [FIA 254]; WRC 1.6 33 mm, 36 mm from 2017
   [FIA 255A], [World Rally Car]; Rally2 32 mm [FIA 261]. [rallycars restrictors]' 38/36/34 mm (1992/1994/1995) mixes
-  Group A's 38 and 34 with Group N's 36. The class gives Group N and R4 32 mm before 2005 and 33 after (open).
+  Group A's 38 and 34 with Group N's 36.
 - Turbine nozzle with Ψ, η_t 0.65 (guess) [Andersson].
 - A_t is fitted so K is as flat as the turbo allows (inferred: K is the fuel's energy times the combustion's
   efficiency per kg of air, nearly constant over rpm, so the boost should carry the table's shape). It minimises the
@@ -409,8 +409,6 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   lowest fired loads sit at 9–34 kPa (most 15–26) and their fuel-cut points at 16–43 kPa [EPA]; race ECUs hold a
   throttle aim minimum on overrun [MoTeC FK8R]. Fixed-stop cars on overrun hold 6–14 kPa at 2000–7000 rpm. Not
   changed.
-- Group N restrictor by year: Appendix J has 40 mm in 1990–91 and 36 mm in 1992–94, and Group N went from 32 to
-  33 mm in 2010, not 2005 (Turbo, restrictor sizes); the class gives 32 mm before 2005 and 33 after. Not changed.
 - The ECU samples brake 1.4–1.7× harder than the road engines at a closed pedal below 5000 rpm ("Against measured
   engines"); the scale comes from NGP's braking at the limit, which no measured race engine checks.
 

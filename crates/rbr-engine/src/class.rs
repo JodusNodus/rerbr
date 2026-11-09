@@ -74,8 +74,14 @@ fn restrictor(group: &str, year: u32) -> Option<f64> {
         "WRC 2.0" => 34.0,
         "WRC 1.6" if year <= 2016 => 33.0,
         "WRC 1.6" => 36.0,
-        "Group N4" | "Group R4" if year < 2005 => 32.0,
-        "Group N4" | "Group R4" => 33.0,
+        // Group N as Group A's years (Appendix J), 33 mm from 2010 (RallySport Magazine 2010-01-19).
+        "Group N4" | "Group R4" => match year {
+            ..=1989 => return None,
+            1990..=1991 => 40.0,
+            1992..=1994 => 36.0,
+            1995..=2009 => 32.0,
+            _ => 33.0,
+        },
         "Group R5" | "Rally 2" => 32.0,
         "Rally 3" if year <= 2021 => 30.0,
         "Rally 3" => 31.0,
