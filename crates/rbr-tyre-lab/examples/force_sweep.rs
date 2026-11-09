@@ -78,7 +78,8 @@ fn main() {
     println!("model,kappa,alpha_deg,fy_n,fx_n");
     let r = p.effective_radius;
     for model in &models {
-        let built = rbr_tyre::model(model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
+        let built = rbr_tyre::model(model, std::slice::from_ref(&w), &rbr_tyre::Tuning::MODEL)
+            .unwrap_or_else(|e| panic!("{e}"));
         let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water: 0.0, camber: 0.0 };
         // (slip angle, slip ratio) pairs: one curve per fixed value, swept over the other.
         let curves: Vec<Vec<(f32, f32)>> = if long {

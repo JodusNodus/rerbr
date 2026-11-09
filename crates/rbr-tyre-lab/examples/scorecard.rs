@@ -170,6 +170,7 @@ fn main() {
     let pct = |a: f32, b: f32| (b / a - 1.0) * 100.0;
     out("calpha_dp05_4k", pct(t.calpha_per_fz(4000.0), tq.calpha_per_fz(4000.0)));
     out("kx_dp05_4k", pct(t.kx_per_fz(4000.0), tq.kx_per_fz(4000.0)));
+    out("sigma_y_4k", t.x63_y(4000.0, 1.0));
     out("sigma_y_dp05_4k", pct(t.x63_y(4000.0, 1.0), tq.x63_y(4000.0, 1.0)));
     let peak_y = |t: &mut Tyre| peak(angles(), |a| t.mu_y(4000.0, a)).0;
     out("peak_mu_y_dp05_4k", pct(peak_y(&mut t), peak_y(&mut tq)));
