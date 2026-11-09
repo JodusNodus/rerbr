@@ -14,11 +14,11 @@
 //!   rising to 38°, fits it with α0 6.28° (rms 0.0012; the brush's cubic 0.0165, the law integrated over a uniform
 //!   patch 0.0098); wet gravel fits 9.7° (0.23/0.40/0.65/0.79). That is NGP's deeper gravel (25-30 mm); a shallower
 //!   loose layer builds force faster, dry α0 3.4° at 9 mm and 4.8° at 17.5 mm ([`GRAVEL_DEPTH_ALPHA0_DEG`]), and
-//!   NGP's WaterFactor scales it by up to 9.7 / 6.3, linear (ours; [`gravel_alpha0_deg`]). No peak, no fall; the level is approached (0.995 at 30°, 0.973 wet). At
-//!   stage speed the one curve, Croft-White's WRC telemetry on wet loose gravel (PhD, Cranfield 2006, Figs 4.32-4.33,
-//!   digitised: fig ±0.05, inferred), saturates by 9-22° (90 %) and does not fall to 32° (0.96-1.06 of the 10-24°
-//!   maximum; his tarmac curves fall to 0.71-0.83 by the same method, the bench data's 0.73-0.90), so the law takes no
-//!   speed. The slope follows
+//!   NGP's WaterFactor scales it by up to 9.7 / 6.3, linear (ours; [`gravel_alpha0_deg`]). No peak, no fall; the
+//!   level is approached (0.995 at 30°, 0.973 wet). At stage speed the one curve, Croft-White's WRC telemetry on wet
+//!   loose gravel (PhD, Cranfield 2006, Figs 4.32-4.33, digitised: fig ±0.05, inferred), saturates by 9-22° (90 %) and
+//!   does not fall to 32° (0.96-1.06 of the 10-24° maximum; his tarmac curves fall to 0.71-0.83 by the same method, the
+//!   bench data's 0.73-0.90), so the law takes no speed. The slope follows
 //!   the level, μ Fz / tan α0 (6.0 per rad at 6.7 kN against NGP's 6.6), not NGP's stiffness. The longitudinal side
 //!   takes the same law with the brush's Cx/Cy ([`KX_OVER_KY`]) at the axes' levels, so the braking force keeps
 //!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
@@ -168,8 +168,8 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_de
 
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
 /// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]) at the loose layer's
-/// `depth` (m); the rest takes the brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is [`PLOUGH`]. `mu` is the directional
-/// friction including the berm (the force's limit).
+/// `depth` (m); the rest takes the brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is
+/// [`PLOUGH`]. `mu` is the directional friction including the berm (the force's limit).
 pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);

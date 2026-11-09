@@ -643,9 +643,9 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 
 ![Braking and driving force against slip ratio on dry gravel](images/tyre-model/long-gravel.svg)
 
-- Braking force levels off from a slip ratio of about 0.15 (0.25 on deep layers) and holds to 0.8. Past that the wheel pushes a berm of
-  gravel ahead of it, and locked it brakes 1.3 times its rolling peak. Measured cars on gravel stop 1.12-1.59 times
-  harder locked than with ABS; the Fiesta Rally2 under the brush 1.29-1.44, under NGP 1.08-1.10.
+- Braking force levels off from a slip ratio of about 0.15 (0.25 on deep layers) and holds to 0.8. Past that the wheel
+  pushes a berm of gravel ahead of it, and locked it brakes 1.3 times its rolling peak. Measured cars on gravel stop
+  1.12-1.59 times harder locked than with ABS; the Fiesta Rally2 under the brush 1.29-1.44, under NGP 1.08-1.10.
 - Driving force levels off and does not fall at full spin, where NGP's falls to 0.82 of its peak. No measured curve on
   gravel reaches full spin, so this part is open.
 

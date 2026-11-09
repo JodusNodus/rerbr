@@ -784,10 +784,11 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   ±0.004): pea stone 6.28° (rms 0.0012 over 1-38°; the brush's cubic 0.0165, the law integrated over a uniform patch
   0.0098), wet gravel 9.7° (0.0015); in K terms, about the half patch times tan α0 (~11 mm at a 0.2 m patch,
   inferred). α0 follows the surface's WaterFactor (`ForceInput::water_factor`; NGP's wet gravel materials carry 1,
-  damp 0.25, dry 0: `materials` example, ids 2-51), linear from 1 to 9.7/6.3 times the dry α0 (`loose::gravel_alpha0_deg`;
-  ours: the form, and Fig. 15's wet gravel is another soil, a silty sand, standing in for wet gravel). The dry α0
-  follows the loose layer's depth (2026-11-09, [below](#the-soils-depth-ngps-materials-and-the-surface-across-the-road)):
-  6.3° is pea stone's and NGP's deeper gravel's (25-30 mm). The slope follows the level
+  damp 0.25, dry 0: `materials` example, ids 2-51), linear from 1 to 9.7/6.3 times the dry α0
+  (`loose::gravel_alpha0_deg`; ours: the form, and Fig. 15's wet gravel is another soil, a silty sand, standing in for
+  wet gravel). The dry α0 follows the loose layer's depth (2026-11-09,
+  [below](#the-soils-depth-ngps-materials-and-the-surface-across-the-road)): 6.3° is pea stone's and NGP's deeper
+  gravel's (25-30 mm). The slope follows the level
   (μ Fz/tan α0: 6.0 /rad at 6.7 kN, NGP 6.6); the level is approached, never peaked (0.995 at 30°, 0.973 wet). Snow (class 3: SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls), grass (5), rock (4) and
   rough (0) keep the flat brush: packed snow's own α0 is 3.6° (Fig. 8, rms 0.0042), which at NGP's snow level doubles
   NGP's slope (snow-calpha-per-fz 8-12 would miss), while the brush at NGP's slope passes α90 (9.0 in 7-9°).
@@ -1788,10 +1789,11 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   and no soil force (the sweep, not `ngp_transient`'s whole step); the gravel shape rows (Coutermarsh, measured at 1-1.5
   m/s) are taken at 1.5 m/s (`gravel-1.5`, wet `gravel-wet-1.5` with WaterFactor 1) and 6.7 kN on a 25 mm layer
   (`--soil`: pea stone's was 4-9.5 cm), Croft-White's at 20 m/s (`gravel-wet-20`) on the probe's 9 mm; `gravel-deep` /
-  `gravel-deeper` the probe on 17.5 / 25 mm (`gravel-depth-alpha90-*`, context). Braking peaks (`peak_mu_x_brake_*`, `peak_kappa_*`, `mu_x_rel_k*_brake_*`,
-  `mu_x_locked_rel_*`, the longitudinal load exponent) are the maximum over a braking slip of 0 to loose-v1's
-  `BERM_FROM` 0.8, the free rolling side's peak before the berm; locked is κ -1. NGP's and the brush's braking peaks
-  lie below 0.8 on all four probes (their keys equal the 0-1 maximum's, lab on the same probes).
+  `gravel-deeper` the probe on 17.5 / 25 mm (`gravel-depth-alpha90-*`, context). Braking peaks (`peak_mu_x_brake_*`,
+  `peak_kappa_*`, `mu_x_rel_k*_brake_*`, `mu_x_locked_rel_*`, the longitudinal load exponent) are the maximum over a
+  braking slip of 0 to loose-v1's `BERM_FROM` 0.8, the free rolling side's peak before the berm; locked is κ -1. NGP's
+  and the brush's braking peaks lie below 0.8 on all four probes (their keys equal the 0-1 maximum's, lab on the same
+  probes).
 - `tyre-ratio:A/B:KEY`: surface A's key over B's.
 - `brake:SURFACE:KMH:locked_g|best_g|ratio|ratio_kK|ratio_absK`: `brake_test.py`'s declutched runs (gravel RSF 345,
   tarmac RSF 568, snow map 10, ice RSF 504 iced from the brake onset, its decel on the flat, slip targets 0.05-0.3),
