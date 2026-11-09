@@ -1269,8 +1269,11 @@ loose-v1](#loose-surfaces-loose-v1); 2 measured in a drive-test build, below):
    one; Zeng's and Choi's curves are gross, McIntyre's net.
 3. Level: none recommended. Gravel and snow stay NGP's (the rally data do not sit below them). Ice 116 at 0.094 fits
    0 °C ice for an unstudded tyre. A colder ice level, or studded rally tyres on 116, would be a level decision.
-4. Scorecard: the snow level rows (road tyres) to lower bounds or context; new rows for locked/ABS on snow
-   (≤ 1.0, road) and gravel (1.18-1.40, SATC).
+4. Scorecard (done 2026-11-09, [Scorecard](#scorecard)): the snow level rows from road, winter and AT tyres are lower
+   bounds (`snow-peak-mu-y` 0.35, packed; `snow-peak-mu-x` 0.46) or context where they repeat a scored quantity
+   (`snow-lat-max-packed`, `snow-long-mu-winter`); new `snow-car-locked-over-abs-50/80` 1.00-1.10 (studded, SR 115
+   Fig. 3, 1.02-1.08 ± 0.02; road winter ≤ 1.0 below); gravel's 1.18-1.40 (SATC) is context
+   (`gravel-car-locked-over-abs-satc-80`): it lies inside the scored 1.12-1.59 on the same run.
 
 ## Rolling resistance
 
@@ -1329,7 +1332,8 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   tarmac RSF 568, snow map 10, ice RSF 504 iced from the brake onset, its decel on the flat, slip targets 0.05-0.3),
   full pedal against slip targets 0.1-0.7; ratio = locked decel / best threshold decel, ratio_kK locked over the
   target K's (one pedal), ratio_absK locked over the per-wheel ABS at K (`--brake-abs`, a run per K the rows name).
-  The locked-over-ABS rows (gravel 50/80, tarmac 50) take ABS K 0.15; the K 0.2 and best-target ratios are context.
+  The locked-over-ABS rows (gravel 50/80, snow 50/80, tarmac 50) take ABS K 0.15; the K 0.2 and best-target ratios are
+  context. No row reads wet gravel's locked over ABS (its 1.89 is the fixed K on the slower rise, no wet data).
 - `coast:SURFACE:crr|crr_free`: `coast_test.py` from 60 km/h (tarmac RSF 568, gravel RSF 345, snow map 10, ice RSF
   568 on 116 from the lift; [Rolling resistance](#rolling-resistance)).
 - `brake-ratio:A/B:KMH:X/Y`, `circle:gravel:lat_g` (`car_pace.analyse_circle` on the gravel probe run, 40000 steps,
@@ -1406,6 +1410,13 @@ Wet rows (2026-11-08, `tyre/wet-shape`, full run against 4bb4c042): experimental
 road texture's drainage; the wet tyre rows rerun); the five new
 wet rows (above) pass under the brush, ngp misses the three tread rows; every dry row and the brake, circle and coast
 rows unchanged.
+
+Snow levels (2026-11-09, `tyre/scorecard-loose`, full run against main d903fe5a; bands only, no model change):
+experimental-brush 89/112 → 93/112, ngp 38/112 → 41/112. A rally car on snow runs studs (5.5-7 mm), at or above a road
+tyre (SR 115: studded 0.57-0.60 against snow tyres 0.34-0.41), so the road-tyre levels are lower bounds: MISS → PASS
+`snow-peak-mu-y` 0.852 / 0.842 (0.35..), `snow-peak-mu-x` 0.871 / 0.863 (0.46..); MISS → CTX `snow-lat-max-packed`,
+`snow-long-mu-winter` (same quantity as those). New: snow locked over ABS K 0.15 at 50 / 80 km/h ngp 0.982 MISS /
+1.059, brush 1.054 / 1.087 (1.00-1.10); gravel SATC context 1.076 / 1.340. Every other row unchanged.
 
 Thin film (2026-11-08, `tyre/wet-speed`, full run against main 0fb71ed8; 89/112 PASS before and after, ngp 38/112):
 seven wet rows move, all in band: TRL wet peak 100/32 0.977 → 0.911 (0.76-1.00), wet locked 100/32 0.730 → 0.680
