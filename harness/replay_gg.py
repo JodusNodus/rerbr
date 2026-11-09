@@ -26,9 +26,9 @@ Per file, with rally_gg.py's definitions (its `summary`: 10 Hz from 0.1 s means,
   the course's rate, the path's own lateral g); braking (the LONGEST longest events from the speed, their 0.5 s
   peak), the speed through `--speed-lag S`;
 - tyre use (`rbr-tyre-lab` example `limit_frames` on the probe dumps, its peak μ_y at each wheel's load and speed for
-  the physics' tyre: `brush` under experimental-brush, else NGP's): each wheel's |F|/Fz over that peak, the mean over
-  the hardest 5 % of moving moments (dumps ranked by the car's Σ|F|/ΣFz) and the median over all moving moments, and
-  the car's Σ|F| / Σ peak·Fz alike.
+  the physics' tyre: `brush` under experimental-brush, else NGP's): each axle's Σ|F| / Σ peak·Fz and each wheel's
+  |F|/Fz over its peak (wheels over LOADED N), the mean over the hardest 5 % of moving moments (dumps where the car
+  moves over MOVING, ranked by the car's Σ|F|/ΣFz) and the median over all moving moments; the car's alike.
 
 Needs target/release/rbr-standalone (or --bin) and target/release/examples/limit_frames (`cargo build --release -p
 rbr-tyre-lab --example limit_frames`). RBR_NGP_DLL: the DLL beside the replay's `--ngp-physics` (the launcher's).
@@ -56,6 +56,7 @@ G = rally_gg.G
 GRAVITY = 9.81  # the physics' (autopilot `specific_force`)
 JUMP = 2.0  # m in one step beyond the speed's own travel: a recovery or reset moved the car
 HARDEST = 0.05
+LOADED = 500.0  # N: a wheel's own ratio only above it (an unloaded wheel's |F|/Fz is noise)
 PARTS = 24  # limit_frames runs per probe
 
 
@@ -222,7 +223,7 @@ def binned(t, speed, brk, glong, glat, kin):
     return [((k + 0.5) / rally_gg.RATE, *(float(col[j]) for col in cols)) for j, k in enumerate(keys)][1:]
 
 
-def tyre_use(probe, model, jobs):
+def tyre_use(probe, model, jobs, speed_at):
     """Each wheel's |F|/Fz over its peak μ_y at its load (`limit_frames`), hardest 5 % and median of moving moments."""
     if not os.path.exists(LIMIT_FRAMES):
         sys.exit(f"{LIMIT_FRAMES}: cargo build --release -p rbr-tyre-lab --example limit_frames")
@@ -256,7 +257,7 @@ def tyre_use(probe, model, jobs):
         x = line.split()
         fz, fy, fx, peak, v = float(x[2]), float(x[7]), float(x[8]), float(x[18]), float(x[19])
         moments.setdefault(int(x[0]), {})[int(x[1])] = (fz, math.hypot(fy, fx) * fz, peak, v)
-    moving = [m for m in moments.values() if statistics.fmean(w[3] for w in m.values()) * 3.6 > rally_gg.MOVING]
+    moving = [m for step, m in moments.items() if speed_at(step) * 3.6 > rally_gg.MOVING]
     if not moving:
         return None
     car_g = [sum(w[1] for w in m.values()) / sum(w[0] for w in m.values()) for m in moving]
@@ -265,10 +266,17 @@ def tyre_use(probe, model, jobs):
     hard = [moving[i] for i in order]
 
     def ratio(ms, k):
-        return [m[k][1] / (m[k][2] * m[k][0]) for m in ms if k in m]
+        return [m[k][1] / (m[k][2] * m[k][0]) for m in ms if k in m and m[k][0] > LOADED]
+
+    def axle(ms, ks):
+        return [sum(m[k][1] for k in ks if k in m) / sum(m[k][2] * m[k][0] for k in ks if k in m)
+                for m in ms if any(k in m for k in ks)]
 
     res = {"tyre_moments": len(moving), "car_g_hard": statistics.fmean(car_g[i] for i in order),
            "use_hard": statistics.fmean(use[i] for i in order), "use_med": statistics.median(use)}
+    for name, ks in (("front", (0, 1)), ("rear", (2, 3))):
+        res[f"{name}_hard"] = statistics.fmean(axle(hard, ks) or [float("nan")])
+        res[f"{name}_med"] = statistics.median(axle(moving, ks) or [float("nan")])
     for k, w in enumerate(("fl", "fr", "rl", "rr")):
         res[f"{w}_hard"] = statistics.fmean(ratio(hard, k) or [float("nan")])
         res[f"{w}_med"] = statistics.median(ratio(moving, k) or [float("nan")])
@@ -329,7 +337,9 @@ def analyse(path, args):
     res.update({f"kin_{key}": k[key] for key in ("lat_p50", "lat_p90", "lat_p99")})
     res.update({f"kin_gg{lo}": k[f"gg{lo}"] for lo in rally_gg.BINS[:-1]})
     model = "brush" if info["physics"] == "experimental-brush" else "ngp"
-    res["tyre"] = tyre_use(probe, model, args.jobs) if probe else None
+    steps = a[:, c["step"]]
+    res["tyre"] = (tyre_use(probe, model, args.jobs,
+                            lambda n: speed[max(0, np.searchsorted(steps, n, side="right") - 1)]) if probe else None)
     return res
 
 
@@ -351,7 +361,9 @@ def report(results):
         ty = o["tyre"]
         if ty:
             wheels = " ".join(f"{w} {ty[f'{w}_hard']:.2f}/{ty[f'{w}_med']:.2f}" for w in ("fl", "fr", "rl", "rr"))
-            print(f"  tyre |F|/(peak Fz), hardest 5 % / median of {ty['tyre_moments']} moments: {wheels}; car "
+            print(f"  tyre |F|/(peak Fz), hardest 5 % / median of {ty['tyre_moments']} moments: front "
+                  f"{ty['front_hard']:.2f}/{ty['front_med']:.2f} rear {ty['rear_hard']:.2f}/{ty['rear_med']:.2f}; "
+                  f"{wheels}; car "
                   f"{ty['use_hard']:.2f}/{ty['use_med']:.2f} (Σ|F|/ΣFz {ty['car_g_hard']:.2f} in the hardest)")
 
 
