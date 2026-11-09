@@ -934,6 +934,41 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   | Golf II GTI 16V | 341.95 / 336.43 / 339.42 | 375.50 / 366.33 / 368.72 |
 
   Wet α0 costs eb 2.2-3.7 s (0.6-1.2 %); eb stays 0.1-1.8 % ahead of ngp on wet, except the Celica on 104 (0.4 % behind).
+- Dry, damp, wet gravel in game (2026-11-09, main 6258bd51, no model change; RSF 345 `--wetness`, from 50 km/h
+  declutched, `harness/brake_test.py`, raw decel g; "level" = the best threshold run; circle `--circle 1051,-166,40
+  --circle-ramp 0.4`, 40000 steps, the car_pace first-hold read and the best 1 s steady hold, |off| < 3 m, before the
+  first stop; ngp / eb):
+
+  | Car, wetness | Locked | Level (best K) | ABS K 0.15 | ABS K 0.2 / 0.3 / 0.5 | Locked / ABS 0.15 | Locked wheel slip | Circle first-hold / best steady |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Rally2 dry | 0.628 / 0.882 | 0.732 (0.5) / 0.754 (0.7) | 0.573 / 0.577 | 0.637 / 0.683 / 0.720; 0.635 / 0.711 / 0.766 | 1.095 / 1.529 | 1.00 / 0.946 | 0.571 / 0.664; 0.706 / 0.692 |
+  | Rally2 damp | 0.582 / 0.880 | 0.692 (0.5) / 0.729 (0.7) | 0.553 / 0.523 | 0.602 / 0.636 / 0.679; 0.579 / 0.655 / 0.733 | 1.054 / 1.684 | 1.00 / 0.966 | 0.580 / 0.689; 0.709 / 0.704 |
+  | Rally2 wet | 0.494 / 0.815 | 0.601 (0.5) / 0.645 (0.7) | 0.504 / 0.430 | 0.540 / 0.580 / 0.575; 0.496 / 0.565 / 0.625 | 0.980 / 1.894 | 1.00 / 0.992 | late latch / 0.415; 0.743 / 0.632 |
+  | Escort dry | 0.612 / 0.763 | 0.653 (0.5) / 0.694 (0.7) | 0.605 / 0.611 | -, 0.717, 0.734; -, 0.725, 0.757 | 1.011 / 1.249 | 1.00 / 0.889 | no latch both (weak, as before) |
+  | Escort damp | 0.552 / 0.761 | 0.610 / 0.675 | 0.480 / 0.544 | -, 0.661, 0.692; -, 0.660, 0.731 | 1.150 / 1.399 | 1.00 / 0.934 | |
+  | Escort wet | 0.474 / 0.723 | 0.550 / 0.603 | 0.291 / 0.432 | -, 0.337, 0.602; -, 0.583, 0.632 | 1.629 / 1.675 | 1.00 / 0.982 | |
+
+  The Escort ngp wet ABS K 0.15 / 0.3 rows are the rig's: its rears sit at slip 0.33 without cycling. eb's level wet
+  over dry 0.855 (ngp 0.82), damp 0.97 (ngp 0.95); the shear law has no peak below lock (95 % of the level at a
+  braking slip of 0.20 dry, 0.22 damp, 0.27 wet; s0x 0.081 / 0.092 / 0.125), the force's maximum is the berm at lock;
+  ngp peaks at K 0.5 and locked is 0.82 of it.
+- Why wet locked over ABS is 1.894 (eb, Rally2; the two factors measured): locked / ABS = (locked / level) × (level /
+  ABS K 0.15) = dry 1.170 × 1.307 = 1.529, damp 1.207 × 1.394 = 1.684, wet 1.264 × 1.500 = 1.894. (a) The fixed slip
+  target on the slower rise: the ABS wheels hold a mean slip of 0.12-0.14 from free rolling at K 0.15, where the law
+  gives 0.84 of the level dry and 0.70 wet (measured ABS over level 0.765 / 0.667, the cycling below the steady
+  curve); the same fraction on wet needs K ≈ 0.23 (0.15 × s0x wet / dry), which measures ~1.55 (K 0.2 1.642, K 0.3
+  1.443), dry's value. (b) The berm reached in full: the wet wheels lock (slip 0.992 against dry 0.946: the lower wet
+  force no longer holds them off lock against the full-pedal torque), so the locked run reaches PLOUGH's 1.3 (1.26
+  over the level) where dry stops at 1.17. Neither is a defect of the law; (a) is the test's fixed K, (b) the berm's
+  dependence on whether the wheel locks. The published 1.12-1.59 are dry; no wet gravel locked/ABS data exist.
+- Why the wet circle is 0.63 of dry (eb, Rally2): the first-hold read stops at the first slide, and on wet that slide
+  comes at 0.40-0.46 g (launch +12 to +15 s): under the hold's throttle 0.3-0.5 the wheels turn at 1.13-2.0 times the
+  car's speed (dry 0.9-1.2 outside short spikes), the rear slip angles pass the fronts' (18-27° against 10-15°), and
+  the car spins (both axles past 40° by +14.5 s): power oversteer, the rear axle saturating first under combined slip.
+  The same run then holds 0.63 g steady (0.91 of dry's 0.69 by the same read). The wet tyre's cornering slope is 0.65 of dry (tan 6.3° / tan 9.7°) and its driven slip for a given force 1.55
+  times dry's, so the autopilot's line holding wanders (off -3 to +4 m in the first hold against ±1 m dry): the 0.63
+  is the read's first slide and the autopilot, not the wet lateral level (0.855 of dry). ngp's wet first hold latches
+  late; its best steady hold 0.743 is above dry's 0.706 (single runs, the autopilot's wander; weak).
 - Not adopted (2026-11-08): the exponential approach on the brush's own stiffness (NGP's slope, u = 3ψ, the brush's
   adhesion/sliding split): pea stone 0.38/0.61/0.85/0.95 at 6.7 kN and 0.98 at 20°, all four pea rows still miss; one
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
@@ -1119,6 +1154,10 @@ Research (2026-11-08, third round; downloads outside the repository) and a check
 | Rally studs | FIA: ≤ 20 studs per dm of circumference, length ≤ 20 mm, ≤ 4 g, protrusion free (WRC: 5.5-7 mm, 384 per tyre, 145 mm tread); no μ or g. A WRC engineer: studded "more lateral grip and stopping power on ice than ... on gravel", traction lower; drivers: "similar or slightly more than a gravel tyre on gravel" | Rally Sweden 2025 SR Art. 7.5 (quoted); RallySport Magazine 2007 (quoted, secondary); Pirelli 2021 (snippet) |
 | Combined slip on soft soil | α 6°: braking at 0.57 of the pure side force costs 16 % of it (light braking raises it), driving at 0.71 costs 24 %; α 25°, 35 % driving slip: Fy 0.67 of the lightly braked, Fx/Fz ≈ 0.27, \|F\| 0.87 of the pure lateral (inside a circle); max Fx > max Fy (an ellipse) | Janosi, Kamm & Wray 1981 (truck tyre, scarified sandy soil) and Krick 1973 (tractor tyre, sandy loam), both via El-Razaz PhD Leeds 1988 Figs 6.16, 6.40 (fig ±30 lbf / ±5 kp, secondary) |
 | Driven tyre, traction against slip | dense sand: peak 0.63 at ~35 %, 0.87 of it at 80 %; shallow snow 0.40 at 15 %, 0.63 of it at 80 %; loose sand rising to 100 %; sand rig: pull peak at 15-25 % slip, 0.63-0.78 of it at 48-60 %; gravel: none | CRREL 95-1 Fig 18 (schematic, fig ±0.02); WES TR 3-666 Plate 5 (fig ±4 lb), §34 (quoted) |
+| Driven tyre on gravel, traction against slip (2026-11-09) | dry 10-14 mm sub-round gravel bin, 37x12.5R16.5 off-road tyre, 10.2 kN, 0.05 m/s, driving slip (ωR - V)/ωR (the brush's theoretical slip): gross traction (T/R) 0.120 / 0.226 / 0.295 Fz at 10 / 20 / 30 %, still rising near-linearly (0.41 / 0.77 of the 30 % value), no peak in range; sinkage 61-83 mm (6-9× NGP's layers); sand 0.115 / 0.216 / 0.261; sand at 10 % and 7.7 / 10.2 / 12.7 kN 0.130 / 0.115 / 0.131 (no load trend); dry only, no full spin | Zeng, Xu & Zang, J. Terramech. 104 (2022) 49-58, Figs 8, 14 (fig ±50 N) |
+| Driven tyre on sand, self-propelled | 205/60R16, 0.6-1.0 kN, 0.5 m/s, dry sand: one operating point per load, slip 47-52 %, gross thrust (motor torque) 0.041-0.047 Fz: with no drawbar the thrust is the motion resistance; no curve | Choi et al. (Pusan), preprint, Table 11 (table) |
+| ATV tyre on gravel, lateral (towed, free rolling) | Dunlop KT 821, 5-10 psi, 50-320 lbf, ~10 mph: Fy = Fz A (1 - exp(-B α)), R² 0.72-0.97; A = B = c Fz^m, gravel 10 psi: 0.48 at 95 lbf, 0.24 at 320 lbf (α0 = 1/B 2.1-4.2°); rubber-on-gravel shear K 0.06 in (1.5 mm); longitudinal only as the free rolling drag against slip angle, no traction-slip | Krueger, Auburn MSc 2007, eq. 2.5, Table 3.6, Table 3.7 (fit; A = B by the author's fit form, weak) |
+| ATV tyre on clay, traction and braking against slip | towed rig with a driven test wheel, remolded over-consolidated clay (φ 9°, c 9.8 kPa), 5 psi, 800 N added load: traction rises to a saturation near 0.3-0.5 slip (2nd-order fits; slip scatter ±0.1, no data past 0.65); braking (1000 N, 7 psi) peaks at 0.2-0.25 slip, 0.83 of it at 0.35 (fit); the free rolling wheel reads -50 lbf (net, axle force) | McIntyre, Auburn MSc 2015, Figs 63-65 (fig ±10 lbf; clay, not gravel) |
 
 No open WRC telemetry for Rally Sweden or the Arctic (RallyDataJunkie's scraper broke before Sweden 2022); the
 WRC+ Finland 2021 files' first samples are time-compressed (0-60 km/h in 0.5 s), so they give no launch.
@@ -1170,6 +1209,18 @@ Proposal (no implementation; evidence first):
    sand rig 0.63-0.78 at 48-60 %, none on gravel). Expected (estimated, × 0.85-0.9 of the spinning wheels' share): the Rally2's 0-40 km/h 0.90 → ~0.80 g, Escort
    0.51 → ~0.46. Driver test: power slides out of slow gravel corners and a standing start. Wanted before: a gravel
    traction-slip curve (Zeng et al. 2022, J. Terramech. 104).
+   Papers (2026-11-09, table above): the one gravel traction-slip curve (Zeng 2022) stops at 30 % slip, still rising,
+   on a 6-9 cm deep bed at 0.05 m/s; no open curve on gravel reaches full spin, and none is wet or damp. It supports
+   only "no fall before 30 %": the WIP's (`tyre/loose-shape`, SPIN_FROM 0.3, smoothstep to F 0.85) driven force is
+   1.000 / 0.998 / 0.992 / 0.97 / 0.88 / 0.85 of the level at 0.3 / 0.35 / 0.4 / 0.5 / 0.8 / 1, so its effective peak
+   already lies at 0.35-0.4 (dense sand ~35 %, clay 0.3-0.5). No evidence to change SPIN_FROM, F or the smoothstep;
+   F stays sand-based (0.63-0.87 of the peak at 48-100 %). The rise does not test the shear law: Zeng's deep-bed rise
+   (0.41 / 0.77 of the 30 % value at 10 / 20 %) is 5-10 times slower than the law's (s0x 0.081: 0.71 / 0.92 / 0.98 of
+   the level at 0.1 / 0.2 / 0.3), a bulldozing bed (sinkage 61-83 mm) and not a road layer; Krueger's gravel takes
+   the law's exponential form laterally (R² 0.72-0.97) with α0 2-4° on a soft ATV tyre. Which curve to compare: the
+   brush's Fx is the patch force at the axle, NGP's `RollingResistance` a separate wheel torque (`tyre::forces::
+   rolling_torque`, 0.018-0.028 Fz on gravel), so Fx is the net (drawbar) traction and Fx + RR Fz the gross (T/R)
+   one; Zeng's and Choi's curves are gross, McIntyre's net.
 3. Level: none recommended. Gravel and snow stay NGP's (the rally data do not sit below them). Ice 116 at 0.094 fits
    0 °C ice for an unstudded tyre. A colder ice level, or studded rally tyres on 116, would be a level decision.
 4. Scorecard: the snow level rows (road tyres) to lower bounds or context; new rows for locked/ABS on snow
@@ -1434,7 +1485,7 @@ rows unchanged.
 - Ice: NGP's level (0.094) against the measured 0.15-0.18 keeps the brush's peak slip angle and initial slope from both
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
-- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; the berm on snow and a driven fall on gravel are the shape candidates; the RWD launch on 116 is open.
+- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; the berm on snow and a driven fall on gravel are the shape candidates (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is open. Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a
