@@ -166,6 +166,20 @@ pub fn gravel_alpha0_deg(depth: f64, wetness: f64) -> f64 {
     dry * (1.0 + (GRAVEL_WET_ALPHA0_DEG / GRAVEL_ALPHA0_DEG - 1.0) * wetness.clamp(0.0, 1.0))
 }
 
+/// Gravel's level at damp over NGP's: NGP's damp gravel materials (WaterFactor 0.25) carry the dry friction × 0.925
+/// (static and soil static, every `Gravel_*` id, `materials` example), and the brush takes that loss back out, so damp
+/// gravel grips as dry; wet keeps NGP's × 0.845-0.8525. A user decision (2026-11-09) on this evidence: the one gravel
+/// road measured dry and sprinkled skids locked at 1.06-1.18 of dry (Moyer 1933), nothing measures a damp gravel loss,
+/// and wet ordinary gravel roads hold 0.76-0.90 of dry (González 2015, Paige-Green).
+pub const GRAVEL_DAMP_LEVEL: f64 = 1.0 / 0.925;
+
+/// The factor on the loose level at the wetness `w` for a `gravel` share of the soil ([`class_share`]): 1 +
+/// ([`GRAVEL_DAMP_LEVEL`] - 1) times the damp tent ([`brush::damp_weight`]: 1 at damp, 0 dry and wet, linear in W
+/// between) times the share; exactly 1 dry, wet and off gravel.
+pub fn gravel_damp_level(w: f64, gravel: f64) -> f64 {
+    1.0 + (GRAVEL_DAMP_LEVEL - 1.0) * brush::damp_weight(w) * gravel.clamp(0.0, 1.0)
+}
+
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
 pub const GRAVEL_CLASS: u32 = 1;
 /// NGP's surface class of its snow materials (SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls).
@@ -204,7 +218,8 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
     let cy = brush::stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cy0, M_CY, cal);
     let cx = brush::stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cx0, M_CX, cal);
     let (ly, lx) = c.levels.at(x.fz);
-    let grip = (x.surf_static / cal.surf_s_cal) * (x.temp_grip / cal.temp_grip_cal);
+    let grip =
+        (x.surf_static / cal.surf_s_cal) * (x.temp_grip / cal.temp_grip_cal) * gravel_damp_level(x.wetness, gravel);
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if gravel > 0.0 {
@@ -430,9 +445,32 @@ pub(crate) mod tests {
             assert!((fy(a, 1.0) - wet).abs() < 0.01, "{a}: {}", fy(a, 1.0));
         }
         assert_eq!(fy(10.0, 0.0), on(&c, 4000.0, 15.0, 10.0, 0.0, 1.0, 1.0).fy.abs() / peak);
-        assert!(fy(10.0, 0.25) < fy(10.0, 0.0) && fy(10.0, 0.25) > fy(10.0, 1.0));
+        let shape = |a: f64, w: f64| fy(a, w) / gravel_damp_level(w, 1.0);
+        assert!(shape(10.0, 0.25) < shape(10.0, 0.0) && shape(10.0, 0.25) > shape(10.0, 1.0));
         assert!((gravel_alpha0_deg(DEEP, 0.25) - (6.3 + 3.4 * 0.25)).abs() < 1e-12);
         assert!((gravel_alpha0_deg(0.03, 2.0) - GRAVEL_WET_ALPHA0_DEG).abs() < 1e-12);
+    }
+
+    #[test]
+    fn damp_gravel_grips_as_dry() {
+        // The factor: 1 dry and wet, 1/0.925 at damp, linear in W between, only the gravel share's.
+        assert_eq!(gravel_damp_level(0.0, 1.0), 1.0);
+        assert_eq!(gravel_damp_level(1.0, 1.0), 1.0);
+        assert_eq!(gravel_damp_level(0.25, 0.0), 1.0);
+        assert!((gravel_damp_level(0.25, 1.0) - 1.0 / 0.925).abs() < 1e-15);
+        assert!((gravel_damp_level(0.125, 1.0) - (1.0 + (1.0 / 0.925 - 1.0) / 2.0)).abs() < 1e-15);
+        assert!((gravel_damp_level(0.625, 1.0) - (1.0 + (1.0 / 0.925 - 1.0) / 2.0)).abs() < 1e-15);
+        assert!((gravel_damp_level(0.25, 0.5) - (1.0 + (1.0 / 0.925 - 1.0) / 2.0)).abs() < 1e-15);
+        // On NGP's damp friction (× 0.925), the locked gravel wheel's force is the dry one's; snow keeps NGP's damp.
+        let c = loose();
+        let locked = |w: f64, mu: f64, gravel: f64| {
+            let x =
+                EvalInput { spin: 0.0, wetness: w, surf_static: mu, surf_kinetic: mu, ..cal_input(&c.cal, 15.0, 0.0) };
+            eval(&x, &c, gravel, 1.0 - gravel, DEEP).fx
+        };
+        assert!((locked(0.25, 0.925, 1.0) / locked(0.0, 1.0, 1.0) - 1.0).abs() < 1e-12);
+        assert_eq!(locked(0.25, 0.925, 0.0), locked(0.0, 0.925, 0.0));
+        assert_eq!(locked(1.0, 0.85, 1.0), locked(0.0, 0.85, 1.0));
     }
 
     #[test]

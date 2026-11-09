@@ -382,7 +382,12 @@ pub const DAMP_LOSS: f64 = 0.098;
 /// way, so between dry and damp the level goes from dry's to damp's, between damp and wet from 0.82 to 0.79 of dry
 /// with no dip; W 0.21 (map 85's damp tarmac blended with a dry patch) keeps 0.83 of the loss. Hard surfaces only.
 pub fn damp_level(w: f64) -> f64 {
-    1.0 - DAMP_LOSS * (w / DAMP_W).min((1.0 - w) / (1.0 - DAMP_W)).clamp(0.0, 1.0)
+    1.0 - DAMP_LOSS * damp_weight(w)
+}
+
+/// The damp tent: 1 at [`DAMP_W`], 0 dry and wet, linear in W between.
+pub fn damp_weight(w: f64) -> f64 {
+    (w / DAMP_W).min((1.0 - w) / (1.0 - DAMP_W)).clamp(0.0, 1.0)
 }
 
 /// Dry-wear gain on friction: 1 + 0.167 (1 - d), fading with wetness (times
