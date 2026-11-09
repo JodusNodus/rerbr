@@ -18,7 +18,10 @@ use rbr_render::shifter::{CarBox, Engagement};
 
 use crate::catalog::{Car, TyreChoice, WEARS};
 use crate::ghosts::GhostChoice;
-use crate::graphics_page::{WetRoads, FRAME_CAPS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES};
+use crate::graphics_page::{
+    WetRoads, FRAME_CAPS, MAX_GROUP_VOLUME, MAX_VOLUME, RENDER_SCALES, TRIPLE_ANGLE_RANGE, TRIPLE_BEZEL_RANGE,
+    TRIPLE_DIAGONAL_RANGE, TRIPLE_DISTANCE_RANGE,
+};
 use crate::pages::Choice;
 use crate::physics::PhysicsProfile;
 use crate::time_of_day::StartTime;
@@ -38,6 +41,13 @@ const DEFAULT_SIZE: (u32, u32) = (1280, 720);
 /// `minutes` past midnight as `HH:MM`.
 pub fn clock_text(minutes: u32) -> String {
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
+}
+
+/// Parses `triple_monitors`' `LEFT,CENTRE,RIGHT` names; empty or unset is the one wide display.
+fn parse_monitors(text: &str) -> Option<[String; 3]> {
+    let mut parts = text.split(',').map(|part| part.trim().to_owned());
+    let monitors = [parts.next()?, parts.next()?, parts.next()?];
+    (parts.next().is_none() && monitors.iter().all(|name| !name.is_empty())).then_some(monitors)
 }
 
 /// Parses `WxH`.
@@ -138,6 +148,18 @@ pub struct Settings {
     pub mirrors: Option<Rate>,
     /// The driving window fills the monitor (`viewer --fullscreen`).
     pub fullscreen: Option<bool>,
+    /// Triple screens (`viewer --triple`); off by default, the field of view is the centre screen's.
+    pub triple: Option<bool>,
+    /// Each screen's diagonal, inches (27 by default, 10 to 65).
+    pub triple_diagonal: Option<f32>,
+    /// The frame around each screen's image, millimetres (10 by default, 0 to 60).
+    pub triple_bezel: Option<f32>,
+    /// From the eye to the centre screen, centimetres (70 by default, 30 to 200).
+    pub triple_distance: Option<f32>,
+    /// The side screens' turn, degrees; `None` faces them at the eye (`auto`, the default; 0 to 90).
+    pub triple_angle: Option<Option<f32>>,
+    /// The three monitors' names (left, centre, right); none: one wide display.
+    pub triple_monitors: Option<[String; 3]>,
     /// The driving window shows the highlights past an HDR display's SDR white (`viewer --hdr`).
     pub hdr: Option<bool>,
     /// The viewer writes a performance log (`viewer --perf-log`, in the player's `logs` folder).
@@ -424,6 +446,16 @@ impl Settings {
             max_fps: launcher.number("max_fps").filter(|v| FRAME_CAPS.contains(v)),
             mirrors: launcher.parsed("mirrors", Rate::parse),
             fullscreen: launcher.on_off("fullscreen"),
+            triple: launcher.on_off("triple"),
+            triple_diagonal: launcher.ranged("triple_diagonal", TRIPLE_DIAGONAL_RANGE),
+            triple_bezel: launcher.ranged("triple_bezel", TRIPLE_BEZEL_RANGE),
+            triple_distance: launcher.ranged("triple_distance", TRIPLE_DISTANCE_RANGE),
+            triple_angle: match launcher.get("triple_angle").as_deref() {
+                None => None,
+                Some("auto") => Some(None),
+                Some(degrees) => degrees.parse::<f32>().ok().filter(|a| TRIPLE_ANGLE_RANGE.contains(a)).map(Some),
+            },
+            triple_monitors: launcher.parsed("triple_monitors", parse_monitors),
             hdr: launcher.on_off("hdr"),
             perf_log: launcher.on_off("perf_log"),
             start_time: launcher.parsed("start_time", StartTime::parse),
@@ -517,6 +549,12 @@ impl Settings {
             ("max_fps", self.max_fps.map(|v| v.to_string())),
             ("mirrors", self.mirrors.map(Rate::name)),
             ("fullscreen", on_off_text(self.fullscreen)),
+            ("triple", on_off_text(self.triple)),
+            ("triple_diagonal", self.triple_diagonal.map(|v| v.to_string())),
+            ("triple_bezel", self.triple_bezel.map(|v| v.to_string())),
+            ("triple_distance", self.triple_distance.map(|v| v.to_string())),
+            ("triple_angle", self.triple_angle.map(|angle| angle.map_or_else(|| "auto".to_owned(), |a| a.to_string()))),
+            ("triple_monitors", self.triple_monitors.clone().map(|monitors| monitors.join(","))),
             ("hdr", on_off_text(self.hdr)),
             ("start_time", self.start_time.map(StartTime::to_text)),
             ("perf_log", on_off_text(self.perf_log)),
@@ -620,6 +658,12 @@ mod tests {
             max_fps: Some(120),
             mirrors: Some(Rate::Every(3)),
             fullscreen: Some(false),
+            triple: Some(true),
+            triple_diagonal: Some(32.0),
+            triple_bezel: Some(8.0),
+            triple_distance: Some(65.0),
+            triple_angle: Some(Some(45.0)),
+            triple_monitors: Some(["HDMI-1".into(), "DP-1".into(), "HDMI-2".into()]),
             hdr: Some(true),
             perf_log: Some(true),
             start_time: Some(StartTime::Baked),
@@ -770,6 +814,18 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nmax_fps = 100\n").max_fps, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = 4\n").mirrors, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = off\n").mirrors, Some(Rate::Off));
+        assert!(
+            text.contains(
+                "triple = on\ntriple_diagonal = 32\ntriple_bezel = 8\ntriple_distance = 65\ntriple_angle = 45\n\
+                 triple_monitors = HDMI-1,DP-1,HDMI-2\n"
+            ),
+            "{text}"
+        );
+        assert_eq!(Settings::parse("[launcher]\ntriple = maybe\n").triple, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_angle = auto\n").triple_angle, Some(None));
+        assert_eq!(Settings::parse("[launcher]\ntriple_angle = 45\n").triple_angle, Some(Some(45.0)));
+        assert_eq!(Settings::parse("[launcher]\ntriple_angle = 91\n").triple_angle, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_monitors = HDMI-1,DP-1\n").triple_monitors, None);
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 80\n").render_scale, None);
         assert_eq!(render_scale_args(67), ["--render-scale", "0.67"]);
         assert_eq!(render_scale_args(87), ["--render-scale", "0.87"]);
@@ -881,6 +937,12 @@ mod tests {
                 "max_fps = 120\n",
                 "mirrors = 3\n",
                 "fullscreen = off\n",
+                "triple = on\n",
+                "triple_diagonal = 32\n",
+                "triple_bezel = 8\n",
+                "triple_distance = 65\n",
+                "triple_angle = 45\n",
+                "triple_monitors = HDMI-1,DP-1,HDMI-2\n",
                 "hdr = on\n",
                 "start_time = baked\n",
                 "perf_log = on\n",
@@ -1021,6 +1083,23 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\ndetail = max\n").detail, None);
         assert_eq!(Settings::parse("[launcher]\nwet_roads = on\n").wet_roads, None);
         assert_eq!(Settings::parse("[launcher]\nmirrors = 4\n").mirrors, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 9\n").triple_diagonal, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 10\n").triple_diagonal, Some(10.0));
+        assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 65\n").triple_diagonal, Some(65.0));
+        assert_eq!(Settings::parse("[launcher]\ntriple_diagonal = 66\n").triple_diagonal, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_bezel = 60\n").triple_bezel, Some(60.0));
+        assert_eq!(Settings::parse("[launcher]\ntriple_bezel = 61\n").triple_bezel, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_distance = 29\n").triple_distance, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_distance = 200\n").triple_distance, Some(200.0));
+        assert_eq!(Settings::parse("[launcher]\ntriple_angle = 0\n").triple_angle, Some(Some(0.0)));
+        assert_eq!(Settings::parse("[launcher]\ntriple_angle = 90\n").triple_angle, Some(Some(90.0)));
+        assert_eq!(Settings::parse("[launcher]\ntriple_angle = wide\n").triple_angle, None);
+        assert_eq!(
+            Settings::parse("[launcher]\ntriple_monitors = A,B,C\n").triple_monitors,
+            Some(["A".into(), "B".into(), "C".into()])
+        );
+        assert_eq!(Settings::parse("[launcher]\ntriple_monitors = A,B,C,D\n").triple_monitors, None);
+        assert_eq!(Settings::parse("[launcher]\ntriple_monitors = A,,C\n").triple_monitors, None);
         assert_eq!(Settings::parse("[launcher]\nwipers = fast\n").wipers, None);
         // The wipers, the presentation and the mirrors parse case-insensitively.
         assert_eq!(Settings::parse("[launcher]\nwipers = INTERMITTENT\n").wipers, Some(Switch::Intermittent));

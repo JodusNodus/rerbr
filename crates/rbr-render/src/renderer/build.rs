@@ -617,6 +617,8 @@ impl Renderer {
             particles: None,
             glass: None,
             mirrors,
+            view: 0,
+            parked: Vec::new(),
         }
     }
 }

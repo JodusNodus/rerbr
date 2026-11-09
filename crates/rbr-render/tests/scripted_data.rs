@@ -103,7 +103,8 @@ fn every_bird_strike_of_track_64_strikes_once_at_the_car() {
         // A camera behind the car, looking along its way: the visibility cells in view run their scripts.
         let ahead = car.map_or(Vec3::Z, |c| c.direction);
         let eye = at - ahead * 6.0 + Vec3::Y * 2.0;
-        characters.look(rbr_render::coords::projection(1.0, 16.0 / 9.0) * rbr_render::coords::view_matrix(eye, ahead));
+        characters
+            .look(&[rbr_render::coords::projection(1.0, 16.0 / 9.0) * rbr_render::coords::view_matrix(eye, ahead)]);
         characters.step(end, car);
         for event in characters.take_events() {
             if let Event::Birdstrike(p) = event {

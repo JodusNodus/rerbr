@@ -162,17 +162,24 @@ impl Motion {
         mesh.anchor == Anchor::World && (mesh.in_car.is_some() || self.tracks.contains_key(&index))
     }
 
+    /// Puts `last` (the view-projection and the body a view was last drawn with) in place of the drawn view's and gives
+    /// that back: a triple screen's views each move from their own (`super::views`).
+    pub(super) fn exchange(&mut self, last: Option<(Mat4, Mat4)>) -> Option<(Mat4, Mat4)> {
+        std::mem::replace(&mut self.last, last)
+    }
+
     /// Writes the previous positions of the meshes given since the last frame, and of those given before it, which
-    /// now stay where they were; and the uniform for the frame of `view_projection` (unjittered) with the car's `body`.
+    /// now stay where they were (for the frame's first view, `meshes_moved`); and the uniform for the view of
+    /// `view_projection` (unjittered) with the car's `body`.
     fn prepare(
         &mut self,
         device: &wgpu::Device,
         uploads: &mut Uploads,
         (meshes, buffers): (&[GpuMesh], &[MeshBuffers]),
-        view_projection: Mat4,
-        body: Mat4,
+        (view_projection, body): (Mat4, Mat4),
+        meshes_moved: bool,
     ) {
-        for (index, mesh) in meshes.iter().enumerate() {
+        for (index, mesh) in meshes.iter().enumerate().filter(|_| meshes_moved) {
             if !self.moves(index, mesh) {
                 continue;
             }
@@ -215,11 +222,12 @@ impl Motion {
 
 impl Renderer {
     /// Prepares the motion of the main view's frame of `view_projection` (unjittered), with the temporal
-    /// anti-aliasing.
-    pub(super) fn prepare_motion(&mut self, view_projection: Mat4) {
+    /// anti-aliasing; the meshes' with the frame's first view (`first`).
+    pub(super) fn prepare_motion(&mut self, view_projection: Mat4, first: bool) {
         let body = self.car_body.unwrap_or_default();
         if let Some(motion) = &mut self.motion {
-            motion.prepare(&self.device, &mut self.uploads, (&self.meshes, &self.buffers), view_projection, body);
+            let meshes = (&self.meshes[..], &self.buffers[..]);
+            motion.prepare(&self.device, &mut self.uploads, meshes, (view_projection, body), first);
         }
     }
 

@@ -175,8 +175,9 @@ impl Drawn {
     }
 
     /// Follows the drive to its current frame and gives `renderer` the lines that moved. The camera seen through
-    /// `view_projection` keeps the lines in its view as they are (ours: the frame's camera for every step it follows).
-    pub fn draw(&mut self, renderer: &mut Renderer, playback: &Playback, view_projection: Mat4) {
+    /// `views` (one, or a triple screen's three) keeps the lines in its view as they are (ours: the frame's camera for
+    /// every step it follows).
+    pub fn draw(&mut self, renderer: &mut Renderer, playback: &Playback, views: &[Mat4]) {
         let samples = playback.samples();
         let index = playback.index();
         let (first, mut changed) = match self.last {
@@ -186,8 +187,8 @@ impl Drawn {
                 (0, self.fences.reset())
             }
         };
-        let frustum = Frustum::from_view_projection(view_projection);
-        let seen = |lo: Vec3, hi: Vec3| frustum.intersects_box((lo + hi) * 0.5, (hi - lo) * 0.5);
+        let frusta: Vec<Frustum> = views.iter().map(|&view| Frustum::from_view_projection(view)).collect();
+        let seen = |lo: Vec3, hi: Vec3| frusta.iter().any(|f| f.intersects_box((lo + hi) * 0.5, (hi - lo) * 0.5));
         let ends: Vec<f64> = playback.frames().map(|(end, _)| end).take(index + 1).collect();
         for i in first..=index {
             let previous = i.checked_sub(1).map(|p| &samples[p]);

@@ -125,10 +125,10 @@ pub struct Characters {
     frames: usize,
     /// The step the rescue helicopter is called at ([`Characters::set_rescue_step`]).
     rescue_step: Option<u32>,
-    /// The stage's visibility cells and the clip planes of the last [`Characters::apply`] (none before the first:
-    /// every cell shown).
+    /// The stage's visibility cells and the clip planes of the last [`Characters::apply`]'s views (none before the
+    /// first: every cell shown).
     cells: Vec<cells::Cell>,
-    planes: Option<[glam::Vec4; 6]>,
+    planes: Option<Vec<[glam::Vec4; 6]>>,
     /// The scripted events' state.
     flip_timer: FlipTimer,
     assist: Option<Assist>,
@@ -555,7 +555,9 @@ impl Characters {
     /// The scripted events' characters show while active.
     fn visible(&self, i: usize) -> bool {
         let actor = &self.actors[i];
-        let in_view = |centre: Vec3, half: Vec3| self.planes.as_ref().is_none_or(|p| cells::in_view(p, centre, half));
+        let in_view = |centre: Vec3, half: Vec3| {
+            self.planes.as_ref().is_none_or(|views| views.iter().any(|p| cells::in_view(p, centre, half)))
+        };
         match (actor.spawn.role, actor.cell) {
             _ if !actor.active => false,
             (Role::Stage, Some(cell)) => in_view(self.cells[cell].centre, self.cells[cell].half),
@@ -564,15 +566,15 @@ impl Characters {
         }
     }
 
-    /// Takes the cells' flags for the frame seen through `view_projection` (`VisSelect`): the next steps run the
-    /// scripts of the characters in view.
-    pub fn look(&mut self, view_projection: Mat4) {
-        self.planes = Some(cells::planes(view_projection));
+    /// Takes the cells' flags for the frame seen through `views` (`VisSelect`; ours: a cell in any of a triple screen's
+    /// views is in view): the next steps run the scripts of the characters in view.
+    pub fn look(&mut self, views: &[Mat4]) {
+        self.planes = Some(views.iter().map(|&view_projection| cells::planes(view_projection)).collect());
     }
 
     /// [`Characters::look`], then poses and skins every visible character into its stage meshes and hides the rest.
-    pub fn apply(&mut self, renderer: &mut Renderer, view_projection: Mat4) {
-        self.look(view_projection);
+    pub fn apply(&mut self, renderer: &mut Renderer, views: &[Mat4]) {
+        self.look(views);
         for i in 0..self.actors.len() {
             let visible = self.visible(i);
             if visible {

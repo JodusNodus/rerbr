@@ -159,14 +159,16 @@ impl Renderer {
         }
     }
 
-    /// Draws the due mirrors' passes from the main view's `[view_projection, sky_view_projection]`, each in
-    /// its own submission (the frame uniforms are rewritten per pass), and writes the views the main view's glass
-    /// samples them by. The particles' uniform is set back to the main view's after. `before` gives the commands
+    /// Draws the due mirrors' passes from the frame's `views` (each a view-projection and the sky's: the main view's,
+    /// or a triple screen's three), each in its own submission (the frame uniforms are rewritten per pass), and writes
+    /// the views the views' glass samples them by. The particles' uniform is set back to the drawn view's
+    /// `view_projection` after. `before` gives the commands
     /// that go before the first pass's (the sun's maps, which the passes read); it is taken only when a pass is drawn.
     pub(super) fn draw_mirrors(
         &self,
         profiler: &mut Option<Profiler>,
-        [view_projection, sky_view_projection]: [Mat4; 2],
+        views: &[(Mat4, Mat4)],
+        view_projection: Mat4,
         before: &mut Option<impl FnOnce() -> wgpu::CommandBuffer>,
     ) {
         let m = &self.mirrors;
@@ -185,7 +187,9 @@ impl Renderer {
             if held[k].is_some() && !m.due(k, frame) {
                 continue;
             }
-            let Some(view) = mirrors::view(view_projection, sky_view_projection, self.depth_size, &placed) else {
+            // Of a triple screen's views, the one that shows most of the glass.
+            let seen = views.iter().filter_map(|&(view, sky)| mirrors::view(view, sky, self.depth_size, &placed));
+            let Some(view) = seen.max_by_key(|view| view.size.0 * view.size.1) else {
                 continue;
             };
             // Under the temporal anti-aliasing each image is drawn with a sub-texel jitter of its own, which the glass

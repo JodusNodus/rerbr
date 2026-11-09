@@ -40,6 +40,7 @@ mod shadows;
 mod sun_mask;
 mod textures;
 mod uniforms;
+mod views;
 
 #[cfg(test)]
 pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
@@ -60,6 +61,7 @@ use sun_mask::SunMask;
 pub(crate) use textures::dds_texture;
 use uniforms::FrameBinding;
 pub(crate) use uniforms::{LampUniform, MAX_LAMPS};
+pub use views::FrameView;
 
 pub(crate) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const CLEAR_COLOR: wgpu::Color = wgpu::Color { r: 0.42, g: 0.58, b: 0.78, a: 1.0 };
@@ -201,6 +203,9 @@ pub struct Renderer {
     mirrors: mirrors::Mirrors,
     /// The large writes, submitted before the frame's first reads ([`Renderer::render`]).
     uploads: Uploads,
+    /// The view of a frame of several drawn last ([`Renderer::render_view`]), and the others' history, by view.
+    view: usize,
+    parked: Vec<Option<views::Parked>>,
 }
 
 impl Renderer {
@@ -439,6 +444,7 @@ impl Renderer {
         if let Some(taa) = &mut self.taa {
             taa.reset();
         }
+        self.reset_parked();
     }
 
     /// The car body's model space to stage space this frame.

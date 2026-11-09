@@ -18,6 +18,7 @@ use rbr_render::present::Present;
 use rbr_render::renderer::{AntiAliasing, DebugView, Detail, Enhance, Reflections};
 use rbr_render::shifter::CarBox;
 use rbr_render::stage::{Selection, Sky, Wear, Weather};
+use rbr_render::triple::Rig;
 use rbr_render::views::CarView;
 use std::path::{Path, PathBuf};
 
@@ -110,6 +111,10 @@ pub struct Args {
     pub pacing: bool,
     /// `--fullscreen`: the window fills its monitor, borderless (`--size` is then the size it leaves fullscreen at).
     pub fullscreen: bool,
+    /// `--triple DIAGONAL,BEZEL,DISTANCE[,ANGLE]`: triple screens (`rbr_render::triple`), the window split in three (a
+    /// spanned display) unless `--triple-monitors` names a window's monitor each: left, centre and right.
+    pub triple: Option<Rig>,
+    pub triple_monitors: Option<[String; 3]>,
     /// `--hdr`: the window shows the highlights past the display's SDR white where it can (`present::surface_colour`).
     pub hdr: bool,
     /// `--title`: what the loading screen names (the launcher's stage and car), else the stage's file name.
@@ -238,6 +243,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --car-gearbox synchro|dog|sequential  --grind-sound WAV  --car-lock DEG
               --save-replay FILE (with --live)  --replay FILE [ARGS...] (watches a replay, extras override)
   view:       --view NAME  --cameras INI  --fov DEG  --chase-fov DEG  --camera EX,EY,EZ,FX,FY,FZ  --flyby AHEAD,SIDE,HEIGHT  --size WxH  --fullscreen  --look-back
+              --triple DIAGONAL,BEZEL,DISTANCE[,ANGLE|auto] (inches, mm, cm, degrees)  --triple-monitors LEFT,CENTRE,RIGHT
               --title TEXT  --pause-menu MOVES  --debug-view MODE
   look:       --weather dry|damp|wet  --wear new|normal|worn  --sky SECTION  --fog off|light|heavy  --wipers off|intermittent|continuous|auto
               --clouds clear|partly|light|heavy  --precipitation none|light|moderate|heavy
@@ -273,6 +279,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut size = None;
     let mut fov = coords::FOV_DEGREES;
     let mut chase_fov = CHASE_FOV_DEGREES;
+    let mut triple = None;
+    let mut triple_monitors = None;
     let mut cameras = None;
     let mut selection = Selection::default();
     let mut view = None;
@@ -347,6 +355,18 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             }
             "--look-back" => look_back = true,
             "--fullscreen" => fullscreen = true,
+            "--triple" => {
+                let value = args.next().ok_or("--triple needs DIAGONAL,BEZEL,DISTANCE[,ANGLE]")?;
+                triple = Some(Rig::parse(&value).ok_or_else(|| {
+                    format!("--triple {value}: needs inches, mm and cm above 0 (bezel 0 or more) and auto or 0 to 90 degrees")
+                })?);
+            }
+            "--triple-monitors" => {
+                let value = args.next().ok_or("--triple-monitors needs LEFT,CENTRE,RIGHT")?;
+                let names: Vec<String> = value.split(',').map(|name| name.trim().to_owned()).collect();
+                let names = <[String; 3]>::try_from(names).ok().filter(|names| names.iter().all(|n| !n.is_empty()));
+                triple_monitors = Some(names.ok_or_else(|| format!("--triple-monitors {value}: needs three names"))?);
+            }
             "--hdr" => hdr = true,
             "--title" => title = Some(args.next().ok_or("--title needs a text")?),
             "--pause-menu" => {
@@ -740,6 +760,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         max_fps,
         pacing,
         fullscreen,
+        triple,
+        triple_monitors,
         hdr,
         title,
         particles,
@@ -929,6 +951,12 @@ mod tests {
         let args = parse("track-54_E").unwrap();
         assert_eq!((args.present, args.max_fps, args.fullscreen), (Present::default(), None, false));
         assert!(parse("--fullscreen").unwrap().fullscreen);
+        let rig = Rig { diagonal: 27.0, bezel: 10.0, distance: 70.0, angle: None };
+        assert_eq!(parse("--triple 27,10,70,auto").unwrap().triple, Some(rig));
+        assert_eq!(parse("track-10_O").unwrap().triple, None);
+        assert!(parse("--triple 27,10").is_err() && parse("--triple-monitors DP-1,DP-2").is_err());
+        let monitors = parse("--triple 27,10,70 --triple-monitors DP-1,DP-2,HDMI-A-1").unwrap().triple_monitors;
+        assert_eq!(monitors, Some(["DP-1", "DP-2", "HDMI-A-1"].map(String::from)));
         assert!(!args.hdr && parse("--hdr").unwrap().hdr);
         let args = parse("--present immediate --max-fps 144").unwrap();
         assert_eq!((args.present, args.max_fps), (Present::Immediate, Some(144.0)));

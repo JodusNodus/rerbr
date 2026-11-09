@@ -67,6 +67,19 @@ pub fn reversed(fovy: f32, aspect: f32, near: f32) -> Mat4 {
     directx::perspective(fovy, aspect, FAR, near)
 }
 
+/// The reversed-depth perspective of an off-axis view (a triple screen's side, `crate::triple`): the image's edges as
+/// the tangents `left`, `right`, `bottom` and `top` of their angles off the view's axis, near plane `near`, metres.
+/// Symmetric edges give [`perspective`]'s matrix.
+pub fn off_axis(left: f32, right: f32, bottom: f32, top: f32, near: f32) -> Mat4 {
+    let (width, height) = (right - left, top - bottom);
+    Mat4::from_cols(
+        Vec4::new(2.0 / width, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, 2.0 / height, 0.0, 0.0),
+        Vec4::new(-(right + left) / width, -(top + bottom) / height, near / (near - FAR), 1.0),
+        Vec4::new(0.0, 0.0, -near * FAR / (near - FAR), 0.0),
+    )
+}
+
 /// A world matrix as stored in `.sgc`: three rows of `[R | t]`. The rotation and the translation act on
 /// column vectors, so the matrix takes node positions to the car's frame. (The loader stores the same
 /// numbers transposed, rbr-recomp `notes/formats/sgc.md`, section 4.)

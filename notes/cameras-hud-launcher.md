@@ -36,6 +36,9 @@ Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of vi
   the cockpit, bonnet and bumper share one (`--fov`), the chase has its own (`--chase-fov`). Written at once to the
   launcher's `[launcher] fov` / `chase_fov` (one setting with the Graphics page's sliders; the launcher rereads it
   when the viewer exits). Reset leaves it.
+- Triple screens (ours, 2026-11-08, [renderer.md](renderer.md#triple-screens-ours-2026-11-08)): `--fov` and
+  `--chase-fov` set the centre screen's field of view; every camera, the start orbit and the helicam included, draws
+  the three; the HUD and the menus go on the centre.
 - In-car head (ours, `rbr_render::head`): over the game's seat shake, the view keeps the horizon steadier, on the
   physics clock (same at any frame rate, in replays and videos); a look into corners and slides was dropped (user,
   2026-11-01: motion sickness). On by default;
@@ -268,3 +271,8 @@ Form in `rbr-launcher/src/settings.rs`, folder in `rbr-launcher/src/home.rs`.
 - `hdr` (`viewer --hdr`, Graphics > Display > HDR) defaults off: the highlights past an HDR display's SDR white where the
   surface has extended-range sRGB (macOS EDR), else the viewer draws SDR (2026-11-05; renderer note, `hdr` row). Offered
   and passed on macOS only (`present::HDR_OFFERED`): DX12 has no such space, Windows' Vulkan drivers scRGB and PQ only.
+- Triple screens (`viewer --triple`, Graphics > Triple screens): `triple` (off), `triple_diagonal` (27 in, 10-65),
+  `triple_bezel` (10 mm, 0-60), `triple_distance` (70 cm, 30-200), `triple_angle` (`auto` or 0-90, the side screens'
+  turn), `triple_monitors` (left,centre,right names: with fullscreen, `--triple-monitors`, a window a monitor;
+  unset or windowed: one window split in thirds). The FOV sliders set the centre screen's field of view; the true
+  field of view readout takes a third of a spanned display's or the window's aspect.

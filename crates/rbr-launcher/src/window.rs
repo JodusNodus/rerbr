@@ -26,10 +26,12 @@ impl Form {
     /// The window sizes: the monitor's modes and the common sizes that fit it, largest first, with the current one.
     fn set_monitor(&mut self, window: &Window) {
         // Wayland names no monitor for a window it hasn't shown yet: the first one listed instead.
+        self.monitors = window.available_monitors().filter_map(|m| m.name()).collect();
         let Some(monitor) = window.current_monitor().or_else(|| window.available_monitors().next()) else {
             return;
         };
         let full = monitor.size();
+        self.monitor = Some((full.width, full.height));
         let mut sizes: Vec<(u32, u32)> = monitor
             .video_modes()
             .map(|m| (m.size().width, m.size().height))

@@ -231,6 +231,33 @@ The sound renders offline (`Player::offline`); window and video share `draw::dra
 Start-orbit frames vary between repeated exports. Kormoran I + Fiesta
 Rally3 Evo, 1280x720: 63.9 fps render, replay 16920 of 16920 frames equal, video and audio durations match.
 
+## Triple screens (ours, 2026-11-08)
+
+`viewer --triple DIAGONAL,BEZEL,DISTANCE[,ANGLE]` (inches, mm, cm, degrees or `auto`); geometry `triple.rs`, renderer
+`renderer/views.rs`, viewer `bin/viewer/triple.rs`.
+
+- Geometry (`triple::Rig`): three like screens, each side hinged on the centre's outer frame edge and turned in by the
+  side angle (auto: facing the eye, `tan(a/2) = (w/2 + bezel) / distance`); its image starts past its own frame. The
+  cameras' field of view is the centre screen's (the eye sits at the distance that gives it), the sides follow at their
+  angle and frames; `Rig::true_fov` is the seat distance's. Each side view is off axis (`coords::off_axis`);
+  `Lens::views` gives left, centre, right.
+- Renderer (`Renderer::render_view`, `FrameView`): a view keeps its temporal anti-aliasing, the motion's last view and
+  the clouds' march, parked while another draws; the frame's first view (the centre) draws what they share: the sun's
+  cascades fitted to every view's slices, the sun's maps, the reflection cubes, the mirrors (each from the view showing
+  most of its glass), the grass, the motion's meshes. Like-sized views share the other targets; each view's commands
+  are submitted before the next. The exposure follows the centre (later views ease over 0 s).
+- Per view on the CPU: particle billboards (`Drawn::view`; `particles::facing` takes out an off-axis view's share along
+  its axis); the characters' cells and the fences' frustum test take any view.
+- Window: without `--triple-monitors` the window holds the three in thirds (spanned display, or windowed): the post
+  pass writes each into its viewport, the window is cleared first, and the HUD, menus and loading screen lay out in
+  the centre third (`Overlay::set_region`). `--triple-monitors L,C,R` (winit monitor names) opens a borderless window
+  per monitor, the main one on the centre; a frame acquires all three or draws none. `--screenshot` writes the three
+  side by side; `--video` stays single.
+- Checked 2026-11-08 in a headless sway (`WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=3`): both modes on autopilot
+  drives (Gabiria, Fiat 131), three 1280x720 windows at 120 fps; single view against main: 5 of 6 reference shots
+  equal, golden-532-fiesta-chase 4 px by 1/255 (the facing). Not on real triple hardware; side windows of another
+  size get the centre's frame scaled.
+
 ## Faithful and ours
 
 | System | Faithful | Ours |

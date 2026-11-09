@@ -68,6 +68,7 @@ pub mod start_board;
 mod sun;
 mod taa;
 mod terrain_detail;
+pub mod triple;
 pub mod tyre_marks;
 mod uploads;
 pub mod upscale;

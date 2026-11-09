@@ -252,6 +252,8 @@ pub struct Overlay {
     context: egui::Context,
     renderer: egui_wgpu::Renderer,
     hud: Box<dyn Hud>,
+    /// The part of the target the HUD lays out in ([`Overlay::set_region`]), `None` all of it.
+    region: Option<[u32; 4]>,
 }
 
 impl Overlay {
@@ -266,7 +268,14 @@ impl Overlay {
             context: egui::Context::default(),
             renderer: egui_wgpu::Renderer::new(device, format, Default::default()),
             hud,
+            region: None,
         }
+    }
+
+    /// Lays the HUD out in the part `region` of the targets (x, y, width and height in pixels: a spanned triple
+    /// display's centre screen, `crate::triple`), `None` all of them.
+    pub fn set_region(&mut self, region: Option<[u32; 4]>) {
+        self.region = region;
     }
 
     /// Draws the HUD for `readout`, with the race's screens over it, over `target` (`size` pixels), keeping what is
@@ -293,9 +302,11 @@ impl Overlay {
         size: (u32, u32),
         mut ui: impl FnMut(&egui::Context, &mut dyn Hud),
     ) {
-        let scale = size.1.max(1) as f32 / REFERENCE_HEIGHT;
+        let [x, y, width, height] = self.region.unwrap_or([0, 0, size.0, size.1]);
+        let scale = height.max(1) as f32 / REFERENCE_HEIGHT;
+        let region = Rect::from_min_size(Pos2::new(x as f32, y as f32), Vec2::new(width as f32, height as f32));
         let mut input = egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(size.0 as f32, size.1 as f32) / scale)),
+            screen_rect: Some(Rect::from_min_max(region.min / scale, region.max / scale)),
             ..Default::default()
         };
         input.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(scale);
