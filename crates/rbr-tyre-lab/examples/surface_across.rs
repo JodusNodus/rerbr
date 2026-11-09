@@ -1,7 +1,8 @@
 //! The surface across the road: the two materials NGP's wheel probe would blend, and the second one's weight, at
 //! lateral offsets from a driven path. `cargo run -p rbr-tyre-lab --example surface_across -- DATA STAGE TRACE
 //! [WEAR WETNESS] [EVERY_M] [OFFSETS]` with `STAGE` a retail track (`track-11_O`) or an RSF stage's path without the
-//! extension, `TRACE` an autopilot `--trace-speed` file (x, y in columns 8-9), `EVERY_M` the spacing along the path
+//! extension, `TRACE` an autopilot `--trace-speed` file (x, y in columns 8-9) or `driveline` (the stage's `.trk`
+//! driveline points, straight between them), `EVERY_M` the spacing along the path
 //! (default 2 m) and `OFFSETS` comma-separated metres to the left (default `-3,-2,-1,0,1,2,3`). Prints
 //! `s offset id0 id1 weight z` per point (`-` off the mesh).
 //!
@@ -13,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use rbr_formats::{col, data::Data, mat, stage_files};
+use rbr_formats::{col, data::Data, mat, stage_files, trk};
 use rbr_physics::ngp::material::{cell, SIDE};
 
 const GRID: f32 = 4.0;
@@ -99,15 +100,32 @@ fn main() {
         Some((id(0), id(1), (0..3).map(|i| w[i] * f.weight[i]).sum(), h))
     };
 
-    let text = std::fs::read_to_string(trace).expect("trace");
-    let path: Vec<[f32; 3]> = text
-        .lines()
-        .filter(|l| !l.starts_with('#'))
-        .filter_map(|l| {
-            let v: Vec<f32> = l.split_whitespace().filter_map(|s| s.parse().ok()).collect();
-            (v.len() > 9).then(|| [v[7], v[8], v[9]])
-        })
-        .collect();
+    let path: Vec<[f32; 3]> = if trace == "driveline" {
+        let file = trk::parse(&stage_files::read(&data, stage, "trk").expect("trk")).expect("trk parse");
+        file.chunks
+            .iter()
+            .find_map(|c| match &c.payload {
+                trk::ChunkPayload::DriveLine(d) => Some(d.records.iter().map(|r| r.vectors[0]).collect::<Vec<_>>()),
+                _ => None,
+            })
+            .expect("driveline")
+            .windows(2)
+            .flat_map(|w| {
+                let (a, b) = ([w[0].x, w[0].y, w[0].z], [w[1].x, w[1].y, w[1].z]);
+                let n = (a[0] - b[0]).hypot(a[1] - b[1]).ceil().max(1.0) as usize;
+                (0..n).map(move |k| std::array::from_fn(|i| a[i] + (b[i] - a[i]) * k as f32 / n as f32))
+            })
+            .collect()
+    } else {
+        let text = std::fs::read_to_string(trace).expect("trace");
+        text.lines()
+            .filter(|l| !l.starts_with('#'))
+            .filter_map(|l| {
+                let v: Vec<f32> = l.split_whitespace().filter_map(|s| s.parse().ok()).collect();
+                (v.len() > 9).then(|| [v[7], v[8], v[9]])
+            })
+            .collect()
+    };
     let mut s = 0.0f32;
     let mut next = 0.0f32;
     for p in path.windows(2) {

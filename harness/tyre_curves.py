@@ -24,7 +24,7 @@ import tyre_scorecard  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LAB = os.path.join(REPO, "target", "release", "examples", "force_sweep")
-SURFACES = {"tarmac": "Dry tarmac", "gravel": "Dry gravel", "snow": "Snow"}
+SURFACES = {"tarmac": "Dry tarmac", "gravel": "Dry gravel (9 mm loose layer)", "snow": "Snow"}
 MODELS = {"ngp": "ngp (NGP 7's tyre)", "brush": "experimental-brush"}
 KAPPA_COLORS = {0.0: "#e8b300", -0.05: "#e07b39", -0.1: "#c0392b", -0.2: "#7d3c98", 0.1: "#2e86c1"}
 ALPHA_COLORS = {0.0: "#e8b300", 2.0: "#e07b39", 5.0: "#c0392b", 10.0: "#7d3c98"}

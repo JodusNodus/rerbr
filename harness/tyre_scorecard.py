@@ -17,7 +17,8 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           the latter with WaterFactor 1 on the dry friction level; tarmac-wet-80, and
                           tarmac-wet-80-worn / tarmac-wet-100-worn at tread remaining 0.2 (`--tread`),
                           tarmac-wet-80-3mm at 0.375; gravel-1.5 and gravel-wet-1.5, the gravel wheel at 1.5 m/s,
-                          dry and with WaterFactor 1; gravel-wet-20, at 20 m/s with WaterFactor 1
+                          dry and with WaterFactor 1, on a 25 mm layer (`--soil`); gravel-wet-20, at 20 m/s with
+                          WaterFactor 1; gravel-deep and gravel-deeper, the gravel wheel on 17.5 and 25 mm layers
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
@@ -91,10 +92,14 @@ for _kmh in (80, 100):
     TYRE_SURFACES[f"tarmac-wet-{_kmh}-worn"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1", "--tread", "0.2"])
 TYRE_SURFACES["tarmac-wet-80-3mm"] = ("tarmac", ["--speed", f"{80 / 3.6:.4f}", "--water", "1", "--tread", "0.375"])
 # Gravel at its sources' speeds: Coutermarsh & Shoop's rig (1-1.5 m/s), dry and with WaterFactor 1 (NGP's wet gravel),
-# and Croft-White's WRC telemetry on wet loose gravel at stage speed (20 m/s).
-TYRE_SURFACES["gravel-1.5"] = ("gravel", ["--speed", "1.5"])
-TYRE_SURFACES["gravel-wet-1.5"] = ("gravel", ["--speed", "1.5", "--water", "1"])
+# on NGP's deeper loose layer (25 mm: their pea stone lay 4-9.5 cm deep, TR-10-11), and Croft-White's WRC telemetry on
+# wet loose gravel at stage speed (20 m/s), on the probe's layer (RSF 345's 9 mm). gravel-deep and gravel-deeper: the
+# probe at NGP's 17.5 and 25 mm layers (loose-v1's α0 follows the depth).
+TYRE_SURFACES["gravel-1.5"] = ("gravel", ["--speed", "1.5", "--soil", "0.025"])
+TYRE_SURFACES["gravel-wet-1.5"] = ("gravel", ["--speed", "1.5", "--water", "1", "--soil", "0.025"])
 TYRE_SURFACES["gravel-wet-20"] = ("gravel", ["--speed", "20", "--water", "1"])
+TYRE_SURFACES["gravel-deep"] = ("gravel", ["--soil", "0.0175"])
+TYRE_SURFACES["gravel-deeper"] = ("gravel", ["--soil", "0.025"])
 # The brake runs per surface: the stage, the extra rbr-standalone flags, the steps, how far off the driveline a valid
 # stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
 BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}

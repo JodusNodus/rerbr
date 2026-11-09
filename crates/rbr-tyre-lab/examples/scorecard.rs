@@ -9,12 +9,13 @@
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
 //!   cargo run --release -p rbr-tyre-lab --example scorecard -- --probe P [--step N --wheel K] [--model ngp|brush]
-//!       [--speed M/S] [--friction S,K] [--water W] [--tread D] [--tuning KEY=VALUE,...]
+//!       [--speed M/S] [--friction S,K] [--water W] [--soil M] [--tread D] [--tuning KEY=VALUE,...]
 //!
 //! `--friction S,K` puts a surface's static and kinetic friction in place of the probed one on a hard surface (no
 //! soil), for a material no run reaches (NGP's ice, 116). `--water W` gives the model the surface's `WaterFactor` W
 //! (the probed friction level kept), and with it the key `stop_mu_x_4k`: the mean braked peak μ_x of a stop from
 //! `--speed`, v0² / (2 ∫ v / μ dv) over the peaks at eight speeds (the measure of a wet braking test's mean μ).
+//! `--soil M` puts the loose layer's depth M (m) in place of the probed one's (a soil wheel stays on soil).
 //! `--tread D` puts the tread remaining D (1 new) in place of the probed wheel's. `--tuning` tunes the brush as
 //! `rbr-standalone --tyre-tuning` does (`rbr_tyre::Tuning`).
 
@@ -40,7 +41,7 @@ fn exponent(xs: &[f32], ys: &[f32]) -> f32 {
 fn main() {
     let (mut probe, mut step, mut wheel) = (String::new(), None, 0u32);
     let (mut model, mut speed, mut friction, mut water) = (String::from("ngp"), 15.0f32, None, 0.0f32);
-    let (mut tread, mut tuning) = (None, rbr_tyre::Tuning::default());
+    let (mut tread, mut tuning, mut soil_as) = (None, rbr_tyre::Tuning::default(), None);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -51,6 +52,7 @@ fn main() {
             "--model" => model = value(),
             "--speed" => speed = value().parse().expect("--speed M/S"),
             "--water" => water = value().parse().expect("--water W"),
+            "--soil" => soil_as = Some(value().parse::<f32>().expect("--soil M")),
             "--tread" => tread = Some(value().parse::<f32>().expect("--tread D")),
             "--tuning" => tuning = rbr_tyre::Tuning::parse(&value()).unwrap_or_else(|e| panic!("{e}")),
             "--friction" => {
@@ -87,7 +89,7 @@ fn main() {
         (p.static_friction, p.kinetic_friction) = (s, k);
         0.0
     } else {
-        soil
+        soil_as.unwrap_or(soil)
     };
     let w = Wheel {
         tyre: 0,

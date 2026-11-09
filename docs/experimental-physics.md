@@ -633,16 +633,19 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 
 ![Side force against slip angle on dry gravel](images/tyre-model/lat-gravel.svg)
 
-- The brush builds side force slowly and keeps it: 90 % of its maximum at 14° and no fall to 40°, like a tyre
-  measured on gravel (at walking pace: 90 % at 12-22°, level to 38°). NGP's reaches 90 % at 7.5° and falls to 0.91
-  of its peak by 40°.
-- At 10° the brush has 0.80 of its maximum, the measured tyre 0.65-0.85, NGP's 0.98.
+- The brush builds side force more slowly the deeper the loose layer under it, and keeps it: 90 % of its maximum at
+  8° on NGP's shallow gravel (9 mm, the figure), 11° on its deep gravel (17.5 mm) and 14° from 25 mm, with no fall
+  to 40°. Measured: a WRC car on a stage road about 12°, a tyre on deep loose pea stone 14.5° (at walking pace, level
+  to 38°), a car on a firm gravel lot 3°. NGP's reaches 90 % at 7.5° on every depth and falls to 0.91 of its peak by
+  40°.
+- At 10° the brush has 0.95 of its maximum on 9 mm, 0.88 on 17.5 mm and 0.80 from 25 mm (the pea stone tyre 0.80),
+  NGP's 0.98.
 
 ![Braking and driving force against slip ratio on dry gravel](images/tyre-model/long-gravel.svg)
 
-- Braking force levels off from a slip ratio of about 0.15 and holds to 0.8. Past that the wheel pushes a berm of
-  gravel ahead of it, and locked it brakes 1.3 times its rolling peak. Measured cars on gravel stop 1.12-1.59 times
-  harder locked than with ABS; the Fiesta Rally2 under the brush 1.34-1.53, under NGP 1.08-1.10.
+- Braking force levels off from a slip ratio of about 0.15 (0.25 on deep layers) and holds to 0.8. Past that the wheel
+  pushes a berm of gravel ahead of it, and locked it brakes 1.3 times its rolling peak. Measured cars on gravel stop
+  1.12-1.59 times harder locked than with ABS; the Fiesta Rally2 under the brush 1.29-1.44, under NGP 1.08-1.10.
 - Driving force levels off and does not fall at full spin, where NGP's falls to 0.82 of its peak. No measured curve on
   gravel reaches full spin, so this part is open.
 

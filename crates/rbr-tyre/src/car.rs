@@ -99,7 +99,7 @@ impl Model for Brush {
         };
         let steady = if soil {
             let share = |class| loose::class_share(x.surface_classes, x.surface_blend, class);
-            loose::eval(&e, &t.loose, share(loose::GRAVEL_CLASS), share(loose::SNOW_CLASS))
+            loose::eval(&e, &t.loose, share(loose::GRAVEL_CLASS), share(loose::SNOW_CLASS), f64::from(x.soil_thickness))
         } else {
             let cy0 = brush::low_mu_slip_stiffness(grip, t.cal.cy0, t.ngp.0);
             let cx0 = brush::low_mu_slip_stiffness(grip, t.cal.cx0, t.ngp.1);
@@ -308,7 +308,7 @@ mod tests {
             surf_static: 0.9,
             surf_kinetic: 0.9,
         };
-        let steady = loose::eval(&e, &b.tyres[0].loose, 0.0, 0.0);
+        let steady = loose::eval(&e, &b.tyres[0].loose, 0.0, 0.0, 0.0);
         assert!((f64::from(on_soil.lateral_force) / steady.fy - 1.0).abs() < 1e-4, "{on_soil:?} {steady:?}");
         let back = b.forces(wheel().tyre, &hard).unwrap();
         assert!((back.lateral_force - on_soil.lateral_force).abs() < 0.2 * gap, "{back:?} {on_soil:?} {on_hard:?}");
