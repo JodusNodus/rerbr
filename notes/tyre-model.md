@@ -1297,6 +1297,73 @@ loose-v1](#loose-surfaces-loose-v1); 2 measured in a drive-test build, below):
    Fig. 3, 1.02-1.08 ± 0.02; road winter ≤ 1.0 below); gravel's 1.18-1.40 (SATC) is context
    (`gravel-car-locked-over-abs-satc-80`): it lies inside the scored 1.12-1.59 on the same run.
 
+## Implied grip from real stage times
+
+Research (2026-11-09; downloads outside the repository): what grip real Rally2 cars use per surface, from official
+times on the official routes, put in the same terms as the game's car-level g. `harness/implied_grip.py`
+(definitions in its docstring), per stage `data/implied-grip-stages.csv`, calibration `data/implied-grip-calibration.csv`.
+
+- Data: WRC live timing (stage, split times and split distances, classes RC2/Rally2 and RC1/Rally1, 2018-2026; the
+  Red Bull host `p-p.redbull.com/rb-wrccom-lintegration-yv-prod/api/`, api.wrc.com no longer resolves) and
+  RallyDataJunkie's routes (`geodir/<event>_<year>.json`, 2022-2026, no elevation; Finland 2021 and Monte-Carlo 2018
+  with their WRC+ telemetry). Times: Completed, not assessed. 879 stages with a route: 553 usable (length within 1 %,
+  ≥ 3 RC2 times), 122 at 1-2 % (left out of the figures), 173 longer, 31 without RC2 times; no route coarse (median
+  vertex spacing 8-34 m). Unusable for length: Monte-Carlo 2023/2024/2026 (+2-8 %), Central European 2023/2024
+  (+2-5 %; 2025 one stage), Japan 2022/2025 (+2-12 %), Croatia 2022/2024 (+2-17 %, 2024 SS1/8 drawn as "Part 1"
+  only), Kenya 2022/2023, New Zealand 2022, Greece 2023 (three routes 1.7-2.2×). No route: Monte-Carlo and Sweden
+  2022, every 2026 event but Monte-Carlo and Sweden, Croatia 2025. Road conditions (wet, snow cover, road position)
+  are not in the timing data: not reported.
+- Model: point mass on the route's curvature (σ 15 m), corner speed √(μ_y g_eff/κ), traction/power forward and
+  braking backward passes, friction ellipse, μ_x = μ_y; Rally2 1430 kg, 170 kW at the wheels (214 kW × 0.85 × 0.92
+  over the shift band), CdA 0.85, ClA 0.2, 190 km/h; WRC 2017-21 1360 kg, 218 kW, CdA 0.95, ClA 1.0. Implied μ: the
+  μ_y that gives the class's best and top-5 median time. Car parameters move it under 1 % each (m 1390-1480 kg,
+  P 150-195 kW, CdA 0.7-1.0, ClA 0-0.5, rolling 0.6-1.5×); μ_x/μ_y 0.8-1.2 ±3 %; per stage `mu_rss` median 0.035.
+  The level depends on the smoothing (SS7 1.40 / 0.89 / 0.64 at σ 5 / 15 / 30 m) and the ellipse (off: -12 %); the
+  calibration uses the same choices, so they cancel. σ 15: SS7's μ within 1.5 % with every 2nd-4th vertex dropped
+  (spacing 20 → 103 m), σ 30 falls 12 %. Grade (telemetry altitude): +0.2 % (Finland) / +0.3 % (Monte, climbs to 940
+  m), so the routes' missing elevation costs under 1.5 %. A line inside ±2-4 m of the route lowers μ 11-19 % with no
+  better fit: not used; the calibration takes the line in.
+- Calibration (WRC 2017-21 cars, 5-8 merged 10 Hz drives a stage; `rally_gg.py` definitions; stages over 5 km):
+  Finland 2021 (17 stages, gravel): route μ / lateral 1 s p90 1.02 (0.94-1.11), / g-g p95 |lat| 0.83 (0.73-0.90),
+  / braking 0.5 s peak 0.92; Monte-Carlo 2018 (15 stages, tarmac with snow and ice; SS9 lat p90 0.41 g): 0.86
+  (0.73-0.95), 0.74 (0.60-0.86), 0.81. On the drivers' own GPS line both agree: μ / p90 0.847 and 0.843, / g-g p95
+  0.69 and 0.71. The route-based difference is the line: GPS μ / route μ 0.84 in Finland (wide roads, cut corners),
+  0.97 at Monte (narrow). So the model maps time to measured g alike on both surfaces, and the transfer to another
+  event lies between the two (wide roads: Finland's 0.83, narrow: Monte's 0.74 per g-g p95). The model's speed
+  against the telemetry by position: r 0.75 (Finland) / 0.84 (Monte), SS7 p10/50/90 93/133/171 against 91/134/171
+  km/h. Rally2 on the same stages: μ 0.93 of the WRC cars' in both rallies (Finland 2021 RC2 top-5 0.84).
+- Game in the same terms: on SS7's part that is RSF 524 (10.31 km to the finish), the at-limit autopilot's times
+  ([Real stage telemetry](#real-stage-telemetry-wrc-gravel)) give μ 0.46 (ngp Rally2, plan 0.571 g: 0.80 of it) /
+  0.47 (brush, plan 0.598 g: 0.79), the real drivers 0.98-1.09. Model μ over the car's limit is 0.79-0.80 in the game
+  and 0.83 (route μ / g-g p95) for the real cars: the g-g p95 stands for the car's lateral limit, and the game's
+  circle row is that limit.
+
+| Surface | Events (stages) | Rally2 top-5 μ, event medians | RC1 μ | Car-level lateral, μ / 0.83 (/ 0.74) | Game Rally2: circle / threshold braking, ngp; brush |
+| --- | --- | --- | --- | --- | --- |
+| gravel, Finland 2022-2025 | 4 (68) | 0.838 / 0.850 / 0.833 / 0.889 | 0.89-0.92 | 1.02 g (0.93-1.15 over the stages' ratios; 1.13) | 0.571 / 0.826 (80 km/h); 0.664 / 0.840 |
+| gravel, all | 32 (388) | 0.721 (Kenya 0.42-0.48, Sardegna 0.57-0.61, Greece 0.66-0.74, Portugal 0.72-0.74, Estonia 0.68-0.75, Chile 0.76-0.79, Latvia 0.79) | 0.47-0.92 | 0.87 g | as above |
+| snow, Sweden 2023-2026 | 4 (64) | 0.704 / 0.627 / 0.620 / 0.605 | 0.67-0.74 | 0.75 g (0.73-0.85 over the years, 0.69-0.85 over the ratios; 0.84) | 0.48 / 0.875 (50 km/h); 0.55 / 0.922 |
+| tarmac | 11 (87) | 0.880 (Croatia 0.74-0.88, Japan 0.79-0.91, Belgium 0.81, CER 2025 0.98, Spain 1.09, Canarias 1.16) | 0.79-1.19 | narrow (Croatia, Japan, Belgium) / 0.74: 1.0-1.2 g; wide (Spain, Canarias) / 0.83: 1.3-1.4 g | 1.19-1.28 (r40, map 85, every physics) / 1.31 (100 km/h); 1.27 |
+| mixed, Monte-Carlo 2025 | 1 (14) | 0.748 (0.49-0.83) | 0.81 | 1.01 g (/ 0.74) | |
+
+Per stage (CSV): best and top-5 times, μ for both, `split_mu` (sections between splits: p10-p90 within an event
+13-40 % either side of its median, so the sections mix road character with grip and do not separate them), the sensitivity
+moves, the direction, the RC1 μ beside.
+
+- Answer (Rally2, car level, uncertainty from the calibration's transfer ±10 % and the stages' spread): gravel on
+  Finnish roads about 1.0 g (0.93-1.15) against the game's 0.571 (ngp) / 0.664 (brush): the game's gravel is 0.55-0.65
+  of the real. Snow (Sweden) about 0.75 g (0.69-0.85) against 0.48 / 0.55: 0.64-0.73. Tarmac 1.0-1.4 g by road
+  against the game's 1.19-1.28: in range. Ratios inside one calibration: snow over gravel 0.74 real (0.68-0.85 by
+  year) against the game's 0.84 / 0.83; tarmac over gravel 1.0-1.4 real against 2.1-2.2 (ngp) / 1.8-1.9 (brush).
+  Braking through the 0.5 s peak ratio (0.92 / 0.81): gravel 0.92 g, snow 0.68 g, tarmac 1.09 g real, against the
+  game's threshold rows above (the model's μ_x = μ_y makes this weaker than the lateral).
+- What moves it most: the line (road width): Finland's against Monte's ratio is 10 %, the stages' ratios ±10 %;
+  then μ_x/μ_y ±3 %; the car's parameters under 1 % each. Not covered: the real lateral g includes road camber and
+  ruts the cars lean on (the game's circle is flat); one calibration rally per surface, both with WRC cars, not
+  Rally2; no snow telemetry (Sweden takes Finland's ratio, Monte's gives +11 %).
+- Level: no recommendation; the data say the game's gravel and snow car-level grip sit well below the real Rally2's
+  and its tarmac at it, with the gaps above. The level is the user's decision.
+
 ## Wong, Theory of Ground Vehicles, against the open items (2026-11-09)
 
 J. Y. Wong, Theory of Ground Vehicles, 3rd ed. (Wiley), a scan read page by page (`research/wong`, notes only); book
