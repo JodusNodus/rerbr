@@ -25,7 +25,8 @@ context: measured and printed (CTX), not scored. The `how` keys:
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
                           over the threshold run at slip K's, one pedal), ratio_absK (locked decel over the per-wheel
-                          ABS run at K's, `--brake-abs K`: a run per K the rows name); gravel RSF 345,
+                          ABS run at K's, `--brake-abs K`: a run per K the rows name); gravel RSF 345
+                          (gravel-damp / gravel-wet: `--wetness damp` / `wet`),
                           tarmac RSF 568, snow map 10, ice RSF 504's start straight iced from the brake onset
                           (`--material-as 116`: the run-up on its tarmac; off the road is ice too, so a stop may
                           wander 15 m off the driveline), its decel taken on the flat (less g times the straight's
@@ -112,6 +113,8 @@ TYRE_SURFACES["gravel-deeper"] = ("gravel", ["--soil", "0.025"])
 # stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
 BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}
 BRAKE_STAGES = {"gravel": {**BRAKE, "rsf_stage": 345, "stage": None},
+                "gravel-damp": {**BRAKE, "rsf_stage": 345, "stage": None, "extra": ["--wetness", "damp"]},
+                "gravel-wet": {**BRAKE, "rsf_stage": 345, "stage": None, "extra": ["--wetness", "wet"]},
                 "tarmac": {**BRAKE, "rsf_stage": 568, "stage": None},
                 "snow": {**BRAKE, "rsf_stage": None, "stage": "track-10_O"},
                 "ice": {**BRAKE, "rsf_stage": 504, "stage": None, "extra": ["--material-as", "116"],
