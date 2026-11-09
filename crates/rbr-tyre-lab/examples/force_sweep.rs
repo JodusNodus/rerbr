@@ -1,12 +1,15 @@
-//! The steady lateral force over the slip angle at fixed slip ratios, per model, on a probed wheel: the curves of a
-//! "lateral sweep at fixed longitudinal slips" plot. Prints CSV only.
+//! Steady force sweeps per model on a probed wheel, as CSV: the lateral force over the slip angle at fixed slip ratios
+//! (default), or with `--long` the longitudinal force over the slip ratio at fixed slip angles. The curves of
+//! `docs/experimental-physics.md`'s tyre figures (`harness/tyre_curves.py`).
 //!
 //! Research tooling (ours, experimental): the wheel as `scorecard` sets it up (the probe's dump, the soil under it),
 //! NGP's tyre (`ngp`) and the profile models (`brush`) as `steady::Tyre`s at one load and contact speed. Forces in N,
-//! signed as a plot reads them: a positive slip angle gives a positive lateral force; κ < 0 brakes, κ > 0 drives.
+//! signed as a plot reads them: a positive slip angle gives a positive lateral force; κ < 0 brakes (negative Fx, -1
+//! locked), κ > 0 drives.
 //!
-//!   cargo run --release -p rbr-tyre-lab --example lat_sweep -- --probe P [--step N --wheel K] [--fz 4000]
-//!       [--speed 15] [--kappas 0,-0.05,-0.1,-0.2,0.1] [--models ngp,brush] [--to 40] [--by 0.25]
+//!   cargo run --release -p rbr-tyre-lab --example force_sweep -- --probe P [--step N --wheel K] [--fz 4000]
+//!       [--speed 15] [--models ngp,brush] [--kappas 0,-0.05,-0.1,-0.2,0.1 --to 40 --by 0.25]
+//!       [--long --alphas 0,2,5,10]
 
 use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{parse_probe, Params};
@@ -16,6 +19,7 @@ fn main() {
     let (mut probe, mut step, mut wheel) = (String::new(), None, 0u32);
     let (mut fz, mut speed, mut to, mut by) = (4000.0f32, 15.0f32, 40.0f32, 0.25f32);
     let mut kappas = vec![0.0f32, -0.05, -0.1, -0.2, 0.1];
+    let (mut long, mut alphas) = (false, vec![0.0f32, 2.0, 5.0, 10.0]);
     let mut models = vec![String::from("ngp"), String::from("brush")];
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -30,6 +34,8 @@ fn main() {
             "--by" => by = value().parse().expect("--by DEG"),
             "--kappas" => kappas = value().split(',').map(|k| k.parse().expect("--kappas K,...")).collect(),
             "--models" => models = value().split(',').map(str::to_owned).collect(),
+            "--long" => long = true,
+            "--alphas" => alphas = value().split(',').map(|a| a.parse().expect("--alphas DEG,...")).collect(),
             _ => panic!("unknown arg {a}"),
         }
     }
@@ -74,13 +80,17 @@ fn main() {
     for model in &models {
         let built = rbr_tyre::model(model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
         let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water: 0.0, camber: 0.0 };
-        for &k in &kappas {
-            for a in grid(-to, to, by) {
-                let rad = a.to_radians();
-                let (vlat, vlong) = (speed * rad.sin(), -speed * rad.cos());
-                let (fx, fy) = t.forces(fz, vlat, vlong, (1.0 + k) * (-vlong) / r);
-                println!("{model},{k},{a},{:.1},{:.1}", -fy, -fx);
-            }
+        // (slip angle, slip ratio) pairs: one curve per fixed value, swept over the other.
+        let curves: Vec<Vec<(f32, f32)>> = if long {
+            alphas.iter().map(|&a| grid(-1.0, 1.0, 0.005).map(|k| (a, k)).collect()).collect()
+        } else {
+            kappas.iter().map(|&k| grid(-to, to, by).map(|a| (a, k)).collect()).collect()
+        };
+        for (a, k) in curves.into_iter().flatten() {
+            let rad = a.to_radians();
+            let (vlat, vlong) = (speed * rad.sin(), -speed * rad.cos());
+            let (fx, fy) = t.forces(fz, vlat, vlong, (1.0 + k) * (-vlong) / r);
+            println!("{model},{k},{a},{:.1},{:.1}", -fy, -fx);
         }
     }
 }
