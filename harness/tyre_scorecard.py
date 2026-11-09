@@ -92,9 +92,9 @@ for _kmh in (80, 100):
     TYRE_SURFACES[f"tarmac-wet-{_kmh}-worn"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1", "--tread", "0.2"])
 TYRE_SURFACES["tarmac-wet-80-3mm"] = ("tarmac", ["--speed", f"{80 / 3.6:.4f}", "--water", "1", "--tread", "0.375"])
 # Gravel at its sources' speeds: Coutermarsh & Shoop's rig (1-1.5 m/s), dry and with WaterFactor 1 (NGP's wet gravel),
-# on NGP's deeper loose layer (25 mm: their pea stone lay 4-9.5 cm deep, TR-10-11), and Croft-White's WRC telemetry on
-# wet loose gravel at stage speed (20 m/s), on the probe's layer (RSF 345's 9 mm). gravel-deep and gravel-deeper: the
-# probe at NGP's 17.5 and 25 mm layers (loose-v1's α0 follows the depth).
+# on NGP's deeper loose layer (25 mm: TR-10-11 gives no depth under the test, hard turns built it up to 10 cm, p. 18),
+# and Croft-White's WRC telemetry on wet loose gravel at stage speed (20 m/s), on the probe's layer (RSF 345's 9 mm).
+# gravel-deep and gravel-deeper: the probe at NGP's 17.5 and 25 mm layers (loose-v1's α0 follows the depth).
 TYRE_SURFACES["gravel-1.5"] = ("gravel", ["--speed", "1.5", "--soil", "0.025"])
 TYRE_SURFACES["gravel-wet-1.5"] = ("gravel", ["--speed", "1.5", "--water", "1", "--soil", "0.025"])
 TYRE_SURFACES["gravel-wet-20"] = ("gravel", ["--speed", "20", "--water", "1"])

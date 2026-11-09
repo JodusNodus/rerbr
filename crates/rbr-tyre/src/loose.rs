@@ -109,9 +109,36 @@ pub fn braking_slip(vsx: f64, vx: f64) -> f64 {
     }
 }
 
+/// The driving slip, 0 to 1: the share of the rolling speed `vr` (floored, [`brush::slip_velocities`]) the patch
+/// slides back along it (1 spinning at standstill), 0 when the slip brakes.
+pub fn driving_slip(vsx: f64, vx: f64, vr: f64) -> f64 {
+    if vsx * vx < 0.0 || (vx == 0.0 && vsx != 0.0) {
+        (vsx.abs() / vr).min(1.0)
+    } else {
+        0.0
+    }
+}
+
+/// DRIVE TEST ONLY (off unless set): `RERBR_TEST_GRAVEL_SPIN=F` lets gravel's driven force fall past
+/// [`SPIN_FROM`] to F times the level at full spin. Read once; one stderr line when set.
+fn test_gravel_spin() -> Option<f64> {
+    static F: std::sync::OnceLock<Option<f64>> = std::sync::OnceLock::new();
+    *F.get_or_init(|| {
+        let f = std::env::var("RERBR_TEST_GRAVEL_SPIN").ok()?.parse::<f64>().ok()?.clamp(0.0, 1.0);
+        eprintln!("rbr-tyre: RERBR_TEST_GRAVEL_SPIN={f}: gravel's driven force falls to {f} of the level at full spin");
+        Some(f)
+    })
+}
+
+/// The driving slip the drive test's fall starts from: dense sand peaks at ~35 % slip (CRREL 95-1 Fig. 18), a sand
+/// rig at 15-25 % (WES TR 3-666); gravel's shear law is at 0.97 of its level by 0.3. A smoothstep to full spin puts
+/// 0.88 of the way at 80 % (dense sand 0.87 of its peak there, at F 0.85).
+pub const SPIN_FROM: f64 = 0.3;
+
 /// Gravel's shear law reaches 1 - 1/e of the friction at this slip angle on dry deep gravel, degrees ([`shear`]):
-/// Coutermarsh & Shoop's pea stone (Fig. 15, a loose layer 4-9.5 cm deep on recycled asphalt, TR-10-11) fitted: 6.28°
-/// (rms 0.0012 μ/max over 1-38°), rounded. NGP's deeper gravel (25-30 mm) takes it ([`GRAVEL_DEPTH_ALPHA0_DEG`]).
+/// Coutermarsh & Shoop's pea stone (Fig. 15; 0.64 cm stone on recycled asphalt, the loose depth under the test not
+/// stated, hard turns built it up to 10 cm, TR-10-11 p. 18) fitted: 6.28° (rms 0.0012 μ/max over 1-38°), rounded.
+/// NGP's deeper gravel (25-30 mm) takes it ([`GRAVEL_DEPTH_ALPHA0_DEG`]).
 pub const GRAVEL_ALPHA0_DEG: f64 = 6.3;
 /// The same on wet gravel (NGP's WaterFactor 1): Coutermarsh & Shoop's wet gravel (Fig. 15) fitted: 9.7° (rms 0.0015).
 /// Its ratio to [`GRAVEL_ALPHA0_DEG`] scales every depth's dry α0.
@@ -187,6 +214,18 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
         out.fx = -out.kx * sx;
         out.fy = -out.ky * sy;
         out.trail = if out.fy != 0.0 { -out.mz / out.fy } else { 0.0 };
+        if let Some(f) = test_gravel_spin() {
+            let t = ((driving_slip(vsx, x.vx, vr) - SPIN_FROM) / (1.0 - SPIN_FROM)).clamp(0.0, 1.0);
+            let k = 1.0 - (1.0 - f) * t * t * (3.0 - 2.0 * t) * gravel;
+            if k < 1.0 {
+                let before = out.fx.hypot(out.fy);
+                out.kx *= k;
+                out.fx = -out.kx * sx;
+                if before > 0.0 {
+                    out.mu *= out.fx.hypot(out.fy) / before;
+                }
+            }
+        }
     }
     // The berm: from BERM_FROM, or the braking slip of the longitudinal full slide (|sx| = 3 mu_x Fz / Cx) if later, to
     // lock.
@@ -495,6 +534,9 @@ pub(crate) mod tests {
         assert_eq!(braking_slip(0.0, 0.0), 0.0);
         assert_eq!(braking_slip(-0.2, -0.1), 0.4);
         assert_eq!(braking_slip(0.2, -10.0), 0.0);
+        assert_eq!(driving_slip(0.2, -10.0, 10.2), 0.2 / 10.2);
+        assert_eq!(driving_slip(1.0, 0.0, 1.0), 1.0);
+        assert_eq!(driving_slip(-0.2, -0.1, 0.5), 0.0);
     }
 
     #[test]
