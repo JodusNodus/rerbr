@@ -9,7 +9,10 @@
 //!
 //!   cargo run --release -p rbr-tyre-lab --example force_sweep -- --probe P [--step N --wheel K] [--fz 4000]
 //!       [--speed 15] [--models ngp,brush] [--kappas 0,-0.05,-0.1,-0.2,0.1 --to 40 --by 0.25]
-//!       [--long --alphas 0,2,5,10]
+//!       [--long --alphas 0,2,5,10] [--soil M] [--water W]
+//!
+//! `--soil M` puts the loose layer's depth M (m) in place of the probed one's, `--water W` gives the models the
+//! surface's `WaterFactor` W.
 
 use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{parse_probe, Params};
@@ -21,6 +24,7 @@ fn main() {
     let mut kappas = vec![0.0f32, -0.05, -0.1, -0.2, 0.1];
     let (mut long, mut alphas) = (false, vec![0.0f32, 2.0, 5.0, 10.0]);
     let mut models = vec![String::from("ngp"), String::from("brush")];
+    let (mut soil_as, mut water) = (None, 0.0f32);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -35,6 +39,8 @@ fn main() {
             "--kappas" => kappas = value().split(',').map(|k| k.parse().expect("--kappas K,...")).collect(),
             "--models" => models = value().split(',').map(str::to_owned).collect(),
             "--long" => long = true,
+            "--soil" => soil_as = Some(value().parse::<f32>().expect("--soil M")),
+            "--water" => water = value().parse().expect("--water W"),
             "--alphas" => alphas = value().split(',').map(|a| a.parse().expect("--alphas DEG,...")).collect(),
             _ => panic!("unknown arg {a}"),
         }
@@ -58,6 +64,7 @@ fn main() {
         .and_then(|w| w.lines().find_map(|l| l.trim().strip_prefix("surface:")))
         .and_then(|s| s.split_whitespace().nth(5)?.parse::<f32>().ok())
         .unwrap_or(0.0);
+    let soil = soil_as.unwrap_or(soil);
     let w = Wheel {
         tyre: 0,
         reference_friction: p.reference_friction,
@@ -72,7 +79,7 @@ fn main() {
         rubber_friction: p.rub_my.clone(),
     };
     println!(
-        "# step {} wheel {} fz {fz} speed {speed} static {:.4} soil {soil:.4}",
+        "# step {} wheel {} fz {fz} speed {speed} static {:.4} soil {soil:.4} water {water}",
         p.step, p.wheel, p.static_friction
     );
     println!("model,kappa,alpha_deg,fy_n,fx_n");
@@ -80,7 +87,7 @@ fn main() {
     for model in &models {
         let built = rbr_tyre::model(model, std::slice::from_ref(&w), &rbr_tyre::Tuning::MODEL)
             .unwrap_or_else(|e| panic!("{e}"));
-        let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water: 0.0, camber: 0.0 };
+        let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water, camber: 0.0 };
         // (slip angle, slip ratio) pairs: one curve per fixed value, swept over the other.
         let curves: Vec<Vec<(f32, f32)>> = if long {
             alphas.iter().map(|&a| grid(-1.0, 1.0, 0.005).map(|k| (a, k)).collect()).collect()
