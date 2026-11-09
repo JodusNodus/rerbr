@@ -204,7 +204,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Restrictor choked flow (generic) [NASA], C_D 0.95, 20 % pressure loss (guess), solved with the compressor by root
   finding (inferred: a two-step oscillation otherwise). Sizes by group and year: none before 1990 and none on Group B;
   Group A 40 mm 1990–91, 38 mm 1992–94, 34 mm from 1995 (WRC from 1997 the same, as Group A cars); Group N 40, 36 and
-  32 mm the same years [Appendix J], 33 mm from 2010 [Impreza N2010], [FIA 254]; WRC 1.6 33 mm, 36 mm from 2017
+  32 mm the same years [Appendix J] (1990–91 "must be 40 mm" in every event; from 1992 "compulsory in rallies", allowed
+  elsewhere), 33 mm from 2010 [Impreza N2010], [FIA 254]; WRC 1.6 33 mm, 36 mm from 2017
   [FIA 255A], [World Rally Car]; Rally2 32 mm [FIA 261]. [rallycars restrictors]' 38/36/34 mm (1992/1994/1995) mixes
   Group A's 38 and 34 with Group N's 36.
 - Turbine nozzle with Ψ, η_t 0.65 (guess) [Andersson].
