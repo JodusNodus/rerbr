@@ -5,10 +5,10 @@
 //! brake balance) and are outlined where they differ from the comparison.
 
 use egui::{pos2, vec2, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui};
-use rbr_gameplay::setup::{Area, Spec};
+use rbr_gameplay::setup::{Area, Setup};
 
 use super::charts::{DIFF, FRONT, REAR};
-use super::values::WHEEL_AREAS;
+use super::values::{find, Change, Field, WHEEL_AREAS};
 
 /// The board's size.
 pub const SIZE: egui::Vec2 = vec2(372.0, 330.0);
@@ -18,19 +18,19 @@ const HALF: f32 = 50.0;
 const LENGTH: f32 = 306.0;
 const AXLES: [f32; 2] = [64.0, 244.0];
 
-/// What the board shows of the setup.
+/// What the board shows of a setup.
 pub struct View {
     /// By [`Area::ALL`]: the chip's leading values and the lines differing from the comparison.
-    pub summaries: [String; 8],
-    pub counts: [usize; 8],
+    summaries: [String; 8],
+    counts: [usize; 8],
     /// The front and rear anti-roll bars' stiffness, 0 to 1 in their ranges.
-    pub roll_bars: [f32; 2],
+    roll_bars: [f32; 2],
     /// The centre, front and rear diffs' locking torque, 0 to 1 of the largest any of them may have; `None` for a
     /// diff the car's options fix at 0 (none fitted).
-    pub diffs: [Option<f32>; 3],
+    diffs: [Option<f32>; 3],
     /// The front brakes' share of the brake pressure.
-    pub brake_front: f32,
-    pub differs: Differs,
+    brake_front: f32,
+    differs: Differs,
 }
 
 /// The parts whose values differ from the comparison.
@@ -46,11 +46,78 @@ pub struct Differs {
     gears: bool,
 }
 
+impl View {
+    /// What the board shows of `setup` (the car's `fields`), whose `lines` and `differs` from the comparison are
+    /// given; `gear` its drop gear as shown.
+    pub fn of(fields: &[Field], setup: &Setup, lines: &[Change], differs: Differs, gear: Option<String>) -> View {
+        let d = setup;
+        let field = |key: &str| find(fields, key).map(|i| &fields[i]);
+        let pair = |key: &str, front: f32, rear: f32| {
+            field(key).map_or_else(String::new, |f| {
+                let unit = f.spec.unit;
+                let n = |v: f32| format!("{:.*}", unit.decimals, v * unit.scale);
+                format!("{} · {} {}", n(front), n(rear), unit.suffix)
+            })
+        };
+        let fraction = |key: &str, v: f32| {
+            field(key).filter(|f| !f.fixed()).map_or(0.5, |f| (v - f.range.min) / (f.range.max - f.range.min))
+        };
+        let share = |front: f32, rear: f32| front / (front + rear);
+        let torques = [d.center_diff_torque, d.front_diff_torque, d.rear_diff_torque];
+        let fitted = ["CenterDiffMaxTorque", "FrontDiffMaxTorque", "RearDiffMaxTorque"]
+            .map(|key| field(key).map(|f| f.range.max).filter(|&max| max > 0.0));
+        let most = fitted.iter().flatten().fold(0.0_f32, |a, &b| a.max(b));
+        let diffs = std::array::from_fn(|n| fitted[n].map(|_| torques[n] / most));
+        let shown: Vec<String> =
+            (0..3).filter(|&n| fitted[n].is_some()).map(|n| format!("{:.0}", torques[n])).collect();
+        let c = &d.corners;
+        let summaries = Area::ALL.map(|area| match area {
+            Area::Tyres => pair("Pressure", c[0].tyre_pressure, c[2].tyre_pressure),
+            Area::Springs => pair("SpringStiffness", c[0].spring_stiffness, c[2].spring_stiffness),
+            Area::Dampers => pair("DampingBump", c[0].bump, c[2].bump),
+            Area::Geometry => pair("WheelAxisInclination", c[0].axis_inclination, c[2].axis_inclination),
+            Area::RollBars => {
+                let bars = share(d.front_roll_bar, d.rear_roll_bar);
+                format!("{:.0}° lock · {:.0} % front", d.steering_lock.to_degrees(), 100.0 * bars)
+            }
+            Area::Brakes => format!("{:.0} % front", 100.0 * share(d.front_brake_pressure, d.rear_brake_pressure)),
+            Area::Differentials if shown.is_empty() => "none to set".to_owned(),
+            Area::Differentials => format!("{} Nm", shown.join(" · ")),
+            Area::Gears => gear.clone().map_or_else(String::new, |g| format!("drop gear {g}")),
+        });
+        View {
+            summaries,
+            counts: Area::ALL.map(|area| lines.iter().filter(|l| l.area == area).count()),
+            roll_bars: [
+                fraction("FrontRollBarStiffness", d.front_roll_bar),
+                fraction("RearRollBarStiffness", d.rear_roll_bar),
+            ],
+            diffs,
+            brake_front: share(d.front_brake_pressure, d.rear_brake_pressure),
+            differs,
+        }
+    }
+}
+
+/// What a chip's leading values are.
+fn legend(area: Area) -> &'static str {
+    match area {
+        Area::Tyres => "Pressure: front · rear (the left wheels)",
+        Area::Springs => "Spring rate: front · rear (the left wheels)",
+        Area::Dampers => "Slow bump: front · rear (the left wheels)",
+        Area::Geometry => "Camber: front · rear (the left wheels)",
+        Area::RollBars => "Steering lock · the front's share of the anti-roll stiffness",
+        Area::Brakes => "The front's share of the brake pressure",
+        Area::Differentials => "Locking torque of each diff the car has: centre, front, rear",
+        Area::Gears => "The drop gear's teeth",
+    }
+}
+
 impl Differs {
-    /// The parts of the values (`specs` order) in which `now` differs from `base`.
-    pub fn of(specs: &[Spec], base: &[f32], now: &[f32]) -> Differs {
+    /// The parts of the values (the car's `fields`) in which `now` differs from `base`.
+    pub fn of(fields: &[Field], base: &[f32], now: &[f32]) -> Differs {
         let mut out = Differs::default();
-        for (_, spec) in specs.iter().enumerate().filter(|(i, _)| base.get(*i) != now.get(*i)) {
+        for spec in fields.iter().enumerate().filter(|(i, _)| base.get(*i) != now.get(*i)).map(|(_, f)| &f.spec) {
             if let (Some(a), Some(w)) = (WHEEL_AREAS.iter().position(|a| *a == spec.area), spec.index) {
                 out.corners[a][w] = true;
                 continue;
@@ -251,10 +318,18 @@ pub fn ui(ui: &mut Ui, selected: Area, view: &View) -> Option<Area> {
     for (n, (area, _)) in CHIPS.iter().enumerate() {
         chip(&painter, chip_rect(n), *area, &visuals, view, *area == selected, Some(*area) == hovered);
     }
-    if hovered.is_some() {
+    let picked = response.clicked().then_some(hovered).flatten();
+    if let Some(area) = hovered {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        let count = view.counts[index(area)];
+        let differs = match count {
+            0 => String::new(),
+            1 => "\n1 difference from the compared setup".to_owned(),
+            n => format!("\n{n} differences from the compared setup"),
+        };
+        response.on_hover_text(format!("{}\n{}{differs}", area.name(), legend(area)));
     }
-    response.clicked().then_some(hovered).flatten()
+    picked
 }
 
 fn chip(painter: &egui::Painter, rect: Rect, area: Area, visuals: &egui::Visuals, view: &View, on: bool, hover: bool) {
@@ -395,19 +470,19 @@ fn lerp(a: Color32, b: Color32, t: f32) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::setup_page::values::tests::any_car;
     use crate::setup_page::values::values;
-    use rbr_gameplay::setup::Setup;
 
     /// A part is marked where its own values differ: one tyre, an axle's bar, the diff a map acts on.
     #[test]
     fn the_parts_that_differ_are_the_changed_values_own() {
-        let specs = Setup::specs();
+        let fields = any_car();
         let mut now = Setup::default();
         let base = values(&now);
         now.corners[3].tyre_pressure = 2.1e5;
         now.rear_roll_bar = 9000.0;
         now.diff_maps[1].brake[2] = 0.3;
-        let differs = Differs::of(&specs, &base, &values(&now));
+        let differs = Differs::of(&fields, &base, &values(&now));
         let wheels: Vec<bool> = (0..4).map(|w| differs.part(Part::Wheel(w))).collect();
         assert_eq!(wheels, [false, false, false, true]);
         assert!(!differs.part(Part::Bar(0)) && differs.part(Part::Bar(1)));

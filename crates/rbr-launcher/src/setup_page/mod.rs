@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use charts::DIFF;
 use egui::{ComboBox, RichText, Ui};
 use rbr_formats::saves::{is_file_name_part, setup_slots, DIR as SAVES};
-use rbr_gameplay::setup::{Area, Bounds, CarSetup, Range, SeasonSetup, Setup, Spec, CAR_FOLDERS};
+use rbr_gameplay::setup::{Area, Bounds, CarSetup, SeasonSetup, Setup, Spec, CAR_FOLDERS};
 
 use crate::catalog::{self, Car};
 use crate::pages::{GOOD, WARN};
@@ -238,6 +238,8 @@ pub struct SetupPage {
     key: Option<(u32, &'static str)>,
     car_name: String,
     car: Result<CarSetup, String>,
+    /// The car's values: their specs and ranges (`values::fields`).
+    fields: Vec<values::Field>,
     folders: Folders,
     profiles: Vec<Profile>,
     /// The setup each car drives with on each surface, the Drive page's choice.
@@ -268,6 +270,7 @@ impl SetupPage {
             key: None,
             car_name: String::new(),
             car: Err(String::new()),
+            fields: Vec::new(),
             folders: Folders::default(),
             profiles: Vec::new(),
             choices,
@@ -304,14 +307,14 @@ impl SetupPage {
             },
             catalog::Physics::Archive => CarSetup::load_in(archive, car.slot as usize, surface),
         };
+        self.fields = values::fields(self.car.as_ref().map_or(&[][..], |c| &c.ranges));
         self.folders = Folders::of(here, rsf, car);
         if matches!(self.compare, Compare::Saved(_)) {
             self.compare = Compare::Default;
         }
         // The first diff map of a diff the car has (its torque not fixed at 0).
         let torques = ["CenterDiffMaxTorque", "CenterDiffMaxTorque", "FrontDiffMaxTorque", "RearDiffMaxTorque"];
-        let specs = self.specs();
-        let fitted = |key: &str| specs.iter().any(|(s, r)| s.key == key && r.max > 0.0);
+        let fitted = |key: &str| values::find(&self.fields, key).is_some_and(|i| self.fields[i].range.max > 0.0);
         self.map = torques.iter().position(|k| fitted(k)).unwrap_or(0);
         self.profiles = self.folders.scan(surface);
         self.status.clear();
@@ -327,20 +330,25 @@ impl SetupPage {
 
     /// Steps some values away from the opened setup's (`--screenshot`), so the captures show differences.
     pub fn screenshot_changes(&mut self) {
-        let specs = self.specs();
-        let mut now = values::values(&self.draft);
-        for (i, (spec, range)) in specs.iter().enumerate() {
-            let front = spec.index.is_none_or(|w| w < 2);
-            let steps = match spec.key.as_str() {
-                "SpringStiffness" | "DampingBump" | "DampingRebound" | "WheelAxisInclination" if front => 3,
-                "Pressure" if spec.index == Some(2) => 2,
-                "FrontRollBarStiffness" | "MaxBrakePressureFront" => 1,
-                key if key.starts_with("FrontDiffThrottle_") && key > "FrontDiffThrottle_03" => 25,
-                _ => 0,
-            };
-            now[i] = (0..steps).fold(now[i], |v, _| range.up(v));
-        }
-        self.draft = values::with_values(&self.draft, &now);
+        let fields = &self.fields;
+        values::edit(&mut self.draft, &self.base, |now, _| {
+            for (i, field) in fields.iter().enumerate() {
+                let (key, index) = (field.spec.key.as_str(), field.spec.index);
+                let knot = key.strip_prefix("FrontDiffThrottle_").and_then(|n| n.parse::<usize>().ok());
+                let steps = match key {
+                    "SpringStiffness" | "DampingBump" | "DampingRebound" | "WheelAxisInclination"
+                        if index < Some(2) =>
+                    {
+                        3
+                    }
+                    "Pressure" if index == Some(2) => 2,
+                    "FrontRollBarStiffness" | "MaxBrakePressureFront" => 1,
+                    _ if knot.is_some_and(|n| n >= 4) => 25,
+                    _ => 0,
+                };
+                now[i] = (0..steps).fold(now[i], |v, _| field.range.up(v));
+            }
+        });
         self.map = 2;
     }
 
@@ -412,7 +420,7 @@ impl SetupPage {
         self.opened_values = values;
         self.draft = values;
         self.confirm_delete = false;
-        self.linked = editor::linked_for(&values, &self.specs());
+        self.linked = editor::linked_for(&values, &self.fields);
         self.rebase();
     }
 
@@ -539,11 +547,11 @@ impl SetupPage {
         };
         self.header_ui(ui, &car);
         ui.separator();
-        let specs = self.specs();
         let (now, base) = (values::values(&self.draft), values::values(&self.base));
-        let only: Vec<Spec> = specs.iter().map(|(s, _)| s.clone()).collect();
-        let lines = values::changes(&only, &base, &now, |i, v| self.show(&specs[i].0, v));
-        let view = self.view(&specs, &lines, board::Differs::of(&only, &base, &now));
+        let lines = values::changes(&self.fields, &base, &now, |i, v| self.show(&self.fields[i].spec, v));
+        let differs = board::Differs::of(&self.fields, &base, &now);
+        let gear = values::find(&self.fields, "DropGearId").map(|i| self.show(&self.fields[i].spec, now[i]));
+        let view = board::View::of(&self.fields, &self.draft, &lines, differs, gear);
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(board::SIZE.x);
@@ -623,18 +631,18 @@ impl SetupPage {
                     self.confirm_delete = true;
                 }
             }
-        });
-        let changed = self.draft != self.opened_values;
-        let surface = self.surface();
-        let note = match (changed, opened.as_ref().map(|p| (p.source, p.away))) {
-            (true, _) => "unsaved changes: Save to drive with them".to_owned(),
-            (false, Some((_, Some(away)))) => format!("a {away} setup: Save keeps a copy for {surface}"),
-            (false, Some((Source::Own, None))) | (false, None) => String::new(),
-            (false, Some((source, None))) => format!("{} setup, read only: Save keeps a copy as yours", source.tag()),
-        };
-        if !note.is_empty() {
+            let surface = self.surface();
+            let note = match (changed, opened.as_ref().map(|p| (p.source, p.away))) {
+                (true, _) => "unsaved changes: Save to drive with them".to_owned(),
+                (false, Some((_, Some(away)))) => format!("a {away} setup: Save keeps a copy for {surface}"),
+                (false, Some((Source::Own, None))) | (false, None) => String::new(),
+                (false, Some((source, None))) => {
+                    format!("{} setup, read only: Save keeps a copy as yours", source.tag())
+                }
+            };
+            ui.add_space(6.0);
             ui.colored_label(if changed { WARN } else { egui::Color32::GRAY }, note);
-        }
+        });
         if !self.status.is_empty() {
             ui.label(&self.status);
         }
@@ -713,31 +721,31 @@ impl SetupPage {
         let mut back = None;
         egui::ScrollArea::vertical().id_salt("setup-changes").auto_shrink([false, true]).show(ui, |ui| {
             for (n, line) in lines.iter().enumerate() {
-                ui.horizontal(|ui| {
+                ui.horizontal_top(|ui| {
                     if ui.small_button("↺").on_hover_text("Back to the compared value").clicked() {
                         back = Some(n);
                     }
-                    let what = ui.add(egui::Label::new(&line.what).truncate().sense(egui::Sense::click()));
-                    if what.on_hover_text(line.area.name()).clicked() {
-                        self.area = line.area;
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        let what = ui.add(egui::Label::new(&line.what).sense(egui::Sense::click()));
+                        if what.on_hover_text(format!("Show {}", line.area.name())).clicked() {
+                            self.area = line.area;
+                        }
                         let text = if line.from.is_empty() {
                             line.to.clone()
                         } else {
-                            format!("{} to {}", line.from, line.to)
+                            format!("{}  ⏵  {}", line.from, line.to)
                         };
                         ui.label(RichText::new(text).color(DIFF).size(12.0));
                     });
                 });
+                ui.add_space(2.0);
             }
         });
         if let Some(n) = back {
-            let (mut now, base) = (values::values(&self.draft), values::values(&self.base));
-            for &i in &lines[n].indices {
-                now[i] = base[i];
-            }
-            self.draft = values::with_values(&self.draft, &now);
+            values::edit(&mut self.draft, &self.base, |now, base| {
+                lines[n].indices.iter().for_each(|&i| now[i] = base[i])
+            });
         }
     }
 
@@ -749,55 +757,6 @@ impl SetupPage {
             return gears.iter().find(|g| g.0 == id).map_or(format!("{id}"), |&(_, p, g)| format!("{p}:{g}"));
         }
         spec.unit.show(value)
-    }
-
-    /// What the board shows of the editor's values.
-    fn view(&self, specs: &[(Spec, Range)], lines: &[values::Change], differs: board::Differs) -> board::View {
-        let d = &self.draft;
-        let range = |key: &str| specs.iter().find(|(s, _)| s.key == key).map(|(_, r)| *r);
-        let unit = |key: &str| specs.iter().find(|(s, _)| s.key == key).map(|(s, _)| s.unit);
-        let pair = |key: &str, f: f32, r: f32| {
-            unit(key).map_or_else(String::new, |u| {
-                let n = |v: f32| format!("{:.*}", u.decimals, v * u.scale);
-                format!("{} · {} {}", n(f), n(r), u.suffix)
-            })
-        };
-        let fraction = |key: &str, v: f32| {
-            range(key).map_or(0.5, |r| if r.max > r.min { (v - r.min) / (r.max - r.min) } else { 0.5 })
-        };
-        let brake_front = d.front_brake_pressure / (d.front_brake_pressure + d.rear_brake_pressure);
-        let bars = d.front_roll_bar / (d.front_roll_bar + d.rear_roll_bar);
-        let torques = [d.center_diff_torque, d.front_diff_torque, d.rear_diff_torque];
-        let keys = ["CenterDiffMaxTorque", "FrontDiffMaxTorque", "RearDiffMaxTorque"];
-        let most = keys.iter().filter_map(|k| range(k)).map(|r| r.max).fold(0.0_f32, f32::max);
-        let diffs = std::array::from_fn(|n| {
-            range(keys[n]).filter(|r| r.max > 0.0).map(|_| if most > 0.0 { torques[n] / most } else { 0.0 })
-        });
-        let gear =
-            specs.iter().find(|(s, _)| s.bounds == Bounds::DropGear).map(|(s, _)| self.show(s, d.drop_gear as f32));
-        let c = &d.corners;
-        let summaries = Area::ALL.map(|area| match area {
-            Area::Tyres => pair("Pressure", c[0].tyre_pressure, c[2].tyre_pressure),
-            Area::Springs => pair("SpringStiffness", c[0].spring_stiffness, c[2].spring_stiffness),
-            Area::Dampers => pair("DampingBump", c[0].bump, c[2].bump),
-            Area::Geometry => pair("WheelAxisInclination", c[0].axis_inclination, c[2].axis_inclination),
-            Area::RollBars => format!("{:.0}° lock · {:.0} % front", d.steering_lock.to_degrees(), 100.0 * bars),
-            Area::Brakes => format!("{:.0} % front", 100.0 * brake_front),
-            Area::Differentials => format!("{:.0} · {:.0} · {:.0} Nm", torques[0], torques[1], torques[2]),
-            Area::Gears => gear.clone().map_or_else(String::new, |g| format!("drop gear {g}")),
-        });
-        let counts = Area::ALL.map(|area| lines.iter().filter(|l| l.area == area).count());
-        board::View {
-            summaries,
-            counts,
-            roll_bars: [
-                fraction("FrontRollBarStiffness", d.front_roll_bar),
-                fraction("RearRollBarStiffness", d.rear_roll_bar),
-            ],
-            diffs,
-            brake_front,
-            differs,
-        }
     }
 }
 
