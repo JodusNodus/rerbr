@@ -46,17 +46,21 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   [Andersson] the Ψ); Ψ linear from Π 0.98 to 1 (inferred:
   a finite slope near equal pressures).
 - Plate area 1 − cos θ/cos 7°, θ = 7° + 83°·lift [US 6591667]. Its flow bench gives C_D 0.70–0.77 at 0–25° from
-  closed and a leak of about 5 mm² (60 mm bore); C_D 0.8 and no leak about cancel at light pedal.
+  closed and a leak of about 5 mm² (60 mm bore); C_D 0.8 and no leak about cancel at light pedal. [Guzzella] App. B's
+  2.8 L V6 uses the same form (α0 7.9°, 58.7 mm) with a 5.3 mm² leak.
 - Torque from MAP at part load checked against [EPA Ford 1.6]: the 2013 1.6 EcoBoost makes 27 % of its 100 kPa torque
   at 50 kPa and none at 24–26 kPa (2500 rpm); the na sample 28 % at 47 kPa.
 - C_D 0.80 one throttle (inferred: fits are about 0.8 at WOT [C_D estimation]); 0.85 per cylinder (guess); at least
   45 mm per cylinder (guess).
 - Manifold 0.8·V_d one throttle, 0.3·V_d per cylinder, 1.0·V_d turbo, boost pipe 2.0·V_d (guess: ITBs have only
-  their runners after the plate (inferred); Rally2 caps the restrictor-to-plate volume at 20 L [FIA 261]).
+  their runners after the plate (inferred); Rally2 caps the restrictor-to-plate volume at 20 L [FIA 261]). [Guzzella]
+  App. B's 2.8 L V6 has 5.8 L (2.1·V_d) and a measured τ of about 0.45 s at 1000 rpm, about 2.5× ours (Open).
 - W_cyl = η_v·η_res·p·V_d·n/(120RT) and the manifold filling dp/dt = RT/V·(W_in − W_cyl) (generic) [Andersson],
   [Hendricks]. Fully implicit Euler, root-solved per sub-step (inferred: the linearly implicit step overshot a
   per-cylinder tip-in to 2.4 bar).
-- η_v: turbo 0.95 flat (guess); NA the WOT table's shape (inferred: the table is mostly breathing).
+- η_v: turbo 0.95 flat (guess); NA the WOT table's shape, peak 1 (inferred: the table is mostly breathing), then raised
+  where K would top the fuel–air cycle (Torque). Road NA engines peak at 0.87–0.88 [Heywood] fig. 6-8; the installed
+  NA cars now peak at 1.12–1.19, the two S2000s at 1.25–1.27.
 - Residual gas: η_res = (r_c − (p_em/p_im)^(1/γ))/(r_c − 1), the ideal cycle's (generic, Heywood; the pressure
   factor of [arXiv 2012.02859]'s η_v), r_c 11 NA, 9.5 turbo, γ 1.3 (guess: the residual is exhaust; 1.4 for air),
   p_em of the last step. 1 at p_em = p_im; at idle 0.71 (modern turbos) to 0.87. In W_cyl and the charge; K
@@ -95,7 +99,14 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - K from the identity K = 4π(T_wot + friction + pumping)/charge, so steady WOT reproduces the table exactly
   (inferred). K is calibrated on a 250 rpm grid and every knot, from a fresh engine's tip-in (inferred: a turbo's
   steady boost depends on the path near its threshold).
-- η_ign = max(0, 1 − 2.8e-4·Δθ²): about 1 % at 6° from MBT [MIT 2.61], quadratic [US 6363317].
+- An NA engine's K is at most the fuel–air cycle's work per kg of air: 0.400 at r_c 9.5 and 0.419 at 11 at φ 1.136
+  [Heywood] fig. 5-9, × LHV/(AFR·λ), 1.34 and 1.41 MJ/kg. Real engines reach about 0.8 of the cycle (pp. 194–196),
+  the road turbos' maps 0.32–0.39 on the fuel at λ 0.88 [EPA], [Guzzella] figs. 2.32–2.33 about 0.34 at 4000 rpm.
+  Where the identity gives more, η_v takes the rest (`breathe`; the na sample's 0.46 at its rated speed was over the
+  ideal cycle). A turbo's K stays, 0.99–1.33 of the ceiling on the installed cars (Open).
+- η_ign = max(0, 1 − 2.8e-4·Δθ²): about 1 % at 6° from MBT [MIT 2.61], quadratic [US 6363317]. [Guzzella] eq. 2.116
+  and fig. 2.34: 1 − k_ζ·Δζ², k_ζ 2.4–3.3e-4 within ±15°; [Heywood] fig. 15-3b, 1/bsfc at constant load: 0.990,
+  0.973, 0.945 and 0.917 at 5, 10, 15 and 20° (ours 0.993, 0.972, 0.937, 0.888). Untested past 20°.
 - λ 0.88 (guess, used at every load): [x-engineer] gives λ 0.86 for maximum power; the road 1.6 EcoBoost runs
   λ 0.95–1.00 at full load and 1.00 at part load [EPA Ford 1.6]. It enters the boost target and the exhaust's flow
   and heat, not the torque (K absorbs it). η_ig 0.38 for the boost target (weak) [Chegg]; LHV 43.4 MJ/kg, AFR 14.7
@@ -103,23 +114,39 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 ## Friction and pumping (`friction.rs`)
 
-- Sandoval–Heywood FMEP terms, DOHC buckets, the default bearing ratios [Sandoval], [ESA.NET]; the worked example is
-  reproduced within 4 % (test).
+- Sandoval–Heywood FMEP, App. B [Sandoval]: DOHC buckets (Table 3), the default bearing ratios [ESA.NET], ring tension
+  and roughness ratios 1, auxiliaries eq. 14, 8.32 + 1.86e-3·N + 7.45e-7·N² kPa (refitted to SI engines; Patton's
+  diesel-fitted 6.23 + 5.22e-3·N − 1.79e-7·N² was here before: +3.4 kPa at 4000 rpm, +34 at 8000). The worked
+  example is reproduced within 4 % (test). Against its data the paper's model runs about 15 kPa over at every speed
+  (fig. 8, 3.0 L V6). Its reference oil is a 10W-30 at 10.6 cSt and 90 °C; ours is a 10W-40 (about 18 cSt) with φ 1
+  at 363 K, which leaves the model's level as published.
 - Oil: φ = √(μ(T)/μ(363 K)), Vogel μ = 0.00862·exp(2040/(T − 89.6)) mPa·s, fitted to 10W-40 [Anton Paar]. With 20 °C oil
   the model's FMEP is 1.6× warm at 1000 rpm to 2.4× at 7000 (φ 3.6 on the hydrodynamic terms); [cold friction]: up
   to 2.5× at about 20 °C (after Will et al.), and FMEP ∝ μ^n, n 0.19–0.24 for gasoline engines (1.6–1.9× for this
   oil). In game the 1.02 sim's engine runs at 358–363 K, so this rarely acts.
-- Pumping (p_em − p_im) + 0.2 bar·(p_im/p_a)·(n/n_lim)² (generic form [TAMU], [Moretto]; 0.2 bar guess in the
-  report's 0.1–0.3). NA p_em = p_a + 0.15 bar·(W/W_rated)² (guess).
+- Pumping (p_em − p_im) plus the valves' flow losses, 3.0e-3 kPa·s²/m²·S_p²/(n_v²r⁴) per set of two at an NA engine's
+  WOT [Sandoval] App. B, r from [Patton]'s four-valve survey (D_iv = 6.11 + 0.313B, D_ev = 4.14 + 0.286B mm); the
+  intake's scaled by p_im/p_a, the exhaust's by (p_im/p_a)²·p_a/p_em (inferred from Patton's Δp ∝ ṁ²/(ρA²) with the
+  density where the gas passes). About 38 kPa at 7000 rpm on a 2.0 L four; the guess before, 0.2 bar·(p_im/p_a)·
+  (n/n_lim)², gave 20. NA p_em = p_a + 0.15 bar·(W/W_rated)² (guess, a free-flowing system; [Patton]'s production
+  system, 40 kPa at 15 m/s, would give 60–100 kPa at the rally NA cars' rated speeds). At a closed pedal the vacuum
+  dominates: [Guzzella] eq. 2.107 gives 0.9 bar for a motored SI engine at closed throttle, ours 0.82–0.85 at
+  20 kPa. WOT mechanical efficiency on the NA samples 0.89 at 2000 rpm and 0.79–0.81 at rated ([Heywood] p. 49:
+  typically 0.90 and 0.75).
 - s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0 (inferred:
   NGP's one braking point; friction models need a scale [ecu-lab]). The scale is 1 + (s_f − 1)·(n/n_lim)², so s_f at
   the limit and Sandoval's own FMEP at low speed (inferred: Sandoval at s_f 1 meets the road engines' rubbing
   friction from their fuel-cut points, 0.5–0.7 bar at 2000 rpm [EPA], and NGP's NA braking line gives −1.09 bar at
   2000 on the na sample; the share over Sandoval growing with n² is ours). With one flat scale the ECU samples braked
-  1.4–1.7× the road engines below 5000 rpm.
+  1.4–1.7× the road engines below 5000 rpm. Friction from 2000 to 6000 rpm grows 2.15× and 2.66× on Sandoval's
+  3.0 L (figs. 8, 6), 2.5–2.7× with WOT pumping motored ([Heywood] eq. 13.6, [Patton] figs. 18–19): the NA samples
+  2.15–2.3, every turbo at the clamp 3.0–3.1 (Scorecard). [Guzzella] eq. 2.112's friction over Sandoval's grows as
+  n^2.1–2.3, the shape the n² scale takes (its level, 1.3× at 2000 rpm and 2.5× at 6000, is no road engine's here).
 - BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car
   clamps (raw 2.3–4.9), NA cars are 1.32–1.87 (`tests/rsf_cars.rs`). The clamp's 2.0 is a guess and sets the friction
-  of every installed turbo car; through the identity it also raises their K.
+  of every installed turbo car; through the identity it also raises their K. The restrictor bounds it: the Rally2's
+  214 kW at 6000 rpm through 0.183 kg/s (32 mm choked, C_D 0.95) at the fuel–air cycle's 1.34 MJ/kg leaves at most
+  3.8 bar for friction and pumping; the model has 3.25 + 1.85.
 - The rF2 SkipBarber's coast line, −21 to −53 N·m at 2000–8000 rpm [rF2 engine.ini], is near the NA samples'
   (`examples/plot.py`).
 - η_m = 1, losses explicit; friction fades to 0 within 5 rad/s of standstill (inferred: no stiction at rest).
@@ -208,7 +235,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   elsewhere), 33 mm from 2010 [Impreza N2010], [FIA 254]; WRC 1.6 33 mm, 36 mm from 2017
   [FIA 255A], [World Rally Car]; Rally2 32 mm [FIA 261]. [rallycars restrictors]' 38/36/34 mm (1992/1994/1995) mixes
   Group A's 38 and 34 with Group N's 36.
-- Turbine nozzle with Ψ, η_t 0.65 (guess) [Andersson].
+- Turbine nozzle with Ψ [Andersson], η_t 0.65 with the bearing losses apart: [Marelli 2011]'s 33 mm wastegated turbine
+  averaged 0.62 over the pulse at 100 Hz with the gate closed, 0.78 in steady flow (Table 1); [Guzzella] eq. 2.52
+  gives peaks of 0.65–0.75; [Heywood] fig. 6-56b 0.82 at the best blade speed ratio, 0.5 at 0.32 and 1.0.
 - A_t is fitted so K is as flat as the turbo allows (inferred: K is the fuel's energy times the combustion's
   efficiency per kg of air, nearly constant over rpm, so the boost should carry the table's shape). It minimises the
   squared deviations of ln K at the knots and every 500 rpm from idle up, each from a fresh engine's tip-in: a scan on
@@ -250,8 +279,10 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   events) leave the air at 300 °C (EPA's fuel-cut points at the turbine 199–422 °C), their fuel burning in the
   manifold at anti-lag's 60 %. Half the work the retard takes heats the exhaust: (1 − η_ign)·K·W_cyl·0.5 (inferred:
   EPA's Ford 1.6 and 2.7 retarded 27–44° at their lightest loads, 1000–1750 rpm, ran 70–142 K over their neighbours
-  near MBT, 0.23–0.63 of that work). Before (700 °C at 0, the anti-lag term on the retard, no motored temperature)
-  the turbo samples idled at 1035 °C and ran 707 °C under the fuel cut; now 598–661 and 301. With 400 °C an older
+  near MBT, 0.23–0.63 of that work; [Guzzella] eq. 2.153: k_e ≈ 0.5 of the heat the retard frees reaches the
+  exhaust, the rest the cooling water, a first-law approximation). Before (700 °C at 0, the anti-lag term on the
+  retard, no motored temperature) the turbo samples idled at 1035 °C and ran 707 °C under the fuel cut; now 598–661
+  and 301. With 400 °C an older
   model (no residual gas, before the retarget) gave the steady WOT boost two branches; 520 °C passes the path test.
   The shaft's spin-down after a lift without anti-lag (4500 rpm fixed, from WOT: stopped within 0.8 s) is set by the
   compressor's work and the losses, the same before and after; no measured spin-down was found.
@@ -320,8 +351,10 @@ the physics, not the calibration. "Was" is before this round (`a5ea4790`).
   14.9 at 2500, cable_turbo 9.8 / 12.7. At 90 kPa, 2500 rpm: road NA 7.8–9.3 (Chevy 2.5 7.79, Mazda 2.0 9.12, Mazda
   2.5 9.32); na 8.2, old 7.8. The table sets the torque per bar of boost: a Rally2's 432 N·m from 1620 cc is 33.5 bar
   BMEP, at least 13.4 bar per bar at the 2.5 bar abs cap [Škoda Rally2 engine], [FIA 261]; road turbos make about
-  9–10. K as an efficiency (K·AFR·λ/LHV) at 4000 rpm: road 0.36–0.44 (gross indicated, from their fuel-cut friction
-  and turbine pressure); turbo sample 0.48, Fiesta Rally2 0.48, na 0.44, old 0.41, cable_turbo 0.38.
+  9–10. K as an efficiency on the fuel at λ 0.88 (K·AFR·λ/LHV) at 4000 rpm: road 0.32–0.39 (gross indicated, from
+  their fuel-cut friction and turbine pressure: K 1.07–1.30 MJ/kg at λ 1; the band read 0.36–0.44 before, EPA's
+  efficiency at λ 1 against a key at λ 0.88), the fuel–air cycle 0.40 at r_c 9.5 and 0.42 at 11 [Heywood]; turbo
+  sample 0.48, Fiesta Rally2 0.48, na 0.42 (0.44 before the ceiling), old 0.41, cable_turbo 0.39.
 - Share of the 100 kPa torque at 50 kPa, 2500 rpm: road turbos 27 % (Honda 42 %); turbo sample 43 %, Rally2 43 %,
   cable_turbo 39 %. Zero torque at 18.5–27.2 kPa on the road engines; na 21.6, old 22.0, cable_turbo 18.5, turbo and
   Rally2 16.2–16.3 (was 20.4–25.2).
@@ -350,7 +383,14 @@ value, band and PASS / MISS / CTX; `--only REGEX`, `--json OUT`, `--compare A.js
 `class:GROUP:YEAR:restrictor_mm`; the script's docstring lists the keys. Rows: closed-pedal braking and its manifold
 pressure, cold friction, part-load torque at a manifold pressure and the zero-torque pressure, K as an efficiency,
 idle and overrun manifold pressures, exhaust temperatures, spool, bearing loss and rotor inertia, λ, restrictors by
-group and year. The Rally2 rows are the Fiesta Rally2 (`Ford_Fiesta_Rally2_ngp7`).
+group and year; friction's growth from 2000 to 6000 rpm, the motored WOT friction and pumping at 4000 rpm and its
+growth, WOT mechanical efficiency and WOT over idle air (NA: a motored turbo builds boost), the turbo shaft at idle
+(context). The Rally2 rows are the Fiesta Rally2 (`Ford_Fiesta_Rally2_ngp7`).
+
+Rounds, each on its own bands: 36 → 47/77 with the friction by rpm², the idle floor, the exhaust heat, the rotor and
+the restrictors (`a5ea4790` to `d40b242e`); then 47 → 47 with Sandoval's auxiliaries and the valves' pumping, 55/92
+with the new rows and the η_ig band on λ 0.88, 56/92 with an NA engine's K under the fuel–air cycle. By system:
+braking 5/17, friction 8/14, part load 5/15, torque 4/6, idle 9/11, exhaust 5/9, turbo 5/5, class 15/15.
 
 ## In game
 
@@ -385,11 +425,22 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   them too and idles at 89 rad/s with the clutch open); NGP's clutch help opens at 65 rad/s, too late. Not traced why
   it never opens with the model's engine. The Golf's stall on the climb was the brush's (fixed, `tyre-model.md`).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
+- A turbo's K over the fuel–air cycle (0.99–1.33 of it on the installed cars; turbo sample and Rally2 0.48 at
+  4000 rpm against 0.40). Holding it at the cycle with the charge, as on NA, was tried: η_v 1.13–1.19 at 2000–4000 rpm,
+  K over it again above 5000 where the restrictor chokes, the exhaust manifold 350 → 400 kPa through the same nozzle,
+  and the spool at 2000 rpm 0.63–0.73 → 0.38–0.43 s (Chalmers 0.54–1.60). It needs the turbine sized with the charge,
+  and the friction scale (above: at the clamp the friction alone grows 3.0–3.1× from 2000 to 6000 rpm, road 2.1–2.7×,
+  and the Rally2's restrictor leaves 3.8 bar for friction and pumping at 6000, the model 5.1). Not done.
+- The turbo's shaft stops at idle (idle-shaft rows 0 rpm): the 100 W static loss outweighs the turbine there, so a
+  tip-in from idle spools from rest. [Guzzella] p. 50: at idle the speed "can fall below 10 000 rpm"; no measured idle
+  speed found.
+- Manifold volume: one throttle 0.8·V_d against [Guzzella]'s V6 at 2.1·V_d (measured τ about 2.5× ours); one engine
+  with long runners, so not changed.
 - Modern turbos idle at 16.1–16.7 kPa (Rally2, R5, WRC 2006–2020 on RSF; 20–22 before the friction followed rpm),
   under warm road idles of 22.3–28.5 kPa [EPA] and tuners' 27, 31 and 30–50 kPa [MOTOR], [Gears], [Tuning School];
   every RSF car 16.1–31.5 kPa, the NA ones 21.5–31.5 (`tests/rsf_cars.rs`). The turbo sample and the Fiesta Rally2
   make no torque at 16.2–16.3 kPa at 2500 rpm (road 18.5–27.2). Cause: the table's torque per bar of boost (K at
-  4000 rpm 0.48 as an efficiency, road 0.36–0.44) over Sandoval's friction at low speed. EPA's road K is flat with
+  4000 rpm 0.48 as an efficiency, road 0.32–0.39) over Sandoval's friction at low speed. EPA's road K is flat with
   load (Willans), so a part-load K under the WOT one has no support (proposed before, not done); race cams' overlap,
   which raises tuners' idles to 30–50 kPa, is not modelled. Not changed.
 - Closed pedal below idle at a fixed speed, N·m, before → after the anti-stall fade: turbo sample 168 → 51 at 500
@@ -445,16 +496,23 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - US 6591667, plate area: https://patents.google.com/patent/US6591667
 - C_D estimation: https://www.researchgate.net/publication/224181168_Estimation_of_automotive_engine_parameters_Part_I_Discharge_coefficient_of_throttle_body
 - HPA Alpha-N (ITBs): https://www.hpacademy.com/forum/understanding-afr/show/alpha-n-20/
-- Sandoval (SAE 2003-01-0725): https://saemobilus.sae.org/papers/improved-friction-model-spark-ignition-engines-2003-01-0725
+- Sandoval & Heywood, An improved friction model for spark-ignition engines (SAE 2003-01-0725; App. B, eq. 14, figs. 6,
+  8, 9, 11): https://saemobilus.sae.org/papers/improved-friction-model-spark-ignition-engines-2003-01-0725
+- Patton, Nitschke & Heywood, Development and evaluation of a friction model for spark-ignition engines (SAE 890836;
+  p. 10 pumping and valve survey, figs. 15–19): https://doi.org/10.4271/890836
+- Heywood, Internal Combustion Engine Fundamentals (McGraw-Hill 1988; p. 49, p. 287, figs. 5-9, 6-8, 6-56b, 15-3b,
+  eq. 13.6).
+- Marelli & Capobianco 2011, steady and pulsating flow efficiency of a waste-gated turbine (Energy 36, 459–465,
+  Table 1): https://doi.org/10.1016/j.energy.2010.10.019
 - ESA.NET FrictionModel.cs (Sandoval eqs. 7.b–11): https://github.com/pangtuwi/ESA.NET/pull/223
 - ecu-lab, friction scale: https://github.com/DNiev/ecu-lab/pull/138
 - Anton Paar, oil viscosity: https://wiki.anton-paar.com/us-en/engine-oil/
 - cold friction: Roberts, Brooks & Shipway 2014, Internal combustion engine cold-start efficiency: a review, Energy
   Conversion and Management 82, doi:10.1016/j.enconman.2014.03.002 (open access):
   https://www.sciencedirect.com/science/article/pii/S0196890414001939
-- TAMU, pumping: https://oaktrust.library.tamu.edu/server/api/core/bitstreams/161c947f-2eff-48dd-8bf4-80912a8bec75/content
 - Moretto 2024, Willans: https://www.dora.lib4ri.ch/empa/dload/empa:36100/PDF/Moretto-2024-A_method_to_quantify_the-(published_version).pdf
-- Guzzella & Onder: https://link.springer.com/chapter/10.1007/978-3-642-10775-7_2
+- Guzzella & Onder, Introduction to Modeling and Control of IC Engine Systems (Springer 2010, 2nd ed.; eqs. 2.52,
+  2.107, 2.112, 2.116, 2.153, figs. 2.32–2.34, App. B): https://link.springer.com/chapter/10.1007/978-3-642-10775-7_2
 - MIT 2.61, spark: https://web.mit.edu/2.61/www/Lecture%20notes/Lec.%2009%20SI%20engine%20combustion%20I.pdf
 - US 6363317, spark quadratic: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/6363317
 - x-engineer, λ: https://x-engineer.org/air-fuel-ratio/
