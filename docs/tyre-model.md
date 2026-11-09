@@ -38,6 +38,10 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 
 - Braking and driving force peak at a slip ratio of 0.09 (NGP 0.15); measured 0.08-0.18.
 - Locked, the brush keeps 0.72 of its peak braking force and NGP 0.78; measured car tyres 0.58-0.885.
+- The damp tarmac tyre is the best choice on a damp road, where NGP's only ties the dry tyre: it gains 8 % over the dry
+  tyre there, what NGP's wet tyre gains over the dry one on a wet road, and loses 2 % to it on a dry road. Tread
+  compound alone moves a tyre's measured wet grip by 95-120 % of a control. From 50 km/h on damp tarmac the Fiesta
+  Rally2 brakes locked at 1.07 of the dry tyre (NGP 1.00).
 
 ### Gravel
 
