@@ -11,7 +11,8 @@ A replay runs again through `rbr-standalone --live <the replay's stepping argume
 PROGRAM (by default target/release/rbr-standalone; `--bin replay` the program the replay's header names, the build
 that drove, which takes `--tyre-probe` only from this change on), its stderr to DIR/<name>.log; a log whose replay
 ended "all equal" is not run again. The physics, car and stage are the header's (the stepping command:
-`--physics`, ngp when absent; `--rsf-car` or `--car-pack`; `--rsf-stage` or `--stage`). A replay steps exactly
+`--physics`, ngp when absent, and its `--tyre-tuning`, printed beside it; `--rsf-car` or `--car-pack`; `--rsf-stage`
+or `--stage`). A replay steps exactly
 only on a build whose physics matches the drive's (each frame's digest is compared): on another the run stops at the
 first frame that differs, and the figures below cover the frames up to it (printed as DIVERGED with the frame).
 
@@ -26,7 +27,7 @@ Per file, with rally_gg.py's definitions (its `summary`: 10 Hz from 0.1 s means,
   the course's rate, the path's own lateral g); braking (the LONGEST longest events from the speed, their 0.5 s
   peak), the speed through `--speed-lag S`;
 - tyre use (`rbr-tyre-lab` example `limit_frames` on the probe dumps, its peak μ_y at each wheel's load and speed for
-  the physics' tyre: `brush` under experimental-brush, else NGP's): each axle's Σ|F| / Σ peak·Fz and each wheel's
+  the physics' tyre: `brush` under experimental-brush, untuned, else NGP's): each axle's Σ|F| / Σ peak·Fz and each wheel's
   |F|/Fz over its peak (wheels over LOADED N), the mean over the hardest 5 % of moving moments (dumps where the car
   moves over MOVING, ranked by the car's Σ|F|/ΣFz) and the median over all moving moments; the car's alike.
 
@@ -82,7 +83,8 @@ def replay_info(path):
     program, step = args[live + 1], args[live + 2:]
     car = flag(step, "--rsf-car") or os.path.basename(flag(step, "--car-pack", "") or "") or flag(args, "--car", "?")
     stage = flag(step, "--rsf-stage") or os.path.basename(flag(step, "--stage", "?"))
-    return program, step, {"physics": flag(step, "--physics", "ngp"), "car": car, "stage": stage,
+    return program, step, {"physics": flag(step, "--physics", "ngp"), "tuning": flag(step, "--tyre-tuning", ""),
+                           "car": car, "stage": stage,
                            "title": flag(args, "--title", ""), "program": program}
 
 
@@ -301,7 +303,7 @@ def analyse(path, args):
         phys = [p for p in ("experimental-brush", "experimental", "ngp") if f".{p}." in os.path.basename(path)]
         car = re.findall(r"rsf car \d+ ([^,]+?) \(", log)
         stage = re.findall(r"weather: [^,]*, (track-\S+?),", log)
-        info = {"physics": phys[0] if phys else "?", "car": car[0] if car else "?",
+        info = {"physics": phys[0] if phys else "?", "tuning": "", "car": car[0] if car else "?",
                 "stage": stage[0] if stage else "?", "title": "",
                 "program": "autopilot"}
         kind, line, status = "autopilot", None, "autopilot run"
@@ -345,7 +347,9 @@ def analyse(path, args):
 
 def report(results):
     for o in results:
-        print(f"{o['file']}: {o['title'] or o['car']} | stage {o['stage']} | physics {o['physics']} | {o['program']}")
+        tuning = f" (tyre tuning {o['tuning']})" if o["tuning"] else ""
+        print(f"{o['file']}: {o['title'] or o['car']} | stage {o['stage']} | physics {o['physics']}{tuning} | "
+              f"{o['program']}")
         print(f"  {o['status']}")
         print(f"  time {o['time_s']:.2f} s{'' if o['finished'] else ' (no finish)'} | {o['km']:.2f} km driven | "
               f"card {o['card_m']:.0f} m | outside assistance {o['assistance']} | jumps {o['jumps']} | "
