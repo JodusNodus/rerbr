@@ -16,9 +16,11 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           8000 of the r40 circle); tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h,
                           the latter with WaterFactor 1 on the dry friction level; tarmac-wet-80, and
                           tarmac-wet-80-worn / tarmac-wet-100-worn at tread remaining 0.2 (`--tread`),
-                          tarmac-wet-80-3mm at 0.375; gravel-1.5 and gravel-wet-1.5, the gravel wheel at 1.5 m/s,
-                          dry and with WaterFactor 1, on a 25 mm layer (`--soil`); gravel-wet-20, at 20 m/s with
-                          WaterFactor 1; gravel-deep and gravel-deeper, the gravel wheel on 17.5 and 25 mm layers
+                          tarmac-wet-80-3mm at 0.375; tarmac-50, tarmac-damp-level-50 and tarmac-wet-level-50, at
+                          50 km/h dry and on NGP's damp / wet tarmac level with its WaterFactor; gravel-1.5 and
+                          gravel-wet-1.5, the gravel wheel at 1.5 m/s, dry and with WaterFactor 1, on a 25 mm layer
+                          (`--soil`); gravel-wet-20, at 20 m/s with WaterFactor 1; gravel-deep and gravel-deeper, the
+                          gravel wheel on 17.5 and 25 mm layers
   tyre-ratio:A/B:KEY      the KEY of surface A over surface B's
   brake:SURFACE:KMH:WHAT  brake_test.py's runs from KMH (declutched): locked_g, best_g (shortest threshold stop over
                           the slip targets), ratio (locked decel over best threshold decel), ratio_kK (locked decel
@@ -91,6 +93,12 @@ TYRE_SURFACES["tarmac-wet-80"] = ("tarmac", ["--speed", f"{80 / 3.6:.4f}", "--wa
 for _kmh in (80, 100):
     TYRE_SURFACES[f"tarmac-wet-{_kmh}-worn"] = ("tarmac", ["--speed", f"{_kmh / 3.6:.4f}", "--water", "1", "--tread", "0.2"])
 TYRE_SURFACES["tarmac-wet-80-3mm"] = ("tarmac", ["--speed", f"{80 / 3.6:.4f}", "--water", "1", "--tread", "0.375"])
+# Damp and wet tarmac at 50 km/h on their own friction level: NGP's tarmac fine clean damp / wet (38 / 39) over dry
+# (37), μs 0.925 / 0.85, through the tarmac tyre's class wet slope (1 - 0.075 W), with WaterFactor 0.25 / 1.
+TYRE_SURFACES["tarmac-50"] = ("tarmac", ["--speed", f"{50 / 3.6:.4f}"])
+for _name, _w, _level in (("damp", 0.25, 0.925), ("wet", 1.0, 0.85)):
+    TYRE_SURFACES[f"tarmac-{_name}-level-50"] = ("tarmac", ["--speed", f"{50 / 3.6:.4f}", "--water", str(_w),
+                                                            "--friction-scale", f"{_level * (1 - 0.075 * _w):.6f}"])
 # Gravel at its sources' speeds: Coutermarsh & Shoop's rig (1-1.5 m/s), dry and with WaterFactor 1 (NGP's wet gravel),
 # on NGP's deeper loose layer (25 mm: TR-10-11 gives no depth under the test, hard turns built it up to 10 cm, p. 18),
 # and Croft-White's WRC telemetry on wet loose gravel at stage speed (20 m/s), on the probe's layer (RSF 345's 9 mm).
