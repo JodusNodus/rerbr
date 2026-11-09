@@ -789,6 +789,16 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   (μ Fz/tan α0: 6.0 /rad at 6.7 kN, NGP 6.6); the level is approached, never peaked (0.995 at 30°, 0.973 wet). Snow (class 3: SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls), grass (5), rock (4) and
   rough (0) keep the flat brush: packed snow's own α0 is 3.6° (Fig. 8, rms 0.0042), which at NGP's snow level doubles
   NGP's slope (snow-calpha-per-fz 8-12 would miss), while the brush at NGP's slope passes α90 (9.0 in 7-9°).
+- Firm gravel (context, 2026-11-09): Hindiyeh & Gerdes 2014 (JDSMC 136 051015, §2; Stanford's P1, RWD, 1724 kg) fit
+  Fiala per axle from steady cornering on a gravel lot, μ 0.55, highly variable: C_α/Fz 15.4 front / 19.2 rear per
+  rad, full slide at 6.1 / 4.9°, 90 % at 3.3 / 2.6° (an exponential law's α0 ~1.1-1.4°; axle-lumped, so a tyre's own
+  is stiffer). Ours at 4 kN, 15 m/s, dry (`gravel-firm-*`, context): ngp 9.1 per rad, α90 7.5°; brush 6.6, 14.25°.
+  Gravel's shape spans about 5x between a firm lot and loose pea stone (α0 6.3°); the brush sits at the loose end,
+  NGP between. A firm stage (packed base, thin loose top) may build force faster than the brush does. Candidate,
+  not done: α0 by NGP's soil depth (shallow `Gravel_*` firmer). Their drift held β 20° at 8 m/s with 12° of
+  countersteer for 30 s within 3-5° (the controller's equilibrium: rear drive 0.46 of the rear's μ Fz, the front
+  near saturation). Velenis, Tsiotras & Lu (ECC 2007) is simulation only: its MF (Table I: B 7, C 1.6, D 0.52) is
+  the "Velenis MF" model input of `gravel-peak-slip-angle` and `gravel-mu-y30-over-peak`.
 - Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface
   (`fit::loose`), linear between, times NGP's grip; the flat brush's peak is μ Fz, so the level needs no solve. The
   cornering stiffness is re-solved under the flat friction to NGP's slope (0-2°, 4 kN); Cx = 1.4 Cy as the brush's.
