@@ -1523,6 +1523,21 @@ and a brake stop).
     μ 0.602 (273.4 s less the 5 s spur) against the real 1.013. Tyre use 0.77 / 0.82, car 0.77 at 0.68 g.
   - 524 brush: no clean f from 0.4 to 0.6. The car swings into a sideslip pendulum of ±0.5-0.7 rad on part throttle
     at ~19 m/s; at f0.4 near 2220 m it runs 6 m wide and stops. The default drive is clean, 349.2 s.
+  - Law per run: the slip picks it, so ngp and the brush drive the same law on each stage (562 the heading law, slip
+    0.3 / 0.2; 524 and 422 the tracker, 0.5 both): the times compare like for like.
+- The 524 brush pendulum is the tracker on the brush, not either alone (f0.4, the law forced by a test switch, not
+  committed): brush + tracker 456.7 s with 6 recoveries, 27 swings over 0.3 rad (half period p50 1.1 s, peak
+  |sideslip| p50 0.56); brush + heading law 316.4 s clean, ngp + tracker 315.9 s clean, ngp + heading 315.6 s clean,
+  all three |sideslip| p99 0.07-0.09, max 0.21-0.22. The first swing (74.4-77.0 s, 20-27 m/s, gear 5) grows out of a
+  weave the tracker starts at 30-35 m/s on a near straight from 69 s: steering ±0.1, glat ±0.5 g, period ~2.2 s, where
+  the other three runs hold the steering at -0.01 to -0.1 and glat 0.1-0.4 g. Over the swing the throttle is 0 (the
+  plan is under the speed) and the brake is off past 0.18 rad; the rear slip angle reaches 19-20°, the rear axle's
+  Σ|Fy|/ΣFz 0.90 (p50 0.73), the front's 0.74 (p50 0.48), the front's slip angle falling to ~0 as the countersteer
+  catches up a quarter cycle late. At the same place the other runs have the rear at 2.6-4.1° and Σ|Fy|/ΣFz ≤ 0.41.
+  Steering to glat over the first 68 s (speed over 20 m/s, 2 s high-pass, 0.05 s steps): the brush answers 0.05-0.1 s
+  later than ngp (lag 0.45 / 0.40 s against 0.35 / 0.40 s, tracker / heading) and with less glat per unit steering
+  (3.1 / 3.8 g against 4.1 / 4.8 g); the tracker's loop, tuned on ngp, loses its margin on that. A controller-tyre
+  interaction: the brush car is not unstable by itself on 524 under the default's law.
   - 422 ngp: f0.55 gives 428.5 s (f0.6 rolls), against Paddon's 383.8 s (WRC) (+11.6 %). Tyre use 0.81 / 0.82, car
     0.80. The default drive takes 650.8 s.
   - 422 brush: f0.45 gives 453.6 s; f0.5 rolls and f0.55 has 3 recoveries. Tyre use 0.72 / 0.71. The default drive
@@ -1534,8 +1549,19 @@ and a brake stop).
   (0.5) and steers loose surfaces with the tracker; it counts full lock on its own steering. At f0.55 the guards held
   1660 steps (full lock) and 0 (tracking). `--plan`'s fixed `PLAN_SLIP` 0.2 is the same limit on loose surfaces. It
   is research tooling, not the default drive, so it is left unchanged.
-- Reading: on tarmac the car-level grip carries a power-limited car to within ~8 % of the real time at 0.9 of the
-  measured limits. On gravel and snow the controller's clean limit (0.55 of the circle's g, tyres at 0.77-0.82 of
+- Power against grip, from the plan on each run's line with the run's own full-throttle acceleration (p90 by speed;
+  the whole driveline, so times run a little over the race's): share of time accelerating (power-limited) / braking /
+  at the curve limit, and what power costs against unlimited power at the same grip. 562 f0.9 ngp and brush: 0.64 /
+  0.33 / 0.03, power 84.5 / 82.7 s (14 %). 524 ngp f0.55: 0.51 / 0.47 / 0.02, 28.2 s (9 %); at f1 0.66 / 0.33, 13 %.
+  422 ngp f0.55: 0.48 / 0.48 / 0.04, 33.2 s (8 %); brush f0.45: 0.46 / 0.50 / 0.04, 34.5 s (7 %); at f1 11 %. The
+  game car's power to weight, from its full-throttle acceleration on 562 (v·a, p90 per rpm band): ~110 W/kg from 4300
+  to 6200 rpm, net at the road; a real Rally2 is ~214 kW at the crank on 1230 kg plus ~160 kg crew, ~154 W/kg at the
+  crank (~130 at the wheels at an assumed 85 %). With 25 % more acceleration everywhere the 562 plan gains 12 s (2 %),
+  524's 3 s (1 %): the tarmac gap is not mostly power. Of 562's ~8 %, f0.9 against f1 is ~4 % (plan 604.0 against
+  581.9 s), power ~2 %, the rest line and controller. RSF's best human Fiesta Rally2 on 562 under ngp, 549.1 s, is
+  about the real time: the car and physics reach it, the autopilot does not.
+- Reading: on tarmac the car-level grip carries the car to within ~8 % of the real time at 0.9 of the measured
+  limits. On gravel and snow the controller's clean limit (0.55 of the circle's g, tyres at 0.77-0.82 of
   their peak) sets the time, so the 26 % / 12 % gaps bound the grip deficit from above and do not measure it. A point
   mass at the full measured 0.92 g on 524's line gives 218.3 s, the real 220.9 s. An autopilot is not a driver.
 - Not run: a second car on 562, which needs its own tarmac limits.
