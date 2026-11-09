@@ -54,7 +54,7 @@ impl Lab {
                 surf_static: f64::from(p.static_friction),
                 surf_kinetic: f64::from(p.static_friction),
             };
-            let o = loose::eval(&x, &self.loose, 0.0);
+            let o = loose::eval(&x, &self.loose, 0.0, 0.0);
             (o.fy, o.fx)
         };
         (fy.abs() / fz, fx / fz)

@@ -765,7 +765,8 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   plus a berm: from a braking slip of `BERM_FROM` 0.8 (or the longitudinal full slide, |sx| = 3 μ_x Fz/Cx, if later)
   to lock the braking force rises by a smoothstep to `PLOUGH` 1.3 times the free rolling peak, against the sliding
   velocity (with the friction); between the full slide and 0.8 it stays at the peak. The braking slip takes the speed
-  floored at 0.5 m/s, so the berm fades out at standstill. No berm when driving.
+  floored at 0.5 m/s, so the berm fades out at standstill. No berm when driving. On snow (surface class 3, by its
+  share in the blend, `loose::class_share`) the berm is `SNOW_PLOUGH` 1.05.
 - Evidence: lateral saturation without a fall to 38° (Coutermarsh & Shoop, SAE 2010-01-0374, Fig. 15); locked over
   ABS decel 1.25 laden / 1.30 light (NHTSA DOT HS 808 875, table), the berm "ahead of a locked tyre" (quoted); the
   locked tyre's side force PLOUGH μ sin α against Coutermarsh's 0.72 sin α over a free rolling 0.55 (1.31 sin α, Fig.
@@ -787,6 +788,15 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
 - Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface
   (`fit::loose`), linear between, times NGP's grip; the flat brush's peak is μ Fz, so the level needs no solve. The
   cornering stiffness is re-solved under the flat friction to NGP's slope (0-2°, 4 kN); Cx = 1.4 Cy as the brush's.
+- Snow's berm (2026-11-08): studded snow tyres on normal compacted snow, 20 km/h (Ichihara & Mizoguchi, HRB SR 115,
+  Fig. 3, fig ±0.02): 0.36-0.42 at 15-20 % slip, peak 0.42-0.445 at 40-60 %, locked 0.40-0.43, so locked over the 15-20 %
+  value 1.02-1.08 and over the peak 0.95-0.97 (snow tyres 0.74-0.95 of the 20 % value); 1.05 is the studded middle.
+  In game (Fiesta Rally2 / Escort, map 10, declutched, locked over ABS K 0.15): 50 km/h 1.17 → 1.05 / 1.42 → 1.28,
+  80 km/h 1.27 → 1.09 / 1.13 → 1.07 (ngp 0.98-1.06); Rally2 locked 1.06 → 0.95 g (50), 1.08 → 0.92 g (80); ABS,
+  threshold and the snow circle (0.554 g) unchanged. The Escort's 50 km/h ABS run is its weakest (0.68 g, best single
+  target 0.71). Scorecard: only `snow-car-locked-decel-50` moves (1.059 → 0.952, PASS); every gravel, tarmac, ice and
+  ngp row bit-equal. Pace, autopilot to the finish (Fiesta Rally2): track-10_O 385.36 → 385.48 s (ngp 393.53), RSF 111
+  (gravel) 287.08 s unchanged.
 - Ours: the smoothstep and its start at 0.8 (no intermediate slips are published; chosen on the trade-off below: a
   berm from the full slide holds the wheels off lock at the Fiesta's full-pedal brake torque), no berm when driving
   (the data are braked; a spinning tyre's sinkage resistance is unmeasured), PLOUGH independent of the soil's
@@ -1228,7 +1238,8 @@ map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h;
   / 1.03; NGP symmetric 0.96). Its |F| stays on the circle (α 25°, κ 0.3: 1.02 of the pure lateral, NGP 1.02), where
   soft soil falls inside it (0.87). Soil is not gravel, so no change.
 
-Proposal (no implementation; evidence first):
+Proposal (no implementation; evidence first; 1 done 2026-11-08, `SNOW_PLOUGH` 1.05, [Loose surfaces:
+loose-v1](#loose-surfaces-loose-v1); 2 measured in a drive-test build, below):
 
 1. Snow shape (brush only, class 3): a berm of 1.0-1.1 in place of 1.3. Evidence: SR 115 (peak at 40-60 %, locked
    about equal), road winter locked/ABS ≤ 1. Expected (the PLOUGH 1.0 row of the loose-v1 trade-off): snow full
@@ -1238,6 +1249,12 @@ Proposal (no implementation; evidence first):
    sand rig 0.63-0.78 at 48-60 %, none on gravel). Expected (estimated, × 0.85-0.9 of the spinning wheels' share): the Rally2's 0-40 km/h 0.90 → ~0.80 g, Escort
    0.51 → ~0.46. Driver test: power slides out of slow gravel corners and a standing start. Wanted before: a gravel
    traction-slip curve (Zeng et al. 2022, J. Terramech. 104).
+   Drive-test build (2026-11-08, branch `tyre/loose-shape`'s WIP commit, not merged; `RERBR_TEST_GRAVEL_SPIN=F`):
+   on gravel's share the driven force falls by a smoothstep from a driving slip of 0.3 (dense sand's ~35 % peak; the
+   shear law at 0.97 of its level) to F at full spin (0.88 of the way at 80 %: dense sand 0.87 there at F 0.85).
+   F 0.85: Rally2 0-40 km/h 0.89 → 0.83 g (0-20 0.92 → 0.81), Escort 0.51 → 0.45 g (ngp 0.73 / 0.40); circle 0.664
+   → 0.669 g; scorecard `gravel-traction` 0.842 → 0.829, locked over ABS 50 / 80 1.529 / 1.340 → 1.556 / 1.351 (the
+   approach runs differ), all PASS; RSF 111 287.08 → 287.16 s.
    Papers (2026-11-09, table above): the one gravel traction-slip curve (Zeng 2022) stops at 30 % slip, still rising,
    on a 6-9 cm deep bed at 0.05 m/s; no open curve on gravel reaches full spin, and none is wet or damp. It supports
    only "no fall before 30 %": the WIP's (`tyre/loose-shape`, SPIN_FROM 0.3, smoothstep to F 0.85) driven force is
@@ -1550,7 +1567,7 @@ bit-equal.
 - Ice: NGP's level (0.094) against the measured 0.15-0.18 keeps the brush's peak slip angle and initial slope from both
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
-- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; the berm on snow and a driven fall on gravel are the shape candidates (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is open. Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
+- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; snow's berm is 1.05 (done); a driven fall on gravel is in a drive test (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is open. Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a
