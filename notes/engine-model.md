@@ -39,6 +39,15 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   mechanical injection) [tech-racingcars Golf]; Fiesta R2 NA [Group R], so no anti-lag.
 - WRC boost cap 2.5 bar abs from 2011 [FIA 255A]; 4.0 bar before (guess: forum reports of 3–4 bar [NASIOC WRC],
   [passionford], both unreachable at the 2026-11 audit).
+- Compression ratio: NA 11 (guess); a turbo's by group (`compression`). Group B 7.0: road ur-quattro 2.1 10V 7.0
+  [audiurquattro], [auto-data], road Sport quattro 8.0 and 205 T16 6.5 [ultimatespecs], Delta S4 Stradale 7.5
+  [ultimatecarpage], S1 E2 7.5 [tech-racingcars S1]. Group A and N/R4 8.5, their road engines': Cosworth YB 8.0
+  [FordWiki Escort], Integrale Evo2 8.0 [ultimatecarpage], Delta HF 4WD Group N 8.0 [tech-racingcars Delta N], 4G63T
+  8.5 (Evo I–II), 9.0 (III), 8.8 (IV–IX) and 4B11T 9.0 [motorreviewer 4G63], [motorreviewer 4B11], EJ20 turbos 8.0
+  and EJ257 8.2 [motorreviewer EJ20], [motorreviewer EJ25], 3S-GTE 8.5, 8.8, 8.5 [motorreviewer 3S-GTE],
+  [8020 3S-GTE]. The rest 9.5 (guess): no WRC, R5/Rally2 or Rally3/4 race engine's is published; the road bases run
+  10.0–10.1 (1.6 EcoBoost) [Wikipedia EcoBoost], 10.5 (G16E-GTS) [GR Yaris spec] and 10.5 (1.2 PureTech)
+  [ultimatespecs]. It sets the residual gas, the rings' gas loading and K's ceiling (Torque).
 
 ## Air path (`gas.rs`, `engine.rs`)
 
@@ -58,11 +67,11 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - W_cyl = η_v·η_res·p·V_d·n/(120RT) and the manifold filling dp/dt = RT/V·(W_in − W_cyl) (generic) [Andersson],
   [Hendricks]. Fully implicit Euler, root-solved per sub-step (inferred: the linearly implicit step overshot a
   per-cylinder tip-in to 2.4 bar).
-- η_v: turbo 0.95 flat (guess); NA the WOT table's shape, peak 1 (inferred: the table is mostly breathing), then raised
-  where K would top the fuel–air cycle (Torque). Road NA engines peak at 0.87–0.88 [Heywood] fig. 6-8; the installed
-  NA cars now peak at 1.12–1.19, the two S2000s at 1.25–1.27.
+- η_v: turbo 0.95 flat (four-valve heads peak at 0.95–0.99 [Garrett turbo selection]); NA the WOT table's shape, peak 1
+  (inferred: the table is mostly breathing), then raised where K would top the fuel–air cycle (Torque). Road NA engines
+  peak at 0.87–0.88 [Heywood] fig. 6-8; the installed NA cars now peak at 1.12–1.19, the two S2000s at 1.25–1.27.
 - Residual gas: η_res = (r_c − (p_em/p_im)^(1/γ))/(r_c − 1), the ideal cycle's (generic, Heywood; the pressure
-  factor of [arXiv 2012.02859]'s η_v), r_c 11 NA, 9.5 turbo, γ 1.3 (guess: the residual is exhaust; 1.4 for air),
+  factor of [arXiv 2012.02859]'s η_v), r_c by class (Class), γ 1.3 (guess: the residual is exhaust; 1.4 for air),
   p_em of the last step. 1 at p_em = p_im; at idle 0.71 (modern turbos) to 0.87. In W_cyl and the charge; K
   recalibrates. On turbos the identity runs once more last (after the hold, the gate's base and the idle gains),
   since the state now feeds back on the charge through p_em (0.16 % off the table otherwise).
@@ -99,18 +108,22 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - K from the identity K = 4π(T_wot + friction + pumping)/charge, so steady WOT reproduces the table exactly
   (inferred). K is calibrated on a 250 rpm grid and every knot, from a fresh engine's tip-in (inferred: a turbo's
   steady boost depends on the path near its threshold).
-- An NA engine's K is at most the fuel–air cycle's work per kg of air: 0.400 at r_c 9.5 and 0.419 at 11 at φ 1.136
-  [Heywood] fig. 5-9, × LHV/(AFR·λ), 1.34 and 1.41 MJ/kg. Real engines reach about 0.8 of the cycle (pp. 194–196),
+- An NA engine's K is at most the fuel–air cycle's work per kg of air: 0.344 at r_c 6, 0.383 at 8, 0.400 at 9.5 and
+  0.419 at 11 at φ 1.136 [Heywood] fig. 5-9 (6, 8 read off its right panel at φ 1 and 1.2), × LHV/(AFR·λ), 1.34 MJ/kg
+  at 9.5 and 1.41 at 11. A richer mixture does not raise it: η·φ, the work per kg of air, is flat from φ 1.1 to 1.4
+  (r_c 12: 0.459 at 1.136, 0.462 at 1.2, 0.455 at 1.4). Real engines reach about 0.8 of the cycle (pp. 194–196),
   the road turbos' maps 0.32–0.39 on the fuel at λ 0.88 [EPA], [Guzzella] figs. 2.32–2.33 about 0.34 at 4000 rpm.
   Where the identity gives more, η_v takes the rest (`breathe`; the na sample's 0.46 at its rated speed was over the
-  ideal cycle). A turbo's K stays, 0.99–1.33 of the ceiling on the installed cars (Open).
+  ideal cycle). A turbo's K stays, one value over rpm from the retarget: on the installed cars 0.97–1.01 of the
+  ceiling on Group A, 1.05–1.08 on the Group B Audi, 1.04–1.26 on Group N/R4 and the modern classes (Open).
 - η_ign = max(0, 1 − 2.8e-4·Δθ²): about 1 % at 6° from MBT [MIT 2.61], quadratic [US 6363317]. [Guzzella] eq. 2.116
   and fig. 2.34: 1 − k_ζ·Δζ², k_ζ 2.4–3.3e-4 within ±15°; [Heywood] fig. 15-3b, 1/bsfc at constant load: 0.990,
   0.973, 0.945 and 0.917 at 5, 10, 15 and 20° (ours 0.993, 0.972, 0.937, 0.888). Untested past 20°.
-- λ 0.88 (guess, used at every load): [x-engineer] gives λ 0.86 for maximum power; the road 1.6 EcoBoost runs
-  λ 0.95–1.00 at full load and 1.00 at part load [EPA Ford 1.6]. It enters the boost target and the exhaust's flow
-  and heat, not the torque (K absorbs it). η_ig 0.38 for the boost target (weak) [Chegg]; LHV 43.4 MJ/kg, AFR 14.7
-  (generic).
+- λ 0.88 (guess, used at every load): [x-engineer] gives λ 0.86 for maximum power; the road 1.6 EcoBoost runs λ
+  0.95–1.00 at full load and 1.00 at part load [EPA Ford 1.6]; tuners run boosted engines at 0.80–0.85 [HPA lambda],
+  [EFI Mastery lambda], and Bosch's MED17 enriches to protect the exhaust [Nefmoto LAMBTS], from about 850–950 °C
+  [Schiller]. It enters the boost target and the exhaust's flow and heat, not the torque (K absorbs it). η_ig 0.38 for
+  the boost target (weak) [Chegg]; LHV 43.4 MJ/kg, AFR 14.7 (generic).
 
 ## Friction and pumping (`friction.rs`)
 
@@ -133,20 +146,24 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   dominates: [Guzzella] eq. 2.107 gives 0.9 bar for a motored SI engine at closed throttle, ours 0.82–0.85 at
   20 kPa. WOT mechanical efficiency on the NA samples 0.89 at 2000 rpm and 0.79–0.81 at rated ([Heywood] p. 49:
   typically 0.90 and 0.75).
-- s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0 (inferred:
+- s_f: closed plate, fuel cut, steady at RPMLimit gives −BrakeCoefficient·MaxTorque, clamped 0.6–2.0, a turbo's at
+  most 1 (below) (inferred:
   NGP's one braking point; friction models need a scale [ecu-lab]). The scale is 1 + (s_f − 1)·(n/n_lim)², so s_f at
   the limit and Sandoval's own FMEP at low speed (inferred: Sandoval at s_f 1 meets the road engines' rubbing
   friction from their fuel-cut points, 0.5–0.7 bar at 2000 rpm [EPA], and NGP's NA braking line gives −1.09 bar at
   2000 on the na sample; the share over Sandoval growing with n² is ours). With one flat scale the ECU samples braked
   1.4–1.7× the road engines below 5000 rpm. Friction from 2000 to 6000 rpm grows 2.15× and 2.66× on Sandoval's
   3.0 L (figs. 8, 6), 2.5–2.7× with WOT pumping motored ([Heywood] eq. 13.6, [Patton] figs. 18–19): the NA samples
-  2.15–2.3, every turbo at the clamp 3.0–3.1 (Scorecard). [Guzzella] eq. 2.112's friction over Sandoval's grows as
+  2.15–2.3, the turbos at s_f 1 1.96–2.06 (Sandoval's model on a 1.6–2.0 L four grows less than his 3.0 L V6; 3.0–3.1
+  at the old clamp of 2). [Guzzella] eq. 2.112's friction over Sandoval's grows as
   n^2.1–2.3, the shape the n² scale takes (its level, 1.3× at 2000 rpm and 2.5× at 6000, is no road engine's here).
-- BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car
-  clamps (raw 2.3–4.9), NA cars are 1.32–1.87 (`tests/rsf_cars.rs`). The clamp's 2.0 is a guess and sets the friction
-  of every installed turbo car; through the identity it also raises their K. The restrictor bounds it: the Rally2's
-  214 kW at 6000 rpm through 0.183 kg/s (32 mm choked, C_D 0.95) at the fuel–air cycle's 1.34 MJ/kg leaves at most
-  3.8 bar for friction and pumping; the model has 3.25 + 1.85.
+- BrakeCoefficient is a share of MaxTorque, so it overstates braking on boosted engines: every installed turbo car's
+  fit is 2.07–4.39, the NA cars' 1.12–1.58 (`tests/rsf_cars.rs`). A turbo's s_f is at most 1, Sandoval's engine (was
+  the 2.0 clamp, a guess): the restrictor bounds it, the Rally2's 214 kW at 6000 rpm through 0.183 kg/s (32 mm
+  choked, C_D 0.95) at the fuel–air cycle's 1.34 MJ/kg leaving at most 3.8 bar for friction and pumping (at 2:
+  3.25 + 1.85; at 1: 1.98 + 1.84). At 1 the turbo samples' closed pedal is −1.62, −2.06 and −2.34 bar at 2000, 4000
+  and 5000 rpm (at 2: −1.67, −2.42, −3.00), against EPA's road engines' −1.08..−1.48, −1.74..−2.00 and −2.16..−2.50
+  (two turbos among them), and 35–44 % of NGP's braking at the limit (60–76 % at 2).
 - The rF2 SkipBarber's coast line, −21 to −53 N·m at 2000–8000 rpm [rF2 engine.ini], is near the NA samples'
   (`examples/plot.py`).
 - η_m = 1, losses explicit; friction fades to 0 within 5 rad/s of standstill (inferred: no stiction at rest).
@@ -267,11 +284,14 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   spooled at 2000 rpm in 0.46–0.53 s (below), against [Chalmers]' 0.62–1.02 s at 2100–2400 rpm; now 0.64–0.74 s.
   On a lift at 5000 rpm without anti-lag the turbo sample keeps 0.09 bar of boost after 0.5 s (under 0.09 before;
   tested under 0.15).
-- Losses 0.002ω + 2.5e-6ω² + 100 W, our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any
-  speed), power (W, ramps up linearly with speed)", and `TurboStaticFrictionWatts=100`, which "prevents numerical
-  problems at low spool speeds" [rF2 engine.ini]. The static 100 W stops the shaft at idle and at a closed pedal
-  (ω_t 0 on both turbo samples). At 80 000 rpm they take 292 W, between the two rigs' 95 W [Chung 2017] and about
-  350–500 W [Perge 2017] (oil 90 °C and 50–90 °C).
+- Losses 0.002ω + 2.5e-6ω², our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed),
+  power (W, ramps up linearly with speed)" [rF2 engine.ini]. Its `TurboStaticFrictionWatts=100`, which "prevents
+  numerical problems at low spool speeds", is left out: a constant power is a torque without bound as the shaft
+  slows, and it stopped the shaft at idle and at a closed pedal. Without it the turbo samples' shaft idles at
+  3300–3500 rpm ([Guzzella] p. 50: at idle the speed "can fall below 10 000 rpm"; no measured idle speed found). At
+  80 000 rpm the losses take 192 W (292 with the 100 W), between the two rigs' 95 W [Chung 2017] and about 350–500 W
+  [Perge 2017] (oil 90 °C and 50–90 °C). The slow shaft at idle took the calibration's steady test longest, so it
+  stops at 10 rad/s of shaft speed per 0.25 s (1 before; results move about 1e-4, the idle shaft 80 rpm).
 - Exhaust temperature affine in flow for the firings that burn, 520 °C at 0 and 950 °C rated, capped at 1150 °C
   (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess). The 520 °C is the intercept of a
   line through EPA's four road turbos' 849 fired points (940 °C at the most flow, rms 85 K; turbine inlet against
@@ -286,7 +306,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   model (no residual gas, before the retarget) gave the steady WOT boost two branches; 520 °C passes the path test.
   The shaft's spin-down after a lift without anti-lag (4500 rpm fixed, from WOT: stopped within 0.8 s) is set by the
   compressor's work and the losses, the same before and after; no measured spin-down was found.
-  Intercooler effectiveness 0.7 (guess).
+  Intercooler effectiveness 0.7 (guess; a road top-mount measured 0.57, 0.91 with water spray [Ma'arof 2020]).
 - Boost target π_wot(n), first from the table with η_ig 0.38, η_v 0.95, capped (class, else 2.5 abs) and by the
   restrictor [FIA 261], [FIA 255A], then made consistent with one K (above).
 - Wastegate aim. Electronic (DBW): p_a + (π_wot(n)·p_a − p_a)·min(1, θ/θ_open(n)), θ the throttle's aim position,
@@ -389,8 +409,9 @@ growth, WOT mechanical efficiency and WOT over idle air (NA: a motored turbo bui
 
 Rounds, each on its own bands: 36 → 47/77 with the friction by rpm², the idle floor, the exhaust heat, the rotor and
 the restrictors (`a5ea4790` to `d40b242e`); then 47 → 47 with Sandoval's auxiliaries and the valves' pumping, 55/92
-with the new rows and the η_ig band on λ 0.88, 56/92 with an NA engine's K under the fuel–air cycle. By system:
-braking 5/17, friction 8/14, part load 5/15, torque 4/6, idle 9/11, exhaust 5/9, turbo 5/5, class 15/15.
+with the new rows and the η_ig band on λ 0.88, 56/92 with an NA engine's K under the fuel–air cycle, 59/92 with a
+turbo's friction at Sandoval's scale, 59 with no static bearing loss, 60/92 with a turbo's compression ratio by group.
+By system: braking 7/17, friction 8/14, part load 6/15, torque 4/6, idle 9/11, exhaust 6/9, turbo 5/5, class 15/15.
 
 ## In game
 
@@ -425,21 +446,27 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   them too and idles at 89 rad/s with the clutch open); NGP's clutch help opens at 65 rad/s, too late. Not traced why
   it never opens with the model's engine. The Golf's stall on the climb was the brush's (fixed, `tyre-model.md`).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
-- A turbo's K over the fuel–air cycle (0.99–1.33 of it on the installed cars; turbo sample and Rally2 0.48 at
-  4000 rpm against 0.40). Holding it at the cycle with the charge, as on NA, was tried: η_v 1.13–1.19 at 2000–4000 rpm,
-  K over it again above 5000 where the restrictor chokes, the exhaust manifold 350 → 400 kPa through the same nozzle,
-  and the spool at 2000 rpm 0.63–0.73 → 0.38–0.43 s (Chalmers 0.54–1.60). It needs the turbine sized with the charge,
-  and the friction scale (above: at the clamp the friction alone grows 3.0–3.1× from 2000 to 6000 rpm, road 2.1–2.7×,
-  and the Rally2's restrictor leaves 3.8 bar for friction and pumping at 6000, the model 5.1). Not done.
-- The turbo's shaft stops at idle (idle-shaft rows 0 rpm): the 100 W static loss outweighs the turbine there, so a
-  tip-in from idle spools from rest. [Guzzella] p. 50: at idle the speed "can fall below 10 000 rpm"; no measured idle
-  speed found.
-- Manifold volume: one throttle 0.8·V_d against [Guzzella]'s V6 at 2.1·V_d (measured τ about 2.5× ours); one engine
-  with long runners, so not changed.
-- Modern turbos idle at 16.1–16.7 kPa (Rally2, R5, WRC 2006–2020 on RSF; 20–22 before the friction followed rpm),
+- A modern turbo's K over the fuel–air cycle (1.04–1.26 of it; turbo sample and Rally2 0.47–0.48 at 4000 rpm
+  against 0.40), kept so the tables hold (decided 2026-11: NGP's torque over the ceiling). At the 2.5 bar cap the
+  tables ask 13–15 bar of BMEP per bar of boost; the makers claim as much: M-Sport's Fiesta R5 2019 475 N·m at
+  4000 rpm and 290 bhp at 6000 [M-Sport Fiesta R5], Škoda's Fabia R5 evo 212 kW and 425 N·m [Škoda Fabia R5 evo],
+  VW's Polo R WRC (33 mm) 232 kW at 6250 and 425 N·m at 5000 [VW Polo R WRC], Hyundai's i20 N Rally2 300 hp and
+  350 N·m [Hyundai i20 N Rally2] (the Rally2 table 460). Sourced constants close a few % at most: λ none (above),
+  η_v 0.95–0.99, an intercooler 0.57–0.91, race compression ratios unpublished (Class). Tried and dropped: η_v
+  carrying the excess, as on NA (one value, by the on-boost median over K_max): the restrictor holds the air from
+  4400 rpm, so η_v ran 0.95 → 1.17 → 1.25 with K still over; the retarget aiming at min(median, K_max) (boost up to
+  the ceiling wherever free): the Rally2 then asked 2.05 bar at 2000 rpm, at its turbo's limit, and never reached
+  90 % in 5 s from 5 bar BMEP (0.75 s before); restricted knots raised to the restrictor's full flow (the limit with
+  the run's residual gas, which the 0.95 margin left at 86–88 % of the choke): K there 1.16 → 1.10 at 91 %, the
+  restrictor's drop and a drive ratio near 2 taking the rest, K at the cap 1.18 → 1.20 and the turbo sample's spool
+  0.69 → 0.52 s (under Chalmers' 0.54).
+- Manifold volume: one throttle 0.8·V_d against [Guzzella]'s V6 at 2.1·V_d (measured τ about 2.5× ours), aftermarket
+  race plenums for the 4G63 at 2.3–2.5·V_d [Magnus plenum], [Plazmaman plenum] and a design rule of 2–2.5× the
+  cylinder volume per cylinder [IJERT plenum]; no rally engine's and no textbook figure found. Not changed.
+- Modern turbos idle at 16.3–17.5 kPa (Rally2, R5, WRC 2006–2020 on RSF; 20–22 before the friction followed rpm),
   under warm road idles of 22.3–28.5 kPa [EPA] and tuners' 27, 31 and 30–50 kPa [MOTOR], [Gears], [Tuning School];
   every RSF car 16.1–31.5 kPa, the NA ones 21.5–31.5 (`tests/rsf_cars.rs`). The turbo sample and the Fiesta Rally2
-  make no torque at 16.2–16.3 kPa at 2500 rpm (road 18.5–27.2). Cause: the table's torque per bar of boost (K at
+  make no torque at 16.0–16.2 kPa at 2500 rpm (road 18.5–27.2). Cause: the table's torque per bar of boost (K at
   4000 rpm 0.48 as an efficiency, road 0.32–0.39) over Sandoval's friction at low speed. EPA's road K is flat with
   load (Willans), so a part-load K under the WOT one has no support (proposed before, not done); race cams' overlap,
   which raises tuners' idles to 30–50 kPa, is not modelled. Not changed.
@@ -477,9 +504,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   1.6's 593–657 °C retarded at its lightest loads, and run 564 °C at pedal 0.15, 1500 rpm against 585–732 °C at the
   same BMEP on four road turbos. One line over the flow share cannot hold both: a rally engine's rated flow is about
   2.5 bar's, so a given load is a smaller share of it than on a road engine (inferred).
-- Closed-pedal braking at 2000–5000 rpm still runs 0.2–0.4 bar over the road engines' with the fuel cut (Scorecard):
+- Closed-pedal braking at 2000–4000 rpm still runs up to 0.2 bar over the road engines' with the fuel cut (Scorecard):
   the pumping at the 0.2·p_a overrun air is 0.8 bar, and Sandoval's FMEP for a 1.6 L four is over the road engines'
-  0.5–0.7 bar at 2000 rpm. The limit point is NGP's, which no measured race engine checks.
+  0.5–0.7 bar at 2000 rpm. An NA car's limit point is NGP's, which no measured race engine checks.
 
 ## Sources
 
@@ -488,6 +515,29 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - Ford 1.6 EcoBoost, ratings: https://fordauthority.com/fmc/ford-motor-company-engines/ford-ecoboost-family/ford-1-6l-ecoboost-engine/
 - Hyundai i20 N, spec sheet: https://www.hyundai.com/content/dam/hyundai/au/en/models/i20-n/2021/images/i20N_Spec-Table_Oct_2021.pdf
 - Škoda Rally2 engine (Fabia RS Rally2): https://cdn.skoda-storyboard.com/2022/06/FABIA_RS_Rally2_Engine.pdf
+- M-Sport Fiesta R5 2019, "FORD FIESTA R5 2019 TECHNICAL SPECIFICATION" (M-Sport PDF; 290 BHP @ 6000 RPM, 475 Nm @
+  4000 RPM, 32 mm)
+- Škoda Fabia R5 evo, technical specification (212 kW, 425 Nm): https://cdn.skoda-storyboard.com/2019/12/MOTORSPORT_Technical_specification.pdf
+- VW Polo R WRC, technical specifications (2012; 232 kW at 6250, 425 Nm at 5000, 33 mm): https://web.archive.org/web/20121212190829/http://volkswagen-motorsport.com/index.php?id=339&L=1
+- Hyundai i20 N Rally2, technical specifications (300 HP, 350 Nm, 32 mm): https://motorsport.hyundai.com/customer-programmes/rally2
+- GR Yaris spec, Toyota UK 2024 (G16E-GTS 10.5:1): https://media.toyota.co.uk/wp-content/uploads/sites/5/pdf/240621-GR-Yaris-Tech-Specs.pdf
+- Wikipedia EcoBoost (1.6 L 10.0–10.1:1): https://en.wikipedia.org/wiki/Ford_EcoBoost_engine
+- tech-racingcars S1 (S1 E2 7.5:1): http://tech-racingcars.wikidot.com/audi-sport-quattro-s1
+- tech-racingcars Delta N (Delta HF 4WD Group N 8.0:1): http://tech-racingcars.wikidot.com/lancia-delta-hf-4wd-gr-n
+- audiurquattro (2144 cc 7.0) and auto-data (Typ 85 2.1 Turbo 7:1): https://www.audiurquattro.fr, https://www.auto-data.net
+- ultimatespecs (Sport quattro 8.0, 205 Turbo 16 6.5, 208 1.2 PureTech 130 10.5): https://www.ultimatespecs.com/car-specs/Audi/222/Audi-Quattro-Sport.html
+- ultimatecarpage (Delta S4 Stradale 7.5:1, spec 2980; Delta HF Integrale Evo2 8.0:1, spec 7322): https://www.ultimatecarpage.com/spec/2980/Lancia-Delta-S4-Stradale.html
+- FordWiki Escort (YBT 8:1): https://www.fordwiki.co.uk/index.php/Buyers_Guide_-_Escort_RS_Cosworth_(Escort_Mk5)
+- motorreviewer 4G63, 4B11, EJ20, EJ25, 3S-GTE (engine_id 123, 124, 56, 53, 152): https://www.motorreviewer.com
+- 8020 3S-GTE (gen 2 8.8:1): https://www.8020automotive.com
+- Garrett turbo selection (η_v 0.95–0.99 on four-valve heads): https://www.garrettmotion.com/news/newsroom/article/how-to-select-a-turbo-part-2-understanding-calculations-to-turbo-any-engine/
+- Ma'arof 2020, intercooler spray (IOP Conf. Ser.: Mater. Sci. Eng.; 56.52 → 90.72 %), abstract via OpenAlex
+- HPA lambda (boosted maximum power λ 0.82–0.85): https://www.hpacademy.com/forum/efi-tuning/show/tuning-richer-than-0-90-lambda/
+- EFI Mastery lambda (0.80–0.85 at high boost): https://efimastery.com/tech-articles/lambda-target-selection/
+- Nefmoto LAMBTS (Bosch MED17 component protection): https://nefariousmotorsports.com/wiki/LAMBTS_2.120_(Lambda_for_Component_Protection)
+- Schiller (ME17/MED17 protection from 850–950 °C): https://schiller-tuning.com/ecu-tuning-course/bosch-advanced-winols/lambda-component-protection
+- Magnus plenum (4G63, 5.0 L), Plazmaman plenum (4.6 L): https://www.magnusmotorsports.com, https://www.plazmaman.com
+- IJERT plenum (design rule): https://www.ijert.org/research/IJERTV9IS110031.pdf
 
 - Andersson, LiU MSc 2017 (MVEM, orifice, turbo): https://www.diva-portal.org/smash/get/diva2:1138994/FULLTEXT01.pdf
 - Hendricks & Sorenson MVEM: https://orbit.dtu.dk/en/publications/mean-value-si-engine-model-for-control-studies

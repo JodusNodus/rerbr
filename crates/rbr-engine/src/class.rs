@@ -41,6 +41,8 @@ pub struct Class {
     /// The boost cap, absolute pressure over the reference atmosphere.
     pub boost_cap: Option<f64>,
     pub cylinders: u32,
+    /// The geometric compression ratio.
+    pub compression: f64,
 }
 
 /// The year a group's car most likely has when its metadata gives none (rule 9: the group's middle era).
@@ -89,6 +91,18 @@ fn restrictor(group: &str, year: u32) -> Option<f64> {
         _ => return None,
     };
     Some(mm / 1000.0)
+}
+
+/// A turbo's compression ratio by its group (`notes/engine-model.md`): Group B 7.0 (the road ur-quattro's 2.1 7.0, the
+/// 205 T16's 6.5, the S1 E2's and the Delta S4's 7.5), Group A and N/R4 on their road engines 8.5 (YB, EJ20 and
+/// Integrale 8.0, 3S-GTE 8.5–8.8, 4G63 8.5–9.0, EJ257 8.2, 4B11T 9.0), the rest 9.5 (the race engines' unpublished,
+/// their road bases' 10.0–10.5).
+fn compression(group: &str) -> f64 {
+    match group {
+        "Group B" => 7.0,
+        "Group A7" | "Group A8" | "Group N4" | "Group R4" => 8.5,
+        _ => 9.5,
+    }
 }
 
 /// Facts by folder (without `_ngp6`/`_ngp7`) that the rules cannot know (tech-racingcars, FIA 254, Wikipedia;
@@ -160,6 +174,7 @@ pub fn classify(car: &Car, turbo: bool) -> Class {
         restrictor: None,
         boost_cap: None,
         cylinders: 4,
+        compression: if turbo { compression(group) } else { 11.0 },
     };
     if turbo {
         match group {
@@ -235,6 +250,12 @@ mod tests {
         assert_eq!((c.cylinders, c.restrictor), (3, Some(0.031)));
         let c = classify(&car("Ford_Fiesta_R2_ngp6", "Group R2", 2015), true);
         assert!(!c.anti_lag);
+        let r_c = |group: &str, turbo: bool| classify(&car("x", group, 1990), turbo).compression;
+        assert_eq!(
+            (r_c("Group B", true), r_c("Group A8", true), r_c("Group N4", true), r_c("Rally 2", true)),
+            (7.0, 8.5, 8.5, 9.5)
+        );
+        assert_eq!(r_c("Group A8", false), 11.0);
         assert_eq!(classify(&car("Renault_Clio_III_R3_ngp6", "Group R3", 2007), false).actuation, Actuation::Dbw);
     }
 

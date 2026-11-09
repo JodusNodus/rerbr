@@ -69,7 +69,7 @@ pub struct Spec {
 impl Spec {
     /// The car's geometry and air path before calibration.
     pub fn new(class: Class, turbo: bool, v_d: f64, inlet_area: f64, rpm_limit: f64, rpm_idle: f64) -> Self {
-        let geometry = Geometry::new(v_d, class.cylinders, turbo);
+        let geometry = Geometry::new(v_d, class.cylinders, class.compression);
         let (c_d, area, r_v) = match class.intake {
             Intake::PerCylinder => {
                 let min = f64::from(class.cylinders) * PI / 4.0 * PER_CYLINDER_BORE * PER_CYLINDER_BORE;

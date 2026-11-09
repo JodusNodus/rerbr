@@ -22,11 +22,12 @@ pub const ETA_T: f64 = 0.65;
 /// samples spooled from 5 bar BMEP to 90 % at 2000 rpm in 0.46–0.53 s, against GT-Power's 0.62–1.02 s for road
 /// turbos at 2100–2400 rpm (Chalmers); now 0.64–0.74 s.
 pub const INERTIA: f64 = 1.7e-5;
-/// Bearing losses: a·ω + b·ω² + 100 W static (our reading of rF2's `TurboFriction`, a torque and a power that ramps
-/// with speed; its `TurboStaticFrictionWatts` is there against numerical problems at low spool speeds).
+/// Bearing losses: a·ω + b·ω² (our reading of rF2's `TurboFriction`, a torque and a power that ramps with speed).
+/// rF2's `TurboStaticFrictionWatts` (100 W, against its numerical problems at low spool speeds) is left out: a
+/// constant power is a torque without bound as the shaft slows, and it stopped the shaft at idle, where [Guzzella]
+/// p. 50 has it spinning, if slowly.
 const LOSS_A: f64 = 0.002;
 const LOSS_B: f64 = 2.5e-6;
-const LOSS_STATIC: f64 = 100.0;
 /// The intercooler's effectiveness (guess).
 pub const INTERCOOLER: f64 = 0.7;
 /// The restrictor's discharge coefficient and its loss k_r at choke: p_in = p_a·(1 − k_r·(W/W_choke)²) (guess;
@@ -182,7 +183,7 @@ impl Spec {
 
 /// The shaft's bearing losses at `omega`, W.
 pub fn losses(omega: f64) -> f64 {
-    LOSS_STATIC + LOSS_A * omega + LOSS_B * omega * omega
+    LOSS_A * omega + LOSS_B * omega * omega
 }
 
 /// The compressor's outlet temperature after the intercooler, K.
