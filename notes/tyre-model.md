@@ -1221,7 +1221,7 @@ map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h;
 | snow | traction 0-40, Rally2 / Escort | 0.74 / 0.42 | 0.88 / 0.49 | road FWD 0.23; studded peak 0.57-0.60, spinning 0.28-0.43 | level and shape |
 | ice | tyre peak μ_y (tarmac tyre, unstudded) | 0.094 | 0.094 | -3 °C 0.15-0.18: MISS; 0 °C smooth ice unstudded cornering 0.12, optimum 0.09-0.11: about NGP's | level (the temperature) |
 | ice | car best / locked 50 km/h, Rally2 | 0.096 / 0.095 | 0.100 / 0.081 | studless car 0.18-0.22 (-2 to -13 °C); locked 0.10-0.12 at 0 °C | level |
-| ice | launch 0-20 km/h, Rally2; Escort | 0.08 g; does not move | 0.06 g; does not move | | open |
+| ice | launch 0-20 km/h, Rally2; Escort | 0.08 g; does not move | 0.06 g; does not move | | NGP's rest clear and free-wheel latch drag (below) |
 
 - Gravel: no case to lower the level. The one rally-tyre level (CW ≲ 0.67) sits under the WRC telemetry's lateral
   and braking, and the published car braking is road cars on road tyres. The berm is in band against four
@@ -1232,8 +1232,20 @@ map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h;
   1.13-1.42 sits above the road data (≤ 1). Locked, snow out-brakes gravel by 14 % under both physics (map 10 against 345's deeper soil).
 - Ice: material 116 runs the tarmac tyre (RSF 565/614, unstudded). Its 0.094 is the 0 °C smooth-ice value
   (Nordström, unstudded); the -3 °C band is a colder ice. The RWD Escort on 568 iced does not leave the line under
-  either physics: rears spinning at 20-49 m/s in gears 2-6 for 13 s at 0.000 m/s, the 4WD Fiesta does. Cause not
-  traced.
+  either physics: rears spinning at 20-49 m/s in gears 2-6 for 13 s at 0.000 m/s, the 4WD Fiesta does. Cause
+  (2026-11-09, env-gated probe builds, not committed): NGP's own, shared by both physics, not the tyre or tooling.
+  (1) Rest clear: the integrator zeroes a flagged body's velocity under |v|² 4e-7 (`rigid_body::integrate`
+  `CLEAR_SPEED_SQ`), so from rest at 720 Hz a net push under 0.455 m/s² (0.046 g) never starts the car. The
+  Escort's rears give 2 × 265 N (NGP: static μ at full spin, the sticking weight follows the contact speed), less
+  568's start grade (241 N): 0.25 m/s². With the free-wheel drag off, μ × 1.2 (0.33 m/s²) stays, μ × 1.5 (0.47)
+  moves, and with the clear off too μ × 1.2 moves; the Fiesta's ~0.7 clears it. (2) Free-wheel drag: under 2 m/s each wheel's latch bound is the
+  sticking load 0.025 Fz N·m (`tyre::step` `OUTPUT_SCALE`, `free_wheel_step`), so a free front drags 0.025 Fz / R
+  ≈ 0.086 Fz, the ice μ itself (247 N at Fz 2891 N, R 0.29, 0.9 m/s; 16 N at 4 m/s): iced from 1 m/s the Escort
+  slows at 0.017 g to a stop, from 4 m/s it gains 0.027 g (brush 0.017). Both off: 0.025 g from rest. Tooling
+  checked: 116's values copy (μ 0.10/0.095, rolling 0.02, class 5; its collision values change nothing), throttle
+  0.3 stays put too. BMW M3 E30 frozen, both Porsche 911 SC creep 0.02 m/s and stop. A real RWD car would crawl
+  (free-rolling drag ~0.01-0.015 Fz; reasoning, no source). Either change is the integrator's or the drive line's,
+  not the brush's: open as a decision.
 - Combined slip: the brush already loses more side force driving than braking at the same slip (α 6°, κ ±0.05: 0.98
   / 1.03; NGP symmetric 0.96). Its |F| stays on the circle (α 25°, κ 0.3: 1.02 of the pure lateral, NGP 1.02), where
   soft soil falls inside it (0.87). Soil is not gravel, so no change.
@@ -1567,7 +1579,7 @@ bit-equal.
 - Ice: NGP's level (0.094) against the measured 0.15-0.18 keeps the brush's peak slip angle and initial slope from both
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.81-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
-- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; snow's berm is 1.05 (done); a driven fall on gravel is in a drive test (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is open. Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
+- Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; snow's berm is 1.05 (done); a driven fall on gravel is in a drive test (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is NGP's (velocity clear under 0.046 g from rest, free-wheel latch drag 0.086 Fz under 2 m/s; not the tyre). Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a
