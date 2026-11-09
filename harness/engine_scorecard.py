@@ -14,9 +14,12 @@ bounds empty is context: measured and printed (CTX), not scored. The `how` keys:
                           pedal at N rpm come down from 300 rpm under the limit, so the overrun cut has armed),
                           closed_limit_ratio (the closed pedal with the fuel cut at RPMLimit over NGP's
                           BrakeCoefficient·MaxTorque), cold_friction_2000 (FMEP at 20 °C oil over 90 °C),
-                          zero_map_2500 (the manifold pressure of zero net torque), bmep_P_N (BMEP with the manifold
+                          friction_ratio (FMEP at 6000 over 2000 rpm, WOT ring loading), motored_wot_4000 and
+                          motored_wot_ratio (fuel off at WOT: friction and pumping, bar, and 6000 over 2000 rpm),
+                          mech_eff_2000 and mech_eff_rated (WOT brake over gross indicated), air_ratio (the WOT air
+                          at the grid speed of the most power over the idle's), zero_map_2500 (the manifold pressure of zero net torque), bmep_P_N (BMEP with the manifold
                           at P kPa), share_50_2500 (torque at 50 kPa over 100 kPa, %), eta_ig_N (K·AFR·λ/LHV),
-                          idle_map, idle_exhaust (at IdleRPM, closed pedal), fired_map_min (the lowest manifold
+                          idle_map, idle_exhaust, idle_shaft_rpm (at IdleRPM, closed pedal), fired_map_min (the lowest manifold
                           pressure at a closed pedal with the fuel on, idle + 50..700 rpm), cut_exhaust_3000 (the
                           closed_bmep_3000 run's exhaust), exhaust_015_1500 (pedal 0.15), exhaust_rated (WOT at the
                           grid speed of the most power), spool_N (at N rpm, from the steady pedal for 5 bar BMEP to 90 %

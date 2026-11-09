@@ -9,7 +9,7 @@ mod rsf;
 
 use rbr_engine::calibrate;
 use rbr_engine::class;
-use rbr_engine::engine::{step, Spec, State, Step, RPM};
+use rbr_engine::engine::{step, Out, Spec, State, Step, RPM};
 use rbr_engine::gas::{AFR, LAMBDA, LHV};
 use rbr_engine::realistic::Realistic;
 use rbr_engine::{friction, samples, turbo, Car, Params};
@@ -50,6 +50,17 @@ fn coast(spec: &Spec, rpm: f64) -> (State, f64) {
     (s, out.torque)
 }
 
+/// The steady motored wide-open throttle at `rpm` (fuel off): friction and pumping as a mean effective pressure, Pa.
+fn motored(spec: &Spec, rpm: f64) -> f64 {
+    let mut s = State::new();
+    let x = Step { stalled: true, ..Step::at(rpm / RPM, 1.0, calibrate::DT) };
+    let mut out = step(spec, &mut s, &x);
+    for _ in 0..(3.0 / calibrate::DT) as usize {
+        out = step(spec, &mut s, &x);
+    }
+    -out.torque * 4.0 * PI / spec.geometry.v_d
+}
+
 /// Seconds at a fixed `rpm` from the steady pedal for 5 bar BMEP to 90 % of the steady WOT torque (the [Chalmers]
 /// case, as `tests/model.rs` `spool_at`).
 fn spool(spec: &Spec, v_d: f64, rpm: f64) -> f64 {
@@ -86,11 +97,15 @@ fn measure(p: &Params) -> Vec<(&'static str, f64)> {
             out.push(("cut_exhaust_3000", celsius(&s)));
         }
     }
+    // Motored at wide-open throttle, and its growth from 2000 to 6000 rpm.
+    out.push(("motored_wot_4000", motored(spec, 4000.0) / 1e5));
+    out.push(("motored_wot_ratio", motored(spec, 6000.0) / motored(spec, 2000.0)));
     let ngp = -f64::from(p.brake_coefficient) * f64::from(p.max_torque);
     out.push(("closed_limit_ratio", calibrate::closed(spec, spec.rpm_limit).1.torque / ngp));
     out.push(("friction_scale", m.calibration().friction_scale));
     let warm = spec.friction(2000.0, friction::phi(friction::T_OIL_REF), 1.0);
     out.push(("cold_friction_2000", spec.friction(2000.0, friction::phi(293.15), 1.0) / warm));
+    out.push(("friction_ratio", spec.friction(6000.0, 1.0, 1.0) / spec.friction(2000.0, 1.0, 1.0)));
 
     // Part load: the manifold pressure of no net torque, and torque at a manifold pressure.
     let pedal = pedal_where(|x| calibrate::part(spec, 2500.0, x).1.torque);
@@ -110,10 +125,11 @@ fn measure(p: &Params) -> Vec<(&'static str, f64)> {
     }
 
     // Idle, and a closed pedal over idle with the fuel on (under the overrun cut's start).
-    let (s, _) = calibrate::part(spec, idle, 0.0);
+    let (s, idle_out) = calibrate::part(spec, idle, 0.0);
     out.push(("idle_map", s.p_im / 1e3));
     if spec.turbo.is_some() {
         out.push(("idle_exhaust", celsius(&s)));
+        out.push(("idle_shaft_rpm", s.omega_t * RPM));
     }
     let lowest = [50.0, 100.0, 200.0, 300.0, 500.0, 700.0]
         .iter()
@@ -126,13 +142,21 @@ fn measure(p: &Params) -> Vec<(&'static str, f64)> {
         .fold(f64::INFINITY, f64::min);
     out.push(("fired_map_min", lowest));
 
+    // Wide-open throttle at 2000 rpm and at the grid speed of the most power: the mechanical efficiency (brake over
+    // gross indicated) and the air over the idle's.
+    let c = m.calibration();
+    let rated = c.wot.iter().map(|k| (k.0 * k.2, k.0)).fold((0.0, 0.0), |a, b| if b.0 > a.0 { b } else { a }).1;
+    out.push(("rated_rpm", rated));
+    let mechanical = |o: &Out| o.torque / (o.torque + o.friction + o.pumping);
+    out.push(("mech_eff_2000", mechanical(&calibrate::wot(spec, 2000.0).1)));
+    let (s_rated, o_rated) = calibrate::wot(spec, rated);
+    out.push(("mech_eff_rated", mechanical(&o_rated)));
+    out.push(("air_ratio", o_rated.w_cyl / idle_out.w_cyl));
+
     // Exhaust and turbo.
     if spec.turbo.is_some() {
         out.push(("exhaust_015_1500", celsius(&calibrate::part(spec, 1500.0, 0.15).0)));
-        let c = m.calibration();
-        let rated = c.wot.iter().map(|k| (k.0 * k.2, k.0)).fold((0.0, 0.0), |a, b| if b.0 > a.0 { b } else { a }).1;
-        out.push(("rated_rpm", rated));
-        out.push(("exhaust_rated", celsius(&calibrate::wot(spec, rated).0)));
+        out.push(("exhaust_rated", celsius(&s_rated)));
         for (rpm, key) in [(1000.0, "spool_1000"), (2000.0, "spool_2000"), (3000.0, "spool_3000")] {
             out.push((key, spool(spec, v_d, rpm)));
         }
