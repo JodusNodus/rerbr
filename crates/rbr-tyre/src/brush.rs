@@ -3,7 +3,7 @@
 //! A steady-state brush with Pacejka's theoretical slips, the generalised
 //! Stribeck friction of the LuGre brush tyre models (shape fitted to TRL locked-wheel data),
 //! load-sensitive stiffness and friction, bulk temperature / wear / pressure
-//! factors, a partial-hydroplaning wet loss, and Rill's first-order force
+//! factors, a wet loss with speed (thin film and partial hydroplaning), and Rill's first-order force
 //! dynamics (carcass spring and damper, relaxation from the secant slip
 //! stiffness). Pure functions over plain values, in `f64` with libm's `exp` and
 //! `pow`: the same bits on every platform, as replays need. The game steps it
@@ -307,6 +307,38 @@ pub fn wet_loss(w: f64, v: f64, d: f64) -> f64 {
     1.0 - (1.0 - WET_KEPT) * lifted
 }
 
+/// The wet peak's loss with speed on a thin film, per m/s over [`THIN_FILM_FROM`] at W = 1: the film is squeezed out
+/// of the patch less completely the faster the patch meets it. Fitted to Reimpell & Sponagel (Fahrwerktechnik: Reifen
+/// und Räder, 1986, via Müller et al., FAT-Schriftenreihe 299, Abb. 21b; fig ±0.02), a car tyre's peak μ, all films
+/// ~0.755 at 60 km/h; at 100 / 140 km/h 0.71 / 0.655 on 0.5 mm, 0.675 / 0.59 on 1 mm; 0.745 / 0.73 on 0.2 mm.
+/// Interpolated to the game's 0.7 mm film ([`FILM_MAX`]) that is 0.922 / 0.833 of the 60 km/h peak; least squares
+/// through 60 km/h gives 0.0074 (0.918 / 0.836). Linear in W (ours): W 0.25 (0.175 mm) keeps 0.979 / 0.959 (0.2 mm
+/// film 0.99 / 0.97). Flat to 60 km/h as Veith found the wet peak to ~50 km/h (ASTM STP 793, via Beautru 2012).
+pub const THIN_FILM_LOSS: f64 = 0.0074;
+/// The speed the thin-film loss starts from, m/s: 60 km/h, the curves' common point.
+pub const THIN_FILM_FROM: f64 = 60.0 / 3.6;
+
+/// The thin-film factor on friction at the wetness `w` and the speed `v`, m/s ([`THIN_FILM_LOSS`]), never below
+/// [`WET_KEPT`].
+pub fn thin_film(w: f64, v: f64) -> f64 {
+    (1.0 - THIN_FILM_LOSS * w * (v - THIN_FILM_FROM).max(0.0)).max(WET_KEPT)
+}
+
+/// The wet factor on friction against speed at the wetness `w`, the speed `v`, m/s, and the tread remaining `d`:
+/// the thin film's loss ([`thin_film`], a new tyre's, as Reimpell's curves are) times the partial hydroplaning of the
+/// tread `d` relative to a new tread's ([`wet_loss`] at `d` over at 1). The thin film takes over the new tread's own
+/// partial hydroplaning (both count the patch's film above 60 km/h, so a new tyre takes [`thin_film`] alone), and a
+/// worn tread keeps its partial hydroplaning against new: [`wet_loss`]'s fit is to stops of worn over new tyres. `v`
+/// is the speed over the road (the contact point's), the speed the patch meets the film at, rolling or locked:
+/// Reimpell's curves are against travel speed, and the sliding speed at the peak (1-3 m/s) does not grow with it.
+/// 1 on a dry surface.
+pub fn wet_speed_factor(w: f64, v: f64, d: f64) -> f64 {
+    if w <= 0.0 {
+        return 1.0;
+    }
+    thin_film(w, v) * wet_loss(w, v, d) / wet_loss(w, v, 1.0)
+}
+
 /// Dry-wear gain on friction: 1 + 0.167 (1 - d), fading with wetness (times
 /// (1 - W)): worn tread grips more when dry (+10% peak mu at 60% worn, Singh
 /// Table 3) and loses in the wet (carried by the partial hydroplaning there, [`wet_loss`]).
@@ -369,8 +401,8 @@ pub struct EvalInput {
     pub pressure: f64,
     pub pressure_factor: f64,
     pub wetness: f64,
-    /// Whether the partial hydroplaning ([`wet_loss`]: the film against the tread's drainage) applies (the game's
-    /// brush: yes).
+    /// Whether the wet loss with speed ([`wet_speed_factor`]: the thin film and the partial hydroplaning) applies (the
+    /// game's brush: yes).
     pub hydroplaning: bool,
     /// NGP's temperature grip factor (RubMyFct blend, kept as in NGP).
     pub temp_grip: f64,
@@ -438,7 +470,7 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
     let s_abs = (sx * sx + sy * sy).sqrt();
     let vs = friction_sliding_speed(vr * s_abs, vr);
     let v = (x.vx * x.vx + x.vy * x.vy).sqrt();
-    let wet = if x.hydroplaning { wet_loss(x.wetness, v, x.tread_remaining) } else { 1.0 };
+    let wet = if x.hydroplaning { wet_speed_factor(x.wetness, v, x.tread_remaining) } else { 1.0 };
     let mu_x = mu_axis(
         cal.mu_xs,
         cal.mu_xk,
@@ -961,6 +993,27 @@ mod tests {
             assert!(wet_loss(1.0, v + 1.0, 0.0) <= wet_loss(1.0, v, 0.0));
             assert!(wet_loss(1.0, v, 0.0) <= wet_loss(1.0, v, 0.2) && wet_loss(1.0, v, 0.2) <= wet_loss(1.0, v, 1.0));
         }
+    }
+
+    #[test]
+    fn the_wet_peak_falls_with_speed_as_reimpell_measured_and_a_worn_tread_keeps_its_loss_against_new() {
+        let kmh = |v: f64| v / 3.6;
+        // Reimpell & Sponagel at the game's 0.7 mm (W 1): 0.92 / 0.83 of the 60 km/h peak at 100 / 140 km/h (0.5-1
+        // mm: 0.89-0.94, 0.78-0.87); 0.2 mm 0.99 / 0.97 against W 0.25's 0.175 mm (fig ±0.02).
+        assert_eq!(wet_speed_factor(1.0, kmh(60.0), 1.0), 1.0);
+        let (w100, w140) = (wet_speed_factor(1.0, kmh(100.0), 1.0), wet_speed_factor(1.0, kmh(140.0), 1.0));
+        assert!((0.89..=0.94).contains(&w100) && (0.78..=0.87).contains(&w140), "{w100} {w140}");
+        let (d100, d140) = (wet_speed_factor(0.25, kmh(100.0), 1.0), wet_speed_factor(0.25, kmh(140.0), 1.0));
+        assert!((0.97..=1.0).contains(&d100) && (0.95..=0.99).contains(&d140), "{d100} {d140}");
+        // Dry: nothing, bit for bit.
+        assert_eq!(wet_speed_factor(0.0, 50.0, 0.2), 1.0);
+        // A new tread takes the thin film alone; a worn one its partial hydroplaning against new on top.
+        for v in [10.0, 20.0, 27.8, 40.0, 60.0] {
+            assert!((wet_speed_factor(1.0, v, 1.0) - thin_film(1.0, v)).abs() < 1e-12);
+            let worn = wet_speed_factor(1.0, v, 0.2) / wet_speed_factor(1.0, v, 1.0);
+            assert!((worn - wet_loss(1.0, v, 0.2) / wet_loss(1.0, v, 1.0)).abs() < 1e-12);
+        }
+        assert!((thin_film(1.0, 1000.0) - WET_KEPT).abs() < 1e-12);
     }
 
     #[test]
