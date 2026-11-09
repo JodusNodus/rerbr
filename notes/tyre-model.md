@@ -1834,6 +1834,10 @@ Since then:
   `tarmac-long-c0x-road` 21.2 → 26.8); the ice knee scaled with it (`ice-car-locked-over-threshold-50` 0.809 →
   0.812). Lab: the aligning patch over the front axle's frames (`tarmac-mz-half-length-load-exponent` both, brush
   `tarmac-mz-peak-load-exponent`, `-trail0-load-exponent`, `-peak-alpha-over-fy`). No PASS → MISS from a model.
+- Citation audit (T52, 2026-11-09; bands from the source pages, no model change): brush PASS → MISS
+  `tarmac-combined-a4` (0.292 against the measured points 0.23-0.27; the source's model line was 0.31) and
+  `tarmac-peak-fx-load-exponent` (0.933 against 0.94-0.97, from Goodyear's 0.92 over 2-6 kN); no ngp verdict moved.
+  Now ngp 41/112, experimental-brush 91/112 PASS.
 
 It reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, the 345 circle 0.571 g (brush 0.664); NGP
 gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ
