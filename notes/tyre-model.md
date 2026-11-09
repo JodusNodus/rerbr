@@ -1438,6 +1438,12 @@ brush's grip × F; unset, traces byte-identical). Runs and scripts outside the r
   less. Their lap simulation (Table 3's 2.08 km stage, 78.2 s loose, loose μ = half of tarmac's by assumption): zero-yaw
   aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
   only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
+- Steady drift in a model, no measurement (Chaichaowarat & Wannasuphoprasit, SAE 2013-01-0001; RWD single-track
+  model, no load transfer, 1250 kg, Table 1; MF fits of a P225/60R16 from Nicolas-Comstock 1972, Table 2, which give
+  μ_y peak 0.98 at 9°, μ_y(30°)/peak 0.85-0.86, locked/peak 0.81, peak κ 0.15: NGP's shape, inside the tarmac band):
+  the speed is nearly flat in sideslip (Fig. 6, read ±0.3 km/h): r10 m 34.0 km/h at β 4°, ~33 at 20°; r22 m 50.2 at
+  β 15° (counter-steer, the best), 49.8-50.2 over 5-20°; ~0.90 g both; counter-steer from β 13° / 11.5° (Fig. 5),
+  rear κ 0.2-0.33 at 15-20° (Fig. 7). With a tyre that keeps ~0.85 at 30°, a steady slide costs ≤ 3 % of speed.
 - Brush grip × F on the flat circles (glat at F 0.8 / 0.9 / 1 / 1.1 / 1.2): gravel 0.709 / 0.783 / 0.877 / 0.960 /
   1.038, snow 0.711 / 0.814 / 0.900 / 0.978 / 1.029, tarmac 0.940 / 1.069 / 1.186 / 1.329 / 1.452: 0.82 g (gravel,
   snow) and 1.3 g (tarmac) per unit F, near proportional.
