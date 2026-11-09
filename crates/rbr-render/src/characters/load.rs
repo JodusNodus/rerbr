@@ -652,6 +652,7 @@ impl<'a> Assets<'a> {
             vertices,
             indices,
             draws,
+            sun_cascades: true,
         }
     }
 
