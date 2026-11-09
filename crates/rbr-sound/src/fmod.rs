@@ -30,8 +30,9 @@
 //! The daemon pauses the events (`FUN_00408ef0`): the `_int` ones outside the car and the `_ext` ones in it, the wind
 //! outside the car, and the engine, turbo, blow-off and backfire while the engine is stopped; all of them 0.2 s after
 //! NGP last sent its block (the start orbit). The orbit's first 0.2 s plays every event unpaused with `rpms` the
-//! car's `IdleRPM_NGP` and nothing else set (command 2). A gear, backfire or ignition instrument is a one-shot that
-//! starts as its parameters enter its regions (FMOD's parameter sheets; a `gear` region holds its start, not its
+//! car's `IdleRPM_NGP` and nothing else set (command 2). A gear, backfire or ignition instrument, or one of another
+//! event that does not loop for ever (its loop count, [`Slot::shot`]), is a one-shot that starts, at its trigger
+//! chance, as its parameters enter its regions (FMOD's parameter sheets; a `gear` region holds its start, not its
 //! end) and plays to its end (ours: the instrument's async flag is not read), following its automations while it
 //! plays; its recording is one of its playlist at random. The wind and the wheels are loops; the wheels' tracks are
 //! one per wheel, as FMOD gives each event instance its own.
@@ -216,11 +217,32 @@ fn decode(bank: &Bank, sample: &Sample) -> Result<Wave, String> {
     Ok(Wave { rate: sample.rate, samples })
 }
 
+/// Whether an instrument with trigger probability `percent` plays this time (no draw at 100, so banks without one keep
+/// their random sequence).
+fn wins(rng: &mut Rng, percent: f32) -> bool {
+    percent >= 100.0 || (rng.rand() as f32) < percent / 100.0 * 32768.0
+}
+
 /// An instrument of one of the played events.
 #[derive(Debug, Clone)]
 pub struct Slot {
     pub role: Role,
     pub layer: Layer,
+}
+
+impl Slot {
+    /// Whether it plays as a one-shot on its regions: the gear, backfire and ignition events' instruments, and those
+    /// of the loop events that do not loop for ever (the bank's loop count; the GC8 555's bangs, blow-offs and shift
+    /// fluctuations sit in its engine events).
+    pub fn shot(&self) -> bool {
+        match self.role {
+            Role::Gear(_) | Role::Backfire(_) | Role::Ignition => true,
+            Role::BlowOff(_) => false,
+            Role::Engine(_) | Role::Turbo | Role::Transmission | Role::Wind | Role::Wheel(_) => {
+                self.layer.loop_count >= 0
+            }
+        }
+    }
 }
 
 /// The gain and pitch `layer` plays at with parameter `k` at `value(k)` (`None`: not known), or `None` when a known
@@ -395,8 +417,11 @@ pub struct FmodCar {
     /// The one-shot slots' gains and pitches last sent ([`Command::FmodTrack`]).
     tracked: HashMap<u16, (f32, f32)>,
     turbo_flow: f32,
-    /// Each slot's parameters were in its regions at the last step it was not paused (the one-shots on regions).
+    /// Each slot's parameters were in its regions at the last step it was not paused (the one-shots on regions; the
+    /// loops at every step).
     in_regions: Vec<bool>,
+    /// Each loop won its trigger probability as its regions were last entered.
+    won: Vec<bool>,
     /// `battery` as last set.
     battery: f32,
     /// The daemon's `fluctuation` of [`FLUCTUATING`] (`+0x2c`, `+0x58`, `+0x1b8`) and their events'
@@ -484,6 +509,7 @@ impl FmodCar {
         let mut car = FmodCar {
             present: EVENTS.iter().filter(|e| bank.event(e.0).is_some()).map(|e| e.1).collect(),
             in_regions: vec![false; slots.len()],
+            won: vec![true; slots.len()],
             battery: 0.0,
             fluctuation: [0.0; 3],
             fluctuation_length: FLUCTUATING.map(|r| event(r).and_then(|e| e.fluctuation_length).unwrap_or(0.0)),
@@ -524,7 +550,7 @@ impl FmodCar {
     pub(crate) fn engine_at(&self, params: &Params, outside: bool) -> Vec<Command> {
         let value = |k: usize, role: Option<Role>| self.params.get(k).and_then(|n| params.by_name(n, role));
         let role = Role::Engine(outside);
-        let loops = self.slots.iter().enumerate().filter(|(_, s)| s.role == role).map(|(k, s)| {
+        let loops = self.slots.iter().enumerate().filter(|(_, s)| s.role == role && !s.shot()).map(|(k, s)| {
             let (gain, pitch) = play(&s.layer, |p| value(p, Some(role))).unwrap_or((0.0, 1.0));
             Command::FmodLoop { slot: k as u16, gain, pitch, outside }
         });
@@ -573,9 +599,10 @@ impl FmodCar {
         }
     }
 
-    /// Each slot's loop wave (its first recording) and bus, for the mixer.
-    pub fn loop_waves(&self) -> Vec<(Arc<Wave>, Option<usize>)> {
-        self.samples.iter().zip(&self.slots).map(|(s, slot)| (self.waves[s[0]].clone(), slot.layer.bus)).collect()
+    /// Each slot's loop playlist (its recordings, the first played first) and bus, for the mixer.
+    pub fn loop_waves(&self) -> Vec<(Vec<Arc<Wave>>, Option<usize>)> {
+        let list = |s: &[usize]| s.iter().map(|&w| self.waves[w].clone()).collect();
+        self.samples.iter().zip(&self.slots).map(|(s, slot)| (list(s), slot.layer.bus)).collect()
     }
 
     /// Whether `command`, a 1.02 car voice, is one the bank plays instead (the engine always; the turbo when the bank
@@ -709,20 +736,32 @@ impl FmodCar {
             let state = play(&slot.layer, at);
             let slot_id = k as u16;
             let bus = slot.layer.bus.map(|b| b as u16);
+            let probability = slot.layer.probability;
             match role {
-                Role::Engine(_) | Role::Turbo | Role::Wind | Role::Transmission | Role::Wheel(_) => {
-                    let (gain, pitch) = state.filter(|_| !paused(role)).unwrap_or((0.0, 1.0));
+                Role::BlowOff(_) if !paused(role) => {
+                    if blow_off {
+                        valves.extend(state.map(|(g, p)| (k, g, p)));
+                    }
+                }
+                Role::BlowOff(_) => continue,
+                _ if !slot.shot() => {
+                    if state.is_some() && !self.in_regions[k] {
+                        self.won[k] = wins(&mut self.rng, probability);
+                    }
+                    self.in_regions[k] = state.is_some();
+                    let (gain, pitch) = state.filter(|_| !paused(role) && self.won[k]).unwrap_or((0.0, 1.0));
                     out.push(Command::FmodLoop { slot: slot_id, gain: gain * mix, pitch, outside });
                     continue;
                 }
-                Role::Backfire(_) | Role::Ignition | Role::Gear(_) if !paused(role) => {
+                _ if !paused(role) => {
                     // A gear region holds its start, not its end: the daemon's gears are whole numbers, and the
                     // banks' gear regions follow on from each other (`-1..0`, `0..1`, ...).
                     let gear_end = |r: &fmod::Region| {
                         names.get(r.param).is_some_and(|n| n == "gear") && at(r.param).is_some_and(|v| v >= r.end)
                     };
                     let state = state.filter(|_| !slot.layer.regions.iter().any(gear_end));
-                    if let Some((gain, pitch)) = state.filter(|&(g, _)| g > 0.0 && !self.in_regions[k]) {
+                    let entered = state.filter(|&(g, _)| g > 0.0 && !self.in_regions[k]);
+                    if let Some((gain, pitch)) = entered.filter(|_| wins(&mut self.rng, probability)) {
                         let list = &self.samples[k];
                         let wave = list[self.rng.rand() as usize % list.len()] as u16;
                         out.push(Command::FmodShot {
@@ -735,11 +774,6 @@ impl FmodCar {
                         });
                     }
                     self.in_regions[k] = state.is_some();
-                }
-                Role::BlowOff(_) if !paused(role) => {
-                    if blow_off {
-                        valves.extend(state.map(|(g, p)| (k, g, p)));
-                    }
                 }
                 _ => continue,
             }
@@ -781,6 +815,8 @@ mod tests {
             auto_pitch: Some(AutoPitch { param: 0, reference: 4000.0, min: 0.0 }),
             volume_db: -6.0,
             semitones: 0.0,
+            loop_count: -1,
+            probability: 100.0,
             automations: vec![
                 Automation { param: 0, property: Property::Gain, points: vec![[1500.0, 0.0], [3000.0, 1.0]] },
                 Automation { param: 1, property: Property::VolumeDb, points: vec![[0.0, -20.0], [1.0, 0.0]] },
@@ -839,6 +875,7 @@ mod tests {
             tracked: HashMap::new(),
             turbo_flow: 0.0,
             in_regions: vec![false; n],
+            won: vec![true; n],
             battery: 0.0,
             fluctuation: [0.0; 3],
             fluctuation_length: [0.0; 3],
@@ -1145,6 +1182,31 @@ mod tests {
         assert!(gains(false).iter().all(|&g| g > 0.0), "both, at the idle");
         assert!((0..40).any(|_| gains(false).iter().all(|&g| g == 0.0)), "then paused");
         assert!(gains(true).iter().all(|&g| g == 0.0), "the block's 5000 rpm");
+    }
+
+    #[test]
+    fn an_engine_instrument_that_does_not_loop_plays_once_as_its_regions_are_entered() {
+        // The GC8 555's bang: on the engine event, loop count 0, over rpm.
+        let mut bang = slot(Role::Engine(false), vec![region(0, 2000.0, 8000.0)]);
+        bang.layer.loop_count = 0;
+        let mut never = bang.clone();
+        never.layer.probability = 1e-3;
+        let present = vec![Role::Engine(false)];
+        let mut car =
+            car(vec![bang, never, slot(Role::Engine(false), vec![region(0, 0.0, 9000.0)])], &["rpms"], present);
+        let mut at = |rpm: f32| {
+            let mut inputs = sound(0.0, 0.0, 0.0);
+            inputs.sound.engine[0] = (rpm / RPM_PER_RAD_S).to_bits();
+            car.step(&inputs, &Scene::default(), false, true)
+        };
+        let out = at(1000.0);
+        let loops: Vec<_> = out.iter().filter(|c| matches!(c, Command::FmodLoop { .. })).collect();
+        assert!(matches!(loops[..], [&Command::FmodLoop { slot: 2, .. }]) && shots(&out) == 0, "{out:?}");
+        let out = at(3000.0);
+        assert!(out.iter().any(|c| matches!(c, Command::FmodShot { slot: Some(0), .. })), "{out:?}");
+        assert_eq!(shots(&out), 1, "the 0.001 % chance loses");
+        assert_eq!(shots(&at(4000.0)), 0, "once per entry");
+        assert_eq!(car.engine_at(&Params { rpm: 3000.0, ..Params::default() }, false).len(), 1, "the loop alone");
     }
 
     #[test]

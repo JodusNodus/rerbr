@@ -259,6 +259,19 @@ come from the retail `audio.dat` (`audio.dat.disabled` in RSF installs).
   [0.5, 1] for upshifts and [~0.085, ~0.49] for downshifts, which is what the shift logic sends (0.6-1.0 up,
   0.1-0.5 down, else 0); a down `state` of 0.487-0.497 lands in neither, as the daemon's does (inferred from
   the bank ranges and the event structure). A tanner-drive render fires a launch shift's gear shot end to end.
+- Loop count and trigger chance (2026-11-09; `INST` +24, +33, `rbr_formats::fmod`): -1 on every long loop of the
+  57 RSF banks, 0 on every gear, ignition and blow-off instrument; 71 instruments of the engine, turbo and
+  transmission events have 0 (bangs, blow-offs, shift fluctuations), the i20 WRC 2021's `pop B` 2, and only the
+  engine events have chances under 100 % (22.5-93; the GC8 555's on-load bang 39.5). Those instruments play once as
+  their regions are entered (`Slot::shot`), each draw on the chance; a looping multi instrument plays its playlist,
+  another entry at random at each end (ours: modes 1 and 2 not told apart, weights not read). Before, every
+  loop-event instrument looped its first recording: the GC8 555 (the bank with the most, 7 one-shots and 6
+  playlists) looped 0.3-0.7 s bangs and blow-offs and repeated one 0.55 s pop off the throttle. GC8 on
+  `drive-v6-tarmac-impreza00-45` 55-85 s (`/tmp/gc8-sound/`, not kept), lifts over 2650 rpm: in the car the 2-8 kHz
+  envelope's correlation at the pop's 0.55 s period 0.53 before, -0.02 now, its level -0.5 dB, the mix -0.6 dB.
+  Byte-identical: retail sound and the 14 banks without such instruments (DS3 R1 rendered). Byte 28 (1 on the loops
+  and most engine one-shots, 0 on gear, ignition and some backfires; inferred FMOD's sync flag) is not read: a
+  one-shot plays to its end.
 - Aston's `event:/wind 2` (its only wind) is not played: no daemon slot addresses it (inferred NGP-silent too).
 - `suspension_damage` (56 banks) is never set by the daemon; ours stays 0 (undamaged), which holds 306_maxi_B's
   one wheel bus-vol at -80 dB (inferred).
@@ -272,4 +285,4 @@ come from the retail `audio.dat` (`audio.dat.disabled` in RSF installs).
 - What writes the splash (`+0x98`); water against the floor through deep fords (the swish at full depth stands in); ignition, dog rings, cooler and `EngineNoise p[5]`/`p[7]` never seen live.
 - `E31Speech +0x95` as the idle flag (inferred).
 - Wine's constant-power 3D panning against 2D speech.
-- FMOD: region end rule, async and loop flags, parameter defaults, 3D attributes, an A/B against NGP.
+- FMOD: region end rule, the async flag (INST byte 28), the playlist modes, parameter defaults, 3D attributes, an A/B against NGP.
