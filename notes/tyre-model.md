@@ -1371,8 +1371,8 @@ moves, the direction, the RC1 μ beside.
 
 Research (2026-11-09, main 9158d147): the game's Fiesta Rally2 against real Rally2 in accelerometer terms. Tools:
 `harness/car_grip.py` (circles: kinematic v²/R, `glat` over the same 1 s, path g, sideslip), `limit_pace.py --surface`,
-`rally_gg.py stats --speed-lag`, rbr-tyre's `RERBR_TEST_BRUSH_MU=F` (test tooling, experimental-brush only: the
-brush's grip × F; unset, traces byte-identical). Runs and scripts outside the repository. ngp / experimental-brush.
+`rally_gg.py stats --speed-lag`, the brush's grip × F (then the test variable `RERBR_TEST_BRUSH_MU=F`, every surface;
+now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identical). Runs and scripts outside the repository. ngp / experimental-brush.
 
 - RSF 345's r40 circle (the old gravel row, the snow circle under 101) lies on an 11.9° (21 %) slope: z 9.6-24.5 m
   over the lap (plane fit, rms 0.5 m); the hold covers 30-180° of the lap and ends running downhill at ~13.5 m/s

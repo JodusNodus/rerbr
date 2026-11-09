@@ -10,23 +10,8 @@
 
 use crate::brush::{self, Calibration, EvalInput, TransState};
 use crate::loose::{self, Loose};
+use crate::tuning::Tuning;
 use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
-
-/// TEST TOOLING ONLY (measurement, not a level): `RERBR_TEST_BRUSH_MU=F` scales the grip NGP hands the brush (its
-/// static friction, every surface) by F, for the car-level response of the circle to the tyre's level
-/// (notes/tyre-model.md "Car-level grip in the same terms"). Unset (the default), 1 and the forces are unchanged. Read
-/// once; one stderr line when set. NGP's soil lateral force on top is not scaled.
-fn test_mu_scale() -> f64 {
-    static F: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
-    *F.get_or_init(|| {
-        let Some(f) = std::env::var("RERBR_TEST_BRUSH_MU").ok().and_then(|v| v.parse::<f64>().ok()) else {
-            return 1.0;
-        };
-        let f = f.clamp(0.1, 3.0);
-        eprintln!("rbr-tyre: RERBR_TEST_BRUSH_MU={f}: test tooling, the brush's grip scaled by {f}");
-        f
-    })
-}
 
 /// One wheel's calibration and transient.
 struct Tyre {
@@ -44,28 +29,29 @@ struct Tyre {
 /// The brush on a car's wheels.
 pub struct Brush {
     tyres: Vec<Tyre>,
+    tuning: Tuning,
 }
 
 impl Brush {
-    /// The brush calibrated for each of `wheels`.
-    pub fn new(wheels: &[Wheel]) -> Result<Brush, String> {
+    /// The brush calibrated for each of `wheels`, tuned by `tuning` ([`crate::tuning`]).
+    pub fn new(wheels: &[Wheel], tuning: &Tuning) -> Result<Brush, String> {
         let tyres = wheels
             .iter()
             .map(|w| {
-                let cal = fit::calibration(w)?;
+                let cal = fit::calibration(w, tuning)?;
                 let ngp = fit::ngp_calibration(w)?;
-                let loose = fit::loose(w)?;
+                let loose = fit::loose(w, tuning)?;
                 Ok(Tyre {
                     at: w.tyre,
                     cal,
-                    ngp: (ngp.cy0, ngp.cx0),
+                    ngp: (ngp.cy0 * tuning.stiffness, ngp.cx0 * tuning.stiffness),
                     loose,
                     state: TransState::default(),
                     running: false,
                 })
             })
             .collect::<Result<_, String>>()?;
-        Ok(Brush { tyres })
+        Ok(Brush { tyres, tuning: *tuning })
     }
 }
 
@@ -85,7 +71,7 @@ impl Model for Brush {
         }
         let pressure_factor = f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale);
         let soil = x.soil_thickness > 0.0;
-        let grip = f64::from(x.grip) * test_mu_scale();
+        let grip = f64::from(x.grip) * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
         // NGP's stiffness factor at the pressure, and on a hard surface the slip stiffnesses' fall on low friction (ice).
         let low_mu = if soil { 1.0 } else { brush::low_mu_stiffness_factor(grip) };
         let fz = f64::from(x.normal_force);
@@ -121,8 +107,9 @@ impl Model for Brush {
         };
         // The carcass stiffnesses at the pressure (the carcass does not soften on ice): the longitudinal one ours, the
         // lateral one NGP's moved to the published pressure law.
-        let k_x = brush::carcass_x(&t.cal, pressure_factor);
-        let k_y = brush::carcass_y(&t.cal, f64::from(x.lateral_stiffness), pressure_factor);
+        // The tuning's response lengthens the relaxation lengths by softening the carcass.
+        let k_x = brush::carcass_x(&t.cal, pressure_factor) / self.tuning.response;
+        let k_y = brush::carcass_y(&t.cal, f64::from(x.lateral_stiffness), pressure_factor) / self.tuning.response;
         let mut state = t.state;
         let limit = steady.mu * e.fz;
         let vr = e.spin * e.radius;
@@ -185,7 +172,7 @@ mod tests {
 
     #[test]
     fn it_takes_every_surface_at_any_speed_down_to_standstill() {
-        let mut b = Brush::new(&[wheel()]).unwrap();
+        let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
         let at = wheel().tyre;
         assert_eq!(b.forces(at + 4, &rolling(20.0, 0.05)), None);
         let gravel = [loose::GRAVEL_CLASS; 2];
@@ -211,7 +198,7 @@ mod tests {
     fn a_wet_surface_lowers_the_locked_wheel_s_friction() {
         // Locked at 20 m/s on the same grip, settled: wet slides at less of it than dry.
         let locked = |water_factor: f32| {
-            let mut b = Brush::new(&[wheel()]).unwrap();
+            let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
             let x = ForceInput { spin: 0.0, water_factor, ..rolling(20.0, 0.0) };
             (0..720).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap().longitudinal_force
         };
@@ -221,7 +208,7 @@ mod tests {
 
     #[test]
     fn the_force_builds_over_the_relaxation_length_to_the_steady_brush() {
-        let mut b = Brush::new(&[wheel()]).unwrap();
+        let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
         let at = wheel().tyre;
         let x = rolling(20.0, 2f32.to_radians());
         let first = b.forces(at, &x).unwrap();
@@ -261,6 +248,32 @@ mod tests {
         assert_eq!(b.forces(at, &x).unwrap(), first);
     }
 
+    #[test]
+    fn the_tuning_scales_the_grip_by_surface_and_the_relaxation_length() {
+        let at = wheel().tyre;
+        let tuned = |t: Tuning| Brush::new(&[wheel()], &t).unwrap();
+        let x = rolling(15.0, 20f32.to_radians());
+        let gravel = ForceInput { soil_thickness: 0.009, grip: 0.9, surface_classes: [loose::GRAVEL_CLASS; 2], ..x };
+        let ice = ForceInput { grip: 0.1, surface_classes: [crate::tuning::ICE_CLASS; 2], ..x };
+        let lateral = |t: Tuning, x: &ForceInput| f64::from(settle(&mut tuned(t), x, 2000).lateral_force);
+        let base = Tuning::default();
+        // Sliding whole (20°), the force follows the grip; each surface takes its own factor only.
+        for (x, t) in [(&x, Tuning { tarmac: 0.8, ..base }), (&gravel, Tuning { gravel: 0.8, ..base })] {
+            assert!((lateral(t, x) / lateral(base, x) - 0.8).abs() < 0.03, "{t:?}");
+        }
+        assert_eq!(lateral(Tuning { tarmac: 0.8, snow: 1.2, ..base }, &ice), lateral(base, &ice));
+        assert!((lateral(Tuning { ice: 1.2, ..base }, &ice) / lateral(base, &ice) - 1.2).abs() < 0.03);
+        // The response doubles the relaxation length: the steps to 63 % of a 2° step's force.
+        let x = rolling(20.0, 2f32.to_radians());
+        let steps = |t: Tuning| {
+            let mut b = tuned(t);
+            let end = f64::from(settle(&mut tuned(t), &x, 2000).lateral_force);
+            (1..).find(|_| f64::from(b.forces(at, &x).unwrap().lateral_force) / end > 0.632).unwrap()
+        };
+        let (one, two) = (steps(base), steps(Tuning { response: 2.0, ..base }));
+        assert!((f64::from(two) / f64::from(one) - 2.0).abs() < 0.15, "{one} {two}");
+    }
+
     /// The wheel's output after `n` steps of `x` from the state `b` holds.
     fn settle(b: &mut Brush, x: &ForceInput, n: usize) -> ForceOutput {
         (0..n).map(|_| b.forces(wheel().tyre, x).unwrap()).last().unwrap()
@@ -268,7 +281,7 @@ mod tests {
 
     #[test]
     fn soil_runs_the_loose_tyre_through_the_same_carcass() {
-        let mut b = Brush::new(&[wheel()]).unwrap();
+        let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
         let hard = rolling(15.0, 2f32.to_radians());
         let soil = ForceInput { soil_thickness: 0.009, grip: 0.9, ..hard };
         let on_hard = settle(&mut b, &hard, 1440);
@@ -303,7 +316,7 @@ mod tests {
 
     #[test]
     fn a_locked_wheel_on_soil_stops_and_holds_without_creep() {
-        let mut b = Brush::new(&[wheel()]).unwrap();
+        let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
         let soil = |speed: f32| ForceInput {
             soil_thickness: 0.009,
             grip: 0.9,
@@ -330,7 +343,7 @@ mod tests {
         // friction ice's stays 1.2/(0.55 · 1.4) = 1.6 times tarmac's (without the fall 9 times, and 1° would slide
         // whole), so ice takes about 0.6 of tarmac's slip angle to its peak.
         let share = |grip: f32, deg: f32| {
-            let mut b = Brush::new(&[wheel()]).unwrap();
+            let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
             let x = ForceInput { grip, ..rolling(15.0, deg.to_radians()) };
             let f = (0..1440).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap();
             f.lateral_force.abs() / (grip * x.normal_force)
@@ -346,7 +359,7 @@ mod tests {
         // The wheel's frame: a positive lateral velocity is outwards and gives a negative (inward) force. Negative
         // camber pushes inwards as 0.05 of its sine in slip would: -2° as 0.1° of slip angle.
         let settled = |x: ForceInput| {
-            let mut b = Brush::new(&[wheel()]).unwrap();
+            let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
             (0..1440).map(|_| b.forces(wheel().tyre, &x).unwrap()).last().unwrap().lateral_force
         };
         let incl = (-2f32).to_radians().sin();
@@ -363,8 +376,8 @@ mod tests {
 
     #[test]
     fn the_names_build_their_models() {
-        assert!(crate::model("ngp", &[wheel()]).unwrap().is_none());
-        assert!(crate::model("brush", &[wheel()]).unwrap().is_some());
-        assert!(crate::model("magic", &[wheel()]).is_err());
+        assert!(crate::model("ngp", &[wheel()], &Tuning::default()).unwrap().is_none());
+        assert!(crate::model("brush", &[wheel()], &Tuning::default()).unwrap().is_some());
+        assert!(crate::model("magic", &[wheel()], &Tuning::default()).is_err());
     }
 }

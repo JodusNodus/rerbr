@@ -19,8 +19,9 @@ car_pace.analyse_circle's hold (first latch to first slide):
 - `ratio`: glat_g / kin_g, the factor from the circle row to an accelerometer's reading;
 - `hold_s`: the hold's length (s).
 
-`--extra "FLAGS" --tag=T` adds rbr-standalone flags (a run named with T); test tooling such as the environment's
-`RERBR_TEST_BRUSH_MU=F` (experimental-brush only, rbr-tyre `car.rs`) passes through to the runs.
+`--extra "FLAGS" --tag=T` adds rbr-standalone flags (a run named with T), such as `--extra="--tyre-tuning
+gravel=F" --physics experimental-brush` for the brush's grip on a surface times F (`rbr_tyre::Tuning`: tarmac, gravel,
+snow, ice).
 
 target/release/rbr-standalone must be built; RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come from dev.env.
 """

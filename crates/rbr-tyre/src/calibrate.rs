@@ -39,15 +39,15 @@ pub struct CalTargets {
 }
 
 /// The calibration for cornering stiffness `cy0` and static friction levels
-/// `mu_ys`, `mu_xs`: Cx0 and the Coulomb levels follow from the published
-/// ratios.
-fn trial_cal(cy0: f64, mu_ys: f64, mu_xs: f64, t: &CalTargets, p: &CalPoint) -> Calibration {
+/// `mu_ys`, `mu_xs`: Cx0 and the longitudinal Coulomb level follow from the
+/// published ratios, the lateral Coulomb level is `c_y` times `mu_ys`.
+fn trial_cal(cy0: f64, mu_ys: f64, mu_xs: f64, c_y: f64, t: &CalTargets, p: &CalPoint) -> Calibration {
     Calibration {
         fz0: t.fz0,
         cy0,
         cx0: KX_OVER_KY * cy0,
         mu_ys,
-        mu_yk: MU_C_OVER_S * mu_ys,
+        mu_yk: c_y * mu_ys,
         mu_xs,
         mu_xk: MU_C_OVER_S * mu_xs,
         t_cal: p.t_cal,
@@ -104,8 +104,8 @@ fn lon_input(kappa: f64, v: f64, t: &CalTargets, p: &CalPoint) -> EvalInput {
 
 /// Lateral peak over a fine grid and the least-squares slope over alpha <=
 /// 2 deg.
-fn lat_peak_fit(cy0: f64, mu_ys: f64, t: &CalTargets, p: &CalPoint) -> (f64, f64) {
-    let cal = trial_cal(cy0, mu_ys, 1.0, t, p);
+fn lat_peak_fit(cy0: f64, mu_ys: f64, c_y: f64, t: &CalTargets, p: &CalPoint) -> (f64, f64) {
+    let cal = trial_cal(cy0, mu_ys, 1.0, c_y, t, p);
     let mut peak = 0.0f64;
     let mut a = 0.0f64;
     while a <= 30.0 {
@@ -126,7 +126,7 @@ fn lat_peak_fit(cy0: f64, mu_ys: f64, t: &CalTargets, p: &CalPoint) -> (f64, f64
 
 /// Longitudinal drive-side peak over a fine grid.
 fn lon_peak(cy0: f64, mu_xs: f64, t: &CalTargets, p: &CalPoint) -> f64 {
-    let cal = trial_cal(cy0, 1.0, mu_xs, t, p);
+    let cal = trial_cal(cy0, 1.0, mu_xs, MU_C_OVER_S, t, p);
     let mut peak = 0.0f64;
     let mut k = 0.0f64;
     while k <= 1.0 {
@@ -155,18 +155,24 @@ fn scale_to(want: f64, start: f64, got: &dyn Fn(f64) -> f64) -> f64 {
 /// targets: the lateral pair nested (outer slope on Cy, inner peak on mu_ys),
 /// then the longitudinal level at the resulting Cx. Deterministic.
 pub fn calibrate(t: &CalTargets, p: &CalPoint) -> Calibration {
+    calibrate_with(t, p, MU_C_OVER_S)
+}
+
+/// [`calibrate`] with the lateral Coulomb level `c_y` times the static one in place of `MU_C_OVER_S` (the slide grip
+/// of [`crate::tuning::Tuning`]).
+pub fn calibrate_with(t: &CalTargets, p: &CalPoint, c_y: f64) -> Calibration {
     let (mut cy0, mut mu_ys) = (70000.0, 1.3);
     for _ in 0..100 {
-        mu_ys = scale_to(t.peak_lat, mu_ys, &|m| lat_peak_fit(cy0, m, t, p).0);
-        let r = t.fit_lat / lat_peak_fit(cy0, mu_ys, t, p).1;
+        mu_ys = scale_to(t.peak_lat, mu_ys, &|m| lat_peak_fit(cy0, m, c_y, t, p).0);
+        let r = t.fit_lat / lat_peak_fit(cy0, mu_ys, c_y, t, p).1;
         cy0 *= r;
         if (r - 1.0).abs() < 1e-13 {
             break;
         }
     }
-    let mu_ys = scale_to(t.peak_lat, mu_ys, &|m| lat_peak_fit(cy0, m, t, p).0);
+    let mu_ys = scale_to(t.peak_lat, mu_ys, &|m| lat_peak_fit(cy0, m, c_y, t, p).0);
     let mu_xs = scale_to(t.peak_lon, 1.3, &|m| lon_peak(cy0, m, t, p));
-    trial_cal(cy0, mu_ys, mu_xs, t, p)
+    trial_cal(cy0, mu_ys, mu_xs, c_y, t, p)
 }
 
 #[cfg(test)]

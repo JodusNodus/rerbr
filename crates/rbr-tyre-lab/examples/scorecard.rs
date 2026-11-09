@@ -9,13 +9,14 @@
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
 //!   cargo run --release -p rbr-tyre-lab --example scorecard -- --probe P [--step N --wheel K] [--model ngp|brush]
-//!       [--speed M/S] [--friction S,K] [--water W] [--tread D]
+//!       [--speed M/S] [--friction S,K] [--water W] [--tread D] [--tuning KEY=VALUE,...]
 //!
 //! `--friction S,K` puts a surface's static and kinetic friction in place of the probed one on a hard surface (no
 //! soil), for a material no run reaches (NGP's ice, 116). `--water W` gives the model the surface's `WaterFactor` W
 //! (the probed friction level kept), and with it the key `stop_mu_x_4k`: the mean braked peak μ_x of a stop from
 //! `--speed`, v0² / (2 ∫ v / μ dv) over the peaks at eight speeds (the measure of a wet braking test's mean μ).
-//! `--tread D` puts the tread remaining D (1 new) in place of the probed wheel's.
+//! `--tread D` puts the tread remaining D (1 new) in place of the probed wheel's. `--tuning` tunes the brush as
+//! `rbr-standalone --tyre-tuning` does (`rbr_tyre::Tuning`).
 
 use rbr_tyre::Wheel;
 use rbr_tyre_lab::probe::{interp, parse_probe, patch_at, Params};
@@ -39,7 +40,7 @@ fn exponent(xs: &[f32], ys: &[f32]) -> f32 {
 fn main() {
     let (mut probe, mut step, mut wheel) = (String::new(), None, 0u32);
     let (mut model, mut speed, mut friction, mut water) = (String::from("ngp"), 15.0f32, None, 0.0f32);
-    let mut tread = None;
+    let (mut tread, mut tuning) = (None, rbr_tyre::Tuning::default());
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -51,6 +52,7 @@ fn main() {
             "--speed" => speed = value().parse().expect("--speed M/S"),
             "--water" => water = value().parse().expect("--water W"),
             "--tread" => tread = Some(value().parse::<f32>().expect("--tread D")),
+            "--tuning" => tuning = rbr_tyre::Tuning::parse(&value()).unwrap_or_else(|e| panic!("{e}")),
             "--friction" => {
                 let v = value();
                 let (s, k) = v.split_once(',').expect("--friction STATIC,KINETIC");
@@ -100,7 +102,7 @@ fn main() {
         temperature_axis: p.temp_axis.clone(),
         rubber_friction: p.rub_my.clone(),
     };
-    let built = rbr_tyre::model(&model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
+    let built = rbr_tyre::model(&model, std::slice::from_ref(&w), &tuning).unwrap_or_else(|e| panic!("{e}"));
     let mut t = Tyre { p: &p, cloud: &cloud, soil, model: built, speed, water, camber: 0.0 };
     let out = |k: &str, v: f32| println!("{k} {v:.4}");
     println!(
@@ -163,7 +165,7 @@ fn main() {
     // probe's), the change in per cent.
     let mut q = p.clone();
     q.stiffness_factor = interp(&p.press_axis, &p.stf_val, p.air_pressure + 50000.0);
-    let model_q = rbr_tyre::model(&model, std::slice::from_ref(&w)).unwrap_or_else(|e| panic!("{e}"));
+    let model_q = rbr_tyre::model(&model, std::slice::from_ref(&w), &tuning).unwrap_or_else(|e| panic!("{e}"));
     let mut tq = Tyre { p: &q, cloud: &cloud, soil, model: model_q, speed, water, camber: 0.0 };
     let pct = |a: f32, b: f32| (b / a - 1.0) * 100.0;
     out("calpha_dp05_4k", pct(t.calpha_per_fz(4000.0), tq.calpha_per_fz(4000.0)));
