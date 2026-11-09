@@ -836,7 +836,7 @@ mod tests {
                 assert_eq!(a.replay_trace, Some(PathBuf::from("T")))
             }),
             (format!("{LIVE} --replay F --replay-trace T --tyre-probe P --tyre-probe-every 72"), |a| {
-                assert_eq!((a.tyre_probe, a.tyre_probe_every), (Some(PathBuf::from("P")), Some(72)))
+                assert_eq!((a.tyre_probe.as_deref(), a.tyre_probe_every), (Some(std::path::Path::new("P")), Some(72)))
             }),
             (format!("{LIVE} --replay F --replay-tyre 300000:ngp"), |a| {
                 assert_eq!(a.replay_tyre, Some((300000, "ngp".to_owned())))
