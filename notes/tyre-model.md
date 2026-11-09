@@ -1346,6 +1346,41 @@ What it means for the model:
    from 48 to 100 km/h with a patterned tyre: support for loose-v1 having no wet speed fade (`loose.rs`,
    `hydroplaning: false`). Nothing changes.
 
+## Stage times: real against RSF and the game
+
+Research (2026-11-09, main d903fe5a). Real times are from juwra.com, fia.com, Wikipedia and rally-maps.com. RSF ids and
+lengths are from `stages_data.json`. Game: the default autopilot to the finish, dry, Fiesta Rally2 (ngp7) and i20 Coupe
+WRC 2020 (ngp6, the WRC-class NGP car installed). Single runs, no recoveries. Ratios eb/ngp are Rally2 / i20, with
+eb/experimental (the tyre alone) in brackets. RSF's best is not public: its hotlap rank shows "Please login." to
+visitors, and its stage list shows only the default time.
+
+| RSF id, length | Real stage | Winner, time, car | Match | eb/ngp (eb/exp) |
+| --- | --- | --- | --- | --- |
+| 424 / 425, 7524 / 7881 m (tarmac) | Barum Rally Zlín 2004 SS2 Biskupice, 7.57 km, run once, Friday 17:06 | not found (ewrc-results returns 402). Jean-Joseph, 8th in a Clio S1600, 4:11.3, so the winner was under 251.3 s | 424 −0.6 %, length only. 425 is not this route | not run: the RSF track is encrypted |
+| 562, 14884 m (tarmac) | Rally Islas Canarias, Agüimes–Santa Lucía: 2025 WRC SS14/17, 14.97 km (Sunday). 2024 ERC SS2/5, 14.83 km | 2025: Rovanperä 530.1 s (GR Yaris Rally1), Ogier 530.6. 2024: Bonato 543.1 / 543.9 (C3 Rally2), Armstrong 547.6 best of two (Fiesta Rally2) | −0.6 % / +0.4 %, good on length. Direction not checked (2026 runs it reversed) | 0.986 / 0.986 (0.998 / 0.997) |
+| 501, 15594 m (gravel) | Rally Finland 2023 SS4/8 Myhinpää, 15.51 km (Friday) | Rovanperä 415.7 s, Neuville 419.6 (Rally1) | +0.5 %, good on length; direction not checked | 0.989 / 0.990 (1.001 / 1.002) |
+| 524, 7777 m (gravel) | Rally Finland 2021 SS7 Kakaristo–Hassi, its last 7.7 km | Evans 206.7 s over that part, flying (Yaris WRC) | strong: GPS fit ([Real stage telemetry](#real-stage-telemetry-wrc-gravel)) | 0.988 / 0.989 (1.001 / 1.001) |
+| 611, 7400 m (gravel) | 1000 Lakes 1986 SS5/37 Ouninpohja, 7.38 km (24.5 km in 1983-85, 16.9 km in 1987) | Alén 232 s (Delta S4), Blomqvist 232 s (Group B) | +0.3 %, good on length. 1124 is the same route, not installed | 0.986 / 0.989 (1.000 / 1.001) |
+| 433, 2316 m (gravel) | Rally Finland 2019 SS1/11 Harju, 2.31 km (3.48 km in 2023) | Neuville 107.3 / 108.3 s (i20 Coupe WRC) | +0.3 %, good on length | 0.979 / 0.979 (0.995 / 0.995) |
+| 137 / 121, 5100 / 5150 m (gravel) | Wales Rally GB 2009 SS2/5 Sweet Lamb, 5.13 km (December). 3.3-4.3 km in 2008-17 | Loeb 203.7 / 204.1 s (C4 WRC) | −0.6 / +0.4 %, weak: length only, the RSF version's year is unknown | 0.974 / 0.983 (1.003 / 1.003); 0.975 / 0.988 (1.003 / 1.004) |
+| 531, 22463 m (snow) | Arctic Rally Finland 2021 SS9/10 Aittajärvi, 22.47 km | Evans 607.5 s, Rovanperä 602.4 (power stage) (Yaris WRC) | 0.0 %, good | 1.009 / 0.992 (1.019 / 0.998) |
+| 615, 19957 m (snow) | Arctic Rally Finland 2021 SS4/7 Kaihuavaara, 19.91 km (27.93 km in the January Arctic Lapland Rally) | Evans 546.6 s, Rovanperä 548.8 (Yaris WRC) | +0.2 %, good | not used: the autopilot crawls (24-94 s under 5 m/s, spinning at a climb at 4.1 km); raw 1.182 / 0.953 |
+| 422, 9742 m (snow) | Rally Sweden 2018 SS8/19 Torsby, 9.56 km | Paddon 383.8 s (Friday 16:56), Lappi 361.2 (Sunday, power stage) | +1.9 %, fair | 0.983 / 0.985 (0.999 / 0.998) |
+
+- The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
+  0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
+  m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs
+  (`limit_pace.py`), whose single-run scatter (5-15 s on 7.8 km) is larger than the effect.
+- Real against RSF: open until RSF's best is read for the same class. Classes: RSF "WRC 2.0" for the 2017-21 WRC and
+  Rally1 rows, "Group R5" for Rally2, "Group B" for 611. Same tarmac route, one class apart: Rally1 2025 is 35.4 s/km
+  and Rally2 2024 is 36.6 s/km, so Rally2 is 3.4 % slower.
+- Reading a gap: if a share f of the stage time is corner-limited, Δt/t ≈ −f/2 · Δμ/μ. So a 5 % time gap is 10 % μ
+  at f = 1 and 20 % at f = 0.5 (fast Finnish gravel averages 134 km/h). The time gap also contains the driver, the car
+  and the route version. A sim's best knows the stage from hundreds of runs, takes no risk and runs on a fixed road;
+  real drivers have two recce passes and a road that changes. Rally1 hybrid (2022+) and 2017-21 WRC differ from RSF's
+  cars, and the route versions here are matched on length only. Together these spread the time by about ±5 %, so a
+  gap below ~10 % says nothing about μ.
+
 ## Rolling resistance
 
 - What NGP applies: a torque on the wheel, `-(patch_length · RollingResistance / 2) · Fz · sliding_weight · sgn(ω)`
