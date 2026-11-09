@@ -2,7 +2,7 @@
 
   python3 -I -B harness/rally_gg.py run --out DIR [--rsf-stage 524] [--cars A,B] [--physics ngp,experimental-brush]
       [--steps N] [--jobs N]
-  python3 -I -B harness/rally_gg.py stats FILE... [--csv OUT]
+  python3 -I -B harness/rally_gg.py stats FILE... [--csv OUT] [--speed-lag S]
 
 `run` drives each car under each physics profile over the RSF stage with the plain autopilot (`rbr-standalone
 --autopilot /dev/null --boot --trace-speed`, no playback kept), the traces to DIR/<car>.<physics>.trace (logs .log).
@@ -13,7 +13,9 @@ forward and +X axes in g, `rbr-standalone/src/autopilot/drive.rs`) or a WRC+ mer
 (`df_telemetrymergeddata_*.csv`, RallyDataJunkie; 10 Hz; `speed` km/h, `accx` lateral +left and `accy` longitudinal
 +deceleration, both in 0.01 g, `brk` 0-100: units and axes inferred, notes/tyre-model.md). Both become one series at
 10 Hz (a trace is averaged over 0.1 s bins; the telemetry is taken as sampled, sorted by time) and pass a 3-sample
-median (the telemetry's single-sample spikes). Then, on samples over MOVING km/h:
+median (the telemetry's single-sample spikes); with `--speed-lag S` a trace's speed then passes a first-order lag
+of S s, so the game's braking from the speed reads as through a lagging GPS-like channel. Then, on samples over
+MOVING km/h:
 
 - braking events: runs of brake over BRAKE_ON (pedal 0.05, telemetry brk 5) lasting at least EVENT_S with at least
   EVENT_DROP km/h lost; their deceleration from the speed (drop over duration, the road's grade included), the
@@ -202,9 +204,24 @@ def unit_checks(rows):
     return slope(long_pairs), slope(lat_pairs), pct([abs(x) for x, _ in lat_pairs], 90)
 
 
-def stats(path):
+def lagged(rows, tau):
+    """The rows with the speed through a first-order lag of `tau` s (at the 10 Hz rows), as a GPS-like speed channel
+    trails the car: the telemetry's speed is GPS-like (notes/tyre-model.md "Car-level grip in the same terms")."""
+    if tau <= 0:
+        return rows
+    k = 1.0 - math.exp(-1.0 / RATE / tau)
+    out, v = [], rows[0][1]
+    for r in rows:
+        v += k * (r[1] - v)
+        out.append((r[0], v, *r[2:]))
+    return out
+
+
+def stats(path, speed_lag=0.0):
     kind = "trace" if path.endswith(".trace") else "telemetry"
     rows = filtered(load_trace(path) if kind == "trace" else load_telemetry(path))
+    if kind == "trace":
+        rows = lagged(rows, speed_lag)
     moving = [r for r in rows if r[1] > MOVING]
     events = braking_events(rows, BRAKE_ON[kind])
     longest = sorted(events, key=lambda e: e["dur"], reverse=True)[:LONGEST]
@@ -241,10 +258,12 @@ def main():
     s = sub.add_parser("stats")
     s.add_argument("files", nargs="+")
     s.add_argument("--csv")
+    s.add_argument("--speed-lag", type=float, default=0.0,
+                   help="s: a trace's speed through a first-order lag first (the telemetry's GPS-like speed)")
     args = parser.parse_args()
     if args.mode == "run":
         return run_all(args)
-    results = [stats(f) for f in args.files]
+    results = [stats(f, args.speed_lag) for f in args.files]
     print("file | kind | moving s | v mean/max km/h | brake events | decel speed all/16 longest | acc mean 16 | "
           "peak 0.5 s med 16 | lat 1 s p50/p90/p99 | long/lat channel slope | GPS lat p90")
     for o in results:
