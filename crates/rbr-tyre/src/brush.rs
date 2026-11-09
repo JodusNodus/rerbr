@@ -339,6 +339,27 @@ pub fn wet_speed_factor(w: f64, v: f64, d: f64) -> f64 {
     thin_film(w, v) * wet_loss(w, v, d) / wet_loss(w, v, 1.0)
 }
 
+/// The wetness of NGP's damp tarmac (`WaterFactor` 0.25), where [`DAMP_LOSS`] is whole.
+pub const DAMP_W: f64 = 0.25;
+/// The friction lost at damp ([`DAMP_W`]) on top of NGP's damp surface values, so that the brush's damp peak is 0.82
+/// of dry (0.909 with NGP's values alone: μ 0.925 of dry through the tyre's wet slope, lab braked peak at 4 kN,
+/// 50 km/h) and 1.04 of wet; wet (W 1) keeps NGP's 0.79. A user decision (2026-11-09) on this evidence: the loss from
+/// dry comes with the first water in the texture, rubber sealing the water pools (Persson et al., Nature Materials 3,
+/// 2004: wet 0.70-0.80 of dry at low speed); the thinnest water that wets a road grips like twice as much (SWOV
+/// R-73-08, 0.3 against 0.6 mm sprayed: peak 0.995, lateral 1.00 at 50 km/h), as on the drums (0.2 against 0.7 mm at
+/// 60 km/h: 1.055 Liedl & Köhler, 1.00 braking and 1.01 lateral Williams & Evans, ASTM STP 793); so damp is 1.00-1.06
+/// of wet at ≤ 60 km/h and 0.79-0.84 of dry, inside Bachmann's 0.70-0.85 (diss. TU Darmstadt 1998, via FAT 299 and
+/// Klempau 2004).
+pub const DAMP_LOSS: f64 = 0.098;
+
+/// The damp level, the factor on friction at the wetness `w`: 1 - [`DAMP_LOSS`] at [`DAMP_W`], 1 dry and wet, linear
+/// in W between (a tent). A wheel over two materials gets the blend of their W and NGP blends their friction the same
+/// way, so between dry and damp the level goes from dry's to damp's, between damp and wet from 0.82 to 0.79 of dry
+/// with no dip; W 0.21 (map 85's damp tarmac blended with a dry patch) keeps 0.83 of the loss. Hard surfaces only.
+pub fn damp_level(w: f64) -> f64 {
+    1.0 - DAMP_LOSS * (w / DAMP_W).min((1.0 - w) / (1.0 - DAMP_W)).clamp(0.0, 1.0)
+}
+
 /// Dry-wear gain on friction: 1 + 0.167 (1 - d), fading with wetness (times
 /// (1 - W)): worn tread grips more when dry (+10% peak mu at 60% worn, Singh
 /// Table 3) and loses in the wet (carried by the partial hydroplaning there, [`wet_loss`]).
@@ -350,8 +371,8 @@ pub fn wear_gain(d: f64, w: f64) -> f64 {
 /// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
 /// kinetic ratio) at the sliding speed ([`friction_at`]), times the load sensitivity
 /// (Fz/Fz0)^(n-1) (`N_MU_Y` or `N_MU_X`), NGP's temperature grip factor, the
-/// wet-faded dry-wear gain (normalised) and the wet loss; the wetness `w` lowers mu_k by its loss at the sliding speed
-/// ([`wet_coulomb_loss`], normalised). Both axes scale
+/// wet-faded dry-wear gain (normalised), the damp level ([`damp_level`], normalised) and the wet loss; the wetness `w`
+/// lowers mu_k by its loss at the sliding speed ([`wet_coulomb_loss`], normalised). Both axes scale
 /// mu_s with the surface static ratio and mu_k with the surface kinetic
 /// ratio, since the static scale sets the adhesion ceiling and the kinetic
 /// scale the sliding floor.
@@ -377,6 +398,7 @@ pub fn mu_axis(
     base * libm::pow(fz / cal.fz0, n - 1.0)
         * (temp_grip / cal.temp_grip_cal)
         * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal))
+        * (damp_level(w) / damp_level(cal.w_cal))
         * wet
 }
 
@@ -992,6 +1014,25 @@ mod tests {
             let v = i as f64;
             assert!(wet_loss(1.0, v + 1.0, 0.0) <= wet_loss(1.0, v, 0.0));
             assert!(wet_loss(1.0, v, 0.0) <= wet_loss(1.0, v, 0.2) && wet_loss(1.0, v, 0.2) <= wet_loss(1.0, v, 1.0));
+        }
+    }
+
+    #[test]
+    fn the_damp_level_is_whole_at_damp_and_none_dry_or_wet() {
+        assert_eq!(damp_level(0.0), 1.0);
+        assert_eq!(damp_level(1.0), 1.0);
+        assert!((damp_level(DAMP_W) - (1.0 - DAMP_LOSS)).abs() < 1e-15);
+        assert!((damp_level(0.125) - (1.0 - DAMP_LOSS / 2.0)).abs() < 1e-15);
+        // NGP's levels (dry 1, damp 0.909, wet 0.788 of dry, lab) times the damp level: damp 0.82, and from damp to
+        // wet the blend falls without a dip below wet.
+        let ngp = |w: f64| if w <= DAMP_W { 1.0 - 0.091 * w / DAMP_W } else { 0.909 - 0.121 * (w - DAMP_W) / 0.75 };
+        assert!((ngp(DAMP_W) * damp_level(DAMP_W) - 0.82).abs() < 0.001);
+        let mut last = 1.0;
+        for i in 0..=100 {
+            let w = f64::from(i) / 100.0;
+            let level = ngp(w) * damp_level(w);
+            assert!(level <= last + 1e-12 && level >= 0.788 - 1e-12, "W {w}: {level}");
+            last = level;
         }
     }
 

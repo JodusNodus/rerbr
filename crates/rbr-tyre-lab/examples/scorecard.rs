@@ -9,10 +9,11 @@
 //! the pure sweep (`sweep`), not its whole step (`ngp_transient --ramps-only`).
 //!
 //!   cargo run --release -p rbr-tyre-lab --example scorecard -- --probe P [--step N --wheel K] [--model ngp|brush]
-//!       [--speed M/S] [--friction S,K] [--water W] [--tread D]
+//!       [--speed M/S] [--friction S,K | --friction-scale F] [--water W] [--tread D]
 //!
 //! `--friction S,K` puts a surface's static and kinetic friction in place of the probed one on a hard surface (no
-//! soil), for a material no run reaches (NGP's ice, 116). `--water W` gives the model the surface's `WaterFactor` W
+//! soil), for a material no run reaches (NGP's ice, 116); `--friction-scale F` scales the probed static and kinetic
+//! friction by F on a hard surface (a damp or wet material's level over the probed dry one). `--water W` gives the model the surface's `WaterFactor` W
 //! (the probed friction level kept), and with it the key `stop_mu_x_4k`: the mean braked peak μ_x of a stop from
 //! `--speed`, v0² / (2 ∫ v / μ dv) over the peaks at eight speeds (the measure of a wet braking test's mean μ).
 //! `--tread D` puts the tread remaining D (1 new) in place of the probed wheel's.
@@ -39,7 +40,7 @@ fn exponent(xs: &[f32], ys: &[f32]) -> f32 {
 fn main() {
     let (mut probe, mut step, mut wheel) = (String::new(), None, 0u32);
     let (mut model, mut speed, mut friction, mut water) = (String::from("ngp"), 15.0f32, None, 0.0f32);
-    let mut tread = None;
+    let (mut tread, mut scale) = (None, None);
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || args.next().unwrap_or_else(|| panic!("{a} needs a value"));
@@ -51,6 +52,7 @@ fn main() {
             "--speed" => speed = value().parse().expect("--speed M/S"),
             "--water" => water = value().parse().expect("--water W"),
             "--tread" => tread = Some(value().parse::<f32>().expect("--tread D")),
+            "--friction-scale" => scale = Some(value().parse::<f32>().expect("--friction-scale F")),
             "--friction" => {
                 let v = value();
                 let (s, k) = v.split_once(',').expect("--friction STATIC,KINETIC");
@@ -83,6 +85,9 @@ fn main() {
         .unwrap_or(0.0);
     let soil = if let Some((s, k)) = friction {
         (p.static_friction, p.kinetic_friction) = (s, k);
+        0.0
+    } else if let Some(f) = scale {
+        (p.static_friction, p.kinetic_friction) = (p.static_friction * f, p.kinetic_friction * f);
         0.0
     } else {
         soil
