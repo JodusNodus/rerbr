@@ -44,6 +44,9 @@ pub(super) struct GpuMesh {
     /// For the backdrop's meshes (world-anchored sky faces, which have no `bounds`: the views draw them at the far
     /// plane), the centre and half extents of their vertices, by which the views and the sun's maps cull them.
     pub(super) backdrop_bounds: Option<(Vec3, Vec3)>,
+    /// Casts into the sun's near cascades ([`Mesh::sun_cascades`]); the far layer, the lamps' and the bakes take it
+    /// either way.
+    pub(super) sun_cascades: bool,
 }
 
 impl GpuMesh {

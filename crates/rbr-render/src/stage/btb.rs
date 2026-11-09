@@ -138,7 +138,8 @@ pub(super) fn load(maps: &Path, name: &str, selection: Selection) -> Result<Stag
             let dome = solo && roofs(&vertices, &mesh.indices, &dome_points);
             for &(layer, state) in &plan.draws {
                 let layer = if dome { Layer::Sky } else { layer };
-                groups.add(layer, cell, lod, state, &vertices, &mesh.indices, centre - half, centre + half);
+                let key = (layer, cell, lod, object.sun_cascades);
+                groups.add(key, state, &vertices, &mesh.indices, centre - half, centre + half);
             }
         }
     }
@@ -300,10 +301,10 @@ impl Counter {
     }
 }
 
-/// The meshes being built.
+/// The meshes being built, one per layer, cell, band and whether it casts into the sun's cascades.
 #[derive(Default)]
 struct Groups {
-    by_key: HashMap<(Layer, Cell, Lod), usize>,
+    by_key: HashMap<(Layer, Cell, Lod, bool), usize>,
     groups: Vec<Group>,
     solos: Counter,
 }
@@ -311,6 +312,7 @@ struct Groups {
 struct Group {
     layer: Layer,
     lod: Lod,
+    sun_cascades: bool,
     vertices: Vec<Vertex>,
     draws: Vec<(DrawState, Vec<u32>)>,
     low: Vec3,
@@ -318,22 +320,21 @@ struct Group {
 }
 
 impl Groups {
-    #[allow(clippy::too_many_arguments)]
     fn add(
         &mut self,
-        layer: Layer,
-        cell: Cell,
-        lod: Lod,
+        key: (Layer, Cell, Lod, bool),
         state: DrawState,
         vertices: &[Vertex],
         indices: &[u32],
         low: Vec3,
         high: Vec3,
     ) {
-        let at = *self.by_key.entry((layer, cell, lod)).or_insert_with(|| {
+        let (layer, _, lod, sun_cascades) = key;
+        let at = *self.by_key.entry(key).or_insert_with(|| {
             self.groups.push(Group {
                 layer,
                 lod,
+                sun_cascades,
                 vertices: Vec::new(),
                 draws: Vec::new(),
                 low: Vec3::splat(f32::MAX),
@@ -380,8 +381,43 @@ impl Groups {
                     vertices: group.vertices,
                     indices,
                     draws,
+                    sun_cascades: group.sun_cascades,
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn objects_out_of_the_sun_cascades_get_meshes_of_their_own() {
+        let state = DrawState {
+            textures: [None; 2],
+            shadow: None,
+            address: [Address::Wrap; 2],
+            second_texture: false,
+            alpha_ref: Some(CUTOUT_REF),
+            mip_bias: false,
+            cull_back: false,
+            blend: false,
+            depth_test: true,
+            depth_write: true,
+            shade: None,
+            specular: None,
+        };
+        let vertices = [bytemuck::Zeroable::zeroed(); 3];
+        let lod = band(0.0, 500.0);
+        let mut groups = Groups::default();
+        // Two placements in one cell and band, each way, and one casting placement in the next cell.
+        for (cell, casts) in [(0, true), (0, false), (0, true), (0, false), (1, true)] {
+            let key = (Layer::Solid, Cell::At(cell, 0), lod, casts);
+            groups.add(key, state, &vertices, &[0, 1, 2], Vec3::ZERO, Vec3::ONE);
+        }
+        let meshes = groups.finish();
+        let casting: Vec<(bool, usize)> = meshes.iter().map(|m| (m.sun_cascades, m.indices.len() / 3)).collect();
+        assert_eq!(casting, [(true, 2), (false, 2), (true, 1)]);
     }
 }

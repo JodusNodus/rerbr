@@ -75,7 +75,16 @@ mod tests {
         let vertices = positions.iter().map(|&position| Vertex { position, ..Vertex::zeroed() }).collect();
         let bounds =
             (layer != Layer::Sky).then_some(Bounds { center: Vec3::ZERO, half_extent: Vec3::new(500.0, 20.0, 500.0) });
-        Mesh { layer, anchor: Anchor::World, bounds, cell: None, vertices, indices, draws: Vec::new() }
+        Mesh {
+            layer,
+            anchor: Anchor::World,
+            bounds,
+            cell: None,
+            vertices,
+            indices,
+            draws: Vec::new(),
+            sun_cascades: true,
+        }
     }
 
     #[test]

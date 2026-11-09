@@ -351,6 +351,9 @@ pub struct Object {
     /// `CollisionOnly=1` (ReRBR's own key, which the plugin does not know): a `Visible=0`, `CollisionModel=0` object
     /// whose faces still go to `col.col`, for a collision mesh that is never drawn (converted stages).
     pub collision_only: bool,
+    /// `SunCascades=0` (ReRBR's own key): the object casts no shadow into the sun's near cascades, only into its far
+    /// layer (converted stages' trees back from the road, whose foliage filled the cascades). Absent: it casts.
+    pub sun_cascades: bool,
     /// `colBox` as the plugin reads it ([`scan_col_box`]): `0,15, 1, 0,15` is (0, 15, 1).
     pub col_box: Option<[f32; 3]>,
     /// The whole section, so unknown keys stay accessible.
@@ -432,6 +435,7 @@ impl Object {
             shadow_caster: Self::flag(section, "ShadowCaster"),
             collision_model: find_entry(section, "CollisionModel").and_then(|v| v.parse().ok()),
             collision_only: Self::flag(section, "CollisionOnly") == Some(true),
+            sun_cascades: Self::flag(section, "SunCascades") != Some(false),
             col_box,
             entries: section.entries.clone(),
         }
@@ -689,5 +693,17 @@ mod tests {
         let section =
             ini::Section { name: "Object_0".into(), entries: vec![("colBox".into(), "0,15, 1, 0,15".into())] };
         assert_eq!(Object::parse(0, &section).col_box, Some([0.0, 15.0, 1.0]));
+    }
+
+    #[test]
+    fn objects_cast_into_the_sun_cascades_unless_told_not_to() {
+        let object = |entries: &[(&str, &str)]| {
+            let entries = entries.iter().map(|&(k, v)| (k.into(), v.into())).collect();
+            Object::parse(0, &ini::Section { name: "Object_0".into(), entries })
+        };
+        // Every retail BTB object writes `ShadowCaster=0`, and casts: only ReRBR's own key leaves the cascades.
+        assert!(object(&[("ShadowCaster", "0")]).sun_cascades);
+        assert!(object(&[("SunCascades", "1")]).sun_cascades);
+        assert!(!object(&[("SunCascades", "0")]).sun_cascades);
     }
 }

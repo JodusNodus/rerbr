@@ -526,6 +526,7 @@ fn slot_mesh(texture: TextureRef, capacity: usize) -> Mesh {
         draws: vec![Draw { indices: 0..indices.len(), state, lod: Lod::Close }],
         vertices: vec![Vertex::zeroed(); capacity * 4],
         indices,
+        sun_cascades: true,
     }
 }
 

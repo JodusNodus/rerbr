@@ -64,6 +64,13 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the base 0x10000000; the pipeline is
 `ColSplit` 0x10022c10 (`col.cpp`) -> gather 0x10022770 -> `Split` 0x10025e80 -> `DumpCol` 0x100243a0.
 - `CollisionOnly=1` (ReRBR's key, unknown to the plugin) puts a `Visible=0` object's faces in `col.col` too: an undrawn collision mesh (converted stages).
+- `SunCascades=0` (ReRBR's key) keeps an object out of the sun's three near cascades; the far layer, the lamps' map and
+  the bakes still take it. Absent, it casts, as every object did before: `ShadowCaster` stays unread, since all 72
+  folders write 0 on every object (140785 of 140857; none 1) and still need their shadows. Converted stages write it on
+  their forest back from the road (`beamng-rbrbtb`): Sadamine's 6 M-triangle forest at its start (1250x2054 Ultra, wet,
+  16:58) cascades 0.40/2.37/1.38 to 0.28/0.74/0.49 ms, the bench 93/62 to 120/71 fps (avg/1 % low); the road and the
+  trees by it keep their shadows, the slopes back from it lose their dapple. 36 reference shots byte-identical
+  (2026-11-09).
 - `converted`: the player's folder (the launcher's and converters', one function) and its `converted` BTB root;
   BeamNG levels convert there with `beamng-stage`, in its own repository (`beamng-rbrbtb`) since 2026-11-09.
 - Faces: objects with `CollisionModel=0` and `Visible` not 0, in `objectlist.ini` order, clone by clone (gather 0x10022770); the

@@ -38,6 +38,7 @@ fn mesh(triangles: &[[Vec3; 3]], normal: Vec3, glass: bool) -> Mesh {
             lod: Lod::Always,
         }],
         vertices,
+        sun_cascades: true,
     }
 }
 

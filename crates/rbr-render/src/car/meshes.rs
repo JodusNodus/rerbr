@@ -179,6 +179,7 @@ fn placed_mesh(mesh: &sgc::Mesh, matrix: Mat4, indices: Vec<u32>, draws: Vec<Dra
         vertices,
         indices,
         draws,
+        sun_cascades: true,
     };
     (placed, sources)
 }
