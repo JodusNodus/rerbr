@@ -1802,7 +1802,7 @@ circles `car_grip.py` r40 on map 85, flat):
 | response, σ_y (63 % of a 1° step) tarmac / gravel | 0.249 / 0.104 m | ×0.5 / ×2 | 0.1245 / 0.053 and 0.498 / 0.208 m |
 
 The slide grip is solved on the calibration point (unit surface, best temperature, pressure factor 1) and read on the
-probed wheel; the two agree within 0.004. The lab's peak μ per wheel for `replay_gg.py`'s tyre use (`limit_frames`)
+probed wheel; the two agree within 0.005. The lab's peak μ per wheel for `replay_gg.py`'s tyre use (`limit_frames`)
 stays the untuned brush's.
 
 ## Open
