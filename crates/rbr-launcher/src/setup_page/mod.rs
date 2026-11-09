@@ -308,6 +308,11 @@ impl SetupPage {
         if matches!(self.compare, Compare::Saved(_)) {
             self.compare = Compare::Default;
         }
+        // The first diff map of a diff the car has (its torque not fixed at 0).
+        let torques = ["CenterDiffMaxTorque", "CenterDiffMaxTorque", "FrontDiffMaxTorque", "RearDiffMaxTorque"];
+        let specs = self.specs();
+        let fitted = |key: &str| specs.iter().any(|(s, r)| s.key == key && r.max > 0.0);
+        self.map = torques.iter().position(|k| fitted(k)).unwrap_or(0);
         self.profiles = self.folders.scan(surface);
         self.status.clear();
         self.drive_chosen();
@@ -336,6 +341,7 @@ impl SetupPage {
             now[i] = (0..steps).fold(now[i], |v, _| range.up(v));
         }
         self.draft = values::with_values(&self.draft, &now);
+        self.map = 2;
     }
 
     fn surface(&self) -> &'static str {

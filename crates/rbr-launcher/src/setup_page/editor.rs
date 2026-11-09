@@ -267,7 +267,7 @@ impl SetupPage {
                         ui,
                         [spring(&draft, 0), spring(&draft, 2)],
                         [spring(&base, 0), spring(&base, 2)],
-                        vec2(260.0, 200.0),
+                        vec2(320.0, 220.0),
                     );
                     ui.vertical(|ui| {
                         ui.add_space(30.0);

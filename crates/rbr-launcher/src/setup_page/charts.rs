@@ -243,16 +243,15 @@ pub fn springs(ui: &mut Ui, now: [Spring; 2], base: [Spring; 2], size: Vec2) {
         helper_length: clean(s.helper_length).max(0.0),
         helper_rate: clean(s.helper_rate).max(0.0),
     };
-    let now = [clean_spring(&now[0]), clean_spring(&now[1])];
-    let base = [clean_spring(&base[0]), clean_spring(&base[1])];
+    let now = now.map(|s| clean_spring(&s));
+    let base = base.map(|s| clean_spring(&s));
 
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, Color32::from_gray(28));
-
     let plot = Rect::from_min_max(
-        Pos2::new(rect.left() + 8.0, rect.top() + 20.0),
-        Pos2::new(rect.right() - 8.0, rect.bottom() - 46.0),
+        Pos2::new(rect.left() + 8.0, rect.top() + 24.0),
+        Pos2::new(rect.right() - 8.0, rect.bottom() - 36.0),
     );
     if plot.width() <= 0.0 || plot.height() <= 0.0 {
         return;
@@ -263,85 +262,51 @@ pub fn springs(ui: &mut Ui, now: [Spring; 2], base: [Spring; 2], size: Vec2) {
         &[("Front", FRONT, false), ("Rear", REAR, false), ("Compared", BASE, true)],
     );
 
-    let mut total: f32 = 0.1;
-    for s in now.iter().chain(base.iter()) {
-        total = total.max(s.length + s.helper_length);
-    }
-    if !total.is_finite() || total <= 0.0 {
-        total = 0.5;
-    }
-    let ymax = total * 1.12;
+    let total = now.iter().chain(&base).map(|s| s.length + s.helper_length).fold(0.1_f32, f32::max);
+    let scale = plot.height() / total;
+    let max_rate = now.iter().chain(&base).map(|s| s.rate.max(s.helper_rate)).fold(1.0_f32, f32::max);
     let ground = plot.bottom();
-    let scale = plot.height() / ymax;
-    let mut max_rate: f32 = 1.0;
-    for s in now.iter().chain(base.iter()) {
-        max_rate = max_rate.max(s.rate).max(s.helper_rate);
-    }
-    if !max_rate.is_finite() || max_rate <= 0.0 {
-        max_rate = 1.0;
-    }
-
-    let colours = [FRONT, REAR];
-    for (axle, (current, compared)) in now.iter().zip(base.iter()).enumerate() {
+    let half_w = (plot.width() * 0.09).clamp(10.0, 20.0);
+    for (axle, (current, compared)) in now.iter().zip(&base).enumerate() {
+        let colour = [FRONT, REAR][axle];
         let cx = plot.left() + plot.width() * (0.25 + 0.5 * axle as f32);
-        let half_w = (plot.width() * 0.11).clamp(10.0, 26.0);
-        for s in [compared, current] {
-            let main_px = s.length * scale;
-            let helper_px = s.helper_length * scale;
-            let main_top = ground - main_px;
-            // The slice holds `compared` first: that pointer comparison tells the two apart.
-            if std::ptr::eq(s, compared) {
-                let coils = 4 + (4.0 * s.rate / max_rate).round() as usize;
-                painter.extend(Shape::dashed_line(
-                    &coil_points(cx, ground, main_px, coils, half_w + 3.0),
-                    Stroke::new(1.25, BASE),
-                    4.0,
-                    3.0,
-                ));
-                painter.extend(Shape::dashed_line(
-                    &coil_points(cx, main_top, helper_px, 3, half_w * 0.8 + 3.0),
-                    Stroke::new(1.0, BASE),
-                    3.0,
-                    3.0,
-                ));
-            } else {
-                let coils = 4 + (4.0 * s.rate / max_rate).round() as usize;
-                let width = 1.5 + 1.5 * s.rate / max_rate;
-                painter.add(Shape::line(
-                    coil_points(cx, ground, main_px, coils, half_w),
-                    Stroke::new(width, colours[axle]),
-                ));
-                painter.add(Shape::line(
-                    coil_points(cx, main_top, helper_px, 3, half_w * 0.8),
-                    Stroke::new(1.25, colours[axle]),
-                ));
-                painter.line_segment(
-                    [Pos2::new(cx - half_w, main_top), Pos2::new(cx + half_w, main_top)],
-                    Stroke::new(1.0, label_colour()),
-                );
-            }
+        // The comparison: the outline of its main spring and of its helper above it.
+        if compared != current {
+            let main_top = ground - compared.length * scale;
+            let helper_top = main_top - compared.helper_length * scale;
+            let outline = |top: f32, bottom: f32, w: f32| {
+                let r = Rect::from_min_max(Pos2::new(cx - w, top), Pos2::new(cx + w, bottom));
+                let corners = [r.left_bottom(), r.left_top(), r.right_top(), r.right_bottom()];
+                painter.extend(Shape::dashed_line(&corners, Stroke::new(1.0, BASE), 4.0, 3.0));
+            };
+            outline(main_top, ground, half_w + 4.0);
+            outline(helper_top, main_top, half_w * 0.7 + 4.0);
         }
-        painter
-            .line_segment([Pos2::new(cx - half_w - 4.0, ground), Pos2::new(cx + half_w + 4.0, ground)], zero_stroke());
-        painter.text(
-            Pos2::new(cx, rect.bottom() - 42.0),
-            Align2::CENTER_TOP,
-            format!("{:.0} mm", current.length * 1e3),
-            small(),
-            colours[axle],
-        );
-        painter.text(
-            Pos2::new(cx, rect.bottom() - 29.0),
-            Align2::CENTER_TOP,
-            format!("{:.0} N/mm", current.rate * 1e-3),
-            small(),
-            colours[axle],
-        );
-        painter.text(
-            Pos2::new(cx, rect.bottom() - 16.0),
-            Align2::CENTER_TOP,
-            format!("helper {:.0} · {:.0}", current.helper_length * 1e3, current.helper_rate * 1e-3),
-            small(),
+        let main_top = ground - current.length * scale;
+        let helper_top = main_top - current.helper_length * scale;
+        let weight = |rate: f32| 1.0 + 2.5 * rate / max_rate;
+        painter.add(Shape::line(
+            coil_points(cx, ground, current.length * scale, 6, half_w),
+            Stroke::new(weight(current.rate), colour),
+        ));
+        painter.add(Shape::line(
+            coil_points(cx, main_top, current.helper_length * scale, 3, half_w * 0.7),
+            Stroke::new(weight(current.helper_rate), colour.gamma_multiply(0.7)),
+        ));
+        // The perch between the springs, the top mount and the ground.
+        let plate =
+            |y: f32, w: f32, stroke: Stroke| painter.line_segment([Pos2::new(cx - w, y), Pos2::new(cx + w, y)], stroke);
+        plate(main_top, half_w + 2.0, Stroke::new(2.0, label_colour()));
+        plate(helper_top, half_w * 0.7 + 2.0, Stroke::new(1.5, label_colour()));
+        plate(ground, half_w + 6.0, zero_stroke());
+
+        let text = |dy: f32, text: String, colour: Color32| {
+            painter.text(Pos2::new(cx, rect.bottom() - dy), Align2::CENTER_TOP, text, small(), colour);
+        };
+        text(32.0, format!("{:.0} mm · {:.0} N/mm", current.length * 1e3, current.rate * 1e-3), colour);
+        text(
+            18.0,
+            format!("helper {:.0} mm · {:.0} N/mm", current.helper_length * 1e3, current.helper_rate * 1e-3),
             label_colour(),
         );
     }
