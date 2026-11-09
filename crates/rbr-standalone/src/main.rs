@@ -393,6 +393,15 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
                 tyre_image_step: args.tyre_image_step,
                 material_as: args.material_as,
                 plan: args.plan,
+                race: args
+                    .race
+                    .map(|limits| {
+                        Ok::<_, String>(autopilot::race::Race {
+                            limits,
+                            ground: autopilot::race::Ground::load(data, &args.stage)?,
+                        })
+                    })
+                    .transpose()?,
             },
             out,
         )

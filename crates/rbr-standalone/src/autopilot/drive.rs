@@ -194,7 +194,8 @@ pub fn drive(
     );
     let limit = rev_limit(&live);
     eprintln!("autopilot: rev limit {limit} rpm");
-    let mut driver = Driver::new(&stage.track, stage.track_values.clone(), top.unwrap_or(TOP_SPEED), aim)
+    let top = top.unwrap_or(if measure.race.is_some() { race::TOP } else { TOP_SPEED });
+    let mut driver = Driver::new(&stage.track, stage.track_values.clone(), top, aim)
         .with_step(live.step_clock().step)
         .with_limit(limit)
         .with_obstacles(&stage.obstacles)
@@ -214,6 +215,11 @@ pub fn drive(
     }
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
+    }
+    if let Some(r) = &measure.race {
+        let line = race::Line::build(&stage.track, &stage.track_values, &r.ground, driver.props(), r.limits, top);
+        eprintln!("autopilot: {} (--race)", line.summary(r.limits));
+        driver = driver.with_race(line);
     }
     driver = driver.with_declutch(measure.brake_declutch);
     if let Some(k) = measure.brake_slip {
@@ -410,6 +416,12 @@ pub fn drive(
             crate::tyre_probe::write_image(live.mem(), step, path)?;
             eprintln!("autopilot: step {step}: tyre image written to {}", path.display());
         }
+    }
+    if measure.race.is_some() {
+        let [lock, track] = driver.guarded;
+        eprintln!(
+            "autopilot: race guards held the speed under the plan for {lock} steps (full lock), {track} (tracking)"
+        );
     }
     file.flush().map_err(failed)?;
     drove.out = Some(crate::rally::stage_out(live.mem(), live.game().end_now(), live.game().race_clock().jumped));
