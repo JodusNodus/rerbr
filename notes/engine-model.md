@@ -311,6 +311,18 @@ bound the physics, not the calibration.
   retard too) adds about +330 K at idle for 27°, on a 700 °C intercept.
 - Full-load λ: road turbos 0.91–1.01, NA 0.73–1.06 (ours 0.88).
 
+## Scorecard
+
+`data/engine-targets.csv` holds the published targets (columns `id,system,metric,conditions,low,high,unit,source,
+precision,how`; bands inclusive, an empty bound open, both empty a context row). `harness/engine_scorecard.py` runs
+the `engine_scorecard` example (`crates/rbr-engine/examples/engine_scorecard.rs`, about 5 s) and prints each row's
+value, band and PASS / MISS / CTX; `--only REGEX`, `--json OUT`, `--compare A.json B.json` (as the tyre scorecard).
+`how` is `SAMPLE:KEY` (the synthetic samples or an RSF car's folder, which needs RBR_RSF), `model:KEY` or
+`class:GROUP:YEAR:restrictor_mm`; the script's docstring lists the keys. Rows: closed-pedal braking and its manifold
+pressure, cold friction, part-load torque at a manifold pressure and the zero-torque pressure, K as an efficiency,
+idle and overrun manifold pressures, exhaust temperatures, spool, bearing loss and rotor inertia, λ, restrictors by
+group and year. The Rally2 rows are the Fiesta Rally2 (`Ford_Fiesta_Rally2_ngp7`).
+
 ## In game
 
 Numbers in `docs/experimental-physics.md` ("In game"), `b97695d86`, experimental = realistic + NGP's tyre (the brush
@@ -483,6 +495,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - Tuning School, idle 30–50 kPa: https://thetuningschool.com/blogs/news/what-data-is-good-data
 - Chalmers, tip-in and T45 inertia: https://publications.lib.chalmers.se/records/fulltext/255844/255844.pdf
 - GT1548 inertia: https://doi.org/10.3390/app10217452
+- Chung 2017, turbo bearing friction 30 000–90 000 rpm (KAIS 18(1) 585–591, Table 6): https://doi.org/10.5762/kais.2017.18.1.585
+- Perge 2017, turbo bearing friction and rotor inertia (Lubricants 5(3) 29, Fig. 9b, Table 1): https://doi.org/10.3390/lubricants5030029
+- Chung 2016, turbo rotor inertia of a 2.0 L SI engine's turbo (Trans. KSAE 24(1) 33–38, Table 4): https://doi.org/10.7467/KSAE.2016.24.1.033
 - Brunel, normalised maps: https://bura.brunel.ac.uk/bitstream/2438/14007/1/IMechE%20Turbo%20Conf%202012%20-%20TURBOCHARGER%20MATCHING%20METHODOLOGY.pdf
 - US 12056425, map scaling: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12056425
 - passionford, WRC wastegate: https://passionford.com/forum/general-car-related-discussion/391631-wrc-rally-car-turbo-s-and-power.html
