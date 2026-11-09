@@ -12,6 +12,22 @@ use crate::brush::{self, Calibration, EvalInput, TransState};
 use crate::loose::{self, Loose};
 use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
 
+/// TEST TOOLING ONLY (measurement, not a level): `RERBR_TEST_BRUSH_MU=F` scales the grip NGP hands the brush (its
+/// static friction, every surface) by F, for the car-level response of the circle to the tyre's level
+/// (notes/tyre-model.md "Car-level grip in the same terms"). Unset (the default), 1 and the forces are unchanged. Read
+/// once; one stderr line when set. NGP's soil lateral force on top is not scaled.
+fn test_mu_scale() -> f64 {
+    static F: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *F.get_or_init(|| {
+        let Some(f) = std::env::var("RERBR_TEST_BRUSH_MU").ok().and_then(|v| v.parse::<f64>().ok()) else {
+            return 1.0;
+        };
+        let f = f.clamp(0.1, 3.0);
+        eprintln!("rbr-tyre: RERBR_TEST_BRUSH_MU={f}: test tooling, the brush's grip scaled by {f}");
+        f
+    })
+}
+
 /// One wheel's calibration and transient.
 struct Tyre {
     at: u32,
@@ -69,8 +85,9 @@ impl Model for Brush {
         }
         let pressure_factor = f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale);
         let soil = x.soil_thickness > 0.0;
+        let grip = f64::from(x.grip) * test_mu_scale();
         // NGP's stiffness factor at the pressure, and on a hard surface the slip stiffnesses' fall on low friction (ice).
-        let low_mu = if soil { 1.0 } else { brush::low_mu_stiffness_factor(f64::from(x.grip)) };
+        let low_mu = if soil { 1.0 } else { brush::low_mu_stiffness_factor(grip) };
         let fz = f64::from(x.normal_force);
         let e = EvalInput {
             fz,
@@ -91,14 +108,13 @@ impl Model for Brush {
             wetness: f64::from(x.water_factor),
             hydroplaning: true,
             temp_grip: 1.0,
-            surf_static: f64::from(x.grip),
-            surf_kinetic: f64::from(x.grip),
+            surf_static: grip,
+            surf_kinetic: grip,
         };
         let steady = if soil {
             let share = |class| loose::class_share(x.surface_classes, x.surface_blend, class);
             loose::eval(&e, &t.loose, share(loose::GRAVEL_CLASS), share(loose::SNOW_CLASS))
         } else {
-            let grip = f64::from(x.grip);
             let cy0 = brush::low_mu_slip_stiffness(grip, t.cal.cy0, t.ngp.0);
             let cx0 = brush::low_mu_slip_stiffness(grip, t.cal.cx0, t.ngp.1);
             brush::eval(&e, &Calibration { cy0, cx0, ..t.cal })
