@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 /// The reference oil temperature, K (90 °C, the model's warm engine).
 pub const T_OIL_REF: f64 = 363.0;
 
-/// Vogel oil viscosity, Pa·s: μ = 0.00862·exp(2040/(T − 89.6)) (a fit to Anton Paar's 10W-40).
+/// Vogel oil viscosity, mPa·s: μ = 0.00862·exp(2040/(T − 89.6)) (a fit to Anton Paar's 10W-40; only its ratio is used).
 fn viscosity(t: f64) -> f64 {
     0.00862 * exp(2040.0 / (t - 89.6))
 }

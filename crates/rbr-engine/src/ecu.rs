@@ -70,7 +70,8 @@ pub const ALS_TRIM: f64 = 0.2;
 pub const ALS_CUT: f64 = 0.3;
 pub const ALS_BOOST: f64 = 1.2e5;
 pub const ALS_BURN: f64 = 0.6;
-/// The electronic throttle: 30 ms first order, 40 ms full travel (Gorzelic 2012).
+/// The electronic throttle: 30 ms first order, 40 ms full travel (guess; Gorzelic 2012 model it as a 40 ms first-order
+/// lag).
 const ETB_TAU: f64 = 0.03;
 const ETB_TRAVEL: f64 = 0.04;
 

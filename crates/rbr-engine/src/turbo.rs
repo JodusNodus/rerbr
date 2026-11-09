@@ -9,7 +9,7 @@ use libm::{pow, sqrt};
 const DROOP: f64 = 0.6;
 const W0: f64 = 0.7;
 const SURGE_BAND: f64 = 0.05;
-/// Compressor efficiency: peak 0.75 at 0.8 W* and 0.9 Π*, 0.6 at the map's edges, at least 0.4 (guess).
+/// Compressor efficiency over flow only: peak 0.75 at 0.8 W*, 0.6 at 0 and 1.6 W*, at least 0.4 (guess).
 const ETA_C_MAX: f64 = 0.75;
 const ETA_C_EDGE: f64 = 0.15;
 const ETA_C_MIN: f64 = 0.4;
@@ -19,7 +19,8 @@ pub const OMEGA_STAR: f64 = 15_000.0;
 pub const ETA_T: f64 = 0.65;
 /// Shaft inertia, kg·m² (Chalmers T45 1.16e-5, GT1548 5.5e-6).
 pub const INERTIA: f64 = 1e-5;
-/// Bearing losses: a·ω + b·ω² + 100 W static (rF2 `TurboFriction`, `TurboStaticFrictionWatts`).
+/// Bearing losses: a·ω + b·ω² + 100 W static (our reading of rF2's `TurboFriction`, a torque and a power that ramps
+/// with speed; its `TurboStaticFrictionWatts` is there against numerical problems at low spool speeds).
 const LOSS_A: f64 = 0.002;
 const LOSS_B: f64 = 2.5e-6;
 const LOSS_STATIC: f64 = 100.0;

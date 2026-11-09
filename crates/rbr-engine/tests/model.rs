@@ -261,9 +261,9 @@ fn the_turbo_spools_like_gt_power_and_anti_lag_keeps_it() {
         if !p.turbo {
             continue;
         }
-        // Chalmers (GT-Power, a road 1.5 L four, T45 at 1.16e-5 kg·m² against our 1e-5): at 1000 rpm from 5 bar BMEP
-        // to 90 % of the steady WOT torque in 0.54 s (1.0 s on a three, 0.68 s with half the inertia). A rally turbo
-        // makes almost no boost at 1000 rpm, so the same case also runs at the first 500 rpm step with 1.5 bar.
+        // Chalmers (GT-Power, Table 17): at 1000 rpm from 5 bar BMEP to 90 % of the steady WOT torque, Volvo's 2.0 L
+        // four 0.54 s, their 1.5 L three with a T45 at 1.157e-5 kg·m² (ours 1e-5) 1.00 s, 0.68 s at 0.50e-5. A rally
+        // turbo makes almost no boost at 1000 rpm, so the same case also runs at the first 500 rpm step with 1.5 bar.
         let t = spool_at(m, 1000.0);
         assert!(t <= 1.2, "{name}: 5 bar BMEP to 90 % at 1000 rpm in {t:.2} s");
         let n = (2..).map(|i| f64::from(i) * 500.0).find(|&n| calibrate::wot(m.spec(), n).0.p_boost >= 1.5e5).unwrap();
