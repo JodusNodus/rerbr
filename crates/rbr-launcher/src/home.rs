@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 /// The folder of the viewer's performance logs (`viewer --perf-log`), in the player's folder.
 pub const LOGS: &str = "logs";
 
-/// The player's folder ([`rbr_btb::converted::player_folder`], shared with `beamng-stage`), else (no `HOME`, or no
+/// The player's folder ([`rbr_btb::converted::player_folder`], shared with converters), else (no `HOME`, or no
 /// `APPDATA` on Windows) `fallback`.
 pub fn dir(fallback: &Path) -> PathBuf {
     rbr_btb::converted::player_folder().unwrap_or_else(|| fallback.to_path_buf())

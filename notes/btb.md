@@ -60,8 +60,9 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
 `rbr_btb::col::build(track)` writes `CACHE/col.col` byte for byte (19 of 19 cached folders, `tests/col.rs`; 0.2 to 1.9 s per
 stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the base 0x10000000; the pipeline is
 `ColSplit` 0x10022c10 (`col.cpp`) -> gather 0x10022770 -> `Split` 0x10025e80 -> `DumpCol` 0x100243a0.
-- `CollisionOnly=1` (ReRBR's key, unknown to the plugin) puts a `Visible=0` object's faces in `col.col` too: an undrawn collision mesh (`notes/beamng.md`).
-- `converted`: the player's folder (the launcher's and `beamng-stage`'s, one function) and its `converted` BTB root.
+- `CollisionOnly=1` (ReRBR's key, unknown to the plugin) puts a `Visible=0` object's faces in `col.col` too: an undrawn collision mesh (converted stages).
+- `converted`: the player's folder (the launcher's and converters', one function) and its `converted` BTB root;
+  BeamNG levels convert there with `beamng-stage`, in its own repository (`beamng-rbrbtb`) since 2026-11-09.
 - Faces: objects with `CollisionModel=0` and `Visible` not 0, in `objectlist.ini` order, clone by clone (gather 0x10022770); the
   clone count is the `.xform` size / 64 (`ini` `cloneCount` ignored: Crastazza `obj_124_2` has 22 matrices, `cloneCount=5`).
   `Visible=0` objects are absent (Le barrage des gorges `wall39_*`, bounds differ at the root without this).

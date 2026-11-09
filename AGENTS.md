@@ -27,7 +27,6 @@ same paths.
 | NGP 7.4.778, force feedback, H-shifter | `notes/ngp.md` |
 | File formats | `notes/formats.md`; key tables `data/physics-lsp-fields.md`, `data/ngp-lsp-keys.md` |
 | BTB stages (experimental) | `notes/btb.md` |
-| BeamNG levels converted to BTB stages (local only) | `notes/beamng.md` |
 | Renderer and visual systems | `notes/renderer.md` |
 | Sound | `notes/sound.md` |
 | Gameplay: control payload, race flow, timing, options, weather, season, saves | `notes/gameplay.md` |
@@ -43,7 +42,6 @@ same paths.
 | Path | Purpose |
 | --- | --- |
 | `crates/rbr-formats` | Game file parsers, one module per format |
-| `crates/rbr-beamng` | BeamNG level mods (the player's copy) converted to BTB stage folders (`beamng-stage`) |
 | `crates/rbr-btb` | BTB stages (experimental): their files, the map 41 files built from them, their scene |
 | `crates/rbr-physics` | Physics ports (1.02 and NGP); `ports.csv` lists them |
 | `crates/rbr-engine` | Engine models in place of NGP's torque formula, the first part of ReRBR experimental physics (built on NGP 7), opt-in (`--physics experimental`) |

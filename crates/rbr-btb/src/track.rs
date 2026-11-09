@@ -349,7 +349,7 @@ pub struct Object {
     /// `CollisionModel`: 0 none, -1 unknown, 2 collision (one `(3,0x16)` mesh per such object in `trk.trk`).
     pub collision_model: Option<i32>,
     /// `CollisionOnly=1` (ReRBR's own key, which the plugin does not know): a `Visible=0`, `CollisionModel=0` object
-    /// whose faces still go to `col.col`, for a collision mesh that is never drawn (`rbr-beamng`'s stages).
+    /// whose faces still go to `col.col`, for a collision mesh that is never drawn (converted stages).
     pub collision_only: bool,
     /// `colBox` as the plugin reads it ([`scan_col_box`]): `0,15, 1, 0,15` is (0, 15, 1).
     pub col_box: Option<[f32; 3]>,
