@@ -94,6 +94,8 @@ impl Levels {
 pub struct Loose {
     pub cal: Calibration,
     pub levels: Levels,
+    /// The factor on gravel's shear law's stiffness ([`shear`]): 1, or the tuning's ([`crate::tuning::Tuning`]).
+    pub shear_stiffness: f64,
 }
 
 /// The braking slip, 0 to 1: the share of the contact point's longitudinal speed the patch slides along it (1 locked
@@ -133,13 +135,14 @@ pub fn class_share(classes: [u32; 2], blend: f32, class: u32) -> f64 {
 /// The secant slip stiffness, N per unit slip, of gravel's shear law (Janosi-Hanamoto's form): the force μ Fz (1 -
 /// exp(-u)) along the theoretical slip `s`, u = |(sx/s0x, sy/s0)| with s0 = tan `alpha0_deg` ([`gravel_alpha0_deg`])
 /// and s0x the longitudinal one that keeps the brush's [`KX_OVER_KY`] at the axes' levels `mu_x`, `mu_y`; `mu` the
-/// friction along `s`. Both axes take it as their secant (-F_i/s_i).
-pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_deg: f64) -> f64 {
+/// friction along `s`, `stiffness` a factor on its stiffness (s0 over it). Both axes take it as their secant (-F_i/s_i).
+#[allow(clippy::too_many_arguments)]
+pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_deg: f64, stiffness: f64) -> f64 {
     let s_abs = sx.hypot(sy);
     if s_abs <= 0.0 {
         return 0.0;
     }
-    let s0 = libm::tan(alpha0_deg.to_radians());
+    let s0 = libm::tan(alpha0_deg.to_radians()) / stiffness;
     let s0x = s0 * mu_x / (KX_OVER_KY * mu_y);
     mu * fz * -libm::expm1(-(sx / s0x).hypot(sy / s0)) / s_abs
 }
@@ -159,7 +162,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64) -> EvalOutput {
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if gravel > 0.0 {
-        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(x.wetness));
+        let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(x.wetness), c.shear_stiffness);
         out.kx += (k - out.kx) * gravel;
         out.ky += (k - out.ky) * gravel;
         out.fx = -out.kx * sx;
@@ -220,7 +223,7 @@ pub fn cornering_slope(c: &Loose, v: f64) -> f64 {
 /// The loose tyre on the brush's calibration `brush` with NGP's `levels`: the cornering stiffness solved so the slope
 /// at speed `v` is `slope` (NGP's, as the brush's), the longitudinal stiffness [`KX_OVER_KY`] times it, as the brush's.
 pub fn calibrate(brush: &Calibration, levels: Levels, slope: f64, v: f64) -> Loose {
-    let mut c = Loose { cal: *brush, levels };
+    let mut c = Loose { cal: *brush, levels, shear_stiffness: 1.0 };
     // The slope is close to proportional to the stiffness: a fixed point converges in a few steps.
     for _ in 0..100 {
         let r = slope / cornering_slope(&c, v);
@@ -261,7 +264,7 @@ pub(crate) mod tests {
             lateral: vec![0.9, 0.85, 0.8],
             longitudinal: vec![0.85, 0.84, 0.83],
         };
-        Loose { cal, levels }
+        Loose { cal, levels, shear_stiffness: 1.0 }
     }
 
     /// At load `fz`, speed `v`, slip angle `alpha` (deg) and slip ratio `kappa` (-1 locked), on a surface of grip

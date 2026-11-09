@@ -7,9 +7,11 @@ pub mod calibrate;
 pub mod car;
 pub mod fit;
 pub mod loose;
+pub mod tuning;
 
 use rbr_physics::tyre::layout::{Setup, Table};
 pub use rbr_physics::tyre::model::{ForceInput, ForceOutput};
+pub use tuning::Tuning;
 
 /// One wheel's tyre as NGP's car init leaves it: the tables of its type.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -64,11 +66,12 @@ pub trait Model: Send {
 /// The names [`model`] takes.
 pub const NAMES: [&str; 2] = ["ngp", "brush"];
 
-/// The tyre model `name` for a car with these wheels: `None` for `ngp` (NGP's sliding model runs as it is).
-pub fn model(name: &str, wheels: &[Wheel]) -> Result<Option<Box<dyn Model>>, String> {
+/// The tyre model `name` for a car with these wheels, the brush tuned by `tuning`: `None` for `ngp` (NGP's sliding
+/// model runs as it is).
+pub fn model(name: &str, wheels: &[Wheel], tuning: &Tuning) -> Result<Option<Box<dyn Model>>, String> {
     match name {
         "ngp" => Ok(None),
-        "brush" => Ok(Some(Box::new(car::Brush::new(wheels)?))),
+        "brush" => Ok(Some(Box::new(car::Brush::new(wheels, tuning)?))),
         _ => Err(format!("tyre model {name}: one of {}", NAMES.join(", "))),
     }
 }

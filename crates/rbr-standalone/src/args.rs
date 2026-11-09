@@ -208,7 +208,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's); experimental writes no records (--saves compares only)
+       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
@@ -233,6 +233,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let (mut skill, mut championship_damage): (Option<Skill>, Option<DamageLevel>) = (None, None);
     let mut false_starts: Option<u8> = None;
     let mut ffb_settings: Option<rbr_gameplay::ffb::Settings> = None;
+    let mut tyre_tuning = rbr_tyre::Tuning::MODEL;
     while let Some(flag) = it.next() {
         if flag == "--help" || flag == "-h" {
             println!("{USAGE}");
@@ -376,6 +377,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--profile" => args.profile = Some(value.to_owned()),
             "--events-out" => args.events_out = Some(PathBuf::from(value)),
             "--trace-out" => args.trace_out = Some(PathBuf::from(value)),
+            "--tyre-tuning" => {
+                tyre_tuning = rbr_tyre::Tuning::parse(&value).map_err(|e| format!("--tyre-tuning: {e}"))?
+            }
             "--ffb-settings" => {
                 ffb_settings = Some(ffb_settings_of(&value).ok_or(format!(
                     "--ffb-settings {value}: ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD (0 or 1, then numbers)"
@@ -522,6 +526,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if (args.extra_payloads.is_some() || args.wall_clock.is_some()) && !args.recorded_payload {
         return Err("--extra-payloads and --wall-clock need --recorded-payload".into());
     }
+    if !tyre_tuning.is_default() && args.physics.tyre != "brush" {
+        return Err("--tyre-tuning needs --physics experimental-brush (it tunes the brush tyre)".into());
+    }
+    args.physics.tyre_tuning = tyre_tuning;
     if args.twin.is_some() && !args.physics.is_ngp() {
         return Err("--twin takes no --physics experimental (the twin would step the run's models again)".into());
     }
@@ -775,6 +783,10 @@ mod tests {
             (format!("{LIVE} --physics experimental"), |a| assert_eq!(a.physics, Profile::EXPERIMENTAL)),
             (format!("{BOOT} --physics ngp"), |a| assert_eq!(a.physics, Profile::NGP)),
             (format!("{REC} --physics experimental"), |a| assert_eq!(a.physics, Profile::EXPERIMENTAL)),
+            (format!("{LIVE} --tyre-tuning slide-grip=0.8,ice=1.2 --physics experimental-brush"), |a| {
+                let t = rbr_tyre::Tuning { slide_grip: Some(0.8), ice: 1.2, ..rbr_tyre::Tuning::MODEL };
+                assert_eq!(a.physics, Profile { tyre_tuning: t, ..Profile::EXPERIMENTAL_BRUSH })
+            }),
             (LIVE.into(), |a| assert!(a.keeps_records())),
             (format!("{LIVE} --physics ngp"), |a| assert!(a.keeps_records())),
             (format!("{LIVE} --physics experimental"), |a| assert!(!a.keeps_records())),
@@ -974,6 +986,14 @@ mod tests {
             (format!("{LIVE} --replay F --replay-pace fast"), "--replay-pace fast: clock or free"),
             (format!("{BOOT} --dispatch warp"), "--dispatch warp: pure or direct"),
             (format!("{LIVE} --physics fast"), "--physics fast: one of ngp, experimental, experimental-brush"),
+            (
+                format!("{LIVE} --physics experimental --tyre-tuning tarmac=1.1"),
+                "--tyre-tuning needs --physics experimental-brush (it tunes the brush tyre)",
+            ),
+            (
+                format!("{LIVE} --physics experimental-brush --tyre-tuning tarmac=2"),
+                "--tyre-tuning: tyre tuning tarmac=2: from 0.7 to 1.3",
+            ),
             (format!("{LIVE} --car-year new"), "--car-year new"),
             (format!("{BOOT} --wear muddy"), "--wear muddy: new, normal or worn"),
             (format!("{BOOT} --wetness humid"), "--wetness humid: dry, damp or wet"),

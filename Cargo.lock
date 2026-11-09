@@ -2414,6 +2414,7 @@ dependencies = [
  "rbr-school",
  "rbr-season",
  "rbr-sound",
+ "rbr-tyre",
  "rustix 1.1.5",
  "sevenz-rust2",
  "sha2",
