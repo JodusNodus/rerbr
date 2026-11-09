@@ -799,15 +799,18 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   countersteer for 30 s within 3-5° (the controller's equilibrium: rear drive 0.46 of the rear's μ Fz, the front
   near saturation). Velenis, Tsiotras & Lu (ECC 2007) is simulation only: its MF (Table I: B 7, C 1.6, D 0.52) is
   the "Velenis MF" model input of `gravel-peak-slip-angle` and `gravel-mu-y30-over-peak`.
-- Metz's gravel (context, 2026-11-09; via Allen, Rosenthal & Chrstos, SAE 970559, Table 2 and eq. 17; Metz SAE
-  930765 not read): an exponential fit Fy/Fz = A (1 - exp(-B α)) per surface for one tyre, B falling with load
-  (`gravel-metz-*`): gravel μ 0.52, α90 12.1° at the rated load and 7.5° at half of it, C_α/Fz 5.7 / 9.1 per rad;
-  on that tyre gravel keeps 0.87 of pavement's stiffness at 0.78 of its μ. The fit's B = (C (F_ZT/Fz)^m - D)/A
-  (the printed +D/A gives none of the table's B; -D/A gives all five). With Croft-White's WRC on a gravel road
-  (~12°, p75 9-11°) a gravel road sits at α90 ~8-12°: NGP (7.5°) a little stiff, the brush (14.25°) a little soft,
-  the firm lot (2.6-3.3°) and loose pea stone (14.5-21°) either side. Allen's reading of Christoffersen et al. (SAE
-  950139, towed at 0.2 m/s, Fig. 7): on ploughing soils the free-rolling side force at 90° exceeds the locked
-  wheel's (sand 1.41 against 1.0), coastal grass did not plough: context for the berm (`PLOUGH`).
+- Metz's gravel (context, 2026-11-09; Metz SAE 930765 pp. 69-71, via Allen, Rosenthal & Chrstos SAE 970559 Table 2
+  and eq. 17): an exponential fit Fy/Fz = A (1 - exp(-B α)), B falling with load (`gravel-metz-*`): gravel μ 0.52,
+  α90 12.1° at the rated load and 7.5° at half of it, C_α/Fz 5.7 / 9.1 per rad. Weak for a rally tyre: the
+  off-highway rows are a Terra Tire 12.5-18 (low-pressure flotation tyre) on undriven, angled wheels, scaled from
+  Schwanghart & Rott's plots (ISTVS 1984), the load exponent 0.14 borrowed from a 17.5-25 loader tyre, whose
+  manufacturer's data are the pavement row (so no gravel-over-pavement ratio on one tyre). The fit's B =
+  (C (F_ZT/Fz)^m - D)/A (the printed +D/A gives none of the table's B; -D/A gives all five). With Croft-White's WRC on
+  a gravel road (~12°, p75 9-11°) a gravel road sits at α90 ~8-12°: NGP (7.5°) a little stiff, the brush (14.25°) a
+  little soft, the firm lot (2.6-3.3°) and loose pea stone (14.5-21°) either side. Allen's reading of Christoffersen
+  et al. (SAE 950139, towed at 0.2 m/s, Fig. 7): on ploughing soils the free-rolling side force at 90° exceeds the
+  locked wheel's (sand 1.41 against 1.0), coastal grass did not plough: context for the berm (`PLOUGH`). The
+  rally-road evidence for α90 is Croft-White alone; Metz's flotation tyre and the firm lot bracket it.
 - Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface
   (`fit::loose`), linear between, times NGP's grip; the flat brush's peak is μ Fz, so the level needs no solve. The
   cornering stiffness is re-solved under the flat friction to NGP's slope (0-2°, 4 kN); Cx = 1.4 Cy as the brush's.
