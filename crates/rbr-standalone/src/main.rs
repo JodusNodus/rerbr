@@ -71,7 +71,7 @@
 //! runs the replay's frames of its last start in place of the viewer's input, on the clock (`--replay-pace clock`, the
 //! viewer's PAUSE, RESUME and RESTART as in a drive) or back to back (`free`, for a video), compared frame by frame.
 //! `--replay-trace FILE` (with `--replay`) writes the car's state and each wheel's tyre after each frame
-//! (`replay_trace.rs`, research tooling, read-only). `--replay-tyre STEP:MODEL` changes the tyre model at STEP and runs the drive's inputs on uncompared (research). A replay writes no other files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
+//! (`replay_trace.rs`, research tooling, read-only), and with `--tyre-probe FILE` the wheels' tyre frames. `--replay-tyre STEP:MODEL` changes the tyre model at STEP and runs the drive's inputs on uncompared (research). A replay writes no other files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
 //!
 //! `--events-out FILE` (with `--boot --recording X`) runs the recording's controls through the live boot and writes the
 //! PTC1 and PEV1 records of each step it answers (`events_out.rs`): the viewer's playback takes the lamps from them.
@@ -247,7 +247,11 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
             let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
             let replay = Replay::read(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
             let output = std::io::BufWriter::new(std::io::stdout());
-            let mut trace = args.replay_trace.as_deref().map(replay_trace::ReplayTrace::create).transpose()?;
+            let probe = args.tyre_probe.as_deref().map(|p| tyre_probe::TyreProbe::create(p, args.tyre_probe_every));
+            let mut trace = match args.replay_trace.as_deref() {
+                Some(path) => Some(replay_trace::ReplayTrace::create(path, probe.transpose()?)?),
+                None => None,
+            };
             let tyre = args.replay_tyre.as_ref().map(|(at, model)| (*at, model.as_str()));
             let (_, line) = live::serve_replay(
                 live,

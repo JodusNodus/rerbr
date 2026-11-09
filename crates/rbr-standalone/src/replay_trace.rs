@@ -37,13 +37,15 @@ pub struct ReplayTrace {
     path: String,
     /// The first traced frame's step.
     first: Option<u32>,
+    /// `--tyre-probe`: the wheels' tyre frames at its interval.
+    probe: Option<crate::tyre_probe::TyreProbe>,
 }
 
 impl ReplayTrace {
-    pub fn create(path: &Path) -> Result<Self, String> {
+    pub fn create(path: &Path, probe: Option<crate::tyre_probe::TyreProbe>) -> Result<Self, String> {
         let file =
             std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
-        let mut trace = ReplayTrace { file, path: path.display().to_string(), first: None };
+        let mut trace = ReplayTrace { file, path: path.display().to_string(), first: None, probe };
         let wheels = ["fl", "fr", "rl", "rr"]
             .map(|w| WHEEL_HEADER.split(' ').map(|c| format!(" {w}_{c}")).collect::<String>())
             .concat();
@@ -87,7 +89,8 @@ impl ReplayTrace {
             let axle = pose::wheel_pose(block).map_or([f32::NAN; 3], |w| w.axle);
             line += &wheel(mem, mem.u32(mem.u32(CAR_PTR) + WHEELS + 4 * k as u32), axle);
         }
-        writeln!(self.file, "{line}").map_err(|e| self.failed(e))
+        writeln!(self.file, "{line}").map_err(|e| self.failed(e))?;
+        self.probe.as_mut().map_or(Ok(()), |probe| probe.frame(mem, step, substeps))
     }
 
     pub fn finish(mut self) -> Result<(), String> {

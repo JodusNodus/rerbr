@@ -1440,6 +1440,15 @@ brush's grip × F; unset, traces byte-identical). Runs and scripts outside the r
   `snow-car-lateral-rally2`, `tarmac-car-lateral-rally2-narrow` / `-wide` (flat circle glat), the braking rows
   (`*-car-braking-rally2`, weak: μ_x = μ_y and a 0.5 s peak against a stop's mean), `car-class-ratio-rally2-wrc`
   (none: two cars).
+- A player's drive in these terms (2026-11-09): `harness/replay_gg.py REPLAY.rrp... [AUTOPILOT.trace...] --out DIR`
+  (a copy of the launcher's `.rrp`; the header names the physics, car and stage) runs the replay with
+  `--replay-trace` and `--tyre-probe` (every 144 steps) and prints time, km, outside assistance, the largest distance
+  off the driveline (the car's parameter on the `.trk` spline), rally_gg's braking and lateral figures (glat and
+  kinematic) and each wheel's |F|/Fz over `limit_frames`' peak at its load (hardest 5 % by Σ|F|/ΣFz / median). A
+  replay stays exact on any build whose physics matches the drive's (621 brush of 2026-11-08 22:28 on main 5f4c3209:
+  all 346920 frames equal); otherwise it stops at the first differing frame (a Falstone brush drive of 13:37, before
+  that day's brush changes: frame 22931) and the figures cover the frames before it. Autopilot 562 at f0.75 b0.6, ngp
+  / brush: wheels 0.98/0.98/0.93/0.92 and 0.98/0.98/0.94/0.93 of their peak in the hardest 5 %, 0.53-0.60 at the median.
 
 ## Wong, Theory of Ground Vehicles, against the open items (2026-11-09)
 
@@ -1618,10 +1627,32 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   gravel / snow tyre, `tarmac` map 85 under 37; `kin_g`, `glat_g`, `path_g`, `glat_p95`, `beta_deg`;
   [Car-level grip in the same terms](#car-level-grip-in-the-same-terms)).
 
-Counts (2026-11-08, `tyre/review-fixes`, full run; 112 rows, 97 scored): ngp 31/97, experimental-brush 48/97 PASS. It
-reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, circle 0.571 g (loose-v1 0.663); NGP gravel
-peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ 1)/peak
-0.82; tarmac brush peak κ 0.11, Fy(κ 0.25)/Fy(0) 0.296/0.349 at 2°/4°, Kx/Fz 21.2.
+Counts (2026-11-09, main b9bbe63d run as 5f4c3209, main plus tooling; full run `--jobs 4`; 162 rows, 141 measured,
+112 scored, 29 context): ngp 41/112, experimental-brush 93/112 PASS (2026-11-08 `tyre/review-fixes`: 31/97, 48/97).
+Since then:
+
+- New rows (19 scored): ngp 6 PASS (`gravel-cw-mu-y30-over-peak`, `snow-car-locked-over-abs-80`,
+  `tarmac-calpha-pressure`, `tarmac-peak-mu-y-pressure`, `tarmac-trl-wet-peak-100-over-32`, `tarmac-wet-speed-loss`),
+  13 MISS; brush 17 PASS, MISS `tarmac-kx-pressure`, `tarmac-sigma-y-pressure`. 10 new context rows (the Rally2 car
+  rows, `gravel-car-lateral-g-rsf345`, `-wrc-stage`, `gravel-car-locked-over-abs-satc-80`).
+- Moved to context (both physics): `gravel-mu-y30-over-peak`, `gravel-peak-slip-angle` (gravel shape rows at their
+  sources' speeds), `snow-lat-max-packed`, `snow-long-mu-winter` (road-tyre snow levels).
+- Band changes (no model change): road-tyre gravel and snow levels became lower bounds: MISS → PASS
+  `gravel-car-locked-decel-80` ngp, `gravel-car-locked-decel-50/80` brush, `gravel-locked-lat-20deg` both,
+  `gravel-locked-lat-30deg` brush, `gravel-locked-mux` brush, `gravel-traction` both, `snow-peak-mu-x` both,
+  `snow-peak-mu-y` both; `gravel-lat-end-over-max` 0.63-1 → 0.97-1: ngp PASS → MISS (0.960);
+  `gravel-car-lateral-g` reads the flat circle (0.971 / 0.955, PASS as before).
+- Model changes (brush, MISS → PASS): loose-v1's shear law on gravel (`gravel-pea-mu-y-a2.5/5/10/15`,
+  `gravel-lat-ratio-5/10/20deg`, `gravel-lat-slope`, `gravel-lat-alpha90`, `gravel-peak-kappa`); the wet law
+  (`tarmac-trl-wet-locked-over-peak-64/100`); `V_SHAPE` (`tarmac-trl-peak-100-over-32` 0.968 → 0.992);
+  `CORNERING_OVER_NGP` and Cx 1.3 (`tarmac-peak-slip-angle` 9.5 → 7.0°, `tarmac-combined-a4` 0.349 → 0.292,
+  `tarmac-long-c0x-road` 21.2 → 26.8); the ice knee scaled with it (`ice-car-locked-over-threshold-50` 0.809 →
+  0.812). Lab: the aligning patch over the front axle's frames (`tarmac-mz-half-length-load-exponent` both, brush
+  `tarmac-mz-peak-load-exponent`, `-trail0-load-exponent`, `-peak-alpha-over-fy`). No PASS → MISS from a model.
+
+It reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, the 345 circle 0.571 g (brush 0.664); NGP
+gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ
+1)/peak 0.82; tarmac brush peak κ 0.09, Fy(κ 0.25)/Fy(0) 0.226/0.292 at 2°/4°, Kx/Fz 26.8.
 
 Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
 

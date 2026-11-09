@@ -219,7 +219,17 @@ def lagged(rows, tau):
 
 def stats(path, speed_lag=0.0):
     kind = "trace" if path.endswith(".trace") else "telemetry"
-    rows = filtered(load_trace(path) if kind == "trace" else load_telemetry(path))
+    out = {"file": os.path.basename(path), "kind": kind}
+    out.update(summary(load_trace(path) if kind == "trace" else load_telemetry(path), kind, speed_lag))
+    checks = unit_checks(load_telemetry(path, gps=True)) if kind == "telemetry" else (float("nan"),) * 3
+    out.update(zip(("long_slope", "lat_slope", "gps_lat_p90"), checks))
+    return out
+
+
+def summary(rows, kind, speed_lag=0.0):
+    """The figures of `stats` over 10 Hz rows (t s, speed km/h, brake, long g, lat g) of `kind` (`trace` or
+    `telemetry`: the brake's scale); a trace's speed through `speed_lag` (`lagged`)."""
+    rows = filtered(rows)
     if kind == "trace":
         rows = lagged(rows, speed_lag)
     moving = [r for r in rows if r[1] > MOVING]
@@ -227,7 +237,7 @@ def stats(path, speed_lag=0.0):
     longest = sorted(events, key=lambda e: e["dur"], reverse=True)[:LONGEST]
     lat1 = [abs(w[3]) for w in windows(moving, 1.0) if w[0] > MOVING]
     half = [w for w in windows(moving, 0.5) if w[0] > MOVING]
-    out = {"file": os.path.basename(path), "kind": kind, "moving_s": len(moving) / RATE,
+    out = {"moving_s": len(moving) / RATE,
            "vmean": statistics.fmean(r[1] for r in moving), "vmax": max(r[1] for r in moving),
            "events": len(events),
            "brk_speed_all": statistics.fmean(e["speed_g"] for e in events) if events else float("nan"),
@@ -236,8 +246,6 @@ def stats(path, speed_lag=0.0):
            "brk_peak_16": statistics.median(e["peak_g"] for e in longest) if longest else float("nan"),
            "lat_p50": pct(lat1, 50), "lat_p90": pct(lat1, 90), "lat_p99": pct(lat1, 99),
            }
-    checks = unit_checks(load_telemetry(path, gps=True)) if kind == "telemetry" else (float("nan"),) * 3
-    out.update(zip(("long_slope", "lat_slope", "gps_lat_p90"), checks))
     for lo, hi in zip(BINS, BINS[1:]):
         b = [w for w in half if lo <= w[0] < hi]
         out[f"gg{lo}"] = (len(b), pct([abs(w[3]) for w in b], 95), pct([-w[2] for w in b if w[2] < 0], 95),
