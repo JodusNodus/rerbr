@@ -58,6 +58,9 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
   1.12-1.59 times harder locked than with ABS; the Fiesta Rally2 under the brush 1.29-1.44, under NGP 1.08-1.10.
 - Driving force levels off and does not fall at full spin, where NGP's falls to 0.82 of its peak. No measured curve on
   gravel reaches full spin, so this part is open.
+- Damp gravel grips as dry gravel, where NGP's loses 7.5 %: the one gravel road measured dry and sprinkled skidded as
+  hard or harder wetted, and no measurement shows a damp loss. Wet gravel keeps NGP's 0.85 of dry, inside the 0.76-0.90
+  measured on gravel roads. From 50 km/h the Fiesta Rally2 brakes locked on damp gravel at 1.01 of dry (NGP 0.93).
 
 ### Snow
 
