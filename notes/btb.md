@@ -94,7 +94,10 @@ stage, Sagen Sweden 2012 the slowest). `rbr_rx.dll` addresses are RVAs from the 
   bits: a cell over 65535 vertices wraps), in the order `(rec1, rec0, rec2)`; `0x422f` twice; the map index twice (0 for
   none); then `nibble[k]` for those entries twice, `nibble = (u8)(int)(u*15) | ((int)(v*15) & 0xf) << 4` (truncating; the
   low byte of `u` is not masked, so `u*15 >= 16` reaches the high nibble; the entry named by the wrapped 16-bit index
-  supplies the UV).
+  supplies the UV). The caches of Le barrage des gorges and Ulu Karagita hold such wrapping cells.
+- A converted stage (any `CollisionOnly` object) writes a cell that would wrap with each distinct (position, UV) once,
+  in first-occurrence order, up to 65536 (about six times the faces of a shared mesh); the loader uses only the
+  vertices' address. `col.rs` unit test; the 19 caches stay byte-identical.
 - Map index (0x10021fa0): the mesh's first material name -> its `materials.ini` section -> the base name of `diffuseTexture`
   -> the first `mat.ini` `[MAP<i>]` whose `texture=` base name matches (case-insensitive). The material has no texture
   when `Textures.zip` lacks the file (Kuri Bush 1 `OBJ_RALLY`, Mattila `Blank_255_255_2555`) or it is a `.png` (Olocau
