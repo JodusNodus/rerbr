@@ -161,7 +161,7 @@ fn run(spec: &Spec, state: &mut State, x: &Step, seconds: f64) -> Out {
 }
 
 /// Runs the engine at a fixed `rpm` and `pedal` from `state` until it is steady: the pressures and the turbo's
-/// speed move less than 1e-4 of themselves (and 1 Pa, 1 rad/s) over 0.25 s (at least 0.5 s, at most 30 s).
+/// speed move less than 1e-4 of themselves (and 1 Pa, 10 rad/s) over 0.25 s (at least 0.5 s, at most 30 s).
 pub fn steady(spec: &Spec, state: &mut State, rpm: f64, pedal: f64) -> Out {
     steady_at(spec, state, &Step::at(rpm / RPM, pedal, DT))
 }
@@ -174,7 +174,7 @@ fn steady_at(spec: &Spec, state: &mut State, x: &Step) -> Out {
         let moved = |a: f64, b: f64, floor: f64| (a - b).abs() > 1e-4 * a.abs() + floor;
         if !(moved(state.p_im, before.p_im, 1.0)
             || moved(state.p_boost, before.p_boost, 1.0)
-            || moved(state.omega_t, before.omega_t, 1.0))
+            || moved(state.omega_t, before.omega_t, 10.0))
         {
             break;
         }
