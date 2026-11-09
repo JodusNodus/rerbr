@@ -410,6 +410,7 @@ impl Renderer {
                         car: false,
                         sky_dome: false,
                         backdrop_bounds: None,
+                        sun_cascades: true,
                     });
                 }
                 continue;
@@ -475,6 +476,7 @@ impl Renderer {
                 backdrop_bounds: mesh_bounds(&mesh.vertices)
                     .filter(|_| backdrop && mesh.bounds.is_none())
                     .map(|b| (b.center, b.half_extent)),
+                sun_cascades: mesh.sun_cascades,
             });
         }
 

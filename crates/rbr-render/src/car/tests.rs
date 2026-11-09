@@ -182,6 +182,7 @@ fn the_glass_gets_an_inner_side_drawn_before_it() {
             vertices: vec![vertex([0.0; 3]), vertex([1.0, 0.0, 0.0]), vertex([0.0, 1.0, 0.0])],
             indices: vec![0, 1, 2],
             draws: vec![Draw { indices: 0..3, state: draw_state(None, None, pass, Some(shade)), lod: Lod::Always }],
+            sun_cascades: true,
         }
     };
     let crack = MeshDamage { crack: Some(damage::Crack { window: 0, high: false }), ..MeshDamage::default() };

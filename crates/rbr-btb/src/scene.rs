@@ -158,6 +158,8 @@ pub struct Object {
     pub lod_out: f32,
     pub visible: bool,
     pub shadow_caster: bool,
+    /// Casts into the sun's near cascades (`SunCascades`, ReRBR's own key).
+    pub sun_cascades: bool,
 }
 
 /// Where the car starts (`spawn.ini`).
@@ -225,6 +227,7 @@ impl Scene {
                 lod_out: object.lod_out.map_or(f32::INFINITY, |d| d as f32),
                 visible: object.visible.unwrap_or(true),
                 shadow_caster: object.shadow_caster.unwrap_or(false),
+                sun_cascades: object.sun_cascades,
             });
         }
 

@@ -690,6 +690,7 @@ mod tests {
                 indices: (0..vertices.len() as u32).collect(),
                 draws: vec![Draw { indices: 0..vertices.len(), state, lod: Lod::Always }],
                 vertices,
+                sun_cascades: true,
             }
         };
         let up = Vec3::new(0.0, 0.53, 0.85) * 0.8;

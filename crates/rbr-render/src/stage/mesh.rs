@@ -30,6 +30,10 @@ pub struct Mesh {
     /// Triangle list indices into `vertices`.
     pub indices: Vec<u32>,
     pub draws: Vec<Draw>,
+    /// Casts into the sun's near cascades (`crate::sun`); false only for a BTB stage's objects that say so
+    /// (`SunCascades=0`, ReRBR's own key: a converted stage's trees back from the road), which still cast into the far
+    /// layer.
+    pub sun_cascades: bool,
 }
 
 /// Axis-aligned bounds of a mesh.
@@ -415,6 +419,7 @@ pub(super) fn block_mesh(block: &lbs::GeometryBlock, report: &mut LoadReport) ->
         vertices,
         indices,
         draws,
+        sun_cascades: true,
     }
 }
 
@@ -441,6 +446,7 @@ pub(super) fn object_mesh(item: &lbs::ObjectItem, report: &mut LoadReport) -> Me
                 vertices: Vec::new(),
                 indices: Vec::new(),
                 draws: Vec::new(),
+                sun_cascades: true,
             };
         }
     };
@@ -474,6 +480,7 @@ pub(super) fn interactive_mesh(object: &lbs::InteractiveObject<'_>, report: &mut
         vertices: Vec::new(),
         indices: Vec::new(),
         draws: Vec::new(),
+        sun_cascades: true,
     };
     let fields =
         SlotLayout { color: 12, texcoord0: Some(16), texcoord1: None, texcoord2: None, normal: None, specular: None };
@@ -617,7 +624,16 @@ pub(super) fn water_mesh(item: &lbs::SurfaceItem<'_>, report: &mut LoadReport) -
             lod: Lod::Always,
         }]
     };
-    Mesh { layer: Layer::Blended, anchor: Anchor::World, bounds: None, cell: None, vertices, indices, draws }
+    Mesh {
+        layer: Layer::Blended,
+        anchor: Anchor::World,
+        bounds: None,
+        cell: None,
+        vertices,
+        indices,
+        draws,
+        sun_cascades: true,
+    }
 }
 
 /// Vertex fields of a sky item: 24-byte vertices (flags 0x15) have texcoord0 at 16; 32-byte vertices
@@ -654,7 +670,7 @@ fn buffer_mesh(
     }
     let draws =
         if indices.is_empty() { Vec::new() } else { vec![Draw { indices: 0..indices.len(), state, lod: Lod::Always }] };
-    Mesh { layer, anchor: Anchor::World, bounds: None, cell: None, vertices, indices, draws }
+    Mesh { layer, anchor: Anchor::World, bounds: None, cell: None, vertices, indices, draws, sun_cascades: true }
 }
 
 /// A camera-anchored mesh: drawn at infinity, so it is never culled.
