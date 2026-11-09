@@ -63,6 +63,21 @@ launcher's player folder plus `converted` (one function for both). Evidence: the
   those in the corridor: Irohazaka all 2842, Akagi 7664 of 16358, Nagao 6795 of 26482, Akina 2478 of 43906.
 - Autopilot (NGP car 2, `--top-speed 25`, 2026-11-08), at most 1.5 m off the driveline: Irohazaka 1.1 km, Akina
   3.6 km and split 1, Akagi 2.2 km and split 1, Nagao 1.8 km. Frame rate not measured.
+- Road re-mesh (`remesh.rs`, on unless `--no-remesh`, 2026-11-08). The touge roads crease under NGP's wheel contact
+  (probe of the prepared `.col` 0.75 m off the driveline: median normal change at a triangle crossing, creases over
+  1° per km): retail 41/44 0.25°, 54-72; Irohazaka 0.64°, 280; Akagi 0.39°, 84; Nagao 0.40°, 114; Akina 0.15°, 36.
+  Irohazaka's slope changes alternate (lag-1 correlation -0.67): a sawtooth of its ~2 m strips, not the road's shape;
+  its vertices moved onto a smooth surface still gave 0.58°. The band, up to 7 m either side (the levels' AI road
+  widths, 2.5-5 m, are a lane's) until the surface breaks across (15 % plus 5 cm per column), is sampled every 0.25 m
+  on 15 columns, each column fitted along (local linear, sigma 2 m), and written as strips (sections within 2 mm and
+  5 cm of their chords, at most 3 m apart); level faces under it go, those across its edge keep their corners there
+  moved onto it. After: Irohazaka 0.17°, 104; Akagi 0.12°, 8; Nagao 0.16°, 19; Akina 0.06°, 2. Collision triangles
+  352k/194k/171k/281k to 262k/127k/135k/233k.
+- A collision cell holds at most 21845 faces (its corners are indexed in 16 bits); `beamng-stage` builds the cells
+  after converting and warns past that. Irohazaka's fullest (stacked switchbacks, 118 m of height in 128 m) 16688
+  faces, 20692 with the re-mesh (21201 with 17 columns).
+- Joined road pieces overlap (Irohazaka's by 2-3 m at 2100 m and 3870 m, Nagao's at 1238, 2555 and 4113 m): the line
+  turned back on itself 175-180° and the autopilot stalled there; `course::join` leaves out the overlap (2026-11-08).
 - Frame `(x - ox, z, y - oy)`, `(ox, oy)` the course's plan centre (680, 264). Collision mesh within 60 m of the
   driveline as `Visible=0`, `CollisionOnly=1` objects (100 m tiles per surface), each surface a material whose `mat.ini`
   map is the RBR id in all cells; drawn shapes as `CollisionModel=-1`, one object per 100 m tile, material and

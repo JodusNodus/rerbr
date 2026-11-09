@@ -14,6 +14,7 @@ pub mod materials;
 pub mod msgpack;
 pub mod pacenotes;
 pub mod race;
+pub mod remesh;
 pub mod road;
 pub mod textures;
 pub mod trees;
