@@ -397,9 +397,9 @@ fn least_bend(centre: &[[f32; 3]], left: &[[f32; 2]], lo: &[f32], hi: &[f32]) ->
     let (mut a, mut g) = (vec![[0.0f32; 2]; n], vec![0.0f32; n]);
     for _ in 0..ITERATIONS {
         let p = |i: usize| [centre[i][0] + y[i] * left[i][0], centre[i][1] + y[i] * left[i][1]];
-        for i in 1..n.saturating_sub(1) {
+        for (i, ai) in a.iter_mut().enumerate().take(n.saturating_sub(1)).skip(1) {
             let (q, r, s) = (p(i - 1), p(i), p(i + 1));
-            a[i] = [q[0] - 2.0 * r[0] + s[0], q[1] - 2.0 * r[1] + s[1]];
+            *ai = [q[0] - 2.0 * r[0] + s[0], q[1] - 2.0 * r[1] + s[1]];
         }
         for i in 0..n {
             let at = |j: usize| if j < n { a[j] } else { [0.0; 2] };
