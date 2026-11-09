@@ -519,10 +519,14 @@ impl Materials {
 
 /// The parsed `mat.ini` `[MAP<i>]` grids: `[MAPS]` count maps of 256 cells in `data0..data15` row order. A missing
 /// `[MAP<i>]` section (the `69[MAP1]` missing-newline quirk) or a missing `data<j>` row reads all zeros.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SurfaceMaps {
     pub count: usize,
     pub maps: Vec<[u8; 256]>,
+    /// The maps in damp and in wet weather: ReRBR's own `damp<j>` and `wet<j>` rows (converted stages; the plugin
+    /// does not know them), a missing row the `data<j>` row's cells.
+    pub damp: Vec<[u8; 256]>,
+    pub wet: Vec<[u8; 256]>,
     /// Each map's `texture=` path (the author's, absolute); `None` for a missing section or key.
     pub textures: Vec<Option<String>>,
 }
@@ -531,22 +535,25 @@ impl SurfaceMaps {
     fn parse(sections: &[ini::Section]) -> Result<SurfaceMaps, String> {
         let header = find_section(sections, "MAPS").ok_or("mat.ini: no [MAPS]")?;
         let count: usize = find_entry(header, "count").and_then(|v| v.parse().ok()).ok_or("mat.ini: bad count")?;
-        let mut maps = Vec::with_capacity(count);
-        let mut textures = Vec::with_capacity(count);
+        let mut out = SurfaceMaps { count, ..SurfaceMaps::default() };
         for i in 0..count {
-            let mut cells = [0u8; 256];
             let map = find_section(sections, &format!("MAP{i}"));
-            textures.push(map.and_then(|m| find_entry(m, "texture")).map(str::to_owned));
-            if let Some(map) = map {
+            out.textures.push(map.and_then(|m| find_entry(m, "texture")).map(str::to_owned));
+            let rows = |prefix: &str, under: [u8; 256]| {
+                let mut cells = under;
                 for row in 0..16 {
-                    if let Some(value) = find_entry(map, &format!("data{row}")) {
+                    if let Some(value) = map.and_then(|m| find_entry(m, &format!("{prefix}{row}"))) {
                         cells[row * 16..(row + 1) * 16].copy_from_slice(&data_cells(value));
                     }
                 }
-            }
-            maps.push(cells);
+                cells
+            };
+            let dry = rows("data", [0; 256]);
+            out.maps.push(dry);
+            out.damp.push(rows("damp", dry));
+            out.wet.push(rows("wet", dry));
         }
-        Ok(SurfaceMaps { count, maps, textures })
+        Ok(out)
     }
 }
 
@@ -635,6 +642,15 @@ mod tests {
         assert_eq!(maps.count, 2);
         assert_eq!(&maps.maps[0][240..], &[69, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0][..]);
         assert_eq!(maps.maps[1], [0u8; 256]);
+    }
+
+    #[test]
+    fn damp_and_wet_rows_default_to_the_dry_ones() {
+        let sections = ini::parse("[MAPS]\ncount=1\n[MAP0]\ndata0=37 37\ndata1=1\ndamp0=38 38\nwet1=3\n").unwrap();
+        let maps = SurfaceMaps::parse(&sections).unwrap();
+        assert_eq!([maps.maps[0][0], maps.maps[0][1], maps.maps[0][16]], [37, 37, 1]);
+        assert_eq!([maps.damp[0][0], maps.damp[0][1], maps.damp[0][16]], [38, 38, 1]);
+        assert_eq!([maps.wet[0][0], maps.wet[0][1], maps.wet[0][16]], [37, 37, 3]);
     }
 
     #[test]

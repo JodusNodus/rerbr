@@ -40,7 +40,10 @@ builders, `ksh` the collision meshes, `ids` the RSF stage ids, `xfile`/`xform` t
   chunk (a `u32` mesh count plus the `ksh.ksh` mesh bytes; four cached folders build it empty).
 - `(3,0x16)` is `ksh.ksh` verbatim after the mesh count ([Collision meshes](#collision-meshes-ksh)); `classic::trk_from` builds the whole `.trk` from the track alone.
 - `.mat`: nine entries (`dry`/`damp`/`wet` by `new`/`normal`/`worn`, 11 space-padded characters) with identical
-  runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order, no tail.
+  runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order, no tail. ReRBR's own `damp<j>`/`wet<j>`
+  rows in `[MAP<i>]` (converted stages; a missing row the `data<j>` one) fill the damp and wet entries, so wet
+  weather reaches the physics (each `_Dry` material's `_Damp`/`_Wet` are the next two ids, 26 of 26 in 1.02's
+  table); the 19 caches stay byte-identical.
 - `.dls`: a fixed 299-byte `MINAATAD` template (version 18, constant trigger-data/channel/trigger/camera words,
   `Driveline\0` plus `299 300\0\0` name block) holding the first `count` notes as the `Driveline` set's marker keys
   (`tag`, `flag`, `f32` distance); only the note count and the offsets vary.

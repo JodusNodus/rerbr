@@ -7,13 +7,14 @@
 //!   `(3, 0x16)` chunk whose payload is a `u32` mesh count plus the `ksh.ksh` bytes ([`crate::ksh`]: one mesh per
 //!   `CollisionModel` 1/2 object). [`trk_from`] builds it from the track alone; four cached folders build it empty.
 //! - `mat`: nine entries (`dry`/`damp`/`wet` by `new`/`normal`/`worn`, 11 characters, space padded) with identical
-//!   runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order.
+//!   runs: `[MAPS]` count runs of 16x16 cells each, in `data0..data15` order. ReRBR's own `damp<j>`/`wet<j>` rows
+//!   (converted stages) replace the damp and wet entries' rows.
 //! - `dls`: a fixed 299-byte `MINAATAD` template (version 18) holding the first `count` pace notes as the
 //!   `Driveline` set's marker keys; the rest (offsets aside) is constant across all cached folders.
 //! - `lbs`: a `(2, 11)` start chunk (identity matrix with the spawn translation, the position twice, `(0, angleZ,
 //!   0)` rotation), then empty `(2, 10)` and `(1, 0)` chunks.
 
-use crate::track::{DrivelinePoint, PaceNote, Spawn, Track};
+use crate::track::{DrivelinePoint, PaceNote, Spawn, SurfaceMaps, Track};
 
 fn put_u16(out: &mut Vec<u8>, v: u16) {
     out.extend_from_slice(&v.to_le_bytes());
@@ -79,12 +80,14 @@ pub const MAT_NAMES: [&str; 9] = [
     "wet worn   ",
 ];
 
-/// The `.mat` file: the nine entries with identical runs, one 264-byte run per surface map. Parses with
+/// The `.mat` file: the nine entries, one 264-byte run per surface map, the damp and wet ones from
+/// [`SurfaceMaps::damp`] and [`SurfaceMaps::wet`] (the plugin's: all nine identical). Parses with
 /// [`rbr_formats::mat::parse`].
-pub fn mat(maps: &[[u8; 256]]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(4 + 9 * (12 + 4 + maps.len() * 264));
+pub fn mat(surfaces: &SurfaceMaps) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + 9 * (12 + 4 + surfaces.maps.len() * 264));
     put_u32(&mut out, MAT_NAMES.len() as u32);
-    for name in MAT_NAMES {
+    for (i, name) in MAT_NAMES.iter().enumerate() {
+        let maps = [&surfaces.maps, &surfaces.damp, &surfaces.wet][i / 3];
         out.extend_from_slice(name.as_bytes());
         out.push(0);
         put_u32(&mut out, maps.len() as u32);
@@ -205,10 +208,24 @@ mod tests {
     }
 
     #[test]
+    fn damp_and_wet_entries_take_their_maps() {
+        let maps = SurfaceMaps {
+            count: 1,
+            maps: vec![[37; 256]],
+            damp: vec![[38; 256]],
+            wet: vec![[39; 256]],
+            textures: vec![None],
+        };
+        let file = rbr_formats::mat::parse(&mat(&maps)).unwrap();
+        let first: Vec<u8> = file.entries.iter().map(|e| e.runs[0].cells[0]).collect();
+        assert_eq!(first, [37, 37, 37, 38, 38, 38, 39, 39, 39]);
+    }
+
+    #[test]
     fn empty_builds_have_the_cached_lengths() {
         // No notes, no maps: 299-byte `.dls`, one empty `.mat` run set, two framed `.trk` chunks, 144-byte `.lbs`.
         assert_eq!(dls(&[]).len(), 299);
-        assert_eq!(mat(&[]).len(), 4 + 9 * (12 + 4));
+        assert_eq!(mat(&SurfaceMaps::default()).len(), 4 + 9 * (12 + 4));
         let spawn = Spawn { matrix: [0.0; 16], angles: [0.0; 3] };
         assert_eq!(lbs(&spawn).len(), 144);
         let file = trk(&[], 0, &[]);
