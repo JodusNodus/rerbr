@@ -1097,16 +1097,16 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   fines or loose material on top. Soil data put the moisture optimum in the middle (traction ±7 %, cohesion from
   suction), so a damp bound road can match or pass a dry loose one; nothing measures damp gravel itself, and nothing
   ties moisture to the loose layer's depth (only the fines). Against the game, locked wet over dry from 50 km/h (RSF
-  345, Fiesta Rally2, `gravel-car-wet-over-dry-locked-50`, band 0.95-1.23): ngp 0.787 (0.494 / 0.628 g), brush 0.922
-  (0.822 / 0.892 g), both MISS; damp ngp 0.928, brush 0.968; best threshold wet / damp over dry ngp 0.821 / 0.944,
+  345, Fiesta Rally2, `gravel-car-wet-over-dry-locked-50`, context: Moyer's 1.06-1.18 against CRREL's 0.70): ngp 0.787
+  (0.494 / 0.628 g), brush 0.922 (0.822 / 0.892 g); damp ngp 0.928, brush 0.968; best threshold wet / damp over dry ngp 0.821 / 0.944,
   brush 0.848 / 0.931 (context). NGP's × 0.925 / × 0.85 fit a saturated silty road (0.70) more than a wetted
   well-graded one (~1.0); both are real gravels, and the data cannot pick one level for "wet". The brush's wet α0
   (9.7°) compounds the level at the side: by the law, μ_y at 15° wet over dry is 0.81 / 0.78 / 0.74 at 9 / 17.5 / 25
   mm (shape 0.95 / 0.92 / 0.87 × 0.85; inferred), against Moyer's 0.97 at 15° on a sprinkled road; the slower rise
-  stays Coutermarsh's wet gravel, another site and soil. Proposal (the user's decision): the evidence supports a
+  rests on Coutermarsh's wet gravel (another site and soil) and Croft-White's wet stage (α0 8-12°). Proposal (the user's decision): the evidence supports a
   smaller wet loss on well-graded gravel, damp × 1.0 and wet × 0.95 (Moyer's locked and sideways means, NHTSA's
   0.95), keeping × 0.85 only if "wet" means a saturated silty road; and, if wet keeps × 0.85, the brush's wet α0
-  could go to dry's (only Coutermarsh's other site supports it). No change made.
+  could go to dry's. No change made.
 - Not adopted (2026-11-08): the exponential approach on the brush's own stiffness (NGP's slope, u = 3ψ, the brush's
   adhesion/sliding split): pea stone 0.38/0.61/0.85/0.95 at 6.7 kN and 0.98 at 20°, all four pea rows still miss; one
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
