@@ -16,16 +16,20 @@
 //! championship offers the stage's default, the current setup or a saved one before each stage
 //! (`CSeasonChooseSetupUI`, [`SetupPage::choose`]).
 
+mod board;
 mod charts;
+mod editor;
+mod values;
 
 use std::path::{Path, PathBuf};
 
-use egui::{ComboBox, DragValue, RichText, Ui};
+use charts::DIFF;
+use egui::{ComboBox, RichText, Ui};
 use rbr_formats::saves::{is_file_name_part, setup_slots, DIR as SAVES};
-use rbr_gameplay::setup::{Area, CarSetup, Range, SeasonSetup, Setup, Slot, Spec, CAR_FOLDERS, MAP_POINTS, WHEELS};
+use rbr_gameplay::setup::{Area, Bounds, CarSetup, Range, SeasonSetup, Setup, Spec, CAR_FOLDERS};
 
 use crate::catalog::{self, Car};
-use crate::pages::{combo, WARN};
+use crate::pages::{GOOD, WARN};
 use crate::settings::SetupChoices;
 
 /// How the lists name the car's default setup.
@@ -246,6 +250,11 @@ pub struct SetupPage {
     draft: Setup,
     name: String,
     confirm_delete: bool,
+    /// What the editor's values are compared with, and its values.
+    compare: Compare,
+    base: Setup,
+    /// Per wheel area (`editor::wheel_areas`), front and rear: whether the left and right wheels are set together.
+    linked: [[bool; 2]; 4],
     area: Area,
     map: usize,
     status: String,
@@ -267,6 +276,9 @@ impl SetupPage {
             draft: Setup::default(),
             name: String::new(),
             confirm_delete: false,
+            compare: Compare::Default,
+            base: Setup::default(),
+            linked: [[true; 2]; 4],
             area: Area::Tyres,
             map: 0,
             status: String::new(),
@@ -291,6 +303,9 @@ impl SetupPage {
             catalog::Physics::Archive => CarSetup::load_in(archive, car.slot as usize, surface),
         };
         self.folders = Folders::of(here, rsf, car);
+        if matches!(self.compare, Compare::Saved(_)) {
+            self.compare = Compare::Default;
+        }
         self.profiles = self.folders.scan(surface);
         self.status.clear();
         self.drive_chosen();
@@ -301,6 +316,24 @@ impl SetupPage {
     /// Shows `area` (`--screenshot`).
     pub fn show_area(&mut self, area: Area) {
         self.area = area;
+    }
+
+    /// Steps some values away from the opened setup's (`--screenshot`), so the captures show differences.
+    pub fn screenshot_changes(&mut self) {
+        let specs = self.specs();
+        let mut now = values::values(&self.draft);
+        for (i, (spec, range)) in specs.iter().enumerate() {
+            let front = spec.index.is_none_or(|w| w < 2);
+            let steps = match spec.key.as_str() {
+                "SpringStiffness" | "DampingBump" | "DampingRebound" | "WheelAxisInclination" if front => 3,
+                "Pressure" if spec.index == Some(2) => 2,
+                "FrontRollBarStiffness" | "MaxBrakePressureFront" => 1,
+                key if key.starts_with("FrontDiffThrottle_") && key > "FrontDiffThrottle_03" => 25,
+                _ => 0,
+            };
+            now[i] = (0..steps).fold(now[i], |v, _| range.up(v));
+        }
+        self.draft = values::with_values(&self.draft, &now);
     }
 
     fn surface(&self) -> &'static str {
@@ -371,6 +404,8 @@ impl SetupPage {
         self.opened_values = values;
         self.draft = values;
         self.confirm_delete = false;
+        self.linked = editor::linked_for(&values, &self.specs());
+        self.rebase();
     }
 
     /// The setup file to start with: the values Start drives with, unless they are the default (none then).
@@ -494,6 +529,31 @@ impl SetupPage {
                 return;
             }
         };
+        self.header_ui(ui, &car);
+        ui.separator();
+        let specs = self.specs();
+        let (now, base) = (values::values(&self.draft), values::values(&self.base));
+        let only: Vec<Spec> = specs.iter().map(|(s, _)| s.clone()).collect();
+        let lines = values::changes(&only, &base, &now, |i, v| self.show(&specs[i].0, v));
+        let view = self.view(&specs, &lines, board::Differs::of(&only, &base, &now));
+        ui.horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(board::SIZE.x);
+                if let Some(area) = board::ui(ui, self.area, &view) {
+                    self.area = area;
+                }
+                ui.add_space(8.0);
+                self.changes_ui(ui, &lines);
+            });
+            ui.separator();
+            egui::ScrollArea::vertical().id_salt("setup-area").show(ui, |ui| {
+                ui.vertical(|ui| self.area_ui(ui));
+            });
+        });
+    }
+
+    /// The setup opened, the one driven with, the name to save under and the buttons.
+    fn header_ui(&mut self, ui: &mut Ui, car: &CarSetup) {
         let opened = self.opened.as_ref().and_then(|n| self.profiles.iter().find(|p| p.id == *n)).cloned();
         ui.horizontal(|ui| {
             ui.label("Setup").on_hover_text(format!(
@@ -501,18 +561,7 @@ impl SetupPage {
                 self.surface()
             ));
             let selected = opened.as_ref().map_or(DEFAULT.to_owned(), Profile::label);
-            let mut pick = None;
-            ComboBox::from_id_salt("setup-open").width(220.0).selected_text(selected).show_ui(ui, |ui| {
-                if ui.selectable_label(self.opened.is_none(), DEFAULT).clicked() {
-                    pick = Some(None);
-                }
-                for p in &self.profiles {
-                    if ui.selectable_label(self.opened.as_deref() == Some(&p.id), p.label()).clicked() {
-                        pick = Some(Some(p.id.clone()));
-                    }
-                }
-            });
-            if let Some(name) = pick {
+            if let Some(name) = self.pick_ui(ui, "setup-open", selected, self.opened.clone()) {
                 self.open(name.as_deref());
                 self.status.clear();
             }
@@ -525,7 +574,7 @@ impl SetupPage {
                 self.draft = self.setup;
             }
             if self.opened.as_deref() == self.chosen() {
-                ui.weak("driving with this");
+                ui.label(RichText::new("✔ driving with this").color(GOOD));
             } else if ui
                 .button("Drive with this")
                 .on_hover_text("Make it the Drive page's setup for this car")
@@ -581,131 +630,175 @@ impl SetupPage {
         if !self.status.is_empty() {
             ui.label(&self.status);
         }
-        ui.separator();
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(190.0);
-                for area in Area::ALL {
-                    ui.selectable_value(&mut self.area, area, area.name());
-                }
-            });
-            ui.separator();
-            egui::ScrollArea::vertical().show(ui, |ui| ui.vertical(|ui| self.area_ui(ui, &car)));
-        });
     }
 
-    fn area_ui(&mut self, ui: &mut Ui, car: &CarSetup) {
-        let area = self.area;
-        let mut specs: Vec<(Spec, Range)> = Setup::specs().into_iter().zip(car.ranges.iter().copied()).collect();
-        specs.retain(|(spec, _)| spec.area == area);
-        match area {
-            Area::Tyres | Area::Springs | Area::Dampers | Area::Geometry => self.wheels_ui(ui, &specs),
-            Area::Differentials => self.differentials_ui(ui, &specs),
-            Area::Gears => self.gears_ui(ui, car, &specs),
-            Area::RollBars | Area::Brakes => {
-                self.rows_ui(ui, &specs);
-                if area == Area::Brakes {
-                    let (f, r) = (self.draft.front_brake_pressure, self.draft.rear_brake_pressure);
-                    ui.label(format!("Brake balance: {:.0}% front", 100.0 * f / (f + r).max(1.0)));
+    /// A list of the default and the saved setups, `chosen` marked; the one picked (`Some(None)` the default).
+    fn pick_ui(&self, ui: &mut Ui, id: &str, selected: String, chosen: Option<String>) -> Option<Option<String>> {
+        let mut pick = None;
+        ComboBox::from_id_salt(id).width(220.0).selected_text(selected).show_ui(ui, |ui| {
+            if ui.selectable_label(chosen.is_none(), DEFAULT).clicked() {
+                pick = Some(None);
+            }
+            for p in &self.profiles {
+                if ui.selectable_label(chosen.as_deref() == Some(&p.id), p.label()).clicked() {
+                    pick = Some(Some(p.id.clone()));
                 }
             }
+        });
+        pick
+    }
+
+    /// The comparison's values: the default's, the opened setup's as opened, or a saved setup's.
+    fn rebase(&mut self) {
+        self.base = match &self.compare {
+            Compare::Default => self.default_values(),
+            Compare::Opened => self.opened_values,
+            Compare::Saved(id) => match self.read(id) {
+                Ok(values) => values,
+                Err(e) => {
+                    self.status = format!("{e}; comparing with the default setup");
+                    self.compare = Compare::Default;
+                    self.default_values()
+                }
+            },
+        };
+    }
+
+    /// The comparison's picker and the lines that differ from it, each with its way back.
+    fn changes_ui(&mut self, ui: &mut Ui, lines: &[values::Change]) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Compared with").strong()).on_hover_text(
+                "The ticks on the tracks, the dashed curves and the orange marks show this setup's values",
+            );
+            let selected = match &self.compare {
+                Compare::Default => DEFAULT.to_owned(),
+                Compare::Opened => "As opened".to_owned(),
+                Compare::Saved(id) => self.profiles.iter().find(|p| p.id == *id).map_or(id.clone(), Profile::label),
+            };
+            let mut pick = None;
+            ComboBox::from_id_salt("setup-compare").width(200.0).selected_text(selected).show_ui(ui, |ui| {
+                if ui.selectable_label(self.compare == Compare::Default, DEFAULT).clicked() {
+                    pick = Some(Compare::Default);
+                }
+                let opened = ui.selectable_label(self.compare == Compare::Opened, "As opened");
+                if opened.on_hover_text("The opened setup's values before this page's changes").clicked() {
+                    pick = Some(Compare::Opened);
+                }
+                for p in &self.profiles {
+                    let on = self.compare == Compare::Saved(p.id.clone());
+                    if ui.selectable_label(on, p.label()).clicked() {
+                        pick = Some(Compare::Saved(p.id.clone()));
+                    }
+                }
+            });
+            if let Some(compare) = pick {
+                self.compare = compare;
+                self.rebase();
+            }
+        });
+        if lines.is_empty() {
+            ui.label(RichText::new("No differences.").weak());
+            return;
+        }
+        let count = if lines.len() == 1 { "1 difference".to_owned() } else { format!("{} differences", lines.len()) };
+        ui.label(RichText::new(count).color(DIFF));
+        let mut back = None;
+        egui::ScrollArea::vertical().id_salt("setup-changes").auto_shrink([false, true]).show(ui, |ui| {
+            for (n, line) in lines.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    if ui.small_button("↺").on_hover_text("Back to the compared value").clicked() {
+                        back = Some(n);
+                    }
+                    let what = ui.add(egui::Label::new(&line.what).truncate().sense(egui::Sense::click()));
+                    if what.on_hover_text(line.area.name()).clicked() {
+                        self.area = line.area;
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let text = if line.from.is_empty() {
+                            line.to.clone()
+                        } else {
+                            format!("{} to {}", line.from, line.to)
+                        };
+                        ui.label(RichText::new(text).color(DIFF).size(12.0));
+                    });
+                });
+            }
+        });
+        if let Some(n) = back {
+            let (mut now, base) = (values::values(&self.draft), values::values(&self.base));
+            for &i in &lines[n].indices {
+                now[i] = base[i];
+            }
+            self.draft = values::with_values(&self.draft, &now);
         }
     }
 
-    /// One slider per value, with its range.
-    fn rows_ui(&mut self, ui: &mut Ui, specs: &[(Spec, Range)]) {
-        egui::Grid::new("setup-rows").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-            for (spec, range) in specs.iter().filter(|(s, _)| s.index.is_none()) {
-                ui.label(spec.label).on_hover_text(range_text(spec, range));
-                self.with_slot(spec, |slot| value_ui(ui, spec, *range, slot, Widget::Slider));
-                ui.end_row();
-            }
-        });
+    /// A value as the page shows it: the drop gear by its teeth.
+    fn show(&self, spec: &Spec, value: f32) -> String {
+        if spec.bounds == Bounds::DropGear {
+            let gears = self.car.as_ref().map_or(&[][..], |c| &c.gears[..]);
+            let id = value as u32;
+            return gears.iter().find(|g| g.0 == id).map_or(format!("{id}"), |&(_, p, g)| format!("{p}:{g}"));
+        }
+        spec.unit.show(value)
     }
 
-    /// The per-wheel values: one row per value, one column per wheel.
-    fn wheels_ui(&mut self, ui: &mut Ui, specs: &[(Spec, Range)]) {
-        egui::Grid::new("setup-wheels").num_columns(5).spacing([12.0, 8.0]).striped(true).show(ui, |ui| {
-            ui.label("");
-            for wheel in ["Left front", "Right front", "Left rear", "Right rear"] {
-                ui.strong(wheel);
-            }
-            ui.end_row();
-            let mut labels: Vec<&'static str> = Vec::new();
-            for (spec, _) in specs {
-                if !labels.contains(&spec.label) {
-                    labels.push(spec.label);
-                }
-            }
-            for label in labels {
-                let first = specs.iter().find(|(s, _)| s.label == label).map(|(s, r)| range_text(s, r));
-                ui.label(label).on_hover_text(first.unwrap_or_default());
-                for w in 0..WHEELS.len() {
-                    if let Some((spec, range)) = specs.iter().find(|(s, _)| s.label == label && s.index == Some(w)) {
-                        self.with_slot(spec, |slot| value_ui(ui, spec, *range, slot, Widget::Field));
-                    }
-                }
-                ui.end_row();
-            }
-        });
-    }
-
-    fn differentials_ui(&mut self, ui: &mut Ui, specs: &[(Spec, Range)]) {
-        self.rows_ui(ui, specs);
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.strong("Diff map");
-            for (m, name) in ["Centre", "Centre (left-foot brake)", "Front", "Rear"].into_iter().enumerate() {
-                ui.selectable_value(&mut self.map, m, name);
-            }
-        });
-        let map: Vec<&(Spec, Range)> = specs.iter().filter(|(s, _)| s.index == Some(self.map)).collect();
-        egui::Grid::new("setup-map").num_columns(MAP_POINTS + 1).spacing([6.0, 6.0]).show(ui, |ui| {
-            ui.label("point");
-            for n in 0..MAP_POINTS {
-                ui.label(format!("{}", n * 10));
-            }
-            ui.end_row();
-            for (row, suffix) in
-                map.chunks(MAP_POINTS).zip(["throttle lock", "brake lock", "speed", "speed lock factor"])
-            {
-                let unit = row[0].0.unit.suffix;
-                ui.label(format!("{suffix} ({unit})")).on_hover_text(range_text(&row[0].0, &row[0].1));
-                for (spec, range) in row.iter().map(|p| (&p.0, p.1)) {
-                    self.with_slot(spec, |slot| value_ui(ui, spec, range, slot, Widget::Cell));
-                }
-                ui.end_row();
-            }
-        });
-    }
-
-    fn gears_ui(&mut self, ui: &mut Ui, car: &CarSetup, specs: &[(Spec, Range)]) {
-        let Some((_, range)) = specs.first() else {
-            return;
+    /// What the board shows of the editor's values.
+    fn view(&self, specs: &[(Spec, Range)], lines: &[values::Change], differs: board::Differs) -> board::View {
+        let d = &self.draft;
+        let range = |key: &str| specs.iter().find(|(s, _)| s.key == key).map(|(_, r)| *r);
+        let unit = |key: &str| specs.iter().find(|(s, _)| s.key == key).map(|(s, _)| s.unit);
+        let pair = |key: &str, f: f32, r: f32| {
+            unit(key).map_or_else(String::new, |u| {
+                let n = |v: f32| format!("{:.*}", u.decimals, v * u.scale);
+                format!("{} · {} {}", n(f), n(r), u.suffix)
+            })
         };
-        let ratio =
-            |id: u32| car.gears.iter().find(|g| g.0 == id).map_or(format!("{id}"), |&(_, p, g)| format!("{p}:{g}"));
-        ui.horizontal(|ui| {
-            ui.label("Drop gear").on_hover_text("the car options' drop gear rows; the gearbox ratios are fixed");
-            let gear = &mut self.draft.drop_gear;
-            ui.add_enabled_ui(range.max > range.min, |ui| {
-                let ids: Vec<u32> = (range.min as u32..=range.max as u32).collect();
-                combo(ui, "drop-gear", None, gear, &ids, ratio);
-            });
+        let fraction = |key: &str, v: f32| {
+            range(key).map_or(0.5, |r| if r.max > r.min { (v - r.min) / (r.max - r.min) } else { 0.5 })
+        };
+        let brake_front = d.front_brake_pressure / (d.front_brake_pressure + d.rear_brake_pressure);
+        let bars = d.front_roll_bar / (d.front_roll_bar + d.rear_roll_bar);
+        let torques = [d.center_diff_torque, d.front_diff_torque, d.rear_diff_torque];
+        let keys = ["CenterDiffMaxTorque", "FrontDiffMaxTorque", "RearDiffMaxTorque"];
+        let most = keys.iter().filter_map(|k| range(k)).map(|r| r.max).fold(0.0_f32, f32::max);
+        let diffs = std::array::from_fn(|n| {
+            range(keys[n]).filter(|r| r.max > 0.0).map(|_| if most > 0.0 { torques[n] / most } else { 0.0 })
         });
+        let gear =
+            specs.iter().find(|(s, _)| s.bounds == Bounds::DropGear).map(|(s, _)| self.show(s, d.drop_gear as f32));
+        let c = &d.corners;
+        let summaries = Area::ALL.map(|area| match area {
+            Area::Tyres => pair("Pressure", c[0].tyre_pressure, c[2].tyre_pressure),
+            Area::Springs => pair("SpringStiffness", c[0].spring_stiffness, c[2].spring_stiffness),
+            Area::Dampers => pair("DampingBump", c[0].bump, c[2].bump),
+            Area::Geometry => pair("WheelAxisInclination", c[0].axis_inclination, c[2].axis_inclination),
+            Area::RollBars => format!("{:.0}° lock · {:.0} % front", d.steering_lock.to_degrees(), 100.0 * bars),
+            Area::Brakes => format!("{:.0} % front", 100.0 * brake_front),
+            Area::Differentials => format!("{:.0} · {:.0} · {:.0} Nm", torques[0], torques[1], torques[2]),
+            Area::Gears => gear.clone().map_or_else(String::new, |g| format!("drop gear {g}")),
+        });
+        let counts = Area::ALL.map(|area| lines.iter().filter(|l| l.area == area).count());
+        board::View {
+            summaries,
+            counts,
+            roll_bars: [
+                fraction("FrontRollBarStiffness", d.front_roll_bar),
+                fraction("RearRollBarStiffness", d.rear_roll_bar),
+            ],
+            diffs,
+            brake_front,
+            differs,
+        }
     }
+}
 
-    /// Calls `f` with the setup's slot of `spec`.
-    fn with_slot(&mut self, spec: &Spec, f: impl FnOnce(Slot<'_>)) {
-        let mut f = Some(f);
-        self.draft.visit(&mut |s, slot| {
-            if s.group == spec.group && s.key == spec.key {
-                if let Some(f) = f.take() {
-                    f(slot);
-                }
-            }
-        });
-    }
+/// What the page compares the editor's values with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Compare {
+    Default,
+    Opened,
+    Saved(String),
 }
 
 /// The longest setup name in bytes: the file name (`<surface>_<name>.lsp`) stays well inside a file system's 255.
@@ -718,62 +811,6 @@ fn valid_name(name: &str) -> Result<&str, String> {
         return Err(format!("a name of 1 to {MAX_NAME} bytes, without / \\ : * ? \" < > |"));
     }
     Ok(name)
-}
-
-fn range_text(spec: &Spec, range: &Range) -> String {
-    let unit = spec.unit;
-    let wrap = if range.wrap { ", wraps" } else { "" };
-    format!("{} to {}, step {}{wrap}", unit.show(range.min), unit.show(range.max), unit.show(range.step))
-}
-
-/// How a value is edited.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Widget {
-    Slider,
-    Field,
-    /// A field without the unit or the step buttons (the diff map's table).
-    Cell,
-}
-
-/// A value's widget: − and + take the game's steps; the field or slider takes the steps toward what is set.
-fn value_ui(ui: &mut Ui, spec: &Spec, range: Range, slot: Slot<'_>, widget: Widget) {
-    let Slot::Real(value) = slot else {
-        return;
-    };
-    let unit = spec.unit;
-    let fixed = range.max <= range.min || range.step <= 0.0;
-    ui.horizontal(|ui| {
-        ui.add_enabled_ui(!fixed, |ui| {
-            if widget != Widget::Cell && ui.small_button("−").clicked() {
-                *value = range.down(*value);
-            }
-            let mut shown = *value * unit.scale;
-            let bounds = range.min * unit.scale..=range.max * unit.scale;
-            let suffix = if widget == Widget::Cell { String::new() } else { format!(" {}", unit.suffix) };
-            let response = if widget == Widget::Slider {
-                ui.add(
-                    egui::Slider::new(&mut shown, bounds)
-                        .fixed_decimals(unit.decimals)
-                        .suffix(suffix)
-                        .clamping(egui::SliderClamping::Never),
-                )
-            } else {
-                ui.add(
-                    DragValue::new(&mut shown)
-                        .range(bounds)
-                        .speed(range.step * unit.scale)
-                        .fixed_decimals(unit.decimals)
-                        .suffix(suffix),
-                )
-            };
-            if response.changed() {
-                *value = range.toward(*value, shown / unit.scale);
-            }
-            if widget != Widget::Cell && ui.small_button("+").clicked() {
-                *value = range.up(*value);
-            }
-        });
-    });
 }
 
 #[cfg(test)]
