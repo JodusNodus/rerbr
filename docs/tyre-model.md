@@ -31,8 +31,8 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 - Side force peaks at a slip angle of 7.0°; measured road and racing tyres peak at 5.6-8.5°, NGP's at 9.5°.
 - Fully sideways at 30° the brush keeps 0.89 of its peak and NGP 0.87. Road tyres keep 0.73-0.83 and racing tyres
   0.80-0.90, so both sit at the forgiving end.
-- Braking at a slip ratio of 0.25 while cornering at 4°, the brush keeps 0.29 of its side force, inside the measured
-  0.29-0.34; NGP keeps 0.46.
+- Braking at a slip ratio of 0.25 while cornering at 4°, the brush keeps 0.29 of its side force, above the measured
+  0.23-0.27; NGP keeps 0.46.
 
 ![Braking and driving force against slip ratio on dry tarmac](images/tyre-model/long-tarmac.svg)
 
@@ -45,9 +45,9 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 
 - The brush builds side force more slowly the deeper the loose layer under it, and keeps it: 90 % of its maximum at
   8° on NGP's shallow gravel (9 mm, the figure), 11° on its deep gravel (17.5 mm) and 14° from 25 mm, with no fall
-  to 40°. Measured: a WRC car on a stage road about 12°, a tyre on deep loose pea stone 14.5° (at walking pace, level
-  to 38°), a car on a firm gravel lot 3°. NGP's reaches 90 % at 7.5° on every depth and falls to 0.91 of its peak by
-  40°.
+  to 40°. Measured: a WRC car on a stage road about 12°, a tyre on loose pea stone over asphalt 14.5° (at walking pace,
+  level to 38°), a car on a firm gravel lot 3°. NGP's reaches 90 % at 7.5° on every depth and falls to 0.91 of its peak
+  by 40°.
 - At 10° the brush has 0.95 of its maximum on 9 mm, 0.88 on 17.5 mm and 0.80 from 25 mm (the pea stone tyre 0.80),
   NGP's 0.98.
 
@@ -65,7 +65,7 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 
 ![Braking and driving force against slip ratio on snow](images/tyre-model/long-snow.svg)
 
-- Side force levels off from about 12° and does not fall; its maximum is at 14.75° (NGP 11°), measured on packed snow
-  9-18°.
+- Side force levels off from about 12° and does not fall; its maximum is at 14.75° (NGP 11°), measured on packed and
+  loose snow 9-18°.
 - The berm on snow is small: locked, the wheel brakes 1.05 times its rolling peak. Studded tyres on compacted snow
-  lock at 1.02-1.08 times their braking at 15-20 % slip; the Fiesta Rally2 under the brush 1.05-1.09.
+  lock at 1.02-1.10 times their braking at 15-20 % slip; the Fiesta Rally2 under the brush 1.05-1.09.
