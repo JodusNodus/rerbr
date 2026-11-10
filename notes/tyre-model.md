@@ -568,11 +568,14 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   throttle: Golf 38° and back on line never (99° spin before; ngp 17°), Fiesta 39° and back in 4.8 s (54°, never),
   Escort still spins. Limit 82.8/78.7/76.4 km/h, 1.29/1.25/1.19 g (ngp Fiesta 1.27, Golf 1.20). Map 41 600 s: Fiesta
   304.00 s, Golf 314.09.
-- The stiffness level against the library (2026-11-10, Cα/Fz per rad at about 4 kN): road 205/60R15 at 2.2 bar 11.5
-  (Pacejka 2nd ed. Table A3.1, pKy1 -14.95, pKy2 2.130: MF, computed); NGP 17.6; semi-slick R888R 21.9-22.3
-  (measured, below); brush 22.9; A005 slick 27.2 (Richardson, fig); a racing radial 34 (MF/model); FS slicks 31-39 at
-  0.6-1.1 kN. No rally tarmac tyre is measured: the brush sits on the one track tyre at NGP's grip, between a road
-  tyre and a slick.
+- The stiffness level against the library (2026-11-10, `build/tyre-night/sources`; Cα/Fz per rad at 4 kN, MF sets
+  computed from PKY1, PKY2, PKY4 at their nominal pressure): 1970s 78-series road tyres 9.2-12.6 (Gent & Walter Figs
+  8.68, 8.70, measured, 0.16-0.22 per deg); 205/60R15 11.5 (Pacejka 2nd ed. Table A3.1) and 13.3 (`tno-205-60r15`);
+  225/50R18 20.4 (`continental-225-50r18`); 255/55R20 22.2 (`mf61-example`; 23.1 / 20.9 at 2 / 6 kN); semi-slick
+  R888R 195/50R16 21.9-22.3 (`megaride-2024`, measured); A005 slick 27.2 (`chalmers-richardson-2017` Fig 54); a
+  racing radial 34 (MF/model); FS slicks 31-39 at 0.6-1.1 kN. NGP 17.6, brush 22.9. The stiffness rises as the
+  profile falls: the brush is at a modern 50-series road tyre and the semi-slick, NGP between a 60-series and a
+  50-series road tyre. No rally tarmac tyre is measured; an 18 in 40-series one may be stiffer still.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
