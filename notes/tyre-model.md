@@ -1579,7 +1579,9 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   1.32 g (1.25 / 1.30 / 1.38 through 32 / 64 / 100 km/h), experimental-brush 1.42 (1.33 / 1.37 / 1.47); the Fiesta
   Rally2's flat r40 circle 1.28 / 1.33 g. So on tarmac the game brakes 5-15 % over the real p95 and its flat circle
   is 8-12 % under the real lateral p95 at 30-90 km/h (cambers and cuts in the real one): no case to move the tarmac
-  level either way.
+  level either way. The real lateral p95 falls with speed (1.45 at 60-90 km/h, 1.28 at 120-150) where the files'
+  downforce would raise the limit by about a fifth: the drivers' margin in fast corners or less downforce, not
+  separable here.
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:
