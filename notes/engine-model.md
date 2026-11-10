@@ -534,6 +534,23 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   full-throttle upshift costs what the real ones do (0.08-0.09 s of drive against 0.05-0.11; ngp 0.02-0.05), and the
   deceleration with the throttle lifted in gear is 30 % under the real cars' with the file's drag (the measured drag
   area is twice the file's; a prototype of the devices' drag is on `aero/wing-drag`, not merged).
+- The 2017-21 World Rally Cars' pedal map and their response to the pedal, from the same telemetry (2026-11-11;
+  `harness/rally_wot.py pedal`: the accelerometer's g between the same gear's with the throttle shut and open, 3rd to
+  5th gear above 4000 rpm, the throttle steady for 0.6 s; the channel taken as the pedal). The share of that range at 10
+  to 90 % throttle: 0.14 / 0.23 / 0.26 / 0.49 / 0.51 / 0.65 / 0.79 / 0.95 / 0.90 on nine tarmac rallies (± 0.06-0.11,
+  the last ± 0.01) and 0.06 / 0.13 / 0.34 / 0.49 / 0.72 / 0.84 / 0.97 / 1.00 / 0.96 on eight gravel ones (± 0.03-0.10),
+  alike in each of the three gears. The i20 Coupe WRC 2020's 1:1 plate gives 0.08 / 0.23 / 0.49 / 0.71 / 0.86 / 0.96 /
+  0.99 / 0.99 / 1.00 at 6000 rpm (the same ratio of its steady torques at a fixed speed; at 30 % 0.59 at 4500 rpm and
+  0.44 at 7000): the real cars' share at 10-20 %, 0.12-0.35 over it at 30-60 %. NGP's blend is the pedal itself,
+  0.01-0.27 under the real cars at 40-80 %. No pedal table is fitted yet. After a lift (the throttle from under 10 % to
+  90 % within 0.55 s, 3rd gear up, mostly lifts under 1 s above 5500 rpm; scratch) the real g is at that gear's and
+  rpm's steady full-throttle level by the sample after the one that first shows 90 % (0.78-0.87 then 1.0-1.1 of it on
+  gravel, 293 openings; 1.2 then 0.9 on tarmac, 60), and 839 throttle closings put the accelerometer within 0.1 s of the
+  pedal channels. The model on the same ramp at 6000 rpm makes 0.75-0.79 of its steady torque as the pedal passes 90 %,
+  0.84-0.89 0.1 s later and 0.95 after 0.2-0.3 s (lifts of 0.3-1.5 s); with the anti-lag off 0.50-0.59, 0.60-0.71 and
+  0.85-0.92 after 0.3 s. The anti-lag holds; its last 15 % may come 0.1 s late, inside the 10 Hz data's resolution. Not
+  resolved by the data: as the anti-lag ends at 10 % pedal the model's torque steps to 0.73 of full for 0.05 s on the
+  manifold it kept at 1.8 bar, where the real cars read 0.13-0.16 of their steady g at 21-34 % throttle.
 - The 2017-21 World Rally Cars' idle and start line, from the same telemetry (2026-11-10, scratch; the drives begin at
   the start and end at the stop line). At rest in neutral with the throttle shut (España 2021, Deutschland 2019, Finland
   2021: 24-49k samples each) the engines turn at 2250-2750 rpm on 71-79 % of the samples (median 2470-2500) and at
