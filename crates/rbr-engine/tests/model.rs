@@ -367,8 +367,8 @@ fn it_is_deterministic_and_finite_for_any_input() {
         let mut m = m.clone();
         let odd = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -1.0, -1e30, 1e30, f32::MIN_POSITIVE];
         for &v in &odd {
-            for field in 0..9 {
-                let mut i: Inputs = inputs(400.0, 0.5);
+            for field in 0..11 {
+                let mut i: Inputs = inputs(400.0, 0.5, [100.0; 4], 100.0);
                 match field {
                     0 => i.dt = v,
                     1 => i.speed = v,
@@ -378,6 +378,8 @@ fn it_is_deterministic_and_finite_for_any_input() {
                     5 => i.temperature = v,
                     6 => i.friction = v,
                     7 => i.engine_temperature = v,
+                    8 => i.wheels = [v; 4],
+                    9 => i.body_speed = v,
                     _ => {
                         i.dt = v;
                         i.speed = v;
@@ -390,11 +392,31 @@ fn it_is_deterministic_and_finite_for_any_input() {
                 }
                 let t = m.telemetry();
                 assert!(t.manifold_pressure.is_finite() && t.boost_pressure.is_finite() && t.turbo_speed.is_finite());
-                let t = m.torque(&inputs(400.0, 0.5));
+                let t = m.torque(&inputs(400.0, 0.5, [100.0; 4], 100.0));
                 assert!(t.is_finite(), "{name}: after field {field} = {v}: {t}");
             }
         }
         let _ = Realistic::new(&Params::default()).calibration();
+    }
+}
+
+/// A car rolling backwards at speed is not standing, whatever the sign: the start mode reads the wheels'
+/// magnitude. At 0.7 of the limit the standing engine is on the start limiter (its cuts run) and the reversing
+/// one is free (no cuts).
+#[test]
+fn reversed_wheels_are_not_a_standing_start() {
+    for (name, _, m) in models().iter().filter(|(_, _, m)| m.spec().class.anti_lag) {
+        let omega = 0.7 * m.spec().rpm_limit / RPM;
+        let mut s = m.clone();
+        for _ in 0..20 {
+            s.torque(&inputs(omega, 1.0, [0.0; 4], 0.0));
+        }
+        assert!(s.telemetry().cut > 0.0, "{name}: standing cuts");
+        let mut s = m.clone();
+        for _ in 0..20 {
+            s.torque(&inputs(omega, 1.0, [-50.0; 4], 0.0));
+        }
+        assert_eq!(s.telemetry().cut, 0.0, "{name}: reversed");
     }
 }
 

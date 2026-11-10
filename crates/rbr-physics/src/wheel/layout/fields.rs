@@ -97,6 +97,8 @@ pub const STRUT_DIR: u32 = 0x9A0;
 pub const WALK_OUT: u32 = 0xC10;
 /// `this+0xa50`: the spin rate `M3AFB0` scales the vectors by (`RBR_E51_WheelA.cpp:247-250`).
 pub const SPIN_RATE: u32 = 0xA50;
+/// `this+0xaa0`: the scale the FMOD block multiplies the spin rate by for the wheel's rim speed (|ωR|, m/s).
+pub const SPEED_SCALE: u32 = 0xAA0;
 /// `this+0x9e0`: the wheel axle, the first row of the wheel's rotation (`M3AFB0` scales it by the spin, `Copy100` by the hub offset).
 pub const AXLE: u32 = 0x9E0;
 

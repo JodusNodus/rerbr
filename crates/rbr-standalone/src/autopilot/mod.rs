@@ -48,7 +48,7 @@ use rbr_hybrid::pure;
 use rbr_recording::hud::HUD2_BYTES;
 use rbr_recording::pose::{self, CarPose};
 use rbr_recording::sound::FmodBlock;
-use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHEEL_BYTES};
+use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, STEP_SECONDS, WHEELS, WHEEL_BYTES};
 
 mod drive;
 mod limit;
@@ -101,6 +101,8 @@ const UP_LIMIT: f32 = 0.93;
 /// again. NGP's clutch help closes the clutch from about idle on (`notes/ngp.md`, "Controls under NGP"), and an engine
 /// with little torque there (Escort Mk II, 208 R2) cannot pull the car from it.
 const LAUNCH: f32 = 0.6;
+/// The revs have peaked when they set no new maximum for this long (s) while standing at full throttle.
+const PEAK_TIME: f32 = 0.1;
 const BOG: f32 = 0.2;
 const BOG_SPEED: f32 = 3.0;
 const BOG_STEPS: u32 = 100;
@@ -454,6 +456,9 @@ pub struct Driver<'a> {
     limit: f32,
     /// Steps bogged in first in a row (`BOG`).
     bogged: u32,
+    /// The highest engine speed seen while standing at full throttle (rad/s) and the step it was set on.
+    launch_peak: f32,
+    launch_peak_at: u32,
     /// The heavy props near the driveline, by `from`.
     props: Vec<Placed>,
     /// A rally school lesson's stop: the driveline distance the brakes stay off before and the one to stop at, m.
@@ -737,6 +742,8 @@ impl<'a> Driver<'a> {
             per: 1,
             limit: f32::INFINITY,
             bogged: 0,
+            launch_peak: 0.0,
+            launch_peak_at: 0,
             props: Vec::new(),
             stop: None,
             against: false,
@@ -1334,7 +1341,20 @@ impl<'a> Driver<'a> {
                 let ngp = self.per > 1;
                 let bogged = ngp && sense.gear == FIRST && speed < BOG_SPEED && sense.engine < BOG * self.limit;
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
-                let launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
+                // A standing start (neutral, not moving yet): the revs have peaked when they pass `LAUNCH`
+                // of the limit, or set no new maximum for `PEAK_TIME` while standing at full throttle
+                // (a start limiter below `LAUNCH`, experimental); first is selected then.
+                let standing = ngp && sense.gear == NEUTRAL && speed < BOG_SPEED;
+                if standing && self.pulling && sense.engine > self.launch_peak {
+                    (self.launch_peak, self.launch_peak_at) = (sense.engine, step);
+                } else if !standing {
+                    (self.launch_peak, self.launch_peak_at) = (0.0, step);
+                }
+                let peaked = sense.engine > LAUNCH * self.limit
+                    || (standing
+                        && self.launch_peak > 0.0
+                        && step >= self.launch_peak_at + self.steps((PEAK_TIME / STEP_SECONDS) as u32));
+                let launch = !ngp || speed > BOG_SPEED || peaked;
                 let up = if self.flat_out { UP_LIMIT * self.limit } else { SHIFT_UP.min(UP_LIMIT * self.limit) };
                 // Flat out on an NGP car with the torque curve: the slip controller replaces the traction cap below,
                 // and the thrust crossover the rev-point shift (`start`).

@@ -142,6 +142,10 @@ pub struct Step {
     pub friction: f64,
     pub stalled: bool,
     pub t_oil: f64,
+    /// The wheels' rim speeds (|ωR|), m/s, and the car's speed along its forward direction, m/s; the start mode's
+    /// signals.
+    pub wheels: [f64; 4],
+    pub body: f64,
     /// The rev limiter acts (off only for the calibration's engine, whose table runs to the limit).
     pub limiter: bool,
 }
@@ -159,6 +163,9 @@ impl Step {
             t_a: T_REF,
             friction: 0.0,
             stalled: false,
+            // A fixed-speed run holds its speed with the wheels turning and the body moving, so no start mode.
+            wheels: [100.0; 4],
+            body: 100.0,
             limiter: true,
             t_oil: friction::T_OIL_REF,
         }
@@ -179,6 +186,8 @@ impl Step {
             friction: finite(i.friction, 0.0).clamp(-1e4, 1e4),
             stalled: i.stalled,
             t_oil: f64::from(i.engine_temperature),
+            wheels: i.wheels.map(|w| finite(w, 0.0).clamp(-1000.0, 1000.0)),
+            body: finite(i.body_speed, 0.0).clamp(-1000.0, 1000.0),
             limiter: true,
         }
     }
@@ -284,6 +293,19 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         Some(_) if spec.class.anti_lag => s.anti_lag.step(pedal, rpm, spec.rpm_limit, dt),
         _ => false,
     };
+    // Start mode: full pedal with every wheel stopped and the body nearly at rest, on anti-lag classes only. It
+    // ends the instant a wheel turns, the body moves or the pedal falls (all in the condition, every step); the
+    // turbo's state carries over.
+    let start = match spec.turbo {
+        Some(_) if spec.class.anti_lag => {
+            pedal > ecu::START_PEDAL
+                && x.body.abs() <= ecu::START_BODY
+                && x.wheels.iter().all(|&w| w.abs() <= ecu::START_RIM)
+        }
+        _ => false,
+    };
+    // The limiter's cap: the start speed in start mode, the rev limit otherwise.
+    let cap = if start { ecu::START_RPM * spec.rpm_limit } else { spec.rpm_limit };
     if !ecu_idle || pedal >= ecu::PEDAL_CLOSED || rpm < spec.rpm_idle + ecu::DFCO_OFF {
         s.dfco = false;
     } else if rpm > spec.rpm_idle + ecu::DFCO_ON {
@@ -327,7 +349,12 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         s.idle_i = 0.0;
         spec.idle_air + s.overrun
     };
-    let retard = if anti_lag {
+    let limiter = if x.limiter { ((rpm - cap) / ecu::LIMITER_RANGE + 1.0).clamp(0.0, 1.0) } else { 0.0 };
+    // The start limiter retards the fired events while it cuts (Link's launch trim is gated on rpm the same way);
+    // below its band the engine fires at MBT, so it still climbs to the start speed. A retard everywhere in start
+    // mode would leave no torque to climb with (`spark_efficiency` is 0 at `ALS_RETARD`).
+    let start_cut = start && limiter > 0.0;
+    let retard = if anti_lag || start_cut {
         ecu::ALS_RETARD
     } else if ecu_idle {
         let trim = if idle_loop { spec.spark_kp * error } else { 0.0 };
@@ -337,8 +364,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         0.0
     };
     // While the loop runs at idle the base retard holds the reserve; elsewhere (off idle) the spark is at MBT.
-    let retard = if anti_lag || idle_loop { retard } else { 0.0 };
-    let limiter = if x.limiter { ((rpm - spec.rpm_limit) / ecu::LIMITER_RANGE + 1.0).clamp(0.0, 1.0) } else { 0.0 };
+    let retard = if anti_lag || start_cut || idle_loop { retard } else { 0.0 };
     let mut cut = limiter;
     if x.shift_cut {
         cut = cut.max(1.0 - spec.torque_cut);
@@ -346,7 +372,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     if anti_lag {
         cut = cut.max(ecu::ALS_CUT);
     }
-    let fuel = !(dfco || x.stalled || (x.limiter && rpm > spec.rpm_limit + ecu::LIMITER_FUEL));
+    let fuel = !(dfco || x.stalled || (x.limiter && rpm > cap + ecu::LIMITER_FUEL));
 
     // Throttle: the plate at the pedal (a cable, or a race DBW's 1:1 translation); a progressive linkage on cable
     // throttles per cylinder.
@@ -422,7 +448,7 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     if let Some(t) = &spec.turbo {
         // The cylinders that fire leave the line's temperature, and the work their retard takes partly heats the
         // exhaust; those that do not leave the air motored, and their fuel partly burns in the manifold (anti-lag,
-        // the cuts).
+        // the cuts, the start limiter's).
         let burnt = if combustion { fired } else { 0.0 };
         let heat = |power: f64| if w_exhaust > 0.0 { power / (w_exhaust * crate::gas::CP_EXHAUST) } else { 0.0 };
         let retard_heat = heat(burnt * (1.0 - spark) * spec.k.at(rpm) * w_cyl * turbo::RETARD_EXHAUST);

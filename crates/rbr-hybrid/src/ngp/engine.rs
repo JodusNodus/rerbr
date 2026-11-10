@@ -1,5 +1,6 @@
 //! NGP's starter and engine wrapper.
 
+use rbr_physics::car_body::store::CarStore;
 use rbr_physics::engine_driveline::layout::with_worker;
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::engine::{self as ngp_engine, EngineDamage, TorqueIn};
@@ -145,9 +146,13 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         let history = i.modes & ngp_engine::IDLE_MODEL_MODE != 0 && i.has_idle_table;
         let stalled = history && ring_shift(&mut ctx.mem, ring, speed, i.stall_speed) && i.stall_speed > speed;
         let m = &ctx.mem;
+        // The start mode's signals: every wheel's rim speed and the body's speed, read only (NGP's physics is
+        // untouched by them).
         let input = rbr_engine::Inputs {
             dt,
             speed,
+            wheels: m.wheel_speeds(car),
+            body_speed: m.forward_speed(car),
             throttle: i.throttle,
             shift_cut: i.shift_cooldown > 0.0,
             damage: ngp_engine::damage_factor(&i.damage),
