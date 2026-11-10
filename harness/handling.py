@@ -3,7 +3,7 @@
   python3 -I -B harness/handling.py --out DIR [--physics ngp,experimental,experimental-brush]
       [--cars Ford_Fiesta_Rally2_ngp7,VW_Golf_II_GTI_16V_GrpA_ngp6,Ford_Escort_Mk_II_RS_Grp4_ngp6]
       [--only ramp,step,sine,lift,brake,power] [--speed 80] [--sine-speeds 80,110] [--jobs 6] [--analyse-only]
-      [--keep-traces] [--stage track-85_M] [--material 37] [--bin PATH]
+      [--keep-traces] [--stage track-85_M] [--material 37] [--bin PATH] [--extra "FLAGS"]
 
 Each run is `rbr-standalone --autopilot --boot --flat-pad 37 --manoeuvre KIND,KMH,AMP[,EXTRA] --trace-speed`: the
 stage's ground is replaced by a flat, level pad of one material (a 2 km square at the start's height, no scenery
@@ -259,7 +259,7 @@ def execute(args, job):
         cmd = [args.bin, "--autopilot", base + ".out", "--boot", "--stage", args.stage, "--rsf-car", car,
                "--physics", physics, "--steps", "120000", "--flat-pad", str(args.material), "--manoeuvre", man,
                "--trace-speed", base + ".trace", "--data", os.environ["RBR_DATA"],
-               "--ngp-physics", os.environ["RBR_NGP_PHYSICS"]]
+               "--ngp-physics", os.environ["RBR_NGP_PHYSICS"], *args.extra.split()]
         with open(base + ".log", "w") as f:
             code = subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT).returncode
         if os.path.exists(base + ".out"):
@@ -311,6 +311,8 @@ def main():
     parser.add_argument("--keep-traces", action="store_true")
     parser.add_argument("--fresh", action="store_true", help="run every case again (else DIR/NAME.json of an earlier run stands)")
     parser.add_argument("--bin", default=BIN, help="the rbr-standalone to run (a variant's build)")
+    parser.add_argument("--extra", default="", help="more rbr-standalone flags (space-separated), such as "
+                        "--extra=\"--tyre-tuning slide-grip=0.9\" (a variant: give it its own --out)")
     args = parser.parse_args()
     os.makedirs(args.out, exist_ok=True)
     only = args.only.split(",")
