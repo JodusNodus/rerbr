@@ -92,7 +92,8 @@ const SHIFT_UP: f32 = 680.0;
 const SHIFT_DOWN: f32 = 380.0;
 const SHIFT_GAP: u32 = 150;
 /// Upshifts come at `UP_LIMIT` of the car's rev limit when that is below `SHIFT_UP` (NGP cars: the Evo IX's limiter is
-/// at 6200 rpm; 1.02's 7800 and 8500 rpm leave `SHIFT_UP`).
+/// at 6200 rpm; 1.02's 7800 and 8500 rpm leave `SHIFT_UP`), and always there flat out, where `SHIFT_UP` would shift
+/// a high-revving engine short of its power (the M3's 300 bhp is at 8200 rpm).
 const UP_LIMIT: f32 = 0.93;
 /// Under NGP a standing start revs to `LAUNCH` of the rev limit in neutral before it selects first, and a car bogged in
 /// first (engine under `BOG` of the limit below `BOG_SPEED` m/s for `BOG_STEPS` steps) goes back to neutral to do it
@@ -1236,7 +1237,7 @@ impl<'a> Driver<'a> {
                 let bogged = ngp && sense.gear == FIRST && speed < BOG_SPEED && sense.engine < BOG * self.limit;
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
                 let launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
-                let up = SHIFT_UP.min(UP_LIMIT * self.limit);
+                let up = if self.flat_out { UP_LIMIT * self.limit } else { SHIFT_UP.min(UP_LIMIT * self.limit) };
                 if ngp && spinning && speed > BOG_SPEED {
                     throttle = throttle.min(TRACTION);
                 }
