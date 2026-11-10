@@ -1044,7 +1044,7 @@ impl<'a> Driver<'a> {
     pub(crate) fn start_curve(live: &Live) -> Option<start::Curve> {
         let mem = live.mem();
         let car = mem.u32(pure::CAR_PTR);
-        let knots = crate::physics::torque_knots(mem, live.ngp_base(), car);
+        let knots = crate::physics::torque_knots(mem, live.ngp_base(), car)?;
         if knots.len() < 2 {
             return None;
         }

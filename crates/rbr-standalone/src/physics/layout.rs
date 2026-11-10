@@ -111,22 +111,24 @@ const NGP_ENGINE_MODES: u32 = 0x1017_67d4;
 
 /// NGP's engine torque curve knots (engine speed rad/s, torque as a fraction of the max) for the car at `car`, as
 /// NGP's car init left them: the first knot and those with a positive value, skipping a speed within 1e-9 of the
-/// last, in rad/s once the init converted them (its mode word's bit 1 at NGP's `base`, as `engine_params` reads it).
-pub fn torque_knots(mem: &Mem, base: u32, car: u32) -> Vec<(f32, f32)> {
+/// last. `None` unless the init converted the knots' rpm to rad/s (its mode word's bit 1 at NGP's `base`, as
+/// `engine_params` reads it): only idle-table cars run the knot curve at full throttle, and only those drive the
+/// flat-out start's thrust crossover; a 1.02 car keeps the controller's rev-point shifts.
+pub fn torque_knots(mem: &Mem, base: u32, car: u32) -> Option<Vec<(f32, f32)>> {
     use rbr_physics::ngp::layout::car_init::Data;
-    let rad_s = |rpm: f32| rpm * std::f32::consts::PI / 30.0;
-    let converted = mem.u32(Data { base }.at(NGP_ENGINE_MODES)) & 2 != 0;
+    if mem.u32(Data { base }.at(NGP_ENGINE_MODES)) & 2 == 0 {
+        return None;
+    }
     let def = mem.u32(car + CAR_ENGINE_DEF);
     let mut knots: Vec<(f32, f32)> = Vec::new();
     for k in 0..16 {
         let at = def + DEF_TORQUE_KNOTS + 0x20 * k;
         let (x, y) = (mem.f32(at), mem.f32(at + 0x10));
-        let x = if converted { x } else { rad_s(x) };
         if (k == 0 || y > 0.0) && knots.last().is_none_or(|&(last, _)| (f64::from(x) - f64::from(last)).abs() >= 1e-9) {
             knots.push((x, y));
         }
     }
-    knots
+    Some(knots)
 }
 
 /// The car's engine as NGP's car init left it, in physical units, for `car`.
