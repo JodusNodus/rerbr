@@ -338,6 +338,7 @@ impl TyreStore for Mem {
             tread_capacity: self.f32s(def + 0x11C),
             carcass_capacity: self.f32s(def + 0x128),
             tread_conductivity: self.f32(def + 0x118),
+            carcass_conductivity: self.f32(def + 0x124),
             pressure_axis: self.read_table(def + 0x134, 4),
             stiffness_factor_by_pressure: self.read_table(def + 0x144, 4),
             contact_pressure_axis: self.read_table(def + 0x154, 6),

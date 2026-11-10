@@ -329,6 +329,8 @@ pub struct Setup {
     pub carcass_capacity: [f32; 2],
     /// `+0x118`: the tread's thermal conductivity, W/(m·K).
     pub tread_conductivity: f32,
+    /// `+0x124`: the conductivity between the carcass and the tread (`relax`'s), W/(m·K).
+    pub carcass_conductivity: f32,
     /// The tables, by their entries: `+0x134` (4, the air pressure axis, Pa), `+0x144` (4, `StfFct_P`, the stiffness
     /// factor), `+0x154` (6, the contact pressure axis, Pa), `+0x16c` (6, the contact conductance factor), `+0x184`
     /// (8, the temperature axis, K), `+0x1a4` (8, `RubMyFct_T`), `+0x1c4` (8, `RubWear_T`), `+0x1e4` (8, the load

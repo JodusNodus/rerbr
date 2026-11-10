@@ -7,6 +7,7 @@ pub mod calibrate;
 pub mod car;
 pub mod fit;
 pub mod loose;
+pub mod thermal;
 pub mod tuning;
 
 use rbr_physics::tyre::layout::{Setup, Table};
