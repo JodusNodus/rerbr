@@ -95,12 +95,15 @@ fn restrictor(group: &str, year: u32) -> Option<f64> {
 
 /// A turbo's compression ratio by its group (`notes/engine-model.md`): Group B 7.0 (the road ur-quattro's 2.1 7.0, the
 /// 205 T16's 6.5, the S1 E2's and the Delta S4's 7.5), Group A and N/R4 on their road engines 8.5 (YB, EJ20 and
-/// Integrale 8.0, 3S-GTE 8.5–8.8, 4G63 8.5–9.0, EJ257 8.2, 4B11T 9.0), the rest 9.5 (the race engines' unpublished,
-/// their road bases' 10.0–10.5).
+/// Integrale 8.0, 3S-GTE 8.5–8.8, 4G63 8.5–9.0, EJ257 8.2, 4B11T 9.0), R5/Rally2 and WRC 1.6 their rules' maximum,
+/// 10.5 and 12.5 (FIA 261 and 255A; guess: direct-injection race engines built to the cap, their own unpublished),
+/// the rest 9.5 (the race engines' unpublished, their road bases' 10.0–10.5).
 fn compression(group: &str) -> f64 {
     match group {
         "Group B" => 7.0,
         "Group A7" | "Group A8" | "Group N4" | "Group R4" => 8.5,
+        "Group R5" | "Rally 2" => 10.5,
+        "WRC 1.6" => 12.5,
         _ => 9.5,
     }
 }
@@ -259,9 +262,10 @@ mod tests {
         assert!(!c.anti_lag);
         let r_c = |group: &str, turbo: bool| classify(&car("x", group, 1990), turbo).compression;
         assert_eq!(
-            (r_c("Group B", true), r_c("Group A8", true), r_c("Group N4", true), r_c("Rally 2", true)),
+            (r_c("Group B", true), r_c("Group A8", true), r_c("Group N4", true), r_c("Rally 4", true)),
             (7.0, 8.5, 8.5, 9.5)
         );
+        assert_eq!((r_c("Rally 2", true), r_c("Group R5", true), r_c("WRC 1.6", true)), (10.5, 10.5, 12.5));
         assert_eq!(r_c("Group A8", false), 11.0);
         assert_eq!(classify(&car("Renault_Clio_III_R3_ngp6", "Group R3", 2007), false).actuation, Actuation::Dbw);
     }

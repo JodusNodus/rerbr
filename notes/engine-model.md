@@ -52,7 +52,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   1.04 s. R1–R3 turbos and RGT keep 2.5 bar (their articles not read; neither installed car is over the ceiling).
 - WRC boost cap 2.5 bar abs from 2011 [FIA 255A]; 4.0 bar before (guess: forum reports of 3–4 bar [NASIOC WRC],
   [passionford], both unreachable at the 2026-11 audit).
-- Compression ratio: NA 11 (guess); a turbo's by group (`compression`). Group B 7.0: road ur-quattro 2.1 10V 7.0
+- Compression ratio: NA 11 (guess); a turbo's by group (`compression`). R5/Rally2 10.5 and WRC 1.6 12.5, their rules'
+  maximum (FIA 261, 255A; a user decision 2026-11-10, the engines' own unpublished): Fiesta Rally2 part-load and
+  spool keys move 1-4 %, K/K_max 1.16 → 1.13 (the earlier trial below). Group B 7.0: road ur-quattro 2.1 10V 7.0
   [audiurquattro], [auto-data], road Sport quattro 8.0 and 205 T16 6.5 [ultimatespecs], Delta S4 Stradale 7.5
   [ultimatecarpage], S1 E2 7.5 [tech-racingcars S1]. Group A and N/R4 8.5, their road engines': Cosworth YB 8.0
   [FordWiki Escort], Integrale Evo2 8.0 [ultimatecarpage], Delta HF 4WD Group N 8.0 [tech-racingcars Delta N], 4G63T
