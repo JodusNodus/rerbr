@@ -40,21 +40,21 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Rally2 boost 2.5 bar abs with the FIA pop-off valve [FIA 261] ("The maximum boost pressure is 2.5 barA"). Rally3
   and Rally4 have a restrictor (31 and 30 mm) and no boost limit [FIA 260] art. 304, Group N a 33 mm restrictor and
   none [FIA 254] (read 2026-11-10): a class without a rule has no cap, and the calibration's bound for it is 3.5 bar
-  (`PI_CAP`, guess; no installed car reaches it). At 2.5 before, a guess that bound: every installed turbo's K over
-  the fuel–air cycle's (from twice idle up), where its boost is held, before → now: Fiesta Rally4 up to 1.24 →
-  0.98–1.00 (boost 3.27 bar), Fiesta Rally3 0.98–1.01 (2.67), Clio Rally3 1.01–1.06 (3.12), Impreza N14 N4
-  1.07–1.16 → 1.02–1.07 (2.83), Evo IX N4 1.03–1.11 → 0.98–1.02 (2.85), Evo X R4 1.11–1.23 → 1.04–1.10 (3.03).
-  Unchanged, a rule holding them: R5 and Rally2 at 2.5 bar 1.10–1.23, WRC 1.6 at 2.5 bar 1.17–1.26, WRC 2.0 2006 at
-  their restrictor 1.06–1.13; Group A 0.84–1.01, the Audi 1.01–1.08, Fiesta R2 0.96–0.98, Alpine RGT 0.99–1.00.
-  So what is left over the ceiling sits only where a real rule limits the air. WOT torque as before (the identity),
-  scorecard 60/92 with no row moved. Fiesta Rally4: closed → WOT to 90 % at 4000 rpm 0.93 → 1.16 s, WOT again after
-  a 1 s lift at 4500 rpm with anti-lag 0.10 → 0.30 s (its 1.2 bar aim is further from the WOT boost), without 0.95 →
-  1.04 s. R1–R3 turbos and RGT keep 2.5 bar (their articles not read; neither installed car is over the ceiling).
+  (`PI_CAP`, guess; no installed car reaches it). Every installed turbo's K over
+  the fuel–air cycle's (from twice idle up), where its boost is held: Fiesta Rally4 0.98–1.00 (boost 3.27 bar),
+  Fiesta Rally3 0.98–1.01 (2.67), Clio Rally3 1.01–1.06 (3.12), Impreza N14 N4 1.02–1.07 (2.83), Evo IX N4 0.98–1.02
+  (2.85), Evo X R4 1.04–1.10 (3.03). Unchanged, a rule holding them: R5 and Rally2 at 2.5 bar 1.10–1.23, WRC 1.6 at
+  2.5 bar 1.17–1.26, WRC 2.0 2006 at their restrictor 1.06–1.13; Group A 0.84–1.01, the Audi 1.01–1.08, Fiesta R2
+  0.96–0.98, Alpine RGT 0.99–1.00. So what is left over the ceiling sits only where a real rule limits the air. WOT
+  torque as before (the identity), scorecard 60/92 with no row moved. Fiesta Rally4: closed → WOT to 90 % at
+  4000 rpm 1.16 s, WOT again after a 1 s lift at 4500 rpm with anti-lag 0.30 s (its 1.2 bar aim is further from the
+  WOT boost), without 1.04 s. R1–R3 turbos and RGT keep 2.5 bar (their articles not read; neither installed car is
+  over the ceiling).
 - WRC boost cap 2.5 bar abs from 2011 [FIA 255A]; 4.0 bar before (guess: forum reports of 3–4 bar [NASIOC WRC],
   [passionford], both unreachable at the 2026-11 audit).
 - Compression ratio: NA 11 (guess); a turbo's by group (`compression`). R5/Rally2 10.5 and WRC 1.6 12.5, their rules'
   maximum (FIA 261, 255A; a user decision 2026-11-10, the engines' own unpublished): Fiesta Rally2 part-load and
-  spool keys move 1-4 %, K/K_max 1.16 → 1.13 (the earlier trial below). Group B 7.0: road ur-quattro 2.1 10V 7.0
+  spool keys move 1-4 %, K/K_max 1.13. Group B 7.0: road ur-quattro 2.1 10V 7.0
   [audiurquattro], [auto-data], road Sport quattro 8.0 and 205 T16 6.5 [ultimatespecs], Delta S4 Stradale 7.5
   [ultimatecarpage], S1 E2 7.5 [tech-racingcars S1]. Group A and N/R4 8.5, their road engines': Cosworth YB 8.0
   [FordWiki Escort], Integrale Evo2 8.0 [ultimatecarpage], Delta HF 4WD Group N 8.0 [tech-racingcars Delta N], 4G63T
@@ -147,7 +147,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 
 - Sandoval–Heywood FMEP, App. B [Sandoval]: DOHC buckets (Table 3), the default bearing ratios [ESA.NET], ring tension
   and roughness ratios 1, auxiliaries eq. 14, 8.32 + 1.86e-3·N + 7.45e-7·N² kPa (refitted to SI engines; Patton's
-  diesel-fitted 6.23 + 5.22e-3·N − 1.79e-7·N² was here before: +3.4 kPa at 4000 rpm, +34 at 8000). The worked
+  diesel-fitted form was here before). The worked
   example is reproduced within 4 % (test). Against its data the paper's model runs about 15 kPa over at every speed
   (fig. 8, 3.0 L V6). Its reference oil is a 10W-30 at 10.6 cSt and 90 °C; ours is a 10W-40 (about 18 cSt) with φ 1
   at 363 K, which leaves the model's level as published.
@@ -200,12 +200,12 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   (spark) (guess: no published gains [Yildiz]). Spark P-only (inferred: a spark integrator fights the air loop).
 - The loop runs with a closed pedal below idle + 800 rpm and integrates below idle + 100 rpm; above, a positive
   integral only bleeds to 0 (inferred: no wind-down while the overrun air decays, and no wind-up from a clutch's bite
-  held over idle: before, the Fiesta Rally2 pulled away at a closed pedal crept at 1262–1397 rpm, idle 1200, now 1205).
+  held over idle: the Fiesta Rally2 pulled away at a closed pedal crept at 1205 rpm (was 1262–1397, idle 1200).
   Tested: after 3 s at 80 % of idle, 10 s at idle + 150 rpm brings the idle air under its feed-forward.
 - Over idle the loop closes the air down to a floor, the air that holds 0.1·p_a at that speed (sized as the overrun
   air), not to 0 (road engines' lowest fired loads 9.2–34 kPa [EPA]; race ECUs hold a throttle aim minimum on overrun
-  [MoTeC FK8R]; 0.1 is ours, under every sample's idle need). Before, the manifold fell to 4.5–8 kPa at idle + 50 to
-  + 700 rpm with the fuel on; now 12.6–13.1 kPa at the lowest (Scorecard). A blip's fall back within 50 rpm of idle
+  [MoTeC FK8R]; 0.1 is ours, under every sample's idle need). The manifold holds 12.6–13.1 kPa at the lowest (was
+  4.5–8; Scorecard). A blip's fall back within 50 rpm of idle
   in neutral is the same within 0.15 s.
 - Idle air ceiling: the plate's area at 10 % position, every ECU car [HPA 138] (Haltech's DBW idle maximum starts at
   about 10 %); [Link idle] idles at 3.5 %. Anti-stall: the ceiling's reach above the feed-forward is whole down to
@@ -291,7 +291,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   low rpm: tables weaker than physics), K stays. NA cars unchanged. Tested: steady WOT ≤ table + 0.1 % everywhere,
   = table within 0.5 % at every knot not held.
 - Held, 250 rpm steps (with the residual gas): turbo sample 500–1250 rpm (worst 9 % short); R5, Rally2 and WRC
-  2014–2020 250–1250 (8.5–16 %); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1250 (27 %; 250–1500 before the retarget fix); Alpine
+  2014–2020 250–1250 (8.5–16 %); Xsara WRC 2006 250–1250 (20 %); Focus WRC 2006 250–1250 (27 %); Alpine
   A110 RGT 1750 (12 %); Fiesta Rally4 2500 (2.8 %), 208 Rally4 2250 (1.5 %), Fiesta R2 2250 (2.0 %), Delta HF 2750
   (0.4 %). No other car is held.
 - The wastegate port is 3 nozzles (inferred: 1 could not hold the target with the smaller turbine, 8 gave a limit cycle).
@@ -299,9 +299,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   ½Jω² (measured). Kept at 15 000.
 - Shaft inertia 1.7e-5 kg·m², a measured passenger-car rotor with a 52 mm compressor [Perge 2017] (a 2.0 L engine's
   2.72e-5 [Chung 2016]; [Chalmers]' T45 1.16e-5 and [GT1548] 5.5e-6 for smaller engines). With 1e-5 the samples
-  spooled at 2000 rpm in 0.46–0.53 s (below), against [Chalmers]' 0.62–1.02 s at 2100–2400 rpm; now 0.64–0.74 s.
-  On a lift at 5000 rpm without anti-lag the turbo sample kept 0.09 bar of boost after 0.5 s with that rotor (0.19
-  with its own, below).
+  spooled at 2000 rpm in 0.46–0.53 s, against [Chalmers]' 0.62–1.02 s at 2100–2400 rpm; now 0.64–0.74 s.
 - The rotor by size (`turbo::rotor`, 2026-11-10): the 1.7e-5 rotor at ω* 15 000 is the reference, for a design
   flow of 0.15 kg/s at Π 2 (guess: flow ∝ D², [Garrett] 60 mm GT2860RS sold for 250–360 hp, 82 mm GT3582R for
   400–600 hp; its
@@ -311,18 +309,17 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   The bearing losses are the reference's at the same share of the design speed (guess), so the steady state, K and
   the turbine's nozzle do not depend on the size. Before every car ran the reference rotor. Inertia kg·m² / design
   shaft rpm: turbo sample 1.41e-5 / 186 000, cable_turbo 2.55e-5 / 142 000, Fiesta Rally2 1.63e-5 / 171 000. Fixed
-  speed, closed → WOT to 90 % at 4000 rpm, s, before → now (peak shaft speed, 1000 rpm): Audi quattro A2 0.78 → 1.20
-  (186 → 122), Delta HF 0.93 → 0.83 (191 → 105), Celica ST185 0.86 → 1.02 (178 → 163), Focus WRC 2006 0.59 → 0.69
-  (169 → 202), Fiesta Rally2 0.59 → 0.66 (160 → 191), Fiesta Rally4 0.94 → 0.93 (147 → 213). WOT again after a 1 s
-  lift at 4500 rpm, anti-lag off: 0.53 → 0.69, 0.59 → 0.55, 0.60 → 0.69, 0.64 → 0.75, 0.71 → 0.79, 0.96 → 0.95; with
-  the class's anti-lag Celica 0.05, Focus 0.18 → 0.21, Rally2 0.10 → 0.11, Rally4 0.10 (`curves` example).
-  Scorecard 60/92 as before; spool rows 0.69 → 0.84 (turbo, 2000 rpm), 1.18 → 1.51 (cable_turbo, 3000), 0.75 → 0.93
-  (Rally2, 2000), band 0.54–1.60. On a lift at 5000 rpm the turbo sample keeps 0.19 bar after 0.5 s (0.09 before;
+  speed, closed → WOT to 90 % at 4000 rpm, s (peak shaft speed, 1000 rpm): Audi quattro A2 1.20 (122), Delta HF
+  0.83 (105), Celica ST185 1.02 (163), Focus WRC 2006 0.69 (202), Fiesta Rally2 0.66 (191), Fiesta Rally4 0.93
+  (213). WOT again after a 1 s lift at 4500 rpm, anti-lag off: 0.69, 0.55, 0.69, 0.75, 0.79, 0.95; with
+  the class's anti-lag Celica 0.05, Focus 0.21, Rally2 0.11, Rally4 0.10 (`curves` example).
+  Scorecard 60/92 as before; spool rows 0.84 (turbo, 2000 rpm), 1.51 (cable_turbo, 3000), 0.93
+  (Rally2, 2000), band 0.54–1.60. On a lift at 5000 rpm the turbo sample keeps 0.19 bar after 0.5 s (was 0.09;
   tested under 0.25). Sized on the volume behind a restrictor instead (the same mass is more volume) the cable_turbo
   row left the band at 1.71 s: not used. No era term: no data for 1980s wheels' flow per diameter or their mass.
   The whine's pitch follows the shaft (`live/picture.rs`), so it moves with ω* by car. RSF 524, plain autopilot,
-  `experimental`, before → now: Audi quattro A2 349.36 → 350.11 s, Fiesta Rally2 347.70 → 347.73, Fiesta Rally4
-  353.10 → 353.06 (`rally_gg.py run`).
+  `experimental`, now: Audi quattro A2 350.11 s, Fiesta Rally2 347.73, Fiesta Rally4
+  353.06 (`rally_gg.py run`).
 - Losses 0.002ω + 2.5e-6ω², our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed),
   power (W, ramps up linearly with speed)" [rF2 engine.ini]. Its `TurboStaticFrictionWatts=100`, which "prevents
   numerical problems at low spool speeds", is left out: a constant power is a torque without bound as the shaft
@@ -330,7 +327,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   3300–3500 rpm ([Guzzella] p. 50: at idle the speed "can fall below 10 000 rpm"; no measured idle speed found). At
   80 000 rpm the losses take 192 W (292 with the 100 W), between the two rigs' 95 W [Chung 2017] and about 350–500 W
   [Perge 2017] (oil 90 °C and 50–90 °C). The slow shaft at idle took the calibration's steady test longest, so it
-  stops at 10 rad/s of shaft speed per 0.25 s (1 before; results move about 1e-4, the idle shaft 80 rpm).
+  stops at 10 rad/s of shaft speed per 0.25 s (was 1; results move about 1e-4, the idle shaft 80 rpm).
 - Exhaust temperature affine in flow for the firings that burn, 520 °C at 0 and 950 °C rated, capped at 1150 °C
   (MoTeC's anti-lag limits; [MoTeC ALS] unreachable at the audit), τ 0.3 s (guess). The 520 °C is the intercept of a
   line through EPA's four road turbos' 849 fired points (940 °C at the most flow, rms 85 K; turbine inlet against
@@ -340,8 +337,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   EPA's Ford 1.6 and 2.7 retarded 27–44° at their lightest loads, 1000–1750 rpm, ran 70–142 K over their neighbours
   near MBT, 0.23–0.63 of that work; [Guzzella] eq. 2.153: k_e ≈ 0.5 of the heat the retard frees reaches the
   exhaust, the rest the cooling water, a first-law approximation). Before (700 °C at 0, the anti-lag term on the
-  retard, no motored temperature) the turbo samples idled at 1035 °C and ran 707 °C under the fuel cut; now 598–661
-  and 301. With 400 °C an older
+  retard, no motored temperature) the turbo samples idle at 598–661 °C and run 301 under the fuel cut (was 1035 / 707). With 400 °C an older
   model (no residual gas, before the retarget) gave the steady WOT boost two branches; 520 °C passes the path test.
   The shaft's spin-down after a lift without anti-lag (4500 rpm fixed, from WOT: stopped within 0.8 s) is set by the
   compressor's work and the losses, the same before and after; no measured spin-down was found.
@@ -367,7 +363,7 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   Bands and Ti guess (a limit cycle at narrower settings; none at 10 ms, every 250 rpm at 30/60/100 % pedal).
 - DBW turbo sample, WOT tip-in at a fixed speed, to 90 % / overshoot / settled within 2 %: 2500 0.44 s / 1.8 % /
   0.54 s, 3000 0.41 / 2.1 % / 0.79, 3500 0.40 / 2.2 % / 0.82, 4500 0.37 / 2.2 % / 0.83, 5000 0.34 / 2.4 % / 0.87,
-  6500 0.27 / 3.7 % / 1.10 (was 7 % and 17 % with a 0.5 s ring before the derivative). cable_turbo (spring): 3000
+  6500 0.27 / 3.7 % / 1.10 (was 7 % / 17 % before the derivative). cable_turbo (spring): 3000
   0.83 / 0.3 % / 1.07, 5000 0.27 / 3.1 % / 0.37, 6500 0.15 / 5.0 % / 0.26 (boost +0.3, +2.5, +3.4 kPa; the torque
   overshoots more than the boost as the opening gate lowers the exhaust pressure). Tested: the boost spikes at most
   0.1 bar at 3000, 5000 and 6500 rpm. In game (autopilot, Celica ST185, track-11_O, 600 s, experimental, anti-lag
@@ -382,22 +378,20 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Spool, the [Chalmers] case (GT-Power): at a fixed speed from the steady pedal for 5 bar BMEP to 90 % of the steady
   WOT torque, at 1000 rpm Volvo's 2.0 L four (its turbo not given) takes 0.54 s, their 1.5 L three with a T45
   (1.157e-5 kg·m²) 1.00 s, and 0.68 s at 0.050 kg·cm² (Table 17); 0.87–1.60 s at 1500–1800 rpm and 0.62–1.02 s at
-  2100–2400 on the same engines (Tables 15–16). The figures below are with the old 1e-5 rotor. Tested
-  0.4–1.2 s at the first 500 rpm step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000 (0.64 before the
-  retarget fix lowered its 2000 rpm target from 1.93 to 1.70 bar), cable_turbo 0.77 s at 3000 (with the residual gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
+  2100–2400 on the same engines (Tables 15–16). Tested with the old 1e-5 rotor, 0.4–1.2 s at the first 500 rpm
+  step with 1.5 bar steady WOT boost: turbo sample 0.45 s at 2000, cable_turbo 0.77 s at 3000 (with the residual
+  gas the turbo sample's 1500 rpm WOT boost fell under 1.5 bar). At 1000 rpm both make
   almost no boost, so 5 bar BMEP is already near WOT (0.05 and 0.01 s); tested ≤ 1.2 s only.
 - The retarget fix changed spool only where the target fell (1750–2250 rpm on the modern turbos; nothing at 1500 or
   from 2500 up, nothing on Group A). Same turbine, same steady WOT torque; the engine now needs less boost for it at
   one K, and the boost that 90 % of it needs comes sooner. WOT tip-in from closed to 90 % / settled within 2 %, and 5
-  bar BMEP to 90 %, before → after (s): Fiesta Rally2 1750 1.05/1.40/1.53 → 0.42/0.59/0.65, 2000 0.55/0.67/0.74 →
-  0.37/0.48/0.50, 2250 0.59/0.70/0.48 → 0.51/0.63/0.41 (target 2.09/2.06/2.03 → 1.63/1.76/1.88 bar); Fiesta WRC
-  2019 and i20 WRC 2020 1750 0.88/1.27/1.46 → 0.31/0.46/0.52, 2000 0.47/0.59/0.68 → 0.30/0.40–0.63/0.42; Polo R5
-  1750 0.60/0.85/0.98 → 0.39/0.56/0.63; turbo sample 2000 0.46/0.57/0.64 → 0.33/0.43/0.45; Focus WRC 2006 1500
-  0.62/2.13/1.55 → 0.68/2.38/1.79 (1500 no longer held, so it now reaches the table), 1750 0.67/0.86/1.03 →
-  0.55/0.71/0.86. Celica ST185, cable_turbo unchanged. Before, 1750 was twice as slow as 1500 and 2000 on the
-  Rally2 and WRCs (the inflated target); now tip-in falls smoothly with rpm. No public rally time-to-torque exists
-  to say which is closer to real; the road 1.6 THP holds 20 bar BMEP from 1750 rpm [SAE 2018-01-1423], so a slow
-  spot at 1750 has no support (inferred).
+  bar BMEP to 90 % (s): Fiesta Rally2 1750 0.42/0.59/0.65, 2000 0.37/0.48/0.50, 2250 0.51/0.63/0.41 (target
+  1.63/1.76/1.88 bar); Fiesta WRC 2019 and i20 WRC 2020 1750 0.31/0.46/0.52, 2000 0.30/0.40–0.63/0.42; Polo R5
+  1750 0.39/0.56/0.63; turbo sample 2000 0.33/0.43/0.45; Focus WRC 2006 1500 0.68/2.38/1.79 (1500 no longer held,
+  so it now reaches the table), 1750 0.55/0.71/0.86. Celica ST185, cable_turbo unchanged. Tip-in now falls smoothly
+  with rpm (before, 1750 was twice as slow as 1500 and 2000 on the Rally2 and WRCs: the inflated target). No public
+  rally time-to-torque exists to say which is closer to real; the road 1.6 THP holds 20 bar BMEP from 1750 rpm
+  [SAE 2018-01-1423], so a slow spot at 1750 has no support (inferred).
 
 ## Against measured engines
 
@@ -446,10 +440,10 @@ group and year; friction's growth from 2000 to 6000 rpm, the motored WOT frictio
 growth, WOT mechanical efficiency and WOT over idle air (NA: a motored turbo builds boost), the turbo shaft at idle
 (context). The Rally2 rows are the Fiesta Rally2 (`Ford_Fiesta_Rally2_ngp7`).
 
-Rounds, each on its own bands: 36 → 47/77 with the friction by rpm², the idle floor, the exhaust heat, the rotor and
-the restrictors (`a5ea4790` to `d40b242e`); then 47 → 47 with Sandoval's auxiliaries and the valves' pumping, 55/92
-with the new rows and the η_ig band on λ 0.88, 56/92 with an NA engine's K under the fuel–air cycle, 59/92 with a
-turbo's friction at Sandoval's scale, 59 with no static bearing loss, 60/92 with a turbo's compression ratio by group.
+Rounds, each on its own bands, from 36/77 (`a5ea4790`) to 60/92 now: the friction by rpm², the idle floor, the exhaust
+heat, the rotor and the restrictors, Sandoval's auxiliaries and the valves' pumping, the new rows and the η_ig band
+on λ 0.88, an NA engine's K under the fuel–air cycle, a turbo's friction at Sandoval's scale, no static bearing
+loss, a turbo's compression ratio by group.
 By system: braking 7/17, friction 8/14, part load 6/15, torque 4/6, idle 9/11, exhaust 6/9, turbo 5/5, class 15/15.
 
 ## In game
@@ -460,13 +454,12 @@ every gap is the engine's. Tools `run-stage-compare.sh`, `cmp2.py` and `run-stan
 the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
 brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
-- track-11_O (gravel) 600 s, four cars: exp 1.7–4.5 % sooner to split 2 (1.6–4.2 % on `b97695d86`; split 2 exp
-  Fiesta 435.66 → 434.90, Celica 437.82 → 436.42, Golf 447.14 → 446.00, Fiat 448.53 → 447.55 s).
-- track-41_M (tarmac): exp 1.4–3.8 % sooner to split 2 (was 1.6–3.7 %), finishes Fiesta 309.01 / 304.76, Celica
-  310.91 / 304.71, Golf 324.24 / 314.03, Fiat 323.35 / 315.10 s (exp on `b97695d86`: 304.57, 305.17, 314.57,
-  315.49). No stall: the Golf II GTI's full brake on the run-out, which stalled it on `b97695d86` (wheels locked at
-  16 m/s, the clutch-engaged speed tracking the engine 464 → 0 rad/s in 0.8 s; fixed by the relock rule, see Open),
-  now bottoms at 82 rad/s with the clutch open (NGP's Golf 89).
+- track-11_O (gravel) 600 s, four cars: exp 1.7–4.5 % sooner to split 2 (split 2 exp
+  Fiesta 434.90, Celica 436.42, Golf 446.00, Fiat 447.55 s).
+- track-41_M (tarmac): exp 1.4–3.8 % sooner to split 2, finishes Fiesta 309.01 / 304.76, Celica
+  310.91 / 304.71, Golf 324.24 / 314.03, Fiat 323.35 / 315.10 s. No stall: the Golf II GTI's full brake on the run-out
+  bottoms at 82 rad/s with the clutch open (NGP's Golf 89; was a stall with wheels locked at 16 m/s, engine
+  464 → 0 rad/s in 0.8 s, fixed by the relock rule, see Open).
 - Limiter: no experimental car over `RPMLimit` in gear beyond one whole-rad/s sample; over it only in the start
   burnout in neutral (Fiesta 0.5–0.6 s, +34 rpm; Celica 0.01 s, +6) and the Fiesta's drop into first.
 - Fiesta Rally2 0-100 km/h on the flat pad (`harness/pad_start.py`: `--stage pad-tarmac|pad-gravel --flat-out`,
@@ -475,8 +468,8 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   pad's tarmac figure replaces the slope-corrected 504 estimate. Through the manoeuvre approach (upshifts on rpm even
   on wheelspin, second gear at 0.7 s) the gravel pad gave 4.62 / 4.57.
 - The same on stages (`--flat-out`, full throttle throughout, no upshift on wheelspin): RSF 504 tarmac +6.7 % NGP
-  4.52 / exp 4.47 s (4.46 on `b97695d86`, 4.44 at `96c85981`; brush 4.33, 4.35 after its fix); track-64_E gravel
-  flat 4.66 / 4.67 (was 4.63); RSF 345 gravel −4 % 4.50 / 4.49 (was 4.44). Exp 0-60 on gravel is the slower part
+  4.52 / exp 4.47 s (brush 4.33, 4.35 after its fix); track-64_E gravel
+  flat 4.66 / 4.67; RSF 345 gravel −4 % 4.50 / 4.49. Exp 0-60 on gravel is the slower part
   (track-64 2.28 / 2.33 s, 345 2.28 / 2.29).
 - A launch control in the autopilot (hold, slip-held throttle, torque-crossing upshifts at 6386–6587 rpm against
   `SHIFT_UP` 6494; removed) was no faster: 504 4.59 / 4.48, track-64 4.63 / 4.62, 345 4.47 / 4.45 (on `96c85981`).
@@ -499,7 +492,7 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   direction (`tests/clutch_relock.rs`). Golf now idles 85-89 rad/s through the stop and 106 at a standstill. Shifts
   with a closed pedal (engine above the new gear's speed) now slip at the clutch's capacity instead of snapping: the
   Escort Mk II and Fiesta R2 reach 50 km/h 0.05 and 0.04 s sooner, the Rally2, Celica, Fiat and Golf the same to the
-  ms (Escort Mk II, locked braking, 26.6 → 28.9 m).
+  ms (Escort Mk II, locked braking, 28.9 m, was 26.6).
 - The clutch help's band is NGP's per car (the Golf 89.0-99.5 rad/s, set for NGP's 89 rad/s idle); our idle is
   `IdleRPM` (104.7), above the band's top, so the clutch is fully closed at our idle and a car braked to a stop on
   locked wheels with the clutch in gear closes it on them once the engine recovers (not exercised: the autopilot's
@@ -516,9 +509,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   4400 rpm, so η_v ran 0.95 → 1.17 → 1.25 with K still over; the retarget aiming at min(median, K_max) (boost up to
   the ceiling wherever free): the Rally2 then asked 2.05 bar at 2000 rpm, at its turbo's limit, and never reached
   90 % in 5 s from 5 bar BMEP (0.75 s before); restricted knots raised to the restrictor's full flow (the limit with
-  the run's residual gas, which the 0.95 margin left at 86–88 % of the choke): K there 1.16 → 1.10 at 91 %, the
-  restrictor's drop and a drive ratio near 2 taking the rest, K at the cap 1.18 → 1.20 and the turbo sample's spool
-  0.69 → 0.52 s (under Chalmers' 0.54).
+  the run's residual gas, which the 0.95 margin left at 86–88 % of the choke): K there 1.10 at 91 %, the
+  restrictor's drop and a drive ratio near 2 taking the rest, K at the cap 1.20 and the turbo sample's spool
+  0.52 s (under Chalmers' 0.54).
   Charge-side constants re-examined (2026-11-10, nothing changed): η_v 0.95 sits inside EPA's road DI turbos' 0.84–1.00
   on manifold density (Class, Air path); the intercooler 0.7 has no cited measurement (EPA's lab charge-air cooler holds
   the outlet near 38 °C, so no effectiveness; tuner pages give 0.6–0.9, not cited); the restrictor's C_D 0.95 has no
@@ -530,15 +523,15 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - Manifold volume: one throttle 0.8·V_d against [Guzzella]'s V6 at 2.1·V_d (measured τ about 2.5× ours), aftermarket
   race plenums for the 4G63 at 2.3–2.5·V_d [Magnus plenum], [Plazmaman plenum] and a design rule of 2–2.5× the
   cylinder volume per cylinder [IJERT plenum]; no rally engine's and no textbook figure found. Not changed.
-- Modern turbos idle at 16.3–17.5 kPa (Rally2, R5, WRC 2006–2020 on RSF; 20–22 before the friction followed rpm),
+- Modern turbos idle at 16.3–17.5 kPa (Rally2, R5, WRC 2006–2020 on RSF),
   under warm road idles of 22.3–28.5 kPa [EPA] and tuners' 27, 31 and 30–50 kPa [MOTOR], [Gears], [Tuning School];
   every RSF car 16.1–31.5 kPa, the NA ones 21.5–31.5 (`tests/rsf_cars.rs`). The turbo sample and the Fiesta Rally2
   make no torque at 16.0–16.2 kPa at 2500 rpm (road 18.5–27.2). Cause: the table's torque per bar of boost (K at
   4000 rpm 0.48 as an efficiency, road 0.32–0.39) over Sandoval's friction at low speed. EPA's road K is flat with
   load (Willans), so a part-load K under the WOT one has no support (proposed before, not done); race cams' overlap,
   which raises tuners' idles to 30–50 kPa, is not modelled. Not changed.
-- Closed pedal below idle at a fixed speed, N·m, before → after the anti-stall fade: turbo sample 168 → 51 at 500
-  rpm, 139 → 93 at 750, 110 at 1000; na 65 → 27 at 500; Fiesta Rally2 165 → 51, 136 → 91, 107; Fiesta R2 53 → 22 at
+- Closed pedal below idle at a fixed speed, N·m, after the anti-stall fade: turbo sample 51 at 500
+  rpm, 93 at 750, 110 at 1000; na 27 at 500; Fiesta Rally2 51, 91, 107; Fiesta R2 22 at
   500. Between idle − 300 and idle the whole ceiling stays.
 - Creep, measured with a test-only autopilot mode (not kept; Telemetry with the torque and idle air): 20 s in
   neutral, first gear, the clutch let out holding 80 % of its speed, 20 s at a closed pedal, then the brake ramped to
@@ -550,11 +543,10 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   brake 0.20 with at most 90 N·m (was 0.23 and 152; NGP 0.45), R2 0.18 and 46 (was 54), Golf 0.09 and 23; with no
   engine a car stops at about 0.19 from that speed (inferred from the ramp). Real creep is the idle speed in first
   (inferred: the load on the flat is about 10 N·m); no rally figure is published.
-- Fixed: the turbo sample's part-pedal bump at 1500 and dip at 1750 rpm. The cause was the boost target, not the
-  hold: K went 1.68e6 (held) → 1.61e6 (1500) → 1.32e6 (1750) → 1.59e6 (2500) because the targets between the held
-  1000 rpm knot and 2500 were inflated (retarget, above). Now 1.68 → 1.61 → 1.58e6, and the 20 % pedal line at
-  1000–2250 rpm reads 212 216 212 217 210 185 N·m (was 212 216 212 177 195 174). No blend of K across the boundary
-  was needed: the remaining step from the held median to the on-boost K (4–6 %) spreads over the 1500 point.
+- The turbo sample's part-pedal bump at 1500 and dip at 1750 rpm (fixed): the boost target, not the
+  hold: the targets between the held 1000 rpm knot and 2500 were inflated (retarget, above). K now 1.68 → 1.61 →
+  1.58e6, and the 20 % pedal line at 1000–2250 rpm reads 212 216 212 217 210 185 N·m. No blend of K across the
+  boundary was needed: the remaining step from the held median to the on-boost K (4–6 %) spreads over the 1500 point.
 - Low-rpm data. No Rally2/R5/WRC dyno sheet, homologation curve or onboard MAP log below 2000 rpm is public (searched
   M-Sport, Škoda, VW, Hyundai, forums; makers give peak figures only [Škoda Rally2 engine]). The nearest measured
   data is a road base engine: PSA EP6CDTX 1.6 THP (base of the 208 and C3 Rally2 engines), full-load BMEP about 8 bar
