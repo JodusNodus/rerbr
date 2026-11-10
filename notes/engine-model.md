@@ -99,21 +99,30 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 ## Throttle (`engine.rs`, `ecu.rs`)
 
 - Cable: lift = pedal, pedal^1.6 per cylinder (guess: progressive linkages), no lag.
-- DBW: plate aim = pedal, then the ETB, 30 ms first order and 40 ms full travel (guess; [Gorzelic] model the throttle
-  as a 40 ms first-order lag, "taken at 40 msec", an assumption). Race ECUs set the plate
-  from the pedal through a table: Link over pedal and rpm [Link e-throttle], Haltech [Haltech DBW]; Marelli's
-  SRG-48x drives a DBW motor [Marelli]; [MoTeC DBW] and [Life Racing] (M-Sport R5) were unreachable at the 2026-11
-  audit. Torque requests are road (ME7) and F1 [Bosch ME7], [F1 torque map]. The 1:1 start is ours (guess: neither
-  source shows a default). MoTeC M1 aims at a share of airflow through its throttle area table [HPA M1 DBW], which
-  opens the plate more than 1:1 at small openings (inferred). No rally map is public. HPA 138's 40 %
-  pedal → 30 % throttle (pedal^1.3, used before) is a Haltech street 350Z tuned to hold a steady speed [HPA 138]; with
-  it the DBW samples gave about half BeamNG's power at 10–20 % pedal.
+- DBW: plate aim = the pedal table (`ecu::dbw_plate`: the pedal itself to 20 %, two thirds of its slope from there to 60
+  % of the plate at 80 % of the pedal, the rest over the last fifth), then the ETB, 30 ms first order and 40 ms full
+  travel (guess; [Gorzelic] model the throttle as a 40 ms first-order lag, "taken at 40 msec", an assumption). Race ECUs
+  set the plate from the pedal through a table: Link over pedal and rpm [Link e-throttle], Haltech [Haltech DBW];
+  Marelli's SRG-48x drives a DBW motor [Marelli]; [MoTeC DBW] and [Life Racing] (M-Sport R5) were unreachable at the
+  2026-11 audit. Torque requests are road (ME7) and F1 [Bosch ME7], [F1 torque map]. The table is fitted through the
+  model's steady torque to the 2017-21 World Rally Cars' pedal map (Open; 2026-11-11, `engine/pedal-map`): the i20 Coupe
+  WRC 2020 gives 0.08 / 0.23 / 0.41 / 0.55 / 0.71 / 0.82 / 0.90 / 0.96 / 0.99 of the range from the shut to the open
+  throttle at 10 to 90 % pedal at 6000 rpm (0.34-0.40 / 0.50-0.56 / 0.65-0.72 / 0.77-0.82 / 0.86-0.91 at 30 to 70 % from
+  6500 down to 5500 rpm), the real cars 0.31 / 0.49 / 0.67 / 0.81 / 0.92 there (± 0.03-0.04, the tarmac and the gravel
+  rows pooled by their errors); the 1:1 plate before it (a guess: neither source shows a default) gave 0.49 / 0.71 /
+  0.86 / 0.96 / 0.99. No other class is measured. WOT, the closed pedal and the Scorecard do not move (its rows solve
+  for the pedal), nor the dump start (i20 3.23 / 4.03 s to 100 km/h on the tarmac and gravel pads, Fiesta Rally2 3.89 /
+  4.49; the slip starts within 0.01 s). MoTeC M1 aims at a share of airflow through its throttle area table [HPA M1
+  DBW], which opens the plate more than 1:1 at small openings (inferred). No rally map is public. HPA 138's 40 % pedal →
+  30 % throttle (pedal^1.3, used before) is a Haltech street 350Z tuned to hold a steady speed [HPA 138]; with it the
+  DBW samples gave about half BeamNG's power at 10–20 % pedal.
 - The idle air adds to the aim; anti-lag's kick overrides it (inferred; [MoTeC DBW] unreachable). Blips and shift cuts
   come through the interface's throttle (NGP's control unit).
-- Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle].
-  Most net power from IdleRPM up at pedal 10/20/30/50 %, % of the WOT's: na 9/23/43/80, turbo 8/20/47/87, old
-  5/18/43/91, cable_turbo 3/11/21/75 (BeamNG 2023, its power plot: 9/25/43/69). Torque, % of MaxTorque: na
-  40/53/65/86, turbo 27/47/63/91, old 26/46/63/93, cable_turbo 13/25/37/87 (BeamNG 49/65/76/91).
+- Part throttle follows WOT to an rpm then falls at roughly constant power, as BeamNG's model [BeamNG throttle]. Most
+  net power from IdleRPM up at pedal 10/20/30/50 %, % of the WOT's: na 10/23/35/61, turbo 8/21/41/73 (10/23/42/77 and
+  8/21/49/88 on the 1:1 plate), old 5/19/44/91, cable_turbo 3/11/22/75 (BeamNG 2023, its power plot: 9/25/43/69).
+  Torque, % of MaxTorque: na 40/53/61/75, turbo 27/49/58/79 (40/53/65/84 and 27/49/64/91 on the 1:1 plate), old
+  26/47/63/93, cable_turbo 12/25/38/88 (BeamNG 49/65/76/91).
 - BeamNG's curve is not measured: [Heusinkveld], whom the post credits, read the part-throttle curves of 12 sims (his
   video's chapter "How I Got Data and Disclaimer") and proposes a shape; no dyno data. Its lines are most likely before
   friction and engine braking, which its engine code applies apart [BeamNG friction] (inferred); its power plot's 0 %
@@ -542,15 +551,16 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   alike in each of the three gears. The i20 Coupe WRC 2020's 1:1 plate gives 0.08 / 0.23 / 0.49 / 0.71 / 0.86 / 0.96 /
   0.99 / 0.99 / 1.00 at 6000 rpm (the same ratio of its steady torques at a fixed speed; at 30 % 0.59 at 4500 rpm and
   0.44 at 7000): the real cars' share at 10-20 %, 0.12-0.35 over it at 30-60 %. NGP's blend is the pedal itself,
-  0.01-0.27 under the real cars at 40-80 %. No pedal table is fitted yet. After a lift (the throttle from under 10 % to
-  90 % within 0.55 s, 3rd gear up, mostly lifts under 1 s above 5500 rpm; scratch) the real g is at that gear's and
-  rpm's steady full-throttle level by the sample after the one that first shows 90 % (0.78-0.87 then 1.0-1.1 of it on
-  gravel, 293 openings; 1.2 then 0.9 on tarmac, 60), and 839 throttle closings put the accelerometer within 0.1 s of the
-  pedal channels. The model on the same ramp at 6000 rpm makes 0.75-0.79 of its steady torque as the pedal passes 90 %,
-  0.84-0.89 0.1 s later and 0.95 after 0.2-0.3 s (lifts of 0.3-1.5 s); with the anti-lag off 0.50-0.59, 0.60-0.71 and
-  0.85-0.92 after 0.3 s. The anti-lag holds; its last 15 % may come 0.1 s late, inside the 10 Hz data's resolution. Not
-  resolved by the data: as the anti-lag ends at 10 % pedal the model's torque steps to 0.73 of full for 0.05 s on the
-  manifold it kept at 1.8 bar, where the real cars read 0.13-0.16 of their steady g at 21-34 % throttle.
+  0.01-0.27 under the real cars at 40-80 %. The pedal table (Throttle) is fitted to these. After a lift (the throttle
+  from under 10 % to 90 % within 0.55 s, 3rd gear up, mostly lifts under 1 s above 5500 rpm; scratch) the real g is at
+  that gear's and rpm's steady full-throttle level by the sample after the one that first shows 90 % (0.78-0.87 then
+  1.0-1.1 of it on gravel, 293 openings; 1.2 then 0.9 on tarmac, 60), and 839 throttle closings put the accelerometer
+  within 0.1 s of the pedal channels. The model on the same ramp at 6000 rpm makes 0.75-0.79 of its steady torque as the
+  pedal passes 90 %, 0.84-0.89 0.1 s later and 0.95 after 0.2-0.3 s (lifts of 0.3-1.5 s; with the pedal table 0.66-0.71,
+  0.77-0.83 and 0.94-0.98 after 0.3 s); with the anti-lag off 0.50-0.59, 0.60-0.71 and 0.85-0.92 after 0.3 s. The
+  anti-lag holds; its last 15 % may come 0.1 s late, inside the 10 Hz data's resolution. Not resolved by the data: as
+  the anti-lag ends at 10 % pedal the model's torque steps to 0.73 of full for 0.05 s on the manifold it kept at 1.8
+  bar, where the real cars read 0.13-0.16 of their steady g at 21-34 % throttle.
 - The 2017-21 World Rally Cars' idle and start line, from the same telemetry (2026-11-10, scratch; the drives begin at
   the start and end at the stop line). At rest in neutral with the throttle shut (España 2021, Deutschland 2019, Finland
   2021: 24-49k samples each) the engines turn at 2250-2750 rpm on 71-79 % of the samples (median 2470-2500) and at
