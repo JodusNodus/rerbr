@@ -30,7 +30,7 @@ pub fn restart_engine_model() {
 }
 
 /// Whether a model is set on this thread.
-pub(super) fn is_set() -> bool {
+pub fn is_set() -> bool {
     MODEL.with_borrow(Option::is_some)
 }
 

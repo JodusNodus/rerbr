@@ -126,6 +126,10 @@ struct Gear<'a> {
 }
 
 impl GearHost for Gear<'_> {
+    fn clutch_holds_only_with_capacity(&self) -> bool {
+        crate::ngp::engine_model_is_set()
+    }
+
     fn car_signal_word(&mut self, car: u32) -> u32 {
         self.host.call(CAR_GET30, car, &[]).eax
     }
@@ -269,6 +273,10 @@ impl FreeWheelHost for Step1Calls<'_> {
 }
 
 impl GearHost for Step1Calls<'_> {
+    fn clutch_holds_only_with_capacity(&self) -> bool {
+        self.gear.clutch_holds_only_with_capacity()
+    }
+
     fn car_signal_word(&mut self, car: u32) -> u32 {
         self.gear.car_signal_word(car)
     }
