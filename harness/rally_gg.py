@@ -206,7 +206,8 @@ def unit_checks(rows):
 
 def lagged(rows, tau):
     """The rows with the speed through a first-order lag of `tau` s (at the 10 Hz rows), as a GPS-like speed channel
-    trails the car: the telemetry's speed is GPS-like (notes/tyre-model.md "Car-level grip in the same terms")."""
+    trails the car. The premise is wrong: the telemetry's speed is the drivetrain's (`rally_wot.py slip`), which
+    under braking runs ahead of the car's deceleration, not behind it."""
     if tau <= 0:
         return rows
     k = 1.0 - math.exp(-1.0 / RATE / tau)
