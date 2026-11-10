@@ -244,6 +244,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     let mut false_starts: Option<u8> = None;
     let mut ffb_settings: Option<rbr_gameplay::ffb::Settings> = None;
     let mut tyre_tuning = rbr_tyre::Tuning::MODEL;
+    let mut aero = None;
     while let Some(flag) = it.next() {
         if flag == "--help" || flag == "-h" {
             println!("{USAGE}");
@@ -391,6 +392,14 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--profile" => args.profile = Some(value.to_owned()),
             "--events-out" => args.events_out = Some(PathBuf::from(value)),
             "--trace-out" => args.trace_out = Some(PathBuf::from(value)),
+            "--aero" => {
+                aero = Some(
+                    *rbr_hybrid::ngp::AERO_NAMES
+                        .iter()
+                        .find(|n| **n == value)
+                        .ok_or(format!("--aero {value}: one of {}", rbr_hybrid::ngp::AERO_NAMES.join(", ")))?,
+                )
+            }
             "--tyre-tuning" => {
                 tyre_tuning = rbr_tyre::Tuning::parse(&value).map_err(|e| format!("--tyre-tuning: {e}"))?
             }
@@ -544,6 +553,12 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         return Err("--tyre-tuning needs --physics experimental-brush (it tunes the brush tyre)".into());
     }
     args.physics.tyre_tuning = tyre_tuning;
+    if let Some(aero) = aero {
+        if aero != "ngp" && args.physics.is_ngp() {
+            return Err("--aero needs --physics experimental or experimental-brush (NGP 7's physics stays NGP's)".into());
+        }
+        args.physics.aero = aero;
+    }
     if args.twin.is_some() && !args.physics.is_ngp() {
         return Err("--twin takes no --physics experimental (the twin would step the run's models again)".into());
     }

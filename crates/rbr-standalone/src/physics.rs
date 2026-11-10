@@ -153,7 +153,7 @@ pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car)
         name => rbr_tyre::model(name, &layout::tyre_wheels(playback), &profile.tyre_tuning)?,
     };
     rbr_hybrid::ngp::set_tyre_model(tyre);
-    Ok(())
+    rbr_hybrid::ngp::set_aero_model(if ngp { profile.aero } else { "ngp" })
 }
 
 /// `--replay-tyre`: the tyre model `name` (`rbr_tyre::model`'s names, untuned) fitted afresh to the car in `playback`, in place of

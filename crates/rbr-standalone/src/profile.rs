@@ -14,18 +14,21 @@ pub struct Profile {
     pub tyre: &'static str,
     /// `--tyre-tuning`: the brush's experimental tuning (`rbr_tyre::Tuning`), the model's in every profile.
     pub tyre_tuning: Tuning,
+    /// The aero model (`rbr_hybrid::ngp::set_aero_model`): `ngp` is NGP's downforce and drag, in every profile;
+    /// `--aero yaw` (a prototype) takes the front downforce and the drag with the car's sideslip.
+    pub aero: &'static str,
 }
 
 impl Profile {
     /// NGP 7's physics, as the original steps it: nothing replaced (the default).
-    pub const NGP: Profile = Profile { name: "ngp", engine: "ngp", tyre: "ngp", tyre_tuning: Tuning::MODEL };
+    pub const NGP: Profile = Profile { name: "ngp", engine: "ngp", tyre: "ngp", tyre_tuning: Tuning::MODEL, aero: "ngp" };
     /// ReRBR experimental physics, built on NGP 7: its engine model (released; the launcher's Settings > Physics).
     pub const EXPERIMENTAL: Profile =
-        Profile { name: "experimental", engine: "realistic", tyre: "ngp", tyre_tuning: Tuning::MODEL };
+        Profile { name: "experimental", engine: "realistic", tyre: "ngp", tyre_tuning: Tuning::MODEL, aero: "ngp" };
     /// The experimental physics with the brush tyre: in development, not released. Only `--physics
     /// experimental-brush` reaches it; the launcher does not offer it.
     pub const EXPERIMENTAL_BRUSH: Profile =
-        Profile { name: "experimental-brush", engine: "realistic", tyre: "brush", tyre_tuning: Tuning::MODEL };
+        Profile { name: "experimental-brush", engine: "realistic", tyre: "brush", tyre_tuning: Tuning::MODEL, aero: "ngp" };
     /// The profiles `--physics` takes.
     pub const ALL: [Profile; 3] = [Profile::NGP, Profile::EXPERIMENTAL, Profile::EXPERIMENTAL_BRUSH];
 
