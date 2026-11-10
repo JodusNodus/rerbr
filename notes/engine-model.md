@@ -541,7 +541,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   with the wheels half or more under the car's speed, the engine stays in gear while the drivetrain turns at 2000 rpm or
   more (1-8 % of the samples with the engine 15 % over it) and sits at 2050-2500 with the clutch slipping or out below
   that (47-94 %); the drivetrain is at 2000 rpm or more in 93 % of those samples (Finland, 1077 of 1159): the real idle
-  keeps braked wheels turning, as NGP's does at 1200 rpm (`tyre-model.md`, "The 17.5 mm gravel pad"). Not modelled: an
+  keeps braked wheels turning, as NGP's does at 1200 rpm (`tyre-model.md`, "The 17.5 mm gravel pad"). At a full pedal
+  from 187 km/h the i20's idle holds them at 22 km/h for only 0.6 s on the gravel pads under ngp (0.09 s under the
+  brush, none on tarmac) before they lock with the clutch help open and the engine at 1020-1040 rpm. Not modelled: an
   idle of that height belongs with a stage mode, a design decision. At the start line the engine waits at 6140-6570 rpm
   with the throttle open (the medians of six rallies of 2019-21, 80-126 starts each; quartiles 5800-7000), 0.72-0.77 of
   the i20's 8547 rpm limit, and dips to 4200-5000 rpm 0.3-0.6 s after the car moves (wheels at 26-28 km/h on tarmac,
