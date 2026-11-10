@@ -1534,6 +1534,18 @@ maximum. Quick with two binaries: about 2.5 to 4 minutes.
 
 ## Open
 
+- Nordschleife lighting (2026-11-10): `shader.wgsl::surrounding` checks only the 32 m cell's nearest probe and its
+  two neighbours in driveline order. The 256-probe cap spaces this 20.8 km circuit's probes 81.5 m apart; near
+  12.20 and 12.22 km the cell seed jumps between 145 and 150 and the chosen pairs share no probes. Fixed 16:58,
+  light cloud, Ultra GPU captures across 20 cm reproduce reflected-colour jumps up to 28/255 there, 76/255 near
+  the start/finish. Affects the car's surroundings, reflections and cabin window light; dry terrain's diffuse light
+  does not read these probes. Fix needs a continuous spatial blend across cells. Terrain/shadow changes matching
+  the reported symptom are not yet isolated; the sun stays fixed during a drive (`relight::Clock::atmosphere`).
+- Cloud shadows (2026-11-10): `cloud_volume.wgsl::fs_cloud_shadow` passes `h / thickness` with the layer base
+  already added to `h`; `volume_density` expects height from base to top in 0..1. Clear and light-cloud layers
+  (`renderer/cloud_volume.rs::layer`, 1200/1000 m and 1100/800 m) therefore sample only h > 1 and cast no cloud
+  shadows. Use `(h - base) / thickness`. This suppresses shadows at Nordschleife's saved light-cloud setting;
+  it does not explain moving patches of shade there.
 - Sky dome and cloud transforms and inputs (`SkyDome.vso` `c41`-`c66`); stage in-scatter not reproduced.
 - Cut-out backdrop strips with black transparent texels (Odry's panoramas) show a dark rim along the ridge: the
   alpha cut falls where the filtered colour is half black (462 `HOR_1`, `HOR_2`: transparent texels (0, 0, 0)). A fix
