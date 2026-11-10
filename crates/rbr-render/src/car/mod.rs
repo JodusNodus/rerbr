@@ -72,6 +72,11 @@ const UNBUILT_PREFIXES: [&str; 2] = ["k_", "d_"];
 /// either the interior lists (mode 0, the in-car views) or the exterior ones (rbr-recomp `notes/formats/sgc.md`, section 9).
 /// [`load`] reads the exterior set and [`load_interior`] the interior one, for the viewer's cockpit view.
 const INTERIOR_PREFIX: &str = "i_";
+/// The crew some RSF models hold as an interior part (the Fiesta Rally2, the i20 Rally2 and the i20 WRC 2020 and 2021,
+/// of the installed models): a static driver and co-driver, helmets and all, which the game draws with the rest of the
+/// interior. Ours: never drawn, as the game's own crew is not in the cockpit ([`crate::views::CarView::shows_crew`]);
+/// the cockpit eye sits behind `Cam_internal` and would look at the back of the driver's helmet.
+const BAKED_CREW: &str = "i_drivers";
 /// Wheels and spare wheels (and their straps) come in surface variants. The loader builds those whose name has
 /// its surface; only tarmac is drawn, as the surface choice is not traced.
 const SURFACE_PARTS: [&str; 2] = ["_wheel_", "sparewheel"];
@@ -119,6 +124,8 @@ pub enum Skip {
     Plane,
     /// An interior part the 1.02 loader does not build.
     LoaderDrops,
+    /// The model's own crew in the interior set ([`BAKED_CREW`]).
+    BakedCrew,
     /// The interior set, drawn only in the in-car views.
     Interior,
     /// Not in the interior set ([`load_interior`]): the outside views' parts.
@@ -141,6 +148,7 @@ impl Display for Skip {
             Skip::Overlay => "overlay layer (milestone 5)",
             Skip::Plane => "shadow plane (decal, milestone 5)",
             Skip::LoaderDrops => "not built by the 1.02 loader",
+            Skip::BakedCrew => "the model's own crew (no crew in the cockpit)",
             Skip::Switched => "switch part hidden at the start (Switch = true)",
             Skip::Interior => "interior set (in-car views only)",
             Skip::Exterior => "exterior set (outside views only)",
