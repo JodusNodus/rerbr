@@ -1763,16 +1763,18 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   (μs 0.865-0.90).
 - Wet tarmac against dry, the same road (2026-11-10; scratch: a drive's positions laid on another drive of the same
   road, the path speed at the first drive's apexes, squared for the lateral grip's ratio; under 50 / 50-80 / 80-120 km/h
-  apexes). Deutschland 2017's Friday: the morning showery and drying on hard and soft tyres, the afternoon in heavy rain
-  on full wets (wrc.com, eWRC, Toyota). Same drivers, afternoon over morning: Mittelmosel 0.96 / 0.86 / 0.90 (6 drivers,
-  139 apexes), Grafschaft 0.89 / 0.85 / 0.91 (4, 81); the path's braking p50 0.94 and 0.98 of the morning's. Against the
-  mostly dry 2018 afternoon pass of Mittelmosel, same drivers (3): 0.87 / 0.86 / 0.85, braking 0.87; the 2017 morning
-  against 2018 0.95. Second passes of dry stages (2018, 2019, 16 pairs): 0.94-1.15, median 1.03. So full wets in heavy
-  rain hold 0.8-0.9 of the dry road's cornering grip to 120 km/h, with little fall across the apex speeds: NGP's wet
-  tyre on its wet tarmac (0.85 of the dry tyre on dry, flat) and the brush's (0.85 / 0.78 at 50 / 100 km/h by its
-  formulas) are inside. Wadern-Weiskirchen's third pass, soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's
-  and braking 0.84; the game's wet has no such state. Cross-year pairs of different drivers scatter 5-10 % and were not
-  used.
+  apexes). Deutschland 2017's Friday: "changing grip levels during the morning stages and heavy rain in the afternoon",
+  the morning part dry and part damp, the afternoon "very wet and very muddy" (Toyota's release, read; full wets in the
+  afternoon by wrc.com's report, quoted by a search, not read). The winners' times: Mittelmosel 13:00.3 → 13:31.5,
+  Grafschaft 10:50.3 → 11:15.4, Wadern-Weiskirchen 5:12.2 → 5:54.9 (Wikipedia). Same drivers, afternoon over morning:
+  Mittelmosel 0.96 / 0.86 / 0.90 (6 drivers, 139 apexes), Grafschaft 0.89 / 0.85 / 0.91 (4, 81); the path's braking p50
+  0.94 and 0.98 of the morning's. Against the mostly dry 2018 afternoon pass of Mittelmosel, same drivers (3): 0.87 /
+  0.86 / 0.85, braking 0.87; the 2017 morning against 2018 0.95. Second passes of dry stages (2018, 2019, 16 pairs):
+  0.94-1.15, median 1.03. So wet-weather tyres on a wet and muddy road hold 0.8-0.9 of the dry road's cornering grip to
+  120 km/h, with little fall across the apex speeds: NGP's wet tyre on its wet tarmac (0.85 of the dry tyre on dry,
+  flat) and the brush's (0.85 / 0.78 at 50 / 100 km/h by its formulas) are inside. Wadern-Weiskirchen's third pass,
+  soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's and braking 0.84; the game's wet has no such state.
+  Cross-year pairs of different drivers scatter 5-10 % and were not used.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2
   found (searches; wrcwings.tech describes the devices without forces). Three indications that the real cars gain
   less grip with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls
