@@ -1179,6 +1179,10 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   night views pixel-identical. The gallery is regenerated with both lighting fixes.
   Reference-shot choices (2026-11-10): Pengonpohja's quattro fly-by uses Partly cloudy at 18:00 with wet roads and
   no rain; Comb I's Yaris fly-by uses Clear at 05:45, sun 5.8 degrees up, for warm side light and backlit dust.
+  Partly's 0.35 is a weather-noise threshold input, not measured sky coverage; choosing a preset also changes the
+  cloud field's seed and layer shape. Pengonpohja's approved view has cloud opacity above 0.5 on 97.5% of sampled
+  visible sky pixels (raw transmittance diagnostic, top 500 rows, 2026-11-10), median opacity 1; all those pixels
+  clip near white in the normal render. Coverage and sky contrast still need calibration for this view.
 - Merge (2026-10-27): the four names are no longer accepted (`--enhance sky` is an unknown name); `LIGHTING` is the one
   pipeline override (was `SKY_LUT`, `CONTACT`, `PROBES`; `SUN_MASK` stays apart, it needs the pass). The 2D cloud layer
   is gone (`clouded`, `cloud_shape`, `cloud_face_lit`, `clouds.wgsl`): the cloud field's noise, `cloud_turn` and
