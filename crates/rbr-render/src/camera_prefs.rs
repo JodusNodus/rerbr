@@ -17,9 +17,9 @@
 //! nudge is right, up and forward in metres in the car's frame, and for the fixed views optionally a tilt in degrees
 //! up, written only when it is not 0; the chase takes up (its height) and forward (nearer the car;
 //! [`crate::game_camera::Settings::nudged`]). `head = off` keeps the in-car view fixed to the car ([`crate::head`]);
-//! `driver = off`, `codriver = off` and `wheel = off` leave the driver's arms, the co-driver and the car's steering
-//! wheel out of the cockpit view ([`Cockpit`]). Each is on unless set off, from the pause menu's Camera page or the
-//! launcher's Graphics page.
+//! `driver = on` draws the driver's arms in the cockpit view, `codriver = off` and `wheel = off` leave the co-driver
+//! and the car's steering wheel out of it ([`Cockpit`]); a key is written when it is not the default, from the pause
+//! menu's Camera page or the launcher's Graphics page.
 //!
 //! The Camera page's fields of view go to the launcher's own keys instead, `fov` and `chase_fov` in `[launcher]`
 //! ([`Session::save_fov`]), the ones its Graphics page sets and the viewer takes as `--fov` and `--chase-fov`.
@@ -62,7 +62,7 @@ pub struct Cockpit {
 
 impl Default for Cockpit {
     fn default() -> Cockpit {
-        Cockpit { head: true, driver: true, codriver: true, wheel: true }
+        Cockpit { head: true, driver: false, codriver: true, wheel: true }
     }
 }
 
@@ -129,9 +129,10 @@ impl CameraPrefs {
         if let Some(view) = self.view {
             out.push_str(&format!("view = {}\n", view.name()));
         }
-        for (key, on) in self.cockpit.clone().keys() {
-            if !*on {
-                out.push_str(&format!("{key} = off\n"));
+        let mut defaults = Cockpit::default();
+        for ((key, on), (_, default)) in self.cockpit.clone().keys().into_iter().zip(defaults.keys()) {
+            if on != default {
+                out.push_str(&format!("{key} = {}\n", if *on { "on" } else { "off" }));
             }
         }
         for (car, nudges) in &self.cars {
@@ -251,7 +252,7 @@ mod tests {
 
     #[test]
     fn prefs_round_trip_and_keep_the_rest_of_the_file() {
-        let cockpit = Cockpit { head: false, codriver: false, ..Default::default() };
+        let cockpit = Cockpit { head: false, driver: true, codriver: false, ..Default::default() };
         let mut prefs = CameraPrefs { view: Some(CarView::Cockpit), cockpit, ..Default::default() };
         let mut nudges = prefs.nudges("COROLLA");
         nudges[CarView::Cockpit.index()] = nudge(0.0, 0.04, -0.1, -2.0);
@@ -264,7 +265,8 @@ mod tests {
         // The tilt is a 4th value only when it is not 0.
         assert_eq!(
             text,
-            "[camera]\nview = cockpit\nhead = off\ncodriver = off\nCOROLLA cockpit = 0 0.04 -0.1 -2\n\
+            "[camera]\nview = cockpit\nhead = off\ndriver = on\ncodriver = off\n\
+             COROLLA cockpit = 0 0.04 -0.1 -2\n\
              COROLLA bonnet = 0 0.02 0\nrsf-24 chase = 0 0.5 -1\n"
         );
         assert_eq!(CameraPrefs::parse(&text), prefs);
@@ -303,8 +305,8 @@ mod tests {
         let mut nudges = session.nudges();
         nudges[CarView::Cockpit.index()] = nudge(0.0, STEP, STEP, -TILT_STEP);
         nudges[CarView::Chase.index()] = nudge(0.0, CHASE_STEP, 0.0, 0.0);
-        assert_eq!(session.cockpit(), Cockpit::default(), "on unless set off");
-        let cockpit = Cockpit { driver: false, wheel: false, ..Default::default() };
+        assert_eq!(session.cockpit(), Cockpit::default());
+        let cockpit = Cockpit { driver: true, wheel: false, ..Default::default() };
         session.set(CarView::Cockpit, nudges, cockpit);
         session.save();
         session.chose(CarView::Bumper);

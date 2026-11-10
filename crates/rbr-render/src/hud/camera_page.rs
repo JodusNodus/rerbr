@@ -324,7 +324,7 @@ mod tests {
     fn each_view_has_its_rows_and_the_view_row_cycles() {
         let mut p = page(CarView::Cockpit);
         let names = |p: &CameraPage| rows(p.view).iter().map(|&r| value(p, r)).collect::<Vec<_>>();
-        let on = ["On"; 4];
+        let on = ["On", "Off", "On", "On"];
         assert_eq!(
             names(&p),
             [&["Cockpit", "50\u{b0}", "0 cm", "0 cm", "0 cm", "0\u{b0}"][..], &on, &["", ""]].concat()

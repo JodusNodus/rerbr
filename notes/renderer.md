@@ -1026,7 +1026,7 @@ down most: the eye is in or behind his head, and his helmet, HANS and body fille
 the Clio Rally3 and the GR Yaris) and the co-driver whole, in the cabin's light (the interior set's marks, 0.12 of the
 sky seen up through the windscreen, not baked: `--debug-view cabin-light` has the arms at the dash's level; at 0.4
 they glowed). The arms' sleeves are one dark colour there (`SLEEVE`; the team's 128 by 64 suit texture read as a blue
-smear from the upper arm down), the gloves keep their texture; each and the car's wheel on or off in `[camera]` (`driver`,
+smear from the upper arm down), the gloves keep their texture; the arms off by default, the co-driver and the car's wheel on, each chosen in `[camera]` (`driver`,
 `codriver`, `wheel`; the pause menu's Camera page, the launcher's Graphics page). A model's own crew in its interior
 set (`i_drivers`: the RSF Fiesta Rally2, i20 Rally2, i20 WRC 2020 and 2021) is not drawn (`car::BAKED_CREW`); behind
 `Cam_internal` the cockpit eye saw the driver's helmet from the back (the Fiesta without its `_personal.ini`). Tests: `tests/characters_data.rs`,
