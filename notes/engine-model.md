@@ -38,12 +38,18 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   [Clio 3 RS throttle]; nothing public on the R3); Golf II GTI 16V K-Jetronic, fixed stop (inferred from the
   mechanical injection) [tech-racingcars Golf]; Fiesta R2 NA [Group R], so no anti-lag.
 - Rally2 boost 2.5 bar abs with the FIA pop-off valve [FIA 261] ("The maximum boost pressure is 2.5 barA"). Rally3
-  and Rally4 have a restrictor (31 and 30 mm) and no boost limit [FIA 260] art. 304 (read 2026-11-10): their class
-  bound is 3.5 bar, which no installed car reaches (guess; they had the 2.5 bar before). With it the Fiesta Rally4's
-  boost peaks at 3.27 bar at 4000 rpm and its K is 1.31–1.34e6 from 2000 rpm, at the ceiling (up to 1.66e6, 1.24 of
-  it, with the cap); WOT torque as before (the identity); closed → WOT to 90 % at 4000 rpm 0.93 → 1.16 s, WOT again
-  after a 1 s lift at 4500 rpm with anti-lag 0.10 → 0.30 s (its 1.2 bar aim is further from the WOT boost), without
-  0.95 → 1.04 s. R1–R3 turbos and RGT keep 2.5 bar (their articles not read).
+  and Rally4 have a restrictor (31 and 30 mm) and no boost limit [FIA 260] art. 304, Group N a 33 mm restrictor and
+  none [FIA 254] (read 2026-11-10): a class without a rule has no cap, and the calibration's bound for it is 3.5 bar
+  (`PI_CAP`, guess; no installed car reaches it). At 2.5 before, a guess that bound: every installed turbo's K over
+  the fuel–air cycle's (from twice idle up), where its boost is held, before → now: Fiesta Rally4 up to 1.24 →
+  0.98–1.00 (boost 3.27 bar), Fiesta Rally3 0.98–1.01 (2.67), Clio Rally3 1.01–1.06 (3.12), Impreza N14 N4
+  1.07–1.16 → 1.02–1.07 (2.83), Evo IX N4 1.03–1.11 → 0.98–1.02 (2.85), Evo X R4 1.11–1.23 → 1.04–1.10 (3.03).
+  Unchanged, a rule holding them: R5 and Rally2 at 2.5 bar 1.10–1.23, WRC 1.6 at 2.5 bar 1.17–1.26, WRC 2.0 2006 at
+  their restrictor 1.06–1.13; Group A 0.84–1.01, the Audi 1.01–1.08, Fiesta R2 0.96–0.98, Alpine RGT 0.99–1.00.
+  So what is left over the ceiling sits only where a real rule limits the air. WOT torque as before (the identity),
+  scorecard 60/92 with no row moved. Fiesta Rally4: closed → WOT to 90 % at 4000 rpm 0.93 → 1.16 s, WOT again after
+  a 1 s lift at 4500 rpm with anti-lag 0.10 → 0.30 s (its 1.2 bar aim is further from the WOT boost), without 0.95 →
+  1.04 s. R1–R3 turbos and RGT keep 2.5 bar (their articles not read; neither installed car is over the ceiling).
 - WRC boost cap 2.5 bar abs from 2011 [FIA 255A]; 4.0 bar before (guess: forum reports of 3–4 bar [NASIOC WRC],
   [passionford], both unreachable at the 2026-11 audit).
 - Compression ratio: NA 11 (guess); a turbo's by group (`compression`). Group B 7.0: road ur-quattro 2.1 10V 7.0

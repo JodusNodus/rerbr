@@ -200,12 +200,11 @@ pub fn classify(car: &Car, turbo: bool) -> Class {
                 class.anti_lag = true;
                 class.boost_cap = Some(2.5);
             }
-            // Rally3 and Rally4 have a restrictor and no boost limit (FIA 260 art. 304): the restrictor and the table
-            // set the boost, under a bound it does not reach on the installed cars (guess).
+            // Rally3 and Rally4 have a restrictor and no boost limit (FIA 260 art. 304), as Group N and R4 (FIA 254):
+            // the restrictor and the table set the boost.
             "Rally 3" | "Rally 4" => {
                 class.actuation = Actuation::Dbw;
                 class.anti_lag = true;
-                class.boost_cap = Some(3.5);
             }
             // An unknown turbo, cable without anti-lag.
             _ => {}
