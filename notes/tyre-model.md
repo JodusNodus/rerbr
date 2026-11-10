@@ -1925,16 +1925,19 @@ times on the official routes, put in the same terms as the game's car-level g. `
   only), Kenya 2022/2023, New Zealand 2022, Greece 2023 (three routes 1.7-2.2×). No route: Monte-Carlo and Sweden
   2022, every 2026 event but Monte-Carlo and Sweden, Croatia 2025. Road conditions (wet, snow cover, road position)
   are not in the timing data: not reported.
-- Model: point mass on the route's curvature (σ 15 m), corner speed √(μ_y g_eff/κ), traction/power forward and
-  braking backward passes, friction ellipse, μ_x = μ_y; Rally2 1430 kg, 170 kW at the wheels (214 kW × 0.85 × 0.92
-  over the shift band), CdA 0.85, ClA 0.2, 190 km/h; WRC 2017-21 1360 kg, 218 kW, CdA 0.95, ClA 1.0. Implied μ: the
-  μ_y that gives the class's best and top-5 median time. Car parameters move it under 1 % each (m 1390-1480 kg,
-  P 150-195 kW, CdA 0.7-1.0, ClA 0-0.5, rolling 0.6-1.5×); μ_x/μ_y 0.8-1.2 ±3 %; per stage `mu_rss` median 0.035.
-  The level depends on the smoothing (SS7 1.40 / 0.89 / 0.64 at σ 5 / 15 / 30 m) and the ellipse (off: -12 %); the
-  calibration uses the same choices, so they cancel. σ 15: SS7's μ within 1.5 % with every 2nd-4th vertex dropped
-  (spacing 20 → 103 m), σ 30 falls 12 %. Grade (telemetry altitude): +0.2 % (Finland) / +0.3 % (Monte, climbs to 940
-  m), so the routes' missing elevation costs under 1.5 %. A line inside ±2-4 m of the route lowers μ 11-19 % with no
-  better fit: not used; the calibration takes the line in.
+- Model: point mass on the route's curvature (σ 15 m), corner speed √(μ_y g_eff/κ), traction/power forward and braking
+  backward passes, friction ellipse, μ_x = μ_y; Rally2 1430 kg, 170 kW at the wheels (214 kW × 0.85 × 0.92 over the
+  shift band), CdA 0.85, ClA 0.2, 190 km/h; WRC 2017-21 1360 kg, 218 kW, CdA 0.95, ClA 1.0. Implied μ: the μ_y that
+  gives the class's best and top-5 median time. Car parameters move it under 1 % each (m 1390-1480 kg, P 150-195 kW, CdA
+  0.7-1.0, ClA 0-0.5, rolling 0.6-1.5×); μ_x/μ_y 0.8-1.2 ±3 %; per stage `mu_rss` median 0.035. The level depends on the
+  smoothing (SS7 1.40 / 0.89 / 0.64 at σ 5 / 15 / 30 m) and the ellipse (off: -12 %); the calibration uses the same
+  choices, so they cancel. σ 15: SS7's μ within 1.5 % with every 2nd-4th vertex dropped (spacing 20 → 103 m), σ 30 falls
+  12 %. Grade (telemetry altitude): +0.2 % (Finland) / +0.3 % (Monte, climbs to 940 m), so the routes' missing elevation
+  costs under 1.5 %. A line inside ±2-4 m of the route lowers μ 11-19 % with no better fit: not used; the calibration
+  takes the line in. The WRC cars' measured drag area (1.56 m² in Finland, [Real stage
+  telemetry](#real-stage-telemetry-wrc-gravel)) in place of 0.95 raises their μ 1.5-2.3 % on Finland's SS2 / 7 / 10
+  (0.863 → 0.883, 0.890 → 0.905, 0.807 → 0.819), the measured wheel power (226 kW for 218) takes 1 % back: inside the
+  calibration's ±10 %, the constants and the CSVs left as they are (2026-11-10).
 - Calibration (WRC 2017-21 cars, 5-8 merged 10 Hz drives a stage; `rally_gg.py` definitions; stages over 5 km):
   Finland 2021 (17 stages, gravel): route μ / lateral 1 s p90 1.02 (0.94-1.11), / g-g p95 |lat| 0.83 (0.73-0.90),
   / braking 0.5 s peak 0.92; Monte-Carlo 2018 (15 stages, tarmac with snow and ice; SS9 lat p90 0.41 g): 0.86
