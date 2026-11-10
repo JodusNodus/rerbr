@@ -585,6 +585,15 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   worn: the brush's 22.9 stays. Sensitivity on the pad, stiffness 1.0 / 1.1 / 1.2 (22.9 / 25.2 / 27.5): peak g
   equal, steer at 0.4 g Fiesta 0.072 / 0.070 / 0.068, yaw t90 0.16 / 0.15 / 0.14 s, sine dwell spins at 110 km/h
   Fiesta 0 / 0 / 0, Golf 9 / 9 / 6, Escort 17 / 17 / 17.
+- Rally tarmac tyres against semi-slicks and slicks, searched (2026-11-10, seven languages; part indexes
+  `INDEX-rally-grip-1.md`, `-2.md` in the source library): no measured same-car test includes a rally tyre, and no
+  logged g of a tarmac rally car is open. Drivers put a rally tyre at a Toyo R888 (Michelin N20) to clearly above
+  it (Dunlop moulded slick), a circuit slick above both (subjective). Measured, not a rally tyre: i30 N laps 98.02
+  / 94.81 / 91.79 s on a road tyre / Trofeo R / slick (`tyrereviews-i30n-slick-wayback`). Quoted, page unread: a
+  2005 World Rally Car on Michelin's asphalt tyre "up to 1.5 g" in fast corners, 1.8 g braking. Makers' data: 20/65-18
+  max load 430 kg, hot 2.0-2.3 bar, camber under 2° (`michelin-pressure-2024`); Pirelli RA 235/40R18 tread 210 mm;
+  Hankook Z215 210/650R18 tread 218 mm, depth 5.5 mm; no stiffness or friction published. NGP's 1.25 g and the
+  brush's 22.9 stay: nothing measured moves them.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
