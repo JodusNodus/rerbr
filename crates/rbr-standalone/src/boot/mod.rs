@@ -128,6 +128,9 @@ pub struct Race {
     pub ffb_sensitivity: [i32; 3],
     /// NGP's `headGasketDurability` (1, its default, leaves the stall roll as 1.02's; `runtime::head_gasket`).
     pub head_gasket_durability: i32,
+    /// `--flat-pad` (test only): the stage's ground is a flat pad at the start's height (`rbr_btb::col::flat_pad`) with
+    /// no scenery collision.
+    pub flat_pad: bool,
 }
 
 /// An NGP car pack with the tyres it runs on.
@@ -160,6 +163,7 @@ impl Race {
             false_starts: 0,
             ffb_sensitivity: [100; 3],
             head_gasket_durability: 1,
+            flat_pad: false,
         }
     }
 
@@ -244,6 +248,10 @@ pub fn default_tyre(surface: &str) -> u32 {
 
 /// `g_carNames` (0x7c18d4): each car's physics folder (`"Physics/t_coroll/"`).
 const CAR_PHYSICS_DIRS: u32 = 0x007C_18D4;
+
+/// `--flat-pad`: the pad's squares (m) and their count along each side (a 2 km square).
+const PAD_SQUARE: f32 = 20.0;
+const PAD_SQUARES: usize = 100;
 
 /// The interactive objects' handles start here (`HedgeHog3D`'s numbering of the `(1, 6)` objects' instances).
 pub const INTERACTIVE_HANDLE_BASE: u32 = 40000;
@@ -607,8 +615,11 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     // the meshes and their placements) and the `.mat`.
     let drive_line = heap.take(DRIVE_LINE_SIZE);
     mem.set_u32(stage::DRIVE_LINE, drive_line);
-    let track =
+    let mut track =
         trk::parse(&stage_files::read(data, stage_name, "trk")?).map_err(|e| format!("{stage_name}.trk: {e:?}"))?;
+    if race.flat_pad {
+        track.chunks.retain(|c| !matches!(c.payload, trk::ChunkPayload::CollisionMeshes(_)));
+    }
     let mesh_capacity: usize = track
         .chunks
         .iter()
@@ -620,7 +631,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     let mesh_capacity = mesh_capacity as u32;
     let track_state = heap.take(TRACK_STATE_SIZE);
     let mesh_list = heap.take(4 * mesh_capacity);
-    let col = stage_files::read(data, stage_name, "col")?;
+    let mut col = stage_files::read(data, stage_name, "col")?;
     let mat = stage_files::read(data, stage_name, "mat")?;
     let lbs_bytes = stage_files::read(data, stage_name, "lbs")?;
     let lbs = lbs::parse(&lbs_bytes).map_err(|e| format!("{stage_name}.lbs: {e:?}"))?;
@@ -632,6 +643,11 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
             _ => None,
         })
         .ok_or(format!("{stage_name}.lbs: no start location"))?;
+    if race.flat_pad {
+        // The start's `(x, y, z)` is y-up, the car's pose (`start_pose`) lies half a metre above the ground at `y`.
+        let [x, y, z] = start.position;
+        col = rbr_btb::col::flat_pad([x, z, y], PAD_SQUARE, PAD_SQUARES)?;
+    }
     let mut calls = StageCalls {
         heap: heap.clone(),
         handles: interactive_handles(&lbs),

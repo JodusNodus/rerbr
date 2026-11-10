@@ -132,6 +132,7 @@ pub fn race(args: &Args, data: Data, stage: &StageData, car: u32) -> Result<(Dat
         options,
         damage: carried,
         surface,
+        flat_pad: args.flat_pad,
         ..boot::Race::quick_race(args.btb.unwrap_or(stage.number), car, tyre, weather, ngp_physics)
     };
     let race = match (args.championship, args.lesson) {
