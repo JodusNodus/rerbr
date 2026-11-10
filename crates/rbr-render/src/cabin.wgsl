@@ -213,10 +213,51 @@ fn cabin_contact() -> f32 {
     return sum / 9.0;
 }
 
-// `sun_lit` for the cabin, all within the first cascade: one filtered compare (2 x 2 texels, 1.4 cm each) in place of
-// the 3 x 3 taps, which cost about 0.9 ms a 1080p cockpit frame.
+// `sun_lit` for the cabin, all within the first cascade: soft shadows as the stage's (`soft_filter`: the casters' mean
+// depth from its 3 x 3 search, the penumbra their distance gives), so that a tree's shadow falls on the dash and the
+// door as a soft pool of light. The compared taps lie 2 texels apart (bilinear, so none is skipped), at most 5 a side
+// where `soft_filter` takes 9: the cabin's faces are dark and textured, and the grid that showed on the road does not
+// show on them. One filtered compare (2 x 2 texels, 1.4 cm each) until 2026-11-10: the dapples, a forearm from the eye,
+// were stair-stepped blocks.
 fn cabin_stage_lit(world: vec3<f32>, n: vec3<f32>) -> f32 {
-    return cabin_cascade(world + n * frame.sun_texels[0] * 1.5);
+    let p = frame.sun_matrices[0] * vec4<f32>(world + n * frame.sun_texels[0] * 1.5, 1.0);
+    let uv = vec2<f32>(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
+    let depth = p.z;
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || depth > 1.0) {
+        return 1.0;
+    }
+    let size = vec2<f32>(textureDimensions(sun_map));
+    let texel = frame.sun_texels[0];
+    let search = min(SHADOW_SEARCH / texel, SEARCH_TEXELS);
+    var sum = 0.0;
+    var casters = 0.0;
+    for (var y = 0; y < 3; y++) {
+        for (var x = 0; x < 3; x++) {
+            let offset = (vec2<f32>(f32(x), f32(y)) - 1.0) * search;
+            let at = clamp(vec2<i32>(uv * size + offset), vec2<i32>(0), vec2<i32>(size) - 1);
+            let d = textureLoad(sun_map, at, 0, 0);
+            if (d < depth) {
+                sum += d;
+                casters += 1.0;
+            }
+        }
+    }
+    if (casters == 0.0) {
+        return 1.0;
+    }
+    let m = frame.sun_matrices[0];
+    let metres = (depth - sum / casters) / length(vec3<f32>(m[0].z, m[1].z, m[2].z));
+    let radius = clamp(metres * SUN_RADIUS / texel, 1.0, SOFT_TEXELS);
+    let taps = i32(ceil(radius)) + 1;
+    let half = 0.5 * f32(taps - 1);
+    var lit = 0.0;
+    for (var y = 0; y < taps; y++) {
+        for (var x = 0; x < taps; x++) {
+            let at = uv + (vec2<f32>(f32(x), f32(y)) - half) / half * radius / size;
+            lit += textureSampleCompareLevel(sun_map, shadow_sampler, at, 0, depth);
+        }
+    }
+    return lit / f32(taps * taps);
 }
 
 // The first cascade's filtered compare at `world`; 1 outside it.
