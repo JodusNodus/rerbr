@@ -5,7 +5,7 @@ use rbr_recording::detach;
 
 use super::files::folder;
 use super::meshes::{build_meshes, in_draw_order};
-use super::parts::{detach_part, part_for};
+use super::parts::{detach_part, interior_part_for, part_for};
 use super::shading::{draw_state, list_for, pass_for, FaceStyle, List, Pass};
 
 #[test]
@@ -243,6 +243,8 @@ fn skip_reasons_follow_name_and_part() {
     assert_eq!(part_for("k_windscreen", &parts).unwrap_err(), Skip::LoaderDrops);
     assert_eq!(part_for("pc_e_premove", &parts).unwrap_err(), Skip::LoaderDrops);
     assert_eq!(part_for("i_body", &parts).unwrap_err(), Skip::Interior);
+    assert_eq!(part_for("i_drivers", &parts).unwrap_err(), Skip::BakedCrew);
+    assert_eq!(interior_part_for("i_drivers", &parts).unwrap_err(), Skip::BakedCrew);
     assert_eq!(part_for("e_missing", &parts).unwrap_err(), Skip::NoSection);
     assert!(part_for("e_light_lf", &parts).is_ok());
     assert!(part_for("e_light_lf_off", &parts).is_ok());

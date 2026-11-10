@@ -42,6 +42,7 @@ mod textures;
 mod uniforms;
 mod views;
 
+pub use cloud_volume::survey::CloudSurvey;
 #[cfg(test)]
 pub(crate) use depth_pyramid::SHADER as PYRAMID_SHADER;
 pub use enhance::{AntiAliasing, DebugView, Detail, Enhance, Reflections};

@@ -10,6 +10,8 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
 use std::cell::Cell;
 
+pub mod survey;
+
 const NOISE: &str = include_str!("../cloud_noise.wgsl");
 const SHAPE_SIZE: u32 = 128;
 const DETAIL_SIZE: u32 = 32;

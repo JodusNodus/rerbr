@@ -365,10 +365,11 @@ impl Atmosphere {
 
     /// How much of the sky the volumetric clouds cover (renderer addition, `Enhance::lighting`; ours), 0 to 1: as much
     /// as the section's cloud face shows (`CloudName`), else by the cloud word ([`Atmosphere::cloud_cover`]);
-    /// [`Atmosphere::clouds`] as the faces of its word.
+    /// [`Atmosphere::clouds`] as the faces of its word, except light, raised to broken cloud (5 to 7 oktas): 0.72 covers
+    /// about 75% of the whole sky (`examples/cloud_survey.rs`), 0.5 covered 45 to 57%, no more than partly's.
     pub fn cloud_layer(&self) -> f32 {
         if let Some(clouds) = self.clouds {
-            return [0.15, 0.35, 0.5, 0.72][clouds as usize];
+            return [0.15, 0.35, 0.72, 0.72][clouds as usize];
         }
         let face = self.cloud_name.as_deref().unwrap_or("").to_ascii_lowercase();
         let covers = [

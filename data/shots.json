@@ -156,8 +156,11 @@
   "stage": 621,
   "car": "Toyota GR Yaris Rally2",
   "view": "flyby",
-  "clock": "18:45",
-  "at": 4915
+  "clock": "05:45",
+  "at": 4915,
+  "settings": {
+   "clouds": "clear"
+  }
  },
  {
   "name": "golden-gabiria-escort-chase",
@@ -320,7 +323,7 @@
   "settings": {
    "weather": "bad",
    "wetness": "wet",
-   "clouds": "light",
+   "clouds": "partly",
    "precipitation": "none"
   },
   "clock": "17:20",
@@ -362,7 +365,7 @@
   "car": "Audi quattro A2 GrpB",
   "view": "flyby",
   "settings": {
-   "clouds": "light",
+   "clouds": "partly",
    "wetness": "wet",
    "precipitation": "none"
   },
