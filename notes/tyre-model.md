@@ -1895,8 +1895,9 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   default; `aero_model::wing_drag_factor`): the drag area gains 0.074 × (the file's downforce area)², the form of
   induced drag, set on the telemetry's 1.74 m² for the 2017-21 cars ("Full throttle on straights": file 0.81 m²,
   downforce area 3.54 m²). The rule on the other files: WRC 2006 0.82 and 1.08 m² (D&R's 2004 model 0.85), Fiesta
-  Rally2 1.30, Polo R5 1.04, S2000 0.90, Group N +0.03, Fiesta RS WRC 2014 1.22 (Deutschland 2016's weak fit 0.83,
-  0.63-1.06: over), nothing without downforce. i20 Coupe WRC 2020, experimental, without / with (real): pad-tarmac 4th
+  Rally2 1.30, Polo R5 1.04, S2000 0.90, Group N +0.03, Fiesta RS WRC 2014 1.22 (Deutschland 2016 leaves 1.16-1.34
+  with the power assumed; its pad run with it 0.423 / 0.317 / 0.239 / 0.202 / 0.165 g against the real 0.347 / 0.267
+  / 0.200 / 0.166 / 0.134: the experimental engine's power over), nothing without downforce. i20 Coupe WRC 2020, experimental, without / with (real): pad-tarmac 4th
   110-120 km/h 0.492 / 0.461 (0.384), 6th 150-160 0.342 / 0.270 (0.214), 170-180 0.267 / 0.173 (0.143), 180-190
   0.231 / 0.128 (0.072); pad-gravel 6th 150-160 0.323 / 0.247 (0.182), 170-180 0.244 / 0.150 (0.108); `rally_wot.py
   fit` reads 1.82 m² on tarmac, 1.64 on gravel; what is left is the experimental engine's 10 %. Top speed without /
