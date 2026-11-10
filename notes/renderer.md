@@ -1020,7 +1020,9 @@ replays only the 4 s warm-up, so captures show short trails.
 
 `characters/` (documents the spawn, triggers, visibility, crew and scripted events): `.lbs` `(2,14)` items in
 `(2,15)` random groups, Lua 4.0 scripts, `.sga` clips, CPU skinning. Generators: the exe's LCG and msvcr71 `rand()`,
-`--seed`. In-car crew: chase views only, as the High renderer. Tests: `tests/characters_data.rs`,
+`--seed`. In-car crew: chase views only, as the High renderer. Ours: a model's own crew in its interior set (`i_drivers`: the RSF Fiesta
+Rally2, i20 Rally2, i20 WRC 2020 and 2021) is not drawn either (`car::BAKED_CREW`); behind `Cam_internal` the cockpit eye
+saw the driver's helmet from the back (the Fiesta without its `_personal.ini`, 2026-11-10). Tests: `tests/characters_data.rs`,
 `scripted_data.rs`, `crew_data.rs`.
 
 ## Fences and dials

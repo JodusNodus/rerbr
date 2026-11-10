@@ -2,7 +2,7 @@
 //! sections of the exterior, interior and ghost sets ([`Skip`] for the rest).
 
 use super::{
-    Skip, GHOST_PREFIX, INTERIOR_PREFIX, LOADER_DROPS, OVERLAY_PREFIX, PLANE_PREFIX, PREMOVE_PART, SURFACE,
+    Skip, BAKED_CREW, GHOST_PREFIX, INTERIOR_PREFIX, LOADER_DROPS, OVERLAY_PREFIX, PLANE_PREFIX, PREMOVE_PART, SURFACE,
     SURFACE_PARTS, UNBUILT_PREFIXES,
 };
 use crate::lights;
@@ -77,6 +77,9 @@ fn part_in_set<'a>(name: &str, parts: &'a [Section], interior: bool) -> Result<&
         || UNBUILT_PREFIXES.iter().any(|p| name.starts_with(p))
     {
         return Err(Skip::LoaderDrops);
+    }
+    if name.eq_ignore_ascii_case(BAKED_CREW) {
+        return Err(Skip::BakedCrew);
     }
     if name.starts_with(INTERIOR_PREFIX) != interior {
         return Err(if interior { Skip::Exterior } else { Skip::Interior });
