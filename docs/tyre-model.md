@@ -6,11 +6,11 @@ experimental-brush` runs it on top of the engine model of [ReRBR experimental ph
 it for that session; nothing saves it).
 
 It is a brush model, the textbook physical tyre (Pacejka, *Tyre and Vehicle Dynamics*): the tread is a row of bristles
-that stick to the road at the front of the contact patch and slide at the rear. It takes the place of NGP's model of
-the contact patch on hard surfaces at every speed, fitted at load to give NGP's peak forces and cornering stiffness,
-with grip that falls as the tyre slides faster and one friction limit shared by braking and cornering. On gravel and
-snow the same tyre keeps NGP's peak grip without falling as it slides, and a locked wheel builds a berm of loose
-material ahead of it that brakes it harder than rolling, as measured on gravel.
+that stick to the road at the front of the contact patch and slide at the rear. It takes the place of NGP's model of the
+contact patch on hard surfaces at every speed, fitted at load to give NGP's peak forces and 1.3 times its cornering
+stiffness, with grip that falls as the tyre slides faster and one friction limit shared by braking and cornering. On
+gravel and snow the same tyre keeps NGP's peak grip without falling as it slides, and a locked wheel builds a berm of
+loose material ahead of it that brakes it harder than rolling, as measured on gravel.
 
 The model, its evidence, its numbers in game and the open questions are in
 [notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
@@ -18,16 +18,20 @@ The model, its evidence, its numbers in game and the open questions are in
 ## Force curves
 
 Each figure shows the steady force of one tyre, NGP 7's on the left (`ngp`) and the brush on the right
-(`experimental-brush`), on the same wheel: a Fiesta Rally2 front wheel with NGP's car data, at 4 kN load and 15 m/s
-(54 km/h), dry. A positive slip angle gives a positive side force; a negative slip ratio brakes, -1 is locked. The
-peaks come from NGP's grip level by design; the shapes are where the two differ. Every number below is a row of the
-tyre scorecard, with its source, in [notes/tyre-model.md](../notes/tyre-model.md#scorecard). In a drive the force
-builds over the tyre's relaxation length; these are the values it settles to. `harness/tyre_curves.py` redraws them.
+(`experimental-brush`), on the same wheel: a Fiesta Rally2 front wheel with NGP's car data, at 4 kN load and 15 m/s (54
+km/h), dry. A positive slip angle gives a positive side force; a negative slip ratio brakes, -1 is locked. The peaks
+come from NGP's grip level by design (within 1 % at 4 kN); the shapes are where the two differ. Every number below is a
+row of the tyre scorecard, with its source, in [notes/tyre-model.md](../notes/tyre-model.md#scorecard). In a drive the
+force builds over the tyre's relaxation length; these are the values it settles to. `harness/tyre_curves.py` redraws
+them.
 
 ### Tarmac
 
 ![Side force against slip angle on dry tarmac](images/tyre-model/lat-tarmac.svg)
 
+- Side force builds 1.3 times as fast with slip angle as NGP's: a cornering stiffness of 22.9 per rad of the load
+  against 17.6. A measured semi-slick has 21.9-22.3 and a slick 27.2; no rally tyre's is published, and the estimate
+  for a tarmac rally tyre is 22 to about 30.
 - Side force peaks at a slip angle of 6.5°; measured road and racing tyres peak at 4.5-8.5°, NGP's at 9.5°.
 - Past the peak the brush has lost 3 % by 10.5°, the gentlest of a measured racing tyre's 3-12 % there; NGP has lost
   0.3 %. No rally tyre has been measured: it is taken as no sharper than the slick.
@@ -35,6 +39,10 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
   0.73-0.83 and racing tyres 0.80-0.90: the brush sits where the two meet, NGP at the forgiving end.
 - Braking at a slip ratio of 0.25 while cornering at 4°, the brush keeps 0.29 of its side force, above the measured
   0.23-0.27; NGP keeps 0.46.
+- Braking at half its peak braking force while cornering at 2°, the brush keeps 0.97 of its side force and NGP 0.79;
+  a measured road tyre keeps 0.99. At three quarters they keep 0.91, 0.63 and 0.93. At 5° and 8° the brush stays
+  within 0.03 of that tyre at half, and its hardest braking there is 3-7 % over that tyre's. In a deep slide the
+  brush's force points along the sliding, as that tyre's does; NGP's keeps about 1.4 times as much side force.
 
 ![Braking and driving force against slip ratio on dry tarmac](images/tyre-model/long-tarmac.svg)
 
@@ -78,3 +86,18 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
   loose snow 9-18°.
 - The berm on snow is small: locked, the wheel brakes 1.05 times its rolling peak. Studded tyres on compacted snow
   lock at 1.02-1.10 times their braking at 15-20 % slip; the Fiesta Rally2 under the brush 1.05-1.09.
+
+## Beyond the curves
+
+- **Temperature.** On hard surfaces the brush runs its own tyre temperatures: half of the sliding power heats a thin
+  surface layer, which loses heat to the air, the road and the tread under it, and the grip follows NGP's rubber curve
+  at those temperatures. The half is an assumption inside the published 0.49-0.68. Cornering steadily at the limit
+  the grip settles within 1 % of NGP's; a long slide heats the surface and makes the car harder to catch. On gravel
+  and snow NGP's heat stays.
+- **Pressure.** More pressure makes the brush build force more slowly at light load, 5.7 % per 0.5 bar at 4 kN, and
+  not at all from 6.3 kN up, as measured tyres do up to about one and a half times their rated load. NGP's builds
+  force faster with pressure at every load. Every car's default is the 2.0 bar both models agree at, so this shows
+  only with a changed setup.
+- **Ice.** NGP's snow tyre is studded. On bare ice the brush gives it the grip it has on the stages' snow (0.85, an
+  assumption: road studs measure 0.21-0.30, rally studs are not published) and leaves every other tyre at NGP's 0.10,
+  where measured road tyres are at 0 °C (0.09-0.12). NGP gives every tyre the 0.10.

@@ -176,7 +176,7 @@ that. EPA's road turbos come out at 32–39 %. Running richer doesn't raise it: 
 air is flat from λ 0.88 to 0.7. Where an NA car's table asks for more, `K` stays at the ceiling and `η_v` takes the
 rest: the installed NA cars then breathe 1.12–1.19 at their peak, as race engines with tuned intakes do, and the two
 S2000 cars 1.25–1.27. A turbo car's `K` stays where the identity puts it, one value over its rpm: 0.97–1.01 times the
-ceiling on the Group A turbos, 1.05–1.08 on the Group B Audi, 1.04–1.26 on the modern cars (Known limits).
+ceiling on the Group A turbos, 1.05–1.08 on the Group B Audi, up to 1.19 on the modern cars (Known limits).
 
 The table is an upper bound. On a turbo car below its boost threshold this identity would raise `K` to make up for
 the missing air, which gives full torque with no boost and erases the lag. Where the steady full-throttle boost misses
@@ -185,14 +185,16 @@ the table until the turbo delivers. On the installed cars:
 
 | Car | Held, rpm | Most below the table |
 | --- | --- | --- |
-| Fiesta R5 | 500–1250 | 3.9 % |
-| WRC 2014–2020, Polo R5, GR Yaris | 250–1250 (WRC 2019–20 to 1500) | 5.4–7.8 % |
-| Fiesta Rally2 | 250–1250 | 10.8 % |
-| Xsara WRC 2006 | 250–1250 | 16.2 % |
+| Fiesta R5 | 250–1250 | 4.2 % |
+| WRC 2014–2020, Polo R5, GR Yaris | 250–1250 (WRC 2019–20 to 1500) | 6.9–9.5 % |
+| Fiesta Rally2 | 250–1250 | 11.2 % |
+| Xsara WRC 2006 | 250–1250 | 16.3 % |
 | Focus WRC 2006 | 250–1500 | 20.5 % |
-| Alpine A110 RGT | 1750 | 7.8 % |
+| Alpine A110 RGT | 1750 | 3.2 % |
 | Audi quattro A2 | 2500–2750 | 3.3 % |
-| Fiesta Rally3 | 2000 | 0.1 % |
+| Fiesta Rally4 | 2250 | 3.0 % |
+| Clio Rally3 | 2000 | 0.6 % |
+| Lancer Evo X R4 | 1250–1500 | 0.5 % |
 
 No other car is held, and every car's steady full throttle stays within 0.1 % of its table or below it.
 
@@ -271,8 +273,8 @@ scaled by similarity to its own design flow and pressure ratio: a bigger compres
 with the fifth power of its diameter, so a large turbo takes longer to spool and a small one runs faster. The model
 sizes them per car at load:
 
-1. The boost target at each rpm is the boost the table's torque needs, capped by the class (2.5 bar absolute on the
-   modern classes) and by the restrictor's choked flow.
+1. The boost target at each rpm is the boost the table's torque needs, capped by the class where its rules have a limit
+   (2.5 bar absolute on R5, Rally2, WRC 1.6, RGT and R1–R3, 4 bar on WRC 2.0) and by the restrictor's choked flow.
 2. The turbine's nozzle area is fitted so `K` comes out as flat over rpm as the turbo allows. `K` is the fuel's energy
    per kilogram of air and nearly constant, so the boost should carry the table's shape. The exhaust pressure may reach
    at most twice the intake's.
@@ -280,7 +282,7 @@ sizes them per car at load:
 
 Spool time then comes from the shaft's inertia and the exhaust's energy. The shaft's bearings take 0.002·ω + 2.5e-6·ω²
 W, rFactor 2's friction figures without its 100 W static loss, which is there against numerical trouble and stopped the
-shaft at idle; the shaft now idles at about 3400 rpm (Guzzella: at idle it "can fall below 10 000 rpm").
+shaft at idle; the samples' shafts now idle at 4400–4800 rpm (Guzzella: at idle it "can fall below 10 000 rpm").
 
 On drive-by-wire cars an electronic wastegate (a base opening by rpm plus a PID loop) aims at a boost that rises with
 throttle position:
@@ -294,9 +296,9 @@ p_aim = p_a + (π_wot(n) · p_a − p_a) · min(1, θ / θ_open(n))
 Link G4+) reach full aim before full throttle in the same way. On cable cars a spring wastegate aims at full boost
 whatever the pedal, so they kick at part throttle once the turbo lights. That kick is the step in the cable_turbo
 figure's 40 % line at 3250 rpm. The spring gate's diaphragm feels the boost through a short hose, so it opens within
-about 10 ms, where the electronic gate's actuator takes 125 ms. A tip-in at a fixed 5000 or 6500 rpm spikes the boost
-2.5–3.4 kPa (under half a psi) over its steady level; tuners report about 1 psi for a split second on spring gates
-(enginebasics). On a stage the Celica, with the 125 ms, ran more than 10 kPa over its steady boost for 16 s of the
+about 10 ms, where the electronic gate's actuator takes 125 ms. A tip-in at a fixed 3000 or 5000 rpm spikes the boost
+0.2–1.8 kPa (a quarter of a psi at most) over its steady level; tuners report about 1 psi for a split second on spring
+gates (enginebasics). On a stage the Celica, with the 125 ms, ran more than 10 kPa over its steady boost for 16 s of the
 171 s it spent at half pedal or more; with the 10 ms, for 0.3 s. A blow-off valve opens at 0.3 bar over the manifold.
 
 ### Anti-lag
@@ -326,16 +328,19 @@ its group's middle era.
 | WRC 2.0 | drive-by-wire from 1999 | one | ECU | yes | 34 mm, 4 bar (a guess) |
 | WRC 1.6 | drive-by-wire | one | ECU | yes | 33 mm, 36 mm from 2017; 2.5 bar |
 | R5, Rally 2 | drive-by-wire | one | ECU | yes | 32 mm, 2.5 bar |
-| Rally 3 | drive-by-wire | one | ECU | yes | 30 mm, 31 mm from 2022; 2.5 bar |
-| Rally 4 (turbo) | drive-by-wire | one | ECU | yes | 30 mm, 2.5 bar |
+| Rally 3 | drive-by-wire | one | ECU | yes | 30 mm, 31 mm from 2022; no boost limit |
+| Rally 4 (turbo) | drive-by-wire | one | ECU | yes | 30 mm; no boost limit |
 | RGT | drive-by-wire | one | ECU | yes | 2.5 bar |
 | no metadata | cable | one | ECU | no | none |
 
 A turbo's compression ratio follows its group: 7.0 on Group B (the road ur-quattro's 2.1 has 7.0, the 205 T16 6.5,
 the S1 E2 and the Delta S4 7.5), 8.5 on Group A, N and R4, whose road engines run 8.0–9.0 (Cosworth YB, EJ20 and the
-Integrale's 8.0, 3S-GTE 8.5–8.8, 4G63 8.5–9.0, EJ257 8.2, 4B11T 9.0), and 9.5 on the rest. No modern rally engine's is
-published; their road bases run 10.0–10.5 (the 1.6 EcoBoost, the GR Yaris's G16E-GTS, the 1.2 PureTech). NA engines
-keep 11.
+Integrale's 8.0, 3S-GTE 8.5–8.8, 4G63 8.5–9.0, EJ257 8.2, 4B11T 9.0), 10.5 on R5 and Rally2 and 12.5 on WRC 1.6, the
+highest their rules allow (FIA articles 261 and 255A), and 9.5 on the rest. No modern rally engine's is published;
+their road bases run 10.0–10.5 (the 1.6 EcoBoost, the GR Yaris's G16E-GTS, the 1.2 PureTech). NA engines keep 11.
+
+Group N, R4, Rally3 and Rally4 have a restrictor and no boost limit in their rules, so on those cars the restrictor
+and the torque table set the boost.
 
 A short table of facts adds what no rule knows. The Audi quattro A2 has 5 cylinders, the two Porsche 911s 6, and the
 Fiesta Rally3, Rally3 Evo and Rally4, the 208 Rally4 and the GR Yaris Rally2 3. The Lancer Evo IX N4 keeps its road
@@ -350,7 +355,7 @@ How firm each part is:
 | --- | --- | --- |
 | Full-throttle torque | the car's table, reproduced wherever the air path can make it | the car's data |
 | Orifice flow, manifold, turbo shaft and flows | Hendricks' mean-value model; Andersson 2017; Eriksson; NASA's choked flow | textbook |
-| Residual gas | the ideal cycle (Heywood) | textbook formula; the old turbos' compression ratios their road engines', the modern ones' and NA's guessed |
+| Residual gas | the ideal cycle (Heywood) | textbook formula; the old turbos' compression ratios their road engines', R5, Rally2 and WRC 1.6 at their rules' maximum, the rest guessed |
 | Volumetric efficiency | the NA table's shape, over 1 where `K` meets its ceiling; 0.95 on turbos | inferred |
 | Work per kilogram of air | the table through the identity; at most the fuel–air cycle on NA engines (Heywood fig. 5-9); EPA's road turbos 32–39 % | the car's data under a textbook ceiling; modern turbo cars over it, as are their makers' figures |
 | Friction components | Sandoval–Heywood (SAE 2003-01-0725, Appendix B), with the paper's own refit of the auxiliaries; its worked example reproduced within 4 % | published model; about 15 kPa over its own 3.0 L engine |
@@ -421,8 +426,8 @@ docs/images/engine-model` draws them.
 
 NGP's lines are its full-throttle curve squeezed toward the braking line. Ours follow full throttle up to an rpm and
 then fall, the shape BeamNG's 2016 and 2023 models are built to give. In ours it comes from choked flow through the
-plate. On the old sample the power above the closed-throttle line stays at 9.8–10.1 kW from 3000 to 8000 rpm at
-10 % pedal, and at 36–38 kW at 20 %.
+plate. On the old sample the power above the closed-throttle line stays at 9.6–9.8 kW from 3000 to 8000 rpm at
+10 % pedal, and at 35–37 kW at 20 %.
 
 ![Most torque and power at each pedal](images/engine-model/max-torque-by-pedal.png)
 
@@ -430,26 +435,26 @@ The most net power each pedal position gives at any rpm from idle up, as a share
 
 | Pedal | NGP | old | na | turbo | cable_turbo | BeamNG 2023 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 10 % | 0–1 % | 5 % | 9 % | 8 % | 3 % | 9 % |
-| 20 % | 2–8 % | 18 % | 23 % | 20 % | 11 % | 25 % |
-| 30 % | 12–19 % | 43 % | 43 % | 47 % | 21 % | 43 % |
-| 40 % | 23–31 % | 74 % | 64 % | 72 % | 47 % | 57 % |
-| 50 % | 36–42 % | 91 % | 80 % | 87 % | 75 % | 69 % |
-| 60 % | 48–53 % | 97 % | 89 % | 97 % | 88 % | 80 % |
-| 70 % | 61–65 % | 99 % | 94 % | 98 % | 93 % | 89 % |
+| 10 % | 0–1 % | 5 % | 10 % | 8 % | 3 % | 9 % |
+| 20 % | 2–8 % | 19 % | 23 % | 21 % | 11 % | 25 % |
+| 30 % | 12–19 % | 44 % | 42 % | 49 % | 22 % | 43 % |
+| 40 % | 23–31 % | 74 % | 61 % | 73 % | 44 % | 57 % |
+| 50 % | 36–42 % | 91 % | 77 % | 88 % | 75 % | 69 % |
+| 60 % | 48–53 % | 97 % | 87 % | 97 % | 88 % | 80 % |
+| 70 % | 61–65 % | 99 % | 93 % | 98 % | 94 % | 89 % |
 | 80 % | 74–77 % | 99 % | 97 % | 99 % | 97 % | 94 % |
 
 And the most net torque, as a share of peak torque:
 
 | Pedal | NGP | old | na | turbo | cable_turbo | BeamNG 2023 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 10 % | 0–2 % | 26 % | 40 % | 27 % | 13 % | 49 % |
-| 20 % | 6–10 % | 46 % | 53 % | 47 % | 25 % | 65 % |
-| 30 % | 14–21 % | 63 % | 65 % | 63 % | 37 % | 76 % |
-| 40 % | 26–32 % | 81 % | 76 % | 78 % | 68 % | 84 % |
-| 50 % | 38–43 % | 93 % | 86 % | 91 % | 87 % | 91 % |
-| 60 % | 51–55 % | 97 % | 92 % | 97 % | 93 % | 95 % |
-| 70 % | 63–66 % | 98 % | 96 % | 98 % | 97 % | 98 % |
+| 10 % | 0–2 % | 26 % | 40 % | 27 % | 12 % | 49 % |
+| 20 % | 6–10 % | 47 % | 53 % | 49 % | 25 % | 65 % |
+| 30 % | 14–21 % | 63 % | 65 % | 64 % | 38 % | 76 % |
+| 40 % | 26–32 % | 81 % | 75 % | 79 % | 62 % | 84 % |
+| 50 % | 38–43 % | 93 % | 84 % | 91 % | 88 % | 91 % |
+| 60 % | 51–55 % | 97 % | 91 % | 97 % | 93 % | 95 % |
+| 70 % | 63–66 % | 98 % | 95 % | 98 % | 97 % | 98 % |
 | 80 % | 75–77 % | 98 % | 98 % | 99 % | 98 % | 99 % |
 
 BeamNG's values are read from its published plots, and the NGP columns span the four samples. Power compares better:
@@ -513,21 +518,22 @@ or off; the Golf needs a touch of throttle. The creep and stall runs predate the
 ![Tip-in at fixed rpm](images/engine-model/tip-in.png)
 
 NGP's torque follows the pedal within the step and its turbo cars have no lag. In ours, from a closed pedal to full
-pedal at a fixed speed, the drive-by-wire NA sample reaches 90 % of its torque in 24–31 ms, the throttle motor's lag
+pedal at a fixed speed, the drive-by-wire NA sample reaches 90 % of its torque in 25–28 ms, the throttle motor's lag
 and the manifold's filling. The old sample, with a throttle per cylinder on a cable, gets there within the step. The
-turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.65 s at 3000 rpm
-and 0.49 s at 5000. It overshoots 0.8 % at 2500 rpm and 2.2 % at 6500 rpm, and settles within 2 % in 0.6–1.1 s.
+turbo sample's torque jumps to its off-boost level and then follows the boost, reaching 90 % in 0.74 s at 3000 rpm
+and 0.54 s at 5000. It overshoots 1.1–1.4 % from 2500 to 5000 rpm and settles within 2 % in 0.7–1.0 s.
 
-From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.69 s at 2000 rpm and
-the cable_turbo sample 1.18 s at 3000. Chalmers' GT-Power study gives, for the same test, 0.54 s for Volvo's 2.0 L
-turbo four and 1.00 s for a 1.5 L three with a T45 at 1000 rpm (0.68 s with less than half its inertia), and
-0.62–1.02 s on those engines at 2100–2400 rpm. Our rally turbos make almost no boost at 1000 rpm, so that point
-doesn't apply to them. With the earlier rotor of 1e-5 kg·m² the samples took 0.46 s at 2000 rpm.
+From a steady 5 bar of mean effective pressure to 90 % of full torque, the turbo sample takes 0.85 s at 2000 rpm and the
+cable_turbo sample, with its larger and heavier rotor, 1.51 s at 3000. Chalmers' GT-Power study gives, for the same
+test, 0.54 s for Volvo's 2.0 L turbo four and 1.00 s for a 1.5 L three with a T45 at 1000 rpm (0.68 s with less than
+half its inertia), and 0.62–1.02 s on those engines at 2100–2400 rpm. Our rally turbos make almost no boost at 1000 rpm,
+so that point doesn't apply to them. With the earlier rotor of 1e-5 kg·m² the samples took 0.46 s at 2000 rpm, and with
+one 1.7e-5 rotor for every car 0.69 s and 1.18 s.
 
 ![Anti-lag](images/engine-model/anti-lag.png)
 
-Lift for a second at 4500 rpm and re-apply. Without anti-lag the boost falls to ambient and the torque takes 0.68 s
-to come back to 90 %. With it the boost stays above 2.2 bar and the torque is back to 90 % in 0.09 s. Lifted, the
+Lift for a second at 4500 rpm and re-apply. Without anti-lag the boost falls to ambient and the torque takes 0.78 s
+to come back to 90 %. With it the boost stays above 2.2 bar and the torque is back to 90 % in 0.13 s. Lifted, the
 engine brakes a little harder with anti-lag than without (−33 against −28 N·m).
 
 ### Idle and the rev limiter
@@ -537,21 +543,22 @@ engine brakes a little harder with anti-lag than without (−33 against −28 N�
 The figure runs each sample in neutral with the car's inertia: idle, a 300 rpm dip at 3 s, then full pedal from 6.0 to
 6.3 s. NGP's lines come from a replica of its formula. The ECU cars pull the dip back to within 20 rpm of idle in
 0.29–0.34 s. The old car, with its fixed idle stop, takes 1.4 s to come within 50 rpm, longer than NGP. After the
-blip the NA car falls faster than NGP, from its stronger braking at low rpm. The turbo car reaches 5390 rpm in the
+blip the NA car falls faster than NGP, from its stronger braking at low rpm. The turbo car reaches 5240 rpm in the
 0.3 s blip where NGP reaches the limiter, because its turbo hasn't spooled.
 
 ![Rev limiter](images/engine-model/limiter.png)
 
 At full pedal in neutral NGP sits on the limit, alternating full torque and braking. Ours cuts firings over the
-200 rpm under the limit and bounces 11–84 rpm under it on the NA sample. The turbo sample bounces from 78 rpm under
+200 rpm under the limit and bounces 11–84 rpm under it on the NA sample. The turbo sample bounces from 79 rpm under
 the limit to 23 over it.
 
 ### In game
 
 Every number here was measured at `b97695d86`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
 the realistic engine with NGP's tyre (`{ engine: "realistic", tyre: "ngp" }`), so every gap is the engine's.
-These runs predate the friction that follows rpm, the idle air's floor, the exhaust heat by firing and the heavier
-turbo rotor (2026-11); they were not re-run.
+These runs predate the friction that follows rpm, the idle air's floor, the exhaust heat by firing, the heavier
+turbo rotor sized per car, the classes without a boost limit and the R5, Rally2 and WRC 1.6 compression ratios
+(2026-11); they were not re-run.
 
 The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
 tarmac one, track-41 (Cote D'Arbroz, its M variant, as the season's weather loads it), once with NGP 7's physics and
@@ -652,20 +659,20 @@ physics do not take this path.
   and C3 Rally2 engines), makes about 40 % of its peak torque at 1000 rpm and 80 % at 1500 (SAE 2018-01-1423). The
   tables ask for more than that at 1000 rpm, and the model still gives more, so the shortfall is not a reason to add
   low-rpm boost.
-- Modern turbo cars idle at 16.3–17.5 kPa of manifold pressure and make no torque at 16.0–16.2 kPa at 2500 rpm; EPA's
-  warm road engines idle at 22–29 kPa and make none at 18.5–27.2. The rally tables ask for about 13 bar of BMEP per
-  bar of boost (a Rally2's 33.5 bar at the 2.5 bar cap), well over road turbos', so little air turns the friction
-  over. Before the friction followed rpm they idled at 20–22 kPa, from twice Sandoval's friction at idle.
+- Modern turbo cars idle at 15.1–17.5 kPa of manifold pressure and the turbo sample makes no torque at 15.6 kPa at 2500
+  rpm; EPA's warm road engines idle at 22–29 kPa and make none at 18.5–27.2. The rally tables ask for about 13 bar of
+  BMEP per bar of boost (a Rally2's 33.5 bar at the 2.5 bar cap), well over road turbos', so little air turns the
+  friction over. Before the friction followed rpm they idled at 20–22 kPa, from twice Sandoval's friction at idle.
 - Closed-pedal braking still runs up to 0.2 bar of BMEP over EPA's road engines at 2000–4000 rpm.
-- A modern turbo car's work per kilogram of air sits over the fuel–air cycle, 1.04–1.26 times it (the Rally2 48 % at
-  4000 rpm against 40 %), so as to keep NGP's torque. At the 2.5 bar cap the tables need 13–15 bar of BMEP per bar of
+- A modern turbo car's work per kilogram of air sits over the fuel–air cycle, up to 1.19 times it (the Rally2 47.5 % at
+  4000 rpm against 41 %), so as to keep NGP's torque. At the 2.5 bar cap the tables need 13–15 bar of BMEP per bar of
   boost; the makers claim as much (M-Sport's Fiesta R5 475 N·m at 4000 rpm). Nothing sourced closes it: running richer
   adds nothing (Heywood), turbo η_v peaks at 0.95–0.99 (Garrett), a road intercooler measured 0.57 and 0.91 with water
-  spray (one paper), and no rally engine's compression ratio is published. Three ways down were tried and dropped:
-  more charge as on NA cars ran away once the restrictor held the air; boost carrying `K` to the ceiling wherever it
-  could asked the Rally2's turbo for 2.05 bar at 2000 rpm, at its limit, so it never reached 90 % in 5 s; and the
-  restrictor's full flow at high rpm brought `K` there only from 1.16 to 1.10 (its pressure drop and the back pressure
-  take the rest), raised it at the cap and spooled the turbo sample under GT-Power's band.
+  spray (one paper), and the R5, Rally2 and WRC 1.6 engines already run their rules' highest compression ratio. Three
+  ways down were tried and dropped: more charge as on NA cars ran away once the restrictor held the air; boost carrying
+  `K` to the ceiling wherever it could asked the Rally2's turbo for 2.05 bar at 2000 rpm, at its limit, so it never
+  reached 90 % in 5 s; and the restrictor's full flow at high rpm brought `K` there only from 1.16 to 1.10 (its pressure
+  drop and the back pressure take the rest), raised it at the cap and spooled the turbo sample under GT-Power's band.
 - The turbo cars' exhaust runs about 660 °C at idle, against 296–430 °C at road engines' ports and up to 657 °C on a
   road turbo retarded at its lightest loads, and about 565 °C at light part load against 585–732 °C on road turbos at
   the same BMEP. One line over the share of the rated flow cannot hold both.
