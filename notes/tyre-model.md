@@ -1546,10 +1546,13 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.267; 180-190 0.072 / 0.053 / 0.210 / 0.231; 190-200 0.056 / 0.014 / 0.178 / 0.199 (pad-gravel, experimental, 6th:
   0.323 / 0.244 / 0.212 / 0.098 at 150 / 170 / 180 / 190). The real models agree (tarmac, 4th 110-120: Yaris 0.385,
   Fiesta 0.384, i20 0.384); the game's cars pull 1.2-1.3 times as hard at 115 km/h and 3 times at 185.
-  - Fit (1390 kg, Crr 0.015, ρ 1.17): España CdA 1.76 m² (5-95 % 1.69-1.82), wheel power 219 / 224 / 231 / 219 / 196
-    kW at 6500 / 7000 / 7500 / 8000 / 8500 rpm; Deutschland 1.71 (1.67-1.77), 230 / 233 / 229 / 232 / 196; per model
-    1.55-1.83. España with 1350 kg, ρ 1.12, Crr 0.010 or only above 130 km/h: CdA 1.72-1.85, power 213-235. Finland
-    (Crr 0.018, ρ 1.24): 1.56 (1.44-1.69), 205 kW at 7000, its drag not separated from its rolling loss.
+  - Fit (1390 kg, Crr 0.015, ρ 1.17): España CdA 1.76 m² (5-95 % 1.69-1.82), wheel power 219 / 224 / 231 / 219 / 196 kW
+    at 6500 / 7000 / 7500 / 8000 / 8500 rpm; Deutschland 1.71 (1.67-1.77), 230 / 233 / 229 / 232 / 196; per model
+    1.55-1.83. España with 1350 kg, ρ 1.12, Crr 0.010 or only above 130 km/h: CdA 1.72-1.85, power 213-235. Finland (Crr
+    0.018, ρ 1.24): 1.56 (1.44-1.69), 205 kW at 7000, its drag not separated from its rolling loss. Five more tarmac
+    events by the same fit (CdA m², wheel power at 6500-7500 rpm): Corsica 2019 1.63 (1.51-1.75), 228-232 kW; Catalunya
+    2019's tarmac days 1.61 (1.55-1.68), 221-229; Croatia 2021 1.74 (1.62-1.85), 226-228; Ypres 2021 1.66 (1.60-1.73),
+    225-227; Monza 2021 1.47 (1.39-1.56), 212-224 (the circuit's straights, less wing).
   - The 2014-16 cars (Deutschland 2016: Polo R, i20, Fiesta RS WRC, 107 drives; no altitude, and without the grade
     term Deutschland 2019 reads 0.044 / 0.024 / 0.026 / 0.013 / 0.003 g low at the speeds below, more time being
     spent uphill: added here; the fit on the raw data, 0.83 m², is not usable). 4th 110-120 / 5th 130-140 / 6th
@@ -1667,29 +1670,31 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   -4.2..-4.5 and +0.7..1.1 / +0.9..1.3; experimental-brush -1.2..-1.7 / -1.9..-2.8 / - / -4.2 and +0.1..1.0 / +1.6..2.3;
   ngp -3.8..-4.3 / -5.0..-5.3 / -6.7 / -8.6 and +1.1..2.3 / +3.3. On tarmac the brush's slip is the real cars' within
   the method's 1 % (2.6 % per g under 0.5 g) and NGP's tyre slips 2 to 3 times as far for the same force (7.2 % per g).
-  The method's floor: under 0.5 g of braking the real slip reads within 0.4 % of none, which no tyre gives, and the
-  ratio at no force rises 0.5 % from 50 to 115 km/h (the tyres growing, inferred). Past 1.3 g the real cars stay at -3
-  to -5 %; the brush runs to -8..-10 at its limit. Gravel under power (both axles turn together), 0.4 g at 100-130 /
-  130-160 km/h: Finland +6.2 / +2.6, Estonia +5.3 / +2.5, Sardegna +4.1 / +1.5, Acropolis +3.8 / +0.6, Portugal +3.1 /
-  +0.6, Safari +2.5 / +0.6; loose-v1 on the 9 / 17.5 / 25 mm gravels (pads 17, 9, 1) +2.7 / +1.6, +4.6 / +2.6, +6.4 /
-  +4.4; ngp +5.8 / +4.2, +5.9 / +3.8, +7.4 / +6.0. At 0.6 g, 80-100 / 100-130 km/h: the six rallies +5.8..11.0 /
-  +2.9..5.4; loose-v1 +6.0 / +4.4, +7.5 / +5.7, +11.3 / +8.6; ngp +8.2..9.6 / +6.9..8.6. loose-v1's depths cover the
-  real rallies under power (its 9 mm the four stiffer ones, its 17.5 mm Finland and Estonia; its 25 mm is softer than
-  any of the six); NGP has 1.5 to 2 times the real slip from 130 km/h whatever the depth. Gravel braking by force, the
-  six rallies alike: -1.4..-4 % at 0.2 g, -9..-12 at 0.4 (Finland -4..-10), -15..-23 at 0.6, -20..-32 at 0.8, -23..-34
-  at 1.0, the same in the windows whose force lies within 5 deg of the car's axis (not a yawed car); loose-v1 9 / 17.5 /
-  25 mm -2.0 / -2.8 / -3.8 at 0.4 g, -3.7 / -6.0 / - at 0.6, -8.7 / - / -13.5 at 0.8; ngp -5 at 0.4, -9.3 at 0.6. Binned
-  the other way (scratch: the median force per slip, at 3-6 / 6-10 / 10-15 / 15-22 / 22-32 / 32-50 %): the six 0.24-0.53
-  / 0.44-0.65 / 0.54-0.68 / 0.62-0.73 / 0.67-0.78 / 0.72-0.82 g; loose-v1 17.5 mm 0.45 / 0.67 / 1.02 / 0.97 / 0.95 / -,
-  25 mm 0.37 / - / 0.86 / 1.02 / 0.93 / -; ngp 0.31 / 0.49 / 0.81 / 0.91-0.96 / 0.95 / -. The two binnings bracket the
-  curve: to 10 % slip the real braking force builds as both models' deep gravels do; past it the real cars sit at 20-40
-  % slip for a force the game has by 10-20 %, which is the lower real level ("Straight braking" below) and a deep slip
-  that costs nothing: the real force does not fall to lock (0.72-0.89 g past 50 %; the published locked over ABS,
-  1.25-1.30, agrees), as loose-v1 holds it (1.00-1.04 g locked) and NGP does not (its best at 19 %, 13-19 % less
-  locked). Driving bins under 100 km/h show the real wheels spinning 2 to 3 times as far as the game's (Finland flat out
-  at 80 / 100 km/h 19-23 / 12-15 % against ngp 10 / 8, experimental 12 / 9, loose-v1 on 9 mm - / 4.4), partly the
-  selection the docstring names. Not known: which shafts the channel reads, and the real cars' brake balance. The pad of
-  `pad-gravel` is the shallowest gravel (17, 9 mm): its braking slip is a fifth to a half of Finland's at equal force.
+  Corsica 2019, Catalunya 2019's tarmac days and Croatia 2021 read as the two: -1.0..-4.0 % at 1.0 g of braking,
+  -2.5..-3.4 at 1.2 g (Ypres 2021's ratio at no force does not fit, left out). The method's floor: under 0.5 g of
+  braking the real slip reads within 0.4 % of none, which no tyre gives, and the ratio at no force rises 0.5 % from 50
+  to 115 km/h (the tyres growing, inferred). Past 1.3 g the real cars stay at -3 to -5 %; the brush runs to -8..-10 at
+  its limit. Gravel under power (both axles turn together), 0.4 g at 100-130 / 130-160 km/h: Finland +6.2 / +2.6,
+  Estonia +5.3 / +2.5, Sardegna +4.1 / +1.5, Acropolis +3.8 / +0.6, Portugal +3.1 / +0.6, Safari +2.5 / +0.6; loose-v1
+  on the 9 / 17.5 / 25 mm gravels (pads 17, 9, 1) +2.7 / +1.6, +4.6 / +2.6, +6.4 / +4.4; ngp +5.8 / +4.2, +5.9 / +3.8,
+  +7.4 / +6.0. At 0.6 g, 80-100 / 100-130 km/h: the six rallies +5.8..11.0 / +2.9..5.4; loose-v1 +6.0 / +4.4, +7.5 /
+  +5.7, +11.3 / +8.6; ngp +8.2..9.6 / +6.9..8.6. loose-v1's depths cover the real rallies under power (its 9 mm the four
+  stiffer ones, its 17.5 mm Finland and Estonia; its 25 mm is softer than any of the six); NGP has 1.5 to 2 times the
+  real slip from 130 km/h whatever the depth. Gravel braking by force, the six rallies alike: -1.4..-4 % at 0.2 g,
+  -9..-12 at 0.4 (Finland -4..-10), -15..-23 at 0.6, -20..-32 at 0.8, -23..-34 at 1.0, the same in the windows whose
+  force lies within 5 deg of the car's axis (not a yawed car); loose-v1 9 / 17.5 / 25 mm -2.0 / -2.8 / -3.8 at 0.4 g,
+  -3.7 / -6.0 / - at 0.6, -8.7 / - / -13.5 at 0.8; ngp -5 at 0.4, -9.3 at 0.6. Binned the other way (scratch: the median
+  force per slip, at 3-6 / 6-10 / 10-15 / 15-22 / 22-32 / 32-50 %): the six 0.24-0.53 / 0.44-0.65 / 0.54-0.68 /
+  0.62-0.73 / 0.67-0.78 / 0.72-0.82 g; loose-v1 17.5 mm 0.45 / 0.67 / 1.02 / 0.97 / 0.95 / -, 25 mm 0.37 / - / 0.86 /
+  1.02 / 0.93 / -; ngp 0.31 / 0.49 / 0.81 / 0.91-0.96 / 0.95 / -. The two binnings bracket the curve: to 10 % slip the
+  real braking force builds as both models' deep gravels do; past it the real cars sit at 20-40 % slip for a force the
+  game has by 10-20 %, which is the lower real level ("Straight braking" below) and a deep slip that costs nothing: the
+  real force does not fall to lock (0.72-0.89 g past 50 %; the published locked over ABS, 1.25-1.30, agrees), as
+  loose-v1 holds it (1.00-1.04 g locked) and NGP does not (its best at 19 %, 13-19 % less locked). Driving bins under
+  100 km/h show the real wheels spinning 2 to 3 times as far as the game's (Finland flat out at 80 / 100 km/h 19-23 /
+  12-15 % against ngp 10 / 8, experimental 12 / 9, loose-v1 on 9 mm - / 4.4), partly the selection the docstring names.
+  Not known: which shafts the channel reads, and the real cars' brake balance. The pad of `pad-gravel` is the shallowest
+  gravel (17, 9 mm): its braking slip is a fifth to a half of Finland's at equal force.
 - Straight braking, the level (2026-11-10). Saturated (`rally_wot.py slip`, last line: the wheels 22 % or more under the
   car's speed), the tyres' force over the weight, median, at 60-80 / 80-100 / 100-130 / 130-160 km/h: Finland 0.69 /
   0.76 / 0.84 / 0.90, Estonia 0.65 / 0.75 / 0.80 / 0.87, Portugal 0.65 / 0.72 / 0.79 / 0.83, Sardegna 0.67 / 0.72 / 0.79
