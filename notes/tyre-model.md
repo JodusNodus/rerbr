@@ -1673,18 +1673,25 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   windows past 50 % mean slip, where all four must be deep, read 0.86 / 0.96 at 100-130 / 130-160 km/h (60 windows):
   4-14 % under loose-v1 and near NGP's locked 0.84-0.89 at 100-130 km/h. So the game's gravel level is 5 to 25 % above
   Finland's by the two readings, more above the other rallies': a weak case, not a recommendation (the earlier "no case
-  to lower the level" rested on a peak read from the wheels' speed). The force gains with speed as the game's does
-  (100-130 to 130-160 km/h: the six +0.00..0.07, the game +0.05; 80-100 to 100-130: +0.05..0.08, the game +0.06): no
-  sign there that the files' downforce is high. Earlier in this note the game's best braking was set against the real
-  p90: p90 less p50 of 1 s windows is 0.2 g, the windows' own noise (the positions' force against the accelerometer's,
-  sd 0.2 g), so the p90 flatters the game; the medians, brake channel at 50 % or more (scratch), p50 / p90 at 70-100 /
-  100-130 / 130-160 km/h: Finland 0.72 / 0.90, 0.82 / 1.05, 0.92 / 1.16; Deutschland 0.97 / 1.16, 1.02 / 1.23, 1.08 /
-  1.31; España 0.98 / 1.17, 1.05 / 1.25, 1.11 / 1.30, against the i20's best on the pads, gravel ngp 0.93 / 1.00 / 1.09,
-  loose-v1 0.96 / 1.04 / 1.08, tarmac ngp 1.42 / 1.52 / 1.66, brush 1.42 / 1.53 / 1.66. On tarmac the real cars brake at
-  3 % slip, short of saturation, so the 0.45-0.55 g between their medians and the game's best is no verdict. The
-  accelerometer reads as the positions do (p50 within 0.04 g), so `-accy` does not read low: the earlier slope of
-  0.49-0.74 was against the wheels' speed, and the older braking figures taken "from the speed" (16 longest events, peak
-  0.5 s) read the wheels, 15-30 % slower than the car at 0.6-1.0 g on gravel.
+  to lower the level" rested on a peak read from the wheels' speed). Sliding agrees in direction: the i20 held past the
+  limit on the 17.5 mm pad's 40 and 65 m circles (`--circle-past`, 70-95 km/h) carries a whole g of 0.90-1.00 along its
+  path at 20-30 deg of sideslip and 0.97-1.06 at 30-45 (loose-v1; ngp 0.87-0.98 and 0.89-1.01), where the real cars' 2 s
+  windows at those angles have medians of 0.80-0.85 (Finland), 0.73-0.82 (Estonia, Portugal, Sardegna, Acropolis) and
+  0.64-0.68 (Safari) at 60-100 km/h: a lower bound, a real window at that angle need not be saturated. With `--tyre-
+  tuning gravel=0.85` the i20's braking at 22-50 % slip reads 0.79 / 0.84 / 0.92 at 70-100 / 100-130 / 130-160 km/h,
+  Finland's and Estonia's within 0.06, and locked stays 0.96-0.99 (0.90: 0.83 / 0.89 / 0.96): the factor to try on the
+  tuning panel if the level is to be driven. The force gains with speed as the game's does (100-130 to 130-160 km/h: the
+  six +0.00..0.07, the game +0.05; 80-100 to 100-130: +0.05..0.08, the game +0.06): no sign there that the files'
+  downforce is high. Earlier in this note the game's best braking was set against the real p90: p90 less p50 of 1 s
+  windows is 0.2 g, the windows' own noise (the positions' force against the accelerometer's, sd 0.2 g), so the p90
+  flatters the game; the medians, brake channel at 50 % or more (scratch), p50 / p90 at 70-100 / 100-130 / 130-160 km/h:
+  Finland 0.72 / 0.90, 0.82 / 1.05, 0.92 / 1.16; Deutschland 0.97 / 1.16, 1.02 / 1.23, 1.08 / 1.31; España 0.98 / 1.17,
+  1.05 / 1.25, 1.11 / 1.30, against the i20's best on the pads, gravel ngp 0.93 / 1.00 / 1.09, loose-v1 0.96 / 1.04 /
+  1.08, tarmac ngp 1.42 / 1.52 / 1.66, brush 1.42 / 1.53 / 1.66. On tarmac the real cars brake at 3 % slip, short of
+  saturation, so the 0.45-0.55 g between their medians and the game's best is no verdict. The accelerometer reads as the
+  positions do (p50 within 0.04 g), so `-accy` does not read low: the earlier slope of 0.49-0.74 was against the wheels'
+  speed, and the older braking figures taken "from the speed" (16 longest events, peak 0.5 s) read the wheels, 15-30 %
+  slower than the car at 0.6-1.0 g on gravel.
 - Tarmac sideslip against lateral g (2026-11-10; scratch: `rally_wot.py`'s sideslip windows by the path's lateral g, the
   i20 Coupe WRC 2020 on pad-tarmac circles of 40 to 160 m with the target speed ramping). The real medians sit at 0 to
   +2 deg nose in from 0.6 to 1.4 g in every band (España at 1.0-1.2 g, 60-80 / 80-100 / 100-130 / 130-160 km/h: +1.7 /
