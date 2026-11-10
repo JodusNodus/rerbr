@@ -463,9 +463,8 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   stage's own surface (with the gravel) the brush's car slid rear first (onset sideslip 11-13° against 1-2°): that is
   loose-v1 against NGP's soil on the patch, not tarmac.
 - Open-loop handling on a flat pad (2026-11-10, `harness/handling.py --out DIR`, release `rbr-standalone`; 9 cases,
-  596 runs incl. probes, 15 min at `--jobs 8`): `--flat-pad 37` replaces the stage's `.col` with a 2 km square of level faces at the
-  start's height (`rbr_btb::col::flat_pad`, `boot/mod.rs`; `.trk` collision meshes left out, every material takes
-  tarmac 37's values), `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`autopilot/pad.rs`) holds the start heading, brings the car to
+  596 runs incl. probes, 15 min at `--jobs 8`): `--stage pad-tarmac` (a generated 2 km square of level faces,
+  `rbr_btb::pad`; every material takes tarmac 37's values), `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`autopilot/pad.rs`) holds the start heading, brings the car to
   the entry speed in the gear the shift points give, and after 2 s of steady speed runs the schedule open loop with the
   exact float steering (the controller's 8-bit steps are 0.008). Metrics and their definitions: the script's docstring.
   Ramp steer at 80 km/h (0.015 per s of lock, 0.08-0.14 g/s): peak g ngp / experimental / brush: Fiesta 1.248 / 1.249 /

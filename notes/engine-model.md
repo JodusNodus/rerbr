@@ -469,8 +469,8 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   now bottoms at 82 rad/s with the clutch open (NGP's Golf 89).
 - Limiter: no experimental car over `RPMLimit` in gear beyond one whole-rad/s sample; over it only in the start
   burnout in neutral (Fiesta 0.5–0.6 s, +34 rpm; Celica 0.01 s, +6) and the Fiesta's drop into first.
-- Fiesta Rally2 0-100 km/h on the flat pad (`--boot --stage track-85_M --flat-pad 37|17 --manoeuvre
-  ramp-steer,170,0.05`, gravel with `--surface gravel`; the approach is full throttle past 100 km/h, heading held,
+- Fiesta Rally2 0-100 km/h on the flat pad (`--boot --stage pad-tarmac|pad-gravel --manoeuvre
+  ramp-steer,170,0.05`; the approach is full throttle past 100 km/h, heading held,
   upshifts on rpm even on wheelspin, z within 2 cm; timed from 0.5 m/s in the trace; `cdadc164`): tarmac NGP 4.00 /
   exp 3.98 s (0-60 1.75 / 1.75), gravel 4.62 / 4.57 (0-60 2.25 / 2.24; second gear at 0.7 s on wheelspin). The pad's
   tarmac figure replaces the slope-corrected 504 estimate.

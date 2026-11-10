@@ -606,8 +606,8 @@ times a driver would see. On gravel the clutch slips 1.0–4.5 s longer per run,
 
 The autopilot's standing starts with the Fiesta Rally2 at full throttle, timed from the first move over 0.5 m/s.
 The start revs in neutral on the handbrake and drops into first at full throttle; NGP's clutch help then closes the
-clutch. The flat pad (`--flat-pad`) is a level square of one material in place of a stage's ground, level to 2 cm
-over these runs, and the car holds its heading on it:
+clutch. The flat pad (`--stage pad-tarmac|pad-gravel`, a generated level square of one material, `rbr_btb::pad`) is level to
+2 cm over these runs, and the car holds its heading on it:
 
 | Flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
