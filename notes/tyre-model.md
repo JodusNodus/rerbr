@@ -1741,6 +1741,16 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   ones of 2021 (Acropolis, Safari) and 0.88-0.94 of Finland's and the dry six's median at 100-130 km/h: other roads and
   another tyre maker, so a bound only. It leaves room for NGP's wet gravel (0.845-0.8525 of dry) and shows no loss that
   would argue against damp gravel at the dry level.
+- Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
+  the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes): España
+  1.26 / 1.39 / 1.49, Deutschland 0.95 / 1.08 / 1.20; Finland 0.78 / 0.92 / 1.06, Portugal 0.82 / 0.96 / 1.07, Estonia
+  0.72 / 0.87 / 0.99, Sardegna 0.69 / 0.83 / 0.95, Acropolis 0.68 / 0.83 / 0.95, Safari 0.59 / 0.73 / 0.84 (587-2116
+  apexes each; the p90 holds to 130 km/h, the lower quantiles fall as fewer speed minima are grip's). Finland's median
+  is its sliding windows' whole g (0.80-0.85, above). The game's limits at 80 km/h (ramp steer, Fiesta Rally2: tarmac
+  1.25, gravel 0.92-0.95) sit at España's median on tarmac and at Finland's and Portugal's p75 on gravel, but above
+  Deutschland's p90 on tarmac: gravel over tarmac is 0.74-0.76 in the game and 0.62-0.71 (Finland over España, p50-p90)
+  to 0.82-0.88 (over Deutschland) in the telemetry. The two tarmac rallies differ by as much as the gravel level is in
+  question, so this reading neither adds to nor takes from the case above.
 - Wet tarmac against dry, the same road (2026-11-10; scratch: a drive's positions laid on another drive of the same
   road, the path speed at the first drive's apexes, squared for the lateral grip's ratio; under 50 / 50-80 / 80-120 km/h
   apexes). Deutschland 2017's Friday: the morning showery and drying on hard and soft tyres, the afternoon in heavy rain
