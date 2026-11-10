@@ -1447,7 +1447,8 @@ impl<'a> Driver<'a> {
             if self.mode == Mode::Drive && !finished && sense.gear >= FIRST {
                 let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
                 let slip = start::launch_slip(sense.wheels, sense.pose.speed());
-                let floor = self.start.as_ref().map_or(0.0, |c| c.torque_peak);
+                launch.top = launch.top.max(sense.engine);
+                let floor = self.start.as_ref().map_or(0.0, |c| c.torque_peak).min(start::DROOP * launch.top);
                 let (held, pedal) = start::clutch_step(launch.clutch, slip, drive.target, sense.engine, floor, dt);
                 launch.clutch = held;
                 launch.locked = pedal == 0.0 && (sense.engine - sense.geared).abs() < start::LOCKED * sense.engine;

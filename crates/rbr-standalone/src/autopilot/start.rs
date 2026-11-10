@@ -154,18 +154,24 @@ pub fn drive_pedal(target: f32, held: f32, slip: f32, dt: f32, engine: f32, torq
 }
 
 /// The clutch launch (`--drive-slip` with `--clutch-help off`, where the driver has the clutch pedal): the pedal
-/// (0 closed to 1 open) and whether the clutch has closed for good, from where the throttle holds the slip.
+/// (0 closed to 1 open), whether the clutch has closed for good, from where the throttle holds the slip, and the
+/// highest engine speed since the go (rad/s).
 #[derive(Clone, Copy, Debug)]
 pub struct Launch {
     pub clutch: f32,
     pub locked: bool,
+    pub top: f32,
 }
 
 impl Launch {
     pub fn new() -> Self {
-        Self { clutch: 1.0, locked: false }
+        Self { clutch: 1.0, locked: false, top: 0.0 }
     }
 }
+
+/// The clutch's floor is the torque peak, or this of the highest engine speed since the go where the engine has not
+/// been that high (a start limiter under the torque peak holds it on the line).
+pub const DROOP: f32 = 0.9;
 
 /// The throttle falls from full to none over this (rad/s) above the launch revs.
 pub const REV_BAND: f32 = 30.0;
@@ -187,8 +193,8 @@ pub fn launch_slip(wheels: [f32; 4], v: f32) -> f32 {
 }
 
 /// One step of the launch's clutch pedal: it closes while the slip is under `target` and opens over it, at
-/// `CLUTCH_RATE` for an error of the whole target; and it opens for an engine dragged under `floor` (the torque
-/// peak: an engine with less torque than the tyres take). Returns the pedal's integral and the pedal.
+/// `CLUTCH_RATE` for an error of the whole target; and it opens for an engine dragged under `floor` (an engine
+/// with less torque than the tyres take). Returns the pedal's integral and the pedal.
 pub fn clutch_step(clutch: f32, slip: f32, target: f32, engine: f32, floor: f32, dt: f32) -> (f32, f32) {
     let error = ((target - slip) / target).clamp(-1.0, 1.0);
     let clutch = (clutch - CLUTCH_RATE * error * dt).clamp(0.0, 1.0);
