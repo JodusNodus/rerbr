@@ -1894,7 +1894,9 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   fit` reads 1.82 m² on tarmac, 1.64 on gravel; what is left is the experimental engine's 10 %. Top speed without /
   with, tarmac and gravel: i20 202.2 / 199.4 and 200.6 / 196.8 km/h (real 196-202), Fiesta Rally2 177.5 / 175.8 and
   192.7 / 189.6, Polo R5 182.6 / 181.6 and 181.6 / 180.2. RSF 524 with the autopilot (80 km/h mean): i20 344.9 /
-  346.6 s, Rally2 347.2 / 348.4. Not decided: one class measured, Rally2 and R5 by the rule alone; damaged aero
+  346.6 s, Rally2 347.2 / 348.4. The throttle lifted in gear ("Throttle lifted in gear"), experimental with it: 4th
+  60-80 km/h 0.077 g, 5th 60-80 0.079, 5th 80-100 0.084, 6th 80-100 0.091, 6th 100-120 0.110, against the real 0.09 /
+  0.085 / 0.105-0.132 / 0.090-0.101 / 0.145 and 0.064 / 0.061 / 0.064 / 0.064 / 0.075 without. Not decided: one class measured, Rally2 and R5 by the rule alone; damaged aero
   parts keep this drag.
 - Braking between cars (2026-11-10; `brake_test.py`, pad-tarmac, 100-0 km/h declutched, mean g, best threshold / ABS
   at κ 0.15): Alpine A110 Rally (500 N at 150 km/h) ngp 1.20 / 1.23 (32.7 / 31.9 m), brush 1.21 / 1.25; Fiesta Rally2
