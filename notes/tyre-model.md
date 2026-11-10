@@ -1557,14 +1557,9 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   limits (0.57-0.75 g against 0.9-1.1 g real: the physics, not the driver); aero (the real 150-200 km/h sections are
   not reached here); and the driver, a WRC driver on a recce'd stage against a controller.
 - The r40 circle (Fiesta Rally2, RSF 345, ramp 0.4, `--tyre-probe-every 10`, 1 s means; experimental-brush, ngp the
-  same pattern; superseded: the circle lies on an 11.9° slope and its hold ends running downhill, so the front limit
-  and the 0.9 of the peak below are terrain; flat, all four tyres reach 0.93-1.02 of their peak, [Car-level grip in
-  the same terms](#car-level-grip-in-the-same-terms)): through the hold the front axle works harder (front α 7-19°, Fy/Fz 0.47-0.62; rear α 3-9°, 0.28-0.51):
-  the car runs wide on the front. At the break (24-26 s) both axles go to 21-27° with throttle 0.3-0.4, |F|/Fz 0.69-0.86
-  per wheel. Loads: inner 1.8-2.1 kN, outer 5.0-5.3 kN on both axles (static 3.8 front, 3.1 rear). The four wheels'
-  combined Σ\|F\|/ΣFz is 0.75 against the loads' own peaks Σμ(Fz)Fz/ΣFz ≈ 0.82 (peaks 0.89/0.83/0.77 at 2/4/6 kN):
-  the load spread costs about 0.02 (0.84 at the mean 3.5 kN), the tyres reach about 0.9 of their peak, and the driving force takes the rest, so
-  Σ\|Fy\|/ΣFz is 0.65-0.66 and `glat` 0.71-0.75 g. A 0.83 tyre at 4 kN is consistent with 0.663 g at the car. At
+  same pattern; superseded: the circle lies on an 11.9° slope and its hold ends running downhill — see the flat
+  circle in [Car-level grip in the same terms](#car-level-grip-in-the-same-terms), which saturates all four tyres.
+  At
   ramp 0.25 the "slide" is the autopilot weaving inward (4 m inside, steering crossing over) at 0.44 g, not grip: the
   circle row reads the car and the controller together.
 
@@ -1654,8 +1649,7 @@ loose-v1](#loose-surfaces-loose-v1); 2 measured in a drive-test build, below):
    threshold.
 2. Gravel shape (brush only, weak): a driven fall past the peak to ~0.85 of it at full spin (dense sand 0.87 at 80 %,
    sand rig 0.63-0.78 at 48-60 %, none on gravel). Expected (estimated, × 0.85-0.9 of the spinning wheels' share): the Rally2's 0-40 km/h 0.90 → ~0.80 g, Escort
-   0.51 → ~0.46. Driver test: power slides out of slow gravel corners and a standing start. Wanted before: a gravel
-   traction-slip curve (Zeng et al. 2022, J. Terramech. 104).
+   0.51 → ~0.46. Driver test: power slides out of slow gravel corners and a standing start.
    Drive-test build (2026-11-08, branch `tyre/loose-shape`'s WIP commit, not merged; `RERBR_TEST_GRAVEL_SPIN=F`):
    on gravel's share the driven force falls by a smoothstep from a driving slip of 0.3 (dense sand's ~35 % peak; the
    shear law at 0.97 of its level) to F at full spin (0.88 of the way at 80 %: dense sand 0.87 there at F 0.85).
