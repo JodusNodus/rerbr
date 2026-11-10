@@ -549,6 +549,10 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   under the cap), NGP waits on the rev limiter (8547), and the autopilot's dump takes the wheels to 42 km/h in 0.08 s. A
   cap at 0.75 holds 6200 rpm and leaves the dump's 0-100 km/h within 0.02 s on six cars: on `engine/start-rpm`, not
   merged.
+  - Other years, the same reading: the start line's median is 6780 rpm at Deutschland 2017, 6260 in 2018 and 6010 on
+    Wales 2019's wet gravel (98-99 starts each), nine rallies at 6010-6780; the cars' top rpm at full throttle is 8290
+    (p99.5 a drive, Deutschland 2019; 8000 on the 2016 cars). The 2014-16 cars (Deutschland 2016) idle at 2000-2500 rpm
+    on 86 % of the samples at rest.
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - A modern turbo's K over the fuel–air cycle (1.04–1.26 of it; turbo sample and Rally2 0.47–0.48 at 4000 rpm
   against 0.40), kept so the tables hold (decided 2026-11: NGP's torque over the ceiling). At the 2.5 bar cap the
