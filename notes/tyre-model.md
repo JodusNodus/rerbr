@@ -568,6 +568,11 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   throttle: Golf 38° and back on line never (99° spin before; ngp 17°), Fiesta 39° and back in 4.8 s (54°, never),
   Escort still spins. Limit 82.8/78.7/76.4 km/h, 1.29/1.25/1.19 g (ngp Fiesta 1.27, Golf 1.20). Map 41 600 s: Fiesta
   304.00 s, Golf 314.09.
+- The stiffness level against the library (2026-11-10, Cα/Fz per rad at about 4 kN): road 205/60R15 at 2.2 bar 11.5
+  (Pacejka 2nd ed. Table A3.1, pKy1 -14.95, pKy2 2.130: MF, computed); NGP 17.6; semi-slick R888R 21.9-22.3
+  (measured, below); brush 22.9; A005 slick 27.2 (Richardson, fig); a racing radial 34 (MF/model); FS slicks 31-39 at
+  0.6-1.1 kN. No rally tarmac tyre is measured: the brush sits on the one track tyre at NGP's grip, between a road
+  tyre and a slick.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
