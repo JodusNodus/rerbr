@@ -2378,16 +2378,16 @@ saved rank pages are read below.
   / -0.039 / -0.041, Estonia -0.043 / -0.046 / -0.061, Portugal -0.045 / -0.044 / -0.046, Sardegna -0.049 / -0.057 /
   -0.048, Acropolis -0.071 / -0.059 / -0.062 (2021; 270-1900 samples a cell). Finland's and Estonia's samples lie at
   120-140 m, the tarmac rallies' at 390-530 m and the other three's at 690-710 m, and the tarmac fits show no power lost
-  to altitude from 50 to 530 m (225-231 kW), so the first two are the cleaner. The game's i20 Coupe WRC 2020 flat out,
-  gravel pad less tarmac pad, the same cells: ngp -0.014 / -0.020 / -0.021 on 9 mm, -0.023 / -0.027 / -0.029 on 17.5 mm,
-  -0.027 / -0.034 / -0.035 on 25 mm; experimental-brush -0.011 / -0.017 / -0.016, -0.018 / -0.026 / -0.028, -0.029 /
-  -0.034 / -0.036. So gravel takes 0.04-0.05 g from the real cars' acceleration, flat with speed as a force on the
-  weight is, and half that in the game at 9 mm, two thirds at 17.5 mm (the depth of Finland's wheel slip), three
-  quarters at 25 mm. Not all of it is the road: a gravel car's second spare and guards (3 % of the mass would be 0.008 g
-  here; not known) and its ride height add to the real figure, and the telemetry's speed is the wheels', which takes
-  0.005 g off it. What is left over the game, 0.01-0.02 g, is as large as the coast-downs' whole gravel figure below
-  (0.016-0.02, at low speed and without drive): recorded, no model change (no source says whether speed, the roughness
-  or the drive adds it).
+  to altitude from 50 to 530 m (221-234 kW on seven events, no trend), so the first two are the cleaner. The game's i20
+  Coupe WRC 2020 flat out, gravel pad less tarmac pad, the same cells: ngp -0.014 / -0.020 / -0.021 on 9 mm, -0.023 /
+  -0.027 / -0.029 on 17.5 mm, -0.027 / -0.034 / -0.035 on 25 mm; experimental-brush -0.011 / -0.017 / -0.016, -0.018 /
+  -0.026 / -0.028, -0.029 / -0.034 / -0.036. So gravel takes 0.04-0.05 g from the real cars' acceleration, flat with
+  speed as a force on the weight is, and half that in the game at 9 mm, two thirds at 17.5 mm (the depth of Finland's
+  wheel slip), three quarters at 25 mm. Not all of it is the road: a gravel car's second spare and guards (3 % of the
+  mass would be 0.008 g here; not known) and its ride height add to the real figure, and the telemetry's speed is the
+  wheels', which takes 0.005 g off it. What is left over the game, 0.01-0.02 g, is as large as the coast-downs' whole
+  gravel figure below (0.016-0.02, at low speed and without drive): recorded, no model change (no source says whether
+  speed, the roughness or the drive adds it).
 - Published (`data/tyre-targets.csv`, `coast:SURFACE:crr`): road cars coasting on Swedish roads Cr = 0.00912 + 2.1e-5
   IRI v + 0.00172 MPD at 8 °C (VTI 748A 2012 p. 60), 0.0101-0.0135 smooth to rough at 15 m/s; EU label C1 class A ≤
   0.0065 on the ISO 28580 drum; gravel 0.016 (Team O'Neil dry) and 0.018 (MPG, 0.64 cm pea stone on recycled asphalt),
