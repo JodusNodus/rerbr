@@ -25,7 +25,7 @@ use crate::twin::Twin;
 pub const DT: f32 = rbr_recording::STEP_SECONDS;
 mod layout;
 
-pub use layout::{load_substeps, payload, DRIVELINE_OFFSET};
+pub use layout::{load_substeps, payload, torque_knots, DRIVELINE_OFFSET};
 
 /// The car state gameplay reads after a step, independent of its backend storage.
 #[derive(Clone, Copy, Debug)]

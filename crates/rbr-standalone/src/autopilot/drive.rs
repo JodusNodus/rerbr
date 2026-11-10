@@ -198,6 +198,14 @@ pub fn drive(
         .with_limit(limit)
         .with_obstacles(&stage.obstacles)
         .with_flat_out(measure.flat_out);
+    if measure.flat_out && driver.is_ngp() {
+        if let Some(curve) = Driver::start_curve(&live) {
+            driver = driver.with_start_curve(curve);
+        }
+    }
+    if let Some(k) = measure.drive_slip {
+        driver = driver.with_drive_slip(k);
+    }
     if let Some(circle) = measure.circle {
         driver = driver.with_circle(circle);
     }

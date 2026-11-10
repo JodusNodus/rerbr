@@ -399,6 +399,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
             args.aim,
             &autopilot::Measure {
                 flat_out: args.flat_out,
+                drive_slip: args.drive_slip,
                 brake_from: args.brake_from,
                 brake_pedal: args.brake_pedal,
                 brake_slip: args.brake_slip,

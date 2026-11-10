@@ -40,6 +40,10 @@ pub struct Args {
     /// `--flat-out` (with `--autopilot`): hold full throttle without braking for pace measurement (the steering
     /// and the gear shifts stay the controller's; `Driver::flat_out`).
     pub flat_out: bool,
+    /// `--drive-slip K` (with `--flat-out`): while the car accelerates, the throttle is modulated so the
+    /// most-slipping wheel's drive slip ratio holds near K (0.01-1.0; `autopilot::start::Drive`). K is a raw value:
+    /// the rim speed reads under the ground speed on a free wheel, and the ratio is not corrected for that.
+    pub drive_slip: Option<f32>,
     /// `--brake-from M/S` (with `--autopilot`): full foot brake once the speed reaches this, to a standstill
     /// (`Driver::brake_at`, a pace-measurement brake test; combine with `--flat-out`).
     pub brake_from: Option<f32>,
@@ -215,7 +219,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, an open-loop handling manoeuvre)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, an open-loop handling manoeuvre)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
@@ -297,6 +301,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
             "--brake-pedal" => args.brake_pedal = Some(fraction("--brake-pedal", &value)?),
             "--brake-slip" => args.brake_slip = Some(fraction("--brake-slip", &value)?),
+            "--drive-slip" => {
+                args.drive_slip = Some(parsed("--drive-slip", &value).and_then(|k: f32| {
+                    (0.01..=1.0).contains(&k).then_some(k).ok_or(format!("--drive-slip {value}: K in 0.01-1.0"))
+                })?)
+            }
             "--brake-abs" => args.brake_abs = Some(fraction("--brake-abs", &value)?),
             "--brake-hold" => {
                 args.brake_hold = Some(parsed("--brake-hold", &value).and_then(|s: f32| {
@@ -617,6 +626,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.brake_abs.is_some() && (args.brake_pedal.is_some() || args.brake_slip.is_some()) {
         return Err("--brake-abs takes no --brake-pedal or --brake-slip (it holds the full pedal)".into());
     }
+    if args.drive_slip.is_some() && !args.flat_out {
+        return Err("--drive-slip needs --flat-out".into());
+    }
     if (args.flat_out || args.circle.is_some() || args.brake_from.is_some()) && args.lesson.is_some() {
         return Err("--flat-out, --circle and --brake-from take no --school (a lesson brakes and stops)".into());
     }
@@ -841,6 +853,10 @@ mod tests {
             (format!("{BOOT} --flat-out --brake-from 27.78"), |a| {
                 assert_eq!(a.brake_from, Some(27.78));
                 assert_eq!((a.brake_pedal, a.brake_slip, a.brake_hold), (None, None, None));
+            }),
+            (format!("{BOOT} --flat-out --drive-slip 0.1"), |a| {
+                assert!(a.flat_out);
+                assert_eq!(a.drive_slip, Some(0.1));
             }),
             (format!("{BOOT} --brake-from 27.78 --brake-pedal 0.5 --brake-hold 2"), |a| {
                 assert_eq!((a.brake_pedal, a.brake_slip, a.brake_hold), (Some(0.5), None, Some(2.0)));
@@ -1100,6 +1116,10 @@ mod tests {
             (format!("{LIVE} --replay-trace T"), "--replay-trace and --replay-tyre need --replay"),
             (format!("{REC} --aim 1,2"), "--aim needs --autopilot"),
             (format!("{REC} --flat-out"), "--flat-out, --trace-speed and --tyre-image need --autopilot"),
+            (format!("{BOOT} --drive-slip fast"), "--drive-slip fast"),
+            (format!("{BOOT} --drive-slip 2"), "--drive-slip 2: K in 0.01-1.0"),
+            (format!("{BOOT} --drive-slip 0.005"), "--drive-slip 0.005: K in 0.01-1.0"),
+            (format!("{BOOT} --brake-from 27.78 --drive-slip 0.1"), "--drive-slip needs --flat-out"),
             (format!("{REC} --trace-speed T"), "--flat-out, --trace-speed and --tyre-image need --autopilot"),
             (format!("{REC} --tyre-probe P"), "--tyre-probe needs --autopilot or --replay-trace"),
             (format!("{LIVE} --replay F --tyre-probe P"), "--tyre-probe needs --autopilot or --replay-trace"),

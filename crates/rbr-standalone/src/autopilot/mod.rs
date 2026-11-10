@@ -54,6 +54,7 @@ mod drive;
 mod limit;
 pub mod pad;
 pub mod race;
+pub mod start;
 
 pub use drive::{drive, from_snapshot, Pilot};
 pub use pad::Manoeuvre;
@@ -462,6 +463,14 @@ pub struct Driver<'a> {
     /// `--flat-out` (pace measurement): hold full throttle without braking; the steering, the traction easing and
     /// the gear shifts stay the controller's (`target_speed`, `control`).
     flat_out: bool,
+    /// `--flat-out` on an NGP car: the torque curve and gear ratios the thrust-crossover shifts read (`start`), if
+    /// the live car gave them.
+    start: Option<start::Curve>,
+    /// `--drive-slip K` (with `--flat-out`): the drive-slip controller's target and integral (`start::Drive`), none
+    /// without the flag.
+    drive: Option<start::Drive>,
+    /// The flat-out shift points are logged once per run.
+    start_logged: bool,
     /// `--circle` (pace measurement): the steady-state circle to steer, if any.
     circle: Option<Circle>,
     /// `--circle-ramp` (pace measurement): the circle target's rise (m/s per s), `CIRCLE_RAMP` unless given.
@@ -512,6 +521,9 @@ pub struct Driver<'a> {
 #[derive(Clone, Debug, Default)]
 pub struct Measure {
     pub flat_out: bool,
+    /// `--drive-slip K` (with `--flat-out`): while the car accelerates, the throttle is modulated so the
+    /// most-slipping wheel's drive slip ratio holds near K (a driver's throttle foot, not NGP's clutch help).
+    pub drive_slip: Option<f32>,
     pub brake_from: Option<f32>,
     /// `--brake-pedal P`, `--brake-slip K` (`Brake`) and `--brake-hold S` (s on the brake after the stop).
     pub brake_pedal: Option<f32>,
@@ -725,6 +737,9 @@ impl<'a> Driver<'a> {
             stop: None,
             against: false,
             flat_out: false,
+            start: None,
+            drive: None,
+            start_logged: false,
             circle: None,
             circle_ramp: CIRCLE_RAMP,
             circle_t: 0.0,
@@ -921,6 +936,21 @@ impl<'a> Driver<'a> {
         Self { flat_out, ..self }
     }
 
+    /// The flat-out start's torque curve and gear ratios (`start::Curve`), read from the live car.
+    pub fn with_start_curve(self, curve: start::Curve) -> Self {
+        Self { start: Some(curve), ..self }
+    }
+
+    /// The flat-out start's drive-slip target K (`--drive-slip`, `start::Drive`).
+    pub fn with_drive_slip(self, target: f32) -> Self {
+        Self { drive: Some(start::Drive::new(target)), ..self }
+    }
+
+    /// NGP's steps (not 1.02's).
+    pub(crate) fn is_ngp(&self) -> bool {
+        self.per > 1
+    }
+
     /// The driver steering the steady-state `circle` (`--circle`, pace measurement) or none.
     pub fn with_circle(self, circle: Circle) -> Self {
         Self { circle: Some(circle), ..self }
@@ -986,6 +1016,42 @@ impl<'a> Driver<'a> {
     }
 
     /// The highest gear learnt to keep the engine over `SHIFT_DOWN` at `speed` (m/s), else first.
+    /// Whether an upshift is due: flat out on an NGP car with the torque curve, the next gear's thrust at the ground
+    /// speed wins or the engine is at the rev limit less `start::LIMIT_MARGIN` (`start::shift_up`); else past the rev
+    /// point `up` without wheelspin.
+    fn wants_up(&self, sense: &Sense, speed: f32, up: f32, start: bool, spinning: bool) -> bool {
+        if sense.gear < FIRST || sense.gear >= TOP_GEAR {
+            return false;
+        }
+        if !start {
+            return sense.engine > up && !spinning;
+        }
+        let Some(curve) = &self.start else { return sense.engine > up && !spinning };
+        let g = sense.gear as usize;
+        match (
+            curve.ratios.get(g).copied(),
+            curve.ratios.get(g + 1).copied(),
+            start::gain(&self.ratio, &curve.ratios, sense.gear + 1),
+        ) {
+            (Some(now), Some(next), Some(k)) if now > 0.0 && next > 0.0 => {
+                start::shift_up(&curve.knots, now, next, sense.engine, speed * k, self.limit)
+            }
+            _ => sense.engine > up && !spinning,
+        }
+    }
+
+    /// The flat-out start's torque curve and gear ratios from `live`'s car (`start::Curve`), if they read.
+    pub(crate) fn start_curve(live: &Live) -> Option<start::Curve> {
+        let mem = live.mem();
+        let car = mem.u32(pure::CAR_PTR);
+        let knots = crate::physics::torque_knots(mem, car);
+        if knots.len() < 2 {
+            return None;
+        }
+        let ratios = crate::live::gearbox(mem, car + CAR_DRIVE).ratios.to_vec();
+        Some(start::Curve { knots, ratios })
+    }
+
     fn gear_for(&self, speed: f32) -> u32 {
         (FIRST..=TOP_GEAR)
             .rev()
@@ -1238,15 +1304,37 @@ impl<'a> Driver<'a> {
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
                 let launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
                 let up = if self.flat_out { UP_LIMIT * self.limit } else { SHIFT_UP.min(UP_LIMIT * self.limit) };
-                if ngp && spinning && speed > BOG_SPEED {
+                // Flat out on an NGP car with the torque curve: the slip controller replaces the traction cap below,
+                // and the thrust crossover the rev-point shift (`start`).
+                let start = self.flat_out && ngp && self.start.is_some();
+                if start && !self.start_logged {
+                    self.start_logged = true;
+                    let curve = self.start.as_ref().expect("logged with the curve");
+                    let points = start::shift_points(&curve.knots, &curve.ratios, FIRST, TOP_GEAR, self.limit);
+                    let points = points
+                        .iter()
+                        .map(|&(g, rpm)| format!("{}>{g} {rpm:.0} rpm", g - 1))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    eprintln!("autopilot: flat-out shift points {points}");
+                    eprintln!("autopilot: flat-out power peak {:.0} rpm", start::power_peak(&curve.knots));
+                }
+                if ngp && spinning && speed > BOG_SPEED && !(start && self.drive.is_some()) {
                     throttle = throttle.min(TRACTION);
+                }
+                if let Some(drive) = &mut self.drive {
+                    if start && !finished && throttle > 0.0 {
+                        let slip = start::drive_slip(sense.wheels, speed);
+                        let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+                        let (pedal, held) = start::drive_step(drive.target, drive.held, slip, dt);
+                        drive.held = held;
+                        throttle = throttle.min(pedal);
+                    }
                 }
                 if !finished {
                     if self.bogged > self.steps(BOG_STEPS) {
                         flags = self.shift(step, SHIFT_GAP, 0x02);
-                    } else if (sense.gear < FIRST && launch)
-                        || (sense.gear >= FIRST && sense.gear < TOP_GEAR && sense.engine > up && !spinning)
-                    {
+                    } else if (sense.gear < FIRST && launch) || self.wants_up(sense, speed, up, start, spinning) {
                         flags = self.shift(step, SHIFT_GAP, 0x01);
                     } else if sense.gear > FIRST
                         && (sense.engine < SHIFT_DOWN
