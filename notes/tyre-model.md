@@ -494,6 +494,15 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   The slide grip stays the user's 0.83. Open: the Golf at 110 km/h, throttle released (front axle under engine
   braking and side force together); the Fiesta's spin under a light brake in a turn with the realistic engine and
   NGP's tyre (3 of 3, ngp none), not looked into.
+- The pad after the temperatures and the pressure slope (2026-11-10, experimental-brush before → after): sine dwell
+  spins unchanged (Fiesta 0, Golf 9 at 110 km/h), ramp peak g within 0.2 %, step and circle manoeuvres within the
+  runs' ranges; the temperatures show only in slides of seconds (`limit_recovery`).
+- Gravel pad (2026-11-10, `handling.py --material 17 --extra "--surface gravel"`, ngp / brush): ramp peak Fiesta
+  0.913 / 0.931 g, Golf 0.891 / 0.919, Escort 0.882 / 0.961; sine dwell spins of 24 at 80 km/h Fiesta 5 / 4, Golf 0
+  / 7, Escort 12 / 12, at 110 km/h 9 / 9, 12 / 12, 6 / 9. Brake in turn (0.9 of the peak, 80 km/h): the Fiesta spins
+  under the brush at the medium and hard pedal (yaw ratio at 1 s 1.95 and 1.47, ngp 1.39 and 0.93, no spin); the Golf
+  holds a sideslip of 14° under the brush against 5-9°, and its step steer at 0.9 of the peak 18.5° against 4.3°. The
+  brush's rear is the looser one on gravel as on tarmac, the Golf's most. Open, with the Golf on tarmac.
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
