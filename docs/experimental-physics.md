@@ -308,6 +308,23 @@ ECU opens the throttle to 20 % of its area, retards the spark 60°, adds 20 % fu
 the unburnt fuel burns in the exhaust manifold, which keeps the turbine spinning toward a boost aim of 1.2 bar gauge.
 The blow-off valve stays shut.
 
+### Start mode
+
+On cars whose class ran anti-lag, a full-throttle standing start launches on boost. While the pedal is over 90 %
+with the driven wheels stopped (under 1.5 rad/s, about 0.5 m/s at the rim), the rev limiter sits at 60 % of `RPMLimit`
+instead of the limit, and while it cuts the fired events retard 60°; the cut firings' fuel burns in the exhaust
+manifold through the anti-lag path above. The mode ends the instant the wheels turn or the pedal falls, and the
+turbo's state carries over. It shows nowhere in telemetry (the sound's anti-lag pops stay off it). Link's G4+ launch
+control is the source for the shape: a launch RPM limit for stationary starts, ignition retard and extra fuel while
+active, dropped as soon as a non-driven wheel turns; the 90 % pedal, the 60 % of the limit and the 1.5 rad/s are
+guesses (Link leaves the launch RPM to testing). Under `--flat-out` a standing start waits in neutral at full
+throttle for 1.5 s once the revs peak (or stop rising under the start limiter), so the boost has time to build; the
+plain autopilot selects first as soon as they peak. On the flat pad the three Rally3 cars' 0-60 km/h came to within
+0.02 s of NGP's (tarmac: 2.11/2.13, 1.97/1.97 and 1.88/1.90 s NGP/experimental, from 2.39, 2.46 and 2.28), and their
+0-100 km/h to within 0.04 s (5.25/5.24, 4.84/4.82 and 4.51/4.47 s, from 5.50, 5.34 and 4.90). The Polo R5, Fiesta
+Rally2, GR Yaris Rally2 and Celica, which did not bog, moved by at most 0.03 s; the Audi quattro A2 (turbo without
+anti-lag), the Golf and the M3 are unchanged to the digit.
+
 ## Classes
 
 The class rules come from the FIA articles for each class and RallySimFans' group and year. Without a year a car gets
@@ -611,8 +628,8 @@ closes the clutch. The flat pad is a built-in stage, a level 2 km square of one 
 
 | Flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
-| Tarmac (material 37) | 4.00 s | 3.98 s |
-| Gravel (material 17) | 4.62 s | 4.63 s |
+| Tarmac (material 37) | 4.00 s | 3.97 s |
+| Gravel (material 17) | 4.62 s | 4.65 s |
 
 The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5
 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and
@@ -749,6 +766,7 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - Turbo rotor inertia of a 2.0 L engine, Chung & Lee 2016 (Trans. KSAE 24(1) 33): https://doi.org/10.7467/KSAE.2016.24.1.033
 - MoTeC anti-lag: https://motec.zendesk.com/hc/en-gb/articles/14565159804687-Checklist-Anti-Lag-Setup
 - Link e-throttle anti-lag: https://forums.linkecu.com/topic/14055-e-throttle-antilag-setup/
+- Link G4+ launch control (launch RPM limit, ignition retard and fuel trim while active, trim dropped on wheel speed): https://www.akao.co.uk/manuals/Link%20G4+%20Manual/launchcontrol.htm
 - Ignition cuts and exhaust flow, CSP's powertrain notes: https://github.com/AssettoCN/ac-docs/blob/main/docs/en/car/physics/powertrain.md
 - FIA turbo restrictors, rallycars.com: https://rallycars.com/technical-stuff/fia-turbo-restrictors/
 - FIA Article 254A (2013), Super 2000: https://www.fia.com/sites/default/files/regulation/file/254A%20(2013).pdf
