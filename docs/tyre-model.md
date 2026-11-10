@@ -28,8 +28,10 @@ builds over the tyre's relaxation length; these are the values it settles to. `h
 
 ![Side force against slip angle on dry tarmac](images/tyre-model/lat-tarmac.svg)
 
-- Side force peaks at a slip angle of 7.0°; measured road and racing tyres peak at 5.6-8.5°, NGP's at 9.5°.
-- Fully sideways at 30° the brush keeps 0.83 of its peak, the value chosen by driving, and NGP 0.87. Road tyres keep
+- Side force peaks at a slip angle of 6.5°; measured road and racing tyres peak at 4.5-8.5°, NGP's at 9.5°.
+- Past the peak the brush has lost 3 % by 10.5°, the gentlest of a measured racing tyre's 3-12 % there; NGP has lost
+  0.3 %. No rally tyre has been measured: it is taken as no sharper than the slick.
+- Fully sideways at 30° the brush keeps 0.84 of its peak, the level chosen by driving, and NGP 0.87. Road tyres keep
   0.73-0.83 and racing tyres 0.80-0.90: the brush sits where the two meet, NGP at the forgiving end.
 - Braking at a slip ratio of 0.25 while cornering at 4°, the brush keeps 0.29 of its side force, above the measured
   0.23-0.27; NGP keeps 0.46.

@@ -338,8 +338,13 @@ pub(crate) mod tests {
             let cal = calibration(&w, &Tuning { slide_grip: Some(want), ..Tuning::default() }).unwrap();
             assert!((slide_grip(&cal) - want).abs() < 0.002, "{want}: {}", slide_grip(&cal));
             assert!((peak(&cal) / t.peak_lat - 1.0).abs() < 0.01, "{want}: the peak stays NGP's");
-            let near = |a: f64, b: f64| (a / b - 1.0).abs() < 0.005;
-            assert!(near(cal.mu_xk, model.mu_xk) && near(cal.cy0, model.cy0), "{want}: the braking axis stays");
+            // The stiffness's own value follows the fall a little (the fall sets in at small slip:
+            // `LATERAL_STRIBECK_EXP`) to hold the slope: 0.8 % at 0.70.
+            let near = |a: f64, b: f64, by: f64| (a / b - 1.0).abs() < by;
+            assert!(
+                near(cal.mu_xk, model.mu_xk, 0.005) && near(cal.cy0, model.cy0, 0.01),
+                "{want}: the braking axis stays"
+            );
         }
         let stiff = calibration(&w, &Tuning { stiffness: 1.2, ..Tuning::default() }).unwrap();
         let slope = |cal: &Calibration| {

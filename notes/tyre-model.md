@@ -610,8 +610,18 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
     kN, Fy/Fy(0) at 0.5 / 0.75 of the peak braking force: 2° brush 0.96 / 0.88, ngp 0.82 / 0.64; 4° brush 0.93 /
     0.80, ngp 0.86 / 0.71. The brush follows the 2° curve; the 4° reading does not separate them.
   - For the brush: the peak angle (7.0° against 9.75°) and a fall past it have a measured racing tyre behind them,
-    which falls more than the brush (2.6 % at 12°); the stiffness estimate's range opens upward (22 to about 30,
-    never under the semi-slick).
+    which falls more than the brush did (1.2 % at 10.5°); the stiffness estimate's range opens upward (22 to about
+    30, never under the semi-slick).
+- The fall past the peak sets in sooner (2026-11-10, a user decision: a rally tyre no sharper than the slick, so its
+  gentlest 3 % at 10.5°): the lateral axis takes the Stribeck exponent 1.25 (`brush::LATERAL_STRIBECK_EXP`) in place
+  of the locked wheel's 3, the slide grip solved as before. Lab at 4 kN, before → after: μ_y at 10.5° over the peak
+  0.988 → 0.969 (row `tarmac-mu-y10.5-over-peak`), peak angle 7.0° → 6.5°, peak μ_y 1.276 → 1.263 (ngp 1.268; at
+  6 kN 1.208 → 1.191, ngp 1.185), μ_y at 30° 1.064 both (0.834 → 0.843 of the lower peak), at 40° 0.999 → 1.018.
+  Braking, gravel and
+  combined slip's rows as before. Pad, tarmac 80 km/h, ramp peak g Fiesta Rally2 / Golf / Escort: 1.253 / 1.221 /
+  1.242 → 1.224 / 1.195 / 1.228 (ngp 1.248 / 1.186 / 1.193); sine dwell spins of 48: 0 / 9 / 31 → 0 / 9 / 28, the
+  Fiesta's peak sideslip at 110 km/h 48° → 28°; lift, power and brake in turn spin as before. The step steer's low
+  overshoot flips between about 2.5 and 10 % from run to run (before this too): not a measure.
 - Combined slip against a measured road tyre (2026-11-10; library `xia-lu-tong-2020`, SAE 2020-01-0896: a 195/55R16
   at 225 kPa and 60 km/h on an MTS Flat-Trac, slip ratio to ±30 % at 2°, 5°, 8°, Figs 4-6, whose axes are Fx across
   and Fy up whatever the labels say; fig ±0.03). Fy/Fy(0) at 0.5 / 0.75 of the pure peak braking force, and the

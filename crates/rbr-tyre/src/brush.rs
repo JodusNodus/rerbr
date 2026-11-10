@@ -113,10 +113,17 @@ pub fn friction_sliding_speed(vs: f64, vr: f64) -> f64 {
 /// The level at 30° is now the slide grip's, solved per wheel ([`crate::tuning::SLIDE_GRIP_MODEL`]); this share
 /// shapes the fall with sliding speed on the way there.
 pub const LATERAL_FALL: f64 = 0.65;
+/// The lateral axis's Stribeck exponent, in place of [`STRIBECK_EXP`] (the locked wheel's, which holds the braked
+/// peak): the fall sets in sooner past the peak and ends at the same slide grip. Fitted to 3 % under the peak at
+/// 10.5° (4 kN, 15 m/s; 1.2 % with the locked wheel's 3), the least fall of a racing radial's 3-12 % there, which
+/// peaks at 4.5-6° (SAE 2006-01-3607, Figs 15-18); a rally tyre's is unmeasured and taken as no sharper (a user
+/// decision, 2026-11-10). The side force at 30° stays (1.064 Fz at 4 kN); the peak is 1 % lower, nearer NGP's.
+pub const LATERAL_STRIBECK_EXP: f64 = 1.25;
 
-/// The friction at sliding speed `vs`, m/s, between its level at rest `mu_s` and its Coulomb level `mu_k`.
-pub fn friction_at(mu_s: f64, mu_k: f64, vs: f64) -> f64 {
-    (mu_k + (mu_s - mu_k) * libm::exp(-libm::pow(vs / V_S, STRIBECK_EXP))) * libm::exp(-SPEED_DECAY * vs)
+/// The friction at sliding speed `vs`, m/s, between its level at rest `mu_s` and its Coulomb level `mu_k`, with the
+/// Stribeck exponent `exp` ([`STRIBECK_EXP`], [`LATERAL_STRIBECK_EXP`]).
+pub fn friction_at(mu_s: f64, mu_k: f64, vs: f64, exp: f64) -> f64 {
+    (mu_k + (mu_s - mu_k) * libm::exp(-libm::pow(vs / V_S, exp))) * libm::exp(-SPEED_DECAY * vs)
 }
 
 /// Floor of the rolling speed, m/s (keeps the theoretical slips finite).
@@ -432,7 +439,7 @@ pub fn wear_gain(d: f64, w: f64) -> f64 {
 
 /// Friction magnitude of one axis at sliding speed `vs`: mu_k (scaled by the
 /// kinetic ratio) + (mu_s scaled by the static ratio - mu_k scaled by the
-/// kinetic ratio) at the sliding speed ([`friction_at`]), times the load sensitivity
+/// kinetic ratio) at the sliding speed ([`friction_at`] with the axis's exponent `stribeck`), times the load sensitivity
 /// (Fz/Fz0)^(n-1) (`N_MU_Y` or `N_MU_X`), NGP's temperature grip factor, the
 /// wet-faded dry-wear gain (normalised), the damp level ([`damp_level`], normalised) and the wet loss; the wetness `w`
 /// lowers mu_k by its loss at the sliding speed ([`wet_coulomb_loss`], normalised). Both axes scale
@@ -444,6 +451,7 @@ pub fn mu_axis(
     mu_s: f64,
     mu_k: f64,
     vs: f64,
+    stribeck: f64,
     fz: f64,
     n: f64,
     stat_ratio: f64,
@@ -457,7 +465,7 @@ pub fn mu_axis(
     let ks = mu_s * stat_ratio;
     let loss = wet_coulomb_loss(vs);
     let kk = mu_k * kin_ratio * (1.0 - loss * w) / (1.0 - loss * cal.w_cal);
-    let base = friction_at(ks, kk, vs);
+    let base = friction_at(ks, kk, vs, stribeck);
     base * libm::pow(fz / cal.fz0, n - 1.0)
         * (temp_grip / cal.temp_grip_cal)
         * (wear_gain(d, w) / wear_gain(cal.d_cal, cal.w_cal))
@@ -560,6 +568,7 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
         cal.mu_xs,
         cal.mu_xk,
         vs,
+        STRIBECK_EXP,
         x.fz,
         N_MU_X,
         x.surf_static / cal.surf_s_cal,
@@ -575,6 +584,7 @@ pub fn eval_slip(x: &EvalInput, sx: f64, sy: f64, vr: f64, cal: &Calibration) ->
             cal.mu_ys,
             cal.mu_yk,
             vs,
+            LATERAL_STRIBECK_EXP,
             x.fz,
             N_MU_Y,
             x.surf_static / cal.surf_s_cal,
@@ -929,7 +939,7 @@ mod tests {
         let f = (o.fx * o.fx + o.fy * o.fy).sqrt();
         let vs = (x.vy * x.vy + (x.vx + x.spin * x.radius).powi(2)).sqrt();
         // The lateral axis takes LATERAL_FALL of the friction's fall with sliding speed.
-        let mu = cal.mu_ys - LATERAL_FALL * (cal.mu_ys - friction_at(cal.mu_ys, cal.mu_yk, vs));
+        let mu = cal.mu_ys - LATERAL_FALL * (cal.mu_ys - friction_at(cal.mu_ys, cal.mu_yk, vs, LATERAL_STRIBECK_EXP));
         assert!((f / (mu * x.fz) - 1.0).abs() < 1e-9, "f {f} mu Fz {}", mu * x.fz);
         // Direction: opposes the sliding velocity.
         assert!(o.fy < 0.0 && o.fx <= 0.0, "fx {} fy {}", o.fx, o.fy);
@@ -937,7 +947,7 @@ mod tests {
         let mut x = synth_input();
         x.spin = 0.0;
         let o = eval(&x, &cal);
-        let mu = friction_at(cal.mu_xs, cal.mu_xk, 15.0);
+        let mu = friction_at(cal.mu_xs, cal.mu_xk, 15.0, STRIBECK_EXP);
         assert!((o.fx.abs() / (mu * x.fz) - 1.0).abs() < 1e-9, "fx {} mu Fz {}", o.fx, mu * x.fz);
     }
 
@@ -1036,9 +1046,9 @@ mod tests {
         // doubling the static surface mu doubles the zero-speed mu, doubling
         // the kinetic one doubles the fast-sliding mu (past the Stribeck fall, under the speed decay alone).
         let cal = synth_cal();
-        let slow = mu_axis(1.3, 1.0, 0.0, 4000.0, N_MU_Y, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        let slow = mu_axis(1.3, 1.0, 0.0, STRIBECK_EXP, 4000.0, N_MU_Y, 2.0, 1.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((slow / 2.6 - 1.0).abs() < 1e-12, "slow {slow}");
-        let fast = mu_axis(1.3, 1.0, 100.0, 4000.0, N_MU_Y, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
+        let fast = mu_axis(1.3, 1.0, 100.0, STRIBECK_EXP, 4000.0, N_MU_Y, 1.0, 2.0, 1.0, 1.0, 0.0, 1.0, &cal);
         assert!((fast / (2.0 * libm::exp(-SPEED_DECAY * 100.0)) - 1.0).abs() < 1e-12, "fast {fast}");
     }
 

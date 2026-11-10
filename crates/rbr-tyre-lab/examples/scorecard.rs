@@ -229,7 +229,7 @@ fn main() {
         out(&format!("alpha90_{name}"), a90);
         out(&format!("calpha_per_fz_{name}"), slope(&fit_angles, |a| t.mu_y(fz, a.to_degrees())));
         for (deg, m) in &lat {
-            if [2.5, 5.0, 10.0, 14.0, 15.0, 16.0, 17.0, 20.0, 25.0, 30.0, 40.0].contains(deg) {
+            if [2.5, 5.0, 10.0, 10.5, 14.0, 15.0, 16.0, 17.0, 20.0, 25.0, 30.0, 40.0].contains(deg) {
                 out(&format!("mu_y_rel_a{deg}_{name}"), m / pk);
             }
         }
