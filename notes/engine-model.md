@@ -302,7 +302,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   (Rally2, 2000), band 0.54–1.60. On a lift at 5000 rpm the turbo sample keeps 0.19 bar after 0.5 s (0.09 before;
   tested under 0.25). Sized on the volume behind a restrictor instead (the same mass is more volume) the cable_turbo
   row left the band at 1.71 s: not used. No era term: no data for 1980s wheels' flow per diameter or their mass.
-  The whine's pitch follows the shaft (`live/picture.rs`), so it moves with ω* by car.
+  The whine's pitch follows the shaft (`live/picture.rs`), so it moves with ω* by car. RSF 524, plain autopilot,
+  `experimental`, before → now: Audi quattro A2 349.36 → 350.11 s, Fiesta Rally2 347.70 → 347.73, Fiesta Rally4
+  353.10 → 353.06 (`rally_gg.py run`).
 - Losses 0.002ω + 2.5e-6ω², our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed),
   power (W, ramps up linearly with speed)" [rF2 engine.ini]. Its `TurboStaticFrictionWatts=100`, which "prevents
   numerical problems at low spool speeds", is left out: a constant power is a torque without bound as the shaft
