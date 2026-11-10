@@ -1736,8 +1736,9 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   against 2018 0.95. Second passes of dry stages (2018, 2019, 16 pairs): 0.94-1.15, median 1.03. So full wets in heavy
   rain hold 0.8-0.9 of the dry road's cornering grip to 120 km/h, with little fall across the apex speeds: NGP's wet
   tyre on its wet tarmac (0.85 of the dry tyre on dry, flat) and the brush's (0.85 / 0.78 at 50 / 100 km/h by its
-  formulas) are inside. Wadern-Weiskirchen's third pass, soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's and braking
-  0.84; the game's wet has no such state. Cross-year pairs of different drivers scatter 5-10 % and were not used.
+  formulas) are inside. Wadern-Weiskirchen's third pass, soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's
+  and braking 0.84; the game's wet has no such state. Cross-year pairs of different drivers scatter 5-10 % and were not
+  used.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2
   found (searches; wrcwings.tech describes the devices without forces). Three indications that the real cars gain
   less grip with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls
