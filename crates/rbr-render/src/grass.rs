@@ -3,8 +3,8 @@
 //!
 //! The ground within [`BAND`] of the driveline (the off-road ground, [`crate::puddles::mark_ground`], and the road mesh,
 //! whose shoulders can be grass) gets clumps of two crossed cards of grass blades drawn here ([`texture`]), up to
-//! [`DENSITY`] a square metre where its colour (its texture, blurred, under its vertex tint) is green or straw
-//! ([`green`]) at the clump's middle and its cards' ends (so none reaches over the road). Each card takes the ground's
+//! [`DENSITY`] a square metre where its untinted textures are green or straw ([`green`]) across the clump's footprint.
+//! Small marks and cracks get none; samples across triangle edges take the neighbouring ground. Each card takes the ground's
 //! hue, a little greener, and brightness under it ([`GRASS_MARK`]); noise patches make the field taller or shorter,
 //! lusher or drier ([`patches`]), the cards lean a little and the shader sways their tops in the wind (`grass_sway`).
 //!
@@ -78,6 +78,17 @@ const UPLOAD_BYTES: usize = 8_000_000;
 /// A card's height range, metres, before its patch and kind scale it, and its width against its height.
 const HEIGHT: [f32; 2] = [0.07, 0.14];
 const WIDTH: [f32; 2] = [1.0, 1.6];
+/// Final size limits after the patch and kind scale a card: ordinary grass, seed heads, and width, metres.
+const MAX_HEIGHT: [f32; 2] = [0.14, 0.20];
+const MAX_WIDTH: f32 = 0.20;
+/// A tuft needs this much vegetation around its root, metres, even when its cards are smaller.
+const PATCH_RADIUS: f32 = 0.12;
+/// The least grassiness across the footprint: a fixed threshold, so a lucky draw cannot grow in a faint mark.
+const COVER: f32 = 0.5;
+/// Maximum wind displacement against height (`GRASS_SWAY` and the gust in `shader.wgsl`).
+const SWAY: f32 = 0.26;
+/// Ground samples may differ by this much in height, metres: mesh seams and collision/render differences.
+const GROUND_REACH: f32 = 0.10;
 /// How deep a card's foot goes into the ground, metres: the ground curves away from the plane it stands on.
 const SINK: f32 = 0.03;
 /// How far a card's top leans, against its height.
@@ -122,6 +133,7 @@ pub struct Field {
     triangles: Vec<Ground>,
     tiles: HashMap<(i32, i32), Vec<u32>>,
     textures: Vec<Texels>,
+    placement: Vec<Texels>,
     line: Line,
     /// The grass texture's mean colour (display).
     mean: Vec3,
@@ -155,6 +167,28 @@ struct Ground {
     normal: Vec3,
     area: f32,
     corners: (usize, [u32; 3]),
+}
+
+impl Ground {
+    /// The weights of `q` projected onto this triangle, including beyond its edges.
+    fn weights(&self, q: Vec3) -> [f32; 3] {
+        let [p, a, b] = self.p;
+        let (e1, e2, d) = ((a - p).xz(), (b - p).xz(), (q - p).xz());
+        let det = e1.perp_dot(e2);
+        let (a, b) = (d.perp_dot(e2) / det, e1.perp_dot(d) / det);
+        [1.0 - a - b, a, b]
+    }
+
+    fn colour(&self, textures: &[Texels], w: [f32; 3]) -> Vec3 {
+        let blend = |c: &[Vec2; 3]| c[0] * w[0] + c[1] * w[1] + c[2] * w[2];
+        let mut colour = textures[self.first as usize].at(blend(&self.uv0));
+        if let Some(second) = self.second {
+            let alpha = (self.alpha[0] * w[0] + self.alpha[1] * w[1] + self.alpha[2] * w[2]).clamp(0.0, 1.0);
+            let over = textures[second as usize].at(blend(&self.uv1));
+            colour = colour.lerp(over.xyz().extend(1.0), over.w * alpha);
+        }
+        colour.xyz()
+    }
 }
 
 /// One card of grass: its foot's middle, the ground's normal there, half its width across (x and z), its top's lean,
@@ -245,14 +279,20 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
         .flatten()
         .collect();
     let wanted: Vec<TextureRef> = wanted.into_iter().collect();
-    let made = in_parallel(&wanted, |&t| Texels::of(stage, t));
-    let mut made: HashMap<TextureRef, Texels> =
+    let made = in_parallel(&wanted, |&t| {
+        let sharp = Texels::sharp(stage, t)?;
+        Some((sharp.blurred(), sharp))
+    });
+    let mut made: HashMap<TextureRef, (Texels, Texels)> =
         wanted.into_iter().zip(made).filter_map(|(t, texels)| Some((t, texels?))).collect();
     let mut textures = Vec::new();
+    let mut placement = Vec::new();
     let mut texture_index: HashMap<TextureRef, Option<u32>> = HashMap::new();
     let mut texels = |t: Option<TextureRef>| {
         *texture_index.entry(t?).or_insert_with(|| {
-            textures.push(made.remove(&t?)?);
+            let (colour, sharp) = made.remove(&t?)?;
+            textures.push(colour);
+            placement.push(sharp);
             Some(textures.len() as u32 - 1)
         })
     };
@@ -280,6 +320,14 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
                 let (low, high) = (p[0].min(p[1]).min(p[2]), p[0].max(p[1]).max(p[2]));
                 let near = line.distance(((low + high) * 0.5).xz()) - (high - low).xz().length() * 0.5;
                 if normal.y < LEVEL || cross.y.abs() < 1e-6 || near > BAND {
+                    continue;
+                }
+                let centre = (p[0] + p[1] + p[2]) / 3.0;
+                if stage.collision.as_ref().is_some_and(|ground| {
+                    ground
+                        .below([centre.x, centre.z, centre.y])
+                        .is_none_or(|hit| (centre.y - hit.z).abs() > GROUND_REACH)
+                }) {
                     continue;
                 }
                 let triangle = triangles.len() as u32;
@@ -311,10 +359,40 @@ pub fn add(stage: &mut Stage) -> Option<Field> {
         .texture_names
         .insert(texture, TextureName { track: stage.name.clone(), file_name: TEXTURE.to_owned(), ground: false });
     stage.textures.insert(texture, StageTexture { request: TEXTURE.to_owned(), image: Some(Image::Dds(bytes)) });
-    Some(Field { triangles, tiles, textures, line, mean })
+    Some(Field { triangles, tiles, textures, placement, line, mean })
 }
 
 impl Field {
+    /// Untinted vegetation on the actual ground at `q`; try the root's triangle before its neighbours.
+    fn vegetation(&self, root: &Ground, q: Vec3) -> f32 {
+        let sample = |g: &Ground| {
+            let w = g.weights(q);
+            let y = g.p[0].y * w[0] + g.p[1].y * w[1] + g.p[2].y * w[2];
+            (w.iter().all(|&v| v >= -1e-4) && (q.y - y).abs() <= GROUND_REACH)
+                .then(|| green(g.colour(&self.placement, w), g.road))
+        };
+        sample(root).unwrap_or_else(|| {
+            self.tiles
+                .get(&tile_of(q))
+                .into_iter()
+                .flatten()
+                .find_map(|&i| sample(&self.triangles[i as usize]))
+                .unwrap_or(0.0)
+        })
+    }
+
+    /// A small ring over the supporting ground, covering both cards, their lean and their wind movement.
+    fn supported(&self, g: &Ground, at: Vec3, radius: f32) -> bool {
+        let d = std::f32::consts::FRAC_1_SQRT_2;
+        [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0), (d, d), (d, -d), (-d, d), (-d, -d)].into_iter().all(
+            |(x, z)| {
+                let (x, z) = (x * radius, z * radius);
+                let y = -(g.normal.x * x + g.normal.z * z) / g.normal.y;
+                self.vegetation(g, at + Vec3::new(x, y, z)) >= COVER
+            },
+        )
+    }
+
     /// The cards of a tile at its share ([`step_of`]), as many as a tile holds.
     fn cards_of(&self, (tile, step): Held, light: &[[Light; 3]]) -> Vec<Card> {
         self.cards(tile, step as f32 / LADDER, CAPACITY, light)
@@ -333,24 +411,6 @@ impl Field {
             let centre = (p[0] + p[1] + p[2]) / 3.0;
             let mut random = Random::at(centre);
             let wanted = g.area * DENSITY + random.next();
-            let (e1, e2) = ((p[1] - p[0]).xz(), (p[2] - p[0]).xz());
-            let det = e1.perp_dot(e2);
-            // Barycentric along the triangle's plane, outside it too.
-            let barycentric = |q: Vec3| {
-                let d = (q - p[0]).xz();
-                let (a, b) = (d.perp_dot(e2) / det, e1.perp_dot(d) / det);
-                [1.0 - a - b, a, b]
-            };
-            let colour_at = |w: [f32; 3]| {
-                let blend = |c: &[Vec2; 3]| c[0] * w[0] + c[1] * w[1] + c[2] * w[2];
-                let mut colour = self.textures[g.first as usize].at(blend(&g.uv0));
-                if let Some(second) = g.second {
-                    let alpha = (g.alpha[0] * w[0] + g.alpha[1] * w[1] + g.alpha[2] * w[2]).clamp(0.0, 1.0);
-                    let over = self.textures[second as usize].at(blend(&g.uv1));
-                    colour = colour.lerp(over.xyz().extend(1.0), over.w * alpha);
-                }
-                colour.xyz() * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2])
-            };
             for _ in 0..wanted as usize {
                 // Every card draws the same numbers whatever it becomes, so the sequence holds across tiles and shares.
                 let [a, b, keep, chance, turn, width, height, pick, lean, lean_turn] = [0; 10].map(|_| random.next());
@@ -362,21 +422,23 @@ impl Field {
                 let distance = self.line.distance(at.xz());
                 let near = 1.0 - (1.0 - FAR_SHARE) * smoothstep([FULL, BAND], distance);
                 let fade = 1.0 - smoothstep([BAND - 6.0, BAND], distance);
-                let colour = colour_at([1.0 - a - b, a, b]);
-                if chance >= green(colour, g.road) * near * fade {
+                let w = [1.0 - a - b, a, b];
+                let vegetation = green(g.colour(&self.placement, w), g.road);
+                if vegetation < COVER || chance >= vegetation * near * fade {
                     continue;
                 }
                 let (tall, dry) = patches(at.xz());
                 let kind = Kind::pick(pick, tall, dry);
-                let height = lerp(HEIGHT, height) * tall * kind.height();
+                let height =
+                    (lerp(HEIGHT, height) * tall * kind.height()).min(MAX_HEIGHT[usize::from(kind == Kind::Seeds)]);
+                let width = (height * lerp(WIDTH, width)).min(MAX_WIDTH);
                 let angle = turn * std::f32::consts::PI;
-                let across = Vec2::new(angle.cos(), angle.sin()) * height * lerp(WIDTH, width) * 0.5;
-                // Both cards' ends need half the middle's grassiness: off the road, through the ground's patches.
-                let green_at = |q: Vec3| chance * 0.5 < green(colour_at(barycentric(q)), g.road) * near;
-                let ends = [across, Vec2::new(-across.y, across.x)].map(|a| Vec3::new(a.x, 0.0, a.y));
-                if !ends.iter().all(|&end| green_at(at + end) && green_at(at - end)) {
+                let across = Vec2::new(angle.cos(), angle.sin()) * width * 0.5;
+                let radius = (width * 0.5 + height * (LEAN + SWAY)).max(PATCH_RADIUS);
+                if !self.supported(g, at, radius) {
                     continue;
                 }
+                let colour = g.colour(&self.textures, w) * (g.hue[0] * w[0] + g.hue[1] * w[1] + g.hue[2] * w[2]);
                 let hue = colour / self.mean;
                 let grey = Vec3::splat(hue.element_sum() / 3.0);
                 let hue = grey.lerp(hue, SATURATION).max(Vec3::splat(0.01));
@@ -841,8 +903,7 @@ pub(crate) fn tint([r, g, b, _]: [u8; 4]) -> Vec3 {
     Vec3::ONE.lerp(hue, GROUND_HUE)
 }
 
-/// A ground texture's texels at its test level (`foliage::test_texels`), blurred ([`blur`]), sampled nearest and
-/// repeated.
+/// A ground texture's texels at its test level (`foliage::test_texels`), sampled nearest and repeated.
 pub(crate) struct Texels {
     width: usize,
     height: usize,
@@ -850,12 +911,12 @@ pub(crate) struct Texels {
 }
 
 impl Texels {
-    pub(crate) fn of(stage: &Stage, texture: TextureRef) -> Option<Texels> {
-        let Texels { width, height, rgba } = Texels::sharp(stage, texture)?;
-        Some(Texels { width, height, rgba: blur(&blur(&rgba, width, height, (1, 0)), width, height, (0, 1)) })
+    fn blurred(&self) -> Texels {
+        let (width, height) = (self.width, self.height);
+        Texels { width, height, rgba: blur(&blur(&self.rgba, width, height, (1, 0)), width, height, (0, 1)) }
     }
 
-    /// [`Texels::of`] without the blur.
+    /// The unblurred test level, for placement and the dust's colour.
     pub(crate) fn sharp(stage: &Stage, texture: TextureRef) -> Option<Texels> {
         let (width, rgba) = test_texels(stage, texture)?;
         let height = rgba.len() / 4 / width.max(1);
@@ -1121,6 +1182,79 @@ fn keep_coverage(mut bytes: Vec<u8>, width: usize, height: usize) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two neighbouring triangles of road mesh: collision labels may cover grassy shoulders too.
+    fn field(paint: impl Fn(f32, f32) -> [u8; 3]) -> Field {
+        let mut rgba = Vec::new();
+        for y in 0..64 {
+            for x in 0..64 {
+                let [r, g, b] = paint(x as f32 / 64.0, y as f32 / 64.0);
+                rgba.extend([r, g, b, 255]);
+            }
+        }
+        let sharp = Texels { width: 64, height: 64, rgba };
+        let colour = sharp.blurred();
+        let triangle = |p: [Vec3; 3]| Ground {
+            uv0: p.map(|p| p.xz() / 4.0),
+            uv1: [Vec2::ZERO; 3],
+            alpha: [1.0; 3],
+            hue: [Vec3::ONE; 3],
+            road: true,
+            first: 0,
+            second: None,
+            normal: Vec3::Y,
+            area: 8.0,
+            corners: (0, [0; 3]),
+            p,
+        };
+        let [a, b, c, d] = [Vec3::ZERO, Vec3::new(4.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 4.0), Vec3::new(4.0, 0.0, 4.0)];
+        Field {
+            triangles: vec![triangle([a, b, c]), triangle([b, d, c])],
+            tiles: HashMap::from([((0, 0), vec![0, 1])]),
+            textures: vec![colour],
+            placement: vec![sharp],
+            line: Line::new(&[a, d]),
+            mean: Vec3::splat(0.5),
+        }
+    }
+
+    #[test]
+    fn vertex_tint_cannot_grow_grass_on_grey_pavement() {
+        let mut field = field(|_, _| [100; 3]);
+        for g in &mut field.triangles {
+            g.hue = [Vec3::new(0.7, 1.0, 0.7); 3];
+        }
+        assert!(field.cards((0, 0), 1.0, CAPACITY, &[]).is_empty());
+    }
+
+    #[test]
+    fn a_narrow_green_crack_cannot_support_a_tuft() {
+        let field = field(|u, _| if (u - 0.5).abs() < 0.02 { [75, 125, 45] } else { [100; 3] });
+        assert!(field.cards((0, 0), 1.0, CAPACITY, &[]).is_empty());
+    }
+
+    #[test]
+    fn footprint_crosses_mesh_seams_but_stops_at_neighbouring_pavement() {
+        let mut field = field(|_, _| [75, 125, 45]);
+        let at = Vec3::new(1.9, 0.0, 1.9);
+        assert!(field.supported(&field.triangles[0], at, 0.2));
+        field.placement.push(Texels { width: 1, height: 1, rgba: vec![100, 100, 100, 255] });
+        field.triangles[1].first = 1;
+        assert!(!field.supported(&field.triangles[0], at, 0.2));
+    }
+
+    #[test]
+    fn grassy_road_shoulders_keep_grass_with_final_size_limits() {
+        let field = field(|_, _| [75, 125, 45]);
+        let cards = field.cards((0, 0), 1.0, CAPACITY, &[]);
+        assert!(cards.len() > 500);
+        assert!(cards.iter().any(|c| c.picture >= 14));
+        for c in cards {
+            let highest = if c.picture >= 14 { 0.20 } else { 0.14 };
+            assert!(c.height <= highest, "{} > {highest}", c.height);
+            assert!(c.across.length() * 2.0 <= 0.200001);
+        }
+    }
 
     #[test]
     fn the_texture_keeps_its_coverage_down_the_mips() {
