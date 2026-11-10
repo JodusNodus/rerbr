@@ -52,11 +52,11 @@ use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHE
 
 mod drive;
 mod limit;
-mod pad;
+pub mod pad;
 pub mod race;
 
 pub use drive::{drive, from_snapshot, Pilot};
-pub use pad::{Kind, Manoeuvre};
+pub use pad::Manoeuvre;
 
 use crate::live::Live;
 use crate::physics::DRIVELINE_OFFSET;

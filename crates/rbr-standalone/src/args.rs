@@ -880,7 +880,7 @@ mod tests {
             (format!("{BOOT} --flat-pad 37 --manoeuvre brake-in-turn,80,0.2,0.4"), |a| {
                 assert_eq!((a.flat_pad, a.material_as), (true, Some(37)));
                 let m = a.manoeuvre.expect("a manoeuvre");
-                assert_eq!((m.kind, m.speed, m.amp, m.extra), (autopilot::Kind::BrakeInTurn, 80.0 / 3.6, 0.2, 0.4));
+                assert_eq!((m.kind, m.speed, m.amp, m.extra), (autopilot::pad::Kind::BrakeInTurn, 80.0 / 3.6, 0.2, 0.4));
             }),
             (format!("{BOOT} --plan 8.5,6"), |a| {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));

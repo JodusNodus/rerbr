@@ -448,6 +448,28 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   Kx/Ky, μ's load exponent, trail (scratch builds, each within 0.7° of sideslip on the stage's own surface). On the
   stage's own surface (with the gravel) the brush's car slid rear first (onset sideslip 11-13° against 1-2°): that is
   loose-v1 against NGP's soil on the patch, not tarmac.
+- Open-loop handling on a flat pad (2026-11-10, `harness/handling.py --out DIR`, release `rbr-standalone`; 9 cases,
+  596 runs incl. probes, 15 min at `--jobs 8`): `--flat-pad 37` replaces the stage's `.col` with a 2 km square of level faces at the
+  start's height (`rbr_btb::col::flat_pad`, `boot/mod.rs`; `.trk` collision meshes left out, every material takes
+  tarmac 37's values), `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`autopilot/pad.rs`) holds the start heading, brings the car to
+  the entry speed in the gear the shift points give, and after 2 s of steady speed runs the schedule open loop with the
+  exact float steering (the controller's 8-bit steps are 0.008). Metrics and their definitions: the script's docstring.
+  Ramp steer at 80 km/h (0.015 per s of lock, 0.08-0.14 g/s): peak g ngp / experimental / brush: Fiesta 1.248 / 1.249 /
+  1.253, Golf 1.186 / 1.186 / 1.223, Escort 1.193 / 1.185 / 1.242; steer at 0.9 of the peak 0.248 / 0.248 / 0.213, 0.188
+  / 0.188 / 0.183, 0.127 / 0.126 / 0.128; sideslip at the peak 3.5 / 3.5 / 1.7°, 3.8 / 3.8 / 2.0°, 10.8 / 10.6 / 5.7°;
+  limit: Fiesta and Golf hold it understeering in every physics, the Escort's rear lets go (spin) in every physics. Step
+  steer to 0.9 of the peak (yaw-rate t90 s / overshoot %): Fiesta 0.17 / 12 – 0.17 / 12 – 0.15 / 8.5, Golf 0.18 / 8 – 0.18 /
+  10 – 0.17 / 8, Escort 0.44 / 7 – 0.51 / 6 – 0.19 / 9. Sine dwell, lowest steer (fraction of lock) that spins at 80 /
+  110 km/h: Fiesta none / 0.55, none / 0.55, none / none; Golf none / 0.55, none / 0.55, none / 0.3; Escort 0.3 / 0.3, 0.3
+  / 0.3, 0.2 / 0.15 (ngp, experimental, brush); the outcome flips between the ±2 km/h neighbours in places (Golf ngp
+  110 km/h at 0.4: 1 of 3 spin; Escort ngp 80 km/h at 0.4: 2 of 3). Lift in turn (yaw-rate change at 1 s, °/s; circle at 0.9
+  of the peak, the Escort at 0.6, the highest share it holds in ngp and experimental, g 0.75): Fiesta 7.9 / 4.9 / 1.8,
+  Golf 1.8 / 1.6 / 3.1, Escort 0.0 / -0.2 / -0.5. Power in turn (0.8 of the peak, the Escort 0.6): Fiesta -2.1 / -2.0 /
+  -0.3, Golf -4.8 / -3.9 / -2.5, Escort spins 3 of 3 in all three. Brake in turn (0.3 / 0.6 / 0.9 of the straight-line
+  limit pedal; yaw-rate ratio at 1 s, light / medium / hard): Fiesta ngp 1.84 / 0.79 / 0.47 (no spin), experimental 1.86
+  (spins 3 of 3) / 0.90 / 0.43, brush 2.07 (spins 3 of 3) / 1.24 / 0.34; Golf ngp 0.97 / 0.51 / 0.12, experimental 0.98
+  / 0.54 / 0.20, brush 1.60 / 0.38 / -0.09; Escort 0.89 / 0.62 / 0.29, 0.86 / 0.61 / 0.28, 1.00 / 0.68 / 0.43 (none
+  spin).
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →

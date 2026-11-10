@@ -30,7 +30,9 @@ Manoeuvres (entry speed --speed, 80 km/h; the amplitudes of the circle manoeuvre
             lock), at 80 and 110 km/h. r1.00, r1.75: the yaw rate 1.0 s and 1.75 s after the steering returns to zero
             as a % of the peak yaw rate (both absolute; FMVSS 126 asks under 35 % and 20 %); beta: the peak |sideslip|
             within 4 s; spin: |sideslip| over 60 deg. First spin: the lowest amplitude whose nominal run spins.
-  lift      ISO 9816: steady circle of the steer of 0.9 of the peak (1.5 s into it, 5 s on it), then the throttle to zero
+  lift      ISO 9816: steady circle of the steer of 0.9 of the peak (1.5 s into it, 5 s on it; where the nominal run's
+            circle is not steady, a yaw rate that drifts over 10 % in 2 s or a sideslip over 20 deg, the share steps down
+            0.9, 0.8 ... 0.4, and every physics of a car takes the lowest share any of them needed), then the throttle to zero
             in 0.1 s, steering held. dr, dbeta: the yaw rate (deg/s) and turn sideslip (deg) change from the 0.5 s before
             the run, at 1 s (0.1 s mean), and their peaks within 4 s (the larger of the signed extremes); dR: the path
             radius v/r change at 1 s, %.
@@ -362,8 +364,11 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         chosen = dict(pool.map(probe, wanted))
     for key, f in chosen.items():
-        if f is None:
-            print(f"{tag(key[0], key[1])}: no steady {key[2]} circle at any share of the peak g")
+        print(f"{tag(key[0], key[1])}: highest steady {key[2]} circle: {'none' if f is None else f'{f:.1f}'} of the peak g")
+    # Every physics of a car runs the same share: the lowest of those it holds.
+    for (c, p, fam) in list(chosen):
+        shares = [chosen.get((c, q, fam)) for q in args.physics.split(",") if (c, q) in usable]
+        chosen[(c, p, fam)] = None if None in shares else min(shares)
     jobs = []
     for c, p in usable:
         r = ramps[(c, p)]
