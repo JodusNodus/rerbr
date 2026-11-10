@@ -315,9 +315,6 @@ impl ViewerLaunch {
         if !hud.dials {
             args.push("--no-dials".into());
         }
-        if hud.hide_wheel {
-            args.push("--hide-wheel".into());
-        }
         if let Some(list) = hud.parts.hidden() {
             args.extend(["--hud-hide".into(), list]);
         }
@@ -834,7 +831,7 @@ impl Form {
             if self.child.is_none() {
                 // The pause menu's Camera and Force feedback pages may have changed them.
                 let saved = crate::settings::read_settings(&self.paths.settings);
-                self.head = !saved.camera.head_off;
+                self.cockpit = saved.camera.cockpit;
                 self.fov = saved.fov.unwrap_or(self.fov);
                 self.chase_fov = saved.chase_fov.unwrap_or(self.chase_fov);
                 self.ffb_cars = saved.ffb_cars;
@@ -1105,7 +1102,6 @@ mod tests {
                 fps: true,
                 stack: 3,
                 dials: false,
-                hide_wheel: true,
                 parts: Parts::hiding("inputs,view").unwrap(),
             },
             graphics: Quality::Low.graphics(false),
@@ -1120,7 +1116,7 @@ mod tests {
         assert_eq!(
             args.join(" "),
             "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --chase-fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
-             --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hide-wheel --hud-hide inputs,view --bindings /l/launcher-settings.ini \
+             --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hud-hide inputs,view --bindings /l/launcher-settings.ini \
              --cameras /l/launcher-settings.ini --enhance anisotropy,decals,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
              --stage track-54_O --car 6 --data /d --callout-distance 4 --marker-threshold 25 \
              --damage safe --auto-gears off --gear-guard on --neutral-lock off --clutch-help on --setup /l/setup-current.lsp"

@@ -70,7 +70,7 @@ pub fn show_crew(crew: &mut Crew, playback: &mut Playback, view: CarView, steer:
         crew.steer_to(steer);
     }
     playback.turn = crew.wheel_turn();
-    crew.apply(renderer, playback.body(), view.shows_crew());
+    crew.apply(renderer, playback.body(), view.crew(playback.cockpit_crew()));
 }
 
 /// Steps the characters to the frame shown (the drive's frames, else `seconds` of viewer time), with the start
@@ -209,7 +209,7 @@ pub fn draw_demo(
         renderer.set_outside_view(!view.interior());
         playback.apply_demo(renderer, car, view.interior());
         if let Some(crew) = &mut scene.crew {
-            crew.apply(renderer, body, false);
+            crew.apply(renderer, body, Default::default());
         }
         playback.lens_at(mounts, view, car, fov)
     } else {
@@ -217,7 +217,7 @@ pub fn draw_demo(
         renderer.set_outside_view(true);
         playback.apply_demo(renderer, car, false);
         if let Some(crew) = &mut scene.crew {
-            crew.apply(renderer, body, false);
+            crew.apply(renderer, body, Default::default());
         }
         playback.camera_at(car, look).lens(playback.chase_fov)
     };

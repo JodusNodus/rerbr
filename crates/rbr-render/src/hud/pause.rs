@@ -268,7 +268,11 @@ mod tests {
     use crate::views::CarView;
 
     fn open(record: Record) -> PauseMenu {
-        PauseMenu::open(record, CameraPage::new(CarView::Cockpit, Default::default(), true, Default::default()), None)
+        PauseMenu::open(
+            record,
+            CameraPage::new(CarView::Cockpit, Default::default(), Default::default(), Default::default()),
+            None,
+        )
     }
 
     fn quick(driving: bool) -> PauseMenu {
@@ -330,7 +334,7 @@ mod tests {
     fn the_force_feedback_item_is_there_with_a_page_and_changes_it() {
         let record = Record { mode: 1, driving: true, help: true, over: false };
         let page = FfbPage::new(1, 250, false, 250);
-        let camera = CameraPage::new(CarView::Cockpit, Default::default(), true, Default::default());
+        let camera = CameraPage::new(CarView::Cockpit, Default::default(), Default::default(), Default::default());
         let mut menu = PauseMenu::open(record, camera, Some(page));
         assert_eq!(menu.items[2], (Entry::ForceFeedback, true));
         menu.nav(Nav::Down);

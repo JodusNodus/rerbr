@@ -74,8 +74,8 @@ const UNBUILT_PREFIXES: [&str; 2] = ["k_", "d_"];
 const INTERIOR_PREFIX: &str = "i_";
 /// The crew some RSF models hold as an interior part (the Fiesta Rally2, the i20 Rally2 and the i20 WRC 2020 and 2021,
 /// of the installed models): a static driver and co-driver, helmets and all, which the game draws with the rest of the
-/// interior. Ours: never drawn, as the game's own crew is not in the cockpit ([`crate::views::CarView::shows_crew`]);
-/// the cockpit eye sits behind `Cam_internal` and would look at the back of the driver's helmet.
+/// interior. Ours: never drawn: the cockpit eye sits behind `Cam_internal` and would look at the back of the driver's
+/// helmet, and the cockpit has the game's own crew ([`crate::views::CarView::crew`]).
 const BAKED_CREW: &str = "i_drivers";
 /// Wheels and spare wheels (and their straps) come in surface variants. The loader builds those whose name has
 /// its surface; only tarmac is drawn, as the surface choice is not traced.

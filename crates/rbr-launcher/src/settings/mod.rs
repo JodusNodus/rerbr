@@ -118,8 +118,6 @@ pub struct Settings {
     pub pace_stack: Option<u8>,
     /// The working dials (`viewer --no-dials` when off).
     pub dials: Option<bool>,
-    /// The cockpit's steering wheel hidden (`viewer --hide-wheel`).
-    pub hide_wheel: Option<bool>,
     /// The HUD's parts shown (`viewer --hud-hide`), kept as the hidden ones' list.
     pub hud_hide: Option<Parts>,
     /// The wiper switch at the start (`viewer --wipers`).
@@ -430,7 +428,6 @@ impl Settings {
             fps: launcher.on_off("fps"),
             pace_stack: launcher.number("pace_stack").filter(|n| *n <= STACK_MAX),
             dials: launcher.on_off("dials"),
-            hide_wheel: launcher.on_off("hide_wheel"),
             hud_hide: launcher.get("hud_hide").and_then(|v| Parts::hiding(&v).ok()),
             wipers: launcher.parsed("wipers", Switch::parse),
             lighting: launcher.on_off("lighting"),
@@ -479,7 +476,12 @@ impl Settings {
             ffb: ffb::Options::parse(text),
             ffb_cars: ffb::CarSensitivity::parse(text),
             ffb_load: ffb::Loads::parse(text),
-            camera: CameraPrefs::parse(text),
+            camera: {
+                // The launcher's own `hide_wheel` of before is the cockpit's `wheel = off`.
+                let mut camera = CameraPrefs::parse(text);
+                camera.cockpit.wheel &= launcher.on_off("hide_wheel") != Some(true);
+                camera
+            },
             gearboxes: Gearboxes::parse(&sections),
             setups: SetupChoices::parse(&sections),
         }
@@ -529,7 +531,6 @@ impl Settings {
             ("pace_stack", self.pace_stack.map(|v| v.to_string())),
             ("wipers", self.wipers.map(|v| v.name().to_owned())),
             ("dials", on_off_text(self.dials)),
-            ("hide_wheel", on_off_text(self.hide_wheel)),
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
             ("callout_distance", self.callout_distance.map(|v| v.to_string())),
             ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
@@ -644,7 +645,6 @@ mod tests {
             fps: Some(true),
             pace_stack: Some(2),
             dials: Some(false),
-            hide_wheel: Some(true),
             hud_hide: Some(Parts::hiding("progress,car").unwrap()),
             wipers: Some(Switch::Intermittent),
             lighting: Some(false),
@@ -790,10 +790,7 @@ mod tests {
         assert_eq!((unset.codriver_voice, unset.my_pacenotes), (None, None));
         assert!(text.contains("hud = off\nunits = mph\nfps = on\npace_stack = 2\nwipers = intermittent\n"));
         assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
-        assert!(
-            text.contains("wipers = intermittent\ndials = off\nhide_wheel = on\nhud_hide = progress,car\n"),
-            "{text}"
-        );
+        assert!(text.contains("wipers = intermittent\ndials = off\nhud_hide = progress,car\n"), "{text}");
         assert!(
             text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\n"),
             "{text}"
@@ -919,7 +916,6 @@ mod tests {
                 "pace_stack = 2\n",
                 "wipers = intermittent\n",
                 "dials = off\n",
-                "hide_wheel = on\n",
                 "hud_hide = progress,car\n",
                 "callout_distance = 0.5\n",
                 "marker_threshold = 12.5\n",
@@ -1065,6 +1061,12 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nengine_volume = 2\n").engine_volume, Some(2.0));
         assert_eq!(Settings::parse("[launcher]\nengine_volume = 2.1\n").engine_volume, None);
         assert_eq!(Settings::parse("[launcher]\npace_stack = 4\n").pace_stack, Some(4));
+        // The launcher's `hide_wheel` of before becomes the cockpit's `wheel = off` and is not written again.
+        let hidden = Settings::parse("[launcher]\nhide_wheel = on\n");
+        assert!(!hidden.camera.cockpit.wheel);
+        let text = hidden.to_text();
+        assert!(text.contains("[camera]\nwheel = off\n") && !text.contains("hide_wheel"), "{text}");
+        assert!(Settings::parse("[launcher]\nhide_wheel = off\n").camera.cockpit.wheel);
         assert_eq!(Settings::parse("[launcher]\npace_stack = 8\n").pace_stack, Some(8));
         assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert_eq!(Settings::parse("[launcher]\nrender_scale = 50\n").render_scale, Some(50));

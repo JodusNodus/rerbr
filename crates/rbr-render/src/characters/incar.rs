@@ -25,7 +25,10 @@
 //! global object's `+0x50`, the fence renderer at 0x16fc4f4, whose slot `0x10` (0x603e80) is
 //! `car && !CCar::Test1670()`).
 //!
-//! Drawn in the chase views only ([`crate::views::CarView::shows_crew`]).
+//! The game draws them in the chase views only ([`crate::views::CarView::crew`]). Ours: in the cockpit too, the driver
+//! as his arms alone ([`Drawn::Arms`]: the eye is in or behind his head, so the helmet, the HANS and the body would
+//! fill the view) and the co-driver whole, both in the cabin's light (`car::cabin`: the marks of the interior set, a
+//! fixed share of sky seen through the windscreen), each as the player's camera choices say (`crate::camera_prefs`).
 //!
 //! Ours: the elbow keys at the gear and handbrake are the clip's elbow at the pose frame (the game adds the seat
 //! position to them, which looks like a units slip); the fingers during a move take the clip at `frame / 30` (the
@@ -36,10 +39,11 @@ use super::anim::{Clip, Skeleton};
 use super::crew::{self, Arm, Entry, Move, Ring, Settings};
 use super::load::{Assets, Model, Scripts};
 use super::script::{Host, Lua, Value};
+use crate::car::cabin;
 use crate::coords::affine;
 use crate::playback::Sample;
 use crate::renderer::Renderer;
-use crate::stage::{Mesh, Stage};
+use crate::stage::{Draw, Mesh, Stage};
 use glam::{Mat4, Vec3, Vec4};
 use rbr_formats::data::Data;
 use rbr_formats::{ini, rbz, sgc};
@@ -56,6 +60,35 @@ const CODRIVER_LOOP: f64 = 14.133333;
 const DRIVER_INI: &str = "misc/lm_driver.ini";
 /// Seconds per recorded substep.
 const SUBSTEP: f32 = rbr_recording::STEP_SECONDS;
+/// The crew in the cabin's light (`cabin.wgsl`, the in-car view only): the share of the sky their faces see and where,
+/// in the car's model space (up through the windscreen). Ours, in place of the interior set's bake (`cabin::bake`),
+/// which is of the car at rest.
+const CABIN_SKY: f32 = 0.12;
+const CABIN_SEEN: Vec3 = Vec3::new(0.0, 0.5, -0.86);
+
+/// How much of a crew member is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Drawn {
+    #[default]
+    Hidden,
+    Whole,
+    /// From the elbows to the fingers, the suit plain ([`SLEEVE`]).
+    Arms,
+}
+
+/// The driver's sleeves in the cockpit view (ours): one dark cloth colour in place of the team's suit texture, 128 by
+/// 64 texels over the whole arm, which reads as a smear a forearm's length from the eye. The gloves keep theirs.
+const SLEEVE: [u8; 4] = [16, 17, 22, 255];
+const GLOVE: &str = "glove";
+
+/// Which of a person's faces a part holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Faces {
+    Rest,
+    Arms,
+    /// The arms again with plain sleeves, for [`Drawn::Arms`].
+    Sleeves,
+}
 
 /// `app:LoadHumanCharacter` and the clip calls of a crew script.
 #[derive(Default)]
@@ -117,8 +150,41 @@ struct Person {
     placement: Mat4,
     bones: Bones,
     parents: Vec<Option<usize>>,
-    /// Stage mesh indices, one per model mesh.
-    slots: Vec<usize>,
+    /// What is drawn of each model mesh: the driver's in two, the arms and the rest.
+    parts: Vec<Part>,
+}
+
+/// Some of a model mesh's faces, a stage mesh of their own.
+struct Part {
+    /// The model mesh.
+    mesh: usize,
+    faces: Faces,
+    indices: Vec<u32>,
+    draws: Vec<Draw>,
+    /// The stage mesh ([`Crew::locate`]).
+    slot: Option<usize>,
+}
+
+/// The faces of `mesh` whose three vertices each follow an arm most (a node of `arms`) when `kept`, else the others,
+/// draw by draw; `None` without any.
+fn faces(mesh: &super::load::ModelMesh, arms: &[bool], kept: bool) -> Option<(Vec<u32>, Vec<Draw>)> {
+    let on_arm = |i: &u32| {
+        let heaviest = mesh
+            .weights
+            .get(*i as usize)
+            .and_then(|w| w.bones().filter_map(|(bone, w)| Some((bone?, w))).max_by(|a, b| a.1.total_cmp(&b.1)));
+        heaviest.and_then(|(bone, _)| *mesh.skin.nodes.get(bone)?).is_some_and(|node| arms[node])
+    };
+    let (mut indices, mut draws) = (Vec::new(), Vec::new());
+    for draw in &mesh.template.draws {
+        let start = indices.len();
+        let triangles = mesh.template.indices[draw.indices.clone()].chunks_exact(3);
+        indices.extend(triangles.filter(|t| t.iter().all(on_arm) == kept).flatten());
+        if indices.len() > start {
+            draws.push(Draw { indices: start..indices.len(), ..draw.clone() });
+        }
+    }
+    (!draws.is_empty()).then_some((indices, draws))
 }
 
 /// A hand or elbow key: where it is and its tangents (`SKey`).
@@ -149,6 +215,16 @@ struct Rig {
     fingers: Vec<usize>,
 }
 
+impl Part {
+    fn shown(&self, shown: Drawn) -> bool {
+        match shown {
+            Drawn::Hidden => false,
+            Drawn::Whole => self.faces != Faces::Sleeves,
+            Drawn::Arms => self.faces == Faces::Sleeves,
+        }
+    }
+}
+
 type MoveId = u8;
 
 fn move_id(mv: Move) -> MoveId {
@@ -168,8 +244,8 @@ pub struct Crew {
     steer: f32,
     /// The driver's `CSigIncarShake` vectors now.
     shake: [Vec3; 5],
-    /// Whether the crew's meshes are drawn.
-    shown: bool,
+    /// What is drawn of the driver and of the co-driver; `None` before the first [`Crew::apply`].
+    shown: [Option<Drawn>; 2],
     time: f64,
     frames: usize,
 }
@@ -199,15 +275,51 @@ impl Crew {
                 .and_then(|name| host.animations.get(name))
                 .ok_or_else(|| format!("{script}: no clip"))?;
             let clip = assets.clip(model, sga, &models, &mut clips)?;
+            for vertex in models[model].meshes.iter_mut().flat_map(|mesh| &mut mesh.template.vertices) {
+                vertex.specular = [0.0, cabin::INTERIOR, 1.0 - CABIN_SKY];
+            }
             let skeleton = &models[model].skeleton;
             let rest = clips[clip].pose(skeleton, 0.0);
+            let bones = Bones::find(skeleton, &rest).map_err(|e| format!("{}: {e}", paths[0]))?;
+            let parents: Vec<Option<usize>> = skeleton.nodes.iter().map(|n| n.parent).collect();
+            // The nodes of the arms: the forearms and what hangs from them (a parent comes before its children).
+            let mut arms = vec![false; parents.len()];
+            for node in 0..parents.len() {
+                arms[node] = bones.arms.iter().any(|arm| arm.lower == node) || parents[node].is_some_and(|p| arms[p]);
+            }
+            let driver = people.is_empty();
+            let mut parts = Vec::new();
+            for (k, mesh) in models[model].meshes.iter().enumerate() {
+                let mut part =
+                    |faces, (indices, draws)| parts.push(Part { mesh: k, faces, indices, draws, slot: None });
+                if !driver {
+                    part(Faces::Rest, (mesh.template.indices.clone(), mesh.template.draws.clone()));
+                    continue;
+                }
+                if let Some(rest) = faces(mesh, &arms, false) {
+                    part(Faces::Rest, rest);
+                }
+                if let Some((indices, draws)) = faces(mesh, &arms, true) {
+                    let mut plain = draws.clone();
+                    for draw in &mut plain {
+                        let glove = draw.state.textures[0]
+                            .and_then(|key| assets.file(key))
+                            .is_some_and(|file| file.to_ascii_lowercase().contains(GLOVE));
+                        if !glove {
+                            draw.state.textures[0] = Some(assets.plain("rerbr sleeve", SLEEVE));
+                        }
+                    }
+                    part(Faces::Arms, (indices.clone(), draws));
+                    part(Faces::Sleeves, (indices, plain));
+                }
+            }
             people.push(Person {
                 model,
                 clip,
                 placement: Mat4::from_translation(seat) * Mat4::from_scale(Vec3::splat(SCALE)),
-                bones: Bones::find(skeleton, &rest).map_err(|e| format!("{}: {e}", paths[0]))?,
-                parents: skeleton.nodes.iter().map(|n| n.parent).collect(),
-                slots: Vec::new(),
+                bones,
+                parents,
+                parts,
             });
         }
         let settings = Settings::read(&driver_ini(data)?);
@@ -223,11 +335,12 @@ impl Crew {
             wheel: nodes.get("i_steeringwheel").copied(),
             steer: 0.0,
             shake: [Vec3::ZERO; 5],
-            shown: true,
+            shown: [None; 2],
             time: 0.0,
             frames: 0,
         };
-        let meshes: Vec<Mesh> = (0..crew.people.len()).flat_map(|i| crew.meshes(i, Mat4::IDENTITY)).collect();
+        let meshes: Vec<Mesh> =
+            (0..crew.people.len()).flat_map(|i| crew.meshes(i, Mat4::IDENTITY, |_| true)).flatten().collect();
         stage.meshes.extend(meshes);
         stage.meshes.sort_by_key(|mesh| mesh.layer);
         stage.textures.extend(std::mem::take(&mut assets.textures));
@@ -238,20 +351,27 @@ impl Crew {
     pub fn locate(&mut self, stage: &Stage) {
         let mut taken = vec![false; stage.meshes.len()];
         for i in 0..self.people.len() {
-            let mut slots = Vec::new();
-            for mesh in self.meshes(i, Mat4::IDENTITY) {
-                if let Some(k) = stage.meshes.iter().enumerate().position(|(k, m)| !taken[k] && *m == mesh) {
+            let meshes = self.meshes(i, Mat4::IDENTITY, |_| true);
+            for (part, mesh) in self.people[i].parts.iter_mut().zip(meshes) {
+                part.slot = stage.meshes.iter().enumerate().position(|(k, m)| !taken[k] && Some(m) == mesh.as_ref());
+                if let Some(k) = part.slot {
                     taken[k] = true;
-                    slots.push(k);
                 }
             }
-            self.people[i].slots = slots;
         }
     }
 
     /// The crew's meshes in the stage ([`Crew::locate`]).
     pub fn slots(&self) -> impl Iterator<Item = usize> + '_ {
-        self.people.iter().flat_map(|p| p.slots.iter().copied())
+        self.people.iter().flat_map(|p| p.parts.iter().filter_map(|part| part.slot))
+    }
+
+    /// How many triangles `drawn` draws of the driver and of the co-driver, for reports and tests.
+    pub fn triangles(&self, drawn: [Drawn; 2]) -> [usize; 2] {
+        [0, 1].map(|i| {
+            let parts = self.people[i].parts.iter().filter(|part| part.shown(drawn[i]));
+            parts.map(|part| part.indices.len() / 3).sum()
+        })
     }
 
     /// Starts over at the first frame.
@@ -327,40 +447,50 @@ impl Crew {
         Some(node * Mat4::from_rotation_z(angle) * node.inverse())
     }
 
-    /// Poses and skins the crew in the car whose model space goes to stage space by `body`, or hides them when not
-    /// `shown`.
-    pub fn apply(&mut self, renderer: &mut Renderer, body: Mat4, shown: bool) {
-        if shown != self.shown {
-            for &slot in self.people.iter().flat_map(|p| &p.slots) {
-                renderer.set_visible(slot, shown);
-            }
-            self.shown = shown;
-        }
-        if !shown {
-            return;
-        }
+    /// Poses and skins what is `shown` of the driver and of the co-driver in the car whose model space goes to stage
+    /// space by `body`, and hides the rest.
+    pub fn apply(&mut self, renderer: &mut Renderer, body: Mat4, shown: [Drawn; 2]) {
         for (i, person) in self.people.iter().enumerate() {
-            for (mesh, &slot) in self.meshes(i, body).iter().zip(&person.slots) {
-                renderer.set_vertices(slot, &mesh.vertices, mesh.bounds);
+            if Some(shown[i]) != self.shown[i] {
+                for part in &person.parts {
+                    if let Some(slot) = part.slot {
+                        renderer.set_visible(slot, part.shown(shown[i]));
+                    }
+                }
+            }
+            if shown[i] == Drawn::Hidden {
+                continue;
+            }
+            for (mesh, part) in self.meshes(i, body, |part| part.shown(shown[i])).iter().zip(&person.parts) {
+                if let (Some(mesh), Some(slot)) = (mesh, part.slot) {
+                    renderer.set_vertices(slot, &mesh.vertices, mesh.bounds);
+                }
             }
         }
+        self.shown = shown.map(Some);
     }
 
-    /// Person `i`'s meshes posed now, placed by `body`.
-    fn meshes(&self, i: usize, body: Mat4) -> Vec<Mesh> {
+    /// Person `i`'s parts that are `shown`, posed now and placed by `body`; `None` for the others.
+    fn meshes(&self, i: usize, body: Mat4, shown: impl Fn(&Part) -> bool) -> Vec<Option<Mesh>> {
         let person = &self.people[i];
         let model = &self.models[person.model];
         let world = self.pose(i);
-        model
-            .meshes
-            .iter()
-            .map(|mesh| {
-                let mut placed = mesh.template.clone();
-                super::skin_into(&mut placed.vertices, mesh, &world, body * person.placement);
-                placed.bounds = crate::renderer::mesh_bounds(&placed.vertices);
-                placed
+        let seen = body.transform_vector3(CABIN_SEEN).normalize_or_zero() * CABIN_SKY;
+        let mut skinned: Vec<Option<Mesh>> = model.meshes.iter().map(|_| None).collect();
+        let parts = person.parts.iter().map(|part| {
+            shown(part).then(|| {
+                let mesh = &model.meshes[part.mesh];
+                let placed = skinned[part.mesh].get_or_insert_with(|| {
+                    let mut placed = mesh.template.clone();
+                    super::skin_into(&mut placed.vertices, mesh, &world, body * person.placement);
+                    placed.vertices.iter_mut().for_each(|vertex| *vertex = cabin::with_seen(*vertex, seen));
+                    placed.bounds = crate::renderer::mesh_bounds(&placed.vertices);
+                    placed
+                });
+                Mesh { indices: part.indices.clone(), draws: part.draws.clone(), ..placed.clone() }
             })
-            .collect()
+        });
+        parts.collect()
     }
 
     /// The clip pose of person `i` at clip time `t` (the root's time: `Unk18` and `Unk14` pass it as it is, not from

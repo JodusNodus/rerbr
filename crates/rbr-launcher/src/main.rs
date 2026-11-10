@@ -487,8 +487,9 @@ struct Form {
     fov: f32,
     /// The chase view's horizontal field of view, degrees.
     chase_fov: f32,
-    /// The in-car view's head (`[camera] head`, `rbr_render::head`), written when changed: the viewer owns the section.
-    head: bool,
+    /// The cockpit view's choices (`[camera]`: the head, the driver's arms, the co-driver and the car's wheel,
+    /// `rbr_render::camera_prefs::Cockpit`), written when changed: the viewer owns the section.
+    cockpit: rbr_render::camera_prefs::Cockpit,
     /// The sound volume, linear (`viewer --volume`).
     volume: f32,
     /// The sound group volumes, linear (`viewer --volumes E,C,F,T`).

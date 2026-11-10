@@ -1,11 +1,12 @@
-//! `RBR_DATA` (and `RBR_RECORDINGS`): the in-car crew loads in every retail car, the steering wheel is found, the crew
+//! `RBR_DATA` (and `RBR_RECORDINGS`): the in-car crew loads in every retail car, the steering wheel is found, the
+//! driver's arms are told from the rest of him, the crew
 //! keeps the stage characters' textures, and the tanner drive's gear changes move the driver's hand to the stick and
 //! back.
 
 use rbr_formats::data::Data;
 use rbr_render::car;
 use rbr_render::characters::crew::Move;
-use rbr_render::characters::incar::Crew;
+use rbr_render::characters::incar::{Crew, Drawn};
 use rbr_render::characters::Characters;
 use rbr_render::playback::Drive;
 use rbr_render::stage::{self, Selection};
@@ -33,6 +34,11 @@ fn the_crew_sits_in_every_retail_car_and_its_wheel_is_found() {
             .filter_map(|(m, _)| m.bounds.map(|b| (b.half_extent, m.vertices.len())))
             .collect();
         eprintln!("{name}: gear stick {}, wheel meshes {wheels:?}", crew.has_stick());
+        // The cockpit's driver is his arms alone: some of his faces, the co-driver whole.
+        let [whole, codriver] = crew.triangles([Drawn::Whole; 2]);
+        let [arms, same] = crew.triangles([Drawn::Arms, Drawn::Whole]);
+        assert!(arms > 100 && arms < whole / 2, "{name}: {arms} of the driver's {whole} triangles are his arms");
+        assert_eq!((same, crew.triangles([Drawn::Hidden; 2])), (codriver, [0, 0]));
         // The rim (36 cm across), and in LANCER_EVO_VII a 14 cm part at the hub that turns with it.
         assert!(wheels.iter().any(|(half, _)| (half.x - 0.18).abs() < 0.01), "{name}: no rim at the wheel");
         assert!(wheels.len() <= 2, "{name}: {} meshes at the wheel", wheels.len());

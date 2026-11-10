@@ -210,7 +210,7 @@ impl App {
             .map(|(surface, _)| FfbPage::of(&self.scene.ffb, surface));
         self.menu = Some(PauseMenu::open(
             process.menu,
-            CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.head(), fov),
+            CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.cockpit(), fov),
             ffb,
         ));
         process.pause();
@@ -313,7 +313,7 @@ impl App {
             self.scene.cameras.save_fov("chase_fov", fov.chase);
         }
         self.view = page.view;
-        self.scene.cameras.set(page.view, page.nudges, page.head);
+        self.scene.cameras.set(page.view, page.nudges, page.cockpit);
         self.scene.cameras.save();
         if let (Some(mounts), Some(playback)) = (&mut self.scene.mounts, &mut self.scene.playback) {
             self.scene.cameras.apply(mounts, playback);

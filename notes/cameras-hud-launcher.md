@@ -44,6 +44,10 @@ Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of vi
   2026-11-01: motion sickness). On by default;
   `[camera] head = off`, from the pause menu's Camera page (cockpit) or the launcher's Graphics page, gives the
   car-fixed view. Tuning constants are game feel, not measured.
+- Cockpit choices (ours, `camera_prefs::Cockpit`): besides the head, `[camera] driver = on` draws the driver's arms in
+  the cockpit view (off by default, user's call 2026-11-10), `codriver = off` and `wheel = off` leave the co-driver and
+  the car's steering wheel out of it (each on by default), from the same two pages. The launcher's `hide_wheel` of before is read as `wheel = off` and no longer
+  written; `viewer --hide-wheel` still hides the wheel whatever the file says.
 
 ## HUD
 

@@ -268,7 +268,7 @@ fn cap_label(fps: u32) -> String {
 }
 
 /// The HUD's options (`viewer --no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide`), and the
-/// cockpit's working dials (`--no-dials`) and its steering wheel (`--hide-wheel`).
+/// cockpit's working dials (`--no-dials`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HudChoice {
     pub show: bool,
@@ -278,8 +278,6 @@ pub struct HudChoice {
     pub stack: u8,
     /// The working dials of the RSF cars with RBRHUD gauges in the install (on by default).
     pub dials: bool,
-    /// The cockpit's steering wheel is hidden (off by default).
-    pub hide_wheel: bool,
     /// The HUD's parts shown (all by default).
     pub parts: Parts,
 }
@@ -299,15 +297,7 @@ const PART_LABELS: [(&str, &str); Part::ALL.len()] = [
 
 impl Default for HudChoice {
     fn default() -> Self {
-        HudChoice {
-            show: true,
-            mph: false,
-            fps: false,
-            stack: 0,
-            dials: true,
-            hide_wheel: false,
-            parts: Parts::default(),
-        }
+        HudChoice { show: true, mph: false, fps: false, stack: 0, dials: true, parts: Parts::default() }
     }
 }
 
@@ -453,10 +443,27 @@ impl Form {
             let tip = "The in-car view's head: it keeps the horizon steadier over bumps. Off, the view is fixed to \
                        the car. The pause menu's Camera page sets it too";
             ui.label("Head motion").on_hover_text(tip);
-            let head = ui.add_enabled(!self.read_only, egui::Checkbox::new(&mut self.head, "in-car view"));
-            if head.on_hover_text(tip).changed() {
-                let on = self.head;
-                if let Err(e) = self.edit_camera(|prefs| prefs.head_off = !on) {
+            let mut cockpit = self.cockpit;
+            ui.add_enabled(!self.read_only, egui::Checkbox::new(&mut cockpit.head, "in-car view")).on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "What the cockpit view shows: the driver's arms on the wheel, the co-driver beside you, and the \
+                       car's steering wheel (leave it out when driving with a wheel of your own). The pause menu's \
+                       Camera page sets them too";
+            ui.label("Cockpit").on_hover_text(tip);
+            ui.horizontal(|ui| {
+                let choices = [
+                    (&mut cockpit.driver, "Driver's arms"),
+                    (&mut cockpit.codriver, "Co-driver"),
+                    (&mut cockpit.wheel, "Steering wheel"),
+                ];
+                for (on, label) in choices {
+                    ui.add_enabled(!self.read_only, egui::Checkbox::new(on, label)).on_hover_text(tip);
+                }
+            });
+            if cockpit != self.cockpit {
+                self.cockpit = cockpit;
+                if let Err(e) = self.edit_camera(|prefs| prefs.cockpit = cockpit) {
                     self.status = e;
                 }
             }
@@ -496,11 +503,6 @@ impl Form {
                        RSF install";
             ui.label("Working dials").on_hover_text(tip);
             ui.checkbox(&mut self.hud.dials, "RSF cars").on_hover_text(tip);
-            ui.end_row();
-
-            let tip = "Leaves the car's steering wheel out of the cockpit view, for driving with a wheel of your own";
-            ui.label("Cockpit wheel").on_hover_text(tip);
-            ui.checkbox(&mut self.hud.hide_wheel, "Hide").on_hover_text(tip);
             ui.end_row();
 
             ui.label("Speed unit");
