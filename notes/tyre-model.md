@@ -1585,6 +1585,25 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   km/h; scratch analysis) rises 1.6-2.9e-4 g/Pa on the 2017-21 cars (España, Deutschland 2019), 2.1-3.0e-4 on the
   2016 cars and 2.8-3.4e-4 in the game's i20 threshold runs: it does not tell the generations apart, so it gives no
   downforce figure; the game's is at the top of the real range.
+- Sideslip in corners (2026-11-10; `rally_wot.py sideslip`: the angle between the accelerometer's vector and the GPS
+  path's over 2 s windows with 0.6 g up on both laterals, + = nose into the corner, free of the channels' gain;
+  medians, a window's quartiles lie 7-8° either side). 2017-21 cars per 40-60 / 60-80 / 80-100 / 100-130 / 130-160 /
+  160-200 km/h: Finland 2021 (gravel, 0.85 g, 11.6k windows) 30 / 20 / 16 / 11 / 8 / 6°; España 2021 (tarmac, 0.94-1.19
+  g, 14.9k) 8.5 / 5.8 / 4.6 / 2.2 / 0.2 / 0.5°; Deutschland 2019 (0.9 g, 9.3k) 9.7 / 6.3 / 4.9 / 2.9 / 0.3 / -1.1°;
+  left and right within 1°. The makes sit 2-6° apart, alike on both surfaces (i20 over Yaris): the sensor's place,
+  not known, moves the figure by 3° per metre from the centre of gravity at 50 km/h and 1 g, 0.7° at 100 km/h. So the
+  level holds to about 3°, and gravel over tarmac per make is 14-16 / 10-14 / 9-11 / 8-10 / 6-7° from 60-80 km/h up;
+  every driver's gravel median at 80-100 km/h is 13-20°. The rear axle's slip angle is the body's plus 0.4-2.3° here
+  (1.3 m from the centre of gravity over the radius): gravel 22 / 17 / 12 / 8° at 60-80 to 130-160 km/h, at
+  and past the peak angles (published ~12°, NGP 11-13.5°, loose-v1 17.5°), which pays only on a curve that stays flat
+  past its peak, as both models' do (0.96-1.0 at 30°); tarmac 8 / 6 / 3-4° at 60-80 / 80-100 / 100-130 km/h, at or
+  under the tarmac peaks (published 6.5-8.5°, NGP 9.5°, brush 7-8.75°). In the game the method reads the true
+  sideslip (heading against velocity) within 3° on six of seven bands' medians (the seventh 5° over, 23 windows):
+  the user's two hand drives of 524 Hassi (experimental-brush, 2026-11-09, Fiesta Rally2 and GR Yaris Rally2, 90
+  and 66 windows at 0.70-0.81 g) give 8-13° where the true one is 7-11°. Their true medians, 11 / 8-10 / 8-11 /
+  7-8° at 60-80 / 80-100 / 100-130 / 130-160 km/h, are the real gravel figure from 100 km/h up and about half of it
+  below. The autopilot's clean runs of that stage keep their sideslip's p99 at 4-5° ([Race
+  autopilot](#race-autopilot)): no measure of this.
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:

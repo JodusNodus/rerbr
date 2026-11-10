@@ -1,10 +1,12 @@
-"""rally_wot.py: full-throttle acceleration on straights, real rally cars' telemetry against the game's traces.
+"""rally_wot.py: real rally cars' telemetry against the game's traces: full throttle on straights, standing starts,
+lifts, sideslip.
 
   python3 -I -B harness/rally_wot.py fetch YEAR EVENT OUT_DIR
   python3 -I -B harness/rally_wot.py table DIR [TRACE...] [--cars NAME=MODEL,...]
   python3 -I -B harness/rally_wot.py fit DIR|TRACE... [--cars NAME=MODEL,...] [--mass KG] [--crr C] [--rho R]
   python3 -I -B harness/rally_wot.py launch DIR|TRACE...
   python3 -I -B harness/rally_wot.py lift DIR|TRACE...
+  python3 -I -B harness/rally_wot.py sideslip DIR|REPLAY_TRACE...
 
 `fetch` asks the WRC's archive (webappsdata.wrc.com, the source of RallyDataJunkie's files) for the YEAR season's
 event whose name contains EVENT and writes every stage's merged telemetry to OUT_DIR as
@@ -37,6 +39,16 @@ trace's from the car's speed) and the drivetrain's speed there (the telemetry's 
 one gear and the median lateral under 0.2 g; the median level deceleration, g, per gear and 20 km/h bin (8 windows up
 for telemetry), with the rpm. For the game, a pad run that lifts in gear (`--brake-from M/S --brake-pedal 0.001`
 without `--brake-declutch`: the pedal rounds to no brake, the autopilot shifts down as the revs fall).
+
+`sideslip`: the car's sideslip in corners, from the accelerometer's direction against the path's. Over 2 s windows
+(every 0.5 s, 13 samples up) the GPS positions give the path's lateral acceleration (the speed times the course's
+turn between the window's halves) and the acceleration along it (plus g times the grade over 3 s); the means of the
+two accelerometer channels give the same vector on the body's axes, and the angle between the two is the sideslip
+(+ = nose into the corner), whatever the channels' gain. Per speed band, over the windows with CORNER g or more on
+both lateral figures: their count, the path's g and the sideslip's quartiles. A `--replay-trace` of a drive in the
+game (`replay_gg.py`) goes the same way, from its positions and the specific force on the body's axes, with the true
+sideslip (the heading against the velocity) beside it: the check of the method. Not known: where the sensor sits; a
+metre ahead of or behind the centre of gravity moves the figure by 3 deg at 50 km/h and 1 g, 0.7 at 100 km/h.
 """
 import argparse
 import base64
@@ -50,6 +62,7 @@ import os
 import random
 import re
 import statistics
+import sys
 import time
 import urllib.request
 
@@ -64,6 +77,8 @@ COURSE = 1.5
 NODES = list(range(6000, 8501, 500))
 K = {3: 1.083, 4: 1.068, 5: 1.058, 6: 1.051}
 MARKS = (10, 25, 50, 100)
+CORNER = 0.6
+BANDS = (40, 60, 80, 100, 130, 160, 200)
 
 
 def get(url):
@@ -111,7 +126,8 @@ def load_telemetry(path):
             try:
                 rows.append(dict(t=int(r["utx"]) / 1000.0, v=float(r["speed"]), gear=int(float(r["gear"])),
                                  thr=float(r["throttle"]), brk=float(r["brk"]), rpm=float(r["rpm"]),
-                                 lat=float(r["accx"]) / 100.0, alt=float(r["altitude"]),
+                                 lat=float(r["accx"]) / 100.0, long=-float(r["accy"]) / 100.0,
+                                 alt=float(r["altitude"]),
                                  pos=(float(r["lon"]), float(r["lat"]))))
             except ValueError:
                 continue
@@ -132,6 +148,22 @@ def load_trace(path):
                                  rpm=float(f[col["engine"]]) * 30.0 / math.pi, lat=float(f[col["glat"]]),
                                  wheels=sum(float(f[col[w]]) for w in ("wfl", "wfr", "wrl", "wrr")) * 0.9))
     return rows
+
+
+def load_replay(path):
+    """10 Hz rows of a `--replay-trace` once the time card runs: the position (m), the specific force on the body's
+    forward (-Y) and left (+X) axes (g) and the true sideslip (rad, + = nose left of the velocity)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import replay_gg
+    a, c = replay_gg.columns(path)
+    a = a[np.diff(np.floor(a[:, c["time"]] * 10), prepend=-1) > 0]
+    t, v, q = a[:, c["time"]], a[:, [c["vx"], c["vy"], c["vz"]]], a[:, [c["qx"], c["qy"], c["qz"], c["qw"]]]
+    forward, left = replay_gg.rotate(q, [0, -1, 0]), replay_gg.rotate(q, [1, 0, 0])
+    force = (np.gradient(v, t, axis=0) + [0, 0, replay_gg.GRAVITY]) / replay_gg.GRAVITY
+    slip = np.arctan2(forward[:, 1], forward[:, 0]) - np.arctan2(v[:, 1], v[:, 0])
+    return [dict(t=t[i], xy=(a[i, c["x"]], a[i, c["y"]]), alt=a[i, c["z"]], long=force[i] @ forward[i],
+                 lat=force[i] @ left[i], true=(slip[i] + math.pi) % (2 * math.pi) - math.pi)
+            for i in range(len(t)) if a[i, c["started"]]]
 
 
 def course(p, q):
@@ -297,6 +329,54 @@ def lift(args):
             for (gear, kmh), v in sorted(cells.items(), reverse=True) if len(v) >= (8 if real else 1)))
 
 
+def sideslip_windows(rows):
+    """(speed km/h, the path's lateral g, sideslip deg, true sideslip deg or None) per cornering window."""
+    t = [r["t"] for r in rows]
+    if "pos" in rows[0]:
+        k, c = math.radians(6371000.0), math.cos(math.radians(rows[0]["pos"][1]))
+        xy = [(r["pos"][0] * k * c, r["pos"][1] * k) for r in rows]
+    else:
+        xy = [r["xy"] for r in rows]
+    out = []
+    for i in range(0, len(rows), 5):
+        a, b = bisect.bisect_left(t, t[i] - 1.01), bisect.bisect_right(t, t[i] + 1.01) - 1
+        ga, gb = bisect.bisect_left(t, t[i] - 1.51), bisect.bisect_right(t, t[i] + 1.51) - 1
+        if (b - a < 12 or abs(t[b] - t[a] - 2) > 0.45 or t[gb] - t[ga] < 2.7
+                or max(t[j + 1] - t[j] for j in range(a, b)) > 0.45):
+            continue
+        d1, d2 = (xy[i][0] - xy[a][0], xy[i][1] - xy[a][1]), (xy[b][0] - xy[i][0], xy[b][1] - xy[i][1])
+        v1, v2 = math.hypot(*d1) / (t[i] - t[a]), math.hypot(*d2) / (t[b] - t[i])
+        run = sum(math.dist(xy[j], xy[j + 1]) for j in range(ga, gb))
+        if min(v1, v2) < 5 or run < 15:
+            continue
+        turn = math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1])
+        normal = (v1 + v2) / 2 * turn / ((t[b] - t[a]) / 2) / G
+        along = (v2 - v1) / ((t[b] - t[a]) / 2) / G + (rows[gb]["alt"] - rows[ga]["alt"]) / run
+        win = rows[a:b + 1]
+        long, lat = statistics.fmean(w["long"] for w in win), statistics.fmean(w["lat"] for w in win)
+        if min(abs(normal), abs(lat)) < CORNER or normal * lat < 0:
+            continue
+        true = math.copysign(1, turn) * statistics.fmean(w["true"] for w in win) if "true" in win[0] else None
+        slip = math.atan2(long, abs(lat)) - math.atan2(along, abs(normal))
+        out.append(((v1 + v2) * 1.8, abs(normal), math.degrees(slip), true and math.degrees(true)))
+    return out
+
+
+def sideslip(args):
+    real = os.path.isdir(args.paths[0])
+    paths = sorted(glob.glob(os.path.join(args.paths[0], "df_telemetrymergeddata_*.csv"))) if real else args.paths
+    for name, group in ((args.paths[0], paths),) if real else ((os.path.basename(p), [p]) for p in paths):
+        win = [w for path in group for w in sideslip_windows((load_telemetry if real else load_replay)(path))]
+        print(f"{name}: km/h, windows, path g, sideslip p25 / p50 / p75 deg" + ("" if real else ", the true one's"))
+        for lo, hi in zip(BANDS, BANDS[1:]):
+            band = [w for w in win if lo <= w[0] < hi]
+            if len(band) < 15:
+                continue
+            quartiles = ["  " + " / ".join(f"{q:+.1f}" for q in statistics.quantiles([w[k] for w in band], n=4))
+                         for k in ((2,) if real else (2, 3))]
+            print(f"  {lo:3d}-{hi:3d} {len(band):5d}  {statistics.median(w[1] for w in band):.2f}" + "".join(quartiles))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -304,7 +384,7 @@ def main():
     f.add_argument("year")
     f.add_argument("event")
     f.add_argument("out")
-    for name in ("launch", "lift", "table", "fit"):
+    for name in ("launch", "lift", "sideslip", "table", "fit"):
         p = sub.add_parser(name)
         p.add_argument("paths", nargs="+")
         p.add_argument("--cars")
@@ -312,7 +392,8 @@ def main():
     p.add_argument("--crr", type=float, default=0.015)
     p.add_argument("--rho", type=float, default=1.17)
     args = parser.parse_args()
-    {"fetch": fetch, "launch": launch, "lift": lift, "table": table, "fit": fit}[args.command](args)
+    {"fetch": fetch, "launch": launch, "lift": lift, "sideslip": sideslip, "table": table,
+     "fit": fit}[args.command](args)
 
 
 if __name__ == "__main__":
