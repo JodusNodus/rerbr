@@ -2738,10 +2738,13 @@ stays the untuned brush's. The table's model column is the brush before the mode
   brush 21) 0.18-0.50 s, a build with NGP's Kx: the brush's driven wheels slip a third less on throttle. Ruled out
   (builds, not committed): NGP's Cα load exponent (within 0.04 s); no carcass dynamics above 3 m/s and a friction flat
   with sliding speed are faster still. 0.1-0.2 % unattributed.
-- Past the limit on tarmac (user, 2026-11-08: "the slip was very immediate, and then it's pretty much impossible to
-  get grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide
-  after a lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test
-  is next; a rolling tyre's measured past-peak shape at speed would settle the value.
+- Past the limit on tarmac (user, 2026-11-08: "the slip was very immediate, and then it's pretty much impossible to get
+  grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide after a
+  lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test is next; a
+  rolling tyre's measured past-peak shape at speed would settle the value. The nearest to it (2026-11-10, [Real stage
+  telemetry](#real-stage-telemetry-wrc-gravel), "Sideslip in corners"): the World Rally Cars' whole g on España's tarmac
+  at 60-100 km/h is 0.90 of its best at 20-30° of sideslip and 0.80-0.83 at 30-40° (p90s, 67 windows in the last bin), a
+  car's figure and so an upper bound for the tyre at the rear's angle: no case for a fall smaller than the 0.89.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 16 % per +0.5 bar (2026-11-10,
   PASS; was 5 %; op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar,
   Meccanica 2023): Cα now falls with pressure (-5.7 %, band -18 to +5.7; it rose
