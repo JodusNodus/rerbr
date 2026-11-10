@@ -319,13 +319,12 @@ handbrake turn with the clutch in and full throttle never enters it. It shows no
 anti-lag pops stay off it). Link's G4+ launch control is the source for the shape: a launch RPM limit for stationary
 starts, ignition retard and extra fuel while active, dropped as soon as a non-driven wheel turns; the 90 % pedal,
 the 60 % of the limit, the 0.5 m/s at the rim and the 1.0 m/s body speed are guesses (Link leaves the launch RPM to
-testing). Under `--flat-out` a standing start waits in neutral at full
-throttle for 1.5 s once the revs peak (or set no new maximum for 0.1 s under a start limiter below it), so the boost
-has time to build; the plain autopilot selects first as soon as they peak. On the flat pad the three Rally3 cars' tarmac 0-60 km/h came to
-within 0.07 s of NGP's (2.13/2.12, 2.03/1.96 and 1.90/1.86 s NGP/experimental, from 2.35, 2.45 and 2.24), and their
-0-100 km/h to within 0.04 s (5.26/5.25, 4.84/4.83 and 4.48/4.52 s, from 5.50, 5.32 and 4.90). The Polo R5, Fiesta
-Rally2, GR Yaris Rally2 and Celica, which did not bog, moved by at most 0.05 s; the Audi quattro A2 (turbo without
-anti-lag), the Golf and the M3 are unchanged to the digit.
+testing). The autopilot holds full throttle on the handbrake through the start countdown, so the boost is built
+when it leaves; it selects first once the revs pass 60 % of the limit or set no new maximum for 0.1 s. On the flat pad
+the three Rally3 cars' clutch-dump starts on tarmac take 5.23, 4.78 and 4.51 s to 100 km/h (Fiesta Rally3, Rally3
+Evo, Clio Rally3) against NGP's 5.18, 4.73 and 4.43; without the start mode they took 5.45, 5.25 and 4.88. The Polo
+R5, Fiesta Rally2 and i20 Coupe WRC, which did not bog, are within 0.02 s of NGP either way; cars without anti-lag
+are untouched.
 
 ## Classes
 
@@ -623,34 +622,65 @@ times a driver would see. On gravel the clutch slips 1.0–4.5 s longer per run,
 
 #### 0 to 100 km/h
 
-The autopilot's flat-out standing starts with the Fiesta Rally2 (`--flat-out`), timed from the first move over
-0.5 m/s. The start revs in neutral on the handbrake and drops into first at full throttle; NGP's clutch help then
-closes the clutch. The flat pad is a built-in stage, a level 2 km square of one material (`--stage pad-tarmac`,
-`pad-gravel`; `harness/pad_start.py` runs these starts on it):
+The autopilot's flat-out standing starts (`--flat-out`), timed from the first move over 0.5 m/s, on the flat pad: a
+built-in stage, a level 2 km square of one material (`--stage pad-tarmac`, `pad-gravel`). `harness/pad_start.py`
+runs two starts:
 
-| Flat pad | NGP 7 | Experimental |
+- The clutch dump. The car revs in neutral on the handbrake through the countdown and takes first at full throttle;
+  NGP's clutch help closes the clutch. This is how the plain autopilot starts a stage.
+- The best start, a driver with the clutch (`--drive-slip K --clutch-help off`). The countdown passes in first with
+  the clutch in and the engine at its power peak. Then the clutch slips so the most-slipping wheel holds slip K,
+  opening again if the engine falls under its torque peak. Once the road speed has caught up with the engine the
+  clutch stays closed and the throttle holds K. The script tries K from 0.05 to 0.3 and takes the fastest.
+
+Both shift up where the next gear's thrust at the car's ground speed is higher, from the car's torque curve and gear
+ratios.
+
+| Fiesta Rally2, flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
-| Tarmac (material 37) | 4.01 s | 3.97 s |
-| Gravel (material 17) | 4.62 s | 4.60 s |
+| Tarmac (material 37), clutch dump | 4.05 s | 4.03 s |
+| Tarmac, best start | 4.03 s | 4.01 s |
+| Gravel (material 17), clutch dump | 4.62 s | 4.66 s |
+| Gravel, best start | 4.45 s | 4.41 s |
 
-The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5
-(1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and
-M-Sport publishes none for the Fiesta.
+The best start gains little for a four-wheel-drive car on tarmac: in first gear the Fiesta's engine gives 1.15 g and
+its tyres take about 1.3 g, so the engine is the limit and the dump's wheelspin costs almost nothing. Two-wheel-drive
+cars and loose surfaces gain most (NGP, clutch dump / best start, s):
 
-The same start on stages (`harness/car_pace.py`). No installed tarmac stage starts flat: the retail French stages
-climb 2–15 % over their first 100 m, and RSF 504 climbs 6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat and
-straight for 100 m.
+| Car | Tarmac | Gravel |
+| --- | --- | --- |
+| Hyundai i20 Coupe WRC (4WD) | 3.32 / 3.28 | 4.05 / 3.84 |
+| BMW M3 E30 Group A (RWD) | 4.67 / 4.20 | 6.72 / 5.76 |
+| Ford Escort Mk II Group 4 (RWD) | 5.92 / 4.90 | 7.21 / 6.28 |
+| VW Golf II GTI 16V Group A (FWD) | 5.91 / 5.56 | 7.97 / 7.02 |
+| Citroën C2 S1600 (FWD) | 5.64 / 5.30 | 7.80 / 6.91 |
+
+Six of the 42 installed cars have a published figure, three of them from the maker or its team (tarmac, NGP; the
+experimental engine is within 0.1 s on each):
+
+| Car | Published | Clutch dump | Best start |
+| --- | --- | --- | --- |
+| VW Polo GTI R5 | about 4.1 s (Volkswagen) | 4.11 s | 4.11 s |
+| Hyundai i20 Coupe WRC | under 4 s (Hyundai) | 3.32 s | 3.28 s |
+| Ford Fiesta Rally3 | about 5 s to 62 mph (M-Sport, at 1210 kg; ours weighs 1410 kg) | 5.18 s | 5.18 s |
+| BMW M3 E30 Group A | about 4.3 s to 60 mph (touring car, 330 bhp, 940 kg, slicks; ours 300 bhp, 1225 kg) | 4.67 s | 4.20 s |
+| Porsche 911 SC RS | 5.3 s to 60 mph | 4.23 s | 3.83 s |
+| Audi quattro A2 | about 4.5 s | 3.23 s | 3.15 s |
+
+The makers' figures are launch-control starts, which the clutch dump is closest to. The last three come from
+enthusiast sites; the two older cars are 1.1 to 1.5 s quicker here than their period figures, on period tyres there
+and NGP's tyres here. No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found,
+and M-Sport publishes none for the Fiesta Rally2.
+
+The same starts on stages. No installed tarmac stage starts flat: the retail French stages climb 2–15 % over their
+first 100 m, and RSF 504 climbs 6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat and straight for 100 m.
+Fiesta Rally2, clutch dump / best start (K 0.15 and 0.2 tried):
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
-| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.47 s |
-| track-64, gravel, flat | 4.66 s | 4.67 s |
-| RSF 345, gravel, 4 % downhill | 4.50 s | 4.49 s |
-
-A launch control (revs held below the limiter, then the throttle holding the wheel slip), tried on an earlier build,
-was no faster on any of the three stages: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these
-speeds, and cutting the throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not
-the start.
+| RSF 504, tarmac, 6.7 % uphill | 4.57 / 4.56 s | 4.55 / 4.55 s |
+| track-64, gravel, flat | 4.66 / 4.54 s | 4.68 / 4.53 s |
+| RSF 345, gravel, 4 % downhill | 4.54 / 4.37 s | 4.58 / 4.38 s |
 
 ### The clutch under the experimental engine
 
@@ -782,3 +812,8 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - Niels Heusinkveld, throttle models in sims: https://www.youtube.com/watch?v=0gW-cbSX3Uc
 - BeamNG engine braking and friction, a forum reading of its engine code: https://www.beamng.com/threads/engine-braking-calculations-wrong.94673/
 - Volkswagen, Polo GTI R5 0-100 km/h 4.1 s (maker's claim): https://www.volkswagen-newsroom.com/en/the-new-polo-gti-driving-presentation-2512/the-new-polo-gti-r5-gti-goes-rallying-2567
+- Hyundai Motorsport, i20 Coupe WRC 0-100 km/h under 4 s: https://hyundai.com/eu/about-hyundai/sponsoring-and-events/motor-sport.html
+- M-Sport's Fiesta Rally3 launch, 0-62 mph in around five seconds (Ford Authority): https://fordauthority.com/2020/11/m-sport-announces-groundbreaking-new-ford-fiesta-rally3-racer/
+- BMW M3 E30 Group A (touring car) 0-60 mph about 4.3 s: https://www.supercars.net/blog/1990-bmw-m3-group/
+- Porsche 911 SC RS 0-60 mph 5.3 s: https://www.supercars.net/blog/all-brands/porsche/porsche-model-list/porsche-911-g-series/
+- Audi quattro A2 0-100 km/h about 4.5 s: https://www.ableitet.no/audi-rallye-quattro-a2/
