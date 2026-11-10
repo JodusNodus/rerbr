@@ -463,26 +463,6 @@ pub fn build_with(track: &Track, d3dx: D3dx) -> Result<Vec<u8>, String> {
     from_faces(&gather(track, d3dx)?, share)
 }
 
-/// A test pad's `col.col` (`rbr-standalone --flat-pad`): a flat, level ground of `squares` x `squares` squares of
-/// `size` m, two faces each, centred on `centre`, every face on the stage's first `.mat` run.
-pub fn flat_pad(centre: [f32; 3], size: f32, squares: usize) -> Result<Vec<u8>, String> {
-    let corner = |i: usize, j: usize| {
-        let at = |k: usize, c: f32| c + (k as f32 - squares as f32 / 2.0) * size;
-        [at(i, centre[0]), at(j, centre[1]), centre[2]]
-    };
-    let faces: Vec<Face> = (0..squares * squares)
-        .flat_map(|k| {
-            let (i, j) = (k % squares, k / squares);
-            [
-                [corner(i, j), corner(i + 1, j), corner(i + 1, j + 1)],
-                [corner(i, j), corner(i + 1, j + 1), corner(i, j + 1)],
-            ]
-        })
-        .map(|pos| Face { pos, uv: [[0.0; 2]; 3], map: 0 })
-        .collect();
-    from_faces(&faces, true)
-}
-
 /// The `col.col` of the gathered faces.
 fn from_faces(faces: &[Face], share: bool) -> Result<Vec<u8>, String> {
     let cents: Vec<[f32; 3]> = faces.iter().map(centroid).collect();
@@ -553,21 +533,6 @@ mod tests {
             .collect();
         out.sort();
         out
-    }
-
-    #[test]
-    fn a_flat_pad_reads_back_as_level_faces_about_its_centre() {
-        let file = rbr_formats::col::parse(&flat_pad([10.0, -20.0, 3.0], 20.0, 20).unwrap()).unwrap();
-        let faces: Vec<_> = file
-            .cells
-            .iter()
-            .flat_map(|c| c.tree.triangles.iter().map(|t| t.vertices.map(|i| c.vertices[i as usize])))
-            .collect();
-        assert_eq!(faces.len(), 800);
-        assert!(faces
-            .iter()
-            .flatten()
-            .all(|v| v[2] == 3.0 && (-190.0..=210.0).contains(&v[0]) && (-220.0..=180.0).contains(&v[1])));
     }
 
     #[test]
