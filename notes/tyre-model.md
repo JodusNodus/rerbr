@@ -1556,6 +1556,15 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   at 10 m); pad-gravel ngp 1.69 / 2.64 / 3.74 / 5.42 at 78 / 74 / 95 / 120, experimental 1.66 / 2.63 / 3.73 / 5.39.
   The launch holds on both surfaces within 0.05 s to 50 m, wheelspin included; past 50 m the game gains (the drag,
   above).
+- Tarmac (2026-11-10; `rally_gg.py stats`, España 2021 SS2 / 5 / 9 / 12 / 15 / 17, 35 drives of the 2017-21 cars,
+  medians, 10-90 % of the drives in brackets): lateral 1 s p50 / p90 / p99 0.61 / 1.21 / 1.48 g (unit check 0.96, GPS
+  p90 1.26); 16 longest braking events 0.72 g from the speed, peak 0.5 s 1.15 (0.97-1.30); g-g p95 per 30-60 / 60-90
+  / 90-120 / 120-150 / 150+ km/h: \|lat\| 1.43 / 1.45 / 1.40 / 1.28 / 1.20, decel 0.81 / 1.11 / 1.26 / 1.30 / 1.10.
+  The game's i20 Coupe WRC 2020 on pad-tarmac from 155 km/h (`brake_test.py`, threshold at slip 0.15, declutched): ngp
+  1.32 g (1.25 / 1.30 / 1.38 through 32 / 64 / 100 km/h), experimental-brush 1.42 (1.33 / 1.37 / 1.47); the Fiesta
+  Rally2's flat r40 circle 1.28 / 1.33 g. So on tarmac the game brakes 5-15 % over the real p95 and its flat circle
+  is 8-12 % under the real lateral p95 at 30-90 km/h (cambers and cuts in the real one): no case to move the tarmac
+  level either way.
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:
