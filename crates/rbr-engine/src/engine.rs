@@ -186,7 +186,7 @@ impl Step {
             friction: finite(i.friction, 0.0).clamp(-1e4, 1e4),
             stalled: i.stalled,
             t_oil: f64::from(i.engine_temperature),
-            wheels: i.wheels.map(|w| finite(w, 0.0).clamp(0.0, 1000.0)),
+            wheels: i.wheels.map(|w| finite(w, 0.0).clamp(-1000.0, 1000.0)),
             body: finite(i.body_speed, 0.0).clamp(-1000.0, 1000.0),
             limiter: true,
         }
@@ -298,7 +298,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     // turbo's state carries over.
     let start = match spec.turbo {
         Some(_) if spec.class.anti_lag => {
-            pedal > ecu::START_PEDAL && x.body.abs() <= ecu::START_BODY && x.wheels.iter().all(|&w| w <= ecu::START_RIM)
+            pedal > ecu::START_PEDAL
+                && x.body.abs() <= ecu::START_BODY
+                && x.wheels.iter().all(|&w| w.abs() <= ecu::START_RIM)
         }
         _ => false,
     };

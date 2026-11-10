@@ -400,6 +400,26 @@ fn it_is_deterministic_and_finite_for_any_input() {
     }
 }
 
+/// A car rolling backwards at speed is not standing, whatever the sign: the start mode reads the wheels'
+/// magnitude. At 0.7 of the limit the standing engine is on the start limiter (its cuts run) and the reversing
+/// one is free (no cuts).
+#[test]
+fn reversed_wheels_are_not_a_standing_start() {
+    for (name, _, m) in models().iter().filter(|(_, _, m)| m.spec().class.anti_lag) {
+        let omega = 0.7 * m.spec().rpm_limit / RPM;
+        let mut s = m.clone();
+        for _ in 0..20 {
+            s.torque(&inputs(omega, 1.0, [0.0; 4], 0.0));
+        }
+        assert!(s.telemetry().cut > 0.0, "{name}: standing cuts");
+        let mut s = m.clone();
+        for _ in 0..20 {
+            s.torque(&inputs(omega, 1.0, [-50.0; 4], 0.0));
+        }
+        assert_eq!(s.telemetry().cut, 0.0, "{name}: reversed");
+    }
+}
+
 /// Anti-stall: with the pedal closed at half idle and below, the ECU's air is the feed-forward's, no more (an engine
 /// dragged that far is loaded, and the idle air would push the car); at idle − 300 rpm it has the whole ceiling.
 #[test]

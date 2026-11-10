@@ -320,8 +320,8 @@ anti-lag pops stay off it). Link's G4+ launch control is the source for the shap
 starts, ignition retard and extra fuel while active, dropped as soon as a non-driven wheel turns; the 90 % pedal,
 the 60 % of the limit, the 0.5 m/s at the rim and the 1.0 m/s body speed are guesses (Link leaves the launch RPM to
 testing). Under `--flat-out` a standing start waits in neutral at full
-throttle for 1.5 s once the revs peak (or stop rising under the start limiter), so the boost has time to build; the
-plain autopilot selects first as soon as they peak. On the flat pad the three Rally3 cars' tarmac 0-60 km/h came to
+throttle for 1.5 s once the revs peak (or set no new maximum for 0.1 s under a start limiter below it), so the boost
+has time to build; the plain autopilot selects first as soon as they peak. On the flat pad the three Rally3 cars' tarmac 0-60 km/h came to
 within 0.07 s of NGP's (2.13/2.12, 2.03/1.96 and 1.90/1.86 s NGP/experimental, from 2.35, 2.45 and 2.24), and their
 0-100 km/h to within 0.04 s (5.26/5.25, 4.84/4.83 and 4.48/4.52 s, from 5.50, 5.32 and 4.90). The Polo R5, Fiesta
 Rally2, GR Yaris Rally2 and Celica, which did not bog, moved by at most 0.05 s; the Audi quattro A2 (turbo without
