@@ -19,7 +19,7 @@ pub use address::{base_in, file, file_at, original_for, runs_ngp, set_wall_clock
 pub(crate) use brake_scale::scaled_pedal;
 pub use brake_scale::set_brake_scale;
 pub(crate) use engine::{engine_wrapper, starter_step, OPERATOR_NEW};
-pub use engine_model::{engine_model_telemetry, restart_engine_model, set_engine_model};
+pub use engine_model::{engine_model_telemetry, is_set as engine_model_is_set, restart_engine_model, set_engine_model};
 pub(crate) use steps::{curve_term, CURVE_TERM};
 pub(crate) use tuning::{
     clutch_scale, damage_tuning, damper_step, drag_factor, drive_split, engine_tuning, probe_tuning, step_slip,

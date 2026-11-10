@@ -17,6 +17,11 @@ pub trait GearHost {
     fn car_signal_word(&mut self, car: u32) -> u32;
     /// Emits the gear-change signal on the signal manager's slot, with the four-word payload.
     fn emit_gear_change(&mut self, payload: [u32; 4]);
+    /// Ours, experimental: an engine model replaces NGP's torque, and the clutch worker relocks a slipping clutch only
+    /// when the clutch can hold (see [`clutch_torque`]). Off (NGP's and 1.02's worker) unless the host says so.
+    fn clutch_holds_only_with_capacity(&self) -> bool {
+        false
+    }
 }
 
 /// The call [`reset_wheels`] makes outside the port: the inverse of the transposed matrix (`mat4::inverse_transposed`),
@@ -217,9 +222,21 @@ pub fn clutch_torque(
             out = Some(s * b);
             let locked_speed = w.state.drive.drive_speed_key * c;
             if sign(speed - locked_speed) != word {
-                w.state.trigger = 1;
-                w.state.sign_word = 0;
-                w.state.drive.engine_speed = locked_speed;
+                // With an engine model: the clutch relocks only if it can bring the engine to the locked speed this
+                // step, `|(locked - old) * slip_gain_a / d - a| <= b` (the speed update's inverse); else it keeps
+                // slipping, in the direction the engine is really ahead of the locked speed.
+                let slip = sign(speed - locked_speed);
+                if host.clutch_holds_only_with_capacity()
+                    && slip != 0
+                    && ((locked_speed - old) * w.def.slip_gain_a / d - a).abs() > b
+                {
+                    w.state.sign_word = slip;
+                    out = Some(slip as f32 * b);
+                } else {
+                    w.state.trigger = 1;
+                    w.state.sign_word = 0;
+                    w.state.drive.engine_speed = locked_speed;
+                }
             }
         }
         return out;
