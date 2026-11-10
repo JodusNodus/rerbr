@@ -11,8 +11,8 @@
 //! `wings`: the drag of the downforce devices, a drag area of [`WING_DRAG`] times the square of the file's downforce
 //! area (the form of induced drag), on top of the file's. The 2017-21 World Rally Cars at full throttle on straights
 //! (WRC telemetry, 244 drives on tarmac; `notes/tyre-model.md`, Aero) have a drag area of 1.74 m^2 against their
-//! files' 0.81 m^2 with 3.54 m^2 of downforce area; the same rule on the 2006 files gives 0.81-1.07 m^2 against the
-//! 2004 model's measured 0.79-1.05.
+//! files' 0.81 m^2 with 3.54 m^2 of downforce area; the same rule on the 2006 files gives 0.82 and 1.08 m^2 against
+//! the 2004 model's 0.85.
 
 use std::cell::Cell;
 
