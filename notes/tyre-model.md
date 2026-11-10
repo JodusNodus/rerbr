@@ -470,6 +470,16 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   (spins 3 of 3) / 0.90 / 0.43, brush 2.07 (spins 3 of 3) / 1.24 / 0.34; Golf ngp 0.97 / 0.51 / 0.12, experimental 0.98
   / 0.54 / 0.20, brush 1.60 / 0.38 / -0.09; Escort 0.89 / 0.62 / 0.29, 0.86 / 0.61 / 0.28, 1.00 / 0.68 / 0.43 (none
   spin).
+- The pad against the brush's tuning (2026-11-10, `handling.py --only ramp,sine --extra="--tyre-tuning KEY=V"`): sine
+  dwell spins out of 24 runs (8 amplitudes, entry speed and ±2 km/h), Fiesta at 110 km/h / Golf at 110 / Escort at 80
+  / Escort at 110: ngp 9 / 4 / 11 / 16; brush 0 / 9 / 14 / 17; slide grip 0.75: 0 / 7 / 12 / 14; 0.90: 7 / 12 / 12 /
+  20; 0.95: 9 / 15 / 15 / 17; stiffness 0.77 (NGP's slope): 8 / 12 / 12 / 18; response 2.0: 3 / 9 / 15 / 16; no car
+  spins at 80 km/h but the Escort. More slide grip spins the cars more here, not less: the front keeps turning the
+  car in. The brush against NGP is not one-sided (Fiesta fewer, Escort about the same, Golf more at 110 km/h), and
+  no tuning value brings the Golf to NGP's 4: its cause is not the slide grip, the stiffness or the response.
+  The slide grip stays the user's 0.83. Open: the Golf at 110 km/h, throttle released (front axle under engine
+  braking and side force together); the Fiesta's spin under a light brake in a turn with the realistic engine and
+  NGP's tyre (3 of 3, ngp none), not looked into.
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
