@@ -33,7 +33,9 @@ of the game checks the method: it reads the file's `Cd * A / 1.204` within about
 `launch`: the standing start of each stage or trace, from the last standstill before the car first passes 60 km/h:
 the time to MARKS m of path (the telemetry's from its GPS positions, whose first seconds come 0.3 to 1 s apart; a
 trace's from the car's speed) and the drivetrain's speed there (the telemetry's `speed`; a trace's mean of the wheels'
-`wfl`..`wrr`), the medians over a directory's drives. Stage starts turn after 100 m or so.
+`wfl`..`wrr`), the medians over a directory's drives. Stage starts turn after 100 m or so. The telemetry's positions
+run about 0.2 s behind its accelerometer (`sideslip`) and by an unknown part of that behind its speed, from which the
+start is taken: its times may read up to 0.25 s long.
 
 `lift`: the throttle lifted in gear on a straight: 1 s windows above 60 km/h with the throttle under 3 %, no brake,
 one gear and the median lateral under 0.2 g; the median level deceleration, g, per gear and 20 km/h bin (8 windows up
@@ -44,13 +46,16 @@ without `--brake-declutch`: the pedal rounds to no brake, the autopilot shifts d
 (every 0.5 s, 13 samples up) the GPS positions give the path's lateral acceleration (the speed times the course's
 turn between the window's halves) and the acceleration along it (plus g times the grade over 3 s); the means of the
 two accelerometer channels give the same vector on the body's axes, and the angle between the two is the sideslip
-(+ = nose into the corner), whatever the channels' gain. Per speed band, over the windows with CORNER g or more on
-both lateral figures: their count, the path's g and the sideslip's quartiles; then, over the windows with TURNING g
-on both, the p90 of the whole g (the path's vector and the accelerometer's, which the estimate's noise pulls
-opposite ways) by sideslip from each of SLIPS deg up, at 60-100 and 100-160 km/h. A `--replay-trace` of a drive in
-the game (`replay_gg.py`) goes the same way, from its positions and the specific force on the body's axes, with the
-true sideslip (the heading against the velocity) beside it: the check of the method. Not known: where the sensor
-sits; a metre ahead of or behind the centre of gravity moves the figure by 3 deg at 50 km/h and 1 g, 0.7 at 100 km/h.
+(+ = nose into the corner), whatever the channels' gain. The accelerometer's window is taken ahead of the positions'
+by the drive's lag: the shift that best lines up the size of the two vectors (free of sideslip), about 0.2 s in this
+telemetry; unshifted, a corner's braking-to-power sequence reads as 3 to 8 deg of sideslip. Per speed band, over the
+windows with CORNER g or more on both lateral figures: their count, the path's g and the sideslip's quartiles; then,
+over the windows with TURNING g on both, the p90 of the whole g (the path's vector and the accelerometer's, which the
+estimate's noise pulls opposite ways) by sideslip from each of SLIPS deg up, at 60-100 and 100-160 km/h. A
+`--replay-trace` of a drive in the game (`replay_gg.py`) goes the same way, from its positions and the specific force
+on the body's axes (no lag), with the true sideslip (the heading against the velocity) beside it: the check of the
+method. Not known: where the sensor sits; a metre ahead of or behind the centre of gravity moves the figure by 3 deg
+at 50 km/h and 1 g, 0.7 at 100 km/h.
 """
 import argparse
 import base64
@@ -333,15 +338,45 @@ def lift(args):
             for (gear, kmh), v in sorted(cells.items(), reverse=True) if len(v) >= (8 if real else 1)))
 
 
-def sideslip_windows(rows):
+def metres(rows):
+    if "xy" in rows[0]:
+        return [r["xy"] for r in rows]
+    k, c = math.radians(6371000.0), math.cos(math.radians(rows[0]["pos"][1]))
+    return [(r["pos"][0] * k * c, r["pos"][1] * k) for r in rows]
+
+
+def gps_lag(rows):
+    """How far the positions run behind the car's own channels, s: the shift that best lines up the size of the
+    horizontal acceleration from the positions with the accelerometer's (the size is free of sideslip), on a 10 Hz
+    grid from 30 s after the start; None for a short drive or a correlation under 0.4. Zero for a replay trace."""
+    if "xy" in rows[0]:
+        return 0.0
+    t = np.array([r["t"] for r in rows])
+    grid = np.arange(t[0] + 30, t[-1] - 5, 0.1)
+    if len(grid) < 600:
+        return None
+
+    def smooth(values):
+        return np.convolve(np.interp(grid, t, values), np.ones(3) / 3, mode="same")
+
+    x, y = (smooth(axis) for axis in zip(*metres(rows)))
+    vx, vy = np.gradient(x, 0.1), np.gradient(y, 0.1)
+    path = np.hypot(np.gradient(vx, 0.1), np.gradient(vy, 0.1))
+    path = np.convolve(path, np.ones(3) / 3, mode="same")[10:-10]
+    body = np.hypot(smooth([r["long"] for r in rows]), smooth([r["lat"] for r in rows]))
+    moving = (np.hypot(vx, vy) > 8)[10:-10]
+    c = [np.corrcoef(path[moving], body[10 - k:len(body) - 10 - k][moving])[0, 1] for k in range(-10, 11)]
+    k = int(np.argmax(c))
+    if c[k] < 0.4 or k in (0, 20):
+        return None
+    return (k - 10 + 0.5 * (c[k - 1] - c[k + 1]) / (c[k - 1] - 2 * c[k] + c[k + 1])) * 0.1
+
+
+def sideslip_windows(rows, lag):
     """(speed km/h, the path's lateral g, sideslip deg, true sideslip deg or None, the path's whole g, the
-    accelerometer's, its lateral g) per window with TURNING g or more on both laterals."""
-    t = [r["t"] for r in rows]
-    if "pos" in rows[0]:
-        k, c = math.radians(6371000.0), math.cos(math.radians(rows[0]["pos"][1]))
-        xy = [(r["pos"][0] * k * c, r["pos"][1] * k) for r in rows]
-    else:
-        xy = [r["xy"] for r in rows]
+    accelerometer's, its lateral g) per window with TURNING g or more on both laterals; the accelerometer's window
+    `lag` s ahead of the positions'."""
+    t, xy = [r["t"] for r in rows], metres(rows)
     out = []
     for i in range(0, len(rows), 5):
         a, b = bisect.bisect_left(t, t[i] - 1.01), bisect.bisect_right(t, t[i] + 1.01) - 1
@@ -357,7 +392,9 @@ def sideslip_windows(rows):
         turn = math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1])
         normal = (v1 + v2) / 2 * turn / ((t[b] - t[a]) / 2) / G
         along = (v2 - v1) / ((t[b] - t[a]) / 2) / G + (rows[gb]["alt"] - rows[ga]["alt"]) / run
-        win = rows[a:b + 1]
+        win = rows[bisect.bisect_left(t, t[a] - lag - 0.001):bisect.bisect_right(t, t[b] - lag + 0.001)]
+        if len(win) < 13:
+            continue
         long, lat = statistics.fmean(w["long"] for w in win), statistics.fmean(w["lat"] for w in win)
         if min(abs(normal), abs(lat)) < TURNING or normal * lat < 0:
             continue
@@ -376,8 +413,11 @@ def sideslip(args):
     real = os.path.isdir(args.paths[0])
     paths = sorted(glob.glob(os.path.join(args.paths[0], "df_telemetrymergeddata_*.csv"))) if real else args.paths
     for name, group in ((args.paths[0], paths),) if real else ((os.path.basename(p), [p]) for p in paths):
-        win = [w for path in group for w in sideslip_windows((load_telemetry if real else load_replay)(path))]
-        print(f"{name}: km/h, windows, path g, sideslip p25 / p50 / p75 deg" + ("" if real else ", the true one's"))
+        drives = [(rows, gps_lag(rows)) for rows in map(load_telemetry if real else load_replay, group)]
+        lags = [lag for _, lag in drives if lag is not None]
+        win = [w for rows, lag in drives if lag is not None for w in sideslip_windows(rows, lag)]
+        print(f"{name}: {len(lags)} drives, positions {statistics.median(lags):.2f} s behind (median); "
+              "km/h, windows, path g, sideslip p25 / p50 / p75 deg" + ("" if real else ", the true one's"))
         for lo, hi in zip(BANDS, BANDS[1:]):
             band = [w for w in win if lo <= w[0] < hi and min(w[1], w[6]) >= CORNER]
             if len(band) < 15:

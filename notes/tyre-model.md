@@ -1562,8 +1562,17 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   flat-out start): ngp 1.40 / 2.24 / 3.27 / 4.88 at 56 / 78 / 98 / 121, experimental 1.38 / 2.20 / 3.22 / 4.81.
   Gravel, Finland 2021 (103): 1.66 / 2.63 / 3.76 / 5.47 s at 79 / 83 / 99 / 119 (the wheels at twice the car's speed
   at 10 m); pad-gravel ngp 1.69 / 2.64 / 3.74 / 5.42 at 78 / 74 / 95 / 120, experimental 1.66 / 2.63 / 3.73 / 5.39.
-  The launch holds on both surfaces within 0.05 s to 50 m, wheelspin included; past 50 m the game gains (the drag,
-  above).
+  As read the launch holds on both surfaces within 0.05 s to 50 m; past 50 m the game gains (the drag, above). But
+  the telemetry's positions run behind its own channels (0.2 s behind the accelerometer, "Sideslip in corners" below;
+  behind the speed, which gives the start, by an unknown part of that), so the real times may be up to 0.25 s
+  shorter, all of it in the first 10 m. Free of the positions (scratch: the drivetrain's speed scaled to the road's,
+  the channel reading 0.95 of GPS speed at part throttle, the trace's wheels 0.97 / 0.93 of the car's when coasting on
+  tarmac / gravel): tarmac 80 / 100 / 120 km/h after 2.21 / 3.25 / 4.51 s (España; Deutschland 2.22 / 3.24 / 4.60),
+  ngp 2.33 / 3.28 / 4.46, experimental 2.25 / 3.17 / 4.28: holds from 80 km/h, where little slip is left. Off the
+  line the real wheels pass 40 km/h after 0.8-0.9 s on tarmac (launch control, near the car's own speed), the game's
+  after 0.2-0.3 s (the autopilot's start spins them up at once). On gravel both spin up at once (60 km/h after 0.44 s
+  real, 0.3 s game); the real wheels pass 80 km/h after 0.72 s, the game's after 1.4-1.5 s (brush 2.4), and 100 /
+  120 km/h after 3.44 / 4.72 s against 3.72 / 4.88 ngp, 3.62 / 4.74 experimental, 3.41 / 4.55 brush.
 - Throttle lifted in gear (2026-11-10; `rally_wot.py lift`, level deceleration, g, on straights; tarmac, Deutschland
   2019 / España 2021, 533 and 140 windows): 4th 60-80 km/h 0.094 / 0.089 (3900 rpm), 5th 60-80 0.085 / 0.085 (3400),
   5th 80-100 0.105 / 0.132 (4500-4800), 6th 80-100 0.090 / 0.101 (3500-4000), 6th 100-120 - / 0.145 (4700). The
@@ -1589,39 +1598,52 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   1.16-1.34) shows the method's spread.
 - Sideslip in corners (2026-11-10; `rally_wot.py sideslip`: the angle between the accelerometer's vector and the GPS
   path's over 2 s windows with 0.6 g up on both laterals, + = nose into the corner, free of the channels' gain;
-  medians, a window's quartiles lie 7-8° either side). 2017-21 cars per 40-60 / 60-80 / 80-100 / 100-130 / 130-160 /
-  160-200 km/h: Finland 2021 (gravel, 0.85 g, 11.6k windows) 30 / 20 / 16 / 11 / 8 / 6°; España 2021 (tarmac, 0.94-1.19
-  g, 14.9k) 8.5 / 5.8 / 4.6 / 2.2 / 0.2 / 0.5°; Deutschland 2019 (0.9 g, 9.3k) 9.7 / 6.3 / 4.9 / 2.9 / 0.3 / -1.1°;
-  left and right within 1°. The makes sit 2-6° apart, alike on both surfaces (i20 over Yaris): the sensor's place,
-  not known, moves the figure by 3° per metre from the centre of gravity at 50 km/h and 1 g, 0.7° at 100 km/h. So the
-  level holds to about 3°, and gravel over tarmac per make is 14-16 / 10-14 / 9-11 / 8-10 / 6-7° from 60-80 km/h up;
-  every driver's gravel median at 80-100 km/h is 13-20°. The rear axle's slip angle is the body's plus 0.4-2.3° here
-  (1.3 m from the centre of gravity over the radius): gravel 22 / 17 / 12 / 8° at 60-80 to 130-160 km/h, at
-  and past the peak angles (published ~12°, NGP 11-13.5°, loose-v1 17.5°), which pays only on a curve that stays flat
-  past its peak, as both models' do (0.96-1.0 at 30°); tarmac 8 / 6 / 3-4° at 60-80 / 80-100 / 100-130 km/h, at or
-  under the tarmac peaks (published 6.5-8.5°, NGP 9.5°, brush 7-8.75°). The cars' whole g against the sideslip
-  (p90 per sideslip bin of the path's vector / the accelerometer's, which the estimate's noise pulls opposite ways
-  and blurs across bins; 60-100 km/h): Finland rises from 0.94 / 0.88 under 5° to 1.05 / 0.95 at 15-20° and holds
-  1.07 / 0.95 at 30-40° and 1.06 / 0.92 past 40° (100-160 km/h: 1.07 / 1.00, then 1.06 / 0.92 and 1.06 / 0.85);
-  España falls from 1.43 / 1.28 under 5° to 1.33 / 1.17 at 20-30° and 1.27 / 1.07 at 30-40° (0.89 / 0.84 of its
-  best), Deutschland from 1.18 / 1.08 to 1.12 / 0.99 (0.95 / 0.92). So real gravel keeps its grip at 30° and more
-  (the 30° row of the loose table: NGP's 0.96 and loose-v1's 1.0 stand, the quoted 0.63 and the 0.85 do not show),
-  and tarmac loses 5-16 % by 30-40°, between NGP's 0.865 and no loss; through the blur that does not rule out the
-  sets' 0.73-0.83. In the game the method reads the true
-  sideslip (heading against velocity) within 3° on six of seven bands' medians (the seventh 5° over, 23 windows):
-  the user's two hand drives of 524 Hassi (experimental-brush, 2026-11-09, Fiesta Rally2 and GR Yaris Rally2, 90
-  and 66 windows at 0.70-0.81 g) give 8-13° where the true one is 7-11°. Their true medians, 11 / 8-10 / 8-11 /
-  7-8° at 60-80 / 80-100 / 100-130 / 130-160 km/h, are the real gravel figure from 100 km/h up and about half of it
-  below. The autopilot's clean runs of that stage keep their sideslip's p99 at 4-5° ([Race
-  autopilot](#race-autopilot)): no measure of this.
+  medians, a window's quartiles lie 6-9° either side). Timing first: the positions run 0.19-0.20 s behind the
+  accelerometer (per driver 0.15-0.26; the shift that lines up the two vectors' sizes, which sideslip does not touch);
+  unshifted, a corner's braking-to-power sequence reads as 3-8° more under 100 km/h. Shifted, per 40-60 / 60-80 /
+  80-100 / 100-130 / 130-160 / 160-200 km/h: Finland 2021 (gravel, 0.85 g, 8.6k windows) 22 / 15 / 13 / 9 / 7 / 6°;
+  España 2021 (tarmac, 0.93-1.18 g, 10.4k) 3.4 / 1.7 / 1.4 / 0.3 / 0.4 / 0.9°; Deutschland 2019 (0.9 g, 3.6k) 2.0 /
+  1.8 / 1.3 / -0.4 / -0.5 / -0.6°. The makes sit 2-5° apart (i20 over Fiesta over Yaris on tarmac, i20 over both on
+  gravel from 80 km/h): the sensor's place, not known, moves the figure by 3° per metre from the centre of gravity at
+  50 km/h and 1 g, 0.7° at 100 km/h. So the level holds to about 3°, and gravel over tarmac per make is 12-17 / 10-14
+  / 8-10 / 7-9 / 4-6° from 60-80 km/h up; every driver's gravel median at 80-100 km/h is 10-16°. The rear axle's slip
+  angle is the body's plus 0.4-2.3° here (1.3 m from the centre of gravity over the radius): gravel 17 / 14 / 9 / 7°
+  at 60-80 to 130-160 km/h with a quarter of the windows over 25 / 21 / 17 / 15°, at and past the peak angles
+  (published ~12°, NGP 11-13.5°, loose-v1 17.5°), which pays only on a curve that stays flat past its peak, as both
+  models' do (0.96-1.0 at 30°); tarmac 4 / 2.5 / 1° at 60-80 / 80-100 / 100-130 km/h, under the tarmac peaks
+  (published 6.5-8.5°, NGP 9.5°, brush 7-8.75°), a rear cornering stiffness of about 17 per rad at 1.18 g (NGP 17.6 at
+  4 kN, brush 22.9; within the level's 3°). The cars' whole g against the sideslip (p90 per sideslip bin of the path's
+  vector / the accelerometer's, which the estimate's noise pulls opposite ways and blurs across bins; 60-100 km/h):
+  Finland rises from 0.97 / 0.92 under 5° to 1.04 / 0.97 at 15-20° and holds 1.06 / 1.00 at 30-40° and 1.05 / 0.90
+  past 40° (100-160 km/h: 1.06 / 1.01, then 1.04 / 0.92 and 0.98 / 0.83); España falls from 1.43 / 1.29 under 5° to
+  1.29 / 1.17 at 20-30° and 1.15 / 1.07 at 30-40° (0.80 / 0.83 of its best, 67 windows), Deutschland from 1.15 / 1.05
+  to 1.12 / 1.00 at 20-30°. So real gravel keeps its grip to 40° (the 30° row of the loose table: NGP's 0.96 and
+  loose-v1's 1.0 stand, the quoted 0.63 and the 0.85 do not show), and tarmac loses up to a tenth by 20-30° and a
+  fifth by 30-40°: the sets' 0.73-0.83 at 30° rather than NGP's 0.865, as far as 67 windows and the blur go. In the
+  game the method reads the true sideslip (heading against velocity) within 3° on six of seven bands' medians (the
+  seventh 5° over, 23 windows), and its lag reads 0.000 s: the user's two hand drives of 524 Hassi
+  (experimental-brush, 2026-11-09, Fiesta Rally2 and GR Yaris Rally2, 90 and 66 windows at 0.70-0.81 g) give 8-13°
+  where the true one is 7-11°. Their true medians, 11 / 8-10 / 8-11 / 7-8° at 60-80 / 80-100 / 100-130 / 130-160 km/h,
+  are the real gravel figure from 100 km/h up and two thirds of it below. The autopilot's clean runs of that stage
+  keep their sideslip's p99 at 4-5° ([Race autopilot](#race-autopilot)): no measure of this.
+- Wheel slip at full throttle (2026-11-10; scratch: the drivetrain's speed over GPS speed on straights, 1 s windows in
+  one gear, against the same ratio coasting; the game's i20 on the pads from the trace's wheels against its own
+  coasting). Gravel, Finland, at 80 / 100 / 120 / 140 / 160+ km/h: 19-23 / 12-15 / 7-10 / 4.5-7 / 2.4-4 % (the lower
+  figure with the positions shifted 0.15 s, the upper unshifted: the speed channel's own timing is not known); ngp 10
+  / 8 / 7 / 6 / 5.5, experimental 12 / 9 / 7 / 6 / 5, experimental-brush (loose-v1) - / 4.4 / 3.3 / 2.7 / 2.0, at more
+  thrust than the real (the wheel power above). The real curve is stiff at small force and bends early (thrust over
+  weight about 0.32 / 0.39 / 0.45 / 0.54 / 0.68 at 170 / 140 / 120 / 100 / 80 km/h, from the fitted 205 kW): under 100
+  km/h the real wheels run twice as far over the car's speed as NGP's and three times as far as loose-v1's; at 160
+  km/h up loose-v1 is right and NGP double. Tarmac: 0.5-2 % at 100 km/h with the shift, 5-6 % without, between the
+  brush's 1.7 % and NGP's 3.9 %: the timing decides, so no verdict on the longitudinal stiffness there.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2
   found (searches; wrcwings.tech describes the devices without forces). Three indications that the real cars gain
   less grip with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls
   with speed (above); the braking slope less the drag (above) is 0.1-0.7 of the game's; and Finland's whole g while
-  sliding (`rally_wot.py sideslip`, p90 at 20° up, path / accelerometer) is 1.04-1.07 / 0.92-0.95 at 60-100 km/h and
-  1.06-1.07 / 0.85-0.98 at 100-160, no gain over 3 % where the file's downforce on NGP's load exponent (0.875) gives 8
-  % between the bands' middles (85 and 125 km/h; by 20 km/h bands, scratch: +6-9 % from 60-80 to 140-200 km/h
-  against +17-25 %). Fast corners are rarer and friction may fall with speed, so the level stays open: possibly half.
+  sliding (`rally_wot.py sideslip`, p90 at 20° up, path / accelerometer) is 1.05-1.06 / 0.90-1.00 at 60-100 km/h and
+  0.98-1.06 / 0.83-0.99 at 100-160, no gain where the file's downforce on NGP's load exponent (0.875) gives 8 %
+  between the bands' middles (85 and 125 km/h; by 20 km/h bands, scratch: +3-10 % from 60-80 to 140-200 km/h against
+  +17-25 %). Fast corners are rarer and friction may fall with speed, so the level stays open: possibly half.
   By efficiency: the measured drag area is 0.9 m² over the 2004 model's (0.85 m², ClA 0.75, Dominy & Richardson), so
   the file's 3.54 m² needs all of that drag to come from devices at lift over drag 3. Where a road car's figures are
   published the files follow them: Alpine A110, Cd 0.32 on 1.94 m² (0.62 m²) and 141 kg at 275 km/h with the aero kit
