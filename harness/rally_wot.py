@@ -1,5 +1,5 @@
 """rally_wot.py: real rally cars' telemetry against the game's traces: full throttle on straights, standing starts,
-lifts, sideslip.
+lifts, sideslip, wheel slip.
 
   python3 -I -B harness/rally_wot.py fetch YEAR EVENT OUT_DIR
   python3 -I -B harness/rally_wot.py table DIR [TRACE...] [--cars NAME=MODEL,...]
@@ -7,6 +7,7 @@ lifts, sideslip.
   python3 -I -B harness/rally_wot.py launch DIR|TRACE...
   python3 -I -B harness/rally_wot.py lift DIR|TRACE...
   python3 -I -B harness/rally_wot.py sideslip DIR|REPLAY_TRACE...
+  python3 -I -B harness/rally_wot.py slip DIR|TRACE... --cda M2 [--mass KG] [--rho R]
 
 `fetch` asks the WRC's archive (webappsdata.wrc.com, the source of RallyDataJunkie's files) for the YEAR season's
 event whose name contains EVENT and writes every stage's merged telemetry to OUT_DIR as
@@ -56,6 +57,20 @@ estimate's noise pulls opposite ways) by sideslip from each of SLIPS deg up, at 
 on the body's axes (no lag), with the true sideslip (the heading against the velocity) beside it: the check of the
 method. Not known: where the sensor sits; a metre ahead of or behind the centre of gravity moves the figure by 3 deg
 at 50 km/h and 1 g, 0.7 at 100 km/h.
+
+`slip`: the wheels' slip against the force they carry, on straights. Over 1 s windows (every 0.2 s, the path's lateral
+under LAT g, 43 km/h up) the path gives the car's speed and, from the speeds at the two ends (0.4 s of path each), its
+acceleration; the force over the weight is that acceleration plus the grade plus the drag at `--cda` (a real car's from
+`fit`, the game's from its file), and the slip is the drivetrain's speed over the car's (the telemetry's `speed`, read
+ahead of the positions by the drive's lag as the accelerometer is; a trace's mean of the wheels) against that ratio at
+no force: the intercept of a trimmed line through the braking windows under 0.5 g, whose slope is printed as the slip
+per g. Braking windows have the throttle shut, driving ones no brake. The table is the median slip, %, per force bin
+(FORCES g) and speed band (BANDS km/h; 25 windows up, 3 for traces). A slip that holds across the speed bands at one
+force says the speed channel's timing is the accelerometer's: an error of 0.1 s would add 3 % per g at 100 km/h and half
+that at 200. The traces given (pad runs: flat out, then `--brake-from` with `--brake-pedal` or `--brake-slip` at several
+levels) make one table. Driving bins under 100 km/h are not the tyre's curve: with thrust to spare, a window shows a
+small force there when the grip was missing. Not known: which shafts the telemetry's speed reads; braking loads the
+front wheels more, in the game as well.
 """
 import argparse
 import base64
@@ -88,6 +103,7 @@ CORNER = 0.6
 TURNING = 0.3
 SLIPS = (-5, 5, 10, 15, 20, 30, 40)
 BANDS = (40, 60, 80, 100, 130, 160, 200)
+FORCES = (-1.5, -1.3, -1.1, -0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9)
 
 
 def get(url):
@@ -432,6 +448,65 @@ def sideslip(args):
                 f"{pct(c, 4)} / {pct(c, 5)} ({len(c)})" if len(c) >= 30 else "-" for c in cells))
 
 
+def slip_windows(rows, lag, drag):
+    """(km/h, the wheels' force over the weight, the drivetrain's speed over the car's) per window; the car's
+    channels `lag` s ahead of the positions; `drag` the drag over the weight per (m/s)^2."""
+    t, xy = [r["t"] for r in rows], metres(rows)
+    path = [0.0]
+    for p, q in zip(xy, xy[1:]):
+        path.append(path[-1] + math.dist(p, q))
+    out = []
+    for i in range(0, len(rows), 2):
+        a, b = bisect.bisect_left(t, t[i] - 0.51), bisect.bisect_right(t, t[i] + 0.51) - 1
+        ga, gb = bisect.bisect_left(t, t[i] - 1.51), bisect.bisect_right(t, t[i] + 1.51) - 1
+        if (not 2 <= a < i < b < len(rows) - 2 or b - a < 6 or abs(t[b] - t[a] - 1) > 0.25 or t[gb] - t[ga] < 2.7
+                or max(t[j + 1] - t[j] for j in range(a - 2, b + 2)) > 0.35):
+            continue
+        v1, v2 = ((path[j + 2] - path[j - 2]) / (t[j + 2] - t[j - 2]) for j in (a, b))
+        v = (path[b] - path[a]) / (t[b] - t[a])
+        d1, d2 = (xy[i][0] - xy[a][0], xy[i][1] - xy[a][1]), (xy[b][0] - xy[i][0], xy[b][1] - xy[i][1])
+        turn = math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1])
+        if min(v1, v2) < 12 or abs(v * turn / ((t[b] - t[a]) / 2) / G) > LAT:
+            continue
+        force = ((v2 - v1) / (t[b] - t[a]) / G + (rows[gb]["alt"] - rows[ga]["alt"]) / (path[gb] - path[ga])
+                 + drag * v * v)
+        win = rows[bisect.bisect_left(t, t[a] - lag - 0.001):bisect.bisect_right(t, t[b] - lag + 0.001)]
+        if len(win) < 7 or statistics.fmean(w["thr" if force < 0 else "brk"] for w in win) > (3 if force < 0 else 0.5):
+            continue
+        out.append((v * 3.6, force, statistics.fmean(w.get("wheels", w["v"]) for w in win) / 3.6 / v))
+    return out
+
+
+def slip(args):
+    real = os.path.isdir(args.paths[0])
+    paths = sorted(glob.glob(os.path.join(args.paths[0], "df_telemetrymergeddata_*.csv"))) if real else args.paths
+    drives = [(load_telemetry if real else load_trace)(path) for path in paths]
+    for rows in () if real else drives:
+        run = 0.0
+        for r, q in zip(rows, rows[:1] + rows):
+            run += (r["v"] + q["v"]) / 7.2 * (r["t"] - q["t"])
+            r.update(xy=(run, 0.0), alt=0.0)
+    lags = [gps_lag(rows) for rows in drives]
+    usual = statistics.median(lag for lag in lags if lag is not None)
+    drag = args.rho * args.cda / 2 / args.mass / G
+    win = [x for rows, lag in zip(drives, lags) for x in slip_windows(rows, usual if lag is None else lag, drag)]
+    w = np.array(win)
+    near = w[(w[:, 1] > -0.5) & (w[:, 1] < -0.02)]
+    for _ in range(4):
+        k, r0 = np.polyfit(near[:, 1], near[:, 2], 1)
+        off = near[:, 2] - r0 - k * near[:, 1]
+        near = near[np.abs(off) < 2.5 * off.std()]
+    print(f"{args.paths[0]} ({len(paths)} files): {len(w)} windows, positions {usual:.2f} s behind; the drivetrain's"
+          f" speed {r0:.3f} of the car's at no force, {k / r0 * 100:.1f} % per g braking under 0.5 g; median slip %"
+          f" (windows) per force bin, g, and band from {BANDS} km/h")
+    for lo, hi in zip(FORCES, FORCES[1:]):
+        cells = [w[(w[:, 1] >= lo) & (w[:, 1] < hi) & (w[:, 0] >= a) & (w[:, 0] < b), 2]
+                 for a, b in zip(BANDS, BANDS[1:])]
+        print(f"  {lo:+.1f}..{hi:+.1f}  " + "  ".join(
+            f"{(np.median(c) / r0 - 1) * 100:+5.1f} ({len(c):4d})" if len(c) >= (25 if real else 3) else f"{'-':>12}"
+            for c in cells))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -439,15 +514,16 @@ def main():
     f.add_argument("year")
     f.add_argument("event")
     f.add_argument("out")
-    for name in ("launch", "lift", "sideslip", "table", "fit"):
+    for name in ("launch", "lift", "sideslip", "table", "slip", "fit"):
         p = sub.add_parser(name)
         p.add_argument("paths", nargs="+")
         p.add_argument("--cars")
-    p.add_argument("--mass", type=float, default=1390.0)
+        p.add_argument("--mass", type=float, default=1390.0)
+        p.add_argument("--rho", type=float, default=1.17)
     p.add_argument("--crr", type=float, default=0.015)
-    p.add_argument("--rho", type=float, default=1.17)
+    sub.choices["slip"].add_argument("--cda", type=float, required=True)
     args = parser.parse_args()
-    {"fetch": fetch, "launch": launch, "lift": lift, "sideslip": sideslip, "table": table,
+    {"fetch": fetch, "launch": launch, "lift": lift, "sideslip": sideslip, "table": table, "slip": slip,
      "fit": fit}[args.command](args)
 
 

@@ -1510,8 +1510,9 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   no open Rally2/R5 file with acceleration (WRC2's are 6.4 s GPS points).
 - Unit checks over 1 s: `accx` against v times the GPS course's rate, slope 0.77-0.85 (Finland) / 0.59-0.75 (Wales),
   r 0.85-0.92: the 0.01 g lateral unit holds within the GPS's smoothing. `-accy` against the speed's rate, slope
-  0.49-0.74, and it lags the speed by about 0.5 s: the longitudinal channel reads low or filtered (inferred), so
-  braking is taken from the speed.
+  0.49-0.74, and it lags the speed by about 0.5 s: read then as a channel that reads low, so braking was taken from
+  the speed. Wrong (2026-11-10, "Straight braking, the level" below): the speed is the wheels', which slow ahead of the
+  car, and `-accy` matches the positions' deceleration.
 - Figures (medians over the drives, range): 16 longest braking events 0.60 g from the speed (0.41-0.73 Finland,
   0.44-0.90 Wales), 0.54 / 0.53 g from `accy`, peak 0.5 s mean 1.00 / 0.83 g. Lateral 1 s p50 / p90 / p99 0.40 /
   0.89 / 1.25 g Finland (mean 125 km/h), 0.30 / 0.74 / 1.02 g Wales (97 km/h). g-g p95 over 0.5 s means, \|lat\|
@@ -1626,16 +1627,46 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   where the true one is 7-11°. Their true medians, 11 / 8-10 / 8-11 / 7-8° at 60-80 / 80-100 / 100-130 / 130-160 km/h,
   are the real gravel figure from 100 km/h up and two thirds of it below. The autopilot's clean runs of that stage
   keep their sideslip's p99 at 4-5° ([Race autopilot](#race-autopilot)): no measure of this.
-- Wheel slip at full throttle (2026-11-10; scratch: the drivetrain's speed over GPS speed on straights, 1 s windows in
-  one gear, against the same ratio coasting; the game's i20 on the pads from the trace's wheels against its own
-  coasting). Gravel, Finland, at 80 / 100 / 120 / 140 / 160+ km/h: 19-23 / 12-15 / 7-10 / 4.5-7 / 2.4-4 % (the lower
-  figure with the positions shifted 0.15 s, the upper unshifted: the speed channel's own timing is not known); ngp 10
-  / 8 / 7 / 6 / 5.5, experimental 12 / 9 / 7 / 6 / 5, experimental-brush (loose-v1) - / 4.4 / 3.3 / 2.7 / 2.0, at more
-  thrust than the real (the wheel power above). The real curve is stiff at small force and bends early (thrust over
-  weight about 0.32 / 0.39 / 0.45 / 0.54 / 0.68 at 170 / 140 / 120 / 100 / 80 km/h, from the fitted 205 kW): under 100
-  km/h the real wheels run twice as far over the car's speed as NGP's and three times as far as loose-v1's; at 160
-  km/h up loose-v1 is right and NGP double. Tarmac: 0.5-2 % at 100 km/h with the shift, 5-6 % without, between the
-  brush's 1.7 % and NGP's 3.9 %: the timing decides, so no verdict on the longitudinal stiffness there.
+- Wheel slip against the wheels' force (2026-11-10; `rally_wot.py slip`, the windows and the force in its docstring; the
+  real cars at their fitted drag area, 1.71 / 1.76 / 1.56 m², the game's i20 Coupe WRC 2020 on the pads at the file's
+  0.81, flat out and then braked at eleven pedal and slip levels). The telemetry's `speed` is the drivetrain's, on the
+  accelerometer's clock: at one force the slip holds across the speed bands (Deutschland at 1.0 g of braking -2.5 / -3.1
+  / -2.5 / -2.8 % at 60-80 to 130-160 km/h, where 0.1 s would add 3 % per g at 100 km/h and half that at 200). Tarmac,
+  median slip in % at 0.6 / 0.8 / 1.0 / 1.2 g of braking, then at 0.4 / 0.6 g of drive from 100 km/h up (the range over
+  the speed bands): Deutschland 2019 -0.5..-1.1 / -1.3..-2.3 / -2.5..-3.1 / -3.4..-4.3 and +0.9..1.3 / +1.2..1.4; España
+  2021 -0.9..-2.0 / -1.6..-2.6 / -3.0..-3.5 / -4.2..-4.5 and +0.7..1.1 / +0.9..1.3; experimental-brush -1.2..-1.7 /
+  -1.9..-2.8 / - / -4.2 and +0.1..1.0 / +1.6..2.3; ngp -3.8..-4.3 / -5.0..-5.3 / -6.7 / -8.6 and +1.1..2.3 / +3.3. On
+  tarmac the brush's slip is the real cars' within the method's 1 % (2.6 % per g under 0.5 g) and NGP's tyre slips 2 to
+  3 times as far for the same force (7.2 % per g). The method's floor: under 0.5 g of braking the real slip reads within
+  0.4 % of none, which no tyre gives, and the ratio at no force rises 0.5 % from 50 to 115 km/h (the tyres growing,
+  inferred). Past 1.3 g the real cars stay at -3 to -5 %; the brush runs to -8..-10 at its limit. Gravel, Finland 2021,
+  braking at 0.2 / 0.4 / 0.6 / 0.8 / 1.0 g: -1.4..-2.5 / -4.4..-9.7 / -15..-18 / -22..-26 / -31..-34 %; ngp -1.9..-3.2 /
+  -4.6..-5.8 / -9.3 / locked / -17..-24; loose-v1 -0.7..-1.5 / -1.9..-2.5 / -3.5..-4.6 / -8.7 / -9..-20. Binned the
+  other way (scratch: the real deceleration per slip, the brake on) 0.53 g at 3-6 %, 0.63 at 6-10, 0.70 at 10-15, 0.75
+  at 15-22, 0.81 at 22-32, 0.86 at 32-50 and 0.94 past 50 % (p90 1.16): the two bracket the curve. On real gravel the
+  braking force builds slowly and keeps building to locked wheels (the published locked over ABS, 1.25-1.30, agrees).
+  NGP follows it to 0.6 g, has its best at 19 % and loses 13-19 % of it locked (0.75-0.81 g); loose-v1 has its whole
+  force by 10 % slip, a third to a quarter of the real slip at every force, and holds it locked (1.00-1.04 g), as the
+  real cars do. Each axle alone in the game stays near the mean (fronts -4.4, rears -3.1 % at 0.6 g, loose-v1), so the
+  gap is not which shaft the real channel reads. Driving on gravel at 0.4 g, 100-130 / 130-160 / 160-200 km/h: real +6.2
+  / +2.6 / +1.0, ngp +5.8 / +4.2 / +2.7, loose-v1 +2.7 / +1.6 / +0.7; at 0.6 g, 80-100 / 100-130 / 130-160: +11.0 / +5.3
+  / +3.2, ngp +8.2 / +6.9 / -, loose-v1 +6.0 / +4.4 / -: loose-v1 is right from 130 km/h and has half the real slip
+  below, NGP is right at 100-130 and has double above. Flat out by speed (scratch, against the coasting ratio), Finland
+  at 80 / 100 / 120 / 140 / 160+ km/h: 19-23 / 12-15 / 7-10 / 4.5-7 / 2.4-4 %; ngp 10 / 8 / 7 / 6 / 5.5, experimental 12
+  / 9 / 7 / 6 / 5, loose-v1 - / 4.4 / 3.3 / 2.7 / 2.0, at more thrust than the real: under 100 km/h the real wheels spin
+  at two to three times the game's slip. Not known: which shafts the channel reads, and the real cars' brake balance.
+- Straight braking, the level (2026-11-10; scratch: 1 s windows with the brake channel at 50 % or more and the path's
+  lateral under 0.2 g, the level deceleration from the positions' speed). p50 / p90, g, at 40-70 / 70-100 / 100-130 /
+  130-160 km/h: Finland 0.60 / 0.80, 0.72 / 0.90, 0.82 / 1.05, 0.92 / 1.16; Deutschland 0.88 / 1.04, 0.97 / 1.16, 1.02 /
+  1.23, 1.08 / 1.31; España 0.81 / 0.96, 0.98 / 1.17, 1.05 / 1.25, 1.11 / 1.30. The accelerometer reads the same (p50
+  within 0.04 g), so `-accy` does not read low: the earlier slope of 0.49-0.74 was against the wheels' speed. The i20's
+  best braking on the pads across the same bands (mean deceleration between the band's speeds, the best of the slip and
+  ABS levels): gravel ngp 0.87 / 0.93 / 1.00 / 1.09, loose-v1 0.90 (1.04 locked) / 0.96 (1.00) / 1.04 / 1.08: the real
+  p90 within 0.1 g in every band, so the gravel braking level holds for both. Tarmac ngp 1.34 / 1.42 / 1.52 / 1.66,
+  brush 1.36 / 1.42 / 1.53 / 1.66: 0.3 g over the real p90 and 0.15-0.2 over the p97 (Deutschland 1.12 / 1.27 / 1.35 /
+  1.44) in every band; whether that is the tyre or the drivers' margin on a real road is not known. The older braking
+  figures in this note taken "from the speed" (16 longest events, peak 0.5 s) read the wheels, which run slower than the
+  car under braking: on gravel 15-30 % slower at 0.6-1.0 g.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2
   found (searches; wrcwings.tech describes the devices without forces). Three indications that the real cars gain
   less grip with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls
