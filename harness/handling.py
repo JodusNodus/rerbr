@@ -3,11 +3,10 @@
   python3 -I -B harness/handling.py --out DIR [--physics ngp,experimental,experimental-brush]
       [--cars Ford_Fiesta_Rally2_ngp7,VW_Golf_II_GTI_16V_GrpA_ngp6,Ford_Escort_Mk_II_RS_Grp4_ngp6]
       [--only ramp,step,sine,lift,brake,power] [--speed 80] [--sine-speeds 80,110] [--jobs 6] [--analyse-only]
-      [--keep-traces] [--stage track-85_M] [--material 37] [--bin PATH] [--extra "FLAGS"]
+      [--keep-traces] [--material 37] [--bin PATH] [--extra "FLAGS"]
 
-Each run is `rbr-standalone --autopilot --boot --flat-pad 37 --manoeuvre KIND,KMH,AMP[,EXTRA] --trace-speed`: the
-stage's ground is replaced by a flat, level pad of one material (a 2 km square at the start's height, no scenery
-collision, dry tarmac 37 by default), the car holds its start heading and a speed controller brings it to the entry
+Each run is `rbr-standalone --autopilot --boot --stage pad-37 --manoeuvre KIND,KMH,AMP[,EXTRA] --trace-speed`: on
+a generated flat pad of one material (a level 2 km square, dry tarmac 37 by default), the car holds its start heading and a speed controller brings it to the entry
 speed in the gear the shift points give, and when the speed has held for 2 s the inputs go open loop on a fixed
 schedule (`crates/rbr-standalone/src/autopilot/pad.rs`; the steering is the exact float, not the controller's 8-bit
 steps). Steering is a fraction of full lock, always to the left; lateral g, yaw rate and the turn sideslip are
@@ -256,8 +255,9 @@ def execute(args, job):
         args = argparse.Namespace(**{**vars(args), "analyse_only": True})
     if not args.analyse_only:
         man = f"{KIND[family]},{kmh:g},{amp:.5f}" + ("" if extra is None else f",{extra:g}")
-        cmd = [args.bin, "--autopilot", base + ".out", "--boot", "--stage", args.stage, "--rsf-car", car,
-               "--physics", physics, "--steps", "120000", "--flat-pad", str(args.material), "--manoeuvre", man,
+        stage = {37: "pad-tarmac", 17: "pad-gravel", 101: "pad-snow"}.get(args.material, f"pad-{args.material}")
+        cmd = [args.bin, "--autopilot", base + ".out", "--boot", "--stage", stage, "--rsf-car", car,
+               "--physics", physics, "--steps", "120000", "--manoeuvre", man,
                "--trace-speed", base + ".trace", "--data", os.environ["RBR_DATA"],
                "--ngp-physics", os.environ["RBR_NGP_PHYSICS"], *args.extra.split()]
         with open(base + ".log", "w") as f:
@@ -304,7 +304,6 @@ def main():
     parser.add_argument("--only", default="ramp,step,sine,lift,brake,power")
     parser.add_argument("--speed", type=float, default=80.0, help="entry speed km/h of all but the sine dwell")
     parser.add_argument("--sine-speeds", default="80,110")
-    parser.add_argument("--stage", default="track-85_M")
     parser.add_argument("--material", type=int, default=37, help="the pad's material (37 tarmac fine clean dry)")
     parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--analyse-only", action="store_true")
