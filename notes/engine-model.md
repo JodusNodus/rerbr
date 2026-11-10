@@ -427,7 +427,7 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   324.24 / 314.57, Fiat 323.35 / 315.49 s. The Golf II GTI no longer stalls on the opening climb (that stall was the
   brush's, since fixed). It stalls after the finish: full brake in fifth on the run-out, wheels locked at 16 m/s, the
   clutch-engaged speed tracking the engine 464 → 0 rad/s in 0.8 s (trace column `locked`); NGP's Golf in the same
-  stop keeps 89 rad/s with the clutch open. Open.
+  stop keeps 89 rad/s with the clutch open. Fixed by the clutch worker's relock rule (see Open).
 - Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.46 s (4.44 at `96c85981`; brush 4.33, 4.35
   after its fix); track-64 gravel flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant
   acceleration, −0.66 m/s²) ≈ 4.0 s (inferred).
@@ -440,11 +440,23 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
 ## Open
 
-- A wheel locked under braking with the clutch in stalls the realistic engine: the Golf II GTI after track-41_M's
-  finish, full brake in fifth from 24 m/s, fronts locked at 16-20 m/s, engine 464 → 0 rad/s in 0.8 s with the
-  clutch-engaged speed tracking it (with NGP's tyre at `b97695d86` and with the brush on main; NGP's physics locks
-  them too and idles at 89 rad/s with the clutch open); NGP's clutch help opens at 65 rad/s, too late. Not traced why
-  it never opens with the model's engine. The Golf's stall on the climb was the brush's (fixed, `tyre-model.md`).
+- A wheel locked under braking with the clutch in stalled the realistic engine (the Golf II GTI after track-41_M's
+  finish, full brake in fifth from 24 m/s; engine 464 → 0 rad/s in 0.8 s). The clutch help did open (launch clutch 0 →
+  1 between 98.5 and 87.9 rad/s on the Golf's 89.0-99.5 band). Cause: `drive_worker::clutch_torque` takes the sign
+  word from the sign of the engine's net torque and relocks (engine speed = clutch-engaged speed) whenever
+  `sign(speed - locked) != word`, at any clutch torque; with the clutch open, net torque -6 N·m (overrun manifold at
+  15.8 kPa, the Golf's fixed idle stop refilling it at about 37 kPa/s, zero crossing at 85 rad/s) and the engine above
+  the wheels' speed, the engine rode the wheels to 0. NGP's idle model keeps that torque at or above 0, so its Golf
+  idles at 89. Rule, with a model set only (`GearHost::clutch_holds_only_with_capacity`, set from
+  `rbr_hybrid::ngp::engine_model_is_set`): relock only if `|(locked - old) * slip_gain_a / d - a| <= b`, else keep slipping with the word set to the real slip
+  direction (`tests/clutch_relock.rs`). Golf now idles 85-89 rad/s through the stop and 106 at a standstill. Shifts
+  with a closed pedal (engine above the new gear's speed) now slip at the clutch's capacity instead of snapping: the
+  Escort Mk II and Fiesta R2 reach 50 km/h 0.05 and 0.04 s sooner, the Rally2, Celica, Fiat and Golf the same to the
+  ms (Escort Mk II, locked braking, 26.6 → 28.9 m).
+- The clutch help's band is NGP's per car (the Golf 89.0-99.5 rad/s, set for NGP's 89 rad/s idle); our idle is
+  `IdleRPM` (104.7), above the band's top, so the clutch is fully closed at our idle and a car braked to a stop on
+  locked wheels with the clutch in gear closes it on them once the engine recovers (not exercised: the autopilot's
+  first gear holds the clutch open).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - A modern turbo's K over the fuel–air cycle (1.04–1.26 of it; turbo sample and Rally2 0.47–0.48 at 4000 rpm
   against 0.40), kept so the tables hold (decided 2026-11: NGP's torque over the ceiling). At the 2.5 bar cap the
