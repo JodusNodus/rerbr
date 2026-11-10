@@ -2,13 +2,14 @@
 
   python3 -I -B harness/limit_recovery.py --out DIR [--physics ngp,experimental-brush]
       [--cars Ford_Fiesta_Rally2_ngp7,VW_Golf_II_GTI_16V_GrpA_ngp6,Ford_Escort_Mk_II_RS_Grp4_ngp6] [--throttle 0,1]
-      [--stage track-85_M] [--circle -260,120,40] [--ramp 0.5] [--steps 30000] [--jobs 6] [--analyse-only] [--bin PATH]
+      [--stage pad-tarmac] [--circle 7.2,-506.8,40] [--ramp 0.5] [--steps 30000] [--jobs 6] [--analyse-only] [--bin PATH]
 
 Each run is `rbr-standalone --autopilot --boot --circle X,Y,R --circle-past T --trace-speed`: the car ramps up on the
 circle until it first runs 1 m wide (past the limit), then holds throttle T (0 lifts, 1 holds full throttle) with no
 brake or gear change while the pure pursuit keeps steering for the circle (it countersteers a car whose nose points
-inside its target, as a driver would). Closed loop rather than an open-loop step steer: the largest flat tarmac on
-hand (map 85's r40 circle) has no room for a step steer at speed, and RSF 568's start straight resets the car 2.4 m
+inside its target, as a driver would). Closed loop rather than an open-loop step steer: the flat pad's r40 circle
+(pad-tarmac's (7.2, -506.8): map 85's r40 circle in the pad's frame) has no room for a step steer at speed, and
+RSF 568's start straight resets the car 2.4 m
 off its line (outside assistance), so the manoeuvre has to stay on the circle. The limit comes at 65-70 km/h there.
 
 Per run, from the onset (the first step 1 m wide): the speed and the lateral g at the limit (the 0.25 s mean of
@@ -43,8 +44,7 @@ def command(args, car, physics, throttle, name):
             "--rsf-car", car, "--physics", physics, "--steps", str(args.steps), "--top-speed", "60",
             "--circle", args.circle, "--circle-ramp", str(args.ramp), "--circle-past", str(throttle),
             "--trace-speed", os.path.join(args.out, name + ".trace"), "--data", os.environ["RBR_DATA"],
-            "--ngp-physics", os.environ["RBR_NGP_PHYSICS"],
-            *(["--material-as", str(args.material_as)] if args.material_as is not None else [])]
+            "--ngp-physics", os.environ["RBR_NGP_PHYSICS"]]
 
 
 def run(cmd, log, out):
@@ -101,19 +101,14 @@ def main():
     parser.add_argument("--cars", default="Ford_Fiesta_Rally2_ngp7,VW_Golf_II_GTI_16V_GrpA_ngp6,"
                                           "Ford_Escort_Mk_II_RS_Grp4_ngp6")
     parser.add_argument("--throttle", default="0,1")
-    parser.add_argument("--stage", default="track-85_M")
-    parser.add_argument("--circle", default="-260,120,40")
+    parser.add_argument("--stage", default="pad-tarmac")
+    parser.add_argument("--circle", default="7.2,-506.8,40")
     parser.add_argument("--ramp", type=float, default=0.5)
     parser.add_argument("--steps", type=int, default=30000)
     parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--analyse-only", action="store_true")
-    parser.add_argument("--material-as", type=int, default=37,
-                        help="every material takes this one's values (37 tarmac fine clean dry: map 85's r40 circle "
-                             "crosses loose gravel, 189/181, at its south-west); -1 for the stage's own")
     parser.add_argument("--bin", default=BIN, help="the rbr-standalone to run (a variant's build)")
     args = parser.parse_args()
-    if args.material_as is not None and args.material_as < 0:
-        args.material_as = None
     os.makedirs(args.out, exist_ok=True)
     runs = [(car, physics, t, f"{car.split('_ngp')[0]}-{physics}-t{t}") for car in args.cars.split(",")
             for physics in args.physics.split(",") for t in args.throttle.split(",")]

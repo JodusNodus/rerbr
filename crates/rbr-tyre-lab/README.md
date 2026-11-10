@@ -87,6 +87,6 @@ cargo run -q --release -p rbr-tyre-lab --example surface_across -- "$RBR_DATA" S
 `surface_across` prints the two materials and the blend weight under a `--trace-speed` path (or `driveline`, the
 stage's own) and at lateral offsets
 (default ±1/2/3 m), from the stage's `.col` and `.mat` as NGP's sheet lookup reads them.
-An ice probe: the autopilot line above with `--material-as 116` (every material takes NGP's ice values).
+An ice probe: the autopilot line above with `--stage pad-116 --surface tarmac` (the whole pad is NGP's ice, on the tarmac tyre).
 
 No game data is committed: dumps, images and CSVs stay in `/tmp/tyre-lab`; `materials` and `surface_across` print only.

@@ -92,7 +92,8 @@ const SHIFT_UP: f32 = 680.0;
 const SHIFT_DOWN: f32 = 380.0;
 const SHIFT_GAP: u32 = 150;
 /// Upshifts come at `UP_LIMIT` of the car's rev limit when that is below `SHIFT_UP` (NGP cars: the Evo IX's limiter is
-/// at 6200 rpm; 1.02's 7800 and 8500 rpm leave `SHIFT_UP`).
+/// at 6200 rpm; 1.02's 7800 and 8500 rpm leave `SHIFT_UP`), and always there flat out, where `SHIFT_UP` would shift
+/// a high-revving engine short of its power (the M3's 300 bhp is at 8200 rpm).
 const UP_LIMIT: f32 = 0.93;
 /// Under NGP a standing start revs to `LAUNCH` of the rev limit in neutral before it selects first, and a car bogged in
 /// first (engine under `BOG` of the limit below `BOG_SPEED` m/s for `BOG_STEPS` steps) goes back to neutral to do it
@@ -538,9 +539,6 @@ pub struct Measure {
     /// `--tyre-image FILE [--tyre-image-step N]`: a memory image of the wheels' tyre footprints (research tooling).
     pub tyre_image: Option<std::path::PathBuf>,
     pub tyre_image_step: Option<u32>,
-    /// `--material-as ID` (a test surface): every material of the stage takes material ID's values, from the start,
-    /// or with `--brake-from` from the brake onset (the run-up on the stage's own surfaces, the stop on ID's).
-    pub material_as: Option<u32>,
     /// `--plan LAT,BRAKE`: the speed plan's lateral and braking acceleration (`Plan`).
     pub plan: Option<Plan>,
     /// `--race LAT,BRAKE,SLIP`: race driving on a line across the road at the car's limits (`race`).
@@ -1263,7 +1261,7 @@ impl<'a> Driver<'a> {
                     .launch_at
                     .is_some_and(|t| step >= t + self.steps((LAUNCH_HOLD / rbr_recording::STEP_SECONDS) as u32));
                 let launch = if self.flat_out && ngp { held } else { !ngp || speed > BOG_SPEED || peaked };
-                let up = SHIFT_UP.min(UP_LIMIT * self.limit);
+                let up = if self.flat_out { UP_LIMIT * self.limit } else { SHIFT_UP.min(UP_LIMIT * self.limit) };
                 if ngp && spinning && speed > BOG_SPEED {
                     throttle = throttle.min(TRACTION);
                 }

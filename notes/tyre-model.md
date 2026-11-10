@@ -430,23 +430,23 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   speed, load and temperature (lab tables above).
 
 - Past the limit (2026-11-08, `harness/limit_recovery.py`: map 85 r40 circle, every material as tarmac 37
-  (`--material-as 37`: the circle crosses loose gravel 189/181 at its south-west, μs 0.875, soil 6.5 mm, which loose-v1
-  takes under the brush), ramped at 0.5 m/s per s until the car first runs 1 m wide, then `--circle-past T` holds
-  throttle T with the pursuit steering on; RSF 568's start straight resets the car 2.4 m off its line, so no open-loop
-  step steer at speed). Limit 77-81 km/h, 1.19-1.28 g in every physics. After a lift (T 0): lateral g kept (lowest
-  0.25 s mean in 1.5 s over the limit's) / widest m / back within 0.5 m s / peak sideslip °, ngp; experimental (NGP's
-  tyre); brush before V_SHAPE; brush with it (5fff12c2): Fiesta Rally2 0.89/1.6/1.7/5.6; 0.89/2.0/2.0/4.7;
-  0.80/4.2/3.1/2.9; 0.79/2.8/2.6/3.3. Golf II 0.79/2.0/2.3/3.3; 0.75/3.0/2.8/3.3; 0.72/6.4/4.1/3.6;
-  0.66/6.0/4.0/3.4. Escort Mk II: experimental 0.79/2.2/2.4/52 (ngp never ran wide on the ramp); brush spins (180°)
-  before and after. Full throttle (T 1): the Golf spins under the brush before (180°) and after (99°), not under NGP's
-  tyre (17-29°); the Fiesta spins under ngp and the brush. A scratch build with the lateral friction flat with sliding
-  speed (bound, not committed: μ_y(30°)/peak at 15 m/s leaves the band) gives 0.91/1.7/1.7 (Fiesta), 0.87/2.9/2.3
-  (Golf), the Escort back in 1.8 s without spinning, and a limit 4-7 % above NGP's: on clean tarmac at 80 km/h the
-  friction's fall past the peak is what makes the brush less forgiving; V_SHAPE takes the speed out of it and leaves
-  the fall with slip the 15 m/s curve has. Not the cause there: carcass dynamics, camber thrust, Cα's load exponent,
-  Kx/Ky, μ's load exponent, trail (scratch builds, each within 0.7° of sideslip on the stage's own surface). On the
-  stage's own surface (with the gravel) the brush's car slid rear first (onset sideslip 11-13° against 1-2°): that is
-  loose-v1 against NGP's soil on the patch, not tarmac.
+  (the former `--material-as 37`: the circle crosses loose gravel 189/181 at its south-west, μs 0.875, soil 6.5 mm,
+  which loose-v1 takes under the brush), ramped at 0.5 m/s per s until the car first runs 1 m wide, then `--circle-past
+  T` holds throttle T with the pursuit steering on; RSF 568's start straight resets the car 2.4 m off its line, so no
+  open-loop step steer at speed). Limit 77-81 km/h, 1.19-1.28 g in every physics. After a lift (T 0): lateral g kept
+  (lowest 0.25 s mean in 1.5 s over the limit's) / widest m / back within 0.5 m s / peak sideslip °, ngp; experimental
+  (NGP's tyre); brush before V_SHAPE; brush with it (5fff12c2): Fiesta Rally2 0.89/1.6/1.7/5.6; 0.89/2.0/2.0/4.7;
+  0.80/4.2/3.1/2.9; 0.79/2.8/2.6/3.3. Golf II 0.79/2.0/2.3/3.3; 0.75/3.0/2.8/3.3; 0.72/6.4/4.1/3.6; 0.66/6.0/4.0/3.4.
+  Escort Mk II: experimental 0.79/2.2/2.4/52 (ngp never ran wide on the ramp); brush spins (180°) before and after. Full
+  throttle (T 1): the Golf spins under the brush before (180°) and after (99°), not under NGP's tyre (17-29°); the
+  Fiesta spins under ngp and the brush. A scratch build with the lateral friction flat with sliding speed (bound, not
+  committed: μ_y(30°)/peak at 15 m/s leaves the band) gives 0.91/1.7/1.7 (Fiesta), 0.87/2.9/2.3 (Golf), the Escort back
+  in 1.8 s without spinning, and a limit 4-7 % above NGP's: on clean tarmac at 80 km/h the friction's fall past the peak
+  is what makes the brush less forgiving; V_SHAPE takes the speed out of it and leaves the fall with slip the 15 m/s
+  curve has. Not the cause there: carcass dynamics, camber thrust, Cα's load exponent, Kx/Ky, μ's load exponent, trail
+  (scratch builds, each within 0.7° of sideslip on the stage's own surface). On the stage's own surface (with the
+  gravel) the brush's car slid rear first (onset sideslip 11-13° against 1-2°): that is loose-v1 against NGP's soil on
+  the patch, not tarmac.
 - Open-loop handling on a flat pad (2026-11-10, `harness/handling.py --out DIR`, release `rbr-standalone`; 9 cases,
   596 runs incl. probes, 15 min at `--jobs 8`): `--stage pad-tarmac` (a generated 2 km square of level faces,
   `rbr_btb::pad`; every material takes tarmac 37's values), `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`autopilot/pad.rs`) holds the start heading, brings the car to
@@ -773,7 +773,7 @@ force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front 
   the rear then sits at its peak (μ 1.04-1.12, α 10-46°) and cannot stop the yaw. A pendulum on the catch, not the
   rear letting go under drive. Variants switched in the same way all spin 9/9 (lateral fall 0.55, μ_y(30°)/peak about
   0.91; fall 1.0, 0.833; the sliding force turned toward the lateral axis, direction (s_x, 1.3 s_y)). The r40 limit
-  test (`limit_recovery.py --material-as 37`, kept g / widest m / back s / peak β, lift; full throttle) brush now:
+  test (`limit_recovery.py` on map 85 as tarmac 37, kept g / widest m / back s / peak β, lift; full throttle) brush now:
   Fiesta 0.85/2.0/2.05/4.0°; 0.82/14.3/never/41.6° (ngp spins, 93°); Golf 0.74/3.9/3.1/3.1°; 0.81/17.1/never/37.5°
   (ngp 16.5°); Escort: ngp never past the limit, the brush spins. Fall 0.55: Fiesta full throttle back in 4.9 s at 37°, Golf 33.7°, Escort lift
   81° (100°), within a few % elsewhere; direction 1.3: Fiesta full throttle spins (77°). Not committed: no variant
@@ -817,10 +817,10 @@ Lab (`ngp_transient --model brush`, section (f), map 85 circle image, front righ
 2.19 / 2.30 K, tread after 600 s at the limit 356.1 / 346.4 K (Pirelli RA7 50-90 °C), wet over dry cooling at 80 km/h
 3.75 / 3.68 K (Ejsmont 6-7: MISS both).
 
-Past the limit (`limit_recovery.py --material-as 37`, brush before / after; widest m, back s, peak β °): Fiesta lift
-2.90 / 3.11, 2.59 / 2.75; full throttle 15.96 / 17.19, 5.18 / 4.88, β 47 / 65; Golf lift 6.14 / 6.48, 4.00 / 4.23;
-full throttle 22.94 / 26.74, never back, β 51 / 160 (spun); Escort lift 12.42 / 13.44 (spun both), full throttle
-8.29 / 11.68, 5.42 / never. ngp unchanged. The hot surface costs grip in the slide, so recovering is harder.
+Past the limit (`limit_recovery.py` on map 85 as tarmac 37, brush before / after; widest m, back s, peak β °): Fiesta
+lift 2.90 / 3.11, 2.59 / 2.75; full throttle 15.96 / 17.19, 5.18 / 4.88, β 47 / 65; Golf lift 6.14 / 6.48, 4.00 / 4.23;
+full throttle 22.94 / 26.74, never back, β 51 / 160 (spun); Escort lift 12.42 / 13.44 (spun both), full throttle 8.29 /
+11.68, 5.42 / never. ngp unchanged. The hot surface costs grip in the slide, so recovering is harder.
 
 Stage (map 41, Fiesta Rally2, autopilot): finish 303.64 s (was 303.61; ngp 309.01). Surface mean front 314.6-393.9 K
 (mean 320.9), rear 314.3-359.1; tread 319.4-334.4 (mean 326). With NGP's heat step under the brush (was): surface
@@ -940,10 +940,11 @@ rally g data on tarmac; a verified racing relaxation length; absolute μ against
 Runs (2026-11-07, `ngp` physics, Fiesta Rally2): gravel on RSF 345 Azov II (`--circle 1051,-166,40 --circle-ramp
 0.4`, step 6000, Gravel_Fine_Shallow_Dry 17, kind 4); snow on retail map 10 (`track-10_O`, autopilot, step 6000,
 SnowOnGravel_Shallow 101, kind 6), SnowOnIce_Shallow (117, RSF 162 Karlstad, step 21000) within 0.05 of it; tarmac map
-85 as above (step 8000, wheel 1). Ice (material 116): map 85 iced whole (`--material-as 116`, [Ice](#ice-material-116)),
-the circle's wheel 1 at step 8000, the tarmac tyre at 0.0949/0.0902. "Sweep": pure `patch_forces` at 15 m/s; "step": `ngp_transient
---ramps-only`, NGP's whole per-wheel step on the run's `--tyre-image`, 15 m/s unless stated; 4 kN unless stated.
-Published values, sources and precision labels from the 2026-11-07 loose-surface research (its files are not in git).
+85 as above (step 8000, wheel 1). Ice (material 116): the pad of 116 on the tarmac tyre (`--stage pad-116 --surface
+tarmac`, [Ice](#ice-material-116)), the circle's wheel 1 at step 8000, the tarmac tyre at 0.0949/0.0902. "Sweep": pure
+`patch_forces` at 15 m/s; "step": `ngp_transient --ramps-only`, NGP's whole per-wheel step on the run's `--tyre-image`,
+15 m/s unless stated; 4 kN unless stated. Published values, sources and precision labels from the 2026-11-07
+loose-surface research (its files are not in git).
 
 - Tyre kind: `--tyre N`, else `boot::default_tyre` of the stage's surface (retail `boot::surface(map)`; an RSF stage's
   own): tarmac 0, gravel 4, snow 6. Materials: the stage's `.mat` entry for the wear and wetness gives each
@@ -1014,14 +1015,11 @@ Where NGP sits:
   example's `class` column, `+0x148`), whose base factor is 0.95 on the tarmac tyre and 1.0 on the gravel and snow
   tyres (probe `tyre_classes`). In the run, static 0.0896 = 0.10 · 0.95 · temperature grip 0.946 (cold tyre, 316 K).
   The scorecard's "factor taken as 1" is replaced by this run.
-- Tooling: `rbr-standalone --material-as 116` (autopilot, test only) gives every material 116's tyre values
-  (`ngp::layout::stage::materials_as`: friction, soil, bump, water, rolling resistance and the class; collision values
-  and flags stay each material's), from the start or with `--brake-from` from the brake onset: no 565/614 stretch is
-  flat or straight enough to stop on from 50 km/h (~60-100 m), and the iced launch spins on the brush. Probe: map 85
-  circle iced; brake: RSF 504's start straight, the run-up on its tarmac. On 568 a locked car drifts 2 m off the line
-  and the game resets it (outside assistance, code 2); 504 rises 6.6 % over the stop (345 falls 2.4 %), so the decel
-  is taken on the flat (car_pace `decel_flat`, less g · rise / distance): ngp 0.096 g at K 0.1 on 504 (raw 0.162);
-  by the same correction 0.091 on 568 and 0.079 on 345.
+- Tooling: `--stage pad-116 --surface tarmac` (a pad of material 116 on the tarmac tyre and set-up) for the probe
+  circle, the brake (45000 steps: the run-up on ice takes 27 s to 50 km/h) and the coast. Before the pad every
+  material took 116's values (`--material-as 116`, removed): map 85 for the probe, RSF 504 from the brake onset
+  (rising 6.6 %, decel taken on the flat: ngp 0.096 g at K 0.1, raw 0.162), RSF 568 for the coast. The pad's best
+  threshold is 0.095 g.
 - The brush on ice: below NGP's grip 0.55 its slip stiffnesses, on the Cy and Cx of NGP's own slope, scale with
   grip/0.55 (`brush::low_mu_stiffness_factor`, `low_mu_slip_stiffness`; the 1.3 over NGP's slope fades out from ~0.75;
   no tarmac material reaches it: the lowest hard surface, 0.68 class 2, is 0.57 on a cold tarmac tyre; a snow tyre on
@@ -1490,7 +1488,7 @@ Ranking:
    on gravel (three measured series give 0.47-0.66 g at 40-80 km/h; NGP 0.63 g from 50 km/h, at the top, on a rally
    tyre); the gravel/tarmac braking ratio; and the gravel circle (0.43-0.7 g). Snow braking (0.33-0.45 g) also runs
    now, as a lower bound.
-2. Ice (VTI rig and magazine data are solid): runs on material 116 now (`--material-as 116`); the level is NGP's
+2. Ice (VTI rig and magazine data are solid): runs on material 116 now (`--stage pad-116`); the level is NGP's
    (0.10 against 0.18-0.30 g), so the shape and ratio rows carry the comparison.
 3. Weak or shape only: the Velenis trail-brake (normalised inputs, one corner), the WRC telemetry statistics (18
    drives, inferred units; the autopilot drives under its own plan, not at the limit).
@@ -1596,9 +1594,9 @@ No open WRC telemetry for Rally Sweden or the Arctic (RallyDataJunkie's scraper 
 WRC+ Finland 2021 files' first samples are time-compressed (0-60 km/h in 0.5 s), so they give no launch.
 
 Game (Fiesta Rally2 4WD and Escort Mk II Grp4 RWD, ngp / experimental-brush; decel on the flat, `decel_flat`;
-gravel RSF 345, snow map 10 for braking and RSF 345 under `--material-as 101 --tyre 6` for the circle, ice RSF 568 or
-map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h; scorecard rows as in
-[Scorecard](#scorecard)):
+gravel RSF 345, snow map 10 for braking and RSF 345 as material 101 with `--tyre 6` for the circle, ice RSF 568 or map
+85 as material 116 (the former `--material-as`; on the pads since, [Scorecard](#scorecard)); launch: `--flat-out` from
+the boot, 0-40 km/h; scorecard rows as in [Scorecard](#scorecard)):
 
 | Surface | Quantity | ngp | experimental-brush | Band | Moves it |
 | --- | --- | --- | --- | --- | --- |
@@ -1758,9 +1756,10 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
 - RSF 345's r40 circle (the old gravel row, the snow circle under 101) lies on an 11.9° (21 %) slope: z 9.6-24.5 m
   over the lap (plane fit, rms 0.5 m); the hold covers 30-180° of the lap and ends running downhill at ~13.5 m/s
   whatever the surface or level (material 17: 0.47 / 0.55 g; brush grip × 0.8-1.2: no latch, 0.69, 0.66, 0.56, 0.53;
-  tyre 3 in place of 345's damp tyre 4: 0.57 / 0.57). Its 0.571 / 0.664 g is terrain and controller, not grip. Flat:
-  map 85 (z 3.4 m all round) under gravel 17 with the dry gravel tyre (`limit_pace` `gravel-flat`), snow 101 with the
-  snow tyre (`snow-flat`), tarmac 37 (`tarmac`); 345's damp tyre 4 there reads 3 % under tyre 3 (0.936 / 0.935).
+  tyre 3 in place of 345's damp tyre 4: 0.57 / 0.57). Its 0.571 / 0.664 g is terrain and controller, not grip. Flat
+  (`limit_pace` `gravel-flat`, `snow`, `tarmac`): now the pads; the figures here are map 85's (z 3.4 m all round) as
+  gravel 17 with the dry gravel tyre, snow 101 with the snow tyre and tarmac 37, on the tarmac set-up; 345's damp tyre 4
+  there reads 3 % under tyre 3 (0.936 / 0.935).
 - Flat r40 circles, Fiesta Rally2, kinematic / glat / glat ÷ kinematic: gravel 0.971 / 0.920 / 0.95 and 0.955 / 0.877
   / 0.92; snow 0.952 / 0.893 / 0.94 and 0.982 / 0.900 / 0.92; tarmac 1.282 / 1.181 / 0.92 and 1.327 / 1.186 / 0.89
   (before T55's limit hold; after it 1.334 / 1.254 and 1.333 / 1.234: "Why the flat r40 tarmac circle
@@ -1868,7 +1867,7 @@ Test tooling (2026-11-09, branch autopilot/race-line): `rbr-standalone --autopil
 (`crates/rbr-standalone/src/autopilot/race.rs`) drives at the car's measured limits so stage times can be read against
 real ones. LAT, BRAKE: the flat circle's lateral and the threshold stop's braking acceleration (m/s²), SLIP the stop's
 best slip (`limit_pace.py limits --surface`; Fiesta Rally2 ngp / brush: tarmac 1.282 / 1.327 g, 1.303 / 1.315 g, slip
-0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; snow-flat 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by
+0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; flat snow 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by
 one factor f. The line is a minimum-curvature line within the road's edges less 1.4 m: the road comes from the `.col`
 triangles under NGP's material sheets, scanned across the driveline every 2 m (road p10/p50 width 562 4.6/5.2 m, 524
 4.2/5.3, 422 3.8/4.8). The speed plan runs on that line with a friction ellipse in braking, held 0.15 s ahead.
@@ -2101,8 +2100,8 @@ N] [--work DIR] [--json OUT]`; the full run takes 1.5 min at 16 jobs on 32 threa
 the bands it stored, a changed band flagged `(band)`. The `how` keys:
 
 - `tyre:SURFACE:KEY`: the lab's `scorecard` example on a probed wheel (tarmac map 85 circle wheel 1 at step 8000;
-  gravel RSF 345 circle wheel 0 at step 6000; snow map 10 wheel 0 at step 6000; ice map 85's circle iced whole with
-  `--material-as 116`, wheel 1 at step 8000, the tarmac tyre as on RSF 565/614). It builds the profile's
+  gravel RSF 345 circle wheel 0 at step 6000; snow map 10 wheel 0 at step 6000; ice pad-116's circle with
+  `--surface tarmac`, wheel 1 at step 8000, the tarmac tyre as on RSF 565/614). It builds the profile's
   `rbr_tyre::model` from the wheel's tables as the game does (the brush, and loose-v1 on soil, under
   experimental-brush) and lets its dynamics settle 2 s at each slip; where the model hands back (`ngp`) NGP's
   `patch_forces` answer. A new model name needs its line in `TYRE_MODEL`. Steady forces at 15 m/s, flat, no sinking
@@ -2119,19 +2118,32 @@ the bands it stored, a changed band flagged `(band)`. The `how` keys:
   WaterFactor 0.25 / 1.
 - `tyre-ratio:A/B:KEY`: surface A's key over B's.
 - `brake:SURFACE:KMH:locked_g|best_g|ratio|ratio_kK|ratio_absK`: `brake_test.py`'s declutched runs (gravel RSF 345,
-  tarmac RSF 568, snow map 10, ice RSF 504 iced from the brake onset, its decel on the flat, slip targets 0.05-0.3),
+  tarmac RSF 568, snow map 10, ice pad-116 with the run-up on ice too, 45000 steps, slip targets 0.05-0.3),
   full pedal against slip targets 0.1-0.7; ratio = locked decel / best threshold decel, ratio_kK locked over the
   target K's (one pedal), ratio_absK locked over the per-wheel ABS at K (`--brake-abs`, a run per K the rows name).
   The locked-over-ABS rows (gravel 50/80, snow 50/80, tarmac 50) take ABS K 0.15; the K 0.2 and best-target ratios are
   context. No row reads wet gravel's locked over ABS (its 1.89 is the fixed K on the slower rise, no wet data).
-- `coast:SURFACE:crr|crr_free`: `coast_test.py` from 60 km/h (tarmac RSF 568, gravel RSF 345, snow map 10, ice RSF
-  568 on 116 from the lift; [Rolling resistance](#rolling-resistance)).
+- `coast:SURFACE:crr|crr_free`: `coast_test.py` from 60 km/h (tarmac RSF 568, gravel RSF 345, snow map 10, ice
+  pad-116; [Rolling resistance](#rolling-resistance)).
 - `brake-ratio:A/B:KMH:X/Y`, `circle:gravel:lat_g` (`car_pace.analyse_circle` on the gravel probe run, 40000 steps,
   ramp 0.4; on an 11.9° slope, context since 2026-11-09). The circle's slide speed also depends on the engine holding
   the ramp: read that row as car, not tyre.
-- `circle:SURFACE:KEY` (`car_grip.py`'s flat r40 circle: `gravel-flat`, `snow-flat` map 85 under 17 / 101 with the
-  gravel / snow tyre, `tarmac` map 85 under 37; `kin_g`, `glat_g`, `path_g`, `glat_p95`, `beta_deg`;
+- `circle:SURFACE:KEY` (`car_grip.py`'s flat r40 circle: `gravel-flat`, `snow` on pad-gravel / pad-snow with the
+  gravel / snow tyre, `tarmac` on pad-tarmac; `kin_g`, `glat_g`, `path_g`, `glat_p95`, `beta_deg`;
   [Car-level grip in the same terms](#car-level-grip-in-the-same-terms)).
+- On the pads (2026-11-10; `--material-as` is removed; a pad is one real material and the car runs the set-up of
+  the pad's surface; Fiesta Rally2, ngp / brush, the old set-up in brackets): `tyre:ice:*` rows identical; ice
+  braking locked 0.090 / 0.082 g (0.095 / 0.082), locked over best 0.949 / 0.813 (0.990 / 0.824); tarmac circle 1.333
+  / 1.317 g (1.334 / 1.317); gravel-flat 0.964 / 0.936 (0.987 / 0.987 on map 85's tarmac set-up: pad-gravel with
+  `--surface tarmac` reads 0.988 ngp); snow 0.929 / 0.939 (flat map 85 0.962 / 0.989; RSF 345's slope 0.478 /
+  0.556); ice coast Crr 0.0035 / 0.0033 (0.0025 / 0.0024 on RSF 568 iced), read over 17.5-9.7 m/s: 60 to 10 km/h on
+  level ice needs 1880 m and the pad has 1500. No verdict changes.
+- Past the limit on pad-tarmac (`limit_recovery.py`, 2026-11-10; ngp / brush): limits within 0.4 km/h of map 85's
+  and the lift runs match (Fiesta widest 1.64 / 3.35 m, back in 1.67 / 2.84 s). At full throttle the Fiesta and the
+  Golf run wide without turning round (Fiesta widest 25 / 57 m, β 4.9° / 2.1°; Golf 10.9 / 38.8 m, β 3.3° / 0.6°;
+  map 85 gave β 93° / 101° and 16.5° / 180°): map 85's spins came from its bank 11 m outside the circle (Fiesta ngp
+  51 m from the centre: 92 to 76 km/h in 0.8 s, z +0.34 m). The Escort passes the limit under ngp (73.9 km/h, β
+  26.9°, back in 1.2 s on a lift) and still spins under the brush.
 
 Counts (2026-11-09, main b9bbe63d run as 5f4c3209, main plus tooling; full run `--jobs 4`; 162 rows, 141 measured,
 112 scored, 29 context): ngp 41/112, experimental-brush 93/112 PASS (2026-11-08 `tyre/review-fixes`: 31/97, 48/97).
@@ -2197,20 +2209,20 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
   the brush's 0.61-0.71 with M'_z, the MF sets' αeq 0.26-0.42). Ice: Mz peak at 0.25° / 1.75° (1.25° with M'_z; brush theory: a quarter of the
   full-slide angle); gravel and snow Mz peak at 0.42 / 0.25 and 0.50 / 0.25 of the Fy peak's angle.
 - In game (`--trace-speed`'s `ffb` column, the filtered steering torque before NGP's curve; 2026-11-08, r40 circle
-  ramp on map 85 made uniform dry tarmac, `--material-as 37`, limit ~1.2 g; the plain circle crosses a patch of peak
-  μ_y ~0.8, which the earlier "brush goes light 24 % against NGP's 46 %" mixed in): a scratch build with the tyre's
-  normal-axis torque zeroed keeps 60-75 % of the column on all cars (the suspension's caster and jacking through Fy
-  and Fz, NGP's car data), so the tyre's Mz is a quarter to a third of what the wheel feels. Peak torque ngp / brush
-  before / brush now (Fiesta Rally2 4WD, Golf II FWD, Escort Mk II RWD): 279 / 241 / 284 at 1.10-1.15 g, 107 / 89 /
-  105 at 0.87-0.92 g, 65 / 54 / 69 at 0.9-1.07 g; at the limit 206-212 / 178-195 / 176-200 (-25 / -24 / -35 %), 56-62
-  / 49-53 / 49-54 (-45 / -43 / -53 %), 62 / 46 / 62 (-5 / -15 / -10 %). Before, the brush's Mz share peaked at 0.6-0.7
-  of the limit and fell 70 % (NGP's at 0.85, -50 %); its fall was never smaller than NGP's, its level 10-20 % lower
-  at 0.4-1.0 g. With the affine trail the brush is within 4 % of NGP's at 0.4-1.0 g on all three and falls further at
-  the limit. Real car (Hsu, PhD 2009, Figs 2.12-2.14: P1, steer by wire, 10 m/s ramp steer on pavement, front axle
-  load-cell torque incl. mechanical trail 0.026 m against t0 0.023 m; fig ±20 N m, ±0.05 g): torque peaks ~280 N m
-  at 0.70-0.80 g (0.75-0.85 of the 0.95 g limit, α_f 4-5° against the Fy peak's ~8-10°), 225 at 0.90 g (-20 %),
-  180-200 when the limit is first reached (-30 %), 100 well past (α_f 17°, -64 %). The game's mechanical share is
-  larger and its torque peaks later (0.79-0.91 of the limit, both models).
+  ramp on map 85 made uniform dry tarmac (the former `--material-as 37`), limit ~1.2 g; the plain circle crosses a patch
+  of peak μ_y ~0.8, which the earlier "brush goes light 24 % against NGP's 46 %" mixed in): a scratch build with the
+  tyre's normal-axis torque zeroed keeps 60-75 % of the column on all cars (the suspension's caster and jacking through
+  Fy and Fz, NGP's car data), so the tyre's Mz is a quarter to a third of what the wheel feels. Peak torque ngp / brush
+  before / brush now (Fiesta Rally2 4WD, Golf II FWD, Escort Mk II RWD): 279 / 241 / 284 at 1.10-1.15 g, 107 / 89 / 105
+  at 0.87-0.92 g, 65 / 54 / 69 at 0.9-1.07 g; at the limit 206-212 / 178-195 / 176-200 (-25 / -24 / -35 %), 56-62 /
+  49-53 / 49-54 (-45 / -43 / -53 %), 62 / 46 / 62 (-5 / -15 / -10 %). Before, the brush's Mz share peaked at 0.6-0.7 of
+  the limit and fell 70 % (NGP's at 0.85, -50 %); its fall was never smaller than NGP's, its level 10-20 % lower at
+  0.4-1.0 g. With the affine trail the brush is within 4 % of NGP's at 0.4-1.0 g on all three and falls further at the
+  limit. Real car (Hsu, PhD 2009, Figs 2.12-2.14: P1, steer by wire, 10 m/s ramp steer on pavement, front axle load-cell
+  torque incl. mechanical trail 0.026 m against t0 0.023 m; fig ±20 N m, ±0.05 g): torque peaks ~280 N m at 0.70-0.80 g
+  (0.75-0.85 of the 0.95 g limit, α_f 4-5° against the Fy peak's ~8-10°), 225 at 0.90 g (-20 %), 180-200 when the limit
+  is first reached (-30 %), 100 well past (α_f 17°, -64 %). The game's mechanical share is larger and its torque peaks
+  later (0.79-0.91 of the limit, both models).
 
 Ice (16 scored, the probe and brake rows on 116; ngp / experimental-brush): peak slip angle 0.75° / 4.5° (4.5-5.1),
 5.0° at 6.7 kN for the brush (4-5); peak κ 0.02 / 0.06 (0.04-0.06); Cα/Fz 0-2° fit 3.72 / 2.43 (3.7-5.5); Kx/Fz 2.86
@@ -2344,7 +2356,7 @@ stays the untuned brush's. The table's model column is the brush before the mode
   ramp runs the car wide. The circle now measures the car at its front limit: tarmac, fastest second (ngp / brush),
   steering 0.38 / 0.31, outer front 10.8° / 7.2° (1.05 / 0.95 of its peak angle, use 1.00 / 0.98), inner front 11.1° /
   7.3° (1.9 / 1.2, use 0.97), rears 0.5-0.7 of their peak (use 0.83-0.97); glat 1.254 / 1.234 (was 1.181 / 1.143),
-  kinematic 1.334 / 1.333 (was 1.282 / 1.321); gravel-flat and snow-flat within 1.6 % (glat 0.916 / 0.923, 0.885 /
+  kinematic 1.334 / 1.333 (was 1.282 / 1.321); gravel-flat and flat snow within 1.6 % (glat 0.916 / 0.923, 0.885 /
   0.889). The Escort never triggers it (its steering unwinds into countersteer as the rears saturate): traces
   byte-identical. RSF 345's sloped circle unchanged (its swings sit below 0.95 of the best g).
 
