@@ -193,11 +193,19 @@ pub fn classify(car: &Car, turbo: bool) -> Class {
                 class.actuation = if year >= 2008 { Actuation::Dbw } else { Actuation::Cable };
                 class.anti_lag = true;
             }
-            // The modern turbo classes, DBW, anti-lag, 2.5 bar; R1–R3 turbos (R3T, NGP's turbo R2) with them.
-            "Group R5" | "Rally 2" | "Rally 3" | "Rally 4" | "Group RGT" | "Group R1" | "Group R2" | "Group R3" => {
+            // The modern turbo classes, DBW, anti-lag, 2.5 bar (Rally2: FIA 261, the pop-off valve); R1–R3 turbos (R3T,
+            // NGP's turbo R2) with them.
+            "Group R5" | "Rally 2" | "Group RGT" | "Group R1" | "Group R2" | "Group R3" => {
                 class.actuation = Actuation::Dbw;
                 class.anti_lag = true;
                 class.boost_cap = Some(2.5);
+            }
+            // Rally3 and Rally4 have a restrictor and no boost limit (FIA 260 art. 304): the restrictor and the table
+            // set the boost, under a bound it does not reach on the installed cars (guess).
+            "Rally 3" | "Rally 4" => {
+                class.actuation = Actuation::Dbw;
+                class.anti_lag = true;
+                class.boost_cap = Some(3.5);
             }
             // An unknown turbo, cable without anti-lag.
             _ => {}
