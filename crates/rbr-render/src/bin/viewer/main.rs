@@ -232,6 +232,29 @@ fn run() -> Result<(), String> {
         }
     }
     let mut data = Data::from_env().ok_or("RBR_DATA is not set")?;
+    // A pad stage (a positional `pad-<name>`): prepared here, then loaded as the prepared BTB stage, with the
+    // live command's stage renamed and the BTB stage's `--btb 41` and `--surface` added when missing.
+    if let Some(name) = args.stage.clone().filter(|s| rbr_btb::pad::material(s).is_some()) {
+        let material = rbr_btb::pad::material(&name).expect("a pad stage");
+        match rbr_btb::pad::prepare(material, &data.install().join("Maps")) {
+            Ok(pad) => {
+                eprintln!("viewer: pad {name} is {}", pad.stage);
+                if let Some(command) = args.live.as_mut() {
+                    for arg in command.iter_mut().filter(|a| **a == name) {
+                        *arg = pad.stage.clone();
+                    }
+                    if !command.iter().any(|a| a == "--btb") {
+                        command.extend(["--btb".to_owned(), rbr_btb::stage::SKY_MAP.to_string()]);
+                    }
+                    if !command.iter().any(|a| a == "--surface") {
+                        command.extend(["--surface".to_owned(), pad.surface.to_owned()]);
+                    }
+                }
+                args.stage = Some(pad.stage);
+            }
+            Err(e) => return Err(format!("pad {name}: {e}")),
+        }
+    }
     let mut fmod_bank = None;
     if let Some(key) = &args.rsf_car {
         let root = std::env::var_os("RBR_RSF").map(PathBuf::from);
