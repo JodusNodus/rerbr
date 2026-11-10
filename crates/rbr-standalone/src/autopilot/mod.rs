@@ -102,9 +102,6 @@ const UP_LIMIT: f32 = 0.93;
 const LAUNCH: f32 = 0.6;
 /// The revs have peaked when they set no new maximum for this long (s) while standing at full throttle.
 const PEAK_TIME: f32 = 0.1;
-/// `--flat-out`: the standing start holds full throttle in neutral for this long (s) once the revs have peaked, so
-/// the turbo has time to build boost on the line.
-const LAUNCH_HOLD: f32 = 1.5;
 const BOG: f32 = 0.2;
 const BOG_SPEED: f32 = 3.0;
 const BOG_STEPS: u32 = 100;
@@ -458,9 +455,7 @@ pub struct Driver<'a> {
     limit: f32,
     /// Steps bogged in first in a row (`BOG`).
     bogged: u32,
-    /// The step the revs peaked on at a standing start, if they have; the highest engine speed seen while
-    /// standing at full throttle (rad/s) and the step it was set on.
-    launch_at: Option<u32>,
+    /// The highest engine speed seen while standing at full throttle (rad/s) and the step it was set on.
     launch_peak: f32,
     launch_peak_at: u32,
     /// The heavy props near the driveline, by `from`.
@@ -731,7 +726,6 @@ impl<'a> Driver<'a> {
             per: 1,
             limit: f32::INFINITY,
             bogged: 0,
-            launch_at: None,
             launch_peak: 0.0,
             launch_peak_at: 0,
             props: Vec::new(),
@@ -1251,9 +1245,7 @@ impl<'a> Driver<'a> {
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
                 // A standing start (neutral, not moving yet): the revs have peaked when they pass `LAUNCH`
                 // of the limit, or set no new maximum for `PEAK_TIME` while standing at full throttle
-                // (a start limiter below `LAUNCH`, experimental). `--flat-out` then holds full throttle for
-                // `LAUNCH_HOLD` before first is selected, so the boost builds; the plain autopilot selects
-                // first at once.
+                // (a start limiter below `LAUNCH`, experimental); first is selected then.
                 let standing = ngp && sense.gear == NEUTRAL && speed < BOG_SPEED;
                 if standing && self.pulling && sense.engine > self.launch_peak {
                     (self.launch_peak, self.launch_peak_at) = (sense.engine, step);
@@ -1264,15 +1256,7 @@ impl<'a> Driver<'a> {
                     || (standing
                         && self.launch_peak > 0.0
                         && step >= self.launch_peak_at + self.steps((PEAK_TIME / STEP_SECONDS) as u32));
-                if standing && self.launch_at.is_none() && peaked {
-                    self.launch_at = Some(step);
-                } else if !standing {
-                    self.launch_at = None;
-                }
-                let held = self
-                    .launch_at
-                    .is_some_and(|t| step >= t + self.steps((LAUNCH_HOLD / rbr_recording::STEP_SECONDS) as u32));
-                let launch = if self.flat_out && ngp { held } else { !ngp || speed > BOG_SPEED || peaked };
+                let launch = !ngp || speed > BOG_SPEED || peaked;
                 let up = if self.flat_out { UP_LIMIT * self.limit } else { SHIFT_UP.min(UP_LIMIT * self.limit) };
                 if ngp && spinning && speed > BOG_SPEED {
                     throttle = throttle.min(TRACTION);
