@@ -609,7 +609,6 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     mem.set_u32(stage::DRIVE_LINE, drive_line);
     let track =
         trk::parse(&stage_files::read(data, stage_name, "trk")?).map_err(|e| format!("{stage_name}.trk: {e:?}"))?;
-
     let mesh_capacity: usize = track
         .chunks
         .iter()
@@ -633,7 +632,6 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
             _ => None,
         })
         .ok_or(format!("{stage_name}.lbs: no start location"))?;
-
     let mut calls = StageCalls {
         heap: heap.clone(),
         handles: interactive_handles(&lbs),

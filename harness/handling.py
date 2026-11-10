@@ -6,10 +6,11 @@
       [--keep-traces] [--material 37] [--bin PATH] [--extra "FLAGS"]
 
 Each run is `rbr-standalone --autopilot --boot --stage pad-37 --manoeuvre KIND,KMH,AMP[,EXTRA] --trace-speed`: on
-a generated flat pad of one material (a level 2 km square, dry tarmac 37 by default), the car holds its start heading and a speed controller brings it to the entry
-speed in the gear the shift points give, and when the speed has held for 2 s the inputs go open loop on a fixed
-schedule (`crates/rbr-standalone/src/autopilot/pad.rs`; the steering is the exact float, not the controller's 8-bit
-steps). Steering is a fraction of full lock, always to the left; lateral g, yaw rate and the turn sideslip are
+the built-in flat pad of one material (a level 2 km square, `rbr_btb::pad`; dry tarmac 37 by default), the car holds
+its start heading and a speed controller brings it to the entry speed in the gear the shift points give, and when
+the speed has held for 2 s the inputs go open loop on a fixed schedule
+(`crates/rbr-standalone/src/autopilot/pad.rs`; the steering is the exact float, not the controller's 8-bit steps).
+Steering is a fraction of full lock, always to the left; lateral g, yaw rate and the turn sideslip are
 positive in the turn (the turn sideslip is the angle from the car's forward axis to its velocity, positive when the
 velocity points to the outside of the turn). Metrics are over the run's seconds t (0 at the run's start; the traces
 are dropped after the analysis unless --keep-traces, `DIR/*.json` hold the metrics).
@@ -255,8 +256,7 @@ def execute(args, job):
         args = argparse.Namespace(**{**vars(args), "analyse_only": True})
     if not args.analyse_only:
         man = f"{KIND[family]},{kmh:g},{amp:.5f}" + ("" if extra is None else f",{extra:g}")
-        stage = {37: "pad-tarmac", 17: "pad-gravel", 101: "pad-snow"}.get(args.material, f"pad-{args.material}")
-        cmd = [args.bin, "--autopilot", base + ".out", "--boot", "--stage", stage, "--rsf-car", car,
+        cmd = [args.bin, "--autopilot", base + ".out", "--boot", "--stage", f"pad-{args.material}", "--rsf-car", car,
                "--physics", physics, "--steps", "120000", "--manoeuvre", man,
                "--trace-speed", base + ".trace", "--data", os.environ["RBR_DATA"],
                "--ngp-physics", os.environ["RBR_NGP_PHYSICS"], *args.extra.split()]

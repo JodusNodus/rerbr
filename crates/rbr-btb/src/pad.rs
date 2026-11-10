@@ -49,20 +49,14 @@ pub fn dir_name(material: u8) -> String {
     }
 }
 
-/// The material of pad `name`: `Some` for `pad-tarmac`, `pad-gravel`, `pad-snow` and `pad-<id>` (an id `lsp_keys`
-/// names in `MaterialManager`); `None` for anything else.
+/// The material of pad `name`: `Some` for `pad-tarmac`, `pad-gravel`, `pad-snow` and `pad-<id>` (1-255: NGP's ice,
+/// 116, has no key in 1.02's table); `None` for anything else.
 pub fn material(name: &str) -> Option<u8> {
     match name {
         "pad-tarmac" => Some(37),
         "pad-gravel" => Some(17),
         "pad-snow" => Some(101),
-        rest => {
-            let id: u8 = rest.strip_prefix("pad-")?.parse().ok()?;
-            if id == 0 || key_name(id).is_none() {
-                return None;
-            }
-            Some(id)
-        }
+        rest => rest.strip_prefix("pad-")?.parse().ok().filter(|&id: &u8| id != 0),
     }
 }
 
@@ -77,33 +71,26 @@ pub struct Prepared {
 /// stage's retail files). Preparation is safe when several processes start at once on a cold cache: the whole
 /// directory is built under a temporary sibling name and renamed into place, never written in place.
 pub fn prepare(material: u8, maps: &Path) -> Result<Prepared, String> {
-    let Some(_) = key_name(material) else { return Err(format!("material {material}: no MaterialManager key")) };
+    let home = crate::converted::player_folder().unwrap_or_else(|| std::env::temp_dir().join("rerbr"));
+    prepare_in(&home.join("pad"), material, maps)
+}
+
+/// [`prepare`] with the pads' folder given.
+pub fn prepare_in(base: &Path, material: u8, maps: &Path) -> Result<Prepared, String> {
     let name = dir_name(material);
-    let base = crate::converted::player_folder()
-        .map(|p| p.join("pad"))
-        .unwrap_or_else(|| std::env::temp_dir().join("rerbr").join("pad"));
     let number = number(material);
     let surface = self::surface(material);
     let final_dir = base.join(format!("{name}-b{BUILD}"));
-    let final_track = final_dir.join("track");
-    let final_stage = final_dir.join("stage");
-    if final_dir.is_dir()
-        && final_track.join("track.ini").is_file()
-        && final_stage.join(stage::SOURCE_FILE).is_file()
-        && stage::source(&final_stage).is_some_and(|s| s == final_track)
-    {
-        let stage = stage::stage_name(&final_stage, number);
+    let stage = stage::stage_name(&final_dir.join("stage"), number);
+    // A directory in place is complete: it only ever arrives by the rename below.
+    if final_dir.is_dir() {
         return Ok(Prepared { stage, surface });
-    } else if final_dir.is_dir() && stage::source(&final_stage).is_none_or(|s| s != final_track) {
-        // A build left by an older layout (its `btb.ini` names the temporary directory): rebuild.
-        let _ = std::fs::remove_dir_all(&final_dir);
     }
-    std::fs::create_dir_all(&base).map_err(|e| format!("{}: {e}", base.display()))?;
-    // Unique per process and thread: eight harness jobs share one process, and several processes may race.
-    static TMP_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let uniq = TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let tmp =
-        base.join(format!(".tmp-{name}-b{BUILD}-{}-{:?}-{uniq}", std::process::id(), std::thread::current().id()));
+    std::fs::create_dir_all(base).map_err(|e| format!("{}: {e}", base.display()))?;
+    // Unique per process and call: threads of one process and several processes may race.
+    static CALLS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let call = CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = base.join(format!(".tmp-{name}-b{BUILD}-{}-{call}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(tmp.join("track")).map_err(|e| format!("{}: {e}", tmp.display()))?;
     write_track(&tmp.join("track"), material)?;
@@ -124,13 +111,12 @@ pub fn prepare(material: u8, maps: &Path) -> Result<Prepared, String> {
         }
     }
     std::fs::write(&btb, rebuilt).map_err(|e| format!("{}: {e}", btb.display()))?;
-    let stage = stage::stage_name(&final_dir.join("stage"), number);
     // Another process may have finished first: use its directory and drop ours.
     match std::fs::rename(&tmp, &final_dir) {
         Ok(()) => Ok(Prepared { stage, surface }),
         Err(_) if final_dir.is_dir() => {
             let _ = std::fs::remove_dir_all(&tmp);
-            Ok(Prepared { stage: stage::stage_name(&final_dir.join("stage"), number), surface })
+            Ok(Prepared { stage, surface })
         }
         Err(e) => Err(format!("{} -> {}: {e}", tmp.display(), final_dir.display())),
     }
@@ -149,7 +135,7 @@ const NOTE_END: f32 = LEAD + 1350.0;
 
 /// Writes the BTB track folder of `material` into `dir`.
 fn write_track(dir: &Path, material: u8) -> Result<(), String> {
-    let key = key_name(material).ok_or_else(|| format!("material {material}: no MaterialManager key"))?;
+    let key = key_name(material).unwrap_or("unnamed");
     let physics = surface(material);
     let write = |file: &str, text: String| std::fs::write(dir.join(file), text).map_err(|e| format!("{file}: {e}"));
     write(
@@ -337,11 +323,9 @@ mod tests {
         assert_eq!(material("pad-tarmacx"), None);
         assert_eq!(material("track-85_M"), None);
         assert_eq!(material("pad-256"), None);
-        // Every id `lsp_keys` names parses; an unnamed one does not (116 names none).
-        assert_eq!(key_name(116), None);
-        assert_eq!(material("pad-116"), None);
+        // NGP's ice has no key in 1.02's table and runs on the gravel tyre unless `--surface` says otherwise.
+        assert_eq!((key_name(116), material("pad-116"), surface(116)), (None, Some(116), "gravel"));
         assert_eq!(material("pad-65"), Some(65));
-        assert_eq!(material("pad-255"), key_name(255).map(|_| 255));
     }
 
     #[test]
