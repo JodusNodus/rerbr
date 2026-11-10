@@ -323,7 +323,7 @@
   "settings": {
    "weather": "bad",
    "wetness": "wet",
-   "clouds": "light",
+   "clouds": "partly",
    "precipitation": "none"
   },
   "clock": "17:20",
