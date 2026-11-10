@@ -1577,8 +1577,11 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   / 4.88 ngp, 3.62 / 4.74 experimental, 3.41 / 4.55 brush. From 10 to 50 m, where the positions' lag cancels: Finland
   2.10 s, Estonia 2.15, Sardegna 2.12, Portugal 2.02, Acropolis 2.30, Safari 2.24, Wales 2019 2.24 (79-133 starts each);
   the i20 on the 9 / 17.5 / 25 mm pads: ngp 2.05 / 2.10 / 2.12 (experimental 2.07 at 9 mm), the brush 1.93 / 1.96 /
-  1.99, and 2.08 at 17.5 mm with `--tyre-tuning gravel=0.85`: NGP's tyre launches as the real cars do, loose-v1
-  0.1-0.3 s sooner (it keeps its force at full wheelspin, where NGP's falls 18 %).
+  1.99, and 2.08 at 17.5 mm with `--tyre-tuning gravel=0.85`: NGP's tyre launches as the real cars do, loose-v1 0.1-0.3
+  s sooner. The level does that, not a fall with wheelspin: the drive test's fall (`RERBR_TEST_GRAVEL_SPIN` 0.85 / 0.75,
+  17.5 mm) gives 1.98 / 1.99 s; it acts in the first 10 m (1.53 → 1.62 / 1.69 s), inside the 0.25 s the positions leave
+  open there, so the real starts give no verdict on it. The i20's thrust per tick at 45-70 km/h and 22-50 % of spin:
+  loose-v1 0.84-0.94 g, 0.69-0.76 at gravel=0.85, ngp 0.86-0.92.
 - Throttle lifted in gear (2026-11-10; `rally_wot.py lift`, level deceleration, g, on straights; tarmac, Deutschland
   2019 / España 2021, 533 and 140 windows): 4th 60-80 km/h 0.094 / 0.089 (3900 rpm), 5th 60-80 0.085 / 0.085 (3400),
   5th 80-100 0.105 / 0.132 (4500-4800), 6th 80-100 0.090 / 0.101 (3500-4000), 6th 100-120 - / 0.145 (4700). The
