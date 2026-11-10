@@ -594,6 +594,20 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   max load 430 kg, hot 2.0-2.3 bar, camber under 2° (`michelin-pressure-2024`); Pirelli RA 235/40R18 tread 210 mm;
   Hankook Z215 210/650R18 tread 218 mm, depth 5.5 mm; no stiffness or friction published. NGP's 1.25 g and the
   brush's 22.9 stay: nothing measured moves them.
+- Two racing-tyre papers read (2026-11-10; library `kasprzak-lewis-milliken-2006`, `pottinger-pelz-falciola-1998`):
+  - SAE 2006-01-3607, a full-size radial racing tyre on Calspan's belt, 200-1800 lb at 20-38 psi (Figs 15-18, fig
+    ±10 %, the stiffness surface ±20 %): lateral peak at 4.5-6° at 4.4-8 kN; 3-12 % under the peak at 10.5°; μ about
+    2.0 / 1.5 / 1.35 at 0.9 / 4.4 / 8 kN (belt); Cα/Fz about 37 per rad at 4.4 kN, 25-32 at 8 kN. At 8 kN more
+    pressure gives more force and slope (peak +17 % from 20 to 38 psi), on the FSAE tyre at 0.7-1.6 kN less: the
+    sign turns with the load as Goodyear's. A rally car's outside wheel (5.8-6.4 kN) is over the 20/65-18's 430 kg,
+    so `SLIP_PRESSURE`'s fall may have the wrong sign there. Open.
+  - SAE 982747, a 350/710-18 IMSA radial, Fy against Fx at 2° and 4° (Figs 20-21, normalised, fig ±0.1): at 2° the
+    side force holds to about 0.8 of the peak braking force, at 4° about 0.8-0.85 of it is left at half. Lab at 4
+    kN, Fy/Fy(0) at 0.5 / 0.75 of the peak braking force: 2° brush 0.96 / 0.88, ngp 0.82 / 0.64; 4° brush 0.93 /
+    0.80, ngp 0.86 / 0.71. The brush follows the 2° curve; the 4° reading does not separate them.
+  - For the brush: the peak angle (7.0° against 9.75°) and a fall past it have a measured racing tyre behind them,
+    which falls more than the brush (2.6 % at 12°); the stiffness estimate's range opens upward (22 to about 30,
+    never under the semi-slick).
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
