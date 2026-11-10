@@ -520,7 +520,13 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   the road one, and an NA 1.6 makes about 11–13 bar. If anything the held points are too strong, through K (the same
   K as the idle MAP item). A turbine refit for more low-rpm boost was not tried.
 - The spark loop saturates (gain 0.49–0.65°/rpm on the samples, `spark_kp` over IdleRPM).
-- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is a guess.
+- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is a guess. A
+  translation table that makes the steady torque even with the pedal at each speed was built and not adopted
+  (2026-11-10, branch `engine/pedal-turbo`: Fiesta Rally2 at 2000 rpm, 30 % pedal, 86 % → 31 % of WOT torque; it
+  needs the plate at about a sixth of the pedal there). The published position tables are mild: 40 % pedal → 30 %
+  throttle [HPA 138], a "substantial reduction" on an LS3 [HPA M1 area forum]; torque-proportional pedals are F1's
+  and road cars' torque structures ([F1 torque map]: constant torque, constant power or both by region), and NGP's
+  own lines are that shape. Realism does not pick between them without a rally table.
 - Exhaust (Scorecard): the turbo samples idle at 661 °C against road idles of 296–430 °C at the ports and the Ford
   1.6's 593–657 °C retarded at its lightest loads, and run 564 °C at pedal 0.15, 1500 rpm against 585–732 °C at the
   same BMEP on four road turbos. One line over the flow share cannot hold both: a rally engine's rated flow is about
@@ -644,6 +650,7 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - Perge 2017, turbo bearing friction and rotor inertia (Lubricants 5(3) 29, Fig. 9b, Table 1): https://doi.org/10.3390/lubricants5030029
 - Frontiers 2016, turbo lag review (rotor inertia ∝ D⁵ after Watson 1981, turbine wheel ≥ 70 % of it): https://www.frontiersin.org/journals/mechanical-engineering/articles/10.3389/fmech.2016.00004/full
 - Garrett, wheel sizes (GT2860RS 47/60 mm compressor, GT3582R 61/82 mm): https://www.garrettmotion.com/racing-and-performance/performance-catalog/turbo/gt2860rs/ , https://www.garrettmotion.com/racing-and-performance/performance-catalog/turbo/gt3582r/ ; power ranges from a reseller's listing (search result titles, pages not read): https://www.extremepsi.com/Garrett-GT3582R-Turbocharger-400-600-HP.html
+- HPA M1 area forum, throttle area against pedal translation: https://www.hpacademy.com/forum/general-tuning-discussion/show/m1tune-throttle-area-table
 - Chung 2016, turbo rotor inertia of a 2.0 L SI engine's turbo (Trans. KSAE 24(1) 33–38, Table 4): https://doi.org/10.7467/KSAE.2016.24.1.033
 - Brunel, normalised maps: https://bura.brunel.ac.uk/bitstream/2438/14007/1/IMechE%20Turbo%20Conf%202012%20-%20TURBOCHARGER%20MATCHING%20METHODOLOGY.pdf
 - US 12056425, map scaling: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12056425
