@@ -526,6 +526,33 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   `IdleRPM` (104.7), above the band's top, so the clutch is fully closed at our idle and a car braked to a stop on
   locked wheels with the clutch in gear closes it on them once the engine recovers (not exercised: the autopilot's
   first gear holds the clutch open).
+- Wheel power against the 2017-21 World Rally Cars' telemetry (2026-11-10; `notes/tyre-model.md`, "Real stage
+  telemetry": `harness/rally_wot.py fit` on seven tarmac events): 221-234 kW at 6500-7500 rpm at 1390 kg; the i20 Coupe
+  WRC 2020 by the same fit 225-239 under ngp and 249-258 with the whole torque (9-16 % over). From the sheet's 380 PS
+  the real cars lose 17-20 % to the road, the file's driveline 12 %. Not changed: the whole torque is the user's
+  decision (In game), the read scales with the mass assumed, and no other class has telemetry. From the same data a
+  full-throttle upshift costs what the real ones do (0.08-0.09 s of drive against 0.05-0.11; ngp 0.02-0.05), and the
+  deceleration with the throttle lifted in gear is 30 % under the real cars' with the file's drag (the measured drag
+  area is twice the file's; a prototype of the devices' drag is on `aero/wing-drag`, not merged).
+- The 2017-21 World Rally Cars' idle and start line, from the same telemetry (2026-11-10, scratch; the drives begin at
+  the start and end at the stop line). At rest in neutral with the throttle shut (España 2021, Deutschland 2019, Finland
+  2021: 24-49k samples each) the engines turn at 2250-2750 rpm on 71-79 % of the samples (median 2470-2500) and at
+  1750-2000 on 17-25 %; the i20 Coupe WRC 2020 idles at 1200 (`IdleRPM`; on the pad 1155 experimental, 1203 ngp). Braked
+  with the wheels half or more under the car's speed, the engine stays in gear while the drivetrain turns at 2000 rpm or
+  more (1-8 % of the samples with the engine 15 % over it) and sits at 2050-2500 with the clutch slipping or out below
+  that (47-94 %); the drivetrain is at 2000 rpm or more in 93 % of those samples (Finland, 1077 of 1159): the real idle
+  keeps braked wheels turning, as NGP's does at 1200 rpm (`tyre-model.md`, "The 17.5 mm gravel pad"). Not modelled: an
+  idle of that height belongs with a stage mode, a design decision. At the start line the engine waits at 6140-6570 rpm
+  with the throttle open (the medians of six rallies of 2019-21, 80-126 starts each; quartiles 5800-7000), 0.72-0.77 of
+  the i20's 8547 rpm limit, and dips to 4200-5000 rpm 0.3-0.6 s after the car moves (wheels at 26-28 km/h on tarmac,
+  29-44 on gravel). The start mode holds 4930 rpm on the i20 (`START_RPM` 0.6, a guess; the cut holds the engine 4 %
+  under the cap), NGP waits on the rev limiter (8547), and the autopilot's dump takes the wheels to 42 km/h in 0.08 s. A
+  cap at 0.75 holds 6200 rpm and leaves the dump's 0-100 km/h within 0.02 s on six cars: on `engine/start-rpm`, not
+  merged.
+  - Other years, the same reading: the start line's median is 6780 rpm at Deutschland 2017, 6260 in 2018 and 6010 on
+    Wales 2019's wet gravel (98-99 starts each), nine rallies at 6010-6780; the cars' top rpm at full throttle is 8290
+    (p99.5 a drive, Deutschland 2019; 8000 on the 2016 cars). The 2014-16 cars (Deutschland 2016) idle at 2000-2500 rpm
+    on 86 % of the samples at rest.
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - A modern turbo's K over the fuel–air cycle (1.04–1.26 of it; turbo sample and Rally2 0.47–0.48 at 4000 rpm
   against 0.40), kept so the tables hold (decided 2026-11: NGP's torque over the ceiling). At the 2.5 bar cap the

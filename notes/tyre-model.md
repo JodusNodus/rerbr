@@ -1740,6 +1740,17 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   / +1.5 / +1.8 / +1.9, ngp +2.3 / +2.8 / +3.0 / +3.1 (at 0.6-0.8 g -0.5..+0.8 and +0.2..+1.5). The brush is within a
   degree or two of the real cars, NGP 2 to 3 deg more nose in from 100 km/h: weak, and the same way as the wheel slip
   above (NGP's tarmac tyre softer than the real one, the brush's about right).
+- Gravel sideslip against lateral g (2026-11-10; the same windows, medians, the bins 0.35-0.5 and 0.8-0.95 g of the
+  path's lateral g; the windows' quartiles lie ± 10° about them and the zero is open by 2°, so only the rise is read).
+  The rise from 0.42 to 0.87 g at 80-100 / 100-130 / 130-160 km/h: Finland 6.1 / 4.4 / 6.7°, Estonia 6.6 / 5.6 / 7.0,
+  Portugal 3.5 / 7.4 / 7.5, Sardegna 6.4 / 7.7 / 6.8 (median 6.6°; at 130-160 km/h Finland reads -2.0 / +1.6 / +3.2 /
+  +5.5 / +8.3 / +9.6° at 0.28 / 0.42 / 0.57 / 0.72 / 0.87 / 1.0 g). The i20 on the pads' 160 m circle (ramp, 92 km/h at
+  0.42 g, 134 at 0.87; the trace's sideslip, medians in the same bins): ngp 2.0 → 6.6° on every depth, a rise of 4.6;
+  loose-v1 9 mm 1.4 → 5.9 (4.5), 17.5 mm 2.2 → 8.3 (6.1), 25 mm 3.3 → 9.9 (6.6). The real rise is the 17.5 and 25 mm
+  pads'; NGP's gravel and the 9 mm pad are a third stiffer than the rallies' median (two of the twelve readings are
+  below them). No pad's limit is on this circle: the engine holds every one at 154 km/h and 1.13-1.16 g. A real slide
+  set up on purpose adds to the real figure, so this is the loosest reading; with the wheel slip under power (above)
+  loose-v1's depths bracket the real roads both ways.
 - Wet gravel, the same reading (2026-11-10): Wales Rally GB 2019, wet and muddy throughout by the teams' reports
   (Toyota, Škoda, Hyundai), saturated braking 0.64 / 0.69 / 0.74 / 0.77 at 60-80 / 80-100 / 100-130 / 130-160 km/h; GB
   2018 (mixed) 0.61 / 0.69 / 0.74 / 0.78, GB 2017 0.57 / 0.64 / 0.69 / 0.74. The wet rally reads as the two lower dry
@@ -1776,7 +1787,7 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's and braking 0.84; the game's wet has no such state.
   Cross-year pairs of different drivers scatter 5-10 % and were not used.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2 found
-  (searches; wrcwings.tech describes the devices without forces). Four indications that the real cars gain less grip
+  (searches; wrcwings.tech describes the devices without forces). Five indications that the real cars gain less grip
   with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls with speed
   (above); the braking slope less the drag (above) is 0.1-0.7 of the game's; and Finland's whole g while sliding
   (`rally_wot.py sideslip`, p90 at 20° up, path / accelerometer) is 1.05-1.06 / 0.90-1.00 at 60-100 km/h and 0.98-1.06 /
@@ -1786,12 +1797,17 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   tarmac rallies (España 1.46 / 1.49 / 1.45 / 1.40 / 1.44, Catalunya 2019 1.42 / 1.43 / 1.47 / 1.36 / 1.41, Corsica 1.33
   / 1.40 / 1.37 / 1.34 / 1.44, Deutschland 1.12 / 1.20 / 1.16 / 1.20 / 1.20), where the i20's limit on the tarmac pad's
   circles is 1.26 g at 81 km/h, 1.34 at 106, 1.41 at 135 and 1.51 at 176 (ngp; brush 1.25 / 1.35 / 1.47 / 1.63): Spain's
-  p90 is 18 % over the game's limit at 70 km/h and level with it at 150. Against them, gravel's saturated braking gains
-  with speed as the game's does ("Straight braking, the level"), though a loose road may give that by itself. Fast
-  corners are rarer and friction may fall with speed, so the level stays open: possibly half. By efficiency: the
-  measured drag area is 0.9 m² over the 2004 model's (0.85 m², ClA 0.75, Dominy & Richardson), so the file's 3.54 m²
-  needs all of that drag to come from devices at lift over drag 3. Where a road car's figures are published the files
-  follow them: Alpine A110, Cd 0.32 on 1.94 m² (0.62 m²) and 141 kg at 275 km/h with the aero kit (411 N at 150 km/h;
+  p90 is 18 % over the game's limit at 70 km/h and level with it at 150. The fifth, the same on gravel: the i20 on the 9
+  mm pad's 40, 70 and 100 m circles (ngp), running wide at the steering's lock while the ramp goes on, holds 0.88 g at
+  70 km/h, 0.95 at 100, 1.0 at 125 and 1.07-1.12 at 150 (the path's, v² over the distance to the centre), a gain of
+  22-27 %, where the gravel apexes' p90 from 60-80 to 130-170 km/h gains 7 % in Finland (1.06 → 1.13), 4 % in Portugal,
+  8 % in Sardegna, 1 % in Estonia and falls 8 % on the Acropolis: Finland's p90 is 20 % over the game at 70 km/h and
+  level with it at 150. Against them, gravel's saturated braking gains with speed as the game's does ("Straight braking,
+  the level"), though a loose road may give that by itself. Fast corners are rarer and friction may fall with speed, so
+  the level stays open: possibly half. By efficiency: the measured drag area is 0.9 m² over the 2004 model's (0.85 m²,
+  ClA 0.75, Dominy & Richardson), so the file's 3.54 m² needs all of that drag to come from devices at lift over drag 3.
+  Where a road car's figures are published the files follow them: Alpine A110, Cd 0.32 on 1.94 m² (0.62 m²) and 141 kg
+  at 275 km/h with the aero kit (411 N at 150 km/h;
   [wrcwings.tech](https://www.wrcwings.tech/2022/05/03/aerodynamics-of-the-alpine-a110-rally-rgt/), Alpine's figures),
   the Rally RGT file 0.67 m² and 100 + 400 N; Escort RS Cosworth, Cd 0.38 with the wing
   ([wrcwings.tech](https://www.wrcwings.tech/2017/04/01/ford-escort-rs-cosworth-the-rally-car/)) and 45 + 190 N at 180
@@ -2395,6 +2411,22 @@ saved rank pages are read below.
   a + b v² fit from 100 km/h gives b 0.30e-3 /m against the car file's 0.32e-3 (body mass, ρ at 90 m): the drag is
   the file's. The car's level sits 0.002-0.003 g under the torque's Fz share on every surface (0.74 of it on
   tarmac, 0.57 on ice); not traced.
+- At speed under power (2026-11-10; `rally_wot.py table`, the 2017-21 World Rally Cars' median level acceleration at
+  full throttle per gear and speed, [Real stage telemetry](#real-stage-telemetry-wrc-gravel)). Gravel less tarmac (the
+  mean of España 2021 and Deutschland 2019), g, in 5th at 130-140 / 6th at 150-160 / 6th at 170-180 km/h: Finland -0.039
+  / -0.039 / -0.041, Estonia -0.043 / -0.046 / -0.061, Portugal -0.045 / -0.044 / -0.046, Sardegna -0.049 / -0.057 /
+  -0.048, Acropolis -0.071 / -0.059 / -0.062 (2021; 270-1900 samples a cell). Finland's and Estonia's samples lie at
+  120-140 m, the tarmac rallies' at 390-530 m and the other three's at 690-710 m, and the tarmac fits show no power lost
+  to altitude from 50 to 530 m (221-234 kW on seven events, no trend), so the first two are the cleaner. The game's i20
+  Coupe WRC 2020 flat out, gravel pad less tarmac pad, the same cells: ngp -0.014 / -0.020 / -0.021 on 9 mm, -0.023 /
+  -0.027 / -0.029 on 17.5 mm, -0.027 / -0.034 / -0.035 on 25 mm; experimental-brush -0.011 / -0.017 / -0.016, -0.018 /
+  -0.026 / -0.028, -0.029 / -0.034 / -0.036. So gravel takes 0.04-0.05 g from the real cars' acceleration, flat with
+  speed as a force on the weight is, and half that in the game at 9 mm, two thirds at 17.5 mm (the depth of Finland's
+  wheel slip), three quarters at 25 mm. Not all of it is the road: a gravel car's second spare and guards (3 % of the
+  mass would be 0.008 g here; not known) and its ride height add to the real figure, and the telemetry's speed is the
+  wheels', which takes 0.005 g off it. What is left over the game, 0.01-0.02 g, is as large as the coast-downs' whole
+  gravel figure below (0.016-0.02, at low speed and without drive): recorded, no model change (no source says whether
+  speed, the roughness or the drive adds it).
 - Published (`data/tyre-targets.csv`, `coast:SURFACE:crr`): road cars coasting on Swedish roads Cr = 0.00912 + 2.1e-5
   IRI v + 0.00172 MPD at 8 °C (VTI 748A 2012 p. 60), 0.0101-0.0135 smooth to rough at 15 m/s; EU label C1 class A ≤
   0.0065 on the ISO 28580 drum; gravel 0.016 (Team O'Neil dry) and 0.018 (MPG, 0.64 cm pea stone on recycled asphalt),
@@ -2761,10 +2793,13 @@ stays the untuned brush's. The table's model column is the brush before the mode
   brush 21) 0.18-0.50 s, a build with NGP's Kx: the brush's driven wheels slip a third less on throttle. Ruled out
   (builds, not committed): NGP's Cα load exponent (within 0.04 s); no carcass dynamics above 3 m/s and a friction flat
   with sliding speed are faster still. 0.1-0.2 % unattributed.
-- Past the limit on tarmac (user, 2026-11-08: "the slip was very immediate, and then it's pretty much impossible to
-  get grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide
-  after a lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test
-  is next; a rolling tyre's measured past-peak shape at speed would settle the value.
+- Past the limit on tarmac (user, 2026-11-08: "the slip was very immediate, and then it's pretty much impossible to get
+  grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide after a
+  lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test is next; a
+  rolling tyre's measured past-peak shape at speed would settle the value. The nearest to it (2026-11-10, [Real stage
+  telemetry](#real-stage-telemetry-wrc-gravel), "Sideslip in corners"): the World Rally Cars' whole g on España's tarmac
+  at 60-100 km/h is 0.90 of its best at 20-30° of sideslip and 0.80-0.83 at 30-40° (p90s, 67 windows in the last bin), a
+  car's figure and so an upper bound for the tyre at the rear's angle: no case for a fall smaller than the 0.89.
 - σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 16 % per +0.5 bar (2026-11-10,
   PASS; was 5 %; op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar,
   Meccanica 2023): Cα now falls with pressure (-5.7 %, band -18 to +5.7; it rose
@@ -2906,6 +2941,15 @@ stays the untuned brush's. The table's model column is the brush before the mode
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.77-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
 - Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; snow's berm is 1.05 (done); a driven fall on gravel is in a drive test (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is NGP's (velocity clear under 0.046 g from rest, free-wheel latch drag 0.086 Fz under 2 m/s; not the tyre). Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
+- Real stage telemetry (2026-11-10, [Real stage telemetry](#real-stage-telemetry-wrc-gravel)), what it leaves open. The
+  2017-21 cars' drag area is twice their files' (1.47-1.76 m² on seven tarmac events against 0.81; a prototype of the
+  devices' drag is on `aero/wing-drag`, not merged). The files' downforce may be high: five indications of a smaller
+  gain with speed against one, no published figure. The gravel level reads 5-25 % above Finland's on saturated braking,
+  slides and traction, and the apexes' lateral g does not say so; `--tyre-tuning gravel=0.85` matches Finland's braking
+  and its starts (a product decision, as above). NGP's tarmac tyre slips 2-3 times as far as the real cars at equal
+  force, the brush as far as they do. Rallies differ ± 12 % on each surface where the game's materials span 4-5 %. Of
+  the data wanted above: wet gravel has a bound (Wales), and the real traction to 80 % of wheelspin gives no verdict on
+  a driven fall.
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a
