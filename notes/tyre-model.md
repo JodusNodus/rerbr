@@ -516,6 +516,17 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   - `ice-car-coast-crr` 0.002 → 0.022 is the measurement: the autopilot's coast on ice goes into a lateral slide at
     56 km/h on a chaotic edge (ice=1.01 → 0.059, 1.02 → 0.0024); the temperatures stay 325-337 K. `coast_test`
     should drop sliding pieces.
+- The sine dwell against NHTSA's (2026-11-10; DOT HS 809 974, Forkenbrock et al. 2006, read): 50 mph, throttle
+  released, amplitudes from 1.5 A up to the greater of 6.5 A and 270° (A the handwheel angle of 0.3 g), criteria yaw
+  rate ≤ 35 % of its peak 1.0 s and ≤ 20 % 1.75 s after the steering ends. With ESC fully disabled every car but one
+  (a Toyota Tacoma) of the 58-vehicle set broke them, FWD saloons and minivans included; three heavy pickups passed
+  in one steer direction only (§6.3, quoted). Ours at 80 km/h on tarmac in A (0.75 of the steer at 0.4 g), first
+  amplitude breaking the criteria, ngp / brush: Escort 5.3 A / 5.2 A, Fiesta Rally2 6.8 A / none to full lock (18
+  A), Golf none / 8.7 A only. Road cars on 0.85 g tyres are over-driven 2.3× at 6.5 A, ours on 1.25 g tyres 1.6×
+  (inferred): the same over-drive is 9.5 A. So a car that never breaks them is the unusual one: the Golf under ngp
+  and the Fiesta under the brush. No test at 110 km/h in the report.
+- The same paper as the pressure slope's (arXiv 2305.18422, read): Cα falls with pressure at low loads and rises at
+  high loads (text at Fig. 9); `SLIP_PRESSURE` is one power at every load. Open.
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
