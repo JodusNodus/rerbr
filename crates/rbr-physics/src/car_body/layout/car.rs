@@ -623,6 +623,19 @@ impl CarStore for Mem {
         std::array::from_fn(|i| self.u32(wheel_list_at(car, i as u32)))
     }
 
+    /// The wheels' rim speeds (|ωR|, m/s): each wheel's speed scale (+0xaa0) times its spin rate (+0xa50).
+    fn wheel_speeds(&self, car: u32) -> [f32; 4] {
+        use crate::wheel::layout::{SPEED_SCALE, SPIN_RATE};
+        std::array::from_fn(|i| {
+            let wheel = self.u32(wheel_list_at(car, i as u32));
+            if wheel == 0 {
+                0.0
+            } else {
+                self.f32(wheel + SPEED_SCALE) * self.f32(wheel + SPIN_RATE)
+            }
+        })
+    }
+
     /// The object the seed's frame words land in (the car's +0x34).
     fn setup_target(&self, car: u32) -> u32 {
         self.u32(car + 0x34)

@@ -182,6 +182,9 @@ pub trait CarStore: Raw {
     fn clear_mounted_body(&mut self, car: u32, i: u32);
     /// The car's four wheel pointers, read as they are.
     fn wheel_pointers(&self, car: u32) -> [u32; 4];
+    /// The wheels' rim speeds (|ωR|, m/s): each wheel's speed scale times its spin rate (the FMOD block's
+    /// `wheel_speeds`); 0 for an empty slot.
+    fn wheel_speeds(&self, car: u32) -> [f32; 4];
     /// The object the setup's words land in: the car's setup.
     fn setup_target(&self, car: u32) -> u32;
     /// The base the body scatters add or subtract: the body's centre of gravity. None when the

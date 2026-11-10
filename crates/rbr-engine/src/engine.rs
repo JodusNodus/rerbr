@@ -142,8 +142,10 @@ pub struct Step {
     pub friction: f64,
     pub stalled: bool,
     pub t_oil: f64,
-    /// The driven wheels' speed (the transmission's wheel-side speed), rad/s; the start mode's signal.
-    pub wheel: f64,
+    /// The wheels' rim speeds (|ωR|), m/s, and the car's speed along its forward direction, m/s; the start mode's
+    /// signals.
+    pub wheels: [f64; 4],
+    pub body: f64,
     /// The rev limiter acts (off only for the calibration's engine, whose table runs to the limit).
     pub limiter: bool,
 }
@@ -161,8 +163,9 @@ impl Step {
             t_a: T_REF,
             friction: 0.0,
             stalled: false,
-            // A fixed-speed run holds its speed with the wheels turning, so no start mode.
-            wheel: omega,
+            // A fixed-speed run holds its speed with the wheels turning and the body moving, so no start mode.
+            wheels: [100.0; 4],
+            body: 100.0,
             limiter: true,
             t_oil: friction::T_OIL_REF,
         }
@@ -183,7 +186,8 @@ impl Step {
             friction: finite(i.friction, 0.0).clamp(-1e4, 1e4),
             stalled: i.stalled,
             t_oil: f64::from(i.engine_temperature),
-            wheel: finite(i.wheel_speed, 0.0).clamp(0.0, 4000.0),
+            wheels: i.wheels.map(|w| finite(w, 0.0).clamp(0.0, 1000.0)),
+            body: finite(i.body_speed, 0.0).clamp(-1000.0, 1000.0),
             limiter: true,
         }
     }
@@ -289,10 +293,13 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         Some(_) if spec.class.anti_lag => s.anti_lag.step(pedal, rpm, spec.rpm_limit, dt),
         _ => false,
     };
-    // Start mode: full pedal with the driven wheels stopped, on anti-lag classes only. It ends the instant the
-    // wheels turn or the pedal falls (both in the condition, every step); the turbo's state carries over.
+    // Start mode: full pedal with every wheel stopped and the body nearly at rest, on anti-lag classes only. It
+    // ends the instant a wheel turns, the body moves or the pedal falls (all in the condition, every step); the
+    // turbo's state carries over.
     let start = match spec.turbo {
-        Some(_) if spec.class.anti_lag => pedal > ecu::START_PEDAL && x.wheel <= ecu::START_WHEEL,
+        Some(_) if spec.class.anti_lag => {
+            pedal > ecu::START_PEDAL && x.body.abs() <= ecu::START_BODY && x.wheels.iter().all(|&w| w <= ecu::START_RIM)
+        }
         _ => false,
     };
     // The limiter's cap: the start speed in start mode, the rev limit otherwise.

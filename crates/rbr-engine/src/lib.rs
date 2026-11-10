@@ -62,8 +62,10 @@ pub struct Inputs {
     pub dt: f32,
     /// The crank's angular speed, rad/s.
     pub speed: f32,
-    /// The driven wheels' speed (the transmission's wheel-side speed), rad/s; the start mode's signal.
-    pub wheel_speed: f32,
+    /// The wheels' rim speeds (|ωR|), m/s; the start mode's signal.
+    pub wheels: [f32; 4],
+    /// The car's speed along its forward direction, m/s; the start mode's signal.
+    pub body_speed: f32,
     /// The throttle the control unit passes on (engine +0x20), 0..=1: the pedal, or the control unit's blip or cut.
     pub throttle: f32,
     /// The control unit's shift cooldown is running (NGP scales its torque by [`Params::torque_cut`] then).

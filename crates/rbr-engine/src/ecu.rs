@@ -64,16 +64,17 @@ pub const FIRE_RPM: f64 = 150.0;
 /// 3 s, re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
 /// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the cut firings' fuel burning in
 /// the manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
-/// Start (launch) mode: on cars whose class ran anti-lag, while the pedal is over `START_PEDAL` with the driven
-/// wheels under `START_WHEEL`, the limiter sits at `START_RPM` of the rev limit, and while it cuts the fired events
-/// retard by `ALS_RETARD`, so a full-throttle standing start builds boost on the line. Link's launch control limits the engine to a
-/// launch RPM for stationary starts, retards the ignition while active (their examples trim −30 to −35°) and adds
-/// fuel, and drops the trim as soon as a non-driven wheel turns (Link G4+ launch control); the 0.9 pedal, the 0.6
-/// of the limit and the 1.5 rad/s (about 0.5 m/s at the rim, on the order of 200 rpm in first gear) are guesses:
-/// Link leaves the launch RPM to testing.
+/// Start (launch) mode: on cars whose class ran anti-lag, with the pedal over `START_PEDAL`, every wheel under
+/// `START_RIM` and the body under `START_BODY`, the limiter sits at `START_RPM` of the rev limit, and while it cuts
+/// the fired events retard by `ALS_RETARD`, so a full-throttle standing start builds boost on the line. Link's launch
+/// control limits the engine to a launch RPM for stationary starts, retards the ignition while active (their examples
+/// trim −30 to −35°) and adds fuel, and drops the trim as soon as a non-driven wheel turns (Link G4+ launch control);
+/// the 0.9 pedal, the 0.6 of the limit, the 0.5 m/s at the rim and the 1.0 m/s body speed are guesses: Link leaves the
+/// launch RPM to testing, and the wheel and body thresholds only have to tell a standing start from a moving car.
 pub const START_PEDAL: f64 = 0.9;
 pub const START_RPM: f64 = 0.6;
-pub const START_WHEEL: f64 = 1.5;
+pub const START_RIM: f64 = 0.5;
+pub const START_BODY: f64 = 1.0;
 pub const ALS_ARM: f64 = 0.45;
 pub const ALS_LIFT: f64 = 0.1;
 pub const ALS_REARM: f64 = 0.3;
