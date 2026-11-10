@@ -1740,6 +1740,16 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   / +1.5 / +1.8 / +1.9, ngp +2.3 / +2.8 / +3.0 / +3.1 (at 0.6-0.8 g -0.5..+0.8 and +0.2..+1.5). The brush is within a
   degree or two of the real cars, NGP 2 to 3 deg more nose in from 100 km/h: weak, and the same way as the wheel slip
   above (NGP's tarmac tyre softer than the real one, the brush's about right).
+- Gravel sideslip against lateral g (2026-11-10; the same windows, medians, the bins 0.35-0.5 and 0.8-0.95 g of the
+  path's lateral g; the windows' quartiles lie ± 10° about them and the zero is open by 2°, so only the rise is read).
+  The rise from 0.42 to 0.87 g at 80-100 / 100-130 / 130-160 km/h: Finland 6.1 / 4.4 / 6.7°, Estonia 6.6 / 5.6 / 7.0,
+  Portugal 3.5 / 7.4 / 7.5, Sardegna 6.4 / 7.7 / 6.8 (median 6.6°; at 130-160 km/h Finland reads -2.0 / +1.6 / +3.2 /
+  +5.5 / +8.3 / +9.6° at 0.28 / 0.42 / 0.57 / 0.72 / 0.87 / 1.0 g). The i20 on the pads' 160 m circle (ramp, 92 km/h at
+  0.42 g, 134 at 0.87; the trace's sideslip): ngp 1.9 → 6.5° on every depth, a rise of 4.5; loose-v1 9 mm 1.3 → 5.7
+  (4.4), 17.5 mm 2.2 → 8.2 (6.0), 25 mm 3.2 → 9.3 at its limit of 0.84 g (6.2). The real rise is the 17.5 and 25 mm
+  pads'; NGP's gravel and the 9 mm pad are a third stiffer than any of the four rallies. A real slide set up on purpose
+  adds to the real figure, so this is the loosest reading; with the wheel slip under power (above) loose-v1's depths
+  bracket the real roads both ways.
 - Wet gravel, the same reading (2026-11-10): Wales Rally GB 2019, wet and muddy throughout by the teams' reports
   (Toyota, Škoda, Hyundai), saturated braking 0.64 / 0.69 / 0.74 / 0.77 at 60-80 / 80-100 / 100-130 / 130-160 km/h; GB
   2018 (mixed) 0.61 / 0.69 / 0.74 / 0.78, GB 2017 0.57 / 0.64 / 0.69 / 0.74. The wet rally reads as the two lower dry
