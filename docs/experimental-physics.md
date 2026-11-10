@@ -604,24 +604,23 @@ times a driver would see. On gravel the clutch slips 1.0–4.5 s longer per run,
 
 #### 0 to 100 km/h
 
-The autopilot's standing starts with the Fiesta Rally2 at full throttle, timed from the first move over 0.5 m/s.
-The start revs in neutral on the handbrake and drops into first at full throttle; NGP's clutch help then closes the
-clutch. The flat pad (`--stage pad-tarmac|pad-gravel`, a generated level square of one material, `rbr_btb::pad`) is level to
-2 cm over these runs, and the car holds its heading on it:
+The autopilot's flat-out standing starts with the Fiesta Rally2 (`--flat-out`), timed from the first move over
+0.5 m/s. The start revs in neutral on the handbrake and drops into first at full throttle; NGP's clutch help then
+closes the clutch. The flat pad is a built-in stage, a level 2 km square of one material (`--stage pad-tarmac`,
+`pad-gravel`; `harness/pad_start.py` runs these starts on it):
 
 | Flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
 | Tarmac (material 37) | 4.00 s | 3.98 s |
-| Gravel (material 17) | 4.62 s | 4.57 s |
+| Gravel (material 17) | 4.62 s | 4.63 s |
 
 The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5
 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and
 M-Sport publishes none for the Fiesta.
 
-The same start on stages (`--flat-out`, `harness/car_pace.py`), where the driver follows the road and waits for the
-wheelspin to end before it shifts up. No installed tarmac stage starts flat: the retail French stages climb 2–15 %
-over their first 100 m, and RSF 504 climbs 6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat and straight
-for 100 m.
+The same start on stages (`harness/car_pace.py`). No installed tarmac stage starts flat: the retail French stages
+climb 2–15 % over their first 100 m, and RSF 504 climbs 6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat and
+straight for 100 m.
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
