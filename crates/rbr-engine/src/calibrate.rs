@@ -13,10 +13,11 @@ use std::f64::consts::PI;
 
 /// The calibration's step, s (NGP's).
 pub const DT: f64 = 1.0 / 720.0;
-/// The boost target's assumptions: η_ig 0.38, η_v 0.95, and the cap without a class one (η_ig 0.38 a textbook example;
-/// guess).
+/// The boost target's assumptions: η_ig 0.38, η_v 0.95 (η_ig 0.38 a textbook example; guess), and the bound in a
+/// class without a boost rule, which no installed car reaches (guess; at 2.5 it held the Group N, R4, Rally3 and
+/// Rally4 cars' boost and their K went over the fuel–air cycle's).
 const PI_ETA_IG: f64 = 0.38;
-const PI_CAP: f64 = 2.5;
+const PI_CAP: f64 = 3.5;
 /// The restrictor's flow margin (inferred: the boost target stays just under the restrictor's choke).
 const RESTRICTOR_MARGIN: f64 = 0.95;
 /// The turbine nozzle's search range, m², and the wastegate port in nozzles.
