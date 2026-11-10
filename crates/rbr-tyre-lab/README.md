@@ -25,7 +25,10 @@ Nothing here changes what the game computes.
   sweep, lateral/longitudinal steps, sinusoidal steer, low speed, heat.
   `--fz N`, `--speed M/S` and `--ramps-only` give the whole step's slip-angle
   (0-30°) and slip-ratio (locked to 1) ramps at another load and speed, which
-  include the soil's lateral force the pure sweep leaves out.
+  include the soil's lateral force the pure sweep leaves out. `--model brush`
+  runs a profile's tyre model in the step (its temperatures too); section (f)
+  is slides and cooling from the captured temperatures. `--thermal-keys` prints
+  only the scorecard's `thermal:` keys (~5 min).
 - `src/probe.rs`: the probe-dump parser shared by the examples.
 - `brush`, `calibrate`: the brush-v1 tyre model and its calibration solve,
   re-exported from `crates/rbr-tyre` (the game's tyre model, in development,
