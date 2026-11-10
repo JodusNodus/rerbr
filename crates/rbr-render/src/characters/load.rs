@@ -668,6 +668,18 @@ impl<'a> Assets<'a> {
         self.textures.insert(key, StageTexture { request, image });
         key
     }
+
+    /// A texture of one colour under `name` (ours, not a game file), made once.
+    pub(super) fn plain(&mut self, name: &str, colour: [u8; 4]) -> TextureRef {
+        let key = self.texture(name);
+        self.textures.insert(key, StageTexture { request: name.to_owned(), image: Some(Image::Solid(colour)) });
+        key
+    }
+
+    /// The file a loaded texture was read from.
+    pub(super) fn file(&self, key: TextureRef) -> Option<&str> {
+        self.textures.get(&key).map(|texture| texture.request.as_str())
+    }
 }
 
 fn draw_state(texture: Option<TextureRef>, opacity: bool) -> DrawState {

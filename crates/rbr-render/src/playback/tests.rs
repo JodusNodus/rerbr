@@ -60,6 +60,7 @@ fn playback(frames: &[Vec<u8>]) -> Playback {
         door_angles: [HINGE_DEFAULT_ANGLE; DOORS],
         turn: None,
         hide_wheel: false,
+        cockpit: Default::default(),
         game_chase: Follow::new(crate::game_camera::Settings::default()),
         chase_fov: CHASE_FOV_DEGREES.to_radians(),
         head: crate::head::Head::new(true),

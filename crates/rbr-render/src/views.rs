@@ -33,6 +33,7 @@
 
 use crate::camera::Lens;
 use crate::car;
+use crate::characters::incar::Drawn;
 use crate::coords;
 use crate::parallel::in_parallel;
 use crate::playback::{ChaseLook, Playback};
@@ -182,12 +183,18 @@ impl CarView {
         self == CarView::Cockpit
     }
 
-    /// Whether the view draws the driver and co-driver. HedgeHog3D's renderers draw the crew's list (world `+0x200`)
-    /// only outside the in-car modes and mode 3 (the `RenderQuality = high` default, 0x100763f0: not with the
+    /// What the view draws of the driver and of the co-driver. HedgeHog3D's renderers draw the crew's list (world
+    /// `+0x200`) only outside the in-car modes and mode 3 (the `RenderQuality = high` default, 0x100763f0: not with the
     /// render options' in-car flag, set for modes 4 to 6 by 0x10066d20, and not in camera mode 2, the bonnet). The
-    /// bumper view is ours and goes with the bonnet.
-    pub fn shows_crew(self) -> bool {
-        self == CarView::Chase
+    /// bumper view is ours and goes with the bonnet. Ours: the cockpit draws the driver's arms and the co-driver, each
+    /// when `cockpit` says so (`characters::incar`).
+    pub fn crew(self, cockpit: [bool; 2]) -> [Drawn; 2] {
+        let when = |on: bool, shown: Drawn| if on { shown } else { Drawn::Hidden };
+        match self {
+            CarView::Chase => [Drawn::Whole; 2],
+            CarView::Cockpit => [when(cockpit[0], Drawn::Arms), when(cockpit[1], Drawn::Whole)],
+            CarView::Bonnet | CarView::Bumper => [Drawn::Hidden; 2],
+        }
     }
 
     /// Whether the view takes the seat shake (the game's mode 5).
@@ -643,6 +650,16 @@ pub fn ray_hit(from: Vec3, dir: Vec3, t: [Vec3; 3]) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cockpit_draws_the_driver_s_arms_and_the_co_driver_when_chosen() {
+        assert_eq!(CarView::Chase.crew([false; 2]), [Drawn::Whole; 2]);
+        assert_eq!(CarView::Cockpit.crew([true; 2]), [Drawn::Arms, Drawn::Whole]);
+        assert_eq!(CarView::Cockpit.crew([false, true]), [Drawn::Hidden, Drawn::Whole]);
+        assert_eq!(CarView::Cockpit.crew([true, false]), [Drawn::Arms, Drawn::Hidden]);
+        assert_eq!(CarView::Bonnet.crew([true; 2]), [Drawn::Hidden; 2]);
+        assert_eq!(CarView::Bumper.crew([true; 2]), [Drawn::Hidden; 2]);
+    }
     use rbr_formats::ini;
 
     #[test]

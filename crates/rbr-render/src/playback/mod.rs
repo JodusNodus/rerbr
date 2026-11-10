@@ -15,6 +15,7 @@
 //! tyre forward: the recorded roll grows at about 2.2 rad per metre of forward travel (`rbr-recording` notes).
 
 use crate::camera::{FreeFly, Lens};
+use crate::camera_prefs::Cockpit;
 use crate::coords::{door_swing, physics_to_stage, HINGE_DEFAULT_ANGLE};
 use crate::damage::{self, Cracks, MeshDamage, Zones};
 use crate::damage_parts::Detach;
@@ -197,6 +198,8 @@ pub struct Playback {
     pub turn: Option<Mat4>,
     /// The steering wheel's meshes ([`MeshDamage::steering`]) are not drawn (ours, `viewer --hide-wheel`).
     pub hide_wheel: bool,
+    /// The cockpit view's choices but the head's ([`Playback::set_cockpit`]).
+    cockpit: Cockpit,
     /// The game's chase camera, moved by [`Playback::follow_cameras`].
     game_chase: Follow,
     /// The chase's horizontal field of view, radians (ours: 1.02 fixes it).
@@ -261,6 +264,7 @@ impl Playback {
             door_angles: [HINGE_DEFAULT_ANGLE; DOORS],
             turn: None,
             hide_wheel: false,
+            cockpit: Cockpit::default(),
             game_chase: Follow::new(crate::game_camera::Settings::default()),
             chase_fov: CHASE_FOV_DEGREES.to_radians(),
             head: Head::new(true),
@@ -678,6 +682,17 @@ impl Playback {
         self.head.follow(|i| (samples[i].step, samples[i].car), index, self.drive.clock.step);
     }
 
+    /// Takes the cockpit view's choices (`crate::camera_prefs`): the head, the crew and the car's wheel.
+    pub fn set_cockpit(&mut self, cockpit: Cockpit) {
+        self.cockpit = cockpit;
+        self.set_head(cockpit.head);
+    }
+
+    /// Whether the cockpit view draws the driver's arms and the co-driver (`CarView::crew`).
+    pub fn cockpit_crew(&self) -> [bool; 2] {
+        [self.cockpit.driver, self.cockpit.codriver]
+    }
+
     /// Turns the in-car view's head ([`crate::head`]) on or off.
     pub fn set_head(&mut self, on: bool) {
         self.head.set_on(on);
@@ -720,7 +735,7 @@ impl Playback {
             let cracked = part.effect.crack.is_none_or(|crack| self.cracks.shows(crack));
             let lamp = part.effect.lamp.is_none_or(|switch| switch.shown(inputs));
             let steering = part.interior && part.effect.steering;
-            let hidden = steering && self.hide_wheel;
+            let hidden = steering && (self.hide_wheel || !self.cockpit.wheel);
             renderer.set_visible(part.stage, part.interior == self.interior && cracked && lamp && !hidden);
             renderer.set_outside_visible(part.stage, !part.interior && cracked && lamp);
             let turned = self.turn.filter(|_| steering);
@@ -800,7 +815,7 @@ impl Playback {
             let cracked = part.effect.crack.is_none_or(|crack| self.cracks.shows(crack));
             let lamp = part.effect.lamp.is_none_or(|switch| switch.shown(inputs));
             let steering = part.interior && part.effect.steering;
-            let hidden = steering && self.hide_wheel;
+            let hidden = steering && (self.hide_wheel || !self.cockpit.wheel);
             renderer.set_visible(part.stage, part.interior == interior && cracked && lamp && !hidden);
             renderer.set_outside_visible(part.stage, !part.interior && cracked && lamp);
             let detached = part.detach.and_then(|k| self.detached[k]);

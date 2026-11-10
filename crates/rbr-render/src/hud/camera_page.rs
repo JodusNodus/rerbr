@@ -1,13 +1,14 @@
 //! The pause menu's Camera page, ours (`crate::hud::pause`): a panel at the bottom of the screen over the paused view,
 //! which sets the view and this car's nudges of it ([`crate::camera_prefs`]). Its rows: the view, its field of view
 //! ([`Fov`]: the chase's, or the one of the cockpit, bonnet and bumper), then sideways, height, forward and tilt for
-//! the cockpit, bonnet and bumper, or height and distance for the chase, the head on or off for the cockpit
-//! ([`crate::head`]), then Reset (the view back to the car's own place; the field of view and the head stay) and Done.
+//! the cockpit, bonnet and bumper, or height and distance for the chase, for the cockpit its head ([`crate::head`]),
+//! the driver's arms, the co-driver and the car's steering wheel each on or off ([`Cockpit`]), then Reset (the view
+//! back to the car's own place; the field of view and the cockpit's choices stay) and Done.
 //! Up and Down pick a row, Left and Right change it; the select acts on Reset and Done, and the back returns to the
 //! menu's first page.
 
 use super::pause::Nav;
-use crate::camera_prefs::{Nudges, CHASE_STEP, FOV_STEP, REACH, STEP, TILT_REACH, TILT_STEP};
+use crate::camera_prefs::{Cockpit, Nudges, CHASE_STEP, FOV_STEP, REACH, STEP, TILT_REACH, TILT_STEP};
 use crate::coords::FOV_RANGE_DEGREES;
 use crate::game_camera::Settings;
 use crate::views::{CarView, Nudge};
@@ -34,6 +35,9 @@ pub enum Row {
     Distance,
     /// The cockpit's.
     Head,
+    Driver,
+    CoDriver,
+    Wheel,
     Reset,
     Done,
 }
@@ -49,6 +53,9 @@ impl Row {
             Row::Tilt => "Tilt",
             Row::Distance => "Distance",
             Row::Head => "Head motion",
+            Row::Driver => "Driver's arms",
+            Row::CoDriver => "Co-driver",
+            Row::Wheel => "Steering wheel",
             Row::Reset => "Reset",
             Row::Done => "Done",
         }
@@ -67,6 +74,9 @@ pub fn rows(view: CarView) -> &'static [Row] {
             Row::Forward,
             Row::Tilt,
             Row::Head,
+            Row::Driver,
+            Row::CoDriver,
+            Row::Wheel,
             Row::Reset,
             Row::Done,
         ],
@@ -121,19 +131,30 @@ pub enum Moved {
     Left,
 }
 
-/// The page: the view shown, the car's nudges, the head, the fields of view and the selected row.
+/// The page: the view shown, the car's nudges, the cockpit's choices, the fields of view and the selected row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CameraPage {
     pub view: CarView,
     pub nudges: Nudges,
-    pub head: bool,
+    pub cockpit: Cockpit,
     pub fov: Fov,
     row: usize,
 }
 
 impl CameraPage {
-    pub fn new(view: CarView, nudges: Nudges, head: bool, fov: Fov) -> CameraPage {
-        CameraPage { view, nudges, head, fov, row: 0 }
+    pub fn new(view: CarView, nudges: Nudges, cockpit: Cockpit, fov: Fov) -> CameraPage {
+        CameraPage { view, nudges, cockpit, fov, row: 0 }
+    }
+
+    /// The cockpit's choice `row` sets.
+    fn choice(&mut self, row: Row) -> Option<&mut bool> {
+        match row {
+            Row::Head => Some(&mut self.cockpit.head),
+            Row::Driver => Some(&mut self.cockpit.driver),
+            Row::CoDriver => Some(&mut self.cockpit.codriver),
+            Row::Wheel => Some(&mut self.cockpit.wheel),
+            _ => None,
+        }
     }
 
     /// The selected row.
@@ -154,8 +175,9 @@ impl CameraPage {
                 self.view = CarView::ALL[i % CarView::ALL.len()];
                 return Some(Moved::Changed);
             }
-            (Nav::Left | Nav::Right, Row::Head) => {
-                self.head = !self.head;
+            (Nav::Left | Nav::Right, Row::Head | Row::Driver | Row::CoDriver | Row::Wheel) => {
+                let on = self.choice(self.row())?;
+                *on = !*on;
                 return Some(Moved::Changed);
             }
             (Nav::Left | Nav::Right, Row::Fov) => {
@@ -239,7 +261,10 @@ fn value(page: &CameraPage, row: Row) -> String {
         Row::Forward => signed(shift.z * 100.0, 0, " cm"),
         Row::Tilt => signed(tilt, 1, "\u{b0}"),
         Row::Fov => format!("{:.0}\u{b0}", page.fov.of(page.view).to_degrees()),
-        Row::Head => if page.head { "On" } else { "Off" }.into(),
+        Row::Head | Row::Driver | Row::CoDriver | Row::Wheel => {
+            let on = page.clone().choice(row).is_some_and(|on| *on);
+            if on { "On" } else { "Off" }.into()
+        }
         Row::Reset | Row::Done => String::new(),
     }
 }
@@ -285,7 +310,7 @@ mod tests {
     use glam::Vec3;
 
     fn page(view: CarView) -> CameraPage {
-        CameraPage::new(view, Nudges::default(), true, Fov::default())
+        CameraPage::new(view, Nudges::default(), Cockpit::default(), Fov::default())
     }
 
     /// Moves `page` to `row`.
@@ -299,13 +324,20 @@ mod tests {
     fn each_view_has_its_rows_and_the_view_row_cycles() {
         let mut p = page(CarView::Cockpit);
         let names = |p: &CameraPage| rows(p.view).iter().map(|&r| value(p, r)).collect::<Vec<_>>();
-        assert_eq!(names(&p), ["Cockpit", "50\u{b0}", "0 cm", "0 cm", "0 cm", "0\u{b0}", "On", "", ""]);
+        let on = ["On"; 4];
+        assert_eq!(
+            names(&p),
+            [&["Cockpit", "50\u{b0}", "0 cm", "0 cm", "0 cm", "0\u{b0}"][..], &on, &["", ""]].concat()
+        );
         to(&mut p, Row::Head);
         assert_eq!(p.nav(Nav::Left), Some(Moved::Changed));
         assert_eq!(value(&p, Row::Head), "Off");
         to(&mut p, Row::Reset);
-        assert_eq!(p.nav(Nav::Select), None, "Reset leaves the head");
-        assert!(!p.head);
+        to(&mut p, Row::Wheel);
+        assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
+        to(&mut p, Row::Reset);
+        assert_eq!(p.nav(Nav::Select), None, "Reset leaves the cockpit's choices");
+        assert_eq!(p.cockpit, Cockpit { head: false, wheel: false, ..Cockpit::default() });
         to(&mut p, Row::View);
         assert_eq!(p.nav(Nav::Left), Some(Moved::Changed));
         assert_eq!(p.view, CarView::Chase);
@@ -404,7 +436,7 @@ mod tests {
         let mut p = CameraPage::new(
             CarView::Cockpit,
             Nudges::default(),
-            true,
+            Cockpit::default(),
             Fov { views: 72.5f32.to_radians(), ..Fov::default() },
         );
         assert_eq!(p.fov.views, 72.5f32.to_radians());

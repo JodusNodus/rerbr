@@ -40,7 +40,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             // The Force feedback page as with a wheel, once the drive said the car's surface.
             let ffb = live.hud.ffb_surface.map(|surface| FfbPage::of(&scene.ffb, surface));
             let fov = Fov { views: fov, chase: args.chase_fov };
-            let camera = CameraPage::new(view, scene.cameras.nudges(), scene.cameras.head(), fov);
+            let camera = CameraPage::new(view, scene.cameras.nudges(), scene.cameras.cockpit(), fov);
             let mut menu = PauseMenu::open(live.menu, camera, ffb);
             if moves.iter().any(|&nav| matches!(menu.nav(nav), Some(Outcome::Chosen(_)))) {
                 return Err("--pause-menu: the moves close the menu".into());
@@ -54,7 +54,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     let view = page.map_or(view, |page| page.view);
     let fov = page.map_or(fov, |page| page.fov.views);
     if let Some(page) = page {
-        scene.cameras.set(page.view, page.nudges, page.head);
+        scene.cameras.set(page.view, page.nudges, page.cockpit);
         if let (Some(mounts), Some(playback)) = (&mut scene.mounts, &mut scene.playback) {
             scene.cameras.apply(mounts, playback);
             playback.chase_fov = page.fov.chase;

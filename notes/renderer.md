@@ -1020,9 +1020,16 @@ replays only the 4 s warm-up, so captures show short trails.
 
 `characters/` (documents the spawn, triggers, visibility, crew and scripted events): `.lbs` `(2,14)` items in
 `(2,15)` random groups, Lua 4.0 scripts, `.sga` clips, CPU skinning. Generators: the exe's LCG and msvcr71 `rand()`,
-`--seed`. In-car crew: chase views only, as the High renderer. Ours: a model's own crew in its interior set (`i_drivers`: the RSF Fiesta
-Rally2, i20 Rally2, i20 WRC 2020 and 2021) is not drawn either (`car::BAKED_CREW`); behind `Cam_internal` the cockpit eye
-saw the driver's helmet from the back (the Fiesta without its `_personal.ini`, 2026-11-10). Tests: `tests/characters_data.rs`,
+`--seed`. In-car crew: chase views only in the game, as the High renderer. Ours (2026-11-10, `characters::incar`,
+`CarView::crew`): the cockpit draws the driver's arms (the faces whose vertices each follow a node from the forearm
+down most: the eye is in or behind his head, and his helmet, HANS and body filled the view on the GC8, the quattro,
+the Clio Rally3 and the GR Yaris) and the co-driver whole, in the cabin's light (the interior set's marks, 0.12 of the
+sky seen up through the windscreen, not baked: `--debug-view cabin-light` has the arms at the dash's level; at 0.4
+they glowed). The arms' sleeves are one dark colour there (`SLEEVE`; the team's 128 by 64 suit texture read as a blue
+smear from the upper arm down), the gloves keep their texture; each and the car's wheel on or off in `[camera]` (`driver`,
+`codriver`, `wheel`; the pause menu's Camera page, the launcher's Graphics page). A model's own crew in its interior
+set (`i_drivers`: the RSF Fiesta Rally2, i20 Rally2, i20 WRC 2020 and 2021) is not drawn (`car::BAKED_CREW`); behind
+`Cam_internal` the cockpit eye saw the driver's helmet from the back (the Fiesta without its `_personal.ini`). Tests: `tests/characters_data.rs`,
 `scripted_data.rs`, `crew_data.rs`.
 
 ## Fences and dials
