@@ -1748,8 +1748,8 @@ moves, the direction, the RC1 μ beside.
 
 Research (2026-11-09, main 9158d147): the game's Fiesta Rally2 against real Rally2 in accelerometer terms. Tools:
 `harness/car_grip.py` (circles: kinematic v²/R, `glat` over the same 1 s, path g, sideslip), `limit_pace.py --surface`,
-`rally_gg.py stats --speed-lag`, the brush's grip × F (then the test variable `RERBR_TEST_BRUSH_MU=F`, every surface;
-now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identical). Runs and scripts outside the repository. ngp / experimental-brush.
+`rally_gg.py stats --speed-lag`, the brush's grip × F (now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1,
+traces byte-identical). Runs and scripts outside the repository. ngp / experimental-brush.
 
 - RSF 345's r40 circle (the old gravel row, the snow circle under 101) lies on an 11.9° (21 %) slope: z 9.6-24.5 m
   over the lap (plane fit, rms 0.5 m); the hold covers 30-180° of the lap and ends running downhill at ~13.5 m/s
@@ -1759,7 +1759,7 @@ now `--tyre-tuning SURFACE=F`, "Experimental tuning"; at 1, traces byte-identica
   snow tyre (`snow-flat`), tarmac 37 (`tarmac`); 345's damp tyre 4 there reads 3 % under tyre 3 (0.936 / 0.935).
 - Flat r40 circles, Fiesta Rally2, kinematic / glat / glat ÷ kinematic: gravel 0.971 / 0.920 / 0.95 and 0.955 / 0.877
   / 0.92; snow 0.952 / 0.893 / 0.94 and 0.982 / 0.900 / 0.92; tarmac 1.282 / 1.181 / 0.92 and 1.327 / 1.186 / 0.89
-  (before T55's limit hold, which takes tarmac to 1.334 / 1.254 and 1.333 / 1.234: "Why the flat r40 tarmac circle
+  (before T55's limit hold; after it 1.334 / 1.254 and 1.333 / 1.234: "Why the flat r40 tarmac circle
   lost it"). glat ≈ the path's own v²/r (0.98-1.01): the row overstates an accelerometer by 5-11 % because the car
   runs 1-3 m wide of the commanded radius; roll and sideslip (β 7-9° ngp, 11-14° brush) cancel. r25 / r40 and ramps 0.2-0.8
   move it ±3 % (gravel kinematic 0.95-1.00, glat 0.86-0.92; tarmac 1.22-1.37 / 1.14-1.21); r60 does not fit the pad.
@@ -2152,10 +2152,8 @@ Since then:
   0.812). Lab: the aligning patch over the front axle's frames (`tarmac-mz-half-length-load-exponent` both, brush
   `tarmac-mz-peak-load-exponent`, `-trail0-load-exponent`, `-peak-alpha-over-fy`). No PASS → MISS from a model.
 - Citation audit (T52, 2026-11-09; bands from the source pages, no model change): brush PASS → MISS
-  `tarmac-combined-a4` (0.292 against the measured points 0.23-0.27; the source's model line was 0.31) and
-  `tarmac-peak-fx-load-exponent` (0.933 against 0.94-0.97, from Goodyear's 0.92 over 2-6 kN); no ngp verdict moved.
-  Now ngp 41/112, experimental-brush 91/112 PASS.
-- Tyre temperatures (2026-11-10, `tyre/thermal`, full run against main 7d3c7312: ngp 43/114, brush 92/114): six
+  `tarmac-combined-a4` and `tarmac-peak-fx-load-exponent`; no ngp verdict moved. (Both misses stand in Open.)
+- Tyre temperatures (2026-11-10, `tyre/thermal`, full run against main 7d3c7312): six
   `tarmac-thermal-*` rows, one scored (`-wet-cooling-80`, Ejsmont 5-8 K: ngp 3.75, brush 3.68, MISS both), five
   context; `thermal:KEY` runs `ngp_transient --thermal-keys` on the tarmac probe's image (~5 min per physics). Moved
   (brush, all within their verdicts): ice locked over threshold 0.811 → 0.826, ice coast Crr 0.002 → 0.022, tarmac
@@ -2168,17 +2166,19 @@ gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a
 Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
 
 - TRL PPR496 (`tarmac-KMH` / `tarmac-wet-KMH`: the tarmac wheel at 32/64/100 km/h, `--speed`, the wet ones with
-  `--water 1`, WaterFactor 1 on the dry friction level: the rows are ratios): locked over peak 0.780 / 0.776, 0.709,
-  0.668 at 32/64/100 (0.73-0.82, 0.66-0.76, 0.59-0.67); peak 100/32 1.000 / 0.968 (0.97-1.20); locked 64/32 1.000 /
-  0.902 (0.86-0.98); wet locked over peak 0.780 / 0.659, 0.546, 0.505 (0.64-0.67, 0.52-0.57, 0.49-0.52; 0.583, 0.552 with the
-  constant Coulomb loss before 2026-11-08); wet locked 100/32 1.000 / 0.730 (0.56-0.81); wet peak 100/32 1.000 /
-  0.951 (0.76-1.00). Contidrom (`tarmac-wet-80`, `tarmac-wet-KMH-worn`: `--tread 0.2`, key `stop_mu_x_4k`, the mean
-  braked peak of a stop; `tarmac-wet-80-3mm`: `--tread 0.375`): new 100 over 80 1.000 / 0.991 (0.97-1.0), 1.6 mm
-  over new from 80 / 100 1.000 / 0.685, 0.521 (0.66-0.83, 0.49-0.55), 3 mm from 80 1.000 / 0.898 (0.87-0.91; the lab's
-  NGP side holds the probed friction, so its tread does not move it). The car row from 100 km/h is not
+  `--water 1`, WaterFactor 1 on the dry friction level: the rows are ratios): locked over peak at 32/64/100 km/h:
+  ngp 0.780 flat; brush 0.776 / 0.709 / 0.656 (was 0.668 at 100; 0.73-0.82, 0.66-0.76, 0.59-0.67); peak 100/32
+  1.000 / 0.986 (was 0.968; 0.97-1.20); locked 64/32 1.000 / 0.902 (0.86-0.98); wet locked over peak 0.780 /
+  0.659, 0.546, 0.505 (0.64-0.67, 0.52-0.57, 0.49-0.52; 0.583, 0.552 with the constant Coulomb loss before
+  2026-11-08); wet locked 100/32 1.000 / 0.680 (was 0.730; 0.56-0.81); wet peak 100/32 1.000 /
+  0.911 (was 0.951; 0.76-1.00). Contidrom (`tarmac-wet-80`, `tarmac-wet-KMH-worn`: `--tread 0.2`, key `stop_mu_x_4k`, the mean
+  braked peak of a stop; `tarmac-wet-80-3mm`: `--tread 0.375`): new 100 over 80 1.000 / 0.979 (was 0.991; 0.97-1.0),
+  1.6 mm over new from 80 / 100 1.000 / 0.680, 0.510 (was 0.685, 0.521; 0.66-0.83, 0.49-0.55), 3 mm from 80
+  1.000 / 0.894 (was 0.898; 0.87-0.91; the lab's NGP side holds the probed friction, so its tread does not move it). The car row from 100 km/h is not
   scored (`how` none): its locked run leaves the line (In game).
-- Shape: peak slip angle 9.5° both (5.6-8.5; the brush 7.0° with `CORNERING_OVER_NGP`, 2026-11-08); combined Fy(κ
-  0.25)/Fy(0) at 4° 0.463 / 0.349 (0.29-0.34, fig ±0.05; 0.293 with it); Kx/Fz 14.0 / 21.2 (18.4-32.9; 26.8 with Cx 1.3 times, 2026-11-08); peak Fx ∝ Fz^0.985 / 0.935 (0.90-0.95).
+- Shape (ngp; the brush's peak angle, combined slip and stiffnesses moved with the model, see In game and Open
+  `tarmac-combined-a4`): peak slip angle 9.5° (5.6-8.5); combined Fy(κ 0.25)/Fy(0) at 4° 0.463 (0.29-0.34,
+  fig ±0.05); Kx/Fz 14.0 (18.4-32.9); peak Fx ∝ Fz^0.985 (0.90-0.95).
 - Aligning moment (the lab's `Tyre::aligning`: the torque `solve_forces` applies above 2 m/s, trail × Fy less the
   carcass offset Fy/k_y × Fx, flat): t0/a 0.319 / 0.316 (0.36-0.51; brush theory a/3 at the design load); t0 ∝
   Fz^0.585 / 0.949 (0.90-1.05); patch half length ∝ Fz^0.57 both (NGP's contact geometry, the front axle's clean
@@ -2208,8 +2208,8 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
 
 Ice (16 scored, the probe and brake rows on 116; ngp / experimental-brush): peak slip angle 0.75° / 4.5° (4.5-5.1),
 5.0° at 6.7 kN for the brush (4-5); peak κ 0.02 / 0.06 (0.04-0.06); Cα/Fz 0-2° fit 3.72 / 2.43 (3.7-5.5); Kx/Fz 2.86
-/ 2.52 (3.6-6.7); μ_y(20°)/peak 0.97 / 0.91 (0.59-0.86); locked/peak 0.92 / 0.72 (0.81-0.88); car locked over
-threshold 0.990 / 0.809 (0.81-0.88); car decels 0.096 / 0.100 g threshold, 0.095 / 0.081 g locked (studless
+/ 2.52 (3.6-6.7); μ_y(20°)/peak 0.97 / 0.915 (0.59-0.86; was 0.91); locked/peak 0.92 / 0.72 (0.81-0.88); car locked over
+threshold 0.990 / 0.826 (0.81-0.88; was 0.809); car decels 0.096 / 0.100 g threshold, 0.095 / 0.081 g locked (studless
 0.18-0.22): the level is NGP's. The brush's stiffness on ice trades the peak angle against the initial slope ([Ice
 (material 116)](#ice-material-116)).
 
@@ -2217,36 +2217,33 @@ Gravel and snow under loose-v1: [Loose surfaces: loose-v1](#loose-surfaces-loose
 
 Camber and pressure rows (2026-11-08; lab keys `camber_per_fz_4k`, `camber_over_calpha_4k`, `*_dp05_4k`: +0.5 bar on
 the probe's 2.0 bar through NGP's stiffness factor, patch length held; σ_y as the 63 % distance of a 1° step):
-experimental-brush 49 → 52/99 PASS (ngp 33/99), before → camber thrust → carcass pressure law. MISS → PASS C_γ/Fz
-0.017 → 0.842 (0.55-1.27; ngp 1.706), C_γ/Cα 0.001 → 0.049 (0.031-0.061; ngp 0.097), ice locked over threshold
-0.809 → 0.811 (0.81-0.88, at the edge); still MISS σ_y -0.6 → -5.1 % (-26 to -12; ngp -0.8), Kx +4.9 % (MF 6.1 -17 to
--14; ngp +4.4); PASS Cα +5.8 % (-14 to +12.5, sources disagree; ngp +5.6), peak μ_y +0.3 % (±3). Car rows within
-0.005 except the gravel circle (car, not tyre) 0.609 → 0.667 → 0.620 g. Map 85 ramped circle with the setup's camber
+MISS → PASS with the camber thrust: C_γ/Fz 0.842 (was 0.017; 0.55-1.27; ngp 1.706), C_γ/Cα 0.049 (was 0.001;
+0.031-0.061; ngp 0.097). With the pressure law (2026-11-10): σ_y -16.3 % (was -5.1; PASS, -26 to -12; ngp -0.8),
+Kx -4.5 % (was +4.9; MISS, MF 6.1 -17 to -14; ngp +4.4); PASS Cα -5.7 % (was +5.8; -14 to +12.5, sources disagree;
+ngp +5.6), peak μ_y -0.16 % (was +0.3; ±3). Ice locked over threshold now 0.826 (thermal rows). Car rows within
+0.005 except the gravel circle (car, not tyre) 0.620 g (was 0.609, 0.667). Map 85 ramped circle with the setup's camber
 at 0°, as set (-3.9°/-1.2°) and -4° (`--setup`): slide at 0.880/0.875/0.876 g brush (0.880/0.875/0.875 before),
 ngp 0.890/0.890/0.889; steering against lateral acceleration within the autopilot's noise. With main's aligning rows
 merged: 52/106 (ngp 33/106), the ice row back at 0.807.
 
-Wet rows (2026-11-08, `tyre/wet-shape`, full run against 4bb4c042): experimental-brush 52/103 → 59/108 PASS (ngp
-33/103 → 35/108); MISS → PASS TRL wet locked over peak at 64 / 100 km/h 0.583 / 0.552 → 0.546 / 0.505 (with the
-road texture's drainage; the wet tyre rows rerun); the five new
+Wet rows (2026-11-08, `tyre/wet-shape`, full run against 4bb4c042): MISS → PASS TRL wet locked over peak at
+64 / 100 km/h (0.546 / 0.505, was 0.583 / 0.552; with the road texture's drainage; the wet tyre rows rerun); the five new
 wet rows (above) pass under the brush, ngp misses the three tread rows; every dry row and the brake, circle and coast
 rows unchanged.
 
 Snow levels (2026-11-09, `tyre/scorecard-loose`, full run against main d903fe5a; bands only, no model change):
-experimental-brush 89/112 → 93/112, ngp 38/112 → 41/112. A rally car on snow runs studs (5.5-7 mm), at or above a road
+A rally car on snow runs studs (5.5-7 mm), at or above a road
 tyre (SR 115: studded 0.57-0.60 against snow tyres 0.34-0.41), so the road-tyre levels are lower bounds: MISS → PASS
 `snow-peak-mu-y` 0.852 / 0.842 (0.35..), `snow-peak-mu-x` 0.871 / 0.863 (0.46..); MISS → CTX `snow-lat-max-packed`,
 `snow-long-mu-winter` (same quantity as those). New: snow locked over ABS K 0.15 at 50 / 80 km/h ngp 0.982 MISS /
 1.059, brush 1.054 / 1.087 (1.00-1.10); gravel SATC context 1.076 / 1.340. Every other row unchanged.
 
-Thin film (2026-11-08, `tyre/wet-speed`, full run against main 0fb71ed8; 89/112 PASS before and after, ngp 38/112):
-seven wet rows move, all in band: TRL wet peak 100/32 0.977 → 0.911 (0.76-1.00), wet locked 100/32 0.730 → 0.680
+Thin film (2026-11-08, `tyre/wet-speed`, full run against main 0fb71ed8): seven wet rows move, all in band: TRL wet peak 100/32 0.977 → 0.911 (0.76-1.00), wet locked 100/32 0.730 → 0.680
 (0.56-0.81), wet locked over peak at 100 0.491 → 0.490 (0.49-0.52, at the edge, as before); Contidrom new 100 over 80
 0.997 → 0.979 (0.97-1.0), 1.6 mm from 80 / 100 0.682 / 0.516 → 0.680 / 0.510, 3 mm 0.895 → 0.894. Every other row
 bit-equal.
 
-Pressure law (2026-11-10, `tyre/brush-misses`, full run against main 75bdb7b3, 114 scored rows): experimental-brush
-92 → 93/114, ngp 43/114 unchanged. MISS → PASS `tarmac-sigma-y-pressure` -5.4 → -16.3 % (-26 to -12); `tarmac-kx-pressure`
+Pressure law (2026-11-10, `tyre/brush-misses`, full run against main 75bdb7b3, 114 scored rows): MISS → PASS `tarmac-sigma-y-pressure` -5.4 → -16.3 % (-26 to -12); `tarmac-kx-pressure`
 +4.0 → -4.5 % (MISS, -17 to -14), `tarmac-calpha-pressure` +5.3 → -5.7 % (PASS), `tarmac-peak-mu-y-pressure` +0.12 → -0.16 %
 (PASS); every other row within 1 % (the scorecard's tarmac circle, Fiesta Rally2 r40 ramp 0.5 on map 85: lateral
 1.234 → 1.236 g). The aligning rows (`tarmac-mz-trail0-over-a` 0.310, `tarmac-mz-peak-per-mu-fz-a` 0.158)
