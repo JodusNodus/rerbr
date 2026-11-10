@@ -297,6 +297,11 @@ impl<'a> Live<'a> {
         &self.playback.pure.mem
     }
 
+    /// NGP's base address in the image.
+    pub(crate) fn ngp_base(&self) -> u32 {
+        self.playback.pure.ngp_base
+    }
+
     /// The step clock (CLK1): the physics step and the load settle's steps.
     pub fn step_clock(&self) -> StepClock {
         self.clock
