@@ -197,8 +197,7 @@ parabolic brush's trail less accurate in practice than its force model and valid
 steering torque to the limit (Y.-H. J. Hsu, PhD Stanford 2009, eq. 2.13 and ch. 4; IEEE TCST 18:4, 2010). Loose
 surfaces keep M'_z. Pure
 slip is Pacejka's cubic either way, so the curves, the per-wheel fit and the calibration are unchanged (lab CSVs
-identical). Before, the whole force pointed along (C_x s_x, C_y s_y), so at full slide the side share was 1/1.4 of
-the sliding velocity's. Pacejka's own ch. 3 text (isotropic bristles, where both directions coincide) was not
+identical). Pacejka's own ch. 3 text (isotropic bristles, where both directions coincide) was not
 reread here: the book is not open.
 
 Friction against sliding speed (2026-11-08): the generalised Stribeck curve (Olsson, Åström, Canudas de Wit et al.,
@@ -219,10 +218,8 @@ each set at its own film and texture) to the drum (Williams & Evans, no texture,
 drum's half-loss speed (h^-0.43). Residuals ≤ 0.08 but for SWOV's 0.6 mm cell at 100 km/h (0.97 against 0.82,
 inferred from its means) and Dijks UK 2 mm at 130 km/h (0.92 against 0.83). On the game's road at W 1: a new tread
 loses nothing to 280 km/h; worn over new at 2 mm 0.96 / 0.86 at 100 / 130 km/h, 1.6 mm 0.98 / 0.91 / 0.80 at 80 /
-100 / 130, bald 0.92 / 0.83 / 0.74 / 0.65 at 40 / 60 / 80 / 100. Before: v_on = 2.1 m/s · drained depth / h, lifted at
-5 v_on, fitted to ABS stops of unstated film (Contidrom via AUTO BILD, Continental's report 2021_100: now context
-rows), which lost earlier and more than all three sets (2 mm on 0.7 mm 0.91 / 0.75 / 0.59 of new at 40 / 60 / 80
-km/h, Dijks 0.99 / 0.94 / 0.90 on 1.5 mm). Horne's v_p (water deeper than the grooves, ADAC's 17-22 % lost at 2 of 8
+100 / 130, bald 0.92 / 0.83 / 0.74 / 0.65 at 40 / 60 / 80 / 100 (was v_on 2.1 m/s · drained depth / h, lifted at
+5 v_on, fitted to ABS stops of unstated film: lost earlier and more than all three sets). Horne's v_p (water deeper than the grooves, ADAC's 17-22 % lost at 2 of 8
 mm) is not the regime of the game's films and is not used; the seam carries no pressure. Thin film (2026-11-08, `tyre/wet-speed`): the whole friction falls by 0.0074 W per m/s over 60 km/h
 (`brush::thin_film`, never below 0.05), fitted to Reimpell & Sponagel's wet peak at the game's 0.7 mm (0.5 / 1 mm
 interpolated: 0.922 / 0.833 of 60 km/h at 100 / 140 km/h; the fit 0.918 / 0.836); v is the speed over the road, the
@@ -249,12 +246,11 @@ the low end; the powers stay.
 The slip stiffnesses keep NGP's factor: at 4 kN the sources disagree on Cα's sign (MF 6.1 -11 to -14 %, op het
 Veld's σ_y and CFy -4 %, Goodyear +10 % per +20 % near nominal load), so σ_y shortens 5 %, not the sources' 12-26 %.
 Kx keeps NGP's +4.4 % against MF 6.1's -15 % (one set). At the calibration pressure (factor 1) nothing moves; at
-the Fiesta's 2.0 bar (0.967) c_y is 2.3 % below NGP's and c_x 441 kN/m (435 before).
+the Fiesta's 2.0 bar (0.967) c_y is 2.3 % below NGP's and c_x 441 kN/m (was 435).
 
 Ours, not from papers: the friction curve's four values and the wet Coulomb loss and its speed scale (fits to one
-tyre's trailer data, two surfaces); the partial hydroplaning's drainage speed 2.1 m/s, its linear ramp to 5 v_on, the
-texture depth 0.7 mm within the published range and the 8 mm new groove depth (fits to two braking tests, three tread depths, film unknown: taken as the game's
-0.7 mm), the wear gain's fade with W, the thin film's linearity in W (Reimpell's 0.2 mm keeps 0.99 / 0.97 at 100 /
+tyre's trailer data, two surfaces); the texture depth 0.7 mm and the 8 mm new groove depth (both within the
+published range), the wear gain's fade with W, the thin film's linearity in W (Reimpell's 0.2 mm keeps 0.99 / 0.97 at 100 /
 140 km/h, W 0.25's 0.175 mm 0.979 / 0.959: within the figure's ±0.02, his loss grows faster than linear below 0.5 mm)
 and its product with the worn tread's hydroplaning against new; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
 excitation frequency mixed in, and puts a rally tyre above the cited 0.12-0.45 m, a motorcycle range);
@@ -266,9 +262,8 @@ lateral carcass stiffness and temperature grip.
 Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in brackets where it changed):
 
 - 2026-11-07, low speed (Golf II GTI 16V, track-41_M climb, realistic engine): the earlier transient (a lag on the
-  slip, σ = C/c, rate V_r/σ) ran σ_x 1-2.8 m at 4-7 m/s on NGP's low-speed carcass and almost froze as the wheel
-  locked (V_r → 0.5 m/s): after a spin-to-brake reversal the force kept the wrong sign 0.21-0.33 s (lab, fronts at
-  2.4-3.5 kN, 4.5 m/s, wheel 2.5 → 0.5 times the car) and drove a wheel-diff oscillation (FL +11 to -6 m/s, steady
+  slip, σ = C/c, rate V_r/σ) almost froze as the wheel locked (V_r → 0.5 m/s): after a spin-to-brake reversal the
+  force kept the wrong sign 0.21-0.33 s (lab, fronts at 2.4-3.5 kN, 4.5 m/s, wheel 2.5 → 0.5 times the car) and drove a wheel-diff oscillation (FL +11 to -6 m/s, steady
   slip +0.35 against transient -0.12). Steady grip was not short: 1.38 μ peak at κ 0.15, 1.10 at the spin's κ 1.5
   (sliding 6.75 m/s). Rill's dynamics turn it in 3-15 ms; σ_x 1.0-1.6 m at κ 0.02 to 0.25-0.3 m sliding; Rill: σ_x
   passenger 0.7 m, review 0.3-0.8 m; measured σ_y 0.6 m at 0° to 0.1 m at 10° (Rill Fig. 3.43).
@@ -306,13 +301,12 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   to 0.104 m, further below the sets' σ_x/R 1.19-1.44 (0.37-0.45 m); MF-Swift's d/c of 0.002 s gives d_x 900, the
   present 1000.
 - Meets: combined slip at 4 kN, 15 m/s, Fy(κ ±0.25)/Fy(0) 0.283 at 2°, 0.333 at 4°, 0.465 at 8° (Svendenius's
-  measured road tyre 0.2-0.3 and 0.29-0.34; NGP 0.40/0.46/0.61; before 0.20/0.24/0.35), Fy/|F| equal to the sliding
-  velocity's share once sliding (0.269 at 4°; NGP 0.35); peak κ 0.12 drive / 0.10 brake at 4 kN (0.18-0.22); dry
-  locked over peak at 10 m/s 0.80 (0.70); braking (this bullet before the 2026-11-08 friction curve, above)
-  peaks within 4 % of NGP's (17 %); Kx/Fz 22 by the |κ| ≤ 0.04 fit, Kx ∝ Fz^1.14; peak Fx ∝ Fz^0.96; Cα ∝ Fz^0.64;
+  measured road tyre 0.2-0.3 and 0.29-0.34; NGP 0.40/0.46/0.61; was 0.20/0.24/0.35), Fy/|F| equal to the sliding
+  velocity's share once sliding (0.269 at 4°; NGP 0.35); peak κ 0.12 drive / 0.10 brake at 4 kN (was 0.18-0.22); dry
+  locked over peak at 10 m/s 0.80 (was 0.70); braking peaks within 4 % of NGP's (was 17 %); Kx/Fz 22 by the |κ| ≤ 0.04 fit, Kx ∝ Fz^1.14; peak Fx ∝ Fz^0.96; Cα ∝ Fz^0.64;
   Cα -21 % cold to hot and +27 % at 60 % worn; dry peak μ +12 % at 60 % worn; peak Fy ∝ Fz^0.85; σ_y 0.20 m at 4 kN
   (σ/R 0.63; NGP 0.17 m; Pacejka 0.12-0.45 m); with the damping 0.20-0.23 m at 5-30 m/s, 63 % of a 2° step in
-  0.17-0.18 m at 10-30 m/s (0.18-0.21 m before).
+  0.17-0.18 m at 10-30 m/s (was 0.18-0.21 m).
 - New behaviour: peak μ_y falls 6 % from 10 to 30 m/s (1.280/1.264/1.245/1.200, NGP flat; Kiencke & Nielsen's
   c4 0.02-0.04 s/m gives 4-8 % at 10 % slip and 20 m/s; the braked peak 3 % from 32 to 100 km/h).
 - Outside the published values (before 2026-11-08 unless given): slide over peak 0.88 lateral at 30° (now 0.833; sets
