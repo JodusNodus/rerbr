@@ -384,12 +384,12 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   TRL wet 0.64-0.67); whole locked stop from 30 km/h 0.822 g. RSF 568 wet is the fallback material 0 (no wet `.mat`
   entry, above): locked over best 0.79/0.73 at 32/64 km/h. RSF wet tarmac with WaterFactor 1, from 50 km/h, locked
   over best threshold at 32 km/h, dry → wet: 122 0.76 → 0.65 (NGP 0.78 → 0.79), 117 0.79 → 0.67 (NGP 0.79 → 0.77);
-  TRL dry 0.73-0.82, wet 0.64-0.67. Wet law of 2026-11-08 (Coulomb loss growing with Vs, partial hydroplaning),
-  before → after, locked g at 32 / 64 km/h from 80 km/h: track-41_M 0.767 / 0.575 (locked stop 0.662 → 0.631 g),
-  117 0.675 → 0.673 / 0.618 → 0.581, 122 0.608 / 0.599 → locked run hit the edge; from 50 km/h locked 0.740 → 0.727
-  (41_M), 0.654 → 0.644 (122), 0.690 → 0.682 (117) g; best threshold within 0.02 g (new tyres, ≤ 80 km/h). NGP from
-  80 km/h locked at 64: 0.775 (122), 0.796 (117). Autopilot pace on wet track-41_M: Fiesta Rally2 371.74 → 371.44 s
-  (NGP 381.43), Celica ST185 375.93 → 375.93 s (NGP 385.34).
+  TRL dry 0.73-0.82, wet 0.64-0.67. Wet law of 2026-11-08 (Coulomb loss growing with Vs, partial hydroplaning), locked g at 32 / 64 km/h from
+  80 km/h: track-41_M 0.767 / 0.575 (locked stop 0.631 g, was 0.662), 117 0.673 / 0.581 (was 0.675 / 0.618),
+  122 0.608 / 0.599 → locked run hit the edge; from 50 km/h locked 0.727 (41_M, was 0.740), 0.644 (122, was 0.654),
+  0.682 (117, was 0.690) g; best threshold within 0.02 g (new tyres, ≤ 80 km/h). NGP from 80 km/h locked at 64:
+  0.775 (122), 0.796 (117). Autopilot pace on wet track-41_M: Fiesta Rally2 371.44 s (was 371.74; NGP 381.43),
+  Celica ST185 375.93 s (NGP 385.34).
 - Wet and damp against the research (2026-11-08, `tyre/wet-research`, main fa211dfb, Fiesta Rally2, no model change).
   `--wetness damp` on track-41_M puts the road on tarmac fine clean damp (38: μs 1.2025, WaterFactor 0.25), wet on 39
   (1.105, 1); RSF 117 the same way (65/69 → 66/70 → 67/71, the same 0.925 / 0.85 and 0.25 / 1). In game, with the
@@ -2239,7 +2239,7 @@ tyre (SR 115: studded 0.57-0.60 against snow tyres 0.34-0.41), so the road-tyre 
 1.059, brush 1.054 / 1.087 (1.00-1.10); gravel SATC context 1.076 / 1.340. Every other row unchanged.
 
 Thin film (2026-11-08, `tyre/wet-speed`, full run against main 0fb71ed8): seven wet rows move, all in band: TRL wet peak 100/32 0.977 → 0.911 (0.76-1.00), wet locked 100/32 0.730 → 0.680
-(0.56-0.81), wet locked over peak at 100 0.491 → 0.490 (0.49-0.52, at the edge, as before); Contidrom new 100 over 80
+(0.56-0.81), wet locked over peak at 100 0.490 (was 0.491; 0.49-0.52, at the edge); Contidrom new 100 over 80
 0.997 → 0.979 (0.97-1.0), 1.6 mm from 80 / 100 0.682 / 0.516 → 0.680 / 0.510, 3 mm 0.895 → 0.894. Every other row
 bit-equal.
 
@@ -2541,9 +2541,9 @@ stays the untuned brush's. The table's model column is the brush before the mode
   best class (kind 4, the damp gravel tyre, has gravel best). Lab (`scorecard` on the track-41_M probe, `--tyre 1`,
   wheel 0, 50 km/h, peak μ_y with against without): dry 1.019, damp 1.080, wet 0.981 (factors 1.0195 / 1.0811 /
   0.9805): against the dry tyre on a dry road dry 0.981, damp 0.886 (0.82), wet 0.802 (0.818). Brake test, Fiesta
-  Rally2, track-41_M from 50 km/h declutched, `--tyre 1`, locked / best threshold g before → after: dry 1.041 / 1.212
-  → 1.058 / 1.230, damp 0.874 / 1.071 → 0.935 / 1.134, wet 0.773 / 1.061 → 0.758 / 1.040 (`--tyre 0` damp 0.872 /
-  1.066, `--tyre 2` 0.843 / 1.036: the damp tyre now best on damp). RSF 568 dry 1.042 / 1.242 → 1.063 / 1.264; its
+  Rally2, track-41_M from 50 km/h declutched, `--tyre 1`, locked / best threshold g: dry 1.058 / 1.230 (was 1.041 / 1.212), damp 0.935 / 1.134 (was 0.874 / 1.071),
+  wet 0.758 / 1.040 (was 0.773 / 1.061) (`--tyre 0` damp 0.872 /
+  1.066, `--tyre 2` 0.843 / 1.036: the damp tyre now best on damp). RSF 568 dry 1.063 / 1.264 (was 1.042 / 1.242); its
   damp and wet are the class-0 fallback (no change). ngp, experimental, brush `--tyre 0` / `2` traces bit-equal,
   scorecard unchanged. Heinz & Grosch (row above) give compound alone 95-120 % on wet roads, most within ±8 %: the
   +8 % is inside, though their data are wet traction, not damp.
