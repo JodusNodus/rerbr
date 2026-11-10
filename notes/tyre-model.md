@@ -996,8 +996,7 @@ Where NGP sits:
   | tarmac 568 | experimental-brush (before 2026-11-08) | 50 km/h | 8.8 m, 1.12 g | K 0.2-0.3: 7.8 m, 1.26 g | 1.13 | 1.09 |
 
   Published gravel: 0.70-0.75. In gear the full-pedal stops are 0-9 % shorter (the engine keeps the wheels
-  turning) and the best threshold stops 0-9 % longer than declutched. Earlier run, full brake from 100 km/h on 345:
-  0.72 g, setup not compared.
+  turning) and the best threshold stops 0-9 % longer than declutched.
 
 - Load: the tarmac sensitivity on every surface (same tables): Fy ∝ Fz^0.875-0.886, Fx ∝ Fz^0.98, Cα ∝ Fz^0.33-0.36.
 
@@ -1024,8 +1023,8 @@ Where NGP sits:
   no tarmac material reaches it: the lowest hard surface, 0.68 class 2, is 0.57 on a cold tarmac tyre; a snow tyre on
   wet low-grip tarmac can reach 0.43). Evidence: Svendenius Table 7.1 brush fits at 4 kN, winter tyre C0x 25-27.6 on
   asphalt (μ 1.0-1.2; wet stiffer than dry), 16 on wet basalt (μ 0.27), 6.25 on ice (μ 0.078): knee 0.55 with an
-  exponent 0.76 through all three; summer tyre 0.09 of asphalt's on ice (exponent 1.2); 1 is ours, between. Before,
-  the tarmac tyre's stiffness (Cα/Fz 17.6) at μ 0.095 slid whole at 0.75-1°; the peak level stays NGP's (0.0948
+  exponent 0.76 through all three; summer tyre 0.09 of asphalt's on ice (exponent 1.2); 1 is ours, between (was the
+  tarmac tyre's stiffness, sliding whole at 0.75-1°); the peak level stays NGP's (0.0948
   against 0.0938 at 4 kN).
 - Trade-off: with NGP's level (0.094, the data 0.15-0.18) the peak slip angle and the initial slope cannot both
   match (the brush slides whole at tan α = 3 μ/(C/Fz)): exponent 0.76 gives 2.75° and a 0-2° slope 3.2 /rad, 1.0 gives
@@ -1082,7 +1081,7 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   Fiala per axle from steady cornering on a gravel lot, μ 0.55, highly variable: C_α/Fz 15.4 front / 19.2 rear per
   rad, full slide at 6.1 / 4.9°, 90 % at 3.3 / 2.6° (an exponential law's α0 ~1.1-1.4°; axle-lumped, so a tyre's own
   is stiffer). Ours at 4 kN, 15 m/s, dry (`gravel-firm-*`, context, the probe's 9 mm): ngp 9.1 per rad, α90 7.5°;
-  brush 11.2, 8.0° (before α0 by depth 6.6, 14.25°).
+  brush 11.2, 8.0° (was 6.6, 14.25°).
   Gravel's shape spans about 5x between a firm lot and loose pea stone (α0 6.3°); the brush sits at the loose end,
   NGP between. A firm stage (packed base, thin loose top) may build force faster than the brush does. Candidate,
   done 2026-11-09: α0 by NGP's soil depth (shallow `Gravel_*` firmer). Their drift held β 20° at 8 m/s with 12° of
@@ -1107,11 +1106,12 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
 - Snow's berm (2026-11-08): studded snow tyres on normal compacted snow, 20 km/h (Ichihara & Mizoguchi, HRB SR 115,
   Fig. 3, fig ±0.02): 0.36-0.42 at 15-20 % slip, peak 0.42-0.445 at 40-60 %, locked 0.40-0.43, so locked over the 15-20 %
   value 1.02-1.08 and over the peak 0.95-0.97 (snow tyres 0.74-0.95 of the 20 % value); 1.05 is the studded middle.
-  In game (Fiesta Rally2 / Escort, map 10, declutched, locked over ABS K 0.15): 50 km/h 1.17 → 1.05 / 1.42 → 1.28,
-  80 km/h 1.27 → 1.09 / 1.13 → 1.07 (ngp 0.98-1.06); Rally2 locked 1.06 → 0.95 g (50), 1.08 → 0.92 g (80); ABS,
+  In game (Fiesta Rally2 / Escort, map 10, declutched, locked over ABS K 0.15): 50 km/h 1.05 / 1.28 (was 1.17 /
+  1.42), 80 km/h 1.09 / 1.07 (was 1.27 / 1.13; ngp 0.98-1.06); Rally2 locked 0.95 g (50; was 1.06), 0.92 g (80;
+  was 1.08); ABS,
   threshold and the snow circle (0.554 g) unchanged. The Escort's 50 km/h ABS run is its weakest (0.68 g, best single
-  target 0.71). Scorecard: only `snow-car-locked-decel-50` moves (1.059 → 0.952, PASS); every gravel, tarmac, ice and
-  ngp row bit-equal. Pace, autopilot to the finish (Fiesta Rally2): track-10_O 385.36 → 385.48 s (ngp 393.53), RSF 111
+  target 0.71). Scorecard: only `snow-car-locked-decel-50` moves (0.952, was 1.059, PASS); every gravel, tarmac, ice and
+  ngp row bit-equal. Pace, autopilot to the finish (Fiesta Rally2): track-10_O 385.48 s (was 385.36; ngp 393.53), RSF 111
   (gravel) 287.08 s unchanged.
 - Ours: the smoothstep and its start at 0.8 (no intermediate slips are published; chosen on the trade-off below: a
   berm from the full slide holds the wheels off lock at the Fiesta's full-pedal brake torque), no berm when driving
@@ -1120,9 +1120,9 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   (NGP's lateral ploughing: 3-4 % of the peak at 30° and 15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5
   m/s).
 - Carcass at the limit (`brush::step_dynamic`, both surfaces): sliding at the limit, the deflections take the steady
-  force's direction. Before, a locked wheel's deflection integrated the sliding velocity weighted by c_x/c_y (450 kN/m
-  against NGP's lateral carcass), so its side force at 20° was 0.197 against the steady 0.37; in game it moved RSF 111
-  by 0.02 s and the gravel locked decel by 0.001 g.
+  force's direction (was: a locked wheel's deflection integrated the sliding velocity weighted by c_x/c_y, so its
+  side force at 20° was 0.197 against the steady 0.37; in game it moved RSF 111 by 0.02 s and the gravel locked
+  decel by 0.001 g).
 
 Lab, RSF 345 frame (Fiesta Rally2, wheel 1, gravel 17, static 0.847 after the temperature grip, 4 kN, 15 m/s; NGP /
 loose-v1; NGP's soil force left out of both):
@@ -1197,28 +1197,15 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   faster everywhere: 1.1-2.3 % on RSF and 1.8-4.3 % on retail. Split on track-10/11_O with `experimental` (NGP's
   tyre, ReRBR's engine), M3 / 131 / Golf: ngp → experimental -3.2/-3.0, -3.6/-3.0, -3.0/-4.1 %, the engine model;
   experimental → eb -0.5/-0.2, +1.9/-0.2, -1.0/-0.2 %, loose-v1. The gap is the engine's, as on tarmac.
-- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m. It brakes at a 0.8 pedal at full lock (4450 m, 12
-  m/s). The fronts creep at 0.4-0.9 m/s (slip 0.93-0.96) and the engine in fourth follows them down to 0 and stalls.
-  The autopilot has no restart. ngp and experimental lock both fronts at the same corner to 0 m/s at about 113 rad/s.
-  The engine separates, idles at 82-89 rad/s, and both finish (282.12 / 277.27 s). Traced with a debug build
-  (2026-11-08):
-  - The clutch help works as ported: `vcu::step::step_basic` sends slip 0 down to 99.5 rad/s, then ramps to 1 (open)
-    at 89 rad/s.
-  - Even so, the engine speed stays equal to the gear's speed of the creeping fronts down to about 5 rad/s. NGP's
-    driveline stays clutch-locked, its engine speed following the drive's, while the driven wheels turn. With the
-    wheels at 0 it lets go.
-  - Under ReRBR's engine the dragged engine gives -15 to -0.3 N·m. NGP's stall history (`stall_speed`) then marks it
-    stalled, and the model's torque stays 0.
-  - The creep is loose-v1's flat friction, not the berm: no fall from the peak to sliding, so a brake torque near the
-    peak does not run the wheel into lock (NGP's force falls past its peak). A berm built only at slip ≥ 0.99, none
-    at the corner, creeps the same (0.6-0.7 m/s, engine 24-27 rad/s) and DNFs at the same step.
-  - Neither the port nor the engine model is wrong. The fix belongs to the autopilot: declutch, or go to neutral,
-    when the driven wheels lock under braking, and restart a stalled engine. A driver declutches.
-  - Fixed by the autopilot (2026-11-08): in a race under NGP it selects neutral while the braked wheels drag the
-    engine under 89 rad/s for 4 steps (the clutch pedal does nothing while the clutch help sets the clutch) and
-    restarts a stalled engine on the ignition. The Golf now finishes RSF 104 under eb in 275.34 s. In the sweep, all
-    27 ngp runs keep their times exactly. eb moves on the Golf track-10_O (+1.21 s, +0.31 %, neutral at a front lock in
-    first) and the Celica RSF 104 (+0.06 s); the other 25 runs are unchanged.
+- The one DNF is the Golf on RSF 104 under eb, stuck at 4488 m: braking at a 0.8 pedal at full lock (4450 m,
+  12 m/s), the fronts creep at 0.4-0.9 m/s (slip 0.93-0.96) and the engine in fourth follows them down to 0 and
+  stalls; the autopilot has no restart. ngp and experimental lock both fronts at the same corner and finish
+  (282.12 / 277.27 s). The creep is loose-v1's flat friction, not the berm: no fall from the peak to sliding, so a
+  brake torque near the peak does not run the wheel into lock (NGP's force falls past its peak; a berm from slip
+  0.99 creeps the same and DNFs at the same step). Fixed in the autopilot (2026-11-08): neutral while the braked
+  wheels drag the engine under 89 rad/s for 4 steps, plus restarting a stalled engine on the ignition. The Golf now
+  finishes RSF 104 under eb in 275.34 s; all 27 ngp sweep runs keep their times, eb moves only on the Golf
+  track-10_O (+1.21 s, neutral at a front lock in first) and the Celica RSF 104 (+0.06 s).
 - Not adopted (2026-11-08, prototype): a berm built over sliding distance (per-wheel state growing over the patch
   length 2a of sliding past the ramp's start, washing out over 5 cm of rolling). Its steady state s / (s + 3.6(1 - s))
   (0.79 at slip 0.93 against the ramp's 0.72) behaves like the ramp: the Golf on RSF 104 DNFs at the same step (washout
@@ -1226,9 +1213,10 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   0.892 g (locked over best 1.13-1.16), no variant locks every wheel; Golf and Celica stage times on RSF 104/111/389
   within 0.05 s. It fixes nothing and adds a state.
 - Scorecard (experimental-brush, [Scorecard](#scorecard), 2026-11-08 after gravel's shear law; main 4bb4c042 52/103,
-  this 61/103): passes the pea-stone μ_y over max at 2.5/5/10/15° 0.327/0.547/0.798/0.912 (main 0.40/0.68/0.95/1.00),
-  the rally ratios at 5/10/20° 0.547/0.798/0.964 (0.68/0.95/1.00), α90 14.25° (8.5), the slope at 6.7 kN 6.04 /rad
-  (7.37), gravel peak κ 0.58 (0.23), circle 0.664 g (0.620), locked over ABS K 0.15 1.53 / 1.34 (1.38 / 1.20), locked
+  this 61/103): passes the pea-stone μ_y over max at 2.5/5/10/15° 0.327/0.547/0.798/0.912 (was 0.40/0.68/0.95/1.00),
+  the rally ratios at 5/10/20° 0.547/0.798/0.964 (was 0.68/0.95/1.00), α90 14.25° (was 8.5), the slope at 6.7 kN
+  6.04 /rad (was 7.37), gravel peak κ 0.58 (was 0.23), circle 0.664 g (was 0.620), locked over ABS K 0.15
+  1.53 / 1.34 (was 1.38 / 1.20), locked
   over lateral max 1.458, locked over traction 1.305, gravel over tarmac braking 0.748, the snow rows (unchanged);
   newly misses gravel-peak-slip-angle (11-16°, Croft-White's ~12° saturation, inferred): the curve has no peak, so the
   0-40° argmax is 40°, against the pea-stone curve still rising at 38° (that row and pea-peak-alpha ≥ 15 conflict).
@@ -1237,12 +1225,12 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   Both conflicting rows were split by speed on 2026-11-08 (Gravel at stage speed, below): ngp / eb now pass
   gravel-cw-mu-y30-over-peak 0.956 / 0.973, gravel-cw-alpha90 7.5 (MISS) / 21.0°.
 - Gravel's shear law in game (2026-11-08, main 4bb4c042 → this, experimental-brush; ngp unchanged by construction):
-  Fiesta Rally2 RSF 345 from 50 km/h declutched, full pedal 0.892 → 0.882 g, wheel slip 0.943 → 0.946 (the wheels still
-  do not lock fully, as before); ABS K 0.15 0.645 → 0.576 g (its wheels' mean slip 0.08-0.13: below the slower rise's
-  plateau), locked over ABS 1.38 → 1.53. r40 circle 0.620 → 0.664 g. Standstill after the stop, peak speed per half
-  second: full pedal 0.345/0.055/0.016/0.006/0.002/0 → 0.347/0.031/0.008/0 m/s, 0.35 pedal 0.346/0.029/0.008/0 →
-  0.347/0.031/0.008/0; no drift after 1 s either. Soil↔hard RSF 469 / 473 (Fiesta): 274.52 → 274.59 s; 473 main
-  rolled at 22 s (autopilot), now finishes 274.40 s; wheel-speed reversals (> 0.01 m/s, over 2 m/s) 0.023-0.034 of
+  Fiesta Rally2 RSF 345 from 50 km/h declutched, full pedal 0.882 g (was 0.892), wheel slip 0.946 (was 0.943;
+  the wheels still do not lock fully, as before); ABS K 0.15 0.576 g (was 0.645; its wheels' mean slip 0.08-0.13:
+  below the slower rise's plateau), locked over ABS 1.53 (was 1.38). r40 circle 0.664 g (was 0.620). Standstill after
+  the stop, peak speed per half second: full pedal 0.347/0.031/0.008/0 m/s (was 0.345/0.055/0.016/0.006/0.002/0),
+  0.35 pedal 0.347/0.031/0.008/0 (was 0.346/0.029/0.008/0); no drift after 1 s either. Soil↔hard RSF 469 / 473
+  (Fiesta): 274.59 s (was 274.52); 473 now finishes 274.40 s (main rolled at 22 s, autopilot); wheel-speed reversals (> 0.01 m/s, over 2 m/s) 0.023-0.034 of
   steps on 469 both, 0.022-0.037 on 473 (main 0.05-0.12 in its crash). Stage times, ngp / main eb / this eb (s):
 
   | Car | RSF 104 | RSF 111 | RSF 389 (snow) | track-11_O (snow) |
@@ -1273,13 +1261,13 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   (longitudinal kept dry): wet 345 locked over ABS K 0.15 1.651 against 1.894 both axes (main 1.648); no wet-gravel
   braking data choose between them, both axes keep the law's one K.
 - Wet gravel (2026-11-08, `tyre/gravel-speed`, main 8e65298c → wet α0, experimental-brush; dry gravel and snow
-  byte-identical, traces compared on RSF 104 for all three cars, ngp identical): scorecard 76 → 80/112 (ngp 37/112),
-  the four wet-gravel rows MISS → PASS (0.327/0.547/0.798/0.912 → 0.227/0.404/0.648/0.797 at 2.5/5/10/15°), CW rows
-  0.995 → 0.973 and 14.25 → 21.0°. Fiesta Rally2 RSF 345 `--wetness wet` from 50 km/h declutched: locked 0.820 →
-  0.815 g, ABS K 0.15 0.497 → 0.430 g (locked over ABS 1.648 → 1.894), K 0.2 0.479 → 0.388 g; r40 circle wet: main no
-  latch, now 0.415 g (dry 0.664 both). Standstill after the stop, peak speed per half second, wet: full pedal
-  0.112/0.026/0.008/0.003/0 → 0.068/0.011/0.003/0 m/s, 0.35 pedal 0.097/0.020/0.010/0.005/0.004/0.011/0.087/0.012 →
-  0.094/0.024/0/0. Stage times (s), wet: ngp / main eb / eb; dry eb as main (RSF 111 287.08/286.37/298.19, 389
+  byte-identical, traces compared on RSF 104 for all three cars, ngp identical): scorecard 80/112 (was 76; ngp 37/112),
+  the four wet-gravel rows MISS → PASS (0.227/0.404/0.648/0.797 at 2.5/5/10/15°, was 0.327/0.547/0.798/0.912),
+  CW rows 0.973 (was 0.995) and 21.0° (was 14.25°). Fiesta Rally2 RSF 345 `--wetness wet` from 50 km/h declutched:
+  locked 0.815 g (was 0.820), ABS K 0.15 0.430 g (was 0.497; locked over ABS 1.894, was 1.648), K 0.2 0.388 g
+  (was 0.479); r40 circle wet 0.415 g (main: no latch; dry 0.664 both). Standstill after the stop, peak speed per
+  half second, wet: full pedal 0.068/0.011/0.003/0 m/s (was 0.112/0.026/0.008/0.003/0), 0.35 pedal
+  0.094/0.024/0/0 (was 0.097/0.020/0.010/0.005/0.004/0.011/0.087/0.012). Stage times (s), wet: ngp / main eb / eb; dry eb as main (RSF 111 287.08/286.37/298.19, 389
   176.75/177.40/183.42, track-11_O 636.60/640.27/652.44 for Fiesta/Celica/Golf):
 
   | Car | RSF 104 wet | RSF 111 wet |
@@ -1356,11 +1344,12 @@ Published: locked 0.47-0.66 g (gravel), 0.31-0.35 g (snow); locked over ABS 1.12
   wet slope and the wet α0 unchanged. Materials (`materials` example, every class-1 id: 1-51, 153-155, 177-199): damp
   is the dry static and soil static × 0.9250 (±0.0001, the print's rounding), wet × 0.850 fine, 0.845 medium, 0.8525
   coarse. Evidence: Moyer's sprinkled gravel locked 1.06-1.18 of dry, no damp loss measured, wet roads 0.76-0.90 of dry
-  (above). Fiesta Rally2, RSF 345 from 50 km/h declutched, brush, damp before → after (dry): locked 0.863 → 0.897 g
-  (0.892), best threshold (K 0.7) 0.714 → 0.784 (0.767), ABS K 0.15 0.560 → 0.618 (0.624); ngp, brush dry and wet,
-  `experimental` damp traces bit-equal. Flat gravel circle (map 85 under 17 / 18, tyre 3, r 40, ramp 0.4), kin g
-  damp 0.888 → 0.979 (dry 0.987). Scorecard: `gravel-car-damp-over-dry-locked-50` 0.968 → 1.006,
-  `-best-50` 0.931 → 1.022 (context; the threshold's best K is a single run each); no other row moves.
+  (above). Fiesta Rally2, RSF 345 from 50 km/h declutched, brush, damp at the dry level (was: locked 0.863 g,
+  best threshold (K 0.7) 0.714, ABS K 0.15 0.560; dry 0.892 / 0.767 / 0.624): locked 0.897 g, best threshold (K 0.7)
+  0.784, ABS K 0.15 0.618; ngp, brush dry and wet, `experimental` damp traces bit-equal. Flat gravel circle
+  (map 85 under 17 / 18, tyre 3, r 40, ramp 0.4), kin g damp 0.979 (was 0.888; dry 0.987). Scorecard:
+  `gravel-car-damp-over-dry-locked-50` 1.006 (was 0.968), `-best-50` 1.022 (was 0.931; context; the threshold's best K
+  is a single run each); no other row moves.
 - Not adopted (2026-11-08): the exponential approach on the brush's own stiffness (NGP's slope, u = 3ψ, the brush's
   adhesion/sliding split): pea stone 0.38/0.61/0.85/0.95 at 6.7 kN and 0.98 at 20°, all four pea rows still miss; one
   isotropic s0 on both axes (the soil's K alike, Cx/Cy = μx/μy): locked over ABS K 0.15 1.67 at 50 km/h (band ≤ 1.59),
