@@ -1638,7 +1638,7 @@ map 85 under `--material-as 116`; launch: `--flat-out` from the boot, 0-40 km/h;
   slows at 0.017 g to a stop, from 4 m/s it gains 0.027 g (brush 0.017). Both off: 0.025 g from rest. Tooling
   checked: 116's values copy (μ 0.10/0.095, rolling 0.02, class 5; its collision values change nothing), throttle
   0.3 stays put too. BMW M3 E30 frozen, both Porsche 911 SC creep 0.02 m/s and stop. A real RWD car would crawl
-  (free-rolling drag ~0.013-0.0145 Fz at walking pace: radial car tyres, smooth road, Wong Fig. 1.3, eq. 1.1, [Wong](#wong-theory-ground-vehicles-against-the-open-items-2026-11-09)). Either change is the integrator's or the drive line's,
+  (free-rolling drag ~0.013-0.0145 Fz at walking pace: radial car tyres, smooth road, Wong Fig. 1.3, eq. 1.1, [Wong](#wong-theory-of-ground-vehicles-against-the-open-items-2026-11-09)). Either change is the integrator's or the drive line's,
   not the brush's: open as a decision.
 - Combined slip: the brush already loses more side force driving than braking at the same slip (α 6°, κ ±0.05: 0.98
   / 1.03; NGP symmetric 0.96). Its |F| stays on the circle (α 25°, κ 0.3: 1.02 of the pure lateral, NGP 1.02), where
