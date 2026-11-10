@@ -291,3 +291,21 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   launcher's preview, else `driveline.ini` from above; the viewer's loading screen.
 - Open: no tangent-space bump or specular; `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.
+
+## The flat pad
+
+- A generated BTB stage (`rbr_btb::pad`, `BUILD 1`): a level 2 km square of one material, written as an ordinary BTB
+  track folder (`track/`) and prepared (`stage/`) under `<player>/pad/<name>-b<BUILD>/`, never listed by the launcher.
+- Geometry: 100x100 squares of 20 m at height 0, UVs tiling every 10 m; start on the centreline 500 m in from one edge
+  facing the far edge; driveline straight from 50 m behind the start to 1450 m ahead; pace notes start, splits at 400
+  and 800 m, finish at 1300 m, end 50 m after.
+- One pad per material: `pad-tarmac` 37, `pad-gravel` 17, `pad-snow` 101 (`SnowOnGravel_Shallow`, the tyre work's snow),
+  `pad-<id>` any other id 1-255 (`pad-116` is NGP's ice, unnamed in 1.02's table); stage number `2_000_000 + id`; `mat.ini` one map, all cells the id, with
+  `damp`/`wet` rows of id+1/id+2 for a `_Dry` id; `track.ini` physics `tarmac`/`snow`/`gravel` from the key prefix (gravel when unnamed).
+- One `Visible=1`, `CollisionModel=0` ground object, so the mesh is both drawn (`BTB_Diffuse`, one generated grid
+  texture) and in `col.col` (every face on `.mat` run 0); no `ksh` meshes, so the `(3,0x16)` chunk is empty.
+- Preparation builds under a temporary sibling name (pid, call counter) and renames into place; an existing final
+  directory is reused and never written in place, so eight parallel cold starts share one build.
+- `rbr-standalone --stage pad-<name>` prepares the pad and runs as `--stage <prepared> --btb 41 --surface <pad's>`
+  (explicit `--surface` wins); `viewer pad-<name>` prepares it and draws it as the BTB stage (the live command's
+  `--stage pad-<name>` resolves in the physics program); `--manoeuvre` needs a pad stage; `--material-as` is independent.

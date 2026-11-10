@@ -232,6 +232,12 @@ fn run() -> Result<(), String> {
         }
     }
     let mut data = Data::from_env().ok_or("RBR_DATA is not set")?;
+    // A pad stage (a positional `pad-<name>`, `rbr_btb::pad`) is prepared here and drawn as the BTB stage it is; the
+    // physics program prepares the same name itself (`--stage pad-<name>` in the live command).
+    if let Some(material) = args.stage.as_deref().and_then(rbr_btb::pad::material) {
+        let pad = rbr_btb::pad::prepare(material, &data.install().join("Maps")).map_err(|e| format!("pad: {e}"))?;
+        args.stage = Some(pad.stage);
+    }
     let mut fmod_bank = None;
     if let Some(key) = &args.rsf_car {
         let root = std::env::var_os("RBR_RSF").map(PathBuf::from);

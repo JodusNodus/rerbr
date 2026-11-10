@@ -469,11 +469,11 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   now bottoms at 82 rad/s with the clutch open (NGP's Golf 89).
 - Limiter: no experimental car over `RPMLimit` in gear beyond one whole-rad/s sample; over it only in the start
   burnout in neutral (Fiesta 0.5–0.6 s, +34 rpm; Celica 0.01 s, +6) and the Fiesta's drop into first.
-- Fiesta Rally2 0-100 km/h on the flat pad (`--boot --stage track-85_M --flat-pad 37|17 --manoeuvre
-  ramp-steer,170,0.05`, gravel with `--surface gravel`; the approach is full throttle past 100 km/h, heading held,
-  upshifts on rpm even on wheelspin, z within 2 cm; timed from 0.5 m/s in the trace; `cdadc164`): tarmac NGP 4.00 /
-  exp 3.98 s (0-60 1.75 / 1.75), gravel 4.62 / 4.57 (0-60 2.25 / 2.24; second gear at 0.7 s on wheelspin). The pad's
-  tarmac figure replaces the slope-corrected 504 estimate.
+- Fiesta Rally2 0-100 km/h on the flat pad (`harness/pad_start.py`: `--stage pad-tarmac|pad-gravel --flat-out`,
+  the stage starts' driver; timed from 0.5 m/s): tarmac NGP 4.00 / exp 3.98 s (0-60 1.75 / 1.75), gravel 4.62 / 4.63
+  (0-60 2.25 / 2.31). Polo GTI R5 tarmac 4.10 / 4.08 against Volkswagen's "approx. 4.1 s", gravel 4.79 / 4.76. The
+  pad's tarmac figure replaces the slope-corrected 504 estimate. Through the manoeuvre approach (upshifts on rpm even
+  on wheelspin, second gear at 0.7 s) the gravel pad gave 4.62 / 4.57.
 - The same on stages (`--flat-out`, full throttle throughout, no upshift on wheelspin): RSF 504 tarmac +6.7 % NGP
   4.52 / exp 4.47 s (4.46 on `b97695d86`, 4.44 at `96c85981`; brush 4.33, 4.35 after its fix); track-64_E gravel
   flat 4.66 / 4.67 (was 4.63); RSF 345 gravel −4 % 4.50 / 4.49 (was 4.44). Exp 0-60 on gravel is the slower part

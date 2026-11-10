@@ -1,4 +1,4 @@
-//! `--manoeuvre`: open-loop handling manoeuvres on `--flat-pad` (ours, test only; `harness/handling.py` runs the set).
+//! `--manoeuvre`: open-loop handling manoeuvres on a pad stage (ours, test only; `harness/handling.py` runs the set).
 //!
 //! The car holds its start heading on the pad and a speed controller brings it to the entry speed (full throttle
 //! through the gears, then a PI on the throttle, brake only far over), shifting up at the race controller's shift

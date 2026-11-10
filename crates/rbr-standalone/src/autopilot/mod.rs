@@ -539,7 +539,7 @@ pub struct Measure {
     pub plan: Option<Plan>,
     /// `--race LAT,BRAKE,SLIP`: race driving on a line across the road at the car's limits (`race`).
     pub race: Option<race::Race>,
-    /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`pad`, with `--flat-pad`).
+    /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`pad`, on a pad stage).
     pub manoeuvre: Option<Manoeuvre>,
 }
 
