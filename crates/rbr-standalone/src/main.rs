@@ -173,6 +173,24 @@ fn run() -> ExitCode {
             }
         }
     }
+    // A pad stage (`--stage pad-<name>`): prepared here, then run as the prepared stage with `--btb 41` and the
+    // pad's surface; an explicit `--surface` still wins. The data dir (`Maps`) is known at this point.
+    if let Some(material) = rbr_btb::pad::material(&args.stage) {
+        match rbr_btb::pad::prepare(material, &data.install().join("Maps")) {
+            Ok(pad) => {
+                eprintln!("rbr-standalone: pad {} is {}", args.stage, pad.stage);
+                args.stage = pad.stage;
+                if args.surface.is_none() {
+                    args.surface = Some(pad.surface);
+                }
+                args.btb = Some(rbr_btb::stage::SKY_MAP);
+            }
+            Err(e) => {
+                eprintln!("pad {}: {e}", args.stage);
+                return ExitCode::FAILURE;
+            }
+        }
+    }
     let args = args;
     let recording = args.recording.as_deref();
     // A pack car's record word is the slot the game holds it in (`car_pack::SLOT`).
