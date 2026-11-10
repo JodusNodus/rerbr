@@ -671,6 +671,34 @@ pub const CARCASS_X: f64 = 450_000.0;
 pub const CARCASS_Y_PRESSURE: f64 = 1.7;
 pub const CARCASS_X_PRESSURE: f64 = 0.6;
 
+/// The slip stiffnesses Cy, Cx against the inflation pressure on a hard surface, as a power of NGP's stiffness factor
+/// `sf`, which rises 6.9 % per +0.5 bar from 2.0 bar: NGP's Cα rises with it (+5.3 %), the sources' falls or is flat.
+/// Cα per +0.5 bar at 4 kN: MF 6.1 -11 to -14 % (2.0-2.6 bar), op het Veld (MSc TU/e 2008) -4 %, Goodyear (arXiv
+/// 2305.18422, Fig 9) -18 %, an A005 slick +5.7 % (Richardson 2017): the mean -7.2 % is sf^-1.1. Brush theory has both
+/// slip stiffnesses ∝ the footprint's a² ∝ 1/p, so Cx takes the same power (MF 6.1's Kx alone falls faster, -15 %).
+pub const SLIP_PRESSURE: f64 = -1.1;
+/// The pressure at which the slip stiffnesses keep NGP's level (the tuned 1.3 times its slope): the probe's 2.0 bar,
+/// where the scorecard's pressure rows start (ours).
+pub const REFERENCE_PRESSURE: f64 = 200_000.0;
+
+/// NGP's stiffness factor at [`REFERENCE_PRESSURE`] from the type's table (1 when it has none).
+pub fn reference_stiffness_factor(axis: &[f32], factor: &[f32]) -> f64 {
+    let n = axis.len().min(factor.len());
+    let p = REFERENCE_PRESSURE as f32;
+    match (0..n.saturating_sub(1)).find(|&k| p <= axis[k + 1]) {
+        _ if n == 0 => 1.0,
+        _ if p <= axis[0] => f64::from(factor[0]),
+        Some(k) => f64::from(factor[k] + (factor[k + 1] - factor[k]) * (p - axis[k]) / (axis[k + 1] - axis[k])),
+        None => f64::from(factor[n - 1]),
+    }
+}
+
+/// NGP's stiffness factor `sf` made the factor the hard-surface slip stiffnesses take ([`SLIP_PRESSURE`]): `sf_ref` times
+/// (sf/sf_ref)^SLIP_PRESSURE, so they keep NGP's level at the reference pressure and move with the sources' slope.
+pub fn slip_pressure_factor(sf_ref: f64, sf: f64) -> f64 {
+    sf_ref * libm::pow(sf / sf_ref, SLIP_PRESSURE)
+}
+
 /// The longitudinal carcass stiffness, N/m, at the pressure factor `pf`: [`CARCASS_X`] times its pressure power
 /// ([`CARCASS_X_PRESSURE`]). No load term.
 pub fn carcass_x(cal: &Calibration, pf: f64) -> f64 {
@@ -1241,6 +1269,25 @@ mod tests {
         assert!((cy - 1.116).abs() < 0.002 && (cx - 1.0396).abs() < 0.001, "{cy} {cx}");
         // sigma_y = C_y/c_y: the slip stiffness moves with the factor, the carcass faster.
         assert!(pf / cy < 0.96);
+    }
+
+    #[test]
+    fn the_slip_stiffnesses_fall_with_pressure_on_a_hard_surface() {
+        // NGP's factor +6.9 % (2.0 to 2.5 bar): Cy and Cx -7.2 %, the sources' mean, NGP's level at the reference.
+        let (cal, x, pf) = (synth_cal(), synth_input(), 1.069);
+        assert_eq!(slip_pressure_factor(0.97, 0.97), 0.97);
+        let at = |sf: f64| {
+            stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, slip_pressure_factor(0.97, sf), 1.0, M_CY, &cal)
+        };
+        let r = at(0.97 * pf) / at(0.97);
+        assert!((r - 0.928).abs() < 0.002, "{r}");
+        // sigma_y = C_y/c_y then shortens 17 % (op het Veld -12 %, MF 6.1 -21 to -26 %).
+        let sigma = r / (carcass_y(&cal, 150e3 * pf, pf) / 150e3);
+        assert!((sigma - 0.83).abs() < 0.01, "{sigma}");
+        // The factor at 2.0 bar from the table, between its entries.
+        let f = reference_stiffness_factor(&[150e3, 250e3, 300e3], &[0.9, 1.0, 1.1]);
+        assert!((f - 0.95).abs() < 1e-6, "{f}");
+        assert_eq!(reference_stiffness_factor(&[], &[]), 1.0);
     }
 
     /// The synthetic tyre's longitudinal carcass stiffness.
