@@ -1819,6 +1819,23 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   less. Their lap simulation (Table 3's 2.08 km stage, 78.2 s loose, loose μ = half of tarmac's by assumption): zero-yaw
   aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
   only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
+- Aero with sideslip, a prototype (2026-11-10, `--aero yaw` with an experimental profile, off by default;
+  `rbr_hybrid::ngp::aero_model` on NGP's downforce update): my read of D&R's Figs 10 and 14 (model N at 0 / 15°, 8 /
+  11 / 14 mm): front lift -1.30 / -0.25, -1.05 / -0.15, -0.85 / +0.05, about linear; rear -1.4, -1.7, -2.0 to -1.8;
+  drag 2.85, 3.45, 3.8 to 4.4-4.6 (+54, +30, +21 %). So the front downforce × max(0, 1 - β/17°), the rear NGP's, the
+  drag × (1 + 0.35 β/15°) held past 15° (no data there; a guess). `handling.py`, experimental-brush, 140 km/h,
+  without / with: gravel pad ramp steer peak g Fiesta Rally2 1.126 / 1.073, Fiesta WRC 2019 1.145 / 1.155 (sideslip
+  at the peak 20 / 39°), sine dwell g -2 to -10 % from 0.3 of lock up, lowest spinning amplitude WRC 0.75 / 1.0,
+  Rally2 0.55 / 0.55; tarmac ramp 1.461 / 1.437 and 1.424 / 1.406 (sideslip 3.5°), lowest spinning amplitude WRC
+  0.4 / 0.3, Rally2 0.3 / 0.3; at 110 km/h on gravel within 3 %. Not decided: one model test of a 2004 car at tarmac
+  clearances, on files with four times its downforce.
+- The same pads without it (experimental-brush): ramp steer peak g at 140 km/h over the r40 circle's (70 / 82
+  km/h): gravel 1.145 / 0.974 (WRC), 1.126 / 0.967 (Rally2) = 1.17; tarmac 1.46 / 1.33, 1.42 / 1.34 = 1.06-1.10.
+  The real telemetry's g-g p95 |lat| at 120-150 over 30-60 km/h (`data/rally-telemetry-gravel.csv`, medians):
+  Finland 2021 1.24 (0.96-1.43 over 8 drives), over 60-90 km/h 1.15; Wales 2017 1.01 and 0.93. A bin's p95 is a
+  lower bound of the limit and Finland's fast corners are cambered, so the files' downforce is not contradicted;
+  D&R's level (a quarter) would give +5 %. A CFD of the 2008 Impreza S14 WRC (DynaRace blog, k-ε, no cooling flow;
+  weak) gives 1948 N at 160 km/h, ~1.7 kN at 150: the files' 2006 WRC cars carry 1.61-1.95 kN.
 - Braking between cars (2026-11-10; `brake_test.py`, pad-tarmac, 100-0 km/h declutched, mean g, best threshold / ABS
   at κ 0.15): Alpine A110 Rally (500 N at 150 km/h) ngp 1.20 / 1.23 (32.7 / 31.9 m), brush 1.21 / 1.25; Fiesta Rally2
   (3100 N) ngp 1.32 / 1.32 (30.0 / 29.8 m), brush 1.31 / 1.33. NGP's tyre tables are the same for every car and the

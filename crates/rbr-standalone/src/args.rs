@@ -217,7 +217,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)]; experimental writes no records (--saves compares only)
+       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|yaw (a prototype, with an experimental profile: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, an open-loop handling manoeuvre)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
@@ -555,7 +555,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     args.physics.tyre_tuning = tyre_tuning;
     if let Some(aero) = aero {
         if aero != "ngp" && args.physics.is_ngp() {
-            return Err("--aero needs --physics experimental or experimental-brush (NGP 7's physics stays NGP's)".into());
+            return Err(
+                "--aero needs --physics experimental or experimental-brush (NGP 7's physics stays NGP's)".into()
+            );
         }
         args.physics.aero = aero;
     }
@@ -839,6 +841,10 @@ mod tests {
                 let t = rbr_tyre::Tuning { slide_grip: Some(0.8), ice: 1.2, ..rbr_tyre::Tuning::MODEL };
                 assert_eq!(a.physics, Profile { tyre_tuning: t, ..Profile::EXPERIMENTAL_BRUSH })
             }),
+            (format!("{LIVE} --physics experimental --aero yaw"), |a| {
+                assert_eq!(a.physics, Profile { aero: "yaw", ..Profile::EXPERIMENTAL })
+            }),
+            (format!("{LIVE} --aero ngp"), |a| assert_eq!(a.physics, Profile::NGP)),
             (LIVE.into(), |a| assert!(a.keeps_records())),
             (format!("{LIVE} --physics ngp"), |a| assert!(a.keeps_records())),
             (format!("{LIVE} --physics experimental"), |a| assert!(!a.keeps_records())),
@@ -1054,6 +1060,11 @@ mod tests {
                 format!("{LIVE} --physics experimental --tyre-tuning tarmac=1.1"),
                 "--tyre-tuning needs --physics experimental-brush (it tunes the brush tyre)",
             ),
+            (
+                format!("{LIVE} --aero yaw"),
+                "--aero needs --physics experimental or experimental-brush (NGP 7's physics stays NGP's)",
+            ),
+            (format!("{LIVE} --physics experimental --aero wing"), "--aero wing: one of ngp, yaw"),
             (
                 format!("{LIVE} --physics experimental-brush --tyre-tuning tarmac=2"),
                 "--tyre-tuning: tyre tuning tarmac=2: from 0.7 to 1.3",

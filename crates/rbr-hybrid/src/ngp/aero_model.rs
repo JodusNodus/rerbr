@@ -48,10 +48,8 @@ pub(super) fn factors(forward: f32, speed: f32) -> Option<(f32, f32)> {
     if !YAW.get() {
         return None;
     }
-    if !(speed > MIN_SPEED) {
-        return Some((1.0, 1.0));
-    }
-    Some(yaw_factors((forward.abs() / speed).min(1.0).acos().to_degrees()))
+    let cos = if speed > MIN_SPEED { (forward.abs() / speed).min(1.0) } else { 1.0 };
+    Some(yaw_factors(cos.acos().to_degrees()))
 }
 
 #[cfg(test)]
