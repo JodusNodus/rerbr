@@ -59,12 +59,7 @@ fn call(model: bool, engine: f32, locked: f32, a: f32, b: f32) -> After {
     mem.set_f32(DEF + 0x664, SLIP_GAIN_A);
     mem.set_f32(DEF + 0x674, 0.017);
     let out = with_gear(&mut mem, THIS, |w, g| clutch_torque(w, g, &mut Host(model), a, [b, C, D]));
-    After {
-        out,
-        engine: mem.f32(STATE + 0x45c),
-        word: mem.u32(STATE + 0x368) as i32,
-        trigger: mem.u32(STATE + 0x578),
-    }
+    After { out, engine: mem.f32(STATE + 0x45c), word: mem.u32(STATE + 0x368) as i32, trigger: mem.u32(STATE + 0x578) }
 }
 
 #[test]
