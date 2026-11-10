@@ -169,11 +169,15 @@ impl Tyre<'_> {
 
     /// |Fy(κ)|/|Fy(0)| at the slip angle `deg`, the contact speed held (combined slip).
     pub fn combined(&mut self, fz: f32, deg: f32, kappa: f32) -> f32 {
+        self.at_slip(fz, deg, kappa).1 / self.at_slip(fz, deg, 0.0).1
+    }
+
+    /// (|Fx|, |Fy|) at the slip angle `deg` and the slip ratio `kappa`, the contact speed held.
+    pub fn at_slip(&mut self, fz: f32, deg: f32, kappa: f32) -> (f32, f32) {
         let (v, a) = (self.speed, deg.to_radians());
         let (vlat, vlong) = (v * a.sin(), -v * a.cos());
-        let r = self.p.effective_radius;
-        let fy = |t: &mut Self, k: f32| t.forces(fz, vlat, vlong, (1.0 + k) * (-vlong) / r).1.abs();
-        fy(self, kappa) / fy(self, 0.0)
+        let (fx, fy) = self.forces(fz, vlat, vlong, (1.0 + kappa) * (-vlong) / self.p.effective_radius);
+        (fx.abs(), fy.abs())
     }
 
     /// The cornering stiffness over the load, per rad: the least-squares slope of Fy/Fz over 0.25-2° (as the

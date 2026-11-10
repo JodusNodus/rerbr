@@ -149,7 +149,7 @@ impl Model for Brush {
                 * if soil {
                     pressure_factor
                 } else {
-                    brush::slip_pressure_factor(t.sf_ref, f64::from(x.stiffness_factor)) * scale
+                    brush::slip_pressure_factor(t.sf_ref, f64::from(x.stiffness_factor), fz) * scale
                 },
             wetness: f64::from(x.water_factor),
             hydroplaning: true,

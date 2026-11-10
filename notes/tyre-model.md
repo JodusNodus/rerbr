@@ -527,7 +527,11 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   and the Fiesta under the brush. No test at 110 km/h in the report.
 - The same paper as the pressure slope's (arXiv 2305.18422, read): Cα falls with pressure at low loads and rises at
   high loads (text at Fig. 9); up to the nominal load it falls (-19.5 % at 67 %, -12 % at 100 %, the scorecard
-  row), which covers a rally car's wheels, so `SLIP_PRESSURE`'s one power stays.
+  row), and through zero at about 150 % (-3.6 % at 133 %, +4.0 % at 167 %). `SLIP_PRESSURE` is the power at 4 kN
+  and fades with the load to none at 6.3 kN (`SLIP_PRESSURE_ZERO_LOAD`, 1.5 times the 20/65-18's 430 kg, for every
+  tyre: guess), none above (2026-11-10; the rise there unmeasured on a rally tyre). Cα per +0.5 bar: -5.7 % at 4
+  kN, 0 at 6.3 kN (`calpha_dp05_6k3`, row `tarmac-calpha-pressure-high-load`). Cx takes the same fade, with no
+  source for it. Every car runs the reference 2.0 bar, so only a changed setup shows it.
 - The Fiesta Rally2 never breaking the criteria under the brush (2026-11-10, per-axle probes, 0.4 of lock at 80
   km/h): the rear holds its full force at 5.5-8° of slip (Fy/Fz 1.20-1.24) where NGP's needs 9-18°, so the sideslip
   peaks at 5° against 15° and the yaw rate is gone 0.2 s after the steering ends (ngp 1.4 s). That is the cornering
@@ -600,7 +604,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
     2.0 / 1.5 / 1.35 at 0.9 / 4.4 / 8 kN (belt); Cα/Fz about 37 per rad at 4.4 kN, 25-32 at 8 kN. At 8 kN more
     pressure gives more force and slope (peak +17 % from 20 to 38 psi), on the FSAE tyre at 0.7-1.6 kN less: the
     sign turns with the load as Goodyear's. A rally car's outside wheel (5.8-6.4 kN) is over the 20/65-18's 430 kg,
-    so `SLIP_PRESSURE`'s fall may have the wrong sign there. Open.
+    so `SLIP_PRESSURE`'s fall had the wrong sign there: it now fades to none at 6.3 kN (see the pressure slope).
   - SAE 982747, a 350/710-18 IMSA radial, Fy against Fx at 2° and 4° (Figs 20-21, normalised, fig ±0.1): at 2° the
     side force holds to about 0.8 of the peak braking force, at 4° about 0.8-0.85 of it is left at half. Lab at 4
     kN, Fy/Fy(0) at 0.5 / 0.75 of the peak braking force: 2° brush 0.96 / 0.88, ngp 0.82 / 0.64; 4° brush 0.93 /
@@ -624,6 +628,9 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   along the slip velocity is measured, and NGP gives side force away too early at small angles and keeps too much of
   it in a deep slide. The tyre itself: Cα/Fz (2° secant) 17.9 / 15.4 per rad at 2.4 / 4.8 kN, μ_y 1.13 / 0.97 /
   0.89 and μ_x 1.17 / 1.18 / 1.14 at 2.4 / 4.8 / 7.2 kN. A road tyre on a belt: the shape carries, the levels do not.
+  Scored (`data/tyre-targets.csv`, rows `tarmac-brake-in-turn-*`, `tarmac-slide-direction-*`, bands the reading ±0.03):
+  brush 8 of 10, ngp 1 of 10. The brush's two misses: the largest braking force at 5° and 8° over the pure peak, 0.89
+  / 0.83 against 0.86 / 0.77 (it brakes 4-7 % too well in a turn; the measured tyre heats and wears in those sweeps).
 - An analytical combined-slip model with a flexible carcass, and its test data (2026-11-10; library
   `xu-guo-zhang-karimi-2014`, Math. Probl. Eng. 2014, 397538; Fig 14 a P245/65R17 at 4 kN, 2°, 4°, 8°, fig ±0.05):
   - Measured at 2°: Fy/Fy(0) about 0.98 / 0.85 at 0.5 / 0.75 of the peak Fx, as Xia's tyre and the brush, not NGP;

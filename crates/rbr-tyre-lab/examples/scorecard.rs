@@ -133,6 +133,24 @@ fn main() {
     out("kx_over_ky_4k", kxs[2] / calphas[2]);
     out("comb_a2_4k", t.combined(4000.0, 2.0, -0.25));
     out("comb_a4_4k", t.combined(4000.0, 4.0, -0.25));
+    // Braking in a turn at a measured road tyre's load (SAE 2020-01-0896, 4.8 kN, slip ratio to -0.3): the side force
+    // left at a half and three quarters of the pure braking peak, the largest braking force over that peak, and the
+    // force's direction Fy/Fx at the end.
+    let brake = peak(brake_kappas(), |k| t.mu_x(4800.0, -k)).0 * 4800.0;
+    for deg in [2.0f32, 5.0, 8.0] {
+        let curve: Vec<(f32, f32)> = grid(0.0, 0.3, 0.005).map(|k| t.at_slip(4800.0, deg, -k)).collect();
+        for (share, name) in [(0.5f32, "50"), (0.75, "75")] {
+            // The crossing, linear between the grid's points.
+            let fy = curve
+                .windows(2)
+                .find(|w| w[1].0 >= share * brake)
+                .map_or(f32::NAN, |w| w[0].1 + (w[1].1 - w[0].1) * (share * brake - w[0].0) / (w[1].0 - w[0].0));
+            out(&format!("comb_fy_a{deg}_fx{name}_4k8"), fy / curve[0].1);
+        }
+        out(&format!("comb_fx_max_a{deg}_4k8"), curve.iter().fold(0.0f32, |m, c| m.max(c.0)) / brake);
+        let (fx, fy) = curve[curve.len() - 1];
+        out(&format!("comb_fy_over_fx_a{deg}_k0.3_4k8"), fy / fx);
+    }
     // Camber: the camber stiffness at 4 kN, and over the cornering stiffness.
     let camber = t.camber_per_fz(4000.0);
     out("camber_per_fz_4k", camber);
@@ -165,6 +183,7 @@ fn main() {
     let mut tq = Tyre { p: &q, cloud: &cloud, soil, model: model_q, speed, water, camber: 0.0 };
     let pct = |a: f32, b: f32| (b / a - 1.0) * 100.0;
     out("calpha_dp05_4k", pct(t.calpha_per_fz(4000.0), tq.calpha_per_fz(4000.0)));
+    out("calpha_dp05_6k3", pct(t.calpha_per_fz(6300.0), tq.calpha_per_fz(6300.0)));
     out("kx_dp05_4k", pct(t.kx_per_fz(4000.0), tq.kx_per_fz(4000.0)));
     out("sigma_y_4k", t.x63_y(4000.0, 1.0));
     out("sigma_y_dp05_4k", pct(t.x63_y(4000.0, 1.0), tq.x63_y(4000.0, 1.0)));
