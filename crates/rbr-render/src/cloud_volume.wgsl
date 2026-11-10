@@ -338,9 +338,10 @@ fn fs_cloud_shadow(v: SkyOut) -> @location(0) f32 {
     let xz = cloud_params.shadow.xy + uv * cloud_params.shadow.z;
     var tau = 0.0;
     for (var i = 0; i < CLOUD_SHADOW_STEPS; i++) {
-        let h = base + (f32(i) + 0.5) / f32(CLOUD_SHADOW_STEPS) * thickness;
+        let layer_height = (f32(i) + 0.5) / f32(CLOUD_SHADOW_STEPS);
+        let h = base + layer_height * thickness;
         let p = vec3<f32>(xz + to_sun.xz / to_sun.y * h, frame.eye.y + h);
-        tau += volume_density(p, h / thickness, false);
+        tau += volume_density(p, layer_height, false);
     }
     tau *= CLOUD_SHADOW_EXTINCTION * (thickness / f32(CLOUD_SHADOW_STEPS)) / to_sun.y;
     return 1.0 - exp(-tau);

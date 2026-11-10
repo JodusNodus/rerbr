@@ -1104,6 +1104,11 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   byte for byte (6 scenes). Sky domes (`sky_dome.rs`): a world sky face over the stage's middle casts into neither
   the sky's occlusion nor the cascades (39 of 659 readable community variants, e.g. 519, 580); as a caster it left 519 and
   580 black. Under `lighting` the dome is not drawn at all (user decision; 2026-10-27).
+  Probe transitions (2026-11-10, `shader.wgsl::surrounding`): bilinear between the 32 m grid's cell centres, each
+  naming its nearest probe, clamped at the grid's edge. The former cell seed plus its two route neighbours switched
+  between disjoint pairs on folded tracks. Nordschleife's 256 probes, 81.5 m apart over 20.8 km: fixed 16:58,
+  light cloud, Ultra captures across 20 cm at the start/finish and near 12.20 and 12.22 km reduce reflection-sample
+  jumps from 76, 25 and 28/255 to 0, 0 and 1/255. Cube count and bake unchanged; four cube reads instead of two.
 - Sun: cascades and a far layer to 1 km in place of the baked light maps, leaf translucency (`sun.rs`,
   `foliage.rs`); the characters cast into the cascades, and the car's body and the characters take them (the car
   stays out, its own map shadows it). A plant taller than grass is a crown (`trees`: the retail trees are three wings
@@ -1164,7 +1169,10 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   to 0.8 ms on a 1080p open sky; additions off and all but the clouds unchanged byte for byte. With the volume shown
   the ground's shadows come from the volume itself (a 512² R8 map over 8 km about the eye, redrawn each frame;
   `cloud_volume::shadow`, 2026-10-27). Overcast, night, and additions off byte-identical; 1440p scene medians within
-  noise of before.
+  noise of before. The shadow march passes the height within the layer, 0.1 to 0.9 at its five samples, to
+  `volume_density` (2026-11-10): adding the layer base before normalizing had put every clear and light-cloud sample
+  above 1, so those presets cast no shadows. Nordschleife at 13:00, light cloud: open ground 0, cloud shade 253 to
+  254/255 in the raw shadow diagnostic.
 - Merge (2026-10-27): the four names are no longer accepted (`--enhance sky` is an unknown name); `LIGHTING` is the one
   pipeline override (was `SKY_LUT`, `CONTACT`, `PROBES`; `SUN_MASK` stays apart, it needs the pass). The 2D cloud layer
   is gone (`clouded`, `cloud_shape`, `cloud_face_lit`, `clouds.wgsl`): the cloud field's noise, `cloud_turn` and
@@ -1534,18 +1542,9 @@ maximum. Quick with two binaries: about 2.5 to 4 minutes.
 
 ## Open
 
-- Nordschleife lighting (2026-11-10): `shader.wgsl::surrounding` checks only the 32 m cell's nearest probe and its
-  two neighbours in driveline order. The 256-probe cap spaces this 20.8 km circuit's probes 81.5 m apart; near
-  12.20 and 12.22 km the cell seed jumps between 145 and 150 and the chosen pairs share no probes. Fixed 16:58,
-  light cloud, Ultra GPU captures across 20 cm reproduce reflected-colour jumps up to 28/255 there, 76/255 near
-  the start/finish. Affects the car's surroundings, reflections and cabin window light; dry terrain's diffuse light
-  does not read these probes. Fix needs a continuous spatial blend across cells. Terrain/shadow changes matching
-  the reported symptom are not yet isolated; the sun stays fixed during a drive (`relight::Clock::atmosphere`).
-- Cloud shadows (2026-11-10): `cloud_volume.wgsl::fs_cloud_shadow` passes `h / thickness` with the layer base
-  already added to `h`; `volume_density` expects height from base to top in 0..1. Clear and light-cloud layers
-  (`renderer/cloud_volume.rs::layer`, 1200/1000 m and 1100/800 m) therefore sample only h > 1 and cast no cloud
-  shadows. Use `(h - base) / thickness`. This suppresses shadows at Nordschleife's saved light-cloud setting;
-  it does not explain moving patches of shade there.
+- Nordschleife (2026-11-10): broad dry-terrain lighting/shadow changes matching the reported symptom are not yet
+  isolated. The probe transitions and missing cloud shadows are fixed above; dry diffuse terrain does not read the
+  probes, and the sun stays fixed during a drive (`relight::Clock::atmosphere`).
 - Sky dome and cloud transforms and inputs (`SkyDome.vso` `c41`-`c66`); stage in-scatter not reproduced.
 - Cut-out backdrop strips with black transparent texels (Odry's panoramas) show a dark rim along the ridge: the
   alpha cut falls where the filtered colour is half black (462 `HOR_1`, `HOR_2`: transparent texels (0, 0, 0)). A fix

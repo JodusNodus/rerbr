@@ -257,8 +257,7 @@ struct Probes {
     grid: vec4<f32>,
     // The grid's columns and rows, the probes' count.
     counts: vec4<u32>,
-    points: array<vec4<f32>, 256>,
-    // Each cell's nearest probe, row by row.
+    // Each cell centre's nearest probe, row by row; blend between centres.
     cells: array<u32>,
 }
 @group(0) @binding(18) var shadow_ranges: texture_2d_array<f32>;
@@ -1804,35 +1803,24 @@ fn surroundings(n: vec3<f32>, at: vec3<f32>) -> vec4<f32> {
 }
 
 // The stage around `at` along `dir`, blurred to the surroundings cube's `level`, through the tone curve: once the
-// probes are baked (`frame.reflection.z`) the two nearest `at` blended by their distances, of the cell's nearest and
-// its neighbours along the driveline (the probes' first level is the cube's second); else the surroundings cube.
+// probes are baked (`frame.reflection.z`), bilinear between the grid's four surrounding cell centres, each naming
+// its nearest probe (the probes' first level is the cube's second); else the surroundings cube. Shared cell centres
+// keep the blend continuous even where the driveline folds back or meets its start.
 fn surrounding(dir: vec3<f32>, level: f32, at: vec3<f32>) -> vec3<f32> {
     if (frame.reflection.z == 0.0) {
         return textureSampleLevel(surroundings_cube, reflection_sampler, dir, level + CUBE_SHIFT).rgb;
     }
     let size = vec2<i32>(probes.counts.xy);
-    let cell = clamp(vec2<i32>(floor((at.xz - probes.grid.xy) / probes.grid.z)), vec2<i32>(0), size - 1);
-    let first = i32(probes.cells[cell.y * size.x + cell.x]);
-    var near = vec2<i32>(first);
-    var d = vec2<f32>(distance(at, probes.points[first].xyz), 1e30);
-    for (var step = -1; step <= 1; step += 2) {
-        let k = first + step;
-        if (k < 0 || k >= i32(probes.counts.z)) {
-            continue;
-        }
-        let dk = distance(at, probes.points[k].xyz);
-        if (dk < d.x) {
-            near = vec2<i32>(k, near.x);
-            d = vec2<f32>(dk, d.x);
-        } else if (dk < d.y) {
-            near.y = k;
-            d.y = dk;
-        }
-    }
+    let grid_at = clamp((at.xz - probes.grid.xy) / probes.grid.z - 0.5, vec2<f32>(0.0), vec2<f32>(size - 1));
+    let low = vec2<i32>(floor(grid_at));
+    let high = min(low + 1, size - 1);
+    let blend = fract(grid_at);
     let lod = max(level + CUBE_SHIFT - 1.0, 0.0);
-    let a = textureSampleLevel(probe_cubes, reflection_sampler, dir, near.x, lod).rgb;
-    let b = textureSampleLevel(probe_cubes, reflection_sampler, dir, near.y, lod).rgb;
-    return mix(a, b, d.x / max(d.x + d.y, 1e-3));
+    let a = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[low.y * size.x + low.x]), lod).rgb;
+    let b = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[low.y * size.x + high.x]), lod).rgb;
+    let c = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[high.y * size.x + low.x]), lod).rgb;
+    let d = textureSampleLevel(probe_cubes, reflection_sampler, dir, i32(probes.cells[high.y * size.x + high.x]), lod).rgb;
+    return mix(mix(a, b, blend.x), mix(c, d, blend.x), blend.y);
 }
 
 // The open sky along `dir`: `sky_reflected` by `roughness` under the physically based sky, else `sky`. A branch, not a
