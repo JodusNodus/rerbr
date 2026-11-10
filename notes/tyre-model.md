@@ -1537,12 +1537,20 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
     kW at 6500 / 7000 / 7500 / 8000 / 8500 rpm; Deutschland 1.71 (1.67-1.77), 230 / 233 / 229 / 232 / 196; per model
     1.55-1.83. España with 1350 kg, ρ 1.12, Crr 0.010 or only above 130 km/h: CdA 1.72-1.85, power 213-235. Finland
     (Crr 0.018, ρ 1.24): 1.56 (1.44-1.69), 205 kW at 7000, its drag not separated from its rolling loss.
-    Deutschland 2016 (Polo R, i20, Fiesta RS WRC; no altitude, 107 drives): 0.83 (0.63-1.06), weak.
+  - The 2014-16 cars (Deutschland 2016: Polo R, i20, Fiesta RS WRC, 107 drives; no altitude, and without the grade
+    term Deutschland 2019 reads 0.044 / 0.024 / 0.026 / 0.013 / 0.003 g low at the speeds below, more time being
+    spent uphill: added here; the fit on the raw data, 0.83 m², is not usable). 4th 110-120 / 5th 130-140 / 6th
+    150-160 / 160-170 / 170-180 km/h: 0.347 / 0.267 / 0.200 / 0.166 / 0.134 g (Deutschland 2019: 0.408 / 0.307 /
+    0.228 / 0.195 / 0.155); the game's Fiesta RS WRC 2014 on pad-tarmac, ngp 0.395 / 0.322 / 0.259 / 0.230 / 0.201,
+    experimental 0.442 / 0.354 / 0.283 / 0.251 / 0.221. With the 2019 cars' wheel power × 315 / 380 (the 33 mm
+    restrictor's cars; assumed) the 2016 thrust leaves a drag area of 1.16 (at 115 km/h) to 1.34 m² (175); the file's
+    is 0.66. At 115 km/h the wheel power reads 191 kW real, 200 ngp, 221 experimental.
   - The game by the same fit: ngp CdA 0.79 m² (the file's `Cd * A` 0.9725 is 0.81 m² in SI: NGP's drag factor is
     0.5 ρ / 1.204), wheel power 225-237 kW; experimental 0.88, 249-258 kW.
-  - So the 2017-21 cars' drag area is 2.1 times their files'; their wheel power is ngp's (the file's 380 PS less 12 %
-    over 1.05 = 234 kW), and the experimental engine's whole torque is about 10 % over the telemetry's (at 1390 kg;
-    the power read scales with the mass). Gears 2-5 hold within 2 % (rpm per km/h, real i20 88.5 / 72.6 / 60.1 /
+  - So the 2017-21 cars' drag area is 2.1 times their files'; their wheel power is 3-7 % under ngp's (the file's
+    380 PS less 12 % over 1.05 = 234 kW) and 9-16 % under the experimental engine's whole torque (at 1390 kg; the
+    power read scales with the mass): the real loss from the sheet's power to the road is 17-20 %, not the file's
+    12. Gears 2-5 hold within 2 % (rpm per km/h, real i20 88.5 / 72.6 / 60.1 /
     50.7 / 44.5, file 88.8 / 71.8 / 58.8 / 49.1 / 41.7), 6th is 5 % tall. Top speed 196-202 km/h in both: the real
     cars against their drag (0.056 g left at 195 km/h, 8350 rpm), the game's on the limiter with 0.2 g in hand.
   - Every file's `Cd * A` / 1.204 is 0.60-1.0 m² whatever its downforce (Golf II GTI 0.68, Escort Cosworth 0.78,
