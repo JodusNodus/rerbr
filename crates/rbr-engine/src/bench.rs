@@ -1,5 +1,5 @@
 //! A test bench for the tests and `examples/curves.rs`: the model at a fixed speed (a dyno), or free in neutral
-//! with the car's inertia, integrated as NGP's drivetrain does (ω += T/1.05/I·dt, `notes/engine-model.md`).
+//! with the car's inertia, integrated as the drivetrain takes the model's torque (ω += T/I·dt, `notes/engine-model.md`).
 
 use crate::engine::RPM;
 use crate::realistic::Realistic;
@@ -106,7 +106,7 @@ fn run_with(
         let torque = f64::from(m.torque(&inputs(omega, p, signal.0, signal.1)));
         rows.push(row(m, time, omega, p, torque));
         if let Some(j) = inertia {
-            omega = (omega + torque / 1.05 / j * f64::from(DT)).max(0.0);
+            omega = (omega + torque / j * f64::from(DT)).max(0.0);
         }
     }
     rows

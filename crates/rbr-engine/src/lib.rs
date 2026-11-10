@@ -108,7 +108,7 @@ pub struct Telemetry {
 /// An engine model: one per car and run.
 pub trait Model: Send {
     /// This step's net crank torque, N·m, positive driving the crank: indicated torque less friction and pumping,
-    /// what NGP's formula gives before the wrapper's /1.05.
+    /// what the drivetrain takes whole (NGP's own formula goes through its wrapper's /1.05).
     fn torque(&mut self, input: &Inputs) -> f32;
 
     /// Back to a new model's state, keeping what it built for the car: the stage's restart.

@@ -116,7 +116,7 @@ def ngp(p, rpm, pedal):
 
 
 def ngp_neutral(p, rpm0, seconds, pedal, dip=None):
-    """NGP's replica in neutral with the car's inertia, stepped as the bench steps ours (torque/1.05/J)."""
+    """NGP's replica in neutral with the car's inertia, its torque over 1.05 as its wrapper gives it (ours goes whole)."""
     omega_rpm, rows = rpm0, []
     for i in range(int(round(seconds / DT))):
         t = i * DT

@@ -76,7 +76,8 @@ pub(crate) const OPERATOR_NEW: u32 = 0x1011_fe32;
 /// NGP's emit wrapper ([`engine_dies`]). Declines (before any writes) when the speed ring would grow its map, or for
 /// an idle table of another class: neither occurs (`notes/ngp.md`, "Unreachable guards"). A block the ring's new entry
 /// needs is allocated first, through NGP's `operator new`, as `push_back` does. With an engine model set on the
-/// thread ([`engine_model`]) the running engine's torque is the model's, over 1.05 as NGP's.
+/// thread ([`engine_model`]) the running engine's torque is the model's as it gives it: NGP's division by 1.05 is its
+/// formula's, and the car files' torque is the crank's (`notes/engine-model.md`, In game).
 pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let engine = r.ecx;
     let [dt, speed, ..] = r.stack.map(f);
@@ -163,7 +164,7 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
             engine_temperature: m.f32(e8 + ENGINE_TEMPERATURE),
         };
         let v = engine_model::torque(&input).expect("a model is set");
-        return Ok(Return::float(ngp_engine::output(v), 8));
+        return Ok(Return::float(f64::from(v), 8));
     }
     // The table's two vectors (begin, end), read at knot slots as the lookup asks (`ngp_engine::idle_table_lookup`).
     let [xs, end, ys] = if table != 0 { [8, 0xc, 0x14].map(|o| m.u32(table + o)) } else { [0; 3] };

@@ -835,7 +835,7 @@ fn engine_speed(answer: &[u8]) -> f32 {
 
 /// The engine model's hook (ours, experimental) on the boot's car (slot 5 of `RBR_NGP_PHYSICS`): its params are its
 /// files' values; `--physics ngp` drives as no model, bit for bit; a model is asked once a step while the engine
-/// runs, with the step's inputs (its speed the HUD's within 2 %: the drive's, before the step), and its torque over 1.05 is the wrapper's answer.
+/// runs, with the step's inputs (its speed the HUD's within 2 %: the drive's, before the step), and its torque is the wrapper's answer.
 #[test]
 fn the_engine_model_reads_the_car_s_engine_and_its_torque_drives() {
     quick_race(|data, stage, race| {
