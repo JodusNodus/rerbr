@@ -587,8 +587,8 @@ Tarmac, track-41:
 
 Every run finished or ran its 600 s and was still drivable at the end. One engine stalled, after the finish line: the
 experimental Golf, braking at full in fifth on track-41's run-out, locked its wheels at 16 m/s with the clutch still
-closed, and the engine fell from 464 rad/s to 0 in 0.8 s; NGP's Golf, in the same stop, kept 89 rad/s ([Known
-limits](#known-limits)). The experimental limiter keeps every car under its limit in gear; the Fiesta's time over is
+closed, and the engine fell from 464 rad/s to 0 in 0.8 s; NGP's Golf, in the same stop, kept 89 rad/s. That was
+the clutch, since fixed ([The clutch under the experimental engine](#the-clutch-under-the-experimental-engine)). The experimental limiter keeps every car under its limit in gear; the Fiesta's time over is
 its start burnout in neutral. With the experimental physics the turbo cars reached split 2 1.6–1.7 % sooner on
 gravel and 1.6–2.3 % on tarmac, the NA cars 3.3–4.2 % sooner on gravel and 2.9–3.7 % on tarmac. The autopilot's
 caution sets most of its pace, and this is one stage and one run per car, so these gaps are not lap times a driver
@@ -618,12 +618,21 @@ A launch control (revs held below the limiter, then the throttle holding the whe
 three: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these speeds, and cutting the
 throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not the start.
 
+### The clutch under the experimental engine
+
+The original's clutch decides which way it slips from the sign of the engine's torque, and locks again whenever the
+engine's speed is on the other side of the wheels' from that. NGP's engine never pulls near idle, so the rule holds for
+it. Ours does for a moment after an overrun, while the manifold fills. With the driven wheels locked under braking the
+clutch help opened the clutch in time, but the rule then read the falling wheel speed as the slip reversing and tied
+the engine to the wheels every step, down to a stall, with the clutch open. With the experimental engine the clutch
+now locks again only if it has the torque to bring the engine to the wheels' speed in that step. Otherwise it keeps
+slipping. The Golf that stalled now keeps 85–89 rad/s through the same stop. A shift or a lift with the engine above
+the wheels' speed slips at the clutch's torque for a few steps where it used to snap: of six cars checked, two reach
+50 km/h 0.04–0.05 s sooner from a standing start and four are unchanged to the millisecond. NGP's and the 1.02
+physics do not take this path.
+
 ## Known limits
 
-- Braking hard enough to lock the driven wheels in a high gear can stall the engine where NGP's would not: the
-  experimental Golf II GTI 16V did once, after track-41's finish line ("In game"). The locked wheels pulled the engine
-  down with the clutch closed all the way to 0; in the same stop NGP's engine stayed at 89 rad/s with the clutch
-  open. Why NGP's clutch help did not open the clutch is not yet traced.
 - The turbo sound follows the model: the whine follows its shaft speed and boost, the blow-off its valve, and the
   anti-lag pops play one short burst (0.3-0.7 s) each time its anti-lag starts, and only then. Real rally anti-lag
   bangs about 7 times a second for about 0.5 s per lift, louder still (counted in onboard and roadside videos); ours
