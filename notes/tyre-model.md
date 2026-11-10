@@ -624,6 +624,18 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   along the slip velocity is measured, and NGP gives side force away too early at small angles and keeps too much of
   it in a deep slide. The tyre itself: Cα/Fz (2° secant) 17.9 / 15.4 per rad at 2.4 / 4.8 kN, μ_y 1.13 / 0.97 /
   0.89 and μ_x 1.17 / 1.18 / 1.14 at 2.4 / 4.8 / 7.2 kN. A road tyre on a belt: the shape carries, the levels do not.
+- An analytical combined-slip model with a flexible carcass, and its test data (2026-11-10; library
+  `xu-guo-zhang-karimi-2014`, Math. Probl. Eng. 2014, 397538; Fig 14 a P245/65R17 at 4 kN, 2°, 4°, 8°, fig ±0.05):
+  - Measured at 2°: Fy/Fy(0) about 0.98 / 0.85 at 0.5 / 0.75 of the peak Fx, as Xia's tyre and the brush, not NGP;
+    Cα/Fz about 15.8 per rad; the curves end near Fy = 0 at lock.
+  - The force's direction passes from the adhesion direction (stiffer along than across, so turned toward Fx) to the
+    slip direction as the patch slides (Fig 11). Lab at 4.8 kN, (Fy/Fx) over (tan α / κ) at 2°, κ 0.02 / 0.05 / 0.10:
+    brush 0.75 / 0.89 / 1.00, ngp 1.28 / 1.22 / 1.00. The brush has it; NGP turns the other way.
+  - Not in the brush: the carcass's twist raises the cornering stiffness under braking and lowers it under drive
+    (model Fig 5: +11 % at κ -0.05, -8 % at +0.05), so a little brake gives more side force than none at 2°; the data
+    tilt by about ±10 % at 2° and not at 4° or 8° (Xia's the same at 7.2 kN, flat at 2.4 and 4.8 kN). The brush
+    keeps more under braking than drive (0.885 against 0.839 at κ ∓0.05) and never over the free-rolling force.
+    Second order, left.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
