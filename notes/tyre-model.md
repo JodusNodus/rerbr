@@ -2115,22 +2115,25 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
 - The devices' drag, a prototype (2026-11-10, `--aero wings` or `wings+yaw` with an experimental profile, off by
   default; `aero_model::wing_drag_factor`): the drag area gains 0.074 × (the file's downforce area)², the form of
   induced drag, set on the telemetry's 1.74 m² for the 2017-21 cars ("Full throttle on straights": file 0.81 m²,
-  downforce area 3.54 m²). The rule on the other files: WRC 2006 0.82 and 1.08 m² (D&R's 2004 model 0.85), Fiesta
-  Rally2 1.30, Polo R5 1.04, S2000 0.90, Group N +0.03, Fiesta RS WRC 2014 1.22 (Deutschland 2016 leaves 1.16-1.34
-  with the power assumed; its pad run with it 0.423 / 0.317 / 0.239 / 0.202 / 0.165 g against the real 0.347 / 0.267
-  / 0.200 / 0.166 / 0.134: the experimental engine's power over), nothing without downforce. i20 Coupe WRC 2020, experimental, without / with (real): pad-tarmac 4th
-  110-120 km/h 0.492 / 0.461 (0.384), 6th 150-160 0.342 / 0.270 (0.214), 170-180 0.267 / 0.173 (0.143), 180-190
-  0.231 / 0.128 (0.072); pad-gravel 6th 150-160 0.323 / 0.247 (0.182), 170-180 0.244 / 0.150 (0.108); `rally_wot.py
-  fit` reads 1.82 m² on tarmac, 1.64 on gravel; what is left is the experimental engine's 10 %. Top speed without /
-  with, tarmac and gravel: i20 202.2 / 199.4 and 200.6 / 196.8 km/h (real 196-202), Fiesta Rally2 177.5 / 175.8 and
-  192.7 / 189.6, Polo R5 182.6 / 181.6 and 181.6 / 180.2. RSF 524 with the autopilot (80 km/h mean): i20 344.9 /
-  346.6 s, Rally2 347.2 / 348.4. Pad-tarmac 100-150 and 150-180 km/h, s, without / with: WRC 2019 3.34 / 3.77 and
-  2.82 / 3.97 (real, from the bins: about 4.1 and 4.9); GR Yaris Rally2 4.26 / 4.76 and 4.15 / 5.99; Polo R5 4.43 /
-  4.70 and 4.30 / 5.29; WRC 2006 3.96 / 4.08-4.12 and 3.44-3.73 / 3.68-4.15; S2000 4.35-4.40 / 4.50-4.55; Group N,
-  R4, RGT and kit cars within 0.1 s; 0-100 km/h within 0.07 s on every car. The throttle lifted in gear ("Throttle lifted in gear"), experimental with it: 4th
-  60-80 km/h 0.077 g, 5th 60-80 0.079, 5th 80-100 0.084, 6th 80-100 0.091, 6th 100-120 0.110, against the real 0.09 /
-  0.085 / 0.105-0.132 / 0.090-0.101 / 0.145 and 0.064 / 0.061 / 0.064 / 0.064 / 0.075 without. Not decided: one class measured, Rally2 and R5 by the rule alone; damaged aero
-  parts keep this drag.
+  downforce area 3.54 m²). The rule on the other files: WRC 2006 0.82 and 1.08 m² (D&R's 2004 model 0.85), Fiesta Rally2
+  1.30, Polo R5 1.04, S2000 0.90, Group N +0.03, Fiesta RS WRC 2014 1.22 (Deutschland 2016 leaves 1.16-1.34 with the
+  power assumed; its pad run with it 0.423 / 0.317 / 0.239 / 0.202 / 0.165 g against the real 0.347 / 0.267 / 0.200 /
+  0.166 / 0.134: the experimental engine's power over), nothing without downforce. i20 Coupe WRC 2020, experimental,
+  without / with (real): pad-tarmac 4th 110-120 km/h 0.492 / 0.461 (0.384), 6th 150-160 0.342 / 0.270 (0.214), 170-180
+  0.267 / 0.173 (0.143), 180-190 0.231 / 0.128 (0.072); pad-gravel 6th 150-160 0.323 / 0.247 (0.182), 170-180 0.244 /
+  0.150 (0.108); `rally_wot.py fit` reads 1.82 m² on tarmac, 1.64 on gravel; what is left is the experimental engine's
+  10 %. Top speed without / with, tarmac and gravel: i20 202.2 / 199.4 and 200.6 / 196.8 km/h (real 196-202), Fiesta
+  Rally2 177.5 / 175.8 and 192.7 / 189.6, Polo R5 182.6 / 181.6 and 181.6 / 180.2. RSF 524 with the autopilot (80 km/h
+  mean): i20 344.9 / 346.6 s, Rally2 347.2 / 348.4. Pad-tarmac 100-150 and 150-180 km/h, s, without / with: WRC 2019
+  3.34 / 3.77 and 2.82 / 3.97 (real, from the bins: about 4.1 and 4.9); GR Yaris Rally2 4.26 / 4.76 and 4.15 / 5.99;
+  Polo R5 4.43 / 4.70 and 4.30 / 5.29; WRC 2006 3.96 / 4.08-4.12 and 3.44-3.73 / 3.68-4.15; S2000 4.35-4.40 / 4.50-4.55;
+  Group N, R4, RGT and kit cars within 0.1 s; 0-100 km/h within 0.07 s on every car. The throttle lifted in gear
+  ("Throttle lifted in gear"), experimental with it: 4th 60-80 km/h 0.077 g, 5th 60-80 0.079, 5th 80-100 0.084, 6th
+  80-100 0.091, 6th 100-120 0.110, against the real 0.09 / 0.085 / 0.105-0.132 / 0.090-0.101 / 0.145 and 0.064 / 0.061 /
+  0.064 / 0.064 / 0.075 without. Not decided: one class measured, Rally2 and R5 by the rule alone; damaged aero parts
+  keep this drag. Since (the fit on five more tarmac events, "Full throttle on straights"): the seven events read
+  1.47-1.76 m², median 1.66, so the 1.74 the constant is set on is the top of them and the game's own fit with it reads
+  1.82; 0.063 in place of 0.074 would put that fit on the median (not changed, the figures here are at 0.074).
 - Braking between cars (2026-11-10; `brake_test.py`, pad-tarmac, 100-0 km/h declutched, mean g, best threshold / ABS
   at κ 0.15): Alpine A110 Rally (500 N at 150 km/h) ngp 1.20 / 1.23 (32.7 / 31.9 m), brush 1.21 / 1.25; Fiesta Rally2
   (3100 N) ngp 1.32 / 1.32 (30.0 / 29.8 m), brush 1.31 / 1.33. NGP's tyre tables are the same for every car and the
