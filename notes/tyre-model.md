@@ -1775,23 +1775,29 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   flat) and the brush's (0.85 / 0.78 at 50 / 100 km/h by its formulas) are inside. Wadern-Weiskirchen's third pass,
   soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's and braking 0.84; the game's wet has no such state.
   Cross-year pairs of different drivers scatter 5-10 % and were not used.
-- The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2
-  found (searches; wrcwings.tech describes the devices without forces). Three indications that the real cars gain
-  less grip with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls
-  with speed (above); the braking slope less the drag (above) is 0.1-0.7 of the game's; and Finland's whole g while
-  sliding (`rally_wot.py sideslip`, p90 at 20° up, path / accelerometer) is 1.05-1.06 / 0.90-1.00 at 60-100 km/h and
-  0.98-1.06 / 0.83-0.99 at 100-160, no gain where the file's downforce on NGP's load exponent (0.875) gives 8 %
-  between the bands' middles (85 and 125 km/h; by 20 km/h bands, scratch: +3-10 % from 60-80 to 140-200 km/h against
-  +17-25 %). Fast corners are rarer and friction may fall with speed, so the level stays open: possibly half.
-  By efficiency: the measured drag area is 0.9 m² over the 2004 model's (0.85 m², ClA 0.75, Dominy & Richardson), so
-  the file's 3.54 m² needs all of that drag to come from devices at lift over drag 3. Where a road car's figures are
-  published the files follow them: Alpine A110, Cd 0.32 on 1.94 m² (0.62 m²) and 141 kg at 275 km/h with the aero kit
-  (411 N at 150 km/h; [wrcwings.tech](https://www.wrcwings.tech/2022/05/03/aerodynamics-of-the-alpine-a110-rally-rgt/),
-  Alpine's figures), the Rally RGT file 0.67 m² and 100 + 400 N; Escort RS Cosworth, Cd 0.38 with the wing
-  ([wrcwings.tech](https://www.wrcwings.tech/2017/04/01/ford-escort-rs-cosworth-the-rally-car/)) and 45 + 190 N at
-  180 km/h (Ford's figures by [Wikipedia](https://en.wikipedia.org/wiki/Ford_Escort_RS_Cosworth), uncited: 163 N at
-  150 km/h), the Group A file 0.78 m² (Cd 0.38 on 2.05 m²) and 50 + 200 N. So the files' drag is a road car's in every
-  class (0.60-1.0 m²), right for the production-based cars and half the measured figure for the 2017-21 cars.
+- The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2 found
+  (searches; wrcwings.tech describes the devices without forces). Four indications that the real cars gain less grip
+  with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls with speed
+  (above); the braking slope less the drag (above) is 0.1-0.7 of the game's; and Finland's whole g while sliding
+  (`rally_wot.py sideslip`, p90 at 20° up, path / accelerometer) is 1.05-1.06 / 0.90-1.00 at 60-100 km/h and 0.98-1.06 /
+  0.83-0.99 at 100-160, no gain where the file's downforce on NGP's load exponent (0.875) gives 8 % between the bands'
+  middles (85 and 125 km/h; by 20 km/h bands, scratch: +3-10 % from 60-80 to 140-200 km/h against +17-25 %). The fourth,
+  the apexes' lateral g ("Lateral g at the apexes" above): its p90 is flat from 40-60 to 130-170 km/h on all seven
+  tarmac rallies (España 1.46 / 1.49 / 1.45 / 1.40 / 1.44, Catalunya 2019 1.42 / 1.43 / 1.47 / 1.36 / 1.41, Corsica 1.33
+  / 1.40 / 1.37 / 1.34 / 1.44, Deutschland 1.12 / 1.20 / 1.16 / 1.20 / 1.20), where the i20's limit on the tarmac pad's
+  circles is 1.26 g at 81 km/h, 1.34 at 106, 1.41 at 135 and 1.51 at 176 (ngp; brush 1.25 / 1.35 / 1.47 / 1.63): Spain's
+  p90 is 18 % over the game's limit at 70 km/h and level with it at 150. Against them, gravel's saturated braking gains
+  with speed as the game's does ("Straight braking, the level"), though a loose road may give that by itself. Fast
+  corners are rarer and friction may fall with speed, so the level stays open: possibly half. By efficiency: the
+  measured drag area is 0.9 m² over the 2004 model's (0.85 m², ClA 0.75, Dominy & Richardson), so the file's 3.54 m²
+  needs all of that drag to come from devices at lift over drag 3. Where a road car's figures are published the files
+  follow them: Alpine A110, Cd 0.32 on 1.94 m² (0.62 m²) and 141 kg at 275 km/h with the aero kit (411 N at 150 km/h;
+  [wrcwings.tech](https://www.wrcwings.tech/2022/05/03/aerodynamics-of-the-alpine-a110-rally-rgt/), Alpine's figures),
+  the Rally RGT file 0.67 m² and 100 + 400 N; Escort RS Cosworth, Cd 0.38 with the wing
+  ([wrcwings.tech](https://www.wrcwings.tech/2017/04/01/ford-escort-rs-cosworth-the-rally-car/)) and 45 + 190 N at 180
+  km/h (Ford's figures by [Wikipedia](https://en.wikipedia.org/wiki/Ford_Escort_RS_Cosworth), uncited: 163 N at 150
+  km/h), the Group A file 0.78 m² (Cd 0.38 on 2.05 m²) and 50 + 200 N. So the files' drag is a road car's in every class
+  (0.60-1.0 m²), right for the production-based cars and half the measured figure for the 2017-21 cars.
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:
