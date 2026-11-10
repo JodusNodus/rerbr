@@ -328,6 +328,7 @@ fn turbo_spec(spec: &Spec, car: &Car) -> turbo::Spec {
         pi_star: 1.0,
         w_star,
         omega_star: turbo::OMEGA_STAR,
+        inertia: turbo::INERTIA,
         a_turbine: 1e-3,
         a_wastegate: 1e-3,
         gate_base: Curve::default(),
@@ -339,6 +340,7 @@ fn turbo_spec(spec: &Spec, car: &Car) -> turbo::Spec {
         t_em_k,
     };
     t.pi_star = (pi_power * P_REF / t.inlet(w_star, P_REF)).max(1.1);
+    (t.inertia, t.omega_star) = turbo::rotor(w_star, t.pi_star);
     t
 }
 

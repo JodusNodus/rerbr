@@ -471,9 +471,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
         s.wastegate += (command - s.wastegate) * (1.0 - exp(-dt / tau));
         let (p_em, power) = t.turbine(w_exhaust, s.t_em, s.wastegate, x.p_a);
         s.p_em = p_em;
-        let energy = 0.5 * turbo::INERTIA * s.omega_t * s.omega_t
-            + (power * dt - compressor_power - turbo::losses(s.omega_t) * dt);
-        s.omega_t = sqrt(2.0 * energy.max(0.0) / turbo::INERTIA);
+        let losses = turbo::losses(s.omega_t * turbo::OMEGA_STAR / t.omega_star);
+        let energy = 0.5 * t.inertia * s.omega_t * s.omega_t + (power * dt - compressor_power - losses * dt);
+        s.omega_t = sqrt(2.0 * energy.max(0.0) / t.inertia);
     } else {
         let r = w_exhaust / spec.w_rated;
         s.p_em = x.p_a + NA_BACK_PRESSURE * r * r;

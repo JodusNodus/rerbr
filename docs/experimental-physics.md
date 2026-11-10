@@ -266,8 +266,10 @@ The parts of a race ECU that change torque:
 A compressor, a turbine and the shaft between them, with a wastegate, a blow-off valve and an intercooler of
 effectiveness 0.7. No rally turbo's map is public, so the compressor and turbine follow generic normalised maps, with
 a design speed of 15 000 rad/s and a shaft inertia of 1.7e-5 kg·m², a measured passenger-car rotor (Perge et al.
-2017; Chalmers' T45 has 1.16e-5). The model sizes them
-per car at load:
+2017; Chalmers' T45 has 1.16e-5), for a turbo of 0.15 kg/s at a pressure ratio of 2. Each car's rotor is that one
+scaled by similarity to its own design flow and pressure ratio: a bigger compressor turns slower and its inertia grows
+with the fifth power of its diameter, so a large turbo takes longer to spool and a small one runs faster. The model
+sizes them per car at load:
 
 1. The boost target at each rpm is the boost the table's torque needs, capped by the class (2.5 bar absolute on the
    modern classes) and by the restrictor's choked flow.
