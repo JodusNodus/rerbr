@@ -4,14 +4,19 @@
 
 /// The rev-limit backstop: shift at the limit less this (300 rpm, rad/s), whatever the thrust says.
 pub const LIMIT_MARGIN: f32 = 31.4;
+/// The backstop's tie to the ground speed (a guess): it applies only while the engine is within this of the gear's
+/// no-slip speed, so a spinning engine rides the limiter until the crossover decides.
+pub const SLIP_TIED: f32 = 1.1;
 
 /// The flat-out start's torque curve and gear ratios, read from the live car once per run: the knots are NGP's
 /// engine definition knots (engine speed rad/s, torque as a fraction of the max) and the ratios the gearbox record's
-/// (`rbr_recording::gearbox`), by HUD gear (0 reverse, 1 neutral).
+/// (`rbr_recording::gearbox`), by HUD gear (0 reverse, 1 neutral). `torque_peak` is the torque peak's engine speed
+/// (rad/s), which the drive-slip controller reads.
 #[derive(Clone, Debug)]
 pub struct Curve {
     pub knots: Vec<(f32, f32)>,
     pub ratios: Vec<f32>,
+    pub torque_peak: f32,
 }
 
 /// The flat-out start's drive-slip controller (`--drive-slip`): its slip target K and the integral, the pedal it
@@ -51,10 +56,19 @@ pub fn thrust(knots: &[(f32, f32)], ratio: f32, w: f32) -> f32 {
 }
 
 /// Whether to shift up: the next gear's thrust at the ground speed wins, or the engine is at the rev limit less
-/// `LIMIT_MARGIN`. `w` is the engine speed, `w_next` the next gear's engine speed at the car's ground speed: a
-/// spinning car holds its gear until the next gear pulls harder at the speed the car actually does.
-pub fn shift_up(knots: &[(f32, f32)], ratio_now: f32, ratio_next: f32, w: f32, w_next: f32, limit: f32) -> bool {
-    thrust(knots, ratio_next, w_next) >= thrust(knots, ratio_now, w) || w >= limit - LIMIT_MARGIN
+/// `LIMIT_MARGIN` while tied to the ground speed (`tied`). `w` is the engine speed, `w_next` the next gear's engine
+/// speed at the car's ground speed: a spinning car holds its gear until the next gear pulls harder at the speed the
+/// car actually does, riding the limiter meanwhile.
+pub fn shift_up(
+    knots: &[(f32, f32)],
+    ratio_now: f32,
+    ratio_next: f32,
+    w: f32,
+    w_next: f32,
+    limit: f32,
+    tied: bool,
+) -> bool {
+    thrust(knots, ratio_next, w_next) >= thrust(knots, ratio_now, w) || (tied && w >= limit - LIMIT_MARGIN)
 }
 
 /// The engine speed per m/s of ground speed in `gear`: the learnt `gains` there, else the nearest learnt gear's
@@ -83,12 +97,28 @@ pub fn shift_points(knots: &[(f32, f32)], ratios: &[f32], first: u32, top: u32, 
             continue;
         }
         let mut w = 60.0;
-        while !shift_up(knots, now, next, w, w * next / now, limit) {
+        // Under no slip the engine is tied by construction, so the backstop reads as the run's does.
+        while !shift_up(knots, now, next, w, w * next / now, limit, true) {
             w += 1.0;
         }
         out.push((g, w * RPM));
     }
     out
+}
+
+/// The torque peak's engine speed (rad/s): the maximum of T over the knots' span, scanned at 1 rad/s.
+pub fn torque_peak(knots: &[(f32, f32)]) -> f32 {
+    let (Some(&(lo, _)), Some(&(hi, _))) = (knots.first(), knots.last()) else { return 0.0 };
+    let mut w = lo;
+    let (mut peak, mut at) = (f32::NEG_INFINITY, lo);
+    while w <= hi {
+        let p = torque_at(knots, w);
+        if p > peak {
+            (peak, at) = (p, w);
+        }
+        w += 1.0;
+    }
+    at
 }
 
 /// The power peak's rpm: the maximum of T·ω over the knots' span, scanned at 1 rad/s.
@@ -119,6 +149,17 @@ pub fn drive_step(target: f32, held: f32, slip: f32, dt: f32) -> (f32, f32) {
     let error = target - slip;
     let held = (held + super::SLIP_I * error * dt).clamp(0.0, 1.0);
     ((held + super::SLIP_P * error).clamp(0.0, 1.0), held)
+}
+
+/// The drive-slip controller's gated step: at or below the torque peak's engine speed the engine has no revs to
+/// spare (a car with NGP's clutch help cannot slip the clutch off the line), so the throttle stays full and the
+/// integral is parked at 1.0; above it the pedal holds the slip target as `drive_step` does.
+pub fn drive_pedal(target: f32, held: f32, slip: f32, dt: f32, engine: f32, torque_peak: f32) -> (f32, f32) {
+    if engine <= torque_peak {
+        (1.0, 1.0)
+    } else {
+        drive_step(target, held, slip, dt)
+    }
 }
 
 #[cfg(test)]
@@ -156,15 +197,15 @@ mod tests {
         let limit = rpm(7500.0);
         // Deep in second's power: the next gear's thrust at the ground speed loses.
         let w = rpm(4000.0);
-        assert!(!shift_up(&knots, ratios[2], ratios[3], w, w * ratios[3] / ratios[2], limit));
+        assert!(!shift_up(&knots, ratios[2], ratios[3], w, w * ratios[3] / ratios[2], limit, true));
         // Past the crossover (~6950 rpm): third's thrust at the ground speed wins.
         let w = rpm(7100.0);
-        assert!(shift_up(&knots, ratios[2], ratios[3], w, w * ratios[3] / ratios[2], limit));
+        assert!(shift_up(&knots, ratios[2], ratios[3], w, w * ratios[3] / ratios[2], limit, true));
         // Shifting never moves to a lower thrust: at the crossover the next gear wins by construction.
         for g in [2, 3, 4] {
             let (now, next) = (ratios[g], ratios[g + 1]);
             let mut w = rpm(1000.0);
-            while !shift_up(&knots, now, next, w, w * next / now, limit) {
+            while !shift_up(&knots, now, next, w, w * next / now, limit, true) {
                 w += 10.0;
             }
             assert!(
@@ -172,9 +213,12 @@ mod tests {
                 "gear {g} shifts into a lower thrust at {w:.0} rad/s"
             );
         }
-        // At the limit margin the shift fires whatever the thrust says.
-        assert!(shift_up(&knots, ratios[4], ratios[5], rpm(3000.0), rpm(2000.0), rpm(3000.0) + LIMIT_MARGIN));
-        assert!(!shift_up(&knots, ratios[4], ratios[5], rpm(3000.0), rpm(2000.0), rpm(3000.0) + LIMIT_MARGIN + 1.0));
+        // At the limit margin the tied shift fires whatever the thrust says, and the untied one holds.
+        let (now, next) = (ratios[4], ratios[5]);
+        let (w, wn) = (rpm(3000.0), rpm(2000.0));
+        assert!(!shift_up(&knots, now, next, w, wn, w + LIMIT_MARGIN + 10.0, true));
+        assert!(shift_up(&knots, now, next, w, wn, w + LIMIT_MARGIN - 10.0, true));
+        assert!(!shift_up(&knots, now, next, w, wn, w + LIMIT_MARGIN - 10.0, false));
     }
 
     #[test]
@@ -183,13 +227,13 @@ mod tests {
         let rpm = |r: f32| r * std::f32::consts::PI / 30.0;
         let limit = rpm(7500.0);
         // Spinning in second at 7000 rpm with the car at 40 km/h: third at the ground speed bogs, so hold
-        // (20 rad/s per m/s is second's no-slip gain).
+        // (20 rad/s per m/s is second's no-slip gain; spinning, the backstop is out).
         let (w, v) = (rpm(7000.0), 40.0 / 3.6);
         let w_next = v * 20.0 * ratios[3] / ratios[2];
-        assert!(!shift_up(&knots, ratios[2], ratios[3], w, w_next, limit));
+        assert!(!shift_up(&knots, ratios[2], ratios[3], w, w_next, limit, false));
         // The car at 120 km/h: third at the ground speed pulls harder, so shift despite the spinning engine.
         let w_next = 120.0 / 3.6 * 20.0 * ratios[3] / ratios[2];
-        assert!(shift_up(&knots, ratios[2], ratios[3], w, w_next, limit));
+        assert!(shift_up(&knots, ratios[2], ratios[3], w, w_next, limit, false));
     }
 
     #[test]
@@ -218,6 +262,24 @@ mod tests {
     }
 
     #[test]
+    fn the_backstop_needs_the_engine_tied_to_the_ground_speed() {
+        let (knots, ratios) = (knots(), ratios());
+        let rpm = |r: f32| r * std::f32::consts::PI / 30.0;
+        let limit = rpm(7500.0);
+        // At the limit with the engine at twice the ground speed's (wheelspin or clutch slip), the backstop is
+        // out: no shift until the crossover at the ground speed holds (here third still bogs at 40 km/h).
+        let (w, v) = (limit, 40.0 / 3.6);
+        let k = 20.0;
+        assert!(w > SLIP_TIED * v * k);
+        let w_next = v * k * ratios[3] / ratios[2];
+        assert!(!shift_up(&knots, ratios[2], ratios[3], w, w_next, limit, false));
+        assert!(shift_up(&knots, ratios[2], ratios[3], w, w_next, limit, true));
+        // The crossover still fires untied once the next gear pulls harder at the ground speed (at 140 km/h).
+        let w_next = 140.0 / 3.6 * k * ratios[3] / ratios[2];
+        assert!(shift_up(&knots, ratios[2], ratios[3], w, w_next, limit, false));
+    }
+
+    #[test]
     fn the_drive_controller_holds_its_target() {
         let dt = 1.0 / 720.0;
         // Over the target the pedal drops and the integral falls.
@@ -230,6 +292,19 @@ mod tests {
         // At the target it holds steady.
         let (pedal, held) = drive_step(0.1, 0.6, 0.1, dt);
         assert!((pedal - 0.6).abs() < 1e-6 && (held - 0.6).abs() < 1e-6, "{pedal} {held}");
+    }
+
+    #[test]
+    fn the_drive_controller_never_lugs_the_engine() {
+        let dt = 1.0 / 720.0;
+        let peak = 500.0;
+        // At or below the torque peak the pedal is full whatever the slip, and the integral parks at 1.0.
+        assert_eq!(drive_pedal(0.1, 0.2, 0.9, dt, peak, peak), (1.0, 1.0));
+        assert_eq!(drive_pedal(0.1, 0.2, 0.9, dt, peak - 100.0, peak), (1.0, 1.0));
+        // Above it the slip target holds as before: full under it, less over it.
+        assert_eq!(drive_pedal(0.1, 1.0, 0.05, dt, peak + 100.0, peak), (1.0, 1.0));
+        let (pedal, held) = drive_pedal(0.1, 1.0, 0.5, dt, peak + 100.0, peak);
+        assert!(pedal < 1.0 && held < 1.0, "{pedal} {held}");
     }
 
     #[test]

@@ -1017,8 +1017,8 @@ impl<'a> Driver<'a> {
 
     /// The highest gear learnt to keep the engine over `SHIFT_DOWN` at `speed` (m/s), else first.
     /// Whether an upshift is due: flat out on an NGP car with the torque curve, the next gear's thrust at the ground
-    /// speed wins or the engine is at the rev limit less `start::LIMIT_MARGIN` (`start::shift_up`); else past the rev
-    /// point `up` without wheelspin.
+    /// speed wins or the tied engine is at the rev limit less `start::LIMIT_MARGIN` (`start::shift_up`, `start::tied`);
+    /// else past the rev point `up` without wheelspin.
     fn wants_up(&self, sense: &Sense, speed: f32, up: f32, start: bool, spinning: bool) -> bool {
         if sense.gear < FIRST || sense.gear >= TOP_GEAR {
             return false;
@@ -1034,7 +1034,9 @@ impl<'a> Driver<'a> {
             start::gain(&self.ratio, &curve.ratios, sense.gear + 1),
         ) {
             (Some(now), Some(next), Some(k)) if now > 0.0 && next > 0.0 => {
-                start::shift_up(&curve.knots, now, next, sense.engine, speed * k, self.limit)
+                let tied = start::gain(&self.ratio, &curve.ratios, sense.gear)
+                    .is_none_or(|kg| sense.engine <= start::SLIP_TIED * speed * kg);
+                start::shift_up(&curve.knots, now, next, sense.engine, speed * k, self.limit, tied)
             }
             _ => sense.engine > up && !spinning,
         }
@@ -1049,7 +1051,8 @@ impl<'a> Driver<'a> {
             return None;
         }
         let ratios = crate::live::gearbox(mem, car + CAR_DRIVE).ratios.to_vec();
-        Some(start::Curve { knots, ratios })
+        let torque_peak = start::torque_peak(&knots);
+        Some(start::Curve { knots, ratios, torque_peak })
     }
 
     fn gear_for(&self, speed: f32) -> u32 {
@@ -1317,16 +1320,23 @@ impl<'a> Driver<'a> {
                         .collect::<Vec<_>>()
                         .join(", ");
                     eprintln!("autopilot: flat-out shift points {points}");
-                    eprintln!("autopilot: flat-out power peak {:.0} rpm", start::power_peak(&curve.knots));
+                    eprintln!(
+                        "autopilot: flat-out power peak {:.0} rpm, torque peak {:.0} rpm",
+                        start::power_peak(&curve.knots),
+                        curve.torque_peak * 30.0 / std::f32::consts::PI
+                    );
                 }
                 if ngp && spinning && speed > BOG_SPEED && !(start && self.drive.is_some()) {
                     throttle = throttle.min(TRACTION);
                 }
                 if let Some(drive) = &mut self.drive {
                     if start && !finished && throttle > 0.0 {
+                        // At or below the torque peak the engine has no revs to spare, so the throttle stays full
+                        // and the integral parks (`start::drive_pedal`); above it the slip target holds as before.
+                        let peak = self.start.as_ref().map_or(f32::INFINITY, |c| c.torque_peak);
                         let slip = start::drive_slip(sense.wheels, speed);
                         let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
-                        let (pedal, held) = start::drive_step(drive.target, drive.held, slip, dt);
+                        let (pedal, held) = start::drive_pedal(drive.target, drive.held, slip, dt, sense.engine, peak);
                         drive.held = held;
                         throttle = throttle.min(pedal);
                     }
