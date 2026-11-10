@@ -2030,6 +2030,13 @@ seven wet rows move, all in band: TRL wet peak 100/32 0.977 → 0.911 (0.76-1.00
 0.997 → 0.979 (0.97-1.0), 1.6 mm from 80 / 100 0.682 / 0.516 → 0.680 / 0.510, 3 mm 0.895 → 0.894. Every other row
 bit-equal.
 
+Pressure law (2026-11-10, `tyre/brush-misses`, full run against main 75bdb7b3, 114 scored rows): experimental-brush
+92 → 93/114, ngp 43/114 unchanged. MISS → PASS `tarmac-sigma-y-pressure` -5.4 → -16.3 % (-26 to -12); `tarmac-kx-pressure`
++4.0 → -4.5 % (MISS, -17 to -14), `tarmac-calpha-pressure` +5.3 → -5.7 % (PASS), `tarmac-peak-mu-y-pressure` +0.12 → -0.16 %
+(PASS); every other row within 1 % (the scorecard's tarmac circle, Fiesta Rally2 r40 ramp 0.5 on map 85: lateral
+1.234 → 1.236 g). The aligning rows (`tarmac-mz-trail0-over-a` 0.310, `tarmac-mz-peak-per-mu-fz-a` 0.158)
+are unchanged and left (Open).
+
 ### A per-wheel ABS in the brake test
 
 - Hook: `rbr_hybrid::ngp::set_brake_scale` (thread-local, `None` by default) multiplies each wheel's pedal pressure
@@ -2125,7 +2132,10 @@ stays the untuned brush's. The table's model column is the brush before the mode
 ## Open
 
 - Kx/Ky 1.17 at 4 kN with both stiffnesses 1.3 times NGP's slope's, near the band's foot (1.15-1.62); Kx's
-  pressure dependence (+4.0 % per +0.5 bar against MF 6.1's -15 %) is still NGP's. Cold class-2 surfaces (grip
+  pressure dependence is -4.5 % per +0.5 bar (2026-11-10, `brush::SLIP_PRESSURE`: the slip stiffnesses' power of NGP's
+  stiffness factor, -1.1, the sources' mean Cα -7.2 %, Cx the same by brush theory's a² ∝ 1/p; hard surfaces, NGP's level
+  kept at 2.0 bar) against MF 6.1's -15 %, the only source on Kx (one fitted road set): its sign is right, its size
+  MISS; a steeper Cx power would be that set alone. Cold class-2 surfaces (grip
   0.57-0.75) get part of the 1.3 only.
 - Driving it: combined slip (0.72 of NGP's side force at 4° and 25 % slip, inside the measured road data; see
   [Racing and rally targets](#racing-and-rally-targets)) is the largest change a driver would feel. The
@@ -2147,6 +2157,17 @@ stays the untuned brush's. The table's model column is the brush before the mode
   TNO 205/60R15 0.41, Continental 225/50R18 0.34, MF 5.2 example 0.50; their μ_x/μ_y 1.07-1.21), above the brush. So
   the one measured tyre is below every physical model and the MF sets above the brush; only a fitted direction
   factor would put it in the band.
+- Hard-surface misses left on purpose (2026-11-10, scorecard 93/114): (1) `tarmac-peak-fx-load-exponent` 0.933 against
+  0.94-0.97: the band is the sets' longitudinal-over-lateral rate (0.73 / 0.39) on Goodyear's lateral 0.92, the brush's
+  lateral is NGP's 0.878 (the load sensitivity of the peak is grip, kept), and 1 - 0.55 (1 - 0.87) gives 0.93 as built;
+  within the figure's ±0.02. (2) `tarmac-bergman-wet-locked-over-peak-48` 0.566 against 0.60-0.66: the wetness term
+  alone gives 0.592 at 50 km/h (TRL's 32 and 64 km/h rows 0.657 / 0.542 interpolated, inside the band's edge), and NGP's
+  own wet tarmac level (μk/μs 0.770 against dry 0.800) takes the 0.9625 more (0.570, lab 0.566): the wet level is NGP's.
+  (3) `tarmac-car-coast-crr` 0.0066 against 0.007-0.0135, `ice-car-coast-crr` 0.0022 against 0.007-0.013: the torque is
+  NGP's surface `RollingResistance` applied by `rbr-physics` outside the tyre model (`ForceOutput` carries no rolling
+  term), ngp and the brush read the same; a hysteresis term independent of the surface (VTI's Cr0 0.0091) needs a new
+  seam output and moves every car's top speed, and the car's level sits 0.002-0.003 under the torque's share (not
+  traced). (4) `tarmac-combined-a4` 0.292: unchanged (the entry above).
 - Aligning moment level and patch: t0/a 0.32 against the sets' 0.36-0.51 stays brush theory's a/3; peak Mz/(μ Fz a)
   0.159 with the affine trail (2026-11-08) against 0.19-0.26 (0.107 with M'_z). In game (`ffb` column, map 41, 600 s
   autopilot, mean |ffb| at 0.3-0.4 / 0.4-0.5 / 0.5-0.6 / 0.6-0.7 g, ngp / brush with M'_z / affine): Fiesta Rally2
@@ -2162,7 +2183,15 @@ stays the untuned brush's. The table's model column is the brush before the mode
   0.355-0.369 for a string length 0.05-0.4 m but peak Mz/(μ Fz a) only 0.109-0.113; a flatter pressure than the
   parabola raises the peak (1-u⁴ 0.132, 1-u⁸ 0.155, uniform 0.187, with the string and 1-u⁴ 0.139) but moves the Fy
   peak to 14-20° and the Mz peak to 0.11-0.19 of it. No sourced mechanism reaches 0.19-0.26 with the force curves
-  kept, so the level stays brush theory's. Stocco et al. 2024 (flexible-carcass brush with a quartic pressure, eq. 7)
+  kept, so the level stays brush theory's.
+  Rows and level (2026-11-10; no model change): both rows divide by NGP's patch half length a, the sets' by
+  MF-Swift's contact length, so they compare two different a's; in metres the brush's t0 is 0.023 m at 4 kN
+  (0.31 · 0.074), the P1 car's measured pneumatic trail (Hsu, PhD Stanford 2009, Figs 2.12-2.14) 0.023 m, and the
+  in-game steering torque is within 4 % of NGP's over 0.4-1.0 g. The string carcass would lift t0/a only to
+  0.355-0.369 (prototype above), the peak not at all (0.109-0.113), so no row would pass; a trail factor to the band
+  is a fit. Mz does reach the driver: `ForceOutput::pneumatic_trail` (`car.rs`) is NGP's trail, times Fy it is the
+  normal-axis torque of `rbr-physics` `tyre/forces.rs` (the car's yaw moment and, summed over the steered wheels,
+  the force-feedback torque). Stocco et al. 2024 (flexible-carcass brush with a quartic pressure, eq. 7)
   give no route either: in the rigid brush, pure side slip, their convexity λ 4.05 (a literature estimate, not
   fitted; λ 12 is the parabola, 0.105) gives 0.123, and λ 0 (1-u⁴) gives 0.132; moving the pressure centre 0.02 of
   the patch forward, as rolling resistance does, gives 0.108, rearward 0.138; their flexible carcass lowers Mz at
@@ -2178,10 +2207,11 @@ stays the untuned brush's. The table's model column is the brush before the mode
   get grip back"): with V_SHAPE and LATERAL_FALL (μ_y(30°)/peak 0.89, the band's top) the Fiesta runs 2.1 m wide
   after a lift against NGP's 1.6 m, the Golf 4.0 against 2.0, the Escort spins less (97°, not 180°). A driver's test
   is next; a rolling tyre's measured past-peak shape at speed would settle the value.
-- σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 5 % per +0.5 bar (2026-11-08;
-  op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar, Meccanica 2023):
-  meeting the sources needs Cα to fall with pressure, as theirs does at 4 kN while Goodyear's rises near nominal
-  load and NGP's rises. Kx against pressure: NGP's +4.4 % per +0.5 bar against MF 6.1's -15 % (one set).
+- σ for a rally tarmac tyre against speed and pressure is unmeasured. Ours shortens 16 % per +0.5 bar (2026-11-10,
+  PASS; was 5 %; op het Veld -12 %, MF 6.1 -21 to -26 %, racing bicycle tyres twice as long at 3.5 as at 7.5 bar,
+  Meccanica 2023): Cα now falls with pressure (-5.7 %, band -18 to +5.7; it rose
+  5.3 % with NGP's factor), as MF 6.1, op het Veld and Goodyear (4 kN) have it; the A005 slick's rises. Kx against
+  pressure: -4.5 % against MF 6.1's -15 % (one set; Open, first entry).
 - Wet and damp (research and check above, 2026-11-08): (a), the thin film, is in (`tyre/wet-speed`, above). (b), the
   level, is a drive-test switch only (`RERBR_TEST_WET_LEVEL`, In game): μ × (1 - a min(1, W/0.25)), a 0.08 puts
   damp at 0.81-0.85 and wet at 0.66-0.67 of dry in game (bands 0.70-0.85, 0.65-0.80; the lab's 0.84 / 0.72 estimate

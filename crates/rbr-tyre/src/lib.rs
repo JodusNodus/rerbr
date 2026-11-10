@@ -32,6 +32,9 @@ pub struct Wheel {
     /// The temperature axis, K, and `RubMyFct_T` over it.
     pub temperature_axis: Vec<f32>,
     pub rubber_friction: Vec<f32>,
+    /// The air pressure axis, Pa, and the stiffness factor (`StfFct_P`) over it.
+    pub pressure_axis: Vec<f32>,
+    pub stiffness_factor: Vec<f32>,
     /// The type's friction per surface class (`load_surface_input`): base (`SFric`, `def+0x2c4`) and wet slope
     /// (`WetSlope`, `+0x2e0`) of classes 0-5, and its design wetness (`WetnessDesign`, `+0x2dc`). Zero unless the host
     /// reads them.
@@ -56,6 +59,8 @@ impl Wheel {
             traction_stiffness: entries(&setup.traction_stiffness_by_load),
             temperature_axis: entries(&setup.temperature_axis),
             rubber_friction: entries(&setup.rubber_friction_by_temperature),
+            pressure_axis: entries(&setup.pressure_axis),
+            stiffness_factor: entries(&setup.stiffness_factor_by_pressure),
             ..Wheel::default()
         }
     }

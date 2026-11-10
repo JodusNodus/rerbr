@@ -226,6 +226,8 @@ pub fn wheel(p: &Params) -> rbr_tyre::Wheel {
         traction_stiffness: p.trc_stf.clone(),
         temperature_axis: p.temp_axis.clone(),
         rubber_friction: p.rub_my.clone(),
+        pressure_axis: p.press_axis.clone(),
+        stiffness_factor: p.stf_val.clone(),
         class_friction: std::array::from_fn(|k| p.sfric.get(k).copied().unwrap_or(0.0)),
         class_wet_slope: std::array::from_fn(|k| p.wet_slope.get(k).copied().unwrap_or(0.0)),
         design_wetness: p.design_wetness,

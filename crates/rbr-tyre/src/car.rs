@@ -21,6 +21,8 @@ struct Tyre {
     /// from.
     ngp: (f64, f64),
     loose: Loose,
+    /// NGP's stiffness factor at the reference pressure ([`brush::reference_stiffness_factor`]).
+    sf_ref: f64,
     /// NGP's damp tarmac tyre's base, wet slope and design wetness on the tarmac class ([`brush::damp_tyre_level`]);
     /// `None` for every other tyre.
     damp_tarmac: Option<(f64, f64, f64)>,
@@ -49,6 +51,7 @@ impl Brush {
                     cal,
                     ngp: (ngp.cy0 * tuning.stiffness, ngp.cx0 * tuning.stiffness),
                     loose,
+                    sf_ref: brush::reference_stiffness_factor(&w.pressure_axis, &w.stiffness_factor),
                     damp_tarmac: w.is_damp_tarmac().then(|| {
                         let class = brush::TARMAC_CLASS as usize;
                         let base = f64::from(w.class_friction[class]);
@@ -77,7 +80,8 @@ impl Model for Brush {
         if !(t.running && x.touching) {
             t.state = TransState::default();
         }
-        let pressure_factor = f64::from(x.stiffness_factor) * f64::from(x.stiffness_scale);
+        let scale = f64::from(x.stiffness_scale);
+        let pressure_factor = f64::from(x.stiffness_factor) * scale;
         let soil = x.soil_thickness > 0.0;
         let mut grip = f64::from(x.grip) * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
         // NGP's damp tarmac tyre on its tarmac share: the dry tyre's factor times R(W) in place of NGP's.
@@ -105,7 +109,12 @@ impl Model for Brush {
             // worn, the partial hydroplaning). On gravel it slows the shear law's rise and takes NGP's damp loss back
             // out (`loose::gravel_damp_level`).
             pressure: 0.0,
-            pressure_factor: pressure_factor * low_mu,
+            pressure_factor: low_mu
+                * if soil {
+                    pressure_factor
+                } else {
+                    brush::slip_pressure_factor(t.sf_ref, f64::from(x.stiffness_factor)) * scale
+                },
             wetness: f64::from(x.water_factor),
             hydroplaning: true,
             temp_grip: 1.0,
