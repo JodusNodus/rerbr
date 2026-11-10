@@ -1,5 +1,6 @@
 //! NGP's wrappers of the physics step's functions.
 
+use rbr_physics::car_body::store::CarStore;
 use rbr_physics::engine_driveline::layout::{with_worker, DriveWorker, HookBlock};
 use rbr_physics::mem::Mem;
 use rbr_physics::ngp::atmosphere::atmosphere;
@@ -47,8 +48,8 @@ pub(crate) fn downforce_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 }
 
 /// `0x10047040`'s work for `p`; returns its eax. With an aero model set (`super::aero_model`, ours), the front
-/// downforce and the drag factor take its factors for the car's sideslip, from the speed along its axis over its speed
-/// (+0x15fc).
+/// downforce and the drag factor take its factors: for the car's sideslip, from the speed along its axis over its
+/// speed (+0x15fc), and for the file's downforce over its `Cd * A`.
 fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
     let car = m.u32(m.u32(p + 8) + 0x580);
     let def = m.u32(car + 0x34);
@@ -64,7 +65,9 @@ fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
         moment_sum: m.f32(car + 0x310),
     };
     let mut o = downforce(&i);
-    if let Some((front, drag)) = super::aero_model::factors(i.speed, m.f32(car + 0x15fc)) {
+    if let Some(model) = super::aero_model::model() {
+        let cd_area = m.drag_coefficient(car) * m.frontal_area(car);
+        let (front, drag) = model.factors(i.speed, m.f32(car + 0x15fc), i.front + i.rear, cd_area);
         let lost = (1.0 - front) * o.front_force;
         o.front_force -= lost;
         o.force_sum -= lost;

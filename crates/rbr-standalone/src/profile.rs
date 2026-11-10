@@ -15,7 +15,8 @@ pub struct Profile {
     /// `--tyre-tuning`: the brush's experimental tuning (`rbr_tyre::Tuning`), the model's in every profile.
     pub tyre_tuning: Tuning,
     /// The aero model (`rbr_hybrid::ngp::set_aero_model`): `ngp` is NGP's downforce and drag, in every profile;
-    /// `--aero yaw` (a prototype) takes the front downforce and the drag with the car's sideslip.
+    /// `--aero` sets a prototype: `yaw` takes the front downforce and the drag with the car's sideslip, `wings` adds
+    /// the drag of the downforce devices, `wings+yaw` both.
     pub aero: &'static str,
 }
 
