@@ -45,10 +45,12 @@ without `--brake-declutch`: the pedal rounds to no brake, the autopilot shifts d
 turn between the window's halves) and the acceleration along it (plus g times the grade over 3 s); the means of the
 two accelerometer channels give the same vector on the body's axes, and the angle between the two is the sideslip
 (+ = nose into the corner), whatever the channels' gain. Per speed band, over the windows with CORNER g or more on
-both lateral figures: their count, the path's g and the sideslip's quartiles. A `--replay-trace` of a drive in the
-game (`replay_gg.py`) goes the same way, from its positions and the specific force on the body's axes, with the true
-sideslip (the heading against the velocity) beside it: the check of the method. Not known: where the sensor sits; a
-metre ahead of or behind the centre of gravity moves the figure by 3 deg at 50 km/h and 1 g, 0.7 at 100 km/h.
+both lateral figures: their count, the path's g and the sideslip's quartiles; then, over the windows with TURNING g
+on both, the p90 of the whole g (the path's vector and the accelerometer's, which the estimate's noise pulls
+opposite ways) by sideslip from each of SLIPS deg up, at 60-100 and 100-160 km/h. A `--replay-trace` of a drive in
+the game (`replay_gg.py`) goes the same way, from its positions and the specific force on the body's axes, with the
+true sideslip (the heading against the velocity) beside it: the check of the method. Not known: where the sensor
+sits; a metre ahead of or behind the centre of gravity moves the figure by 3 deg at 50 km/h and 1 g, 0.7 at 100 km/h.
 """
 import argparse
 import base64
@@ -78,6 +80,8 @@ NODES = list(range(6000, 8501, 500))
 K = {3: 1.083, 4: 1.068, 5: 1.058, 6: 1.051}
 MARKS = (10, 25, 50, 100)
 CORNER = 0.6
+TURNING = 0.3
+SLIPS = (-5, 5, 10, 15, 20, 30, 40)
 BANDS = (40, 60, 80, 100, 130, 160, 200)
 
 
@@ -330,7 +334,8 @@ def lift(args):
 
 
 def sideslip_windows(rows):
-    """(speed km/h, the path's lateral g, sideslip deg, true sideslip deg or None) per cornering window."""
+    """(speed km/h, the path's lateral g, sideslip deg, true sideslip deg or None, the path's whole g, the
+    accelerometer's, its lateral g) per window with TURNING g or more on both laterals."""
     t = [r["t"] for r in rows]
     if "pos" in rows[0]:
         k, c = math.radians(6371000.0), math.cos(math.radians(rows[0]["pos"][1]))
@@ -354,12 +359,17 @@ def sideslip_windows(rows):
         along = (v2 - v1) / ((t[b] - t[a]) / 2) / G + (rows[gb]["alt"] - rows[ga]["alt"]) / run
         win = rows[a:b + 1]
         long, lat = statistics.fmean(w["long"] for w in win), statistics.fmean(w["lat"] for w in win)
-        if min(abs(normal), abs(lat)) < CORNER or normal * lat < 0:
+        if min(abs(normal), abs(lat)) < TURNING or normal * lat < 0:
             continue
         true = math.copysign(1, turn) * statistics.fmean(w["true"] for w in win) if "true" in win[0] else None
         slip = math.atan2(long, abs(lat)) - math.atan2(along, abs(normal))
-        out.append(((v1 + v2) * 1.8, abs(normal), math.degrees(slip), true and math.degrees(true)))
+        out.append(((v1 + v2) * 1.8, abs(normal), math.degrees(slip), true and math.degrees(true),
+                    math.hypot(normal, along), math.hypot(lat, long), abs(lat)))
     return out
+
+
+def pct(windows, column):
+    return f"{sorted(w[column] for w in windows)[int(0.9 * len(windows))]:.2f}"
 
 
 def sideslip(args):
@@ -369,12 +379,17 @@ def sideslip(args):
         win = [w for path in group for w in sideslip_windows((load_telemetry if real else load_replay)(path))]
         print(f"{name}: km/h, windows, path g, sideslip p25 / p50 / p75 deg" + ("" if real else ", the true one's"))
         for lo, hi in zip(BANDS, BANDS[1:]):
-            band = [w for w in win if lo <= w[0] < hi]
+            band = [w for w in win if lo <= w[0] < hi and min(w[1], w[6]) >= CORNER]
             if len(band) < 15:
                 continue
             quartiles = ["  " + " / ".join(f"{q:+.1f}" for q in statistics.quantiles([w[k] for w in band], n=4))
                          for k in ((2,) if real else (2, 3))]
             print(f"  {lo:3d}-{hi:3d} {len(band):5d}  {statistics.median(w[1] for w in band):.2f}" + "".join(quartiles))
+        print(f"  whole g p90, the path's / the accelerometer's (windows), by sideslip from {SLIPS} deg")
+        for lo, hi in ((60, 100), (100, 160)):
+            cells = [[w for w in win if lo <= w[0] < hi and a <= w[2] < b] for a, b in zip(SLIPS, SLIPS[1:] + (90,))]
+            print(f"  {lo:3d}-{hi:3d}  " + "  ".join(
+                f"{pct(c, 4)} / {pct(c, 5)} ({len(c)})" if len(c) >= 30 else "-" for c in cells))
 
 
 def main():

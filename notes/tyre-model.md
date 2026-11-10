@@ -1597,7 +1597,15 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   (1.3 m from the centre of gravity over the radius): gravel 22 / 17 / 12 / 8° at 60-80 to 130-160 km/h, at
   and past the peak angles (published ~12°, NGP 11-13.5°, loose-v1 17.5°), which pays only on a curve that stays flat
   past its peak, as both models' do (0.96-1.0 at 30°); tarmac 8 / 6 / 3-4° at 60-80 / 80-100 / 100-130 km/h, at or
-  under the tarmac peaks (published 6.5-8.5°, NGP 9.5°, brush 7-8.75°). In the game the method reads the true
+  under the tarmac peaks (published 6.5-8.5°, NGP 9.5°, brush 7-8.75°). The cars' whole g against the sideslip
+  (p90 per sideslip bin of the path's vector / the accelerometer's, which the estimate's noise pulls opposite ways
+  and blurs across bins; 60-100 km/h): Finland rises from 0.94 / 0.88 under 5° to 1.05 / 0.95 at 15-20° and holds
+  1.07 / 0.95 at 30-40° and 1.06 / 0.92 past 40° (100-160 km/h: 1.07 / 1.00, then 1.06 / 0.92 and 1.06 / 0.85);
+  España falls from 1.43 / 1.28 under 5° to 1.33 / 1.17 at 20-30° and 1.27 / 1.07 at 30-40° (0.89 / 0.84 of its
+  best), Deutschland from 1.18 / 1.08 to 1.12 / 0.99 (0.95 / 0.92). So real gravel keeps its grip at 30° and more
+  (the 30° row of the loose table: NGP's 0.96 and loose-v1's 1.0 stand, the quoted 0.63 and the 0.85 do not show),
+  and tarmac loses 5-16 % by 30-40°, between NGP's 0.865 and no loss; through the blur that does not rule out the
+  sets' 0.73-0.83. In the game the method reads the true
   sideslip (heading against velocity) within 3° on six of seven bands' medians (the seventh 5° over, 23 windows):
   the user's two hand drives of 524 Hassi (experimental-brush, 2026-11-09, Fiesta Rally2 and GR Yaris Rally2, 90
   and 66 windows at 0.70-0.81 g) give 8-13° where the true one is 7-11°. Their true medians, 11 / 8-10 / 8-11 /
