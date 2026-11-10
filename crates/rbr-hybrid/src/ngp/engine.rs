@@ -145,9 +145,19 @@ pub(crate) fn engine_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
         let history = i.modes & ngp_engine::IDLE_MODEL_MODE != 0 && i.has_idle_table;
         let stalled = history && ring_shift(&mut ctx.mem, ring, speed, i.stall_speed) && i.stall_speed > speed;
         let m = &ctx.mem;
+        // The driven wheels' speed for the model's start mode: the drive's wheel-side speed (`drive_speed_key`),
+        // read only (NGP's physics is untouched by it).
+        // The driven wheels' speed for the model's start mode: the drive's wheel-side speed (`drive_speed_key`),
+        // read only (NGP's physics is untouched by it).
+        let wheel = {
+            use rbr_physics::engine_driveline::{drive, layout};
+            let objects = layout::DriveObjects::at(m, layout::car_drive(car));
+            drive::drive_speed_key(&layout::DriveState::load(m, objects.state))
+        };
         let input = rbr_engine::Inputs {
             dt,
             speed,
+            wheel_speed: wheel,
             throttle: i.throttle,
             shift_cut: i.shift_cooldown > 0.0,
             damage: ngp_engine::damage_factor(&i.damage),

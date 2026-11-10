@@ -367,8 +367,8 @@ fn it_is_deterministic_and_finite_for_any_input() {
         let mut m = m.clone();
         let odd = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.0, -1.0, -1e30, 1e30, f32::MIN_POSITIVE];
         for &v in &odd {
-            for field in 0..9 {
-                let mut i: Inputs = inputs(400.0, 0.5);
+            for field in 0..10 {
+                let mut i: Inputs = inputs(400.0, 0.5, 100.0);
                 match field {
                     0 => i.dt = v,
                     1 => i.speed = v,
@@ -378,6 +378,7 @@ fn it_is_deterministic_and_finite_for_any_input() {
                     5 => i.temperature = v,
                     6 => i.friction = v,
                     7 => i.engine_temperature = v,
+                    8 => i.wheel_speed = v,
                     _ => {
                         i.dt = v;
                         i.speed = v;
@@ -390,7 +391,7 @@ fn it_is_deterministic_and_finite_for_any_input() {
                 }
                 let t = m.telemetry();
                 assert!(t.manifold_pressure.is_finite() && t.boost_pressure.is_finite() && t.turbo_speed.is_finite());
-                let t = m.torque(&inputs(400.0, 0.5));
+                let t = m.torque(&inputs(400.0, 0.5, 100.0));
                 assert!(t.is_finite(), "{name}: after field {field} = {v}: {t}");
             }
         }

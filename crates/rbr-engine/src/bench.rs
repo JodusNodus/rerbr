@@ -7,6 +7,8 @@ use crate::{Inputs, Model};
 
 /// NGP's step, s.
 pub const DT: f32 = 1.0 / 720.0;
+/// A fixed-speed run holds its speed with the wheels turning: no start mode.
+const ROLLING: f64 = 100.0;
 
 /// One bench sample.
 #[derive(Clone, Copy, Debug, Default)]
@@ -23,8 +25,8 @@ pub struct Row {
     pub anti_lag: bool,
 }
 
-/// The reference air, warm oil, an intact engine at `omega` with the pedal at `pedal`.
-pub fn inputs(omega: f64, pedal: f64) -> Inputs {
+/// The reference air, warm oil, an intact engine at `omega` with the pedal at `pedal` and the wheels at `wheel`.
+pub fn inputs(omega: f64, pedal: f64, wheel: f64) -> Inputs {
     Inputs {
         dt: DT,
         speed: omega as f32,
@@ -33,6 +35,7 @@ pub fn inputs(omega: f64, pedal: f64) -> Inputs {
         pressure: 101_325.0,
         temperature: 293.15,
         engine_temperature: 363.0,
+        wheel_speed: wheel as f32,
         ..Default::default()
     }
 }
@@ -63,6 +66,28 @@ pub fn run(
     pedal: impl Fn(f64) -> f64,
     dip: Option<(f64, f64)>,
 ) -> Vec<Row> {
+    run_with(m, rpm, inertia, seconds, pedal, dip, ROLLING)
+}
+
+/// A standing start: free from `rpm` with `inertia` at full pedal for `seconds`, the wheels stopped. With `start`
+/// the car's start mode runs; without, its class does not launch (`anti_lag` off on the run's clone: at full pedal
+/// with the wheels stopped nothing else reads it), so the main limiter holds the revs instead. One row per step.
+pub fn standing(mut m: Realistic, rpm: f64, inertia: f64, seconds: f64, start: bool) -> Vec<Row> {
+    if !start {
+        m.spec_mut().class.anti_lag = false;
+    }
+    run_with(&mut m, rpm, Some(inertia), seconds, |_| 1.0, None, 0.0)
+}
+
+fn run_with(
+    m: &mut Realistic,
+    rpm: f64,
+    inertia: Option<f64>,
+    seconds: f64,
+    pedal: impl Fn(f64) -> f64,
+    dip: Option<(f64, f64)>,
+    wheel: f64,
+) -> Vec<Row> {
     let mut omega = rpm / RPM;
     let steps = (seconds / f64::from(DT)).round() as usize;
     let mut rows = Vec::with_capacity(steps);
@@ -74,7 +99,7 @@ pub fn run(
             }
         }
         let p = pedal(time);
-        let torque = f64::from(m.torque(&inputs(omega, p)));
+        let torque = f64::from(m.torque(&inputs(omega, p, wheel)));
         rows.push(row(m, time, omega, p, torque));
         if let Some(j) = inertia {
             omega = (omega + torque / 1.05 / j * f64::from(DT)).max(0.0);

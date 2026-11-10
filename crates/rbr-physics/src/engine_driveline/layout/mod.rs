@@ -31,7 +31,7 @@ pub use drive_calls::{
 pub use drive_line::{
     blend_b, clamp_mix, entry_at, last, sample, set_drive_line, thunk_4f0, COUNT_AT, MAX_ENTRIES, STRIDE,
 };
-pub use drive_objects::{Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane};
+pub use drive_objects::{car_drive, Drive, DriveDef, DriveObjects, DriveState, IntLane, Lane, CAR_DRIVE};
 pub use engine_calls::{
     abs_rpm_term, compliance, engine_state_speed, exhaust_blend_at, init_real_lerp, options_gate_58, rev_gate,
     rpm_above_40, set_cut_flags, set_options, sim_e970, sim_e9a0, sim_ebb0, sim_ee60, slot_roll, torque_curve,

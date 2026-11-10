@@ -134,6 +134,15 @@ impl DriveState {
     }
 }
 
+/// The car's drive (`CDrive`): the member at `CCar` +0x4b0 (an address, not a pointer: the original reaches it by
+/// `add ecx, 0x4b0`, as `CCar::Fwd6DB0` does).
+pub const CAR_DRIVE: u32 = 0x4b0;
+
+/// The car's drive.
+pub fn car_drive(car: u32) -> u32 {
+    car + CAR_DRIVE
+}
+
 /// Where the drive's two objects are: the definition (`this+4`) and the state (`this+8`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DriveObjects {

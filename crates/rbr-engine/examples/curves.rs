@@ -78,6 +78,10 @@ fn transients(p: &Params, model: &Realistic) -> String {
     );
     let mut m = model.clone();
     put("limiter", bench::run(&mut m, idle, Some(inertia), 3.0, |t| if t >= 0.2 { 1.0 } else { 0.0 }, None));
+    put("standing start", bench::standing(model.clone(), idle, inertia, 3.0, true));
+    if model.spec().class.anti_lag {
+        put("standing no start", bench::standing(model.clone(), idle, inertia, 3.0, false));
+    }
     if p.turbo {
         for rpm in [2500.0, 4000.0] {
             let mut m = model.clone();
