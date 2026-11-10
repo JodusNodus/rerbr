@@ -1819,6 +1819,12 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   less. Their lap simulation (Table 3's 2.08 km stage, 78.2 s loose, loose μ = half of tarmac's by assumption): zero-yaw
   aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
   only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
+- Braking between cars (2026-11-10; `brake_test.py`, pad-tarmac, 100-0 km/h declutched, mean g, best threshold / ABS
+  at κ 0.15): Alpine A110 Rally (500 N at 150 km/h) ngp 1.20 / 1.23 (32.7 / 31.9 m), brush 1.21 / 1.25; Fiesta Rally2
+  (3100 N) ngp 1.32 / 1.32 (30.0 / 29.8 m), brush 1.31 / 1.33. NGP's tyre tables are the same for every car and the
+  file's tyre width does nothing (Alpine fronts 205 to 235 mm: no change); at 32 km/h in the ABS runs both cars hold
+  1.26-1.27 g, so the 7-9 % between them is the file's downforce. With `--tyre-tuning tarmac=1.1` the Fiesta's brush
+  gives 1.42 / 1.46 g and 1.45 g on the r40 circle (1.31 at 1.0).
 - Steady drift in a model, no measurement (Chaichaowarat & Wannasuphoprasit, SAE 2013-01-0001; RWD single-track
   model, no load transfer, 1250 kg, Table 1; MF fits of a P225/60R16 from Nicolas-Comstock 1972, Table 2, which give
   μ_y peak 0.98 at 9°, μ_y(30°)/peak 0.85-0.86, locked/peak 0.81, peak κ 0.15: NGP's shape, inside the tarmac band):
