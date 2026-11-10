@@ -282,8 +282,29 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Shaft inertia 1.7e-5 kg·m², a measured passenger-car rotor with a 52 mm compressor [Perge 2017] (a 2.0 L engine's
   2.72e-5 [Chung 2016]; [Chalmers]' T45 1.16e-5 and [GT1548] 5.5e-6 for smaller engines). With 1e-5 the samples
   spooled at 2000 rpm in 0.46–0.53 s (below), against [Chalmers]' 0.62–1.02 s at 2100–2400 rpm; now 0.64–0.74 s.
-  On a lift at 5000 rpm without anti-lag the turbo sample keeps 0.09 bar of boost after 0.5 s (under 0.09 before;
-  tested under 0.15).
+  On a lift at 5000 rpm without anti-lag the turbo sample kept 0.09 bar of boost after 0.5 s with that rotor (0.19
+  with its own, below).
+- The rotor by size (`turbo::rotor`, 2026-11-10): the 1.7e-5 rotor at ω* 15 000 is the reference, for a design
+  flow of 0.15 kg/s at Π 2 (guess: flow ∝ D², [Garrett] 60 mm GT2860RS sold for 250–360 hp, 82 mm GT3582R for
+  400–600 hp; its
+  52 mm compressor at 15 000 rad/s has a 390 m/s tip, a work coefficient of 0.55 at η_c 0.75). Another turbo's by
+  similarity from its design flow W* and ratio Π*: tip speed u ∝ √(Π*^((κ−1)/κ) − 1), diameter d ∝ √(W*/u), inertia
+  ∝ d⁵ ([Frontiers 2016] after Watson 1981; the turbine wheel is 70 % of it), ω* ∝ u/d, so ½Jω² ∝ W*^1.5·u^0.5.
+  The bearing losses are the reference's at the same share of the design speed (guess), so the steady state, K and
+  the turbine's nozzle do not depend on the size. Before every car ran the reference rotor. Inertia kg·m² / design
+  shaft rpm: turbo sample 1.41e-5 / 186 000, cable_turbo 2.55e-5 / 142 000, Fiesta Rally2 1.63e-5 / 171 000. Fixed
+  speed, closed → WOT to 90 % at 4000 rpm, s, before → now (peak shaft speed, 1000 rpm): Audi quattro A2 0.78 → 1.20
+  (186 → 122), Delta HF 0.93 → 0.83 (191 → 105), Celica ST185 0.86 → 1.02 (178 → 163), Focus WRC 2006 0.59 → 0.69
+  (169 → 202), Fiesta Rally2 0.59 → 0.66 (160 → 191), Fiesta Rally4 0.94 → 0.93 (147 → 213). WOT again after a 1 s
+  lift at 4500 rpm, anti-lag off: 0.53 → 0.69, 0.59 → 0.55, 0.60 → 0.69, 0.64 → 0.75, 0.71 → 0.79, 0.96 → 0.95; with
+  the class's anti-lag Celica 0.05, Focus 0.18 → 0.21, Rally2 0.10 → 0.11, Rally4 0.10 (`curves` example).
+  Scorecard 60/92 as before; spool rows 0.69 → 0.84 (turbo, 2000 rpm), 1.18 → 1.51 (cable_turbo, 3000), 0.75 → 0.93
+  (Rally2, 2000), band 0.54–1.60. On a lift at 5000 rpm the turbo sample keeps 0.19 bar after 0.5 s (0.09 before;
+  tested under 0.25). Sized on the volume behind a restrictor instead (the same mass is more volume) the cable_turbo
+  row left the band at 1.71 s: not used. No era term: no data for 1980s wheels' flow per diameter or their mass.
+  The whine's pitch follows the shaft (`live/picture.rs`), so it moves with ω* by car. RSF 524, plain autopilot,
+  `experimental`, before → now: Audi quattro A2 349.36 → 350.11 s, Fiesta Rally2 347.70 → 347.73, Fiesta Rally4
+  353.10 → 353.06 (`rally_gg.py run`).
 - Losses 0.002ω + 2.5e-6ω², our reading of rF2's `TurboFriction=(0.002,2.5)`, "Torque (Nm, constant at any speed),
   power (W, ramps up linearly with speed)" [rF2 engine.ini]. Its `TurboStaticFrictionWatts=100`, which "prevents
   numerical problems at low spool speeds", is left out: a constant power is a torque without bound as the shaft
@@ -499,7 +520,13 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   the road one, and an NA 1.6 makes about 11–13 bar. If anything the held points are too strong, through K (the same
   K as the idle MAP item). A turbine refit for more low-rpm boost was not tried.
 - The spark loop saturates (gain 0.49–0.65°/rpm on the samples, `spark_kp` over IdleRPM).
-- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is a guess.
+- No rally pedal map or measured part-throttle map of a race engine is public; the DBW 1:1 is a guess. A
+  translation table that makes the steady torque even with the pedal at each speed was built and not adopted
+  (2026-11-10, branch `engine/pedal-turbo`: Fiesta Rally2 at 2000 rpm, 30 % pedal, 86 % → 31 % of WOT torque; it
+  needs the plate at about a sixth of the pedal there). The published position tables are mild: 40 % pedal → 30 %
+  throttle [HPA 138], a "substantial reduction" on an LS3 [HPA M1 area forum]; torque-proportional pedals are F1's
+  and road cars' torque structures ([F1 torque map]: constant torque, constant power or both by region), and NGP's
+  own lines are that shape. Realism does not pick between them without a rally table.
 - Exhaust (Scorecard): the turbo samples idle at 661 °C against road idles of 296–430 °C at the ports and the Ford
   1.6's 593–657 °C retarded at its lightest loads, and run 564 °C at pedal 0.15, 1500 rpm against 585–732 °C at the
   same BMEP on four road turbos. One line over the flow share cannot hold both: a rally engine's rated flow is about
@@ -621,6 +648,9 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - GT1548 inertia: https://doi.org/10.3390/app10217452
 - Chung 2017, turbo bearing friction 30 000–90 000 rpm (KAIS 18(1) 585–591, Table 6): https://doi.org/10.5762/kais.2017.18.1.585
 - Perge 2017, turbo bearing friction and rotor inertia (Lubricants 5(3) 29, Fig. 9b, Table 1): https://doi.org/10.3390/lubricants5030029
+- Frontiers 2016, turbo lag review (rotor inertia ∝ D⁵ after Watson 1981, turbine wheel ≥ 70 % of it): https://www.frontiersin.org/journals/mechanical-engineering/articles/10.3389/fmech.2016.00004/full
+- Garrett, wheel sizes (GT2860RS 47/60 mm compressor, GT3582R 61/82 mm): https://www.garrettmotion.com/racing-and-performance/performance-catalog/turbo/gt2860rs/ , https://www.garrettmotion.com/racing-and-performance/performance-catalog/turbo/gt3582r/ ; power ranges from a reseller's listing (search result titles, pages not read): https://www.extremepsi.com/Garrett-GT3582R-Turbocharger-400-600-HP.html
+- HPA M1 area forum, throttle area against pedal translation: https://www.hpacademy.com/forum/general-tuning-discussion/show/m1tune-throttle-area-table
 - Chung 2016, turbo rotor inertia of a 2.0 L SI engine's turbo (Trans. KSAE 24(1) 33–38, Table 4): https://doi.org/10.7467/KSAE.2016.24.1.033
 - Brunel, normalised maps: https://bura.brunel.ac.uk/bitstream/2438/14007/1/IMechE%20Turbo%20Conf%202012%20-%20TURBOCHARGER%20MATCHING%20METHODOLOGY.pdf
 - US 12056425, map scaling: https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12056425

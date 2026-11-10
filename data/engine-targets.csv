@@ -80,7 +80,12 @@ spool-2000-rally2,turbo,5 bar BMEP to 90 % of the steady WOT torque at a fixed s
 bearing-loss-80k,turbo,shaft bearing loss,80 000 rpm,95,500,W,"[Chung 2017] 95 W (90 °C oil, 4 bar); [Perge 2017] about 350–500 W (figure 9b, 50–90 °C oil)","two rigs, 5× apart",model:bearing_loss_80k
 idle-shaft-turbo,turbo,turbo shaft speed at idle,"IdleRPM, steady, closed pedal",,,rpm,[Guzzella] p. 50: at idle or low load the shaft speed can fall below 10 000 rpm,context: no measured band,turbo:idle_shaft_rpm
 idle-shaft-rally2,turbo,turbo shaft speed at idle,"IdleRPM, steady, closed pedal",,,rpm,[Guzzella] p. 50: at idle or low load the shaft speed can fall below 10 000 rpm,context: no measured band,Ford_Fiesta_Rally2_ngp7:idle_shaft_rpm
-rotor-inertia,turbo,shaft inertia,,5.5e-6,2.72e-5,kg·m²,[GT1548] 5.5e-6; [Chalmers] T45 1.16e-5; [Perge 2017] 1.70e-5; [Chung 2016] 2.72e-5 (a 2.0 L SI turbo),measured rotors,model:inertia
+rotor-inertia,turbo,shaft inertia,,5.5e-6,2.72e-5,kg·m²,[GT1548] 5.5e-6; [Chalmers] T45 1.16e-5; [Perge 2017] 1.70e-5; [Chung 2016] 2.72e-5 (a 2.0 L SI turbo),measured rotors,turbo:rotor_inertia
+rotor-inertia-cable_turbo,turbo,shaft inertia,,,,kg·m²,as rotor-inertia,context: by similarity from the design flow and ratio,cable_turbo:rotor_inertia
+rotor-inertia-rally2,turbo,shaft inertia,,,,kg·m²,as rotor-inertia,context: by similarity from the design flow and ratio,Ford_Fiesta_Rally2_ngp7:rotor_inertia
+design-shaft-turbo,turbo,design shaft speed,,,,rpm,,context: by similarity from the design flow and ratio,turbo:design_shaft_rpm
+design-shaft-cable_turbo,turbo,design shaft speed,,,,rpm,,context: by similarity from the design flow and ratio,cable_turbo:design_shaft_rpm
+design-shaft-rally2,turbo,design shaft speed,,,,rpm,,context: by similarity from the design flow and ratio,Ford_Fiesta_Rally2_ngp7:design_shaft_rpm
 full-load-lambda,torque,λ at full load,every load,0.73,1.06,-,"[EPA] full load: road turbos 0.91–1.01, NA 0.73–1.06; [x-engineer] 0.86 for the most power",road engines,model:lambda
 restrictor-group-b-1986,class,turbo restrictor diameter (0: none),"Group B, 1986",0,0,mm,[Appendix J]: none on Group B,rule,class:Group B:1986:restrictor_mm
 restrictor-group-a8-1989,class,turbo restrictor diameter (0: none),"Group A8, 1989",0,0,mm,[Appendix J] Art. 254 / 255 by year,rule,class:Group A8:1989:restrictor_mm

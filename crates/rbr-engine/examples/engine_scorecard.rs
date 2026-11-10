@@ -131,6 +131,10 @@ fn measure(p: &Params) -> Vec<(&'static str, f64)> {
         out.push(("idle_exhaust", celsius(&s)));
         out.push(("idle_shaft_rpm", s.omega_t * RPM));
     }
+    if let Some(t) = &spec.turbo {
+        out.push(("rotor_inertia", t.inertia));
+        out.push(("design_shaft_rpm", t.omega_star * RPM));
+    }
     let lowest = [50.0, 100.0, 200.0, 300.0, 500.0, 700.0]
         .iter()
         .map(|d| {
@@ -184,7 +188,6 @@ fn main() {
         }
     }
     println!("model:bearing_loss_80k {}", turbo::losses(80_000.0 / RPM));
-    println!("model:inertia {}", turbo::INERTIA);
     println!("model:lambda {LAMBDA}");
     for q in queries {
         let mut parts = q.splitn(3, ':').skip(1);

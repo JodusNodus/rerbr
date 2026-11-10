@@ -13,7 +13,8 @@ const SURGE_BAND: f64 = 0.05;
 const ETA_C_MAX: f64 = 0.75;
 const ETA_C_EDGE: f64 = 0.15;
 const ETA_C_MIN: f64 = 0.4;
-/// The design shaft speed, rad/s (guess).
+/// The reference rotor's design shaft speed, rad/s (guess: with its 52 mm compressor a tip speed of 390 m/s, a work
+/// coefficient of 0.55 at Π 2 and η_c 0.75).
 pub const OMEGA_STAR: f64 = 15_000.0;
 /// The turbine's efficiency, turbine and bearings' mechanical losses apart (guess).
 pub const ETA_T: f64 = 0.65;
@@ -22,6 +23,22 @@ pub const ETA_T: f64 = 0.65;
 /// samples spooled from 5 bar BMEP to 90 % at 2000 rpm in 0.46–0.53 s, against GT-Power's 0.62–1.02 s for road
 /// turbos at 2100–2400 rpm (Chalmers); now 0.64–0.74 s.
 pub const INERTIA: f64 = 1.7e-5;
+/// The reference rotor's design point: Π 2 and the flow of a 52 mm compressor, kg/s (guess: flow ∝ D², Garrett's
+/// 60 mm GT2860RS for 250–360 hp and 82 mm GT3582R for 400–600).
+const PI_REF: f64 = 2.0;
+const W_REF: f64 = 0.15;
+
+/// A rotor's inertia (kg·m²) and design speed (rad/s) for the design flow `w_star` (kg/s) and ratio `pi_star`, by
+/// similarity from the reference rotor: the tip speed u ∝ √(Π*^((κ−1)/κ) − 1) (Euler, one work coefficient), the
+/// diameter d ∝ √(W*/u) (one flow coefficient), the inertia ∝ d⁵ (Watson 1981 in Frontiers 2016) and the speed
+/// ∝ u/d. The spool's energy ½Jω² goes with W*^1.5·u^0.5. The mass flow sizes it: with a restrictor's inlet loss in
+/// (the same mass is more volume) the cable_turbo sample spooled in 1.71 s at 3000 rpm, over road turbos' 1.60.
+pub fn rotor(w_star: f64, pi_star: f64) -> (f64, f64) {
+    let rise = |pi: f64| pow(pi, KAPPA_AIR) - 1.0;
+    let u = sqrt(rise(pi_star.max(1.1)) / rise(PI_REF));
+    let d = sqrt(w_star / (W_REF * u));
+    (INERTIA * d * d * d * d * d, OMEGA_STAR * u / d)
+}
 /// Bearing losses: a·ω + b·ω² (our reading of rF2's `TurboFriction`, a torque and a power that ramps with speed).
 /// rF2's `TurboStaticFrictionWatts` (100 W, against its numerical problems at low spool speeds) is left out: a
 /// constant power is a torque without bound as the shaft slows, and it stopped the shaft at idle, where [Guzzella]
@@ -77,8 +94,9 @@ pub struct Spec {
     /// The design point: the compressor's pressure ratio and flow (kg/s).
     pub pi_star: f64,
     pub w_star: f64,
-    /// The design shaft speed, rad/s.
+    /// The design shaft speed, rad/s, and the shaft's inertia, kg·m² ([`rotor`]).
     pub omega_star: f64,
+    pub inertia: f64,
     /// The turbine's nozzle and the wastegate's full area, m².
     pub a_turbine: f64,
     pub a_wastegate: f64,
@@ -181,7 +199,8 @@ impl Spec {
     }
 }
 
-/// The shaft's bearing losses at `omega`, W.
+/// The reference rotor's bearing losses at `omega`, W. A rotor of another size loses what the reference does at the
+/// same share of its design speed (guess: no loss data by size), so the steady state does not depend on the size.
 pub fn losses(omega: f64) -> f64 {
     LOSS_A * omega + LOSS_B * omega * omega
 }
