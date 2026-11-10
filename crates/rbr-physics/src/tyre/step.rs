@@ -166,6 +166,7 @@ pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal, tyre_model: Option<M
         + (1.0 - surface_weight) * d(ss.lo)? * WEIGHT_FAR)
         + (d(ss.hi)? * surface_weight) * WEIGHT_FAR)
         + (d(ss2.hi)? * tread_weight) * WEIGHT_NEAR;
+    let rubber_grip = temperature_grip;
     if 0.0 < f.scratch.water_factor {
         let wear = f.scratch.wear[idx as usize];
         temperature_grip *= (((f.setup.wet_wear_factor - 1.0) * f.scratch.water_factor + 1.0) - 1.0) * wear + 1.0;
@@ -199,10 +200,13 @@ pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal, tyre_model: Option<M
     };
     f.scratch.slip_phase = f.scratch.sliding_weight * sliding_phase + f.scratch.sticking_weight * sticking_phase;
     let mut model_weight = 0.0;
+    let mut temperatures = None;
     if let Some(tyre_model) = tyre_model {
-        if let Some(out) = tyre_model(&model::input(f, a.dt, k, if heat_lerps { k } else { 1.0 })) {
+        let stiffness_scale = if heat_lerps { k } else { 1.0 };
+        if let Some(out) = tyre_model(&model::input(f, a.dt, k, stiffness_scale, rubber_grip, ngp)) {
             model::apply(f, &out);
             model_weight = out.weight;
+            temperatures = out.temperatures;
         }
     }
     let (force, torque) = forces::solve_forces(f, a.dt, a.torque_in, model_weight);
@@ -220,7 +224,11 @@ pub fn step(f: &mut Frame, a: &StepArgs, ngp: &TyreThermal, tyre_model: Option<M
     f.scratch.ngp_heat_power = (rolling_torque * f.scratch.spin).abs() * k;
     f.scratch.rolling_torque = k * rolling_torque;
     let heat_in = heat_input(f, f.scratch.lateral_force, f.scratch.longitudinal_force, a.dt)?;
+    let carcass = f.state.carcass_temperature;
     apply_heat(f, &heat::heat_step(heat_in, ngp));
+    if let Some(t) = temperatures {
+        model::apply_temperatures(f, t, carcass);
+    }
     f.scratch.rolling_torque = rolling_torque;
     let block: OutputBlock = write_output_block(f);
     fill_noise_signal(f, a.velocity, a.debug_words, a.dt);

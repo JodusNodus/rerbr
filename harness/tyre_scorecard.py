@@ -38,6 +38,10 @@ context: measured and printed (CTX), not scored. The `how` keys:
   circle:SURFACE:KEY      car_grip.py's r40 circle on a flat SURFACE (gravel-flat, snow-flat: map 85 under material
                           17 / 101 with the gravel / snow tyre, ramp 0.4; tarmac: map 85 under 37, ramp 0.5): kin_g
                           (v²/R, the circle row's), glat_g (the body-axis specific force over the same 1 s), path_g
+  thermal:KEY             a temperature number of the rbr-tyre-lab `ngp_transient` example (`--thermal-keys`: NGP's
+                          whole tyre step on the tarmac probe's wheel, imaged at its step, with the physics' tyre
+                          model): surface_rise_30_1s, surface_tau_after_slide, tread_rise_6deg_20s, tread_limit_600s,
+                          wet_cooling_80 (the example's docs)
   coast:SURFACE:KEY       coast_test.py's declutched coast from 60 km/h to 10 km/h: crr (the rolling coefficient with
                           the car file's drag held), crr_free (the free fit's); tarmac RSF 568, gravel RSF 345, snow
                           map 10, ice RSF 568 iced from the lift (`--material-as 116`: the same road as tarmac)
@@ -46,8 +50,8 @@ The car is the Fiesta Rally2 (`--rsf-car Ford_Fiesta_Rally2_ngp7`). --quick keep
 rows on gravel and tarmac, with three slip targets. --json writes the values per id and physics, the raw measurements,
 the commit, the settings and the bands; --compare prints the changes between two such files, each scored on its own
 bands (a changed band is flagged). Runs go to --work (default /tmp/tyre-scorecard/<physics>/).
-target/release/rbr-standalone and the lab example must be built (`cargo build --release -p rbr-standalone`, `cargo
-build --release -p rbr-tyre-lab --example scorecard`); RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come from dev.env."""
+target/release/rbr-standalone and the lab examples must be built (`cargo build --release -p rbr-standalone`, `cargo
+build --release -p rbr-tyre-lab --example scorecard --example ngp_transient`; the thermal rows take about 5 min); RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come from dev.env."""
 import argparse
 import concurrent.futures
 import csv
@@ -70,6 +74,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGETS = os.path.join(REPO, "data", "tyre-targets.csv")
 BIN = brake_test.BIN
 LAB = os.path.join(REPO, "target", "release", "examples", "scorecard")
+TRANSIENT = os.path.join(REPO, "target", "release", "examples", "ngp_transient")
 CAR = "Ford_Fiesta_Rally2_ngp7"
 G = brake_test.G
 # The rbr_tyre model each physics profile runs (rbr-standalone `profile.rs`, `Profile::tyre`).
@@ -162,6 +167,7 @@ class Plan:
         self.probes, self.tyres, self.brakes, self.coasts, self.circle = set(), set(), set(), set(), False
         self.circles = set()  # circle:SURFACE:KEY other than RSF 345's gravel probe (car_grip.py's runs)
         self.abs = {}  # (surface, km/h): the per-wheel ABS targets K the rows name
+        self.thermal = None  # the thermal keys' values once read; a thermal row images the tarmac probe
         for how in hows:
             kind, rest = how.split(":", 1)
             if kind == "tyre":
@@ -183,6 +189,9 @@ class Plan:
             elif kind == "circle":
                 self.circle = True
                 self.probes.add("gravel")
+            elif kind == "thermal":
+                self.thermal = {}
+                self.probes.add("tarmac")
             else:
                 sys.exit(f"unknown how {how}")
         self.probes.update(TYRE_SURFACES[s][0] for s in self.tyres)
@@ -197,6 +206,8 @@ class Plan:
         cmd = [BIN, "--autopilot", name + ".out", "--boot", *p["stage"], "--rsf-car", CAR, "--physics", self.physics,
                "--steps", str(p["steps"]), "--top-speed", "60", *p["circle"], "--tyre-probe", name + ".probe",
                "--trace-speed", name + ".trace", *self.env_args()]
+        if surface == "tarmac" and self.thermal is not None:
+            cmd += ["--tyre-image", name + ".img", "--tyre-image-step", str(p["at"])]
         return cmd, name + ".log"
 
     def brake_jobs(self, surface, kmh):
@@ -271,6 +282,22 @@ class Plan:
                 values[key] = float(value)
         self.tyre[surface] = values
 
+    def read_thermal(self):
+        p = PROBES["tarmac"]
+        cmd = [TRANSIENT, "--image", os.path.join(self.work, "probe-tarmac.img"), "--wheel", str(p["wheel"]),
+               "--model", TYRE_MODEL[self.physics], "--thermal-keys"]
+        done = subprocess.run(cmd, capture_output=True, text=True)
+        if done.returncode != 0:
+            self.thermal = {"error": done.stderr.strip().splitlines()[-1:]}
+            return
+        for line in done.stdout.splitlines():
+            words = line.split()
+            if len(words) == 2 and not line.startswith("#"):
+                try:
+                    self.thermal[words[0]] = float(words[1])
+                except ValueError:
+                    pass
+
     def read_brakes(self):
         for surface, kmh in sorted(self.brakes):
             frm = round(kmh / 3.6, 2)
@@ -332,6 +359,10 @@ class Plan:
             pair, kmh, xy = rest.split(":")
             (a, b), (x, y) = pair.split("/"), xy.split("/")
             return self.brake_g(a, int(kmh), x) / self.brake_g(b, int(kmh), y)
+        if kind == "thermal":
+            if rest not in self.thermal:
+                raise LookupError(self.thermal.get("error") or f"no key {rest}")
+            return self.thermal[rest]
         if kind == "coast":
             surface, key = rest.split(":")
             c = self.coast[surface]
@@ -351,7 +382,7 @@ class Plan:
         raise LookupError(f"unknown how {how}")
 
     def raw(self):
-        return {"tyre": self.tyre, "circle": self.lat_g, "circles": self.circle_of, "coast": self.coast,
+        return {"tyre": self.tyre, "thermal": self.thermal, "circle": self.lat_g, "circles": self.circle_of, "coast": self.coast,
                 "brake": {f"{s}:{k}": v for (s, k), v in self.brake.items()}}
 
 
@@ -381,7 +412,8 @@ def commit():
 
 def score(args):
     for path, build in ((BIN, "cargo build --release -p rbr-standalone"),
-                        (LAB, "cargo build --release -p rbr-tyre-lab --example scorecard")):
+                        (LAB, "cargo build --release -p rbr-tyre-lab --example scorecard"),
+                        (TRANSIENT, "cargo build --release -p rbr-tyre-lab --example ngp_transient")):
         if not os.path.exists(path):
             sys.exit(f"{path}: build it first ({build})")
     rows = [r for r in load_targets() if r["how"] != "none"]
@@ -405,6 +437,7 @@ def score(args):
     print(f"{len(rows)} rows, {len(jobs)} runs, {args.jobs} jobs", file=sys.stderr)
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         list(pool.map(lambda j: run(*j), jobs))
+        list(pool.map(lambda plan: plan.read_thermal(), [p for p in plans.values() if p.thermal is not None]))
     for plan in plans.values():
         for surface in sorted(plan.tyres):
             plan.read_tyre(surface)

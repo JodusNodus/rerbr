@@ -62,6 +62,8 @@ impl Tyre<'_> {
             surface_blend: p.surface_blend,
             lateral_stiffness: p.carcass_lat * p.stiffness_factor,
             torsional_stiffness: p.carcass_tor * p.stiffness_factor,
+            // The temperatures held at the probe's.
+            thermal: None,
         };
         (patch_forces(&input), x)
     }

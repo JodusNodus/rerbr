@@ -6,10 +6,13 @@
 //! static friction (surface, wetness, temperature grip) scales the brush's friction levels, solved per wheel against
 //! NGP's own peaks ([`crate::fit`]). Each wheel's carcass deflections (Rill's first-order force dynamics,
 //! [`brush::step_dynamic`]) are the model's state, on either surface and across the change between them: they start
-//! from zero when the wheel touches down.
+//! from zero when the wheel touches down. Its temperatures are the model's too ([`crate::thermal`]): taken from NGP's
+//! where the brush starts on a wheel (start, restart, touch-down), stepped with the patch's friction power, read by
+//! the grip and the stiffness, and handed back for NGP's tyre to hold in place of its heat step's.
 
 use crate::brush::{self, Calibration, EvalInput, TransState};
 use crate::loose::{self, Loose};
+use crate::thermal::{self, Temperatures};
 use crate::tuning::Tuning;
 use crate::{fit, ForceInput, ForceOutput, Model, Wheel};
 
@@ -27,6 +30,10 @@ struct Tyre {
     /// `None` for every other tyre.
     damp_tarmac: Option<(f64, f64, f64)>,
     state: TransState,
+    /// The surface and bulk temperatures ([`thermal`]); `None` until the brush runs with NGP's thermal input.
+    temperatures: Option<Temperatures>,
+    /// NGP's temperature axis and `RubMyFct` over it.
+    rubber: (Vec<f32>, Vec<f32>),
     /// Whether the brush ran at the wheel's last step.
     running: bool,
 }
@@ -58,6 +65,8 @@ impl Brush {
                         (base, f64::from(w.class_wet_slope[class]), f64::from(w.design_wetness))
                     }),
                     state: TransState::default(),
+                    temperatures: None,
+                    rubber: (w.temperature_axis.clone(), w.rubber_friction.clone()),
                     running: false,
                 })
             })
@@ -77,13 +86,31 @@ impl Model for Brush {
             t.running = false;
             return None;
         }
+        let soil = x.soil_thickness > 0.0;
+        // On soil NGP's heat step keeps the temperatures: no published heat share or soil conduction for a tyre
+        // sliding on gravel or snow, where much of the power goes into the soil.
+        let thermal = x.thermal.filter(|th| th.rubber_grip > 0.0 && !soil);
         if !(t.running && x.touching) {
             t.state = TransState::default();
         }
+        if !(t.running && x.touching) || thermal.is_none() || t.temperatures.is_none() {
+            // NGP's temperatures as they stand (its relaxation cools the tyre while it is off the ground).
+            t.temperatures = thermal.map(|th| Temperatures {
+                surface: f64::from(th.surface_temperature),
+                bulk: f64::from(x.tread_temperature),
+            });
+        }
+        let temperatures = t.temperatures;
+        // The model's temperatures in place of NGP's: NGP's rubber grip divided out and taken at them.
+        let (rubber_grip, bulk_temp) = match (thermal, temperatures) {
+            (Some(th), Some(temps)) => {
+                (thermal::rubber_grip(&t.rubber.0, &t.rubber.1, temps) / f64::from(th.rubber_grip), temps.bulk)
+            }
+            _ => (1.0, f64::from(x.tread_temperature)),
+        };
         let scale = f64::from(x.stiffness_scale);
         let pressure_factor = f64::from(x.stiffness_factor) * scale;
-        let soil = x.soil_thickness > 0.0;
-        let mut grip = f64::from(x.grip) * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
+        let mut grip = f64::from(x.grip) * rubber_grip * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
         // NGP's damp tarmac tyre on its tarmac share: the dry tyre's factor times R(W) in place of NGP's.
         if let Some((base, slope, design)) = t.damp_tarmac {
             let share = loose::class_share(x.surface_classes, x.surface_blend, brush::TARMAC_CLASS);
@@ -102,7 +129,7 @@ impl Model for Brush {
                 + brush::camber_slip_velocity(f64::from(x.inclination_sin), f64::from(x.spin * x.effective_radius)),
             spin: f64::from(x.spin),
             radius: f64::from(x.effective_radius),
-            bulk_temp: f64::from(x.tread_temperature),
+            bulk_temp,
             tread_remaining: f64::from(x.tread_left),
             // NGP's wet surface friction carries the wet level; the wetness lowers the brush's sliding friction, its
             // damp level to 0.82 of dry, fades its dry-wear gain and lowers the friction with speed (the thin film;
@@ -144,18 +171,47 @@ impl Model for Brush {
         }
         t.state = state;
         t.running = true;
+        // The patch's friction power: the force the tyre holds times the slip velocity, each axis.
+        let temperatures = thermal.zip(temperatures).map(|(th, temps)| {
+            let power = (fx * (e.vx + vr)).abs() + (fy * f64::from(x.lateral_velocity)).abs();
+            let input = thermal::Input {
+                dt: f64::from(x.dt),
+                friction_power: power,
+                rolling_power: f64::from(th.rolling_power),
+                wetness: e.wetness,
+                speed: f64::from(x.speed),
+                air: f64::from(th.air_temperature),
+                carcass: f64::from(th.carcass_temperature),
+                surface_capacity: f64::from(th.surface_capacity),
+                bulk_capacity: f64::from(th.tread_capacity),
+                tread_depth: f64::from(th.tread_depth),
+                tread_width: f64::from(th.tread_width),
+                diameter: 2.0 * f64::from(th.outer_radius),
+                tread_area: f64::from(th.tread_area),
+                contact_area: f64::from(th.contact_area),
+                carcass_conductance: f64::from(th.carcass_conductance),
+                contact_conductance: f64::from(th.contact_conductance),
+            };
+            thermal::step(temps, &input)
+        });
+        let temperatures = temperatures.filter(|n| n.surface.is_finite() && n.bulk.is_finite());
+        if temperatures.is_some() {
+            t.temperatures = temperatures;
+        }
         Some(ForceOutput {
             weight: 1.0,
             lateral_force: fy as f32,
             longitudinal_force: fx as f32,
             pneumatic_trail: steady.trail as f32,
             phase: steady.psi.min(2.0) as f32,
+            temperatures: temperatures.map(|n| [n.surface as f32, n.bulk as f32]),
         })
     }
 
     fn restart(&mut self) {
         for t in &mut self.tyres {
             t.state = TransState::default();
+            t.temperatures = None;
             t.running = false;
         }
     }
@@ -191,6 +247,7 @@ mod tests {
             surface_blend: 0.0,
             lateral_stiffness: 150000.0,
             torsional_stiffness: 20000.0,
+            thermal: None,
         }
     }
 
@@ -336,6 +393,32 @@ mod tests {
     /// The wheel's output after `n` steps of `x` from the state `b` holds.
     fn settle(b: &mut Brush, x: &ForceInput, n: usize) -> ForceOutput {
         (0..n).map(|_| b.forces(wheel().tyre, x).unwrap()).last().unwrap()
+    }
+
+    #[test]
+    fn a_slide_heats_the_surface_on_hard_ground_and_soil_leaves_the_temperatures_to_ngp() {
+        let thermal = rbr_physics::tyre::model::ThermalInput {
+            rubber_grip: 1.0,
+            surface_temperature: 340.0,
+            carcass_temperature: 340.0,
+            air_temperature: 293.0,
+            surface_capacity: 307.0,
+            tread_capacity: 5836.0,
+            tread_depth: 0.01,
+            tread_width: 0.2,
+            outer_radius: 0.315,
+            tread_area: 0.396,
+            contact_area: 0.03,
+            carcass_conductance: 613.0,
+            contact_conductance: 1.0,
+            rolling_power: 0.0,
+        };
+        let slide = ForceInput { thermal: Some(thermal), tread_temperature: 340.0, ..rolling(20.0, 0.5) };
+        let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
+        let [surface, bulk] = settle(&mut b, &slide, 720).temperatures.unwrap();
+        assert!(surface > 360.0 && bulk > 340.0 && surface > bulk, "{surface} {bulk}");
+        let soil = ForceInput { soil_thickness: 0.009, grip: 0.9, ..slide };
+        assert_eq!(settle(&mut b, &soil, 10).temperatures, None);
     }
 
     #[test]

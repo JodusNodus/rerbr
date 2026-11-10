@@ -29,7 +29,9 @@
 //! Outputs: one CSV per test plus `summary.md` in the output dir (default `/tmp/tyre-lab/ngp-dyn`).
 //! `--fz N` holds another normal force (default 4 kN), `--speed M/S` sets the ramps' speed (default 15), and
 //! `--ramps-only` stops after the two quasi-static ramps: slip angle 0-30 deg (`validation.csv`, with the soil's
-//! lateral force) and slip ratio -1 (locked) to 1 (`validation_long.csv`).
+//! lateral force) and slip ratio -1 (locked) to 1 (`validation_long.csv`). `--model brush` runs the brush
+//! (`rbr_tyre`, the game's `experimental-brush` tyre with its temperatures) in NGP's step, as the game does;
+//! `--thermal-keys` prints only the temperature numbers `harness/tyre_scorecard.py` scores, as `key value` lines.
 //!
 //! ```sh
 //! cargo run --release -p rbr-tyre-lab --example ngp_transient -- \
@@ -44,6 +46,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::ngp::heat::{Airflow, TyreShape, TyreThermal};
 use rbr_physics::tyre::layout::{entries, Frame, WORDS};
 use rbr_physics::tyre::material::Material;
+use rbr_physics::tyre::model::{ForceInput, ForceOutput};
 use rbr_physics::tyre::store::TyreStore;
 use rbr_tyre_lab::write;
 
@@ -167,6 +170,9 @@ struct Rig {
     material: Material,
     static_idx: usize,
     kinetic_idx: usize,
+    water_idx: usize,
+    /// The surface's `WaterFactor` the steps take (the captured one at first).
+    water: f32,
     base_static: f32,
     base_kinetic: f32,
     slip_scale: f32,
@@ -176,6 +182,8 @@ struct Rig {
     vel: u32,
     trq: u32,
     words: [u32; 16],
+    /// A tyre model in NGP's step (`--model`), as the game's seam asks it.
+    model: Option<Box<dyn rbr_tyre::Model>>,
 }
 
 impl Rig {
@@ -184,6 +192,7 @@ impl Rig {
         let (s, st, d) = (&frame.scratch, &frame.state, &frame.setup);
         let static_idx = WORDS.iter().position(|&w| w == 0x12).expect("the material holds 0x1e8");
         let kinetic_idx = WORDS.iter().position(|&w| w == 0x16).expect("the material holds 0x1f8");
+        let water_idx = WORDS.iter().position(|&w| w == 0x3a).expect("the material holds 0x288");
         let base_static = s.static_friction / s.temperature_grip;
         let base_kinetic = s.kinetic_friction / s.temperature_grip;
         let thermal = TyreThermal {
@@ -214,6 +223,8 @@ impl Rig {
             material: s.material,
             static_idx,
             kinetic_idx,
+            water_idx,
+            water: s.water_factor,
             base_static,
             base_kinetic,
             slip_scale: s.slip_area_scale,
@@ -223,6 +234,7 @@ impl Rig {
             vel: ARGS_AT + 0x200,
             trq: ARGS_AT + 0x240,
             words: [0; 16],
+            model: None,
         };
         // The argument/output blocks: material, debug words, normal, axle, velocity, contact point, force,
         // torque (in/out), reaction torque, sticking load, output block; `words[7]` is unused (`load_step`).
@@ -293,6 +305,10 @@ impl Rig {
 
     /// The footprint back to the captured bytes.
     fn reset(&mut self) {
+        // The model takes the temperatures again (and its carcass starts from rest).
+        if let Some(m) = &mut self.model {
+            m.restart();
+        }
         let saved = std::mem::take(&mut self.saved);
         for (base, bytes) in &saved {
             self.mem.map(*base, bytes);
@@ -302,6 +318,10 @@ impl Rig {
 
     /// The captured temperatures back (the mechanics keeps running).
     fn reset_temps(&mut self) {
+        // The model takes the temperatures again (and its carcass starts from rest).
+        if let Some(m) = &mut self.model {
+            m.restart();
+        }
         for (at, v) in self.temps.clone() {
             self.mem.set_f32(at, v);
         }
@@ -309,6 +329,10 @@ impl Rig {
 
     /// Every temperature word (surface sectors, tread, carcass, inner air) to `t`.
     fn set_cold(&mut self, t: f32) {
+        // The model takes the temperatures again (and its carcass starts from rest).
+        if let Some(m) = &mut self.model {
+            m.restart();
+        }
         for (at, _) in self.temps.clone() {
             self.mem.set_f32(at, t);
         }
@@ -327,12 +351,21 @@ impl Rig {
         let mut material = self.material;
         material[self.static_idx] = self.base_static.to_bits();
         material[self.kinetic_idx] = self.base_kinetic.to_bits();
+        material[self.water_idx] = self.water.to_bits();
         self.mem.store_material(self.mat, &material);
         self.words[0] = spin.to_bits();
         self.words[2] = hub.to_bits();
         self.words[3] = self.slip_scale.to_bits();
         let words = self.words;
-        entries::step(&mut self.mem, self.scratch, &words, &self.thermal, None)
+        let scratch = self.scratch;
+        // Map 85's tarmac, class 2 (the step leaves the classes to the host).
+        let classes = [rbr_tyre::brush::TARMAC_CLASS; 2];
+        let mut forces = self
+            .model
+            .as_mut()
+            .map(|m| move |x: &ForceInput| m.forces(scratch, &ForceInput { surface_classes: classes, ..*x }));
+        let model = forces.as_mut().map(|f| f as &mut dyn FnMut(&ForceInput) -> Option<ForceOutput>);
+        entries::step(&mut self.mem, scratch, &words, &self.thermal, model)
             .expect("the flat-road step stays in the frame");
         entries::relax_count(&mut self.mem, self.scratch, DT, &self.thermal);
         let angle = self.mem.f32(self.record + 0x5AC) + spin * DT;
@@ -427,6 +460,8 @@ fn main() {
     let mut target_fz = TARGET_FZ;
     let mut ramp_v = 15.0f32;
     let mut ramps_only = false;
+    let mut model_name = String::from("ngp");
+    let mut thermal_only = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -437,6 +472,8 @@ fn main() {
             "--fz" => target_fz = args.next().expect("--fz N").parse().expect("load"),
             "--speed" => ramp_v = args.next().expect("--speed M/S").parse().expect("speed"),
             "--ramps-only" => ramps_only = true,
+            "--model" => model_name = args.next().expect("--model ngp|brush"),
+            "--thermal-keys" => thermal_only = true,
             _ => panic!("unknown arg {a}"),
         }
     }
@@ -462,6 +499,14 @@ fn main() {
     };
     println!("wheel {pick}");
     let mut rig = Rig::new(mem, &caps[pick as usize], ngp);
+    let setup = rig.mem.load_frame(rig.scratch).setup;
+    let wheel = rbr_tyre::Wheel::new(rig.scratch, &setup);
+    rig.model = rbr_tyre::model(&model_name, &[wheel], &rbr_tyre::Tuning::default()).expect("--model");
+    if thermal_only {
+        thermal_keys(&mut rig, target_fz);
+        return;
+    }
+    println!("tyre model {model_name}");
     println!(
         "setup: R0 {:.4} m base_static {:.4} base_kinetic {:.4} slip_scale {:.4} kind {}",
         rig.radius0, rig.base_static, rig.base_kinetic, rig.slip_scale, caps[pick as usize].kind
@@ -987,6 +1032,132 @@ cold -> {cold_end_t:.1} K tau {tau_cold:.1} s mu {cold_start_mu:.3} -> {cold_end
         hot_heat[0].1,
     );
 
+    md.push_str(&slides(&mut rig, r0, target_fz, &out));
+
     write(&out.join("summary.md"), &md);
     println!("csv + summary.md in {}", out.display());
+}
+
+/// (f) Slides and cooling, from the captured temperatures: 6 deg at 20 m/s for 20 s, a 2 s slide at 30 deg at 20 m/s,
+/// a 2 s locked wheel at 100 km/h, each then rolling free; 60 s at 7 deg and 21.7 m/s (map 85's circle at the limit)
+/// then a 60 s straight at 30 m/s. Each row: the mean and the hottest of the sectors' surface temperatures, the
+/// tread's and the temperature grip at the times given (`slides.csv` every 0.1 s).
+fn slides(rig: &mut Rig, r0: f32, target_fz: f32, out: &Path) -> String {
+    struct Phase {
+        secs: f32,
+        kin: (f32, f32, f32),
+    }
+    let free = |v: f32| lateral_kin(v, 0.0, r0);
+    let locked = |v: f32| (0.0, v, 0.0);
+    let runs: [(&str, Vec<Phase>, &[f32]); 4] = [
+        (
+            "6deg_20ms",
+            vec![Phase { secs: 20.0, kin: lateral_kin(20.0, 6.0, r0) }, Phase { secs: 20.0, kin: free(20.0) }],
+            &[1.0, 5.0, 20.0, 21.0, 25.0, 40.0],
+        ),
+        (
+            "slide30_20ms",
+            vec![Phase { secs: 2.0, kin: lateral_kin(20.0, 30.0, r0) }, Phase { secs: 10.0, kin: free(20.0) }],
+            &[0.5, 1.0, 2.0, 3.0, 5.0, 12.0],
+        ),
+        (
+            "locked_100kmh",
+            vec![Phase { secs: 2.0, kin: locked(27.78) }, Phase { secs: 10.0, kin: free(27.78) }],
+            &[0.5, 1.0, 2.0, 3.0, 5.0, 12.0],
+        ),
+        (
+            "limit_then_straight",
+            vec![Phase { secs: 60.0, kin: lateral_kin(21.7, 7.0, r0) }, Phase { secs: 60.0, kin: free(30.0) }],
+            &[10.0, 60.0, 61.0, 70.0, 90.0, 120.0],
+        ),
+    ];
+    let mut csv = String::from("run,t_s,surf_mean_K,surf_max_K,tread_K,carcass_K,Fy_N,Fx_N,temp_grip\n");
+    let mut md = String::from("## (f) Slides and cooling (from the captured temperatures)\n\n");
+    md.push_str(
+        "| run | t s | surface mean K | surface max K | tread K | grip |\n| --- | --- | --- | --- | --- | --- |\n",
+    );
+    for (name, phases, at) in runs {
+        rig.reset();
+        let (vx, vz, spin) = phases[0].kin;
+        let hub = rig.bisect_hub(vx, vz, spin, target_fz);
+        let row = |f: &Frame| {
+            let s = &f.state.surface_temperature;
+            let mean = s.iter().sum::<f32>() / s.len() as f32;
+            let max = s.iter().fold(f32::MIN, |a, &b| a.max(b));
+            (mean, max, f.state.tread_temperature, f.state.carcass_temperature, f.scratch.temperature_grip)
+        };
+        let first = row(&rig.mem.load_frame(rig.scratch));
+        md.push_str(&format!("| {name} | 0 | {:.1} | {:.1} | {:.1} | {:.3} |\n", first.0, first.1, first.2, first.4));
+        let (mut t, mut next) = (0.0f32, 0);
+        for p in &phases {
+            for _ in 0..(p.secs / DT).round() as u32 {
+                let f = rig.step_once(p.kin.0, p.kin.1, p.kin.2, hub);
+                t += DT;
+                let (mean, max, tread, carcass, grip) = row(&f);
+                if ((t / DT).round() as u32).is_multiple_of(72) {
+                    csv.push_str(&format!(
+                        "{name},{t:.2},{mean:.2},{max:.2},{tread:.2},{carcass:.2},{:.0},{:.0},{grip:.4}\n",
+                        f.scratch.lateral_force, f.scratch.longitudinal_force
+                    ));
+                }
+                if next < at.len() && t >= at[next] - DT / 2.0 {
+                    md.push_str(&format!(
+                        "| {name} | {} | {mean:.1} | {max:.1} | {tread:.1} | {grip:.3} |\n",
+                        at[next]
+                    ));
+                    next += 1;
+                }
+            }
+        }
+    }
+    write(&out.join("slides.csv"), &csv);
+    println!("{md}");
+    md
+}
+
+/// The temperature numbers the scorecard reads, from the captured temperatures at `fz` (`# ` lines are notes):
+/// `surface_rise_30_1s` (K, 1 s at 30 deg and 20 m/s), `surface_tau_after_slide` (s, the surface's excess over the
+/// tread falling to 1/e rolling free after 2 s of it), `tread_rise_6deg_20s` (K), `tread_limit_600s` (K, 10 min at
+/// 7 deg and 21.7 m/s, map 85's circle at the limit) and `wet_cooling_80` (K, the tread dry over wet, WaterFactor 1,
+/// after 10 min rolling free at 80 km/h).
+fn thermal_keys(rig: &mut Rig, fz: f32) {
+    let r0 = rig.radius0;
+    let mean = |f: &Frame| f.state.surface_temperature.iter().sum::<f32>() / f.state.surface_temperature.len() as f32;
+    let run = |rig: &mut Rig, kin: (f32, f32, f32), secs: f32, water: f32| {
+        rig.reset();
+        rig.water = water;
+        let hub = rig.bisect_hub(kin.0, kin.1, kin.2, fz);
+        let start = rig.mem.load_frame(rig.scratch);
+        let mut f = start;
+        for _ in 0..(secs / DT).round() as u32 {
+            f = rig.step_once(kin.0, kin.1, kin.2, hub);
+        }
+        (start, f, hub)
+    };
+    let water = rig.water;
+    let (start, slid, hub) = run(rig, lateral_kin(20.0, 30.0, r0), 1.0, water);
+    println!("surface_rise_30_1s {:.3}", mean(&slid) - mean(&start));
+    // One more second of the slide, then rolling free until the surface's excess over the tread falls to 1/e.
+    let (vx, vz, spin) = lateral_kin(20.0, 30.0, r0);
+    let mut f = slid;
+    for _ in 0..720 {
+        f = rig.step_once(vx, vz, spin, hub);
+    }
+    let excess = mean(&f) - f.state.tread_temperature;
+    let (fx, fz_, fs) = lateral_kin(20.0, 0.0, r0);
+    let tau = (1..=7200).find(|_| {
+        let g = rig.step_once(fx, fz_, fs, hub);
+        mean(&g) - g.state.tread_temperature < excess / std::f32::consts::E
+    });
+    println!("surface_tau_after_slide {:.3}", tau.map_or(f32::NAN, |k| k as f32 * DT));
+    let (start, end, _) = run(rig, lateral_kin(20.0, 6.0, r0), 20.0, water);
+    println!("tread_rise_6deg_20s {:.3}", end.state.tread_temperature - start.state.tread_temperature);
+    let (_, end, _) = run(rig, lateral_kin(21.7, 7.0, r0), 600.0, water);
+    println!("tread_limit_600s {:.3}", end.state.tread_temperature);
+    println!("# tread_limit_600s surface {:.1} K", mean(&end));
+    let (_, dry, _) = run(rig, lateral_kin(80.0 / 3.6, 0.0, r0), 600.0, 0.0);
+    let (_, wet, _) = run(rig, lateral_kin(80.0 / 3.6, 0.0, r0), 600.0, 1.0);
+    println!("wet_cooling_80 {:.3}", dry.state.tread_temperature - wet.state.tread_temperature);
+    println!("# wet_cooling_80 dry {:.1} K wet {:.1} K", dry.state.tread_temperature, wet.state.tread_temperature);
+    rig.water = water;
 }

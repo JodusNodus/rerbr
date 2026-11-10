@@ -50,6 +50,13 @@ step 8000; the sweep calls NGP's own `patch_forces`/`friction_limits` with the p
   standstill a push holds -4 kN with ±14 N.
 - Heat: 6° at 20 m/s for 20 s takes the tread from 293 to 300.7 K (τ 19 s) and grip from 1.017 to 1.059; from the
   skidpad's 337 K it barely moves (τ 12 s). The tread temperature follows a slow level, not the slip power.
+- Heat step (`tyre::heat::heat_step`, after the forces; `relax` after each tyre step), Fiesta Rally2 front: 8 sector
+  surfaces of 38.4 J/K each (0.0192 kg × 2000 J/(kg·K), ~0.5 mm), tread 5836 J/K, carcass 16165 J/K, tread
+  conductivity 1 W/(m·K), carcass-tread 2 W/(m·K) at `def+0x124` (613 W/K over the band), contact conductance
+  0.5-1.2 over 50-200 kPa, air 293.1 K, road air + 9.86 K. Of the slip power ~19 % reaches the surface, 23.6 % the
+  tread, 12 % the carcass; the rest is dropped by `(1 - 0.6 hot) · wet damping` (1/3 dry), so the surface runs a few
+  K from the tread (30° slide at 20 m/s: 331 → 346 K in 2 s). Map 41 autopilot: from 337 K the tread falls to
+  318-319 K over the stage.
 - Mass: 40 % more mass costs ~4 % lateral μ (1.4^-0.122) and ~0 longitudinally, inside the skidpad spread, which is
   why the season sweep saw no mass term (`season.md`).
 
@@ -132,9 +139,15 @@ PKX1 50.4 against 32.9, longitudinal asymptote 0.75), and PB, the passenger set 
 | Unpaved wearing course and water | slipperiness when wet comes from the fines: > 20 % passing 0.075 mm (silt, clay) dusty dry and slippery wet, < 10 % washboards and ravels; well-graded gravel with a little clay binds a hard tight surface; 12 % of 109 sections (Transvaal, Namibia) were periodically slippery after a number of passes in prolonged rain, all safe above 80 km/h dry; loose material after blading made it worse | Jones, UCPRC-GL-2017-03 App. A (text); Paige-Green & Netterberg, TRR 1106 (1987) pp. 208-214 (quoted, visual ratings) |
 | Soil moisture and traction | tractor net traction, ~850 curves (Steinkampf): optimum at 15-20 % moisture, lower drier and wetter; fit κmax = 0.54 + 0.12 k - 0.1 k² over 5-30 % (k 0-1): 0.54 dry, 0.576 at 20 %, 0.56 wet (±7 %). Granular road base (non-plastic, OMC 9.6 %): c 80 kPa, φ 39° at optimum against 35 kPa, 31° saturated (shear strength 0.64 at 200 kPa, inferred); suction cohesion of unsaturated granular soil peaks at intermediate saturation | Schreiber & Kutzbach, Res. Agr. Eng. 54 (2008) 43-49, Fig. 4, eq. 20 (quoted, fit); Molina Gómez et al., Tecnura 20(49) (2016) 75-85 (text); search abstracts (not read) |
 | Rubber friction | no static/kinetic pair: μ(v, T) with flash temperature | Persson, arXiv 1007.2713, cond-mat/0605273; Grosch 1963 (secondary) |
+| Tyre heat: friction share, one node | half the friction power into the tyre (assumed); one-node τ 6.4 s; μ = 1.070 - 3.967e-3 T(°C) (-0.4 %/K at the surface); IR surface 25-80 °C on a drifting car | Kobayashi, Weber & Gerdes, arXiv 2407.12989 (text, fit) |
+| Tyre heat: racing model | share fitted 0.49-0.68; road conductance 12 kW/(m²·K) over the non-sliding contact (from Kelly & Sharp); convection Nu = 0.0239 Re^0.805, L = 1/(1/D + 1/W); tread 0.5 kg × 2.4 kJ/(kg·K); tread 100-150 °C | West & Limebeer, VSD 2022 (text) |
+| Rubber thermal properties | conductivity 0.2-0.3 W/(m·K); a passenger tyre warms over > 30 min; k 0.33, ρ 1190, c 2000; D ≈ 1e-7 m²/s | Gent & Walter, NHTSA DOT HS 810 561; Fina, PhD Surrey 2016; Persson, cond-mat/0605273 (text) |
+| Rally tarmac tyre windows | RA9 20-60, RA7+ 30-70, RA7 50-90, RA5 70-110 °C | Pirelli RA range (maker's text) |
+| Wet road cooling | tyres 6-7 °C cooler on a wet road | Ejsmont et al., J. Civ. Eng. Archit. 9 (2015) 1302 (text) |
 
 Not found in open sources: rally tyre data, racing-radial data beyond the slick row (TTC data is licence-gated), the
-full Gallaway 1979 tyre terms, gravel cut onto tarmac, a rally tyre's wet or damp grip. Those
+full Gallaway 1979 tyre terms, gravel cut onto tarmac, a rally tyre's wet or damp grip, a measured surface
+temperature rise and decay over one slide, Kelly & Sharp's own thermal parameters. Those
 stay calibrated on stage times.
 
 ## NGP against the targets
@@ -144,7 +157,8 @@ stay calibrated on stage times.
   temperature, pressure apart, and tread depth; dry wear lowers grip (tread loss raises it); wet grip fixed per
   surface (no speed or film effect); static/kinetic pair; peak slip angle 9.5° at 4 kN (6.5-8.5°); lateral transient
   0.04-0.10 m to 63 %, shrinking with speed (σ/R0 1.0-1.8 in the sets); the sticking model's 360 Hz alternation;
-  tread warm-up of ~8 K in 20 s of hard cornering.
+  tread warm-up of ~8 K in 20 s of hard cornering; a slide moves the surface a few K (19 % of the slip power reaches
+  it; published models put half into the tyre).
 
 ## Candidate (brush-v1)
 
@@ -636,6 +650,50 @@ force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front 
   2.3 km, Alpine, 170-180 km/h) slides no car past 10° of sideslip in any physics (peak brush 5.9°, ngp 7.4°), so it
   is no closed-loop test here. Back to back on the drive: `rbr-standalone ARGS --replay F --replay-pace free
   --replay-tyre 304712:ngp` against `:brush` (ARGS the program arguments the replay stores after `--live PROGRAM`; step 304712 is 421.1 s).
+
+## Tyre temperatures
+
+`rbr_tyre::thermal` (experimental-brush on hard surfaces only, 2026-11-10, `tyre/thermal`). NGP's heat step sends 81 %
+of the slip power past the surface (above), so a slide barely moves the grip. Per wheel two nodes, explicit at 1/720 s:
+
+- Surface layer: NGP's 8 sectors' capacity as one (307 J/K, ~0.5 mm). In: `TYRE_SHARE` 0.5 of the patch's friction
+  power |Fx (vx + ω R)| + |Fy vy| (Kobayashi assumed 0.5; West & Limebeer fitted 0.49-0.68). Out: conduction into
+  the bulk across the layer's thickness, k 0.25 W/(m·K) (Gent & Walter 0.2-0.3, Fina 0.33), 198 W/K; convection
+  Nu = 0.0239 Re^0.805, L = 1/(1/D + 1/W) (West & Limebeer), 44 / 75 / 104 W/(m²·K) at 10 / 20 / 30 m/s over the
+  tread's surface (2πRW); conduction to the road at air + 9.86 K, NGP's term kept: contact factor × (1500 + 4500 hot)
+  × (1 + 3 W) × contact area (hot 0 at 40 °C to 1 at 120 °C). West & Limebeer's 12 kW/(m²·K) over the adhering share
+  alone left a tyre at the limit 375 K after 10 min (the brush's patch slides whole at its peak): not taken. Air
+  properties standard (ours).
+- Bulk (tread): NGP's 5836 J/K. In: the conduction from the surface and NGP's rolling resistance power (0.5 l_p rr Fz
+  × sliding weight × |ω|). Out: NGP's carcass conductance (613 W/K) to the carcass.
+- Grip: NGP's `RubMyFct` 0.6 surface + 0.4 bulk, scaled against NGP's own blend (the static friction already holds
+  it); the brush's stiffness (-0.45 %/K) reads the bulk. Steady state at the skidpad point (12 kW, 21.7 m/s, 900 s, a
+  stand-in carcass): grip within 1 % of NGP's 0.997 (unit test).
+- Seam: `tyre/step.rs:206` passes NGP's rubber grip and thermal state to `model::input` (`ThermalInput`), the model
+  answers `ForceOutput::temperatures`, and after NGP's heat step `model::apply_temperatures` (`step.rs:229`,
+  `model.rs:189`) writes the surface into all 8 sectors and the bulk into the tread, and puts the carcass back to its
+  value before the heat step. NGP's wear and power words stay, `relax` still conducts tread → carcass (the same flow
+  the bulk loses), so pressure, wear and the HUD read the new values. State in `car::Tyre`, reset off contact and at
+  restart, adopted from NGP's slots when the model takes over. ngp, experimental and 1.02 never set `temperatures`.
+- Soil: NGP's heat step as it is (no published share or soil conduction; gravel probe surfaces reached 387 K with
+  the tarmac terms).
+
+Lab (`ngp_transient --model brush`, section (f), map 85 circle image, front right; NGP / brush, surface mean K, grip):
+6° at 20 m/s for 20 s 335.3 / 340.9, tread 339.4 / 339.1, 5 s later 330.6 / 324.8; 30° slide 2 s from 331 K 346.4 /
+374.8 (grip 1.000 / 0.980), back to 332.3 / 327.3 at 5 s; locked at 100 km/h 2 s 346.5 (one sector 390) / 420.5 (grip
+0.941 / 0.910); 60 s at the limit then straight: tread 345.3 / 342.0, 30 s later 337.1 / 335.8. Keys
+(`--thermal-keys`): surface rise in 1 s of 30° 12.2 / 35.2 K, decay τ after it 0.17 / 0.53 s, tread rise 6° 20 s
+2.19 / 2.30 K, tread after 600 s at the limit 356.1 / 346.4 K (Pirelli RA7 50-90 °C), wet over dry cooling at 80 km/h
+3.75 / 3.68 K (Ejsmont 6-7: MISS both).
+
+Past the limit (`limit_recovery.py --material-as 37`, brush before / after; widest m, back s, peak β °): Fiesta lift
+2.90 / 3.11, 2.59 / 2.75; full throttle 15.96 / 17.19, 5.18 / 4.88, β 47 / 65; Golf lift 6.14 / 6.48, 4.00 / 4.23;
+full throttle 22.94 / 26.74, never back, β 51 / 160 (spun); Escort lift 12.42 / 13.44 (spun both), full throttle
+8.29 / 11.68, 5.42 / never. ngp unchanged. The hot surface costs grip in the slide, so recovering is harder.
+
+Stage (map 41, Fiesta Rally2, autopilot): finish 303.61 → 303.64 s (ngp 309.01). Surface mean front 314.6-393.9 K
+(mean 320.9), rear 314.3-359.1; tread 319.4-334.4 (mean 326). Before (NGP's heat step under the brush): surface
+316-331, tread 318-334; ngp surface 316.5-331.8, tread 319-334.
 
 ## Racing and rally targets
 
@@ -1977,6 +2035,11 @@ Since then:
   `tarmac-combined-a4` (0.292 against the measured points 0.23-0.27; the source's model line was 0.31) and
   `tarmac-peak-fx-load-exponent` (0.933 against 0.94-0.97, from Goodyear's 0.92 over 2-6 kN); no ngp verdict moved.
   Now ngp 41/112, experimental-brush 91/112 PASS.
+- Tyre temperatures (2026-11-10, `tyre/thermal`, full run against main 7d3c7312: ngp 43/114, brush 92/114): six
+  `tarmac-thermal-*` rows, one scored (`-wet-cooling-80`, Ejsmont 5-8 K: ngp 3.75, brush 3.68, MISS both), five
+  context; `thermal:KEY` runs `ngp_transient --thermal-keys` on the tarmac probe's image (~5 min per physics). Moved
+  (brush, all within their verdicts): ice locked over threshold 0.811 → 0.826, ice coast Crr 0.002 → 0.022, tarmac
+  locked over ABS 0.833 → 0.830, the rest ≤ 0.012. Now ngp 43/115, experimental-brush 92/115 PASS.
 
 It reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, the 345 circle 0.571 g (brush 0.664); NGP
 gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ
@@ -2163,6 +2226,11 @@ stays the untuned brush's. The table's model column is the brush before the mode
 
 ## Open
 
+- Tyre temperatures ([Tyre temperatures](#tyre-temperatures)): the hot surface makes recovery past the limit harder
+  (Golf and Escort full throttle now spin); a driver's test decides. Unmeasured: a slide's surface rise and decay
+  (the 35 K in 1 s and τ 0.5 s are the model's alone), the wet road's conductance (wet cooling 3.7 K against 6-7 K,
+  NGP's alike), the road term (NGP's, kept), soil (NGP's heat step). Ice coast Crr moved 0.002 → 0.022 (MISS
+  both, band 0.007-0.013), not traced.
 - Kx/Ky 1.17 at 4 kN with both stiffnesses 1.3 times NGP's slope's, near the band's foot (1.15-1.62); Kx's
   pressure dependence is -4.5 % per +0.5 bar (2026-11-10, `brush::SLIP_PRESSURE`: the slip stiffnesses' power of NGP's
   stiffness factor, -1.1, the sources' mean Cα -7.2 %, Cx the same by brush theory's a² ∝ 1/p; hard surfaces, NGP's level
