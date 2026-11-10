@@ -310,19 +310,21 @@ The blow-off valve stays shut.
 
 ### Start mode
 
-On cars whose class ran anti-lag, a full-throttle standing start launches on boost. While the pedal is over 90 %
-with the driven wheels stopped (under 1.5 rad/s, about 0.5 m/s at the rim), the rev limiter sits at 60 % of `RPMLimit`
-instead of the limit, and while it cuts the fired events retard 60°; the cut firings' fuel burns in the exhaust
-manifold through the anti-lag path above. The mode ends the instant the wheels turn or the pedal falls, and the
-turbo's state carries over. It shows nowhere in telemetry (the sound's anti-lag pops stay off it). Link's G4+ launch
-control is the source for the shape: a launch RPM limit for stationary starts, ignition retard and extra fuel while
-active, dropped as soon as a non-driven wheel turns; the 90 % pedal, the 60 % of the limit and the 1.5 rad/s are
-guesses (Link leaves the launch RPM to testing). Under `--flat-out` a standing start waits in neutral at full
+On cars whose class ran anti-lag, a full-throttle standing start launches on boost. With the pedal over 90 %,
+every wheel stopped (under 0.5 m/s at the rim) and the body nearly at rest (under 1.0 m/s), the rev limiter sits at
+60 % of `RPMLimit` instead of the limit, and while it cuts the fired events retard 60°; the cut firings' fuel burns
+in the exhaust manifold through the anti-lag path above. The mode ends the instant a wheel turns, the body moves or
+the pedal falls, and the turbo's state carries over, so a car that spins its wheels without moving leaves it, and a
+handbrake turn with the clutch in and full throttle never enters it. It shows nowhere in telemetry (the sound's
+anti-lag pops stay off it). Link's G4+ launch control is the source for the shape: a launch RPM limit for stationary
+starts, ignition retard and extra fuel while active, dropped as soon as a non-driven wheel turns; the 90 % pedal,
+the 60 % of the limit, the 0.5 m/s at the rim and the 1.0 m/s body speed are guesses (Link leaves the launch RPM to
+testing). Under `--flat-out` a standing start waits in neutral at full
 throttle for 1.5 s once the revs peak (or stop rising under the start limiter), so the boost has time to build; the
-plain autopilot selects first as soon as they peak. On the flat pad the three Rally3 cars' 0-60 km/h came to within
-0.02 s of NGP's (tarmac: 2.11/2.13, 1.97/1.97 and 1.88/1.90 s NGP/experimental, from 2.39, 2.46 and 2.28), and their
-0-100 km/h to within 0.04 s (5.25/5.24, 4.84/4.82 and 4.51/4.47 s, from 5.50, 5.34 and 4.90). The Polo R5, Fiesta
-Rally2, GR Yaris Rally2 and Celica, which did not bog, moved by at most 0.03 s; the Audi quattro A2 (turbo without
+plain autopilot selects first as soon as they peak. On the flat pad the three Rally3 cars' tarmac 0-60 km/h came to
+within 0.07 s of NGP's (2.13/2.12, 2.03/1.96 and 1.90/1.86 s NGP/experimental, from 2.35, 2.45 and 2.24), and their
+0-100 km/h to within 0.04 s (5.26/5.25, 4.84/4.83 and 4.48/4.52 s, from 5.50, 5.32 and 4.90). The Polo R5, Fiesta
+Rally2, GR Yaris Rally2 and Celica, which did not bog, moved by at most 0.05 s; the Audi quattro A2 (turbo without
 anti-lag), the Golf and the M3 are unchanged to the digit.
 
 ## Classes
@@ -628,8 +630,8 @@ closes the clutch. The flat pad is a built-in stage, a level 2 km square of one 
 
 | Flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
-| Tarmac (material 37) | 4.00 s | 3.97 s |
-| Gravel (material 17) | 4.62 s | 4.65 s |
+| Tarmac (material 37) | 4.01 s | 3.97 s |
+| Gravel (material 17) | 4.62 s | 4.60 s |
 
 The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5
 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and

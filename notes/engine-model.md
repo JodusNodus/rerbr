@@ -464,19 +464,21 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - Limiter: no experimental car over `RPMLimit` in gear beyond one whole-rad/s sample; over it only in the start
   burnout in neutral (Fiesta 0.5–0.6 s, +34 rpm; Celica 0.01 s, +6) and the Fiesta's drop into first.
 - Fiesta Rally2 0-100 km/h on the flat pad (`harness/pad_start.py`: `--stage pad-tarmac|pad-gravel --flat-out`,
-  the stage starts' driver; timed from 0.5 m/s): tarmac NGP 4.00 / exp 3.97 s (0-60 1.75 / 1.74), gravel 4.62 / 4.65
-  (0-60 2.25 / 2.33) with the start mode (was 3.98 and 4.63). Polo GTI R5 tarmac 4.10 / 4.09 against Volkswagen's
-  "approx. 4.1 s", gravel 4.79 / 4.76. The
+  the stage starts' driver; timed from 0.5 m/s): tarmac NGP 4.01 / exp 3.97 s (0-60 1.74 / 1.69), gravel 4.62 / 4.60
+  (0-60 2.23 / 2.21) with the start mode. Polo GTI R5 tarmac 4.12 / 4.11 against Volkswagen's
+  "approx. 4.1 s", gravel 4.74 / 4.71. The
   pad's tarmac figure replaces the slope-corrected 504 estimate. Through the manoeuvre approach (upshifts on rpm even
   on wheelspin, second gear at 0.7 s) the gravel pad gave 4.62 / 4.57.
-- Start mode (anti-lag classes): limiter at 0.6 of the limit with 60° retard on the fired events while it cuts, over
-  90 % pedal with the wheels under 1.5 rad/s (Link G4+ launch control for the shape; the three values guesses); the
-  cut fuel burns by the anti-lag path. Tarmac Rally3 0-60/0-100 NGP/exp: 2.11/2.13 and 5.24/5.25 (was 2.39/5.50),
-  Evo 1.97/1.97 and 4.82/4.84 (was 2.46/5.34), Clio 1.88/1.90 and 4.47/4.51 (was 2.28/4.90); min revs after the clutch
-  closes 2970/3390/3725 rpm (NGP 3550 on the Rally3). Polo, Rally2, GR Yaris, Celica move ≤0.03 s; Audi (no ALS),
-  Golf, M3 identical. Bench standing 3 s, boost with/without (bar abs): Rally3 2.37/1.35, Polo 2.53/1.64, Celica
-  2.31/1.61. `--flat-out` holds 1.5 s in neutral once the revs peak; plain autopilot selects first at the peak
-  (track-11_O Rally2 splits 210.20/434.95 vs 210.18/434.90 before). Telemetry untouched (no sound change).
+- Start mode (anti-lag classes): limiter at 0.6 of the limit with 60° retard on the fired events while it cuts,
+  over 90 % pedal with every wheel under 0.5 m/s and the body under 1.0 m/s (Link G4+ launch control for the shape;
+  the four values guesses); the cut fuel burns by the anti-lag path. A handbrake turn with the clutch in stays out
+  (the body moves); spinning without moving leaves it (a wheel turns). Tarmac Rally3 0-60/0-100 NGP/exp: 2.13/2.12
+  and 5.26/5.25 (was 2.35/5.50), Evo 2.03/1.96 and 4.84/4.83 (was 2.45/5.32), Clio 1.90/1.86 and 4.48/4.52 (was
+  2.24/4.90); min revs after the clutch closes 2970/3304/3724 rpm (NGP 3552 on the Rally3). Polo, Rally2, Celica move
+  ≤0.02 s, GR Yaris ≤0.05 (its hold-alone 0-60 1.84 s, engine change −0.03); Audi (no ALS), Golf, M3 identical.
+  Bench standing 3 s, boost with/without (bar abs): Rally3 2.37/1.35, Polo 2.53/1.64, Celica 2.31/1.61. `--flat-out`
+  holds 1.5 s in neutral once the revs peak; plain autopilot selects first at the peak (track-11_O Rally2 splits
+  210.16/435.01 vs 210.18/434.90 before). Telemetry untouched (no sound change).
 - The same on stages (`--flat-out`, full throttle throughout, no upshift on wheelspin): RSF 504 tarmac +6.7 % NGP
   4.52 / exp 4.47 s (brush 4.33, 4.35 after its fix); track-64_E gravel
   flat 4.66 / 4.67; RSF 345 gravel −4 % 4.50 / 4.49. Exp 0-60 on gravel is the slower part
