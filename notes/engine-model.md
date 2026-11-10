@@ -45,7 +45,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   [FordWiki Escort], Integrale Evo2 8.0 [ultimatecarpage], Delta HF 4WD Group N 8.0 [tech-racingcars Delta N], 4G63T
   8.5 (Evo I–II), 9.0 (III), 8.8 (IV–IX) and 4B11T 9.0 [motorreviewer 4G63], [motorreviewer 4B11], EJ20 turbos 8.0
   and EJ257 8.2 [motorreviewer EJ20], [motorreviewer EJ25], 3S-GTE 8.5, 8.8, 8.5 [motorreviewer 3S-GTE],
-  [8020 3S-GTE]. The rest 9.5 (guess): no WRC, R5/Rally2 or Rally3/4 race engine's is published; the road bases run
+  [8020 3S-GTE]. The rest 9.5 (guess): no WRC, R5/Rally2 or Rally3/4 race engine's is published; the rules cap it at 10.5 for Rally2 (art. 310-1)
+  [FIA 261] and 12.5 for WRC 1.6 [FIA 255A], maxima, not the engines'; the road bases run
   10.0–10.1 (1.6 EcoBoost) [Wikipedia EcoBoost], 10.5 (G16E-GTS) [GR Yaris spec] and 10.5 (1.2 PureTech)
   [ultimatespecs]. It sets the residual gas, the rings' gas loading and K's ceiling (Torque).
 
@@ -67,7 +68,9 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - W_cyl = η_v·η_res·p·V_d·n/(120RT) and the manifold filling dp/dt = RT/V·(W_in − W_cyl) (generic) [Andersson],
   [Hendricks]. Fully implicit Euler, root-solved per sub-step (inferred: the linearly implicit step overshot a
   per-cylinder tip-in to 2.4 bar).
-- η_v: turbo 0.95 flat (four-valve heads peak at 0.95–0.99 [Garrett turbo selection]); NA the WOT table's shape, peak 1
+- η_v: turbo 0.95 flat (four-valve heads peak at 0.95–0.99 [Garrett turbo selection]; on the manifold's density at
+  full load, air from fuel flow × λ × 14.1, EPA's road DI turbos: Ford 1.6 0.84–0.91, Mazda 2.5T 0.88–0.99, Ford 2.7 0.92–1.00
+  at 1500–3500 rpm [EPA]; none over 1, so a value over 1 has no support); NA the WOT table's shape, peak 1
   (inferred: the table is mostly breathing), then raised where K would top the fuel–air cycle (Torque). Road NA engines
   peak at 0.87–0.88 [Heywood] fig. 6-8; the installed NA cars now peak at 1.12–1.19, the two S2000s at 1.25–1.27.
 - Residual gas: η_res = (r_c − (p_em/p_im)^(1/γ))/(r_c − 1), the ideal cycle's (generic, Heywood; the pressure
@@ -493,6 +496,14 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   the run's residual gas, which the 0.95 margin left at 86–88 % of the choke): K there 1.16 → 1.10 at 91 %, the
   restrictor's drop and a drive ratio near 2 taking the rest, K at the cap 1.18 → 1.20 and the turbo sample's spool
   0.69 → 0.52 s (under Chalmers' 0.54).
+  Charge-side constants re-examined (2026-11-10, nothing changed): η_v 0.95 sits inside EPA's road DI turbos' 0.84–1.00
+  on manifold density (Class, Air path); the intercooler 0.7 has no cited measurement (EPA's lab charge-air cooler holds
+  the outlet near 38 °C, so no effectiveness; tuner pages give 0.6–0.9, not cited); the restrictor's C_D 0.95 has no
+  source (the articles fix the bore over 3 mm of length and the outside, not the profile [FIA 255A]); the rules' compression
+  caps are 10.5 (Rally2) and 12.5 (WRC 1.6), the engines' unpublished. Compression ratio 10.0–10.5 moves K/K_max of the
+  Fiesta Rally2 1.16 → 1.15–1.13 (K 1.55 → 1.56e6 against a ceiling 1.36–1.38e6). All of an unsourced 10.5, intercooler
+  0.85, C_D 0.98 and η_v 1.0 together: Rally2 K median 1.47e6 (1.06 of the ceiling), Rally4 1.39e6, Focus WRC 2006 1.41e6.
+  So no sourced value moves K materially, and the tables' torque per bar of boost stays unexplained by the charge.
 - Manifold volume: one throttle 0.8·V_d against [Guzzella]'s V6 at 2.1·V_d (measured τ about 2.5× ours), aftermarket
   race plenums for the 4G63 at 2.3–2.5·V_d [Magnus plenum], [Plazmaman plenum] and a design rule of 2–2.5× the
   cylinder volume per cylinder [IJERT plenum]; no rally engine's and no textbook figure found. Not changed.
