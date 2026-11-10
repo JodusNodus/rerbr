@@ -337,7 +337,8 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
   EPA's Ford 1.6 and 2.7 retarded 27–44° at their lightest loads, 1000–1750 rpm, ran 70–142 K over their neighbours
   near MBT, 0.23–0.63 of that work; [Guzzella] eq. 2.153: k_e ≈ 0.5 of the heat the retard frees reaches the
   exhaust, the rest the cooling water, a first-law approximation). Before (700 °C at 0, the anti-lag term on the
-  retard, no motored temperature) the turbo samples idle at 598–661 °C and run 301 under the fuel cut (was 1035 / 707). With 400 °C an older
+  retard, no motored temperature) the turbo samples idle at 598–661 °C and run 301 under the fuel cut (was 1035 / 707).
+  With 400 °C an older
   model (no residual gas, before the retarget) gave the steady WOT boost two branches; 520 °C passes the path test.
   The shaft's spin-down after a lift without anti-lag (4500 rpm fixed, from WOT: stopped within 0.8 s) is set by the
   compressor's work and the losses, the same before and after; no measured spin-down was found.
