@@ -383,6 +383,8 @@ def gps_lag(rows):
     path = np.convolve(path, np.ones(3) / 3, mode="same")[10:-10]
     body = np.hypot(smooth([r["long"] for r in rows]), smooth([r["lat"] for r in rows]))
     moving = (np.hypot(vx, vy) > 8)[10:-10]
+    if moving.sum() < 100:
+        return None
     c = [np.corrcoef(path[moving], body[10 - k:len(body) - 10 - k][moving])[0, 1] for k in range(-10, 11)]
     k = int(np.argmax(c))
     if c[k] < 0.4 or k in (0, 20):

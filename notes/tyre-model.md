@@ -1685,6 +1685,20 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   accelerometer reads as the positions do (p50 within 0.04 g), so `-accy` does not read low: the earlier slope of
   0.49-0.74 was against the wheels' speed, and the older braking figures taken "from the speed" (16 longest events, peak
   0.5 s) read the wheels, 15-30 % slower than the car at 0.6-1.0 g on gravel.
+- Tarmac sideslip against lateral g (2026-11-10; scratch: `rally_wot.py`'s sideslip windows by the path's lateral g, the
+  i20 Coupe WRC 2020 on pad-tarmac circles of 40 to 160 m with the target speed ramping). The real medians sit at 0 to
+  +2 deg nose in from 0.6 to 1.4 g in every band (España at 1.0-1.2 g, 60-80 / 80-100 / 100-130 / 130-160 km/h: +1.7 /
+  +1.0 / 0.0 / 0.0; Deutschland +0.9 / +0.8 / -0.5 / +1.3), a rise with g not resolved (each window's own spread is 7
+  deg, the sensor's place worth 0.6 deg a metre at 115 km/h). The game at the same speeds and g: experimental-brush +1.1
+  / +1.5 / +1.8 / +1.9, ngp +2.3 / +2.8 / +3.0 / +3.1 (at 0.6-0.8 g -0.5..+0.8 and +0.2..+1.5). The brush is within a
+  degree or two of the real cars, NGP 2 to 3 deg more nose in from 100 km/h: weak, and the same way as the wheel slip
+  above (NGP's tarmac tyre softer than the real one, the brush's about right).
+- Wet gravel, the same reading (2026-11-10): Wales Rally GB 2019, wet and muddy throughout by the teams' reports
+  (Toyota, Škoda, Hyundai), saturated braking 0.64 / 0.69 / 0.74 / 0.77 at 60-80 / 80-100 / 100-130 / 130-160 km/h; GB
+  2018 (mixed) 0.61 / 0.69 / 0.74 / 0.78, GB 2017 0.57 / 0.64 / 0.69 / 0.74. The wet rally reads as the two lower dry
+  ones of 2021 (Acropolis, Safari) and 0.88-0.94 of Finland's and the dry six's median at 100-130 km/h: other roads and
+  another tyre maker, so a bound only. It leaves room for NGP's wet gravel (0.845-0.8525 of dry) and shows no loss that
+  would argue against damp gravel at the dry level.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2
   found (searches; wrcwings.tech describes the devices without forces). Three indications that the real cars gain
   less grip with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls
