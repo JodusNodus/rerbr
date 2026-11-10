@@ -1184,7 +1184,13 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   Partly's 0.35 is a weather-noise threshold input, not measured sky coverage; choosing a preset also changes the
   cloud field's seed and layer shape. Pengonpohja's approved view has cloud opacity above 0.5 on 97.5% of sampled
   visible sky pixels (raw transmittance diagnostic, top 500 rows, 2026-11-10), median opacity 1; all those pixels
-  clip near white in the normal render. Coverage and sky contrast still need calibration for this view.
+  clip near white in the normal render. That is the view, not the preset: see the full-sky survey below.
+  Full-sky cloud survey (2026-11-10, `cargo run --release -p rbr-render --example cloud_survey -- OUT [preset] [WIDTH]
+  [SECONDS]`): opacity > 0.5 over the whole upper hemisphere, equal solid angle, before exposure and terrain, 4 fields
+  x 3 eyes x drift 0/900/1800 s. Clear 12-14% (FEW, 1-2 oktas), Partly 47-51% (SCT; NWS partly cloudy 3/8-5/8),
+  Heavy 95-97% (OVC). Light at 0.5 gave 45-57%, no more than Partly; at 0.72 it gives 70-81% (BKN, 5-7 oktas), so
+  `Clouds::Light` is 0.72. The `us_clouded` face keeps 0.5 (stage defaults unchanged). Light's shots against the RSF
+  install: Luceram 0.56/255 RMS, Falstone 11.7/255 (less direct sun).
 - Merge (2026-10-27): the four names are no longer accepted (`--enhance sky` is an unknown name); `LIGHTING` is the one
   pipeline override (was `SKY_LUT`, `CONTACT`, `PROBES`; `SUN_MASK` stays apart, it needs the pass). The 2D cloud layer
   is gone (`clouded`, `cloud_shape`, `cloud_face_lit`, `clouds.wgsl`): the cloud field's noise, `cloud_turn` and
