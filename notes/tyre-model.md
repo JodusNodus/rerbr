@@ -533,6 +533,22 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   peaks at 5° against 15° and the yaw rate is gone 0.2 s after the steering ends (ngp 1.4 s). That is the cornering
   stiffness at 1.3 times NGP's slope (sourced and driven, below): with `stiffness=0.77` the Fiesta spins 8 of 24 at
   110 km/h, ngp 9. Not a fault.
+- Brake in turn, Fiesta Rally2, traced (2026-11-10, per-wheel probes; the centre is rigid, the axles' mean speeds
+  equal, the inside wheels lock first and the outside ones carry on at κ -0.1 to -0.2):
+  - Tarmac, light pedal (0.5 g; brush spins, ngp reaches 47°): no wheel locks. The outside rear carries the rear axle
+    (inside 100-900 N) and runs at 21-29° of slip, where the brush's curve has fallen 6-9 %: Fy/Fz 1.05 and 0.99
+    against 1.15 and 1.11 at 1.1-1.5 s, about +720 N·m of yaw moment. Slide grip 0.90-0.95 and stiffness 0.77 leave
+    it. Medium and hard do not spin: the front (79.7 % of the brake torque against 64-70 % of the load) goes first.
+  - Gravel, medium pedal (brush spins, yaw ratio 2.07 against 1.39): the front's lateral force under the brake, +10
+    % (6641 against 6044 N), the rear equal. At κ -0.15 and 20° loose-v1 gives Fy/Fz 0.71, Fx/Fz 0.29, NGP 0.66 and
+    0.39: the same |F| 0.77, loose-v1's along the slip velocity, NGP's 9° nearer the wheel's heading. Soft soil data
+    (Krick via El-Razaz, α 25°, 35 % slip: Fy 0.67 of the lightly braked, |F| 0.87): along the slip velocity gives
+    0.70 (inferred, one point, a tractor tyre).
+  - Gravel, hard pedal (2 of 3 spins): the berm and the held longitudinal peak on the locked wheels; `PLOUGH` 1.0
+    gives 0 of 3 (yaw ratio 1.35), the peak falling to 0.82 gives 1.02. At the light and medium pedal they change
+    nothing.
+  - Brake balance: tarmac 79.7 / 20.3 % front / rear, gravel 71.1 / 28.9 %; front load share 0.64-0.74. No measured
+    yaw ratios of real cars found (ISO 7975 gives the method only).
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
