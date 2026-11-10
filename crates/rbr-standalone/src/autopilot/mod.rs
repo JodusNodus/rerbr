@@ -99,6 +99,9 @@ const UP_LIMIT: f32 = 0.93;
 /// again. NGP's clutch help closes the clutch from about idle on (`notes/ngp.md`, "Controls under NGP"), and an engine
 /// with little torque there (Escort Mk II, 208 R2) cannot pull the car from it.
 const LAUNCH: f32 = 0.6;
+/// `--flat-out`: the standing start holds full throttle in neutral for this long (s) once the engine passes `LAUNCH`
+/// of the limit, or stops rising under a start limiter below it, so the turbo has time to build boost on the line.
+const LAUNCH_HOLD: f32 = 1.5;
 const BOG: f32 = 0.2;
 const BOG_SPEED: f32 = 3.0;
 const BOG_STEPS: u32 = 100;
@@ -452,6 +455,9 @@ pub struct Driver<'a> {
     limit: f32,
     /// Steps bogged in first in a row (`BOG`).
     bogged: u32,
+    /// The step the revs peaked on at a standing start, if they have; the last engine speed, rad/s.
+    launch_at: Option<u32>,
+    launch_was: f32,
     /// The heavy props near the driveline, by `from`.
     props: Vec<Placed>,
     /// A rally school lesson's stop: the driveline distance the brakes stay off before and the one to stop at, m.
@@ -723,6 +729,8 @@ impl<'a> Driver<'a> {
             per: 1,
             limit: f32::INFINITY,
             bogged: 0,
+            launch_at: None,
+            launch_was: 0.0,
             props: Vec::new(),
             stop: None,
             against: false,
@@ -1238,7 +1246,23 @@ impl<'a> Driver<'a> {
                 let ngp = self.per > 1;
                 let bogged = ngp && sense.gear == FIRST && speed < BOG_SPEED && sense.engine < BOG * self.limit;
                 self.bogged = if bogged && step > self.shifted { self.bogged + 1 } else { 0 };
-                let launch = !ngp || speed > BOG_SPEED || sense.engine > LAUNCH * self.limit;
+                // A standing start (neutral, not moving yet): the revs have peaked when they pass `LAUNCH`
+                // of the limit, or stop rising under a start limiter below it (experimental). `--flat-out`
+                // then holds full throttle for `LAUNCH_HOLD` before first is selected, so the boost builds;
+                // the plain autopilot selects first at once.
+                let standing = ngp && sense.gear == NEUTRAL && speed < BOG_SPEED;
+                let peaked = sense.engine > LAUNCH * self.limit
+                    || (sense.engine > 0.5 * self.limit && sense.engine <= self.launch_was + 1.0);
+                if standing && self.launch_at.is_none() && peaked {
+                    self.launch_at = Some(step);
+                } else if !standing {
+                    self.launch_at = None;
+                }
+                self.launch_was = sense.engine;
+                let held = self
+                    .launch_at
+                    .is_some_and(|t| step >= t + self.steps((LAUNCH_HOLD / rbr_recording::STEP_SECONDS) as u32));
+                let launch = if self.flat_out && ngp { held } else { !ngp || speed > BOG_SPEED || peaked };
                 let up = SHIFT_UP.min(UP_LIMIT * self.limit);
                 if ngp && spinning && speed > BOG_SPEED {
                     throttle = throttle.min(TRACTION);
