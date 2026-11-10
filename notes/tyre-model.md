@@ -1403,7 +1403,7 @@ the ±1 m mean is within 0.4 mm of the probe's wheel mean on every stage; RSF 34
   (quoted). A rigid wheel in dense sand over a rigid base: drawbar pull at high slip non-monotonic in the layer's
   thickness (J. Terramech. 1994, "Travelling performance of a wheel on a finite thickness ground", abstract only;
   longitudinal, not a tyre). Snow's 0.5 cm of fresh snow halving the initial slope (SAE 2010-01-0374) is snow.
-- Decision (2026-11-08, shape superseded 2026-11-09 below): the level and the berm stay independent of the
+- Decision (2026-11-08; the shape went by depth on 2026-11-09, below): the level and the berm stay independent of the
   thickness; a windrow less grippy than the line (published 0.80; NGP's deeper against shallow 0.97) would be a
   grip-level change: the user's decision.
 
@@ -1442,13 +1442,14 @@ loose layer (labels as above):
   (UK 20-25 mostly deeper, means 19-25 mm; Australia 31-36 deep, 16-18 mm; Japan 51-56 mixed, 17-18 mm; USA 61-66
   shallow, 9-14 mm); RSF 146 installed gravel stages (802 km) 46 / 35 / 19 %, 67 stages mostly shallow, 52 deep, 27
   deeper (10 over half non-gravel). So under the line two thirds of the gravel driven is firmer than pea stone.
-- In game (Fiesta Rally2, experimental-brush, single runs, before → after): scorecard (gravel, `--jobs 6`) 33/35 PASS
-  both, ngp rows bit-equal; flat r40 circle (map 85) under 17 (9 mm) 0.955 → 0.994 g, under 9 (17.5 mm) 0.978 →
-  0.986, under 1 (25 mm) 0.972 → 0.972; RSF 345 circle 0.664 → 0.667; locked over ABS K 0.15 on 345 50 / 80 km/h
-  1.529 / 1.340 → 1.442 / 1.292; `gravel-peak-kappa` 0.58 → 0.42 (band 0.4-0.7, the 9 mm probe); `gravel-cw-alpha90`
-  21 → 12°. Brake test from 50 km/h, RSF 111 (9 mm): ABS 0.760 → 0.845 g, locked 0.948 → 0.955, locked over ABS
-  1.247 → 1.130 (band 1.12-1.59); RSF 105 (17.5 mm): ABS 0.703 → 0.677, locked 0.957 → 0.944, locked over ABS 1.361
-  → 1.394 (its K 0.3 run 0.80 → 0.64 g ends on grass 97: the approach, not the law, which is at its level by κ 0.3).
+- In game (Fiesta Rally2, experimental-brush, single runs): scorecard (gravel, `--jobs 6`) 33/35 PASS both, ngp
+  rows bit-equal; flat r40 circle (map 85) under 17 (9 mm) 0.994 g (was 0.955), under 9 (17.5 mm) 0.986 (was 0.978),
+  under 1 (25 mm) 0.972 (unchanged); RSF 345 circle 0.667 (was 0.664); locked over ABS K 0.15 on 345 50 / 80 km/h
+  1.442 / 1.292 (was 1.529 / 1.340); `gravel-peak-kappa` 0.42 (was 0.58; band 0.4-0.7, the 9 mm probe);
+  `gravel-cw-alpha90` 12° (was 21). Brake test from 50 km/h, RSF 111 (9 mm): ABS 0.845 g (was 0.760), locked
+  0.955 (was 0.948), locked over ABS 1.130 (was 1.247; band 1.12-1.59); RSF 105 (17.5 mm): ABS 0.677 (was 0.703),
+  locked 0.944 (was 0.957), locked over ABS 1.394 (was 1.361; its K 0.3 run 0.64 g, was 0.80, ends on grass 97:
+  the approach, not the law, which is at its level by κ 0.3).
 
 ## Car-level targets on loose surfaces
 
