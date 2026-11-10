@@ -1556,6 +1556,13 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   at 10 m); pad-gravel ngp 1.69 / 2.64 / 3.74 / 5.42 at 78 / 74 / 95 / 120, experimental 1.66 / 2.63 / 3.73 / 5.39.
   The launch holds on both surfaces within 0.05 s to 50 m, wheelspin included; past 50 m the game gains (the drag,
   above).
+- Throttle lifted in gear (2026-11-10; `rally_wot.py lift`, level deceleration, g, on straights; tarmac, Deutschland
+  2019 / España 2021, 533 and 140 windows): 4th 60-80 km/h 0.094 / 0.089 (3900 rpm), 5th 60-80 0.085 / 0.085 (3400),
+  5th 80-100 0.105 / 0.132 (4500-4800), 6th 80-100 0.090 / 0.101 (3500-4000), 6th 100-120 - / 0.145 (4700). The
+  game's i20 Coupe WRC 2020 lifting from 160 km/h on pad-tarmac, ngp / experimental: 4th 60-80 0.099 / 0.064, 5th
+  60-80 0.089 / 0.061, 5th 80-100 0.095 / 0.064, 6th 80-100 0.090 / 0.064, 6th 100-120 0.107 / 0.075. NGP's holds,
+  the experimental engine's is 30 % under: with the file's drag (0.013 g at 70 km/h; the telemetry's drag area gives
+  0.029, which leaves the real engines and drive lines about 30-50 N·m at 3400-4800 rpm).
 - Tarmac (2026-11-10; `rally_gg.py stats`, España 2021 SS2 / 5 / 9 / 12 / 15 / 17, 35 drives of the 2017-21 cars,
   medians, 10-90 % of the drives in brackets): lateral 1 s p50 / p90 / p99 0.61 / 1.21 / 1.48 g (unit check 0.96, GPS
   p90 1.26); 16 longest braking events 0.72 g from the speed, peak 0.5 s 1.15 (0.97-1.30); g-g p95 per 30-60 / 60-90

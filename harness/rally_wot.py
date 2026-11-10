@@ -4,6 +4,7 @@
   python3 -I -B harness/rally_wot.py table DIR [TRACE...] [--cars NAME=MODEL,...]
   python3 -I -B harness/rally_wot.py fit DIR|TRACE... [--cars NAME=MODEL,...] [--mass KG] [--crr C] [--rho R]
   python3 -I -B harness/rally_wot.py launch DIR|TRACE...
+  python3 -I -B harness/rally_wot.py lift DIR|TRACE...
 
 `fetch` asks the WRC's archive (webappsdata.wrc.com, the source of RallyDataJunkie's files) for the YEAR season's
 event whose name contains EVENT and writes every stage's merged telemetry to OUT_DIR as
@@ -31,6 +32,11 @@ of the game checks the method: it reads the file's `Cd * A / 1.204` within about
 the time to MARKS m of path (the telemetry's from its GPS positions, whose first seconds come 0.3 to 1 s apart; a
 trace's from the car's speed) and the drivetrain's speed there (the telemetry's `speed`; a trace's mean of the wheels'
 `wfl`..`wrr`), the medians over a directory's drives. Stage starts turn after 100 m or so.
+
+`lift`: the throttle lifted in gear on a straight: 1 s windows above 60 km/h with the throttle under 3 %, no brake,
+one gear and the median lateral under 0.2 g; the median level deceleration, g, per gear and 20 km/h bin (8 windows up
+for telemetry), with the rpm. For the game, a pad run that lifts in gear (`--brake-from M/S --brake-pedal 0.001`
+without `--brake-declutch`: the pedal rounds to no brake, the autopilot shifts down as the revs fall).
 """
 import argparse
 import base64
@@ -265,6 +271,32 @@ def launch(args):
             print(os.path.basename(path) + ": " + "  ".join(f"{t:.2f} / {v:.0f}" for t, v in marks))
 
 
+def lift(args):
+    real = os.path.isdir(args.paths[0])
+    paths = sorted(glob.glob(os.path.join(args.paths[0], "df_telemetrymergeddata_*.csv"))) if real else args.paths
+    for name, group in (("all", paths),) if real else ((os.path.basename(p), [p]) for p in paths):
+        cells = {}
+        for path in group:
+            rows = (load_telemetry if real else load_trace)(path)
+            t = [r["t"] for r in rows]
+            for i in range(0, len(rows), 3):
+                win = rows[i:bisect.bisect_right(t, t[i] + 1.0)]
+                span = win[-1]["t"] - win[0]["t"]
+                if (span < 0.85 or len(win) < 8 or win[-1]["v"] < 60
+                        or abs(statistics.median(w["lat"] for w in win)) > 0.2
+                        or any(w["thr"] > 3 or w["brk"] > 0 or w["gear"] != win[0]["gear"] for w in win)):
+                    continue
+                run = sum((a["v"] + b["v"]) / 7.2 * (b["t"] - a["t"]) for a, b in zip(win, win[1:]))
+                rise = win[-1]["alt"] - win[0]["alt"] if real else 0.0
+                key = (win[0]["gear"], int(statistics.fmean(w["v"] for w in win) // 20) * 20)
+                cells.setdefault(key, []).append(((win[0]["v"] - win[-1]["v"]) / 3.6 / span / G - rise / run,
+                                                  statistics.fmean(w["rpm"] for w in win)))
+        print(f"{name}: " + "; ".join(
+            f"gear {gear} {kmh}-{kmh + 20} km/h {statistics.median(c[0] for c in v):.3f} g at "
+            f"{statistics.median(c[1] for c in v):.0f} rpm ({len(v)})"
+            for (gear, kmh), v in sorted(cells.items(), reverse=True) if len(v) >= (8 if real else 1)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -272,7 +304,7 @@ def main():
     f.add_argument("year")
     f.add_argument("event")
     f.add_argument("out")
-    for name in ("launch", "table", "fit"):
+    for name in ("launch", "lift", "table", "fit"):
         p = sub.add_parser(name)
         p.add_argument("paths", nargs="+")
         p.add_argument("--cars")
@@ -280,7 +312,7 @@ def main():
     p.add_argument("--crr", type=float, default=0.015)
     p.add_argument("--rho", type=float, default=1.17)
     args = parser.parse_args()
-    {"fetch": fetch, "launch": launch, "table": table, "fit": fit}[args.command](args)
+    {"fetch": fetch, "launch": launch, "lift": lift, "table": table, "fit": fit}[args.command](args)
 
 
 if __name__ == "__main__":
