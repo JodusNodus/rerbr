@@ -11,7 +11,7 @@ context: measured and printed (CTX), not scored. The `how` keys:
   tyre:SURFACE:KEY        a key of the rbr-tyre-lab `scorecard` example (steady forces of the tyre model the physics
                           runs, NGP's where it hands back) on the probed wheel of SURFACE: tarmac (map 85, wheel 1 at
                           step 8000 of the r40 circle), gravel (RSF 345, wheel 0 at step 6000 of the r40 circle), snow
-                          (map 10, wheel 0 at step 6000), ice (map 85 iced whole, `--material-as 116`: NGP's
+                          (map 10, wheel 0 at step 6000), ice (pad-116 with `--surface tarmac`: NGP's
                           material 116 through the tarmac tyre's class factor, as on RSF 565/614; wheel 1 at step
                           8000 of the r40 circle); tarmac-KMH and tarmac-wet-KMH, the tarmac wheel at 32/64/100 km/h,
                           the latter with WaterFactor 1 on the dry friction level; tarmac-wet-80, and
@@ -27,11 +27,10 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           over the threshold run at slip K's, one pedal), ratio_absK (locked decel over the per-wheel
                           ABS run at K's, `--brake-abs K`: a run per K the rows name); gravel RSF 345
                           (gravel-damp / gravel-wet: `--wetness damp` / `wet`),
-                          tarmac RSF 568, snow map 10, ice RSF 504's start straight iced from the brake onset
-                          (`--material-as 116`: the run-up on its tarmac; off the road is ice too, so a stop may
-                          wander 15 m off the driveline), its decel taken on the flat (less g times the straight's
-                          6.6 % rise; a reset by the game, as on RSF 568 where a locked car drifts into the edge, is
-                          refused)
+                          tarmac RSF 568, snow map 10, ice pad-116 (the whole run on ice, run-up included;
+                          off the pad's road is ice too, so a stop may wander 15 m off the driveline), its decel
+                          taken on the flat (a reset by the game, as on RSF 568 where a locked car drifts into
+                          the edge, is refused)
   brake-ratio:A/B:KMH:X/Y surface A's X decel (locked, best) over surface B's Y decel
   circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s; on an
                           11.9° slope, notes/tyre-model.md "Car-level grip in the same terms")
@@ -44,7 +43,7 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           wet_cooling_80 (the example's docs)
   coast:SURFACE:KEY       coast_test.py's declutched coast from 60 km/h to 10 km/h: crr (the rolling coefficient with
                           the car file's drag held), crr_free (the free fit's); tarmac RSF 568, gravel RSF 345, snow
-                          map 10, ice RSF 568 iced from the lift (`--material-as 116`: the same road as tarmac)
+                          map 10, ice pad-116 with `--surface tarmac` (the whole run on ice, run-up included)
 
 The car is the Fiesta Rally2 (`--rsf-car Ford_Fiesta_Rally2_ngp7`). --quick keeps the tyre rows and the 50 km/h brake
 rows on gravel and tarmac, with three slip targets. --json writes the values per id and physics, the raw measurements,
@@ -85,8 +84,8 @@ PROBES = {
     "gravel": dict(stage=["--rsf-stage", "345"], steps=40000,
                    circle=["--circle", "1051,-166,40", "--circle-ramp", "0.4"], wheel=0, at=6000),
     "snow": dict(stage=["--stage", "track-10_O"], steps=6000, circle=[], wheel=0, at=6000),
-    "ice": dict(stage=["--stage", "track-85_M", "--material-as", "116"], steps=8000,
-                circle=["--circle", "-260,120,40"], wheel=1, at=8000),
+    "ice": dict(stage=["--stage", "pad-116", "--surface", "tarmac"], steps=8000,
+                circle=["--circle", "7.2,-506.8,40"], wheel=1, at=8000),
 }
 TYRE_SURFACES = {"tarmac": ("tarmac", []), "gravel": ("gravel", []), "snow": ("snow", []), "ice": ("ice", [])}
 # TRL PPR496's test speeds (32/64/100 km/h) on the tarmac wheel, dry and with WaterFactor 1 (the dry friction level
@@ -122,15 +121,16 @@ BRAKE_STAGES = {"gravel": {**BRAKE, "rsf_stage": 345, "stage": None},
                 "gravel-wet": {**BRAKE, "rsf_stage": 345, "stage": None, "extra": ["--wetness", "wet"]},
                 "tarmac": {**BRAKE, "rsf_stage": 568, "stage": None},
                 "snow": {**BRAKE, "rsf_stage": None, "stage": "track-10_O"},
-                "ice": {**BRAKE, "rsf_stage": 504, "stage": None, "extra": ["--material-as", "116"],
-                        "max_off": 15.0, "slips": "0.05,0.1,0.2,0.3", "flat": True}}
+                "ice": {**BRAKE, "rsf_stage": None, "stage": "pad-116", "extra": ["--surface", "tarmac"],
+                        "steps": 45000, "max_off": 15.0, "slips": "0.05,0.1,0.2,0.3", "flat": True}}
 # The coast-downs per surface (coast_test.py): the stage, the extra rbr-standalone flags and the off-line limit.
 COAST_FROM = 16.67  # m/s: 60 km/h
 COAST = {"steps": 80000, "extra": [], "max_off": car_pace.CRASH_OFF}
 COAST_STAGES = {"tarmac": {**COAST, "rsf_stage": 568, "stage": None},
                 "gravel": {**COAST, "rsf_stage": 345, "stage": None},
                 "snow": {**COAST, "rsf_stage": None, "stage": "track-10_O"},
-                "ice": {**COAST, "rsf_stage": 568, "stage": None, "extra": ["--material-as", "116"], "max_off": 15.0}}
+                "ice": {**COAST, "rsf_stage": None, "stage": "pad-116", "extra": ["--surface", "tarmac"],
+                        "max_off": 15.0}}
 SLIPS = "0.1,0.15,0.2,0.3,0.5,0.7"
 QUICK_SLIPS = "0.2,0.3,0.5"
 

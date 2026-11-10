@@ -4,9 +4,10 @@ grip in the same terms").
   python3 -I -B harness/car_grip.py --out DIR [--cars A,B] [--physics ngp,experimental-brush]
       [--surfaces gravel,snow,tarmac] [--radii 40] [--ramps R] [--extra "FLAGS" --tag T] [--jobs N] [--csv OUT]
 
-Drives each car x physics x surface x radius x ramp on limit_pace.py's circle (SURFACES: gravel RSF 345, snow RSF 345
-under material 101 with the snow tyre, tarmac map 85 under tarmac 37; the circle's centre with the radius given; the
-ramp in m/s per s, the surface's own when not given: 0.4 on RSF 345, the autopilot's 0.5 on map 85), the traces to
+Drives each car x physics x surface x radius x ramp on limit_pace.py's circle (SURFACES: gravel RSF 345, snow
+pad-snow with the snow tyre, gravel-flat pad-gravel with the dry gravel tyre, snow-flat pad-snow with the snow tyre,
+tarmac pad-tarmac; the circle's centre with the radius given; the ramp in m/s per s, the surface's own when not
+given: 0.4 on RSF 345 and the gravel and snow pads, the autopilot's 0.5 on the tarmac pad), the traces to
 DIR/<car>.<physics>.<surface>.r<R>.p<ramp>.trace (runs whose trace ends are not run again). Per run, on
 car_pace.analyse_circle's hold (first latch to first slide):
 

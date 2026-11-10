@@ -9,8 +9,8 @@
 lateral g (`--circle 1051,-166,40 --circle-ramp 0.4`, car_pace.analyse_circle, the scorecard's circle key) and the
 best threshold braking g from 80 km/h (brake_test.py's declutched runs, slip targets SLIPS: the shortest clean stop's
 mean decel, the road's grade in). It writes DIR/limits.json. `--surface S` measures S's limits instead (SURFACES:
-snow's circle RSF 345 under material 101 with the snow tyre, braking map 10; gravel-flat and snow-flat the circle on
-flat map 85; tarmac's circle map 85's under tarmac 37, braking RSF 568), keyed `<car>.<physics>.<S>` in the same
+snow's circle pad-snow with the snow tyre, braking map 10; gravel-flat and snow-flat the circle on pad-gravel and
+pad-snow; tarmac's circle pad-tarmac's, braking RSF 568), keyed `<car>.<physics>.<S>` in the same
 file; `search --surface S` plans with them.
 
 `search` drives the stage once per factor F with the autopilot's speed plan at F times the car's limits
@@ -45,35 +45,39 @@ import rally_gg  # noqa: E402
 BIN = brake_test.BIN
 G = brake_test.G
 CIRCLE = ["--circle", f"{car_pace.GCIRC_CX:.0f},{car_pace.GCIRC_CY:.0f},{car_pace.GCIRC_R:.0f}", "--circle-ramp", "0.4"]
+# The pad circles (car_pace.PAD_*): map 85's r40 circle as (7.2, -506.8) and RSF 345's as (14.9, -461.6), the ramp
+# each config ran on its host stage kept.
+PAD_CIRCLE = ["--circle", f"{car_pace.PAD_CIRC_CX},{car_pace.PAD_CIRC_CY:.1f},{car_pace.PAD_CIRC_R:.0f}",
+              "--circle-ramp", "0.4"]
+PAD_GCIRCLE = ["--circle", f"{car_pace.PAD_GCIRC_CX},{car_pace.PAD_GCIRC_CY:.1f},{car_pace.PAD_GCIRC_R:.0f}",
+               "--circle-ramp", "0.4"]
 LIMIT_STAGE = 345
 # `--surface`: the circle (stage flags, circle flags, centre and radius) and the braking stage (rsf id or stage name)
-# per surface, as tyre_scorecard.py and notes/tyre-model.md "Loose levels" measure them: snow's circle is RSF 345's
-# under material 101 (map 10's SnowOnGravel_Shallow) with the snow tyre, its braking map 10; tarmac's circle map 85's
-# under tarmac 37 (the circle crosses loose gravel 189/181 at its south-west; limit_recovery.py's), ramp 0.5, its
-# braking RSF 568.
+# per surface, as tyre_scorecard.py and notes/tyre-model.md "Loose levels" measure them: snow's circle is pad-snow's
+# (map 10's SnowOnGravel_Shallow) with the snow tyre, its braking map 10; tarmac's circle pad-tarmac's
+# (limit_recovery.py's), ramp 0.5, its braking RSF 568. RSF 345's circle lies on an 11.9° (21 %) slope
+# (z 9.6-24.5 m over the lap; plane fit, rms 0.5 m): the flat ones are the pads (level) on gravel 17 (RSF 345's,
+# fine shallow) with the dry gravel tyre, and on snow 101 with the snow tyre. `snow` and `snow-flat` now measure the
+# same flat snow circle from different approaches: one of them can go (undecided).
 SURFACES = {
     "gravel": dict(circle_stage=["--rsf-stage", str(LIMIT_STAGE)], circle=CIRCLE,
                    centre=(car_pace.GCIRC_CX, car_pace.GCIRC_CY, car_pace.GCIRC_R), brake_rsf=LIMIT_STAGE,
                    brake_stage=None),
-    "snow": dict(circle_stage=["--rsf-stage", str(LIMIT_STAGE), "--material-as", "101", "--tyre", "6"],
-                 circle=CIRCLE, centre=(car_pace.GCIRC_CX, car_pace.GCIRC_CY, car_pace.GCIRC_R), brake_rsf=None,
-                 brake_stage="track-10_O"),
-    # RSF 345's circle lies on an 11.9° (21 %) slope (z 9.6-24.5 m over the lap; plane fit, rms 0.5 m): the flat ones
-    # are map 85's (z 3.4 m all round) under gravel 17 (RSF 345's, fine shallow) with the dry gravel tyre, and under
-    # snow 101 with the snow tyre.
-    "gravel-flat": dict(circle_stage=["--stage", "track-85_M", "--material-as", "17", "--tyre", "3"],
-                        circle=["--circle", f"{car_pace.CIRC_CX:.0f},{car_pace.CIRC_CY:.0f},{car_pace.CIRC_R:.0f}",
-                                "--circle-ramp", "0.4"],
-                        centre=(car_pace.CIRC_CX, car_pace.CIRC_CY, car_pace.CIRC_R), brake_rsf=LIMIT_STAGE,
-                        brake_stage=None),
-    "snow-flat": dict(circle_stage=["--stage", "track-85_M", "--material-as", "101", "--tyre", "6"],
-                      circle=["--circle", f"{car_pace.CIRC_CX:.0f},{car_pace.CIRC_CY:.0f},{car_pace.CIRC_R:.0f}",
-                              "--circle-ramp", "0.4"],
-                      centre=(car_pace.CIRC_CX, car_pace.CIRC_CY, car_pace.CIRC_R), brake_rsf=None,
+    "snow": dict(circle_stage=["--stage", "pad-snow", "--tyre", "6"],
+                 circle=PAD_GCIRCLE, centre=(car_pace.PAD_GCIRC_CX, car_pace.PAD_GCIRC_CY, car_pace.PAD_GCIRC_R),
+                 brake_rsf=None, brake_stage="track-10_O"),
+    "gravel-flat": dict(circle_stage=["--stage", "pad-gravel", "--tyre", "3"],
+                        circle=PAD_CIRCLE,
+                        centre=(car_pace.PAD_CIRC_CX, car_pace.PAD_CIRC_CY, car_pace.PAD_CIRC_R),
+                        brake_rsf=LIMIT_STAGE, brake_stage=None),
+    "snow-flat": dict(circle_stage=["--stage", "pad-snow", "--tyre", "6"],
+                      circle=PAD_CIRCLE,
+                      centre=(car_pace.PAD_CIRC_CX, car_pace.PAD_CIRC_CY, car_pace.PAD_CIRC_R), brake_rsf=None,
                       brake_stage="track-10_O"),
-    "tarmac": dict(circle_stage=["--stage", "track-85_M", "--material-as", "37"],
-                   circle=["--circle", f"{car_pace.CIRC_CX:.0f},{car_pace.CIRC_CY:.0f},{car_pace.CIRC_R:.0f}"],
-                   centre=(car_pace.CIRC_CX, car_pace.CIRC_CY, car_pace.CIRC_R), brake_rsf=568, brake_stage=None),
+    "tarmac": dict(circle_stage=["--stage", "pad-tarmac"],
+                   circle=["--circle", f"{car_pace.PAD_CIRC_CX},{car_pace.PAD_CIRC_CY:.1f},{car_pace.PAD_CIRC_R:.0f}"],
+                   centre=(car_pace.PAD_CIRC_CX, car_pace.PAD_CIRC_CY, car_pace.PAD_CIRC_R), brake_rsf=568,
+                   brake_stage=None),
 }
 BRAKE_FROM = 22.22  # m/s: 80 km/h
 SLIPS = "0.1,0.15,0.2,0.3,0.5"

@@ -6,8 +6,8 @@
 
 The run is brake_test.py's with a pedal that quantizes to 0 (`--brake-pedal 0.001`: the u8 pedal rounds to 0): the
 autopilot drives the stage flat out and, once the speed is reached, lifts off, holds the clutch in and shifts nothing
-(`--brake-declutch --clutch-help off`) and steers on, so the car coasts. `--material-as ID` after `--` puts the coast
-on material ID (from the lift on, as for the brakes).
+(`--brake-declutch --clutch-help off`) and steers on, so the car coasts. Put `--stage pad-<name>` after `--` to run
+the whole coast on that pad material (as for the brakes).
 
 The analysis cuts the coast, from SETTLE s past the lift to `--to` (m/s, 10 km/h unless given), into SEG metre
 pieces of the path and takes each piece's resistance from its energy, -(Δ(v²/2) + g Δz) / Δs (m/s²; the grade
