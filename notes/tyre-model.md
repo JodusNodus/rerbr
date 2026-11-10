@@ -906,6 +906,15 @@ Where NGP sits:
   current one). The peak angle was kept; the
   model's own Cx/Fz at zero slip is about 4.3 (Svendenius 3.6-6.7), the scorecard's κ 0.02-0.04 fit (2.5) lies past the
   linear part on ice.
+- By tyre (2026-11-10, a user decision): ice is class 5 with grass, and NGP gives 116 the same 0.10 on every tyre
+  (class factor 0.95 tarmac, 1.0 gravel and snow: probe `tyre_classes`), studs or not. The unstudded tyres keep it
+  (road tyres at 0 °C 0.09-0.12). The brush gives the studded tyre (`Wheel::is_studded`, kind 6: the only one better
+  on snow than on tarmac) `brush::STUDDED_ICE` 0.85 on the hard ice share, its own level on snow (guess: rally studs
+  "at or above a gravel tyre on gravel", no μ open; road studs 0.21-0.30 are the floor). Iced pad, Fiesta Rally2 ramp
+  steer at 40 km/h: tarmac tyre 0.082 g ngp / 0.095 brush, snow tyre 0.091 / 0.767. Not covered: 116 blended into
+  snow soil (563 Toivonvaara damp-new, the soil path, where class 5 is also grass). Snow needs no such split: NGP's
+  class-3 factors (tarmac 0.525-0.575, gravel 0.60-0.65, snow tyre 1.0) match Ichihara's rib / snow / studded
+  traction peaks (0.28-0.32 / 0.34-0.41 / 0.57-0.60: 0.5 / 0.65 / 1).
 
 ## Loose surfaces: loose-v1
 

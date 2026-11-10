@@ -29,6 +29,8 @@ struct Tyre {
     /// NGP's damp tarmac tyre's base, wet slope and design wetness on the tarmac class ([`brush::damp_tyre_level`]);
     /// `None` for every other tyre.
     damp_tarmac: Option<(f64, f64, f64)>,
+    /// Whether the tyre is studded ([`Wheel::is_studded`]).
+    studded: bool,
     state: TransState,
     /// The surface and bulk temperatures ([`thermal`]); `None` until the brush runs with NGP's thermal input.
     temperatures: Option<Temperatures>,
@@ -64,6 +66,7 @@ impl Brush {
                         let base = f64::from(w.class_friction[class]);
                         (base, f64::from(w.class_wet_slope[class]), f64::from(w.design_wetness))
                     }),
+                    studded: w.is_studded(),
                     state: TransState::default(),
                     temperatures: None,
                     rubber: (w.temperature_axis.clone(), w.rubber_friction.clone()),
@@ -110,7 +113,13 @@ impl Model for Brush {
         };
         let scale = f64::from(x.stiffness_scale);
         let pressure_factor = f64::from(x.stiffness_factor) * scale;
-        let mut grip = f64::from(x.grip) * rubber_grip * self.tuning.grip(soil, x.surface_classes, x.surface_blend);
+        let mut grip = f64::from(x.grip) * rubber_grip;
+        // A studded tyre on bare ice (the hard surface of the ice class): its studs' level in place of NGP's.
+        if t.studded && !soil {
+            let ice = loose::class_share(x.surface_classes, x.surface_blend, crate::tuning::ICE_CLASS);
+            grip += (brush::STUDDED_ICE - brush::BARE_ICE) * ice;
+        }
+        grip *= self.tuning.grip(soil, x.surface_classes, x.surface_blend);
         // NGP's damp tarmac tyre on its tarmac share: the dry tyre's factor times R(W) in place of NGP's.
         if let Some((base, slope, design)) = t.damp_tarmac {
             let share = loose::class_share(x.surface_classes, x.surface_blend, brush::TARMAC_CLASS);
@@ -353,6 +362,24 @@ mod tests {
         };
         let (one, two) = (steps(base), steps(Tuning { response: 2.0, ..base }));
         assert!((f64::from(two) / f64::from(one) - 2.0).abs() < 0.15, "{one} {two}");
+    }
+
+    #[test]
+    fn a_studded_tyre_holds_on_bare_ice_and_the_others_keep_ngp_s_level() {
+        // NGP's snow tyre's surface words (probe `tyre_classes`, kind 6) against the dry tarmac tyre's (kind 0).
+        let snow = Wheel { class_friction: [0.95, 0.95, 0.75, 1.0, 0.95, 1.0], ..wheel() };
+        let tarmac = Wheel { class_friction: [0.9, 0.9, 1.0, 0.525, 0.9, 0.95], ..wheel() };
+        assert!(snow.is_studded() && !tarmac.is_studded() && !wheel().is_studded());
+        let ice = ForceInput { grip: 0.1, surface_classes: [crate::tuning::ICE_CLASS; 2], ..rolling(20.0, 0.5) };
+        let mu = |w: &Wheel, x: &ForceInput| {
+            let out = settle(&mut Brush::new(std::slice::from_ref(w), &Tuning::default()).unwrap(), x, 2000);
+            f64::from(out.lateral_force.abs() / x.normal_force)
+        };
+        assert!(mu(&tarmac, &ice) < 0.12, "{}", mu(&tarmac, &ice));
+        assert!((0.6..0.9).contains(&mu(&snow, &ice)), "{}", mu(&snow, &ice));
+        // Off the ice the studs change nothing.
+        let road = ForceInput { surface_classes: [brush::TARMAC_CLASS; 2], ..ice };
+        assert_eq!(mu(&snow, &road), mu(&tarmac, &road));
     }
 
     #[test]

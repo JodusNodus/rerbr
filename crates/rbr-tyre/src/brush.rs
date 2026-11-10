@@ -393,6 +393,15 @@ pub fn damp_weight(w: f64) -> f64 {
 /// NGP's tarmac surface class (a material's `+0x148`).
 pub const TARMAC_CLASS: u32 = 2;
 
+/// The static friction of bare ice (material 116), which NGP gives every tyre (0.10 times a class factor of 0.95-1):
+/// a road tyre without studs measures 0.09-0.12 at 0 °C, so the tarmac and gravel tyres keep it.
+pub const BARE_ICE: f64 = 0.10;
+/// A studded tyre's static friction on bare ice (guess): the snow tyre's own level on the stages' snow (0.85). No
+/// measurement of a rally stud is open; a WRC engineer and drivers put the studded tyre on ice at or above a gravel
+/// tyre on gravel (5.5-7 mm protrusion, 18-20 studs in contact), and road studs of 1.1-1.8 mm measure 0.21-0.30
+/// (`notes/tyre-model.md`, "Ice").
+pub const STUDDED_ICE: f64 = 0.85;
+
 /// The damp tarmac tyre's factor over the dry tyre's on the same tarmac road, R(W), linear in W through
 /// 1 - 0.075 × 0.25 dry (NGP's form with design wetness 0.25), 1 / 0.925 at damp ([`DAMP_W`]: what the wet tyre
 /// gains over the dry one on a wet road) and (1 - 0.075 × 0.75) / 0.925 wet (NGP's form with design wetness 0.25).

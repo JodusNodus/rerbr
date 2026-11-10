@@ -72,6 +72,11 @@ impl Wheel {
         let tarmac = self.class_friction[brush::TARMAC_CLASS as usize];
         self.design_wetness == 0.5 && self.class_friction.iter().all(|&f| f <= tarmac)
     }
+
+    /// Whether it is NGP's snow tyre (kind 6), which is studded: the only one better on snow than on tarmac.
+    pub fn is_studded(&self) -> bool {
+        self.class_friction[loose::SNOW_CLASS as usize] > self.class_friction[brush::TARMAC_CLASS as usize]
+    }
 }
 
 /// A tyre model: one per car and run.
