@@ -384,7 +384,8 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   TRL wet 0.64-0.67); whole locked stop from 30 km/h 0.822 g. RSF 568 wet is the fallback material 0 (no wet `.mat`
   entry, above): locked over best 0.79/0.73 at 32/64 km/h. RSF wet tarmac with WaterFactor 1, from 50 km/h, locked
   over best threshold at 32 km/h, dry → wet: 122 0.76 → 0.65 (NGP 0.78 → 0.79), 117 0.79 → 0.67 (NGP 0.79 → 0.77);
-  TRL dry 0.73-0.82, wet 0.64-0.67. Wet law of 2026-11-08 (Coulomb loss growing with Vs, partial hydroplaning), locked g at 32 / 64 km/h from
+  TRL dry 0.73-0.82, wet 0.64-0.67.
+  Wet law of 2026-11-08 (Coulomb loss growing with Vs, partial hydroplaning), locked g at 32 / 64 km/h from
   80 km/h: track-41_M 0.767 / 0.575 (locked stop 0.631 g, was 0.662), 117 0.673 / 0.581 (was 0.675 / 0.618),
   122 0.608 / 0.599 → locked run hit the edge; from 50 km/h locked 0.727 (41_M, was 0.740), 0.644 (122, was 0.654),
   0.682 (117, was 0.690) g; best threshold within 0.02 g (new tyres, ≤ 80 km/h). NGP from 80 km/h locked at 64:
@@ -543,7 +544,8 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   Fiesta Rally2 unchanged at 304.03 s, Golf II 314.09 (was 314.11; ngp 309.01, 324.24).
 - Lateral past-peak shape (2026-11-08, `brush::LATERAL_FALL` 0.65, user decision): the lateral axis takes 0.65 of the
   friction's fall with sliding speed, the longitudinal axis all of it, so a locked wheel braking straight keeps the TRL
-  fit. μ_y(30°)/peak at 4 kN, 15 m/s 0.893 (was 0.833), chosen at the band's upper end (0.73-0.90) on weaker sources: TRR
+  fit. μ_y(30°)/peak at 4 kN, 15 m/s 0.893 (was 0.833),
+  chosen at the band's upper end (0.73-0.90) on weaker sources: TRR
   621 (bias tyre, flat belt, 48 km/h) ~1.0 at 30°, Persson 2011 (model) 0.97 at 25°, NGP 0.865, against the road MF
   sets' full slide 0.73-0.83. Scorecard 85/112 (was 83): μ_y(30°)/peak +0.060 (PASS), peak slip angle 9.75°
   (was 9.50; MISS, band 5.6-8.5), Mz to 0 at 1.10 of the Fy peak's angle (was 1.13), Mz peak at 0.282 of it
@@ -604,7 +606,8 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   (was 0.999). Braking, gravel and
   combined slip's rows as before. Pad, tarmac 80 km/h, ramp peak g Fiesta Rally2 / Golf / Escort: 1.224 / 1.195 /
   1.228 (was 1.253 / 1.221 / 1.242; ngp 1.248 / 1.186 / 1.193); sine dwell spins of 48: 0 / 9 / 28 (was 0 / 9 / 31),
-  the Fiesta's peak sideslip at 110 km/h 28° (was 48°); lift, power and brake in turn spin as before. The step steer's low
+  the Fiesta's peak sideslip at 110 km/h 28° (was 48°); lift, power and brake in turn spin as before.
+  The step steer's low
   overshoot flips between about 2.5 and 10 % from run to run (before this too): not a measure.
 - Combined slip against a measured road tyre (2026-11-10; library `xia-lu-tong-2020`, SAE 2020-01-0896: a 195/55R16
   at 225 kPa and 60 km/h on an MTS Flat-Trac, slip ratio to ±30 % at 2°, 5°, 8°, Figs 4-6, whose axes are Fx across
@@ -750,7 +753,8 @@ force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front 
   Rear over front axle force at 2° at the laps' loads 1.29-1.47 / 1.16-1.39 against a load ratio of 1.5-1.7, so the
   rear runs 1.12 / 1.28 of the front's slip angle (laps' medians 1.55/1.38°, 1.80/1.41°). In game the loaded outer
   rear (4.5-6 kN, driving) gives |Fy|/Fz 0.48/0.82/1.03 at 2/4/6° against 0.45/0.75/0.94, as the lab (5.5 kN).
-- Under power: Kx (brush 27 with Cx 1.3 times NGP's slope's since 2026-11-08, was 21; NGP 14 per Fz; data 18.4-32.9) halves the rear's slip ratio at the same drive force
+- Under power: Kx (brush 27 with Cx 1.3 times NGP's slope's since 2026-11-08, was 21; NGP 14 per Fz; data 18.4-32.9)
+  halves the rear's slip ratio at the same drive force
   (lap medians 0.022 / 0.042 at Fx/Fz 0.3-0.6); at a given drive force the lateral force below the peak is within 3 %
   at 4 kN. Past 15° under drive the brush keeps less (Fx/Fz 0.45, 4 kN: 1.130/1.082/0.987 against 1.157/1.134/1.060 at
   15/20/30°) at 1.6-3× NGP's κ.
@@ -2171,10 +2175,12 @@ Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
   1.000 / 0.986 (was 0.968; 0.97-1.20); locked 64/32 1.000 / 0.902 (0.86-0.98); wet locked over peak 0.780 /
   0.659, 0.546, 0.505 (0.64-0.67, 0.52-0.57, 0.49-0.52; 0.583, 0.552 with the constant Coulomb loss before
   2026-11-08); wet locked 100/32 1.000 / 0.680 (was 0.730; 0.56-0.81); wet peak 100/32 1.000 /
-  0.911 (was 0.951; 0.76-1.00). Contidrom (`tarmac-wet-80`, `tarmac-wet-KMH-worn`: `--tread 0.2`, key `stop_mu_x_4k`, the mean
+  0.911 (was 0.951; 0.76-1.00).
+  Contidrom (`tarmac-wet-80`, `tarmac-wet-KMH-worn`: `--tread 0.2`, key `stop_mu_x_4k`, the mean
   braked peak of a stop; `tarmac-wet-80-3mm`: `--tread 0.375`): new 100 over 80 1.000 / 0.979 (was 0.991; 0.97-1.0),
   1.6 mm over new from 80 / 100 1.000 / 0.680, 0.510 (was 0.685, 0.521; 0.66-0.83, 0.49-0.55), 3 mm from 80
-  1.000 / 0.894 (was 0.898; 0.87-0.91; the lab's NGP side holds the probed friction, so its tread does not move it). The car row from 100 km/h is not
+  1.000 / 0.894 (was 0.898; 0.87-0.91; the lab's NGP side holds the probed friction, so its tread does not move it).
+  The car row from 100 km/h is not
   scored (`how` none): its locked run leaves the line (In game).
 - Shape (ngp; the brush's peak angle, combined slip and stiffnesses moved with the model, see In game and Open
   `tarmac-combined-a4`): peak slip angle 9.5° (5.6-8.5); combined Fy(κ 0.25)/Fy(0) at 4° 0.463 (0.29-0.34,
@@ -2317,7 +2323,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
   untuned too (`tuning::SLIDE_GRIP_MODEL`), in place of `LATERAL_FALL`'s own 0.886. It is road tyres' top (0.73-0.83),
   racing tyres' lower part (0.80-0.90) and the top of Croft-White's WRC tarmac 0.71-0.83. Scorecard, experimental-brush
   (f36c3a34): 90/111 both; `tarmac-mu-y30-over-peak` 0.834 (was 0.886, read on the probe); ice
-  μ_y(20°)/peak 0.915 (was 0.940) and its end over max 0.949 (was 0.963; both still MISS, toward the band); ice coast crr
+  μ_y(20°)/peak 0.915 (was 0.940) and its end over max 0.949 (was 0.963; both still MISS, toward the band);
+  ice coast crr
   0.002 (was 0.033; MISS both); braking within 0.4 %. The flat r40 tarmac circle 1.143 g (was 1.187; ngp 1.181; real
   narrow-tarmac Rally2 1.0-1.2 g, context). The solve costs about 0.1 s per wheel when a brush is built (lab, two
   builds: 3.0 s, was 2.8).
@@ -2374,7 +2381,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
   TNO 205/60R15 0.41, Continental 225/50R18 0.34, MF 5.2 example 0.50; their μ_x/μ_y 1.07-1.21), above the brush. So
   the one measured tyre is below every physical model and the MF sets above the brush; only a fitted direction
   factor would put it in the band.
-- Hard-surface misses left on purpose (2026-11-10, then scorecard 93/114): (1) `tarmac-peak-fx-load-exponent` 0.933 against
+- Hard-surface misses left on purpose (2026-11-10, then scorecard 93/114):
+  (1) `tarmac-peak-fx-load-exponent` 0.933 against
   0.94-0.97: the band is the sets' longitudinal-over-lateral rate (0.73 / 0.39) on Goodyear's lateral 0.92, the brush's
   lateral is NGP's 0.878 (the load sensitivity of the peak is grip, kept), and 1 - 0.55 (1 - 0.87) gives 0.93 as built;
   within the figure's ±0.02. (2) `tarmac-bergman-wet-locked-over-peak-48` 0.566 against 0.60-0.66: the wetness term
@@ -2541,7 +2549,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
   best class (kind 4, the damp gravel tyre, has gravel best). Lab (`scorecard` on the track-41_M probe, `--tyre 1`,
   wheel 0, 50 km/h, peak μ_y with against without): dry 1.019, damp 1.080, wet 0.981 (factors 1.0195 / 1.0811 /
   0.9805): against the dry tyre on a dry road dry 0.981, damp 0.886 (0.82), wet 0.802 (0.818). Brake test, Fiesta
-  Rally2, track-41_M from 50 km/h declutched, `--tyre 1`, locked / best threshold g: dry 1.058 / 1.230 (was 1.041 / 1.212), damp 0.935 / 1.134 (was 0.874 / 1.071),
+  Rally2, track-41_M from 50 km/h declutched, `--tyre 1`, locked / best threshold g: dry 1.058 / 1.230 (was 1.041 / 1.212),
+  damp 0.935 / 1.134 (was 0.874 / 1.071),
   wet 0.758 / 1.040 (was 0.773 / 1.061) (`--tyre 0` damp 0.872 /
   1.066, `--tyre 2` 0.843 / 1.036: the damp tyre now best on damp). RSF 568 dry 1.063 / 1.264 (was 1.042 / 1.242); its
   damp and wet are the class-0 fallback (no change). ngp, experimental, brush `--tyre 0` / `2` traces bit-equal,
