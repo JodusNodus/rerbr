@@ -554,11 +554,8 @@ the limit to 23 over it.
 
 ### In game
 
-Every number here was measured at `b97695d86`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
+Every number here was measured at `cdadc164`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
 the realistic engine with NGP's tyre (`{ engine: "realistic", tyre: "ngp" }`), so every gap is the engine's.
-These runs predate the friction that follows rpm, the idle air's floor, the exhaust heat by firing, the heavier
-turbo rotor sized per car, the classes without a boost limit and the R5, Rally2 and WRC 1.6 compression ratios
-(2026-11); they were not re-run.
 
 The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
 tarmac one, track-41 (Cote D'Arbroz, its M variant, as the season's weather loads it), once with NGP 7's physics and
@@ -573,36 +570,37 @@ Gravel, track-11_O:
 | Car | Physics | Split 2 | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 442.63 s | +34 | 5.0 s | 3.3 s |
-| | experimental | 435.66 s | +34 | 0.3 s | 4.3 s |
+| | experimental | 434.90 s | +34 | 0.6 s | 4.5 s |
 | Celica ST185 | NGP 7 | 445.47 s | +25 | 5.4 s | 4.6 s |
-| | experimental | 437.82 s | −4 | 0 s | 5.5 s |
+| | experimental | 436.42 s | +6 | 0.01 s | 5.6 s |
 | Golf II GTI 16V | NGP 7 | 466.95 s | +12 | 5.7 s | 6.0 s |
-| | experimental | 447.14 s | −7 | 0 s | 8.6 s |
+| | experimental | 446.00 s | −7 | 0 s | 8.9 s |
 | Fiat 131 Abarth | NGP 7 | 463.65 s | +13 | 4.5 s | 7.9 s |
-| | experimental | 448.53 s | −25 | 0 s | 12.3 s |
+| | experimental | 447.55 s | −25 | 0 s | 12.4 s |
 
 Tarmac, track-41:
 
 | Car | Physics | Split 2 | Finish | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 210.71 s | 309.01 s | +25 | 5.0 s | 3.6 s |
-| | experimental | 207.41 s | 304.57 s | +44 | 0.2 s | 3.0 s |
+| | experimental | 207.66 s | 304.76 s | +34 | 0.5 s | 3.4 s |
 | Celica ST185 | NGP 7 | 212.97 s | 310.91 s | +25 | 5.2 s | 3.5 s |
-| | experimental | 208.02 s | 305.17 s | −4 | 0 s | 4.0 s |
+| | experimental | 207.91 s | 304.71 s | +6 | 0.01 s | 4.4 s |
 | Golf II GTI 16V | NGP 7 | 222.28 s | 324.24 s | +21 | 4.7 s | 4.5 s |
-| | experimental | 214.14 s | 314.57 s | −7 | 0 s | 5.1 s |
+| | experimental | 213.82 s | 314.03 s | −17 | 0 s | 5.2 s |
 | Fiat 131 Abarth | NGP 7 | 221.31 s | 323.35 s | +13 | 4.2 s | 5.9 s |
-| | experimental | 214.91 s | 315.49 s | −15 | 0 s | 6.1 s |
+| | experimental | 214.69 s | 315.10 s | −25 | 0 s | 6.2 s |
 
-Every run finished or ran its 600 s and was still drivable at the end. One engine stalled, after the finish line: the
-experimental Golf, braking at full in fifth on track-41's run-out, locked its wheels at 16 m/s with the clutch still
-closed, and the engine fell from 464 rad/s to 0 in 0.8 s; NGP's Golf, in the same stop, kept 89 rad/s. That was
-the clutch, since fixed ([The clutch under the experimental engine](#the-clutch-under-the-experimental-engine)). The experimental limiter keeps every car under its limit in gear; the Fiesta's time over is
-its start burnout in neutral. With the experimental physics the turbo cars reached split 2 1.6–1.7 % sooner on
-gravel and 1.6–2.3 % on tarmac, the NA cars 3.3–4.2 % sooner on gravel and 2.9–3.7 % on tarmac. The autopilot's
-caution sets most of its pace, and this is one stage and one run per car, so these gaps are not lap times a driver
-would see. On gravel the clutch slips 0.9–4.4 s longer per run, on tarmac between 0.6 s shorter and 0.6 s longer,
-and the engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
+Every run finished or ran its 600 s and was still drivable at the end, and no engine stalled: the slowest any turned
+was 82 rad/s, the experimental Golf braking at full on track-41's run-out, where NGP's Golf kept 89 rad/s (an
+earlier build stalled there, see
+[The clutch under the experimental engine](#the-clutch-under-the-experimental-engine)). The experimental limiter
+keeps every car at its limit in gear: the Fiesta's and the Celica's time over is their start burnout in neutral,
+and the Fiesta's drop into first from it. With the experimental physics the turbo cars reached split 2 1.7–2.0 %
+sooner on gravel and 1.4–2.4 % on tarmac, the NA cars 3.5–4.5 % sooner on gravel and 3.0–3.8 % on tarmac. The
+autopilot's caution sets most of its pace, and this is one stage and one run per car, so these gaps are not lap
+times a driver would see. On gravel the clutch slips 1.0–4.5 s longer per run, on tarmac between 0.2 s shorter and
+0.9 s longer, and the engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
 
 #### 0 to 100 km/h
 
@@ -614,18 +612,19 @@ stages climb 2–15 % over their first 100 m, and the flattest, track-46, bends 
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
-| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.46 s |
-| track-64, gravel, flat | 4.66 s | 4.63 s |
-| RSF 345, gravel, 4 % downhill | 4.50 s | 4.44 s |
+| RSF 504, tarmac, 6.7 % uphill | 4.52 s | 4.47 s |
+| track-64, gravel, flat | 4.66 s | 4.67 s |
+| RSF 345, gravel, 4 % downhill | 4.50 s | 4.49 s |
 
 Taking the 6.7 % climb's 0.66 m/s² off a constant mean acceleration gives about 4.0 s on flat tarmac for the
 experimental run (inferred). The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives
 4.1 s for the Polo GTI R5 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and M-Sport
 publishes none for the Fiesta.
 
-A launch control (revs held below the limiter, then the throttle holding the wheel slip) was no faster on any of the
-three: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these speeds, and cutting the
-throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not the start.
+A launch control (revs held below the limiter, then the throttle holding the wheel slip), tried on an earlier build,
+was no faster on any of the three: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these
+speeds, and cutting the throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not
+the start.
 
 ### The clutch under the experimental engine
 
@@ -635,7 +634,7 @@ it. Ours does for a moment after an overrun, while the manifold fills. With the 
 clutch help opened the clutch in time, but the rule then read the falling wheel speed as the slip reversing and tied
 the engine to the wheels every step, down to a stall, with the clutch open. With the experimental engine the clutch
 now locks again only if it has the torque to bring the engine to the wheels' speed in that step. Otherwise it keeps
-slipping. The Golf that stalled now keeps 85–89 rad/s through the same stop. A shift or a lift with the engine above
+slipping. The Golf that stalled now keeps 82 rad/s through the same stop. A shift or a lift with the engine above
 the wheels' speed slips at the clutch's torque for a few steps where it used to snap: of six cars checked, two reach
 50 km/h 0.04–0.05 s sooner from a standing start and four are unchanged to the millisecond. NGP's and the 1.02
 physics do not take this path.

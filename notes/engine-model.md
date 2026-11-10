@@ -454,22 +454,25 @@ By system: braking 7/17, friction 8/14, part load 6/15, torque 4/6, idle 9/11, e
 
 ## In game
 
-Numbers in `docs/experimental-physics.md` ("In game"), `b97695d86`, experimental = realistic + NGP's tyre (the brush
-is not released, user 2026-11-07), so every gap is the engine's. Not re-run after the friction by rpm, the idle
-floor, the exhaust heat and the 1.7e-5 rotor. Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-start.sh` in
+Numbers in `docs/experimental-physics.md` ("In game"), re-run on `cdadc164` (2026-11-10; NGP's runs equal those on
+`b97695d86` to the 0.01 s), experimental = realistic + NGP's tyre (the brush is not released, user 2026-11-07), so
+every gap is the engine's. Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-start.sh` in
 the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
 brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
-- track-11_O (gravel) 600 s, four cars: the same as on `0ef55141` to the 0.01 s (the brush is off on gravel). Exp
-  1.6–4.2 % sooner to split 2.
-- track-41_M (tarmac): exp 1.6–3.7 % sooner to split 2, finishes Fiesta 309.01 / 304.57, Celica 310.91 / 305.17, Golf
-  324.24 / 314.57, Fiat 323.35 / 315.49 s. The Golf II GTI no longer stalls on the opening climb (that stall was the
-  brush's, since fixed). It stalls after the finish: full brake in fifth on the run-out, wheels locked at 16 m/s, the
-  clutch-engaged speed tracking the engine 464 → 0 rad/s in 0.8 s (trace column `locked`); NGP's Golf in the same
-  stop keeps 89 rad/s with the clutch open. Fixed by the clutch worker's relock rule (see Open).
-- Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.46 s (4.44 at `96c85981`; brush 4.33, 4.35
-  after its fix); track-64 gravel flat 4.66 / 4.63; RSF 345 gravel −4 % 4.50 / 4.44. Slope-corrected 504 (constant
-  acceleration, −0.66 m/s²) ≈ 4.0 s (inferred).
+- track-11_O (gravel) 600 s, four cars: exp 1.7–4.5 % sooner to split 2 (1.6–4.2 % on `b97695d86`; split 2 exp
+  Fiesta 435.66 → 434.90, Celica 437.82 → 436.42, Golf 447.14 → 446.00, Fiat 448.53 → 447.55 s).
+- track-41_M (tarmac): exp 1.4–3.8 % sooner to split 2 (was 1.6–3.7 %), finishes Fiesta 309.01 / 304.76, Celica
+  310.91 / 304.71, Golf 324.24 / 314.03, Fiat 323.35 / 315.10 s (exp on `b97695d86`: 304.57, 305.17, 314.57,
+  315.49). No stall: the Golf II GTI's full brake on the run-out, which stalled it on `b97695d86` (wheels locked at
+  16 m/s, the clutch-engaged speed tracking the engine 464 → 0 rad/s in 0.8 s; fixed by the relock rule, see Open),
+  now bottoms at 82 rad/s with the clutch open (NGP's Golf 89).
+- Limiter: no experimental car over `RPMLimit` in gear beyond one whole-rad/s sample; over it only in the start
+  burnout in neutral (Fiesta 0.5–0.6 s, +34 rpm; Celica 0.01 s, +6) and the Fiesta's drop into first.
+- Fiesta Rally2 0-100 km/h: RSF 504 tarmac +6.7 % NGP 4.52 / exp 4.47 s (4.46 on `b97695d86`, 4.44 at `96c85981`;
+  brush 4.33, 4.35 after its fix); track-64_E gravel flat 4.66 / 4.67 (was 4.63); RSF 345 gravel −4 % 4.50 / 4.49
+  (was 4.44). Exp 0-60 on gravel is the slower part (track-64 2.28 / 2.33 s, 345 2.28 / 2.29). Slope-corrected 504
+  (constant acceleration, −0.66 m/s²) ≈ 4.0 s (inferred).
 - A launch control in the autopilot (hold, slip-held throttle, torque-crossing upshifts at 6386–6587 rpm against
   `SHIFT_UP` 6494; removed) was no faster: 504 4.59 / 4.48, track-64 4.63 / 4.62, 345 4.47 / 4.45 (on `96c85981`).
   The tyres pull as hard at 9 m/s of slip as near the peak at launch speeds (504: 10 m/s² while the wheels spin
