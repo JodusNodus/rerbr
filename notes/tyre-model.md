@@ -576,6 +576,15 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   racing radial 34 (MF/model); FS slicks 31-39 at 0.6-1.1 kN. NGP 17.6, brush 22.9. The stiffness rises as the
   profile falls: the brush is at a modern 50-series road tyre and the semi-slick, NGP between a 60-series and a
   50-series road tyre. No rally tarmac tyre is measured; an 18 in 40-series one may be stiffer still.
+- A rally tarmac tyre's stiffness, estimated (2026-11-10): the Rally2 tyre is 20/65-18 (Michelin Pilot Sport A:
+  200 mm tread, 650 mm across, so a 96 mm sidewall; road legal in Europe, "reinforced casing"), the R888R
+  195/50R16 has 97 mm and the A005 slick 190/580-15 100 mm (size from a forum post, inferred to be Richardson's).
+  At equal sidewall and width the slick's 27.2 over the semi-slick's 22.1 is +23 %, and Richardson's +6 % per 0.75
+  mm of wear makes that 2.9 mm of tread: the tread's thickness accounts for the gap, the carcass for none
+  (inferred). A moulded rally tyre (grooves 5.5 mm) new is then at the semi-slick's 22-24, rising about 8 % per mm
+  worn: the brush's 22.9 stays. Sensitivity on the pad, stiffness 1.0 / 1.1 / 1.2 (22.9 / 25.2 / 27.5): peak g
+  equal, steer at 0.4 g Fiesta 0.072 / 0.070 / 0.068, yaw t90 0.16 / 0.15 / 0.14 s, sine dwell spins at 110 km/h
+  Fiesta 0 / 0 / 0, Golf 9 / 9 / 6, Escort 17 / 17 / 17.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
