@@ -526,7 +526,13 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   (inferred): the same over-drive is 9.5 A. So a car that never breaks them is the unusual one: the Golf under ngp
   and the Fiesta under the brush. No test at 110 km/h in the report.
 - The same paper as the pressure slope's (arXiv 2305.18422, read): Cα falls with pressure at low loads and rises at
-  high loads (text at Fig. 9); `SLIP_PRESSURE` is one power at every load. Open.
+  high loads (text at Fig. 9); up to the nominal load it falls (-19.5 % at 67 %, -12 % at 100 %, the scorecard
+  row), which covers a rally car's wheels, so `SLIP_PRESSURE`'s one power stays.
+- The Fiesta Rally2 never breaking the criteria under the brush (2026-11-10, per-axle probes, 0.4 of lock at 80
+  km/h): the rear holds its full force at 5.5-8° of slip (Fy/Fz 1.20-1.24) where NGP's needs 9-18°, so the sideslip
+  peaks at 5° against 15° and the yaw rate is gone 0.2 s after the steering ends (ngp 1.4 s). That is the cornering
+  stiffness at 1.3 times NGP's slope (sourced and driven, below): with `stiffness=0.77` the Fiesta spins 8 of 24 at
+  110 km/h, ngp 9. Not a fault.
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
