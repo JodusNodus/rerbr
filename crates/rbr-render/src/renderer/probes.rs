@@ -1,7 +1,7 @@
 //! Reflection probes (ours, with [`Enhance::lighting`](super::Enhance::lighting)): cubes of the stage drawn once at
 //! load along the driveline, in place of the surroundings cube drawn around the car every few frames. Each pixel that
-//! reads the surroundings (the car's light, the wet roads, the water's missed rays, the cabin) blends the two probes
-//! nearest it (`surrounding` in `shader.wgsl`), so a road far ahead reflects what stands there.
+//! reads the surroundings (the car's light, the wet roads, the water's missed rays, the cabin) blends the grid's four
+//! surrounding cell centres' nearest probes (`surrounding` in `shader.wgsl`), continuously across cell boundaries.
 
 use super::frame::View;
 use super::reflection::face_views;
@@ -22,7 +22,7 @@ const CELL: f32 = 32.0;
 const BATCH: usize = 16;
 
 /// The probes' cube array (6 layers each) and the buffer `shader.wgsl` reads as `Probes`: the grid's corner (x, z)
-/// and cell side, its columns, rows and the count, the probes' points, then each cell's nearest probe.
+/// and cell side, its columns, rows and the count, then each cell centre's nearest probe.
 pub(super) struct Probes {
     texture: wgpu::Texture,
     pub(super) view: wgpu::TextureView,
@@ -62,14 +62,10 @@ impl Probes {
         let grid = Grid::of(&points);
         let header = [grid.origin.x, grid.origin.y, CELL, 0.0];
         let counts = [grid.columns, grid.rows, points.len() as u32, 0];
-        let mut placed = vec![[0.0f32; 4]; MOST];
-        for (slot, point) in placed.iter_mut().zip(&points) {
-            *slot = point.extend(1.0).to_array();
-        }
         // The struct's size rounds up to its 16-byte alignment.
         let mut cells = grid.cells;
         cells.resize(cells.len().next_multiple_of(4), 0);
-        let bytes = [cast_slice(&header), cast_slice(&counts), cast_slice(&placed), cast_slice(&cells)].concat();
+        let bytes = [cast_slice(&header), cast_slice(&counts), cast_slice(&cells)].concat();
         let buffer = wgpu::util::DeviceExt::create_buffer_init(
             device,
             &wgpu::util::BufferInitDescriptor {
