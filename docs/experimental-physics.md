@@ -604,11 +604,24 @@ times a driver would see. On gravel the clutch slips 1.0–4.5 s longer per run,
 
 #### 0 to 100 km/h
 
-The autopilot's flat-out standing starts with the Fiesta Rally2 (`--flat-out`), timed from the first move over
-0.5 m/s (`harness/car_pace.py`). The start revs to the limiter in neutral on the handbrake and drops into first at
-full throttle; NGP's clutch help then closes the clutch. No installed tarmac stage starts flat: the retail French
-stages climb 2–15 % over their first 100 m, and the flattest, track-46, bends before 100 km/h; RSF 504 climbs
-6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat (0.0 % over its first 100 m) and straight for 100 m.
+The autopilot's standing starts with the Fiesta Rally2 at full throttle, timed from the first move over 0.5 m/s.
+The start revs in neutral on the handbrake and drops into first at full throttle; NGP's clutch help then closes the
+clutch. The flat pad (`--flat-pad`) is a level square of one material in place of a stage's ground, level to 2 cm
+over these runs, and the car holds its heading on it:
+
+| Flat pad | NGP 7 | Experimental |
+| --- | --- | --- |
+| Tarmac (material 37) | 4.00 s | 3.98 s |
+| Gravel (material 17) | 4.62 s | 4.57 s |
+
+The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives 4.1 s for the Polo GTI R5
+(1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and
+M-Sport publishes none for the Fiesta.
+
+The same start on stages (`--flat-out`, `harness/car_pace.py`), where the driver follows the road and waits for the
+wheelspin to end before it shifts up. No installed tarmac stage starts flat: the retail French stages climb 2–15 %
+over their first 100 m, and RSF 504 climbs 6.7 %. Retail track-64 (Hualapai Nation, gravel) is flat and straight
+for 100 m.
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
@@ -616,13 +629,8 @@ stages climb 2–15 % over their first 100 m, and the flattest, track-46, bends 
 | track-64, gravel, flat | 4.66 s | 4.67 s |
 | RSF 345, gravel, 4 % downhill | 4.50 s | 4.49 s |
 
-Taking the 6.7 % climb's 0.66 m/s² off a constant mean acceleration gives about 4.0 s on flat tarmac for the
-experimental run (inferred). The nearest sourced figure is a maker's claim for another Rally2 car: Volkswagen gives
-4.1 s for the Polo GTI R5 (1230 kg, 272 PS). No measured figure (GPS onboard, WRC2 telemetry, magazine test) for any Rally2 car was found, and M-Sport
-publishes none for the Fiesta.
-
 A launch control (revs held below the limiter, then the throttle holding the wheel slip), tried on an earlier build,
-was no faster on any of the three: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these
+was no faster on any of the three stages: the tyres pull as hard at about 9 m/s of wheelspin as near their peak at these
 speeds, and cutting the throttle loses boost (it bogged the engine to 130 rad/s). The gap to a 3.5 s target is not
 the start.
 
