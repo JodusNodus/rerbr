@@ -12,7 +12,7 @@
 
 use rbr_gameplay::control::QuantizedControl;
 
-use super::{Driver, Sense, FIRST, LAUNCH, SHIFT_DOWN, SHIFT_UP, TOP_GEAR, UP_LIMIT};
+use super::{Driver, Sense, FIRST, LAUNCH, PEAK_TIME, SHIFT_DOWN, SHIFT_UP, STEP_SECONDS, TOP_GEAR, UP_LIMIT};
 
 /// The speed controller: throttle per m/s of error, per m/s of error and second, and the pedal over `OVER`.
 const KP: f32 = 0.4;
@@ -209,7 +209,15 @@ impl<'a> Driver<'a> {
                 let up = SHIFT_UP.min(UP_LIMIT * self.limit);
                 let frozen = pad.calm >= CALM || !matches!(pad.phase, Phase::Approach);
                 if !frozen {
-                    if (sense.gear < FIRST && sense.engine > LAUNCH * self.limit)
+                    // A standing start, as the plain driver's: first once the revs pass `LAUNCH` of the limit or
+                    // set no new maximum for `PEAK_TIME` (the experimental engine's start limiter sits under it).
+                    if sense.gear < FIRST && throttle > 0.0 && sense.engine > self.launch_peak {
+                        (self.launch_peak, self.launch_peak_at) = (sense.engine, step);
+                    }
+                    let peaked = sense.engine > LAUNCH * self.limit
+                        || (self.launch_peak > 0.0
+                            && step >= self.launch_peak_at + self.steps((PEAK_TIME / STEP_SECONDS) as u32));
+                    if (sense.gear < FIRST && peaked)
                         || (sense.gear >= FIRST && sense.gear < TOP_GEAR && sense.engine > up)
                     {
                         flags = self.shift(step, SHIFT_GAP, 0x01);
