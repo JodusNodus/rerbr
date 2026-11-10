@@ -487,6 +487,17 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   under the brush at the medium and hard pedal (yaw ratio at 1 s 1.95 and 1.47, ngp 1.39 and 0.93, no spin); the Golf
   holds a sideslip of 14° under the brush against 5-9°, and its step steer at 0.9 of the peak 18.5° against 4.3°. The
   brush's rear is the looser one on gravel as on tarmac, the Golf's most. Open, with the Golf on tarmac.
+- The 17.5 mm gravel pad (2026-11-10, `handling.py --material 9 --extra "--surface gravel"`, Fiesta Rally2, 80 km/h; ngp
+  / experimental / brush): ramp peak 0.950 / 0.947 / 0.953 g at 10 / 10 / 19° of sideslip. Brake in turn at 0.3 / 0.6 /
+  0.9 of the limit pedal, yaw ratio at 1 s: 1.83 / 1.65 / 1.15, 1.68 / 1.79 / 1.17, 1.61 / 2.00 / 1.74; spins of 3:
+  none, 0 / 3 / 0, 0 / 3 / 3. Part of ngp's hold is its engine, not its tyre: braked in gear NGP's idle keeps the
+  driveline at 127 rad/s, so with the inside wheels locked (hard pedal, from 0.6 s) the outside ones keep turning at
+  0.62-0.77 of the car's speed; the experimental engine is dragged down with the wheels (115 → 40 rad/s from 1 to 2 s),
+  on NGP's tyre the outside wheels at 0.61 → 0.44, on the brush 0.39-0.56 → locked at 1.8 s with its inside wheels
+  creeping (0.05-0.19) where NGP's tyre locks them. The test keeps the clutch in and the steering held, which a driver
+  would not: it ranks the cars' rotation under the brake, not whether a spin is real. With `--tyre-tuning gravel=0.85`
+  (brush): ramp peak 0.850 g at 28°, the sine dwell's lowest spinning amplitude 0.75 → 1.0 at 80 km/h and 0.55 → 0.75 at
+  110, brake in turn still spins at the medium pedal.
 - The Golf under the brush, traced (2026-11-10, per-axle probes, `TYRE_SHARE` 0.5 / 0.25 / 0 builds):
   - Sine dwell at 110 km/h: 9 of 24 spins at every heat share (ngp 4), and still from amplitude 0.3 with stiffness
     0.77, slide grip 0.95, response 2.0, the grip matched to NGP's peak g or the load exponent 0.80: none of them is
