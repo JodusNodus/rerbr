@@ -28,14 +28,13 @@ context: measured and printed (CTX), not scored. The `how` keys:
                           ABS run at K's, `--brake-abs K`: a run per K the rows name); gravel RSF 345
                           (gravel-damp / gravel-wet: `--wetness damp` / `wet`),
                           tarmac RSF 568, snow map 10, ice pad-116 (the whole run on ice, run-up included;
-                          off the pad's road is ice too, so a stop may wander 15 m off the driveline), its decel
-                          taken on the flat (a reset by the game, as on RSF 568 where a locked car drifts into
-                          the edge, is refused)
+                          off the pad's road is ice too, so a stop may wander 15 m off the driveline; a reset by
+                          the game, as on RSF 568 where a locked car drifts into the edge, is refused)
   brake-ratio:A/B:KMH:X/Y surface A's X decel (locked, best) over surface B's Y decel
   circle:gravel:lat_g     car_pace.analyse_circle's lateral g on the RSF 345 r40 circle (ramp 0.4 m/s per s; on an
                           11.9° slope, notes/tyre-model.md "Car-level grip in the same terms")
-  circle:SURFACE:KEY      car_grip.py's r40 circle on a flat SURFACE (gravel-flat, snow-flat: map 85 under material
-                          17 / 101 with the gravel / snow tyre, ramp 0.4; tarmac: map 85 under 37, ramp 0.5): kin_g
+  circle:SURFACE:KEY      car_grip.py's r40 circle on a flat SURFACE (gravel-flat, snow: pad-gravel, pad-snow with
+                          the gravel / snow tyre, ramp 0.4; tarmac: pad-tarmac, ramp 0.5): kin_g
                           (v²/R, the circle row's), glat_g (the body-axis specific force over the same 1 s), path_g
   thermal:KEY             a temperature number of the rbr-tyre-lab `ngp_transient` example (`--thermal-keys`: NGP's
                           whole tyre step on the tarmac probe's wheel, imaged at its step, with the physics' tyre
@@ -114,15 +113,15 @@ TYRE_SURFACES["gravel-wet-20"] = ("gravel", ["--speed", "20", "--water", "1"])
 TYRE_SURFACES["gravel-deep"] = ("gravel", ["--soil", "0.0175"])
 TYRE_SURFACES["gravel-deeper"] = ("gravel", ["--soil", "0.025"])
 # The brake runs per surface: the stage, the extra rbr-standalone flags, the steps, how far off the driveline a valid
-# stop may wander, the slip targets (none: the run's) and whether the decel is taken on the flat (grade removed).
-BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None, "flat": False}
+# stop may wander and the slip targets (none: the run's).
+BRAKE = {"steps": 30000, "extra": [], "max_off": car_pace.CRASH_OFF, "slips": None}
 BRAKE_STAGES = {"gravel": {**BRAKE, "rsf_stage": 345, "stage": None},
                 "gravel-damp": {**BRAKE, "rsf_stage": 345, "stage": None, "extra": ["--wetness", "damp"]},
                 "gravel-wet": {**BRAKE, "rsf_stage": 345, "stage": None, "extra": ["--wetness", "wet"]},
                 "tarmac": {**BRAKE, "rsf_stage": 568, "stage": None},
                 "snow": {**BRAKE, "rsf_stage": None, "stage": "track-10_O"},
                 "ice": {**BRAKE, "rsf_stage": None, "stage": "pad-116", "extra": ["--surface", "tarmac"],
-                        "steps": 45000, "max_off": 15.0, "slips": "0.05,0.1,0.2,0.3", "flat": True}}
+                        "steps": 45000, "max_off": 15.0, "slips": "0.05,0.1,0.2,0.3"}}
 # The coast-downs per surface (coast_test.py): the stage, the extra rbr-standalone flags and the off-line limit.
 COAST_FROM = 16.67  # m/s: 60 km/h
 COAST = {"steps": 80000, "extra": [], "max_off": car_pace.CRASH_OFF}
@@ -308,8 +307,7 @@ class Plan:
                 target = float(name[3:]) if name.startswith("abs") else None
                 result = (brake_test.analyse(trace, frm, target, max_off=b["max_off"]) if os.path.exists(trace)
                           else {"ok": False, "reason": "no trace"})
-                decel = "decel_flat" if b["flat"] else "decel"
-                runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result[decel] / G,
+                runs[name] = ({"dist": result["dist"], "time": result["time"], "g": result["decel"] / G,
                                "grade": result["grade"]} if result["ok"] else {"error": result["reason"]})
                 if result.get("wheels"):
                     runs[name]["wheels"] = result["wheels"]  # each wheel's mean slip and ABS cycle rate (Hz)

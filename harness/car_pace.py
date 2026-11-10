@@ -44,17 +44,12 @@ CIRC_R = 40.0
 GCIRC_CX = 1051.0
 GCIRC_CY = -166.0
 GCIRC_R = 40.0
-# The pads' equivalents (rbr_btb::pad, a level 2 km square, start at (0, -500) m facing +y; the circle is
-# counter-clockwise in x, y as on the host stages): each old centre rotated by its starts' yaw difference, so the
-# car reaches the circle after the same distance and enters it tangentially the same way round. Map 85's r40 circle
-# (-260, 120) from its start (-268.58, 124.85, yaw 1.815) is (7.2, -506.8) from the pad's; RSF 345's (1051, -166)
-# from its start (1092.14, -165.56, yaw -2.762) is (14.9, -461.6).
+# The pads' circle (rbr_btb::pad, a level 2 km square, start at (0, -500) m facing +y; counter-clockwise): map 85's
+# r40 circle (-260, 120) from its start (-268.58, 124.85, yaw 1.815), turned by the two starts' yaw difference, so
+# the car reaches it after the same distance and enters it the same way round.
 PAD_CIRC_CX = 7.2
 PAD_CIRC_CY = -506.8
 PAD_CIRC_R = 40.0
-PAD_GCIRC_CX = 14.9
-PAD_GCIRC_CY = -461.6
-PAD_GCIRC_R = 40.0
 CIRC_LATCH = 1.5  # m from the commanded radius: latched on
 CIRC_BREAK = 3.0  # m from the commanded radius: the slide (sustained)
 CIRC_LATCH_NEED = 2 * STEP_WINDOW  # 2 s on the circle before it counts
