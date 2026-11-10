@@ -537,20 +537,23 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - The 2017-21 World Rally Cars' idle and start line, from the same telemetry (2026-11-10, scratch; the drives begin at
   the start and end at the stop line). At rest in neutral with the throttle shut (España 2021, Deutschland 2019, Finland
   2021: 24-49k samples each) the engines turn at 2250-2750 rpm on 71-79 % of the samples (median 2470-2500) and at
-  1750-2000 on 17-25 %; the i20 Coupe WRC 2020 idles at 1200 (`IdleRPM`; on the pad 1155 experimental, 1203 ngp). Braked
-  with the wheels half or more under the car's speed, the engine stays in gear while the drivetrain turns at 2000 rpm or
-  more (1-8 % of the samples with the engine 15 % over it) and sits at 2050-2500 with the clutch slipping or out below
-  that (47-94 %); the drivetrain is at 2000 rpm or more in 93 % of those samples (Finland, 1077 of 1159): the real idle
-  keeps braked wheels turning, as NGP's does at 1200 rpm (`tyre-model.md`, "The 17.5 mm gravel pad"). At a full pedal
-  from 187 km/h the i20's idle holds them at 22 km/h for only 0.6 s on the gravel pads under ngp (0.09 s under the
-  brush, none on tarmac) before they lock with the clutch help open and the engine at 1020-1040 rpm. Not modelled: an
-  idle of that height belongs with a stage mode, a design decision. At the start line the engine waits at 6140-6570 rpm
-  with the throttle open (the medians of six rallies of 2019-21, 80-126 starts each; quartiles 5800-7000), 0.72-0.77 of
-  the i20's 8547 rpm limit, and dips to 4200-5000 rpm 0.3-0.6 s after the car moves (wheels at 26-28 km/h on tarmac,
-  29-44 on gravel). The start mode holds 4930 rpm on the i20 (`START_RPM` 0.6, a guess; the cut holds the engine 4 %
-  under the cap), NGP waits on the rev limiter (8547), and the autopilot's dump takes the wheels to 42 km/h in 0.08 s. A
-  cap at 0.75 holds 6200 rpm and leaves the dump's 0-100 km/h within 0.02 s on six cars: on `engine/start-rpm`, not
-  merged.
+  1750-2000 on 17-25 %, the Fords (1810-1940 on each of 18 rallies of 2017-21; Citroën 2440-2570, Hyundai 2320-2780,
+  Toyota 2260-2700; the drivers' makes from memory, not checked); the i20 Coupe WRC 2020 idles at 1200 (`IdleRPM`; on
+  the pad 1155 experimental, 1203 ngp). Braked with the wheels half or more under the car's speed, the engine stays in
+  gear while the drivetrain turns at 2000 rpm or more (1-8 % of the samples with the engine 15 % over it) and sits at
+  2050-2500 with the clutch slipping or out below that (47-94 %); the drivetrain is at 2000 rpm or more in 93 % of those
+  samples (Finland, 1077 of 1159): the real idle keeps braked wheels turning, as NGP's does at 1200 rpm
+  (`tyre-model.md`, "The 17.5 mm gravel pad"). At a full pedal from 187 km/h the i20's idle holds them at 22 km/h for
+  only 0.6 s on the gravel pads under ngp (0.09 s under the brush, none on tarmac) before they lock with the clutch help
+  open and the engine at 1020-1040 rpm. Not modelled: an idle of that height belongs with a stage mode, a design
+  decision. At the start line the engine waits at 6140-6570 rpm with the throttle open (the medians of six rallies of
+  2019-21, 80-126 starts each; quartiles 5800-7000), 0.72-0.77 of the i20's 8547 rpm limit, and dips to 4200-5000 rpm
+  0.3-0.6 s after the car moves (wheels at 26-28 km/h on tarmac, 29-44 on gravel). By make and rally the medians are
+  5920-6600 on the Fords of 2018-21, 5900-6490 on the Toyotas of 2019-21, 4920-7890 on the Hyundais (the median of their
+  18 rallies 6660) and 5590-7740 on the Citroëns, with no split by surface. The start mode holds 4930 rpm on the i20
+  (`START_RPM` 0.6, a guess; the cut holds the engine 4 % under the cap), NGP waits on the rev limiter (8547), and the
+  autopilot's dump takes the wheels to 42 km/h in 0.08 s. A cap at 0.75 holds 6200 rpm and leaves the dump's 0-100 km/h
+  within 0.02 s on six cars: on `engine/start-rpm`, not merged.
   - Other years, the same reading: the start line's median is 6780 rpm at Deutschland 2017, 6260 in 2018 and 6010 on
     Wales 2019's wet gravel (98-99 starts each), nine rallies at 6010-6780; the cars' top rpm at full throttle is 8290
     (p99.5 a drive, Deutschland 2019; 8000 on the 2016 cars). The 2014-16 cars (Deutschland 2016) idle at 2000-2500 rpm
