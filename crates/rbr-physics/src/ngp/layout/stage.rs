@@ -39,4 +39,3 @@ pub fn collision_copies(mem: &mut Mem, copies: [u32; 3]) {
         mem.map(copy + 4, &words);
     }
 }
-
