@@ -330,7 +330,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   lateral component of a stored in-plane direction, the component capped at `min(0.3, Fz μk / 45000)` × sticking
   weight (the direction slips past it), relaxed at (v - 0.3 m/s) dt; it acts only when the sticking weight is above 0
   (contact speed < 2 m/s). In game 7-13 N·m at the start hold, 10-33 N·m after a stop, 67-90 N·m peak per run. The
-  brush has no bore torque, so it adds what the brush lacks rather than fighting it: scaled by (1 - w) (gone), every
+  brush has no bore torque, so it adds what the brush lacks rather than fighting it (the (1 - w) scaling is gone): every
   stop time within 0.01 s, reversal share within 0.01, rock-back within 10 mm, four-car finishes within 0.04 s
   (2026-11-07).
 - Scope: hard surfaces (no soil) at every speed, down to standstill, weight 1 (2026-11-07, user). On soil loose-v1
@@ -354,19 +354,15 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   the published 0.90-0.95.
 - Dynamics: Rill's carcass deflections per wheel, the model's state (snapshots don't carry it; restart and
   touch-down zero it). c_y is NGP's lateral carcass, c_x 450 kN/m, each moved with the pressure factor by its power
-  (2026-11-08, [Candidate](#candidate-brush-v1); before, c_x 450 kN/m times the pressure factor over its calibration
-  value: 2026-11-07; Golf II 447 kN/m, Fiesta Rally2 435 kN/m, c_x/c_y 1.37/1.07; NGP's torsional over R² 640/796
-  kN/m, a tenth of it below 10 m/s), the same at every speed and load;
+  (2026-11-08; Golf II 447 kN/m, Fiesta Rally2 435 kN/m at their pressures), the same at every speed and load;
   trail and phase are the steady brush's.
 - Runs below are `experimental-brush` (realistic engine + brush), NGP 7 in brackets; debug traces of the wheel speeds
   (not committed), 2026-11-07, each the last measurement before the 2026-11-08 friction curve:
   - Golf II GTI 16V, track-41_M climb (gear 2, 4-5 m/s, throttle 0.15-0.5, 10-13 s), both fronts over car speed
-    mean/max 0.96/1.19 (0.95/1.07), no stall (the brush before the force dynamics: 1.54/3.04 with a stall at 11.72 s).
-    Fiesta Rally2 8-20 s 0.97/1.47, Fiat 131 rears 1.08/3.03.
+    mean/max 0.96/1.19 (0.95/1.07), no stall. Fiesta Rally2 8-20 s 0.97/1.47, Fiat 131 rears 1.08/3.03.
   - track-41_M 3-8 m/s on throttle: share of time the driven wheel runs over 1.1 times the car speed Golf / Fiesta /
     Fiat 0.128/0.102/0.114 (0.099/0.141/0.067); wheel-speed reversals 0.247/0.307/0.215 of steps (0.14/0.17/0.11);
-    180-360 Hz power 7.8/60/11.6 (5.4/22/3.1); no instability. c_x 450 kN/m against Cx(Fz0)/(1.44 R) there: |Fx -
-    steady Fx|/|steady Fx| 0.20/0.28/0.16 against 0.33/0.36/0.25.
+    180-360 Hz power 7.8/60/11.6 (5.4/22/3.1); no instability.
   - Brake from 10 m/s (track-41_M, `--brake-from`), stop after full / 0.35 pedal: Golf 1.04/2.19 s (0.99/2.31),
     Fiesta 0.83/1.63 (0.89/2.30), Fiat 1.05/2.33 (1.17/2.38); full pedal locks in both. NGP's 360 Hz sticking
     alternation is gone: wheel-speed reversals in the second around the stop 0.001-0.047 (NGP up to 0.088). Rock-back
@@ -407,20 +403,14 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   film, smooth road: 0.90 / 0.82 / 0.59). Map 41 autopilot pace (s, dry / damp / wet): ngp 309.01 / 338.51 / 381.43,
   eb 303.66 / 330.92 / 371.30 (wet +23 %, damp +9 %, both physics; the speed plan's, no rally reference).
 - Thin film (2026-11-08, `tyre/wet-speed`, against main 0fb71ed8, Fiesta Rally2). Lab (tarmac wheel, 4 kN, new): eb
-  braked peak at 100 / 140 km/h over 60 wet 0.984 / 0.884 → 0.918 / 0.837 (Reimpell 0.89-0.94 / 0.78-0.87: MISS →
-  PASS), damp 0.999 → 0.978 / 0.958 (0.2 mm 0.99 / 0.97), 180 km/h wet 0.784 → 0.755; dry bit-equal; worn (2 mm) wet
-  over new unchanged below 94 km/h, so 2 mm at 50 / 60 / 80 km/h over 20 0.83 / 0.75 / 0.58 → 0.83 / 0.75 / 0.56
-  (computed: the thin film's 0.959 at 80; Klempau 0.90 / 0.82 / 0.59). In game, best of threshold and ABS over dry: from 50 km/h (41_M) unchanged (damp
+  braked peak at 100 / 140 km/h over 60 wet 0.918 / 0.837 (was 0.984 / 0.884; Reimpell 0.89-0.94 / 0.78-0.87:
+  MISS → PASS), damp 0.978 / 0.958 (was 0.999; 0.2 mm 0.99 / 0.97), 180 km/h wet 0.755 (was 0.784); dry bit-equal; worn (2 mm) wet
+  over new unchanged below 94 km/h, so 2 mm at 50 / 60 / 80 km/h over 20 0.83 / 0.75 / 0.56 (was 0.58 at 80;
+  computed: the thin film's 0.959 at 80; Klempau 0.90 / 0.82 / 0.59). In game, best of threshold and ABS over dry: from 50 km/h (41_M) unchanged (damp
   0.915, wet 0.78: no loss below 60 km/h); from 100 km/h (117, threshold / ABS) damp 0.91 / 0.91 → 0.90 / 0.90, wet
-  0.78 / 0.74 → 0.75 / 0.72, so wet from 100 is now 0.96 of wet from 50 (was 1.00). Map 41 autopilot pace (s, damp /
+  0.78 / 0.74 → 0.75 / 0.72, so wet from 100 is 0.96 of wet from 50 (was 1.00). Map 41 autopilot pace (s, damp /
   wet): Fiesta 330.92 / 371.30 → 330.90 / 371.32, Golf II 340.79 / 381.92 → 341.15 / 381.95 (Golf dry 313.78; ngp
   324.24 / 353.52 / 398.24): 41_M wet tops out at 88 km/h and the autopilot brakes above 60 km/h 4-6 % of the time.
-- Level test (2026-11-08, `tyre/wet-speed`, drive test only, not merged: `RERBR_TEST_WET_LEVEL=A` scales the brush's
-  hard-surface friction by 1 - A min(1, W / 0.25)), A 0.08: from 50 km/h (41_M) best over dry damp 0.915 → 0.85,
-  wet 0.78 → 0.66 (the wet ABS and threshold runs fall more than 8 %: k 0.1 0.51 g), locked damp over dry 0.88 →
-  0.82 (0.67-0.78: still MISS); from 100 km/h (117, threshold / ABS) damp 0.835 / 0.81, wet 0.67 / 0.66 (bands
-  0.70-0.85, 0.65-0.80). Pace (damp / wet): Fiesta 331.22 / 372.01, Golf II 343.95 / 387.03 (+0.1-0.2 % and
-  +0.8-1.3 % over the thin film alone: the autopilot's speed plan barely reads the grip).
 - Damp level and worn refit (2026-11-09, `tyre/wet-damp-worn`, against main d903fe5a, Fiesta Rally2, experimental-brush).
   Lab (tarmac wheel, 4 kN, braked peak over dry new at 10 m/s, at 10 / 30 / 50 m/s): damp new 0.908 / 0.880 / 0.847 →
   0.820 / 0.795 / 0.765; wet new 0.788 / 0.707 / 0.592 unchanged; wet 3 mm 0.788 / 0.439 / 0.128 → 0.788 / 0.709 /
@@ -487,7 +477,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   The slide grip stays the user's 0.83. Open: the Golf at 110 km/h, throttle released (front axle under engine
   braking and side force together); the Fiesta's spin under a light brake in a turn with the realistic engine and
   NGP's tyre (3 of 3, ngp none), not looked into.
-- The pad after the temperatures and the pressure slope (2026-11-10, experimental-brush before → after): sine dwell
+- The pad after the temperatures and the pressure slope (2026-11-10): sine dwell
   spins unchanged (Fiesta 0, Golf 9 at 110 km/h), ramp peak g within 0.2 %, step and circle manoeuvres within the
   runs' ranges; the temperatures show only in slides of seconds (`limit_recovery`).
 - Gravel pad (2026-11-10, `handling.py --material 17 --extra "--surface gravel"`, ngp / brush): ramp peak Fiesta
@@ -548,17 +538,18 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
     yaw ratios of real cars found (ISO 7975 gives the method only).
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
-  15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
-  PASS; locked over peak at 100 km/h 0.668 → 0.656, wet 0.505 → 0.495, wet peak 100/32 0.951 → 0.970, all in band);
-  map 41 600 s Fiesta Rally2 304.03 → 304.03 s, Golf II 314.11 → 314.09 (ngp 309.01, 324.24).
+  15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 84/112 (was 83; TRL peak 100/32 0.986, was 0.968,
+  MISS → PASS; locked over peak at 100 km/h 0.656, wet 0.495, wet peak 100/32 0.970, all in band); map 41 600 s
+  Fiesta Rally2 unchanged at 304.03 s, Golf II 314.09 (was 314.11; ngp 309.01, 324.24).
 - Lateral past-peak shape (2026-11-08, `brush::LATERAL_FALL` 0.65, user decision): the lateral axis takes 0.65 of the
   friction's fall with sliding speed, the longitudinal axis all of it, so a locked wheel braking straight keeps the TRL
-  fit. μ_y(30°)/peak at 4 kN, 15 m/s 0.833 → 0.893, chosen at the band's upper end (0.73-0.90) on weaker sources: TRR
+  fit. μ_y(30°)/peak at 4 kN, 15 m/s 0.893 (was 0.833), chosen at the band's upper end (0.73-0.90) on weaker sources: TRR
   621 (bias tyre, flat belt, 48 km/h) ~1.0 at 30°, Persson 2011 (model) 0.97 at 25°, NGP 0.865, against the road MF
-  sets' full slide 0.73-0.83. Scorecard against main 83 → 85/112: μ_y(30°)/peak +0.060 (PASS), peak slip angle 9.50 →
-  9.75° (MISS, band 5.6-8.5), Mz to 0 at 1.13 → 1.10 of the Fy peak's angle, Mz peak at 0.289 → 0.282 of it (MISS),
-  peak μ_y per +0.5 bar 0.27 → 0.18 %, ice μ_y(20°)/peak 0.907 → 0.940 and end over max 0.943 → 0.963 (both MISS
-  before; the ice tyre is the tarmac brush), ice locked over threshold 0.807 → 0.812 (MISS → PASS); TRL locked rows
+  sets' full slide 0.73-0.83. Scorecard 85/112 (was 83): μ_y(30°)/peak +0.060 (PASS), peak slip angle 9.75°
+  (was 9.50; MISS, band 5.6-8.5), Mz to 0 at 1.10 of the Fy peak's angle (was 1.13), Mz peak at 0.282 of it
+  (was 0.289; MISS), peak μ_y per +0.5 bar 0.18 % (was 0.27), ice μ_y(20°)/peak 0.940 and end over max 0.963
+  (was 0.907 / 0.943; both MISS before; the ice tyre is the tarmac brush), ice locked over threshold 0.812
+  (was 0.807; MISS → PASS); TRL locked rows
   and the brake-test car rows within 0.005 of 5fff12c2. Clean-tarmac recovery after a lift (kept g / widest m / back
   s): Fiesta 0.87/2.1/2.1 (5fff12c2 0.79/2.8/2.6, ngp 0.89/1.6/1.7), Golf 0.74/4.0/3.2 (0.66/6.0/4.0; ngp
   0.79/2.0/2.3), Escort 0.77/4.1/never, peak sideslip 97° (spun 180° before; experimental 0.79/2.2/2.4, 52°); full
@@ -607,13 +598,13 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
     30, never under the semi-slick).
 - The fall past the peak sets in sooner (2026-11-10, a user decision: a rally tyre no sharper than the slick, so its
   gentlest 3 % at 10.5°): the lateral axis takes the Stribeck exponent 1.25 (`brush::LATERAL_STRIBECK_EXP`) in place
-  of the locked wheel's 3, the slide grip solved as before. Lab at 4 kN, before → after: μ_y at 10.5° over the peak
-  0.988 → 0.969 (row `tarmac-mu-y10.5-over-peak`), peak angle 7.0° → 6.5°, peak μ_y 1.276 → 1.263 (ngp 1.268; at
-  6 kN 1.208 → 1.191, ngp 1.185), μ_y at 30° 1.064 both (0.834 → 0.843 of the lower peak), at 40° 0.999 → 1.018.
-  Braking, gravel and
-  combined slip's rows as before. Pad, tarmac 80 km/h, ramp peak g Fiesta Rally2 / Golf / Escort: 1.253 / 1.221 /
-  1.242 → 1.224 / 1.195 / 1.228 (ngp 1.248 / 1.186 / 1.193); sine dwell spins of 48: 0 / 9 / 31 → 0 / 9 / 28, the
-  Fiesta's peak sideslip at 110 km/h 48° → 28°; lift, power and brake in turn spin as before. The step steer's low
+  of the locked wheel's 3, the slide grip solved as before. Lab at 4 kN: μ_y at 10.5° over the peak 0.969
+  (was 0.988; row `tarmac-mu-y10.5-over-peak`), peak angle 6.5° (was 7.0°), peak μ_y 1.263 (was 1.276; ngp 1.268; at
+  6 kN 1.191, was 1.208; ngp 1.185), μ_y at 30° 1.064 both (0.843 of the lower peak, was 0.834), at 40° 1.018
+  (was 0.999). Braking, gravel and
+  combined slip's rows as before. Pad, tarmac 80 km/h, ramp peak g Fiesta Rally2 / Golf / Escort: 1.224 / 1.195 /
+  1.228 (was 1.253 / 1.221 / 1.242; ngp 1.248 / 1.186 / 1.193); sine dwell spins of 48: 0 / 9 / 28 (was 0 / 9 / 31),
+  the Fiesta's peak sideslip at 110 km/h 28° (was 48°); lift, power and brake in turn spin as before. The step steer's low
   overshoot flips between about 2.5 and 10 % from run to run (before this too): not a measure.
 - Combined slip against a measured road tyre (2026-11-10; library `xia-lu-tong-2020`, SAE 2020-01-0896: a 195/55R16
   at 225 kPa and 60 km/h on an MTS Flat-Trac, slip ratio to ±30 % at 2°, 5°, 8°, Figs 4-6, whose axes are Fx across
@@ -648,28 +639,31 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
     Second order, left.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
-  ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
-  1.266 → 1.269, μ_y(30°)/peak 0.893 → 0.886, peak κ 0.11 unchanged. Scorecard 85 → 87/112 (MISS → PASS: peak slip
-  angle, combined Fy(κ 0.25)/Fy(0) at 4° 0.350 → 0.293, Mz peak at 0.410 → 0.393 of the Fy peak's angle; PASS → MISS:
-  Kx/Ky 1.231 → 0.925, band 1.15-1.62; at 2/6 kN by the load exponents 0.88/1.50 → 0.67/1.12); combined at 2° 0.296 →
-  0.227, camber stiffness 0.84 → 1.11 per rad (0.55-1.27); every gravel and snow value bit-equal, ice within 0.5 %
+  ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 22.9 (was 17.2), peak slip angle 7.0°
+  (was 9.75°; 6.7 kN 8°, was 11°), peak μ_y 1.269 (was 1.266), μ_y(30°)/peak 0.886 (was 0.893), peak κ 0.11
+  unchanged. Scorecard 87/112 (was 85; MISS → PASS: peak slip angle, combined Fy(κ 0.25)/Fy(0) at 4° 0.293
+  (was 0.350), Mz peak at 0.393 of the Fy peak's angle (was 0.410); PASS → MISS: Kx/Ky 0.925 (was 1.231),
+  band 1.15-1.62; at 2/6 kN by the load exponents 0.67/1.12 (was 0.88/1.50)); combined at 2° 0.227 (was 0.296),
+  camber stiffness 1.11 per rad (was 0.84; 0.55-1.27); every gravel and snow value bit-equal, ice within 0.5 %
   (`brush::low_mu_slip_stiffness`: below grip 0.55 the Cy of NGP's slope). Limit recovery (r40, uniform 37, kept g
-  / widest m / back s, lift / full throttle): Fiesta 0.85/2.0/2.1 → 0.84/2.3/2.2, full throttle 42° → spun (150°);
-  Golf 0.74/3.9/3.1 → 0.75/4.0/3.2, 38 → 45°; Escort spins in all four runs, the lift run 4.3 → 11.6 m wide. r40
-  ramp mean |ffb| per 0.1 g within 6 % at 0.3-0.7 g, +8-10 % on the Fiesta at 0.7-1.0 g and the Golf's +15 % at
-  0.9-1.0 g, peak 256 → 268 / 103 → 103 / 69 → 68 (Fiesta / Golf / Escort); map 41 600 s mean |ffb| at 0.3-0.7 g -1 to -6 %, pace Fiesta 304.03 → 303.85 s, Golf 314.09 → 314.09.
+  / widest m / back s, lift / full throttle): Fiesta 0.84/2.3/2.2 (was 0.85/2.0/2.1), full throttle spun (150°,
+  was 42°); Golf 0.75/4.0/3.2 (was 0.74/3.9/3.1), 45° (was 38°); Escort spins in all four runs, the lift run
+  11.6 m wide (was 4.3). r40 ramp mean |ffb| per 0.1 g within 6 % at 0.3-0.7 g, +8-10 % on the Fiesta at 0.7-1.0 g
+  and the Golf's +15 % at 0.9-1.0 g, peak 268 / 103 / 68 (was 256 / 103 / 69; Fiesta / Golf / Escort); map 41 600 s
+  mean |ffb| at 0.3-0.7 g -1 to -6 %, pace Fiesta 303.85 s (was 304.03), Golf 314.09 (unchanged).
 - Longitudinal stiffness 1.3 times NGP's fit as well (2026-11-08, user-approved; `fit::calibration` returns the stiff
   calibration whole: Cx = `KX_OVER_KY` Cy, μ_x solved for NGP's longitudinal peak; below grip 0.55 Cx of NGP's slope,
-  `brush::low_mu_slip_stiffness`). Scorecard 87 → 89/112 (MISS → PASS: Kx/Ky 0.925 → 1.168, band 1.15-1.62; Kx/Fz
-  21.2 → 26.8 against road c0x 23.8-42.8); peak κ 0.110 → 0.090 at 4 kN (R888R 0.08-0.10); Kx load exponent 1.13 →
-  1.10; TRL locked/peak, wet and worn stops within 0.006; tarmac car locked/ABS 50 km/h 0.832 → 0.841, ABS 0.15
-  1.314 → 1.293 g, threshold κ 0.1 from 100 km/h 1.057 → 1.171 g, locked 0.974 → 0.970 g; combined Mz at 4°
-  braking (context) 0.098 → -0.120; gravel, snow and ice brake rows bit-equal, ice c0x 2.523 → 2.514; ice coast crr
-  0.002 → 0.048 (the run-up on tarmac launches differently and the autopilot leaves the iced road; both MISS).
-  Traction, RSF 568 flat out, 0-100 km/h: Fiesta 4.117 → 4.082 s, Golf 6.794 → 6.778 s. Limit recovery (r40,
-  uniform 37): Fiesta full throttle spun (150°) → 45° and not back, lift 2.3 → 2.3 m wide; Golf lift 4.0 → 4.5 m wide,
-  full throttle 45 → 43°; Escort spins in both as before. Map 41 600 s: pace Fiesta 303.85 → 303.67 s, Golf 314.09 →
-  313.78; mean |ffb| at 0.3-0.7 g +0.5 to -2.8 % (Fiesta), -0.3 to -3.1 % (Golf).
+  `brush::low_mu_slip_stiffness`). Scorecard 89/112 (was 87; MISS → PASS: Kx/Ky 1.168 (was 0.925),
+  band 1.15-1.62; Kx/Fz 26.8 (was 21.2) against road c0x 23.8-42.8); peak κ 0.090 at 4 kN (was 0.110;
+  R888R 0.08-0.10); Kx load exponent 1.10 (was 1.13); TRL locked/peak, wet and worn stops within 0.006;
+  tarmac car locked/ABS 50 km/h 0.841 (was 0.832), ABS 0.15 1.293 g (was 1.314), threshold κ 0.1 from 100 km/h
+  1.171 g (was 1.057), locked 0.970 g (was 0.974); combined Mz at 4° braking (context) -0.120 (was 0.098);
+  gravel, snow and ice brake rows bit-equal, ice c0x 2.514 (was 2.523); ice coast crr 0.048 (was 0.002; the run-up
+  on tarmac launches differently and the autopilot leaves the iced road; both MISS). Traction, RSF 568 flat out,
+  0-100 km/h: Fiesta 4.082 s (was 4.117), Golf 6.778 s (was 6.794). Limit recovery (r40, uniform 37): Fiesta full
+  throttle 45° and not back (was a 150° spin), lift 2.3 m wide (unchanged); Golf lift 4.5 m wide (was 4.0),
+  full throttle 43° (was 45°); Escort spins in both as before. Map 41 600 s: pace Fiesta 303.67 s (was 303.85),
+  Golf 313.78 (was 314.09); mean |ffb| at 0.3-0.7 g +0.5 to -2.8 % (Fiesta), -0.3 to -3.1 % (Golf).
 - Rolling sideways against locked, data (2026-11-08): TRR 621 (1976, Calspan flat belt, J78-15 bias-belted, 6.2 kN,
   48 km/h only, dry SN85; fig ±0.02): μ_y 0.84 at 16°, ~0.87 near 30°, ~0.80 at 60-72°, ~0.82 at 90° (= the locked
   wheel's sideways value), braking peak 0.84 / locked 0.74 quoted; so 30°/peak ~1.0 against the brush's 0.80 at 54
