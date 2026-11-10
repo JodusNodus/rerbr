@@ -1581,7 +1581,10 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   is 8-12 % under the real lateral p95 at 30-90 km/h (cambers and cuts in the real one): no case to move the tarmac
   level either way. The real lateral p95 falls with speed (1.45 at 60-90 km/h, 1.28 at 120-150) where the files'
   downforce would raise the limit by about a fifth: the drivers' margin in fast corners or less downforce, not
-  separable here.
+  separable here. Hard straight braking against the dynamic pressure (0.5 s windows, brake channel 80 % up, 60-160
+  km/h; scratch analysis) rises 1.6-2.9e-4 g/Pa on the 2017-21 cars (España, Deutschland 2019), 2.1-3.0e-4 on the
+  2016 cars and 2.8-3.4e-4 in the game's i20 threshold runs: it does not tell the generations apart, so it gives no
+  downforce figure; the game's is at the top of the real range.
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:
