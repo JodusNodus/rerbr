@@ -65,7 +65,7 @@ Peugeot 208 Rally4, Helette (RSF 580), chase view, 18:30
 
 ### golden-621-yaris-flyby
 
-Toyota GR Yaris Rally2, Comb I (RSF 621), flyby view, 18:45
+Toyota GR Yaris Rally2, Comb I (RSF 621), flyby view, 05:45
 
 ![golden-621-yaris-flyby](golden-621-yaris-flyby.jpg)
 
