@@ -1525,6 +1525,29 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   (`BRAKING` 4 m/s², `LATERAL` 5 m/s²), equal across cars and physics: the stage runs cannot rank the tyre until a
   driver runs at the limit. Against the telemetry the real WRC drives brake 1.4 times and corner 1.9-2.3 times (p90)
   harder.
+- Full throttle on straights (2026-11-10; `harness/rally_wot.py`, the samples and the fit in its docstring; the
+  2017-21 World Rally Cars from the WRC's archive: Rally de España 2021, tarmac, 104 drives; Rallye Deutschland 2019,
+  tarmac, 140; Rally Finland 2021, gravel, 112). Median level acceleration, g, España / Finland / the game's i20
+  Coupe WRC 2020 flat out on pad-tarmac under ngp / experimental: 4th 110-120 km/h 0.384 / 0.334 / 0.457 / 0.492; 5th
+  130-140 0.296 / 0.263 / 0.385 / 0.424; 6th 150-160 0.214 / 0.182 / 0.314 / 0.342; 170-180 0.143 / 0.108 / 0.243 /
+  0.267; 180-190 0.072 / 0.053 / 0.210 / 0.231; 190-200 0.056 / 0.014 / 0.178 / 0.199 (pad-gravel, experimental, 6th:
+  0.323 / 0.244 / 0.212 / 0.098 at 150 / 170 / 180 / 190). The real models agree (tarmac, 4th 110-120: Yaris 0.385,
+  Fiesta 0.384, i20 0.384); the game's cars pull 1.2-1.3 times as hard at 115 km/h and 3 times at 185.
+  - Fit (1390 kg, Crr 0.015, ρ 1.17): España CdA 1.76 m² (5-95 % 1.69-1.82), wheel power 219 / 224 / 231 / 219 / 196
+    kW at 6500 / 7000 / 7500 / 8000 / 8500 rpm; Deutschland 1.71 (1.67-1.77), 230 / 233 / 229 / 232 / 196; per model
+    1.55-1.83. España with 1350 kg, ρ 1.12, Crr 0.010 or only above 130 km/h: CdA 1.72-1.85, power 213-235. Finland
+    (Crr 0.018, ρ 1.24): 1.56 (1.44-1.69), 205 kW at 7000, its drag not separated from its rolling loss.
+    Deutschland 2016 (Polo R, i20, Fiesta RS WRC; no altitude, 107 drives): 0.83 (0.63-1.06), weak.
+  - The game by the same fit: ngp CdA 0.79 m² (the file's `Cd * A` 0.9725 is 0.81 m² in SI: NGP's drag factor is
+    0.5 ρ / 1.204), wheel power 225-237 kW; experimental 0.88, 249-258 kW.
+  - So the 2017-21 cars' drag area is 2.1 times their files'; their wheel power is ngp's (the file's 380 PS less 12 %
+    over 1.05 = 234 kW), and the experimental engine's whole torque is about 10 % over the telemetry's (at 1390 kg;
+    the power read scales with the mass). Gears 2-5 hold within 2 % (rpm per km/h, real i20 88.5 / 72.6 / 60.1 /
+    50.7 / 44.5, file 88.8 / 71.8 / 58.8 / 49.1 / 41.7), 6th is 5 % tall. Top speed 196-202 km/h in both: the real
+    cars against their drag (0.056 g left at 195 km/h, 8350 rpm), the game's on the limiter with 0.2 g in hand.
+  - Every file's `Cd * A` / 1.204 is 0.60-1.0 m² whatever its downforce (Golf II GTI 0.68, Escort Cosworth 0.78,
+    Fiesta Rally2 0.65 with 3100 N, the WRC 2019 cars 0.81 with 3700 N: downforce over drag 3.8 and 3.6; 2.0 with the
+    measured drag). Dominy & Richardson's 2004 model: 0.85 m². No Rally2 / R5 data (WRC2's are 6.4 s GPS points).
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:
