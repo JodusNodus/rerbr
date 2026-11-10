@@ -503,6 +503,19 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   under the brush at the medium and hard pedal (yaw ratio at 1 s 1.95 and 1.47, ngp 1.39 and 0.93, no spin); the Golf
   holds a sideslip of 14° under the brush against 5-9°, and its step steer at 0.9 of the peak 18.5° against 4.3°. The
   brush's rear is the looser one on gravel as on tarmac, the Golf's most. Open, with the Golf on tarmac.
+- The Golf under the brush, traced (2026-11-10, per-axle probes, `TYRE_SHARE` 0.5 / 0.25 / 0 builds):
+  - Sine dwell at 110 km/h: 9 of 24 spins at every heat share (ngp 4), and still from amplitude 0.3 with stiffness
+    0.77, slide grip 0.95, response 2.0, the grip matched to NGP's peak g or the load exponent 0.80: none of them is
+    the cause. The brush car yaws through the reversal 0.07-0.1 s sooner and holds 57-58 deg/s in the dwell where
+    ngp decays; both axles run 2.5° further past a peak that comes at 7° (ngp 10°) and falls 5-9 % by 20-30°. The
+    rear axle sits on one wheel (inside rear 13-49 N). The trait is not isolated.
+  - Full throttle past the limit (`limit_recovery`): the front ploughs at 29-31° of slip (full lock held by the
+    pursuit), the rear at 2-4.5°. Front Fy/Fz ngp 0.88-0.90, brush 0.70-0.74, without heat 0.76-0.79: the brush's
+    curve at 30° under drive takes about 12 %, the heat (370 → 398 K in 4 s) about 8 %. Widest 8.3 m ngp, 23-27 m
+    brush at any share; never back under either. The spin at the end follows the plough.
+  - `ice-car-coast-crr` 0.002 → 0.022 is the measurement: the autopilot's coast on ice goes into a lateral slide at
+    56 km/h on a chaotic edge (ice=1.01 → 0.059, 1.02 → 0.0024); the temperatures stay 325-337 K. `coast_test`
+    should drop sliding pieces.
 - Rolling speed and the friction (2026-11-08, `brush::V_SHAPE`): above 16.7 m/s rolling (MF 6.1's LONGVL) the
   friction's sliding speed is the theoretical slip times 16.7 m/s, so a rolling tyre's curve against slip keeps its
   15 m/s shape at speed; a locked wheel keeps TRL's fall. Scorecard 83 → 84/112 (TRL peak 100/32 0.968 → 0.986, MISS →
