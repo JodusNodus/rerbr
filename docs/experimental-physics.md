@@ -25,9 +25,11 @@ so the power it allows is roughly fixed and torque falls as rpm rises. A turbo n
 boost. Engine braking comes from friction and from pumping against a closed throttle, and neither goes to zero at low
 rpm. Our model computes these from the air path.
 
-It keeps each car's own full-throttle curve. At full throttle in standard air it gives the car's NGP torque at every
-point of the table, except where a turbo can't supply the air yet (see [Torque from air](#torque-from-air)). What
-changes is part throttle, transients, idle, engine braking, the limiter and the turbo.
+It keeps each car's own full-throttle curve. At full throttle in standard air it gives the torque of the car's table
+at every point, except where a turbo can't supply the air yet (see [Torque from air](#torque-from-air)). NGP's formula
+delivers that table over 1.05, so at full throttle the experimental engine is 5 % stronger than NGP's (see
+[Power delivered](#power-delivered)). What else changes is part throttle, transients, idle, engine braking, the
+limiter and the turbo.
 
 ## What NGP's formula does
 
@@ -71,8 +73,34 @@ at 7500 rpm fires about every third step at 720 steps a second, so the limiter p
 about 2.4 µs. Building a car's model takes about 1.3 s for a turbo car and 30 ms for an NA car, once at load.
 
 The model replaces only NGP's torque call. NGP's stall detection, damage factor and shift cooldown, the 1.02 sim's
-friction and the air's pressure and temperature reach it each step, and its torque goes back through the same
-`/ 1.05`.
+friction and the air's pressure and temperature reach it each step. Its torque goes to the drivetrain whole, without
+NGP's `/ 1.05`.
+
+### Power delivered
+
+The car files carry the makers' crank figures. Of the installed cars with a technical sheet from the maker or its
+team, the file's peak power and torque are within 3 % of the sheet's on all but two:
+
+| Car | Sheet | File |
+| --- | --- | --- |
+| Ford Fiesta Rally2 | 290 bhp at 6000 rpm, 475 N·m at 4000 (M-Sport) | 291 PS at 5900, 460 N·m at 4400 |
+| Ford Fiesta Rally3 | 215 hp at 5000, 400 N·m at 3500 (M-Sport) | 215 PS at 5200, 400 N·m at 3500 |
+| Ford Fiesta Rally3 Evo | 245 bhp at 5000, 420 N·m at 3500 (M-Sport) | 240 PS at 5000, 420 N·m at 3500 |
+| Renault Clio Rally3 | 260 hp, 415 N·m (Alpine Racing) | 261 PS, 415 N·m |
+| Ford Fiesta Rally4 | 210 hp at 6500, 315 N·m at 4000 (M-Sport) | 210 PS at 6500, 315 N·m at 4000 |
+| Peugeot 208 Rally4 | 208 ch at 5450, 290 N·m at 3000 (Peugeot Sport's sheet in L'Argus) | 208 PS at 5600, 290 N·m at 3000 |
+| Ford Fiesta WRC | 380 bhp, 450 N·m (M-Sport) | 380 PS, 450 N·m |
+| VW Polo GTI R5 | 272 PS at 5500, 400 N·m at 4000 (Volkswagen) | 285 PS at 5550, 420 N·m at 4000 |
+| Alpine A110 Rally | 320 ch at 5850, 500 N·m at 4000 (Signatech) | 315 PS at 6000, 440 N·m at 3000 |
+
+NGP divides the engine's torque by 1.05 and then takes its drivetrain loss (8 % on two-wheel-drive cars, 12 % on
+four-wheel-drive), so its cars deliver 5 % less than their sheets. The Polo's file is 5 % over its sheet, which makes
+it the one car that delivered the maker's figures under NGP; with the experimental engine it is 5 % over them. The
+Alpine's torque stays 12 % under Signatech's. The masses need no correction: on its tyres each car of the FIA's
+current classes, the World Rally Cars and Super 2000 weighs its class's minimum plus 200 kg, the FIA's 160 kg for the
+crew (Appendix J, the minimum with the crew aboard) and 40 kg more; the Alpine, at 1280 kg, is 20 kg under
+Signatech's 1100 kg with the same 200 kg. The wheelbase that each file's centre of gravity and static front axle
+load give is within 1 cm of the sheet's on the seven cars whose sheet has one.
 
 ### What it reads from each car
 
@@ -321,10 +349,10 @@ starts, ignition retard and extra fuel while active, dropped as soon as a non-dr
 the 60 % of the limit, the 0.5 m/s at the rim and the 1.0 m/s body speed are guesses (Link leaves the launch RPM to
 testing). The autopilot holds full throttle on the handbrake through the start countdown, so the boost is built
 when it leaves; it selects first once the revs pass 60 % of the limit or set no new maximum for 0.1 s. On the flat pad
-the three Rally3 cars' clutch-dump starts on tarmac take 5.23, 4.78 and 4.51 s to 100 km/h (Fiesta Rally3, Rally3
-Evo, Clio Rally3) against NGP's 5.18, 4.73 and 4.43; without the start mode they took 5.45, 5.25 and 4.88. The Polo
-R5, Fiesta Rally2 and i20 Coupe WRC, which did not bog, are within 0.02 s of NGP either way; cars without anti-lag
-are untouched.
+the mode took 0.22, 0.47 and 0.37 s off the three Rally3 cars' clutch-dump starts to 100 km/h on tarmac (Fiesta
+Rally3, Rally3 Evo, Clio Rally3), which bogged without it; they now take 4.99, 4.60 and 4.35 s against NGP's 5.18,
+4.73 and 4.43. The Polo R5, Fiesta Rally2 and i20 Coupe WRC did not bog and gained nothing from it; cars without
+anti-lag are untouched.
 
 ## Classes
 
@@ -572,7 +600,7 @@ the limit to 23 over it.
 
 ### In game
 
-Every number here was measured at `cdadc164`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
+Every number here was measured at `a334ec41`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
 the realistic engine with NGP's tyre (`{ engine: "realistic", tyre: "ngp" }`), so every gap is the engine's.
 
 The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
@@ -588,37 +616,38 @@ Gravel, track-11_O:
 | Car | Physics | Split 2 | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 442.63 s | +34 | 5.0 s | 3.3 s |
-| | experimental | 434.90 s | +34 | 0.6 s | 4.5 s |
+| | experimental | 434.15 s | +6 | 0 s | 4.9 s |
 | Celica ST185 | NGP 7 | 445.47 s | +25 | 5.4 s | 4.6 s |
-| | experimental | 436.42 s | +6 | 0.01 s | 5.6 s |
+| | experimental | 435.01 s | +6 | 0 s | 5.8 s |
 | Golf II GTI 16V | NGP 7 | 466.95 s | +12 | 5.7 s | 6.0 s |
-| | experimental | 446.00 s | −7 | 0 s | 8.9 s |
+| | experimental | 444.98 s | −7 | 0 s | 9.1 s |
 | Fiat 131 Abarth | NGP 7 | 463.65 s | +13 | 4.5 s | 7.9 s |
-| | experimental | 447.55 s | −25 | 0 s | 12.4 s |
+| | experimental | 446.19 s | −25 | 0 s | 13.3 s |
 
 Tarmac, track-41:
 
 | Car | Physics | Split 2 | Finish | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 210.71 s | 309.01 s | +25 | 5.0 s | 3.6 s |
-| | experimental | 207.66 s | 304.76 s | +34 | 0.5 s | 3.4 s |
+| | experimental | 207.00 s | 303.76 s | +6 | 0 s | 3.4 s |
 | Celica ST185 | NGP 7 | 212.97 s | 310.91 s | +25 | 5.2 s | 3.5 s |
-| | experimental | 207.91 s | 304.71 s | +6 | 0.01 s | 4.4 s |
+| | experimental | 207.05 s | 303.48 s | −4 | 0 s | 4.6 s |
 | Golf II GTI 16V | NGP 7 | 222.28 s | 324.24 s | +21 | 4.7 s | 4.5 s |
-| | experimental | 213.82 s | 314.03 s | −17 | 0 s | 5.2 s |
+| | experimental | 212.56 s | 312.39 s | −7 | 0 s | 5.3 s |
 | Fiat 131 Abarth | NGP 7 | 221.31 s | 323.35 s | +13 | 4.2 s | 5.9 s |
-| | experimental | 214.69 s | 315.10 s | −25 | 0 s | 6.2 s |
+| | experimental | 213.46 s | 313.42 s | −25 | 0 s | 6.6 s |
 
 Every run finished or ran its 600 s and was still drivable at the end, and no engine stalled: the slowest any turned
 was 82 rad/s, the experimental Golf braking at full on track-41's run-out, where NGP's Golf kept 89 rad/s (an
 earlier build stalled there, see
 [The clutch under the experimental engine](#the-clutch-under-the-experimental-engine)). The experimental limiter
-keeps every car at its limit in gear: the Fiesta's and the Celica's time over is their start burnout in neutral,
-and the Fiesta's drop into first from it. With the experimental physics the turbo cars reached split 2 1.7–2.0 %
-sooner on gravel and 1.4–2.4 % on tarmac, the NA cars 3.5–4.5 % sooner on gravel and 3.0–3.8 % on tarmac. The
-autopilot's caution sets most of its pace, and this is one stage and one run per car, so these gaps are not lap
-times a driver would see. On gravel the clutch slips 1.0–4.5 s longer per run, on tarmac between 0.2 s shorter and
-0.9 s longer, and the engine's mean distance from the clutch-engaged speed stays at most 2.6 rad/s.
+keeps every car at its limit, in gear and on the start line, where the [start mode](#start-mode) holds the turbo
+cars' revs. With the experimental physics the turbo cars reached split 2 1.9–2.4 % sooner on gravel and 1.8–2.8 % on
+tarmac, the NA cars 3.8–4.7 % sooner on gravel and 3.5–4.4 % on tarmac. The autopilot's caution sets most of its
+pace, and this is one stage and one run per car, so these gaps are not lap times a driver would see: the 5 % more
+torque at full throttle moved these splits by 0.2–0.6 %. On gravel the clutch slips 1.2–5.4 s longer per run, on
+tarmac between 0.2 s shorter and 1.1 s longer, and the engine's mean distance from the clutch-engaged speed stays at
+most 2.9 rad/s.
 
 #### 0 to 100 km/h
 
@@ -638,10 +667,10 @@ ratios.
 
 | Fiesta Rally2, flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
-| Tarmac (material 37), clutch dump | 4.05 s | 4.03 s |
-| Tarmac, best start | 4.03 s | 4.01 s |
-| Gravel (material 17), clutch dump | 4.62 s | 4.66 s |
-| Gravel, best start | 4.45 s | 4.41 s |
+| Tarmac (material 37), clutch dump | 4.05 s | 3.89 s |
+| Tarmac, best start | 4.03 s | 3.85 s |
+| Gravel (material 17), clutch dump | 4.62 s | 4.49 s |
+| Gravel, best start | 4.45 s | 4.29 s |
 
 The best start gains little for a four-wheel-drive car on tarmac: in first gear the Fiesta's engine gives 1.15 g and
 its tyres take about 1.3 g, so the engine is the limit and the dump's wheelspin costs almost nothing. Two-wheel-drive
@@ -655,17 +684,21 @@ cars and loose surfaces gain most (NGP, clutch dump / best start, s):
 | VW Golf II GTI 16V Group A (FWD) | 5.91 / 5.56 | 7.97 / 7.02 |
 | Citroën C2 S1600 (FWD) | 5.64 / 5.30 | 7.80 / 6.91 |
 
-Six of the 42 installed cars have a published figure, three of them from the maker or its team (tarmac, NGP; the
-experimental engine is within 0.1 s on each):
+Six of the 42 installed cars have a published figure, three of them from the maker or its team (tarmac, clutch dump /
+best start):
 
-| Car | Published | Clutch dump | Best start |
+| Car | Published | NGP 7 | Experimental |
 | --- | --- | --- | --- |
-| VW Polo GTI R5 | about 4.1 s (Volkswagen) | 4.11 s | 4.11 s |
-| Hyundai i20 Coupe WRC | under 4 s (Hyundai) | 3.32 s | 3.28 s |
-| Ford Fiesta Rally3 | about 5 s to 62 mph (M-Sport, at 1210 kg; ours weighs 1410 kg) | 5.18 s | 5.18 s |
-| BMW M3 E30 Group A | about 4.3 s to 60 mph (touring car, 330 bhp, 940 kg, slicks; ours 300 bhp, 1225 kg) | 4.67 s | 4.20 s |
-| Porsche 911 SC RS | 5.3 s to 60 mph | 4.23 s | 3.83 s |
-| Audi quattro A2 | about 4.5 s | 3.23 s | 3.15 s |
+| VW Polo GTI R5 | about 4.1 s (Volkswagen) | 4.11 / 4.11 s | 3.93 / 3.93 s |
+| Hyundai i20 Coupe WRC | under 4 s (Hyundai) | 3.32 / 3.28 s | 3.23 / 3.15 s |
+| Ford Fiesta Rally3 | about 5 s to 62 mph (M-Sport, at 1210 kg; ours weighs 1410 kg) | 5.18 / 5.18 s | 4.99 / 4.99 s |
+| BMW M3 E30 Group A | about 4.3 s to 60 mph (touring car, 330 bhp, 940 kg, slicks; ours 300 bhp, 1225 kg) | 4.67 / 4.20 s | 4.46 / 4.01 s |
+| Porsche 911 SC RS | 5.3 s to 60 mph | 4.23 / 3.83 s | 4.53 / 3.72 s |
+| Audi quattro A2 | about 4.5 s | 3.23 / 3.15 s | 3.10 / 3.10 s |
+
+The Polo matches Volkswagen under NGP because its file is 5 % over the sheet, which NGP's 1.05 takes back
+([Power delivered](#power-delivered)); the Fiesta Rally3, whose file is the sheet's, meets M-Sport's figure with the
+experimental engine.
 
 The makers' figures are launch-control starts, which the clutch dump is closest to. The last three come from
 enthusiast sites; the two older cars are 1.1 to 1.5 s quicker here than their period figures, on period tyres there
@@ -678,9 +711,9 @@ Fiesta Rally2, clutch dump / best start (K 0.15 and 0.2 tried):
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
-| RSF 504, tarmac, 6.7 % uphill | 4.57 / 4.56 s | 4.55 / 4.55 s |
-| track-64, gravel, flat | 4.66 / 4.54 s | 4.68 / 4.53 s |
-| RSF 345, gravel, 4 % downhill | 4.54 / 4.37 s | 4.58 / 4.38 s |
+| RSF 504, tarmac, 6.7 % uphill | 4.57 / 4.56 s | 4.37 / 4.37 s |
+| track-64, gravel, flat | 4.66 / 4.54 s | 4.52 / 4.39 s |
+| RSF 345, gravel, 4 % downhill | 4.54 / 4.37 s | 4.35 / 4.18 s |
 
 ### The clutch under the experimental engine
 
@@ -814,6 +847,16 @@ The full list, with the line each one supports, is in [notes/engine-model.md](..
 - Volkswagen, Polo GTI R5 0-100 km/h 4.1 s (maker's claim): https://www.volkswagen-newsroom.com/en/the-new-polo-gti-driving-presentation-2512/the-new-polo-gti-r5-gti-goes-rallying-2567
 - Hyundai Motorsport, i20 Coupe WRC 0-100 km/h under 4 s: https://hyundai.com/eu/about-hyundai/sponsoring-and-events/motor-sport.html
 - M-Sport's Fiesta Rally3 launch, 0-62 mph in around five seconds (Ford Authority): https://fordauthority.com/2020/11/m-sport-announces-groundbreaking-new-ford-fiesta-rally3-racer/
+- M-Sport technical specifications: Fiesta Rally2 https://www.m-sport.co.uk/_files/ugd/89553f_621ede2335ac4c48a5cb1abb1f96d215.pdf,
+  Fiesta Rally3 https://d1d5ae37-f9f7-471a-94be-cbd6d805a704.filesusr.com/ugd/89553f_dde3c8fe3dc9483e8366da8157d74c3f.pdf,
+  Fiesta Rally3 Evo https://www.m-sport.co.uk/_files/ugd/89553f_35bb5ed075cb43dab50cd278a4769fd6.pdf,
+  Fiesta Rally4 https://d1d5ae37-f9f7-471a-94be-cbd6d805a704.filesusr.com/ugd/89553f_3ced375296eb454d9feeaed974ecbc25.pdf,
+  Fiesta WRC https://www.m-sport.co.uk/_files/ugd/89553f_ba646dac053341a7bb162dcf7dfbcdda.pdf
+- Volkswagen Motorsport, Polo GTI R5 press kit (power, torque, minimum weight): https://mb.cision.com/Public/12769/2656513/b04b4453c2c134cc.pdf
+- Alpine Racing, Clio Rally3: https://www.cliorally.com/a-successful-maiden-public-outing-for-clio-rally3.html
+- L'Argus, Peugeot 208 Rally4 with Peugeot Sport's sheet: https://www.largus.fr/actualite-automobile/essai-course-largus-au-volant-de-la-peugeot-208-rally-4-10262400.html
+- Trophée Alpine Elf Rally, A110 Rally technical sheet: https://www.tropheealpineelfrallye.com/alpine-a110-rally
+- FIA Appendix J Article 261 (Rally2), 201-4: 1230 kg without the crew, 1390 kg with it: https://www.fia.com/system/files/documents/261_2026_wmsc_2026.10.19_jt-mr.pdf
 - BMW M3 E30 Group A (touring car) 0-60 mph about 4.3 s: https://www.supercars.net/blog/1990-bmw-m3-group/
 - Porsche 911 SC RS 0-60 mph 5.3 s: https://www.supercars.net/blog/all-brands/porsche/porsche-model-list/porsche-911-g-series/
 - Audi quattro A2 0-100 km/h about 4.5 s: https://www.ableitet.no/audi-rallye-quattro-a2/

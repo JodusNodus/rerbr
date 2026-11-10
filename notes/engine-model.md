@@ -449,25 +449,34 @@ By system: braking 7/17, friction 8/14, part load 6/15, torque 4/6, idle 9/11, e
 
 ## In game
 
-Numbers in `docs/experimental-physics.md` ("In game"), re-run on `cdadc164` (2026-11-10; NGP's runs equal those on
-`b97695d86` to the 0.01 s), experimental = realistic + NGP's tyre (the brush is not released, user 2026-11-07), so
+Numbers in `docs/experimental-physics.md` ("In game"), re-run on `a334ec41` (2026-11-10; NGP's runs equal those on
+`cdadc164` to the 0.01 s), experimental = realistic + NGP's tyre (the brush is not released, user 2026-11-07), so
 every gap is the engine's. Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-start.sh` in
 the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
 brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 
-- track-11_O (gravel) 600 s, four cars: exp 1.7–4.5 % sooner to split 2 (split 2 exp
-  Fiesta 434.90, Celica 436.42, Golf 446.00, Fiat 447.55 s).
-- track-41_M (tarmac): exp 1.4–3.8 % sooner to split 2, finishes Fiesta 309.01 / 304.76, Celica
-  310.91 / 304.71, Golf 324.24 / 314.03, Fiat 323.35 / 315.10 s. No stall: the Golf II GTI's full brake on the run-out
+- The model's torque goes to the drivetrain whole (2026-11-10, user decision; `rbr-hybrid` `engine_wrapper`): NGP's
+  wrapper divides its formula's by 1.05, and the car files carry the makers' crank figures (file = sheet on the
+  Fiesta Rally2, Rally3, Rally3 Evo, Rally4 and WRC, Clio Rally3, 208 Rally4; Polo GTI R5's file 5 % over
+  Volkswagen's 272 PS / 400 N·m; Alpine A110 Rally 440 N·m against Signatech's 500; sources in the doc's "Power
+  delivered"). So exp is 5 % over NGP at WOT. Masses are the class minimum + 200 kg on the tyres (static loads by
+  `--tyre-probe`; FIA's crew is 160 kg; wheel masses add nothing), the wheelbase (CG over the static front share)
+  within 1 cm of the sheet's on seven cars.
+  Scorecard unchanged (60/92, no row moves: fixed-speed rows).
+- track-11_O (gravel) 600 s, four cars: exp 1.9–4.7 % sooner to split 2 (split 2 exp
+  Fiesta 434.15, Celica 435.01, Golf 444.98, Fiat 446.19 s; with the torque over 1.05 they were 434.90, 436.42,
+  446.00, 447.55: the autopilot's caution sets the pace).
+- track-41_M (tarmac): exp 1.8–4.4 % sooner to split 2, finishes Fiesta 309.01 / 303.76, Celica
+  310.91 / 303.48, Golf 324.24 / 312.39, Fiat 323.35 / 313.42 s. No stall: the Golf II GTI's full brake on the run-out
   bottoms at 82 rad/s with the clutch open (NGP's Golf 89; was a stall with wheels locked at 16 m/s, engine
   464 → 0 rad/s in 0.8 s, fixed by the relock rule, see Open).
-- Limiter: no experimental car over `RPMLimit` in gear beyond one whole-rad/s sample; over it only in the start
-  burnout in neutral (Fiesta 0.5–0.6 s, +34 rpm; Celica 0.01 s, +6) and the Fiesta's drop into first.
+- Limiter: no experimental car over `RPMLimit` beyond one whole-rad/s sample, in gear or on the line (the start mode
+  holds the turbo cars' countdown revs; before it the Fiesta's start burnout was 0.5–0.6 s over, +34 rpm).
 - 0-100 km/h on the flat pad (`harness/pad_start.py`: `--stage pad-tarmac|pad-gravel --flat-out`, timed from
   0.5 m/s), NGP / exp, the clutch dump (the plain autopilot's start) and the best start (`--drive-slip K
-  --clutch-help off`, the fastest of K 0.05-0.3; `autopilot::start`). Fiesta Rally2 tarmac dump 4.05 / 4.03, best
-  4.03 / 4.01; gravel 4.62 / 4.66, best 4.45 / 4.41. Polo GTI R5 tarmac 4.11 / 4.10 both starts (Volkswagen:
-  "approx. 4.1 s"), gravel 4.79 / 4.76, best 4.60 / 4.55.
+  --clutch-help off`, the fastest of K 0.05-0.3; `autopilot::start`). Fiesta Rally2 tarmac dump 4.05 / 3.89, best
+  4.03 / 3.85; gravel 4.62 / 4.49, best 4.45 / 4.29. Polo GTI R5 tarmac 4.11 / 3.93 both starts (Volkswagen:
+  "approx. 4.1 s"; its file is 5 % over the sheet), gravel 4.79 / 4.59, best 4.60 / 4.41.
 - The start driver (`--flat-out`): upshifts where the next gear's thrust at the ground speed wins (the car's torque
   knots and ratios; limit less 300 rpm at the latest). The best start passes the countdown in first with the clutch
   in at the power peak's revs, slips the clutch to hold the most-slipping wheel at K (opening under the torque
@@ -483,18 +492,19 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   over 90 % pedal with every wheel under 0.5 m/s and the body under 1.0 m/s (Link G4+ launch control for the shape;
   the four values guesses); the cut fuel burns by the anti-lag path. A handbrake turn with the clutch in stays out
   (the body moves); spinning without moving leaves it (a wheel turns). The autopilot holds full throttle through
-  the countdown, so the boost is built at the go. Tarmac dump 0-100 NGP / exp: Fiesta Rally3 5.18 / 5.23 (exp 5.45
-  without the mode), Rally3 Evo 4.73 / 4.78 (5.25), Clio Rally3 4.43 / 4.51 (4.88); Polo, Rally2, i20 WRC within
-  0.02 s of NGP with or without. Bench standing 3 s, boost with/without (bar abs): Rally3 2.37/1.35, Polo
+  the countdown, so the boost is built at the go. Tarmac dump 0-100 NGP / exp: Fiesta Rally3 5.18 / 4.99, Rally3 Evo
+  4.73 / 4.60, Clio Rally3 4.43 / 4.35; the mode took 0.22, 0.47 and 0.37 s off them (measured with the torque over
+  1.05: 5.45 → 5.23, 5.25 → 4.78, 4.88 → 4.51); Polo, Rally2, i20 WRC gained nothing from it. Bench standing 3 s, boost with/without (bar abs): Rally3 2.37/1.35, Polo
   2.53/1.64, Celica 2.31/1.61. The plain autopilot selects first when the revs pass `LAUNCH` or set no new maximum
   for 0.1 s (the start limiter sits under `LAUNCH`); under NGP its traces are byte-identical to before (Fiesta
   Rally2, Escort, 208 R2 on track-11_O). Telemetry untouched (no sound change).
 - The same on stages (Fiesta Rally2, dump / best of K 0.15 and 0.2): RSF 504 tarmac +6.7 % NGP 4.57 / 4.56, exp
-  4.55 / 4.55; track-64_E gravel flat 4.66 / 4.54, 4.68 / 4.53; RSF 345 gravel −4 % 4.54 / 4.37, 4.58 / 4.38.
-- Published figures against tarmac NGP dump / best: Polo GTI R5 about 4.1 s (Volkswagen) 4.11 / 4.11; i20 Coupe
-  WRC under 4 s (Hyundai) 3.32 / 3.28; Fiesta Rally3 about 5 s to 62 mph (M-Sport, 1210 kg; ours 1410 kg) 5.18 /
-  5.18; enthusiast sites: M3 Group A touring car about 4.3 s to 60 mph (330 bhp, 940 kg; ours 300 bhp, 1225 kg)
-  4.67 / 4.20, 911 SC RS 5.3 s to 60 mph 4.23 / 3.83, quattro A2 about 4.5 s 3.23 / 3.15. No timed figure found for
+  4.37 / 4.37; track-64_E gravel flat 4.66 / 4.54, 4.52 / 4.39; RSF 345 gravel −4 % 4.54 / 4.37, 4.35 / 4.18.
+- Published figures against tarmac dump / best, NGP then exp: Polo GTI R5 about 4.1 s (Volkswagen) 4.11 / 4.11,
+  3.93 / 3.93; i20 Coupe WRC under 4 s (Hyundai) 3.32 / 3.28, 3.23 / 3.15; Fiesta Rally3 about 5 s to 62 mph
+  (M-Sport, 1210 kg; ours 1410 kg) 5.18 / 5.18, 4.99 / 4.99; enthusiast sites: M3 Group A touring car about 4.3 s
+  to 60 mph (330 bhp, 940 kg; ours 300 bhp, 1225 kg) 4.67 / 4.20, 4.46 / 4.01; 911 SC RS 5.3 s to 60 mph 4.23 /
+  3.83, 4.53 / 3.72; quattro A2 about 4.5 s 3.23 / 3.15, 3.10 / 3.10. No timed figure found for
   the other 36 cars; no measured Rally2 figure.
 
 ## Open
