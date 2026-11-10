@@ -67,10 +67,12 @@ no force: the intercept of a trimmed line through the braking windows under 0.5 
 per g. Braking windows have the throttle shut, driving ones no brake. The table is the median slip, %, per force bin
 (FORCES g) and speed band (BANDS km/h; 25 windows up, 3 for traces). A slip that holds across the speed bands at one
 force says the speed channel's timing is the accelerometer's: an error of 0.1 s would add 3 % per g at 100 km/h and half
-that at 200. The traces given (pad runs: flat out, then `--brake-from` with `--brake-pedal` or `--brake-slip` at several
-levels) make one table. Driving bins under 100 km/h are not the tyre's curve: with thrust to spare, a window shows a
-small force there when the grip was missing. Not known: which shafts the telemetry's speed reads; braking loads the
-front wheels more, in the game as well.
+that at 200. The last line is the braking force with the wheels 22 % or more under the car's speed: on a surface that
+holds its force to lock (gravel) the tyres are saturated there, as far as the brake balance loads both axles. The traces
+given (pad runs: flat out, then `--brake-from` with `--brake-pedal` or `--brake-slip` at several levels) make one table.
+Driving bins under 100 km/h are not the tyre's curve: with thrust to spare, a window shows a small force there when the
+grip was missing. Not known: which shafts the telemetry's speed reads; braking loads the front wheels more, in the game
+as well.
 """
 import argparse
 import base64
@@ -505,6 +507,11 @@ def slip(args):
         print(f"  {lo:+.1f}..{hi:+.1f}  " + "  ".join(
             f"{(np.median(c) / r0 - 1) * 100:+5.1f} ({len(c):4d})" if len(c) >= (25 if real else 3) else f"{'-':>12}"
             for c in cells))
+    deep = w[(w[:, 1] < 0) & (w[:, 2] < 0.78 * r0)]
+    print("  braking with the wheels 22 % or more under the car, the force's median, g (windows), per band: "
+          + "  ".join(
+              f"{-np.median(c):.2f} ({len(c)})" if len(c) >= (25 if real else 3) else "-"
+              for c in (deep[(deep[:, 0] >= a) & (deep[:, 0] < b), 1] for a, b in zip(BANDS, BANDS[1:]))))
 
 
 def main():
