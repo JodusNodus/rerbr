@@ -2316,11 +2316,11 @@ stays the untuned brush's. The table's model column is the brush before the mode
 - The model's slide grip is 0.83 (2026-11-09, a user decision after driving 0.83 on the panel): the solve runs
   untuned too (`tuning::SLIDE_GRIP_MODEL`), in place of `LATERAL_FALL`'s own 0.886. It is road tyres' top (0.73-0.83),
   racing tyres' lower part (0.80-0.90) and the top of Croft-White's WRC tarmac 0.71-0.83. Scorecard, experimental-brush
-  (f36c3a34, before / after): 90/111 both; `tarmac-mu-y30-over-peak` 0.886 → 0.834 (read on the probe); ice
-  μ_y(20°)/peak 0.940 → 0.915 and its end over max 0.963 → 0.949 (both still MISS, toward the band); ice coast crr
-  0.033 → 0.002 (MISS both); braking within 0.4 %. The flat r40 tarmac circle 1.187 → 1.143 g (ngp 1.181; real
+  (f36c3a34): 90/111 both; `tarmac-mu-y30-over-peak` 0.834 (was 0.886, read on the probe); ice
+  μ_y(20°)/peak 0.915 (was 0.940) and its end over max 0.949 (was 0.963; both still MISS, toward the band); ice coast crr
+  0.002 (was 0.033; MISS both); braking within 0.4 %. The flat r40 tarmac circle 1.143 g (was 1.187; ngp 1.181; real
   narrow-tarmac Rally2 1.0-1.2 g, context). The solve costs about 0.1 s per wheel when a brush is built (lab, two
-  builds: 2.8 → 3.0 s).
+  builds: 3.0 s, was 2.8).
 - Why the flat r40 tarmac circle lost it (T54, 2026-11-09; `car_grip.py`'s hold, probes every 36 steps,
   `limit_frames` per wheel, |F|/Fz over the model's own peak μ_y at the wheel's load; brush 0.83 / brush
   `slide-grip=0.886` / ngp): the circle is front-limited and the autopilot holds the fronts far past their peak. Over
@@ -2336,8 +2336,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
   its relative rise, within 0.95 of the run's best g, for 0.5 s; the same for every model, no tyre constant), and the
   ramp runs the car wide. The circle now measures the car at its front limit: tarmac, fastest second (ngp / brush),
   steering 0.38 / 0.31, outer front 10.8° / 7.2° (1.05 / 0.95 of its peak angle, use 1.00 / 0.98), inner front 11.1° /
-  7.3° (1.9 / 1.2, use 0.97), rears 0.5-0.7 of their peak (use 0.83-0.97); glat 1.181 → 1.254 and 1.143 → 1.234 g,
-  kinematic 1.282 → 1.334 and 1.321 → 1.333; gravel-flat and snow-flat within 1.6 % (glat 0.916 / 0.923, 0.885 /
+  7.3° (1.9 / 1.2, use 0.97), rears 0.5-0.7 of their peak (use 0.83-0.97); glat 1.254 / 1.234 (was 1.181 / 1.143),
+  kinematic 1.334 / 1.333 (was 1.282 / 1.321); gravel-flat and snow-flat within 1.6 % (glat 0.916 / 0.923, 0.885 /
   0.889). The Escort never triggers it (its steering unwinds into countersteer as the rears saturate): traces
   byte-identical. RSF 345's sloped circle unchanged (its swings sit below 0.95 of the best g).
 
@@ -2374,7 +2374,7 @@ stays the untuned brush's. The table's model column is the brush before the mode
   TNO 205/60R15 0.41, Continental 225/50R18 0.34, MF 5.2 example 0.50; their μ_x/μ_y 1.07-1.21), above the brush. So
   the one measured tyre is below every physical model and the MF sets above the brush; only a fitted direction
   factor would put it in the band.
-- Hard-surface misses left on purpose (2026-11-10, scorecard 93/114): (1) `tarmac-peak-fx-load-exponent` 0.933 against
+- Hard-surface misses left on purpose (2026-11-10, then scorecard 93/114): (1) `tarmac-peak-fx-load-exponent` 0.933 against
   0.94-0.97: the band is the sets' longitudinal-over-lateral rate (0.73 / 0.39) on Goodyear's lateral 0.92, the brush's
   lateral is NGP's 0.878 (the load sensitivity of the peak is grip, kept), and 1 - 0.55 (1 - 0.87) gives 0.93 as built;
   within the figure's ±0.02. (2) `tarmac-bergman-wet-locked-over-peak-48` 0.566 against 0.60-0.66: the wetness term
