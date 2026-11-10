@@ -750,7 +750,7 @@ force) on the car's probed rear wheel. Step-out: rear axle α > 6° and > front 
   Rear over front axle force at 2° at the laps' loads 1.29-1.47 / 1.16-1.39 against a load ratio of 1.5-1.7, so the
   rear runs 1.12 / 1.28 of the front's slip angle (laps' medians 1.55/1.38°, 1.80/1.41°). In game the loaded outer
   rear (4.5-6 kN, driving) gives |Fy|/Fz 0.48/0.82/1.03 at 2/4/6° against 0.45/0.75/0.94, as the lab (5.5 kN).
-- Under power: Kx (brush 21, 27 with Cx 1.3 times NGP's slope's since 2026-11-08; NGP 14 per Fz; data 18.4-32.9) halves the rear's slip ratio at the same drive force
+- Under power: Kx (brush 27 with Cx 1.3 times NGP's slope's since 2026-11-08, was 21; NGP 14 per Fz; data 18.4-32.9) halves the rear's slip ratio at the same drive force
   (lap medians 0.022 / 0.042 at Fx/Fz 0.3-0.6); at a given drive force the lateral force below the peak is within 3 %
   at 4 kN. Past 15° under drive the brush keeps less (Fx/Fz 0.45, 4 kN: 1.130/1.082/0.987 against 1.157/1.134/1.060 at
   15/20/30°) at 1.6-3× NGP's κ.
@@ -818,8 +818,8 @@ Past the limit (`limit_recovery.py --material-as 37`, brush before / after; wide
 full throttle 22.94 / 26.74, never back, β 51 / 160 (spun); Escort lift 12.42 / 13.44 (spun both), full throttle
 8.29 / 11.68, 5.42 / never. ngp unchanged. The hot surface costs grip in the slide, so recovering is harder.
 
-Stage (map 41, Fiesta Rally2, autopilot): finish 303.61 → 303.64 s (ngp 309.01). Surface mean front 314.6-393.9 K
-(mean 320.9), rear 314.3-359.1; tread 319.4-334.4 (mean 326). Before (NGP's heat step under the brush): surface
+Stage (map 41, Fiesta Rally2, autopilot): finish 303.64 s (was 303.61; ngp 309.01). Surface mean front 314.6-393.9 K
+(mean 320.9), rear 314.3-359.1; tread 319.4-334.4 (mean 326). With NGP's heat step under the brush (was): surface
 316-331, tread 318-334; ngp surface 316.5-331.8, tread 319-334.
 
 ## Racing and rally targets
