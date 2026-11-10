@@ -40,9 +40,10 @@ pub struct Args {
     /// `--flat-out` (with `--autopilot`): hold full throttle without braking for pace measurement (the steering
     /// and the gear shifts stay the controller's; `Driver::flat_out`).
     pub flat_out: bool,
-    /// `--drive-slip K` (with `--flat-out`): while the car accelerates, the throttle is modulated so the
-    /// most-slipping wheel's drive slip ratio holds near K (0.01-1.0; `autopilot::start::Drive`). K is a raw value:
-    /// the rim speed reads under the ground speed on a free wheel, and the ratio is not corrected for that.
+    /// `--drive-slip K` (with `--flat-out`): the start holds the most-slipping wheel's drive slip ratio near K (raw
+    /// rim speeds, which read about 5 % under the ground speed on a free wheel). With `--clutch-help off` the clutch
+    /// does it off the line with the engine at its power peak, then the throttle (`autopilot::start`); with clutch
+    /// help on, the throttle alone, and only above the torque peak.
     pub drive_slip: Option<f32>,
     /// `--brake-from M/S` (with `--autopilot`): full foot brake once the speed reaches this, to a standstill
     /// (`Driver::brake_at`, a pace-measurement brake test; combine with `--flat-out`).
@@ -219,7 +220,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, an open-loop handling manoeuvre)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, an open-loop handling manoeuvre)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]

@@ -206,6 +206,9 @@ pub fn drive(
     if let Some(k) = measure.drive_slip {
         driver = driver.with_drive_slip(k);
     }
+    if measure.clutch {
+        driver = driver.with_clutch();
+    }
     if let Some(circle) = measure.circle {
         driver = driver.with_circle(circle);
     }
@@ -389,7 +392,11 @@ pub fn drive(
         // would add its penalty (and its playback would take it again under `--live --pilot` or in the game), with the
         // engine revved in neutral (NGP's clutch help stalls a car put into first at idle, `notes/ngp.md`).
         let q = if live.game().race_clock().start_pending(live.game().assist_settings()) {
-            QuantizedControl { handbrake: 255, throttle: 255, ..QuantizedControl::default() }
+            driver.countdown(step + 1, &sense).unwrap_or(QuantizedControl {
+                handbrake: 255,
+                throttle: 255,
+                ..QuantizedControl::default()
+            })
         } else {
             driver.control(step + 1, &sense, finished)
         };

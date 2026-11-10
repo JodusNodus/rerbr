@@ -469,6 +469,8 @@ pub struct Driver<'a> {
     /// `--drive-slip K` (with `--flat-out`): the drive-slip controller's target and integral (`start::Drive`), none
     /// without the flag.
     drive: Option<start::Drive>,
+    /// The clutch launch (`start::Launch`): `--drive-slip` where the driver has the clutch (`--clutch-help off`).
+    launch: Option<start::Launch>,
     /// The flat-out shift points are logged once per run.
     start_logged: bool,
     /// `--circle` (pace measurement): the steady-state circle to steer, if any.
@@ -524,6 +526,8 @@ pub struct Measure {
     /// `--drive-slip K` (with `--flat-out`): while the car accelerates, the throttle is modulated so the
     /// most-slipping wheel's drive slip ratio holds near K (a driver's throttle foot, not NGP's clutch help).
     pub drive_slip: Option<f32>,
+    /// The driver has the clutch pedal (`--clutch-help off`).
+    pub clutch: bool,
     pub brake_from: Option<f32>,
     /// `--brake-pedal P`, `--brake-slip K` (`Brake`) and `--brake-hold S` (s on the brake after the stop).
     pub brake_pedal: Option<f32>,
@@ -739,6 +743,7 @@ impl<'a> Driver<'a> {
             flat_out: false,
             start: None,
             drive: None,
+            launch: None,
             start_logged: false,
             circle: None,
             circle_ramp: CIRCLE_RAMP,
@@ -946,6 +951,32 @@ impl<'a> Driver<'a> {
         Self { drive: Some(start::Drive::new(target)), ..self }
     }
 
+    /// The driver has the clutch pedal (`--clutch-help off`): a start with a slip target and the torque curve slips
+    /// the clutch (`start::Launch`).
+    pub fn with_clutch(self) -> Self {
+        Self { launch: (self.drive.is_some() && self.start.is_some()).then(start::Launch::new), ..self }
+    }
+
+    /// The launch's engine speed (rad/s), on a clutch launch still to close.
+    fn launch_revs(&self) -> Option<f32> {
+        let curve = self.start.as_ref()?;
+        self.launch.filter(|l| !l.locked).map(|_| start::power_peak(&curve.knots) * std::f32::consts::PI / 30.0)
+    }
+
+    /// The start countdown's control on a clutch launch: on the handbrake in first with the clutch in, the engine
+    /// at the launch revs. `None` otherwise (the caller revs in neutral).
+    pub fn countdown(&mut self, step: u32, sense: &Sense) -> Option<QuantizedControl> {
+        let revs = self.launch_revs()?;
+        let flags = if sense.gear < FIRST { self.shift(step, SHIFT_GAP, 0x01) } else { 0 };
+        Some(QuantizedControl {
+            flags,
+            handbrake: 255,
+            clutch: 255,
+            throttle: (start::rev_hold(sense.engine, revs) * 255.0).round() as u8,
+            ..QuantizedControl::default()
+        })
+    }
+
     /// NGP's steps (not 1.02's).
     pub(crate) fn is_ngp(&self) -> bool {
         self.per > 1
@@ -1017,7 +1048,7 @@ impl<'a> Driver<'a> {
 
     /// The highest gear learnt to keep the engine over `SHIFT_DOWN` at `speed` (m/s), else first.
     /// Whether an upshift is due: flat out on an NGP car with the torque curve, the next gear's thrust at the ground
-    /// speed wins or the tied engine is at the rev limit less `start::LIMIT_MARGIN` (`start::shift_up`, `start::tied`);
+    /// speed wins or the engine is at the rev limit less `start::LIMIT_MARGIN` (`start::shift_up`);
     /// else past the rev point `up` without wheelspin.
     fn wants_up(&self, sense: &Sense, speed: f32, up: f32, start: bool, spinning: bool) -> bool {
         if sense.gear < FIRST || sense.gear >= TOP_GEAR {
@@ -1034,9 +1065,7 @@ impl<'a> Driver<'a> {
             start::gain(&self.ratio, &curve.ratios, sense.gear + 1),
         ) {
             (Some(now), Some(next), Some(k)) if now > 0.0 && next > 0.0 => {
-                let tied = start::gain(&self.ratio, &curve.ratios, sense.gear)
-                    .is_none_or(|kg| sense.engine <= start::SLIP_TIED * speed * kg);
-                start::shift_up(&curve.knots, now, next, sense.engine, speed * k, self.limit, tied)
+                start::shift_up(&curve.knots, now, next, sense.engine, speed * k, self.limit)
             }
             _ => sense.engine > up && !spinning,
         }
@@ -1330,7 +1359,7 @@ impl<'a> Driver<'a> {
                     throttle = throttle.min(TRACTION);
                 }
                 if let Some(drive) = &mut self.drive {
-                    if start && !finished && throttle > 0.0 {
+                    if start && !finished && throttle > 0.0 && self.launch.is_none_or(|l| l.locked) {
                         // At or below the torque peak the engine has no revs to spare, so the throttle stays full
                         // and the integral parks (`start::drive_pedal`); above it the slip target holds as before.
                         let peak = self.start.as_ref().map_or(f32::INFINITY, |c| c.torque_peak);
@@ -1390,6 +1419,21 @@ impl<'a> Driver<'a> {
                     }
                 }
             };
+        }
+        if let (Some(revs), Some(drive)) = (self.launch_revs(), self.drive) {
+            // The clutch launch: the clutch holds the slip target, the throttle the launch revs, in first until the
+            // clutch has closed.
+            let launch = self.launch.as_mut().expect("its revs");
+            if self.mode == Mode::Drive && !finished && sense.gear >= FIRST {
+                let dt = rbr_recording::STEP_SECONDS / self.per.max(1) as f32;
+                let slip = start::launch_slip(sense.wheels, sense.pose.speed());
+                let floor = self.start.as_ref().map_or(0.0, |c| c.torque_peak);
+                let (held, pedal) = start::clutch_step(launch.clutch, slip, drive.target, sense.engine, floor, dt);
+                launch.clutch = held;
+                launch.locked = pedal == 0.0 && (sense.engine - sense.geared).abs() < start::LOCKED * sense.engine;
+                (throttle, brake, flags) = (start::rev_hold(sense.engine, revs), 0.0, 0);
+                clutch = (pedal * 255.0).round() as u8;
+            }
         }
         let (mut aux, mut select) = (0, 0);
         if self.per > 1 && !self.lesson && !self.free() && self.brake_at.is_none() {
