@@ -1306,6 +1306,14 @@ search, PCSS as the cascades), taps a texel apart, at most 9 a side and the rang
 apart over 3 mm texels drew a 1 cm grid of steps where the sun came through the glass (208 binnacle, 19:30). 580 208
 chase RMSE under 1 %; cost not measured.
 
+The stage's shadow in the cabin (2026-11-10, `cabin_stage_lit`): soft as the stage's (`soft_filter`'s 3x3 search and
+penumbra on the first cascade), its taps 2 texels apart and at most 5 a side. The one filtered compare of before drew
+a tree's shadow on the dash and the door as stair-stepped blocks, the lit specks between them a texel or two across
+(Pirttikulma 15:00, quattro door, Fiesta dash); now a soft pool of light, and the specks even out to dim light, as
+under a canopy 10 m up. Scene pass, Fiesta cockpit there at 1080p ultra: 3.06 to 3.31 ms (`soft_filter` itself 3.80,
+`texel_filter` 3.11 with the steps still there). The Gabiria 131, Luceram Fiesta, Pirttikulma quattro and 532 Clio
+cockpit shots RMSE under 0.05 %.
+
 ## Mirrors
 
 Ours: `mirrors/` (detection, views), `renderer/mirrors.rs` (passes), `mirrors.wgsl`; `viewer --mirrors off|1|2|3`,
