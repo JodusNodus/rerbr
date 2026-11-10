@@ -608,6 +608,22 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   - For the brush: the peak angle (7.0° against 9.75°) and a fall past it have a measured racing tyre behind them,
     which falls more than the brush (2.6 % at 12°); the stiffness estimate's range opens upward (22 to about 30,
     never under the semi-slick).
+- Combined slip against a measured road tyre (2026-11-10; library `xia-lu-tong-2020`, SAE 2020-01-0896: a 195/55R16
+  at 225 kPa and 60 km/h on an MTS Flat-Trac, slip ratio to ±30 % at 2°, 5°, 8°, Figs 4-6, whose axes are Fx across
+  and Fy up whatever the labels say; fig ±0.03). Fy/Fy(0) at 0.5 / 0.75 of the pure peak braking force, and the
+  largest Fx over that peak, at 4.8 kN (lab: `force_sweep --long --fz 4800 --speed 16.7 --alphas 0,2,5,8`):
+
+  | | 2° | 5° | 8° |
+  | --- | --- | --- | --- |
+  | measured | 0.99 / 0.93 | 0.89 / 0.70, 0.86 | 0.83 / 0.52, 0.77 |
+  | brush | 0.97 / 0.91 | 0.90 / 0.68, 0.88 | 0.84 / 0.59, 0.81 |
+  | ngp | 0.78 / 0.62 | 0.82 / 0.62, 0.91 | 0.84 / 0.65, 0.84 |
+
+  At 30 % slip the measured Fy/Fx is 0.11 / 0.27 / 0.44 (0.125 / 0.29 / 0.45 at 2.4 kN) against the slip velocity's
+  tan α / κ = 0.116 / 0.292 / 0.468, which the brush gives exactly; ngp 0.169 / 0.415 / 0.653. So the sliding force
+  along the slip velocity is measured, and NGP gives side force away too early at small angles and keeps too much of
+  it in a deep slide. The tyre itself: Cα/Fz (2° secant) 17.9 / 15.4 per rad at 2.4 / 4.8 kN, μ_y 1.13 / 0.97 /
+  0.89 and μ_x 1.17 / 1.18 / 1.14 at 2.4 / 4.8 / 7.2 kN. A road tyre on a belt: the shape carries, the levels do not.
 - Cornering stiffness 1.3 times NGP's 0-2° slope (2026-11-08, `brush::CORNERING_OVER_NGP`, user's Nordschleife drive
   "very believable"; Cx, μ_x and loose-v1 as before): semi-slick R888R at NGP's grip Cα/Fz 21.9-22.3 per rad, 6-7° peak
   ([Racing and rally targets](#racing-and-rally-targets)). Probe at 4 kN: Cα/Fz 17.2 → 22.9, peak slip angle 9.75 → 7.0° (6.7 kN 11 → 8°), peak μ_y
