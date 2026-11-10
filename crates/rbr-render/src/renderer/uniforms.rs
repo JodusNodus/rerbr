@@ -176,6 +176,23 @@ pub(super) struct FrameUniform {
 /// The most lamps that light the stage at night ([`Renderer::set_lamps`]).
 pub(crate) const MAX_LAMPS: usize = 8;
 
+impl FrameUniform {
+    /// Only the inputs the cloud survey reads. Lighting is neutral: the survey measures transmittance, before
+    /// exposure or terrain. `control` can sweep the weather input while holding the cloud type and field fixed.
+    pub(super) fn cloud_survey(a: &crate::atmosphere::Atmosphere, eye: glam::Vec3, time: f32, control: f32) -> Self {
+        let (drift, start) = super::cloud_volume::drift(a);
+        Self {
+            eye: eye.extend(1.0).to_array(),
+            sun: a.sun_direction.extend(f32::from(u8::from(!a.overcast()))).to_array(),
+            wind: [time, start[0], 0.0, start[1]],
+            clouds: [control, 0.0, drift[0], drift[1]],
+            day_sun: [1.0; 4],
+            day_sky: [1.0; 4],
+            ..Self::zeroed()
+        }
+    }
+}
+
 /// A lamp (`Lamp` in `lamps.wgsl`): position and `w` 1 when lit, the way it points and `w` 1 for a headlight's dipped
 /// beam, 2 its main beam, the car's up and `w` its kind's number (`lights::Kind::number`), and its colour times its
 /// intensity.
