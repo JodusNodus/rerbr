@@ -1585,6 +1585,16 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   60-80 0.089 / 0.061, 5th 80-100 0.095 / 0.064, 6th 80-100 0.090 / 0.064, 6th 100-120 0.107 / 0.075. NGP's holds,
   the experimental engine's is 30 % under: with the file's drag (0.013 g at 70 km/h; the telemetry's drag area gives
   0.029, which leaves the real engines and drive lines about 30-50 N·m at 3400-4800 rpm).
+- Full-throttle upshifts (2026-11-10; scratch: the accelerometer's samples from 0.2 s before to 0.4 s after the gear
+  channel changes, against a line through the levels 0.85-0.25 s before and 0.45-1.05 s after; the deficit over the
+  levels' mean is the drive time a shift costs). Deutschland 2019, 2→3 / 3→4 / 4→5 / 5→6 (472-678 shifts each): 0.11 /
+  0.07 / 0.06 / 0.05 s (± 0.01-0.02), the dip within 0.1 s of the change, the rpm falling 840-950 from 7600; España 2021
+  0.03-0.11 s (± 0.03-0.05). The i20 Coupe WRC 2020 flat out on pad-tarmac (the trace's speed, same windows): ngp 0.02 /
+  0.02 / 0.05 / 0.05 s, experimental 0.09 / 0.08 / 0.08 / 0.08 s (0.07 s without drive in both; after it ngp is back at
+  once, experimental runs 0.03-0.04 g under its level for 0.25 s). Holds within 0.03 s a shift under experimental; ngp's
+  shifts cost 0.05-0.09 s less than the real ones in 2nd and 3rd. The boost's response cannot be read from these files:
+  the real pedal takes 0.3-1.6 s from 30 to 90 % (median 0.7 s, corner exits), and a pedal shut for 0.75 s and then
+  opened within 0.35 s comes 4 times in 40 drives.
 - Tarmac (2026-11-10; `rally_gg.py stats`, España 2021 SS2 / 5 / 9 / 12 / 15 / 17, 35 drives of the 2017-21 cars,
   medians, 10-90 % of the drives in brackets): lateral 1 s p50 / p90 / p99 0.61 / 1.21 / 1.48 g (unit check 0.96, GPS
   p90 1.26); 16 longest braking events 0.72 g from the speed, peak 0.5 s 1.15 (0.97-1.30); g-g p95 per 30-60 / 60-90
