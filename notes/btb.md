@@ -308,4 +308,4 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   directory is reused and never written in place, so eight parallel cold starts share one build.
 - `rbr-standalone --stage pad-<name>` prepares the pad and runs as `--stage <prepared> --btb 41 --surface <pad's>`
   (explicit `--surface` wins); `viewer pad-<name>` prepares it and draws it as the BTB stage (the live command's
-  `--stage pad-<name>` resolves in the physics program); `--manoeuvre` needs a pad stage; `--material-as` is independent.
+  `--stage pad-<name>` resolves in the physics program); `--manoeuvre` needs a pad stage.
