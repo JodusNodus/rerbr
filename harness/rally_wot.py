@@ -3,6 +3,8 @@
   python3 -I -B harness/rally_wot.py fetch YEAR EVENT OUT_DIR
   python3 -I -B harness/rally_wot.py table DIR [TRACE...] [--cars NAME=MODEL,...]
   python3 -I -B harness/rally_wot.py fit DIR|TRACE... [--cars NAME=MODEL,...] [--mass KG] [--crr C] [--rho R]
+  python3 -I -B harness/rally_wot.py launch DIR|TRACE...
+  python3 -I -B harness/rally_wot.py lift DIR|TRACE...
 
 `fetch` asks the WRC's archive (webappsdata.wrc.com, the source of RallyDataJunkie's files) for the YEAR season's
 event whose name contains EVENT and writes every stage's merged telemetry to OUT_DIR as
@@ -25,6 +27,16 @@ from 6000 to 8500 and the drag area CdA: the same rpm comes at different speeds 
 separates the two. `k` is the rotating parts' share (K: the wheels' 3.2 % and 0.10 kg m^2 of engine through each gear,
 assumed); the mass (crew and fuel in), Crr and rho are given. The 5-95 % range is a bootstrap over the files. A trace
 of the game checks the method: it reads the file's `Cd * A / 1.204` within about 10 % and the power within 3 %.
+
+`launch`: the standing start of each stage or trace, from the last standstill before the car first passes 60 km/h:
+the time to MARKS m of path (the telemetry's from its GPS positions, whose first seconds come 0.3 to 1 s apart; a
+trace's from the car's speed) and the drivetrain's speed there (the telemetry's `speed`; a trace's mean of the wheels'
+`wfl`..`wrr`), the medians over a directory's drives. Stage starts turn after 100 m or so.
+
+`lift`: the throttle lifted in gear on a straight: 1 s windows above 60 km/h with the throttle under 3 %, no brake,
+one gear and the median lateral under 0.2 g; the median level deceleration, g, per gear and 20 km/h bin (8 windows up
+for telemetry), with the rpm. For the game, a pad run that lifts in gear (`--brake-from M/S --brake-pedal 0.001`
+without `--brake-declutch`: the pedal rounds to no brake, the autopilot shifts down as the revs fall).
 """
 import argparse
 import base64
@@ -51,6 +63,7 @@ LAT = 0.15
 COURSE = 1.5
 NODES = list(range(6000, 8501, 500))
 K = {3: 1.083, 4: 1.068, 5: 1.058, 6: 1.051}
+MARKS = (10, 25, 50, 100)
 
 
 def get(url):
@@ -116,7 +129,8 @@ def load_trace(path):
                 last = t
                 rows.append(dict(t=t, v=float(f[col["speed"]]) * 3.6, gear=int(f[col["gear"]]) - 1,
                                  thr=float(f[col["thr"]]) * 100.0, brk=float(f[col["brk"]]),
-                                 rpm=float(f[col["engine"]]) * 30.0 / math.pi, lat=float(f[col["glat"]])))
+                                 rpm=float(f[col["engine"]]) * 30.0 / math.pi, lat=float(f[col["glat"]]),
+                                 wheels=sum(float(f[col[w]]) for w in ("wfl", "wfr", "wrl", "wrr")) * 0.9))
     return rows
 
 
@@ -221,6 +235,68 @@ def fit(args):
               + "  ".join(f"{n}: {cell(i, 1e3, 0)}" for i, n in enumerate(NODES)))
 
 
+def launch_marks(rows):
+    """[(time s, drivetrain speed km/h)] at each of MARKS, or None without a whole standing start."""
+    fast = next((i for i, r in enumerate(rows) if r["v"] > 60), 0)
+    start = max((i for i in range(fast) if rows[i]["v"] < 0.5), default=None)
+    if start is None:
+        return None
+    out, path = [], 0.0
+    for a, b in zip(rows[start:], rows[start + 1:]):
+        if "pos" in a:
+            east = (b["pos"][0] - a["pos"][0]) * math.cos(math.radians(a["pos"][1]))
+            step = math.hypot(east, b["pos"][1] - a["pos"][1]) * 111320.0
+        else:
+            step = (a["v"] + b["v"]) / 7.2 * (b["t"] - a["t"])
+        while len(out) < len(MARKS) and path + step >= MARKS[len(out)]:
+            f = (MARKS[len(out)] - path) / step
+            wheel = [r.get("wheels", r["v"]) for r in (a, b)]
+            out.append((a["t"] + f * (b["t"] - a["t"]) - rows[start]["t"], wheel[0] + f * (wheel[1] - wheel[0])))
+        path += step
+        if b["t"] - a["t"] > 1.2 or len(out) == len(MARKS):
+            break
+    return out if len(out) == len(MARKS) else None
+
+
+def launch(args):
+    print("time s / drivetrain km/h at " + ", ".join(f"{m} m" for m in MARKS))
+    if os.path.isdir(args.paths[0]):
+        files = sorted(glob.glob(os.path.join(args.paths[0], "df_telemetrymergeddata_*.csv")))
+        runs = [m for m in (launch_marks(load_telemetry(p)) for p in files) if m]
+        marks = [tuple(statistics.median(r[i][j] for r in runs) for j in (0, 1)) for i in range(len(MARKS))]
+        print(f"{len(runs)} starts, medians: " + "  ".join(f"{t:.2f} / {v:.0f}" for t, v in marks))
+    else:
+        for path in args.paths:
+            marks = launch_marks(load_trace(path)) or []
+            print(os.path.basename(path) + ": " + "  ".join(f"{t:.2f} / {v:.0f}" for t, v in marks))
+
+
+def lift(args):
+    real = os.path.isdir(args.paths[0])
+    paths = sorted(glob.glob(os.path.join(args.paths[0], "df_telemetrymergeddata_*.csv"))) if real else args.paths
+    for name, group in (("all", paths),) if real else ((os.path.basename(p), [p]) for p in paths):
+        cells = {}
+        for path in group:
+            rows = (load_telemetry if real else load_trace)(path)
+            t = [r["t"] for r in rows]
+            for i in range(0, len(rows), 3):
+                win = rows[i:bisect.bisect_right(t, t[i] + 1.0)]
+                span = win[-1]["t"] - win[0]["t"]
+                if (span < 0.85 or len(win) < 8 or win[-1]["v"] < 60
+                        or abs(statistics.median(w["lat"] for w in win)) > 0.2
+                        or any(w["thr"] > 3 or w["brk"] > 0 or w["gear"] != win[0]["gear"] for w in win)):
+                    continue
+                run = sum((a["v"] + b["v"]) / 7.2 * (b["t"] - a["t"]) for a, b in zip(win, win[1:]))
+                rise = win[-1]["alt"] - win[0]["alt"] if real else 0.0
+                key = (win[0]["gear"], int(statistics.fmean(w["v"] for w in win) // 20) * 20)
+                cells.setdefault(key, []).append(((win[0]["v"] - win[-1]["v"]) / 3.6 / span / G - rise / run,
+                                                  statistics.fmean(w["rpm"] for w in win)))
+        print(f"{name}: " + "; ".join(
+            f"gear {gear} {kmh}-{kmh + 20} km/h {statistics.median(c[0] for c in v):.3f} g at "
+            f"{statistics.median(c[1] for c in v):.0f} rpm ({len(v)})"
+            for (gear, kmh), v in sorted(cells.items(), reverse=True) if len(v) >= (8 if real else 1)))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -228,7 +304,7 @@ def main():
     f.add_argument("year")
     f.add_argument("event")
     f.add_argument("out")
-    for name in ("table", "fit"):
+    for name in ("launch", "lift", "table", "fit"):
         p = sub.add_parser(name)
         p.add_argument("paths", nargs="+")
         p.add_argument("--cars")
@@ -236,7 +312,7 @@ def main():
     p.add_argument("--crr", type=float, default=0.015)
     p.add_argument("--rho", type=float, default=1.17)
     args = parser.parse_args()
-    {"fetch": fetch, "table": table, "fit": fit}[args.command](args)
+    {"fetch": fetch, "launch": launch, "lift": lift, "table": table, "fit": fit}[args.command](args)
 
 
 if __name__ == "__main__":

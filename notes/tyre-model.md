@@ -1548,6 +1548,30 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   - Every file's `Cd * A` / 1.204 is 0.60-1.0 m² whatever its downforce (Golf II GTI 0.68, Escort Cosworth 0.78,
     Fiesta Rally2 0.65 with 3100 N, the WRC 2019 cars 0.81 with 3700 N: downforce over drag 3.8 and 3.6; 2.0 with the
     measured drag). Dominy & Richardson's 2004 model: 0.85 m². No Rally2 / R5 data (WRC2's are 6.4 s GPS points).
+- Standing starts (2026-11-10; `rally_wot.py launch`: time to 10 / 25 / 50 / 100 m of path, medians, with the
+  drivetrain's speed there, km/h). Tarmac, España 2021 (94 starts): 1.39 / 2.22 / 3.26 / 4.90 s at 55 / 75 / 94 / 118;
+  Deutschland 2019 (113): 1.38 / 2.23 / 3.28 s to 50 m. The game's i20 Coupe WRC 2020 on pad-tarmac (the autopilot's
+  flat-out start): ngp 1.40 / 2.24 / 3.27 / 4.88 at 56 / 78 / 98 / 121, experimental 1.38 / 2.20 / 3.22 / 4.81.
+  Gravel, Finland 2021 (103): 1.66 / 2.63 / 3.76 / 5.47 s at 79 / 83 / 99 / 119 (the wheels at twice the car's speed
+  at 10 m); pad-gravel ngp 1.69 / 2.64 / 3.74 / 5.42 at 78 / 74 / 95 / 120, experimental 1.66 / 2.63 / 3.73 / 5.39.
+  The launch holds on both surfaces within 0.05 s to 50 m, wheelspin included; past 50 m the game gains (the drag,
+  above).
+- Throttle lifted in gear (2026-11-10; `rally_wot.py lift`, level deceleration, g, on straights; tarmac, Deutschland
+  2019 / España 2021, 533 and 140 windows): 4th 60-80 km/h 0.094 / 0.089 (3900 rpm), 5th 60-80 0.085 / 0.085 (3400),
+  5th 80-100 0.105 / 0.132 (4500-4800), 6th 80-100 0.090 / 0.101 (3500-4000), 6th 100-120 - / 0.145 (4700). The
+  game's i20 Coupe WRC 2020 lifting from 160 km/h on pad-tarmac, ngp / experimental: 4th 60-80 0.099 / 0.064, 5th
+  60-80 0.089 / 0.061, 5th 80-100 0.095 / 0.064, 6th 80-100 0.090 / 0.064, 6th 100-120 0.107 / 0.075. NGP's holds,
+  the experimental engine's is 30 % under: with the file's drag (0.013 g at 70 km/h; the telemetry's drag area gives
+  0.029, which leaves the real engines and drive lines about 30-50 N·m at 3400-4800 rpm).
+- Tarmac (2026-11-10; `rally_gg.py stats`, España 2021 SS2 / 5 / 9 / 12 / 15 / 17, 35 drives of the 2017-21 cars,
+  medians, 10-90 % of the drives in brackets): lateral 1 s p50 / p90 / p99 0.61 / 1.21 / 1.48 g (unit check 0.96, GPS
+  p90 1.26); 16 longest braking events 0.72 g from the speed, peak 0.5 s 1.15 (0.97-1.30); g-g p95 per 30-60 / 60-90
+  / 90-120 / 120-150 / 150+ km/h: \|lat\| 1.43 / 1.45 / 1.40 / 1.28 / 1.20, decel 0.81 / 1.11 / 1.26 / 1.30 / 1.10.
+  The game's i20 Coupe WRC 2020 on pad-tarmac from 155 km/h (`brake_test.py`, threshold at slip 0.15, declutched): ngp
+  1.32 g (1.25 / 1.30 / 1.38 through 32 / 64 / 100 km/h), experimental-brush 1.42 (1.33 / 1.37 / 1.47); the Fiesta
+  Rally2's flat r40 circle 1.28 / 1.33 g. So on tarmac the game brakes 5-15 % over the real p95 and its flat circle
+  is 8-12 % under the real lateral p95 at 30-90 km/h (cambers and cuts in the real one): no case to move the tarmac
+  level either way.
 - At the car's limits (`harness/limit_pace.py`, `rbr-standalone --autopilot --plan LAT,BRAKE --top-speed 60`;
   2026-11-08, after T18's loose-v1 merge, which leaves these dry runs byte-identical). Limits on RSF 345, r40 circle
   lateral g / best threshold braking g from 80 km/h (slip 0.5, the top target tried, best on every car) / locked g:
