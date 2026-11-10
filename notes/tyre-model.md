@@ -2883,6 +2883,15 @@ stays the untuned brush's. The table's model column is the brush before the mode
   matching; a flat straight to stop on (504's 6.6 % rise is taken out by energy); the brush's locked/peak 0.72 against
   0.77-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
 - Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel and snow stay NGP's; snow's berm is 1.05 (done); a driven fall on gravel is in a drive test (no open gravel curve reaches full spin, 2026-11-09); the RWD launch on 116 is NGP's (velocity clear under 0.046 g from rest, free-wheel latch drag 0.086 Fz under 2 m/s; not the tyre). Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the circle read's first slide (Dry, damp, wet gravel in game); wanted: wet or damp gravel braking data, a gravel traction curve to full spin.
+- Real stage telemetry (2026-11-10, [Real stage telemetry](#real-stage-telemetry-wrc-gravel)), what it leaves open. The
+  2017-21 cars' drag area is twice their files' (1.47-1.76 m² on seven tarmac events against 0.81; a prototype of the
+  devices' drag is on `aero/wing-drag`, not merged). The files' downforce may be high: five indications of a smaller
+  gain with speed against one, no published figure. The gravel level reads 5-25 % above Finland's on saturated braking,
+  slides and traction, and the apexes' lateral g does not say so; `--tyre-tuning gravel=0.85` matches Finland's braking
+  and its starts (a product decision, as above). NGP's tarmac tyre slips 2-3 times as far as the real cars at equal
+  force, the brush as far as they do. Rallies differ ± 12 % on each surface where the game's materials span 4-5 %. Of
+  the data wanted above: wet gravel has a bound (Wales), and the real traction to 80 % of wheelspin gives no verdict on
+  a driven fall.
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and the soil's lateral force above 25 m/s through the whole car. NGP has no ploughing (the declutched brake
   test stops 10-17 % longer locked). loose-v1's berm (1.3 from a braking slip of 0.8) gives 1.11-1.16 over the best
   single-pedal target. At NGP's grip level the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a

@@ -526,6 +526,14 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   `IdleRPM` (104.7), above the band's top, so the clutch is fully closed at our idle and a car braked to a stop on
   locked wheels with the clutch in gear closes it on them once the engine recovers (not exercised: the autopilot's
   first gear holds the clutch open).
+- Wheel power against the 2017-21 World Rally Cars' telemetry (2026-11-10; `notes/tyre-model.md`, "Real stage
+  telemetry": `harness/rally_wot.py fit` on seven tarmac events): 221-234 kW at 6500-7500 rpm at 1390 kg; the i20 Coupe
+  WRC 2020 by the same fit 225-239 under ngp and 249-258 with the whole torque (9-16 % over). From the sheet's 380 PS
+  the real cars lose 17-20 % to the road, the file's driveline 12 %. Not changed: the whole torque is the user's
+  decision (In game), the read scales with the mass assumed, and no other class has telemetry. From the same data a
+  full-throttle upshift costs what the real ones do (0.08-0.09 s of drive against 0.05-0.11; ngp 0.02-0.05), and the
+  deceleration with the throttle lifted in gear is 30 % under the real cars' with the file's drag (the measured drag
+  area is twice the file's; a prototype of the devices' drag is on `aero/wing-drag`, not merged).
 - The rally turbos make almost no boost at 1000 rpm, so the [Chalmers] 1000 rpm spool case does not apply to them.
 - A modern turbo's K over the fuel–air cycle (1.04–1.26 of it; turbo sample and Rally2 0.47–0.48 at 4000 rpm
   against 0.40), kept so the tables hold (decided 2026-11: NGP's torque over the ceiling). At the 2.5 bar cap the
