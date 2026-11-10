@@ -1173,6 +1173,10 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   `volume_density` (2026-11-10): adding the layer base before normalizing had put every clear and light-cloud sample
   above 1, so those presets cast no shadows. Nordschleife at 13:00, light cloud: open ground 0, cloud shade 253 to
   254/255 in the raw shadow diagnostic.
+  The 36 reference shots with the probe blend held fixed (2026-11-10): cloud shadows alone leave 24 pixel-identical,
+  change seven by more than 1/255 RMS and five by less. Largest: Falstone 27.90, Pengonpohja 27.69, Sipirkakim
+  26.88/255; direct warm light and sun shafts fall in cloud shade, with exposure sometimes lifting the sky. All four
+  night views pixel-identical. The gallery is regenerated with both lighting fixes.
 - Merge (2026-10-27): the four names are no longer accepted (`--enhance sky` is an unknown name); `LIGHTING` is the one
   pipeline override (was `SKY_LUT`, `CONTACT`, `PROBES`; `SUN_MASK` stays apart, it needs the pass). The 2D cloud layer
   is gone (`clouded`, `cloud_shape`, `cloud_face_lit`, `clouds.wgsl`): the cloud field's noise, `cloud_turn` and
