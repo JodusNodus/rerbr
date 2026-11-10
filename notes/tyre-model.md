@@ -1677,11 +1677,16 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   limit on the 17.5 mm pad's 40 and 65 m circles (`--circle-past`, 70-95 km/h) carries a whole g of 0.90-1.00 along its
   path at 20-30 deg of sideslip and 0.97-1.06 at 30-45 (loose-v1; ngp 0.87-0.98 and 0.89-1.01), where the real cars' 2 s
   windows at those angles have medians of 0.80-0.85 (Finland), 0.73-0.82 (Estonia, Portugal, Sardegna, Acropolis) and
-  0.64-0.68 (Safari) at 60-100 km/h: a lower bound, a real window at that angle need not be saturated. With `--tyre-
-  tuning gravel=0.85` the i20's braking at 22-50 % slip reads 0.79 / 0.84 / 0.92 at 70-100 / 100-130 / 130-160 km/h,
-  Finland's and Estonia's within 0.06, and locked stays 0.96-0.99 (0.90: 0.83 / 0.89 / 0.96): the factor to try on the
-  tuning panel if the level is to be driven. The force gains with speed as the game's does (100-130 to 130-160 km/h: the
-  six +0.00..0.07, the game +0.05; 80-100 to 100-130: +0.05..0.08, the game +0.06): no sign there that the files'
+  0.64-0.68 (Safari) at 60-100 km/h: a lower bound, a real window at that angle need not be saturated. Traction agrees
+  too (scratch: driving windows by slip, 45-70 km/h, where the thrust exceeds the grip): at 22-50 % of wheelspin the
+  real force is 0.65-0.66 g in Finland, 0.59-0.63 in Estonia, Portugal and Wales 2019, 0.55-0.59 in Sardegna and
+  Acropolis, 0.43-0.48 on the Safari; the i20 0.75-0.87 with loose-v1 (25 to 9 mm), 0.73-0.79 with NGP. From 15-22 to
+  50-80 % of spin the real force falls 5-24 % (an upper bound: a wheel flaring over a crest reads as spin at a low
+  force), between loose-v1's none and NGP's 18 % at full spin: no verdict on the driven fall, and no large one. With
+  `--tyre-tuning gravel=0.85` the i20's braking at 22-50 % slip reads 0.79 / 0.84 / 0.92 at 70-100 / 100-130 / 130-160
+  km/h, Finland's and Estonia's within 0.06, and locked stays 0.96-0.99 (0.90: 0.83 / 0.89 / 0.96): the factor to try on
+  the tuning panel if the level is to be driven. The force gains with speed as the game's does (100-130 to 130-160 km/h:
+  the six +0.00..0.07, the game +0.05; 80-100 to 100-130: +0.05..0.08, the game +0.06): no sign there that the files'
   downforce is high. Earlier in this note the game's best braking was set against the real p90: p90 less p50 of 1 s
   windows is 0.2 g, the windows' own noise (the positions' force against the accelerometer's, sd 0.2 g), so the p90
   flatters the game; the medians, brake channel at 50 % or more (scratch), p50 / p90 at 70-100 / 100-130 / 130-160 km/h:
