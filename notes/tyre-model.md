@@ -1905,7 +1905,10 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   fit` reads 1.82 m² on tarmac, 1.64 on gravel; what is left is the experimental engine's 10 %. Top speed without /
   with, tarmac and gravel: i20 202.2 / 199.4 and 200.6 / 196.8 km/h (real 196-202), Fiesta Rally2 177.5 / 175.8 and
   192.7 / 189.6, Polo R5 182.6 / 181.6 and 181.6 / 180.2. RSF 524 with the autopilot (80 km/h mean): i20 344.9 /
-  346.6 s, Rally2 347.2 / 348.4. The throttle lifted in gear ("Throttle lifted in gear"), experimental with it: 4th
+  346.6 s, Rally2 347.2 / 348.4. Pad-tarmac 100-150 and 150-180 km/h, s, without / with: WRC 2019 3.34 / 3.77 and
+  2.82 / 3.97 (real, from the bins: about 4.1 and 4.9); GR Yaris Rally2 4.26 / 4.76 and 4.15 / 5.99; Polo R5 4.43 /
+  4.70 and 4.30 / 5.29; WRC 2006 3.96 / 4.08-4.12 and 3.44-3.73 / 3.68-4.15; S2000 4.35-4.40 / 4.50-4.55; Group N,
+  R4, RGT and kit cars within 0.1 s; 0-100 km/h within 0.07 s on every car. The throttle lifted in gear ("Throttle lifted in gear"), experimental with it: 4th
   60-80 km/h 0.077 g, 5th 60-80 0.079, 5th 80-100 0.084, 6th 80-100 0.091, 6th 100-120 0.110, against the real 0.09 /
   0.085 / 0.105-0.132 / 0.090-0.101 / 0.145 and 0.064 / 0.061 / 0.064 / 0.064 / 0.075 without. Not decided: one class measured, Rally2 and R5 by the rule alone; damaged aero
   parts keep this drag.
