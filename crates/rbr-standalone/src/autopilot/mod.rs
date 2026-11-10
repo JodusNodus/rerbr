@@ -52,9 +52,11 @@ use rbr_recording::{read_f32, read_u32, CONTROL_BYTES, HEADER_BYTES, WHEELS, WHE
 
 mod drive;
 mod limit;
+pub mod pad;
 pub mod race;
 
 pub use drive::{drive, from_snapshot, Pilot};
+pub use pad::Manoeuvre;
 
 use crate::live::Live;
 use crate::physics::DRIVELINE_OFFSET;
@@ -500,6 +502,8 @@ pub struct Driver<'a> {
     /// `--race`: the line and its plan, and the steps each guard held the speed under the plan (full lock, tracking).
     race: Option<race::Line>,
     pub guarded: [u32; 2],
+    /// `--manoeuvre` (`pad`): an open-loop handling manoeuvre on the flat pad.
+    pad: Option<pad::Pad>,
 }
 
 /// The pace-measurement modes of an autopilot drive (`--flat-out`, `--brake-from` and its `--brake-pedal`,
@@ -535,6 +539,8 @@ pub struct Measure {
     pub plan: Option<Plan>,
     /// `--race LAT,BRAKE,SLIP`: race driving on a line across the road at the car's limits (`race`).
     pub race: Option<race::Race>,
+    /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`pad`, with `--flat-pad`).
+    pub manoeuvre: Option<Manoeuvre>,
 }
 
 /// `--circle X,Y,R` (pace measurement): a steady-state circle to drive, counter-clockwise, its centre (m) and
@@ -741,6 +747,7 @@ impl<'a> Driver<'a> {
             crank: None,
             race: None,
             guarded: [0; 2],
+            pad: None,
         }
     }
 
@@ -933,7 +940,7 @@ impl<'a> Driver<'a> {
 
     /// `--circle-past`: the seconds since the car first ran wide, else `None`.
     pub fn past_since(&self) -> Option<f32> {
-        self.past.map(|(_, t)| t).filter(|&t| t >= 0.0)
+        self.past.map(|(_, t)| t).filter(|&t| t >= 0.0).or_else(|| self.pad.as_ref().and_then(|p| p.since()))
     }
 
     /// The driver braking fully from `v` m/s on (`--brake-from`, pace measurement) or never.
@@ -1041,6 +1048,9 @@ impl<'a> Driver<'a> {
         if sense.held {
             (self.mode, self.slow, self.bogged) = (Mode::Drive, 0, 0);
             return QuantizedControl { brake: 255, ..QuantizedControl::default() };
+        }
+        if self.pad.is_some() {
+            return self.pad_control(step, sense);
         }
         let speed = sense.pose.speed();
         let mut cap = None;

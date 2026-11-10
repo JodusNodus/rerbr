@@ -2512,6 +2512,7 @@ dependencies = [
 name = "rbr-standalone"
 version = "0.1.0"
 dependencies = [
+ "rbr-btb",
  "rbr-counters",
  "rbr-engine",
  "rbr-formats",

@@ -209,6 +209,9 @@ pub fn drive(
     if let Some(throttle) = measure.circle_past {
         driver = driver.with_circle_past(throttle);
     }
+    if let Some(man) = measure.manoeuvre {
+        driver = driver.with_manoeuvre(man);
+    }
     if let Some(plan) = measure.plan {
         eprintln!("autopilot: the plan's lateral {} m/s², braking {} m/s² (--plan)", plan.lateral, plan.braking);
         driver = driver.with_plan(plan);
@@ -298,7 +301,10 @@ pub fn drive(
         // A lesson ends by the school or at the race's end, not the card (lesson 10's map has no finish, its card a
         // finish time). A circle run never finishes (it laps the school compound to the step limit).
         let school = live.school().is_some();
-        let finished = !school && measure.circle.is_none() && pure::time_keeper(live.mem()).card.finish_time.is_some();
+        let finished = !school
+            && measure.circle.is_none()
+            && measure.manoeuvre.is_none()
+            && pure::time_keeper(live.mem()).card.finish_time.is_some();
         if finished && drove.finish.is_none() {
             drove.finish = Some(step);
         }
@@ -358,11 +364,19 @@ pub fn drive(
         let height = off[2];
         let off = off[0].hypot(off[1]);
         off_road = if off > OFF_ROAD { off_road + 1 } else { 0 };
+        if driver.pad_done() {
+            drove.end = "the manoeuvre is done".to_owned();
+            break;
+        }
         if let Some(why) = &driver.gave_up {
             drove.end = why.clone();
             break;
         }
-        if off_road == driver.steps(OFF_ROAD_STEPS) && aim.is_none() && measure.circle.is_none() {
+        if off_road == driver.steps(OFF_ROAD_STEPS)
+            && aim.is_none()
+            && measure.circle.is_none()
+            && measure.manoeuvre.is_none()
+        {
             drove.end = format!(
                 "off the road at step {step} (over {OFF_ROAD} m from the driveline for {OFF_ROAD_STEPS} steps)"
             );
@@ -404,6 +418,9 @@ pub fn drive(
             );
         }
         control = payload(&q.car_control(), word6);
+        if let Some(steering) = driver.pad_steering() {
+            control[16..20].copy_from_slice(&steering.to_le_bytes());
+        }
     }
     if let Some(probe) = &mut probe {
         let step = start + drove.steps.saturating_sub(1);

@@ -10,6 +10,7 @@ name = "rbr-standalone"
 path = "src/main.rs"
 
 [dependencies]
+rbr-btb = { path = "../rbr-btb" }
 rbr-season = { path = "../rbr-season" }
 rbr-counters = { path = "../rbr-counters" }
 rbr-engine = { path = "../rbr-engine" }

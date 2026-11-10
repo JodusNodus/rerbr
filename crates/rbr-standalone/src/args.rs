@@ -145,6 +145,11 @@ pub struct Args {
     /// `--material-as ID` (with `--autopilot --boot`): a test surface, every material of the stage takes material ID's
     /// values (`autopilot::Measure::material_as`; 116 ices the stage), with `--brake-from` from the brake onset.
     pub material_as: Option<u32>,
+    /// `--flat-pad ID` (with `--autopilot --boot`, test only): the stage's ground is a flat pad of material ID at the
+    /// start's height and its scenery collision is left out (`boot::Race::flat_pad`); sets `--material-as ID`.
+    pub flat_pad: bool,
+    /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (with `--flat-pad`): an open-loop handling manoeuvre (`autopilot::Manoeuvre`).
+    pub manoeuvre: Option<autopilot::Manoeuvre>,
     /// The rally flow's files (`rally.rs`): the damage carried in and out, and the stage's result.
     pub damage_in: Option<PathBuf>,
     pub damage_out: Option<PathBuf>,
@@ -215,7 +220,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--material-as ID (a test surface: every material takes ID's values, from the brake onset with --brake-from)] [--flat-pad ID --manoeuvre KIND,KMH,AMP[,EXTRA] (a flat test pad of material ID, an open-loop handling manoeuvre on it)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
@@ -375,6 +380,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--material-as" => {
                 args.material_as = Some(value.parse().map_err(|_| format!("--material-as {value}: a material id"))?)
             }
+            "--flat-pad" => {
+                args.flat_pad = true;
+                args.material_as = Some(value.parse().map_err(|_| format!("--flat-pad {value}: a material id"))?)
+            }
+            "--manoeuvre" => args.manoeuvre = Some(value.parse()?),
             "--damage-in" => args.damage_in = Some(PathBuf::from(value)),
             "--damage-out" => args.damage_out = Some(PathBuf::from(value)),
             "--result-out" => args.result_out = Some(PathBuf::from(value)),
@@ -470,6 +480,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         ("--ffb-sensitivity", args.ffb_sensitivity.is_some()),
         ("--head-gasket-durability", args.head_gasket_durability.is_some()),
         ("--material-as", args.material_as.is_some()),
+        ("--manoeuvre", args.manoeuvre.is_some()),
         ("--damage-in", args.damage_in.is_some()),
         ("--championship", skill.is_some()),
     ] {
@@ -577,6 +588,14 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if args.material_as.is_some() && args.autopilot.is_none() {
         return Err("--material-as needs --autopilot".into());
+    }
+    if args.manoeuvre.is_some() != args.flat_pad {
+        return Err("--manoeuvre and --flat-pad go together".into());
+    }
+    if args.manoeuvre.is_some()
+        && (args.autopilot.is_none() || args.circle.is_some() || args.brake_from.is_some() || args.flat_out)
+    {
+        return Err("--manoeuvre needs --autopilot, and takes no --circle, --brake-from or --flat-out".into());
     }
     if args.circle.is_some() && args.autopilot.is_none() {
         return Err("--circle needs --autopilot".into());
@@ -858,6 +877,11 @@ mod tests {
                 assert_eq!(a.circle_ramp, Some(0.4));
             }),
             (format!("{BOOT} --circle -260,120,40 --circle-past 0"), |a| assert_eq!(a.circle_past, Some(0.0))),
+            (format!("{BOOT} --flat-pad 37 --manoeuvre brake-in-turn,80,0.2,0.4"), |a| {
+                assert_eq!((a.flat_pad, a.material_as), (true, Some(37)));
+                let m = a.manoeuvre.expect("a manoeuvre");
+                assert_eq!((m.kind, m.speed, m.amp, m.extra), (autopilot::pad::Kind::BrakeInTurn, 80.0 / 3.6, 0.2, 0.4));
+            }),
             (format!("{BOOT} --plan 8.5,6"), |a| {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));
             }),
@@ -1100,6 +1124,11 @@ mod tests {
             (format!("{REC} --material-as 116"), "--material-as needs --boot"),
             (format!("{REC} --material-as ice"), "--material-as ice: a material id"),
             (format!("{REC} --circle-ramp 0.4"), "--circle-ramp needs --circle"),
+            (format!("{BOOT} --flat-pad 37"), "--manoeuvre and --flat-pad go together"),
+            (
+                format!("{BOOT} --flat-pad 37 --manoeuvre brake-in-turn,80,0.2"),
+                "--manoeuvre brake-in-turn,80,0.2: brake-in-turn wants a pedal, 0-1, as EXTRA",
+            ),
             (format!("{REC} --circle-past 1"), "--circle-past needs --circle"),
             (format!("{REC} --plan 8,6"), "--plan needs --autopilot"),
             (format!("{BOOT} --plan 8"), "--plan 8: want LAT,BRAKE in m/s², both over 0"),
