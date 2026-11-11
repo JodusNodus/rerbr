@@ -147,8 +147,8 @@ pub struct Args {
     pub ffb_sensitivity: Option<[i32; 3]>,
     /// `--head-gasket-durability N`: NGP's `headGasketDurability` (`boot::Race::head_gasket_durability`).
     pub head_gasket_durability: Option<i32>,
-    /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (with `--autopilot --boot` on a pad stage): an open-loop handling
-    /// manoeuvre (`autopilot::Manoeuvre`).
+    /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (with `--autopilot --boot` on a pad stage): a handling manoeuvre, open loop
+    /// or `catch` with its driver (`autopilot::Manoeuvre`).
     pub manoeuvre: Option<autopilot::Manoeuvre>,
     /// The rally flow's files (`rally.rs`): the damage carried in and out, and the stage's result.
     pub damage_in: Option<PathBuf>,
@@ -217,10 +217,10 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --live --stage NAME (--snapshot Y | --boot [WEATHER]) [--car N] [--data DIR] [--callout-distance F] [--marker-threshold F]
        WEATHER: [--weather 0|1|2] [--tyre N] [--wear new|normal|worn] [--wetness dry|damp|wet] [--surface gravel|tarmac|snow] [--btb MAP] [--season-row N] [--rand-seed N] [--setup FILE]
        NGP (required with --boot): --ngp-physics FILE [--rsf-car ID|PACK | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--ffb-sensitivity G,T,S] [--head-gasket-durability N]
-       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|yaw|wings|wings+yaw (prototypes, with an experimental profile; yaw: the front downforce and the drag with the car's sideslip; wings: the drag of the downforce devices on top of the file's)]; experimental writes no records (--saves compares only)
+       --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, an open-loop handling manoeuvre)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
@@ -911,6 +911,10 @@ mod tests {
                 let m = a.manoeuvre.expect("a manoeuvre");
                 assert_eq!((m.kind, m.speed, m.amp, m.extra), (autopilot::pad::Kind::BrakeInTurn, 80.0 / 3.6, 0.2, 0.4));
             }),
+            (format!("{BOOT} --stage pad-49 --manoeuvre catch,110,0.75"), |a| {
+                let m = a.manoeuvre.expect("a manoeuvre");
+                assert_eq!((m.kind, m.amp, m.extra), (autopilot::pad::Kind::Catch, 0.75, 0.2));
+            }),
             (format!("{BOOT} --plan 8.5,6"), |a| {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));
             }),
@@ -1171,6 +1175,10 @@ mod tests {
             (
                 format!("{BOOT} --stage pad-tarmac --manoeuvre brake-in-turn,80,0.2"),
                 "--manoeuvre brake-in-turn,80,0.2: brake-in-turn wants a pedal, 0-1, as EXTRA",
+            ),
+            (
+                format!("{BOOT} --stage pad-tarmac --manoeuvre catch,80,0.5,2"),
+                "--manoeuvre catch,80,0.5,2: catch wants a reaction time, 0-1 s, as EXTRA",
             ),
             (format!("{REC} --circle-past 1"), "--circle-past needs --circle"),
             (format!("{REC} --plan 8,6"), "--plan needs --autopilot"),

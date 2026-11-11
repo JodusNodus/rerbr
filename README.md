@@ -43,7 +43,8 @@ ReRBR replays (`.rrp`), with playback and video export from the Replays tab.
 
 The physics is NGP 7.4.778's; the gameplay (weather draws, race flow, damage, service, season, records) is the game's.
 Settings > Physics also offers ReRBR experimental physics, opt-in and built on NGP 7: a realistic engine model in
-place of NGP's torque formula ([docs/experimental-physics.md](docs/experimental-physics.md)).
+place of NGP's torque formula, with aero drag, downforce and four-wheel-drive drivetrain loss fitted to World Rally
+Car telemetry ([docs/experimental-physics.md](docs/experimental-physics.md)).
 Ours, not in 1.02: the launcher in place of the game's menus, the season's car (the game drives your team's), the HUD
 and end screens, the force-feedback graph of your steering load per car (pause menu), the wiper switch, the look-back key, the "Best" ghost, night, working mirrors, and the renderer
 additions on the Graphics & sound page, set by a quality preset or one by one. The stage always draws at the game's highest quality.

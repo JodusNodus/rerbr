@@ -2,15 +2,18 @@
 
 ReRBR runs NGP 7's physics bit for bit by default. The launcher's Settings > Physics row (or `--physics experimental`)
 offers a second choice, "ReRBR experimental (built on NGP 7)": NGP 7 with some of its systems replaced by ours. Today
-it replaces one: a mean-value engine model takes the place of NGP's torque formula. The clutch, gearbox, driveline,
-tyres and damage stay NGP's. A tyre model is in development and not part of it: see
+it replaces three. A mean-value engine model takes the place of NGP's torque formula. The aero adds the drag of the
+wings that make a car's downforce and halves that downforce. A four-wheel-drive car loses 17 % of its drive torque in
+the drivetrain, where its file says 12 (see [Aero and drivetrain loss](#aero-and-drivetrain-loss)). The clutch,
+gearbox, differentials, tyres and damage stay NGP's. A tyre model is in development and not part of it: see
 [ReRBR experimental tyre model](tyre-model.md).
 
 While it is experimental, a run with it saves no records, ghosts or championship results. Its replays carry the choice
 and play back with it.
 
-This page explains what NGP's formula does, what our model does in its place, the evidence behind each part, and how
-both compare with BeamNG.drive's published part-throttle model. Every constant with its source is in
+This page explains what NGP's formula does, what our engine model does in its place, the evidence behind each part,
+how both compare with BeamNG.drive's published part-throttle model, and what the aero and the drivetrain loss rest
+on. Every constant with its source is in
 [notes/engine-model.md](../notes/engine-model.md), and the code is in `crates/rbr-engine`.
 
 ## Why replace NGP's engine formula
@@ -28,8 +31,9 @@ rpm. Our model computes these from the air path.
 It keeps each car's own full-throttle curve. At full throttle in standard air it gives the torque of the car's table
 at every point, except where a turbo can't supply the air yet (see [Torque from air](#torque-from-air)). NGP's formula
 delivers that table over 1.05, so at full throttle the experimental engine is 5 % stronger than NGP's (see
-[Power delivered](#power-delivered)). What else changes is part throttle, transients, idle, engine braking, the
-limiter and the turbo.
+[Power delivered](#power-delivered)). At the wheels a two-wheel-drive car keeps those 5 %, and a four-wheel-drive car
+is 1 % under NGP's with its larger drivetrain loss. What else changes in the engine is part throttle, transients,
+idle, engine braking, the limiter and the turbo.
 
 ## What NGP's formula does
 
@@ -93,10 +97,10 @@ team, the file's peak power and torque are within 3 % of the sheet's on all but 
 | VW Polo GTI R5 | 272 PS at 5500, 400 N·m at 4000 (Volkswagen) | 285 PS at 5550, 420 N·m at 4000 |
 | Alpine A110 Rally | 320 ch at 5850, 500 N·m at 4000 (Signatech) | 315 PS at 6000, 440 N·m at 3000 |
 
-NGP divides the engine's torque by 1.05 and then takes its drivetrain loss (8 % on two-wheel-drive cars, 12 % on
-four-wheel-drive), so its cars deliver 5 % less than their sheets. The Polo's file is 5 % over its sheet, which makes
-it the one car that delivered the maker's figures under NGP; with the experimental engine it is 5 % over them. The
-Alpine's torque stays 12 % under Signatech's. The masses need no correction: on its tyres each car of the FIA's
+NGP divides the engine's torque by 1.05 and then takes its drivetrain loss (8–10 % on two-wheel-drive cars, 12 % on
+four-wheel-drive), so its engines deliver 5 % less than their sheets. The Polo's file is 5 % over its sheet, which
+makes it the one car whose engine delivered the maker's figures under NGP; the experimental engine is 5 % over them.
+The Alpine's torque stays 12 % under Signatech's. The masses need no correction: on its tyres each car of the FIA's
 current classes, the World Rally Cars and Super 2000 weighs its class's minimum plus 200 kg, the FIA's 160 kg for the
 crew (Appendix J, the minimum with the crew aboard) and 40 kg more; the Alpine, at 1280 kg, is 20 kg under
 Signatech's 1100 kg with the same 200 kg. The wheelbase that each file's centre of gravity and static front axle
@@ -442,6 +446,44 @@ unpublished.
 `harness/engine_scorecard.py` scores the model against these published figures, row by row, from
 `data/engine-targets.csv` (`notes/engine-model.md`, "Scorecard").
 
+## Aero and drivetrain loss
+
+Both come from the 2017–21 World Rally Cars' telemetry (WRC+'s onboard data as RallyDataJunkie republished it:
+speed, acceleration, pedals, gear and rpm at 10 Hz), read against the game's Hyundai i20 Coupe WRC 2020. The fits
+and their tools are in [notes/tyre-model.md](../notes/tyre-model.md) ("Real stage telemetry") and
+[notes/engine-model.md](../notes/engine-model.md) ("Open").
+
+- **Drag.** At full throttle on tarmac straights the real cars' drag area is 1.47–1.76 m² over seven events (median
+  1.66). The i20's file gives 0.81 m², with 3.54 m² of downforce area. The experimental aero adds the drag of the
+  downforce devices: a drag area of 0.074 times the square of the file's downforce area, the form of a wing's
+  induced drag, set on 1.74 m². On the 2006 World Rally Cars' files the same rule gives 0.82 and 1.08 m², against
+  0.85 m² measured on a 20 % model of a 2004 World Rally Car (Dominy and Richardson, SAE 2004-01-3508).
+- **Downforce.** The real cars' hard straight braking gains with speed as 1.3–1.5 m² of downforce area would give
+  (nine tarmac rallies). The game's i20 on the same measure reads 2.4–3.1 m² with its file's 3.54 and 0.9–1.7 with
+  half, so the experimental aero halves the file's downforce on both axles. The drag above is still counted on the
+  file's whole figure, which it was fitted with.
+- **Drivetrain loss.** From the same straights the real cars put 221–234 kW on the road at 6500–7500 rpm, 17–20 %
+  under their 380 PS. NGP's four-wheel-drive files lose 12 %. With the experimental physics a four-wheel-drive car
+  loses 17 %, or its file's figure if that is larger. As in NGP the loss acts on drive torque only, so engine
+  braking is unchanged. Two-wheel-drive cars keep their files' 8–10 %: no telemetry of one was found.
+
+A car whose file carries no downforce drives as before; of the four cars in [In game](#in-game) the Golf and the
+Fiat 131 are such cars. Full throttle on the flat tarmac pad, the i20 Coupe WRC against the real cars on Rally de
+España 2021 (acceleration away from gear shifts, and a standing start):
+
+| | Real cars | NGP 7 | Experimental |
+| --- | --- | --- | --- |
+| 90–100 km/h | 0.50 g | 0.54 g | 0.55 g |
+| 110–120 km/h | 0.38 g | 0.45 g | 0.44 g |
+| 130–140 km/h | 0.30 g | 0.38 g | 0.34 g |
+| 150–160 km/h | 0.21 g | 0.32 g | 0.25 g |
+| 170–180 km/h | 0.14 g | 0.24 g | 0.16 g |
+| Start to 10 / 25 / 50 / 100 m | 1.39 / 2.22 / 3.26 / 4.90 s | 1.37 / 2.21 / 3.24 / 4.85 s | 1.38 / 2.21 / 3.25 / 4.89 s |
+
+NGP's car is 8 % over the real ones at 95 km/h and 70 % over at 175; the experimental one is 8–16 % over across the
+range. What is left is wheel power: the fit gives the experimental i20 237–246 kW. Only this class has telemetry, so
+the Rally2 cars and the older four-wheel-drive cars take the same rule unmeasured.
+
 ## Compared with NGP and BeamNG
 
 BeamNG.drive described its part-throttle model in 2023 ([Modelling part-throttle torque curves in
@@ -610,8 +652,9 @@ the limit to 23 over it.
 
 ### In game
 
-Every number here was measured at `a334ec41`, the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is
-the realistic engine with NGP's tyre (`{ engine: "realistic", tyre: "ngp" }`), so every gap is the engine's.
+Every number here was measured with the physics that ships: "NGP 7" is NGP 7's physics, "experimental" is the
+realistic engine, the experimental aero and the 17 % four-wheel-drive drivetrain loss on NGP's tyre. On the two
+two-wheel-drive cars, which carry no downforce, every gap is the engine's.
 
 The autopilot drove each of four RallySimFans cars for 600 s on a gravel stage, track-11_O (Mustaselka), and on a
 tarmac one, track-41 (Cote D'Arbroz, its M variant, as the season's weather loads it), once with NGP 7's physics and
@@ -626,9 +669,9 @@ Gravel, track-11_O:
 | Car | Physics | Split 2 | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 442.63 s | +34 | 5.0 s | 3.3 s |
-| | experimental | 434.15 s | +6 | 0 s | 4.9 s |
+| | experimental | 438.97 s | +6 | 0 s | 4.0 s |
 | Celica ST185 | NGP 7 | 445.47 s | +25 | 5.4 s | 4.6 s |
-| | experimental | 435.01 s | +6 | 0 s | 5.8 s |
+| | experimental | 438.88 s | −4 | 0 s | 5.6 s |
 | Golf II GTI 16V | NGP 7 | 466.95 s | +12 | 5.7 s | 6.0 s |
 | | experimental | 444.98 s | −7 | 0 s | 9.1 s |
 | Fiat 131 Abarth | NGP 7 | 463.65 s | +13 | 4.5 s | 7.9 s |
@@ -639,9 +682,9 @@ Tarmac, track-41:
 | Car | Physics | Split 2 | Finish | Highest rpm over the limit | Over the limit | Slip |
 | --- | --- | --- | --- | --- | --- | --- |
 | Fiesta Rally2 | NGP 7 | 210.71 s | 309.01 s | +25 | 5.0 s | 3.6 s |
-| | experimental | 207.00 s | 303.76 s | +6 | 0 s | 3.4 s |
+| | experimental | 209.36 s | 307.42 s | −204 | 0 s | 3.1 s |
 | Celica ST185 | NGP 7 | 212.97 s | 310.91 s | +25 | 5.2 s | 3.5 s |
-| | experimental | 207.05 s | 303.48 s | −4 | 0 s | 4.6 s |
+| | experimental | 208.78 s | 306.05 s | −4 | 0 s | 4.2 s |
 | Golf II GTI 16V | NGP 7 | 222.28 s | 324.24 s | +21 | 4.7 s | 4.5 s |
 | | experimental | 212.56 s | 312.39 s | −7 | 0 s | 5.3 s |
 | Fiat 131 Abarth | NGP 7 | 221.31 s | 323.35 s | +13 | 4.2 s | 5.9 s |
@@ -652,12 +695,13 @@ was 82 rad/s, the experimental Golf braking at full on track-41's run-out, where
 earlier build stalled there, see
 [The clutch under the experimental engine](#the-clutch-under-the-experimental-engine)). The experimental limiter
 keeps every car at its limit, in gear and on the start line, where the [start mode](#start-mode) holds the turbo
-cars' revs. With the experimental physics the turbo cars reached split 2 1.9–2.4 % sooner on gravel and 1.8–2.8 % on
-tarmac, the NA cars 3.8–4.7 % sooner on gravel and 3.5–4.4 % on tarmac. The autopilot's caution sets most of its
-pace, and this is one stage and one run per car, so these gaps are not lap times a driver would see: the 5 % more
-torque at full throttle moved these splits by 0.2–0.6 %. On gravel the clutch slips 1.2–5.4 s longer per run, on
-tarmac between 0.2 s shorter and 1.1 s longer, and the engine's mean distance from the clutch-engaged speed stays at
-most 2.9 rad/s.
+cars' revs. With the experimental physics the four-wheel-drive turbo cars reached split 2 0.8–1.5 % sooner on gravel
+and 0.6–2.0 % on tarmac, the two-wheel-drive NA cars 3.8–4.7 % sooner on gravel and 3.5–4.4 % on tarmac. The
+autopilot's caution sets most of its pace, and this is one stage and one run per car, so these gaps are not lap
+times a driver would see: the 5 % more torque at full throttle moved these splits by 0.2–0.6 %, and the aero and the
+drivetrain loss cost the two four-wheel-drive cars 0.8–1.1 %. The Fiesta no longer reaches its limiter on track-41.
+On gravel the clutch slips 0.7–5.4 s longer per run, on tarmac between 0.5 s shorter and 0.8 s longer, and the
+engine's mean distance from the clutch-engaged speed stays at most 2.9 rad/s.
 
 #### 0 to 100 km/h
 
@@ -677,10 +721,13 @@ ratios.
 
 | Fiesta Rally2, flat pad | NGP 7 | Experimental |
 | --- | --- | --- |
-| Tarmac (material 37), clutch dump | 4.05 s | 3.89 s |
-| Tarmac, best start | 4.03 s | 3.85 s |
-| Gravel (material 17), clutch dump | 4.62 s | 4.49 s |
-| Gravel, best start | 4.45 s | 4.29 s |
+| Tarmac (material 37), clutch dump | 4.05 s | 4.13 s |
+| Tarmac, best start | 4.03 s | 4.12 s |
+| Gravel (material 17), clutch dump | 4.62 s | 4.79 s |
+| Gravel, best start | 4.45 s | 4.55 s |
+
+The experimental Fiesta is the slower one by 0.1–0.2 s: its wheel power at full throttle is 1 % under NGP's, and
+it carries the wings' drag.
 
 The best start gains little for a four-wheel-drive car on tarmac: in first gear the Fiesta's engine gives 1.15 g and
 its tyres take about 1.3 g, so the engine is the limit and the dump's wheelspin costs almost nothing. Two-wheel-drive
@@ -699,16 +746,15 @@ best start):
 
 | Car | Published | NGP 7 | Experimental |
 | --- | --- | --- | --- |
-| VW Polo GTI R5 | about 4.1 s (Volkswagen) | 4.11 / 4.11 s | 3.93 / 3.93 s |
-| Hyundai i20 Coupe WRC | under 4 s (Hyundai) | 3.32 / 3.28 s | 3.23 / 3.15 s |
-| Ford Fiesta Rally3 | about 5 s to 62 mph (M-Sport, at 1210 kg; ours weighs 1410 kg) | 5.18 / 5.18 s | 4.99 / 4.99 s |
+| VW Polo GTI R5 | about 4.1 s (Volkswagen) | 4.11 / 4.11 s | 4.19 / 4.19 s |
+| Hyundai i20 Coupe WRC | under 4 s (Hyundai) | 3.32 / 3.28 s | 3.39 / 3.39 s |
+| Ford Fiesta Rally3 | about 5 s to 62 mph (M-Sport, at 1210 kg; ours weighs 1410 kg) | 5.18 / 5.18 s | 5.30 / 5.27 s |
 | BMW M3 E30 Group A | about 4.3 s to 60 mph (touring car, 330 bhp, 940 kg, slicks; ours 300 bhp, 1225 kg) | 4.67 / 4.20 s | 4.46 / 4.01 s |
-| Porsche 911 SC RS | 5.3 s to 60 mph | 4.23 / 3.83 s | 4.53 / 3.72 s |
-| Audi quattro A2 | about 4.5 s | 3.23 / 3.15 s | 3.10 / 3.10 s |
+| Porsche 911 SC RS | 5.3 s to 60 mph | 4.23 / 3.83 s | 4.54 / 3.71 s |
+| Audi quattro A2 | about 4.5 s | 3.23 / 3.15 s | 3.22 / 3.21 s |
 
-The Polo matches Volkswagen under NGP because its file is 5 % over the sheet, which NGP's 1.05 takes back
-([Power delivered](#power-delivered)); the Fiesta Rally3, whose file is the sheet's, meets M-Sport's figure with the
-experimental engine.
+The Polo is within 0.1 s of Volkswagen's figure under both. The Fiesta Rally3 is 0.2–0.3 s over M-Sport's with 200 kg
+more aboard.
 
 The makers' figures are launch-control starts, which the clutch dump is closest to. The last three come from
 enthusiast sites; the two older cars are 1.1 to 1.5 s quicker here than their period figures, on period tyres there
@@ -721,9 +767,9 @@ Fiesta Rally2, clutch dump / best start (K 0.15 and 0.2 tried):
 
 | Stage | NGP 7 | Experimental |
 | --- | --- | --- |
-| RSF 504, tarmac, 6.7 % uphill | 4.57 / 4.56 s | 4.37 / 4.37 s |
-| track-64, gravel, flat | 4.66 / 4.54 s | 4.52 / 4.39 s |
-| RSF 345, gravel, 4 % downhill | 4.54 / 4.37 s | 4.35 / 4.18 s |
+| RSF 504, tarmac, 6.7 % uphill | 4.57 / 4.56 s | 4.73 / 4.73 s |
+| track-64, gravel, flat | 4.66 / 4.54 s | 4.81 / 4.64 s |
+| RSF 345, gravel, 4 % downhill | 4.54 / 4.37 s | 4.61 / 4.42 s |
 
 ### The clutch under the experimental engine
 

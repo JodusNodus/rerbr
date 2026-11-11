@@ -1,9 +1,9 @@
-"""handling.py: open-loop handling manoeuvres on a flat pad, per car and physics, through the Rust autopilot.
+"""handling.py: handling manoeuvres on a flat pad, per car and physics, through the Rust autopilot.
 
   python3 -I -B harness/handling.py --out DIR [--physics ngp,experimental,experimental-brush]
       [--cars Ford_Fiesta_Rally2_ngp7,VW_Golf_II_GTI_16V_GrpA_ngp6,Ford_Escort_Mk_II_RS_Grp4_ngp6]
-      [--only ramp,step,sine,lift,brake,power] [--speed 80] [--sine-speeds 80,110] [--jobs 6] [--analyse-only]
-      [--keep-traces] [--material 37] [--bin PATH] [--extra "FLAGS"]
+      [--only ramp,step,sine,lift,brake,power] [--speed 80] [--sine-speeds 80,110] [--reactions 0.2,0.4] [--jobs 6]
+      [--analyse-only] [--keep-traces] [--material 37] [--bin PATH] [--extra "FLAGS"]
 
 Each run is `rbr-standalone --autopilot --boot --stage pad-37 --manoeuvre KIND,KMH,AMP[,EXTRA] --trace-speed`: on
 the built-in flat pad of one material (a level 2 km square, `rbr_btb::pad`; dry tarmac 37 by default), the car holds
@@ -42,7 +42,15 @@ Manoeuvres (entry speed --speed, 80 km/h; the amplitudes of the circle manoeuvre
             the first physics, within 3 % of the best deceleration over 0.3 to 1.0 s). r1/r0: the yaw rate ratio at 1 s; beta1: the turn
             sideslip at 1 s; beta peak and spin as above.
   power     the circle of the steer of 0.8 of the peak, then full throttle in 0.1 s, steering held. As lift.
-Outcomes near the limit flip between neighbouring inputs, so sine, lift, brake and power run each case at the entry
+  catch     closed loop, only with `--only catch`: the sine dwell to the end of its dwell (1.57 s), which leaves the car
+            turning, then for 6 s a driver who turns the wheels towards where the car is going, 1 of lock per rad
+            of the slide he saw his reaction time before (--reactions, s) carried forward by that time, at most 3
+            locks per s, throttle and brake released (pad.rs). beta: the peak |sideslip| from the catch on; settle:
+            the s from the catch after which the sideslip stays under 5 deg and the yaw rate under 5 deg/s; swings:
+            the times the sideslip goes over 5 deg to the other side; v: the speed then, km/h; caught: no spin and
+            settled for the last second. Largest caught: the highest amplitude of the ladder up to which every run
+            of the three speeds is caught.
+Outcomes near the limit flip between neighbouring inputs, so sine, catch, lift, brake and power run each case at the entry
 speed and at +-2 km/h: the table shows the nominal run's values, a [min..max] of the headline metric over the three
 and the spins out of three (the lowest-amplitude spin ignores the neighbours).
 target/release/rbr-standalone must be built; RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS come from dev.env."""
@@ -69,6 +77,8 @@ OVERSTEER = 10.0  # deg of turn sideslip within 3 s of the g peak: the rear axle
 LADDER = [0.1, 0.15, 0.2, 0.3, 0.4, 0.55, 0.75, 1.0]  # sine dwell amplitudes, fractions of lock
 DELTAS = [0.0, -2.0, 2.0]  # km/h around the nominal entry speed; the nominal first
 SINE_END = 1 / 0.7 + 0.5  # s: the steering is zero again
+CATCH_FROM, CATCH_END = 0.75 / 0.7 + 0.5, 0.75 / 0.7 + 6.5  # s: the catch's driver steers (pad.rs's CATCH_FROM, CATCH_RUN)
+CALM = 5.0  # deg of sideslip and deg/s of yaw rate: under both the car is caught
 FRACTIONS = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4]  # shares of the peak g a circle manoeuvre may start from, highest first
 MEAN = 0.25  # s: the lateral g's moving mean
 PAD_HALF = 950.0  # m: the pad is 2 km square about the start; a run farther than this from it is void
@@ -214,6 +224,20 @@ def analyse_sine(run):
                 beta=abs(run.peak("beta", 0.0, 4.0)), spun=run.spun(0.0, 4.0), g=abs(run.peak("g", 0.0, SINE_END)))
 
 
+def analyse_catch(run):
+    i, j = bisect.bisect_left(run.t, CATCH_FROM), bisect.bisect_right(run.t, CATCH_END)
+    beta, r, v = (run.series[n][i:j] for n in ("beta", "r", "v"))
+    if not beta:
+        return None
+    wild = [k for k in range(len(beta)) if abs(beta[k]) > CALM or abs(r[k]) > CALM]
+    settle = run.t[i + wild[-1]] - CATCH_FROM if wild else 0.0
+    sides = [x > 0 for x in beta if abs(x) > CALM]
+    spun = run.spun(CATCH_FROM, CATCH_END)
+    return dict(beta=max(map(abs, beta)), settle=settle, swings=sum(a != b for a, b in zip(sides, sides[1:])), spun=spun,
+                v=v[min(wild[-1] + 1, len(v) - 1) if wild else 0] * 3.6,
+                caught=not spun and v[-1] > SLOW and settle < CATCH_END - CATCH_FROM - 1.0)
+
+
 def analyse_circle(run):
     n = round(0.5 / run.dt)
     if len(run.before["r"]) < 2 * n:
@@ -242,9 +266,9 @@ def analyse_line(run):
 
 
 ANALYSE = dict(line=analyse_line, ramp=analyse_ramp, step=analyse_step, sine=analyse_sine, lift=analyse_circle,
-               brake=analyse_circle, power=analyse_circle)
+               brake=analyse_circle, power=analyse_circle, catch=analyse_catch)
 KIND = dict(line="brake-in-turn", ramp="ramp-steer", step="step-steer", sine="sine-dwell", lift="lift-in-turn", brake="brake-in-turn",
-            power="power-in-turn")
+            power="power-in-turn", catch="catch")
 
 
 def execute(args, job):
@@ -303,7 +327,8 @@ def main():
     parser.add_argument("--cars", default=CARS)
     parser.add_argument("--only", default="ramp,step,sine,lift,brake,power")
     parser.add_argument("--speed", type=float, default=80.0, help="entry speed km/h of all but the sine dwell")
-    parser.add_argument("--sine-speeds", default="80,110")
+    parser.add_argument("--sine-speeds", default="80,110", help="entry speeds km/h of the sine dwell and the catch")
+    parser.add_argument("--reactions", default="0.2,0.4", help="the catch's driver's reaction times, s")
     parser.add_argument("--material", type=int, default=37, help="the pad's material (37 tarmac fine clean dry)")
     parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--analyse-only", action="store_true")
@@ -389,6 +414,9 @@ def main():
             if "sine" in only:
                 for s in args.sine_speeds.split(","):
                     jobs += [(f"{t}-sine-{float(s) + d:g}-{a:g}", c, p, "sine", float(s) + d, a, None) for a in LADDER]
+            if "catch" in only:
+                jobs += [(f"{t}-catch-{float(s) + d:g}-{a:g}-{x}", c, p, "catch", float(s) + d, a, float(x))
+                         for s in args.sine_speeds.split(",") for x in args.reactions.split(",") for a in LADDER]
     res = run_jobs(args, jobs)
 
     def err(r):
@@ -437,6 +465,27 @@ def main():
                     print(f"{short(c):14} {p:19} {a:5.2f} {r['g']:5.2f} {r['r_peak']:6.1f} {r['r1']:7.1f} {r['r175']:7.1f} "
                           f"{spread([x['r175'] for x in rs if not err(x)], '.0f'):>12} {r['beta']:6.1f} {n}/3")
                 print(f"{short(c):14} {p:19} lowest spinning amplitude at {s} km/h: {first if first is not None else 'none'}")
+
+    if "catch" in only:
+        for s in args.sine_speeds.split(","):
+            print(f"\ncatch at {s} km/h (+-2 km/h neighbours): reaction time (s), the sine dwell's steer fraction, peak sideslip (deg) "
+                  "from the catch on and its range, s to settle, swings to the other side, speed when settled (km/h), caught of 3")
+            print(f"{'car':14} {'physics':19} {'react':>5} {'steer':>5} {'beta':>6} {'range beta':>11} {'settle':>6} {'swings':>6} {'v':>5} caught")
+            for c, p in cases:
+                for x in args.reactions.split(","):
+                    largest, clean = None, True
+                    for a in LADDER:
+                        rs = [res.get(f"{tag(c, p)}-catch-{float(s) + d:g}-{a:g}-{x}") for d in DELTAS]
+                        n = sum(1 for r in rs if not err(r) and r["caught"])
+                        clean = clean and n == len(DELTAS)
+                        if clean:
+                            largest = a
+                        if err(rs[0]):
+                            continue
+                        r = rs[0]
+                        print(f"{short(c):14} {p:19} {x:>5} {a:5.2f} {r['beta']:6.1f} {spread([q['beta'] for q in rs if not err(q)], '.0f'):>11} "
+                              f"{r['settle']:6.2f} {r['swings']:6d} {r['v']:5.0f} {n}/3")
+                    print(f"{short(c):14} {p:19} largest amplitude caught at {s} km/h, reaction {x} s: {largest if largest is not None else 'none'}")
 
     for family, label in (("lift", "lift in turn"), ("power", "power in turn")):
         if family in only:
