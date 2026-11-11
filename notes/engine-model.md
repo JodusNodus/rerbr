@@ -244,16 +244,25 @@ the doc comments. Each line gives its evidence: a source (list at the end), or "
 - Shift cut keeps the share TorqueCut, airflow kept: S2000 cuts ignition or injection only [FIA 254A], and the
   throttle stays open on such cuts [CSP powertrain].
 - No combustion below 150 rpm or when stalled [turboford] (crank speeds 150–250 rpm).
-- Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 (guess). Link
-  enables it above an rpm and a throttle and holds it for a deactivation time after both fall under them
-  [Link ALS manual], 5 s typical [HPA Link ALS]; [MoTeC ALS] was unreachable at the 2026-11 audit. Kick 20 % of the
-  throttle area: a Link user's about 20 % [Link ALS forum]; [Link e-throttle ALS] (about 20 %, 25 % in the
-  closed-pedal cells) was unreachable at the audit. As an area (inferred: a 15 % lift opens 5 % of the area, and the
-  turbo ran down). Retard 60° (guess): Link's retard table is an offset, −25 to −50° typical [Link retard]; the same
-  user ran about −50°. Fuel +20 %, cut 30 % (guess): that user ran a cut of about 60 and fuel 0–2 % [Link ALS forum];
-  others keep up to 40–80 % of the fuel limit on the lowest throttle row [HPA ALS]. Boost aim 1.2 bar gauge (guess).
-  60 % of the cut firings' fuel burns in the manifold (guess), and the retard's lost work heats the exhaust as at idle
-  (Turbo); the exhaust sits at the 1150 °C cap within 1 s. The BOV stays shut (inferred: ALS needs the charge).
+- Anti-lag: armed above 0.45·RPMLimit, active with pedal < 0.1 for at most 3 s, re-armed above 0.3 (guess). Link enables
+  it above an rpm and a throttle and holds it for a deactivation time after both fall under them [Link ALS manual], 5 s
+  typical [HPA Link ALS]; [MoTeC ALS] was unreachable at the 2026-11 audit. Kick 20 % of the throttle area: a Link
+  user's about 20 % [Link ALS forum]; [Link e-throttle ALS] (about 20 %, 25 % in the closed-pedal cells) was unreachable
+  at the audit. As an area (inferred: a 15 % lift opens 5 % of the area, and the turbo ran down). Retard 60° (guess):
+  Link's retard table is an offset, −25 to −50° typical [Link retard]; the same user ran about −50°. Fuel +20 %, cut 30
+  % (guess): that user ran a cut of about 60 and fuel 0–2 % [Link ALS forum]; others keep up to 40–80 % of the fuel
+  limit on the lowest throttle row [HPA ALS]. Boost aim 1.2 bar gauge (guess). 60 % of the cut firings' fuel burns in
+  the manifold (guess), and the retard's lost work heats the exhaust as at idle (Turbo); the exhaust sits at the 1150 °C
+  cap within 1 s. The BOV stays shut (inferred: ALS needs the charge). As it ends the retard comes off over 0.1 s
+  (`ALS_FADE`, 2026-11-11, `engine/antilag-exit`; inferred: Link's retard table runs over the throttle and the rpm with
+  values to about 30 % throttle and none from half [Link retard], so it blends out, and the 0.1 s is ours). Switched off
+  at once, the manifold the kick kept at 1.8 bar gave 0.73 of the full torque at 10 % pedal and 0.60 / 0.46 / 0.40 over
+  the next 0.06 s (i20 Coupe WRC 2020, 6000 rpm, a 0.4 s pedal ramp after a 1.5 s lift); with the fade -0.08 / 0.16 /
+  0.28 / 0.33 / 0.37, rising with the pedal. The 2017-21 World Rally Cars read 0.03 / 0.03 / 0.11 / 0.25 of their steady
+  full-throttle g with the throttle at 8 / 14 / 25 / 43 % on the way up (655 openings, Open). From 90 % pedal on the
+  ramp's torque is the same (0.75-0.80, then 0.85-0.89 0.1 s later); WOT at once after a 1 s lift at 4500 rpm reaches
+  half the torque 0.04-0.05 s later than before and 90 % within 0.02 s of before, 0.06 later on the i20 (Celica ST185
+  0.07 s, Focus WRC 2006 0.19, Fiesta Rally2 0.10, Fiesta Rally4 0.29, i20 0.08). Scorecard unmoved.
 
 ## Turbo (`turbo.rs`)
 
@@ -548,9 +557,12 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   gravel, 293 openings; 1.2 then 0.9 on tarmac, 60), and 839 throttle closings put the accelerometer within 0.1 s of the
   pedal channels. The model on the same ramp at 6000 rpm makes 0.75-0.79 of its steady torque as the pedal passes 90 %,
   0.84-0.89 0.1 s later and 0.95 after 0.2-0.3 s (lifts of 0.3-1.5 s); with the anti-lag off 0.50-0.59, 0.60-0.71 and
-  0.85-0.92 after 0.3 s. The anti-lag holds; its last 15 % may come 0.1 s late, inside the 10 Hz data's resolution. Not
-  resolved by the data: as the anti-lag ends at 10 % pedal the model's torque steps to 0.73 of full for 0.05 s on the
-  manifold it kept at 1.8 bar, where the real cars read 0.13-0.16 of their steady g at 21-34 % throttle.
+  0.85-0.92 after 0.3 s. The anti-lag holds; its last 15 % may come 0.1 s late, inside the 10 Hz data's resolution. With
+  the lateral limit at 0.8 g (655 openings, 17 rallies) the real share is 0.03 / 0.03 / 0.11 / 0.25 / 0.47 / 0.93 / 1.02
+  from 0.5 s before the first sample at 90 % to 0.1 s after it, the throttle at 8 / 14 / 25 / 43 / 70 / 98 / 98 %: under
+  the steady map on the way up, no burst as the pedal leaves the stop. The model's anti-lag ended at 10 % pedal with
+  0.73 of the full torque for 0.06 s; its retard now fades (ECU, Anti-lag). Lifts of 2 s and more are under 15 openings:
+  the 3 s limit of the anti-lag is not tested.
 - The 2017-21 World Rally Cars' idle and start line, from the same telemetry (2026-11-10, scratch; the drives begin at
   the start and end at the stop line). At rest in neutral with the throttle shut (España 2021, Deutschland 2019, Finland
   2021: 24-49k samples each) the engines turn at 2250-2750 rpm on 71-79 % of the samples (median 2470-2500) and at
