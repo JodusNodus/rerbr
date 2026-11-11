@@ -199,6 +199,13 @@ deflection `-(soil + Fy)/(cos·k_lat)` and torsion `-(R·Fx + soil)/k_tors`, so 
 trail, phases and friction forces likewise. Below 2 m/s `solve_forces` takes the model's weight and moves its damping
 factors and trail scale toward 1 by it; NGP's hold torque stays. With none set the code is NGP's.
 
+Aero and drivetrain loss hooks (ours, both experimental profiles; `notes/engine-model.md`, "Open";
+`notes/tyre-model.md`, "The experimental profiles' aero"): with an aero model set on the thread
+(`rbr_hybrid::ngp::set_aero_model`, `aero_model.rs`) NGP's downforce update takes its factors on the file's downforce,
+front and rear, and on the drag; with a loss set (`set_four_wheel_drive_loss`, `drive_loss.rs`) the drive wrapper's
+`after_loss` takes it in place of a four-wheel-drive car's smaller `DriveTrainLoss_NGP` (types 6 and 7, on the positive
+drive gain as NGP's). With none set the code is NGP's (rsf_compare drive2/5 84084).
+
 ### Unreachable guards
 
 The bindings in `rbr-hybrid/src/ngp.rs` keep these as declines:
