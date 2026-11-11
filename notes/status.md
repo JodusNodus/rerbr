@@ -121,15 +121,17 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   Settings > Physics, `--physics experimental`): NGP 7's physics with some systems replaced by ours, one crate and one
   seam each. The first is the engine model (`rbr-engine`): a mean-value engine from each car's data in place of NGP's
   torque formula, in NGP's engine wrapper only ([engine-model.md](engine-model.md); explained in
-  [docs/experimental-physics.md](../docs/experimental-physics.md), which the launcher links). NGP 7 stays the default and
-  bit-exact. While experimental, a run with it saves no records, ghosts or championship results; its replays carry the
-  choice. It replaces the input-side throttle model, which is not merged. The tyre model
-  (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to standstill, loose-v1 on soil, NGP's grip level
-  (gravel's 0.9 of it along the wheel; in its profile the aero prototype `wings+downforce` and a four-wheel-drive
-  drivetrain loss of 17 %: user 2026-11-11;
-  [tyre-model.md](tyre-model.md)); in development, not released (user 2026-11-07): only the hidden
-  `--physics experimental-brush` runs it; the launcher's Settings page does not offer it, `scripts/launcher.sh
-  --physics experimental-brush` drives it for a session (unsaved).
+  [docs/experimental-physics.md](../docs/experimental-physics.md), which the launcher links). Since 2026-11-11 (user)
+  the profile also carries the aero fitted on the 2017-21 World Rally Cars' telemetry (`wings+downforce`: the downforce
+  devices' drag, half the files' downforce) and a four-wheel-drive drivetrain loss of 17 % in place of the files' 12
+  ([engine-model.md](engine-model.md), "Wheel power"; [tyre-model.md](tyre-model.md), "The experimental profiles'
+  aero"). NGP 7 stays the default and bit-exact. While experimental, a run with it saves no records, ghosts or
+  championship results; its replays carry the choice. It replaces the input-side throttle model, which is not merged.
+  The tyre model (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to
+  standstill, loose-v1 on soil, NGP's grip level (gravel's 0.9 of it along the wheel, falling with the loose layer's
+  depth, with NGP's soil force held: user 2026-11-11; [tyre-model.md](tyre-model.md)); in development, not released
+  (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's Settings page does not offer
+  it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
   (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
   `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.

@@ -467,34 +467,37 @@ By system: braking 7/17, friction 8/14, part load 6/15, torque 4/6, idle 9/11, e
 
 ## In game
 
-Numbers in `docs/experimental-physics.md` ("In game"), re-run on `a334ec41` (2026-11-10; NGP's runs equal those on
-`cdadc164` to the 0.01 s), experimental = realistic + NGP's tyre (the brush is not released, user 2026-11-07), so
-every gap is the engine's. Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-start.sh` in
-the evidence archive; 0-100 by `harness/car_pace.py` from 0.5 m/s. The same runs with the
-brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
+Numbers in `docs/experimental-physics.md` ("In game"), re-run on `physics/realism-3` (2026-11-11; NGP's runs, and the
+Golf's, the Fiat's and the M3's under exp, whose files carry no downforce, equal those on `a334ec41` to the 0.01 s),
+experimental = realistic + the profile's aero and 17 % four-wheel-drive loss on NGP's tyre (the brush is not released,
+user 2026-11-07). Tools `run-stage-compare.sh`, `cmp2.py` and `run-standing-start.sh` in the evidence archive; 0-100 by
+`harness/car_pace.py` from 0.5 m/s. The same runs with the brush (main `0ef55141`) are in `notes/tyre-model.md` ("In
+game").
 
 - The model's torque goes to the drivetrain whole (2026-11-10, user decision; `rbr-hybrid` `engine_wrapper`): NGP's
-  wrapper divides its formula's by 1.05, and the car files carry the makers' crank figures (file = sheet on the
-  Fiesta Rally2, Rally3, Rally3 Evo, Rally4 and WRC, Clio Rally3, 208 Rally4; Polo GTI R5's file 5 % over
-  Volkswagen's 272 PS / 400 N·m; Alpine A110 Rally 440 N·m against Signatech's 500; sources in the doc's "Power
-  delivered"). So exp is 5 % over NGP at WOT. Masses are the class minimum + 200 kg on the tyres (static loads by
-  `--tyre-probe`; FIA's crew is 160 kg; wheel masses add nothing), the wheelbase (CG over the static front share)
-  within 1 cm of the sheet's on seven cars.
-  Scorecard unchanged (60/92, no row moves: fixed-speed rows).
-- track-11_O (gravel) 600 s, four cars: exp 1.9–4.7 % sooner to split 2 (split 2 exp
-  Fiesta 434.15, Celica 435.01, Golf 444.98, Fiat 446.19 s; with the torque over 1.05 they were 434.90, 436.42,
-  446.00, 447.55: the autopilot's caution sets the pace).
-- track-41_M (tarmac): exp 1.8–4.4 % sooner to split 2, finishes Fiesta 309.01 / 303.76, Celica
-  310.91 / 303.48, Golf 324.24 / 312.39, Fiat 323.35 / 313.42 s. No stall: the Golf II GTI's full brake on the run-out
-  bottoms at 82 rad/s with the clutch open (NGP's Golf 89; was a stall with wheels locked at 16 m/s, engine
-  464 → 0 rad/s in 0.8 s, fixed by the relock rule, see Open).
+  wrapper divides its formula's by 1.05, and the car files carry the makers' crank figures (file = sheet on the Fiesta
+  Rally2, Rally3, Rally3 Evo, Rally4 and WRC, Clio Rally3, 208 Rally4; Polo GTI R5's file 5 % over Volkswagen's 272 PS /
+  400 N·m; Alpine A110 Rally 440 N·m against Signatech's 500; sources in the doc's "Power delivered"). So the exp engine
+  is 5 % over NGP's at WOT; at the wheels a 2WD car keeps that and a 4WD car is 1 % under ngp's with the 17 % loss
+  (Open, "Full-throttle acceleration"). Masses are the class minimum + 200 kg on the tyres (static loads by
+  `--tyre-probe`; FIA's crew is 160 kg; wheel masses add nothing), the wheelbase (CG over the static front share) within
+  1 cm of the sheet's on seven cars. Scorecard unchanged (60/92, no row moves: fixed-speed rows).
+- track-11_O (gravel) 600 s, four cars: exp 0.8–4.7 % sooner to split 2 (split 2 exp Fiesta 438.97, Celica 438.88, Golf
+  444.98, Fiat 446.19 s; the two 4WD cars 434.15 and 435.01 before the aero and the loss; with the torque over 1.05 the
+  four were 434.90, 436.42, 446.00, 447.55: the autopilot's caution sets the pace).
+- track-41_M (tarmac): exp 0.6–4.4 % sooner to split 2, finishes Fiesta 309.01 / 307.42, Celica 310.91 / 306.05, Golf
+  324.24 / 312.39, Fiat 323.35 / 313.42 s (the two 4WD cars 303.76 and 303.48 before the aero and the loss; the Fiesta's
+  revs now peak 204 rpm under its limit). No stall: the Golf II GTI's full brake on the run-out bottoms at 82 rad/s with
+  the clutch open (NGP's Golf 89; was a stall with wheels locked at 16 m/s, engine 464 → 0 rad/s in 0.8 s, fixed by the
+  relock rule, see Open).
 - Limiter: no experimental car over `RPMLimit` beyond one whole-rad/s sample, in gear or on the line (the start mode
   holds the turbo cars' countdown revs; before it the Fiesta's start burnout was 0.5–0.6 s over, +34 rpm).
-- 0-100 km/h on the flat pad (`harness/pad_start.py`: `--stage pad-tarmac|pad-gravel --flat-out`, timed from
-  0.5 m/s), NGP / exp, the clutch dump (the plain autopilot's start) and the best start (`--drive-slip K
-  --clutch-help off`, the fastest of K 0.05-0.3; `autopilot::start`). Fiesta Rally2 tarmac dump 4.05 / 3.89, best
-  4.03 / 3.85; gravel 4.62 / 4.49, best 4.45 / 4.29. Polo GTI R5 tarmac 4.11 / 3.93 both starts (Volkswagen:
-  "approx. 4.1 s"; its file is 5 % over the sheet), gravel 4.79 / 4.59, best 4.60 / 4.41.
+- 0-100 km/h on the flat pad (`harness/pad_start.py`: `--stage pad-tarmac|pad-gravel --flat-out`, timed from 0.5 m/s),
+  NGP / exp, the clutch dump (the plain autopilot's start) and the best start (`--drive-slip K --clutch-help off`, the
+  fastest of K 0.05-0.3; `autopilot::start`). Fiesta Rally2 tarmac dump 4.05 / 4.13, best 4.03 / 4.12; gravel 4.62 /
+  4.79, best 4.45 / 4.55 (exp 3.89, 3.85, 4.49, 4.29 before the aero and the loss). Polo GTI R5 tarmac 4.11 / 4.19 both
+  starts (Volkswagen: "approx. 4.1 s"; its file is 5 % over the sheet); its gravel not re-run (4.79 / 4.59, best 4.60 /
+  4.41 before).
 - The start driver (`--flat-out`): upshifts where the next gear's thrust at the ground speed wins (the car's torque
   knots and ratios; limit less 300 rpm at the latest). The best start passes the countdown in first with the clutch
   in at the power peak's revs, slips the clutch to hold the most-slipping wheel at K (opening under the torque
@@ -506,24 +509,23 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   (M3 6.72 / 5.76). Lada VFTS and 208 R2 gain nothing on tarmac (Lada: 0.61 g spinning against 0.67 g on the
   clutch). All cars pull under their later g in the first 0.2 s whatever the slip allowed (C2 0.48 g to 5 km/h):
   not looked into.
-- Start mode (anti-lag classes): limiter at 0.6 of the limit with 60° retard on the fired events while it cuts,
-  over 90 % pedal with every wheel under 0.5 m/s and the body under 1.0 m/s (Link G4+ launch control for the shape;
-  the four values guesses); the cut fuel burns by the anti-lag path. A handbrake turn with the clutch in stays out
-  (the body moves); spinning without moving leaves it (a wheel turns). The autopilot holds full throttle through
-  the countdown, so the boost is built at the go. Tarmac dump 0-100 NGP / exp: Fiesta Rally3 5.18 / 4.99, Rally3 Evo
-  4.73 / 4.60, Clio Rally3 4.43 / 4.35; the mode took 0.22, 0.47 and 0.37 s off them (measured with the torque over
-  1.05: 5.45 → 5.23, 5.25 → 4.78, 4.88 → 4.51); Polo, Rally2, i20 WRC gained nothing from it. Bench standing 3 s, boost with/without (bar abs): Rally3 2.37/1.35, Polo
-  2.53/1.64, Celica 2.31/1.61. The plain autopilot selects first when the revs pass `LAUNCH` or set no new maximum
-  for 0.1 s (the start limiter sits under `LAUNCH`); under NGP its traces are byte-identical to before (Fiesta
-  Rally2, Escort, 208 R2 on track-11_O). Telemetry untouched (no sound change).
-- The same on stages (Fiesta Rally2, dump / best of K 0.15 and 0.2): RSF 504 tarmac +6.7 % NGP 4.57 / 4.56, exp
-  4.37 / 4.37; track-64_E gravel flat 4.66 / 4.54, 4.52 / 4.39; RSF 345 gravel −4 % 4.54 / 4.37, 4.35 / 4.18.
-- Published figures against tarmac dump / best, NGP then exp: Polo GTI R5 about 4.1 s (Volkswagen) 4.11 / 4.11,
-  3.93 / 3.93; i20 Coupe WRC under 4 s (Hyundai) 3.32 / 3.28, 3.23 / 3.15; Fiesta Rally3 about 5 s to 62 mph
-  (M-Sport, 1210 kg; ours 1410 kg) 5.18 / 5.18, 4.99 / 4.99; enthusiast sites: M3 Group A touring car about 4.3 s
-  to 60 mph (330 bhp, 940 kg; ours 300 bhp, 1225 kg) 4.67 / 4.20, 4.46 / 4.01; 911 SC RS 5.3 s to 60 mph 4.23 /
-  3.83, 4.53 / 3.72; quattro A2 about 4.5 s 3.23 / 3.15, 3.10 / 3.10. No timed figure found for
-  the other 36 cars; no measured Rally2 figure.
+- Start mode (anti-lag classes): limiter at 0.6 of the limit with 60° retard on the fired events while it cuts, over 90
+  % pedal with every wheel under 0.5 m/s and the body under 1.0 m/s (Link G4+ launch control for the shape; the four
+  values guesses); the cut fuel burns by the anti-lag path. A handbrake turn with the clutch in stays out (the body
+  moves); spinning without moving leaves it (a wheel turns). The autopilot holds full throttle through the countdown, so
+  the boost is built at the go. Tarmac dump 0-100 NGP / exp: Fiesta Rally3 5.18 / 5.30, Rally3 Evo 4.73 / 4.83, Clio
+  Rally3 4.43 / 4.56; the mode took 0.22, 0.47 and 0.37 s off them (measured with the torque over 1.05: 5.45 → 5.23,
+  5.25 → 4.78, 4.88 → 4.51); Polo, Rally2, i20 WRC gained nothing from it. Bench standing 3 s, boost with/without (bar
+  abs): Rally3 2.37/1.35, Polo 2.53/1.64, Celica 2.31/1.61. The plain autopilot selects first when the revs pass
+  `LAUNCH` or set no new maximum for 0.1 s (the start limiter sits under `LAUNCH`); under NGP its traces are
+  byte-identical to before (Fiesta Rally2, Escort, 208 R2 on track-11_O). Telemetry untouched (no sound change).
+- The same on stages (Fiesta Rally2, dump / best of K 0.15 and 0.2): RSF 504 tarmac +6.7 % NGP 4.57 / 4.56, exp 4.73 /
+  4.73; track-64_E gravel flat 4.66 / 4.54, 4.81 / 4.64; RSF 345 gravel −4 % 4.54 / 4.37, 4.61 / 4.42.
+- Published figures against tarmac dump / best, NGP then exp: Polo GTI R5 about 4.1 s (Volkswagen) 4.11 / 4.11, 4.19 /
+  4.19; i20 Coupe WRC under 4 s (Hyundai) 3.32 / 3.28, 3.39 / 3.39; Fiesta Rally3 about 5 s to 62 mph (M-Sport, 1210 kg;
+  ours 1410 kg) 5.18 / 5.18, 5.30 / 5.27; enthusiast sites: M3 Group A touring car about 4.3 s to 60 mph (330 bhp, 940
+  kg; ours 300 bhp, 1225 kg) 4.67 / 4.20, 4.46 / 4.01; 911 SC RS 5.3 s to 60 mph 4.23 / 3.83, 4.54 / 3.71; quattro A2
+  about 4.5 s 3.23 / 3.15, 3.22 / 3.21. No timed figure found for the other 36 cars; no measured Rally2 figure.
 
 ## Open
 
@@ -547,30 +549,30 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
 - Wheel power against the 2017-21 World Rally Cars' telemetry (2026-11-10; `notes/tyre-model.md`, "Real stage
   telemetry": `harness/rally_wot.py fit` on seven tarmac events): 221-234 kW at 6500-7500 rpm at 1390 kg; the i20 Coupe
   WRC 2020 by the same fit 225-239 under ngp and 249-258 with the whole torque (9-16 % over). From the sheet's 380 PS
-  the real cars lose 17-20 % to the road, the file's driveline 12 %. Not changed under `experimental`: the whole torque
-  is the user's decision (In game), the read scales with the mass assumed, and no other class has telemetry; under
-  `experimental-brush` a four-wheel-drive car loses 17 % (next item). From the same data a full-throttle upshift costs
-  what the real ones do (0.08-0.09 s of drive against 0.05-0.11; ngp 0.02-0.05), and the deceleration with the throttle
-  lifted in gear is 30 % under the real cars' with the file's drag (the measured drag area is twice the file's; a
-  prototype of the devices' drag is on `aero/wing-drag`, not merged).
-- Full-throttle acceleration by speed with the aero prototype (2026-11-11, main `dbd36a4b`; `rally_wot.py table`, España
-  2021 against the i20 Coupe WRC 2020 on pad-tarmac): the real cars 0.50 / 0.38 / 0.30 / 0.21 / 0.14 g at 90-100 /
-  110-120 / 130-140 / 150-160 / 170-180 km/h; experimental-brush with `wings+downforce` 0.56 / 0.47 / 0.38 / 0.27 / 0.18
-  (11-28 % over), with the files' aero 0.57 / 0.49 / 0.42 / 0.35 / 0.27, as experimental on NGP's tyre (up to 90 %
-  over). With the real drag in both the thrust left over is 11-17 %: the wheel power's reading above. The gap is the
-  road loss, 17-20 % real against the file's 12 %: a four-wheel-drive car under `experimental-brush` loses 17 % in place
-  of its file's smaller `DriveTrainLoss_NGP` (2026-11-11, user decision; `Profile::drive_loss`,
-  `rbr_hybrid::ngp::drive_loss`: NGP's loss, on the positive drive gain only; the installed 4WD files all carry 12, the
-  2WD ones 8-10 and keep them; `experimental` keeps the file's, its flat-out trace byte-equal). With it 0.55 / 0.45 /
-  0.35 / 0.25 / 0.16 g at those speeds (11-17 % over; with the real drag in both the thrust 5-14 %) and the fit's wheel
-  power 242-250 kW at 6000-7500 rpm (258-267 at 12 % on this profile; the real 221-234). The start on pad-tarmac passes
-  10 / 25 / 50 / 100 m at 1.44 / 2.30 / 3.34 / 4.98 s (1.44 / 2.26 / 3.27 / 4.87 at 12 %) against España's 1.39 / 2.22 /
-  3.26 / 4.90 (94 starts, `rally_wot.py launch`): 25 to 100 m in the real cars' 2.68 s; material 49's 10 to 50 m stay
-  2.05 s. The deceleration with the throttle lifted in gear (`rally_wot.py lift`) is 0.109 / 0.090 g in 6th at 100-120 /
-  80-100 km/h and 0.078 / 0.076 in 5th / 4th at 60-80, against España's 0.145 / 0.101 / 0.085 / 0.089 and Deutschland
-  2019's 0.090 in 6th at 80-100 and 0.085 / 0.094: 8-25 % under at like engine speeds (was 30 %; the tyres' rolling
-  resistance, 0.0066, is part of the rest; the drivetrain's loss does not act with the throttle shut). Material 49 adds
-  0.014 g, inside Finland's and Estonia's 0.085-0.115.
+  the real cars lose 17-20 % to the road, the file's driveline 12 %: both experimental profiles take a 17 %
+  four-wheel-drive loss for it (next item); the whole torque stays (user, In game), the read scales with the mass
+  assumed, and no other class has telemetry. From the same data a full-throttle upshift costs what the real ones do
+  (0.08-0.09 s of drive against 0.05-0.11; ngp 0.02-0.05), and the deceleration with the throttle lifted in gear is 30 %
+  under the real cars' with the file's drag (the measured drag area is twice the file's; the experimental profiles' aero
+  carries the devices' drag, next item).
+- Full-throttle acceleration by speed, the experimental profiles' drivetrain loss and aero (2026-11-11, user decisions;
+  `rally_wot.py table` / `launch` / `lift`, España 2021 against the i20 Coupe WRC 2020 on pad-tarmac). The real cars
+  0.50 / 0.38 / 0.30 / 0.21 / 0.14 g at 90-100 / 110-120 / 130-140 / 150-160 / 170-180 km/h; ngp 0.54 / 0.45 / 0.38 /
+  0.32 / 0.24 (8-70 % over); the whole torque on the file's aero and loss 0.59 / 0.50 / 0.43 / 0.34 / 0.27 (19-86 %
+  over). Both experimental profiles take the aero `wings+downforce` (`notes/tyre-model.md`, "The experimental profiles'
+  aero") and, on a four-wheel-drive car, a 17 % loss in place of its file's smaller `DriveTrainLoss_NGP`
+  (`Profile::drive_loss`, `rbr_hybrid::ngp::drive_loss`: NGP's loss, on the positive drive gain only, so not with the
+  throttle shut; the installed 4WD files all carry 12, the 2WD ones 8-10 and keep them, no telemetry of one). At the
+  wheels a 4WD car is then 1 % under ngp's (0.83 against 0.88 / 1.05), a 2WD car 5 % over. `experimental`: 0.55 / 0.44 /
+  0.34 / 0.25 / 0.16 g (8-16 % over), the fit's wheel power 237-246 kW at 6000-7500 rpm (the real 221-234), the start to
+  10 / 25 / 50 / 100 m 1.38 / 2.21 / 3.25 / 4.89 s (ngp 1.37 / 2.21 / 3.24 / 4.85) against España's 1.39 / 2.22 / 3.26 /
+  4.90 (94 starts). `experimental-brush`: 0.55 / 0.45 / 0.35 / 0.25 / 0.16 g (11-17 % over; with the real drag in both
+  the thrust 5-14 %), 242-250 kW (258-267 at 12 %), 1.44 / 2.30 / 3.34 / 4.98 s with 25 to 100 m in the real cars' 2.68
+  s; material 49's 10 to 50 m 2.05 s at either loss. The deceleration with the throttle lifted in gear (brush profile)
+  is 0.109 / 0.090 g in 6th at 100-120 / 80-100 km/h and 0.078 / 0.076 in 5th / 4th at 60-80, against España's 0.145 /
+  0.101 / 0.085 / 0.089 and Deutschland 2019's 0.090 in 6th at 80-100 and 0.085 / 0.094: 8-25 % under at like engine
+  speeds (30 % on the file's aero; the tyres' rolling resistance, 0.0066, is part of the rest). Material 49 adds 0.014
+  g, inside Finland's and Estonia's 0.085-0.115.
 - The 2017-21 World Rally Cars' pedal map and their response to the pedal, from the same telemetry (2026-11-11;
   `harness/rally_wot.py pedal`: the accelerometer's g between the same gear's with the throttle shut and open, 3rd to
   5th gear above 4000 rpm, the throttle steady for 0.6 s; the channel taken as the pedal). The share of that range at 10
