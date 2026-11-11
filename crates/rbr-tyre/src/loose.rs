@@ -183,12 +183,13 @@ pub fn gravel_damp_level(w: f64, gravel: f64) -> f64 {
 }
 
 /// Gravel's longitudinal level over NGP's, on the gravel share of the soil ([`class_share`]; grass, rock and snow keep
-/// NGP's). A user decision (2026-11-11) on the 2017-21 World Rally Cars' telemetry (`notes/tyre-model.md`, "Straight
-/// braking, the level"): at NGP's level the i20 Coupe WRC brakes at 22-50 % slip 12-26 % harder than the cars in
-/// Finland, the grippiest of the six gravel rallies, and its start and its wheelspin carry as much more; at 0.85 the
-/// braking and the start are Finland's. The lateral level stays NGP's: by hand on Finland's road (RSF 524) the game
-/// corners at 0.95 of the real cars. Ours: one road's ruts and camber are in that split, no tyre is measured so.
-pub const GRAVEL_LONGITUDINAL: f64 = 0.85;
+/// NGP's). A user decision (2026-11-11; `notes/tyre-model.md`, "Straight braking, the level"): on the pad NGP's peak
+/// braking is 5-25 % over the saturated braking of the 2017-21 World Rally Cars in Finland, the grippiest of the six
+/// gravel rallies, and by hand on Finland's road (RSF 524 against the eight cars of 2021's SS7, the same braking zones)
+/// NGP's tyre peaks 6 % over the real cars and this tyre at 0.85 8-17 % under them. The lateral level stays NGP's: the
+/// same drives' apex speeds are 0.88 of the real median and reach it in their best corners. Fitted with the files'
+/// downforce and drag.
+pub const GRAVEL_LONGITUDINAL: f64 = 0.95;
 
 /// The loose layer's depth, m, to which gravel keeps its level (RSF 524's material, Finland's road), the depth of
 /// NGP's loosest gravel, and the level there over NGP's ([`gravel_depth_level`]).
