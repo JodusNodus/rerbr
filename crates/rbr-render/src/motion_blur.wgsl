@@ -96,8 +96,9 @@ fn fs_blur(in: Out) -> @location(0) vec4<f32> {
     let uv = in.position.xy * t.output.zw;
     let centre = load_scene(pixel);
     var v = capped(velocity_at(render_pixel(uv), uv) * blur.x);
-    // Shorter than half an output pixel: the scene unchanged.
-    if (blur.x == 0.0 || length(v) < 0.5 * t.output.w) {
+    // No strength on a frame whose history reset (a camera cut), without a frame time, or with a blur vector
+    // shorter than half an output pixel: the scene unchanged.
+    if (t.params.z > 0.5 || blur.x == 0.0 || length(v) < 0.5 * t.output.w) {
         return vec4<f32>(centre, textureLoad(scene, pixel, 0).a);
     }
     let shift = noise(in.position.xy) - 0.5;

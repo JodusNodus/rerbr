@@ -151,21 +151,21 @@ impl MotionBlur {
     /// Gathers [`MotionBlur::target`] along each pixel's blur vector into `scene` (the post pass's): `time` is the
     /// frame's ([`Renderer::set_time`](crate::renderer::Renderer::set_time)), worked out on the frame's first view
     /// (`first`); the frame's other views (a triple screen's) reuse the same strength and noise, so every view blurs
-    /// alike. `reset` is whether the temporal anti-aliasing reset its history this frame (a camera cut: no strength).
+    /// alike. On a frame whose history reset (a camera cut: `params.z` in the resolve's uniform) the shader takes
+    /// the strength as 0.
     pub(crate) fn draw(
         &mut self,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         scene: &wgpu::TextureView,
         time: f32,
-        reset: bool,
         first: bool,
     ) {
         if first {
             let dt = self.previous.map_or(0.0, |previous| time - previous);
             self.previous = Some(time);
             self.frame = self.frame.wrapping_add(1);
-            let scale = match reset || !(0.0 < dt && dt <= LONGEST_DT) {
+            let scale = match !(0.0 < dt && dt <= LONGEST_DT) {
                 true => 0.0,
                 false => SHUTTER / dt,
             };

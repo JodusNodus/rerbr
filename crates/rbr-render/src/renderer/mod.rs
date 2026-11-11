@@ -454,9 +454,8 @@ impl Renderer {
     /// along each pixel's blur vector into the post pass's scene. The frame's time step is worked out on its first
     /// view (`first`); its other views reuse it.
     fn draw_blur(&mut self, encoder: &mut wgpu::CommandEncoder, first: bool) {
-        let reset = self.taa.as_ref().is_some_and(crate::taa::Taa::was_reset);
         if let Some(blur) = &mut self.motion_blur {
-            blur.draw(&self.queue, encoder, &self.post.scene, self.time, reset, first);
+            blur.draw(&self.queue, encoder, &self.post.scene, self.time, first);
         }
     }
 

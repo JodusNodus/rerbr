@@ -106,8 +106,6 @@ pub(crate) struct Taa {
     /// The frame's size and the output's.
     size: (u32, u32),
     output: (u32, u32),
-    /// Whether [`Taa::prepare`] reset the history this frame (a cut, a resize).
-    reset: bool,
     last: Option<Last>,
     /// `RBR_TAA_DEBUG=motion` or `mask`: show the motion or the car glass's mask instead of the frame (0: the frame).
     debug: f32,
@@ -221,7 +219,6 @@ impl Taa {
             jitter: Vec2::ZERO,
             size,
             output,
-            reset: true,
             last: None,
             debug: match std::env::var("RBR_TAA_DEBUG").as_deref() {
                 Ok("motion") => 1.0,
@@ -242,7 +239,6 @@ impl Taa {
     ) {
         self.targets = targets(device, &self.layout, &self.uniform, &self.sampler, [depth, motion], [size, output]);
         (self.size, self.output, self.last) = (size, output, None);
-        self.reset = true;
     }
 
     /// The mist's layer (`crate::particle_target::ParticleTarget::layer_views`: its depth and colour) that
@@ -280,19 +276,13 @@ impl Taa {
     /// Starts the history again with the next frame.
     pub(crate) fn reset(&mut self) {
         self.last = None;
-        self.reset = true;
     }
 
     /// The resolve's uniform buffer, holding the current frame's clip space to the previous frame's
-    /// (`view_to_prev`) and the frame's and the output's sizes: the motion blur reads them from it.
+    /// (`view_to_prev`), the frame's and the output's sizes, and whether the history reset (`params.z`): the
+    /// motion blur reads them from it.
     pub(crate) fn uniform(&self) -> &wgpu::Buffer {
         &self.uniform
-    }
-
-    /// Whether [`Taa::prepare`] reset the history this frame (a camera cut): the motion blur then has no
-    /// strength.
-    pub(crate) fn was_reset(&self) -> bool {
-        self.reset
     }
 
     /// Begins a frame: the shift its main view's view-projection takes ([`shift`]).
@@ -323,8 +313,7 @@ impl Taa {
         // (a longer history, which gathers about as many samples an output pixel).
         let scale = self.output.0 as f32 / self.size.0 as f32;
         uniform.jitter = [self.jitter.x, self.jitter.y, scale, BLEND * scale / KERNEL_AREA];
-        self.reset = last.is_none();
-        let reset = f32::from(u8::from(self.reset));
+        let reset = f32::from(u8::from(last.is_none()));
         uniform.params = [BLEND, CLIP_SIGMAS, reset, self.debug];
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
         self.last = Some(Last { view_projection, outside });
