@@ -48,9 +48,14 @@
 //!   locked tyre's side force is PLOUGH μ sin α, linear in the slip angle and below free rolling at every angle
 //!   (Coutermarsh, Fig. 16, fig ±0.02: 0.72 sin α against a free rolling 0.55, 1.31 sin α of it; here 1.3 sin α).
 //!
+//! - The berm on gravel by the loose layer's depth ([`gravel_berm`]): the measured layers are 5 cm of graded gravel,
+//!   NGP's gravels 9-30 mm, and a thin layer on a firm bed leaves less to heap up. Linear from none to PLOUGH at
+//!   [`BERM_DEPTH`]: 1.09 at 15 mm, where Finland 2021's braking past 50 % wheel slip is 1.07-1.14 of its force at
+//!   22-32 % (0.72-0.89 against 0.67-0.78 g; note, "Straight braking"). Other soils keep PLOUGH.
+//!
 //! Ours: the smoothstep and its start at a braking slip of 0.8, no berm when driving, PLOUGH the published cars'
-//! 1.25-1.30, and the berm independent of the soil's thickness (the measured layers are 5 cm and graded gravel; NGP's
-//! 9-30 mm) and of speed (no speed trend in the locked-wheel data, 40-80 km/h).
+//! 1.25-1.30, the berm linear in gravel's depth (two points: the 5 cm cars and Finland's road) and independent of
+//! speed (no speed trend in the locked-wheel data, 40-80 km/h).
 
 use crate::brush::{self, Calibration, EvalInput, EvalOutput, KX_OVER_KY, M_CX, M_CY, V_MIN};
 
@@ -60,6 +65,12 @@ pub const PLOUGH: f64 = 1.3;
 /// tyres on compacted snow lock at 1.02-1.08 of their force at 15-20 % slip (Ichihara & Mizoguchi, HRB SR 115, Fig. 3,
 /// fig ±0.02), the middle taken.
 pub const SNOW_PLOUGH: f64 = 1.05;
+/// The loose layer's depth the published locked stops were measured on, m (NHTSA: 5 cm of crushed limestone).
+pub const BERM_DEPTH: f64 = 0.05;
+/// The share of the berm a gravel layer of `depth` (m) builds: linear to the whole at [`BERM_DEPTH`] (see the module).
+pub fn gravel_berm(depth: f64) -> f64 {
+    (depth / BERM_DEPTH).clamp(0.0, 1.0)
+}
 /// The braking slip the berm starts to grow from (ours: near lock, where the tread stops rolling over the material).
 pub const BERM_FROM: f64 = 0.8;
 
@@ -239,7 +250,7 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_de
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
 /// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]) at the loose layer's
 /// `depth` (m); the rest takes the brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is
-/// [`PLOUGH`]. `mu` is the directional friction including the berm (the force's limit).
+/// [`PLOUGH`], on the gravel share times [`gravel_berm`]. `mu` is the directional friction including the berm (the force's limit).
 pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);
@@ -282,7 +293,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
     let b = braking_slip(vsx, x.vx);
     let t = if start < 1.0 { ((b - start) / (1.0 - start)).clamp(0.0, 1.0) } else { 0.0 };
     let plough = PLOUGH + (SNOW_PLOUGH - PLOUGH) * snow.clamp(0.0, 1.0);
-    let berm = (plough - 1.0) * t * t * (3.0 - 2.0 * t);
+    let berm = (plough - 1.0) * (1.0 + (gravel_berm(depth) - 1.0) * share) * t * t * (3.0 - 2.0 * t);
     if berm > 0.0 && s_abs > 0.0 {
         let per_s = berm * out.mu * x.fz / s_abs;
         out.kx += per_s;
@@ -599,6 +610,20 @@ pub(crate) mod tests {
         assert!((locked(1.0) - SNOW_PLOUGH).abs() < 1e-9);
         assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0).abs() < 1e-9);
         assert!((locked(0.0) - PLOUGH).abs() < 1e-9);
+    }
+
+    #[test]
+    fn gravel_builds_the_berm_by_its_depth() {
+        let c = loose();
+        let locked = |gravel: f64, depth: f64| {
+            let x = EvalInput { spin: 0.0, surf_static: 1.0, surf_kinetic: 1.0, ..cal_input(&c.cal, 15.0, 0.0) };
+            let level = GRAVEL_LONGITUDINAL * gravel_depth_level(depth);
+            eval(&x, &c, gravel, 0.0, depth).fx / (0.84 * 4000.0 * (1.0 + (level - 1.0) * gravel))
+        };
+        assert!((locked(1.0, 0.015) - 1.09).abs() < 1e-9);
+        assert!((locked(1.0, BERM_DEPTH) - PLOUGH).abs() < 1e-9 && (locked(1.0, 0.08) - PLOUGH).abs() < 1e-9);
+        assert!((locked(0.0, 0.015) - PLOUGH).abs() < 1e-9);
+        assert!((locked(0.5, 0.015) - (1.09 + PLOUGH) / 2.0).abs() < 1e-9);
     }
 
     #[test]
