@@ -232,7 +232,7 @@ pub const GRAVEL_SOIL_SPEED: f64 = 6.0;
 /// 40-60 deg at 100-160. The 2017-21 World Rally Cars in Finland do not: the p90 of their whole g from 15 / 30 / 40
 /// deg of sideslip up is 1.04 / 1.06 / 1.05 (the path's) and 0.97 / 1.00 / 0.90 (the accelerometer's) at 60-100
 /// km/h, 1.06 / 1.04 / 0.98 and 1.01 / 0.92 / 0.83 at 100-160, and their sliding windows' median 0.80-0.85. Held so,
-/// the pad's medians are 0.84 / 0.85 / 0.84 and 0.92 falling to 0.84 (note, "Slides on gravel"). Ours: the form.
+/// the pad's medians are 0.84 / 0.85 / 0.84 and 0.92 falling to 0.85 (note, "Slides on gravel"). Ours: the form.
 pub fn gravel_soil_share(v_lat: f64) -> f64 {
     let v = v_lat.abs();
     if v > GRAVEL_SOIL_SPEED {
