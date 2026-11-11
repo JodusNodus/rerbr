@@ -149,8 +149,9 @@ impl MotionBlur {
     }
 
     /// Gathers [`MotionBlur::target`] along each pixel's blur vector into `scene` (the post pass's): `time` is the
-    /// frame's ([`Renderer::set_time`](crate::renderer::Renderer::set_time)), `reset` whether the temporal
-    /// anti-aliasing reset its history this frame (a camera cut: no strength).
+    /// frame's ([`Renderer::set_time`](crate::renderer::Renderer::set_time)), worked out on the frame's first view
+    /// (`first`); the frame's other views (a triple screen's) reuse the same strength and noise, so every view blurs
+    /// alike. `reset` is whether the temporal anti-aliasing reset its history this frame (a camera cut: no strength).
     pub(crate) fn draw(
         &mut self,
         queue: &wgpu::Queue,
@@ -158,19 +159,22 @@ impl MotionBlur {
         scene: &wgpu::TextureView,
         time: f32,
         reset: bool,
+        first: bool,
     ) {
-        let dt = self.previous.map_or(0.0, |previous| time - previous);
-        self.previous = Some(time);
-        self.frame = self.frame.wrapping_add(1);
-        let scale = match reset || !(0.0 < dt && dt <= LONGEST_DT) {
-            true => 0.0,
-            false => SHUTTER / dt,
-        };
-        queue.write_buffer(
-            &self.params,
-            0,
-            bytemuck::bytes_of(&Params { scale, frame: self.frame as f32, pad: [0.0; 2] }),
-        );
+        if first {
+            let dt = self.previous.map_or(0.0, |previous| time - previous);
+            self.previous = Some(time);
+            self.frame = self.frame.wrapping_add(1);
+            let scale = match reset || !(0.0 < dt && dt <= LONGEST_DT) {
+                true => 0.0,
+                false => SHUTTER / dt,
+            };
+            queue.write_buffer(
+                &self.params,
+                0,
+                bytemuck::bytes_of(&Params { scale, frame: self.frame as f32, pad: [0.0; 2] }),
+            );
+        }
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("motion blur"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

@@ -301,7 +301,7 @@ impl Renderer {
             span(&mut profiler, encoder, "taa", t);
             if blurred {
                 let t = mark(&mut profiler, encoder);
-                self.draw_blur(encoder);
+                self.draw_blur(encoder, first);
                 span(&mut profiler, encoder, "motion blur", t);
             }
             if self.late_effects() && !upscaling {
