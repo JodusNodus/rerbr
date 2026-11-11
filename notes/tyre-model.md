@@ -1793,8 +1793,26 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   spinning amplitude 0.75 and 0.55 (110 km/h) both, brake in turn at the light pedal 0 / 2 spins of 3 (medium and hard 3
   of 3 both). Ours, not measured: the split (a real road's ruts and camber are in its lateral side, and soil rigs give a
   tyre's longitudinal peak at or above its lateral), the depth as the road's looseness (a stage's materials are its
-  author's) and the fall's size. Wales (2017-19, wet or mixed) is no dry anchor. One driver, two runs a tyre; not driven
-  at 0.9.
+  author's) and the fall's size. Wales (2017-19, wet or mixed) is no dry anchor. One driver, two runs a tyre on NGP's
+  and at 0.85. At 0.9, one run of the i20, to the finish: apex speed 0.89 and 0.96 (median, p90), peak deceleration 0.78
+  against 0.89 g (the clean zones 0.72-0.96), 3 recoveries ("easier, still not as easy as NGP"); the braking as driven
+  does not separate 0.85 from 0.9, which rests on the pad.
+- The pad by hand (2026-11-11, the user, i20 Coupe WRC 2020 on loose-v1 at 0.9, material 49, 180 s,
+  `harness/pad_drive.py` on its own branch; scratch: the tyres' force over their load from the trace's wheel forces, the
+  wheel speed as the rim's over the car's). Straight braking by wheel speed: 0.77 at 0.8-0.9, 0.79-0.80 at 0.3-0.8,
+  0.83-0.85 at 0.1-0.3, 1.02 locked (the berm, 1.28 of the plateau); the car 0.93-0.96 g over 130-100 km/h and 0.89-0.93
+  over 100-70 (the autopilot at κ 0.3 0.92 and 0.85), 1.00-1.09 g locked at 72-45 km/h, where Finland's saturated
+  braking is 0.69-0.76 of the weight at 60-100 km/h and its windows past 50 % slip 0.72-0.89 g: the full pedal is the
+  shortest stop by a quarter, which the published cars on 5 cm layers support and Finland's road does not show. Sliding
+  sideways locked: 1.07 at 54 km/h, 1.32 at 99-126 km/h. Starts, 10 to 50 m: 1.98-2.10 s (Finland 2.10). Cornering
+  without the brake at a sideslip of 10-20 / 20-35 / 35-60 deg: 0.84 / 0.89 / 0.94 at 80-120 km/h and 0.86 / 0.99 / 1.12
+  at 120-190 (NGP's soil force, ∝ v_lat², not measured past 25 m/s), under a load of 1.10-1.13 and 1.18-1.27 of the
+  static (the files' downforce, twice the real cars'). The path's lateral g, best 2 s at 60-80 / 80-100 / 100-120 /
+  120-140 / 140-160 / 160-180 km/h: 0.93 / 1.04 / 1.17 / 1.25 / 1.24 / 1.35 on the level pad, where Finland 2021 (every
+  stage, 55-98 drives a band, GPS, the road's camber and compressions in it) has a median best of 1.38 / 1.30 / 1.25 /
+  1.23 / 1.18 / 1.09 and a p90 of its windows over 0.5 g of 1.17 / 1.11 / 1.06 / 1.02 / 0.99 / 0.93: the game's limit
+  rises with speed and the crews' falls, the game under them to 120 km/h and over from 140. The soil force and the
+  downforce are NGP's, so its tyre should show the same; not driven on it. One run.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
