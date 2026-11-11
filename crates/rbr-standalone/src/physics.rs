@@ -153,6 +153,7 @@ pub fn fit_physics(playback: &Playback, profile: Profile, car: &rbr_engine::Car)
         name => rbr_tyre::model(name, &layout::tyre_wheels(playback), &profile.tyre_tuning)?,
     };
     rbr_hybrid::ngp::set_tyre_model(tyre);
+    rbr_hybrid::ngp::set_four_wheel_drive_loss(profile.drive_loss.filter(|_| ngp));
     rbr_hybrid::ngp::set_aero_model(if ngp { profile.aero } else { "ngp" })
 }
 
