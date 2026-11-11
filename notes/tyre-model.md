@@ -1127,12 +1127,13 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   target 0.71). Scorecard: only `snow-car-locked-decel-50` moves (0.952, was 1.059, PASS); every gravel, tarmac, ice and
   ngp row bit-equal. Pace, autopilot to the finish (Fiesta Rally2): track-10_O 385.48 s (was 385.36; ngp 393.53), RSF 111
   (gravel) 287.08 s unchanged.
-- Ours: the smoothstep and its start at 0.8 (no intermediate slips are published; chosen on the trade-off below: a
-  berm from the full slide holds the wheels off lock at the Fiesta's full-pedal brake torque), no berm when driving
-  (the data are braked; a spinning tyre's sinkage resistance is unmeasured), PLOUGH independent of the soil's
-  thickness (data on 5 cm layers, NGP's 9-30 mm) and of speed (no trend at 40-80 km/h), NGP's soil lateral force kept
-  (NGP's lateral ploughing: 3-4 % of the peak at 30° and 15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5
-  m/s).
+- Ours: the smoothstep and its start at 0.8 (no intermediate slips are published; chosen on the trade-off below: a berm
+  from the full slide holds the wheels off lock at the Fiesta's full-pedal brake torque), no berm when driving (the data
+  are braked; a spinning tyre's sinkage resistance is unmeasured), the berm on gravel linear in the loose layer's depth
+  to PLOUGH at 5 cm (`gravel_berm`, 2026-11-11: the data are 5 cm layers, NGP's gravels 9-30 mm; 1.09 at 15 mm, where
+  Finland's braking past 50 % slip is 1.07-1.14 of its force at 22-32 %; other soils keep PLOUGH), PLOUGH independent of
+  speed (no trend at 40-80 km/h), NGP's soil lateral force kept (NGP's lateral ploughing: 3-4 % of the peak at 30° and
+  15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5 m/s).
 - Carcass at the limit (`brush::step_dynamic`, both surfaces): sliding at the limit, the deflections take the steady
   force's direction (was: a locked wheel's deflection integrated the sliding velocity weighted by c_x/c_y, so its
   side force at 20° was 0.197 against the steady 0.37; in game it moved RSF 111 by 0.02 s and the gravel locked
@@ -1811,8 +1812,12 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   120-140 / 140-160 / 160-180 km/h: 0.93 / 1.04 / 1.17 / 1.25 / 1.24 / 1.35 on the level pad, where Finland 2021 (every
   stage, 55-98 drives a band, GPS, the road's camber and compressions in it) has a median best of 1.38 / 1.30 / 1.25 /
   1.23 / 1.18 / 1.09 and a p90 of its windows over 0.5 g of 1.17 / 1.11 / 1.06 / 1.02 / 0.99 / 0.93: the game's limit
-  rises with speed and the crews' falls, the game under them to 120 km/h and over from 140. The soil force and the
-  downforce are NGP's, so its tyre should show the same; not driven on it. One run.
+  rises with speed and the crews' falls, the game under them to 120 km/h and over from 140. One run. Since then gravel's
+  berm goes by its depth (`loose::gravel_berm`; the autopilot, the i20 from 166 km/h on material 49, before / after):
+  the full pedal 1.05 / 0.90 g over 100-70 km/h and 1.03 / 0.88 over 70-40, the stop 108 / 115 m, where κ 0.3 gives 0.85
+  and 0.80 g and 120 m both; the 30 mm pad's full pedal 0.97 / 0.89 over 100-70. And the rise with speed is the files'
+  downforce on either tyre: the circles' limit at r 40 / 100 / 200 m, NGP's tyre 0.89 / 0.98 / 1.14 g at 69 / 114 / 172
+  km/h, loose-v1 0.86 / 0.95 / 1.11 at 68 / 112 / 170 (the r200 runs end short of the limit).
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
