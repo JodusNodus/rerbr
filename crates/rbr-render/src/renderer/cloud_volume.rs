@@ -292,12 +292,7 @@ impl CloudVolume {
         let (layer, shape) = layer(atmosphere);
         let params = Params {
             previous: previous.unwrap_or(Mat4::IDENTITY).to_cols_array_2d(),
-            state: [
-                p.frame.get() as f32,
-                held as f32,
-                f32::from(u8::from(depth_fresh)),
-                0.0,
-            ],
+            state: [p.frame.get() as f32, held as f32, f32::from(u8::from(depth_fresh)), 0.0],
             weather: [corner.x, corner.y, WEATHER_REACH, 0.0],
             layer,
             shape,
