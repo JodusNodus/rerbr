@@ -47,14 +47,14 @@ pub(crate) fn downforce_update(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
     Ok(Return::void(apply_downforce(&mut ctx.mem, r.stack[0]), 0))
 }
 
-/// `0x10047040`'s work for `p`; returns its eax. With an aero model set (`super::aero_model`, ours), the front
+/// `0x10047040`'s work for `p`; returns its eax. With an aero model set (`super::aero_model`, ours), the file's
 /// downforce and the drag factor take its factors: for the car's sideslip, from the speed along its axis over its
 /// speed (+0x15fc), and for the file's downforce over its `Cd * A`.
 fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
     let car = m.u32(m.u32(p + 8) + 0x580);
     let def = m.u32(car + 0x34);
     let dmg = m.u32(car + 0x9f4);
-    let i = DownforceIn {
+    let mut i = DownforceIn {
         damage: (dmg != 0).then(|| [m.u32(dmg + 0x3db4), m.u32(dmg + 0x3dbc)]),
         front: m.f32(def + 0x1fc),
         rear: m.f32(def + 0x20c),
@@ -64,14 +64,16 @@ fn apply_downforce(m: &mut Mem, p: u32) -> u32 {
         force_sum: m.f32(car + 0x378),
         moment_sum: m.f32(car + 0x310),
     };
-    let mut o = downforce(&i);
-    if let Some(model) = super::aero_model::model() {
+    let model = super::aero_model::model().map(|model| {
         let cd_area = m.drag_coefficient(car) * m.frontal_area(car);
-        let (front, drag) = model.factors(i.speed, m.f32(car + 0x15fc), i.front + i.rear, cd_area);
-        let lost = (1.0 - front) * o.front_force;
-        o.front_force -= lost;
-        o.force_sum -= lost;
-        o.moment_sum -= (i.wheel_arms[0] + i.wheel_arms[1]) * 0.5 * lost;
+        model.factors(i.speed, m.f32(car + 0x15fc), i.front + i.rear, cd_area)
+    });
+    if let Some((front, rear, _)) = model {
+        i.front *= front;
+        i.rear *= rear;
+    }
+    let mut o = downforce(&i);
+    if let Some((.., drag)) = model {
         o.drag_factor *= drag;
     }
     m.set_f32(car + 0x4a4, o.speed_ratio_sq);

@@ -847,6 +847,9 @@ mod tests {
             (format!("{LIVE} --physics experimental-brush --aero wings+yaw"), |a| {
                 assert_eq!(a.physics, Profile { aero: "wings+yaw", ..Profile::EXPERIMENTAL_BRUSH })
             }),
+            (format!("{LIVE} --physics experimental --aero wings+downforce"), |a| {
+                assert_eq!(a.physics, Profile { aero: "wings+downforce", ..Profile::EXPERIMENTAL })
+            }),
             (format!("{LIVE} --aero ngp"), |a| assert_eq!(a.physics, Profile::NGP)),
             (LIVE.into(), |a| assert!(a.keeps_records())),
             (format!("{LIVE} --physics ngp"), |a| assert!(a.keeps_records())),
@@ -1067,7 +1070,11 @@ mod tests {
                 format!("{LIVE} --aero yaw"),
                 "--aero needs --physics experimental or experimental-brush (NGP 7's physics stays NGP's)",
             ),
-            (format!("{LIVE} --physics experimental --aero wing"), "--aero wing: one of ngp, yaw, wings, wings+yaw"),
+            (
+                format!("{LIVE} --physics experimental --aero wing"),
+                "--aero wing: one of ngp, yaw, wings, wings+yaw, downforce, downforce+yaw, wings+downforce, \
+                 wings+downforce+yaw",
+            ),
             (
                 format!("{LIVE} --physics experimental-brush --tyre-tuning tarmac=2"),
                 "--tyre-tuning: tyre tuning tarmac=2: from 0.7 to 1.3",

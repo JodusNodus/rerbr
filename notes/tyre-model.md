@@ -2150,6 +2150,25 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   keep this drag. Since (the fit on five more tarmac events, "Full throttle on straights"): the seven events read
   1.47-1.76 m², median 1.66, so the 1.74 the constant is set on is the top of them and the game's own fit with it reads
   1.82; 0.063 in place of 0.074 would put that fit on the median (not changed, the figures here are at 0.074).
+- The downforce's level, a prototype (2026-11-11, `downforce` in `--aero`, alone or as `wings+downforce`,
+  `downforce+yaw`, `wings+downforce+yaw`, with an experimental profile, off by default; `aero_model::DOWNFORCE`): half
+  the file's downforce on both axles, the balance kept; the wings' drag stays on the file's figure. The measure is hard
+  straight braking against the dynamic pressure q (as under Tarmac: 0.5 s windows, brake channel 80 % up, each 20 km/h
+  bin's median from 60 km/h, the line a0 + k q through them, downforce area (k m g - CdA) / a0 at 1390 kg, which a
+  driver holding a fixed share of the limit does not move; scratch analysis). The nine tarmac rallies of 2017-21 with
+  their drag of 1.74 m² read 1.34 (España 2021), 1.47 (Deutschland 2019), 1.30 (Croatia 2021), 1.38 (Ypres 2021), 0.92
+  (Monza 2021), 1.05 (Corse 2019), 3.13 (Catalunya 2019's tarmac days), 1.33 and 1.29 m² (Deutschland 2017, 2018):
+  median 1.33, by the bins' p75 1.43, by their p90 1.51. The game's i20 Coupe WRC 2020 on pad-tarmac from 166 km/h
+  (`brake_test.py`, threshold κ 0.15 and 0.2, ABS 0.12 and 0.15; file 3.54 m²) reads 1.95-2.80 (experimental) and
+  2.60-3.02 (experimental-brush) with its drag of 0.81, 1.66-2.65 and 2.48-3.06 with `wings` at 1.74, and 0.93-1.23 (one
+  run -0.24) and 0.95-1.70 (mean 1.37) with `wings+downforce`. The r40 / r65 / r100 / r160 circles' limit without / with
+  `wings+downforce`: experimental-brush 1.25 / 1.20 g at 81 km/h, 1.36 / 1.28 at 107, 1.48 / 1.35 at 136, 1.66 / 1.42 at
+  180; experimental 1.27 / 1.23, 1.37 / 1.29, 1.47 / 1.33 (r160 with it is out of power at 167 km/h): the gain from 81
+  to 136 km/h goes from 16-18 % to 8-12 %, against the real apexes' flat p90. Not decided: one class and one measure
+  with a rally-to-rally spread of 0.9-1.5 (one at 3.1); a tyre losing 3 % of its friction from 80 to 150 km/h would hide
+  0.65 m²; no published figure found. The measure does not work on gravel (the speed channel is the wheels', which slip
+  15-30 % in hard braking there); pad-gravel's slope with `wings` / `wings+downforce` is 2.2-2.9 / 2.1-2.6e-4 g/Pa
+  (experimental-brush), within the runs' spread.
 - Braking between cars (2026-11-10; `brake_test.py`, pad-tarmac, 100-0 km/h declutched, mean g, best threshold / ABS
   at κ 0.15): Alpine A110 Rally (500 N at 150 km/h) ngp 1.20 / 1.23 (32.7 / 31.9 m), brush 1.21 / 1.25; Fiesta Rally2
   (3100 N) ngp 1.32 / 1.32 (30.0 / 29.8 m), brush 1.31 / 1.33. NGP's tyre tables are the same for every car and the

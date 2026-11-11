@@ -1,7 +1,7 @@
 //! The aero model (ours, experimental, prototypes) of the runs on this thread: NGP's downforce update
-//! ([`super::steps`]) takes its factors on the front downforce and on the drag factor. With none (the default) both
-//! are NGP's: the drag of the car file's `Cd * A`, a road shell's whatever the downforce, and the front downforce and
-//! drag of a car that slides.
+//! ([`super::steps`]) takes its factors on the file's downforce, front and rear, and on the drag factor. With none
+//! (the default) all are NGP's: the file's downforce, the drag of the car file's `Cd * A`, a road shell's whatever
+//! the downforce, and the front downforce and drag of a car that slides.
 //!
 //! `yaw`: both with the car's sideslip. Dominy & Richardson, SAE 2004-01-3508 (a 20 % model of a generic 2004 World
 //! Rally Car on a moving ground, to 15 degrees of slip, three ground clearances; `notes/tyre-model.md`, Aero): the
@@ -13,13 +13,20 @@
 //! (WRC telemetry, 244 drives on tarmac; `notes/tyre-model.md`, Aero) have a drag area of 1.74 m^2 against their
 //! files' 0.81 m^2 with 3.54 m^2 of downforce area; the same rule on the 2006 files gives 0.82 and 1.08 m^2 against
 //! the 2004 model's 0.85.
+//!
+//! `downforce`: [`DOWNFORCE`] of the files' downforce on both axles, so the balance stays. The same cars' hard
+//! straight braking gains with the dynamic pressure as 1.3-1.5 m^2 of downforce area would give (nine tarmac rallies,
+//! their drag of 1.74 m^2 taken off), where the game's i20 Coupe WRC on the same measure reads 2.4-3.1 m^2 with the
+//! file's 3.54 and 0.9-1.7 with half (`notes/tyre-model.md`, Aero). The wings' drag stays on the file's figure, which
+//! it was fitted with.
 
 use std::cell::Cell;
 
 use rbr_physics::ngp::downforce::{REFERENCE_DENSITY, REFERENCE_SPEED};
 
 /// The models' names (`ngp`: NGP's own).
-pub const AERO_NAMES: [&str; 4] = ["ngp", "yaw", "wings", "wings+yaw"];
+pub const AERO_NAMES: [&str; 8] =
+    ["ngp", "yaw", "wings", "wings+yaw", "downforce", "downforce+yaw", "wings+downforce", "wings+downforce+yaw"];
 
 /// The sideslip at which the front downforce is gone, degrees: the mean of the three clearances' straight lines
 /// through their 0 and 15 degree values (18.6, 17.5, 14.2).
@@ -34,27 +41,30 @@ const MIN_SPEED: f32 = 1.0;
 /// The devices' drag area over the square of the downforce area, 1/m^2: (1.74 - 0.808) / 3.54^2.
 const WING_DRAG: f32 = 0.074;
 
+/// The factor on the files' downforce: the telemetry's 1.3-1.5 m^2 over the 2.4-3.1 m^2 the game's reads as.
+const DOWNFORCE: f32 = 0.5;
+
 /// The effects set.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct Model {
     yaw: bool,
     wings: bool,
+    downforce: bool,
 }
 
+const NGP: Model = Model { yaw: false, wings: false, downforce: false };
+
 thread_local! {
-    static MODEL: Cell<Model> = const { Cell::new(Model { yaw: false, wings: false }) };
+    static MODEL: Cell<Model> = const { Cell::new(NGP) };
 }
 
 /// The aero model the runs on this thread step from now on, by name ([`AERO_NAMES`]).
 pub fn set_aero_model(name: &str) -> Result<(), String> {
-    let (yaw, wings) = match name {
-        "ngp" => (false, false),
-        "yaw" => (true, false),
-        "wings" => (false, true),
-        "wings+yaw" => (true, true),
-        _ => return Err(format!("aero model {name}: one of {}", AERO_NAMES.join(", "))),
-    };
-    MODEL.set(Model { yaw, wings });
+    if !AERO_NAMES.contains(&name) {
+        return Err(format!("aero model {name}: one of {}", AERO_NAMES.join(", ")));
+    }
+    let has = |effect| name.split('+').any(|part| part == effect);
+    MODEL.set(Model { yaw: has("yaw"), wings: has("wings"), downforce: has("downforce") });
     Ok(())
 }
 
@@ -77,16 +87,19 @@ pub fn wing_drag_factor(downforce: f32, cd_area: f32) -> f32 {
 
 /// The model set, if any effect is.
 pub(super) fn model() -> Option<Model> {
-    Some(MODEL.get()).filter(|m| m.yaw || m.wings)
+    Some(MODEL.get()).filter(|m| *m != NGP)
 }
 
 impl Model {
-    /// The factors on the front downforce and on the drag for a car with `forward` m/s along its axis of `speed`
-    /// m/s, `downforce` N and `cd_area` from its file ([`wing_drag_factor`]; the damage to its aero parts not taken).
-    pub(super) fn factors(self, forward: f32, speed: f32, downforce: f32, cd_area: f32) -> (f32, f32) {
+    /// The factors on the front downforce, on the rear's and on the drag for a car with `forward` m/s along its axis
+    /// of `speed` m/s, `downforce` N and `cd_area` from its file ([`wing_drag_factor`]; the damage to its aero parts
+    /// not taken).
+    pub(super) fn factors(self, forward: f32, speed: f32, downforce: f32, cd_area: f32) -> (f32, f32, f32) {
         let cos = if speed > MIN_SPEED { (forward.abs() / speed).min(1.0) } else { 1.0 };
         let (front, yaw_drag) = if self.yaw { yaw_factors(cos.acos().to_degrees()) } else { (1.0, 1.0) };
-        (front, if self.wings { yaw_drag * wing_drag_factor(downforce, cd_area) } else { yaw_drag })
+        let level = if self.downforce { DOWNFORCE } else { 1.0 };
+        let drag = if self.wings { yaw_drag * wing_drag_factor(downforce, cd_area) } else { yaw_drag };
+        (front * level, level, drag)
     }
 }
 
@@ -121,14 +134,21 @@ mod tests {
         assert!(model().is_none());
         set_aero_model("yaw").unwrap();
         let yaw = model().unwrap();
-        assert_eq!(yaw.factors(0.1, 0.5, 3700.0, 0.9725), (1.0, 1.0));
-        assert_eq!(yaw.factors(-30.0, 30.0, 3700.0, 0.9725), (1.0, 1.0));
-        let (front, drag) = yaw.factors(30.0 * 10f32.to_radians().cos(), 30.0, 3700.0, 0.9725);
+        assert_eq!(yaw.factors(0.1, 0.5, 3700.0, 0.9725), (1.0, 1.0, 1.0));
+        assert_eq!(yaw.factors(-30.0, 30.0, 3700.0, 0.9725), (1.0, 1.0, 1.0));
+        let (front, rear, drag) = yaw.factors(30.0 * 10f32.to_radians().cos(), 30.0, 3700.0, 0.9725);
         assert!((front - (1.0 - 10.0 / 17.0)).abs() < 1e-3 && (drag - 1.2333).abs() < 1e-3, "{front} {drag}");
+        assert_eq!(rear, 1.0);
         set_aero_model("wings").unwrap();
-        assert_eq!(model().unwrap().factors(20.0, 30.0, 3700.0, 0.9725), (1.0, wing_drag_factor(3700.0, 0.9725)));
+        let wings = wing_drag_factor(3700.0, 0.9725);
+        assert_eq!(model().unwrap().factors(20.0, 30.0, 3700.0, 0.9725), (1.0, 1.0, wings));
         set_aero_model("wings+yaw").unwrap();
-        assert_eq!(model().unwrap().factors(30.0, 30.0, 0.0, 0.8), (1.0, 1.0));
+        assert_eq!(model().unwrap().factors(30.0, 30.0, 0.0, 0.8), (1.0, 1.0, 1.0));
+        set_aero_model("wings+downforce").unwrap();
+        assert_eq!(model().unwrap().factors(30.0, 30.0, 3700.0, 0.9725), (DOWNFORCE, DOWNFORCE, wings));
+        set_aero_model("downforce+yaw").unwrap();
+        let (slid, rear, _) = model().unwrap().factors(30.0 * 10f32.to_radians().cos(), 30.0, 3700.0, 0.9725);
+        assert_eq!((slid, rear), (front * DOWNFORCE, DOWNFORCE));
         assert!(set_aero_model("wing").is_err());
         set_aero_model("ngp").unwrap();
         assert!(model().is_none());
