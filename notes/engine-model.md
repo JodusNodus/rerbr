@@ -552,6 +552,12 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   full-throttle upshift costs what the real ones do (0.08-0.09 s of drive against 0.05-0.11; ngp 0.02-0.05), and the
   deceleration with the throttle lifted in gear is 30 % under the real cars' with the file's drag (the measured drag
   area is twice the file's; a prototype of the devices' drag is on `aero/wing-drag`, not merged).
+- Full-throttle acceleration by speed with the aero prototype (2026-11-11, main `dbd36a4b`; `rally_wot.py table`, España
+  2021 against the i20 Coupe WRC 2020 on pad-tarmac): the real cars 0.50 / 0.38 / 0.30 / 0.21 / 0.14 g at 90-100 /
+  110-120 / 130-140 / 150-160 / 170-180 km/h; experimental-brush with `wings+downforce` 0.56 / 0.47 / 0.38 / 0.27 / 0.18
+  (11-28 % over), with the files' aero 0.57 / 0.49 / 0.42 / 0.35 / 0.27, as experimental on NGP's tyre (up to 90 %
+  over). With the real drag in both the thrust left over is 11-17 %: the wheel power's reading above. Not changed (the
+  whole torque is the user's decision; the gap is the road loss, 17-20 % real against the file's 12 %).
 - The 2017-21 World Rally Cars' pedal map and their response to the pedal, from the same telemetry (2026-11-11;
   `harness/rally_wot.py pedal`: the accelerometer's g between the same gear's with the throttle shut and open, 3rd to
   5th gear above 4000 rpm, the throttle steady for 0.6 s; the channel taken as the pedal). The share of that range at 10

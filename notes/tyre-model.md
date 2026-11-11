@@ -1829,6 +1829,27 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   with the prototype. Left over: braking under 100 km/h 8-10 % above Finland's (a real stop there ends in a corner,
   weak), NGP's soil force at large angles and speed (not measured), and the flat pad's limit under the crews' below 120
   km/h (their road's camber). Not driven.
+- Slides on gravel, loose-v1 against NGP's tyre (2026-11-11, main `dbd36a4b`; scratch readings). The user's five Hassi
+  runs, slides that pass 12 deg of sideslip above 40 km/h after a brake application: on NGP's tyre 28 and 24 (i20, Yaris
+  Rally2), peak median 15-16 deg, none past 35; on loose-v1 16-21 a run, median 17-20, 1-3 a run past 45 without an
+  impact, and 1.1-1.3 s past 12 deg against 0.8-0.9; the yaw rate going in is the same (median 40-45 deg/s), so the
+  brush's slides run deeper and longer on the same inputs. `handling.py --material 49`, i20 Coupe WRC 2020, experimental
+  / experimental-brush at 80 km/h: ramp peak 0.936 / 0.878 g; sine dwell's yaw rate left 1.75 s after the steering at
+  0.55-1.0 of lock 12-19 / 25-34 % (110 km/h 10-36 / 45-52 %, first spin 0.55 both); brake in turn at 0.3 / 0.6 / 0.9 of
+  each tyre's own limit pedal 0 / 1 / 0 spins of 3 against 0 / 3 / 0 (the Fiesta Rally2 1 / 0 / 0 against 0 / 3 / 2 at
+  NGP's pedals); lift in turn mild on both. In the sine dwell's slide (30-50 deg, no pedals) the yaw rate falls 26
+  deg/s² on NGP's tyre and 19 on loose-v1, whose side grip there is 6-8 % higher (NGP's free rolling curve falls 10 %
+  from its peak to 40 deg, loose-v1's is flat). Tried on loose-v1 without effect on those figures: stiffness 0.7 and
+  1.3, response 0.5 and 2, the files' aero; worse: no soil force (110 km/h's yaw rate left 61-67 %, the ramp peak 0.849)
+  and a friction that falls 12-20 % from 20 to 45 deg of slip angle (38-53 % at 80 km/h), so neither NGP's fall nor the
+  soil force is what damps its slides: not found. The real cars on the same road (Finland 2021 SS7, 6 drives,
+  `rally_wot.py sideslip`, 2 s windows) corner at a median sideslip of 14.8 deg at 80-100 km/h and 7.5 at 100-130 (p75
+  20.8 and 14.9), the user at 10-12 and 7-9 on either tyre: no reading says loose-v1 slides too easily, and none
+  measures a real car's yaw damping. Their whole g by sideslip (all stages, the path's / the accelerometer's p90, from
+  15 / 30 / 40 deg up): 1.04 / 1.06 / 1.05 and 0.97 / 1.00 / 0.90 at 60-100 km/h, 1.06 / 1.04 / 0.98 and 1.01 / 0.92 /
+  0.83 at 100-160, level to 14 m/s of sideways speed and 5-13 % down at 18-23, where loose-v1 with the soil force rises
+  (the pad by hand, above): the `yaw` aero prototype, which sheds downforce with sideslip, is the candidate, not tried
+  here.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
