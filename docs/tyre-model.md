@@ -11,8 +11,8 @@ contact patch on hard surfaces at every speed, fitted at load to give NGP's peak
 stiffness, with grip that falls as the tyre slides faster and one friction limit shared by braking and cornering. On
 gravel and snow the same tyre keeps its grip as it slides, and a locked wheel builds a berm of loose material ahead
 of it that brakes it harder than rolling, as measured on gravel. On snow the peak grip is NGP's. On gravel it is
-NGP's sideways and 0.9 of it along the wheel, both lower on deep loose gravel, set on the 2017-21 World Rally Cars'
-telemetry.
+1.06 of NGP's sideways and 0.9 of it along the wheel, both lower on deep loose gravel, set on the 2017-21 World Rally
+Cars' telemetry and on test drives.
 
 The model, its evidence, its numbers in game and the open questions are in
 [notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
@@ -22,8 +22,8 @@ The model, its evidence, its numbers in game and the open questions are in
 Each figure shows the steady force of one tyre, NGP 7's on the left (`ngp`) and the brush on the right
 (`experimental-brush`), on the same wheel: a Fiesta Rally2 front wheel with NGP's car data, at 4 kN load and 15 m/s (54
 km/h), dry. A positive slip angle gives a positive side force; a negative slip ratio brakes, -1 is locked. The peaks
-come from NGP's grip level by design (within 1 % at 4 kN), except gravel's along the wheel; the shapes are where the
-two differ. Every number below is a
+come from NGP's grip level by design (within 1 % at 4 kN), except gravel's (0.9 of it along the wheel, 1.06
+sideways); the shapes are where the two differ. Every number below is a
 row of the tyre scorecard, with its source, in [notes/tyre-model.md](../notes/tyre-model.md#scorecard). In a drive the
 force builds over the tyre's relaxation length; these are the values it settles to. `harness/tyre_curves.py` redraws
 them.
@@ -72,19 +72,22 @@ them.
 - At 10° the brush has 0.95 of its maximum on 9 mm, 0.88 on 17.5 mm and 0.80 from 25 mm (the pea stone tyre 0.80),
   NGP's 0.98.
 - NGP adds the force of the soil a sliding tyre ploughs sideways, growing with the sideways speed: 0.3 g more at 30°
-  of sideslip at 140 km/h. On gravel the brush holds it from 6 m/s of sideways speed, 15° at 80 km/h. The real cars'
-  whole g in Finland is level from 15° to 40° of sideslip (its top tenth 1.04-1.06 at 60-100 km/h), where the game's
-  median rose from 0.87 at 20-30° to 1.00 at 40-60°; with the force held it stays at 0.84-0.85.
+  of sideslip at 140 km/h. On gravel the brush holds it from 10 m/s of sideways speed, 27° at 80 km/h. The real cars'
+  whole g in Finland does not rise with sideslip (its top tenth at 60-100 km/h 0.97 from 15°, 1.00 from 30° and 0.90
+  from 40° on their accelerometers), where the game's with NGP's tyre is 1.01-1.02 and 1.07 above 100 km/h; with the
+  force held the brush's is 0.94, 0.92 and 0.89.
 
 ![Braking and driving force against slip ratio on dry gravel](images/tyre-model/long-gravel.svg)
 
 - Along the wheel the brush has 0.9 of NGP's grip. With NGP's the game's i20 Coupe WRC brakes 5-25 % harder on
   gravel than the 2017-21 World Rally Cars at their hardest in Finland, the grippiest of six gravel rallies; at 0.9
-  a driver stays under the real crews. Sideways the level is NGP's, where the same drives reach the real cars' apex
-  speeds.
-- Deep loose gravel grips less, along the wheel and sideways: NGP's level to 15 mm of loose layer, falling to 0.96 of
-  it at 30 mm. NGP's loosest gravel is then 10 % under its firmest (6 % in NGP), where the six rallies' hardest
-  braking spreads 5-14 %.
+  a driver stays under the real crews. Sideways the level is 1.06 of NGP's: at NGP's the brush's car cornered under
+  NGP's own (0.87 g against 0.91 in a steering ramp at 80 km/h) and felt short of grip in the corners by hand; at 1.06
+  the two corner alike (0.91 g, and 0.92-0.93 g on circles of 65 and 100 m), still under the real cars on their
+  cambered road (their top tenth 1.06 g at 100 m).
+- Deep loose gravel grips less, along the wheel and sideways: the levels above to 15 mm of loose layer, falling to
+  0.96 of them at 30 mm. NGP's loosest gravel is then 10 % under its firmest (6 % in NGP), where the six rallies'
+  hardest braking spreads 5-14 %.
 - Braking force levels off from a slip ratio of about 0.15 (0.25 on deep layers) and holds to 0.8. Past that the wheel
   pushes a berm of gravel ahead of it, larger the deeper the loose layer: locked it brakes 1.05 times its rolling
   peak on 9 mm (the figure), 1.18 times on 30 mm and 1.3 times from 5 cm, the depth of the published stops. Measured

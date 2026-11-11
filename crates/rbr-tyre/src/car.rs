@@ -291,8 +291,8 @@ mod tests {
     #[test]
     fn only_gravel_holds_the_soil_force_past_its_sideways_speed() {
         let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
-        // 24 m/s at 30°: 12 m/s sideways, twice GRAVEL_SOIL_SPEED.
-        let x = rolling(24.0, 30f32.to_radians());
+        // 40 m/s at 30°: 20 m/s sideways, twice GRAVEL_SOIL_SPEED.
+        let x = rolling(40.0, 30f32.to_radians());
         let mut share = |soil_thickness: f32, class: u32, x: ForceInput| {
             let x = ForceInput { soil_thickness, surface_classes: [class; 2], ..x };
             b.forces(wheel().tyre, &x).unwrap().soil_lateral
