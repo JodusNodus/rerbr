@@ -113,6 +113,7 @@ fn every_shader_builds_for_vulkan() {
     failures.extend(check("post", crate::post::SHADER, &flags(&["SHAFTS"])));
     failures.extend(check("light shafts", crate::light_shafts::SHADER, &none()));
     failures.extend(check("taa", crate::taa::SHADER, &none()));
+    failures.extend(check("motion blur", crate::motion_blur::SHADER, &none()));
     failures.extend(check("skid marks", crate::skidmarks_pass::SHADER, &none()));
     failures.extend(check("tyre marks", crate::skidmarks_pass::TYRE_SHADER, &none()));
     failures.extend(check("glass", crate::glass::gpu::SHADER, &none()));

@@ -446,23 +446,42 @@ impl Renderer {
         Some(vertices)
     }
 
+    /// The frames from now on hold every grass tile in reach, waiting for the worker's: for a screenshot, which is one
+    /// frame, so that it shows the field a drive does.
+    pub fn wait_for_grass(&mut self) {
+        if let Some(ring) = &mut self.grass {
+            ring.waits = true;
+        }
+    }
+
     /// Fills the grass tile meshes the eye at `eye` now wants ([`crate::grass::Ring::update`]).
     pub(super) fn stream_grass(&mut self, eye: Vec3) {
         let Some(mut ring) = self.grass.take() else { return };
-        for crate::grass::Filled { mesh: index, vertices, bounds, staged } in ring.update(eye) {
-            let mesh = &mut self.meshes[index];
-            let buffer = &self.buffers[mesh.slot.buffer].vertices;
-            match staged {
-                Some(staged) => self.uploads.copy(&staged, buffer, vertex_offset(mesh.slot)),
-                None if !vertices.is_empty() => {
-                    self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
+        loop {
+            let filled = ring.update(eye);
+            let idle = filled.is_empty();
+            for crate::grass::Filled { mesh: index, vertices, bounds, staged } in filled {
+                let mesh = &mut self.meshes[index];
+                let buffer = &self.buffers[mesh.slot.buffer].vertices;
+                match staged {
+                    Some(staged) => self.uploads.copy(&staged, buffer, vertex_offset(mesh.slot)),
+                    None if !vertices.is_empty() => {
+                        self.uploads.write(buffer, vertex_offset(mesh.slot), cast_slice(&vertices));
+                    }
+                    None => {}
                 }
-                None => {}
+                mesh.bounds = Some((bounds.center, bounds.half_extent));
+                // Only the tile's cards are drawn: past them the mesh holds an earlier tile's.
+                for draw in &mut mesh.draws {
+                    draw.indices.end = draw.indices.start + (vertices.len() / 4 * 6) as u32;
+                }
             }
-            mesh.bounds = Some((bounds.center, bounds.half_extent));
-            // Only the tile's cards are drawn: past them the mesh holds an earlier tile's.
-            for draw in &mut mesh.draws {
-                draw.indices.end = draw.indices.start + (vertices.len() / 4 * 6) as u32;
+            // A finished tile with no mesh to fit stays ready for good: only the worker's tiles are waited for.
+            if !ring.waiting() && (idle || !ring.waits) {
+                break;
+            }
+            if idle {
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
         }
         self.grass = Some(ring);

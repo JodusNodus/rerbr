@@ -737,6 +737,13 @@ splash never shows on a wet stage.
   0.007, day Gabiria and 621 fly-by 0); other particles keep `sun_reach`. Effects pass in the 532 fly-by 2.6 to
   3.7 ms. Tried and dropped: peak alpha 0.9/0.55 to 0.7/0.4 (thinned gab-lit's and Odry's); `DUST_SUN` 2.2 to 1.6
   and a 0.75 far veil (dimmed gab-lit's far more than the 532 plume, so it stays a bright tan body).
+- Dust shadow taps (2026-11-11, `dust_sun_reach`): 28 taps evenly along the view ray through the puff, each off it
+  by a point of a 2.5-texel spiral disc, in the second cascade at the finest (2.5 to 5 cm texels; its own where
+  that one does not hold the point). Before, seven places along the ray with four taps 2.5 texels apart, in the
+  first cascade's 1 cm texels: a canopy's flecks printed on the dust as a grid of blocks (Odry chase, Comb I
+  fly-by; particles drawn after the resolve, so the frame showed it as the shot did). Particles pass, 1080p ultra:
+  Odry chase 0.33 to 0.28 ms, Comb I fly-by 1.98 to 1.77 ms. Tried and dropped: the four taps turned by a golden
+  angle a place (speckle), the same in the second cascade (spots a tap's spacing apart, the shafts gone).
 - No spray in the cabin (2026-11-01, `fs_soft`): in the in-car views the soft particles fade inside the cabin reach
   (2 to 2.5 m from the eye) as the rain does; the wheels' spray showed through the GC8's footwell gaps (52 rain
   cockpit `--at 4500` now matches `--no-particles` there). Rain chase byte-identical. The eye sphere is now the
@@ -1071,6 +1078,21 @@ byte-identical before and after (chase, cockpit, heavy rain, 1920x1080).
 | `windscreen` | the windscreen seen from inside as glass: the pane (Fresnel loss, dust, specks, wiper scratches, water spots) and the cabin reflected in it, a mirror pass of its own every 2nd frame whatever `--mirrors` says (held with the car between) ("Windscreen and wipers" above). Off: the frame as before |
 | `wet` | the wet road, in wet and damp weather: a film and puddles over the ground whose `.col` surface takes them (tarmac 1, gravel and dirt 0.5), retail and community alike (user decision 2026-10-25; `puddles.rs`). Screen-space reflections on the wet roads: +12 to 17 ms at 1080p; film alone +0.9 to 1.7 ms; load +0.2 s. Wet film (2026-10-28): the rays missed the car, so the film halves back to any crossing and `reach` judges it (`film` in `trace`); the far road takes the sky, the near road stays dark. 41O chase screen reflections 1.32 to 1.50 ms at 1080p. Loose roads (2026-10-28): the half-film road's film was a pale even sheet; its reflection now falls with the film's share, so the stones show through and puddles stand out (tarmac and dry byte-identical; 52O/21O chase screen reflections 1.46/1.67 to 1.14/1.37 ms). The rings were never on the film: they were in the puddles. Damp is a drying road: no puddles, rings or screen-space reflections, the film 0.4 of the wet one's, the ground soaked by half (41M dry 101, damp 68, wet 59 at 13:00; 460M 147 to 131; 45O 140 to 118). 41M +0.9 ms, 45O within noise; wet and additions off unchanged byte for byte (2026-10-26). Wet road edge (2026-10-28): the reflection and glint fade over the outer 0.1 to 0.8 m, frayed by noise (puddles and the road's darkness stay); mean distance 1.2 m on 41M, 0.3 m on Gabiria; damp and dry byte-identical. By texture (2026-10-28): a film triangle takes the share most film triangles of its texture have (Bois de Bie tags stretches of tarmac as gravel: 46000 `Gravel_Fine_Shallow_Wet` against 139000 `Tarmac_Coarse_Clean_Wet`); retail Fraizer Wells byte for byte, damp Gabiria RMSE 0.0003. Wet road look (2026-10-28, tarmac first): the film alone is darker and its reflection takes the asphalt's grain, its normal tilted by microrelief and rain's impacts, fading to the mean between 4 and 25 m. Tried and dropped: a 0.12 tilt (white sky blobs over the near road). Gravel nearly unchanged; dry, snow, night byte-identical. Flyby 1080p scene 1.72 to 1.80 ms, screen reflections 1.58 to 1.85 ms; cockpit within noise. Tarmac's even film (2026-10-28, user decision): where the film share is 1 there are no random puddles and only the hollows hold water, so the bumper and plate read in the road near the car. Rain rings on tarmac only in the hollows' water; the film shows fine splash specks instead. Round 2 roughens the normal at the grain in place of the 5 and 2 cm waves. The near road's olive cast is the green bank's reflection, kept. Gravel and dirt keep the film and puddles (52O chase RMSE 0.0000022); dry, damp, snow and night-dry byte-identical; Luceram fly-by within compiler noise (RMSE 0.00015). Puddles at the edge (2026-10-28): puddles now end 0.05 to 0.2 m from the edge, frayed as the film is; 52O chase RMSE 0.017, dry byte-identical. Wheel tracks (2026-10-28, loose roads only): the water lies in two tracks 1.5 m in from the road's edge, rims frayed by 7 cm stone noise; damp keeps its old spray. 52O chase scene 2.54 to 2.65 ms, screen reflections 1.69 to 1.74 ms; dry, damp, snow, night byte-identical, Luceram within compiler noise (RMSE 0.00015). Cost at 4K (2026-11-06, wet 127 chase): `wet_plus` 1.05 ms of the scene, `puddled` 0.9 of it; the edge's fray noise once a pixel (was three times) and the zero-share shapes skipped (stray puddles on tarmac, tracks and stones off loose roads): scene 6.70 to 6.51, screen reflections 2.90 to 2.81; B 5.82 to 5.64 and 1.82 to 1.70; exact (1080p shots RMSE 0 but a pixel) |
 
+Motion blur (ours, experimental, 2026-11-11): `--enhance blur` (`Enhance::motion_blur`, not in `all`; the launcher's
+"Motion blur", `motion_blur`, off by default and left alone by the presets), only with the TAA: the resolve writes into the blur's target (the output's size) and `motion_blur.wgsl`
+gathers it along each pixel's blur vector into the post pass's scene. The velocity is the motion target's where z >
+0.5 else the point from the reversed depth through the TAA's `view_to_prev` (as `previous_uv` finds it), times
+`SHUTTER` 1/120 s over the frame time (0 past 0.1 s or without a previous frame; the shader takes 0 from the resolve's
+`params.z` on a cut), centred and capped at `MOST` 0.05 of the output height; 11 taps with interleaved gradient noise,
+each but the centre weighted by its own vector's length over the centre's, so the car and the cabin stay sharp and
+bleed nothing. The frame's time step is worked out on its first view, so a triple screen's side views blur as the
+centre does. Cost (Gabiria chase): 0.09 ms at 1080p, 0.38 ms at 4K. Off byte-identical (chase, cockpit RMSE 0).
+
+Dense grass in a screenshot (2026-11-11, `Renderer::wait_for_grass`): `viewer --screenshot` waits for the worker's
+tiles before its frame. One frame held only the tiles built on it (within `SYNC_DISTANCE`, 24 m), so every
+reference shot showed a bare hillside past that where a drive has the field to 110 m (580 chase, the bank to the
+right). A repeat render is byte-identical; the window and the videos stream as before.
+
 Dense grass placement and size (2026-11-10):
 
 - Placement uses unblurred blended textures before vertex tint, with grassiness at least 0.5 at the root and eight
@@ -1182,6 +1204,11 @@ Lighting, in pieces (all with `lighting`; each measured on its own before the me
   `volume_density` (2026-11-10): adding the layer base before normalizing had put every clear and light-cloud sample
   above 1, so those presets cast no shadows. Nordschleife at 13:00, light cloud: open ground 0, cloud shade 253 to
   254/255 in the raw shadow diagnostic.
+  First frames (2026-11-11, `volume_now`, `volume_blend`): a direction the history does not hold (the first frame, a
+  cut, the sky a turn brings in) is marched four times, the starts a quarter step apart, and a history of n frames
+  takes the new one as 1 / (n + 1) until that is under `VOLUME_BLEND`. One march blended at 0.12 left its dither as
+  a diagonal weave at every cloud edge of a screenshot (one or two frames) and for a few dozen frames after a cut;
+  30 frames in, the image is as before. The steady frame marches once, as before.
   The 36 reference shots with the probe blend held fixed (2026-11-10): cloud shadows alone leave 24 pixel-identical,
   change seven by more than 1/255 RMS and five by less. Largest: Falstone 27.90, Pengonpohja 27.69, Sipirkakim
   26.88/255; direct warm light and sun shafts fall in cloud shade, with exposure sometimes lifting the sky. All four
@@ -1590,5 +1617,9 @@ maximum. Quick with two binaries: about 2.5 to 4 minutes.
   alpha cut falls where the filtered colour is half black (462 `HOR_1`, `HOR_2`: transparent texels (0, 0, 0)). A fix
   bleeds the colour into them at load (the textures upload as BCn, so a decode and re-encode) or reads such textures
   as premultiplied; either changes every cut-out with black transparent texels, trees included.
+  Cut-out textures (2026-11-11, `examples/cutout_survey.rs`, by triangles drawn): most are DXT3 or DXT5 with a
+  smooth alpha (7 to 17% of texels neither 0 nor 255); the clear texels are black on 0 to 2% of 621's and 532's,
+  10 to 19% of 450's and 580's, 25% of Semetin's, 38 to 53% of Odry's, 25 to 40% of retail 41's and 52's DXT3.
+  The stages' DXT1 cut-outs have no clear texels (retail's 15 to 26%, all black).
 - Stage `c90`; kind-byte blend bits; reflection items `(1,7)`; water texture.
 - Wheel set shown; `Plane_*` shadows; detached node motion; `pc_e_window_*` panels.

@@ -130,6 +130,7 @@ pub struct Settings {
     pub grass: Option<bool>,
     pub windscreen: Option<bool>,
     pub marks: Option<bool>,
+    pub motion_blur: Option<bool>,
     /// One of [`RENDER_SCALES`].
     pub render_scale: Option<u32>,
     /// The wet roads (`viewer --enhance wet`, `--reflections`).
@@ -437,6 +438,7 @@ impl Settings {
             grass: launcher.on_off("grass"),
             windscreen: launcher.on_off("windscreen"),
             marks: launcher.on_off("marks"),
+            motion_blur: launcher.on_off("motion_blur"),
             render_scale: launcher.number("render_scale").filter(|v| RENDER_SCALES.contains(v)),
             wet_roads: launcher.choice("wet_roads"),
             detail: launcher.choice("detail"),
@@ -570,6 +572,7 @@ impl Settings {
             ("grass", on_off_text(self.grass)),
             ("windscreen", on_off_text(self.windscreen)),
             ("marks", on_off_text(self.marks)),
+            ("motion_blur", on_off_text(self.motion_blur)),
         ] {
             if let Some(v) = value {
                 out.push_str(&format!("{key} = {v}\n"));
@@ -654,6 +657,7 @@ mod tests {
             grass: Some(true),
             windscreen: Some(false),
             marks: Some(true),
+            motion_blur: Some(true),
             render_scale: Some(75),
             wet_roads: Some(WetRoads::Low),
             detail: Some(Detail::Ultra),
@@ -792,7 +796,7 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\npace_stack = 9\n").pace_stack, None);
         assert!(text.contains("wipers = intermittent\ndials = off\nhud_hide = progress,car\n"), "{text}");
         assert!(
-            text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\n"),
+            text.contains("perf_log = on\nlighting = off\nparticles = off\ncabin = off\ncontact = off\ngrass = on\nwindscreen = off\nmarks = on\nmotion_blur = on\n"),
             "{text}"
         );
         assert!(text.contains("start_time = baked\nperf_log = on\n"), "{text}");
@@ -955,6 +959,7 @@ mod tests {
                 "grass = on\n",
                 "windscreen = off\n",
                 "marks = on\n",
+                "motion_blur = on\n",
                 "\n",
                 "[controls]\n",
                 "h-shifter = normal\n",

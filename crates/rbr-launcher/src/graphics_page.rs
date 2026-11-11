@@ -27,6 +27,8 @@ pub struct Graphics {
     pub windscreen: bool,
     /// Our tyre marks, which no preset changes: free, and off until reviewed in play.
     pub marks: bool,
+    /// The motion blur (`blur`), which no preset changes: a taste, off unless asked for.
+    pub motion_blur: bool,
     pub wet_roads: WetRoads,
     pub detail: Detail,
     pub mirrors: Rate,
@@ -130,6 +132,7 @@ impl Quality {
             grass: true,
             windscreen: true,
             marks,
+            motion_blur: false,
             wet_roads: WetRoads::High,
             detail: Detail::High,
             mirrors: Rate::Every(1),
@@ -159,9 +162,14 @@ impl Quality {
         }
     }
 
+    /// Its choices over `kept`, whose tyre marks and motion blur stay.
+    pub const fn over(self, kept: Graphics) -> Graphics {
+        Graphics { motion_blur: kept.motion_blur, ..self.graphics(kept.marks) }
+    }
+
     /// The preset `graphics` are, if any.
     pub fn of(graphics: Graphics) -> Option<Quality> {
-        Quality::ALL.into_iter().find(|q| q.graphics(graphics.marks) == graphics)
+        Quality::ALL.into_iter().find(|q| q.over(graphics) == graphics)
     }
 
     fn label(self) -> &'static str {
@@ -714,8 +722,8 @@ impl Form {
         let g = &mut self.graphics;
         fields(ui, "quality", |ui| {
             let tip = "Sets the choices below. Low: the game's look. Medium: all but Lighting, the costliest, Dense \
-                       grass, which needs it, and Windscreen. High: all but Ultra detail. Ultra: all. The render scale and tyre marks \
-                       stay as they are";
+                       grass, which needs it, and Windscreen. High: all but Ultra detail. Ultra: all. The render scale, tyre marks \
+                       and motion blur stay as they are";
             ui.label("Preset").on_hover_text(tip);
             ComboBox::from_id_salt("preset")
                 .width(QUALITY_FIELD)
@@ -723,7 +731,7 @@ impl Form {
                 .show_ui(ui, |ui| {
                     for preset in Quality::ALL {
                         if ui.selectable_label(Quality::of(*g) == Some(preset), preset.label()).clicked() {
-                            *g = preset.graphics(g.marks);
+                            *g = preset.over(*g);
                         }
                     }
                 })
@@ -799,6 +807,13 @@ impl Form {
                        them as they are";
             ui.label("Tyre marks").on_hover_text(tip);
             ui.checkbox(&mut g.marks, "realistic").on_hover_text(tip);
+            ui.end_row();
+
+            let tip = "Blurs what moves across the screen over a 1/120 s shutter: the road and the verges at speed, \
+                       the scenery in a fast turn of the view. The car and the cockpit stay sharp. About 0.1 ms a \
+                       frame at 1080p, 0.4 ms at 4K. The presets leave it as it is";
+            ui.label("Motion blur").on_hover_text(tip);
+            ui.checkbox(&mut g.motion_blur, "at speed").on_hover_text(tip);
             ui.end_row();
         });
     }

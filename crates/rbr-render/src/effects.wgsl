@@ -132,17 +132,47 @@ fn sun_reach_wide(world: vec3<f32>, spread: f32) -> f32 {
 }
 
 // The sun reaching dust: a scattering volume sees the shadow averaged along the view ray through the puff's depth
-// (`DUST_TAPS` taps over its radius either side) and over a wider filter (`DUST_SPREAD` texels), so a tree's shadow
-// is a soft shaft and not a print of its trunks.
-const DUST_TAPS: i32 = 7;
+// (`DUST_DEPTH` of its radius either side), so a tree's shadow is a soft shaft and not a print of its trunks.
+// `DUST_TAPS` taps evenly along that ray, each off it by a point of a spiral's disc `DUST_SPREAD` texels wide, in the
+// second cascade at the finest (`DUST_LEAST`; texels of 2.5 to 5 cm, the disc the sun's penumbra under a canopy), so
+// the taps leave no gap along the ray or across it. Seven places along the ray with four taps 2.5 texels apart at
+// each, in the first cascade's 1 cm texels, printed a canopy's flecks on the dust as a grid of blocks.
+const DUST_TAPS: i32 = 28;
 const DUST_SPREAD: f32 = 2.5;
 const DUST_DEPTH: f32 = 1.0;
+const DUST_LEAST: i32 = 1;
 fn dust_sun_reach(world: vec3<f32>, radius: f32) -> f32 {
-    let ray = normalize(world - effects.eye.xyz);
+    if (effects.sun.w == 0.0) {
+        return 1.0;
+    }
+    let reach = distance(world, effects.eye.xyz);
+    if (reach > effects.sun_splits.z) {
+        return 1.0;
+    }
+    var cascade = DUST_LEAST;
+    if (reach > effects.sun_splits.y) {
+        cascade = 2;
+    }
+    // Near the eye the coarser cascade may not hold the point: then its own.
+    let held = effects.sun_matrices[cascade] * vec4<f32>(world, 1.0);
+    if (any(abs(held.xy) > vec2<f32>(0.98)) || held.z < 0.0 || held.z > 1.0) {
+        cascade = 0;
+        if (reach > effects.sun_splits.x) {
+            cascade = 1;
+        }
+    }
+    let half = normalize(world - effects.eye.xyz) * (DUST_DEPTH * radius);
+    let near = effects.sun_matrices[cascade] * vec4<f32>(world - half, 1.0);
+    let far = effects.sun_matrices[cascade] * vec4<f32>(world + half, 1.0);
+    let texel = 1.0 / f32(textureDimensions(effects_sun_map).x);
     var lit = 0.0;
     for (var k = 0; k < DUST_TAPS; k++) {
-        let along = f32(k) / f32(DUST_TAPS - 1) * 2.0 - 1.0;
-        lit += sun_reach_wide(world + ray * (along * DUST_DEPTH * radius), DUST_SPREAD * (1.0 + 0.15 * along));
+        let clip = mix(near, far, (f32(k) + 0.5) / f32(DUST_TAPS));
+        // A golden-angle spiral, its rings taken in a scrambled order so that the offset does not grow along the ray.
+        let angle = f32(k) * 2.3999632;
+        let ring = DUST_SPREAD * sqrt(fract(f32(k) * 0.61803399 + 0.5));
+        let uv = vec2<f32>(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5) + ring * texel * vec2<f32>(cos(angle), sin(angle));
+        lit += textureSampleCompareLevel(effects_sun_map, effects_sun_sampler, uv, cascade, clip.z - 0.002);
     }
     return lit / f32(DUST_TAPS);
 }

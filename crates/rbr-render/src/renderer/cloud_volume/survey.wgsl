@@ -7,7 +7,7 @@ fn fs_cloud_survey(v: SkyOut) -> @location(0) vec4<f32> {
     let r = sqrt(max(1.0 - y * y, 0.0));
     let angle = uv.x * 2.0 * SKY_PI;
     let dir = vec3<f32>(r * cos(angle), y, r * sin(angle));
-    let low = volume_march(dir, v.clip.xy);
+    let low = volume_march(dir, v.clip.xy, 0.0);
     let high = cirrus(dir);
     return vec4<f32>(1.0 - low.a, 1.0 - high.a, 1.0 - low.a * high.a, 1.0);
 }

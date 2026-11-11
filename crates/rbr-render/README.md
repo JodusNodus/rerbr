@@ -22,6 +22,7 @@ scripts/launcher.sh   # live drives: the launcher runs viewer --live rbr-standal
 - `sun`, `foliage`: sun cascades, plants
 - `post`: HDR post pass, the composite's sharpening under TAA
 - `taa`: temporal anti-aliasing (the default; upscales below 100 % render scale); `renderer/motion`: its motion pass
+- `motion_blur`: opt-in motion blur along each pixel's screen motion (`--enhance blur`, with TAA)
 - `effects`, `puddles`: GPU rain, wet roads
 - `car/`: car loading, parts, cabin bake
 - `car_shadow`: shadow decal

@@ -96,6 +96,12 @@ impl Renderer {
                 taa.resize(&self.device, size, output, &self.depth_view, motion.view());
                 taa.set_layer(&self.device, self.particle_target.as_ref().map(|target| target.layer_views()));
             }
+            // The blur's target follows the post pass's scene (the output's size, with the temporal anti-aliasing).
+            if let (Some(taa), Some(motion), Some(blur)) = (&self.taa, &self.motion, &mut self.motion_blur) {
+                if self.enhance.motion_blur {
+                    blur.resize(&self.device, output, taa.uniform(), motion.view(), &self.depth_view);
+                }
+            }
         }
         // Under the temporal anti-aliasing the main view's draws are jittered; the sun's cascades, the mirrors and
         // the light shafts keep the view.
@@ -284,8 +290,20 @@ impl Renderer {
             .is_some();
         if let Some(taa) = &mut self.taa {
             let t = mark(&mut profiler, encoder);
-            taa.resolve(encoder, &self.post.scene, mist);
+            // With the motion blur the resolve writes into its target, which the blur gathers into the post pass's
+            // scene; else it writes there itself.
+            let blurred = self.enhance.motion_blur && self.motion_blur.is_some();
+            let scene: &wgpu::TextureView = match blurred {
+                true => self.motion_blur.as_ref().expect("motion blur without its pass").target(),
+                false => &self.post.scene,
+            };
+            taa.resolve(encoder, scene, mist);
             span(&mut profiler, encoder, "taa", t);
+            if blurred {
+                let t = mark(&mut profiler, encoder);
+                self.draw_blur(encoder, first);
+                span(&mut profiler, encoder, "motion blur", t);
+            }
             if self.late_effects() && !upscaling {
                 let t = mark(&mut profiler, encoder);
                 self.draw_late_effects(encoder, &self.post.scene, view_projection, mist);
