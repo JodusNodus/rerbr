@@ -1058,10 +1058,11 @@ Where NGP sits:
 
 ## Loose surfaces: loose-v1
 
-`rbr_tyre::loose` (in development, `--physics experimental-brush` only): the car model (`car.rs`) takes it on every
-soil wheel (`soil_thickness > 0`: gravel and snow) in place of NGP's tyre; NGP's soil lateral force (∝ v_lat²) stays on
-top (`model::apply`), the carcass dynamics (`brush::step_dynamic`) are the brush's and keep their state across a change
-between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP's sweep against it).
+`rbr_tyre::loose` (in development, `--physics experimental-brush` only): the car model (`car.rs`) takes it on every soil
+wheel (`soil_thickness > 0`: gravel and snow) in place of NGP's tyre; NGP's soil lateral force (∝ v_lat², on gravel held
+at its value at 6 m/s of sideways speed) stays on top (`model::apply`), the carcass dynamics (`brush::step_dynamic`) are
+the brush's and keep their state across a change between soil and hard surface. Lab: `loose` example (a probe frame on
+soil, NGP's sweep against it).
 
 - Model: the brush's patch (`brush::patch`, combined slip unchanged) with a flat friction (no fall with sliding speed;
   on gravel the shear law below in place of the brush's cubic),
@@ -1132,8 +1133,9 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   are braked; a spinning tyre's sinkage resistance is unmeasured), the berm on gravel linear in the loose layer's depth
   to PLOUGH at 5 cm (`gravel_berm`, 2026-11-11: the data are 5 cm layers, NGP's gravels 9-30 mm; 1.09 at 15 mm, where
   Finland's braking past 50 % slip is 1.07-1.14 of its force at 22-32 %; other soils keep PLOUGH), PLOUGH independent of
-  speed (no trend at 40-80 km/h), NGP's soil lateral force kept (NGP's lateral ploughing: 3-4 % of the peak at 30° and
-  15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5 m/s).
+  speed (no trend at 40-80 km/h), NGP's soil lateral force kept to 6 m/s of sideways speed on gravel and held there
+  (`gravel_soil_share`, 2026-11-11, "Slides on gravel": NGP's lateral ploughing is 3-4 % of the peak at 30° and 15 m/s,
+  ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5 m/s, and the real cars' whole g does not rise with sideslip).
 - Carcass at the limit (`brush::step_dynamic`, both surfaces): sliding at the limit, the deflections take the steady
   force's direction (was: a locked wheel's deflection integrated the sliding velocity weighted by c_x/c_y, so its
   side force at 20° was 0.197 against the steady 0.37; in game it moved RSF 111 by 0.02 s and the gravel locked
@@ -1827,8 +1829,44 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.79 g, where Finland's cars (their saturated tyre force with a drag of 1.74 m²) are 1.02 / 0.92 / 0.78 / under 0.72;
   the full pedal 0.88 over 100-70; the start's 10 to 50 m 2.03 / 2.05 s (Finland 2.10). So gravel's level holds at 0.9
   with the prototype. Left over: braking under 100 km/h 8-10 % above Finland's (a real stop there ends in a corner,
-  weak), NGP's soil force at large angles and speed (not measured), and the flat pad's limit under the crews' below 120
-  km/h (their road's camber). Not driven.
+  weak), NGP's soil force at large angles and speed (held since, "Slides on gravel" below), and the flat pad's limit
+  under the crews' below 120 km/h (their road's camber). On pad-tarmac with the prototype the threshold braking (κ
+  0.15-0.2) is 1.33-1.40 g at 40-100 km/h, 1.42 at 100-120 and 1.51 at 140-160, against España 2021's p90 of hard
+  straight braking 1.37 / 1.36 / 1.43 at 100-120 / 120-140 / 140-160: 4-6 % over the crews' best tenth, the tarmac level
+  stays. Not driven.
+- Slides on gravel, loose-v1 against NGP's tyre (2026-11-11, main `dbd36a4b`; scratch readings). The user's five Hassi
+  runs, slides that pass 12 deg of sideslip above 40 km/h after a brake application: on NGP's tyre 28 and 24 (i20, Yaris
+  Rally2), peak median 15-16 deg, none past 35; on loose-v1 16-21 a run, median 17-20, 1-3 a run past 45 without an
+  impact, and 1.1-1.3 s past 12 deg against 0.8-0.9; the yaw rate going in is the same (median 40-45 deg/s), so the
+  brush's slides run deeper and longer on the same inputs. `handling.py --material 49`, i20 Coupe WRC 2020, experimental
+  / experimental-brush at 80 km/h: ramp peak 0.936 / 0.878 g; sine dwell's yaw rate left 1.75 s after the steering at
+  0.55-1.0 of lock 12-19 / 25-34 % (110 km/h 10-36 / 45-52 %, first spin 0.55 both); brake in turn at 0.3 / 0.6 / 0.9 of
+  NGP's limit pedal 0 / 1 / 0 spins of 3 against 0 / 3 / 0 (the same at loose-v1's own pedal; the Fiesta Rally2 1 / 0 /
+  0 against 0 / 3 / 2); lift in turn mild on both. In the sine dwell's slide (30-50 deg, no pedals) the yaw rate falls
+  26 deg/s² on NGP's tyre and 19 on loose-v1, whose side grip there is 6-8 % higher (NGP's free rolling curve falls 10 %
+  from its peak to 40 deg, loose-v1's is flat). What damps NGP's slides is the force along the wheel (the same runs'
+  `--tyre-probe`): the axles turn locked off the throttle, so in a slide the outer wheels run 3-5 % slow and the inner
+  6-10 % fast, and at 35-45 deg of slip angle NGP's tyre answers that with 0.07-0.09 of the load on the outer wheels and
+  0.11-0.21 on the inner, loose-v1 with 0.03-0.04 and 0.06-0.13: the sliding velocity's own share, a friction circle's.
+  A test build that leans loose-v1's force twice as far along the wheel gives NGP's figures (yaw rate left 11-12 % at 80
+  km/h, 31-35 % at 110; brake in turn then spins 3 of 3 at every pedal). No gravel data gives the direction; on tarmac
+  the one measured tyre leans 10-30 % (Open, `tarmac-combined-a4`), so loose-v1 keeps the sliding velocity's. Without
+  effect on those figures: stiffness 0.7 and 1.3, response 0.5 and 2, the files' aero; worse: a friction that falls
+  12-20 % from 20 to 45 deg of slip angle (38-53 % left at 80 km/h). The real cars on the same road (Finland 2021 SS7, 6
+  drives, `rally_wot.py sideslip`, 2 s windows) corner at a median sideslip of 14.8 deg at 80-100 km/h and 7.5 at
+  100-130 (p75 20.8 and 14.9), the user at 10-12 and 7-9 on either tyre: no reading says loose-v1 slides too easily, and
+  none measures a real car's yaw damping. Their whole g by sideslip (all stages, the path's / the accelerometer's p90,
+  from 15 / 30 / 40 deg up): 1.04 / 1.06 / 1.05 and 0.97 / 1.00 / 0.90 at 60-100 km/h, 1.06 / 1.04 / 0.98 and 1.01 /
+  0.92 / 0.83 at 100-160, level to 14 m/s of sideways speed and 5-13 % down at 18-23, where loose-v1 with NGP's soil
+  force rose: held past the limit on material 49's circles (`--circle-past`, r 65 / 100 / 200 m, 2 s windows) its whole
+  g was a median 0.87 / 0.95 / 1.00 at 20-30 / 30-40 / 40-60 deg at 60-100 km/h and 0.95 / 1.01 / 1.06 / 1.07 from 10-20
+  to 40-60 deg at 100-160 (NGP's force is 0.16 g at 14 m/s of sideways speed, 0.3 g at 19). So on gravel the soil force
+  is held at its value at 6 m/s (`loose::gravel_soil_share`, `ForceOutput::soil_lateral`): 0.84 / 0.85 / 0.84 and 0.92 /
+  0.88 / 0.87 / 0.85, the real cars' sliding median (0.80-0.85) and their fall at speed; the `yaw` aero on top moves it
+  0.01-0.04 and is left out. With it the circles' limit is 0.83 / 0.88 / 0.90 g at 67 / 108 / 153 km/h (r 40 / 100 /
+  200; the r200 run now reaches it), the ramp peak 0.870, and the slides damp less: sine dwell's yaw rate left 30-41 %
+  at 80 km/h and 61-69 % at 110 (the soil force grew faster at the rear axle's sideways speed); brake, lift and power in
+  turn as before. Not driven.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43

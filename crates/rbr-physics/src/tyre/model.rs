@@ -100,6 +100,8 @@ pub struct ForceOutput {
     pub pneumatic_trail: f32,
     /// The slip phase in NGP's sense: 0 to 1 up to the peak, 1 to 2 past it, 2 sliding.
     pub phase: f32,
+    /// The share of NGP's soil lateral force the model keeps, 0 to 1 (1: NGP's whole).
+    pub soil_lateral: f32,
     /// The model's surface and tread temperatures after the step, K (`None`: NGP's heat step's).
     pub temperatures: Option<[f32; 2]>,
 }
@@ -166,10 +168,12 @@ pub fn input(
 }
 
 /// Blends the model's forces `o` into NGP's sliding model's on `f` by their weight: the carcass deflection and torsion
-/// that hold them (with the soil's forces, as NGP's limit takes them), the trail, the phases and the friction forces.
+/// that hold them (with the soil's forces, as NGP's limit takes them; the lateral one at the model's share), the
+/// trail, the phases and the friction forces.
 pub fn apply(f: &mut Frame, o: &ForceOutput) {
     let mix = |ngp: f32, model: f32| ngp + (model - ngp) * o.weight;
     let s = &mut f.scratch;
+    s.lateral_soil_force = mix(s.lateral_soil_force, s.lateral_soil_force * o.soil_lateral);
     let deflection = -(s.lateral_soil_force + o.lateral_force) / (s.inclination_cos * s.lateral_stiffness);
     let torsion =
         -(f.state.effective_radius * o.longitudinal_force + s.longitudinal_soil_force) / s.torsional_stiffness;

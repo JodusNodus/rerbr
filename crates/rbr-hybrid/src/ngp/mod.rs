@@ -7,6 +7,7 @@ mod aero_model;
 mod brake_scale;
 mod calls;
 mod damper;
+mod drive_loss;
 mod engine;
 mod engine_model;
 mod steps;
@@ -20,6 +21,7 @@ pub use address::{base_in, file, file_at, original_for, runs_ngp, set_wall_clock
 pub use aero_model::{set_aero_model, wing_drag_factor, yaw_factors, AERO_NAMES};
 pub(crate) use brake_scale::scaled_pedal;
 pub use brake_scale::set_brake_scale;
+pub use drive_loss::set_four_wheel_drive_loss;
 pub(crate) use engine::{engine_wrapper, starter_step, OPERATOR_NEW};
 pub use engine_model::{engine_model_telemetry, is_set as engine_model_is_set, restart_engine_model, set_engine_model};
 pub(crate) use steps::{curve_term, CURVE_TERM};

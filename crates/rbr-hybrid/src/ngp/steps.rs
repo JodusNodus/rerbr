@@ -109,7 +109,7 @@ pub(crate) fn drive_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
         return Err(Decline::Unsupported("the axle's blocks or packs are out of range"));
     }
     apply_downforce(&mut ctx.mem, drive);
-    let loss = ctx.mem.u32(settings + 0xe88);
+    let loss = super::drive_loss::loss(kind, ctx.mem.u32(settings + 0xe88));
     let gain = diff::after_loss(ctx.mem.f32(state + 0x37c), loss);
     ctx.mem.set_f32(state + 0x37c, gain);
     if (4..8).contains(&kind) {

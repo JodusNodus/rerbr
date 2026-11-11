@@ -125,7 +125,8 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   bit-exact. While experimental, a run with it saves no records, ghosts or championship results; its replays carry the
   choice. It replaces the input-side throttle model, which is not merged. The tyre model
   (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to standstill, loose-v1 on soil, NGP's grip level
-  (gravel's 0.9 of it along the wheel, and the aero prototype `wings+downforce` in its profile: user 2026-11-11;
+  (gravel's 0.9 of it along the wheel; in its profile the aero prototype `wings+downforce` and a four-wheel-drive
+  drivetrain loss of 17 %: user 2026-11-11;
   [tyre-model.md](tyre-model.md)); in development, not released (user 2026-11-07): only the hidden
   `--physics experimental-brush` runs it; the launcher's Settings page does not offer it, `scripts/launcher.sh
   --physics experimental-brush` drives it for a session (unsaved).
