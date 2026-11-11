@@ -1760,8 +1760,8 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
 - Gravel's level by axis and by depth (2026-11-11, user decisions on the readings above and the drives below;
   `loose::GRAVEL_LONGITUDINAL` and `loose::gravel_depth_level` on the gravel share of the soil, experimental-brush only:
   grass, rock and snow keep NGP's, `--tyre-tuning gravel=F` multiplies on top, and the figures above are at NGP's
-  level). The longitudinal level is 0.95 of NGP's and the lateral NGP's on the firm gravel: Finland, the grippiest of
-  the six dry gravel rallies, is the ceiling, on the material of RSF 524 Hassi (49, 15 mm, 99 % of its driveline by
+  level). The longitudinal level is 0.9 of NGP's and the lateral NGP's on the firm gravel: Finland, the grippiest of the
+  six dry gravel rallies, is the ceiling, on the material of RSF 524 Hassi (49, 15 mm, 99 % of its driveline by
   `surface_across`). Both axes then fall with the loose layer's depth, 1 to 15 mm and linear to 0.96 at 30 mm: NGP's dry
   gravel materials' static friction runs from 0.9000 (9 mm) to 0.8625 (30 mm), 4 % (`materials`, ids 1-51 and 153-197),
   which with the slower rise of the deeper layers is 6 % at the car, where the rallies' saturated braking is 5 to 14 %
@@ -1774,24 +1774,27 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.97 / 1.01, GR Yaris Rally2 0.86 / 0.89 / 0.90 and 0.85 / 0.92 / 0.96; peak deceleration over 25 m in the zones
   entered within 15 % of the real speed, median against the real cars' there, i20 0.94 against 0.89 g on NGP's tyre and
   0.82 against 0.89 at 0.85 (its ratio's median and p75 0.83 and 0.92), Yaris 0.81 against 0.89 and 0.84 against 0.92;
-  game recoveries 4 and 1 on NGP's tyre, 5 and 4 at 0.85, neither of those two runs to the finish ("harder to drive").
-  So 0.85, the pad's fit to Finland's saturated braking, is 8-17 % under the real cars as driven and NGP's tyre 6 %
-  over: 0.95. The real cars' air drag is 0.08 g more than the files' at 160 km/h and the files' downforce 15 % of the
-  weight more than half of it would be, so with the aero prototype the level needs fitting again (about 1). The i20 on
-  the pads of materials 49, 9, 1 and 33 (15 / 17.5 / 25 / 30 mm; scratch runs), main / with it: braking at κ 0.3 from
-  166 km/h, mean g with the air drag over 130-100 km/h 1.02 / 0.97, 1.01 / 0.96, 0.97 / 0.90, 0.95 / 0.88 and over
-  100-70 0.94 / 0.89, 0.93 / 0.89, 0.89 / 0.83, 0.88 / 0.81; the start's 10 to 50 m 1.96 / 1.99, 1.96 / 2.00, 1.99 /
-  2.05, 2.01 / 2.07 s (Finland 2.10, the others 2.02-2.30; NGP's tyre 2.09 on 49); the r40 circle's limit before the car
-  runs wide 0.86 / 0.84, 0.85 / 0.85, 0.83 / 0.81, 0.81 / 0.77 g (NGP's tyre 0.87 on 49). By the slip target held on
-  material 49 (0.10 / 0.15 / 0.20 / 0.30 / 0.50 / locked, 100-70 km/h; the rim reads 0.93 of the car's speed coasting,
-  so the slip is about 0.07 less) NGP's tyre gives 0.19 / 0.54 / 0.77 / 0.95 / 0.91 / 0.77 g and loose-v1 at 0.85 0.30 /
-  0.66 / 0.77 / 0.80 / 0.81 / 1.01: NGP's peak is narrow and falls a fifth at lock, where a locked tyre on gravel stops
-  harder than a rolling one. Fiesta Rally2 on material 49 at 0.85 (`handling.py`, 80 km/h; not rerun at 0.95), main /
-  with it: ramp peak 0.917 / 0.904 g, the sine dwell's lowest spinning amplitude 0.75 and 0.55 (110 km/h) both, brake in
-  turn at the light pedal 0 / 2 spins of 3 (medium and hard 3 of 3 both). Ours, not measured: the split (a real road's
-  ruts and camber are in its lateral side, and soil rigs give a tyre's longitudinal peak at or above its lateral), the
-  depth as the road's looseness (a stage's materials are its author's) and the fall's size. Wales (2017-19, wet or
-  mixed) is no dry anchor. One driver, two runs a tyre; not driven at 0.95.
+  game recoveries 4 and 1 on NGP's tyre, 5 and 4 at 0.85, neither of those two runs to the finish ("harder to drive"). A
+  sim driver is under the crews (those apex speeds, 11-12 % in the median) and should stay under them on the brakes too,
+  so NGP's tyre, 6 % over, is too strong and 0.85, 8-17 % under, is at the low end. 0.85 is the pad's fit of the tyres'
+  force to Finland's saturated braking (0.84 at 100-130 km/h), but the real cars' air drag is 0.08 g at 115 km/h against
+  the files' 0.04, so the car's deceleration there is 0.92 real against 0.88: 0.9 gives 0.92, and leaves the driver
+  about 5-10 % under the crews. The files' downforce is 15 % of the weight more at 160 km/h than half of it would be, so
+  with the aero prototype the level needs fitting again. The i20 on the pads of materials 49, 9, 1 and 33 (15 / 17.5 /
+  25 / 30 mm; scratch runs), main / with it: braking at κ 0.3 from 166 km/h, mean g with the air drag over 130-100 km/h
+  1.02 / 0.92, 1.01 / 0.92, 0.97 / 0.86, 0.95 / 0.84 and over 100-70 0.94 / 0.85, 0.93 / 0.84, 0.89 / 0.79, 0.88 / 0.77;
+  the start's 10 to 50 m 1.96 / 2.03, 1.96 / 2.04, 1.99 / 2.08, 2.01 / 2.11 s (Finland 2.10, the others 2.02-2.30; NGP's
+  tyre 2.09 on 49); the r40 circle's limit before the car runs wide 0.86 / 0.84, 0.85 / 0.84, 0.83 / 0.81, 0.81 / 0.76 g
+  (NGP's tyre 0.87 on 49). By the slip target held on material 49 (0.10 / 0.15 / 0.20 / 0.30 / 0.50 / locked, 100-70
+  km/h; the rim reads 0.93 of the car's speed coasting, so the slip is about 0.07 less) NGP's tyre gives 0.19 / 0.54 /
+  0.77 / 0.95 / 0.91 / 0.77 g and loose-v1 at 0.85 0.30 / 0.66 / 0.77 / 0.80 / 0.81 / 1.01: NGP's peak is narrow and
+  falls a fifth at lock, where a locked tyre on gravel stops harder than a rolling one. Fiesta Rally2 on material 49 at
+  0.85 (`handling.py`, 80 km/h; not rerun at 0.9), main / with it: ramp peak 0.917 / 0.904 g, the sine dwell's lowest
+  spinning amplitude 0.75 and 0.55 (110 km/h) both, brake in turn at the light pedal 0 / 2 spins of 3 (medium and hard 3
+  of 3 both). Ours, not measured: the split (a real road's ruts and camber are in its lateral side, and soil rigs give a
+  tyre's longitudinal peak at or above its lateral), the depth as the road's looseness (a stage's materials are its
+  author's) and the fall's size. Wales (2017-19, wet or mixed) is no dry anchor. One driver, two runs a tyre; not driven
+  at 0.9.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
