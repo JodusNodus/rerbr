@@ -1,7 +1,8 @@
 //! Loose surfaces, loose-v1 (ours, experimental): the brush's patch ([`brush::patch`]) on soil (gravel and snow), with
 //! a flat friction and a ploughing berm in place of the hard surface's friction against sliding speed. The game takes
 //! it on soil wheels under the brush ([`crate::car`], `--physics experimental-brush` only); NGP's soil lateral force
-//! stays on top (`rbr_physics::tyre::model::apply`).
+//! stays on top (`rbr_physics::tyre::model::apply`), on gravel held at its value at [`GRAVEL_SOIL_SPEED`]
+//! ([`gravel_soil_share`]).
 //!
 //! - Level: NGP's, on gravel times [`gravel_depth_level`] and along the wheel times [`GRAVEL_LONGITUDINAL`]. The free
 //!   rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
@@ -218,6 +219,27 @@ pub const GRAVEL_LOOSE_LEVEL: f64 = 0.96;
 pub fn gravel_depth_level(depth: f64) -> f64 {
     let t = ((depth - GRAVEL_FIRM_DEPTH) / (GRAVEL_LOOSE_DEPTH - GRAVEL_FIRM_DEPTH)).clamp(0.0, 1.0);
     1.0 + (GRAVEL_LOOSE_LEVEL - 1.0) * t
+}
+
+/// The sideways speed of the contact point above which NGP's soil lateral force stops growing on gravel, m/s
+/// ([`gravel_soil_share`]): 15 deg of sideslip at 80 km/h, from where the real cars' whole g is level.
+pub const GRAVEL_SOIL_SPEED: f64 = 6.0;
+
+/// The share of NGP's soil lateral force (∝ v_lat²) gravel keeps at the contact point's sideways speed `v_lat` (m/s):
+/// the whole to [`GRAVEL_SOIL_SPEED`], its value there above. NGP's force is 0.03 g of the i20 Coupe WRC at 6 m/s,
+/// 0.16 g at 14 and 0.3 g at 19 (30 deg at 100 and 140 km/h), and held past the limit on the pad the car's whole g
+/// rose with it, median 0.87 / 0.95 / 1.00 at 20-30 / 30-40 / 40-60 deg at 60-100 km/h and 0.95 to 1.07 from 10-20 to
+/// 40-60 deg at 100-160. The 2017-21 World Rally Cars in Finland do not: the p90 of their whole g from 15 / 30 / 40
+/// deg of sideslip up is 1.04 / 1.06 / 1.05 (the path's) and 0.97 / 1.00 / 0.90 (the accelerometer's) at 60-100
+/// km/h, 1.06 / 1.04 / 0.98 and 1.01 / 0.92 / 0.83 at 100-160, and their sliding windows' median 0.80-0.85. Held so,
+/// the pad's medians are 0.84 / 0.85 / 0.84 and 0.92 falling to 0.84 (note, "Slides on gravel"). Ours: the form.
+pub fn gravel_soil_share(v_lat: f64) -> f64 {
+    let v = v_lat.abs();
+    if v > GRAVEL_SOIL_SPEED {
+        (GRAVEL_SOIL_SPEED / v).powi(2)
+    } else {
+        1.0
+    }
 }
 
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
@@ -610,6 +632,15 @@ pub(crate) mod tests {
         assert!((locked(1.0) - SNOW_PLOUGH).abs() < 1e-9);
         assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0).abs() < 1e-9);
         assert!((locked(0.0) - PLOUGH).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_soil_force_stops_growing_at_gravel_s_sideways_speed() {
+        assert_eq!((gravel_soil_share(0.0), gravel_soil_share(-GRAVEL_SOIL_SPEED)), (1.0, 1.0));
+        // v² times the share is level above it.
+        for v in [8.0, -14.0, 25.0] {
+            assert!((v * v * gravel_soil_share(v) - GRAVEL_SOIL_SPEED.powi(2)).abs() < 1e-9, "{v}");
+        }
     }
 
     #[test]
