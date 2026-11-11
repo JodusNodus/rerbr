@@ -13,7 +13,8 @@ pub enum PhysicsProfile {
     /// NGP 7's, as the original drives.
     #[default]
     Ngp,
-    /// ReRBR experimental physics, built on NGP 7: its engine model (`rbr_engine`).
+    /// ReRBR experimental physics, built on NGP 7: its engine model (`rbr_engine`), aero and four-wheel-drive
+    /// drivetrain loss (`rbr_standalone`'s `Profile::EXPERIMENTAL`).
     Experimental,
     /// The same with the brush tyre in development (`rbr_tyre`): only from `rerbr --physics experimental-brush`, never
     /// offered or saved.

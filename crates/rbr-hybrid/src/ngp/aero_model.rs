@@ -1,7 +1,8 @@
-//! The aero model (ours, experimental, prototypes) of the runs on this thread: NGP's downforce update
-//! ([`super::steps`]) takes its factors on the file's downforce, front and rear, and on the drag factor. With none
-//! (the default) all are NGP's: the file's downforce, the drag of the car file's `Cd * A`, a road shell's whatever
-//! the downforce, and the front downforce and drag of a car that slides.
+//! The aero model (ours, experimental) of the runs on this thread: NGP's downforce update ([`super::steps`]) takes
+//! its factors on the file's downforce, front and rear, and on the drag factor. The experimental profiles run
+//! `wings+downforce`; `yaw` is a prototype. With none (the default) all are NGP's: the file's downforce, the drag of
+//! the car file's `Cd * A`, a road shell's whatever the downforce, and the front downforce and drag of a car that
+//! slides.
 //!
 //! `yaw`: both with the car's sideslip. Dominy & Richardson, SAE 2004-01-3508 (a 20 % model of a generic 2004 World
 //! Rally Car on a moving ground, to 15 degrees of slip, three ground clearances; `notes/tyre-model.md`, Aero): the
