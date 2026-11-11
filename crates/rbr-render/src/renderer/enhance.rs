@@ -216,7 +216,7 @@ impl Enhance {
         "windscreen",
     ];
 
-    /// A comma-separated list of [`Enhance::NAMES`], or `all` (every one but `grass`).
+    /// A comma-separated list of [`Enhance::NAMES`], or `all` (every one but `grass` and `blur`).
     pub fn parse(list: &str) -> Option<Enhance> {
         let mut enhance = Enhance::default();
         for name in list.split(',') {
