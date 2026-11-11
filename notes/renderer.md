@@ -1334,6 +1334,21 @@ top 108 to 85 of 255 (no sheen 86). Cockpit reference shots 1 to 2.6 % RMSE by d
 0.02 to 0.04 %, outside shots byte-identical. The dash still reads blue-grey: near-black texels under the cabin's own
 exposure and the sky through the windscreen.
 
+Cabin albedo and colour (ours, 2026-11-12, `cabin_day_lit`; not yet picked by the user): the cabin textures' darks
+decode at 2.2 to an albedo of 0.003 to 0.02, so dark dashes, wheels and door cards had no form and the cabin's
+exposure burnt the labels out. Now gamma 1.6 for them (`CABIN_GAMMA`; the dials keep 2.2), a soft floor of 0.012
+where a face's reflection stays in the car (`CABIN_INWARD`), and 0.7 of the window's and bounce light's colour taken
+out, the sheen's too (`CABIN_NEUTRAL`; the sun keeps its own): the Fiesta Rally2's dash at Luceram 08:30 53 / 67 / 91
+to 102 / 108 / 120 of 255. Ten cockpit shots at 2560x1440: days 5.6 to 13.1 % RMSE (i20 WRC most), the nights 0.16 %
+(the sheen's colour), outside shots byte-identical; the brighter cabin takes the road a little darker (the outside's
+meter counts the cabin at 1/5). The bounce's mean albedo (`frame.cabin`) is still taken at 2.2. Tried and dropped: a
+normal from the texel's brightness (nothing at slope 3, wet blotches at 8), a procedural grain bump (not seen under
+TAA), the sheen at roughness 0.55 (reads wet), a glass reflection over the dials (a grey veil), the bounce at 0.75 to
+1 (slight), the floor alone at 0.02 or as a rough dielectric's share of the light (the i20's flocked dash a flat grey,
+its texture gone), a floor in proportion to the texel (the cabin's exposure takes it back), the upscaler off (grainier,
+as harsh). Per-car art (branch `render/car-look-sidecar`: a material sidecar, remodelled parts, a repainted Fiat 131
+texture) gave less than this for one car each.
+
 Cockpit debug view (viewer `--debug-view cabin-sky|cabin-near|cabin-contact|cabin-light`, ours; `renderer::DebugView`):
 the interior set draws one term of its light (`cabin_debug`: the sky share, the near openness, the contact shading, the
 irradiance over the open sky's, half of it mid-grey) as a display grey, past the exposure and the tone curve in

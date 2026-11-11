@@ -135,14 +135,39 @@ const CABIN_HIGHLIGHT: vec2<f32> = vec2<f32>(0.5, 0.035);
 
 fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
     let ndl = cabin_sun(v, n, shadowed, under_cloud, outside);
-    let e = cabin_irradiance(v, n, ndl, shadowed, under_cloud, outside);
-    let albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(2.2)), vec3<f32>(ALBEDO_MOST));
+    let sun = frame.day_sun.rgb * frame.cabin_seen.w;
+    var around = cabin_irradiance(v, n, ndl, shadowed, under_cloud, outside) - sun * ndl;
+    around = mix(around, vec3<f32>(dot(around, vec3<f32>(0.2126, 0.7152, 0.0722))), CABIN_NEUTRAL);
+    let gamma = select(CABIN_GAMMA, 2.2, v.specular.y >= CABIN_GAUGE);
+    let albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(gamma)), vec3<f32>(ALBEDO_MOST));
     var sheen = 0.0;
-    if (ndl > 0.0 && v.specular.y < CABIN_GAUGE) {
-        sheen = min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl;
+    var inward = vec3<f32>(0.0);
+    if (v.specular.y < CABIN_GAUGE) {
+        if (ndl > 0.0) {
+            sheen = min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl;
+        }
+        let kept = 1.0 - cabin_open(cabin_seen(v), 1.0 - v.specular.z, reflect(-view, n));
+        inward = (sqrt(albedo * albedo + CABIN_INWARD * CABIN_INWARD) - albedo) * kept;
     }
-    return pow(albedo * e + sheen * frame.day_sun.rgb * frame.cabin_seen.w, vec3<f32>(1.0 / 2.2));
+    return pow((albedo + inward) * around + (albedo * ndl + sheen) * sun, vec3<f32>(1.0 / 2.2));
 }
+
+// The window's and the bounce light's colour, `CABIN_NEUTRAL` of it taken out (ours, 2026-11-12): in shade the sky's
+// blue alone lights the cabin, and under the cabin's own exposure a black dash read deep blue (Fiesta Rally2, Luceram
+// 08:30: dash top 53 / 67 / 91 of 255, with the albedo below 102 / 108 / 120), where a camera or the eye balances for the light it is in. The sun past the
+// glass keeps its colour.
+const CABIN_NEUTRAL: f32 = 0.7;
+// The cabin textures' albedo (ours, 2026-11-12). They are painted for the game's light, a texel shown about as it is,
+// so at the display's 2.2 their darks come to an albedo of 0.003 to 0.02, a fifth of a black plastic's or cloth's
+// (0.04 to 0.05): dashes, wheels and door cards lay at black with no form, and the cabin's own exposure, lifting them,
+// burnt the labels out. `CABIN_GAMMA` in its place spreads less (a texel at 0.1 gives 0.025 for 0.006, one at 0.9
+// 0.84 for 0.79), and no face gives back less than about `CABIN_INWARD`, a soft knee (the least a real surface
+// mirrors of the cabin about it), where its reflection stays in the car (`cabin_sheen` has the sky's). Tried: the
+// floor alone at 0.02 and as a rough dielectric's share (both painted the i20 WRC's dark flocked dash a flat grey,
+// its texture gone), a floor in proportion to the texel (the cabin's exposure takes it back), gamma 1.5 and 1.8.
+// Not on the dials' faces, whose light has a floor of its own (`CABIN_GAUGE_LEAST`).
+const CABIN_GAMMA: f32 = 1.6;
+const CABIN_INWARD: f32 = 0.012;
 
 // One term of the cabin's light (`DEBUG_VIEW`) as a display grey 0..1: the vertex's open sky share (1), its near
 // openness (2), the screen-space contact shading it reads (3; 1 without `LIGHTING`), or its irradiance (4) as a
@@ -325,7 +350,9 @@ const CABIN_SHEEN_LEVEL: f32 = 3.0;
 fn cabin_sheen(v: VertexOut, n: vec3<f32>, view: vec3<f32>) -> vec3<f32> {
     let reflectance = environment_reflectance(clamp(dot(n, view), 1e-3, 1.0), CABIN_ROUGHNESS);
     let r = reflect(-view, n);
-    return reflected(r, CABIN_SHEEN_LEVEL) * reflectance * cabin_open(cabin_seen(v), 1.0 - v.specular.z, r);
+    let seen = reflected(r, CABIN_SHEEN_LEVEL);
+    let grey = vec3<f32>(dot(seen, vec3<f32>(0.2126, 0.7152, 0.0722)));
+    return mix(seen, grey, CABIN_NEUTRAL) * reflectance * cabin_open(cabin_seen(v), 1.0 - v.specular.z, r);
 }
 
 // Where a baked vertex sees the sky (`car::cabin::seen`, turned with the car): the mean of its open rays' directions.
