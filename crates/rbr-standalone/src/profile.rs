@@ -14,9 +14,9 @@ pub struct Profile {
     pub tyre: &'static str,
     /// `--tyre-tuning`: the brush's experimental tuning (`rbr_tyre::Tuning`), the model's in every profile.
     pub tyre_tuning: Tuning,
-    /// The aero model (`rbr_hybrid::ngp::set_aero_model`): `ngp` is NGP's downforce and drag, in every profile;
-    /// `--aero` sets a prototype: `yaw` takes the front downforce and the drag with the car's sideslip, `wings` adds
-    /// the drag of the downforce devices, `downforce` halves the file's downforce, and their sums joined by `+`.
+    /// The aero model (`rbr_hybrid::ngp::set_aero_model`): `ngp` is NGP's downforce and drag; `--aero` sets a
+    /// prototype: `yaw` takes the front downforce and the drag with the car's sideslip, `wings` adds the drag of the
+    /// downforce devices, `downforce` halves the file's downforce, and their sums joined by `+`.
     pub aero: &'static str,
 }
 
@@ -28,13 +28,14 @@ impl Profile {
     pub const EXPERIMENTAL: Profile =
         Profile { name: "experimental", engine: "realistic", tyre: "ngp", tyre_tuning: Tuning::MODEL, aero: "ngp" };
     /// The experimental physics with the brush tyre: in development, not released. Only `--physics
-    /// experimental-brush` reaches it; the launcher does not offer it.
+    /// experimental-brush` reaches it; the launcher does not offer it. Its aero is the prototype fitted on the real
+    /// cars (`wings+downforce`): gravel's level is fitted with it (note, "Gravel's level by axis and by depth").
     pub const EXPERIMENTAL_BRUSH: Profile = Profile {
         name: "experimental-brush",
         engine: "realistic",
         tyre: "brush",
         tyre_tuning: Tuning::MODEL,
-        aero: "ngp",
+        aero: "wings+downforce",
     };
     /// The profiles `--physics` takes.
     pub const ALL: [Profile; 3] = [Profile::NGP, Profile::EXPERIMENTAL, Profile::EXPERIMENTAL_BRUSH];
@@ -71,6 +72,8 @@ mod tests {
         let brush = Profile::named("experimental-brush").unwrap();
         assert_eq!(brush.engine, experimental.engine);
         assert!(rbr_tyre::NAMES.contains(&brush.tyre) && brush.tyre != "ngp");
+        assert_eq!((experimental.aero, brush.aero), ("ngp", "wings+downforce"));
+        assert!(rbr_hybrid::ngp::AERO_NAMES.contains(&brush.aero));
         assert_eq!(Profile::named("realistic"), None);
     }
 }

@@ -1818,6 +1818,17 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   and 0.80 g and 120 m both; the 30 mm pad's full pedal 0.97 / 0.89 over 100-70. And the rise with speed is the files'
   downforce on either tyre: the circles' limit at r 40 / 100 / 200 m, NGP's tyre 0.89 / 0.98 / 1.14 g at 69 / 114 / 172
   km/h, loose-v1 0.86 / 0.95 / 1.11 at 68 / 112 / 170 (the r200 runs end short of the limit).
+- The brush profile takes the aero prototype (2026-11-11, branch `test/grip`: `Profile::EXPERIMENTAL_BRUSH.aero` is
+  `wings+downforce`, `--aero ngp` gives the files' back; `experimental` keeps the files'). The i20 on material 49, the
+  files' aero / the prototype (the autopilot): the circles' limit at r 40 / 100 / 200 m 0.86 / 0.95 / 1.11 g at 68 / 112
+  / 170 km/h against 0.83 / 0.88 / 0.95 at 67 / 108 / 157 (the r200 runs end short of the limit), where Finland 2021's
+  p90 of cornering on its cambered road is 1.17 / 1.06 / 0.99 and the user's best on the files' aero 0.93 / 1.17 /
+  1.24-1.35; braking at κ 0.3 over 160-130 / 130-100 / 100-70 / 70-40 km/h 1.01 / 0.92 / 0.85 / 0.80 against 0.99 / 0.90
+  / 0.84 / 0.79 g, where Finland's cars (their saturated tyre force with a drag of 1.74 m²) are 1.02 / 0.92 / 0.78 /
+  under 0.72; the full pedal 0.88 over 100-70; the start's 10 to 50 m 2.03 / 2.05 s (Finland 2.10). So gravel's level
+  holds at 0.9 with the prototype. Left over: braking under 100 km/h 8-10 % above Finland's (a real stop there ends in a
+  corner, weak), NGP's soil force at large angles and speed (not measured), and the flat pad's limit under the crews'
+  below 120 km/h (their road's camber). Not driven.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
