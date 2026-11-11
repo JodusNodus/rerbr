@@ -9,8 +9,6 @@ use rbr_recording::WHEELS;
 use std::fs;
 use std::path::PathBuf;
 
-/// Tyre nodes closer than this, m, are at one point: a class the model left stacked ([`tyre_nodes`]).
-const STACKED_METRES: f32 = 0.2;
 /// The model's lateral axis, the roll axis of the tyres in model space: a positive roll turns the top of the tyre
 /// forward (the top `+Y` moves toward the front `-Z`).
 pub(super) const WHEEL_ROLL_AXIS: Vec3 = Vec3::NEG_X;
@@ -39,35 +37,15 @@ pub(super) fn physics_pose(car: &CarPose) -> Mat4 {
     )
 }
 
-/// The car's tyre nodes, wheels 0 to 3: the drawn (tarmac) ones, and the wheels' rest places for the body's offset.
-/// Those are the first class's (tarmac, gravel, snow) whose four nodes are apart: the game places each wheel node by
-/// its animation, so a model may leave a class's at one point (ours; RSF's Fiesta Rally2 and WRC 2019, i20 WRC 2020
-/// and Lada VFTS stack the tarmac ones, and the i20's gravel names are swapped, which the offset's mean ignores).
-pub(super) fn tyre_nodes(data: &Data, car: &str) -> Result<([Vec3; WHEELS], [Vec3; WHEELS]), String> {
+/// The wheels' rest places in the model, wheels 0 to 3 ([`crate::car::WheelPlaces::rest`]): where the loaded car's
+/// wheel meshes are centred, the hubs they roll about, and the places the body's offset is taken from.
+pub(super) fn tyre_nodes(data: &Data, car: &str) -> Result<[Vec3; WHEELS], String> {
     let path = model_path(data, car)?;
     let model = sgc::parse(&fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?)
         .map_err(|e| format!("{}: {e:?}", path.display()))?;
-    let chained = sgc::chained_worlds(&model);
-    let class = |class: &str| -> Option<[Vec3; WHEELS]> {
-        let mut nodes = [None; WHEELS];
-        for element in &model {
-            let sgc::Element::Mesh(mesh) = element else {
-                continue;
-            };
-            match crate::car::wheel_of(&mesh.node.name) {
-                Some((c, k)) if c == class && !mesh.node.name.contains("_tyre_") => {
-                    let world = chained.get(&mesh.node.id).copied().unwrap_or(mesh.node.world);
-                    nodes[k] = Some(Vec3::new(world[0][3], world[1][3], world[2][3]));
-                }
-                _ => {}
-            }
-        }
-        nodes.into_iter().collect::<Option<Vec<_>>>()?.try_into().ok()
-    };
-    let drawn = class("tarmac").ok_or_else(|| format!("{}: not four tarmac tyre nodes", path.display()))?;
-    let apart = |n: &[Vec3; WHEELS]| (0..WHEELS).all(|i| (i + 1..WHEELS).all(|j| n[i].distance(n[j]) > STACKED_METRES));
-    let rest = ["tarmac", "gravel", "snow"].into_iter().filter_map(class).find(apart).unwrap_or(drawn);
-    Ok((drawn, rest))
+    crate::car::wheel_places(&model, &sgc::chained_worlds(&model))
+        .map(|places| places.rest)
+        .ok_or_else(|| format!("{}: not four tarmac tyre nodes", path.display()))
 }
 
 /// The car's `.sgc` model: its `Cars.ini` entry's (an RSF car's through `Data::with_car`), else the one in its `Cars`

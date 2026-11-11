@@ -513,6 +513,17 @@ probably fit the wrong hour.
   the live process sending the offsets (HUB1; recordings carry none and keep the anchor). The 208 Rally4's and Clio
   Rally3's (-0.045 tarmac, -0.04 loose) sit 4.5 cm further in: centre 0.750 m against the model's 0.744 m, no longer
   10 cm outboard. Particles still take the anchor.
+- Wheel rest places (2026-11-11, `car/wheels.rs`, `tests/wheel_data.rs`): 10 of 108 installed models stack their
+  tarmac wheels at one node (RSF's Fiesta Rally2 and WRC 2019, DS3 WRC, i20 R5, Rally2, WRC 2017/2020/2021, Polo WRC
+  2016, Lada VFTS), turned for one side (i20s right, the others left); the Porsche 911 GT3 RS swaps its front and
+  back names. The loader moves each to the first class whose four nodes are apart, matched to `Point_e_wheel_<side>`
+  by nearness (the i20 WRC 2020's gravel `lb`/`rf` are swapped), and turns it by pi when its normals face in there.
+  Before: the car at rest (launcher preview) showed one wheel and three bare brake discs, and in a drive the stacked
+  models' wheels of one side showed their backs. Wheels left where they are keep their node's turn.
+- Brake discs (`e_brakedisc_<side>`, `_lit` too; under `e_wheelgrunk_<side>` in every model) move with their wheel,
+  without the roll; drawn with the body they stood out of a rim the physics placed further in (i20 WRC 2020 front).
+  The suspension links under the same node (`e_wheelhang/prop/stag`) stay with the body (the game's linkage is not
+  ported). The exterior wheels are still not steered (the wheel's `axle` would give it).
 - Not drawn: `pc_e_premove` (2026-10-28, `car/mod.rs` 0x1001e090): the classifier returns kind 10, which
   `FUN_1001e430` adds to no draw list (`cmp eax, 9; ja` at 0x1001e59d, `cmp eax, 8; ja` at 0x1001e61e).
   Community models give it a `Default Material` FaceBlock (40 of 583 installed `.ini`s; a 2.3 m white cube about the

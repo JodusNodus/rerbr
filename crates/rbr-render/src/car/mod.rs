@@ -23,7 +23,7 @@
 //! the interior set `i_*` (the game draws it only in the in-car views), parts the car shows only in some
 //! states and hidden at the start (`Switch = true`, [`lights::shown_at_start`]), gravel and snow wheels and spare wheels (the tarmac ones stay at the same
 //! nodes), and parts the 1.02 loader does not build (`k_`, `d_`). Wheels have no physics: they sit at their
-//! nodes.
+//! rest places ([`WheelPlaces`]), their brake discs at theirs.
 
 use crate::coords;
 use crate::damage::{self, Cracks, Dents, MeshDamage, Zones};
@@ -44,12 +44,14 @@ mod files;
 mod meshes;
 mod parts;
 mod shading;
+mod wheels;
 
 use files::{folder, read_bytes, read_ini, read_text, resolve, shader_file, Textures};
 use meshes::{build_meshes, crack_overlays, in_draw_order};
 pub(crate) use parts::wheel_of;
-use parts::{detach_part, ghost_part_for, hinge_side, interior_part_for, part_for};
+use parts::{brake_disc_of, detach_part, ghost_part_for, hinge_side, interior_part_for, part_for};
 use shading::{dirt_texture, list_for, pass_for, scrape_texture, shade_for, FaceStyle, List, Order, Pass};
+pub use wheels::{wheel_at_rest, wheel_places, WheelPlaces};
 
 /// Vertex colour of every car vertex: white, as the model has none, so the texture is drawn as it is. The alpha is the
 /// scrape amount ([`crate::damage`]), 0 until the car is damaged.
@@ -365,6 +367,7 @@ fn load_set(
     let classes: BTreeSet<String> = settings.iter().map(|s| s.name.clone()).collect();
 
     let chained = sgc::chained_worlds(&model);
+    let places = wheel_places(&model, &chained);
     // The side doors' hinge point: the exterior door's node translation.
     let hinge = |side: &str| {
         let door = format!("e_door_{side}");
@@ -465,6 +468,11 @@ fn load_set(
             Some((hinge, side)) => coords::hinged_panel_to_car(world, block, hinge, side),
             None => coords::part_to_car(world, block),
         };
+        let wheel = wheel_of(&mesh.node.name).filter(|(class, _)| *class == SURFACE).map(|(_, k)| k);
+        let transform = match (wheel, places) {
+            (Some(k), Some(places)) => wheel_at_rest(k, &places, transform),
+            _ => transform,
+        };
         let built = build_meshes(mesh, placement * transform, &face_styles);
         report.bad_triangles += built.bad_triangles;
         if !built.meshes.is_empty() {
@@ -473,7 +481,7 @@ fn load_set(
         let lamp = lights::Switch::of_part(part, &parts)
             .or_else(|| lights::Switch::of_drawn(part, model_centre(mesh, transform)?, &lamp_points));
         let detach = detach_part(&mesh.node.name);
-        let wheel = wheel_of(&mesh.node.name).map(|(_, k)| k);
+        let hub = brake_disc_of(&mesh.node.name);
         let steering = mesh.node.name.eq_ignore_ascii_case("i_steeringwheel");
         let mirror = cabin::Mirror::of_part(&mesh.node.name);
         let window = damage::window_slot(&mesh.node.name);
@@ -503,7 +511,7 @@ fn load_set(
                     shade.window = true;
                 }
             }
-            (order, placed, MeshDamage { lamp, detach, hinge: swung, wheel, mirror, window, steering, ..effect })
+            (order, placed, MeshDamage { lamp, detach, hinge: swung, wheel, hub, mirror, window, steering, ..effect })
         }));
         if let Some(window) = damage::window_slot(&mesh.node.name) {
             let style = FaceStyle {

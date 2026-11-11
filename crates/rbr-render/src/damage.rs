@@ -95,6 +95,9 @@ pub struct MeshDamage {
     /// The wheel (0 to 3, `crate::playback`'s order) this mesh is, by its node name (`e_wheel_<class>_<side>` or its
     /// `e_wheel_<class>_tyre_<side>`).
     pub wheel: Option<usize>,
+    /// The wheel whose brake disc this mesh is (`e_brakedisc_<side>`, lit or not): it moves with the wheel but does not
+    /// roll.
+    pub hub: Option<usize>,
     /// A mirror's part, by its node name: with the cabin light its glass mirrors ([`crate::car::cabin::Mirror`]).
     pub mirror: Option<crate::car::cabin::Mirror>,
     /// The window slot ([`window_slot`]) of a window's part, by its node name: the pane seen from inside takes what its

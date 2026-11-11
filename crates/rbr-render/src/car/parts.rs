@@ -14,15 +14,20 @@ use rbr_recording::detach;
 /// `e_wheel_<class>_tyre_<side>` child. The model's `+X` side (`l`) is the body's `+X`, where wheels 0 and 2 are.
 pub(crate) fn wheel_of(name: &str) -> Option<(&str, usize)> {
     let (class, side) = name.strip_prefix("e_wheel_")?.split_once('_')?;
-    let side = side.strip_prefix("tyre_").unwrap_or(side);
-    let k = match side {
-        "lf" => 0,
-        "rf" => 1,
-        "lb" => 2,
-        "rb" => 3,
-        _ => return None,
-    };
-    Some((class, k))
+    Some((class, wheel_side(side.strip_prefix("tyre_").unwrap_or(side))?))
+}
+
+/// The wheel (0 to 3) a node name's side suffix `lf`, `rf`, `lb` or `rb` names.
+fn wheel_side(side: &str) -> Option<usize> {
+    ["lf", "rf", "lb", "rb"].iter().position(|s| *s == side)
+}
+
+/// The wheel (as [`wheel_of`]) whose brake disc an `e_brakedisc_<side>` or `e_brakedisc_<side>_lit` node is. The
+/// disc hangs from the wheel's `e_wheelgrunk_<side>` node, which the game moves with the wheel; drawn with the body, it
+/// stood out of a rim the physics placed further in (the i20 WRC 2020's front wheels).
+pub(super) fn brake_disc_of(name: &str) -> Option<usize> {
+    let side = name.strip_prefix("e_brakedisc_")?;
+    wheel_side(side.strip_suffix("_lit").unwrap_or(side))
 }
 
 /// The detachable part a mesh is ([`detach::PARTS`]): an exterior part by its name, and an interior panel by its
