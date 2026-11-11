@@ -557,7 +557,13 @@ brush (main `0ef55141`) are in `notes/tyre-model.md` ("In game").
   110-120 / 130-140 / 150-160 / 170-180 km/h; experimental-brush with `wings+downforce` 0.56 / 0.47 / 0.38 / 0.27 / 0.18
   (11-28 % over), with the files' aero 0.57 / 0.49 / 0.42 / 0.35 / 0.27, as experimental on NGP's tyre (up to 90 %
   over). With the real drag in both the thrust left over is 11-17 %: the wheel power's reading above. Not changed (the
-  whole torque is the user's decision; the gap is the road loss, 17-20 % real against the file's 12 %).
+  whole torque is the user's decision; the gap is the road loss, 17-20 % real against the file's 12 %). With the
+  prototype the start on pad-tarmac passes 10 / 25 / 50 / 100 m at 1.44 / 2.26 / 3.27 / 4.87 s against España's 1.39 /
+  2.22 / 3.26 / 4.90 (94 starts, `rally_wot.py launch`), and the deceleration with the throttle lifted in gear
+  (`rally_wot.py lift`) is 0.109 / 0.090 g in 6th at 100-120 / 80-100 km/h and 0.078 / 0.076 in 5th / 4th at 60-80,
+  against España's 0.145 / 0.101 / 0.085 / 0.089 and Deutschland 2019's 0.090 in 6th at 80-100 and 0.085 / 0.094: 8-25 %
+  under at like engine speeds (was 30 %; the tyres' rolling resistance, 0.0066, is part of the rest). Material 49 adds
+  0.014 g, inside Finland's and Estonia's 0.085-0.115.
 - The 2017-21 World Rally Cars' pedal map and their response to the pedal, from the same telemetry (2026-11-11;
   `harness/rally_wot.py pedal`: the accelerometer's g between the same gear's with the throttle shut and open, 3rd to
   5th gear above 4000 rpm, the throttle steady for 0.6 s; the channel taken as the pedal). The share of that range at 10
