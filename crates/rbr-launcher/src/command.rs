@@ -97,6 +97,7 @@ pub fn render_scale_args(percent: u32) -> Vec<String> {
 /// The `viewer --enhance` list of the additions `graphics` turn on, and those always on.
 pub fn enhance_list(graphics: &Graphics) -> String {
     let on = |name: &str| match name {
+        "blur" => graphics.motion_blur,
         "cabin" => graphics.cabin,
         "contact" => graphics.contact,
         "grass" => graphics.grass,
@@ -1450,6 +1451,11 @@ mod tests {
             assert_eq!(Quality::of(preset.graphics(true)), Some(preset));
         }
         assert_eq!(Quality::of(Graphics { grass: false, ..DEFAULT_GRAPHICS }), None);
+        // The motion blur is off until asked for, and no preset's business.
+        let blurred = Graphics { motion_blur: true, ..Quality::Low.graphics(false) };
+        assert_eq!(enhance_list(&blurred), "anisotropy,blur,decals,water");
+        assert_eq!(Quality::of(blurred), Some(Quality::Low));
+        assert!(Quality::High.over(blurred).motion_blur);
     }
 
     /// The advanced H-shifter takes the car's gearbox and the grind from RBRControls' folder.
