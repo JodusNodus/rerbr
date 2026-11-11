@@ -1306,13 +1306,20 @@ search, PCSS as the cascades), taps a texel apart, at most 9 a side and the rang
 apart over 3 mm texels drew a 1 cm grid of steps where the sun came through the glass (208 binnacle, 19:30). 580 208
 chase RMSE under 1 %; cost not measured.
 
-The stage's shadow in the cabin (2026-11-10, `cabin_stage_lit`): soft as the stage's (`soft_filter`'s 3x3 search and
-penumbra on the first cascade), its taps 2 texels apart and at most 5 a side. The one filtered compare of before drew
-a tree's shadow on the dash and the door as stair-stepped blocks, the lit specks between them a texel or two across
-(Pirttikulma 15:00, quattro door, Fiesta dash); now a soft pool of light, and the specks even out to dim light, as
-under a canopy 10 m up. Scene pass, Fiesta cockpit there at 1080p ultra: 3.06 to 3.31 ms (`soft_filter` itself 3.80,
-`texel_filter` 3.11 with the steps still there). The Gabiria 131, Luceram Fiesta, Pirttikulma quattro and 532 Clio
-cockpit shots RMSE under 0.05 %.
+The stage's shadow in the cabin (2026-11-11, `cabin_stage_lit`): a box of the first cascade's texels `CABIN_PENUMBRA`
+(6 cm) to each side, 1 to 4 texels by the map's detail, in `texel_filter`'s taps for any width (k + 1 bilinear taps a
+side for 2k + 1 texels, no gaps). The one filtered compare of before drew a tree's shadow on the dash and the door as
+stair-stepped blocks (Pirttikulma 15:00, quattro door, Fiesta dash); `soft_filter`'s search with taps 2 texels apart
+(2026-11-10) left a dot grid that the sheen below showed. Scene pass, Fiesta cockpit there at 1080p ultra: 2.70 ms
+before and 2.69 after.
+
+The sun's sheen in the cabin (2026-11-11, `CABIN_HIGHLIGHT`): the cabin's faces in the sun take a rough plastic's
+highlight (`sun_lobe`, m 0.5), at most 0.035 (uncapped, the lobe's grazing Fresnel lit the dash white, which had the
+highlight left out; at 0.2 and 0.08 the patches still clipped under the cabin's exposure). Without it a dark cabin's
+sun did not show: the Fiesta's dash (albedo 0.04) moved 41 to 52 of 255 between shade and sun while its irradiance
+moved 2.3x, and neither `CABIN_SHADE` 0.35 nor a fixed cabin exposure changed that visibly. Not on the dial faces.
+The eight cockpit reference shots rendered (Gabiria 131, 621 i20, Luceram Fiesta, Alpes GC8, 532 Clio, Pirttikulma
+quattro, Peklo GC8, Sardian Clio) are byte-identical: none has the sun on a cabin face.
 
 ## Mirrors
 
