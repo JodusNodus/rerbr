@@ -110,7 +110,8 @@ fn cabin_headlights(n: vec3<f32>) -> vec3<f32> {
 // gives it back (`SunIn::bounce`), onto the share of each face's view that is the cabin, the sun's more onto the faces
 // turned down (the sunlit patches lie on the floor, the seats and the dash). By night the headlights off the road
 // (`lamp_bounce`). Paint open to the sky (the bonnet seen from inside) takes the outside view's light. The sun's
-// highlight is left out: on the dash, seen at a grazing angle, it lit the plastic white; `cabin_sheen` reflects. A dial
+// highlight is capped (`CABIN_HIGHLIGHT`): in full, on the dash seen at a grazing angle, it lit the plastic white;
+// `cabin_sheen` reflects. A dial
 // face takes at least `CABIN_GAUGE_LEAST` of the open sky's light, so that it reads in the binnacle's shade.
 const CABIN_GAUGE_LEAST: f32 = 0.5;
 // A clear pane's two faces' share of the sky's light, `(1 - F)^2` over the cosine-weighed hemisphere (`F` Schlick's,
@@ -126,10 +127,21 @@ const CABIN_BOUNCE_SHARE: f32 = 0.5;
 const CABIN_NEAR: f32 = 1.0;
 const CABIN_NEAR_BOUNCE: f32 = 0.5;
 
-fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
-    let e = cabin_irradiance(v, n, shadowed, under_cloud, outside);
+// The sun's sheen on the cabin's faces (ours, 2026-11-11): a rough plastic's highlight (`sun_lobe` at
+// `CABIN_HIGHLIGHT.x`), so that a dash, a wheel rim or a sleeve in the sun reads as sunlit; a dark cabin's diffuse
+// light alone (albedo about 0.04) moved a sunlit dash a few steps of 255. At most `CABIN_HIGHLIGHT.y`: the lobe's
+// grazing Fresnel lit the dash white, which had the highlight left out before.
+const CABIN_HIGHLIGHT: vec2<f32> = vec2<f32>(0.5, 0.035);
+
+fn cabin_day_lit(colour: vec3<f32>, v: VertexOut, n: vec3<f32>, view: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
+    let ndl = cabin_sun(v, n, shadowed, under_cloud, outside);
+    let e = cabin_irradiance(v, n, ndl, shadowed, under_cloud, outside);
     let albedo = min(pow(colour * CAR_ALBEDO, vec3<f32>(2.2)), vec3<f32>(ALBEDO_MOST));
-    return pow(albedo * e, vec3<f32>(1.0 / 2.2));
+    var sheen = 0.0;
+    if (ndl > 0.0 && v.specular.y < CABIN_GAUGE) {
+        sheen = min(sun_lobe(n, view, -frame.sun.xyz, CABIN_HIGHLIGHT.x), CABIN_HIGHLIGHT.y) * ndl;
+    }
+    return pow(albedo * e + sheen * frame.day_sun.rgb * frame.cabin_seen.w, vec3<f32>(1.0 / 2.2));
 }
 
 // One term of the cabin's light (`DEBUG_VIEW`) as a display grey 0..1: the vertex's open sky share (1), its near
@@ -151,21 +163,27 @@ fn cabin_debug(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outs
         return clamp(contact, 0.0, 1.0);
     }
     let luma = vec3<f32>(0.2126, 0.7152, 0.0722);
-    let e = cabin_irradiance(v, n, shadowed, under_cloud, outside);
+    let e = cabin_irradiance(v, n, cabin_sun(v, n, shadowed, under_cloud, outside), shadowed, under_cloud, outside);
     return clamp(dot(e, luma) / max(dot(frame.day_sky.rgb, luma), 1e-4) * 0.5, 0.0, 1.0);
 }
 
-// The cabin's irradiance (pre-albedo light) `cabin_day_lit` shades with: the window and bounce light, less what the
-// cabin's faces close off nearby, plus the sun past the glass, the headlights' bounce and the paint's outside light.
-fn cabin_irradiance(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
-    let sky = 1.0 - v.specular.z;
+// The sun on a cabin face past the glass: its cosine, less the car's shadow, the stage's (`cabin_stage_lit`) and the
+// clouds'.
+fn cabin_sun(v: VertexOut, n: vec3<f32>, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> f32 {
     let to_sun = -frame.sun.xyz;
-    let cloud = 1.0 - CLOUD_CAR_SHADE * under_cloud;
     var stage = outside.a;
     if (frame.sun_shadow.x != 0.0 && frame.sun_shadow.z == 0.0 && dot(n, to_sun) > 0.0 && shadowed < 1.0) {
         stage = cabin_stage_lit(v.world, n);
     }
-    let ndl = max(dot(n, to_sun), 0.0) * (1.0 - shadowed) * stage * cloud;
+    return max(dot(n, to_sun), 0.0) * (1.0 - shadowed) * stage * (1.0 - CLOUD_CAR_SHADE * under_cloud);
+}
+
+// The cabin's irradiance (pre-albedo light) `cabin_day_lit` shades with: the window and bounce light, less what the
+// cabin's faces close off nearby, plus the sun past the glass, the headlights' bounce and the paint's outside light.
+fn cabin_irradiance(v: VertexOut, n: vec3<f32>, ndl: f32, shadowed: f32, under_cloud: f32, outside: vec4<f32>) -> vec3<f32> {
+    let sky = 1.0 - v.specular.z;
+    let to_sun = -frame.sun.xyz;
+    let cloud = 1.0 - CLOUD_CAR_SHADE * under_cloud;
     let shade = v.bounce_sun;
     let window = sky * cabin_window(cabin_seen(v), sky, IBL_TINT, CABIN_DAY_RANGE) * shade.x;
     let sky_in = frame.cabin.w * cabin_window(frame.cabin_seen.xyz, frame.cabin.w, IBL_TINT, CABIN_DAY_RANGE) * shade.y;
@@ -213,10 +231,43 @@ fn cabin_contact() -> f32 {
     return sum / 9.0;
 }
 
-// `sun_lit` for the cabin, all within the first cascade: one filtered compare (2 x 2 texels, 1.4 cm each) in place of
-// the 3 x 3 taps, which cost about 0.9 ms a 1080p cockpit frame.
+// `sun_lit` for the cabin, all within the first cascade: a box of the map's texels about `CABIN_PENUMBRA` metres to
+// each side (1 to 4 texels by the map's detail), so that a tree's shadow falls on the dash and the door as a soft pool
+// of light: the penumbra of a crown some 6 m up, taken for every caster (no search for their depth, as `soft_filter`
+// makes). `texel_filter`'s taps for any width: the texels from `k` before the point's to `k` after weigh 1 - g, 1, ...,
+// 1 and g (g the point's fraction past its texel's corner), in k + 1 bilinear taps a side: the first pair weighted
+// 2 - g with its second texel's share 1 / (2 - g), each pair between at its shared corner, the last texel alone. One
+// filtered compare (2 x 2 texels) until 2026-11-10 drew stair-stepped blocks; taps 2 texels apart (until 2026-11-11)
+// left a dot grid, which the sun's sheen (`CABIN_HIGHLIGHT`) showed.
+const CABIN_PENUMBRA: f32 = 0.06;
+
 fn cabin_stage_lit(world: vec3<f32>, n: vec3<f32>) -> f32 {
-    return cabin_cascade(world + n * frame.sun_texels[0] * 1.5);
+    let texel = frame.sun_texels[0];
+    let p = frame.sun_matrices[0] * vec4<f32>(world + n * texel * 1.5, 1.0);
+    let uv = vec2<f32>(p.x * 0.5 + 0.5, 0.5 - p.y * 0.5);
+    if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || p.z > 1.0) {
+        return 1.0;
+    }
+    let k = clamp(i32(round(CABIN_PENUMBRA / texel)), 1, 4);
+    let size = vec2<f32>(textureDimensions(sun_map));
+    let corner = floor(uv * size);
+    let g = uv * size - corner;
+    let w0 = 2.0 - g;
+    var lit = 0.0;
+    for (var y = 0; y <= k; y++) {
+        for (var x = 0; x <= k; x++) {
+            let at = vec2<i32>(x, y);
+            // The pairs' shared corners, then the first pair's and the last texel's places.
+            var offset = vec2<f32>(f32(2 * x - k + 1), f32(2 * y - k + 1));
+            var weight = vec2<f32>(2.0);
+            offset = select(offset, vec2<f32>(0.5 - f32(k)) + 1.0 / w0, at == vec2<i32>(0));
+            weight = select(weight, w0, at == vec2<i32>(0));
+            offset = select(offset, vec2<f32>(f32(k) + 0.5), at == vec2<i32>(k));
+            weight = select(weight, g, at == vec2<i32>(k));
+            lit += weight.x * weight.y * textureSampleCompareLevel(sun_map, shadow_sampler, (corner + offset) / size, 0, p.z);
+        }
+    }
+    return lit / f32(4 * k * k);
 }
 
 // The first cascade's filtered compare at `world`; 1 outside it.

@@ -1,5 +1,5 @@
 """rally_wot.py: real rally cars' telemetry against the game's traces: full throttle on straights, standing starts,
-lifts, sideslip, wheel slip.
+lifts, sideslip, wheel slip, the pedal map.
 
   python3 -I -B harness/rally_wot.py fetch YEAR EVENT OUT_DIR
   python3 -I -B harness/rally_wot.py table DIR [TRACE...] [--cars NAME=MODEL,...]
@@ -8,6 +8,7 @@ lifts, sideslip, wheel slip.
   python3 -I -B harness/rally_wot.py lift DIR|TRACE...
   python3 -I -B harness/rally_wot.py sideslip DIR|REPLAY_TRACE...
   python3 -I -B harness/rally_wot.py slip DIR|TRACE... --cda M2 [--mass KG] [--rho R]
+  python3 -I -B harness/rally_wot.py pedal DIR...
 
 `fetch` asks the WRC's archive (webappsdata.wrc.com, the source of RallyDataJunkie's files) for the YEAR season's
 event whose name contains EVENT and writes every stage's merged telemetry to OUT_DIR as
@@ -516,6 +517,44 @@ def slip(args):
               for c in (deep[(deep[:, 0] >= a) & (deep[:, 0] < b), 1] for a, b in zip(BANDS, BANDS[1:]))))
 
 
+def pedal(args):
+    shut, wide, part = {}, {}, []
+    files = [p for d in args.paths for p in sorted(glob.glob(os.path.join(d, "df_telemetrymergeddata_*.csv")))]
+    for n, path in enumerate(files):
+        rows = load_telemetry(path)
+        t = [r["t"] for r in rows]
+        for i, r in enumerate(rows):
+            win = rows[bisect.bisect_left(t, r["t"] - 0.62):i + 1]
+            thr = [w["thr"] for w in win]
+            if (not 3 <= r["gear"] <= 5 or r["v"] < 70 or r["rpm"] < 4000 or abs(r["lat"]) > 0.5
+                    or r["t"] - win[0]["t"] < 0.45 or max(b["t"] - a["t"] for a, b in zip(win, win[1:])) > 0.35
+                    or max(thr) - min(thr) > 6 or any(w["gear"] != r["gear"] or w["brk"] > 0 for w in win)):
+                continue
+            if r["thr"] < 3:
+                shut.setdefault(r["gear"], []).append(r["long"])
+            elif r["thr"] >= 97:
+                wide.setdefault((r["gear"], r["rpm"] // 250), []).append(r["long"])
+            elif 5 <= r["thr"] < 95:
+                part.append((n, i, int(r["thr"] + 5) // 10 * 10, r["gear"], r["rpm"], r["long"]))
+    shut = {k: statistics.fmean(v) for k, v in shut.items() if len(v) >= 40}
+    wide = {k: statistics.fmean(v) for k, v in wide.items() if len(v) >= 40}
+    runs, last = {}, {}
+    for n, i, band, gear, rpm, g in part:
+        if gear not in shut or (gear, rpm // 250) not in wide:
+            continue
+        if band not in last or last[band][0] != n or i - last[band][1] > 3:
+            runs.setdefault(band, []).append([])
+        last[band] = (n, i)
+        runs[band][-1].append((g - shut[gear]) / (wide[gear, rpm // 250] - shut[gear]))
+    print(f"{len(files)} drives; throttle shut, g: " + ", ".join(f"gear {k} {v:+.3f}" for k, v in sorted(shut.items())))
+    print("throttle %: share of the range from shut to open, +- its standard error (runs, samples)")
+    for band, r in sorted(runs.items()):
+        if len(r) >= 8:
+            means = [statistics.fmean(x) for x in r]
+            print(f"  {band:2d}: {sum(map(sum, r)) / sum(map(len, r)):.2f} +- "
+                  f"{statistics.stdev(means) / len(means) ** 0.5:.2f} ({len(r)}, {sum(map(len, r))})")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -523,7 +562,7 @@ def main():
     f.add_argument("year")
     f.add_argument("event")
     f.add_argument("out")
-    for name in ("launch", "lift", "sideslip", "table", "slip", "fit"):
+    for name in ("launch", "lift", "sideslip", "table", "slip", "pedal", "fit"):
         p = sub.add_parser(name)
         p.add_argument("paths", nargs="+")
         p.add_argument("--cars")
@@ -533,7 +572,7 @@ def main():
     sub.choices["slip"].add_argument("--cda", type=float, required=True)
     args = parser.parse_args()
     {"fetch": fetch, "launch": launch, "lift": lift, "sideslip": sideslip, "table": table, "slip": slip,
-     "fit": fit}[args.command](args)
+     "pedal": pedal, "fit": fit}[args.command](args)
 
 
 if __name__ == "__main__":

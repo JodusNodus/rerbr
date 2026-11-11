@@ -916,7 +916,7 @@ fn shade_car(v: VertexOut, front: bool, under_cloud: f32) -> vec4<f32> {
         if (DEBUG_VIEW != 0u) {
             return vec4<f32>(vec3<f32>(cabin_debug(v, n, shadowed, under_cloud, outside)), 1.0);
         }
-        shaded = cabin_day_lit(colour, v, n, shadowed, under_cloud, outside);
+        shaded = cabin_day_lit(colour, v, n, view, shadowed, under_cloud, outside);
     } else {
         shaded = lit(colour, n, view, sunlit, around.rgb, v.world);
     }
