@@ -105,8 +105,9 @@ struct Part {
     stage: usize,
     /// The model-space vertices as loaded.
     rest: Vec<Vertex>,
-    /// The tyre this mesh is, with its hub: the tyre node's model-space position, the pivot of the roll. (The mesh's
-    /// own box centre is 0.07 m off it, which would give a 0.2 m narrower track than the anchors.) `None` for the body.
+    /// The tyre this mesh is, or whose brake disc it is, with its hub: the tyre's model-space rest place, the pivot of
+    /// the roll (a disc does not roll). (The mesh's own box centre is 0.07 m off it, which would give a 0.2 m narrower
+    /// track than the anchors.) `None` for the body.
     wheel: Option<(usize, Vec3)>,
     /// In the interior set ([`Playback::add_interior`]), drawn instead of the exterior in the in-car views.
     interior: bool,
@@ -218,9 +219,9 @@ pub struct Playback {
 
 impl Playback {
     /// Matches the car's model meshes to the recording: the tyre nodes of the car's `.sgc` name the four wheels, and
-    /// their drawn meshes are the ones centred on the tyre nodes. `model` must be the car's meshes at the identity
-    /// placement with what damage does to them (`Car::meshes` and `Car::damage`), and each must be in `stage` (the viewer adds
-    /// them with `Car::add_to_stage`).
+    /// their drawn meshes, which the loader centres on the wheels' rest places; their brake discs move with them.
+    /// `model` must be the car's meshes at the identity placement with what damage does to them (`Car::meshes` and
+    /// `Car::damage`), and each must be in `stage` (the viewer adds them with `Car::add_to_stage`).
     pub fn load(
         data: &Data,
         car: &str,
@@ -229,15 +230,15 @@ impl Playback {
         damage: &[MeshDamage],
         drive: Drive,
     ) -> Result<Playback, String> {
-        let (drawn, rest) = tyre_nodes(data, car)?;
+        let rest = tyre_nodes(data, car)?;
         let mut parts: Vec<Part> = Vec::new();
         let mut found = [false; WHEELS];
         for (mesh, effect) in model.iter().zip(damage) {
             let stage_index = stage.meshes.iter().position(|m| m == mesh).ok_or("a car mesh is not in the stage")?;
-            let wheel = effect.wheel.map(|k| (k, drawn[k]));
-            if let Some((k, _)) = wheel {
+            if let Some(k) = effect.wheel {
                 found[k] = true;
             }
+            let wheel = effect.wheel.or(effect.hub).map(|k| (k, rest[k]));
             parts.push(Part::new(stage_index, mesh, effect, wheel, false));
         }
         if found.contains(&false) {
@@ -770,7 +771,10 @@ impl Playback {
                         * physics_pose(&car)
                         * Mat4::from_translation(Vec3::from(wheel.centre()))
                         * model_to_body()
-                        * Mat4::from_axis_angle(WHEEL_ROLL_AXIS, wheel.roll)
+                        * Mat4::from_axis_angle(
+                            WHEEL_ROLL_AXIS,
+                            if part.effect.wheel.is_some() { wheel.roll } else { 0.0 },
+                        )
                         * Mat4::from_translation(-centre)
                 }
             };
