@@ -4,7 +4,8 @@
 //! stays on top (`rbr_physics::tyre::model::apply`), on gravel held at its value at [`GRAVEL_SOIL_SPEED`]
 //! ([`gravel_soil_share`]).
 //!
-//! - Level: NGP's, on gravel times [`gravel_depth_level`] and along the wheel times [`GRAVEL_LONGITUDINAL`]. The free
+//! - Level: NGP's, on gravel times [`gravel_depth_level`], along the wheel times [`GRAVEL_LONGITUDINAL`] and across it
+//!   times [`GRAVEL_LATERAL`]. The free
 //!   rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
@@ -200,9 +201,16 @@ pub fn gravel_damp_level(w: f64, gravel: f64) -> f64 {
 /// gravel rallies; 0.85 puts the tyres' force on Finland's, and 0.9 the car's deceleration, the real cars having
 /// 0.08 g more air drag at 115 km/h than the files give. By hand on Finland's road (RSF 524 against the eight cars of
 /// 2021's SS7, the same braking zones) a sim driver peaks 6 % over the real crews on NGP's tyre and 8-17 % under them
-/// at 0.85, where the same drives' apex speeds are 11-12 % under: 0.9 leaves a driver under the crews in both. The
-/// lateral level stays NGP's: those drives reach the real apex speeds in their best corners.
+/// at 0.85, where the same drives' apex speeds are 11-12 % under: 0.9 leaves a driver under the crews in both.
 pub const GRAVEL_LONGITUDINAL: f64 = 0.9;
+
+/// Gravel's lateral level over NGP's, on the gravel share of the soil. At NGP's own level the car cornered under
+/// NGP's car (i20 Coupe WRC 2020, material 49, the profiles' aero): the ramp steer's peak at 80 km/h 0.871 g against
+/// 0.905, the circles of 65 / 100 m 0.89 g at 89 / 109 km/h against 0.92 / 0.93. 1.06 gives 0.912 g and 0.92 / 0.93;
+/// the straight braking moves by 0.02 g at most. The 2017-21 World Rally Cars in Finland corner at a p90 of 1.17 /
+/// 1.06 g on their cambered road at 40 / 100 m. By hand on RSF 524 (2026-11-11) the user found the gravel "quite a
+/// bit less grippy in the corners": the report the user's, the value ours.
+pub const GRAVEL_LATERAL: f64 = 1.06;
 
 /// The loose layer's depth, m, to which gravel keeps its level (RSF 524's material, Finland's road), the depth of
 /// NGP's loosest gravel, and the level there over NGP's ([`gravel_depth_level`]).
@@ -222,17 +230,21 @@ pub fn gravel_depth_level(depth: f64) -> f64 {
 }
 
 /// The sideways speed of the contact point above which NGP's soil lateral force stops growing on gravel, m/s
-/// ([`gravel_soil_share`]): 15 deg of sideslip at 80 km/h, from where the real cars' whole g is level.
-pub const GRAVEL_SOIL_SPEED: f64 = 6.0;
+/// ([`gravel_soil_share`]): 27 deg of slip at 80 km/h, 14 at 150.
+pub const GRAVEL_SOIL_SPEED: f64 = 10.0;
 
 /// The share of NGP's soil lateral force (∝ v_lat²) gravel keeps at the contact point's sideways speed `v_lat` (m/s):
 /// the whole to [`GRAVEL_SOIL_SPEED`], its value there above. NGP's force is 0.03 g of the i20 Coupe WRC at 6 m/s,
-/// 0.16 g at 14 and 0.3 g at 19 (30 deg at 100 and 140 km/h), and held past the limit on the pad the car's whole g
-/// rose with it, median 0.87 / 0.95 / 1.00 at 20-30 / 30-40 / 40-60 deg at 60-100 km/h and 0.95 to 1.07 from 10-20 to
-/// 40-60 deg at 100-160. The 2017-21 World Rally Cars in Finland do not: the p90 of their whole g from 15 / 30 / 40
-/// deg of sideslip up is 1.04 / 1.06 / 1.05 (the path's) and 0.97 / 1.00 / 0.90 (the accelerometer's) at 60-100
-/// km/h, 1.06 / 1.04 / 0.98 and 1.01 / 0.92 / 0.83 at 100-160, and their sliding windows' median 0.80-0.85. Held so,
-/// the pad's medians are 0.84 / 0.85 / 0.84 and 0.92 falling to 0.85 (note, "Slides on gravel"). Ours: the form.
+/// 0.08 g at 10, 0.16 g at 14 and 0.3 g at 19 (30 deg at 100 and 140 km/h), and the car's whole g rises with it:
+/// held past the limit on the pad (material 49, circles of 65 / 100 / 200 m, the p90 of 2 s windows from 15 / 30 /
+/// 40 deg of sideslip up) NGP's tyre reads 1.01 / 1.02 / 1.02 g at 60-100 km/h and 1.07 at 100-160. The 2017-21
+/// World Rally Cars in Finland read 0.97 / 1.00 / 0.90 and 1.01 / 0.92 / 0.83 on their accelerometers (1.04 / 1.06 /
+/// 1.05 and 1.06 / 1.04 / 0.98 along their path, the road cambered). Held from 10 m/s, with [`GRAVEL_LATERAL`]: 0.94
+/// / 0.92 / 0.89 and 0.98 from 15 deg at 100-160, and the 200 m circle's limit 0.98 g at 159 km/h (NGP's tyre 0.99,
+/// Finland's p90 0.99). From 6 m/s (the value on 2026-11-11, a user decision on the real cars' whole g, then driven:
+/// "quite a bit less grippy in the corners") 0.91 / 0.90 / 0.87, 0.94 and 0.93 g at 156 km/h; from 14 m/s 0.99 /
+/// 0.99 / 0.95 and 1.03, over the real cars'. Not measured: 30 deg up above 100 km/h, where the held force is level
+/// and the real cars' whole g falls. Ours: the form and the value.
 pub fn gravel_soil_share(v_lat: f64) -> f64 {
     let v = v_lat.abs();
     if v > GRAVEL_SOIL_SPEED {
@@ -285,7 +297,8 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
         * (x.temp_grip / cal.temp_grip_cal)
         * gravel_damp_level(x.wetness, gravel)
         * (1.0 + (gravel_depth_level(depth) - 1.0) * share);
-    let (mu_y, mu_x) = (ly * grip, lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share));
+    let (mu_y, mu_x) =
+        (ly * grip * (1.0 + (GRAVEL_LATERAL - 1.0) * share), lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share));
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if gravel > 0.0 {
         let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(depth, x.wetness), c.shear_stiffness);
@@ -465,7 +478,7 @@ pub(crate) mod tests {
     #[test]
     fn gravel_rises_by_the_shear_law_to_the_level() {
         let c = loose();
-        let peak = 0.85 * gravel_depth_level(DEEP) * 4000.0;
+        let peak = 0.85 * GRAVEL_LATERAL * gravel_depth_level(DEEP) * 4000.0;
         let fy = |a: f64| on(&c, 4000.0, 15.0, a, 0.0, 1.0, 1.0).fy.abs() / peak;
         // Coutermarsh & Shoop's pea stone over its maximum at 2.5/5/10/15° (Fig. 15): 0.33/0.55/0.80/0.91.
         for (a, pea) in [(2.5, 0.33), (5.0, 0.55), (10.0, 0.80), (15.0, 0.91)] {
@@ -482,7 +495,7 @@ pub(crate) mod tests {
         // The longitudinal side takes the same law at its own level; half a share is between the laws.
         let fx = |k: f64, g: f64| on(&c, 4000.0, 15.0, 0.0, k, 1.0, g).fx.abs();
         let level_x = 0.84 * GRAVEL_LONGITUDINAL;
-        let s0x = libm::tan(GRAVEL_ALPHA0_DEG.to_radians()) * level_x / (KX_OVER_KY * 0.85);
+        let s0x = libm::tan(GRAVEL_ALPHA0_DEG.to_radians()) * level_x / (KX_OVER_KY * 0.85 * GRAVEL_LATERAL);
         let law = -libm::expm1(-(0.5 / 1.5) / s0x) * level_x * gravel_depth_level(DEEP) * 4000.0;
         assert!((fx(0.5, 1.0) - law).abs() < 1e-5, "{} {law}", fx(0.5, 1.0));
         assert!(fx(0.05, 0.5) > fx(0.05, 1.0) && fx(0.05, 0.5) < fx(0.05, 0.0));
@@ -494,7 +507,7 @@ pub(crate) mod tests {
     #[test]
     fn wet_gravel_rises_slower_by_the_water_factor() {
         let c = loose();
-        let peak = 0.85 * gravel_depth_level(DEEP) * 4000.0;
+        let peak = 0.85 * GRAVEL_LATERAL * gravel_depth_level(DEEP) * 4000.0;
         let fy = |a: f64, w: f64| {
             let r = a.to_radians();
             let x = EvalInput {
@@ -536,8 +549,8 @@ pub(crate) mod tests {
                 EvalInput { vx: -15.0, vy: 0.0, spin: 0.25 * 15.0 / 0.3, radius: 0.3, ..cal_input(&c.cal, 15.0, 0.0) };
             eval(&x, &c, g, 0.0, depth).fx.abs() / 4000.0
         };
-        assert!((side(0.015, 1.0) / side(0.015, 0.0) - 1.0).abs() < 1e-3);
-        assert!((side(0.03, 1.0) / side(0.03, 0.0) - GRAVEL_LOOSE_LEVEL).abs() < 1e-3);
+        assert!((side(0.015, 1.0) / side(0.015, 0.0) - GRAVEL_LATERAL).abs() < 1e-3);
+        assert!((side(0.03, 1.0) / side(0.03, 0.0) - GRAVEL_LATERAL * GRAVEL_LOOSE_LEVEL).abs() < 1e-3);
         assert!((brake(0.009, 1.0) / brake(0.009, 0.0) - GRAVEL_LONGITUDINAL).abs() < 0.01);
         assert!((brake(0.03, 1.0) / brake(0.009, 1.0) - GRAVEL_LOOSE_LEVEL).abs() < 0.03);
     }
@@ -593,7 +606,7 @@ pub(crate) mod tests {
             }
         };
         let fy = |a: f64, depth: f64| {
-            eval(&x(a), &c, 1.0, 0.0, depth).fy.abs() / (0.85 * gravel_depth_level(depth) * 4000.0)
+            eval(&x(a), &c, 1.0, 0.0, depth).fy.abs() / (0.85 * GRAVEL_LATERAL * gravel_depth_level(depth) * 4000.0)
         };
         assert!(fy(5.0, 0.009) > fy(5.0, 0.0175) && fy(5.0, 0.0175) > fy(5.0, DEEP));
         assert!(fy(40.0, 0.009) > 0.999 && fy(40.0, DEEP) > 0.999);
@@ -638,7 +651,7 @@ pub(crate) mod tests {
     fn the_soil_force_stops_growing_at_gravel_s_sideways_speed() {
         assert_eq!((gravel_soil_share(0.0), gravel_soil_share(-GRAVEL_SOIL_SPEED)), (1.0, 1.0));
         // v² times the share is level above it.
-        for v in [8.0, -14.0, 25.0] {
+        for v in [12.0, -14.0, 25.0] {
             assert!((v * v * gravel_soil_share(v) - GRAVEL_SOIL_SPEED.powi(2)).abs() < 1e-9, "{v}");
         }
     }
