@@ -194,13 +194,14 @@ pub const GRAVEL_LONGITUDINAL: f64 = 0.85;
 /// NGP's loosest gravel, and the level there over NGP's ([`gravel_depth_level`]).
 pub const GRAVEL_FIRM_DEPTH: f64 = 0.015;
 pub const GRAVEL_LOOSE_DEPTH: f64 = 0.030;
-pub const GRAVEL_LOOSE_LEVEL: f64 = 0.91;
+pub const GRAVEL_LOOSE_LEVEL: f64 = 0.96;
 
 /// Gravel's level over NGP's at the loose layer's `depth` (m), both axes: 1 to [`GRAVEL_FIRM_DEPTH`], linear to
-/// [`GRAVEL_LOOSE_LEVEL`] at [`GRAVEL_LOOSE_DEPTH`]. NGP's dry gravel materials fall 3 % from 15 to 30 mm (static
-/// friction 0.8925 to 0.865); the six dry gravel rallies' saturated braking falls 5 to 14 % from Finland's (Estonia,
-/// Portugal, Sardegna, Acropolis, Safari), so with this the loosest gravel is 12 % under the firm one. Ours: that a
-/// deeper loose layer is the lower road; a stage's materials are its author's.
+/// [`GRAVEL_LOOSE_LEVEL`] at [`GRAVEL_LOOSE_DEPTH`]. Under NGP's own values the i20 Coupe WRC brakes and corners 6 %
+/// lower on its loosest gravel than on the firm one (static friction 0.8925 to 0.865, and the slower rise); the six
+/// dry gravel rallies' saturated braking falls 5 to 14 % from Finland's (Estonia, Portugal, Sardegna, Acropolis,
+/// Safari). With this the loosest gravel is 10 % under the firm one, a user decision (2026-11-11): no more, to keep
+/// the stages near their authors' design. Ours: that a deeper loose layer is the lower road.
 pub fn gravel_depth_level(depth: f64) -> f64 {
     let t = ((depth - GRAVEL_FIRM_DEPTH) / (GRAVEL_LOOSE_DEPTH - GRAVEL_FIRM_DEPTH)).clamp(0.0, 1.0);
     1.0 + (GRAVEL_LOOSE_LEVEL - 1.0) * t
