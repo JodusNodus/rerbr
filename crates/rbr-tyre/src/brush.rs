@@ -342,15 +342,16 @@ pub fn wet_loss(w: f64, v: f64, d: f64) -> f64 {
 /// The wet peak's loss with speed on a thin film, per m/s over [`THIN_FILM_FROM`] at W = 1: the film is squeezed out
 /// of the patch less completely the faster the patch meets it. Reimpell & Sponagel (Fahrwerktechnik: Reifen und
 /// Räder, 1986, via Müller et al., FAT-Schriftenreihe 299, Abb. 21b; fig ±0.02), a car tyre's peak μ, all films
-/// ~0.755 at 60 km/h; at 100 / 140 km/h 0.745 / 0.73 on 0.2 mm, 0.71 / 0.655 on 0.5 mm, 0.675 / 0.59 on 1 mm. The
-/// value is the 0.2 mm film's (0.987 / 0.967 of the 60 km/h peak; least squares through 60 km/h gives 0.0014: 0.984 /
-/// 0.969), a user decision (2026-11-11) for a rally's wet-weather tyres on a stage. By these curves the game's 0.7 mm
-/// film ([`FILM_MAX`]; 0.922 / 0.833, 0.0074, the value before) loses 8 % from 62 to 101 km/h, where Rallye
-/// Deutschland 2017's wet afternoon over its morning, at apexes cornered at 0.8 g up, keeps 0.877 at both speeds
-/// (0.95 of the slower apexes' with a dry second pass's gain in fast corners taken off; 0.92 over other years' dry
-/// passes, their cars newer: the stage does not settle it). Linear in W (ours): damp (W 0.25) loses a quarter of it.
-/// Flat to 60 km/h as Veith found the wet peak to ~50 km/h (ASTM STP 793, via Beautru 2012).
-pub const THIN_FILM_LOSS: f64 = 0.0014;
+/// ~0.755 at 60 km/h; at 100 / 140 km/h 0.745 / 0.73 on 0.2 mm, 0.71 / 0.655 on 0.5 mm, 0.675 / 0.59 on 1 mm: least
+/// squares through 60 km/h 0.0014 on 0.2 mm, 0.0058 on 0.5 mm and 0.0074 at the game's 0.7 mm ([`FILM_MAX`],
+/// interpolated: 0.922 / 0.833 of the 60 km/h peak; the value to 2026-11-11). The value is half the 0.7 mm film's
+/// (0.959 / 0.918), a user decision (2026-11-11) for a rally's wet-weather tyres on a stage: from 62 to 101 km/h the
+/// 0.7 mm curve loses 8 % and this 4 %, where Rallye Deutschland 2017's wet afternoon over its morning, at apexes
+/// cornered at 0.8 g up, keeps 0.877 at both speeds (0.95 of the slower apexes' with a dry second pass's gain in fast
+/// corners taken off; 0.92 over other years' dry passes, their cars newer): between none and 8 %. Linear in W (ours):
+/// damp (W 0.25) loses a quarter of it. Flat to 60 km/h as Veith found the wet peak to ~50 km/h (ASTM STP 793, via
+/// Beautru 2012).
+pub const THIN_FILM_LOSS: f64 = 0.0037;
 /// The speed the thin-film loss starts from, m/s: 60 km/h, the curves' common point.
 pub const THIN_FILM_FROM: f64 = 60.0 / 3.6;
 
@@ -1180,11 +1181,11 @@ mod tests {
     #[test]
     fn the_wet_peak_falls_with_speed_as_reimpell_measured_and_a_worn_tread_keeps_its_loss_against_new() {
         let kmh = |v: f64| v / 3.6;
-        // Reimpell & Sponagel's 0.2 mm film at W 1: 0.987 / 0.967 of the 60 km/h peak at 100 / 140 km/h (fig ±0.02);
-        // damp (W 0.25) loses a quarter of it.
+        // W 1 between Reimpell & Sponagel's 0.2 and 0.7 mm films: 0.987 / 0.967 and 0.922 / 0.833 of the 60 km/h peak
+        // at 100 / 140 km/h; damp (W 0.25) loses a quarter of it.
         assert_eq!(wet_speed_factor(1.0, kmh(60.0), 1.0), 1.0);
         let (w100, w140) = (wet_speed_factor(1.0, kmh(100.0), 1.0), wet_speed_factor(1.0, kmh(140.0), 1.0));
-        assert!((0.967..=1.0).contains(&w100) && (0.947..=0.987).contains(&w140), "{w100} {w140}");
+        assert!((0.922..=0.987).contains(&w100) && (0.833..=0.967).contains(&w140), "{w100} {w140}");
         let d140 = wet_speed_factor(0.25, kmh(140.0), 1.0);
         assert!((1.0 - d140 - 0.25 * (1.0 - w140)).abs() < 1e-12, "{d140}");
         // Dry: nothing, bit for bit.
