@@ -74,6 +74,9 @@ pub struct Args {
     /// `--plan LAT,BRAKE` (with `--autopilot`, limit runs): the speed plan's dry lateral and braking acceleration in
     /// m/s² in place of the controller's own (`autopilot::Plan`).
     pub plan: Option<autopilot::Plan>,
+    /// `--speed-zone FROM,TO,SPEED` (with `--autopilot`, limit tests; may repeat): a driveline window whose speed plan
+    /// is SPEED (m/s) in place of its curve limits (`autopilot::SpeedZone`).
+    pub zones: Vec<autopilot::SpeedZone>,
     /// `--race LAT,BRAKE,SLIP` (with `--autopilot`, test tooling): race driving on a line across the road's width at the
     /// car's measured lateral and braking acceleration (m/s²) and best braking slip (`autopilot::race`), the top 60 m/s
     /// unless `--top-speed`.
@@ -220,7 +223,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
@@ -322,6 +325,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 })?)
             }
             "--plan" => args.plan = Some(value.parse()?),
+            "--speed-zone" => args.zones.push(value.parse()?),
             "--race" => args.race = Some(value.parse()?),
             "--trace-speed" => args.trace_speed = Some(PathBuf::from(value)),
             "--tyre-probe" => args.tyre_probe = Some(PathBuf::from(value)),
@@ -659,6 +663,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.plan.is_some() && (args.flat_out || args.circle.is_some()) {
         return Err("--plan takes no --flat-out or --circle (they plan no speed)".into());
     }
+    if !args.zones.is_empty()
+        && (args.autopilot.is_none() || args.flat_out || args.circle.is_some() || args.race.is_some())
+    {
+        return Err("--speed-zone needs --autopilot, and takes no --flat-out, --circle or --race".into());
+    }
     if args.race.is_some()
         && (args.autopilot.is_none()
             || args.plan.is_some()
@@ -919,6 +928,10 @@ mod tests {
                 assert_eq!(a.plan, Some(autopilot::Plan { lateral: 8.5, braking: 6.0 }));
             }),
             (BOOT.into(), |a| assert_eq!(a.plan, None)),
+            (format!("{BOOT} --speed-zone 100,180,25 --speed-zone 400,460.5,31"), |a| {
+                let zone = |from, to, speed| autopilot::SpeedZone { from, to, speed };
+                assert_eq!(a.zones, [zone(100.0, 180.0, 25.0), zone(400.0, 460.5, 31.0)]);
+            }),
             (format!("{BOOT} --race 11.3,11.5,0.3"), |a| {
                 assert_eq!(a.race, Some(autopilot::race::Limits { lateral: 11.3, braking: 11.5, slip: 0.3 }));
             }),
@@ -1185,6 +1198,14 @@ mod tests {
             (format!("{BOOT} --plan 8"), "--plan 8: want LAT,BRAKE in m/s², both over 0"),
             (format!("{BOOT} --plan 8,0"), "--plan 8,0: want LAT,BRAKE in m/s², both over 0"),
             (format!("{BOOT} --plan 8,6 --flat-out"), "--plan takes no --flat-out or --circle (they plan no speed)"),
+            (
+                format!("{BOOT} --speed-zone 180,100,25"),
+                "--speed-zone 180,100,25: want FROM,TO,SPEED: m of driveline, FROM under TO, and m/s over 0",
+            ),
+            (
+                format!("{BOOT} --speed-zone 100,180,25 --flat-out"),
+                "--speed-zone needs --autopilot, and takes no --flat-out, --circle or --race",
+            ),
             (
                 format!("{BOOT} --plan 8,6 --circle 0,0,40"),
                 "--plan takes no --flat-out or --circle (they plan no speed)",

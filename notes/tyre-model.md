@@ -1890,6 +1890,45 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   `-locked-over-lat-max` 1.063 → 1.003. Not measured: the real cars' whole g from 30 deg above 100 km/h falls (0.92 /
   0.83) where the held force is level. Open: brake in turn at the medium pedal spins 3 of 3 as before (r1/r0 1.80, 87
   deg; NGP's tyre 1.63, 55 deg, 0 of 3). Not driven.
+- Cornering against the crews, corner by corner (2026-11-11; `harness/corner_limit.py`, the autopilot's `--speed-zone`;
+  i20 Coupe WRC 2020, NGP's tyre / loose-v1 at "Gravel's sideways level"). One reading for both: per corner the peak 0.5
+  s mean of the body's lateral g with under 0.3 g along the car (a real car's accelerometer, the trace's `glat`); at the
+  limit it is the tyres' share nearly whatever the banking, which the path's lateral g includes. The crews: Finland 2021
+  SS7's eight drives laid on RSF 524 (the paths fit at 2.0 m median, 3.4 m p90; 55 corners of the driveline of R 20-250
+  m). In the 38 where their median is 0.8 g or more it is 0.92 / 0.97 / 0.97 g taken under 90 / at 90-120 / over 120
+  km/h (n 3 / 9 / 26; the path's 1 s lateral 1.04 / 0.98 / 0.98). The car on pad-49's circles of 65 / 100 / 200 m, read
+  alike (`corner_limit.py circle`): 0.88 / 0.91 / 1.02 g at 90 / 108 / 158 km/h and 0.91 / 0.93 / 1.03, so 0.96 / 0.94 /
+  1.05 and 0.99 / 0.96 / 1.06 of the crews'; loose-v1 at NGP's sideways level 0.86 / 0.87 at 90 / 108 km/h, 0.93 / 0.89.
+  On the stage each corner is held at one speed (`--speed-zone`: sqrt(level g x radius), 14 levels from 0.7 to 1.5)
+  until a pass runs 1.5 m wide or slides 15 deg, 40 / 39 corners taken past their limit. In the 14 of them that turn 30
+  deg or more and where the crews' median is 0.8 g up the car reaches 0.94 / 0.95 g at 92 km/h against the crews' 0.98
+  at 105: 0.92 of theirs corner by corner on either tyre (p25-p75 0.80-1.07 / 0.76-1.07). The 17 / 16 shorter kinks read
+  0.80 g at 110-112 km/h against 0.97-0.98 at 139: the crews straighten them, and a car on the driveline neither reaches
+  their speed nor stays at its limit for the reading's 0.5 s (the pad's figure at that speed is 0.93). So the sideways
+  level is within 6 % of the crews' by the pad's reading and 8 % under by the stage's, whose quartiles from corner to
+  corner (a corner's own banking, crest or dip, the stage's against the road's) leave about 6 % either way on 14
+  corners: the reading tells loose-v1 at NGP's level (7-11 % under on the pad) from now, not 1.06 from 1.00 or 1.10. Not
+  measured: the pursuit's pass against a crew's (the car at 92 km/h on the stage is 0.04-0.06 g over its pad figure
+  there), the real sensor's place and roll.
+- Braking in a turn under a steering driver (2026-11-11; `harness/brake_turn.py`: pad-49's circles of 65 / 100 / 200 m,
+  the pedal put on at 0.6 / 0.7 / 0.8 / 0.88 g of lateral and held at 0.3 to 1 while the pursuit steers the circle, 72
+  runs a tyre; i20 Coupe WRC 2020, NGP's tyre / loose-v1). Past 45 deg of sideslip: 5 / 21 runs; more than 2 m wide
+  without it: 27 / 16. From 0.6-0.7 g the largest sideslip is 7-12 / 8-18 deg at 0.6 of the pedal (0.68-0.71 g), 8-13 /
+  19-45 at 0.75 (0.78-0.83 g) and 10-16 / 24-48 at 0.9-1. From 0.8 g up NGP's tyre spins at the middle pedal alone
+  (0.45-0.6) and runs 2-11 m wide at more, where loose-v1 turns 38-89 deg. Both keep one friction circle: the first 0.5
+  s on the pedal (deceleration / lateral g, 100 m from 0.7 g) 0.68 / 0.59 at 0.6 of the pedal on either, 0.87 / 0.39 and
+  0.87 / 0.26 at full, the whole 0.90-0.95 g. The crews (`brake_turn.py real`, Finland 2021, 89 drives): of the 0.5 s
+  means braking at 0.7-1.1 g above 60 km/h the lateral's p50 / p75 / p90 is 0.22 / 0.44 / 0.70 g, 14.6 % over 0.6 g and
+  6.7 % over 0.8. Over `rally_wot.py sideslip`'s 2 s windows with 0.3 g of path lateral up: braking at 0.5-0.7 g their
+  sideslip's p25 / p50 / p75 / p90 is 4 / 14 / 23 / 30 deg and the path's whole g 0.74 / 0.82 (p50 / p90; 0.92 / 1.08
+  with 0.6 g of lateral up), at 0.7 g up 5 / 11 / 18 / 27 deg and 0.92 / 1.05 (1.05 / 1.17, 61 of the 3008 windows). The
+  pad's runs by the same windows, either tyre: whole g 0.77 / 0.83-0.84 (0.87-0.88 / 0.92-0.93) at 0.5-0.7 g and
+  0.88-0.89 / 0.94-0.96 at 0.7 g up, with no window of 0.7 g of braking and 0.6 g of path lateral at once; the estimate
+  reads the game's sideslip 4-6 deg over the true one. So the car's whole g, not its stability, keeps it from the crews'
+  hardest braking in a turn (their middle reached, their top tenth 9-14 % above, a flat pad against their road), and
+  loose-v1's car turns 2-3 times as far as NGP's from 0.75 of the pedal: to the crews' p75-p95 where NGP's stays at
+  their p50-p75. Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or the steering),
+  and the cause in loose-v1 (the brake in turn of "Slides on gravel": the force along the slip).
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
@@ -2572,9 +2611,10 @@ saved rank pages are read below.
   - Wet over dry on the user's own passes (the Alpine, apexes cornered at 1 g up when dry, speed squared): 0.82 /
     0.79 / 0.73 at 87 / 110 / 168 km/h (n 8 / 8 / 7).
 
-  Open: the brush's brake in turn under a driver (the lab's case: "Brake in turn, Fiesta Rally2, traced"). After
-  these drives the user found tarmac "pretty close to reality" and gravel "quite a bit less grippy in the corners":
-  tarmac stays, gravel's cornering is "Gravel's sideways level".
+  Open: the brush's brake in turn under a driver (the lab's case: "Brake in turn, Fiesta Rally2, traced"; gravel's
+  under the pursuit's steering is "Braking in a turn under a steering driver"). After these drives the user found
+  tarmac "pretty close to reality" and gravel "quite a bit less grippy in the corners": tarmac stays, gravel's
+  cornering is "Gravel's sideways level".
 - The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs

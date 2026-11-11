@@ -213,6 +213,24 @@ fn the_plan_scales_the_curve_limit_and_the_braking_and_the_grip_still_scales_it(
 }
 
 #[test]
+fn a_speed_zone_holds_its_speed_over_its_curves_and_is_braked_for() {
+    assert_eq!("100,180.5,25".parse(), Ok(SpeedZone { from: 100.0, to: 180.5, speed: 25.0 }));
+    assert!("180,100,25".parse::<SpeedZone>().is_err());
+    assert!("100,180,0".parse::<SpeedZone>().is_err());
+    // The hairpin at 40-50 m again, inside a zone of 20 m/s from 20 to 80 m.
+    let mut track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    track[5].vectors[0].y = 30.0;
+    let zone = SpeedZone { from: 20.0, to: 80.0, speed: 20.0 };
+    let driver = driver(&track, 60.0).with_zones(vec![zone]);
+    assert_eq!(driver.target_speed(30.0), 20.0);
+    assert_eq!(driver.target_speed(60.0), 20.0);
+    // Before it the plan brakes for the zone's speed; past it the straight plans the top.
+    let before = driver.target_speed(0.0);
+    assert!(((before * before - 400.0) / (2.0 * BRAKING) - 20.0).abs() < 1.0, "{before}");
+    assert_eq!(driver.target_speed(200.0), 60.0);
+}
+
+#[test]
 fn circle_takes_a_centre_and_a_positive_radius() {
     assert_eq!("-260,120,40".parse(), Ok(Circle { center: [-260.0, 120.0], radius: 40.0 }));
     assert!("1,2".parse::<Circle>().is_err());

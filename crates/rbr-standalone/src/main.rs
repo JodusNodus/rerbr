@@ -417,6 +417,7 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
                 tyre_image_step: args.tyre_image_step,
                 manoeuvre: args.manoeuvre,
                 plan: args.plan,
+                zones: args.zones.clone(),
                 race: args
                     .race
                     .map(|limits| {
