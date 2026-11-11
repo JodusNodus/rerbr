@@ -2523,6 +2523,33 @@ saved rank pages are read below.
   0.39-0.70); tyres in the hardest 5 %: car 0.99-1.03 of the peak, Yaris front / rear 0.98 / 0.98, Fiesta 1.05 / 0.94;
   braking 16 longest 0.64-0.65 g (WRC 0.60), 0.5 s peak 0.69-0.79 (WRC 1.00). A driver reaches the tyres' peak and a
   real Rally2's cornering g on the brush's gravel level, the rear's reserve included (`replay_gg.py`).
+- The user's evening drives by hand (2026-11-11, on main 9470377f: the gravel force's hold, the profiles' aero, the
+  wet loss at 0.0037; i20 Coupe WRC 2020 unless named; `replay_gg.py`, every replay all frames equal). RSF 524: NGP's
+  tyre (`experimental`) 242.5 s clean, loose-v1 268.0 s without a recovery and 336.6 s with 4. Of the 25.9 s between
+  the clean two, 23 are two upsets of the loose-v1 run (by driveline distance); the rest is 1 %, the full-throttle
+  straights equal (0.39-0.46 g at 80-120 km/h), the apex speed over Finland's median 0.877 against 0.861-0.885, the
+  g-g p95 of lateral 0.97-0.98 against 0.89-1.00 g at 60-120 km/h and 0.90 against 0.69-0.73 from 150.
+  - Upsets (past 40 deg of sideslip above 30 km/h, an impact, or under 30 km/h; handbrake turns left out): NGP's tyre
+    none in 7.8 km; loose-v1 6 spins, 5 runs wide and 1 lock-up in 18.1 km; the brush on dry tarmac (519, 580, 504;
+    19.2 km) 5 spins, 3 lock-ups and 6 runs wide. 12 of the i20's 14 spins follow a brake of 0.4-0.76 of the pedal
+    into the corner.
+  - The same spins from the drive's own state (`--replay-tyre STEP:MODEL`, STEP 1.5 s before the sideslip passes 12
+    deg, the drive's inputs on open loop), past 45 deg: tarmac NGP's tyre 1 of 6, the brush 6 of 6; gravel 2 and 5
+    of 8 (from 0.5 s before 3 and 6 of 6, 4 and 6 of 8). The inputs are the brush drive's, and NGP's car leaves the
+    road on some. The Alpine A110 RGT (Nordschleife, 7 spins in 36 km) and the Fiesta Rally2 (pad-tarmac, 2) spin on
+    either tyre.
+  - Where they part (580 at 3.96 km: 1 g of braking at 0.55-0.64 of the pedal, 0.14 of lock, 110 km/h): at the same
+    2-4 deg of slip angle the brush's axles carry 0.80-0.87 of their load sideways against 0.43-0.58, the yaw rate is
+    19-39 deg/s against 12-24, then all four wheels (the centre rigid, their slip equal) run from 0.18 to 0.26-0.33
+    of slip in 0.2 s and the rear holds 1.05 of its load at 14 deg against NGP's 1.29 at 8.
+  - The crews brake and corner at once more than the user: of the 0.5 s means braking at 0.7-1.1 g above 60 km/h, 24
+    % carry over 0.6 g of lateral on España 2021's six stages and on Finland's SS7 and SS11 (p90 0.82 g); the user's
+    0-12 %. Their p95 of lateral is 1.40-1.45 g where this car's hardest moments are 1.19-1.25, so the telemetry does
+    not say which tyre's answer past the limit is the real one.
+  - Wet over dry on the user's own passes (the Alpine, apexes cornered at 1 g up when dry, speed squared): 0.82 /
+    0.79 / 0.73 at 87 / 110 / 168 km/h (n 8 / 8 / 7).
+
+  Open: the brush's brake in turn under a driver (the lab's case: "Brake in turn, Fiesta Rally2, traced").
 - The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs
