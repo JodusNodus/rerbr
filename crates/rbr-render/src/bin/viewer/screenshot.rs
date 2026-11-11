@@ -92,6 +92,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let mut renderer = scene.renderer(&gpu, format, enhance, args.render_scale, &mut |_| {});
     renderer.set_time(time);
+    renderer.wait_for_grass();
     let live = scene.live.as_ref().filter(|_| demo_ride.is_none());
     renderer.set_start_clock(live.and_then(|l| l.hud_model.view().start_clock));
     renderer.set_start_lamps(live.and_then(|l| l.hud.race.as_ref()));

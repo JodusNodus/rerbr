@@ -28,6 +28,10 @@ const WEATHER_REACH: f32 = 120_000.0;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const WEATHER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
 
+/// The most frames the history is counted to hold: past `1 / VOLUME_BLEND` in `cloud_volume.wgsl` the count no longer
+/// changes the blend.
+const HELD_MOST: u32 = 16;
+
 /// How fast the clouds drift over the stage, metres a second (ours).
 const DRIFT_SPEED: f32 = 11.0;
 
@@ -132,19 +136,22 @@ struct Passes {
     params_group: wgpu::BindGroup,
     empty: wgpu::BindGroup,
     targets: Targets,
-    /// The frames marched, the image the last one wrote, the last frame's rotation-only clip matrix.
+    /// The frames marched, the image the last one wrote, the last frame's rotation-only clip matrix and the frames
+    /// the history has held since it had none (at most [`HELD_MOST`]).
     frame: Cell<u32>,
     current: Cell<usize>,
     previous: Cell<Option<Mat4>>,
+    held: Cell<u32>,
 }
 
-/// A view's march from frame to frame: its images and domes, the frames marched, the image last written and the last
-/// rotation-only clip matrix ([`CloudVolume::exchange`]).
+/// A view's march from frame to frame: its images and domes, the frames marched, the image last written, the last
+/// rotation-only clip matrix and the frames held ([`CloudVolume::exchange`]).
 pub(super) struct CloudHistory {
     targets: Targets,
     frame: u32,
     current: usize,
     previous: Option<Mat4>,
+    held: u32,
 }
 
 /// What the march reads besides the depth and its history.
@@ -247,12 +254,14 @@ impl CloudVolume {
             frame: 0,
             current: 0,
             previous: None,
+            held: 0,
         });
         Some(CloudHistory {
             targets: std::mem::replace(&mut p.targets, history.targets),
             frame: p.frame.replace(history.frame),
             current: p.current.replace(history.current),
             previous: p.previous.replace(history.previous),
+            held: p.held.replace(history.held),
         })
     }
 
@@ -278,15 +287,12 @@ impl CloudVolume {
         let texel = WEATHER_REACH / WEATHER_SIZE as f32;
         let corner = ((Vec2::new(eye.x, eye.z) - WEATHER_REACH * 0.5) / texel).floor() * texel;
         let previous = p.previous.replace(Some(sky_view_projection));
+        let held = if previous.is_some() { p.held.get() } else { 0 };
+        p.held.set((held + 1).min(HELD_MOST));
         let (layer, shape) = layer(atmosphere);
         let params = Params {
             previous: previous.unwrap_or(Mat4::IDENTITY).to_cols_array_2d(),
-            state: [
-                p.frame.get() as f32,
-                f32::from(u8::from(previous.is_some())),
-                f32::from(u8::from(depth_fresh)),
-                0.0,
-            ],
+            state: [p.frame.get() as f32, held as f32, f32::from(u8::from(depth_fresh)), 0.0],
             weather: [corner.x, corner.y, WEATHER_REACH, 0.0],
             layer,
             shape,
@@ -467,6 +473,7 @@ impl Passes {
             frame: Cell::new(0),
             current: Cell::new(0),
             previous: Cell::new(None),
+            held: Cell::new(0),
         }
     }
 }

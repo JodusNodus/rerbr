@@ -654,6 +654,8 @@ pub(crate) struct Ring {
     worker: Option<std::thread::JoinHandle<()>>,
     /// The worker's device, for a worker started again.
     device: Option<wgpu::Device>,
+    /// The frame waits for the worker's tiles ([`Ring::waiting`]).
+    pub(crate) waits: bool,
 }
 
 impl Drop for Ring {
@@ -715,7 +717,14 @@ impl Ring {
             last_eye: None,
             worker,
             device,
+            waits: false,
         }
+    }
+
+    /// Whether a frame that waits for its tiles ([`Ring::waits`]: a screenshot, which is one frame and would show
+    /// only the tiles built on it, the field within [`SYNC_DISTANCE`]) has tiles still with the worker.
+    pub(crate) fn waiting(&self) -> bool {
+        self.waits && !self.in_flight.is_empty()
     }
 
     /// The finished tiles to upload for the eye at `eye`: each tile mesh's index with its first vertices (the ones to
