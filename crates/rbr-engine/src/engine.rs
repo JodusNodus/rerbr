@@ -363,8 +363,9 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     } else {
         0.0
     };
-    // While the loop runs at idle the base retard holds the reserve; elsewhere (off idle) the spark is at MBT.
-    let retard = if anti_lag || start_cut || idle_loop { retard } else { 0.0 };
+    // While the loop runs at idle the base retard holds the reserve; anti-lag's comes off over `ALS_FADE` as it ends;
+    // elsewhere (off idle) the spark is at MBT.
+    let retard = if anti_lag || start_cut || idle_loop { retard } else { ecu::ALS_RETARD * s.anti_lag.fade };
     let mut cut = limiter;
     if x.shift_cut {
         cut = cut.max(1.0 - spec.torque_cut);
@@ -374,10 +375,11 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     }
     let fuel = !(dfco || x.stalled || (x.limiter && rpm > cap + ecu::LIMITER_FUEL));
 
-    // Throttle: the plate at the pedal (a cable, or a race DBW's 1:1 translation); a progressive linkage on cable
-    // throttles per cylinder.
+    // Throttle: the plate at the pedal on a cable, through the pedal table on a race DBW; a progressive linkage on
+    // cable throttles per cylinder.
     let other = spec.leak + idle_air;
     let mut target = match (spec.class.actuation, spec.class.intake) {
+        (Actuation::Dbw, _) => ecu::dbw_plate(pedal),
         (Actuation::Cable, Intake::PerCylinder) => pow(pedal, 1.6),
         _ => pedal,
     };
