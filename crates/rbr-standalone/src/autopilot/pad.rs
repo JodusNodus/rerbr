@@ -9,6 +9,11 @@
 //! controller's mean over the second before. Steering is a fraction of full lock, positive to the left
 //! (counter-clockwise: the payload's steering is its negative). The trace's `since` column counts the seconds
 //! from the start of the run.
+//!
+//! `catch` closes the loop: the sine dwell's steering to the end of its dwell, which leaves the car turning, and from
+//! there a driver who steers into the slide he saw his reaction time before.
+
+use std::collections::VecDeque;
 
 use rbr_gameplay::control::QuantizedControl;
 
@@ -43,6 +48,21 @@ const RUN: f32 = 4.5;
 const LOCK: f32 = 127.0 / 127.5;
 /// The ramp steer's longest run, s.
 const RAMP_RUN: f32 = 60.0;
+/// `catch`: the driver takes the steering at the end of the sine's dwell, for `CATCH_RUN` s. He turns the front
+/// wheels `COUNTER` of lock per rad towards where the car is going (full lock at 57 deg of slide), no faster than
+/// `CATCH_RATE` of lock per s (1000 deg/s at a wheel of two turns lock to lock), and steers for no heading. He acts
+/// on the slide he saw `REACTION` s before, unless the manoeuvre gives his reaction time, carried forward by that
+/// time at the rate he saw over `SEEN_RATE` s (the lead of McRuer's crossover model). Ours, the values: on gravel at
+/// 80 and 110 km/h he swings no car at 0.2 or 0.4 s, where 1.5 of lock per rad does at 0.4 s and 2 without the lead
+/// at 0.2 s; on tarmac at 110 km/h his correction spins the Fiesta Rally2 (`notes/tyre-model.md`, "A driver's catch").
+const CATCH_FROM: f32 = 0.75 / SINE_HZ + DWELL;
+const CATCH_RUN: f32 = 6.0;
+const COUNTER: f32 = 1.0;
+const CATCH_RATE: f32 = 3.0;
+const REACTION: f32 = 0.2;
+const SEEN_RATE: f32 = 0.05;
+/// The speed under which the car's direction of travel has no meaning, m/s.
+const MOVING: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
@@ -52,12 +72,14 @@ pub enum Kind {
     LiftInTurn,
     BrakeInTurn,
     PowerInTurn,
+    Catch,
 }
 
 /// `--manoeuvre KIND,KMH,AMP[,EXTRA]`: the kind (`ramp-steer`, `step-steer`, `sine-dwell`, `lift-in-turn`,
-/// `brake-in-turn`, `power-in-turn`), the entry speed (km/h), the steering (fraction of full lock: the ramp's rate per
-/// second for `ramp-steer`; the circle's steering for the `-in-turn` kinds) and `EXTRA`: the brake pedal of
-/// `brake-in-turn` (0-1), the lock `ramp-steer` ends at (default 1).
+/// `brake-in-turn`, `power-in-turn`, `catch`), the entry speed (km/h), the steering (fraction of full lock: the ramp's
+/// rate per second for `ramp-steer`; the circle's steering for the `-in-turn` kinds) and `EXTRA`: the brake pedal of
+/// `brake-in-turn` (0-1), the lock `ramp-steer` ends at (default 1), the driver's reaction time of `catch` (s, 0-1,
+/// default 0.2).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Manoeuvre {
     pub kind: Kind,
@@ -80,6 +102,7 @@ impl std::str::FromStr for Manoeuvre {
             "lift-in-turn" => Kind::LiftInTurn,
             "brake-in-turn" => Kind::BrakeInTurn,
             "power-in-turn" => Kind::PowerInTurn,
+            "catch" => Kind::Catch,
             _ => return Err(bad()),
         };
         let numbers: Vec<f32> = parts.map(|x| x.parse().map_err(|_| bad())).collect::<Result<_, _>>()?;
@@ -89,7 +112,11 @@ impl std::str::FromStr for Manoeuvre {
                 if kind == Kind::BrakeInTurn && !extra.is_some_and(|p| p > 0.0 && p <= 1.0) {
                     return Err(format!("--manoeuvre {s}: brake-in-turn wants a pedal, 0-1, as EXTRA"));
                 }
-                Ok(Manoeuvre { kind, speed: kmh / 3.6, amp, extra: extra.unwrap_or(1.0) })
+                if kind == Kind::Catch && !extra.is_none_or(|t| (0.0..=1.0).contains(&t)) {
+                    return Err(format!("--manoeuvre {s}: catch wants a reaction time, 0-1 s, as EXTRA"));
+                }
+                let default = if kind == Kind::Catch { REACTION } else { 1.0 };
+                Ok(Manoeuvre { kind, speed: kmh / 3.6, amp, extra: extra.unwrap_or(default) })
             }
             _ => Err(bad()),
         }
@@ -125,6 +152,9 @@ pub struct Pad {
     /// The throttle held through the run, and the steering of the last control (payload value).
     held: f32,
     pub steering: f32,
+    /// `catch`: the direction of travel from the nose (rad, positive left) over the driver's reaction time and
+    /// `SEEN_RATE`, the oldest first.
+    seen: VecDeque<f32>,
     pub done: bool,
 }
 
@@ -139,6 +169,7 @@ impl Pad {
             calm: 0.0,
             held: 0.0,
             steering: 0.0,
+            seen: VecDeque::new(),
             done: false,
         }
     }
@@ -159,7 +190,7 @@ impl Pad {
                 ((a * t).min(self.man.extra.min(1.0)), (self.man.extra.min(1.0) / a + 1.0).min(RAMP_RUN))
             }
             Kind::StepSteer => (a * (t / STEP_RAMP).min(1.0), RUN),
-            Kind::SineDwell => {
+            Kind::SineDwell | Kind::Catch => {
                 let period = 1.0 / SINE_HZ;
                 let phase = if t < 0.75 * period {
                     t
@@ -168,7 +199,9 @@ impl Pad {
                 } else {
                     (t - DWELL).min(period)
                 };
-                (a * (std::f32::consts::TAU * SINE_HZ * phase).sin(), 1.0 / SINE_HZ + DWELL + 1.75 + 0.5)
+                let sine = 1.0 / SINE_HZ + DWELL + 1.75 + 0.5;
+                let length = if self.man.kind == Kind::Catch { CATCH_FROM + CATCH_RUN } else { sine };
+                (a * (std::f32::consts::TAU * SINE_HZ * phase).sin(), length)
             }
             _ => (a, RUN),
         }
@@ -178,6 +211,13 @@ impl Pad {
 fn wrap(angle: f32) -> f32 {
     use std::f32::consts::{PI, TAU};
     (angle + PI).rem_euclid(TAU) - PI
+}
+
+/// The slide (rad) the `catch`'s driver steers on: the one he saw `delay` steps ago, carried forward those steps at
+/// its rate over the samples before it.
+fn foreseen(seen: &VecDeque<f32>, delay: usize) -> f32 {
+    let then = seen.len().saturating_sub(delay + 1);
+    seen[then] + wrap(seen[then] - seen[0]) * delay as f32 / then.max(1) as f32
 }
 
 impl<'a> Driver<'a> {
@@ -257,10 +297,24 @@ impl<'a> Driver<'a> {
                 match kind {
                     Kind::RampSteer => {}
                     Kind::StepSteer => (throttle, brake) = (pad.held, 0.0),
-                    Kind::SineDwell => (throttle, brake) = (0.0, 0.0),
+                    Kind::SineDwell | Kind::Catch => (throttle, brake) = (0.0, 0.0),
                     Kind::LiftInTurn => (throttle, brake) = (pad.held * (1.0 - ramp), 0.0),
                     Kind::BrakeInTurn => (throttle, brake) = (pad.held * (1.0 - ramp), pad.man.extra * ramp),
                     Kind::PowerInTurn => (throttle, brake) = (pad.held + (1.0 - pad.held) * ramp, 0.0),
+                }
+                if kind == Kind::Catch {
+                    let v = sense.pose.velocity;
+                    let travel = if speed > MOVING { wrap(v[1].atan2(v[0]) - yaw) } else { 0.0 };
+                    let (delay, window) = ((pad.man.extra / dt).round() as usize, (SEEN_RATE / dt).round() as usize);
+                    pad.seen.push_back(travel);
+                    if pad.seen.len() > delay + window + 1 {
+                        pad.seen.pop_front();
+                    }
+                    if t >= CATCH_FROM {
+                        let want = (foreseen(&pad.seen, delay) * COUNTER).clamp(-LOCK, LOCK);
+                        let last = -pad.steering;
+                        steer = last + (want - last).clamp(-CATCH_RATE * dt, CATCH_RATE * dt);
+                    }
                 }
                 pad.done = t >= length;
                 pad.phase = Phase::Run(t + dt);
@@ -284,5 +338,18 @@ impl<'a> Driver<'a> {
     /// Whether the manoeuvre has run its length.
     pub fn pad_done(&self) -> bool {
         self.pad.as_ref().is_some_and(|p| p.done)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_catch_s_driver_foresees_a_steady_rate() {
+        let seen: VecDeque<f32> = (0..6).map(|i| 0.01 * i as f32).collect();
+        assert!((foreseen(&seen, 3) - seen[5]).abs() < 1e-6, "three steps late, two of rate");
+        assert_eq!(foreseen(&seen, 0), seen[5], "no reaction time");
+        assert_eq!(foreseen(&VecDeque::from([0.2]), 3), 0.2, "nothing seen before");
     }
 }
