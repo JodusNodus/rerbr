@@ -55,10 +55,10 @@ them.
   tyre there, what NGP's wet tyre gains over the dry one on a wet road, and loses 2 % to it on a dry road. Tread
   compounds alone rate 95-120 % of a control on wet roads. From 50 km/h on damp tarmac the Fiesta Rally2 brakes
   locked at 1.07 of the dry tyre (NGP 1.00).
-- On a wet road the brush loses grip with speed as a road tyre does on a 0.2 mm film: 1.5 % from 60 to 100 km/h and
-  3 % to 140. On wet tyres the i20 Coupe WRC corners at 0.85 of its dry limit at 60 km/h and 0.82-0.83 at 110-150,
-  as with NGP's tyre. One wet day of World Rally Car telemetry (Rallye Deutschland 2017) puts the loss from 60 to
-  100 km/h between none and 8 %.
+- On a wet road the brush loses 4 % of its grip from 60 to 100 km/h and 8 % to 140, half of what road tyres lose on
+  drums under the same water. One wet day of World Rally Car telemetry (Rallye Deutschland 2017) puts the loss from
+  60 to 100 km/h between none and 8 %. On wet tyres the i20 Coupe WRC corners at 0.85 of its dry limit at 60 km/h,
+  0.81 at 110 and 0.78 at 150 (NGP 0.85, 0.82 and 0.82).
 
 ### Gravel
 
