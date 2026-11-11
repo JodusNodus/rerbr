@@ -1,16 +1,18 @@
 # ReRBR experimental tyre model
 
 A tyre model is in development and not released: the launcher's Settings page does not offer it, and `--physics
-experimental-brush` runs it on top of the engine model of [ReRBR experimental physics](experimental-physics.md)
-(`scripts/launcher.sh --physics experimental-brush`, or `rerbr --physics experimental-brush`, starts the launcher with
-it for that session; nothing saves it).
+experimental-brush` runs it on top of [ReRBR experimental physics](experimental-physics.md), with its engine model,
+aero and drivetrain loss (`scripts/launcher.sh --physics experimental-brush`, or `rerbr --physics experimental-brush`,
+starts the launcher with it for that session; nothing saves it).
 
 It is a brush model, the textbook physical tyre (Pacejka, *Tyre and Vehicle Dynamics*): the tread is a row of bristles
 that stick to the road at the front of the contact patch and slide at the rear. It takes the place of NGP's model of the
 contact patch on hard surfaces at every speed, fitted at load to give NGP's peak forces and 1.3 times its cornering
 stiffness, with grip that falls as the tyre slides faster and one friction limit shared by braking and cornering. On
-gravel and snow the same tyre keeps NGP's peak grip without falling as it slides, and a locked wheel builds a berm of
-loose material ahead of it that brakes it harder than rolling, as measured on gravel.
+gravel and snow the same tyre keeps its grip as it slides, and a locked wheel builds a berm of loose material ahead
+of it that brakes it harder than rolling, as measured on gravel. On snow the peak grip is NGP's. On gravel it is
+NGP's sideways and 0.9 of it along the wheel, both lower on deep loose gravel, set on the 2017-21 World Rally Cars'
+telemetry.
 
 The model, its evidence, its numbers in game and the open questions are in
 [notes/tyre-model.md](../notes/tyre-model.md); the code is in `crates/rbr-tyre`.
@@ -20,7 +22,8 @@ The model, its evidence, its numbers in game and the open questions are in
 Each figure shows the steady force of one tyre, NGP 7's on the left (`ngp`) and the brush on the right
 (`experimental-brush`), on the same wheel: a Fiesta Rally2 front wheel with NGP's car data, at 4 kN load and 15 m/s (54
 km/h), dry. A positive slip angle gives a positive side force; a negative slip ratio brakes, -1 is locked. The peaks
-come from NGP's grip level by design (within 1 % at 4 kN); the shapes are where the two differ. Every number below is a
+come from NGP's grip level by design (within 1 % at 4 kN), except gravel's along the wheel; the shapes are where the
+two differ. Every number below is a
 row of the tyre scorecard, with its source, in [notes/tyre-model.md](../notes/tyre-model.md#scorecard). In a drive the
 force builds over the tyre's relaxation length; these are the values it settles to. `harness/tyre_curves.py` redraws
 them.
@@ -64,17 +67,30 @@ them.
   by 40°.
 - At 10° the brush has 0.95 of its maximum on 9 mm, 0.88 on 17.5 mm and 0.80 from 25 mm (the pea stone tyre 0.80),
   NGP's 0.98.
+- NGP adds the force of the soil a sliding tyre ploughs sideways, growing with the sideways speed: 0.3 g more at 30°
+  of sideslip at 140 km/h. On gravel the brush holds it from 6 m/s of sideways speed, 15° at 80 km/h. The real cars'
+  whole g in Finland is level from 15° to 40° of sideslip (its top tenth 1.04-1.06 at 60-100 km/h), where the game's
+  median rose from 0.87 at 20-30° to 1.00 at 40-60°; with the force held it stays at 0.84-0.85.
 
 ![Braking and driving force against slip ratio on dry gravel](images/tyre-model/long-gravel.svg)
 
+- Along the wheel the brush has 0.9 of NGP's grip. With NGP's the game's i20 Coupe WRC brakes 5-25 % harder on
+  gravel than the 2017-21 World Rally Cars at their hardest in Finland, the grippiest of six gravel rallies; at 0.9
+  a driver stays under the real crews. Sideways the level is NGP's, where the same drives reach the real cars' apex
+  speeds.
+- Deep loose gravel grips less, along the wheel and sideways: NGP's level to 15 mm of loose layer, falling to 0.96 of
+  it at 30 mm. NGP's loosest gravel is then 10 % under its firmest (6 % in NGP), where the six rallies' hardest
+  braking spreads 5-14 %.
 - Braking force levels off from a slip ratio of about 0.15 (0.25 on deep layers) and holds to 0.8. Past that the wheel
-  pushes a berm of gravel ahead of it, and locked it brakes 1.3 times its rolling peak. Measured cars on gravel stop
-  1.12-1.59 times harder locked than with ABS; the Fiesta Rally2 under the brush 1.29-1.44, under NGP 1.08-1.10.
+  pushes a berm of gravel ahead of it, larger the deeper the loose layer: locked it brakes 1.05 times its rolling
+  peak on 9 mm (the figure), 1.18 times on 30 mm and 1.3 times from 5 cm, the depth of the published stops. Measured
+  cars on gravel stop 1.12-1.59 times harder locked than with ABS; the Fiesta Rally2 under the brush 1.28-1.37,
+  under NGP 1.08-1.10.
 - Driving force levels off and does not fall at full spin, where NGP's falls to 0.82 of its peak. No measured curve on
   gravel reaches full spin, so this part is open.
 - Damp gravel grips as dry gravel, where NGP's loses 7.5 %: the one gravel road measured dry and sprinkled skidded as
   hard or harder wetted, and no measurement shows a damp loss. Wet gravel keeps NGP's 0.85 of dry, inside the 0.76-0.90
-  measured on gravel roads. From 50 km/h the Fiesta Rally2 brakes locked on damp gravel at 1.01 of dry (NGP 0.93).
+  measured on gravel roads. From 50 km/h the Fiesta Rally2 brakes locked on damp gravel at 1.02 of dry (NGP 0.93).
 
 ### Snow
 
@@ -85,7 +101,7 @@ them.
 - Side force levels off from about 12° and does not fall; its maximum is at 14.75° (NGP 11°), measured on packed and
   loose snow 9-18°.
 - The berm on snow is small: locked, the wheel brakes 1.05 times its rolling peak. Studded tyres on compacted snow
-  lock at 1.02-1.10 times their braking at 15-20 % slip; the Fiesta Rally2 under the brush 1.05-1.09.
+  lock at 1.02-1.10 times their braking at 15-20 % slip; the Fiesta Rally2 under the brush 1.06-1.10.
 
 ## Beyond the curves
 
