@@ -18,6 +18,9 @@ pub struct Enhance {
     /// A grass field over the ground near the road, streamed about the eye ([`crate::grass`]; ours, a proof of concept:
     /// not in `all`).
     pub grass: bool,
+    /// Motion blur along each pixel's screen motion ([`crate::motion_blur`]; ours, experimental: not in `all`).
+    /// Only with the temporal anti-aliasing.
+    pub motion_blur: bool,
     /// Our lighting in place of the game's look: the physically based sky, its haze and fog, sun shafts and volumetric
     /// clouds with their shadows ([`crate::skylight`], [`crate::renderer::cloud_volume`]), real-time sun shadows near
     /// the eye and sunlit foliage ([`SunShadow`](crate::sun::SunShadow)), the stage's ambient occlusion computed from
@@ -198,8 +201,9 @@ impl DebugView {
 }
 
 impl Enhance {
-    pub const NAMES: [&str; 11] = [
+    pub const NAMES: [&str; 12] = [
         "anisotropy",
+        "blur",
         "cabin",
         "contact",
         "decals",
@@ -220,6 +224,7 @@ impl Enhance {
                 "all" => {
                     enhance = Enhance {
                         anisotropy: true,
+                        motion_blur: enhance.motion_blur,
                         cabin: true,
                         contact: true,
                         decals: true,
@@ -238,6 +243,7 @@ impl Enhance {
                     }
                 }
                 "anisotropy" => enhance.anisotropy = true,
+                "blur" => enhance.motion_blur = true,
                 "cabin" => enhance.cabin = true,
                 "contact" => enhance.contact = true,
                 "decals" => enhance.decals = true,

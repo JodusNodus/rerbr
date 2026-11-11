@@ -152,6 +152,8 @@ pub struct Renderer {
     taa: Option<crate::taa::Taa>,
     /// The motion of what moves of itself, for the temporal anti-aliasing (`None` without it).
     motion: Option<motion::Motion>,
+    /// The motion blur over the temporal anti-aliasing's resolve (`None` unless [`Enhance::motion_blur`]).
+    motion_blur: Option<crate::motion_blur::MotionBlur>,
     /// `None` unless [`Enhance::lighting`] ([`crate::light_shafts`]).
     light_shafts: Option<crate::light_shafts::LightShafts>,
     /// `None` unless [`Enhance::particles`].
@@ -446,6 +448,15 @@ impl Renderer {
             taa.reset();
         }
         self.reset_parked();
+    }
+
+    /// Gathers the temporal anti-aliasing's resolve (in [`MotionBlur::target`](crate::motion_blur::MotionBlur::target))
+    /// along each pixel's blur vector into the post pass's scene.
+    fn draw_blur(&mut self, encoder: &mut wgpu::CommandEncoder) {
+        let reset = self.taa.as_ref().is_some_and(crate::taa::Taa::was_reset);
+        if let Some(blur) = &mut self.motion_blur {
+            blur.draw(&self.queue, encoder, &self.post.scene, self.time, reset);
+        }
     }
 
     /// The car body's model space to stage space this frame.
