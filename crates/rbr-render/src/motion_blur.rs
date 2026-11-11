@@ -1,11 +1,11 @@
-// Motion blur along each pixel's screen motion (ours, experimental), an opt-in pass (`Enhance::motion_blur`,
-// `--enhance blur`) that runs only with the temporal anti-aliasing: the resolve writes into [`MotionBlur::target`]
-// instead of the post pass's scene, and this pass gathers the scene along each pixel's blur vector into it. The blur
-// vector is the pixel's velocity in uv per frame (the motion target's where something moving was drawn, else the
-// point from the depth carried by the resolve's `view_to_prev`, as `previous_uv` in `taa.wgsl` finds it) times
-// [`SHUTTER`] over the frame time, centred on the pixel and capped at [`MOST`] of the output height. Eleven taps
-// along it, offset by the pixel's interleaved gradient noise advanced each frame, weighted so a pixel that does not
-// move neither blurs nor bleeds into the moving road beside it.
+//! Motion blur along each pixel's screen motion (ours, experimental), an opt-in pass (`Enhance::motion_blur`,
+//! `--enhance blur`) that runs only with the temporal anti-aliasing: the resolve writes into [`MotionBlur::target`]
+//! instead of the post pass's scene, and this pass gathers the scene along each pixel's blur vector into it. The blur
+//! vector is the pixel's velocity in uv per frame (the motion target's where something moving was drawn, else the
+//! point from the depth carried by the resolve's `view_to_prev`, as `previous_uv` in `taa.wgsl` finds it) times
+//! [`SHUTTER`] over the frame time, centred on the pixel and capped at [`MOST`] of the output height. Eleven taps
+//! along it, offset by the pixel's interleaved gradient noise advanced each frame, weighted so a pixel that does not
+//! move neither blurs nor bleeds into the moving road beside it.
 
 use bytemuck::{Pod, Zeroable};
 
@@ -33,7 +33,8 @@ pub(crate) struct MotionBlur {
     pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     params: wgpu::Buffer,
-    /// The resolve's target while the blur is on (the output's size), which the blur gathers into the post pass's scene.
+    /// The resolve's target while the blur is on (the output's size), which the blur gathers into the post pass's
+    /// scene.
     target: wgpu::TextureView,
     group: wgpu::BindGroup,
     /// The last main-view frame's time ([`Renderer::set_time`](crate::renderer::Renderer::set_time)); `None` before
