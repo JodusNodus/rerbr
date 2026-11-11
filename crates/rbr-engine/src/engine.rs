@@ -375,10 +375,11 @@ pub fn step(spec: &Spec, s: &mut State, x: &Step) -> Out {
     }
     let fuel = !(dfco || x.stalled || (x.limiter && rpm > cap + ecu::LIMITER_FUEL));
 
-    // Throttle: the plate at the pedal (a cable, or a race DBW's 1:1 translation); a progressive linkage on cable
-    // throttles per cylinder.
+    // Throttle: the plate at the pedal on a cable, through the pedal table on a race DBW; a progressive linkage on
+    // cable throttles per cylinder.
     let other = spec.leak + idle_air;
     let mut target = match (spec.class.actuation, spec.class.intake) {
+        (Actuation::Dbw, _) => ecu::dbw_plate(pedal),
         (Actuation::Cable, Intake::PerCylinder) => pow(pedal, 1.6),
         _ => pedal,
     };

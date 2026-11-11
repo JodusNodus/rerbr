@@ -101,6 +101,21 @@ pub fn etb(position: f64, target: f64, dt: f64) -> f64 {
     (position + step.clamp(-dt / ETB_TRAVEL, dt / ETB_TRAVEL)).clamp(0.0, 1.0)
 }
 
+/// A race DBW's pedal table, the plate's aim: the pedal itself to 20 %, two thirds of its slope from there to 60 % of
+/// the plate at 80 % of the pedal, the rest of the plate over the last fifth. Fitted through the model's steady torque
+/// to the 2017-21 World Rally Cars' pedal map, whose share of the range from the shut to the open throttle is 0.31 /
+/// 0.49 / 0.67 / 0.81 / 0.92 at 30 to 70 % (the WRC's telemetry, 17 rallies: `notes/engine-model.md`, Throttle); a 1:1
+/// plate gave 0.49 / 0.71 / 0.86 / 0.96 / 0.99. No other class is measured.
+pub fn dbw_plate(pedal: f64) -> f64 {
+    if pedal <= 0.2 {
+        pedal
+    } else if pedal <= 0.8 {
+        0.2 + (pedal - 0.2) * 2.0 / 3.0
+    } else {
+        0.6 + (pedal - 0.8) * 2.0
+    }
+}
+
 /// The firing events: a phase accumulator over steps and deterministic error diffusion of the cut share.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Events {
