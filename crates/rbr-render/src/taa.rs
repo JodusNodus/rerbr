@@ -278,6 +278,13 @@ impl Taa {
         self.last = None;
     }
 
+    /// The resolve's uniform buffer, holding the current frame's clip space to the previous frame's
+    /// (`view_to_prev`), the frame's and the output's sizes, and whether the history reset (`params.z`): the
+    /// motion blur reads them from it.
+    pub(crate) fn uniform(&self) -> &wgpu::Buffer {
+        &self.uniform
+    }
+
     /// Begins a frame: the shift its main view's view-projection takes ([`shift`]).
     pub(crate) fn begin(&mut self) -> Mat4 {
         self.frame = self.frame.wrapping_add(1);

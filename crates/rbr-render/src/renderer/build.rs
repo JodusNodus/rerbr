@@ -551,6 +551,16 @@ impl Renderer {
         let effects = enhance.particles.then(|| Effects::new(&device, format, &depth_view, &sun_view));
         let motion = taa.then(|| motion::Motion::new(&device, &shader, &shadow_layout, buffers.len()));
         let taa = motion.as_ref().map(|m| crate::taa::Taa::new(&device, depth_size, depth_size, &depth_view, m.view()));
+        let motion_blur = match (&taa, &motion) {
+            (Some(taa), Some(motion)) if enhance.motion_blur => Some(crate::motion_blur::MotionBlur::new(
+                &device,
+                depth_size,
+                taa.uniform(),
+                motion.view(),
+                &depth_view,
+            )),
+            _ => None,
+        };
         Renderer {
             uploads: Uploads::new(&device),
             device,
@@ -560,6 +570,7 @@ impl Renderer {
             post,
             taa,
             motion,
+            motion_blur,
             light_shafts,
             effects,
             particle_target: None,
