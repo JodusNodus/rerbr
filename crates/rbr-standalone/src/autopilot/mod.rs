@@ -502,6 +502,8 @@ pub struct Driver<'a> {
     declutch: bool,
     /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
     bands: Vec<SpeedBand>,
+    /// `--speed-zone`: the driveline windows that hold one speed in place of their curve limits.
+    zones: Vec<SpeedZone>,
     /// The grip factor for the race's wetness (1 dry): the plan's lateral and braking rates scale with it.
     grip: f32,
     /// The speed plan's dry lateral and braking acceleration (m/s²): `LATERAL` and `BRAKING`, or `--plan`'s.
@@ -556,6 +558,8 @@ pub struct Measure {
     pub tyre_image_step: Option<u32>,
     /// `--plan LAT,BRAKE`: the speed plan's lateral and braking acceleration (`Plan`).
     pub plan: Option<Plan>,
+    /// `--speed-zone FROM,TO,SPEED`, each given (`SpeedZone`).
+    pub zones: Vec<SpeedZone>,
     /// `--race LAT,BRAKE,SLIP`: race driving on a line across the road at the car's limits (`race`).
     pub race: Option<race::Race>,
     /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (`pad`, on a pad stage).
@@ -608,6 +612,29 @@ impl std::str::FromStr for Plan {
         match v[..] {
             [lateral, braking] if lateral > 0.0 && braking > 0.0 => Ok(Plan { lateral, braking }),
             _ => Err(format!("--plan {s}: want LAT,BRAKE in m/s², both over 0")),
+        }
+    }
+}
+
+/// `--speed-zone FROM,TO,SPEED` (limit tests, `harness/corner_limit.py`): between the driveline distances FROM and TO
+/// (m) the speed plan holds SPEED (m/s) whatever the curves there, braking for it from ahead as for a curve. The car
+/// takes the corner in the zone at one speed, so raising it run by run finds the speed the corner no longer holds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpeedZone {
+    pub from: f32,
+    pub to: f32,
+    pub speed: f32,
+}
+
+impl std::str::FromStr for SpeedZone {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        let v: Vec<f32> =
+            s.split(',').map(|x| x.parse().map_err(|_| format!("--speed-zone {s}"))).collect::<Result<_, _>>()?;
+        match v[..] {
+            [from, to, speed] if from < to && speed > 0.0 => Ok(SpeedZone { from, to, speed }),
+            _ => Err(format!("--speed-zone {s}: want FROM,TO,SPEED: m of driveline, FROM under TO, and m/s over 0")),
         }
     }
 }
@@ -763,6 +790,7 @@ impl<'a> Driver<'a> {
             brake: Brake::Pedal(1.0),
             declutch: false,
             bands: Vec::new(),
+            zones: Vec::new(),
             grip: 1.0,
             plan: Plan::DEFAULT,
             antilock: None,
@@ -796,6 +824,11 @@ impl<'a> Driver<'a> {
     /// and `BRAKING`.
     pub fn with_plan(self, plan: Plan) -> Self {
         Self { plan, antilock: Some(1.0), ..self }
+    }
+
+    /// The driver holding each of `zones`' speed in its window in place of the curve limits there (`--speed-zone`).
+    pub fn with_zones(self, zones: Vec<SpeedZone>) -> Self {
+        Self { zones, ..self }
     }
 
     /// The driver holding the lesson's judged speed bands (`bands`): the target speed stays under each band's top in
@@ -913,7 +946,8 @@ impl<'a> Driver<'a> {
         let mut target = self.top;
         let mut s = 0.0;
         while s < PLAN_AHEAD {
-            let limit = self.curve_limit(at, s, lateral);
+            let zone = self.zones.iter().find(|z| z.from <= at + s && at + s < z.to);
+            let limit = zone.map_or_else(|| self.curve_limit(at, s, lateral), |z| z.speed.min(self.top));
             target = target.min((limit * limit + 2.0 * braking * s).sqrt());
             s += PLAN_STEP;
         }

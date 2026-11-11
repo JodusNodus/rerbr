@@ -225,6 +225,10 @@ pub fn drive(
         eprintln!("autopilot: the plan's lateral {} m/s², braking {} m/s² (--plan)", plan.lateral, plan.braking);
         driver = driver.with_plan(plan);
     }
+    if !measure.zones.is_empty() {
+        eprintln!("autopilot: {} speed zones (--speed-zone)", measure.zones.len());
+        driver = driver.with_zones(measure.zones.clone());
+    }
     if let Some(v) = measure.brake_from {
         driver = driver.with_brake_from(v);
     }
