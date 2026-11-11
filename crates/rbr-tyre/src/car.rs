@@ -289,6 +289,21 @@ mod tests {
     }
 
     #[test]
+    fn only_gravel_holds_the_soil_force_past_its_sideways_speed() {
+        let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
+        // 24 m/s at 30°: 12 m/s sideways, twice GRAVEL_SOIL_SPEED.
+        let x = rolling(24.0, 30f32.to_radians());
+        let mut share = |soil_thickness: f32, class: u32, x: ForceInput| {
+            let x = ForceInput { soil_thickness, surface_classes: [class; 2], ..x };
+            b.forces(wheel().tyre, &x).unwrap().soil_lateral
+        };
+        assert!((share(0.015, loose::GRAVEL_CLASS, x) - 0.25).abs() < 1e-6);
+        assert_eq!(share(0.015, loose::GRAVEL_CLASS, rolling(24.0, 0.1)), 1.0);
+        assert_eq!(share(0.015, loose::SNOW_CLASS, x), 1.0);
+        assert_eq!(share(0.0, loose::GRAVEL_CLASS, x), 1.0);
+    }
+
+    #[test]
     fn a_wet_surface_lowers_the_locked_wheel_s_friction() {
         // Locked at 20 m/s on the same grip, settled: wet slides at less of it than dry.
         let locked = |water_factor: f32| {
