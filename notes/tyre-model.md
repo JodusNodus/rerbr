@@ -1836,9 +1836,9 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   brush's slides run deeper and longer on the same inputs. `handling.py --material 49`, i20 Coupe WRC 2020, experimental
   / experimental-brush at 80 km/h: ramp peak 0.936 / 0.878 g; sine dwell's yaw rate left 1.75 s after the steering at
   0.55-1.0 of lock 12-19 / 25-34 % (110 km/h 10-36 / 45-52 %, first spin 0.55 both); brake in turn at 0.3 / 0.6 / 0.9 of
-  each tyre's own limit pedal 0 / 1 / 0 spins of 3 against 0 / 3 / 0 (the Fiesta Rally2 1 / 0 / 0 against 0 / 3 / 2 at
-  NGP's pedals); lift in turn mild on both. In the sine dwell's slide (30-50 deg, no pedals) the yaw rate falls 26
-  deg/s² on NGP's tyre and 19 on loose-v1, whose side grip there is 6-8 % higher (NGP's free rolling curve falls 10 %
+  NGP's limit pedal 0 / 1 / 0 spins of 3 against 0 / 3 / 0 (the same at loose-v1's own pedal; the Fiesta Rally2 1 / 0 /
+  0 against 0 / 3 / 2); lift in turn mild on both. In the sine dwell's slide (30-50 deg, no pedals) the yaw rate falls
+  26 deg/s² on NGP's tyre and 19 on loose-v1, whose side grip there is 6-8 % higher (NGP's free rolling curve falls 10 %
   from its peak to 40 deg, loose-v1's is flat). Tried on loose-v1 without effect on those figures: stiffness 0.7 and
   1.3, response 0.5 and 2, the files' aero; worse: no soil force (110 km/h's yaw rate left 61-67 %, the ramp peak 0.849)
   and a friction that falls 12-20 % from 20 to 45 deg of slip angle (38-53 % at 80 km/h), so neither NGP's fall nor the
