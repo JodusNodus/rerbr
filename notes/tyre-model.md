@@ -222,9 +222,12 @@ inferred from its means) and Dijks UK 2 mm at 130 km/h (0.92 against 0.83). On t
 loses nothing to 280 km/h; worn over new at 2 mm 0.96 / 0.86 at 100 / 130 km/h, 1.6 mm 0.98 / 0.91 / 0.80 at 80 /
 100 / 130, bald 0.92 / 0.83 / 0.74 / 0.65 at 40 / 60 / 80 / 100 (was v_on 2.1 m/s · drained depth / h, lifted at
 5 v_on, fitted to ABS stops of unstated film: lost earlier and more than all three sets). Horne's v_p (water deeper than the grooves, ADAC's 17-22 % lost at 2 of 8
-mm) is not the regime of the game's films and is not used; the seam carries no pressure. Thin film (2026-11-08, `tyre/wet-speed`): the whole friction falls by 0.0074 W per m/s over 60 km/h
-(`brush::thin_film`, never below 0.05), fitted to Reimpell & Sponagel's wet peak at the game's 0.7 mm (0.5 / 1 mm
-interpolated: 0.922 / 0.833 of 60 km/h at 100 / 140 km/h; the fit 0.918 / 0.836); v is the speed over the road, the
+mm) is not the regime of the game's films and is not used; the seam carries no pressure. Thin film (`brush::thin_film`,
+never below 0.05): the whole friction falls by 0.0014 W per m/s over 60 km/h, Reimpell & Sponagel's wet peak on a 0.2 mm
+film (0.987 / 0.967 of 60 km/h at 100 / 140 km/h; the fit 0.984 / 0.969), a user decision (2026-11-11) for a rally's
+wet-weather tyres on a stage ("The same pairs by apex speed" and "The game's wet tarmac at the car", below); before
+it 0.0074, their curves at the game's 0.7 mm (0.5 / 1 mm interpolated: 0.922 / 0.833), where the other drums are
+("Wet papers"); v is the speed over the road, the
 speed the patch meets the film at, locked or rolling (the sliding speed at the peak, 1-3 m/s, does not grow with
 it). It takes over the new tread's own partial hydroplaning: the factor is thin_film × wet_loss(d) / wet_loss(new)
 (`brush::wet_speed_factor`), so a new tyre takes the thin film alone (no 1.5 % at 100 km/h on top) and a worn one its
@@ -252,8 +255,8 @@ the Fiesta's 2.0 bar (0.967) c_y is 2.3 % below NGP's and c_x 441 kN/m (was 435)
 
 Ours, not from papers: the friction curve's four values and the wet Coulomb loss and its speed scale (fits to one
 tyre's trailer data, two surfaces); the texture depth 0.7 mm and the 8 mm new groove depth (both within the
-published range), the wear gain's fade with W, the thin film's linearity in W (Reimpell's 0.2 mm keeps 0.99 / 0.97 at 100 /
-140 km/h, W 0.25's 0.175 mm 0.979 / 0.959: within the figure's ±0.02, his loss grows faster than linear below 0.5 mm)
+published range), the wear gain's fade with W, the thin film's curve (a 0.2 mm film's on the game's 0.7 mm: a user
+decision on one wet rally day, above) and its linearity in W (damp loses a quarter of wet's)
 and its product with the worn tread's hydroplaning against new; leaving out σ's speed term (2026-11-07, user: the measured slope is a passenger tyre's, with its
 excitation frequency mixed in, and puts a rally tyre above the cited 0.12-0.45 m, a motorcycle range);
 taking the longitudinal exponents
@@ -415,6 +418,7 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   0.78 / 0.74 → 0.75 / 0.72, so wet from 100 is 0.96 of wet from 50 (was 1.00). Map 41 autopilot pace (s, damp /
   wet): Fiesta 330.92 / 371.30 → 330.90 / 371.32, Golf II 340.79 / 381.92 → 341.15 / 381.95 (Golf dry 313.78; ngp
   324.24 / 353.52 / 398.24): 41_M wet tops out at 88 km/h and the autopilot brakes above 60 km/h 4-6 % of the time.
+  Since 2026-11-11 the loss is 0.0014 per m/s (the rule above), wet at 100 / 140 km/h over 60 0.984 / 0.969.
 - Damp level and worn refit (2026-11-09, `tyre/wet-damp-worn`, against main d903fe5a, Fiesta Rally2, experimental-brush).
   Lab (tarmac wheel, 4 kN, braked peak over dry new at 10 m/s, at 10 / 30 / 50 m/s): damp new 0.908 / 0.880 / 0.847 →
   0.820 / 0.795 / 0.765; wet new 0.788 / 0.707 / 0.592 unchanged; wet 3 mm 0.788 / 0.439 / 0.128 → 0.788 / 0.709 /
@@ -1889,16 +1893,24 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.86 / 0.85, braking 0.87; the 2017 morning against 2018 0.95. Second passes of dry stages (2018, 2019, 16 pairs):
   0.94-1.15, median 1.03. So wet-weather tyres on a wet and muddy road hold 0.8-0.9 of the dry road's cornering grip to
   120 km/h, with little fall across the apex speeds: NGP's wet tyre on its wet tarmac (0.85 of the dry tyre on dry,
-  flat) and the brush's (0.85 / 0.78 at 50 / 100 km/h by its formulas) are inside. Wadern-Weiskirchen's third pass,
+  flat) and the brush's (0.85 / 0.84 at 50 / 100 km/h by its formulas) are inside. Wadern-Weiskirchen's third pass,
   soaked with mud dragged on: 0.76 / 0.46 / 0.48 of the morning's and braking 0.84; the game's wet has no such state.
   Cross-year pairs of different drivers scatter 5-10 % and were not used.
-- The game's wet tarmac against that pair, at the car (2026-11-11; `handling.py --only ramp --speed 60|110`, i20 Coupe
-  WRC 2020, pad-39 (Tarmac_Fine_Clean_Wet) with `--tyre 2 --wetness wet` over pad-37 dry, peak g): NGP's tyre 0.978 /
-  1.146 = 0.85 at 60 km/h and 1.044 / 1.272 = 0.82 at 110; the brush 0.980 / 1.160 = 0.84 and 0.968 / 1.264 = 0.77.
-  Deutschland's wet afternoon holds 0.85-0.91 of the dry road at 80-120 km/h apexes with no fall from 50-80: NGP's tyre
-  is 3-9 % under it at 110 km/h and the brush 10-15 %, the brush's thin-film fade with speed (`wet_loss`, the drums' 0.7
-  mm) being what the stage does not show. Not changed: one wet day of one rally on full wets, against several drums;
-  open (a wet stage's film may be thinner than 0.7 mm at the racing line).
+- The same pairs by apex speed, apexes cornered hard (2026-11-11; scratch: as above per apex of 30-190 km/h, those with
+  0.8 g or more on the first pass's accelerometer; medians of the grip ratio). The wet afternoon over its morning
+  (Mittelmosel, Grafschaft): 0.877 at 50-90 km/h apexes (58; 62 km/h on the wet pass) and 0.877 at 90-130 (17; 101
+  km/h), no fall (bootstrap 0.87-1.08 of the slower apexes'), or 0.95 with a dry second pass's gain in fast corners
+  taken off (2018 and 2019, 11 pairs, 571 and 217 apexes: 1.003 → 1.052). Over other years' dry passes of Mittelmosel
+  by the same drivers (2018 twice, 2019; cars one and two years newer): 0.795 (60) → 0.732 (25), 0.92 (0.78-1.06).
+  Without the 0.8 g cut the ratio rises with speed (0.86 / 0.84 / 0.90 / 0.97 at 50-70 / 70-90 / 90-110 / 110-130
+  km/h, 294 apexes): the fast apexes of a first pass are not at the limit. So the stage puts the wet grip's fall from
+  62 to 101 km/h between none and 8 %; the drums' curves give 1.5 % on a 0.2 mm film and 8 % on the game's 0.7 mm.
+- The game's wet tarmac at the car (2026-11-11; `handling.py --only ramp --speed 60|110|150`, i20 Coupe WRC 2020,
+  pad-39 (Tarmac_Fine_Clean_Wet) with `--tyre 2 --wetness wet` over pad-37 dry, peak g, at 60 / 110 / 150 km/h): NGP's
+  tyre 0.978 / 1.146 = 0.85, 1.044 / 1.272 = 0.82, 1.097 / 1.334 = 0.82; the brush 0.983 / 1.160 = 0.85, 1.052 / 1.264
+  = 0.83, 1.124 / 1.363 = 0.82, its thin film on the 0.2 mm curve (the user, 2026-11-11: "more realistic for actual
+  modern rally"; on the 0.7 mm curve it held 0.968 / 1.264 = 0.77 at 110 km/h). Not measured: a dry-weather tyre on a
+  wet road, which takes the same smaller loss.
 - The files' downforce against these (2026-11-10). No published downforce of a 2017-21 World Rally Car or a Rally2 found
   (searches; wrcwings.tech describes the devices without forces). Five indications that the real cars gain less grip
   with speed than the files' 3700 N at 150 km/h gives, none of them a measure: the tarmac lateral p95 falls with speed
@@ -2676,7 +2688,10 @@ Since then:
   rows (`-mz-trail0-over-a` 0.310, `-mz-peak-alpha-over-fy` 0.462, `-mz-peak-per-mu-fz-a` 0.162); gravel
   `-locked-over-lat-max` and `-locked-over-traction` (the berm by depth), `-over-tarmac-braking-100` 0.669 (0.69-0.84;
   ngp 0.587) and `-car-lateral-rally2` 0.871 (0.93-1.15; ngp 0.910); `snow-peak-kappa` 0.250 (from 0.26),
-  `snow-car-lateral-rally2` 0.858 (0.69-0.85); eleven ice rows (NGP's ice level and shape).
+  `snow-car-lateral-rally2` 0.858 (0.69-0.85); eleven ice rows (NGP's ice level and shape). With the thin film on the
+  0.2 mm curve (2026-11-11; the 16 wet and damp rows re-run, 14 PASS before and after): `-trl-wet-peak-100-over-32`
+  0.911 → 0.976 (0.76-1), `-trl-wet-locked-100-over-32` 0.680 → 0.729 (0.56-0.81), `-wet-speed-loss` 0.979 → 0.995
+  (0.97-1).
 
 It reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, the 345 circle 0.571 g (brush 0.664); NGP
 gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ
@@ -2965,7 +2980,8 @@ stays the untuned brush's. The table's model column is the brush before the mode
 - Wet papers (2026-11-09, `tyre/papers-wet`, notes only; rows "drums", "void and texture", "Damp (thin film)", "Worn
   tread", "groove pattern" above). (1) Speed fade: two more drums support `tyre/wet-speed`'s thin film at 0.7 mm,
   100 / 140 km/h over 60: Liedl 0.917 / 0.796, Williams braking 0.98 / 0.90, lateral 0.925 / 0.84, Reimpell 0.92 /
-  0.83; the branch's 0.918 / 0.836 sits in the middle; keep the form and 0.0074. Linear within ±0.02; Liedl's best
+  0.83; the branch's 0.918 / 0.836 sits in the middle; keep the form and 0.0074 (0.0014 since 2026-11-11, a user
+  decision for a rally's wet tyres on a stage, the rule above). Linear within ±0.02; Liedl's best
   line starts at 70 km/h (0.0104 per m/s: 0.912 / 0.797), one tyre, not a reason to move. Veith's trailer losses start
   from 24-32 km/h, but on 1.5-3 mm water and low-void or smooth-pad cases (96/32 peak 0.93 for a high-void tyre).
   W 0.25 (0.175 mm) at 0.979 / 0.959 lies between the 0.2 mm curves (0.958-0.99 / 0.908-0.97): the linear W stays.
@@ -3108,8 +3124,9 @@ stays the untuned brush's. The table's model column is the brush before the mode
   do. Rallies differ ± 12 % on each surface where the game's materials span 4-5 %. Of the data wanted above: wet gravel
   has a bound (Wales), and the real traction to 80 % of wheelspin gives no verdict on a driven fall. Left too
   (2026-11-11): the tarmac cornering limit gains 12-18 % from 81 to 180 km/h where the real cars' hardest second does
-  not ("Sustained cornering by speed"), the brush's wet tarmac is 10-15 % under Deutschland's wet day at 110 km/h ("The
-  game's wet tarmac against that pair"), and the catch's driver is not valid on tarmac ("A driver's catch").
+  not ("Sustained cornering by speed"), the wet road's loss with speed rests on one wet rally day, which reads
+  between none and the drums' 8 % at 100 km/h ("The same pairs by apex speed"), and the catch's driver is not valid on
+  tarmac ("A driver's catch").
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and snow's soil lateral force
   through the whole car (gravel's is held past 6 m/s since 2026-11-11, on the real cars' whole g by sideslip). NGP has
   no ploughing (the declutched brake test stops 10-17 % longer locked). loose-v1's whole berm (1.3 from a braking slip
