@@ -3106,7 +3106,10 @@ stays the untuned brush's. The table's model column is the brush before the mode
   held ("Gravel's level by axis and by depth" and the three items after it). Left: gravel braking under 100 km/h 8-10 %
   above Finland's. NGP's tarmac tyre slips 2-3 times as far as the real cars at equal force, the brush as far as they
   do. Rallies differ ± 12 % on each surface where the game's materials span 4-5 %. Of the data wanted above: wet gravel
-  has a bound (Wales), and the real traction to 80 % of wheelspin gives no verdict on a driven fall.
+  has a bound (Wales), and the real traction to 80 % of wheelspin gives no verdict on a driven fall. Left too
+  (2026-11-11): the tarmac cornering limit gains 12-18 % from 81 to 180 km/h where the real cars' hardest second does
+  not ("Sustained cornering by speed"), the brush's wet tarmac is 10-15 % under Deutschland's wet day at 110 km/h ("The
+  game's wet tarmac against that pair"), and the catch's driver is not valid on tarmac ("A driver's catch").
 - Loose surfaces unmeasured: combined slip on gravel and snow (soft soil only, ibid.), and snow's soil lateral force
   through the whole car (gravel's is held past 6 m/s since 2026-11-11, on the real cars' whole g by sideslip). NGP has
   no ploughing (the declutched brake test stops 10-17 % longer locked). loose-v1's whole berm (1.3 from a braking slip
