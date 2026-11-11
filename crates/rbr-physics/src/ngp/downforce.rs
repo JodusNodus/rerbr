@@ -5,9 +5,9 @@
 
 const HALF: f32 = 0.5;
 /// The sea-level air density the forces are given at, kg/m^3.
-const REFERENCE_DENSITY: f32 = 1.2040719;
+pub const REFERENCE_DENSITY: f32 = 1.2040719;
 /// The speed the forces are given at, m/s.
-const REFERENCE_SPEED: f32 = 41.666668;
+pub const REFERENCE_SPEED: f32 = 41.666668;
 /// The factor on a positive force when reversing.
 const REVERSE_FACTOR: f32 = -0.5;
 

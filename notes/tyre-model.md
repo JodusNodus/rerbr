@@ -1127,12 +1127,13 @@ between soil and hard surface. Lab: `loose` example (a probe frame on soil, NGP'
   target 0.71). Scorecard: only `snow-car-locked-decel-50` moves (0.952, was 1.059, PASS); every gravel, tarmac, ice and
   ngp row bit-equal. Pace, autopilot to the finish (Fiesta Rally2): track-10_O 385.48 s (was 385.36; ngp 393.53), RSF 111
   (gravel) 287.08 s unchanged.
-- Ours: the smoothstep and its start at 0.8 (no intermediate slips are published; chosen on the trade-off below: a
-  berm from the full slide holds the wheels off lock at the Fiesta's full-pedal brake torque), no berm when driving
-  (the data are braked; a spinning tyre's sinkage resistance is unmeasured), PLOUGH independent of the soil's
-  thickness (data on 5 cm layers, NGP's 9-30 mm) and of speed (no trend at 40-80 km/h), NGP's soil lateral force kept
-  (NGP's lateral ploughing: 3-4 % of the peak at 30° and 15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5
-  m/s).
+- Ours: the smoothstep and its start at 0.8 (no intermediate slips are published; chosen on the trade-off below: a berm
+  from the full slide holds the wheels off lock at the Fiesta's full-pedal brake torque), no berm when driving (the data
+  are braked; a spinning tyre's sinkage resistance is unmeasured), the berm on gravel linear in the loose layer's depth
+  to PLOUGH at 5 cm (`gravel_berm`, 2026-11-11: the data are 5 cm layers, NGP's gravels 9-30 mm; 1.09 at 15 mm, where
+  Finland's braking past 50 % slip is 1.07-1.14 of its force at 22-32 %; other soils keep PLOUGH), PLOUGH independent of
+  speed (no trend at 40-80 km/h), NGP's soil lateral force kept (NGP's lateral ploughing: 3-4 % of the peak at 30° and
+  15 m/s, ~10 % at 25 m/s, out of reach of Coutermarsh's 1-1.5 m/s).
 - Carcass at the limit (`brush::step_dynamic`, both surfaces): sliding at the limit, the deflections take the steady
   force's direction (was: a locked wheel's deflection integrated the sliding velocity weighted by c_x/c_y, so its
   side force at 20° was 0.197 against the steady 0.37; in game it moved RSF 111 by 0.02 s and the gravel locked
@@ -1757,6 +1758,77 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   ones of 2021 (Acropolis, Safari) and 0.88-0.94 of Finland's and the dry six's median at 100-130 km/h: other roads and
   another tyre maker, so a bound only. It leaves room for NGP's wet gravel (0.845-0.8525 of dry) and shows no loss that
   would argue against damp gravel at the dry level.
+- Gravel's level by axis and by depth (2026-11-11, user decisions on the readings above and the drives below;
+  `loose::GRAVEL_LONGITUDINAL` and `loose::gravel_depth_level` on the gravel share of the soil, experimental-brush only:
+  grass, rock and snow keep NGP's, `--tyre-tuning gravel=F` multiplies on top, and the figures above are at NGP's
+  level). The longitudinal level is 0.9 of NGP's and the lateral NGP's on the firm gravel: Finland, the grippiest of the
+  six dry gravel rallies, is the ceiling, on the material of RSF 524 Hassi (49, 15 mm, 99 % of its driveline by
+  `surface_across`). Both axes then fall with the loose layer's depth, 1 to 15 mm and linear to 0.96 at 30 mm: NGP's dry
+  gravel materials' static friction runs from 0.9000 (9 mm) to 0.8625 (30 mm), 4 % (`materials`, ids 1-51 and 153-197),
+  which with the slower rise of the deeper layers is 6 % at the car, where the rallies' saturated braking is 5 to 14 %
+  under Finland's; 0.96 puts the loosest 9 % under the firm (the user's limit is 10 %, to keep the stages near their
+  authors' design). The same road by hand (the user, RSF 524 against the eight World Rally Cars of Finland 2021's SS7;
+  scratch: the game's path laid on the GPS path by its curvature and a similarity fit, 2.5-3.4 m apart in the median,
+  path speeds, 11-14 apexes and 10-13 braking zones shared, corners under 0.7 of the real speed left out as incidents;
+  the real drivers are 0.97-1.04 of their own median): apex speed over the real median, median / p75 / p90, i20 Coupe
+  WRC 2020 on NGP's tyre (experimental) 0.89 / 0.92 / 0.96 and on loose-v1 with the longitudinal level at 0.85 0.88 /
+  0.97 / 1.01, GR Yaris Rally2 0.86 / 0.89 / 0.90 and 0.85 / 0.92 / 0.96; peak deceleration over 25 m in the zones
+  entered within 15 % of the real speed, median against the real cars' there, i20 0.94 against 0.89 g on NGP's tyre and
+  0.82 against 0.89 at 0.85 (its ratio's median and p75 0.83 and 0.92), Yaris 0.81 against 0.89 and 0.84 against 0.92;
+  game recoveries 4 and 1 on NGP's tyre, 5 and 4 at 0.85, neither of those two runs to the finish ("harder to drive"). A
+  sim driver is under the crews (those apex speeds, 11-12 % in the median) and should stay under them on the brakes too,
+  so NGP's tyre, 6 % over, is too strong and 0.85, 8-17 % under, is at the low end. 0.85 is the pad's fit of the tyres'
+  force to Finland's saturated braking (0.84 at 100-130 km/h), but the real cars' air drag is 0.08 g at 115 km/h against
+  the files' 0.04, so the car's deceleration there is 0.92 real against 0.88: 0.9 gives 0.92, and leaves the driver
+  about 5-10 % under the crews. The files' downforce is 15 % of the weight more at 160 km/h than half of it would be, so
+  with the aero prototype the level needs fitting again. The i20 on the pads of materials 49, 9, 1 and 33 (15 / 17.5 /
+  25 / 30 mm; scratch runs), main / with it: braking at κ 0.3 from 166 km/h, mean g with the air drag over 130-100 km/h
+  1.02 / 0.92, 1.01 / 0.92, 0.97 / 0.86, 0.95 / 0.84 and over 100-70 0.94 / 0.85, 0.93 / 0.84, 0.89 / 0.79, 0.88 / 0.77;
+  the start's 10 to 50 m 1.96 / 2.03, 1.96 / 2.04, 1.99 / 2.08, 2.01 / 2.11 s (Finland 2.10, the others 2.02-2.30; NGP's
+  tyre 2.09 on 49); the r40 circle's limit before the car runs wide 0.86 / 0.84, 0.85 / 0.84, 0.83 / 0.81, 0.81 / 0.76 g
+  (NGP's tyre 0.87 on 49). By the slip target held on material 49 (0.10 / 0.15 / 0.20 / 0.30 / 0.50 / locked, 100-70
+  km/h; the rim reads 0.93 of the car's speed coasting, so the slip is about 0.07 less) NGP's tyre gives 0.19 / 0.54 /
+  0.77 / 0.95 / 0.91 / 0.77 g and loose-v1 at 0.85 0.30 / 0.66 / 0.77 / 0.80 / 0.81 / 1.01: NGP's peak is narrow and
+  falls a fifth at lock, where a locked tyre on gravel stops harder than a rolling one. Fiesta Rally2 on material 49 at
+  0.85 (`handling.py`, 80 km/h; not rerun at 0.9), main / with it: ramp peak 0.917 / 0.904 g, the sine dwell's lowest
+  spinning amplitude 0.75 and 0.55 (110 km/h) both, brake in turn at the light pedal 0 / 2 spins of 3 (medium and hard 3
+  of 3 both). Ours, not measured: the split (a real road's ruts and camber are in its lateral side, and soil rigs give a
+  tyre's longitudinal peak at or above its lateral), the depth as the road's looseness (a stage's materials are its
+  author's) and the fall's size. Wales (2017-19, wet or mixed) is no dry anchor. One driver, two runs a tyre on NGP's
+  and at 0.85. At 0.9, one run of the i20, to the finish: apex speed 0.89 and 0.96 (median, p90), peak deceleration 0.78
+  against 0.89 g (the clean zones 0.72-0.96), 3 recoveries ("easier, still not as easy as NGP"); the braking as driven
+  does not separate 0.85 from 0.9, which rests on the pad.
+- The pad by hand (2026-11-11, the user, i20 Coupe WRC 2020 on loose-v1 at 0.9, material 49, 180 s,
+  `harness/pad_drive.py`; scratch: the tyres' force over their load from the trace's wheel forces, the wheel speed as
+  the rim's over the car's). Straight braking by wheel speed: 0.77 at 0.8-0.9, 0.79-0.80 at 0.3-0.8, 0.83-0.85 at
+  0.1-0.3, 1.02 locked (the berm, 1.28 of the plateau); the car 0.93-0.96 g over 130-100 km/h and 0.89-0.93 over 100-70
+  (the autopilot at κ 0.3 0.92 and 0.85), 1.00-1.09 g locked at 72-45 km/h, where Finland's saturated braking is
+  0.69-0.76 of the weight at 60-100 km/h and its windows past 50 % slip 0.72-0.89 g: the full pedal is the shortest stop
+  by a quarter, which the published cars on 5 cm layers support and Finland's road does not show. Sliding sideways
+  locked: 1.07 at 54 km/h, 1.32 at 99-126 km/h. Starts, 10 to 50 m: 1.98-2.10 s (Finland 2.10). Cornering without the
+  brake at a sideslip of 10-20 / 20-35 / 35-60 deg: 0.84 / 0.89 / 0.94 at 80-120 km/h and 0.86 / 0.99 / 1.12 at 120-190
+  (NGP's soil force, ∝ v_lat², not measured past 25 m/s), under a load of 1.10-1.13 and 1.18-1.27 of the static (the
+  files' downforce, twice the real cars'). The path's lateral g, best 2 s at 60-80 / 80-100 / 100-120 / 120-140 /
+  140-160 / 160-180 km/h: 0.93 / 1.04 / 1.17 / 1.25 / 1.24 / 1.35 on the level pad, where Finland 2021 (every stage,
+  55-98 drives a band, GPS, the road's camber and compressions in it) has a median best of 1.38 / 1.30 / 1.25 / 1.23 /
+  1.18 / 1.09 and a p90 of its windows over 0.5 g of 1.17 / 1.11 / 1.06 / 1.02 / 0.99 / 0.93: the game's limit rises
+  with speed and the crews' falls, the game under them to 120 km/h and over from 140. One run. Since then gravel's berm
+  goes by its depth (`loose::gravel_berm`; the autopilot, the i20 from 166 km/h on material 49, before / after): the
+  full pedal 1.05 / 0.90 g over 100-70 km/h and 1.03 / 0.88 over 70-40, the stop 108 / 115 m, where κ 0.3 gives 0.85 and
+  0.80 g and 120 m both; the 30 mm pad's full pedal 0.97 / 0.89 over 100-70. And the rise with speed is the files'
+  downforce on either tyre: the circles' limit at r 40 / 100 / 200 m, NGP's tyre 0.89 / 0.98 / 1.14 g at 69 / 114 / 172
+  km/h, loose-v1 0.86 / 0.95 / 1.11 at 68 / 112 / 170 (the r200 runs end short of the limit).
+- The brush profile takes the aero prototype (2026-11-11: `Profile::EXPERIMENTAL_BRUSH.aero` is `wings+downforce`,
+  `--aero ngp` gives the files' back; `experimental` keeps the files'). The i20 on material 49, the files' aero / the
+  prototype (the autopilot): the circles' limit at r 40 / 100 / 200 m 0.86 / 0.95 / 1.11 g at 68 / 112 / 170 km/h
+  against 0.83 / 0.88 / 0.95 at 67 / 108 / 157 (the r200 runs end short of the limit), where Finland 2021's p90 of
+  cornering on its cambered road is 1.17 / 1.06 / 0.99 and the user's best on the files' aero 0.93 / 1.17 / 1.24-1.35;
+  braking at κ 0.3 over 160-130 / 130-100 / 100-70 / 70-40 km/h 1.01 / 0.92 / 0.85 / 0.80 against 0.99 / 0.90 / 0.84 /
+  0.79 g, where Finland's cars (their saturated tyre force with a drag of 1.74 m²) are 1.02 / 0.92 / 0.78 / under 0.72;
+  the full pedal 0.88 over 100-70; the start's 10 to 50 m 2.03 / 2.05 s (Finland 2.10). So gravel's level holds at 0.9
+  with the prototype. Left over: braking under 100 km/h 8-10 % above Finland's (a real stop there ends in a corner,
+  weak), NGP's soil force at large angles and speed (not measured), and the flat pad's limit under the crews' below 120
+  km/h (their road's camber). Not driven.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
@@ -2111,6 +2183,64 @@ traces byte-identical). Runs and scripts outside the repository. ngp / experimen
   less. Their lap simulation (Table 3's 2.08 km stage, 78.2 s loose, loose μ = half of tarmac's by assumption): zero-yaw
   aero makes the time 0.2 s fast at 9° body slip, up to 0.4 s (tarmac) / 0.3 s (loose) at 15° (Fig. 18), steady state
   only. Not in ReRBR (any physics): a sliding car keeps its front downforce and its drag.
+- Aero with sideslip, a prototype (2026-11-10, `--aero yaw` with an experimental profile, off by default;
+  `rbr_hybrid::ngp::aero_model` on NGP's downforce update): my read of D&R's Figs 10 and 14 (model N at 0 / 15°, 8 /
+  11 / 14 mm): front lift -1.30 / -0.25, -1.05 / -0.15, -0.85 / +0.05, about linear; rear -1.4, -1.7, -2.0 to -1.8;
+  drag 2.85, 3.45, 3.8 to 4.4-4.6 (+54, +30, +21 %). So the front downforce × max(0, 1 - β/17°), the rear NGP's, the
+  drag × (1 + 0.35 β/15°) held past 15° (no data there; a guess). `handling.py`, experimental-brush, 140 km/h,
+  without / with: gravel pad ramp steer peak g Fiesta Rally2 1.126 / 1.073, Fiesta WRC 2019 1.145 / 1.155 (sideslip
+  at the peak 20 / 39°), sine dwell g -2 to -10 % from 0.3 of lock up, lowest spinning amplitude WRC 0.75 / 1.0,
+  Rally2 0.55 / 0.55; tarmac ramp 1.461 / 1.437 and 1.424 / 1.406 (sideslip 3.5°), lowest spinning amplitude WRC
+  0.4 / 0.3, Rally2 0.3 / 0.3; at 110 km/h on gravel within 3 %. Not decided: one model test of a 2004 car at tarmac
+  clearances, on files with four times its downforce.
+- The same pads without it (experimental-brush): ramp steer peak g at 140 km/h over the r40 circle's (70 / 82
+  km/h): gravel 1.145 / 0.974 (WRC), 1.126 / 0.967 (Rally2) = 1.17; tarmac 1.46 / 1.33, 1.42 / 1.34 = 1.06-1.10.
+  The real telemetry's g-g p95 |lat| at 120-150 over 30-60 km/h (`data/rally-telemetry-gravel.csv`, medians):
+  Finland 2021 1.24 (0.96-1.43 over 8 drives), over 60-90 km/h 1.15; Wales 2017 1.01 and 0.93. A bin's p95 is a
+  lower bound of the limit and Finland's fast corners are cambered, so the files' downforce is not contradicted;
+  D&R's level (a quarter) would give +5 %. A CFD of the 2008 Impreza S14 WRC (DynaRace blog, k-ε, no cooling flow;
+  weak) gives 1948 N at 160 km/h, ~1.7 kN at 150: the files' 2006 WRC cars carry 1.61-1.95 kN.
+- The devices' drag, a prototype (2026-11-10, `--aero wings` or `wings+yaw` with an experimental profile, off by
+  default; `aero_model::wing_drag_factor`): the drag area gains 0.074 × (the file's downforce area)², the form of
+  induced drag, set on the telemetry's 1.74 m² for the 2017-21 cars ("Full throttle on straights": file 0.81 m²,
+  downforce area 3.54 m²). The rule on the other files: WRC 2006 0.82 and 1.08 m² (D&R's 2004 model 0.85), Fiesta Rally2
+  1.30, Polo R5 1.04, S2000 0.90, Group N +0.03, Fiesta RS WRC 2014 1.22 (Deutschland 2016 leaves 1.16-1.34 with the
+  power assumed; its pad run with it 0.423 / 0.317 / 0.239 / 0.202 / 0.165 g against the real 0.347 / 0.267 / 0.200 /
+  0.166 / 0.134: the experimental engine's power over), nothing without downforce. i20 Coupe WRC 2020, experimental,
+  without / with (real): pad-tarmac 4th 110-120 km/h 0.492 / 0.461 (0.384), 6th 150-160 0.342 / 0.270 (0.214), 170-180
+  0.267 / 0.173 (0.143), 180-190 0.231 / 0.128 (0.072); pad-gravel 6th 150-160 0.323 / 0.247 (0.182), 170-180 0.244 /
+  0.150 (0.108); `rally_wot.py fit` reads 1.82 m² on tarmac, 1.64 on gravel; what is left is the experimental engine's
+  10 %. Top speed without / with, tarmac and gravel: i20 202.2 / 199.4 and 200.6 / 196.8 km/h (real 196-202), Fiesta
+  Rally2 177.5 / 175.8 and 192.7 / 189.6, Polo R5 182.6 / 181.6 and 181.6 / 180.2. RSF 524 with the autopilot (80 km/h
+  mean): i20 344.9 / 346.6 s, Rally2 347.2 / 348.4. Pad-tarmac 100-150 and 150-180 km/h, s, without / with: WRC 2019
+  3.34 / 3.77 and 2.82 / 3.97 (real, from the bins: about 4.1 and 4.9); GR Yaris Rally2 4.26 / 4.76 and 4.15 / 5.99;
+  Polo R5 4.43 / 4.70 and 4.30 / 5.29; WRC 2006 3.96 / 4.08-4.12 and 3.44-3.73 / 3.68-4.15; S2000 4.35-4.40 / 4.50-4.55;
+  Group N, R4, RGT and kit cars within 0.1 s; 0-100 km/h within 0.07 s on every car. The throttle lifted in gear
+  ("Throttle lifted in gear"), experimental with it: 4th 60-80 km/h 0.077 g, 5th 60-80 0.079, 5th 80-100 0.084, 6th
+  80-100 0.091, 6th 100-120 0.110, against the real 0.09 / 0.085 / 0.105-0.132 / 0.090-0.101 / 0.145 and 0.064 / 0.061 /
+  0.064 / 0.064 / 0.075 without. Not decided: one class measured, Rally2 and R5 by the rule alone; damaged aero parts
+  keep this drag. Since (the fit on five more tarmac events, "Full throttle on straights"): the seven events read
+  1.47-1.76 m², median 1.66, so the 1.74 the constant is set on is the top of them and the game's own fit with it reads
+  1.82; 0.063 in place of 0.074 would put that fit on the median (not changed, the figures here are at 0.074).
+- The downforce's level, a prototype (2026-11-11, `downforce` in `--aero`, alone or as `wings+downforce`,
+  `downforce+yaw`, `wings+downforce+yaw`, with an experimental profile, off by default but in experimental-brush, which
+  takes `wings+downforce`; `aero_model::DOWNFORCE`): half the file's downforce on both axles, the balance kept; the
+  wings' drag stays on the file's figure. The measure is hard straight braking against the dynamic pressure q (as under
+  Tarmac: 0.5 s windows, brake channel 80 % up, each 20 km/h bin's median from 60 km/h, the line a0 + k q through them,
+  downforce area (k m g - CdA) / a0 at 1390 kg, which a driver holding a fixed share of the limit does not move; scratch
+  analysis). The nine tarmac rallies of 2017-21 with their drag of 1.74 m² read 1.34 (España 2021), 1.47 (Deutschland
+  2019), 1.30 (Croatia 2021), 1.38 (Ypres 2021), 0.92 (Monza 2021), 1.05 (Corse 2019), 3.13 (Catalunya 2019's tarmac
+  days), 1.33 and 1.29 m² (Deutschland 2017, 2018): median 1.33, by the bins' p75 1.43, by their p90 1.51. The game's
+  i20 Coupe WRC 2020 on pad-tarmac from 166 km/h (`brake_test.py`, threshold κ 0.15 and 0.2, ABS 0.12 and 0.15; file
+  3.54 m²) reads 1.95-2.80 (experimental) and 2.60-3.02 (experimental-brush) with its drag of 0.81, 1.66-2.65 and
+  2.48-3.06 with `wings` at 1.74, and 0.93-1.23 (one run -0.24) and 0.95-1.70 (mean 1.37) with `wings+downforce`. The
+  r40 / r65 / r100 / r160 circles' limit without / with `wings+downforce`: experimental-brush 1.25 / 1.20 g at 81 km/h,
+  1.36 / 1.28 at 107, 1.48 / 1.35 at 136, 1.66 / 1.42 at 180; experimental 1.27 / 1.23, 1.37 / 1.29, 1.47 / 1.33 (r160
+  with it is out of power at 167 km/h): the gain from 81 to 136 km/h goes from 16-18 % to 8-12 %, against the real
+  apexes' flat p90. Not decided: one class and one measure with a rally-to-rally spread of 0.9-1.5 (one at 3.1); a tyre
+  losing 3 % of its friction from 80 to 150 km/h would hide 0.65 m²; no published figure found. The measure does not
+  work on gravel (the speed channel is the wheels', which slip 15-30 % in hard braking there); pad-gravel's slope with
+  `wings` / `wings+downforce` is 2.2-2.9 / 2.1-2.6e-4 g/Pa (experimental-brush), within the runs' spread.
 - Braking between cars (2026-11-10; `brake_test.py`, pad-tarmac, 100-0 km/h declutched, mean g, best threshold / ABS
   at κ 0.15): Alpine A110 Rally (500 N at 150 km/h) ngp 1.20 / 1.23 (32.7 / 31.9 m), brush 1.21 / 1.25; Fiesta Rally2
   (3100 N) ngp 1.32 / 1.32 (30.0 / 29.8 m), brush 1.31 / 1.33. NGP's tyre tables are the same for every car and the

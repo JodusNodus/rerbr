@@ -3,6 +3,7 @@
 //! harness passes at install ([`Scope`]; 0 for a 1.02 snapshot, where they aren't hooked).
 
 mod address;
+mod aero_model;
 mod brake_scale;
 mod calls;
 mod damper;
@@ -16,6 +17,7 @@ pub(crate) use calls::Call;
 
 pub(crate) use address::{at, is_file, is_ngp, only, trampolines};
 pub use address::{base_in, file, file_at, original_for, runs_ngp, set_wall_clock, Scope};
+pub use aero_model::{set_aero_model, wing_drag_factor, yaw_factors, AERO_NAMES};
 pub(crate) use brake_scale::scaled_pedal;
 pub use brake_scale::set_brake_scale;
 pub(crate) use engine::{engine_wrapper, starter_step, OPERATOR_NEW};
