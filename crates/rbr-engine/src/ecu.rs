@@ -63,7 +63,11 @@ pub const FIRE_RPM: f64 = 150.0;
 /// Anti-lag (MoTeC anti-lag setup, Link forum): armed above 0.45·RPMLimit, active with the pedal under 0.1 for at most
 /// 3 s, re-armed by a pedal over 0.3; the throttle open 20 % of its area (Link forum: about 20 % kick, 25 % in the
 /// closed-pedal cells), 60° retard, +20 % fuel, 30 % cut, 1.2 bar boost aim, 60 % of the cut firings' fuel burning in
-/// the manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down.
+/// the manifold. The kick is an area: a 15 % lift opens 5 % of the area and lets the turbo run down. As it ends the
+/// retard comes off over `ALS_FADE` (inferred: its retard table runs over the throttle and the rpm, with values to
+/// about 30 % throttle and none from half, so it blends out, Link G4+ anti-lag retard table; switched off at once the
+/// manifold the kick kept full gave 0.7 of the full torque at 10 % pedal for 0.06 s, where the 2017-21 World Rally
+/// Cars read 0.03-0.11 of their steady full-throttle g as the pedal comes up, `notes/engine-model.md`, Open).
 /// Start (launch) mode: on cars whose class ran anti-lag, with the pedal over `START_PEDAL`, every wheel under
 /// `START_RIM` and the body under `START_BODY`, the limiter sits at `START_RPM` of the rev limit, and while it cuts
 /// the fired events retard by `ALS_RETARD`, so a full-throttle standing start builds boost on the line. Link's launch
@@ -85,6 +89,7 @@ pub const ALS_TRIM: f64 = 0.2;
 pub const ALS_CUT: f64 = 0.3;
 pub const ALS_BOOST: f64 = 1.2e5;
 pub const ALS_BURN: f64 = 0.6;
+pub const ALS_FADE: f64 = 0.1;
 /// The electronic throttle: 30 ms first order, 40 ms full travel (guess; Gorzelic 2012 model it as a 40 ms first-order
 /// lag).
 const ETB_TAU: f64 = 0.03;
@@ -147,10 +152,11 @@ impl Events {
     }
 }
 
-/// Anti-lag's timer: whether it runs this step.
+/// Anti-lag's timer: whether it runs this step, and the share of its retard left after it ended.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AntiLag {
     left: f64,
+    pub fade: f64,
 }
 
 impl AntiLag {
@@ -161,6 +167,9 @@ impl AntiLag {
         let active = pedal < ALS_LIFT && rpm > ALS_ARM * rpm_limit && self.left > 0.0;
         if active {
             self.left -= dt;
+            self.fade = 1.0;
+        } else {
+            self.fade = (self.fade - dt / ALS_FADE).max(0.0);
         }
         active
     }
