@@ -138,11 +138,15 @@ pedal ──► ECU ──► throttle plate ──► intake manifold ──►
 A cable car's plate follows the pedal. A car with a throttle per cylinder (carburettor chokes, slides, individual
 throttle bodies) has a progressive linkage, plate = pedal^1.6.
 
-A drive-by-wire car's plate also follows the pedal, through a throttle motor with a 30 ms lag that needs at least
-40 ms for full travel. Race ECUs work by position. Life Racing (M-Sport's R5 and Rally2 cars), MoTeC, Link, Haltech
-and Marelli all map pedal to throttle position through a table. Link's and Haltech's tables start at one to one.
-MoTeC M1 aims at a share of the airflow, which opens the plate more than the pedal at small openings. No rally team's
-map is public, so ours is the one to one start. Torque-request pedals belong to road cars' Bosch ME7 and to F1.
+A drive-by-wire car's plate follows a pedal table, through a throttle motor with a 30 ms lag that needs at least 40 ms
+for full travel. Race ECUs work by position. Life Racing (M-Sport's R5 and Rally2 cars), MoTeC, Link, Haltech and
+Marelli all map pedal to throttle position through a table. No rally team's map is public, so ours is fitted to what the
+2017-21 World Rally Cars do: in the WRC's stage telemetry (17 rallies) a steady 30 / 40 / 50 / 60 / 70 % throttle gives
+0.31 / 0.49 / 0.67 / 0.81 / 0.92 of the acceleration range between the shut and the open throttle in the same gear. The
+table is the pedal itself up to 20 %, two thirds of its slope from there to 60 % of the plate at 80 % of the pedal, and
+the rest of the plate over the last fifth. With it the i20 Coupe WRC gives 0.41 / 0.55 / 0.71 / 0.82 / 0.90 at 6000 rpm;
+a one to one plate gave 0.49 / 0.71 / 0.86 / 0.96 / 0.99, and matched the real cars only up to 20 %. No other class is
+measured. Torque-request pedals belong to road cars' Bosch ME7 and to F1.
 
 The ECU's idle air adds to the plate's aim and anti-lag's kick overrides it. Blips and shift cuts still come from
 NGP's control unit through the throttle it passes on.
@@ -331,10 +335,13 @@ gates (enginebasics). On a stage the Celica, with the 125 ms, ran more than 10 k
 
 ### Anti-lag
 
-On cars whose class ran it, anti-lag arms above 45 % of `RPMLimit`. With the pedal under 10 %, for at most 3 s, the
-ECU opens the throttle to 20 % of its area, retards the spark 60°, adds 20 % fuel and cuts 30 % of the firings. 60 % of
-the unburnt fuel burns in the exhaust manifold, which keeps the turbine spinning toward a boost aim of 1.2 bar gauge.
-The blow-off valve stays shut.
+On cars whose class ran it, anti-lag arms above 45 % of `RPMLimit`. With the pedal under 10 %, for at most 3 s, the ECU
+opens the throttle to 20 % of its area, retards the spark 60°, adds 20 % fuel and cuts 30 % of the firings. 60 % of the
+unburnt fuel burns in the exhaust manifold, which keeps the turbine spinning toward a boost aim of 1.2 bar gauge. The
+blow-off valve stays shut. When it ends, the retard comes off over 0.1 s: the kick has kept the manifold full, and with
+the spark back at once the engine gave 0.7 of its full torque at 10 % pedal for 0.06 s. The World Rally Cars' telemetry
+shows no such burst: their acceleration stays under the steady pedal map while the pedal comes up. Link's retard table
+runs over throttle and rpm, so a real one blends out too; the 0.1 s is ours.
 
 ### Start mode
 
@@ -483,12 +490,12 @@ The most net power each pedal position gives at any rpm from idle up, as a share
 | --- | --- | --- | --- | --- | --- | --- |
 | 10 % | 0–1 % | 5 % | 10 % | 8 % | 3 % | 9 % |
 | 20 % | 2–8 % | 19 % | 23 % | 21 % | 11 % | 25 % |
-| 30 % | 12–19 % | 44 % | 42 % | 49 % | 22 % | 43 % |
-| 40 % | 23–31 % | 74 % | 61 % | 73 % | 44 % | 57 % |
-| 50 % | 36–42 % | 91 % | 77 % | 88 % | 75 % | 69 % |
-| 60 % | 48–53 % | 97 % | 87 % | 97 % | 88 % | 80 % |
-| 70 % | 61–65 % | 99 % | 93 % | 98 % | 94 % | 89 % |
-| 80 % | 74–77 % | 99 % | 97 % | 99 % | 97 % | 94 % |
+| 30 % | 12–19 % | 44 % | 35 % | 41 % | 22 % | 43 % |
+| 40 % | 23–31 % | 74 % | 48 % | 57 % | 44 % | 57 % |
+| 50 % | 36–42 % | 91 % | 61 % | 73 % | 75 % | 69 % |
+| 60 % | 48–53 % | 97 % | 72 % | 83 % | 88 % | 80 % |
+| 70 % | 61–65 % | 99 % | 81 % | 92 % | 94 % | 89 % |
+| 80 % | 74–77 % | 99 % | 87 % | 97 % | 97 % | 94 % |
 
 And the most net torque, as a share of peak torque:
 
@@ -496,27 +503,30 @@ And the most net torque, as a share of peak torque:
 | --- | --- | --- | --- | --- | --- | --- |
 | 10 % | 0–2 % | 26 % | 40 % | 27 % | 12 % | 49 % |
 | 20 % | 6–10 % | 47 % | 53 % | 49 % | 25 % | 65 % |
-| 30 % | 14–21 % | 63 % | 65 % | 64 % | 38 % | 76 % |
-| 40 % | 26–32 % | 81 % | 75 % | 79 % | 62 % | 84 % |
-| 50 % | 38–43 % | 93 % | 84 % | 91 % | 88 % | 91 % |
-| 60 % | 51–55 % | 97 % | 91 % | 97 % | 93 % | 95 % |
-| 70 % | 63–66 % | 98 % | 95 % | 98 % | 97 % | 98 % |
-| 80 % | 75–77 % | 98 % | 98 % | 99 % | 98 % | 99 % |
+| 30 % | 14–21 % | 63 % | 61 % | 58 % | 38 % | 76 % |
+| 40 % | 26–32 % | 81 % | 68 % | 69 % | 62 % | 84 % |
+| 50 % | 38–43 % | 93 % | 75 % | 79 % | 88 % | 91 % |
+| 60 % | 51–55 % | 97 % | 81 % | 88 % | 93 % | 95 % |
+| 70 % | 63–66 % | 98 % | 87 % | 94 % | 97 % | 98 % |
+| 80 % | 75–77 % | 98 % | 91 % | 97 % | 98 % | 99 % |
 
 BeamNG's values are read from its published plots, and the NGP columns span the four samples. Power compares better:
 at light pedal the torque share mostly says how strong a car's full-throttle curve is near idle, where every light
 pedal line meets it.
 
-On power, the drive-by-wire samples follow BeamNG up to 30 % pedal and give more from 40 % up. Two samples give less at
-light pedal, for reasons in their hardware. The old car's throttles per cylinder sit on a progressive linkage. The
-cable turbo makes its full power on boost, and at light pedal it is an NA engine until the turbo spins. BeamNG scales
-power with the pedal whatever the turbo does.
+On power, the turbo drive-by-wire sample follows BeamNG up to 40 % pedal and gives 3 to 4 points more above; the NA one
+gives 8 to 9 points less from 30 % up. Both carry the pedal table fitted to the World Rally Cars, a restricted turbo
+class. Two samples give less at light pedal, for reasons in their hardware. The old car's throttles per cylinder sit on
+a progressive linkage. The cable turbo makes its full power on boost, and at light pedal it is an NA engine until the
+turbo spins. BeamNG scales power with the pedal whatever the turbo does.
 
-An earlier version mapped the drive-by-wire pedal as pedal^1.3, from HP Academy's drive-by-wire webinar (40 % pedal,
-about 30 % throttle), and gave about half BeamNG's power at 10–20 % pedal. That calibration is a Haltech on a street
-Nissan 350Z, shaped to hold a steady speed on the road. The rest of the chain checks out against measurements: the
-plate flow above, and EPA's steady map of the 2013 Ford 1.6 EcoBoost, which makes 27 % of its 100 kPa torque at
-50 kPa of manifold pressure where ours makes 28 % at 47 kPa.
+Two earlier versions of the drive-by-wire pedal did not hold. The first mapped it as pedal^1.3, from HP Academy's
+drive-by-wire webinar (40 % pedal, about 30 % throttle), and gave about half BeamNG's power at 10–20 % pedal. That
+calibration is a Haltech on a street Nissan 350Z, shaped to hold a steady speed on the road. The second put the plate at
+the pedal: right at 10–20 %, and 0.12 to 0.35 of the range over the real cars from 30 to 60 %, because a butterfly ahead
+of a boosted manifold stops limiting the air near half open. The rest of the chain checks out against measurements: the
+plate flow above, and EPA's steady map of the 2013 Ford 1.6 EcoBoost, which makes 27 % of its 100 kPa torque at 50 kPa
+of manifold pressure where ours makes 28 % at 47 kPa.
 
 BeamNG's curve isn't measured data either. Niels Heusinkveld, whose research the post credits, read the part-throttle
 curves of 12 sims, not cars, and proposed a shape from them. Forum readings of BeamNG's engine code have it apply
