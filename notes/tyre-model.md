@@ -1776,7 +1776,7 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.82 against 0.89 at 0.85 (its ratio's median and p75 0.83 and 0.92), Yaris 0.81 against 0.89 and 0.84 against 0.92;
   game recoveries 4 and 1 on NGP's tyre, 5 and 4 at 0.85, neither of those two runs to the finish ("harder to drive").
   So 0.85, the pad's fit to Finland's saturated braking, is 8-17 % under the real cars as driven and NGP's tyre 6 %
-  over: 0.95. The real cars' air drag is 0.07 g more than the files' at 160 km/h and the files' downforce 14 % of the
+  over: 0.95. The real cars' air drag is 0.08 g more than the files' at 160 km/h and the files' downforce 15 % of the
   weight more than half of it would be, so with the aero prototype the level needs fitting again (about 1). The i20 on
   the pads of materials 49, 9, 1 and 33 (15 / 17.5 / 25 / 30 mm; scratch runs), main / with it: braking at κ 0.3 from
   166 km/h, mean g with the air drag over 130-100 km/h 1.02 / 0.97, 1.01 / 0.96, 0.97 / 0.90, 0.95 / 0.88 and over
