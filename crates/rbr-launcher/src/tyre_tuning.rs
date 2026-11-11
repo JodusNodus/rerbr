@@ -53,7 +53,7 @@ pub fn tuning_section(ui: &mut Ui, physics: PhysicsProfile, tuning: &mut Tuning)
             }
             ui.end_row();
         };
-        let grip = "Times the grip of this surface (NGP's level). Gravel's covers every loose surface but snow.";
+        let grip = "Times the grip of this surface (the model's level). Gravel's covers every loose surface but snow.";
         factor(ui, "Grip on tarmac", &mut tuning.tarmac, tuning::GRIP, grip);
         factor(ui, "Grip on gravel", &mut tuning.gravel, tuning::GRIP, grip);
         factor(ui, "Grip on snow", &mut tuning.snow, tuning::GRIP, grip);

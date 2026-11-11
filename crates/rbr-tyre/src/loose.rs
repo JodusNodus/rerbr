@@ -3,7 +3,7 @@
 //! it on soil wheels under the brush ([`crate::car`], `--physics experimental-brush` only); NGP's soil lateral force
 //! stays on top (`rbr_physics::tyre::model::apply`).
 //!
-//! - Level: NGP's. The free rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
+//! - Level: NGP's, on gravel times [`GRAVEL_LEVEL`]. The free rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
 //!   Damp gravel takes NGP's dry level back ([`gravel_damp_level`]); wet keeps NGP's.
@@ -181,6 +181,12 @@ pub fn gravel_damp_level(w: f64, gravel: f64) -> f64 {
     1.0 + (GRAVEL_DAMP_LEVEL - 1.0) * brush::damp_weight(w) * gravel.clamp(0.0, 1.0)
 }
 
+/// Gravel's level over NGP's, on the gravel share of the soil ([`class_share`]; grass, rock and snow keep NGP's). A
+/// user decision (2026-11-11) on the 2017-21 World Rally Cars' telemetry (`notes/tyre-model.md`, "Straight braking,
+/// the level"): at NGP's level the i20 Coupe WRC brakes at 22-50 % slip 12-26 % harder than the cars in Finland and
+/// Estonia, and its slides and its wheelspin carry 10-25 % more; the apexes' lateral g does not show it.
+pub const GRAVEL_LEVEL: f64 = 0.9;
+
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
 pub const GRAVEL_CLASS: u32 = 1;
 /// NGP's surface class of its snow materials (SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls).
@@ -219,8 +225,10 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
     let cy = brush::stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cy0, M_CY, cal);
     let cx = brush::stiffness_at(x.fz, x.bulk_temp, x.tread_remaining, x.pressure_factor, cal.cx0, M_CX, cal);
     let (ly, lx) = c.levels.at(x.fz);
-    let grip =
-        (x.surf_static / cal.surf_s_cal) * (x.temp_grip / cal.temp_grip_cal) * gravel_damp_level(x.wetness, gravel);
+    let grip = (x.surf_static / cal.surf_s_cal)
+        * (x.temp_grip / cal.temp_grip_cal)
+        * gravel_damp_level(x.wetness, gravel)
+        * (1.0 + (GRAVEL_LEVEL - 1.0) * gravel.clamp(0.0, 1.0));
     let (mu_y, mu_x) = (ly * grip, lx * grip);
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if gravel > 0.0 {
@@ -401,7 +409,7 @@ pub(crate) mod tests {
     #[test]
     fn gravel_rises_by_the_shear_law_to_the_level() {
         let c = loose();
-        let peak = 0.85 * 4000.0;
+        let peak = 0.85 * GRAVEL_LEVEL * 4000.0;
         let fy = |a: f64| on(&c, 4000.0, 15.0, a, 0.0, 1.0, 1.0).fy.abs() / peak;
         // Coutermarsh & Shoop's pea stone over its maximum at 2.5/5/10/15° (Fig. 15): 0.33/0.55/0.80/0.91.
         for (a, pea) in [(2.5, 0.33), (5.0, 0.55), (10.0, 0.80), (15.0, 0.91)] {
@@ -415,11 +423,14 @@ pub(crate) mod tests {
             last = f;
         }
         assert!(last > 0.999 && last < 1.0, "{last}");
-        // The longitudinal side takes the same law at its own level; half a share is halfway between the laws.
-        let fx = |k: f64, g: f64| on(&c, 4000.0, 15.0, 0.0, k, 1.0, g).fx.abs() / (0.84 * 4000.0);
+        // The longitudinal side takes the same law at its own level; half a share is halfway between the laws at its
+        // level.
+        let fx = |k: f64, g: f64| on(&c, 4000.0, 15.0, 0.0, k, 1.0, g).fx.abs() / (0.84 * GRAVEL_LEVEL * 4000.0);
         let s0x = libm::tan(GRAVEL_ALPHA0_DEG.to_radians()) * 0.84 / (KX_OVER_KY * 0.85);
         assert!((fx(0.5, 1.0) - -libm::expm1(-(0.5 / 1.5) / s0x)).abs() < 1e-9);
-        assert!((fx(0.05, 0.5) - (fx(0.05, 0.0) + fx(0.05, 1.0)) / 2.0).abs() < 1e-9);
+        let level = 1.0 + (GRAVEL_LEVEL - 1.0) * 0.5;
+        let at_level = |grip: f64, g: f64| on(&c, 4000.0, 15.0, 0.0, 0.05, grip, g).fx;
+        assert!((at_level(1.0, 0.5) - (at_level(level, 0.0) + at_level(level / GRAVEL_LEVEL, 1.0)) / 2.0).abs() < 1e-6);
         assert_eq!(class_share([GRAVEL_CLASS, SNOW_CLASS], 0.25, GRAVEL_CLASS), 0.75);
         assert_eq!(class_share([SNOW_CLASS, SNOW_CLASS], 0.5, GRAVEL_CLASS), 0.0);
         assert_eq!(class_share([GRAVEL_CLASS, SNOW_CLASS], 0.25, SNOW_CLASS), 0.25);
@@ -428,7 +439,7 @@ pub(crate) mod tests {
     #[test]
     fn wet_gravel_rises_slower_by_the_water_factor() {
         let c = loose();
-        let peak = 0.85 * 4000.0;
+        let peak = 0.85 * GRAVEL_LEVEL * 4000.0;
         let fy = |a: f64, w: f64| {
             let r = a.to_radians();
             let x = EvalInput {
@@ -502,7 +513,7 @@ pub(crate) mod tests {
                 ..cal_input(&c.cal, 15.0, r)
             }
         };
-        let fy = |a: f64, depth: f64| eval(&x(a), &c, 1.0, 0.0, depth).fy.abs() / (0.85 * 4000.0);
+        let fy = |a: f64, depth: f64| eval(&x(a), &c, 1.0, 0.0, depth).fy.abs() / (0.85 * GRAVEL_LEVEL * 4000.0);
         assert!(fy(5.0, 0.009) > fy(5.0, 0.0175) && fy(5.0, 0.0175) > fy(5.0, DEEP));
         assert!(fy(40.0, 0.009) > 0.999 && fy(40.0, DEEP) > 0.999);
     }

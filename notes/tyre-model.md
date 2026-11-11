@@ -1757,6 +1757,17 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   ones of 2021 (Acropolis, Safari) and 0.88-0.94 of Finland's and the dry six's median at 100-130 km/h: other roads and
   another tyre maker, so a bound only. It leaves room for NGP's wet gravel (0.845-0.8525 of dry) and shows no loss that
   would argue against damp gravel at the dry level.
+- Gravel's level at 0.9 of NGP's (2026-11-11, a user decision on the readings above; `loose::GRAVEL_LEVEL` on the gravel
+  share of the soil, experimental-brush only: grass, rock and snow keep NGP's, `--tyre-tuning gravel=F` multiplies on
+  top, and the figures above are at NGP's level). The i20 Coupe WRC 2020 before / after on the 17.5 mm pad and the 9 mm
+  pad (before: `--tyre-tuning gravel=1.111` on the same build): braking from 166 km/h at κ 0.3-0.4 (`brake_test.py`),
+  mean g over 100-70 km/h 0.93 / 0.84 and 0.97 / 0.87, over 130-100 1.01 / 0.92 and 1.03 / 0.95, against Finland's
+  saturated 0.76 / 0.84 at 80-100 / 100-130; locked 1.01-1.07 either way (the berm); the start's 10 to 50 m 1.96 / 2.04
+  s and 1.94 / 2.02 s (Finland 2.10, the others 2.02-2.30); the r40 circle's limit before the car runs wide 0.85 / 0.77
+  g and 0.86 / 0.79 g at 64-68 km/h, from between the median and the p75 of Finland's apexes (0.78 / 0.92, below) to the
+  median. Braking stays 0.08-0.1 g over Finland and the start comes within 0.06-0.08 s; the lateral limit is the side to
+  judge by driving, a flat pad against roads with camber and ruts. Not rerun: the slides' whole g, the traction windows,
+  stages.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
