@@ -29,13 +29,17 @@ const VOLUME_COVER: f32 = 0.65;
 // The steps toward the sun, metres: each this far past the last, doubling.
 const VOLUME_LIGHT_STEP: f32 = 40.0;
 const VOLUME_LIGHT_STEPS: i32 = 5;
-// The share of the new frame in the blend.
+// The share of the new frame in the blend, once the history holds enough frames: before, the new frame is one of as
+// many as marched (`volume_blend`), so the march's dither is gone in a few frames, not a few dozen.
 const VOLUME_BLEND: f32 = 0.12;
+// The marches of a direction the history does not hold (the first frame, a cut, the sky a turn brings in), their
+// starts evenly apart in a step: one march's dither would show until the history took it up.
+const VOLUME_FIRST: i32 = 4;
 
 struct CloudParams {
     // The last frame's rotation-only clip matrix (`Renderer::sky_view_projection`).
     previous: mat4x4<f32>,
-    // x the frame's number, y 1 when the history holds a frame, z 1 when the depth is this frame's prepass's.
+    // x the frame's number, y the frames the history holds (0: none), z 1 when the depth is this frame's prepass's.
     state: vec4<f32>,
     // The weather map's corner (stage x and z) and its side, metres.
     weather: vec4<f32>,
@@ -160,8 +164,9 @@ fn volume_jitter(p: vec2<f32>, frame_number: f32) -> f32 {
     return fract(52.9829189 * fract(dot(q, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// The clouds along `dir`: their light (display colour, times their cover) and how much shows through.
-fn volume_march(dir: vec3<f32>, pixel: vec2<f32>) -> vec4<f32> {
+// The clouds along `dir`: their light (display colour, times their cover) and how much shows through. The march
+// starts `shift` of a step past the pixel's dither.
+fn volume_march(dir: vec3<f32>, pixel: vec2<f32>, shift: f32) -> vec4<f32> {
     if (dir.y < -0.02) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
@@ -182,7 +187,7 @@ fn volume_march(dir: vec3<f32>, pixel: vec2<f32>) -> vec4<f32> {
     // The ground's light under the clouds: its albedo (about 0.15) times the sun's and the sky's on it.
     let ground = 0.15 * (frame.day_sun.rgb * max(to_sun.y, 0.0) + frame.day_sky.rgb);
     let step = (end - start) / f32(VOLUME_STEPS);
-    var t = start + step * volume_jitter(pixel, cloud_params.state.x);
+    var t = start + step * fract(volume_jitter(pixel, cloud_params.state.x) + shift);
     var light = vec3<f32>(0.0);
     var through = 1.0;
     var distance_sum = 0.0;
@@ -275,6 +280,25 @@ fn sky_display(linear: vec3<f32>) -> vec3<f32> {
     return pow(max(linear, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
 }
 
+// The clouds along `dir` under the cirrus: one march into a history that holds the direction (`held`), else
+// `VOLUME_FIRST`.
+fn volume_now(dir: vec3<f32>, pixel: vec2<f32>, held: bool) -> vec4<f32> {
+    var low = volume_march(dir, pixel, 0.0);
+    if (!held) {
+        for (var k = 1; k < VOLUME_FIRST; k++) {
+            low += volume_march(dir, pixel, f32(k) / f32(VOLUME_FIRST));
+        }
+        low /= f32(VOLUME_FIRST);
+    }
+    let high = cirrus(dir);
+    return vec4<f32>(low.rgb + low.a * high.rgb, low.a * high.a);
+}
+
+// The new frame's share of the blend into a history of `cloud_params.state.y` frames.
+fn volume_blend() -> f32 {
+    return max(VOLUME_BLEND, 1.0 / (cloud_params.state.y + 1.0));
+}
+
 // The march at half the frame's size, blended into the last frame's along the same direction. Where the stage covers
 // the texel (the prepass's depth) it keeps the last frame's, so that the clouds are there when it moves off them.
 @fragment
@@ -298,10 +322,8 @@ fn fs_cloud_march(v: SkyOut) -> @location(0) vec4<f32> {
     if (known && cloud_params.state.z != 0.0 && textureLoad(scene_depth, min(full, vec2<i32>(textureDimensions(scene_depth)) - 1), 0) > 0.0) {
         return history;
     }
-    let low = volume_march(dir, v.clip.xy);
-    let high = cirrus(dir);
-    let now = vec4<f32>(low.rgb + low.a * high.rgb, low.a * high.a);
-    return select(now, mix(history, now, VOLUME_BLEND), known);
+    let now = volume_now(dir, v.clip.xy, known);
+    return select(now, mix(history, now, volume_blend()), known);
 }
 
 // The dome's texture coordinates (0 to 1) of an upward direction: the upper hemisphere's octahedral map, turned 45
@@ -352,13 +374,12 @@ fn fs_cloud_shadow(v: SkyOut) -> @location(0) f32 {
 @fragment
 fn fs_cloud_dome(v: SkyOut) -> @location(0) vec4<f32> {
     let dir = cloud_dome_dir(vec2<f32>(v.ndc.x, -v.ndc.y));
-    let low = volume_march(dir, v.clip.xy);
-    let high = cirrus(dir);
-    let now = vec4<f32>(low.rgb + low.a * high.rgb, low.a * high.a);
-    if (cloud_params.state.y == 0.0) {
+    let held = cloud_params.state.y != 0.0;
+    let now = volume_now(dir, v.clip.xy, held);
+    if (!held) {
         return now;
     }
-    return mix(textureLoad(cloud_history, vec2<i32>(v.clip.xy), 0), now, VOLUME_BLEND);
+    return mix(textureLoad(cloud_history, vec2<i32>(v.clip.xy), 0), now, volume_blend());
 }
 
 // The sky `colour` (display) along `dir` with the dome's clouds over it.
