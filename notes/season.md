@@ -69,8 +69,8 @@ the layer only reads drivelines and hands the launcher times, standings and save
   5 s left out, the first "shaken" per driver; "an uneventful stage" only from a stage's log with nothing to tell, never
   a service's. They are stored as text in the save.
 - `event`: per rally one surface (Mixed as a calendar: every surface of the pool once where the rallies allow, the
-  rest drawn by each surface's number of locations, shuffled) and one location (`StageRef::family`: an RSF stage's
-  country, a retail map's rally `retail-<map / 10>`, a BTB stage's name), one not yet visited in the event first,
+  rest drawn by each surface's number of locations, shuffled) and one location (`StageRef::family`: an RSF or
+  BTB stage's country, else its name; a retail map's rally `retail-<map / 10>`), one not yet visited in the event first,
   then one with stages for every loop, the seed drawing among the best. Each leg is a loop of new stages run twice
   with the midday service between the passes (A B C, service, A B C; an odd leg's second pass a stage short), as
   real rallies run; the surface's other stages fill a small location, and a pool too small runs stages again. That

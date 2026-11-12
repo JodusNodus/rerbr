@@ -120,7 +120,7 @@ impl StageRow {
             Origin::Community(stage) => {
                 (stage.country.as_ref().map(|c| c.to_uppercase()), stage.author.clone(), stage.length)
             }
-            Origin::Btb(btb) => (btb.country.as_ref().map(|c| c.to_uppercase()), btb.author.clone(), btb.km),
+            Origin::Btb(btb) => (btb.country.clone(), btb.author.clone(), btb.km),
             Origin::Retail => (
                 retail_country(map.number).map(str::to_owned),
                 Some("Warthog Games".to_owned()),
@@ -912,7 +912,7 @@ mod tests {
             folder: "/rsf/RX_CONTENT/Tracks/Hokkara".into(),
             name: "Hokkara".into(),
             author: None,
-            country: Some("fi".into()),
+            country: Some("FI".into()),
             km: None,
             surface: "gravel",
             problem: None,
