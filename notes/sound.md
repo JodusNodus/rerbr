@@ -202,6 +202,10 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   median, 12 at the 90th percentile, 7.7 at most; the mix up 0.7 dB at most. Outside unchanged. `rbr-sound --grass`
   renders the swish from the sound record's own surfaces (the viewer takes them from the particles). Not judged by
   ear yet.
+- Grass loop (2026-11-12, user: the swish is not realistic, the patter is better): the four stick-on-tall-grass hits
+  laid down 45 times a second into a 6 s loop (`CREDITS.md`; 50 ms envelope std 1.3-4 dB against the swish's
+  0.5-1) in place of the foley of a person in high grass. No open recording of a vehicle through grass or brush
+  was found (some thirty phrases; only near-field foley, 80-95 % of its energy above 4 kHz).
 - What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
   along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
   one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of
