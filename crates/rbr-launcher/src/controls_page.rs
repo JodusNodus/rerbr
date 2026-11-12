@@ -265,6 +265,7 @@ fn import_ffb_cars(root: &str, cars: &[Car], global: [i32; 3], ffb_cars: &mut ff
 const SENSITIVITY_HELP: &str = "How much of a car's steering force fits before the wheel maxes out. Higher: lighter, \
      more detail. Lower: heavier, maxes out sooner.";
 const STRENGTH_HELP: &str = "Strength: how heavy the wheel feels, for every car.";
+const DEVICE_HELP: &str = "The wheel the force goes to. First found: the first one with a constant force.";
 /// The rows' label column and the live bars' width.
 const ROW_LABEL: f32 = 110.0;
 const BAR: f32 = 110.0;
@@ -350,6 +351,8 @@ pub struct ControlsPage {
     wheels: Result<Vec<Wheel>, String>,
     /// The last "Import from RSF"'s summary.
     ffb_status: Option<String>,
+    /// The force-feedback devices connected when the device list was last opened.
+    ffb_devices: Vec<String>,
 }
 
 impl ControlsPage {
@@ -361,6 +364,7 @@ impl ControlsPage {
             scanned: Instant::now(),
             wheels: Ok(wheel_rotation::wheels()),
             ffb_status: None,
+            ffb_devices: Vec::new(),
         }
     }
 
@@ -510,6 +514,7 @@ impl ControlsPage {
                     aids_ui(ui, aids, head_gasket);
                     heading(ui, "Force feedback");
                     ffb_ui(ui, ffb, settings, read_only);
+                    self.ffb_device_ui(ui, ffb);
                     let (global, linearity) = (ffb.sensitivity, ffb.linearity);
                     let on = ffb.settings.enabled;
                     let status = &mut self.ffb_status;
@@ -636,6 +641,34 @@ impl ControlsPage {
             Err(e) => e.clone(),
         };
         ui.label(RichText::new(status).color(Color32::GRAY));
+    }
+
+    /// Which device gets the force (`ffb::Options::device`): the first found or one by name. The devices are looked
+    /// for when the list is opened, not on the page's rescan: SDL takes a tenth of a second over it.
+    fn ffb_device_ui(&mut self, ui: &mut Ui, ffb: &mut ffb::Options) {
+        ui.add_enabled_ui(ffb.settings.enabled, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Device").on_hover_text(DEVICE_HELP);
+                let selected = ffb.device.as_deref().unwrap_or("first found").to_owned();
+                let list = ComboBox::from_id_salt("ffb-device").selected_text(selected).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut ffb.device, None, "first found");
+                    for name in &self.ffb_devices {
+                        ui.selectable_value(&mut ffb.device, Some(name.clone()), name);
+                    }
+                    // The one set that is not connected stays in the list.
+                    let set = ffb.device.as_deref().filter(|d| !self.ffb_devices.iter().any(|n| ffb::picks(d, n)));
+                    if let Some(set) = set {
+                        let _ = ui.selectable_label(true, format!("{set} (not connected)"));
+                    }
+                });
+                if list.response.clicked() {
+                    self.ffb_devices = ffb::devices().unwrap_or_else(|e| {
+                        eprintln!("launcher: {e}");
+                        Vec::new()
+                    });
+                }
+            });
+        });
     }
 }
 

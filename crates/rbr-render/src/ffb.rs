@@ -876,19 +876,48 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
     }
 }
 
-/// The first haptic device with a constant force whose name contains `part` (any, without one).
-unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), String> {
+/// Whether a device named `name` is the one `part` (an [`Options::device`]) picks.
+pub fn picks(part: &str, name: &str) -> bool {
+    name.to_lowercase().contains(&part.to_lowercase())
+}
+
+/// The names of the force-feedback devices connected, for the choice of [`Options::device`]. None is opened (SDL's
+/// open sets a wheel's gain and autocentre), so one without a constant force is listed too; a drive says so.
+pub fn devices() -> Result<Vec<String>, String> {
+    // SAFETY: SDL's haptic list is read between this thread's init and quit of the subsystems.
+    unsafe {
+        if !SDL_InitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK) {
+            return Err(format!("SDL haptic: {}", sdl_error()));
+        }
+        let haptics = haptics();
+        SDL_QuitSubSystem(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK);
+        Ok(haptics?.into_iter().map(|(_, name)| name).collect())
+    }
+}
+
+/// SDL's haptic devices, each with its name.
+unsafe fn haptics() -> Result<Vec<(SDL_HapticID, String)>, String> {
     let mut count = 0;
     let ids = SDL_GetHaptics(&mut count);
     if ids.is_null() {
         return Err(format!("SDL haptic: {}", sdl_error()));
     }
+    let list = std::slice::from_raw_parts(ids, usize::try_from(count).unwrap_or(0))
+        .iter()
+        .map(|&id| {
+            let raw = SDL_GetHapticNameForID(id);
+            (id, if raw.is_null() { String::new() } else { CStr::from_ptr(raw).to_string_lossy().into_owned() })
+        })
+        .collect();
+    sdl3_sys::stdinc::SDL_free(ids.cast());
+    Ok(list)
+}
+
+/// The first haptic device with a constant force that `part` [`picks`] (any, without one).
+unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), String> {
     let mut seen = Vec::new();
-    for k in 0..usize::try_from(count).unwrap_or(0) {
-        let id = *ids.add(k);
-        let raw = SDL_GetHapticNameForID(id);
-        let name = if raw.is_null() { String::new() } else { CStr::from_ptr(raw).to_string_lossy().into_owned() };
-        if part.is_some_and(|p| !name.to_lowercase().contains(&p.to_lowercase())) {
+    for (id, name) in haptics()? {
+        if part.is_some_and(|p| !picks(p, &name)) {
             seen.push(name);
             continue;
         }
@@ -898,13 +927,11 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
             continue;
         }
         if SDL_GetHapticFeatures(haptic) & u32::from(SDL_HAPTIC_CONSTANT.0) != 0 {
-            sdl3_sys::stdinc::SDL_free(ids.cast());
             return Ok((haptic, name));
         }
         SDL_CloseHaptic(haptic);
         seen.push(format!("{name} (no constant force)"));
     }
-    sdl3_sys::stdinc::SDL_free(ids.cast());
     Err(if seen.is_empty() {
         "no force-feedback device".to_owned()
     } else {

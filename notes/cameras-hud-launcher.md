@@ -235,7 +235,10 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   file on change; the save carries `[ffb] strength`, `[ffb_cars]` and `[ffb_load]` over from the file, and the form
   reloads them when the viewer exits. `--ffb-sensitivity` is unchanged. Smoothing (2026-11-12; off, or 1-10 ms,
   `ngp.md` "Force feedback") sits next to the strength and is written and carried over the same way, and so
-  does "linearity" (2026-11-12; off, or 1-100 %, `ngp.md` "Linearity").
+  does "linearity" (2026-11-12; off, or 1-100 %, `ngp.md` "Linearity"). Device (2026-11-12; `[ffb] device`,
+  `ffb::devices`): "first found" (the first with a constant force) or one of SDL's haptic devices by name, listed
+  unopened when the list is opened (SDL's init takes 0.11 s with a G923, so not on the page's rescan); one without a
+  constant force is listed too. Not checked by a click: the page's capture draws the list closed.
 - The pause menu's Force feedback page (`hud::ffb_page`, with a wheel, once FFB1 says the surface): Sensitivity (the
   car's percentage), "Use suggested (X %)" (sets Sensitivity on the player's select; shown with 20 s of load and a
   suggestion other than the sensitivity; "the most" at 500 %), Strength (every car, 0-100 % by 5, live through
