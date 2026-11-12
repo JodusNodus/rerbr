@@ -1930,8 +1930,14 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   % tighter, 8 % of it the line's and the rest the pass's own at its limit. What the passes cannot show: a fast kink at
   the crews' speed (the approach is the plain plan's: the kink at 2972 m is reached at 125 km/h at most for the crews'
   154), the two tyres apart (most corners hold the same level on both, a step of 2.5 % of speed), and loose-v1 past 6062
-  m, where its car leaves the line at the plan's speed and rolls on every run (NGP's tyre passes). Not done: a margin
-  under 1.4 m, limit driving along the whole stage (the stage time).
+  m. There both cars leave a left-hander at full throttle 0.7-0.8 m wide of the line (1.54 / 1.58-1.64 m right of the
+  driveline, the line at 0.85 m and the road's edge at 2.25 m: the default's law aims the nose at the line, and the car
+  travels 4.3 / 5.4 deg outside its nose) into the end of a ridge of the ground 0.25-0.7 m over the road, 0.35 m past
+  its edge: NGP's tyre's car loses 3.3 m/s in a step, spins and drives on, loose-v1's 4.1 m/s, and it is thrown up and
+  rolls, in each of the 130 runs to a corner past it. The steering law's and the stage's, not the tyre's: over the stage
+  at the plan's 0.4-0.5 g the two cars' sideslip is alike (p50 / p90 2.6 / 4.5 and 2.4 / 5.4 deg with the throttle over
+  half, 1.7 / 2.5 and 1.3 / 2.3 braking). Not done: a margin under 1.4 m, limit driving along the whole stage (the stage
+  time).
 - Braking in a turn under a steering driver (2026-11-11; `harness/brake_turn.py`: pad-49's circles of 65 / 100 / 200 m,
   the pedal put on at 0.6 / 0.7 / 0.8 / 0.88 g of lateral and held at 0.3 to 1 while the pursuit steers the circle, 72
   runs a tyre; i20 Coupe WRC 2020, NGP's tyre / loose-v1). Past 45 deg of sideslip: 5 / 21 runs; more than 2 m wide
@@ -1949,8 +1955,15 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   reads the game's sideslip 4-6 deg over the true one. So the car's whole g, not its stability, keeps it from the crews'
   hardest braking in a turn (their middle reached, their top tenth 9-14 % above, a flat pad against their road), and
   loose-v1's car turns 2-3 times as far as NGP's from 0.75 of the pedal: to the crews' p75-p95 where NGP's stays at
-  their p50-p75. Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or the steering),
-  and the cause in loose-v1 (the brake in turn of "Slides on gravel": the force along the slip).
+  their p50-p75. From the pedal's onset (2026-11-12, the runs' traces, 0.6-0.7 g before the pedal): at 0.3 s both cars
+  yaw over the circle's rate at their speed, 1.2-1.4 / 1.3-1.6 times it; from 0.75 of the pedal NGP's is back at 0.9-1.5
+  times by 1-1.5 s and loose-v1's stays at 1.7-2.9 times against the countersteer, a yaw rate that does not fall with
+  the speed. The wheels' slip at 0.5 s is alike at 0.75 of the pedal (the least 0.20-0.26 / 0.21-0.41, the most
+  0.29-0.64 / 0.29-0.51); at 0.9 loose-v1 holds all four at 0.44-0.71 where NGP's range from 0.24-0.39 to 0.45-0.92. So
+  the brakes are not the difference, which leaves the side force and the yaw damping the tyre keeps at a braking slip of
+  0.3-0.7 (not read per wheel). Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or
+  the steering), and loose-v1's side force by slip angle at those slips beside NGP's (the brake in turn of "Slides on
+  gravel": the force along the slip).
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
