@@ -275,7 +275,7 @@ fn cap_label(fps: u32) -> String {
     }
 }
 
-/// The HUD's options (`viewer --no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide`), and the
+/// The HUD's options (`viewer --no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide`, `--hud-show`), and the
 /// cockpit's working dials (`--no-dials`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HudChoice {
@@ -286,7 +286,7 @@ pub struct HudChoice {
     pub stack: u8,
     /// The working dials of the RSF cars with RBRHUD gauges in the install (on by default).
     pub dials: bool,
-    /// The HUD's parts shown (all by default).
+    /// The HUD's parts shown (all but the telemetry by default).
     pub parts: Parts,
 }
 
@@ -301,6 +301,12 @@ const PART_LABELS: [(&str, &str); Part::ALL.len()] = [
     ("Car state", "The lit warning lamps and the damaged parts at the bottom left, shown only when there are any"),
     ("Messages", "The stand-still and car-problem messages"),
     ("Camera name", "The view's name at the top right"),
+    (
+        "Tyre temperatures",
+        "Each tyre's temperature beside the dial: green at its best, blue while too cold for full grip, red once too hot",
+    ),
+    ("Input trace", "A running chart of the pedals and the steering over the last 10 seconds"),
+    ("G-force", "The car's acceleration as a dot in a 2 g circle: up on the throttle, down on the brakes"),
 ];
 
 impl Default for HudChoice {

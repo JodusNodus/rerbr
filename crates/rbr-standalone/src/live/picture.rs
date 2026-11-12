@@ -18,7 +18,8 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout as physics_layout;
 use rbr_physics::rigid_body::layout::Body;
 use rbr_physics::spring_damper::DamperSignal;
-use rbr_physics::wheel::layout::{TAIL_HUB_OFFSET, TYRE_TAIL};
+use rbr_physics::tyre::store::TyreStore;
+use rbr_physics::wheel::layout::{TAIL_HUB_OFFSET, TYRE_SCRATCH, TYRE_TAIL};
 use rbr_recording::damage::{self, Damage};
 use rbr_recording::dash::{Dash, StackKey};
 use rbr_recording::detach::{self, DoorAngle, PartPose};
@@ -37,6 +38,7 @@ use rbr_recording::sound::{
     WHEEL_STRUT, WHEEL_STRUT_VELOCITY,
 };
 use rbr_recording::splits::{Split, Splits};
+use rbr_recording::tyre::{self, Tyre};
 
 use crate::saves::Saves;
 use crate::stage::StageData;
@@ -101,7 +103,7 @@ pub struct Picture {
     pub ngp_sound: Vec<u8>,
     /// GBX1: the gear ratios and the drive speed (`gearbox`), then SHF1: the shift points (`shift_points`).
     pub gearbox: Vec<u8>,
-    /// HUB1: each tyre's `HubOffset` (`hub_offsets`).
+    /// HUB1: each tyre's `HubOffset` (`hub_offsets`), then TYR1: its temperatures (`tyre_temperatures`).
     pub hub: Vec<u8>,
     /// The tagged FMB1 record: what NGP's FMOD block takes from the car beyond SND1 (`rbr_recording::sound::FmodBlock`).
     pub fmod_block: Vec<u8>,
@@ -231,7 +233,7 @@ impl Picture {
             flow: Flow::default().to_bytes(),
             ngp_sound: ngp_sound(mem),
             gearbox: [gearbox(mem, car + CAR_DRIVE).to_bytes(), shift_points(mem, car).to_bytes()].concat(),
-            hub: hub::record(hub_offsets(mem)),
+            hub: [hub::record(hub_offsets(mem)), tyre::record(tyre_temperatures(mem))].concat(),
             fmod_block: {
                 let block = FmodBlock::read_from(car, |at| {
                     mem.try_read(at, 4).map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
@@ -260,6 +262,30 @@ pub fn hub_offsets(mem: &Mem) -> [f32; 4] {
     std::array::from_fn(|k| {
         let tail = read(car + CAR_WHEELS + 4 * k as u32).filter(|&w| w != 0).and_then(|w| read(w + TYRE_TAIL));
         tail.filter(|&t| t != 0).and_then(|t| read(t + TAIL_HUB_OFFSET)).map_or(0.0, f32::from_bits)
+    })
+}
+
+/// Each wheel's tyre temperatures for the HUD (TYR1), read from the tyre's frame after the step; zeros for a wheel or
+/// tyre not yet built.
+pub fn tyre_temperatures(mem: &Mem) -> [Tyre; 4] {
+    let car = mem.u32(CAR_PTR);
+    let read = |at: u32| mem.try_read(at, 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    std::array::from_fn(|k| {
+        let scratch = read(car + CAR_WHEELS + 4 * k as u32).filter(|&w| w != 0).map(|w| w + TYRE_SCRATCH);
+        let built = |s: &u32| [0x10, 0x14, 0x410, 0x414].iter().all(|at| read(s + at).is_some_and(|p| p != 0));
+        scratch.filter(built).map_or(Tyre::default(), |s| {
+            let frame = mem.load_frame(s);
+            let (state, setup) = (&frame.state, &frame.setup);
+            let (axis, friction) = (&setup.temperature_axis, &setup.rubber_friction_by_temperature);
+            let best = (0..friction.count() as i32)
+                .max_by(|a, b| friction.at(*a).unwrap_or(0.0).total_cmp(&friction.at(*b).unwrap_or(0.0)));
+            Tyre {
+                surface: state.surface_temperature.iter().sum::<f32>() / state.surface_temperature.len() as f32,
+                tread: state.tread_temperature,
+                grip: frame.scratch.temperature_grip,
+                optimum: best.and_then(|i| axis.at(i)).unwrap_or(0.0),
+            }
+        })
     })
 }
 

@@ -46,6 +46,7 @@ pub mod school;
 pub mod shift;
 pub mod sound;
 pub mod splits;
+pub mod tyre;
 
 /// First word of every frame: `'FRM1'` little-endian.
 pub const MAGIC: u32 = 0x314d_5246;

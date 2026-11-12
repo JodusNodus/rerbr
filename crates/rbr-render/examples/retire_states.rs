@@ -171,6 +171,8 @@ fn readout(live: &Live, controls: &Controls) -> Readout {
         race: hud.race,
         splits: live.splits.clone(),
         state: live.hud_view(),
+        trace: Vec::new(),
+        g_force: None,
         parts: Default::default(),
     }
 }

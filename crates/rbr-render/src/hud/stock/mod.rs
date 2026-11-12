@@ -1,9 +1,9 @@
 //! Our HUD's look (decision 2026-10-17: modern and simple, with every feature of the original; the layout after EA
 //! WRC): the clock at the top left with a passed split under it and the stage's progress across the top (`top`,
 //! `splits`), the view and frame rate at the top right, the pace note, result panels and the race's calls in the
-//! middle (`centre`, `splits`, `countdown`), the dial at the bottom right (`dial`) and the car's status at the bottom
-//! left (`car_status`). Shapes and the default font, not the minidash or digidash art; the pace notes are the
-//! game's sprites (`pace`).
+//! middle (`centre`, `splits`, `countdown`), the dial at the bottom right (`dial`), the car's status at the bottom left
+//! (`car_status`) and the telemetry the player asked for beside the dial and under the status (`telemetry`). Shapes
+//! and the default font, not the minidash or digidash art; the pace notes are the game's sprites (`pace`).
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 
@@ -15,6 +15,7 @@ mod countdown;
 mod dial;
 pub mod pace;
 mod splits;
+mod telemetry;
 mod top;
 
 /// Margin, padding and corner radius, points.
@@ -73,8 +74,11 @@ impl Hud for Stock {
         }
         top::progress(&painter, screen, r);
         centre::paint(&painter, screen, r, &self.sprites);
-        dial::paint(&painter, screen, r);
+        let dial = dial::paint(&painter, screen, r);
+        let bottom = telemetry::paint(&painter, screen, dial, r);
         if r.parts.shows(Part::Car) {
+            // Over the trace when that shows.
+            let screen = Rect::from_min_max(screen.min, Pos2::new(screen.max.x, bottom));
             car_status::paint(&painter, screen, &r.state);
         }
     }

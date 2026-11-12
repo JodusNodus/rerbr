@@ -319,6 +319,9 @@ impl ViewerLaunch {
         if let Some(list) = hud.parts.hidden() {
             args.extend(["--hud-hide".into(), list]);
         }
+        if let Some(list) = hud.parts.shown() {
+            args.extend(["--hud-show".into(), list]);
+        }
         if let Some(path) = bindings {
             let path = path.display().to_string();
             args.extend(["--bindings".into(), path.clone(), "--cameras".into(), path]);

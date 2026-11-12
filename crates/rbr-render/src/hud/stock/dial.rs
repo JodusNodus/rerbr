@@ -15,20 +15,21 @@ const REV_LIMIT: f32 = 8500.0;
 const SHIFT_RPM: f32 = 5500.0;
 /// The rim's radius, points. Ours.
 const DIAL: f32 = 80.0;
-/// The pedal arcs: clutch, brake, throttle, handbrake.
-const CLUTCH: Color32 = Color32::from_rgb(90, 150, 230);
-const BRAKE: Color32 = Color32::from_rgb(225, 65, 55);
-const THROTTLE: Color32 = Color32::from_rgb(70, 205, 100);
-const HANDBRAKE: Color32 = Color32::from_rgb(235, 160, 50);
+/// The pedals' colours, on the arcs and the trace: clutch, brake, throttle, handbrake.
+pub(super) const CLUTCH: Color32 = Color32::from_rgb(90, 150, 230);
+pub(super) const BRAKE: Color32 = Color32::from_rgb(225, 65, 55);
+pub(super) const THROTTLE: Color32 = Color32::from_rgb(70, 205, 100);
+pub(super) const HANDBRAKE: Color32 = Color32::from_rgb(235, 160, 50);
 /// The sweep: from the bottom left (`START`, radians clockwise from +x on screen) round over the top to the bottom
 /// right.
 const START: f32 = 0.75 * std::f32::consts::PI;
 const SWEEP: f32 = 1.5 * std::f32::consts::PI;
 
-pub fn paint(painter: &Painter, screen: Rect, r: &Readout) {
+/// Paints the dial; the left edge of what it took of the screen's bottom.
+pub fn paint(painter: &Painter, screen: Rect, r: &Readout) -> f32 {
     let (dash, inputs) = (r.parts.shows(Part::Dash), r.parts.shows(Part::Inputs));
     if !dash && !inputs {
-        return;
+        return screen.max.x;
     }
     let centre = screen.max - Vec2::splat(MARGIN + DIAL + 12.0);
     painter.circle_filled(centre, DIAL + 12.0, Color32::from_black_alpha(110));
@@ -38,6 +39,7 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout) {
     if inputs {
         controls(painter, centre, r);
     }
+    centre.x - DIAL - 12.0
 }
 
 /// The rev arc, the shift light, and the speed, gear, engine speed, water and turbo.

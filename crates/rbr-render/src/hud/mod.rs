@@ -31,6 +31,7 @@ pub mod retire;
 pub mod school;
 pub mod splits;
 pub mod stock;
+pub mod telemetry;
 
 use model::HudView;
 
@@ -47,9 +48,9 @@ pub trait Hud {
     fn paint(&mut self, ctx: &egui::Context, readout: &Readout);
 }
 
-/// A part of the HUD the player can hide (`viewer --hud-hide`). The race's calls and warnings (the countdown, FALSE
-/// START, WRONG WAY, the rally's false-start warning) and the finish, result and retire pages always
-/// show with the HUD.
+/// A part of the HUD the player can hide (`viewer --hud-hide`) or, for the telemetry parts, which are off unless
+/// asked for, show (`--hud-show`). The race's calls and warnings (the countdown, FALSE START, WRONG WAY, the rally's
+/// false-start warning) and the finish, result and retire pages always show with the HUD.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
     /// The race clock and its penalties.
@@ -70,10 +71,16 @@ pub enum Part {
     Messages,
     /// The camera view's name.
     View,
+    /// The tyres' temperatures (`telemetry`; live drives).
+    Tyres,
+    /// The trace of the pedals and the steering over the last seconds.
+    Trace,
+    /// The car's acceleration in g.
+    Gforce,
 }
 
 impl Part {
-    pub const ALL: [Part; 9] = [
+    pub const ALL: [Part; 12] = [
         Part::Clock,
         Part::Progress,
         Part::Pace,
@@ -83,9 +90,12 @@ impl Part {
         Part::Car,
         Part::Messages,
         Part::View,
+        Part::Tyres,
+        Part::Trace,
+        Part::Gforce,
     ];
 
-    /// The part's name in `--hud-hide`.
+    /// The part's name in `--hud-hide` and `--hud-show`.
     pub const fn name(self) -> &'static str {
         match self {
             Part::Clock => "clock",
@@ -97,17 +107,25 @@ impl Part {
             Part::Car => "car",
             Part::Messages => "messages",
             Part::View => "view",
+            Part::Tyres => "tyres",
+            Part::Trace => "trace",
+            Part::Gforce => "g",
         }
+    }
+
+    /// Whether the part shows unless hidden: every part but the telemetry.
+    pub const fn by_default(self) -> bool {
+        !matches!(self, Part::Tyres | Part::Trace | Part::Gforce)
     }
 }
 
-/// Whether each [`Part`] shows, by its index in [`Part::ALL`]; all by default.
+/// Whether each [`Part`] shows, by its index in [`Part::ALL`]; by default those of [`Part::by_default`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Parts(pub [bool; Part::ALL.len()]);
 
 impl Default for Parts {
     fn default() -> Self {
-        Parts([true; Part::ALL.len()])
+        Parts(Part::ALL.map(Part::by_default))
     }
 }
 
@@ -116,19 +134,33 @@ impl Parts {
         self.0[part as usize]
     }
 
-    /// Every part but those `list` names, comma-separated (`--hud-hide`).
+    /// The default parts but those `list` names, comma-separated (`--hud-hide`).
     pub fn hiding(list: &str) -> Result<Parts, String> {
-        let mut parts = Parts::default();
-        for name in list.split(',').filter(|n| !n.is_empty()) {
-            let part = Part::ALL.into_iter().find(|p| p.name() == name).ok_or(format!("no HUD part {name}"))?;
-            parts.0[part as usize] = false;
-        }
-        Ok(parts)
+        Parts::default().with(list, false)
     }
 
-    /// The hidden parts' names, comma-separated, or `None` when all show.
+    /// These parts with those `list` names, comma-separated, shown (`--hud-show`) or hidden (`--hud-hide`).
+    pub fn with(mut self, list: &str, shown: bool) -> Result<Parts, String> {
+        for name in list.split(',').filter(|n| !n.is_empty()) {
+            let part = Part::ALL.into_iter().find(|p| p.name() == name).ok_or(format!("no HUD part {name}"))?;
+            self.0[part as usize] = shown;
+        }
+        Ok(self)
+    }
+
+    /// The names of the parts hidden that show by default, comma-separated, or `None` without any.
     pub fn hidden(&self) -> Option<String> {
-        let names: Vec<&str> = Part::ALL.into_iter().filter(|p| !self.shows(*p)).map(Part::name).collect();
+        self.changed(false)
+    }
+
+    /// The names of the parts shown that do not by default, comma-separated, or `None` without any.
+    pub fn shown(&self) -> Option<String> {
+        self.changed(true)
+    }
+
+    fn changed(&self, shown: bool) -> Option<String> {
+        let off_default = |p: &Part| self.shows(*p) == shown && p.by_default() != shown;
+        let names: Vec<&str> = Part::ALL.into_iter().filter(off_default).map(Part::name).collect();
         (!names.is_empty()).then(|| names.join(","))
     }
 }
@@ -164,6 +196,10 @@ pub struct Readout {
     pub splits: Option<Splits>,
     /// The live HUD's state (`model`); empty in playback.
     pub state: HudView,
+    /// The controls over the last seconds, oldest first, and the car's acceleration to the right and forward, g
+    /// (`telemetry`); empty and `None` while their parts are hidden.
+    pub trace: Vec<telemetry::TracePoint>,
+    pub g_force: Option<[f32; 2]>,
     /// The parts shown.
     pub parts: Parts,
 }
@@ -368,6 +404,12 @@ mod tests {
         assert!(!parts.shows(Part::Clock) && !parts.shows(Part::Inputs) && parts.shows(Part::Dash));
         assert_eq!(parts.hidden().as_deref(), Some("clock,inputs"));
         assert!(Parts::hiding("speedo").is_err());
+        // The telemetry parts are off unless shown, and listed only then.
+        assert!(!Parts::default().shows(Part::Tyres) && Parts::default().shown().is_none());
+        let parts = parts.with("tyres,g", true).unwrap();
+        assert!(parts.shows(Part::Tyres) && parts.shows(Part::Gforce) && !parts.shows(Part::Trace));
+        assert_eq!((parts.hidden().as_deref(), parts.shown().as_deref()), (Some("clock,inputs"), Some("tyres,g")));
+        assert_eq!(parts.with("g", false).unwrap().shown().as_deref(), Some("tyres"));
     }
 
     #[test]

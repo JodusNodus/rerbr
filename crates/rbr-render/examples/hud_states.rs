@@ -4,8 +4,8 @@
 //!   championship start, where the live boot's early jump start counts as the rally's first false start);
 //! - typed states over the stage: `result-page.png` (the quick rally's result page with a new stage record),
 //!   `retired.png` (end page 0x12), `helicopter.png` (the rescue helicopter flying) and
-//!   `false-start-warning-{2,3}.png` and `car-status.png` (engine, gearbox and body damage, a damper and a tyre gone,
-//!   two lamps lit).
+//!   `false-start-warning-{2,3}.png`, `car-status.png` (engine, gearbox and body damage, a damper and a tyre gone,
+//!   two lamps lit) and `telemetry.png` (the tyres' temperatures, the g-force and the input trace).
 //!
 //! Run from the repository root with `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS` set, after `cargo build --release -p rbr-standalone`.
 
@@ -17,11 +17,13 @@ use glam::{Mat4, Vec3};
 use rbr_formats::data::Data;
 use rbr_recording::camera::MODE_START_ORBIT;
 use rbr_recording::splits::{Mark, Split, Splits, Standing, Verdict};
+use rbr_recording::tyre::Tyre;
 use rbr_recording::{pose, Frames};
 use rbr_render::camera::FreeFly;
 use rbr_render::coords::FOV_DEGREES;
 use rbr_render::hud::model::{CarStatus, HudView, Lamp};
-use rbr_render::hud::{stock, Overlay, Readout};
+use rbr_render::hud::telemetry::TracePoint;
+use rbr_render::hud::{stock, Overlay, Parts, Readout};
 use rbr_render::live::{Controls, Live, RaceHud, SELECT_GEAR};
 use rbr_render::renderer::{self, Renderer};
 use rbr_render::stage::{self, Selection};
@@ -126,6 +128,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         race: Some(RaceHud { time: 182.4, countdown: -180.0, penalties: 0.0, running: true, jump_start: false }),
         splits: None,
         state: HudView::default(),
+        trace: Vec::new(),
+        g_force: None,
         parts: Default::default(),
     };
     let split = |time, reference| Split { time: Some(time), reference: Some(reference) };
@@ -158,7 +162,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let car = CarStatus { systems: [3, 0, 1, 0, 0, 2], suspension: [0, 4, 0, 0], tyres: [0, 0, 2, 0] };
     let lamps = Some([Lamp::On, Lamp::Off, Lamp::Flashing, Lamp::Off, Lamp::Off]);
     let state = HudView { car: Some(car), lamps, flash_on: true, water: Some(124.0), ..HudView::default() };
-    shoot(&Readout { state, ..base }, None, &out.join("car-status.png"))?;
+    shoot(&Readout { state, ..base.clone() }, None, &out.join("car-status.png"))?;
+    // The telemetry parts: cold fronts, a hot rear, a lap of the pedals and a right-hand corner under braking.
+    let tyre = |celsius: f32, grip| Tyre { surface: celsius + 273.15, tread: celsius + 273.15, grip, optimum: 348.15 };
+    let tyres = Some([tyre(38.0, 0.9), tyre(41.0, 0.91), tyre(72.0, 1.0), tyre(118.0, 0.9)]);
+    let trace = (0..300)
+        .map(|i| {
+            let t = i as f32 / 30.0;
+            let throttle = (t * 1.3).sin().max(0.0);
+            let brake = (-(t * 1.3).sin()).max(0.0) * 0.8;
+            let handbrake = if (6.0..6.4).contains(&t) { 1.0 } else { 0.0 };
+            TracePoint { age: 10.0 - t, control: [throttle, brake, handbrake, 0.0, (t * 0.9).sin() * 0.6] }
+        })
+        .collect();
+    let parts = Parts::default().with("tyres,trace,g", true)?;
+    let state = HudView { tyres, ..HudView::default() };
+    let readout = Readout { state, trace, g_force: Some([0.9, -0.6]), parts, speed: 31.0, ..base };
+    shoot(&readout, None, &out.join("telemetry.png"))?;
     Ok(())
 }
 
@@ -204,6 +224,8 @@ fn readout(live: &Live, controls: &Controls) -> Readout {
         race: hud.race,
         splits: live.splits.clone(),
         state: live.hud_view(),
+        trace: Vec::new(),
+        g_force: None,
         parts: Default::default(),
     }
 }

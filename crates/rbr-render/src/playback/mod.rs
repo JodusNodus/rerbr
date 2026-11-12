@@ -468,6 +468,14 @@ impl Playback {
         self.drive.frames()
     }
 
+    /// The frames that ended within `seconds` before the current one's end, and the current one, each with the drive
+    /// time at its end (the HUD's trace and g-force, `crate::hud::telemetry`).
+    pub fn recent(&self, seconds: f64) -> impl Iterator<Item = (f64, &Sample)> + '_ {
+        let (ends, last) = (&self.drive.ends, self.index());
+        let first = ends[..last].partition_point(|&end| end < ends[last] - seconds);
+        ends[first..=last].iter().copied().zip(&self.drive.samples[first..=last])
+    }
+
     /// What a step of the frames' counters is (the ghost's race time, the wipers' clock).
     pub fn step_clock(&self) -> StepClock {
         self.drive.clock

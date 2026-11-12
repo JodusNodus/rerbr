@@ -22,6 +22,7 @@ use rbr_recording::school::{School, SCH1};
 use rbr_recording::shift::{ShiftPoints, SHF1};
 use rbr_recording::sound::Inputs;
 use rbr_recording::splits::{Splits, SPL1};
+use rbr_recording::tyre;
 use rbr_recording::{ffb, hud};
 use rbr_recording::{CONTROL_BYTES, HEADER_BYTES, MAGIC, WHEELS, WHEEL_BYTES};
 use std::io::Read;
@@ -64,7 +65,7 @@ pub(super) struct LiveFrame {
 }
 
 /// One FRM1 frame and the HUD and damage records after it, the tagged records (`rbr_recording::live`; the viewer takes
-/// PTC1, PEV1, DET1, DOR1, SND1, PCN1, SPL1, DSH1, CAM1, FLW1, FFB1, CLK1, HUB1, GBX1, SHF1, MNU1, SCH1, CDM1 and CTL1 and skips
+/// PTC1, PEV1, DET1, DOR1, SND1, PCN1, SPL1, DSH1, CAM1, FLW1, FFB1, CLK1, HUB1, GBX1, SHF1, TYR1, MNU1, SCH1, CDM1 and CTL1 and skips
 /// the others)
 /// and the SCN1 scenery poses that end them, or `None` at the end of the stream.
 /// The payload periods of a frame that came back, from the payload it echoes (1 for one it cannot read).
@@ -172,6 +173,11 @@ fn read_frame_records(frame: Vec<u8>, reader: &mut impl Read) -> Result<LiveFram
                 clock = Some(StepClock::read_body(payload).map_err(|e| format!("the live process's step clock: {e}"))?)
             }
             HUB1 => hub = Some(hub::from_payload(payload).map_err(|e| format!("the live process's hub record: {e}"))?),
+            tyre::TYR1 => {
+                hud.tyres = Some(
+                    tyre::from_payload(payload).map_err(|e| format!("the live process's tyre temperatures: {e}"))?,
+                )
+            }
             MNU1 => menu = Some(Menu::read_body(payload).map_err(|e| format!("the live process's menu record: {e}"))?),
             SCH1 => {
                 school = Some(School::read_body(payload).map_err(|e| format!("the live process's school record: {e}"))?)

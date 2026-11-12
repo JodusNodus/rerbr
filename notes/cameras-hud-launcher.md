@@ -52,10 +52,21 @@ Ours views, nudges and FOV rules in `rbr_render::views`; the chase's field of vi
 ## HUD
 
 Model and rules in `rbr_render::hud::model`, sprites in `hud::pace`, layout in `hud::stock`, parts in `hud::mod`
-(`viewer --hud-hide`); split references in `hud::splits`. A recorded drive shows only speed, gear, rpm and controls.
+(`viewer --hud-hide`, `--hud-show`); split references in `hud::splits`. A recorded drive shows only speed, gear, rpm and controls.
 
 - The game's 3D notes (`AID_MARKER`) are not drawn (dropped 2026-10-27).
 - The minidash and digidash art is not drawn (not in code).
+- Telemetry parts (ours, 2026-11-12; `hud::telemetry`, drawn by `hud::stock::telemetry`), off unless shown: `viewer
+  --hud-show tyres,trace,g`, the launcher's HUD parts, kept as `[launcher] hud_show` beside `hud_hide`.
+  - `tyres` (live drives): each tyre's 0.6 surface + 0.4 tread temperature, the tyre step's weights, green at full
+    grip, towards blue below and red above the tyre's best `RubMyFct` temperature as its temperature grip falls to
+    0.85. From TYR1 (`rbr_recording::tyre`), which `rbr-standalone` reads from the tyre frames after the step.
+    Corolla, gravel, track-54_E: 56 °C at the start line. Not tried under `experimental-brush`.
+  - `trace`: the pedals and the steering over the last 10 s, at the bottom left (the car's status moves over it).
+  - `g`: the velocity's change over 0.15 s with gravity taken out, in the car's frame, as a dot in a 2 g circle (up on
+    the throttle, right in a right-hander). The car's right is body -X: lateral g follows the steering's side and
+    braking reads negative on `drive-arctic-snow.bin`.
+  - `trace` and `g` are read from the drive's frames, so a recorded drive and a replay have them too.
 
 ### RBRHUD gauges
 

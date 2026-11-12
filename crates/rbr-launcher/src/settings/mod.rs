@@ -118,7 +118,8 @@ pub struct Settings {
     pub pace_stack: Option<u8>,
     /// The working dials (`viewer --no-dials` when off).
     pub dials: Option<bool>,
-    /// The HUD's parts shown (`viewer --hud-hide`), kept as the hidden ones' list.
+    /// The HUD's parts shown (`viewer --hud-hide`, `--hud-show`), kept as the hidden ones' list (`hud_hide`) and the
+    /// shown telemetry's (`hud_show`).
     pub hud_hide: Option<Parts>,
     /// The wiper switch at the start (`viewer --wipers`).
     pub wipers: Option<Switch>,
@@ -429,7 +430,12 @@ impl Settings {
             fps: launcher.on_off("fps"),
             pace_stack: launcher.number("pace_stack").filter(|n| *n <= STACK_MAX),
             dials: launcher.on_off("dials"),
-            hud_hide: launcher.get("hud_hide").and_then(|v| Parts::hiding(&v).ok()),
+            hud_hide: match (launcher.get("hud_hide"), launcher.get("hud_show")) {
+                (None, None) => None,
+                (hide, show) => Parts::hiding(&hide.unwrap_or_default())
+                    .and_then(|parts| parts.with(&show.unwrap_or_default(), true))
+                    .ok(),
+            },
             wipers: launcher.parsed("wipers", Switch::parse),
             lighting: launcher.on_off("lighting"),
             particles: launcher.on_off("particles"),
@@ -534,6 +540,7 @@ impl Settings {
             ("wipers", self.wipers.map(|v| v.name().to_owned())),
             ("dials", on_off_text(self.dials)),
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
+            ("hud_show", self.hud_hide.and_then(|p| p.shown())),
             ("callout_distance", self.callout_distance.map(|v| v.to_string())),
             ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
             ("damage", choice(self.damage)),
@@ -1152,6 +1159,10 @@ mod tests {
         // An empty hidden list reads as all shown, which the writer omits.
         assert_eq!(Settings::parse("[launcher]\nhud_hide = \n").hud_hide, Some(Parts::default()));
         assert!(!Settings::parse("[launcher]\nhud_hide = \n").to_text().contains("hud_hide"));
+        // The telemetry parts are kept as their own list.
+        let shown = Settings::parse("[launcher]\nhud_hide = car\nhud_show = tyres,g\n");
+        assert_eq!(shown.hud_hide, Parts::hiding("car").and_then(|p| p.with("tyres,g", true)).ok());
+        assert!(shown.to_text().contains("hud_hide = car\nhud_show = tyres,g\n"), "{}", shown.to_text());
         // The wear and the size: unknown words keep the default, and the writer clamps the wear.
         assert_eq!(Settings::parse("[launcher]\nwear = worn\n").wear, Some(2));
         assert_eq!(Settings::parse("[launcher]\nwear = old\n").wear, None);

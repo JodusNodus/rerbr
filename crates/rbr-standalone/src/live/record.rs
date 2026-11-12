@@ -10,7 +10,7 @@
 //! `rbr_recording::dash`), the camera's mode and start orbit (CAM1, `rbr_recording::camera`), the race flow's events
 //! (FLW1, `rbr_recording::flow`) and the steering force (FFB1, `rbr_recording::ffb`), the step clock (CLK1,
 //! `rbr_recording::clock`), under NGP its sound words (NSD1, `rbr_recording::sound::NgpSound`, after FFB1), the gear
-//! ratios and drive speed (GBX1, `rbr_recording::gearbox`), the shift points (SHF1, `rbr_recording::shift`), the tyres' hub offsets (HUB1, `rbr_recording::hub`), the pause
+//! ratios and drive speed (GBX1, `rbr_recording::gearbox`), the shift points (SHF1, `rbr_recording::shift`), the tyres' hub offsets (HUB1, `rbr_recording::hub`) and temperatures (TYR1, `rbr_recording::tyre`), the pause
 //! menu's (MNU1, `rbr_recording::menu`), what NGP's FMOD block takes from the car (FMB1,
 //! `rbr_recording::sound::FmodBlock`), the damage handler's carried words for the HUD's car status (CDM1,
 //! `rbr_recording::damage::CDM1`), the car's control the last step took (CTL1, `rbr_recording::live::CTL1`), and

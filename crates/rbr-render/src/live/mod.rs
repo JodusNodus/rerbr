@@ -146,6 +146,8 @@ pub struct Hud {
     pub volts: Option<f32>,
     /// The car's damage by group (`rbr-standalone`'s CDM1), for the HUD's car status.
     pub car: Option<crate::hud::model::CarStatus>,
+    /// The tyres' temperatures (`rbr-standalone`'s TYR1), for the HUD's.
+    pub tyres: Option<[rbr_recording::tyre::Tyre; WHEELS]>,
 }
 
 impl Hud {
@@ -505,11 +507,12 @@ impl Live {
         self.custom = Some(driver);
     }
 
-    /// The HUD's state: the model's, with the car's damage (CDM1), rev limit and upshift point for the gear (SHF1).
+    /// The HUD's state: the model's, with the car's damage (CDM1), rev limit and upshift point for the gear (SHF1) and tyres (TYR1).
     pub fn hud_view(&self) -> crate::hud::model::HudView {
         let shift = self.hud.shift;
         crate::hud::model::HudView {
             car: self.hud.car,
+            tyres: self.hud.tyres,
             rev_limit: shift.map(|s| s.limit).filter(|r| *r > 0.0),
             upshift: shift.and_then(|s| s.up.get(self.hud.gear as usize).copied()).filter(|u| *u > 0.0),
             ..self.hud_model.view()

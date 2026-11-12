@@ -12,7 +12,7 @@ use rbr_render::dials;
 use rbr_render::game_camera;
 use rbr_render::ghost;
 use rbr_render::hud::model::Lamp;
-use rbr_render::hud::Readout;
+use rbr_render::hud::{telemetry, Part, Readout};
 use rbr_render::live::{self, Live};
 use rbr_render::playback::{ChaseLook, Playback, CHASE_DISTANCE, CHASE_HEIGHT, CHASE_TARGET_HEIGHT};
 use rbr_render::renderer::Renderer;
@@ -119,6 +119,11 @@ pub fn readout(
     let [throttle, brake, handbrake, clutch, steering, ..] = sample.control;
     let options = hud;
     let hud = live.map(|l| l.hud);
+    let trace = options.parts.shows(Part::Trace).then(|| telemetry::trace(playback.recent(telemetry::TRACE_SECONDS)));
+    let g_force = options.parts.shows(Part::Gforce).then(|| {
+        let (from, first) = playback.recent(telemetry::G_SECONDS).next()?;
+        telemetry::g_force(&first.car, &sample.car, playback.time() - from)
+    });
     Readout {
         view: view.name(),
         view_keys: label(Action::Camera),
@@ -136,6 +141,8 @@ pub fn readout(
         race: hud.and_then(|h| h.race),
         splits: live.and_then(|l| l.splits.clone()),
         state: live.map(Live::hud_view).unwrap_or_default(),
+        trace: trace.unwrap_or_default(),
+        g_force: g_force.flatten(),
         parts: options.parts,
     }
 }

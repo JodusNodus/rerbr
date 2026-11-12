@@ -103,6 +103,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             race: Some(race),
             splits: None,
             state: HudView::default(),
+            trace: Vec::new(),
+            g_force: None,
             parts: Default::default(),
         };
         let pixels = render(&mut renderer, |encoder, view| {
