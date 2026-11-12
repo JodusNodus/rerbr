@@ -663,10 +663,8 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.plan.is_some() && (args.flat_out || args.circle.is_some()) {
         return Err("--plan takes no --flat-out or --circle (they plan no speed)".into());
     }
-    if !args.zones.is_empty()
-        && (args.autopilot.is_none() || args.flat_out || args.circle.is_some() || args.race.is_some())
-    {
-        return Err("--speed-zone needs --autopilot, and takes no --flat-out, --circle or --race".into());
+    if !args.zones.is_empty() && (args.autopilot.is_none() || args.flat_out || args.circle.is_some()) {
+        return Err("--speed-zone needs --autopilot, and takes no --flat-out or --circle".into());
     }
     if args.race.is_some()
         && (args.autopilot.is_none()
@@ -931,6 +929,10 @@ mod tests {
             (format!("{BOOT} --speed-zone 100,180,25 --speed-zone 400,460.5,31"), |a| {
                 let zone = |from, to, speed| autopilot::SpeedZone { from, to, speed };
                 assert_eq!(a.zones, [zone(100.0, 180.0, 25.0), zone(400.0, 460.5, 31.0)]);
+            }),
+            (format!("{BOOT} --race 5,4,0.3 --speed-zone 100,180,25"), |a| {
+                assert!(a.race.is_some());
+                assert_eq!(a.zones.len(), 1);
             }),
             (format!("{BOOT} --race 11.3,11.5,0.3"), |a| {
                 assert_eq!(a.race, Some(autopilot::race::Limits { lateral: 11.3, braking: 11.5, slip: 0.3 }));
@@ -1204,7 +1206,7 @@ mod tests {
             ),
             (
                 format!("{BOOT} --speed-zone 100,180,25 --flat-out"),
-                "--speed-zone needs --autopilot, and takes no --flat-out, --circle or --race",
+                "--speed-zone needs --autopilot, and takes no --flat-out or --circle",
             ),
             (
                 format!("{BOOT} --plan 8,6 --circle 0,0,40"),

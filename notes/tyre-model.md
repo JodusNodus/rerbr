@@ -1899,17 +1899,39 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   km/h (n 3 / 9 / 26; the path's 1 s lateral 1.04 / 0.98 / 0.98). The car on pad-49's circles of 65 / 100 / 200 m, read
   alike (`corner_limit.py circle`): 0.88 / 0.91 / 1.02 g at 90 / 108 / 158 km/h and 0.91 / 0.93 / 1.03, so 0.96 / 0.94 /
   1.05 and 0.99 / 0.96 / 1.06 of the crews'; loose-v1 at NGP's sideways level 0.86 / 0.87 at 90 / 108 km/h, 0.93 / 0.89.
-  On the stage each corner is held at one speed (`--speed-zone`: sqrt(level g x radius), 14 levels from 0.7 to 1.5)
-  until a pass runs 1.5 m wide or slides 15 deg, 40 / 39 corners taken past their limit. In the 14 of them that turn 30
-  deg or more and where the crews' median is 0.8 g up the car reaches 0.94 / 0.95 g at 92 km/h against the crews' 0.98
-  at 105: 0.92 of theirs corner by corner on either tyre (p25-p75 0.80-1.07 / 0.76-1.07). The 17 / 16 shorter kinks read
-  0.80 g at 110-112 km/h against 0.97-0.98 at 139: the crews straighten them, and a car on the driveline neither reaches
-  their speed nor stays at its limit for the reading's 0.5 s (the pad's figure at that speed is 0.93). So the sideways
-  level is within 6 % of the crews' by the pad's reading and 8 % under by the stage's, whose quartiles from corner to
-  corner (a corner's own banking, crest or dip, the stage's against the road's) leave about 6 % either way on 14
-  corners: the reading tells loose-v1 at NGP's level (7-11 % under on the pad) from now, not 1.06 from 1.00 or 1.10. Not
-  measured: the pursuit's pass against a crew's (the car at 92 km/h on the stage is 0.04-0.06 g over its pad figure
-  there), the real sensor's place and roll.
+  On the stage each corner is held at one speed (`--speed-zone`: sqrt(level g x radius), 14 levels from 0.7 to 1.5), and
+  its figure is the fastest pass that held it (within 1.5 m of the driveline, under 15 deg of sideslip) where a faster
+  one did not: the limit from below, a level's step (5 % of g) under the first pass that lost it; 35 / 29 corners have
+  one. In the 12 / 11 of them that turn 30 deg or more and where the crews' median is 0.8 g up the car holds 0.86 g at
+  84-85 km/h on either tyre against the crews' 0.97-0.98 at 102-106: 0.88 / 0.92 of theirs corner by corner (p25-p75
+  0.79-0.95 / 0.78-0.98), at 0.83 / 0.82 of their slowest speed in the corner. The 16 / 12 shorter kinks read 0.79 g,
+  0.82 / 0.78 of theirs, at 0.74 / 0.70 of their slowest speed: the crews straighten them ("The crews' line" below). The
+  highest 0.5 s mean of any pass under 45 deg of sideslip, this reading at first, gave 0.94 / 0.95 g in the long
+  corners: a car past its limit slides, and its drag reads as the body's lateral. So the sideways level is within 6 % of
+  the crews' by the pad's reading and 8-12 % under by the stage's from below, whose quartiles from corner to corner (a
+  corner's own banking, crest or dip, the stage's against the road's) leave about 6 % either way on 12 corners: the
+  reading tells loose-v1 at NGP's level (7-11 % under on the pad) from now, not 1.06 from 1.00 or 1.10. Not measured:
+  the real sensor's place and roll.
+- The crews' line (2026-11-12; `corner_limit.py demand` and `run --race`, `--speed-zone` under `--race`; the same car,
+  tyres and drives). `demand` drives a path at each crew's own speed by driveline distance and reads it by the same 1 s
+  fit: the g the path asks at their speeds over the g they pulled, 1 on their line. The driveline (the plain autopilot's
+  path) asks 1.27 (p25-p75 1.16-1.48 over the 46 corners where they pulled 0.8 g up; 1.22 in the 17 turning 30 deg or
+  more, 1.43 in the 29 shorter), the [race autopilot](#race-autopilot)'s line (the least bend inside the road's edges
+  less 1.4 m; road p50 5.3 m, the line p50 / p90 0.6 / 1.2 m off the driveline) 1.08 (1.03-1.20; 1.07 / 1.08). So the
+  crews' line is the least-bend line to 8 % of g, 4 % of speed, and a car on the driveline needs a quarter more grip
+  than theirs for their speeds. The corners on that line (`run --race 5,4,0.3`: the plain plan's level and the default's
+  steering law on the line; a car that loses the line there rolls or leaves the road, so each of the 49 corners has its
+  own run, 10 levels from 0.65 to 1.1, 980 runs; a limit in 28 / 24): in the 14 / 12 that turn 30 deg or more the car
+  holds 0.89 / 0.93 g at 88 / 87 km/h against the crews' 0.97 at 111, 0.90 / 0.93 of theirs corner by corner (p25-p75
+  0.81-1.02 / 0.79-0.96), at 0.84 / 0.83 of their slowest speed in the corner (0.81-0.87 / 0.81-0.88); in the 7 / 6
+  shorter 0.87 / 0.89 g, 0.90 / 0.96 of theirs, at 0.84 / 0.83 of their speed (the driveline's 0.74 / 0.70). The speed's
+  16 % under theirs is, by (speed)² = g x radius, the path's 1 s g 15-17 % under theirs (the body's 0.5 s g is 7-10 %
+  under: a crew holds its peak for the second, body 0.97 and path 0.98, and the autopilot's pass does not) on a path 16
+  % tighter, 8 % of it the line's and the rest the pass's own at its limit. What the passes cannot show: a fast kink at
+  the crews' speed (the approach is the plain plan's: the kink at 2972 m is reached at 125 km/h at most for the crews'
+  154), the two tyres apart (most corners hold the same level on both, a step of 2.5 % of speed), and loose-v1 past 6062
+  m, where its car leaves the line at the plan's speed and rolls on every run (NGP's tyre passes). Not done: a margin
+  under 1.4 m, limit driving along the whole stage (the stage time).
 - Braking in a turn under a steering driver (2026-11-11; `harness/brake_turn.py`: pad-49's circles of 65 / 100 / 200 m,
   the pedal put on at 0.6 / 0.7 / 0.8 / 0.88 g of lateral and held at 0.3 to 1 while the pursuit steers the circle, 72
   runs a tyre; i20 Coupe WRC 2020, NGP's tyre / loose-v1). Past 45 deg of sideslip: 5 / 21 runs; more than 2 m wide
@@ -2422,16 +2444,17 @@ Test tooling (2026-11-09, branch autopilot/race-line): `rbr-standalone --autopil
 (`crates/rbr-standalone/src/autopilot/race.rs`) drives at the car's measured limits so stage times can be read against
 real ones. LAT, BRAKE: the flat circle's lateral and the threshold stop's braking acceleration (m/s²), SLIP the stop's
 best slip (`limit_pace.py limits --surface`; Fiesta Rally2 ngp / brush: tarmac 1.282 / 1.327 g, 1.303 / 1.315 g, slip
-0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; flat snow 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by
-one factor f. The line is a minimum-curvature line within the road's edges less 1.4 m: the road comes from the `.col`
+0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; flat snow 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by one
+factor f. The line is a minimum-curvature line within the road's edges less 1.4 m: the road comes from the `.col`
 triangles under NGP's material sheets, scanned across the driveline every 2 m (road p10/p50 width 562 4.6/5.2 m, 524
-4.2/5.3, 422 3.8/4.8). The speed plan runs on that line with a friction ellipse in braking, held 0.15 s ahead.
-Braking is under the `--plan` threshold controller at SLIP. On tarmac the default's heading law steers to the line. On
-a loose surface (SLIP over 0.4) a curvature tracker steers it and the throttle eases past 0.06 rad of sideslip. The
-default's law countersteers all sideslip, and in gravel's steady drift that held the steering at 0.2-0.4 while the
-car ran wide. The tracker cost 11 s on 562 under ngp and spun the brush car. Gears, traction, recovery: the
-default's. Without the flag every output is byte for byte the same (traces and `.out` of 562, 524, RSF 345's circle
-and a brake stop).
+4.2/5.3, 422 3.8/4.8). The speed plan runs on that line with a friction ellipse in braking, held 0.15 s ahead. Braking
+is under the `--plan` threshold controller at SLIP. On tarmac the default's heading law steers to the line. On a loose
+surface (SLIP over 0.4) a curvature tracker steers it and the throttle eases past 0.06 rad of sideslip. The default's
+law countersteers all sideslip, and in gravel's steady drift that held the steering at 0.2-0.4 while the car ran wide.
+The tracker cost 11 s on 562 under ngp and spun the brush car. Gears, traction, recovery: the default's. Without the
+flag every output is byte for byte the same (traces and `.out` of 562, 524, RSF 345's circle and a brake stop). Under
+`--speed-zone` the line's plan holds the window's speed in place of its curve limits and brakes for it and after it at
+the whole braking rate (corner tests, `corner_limit.py run --race`; 2026-11-12).
 
 - Split, Fiesta Rally2 ngp. Point mass at the measured limits on 562: on the default's driven path 603.8 s, on the
   line 539.0 s (−10.7 %), with unlimited power on the path 555.2 s. The default drive takes 903.5 s, so the speed plan

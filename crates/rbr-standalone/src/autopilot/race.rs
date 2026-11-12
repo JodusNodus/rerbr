@@ -17,7 +17,7 @@ use rbr_formats::lsp_keys::{Class, KEYS};
 use rbr_formats::{col, mat, stage_files};
 use rbr_physics::ngp::material::{cell, SIDE};
 
-use super::{distance, point, Placed, CLEAR, PASSED};
+use super::{distance, point, Placed, SpeedZone, CLEAR, PASSED};
 use rbr_formats::trk::DriveLineRecord;
 use rbr_recording::pose::CarPose;
 
@@ -235,7 +235,8 @@ pub struct Line {
 }
 
 impl Line {
-    /// The line on `track` within `ground`'s road, kept clear of `props`, and its speed plan at `limits` up to `top`.
+    /// The line on `track` within `ground`'s road, kept clear of `props`, and its speed plan at `limits` up to `top`,
+    /// holding each of `zones`' speed in its window (`--speed-zone`).
     pub(super) fn build(
         track: &[DriveLineRecord],
         values: &[f32],
@@ -243,6 +244,7 @@ impl Line {
         props: &[Placed],
         limits: Limits,
         top: f32,
+        zones: &[SpeedZone],
     ) -> Line {
         // Stations every `STEP` m of the driveline's own length: its distance (`values`) runs unevenly along the
         // Hermite segments (2 m of it spans 0.5-4.7 m of road on RSF 562), and uneven stations bend the line.
@@ -301,7 +303,7 @@ impl Line {
         let points: Vec<[f32; 3]> = (0..n)
             .map(|i| [centre[i][0] + offset[i] * left[i][0], centre[i][1] + offset[i] * left[i][1], centre[i][2]])
             .collect();
-        let (speed, curvature) = plan(&points, limits, top);
+        let (speed, curvature) = plan(&points, &at, limits, top, zones);
         Line { at, points, speed, curvature, offset, edges, slip: limits.slip, tracker: Tracker::default() }
     }
 
@@ -420,8 +422,10 @@ fn least_bend(centre: &[[f32; 3]], left: &[[f32; 2]], lo: &[f32], hi: &[f32]) ->
 }
 
 /// The speed plan on `points`: each station's curve limit √(lateral / κ), at most `top`, and from the end back the
-/// braking reachable within the friction ellipse (the braking share left by the next station's cornering).
-fn plan(points: &[[f32; 3]], limits: Limits, top: f32) -> (Vec<f32>, Vec<f32>) {
+/// braking reachable within the friction ellipse (the braking share left by the next station's cornering). A station
+/// whose driveline distance `at` lies in one of `zones` takes the zone's speed in place of its curve limit, and
+/// leaves the braking whole: its speed is the test's, not the plan's share of the grip.
+fn plan(points: &[[f32; 3]], at: &[f32], limits: Limits, top: f32, zones: &[SpeedZone]) -> (Vec<f32>, Vec<f32>) {
     let n = points.len();
     let length = |a: [f32; 3], b: [f32; 3]| (b[0] - a[0]).hypot(b[1] - a[1]).max(1e-3);
     let heading = |a: [f32; 3], b: [f32; 3]| (b[1] - a[1]).atan2(b[0] - a[0]);
@@ -440,10 +444,13 @@ fn plan(points: &[[f32; 3]], limits: Limits, top: f32) -> (Vec<f32>, Vec<f32>) {
             (0..9).map(|k| WEIGHTS[k] * at(k)).sum::<f32>() / 256.0
         })
         .collect();
-    let mut speed: Vec<f32> = smooth.iter().map(|&k| (limits.lateral / k.abs().max(1e-5)).sqrt().min(top)).collect();
+    let zone = |i: usize| zones.iter().find(|z| z.from <= at[i] && at[i] < z.to);
+    let mut speed: Vec<f32> = (0..n)
+        .map(|i| zone(i).map_or((limits.lateral / smooth[i].abs().max(1e-5)).sqrt(), |z| z.speed).min(top))
+        .collect();
     for i in (0..n.saturating_sub(1)).rev() {
         let v = speed[i + 1];
-        let used = (v * v * smooth[i + 1].abs() / limits.lateral).min(1.0);
+        let used = if zone(i + 1).is_some() { 0.0 } else { (v * v * smooth[i + 1].abs() / limits.lateral).min(1.0) };
         let left = (1.0 - used * used).sqrt();
         speed[i] = speed[i].min((v * v + 2.0 * limits.braking * left * length(points[i], points[i + 1])).sqrt());
     }
@@ -567,13 +574,24 @@ mod tests {
             [400.0 + 50.0 * a.sin(), 50.0 - 50.0 * a.cos(), 0.0]
         }));
         let limits = Limits { lateral: 8.0, braking: 6.0, slip: 0.5 };
-        let (speed, curvature) = plan(&points, limits, TOP);
+        let at: Vec<f32> = (0..points.len()).map(|i| i as f32 * STEP).collect();
+        let (speed, curvature) = plan(&points, &at, limits, TOP, &[]);
         assert!((curvature[250] - 0.02).abs() < 1e-4, "{}", curvature[250]);
         assert!((speed[250] - 20.0).abs() < 0.05, "{}", speed[250]);
         // Braking at 6 m/s² on the straight: 200 m before the bend √(20² + 2·6·200) (the smoothed curvature eases in
         // over 8 m), the top from 267 m.
         assert_eq!(speed[10], TOP);
         assert!((speed[100] - 2800f32.sqrt()).abs() < 0.5, "{}", speed[100]);
+        // `--speed-zone 380,520,30`: the bend's first 120 m at 30 m/s, over its limit of 20. The plan brakes for the
+        // zone from the straight, and inside its end (the last station at 518 m) for the bend's limit after it, both
+        // at the whole 6 m/s².
+        let zone = SpeedZone { from: 380.0, to: 520.0, speed: 30.0 };
+        let (zoned, _) = plan(&points, &at, limits, TOP, &[zone]);
+        assert_eq!(zoned[190], 30.0);
+        assert_eq!(zoned[230], 30.0);
+        assert!((zoned[100] - (900.0f32 + 12.0 * 180.0).sqrt()).abs() < 0.05, "{}", zoned[100]);
+        assert!((zoned[255] - (400.0f32 + 12.0 * 8.0).sqrt()).abs() < 0.05, "{}", zoned[255]);
+        assert!((zoned[270] - 20.0).abs() < 0.05, "{}", zoned[270]);
     }
 
     #[test]
