@@ -1,5 +1,5 @@
-//! The car meeting the verge, for the sound (ours, `rbr_sound::verge::Verge`): each wheel's share on grass and in
-//! bushes from the frame's tyre payloads, and the bushes and bendable trees the body is in from the stage's roadside index
+//! The car meeting the verge, for the sound (ours, `rbr_sound::verge::Verge`): each wheel's share in bushes
+//! from the frame's tyre payloads, and the bushes and bendable trees the body is in from the stage's roadside index
 //! (`crate::roadside`, whose posts keep the vegetation the echoes leave out). Read after each frame's step, never
 //! written (physics frame, z up).
 //!
@@ -12,7 +12,6 @@ use rbr_recording::particles::TyreParticles;
 use rbr_recording::pose::CarPose;
 use rbr_sound::verge::{Touch, Verge, TOUCHES};
 
-use crate::particles::wheel_spray::ground::{self, Kind};
 use crate::roadside::{Growth, Roadside};
 
 /// The body's half length and half width, m (a rally car's 4 m by 1.8 m), and its band about the car's centre, m below
@@ -23,19 +22,6 @@ const BODY: [f32; 2] = [-0.35, 0.9];
 /// How far the leaves reach past a placement's collision mesh, m: the `.trk`'s bush and bendable tree meshes are their
 /// cores and trunks (0.1 to 0.4 m across on the retail stages), the foliage the body brushes is wider.
 const FOLIAGE: f32 = 0.5;
-/// A wheel on rough ground as a share of one on grass.
-const ROUGH: f32 = 0.5;
-
-/// Each wheel's share on grass in the frame's `payloads` (the last of a wheel's): the blend of its two surfaces that
-/// is grass; a wheel off the ground, or without a payload, has none.
-/// The rough ground beside the road (`Rough_Rough_*`, `Rough_VeryRough_*`) counts as [`ROUGH`] of grass: stages
-/// whose verges are not marked grass (RSF's and BTB's mostly) have their undergrowth on it.
-pub fn grass(payloads: &[TyreParticles]) -> [f32; 4] {
-    shares(payloads, |id| match id {
-        0x81 | 0x82 | 0x89 | 0x8a => ROUGH,
-        _ => f32::from(u8::from(ground::material(id).kind == Kind::Grass)),
-    })
-}
 
 /// Each wheel's share in the bushes and bendable trees a stage marks in the ground itself (the surface under the
 /// wheel, not a `.trk` placement), times their density ([`crate::roadside::growth`]).
@@ -102,11 +88,11 @@ pub fn touches(roadside: &Roadside, position: Vec3, forward: Vec3) -> [Option<To
     out
 }
 
-/// The car at the verge: each wheel's share on grass and in bushes (`grass`, `brush`; [`grass`], [`brush`]) and the
-/// vegetation of `roadside` its body is in, for the car at `car`.
-pub fn verge(grass: [f32; 4], brush: [f32; 4], roadside: Option<&Roadside>, car: &CarPose) -> Verge {
+/// The car at the verge: each wheel's share in bushes (`brush`, [`brush`]) and the vegetation of `roadside` its body
+/// is in, for the car at `car`.
+pub fn verge(brush: [f32; 4], roadside: Option<&Roadside>, car: &CarPose) -> Verge {
     let touches = roadside.map_or([None; TOUCHES], |r| touches(r, Vec3::from(car.position), Vec3::from(car.forward())));
-    Verge { grass, brush, touches }
+    Verge { brush, touches }
 }
 
 #[cfg(test)]
@@ -147,9 +133,7 @@ mod tests {
     }
 
     #[test]
-    fn the_grass_share_is_each_wheels_blend_on_grass() {
-        let grass_id = (0..256).find(|&id| ground::material(id).kind == Kind::Grass).unwrap();
-        let gravel_id = (0..256).find(|&id| ground::material(id).kind == Kind::Gravel).unwrap();
+    fn a_wheel_on_a_bush_surface_brushes_by_its_density() {
         let payload = |wheel: u32, surfaces: [u32; 2], blend: f32, contact: bool| TyreParticles {
             wheel,
             surfaces,
@@ -157,19 +141,15 @@ mod tests {
             contact,
             ..TyreParticles::default()
         };
+        // Sparse bush and bendable tree half each; gravel; a wheel in the air; a later payload replaces an earlier.
         let payloads = [
-            payload(0, [gravel_id, grass_id], 0.0, true),
-            payload(1, [grass_id, grass_id], 0.3, true),
-            payload(2, [gravel_id, grass_id], 0.25, true),
-            payload(3, [grass_id, grass_id], 0.0, false),
-            // A later payload of a wheel replaces its earlier one.
-            payload(0, [grass_id, gravel_id], 0.0, true),
+            payload(0, [0xa8, 0xa8], 0.0, true),
+            payload(1, [0xa6, 0x79], 0.5, true),
+            payload(2, [0x15, 0x15], 0.0, true),
+            payload(3, [0xa8, 0xa8], 0.0, false),
+            payload(0, [0x15, 0xa7], 0.0, true),
         ];
-        assert_eq!(grass(&payloads), [1.0, 1.0, 0.25, 0.0]);
-        assert_eq!(grass(&[]), [0.0; 4]);
-        // Rough ground counts in part; a bush or a bendable tree under a wheel brushes by its density.
-        let under = [payload(0, [0x81, gravel_id], 0.0, true), payload(1, [0xa6, 0x79], 0.5, true)];
-        assert_eq!(grass(&under), [ROUGH, 0.0, 0.0, 0.0]);
-        assert_eq!(brush(&under), [0.0, 0.75, 0.0, 0.0]);
+        assert_eq!(brush(&payloads), [0.0, 0.75, 0.0, 0.0]);
+        assert_eq!(brush(&[]), [0.0; 4]);
     }
 }

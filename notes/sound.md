@@ -188,24 +188,18 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   (retail, release); the echoes' probe unchanged (15.8 vs 16.0 us on 42_M). Retail roadside vegetation is sparse near
   the drivelines (42_M: 5 placements within 6 m of the autopilot's first 60 s), so most corners cut over grass alone
   (not in code).
-- Verge under the wheels (ours, 2026-11-12, on trial; user: no vegetation sound off road): RSF and BTB stages
-  mostly mark their verges `Rough_*` (0x81, 0x82, 0x89, 0x8a) and put bushes and bendable trees in the ground's
-  surface ids, not in `Grass_*` or `.trk` placements, so the verge was silent there. A wheel on rough ground now
-  counts as half a wheel on grass (`rbr_render::verge::ROUGH`), and a wheel on a bush or bendable-tree surface adds
-  its density to the brush loop, two wheels full (`Verge::brush`, `BRUSH_WHEELS`; no hits). Kormoran I (RSF 347,
-  the user's drive, first wheel): rough 8.5 % of the steps, grass 0.7 %, bendable tree 0.2 % (`--log`'s surface
-  column, not in code). No audio render: `rbr-sound` has no verge, it needs the viewer. Not judged by ear yet.
-- Verge in the car (ours, 2026-11-12, on trial; user: never heard it): the grass loop has 85 % of its energy above
-  4 kHz and the brush 60 %, so through the cabin's 1 kHz filter the swish lay 21 to 29 dB under the mix (Kuohu,
-  BTB 1075, Fiat 131, the user's drive: on grass in 31 % of the half-seconds). In the car both now take the stones'
-  2.5 kHz shell filter at 2.5 times the level (`mixer` `VERGE_GAIN`): the swish 16.5 dB under the mix at the
-  median, 12 at the 90th percentile, 7.7 at most; the mix up 0.7 dB at most. Outside unchanged. `rbr-sound --grass`
-  renders the swish from the sound record's own surfaces (the viewer takes them from the particles). Not judged by
-  ear yet.
-- Grass loop (2026-11-12, user: the swish is not realistic, the patter is better): the four stick-on-tall-grass hits
-  laid down 45 times a second into a 6 s loop (`CREDITS.md`; 50 ms envelope std 1.3-4 dB against the swish's
-  0.5-1) in place of the foley of a person in high grass. No open recording of a vehicle through grass or brush
-  was found (some thirty phrases; only near-field foley, 80-95 % of its energy above 4 kHz).
+- Verge, tall vegetation only (ours, 2026-11-12, on trial; user: no sound for short grass, the patter is better
+  than the swish): grass under the wheels plays nothing now (the stages mark grass by firmness, not height). The
+  patter loop (`Loop::Grass`: the four stick-on-tall-grass hits laid 45 times a second into 6 s, `CREDITS.md`, in
+  place of foley of a person in high grass) plays with the brush on the body's contacts with bushes and bendable
+  trees (level 2 by the contacts, 1.5-20 m/s), and a wheel on a bush or bendable-tree surface counts as a contact
+  (`Verge::brush`, two wheels full). In the car both loops take the stones' 2.5 kHz shell filter at 2.5 times the
+  level (`mixer` `VERGE_GAIN`): through the cabin's 1 kHz filter the grass loop (85 % of its energy above 4 kHz)
+  lay 21 to 29 dB under the mix. Sherwood Forest I (RSF 367, Lancer Evo II, the user's drive, in the car): six
+  encounters in 10 min, 3.6 s in contact, 9 branch hits; the added sound 6 to 18 dB under the mix (one at walking
+  pace silent). `rbr-sound --verge CSV` plays the contacts `rbr-render`'s `verge_probe` example finds along
+  `--poses`; a replay whose stepping program is gone steps with `--standalone`. No open recording of a vehicle
+  through grass or brush was found. Not judged by ear yet.
 - What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
   along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
   one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of

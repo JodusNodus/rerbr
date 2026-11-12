@@ -941,7 +941,6 @@ impl Mixer {
         };
         let option = match voice {
             Loop::Engine | Loop::Gearbox | Loop::Diff => self.volumes.engine,
-            Loop::Grass => self.volumes.tyres,
             _ => self.volumes.effects,
         };
         if let Some(v) = self.loops.get_mut(&voice) {
