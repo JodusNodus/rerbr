@@ -117,6 +117,19 @@ pub fn hardness(material: u8, kind: u32) -> Option<f32> {
 }
 
 /// The posts of the collision mesh `mesh`'s placements: what reflects ([`hardness`]) and the vegetation ([`growth`]).
+/// The scenery placements of a `.trk`.
+pub fn posts(trk: &trk::TrkFile) -> Vec<Post> {
+    trk.chunks
+        .iter()
+        .filter_map(|c| match &c.payload {
+            ChunkPayload::CollisionMeshes(m) => Some(&m.meshes),
+            _ => None,
+        })
+        .flatten()
+        .flat_map(posts_of)
+        .collect()
+}
+
 fn posts_of(mesh: &CollisionMesh) -> impl Iterator<Item = Post> + '_ {
     let growth = growth(mesh.unknown_byte);
     let kept = hardness(mesh.unknown_byte, mesh.kind).or(growth.map(|_| 0.0));
@@ -193,17 +206,7 @@ impl Roadside {
     /// and `ground`, the stage's collision probe the cameras use.
     pub fn load(data: &Data, stage: &str, ground: Option<Arc<StageProbe>>) -> Roadside {
         let trk = rbr_formats::stage_files::read(data, stage, "trk").ok().and_then(|b| trk::parse(&b).ok());
-        let posts = trk
-            .iter()
-            .flat_map(|t| &t.chunks)
-            .filter_map(|c| match &c.payload {
-                ChunkPayload::CollisionMeshes(m) => Some(&m.meshes),
-                _ => None,
-            })
-            .flatten()
-            .flat_map(posts_of)
-            .collect();
-        Roadside::new(posts, ground)
+        Roadside::new(trk.as_ref().map(posts).unwrap_or_default(), ground)
     }
 
     /// The scenery placements it holds.

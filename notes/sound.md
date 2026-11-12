@@ -195,6 +195,14 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   its density to the brush loop, two wheels full (`Verge::brush`, `BRUSH_WHEELS`; no hits). Kormoran I (RSF 347,
   the user's drive, first wheel): rough 8.5 % of the steps, grass 0.7 %, bendable tree 0.2 % (`--log`'s surface
   column, not in code). No audio render: `rbr-sound` has no verge, it needs the viewer. Not judged by ear yet.
+- What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
+  along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
+  one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of
+  the 6 m verge on 70 % of them, rough on 10 %, neither reaches 5 % on 21 % (tarmac, snow and gravel verges); no
+  ground sample is a bush surface; no vegetation placement within 8 m on 33 % of the retail and 53 % of the modded
+  maps, 5 or more a km on 52 % and 37 %. The 97 installed BTB stages: grass 20 % or more on 68 %, and not one
+  vegetation placement (their objects carry no bush or bendable-tree surface), so there the brush and the branch
+  hits never play.
 
 ## Suspension and driveshaft
 
