@@ -1872,18 +1872,18 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   lateral; game: the i20, default setups, the 100 m circle under the pursuit's steering, `--brake-from` with
   `--brake-throttle`, the pedal and the throttle held). Crews overlap: throttle over 20 % in 86 / 70 / 38 % of the
   samples at a light / medium / hard brake in Finland (its p50 55 / 43 / 36 %), Sardegna 74 / 48 / 23 %, España's tarmac
-  51 / 19 / 7 %, Ypres 69 / 36 / 17 % (the channel is the driver's: the item below). In the game a held throttle takes brake
-  off and no more: on gravel from 0.6 g, 0.9 of the pedal with 0.3 throttle is 0.45 of the pedal alone (0.61 against
-  0.58 g, slips 0.12 / 0.10 against 0.11 / 0.09, sideslip 7.0 against 6.4°), and at 0.75 of the pedal the largest
-  sideslip is 23.8° alone and 5.3° with 0.3 throttle (NGP's tyre 8.1 and 4.4°). From 0.85 g on gravel: 0.5 throttle
-  alone runs 2.9 m outside in 3 s; with 0.2 / 0.3 / 0.45 / 0.6 of the pedal on it 0.6 m outside, then 0.4 / 1.1 / 1.5 m
-  inside, the sideslip staying at 9°; the pedal alone gives 13 / 18 / 29° and a spin (NGP's tyre 12 / 18° and spins from
-  0.45); with both pedals on the two tyres agree within 1°. On tarmac from 1.2 g the pedal alone spins both tyres' cars
-  from 0.45; 0.6 of the pedal holds with 0.5 throttle (10°, NGP's tyre 17°) and spins with 0.3. The setup's left-foot
-  maps (`LeftFootBrakeThreshold` 0.2 against 0, 24 runs with 0.3 / 0.5 throttle) move the largest sideslip by over 2° in
-  one (NGP's tyre on tarmac, 0.45 of the pedal with 0.3 throttle: 8 against 14°). So the pad's brake-in-turn figures
-  without throttle (the items above and below) are the lifted driver's case, the least common one in the crews' gravel
-  braking.
+  51 / 19 / 7 %, Ypres 69 / 36 / 17 % (the channel is the driver's: the item below). In the game a held throttle takes
+  brake off and no more: on gravel from 0.6 g, 0.9 of the pedal with 0.3 throttle is 0.45 of the pedal alone (0.61
+  against 0.58 g, slips 0.12 / 0.10 against 0.11 / 0.09, sideslip 7.0 against 6.4°), and at 0.75 of the pedal the
+  largest sideslip is 23.8° alone and 5.3° with 0.3 throttle (NGP's tyre 8.1 and 4.4°). From 0.85 g on gravel: 0.5
+  throttle alone runs 2.9 m outside in 3 s; with 0.2 / 0.3 / 0.45 / 0.6 of the pedal on it 0.6 m outside, then 0.4 / 1.1
+  / 1.5 m inside, the sideslip staying at 9°; the pedal alone gives 13 / 18 / 29° and a spin (NGP's tyre 12 / 18° and
+  spins from 0.45); with both pedals on the two tyres agree within 1°. On tarmac from 1.2 g the pedal alone spins both
+  tyres' cars from 0.45; 0.6 of the pedal holds with 0.5 throttle (10°, NGP's tyre 17°) and spins with 0.3. The setup's
+  left-foot maps (`LeftFootBrakeThreshold` 0.2 against 0, 24 runs with 0.3 / 0.5 throttle) move the largest sideslip by
+  over 2° in one (NGP's tyre on tarmac, 0.45 of the pedal with 0.3 throttle: 8 against 14°). So the pad's brake-in-turn
+  figures without throttle (the items above and below) are the lifted driver's case, the least common one in the crews'
+  gravel braking.
 - Pedal overlap by time, and whose it is (2026-11-12; the telemetry over 40 km/h, overlap: throttle over 20 with the
   brake over 5, a run the samples in a row; the user: three replays at 10 Hz, throttle over 0.2 with the pedal over
   0.05). The throttle channel follows the driver, not the engine's off-pedal opening: under a hard brake (60 up) on
