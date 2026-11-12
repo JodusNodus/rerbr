@@ -1,18 +1,18 @@
 //! The suspension sounds of `CCarSound`'s damper handler (0x4ae260, read in the disassembly) from each wheel's damper
 //! signal words (`rbr_recording::sound`, `dampers`): squeaks (`CAR::SQUEEKS`, `CCarSound::Vf5c` 0x4ac2c0 and
-//! `CTireSnd::M7700` 0x4d7700), bump-stop knocks as ranged impacts at the wheel (`CCollisionSnd::Vf64` 0x4b2ed0),
-//! the bottoming (`CAR::SUSPENSION`, `M77c0` 0x4d77c0), and the broken-damper call. Pure. rbr-recomp `notes/sound.md` 6.3.
+//! `CTireSnd::M7700` 0x4d7700), bump-stop knocks (`CAR::SUSPENSION`, `M77c0` 0x4d77c0; a hard one with a ranged
+//! impact, `CCollisionSnd::Vf64` 0x4b2ed0), and the broken-damper call. Pure. rbr-recomp `notes/sound.md` 6.3.
 //!
 //! The handler runs on each damper emit, which the wheel's frame finish (`CWheel::Vf28` 0x53f230) makes once a frame
 //! before it resets the words (`CSpringDamper::ResetOutputs` 0x52e010). The live picture runs that reset once an
 //! answer, so the words here are the frame's emitted payload: the peak its maximum strut velocity (as the damper step
 //! keeps its `peak_velocity`), the bump its last bump-stop hit. This model still keeps the frame's words itself over
-//! the answers of a frame: the peak the largest seen, the bump the last nonzero one, 0 without one. Ours: the frame
-//! is 1/60 s (the original's follows its frame rate).
+//! the answers of a frame: the peak the largest seen, the bump the hardest new one (ours: 1.02's is the last), 0
+//! without one. Ours: the frame is 1/60 s (the original's follows its frame rate).
 
 use rbr_recording::sound::Sound;
 
-use crate::impact::ranged_index;
+use crate::impact::{ranged_index, HARDER};
 use crate::voice::{Command, Shot};
 
 /// The damper words: [2] bump velocity, [4] valid (0 once the damper is broken).
@@ -23,11 +23,17 @@ const VALID: usize = 4;
 const SQUEAK_CHANGE: f32 = 1.0;
 const SQUEAK_ODDS: u32 = 10;
 const SQUEAK_PITCH: f32 = 0.5;
-/// In the car a bump above 0.01 (0x72f440) knocks: a ranged impact of power `(bump + 1) * 200` (0x795e14, 0x730890);
-/// above 0.8 (0x72f610) the bottoming plays too.
+/// In the car a bump above 0.01 (0x72f440) knocks. 1.02 plays every one as a ranged impact of power
+/// `(bump + 1) * 200` (0x795e14, 0x730890) at the impacts' full level, and above 0.8 (0x72f610) the bottoming too.
+/// Ours: the knock is the bottoming sample at the bump's share of 0.8 (amplitude by the hit's speed), and the
+/// ranged impact joins it only above 0.8; a wheel that knocked is quiet for [`KNOCK_GAP`] frames (0.15 s) unless
+/// the bump is more than [`HARDER`] times its last. A strut riding its stop changes the word every step, and most
+/// hits are light (Alpine A110 RGT on Mont Ventoux, 330 s: 1979 new words, median 0.037, a tenth above 0.13), which
+/// 1.02's rule plays as a crash sample each.
 const KNOCK: f32 = 0.01;
 const KNOCK_POWER: f32 = 200.0;
 const BOTTOMING: f32 = 0.8;
+const KNOCK_GAP: u32 = 9;
 /// The broken damper's call (`CSigCarDamageSpeech` 7: `weve_got_fire` in 1.02's table at 0x7c37e0).
 pub const BROKEN_CALL: u32 = 7;
 
@@ -47,6 +53,9 @@ pub struct Suspension {
     /// The last frame's peak per wheel (`+0x1050`) and the last bump word seen.
     peak: [f32; 4],
     bump: [Option<u32>; 4],
+    /// Frames until each wheel may knock again, and its last knock's bump ([`KNOCK_GAP`]).
+    knock_wait: [u32; 4],
+    knocked: [f32; 4],
     /// This frame's words so far, and the seconds left of it.
     frame_peak: [f32; 4],
     frame_bump: [f32; 4],
@@ -81,7 +90,7 @@ impl Suspension {
                 self.frame_peak[k] = velocity;
             }
             match self.bump[k] {
-                Some(b) if b != words[BUMP] => self.frame_bump[k] = f32::from_bits(words[BUMP]),
+                Some(b) if b != words[BUMP] => self.frame_bump[k] = self.frame_bump[k].max(f32::from_bits(words[BUMP])),
                 Some(_) => {}
                 None => first = true,
             }
@@ -111,13 +120,18 @@ impl Suspension {
             if words[VALID] == 0 {
                 calls.push(BROKEN_CALL);
             }
-            if bump > KNOCK && inside {
-                if let Some(index) = ranged_index((bump + 1.0) * KNOCK_POWER, self.ranged, &mut rand) {
-                    out.push(Command::Shot { shot: Shot::Ranged(index), gain: self.ranged_gain });
-                }
-                if bump > BOTTOMING && self.bottomings > 0 {
+            self.knock_wait[k] = self.knock_wait[k].saturating_sub(1);
+            if bump > KNOCK && inside && (self.knock_wait[k] == 0 || bump > self.knocked[k] * HARDER) {
+                (self.knock_wait[k], self.knocked[k]) = (KNOCK_GAP, bump);
+                if self.bottomings > 0 {
                     let shot = Shot::Bottoming(rand() as usize % self.bottomings);
-                    out.push(Command::Hit { shot, gain: self.bottoming_gain, pitch: 1.0, distance: wheels[k] });
+                    let gain = self.bottoming_gain * (bump / BOTTOMING).min(1.0);
+                    out.push(Command::Hit { shot, gain, pitch: 1.0, distance: wheels[k] });
+                }
+                if bump > BOTTOMING {
+                    if let Some(index) = ranged_index((bump + 1.0) * KNOCK_POWER, self.ranged, &mut rand) {
+                        out.push(Command::Shot { shot: Shot::Ranged(index), gain: self.ranged_gain });
+                    }
                 }
             }
         }
@@ -141,22 +155,39 @@ mod tests {
     }
 
     #[test]
-    fn a_new_bump_knocks_in_the_car_and_bottoms_above_08() {
+    fn a_new_bump_knocks_in_the_car_by_its_speed_and_bottoms_above_08() {
         let mut s = Suspension::new([1.0; 3], [18, 4, 20]);
         assert_eq!(s.step(&sound(0.0, 0.0, 1), true, [0.0; 4], FRAME, || 0), (vec![], vec![]));
-        let (out, _) = s.step(&sound(0.9, 0.0, 1), true, [0.0; 4], FRAME, || 0);
-        let shots: Vec<_> = out
-            .iter()
-            .map(|c| match c {
-                Command::Shot { shot, .. } | Command::Hit { shot, .. } => *shot,
-                _ => unreachable!(),
-            })
-            .collect();
-        // (0.9 + 1) * 200 = 380: index rand % 3 + trunc(180 * 0.005) = 0.
-        assert_eq!(shots, [Shot::Ranged(0), Shot::Bottoming(0)].repeat(4));
+        let shots = |out: Vec<Command>| -> Vec<(Shot, f32)> {
+            out.iter()
+                .map(|c| match c {
+                    Command::Shot { shot, gain } | Command::Hit { shot, gain, .. } => (*shot, *gain),
+                    _ => unreachable!(),
+                })
+                .collect()
+        };
+        // A light touch: the bottoming sample alone at 0.2 / 0.8.
+        let (out, _) = s.step(&sound(0.2, 0.0, 1), true, [0.0; 4], FRAME, || 0);
+        assert_eq!(shots(out), [(Shot::Bottoming(0), 0.25)].repeat(4));
         // The same word again is no new hit; outside the car a new one is silent.
-        assert!(s.step(&sound(0.9, 0.0, 1), true, [0.0; 4], FRAME, || 0).0.is_empty());
-        assert!(s.step(&sound(0.5, 0.0, 1), false, [0.0; 4], FRAME, || 0).0.is_empty());
+        assert!(s.step(&sound(0.2, 0.0, 1), true, [0.0; 4], FRAME, || 0).0.is_empty());
+        assert!(s.step(&sound(2.0, 0.0, 1), false, [0.0; 4], FRAME, || 0).0.is_empty());
+        // Within the gap only a bump 1.5 times harder knocks. (0.9 + 1) * 200 = 380: index rand % 3 +
+        // trunc(180 * 0.005) = 0.
+        assert!(s.step(&sound(0.25, 0.0, 1), true, [0.0; 4], FRAME, || 0).0.is_empty());
+        let (out, _) = s.step(&sound(0.9, 0.0, 1), true, [0.0; 4], FRAME, || 0);
+        assert_eq!(shots(out), [(Shot::Bottoming(0), 1.0), (Shot::Ranged(0), 1.0)].repeat(4));
+    }
+
+    #[test]
+    fn a_strut_riding_its_stop_knocks_a_gap_apart() {
+        let mut s = Suspension::new([1.0; 3], [18, 4, 20]);
+        s.step(&sound(0.0, 0.0, 1), true, [0.0; 4], FRAME, || 0);
+        // A new word every frame for 30 frames, none harder: a knock every 9 frames.
+        let knocked: Vec<usize> = (0..30)
+            .filter(|&k| !s.step(&sound(0.1 - k as f32 * 0.001, 0.0, 1), true, [0.0; 4], FRAME, || 0).0.is_empty())
+            .collect();
+        assert_eq!(knocked, [0, 9, 18, 27]);
     }
 
     #[test]
@@ -170,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn a_frame_takes_the_largest_velocity_and_the_last_bump_of_its_steps() {
+    fn a_frame_takes_the_largest_velocity_and_the_hardest_bump_of_its_steps() {
         let mut s = Suspension::new([1.0; 3], [18, 4, 20]);
         s.step(&sound(0.0, 0.0, 1), true, [0.0; 4], 0.007, || 0);
         // Three steps of 7 ms: the first ends the frame (nothing changed), the next two make the following one.

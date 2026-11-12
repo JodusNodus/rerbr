@@ -23,7 +23,10 @@ const SCREAM_POWER: f32 = 8000.0;
 /// than [`HARDER`] times the last one's. Scraping along a bank changes the payload every step, and 1.02 plays each,
 /// up to 140 impacts a second (the Lancer drive), a rattle the mixer's cap of 3 ranged impacts only thins.
 const GAP_STEPS: u32 = 21;
-const HARDER: f32 = 1.5;
+pub(crate) const HARDER: f32 = 1.5;
+/// Ours: a ranged impact's level is its power's share of this (amplitude by the hit's strength); 1.02 plays a
+/// touch of 100 as loud as a crash. The sample still follows the power.
+const FULL_POWER: f32 = 1000.0;
 
 /// The impact state between steps.
 #[derive(Debug, Clone, Default)]
@@ -63,7 +66,8 @@ impl Impacts {
         }
         if (1..4).contains(&(hit[STATE] as i32)) && (self.wait == 0 || power > self.last_power * HARDER) {
             if let Some(index) = ranged_index(power + RANGED_ADD, self.ranged_count, &mut rand) {
-                out.push(Command::Shot { shot: Shot::Ranged(index), gain: self.ranged_gain });
+                let gain = self.ranged_gain * (power / FULL_POWER).min(1.0);
+                out.push(Command::Shot { shot: Shot::Ranged(index), gain });
                 (self.wait, self.last_power) = (GAP_STEPS, power);
             }
         }
@@ -110,6 +114,10 @@ mod tests {
         assert!(impacts.step(&functor_only, true, || 0).is_empty());
         let out = impacts.step(&hit(1000.0), true, || 0);
         assert_eq!(out, [Command::Shot { shot: Shot::Ranged(6), gain: 1.0 }]);
+        // A light touch plays at its power's share of 1000, once the gap is over.
+        (0..GAP_STEPS).for_each(|_| assert!(impacts.step(&hit(1000.0), true, || 0).is_empty()));
+        let out = impacts.step(&hit(250.0), true, || 0);
+        assert_eq!(out, [Command::Shot { shot: Shot::Ranged(2), gain: 0.25 }]);
         let out = impacts.step(&hit(9000.0), true, || 1);
         assert_eq!(out[..2], [Command::StopSpeech, Command::Shot { shot: Shot::Scream(1), gain: 0.5 }]);
         // Outside the car no scream; within the gap and not 1.5 times harder, no ranged impact either.

@@ -14,6 +14,8 @@ modelled only for cars that have one (`fmod`). The pipeline never writes physics
 - A gain is `SOUNDDEF` volume times amp times a player option; volumes are linear amplitude (`SetVol` 0x4d2740).
 - The 30 ms sound thread never runs (not in code); the in-car flag is the viewer's bonnet and cockpit views.
 
+- `rbr-sound --replay FILE.rrp` renders a saved replay's sound offline (its own stepping command, back to back): the
+  way to hear a change on a drive the user made.
 - Offline replay video uses `Player::offline` at 44100 Hz, sharing the live player's bank, custom co-driver and FMOD
   setup; `Player::render` fills stereo samples without an audio device, clocked by the replay's answered periods.
 
@@ -185,12 +187,22 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
 
 Mechanics in `suspension.rs` (squeaks, knocks, bottoming, damage call 7, frame folding) and `driveshaft.rs` (clunks).
 
+- Bump-stop knocks (ours, 2026-11-12, user: unrealistic on bumpy tarmac): 1.02 plays every bump word above 0.01 as
+  an `IMPACT::RANGED` crash sample at full level, and a strut riding its stop changes the word every step. Now the
+  knock is the `CAR::SUSPENSION` sample at `bump / 0.8` (full from 1.02's bottoming threshold, where the ranged
+  impact still joins it), one a wheel per 9 frames unless 1.5 times harder; the frame keeps its hardest bump. The
+  user's replay (Alpine A110 RGT, Mont Ventoux BTB, 330 s, in the car; `rbr-sound --replay`): 1979 new bump words,
+  median 0.037, a tenth above 0.13; commanded ranged impacts 852 to 34, knocks 272 at a median gain of 0.07, 7 at
+  full (not in code). The recorded drives never touch the stops (62 drives, 39 min: no bump word changes).
+
 ## Impacts
 
 Mechanics in `impact.rs` (payload change rule, ranged set, scream).
 
 - A scrape changes the payload every step: Lancer 75-90 s, 371 impacts to 22 (evidence for the spacing rule, not in
   code).
+- Level (ours, 2026-11-12): a ranged impact plays at `power / 1000`, full from there (1.02: full from 100); the
+  sample follows the power as before. A body scrape holds about 765 (the Ventoux replay, not in code).
 
 ## Co-driver
 
