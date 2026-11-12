@@ -245,7 +245,7 @@ pub fn drive(
         eprintln!("autopilot: {} (--race)", line.summary(r.limits));
         driver = driver.with_race(line);
     }
-    driver = driver.with_declutch(measure.brake_declutch);
+    driver = driver.with_declutch(measure.brake_declutch).with_brake_throttle(measure.brake_throttle.unwrap_or(0.0));
     if let Some(k) = measure.brake_slip {
         driver = driver.with_brake(Brake::slip(k));
     } else if let Some(k) = measure.brake_abs {

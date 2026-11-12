@@ -62,6 +62,10 @@ pub struct Args {
     /// shifts no gear, so the engine does not drive the braked wheels. NGP's clutch help sets the clutch from the
     /// engine speed in place of the pedal (`rbr_physics::vcu::clutch`), so the pedal needs it off.
     pub brake_declutch: bool,
+    /// `--brake-throttle T` (with `--brake-from`, no `--brake-declutch`): the brake test holds this throttle (0-1, over
+    /// 0) under its pedal, a left-foot braker's overlap (past the setup's threshold on both pedals the differentials
+    /// take their left-foot maps, `rbr_physics::vcu::locks`).
+    pub brake_throttle: Option<f32>,
     /// `--circle X,Y,R` (with `--autopilot`): drive the steady-state circle of centre X,Y and radius R (m),
     /// counter-clockwise, the target speed ramping up until the car lets go (`Driver::circle`).
     pub circle: Option<autopilot::Circle>,
@@ -223,7 +227,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
@@ -306,6 +310,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--brake-from" => args.brake_from = Some(parsed("--brake-from", &value)?),
             "--brake-pedal" => args.brake_pedal = Some(fraction("--brake-pedal", &value)?),
             "--brake-slip" => args.brake_slip = Some(fraction("--brake-slip", &value)?),
+            "--brake-throttle" => args.brake_throttle = Some(fraction("--brake-throttle", &value)?),
             "--drive-slip" => {
                 args.drive_slip = Some(parsed("--drive-slip", &value).and_then(|k: f32| {
                     (0.01..=1.0).contains(&k).then_some(k).ok_or(format!("--drive-slip {value}: K in 0.01-1.0"))
@@ -637,6 +642,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--brake-pedal, --brake-slip, --brake-abs, --brake-hold and --brake-declutch need --brake-from".into()
         );
     }
+    if args.brake_throttle.is_some() && (args.brake_from.is_none() || args.brake_declutch) {
+        return Err("--brake-throttle needs --brake-from, and takes no --brake-declutch".into());
+    }
     if args.brake_declutch && args.aids.clutch_help {
         return Err(
             "--brake-declutch needs --clutch-help off (clutch help sets the clutch in place of the pedal)".into()
@@ -903,6 +911,9 @@ mod tests {
                 assert_eq!((a.brake_pedal, a.brake_slip, a.brake_abs), (None, None, Some(0.15)));
             }),
             (format!("{BOOT} --brake-from 27.78 --brake-declutch --clutch-help off"), |a| assert!(a.brake_declutch)),
+            (format!("{BOOT} --brake-from 27.78 --brake-pedal 0.5 --brake-throttle 0.4"), |a| {
+                assert_eq!((a.brake_pedal, a.brake_throttle), (Some(0.5), Some(0.4)));
+            }),
             (format!("{BOOT} --circle -260,120,40 --top-speed 60"), |a| {
                 assert_eq!(
                     a.circle,
@@ -1245,6 +1256,10 @@ mod tests {
             (
                 format!("{BOOT} --brake-from 20 --brake-declutch"),
                 "--brake-declutch needs --clutch-help off (clutch help sets the clutch in place of the pedal)",
+            ),
+            (
+                format!("{BOOT} --brake-throttle 0.4"),
+                "--brake-throttle needs --brake-from, and takes no --brake-declutch",
             ),
             (
                 format!("{BOOT} --brake-declutch"),
