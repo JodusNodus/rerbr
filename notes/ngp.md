@@ -410,6 +410,33 @@ NGP approximation). Map `0x1c`, car slot `0x20`; an `HGMD` block, the setup as `
 NGP patches ~120 1.02 sound sites; `rbr-sound` ports the audible ones (per-car words, road list, skid threshold,
 `E30DXSound +0x74` as `SetMaxDistance`). NGP records and ghosts go under `NGP/`.
 
+## UDP telemetry
+
+`rbr-standalone --live --telemetry-udp ADDR:PORT` (off by default; the launcher's `[telemetry] udp`) sends NGP's
+packet (`crates/rbr-standalone/src/live/telemetry.rs`): 664 bytes, packed little endian, the SDK's `TelemetryData`
+(`Plugins/NGP/sdk`, not committed); the RR tyre's segment 8 wear at 660, wheel blocks at 152/280/408/536. Sources
+from NGP.dll 7.4.778 in Ghidra (fill `FUN_100cce60`); every field is exe memory, none NGP's own:
+
+- Cadence (NGP): `100c4850` on exe signal #1 (`0x49af10`, from `TicPhysicsRecording`), state 1 only: one packet per
+  driving substep after `E16Filter::Tic` and the replay counter's increment, before `StepForward`. None in replay
+  playback (state 8), pause, countdown, load, race over. `telemetryTics` (default 5) gates the file recorder only.
+  The sender is made at stage load (CSigAppState 0xd) when `udpTelemetry` is set; `udpTelemetryEndpoints` is a `,`
+  list of `host:port`. 'U' on NGP's page toggles the setting for the next load.
+- Ours (user decision 2026-11-13): one packet per live frame after its last step (a `--live` frame is one step of
+  wall time, so the rate matches; the values are a step later), one address, none during `--replay`; a send error
+  prints one line until a send succeeds. `totalSteps` is ours (driving steps since the stage start; NGP's is the
+  replay object's `+0x18b86c`, no per-stage reset found). Controls are the CTL1 car control (NGP reads the filter's
+  outputs, filter `+0x324..`: equal unless a recorded payload drives).
+- Units and axes: speed is the drive's wheel speed (drive state `+0x384` times car def `+0x24c`, `Sample9800`) in km/h
+  (NGP: mph by the game's unit option `0x1660d00`); rpm the engine state `+0x188` times 9.549296; temperatures K;
+  pressures Pa; brake discs microkelvin words / 1e6, wear word times 6.6666665e-8; gear 0 R, 1 N, 2 first (-1 sent as
+  7). Motion in car axes: surge `-y`, sway `-x`, heave `z`; angular in degrees (x 57.29577791868205), linear
+  accelerations (`+0x230`) in g (/ 9.81). Roll and pitch: the signed angle of the world's down (up) in car axes from
+  car `x` (`y`) minus pi/2; yaw: car `+y` in the world from world `x` (`FUN_100b6b30`, `FUN_1002e4e0`).
+- Checked: `live::tests::telemetry_packets_follow_the_frames_they_are_sent_after` (12,000 autopilot frames on
+  track-11_O: position, gear, rpm and race time equal to the frame's records; wheel over car speed 0.995 at the median).
+  Not compared with NGP's own packets: the RSF game under Wine had no display output (2026-11-13).
+
 ## Open items
 
 - Asio strand path (`+0xd` set); other wall-clock reads; whether Windows gives the same control word as Wine.
