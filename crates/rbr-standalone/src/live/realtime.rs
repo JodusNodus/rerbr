@@ -14,7 +14,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use rbr_gameplay::ffb::racing_gate;
-use rbr_hybrid::pure;
+use rbr_hybrid::pure::{self, CAR_PTR};
+use rbr_physics::car_body::steering_ffb;
 use rbr_recording::input::{Input, Payload};
 use rbr_recording::realtime::{
     self, Logged, Message, Step, INPUT, LOGGED_BYTES, LOG_MAGIC, MESSAGE_BYTES, PAUSE, RESTART, RESUME,
@@ -257,8 +258,9 @@ impl Answering {
 /// The step record after a frame: the force the wheel gets (through the racing gate) and the car's control now, and
 /// the input `seq` the frame took.
 fn step_record(live: &Live, seq: u32) -> Step {
-    let force = racing_gate(live.wheel_force(), live.game.stage().state());
-    Step { step: live.next_step(), seq, force, control: live.control }
+    let mem = &live.playback.pure.mem;
+    let force = steering_ffb::force(mem, mem.u32(CAR_PTR));
+    Step { step: live.next_step(), seq, force: racing_gate(force, live.game.stage().state()), control: live.control }
 }
 
 /// Logs a frame to `log`, with the digest of the car and wheels after it.

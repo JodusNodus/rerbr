@@ -309,29 +309,27 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     linearity (`load::shaped`, `load::maxed_from`), and the suggestion (`load::suggested`) is the p90 at 0.65 raised
     by 5 until the wheel maxes out under 5 % at it, so "raise to X" never names a percentage that still maxes out
     often. The HUD's force and the stored load stay NGP's. Not tried on a wheel.
-- Trials (ours, 2026-11-12; `rerbr --ffb-aligning W`, `rerbr --ffb-breakdown DIR`, for the session, never saved, not
-  on any page):
-  - `--ffb-aligning W` (`rbr-standalone --ffb-aligning`, with `--live`, 0-5, 1 = NGP's; `steer_log::Aligning`): the
-    wheel's force with the tyres' aligning part of the torque sum (the breakdown's) weighted by W. The surplus
-    `(W - 1) * aligning` goes through the car's filter with its own state (`steering_ffb::filtered_torque`, linear,
-    so it adds to the car's filtered torque), the sum through NGP's curve; only the step record's force changes,
-    nothing is written, the HUD's force and the stored load stay NGP's. With the aligning part at 0.30 of the sum
-    (below) the torque rises by about 0.3 (W - 1) in steady cornering. A replay drops the flag. Not tried on a
-    wheel.
-  - `--ffb-breakdown DIR` (`rbr-standalone --ffb-breakdown`, with `--live` or `--autopilot`; `steer_log.rs`): a CSV
-    row per frame of each steered wheel's add to the torque sum, split along the contact's axes into the lateral
-    force's part (with the tyre's moment about the rolling direction: the caster trail), the longitudinal force's
-    (the scrub radius), the vertical force's (the axis's inclination) and the tyre's moment about the normal (its
-    aligning moment). Read at the wheel step's `AddADC` (`Host::steer_torque`, kept by the pure host only with
-    `Pure::keep_steer_torques`; `wheel::layout::steer_torque`), nothing written. Check (autopilot, `--car 2`, r40
-    circle on map 85, 30000 steps): the parts add up to the add within 2e-4; above 12 m/s the lateral part is 0.77
-    of the sum, the aligning 0.30, the vertical -0.075, the longitudinal 0.01; mechanical trail 25-40 mm, pneumatic
-    10-17 mm; the tyre's torque is about the hub (at rest its 750 N m is the lateral 2486 N times the radius). A
-    replay drops the flag.
+- What the steering torque is made of (measured 2026-11-12 with a per-frame breakdown read at the wheel step's
+  `AddADC`, since removed with its `--ffb-breakdown` and `--ffb-aligning` trial flags (user, 2026-11-12); the code is
+  commit 515cf023's `rbr-standalone/src/steer_log.rs`):
+  - Each steered wheel's add splits along the contact's axes into the lateral force's part (with the tyre's moment
+    about the rolling direction: the caster trail), the longitudinal force's (the scrub radius), the vertical
+    force's (the axis's inclination) and the tyre's moment about the normal (its aligning moment). Autopilot,
+    `--car 2`, r40 circle on map 85, 30000 steps: the parts add up to the add within 2e-4; above 12 m/s the lateral
+    part is 0.77 of the sum, the aligning 0.30, the vertical -0.075, the longitudinal 0.01; mechanical trail
+    25-40 mm, pneumatic 10-17 mm; the tyre's torque is about the hub (at rest its 750 N m is the lateral 2486 N
+    times the radius).
   - Units (from the keys, not measured): the sum is the rack's force, N (`inv_arm` 1/m, `inv_rack` the rod's
     cosine); `SteeringRackRatio` is the rack's travel per turn of the steering wheel, m (`wheel_rotation::car_degrees`),
     so the torque NGP's curve takes is 2π times the N m at the rim with the car's own lock. Consistent
     for `--car 2`: gain 9.56 /m times 0.0467 m per turn over 2π is 1/14.1, a 14:1 steering ratio.
+  - A sensitivity per car from the car at rest (checked 2026-11-12, not built: the user keeps the manual
+    sensitivity with its hint, and wants nothing learned from driving applied by itself): front axle load times
+    (the caster trail at rest + 21 mm for the tyre) times gain times rack ratio over the car's `MaxFFTorque` scale.
+    Against the user's stored loads (18 pack cars; p90 of the torque ratio): one scale per surface puts the p90 at
+    0.76-1.15 of the cars' mean on tarmac (16 loads, cv 10 %; 0.52-1.78, cv 34 %, without it) and 0.83-1.18 on
+    gravel (8 loads, cv 11 %; 48 % without); tarmac's scale is 1.4 times gravel's. The 4WD cars' drive torque
+    through the scrub radius is not in it (up to 23 % of the sum on the circle).
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only

@@ -6,7 +6,6 @@ use std::cell::{Cell, RefCell};
 
 use rbr_physics::mem::Mem;
 use rbr_physics::spring_damper::DamperSignal;
-use rbr_physics::wheel::layout::SteerTorque;
 
 use crate::engine_driveline::SIGNALS;
 use crate::Regs;
@@ -94,8 +93,6 @@ pub(crate) struct Watch {
     /// The damper-signal payloads `CSpringDamper::ResetOutputs` emitted since the host last took them: the strut
     /// and the payload the reset handed to the signal manager.
     damper_signals: RefCell<Vec<(u32, DamperSignal)>>,
-    /// The steered wheels' adds to the steering torque sum since the host last took them.
-    steer_torques: RefCell<Vec<SteerTorque>>,
 }
 
 impl Watch {
@@ -150,14 +147,6 @@ impl Watch {
     /// The damper-signal payload `ResetOutputs` on `strut` emitted, kept as a typed event for the host.
     pub(crate) fn push_damper(&self, strut: u32, signal: DamperSignal) {
         self.damper_signals.borrow_mut().push((strut, signal));
-    }
-
-    pub(crate) fn push_steer_torque(&self, torque: SteerTorque) {
-        self.steer_torques.borrow_mut().push(torque);
-    }
-
-    pub(crate) fn take_steer_torques(&self) -> Vec<SteerTorque> {
-        self.steer_torques.take()
     }
 
     /// The tyre-particle payloads emitted since the last call (with `keep`), in emit order.
