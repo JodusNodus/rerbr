@@ -395,8 +395,8 @@ def gps_lag(rows):
 
 def sideslip_windows(rows, lag):
     """(speed km/h, the path's lateral g, sideslip deg, true sideslip deg or None, the path's whole g, the
-    accelerometer's, its lateral g) per window with TURNING g or more on both laterals; the accelerometer's window
-    `lag` s ahead of the positions'."""
+    accelerometer's, its lateral g, the path's g along it) per window with TURNING g or more on both laterals; the
+    accelerometer's window `lag` s ahead of the positions'."""
     t, xy = [r["t"] for r in rows], metres(rows)
     out = []
     for i in range(0, len(rows), 5):
@@ -422,7 +422,7 @@ def sideslip_windows(rows, lag):
         true = math.copysign(1, turn) * statistics.fmean(w["true"] for w in win) if "true" in win[0] else None
         slip = math.atan2(long, abs(lat)) - math.atan2(along, abs(normal))
         out.append(((v1 + v2) * 1.8, abs(normal), math.degrees(slip), true and math.degrees(true),
-                    math.hypot(normal, along), math.hypot(lat, long), abs(lat)))
+                    math.hypot(normal, along), math.hypot(lat, long), abs(lat), along))
     return out
 
 
