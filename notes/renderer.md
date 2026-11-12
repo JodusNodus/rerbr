@@ -1334,7 +1334,7 @@ top 108 to 85 of 255 (no sheen 86). Cockpit reference shots 1 to 2.6 % RMSE by d
 0.02 to 0.04 %, outside shots byte-identical. The dash still reads blue-grey: near-black texels under the cabin's own
 exposure and the sky through the windscreen.
 
-Cabin albedo and colour (ours, 2026-11-12, `cabin_day_lit`; not yet picked by the user): the cabin textures' darks
+Cabin albedo and colour (ours, 2026-11-12, `cabin_day_lit`; picked by the user 2026-11-12): the cabin textures' darks
 decode at 2.2 to an albedo of 0.003 to 0.02, so dark dashes, wheels and door cards had no form and the cabin's
 exposure burnt the labels out. Now gamma 1.6 for them (`CABIN_GAMMA`; the dials keep 2.2), a soft floor of 0.012
 where a face's reflection stays in the car (`CABIN_INWARD`), and 0.7 of the window's and bounce light's colour taken
