@@ -1838,6 +1838,22 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   sliding velocity (μ sin θ, tan θ = tan α / |κ|; locked 0.83 sin α), NGP's locked tyre's 24-25° off the wheel's heading
   at a slip angle of 12°. At κ -0.5 to -0.7 and 8° loose-v1 keeps 0.20-0.30 of its free-rolling side force, NGP's tyre
   0.37-0.44: the difference of "Braking in a turn" from 0.75 of the pedal.
+- Setup's reach on the pad readings (2026-11-12; scratch: the i20's default gravel and tarmac setups with one change at
+  a time, 22 changes: roll bars × 0.5 / 2, springs × 0.8 / 1.25, dampers × 0.7 / 1.4, the front brakes' share of the
+  pressure ± 8 points, the centre differential's maps zeroed under braking and throughout, the axle differentials'
+  torque × 0.1 / 3, tyres at 180 / 260 kPa, front camber × 0.5 / 1.5, rear camber -3°, struts +20 mm, front toe ± 2 mm
+  of rod; pad 49 with loose-v1 and with NGP's tyre, the tarmac pad with brush-v1). The level moves little. The 100 m
+  circle's limit: -1.4 to +0.9 % on gravel (0.918 g; NGP's tyre -2.6 to +1.0 %), ± 2.3 % on tarmac (1.345 g); the 200 m
+  circle's within 0.7 % (NGP's tyre 1.2 %). Straight braking at 0.8 of the pedal: within 0.7 % on gravel and 1.5 % on
+  tarmac, but for tarmac's front toe +2 mm (-4.6 %), front camber × 1.5 (-3.8 %) and centre differential open under
+  braking (the fronts lock, -31 %; on gravel the front / rear slips go from 0.28 / 0.26 to 0.22 / 0.33 at the same 0.87
+  g). The brakes' share alone does nothing while the centre differential locks under braking (the default map is at 1
+  from its eighth point of eleven). The balance moves a lot. Braking in the 100 m turn, the largest sideslip at 0.75 /
+  0.9 of the pedal: gravel from 0.6 g 24 / 29° by default and 15-45 / 25-36° over the changes; tarmac from 0.9 g 11 /
+  21° and 5-43 / 10-37° (the open centre runs straight on, 1.4°); NGP's tyre on gravel 8 / 11° and 7-16 / 9-13°, so at
+  0.9 of the pedal the two tyres' ranges do not meet and at 0.75 they touch. Readings of level (grip, braking, the
+  crews' g) hold for any setup near the default; readings of balance (the turn under braking, sideslip, the catch) are
+  the default setup's.
 - The experimental profiles' aero (2026-11-11, user decisions: the brush profile, then `experimental`;
   `Profile::EXPERIMENTAL.aero` is `wings+downforce`, `--aero ngp` gives the files' back; the model in
   `rbr_hybrid::ngp::aero_model`, its fit in "The files' downforce against these" below). The i20 on material 49 on
