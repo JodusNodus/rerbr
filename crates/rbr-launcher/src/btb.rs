@@ -18,7 +18,7 @@ pub struct Btb {
     /// `track.ini`'s name, else the folder's.
     pub name: String,
     pub author: Option<String>,
-    /// The country's code: `track.ini`'s `countrycode`, else the RSF stage list's `short_country` under the stage's id.
+    /// The country's code, upper case: `track.ini`'s `countrycode`, else the RSF stage list's `short_country` under the stage's id.
     pub country: Option<String>,
     pub km: Option<f32>,
     /// The `rbr-standalone --surface` word, from `track.ini` (the plugin plays gravel when it names none).
@@ -58,7 +58,7 @@ pub fn maps(root: &Path, taken: impl Fn(u32) -> bool) -> Vec<Map> {
         let country = track.info.country.as_ref().or_else(|| list.get(&number)?.get("short_country"));
         let btb = Btb {
             name,
-            country: country.map(|c| c.trim().to_owned()).filter(|c| !c.is_empty()),
+            country: country.map(|c| c.trim().to_uppercase()).filter(|c| !c.is_empty()),
             author: track.info.author.clone().filter(|a| !a.trim().is_empty()),
             km: track.info.length_km.map(|km| km as f32),
             surface: stage::surface(&track).unwrap_or("gravel"),

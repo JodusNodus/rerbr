@@ -66,12 +66,12 @@ pub fn items(catalog: &Catalog, season: &Season) -> Vec<Item> {
         .collect()
 }
 
-/// The location a map shares with others, which a rally keeps to: an RSF stage's country (else its name), a BTB
-/// stage's name, a retail map's tens (the game numbers a country's maps together: 10-18, 20-27, ...).
+/// The location a map shares with others, which a rally keeps to: an RSF or a BTB stage's country (else its
+/// name), a retail map's tens (the game numbers a country's maps together: 10-18, 20-27, ...).
 fn family(map: &catalog::Map) -> String {
     match &map.origin {
         Origin::Community(stage) => stage.country.clone().unwrap_or_else(|| stage.name.clone()),
-        Origin::Btb(btb) => btb.name.clone(),
+        Origin::Btb(btb) => btb.country.clone().unwrap_or_else(|| btb.name.clone()),
         Origin::Retail => format!("retail-{}", map.number / 10),
     }
 }
@@ -290,6 +290,24 @@ mod tests {
     fn retail(number: u32) -> Map {
         let stage = Stage { name: format!("track-{number}_O"), map: number, letter: 'O' };
         Map { number, stages: vec![stage], origin: Origin::Retail }
+    }
+
+    #[test]
+    fn a_btb_stage_is_of_its_country_else_its_own_location() {
+        let btb = |country: Option<&str>| {
+            let btb = crate::btb::Btb {
+                folder: "/rsf/RX_CONTENT/Tracks/Hokkara".into(),
+                name: "Hokkara".into(),
+                author: None,
+                country: country.map(str::to_owned),
+                km: None,
+                surface: "gravel",
+                problem: None,
+            };
+            Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }
+        };
+        assert_eq!(family(&btb(Some("FI"))), "FI");
+        assert_eq!(family(&btb(None)), "Hokkara");
     }
 
     #[test]
