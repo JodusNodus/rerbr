@@ -1811,6 +1811,23 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   and 120 m), the 30 mm pad's full pedal 0.89 over 100-70 (0.97). Scorecard: on the probe's 9 mm the lab's two pea-stone
   rows miss, `gravel-locked-over-lat-max` 1.063 (1.45-1.6) and `gravel-locked-over-traction` 1.054 (1.25-1.47), the
   source's stone being deeper; the car's locked over ABS stays in band (1.37 / 1.28 at 50 / 80 km/h, 1.12-1.59).
+- Gravel's berm on five rallies, and the side force under braking (2026-11-12; scratch: straight 1 s braking windows,
+  the slip 1 - speed channel / GPS speed / 0.95, on the 2021 gravel rallies and Wales 2019; the game's i20 on material
+  49's pad at fixed pedals of 0.4-1 from 166 km/h, read over 120-90 km/h by its four wheels' mean slip; `force_sweep`
+  on the scorecard's gravel frame at 15 mm, 20 m/s, 4 / 6 kN). The crews' deceleration is highest in the deepest bin
+  on every rally with 30 windows there: past 50 % of slip p50 0.94 / 0.92 / 0.88 / 0.82 / 0.82 g (Finland, Estonia,
+  Sardegna, Safari, Wales; n 32-65), 1.16 / 1.19 / 1.21 / 1.17 / 1.11 of the same rally's at 22-32 % (Finland 1.16-1.19
+  at channel lags of 0-0.4 s). The pedal's p50 rises with the slip (93 to 100 %), so the lower bin is not all at the
+  limit and the ratio is an upper bound for the tyre's rise. The game's car: loose-v1 0.88 g at 27 % of slip, 0.89 at
+  51 %, 0.91 at 83 %, 0.92 locked (1.01-1.05); NGP's tyre 0.96 at 33 %, 0.87 at 73 %, 0.79 locked (0.82-0.91). So the
+  rise's sign and the locked level (inside the rallies' 0.82-0.94) hold on five rallies and the 1.09 is under their
+  bound. Not told apart: the scaling by depth (no rally's loose depth is known) and the onset at 0.8 (one speed
+  channel, not four wheels). The crews have 0.8 g at 22-32 % of slip where the game's car has it at 12 % (a rough road
+  against a flat pad; not followed up). Side force: loose-v1's over NGP's at slip angles of 2-12° is 0.92-1.06 at κ
+  -0.2, 0.80-0.97 at -0.3, 0.60-0.76 at -0.5, 0.51-0.65 at -0.7 and 0.49-0.61 locked. loose-v1's force lies along the
+  sliding velocity (μ sin θ, tan θ = tan α / |κ|; locked 0.83 sin α), NGP's locked tyre's 24-25° off the wheel's
+  heading at a slip angle of 12°. At κ -0.5 to -0.7 and 8° loose-v1 keeps 0.20-0.30 of its free-rolling side force,
+  NGP's tyre 0.37-0.44: the difference of "Braking in a turn" from 0.75 of the pedal.
 - The experimental profiles' aero (2026-11-11, user decisions: the brush profile, then `experimental`;
   `Profile::EXPERIMENTAL.aero` is `wings+downforce`, `--aero ngp` gives the files' back; the model in
   `rbr_hybrid::ngp::aero_model`, its fit in "The files' downforce against these" below). The i20 on material 49 on
@@ -1930,8 +1947,14 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   % tighter, 8 % of it the line's and the rest the pass's own at its limit. What the passes cannot show: a fast kink at
   the crews' speed (the approach is the plain plan's: the kink at 2972 m is reached at 125 km/h at most for the crews'
   154), the two tyres apart (most corners hold the same level on both, a step of 2.5 % of speed), and loose-v1 past 6062
-  m, where its car leaves the line at the plan's speed and rolls on every run (NGP's tyre passes). Not done: a margin
-  under 1.4 m, limit driving along the whole stage (the stage time).
+  m. There both cars leave a left-hander at full throttle 0.7-0.8 m wide of the line (1.54 / 1.58-1.64 m right of the
+  driveline, the line at 0.85 m and the road's edge at 2.25 m: the default's law aims the nose at the line, and the car
+  travels 4.3 / 5.4 deg outside its nose) into the end of a ridge of the ground 0.25-0.7 m over the road, 0.35 m past
+  its edge: NGP's tyre's car loses 3.3 m/s in a step, spins and drives on, loose-v1's 4.1 m/s, and it is thrown up and
+  rolls, in each of the 130 runs to a corner past it. The steering law's and the stage's, not the tyre's: over the stage
+  at the plan's 0.4-0.5 g the two cars' sideslip is alike (p50 / p90 2.6 / 4.5 and 2.4 / 5.4 deg with the throttle over
+  half, 1.7 / 2.5 and 1.3 / 2.3 braking). Not done: a margin under 1.4 m, limit driving along the whole stage (the stage
+  time).
 - Braking in a turn under a steering driver (2026-11-11; `harness/brake_turn.py`: pad-49's circles of 65 / 100 / 200 m,
   the pedal put on at 0.6 / 0.7 / 0.8 / 0.88 g of lateral and held at 0.3 to 1 while the pursuit steers the circle, 72
   runs a tyre; i20 Coupe WRC 2020, NGP's tyre / loose-v1). Past 45 deg of sideslip: 5 / 21 runs; more than 2 m wide
@@ -1949,8 +1972,15 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   reads the game's sideslip 4-6 deg over the true one. So the car's whole g, not its stability, keeps it from the crews'
   hardest braking in a turn (their middle reached, their top tenth 9-14 % above, a flat pad against their road), and
   loose-v1's car turns 2-3 times as far as NGP's from 0.75 of the pedal: to the crews' p75-p95 where NGP's stays at
-  their p50-p75. Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or the steering),
-  and the cause in loose-v1 (the brake in turn of "Slides on gravel": the force along the slip).
+  their p50-p75. From the pedal's onset (2026-11-12, the runs' traces, 0.6-0.7 g before the pedal): at 0.3 s both cars
+  yaw over the circle's rate at their speed, 1.2-1.4 / 1.3-1.6 times it; from 0.75 of the pedal NGP's is back at 0.9-1.5
+  times by 1-1.5 s and loose-v1's stays at 1.7-2.9 times against the countersteer, a yaw rate that does not fall with
+  the speed. The wheels' slip at 0.5 s is alike at 0.75 of the pedal (the least 0.20-0.26 / 0.21-0.41, the most
+  0.29-0.64 / 0.29-0.51); at 0.9 loose-v1 holds all four at 0.44-0.71 where NGP's range from 0.24-0.39 to 0.45-0.92. So
+  the brakes are not the difference, which leaves the side force and the yaw damping the tyre keeps at a braking slip of
+  0.3-0.7 (not read per wheel). Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or
+  the steering). loose-v1's side force at those slips is 0.51-0.97 of NGP's, its force along the slip ("Gravel's berm on
+  five rallies").
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
