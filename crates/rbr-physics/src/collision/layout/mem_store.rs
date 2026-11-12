@@ -625,6 +625,10 @@ impl CollisionStore for Mem {
     }
 
     fn face_bytes(&self, at: u32) -> [u8; 0x12] {
+        let mut bytes = [0; 0x12];
+        if self.try_read_into(at, &mut bytes) {
+            return bytes;
+        }
         std::array::from_fn(|i| self.u8(at + i as u32))
     }
 
