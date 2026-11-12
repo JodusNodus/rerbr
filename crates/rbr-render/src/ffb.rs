@@ -43,6 +43,9 @@ pub struct Options {
     pub rotation_per_car: bool,
     /// The smoothing's time constant, ms ([`smooth`]); 0 sends NGP's force as it is.
     pub smoothing: i32,
+    /// The force linear in the steering torque ([`linear`]) in place of NGP's curve: `viewer --ffb-linear`, for the
+    /// session, not in the settings file.
+    pub linear: bool,
 }
 
 impl Default for Options {
@@ -55,6 +58,7 @@ impl Default for Options {
             rotation: None,
             rotation_per_car: false,
             smoothing: 0,
+            linear: false,
         }
     }
 }
@@ -622,10 +626,25 @@ pub fn reshape(force: f32, was: i32, now: i32) -> f32 {
     force.signum() * (1.0 - left.powf(percent(was) / percent(now)))
 }
 
+/// The force linear in the steering torque (ours, `--ffb-linear`, a trial) for a force `force` NGP's curve gave at
+/// sensitivity percentage `was`, at the percentage `now`: the torque from the curve inverted ([`load::torque_ratio`]),
+/// scaled so the force equals the curve's at [`load::TARGET`], and held at 1 past it (from where the curve gives
+/// 0.80). The curve flattens what the steering loses towards the limit of grip (a quarter less torque from 0.65 is
+/// 0.16 less force, from 0.95 0.06); a line keeps it whole.
+pub fn linear(force: f32, was: i32, now: i32) -> f32 {
+    if force.is_nan() {
+        return force;
+    }
+    let ratio = load::torque_ratio(force, was).unwrap_or(f32::INFINITY);
+    force.signum() * (load::TARGET * ratio / load::ratio_at(load::TARGET, now)).min(1.0)
+}
+
 /// The wheel's force-feedback thread; dropping it stops the force.
 pub struct Wheel {
     shared: Arc<Shared>,
     settings: Settings,
+    /// [`Options::linear`].
+    linear: bool,
     thread: Option<JoinHandle<()>>,
     /// The device's name.
     pub name: String,
@@ -665,7 +684,9 @@ impl Wheel {
                 .map_err(|e| e.to_string())?
         };
         match rx.recv() {
-            Ok(Ok(name)) => Ok(Wheel { shared, settings: options.settings, thread: Some(thread), name }),
+            Ok(Ok(name)) => {
+                Ok(Wheel { shared, settings: options.settings, linear: options.linear, thread: Some(thread), name })
+            }
             Ok(Err(e)) => {
                 let _ = thread.join();
                 Err(e)
@@ -680,7 +701,8 @@ impl Wheel {
         let (was, now) = (self.shared.was.load(Ordering::Relaxed), self.shared.now.load(Ordering::Relaxed));
         let settings =
             Settings { strength: f32::from_bits(self.shared.strength.load(Ordering::Relaxed)), ..self.settings };
-        self.set_magnitude(ffb::magnitude(reshape(force, was, now), &settings), steering);
+        let force = if self.linear { linear(force, was, now) } else { reshape(force, was, now) };
+        self.set_magnitude(ffb::magnitude(force, &settings), steering);
     }
 
     /// The wheel's strength (0 to 1, `Settings::strength`) from the next step on.
@@ -830,7 +852,7 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
 #[cfg(test)]
 mod tests {
     use super::load::{self, Load};
-    use super::{level, reshape, smooth, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
+    use super::{level, linear, reshape, smooth, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
 
     #[test]
     fn options_round_trip_and_default() {
@@ -1033,6 +1055,23 @@ mod tests {
         for _ in 0..(seconds * 8.0).round() as usize {
             session.frame(surface, force, 0.125, kept);
         }
+    }
+
+    #[test]
+    fn the_linear_force_follows_the_torque_and_meets_the_curve_at_the_target() {
+        // S 100 at 250 %, shown at 250 % and at 125 %.
+        let at = |t: f32, now: i32| linear(curve(t, 100.0, 250), 250, now);
+        let target = load::ratio_at(load::TARGET, 250);
+        assert!((at(target, 250) - load::TARGET).abs() < 1e-4);
+        assert!((at(target / 2.0, 250) - load::TARGET / 2.0).abs() < 1e-4);
+        assert!((at(target / 2.0, 125) - load::TARGET).abs() < 1e-4, "half the percentage, twice the force");
+        // Held at 1 from the target's torque over the target, the sign kept, and at the curve's end.
+        assert_eq!(
+            (at(target / load::TARGET * 1.01, 250), linear(-1.0, 250, 250), linear(0.0, 250, 250)),
+            (1.0, -1.0, 0.0)
+        );
+        assert!((linear(-curve(target, 100.0, 250), 250, 250) + load::TARGET).abs() < 1e-4);
+        assert!(linear(f32::NAN, 250, 250).is_nan());
     }
 
     #[test]
