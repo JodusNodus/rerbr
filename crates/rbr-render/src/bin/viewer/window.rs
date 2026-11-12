@@ -15,13 +15,12 @@ use crate::scene::Scene;
 use crate::shown::{self};
 use crate::triple::Side;
 use feed::Feed;
-use gilrs::ev::filter::Repeat;
-use gilrs::Gilrs;
 use input::shifter;
 use rbr_formats::data::Data;
 use rbr_render::bindings::{Action, Bindings};
 use rbr_render::camera::FreeFly;
 use rbr_render::ffb;
+use rbr_render::gamepads::Gamepads;
 use rbr_render::hud::hud_page::Grab;
 use rbr_render::hud::pause::{Nav, PauseMenu};
 use rbr_render::hud::results::ResultsMenu;
@@ -63,8 +62,6 @@ const ZOOM_RATE: f32 = 1.0;
 const WHEEL_ZOOM: f32 = 0.1;
 /// Pixels of trackpad scroll counted as one wheel line.
 const PIXELS_PER_LINE: f32 = 20.0;
-/// A held gamepad button repeats its menu move after this and then this often, as a held key does.
-const PAD_REPEAT: Repeat = Repeat { after: Duration::from_millis(400), every: Duration::from_millis(80) };
 
 /// Rendered frames per second, averaged over about half a second so the shown number stays readable.
 /// Ours: the original has no FPS counter.
@@ -140,7 +137,7 @@ pub struct App {
     /// The live mode's keys and device inputs (`--bindings`).
     bindings: Bindings,
     /// The gamepads, for the pause menu's navigation.
-    gilrs: Option<Gilrs>,
+    gamepads: Option<Gamepads>,
     /// The wheel's force feedback (live mode), which the live process's step records set as they come.
     wheel: Option<Arc<ffb::Wheel>>,
     /// Each action's device input in the last frame, for the gear and restart presses.
@@ -203,9 +200,10 @@ impl App {
         let ffb = args.ffb.clone();
         let replay = args.replay.is_some();
         let shifter = shifter(args, scene.live.is_some() && !replay);
-        // Gamepads navigate the menu in live mode only.
-        let gilrs = scene.live.as_ref().filter(|_| !replay).and_then(|_| match Gilrs::new() {
-            Ok(gilrs) => Some(gilrs),
+        // Gamepads navigate the menu in live mode only. Opened before the wheel and the input thread: on macOS the
+        // thread that first starts SDL's joysticks hears of the devices plugged in (`rbr_render::sdl`).
+        let gamepads = scene.live.as_ref().filter(|_| !replay).and_then(|_| match Gamepads::open() {
+            Ok(gamepads) => Some(gamepads),
             Err(e) => {
                 eprintln!("viewer: no gamepads: {e}");
                 None
@@ -262,7 +260,7 @@ impl App {
             presented: 0,
             controls: Controls::default(),
             bindings: args.bindings.clone(),
-            gilrs,
+            gamepads,
             wheel,
             pads: [0.0; Action::ALL.len()],
             shifter,

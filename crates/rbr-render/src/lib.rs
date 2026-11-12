@@ -28,6 +28,7 @@ pub mod fences;
 pub mod ffb;
 pub mod foliage;
 pub mod game_camera;
+pub mod gamepads;
 pub mod ghost;
 pub mod glass;
 pub mod grass;
@@ -53,6 +54,7 @@ pub mod relight;
 pub mod renderer;
 pub mod roadside;
 pub mod school_demo;
+mod sdl;
 #[cfg(test)]
 mod shader_check;
 pub mod shifter;

@@ -4,8 +4,8 @@
 //! On Linux the devices are read from evdev, as Proton's winebus reads them through SDL's Linux joystick for the game
 //! (`rbr_gameplay::poll::wine`): a device's index counts the joystick nodes with its vendor and product ids
 //! (ABS_X and ABS_Y, or a joystick button, as SDL and udev take a node for one), in `/dev/input/event*` order.
-//! Elsewhere they come from gilrs's platform layer (`gilrs-core`): the axes and buttons in its order, scaled from
-//! their range to dinput's 0..65535 (unverified on a wheel).
+//! Elsewhere they come from SDL3's joysticks (`sdl` below; on macOS its HIDAPI, Game Controller and IOKit drivers):
+//! the axes and buttons in its order (unverified on macOS and Windows).
 
 use rbr_gameplay::control::NGP_GEAR_PRESS;
 use rbr_gameplay::poll::{keyboard, Device as PollDevice, Poll, DEFAULT_RANGE};
@@ -55,15 +55,15 @@ impl Joysticks {
         Joysticks { lost: vec![false; list.len()], list, context }
     }
 
-    /// Looks for joysticks plugged in or out, in the same context (a new gilrs context each time leaks its thread on
-    /// macOS, and sees no pad there until its connection events are read). The list, with its states, is kept while
-    /// the same devices are connected and none was lost.
+    /// Looks for joysticks plugged in or out, in the same context (off Linux SDL stays started, on the thread that
+    /// hears of them on macOS: `crate::sdl`). The list, with its states, is kept while the same devices are connected
+    /// and none was lost.
     pub fn rescan(&mut self) {
         self.context.update(&mut self.list);
-        let found = imp::Joystick::all(&mut self.context, true);
-        if self.lost.contains(&true) || !found.iter().map(|(d, _)| d).eq(self.list.iter().map(|(d, _)| d)) {
-            self.lost = vec![false; found.len()];
-            self.list = found;
+        let found = imp::Joystick::devices(&mut self.context);
+        if self.lost.contains(&true) || !found.iter().eq(self.list.iter().map(|(d, _)| d)) {
+            self.list = imp::Joystick::all(&mut self.context, true);
+            self.lost = vec![false; self.list.len()];
         }
     }
 
@@ -71,7 +71,7 @@ impl Joysticks {
     fn found(&mut self, want: &[Device]) -> bool {
         self.context.update(&mut self.list);
         let open: Vec<_> = self.list.iter().map(|(d, _)| *d).collect();
-        imp::Joystick::all(&mut self.context, false).iter().any(|(d, _)| want.contains(d) && !open.contains(d))
+        imp::Joystick::devices(&mut self.context).iter().any(|d| want.contains(d) && !open.contains(d))
     }
 
     pub fn len(&self) -> usize {
@@ -359,6 +359,11 @@ mod evdev {
     }
 
     impl Joystick {
+        /// The connected joysticks' ids.
+        pub fn devices(context: &mut super::imp::Context) -> Vec<Device> {
+            Joystick::all(context, false).into_iter().map(|(device, _)| device).collect()
+        }
+
         /// Every joystick node (in `/dev/input/event*` order) that can be opened, with its device id; with `actual`
         /// its axes read their values at once.
         pub fn all(_: &mut super::imp::Context, actual: bool) -> Vec<(Device, Joystick)> {
@@ -474,91 +479,118 @@ mod evdev {
 
 #[cfg(not(target_os = "linux"))]
 mod imp {
-    use crate::bindings::Device;
-    use gilrs_core::{EventType, Gilrs};
+    pub use super::sdl::{Context, Joystick};
+}
 
-    /// gilrs's platform layer, which every pad reads its events from.
+/// The joysticks through SDL3 (off Linux; on Linux for the test against [`evdev`]): its axes and buttons in its order,
+/// its hats left out as on Linux, an axis's -32768..32767 as dinput's 0..65535 ([`wine::axis`]). The axes read what
+/// SDL has, `actual` or not: Windows' dinput has no report to wait for.
+#[cfg(any(not(target_os = "linux"), test))]
+mod sdl {
+    use std::ffi::CStr;
+
+    use rbr_gameplay::poll::wine;
+    use sdl3_sys::init::SDL_INIT_JOYSTICK;
+    use sdl3_sys::joystick::*;
+
+    use crate::bindings::Device;
+    use crate::sdl::Subsystem;
+
+    /// SDL's joystick subsystem, while the joysticks are open; none when it did not start.
     #[derive(Default)]
-    pub struct Context(Option<Gilrs>);
+    pub struct Context(Option<Subsystem>);
 
     impl Context {
         pub fn new() -> Context {
-            #[allow(unused_mut)]
-            let mut gilrs = Gilrs::new().map_err(|e| eprintln!("devices: no gamepads: {e}")).ok();
-            // macOS: gilrs's thread sends the pads connected as events, and lists a pad only once its event is
-            // read; read them until 100 ms pass without one (at most 500 ms).
-            #[cfg(target_os = "macos")]
-            if let Some(gilrs) = &mut gilrs {
-                let end = std::time::Instant::now() + std::time::Duration::from_millis(500);
-                while std::time::Instant::now() < end
-                    && gilrs.next_event_blocking(Some(std::time::Duration::from_millis(100))).is_some()
-                {
-                }
-            }
-            Context(gilrs)
+            Context(Subsystem::init(SDL_INIT_JOYSTICK).map_err(|e| eprintln!("devices: no joysticks: {e}")).ok())
         }
 
-        /// The events since the last update, into the pads' values.
-        pub fn update(&mut self, list: &mut [(Device, Joystick)]) {
-            let Some(gilrs) = &mut self.0 else { return };
-            while let Some(event) = gilrs.next_event() {
-                let Some((_, pad)) = list.iter_mut().find(|(_, j)| j.id == event.id) else { continue };
-                match event.event {
-                    EventType::ButtonPressed(code) | EventType::ButtonReleased(code) => {
-                        if let Some(k) = pad.buttons.iter().position(|&c| c == code) {
-                            pad.state[4 * pad.ranges.len() + k] =
-                                if matches!(event.event, EventType::ButtonPressed(_)) { 0x80 } else { 0 };
-                        }
-                    }
-                    EventType::AxisValueChanged(value, code) => {
-                        if let Some(k) = pad.axes.iter().position(|&c| c == code) {
-                            let (min, max) = pad.ranges[k];
-                            let v = if max > min {
-                                ((i64::from(value.clamp(min, max)) - i64::from(min)) * 65535 / i64::from(max - min))
-                                    as i32
-                            } else {
-                                32768
-                            };
-                            pad.state[4 * k..4 * k + 4].copy_from_slice(&v.to_le_bytes());
-                        }
-                    }
-                    EventType::Disconnected => pad.connected = false,
-                    _ => {}
-                }
+        /// SDL reads its devices and looks for new ones; each joystick takes its state at its [`Joystick::read`].
+        pub fn update(&mut self, _: &mut [(Device, Joystick)]) {
+            if self.0.is_some() {
+                // SAFETY: the subsystem is started.
+                unsafe { SDL_UpdateJoysticks() };
             }
+        }
+
+        /// SDL's joysticks with their ids (an index per vendor and product, in SDL's order).
+        fn ids(&self) -> Vec<(Device, SDL_JoystickID)> {
+            let mut out: Vec<(Device, SDL_JoystickID)> = Vec::new();
+            if self.0.is_none() {
+                return out;
+            }
+            // SAFETY: `ids` is SDL's array of `count` ids, freed here.
+            unsafe {
+                let mut count = 0;
+                let ids = SDL_GetJoysticks(&mut count);
+                if ids.is_null() {
+                    return out;
+                }
+                for &id in std::slice::from_raw_parts(ids, usize::try_from(count).unwrap_or(0)) {
+                    let (vendor, product) = (SDL_GetJoystickVendorForID(id), SDL_GetJoystickProductForID(id));
+                    let index = out.iter().filter(|(d, _)| (d.vendor, d.product) == (vendor, product)).count() as u32;
+                    out.push((Device { vendor, product, index }, id));
+                }
+                sdl3_sys::stdinc::SDL_free(ids.cast());
+            }
+            out
+        }
+    }
+
+    /// An open SDL joystick, closed at the drop.
+    struct Handle(*mut SDL_Joystick);
+
+    // SAFETY: SDL's joystick calls take its lock, and a joystick is not tied to the thread that opened it.
+    unsafe impl Send for Handle {}
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            // SAFETY: opened in `Joystick::all`, closed once.
+            unsafe { SDL_CloseJoystick(self.0) }
         }
     }
 
     pub struct Joystick {
-        id: usize,
+        handle: Handle,
         name: String,
-        axes: Vec<gilrs_core::EvCode>,
-        ranges: Vec<(i32, i32)>,
-        buttons: Vec<gilrs_core::EvCode>,
-        connected: bool,
+        axes: u32,
+        buttons: u32,
+        /// The state as last read ([`wine::objects`]'s layout).
         state: Vec<u8>,
     }
 
     impl Joystick {
-        /// The connected gamepads with their ids (an index per vendor and product, in gilrs's order). An axis reads
-        /// the centre until its first event, `actual` or not.
+        /// The connected joysticks' ids, none opened.
+        pub fn devices(context: &mut Context) -> Vec<Device> {
+            context.ids().into_iter().map(|(device, _)| device).collect()
+        }
+
+        /// The connected joysticks that can be opened, with their ids.
         pub fn all(context: &mut Context, _actual: bool) -> Vec<(Device, Joystick)> {
-            let Some(gilrs) = &context.0 else { return Vec::new() };
-            let mut out: Vec<(Device, Joystick)> = Vec::new();
-            for id in 0..gilrs.last_gamepad_hint() {
-                let Some(pad) = gilrs.gamepad(id).filter(|p| p.is_connected()) else { continue };
-                let (vendor, product) = (pad.vendor_id().unwrap_or(0), pad.product_id().unwrap_or(0));
-                let index = out.iter().filter(|(d, _)| (d.vendor, d.product) == (vendor, product)).count() as u32;
-                let axes = pad.axes().to_vec();
-                let ranges = axes.iter().map(|&c| pad.axis_info(c).map_or((0, 0), |i| (i.min, i.max))).collect();
-                let buttons = pad.buttons().to_vec();
-                let mut state = vec![0u8; 4 * axes.len() + buttons.len()];
-                for k in 0..axes.len() {
-                    state[4 * k..4 * k + 4].copy_from_slice(&32768i32.to_le_bytes());
-                }
-                let joystick =
-                    Joystick { id, name: pad.name().to_owned(), axes, ranges, buttons, connected: true, state };
-                out.push((Device { vendor, product, index }, joystick));
+            let mut out = Vec::new();
+            for (device, id) in context.ids() {
+                // SAFETY: `id` is one of SDL's joysticks; the name is SDL's string, copied.
+                let (handle, name, axes, buttons) = unsafe {
+                    let handle = SDL_OpenJoystick(id);
+                    if handle.is_null() {
+                        eprintln!("devices: {}: {}", device.format(), crate::ffb::sdl_error());
+                        continue;
+                    }
+                    let name = SDL_GetJoystickNameForID(id);
+                    let name =
+                        if name.is_null() { String::new() } else { CStr::from_ptr(name).to_string_lossy().into() };
+                    let count = |n: i32| u32::try_from(n).unwrap_or(0);
+                    (
+                        Handle(handle),
+                        name,
+                        count(SDL_GetNumJoystickAxes(handle)),
+                        count(SDL_GetNumJoystickButtons(handle)),
+                    )
+                };
+                let state = wine::state(&vec![wine::axis(0); axes as usize], &vec![false; buttons as usize]);
+                let mut joystick = Joystick { handle, name, axes, buttons, state };
+                joystick.read(context);
+                out.push((device, joystick));
             }
             out
         }
@@ -568,19 +600,35 @@ mod imp {
         }
 
         pub fn axes(&self) -> u32 {
-            self.axes.len() as u32
+            self.axes
         }
 
         pub fn buttons(&self) -> u32 {
-            self.buttons.len() as u32
+            self.buttons
         }
 
         pub fn state(&self) -> &[u8] {
             &self.state
         }
 
+        /// Takes the state SDL has now; `false`, the state kept, when the joystick is unplugged.
         pub fn read(&mut self, _: &Context) -> bool {
-            self.connected
+            let joystick = self.handle.0;
+            // SAFETY: the handle is open until the drop.
+            unsafe {
+                if !SDL_JoystickConnected(joystick) {
+                    return false;
+                }
+                for k in 0..self.axes as usize {
+                    let v = wine::axis(i32::from(SDL_GetJoystickAxis(joystick, k as i32)));
+                    self.state[4 * k..4 * k + 4].copy_from_slice(&v.to_le_bytes());
+                }
+                for k in 0..self.buttons as usize {
+                    let down = SDL_GetJoystickButton(joystick, k as i32);
+                    self.state[4 * self.axes as usize + k] = if down { 0x80 } else { 0 };
+                }
+            }
+            true
         }
     }
 }
@@ -594,6 +642,44 @@ mod tests {
         let mut state = [0xff; 256];
         keyboard_state(&[winit::keyboard::KeyCode::ArrowLeft, winit::keyboard::KeyCode::KeyW], &mut state);
         assert_eq!((state[0xcb], state[0x11], state[0xcd]), (0x80, 0x80, 0));
+    }
+
+    /// SDL's joysticks against evdev's on this machine: the same devices, objects and values (an axis not moved since
+    /// SDL opened it reads SDL's 0 on Linux). For the joysticks SDL reads through evdev (a pad its HIDAPI takes has
+    /// other objects).
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs joysticks connected"]
+    fn sdl_reads_what_evdev_reads() {
+        let mut context = sdl::Context::new();
+        let mut sdl = sdl::Joystick::all(&mut context, true);
+        assert!(!sdl.is_empty());
+        assert_eq!(sdl::Joystick::devices(&mut context), sdl.iter().map(|(d, _)| *d).collect::<Vec<_>>());
+        // SDL takes the axes' values at its first update.
+        context.update(&mut sdl);
+        let mut evdev = evdev::Joystick::all(&mut imp::Context, true);
+        assert_eq!(sdl.len(), evdev.len());
+        for (device, joystick) in &mut sdl {
+            let (_, other) = evdev.iter_mut().find(|(d, _)| d == device).expect("evdev has SDL's joystick");
+            assert!(joystick.read(&context) && other.read(&imp::Context));
+            eprintln!(
+                "{} ({}): {} axes, {} buttons",
+                joystick.name(),
+                device.format(),
+                joystick.axes(),
+                joystick.buttons()
+            );
+            // SDL has its own names for the pads it knows.
+            assert_eq!((joystick.axes(), joystick.buttons()), (other.axes(), other.buttons()));
+            let (ours, theirs) = (joystick.state(), other.state());
+            let axes = 4 * joystick.axes() as usize;
+            assert_eq!(ours[axes..], theirs[axes..], "{}", joystick.name());
+            let rest = rbr_gameplay::poll::wine::axis(0).to_le_bytes();
+            for (k, (ours, theirs)) in ours[..axes].chunks(4).zip(theirs[..axes].chunks(4)).enumerate() {
+                assert!(ours == theirs || ours == rest, "{} axis {k}: {ours:?}, evdev {theirs:?}", joystick.name());
+                eprintln!("  axis {k}: {}", if ours == theirs { "evdev's value" } else { "not moved" });
+            }
+        }
     }
 
     #[test]
