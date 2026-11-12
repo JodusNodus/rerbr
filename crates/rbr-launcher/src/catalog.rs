@@ -944,6 +944,7 @@ mod tests {
             folder: "/rsf/Tracks/Hokkara".into(),
             name: "Hokkara".into(),
             author: None,
+            country: None,
             km: None,
             surface: "gravel",
             problem: None,

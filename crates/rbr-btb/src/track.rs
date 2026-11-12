@@ -219,6 +219,8 @@ pub struct TrackInfo {
     pub date: Option<String>,
     pub comment: Option<String>,
     pub length_km: Option<f64>,
+    /// `countrycode`: an ISO code, on a few folders.
+    pub country: Option<String>,
     /// The whole `[INFO]` section, so unknown keys stay accessible.
     pub entries: RawEntries,
 }
@@ -241,6 +243,7 @@ impl TrackInfo {
             date: get("date"),
             comment: get("comment"),
             length_km: get("length").and_then(|l| l.parse().ok()),
+            country: get("countrycode"),
             entries: info.entries.clone(),
         })
     }
