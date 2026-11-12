@@ -19,6 +19,10 @@ const TRACK: egui::Vec2 = vec2(230.0, 18.0);
 /// The width of the rows' names (an axle, a wheel).
 const NAME: f32 = 84.0;
 
+/// Under the camber diagram: what it draws (`charts::camber`).
+const CAMBER_NOTE: &str = "Each wheel's lean against the compared setup's, 4 times over. The camber itself also takes \
+                           the strut's own lean and the ride height.";
+
 /// What the area sets, under its title.
 fn about(area: Area) -> &'static str {
     match area {
@@ -36,28 +40,37 @@ fn about(area: Area) -> &'static str {
     }
 }
 
-/// A value's rule of thumb (general, not measured on this car), or what it does where the physics says so.
+/// A value's rule of thumb (general, not measured on this car), or what it does where the physics says so or the
+/// pads show it (`notes/cameras-hud-launcher.md`, the hints' audit).
 fn hint(label: &str) -> &'static str {
     match label {
-        "Pressure" => "Lower: more grip on loose ground, a lazier response. Higher: a sharper response.",
+        "Pressure" => {
+            "Higher: a stiffer tyre and a sharper response. Lower: softer and lazier. The grip barely changes."
+        }
         "Spring length" => "The spring's free length: longer lifts the corner.",
         "Spring rate" => "Stiffer: a quicker response and less roll. Softer: more grip over bumps.",
-        "Helper spring length" | "Helper spring rate" => {
-            "A soft spring in series with the main one, working while the wheel hangs low."
+        "Helper spring length" => {
+            "The helper is in series with the main spring while the wheel hangs low. Longer also lifts the corner, by \
+             less than the main spring does."
         }
+        "Helper spring rate" => "A second spring in series with the main one, working while the wheel hangs low.",
         "Bump (slow)" => "Resists the wheel rising slowly (roll, pitch). Stiffer: the weight moves quicker.",
         "Rebound" => "Resists the wheel dropping. Too stiff and the wheel leaves the ground after a bump.",
         "Bump (fast)" => "Resists sharp hits and landings, past the speed below. Softer soaks them up.",
-        "Fast bump from" => "The wheel speed the fast bump rate takes over from.",
+        "Fast bump from" => "How fast the wheel must rise for the fast bump rate to take over; 0 never.",
         "Top mount" => "The strut top's mounting slot.",
         "Toe (steering rod)" => "The steering rod's length sets the wheel's toe.",
-        "Ride height (platform)" => "The spring platform's height: the corner's ride height.",
-        "Camber (axis inclination)" => "Negative leans the wheel's top inward: more grip in corners.",
+        "Ride height (platform)" => "The spring platform's height: higher lifts the corner.",
+        "Camber (axis inclination)" => {
+            "The axle's tilt on its strut, not the camber itself. Toward 0 leans the wheel's top further inward: more \
+             grip in corners. More negative stands it up."
+        }
         "Steering lock" => "How far the front wheels turn: more for hairpins, less for a calmer wheel.",
-        "Front anti-roll bar" => "Stiffer: less roll, more understeer.",
-        "Rear anti-roll bar" => "Stiffer: less roll, more oversteer.",
+        "Front anti-roll bar" => "Stiffer: less roll, and more understeer in a steady corner.",
+        "Rear anti-roll bar" => "Stiffer: less roll, and more oversteer in a steady corner.",
         "Front brake pressure" | "Rear brake pressure" => {
-            "Their balance: more front is steadier, more rear turns the car under braking."
+            "Their balance: more front is steadier, more rear turns the car under braking. A centre diff that locks \
+             under braking evens it out."
         }
         "Handbrake centre-diff release" => "The centre diff opens while the handbrake is pulled this far or more.",
         "Centre diff torque" | "Front diff torque" | "Rear diff torque" => {
@@ -267,6 +280,7 @@ impl SetupPage {
             Area::Geometry => {
                 let camber = |s: &Setup| s.corners.map(|c| c.axis_inclination);
                 charts::camber(ui, camber(draft), camber(base), vec2(320.0, 220.0));
+                ui.label(RichText::new(CAMBER_NOTE).weak().size(12.0));
             }
             Area::RollBars => {
                 let bars = |s: &Setup| share(s.front_roll_bar, s.rear_roll_bar);

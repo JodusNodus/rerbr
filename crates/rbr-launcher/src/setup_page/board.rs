@@ -105,7 +105,7 @@ fn legend(area: Area) -> &'static str {
         Area::Tyres => "Pressure: front · rear (the left wheels)",
         Area::Springs => "Spring rate: front · rear (the left wheels)",
         Area::Dampers => "Slow bump: front · rear (the left wheels)",
-        Area::Geometry => "Camber: front · rear (the left wheels)",
+        Area::Geometry => "Camber (axis inclination): front · rear (the left wheels)",
         Area::RollBars => "Steering lock · the front's share of the anti-roll stiffness",
         Area::Brakes => "The front's share of the brake pressure",
         Area::Differentials => "Locking torque of each diff the car has: centre, front, rear",

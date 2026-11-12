@@ -29,7 +29,7 @@ pub struct Damper {
     pub bump: f32,
     pub rebound: f32,
     pub fast_bump: f32,
-    /// The wheel speed the fast bump rate takes over from (`BumpHighSpeedBreak`).
+    /// How fast the wheel must rise for the fast bump rate to take over (`BumpHighSpeedBreak`).
     pub fast_from: f32,
 }
 
@@ -219,9 +219,12 @@ pub fn springs(ui: &mut Ui, now: [Spring; 2], base: [Spring; 2], size: Vec2) {
 }
 
 /// The four wheels from the front (`[LF, RF, LB, RB]` axis inclinations, radians; the front pair over the rear),
-/// each tilted by its camber, exaggerated so a tenth of a degree shows; the comparison's outline behind them.
+/// each leaning from the comparison's upright outline by what its value differs, exaggerated so a tenth of a degree
+/// shows. The value is the axle's tilt on its strut (`rbr_physics::wheel::axes::inclined_axle`), not the camber: the
+/// strut leans in itself (the i20's fronts stand at -4.9° with 0 and at -0.9° with its default -4.19°), and a degree
+/// more of the value leans the wheel's top a degree further in (0.96-1.16° at rest on the pad; six cars the same way).
 pub fn camber(ui: &mut Ui, now: [f32; 4], base: [f32; 4], size: Vec2) {
-    /// How many times over a wheel leans, so small cambers show.
+    /// How many times over a wheel leans, so small changes show.
     const EXAGGERATE: f32 = 4.0;
     const NAMES: [&str; 4] = ["LF", "RF", "LB", "RB"];
     let Some((painter, plot)) = card(ui, size, &AXLES_LEGEND, 8.0, 8.0) else { return };
@@ -232,17 +235,18 @@ pub fn camber(ui: &mut Ui, now: [f32; 4], base: [f32; 4], size: Vec2) {
         let origin = plot.left_top() + Vec2::new(col as f32 * cell.x, row as f32 * cell.y);
         let contact = origin + Vec2::new(cell.x / 2.0, cell.y - 16.0);
         let colour = [FRONT, REAR][row];
-        // A negative camber leans the wheel's top inward: right on the left wheels, left on the right ones.
+        // A higher value leans the wheel's top inward: right on the left wheels, left on the right ones.
         let side = if col == 0 { 1.0 } else { -1.0 };
-        let wheel = |angle: f32| {
-            let rotation = Rot2::from_angle((-clean(angle) * EXAGGERATE * side).clamp(-0.5, 0.5));
+        let wheel = |lean_in: f32| {
+            let rotation = Rot2::from_angle((lean_in * EXAGGERATE * side).clamp(-0.5, 0.5));
             [(-w / 2.0, 0.0), (w / 2.0, 0.0), (w / 2.0, -h), (-w / 2.0, -h)]
                 .map(|(x, y)| contact + rotation * Vec2::new(x, y))
                 .to_vec()
         };
         painter.hline(contact.x - 22.0..=contact.x + 22.0, contact.y + 3.0, Stroke::new(1.0, ZERO));
-        painter.add(Shape::convex_polygon(wheel(base[i]), Color32::TRANSPARENT, Stroke::new(1.0, BASE)));
-        painter.add(Shape::convex_polygon(wheel(now[i]), Color32::from_gray(45), Stroke::new(2.0, colour)));
+        painter.add(Shape::convex_polygon(wheel(0.0), Color32::TRANSPARENT, Stroke::new(1.0, BASE)));
+        let lean_in = clean(now[i]) - clean(base[i]);
+        painter.add(Shape::convex_polygon(wheel(lean_in), Color32::from_gray(45), Stroke::new(2.0, colour)));
         painter.circle_filled(contact, 2.0, colour);
         let label = format!("{name} {:.2}°", clean(now[i]).to_degrees());
         painter.text(Pos2::new(contact.x, origin.y + cell.y - 11.0), Align2::CENTER_TOP, label, small(), LABEL);
