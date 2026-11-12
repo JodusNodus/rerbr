@@ -53,7 +53,7 @@ pub use refresh_pose::{
     DRIVE_AXLE_DIR, NEG_KNUCKLE_Z, ROD_MOUNT, STEERING_ROD, STEERING_ROD_LENGTH, STEERING_ROD_TWEAK, TIP,
     WISHBONE_COPY,
 };
-pub use step::{wheel_step, StepCalls};
+pub use step::{steer_torque, wheel_step, SteerTorque, StepCalls};
 pub use store::WheelStore;
 pub use wheel_calls::{
     blend_pair, car_frames, clear_and_forward, forward_to_car_and_clear, pick_contact, pose_flag, set_input,

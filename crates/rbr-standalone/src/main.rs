@@ -141,6 +141,7 @@ mod rally;
 mod replay_trace;
 mod saves;
 mod stage;
+mod steer_log;
 mod twin;
 mod tyre_probe;
 
@@ -244,6 +245,9 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
             live.set_saves(if args.keeps_records() { saves } else { saves.dry() });
+        }
+        if let Some(dir) = &args.ffb_breakdown {
+            live.set_steer_log(steer_log::SteerLog::create(dir)?);
         }
         // The start board's clock: `--start-time` (a championship stage's from the season, a quick race's time of
         // day), else the time of day by the race's cloud letter (`weather::start_clock`).
@@ -388,6 +392,9 @@ fn autopilot(args: &Args, out: &Path, data: &Data, race: Option<&boot::Race>, st
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
             live.set_saves(if args.keeps_records() { saves } else { saves.dry() });
+        }
+        if let Some(dir) = &args.ffb_breakdown {
+            live.set_steer_log(steer_log::SteerLog::create(dir)?);
         }
         autopilot::drive(
             live,

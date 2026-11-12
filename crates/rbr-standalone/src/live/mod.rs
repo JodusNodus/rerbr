@@ -175,6 +175,8 @@ pub struct Live<'a> {
     boot_now: f64,
     /// What follows a championship stage (`set_rally_next`): its end page's choice and text.
     rally_next: RallyNext,
+    /// The steering torque's breakdown (`--ffb-breakdown`).
+    steer_log: Option<crate::steer_log::SteerLog>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -340,6 +342,12 @@ impl<'a> Live<'a> {
         self.saves = Some(saves);
     }
 
+    /// Writes the steering torque's breakdown to `log` from here on (`--ffb-breakdown`).
+    pub fn set_steer_log(&mut self, log: crate::steer_log::SteerLog) {
+        self.playback.pure.keep_steer_torques = true;
+        self.steer_log = Some(log);
+    }
+
     /// The start clock's time of day at the stage's start, s after midnight (`rbr_gameplay::weather::start_clock`); each
     /// frame adds its time, and [`Live::restart`] restores the start's.
     pub fn set_start_clock(&mut self, seconds: f32) {
@@ -429,6 +437,9 @@ impl<'a> Live<'a> {
         .map_err(|e| self.stop_text(e.as_ref(), runs))?;
         self.pending.tyre_max = physics.tyre_max;
         self.time_of_day = self.time_of_day.map(|t| t + seconds as f32);
+        if let Some(log) = &mut self.steer_log {
+            log.frame(&self.playback.pure, self.start + self.answered);
+        }
         if events.substeps.is_empty() && events.tick_state == State::Countdown {
             self.waited += 1;
             // The start board's clock runs during the start orbit.

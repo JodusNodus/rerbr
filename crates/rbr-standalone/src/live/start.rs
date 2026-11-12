@@ -229,6 +229,7 @@ impl<'a> Live<'a> {
             school_state: None,
             saves: None,
             rally_next: RallyNext::default(),
+            steer_log: None,
             initial,
             initial_game,
             boot_now: 0.0,
