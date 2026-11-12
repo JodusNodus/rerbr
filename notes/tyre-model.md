@@ -1135,8 +1135,8 @@ on soil, NGP's sweep against it).
 - Fit: NGP's free rolling peaks μ_y, μ_x (driving) at each load of the wheel's axis on the unit surface (`fit::loose`),
   linear between, times NGP's grip; the flat brush's peak is μ Fz, so the level needs no solve. On the gravel share the
   level takes `gravel_depth_level` (both axes: 1 to 15 mm, 0.96 at 30 mm), `GRAVEL_LONGITUDINAL` 0.9 along the wheel,
-  `GRAVEL_LATERAL` 1.06 across it and `gravel_damp_level` (user decisions 2026-11-09 and 2026-11-11: "Damp gravel at
-  the dry level" below, "Gravel's level by axis and by depth"; the 1.06 ours on the user's report, "Gravel's sideways
+  `GRAVEL_LATERAL` 1.10 across it and `gravel_damp_level` (user decisions 2026-11-09 and 2026-11-11: "Damp gravel at
+  the dry level" below, "Gravel's level by axis and by depth"; the 1.10 the user's of 2026-11-12, "Gravel's sideways
   level"). The cornering stiffness is re-solved under the flat friction to NGP's slope (0-2°, 4 kN); Cx = 1.4 Cy as
   the brush's. Gravel's shear law rises to its level over a slip of its own, so both slopes go with the sideways
   level (1.06 of NGP's).
@@ -1985,6 +1985,18 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   `-locked-over-lat-max` 1.063 → 1.003. Not measured: the real cars' whole g from 30 deg above 100 km/h falls (0.92 /
   0.83) where the held force is level. Open: brake in turn at the medium pedal spins 3 of 3 as before (r1/r0 1.80, 87
   deg; NGP's tyre 1.63, 55 deg, 0 of 3). Not driven.
+- Gravel's sideways level at 1.10 (2026-11-12, a user decision; `loose::GRAVEL_LATERAL`, was 1.06; i20 Coupe WRC 2020
+  and Lancer Evo II GrpA on material 49, before / after). The target: the whole g Finland's crews hold in a slide, 0.97
+  g from 15 deg of sideslip at 60-100 km/h and 1.01 at 100-160 (the item above): 0.94 / 0.96 and 0.98 / 1.00; from 30
+  and 40 deg 0.92 / 0.92 and 0.89 / 0.90 (theirs 1.00 and 0.90). The ramp steer's peak at 80 km/h 0.912 / 0.942 g
+  (Lancer 0.892 / 0.915), the circles' limit at r 65 / 100 / 200 m 0.92, 0.93, 0.97 / 0.94, 0.97, 0.99. Straight
+  braking, lift and power in turn as before. Braking in a turn (`brake_turn.py`, 72 runs): 21 / 20 past 45 deg, from
+  0.6-0.7 g the largest sideslip at 0.45 / 0.6 / 0.75 of the pedal 8, 11, 28 / 7, 10, 25 deg. Sine dwell: the i20 at 110
+  km/h and 0.40 spins 1 of 3 (was 0), the Lancer at 80 km/h and 0.75 2 of 3 (was 3), the rest as before. Scorecard, the
+  36 gravel rows: 32 / 31 PASS; `-car-lateral-rally2` 0.907 → 0.942 into its band (0.93-1.15), `-peak-kappa` 0.400 →
+  0.390 (0.4-0.7) and `-locked-lat-over-rolling` 0.427 → 0.414 (0.42-0.7) out of theirs: the shear law's longitudinal
+  slope follows the lateral one, and a locked tyre's side force does not rise with the rolling one. `-peak-mu-y` 0.878 →
+  0.911, `-lat-slope` 6.233 → 6.468. `cargo test -p rbr-tyre` passes. Not driven.
 - Cornering against the crews, corner by corner (2026-11-11; `harness/corner_limit.py`, the autopilot's `--speed-zone`;
   i20 Coupe WRC 2020, NGP's tyre / loose-v1 at "Gravel's sideways level"). One reading for both: per corner the peak 0.5
   s mean of the body's lateral g with under 0.3 g along the car (a real car's accelerometer, the trace's `glat`); at the
@@ -2829,6 +2841,22 @@ saved rank pages are read below.
   letting go (r 200). Braking, the 16 longest: 0.81 g, 0.5 s peak 1.04 (the crews' p90 1.37-1.43, the car's threshold
   1.33-1.40). So at 40-100 km/h the driver and the car are at the crews' level, and the rest of the gap is the driver's
   margin in fast corners and on the brake; the fast corners' limit on the stage is not measured (every level held).
+- The rear-driven cars' spins in the user's drives (2026-11-12; the replays of RSF 1197774, Alpine A110 Rally RGT, 9 km,
+  and RSF 1475091, BMW M3 E30 GrpA, 2 km, experimental-brush, both exact; per wheel from the trace; scratch). Five times
+  past 45 deg of sideslip, one of them the tyre under power: the Alpine at 9.19 km, 0.5-0.57 of the throttle in fourth
+  at 90 km/h with the rear at 7 deg and the front at 5, the inside rear at 0.20-0.36 of drive slip and the outside at
+  0.05-0.19; the rear at 18 deg after 0.5 s and 49 after 1.5 s, against opposite lock from 0.5 s (full by 1.5 s) with
+  0.27-0.34 of the throttle held. The others: two handbrake turns held on the lock they were pulled at (Alpine 5.11 km,
+  0.27-0.35 of the lever at 66-70 km/h, the yaw rate 44 to 115 deg/s; M3 2.17 km, 0.83 at 65 km/h); the Alpine off the
+  road at 8.47 km from 180 km/h without a pedal (all four wheels at 12 deg, then the contact); the M3 on its side at
+  1.34 km (the right wheels under 2.3 kN from 66 km/h at 0.39-0.47 of lock, the body rising 1.2 m/s at 51 km/h, past 100
+  deg of tilt 2 s later; whether a bank tripped it is not read). The pad (`handling.py`, pad-37, Alpine and M3, NGP's
+  tyre / the brush): the ramp steer's peak 1.21 and 1.19 / 1.22 and 1.23 g, at 10-11 / 3.5-4.5 deg of sideslip; full
+  throttle from 0.7-0.8 of it at 80 km/h spins 3 of 3 on either tyre; the lift 0 and 1 of 3 / 0 and 0, the radius -24
+  and -14 % / -12 and -5 %; the sine dwell's lowest spinning amplitude at 80 km/h 0.55 and 0.30 / 0.30 and 0.30, at 110
+  km/h 0.30 and 0.30 / 0.20 and 0.15, where NGP's tyre holds 28-49 deg at 0.15-0.20 with 77-121 % of the yaw rate left
+  1.75 s after the steering. So the power oversteer is the cars', alike on either tyre; the brush is the calmer on a
+  lift and the sharper in a quick change of direction at 110 km/h. No telemetry of a rear-driven car; nothing changed.
 - The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs

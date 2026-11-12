@@ -206,11 +206,14 @@ pub const GRAVEL_LONGITUDINAL: f64 = 0.9;
 
 /// Gravel's lateral level over NGP's, on the gravel share of the soil. At NGP's own level the car cornered under
 /// NGP's car (i20 Coupe WRC 2020, material 49, the profiles' aero): the ramp steer's peak at 80 km/h 0.871 g against
-/// 0.905, the circles of 65 / 100 m 0.89 g at 89 / 109 km/h against 0.92 / 0.93. 1.06 gives 0.912 g and 0.92 / 0.93;
-/// the straight braking moves by 0.02 g at most. The 2017-21 World Rally Cars in Finland corner at a p90 of 1.17 /
-/// 1.06 g on their cambered road at 40 / 100 m. By hand on RSF 524 (2026-11-11) the user found the gravel "quite a
-/// bit less grippy in the corners": the report the user's, the value ours.
-pub const GRAVEL_LATERAL: f64 = 1.06;
+/// 0.905, the circles of 65 / 100 m 0.89 g at 89 / 109 km/h against 0.92 / 0.93. 1.06 gave 0.912 g and 0.92 / 0.93,
+/// after the user found the gravel "quite a bit less grippy in the corners" by hand on RSF 524 (2026-11-11). 1.10, a
+/// user decision (2026-11-12) on the whole g the 2017-21 World Rally Cars hold in a slide in Finland (0.97 g from 15
+/// deg of sideslip at 60-100 km/h and 1.01 at 100-160, [`gravel_soil_share`]; the car at 1.06 0.94 and 0.98): 0.96
+/// and 1.00, the ramp steer's peak 0.942 g, the circles of 65 / 100 / 200 m 0.94 / 0.97 / 0.99 g (were 0.92 / 0.93 /
+/// 0.97); the straight braking does not move. Their p90 through corners of 40 / 100 m is 1.17 / 1.06 g on a cambered
+/// road.
+pub const GRAVEL_LATERAL: f64 = 1.10;
 
 /// The loose layer's depth, m, to which gravel keeps its level (RSF 524's material, Finland's road), the depth of
 /// NGP's loosest gravel, and the level there over NGP's ([`gravel_depth_level`]).
@@ -239,12 +242,12 @@ pub const GRAVEL_SOIL_SPEED: f64 = 10.0;
 /// held past the limit on the pad (material 49, circles of 65 / 100 / 200 m, the p90 of 2 s windows from 15 / 30 /
 /// 40 deg of sideslip up) NGP's tyre reads 1.01 / 1.02 / 1.02 g at 60-100 km/h and 1.07 at 100-160. The 2017-21
 /// World Rally Cars in Finland read 0.97 / 1.00 / 0.90 and 1.01 / 0.92 / 0.83 on their accelerometers (1.04 / 1.06 /
-/// 1.05 and 1.06 / 1.04 / 0.98 along their path, the road cambered). Held from 10 m/s, with [`GRAVEL_LATERAL`]: 0.94
-/// / 0.92 / 0.89 and 0.98 from 15 deg at 100-160, and the 200 m circle's limit 0.98 g at 159 km/h (NGP's tyre 0.99,
-/// Finland's p90 0.99). From 6 m/s (the value on 2026-11-11, a user decision on the real cars' whole g, then driven:
-/// "quite a bit less grippy in the corners") 0.91 / 0.90 / 0.87, 0.94 and 0.93 g at 156 km/h; from 14 m/s 0.99 /
-/// 0.99 / 0.95 and 1.03, over the real cars'. Not measured: 30 deg up above 100 km/h, where the held force is level
-/// and the real cars' whole g falls. Ours: the form and the value.
+/// 1.05 and 1.06 / 1.04 / 0.98 along their path, the road cambered). Held from 10 m/s, with [`GRAVEL_LATERAL`] at
+/// 1.06: 0.94 / 0.92 / 0.89 and 0.98 from 15 deg at 100-160, and the 200 m circle's limit 0.98 g at 159 km/h (NGP's
+/// tyre 0.99, Finland's p90 0.99); at 1.10 0.96 / 0.92 / 0.90 and 1.00. From 6 m/s (the value on 2026-11-11, a user
+/// decision on the real cars' whole g, then driven: "quite a bit less grippy in the corners") 0.91 / 0.90 / 0.87,
+/// 0.94 and 0.93 g at 156 km/h; from 14 m/s 0.99 / 0.99 / 0.95 and 1.03, over the real cars'. Not measured: 30 deg
+/// up above 100 km/h, where the held force is level and the real cars' whole g falls. Ours: the form and the value.
 pub fn gravel_soil_share(v_lat: f64) -> f64 {
     let v = v_lat.abs();
     if v > GRAVEL_SOIL_SPEED {
