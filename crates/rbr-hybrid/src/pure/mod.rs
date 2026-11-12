@@ -334,18 +334,17 @@ impl Pure {
 
     /// [`Pure::enter`] with a clone of `mem` ([`Pure::lend`]) for the run's context.
     #[inline(always)]
-    fn enter_with(&self, addr: u32, regs: Regs, mem: Mem) -> Return {
+    fn enter_with(&self, addr: u32, mut regs: Regs, mem: Mem) -> Return {
         // The outermost run opens the NGP scope ([`step`] opens its own); the runs inside it see the same base.
         let _ngp = (self.run_depth.load(Ordering::Relaxed) == 0).then(|| crate::ngp::Scope::new(self.ngp_base));
         let _run = PureRunGuard::new(&self.run_depth);
         self.entered.set(self.entered.get() + 1);
-        let mut regs = regs;
         regs.stack = self.mem.u32s(regs.esp + 4);
         if WATCHED.contains(&addr) {
             self.captures.watch(&self.mem, addr, &regs, self.keep_tyre_particles);
         }
         match self.slot_of(crate::ngp::file_at(self.ngp_base, addr)) {
-            Some(slot) => self.run_bound(slot, addr, regs, mem),
+            Some(slot) => self.run_bound(slot, addr, &regs, mem),
             None => {
                 self.give_back(mem);
                 self.enter_unbound(addr, regs)
@@ -373,12 +372,12 @@ impl Pure {
 
     /// [`Pure::enter`] of the binding in `slot` of [`bound`].
     #[inline(always)]
-    fn run_bound(&self, slot: usize, addr: u32, regs: Regs, mem: Mem) -> Return {
+    fn run_bound(&self, slot: usize, addr: u32, regs: &Regs, mem: Mem) -> Return {
         let b = bound()[slot];
         let outer = self.direct.then(|| self.in_place_now.replace(self.in_place_slots[slot]));
         let r = self.with_frame(addr, regs, || {
             let mut ctx = Ctx { mem, host: self.host() };
-            let r = (b.run)(&mut ctx, &regs);
+            let r = (b.run)(&mut ctx, regs);
             self.give_back(ctx.mem);
             r
         });
@@ -387,7 +386,7 @@ impl Pure {
         }
         match r {
             Ok(r) => {
-                self.ran_bound(slot, addr, &regs);
+                self.ran_bound(slot, addr, regs);
                 if self.direct {
                     self.learn_pop(slot, r.pop);
                 }
@@ -494,7 +493,7 @@ impl Pure {
             }
             self.entered.set(self.entered.get() + 1);
             let outer = self.in_place_now.replace(self.in_place_slots[slot]);
-            let r = self.with_frame(addr, regs, || run(&mut ctx, &regs));
+            let r = self.with_frame(addr, &regs, || run(&mut ctx, &regs));
             self.in_place_now.set(outer);
             r
         };
@@ -568,8 +567,8 @@ impl Pure {
             StandIn::Ret(pop) | StandIn::Listener(pop) => Return::void(regs.eax, pop),
             StandIn::Sin => Return::float_with_eax(regs.eax, trig::x87_sin(angle), 0),
             StandIn::Cos => Return::float_with_eax(regs.eax, trig::x87_cos(angle), 0),
-            StandIn::VectorCtor => self.with_frame(addr, *regs, || self.vector_ctor(regs.stack)),
-            StandIn::VectorDtor => self.with_frame(addr, *regs, || self.vector_dtor(regs.stack)),
+            StandIn::VectorCtor => self.with_frame(addr, regs, || self.vector_ctor(regs.stack)),
+            StandIn::VectorDtor => self.with_frame(addr, regs, || self.vector_dtor(regs.stack)),
             StandIn::Counter => self.counter(regs.stack[0]),
             StandIn::Allocate => {
                 let ptr = self.heap.lock().unwrap_or_else(|p| p.into_inner()).allocate(regs.stack[0]);
@@ -662,8 +661,8 @@ impl Pure {
     /// Runs `f` as the code at `addr` entered with `regs` would: host calls in it are placed below `regs.esp` and
     /// name `addr` as their caller (the driver's own emits).
     #[inline(always)]
-    pub fn with_frame<T>(&self, addr: u32, regs: Regs, f: impl FnOnce() -> T) -> T {
-        self.frames.borrow_mut().push((addr, Registers::of(&regs)));
+    pub fn with_frame<T>(&self, addr: u32, regs: &Regs, f: impl FnOnce() -> T) -> T {
+        self.frames.borrow_mut().push((addr, Registers::of(regs)));
         self.tell_trace();
         let out = f();
         self.frames.borrow_mut().pop();
