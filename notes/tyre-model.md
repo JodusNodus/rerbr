@@ -2744,6 +2744,11 @@ saved rank pages are read below.
     not say which tyre's answer past the limit is the real one.
   - Wet over dry on the user's own passes (the Alpine, apexes cornered at 1 g up when dry, speed squared): 0.82 /
     0.79 / 0.73 at 87 / 110 / 168 km/h (n 8 / 8 / 7).
+
+  Open: the brush's brake in turn under a driver (the lab's case: "Brake in turn, Fiesta Rally2, traced"; gravel's
+  under the pursuit's steering is "Braking in a turn under a steering driver"). After these drives the user found
+  tarmac "pretty close to reality" and gravel "quite a bit less grippy in the corners": tarmac stays, gravel's
+  cornering is "Gravel's sideways level".
 - The user's La Mussara drive against the crews (2026-11-12; RSF 476, i20 Coupe WRC 2020, experimental-brush, the replay
   all frames equal; España 2021 SS1 and SS4, 12 passes of 7 crews, their GPS fitted on the drive's path, gap median 4.6
   m, p90 12 m, and each sample at the driveline distance of its nearest path point; speeds from the GPS chord over 1 s;
@@ -2759,11 +2764,6 @@ saved rank pages are read below.
   letting go (r 200). Braking, the 16 longest: 0.81 g, 0.5 s peak 1.04 (the crews' p90 1.37-1.43, the car's threshold
   1.33-1.40). So at 40-100 km/h the driver and the car are at the crews' level, and the rest of the gap is the driver's
   margin in fast corners and on the brake; the fast corners' limit on the stage is not measured (every level held).
-
-  Open: the brush's brake in turn under a driver (the lab's case: "Brake in turn, Fiesta Rally2, traced"; gravel's
-  under the pursuit's steering is "Braking in a turn under a steering driver"). After these drives the user found
-  tarmac "pretty close to reality" and gravel "quite a bit less grippy in the corners": tarmac stays, gravel's
-  cornering is "Gravel's sideways level".
 - The eb/ngp shift is the engine model's, not the tyre's: 0.974-0.992 on every clean stage, with eb/experimental at
   0.995-1.004. The exception is 531 Rally2 at 1.019, a single run. The default autopilot drives a fixed plan (4 / 5
   m/s²), well under either tyre's limit, so these runs cannot show a grip difference. That needs at-limit runs
