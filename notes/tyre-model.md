@@ -1854,6 +1854,20 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.9 of the pedal the two tyres' ranges do not meet and at 0.75 they touch. Readings of level (grip, braking, the
   crews' g) hold for any setup near the default; readings of balance (the turn under braking, sideslip, the catch) are
   the default setup's.
+- `WheelAxisInclination` runs against the camber (2026-11-12; i20, scratch setups; the tyre probe's inclination at rest
+  and on the 100 m circle, whose outside wheels, the faster and lower ones, lean out with the roll, 2.3° at 0.9 g on
+  gravel): a more negative value stands the wheel up. At rest the fronts stand at -4.9 / -2.9 / -0.9° with 0 / -2.09 /
+  -4.19° on gravel and at -6.7 / -4.4 / -2.0° with 0 / -2.01 / -4.02° on tarmac, the rears at -1.1 / +1.2° with -0.73 /
+  -3° on gravel. So the defaults stand at -0.9° front, -1.1° rear on gravel and -2.0 / -2.2° on tarmac, the item above's
+  "front camber × 0.5" is 2° more camber and its × 1.5 and "rear camber -3°" stand the wheels past upright. The loaded
+  outside front at the limit, value × 1 / 0.5 / 0: gravel +1.3 / -0.6 / -2.8° (0.9 g), tarmac -0.2 / -2.2 / -4.3° (1.3
+  g). The 100 m circle's limit by the front value × 1 / 0.75 / 0.5 / 0.25 / 0: gravel 0.918 / 0.924 / 0.925 / 0.935 /
+  0.935 g (NGP's tyre 0.916 / 0.916 / 0.926 / 0.928 / 0.936), tarmac 1.345 / 1.361 / 1.376 / 1.382 / 1.394 (NGP's tyre
+  1.312 / 1.324 / 1.337 / 1.346 / 1.355), no peak inside the range: NGP's inclination scale
+  (`ngp::inclination::grip_scale`, 1 % of grip per degree leaning in to 5°, under both tyres and in a straight line too:
+  gravel's full-pedal braking +2.1 % at × 0.5) pays for camber past the 2° Michelin gives its tarmac rally tyre
+  (`michelin-pressure-2024`), where the tarmac default stands. The launcher's setup page words the value as the camber
+  itself (`setup_page/editor.rs`, "Negative leans the wheel's top inward").
 - Pedal overlap in a turn (2026-11-12; crews: the telemetry's throttle and brake channels with over 0.5 g of path
   lateral; game: the i20, default setups, the 100 m circle under the pursuit's steering, `--brake-from` with
   `--brake-throttle`, the pedal and the throttle held). Crews overlap: throttle over 20 % in 86 / 70 / 38 % of the
