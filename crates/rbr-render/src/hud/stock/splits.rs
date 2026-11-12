@@ -8,7 +8,7 @@ use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 use rbr_recording::splits::{Split, Splits, Standing, Verdict};
 
 use super::top::CLOCK_WIDTH;
-use super::{ACCENT, MARGIN};
+use super::ACCENT;
 use crate::hud::splits::{self, difference, end_page_title, signed, verdict_text};
 use crate::hud::time_label;
 
@@ -32,25 +32,28 @@ fn colour(difference: f32) -> Color32 {
     }
 }
 
-/// Draws the split panel for `record` over the top of `screen`, when there is one to show; `page` is the race's end
-/// page once it is over (FLW1). `flash`, the top of the space under the clock, shows a passed split's panel there; the
-/// finish and end pages always show. On a school drive (`school`) none of the end pages show: the lesson ends on its
-/// verdict panel (`super::school`).
-pub fn paint(painter: &Painter, screen: Rect, record: &Splits, page: Option<u32>, flash: Option<f32>, school: bool) {
-    if school {
-        if let (Some((number, split)), Some(top)) = (splits::flash(record), flash) {
-            flash_panel(painter, Pos2::new(screen.min.x + MARGIN, top), number, split);
-        }
-        return;
-    }
+/// Whether `record` has an end page to show ([`page`]); a school drive has none: the lesson ends on its verdict
+/// panel (`super::school`).
+pub fn has_page(record: &Splits, school: bool) -> bool {
+    !school && (record.retired || (record.over && record.standing.is_some()) || record.finished)
+}
+
+/// Draws `record`'s finish or end page over the top of `screen` ([`has_page`]); `page` is the race's end page once it
+/// is over (FLW1).
+pub fn page(painter: &Painter, screen: Rect, record: &Splits, page: Option<u32>) {
     if record.retired {
         retired_panel(painter, screen, record, page);
     } else if record.over && record.standing.is_some() {
         result_page(painter, screen, record);
-    } else if record.finished {
+    } else {
         finish_panel(painter, screen, record);
-    } else if let (Some((number, split)), Some(top)) = (splits::flash(record), flash) {
-        flash_panel(painter, Pos2::new(screen.min.x + MARGIN, top), number, split);
+    }
+}
+
+/// Draws the split `record` has just passed, when there is one, its top left at `at` (under the clock).
+pub fn passed(painter: &Painter, at: Pos2, record: &Splits) {
+    if let Some((number, split)) = splits::flash(record) {
+        flash_panel(painter, at, number, split);
     }
 }
 

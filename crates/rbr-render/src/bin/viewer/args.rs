@@ -10,6 +10,7 @@ use rbr_render::damage::{self, Zones};
 use rbr_render::ffb;
 use rbr_render::ghost;
 use rbr_render::glass;
+use rbr_render::hud::layout::{Layout, SCALES};
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
@@ -232,6 +233,9 @@ pub struct HudOptions {
     /// `--hud-hide LIST`, `--hud-show LIST`: the HUD's parts shown (`rbr_render::hud::Part`), all but the telemetry by
     /// default.
     pub parts: Parts,
+    /// `--hud-layout PART:X,Y;...`, `--hud-scale PERCENT`: where the parts stand and how large
+    /// (`rbr_render::hud::layout`).
+    pub layout: Layout,
 }
 
 /// `--help`'s text.
@@ -254,6 +258,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
               --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages,view  --hud-show tyres,trace,g
+              --hud-layout PART:X,Y;...  --hud-scale 50..200
   events:     --birdstrike  --rescue-at STEP  --seed N
   runs:       --screenshot PNG  --video FILE[.webp]  --video-fps N  --video-span FROM,TO  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|go+S|end+S
   -V, --version  print the version
@@ -331,7 +336,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut hdr = false;
     let mut title = None;
     let mut pause_menu = None;
-    let mut hud = HudOptions { show: true, mph: false, fps: false, stack: 0, parts: Parts::default() };
+    let mut hud =
+        HudOptions { show: true, mph: false, fps: false, stack: 0, parts: Parts::default(), layout: Layout::default() };
     let mut at_drive = None;
     let (mut car_gearbox, mut grind_sound, mut car_lock) = (None, None, None);
     let mut debug_view = DebugView::default();
@@ -625,6 +631,15 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--hud-hide" | "--hud-show" => {
                 let list = args.next().ok_or(format!("{arg} needs a list of HUD parts"))?;
                 hud.parts = hud.parts.with(&list, arg == "--hud-show")?;
+            }
+            "--hud-layout" => {
+                let scale = hud.layout.scale;
+                hud.layout = Layout { scale, ..Layout::parse(&args.next().ok_or("--hud-layout needs PART:X,Y;...")?)? };
+            }
+            "--hud-scale" => {
+                let value = args.next().ok_or("--hud-scale needs a percentage")?;
+                let wrong = || format!("--hud-scale {value}: {} to {} (percent)", SCALES.start(), SCALES.end());
+                hud.layout.scale = value.parse().ok().filter(|s| SCALES.contains(s)).ok_or_else(wrong)?;
             }
             "--at-drive" => at_drive = Some(PathBuf::from(args.next().ok_or("--at-drive needs a recording")?)),
             "--at" => {

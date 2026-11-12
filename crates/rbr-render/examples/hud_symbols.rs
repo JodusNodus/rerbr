@@ -106,6 +106,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             trace: Vec::new(),
             g_force: None,
             parts: Default::default(),
+            layout: Default::default(),
         };
         let pixels = render(&mut renderer, |encoder, view| {
             overlay.draw(&gpu.device, &gpu.queue, encoder, view, SIZE, &readout)

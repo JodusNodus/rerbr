@@ -59,6 +59,7 @@ fn readout(splits: Splits, race: RaceHud) -> Readout {
         trace: Vec::new(),
         g_force: None,
         parts: Default::default(),
+        layout: Default::default(),
     }
 }
 

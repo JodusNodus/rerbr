@@ -7,6 +7,7 @@
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 
+use super::layout::Layout;
 use super::{Hud, Part, Readout};
 
 mod car_status;
@@ -35,53 +36,108 @@ const ALERT: Color32 = Color32::from_rgb(240, 160, 60);
 #[derive(Default)]
 pub struct Stock {
     sprites: pace::Sprites,
+    /// Where each part was last drawn, by its index in [`Part::ALL`]; `None` for one that drew nothing.
+    bounds: [Option<Rect>; Part::ALL.len()],
 }
 
 impl Stock {
     /// The HUD with `data`'s pace sprites.
     pub fn new(data: &rbr_formats::data::Data) -> Stock {
-        Stock { sprites: pace::Sprites::load(data) }
+        Stock { sprites: pace::Sprites::load(data), ..Stock::default() }
     }
-}
 
-impl Hud for Stock {
-    fn paint(&mut self, ctx: &egui::Context, r: &Readout) {
-        self.sprites.upload(ctx);
-        let painter = ctx.layer_painter(egui::LayerId::background());
-        let screen = ctx.content_rect();
+    /// Where the last paint drew `part` (a [`Part::MOVABLE`] one), on its screen: what the layout editor drags.
+    pub fn bounds(&self, part: Part) -> Option<Rect> {
+        self.bounds[part as usize]
+    }
+
+    /// Paints `r` with `painter` on `screen`, [`REFERENCE_HEIGHT`](super::REFERENCE_HEIGHT) points high, each part
+    /// where its layout puts it ([`Readout::layout`]).
+    pub fn paint_on(&mut self, painter: &egui::Painter, screen: Rect, r: &Readout) {
+        self.sprites.upload(painter.ctx());
+        self.bounds = [None; Part::ALL.len()];
+        let (sprites, layout) = (&self.sprites, &r.layout);
+        let mut bounds = [None; Part::ALL.len()];
+        let mut part = |part: Part, paint: &mut dyn FnMut()| {
+            bounds[part as usize] = placed(painter, screen, layout, part, paint);
+        };
 
         // Top right: the rendered frames per second, when the viewer measures them, and the view. Ours.
-        let mut at = Pos2::new(screen.max.x - MARGIN, screen.min.y + MARGIN);
-        if let Some(fps) = r.fps {
-            painter.text(at, Align2::RIGHT_TOP, format!("{fps:.0} fps"), FontId::proportional(12.0), DIM);
-            at.y += 16.0;
-        }
-        if r.parts.shows(Part::View) {
-            let keys = if r.view_keys.is_empty() { String::new() } else { format!(" · {}", r.view_keys) };
-            painter.text(at, Align2::RIGHT_TOP, format!("{} view{keys}", r.view), FontId::proportional(12.0), DIM);
-        }
+        part(Part::View, &mut || {
+            let mut at = Pos2::new(screen.max.x - MARGIN, screen.min.y + MARGIN);
+            if let Some(fps) = r.fps {
+                painter.text(at, Align2::RIGHT_TOP, format!("{fps:.0} fps"), FontId::proportional(12.0), DIM);
+                at.y += 16.0;
+            }
+            if r.parts.shows(Part::View) {
+                let keys = if r.view_keys.is_empty() { String::new() } else { format!(" · {}", r.view_keys) };
+                painter.text(at, Align2::RIGHT_TOP, format!("{} view{keys}", r.view), FontId::proportional(12.0), DIM);
+            }
+        });
 
-        let under_clock = top::clock(&painter, screen, r);
-        if let Some(record) = &r.splits {
-            let flash = r.parts.shows(Part::Splits).then_some(under_clock);
-            splits::paint(&painter, screen, record, r.state.end_page, flash, r.state.school.is_some());
+        let school = r.state.school.is_some();
+        let page = r.splits.as_ref().filter(|record| splits::has_page(record, school));
+        part(Part::Clock, &mut || {
+            let under_clock = top::clock(painter, screen, r);
+            if let Some(record) = r.splits.as_ref().filter(|_| page.is_none() && r.parts.shows(Part::Splits)) {
+                splits::passed(painter, Pos2::new(screen.min.x + MARGIN, under_clock), record);
+            }
+        });
+        if let Some(record) = page {
+            splits::page(painter, screen, record, r.state.end_page);
         }
         // `HUD::Update` draws nothing while the rescue helicopter flies; the caption is ours.
         if r.state.helicopter && r.state.end_page.is_none() {
             let at = Pos2::new(screen.center().x, screen.min.y + MARGIN);
             painter.text(at, Align2::CENTER_TOP, "rescue helicopter called", FontId::proportional(15.0), DIM);
+            self.bounds = bounds;
             return;
         }
-        top::progress(&painter, screen, r);
-        centre::paint(&painter, screen, r, &self.sprites);
-        let dial = dial::paint(&painter, screen, r);
-        let bottom = telemetry::paint(&painter, screen, dial, r);
-        if r.parts.shows(Part::Car) {
-            // Over the trace when that shows.
-            let screen = Rect::from_min_max(screen.min, Pos2::new(screen.max.x, bottom));
-            car_status::paint(&painter, screen, &r.state);
-        }
+        part(Part::Progress, &mut || top::progress(painter, screen, r));
+        part(Part::Pace, &mut || centre::note(painter, screen, r, sprites));
+        part(Part::Messages, &mut || centre::message(painter, screen, r));
+        centre::calls(painter, screen, r, sprites);
+        // The telemetry's cards stand beside the dial and the car's status over the trace before the layout moves
+        // them, whichever of them show.
+        let mut right = screen.max.x;
+        part(Part::Dash, &mut || right = dial::paint(painter, screen, r));
+        let dial = right;
+        part(Part::Tyres, &mut || right = telemetry::tyres(painter, screen, dial, r));
+        part(Part::Gforce, &mut || telemetry::g_force(painter, screen, right, r));
+        let mut bottom = screen.max.y;
+        part(Part::Trace, &mut || bottom = telemetry::trace(painter, screen, r));
+        part(Part::Car, &mut || {
+            if r.parts.shows(Part::Car) {
+                let screen = Rect::from_min_max(screen.min, Pos2::new(screen.max.x, bottom));
+                car_status::paint(painter, screen, &r.state);
+            }
+        });
+        self.bounds = bounds;
     }
+}
+
+impl Hud for Stock {
+    fn paint(&mut self, ctx: &egui::Context, r: &Readout) {
+        self.paint_on(&ctx.layer_painter(egui::LayerId::background()), ctx.content_rect(), r);
+    }
+}
+
+/// Paints a part and puts what it drew where `layout` has it ([`Layout::place`]); where that is, `None` when it drew
+/// nothing.
+fn placed(painter: &egui::Painter, screen: Rect, layout: &Layout, part: Part, paint: &mut dyn FnMut()) -> Option<Rect> {
+    let start = painter.add(egui::Shape::Noop);
+    paint();
+    let end = painter.add(egui::Shape::Noop);
+    painter.ctx().graphics_mut(|graphics| {
+        let list = graphics.entry(painter.layer_id());
+        let drawn = list.all_entries().take(end.0).skip(start.0 + 1);
+        let bounds = drawn.map(|s| s.shape.visual_bounding_rect()).filter(Rect::is_positive).reduce(Rect::union)?;
+        let place = layout.place(part, bounds, screen);
+        if place != egui::emath::TSTransform::IDENTITY {
+            list.transform_range(start, end, place);
+        }
+        Some(place * bounds)
+    })
 }
 
 /// A card: the panel's fill at `alpha` with a stripe of `accent` down its left edge.

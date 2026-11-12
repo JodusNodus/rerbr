@@ -144,6 +144,7 @@ pub fn readout(
         trace: trace.unwrap_or_default(),
         g_force: g_force.flatten(),
         parts: options.parts,
+        layout: options.layout,
     }
 }
 

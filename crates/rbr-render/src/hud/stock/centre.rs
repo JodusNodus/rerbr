@@ -1,5 +1,5 @@
-//! The middle of the screen: the countdown's plaque, FALSE START, the pace note, the messages, WRONG WAY, the rally's
-//! false-start warning and the pace stack.
+//! The middle of the screen: the race's calls (the countdown's plaque, FALSE START, WRONG WAY, the rally's false-start
+//! warning) and the pace stack, the pace note, and the messages.
 
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 
@@ -18,8 +18,9 @@ fn shadowed(painter: &Painter, at: Pos2, text: String, font: FontId, colour: Col
     painter.text(at, Align2::CENTER_CENTER, text, font, colour);
 }
 
-/// The live HUD's centre parts: the countdown, the false start, the pace note, the messages and the pace stack.
-pub fn paint(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprites) {
+/// The race's calls, which stay where they are: the countdown, FALSE START, WRONG WAY, the rally's false-start
+/// warning, and the pace stack.
+pub fn calls(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprites) {
     let s = &r.state;
     let font = FontId::proportional;
     let centre = screen.center().x;
@@ -33,6 +34,28 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprit
         let colour = Color32::from_rgba_unmultiplied(235, 60, 50, (alpha * 255.0) as u8);
         shadowed(painter, Pos2::new(centre, screen.height() * 0.42), "FALSE START".into(), font(48.0), colour);
     }
+    if let Some(alpha) = s.wrong_way {
+        let colour = Color32::from_rgba_unmultiplied(235, 60, 50, (alpha * 255.0) as u8);
+        let panel = Rect::from_center_size(Pos2::new(centre, screen.height() * 0.5), Vec2::new(300.0, 64.0));
+        painter.rect_filled(panel, RADIUS, PANEL.gamma_multiply(alpha));
+        painter.rect_stroke(panel, RADIUS, (2.0, colour), egui::StrokeKind::Inside);
+        painter.text(panel.center(), Align2::CENTER_CENTER, WRONG_WAY, font(40.0), colour);
+    }
+    if let Some((count, alpha)) = s.warning {
+        let text = FALSE_START_WARNINGS[usize::from(count.clamp(1, 3)) - 1];
+        let panel = Rect::from_center_size(Pos2::new(centre, screen.height() * 0.78), Vec2::new(560.0, 52.0));
+        painter.rect_filled(panel, RADIUS, Color32::from_black_alpha((255.0 * alpha) as u8));
+        let ink = TEXT.gamma_multiply((alpha * 2.0).min(1.0));
+        painter.text(panel.center(), Align2::CENTER_CENTER, text, font(17.0), ink);
+    }
+    if !s.stack.is_empty() {
+        paint_stack(painter, screen, &s.stack, sprites);
+    }
+}
+
+/// The pace note of the call ([`Part::Pace`]).
+pub fn note(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprites) {
+    let (s, font, centre) = (&r.state, FontId::proportional, screen.center().x);
     if let Some((note, alpha)) = s.note.as_ref().filter(|_| r.parts.shows(Part::Pace)) {
         let panel = Rect::from_min_size(Pos2::new(centre - 60.0, screen.min.y + PACE_TOP), Vec2::new(120.0, 124.0));
         painter.rect_filled(panel, RADIUS, PANEL.gamma_multiply(*alpha));
@@ -55,6 +78,11 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprit
             painter.text(panel.left_top() + Vec2::new(6.0, 4.0), Align2::LEFT_TOP, left, font(13.0), ink(ACCENT));
         }
     }
+}
+
+/// The stand-still and car-problem message ([`Part::Messages`]).
+pub fn message(painter: &Painter, screen: Rect, r: &Readout) {
+    let (s, font, centre) = (&r.state, FontId::proportional, screen.center().x);
     if let Some((message, alpha)) = s.message.filter(|_| r.parts.shows(Part::Messages)) {
         let lines = message.text().lines().count() as f32;
         let panel = Rect::from_center_size(
@@ -63,23 +91,6 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout, sprites: &pace::Sprit
         );
         super::panel(painter, panel, ALERT, alpha);
         painter.text(panel.center(), Align2::CENTER_CENTER, message.text(), font(17.0), TEXT.gamma_multiply(alpha));
-    }
-    if let Some(alpha) = s.wrong_way {
-        let colour = Color32::from_rgba_unmultiplied(235, 60, 50, (alpha * 255.0) as u8);
-        let panel = Rect::from_center_size(Pos2::new(centre, screen.height() * 0.5), Vec2::new(300.0, 64.0));
-        painter.rect_filled(panel, RADIUS, PANEL.gamma_multiply(alpha));
-        painter.rect_stroke(panel, RADIUS, (2.0, colour), egui::StrokeKind::Inside);
-        painter.text(panel.center(), Align2::CENTER_CENTER, WRONG_WAY, font(40.0), colour);
-    }
-    if let Some((count, alpha)) = s.warning {
-        let text = FALSE_START_WARNINGS[usize::from(count.clamp(1, 3)) - 1];
-        let panel = Rect::from_center_size(Pos2::new(centre, screen.height() * 0.78), Vec2::new(560.0, 52.0));
-        painter.rect_filled(panel, RADIUS, Color32::from_black_alpha((255.0 * alpha) as u8));
-        let ink = TEXT.gamma_multiply((alpha * 2.0).min(1.0));
-        painter.text(panel.center(), Align2::CENTER_CENTER, text, font(17.0), ink);
-    }
-    if !s.stack.is_empty() {
-        paint_stack(painter, screen, &s.stack, sprites);
     }
 }
 

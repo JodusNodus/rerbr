@@ -23,6 +23,7 @@ use crate::live::RaceHud;
 
 pub mod camera_page;
 pub mod ffb_page;
+pub mod layout;
 pub mod model;
 pub mod pace;
 pub mod pause;
@@ -200,8 +201,9 @@ pub struct Readout {
     /// (`telemetry`); empty and `None` while their parts are hidden.
     pub trace: Vec<telemetry::TracePoint>,
     pub g_force: Option<[f32; 2]>,
-    /// The parts shown.
+    /// The parts shown, and where and how large.
     pub parts: Parts,
+    pub layout: layout::Layout,
 }
 
 impl Readout {

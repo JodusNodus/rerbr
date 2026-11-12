@@ -68,6 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         trace: Vec::new(),
         g_force: None,
         parts: Default::default(),
+        layout: Default::default(),
     };
     for (name, mode, retired, failed, standing, show_hud, size) in [
         ("quick", 1, false, false, true, true, (1280, 720)),

@@ -174,6 +174,7 @@ fn readout(live: &Live, controls: &Controls) -> Readout {
         trace: Vec::new(),
         g_force: None,
         parts: Default::default(),
+        layout: Default::default(),
     }
 }
 

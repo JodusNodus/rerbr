@@ -131,6 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         trace: Vec::new(),
         g_force: None,
         parts: Default::default(),
+        layout: Default::default(),
     };
     let split = |time, reference| Split { time: Some(time), reference: Some(reference) };
     let finished = Splits {
@@ -227,6 +228,7 @@ fn readout(live: &Live, controls: &Controls) -> Readout {
         trace: Vec::new(),
         g_force: None,
         parts: Default::default(),
+        layout: Default::default(),
     }
 }
 
