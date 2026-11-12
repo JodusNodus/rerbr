@@ -296,13 +296,26 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.73, 6.5; 15 ms 0.59, 3.7; 20 ms 0.49, 2.9; 30 ms 0.36, 2.0. Below 3 Hz the rms stays within
     1 % (0.4286 to 0.4267); the force trails by about the value. Two poles at the same lag did no better. Not tried
     on a wheel.
-- Trials (ours, 2026-11-12; `rerbr --ffb-linear`, `rerbr --ffb-breakdown DIR`, for the session, never saved, not on
-  any page):
-  - `--ffb-linear` (`viewer --ffb-linear`, `rbr_render::ffb::linear`): the wheel's force linear in the torque, from
-    NGP's curve inverted: `0.65 x / x(0.65, p)`, equal to the curve at force 0.65 (`load::TARGET`) and held at 1 from
-    1.54 times that torque, where the curve gives 0.80. Why: the curve flattens what the steering loses towards the
-    limit (a quarter less torque from force 0.65 is 16 % less force, from 0.82 12 %, from 0.95 6 %). The sensitivity
-    still sets the level; the page's "maxed out" counts the curve's 0.95, not the line's 1. Not tried on a wheel.
+- Curve share (ours, 2026-11-12, user: "how much we follow the ngp curve"; `rbr_render::ffb::shape`, `[ffb] curve`,
+  0-100 %, default 100 = NGP's own, the force sent unchanged): the wheel's force is that share of NGP's curve and
+  the rest of a line in the steering torque, `0.65 x / x(0.65, p)` from the curve inverted, equal to the curve at
+  force 0.65 (`load::TARGET`) and held at 1 from 1.54 times that torque, where the curve gives 0.80. Set on the
+  launcher's Controls page and the pause menu's Force feedback page (live, `Wheel::set_curve`), for every car.
+  - Why: the curve flattens what the steering loses towards the limit of grip (a quarter less torque from force
+    0.65 is 16 % less force, from 0.82 12 %, from 0.95 6 %); the line keeps it whole, is lighter on small loads and
+    reaches full force sooner.
+  - The sensitivity still sets the level and its suggestion is the same (both meet at 0.65); the page's graph,
+    "maxed out" and advice follow the share (`load::shaped`, `load::maxed_from`). The HUD's force and the stored
+    load stay NGP's. Not tried on a wheel.
+- Trials (ours, 2026-11-12; `rerbr --ffb-aligning W`, `rerbr --ffb-breakdown DIR`, for the session, never saved, not
+  on any page):
+  - `--ffb-aligning W` (`rbr-standalone --ffb-aligning`, with `--live`, 0-5, 1 = NGP's; `steer_log::Aligning`): the
+    wheel's force with the tyres' aligning part of the torque sum (the breakdown's) weighted by W. The surplus
+    `(W - 1) * aligning` goes through the car's filter with its own state (`steering_ffb::filtered_torque`, linear,
+    so it adds to the car's filtered torque), the sum through NGP's curve; only the step record's force changes,
+    nothing is written, the HUD's force and the stored load stay NGP's. With the aligning part at 0.30 of the sum
+    (below) the torque rises by about 0.3 (W - 1) in steady cornering. A replay drops the flag. Not tried on a
+    wheel.
   - `--ffb-breakdown DIR` (`rbr-standalone --ffb-breakdown`, with `--live` or `--autopilot`; `steer_log.rs`): a CSV
     row per frame of each steered wheel's add to the torque sum, split along the contact's axes into the lateral
     force's part (with the tyre's moment about the rolling direction: the caster trail), the longitudinal force's
@@ -315,7 +328,8 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     replay drops the flag.
   - Units (from the keys, not measured): the sum is the rack's force, N (`inv_arm` 1/m, `inv_rack` the rod's
     cosine); `SteeringRackRatio` is the rack's travel per turn of the steering wheel, m (`wheel_rotation::car_degrees`),
-    so the torque NGP's curve takes is 2π times the N m at the rim with the car's own lock.
+    so the torque NGP's curve takes is 2π times the N m at the rim with the car's own lock. Consistent
+    for `--car 2`: gain 9.56 /m times 0.0467 m per turn over 2π is 1/14.1, a 14:1 steering ratio.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only
