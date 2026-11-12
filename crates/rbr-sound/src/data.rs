@@ -27,6 +27,20 @@ const WET_ROAD: &[u8] = include_bytes!("../sounds/wet_road.wav");
 /// Ours: the verge's recordings (`crate::verge`, `sounds/CREDITS.md`): the tyres' swish on grass and the body
 /// brushing through bushes, loops ([`CarBank::grass`], [`CarBank::brush`]), and branches slapping the body
 /// ([`CarBank::branches`]).
+/// Ours: the body's recordings (`sounds/CREDITS.md`): the bump stops' knocks, soft to hard
+/// ([`CarBank::bottomings`], `crate::suspension`), and the body scraping the road, a loop ([`CarBank::scrape`],
+/// `crate::impact`).
+const THUDS: [&[u8]; 8] = [
+    include_bytes!("../sounds/thud1.wav"),
+    include_bytes!("../sounds/thud2.wav"),
+    include_bytes!("../sounds/thud3.wav"),
+    include_bytes!("../sounds/thud4.wav"),
+    include_bytes!("../sounds/thud5.wav"),
+    include_bytes!("../sounds/thud6.wav"),
+    include_bytes!("../sounds/thud7.wav"),
+    include_bytes!("../sounds/thud8.wav"),
+];
+const SCRAPE: &[u8] = include_bytes!("../sounds/scrape.wav");
 const GRASS: &[u8] = include_bytes!("../sounds/grass.wav");
 const BRUSH: &[u8] = include_bytes!("../sounds/brush.wav");
 const BRANCHES: [&[u8]; 4] = [
@@ -301,8 +315,11 @@ pub struct CarBank {
     pub grass: Wave,
     pub brush: Wave,
     pub branches: Vec<Wave>,
+    /// Ours (`crate::impact`): the embedded scrape loop ([`SCRAPE`]).
+    pub scrape: Wave,
     /// `IMPACT::GRUS Snd1-20` (the gravel hits; `LoadWaves` starts at 1, so `Snd0` is unused), `CAR::SQUEEKS Sqe1-18`,
-    /// `CAR::SUSPENSION Sus1-4` and `CAR::DRIVESHAFT DS1-13`.
+    /// the bump stops' knocks (ours, the embedded [`THUDS`] soft to hard; 1.02's are `CAR::SUSPENSION Sus1-4`, two
+    /// samples twice) and `CAR::DRIVESHAFT DS1-13`.
     pub grus: Vec<Wave>,
     pub squeaks: Vec<Wave>,
     pub bottomings: Vec<Wave>,
@@ -493,7 +510,8 @@ impl CarBank {
             branches: BRANCHES.iter().map(|b| Wave::decode(b)).collect::<Result<_, _>>()?,
             grus: from_one(&impacts, "IMPACT::GRUS", "Snd")?,
             squeaks: from_one(&effects, "CAR::SQUEEKS", "Sqe")?,
-            bottomings: from_one(&effects, "CAR::SUSPENSION", "Sus")?,
+            bottomings: THUDS.iter().map(|b| Wave::decode(b)).collect::<Result<_, _>>()?,
+            scrape: Wave::decode(SCRAPE)?,
             drive_shafts: from_one(&effects, "CAR::DRIVESHAFT", "DS")?,
             exhaust_pops: from_one(&effects, "CAR::EXHAUST", "Pop")?,
             pops: from_one(&effects, &format!("CAR{car}::EXHAUSTNEW"), "Pop")?,

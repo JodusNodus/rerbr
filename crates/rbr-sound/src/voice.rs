@@ -29,6 +29,8 @@ pub enum Loop {
     /// `data::CarBank::brush`).
     Grass,
     Brush,
+    /// Ours (`crate::impact`): the body scraping along the road or a bank (`data::CarBank::scrape`).
+    Scrape,
 }
 
 /// The one-shots.

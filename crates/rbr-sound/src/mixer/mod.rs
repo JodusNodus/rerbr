@@ -406,6 +406,7 @@ impl Mixer {
             (Loop::WiperMotor, voice(&bank.glass.motor)),
             (Loop::Grass, voice(&bank.grass)),
             (Loop::Brush, voice(&bank.brush)),
+            (Loop::Scrape, voice(&bank.scrape)),
         ]);
         let materials = [Material::Gravel, Material::Tarmac, Material::Snow];
         let banks = Banks {
@@ -919,11 +920,18 @@ impl Mixer {
             Loop::Cooler => Some(Place::Cooler),
             // Ours (`crate::verge`): at the car, as the tyres.
             Loop::Grass | Loop::Brush => Some(Place::Tire),
+            // Ours (`crate::impact`): at the car, as the impacts.
+            Loop::Scrape => Some(Place::Ranged),
             Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind | Loop::WiperMotor => None,
         };
         let placed = place.map(|p| (self.placed(p), self.car_pan));
-        // The wind, the grass and the brush heard in the car come through the cabin, as the tyres' roar (ours).
-        let cabin = matches!(voice, Loop::Wind | Loop::Grass | Loop::Brush).then(|| self.cabin());
+        // The wind, the grass and the brush heard in the car come through the cabin, as the tyres' roar (ours); the
+        // scrape rings the shell as the stones do.
+        let cabin = match voice {
+            Loop::Wind | Loop::Grass | Loop::Brush => Some(self.cabin()),
+            Loop::Scrape => Some(self.inside.then(|| OnePole::new(self.rate, STONE_CUTOFF))),
+            _ => None,
+        };
         let option = match voice {
             Loop::Engine | Loop::Gearbox | Loop::Diff => self.volumes.engine,
             Loop::Grass => self.volumes.tyres,

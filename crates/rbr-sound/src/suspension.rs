@@ -1,7 +1,7 @@
 //! The suspension sounds of `CCarSound`'s damper handler (0x4ae260, read in the disassembly) from each wheel's damper
 //! signal words (`rbr_recording::sound`, `dampers`): squeaks (`CAR::SQUEEKS`, `CCarSound::Vf5c` 0x4ac2c0 and
-//! `CTireSnd::M7700` 0x4d7700), bump-stop knocks (`CAR::SUSPENSION`, `M77c0` 0x4d77c0; a hard one with a ranged
-//! impact, `CCollisionSnd::Vf64` 0x4b2ed0), and the broken-damper call. Pure. rbr-recomp `notes/sound.md` 6.3.
+//! `CTireSnd::M7700` 0x4d7700), bump-stop knocks (ours, the embedded thuds in place of `CAR::SUSPENSION`, `M77c0`
+//! 0x4d77c0; a hard one with a ranged impact, `CCollisionSnd::Vf64` 0x4b2ed0), and the broken-damper call. Pure. rbr-recomp `notes/sound.md` 6.3.
 //!
 //! The handler runs on each damper emit, which the wheel's frame finish (`CWheel::Vf28` 0x53f230) makes once a frame
 //! before it resets the words (`CSpringDamper::ResetOutputs` 0x52e010). The live picture runs that reset once an
@@ -25,8 +25,9 @@ const SQUEAK_ODDS: u32 = 10;
 const SQUEAK_PITCH: f32 = 0.5;
 /// In the car a bump above 0.01 (0x72f440) knocks. 1.02 plays every one as a ranged impact of power
 /// `(bump + 1) * 200` (0x795e14, 0x730890) at the impacts' full level, and above 0.8 (0x72f610) the bottoming too.
-/// Ours: the knock is the bottoming sample at the bump's share of 0.8 (amplitude by the hit's speed), and the
-/// ranged impact joins it only above 0.8; a wheel that knocked is quiet for [`KNOCK_GAP`] frames (0.15 s) unless
+/// Ours: the knock is a thud on the car's body (`data::CarBank::bottomings`, soft to hard: [`thud`]) at
+/// [`THUD_GAIN`] times the bump's share of 0.8 (amplitude by the hit's speed), and the ranged impact joins it only
+/// above 0.8; a wheel that knocked is quiet for [`KNOCK_GAP`] frames (0.15 s) unless
 /// the bump is more than [`HARDER`] times its last. A strut riding its stop changes the word every step, and most
 /// hits are light (Alpine A110 RGT on Mont Ventoux, 330 s: 1979 new words, median 0.037, a tenth above 0.13), which
 /// 1.02's rule plays as a crash sample each.
@@ -34,6 +35,21 @@ const KNOCK: f32 = 0.01;
 const KNOCK_POWER: f32 = 200.0;
 const BOTTOMING: f32 = 0.8;
 const KNOCK_GAP: u32 = 9;
+/// The thuds are recorded 6 dB under 1.02's bottoming samples (loudest 50 ms, -11 against -4.5 dBFS).
+const THUD_GAIN: f32 = 2.0;
+/// The knock's share of a full one from which the middle and the hard thuds play.
+const THUD_TIERS: [f32; 2] = [0.2, 0.6];
+
+/// The thud of a knock at `level` (0 to 1) from a bank of `count` running soft to hard: one of its first quarter
+/// below [`THUD_TIERS`], of its second quarter between them, of its harder half above; `pick` chooses in the tier.
+pub fn thud(level: f32, count: usize, pick: usize) -> usize {
+    let (from, to) = match level {
+        l if l < THUD_TIERS[0] => (0, count / 4),
+        l if l < THUD_TIERS[1] => (count / 4, count / 2),
+        _ => (count / 2, count),
+    };
+    (from + pick % (to - from).max(1)).min(count - 1)
+}
 /// The broken damper's call (`CSigCarDamageSpeech` 7: `weve_got_fire` in 1.02's table at 0x7c37e0).
 pub const BROKEN_CALL: u32 = 7;
 
@@ -124,8 +140,9 @@ impl Suspension {
             if bump > KNOCK && inside && (self.knock_wait[k] == 0 || bump > self.knocked[k] * HARDER) {
                 (self.knock_wait[k], self.knocked[k]) = (KNOCK_GAP, bump);
                 if self.bottomings > 0 {
-                    let shot = Shot::Bottoming(rand() as usize % self.bottomings);
-                    let gain = self.bottoming_gain * (bump / BOTTOMING).min(1.0);
+                    let level = (bump / BOTTOMING).min(1.0);
+                    let shot = Shot::Bottoming(thud(level, self.bottomings, rand() as usize));
+                    let gain = self.bottoming_gain * THUD_GAIN * level;
                     out.push(Command::Hit { shot, gain, pitch: 1.0, distance: wheels[k] });
                 }
                 if bump > BOTTOMING {
@@ -156,7 +173,7 @@ mod tests {
 
     #[test]
     fn a_new_bump_knocks_in_the_car_by_its_speed_and_bottoms_above_08() {
-        let mut s = Suspension::new([1.0; 3], [18, 4, 20]);
+        let mut s = Suspension::new([1.0; 3], [18, 8, 20]);
         assert_eq!(s.step(&sound(0.0, 0.0, 1), true, [0.0; 4], FRAME, || 0), (vec![], vec![]));
         let shots = |out: Vec<Command>| -> Vec<(Shot, f32)> {
             out.iter()
@@ -166,9 +183,9 @@ mod tests {
                 })
                 .collect()
         };
-        // A light touch: the bottoming sample alone at 0.2 / 0.8.
+        // A light touch: a middle thud alone at twice 0.2 / 0.8.
         let (out, _) = s.step(&sound(0.2, 0.0, 1), true, [0.0; 4], FRAME, || 0);
-        assert_eq!(shots(out), [(Shot::Bottoming(0), 0.25)].repeat(4));
+        assert_eq!(shots(out), [(Shot::Bottoming(2), 0.5)].repeat(4));
         // The same word again is no new hit; outside the car a new one is silent.
         assert!(s.step(&sound(0.2, 0.0, 1), true, [0.0; 4], FRAME, || 0).0.is_empty());
         assert!(s.step(&sound(2.0, 0.0, 1), false, [0.0; 4], FRAME, || 0).0.is_empty());
@@ -176,7 +193,16 @@ mod tests {
         // trunc(180 * 0.005) = 0.
         assert!(s.step(&sound(0.25, 0.0, 1), true, [0.0; 4], FRAME, || 0).0.is_empty());
         let (out, _) = s.step(&sound(0.9, 0.0, 1), true, [0.0; 4], FRAME, || 0);
-        assert_eq!(shots(out), [(Shot::Bottoming(0), 1.0), (Shot::Ranged(0), 1.0)].repeat(4));
+        assert_eq!(shots(out), [(Shot::Bottoming(4), 2.0), (Shot::Ranged(0), 1.0)].repeat(4));
+    }
+
+    #[test]
+    fn thuds_run_soft_to_hard() {
+        assert_eq!([0.05, 0.19, 0.2, 0.59, 0.6, 1.0].map(|l| thud(l, 8, 0)), [0, 0, 2, 2, 4, 4]);
+        assert_eq!([0.05, 0.3, 1.0].map(|l| thud(l, 8, 7)), [1, 3, 7]);
+        // A small bank still has a sample for each level.
+        assert_eq!([0.05, 0.3, 1.0].map(|l| thud(l, 2, 5)), [0, 0, 1]);
+        assert_eq!(thud(1.0, 1, 3), 0);
     }
 
     #[test]
