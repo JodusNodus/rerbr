@@ -7,8 +7,8 @@ use std::path::Path;
 /// viewer arguments, the current command line's extra arguments over them (so they override, for example `--view`),
 /// then `--live` with the header's stepping command serving `path`. The header's viewer arguments lose
 /// `--save-replay`, `--save-ghost` and `--best-ghost` (each with its value), and the stepping command loses
-/// `--frames-out`, `--replay-out`, `--pilot` and `--ffb-breakdown` (each with its value). The current command line keeps its own
-/// `--replay FILE`: the viewer's marker that it watches.
+/// `--frames-out`, `--replay-out`, `--pilot`, `--ffb-breakdown` and `--ffb-aligning` (each with its value). The current
+/// command line keeps its own `--replay FILE`: the viewer's marker that it watches.
 pub fn expand(header: &[String], current: &[String], path: &str) -> Vec<String> {
     let live = header.iter().position(|a| a == "--live").unwrap_or(header.len());
     let (viewer, command) = (header[..live].to_vec(), header.get(live + 1..).unwrap_or(&[]).to_vec());
@@ -27,7 +27,7 @@ pub fn expand(header: &[String], current: &[String], path: &str) -> Vec<String> 
         out
     };
     let viewer = drop(viewer, &["--save-replay", "--save-ghost", "--best-ghost"]);
-    let command = drop(command, &["--frames-out", "--replay-out", "--pilot", "--ffb-breakdown"]);
+    let command = drop(command, &["--frames-out", "--replay-out", "--pilot", "--ffb-breakdown", "--ffb-aligning"]);
     viewer
         .into_iter()
         .chain(current.to_vec())
@@ -102,6 +102,8 @@ mod tests {
             "f.rtf",
             "--ffb-breakdown",
             "/s",
+            "--ffb-aligning",
+            "2",
             "--stage",
             "track-54_E",
         ]

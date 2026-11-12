@@ -249,6 +249,9 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
         if let Some(dir) = &args.ffb_breakdown {
             live.set_steer_log(steer_log::SteerLog::create(dir)?);
         }
+        if let Some(weight) = args.ffb_aligning {
+            live.set_aligning(weight);
+        }
         // The start board's clock: `--start-time` (a championship stage's from the season, a quick race's time of
         // day), else the time of day by the race's cloud letter (`weather::start_clock`).
         let cloud_letter = race.and_then(|race| {

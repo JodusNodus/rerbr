@@ -230,6 +230,7 @@ impl<'a> Live<'a> {
             saves: None,
             rally_next: RallyNext::default(),
             steer_log: None,
+            aligning: None,
             initial,
             initial_game,
             boot_now: 0.0,
@@ -256,6 +257,10 @@ impl<'a> Live<'a> {
         self.playback.pure.take_particle_events();
         self.playback.pure.take_engine_fires();
         self.playback.pure.take_damper_signals();
+        self.playback.pure.take_steer_torques();
+        if let Some(aligning) = &mut self.aligning {
+            aligning.restart();
+        }
         self.now = self.boot_now;
         self.answered = 0;
         self.waited = 0;

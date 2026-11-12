@@ -652,9 +652,6 @@ impl Form {
             }
             viewer_extra.extend(shifter_args(gearbox, Path::new(&self.game_root())));
         }
-        if self.ffb_trial.linear {
-            viewer_extra.push("--ffb-linear".to_owned());
-        }
         if let Some(mods) = self.codriver_mods.as_ref().filter(|_| self.codriver) {
             // The stage's names for the note lookup: RSF's aliases where there are any, then the launcher's own
             // catalogue names, so the lookup works without an RSF stage list.
@@ -760,6 +757,9 @@ impl Form {
         }
         args.extend(self.drive_physics().args(car));
         args.extend(crate::tyre_tuning::args(self.drive_physics(), &self.tyre_tuning));
+        if let Some(weight) = self.ffb_trial.aligning {
+            args.extend(["--ffb-aligning".to_owned(), weight.to_string()]);
+        }
         if let Some(dir) = &self.ffb_trial.breakdown {
             args.extend(["--ffb-breakdown".to_owned(), dir.display().to_string()]);
         }
@@ -1516,8 +1516,8 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// `rerbr --ffb-linear` reaches the viewer and `--ffb-breakdown` `rbr-standalone` (after `--live`); without them
-    /// the command has neither.
+    /// `rerbr --ffb-aligning` and `--ffb-breakdown` reach `rbr-standalone` (after `--live`); without them the command
+    /// has neither.
     #[test]
     fn the_ffb_trials_reach_their_processes() {
         let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
@@ -1525,9 +1525,8 @@ mod tests {
         };
         let here = crate::test_dir("command-ffb-trial");
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
-        for trial in
-            [crate::FfbTrial::default(), crate::FfbTrial { linear: true, breakdown: Some("/tmp/steer".into()) }]
-        {
+        let both = crate::FfbTrial { aligning: Some(1.5), breakdown: Some("/tmp/steer".into()) };
+        for trial in [crate::FfbTrial::default(), both] {
             let start = Start {
                 ffb_trial: trial.clone(),
                 ..start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)))
@@ -1536,8 +1535,8 @@ mod tests {
             form.read_only = true;
             let args = form.start_args(&mut CrtRand::srand(1234)).unwrap();
             let live = args.iter().position(|a| a == "--live").unwrap();
-            assert_eq!(args[..live].contains(&"--ffb-linear".to_owned()), trial.linear, "{args:?}");
-            assert!(!args[live..].contains(&"--ffb-linear".to_owned()), "{args:?}");
+            assert_eq!(value(&args[live..], "--ffb-aligning"), trial.aligning.map(|w| w.to_string()), "{args:?}");
+            assert_eq!(value(&args[..live], "--ffb-aligning"), None, "{args:?}");
             assert_eq!(value(&args[live..], "--ffb-breakdown").map(PathBuf::from), trial.breakdown, "{args:?}");
             assert_eq!(value(&args[..live], "--ffb-breakdown"), None, "{args:?}");
         }

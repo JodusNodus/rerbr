@@ -9,6 +9,8 @@
 //! `fx`, `fy`, `fz` (N, the hub's force along the contact's axes), `lateral`, `longitudinal`, `vertical`, `aligning`
 //! (the parts, which add up to `added`), `added` and `gain` (`inv_arm * inv_rack`). A wheel off the ground has
 //! `added` and `gain` only.
+//!
+//! `--ffb-aligning W` (ours, a trial): the wheel's force with the aligning part weighted by `W` ([`Aligning`]).
 
 use std::io::Write;
 use std::path::Path;
@@ -16,6 +18,7 @@ use std::path::Path;
 use rbr_hybrid::pure::{Pure, CAR_PTR};
 use rbr_physics::car_body::steering_ffb;
 use rbr_physics::car_body::store::CarStore;
+use rbr_physics::mem::Mem;
 use rbr_physics::wheel::layout::SteerTorque;
 
 type V = [f64; 3];
@@ -94,6 +97,64 @@ pub fn parts(torque: &SteerTorque) -> Option<Parts> {
     })
 }
 
+/// A frame's adds by step: a wheel's second add starts the next step.
+fn steps(torques: &[SteerTorque]) -> Vec<&[SteerTorque]> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    for end in 1..=torques.len() {
+        if end == torques.len() || torques[from..end].iter().any(|t| t.wheel == torques[end].wheel) {
+            out.push(&torques[from..end]);
+            from = end;
+        }
+    }
+    out
+}
+
+/// `--ffb-aligning W` (a trial): the force the wheel gets with the tyres' aligning part of the steering torque
+/// weighted by `W`, in place of [`steering_ffb::force`]. The part's surplus `(W - 1) * aligning` goes through the
+/// car's own filter (`steering_ffb::filtered_torque`, linear, so its output adds to the car's filtered torque) and
+/// the sum through NGP's curve. Nothing is written: the car's torque, the HUD's force and the steering load stay
+/// NGP's own.
+pub struct Aligning {
+    weight: f32,
+    /// The filtered surplus.
+    surplus: f32,
+}
+
+impl Aligning {
+    pub fn new(weight: f32) -> Self {
+        Aligning { weight, surplus: 0.0 }
+    }
+
+    /// Back to a stage's start.
+    pub fn restart(&mut self) {
+        self.surplus = 0.0;
+    }
+
+    /// The frame's steps ([`steps`] of `torques`) through the filter, with the car's speed and override timer as the
+    /// frame left them.
+    pub fn frame(&mut self, mem: &Mem, torques: &[SteerTorque]) {
+        let car = mem.u32(CAR_PTR);
+        for step in steps(torques) {
+            let aligning: f64 = step.iter().filter_map(parts).map(|p| p.aligning).sum();
+            self.surplus = steering_ffb::filtered_torque(
+                mem.override_timer(car),
+                mem.speed(car),
+                mem.steering_rack_ratio(car),
+                (f64::from(self.weight - 1.0) * aligning) as f32,
+                self.surplus,
+            );
+        }
+    }
+
+    /// The force for the car's state, in [-1, 1] before the player's settings.
+    pub fn force(&self, mem: &Mem) -> f32 {
+        let car = mem.u32(CAR_PTR);
+        let torque = mem.ffb_torque(car).value + self.surplus;
+        rbr_physics::ngp::ffb::curve(torque, mem.ffb_muted(car), mem.max_ff_torque(car))
+    }
+}
+
 /// An open breakdown.
 pub struct SteerLog {
     file: std::io::BufWriter<std::fs::File>,
@@ -113,13 +174,10 @@ impl SteerLog {
         Ok(SteerLog { file: std::io::BufWriter::new(file), path: path.display().to_string(), wheels: None })
     }
 
-    /// The row of the frame that ended at `step`: its last step's adds (none kept: no row).
-    pub fn frame(&mut self, pure: &Pure, step: u32) {
-        let torques = pure.take_steer_torques();
-        let Some(last) = torques.last() else { return };
-        // The last step's: back to the last wheel's previous add.
-        let from = torques[..torques.len() - 1].iter().rposition(|t| t.wheel == last.wheel).map_or(0, |k| k + 1);
-        if let Err(e) = self.row(pure, step, &torques[from..]) {
+    /// The row of the frame that ended at `step`: its last step's adds of `torques`, the frame's (none: no row).
+    pub fn frame(&mut self, pure: &Pure, step: u32, torques: &[SteerTorque]) {
+        let Some(last) = steps(torques).pop() else { return };
+        if let Err(e) = self.row(pure, step, last) {
             eprintln!("{}: {e}", self.path);
         }
     }
@@ -204,6 +262,29 @@ mod tests {
             assert!((got[k] - v[k]).abs() < 1e-12, "{got:?}");
         }
         assert_eq!(to_car(v, [car[0], car[0]], car), None);
+    }
+
+    #[test]
+    fn a_wheels_second_add_starts_the_next_step() {
+        let add = |wheel| SteerTorque {
+            wheel,
+            on_ground: false,
+            force: [0.0; 3],
+            torque: [0.0; 3],
+            arm: [0.0; 3],
+            strut_dir: [0.0; 3],
+            axle: [[0.0; 3]; 2],
+            travel: [[0.0; 3]; 2],
+            normal: [0.0; 3],
+            gain: 0.0,
+            added: 0.0,
+        };
+        let wheels = |torques: &[SteerTorque]| -> Vec<Vec<u32>> {
+            steps(torques).iter().map(|step| step.iter().map(|t| t.wheel).collect()).collect()
+        };
+        assert_eq!(wheels(&[0, 1, 0, 1, 0].map(add)), [vec![0, 1], vec![0, 1], vec![0]]);
+        assert_eq!(wheels(&[1, 1].map(add)), [[1], [1]]);
+        assert!(steps(&[]).is_empty());
     }
 
     #[test]
