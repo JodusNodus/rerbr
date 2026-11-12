@@ -296,6 +296,26 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.73, 6.5; 15 ms 0.59, 3.7; 20 ms 0.49, 2.9; 30 ms 0.36, 2.0. Below 3 Hz the rms stays within
     1 % (0.4286 to 0.4267); the force trails by about the value. Two poles at the same lag did no better. Not tried
     on a wheel.
+- Trials (ours, 2026-11-12; `rerbr --ffb-linear`, `rerbr --ffb-breakdown DIR`, for the session, never saved, not on
+  any page):
+  - `--ffb-linear` (`viewer --ffb-linear`, `rbr_render::ffb::linear`): the wheel's force linear in the torque, from
+    NGP's curve inverted: `0.65 x / x(0.65, p)`, equal to the curve at force 0.65 (`load::TARGET`) and held at 1 from
+    1.54 times that torque, where the curve gives 0.80. Why: the curve flattens what the steering loses towards the
+    limit (a quarter less torque from force 0.65 is 0.16 less force, from 0.82 0.12, from 0.95 0.06). The sensitivity
+    still sets the level; the page's "maxed out" counts the curve's 0.95, not the line's 1. Not tried on a wheel.
+  - `--ffb-breakdown DIR` (`rbr-standalone --ffb-breakdown`, with `--live` or `--autopilot`; `steer_log.rs`): a CSV
+    row per frame of each steered wheel's add to the torque sum, split along the contact's axes into the lateral
+    force's part (with the tyre's moment about the rolling direction: the caster trail), the longitudinal force's
+    (the scrub radius), the vertical force's (the axis's inclination) and the tyre's moment about the normal (its
+    aligning moment). Read at the wheel step's `AddADC` (`Host::steer_torque`, kept by the pure host only with
+    `Pure::keep_steer_torques`; `wheel::layout::steer_torque`), nothing written. Check (autopilot, `--car 2`, r40
+    circle on map 85, 30000 steps): the parts add up to the add within 2e-4; above 12 m/s the lateral part is 0.77
+    of the sum, the aligning 0.30, the vertical -0.075, the longitudinal 0.01; mechanical trail 25-40 mm, pneumatic
+    10-17 mm; the tyre's torque is about the hub (at rest its 750 N m is the lateral 2486 N times the radius). A
+    replay drops the flag.
+  - Units (from the keys, not measured): the sum is the rack's force, N (`inv_arm` 1/m, `inv_rack` the rod's
+    cosine); `SteeringRackRatio` is the rack's travel per turn of the steering wheel, m (`wheel_rotation::car_degrees`),
+    so the torque NGP's curve takes is 2π times the N m at the rim with the car's own lock.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only

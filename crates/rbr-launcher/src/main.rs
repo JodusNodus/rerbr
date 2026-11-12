@@ -207,6 +207,10 @@ them (rsfdata/, Maps/<id>-<name>/, Cars/).
   --standalone PATH         rbr-standalone (default: next to the launcher)
   --physics NAME            drive ngp, experimental or experimental-brush (the brush tyre in development, not offered
                             on the Settings page) for this session, over the Settings page's choice; never saved
+  --ffb-linear              trial, this session: the wheel's force linear in the steering torque, in place of NGP's
+                            curve, equal to it at force 0.65 and held at full force past 1.54 times that torque
+  --ffb-breakdown DIR       trial, this session: each drive writes what its steering torque is made of to
+                            DIR/steer-<unix seconds>.csv, a row per frame (rbr-standalone's steer_log.rs)
   --list                    print the startable maps and cars, the unavailable maps and cars, and what the install lacks, and exit
   --command                 print the viewer command Start runs with the saved selection (RBR_DATA= and RBR_PATCH=,
                             the program, one argument a line), and exit
@@ -391,6 +395,17 @@ struct Start {
     patch: Option<PathBuf>,
     /// `--physics NAME`: the session's physics over the saved choice (unsaved).
     physics: Option<physics::PhysicsProfile>,
+    ffb_trial: FfbTrial,
+}
+
+/// `--ffb-linear` and `--ffb-breakdown DIR`: the session's force-feedback trials (unsaved; `notes/ngp.md` "Force
+/// feedback").
+#[derive(Clone, Default)]
+struct FfbTrial {
+    /// The wheel's force linear in the steering torque (`viewer --ffb-linear`).
+    linear: bool,
+    /// Where each drive writes what its steering torque is made of (`rbr-standalone --ffb-breakdown`).
+    breakdown: Option<PathBuf>,
 }
 
 /// The start, `--list`, `--command`, `--screenshot` and `--screenshot-damage`.
@@ -407,6 +422,7 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
     let mut screenshot = None;
     let mut rally_damage = None;
     let mut physics = None;
+    let mut ffb_trial = FfbTrial::default();
     while let Some(flag) = args.next() {
         if flag == "--help" || flag == "-h" {
             println!("{USAGE}");
@@ -415,6 +431,10 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
         if flag == "--list" || flag == "--command" {
             list |= flag == "--list";
             command |= flag == "--command";
+            continue;
+        }
+        if flag == "--ffb-linear" {
+            ffb_trial.linear = true;
             continue;
         }
         let value = PathBuf::from(args.next().ok_or(format!("{flag} needs a value"))?);
@@ -429,11 +449,13 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
                 let wrong = || format!("--physics {name}: ngp, experimental or experimental-brush");
                 physics = Some(physics::PhysicsProfile::from_flag(&name).ok_or_else(wrong)?);
             }
+            // Absolute: the drive's processes run elsewhere.
+            "--ffb-breakdown" => ffb_trial.breakdown = Some(std::path::absolute(&value).unwrap_or(value)),
             _ => return Err(format!("unknown argument {flag}\n{USAGE}")),
         }
     }
     let settings = home.join(SETTINGS_FILE);
-    let start = Start { viewer, standalone, settings, data, patch: env("RBR_PATCH"), physics };
+    let start = Start { viewer, standalone, settings, data, patch: env("RBR_PATCH"), physics, ffb_trial };
     Ok((start, list, command, screenshot, rally_damage))
 }
 
@@ -619,6 +641,8 @@ struct Form {
     physics: physics::PhysicsProfile,
     /// `rerbr --physics`: the session's physics over the saved one (never saved).
     session_physics: Option<physics::PhysicsProfile>,
+    /// `rerbr --ffb-linear` and `--ffb-breakdown` (never saved).
+    ffb_trial: FfbTrial,
     /// The brush tyre's experimental tuning (`tyre_tuning`), as saved.
     tyre_tuning: rbr_tyre::Tuning,
     controls: ControlsPage,
