@@ -5,10 +5,10 @@
 # ground shows as a large negative height). A check of the community-stage load path and of the physics on every
 # installed stage, not of the autopilot: it gets stuck on some stages by itself. No input device is opened.
 #
-#   scripts/stage-sweep.sh [-s IDS] [-w WEATHERS] [-c CAR] [-n STEPS] [-j JOBS] [-o DIR]
+#   scripts/stage-sweep.sh [-s IDS] [-w WEATHERS] [-c CARS] [-n STEPS] [-j JOBS] [-o DIR]
 #
 # IDS: comma-separated stage ids (default every stage folder under $RBR_RSF/Maps). WEATHERS: comma-separated
-# `--weather` values (default 0). CAR: a `--car` slot or an RSF car (`--rsf-car`; default 5). STEPS: the step limit
+# `--weather` values (default 0). CARS: comma-separated `--car` slots, `rsf:ID` RSF cars (`--rsf-car ID`) or RSF pack folders (default 5). STEPS: the step limit
 # (default 1000000, about 23 minutes of driving). Resumable: a drive with a log in DIR is not run again. Uses
 # target/release/rbr-standalone (built if missing) and dev.env's RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS. Results go to
 # DIR/sweep.tsv (default a temporary folder), logs without the autopilot's progress lines to DIR/logs/.
@@ -20,7 +20,7 @@ source "$root/scripts/dev-env.sh"
 
 ids=
 weathers=0
-car=5
+cars=5
 steps=1000000
 jobs=$(($(nproc) / 2))
 out=
@@ -28,7 +28,7 @@ while getopts "s:w:c:n:j:o:h" opt; do
     case $opt in
     s) ids=$OPTARG ;;
     w) weathers=$OPTARG ;;
-    c) car=$OPTARG ;;
+    c) cars=$OPTARG ;;
     n) steps=$OPTARG ;;
     j) jobs=$OPTARG ;;
     o) out=$OPTARG ;;
@@ -51,15 +51,16 @@ if [[ -z $ids ]]; then
         sed -n 's/^\([0-9]\+\)-.*/\1/p' | sort -n | paste -sd,)
 fi
 
-# One drive: stage $1, weather $2. Prints its row.
+# One drive: stage $1, weather $2, car $3. Prints its row.
 drive() {
-    local id=$1 weather=$2 flag=--car log start secs rc
-    [[ $car =~ ^[0-9]+$ ]] || flag=--rsf-car
+    local id=$1 weather=$2 car=$3 flag=--car value=$3 log start secs rc
+    [[ $car =~ ^[0-9]+$ ]] || flag=--rsf-car value=${car#rsf:}
     log=$out/logs/$id-w$weather.log
+    [[ $car == 5 ]] || log=$out/logs/$id-w$weather-c$(tr '/:' '__' <<<"$car").log
     if [[ ! -f $log ]]; then
         start=$(date +%s)
         timeout 3600 "$bin" --autopilot /dev/null --boot --rsf-stage "$id" --rsf-root "$RBR_RSF" --weather "$weather" \
-            "$flag" "$car" --steps "$steps" --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS" 2>&1 |
+            "$flag" "$value" --steps "$steps" --data "$RBR_DATA" --ngp-physics "$RBR_NGP_PHYSICS" 2>&1 |
             awk '/^autopilot: step / {
                     n++; last = $0
                     if (match($0, /, [-0-9.]+ m off/)) { v = substr($0, RSTART + 2, RLENGTH - 8) + 0; if (v > off) off = v }
@@ -74,7 +75,7 @@ drive() {
         echo "sweep: exit $rc secs $secs" >>"$log.part"
         mv "$log.part" "$log"
     fi
-    awk -v id="$id" -v w="$weather" '
+    awk -v id="$id" -v w="$weather" -v car="$car" '
         /^weather: / && match($0, /track-[0-9]+_[A-Z]/) { variant = substr($0, RSTART + RLENGTH - 1, 1) }
         /steps driven, finish/ {
             s = $0; sub(/.*steps driven, finish /, "", s); split(s, a, ", ended by "); finish = a[1]; ended = a[2] }
@@ -89,20 +90,22 @@ drive() {
         !/^(weather|autopilot|sweep|rally|usage|       |rbr-standalone: boot built)/ && !/steps driven, finish/ && other == "" { other = $0 }
         END {
             err = panic != "" ? panic : rc != 0 ? other : ""; gsub(/\t/, " ", err)
-            printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, w, (variant == "" ? "-" : variant), rc,
+            printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", id, w, car, (variant == "" ? "-" : variant), rc,
                 (ended == "" ? "-" : ended), (finish == "" ? "-" : finish), (cause == "" ? "-" : cause " " retired),
                 (rtime == "" ? "-" : rtime), (dist == "" ? "-" : dist), off, low, nan, secs, (err == "" ? "-" : substr(err, 1, 300))
         }' "$log"
 }
 export -f drive
-export bin out car steps RBR_DATA RBR_RSF RBR_NGP_PHYSICS
+export bin out steps RBR_DATA RBR_RSF RBR_NGP_PHYSICS
 
-printf 'id\tweather\tvariant\texit\tended_by\tfinish\trace_end\trace_time\tdistance_m\tmax_off\tmin_above\tnan_lines\tsecs\terror\n' \
+printf 'id\tweather\tcar\tvariant\texit\tended_by\tfinish\trace_end\trace_time\tdistance_m\tmax_off\tmin_above\tnan_lines\tsecs\terror\n' \
     >"$out/sweep.tsv"
 for id in ${ids//,/ }; do
     for w in ${weathers//,/ }; do
-        printf '%s\t%s\n' "$id" "$w"
+        for c in ${cars//,/ }; do
+            printf '%s\t%s\t%s\n' "$id" "$w" "$c"
+        done
     done
-done | xargs -P "$jobs" -L1 -d '\n' bash -c 'IFS=$'"'"'\t'"'"' read -r i w <<<"$0"; drive "$i" "$w"' |
+done | xargs -P "$jobs" -L1 -d '\n' bash -c 'IFS=$'"'"'\t'"'"' read -r i w c <<<"$0"; drive "$i" "$w" "$c"' |
     sort -n -k1,1 -k2,2 >>"$out/sweep.tsv"
 echo "results: $out/sweep.tsv"
