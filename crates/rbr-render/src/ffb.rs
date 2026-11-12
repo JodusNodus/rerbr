@@ -630,7 +630,7 @@ pub fn reshape(force: f32, was: i32, now: i32) -> f32 {
 /// sensitivity percentage `was`, at the percentage `now`: the torque from the curve inverted ([`load::torque_ratio`]),
 /// scaled so the force equals the curve's at [`load::TARGET`], and held at 1 past it (from where the curve gives
 /// 0.80). The curve flattens what the steering loses towards the limit of grip (a quarter less torque from 0.65 is
-/// 0.16 less force, from 0.95 0.06); a line keeps it whole.
+/// 16 % less force, from 0.95 6 %); a line keeps it whole.
 pub fn linear(force: f32, was: i32, now: i32) -> f32 {
     if force.is_nan() {
         return force;

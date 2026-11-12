@@ -301,7 +301,7 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
   - `--ffb-linear` (`viewer --ffb-linear`, `rbr_render::ffb::linear`): the wheel's force linear in the torque, from
     NGP's curve inverted: `0.65 x / x(0.65, p)`, equal to the curve at force 0.65 (`load::TARGET`) and held at 1 from
     1.54 times that torque, where the curve gives 0.80. Why: the curve flattens what the steering loses towards the
-    limit (a quarter less torque from force 0.65 is 0.16 less force, from 0.82 0.12, from 0.95 0.06). The sensitivity
+    limit (a quarter less torque from force 0.65 is 16 % less force, from 0.82 12 %, from 0.95 6 %). The sensitivity
     still sets the level; the page's "maxed out" counts the curve's 0.95, not the line's 1. Not tried on a wheel.
   - `--ffb-breakdown DIR` (`rbr-standalone --ffb-breakdown`, with `--live` or `--autopilot`; `steer_log.rs`): a CSV
     row per frame of each steered wheel's add to the torque sum, split along the contact's axes into the lateral
