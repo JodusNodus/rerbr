@@ -1,15 +1,20 @@
-"""corner_limit.py: the lateral g a car reaches in each corner of a stage, against real rally cars on the same road.
+"""corner_limit.py: the lateral g and the speed a car holds in each corner of a stage, against real rally cars on
+the same road.
 
   python3 -I -B harness/corner_limit.py run --out DIR [--rsf-stage 524] [--car NAME] [--physics P,Q]
-      [--levels 0.7,0.75,...] [--top-speed 50] [--jobs N]
+      [--levels 0.7,0.75,...] [--top-speed 50] [--race LAT,BRAKE,SLIP] [--jobs N]
   python3 -I -B harness/corner_limit.py read DIR [--real TELEMETRY_DIR --stage SS7 [--ref DRIVER]] [--real-floor G]
+  python3 -I -B harness/corner_limit.py demand DIR... --real TELEMETRY_DIR [--stage SS7] [--ref DRIVER]
   python3 -I -B harness/corner_limit.py circle X,Y TRACE...
 
 `run` drives the stage once with the plain autopilot per physics profile (DIR/base.<physics>.trace, the first one's
 path gives the corners: DIR/corners.json), then once per level and corner group with `--speed-zone` on each corner
 of the group: the car arrives at one speed, sqrt(level g x the corner's radius), LEAD m before the corner and holds
 it to TAIL m after, the rest of the stage at the default plan. A group's zones lie GAP m apart, so a corner lost
-does not reach the next one tested. Traces to DIR/<physics>.a<level>.g<group>.trace (logs .log).
+does not reach the next one tested. Traces to DIR/<physics>.a<level>.g<group>.trace (logs .log). With `--race` every
+run drives the race autopilot's line (the least bend inside the road's edges, `autopilot::race`; 5,4,0.3 is the
+plain plan's level under the default's steering) and its path gives the corners; a car that loses that line does
+not recover, so each corner has its own run, ended PAST m after it.
 
 A corner is a stretch of the base run's path that turns one way: around a peak of the path's curvature (over
 +-SPAN m) of 1/R_MAX or more, out to where it falls under SHARE of the peak, turning TURN rad or more, its radius
@@ -19,14 +24,20 @@ A corner is a stretch of the base run's path that turns one way: around a peak o
 the specific force across the car (the trace's `glat`; a real car's accelerometer) while the force along it stays
 under COAST g. At the limit it is the tyres' share of the car's weight nearly whatever the road's banking, which
 the path's g includes. The path's: the peak of the lateral acceleration of a second-order fit to 1 s of positions.
-The game's figure is the highest of the corner's passes, sideslip under SPUN rad and above CRAWL m/s, and counts as
-the corner's limit once a pass ran WIDE m from the driveline or slid SLID rad. With `--real`, the same reading of
-each real drive (WRC+ merged telemetry, `rally_gg.py`'s format) laid on the game's path: the reference driver's GPS
-path and the base run's are matched by their curvature and a rigid fit, and each drive's samples take the driveline
+The game's figures are those of the fastest pass that held the corner where a faster one did not: a pass holds it
+within WIDE m of the line (the driveline, or the base run's path under `--race`) and under SLID rad of sideslip. That
+is the limit from below, a level's step under the first pass that lost it. With `--real`, the same reading of each
+real drive (WRC+ merged telemetry, `rally_gg.py`'s format) laid on the game's path: the reference driver's GPS path
+and the base run's are matched by their curvature and a rigid fit, and each drive's samples take the driveline
 distance of the nearest point of the game's path. The summary takes the corners whose real median is `--real-floor`
-g or more (the crews near their limit). What it cannot show: the driveline's short kinks, which the crews
-straighten and take faster than a car on the driveline can (the game's speed is in the table), and a corner's own
-banking, crest or dip where the stage and the road differ; the spread from corner to corner is +-25 %.
+g or more (the crews near their limit), and sets the game's speed against the real drives' slowest in the corner.
+What it cannot show: a corner's own banking, crest or dip where the stage and the road differ, and what a driver
+adds who turns the car before the corner; the spread from corner to corner is +-25 %.
+
+`demand`: whether a line is the real drives' line. Per corner and real drive, each DIR's base path is driven at
+that drive's own speed by driveline distance and read by the same 1 s fit: the lateral g the line asks at the real
+speeds, over the g the drive pulled. 1 is the real line; the driveline asks more wherever the crews straighten it.
+Corners and the fit from the first DIR.
 
 `circle`: the same two figures of a `--circle X,Y,R` ramp (TRACE named `*.rR.trace`), while the car is within
 OFF_CIRCLE m of the circle: the car's limit on a flat pad, read as the corners are.
@@ -60,6 +71,7 @@ SHARE = 0.4
 TURN = 0.15
 LEAD, TAIL, GAP = 40.0, 10.0, 150.0
 HOLD = 30.0  # m past the corner still read for running wide
+PAST = 200.0  # m past its corner a `--race` run ends
 COAST = 0.3  # g along the car, under which the body's lateral counts as cornering alone
 SPUN, CRAWL = 0.79, 8.0  # rad, m/s: past either the car is not cornering
 WIDE, SLID = 1.5, 0.26  # m, rad: a pass past the corner's limit
@@ -108,11 +120,11 @@ def lateral(t, xy, half=0.5):
     return v, lat
 
 
-def grid_path(d):
-    """The run's path on a `DS` grid of driveline distance: distances and positions."""
+def grid_path(d, ds=DS):
+    """The run's path on a `ds` grid of driveline distance: distances and positions."""
     at = np.maximum.accumulate(d["at"])
     keep = np.concatenate([[True], np.diff(at) > 1e-3])
-    s = np.arange(at[keep][0], at[keep][-1], DS)
+    s = np.arange(at[keep][0], at[keep][-1], ds)
     return s, np.column_stack([np.interp(s, at[keep], d["x"][keep]), np.interp(s, at[keep], d["y"][keep])])
 
 
@@ -126,7 +138,9 @@ def curvature(p, ds=DS, span=SPAN):
     return out
 
 
-def corners(d):
+def corners(d, alone=False):
+    """The corners of the run's path, each with its group: the runs' zones lie GAP m apart, or each corner has its
+    own run (`alone`)."""
     s, p = grid_path(d)
     kap = curvature(p)
     mag = np.abs(kap)
@@ -147,9 +161,9 @@ def corners(d):
         found.append(dict(at=float(s[i]), s0=float(s[a]), s1=float(s[b]), radius=float(1 / mag[i]),
                           left=bool(sign > 0), turn=float(turn), i1=b))
     ends = []
-    for c in found:
+    for k, c in enumerate(found):
         del c["i1"]
-        g = next((g for g, end in enumerate(ends) if c["s0"] - LEAD >= end + GAP), len(ends))
+        g = k if alone else next((g for g, end in enumerate(ends) if c["s0"] - LEAD >= end + GAP), len(ends))
         ends[g:g + 1] = [c["s1"] + TAIL]
         c["group"] = g
     return found
@@ -178,13 +192,17 @@ def run(args):
     os.makedirs(args.out, exist_ok=True)
     physics = args.physics.split(",")
     levels = [float(x) for x in args.levels.split(",")]
-    common = ["--rsf-stage", str(args.rsf_stage), "--rsf-car", args.car, "--steps", str(STEPS)]
-    base = [(os.path.join(args.out, f"base.{p}"), [*common, "--physics", p]) for p in physics]
+    common = ["--rsf-stage", str(args.rsf_stage), "--rsf-car", args.car]
+    if args.race:
+        common += ["--race", args.race]
+    base = [(os.path.join(args.out, f"base.{p}"), [*common, "--steps", str(STEPS), "--physics", p]) for p in physics]
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         list(pool.map(drive, base))
-        found = corners(trace(base[0][0] + ".trace"))
+        first = trace(base[0][0] + ".trace")
+        found = corners(first, alone=bool(args.race))
         with open(os.path.join(args.out, "corners.json"), "w") as f:
-            json.dump(dict(top=args.top_speed, levels=levels, corners=found), f, indent=1)
+            json.dump(dict(top=args.top_speed, levels=levels, race=args.race, base=os.path.basename(base[0][0]),
+                           corners=found), f, indent=1)
         groups = 1 + max(c["group"] for c in found)
         print(f"{len(found)} corners in {groups} groups; {len(levels) * groups * len(physics)} runs")
         jobs = []
@@ -193,7 +211,10 @@ def run(args):
                 for g in range(groups):
                     zones = [f"{c['s0'] - LEAD:.1f},{c['s1'] + TAIL:.1f},{zone_speed(c, level, args.top_speed):.2f}"
                              for c in found if c["group"] == g]
-                    extra = [*common, "--physics", p, "--top-speed", str(args.top_speed)]
+                    # A corner alone: the run ends PAST m after it, by the base run's steps and a quarter more.
+                    end = max(c["s1"] for c in found if c["group"] == g) + PAST
+                    steps = int(1.25 * np.interp(end, first["at"], first["step"])) if args.race else STEPS
+                    extra = [*common, "--steps", str(steps), "--physics", p, "--top-speed", str(args.top_speed)]
                     for z in zones:
                         extra += ["--speed-zone", z]
                     jobs.append((os.path.join(args.out, f"{p}.a{level:.2f}.g{g}"), extra))
@@ -227,8 +248,9 @@ def body(t, long, lat):
 
 def corner_g(found, t, xy, at, long, lat, pad, live=None):
     """Per corner, None or: the path's lateral g towards it (peak of the 1 s fit), the body's (peak of the 0.5 s
-    mean with under COAST g along the car; nan if none) and the speed at that peak, km/h. `live` masks the samples
-    that count. The body's left is taken from the drive itself: the sign that lines its lateral up with the path's."""
+    mean with under COAST g along the car; nan if none), the speed at that peak and the slowest speed, km/h. `live`
+    masks the samples that count. The body's left is taken from the drive itself: the sign that lines its lateral up
+    with the path's."""
     v, path = lateral(t, xy)
     blong, blat = body(t, long, lat)
     both = ~np.isnan(path) & ~np.isnan(blat)
@@ -245,20 +267,35 @@ def corner_g(found, t, xy, at, long, lat, pad, live=None):
         coast = arc & (np.abs(blong) < COAST) & ~np.isnan(blat)
         i = np.flatnonzero(coast)[(blat[coast] * side * left).argmax()] if coast.any() else None
         out.append((float((path[arc] * side).max() / G), float(blat[i] * side * left) if i is not None else math.nan,
-                    float(v[i] * 3.6) if i is not None else math.nan))
+                    float(v[i] * 3.6) if i is not None else math.nan, float(v[arc].min() * 3.6)))
     return out
 
 
-def passes(d, found):
+def away(line, at, xy, reach=20.0):
+    """Each position's distance (m) from the path `line` (`grid_path`), searched within `reach` m of the position's
+    own driveline distance."""
+    s, p = line
+    lo, hi = np.searchsorted(s, at - reach), np.searchsorted(s, at + reach)
+    return np.array([np.hypot(*(p[a:b] - q).T).min() if b > a else np.nan for a, b, q in zip(lo, hi, xy)])
+
+
+def passes(d, found, line=None):
     """Per corner: None, or the pass's path g, body g and speed (`corner_g`, over the samples under SPUN rad of
-    sideslip and above CRAWL m/s), then how far it ran from the driveline (m) and its largest sideslip (rad)."""
+    sideslip, above CRAWL m/s and within WIDE m of the line), then how far it ran from the driveline (m; from `line`,
+    a `--race` run's) and its largest sideslip (rad), and its median speed in the corner (km/h)."""
     s = tenth(d)
-    g = corner_g(found, s["t"], s["xy"], s["at"], s["long"], s["lat"], 0.0, (s["beta"] < SPUN) & (s["v"] > CRAWL))
+    if line is not None:
+        s["off"] = away(line, s["at"], s["xy"])
+    live = (s["beta"] < SPUN) & (s["v"] > CRAWL) & ~(s["off"] > WIDE)
+    g = corner_g(found, s["t"], s["xy"], s["at"], s["long"], s["lat"], 0.0, live)
     out = []
     for c, x in zip(found, g):
         inside = (s["at"] >= c["s0"] - 5) & (s["at"] <= c["s1"] + HOLD)
-        out.append(None if x is None or not inside.any() else (*x, float(s["off"][inside].max()),
-                                                               float(s["beta"][inside].max())))
+        arc = (s["at"] >= c["s0"]) & (s["at"] <= c["s1"])
+        # A pass with no reading (off the line or spun from the corner's start) still counts as one that lost it.
+        out.append(None if not arc.any() else (
+            *(x[:3] if x else (math.nan,) * 3), float(np.nanmax(s["off"][inside])), float(s["beta"][inside].max()),
+            float(np.median(s["v"][arc]) * 3.6)))
     return out
 
 
@@ -336,8 +373,9 @@ def lay(game, ref):
     return (lambda xy: (xy - shift) @ r / scale), scale, float(np.median(dist)), float(np.percentile(dist, 90))
 
 
-def real_corners(found, base, directory, stage, ref):
-    """Per corner: each real drive's path g, body g and speed (`corner_g`)."""
+def laid(base, directory, stage, ref):
+    """Each real drive laid on the game's path: its time, positions in the game's frame, their driveline distances
+    (nan over 30 m from the path) and the accelerometer's two axes."""
     drives = real_drives(directory, stage)
     if not drives:
         sys.exit(f"{directory}: no df_telemetrymergeddata_{stage}_*.csv")
@@ -345,91 +383,174 @@ def real_corners(found, base, directory, stage, ref):
     to_game, scale, gap, gap90 = lay(path, drives[ref if ref in drives else sorted(drives)[0]][1])
     print(f"real drives laid on the game's path: scale {scale:.4f}, gap median {gap:.1f} m, p90 {gap90:.1f} m; "
           f"{len(drives)} drives: {', '.join(sorted(drives))}")
-    out = [[] for _ in found]
+    out = []
     for name, (t, xy, long, lat) in sorted(drives.items()):
         g = to_game(xy)
         near = np.array([np.hypot(*(path - p).T).argmin() for p in g])
-        at = np.where(np.hypot(*(path[near] - g).T) < 30.0, s[near], np.nan)
+        out.append((t, g, np.where(np.hypot(*(path[near] - g).T) < 30.0, s[near], np.nan), long, lat))
+    return out
+
+
+def real_corners(found, base, directory, stage, ref):
+    """Per corner: each real drive's path g, body g and speed (`corner_g`)."""
+    out = [[] for _ in found]
+    for t, g, at, long, lat in laid(base, directory, stage, ref):
         for k, x in enumerate(corner_g(found, t, g, at, long, lat, REAL_PAD)):
             if x is not None:
                 out[k].append(x)
     return out
 
 
+def peak(c, at, lat, pad=REAL_PAD):
+    """The largest of `lat` towards corner `c` within `pad` m of it (nan with under 5 samples), and its index."""
+    arc = np.flatnonzero((at >= c["s0"] - pad) & (at <= c["s1"] + pad) & ~np.isnan(lat))
+    if len(arc) < 5:
+        return math.nan, None
+    i = arc[(lat[arc] * (1 if c["left"] else -1)).argmax()]
+    return float(lat[i] * (1 if c["left"] else -1)), i
+
+
+def quartiles(v):
+    return " / ".join(f"{x:.2f}" for x in np.nanpercentile(v, (25, 50, 75)))
+
+
+def spec_of(directory):
+    """A run's corners.json and the trace of the base run its corners come from."""
+    spec = json.load(open(os.path.join(directory, "corners.json")))
+    first = sorted(glob.glob(os.path.join(directory, "base.*.trace")))[0]
+    return spec, trace(os.path.join(directory, spec["base"] + ".trace") if "base" in spec else first)
+
+
 def read(args):
-    spec = json.load(open(os.path.join(args.dir, "corners.json")))
+    spec, base = spec_of(args.dir)
     found = spec["corners"]
+    line = grid_path(base, 0.25) if spec.get("race") else None
     physics = sorted({os.path.basename(p).split(".a")[0] for p in glob.glob(os.path.join(args.dir, "*.a*.g*.trace"))})
     game = {}
     for p in physics:
         got = [[] for _ in found]
         for name in sorted(glob.glob(os.path.join(args.dir, f"{p}.a*.g*.trace"))):
             group = int(name.rsplit(".g", 1)[1].split(".")[0])
-            for k, x in enumerate(passes(trace(name), found)):
+            for k, x in enumerate(passes(trace(name), found, line)):
                 if x is not None and found[k]["group"] == group:
                     got[k].append(x)
         game[p] = got
-    real = None
-    if args.real:
-        base = trace(sorted(glob.glob(os.path.join(args.dir, "base.*.trace")))[0])
-        real = real_corners(found, base, args.real, args.stage, args.ref)
+    real = real_corners(found, base, args.real, args.stage, args.ref) if args.real else None
     print(f"\nper corner, lateral g towards it: the body's (0.5 s mean under {COAST} g along the car) / the path's "
-          "(1 s fit), and km/h at the body's.\nreal: the drives' median (highest). game: the highest of the passes; "
-          f"* = a pass ran {WIDE} m wide or slid {math.degrees(SLID):.0f} deg, so the corner was taken past its limit")
+          "(1 s fit), and km/h.\nreal: the drives' median (highest), km/h at the body's and the slowest in the "
+          f"corner. game: the fastest pass that held (within {WIDE} m of the line, under {math.degrees(SLID):.0f} deg "
+          "of sideslip) where a faster one did not, [passes]; 'held all': no pass lost it; 'none held'")
     head = "    at   R m dir turn | "
     if real:
-        head += "real  n  body med (max)   path med (max)  km/h | "
-    print(head + " | ".join(f"{p:>27s}" for p in physics))
+        head += "real  n  body med (max)   path med (max)  km/h  slowest | "
+    print(head + " | ".join(f"{p:>32s}" for p in physics))
     rows = []
     for k, c in enumerate(found):
-        line = f"{c['at']:7.0f} {c['radius']:5.0f}  {'L' if c['left'] else 'R'} {math.degrees(c['turn']):5.0f} | "
+        text = f"{c['at']:7.0f} {c['radius']:5.0f}  {'L' if c['left'] else 'R'} {math.degrees(c['turn']):5.0f} | "
         rl = None
         if real:
-            r = np.array(real[k]) if real[k] else np.zeros((0, 3))
+            r = np.array(real[k]) if real[k] else np.zeros((0, 4))
             ok = r[~np.isnan(r[:, 1])] if len(r) else r
             if len(ok) >= 3:
-                rl = (float(np.median(ok[:, 1])), float(ok[:, 1].max()), float(np.median(r[:, 0])),
-                      float(r[:, 0].max()), float(np.median(ok[:, 2])))
-                line += (f"     {len(ok):2d}   {rl[0]:4.2f} ({rl[1]:4.2f})      {rl[2]:4.2f} ({rl[3]:4.2f})   "
-                         f"{rl[4]:4.0f} | ")
+                rl = dict(body=float(np.median(ok[:, 1])), path=float(np.median(r[:, 0])),
+                          kmh=float(np.median(ok[:, 2])), slowest=float(np.median(r[:, 3])))
+                text += (f"     {len(ok):2d}   {rl['body']:4.2f} ({ok[:, 1].max():4.2f})      {rl['path']:4.2f} "
+                         f"({r[:, 0].max():4.2f})   {rl['kmh']:4.0f}     {rl['slowest']:4.0f} | ")
             else:
-                line += f"     {len(ok):2d}     -                -             - | "
+                text += f"     {len(ok):2d}     -                -             -        - | "
         cells = {}
         for p in physics:
-            x = np.array(game[p][k]) if game[p][k] else np.zeros((0, 5))
-            ok = x[~np.isnan(x[:, 1])] if len(x) else x
-            if len(ok):
-                i = ok[:, 1].argmax()
-                past = bool(((x[:, 3] > WIDE) | (x[:, 4] > SLID)).any())
-                cells[p] = (float(ok[i, 1]), float(x[:, 0].max()), float(ok[i, 2]), past)
-                line += (f"{ok[i, 1]:5.2f} / {x[:, 0].max():4.2f} {ok[i, 2]:4.0f} km/h {'*' if past else ' '} "
-                         f"[{len(x):2d}] | ")
+            x = np.array(game[p][k]) if game[p][k] else np.zeros((0, 6))
+            lost = (x[:, 3] > WIDE) | (x[:, 4] > SLID)
+            under = ~lost & (x[:, 5] < x[lost, 5].max(initial=0.0))
+            cells[p] = None
+            if under.any():
+                i = np.flatnonzero(under)[x[under, 5].argmax()]
+                cells[p] = dict(body=float(x[i, 1]), path=float(x[i, 0]), kmh=float(x[i, 5]))
+                text += f"{x[i, 1]:5.2f} / {x[i, 0]:4.2f} at {x[i, 5]:4.0f} km/h [{len(x):2d}]      | "
             else:
-                cells[p] = None
-                line += f"{'-':>27s} | "
-        print(line)
+                text += f"{'none held' if lost.any() else 'held all' if len(x) else '-':>27s} [{len(x):2d}] | "
+        print(text)
         rows.append((c, rl, cells))
     print()
-    q = lambda v: " / ".join(f"{x:.2f}" for x in np.percentile(v, (25, 50, 75)))
     for lo, hi in SPEEDS if real else ():
-        sel = [rl for _, rl, _ in rows if rl and rl[0] >= args.real_floor and lo <= rl[4] < hi]
+        sel = [rl for _, rl, _ in rows if rl and rl["body"] >= args.real_floor and lo <= rl["kmh"] < hi]
         if len(sel) >= 3:
             print(f"real, the corners with a body g median of {args.real_floor} or more taken at {lo}-{hi} km/h (n "
-                  f"{len(sel)}): body g {np.median([x[0] for x in sel]):.2f}, path g "
-                  f"{np.median([x[2] for x in sel]):.2f}")
+                  f"{len(sel)}): body g {np.median([x['body'] for x in sel]):.2f}, path g "
+                  f"{np.median([x['path'] for x in sel]):.2f}")
+    med = lambda v: float(np.nanmedian(v))
     for p in physics:
-        got = [(c, rl, cells[p]) for c, rl, cells in rows if cells[p] and cells[p][3]]
-        print(f"{p}: {len(got)} corners taken past the limit, body g p25 / p50 / p75 {q([x[2][0] for x in got])}, "
-              f"path g {q([x[2][1] for x in got])}")
-        both = [x for x in got if x[1] and x[1][0] >= args.real_floor]
+        got = [(c, rl, cells[p]) for c, rl, cells in rows if cells[p]]
+        print(f"{p}: {len(got)} corners with a limit, body g p25 / p50 / p75 "
+              f"{quartiles([x[2]['body'] for x in got])}, path g {quartiles([x[2]['path'] for x in got])}")
+        both = [x for x in got if x[1] and x[1]["body"] >= args.real_floor]
         for name, sel in (("all", both), (f"turning {math.degrees(LONG):.0f} deg or more", [
                 x for x in both if x[0]["turn"] >= LONG]), ("turning less", [x for x in both if x[0]["turn"] < LONG])):
             if len(sel) >= 3:
                 print(f"  where the real body g's median is {args.real_floor} or more, {name} (n {len(sel)}): body g "
-                      f"{np.median([x[2][0] for x in sel]):.2f} at {np.median([x[2][2] for x in sel]):.0f} km/h "
-                      f"against {np.median([x[1][0] for x in sel]):.2f} at {np.median([x[1][4] for x in sel]):.0f}, "
-                      f"over the real p25 / p50 / p75 {q([x[2][0] / x[1][0] for x in sel])}; path g "
-                      f"{np.median([x[2][1] for x in sel]):.2f} against {np.median([x[1][2] for x in sel]):.2f}")
+                      f"{med([x[2]['body'] for x in sel]):.2f} at {med([x[2]['kmh'] for x in sel]):.0f} km/h against "
+                      f"{med([x[1]['body'] for x in sel]):.2f} at {med([x[1]['kmh'] for x in sel]):.0f} (slowest "
+                      f"{med([x[1]['slowest'] for x in sel]):.0f}); over the real, p25 / p50 / p75: body g "
+                      f"{quartiles([x[2]['body'] / x[1]['body'] for x in sel])}, path g "
+                      f"{quartiles([x[2]['path'] / x[1]['path'] for x in sel])}, km/h over the slowest "
+                      f"{quartiles([x[2]['kmh'] / x[1]['slowest'] for x in sel])}")
+
+
+def by_length(d, ds=1.0):
+    """The run's path on a `ds` grid of its own length: driveline distances and positions."""
+    at = np.maximum.accumulate(d["at"])
+    keep = np.concatenate([[True], np.diff(at) > 1e-3])
+    at, xy = at[keep], np.column_stack([d["x"][keep], d["y"][keep]])
+    length = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(xy, axis=0).T))])
+    grid = np.arange(0, length[-1], ds)
+    return np.interp(grid, length, at), np.column_stack([np.interp(grid, length, xy[:, k]) for k in (0, 1)])
+
+
+def demand(args):
+    specs, bases = zip(*(spec_of(d) for d in args.dirs))
+    found = specs[0]["corners"]
+    names = [f"{k + 1} {'race line' if s.get('race') else 'driveline'}" for k, s in enumerate(specs)]
+    lines = [by_length(b) for b in bases]
+    rows = [[] for _ in found]
+    for t, g, at, _, _ in laid(bases[0], args.real, args.stage, args.ref):
+        v, a = lateral(t, g)
+        ok = ~np.isnan(at) & ~np.isnan(v)
+        order = np.argsort(at[ok])
+        asked = []
+        for line_at, xy in lines:
+            # The line at this drive's speed by driveline distance, sampled at 10 Hz of that clock.
+            speed = np.maximum(np.interp(line_at, at[ok][order], v[ok][order]), CRAWL)
+            clock = np.concatenate([[0], np.cumsum(2.0 / (speed[1:] + speed[:-1]))])
+            tick = np.arange(0, clock[-1], 0.1)
+            path = np.column_stack([np.interp(tick, clock, xy[:, k]) for k in (0, 1)])
+            asked.append((np.interp(tick, clock, line_at), lateral(tick, path)[1]))
+        for k, c in enumerate(found):
+            real, i = peak(c, at, a)
+            if i is not None:
+                rows[k].append([real / G, v[i] * 3.6, *(peak(c, s, x)[0] / G for s, x in asked)])
+    print("\nper corner: the real drives' path g (1 s fit) and km/h at it, then per line the g it asks at the same "
+          "speeds and that over the real, medians over the drives")
+    print("    at   R m dir turn |  real g  km/h | " + " | ".join(f"{n[-13:]:>13s}" for n in names))
+    table = []
+    for c, r in zip(found, rows):
+        if len(r) < 3:
+            continue
+        r = np.array(r)
+        m, over = np.nanmedian(r, axis=0), np.nanmedian(r[:, 2:] / r[:, :1], axis=0)
+        table.append((c, m, over))
+        print(f"{c['at']:7.0f} {c['radius']:5.0f}  {'L' if c['left'] else 'R'} {math.degrees(c['turn']):5.0f} | "
+              f"  {m[0]:5.2f}  {m[1]:4.0f} | "
+              + " | ".join(f"{m[2 + j]:5.2f}  {over[j]:5.2f} " for j in range(len(names))))
+    print()
+    near = [x for x in table if x[1][0] >= args.real_floor]
+    for name, sel in (("all", near), (f"turning {math.degrees(LONG):.0f} deg or more", [
+            x for x in near if x[0]["turn"] >= LONG]), ("turning less", [x for x in near if x[0]["turn"] < LONG])):
+        if len(sel) >= 3:
+            print(f"corners with a real path g of {args.real_floor} or more, {name} (n {len(sel)}): real "
+                  f"{np.median([x[1][0] for x in sel]):.2f} g at {np.median([x[1][1] for x in sel]):.0f} km/h; asked "
+                  "over the real, p25 / p50 / p75: "
+                  + "; ".join(f"{n} {quartiles([x[2][j] for x in sel])}" for j, n in enumerate(names)))
 
 
 def circle(args):
@@ -466,18 +587,22 @@ def main():
     r.add_argument("--physics", default="experimental,experimental-brush")
     r.add_argument("--levels", default=LEVELS)
     r.add_argument("--top-speed", type=float, default=50.0)
+    r.add_argument("--race")
     r.add_argument("--jobs", type=int, default=8)
     d = sub.add_parser("read")
     d.add_argument("dir")
-    d.add_argument("--real")
-    d.add_argument("--stage", default="SS7")
-    d.add_argument("--ref", default="Evans")
-    d.add_argument("--real-floor", type=float, default=0.8)
+    m = sub.add_parser("demand")
+    m.add_argument("dirs", nargs="+")
     c = sub.add_parser("circle")
     c.add_argument("centre")
     c.add_argument("traces", nargs="+")
+    for q in (d, m):
+        q.add_argument("--real", required=q is m)
+        q.add_argument("--stage", default="SS7")
+        q.add_argument("--ref", default="Evans")
+        q.add_argument("--real-floor", type=float, default=0.8)
     args = ap.parse_args()
-    {"run": run, "read": read, "circle": circle}[args.cmd](args)
+    {"run": run, "read": read, "demand": demand, "circle": circle}[args.cmd](args)
 
 
 if __name__ == "__main__":

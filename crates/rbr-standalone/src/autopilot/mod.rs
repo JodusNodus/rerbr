@@ -619,6 +619,7 @@ impl std::str::FromStr for Plan {
 /// `--speed-zone FROM,TO,SPEED` (limit tests, `harness/corner_limit.py`): between the driveline distances FROM and TO
 /// (m) the speed plan holds SPEED (m/s) whatever the curves there, braking for it from ahead as for a curve. The car
 /// takes the corner in the zone at one speed, so raising it run by run finds the speed the corner no longer holds.
+/// Under `--race` the line's plan holds it (`race::plan`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpeedZone {
     pub from: f32,
