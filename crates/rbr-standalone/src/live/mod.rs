@@ -106,9 +106,11 @@ pub(crate) use picture::{gearbox, hud_gear};
 mod realtime;
 mod record;
 mod start;
+mod telemetry;
 
 use start::install_filter_ini;
 pub use start::RallyNext;
+pub use telemetry::Telemetry;
 
 pub use realtime::{serve_frames, serve_realtime, serve_replay, Pace};
 
@@ -175,6 +177,8 @@ pub struct Live<'a> {
     boot_now: f64,
     /// What follows a championship stage (`set_rally_next`): its end page's choice and text.
     rally_next: RallyNext,
+    /// NGP's UDP telemetry (`--telemetry-udp`): a packet after each driving frame.
+    telemetry: Option<Telemetry>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -363,6 +367,11 @@ impl<'a> Live<'a> {
         self.rally_next = next;
     }
 
+    /// Sends NGP's UDP telemetry packet after each driving frame (`--telemetry-udp`; not for a replay).
+    pub fn set_telemetry(&mut self, telemetry: Telemetry) {
+        self.telemetry = Some(telemetry);
+    }
+
     /// Whether the player's records are kept (`--saves`).
     pub fn has_saves(&self) -> bool {
         self.saves.is_some()
@@ -457,6 +466,8 @@ impl<'a> Live<'a> {
             return Err(format!("step {step}: Game ran no substeps"));
         }
         let substeps = events.substeps.len() as u32;
+        // The driving steps: the load settle's have no control.
+        let driving = events.substeps.iter().filter(|s| s.control.is_some()).count() as u32;
         if let Some(control) = events.substeps.iter().rev().find_map(|s| s.control) {
             for (bytes, word) in self.control.chunks_exact_mut(4).zip(control.words()) {
                 bytes.copy_from_slice(&word.unwrap_or(0).to_le_bytes());
@@ -491,6 +502,15 @@ impl<'a> Live<'a> {
         flow.rally_incident |= new.rally_incident;
         flow.helicopter_called |= new.helicopter_called;
         flow.message = flow.message.or(new.message);
+        if let Some(telemetry) = self.telemetry.as_mut().filter(|_| driving > 0) {
+            let frame = telemetry::Frame {
+                map: self.stage.number,
+                car: self.stage.car,
+                track: &self.track,
+                control: &self.control,
+            };
+            telemetry.send(&self.playback.pure.mem, &self.game, driving, &frame);
+        }
         Ok(substeps)
     }
 

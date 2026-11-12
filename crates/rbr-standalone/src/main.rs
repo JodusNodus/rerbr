@@ -73,6 +73,9 @@
 //! `--replay-trace FILE` (with `--replay`) writes the car's state and each wheel's tyre after each frame
 //! (`replay_trace.rs`, research tooling, read-only), and with `--tyre-probe FILE` the wheels' tyre frames. `--replay-tyre STEP:MODEL` changes the tyre model at STEP and runs the drive's inputs on uncompared (research). A replay writes no other files: neither the records (`--saves` is read for the profile's input filter) nor the rally's.
 //!
+//! `--telemetry-udp ADDR:PORT` (with `--live`, off by default) sends NGP's UDP telemetry packet after each driving
+//! frame (`live/telemetry.rs`); a replay sends none, as NGP.
+//!
 //! `--events-out FILE` (with `--boot --recording X`) runs the recording's controls through the live boot and writes the
 //! PTC1 and PEV1 records of each step it answers (`events_out.rs`): the viewer's playback takes the lamps from them.
 //!
@@ -260,6 +263,10 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
         };
         if let Some(next) = args.rally_next {
             live.set_rally_next(next);
+        }
+        // NGP sends no telemetry while a replay plays.
+        if let (Some(to), None) = (args.telemetry_udp, &args.replay) {
+            live.set_telemetry(live::Telemetry::open(to).map_err(|e| format!("--telemetry-udp {to}: {e}"))?);
         }
         let live = if let Some(path) = &args.replay {
             let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;

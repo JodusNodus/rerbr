@@ -183,6 +183,8 @@ pub struct Args {
     /// the RSF install's.
     pub car_group: Option<String>,
     pub car_year: Option<u32>,
+    /// `--telemetry-udp ADDR:PORT` (with `--live`): NGP's UDP telemetry packet to this address (`live::Telemetry`).
+    pub telemetry_udp: Option<std::net::SocketAddr>,
 }
 
 impl Args {
@@ -230,7 +232,7 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
-       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
+       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
        -V, --version prints the version
        -h, --help prints this text";
@@ -449,6 +451,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 )
             }
             "--start-time" => args.start_time = Some(clock_time(&value).ok_or(format!("--start-time {value}: H:MM"))?),
+            "--telemetry-udp" => {
+                use std::net::ToSocketAddrs;
+                let to = value.to_socket_addrs().ok().and_then(|mut a| a.next());
+                args.telemetry_udp = Some(to.ok_or(format!("--telemetry-udp {value}: ADDR:PORT"))?)
+            }
             "--rally-next" => {
                 args.rally_next =
                     Some(live::RallyNext::parse(&value).ok_or(format!("--rally-next {value}: stage, service or end"))?)
@@ -575,6 +582,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if args.pilot.is_some() && !args.live {
         return Err("--pilot needs --live".into());
+    }
+    if args.telemetry_udp.is_some() && !args.live {
+        return Err("--telemetry-udp needs --live".into());
     }
     if (args.frames_out.is_some() || args.frames.is_some()) && !args.live {
         return Err("--frames-out and --frames need --live".into());
@@ -1033,6 +1043,9 @@ mod tests {
             ),
             (format!("{BOOT_REC} --events-out E"), |a| assert_eq!(a.events_out, Some(PathBuf::from("E")))),
             (format!("{LIVE} --frames F"), |a| assert_eq!(a.frames.as_deref(), Some("F"))),
+            (format!("{LIVE} --telemetry-udp 127.0.0.1:6776"), |a| {
+                assert_eq!(a.telemetry_udp, Some(([127, 0, 0, 1], 6776).into()))
+            }),
             (format!("{LIVE} --frames-out F --start-time 9:36"), |a| {
                 assert_eq!(a.frames_out, Some(PathBuf::from("F")));
                 assert_eq!(a.start_time, Some(34560.0));
@@ -1136,6 +1149,8 @@ mod tests {
                 "--ffb-settings 2,1,0,0,0: ENABLED,STRENGTH,INVERSE,DEAD_ZONE,THRESHOLD (0 or 1, then numbers)",
             ),
             (format!("{LIVE} --start-time 9"), "--start-time 9: H:MM"),
+            (format!("{LIVE} --telemetry-udp 127.0.0.1"), "--telemetry-udp 127.0.0.1: ADDR:PORT"),
+            (format!("{BOOT} --telemetry-udp 127.0.0.1:6776"), "--telemetry-udp needs --live"),
             (format!("{BOOT} --snapshot S"), "--boot takes no --snapshot"),
             (format!("{LIVE} --recording R"), "--live takes no --recording"),
             ("--live --stage track-54_E --data D".into(), "--live takes one --snapshot"),
