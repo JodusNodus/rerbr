@@ -573,6 +573,16 @@ game").
   0.101 / 0.085 / 0.089 and Deutschland 2019's 0.090 in 6th at 80-100 and 0.085 / 0.094: 8-25 % under at like engine
   speeds (30 % on the file's aero; the tyres' rolling resistance, 0.0066, is part of the rest). Material 49 adds 0.014
   g, inside Finland's and Estonia's 0.085-0.115.
+- Altitude in that comparison (2026-11-12; the telemetry's altitude at its flat-out samples over 110 km/h; NGP's
+  atmosphere, `notes/ngp.md`). The pad lies at z 0 and the rallies do not: median 524 m on España 2021 (p90 939), 559
+  Catalunya 2019, 393 Deutschland 2019, 342 Croatia 2021, 330 Corsica 2019, 190 Monza 2021, 50 Ypres 2021, the air
+  pressure 0.935-0.961 of sea level on the first five. A restrictor at its choke passes air with the pressure, and the
+  model does: the user's replays of the i20 Coupe WRC 2020 (experimental-brush, flat out in 5th and 6th, the four tyres'
+  force along the wheel times the car's speed) give 220-234 kW at z -40 on RSF 1976965 and 197-208 kW at z 940 on RSF
+  476, 0.89 (the pressure's 0.894). The fits' wheel power over the pressure: España 233-246 kW, Catalunya 236-245,
+  Deutschland 240-244, Corsica 237-241, Croatia 235-237, against experimental-brush's 242-250 on the pad: 0-4 % over,
+  not 11-17; Ypres 226-228 and Monza 217-229 stay 6-9 % under (not explained; the air's temperature is not in it). Taken
+  as the real engines choked at their peak power (assumed; 380 PS wants about the 36 mm restrictor's choked flow).
 - The 2017-21 World Rally Cars' pedal map and their response to the pedal, from the same telemetry (2026-11-11;
   `harness/rally_wot.py pedal`: the accelerometer's g between the same gear's with the throttle shut and open, 3rd to
   5th gear above 4000 rpm, the throttle steady for 0.6 s; the channel taken as the pedal). The share of that range at 10
