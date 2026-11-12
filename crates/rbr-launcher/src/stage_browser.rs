@@ -120,7 +120,7 @@ impl StageRow {
             Origin::Community(stage) => {
                 (stage.country.as_ref().map(|c| c.to_uppercase()), stage.author.clone(), stage.length)
             }
-            Origin::Btb(btb) => (None, btb.author.clone(), btb.km),
+            Origin::Btb(btb) => (btb.country.as_ref().map(|c| c.to_uppercase()), btb.author.clone(), btb.km),
             Origin::Retail => (
                 retail_country(map.number).map(str::to_owned),
                 Some("Warthog Games".to_owned()),
@@ -904,6 +904,22 @@ mod tests {
     fn some() -> Vec<StageRow> {
         let retail = Map { number: 54, stages: Vec::new(), origin: Origin::Retail };
         rows_of(&[retail, rsf_map(5), rsf_map(1), rsf_map(8), rsf_map(3), rsf_map(10)])
+    }
+
+    #[test]
+    fn a_btb_stage_has_its_country() {
+        let btb = crate::btb::Btb {
+            folder: "/rsf/RX_CONTENT/Tracks/Hokkara".into(),
+            name: "Hokkara".into(),
+            author: None,
+            country: Some("fi".into()),
+            km: None,
+            surface: "gravel",
+            problem: None,
+        };
+        let rows = rows_of(&[Map { number: 1040, stages: Vec::new(), origin: Origin::Btb(btb) }]);
+        assert_eq!(rows[0].country.as_deref(), Some("FI"));
+        assert_eq!(rows[0].country_name(), "Finland");
     }
 
     #[test]
