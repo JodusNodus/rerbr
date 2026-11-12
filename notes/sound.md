@@ -188,6 +188,26 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   (retail, release); the echoes' probe unchanged (15.8 vs 16.0 us on 42_M). Retail roadside vegetation is sparse near
   the drivelines (42_M: 5 placements within 6 m of the autopilot's first 60 s), so most corners cut over grass alone
   (not in code).
+- Verge, tall vegetation only (ours, 2026-11-12, on trial; user: no sound for short grass, the patter is better
+  than the swish): grass under the wheels plays nothing now (the stages mark grass by firmness, not height). The
+  patter loop (`Loop::Grass`: the four stick-on-tall-grass hits laid 45 times a second into 6 s, `CREDITS.md`, in
+  place of foley of a person in high grass) plays with the brush on the body's contacts with bushes and bendable
+  trees (level 2 by the contacts, 1.5-20 m/s), and a wheel on a bush or bendable-tree surface counts as a contact
+  (`Verge::brush`, two wheels full). In the car both loops take the stones' 2.5 kHz shell filter at 2.5 times the
+  level (`mixer` `VERGE_GAIN`): through the cabin's 1 kHz filter the grass loop (85 % of its energy above 4 kHz)
+  lay 21 to 29 dB under the mix. Sherwood Forest I (RSF 367, Lancer Evo II, the user's drive, in the car): six
+  encounters in 10 min, 3.6 s in contact, 9 branch hits; the added sound 6 to 18 dB under the mix (one at walking
+  pace silent). `rbr-sound --verge CSV` plays the contacts `rbr-render`'s `verge_probe` example finds along
+  `--poses`; a replay whose stepping program is gone steps with `--standalone`. No open recording of a vehicle
+  through grass or brush was found. Not judged by ear yet.
+- What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
+  along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
+  one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of
+  the 6 m verge on 70 % of them, rough on 10 %, neither reaches 5 % on 21 % (tarmac, snow and gravel verges); no
+  ground sample is a bush surface; no vegetation placement within 8 m on 33 % of the retail and 53 % of the modded
+  maps, 5 or more a km on 52 % and 37 %. The 97 installed BTB stages: grass 20 % or more on 68 %, and not one
+  vegetation placement (their objects carry no bush or bendable-tree surface), so there the brush and the branch
+  hits never play.
 
 ## Suspension and driveshaft
 

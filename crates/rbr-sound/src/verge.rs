@@ -1,11 +1,13 @@
 //! Ours: the car meeting the verge, from what the renderer sees after each frame's step ([`Verge`]; 1.02 has no such
-//! sounds): the tyres on grass, the bushes brushing the body and the branches slapping it. Pure: gains, pitches and
+//! sounds): the bushes and bendable trees brushing and whipping the body and their branches slapping it. Pure: gains, pitches and
 //! the hits to play per step, on the embedded recordings (`sounds/CREDITS.md`).
 //!
-//! - Grass (`Loop::Grass`): a swish by how many wheels are on grass ([`Verge::grass`], the square root of their share
-//!   of four) and the car's speed ([`GRASS_SPEED`]), brighter with speed ([`GRASS_PITCH`]).
+//! - Patter (`Loop::Grass`): the stalks whipping the body, by the same contacts as the brush and the car's speed
+//!   ([`PATTER_SPEED`]), faster with speed ([`PATTER_PITCH`]). Grass under the wheels plays nothing (user: short
+//!   grass does not whip a car, and the stages mark grass by firmness, not height).
 //! - Brush (`Loop::Brush`): the rustle of the bushes and bendable trees the body is in, by how deep it is in each
-//!   ([`BRUSH_DEPTH`]) times its density, at most 1, and the speed ([`BRUSH_SPEED`]).
+//!   ([`BRUSH_DEPTH`]) times its density, and of the bushes under the wheels ([`Verge::brush`], [`BRUSH_WHEELS`]), at
+//!   most 1, and the speed ([`BRUSH_SPEED`]).
 //! - Branch hits (`Shot::Branch`): the body meeting a bendable tree, or (softer, [`BUSH_HIT`]) a bush, it was not
 //!   touching at the last frame, by the speed ([`HIT_SPEED`]); the samples are taken in turn, not from the random
 //!   numbers, so the other sounds stay as without the verge.
@@ -29,26 +31,29 @@ pub struct Touch {
     pub branches: bool,
 }
 
-/// The car at the verge for a frame: each wheel's share on grass (0 to 1) and the vegetation the body is in.
+/// The car at the verge for a frame: the vegetation under the wheels and the vegetation the body is in.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Verge {
-    pub grass: [f32; 4],
+    /// Each wheel's share in bushes a stage marks in the ground under it, times their density (0 to 1).
+    pub brush: [f32; 4],
     pub touches: [Option<Touch>; TOUCHES],
 }
 
-/// The grass loop: full at [`GRASS_GAIN`] with four wheels on grass, rising with the speed over [`GRASS_SPEED`] m/s
-/// (5 to 70 km/h); its pitch from [`GRASS_PITCH`]'s first at standstill to its second at [`PITCH_TOP`] m/s.
-const GRASS_GAIN: f32 = 2.0;
-const GRASS_SPEED: [f32; 2] = [1.5, 20.0];
-const GRASS_PITCH: [f32; 2] = [0.8, 1.2];
+/// The patter loop: at [`PATTER_GAIN`] with the brush's contacts full, rising with the speed over [`PATTER_SPEED`]
+/// m/s (5 to 70 km/h); its pitch from [`PATTER_PITCH`]'s first at standstill to its second at [`PITCH_TOP`] m/s.
+const PATTER_GAIN: f32 = 2.0;
+const PATTER_SPEED: [f32; 2] = [1.5, 20.0];
+const PATTER_PITCH: [f32; 2] = [0.8, 1.2];
 /// The brush loop: a placement adds its density, full once the body is [`BRUSH_DEPTH`] m into it; at most 1, at
 /// [`BRUSH_GAIN`], rising with the speed over [`BRUSH_SPEED`] m/s.
 const BRUSH_DEPTH: f32 = 0.5;
+/// The wheels in bushes ([`Verge::brush`]) that make the brush loop full.
+const BRUSH_WHEELS: f32 = 2.0;
 const BRUSH_GAIN: f32 = 1.4;
 const BRUSH_SPEED: [f32; 2] = [0.5, 12.0];
 const BRUSH_PITCH: [f32; 2] = [0.85, 1.15];
-/// The loops' levels follow a rise at once and fall with this time constant, s, so a wheel skipping over the grass
-/// or the body clearing a bush for a frame does not chop them.
+/// The loops' levels follow a rise at once and fall with this time constant, s, so the body clearing a bush for a
+/// frame does not chop them.
 const RELEASE: f32 = 0.15;
 const QUIET: f32 = 1e-4;
 /// The top of the loops' pitch rise, m/s (108 km/h).
@@ -79,7 +84,7 @@ pub struct Verges {
     fresh: bool,
     /// The placements the body touched at the last frame.
     last: Vec<u32>,
-    /// The grass and brush loops' levels ([`RELEASE`]).
+    /// The patter and brush loops' levels ([`RELEASE`]).
     levels: [f32; 2],
     /// The branch samples (`data::CarBank::branches`) and the hits made, which pick them in turn.
     pub samples: usize,
@@ -105,22 +110,22 @@ impl Verges {
     pub fn step(&mut self, speed: f32, distance: f32, dt: f32) -> Vec<Command> {
         let Some(verge) = self.verge else { return Vec::new() };
         let speed = speed.abs();
-        let on_grass = verge.grass.iter().map(|g| g.clamp(0.0, 1.0)).sum::<f32>() / 4.0;
-        let grass = GRASS_GAIN * on_grass.sqrt() * smoothstep(GRASS_SPEED, speed);
         let touches = verge.touches.iter().flatten();
-        let level = touches.clone().map(|t| t.density * (t.depth / BRUSH_DEPTH).clamp(0.0, 1.0)).sum::<f32>();
+        let level = touches.clone().map(|t| t.density * (t.depth / BRUSH_DEPTH).clamp(0.0, 1.0)).sum::<f32>()
+            + verge.brush.iter().map(|b| b.clamp(0.0, 1.0)).sum::<f32>() / BRUSH_WHEELS;
+        let patter = PATTER_GAIN * level.min(1.0) * smoothstep(PATTER_SPEED, speed);
         let brush = BRUSH_GAIN * level.min(1.0) * smoothstep(BRUSH_SPEED, speed);
         let fall = (-dt / RELEASE).exp();
-        for (now, target) in self.levels.iter_mut().zip([grass, brush]) {
+        for (now, target) in self.levels.iter_mut().zip([patter, brush]) {
             *now = if target >= *now { target } else { target + (*now - target) * fall };
             // Silent once it is inaudible, so the mixer stops the loop.
             if *now < QUIET {
                 *now = 0.0;
             }
         }
-        let [grass, brush] = self.levels;
+        let [patter, brush] = self.levels;
         let mut out = vec![
-            Command::Loop { voice: Loop::Grass, gain: grass, pitch: pitch(GRASS_PITCH, speed) },
+            Command::Loop { voice: Loop::Grass, gain: patter, pitch: pitch(PATTER_PITCH, speed) },
             Command::Loop { voice: Loop::Brush, gain: brush, pitch: pitch(BRUSH_PITCH, speed) },
         ];
         if std::mem::take(&mut self.fresh) {
@@ -177,26 +182,19 @@ mod tests {
     }
 
     #[test]
-    fn the_grass_swish_follows_the_wheels_on_grass_and_the_speed() {
+    fn the_patter_follows_the_brush_contacts_and_the_speed() {
         let mut verges = Verges::new(3);
-        let grass = |verges: &mut Verges, grass: [f32; 4], speed: f32| {
-            verges.set(Some(Verge { grass, ..Verge::default() }));
+        let mut patter = |brush: [f32; 4], speed: f32| {
+            verges.set(Some(Verge { brush, ..Verge::default() }));
             loops(&verges.step(speed, 0.0, 10.0))[0]
         };
-        assert_eq!(grass(&mut verges, [0.0; 4], 20.0), 0.0);
-        let one = grass(&mut verges, [1.0, 0.0, 0.0, 0.0], 20.0);
-        let two = grass(&mut verges, [1.0, 0.0, 1.0, 0.0], 20.0);
-        let four = grass(&mut verges, [1.0; 4], 20.0);
-        assert!((one - GRASS_GAIN * 0.5).abs() < 1e-6 && (four - GRASS_GAIN).abs() < 1e-6, "{one} {four}");
-        assert!(one < two && two < four);
-        // A wheel straddling the edge counts its share.
-        assert!((grass(&mut verges, [0.5, 0.5, 0.0, 0.0], 20.0) - one).abs() < 1e-6);
-        // A wheel skipping off the grass for a step fades instead of cutting.
-        verges.set(Some(Verge::default()));
-        assert!(loops(&verges.step(20.0, 0.0, 0.007))[0] > 0.9 * one);
+        assert_eq!(patter([0.0; 4], 20.0), 0.0);
+        let one = patter([1.0, 0.0, 0.0, 0.0], 20.0);
+        let two = patter([1.0, 0.0, 1.0, 0.0], 20.0);
+        assert!((one - PATTER_GAIN * 0.5).abs() < 1e-6 && (two - PATTER_GAIN).abs() < 1e-6, "{one} {two}");
         // Silent at a standstill, rising with speed.
-        assert_eq!(grass(&mut verges, [1.0; 4], 0.0), 0.0);
-        assert!(grass(&mut verges, [1.0; 4], 8.0) < four);
+        assert_eq!(patter([1.0; 4], 0.0), 0.0);
+        assert!(patter([1.0; 4], 8.0) < two);
     }
 
     #[test]
@@ -224,6 +222,11 @@ mod tests {
         verges.set(Some(tree));
         let out = verges.step(20.0, 0.0, 10.0);
         assert_eq!(hits(&out), vec![(1, HIT_GAIN)]);
+        // Bushes under the wheels brush too: two wheels in dense ones are full, no hit.
+        verges.set(Some(Verge { brush: [1.0, 0.5, 0.0, 0.0], ..Verge::default() }));
+        let under = verges.step(12.0, 0.0, 10.0);
+        assert!((loops(&under)[1] - BRUSH_GAIN * 0.75).abs() < 1e-6, "{under:?}");
+        assert!(!under.iter().any(|c| matches!(c, Command::Shot { .. })));
         // The brush is capped at 1.
         let deep = Verge { touches: [touch(1, 2.0, false); TOUCHES], ..Verge::default() };
         verges.set(Some(deep));

@@ -68,6 +68,10 @@ const CABIN_CUTOFF: f32 = 1000.0;
 /// keeps their crack but takes off the hiss, at [`STONE_GAIN`] so the shower of them stays under the engine.
 const STONE_CUTOFF: f32 = 2500.0;
 const STONE_GAIN: f32 = 0.6;
+/// In the car the grass and the brush (`crate::verge`) take the shell's filter too, at [`VERGE_GAIN`] (ours): they
+/// are hiss (the grass loop has 85 % of its energy above 4 kHz), which the cabin's 1 kHz filter left 21 to 29 dB
+/// under the mix, not to be heard.
+const VERGE_GAIN: f32 = 2.5;
 /// Time constant of the gain moves, seconds (ours).
 pub(crate) const GAIN_TIME: f32 = 0.01;
 /// The RMS the tyre loops are brought to (ours, -12 dBFS): the retail loops lie 7 dB apart (tarmac rolling -14.9
@@ -927,20 +931,22 @@ impl Mixer {
             Loop::Engine | Loop::Wind | Loop::Siren | Loop::Helicopter | Loop::Grind | Loop::WiperMotor => None,
         };
         let placed = place.map(|p| (self.placed(p), self.car_pan));
-        // The wind, the grass and the brush heard in the car come through the cabin, as the tyres' roar (ours); the
-        // scrape rings the shell as the stones do.
+        // The wind heard in the car comes through the cabin, as the tyres' roar (ours); the grass, the brush and the
+        // scrape ring the shell as the stones do ([`VERGE_GAIN`]).
         let cabin = match voice {
-            Loop::Wind | Loop::Grass | Loop::Brush => Some(self.cabin()),
-            Loop::Scrape | Loop::Slide => Some(self.inside.then(|| OnePole::new(self.rate, STONE_CUTOFF))),
+            Loop::Wind => Some(self.cabin()),
+            Loop::Grass | Loop::Brush | Loop::Scrape | Loop::Slide => {
+                Some(self.inside.then(|| OnePole::new(self.rate, STONE_CUTOFF)))
+            }
             _ => None,
         };
         let option = match voice {
             Loop::Engine | Loop::Gearbox | Loop::Diff => self.volumes.engine,
-            Loop::Grass => self.volumes.tyres,
             _ => self.volumes.effects,
         };
         if let Some(v) = self.loops.get_mut(&voice) {
-            v.gain.target = gain * placed.map_or(1.0, |(g, _)| g) * option;
+            let verge = if self.inside && matches!(voice, Loop::Grass | Loop::Brush) { VERGE_GAIN } else { 1.0 };
+            v.gain.target = gain * placed.map_or(1.0, |(g, _)| g) * option * verge;
             if let Some((_, pan)) = placed {
                 v.pan = pan;
             }

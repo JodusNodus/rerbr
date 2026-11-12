@@ -144,7 +144,7 @@ pub fn glass(drawn: &mut glass::Drawn) -> rbr_sound::effects::Glass {
     rbr_sound::effects::Glass { moving: g.phase > 0.0, strokes: g.stroke_count, out: last.to > last.from, wet, splats }
 }
 
-/// The car at the verge for the sound (`rbr_sound::verge::Verge`, ours): each wheel's share on grass from the
+/// The car at the verge for the sound (`rbr_sound::verge::Verge`, ours): each wheel's share in bushes from the
 /// particles' last frame and the vegetation of the stage's `roadside` the body of the car at `car` is in
 /// ([`crate::verge`]); `None` without either, which plays nothing of it.
 pub fn verge(
@@ -155,7 +155,7 @@ pub fn verge(
     if particles.is_none() && roadside.is_none() {
         return None;
     }
-    Some(crate::verge::verge(particles.map_or([0.0; 4], Particles::wheel_grass), roadside, car))
+    Some(crate::verge::verge(particles.map_or([0.0; 4], Particles::wheel_brush), roadside, car))
 }
 
 /// The car's roadside `sides` (left, right as the car facing `forward` has them) as a listener whose right is

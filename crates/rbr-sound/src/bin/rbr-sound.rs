@@ -4,7 +4,7 @@
 //! prints each one-shot kind's made and refused requests under the sound limit (`rbr_sound::mixer::SOUND_LIMIT`).
 //!
 //! Usage: rbr-sound (--recording X | --replay RRP) [--stage NAME] --out WAV [--seconds S] [--camera inside|chase|trackside]
-//!        [--no-codriver] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--poses CSV] [--roadside CSV] [--car N]
+//!        [--no-codriver] [--verge CSV] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--poses CSV] [--roadside CSV] [--car N]
 //!        --ngp-physics FILE [--rsf-car ID|PACK [--no-fmod] | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--solo LAYER]
 //!        [--codriver-mod DIR [--codriver-voice V] [--codriver-style S] [--codriver-ranges R] [--pacenotes FILE]]
 //!
@@ -79,6 +79,8 @@ struct Args {
     seconds: f32,
     camera: Camera,
     codriver: bool,
+    /// `--verge CSV`: the body's contacts with bushes and bendable trees (the viewer's come from its roadside).
+    verge: Option<PathBuf>,
     volume: f32,
     standalone: PathBuf,
     log: Option<PathBuf>,
@@ -139,6 +141,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 }
             }
             "--no-codriver" => args.codriver = false,
+            "--verge" => args.verge = Some(PathBuf::from(value()?)),
             "--log" => args.log = Some(PathBuf::from(value()?)),
             "--events" => args.events = Some(PathBuf::from(value()?)),
             "--poses" => args.poses = Some(PathBuf::from(value()?)),
@@ -457,7 +460,7 @@ fn run() -> Result<(), String> {
     let data = Data::from_env().ok_or("RBR_DATA is not set")?;
     let mut args = args;
     if let Some(replay) = args.replay.clone() {
-        let drive = replay_drive(&replay, &mut args.pack_car)?;
+        let drive = replay_drive(&replay, &args.standalone.clone(), &mut args.pack_car)?;
         return render(&args, &data, drive);
     }
     let [map, car, weather, tyre] = auto(&args.recording)?;
@@ -503,10 +506,29 @@ struct Drive {
     stage: String,
 }
 
+/// The body's contacts of a `--verge` CSV (`rbr-render`'s `verge_probe` example), by step: `step,id,depth,density,
+/// branches` a contact.
+fn read_verge(path: &Path) -> Result<HashMap<usize, Vec<rbr_sound::verge::Touch>>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut out: HashMap<usize, Vec<rbr_sound::verge::Touch>> = HashMap::new();
+    for line in text.lines().skip(1) {
+        let v: Vec<f32> =
+            line.split(',').map(str::parse).collect::<Result<_, _>>().map_err(|e| format!("{line}: {e}"))?;
+        let [step, id, depth, density, branches] = v[..] else { return Err(format!("{line}: 5 fields")) };
+        let touch = rbr_sound::verge::Touch { id: id as u32, depth, density, branches: branches != 0.0 };
+        out.entry(step as usize).or_default().push(touch);
+    }
+    Ok(out)
+}
+
 /// A replay's drive: its own stepping command (the viewer arguments after `--live`) run back to back, the car
 /// its `--car` or the pack car's slot, its pack flags taken into `pack_car` (the FMOD bank). The weather is dry
 /// and the sirens are left out.
-fn replay_drive(replay: &Path, pack_car: &mut rbr_formats::car_pack::Flags) -> Result<Drive, String> {
+fn replay_drive(
+    replay: &Path,
+    standalone: &Path,
+    pack_car: &mut rbr_formats::car_pack::Flags,
+) -> Result<Drive, String> {
     let file = std::fs::File::open(replay).map_err(|e| format!("{}: {e}", replay.display()))?;
     let viewer = rbr_recording::replay::read_args(BufReader::new(file))?;
     let at = viewer.iter().position(|a| a == "--live").ok_or("the replay has no --live command")?;
@@ -518,6 +540,13 @@ fn replay_drive(replay: &Path, pack_car: &mut rbr_formats::car_pack::Flags) -> R
         }
         pack_car.take(&pair[0], &pair[1]);
     }
+    // A replay driven from a build that is gone (a removed worktree) steps with `--standalone` instead.
+    let program = if Path::new(program).exists() {
+        PathBuf::from(program)
+    } else {
+        eprintln!("rbr-sound: {program} is gone, stepping with {}", standalone.display());
+        standalone.to_owned()
+    };
     let mut command = process::Command::new(program);
     command.args(live).arg("--replay").arg(replay).args(["--replay-pace", "free"]);
     let stage = live.windows(2).find(|p| p[0] == "--stage").map(|p| p[1].clone()).unwrap_or_default();
@@ -615,6 +644,7 @@ fn render(args: &Args, data: &Data, drive: Drive) -> Result<(), String> {
     let from = (f64::from(args.from) * STEPS_PER_SECOND) as usize;
     let events = args.events.as_deref().map(read_events).transpose()?.unwrap_or_default();
     let roadside = args.roadside.as_deref().map(read_roadside).transpose()?;
+    let verge = args.verge.as_deref().map(read_verge).transpose()?;
     let mut poses = match &args.poses {
         Some(path) => {
             let mut file =
@@ -659,6 +689,13 @@ fn render(args: &Args, data: &Data, drive: Drive) -> Result<(), String> {
             if let Some(inputs) = &inputs {
                 if answered == 0 {
                     eprintln!("rbr-sound: NGP's sound words {:?}", inputs.ngp);
+                }
+                if let Some(verge) = &verge {
+                    let mut touches = [None; rbr_sound::verge::TOUCHES];
+                    for (slot, touch) in touches.iter_mut().zip(verge.get(&answered).into_iter().flatten()) {
+                        *slot = Some(*touch);
+                    }
+                    models.verges.set(Some(rbr_sound::verge::Verge { touches, ..Default::default() }));
                 }
                 let commands = models.step(inputs, &scene);
                 mixer.apply(&commands);
