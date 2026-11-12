@@ -128,9 +128,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   aero"). NGP 7 stays the default and bit-exact. While experimental, a run with it saves no records, ghosts or
   championship results; its replays carry the choice. It replaces the input-side throttle model, which is not merged.
   The tyre model (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to
-  standstill, loose-v1 on soil, NGP's grip level (gravel's 0.9 of it along the wheel and 1.06 sideways, falling with
+  standstill, loose-v1 on soil, NGP's grip level (gravel's 0.9 of it along the wheel and 1.10 sideways, falling with
   the loose layer's depth, with NGP's soil force held from 10 m/s of sideways speed, and a wet road's loss with speed
-  half the drums': user 2026-11-11, the 1.06 and the 10 m/s ours on the user's drives;
+  half the drums': user 2026-11-11, the 1.10 the user's of 2026-11-12, the 10 m/s ours on the user's drives;
   [tyre-model.md](tyre-model.md)); in development, not released
   (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's Settings page does not offer
   it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
