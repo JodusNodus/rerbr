@@ -124,7 +124,7 @@ impl Options {
 pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
 
 /// The smoothing's range, ms, in the launcher and the pause menu.
-pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=40;
+pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=30;
 
 /// The smoothed level `dt` seconds after `was` with NGP's at `target` (ours): one pole with time constant `ms`,
 /// which the force then trails by about `ms`; 0 gives `target`. NGP's force carries bursts of 10 to 20 Hz, about
@@ -847,7 +847,7 @@ mod tests {
         assert_eq!(Options::parse(&o.to_text()), o);
         assert_eq!(Options::parse("[controls]\nbrake = KeyB\n"), Options::default());
         assert_eq!(Options::parse("[ffb]\nstrength = 3\nrate = 0\n").settings.strength, 1.0);
-        assert_eq!(Options::parse("[ffb]\nsmoothing = 900\n").smoothing, 40);
+        assert_eq!(Options::parse("[ffb]\nsmoothing = 900\n").smoothing, 30);
         assert_eq!(
             (o.rotation_for(Some(479)), o.rotation_for(Some(565)), o.rotation_for(None)),
             (Some(479), Some(540), Some(540))
