@@ -500,6 +500,8 @@ pub struct Driver<'a> {
     brake: Brake,
     /// `--brake-declutch`: the brake test holds the clutch pedal in and shifts no gear (the engine off the wheels).
     declutch: bool,
+    /// `--brake-throttle`: the throttle the brake test holds under its pedal (0: none).
+    brake_throttle: f32,
     /// A rally school lesson's judged speed bands: the driveline window and the top speed in it, m/s.
     bands: Vec<SpeedBand>,
     /// `--speed-zone`: the driveline windows that hold one speed in place of their curve limits.
@@ -544,6 +546,8 @@ pub struct Measure {
     pub brake_hold: Option<f32>,
     /// `--brake-declutch`.
     pub brake_declutch: bool,
+    /// `--brake-throttle`.
+    pub brake_throttle: Option<f32>,
     pub circle: Option<Circle>,
     pub circle_ramp: Option<f32>,
     /// `--circle-past T` (`PAST_WIDE`).
@@ -790,6 +794,7 @@ impl<'a> Driver<'a> {
             braking: false,
             brake: Brake::Pedal(1.0),
             declutch: false,
+            brake_throttle: 0.0,
             bands: Vec::new(),
             zones: Vec::new(),
             grip: 1.0,
@@ -1065,6 +1070,11 @@ impl<'a> Driver<'a> {
     /// The brake test with the clutch pedal in and no gear changes from its start (`--brake-declutch`), or not.
     pub fn with_declutch(self, declutch: bool) -> Self {
         Self { declutch, ..self }
+    }
+
+    /// The brake test with this throttle held under its pedal (`--brake-throttle`), a left-foot braker's overlap.
+    pub fn with_brake_throttle(self, brake_throttle: f32) -> Self {
+        Self { brake_throttle, ..self }
     }
 
     /// The driver holds no slowdown: `--flat-out` or `--circle`, where the curve, kink, tracking and prop-dodge
@@ -1441,9 +1451,10 @@ impl<'a> Driver<'a> {
         }
         let mut clutch = 0;
         if self.braking {
-            // The brake test: its pedal with the computed steering (`--brake-from`); declutched, the idling engine
-            // cannot turn the wheels against the brake.
-            throttle = 0.0;
+            // The brake test: its pedal with the computed steering (`--brake-from`) and the held throttle
+            // (`--brake-throttle`, none unless given); declutched, the idling engine cannot turn the wheels against the
+            // brake.
+            throttle = self.brake_throttle;
             if self.declutch {
                 (flags, clutch) = (0, 255);
             }

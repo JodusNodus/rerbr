@@ -362,6 +362,12 @@ fn the_declutched_brake_test_holds_the_clutch_in_and_shifts_no_gear() {
     assert_eq!((q.brake, q.clutch, q.flags), (255, 255, 0));
     let q = declutched.control(3000, &sense(5.0), false);
     assert_eq!((q.brake, q.clutch, q.flags), (255, 255, 0));
+    // `--brake-throttle`: the throttle held under the brake test's pedal, and none before it.
+    let mut overlapped = driver(&track, 80.0).with_brake_from(20.0).with_brake_throttle(0.4);
+    assert_eq!(overlapped.control(1000, &sense(10.0), false).brake, 0);
+    let q = overlapped.control(1001, &sense(25.0), false);
+    assert_eq!((q.brake, q.throttle), (255, 102));
+    assert_eq!(plain.control(1001, &sense(25.0), false).throttle, 0);
 }
 
 /// Threshold braking on a toy wheel at 720 Hz: a 1 kg·m² wheel of 0.3 m on 3000 N, a friction curve peaking at 1.0
