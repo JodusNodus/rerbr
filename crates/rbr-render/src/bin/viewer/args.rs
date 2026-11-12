@@ -246,7 +246,6 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
   drive:      --drive RECORDING  --at STEP  --at-periods N  --at-drive RECORDING  --live COMMAND... (the rest of the line)
               --bindings INI  --ghost FILE  --save-ghost FILE  --best-ghost FILE  --ghost-weather WORDS
               --car-gearbox synchro|dog|sequential  --grind-sound WAV  --car-lock DEG
-              --ffb-linear (the wheel's force linear in the steering torque, in place of NGP's curve: a trial)
               --save-replay FILE (with --live)  --replay FILE [ARGS...] (watches a replay, extras override)
   view:       --view NAME  --cameras INI  --fov DEG  --chase-fov DEG  --camera EX,EY,EZ,FX,FY,FZ  --flyby AHEAD,SIDE,HEIGHT  --size WxH  --fullscreen  --look-back
               --triple DIAGONAL,BEZEL,DISTANCE[,ANGLE|auto] (inches, mm, cm, degrees)  --triple-monitors LEFT,CENTRE,RIGHT
@@ -275,7 +274,6 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut live: Option<Vec<String>> = None;
     let mut bindings = Bindings::default();
     let mut ffb_options = ffb::Options::default();
-    let mut ffb_linear = false;
     let mut bindings_file = None;
     let mut screenshot = None;
     let mut video = None;
@@ -619,7 +617,6 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
             "--codriver-style" => codriver_style = args.next().ok_or("--codriver-style needs a file")?,
             "--codriver-ranges" => codriver_ranges = args.next().ok_or("--codriver-ranges needs a file")?,
             "--pacenotes" => pacenotes = Some(PathBuf::from(args.next().ok_or("--pacenotes needs a file")?)),
-            "--ffb-linear" => ffb_linear = true,
             "--no-hud" => hud.show = false,
             "--mph" => hud.mph = true,
             "--fps" => hud.fps = true,
@@ -754,7 +751,7 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         flyby,
         live,
         bindings,
-        ffb: ffb::Options { linear: ffb_linear, ..ffb_options },
+        ffb: ffb_options,
         bindings_file,
         screenshot,
         video,
