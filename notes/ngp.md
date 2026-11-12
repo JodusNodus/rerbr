@@ -273,9 +273,29 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     scaled down to 600 s, so recent driving weighs more. Not split by physics profile (the brush's torque is about
     10 % lighter).
   - Shown (pause menu, Controls page): "maxed out" is the share with the force over 0.95 at the sensitivity shown;
-    "suggested" (a hint, set only by the player's "Use suggested") puts the 90th percentile at force 0.5 (`p = 100 x ln 0.975 / ln 0.5` ≈ 3.653 x, to 5 %, within 10-500 %). Check (autopilot,
+    "suggested" (a hint, set only by the player's "Use suggested") puts the 90th percentile at
+    force 0.65 (`load::TARGET`; `p = 100 x ln 0.975 / ln 0.35` ≈ 2.412 x, to 5 %, within 10-500 %; 0.5 and 3.653 x
+    before 2026-11-12). Check (autopilot,
     map 41 tarmac and RSF 104 gravel, 6 cars, 150000 steps, `stage_runs.py`): the p90 is 0.66-0.75 (tarmac) and
     0.70-0.84 (gravel) of the car's circle `x` at 0.5 g, within about ±10 % against the raw 4×.
+  - Why 0.65 (user decision 2026-11-12, from the 22 car and surface loads of 20 s or more in
+    `launcher-settings.ini`): the user's own settings put the p90 at force 0.50-0.82 (median 0.63) with the wheel
+    maxed out 0.4 % of the time at most; at 0.5 the suggestion was above the setting in 19 of 22 (1.0-2.0 times it)
+    and at the 500 % cap in 6. Under 1 % maxed out is reached at 80-315 %, the p90 then at 0.81-0.90. At 0.65 it is
+    above the setting in 8 of 22 and at the cap in 1, the wheel maxed out 0.4 % at most at the suggestion; the
+    page's advice reads good for 18, lower for 3, raise for 1.
+- Smoothing (ours, 2026-11-12; `rbr_render::ffb::smooth`, `[ffb] smoothing`, 0-30 ms (user, 2026-11-12), default 0 = NGP's own, the
+  levels sent unchanged): one pole on the magnitude in the wheel thread, by the thread's measured interval, before
+  the dead zone; a pause drops it to 0 at once. Set on the launcher's Controls page and the pause menu's Force
+  feedback page (live, `Wheel::set_smoothing`), for every car.
+  - Why: NGP's force carries bursts of 10-20 Hz at about ±0.1-0.15 of full force under a smooth steering input
+    (drive2/5, Focus WRC 06 on snow, S 280, above 5 m/s, 720 Hz trace: rms 0.044 at 8-30 Hz and 0.053 at 3-8 Hz
+    against 0.43 below 3 Hz; 12.6 reversals/s over 0.05). RSF sent the same values (`rsf_compare` ffb, exact), so it
+    is NGP's.
+  - Effect on that trace (thread at 1.08 ms; 8-30 Hz rms over NGP's, reversals/s over 0.05): 5 ms 0.90, 8.8; 10 ms
+    0.73, 6.5; 15 ms 0.59, 3.7; 20 ms 0.49, 2.9; 30 ms 0.36, 2.0. Below 3 Hz the rms stays within
+    1 % (0.4286 to 0.4267); the force trails by about the value. Two poles at the same lag did no better. Not tried
+    on a wheel.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only

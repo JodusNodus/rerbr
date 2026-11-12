@@ -1811,6 +1811,49 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   and 120 m), the 30 mm pad's full pedal 0.89 over 100-70 (0.97). Scorecard: on the probe's 9 mm the lab's two pea-stone
   rows miss, `gravel-locked-over-lat-max` 1.063 (1.45-1.6) and `gravel-locked-over-traction` 1.054 (1.25-1.47), the
   source's stone being deeper; the car's locked over ABS stays in band (1.37 / 1.28 at 50 / 80 km/h, 1.12-1.59).
+  Finland's 1.07-1.14 is a 1 s windows' figure, which blends the slips inside a window: level by samples (next item).
+- Gravel's braking against slip on seven rallies, and the side force under braking (2026-11-12; scratch: the crews'
+  straight braking, brake on, |path lateral| under 0.2 g, over 14 m/s, the slip 1 - speed channel / GPS speed / 0.95
+  with the channels 0.2 s behind the GPS; the game's i20 on RSF 524's race line, 29 / 31 finished runs for loose-v1 /
+  NGP's tyre, and on material 49's pad at fixed pedals, its four wheels' mean over 0.943; `force_sweep` on the
+  scorecard's gravel frame at 15 mm, 20 m/s, 4 / 6 kN). Two readings: 1 s windows (the GPS speed's fall against the
+  window's mean slip) and samples (0.1 s, the accelerometer against the slip, both over 0.3 s). The windows blend:
+  inside one the crews' slip ranges over 0.26-0.29 at the median (the autopilot's 0.06), so a window sits under the
+  curve at its mean slip. Finland by windows 0.70 / 0.75 / 0.81 / 0.86 / 0.94 g at 10-15 / 15-22 / 22-32 / 32-50 / over
+  50 % of slip (the last over 22-32 %: 1.11-1.21 on five rallies), by samples 0.78 / 0.84 / 0.89 / 0.92 and 0.92 at
+  50-80 %. By samples each rally (Finland, Estonia, Portugal, Sardegna, Acropolis, Safari, Wales 2019) rises to its
+  32-50 % bin (10-15 % is 0.79-0.85 of it, 22-32 % 0.95-0.97) and is level to 80 % (50-80 % 0.96-1.08 of it; 50-65 %
+  with the pedal over 0.9 1.00-1.05), where tarmac is at 0.90-0.93 of its peak by 32-50 % (Germany 2019, España). Past
+  80 % with the pedal held a rally has under 25 samples (the rest have 0.2-0.3 of the pedal and 0.04-0.22 g: a handbrake
+  or a stopped channel): no reading of a locked tyre, so the crews neither show nor refute the berm, whose evidence
+  stays the published locked stops. The slip's error: 0.014 at 0.9 g and 110 km/h per 0.05 s of the channels' delay
+  (0.15-0.25 s by drive, p25-p75) and 0.01 on the coasting level. The game's car on the stage by samples: loose-v1 0.46
+  / 0.68 / 0.81 / 0.84 / 0.87 / 0.89 g at 3-6 / 6-10 / 10-15 / 15-22 / 22-32 / 32-50 % and 0.91 locked, Finland's crews
+  0.58 / 0.68 / 0.78 / 0.84 / 0.89 / 0.92: within 0.03 g from 6 to 50 % (the first bin's gap is 0.02 of slip, inside the
+  error). NGP's tyre 0.35 / 0.55 / 0.73 / 0.86 / 0.95 / 0.97 and 0.79 locked, 0.81 of its peak where no rally falls to
+  80 %. By windows the game's car reads on the stage as on the pad (0.6-0.7 g at 7 % of slip, 0.7-0.8 g at 10 %) where
+  the crews' windows have 13 and 16 %: the blend, not the road. Left: loose-v1 has 0.91 of its 32-50 % figure at 10-15 %
+  of slip where the rallies have 0.79-0.85. Side force: loose-v1's over NGP's at slip angles of 2-12° is 0.92-1.06 at κ
+  -0.2, 0.80-0.97 at -0.3, 0.60-0.76 at -0.5, 0.51-0.65 at -0.7 and 0.49-0.61 locked. loose-v1's force lies along the
+  sliding velocity (μ sin θ, tan θ = tan α / |κ|; locked 0.83 sin α), NGP's locked tyre's 24-25° off the wheel's heading
+  at a slip angle of 12°. At κ -0.5 to -0.7 and 8° loose-v1 keeps 0.20-0.30 of its free-rolling side force, NGP's tyre
+  0.37-0.44: the difference of "Braking in a turn" from 0.75 of the pedal.
+- Setup's reach on the pad readings (2026-11-12; scratch: the i20's default gravel and tarmac setups with one change at
+  a time, 22 changes: roll bars × 0.5 / 2, springs × 0.8 / 1.25, dampers × 0.7 / 1.4, the front brakes' share of the
+  pressure ± 8 points, the centre differential's maps zeroed under braking and throughout, the axle differentials'
+  torque × 0.1 / 3, tyres at 180 / 260 kPa, front camber × 0.5 / 1.5, rear camber -3°, struts +20 mm, front toe ± 2 mm
+  of rod; pad 49 with loose-v1 and with NGP's tyre, the tarmac pad with brush-v1). The level moves little. The 100 m
+  circle's limit: -1.4 to +0.9 % on gravel (0.918 g; NGP's tyre -2.6 to +1.0 %), ± 2.3 % on tarmac (1.345 g); the 200 m
+  circle's within 0.7 % (NGP's tyre 1.2 %). Straight braking at 0.8 of the pedal: within 0.7 % on gravel and 1.5 % on
+  tarmac, but for tarmac's front toe +2 mm (-4.6 %), front camber × 1.5 (-3.8 %) and centre differential open under
+  braking (the fronts lock, -31 %; on gravel the front / rear slips go from 0.28 / 0.26 to 0.22 / 0.33 at the same 0.87
+  g). The brakes' share alone does nothing while the centre differential locks under braking (the default map is at 1
+  from its eighth point of eleven). The balance moves a lot. Braking in the 100 m turn, the largest sideslip at 0.75 /
+  0.9 of the pedal: gravel from 0.6 g 24 / 29° by default and 15-45 / 25-36° over the changes; tarmac from 0.9 g 11 /
+  21° and 5-43 / 10-37° (the open centre runs straight on, 1.4°); NGP's tyre on gravel 8 / 11° and 7-16 / 9-13°, so at
+  0.9 of the pedal the two tyres' ranges do not meet and at 0.75 they touch. Readings of level (grip, braking, the
+  crews' g) hold for any setup near the default; readings of balance (the turn under braking, sideslip, the catch) are
+  the default setup's.
 - The experimental profiles' aero (2026-11-11, user decisions: the brush profile, then `experimental`;
   `Profile::EXPERIMENTAL.aero` is `wings+downforce`, `--aero ngp` gives the files' back; the model in
   `rbr_hybrid::ngp::aero_model`, its fit in "The files' downforce against these" below). The i20 on material 49 on
@@ -1899,17 +1942,45 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   km/h (n 3 / 9 / 26; the path's 1 s lateral 1.04 / 0.98 / 0.98). The car on pad-49's circles of 65 / 100 / 200 m, read
   alike (`corner_limit.py circle`): 0.88 / 0.91 / 1.02 g at 90 / 108 / 158 km/h and 0.91 / 0.93 / 1.03, so 0.96 / 0.94 /
   1.05 and 0.99 / 0.96 / 1.06 of the crews'; loose-v1 at NGP's sideways level 0.86 / 0.87 at 90 / 108 km/h, 0.93 / 0.89.
-  On the stage each corner is held at one speed (`--speed-zone`: sqrt(level g x radius), 14 levels from 0.7 to 1.5)
-  until a pass runs 1.5 m wide or slides 15 deg, 40 / 39 corners taken past their limit. In the 14 of them that turn 30
-  deg or more and where the crews' median is 0.8 g up the car reaches 0.94 / 0.95 g at 92 km/h against the crews' 0.98
-  at 105: 0.92 of theirs corner by corner on either tyre (p25-p75 0.80-1.07 / 0.76-1.07). The 17 / 16 shorter kinks read
-  0.80 g at 110-112 km/h against 0.97-0.98 at 139: the crews straighten them, and a car on the driveline neither reaches
-  their speed nor stays at its limit for the reading's 0.5 s (the pad's figure at that speed is 0.93). So the sideways
-  level is within 6 % of the crews' by the pad's reading and 8 % under by the stage's, whose quartiles from corner to
-  corner (a corner's own banking, crest or dip, the stage's against the road's) leave about 6 % either way on 14
-  corners: the reading tells loose-v1 at NGP's level (7-11 % under on the pad) from now, not 1.06 from 1.00 or 1.10. Not
-  measured: the pursuit's pass against a crew's (the car at 92 km/h on the stage is 0.04-0.06 g over its pad figure
-  there), the real sensor's place and roll.
+  On the stage each corner is held at one speed (`--speed-zone`: sqrt(level g x radius), 14 levels from 0.7 to 1.5), and
+  its figure is the fastest pass that held it (within 1.5 m of the driveline, under 15 deg of sideslip) where a faster
+  one did not: the limit from below, a level's step (5 % of g) under the first pass that lost it; 35 / 29 corners have
+  one. In the 12 / 11 of them that turn 30 deg or more and where the crews' median is 0.8 g up the car holds 0.86 g at
+  84-85 km/h on either tyre against the crews' 0.97-0.98 at 102-106: 0.88 / 0.92 of theirs corner by corner (p25-p75
+  0.79-0.95 / 0.78-0.98), at 0.83 / 0.82 of their slowest speed in the corner. The 16 / 12 shorter kinks read 0.79 g,
+  0.82 / 0.78 of theirs, at 0.74 / 0.70 of their slowest speed: the crews straighten them ("The crews' line" below). The
+  highest 0.5 s mean of any pass under 45 deg of sideslip, this reading at first, gave 0.94 / 0.95 g in the long
+  corners: a car past its limit slides, and its drag reads as the body's lateral. So the sideways level is within 6 % of
+  the crews' by the pad's reading and 8-12 % under by the stage's from below, whose quartiles from corner to corner (a
+  corner's own banking, crest or dip, the stage's against the road's) leave about 6 % either way on 12 corners: the
+  reading tells loose-v1 at NGP's level (7-11 % under on the pad) from now, not 1.06 from 1.00 or 1.10. Not measured:
+  the real sensor's place and roll.
+- The crews' line (2026-11-12; `corner_limit.py demand` and `run --race`, `--speed-zone` under `--race`; the same car,
+  tyres and drives). `demand` drives a path at each crew's own speed by driveline distance and reads it by the same 1 s
+  fit: the g the path asks at their speeds over the g they pulled, 1 on their line. The driveline (the plain autopilot's
+  path) asks 1.27 (p25-p75 1.16-1.48 over the 46 corners where they pulled 0.8 g up; 1.22 in the 17 turning 30 deg or
+  more, 1.43 in the 29 shorter), the [race autopilot](#race-autopilot)'s line (the least bend inside the road's edges
+  less 1.4 m; road p50 5.3 m, the line p50 / p90 0.6 / 1.2 m off the driveline) 1.08 (1.03-1.20; 1.07 / 1.08). So the
+  crews' line is the least-bend line to 8 % of g, 4 % of speed, and a car on the driveline needs a quarter more grip
+  than theirs for their speeds. The corners on that line (`run --race 5,4,0.3`: the plain plan's level and the default's
+  steering law on the line; a car that loses the line there rolls or leaves the road, so each of the 49 corners has its
+  own run, 10 levels from 0.65 to 1.1, 980 runs; a limit in 28 / 24): in the 14 / 12 that turn 30 deg or more the car
+  holds 0.89 / 0.93 g at 88 / 87 km/h against the crews' 0.97 at 111, 0.90 / 0.93 of theirs corner by corner (p25-p75
+  0.81-1.02 / 0.79-0.96), at 0.84 / 0.83 of their slowest speed in the corner (0.81-0.87 / 0.81-0.88); in the 7 / 6
+  shorter 0.87 / 0.89 g, 0.90 / 0.96 of theirs, at 0.84 / 0.83 of their speed (the driveline's 0.74 / 0.70). The speed's
+  16 % under theirs is, by (speed)² = g x radius, the path's 1 s g 15-17 % under theirs (the body's 0.5 s g is 7-10 %
+  under: a crew holds its peak for the second, body 0.97 and path 0.98, and the autopilot's pass does not) on a path 16
+  % tighter, 8 % of it the line's and the rest the pass's own at its limit. What the passes cannot show: a fast kink at
+  the crews' speed (the approach is the plain plan's: the kink at 2972 m is reached at 125 km/h at most for the crews'
+  154), the two tyres apart (most corners hold the same level on both, a step of 2.5 % of speed), and loose-v1 past 6062
+  m. There both cars leave a left-hander at full throttle 0.7-0.8 m wide of the line (1.54 / 1.58-1.64 m right of the
+  driveline, the line at 0.85 m and the road's edge at 2.25 m: the default's law aims the nose at the line, and the car
+  travels 4.3 / 5.4 deg outside its nose) into the end of a ridge of the ground 0.25-0.7 m over the road, 0.35 m past
+  its edge: NGP's tyre's car loses 3.3 m/s in a step, spins and drives on, loose-v1's 4.1 m/s, and it is thrown up and
+  rolls, in each of the 130 runs to a corner past it. The steering law's and the stage's, not the tyre's: over the stage
+  at the plan's 0.4-0.5 g the two cars' sideslip is alike (p50 / p90 2.6 / 4.5 and 2.4 / 5.4 deg with the throttle over
+  half, 1.7 / 2.5 and 1.3 / 2.3 braking). Not done: a margin under 1.4 m, limit driving along the whole stage (the stage
+  time).
 - Braking in a turn under a steering driver (2026-11-11; `harness/brake_turn.py`: pad-49's circles of 65 / 100 / 200 m,
   the pedal put on at 0.6 / 0.7 / 0.8 / 0.88 g of lateral and held at 0.3 to 1 while the pursuit steers the circle, 72
   runs a tyre; i20 Coupe WRC 2020, NGP's tyre / loose-v1). Past 45 deg of sideslip: 5 / 21 runs; more than 2 m wide
@@ -1927,8 +1998,15 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   reads the game's sideslip 4-6 deg over the true one. So the car's whole g, not its stability, keeps it from the crews'
   hardest braking in a turn (their middle reached, their top tenth 9-14 % above, a flat pad against their road), and
   loose-v1's car turns 2-3 times as far as NGP's from 0.75 of the pedal: to the crews' p75-p95 where NGP's stays at
-  their p50-p75. Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or the steering),
-  and the cause in loose-v1 (the brake in turn of "Slides on gravel": the force along the slip).
+  their p50-p75. From the pedal's onset (2026-11-12, the runs' traces, 0.6-0.7 g before the pedal): at 0.3 s both cars
+  yaw over the circle's rate at their speed, 1.2-1.4 / 1.3-1.6 times it; from 0.75 of the pedal NGP's is back at 0.9-1.5
+  times by 1-1.5 s and loose-v1's stays at 1.7-2.9 times against the countersteer, a yaw rate that does not fall with
+  the speed. The wheels' slip at 0.5 s is alike at 0.75 of the pedal (the least 0.20-0.26 / 0.21-0.41, the most
+  0.29-0.64 / 0.29-0.51); at 0.9 loose-v1 holds all four at 0.44-0.71 where NGP's range from 0.24-0.39 to 0.45-0.92. So
+  the brakes are not the difference, which leaves the side force and the yaw damping the tyre keeps at a braking slip of
+  0.3-0.7 (not read per wheel). Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or
+  the steering). loose-v1's side force at those slips is 0.51-0.97 of NGP's, its force along the slip ("Gravel's
+  braking against slip on seven rallies").
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
@@ -2422,16 +2500,17 @@ Test tooling (2026-11-09, branch autopilot/race-line): `rbr-standalone --autopil
 (`crates/rbr-standalone/src/autopilot/race.rs`) drives at the car's measured limits so stage times can be read against
 real ones. LAT, BRAKE: the flat circle's lateral and the threshold stop's braking acceleration (m/s²), SLIP the stop's
 best slip (`limit_pace.py limits --surface`; Fiesta Rally2 ngp / brush: tarmac 1.282 / 1.327 g, 1.303 / 1.315 g, slip
-0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; flat snow 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by
-one factor f. The line is a minimum-curvature line within the road's edges less 1.4 m: the road comes from the `.col`
+0.3 / 0.2; gravel-flat 0.971 / 0.955, 0.826 / 0.840, 0.5; flat snow 0.952 / 0.982, 0.825 / 0.845, 0.5), scaled by one
+factor f. The line is a minimum-curvature line within the road's edges less 1.4 m: the road comes from the `.col`
 triangles under NGP's material sheets, scanned across the driveline every 2 m (road p10/p50 width 562 4.6/5.2 m, 524
-4.2/5.3, 422 3.8/4.8). The speed plan runs on that line with a friction ellipse in braking, held 0.15 s ahead.
-Braking is under the `--plan` threshold controller at SLIP. On tarmac the default's heading law steers to the line. On
-a loose surface (SLIP over 0.4) a curvature tracker steers it and the throttle eases past 0.06 rad of sideslip. The
-default's law countersteers all sideslip, and in gravel's steady drift that held the steering at 0.2-0.4 while the
-car ran wide. The tracker cost 11 s on 562 under ngp and spun the brush car. Gears, traction, recovery: the
-default's. Without the flag every output is byte for byte the same (traces and `.out` of 562, 524, RSF 345's circle
-and a brake stop).
+4.2/5.3, 422 3.8/4.8). The speed plan runs on that line with a friction ellipse in braking, held 0.15 s ahead. Braking
+is under the `--plan` threshold controller at SLIP. On tarmac the default's heading law steers to the line. On a loose
+surface (SLIP over 0.4) a curvature tracker steers it and the throttle eases past 0.06 rad of sideslip. The default's
+law countersteers all sideslip, and in gravel's steady drift that held the steering at 0.2-0.4 while the car ran wide.
+The tracker cost 11 s on 562 under ngp and spun the brush car. Gears, traction, recovery: the default's. Without the
+flag every output is byte for byte the same (traces and `.out` of 562, 524, RSF 345's circle and a brake stop). Under
+`--speed-zone` the line's plan holds the window's speed in place of its curve limits and brakes for it and after it at
+the whole braking rate (corner tests, `corner_limit.py run --race`; 2026-11-12).
 
 - Split, Fiesta Rally2 ngp. Point mass at the measured limits on 562: on the default's driven path 603.8 s, on the
   line 539.0 s (−10.7 %), with unlimited power on the path 555.2 s. The default drive takes 903.5 s, so the speed plan
@@ -2578,6 +2657,16 @@ saved rank pages are read below.
 | 615, 19957 m (snow) | Arctic Rally Finland 2021 SS4/7 Kaihuavaara, 19.91 km (27.93 km in the January Arctic Lapland Rally) | Evans 546.6 s, Rovanperä 548.8 (Yaris WRC) | +0.2 %, good | not used: the autopilot crawls (24-94 s under 5 m/s, spinning at a climb at 4.1 km); raw 1.182 / 0.953 |
 | 422, 9742 m (snow) | Rally Sweden 2018 SS8/19 Torsby, 9.56 km | Paddon 383.8 s (Friday 16:56), Lappi 361.2 (Sunday, power stage) | +1.9 %, fair | 0.983 / 0.985 (0.999 / 0.998) |
 
+- Tarmac stages on the telemetry's rallies (2026-11-12; scratch: the headings at 10 m of 2 km windows of an RSF stage's
+  centreline, an autopilot's trace, against every offset of each real stage's GPS track, either direction; RSF 524 finds
+  Finland 2021 SS7 at 10.3 km with every window at 1.00). RSF 476 (La Mussara Shakedown I, 7.3 km) is the first 7.3 km
+  of España 2021 SS1/4 in the crews' direction (every window 1.00, shifts within 40 m; six crews a pass). RSF 508
+  (Vilaplana 2007, 12.9 km) is the same stage from 7.4 km to its end (0.99, within 140 m). RSF 477, 476's road the other
+  way, is Catalunya 2019 SS15/17 from 12.6 to 20.0 of its 21 km in the crews' direction (1.00, within 40 m; eight and
+  six crews). Of the crews' cornering over 1 g, 13 % is over 150 km/h on 476's part and 5 % on 508's. Not on a stage of
+  the telemetry: RSF 595 (La Serra d'Almos) on España 2021 and Catalunya 2019, RSF 523 (Fintele) on Ypres 2021, RSF 369
+  (Capo di Feno) on Corsica 2018-19. RSF's list has no Croatian tarmac stage, and its German and Italian ones are not in
+  the Deutschland's or Monza's regions (by name, not fitted).
 - The user's Hassi drives by hand (2026-11-09, experimental-brush, dry; Fiesta Rally2 with 4 recoveries, stopped at
   7.3 km; GR Yaris Rally2 clean to 5.9 km, splits 89.8 / 177.5 s against RSF's Rally2 median 84.3 / 165.7 under
   ngp): lateral 1 s p90 / p99 0.83 / 1.05 g (glat) in both, g-g p95 |lat| 0.92-1.03 g at 60-150 km/h (Finland 2021

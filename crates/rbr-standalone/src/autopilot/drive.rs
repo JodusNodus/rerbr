@@ -233,7 +233,15 @@ pub fn drive(
         driver = driver.with_brake_from(v);
     }
     if let Some(r) = &measure.race {
-        let line = race::Line::build(&stage.track, &stage.track_values, &r.ground, driver.props(), r.limits, top);
+        let line = race::Line::build(
+            &stage.track,
+            &stage.track_values,
+            &r.ground,
+            driver.props(),
+            r.limits,
+            top,
+            &measure.zones,
+        );
         eprintln!("autopilot: {} (--race)", line.summary(r.limits));
         driver = driver.with_race(line);
     }
