@@ -1872,7 +1872,7 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   lateral; game: the i20, default setups, the 100 m circle under the pursuit's steering, `--brake-from` with
   `--brake-throttle`, the pedal and the throttle held). Crews overlap: throttle over 20 % in 86 / 70 / 38 % of the
   samples at a light / medium / hard brake in Finland (its p50 55 / 43 / 36 %), Sardegna 74 / 48 / 23 %, España's tarmac
-  51 / 19 / 7 %, Ypres 69 / 36 / 17 % (the channel may be the throttle body's). In the game a held throttle takes brake
+  51 / 19 / 7 %, Ypres 69 / 36 / 17 % (the channel is the driver's: the item below). In the game a held throttle takes brake
   off and no more: on gravel from 0.6 g, 0.9 of the pedal with 0.3 throttle is 0.45 of the pedal alone (0.61 against
   0.58 g, slips 0.12 / 0.10 against 0.11 / 0.09, sideslip 7.0 against 6.4°), and at 0.75 of the pedal the largest
   sideslip is 23.8° alone and 5.3° with 0.3 throttle (NGP's tyre 8.1 and 4.4°). From 0.85 g on gravel: 0.5 throttle
@@ -1884,6 +1884,21 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   one (NGP's tyre on tarmac, 0.45 of the pedal with 0.3 throttle: 8 against 14°). So the pad's brake-in-turn figures
   without throttle (the items above and below) are the lifted driver's case, the least common one in the crews' gravel
   braking.
+- Pedal overlap by time, and whose it is (2026-11-12; the telemetry over 40 km/h, overlap: throttle over 20 with the
+  brake over 5, a run the samples in a row; the user: three replays at 10 Hz, throttle over 0.2 with the pedal over
+  0.05). The throttle channel follows the driver, not the engine's off-pedal opening: under a hard brake (60 up) on
+  España's tarmac it reads 0-5 in 89 / 83 / 88 % of Evans's, Rovanperä's and Katsuta's samples and in 27 % of Ogier's in
+  the same car (10-40 in 47 %); Evans's and Rovanperä's own share over 20 falls from 35 / 31 % in Finland to 2 / 2 %;
+  within 0.3 s of a downshift the overlap is lower than away from one (Finland's hard brake over 0.5 g: 19 against 40
+  %); and it rises with the cornering in Finland (hard brake, path lateral under 0.2 / 0.2-0.5 / over 0.5 g: 15 / 19 /
+  34 %) and not in España (6 / 6 / 7 %). The brake channel sits at 100 in 60-70 % of the hard samples, so the item
+  above's light and medium rows are largely the pedal on its way on or off. By time: Finland 12.1 % of the driving
+  (drivers 5.1-18.7), held 0.5 s or more 5.4 % (Fourmaux 0.6, Rovanperä 1.6, Ogier 2.0, Breen 9.4, Evans 9.6, Lappi
+  11.7), 1 s or more 2.4 %; Sardegna 10.6 % (6.9-17.8), 3.2 % and 0.9 %; España 6.8 % (1.8-12.2), 1.8 % and 0.4 %; the
+  brake is on 29 / 36 / 33 % of the time. The user (experimental-brush, 2026-11-12): i20 Coupe WRC 2020 on RSF 524 3.0
+  %, held 0.5 s 0.3 %, the Lancer Evo II there 5.2 % and 0.5 %, the i20 on RSF 476 2.7 % and 0.0 %, the brake on 22 / 30
+  / 22 %: the low end of the crews' range. Published: Paddon aims never to have both pedals on (Hyundai i20 WRC,
+  Practical Motoring 2016-12); no figures found.
 - The experimental profiles' aero (2026-11-11, user decisions: the brush profile, then `experimental`;
   `Profile::EXPERIMENTAL.aero` is `wings+downforce`, `--aero ngp` gives the files' back; the model in
   `rbr_hybrid::ngp::aero_model`, its fit in "The files' downforce against these" below). The i20 on material 49 on
