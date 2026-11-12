@@ -43,6 +43,9 @@ pub struct Options {
     pub rotation_per_car: bool,
     /// The smoothing's time constant, ms ([`smooth`]); 0 sends NGP's force as it is.
     pub smoothing: i32,
+    /// How linear the force is in the steering torque, percent ([`shape`]): 0 sends NGP's force as it is, 100 a
+    /// straight line.
+    pub linearity: i32,
 }
 
 impl Default for Options {
@@ -55,6 +58,7 @@ impl Default for Options {
             rotation: None,
             rotation_per_car: false,
             smoothing: 0,
+            linearity: 0,
         }
     }
 }
@@ -87,6 +91,10 @@ impl Options {
             .get("smoothing")
             .and_then(|v| v.parse().ok())
             .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
+        out.linearity = section
+            .get("linearity")
+            .and_then(|v| v.parse().ok())
+            .map_or(0, |v: i32| v.clamp(*LINEARITY_RANGE.start(), *LINEARITY_RANGE.end()));
         out
     }
 
@@ -102,7 +110,7 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\n",
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\nlinearity = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -116,6 +124,7 @@ impl Options {
             self.rotation.map_or(String::new(), |d| d.to_string()),
             u8::from(self.rotation_per_car),
             self.smoothing,
+            self.linearity,
         )
     }
 }
@@ -125,6 +134,9 @@ pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
 
 /// The smoothing's range, ms, in the launcher and the pause menu.
 pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=10;
+
+/// [`Options::linearity`]'s range, percent, in the launcher and the pause menu.
+pub const LINEARITY_RANGE: std::ops::RangeInclusive<i32> = 0..=100;
 
 /// The smoothed level `dt` seconds after `was` with NGP's at `target` (ours): one pole with time constant `ms`,
 /// which the force then trails by about `ms`; 0 gives `target`. NGP's force carries bursts of 10 to 20 Hz, about
@@ -255,6 +267,41 @@ pub mod load {
         percent(p) / 100.0 * (-f).ln_1p() / BASE.ln()
     }
 
+    /// `linearity` percent ([`super::Options::linearity`]) as a weight, 0 to 1.
+    pub(super) fn weight(linearity: i32) -> f32 {
+        linearity.clamp(0, 100) as f32 / 100.0
+    }
+
+    /// The wheel's force for the ratio `x` at percentage `p` and `linearity` percent ([`super::shape`]): that share
+    /// of the line through [`force`]'s [`TARGET`], held at 1, the rest of [`force`].
+    pub fn shaped(x: f32, p: i32, linearity: i32) -> f32 {
+        let ngp = force(x, p);
+        if linearity <= 0 {
+            return ngp;
+        }
+        let line = (TARGET * x / ratio_at(TARGET, p)).min(1.0);
+        line + (ngp - line) * (1.0 - weight(linearity))
+    }
+
+    /// The ratio from which the wheel is maxed out ([`shaped`] past [`MAXED`]) at percentage `p` and `linearity`.
+    pub fn maxed_from(p: i32, linearity: i32) -> f32 {
+        let ngp = ratio_at(MAXED, p);
+        if linearity <= 0 {
+            return ngp;
+        }
+        // The force rises with the ratio, and the line is above the curve past the target.
+        let (mut below, mut above) = (0.0, ngp);
+        for _ in 0..24 {
+            let middle = (below + above) / 2.0;
+            if shaped(middle, p, linearity) > MAXED {
+                above = middle;
+            } else {
+                below = middle;
+            }
+        }
+        above
+    }
+
     /// The percentage that puts the ratio `x` at [`TARGET`]: `100 x ln(0.975) / ln(1 - TARGET)` (≈ 2.412 x).
     pub fn percent_for(x: f32) -> f32 {
         100.0 * x * BASE.ln() / (1.0 - TARGET).ln()
@@ -304,14 +351,14 @@ pub mod load {
             }
         }
 
-        /// The share of the time the force would be past [`MAXED`] at percentage `p`.
-        pub fn maxed_out(&self, p: i32) -> Option<f32> {
+        /// The share of the time the force would be past [`MAXED`] at percentage `p` and `linearity` ([`shaped`]).
+        pub fn maxed_out(&self, p: i32, linearity: i32) -> Option<f32> {
             let total: f32 = self.tenths.iter().sum();
             let maxed: f32 = self
                 .tenths
                 .iter()
                 .enumerate()
-                .filter(|&(k, _)| force(Load::middle(k), p) > MAXED)
+                .filter(|&(k, _)| shaped(Load::middle(k), p, linearity) > MAXED)
                 .map(|(_, t)| t)
                 .sum();
             (total > 0.0).then(|| maxed / total)
@@ -358,7 +405,7 @@ pub mod load {
     pub const LOW: f32 = 0.7;
     pub const HIGH: f32 = 1.4;
 
-    /// What the player could do at percentage `current` with the load `load`.
+    /// What the player could do at percentage `current` and `linearity` with the load `load`.
     #[derive(Debug, Clone, Copy, PartialEq)]
     pub enum Advice {
         /// Too little driving yet: the seconds so far.
@@ -376,9 +423,9 @@ pub mod load {
 
     /// The advice, its rules in order: under [`ADVICE_SECONDS`] of load, drive more; maxed out [`OFTEN`] or more,
     /// raise; below [`LOW`] times the suggestion, raise (high in the range); above [`HIGH`] times it, lower; else good.
-    pub fn advice(load: &Load, current: i32, range: std::ops::RangeInclusive<i32>) -> Advice {
-        let (seconds, maxed) = (load.seconds(), load.maxed_out(current).unwrap_or(0.0));
-        let Some(to) = suggested(load, range).filter(|_| seconds >= ADVICE_SECONDS) else {
+    pub fn advice(load: &Load, current: i32, linearity: i32, range: std::ops::RangeInclusive<i32>) -> Advice {
+        let (seconds, maxed) = (load.seconds(), load.maxed_out(current, linearity).unwrap_or(0.0));
+        let Some(to) = suggested(load, linearity, range).filter(|_| seconds >= ADVICE_SECONDS) else {
             return Advice::DriveMore(seconds);
         };
         if maxed >= OFTEN {
@@ -393,10 +440,13 @@ pub mod load {
     }
 
     /// The percentage that puts the player's usual cornering in `load` (its 90th percentile) at [`TARGET`], to the
-    /// nearest 5 within `range`: a hint, never applied.
-    pub fn suggested(load: &Load, range: std::ops::RangeInclusive<i32>) -> Option<i32> {
+    /// nearest 5 within `range`, raised by 5 until the wheel maxes out less than [`OFTEN`] at `linearity` (so
+    /// [`advice`] never asks to raise to a percentage that still maxes out often): a hint, never applied.
+    pub fn suggested(load: &Load, linearity: i32, range: std::ops::RangeInclusive<i32>) -> Option<i32> {
         let p = percent_for(load.percentile90()?);
-        Some(((p / 5.0).round() as i32 * 5).clamp(*range.start(), *range.end()))
+        let (p, end) = (((p / 5.0).round() as i32 * 5).clamp(*range.start(), *range.end()), *range.end());
+        let rarely = |&p: &i32| load.maxed_out(p, linearity).is_some_and(|share| share < OFTEN);
+        Some((p..end).step_by(5).find(rarely).unwrap_or(end))
     }
 }
 
@@ -480,6 +530,8 @@ pub struct Session {
     pub strength: f32,
     /// [`Options::smoothing`].
     pub smoothing: i32,
+    /// [`Options::linearity`].
+    pub linearity: i32,
     /// This drive's surface and load, from its first kept frame.
     drive: Option<(usize, Load)>,
 }
@@ -498,6 +550,7 @@ impl Session {
             started,
             strength: options.settings.strength,
             smoothing: options.smoothing,
+            linearity: options.linearity,
             drive: None,
         }
     }
@@ -545,6 +598,13 @@ impl Session {
         self.smoothing = ms.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
         let value = self.smoothing.to_string();
         self.write(|file| rbr_formats::ini::set_value(file, "ffb", "smoothing", &value));
+    }
+
+    /// Sets how linear the force is (percent, [`LINEARITY_RANGE`]) and writes it to the file's `[ffb]`.
+    pub fn set_linearity(&mut self, linearity: i32) {
+        self.linearity = linearity.clamp(*LINEARITY_RANGE.start(), *LINEARITY_RANGE.end());
+        let value = self.linearity.to_string();
+        self.write(|file| rbr_formats::ini::set_value(file, "ffb", "linearity", &value));
     }
 
     /// One frame of the drive on `surface` (FFB1's), `force` NGP's: sampled when `kept` (a live NGP drive, racing,
@@ -622,6 +682,22 @@ pub fn reshape(force: f32, was: i32, now: i32) -> f32 {
     force.signum() * (1.0 - left.powf(percent(was) / percent(now)))
 }
 
+/// The wheel's force for a force `force` NGP's curve gave at sensitivity percentage `was`, at the percentage `now`,
+/// `linearity` percent linear ([`Options::linearity`], ours): at 0 [`reshape`]'s, NGP's own; at 100 linear in the
+/// steering torque (the curve inverted, [`load::torque_ratio`]), equal to the curve at [`load::TARGET`] and held at
+/// 1 from 1.54 times that torque; between them that share of the line ([`load::shaped`]). The curve flattens what
+/// the steering loses towards the limit of grip (a quarter less torque from 0.65 is 16 % less force, from 0.95 6 %);
+/// the line keeps it whole, is lighter below the target and reaches full force sooner.
+pub fn shape(force: f32, was: i32, now: i32, linearity: i32) -> f32 {
+    let ngp = reshape(force, was, now);
+    if linearity <= 0 || force.is_nan() {
+        return ngp;
+    }
+    let ratio = load::torque_ratio(force, was).unwrap_or(f32::INFINITY);
+    let line = force.signum() * (load::TARGET * ratio / load::ratio_at(load::TARGET, now)).min(1.0);
+    line + (ngp - line) * (1.0 - load::weight(linearity))
+}
+
 /// The wheel's force-feedback thread; dropping it stops the force.
 pub struct Wheel {
     shared: Arc<Shared>,
@@ -646,6 +722,8 @@ struct Shared {
     strength: AtomicU32,
     /// [`Options::smoothing`], which the pause menu changes too.
     smoothing: AtomicI32,
+    /// [`Options::linearity`], likewise.
+    linearity: AtomicI32,
 }
 
 impl Wheel {
@@ -654,6 +732,7 @@ impl Wheel {
         let shared = Arc::new(Shared {
             strength: options.settings.strength.to_bits().into(),
             smoothing: options.smoothing.into(),
+            linearity: options.linearity.into(),
             ..Shared::default()
         });
         let (tx, rx) = mpsc::channel();
@@ -680,7 +759,8 @@ impl Wheel {
         let (was, now) = (self.shared.was.load(Ordering::Relaxed), self.shared.now.load(Ordering::Relaxed));
         let settings =
             Settings { strength: f32::from_bits(self.shared.strength.load(Ordering::Relaxed)), ..self.settings };
-        self.set_magnitude(ffb::magnitude(reshape(force, was, now), &settings), steering);
+        let force = shape(force, was, now, self.shared.linearity.load(Ordering::Relaxed));
+        self.set_magnitude(ffb::magnitude(force, &settings), steering);
     }
 
     /// The wheel's strength (0 to 1, `Settings::strength`) from the next step on.
@@ -691,6 +771,11 @@ impl Wheel {
     /// The smoothing ([`Options::smoothing`], ms) from the thread's next update on.
     pub fn set_smoothing(&self, ms: i32) {
         self.shared.smoothing.store(ms, Ordering::Relaxed);
+    }
+
+    /// How linear the force is ([`Options::linearity`], percent) from the next step on.
+    pub fn set_linearity(&self, linearity: i32) {
+        self.shared.linearity.store(linearity, Ordering::Relaxed);
     }
 
     /// The force at sensitivity `now` rather than `was`, NGP's car's, on the drive's surface ([`reshape`]).
@@ -830,7 +915,7 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
 #[cfg(test)]
 mod tests {
     use super::load::{self, Load};
-    use super::{level, reshape, smooth, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
+    use super::{level, reshape, shape, smooth, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
 
     #[test]
     fn options_round_trip_and_default() {
@@ -968,22 +1053,22 @@ mod tests {
         l.add(40.0, 80.0);
         l.add(140.0, 20.0);
         // x 142.5 maxes out (> 0.95) at 100 % (0.97), not at 200 % (0.83); x 42.5 at neither.
-        assert_eq!((l.maxed_out(100), l.maxed_out(200)), (Some(0.2), Some(0.0)));
-        assert_eq!(Load::default().maxed_out(100), None);
+        assert_eq!((l.maxed_out(100, 0), l.maxed_out(200, 0)), (Some(0.2), Some(0.0)));
+        assert_eq!(Load::default().maxed_out(100, 0), None);
         // The 90th percentile is the second bin's middle: the suggestion puts it at 0.65 of the force, to 5 %.
         assert_eq!(l.percentile90(), Some(142.5));
-        let p = load::suggested(&l, SENSITIVITY_RANGE).unwrap();
+        let p = load::suggested(&l, 0, SENSITIVITY_RANGE).unwrap();
         assert_eq!(p, 345);
         assert!((load::force(142.5, (load::percent_for(142.5)) as i32) - load::TARGET).abs() < 2e-3);
         assert!((load::percent_for(1.0) - 2.4116).abs() < 1e-3);
         // A heavier car's reaches the range's end.
         let mut heavy = Load::default();
         heavy.add(300.0, 30.0);
-        assert_eq!(load::suggested(&heavy, SENSITIVITY_RANGE), Some(*SENSITIVITY_RANGE.end()));
+        assert_eq!(load::suggested(&heavy, 0, SENSITIVITY_RANGE), Some(*SENSITIVITY_RANGE.end()));
         let mut small = Load::default();
         small.add(22.0, 10.0);
-        assert_eq!(load::suggested(&small, SENSITIVITY_RANGE), Some(55));
-        assert_eq!(load::suggested(&Load::default(), SENSITIVITY_RANGE), None);
+        assert_eq!(load::suggested(&small, 0, SENSITIVITY_RANGE), Some(55));
+        assert_eq!(load::suggested(&Load::default(), 0, SENSITIVITY_RANGE), None);
     }
 
     #[test]
@@ -991,22 +1076,22 @@ mod tests {
         use load::Advice;
         let mut l = Load::default();
         l.add(40.0, 15.0);
-        assert_eq!(load::advice(&l, 100, SENSITIVITY_RANGE), Advice::DriveMore(15.0));
+        assert_eq!(load::advice(&l, 100, 0, SENSITIVITY_RANGE), Advice::DriveMore(15.0));
         l.add(40.0, 15.0);
         // The p90 is x 42.5: suggested 100 %. 0.7 and 1.4 times it are 70 and 140.
-        assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(100));
-        assert_eq!(load::advice(&l, 65, SENSITIVITY_RANGE), Advice::High(0.0, 100), "high, rarely maxed out");
-        assert_eq!(load::advice(&l, 70, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 140, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 145, SENSITIVITY_RANGE), Advice::Lower(100));
+        assert_eq!(load::suggested(&l, 0, SENSITIVITY_RANGE), Some(100));
+        assert_eq!(load::advice(&l, 65, 0, SENSITIVITY_RANGE), Advice::High(0.0, 100), "high, rarely maxed out");
+        assert_eq!(load::advice(&l, 70, 0, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 140, 0, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 145, 0, SENSITIVITY_RANGE), Advice::Lower(100));
         // x 42.5 maxes out at 30 %: raise, whatever else.
-        assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 100));
+        assert_eq!(load::advice(&l, 30, 0, SENSITIVITY_RANGE), Advice::Raise(1.0, 100));
         // 5 % maxed out (x 397.5 at 200 %) is often; just under is not.
         let mut edge = l.clone();
         edge.tenths[79] = 300.0 * load::OFTEN / (1.0 - load::OFTEN) * 1.001;
-        assert!(matches!(load::advice(&edge, 200, SENSITIVITY_RANGE), Advice::Raise(_, _)));
+        assert!(matches!(load::advice(&edge, 200, 0, SENSITIVITY_RANGE), Advice::Raise(_, _)));
         edge.tenths[79] *= 0.9;
-        assert!(!matches!(load::advice(&edge, 200, SENSITIVITY_RANGE), Advice::Raise(_, _)));
+        assert!(!matches!(load::advice(&edge, 200, 0, SENSITIVITY_RANGE), Advice::Raise(_, _)));
     }
 
     #[test]
@@ -1033,6 +1118,59 @@ mod tests {
         for _ in 0..(seconds * 8.0).round() as usize {
             session.frame(surface, force, 0.125, kept);
         }
+    }
+
+    #[test]
+    fn the_force_is_as_linear_as_asked() {
+        // S 100 at 250 %, shown at 250 % and at 125 %.
+        let at = |t: f32, now: i32, linearity: i32| shape(self::curve(t, 100.0, 250), 250, now, linearity);
+        let target = load::ratio_at(load::TARGET, 250);
+        // Off: NGP's own, bit for bit.
+        for t in [0.0, 3.0, target, 400.0] {
+            let force = -self::curve(t, 100.0, 250);
+            assert_eq!(shape(force, 250, 250, 0).to_bits(), force.to_bits());
+            assert_eq!(shape(force, 250, 125, 0).to_bits(), reshape(force, 250, 125).to_bits());
+        }
+        // All of it: the line through the target, twice the force at half the percentage.
+        assert!((at(target, 250, 100) - load::TARGET).abs() < 1e-4);
+        assert!((at(target / 2.0, 250, 100) - load::TARGET / 2.0).abs() < 1e-4);
+        assert!((at(target / 2.0, 125, 100) - load::TARGET).abs() < 1e-4);
+        // Held at 1 from the target's torque over the target, the sign kept, and at the curve's end.
+        assert_eq!(
+            (at(target / load::TARGET * 1.01, 250, 100), shape(-1.0, 250, 250, 100), shape(0.0, 250, 250, 100)),
+            (1.0, -1.0, 0.0)
+        );
+        // Half of it: halfway between the two, as the page's graph draws it; every share meets at the target.
+        let (line, ngp) = (at(target / 2.0, 250, 100), at(target / 2.0, 250, 0));
+        assert!(line < ngp && (at(target / 2.0, 250, 50) - (line + ngp) / 2.0).abs() < 1e-5);
+        assert!((load::shaped(target / 2.0, 250, 50) - at(target / 2.0, 250, 50)).abs() < 1e-4);
+        assert!((at(target, 250, 70) - load::TARGET).abs() < 1e-4);
+        assert!(shape(f32::NAN, 250, 250, 100).is_nan());
+        // The wheel maxes out sooner the more linear the force.
+        let (off, half, all) = (load::maxed_from(250, 0), load::maxed_from(250, 50), load::maxed_from(250, 100));
+        assert!(all < half && half < off, "{all} {half} {off}");
+        assert!((all - 0.95 / load::TARGET * target).abs() < 1e-2 && off == load::ratio_at(load::MAXED, 250));
+    }
+
+    #[test]
+    fn the_suggestion_rises_until_a_linear_force_rarely_maxes_out() {
+        use load::Advice;
+        // A tenth of the driving at 1.6 times the usual cornering's load: under NGP's 0.95 at the suggestion (100 %),
+        // past the line's full force (from 1.46 times).
+        let mut l = Load::default();
+        l.add(40.0, 270.0);
+        l.add(65.0, 30.0);
+        assert_eq!((load::suggested(&l, 0, SENSITIVITY_RANGE), l.maxed_out(100, 0)), (Some(100), Some(0.0)));
+        assert_eq!(l.maxed_out(100, 100), Some(0.1));
+        let to = load::suggested(&l, 100, SENSITIVITY_RANGE).unwrap();
+        assert_eq!((to, l.maxed_out(to, 100), l.maxed_out(to - 5, 100)), (115, Some(0.0), Some(0.1)));
+        // The advice asks to raise to it, and is content there.
+        assert_eq!(load::advice(&l, 100, 100, SENSITIVITY_RANGE), Advice::Raise(0.1, 115));
+        assert_eq!(load::advice(&l, 115, 100, SENSITIVITY_RANGE), Advice::Good(0.0));
+        // A load that maxes out at any percentage: the range's end.
+        let mut top = Load::default();
+        top.tenths[load::BINS - 1] = 300.0;
+        assert_eq!(load::suggested(&top, 100, SENSITIVITY_RANGE), Some(*SENSITIVITY_RANGE.end()));
     }
 
     #[test]

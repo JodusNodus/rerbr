@@ -5,7 +5,8 @@
 # RBR_NGP_PHYSICS to original/ngp/physics.rbz (NGP 7.4.778's archive with its own cars) and RBR_RSF to original/rsf (a
 # RallySimFans folder).
 # These override the install folder of the launcher's Settings page (docs/development.md). Arguments go to the launcher.
-# Usage: scripts/launcher.sh [--data DIR] [--viewer PATH] [--standalone PATH] [--physics NAME] [--list]
+# Usage: scripts/launcher.sh [--data DIR] [--viewer PATH] [--standalone PATH] [--physics NAME] [--ffb-aligning W]
+#        [--ffb-breakdown DIR] [--list]
 # (--physics experimental-brush: every drive of this session with the brush tyre in development, unsaved.)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/dev-env.sh"

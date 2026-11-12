@@ -488,3 +488,47 @@ fn spring_and_slip<S: WheelStore>(
 }
 
 // Small wheel objects: constant accessors, the damage reset, and the scratch's `Vf04` (the clears of its vectors).
+
+/// What `wheel_step` adds to the car's steering torque sum for one steered wheel, read from the step's frame and the
+/// wheel as they stand at its `AddADC` (ours, read-only: `rbr-standalone --ffb-breakdown`). The vectors are in the
+/// car's frame unless said. `added` is `strut_dir . (arm x force + torque) * gain`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SteerTorque {
+    pub wheel: u32,
+    pub on_ground: bool,
+    /// The force on the hub: the tyre's across the strut's travel and the strut's along it.
+    pub force: [f32; 3],
+    /// The tyre's torque.
+    pub torque: [f32; 3],
+    /// The hub from the strut's top mount.
+    pub arm: [f32; 3],
+    /// The steering axis.
+    pub strut_dir: [f32; 3],
+    /// The axle and the strut's travel direction, each in the car's frame and in the world (the world's travel
+    /// direction and the normal are the contact's: stale off the ground).
+    pub axle: [[f32; 3]; 2],
+    pub travel: [[f32; 3]; 2],
+    /// The surface normal, in the world.
+    pub normal: [f32; 3],
+    /// `inv_arm * inv_rack`.
+    pub gain: f32,
+    pub added: f32,
+}
+
+/// The [`SteerTorque`] of the wheel `this` with the step's frame at `frame`, at its `AddADC` of `added`.
+pub fn steer_torque(mem: &crate::mem::Mem, this: u32, frame: u32, added: f32) -> SteerTorque {
+    let v = |at: u32| mem.f32s::<3>(at);
+    SteerTorque {
+        wheel: mem.u32(this + WHEEL_INDEX),
+        on_ground: mem.u32(this + ON_GROUND) != 0,
+        force: v(frame + 0x50),
+        torque: v(frame + 0x40),
+        arm: v(frame + 0x110),
+        strut_dir: v(this + 0x9A0),
+        axle: [v(this + 0x9E0), v(this + 0xA70)],
+        travel: [v(this + 0x990), v(frame + 0x1C0)],
+        normal: v(frame + 0x140),
+        gain: mem.f32(this + 0x9C0) * mem.f32(this + 0x9C4),
+        added,
+    }
+}

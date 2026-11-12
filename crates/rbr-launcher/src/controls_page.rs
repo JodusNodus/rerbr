@@ -20,7 +20,7 @@ use rbr_gameplay::race_options::DriverAids;
 use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
-use rbr_render::hud::ffb_page::SMOOTHING_HELP;
+use rbr_render::hud::ffb_page::{LINEARITY_HELP, SMOOTHING_HELP};
 use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
 
@@ -57,9 +57,9 @@ const SHIFTER: [(Action, &str); 9] = [
 /// How often the joysticks are looked for again while nothing is being set (a wheel plugged in).
 const RESCAN: Duration = Duration::from_secs(2);
 
-/// The force feedback: on or off, the strength, the direction, the smoothing and NGP's sensitivity per surface. The
-/// strength and the smoothing are written to the settings file at once, as the pause menu's Force feedback page does
-/// while driving.
+/// The force feedback: on or off, the strength, the direction, the smoothing, the linearity and NGP's sensitivity per
+/// surface. The strength, the smoothing and the linearity are written to the settings file at once, as the pause
+/// menu's Force feedback page does while driving.
 fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut ffb.settings.enabled, "on");
@@ -82,6 +82,17 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
             if ui.add(smoothing).on_hover_text(SMOOTHING_HELP).changed() && !read_only {
                 write_ffb(settings, "smoothing", &ffb.smoothing.to_string());
             }
+            let linearity = DragValue::new(&mut ffb.linearity)
+                .range(ffb::LINEARITY_RANGE)
+                .prefix("linearity ")
+                .custom_formatter(|percent, _| if percent == 0.0 { "off".into() } else { format!("{percent} %") })
+                .custom_parser(|text| match text.trim().trim_end_matches('%').trim() {
+                    "off" => Some(0.0),
+                    percent => percent.parse().ok(),
+                });
+            if ui.add(linearity).on_hover_text(LINEARITY_HELP).changed() && !read_only {
+                write_ffb(settings, "linearity", &ffb.linearity.to_string());
+            }
         });
     });
     ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
@@ -96,7 +107,7 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
     });
 }
 
-/// Writes `key` (the strength, the smoothing) into the settings file's `[ffb]`, the rest of the file kept.
+/// Writes `key` (the strength, the smoothing, the linearity) into the settings file's `[ffb]`, the rest of the file kept.
 fn write_ffb(settings: &Path, key: &str, value: &str) {
     let file = std::fs::read_to_string(settings).unwrap_or_default();
     let text = rbr_formats::ini::set_value(&file, "ffb", key, value);
@@ -114,6 +125,7 @@ fn ffb_cars_ui(
     ui: &mut Ui,
     on: bool,
     global: [i32; 3],
+    linearity: i32,
     ffb_cars: &mut ffb::CarSensitivity,
     loads: &ffb::Loads,
     cars: &[Car],
@@ -138,7 +150,7 @@ fn ffb_cars_ui(
             ui.horizontal(|ui| {
                 ui.label(car_display(key, cars));
                 for (k, (value, surface)) in values.iter_mut().zip(ffb::SURFACES).enumerate() {
-                    let help = match maxed_out(loads, key, k, *value) {
+                    let help = match maxed_out(loads, key, k, *value, linearity) {
                         Some(n) => format!("{SENSITIVITY_HELP}\n\nThe wheel maxed out {n} % of your driving here."),
                         None => SENSITIVITY_HELP.to_owned(),
                     };
@@ -197,11 +209,11 @@ fn ffb_cars_ui(
     });
 }
 
-/// How often the wheel maxed out, percent, at `value` over car `key`'s tracked driving on `surface` (`ffb::load`),
-/// with enough of it.
-fn maxed_out(loads: &ffb::Loads, key: &str, surface: usize, value: i32) -> Option<i32> {
+/// How often the wheel maxed out, percent, at `value` and `linearity`, over car `key`'s tracked driving on `surface`
+/// (`ffb::load`), with enough of it.
+fn maxed_out(loads: &ffb::Loads, key: &str, surface: usize, value: i32, linearity: i32) -> Option<i32> {
     let load = loads.of(key, surface).filter(|l| l.seconds() >= ffb::load::ADVICE_SECONDS)?;
-    load.maxed_out(value).map(|share| (share * 100.0).round() as i32)
+    load.maxed_out(value, linearity).map(|share| (share * 100.0).round() as i32)
 }
 
 /// A per-car key as the player reads it: the car's name when a car of `cars` has the key, else the key itself.
@@ -498,10 +510,12 @@ impl ControlsPage {
                     aids_ui(ui, aids, head_gasket);
                     heading(ui, "Force feedback");
                     ffb_ui(ui, ffb, settings, read_only);
-                    let global = ffb.sensitivity;
+                    let (global, linearity) = (ffb.sensitivity, ffb.linearity);
                     let on = ffb.settings.enabled;
                     let status = &mut self.ffb_status;
-                    ffb_cars_ui(ui, on, global, ffb_cars, ffb_load, cars, car, root, settings, read_only, status);
+                    ffb_cars_ui(
+                        ui, on, global, linearity, ffb_cars, ffb_load, cars, car, root, settings, read_only, status,
+                    );
                 });
             });
             ui.add_space(8.0);
@@ -769,8 +783,11 @@ mod tests {
             "[ffb_load]\nrsf-81 gravel = 0,0,0,0,0,0,0,0,200\nrsf-81 tarmac = 0,300\nrsf-81 snow = 10\n",
         );
         // x 42.5 maxes out at 30 %, not at 100 %; snow has 1 s only.
-        assert_eq!((maxed_out(&loads, "rsf-81", 0, 30), maxed_out(&loads, "rsf-81", 1, 100)), (Some(100), Some(0)));
-        assert_eq!((maxed_out(&loads, "rsf-81", 2, 100), maxed_out(&loads, "rsf-1", 0, 100)), (None, None));
+        assert_eq!(
+            (maxed_out(&loads, "rsf-81", 0, 30, 0), maxed_out(&loads, "rsf-81", 1, 100, 0)),
+            (Some(100), Some(0))
+        );
+        assert_eq!((maxed_out(&loads, "rsf-81", 2, 100, 0), maxed_out(&loads, "rsf-1", 0, 100, 0)), (None, None));
     }
 
     fn moved(object: Object, up: bool) -> Moved {

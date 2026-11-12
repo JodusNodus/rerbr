@@ -757,6 +757,12 @@ impl Form {
         }
         args.extend(self.drive_physics().args(car));
         args.extend(crate::tyre_tuning::args(self.drive_physics(), &self.tyre_tuning));
+        if let Some(weight) = self.ffb_trial.aligning {
+            args.extend(["--ffb-aligning".to_owned(), weight.to_string()]);
+        }
+        if let Some(dir) = &self.ffb_trial.breakdown {
+            args.extend(["--ffb-breakdown".to_owned(), dir.display().to_string()]);
+        }
         Some(args)
     }
 
@@ -883,6 +889,7 @@ mod tests {
             data,
             patch,
             physics: None,
+            ffb_trial: Default::default(),
         }
     }
 
@@ -1506,6 +1513,33 @@ mod tests {
         let stage_args = vec!["--championship".to_owned(), "rookie".to_owned()];
         let rally = form.launch_args(stage, form.options, weather, stage_args, Vec::new()).unwrap();
         assert!(!rally.iter().any(|a| a == "--clock" || a == "--start-time"), "{rally:?}");
+        std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// `rerbr --ffb-aligning` and `--ffb-breakdown` reach `rbr-standalone` (after `--live`); without them the command
+    /// has neither.
+    #[test]
+    fn the_ffb_trials_reach_their_processes() {
+        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
+            return;
+        };
+        let here = crate::test_dir("command-ffb-trial");
+        let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
+        let both = crate::FfbTrial { aligning: Some(1.5), breakdown: Some("/tmp/steer".into()) };
+        for trial in [crate::FfbTrial::default(), both] {
+            let start = Start {
+                ffb_trial: trial.clone(),
+                ..start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)))
+            };
+            let mut form = load(&start, Settings::parse(text)).unwrap();
+            form.read_only = true;
+            let args = form.start_args(&mut CrtRand::srand(1234)).unwrap();
+            let live = args.iter().position(|a| a == "--live").unwrap();
+            assert_eq!(value(&args[live..], "--ffb-aligning"), trial.aligning.map(|w| w.to_string()), "{args:?}");
+            assert_eq!(value(&args[..live], "--ffb-aligning"), None, "{args:?}");
+            assert_eq!(value(&args[live..], "--ffb-breakdown").map(PathBuf::from), trial.breakdown, "{args:?}");
+            assert_eq!(value(&args[..live], "--ffb-breakdown"), None, "{args:?}");
+        }
         std::fs::remove_dir_all(&here).unwrap();
     }
 

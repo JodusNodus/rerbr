@@ -163,6 +163,12 @@ pub struct Args {
     pub result_out: Option<PathBuf>,
     /// The save files' directory and the profile in it (`saves.rs`): the stage record and the personal best.
     pub saves: Option<PathBuf>,
+    /// `--ffb-breakdown DIR` (with `--live` or `--autopilot`): what the steering torque is made of, a CSV in DIR
+    /// (`steer_log.rs`).
+    pub ffb_breakdown: Option<PathBuf>,
+    /// `--ffb-aligning W` (with `--live`): the wheel's force with the tyres' aligning part of the steering torque
+    /// weighted by W (`steer_log::Aligning`, a trial).
+    pub ffb_aligning: Option<f32>,
     pub profile: Option<String>,
     /// `--events-out`: the recording's particle and lamp records through the live boot (`events_out.rs`).
     pub events_out: Option<PathBuf>,
@@ -232,6 +238,8 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
        with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
+       with --live or --autopilot: [--ffb-breakdown DIR] (what the steering torque is made of, a CSV row per frame in DIR/steer-<unix seconds>.csv: steer_log.rs)
+       with --live: [--ffb-aligning W] (a trial: the wheel's force with the tyres' aligning part of the steering torque weighted by W, 0 to 5; 1 is NGP's)
        -V, --version prints the version
        -h, --help prints this text";
 
@@ -398,6 +406,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--damage-out" => args.damage_out = Some(PathBuf::from(value)),
             "--result-out" => args.result_out = Some(PathBuf::from(value)),
             "--saves" => args.saves = Some(PathBuf::from(value)),
+            "--ffb-breakdown" => args.ffb_breakdown = Some(PathBuf::from(value)),
+            "--ffb-aligning" => {
+                let weight = value.parse().ok().filter(|w| (0.0..=5.0).contains(w));
+                args.ffb_aligning = Some(weight.ok_or(format!("--ffb-aligning {value}: a weight, 0 to 5"))?)
+            }
             "--profile" => args.profile = Some(value.to_owned()),
             "--events-out" => args.events_out = Some(PathBuf::from(value)),
             "--trace-out" => args.trace_out = Some(PathBuf::from(value)),
@@ -594,6 +607,12 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if args.replay.is_some() && args.pilot.is_some() {
         return Err("--replay takes no --pilot (the replay drives)".into());
+    }
+    if args.ffb_breakdown.is_some() && !args.live && args.autopilot.is_none() {
+        return Err("--ffb-breakdown needs --live or --autopilot".into());
+    }
+    if args.ffb_aligning.is_some() && !args.live {
+        return Err("--ffb-aligning needs --live".into());
     }
     if args.aim.is_some() && args.autopilot.is_none() {
         return Err("--aim needs --autopilot".into());

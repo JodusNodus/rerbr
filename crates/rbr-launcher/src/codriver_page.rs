@@ -493,6 +493,7 @@ mod tests {
             data: Some(PathBuf::from(&data)),
             patch: Some(PathBuf::from(&patch)),
             physics: None,
+            ffb_trial: Default::default(),
         };
         // The owned packs drive when chosen, over the game folder's plugin.
         let settings = Settings {
@@ -593,6 +594,7 @@ mod tests {
             data: Some(PathBuf::from(&data)),
             patch: Some(PathBuf::from(&patch)),
             physics: None,
+            ffb_trial: Default::default(),
         };
         let settings = Settings {
             map: Some(54),
