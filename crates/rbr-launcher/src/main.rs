@@ -463,6 +463,8 @@ struct Form {
     favourite_maps: Vec<u32>,
     /// Each car's gearbox for the advanced H-shifter (`[gearbox]`).
     gearboxes: Gearboxes,
+    /// NGP's UDP telemetry address (`[telemetry]`'s `udp`, `rbr-standalone --telemetry-udp`).
+    telemetry_udp: Option<String>,
     /// The weather preset, the damage level and the driver aids.
     options: RaceOptions,
     /// The random weather's `rand()` stream (`srand(time)` at the launcher's start).
