@@ -210,14 +210,14 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   (a degree more of it leans the top 0.96-1.16° further in; the i20, Fiesta Rally2, quattro A2, Escort Mk II and the
   slot cars 0 and 5 alike), so the hint says so and the diagram draws each wheel's lean against the compared setup's
   upright outline: the camber itself needs the strut's lean at the ride height, which the launcher does not have.
-  Pressure: NGP's factor scales the tyre's stiffness, and 1.8-2.6 bar move the limits 1.1 % at most, so the hint no longer
-  promises grip on loose ground. Ride height: +10 mm of spring length or platform lift the car about 10 mm, the helper's
-  length 0.4 mm per mm (closed at rest: its rate at 5 or 20 N/mm gives one height), and the helper's two hints are
-  apart. Brakes: 55-70 % of front share move the i20's slide under braking by under 1° while its centre diff locks under
-  braking, which the hint adds. Roll bars: the hints hold on the steady circle (sideslip at the limit 13.1° to 10.7°
-  with the front bar doubled, 13.5° with the rear's) and turn round under braking in the turn (33° and 15° against 24°),
-  so they say "in a steady corner". The fast bump takes over past its speed and never at 0, the helper works under its
-  closing force, the centre opens at the handbrake's release (`spring_damper::step`, `vcu::locks`). Not checked: the
+  Pressure: NGP's factor scales the tyre's stiffness, and 1.8-2.6 bar move the limits 1.1 % at most, so the hint no
+  longer promises grip on loose ground. Ride height: +10 mm of spring length or platform lift the car about 10 mm, the
+  helper's length 0.4 mm per mm (closed at rest: its rate at 5 or 20 N/mm gives one height), and the helper's two hints
+  are apart. Brakes: 55-70 % of front share move the i20's slide under braking by under 1° while its centre diff locks
+  under braking, which the hint adds. Roll bars: the hints hold on the steady circle (sideslip at the limit 13.1° to
+  10.7° with the front bar doubled, 13.5° with the rear's) and turn round under braking in the turn (33° and 15° against
+  24°), so they say "in a steady corner". The fast bump takes over past its speed and never at 0, the helper works under
+  its closing force, the centre opens at the handbrake's release (`spring_damper::step`, `vcu::locks`). Not checked: the
   diffs' "less turn-in" (mixed under braking), the response claims, the top mount (the i20's front: 0.17° more camber a
   slot).
 - Car keys (2026-11-07): a pack car's key (camera nudges, `[ffb_cars]`, `--car-key`, championship entries) is
