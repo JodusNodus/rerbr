@@ -1,5 +1,5 @@
-//! Where the player put the HUD's parts and how large they draw (`viewer --hud-layout`, `--hud-scale`; the launcher's
-//! HUD layout editor). Ours. A part keeps its place in the look, moved by its offset and scaled about the corner or
+//! Where the player put the HUD's parts and how large they draw (`viewer --hud-layout`, `--hud-scale`; the pause
+//! menu's HUD page, `super::hud_page`). Ours. A part keeps its place in the look, moved by its offset and scaled about the corner or
 //! edge of the screen it belongs to ([`Part::pivot`]), so a layout holds at any aspect; the look keeps a part that
 //! would leave the screen inside it. The race's calls and pages (the countdown, FALSE START, WRONG WAY, the finish,
 //! result and retire pages) and the pace stack neither move nor scale.

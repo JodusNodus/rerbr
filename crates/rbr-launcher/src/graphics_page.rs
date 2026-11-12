@@ -3,6 +3,7 @@
 use egui::{Color32, ComboBox, DragValue};
 use rbr_render::camera_prefs;
 use rbr_render::coords;
+use rbr_render::hud::layout::Layout;
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
@@ -288,6 +289,9 @@ pub struct HudChoice {
     pub dials: bool,
     /// The HUD's parts shown (all but the telemetry by default).
     pub parts: Parts,
+    /// Where they stand and how large (`--hud-layout`, `--hud-scale`), set on the pause menu's HUD page while
+    /// driving and passed on from the file.
+    pub layout: Layout,
 }
 
 /// Each HUD part's label and hover tip, by [`Part::ALL`].
@@ -311,7 +315,15 @@ const PART_LABELS: [(&str, &str); Part::ALL.len()] = [
 
 impl Default for HudChoice {
     fn default() -> Self {
-        HudChoice { show: true, mph: false, fps: false, stack: 0, dials: true, parts: Parts::default() }
+        HudChoice {
+            show: true,
+            mph: false,
+            fps: false,
+            stack: 0,
+            dials: true,
+            parts: Parts::default(),
+            layout: Layout::default(),
+        }
     }
 }
 

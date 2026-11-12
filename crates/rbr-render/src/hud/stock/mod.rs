@@ -46,14 +46,9 @@ impl Stock {
         Stock { sprites: pace::Sprites::load(data), ..Stock::default() }
     }
 
-    /// Where the last paint drew `part` (a [`Part::MOVABLE`] one), on its screen: what the layout editor drags.
-    pub fn bounds(&self, part: Part) -> Option<Rect> {
-        self.bounds[part as usize]
-    }
-
     /// Paints `r` with `painter` on `screen`, [`REFERENCE_HEIGHT`](super::REFERENCE_HEIGHT) points high, each part
     /// where its layout puts it ([`Readout::layout`]).
-    pub fn paint_on(&mut self, painter: &egui::Painter, screen: Rect, r: &Readout) {
+    fn paint_on(&mut self, painter: &egui::Painter, screen: Rect, r: &Readout) {
         self.sprites.upload(painter.ctx());
         self.bounds = [None; Part::ALL.len()];
         let (sprites, layout) = (&self.sprites, &r.layout);
@@ -119,6 +114,10 @@ impl Stock {
 impl Hud for Stock {
     fn paint(&mut self, ctx: &egui::Context, r: &Readout) {
         self.paint_on(&ctx.layer_painter(egui::LayerId::background()), ctx.content_rect(), r);
+    }
+
+    fn bounds(&self, part: Part) -> Option<Rect> {
+        self.bounds[part as usize]
     }
 }
 

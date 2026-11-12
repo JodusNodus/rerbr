@@ -9,6 +9,7 @@ use rbr_render::camera_prefs::CameraPrefs;
 use rbr_render::coords;
 use rbr_render::ffb;
 use rbr_render::glass::model::Switch;
+use rbr_render::hud::layout::{Layout, SCALES};
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::Parts;
 use rbr_render::mirrors::Rate;
@@ -121,6 +122,9 @@ pub struct Settings {
     /// The HUD's parts shown (`viewer --hud-hide`, `--hud-show`), kept as the hidden ones' list (`hud_hide`) and the
     /// shown telemetry's (`hud_show`).
     pub hud_hide: Option<Parts>,
+    /// Where the HUD's parts stand and its scale (`viewer --hud-layout`, `--hud-scale`), kept as `hud_layout` and
+    /// `hud_scale`.
+    pub hud_layout: Option<Layout>,
     /// The wiper switch at the start (`viewer --wipers`).
     pub wipers: Option<Switch>,
     /// The Quality section's switches ([`Graphics`]), each kept under its name.
@@ -436,6 +440,12 @@ impl Settings {
                     .and_then(|parts| parts.with(&show.unwrap_or_default(), true))
                     .ok(),
             },
+            hud_layout: match (launcher.get("hud_layout"), launcher.number::<u16>("hud_scale")) {
+                (None, None) => None,
+                (list, scale) => Layout::parse(&list.unwrap_or_default())
+                    .map(|layout| Layout { scale: scale.filter(|s| SCALES.contains(s)).unwrap_or(100), ..layout })
+                    .ok(),
+            },
             wipers: launcher.parsed("wipers", Switch::parse),
             lighting: launcher.on_off("lighting"),
             particles: launcher.on_off("particles"),
@@ -541,6 +551,8 @@ impl Settings {
             ("dials", on_off_text(self.dials)),
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
             ("hud_show", self.hud_hide.and_then(|p| p.shown())),
+            ("hud_scale", self.hud_layout.filter(|l| l.scale != 100).map(|l| l.scale.to_string())),
+            ("hud_layout", self.hud_layout.and_then(|l| l.moved())),
             ("callout_distance", self.callout_distance.map(|v| v.to_string())),
             ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
             ("damage", choice(self.damage)),
@@ -656,6 +668,7 @@ mod tests {
             pace_stack: Some(2),
             dials: Some(false),
             hud_hide: Some(Parts::hiding("progress,car").unwrap()),
+            hud_layout: Some(Layout { scale: 125, ..Layout::parse("dash:-40,0").unwrap() }),
             wipers: Some(Switch::Intermittent),
             lighting: Some(false),
             particles: Some(false),
@@ -928,6 +941,8 @@ mod tests {
                 "wipers = intermittent\n",
                 "dials = off\n",
                 "hud_hide = progress,car\n",
+                "hud_scale = 125\n",
+                "hud_layout = dash:-40,0\n",
                 "callout_distance = 0.5\n",
                 "marker_threshold = 12.5\n",
                 "damage = realistic\n",
@@ -1163,6 +1178,11 @@ mod tests {
         let shown = Settings::parse("[launcher]\nhud_hide = car\nhud_show = tyres,g\n");
         assert_eq!(shown.hud_hide, Parts::hiding("car").and_then(|p| p.with("tyres,g", true)).ok());
         assert!(shown.to_text().contains("hud_hide = car\nhud_show = tyres,g\n"), "{}", shown.to_text());
+        // The layout is the moved parts and the scale off 100 %.
+        let moved = Settings::parse("[launcher]\nhud_scale = 125\nhud_layout = dash:-40,0\n");
+        assert_eq!(moved.hud_layout, Layout::parse("dash:-40,0").map(|l| Layout { scale: 125, ..l }).ok());
+        assert!(moved.to_text().contains("hud_scale = 125\nhud_layout = dash:-40,0\n"), "{}", moved.to_text());
+        assert_eq!(Settings::parse("[launcher]\nhud_scale = 900\n").hud_layout, Some(Layout::default()));
         // The wear and the size: unknown words keep the default, and the writer clamps the wear.
         assert_eq!(Settings::parse("[launcher]\nwear = worn\n").wear, Some(2));
         assert_eq!(Settings::parse("[launcher]\nwear = old\n").wear, None);

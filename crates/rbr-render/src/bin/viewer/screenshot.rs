@@ -14,6 +14,7 @@ use rbr_recording::pose::CarPose;
 use rbr_render::camera::Lens;
 use rbr_render::hud::camera_page::{CameraPage, Fov};
 use rbr_render::hud::ffb_page::FfbPage;
+use rbr_render::hud::hud_page::{self, HudPage};
 use rbr_render::hud::pause::{self, Outcome, PauseMenu};
 use rbr_render::hud::results::{self, ResultsMenu};
 use rbr_render::hud::school;
@@ -41,7 +42,8 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             let ffb = live.hud.ffb_surface.map(|surface| FfbPage::of(&scene.ffb, surface));
             let fov = Fov { views: fov, chase: args.chase_fov };
             let camera = CameraPage::new(view, scene.cameras.nudges(), scene.cameras.cockpit(), fov);
-            let mut menu = PauseMenu::open(live.menu, camera, ffb);
+            let hud = HudPage::new(scene.hud.parts, scene.hud.layout);
+            let mut menu = PauseMenu::open(live.menu, camera, ffb).with_hud(hud);
             if moves.iter().any(|&nav| matches!(menu.nav(nav), Some(Outcome::Chosen(_)))) {
                 return Err("--pause-menu: the moves close the menu".into());
             }
@@ -49,7 +51,13 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         }
         _ => None,
     };
-    // The Camera page's view, nudges and fields of view, shown as the window shows them (the file is not written).
+    // The HUD page's parts and layout, and the Camera page's view, nudges and fields of view, shown as the window shows
+    // them (the file is not written).
+    let hud_page = menu.as_ref().and_then(PauseMenu::hud).copied();
+    if let Some(page) = hud_page {
+        (scene.hud.parts, scene.hud.layout) = (page.parts, page.layout);
+    }
+    let hud_page = hud_page.is_some();
     let page = menu.as_ref().and_then(PauseMenu::camera);
     let view = page.map_or(view, |page| page.view);
     let fov = page.map_or(fov, |page| page.fov.views);
@@ -196,7 +204,8 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             .playback
             .as_ref()
             .filter(|_| scene.hud.show && demo_ride.is_none())
-            .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
+            .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None))
+            .map(|r| if hud_page { hud_page::sample(r) } else { r });
         let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         // The probes show a first frame's sky and shadows (as the window's load draws them).
         if shot == 0 && renderer.has_probes() {
@@ -211,7 +220,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
         let (stats, pixels) = renderer.render_offscreen_view(screen, frame_view, |encoder, target| {
             overlay.draw_with(&gpu.device, &gpu.queue, encoder, target, screen, |ctx, hud| {
                 readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
-                menu.iter().for_each(|m| pause::paint(ctx, m));
+                menu.iter().for_each(|m| pause::paint(ctx, hud, m));
                 if menu.is_none() {
                     if let Some(actions) = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu)) {
                         results::paint(ctx, &actions);

@@ -67,6 +67,19 @@ Model and rules in `rbr_render::hud::model`, sprites in `hud::pace`, layout in `
     the throttle, right in a right-hander). The car's right is body -X: lateral g follows the steering's side and
     braking reads negative on `drive-arctic-snow.bin`.
   - `trace` and `g` are read from the drive's frames, so a recorded drive and a replay have them too.
+- Layout and size (ours, 2026-11-12; `hud::layout`): each movable part (`Part::MOVABLE`: clock with the passed
+  split, progress, pace note, dial with its pedals, car state, messages, camera name, tyres, trace, g-force) has an
+  offset in points of the 720-point screen from where the look puts it, and the HUD a scale of 50 to 200 %; a part
+  scales about the corner or edge it stands at (`Part::pivot`) and is kept on the screen. `viewer --hud-layout
+  PART:X,Y;...`, `--hud-scale PERCENT`; `[launcher] hud_layout`, `hud_scale`. `Stock` draws a part, then moves and
+  scales its shapes (`placed`); with no layout the frame is unchanged (RMSE 0 against the capture before). The race's
+  calls and pages and the pace stack neither move nor scale.
+- The pause menu's HUD page (`hud::hud_page`, after Camera; user decision 2026-11-12: set while driving, not in the
+  launcher): Size, Part (all twelve), Shown, Across, Down (10 points a move; the split times move with the clock, the
+  pedals with the dial), Reset (places and size; what shows stays) and Done. While it is open the HUD shows a sample
+  with something in every part and the picked part outlined. Each change is written at once to `[launcher] hud_hide`,
+  `hud_show`, `hud_scale` and `hud_layout`; the launcher rereads them when the viewer exits and passes them on, and
+  has no control of its own for the layout or the size. `viewer --screenshot --pause-menu dde` draws it.
 
 ### RBRHUD gauges
 
@@ -203,7 +216,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   maxed out 5 % or more, raise to the suggestion; below 0.7× it, raise (the usual cornering sits high in the range);
   above 1.4× it, lower or raise Strength; else good: the usual cornering at 0.39-0.63 of the force) and a
   guide: set Strength once, then Sensitivity per car until the wheel rarely maxes out. Nothing changes without the
-  player. `viewer --screenshot --pause-menu dde` draws it (no wheel needed).
+  player. `viewer --screenshot --pause-menu ddde` draws it (no wheel needed).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
   stages (477 as the newest-file rule did, 33 where a newer `_default` won, 15 `_default`-only keeping their own
   notes, one stray file); the note-set rule itself is `codriver_packs::set_files`.

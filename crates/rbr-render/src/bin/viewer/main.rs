@@ -107,7 +107,7 @@
 //! stage's notes. `--no-hud` hides the HUD, and
 //! `--mph` shows the speed in mph instead of km/h, and `--fps` shows the rendered frames per second
 //! in the top-right corner. `--pace-stack N` (0 to 8, default 0; the game's PN_STACK slider stops at 4) shows the next N pace
-//! notes in a column at the right edge (the game's 3D pace notes, AID_MARKER, are not drawn). `--hud-hide LIST` hides HUD parts by name (`rbr_render::hud::Part`), `--hud-show LIST` shows the telemetry ones, off otherwise (`tyres`, `trace`, `g`). `--at-drive <recording>` (with `--live`, `--screenshot` and `--at`) feeds the
+//! notes in a column at the right edge (the game's 3D pace notes, AID_MARKER, are not drawn). `--hud-hide LIST` hides HUD parts by name (`rbr_render::hud::Part`), `--hud-show LIST` shows the telemetry ones, off otherwise (`tyres`, `trace`, `g`). `--hud-layout PART:X,Y;...` moves parts from their places and `--hud-scale PERCENT` sizes them (`rbr_render::hud::layout`); the pause menu's HUD page sets all four while driving and writes them to the bindings file's `[launcher]` keys. `--at-drive <recording>` (with `--live`, `--screenshot` and `--at`) feeds the
 //! recording's controls instead of no keys: each `--at` payload is the control of the step it feeds, as the live boot
 //! with the recorded controls equals the recording (`rbr-standalone`'s `a_paced_live_boot_with_the_recorded_controls`).
 //! In live mode Escape (or the pause binding, `[controls] pause`, the gamepad's Start by default) opens the pause menu

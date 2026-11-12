@@ -231,6 +231,7 @@ impl Form {
                 stack: settings.pace_stack.unwrap_or(0),
                 dials: settings.dials.unwrap_or(true),
                 parts: settings.hud_hide.unwrap_or_default(),
+                layout: settings.hud_layout.unwrap_or_default(),
             },
             graphics: Graphics {
                 lighting: settings.lighting.unwrap_or(DEFAULT_GRAPHICS.lighting),
@@ -347,6 +348,7 @@ impl Form {
             pace_stack: Some(self.hud.stack),
             dials: Some(self.hud.dials),
             hud_hide: Some(self.hud.parts),
+            hud_layout: Some(self.hud.layout),
             lighting: Some(self.graphics.lighting),
             particles: Some(self.graphics.particles),
             cabin: Some(self.graphics.cabin),

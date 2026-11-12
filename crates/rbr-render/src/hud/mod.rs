@@ -23,6 +23,7 @@ use crate::live::RaceHud;
 
 pub mod camera_page;
 pub mod ffb_page;
+pub mod hud_page;
 pub mod layout;
 pub mod model;
 pub mod pace;
@@ -47,6 +48,12 @@ pub trait Hud {
     /// Paints `readout` on `ctx`, whose screen is [`REFERENCE_HEIGHT`] points high, keeping to the parts it shows
     /// ([`Readout::parts`]). The race's screens are drawn over it ([`paint_readout`]).
     fn paint(&mut self, ctx: &egui::Context, readout: &Readout);
+
+    /// Where the last paint drew `part` (a [`Part::MOVABLE`] one), for the HUD page's outline of it; `None` when it
+    /// drew nothing or the look does not say.
+    fn bounds(&self, _part: Part) -> Option<Rect> {
+        None
+    }
 }
 
 /// A part of the HUD the player can hide (`viewer --hud-hide`) or, for the telemetry parts, which are off unless

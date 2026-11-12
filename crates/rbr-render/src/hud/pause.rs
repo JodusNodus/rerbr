@@ -2,11 +2,12 @@
 //! the moment (the live process's MNU1 record), moved through with the keys or the gamepad, and the game's confirm box
 //! before an item that ends or leaves the race. The texts are 1.02's English string table's (`bstrings.eng`); the
 //! panels' look is ours, as the rest of the HUD's. Ours too: the Camera item after Resume, which opens the Camera
-//! page ([`super::camera_page`]), and with the wheel's force feedback on, the Force feedback item after it
-//! ([`super::ffb_page`]).
+//! page ([`super::camera_page`]), the HUD item after it ([`super::hud_page`]), and with the wheel's force feedback
+//! on, the Force feedback item after that ([`super::ffb_page`]).
 
 use super::camera_page::{self, CameraPage, Moved};
 use super::ffb_page::{self, FfbPage};
+use super::hud_page::{self, HudPage};
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 use gilrs::Button;
 use rbr_gameplay::flow::Mode;
@@ -71,6 +72,7 @@ impl Nav {
 pub enum Entry {
     Game(Item),
     Camera,
+    Hud,
     ForceFeedback,
 }
 
@@ -83,6 +85,8 @@ pub enum Outcome {
     Camera,
     /// The Force feedback page changed the car's sensitivity ([`PauseMenu::ffb`]): apply and keep it.
     ForceFeedback,
+    /// The HUD page changed what shows, where or how large ([`PauseMenu::hud`]): show and keep it.
+    Hud,
 }
 
 /// The open menu: its rows, the selected one, the confirm box that is up and the Camera page.
@@ -95,8 +99,9 @@ pub struct PauseMenu {
     /// The item asking, and whether its box has Yes selected.
     confirm: Option<(Item, bool)>,
     camera: CameraPage,
+    hud: HudPage,
     ffb: Option<FfbPage>,
-    /// The page open, of the Camera and Force feedback ones.
+    /// The page open, of the Camera, HUD and Force feedback ones.
     on: Option<Entry>,
 }
 
@@ -109,10 +114,22 @@ impl PauseMenu {
         let mut items: Vec<_> =
             pause_menu::items(state).into_iter().map(|(item, on)| (Entry::Game(item), on)).collect();
         items.insert(1, (Entry::Camera, true));
+        items.insert(2, (Entry::Hud, true));
         if ffb.is_some() {
-            items.insert(2, (Entry::ForceFeedback, true));
+            items.insert(3, (Entry::ForceFeedback, true));
         }
-        PauseMenu { mode: state.mode, over: state.over, items, selected: 0, confirm: None, camera, ffb, on: None }
+        let hud = HudPage::new(Default::default(), Default::default());
+        PauseMenu { mode: state.mode, over: state.over, items, selected: 0, confirm: None, camera, hud, ffb, on: None }
+    }
+
+    /// This menu with its HUD page starting from `hud`.
+    pub fn with_hud(self, hud: HudPage) -> PauseMenu {
+        PauseMenu { hud, ..self }
+    }
+
+    /// The HUD page while it is open.
+    pub fn hud(&self) -> Option<&HudPage> {
+        (self.on == Some(Entry::Hud)).then_some(&self.hud)
     }
 
     /// The Camera page while it is open.
@@ -129,6 +146,7 @@ impl PauseMenu {
     pub fn nav(&mut self, nav: Nav) -> Option<Outcome> {
         let page = match self.on {
             Some(Entry::Camera) => Some((self.camera.nav(nav), Outcome::Camera)),
+            Some(Entry::Hud) => Some((self.hud.nav(nav), Outcome::Hud)),
             Some(Entry::ForceFeedback) => self.ffb.as_mut().map(|p| (p.nav(nav), Outcome::ForceFeedback)),
             _ => None,
         };
@@ -159,7 +177,7 @@ impl PauseMenu {
             Nav::Left | Nav::Right => {}
             Nav::Back => return Some(Outcome::Chosen(Item::Resume)),
             Nav::Select => match self.items[self.selected].0 {
-                entry @ (Entry::Camera | Entry::ForceFeedback) => self.on = Some(entry),
+                entry @ (Entry::Camera | Entry::Hud | Entry::ForceFeedback) => self.on = Some(entry),
                 Entry::Game(item) => match item.confirm(self.mode, self.over) {
                     Some(_) => self.confirm = Some((item, true)),
                     None => return Some(Outcome::Chosen(item)),
@@ -182,6 +200,7 @@ pub fn text(key: &str) -> &'static str {
         "CONTINUE" => "Continue",
         // Ours: not in the table.
         "CAMERA" => "Camera",
+        "HUD" => "HUD",
         "FORCE_FEEDBACK" => "Force feedback",
         "YES" => "Yes",
         "NO" => "No",
@@ -196,10 +215,15 @@ pub fn text(key: &str) -> &'static str {
     }
 }
 
-/// Draws the menu over the dimmed game, or the confirm box in its place, or the Camera page over the undimmed game.
-pub fn paint(ctx: &egui::Context, menu: &PauseMenu) {
+/// Draws the menu over the dimmed game, or the confirm box in its place, or the Camera, HUD (with `hud`'s parts) or
+/// Force feedback page over the undimmed game.
+pub fn paint(ctx: &egui::Context, hud: &dyn super::Hud, menu: &PauseMenu) {
     if let Some(page) = menu.camera() {
         camera_page::paint(ctx, page);
+        return;
+    }
+    if let Some(page) = menu.hud() {
+        hud_page::paint(ctx, hud, page);
         return;
     }
     if let Some(page) = menu.ffb() {
@@ -228,6 +252,7 @@ pub fn paint(ctx: &egui::Context, menu: &PauseMenu) {
         let key = match item {
             Entry::Game(item) => item.key(),
             Entry::Camera => "CAMERA",
+            Entry::Hud => "HUD",
             Entry::ForceFeedback => "FORCE_FEEDBACK",
         };
         painter.text(row.center(), Align2::CENTER_CENTER, text(key), FontId::proportional(20.0), colour);
@@ -288,6 +313,7 @@ mod tests {
         let mut menu = quick(true);
         assert_eq!(menu.nav(Nav::Select), chosen(Item::Resume));
         menu.nav(Nav::Down);
+        menu.nav(Nav::Down);
         assert_eq!(menu.nav(Nav::Down), None);
         assert_eq!(menu.nav(Nav::Select), chosen(Item::CallForHelp));
         // Up from the top wraps to the exit, which asks first; No goes back to the menu.
@@ -331,12 +357,28 @@ mod tests {
     }
 
     #[test]
+    fn the_hud_item_opens_its_page_which_keeps_its_changes() {
+        let mut menu = quick(true);
+        assert_eq!(menu.items[2], (Entry::Hud, true));
+        menu.nav(Nav::Down);
+        menu.nav(Nav::Down);
+        assert_eq!((menu.nav(Nav::Select), menu.camera()), (None, None));
+        assert_eq!(menu.nav(Nav::Right), Some(Outcome::Hud));
+        assert_eq!(menu.hud().unwrap().layout.scale, 105);
+        assert_eq!(menu.nav(Nav::Back), None);
+        assert!(menu.hud().is_none());
+        menu.nav(Nav::Select);
+        assert_eq!(menu.hud().unwrap().layout.scale, 105);
+    }
+
+    #[test]
     fn the_force_feedback_item_is_there_with_a_page_and_changes_it() {
         let record = Record { mode: 1, driving: true, help: true, over: false };
         let page = FfbPage::new(1, 250, false, 250);
         let camera = CameraPage::new(CarView::Cockpit, Default::default(), Default::default(), Default::default());
         let mut menu = PauseMenu::open(record, camera, Some(page));
-        assert_eq!(menu.items[2], (Entry::ForceFeedback, true));
+        assert_eq!(menu.items[3], (Entry::ForceFeedback, true));
+        menu.nav(Nav::Down);
         menu.nav(Nav::Down);
         menu.nav(Nav::Down);
         assert_eq!((menu.nav(Nav::Select), menu.camera()), (None, None));
@@ -354,7 +396,8 @@ mod tests {
         let mut menu = open(Record { mode: 2, driving: true, help: false, over: false });
         let shown: Vec<Entry> = menu.items.iter().map(|&(item, _)| item).collect();
         let game = [Item::Restart, Item::Retire, Item::Exit].map(Entry::Game);
-        assert_eq!(shown, [[Entry::Game(Item::Resume), Entry::Camera].as_slice(), &game].concat());
+        assert_eq!(shown, [[Entry::Game(Item::Resume), Entry::Camera, Entry::Hud].as_slice(), &game].concat());
+        menu.nav(Nav::Down);
         menu.nav(Nav::Down);
         menu.nav(Nav::Down);
         menu.nav(Nav::Down);
