@@ -5,7 +5,8 @@
 //! - Grass (`Loop::Grass`): a swish by how many wheels are on grass ([`Verge::grass`], the square root of their share
 //!   of four) and the car's speed ([`GRASS_SPEED`]), brighter with speed ([`GRASS_PITCH`]).
 //! - Brush (`Loop::Brush`): the rustle of the bushes and bendable trees the body is in, by how deep it is in each
-//!   ([`BRUSH_DEPTH`]) times its density, at most 1, and the speed ([`BRUSH_SPEED`]).
+//!   ([`BRUSH_DEPTH`]) times its density, and of the bushes under the wheels ([`Verge::brush`], [`BRUSH_WHEELS`]), at
+//!   most 1, and the speed ([`BRUSH_SPEED`]).
 //! - Branch hits (`Shot::Branch`): the body meeting a bendable tree, or (softer, [`BUSH_HIT`]) a bush, it was not
 //!   touching at the last frame, by the speed ([`HIT_SPEED`]); the samples are taken in turn, not from the random
 //!   numbers, so the other sounds stay as without the verge.
@@ -33,6 +34,8 @@ pub struct Touch {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Verge {
     pub grass: [f32; 4],
+    /// Each wheel's share in bushes a stage marks in the ground under it, times their density (0 to 1).
+    pub brush: [f32; 4],
     pub touches: [Option<Touch>; TOUCHES],
 }
 
@@ -44,6 +47,8 @@ const GRASS_PITCH: [f32; 2] = [0.8, 1.2];
 /// The brush loop: a placement adds its density, full once the body is [`BRUSH_DEPTH`] m into it; at most 1, at
 /// [`BRUSH_GAIN`], rising with the speed over [`BRUSH_SPEED`] m/s.
 const BRUSH_DEPTH: f32 = 0.5;
+/// The wheels in bushes ([`Verge::brush`]) that make the brush loop full.
+const BRUSH_WHEELS: f32 = 2.0;
 const BRUSH_GAIN: f32 = 1.4;
 const BRUSH_SPEED: [f32; 2] = [0.5, 12.0];
 const BRUSH_PITCH: [f32; 2] = [0.85, 1.15];
@@ -108,7 +113,8 @@ impl Verges {
         let on_grass = verge.grass.iter().map(|g| g.clamp(0.0, 1.0)).sum::<f32>() / 4.0;
         let grass = GRASS_GAIN * on_grass.sqrt() * smoothstep(GRASS_SPEED, speed);
         let touches = verge.touches.iter().flatten();
-        let level = touches.clone().map(|t| t.density * (t.depth / BRUSH_DEPTH).clamp(0.0, 1.0)).sum::<f32>();
+        let level = touches.clone().map(|t| t.density * (t.depth / BRUSH_DEPTH).clamp(0.0, 1.0)).sum::<f32>()
+            + verge.brush.iter().map(|b| b.clamp(0.0, 1.0)).sum::<f32>() / BRUSH_WHEELS;
         let brush = BRUSH_GAIN * level.min(1.0) * smoothstep(BRUSH_SPEED, speed);
         let fall = (-dt / RELEASE).exp();
         for (now, target) in self.levels.iter_mut().zip([grass, brush]) {
@@ -224,6 +230,11 @@ mod tests {
         verges.set(Some(tree));
         let out = verges.step(20.0, 0.0, 10.0);
         assert_eq!(hits(&out), vec![(1, HIT_GAIN)]);
+        // Bushes under the wheels brush too: two wheels in dense ones are full, no hit.
+        verges.set(Some(Verge { brush: [1.0, 0.5, 0.0, 0.0], ..Verge::default() }));
+        let under = verges.step(12.0, 0.0, 10.0);
+        assert!((loops(&under)[1] - BRUSH_GAIN * 0.75).abs() < 1e-6, "{under:?}");
+        assert!(!under.iter().any(|c| matches!(c, Command::Shot { .. })));
         // The brush is capped at 1.
         let deep = Verge { touches: [touch(1, 2.0, false); TOUCHES], ..Verge::default() };
         verges.set(Some(deep));

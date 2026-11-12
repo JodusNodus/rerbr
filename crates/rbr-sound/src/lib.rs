@@ -462,7 +462,7 @@ mod tests {
         }
         let mut touches = [None; verge::TOUCHES];
         touches[0] = Some(verge::Touch { id: 3, depth: 0.4, density: 1.0, branches: true });
-        let verge = verge::Verge { grass: [1.0; 4], touches };
+        let verge = verge::Verge { grass: [1.0; 4], touches, ..Default::default() };
         let run = |with: bool| {
             let mut models = Models::new(&bank, Sky::default(), Vec::new());
             (0..600)

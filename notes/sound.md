@@ -188,6 +188,13 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   (retail, release); the echoes' probe unchanged (15.8 vs 16.0 us on 42_M). Retail roadside vegetation is sparse near
   the drivelines (42_M: 5 placements within 6 m of the autopilot's first 60 s), so most corners cut over grass alone
   (not in code).
+- Verge under the wheels (ours, 2026-11-12, on trial; user: no vegetation sound off road): RSF and BTB stages
+  mostly mark their verges `Rough_*` (0x81, 0x82, 0x89, 0x8a) and put bushes and bendable trees in the ground's
+  surface ids, not in `Grass_*` or `.trk` placements, so the verge was silent there. A wheel on rough ground now
+  counts as half a wheel on grass (`rbr_render::verge::ROUGH`), and a wheel on a bush or bendable-tree surface adds
+  its density to the brush loop, two wheels full (`Verge::brush`, `BRUSH_WHEELS`; no hits). Kormoran I (RSF 347,
+  the user's drive, first wheel): rough 8.5 % of the steps, grass 0.7 %, bendable tree 0.2 % (`--log`'s surface
+  column, not in code). No audio render: `rbr-sound` has no verge, it needs the viewer. Not judged by ear yet.
 
 ## Suspension and driveshaft
 

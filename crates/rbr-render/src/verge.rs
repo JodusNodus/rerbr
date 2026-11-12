@@ -1,5 +1,5 @@
-//! The car meeting the verge, for the sound (ours, `rbr_sound::verge::Verge`): each wheel's share on grass from the
-//! frame's tyre payloads, and the bushes and bendable trees the body is in from the stage's roadside index
+//! The car meeting the verge, for the sound (ours, `rbr_sound::verge::Verge`): each wheel's share on grass and in
+//! bushes from the frame's tyre payloads, and the bushes and bendable trees the body is in from the stage's roadside index
 //! (`crate::roadside`, whose posts keep the vegetation the echoes leave out). Read after each frame's step, never
 //! written (physics frame, z up).
 //!
@@ -23,16 +23,37 @@ const BODY: [f32; 2] = [-0.35, 0.9];
 /// How far the leaves reach past a placement's collision mesh, m: the `.trk`'s bush and bendable tree meshes are their
 /// cores and trunks (0.1 to 0.4 m across on the retail stages), the foliage the body brushes is wider.
 const FOLIAGE: f32 = 0.5;
+/// A wheel on rough ground as a share of one on grass.
+const ROUGH: f32 = 0.5;
 
 /// Each wheel's share on grass in the frame's `payloads` (the last of a wheel's): the blend of its two surfaces that
 /// is grass; a wheel off the ground, or without a payload, has none.
+/// The rough ground beside the road (`Rough_Rough_*`, `Rough_VeryRough_*`) counts as [`ROUGH`] of grass: stages
+/// whose verges are not marked grass (RSF's and BTB's mostly) have their undergrowth on it.
 pub fn grass(payloads: &[TyreParticles]) -> [f32; 4] {
-    let is_grass = |id: u32| f32::from(u8::from(ground::material(id).kind == Kind::Grass));
+    shares(payloads, |id| match id {
+        0x81 | 0x82 | 0x89 | 0x8a => ROUGH,
+        _ => f32::from(u8::from(ground::material(id).kind == Kind::Grass)),
+    })
+}
+
+/// Each wheel's share in the bushes and bendable trees a stage marks in the ground itself (the surface under the
+/// wheel, not a `.trk` placement), times their density ([`crate::roadside::growth`]).
+pub fn brush(payloads: &[TyreParticles]) -> [f32; 4] {
+    shares(payloads, |id| match u8::try_from(id).ok().and_then(crate::roadside::growth) {
+        Some(Growth::Bush(density)) => density,
+        Some(Growth::Branches) => 1.0,
+        None => 0.0,
+    })
+}
+
+/// Each wheel's blend of `share` over its two surfaces in the frame's `payloads` (the last of a wheel's).
+fn shares(payloads: &[TyreParticles], share: impl Fn(u32) -> f32) -> [f32; 4] {
     let mut out = [0.0; 4];
     for p in payloads.iter().filter(|p| p.wheel < 4) {
         let blend = p.blend.clamp(0.0, 1.0);
         out[p.wheel as usize] =
-            if p.contact { (1.0 - blend) * is_grass(p.surfaces[0]) + blend * is_grass(p.surfaces[1]) } else { 0.0 };
+            if p.contact { (1.0 - blend) * share(p.surfaces[0]) + blend * share(p.surfaces[1]) } else { 0.0 };
     }
     out
 }
@@ -81,11 +102,11 @@ pub fn touches(roadside: &Roadside, position: Vec3, forward: Vec3) -> [Option<To
     out
 }
 
-/// The car at the verge: each wheel's share on grass (`grass`, [`grass`]) and the vegetation of `roadside` its body is
-/// in, for the car at `car`.
-pub fn verge(grass: [f32; 4], roadside: Option<&Roadside>, car: &CarPose) -> Verge {
+/// The car at the verge: each wheel's share on grass and in bushes (`grass`, `brush`; [`grass`], [`brush`]) and the
+/// vegetation of `roadside` its body is in, for the car at `car`.
+pub fn verge(grass: [f32; 4], brush: [f32; 4], roadside: Option<&Roadside>, car: &CarPose) -> Verge {
     let touches = roadside.map_or([None; TOUCHES], |r| touches(r, Vec3::from(car.position), Vec3::from(car.forward())));
-    Verge { grass, touches }
+    Verge { grass, brush, touches }
 }
 
 #[cfg(test)]
@@ -146,5 +167,9 @@ mod tests {
         ];
         assert_eq!(grass(&payloads), [1.0, 1.0, 0.25, 0.0]);
         assert_eq!(grass(&[]), [0.0; 4]);
+        // Rough ground counts in part; a bush or a bendable tree under a wheel brushes by its density.
+        let under = [payload(0, [0x81, gravel_id], 0.0, true), payload(1, [0xa6, 0x79], 0.5, true)];
+        assert_eq!(grass(&under), [ROUGH, 0.0, 0.0, 0.0]);
+        assert_eq!(brush(&under), [0.0, 0.75, 0.0, 0.0]);
     }
 }
