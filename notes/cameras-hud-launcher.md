@@ -67,7 +67,7 @@ Model and rules in `rbr_render::hud::model`, sprites in `hud::pace`, layout in `
     the throttle, right in a right-hander). The car's right is body -X: lateral g follows the steering's side and
     braking reads negative on `drive-arctic-snow.bin`.
   - `trace` and `g` are read from the drive's frames, so a recorded drive and a replay have them too.
-- Layout and size (ours, 2026-11-12; `hud::layout`): each movable part (`Part::MOVABLE`: clock with the passed
+- Layout and size (ours, 2026-11-12; `hud::layout`): each movable part (its own `Part::carrier`: clock with the passed
   split, progress, pace note, dial with its pedals, car state, messages, camera name, tyres, trace, g-force) has an
   offset in points of the 720-point screen from where the look puts it, and the HUD a scale of 50 to 200 %; a part
   scales about the corner or edge it stands at (`Part::pivot`) and is kept on the screen. `viewer --hud-layout

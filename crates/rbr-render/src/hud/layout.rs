@@ -13,7 +13,7 @@ use super::Part;
 pub const SCALES: std::ops::RangeInclusive<u16> = 50..=200;
 
 /// The HUD's scale, percent, and each part's offset from its place, points of the [`super::REFERENCE_HEIGHT`] screen
-/// (x right, y down), by its index in [`Part::ALL`]. Only the [`Part::MOVABLE`] ones' are used.
+/// (x right, y down), by its index in [`Part::ALL`]. Only its own [`Part::carrier`]'s is used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
     pub scale: u16,
@@ -27,20 +27,15 @@ impl Default for Layout {
 }
 
 impl Part {
-    /// The parts that move, each with what it carries: the clock takes the passed split with it, the dial its pedals
-    /// and steering.
-    pub const MOVABLE: [Part; 10] = [
-        Part::Clock,
-        Part::Progress,
-        Part::Pace,
-        Part::Dash,
-        Part::Car,
-        Part::Messages,
-        Part::View,
-        Part::Tyres,
-        Part::Trace,
-        Part::Gforce,
-    ];
+    /// The part this one moves with: the clock for the split times, the dial for the pedals and steering, else
+    /// itself. A layout places the parts that carry themselves.
+    pub const fn carrier(self) -> Part {
+        match self {
+            Part::Splits => Part::Clock,
+            Part::Inputs => Part::Dash,
+            part => part,
+        }
+    }
 
     /// The point of the screen the part scales about: the corner or edge it stands at.
     pub const fn pivot(self) -> Align2 {
@@ -63,8 +58,7 @@ impl Layout {
             let wrong = || format!("HUD layout {item}: PART:X,Y");
             let (name, offset) = item.split_once(':').ok_or_else(wrong)?;
             let (x, y) = offset.split_once(',').ok_or_else(wrong)?;
-            let part =
-                Part::MOVABLE.into_iter().find(|p| p.name() == name).ok_or(format!("no movable HUD part {name}"))?;
+            let part = movable().find(|p| p.name() == name).ok_or(format!("no movable HUD part {name}"))?;
             layout.offsets[part as usize] =
                 [x.trim().parse().map_err(|_| wrong())?, y.trim().parse().map_err(|_| wrong())?];
         }
@@ -73,8 +67,7 @@ impl Layout {
 
     /// The moved parts as [`Layout::parse`] reads them, or `None` when every part is in its place.
     pub fn moved(&self) -> Option<String> {
-        let items: Vec<String> = Part::MOVABLE
-            .into_iter()
+        let items: Vec<String> = movable()
             .filter(|p| self.offsets[*p as usize] != [0; 2])
             .map(|p| format!("{}:{},{}", p.name(), self.offsets[p as usize][0], self.offsets[p as usize][1]))
             .collect();
@@ -92,8 +85,12 @@ impl Layout {
     }
 }
 
+fn movable() -> impl Iterator<Item = Part> {
+    Part::ALL.into_iter().filter(|part| part.carrier() == *part)
+}
+
 /// The least move that brings `rect` inside `screen` (centred on an axis it is too large for).
-pub fn inside(rect: Rect, screen: Rect) -> Vec2 {
+fn inside(rect: Rect, screen: Rect) -> Vec2 {
     let axis = |min: f32, max: f32, low: f32, high: f32| {
         if max - min > high - low {
             (low + high - min - max) / 2.0

@@ -45,16 +45,17 @@ impl Stock {
     pub fn new(data: &rbr_formats::data::Data) -> Stock {
         Stock { sprites: pace::Sprites::load(data), ..Stock::default() }
     }
+}
 
-    /// Paints `r` with `painter` on `screen`, [`REFERENCE_HEIGHT`](super::REFERENCE_HEIGHT) points high, each part
-    /// where its layout puts it ([`Readout::layout`]).
-    fn paint_on(&mut self, painter: &egui::Painter, screen: Rect, r: &Readout) {
-        self.sprites.upload(painter.ctx());
-        self.bounds = [None; Part::ALL.len()];
-        let (sprites, layout) = (&self.sprites, &r.layout);
-        let mut bounds = [None; Part::ALL.len()];
+impl Hud for Stock {
+    /// Each part where its layout puts it ([`Readout::layout`]).
+    fn paint(&mut self, ctx: &egui::Context, r: &Readout) {
+        self.sprites.upload(ctx);
+        let (painter, screen) = (&ctx.layer_painter(egui::LayerId::background()), ctx.content_rect());
+        let (sprites, bounds) = (&self.sprites, &mut self.bounds);
+        *bounds = [None; Part::ALL.len()];
         let mut part = |part: Part, paint: &mut dyn FnMut()| {
-            bounds[part as usize] = placed(painter, screen, layout, part, paint);
+            bounds[part as usize] = placed(painter, screen, &r.layout, part, paint);
         };
 
         // Top right: the rendered frames per second, when the viewer measures them, and the view. Ours.
@@ -85,7 +86,6 @@ impl Stock {
         if r.state.helicopter && r.state.end_page.is_none() {
             let at = Pos2::new(screen.center().x, screen.min.y + MARGIN);
             painter.text(at, Align2::CENTER_TOP, "rescue helicopter called", FontId::proportional(15.0), DIM);
-            self.bounds = bounds;
             return;
         }
         part(Part::Progress, &mut || top::progress(painter, screen, r));
@@ -107,13 +107,6 @@ impl Stock {
                 car_status::paint(painter, screen, &r.state);
             }
         });
-        self.bounds = bounds;
-    }
-}
-
-impl Hud for Stock {
-    fn paint(&mut self, ctx: &egui::Context, r: &Readout) {
-        self.paint_on(&ctx.layer_painter(egui::LayerId::background()), ctx.content_rect(), r);
     }
 
     fn bounds(&self, part: Part) -> Option<Rect> {

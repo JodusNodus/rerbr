@@ -25,7 +25,7 @@ const PICKED: Color32 = Color32::from_rgb(255, 196, 0);
 const WIDTH: f32 = 380.0;
 const ROW: f32 = 26.0;
 /// One move of the size, percent, and of a part, points.
-const SCALE_STEP: u16 = 5;
+const SCALE_STEP: i16 = 5;
 const STEP: i16 = 10;
 /// The farthest a part goes from its place, points: across any screen.
 const REACH: [i16; 2] = [2600, 720];
@@ -43,35 +43,6 @@ pub enum Row {
 }
 
 const ROWS: [Row; 7] = [Row::Size, Row::Part, Row::Shown, Row::Across, Row::Down, Row::Reset, Row::Done];
-
-impl Part {
-    /// The part's name on the page.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Part::Clock => "Stage clock",
-            Part::Progress => "Stage progress",
-            Part::Pace => "Pace note",
-            Part::Splits => "Split times",
-            Part::Dash => "Gear, speed, revs",
-            Part::Inputs => "Pedals, steering",
-            Part::Car => "Car state",
-            Part::Messages => "Messages",
-            Part::View => "Camera name",
-            Part::Tyres => "Tyre temperatures",
-            Part::Trace => "Input trace",
-            Part::Gforce => "G-force",
-        }
-    }
-
-    /// The movable part this one moves with: the clock for the split times, the dial for the pedals, else itself.
-    pub const fn carrier(self) -> Part {
-        match self {
-            Part::Splits => Part::Clock,
-            Part::Inputs => Part::Dash,
-            part => part,
-        }
-    }
-}
 
 /// The page: the parts shown, the layout, the part picked and the selected row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,11 +81,12 @@ impl HudPage {
                 self.parts.0[self.part] = !self.parts.0[self.part];
             }
             (Nav::Left | Nav::Right, Row::Size) => {
-                let scale = self.layout.scale.saturating_add_signed(sign * SCALE_STEP as i16);
+                let scale = self.layout.scale.saturating_add_signed(sign * SCALE_STEP);
                 self.layout.scale = scale.clamp(*SCALES.start(), *SCALES.end());
             }
             (Nav::Left | Nav::Right, Row::Part) => {
-                self.part = (self.part + Part::ALL.len()).saturating_add_signed(sign.into()) % Part::ALL.len();
+                let n = Part::ALL.len();
+                self.part = (self.part + if nav == Nav::Right { 1 } else { n - 1 }) % n;
             }
             (Nav::Left | Nav::Right, row @ (Row::Across | Row::Down)) => {
                 let axis = usize::from(row == Row::Down);

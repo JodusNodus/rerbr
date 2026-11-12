@@ -49,8 +49,8 @@ pub trait Hud {
     /// ([`Readout::parts`]). The race's screens are drawn over it ([`paint_readout`]).
     fn paint(&mut self, ctx: &egui::Context, readout: &Readout);
 
-    /// Where the last paint drew `part` (a [`Part::MOVABLE`] one), for the HUD page's outline of it; `None` when it
-    /// drew nothing or the look does not say.
+    /// Where the last paint drew `part` (one that carries itself, [`Part::carrier`]), for the HUD page's outline of
+    /// it; `None` when it drew nothing or the look does not say.
     fn bounds(&self, _part: Part) -> Option<Rect> {
         None
     }
@@ -121,6 +121,24 @@ impl Part {
         }
     }
 
+    /// The part's name for the player (the pause menu's HUD page, the launcher's HUD parts).
+    pub const fn label(self) -> &'static str {
+        match self {
+            Part::Clock => "Stage clock",
+            Part::Progress => "Stage progress",
+            Part::Pace => "Pace note",
+            Part::Splits => "Split times",
+            Part::Dash => "Gear, speed, revs",
+            Part::Inputs => "Pedals, steering",
+            Part::Car => "Car state",
+            Part::Messages => "Messages",
+            Part::View => "Camera name",
+            Part::Tyres => "Tyre temperatures",
+            Part::Trace => "Input trace",
+            Part::Gforce => "G-force",
+        }
+    }
+
     /// Whether the part shows unless hidden: every part but the telemetry.
     pub const fn by_default(self) -> bool {
         !matches!(self, Part::Tyres | Part::Trace | Part::Gforce)
@@ -174,7 +192,7 @@ impl Parts {
 }
 
 /// What the HUD shows.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Readout {
     /// The camera view's name.
     pub view: &'static str,

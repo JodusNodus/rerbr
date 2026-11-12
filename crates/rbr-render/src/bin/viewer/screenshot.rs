@@ -53,11 +53,10 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
     };
     // The HUD page's parts and layout, and the Camera page's view, nudges and fields of view, shown as the window shows
     // them (the file is not written).
-    let hud_page = menu.as_ref().and_then(PauseMenu::hud).copied();
-    if let Some(page) = hud_page {
+    let sampled = menu.as_ref().and_then(PauseMenu::hud).copied();
+    if let Some(page) = sampled {
         (scene.hud.parts, scene.hud.layout) = (page.parts, page.layout);
     }
-    let hud_page = hud_page.is_some();
     let page = menu.as_ref().and_then(PauseMenu::camera);
     let view = page.map_or(view, |page| page.view);
     let fov = page.map_or(fov, |page| page.fov.views);
@@ -205,7 +204,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             .as_ref()
             .filter(|_| scene.hud.show && demo_ride.is_none())
             .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None))
-            .map(|r| if hud_page { hud_page::sample(r) } else { r });
+            .map(|r| if sampled.is_some() { hud_page::sample(r) } else { r });
         let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         // The probes show a first frame's sky and shadows (as the window's load draws them).
         if shot == 0 && renderer.has_probes() {

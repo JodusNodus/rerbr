@@ -294,23 +294,20 @@ pub struct HudChoice {
     pub layout: Layout,
 }
 
-/// Each HUD part's label and hover tip, by [`Part::ALL`].
-const PART_LABELS: [(&str, &str); Part::ALL.len()] = [
-    ("Stage clock", "The race time and its penalties"),
-    ("Stage progress", "The progress bar with the splits, the distance driven and the distance to go"),
-    ("Pace note", "The symbol of each call at the top"),
-    ("Split times", "The time and difference as each split is passed"),
-    ("Gear, speed, revs", "The rev dial with its shift light, gear, speed, revs, water and turbo"),
-    ("Pedals, steering", "The pedal arcs inside the dial and the steering under it"),
-    ("Car state", "The lit warning lamps and the damaged parts at the bottom left, shown only when there are any"),
-    ("Messages", "The stand-still and car-problem messages"),
-    ("Camera name", "The view's name at the top right"),
-    (
-        "Tyre temperatures",
-        "Each tyre's temperature beside the dial: green at its best, blue while too cold for full grip, red once too hot",
-    ),
-    ("Input trace", "A running chart of the pedals and the steering over the last 10 seconds"),
-    ("G-force", "The car's acceleration as a dot in a 2 g circle: up on the throttle, down on the brakes"),
+/// Each HUD part's hover tip, by [`Part::ALL`].
+const PART_TIPS: [&str; Part::ALL.len()] = [
+    "The race time and its penalties",
+    "The progress bar with the splits, the distance driven and the distance to go",
+    "The symbol of each call at the top",
+    "The time and difference as each split is passed",
+    "The rev dial with its shift light, gear, speed, revs, water and turbo",
+    "The pedal arcs inside the dial and the steering under it",
+    "The lit warning lamps and the damaged parts at the bottom left, shown only when there are any",
+    "The stand-still and car-problem messages",
+    "The view's name at the top right",
+    "Each tyre's temperature beside the dial: green at its best, blue while too cold for full grip, red once too hot",
+    "A running chart of the pedals and the steering over the last 10 seconds",
+    "The car's acceleration as a dot in a 2 g circle: up on the throttle, down on the brakes",
 ];
 
 impl Default for HudChoice {
@@ -510,13 +507,14 @@ impl Form {
             ui.label("HUD parts").on_hover_text(tip);
             ui.add_enabled_ui(self.hud.show, |ui| {
                 ui.vertical(|ui| {
-                    for (row, labels) in self.hud.parts.0.chunks_mut(3).zip(PART_LABELS.chunks(3)) {
+                    let parts: Vec<_> = Part::ALL.into_iter().zip(PART_TIPS).collect();
+                    for (row, parts) in self.hud.parts.0.chunks_mut(3).zip(parts.chunks(3)) {
                         ui.horizontal(|ui| {
-                            for (shown, (label, tip)) in row.iter_mut().zip(labels) {
+                            for (shown, (part, tip)) in row.iter_mut().zip(parts) {
                                 let cell = egui::Layout::left_to_right(egui::Align::Center);
                                 ui.allocate_ui_with_layout(egui::vec2(140.0, 20.0), cell, |ui| {
                                     ui.set_min_width(140.0);
-                                    ui.checkbox(shown, *label).on_hover_text(*tip);
+                                    ui.checkbox(shown, part.label()).on_hover_text(*tip);
                                 });
                             }
                         });
