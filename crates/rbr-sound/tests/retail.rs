@@ -19,7 +19,7 @@ fn every_car_bank_loads_with_the_codriver() {
         assert!(!bank.go.samples.is_empty());
         let counts =
             [&bank.grus, &bank.squeaks, &bank.bottomings, &bank.exhaust_pops, &bank.pops, &bank.bangs].map(Vec::len);
-        assert_eq!(counts, [20, 18, 4, 11, 11, 6], "car {car}: effect banks");
+        assert_eq!(counts, [20, 18, 8, 11, 11, 6], "car {car}: effect banks");
         assert!([&bank.rumble, &bank.wetness, &bank.fire].iter().all(|w| !w.samples.is_empty()));
         let words = &bank.codriver.words;
         // Every word id but PLUS and MINUS (no takes in the archive) has at least one take.

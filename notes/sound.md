@@ -14,6 +14,8 @@ modelled only for cars that have one (`fmod`). The pipeline never writes physics
 - A gain is `SOUNDDEF` volume times amp times a player option; volumes are linear amplitude (`SetVol` 0x4d2740).
 - The 30 ms sound thread never runs (not in code); the in-car flag is the viewer's bonnet and cockpit views.
 
+- `rbr-sound --replay FILE.rrp` renders a saved replay's sound offline (its own stepping command, back to back): the
+  way to hear a change on a drive the user made.
 - Offline replay video uses `Player::offline` at 44100 Hz, sharing the live player's bank, custom co-driver and FMOD
   setup; `Player::render` fills stereo samples without an audio device, clocked by the replay's answered periods.
 
@@ -185,12 +187,32 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
 
 Mechanics in `suspension.rs` (squeaks, knocks, bottoming, damage call 7, frame folding) and `driveshaft.rs` (clunks).
 
+- Bump-stop knocks (ours, 2026-11-12, user: unrealistic on bumpy tarmac): 1.02 plays every bump word above 0.01 as
+  an `IMPACT::RANGED` crash sample at full level, and a strut riding its stop changes the word every step. Now the
+  knock is a thud on a car's body (8 embedded CC BY recordings in three strengths, `CREDITS.md`, in place of
+  `CAR::SUSPENSION`'s two clipped samples: soft below 0.2 of full, hard from 0.6) at `2 * bump / 0.8` (full from
+  1.02's bottoming threshold, where the ranged impact still joins it; the thuds are 6 dB under 1.02's samples),
+  one a wheel per 9 frames unless 1.5 times harder; the frame keeps its hardest bump. The
+  user's replay (Alpine A110 RGT, Mont Ventoux BTB, 330 s, in the car; `rbr-sound --replay`): 1979 new bump words,
+  median 0.037, a tenth above 0.13; commanded ranged impacts 852 to 34, knocks 272 at a median gain of 0.07, 7 at
+  full (not in code). The recorded drives never touch the stops (62 drives, 39 min: no bump word changes).
+
 ## Impacts
 
 Mechanics in `impact.rs` (payload change rule, ranged set, scream).
 
 - A scrape changes the payload every step: Lancer 75-90 s, 371 impacts to 22 (evidence for the spacing rule, not in
   code).
+- Level (ours, 2026-11-12): a ranged impact plays at `power / 1000`, full from there (1.02: full from 100); the
+  sample follows the power as before. A body scrape holds about 765 (the Ventoux replay, not in code).
+- Scrape (ours, 2026-11-12): a contact whose payload keeps changing (held 4 steps past the last change) scrapes
+  from its second step: a loop of metal dragged over concrete (embedded, CC BY, `CREDITS.md`; no open recording on
+  tarmac or gravel was found) at `2 * power / 1000` over 1-15 m/s, pitch 0.8-1.2, up in 30 ms and down in 150, at
+  the impacts' distance gain and in the car through the stones' 2.5 kHz shell filter. During the contact only an
+  impact 1.5 times harder than the last plays; the 0.15 s gap applies between contacts. The payload gives the
+  contact's point on the body ([0xc..]) but not what it touched, so the road and a bank scrape alike. The Ventoux
+  replay's contacts are a low front corner for 50 ms at 30 m/s (the nose on a compression) and two longer ones;
+  ranged impacts made 261 to 23 (not in code). Levels are set by measurement, not by ear.
 
 ## Co-driver
 
