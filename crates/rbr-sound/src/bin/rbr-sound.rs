@@ -3,11 +3,14 @@
 //! HUD's countdown through the models and the mixer, one physics step (7 ms) of samples per step. At the end it
 //! prints each one-shot kind's made and refused requests under the sound limit (`rbr_sound::mixer::SOUND_LIMIT`).
 //!
-//! Usage: rbr-sound --recording X [--stage NAME] --out WAV [--seconds S] [--camera inside|chase|trackside]
+//! Usage: rbr-sound (--recording X | --replay RRP) [--stage NAME] --out WAV [--seconds S] [--camera inside|chase|trackside]
 //!        [--no-codriver] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--poses CSV] [--roadside CSV] [--car N]
 //!        --ngp-physics FILE [--rsf-car ID|PACK [--no-fmod] | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--solo LAYER]
 //!        [--codriver-mod DIR [--codriver-voice V] [--codriver-style S] [--codriver-ranges R] [--pacenotes FILE]]
 //!
+//! `--replay` renders a saved replay (`.rrp`) instead: its own stepping command runs it back to back, so it needs
+//! the build, install and setup that drove it and takes no `--ngp-physics`; the car's bank is the replay's, the
+//! weather is taken as dry and the sirens are left out.
 //! The car, weather and tyre are the recording's `.auto` (`map car weather tyre`); the weather preset gives the
 //! season row's rain, cloud and stage (the default `--stage`) as the standalone picks it (no `--season-row`). The WAV is stereo. `--camera` is where
 //! the listener is (ours): `inside` the car (`--inside` is the same), `chase` 6 m behind and 2 m above it (the
@@ -69,6 +72,8 @@ fn main() {
 #[derive(Default)]
 struct Args {
     recording: PathBuf,
+    /// `--replay`: a saved replay (`.rrp`) driven in place of a recording.
+    replay: Option<PathBuf>,
     stage: Option<String>,
     out: PathBuf,
     seconds: f32,
@@ -117,6 +122,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
         let mut value = || it.next().ok_or_else(|| format!("{arg} needs a value"));
         match arg.as_str() {
             "--recording" => recording = Some(PathBuf::from(value()?)),
+            "--replay" => args.replay = Some(PathBuf::from(value()?)),
             "--stage" => args.stage = Some(value()?),
             "--out" => out = Some(PathBuf::from(value()?)),
             "--seconds" => args.seconds = value()?.parse().map_err(|e| format!("--seconds: {e}"))?,
@@ -163,9 +169,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             other => return Err(format!("unknown argument {other}")),
         }
     }
-    args.recording = recording.ok_or("--recording is required")?;
     args.out = out.ok_or("--out is required")?;
-    args.ngp_physics = ngp_physics.ok_or("--ngp-physics is required (ReRBR steps NGP physics only)")?;
+    if args.replay.is_none() {
+        args.recording = recording.ok_or("--recording or --replay is required")?;
+        args.ngp_physics = ngp_physics.ok_or("--ngp-physics is required (ReRBR steps NGP physics only)")?;
+    }
     args.standalone = match standalone {
         Some(path) => path,
         None => std::env::current_exe()
@@ -325,18 +333,26 @@ impl Camera {
     }
 }
 
-/// One answer's sound inputs, car pose and physics substeps (0 for a frame of the countdown).
-type Answer = (Option<Inputs>, Option<CarPose>, u32);
+/// One answer's sound inputs, car pose, physics substeps (0 for a frame of the countdown) and payload periods.
+type Answer = (Option<Inputs>, Option<CarPose>, u32, u32);
 
 /// Reads one answer of the live process and returns its sound inputs, the car's pose and its substeps, or `None` at
 /// the end of the stream.
 fn read_answer(reader: &mut impl Read) -> Result<Option<Answer>, String> {
     let mut header = [0u8; HEADER_BYTES];
-    match reader.read_exact(&mut header) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(e) => return Err(e.to_string()),
+    // A replay's real-time stream has a step record (STP1) for each step between its answers: skipped.
+    loop {
+        match reader.read_exact(&mut header[..4]) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) => return Err(e.to_string()),
+        }
+        if header[..4] != realtime::STP1 {
+            break;
+        }
+        reader.read_exact(&mut [0; realtime::STEP_BYTES]).map_err(|e| e.to_string())?;
     }
+    reader.read_exact(&mut header[4..]).map_err(|e| e.to_string())?;
     let substeps = u32::from_le_bytes(header[12..16].try_into().unwrap());
     let car_bytes = u32::from_le_bytes(header[16..20].try_into().unwrap()) as usize;
     let mut frame = vec![0u8; CONTROL_BYTES + car_bytes + WHEELS * WHEEL_BYTES];
@@ -349,7 +365,8 @@ fn read_answer(reader: &mut impl Read) -> Result<Option<Answer>, String> {
     reader.read_exact(&mut count).map_err(|e| e.to_string())?;
     let count = u32::from_le_bytes(count) as usize;
     std::io::copy(&mut reader.by_ref().take(32 * count as u64), &mut std::io::sink()).map_err(|e| e.to_string())?;
-    Ok(Some((Inputs::from_records(&records, &hud), car_pose(car), substeps)))
+    let periods = frame[..CONTROL_BYTES].try_into().ok().and_then(|p| rbr_recording::input::Payload::read(p).ok());
+    Ok(Some((Inputs::from_records(&records, &hud), car_pose(car), substeps, periods.map_or(1, |p| p.periods()))))
 }
 
 /// The load and the loops' and one-shots' columns of a `--log` line.
@@ -435,6 +452,11 @@ fn log_line(inputs: &Inputs, commands: &[Command], fmod: Option<&rbr_sound::fmod
 fn run() -> Result<(), String> {
     let args = args()?;
     let data = Data::from_env().ok_or("RBR_DATA is not set")?;
+    let mut args = args;
+    if let Some(replay) = args.replay.clone() {
+        let drive = replay_drive(&replay, &mut args.pack_car)?;
+        return render(&args, &data, drive);
+    }
     let [map, car, weather, tyre] = auto(&args.recording)?;
     let car = args.car.clone().unwrap_or(car);
     let car_index: u32 = car.parse().map_err(|e| format!("car {car}: {e}"))?;
@@ -444,15 +466,67 @@ fn run() -> Result<(), String> {
     let stage = args.stage.clone().unwrap_or(weather_stage);
     eprintln!("rbr-sound: {stage}, rain {}, cloud {}", sky.rain, sky.cloud);
     let bytes = std::fs::read(&args.recording).map_err(|e| format!("{}: {e}", args.recording.display()))?;
-    let steps = (f64::from(args.seconds) * STEPS_PER_SECOND) as usize;
     let payloads: Vec<[u8; CONTROL_BYTES]> = Frames::new(&bytes)
         .skip(SETTLE_FRAMES)
         .map(|frame| frame.map(|f| f.control).map_err(|e| e.to_string()))
         .collect::<Result<_, _>>()?;
     drop(bytes);
 
-    let bank = CarBank::load(&data, car_index)?;
-    let mut models = Models::new(&bank, sky, spheres(&data, &stage)?);
+    let mut command = process::Command::new(&args.standalone);
+    // An RSF or pack car races slot 5 by construction (`--rsf-car`, `--car-pack`), so the standalone takes no
+    // `--car` for it (it rejects the two together); a retail car is named as ever.
+    command.args(["--live", "--boot", "--stage", &stage, "--weather", &weather, "--tyre", &tyre]);
+    if args.rsf_car.is_none() && args.pack_car.pack.is_none() {
+        command.args(["--car", &car]);
+    }
+    command.args(["--frames", "-"]);
+    command.arg("--ngp-physics").arg(&args.ngp_physics);
+    if let Some(key) = &args.rsf_car {
+        command.args(["--rsf-car", key]);
+    }
+    command.args(args.pack_car.argv());
+    let spheres = spheres(&data, &stage)?;
+    render(&args, &data, Drive { car_index, sky, spheres, payloads: Some(payloads), command, stage })
+}
+
+/// What [`render`] drives: the car's sound slot, the weather, the stage's siren spheres and name, the stepping
+/// command and the payloads fed to it (`None` for a replay, which the command steps by itself).
+struct Drive {
+    car_index: u32,
+    sky: Sky,
+    spheres: Vec<Sphere>,
+    payloads: Option<Vec<[u8; CONTROL_BYTES]>>,
+    command: process::Command,
+    stage: String,
+}
+
+/// A replay's drive: its own stepping command (the viewer arguments after `--live`) run back to back, the car
+/// its `--car` or the pack car's slot, its pack flags taken into `pack_car` (the FMOD bank). The weather is dry
+/// and the sirens are left out.
+fn replay_drive(replay: &Path, pack_car: &mut rbr_formats::car_pack::Flags) -> Result<Drive, String> {
+    let file = std::fs::File::open(replay).map_err(|e| format!("{}: {e}", replay.display()))?;
+    let viewer = rbr_recording::replay::read_args(BufReader::new(file))?;
+    let at = viewer.iter().position(|a| a == "--live").ok_or("the replay has no --live command")?;
+    let [program, live @ ..] = &viewer[at + 1..] else { return Err("the replay's --live command is empty".into()) };
+    let mut car_index = rbr_formats::car_pack::SLOT;
+    for pair in live.windows(2) {
+        if pair[0] == "--car" {
+            car_index = pair[1].parse().map_err(|e| format!("the replay's car {}: {e}", pair[1]))?;
+        }
+        pack_car.take(&pair[0], &pair[1]);
+    }
+    let mut command = process::Command::new(program);
+    command.args(live).arg("--replay").arg(replay).args(["--replay-pace", "free"]);
+    let stage = live.windows(2).find(|p| p[0] == "--stage").map(|p| p[1].clone()).unwrap_or_default();
+    Ok(Drive { car_index, sky: Sky::default(), spheres: Vec::new(), payloads: None, command, stage })
+}
+
+/// Steps `drive` and renders its sound.
+fn render(args: &Args, data: &Data, drive: Drive) -> Result<(), String> {
+    let Drive { car_index, sky, spheres, payloads, mut command, stage } = drive;
+    let steps = (f64::from(args.seconds) * STEPS_PER_SECOND) as usize;
+    let bank = CarBank::load(data, car_index)?;
+    let mut models = Models::new(&bank, sky, spheres);
     models.codriver.muted = !args.codriver;
     if let Some(m) = &args.codriver_mod {
         let voice = m.voice.clone().or_else(|| rbr_formats::pacenote::codriver::settings(&m.plugin).voice);
@@ -464,7 +538,7 @@ fn run() -> Result<(), String> {
             notes: m.notes.clone(),
         };
         let dls =
-            if choice.notes.is_none() { rbr_sound::custom_codriver::stage_notes(&data, &stage)? } else { Vec::new() };
+            if choice.notes.is_none() { rbr_sound::custom_codriver::stage_notes(data, &stage)? } else { Vec::new() };
         let callout_time = rbr_gameplay::markers::MarkerSettings::default().callout_distance;
         let mut custom = rbr_sound::custom_codriver::CustomCoDriver::load(&choice, dls, callout_time)?;
         custom.muted = !args.codriver;
@@ -495,26 +569,23 @@ fn run() -> Result<(), String> {
         models.fmod = Some(fmod);
     }
 
-    let mut command = process::Command::new(&args.standalone);
-    // An RSF or pack car races slot 5 by construction (`--rsf-car`, `--car-pack`), so the standalone takes no
-    // `--car` for it (it rejects the two together); a retail car is named as ever.
-    command.args(["--live", "--boot", "--stage", &stage, "--weather", &weather, "--tyre", &tyre]);
-    if args.rsf_car.is_none() && args.pack_car.pack.is_none() {
-        command.args(["--car", &car]);
-    }
-    command.args(["--frames", "-"]);
-    command.arg("--ngp-physics").arg(&args.ngp_physics);
-    if let Some(key) = &args.rsf_car {
-        command.args(["--rsf-car", key]);
-    }
-    command.args(args.pack_car.argv());
     let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|e| format!("{}: {e}", args.standalone.display()))?;
     let mut stdin = child.stdin.take().ok_or("no stdin")?;
-    stdin.write_all(&realtime::LOG_MAGIC).map_err(|e| e.to_string())?;
+    if payloads.is_some() {
+        stdin.write_all(&realtime::LOG_MAGIC).map_err(|e| e.to_string())?;
+    } else {
+        // The real-time protocol's start: an input, answered with the first frame, and the clock's go.
+        for tag in [realtime::INPUT, realtime::RESUME] {
+            let payload = rbr_recording::input::Input::default().to_bytes();
+            let message = realtime::Message { tag, seq: 0, payload };
+            stdin.write_all(&message.to_bytes()).map_err(|e| e.to_string())?;
+        }
+        stdin.flush().map_err(|e| e.to_string())?;
+    }
     let mut reader = BufReader::new(child.stdout.take().ok_or("no stdout")?);
     let spec =
         hound::WavSpec { channels: 2, sample_rate: RATE, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
@@ -557,12 +628,16 @@ fn run() -> Result<(), String> {
         if answered == steps {
             break;
         }
-        let Some(payload) = payloads.get(driven) else { break };
-        stdin
-            .write_all(&realtime::Logged::unchecked(*payload, 1).to_bytes())
-            .and_then(|()| stdin.flush())
-            .map_err(|e| e.to_string())?;
-        let Some((inputs, pose, substeps)) = read_answer(&mut reader)? else { break };
+        if let Some(payloads) = &payloads {
+            let Some(payload) = payloads.get(driven) else { break };
+            stdin
+                .write_all(&realtime::Logged::unchecked(*payload, 1).to_bytes())
+                .and_then(|()| stdin.flush())
+                .map_err(|e| e.to_string())?;
+        }
+        let Some((inputs, pose, substeps, periods)) = read_answer(&mut reader)? else { break };
+        // A replay's frame stands for its periods: its records again for each, as the viewer steps the models.
+        let periods = if payloads.is_some() { 1 } else { periods };
         let frame = driven + SETTLE_FRAMES;
         if substeps > 0 {
             driven += 1;
@@ -577,35 +652,37 @@ fn run() -> Result<(), String> {
                 scene.roadside = roadside.get(&answered).map(|r| heard(*r, pose.forward(), scene.right));
             }
         }
-        if let Some(inputs) = inputs {
-            if answered == 0 {
-                eprintln!("rbr-sound: NGP's sound words {:?}", inputs.ngp);
+        for _ in 0..periods {
+            if let Some(inputs) = &inputs {
+                if answered == 0 {
+                    eprintln!("rbr-sound: NGP's sound words {:?}", inputs.ngp);
+                }
+                let commands = models.step(inputs, &scene);
+                mixer.apply(&commands);
+                if !events.is_empty() {
+                    let none = Events::default();
+                    mixer.apply(&models.events(events.get(&frame).unwrap_or(&none), &scene));
+                }
+                if let Some(log) = &mut log {
+                    writeln!(log, "{answered},{},{}", mixer.rpm(), log_line(inputs, &commands, models.fmod.as_ref()))
+                        .map_err(|e| e.to_string())?;
+                }
             }
-            let commands = models.step(&inputs, &scene);
-            mixer.apply(&commands);
-            if !events.is_empty() {
-                let none = Events::default();
-                mixer.apply(&models.events(events.get(&frame).unwrap_or(&none), &scene));
+            block.resize(sample_at(answered + 1) - sample_at(answered), [0.0; 2]);
+            let started = std::time::Instant::now();
+            mixer.render(&mut block);
+            busy += started.elapsed();
+            rendered += block.len();
+            if answered >= from {
+                for &s in block.iter().flatten() {
+                    peak = peak.max(s.abs());
+                    wav.write_sample((s * 32767.0) as i16).map_err(|e| e.to_string())?;
+                }
             }
-            if let Some(log) = &mut log {
-                writeln!(log, "{answered},{},{}", mixer.rpm(), log_line(&inputs, &commands, models.fmod.as_ref()))
-                    .map_err(|e| e.to_string())?;
+            answered += 1;
+            if answered % 1000 == 0 {
+                eprintln!("rbr-sound: step {answered}, rpm {}", mixer.rpm());
             }
-        }
-        block.resize(sample_at(answered + 1) - sample_at(answered), [0.0; 2]);
-        let started = std::time::Instant::now();
-        mixer.render(&mut block);
-        busy += started.elapsed();
-        rendered += block.len();
-        if answered >= from {
-            for &s in block.iter().flatten() {
-                peak = peak.max(s.abs());
-                wav.write_sample((s * 32767.0) as i16).map_err(|e| e.to_string())?;
-            }
-        }
-        answered += 1;
-        if answered % 1000 == 0 {
-            eprintln!("rbr-sound: step {answered}, rpm {}", mixer.rpm());
         }
     }
     wav.finalize().map_err(|e| e.to_string())?;
