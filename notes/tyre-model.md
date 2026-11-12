@@ -2641,6 +2641,16 @@ saved rank pages are read below.
 | 615, 19957 m (snow) | Arctic Rally Finland 2021 SS4/7 Kaihuavaara, 19.91 km (27.93 km in the January Arctic Lapland Rally) | Evans 546.6 s, Rovanperä 548.8 (Yaris WRC) | +0.2 %, good | not used: the autopilot crawls (24-94 s under 5 m/s, spinning at a climb at 4.1 km); raw 1.182 / 0.953 |
 | 422, 9742 m (snow) | Rally Sweden 2018 SS8/19 Torsby, 9.56 km | Paddon 383.8 s (Friday 16:56), Lappi 361.2 (Sunday, power stage) | +1.9 %, fair | 0.983 / 0.985 (0.999 / 0.998) |
 
+- Tarmac stages on the telemetry's rallies (2026-11-12; scratch: the headings at 10 m of 2 km windows of an RSF stage's
+  centreline, an autopilot's trace, against every offset of each real stage's GPS track, either direction; RSF 524 finds
+  Finland 2021 SS7 at 10.3 km with every window at 1.00). RSF 476 (La Mussara Shakedown I, 7.3 km) is the first 7.3 km
+  of España 2021 SS1/4 in the crews' direction (every window 1.00, shifts within 40 m; six crews a pass). RSF 508
+  (Vilaplana 2007, 12.9 km) is the same stage from 7.4 km to its end (0.99, within 140 m). RSF 477, 476's road the other
+  way, is Catalunya 2019 SS15/17 from 12.6 to 20.0 of its 21 km in the crews' direction (1.00, within 40 m; eight and
+  six crews). Of the crews' cornering over 1 g, 13 % is over 150 km/h on 476's part and 5 % on 508's. Not on a stage of
+  the telemetry: RSF 595 (La Serra d'Almos) on España 2021 and Catalunya 2019, RSF 523 (Fintele) on Ypres 2021, RSF 369
+  (Capo di Feno) on Corsica 2018-19. RSF's list has no Croatian tarmac stage, and its German and Italian ones are not in
+  the Deutschland's or Monza's regions (by name, not fitted).
 - The user's Hassi drives by hand (2026-11-09, experimental-brush, dry; Fiesta Rally2 with 4 recoveries, stopped at
   7.3 km; GR Yaris Rally2 clean to 5.9 km, splits 89.8 / 177.5 s against RSF's Rally2 median 84.3 / 165.7 under
   ngp): lateral 1 s p90 / p99 0.83 / 1.05 g (glat) in both, g-g p95 |lat| 0.92-1.03 g at 60-150 km/h (Finland 2021
