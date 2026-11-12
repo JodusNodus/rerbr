@@ -169,11 +169,14 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             other => return Err(format!("unknown argument {other}")),
         }
     }
+    // A replay names its drive and physics itself.
+    let or_replay = |path: Option<PathBuf>, missing: &str| match path {
+        None if args.replay.is_none() => Err(missing.to_owned()),
+        path => Ok(path.unwrap_or_default()),
+    };
+    args.recording = or_replay(recording, "--recording or --replay is required")?;
     args.out = out.ok_or("--out is required")?;
-    if args.replay.is_none() {
-        args.recording = recording.ok_or("--recording or --replay is required")?;
-        args.ngp_physics = ngp_physics.ok_or("--ngp-physics is required (ReRBR steps NGP physics only)")?;
-    }
+    args.ngp_physics = or_replay(ngp_physics, "--ngp-physics is required (ReRBR steps NGP physics only)")?;
     args.standalone = match standalone {
         Some(path) => path,
         None => std::env::current_exe()
@@ -759,7 +762,8 @@ mod tests {
     #[test]
     fn bad_command_lines_fail() {
         let bad: Vec<(&str, &str)> = vec![
-            ("", "--recording is required"),
+            ("", "--recording or --replay is required"),
+            ("--replay R", "--out is required"),
             ("--recording", "--recording needs a value"),
             ("--recording R", "--out is required"),
             ("--recording R --out O", "--ngp-physics is required (ReRBR steps NGP physics only)"),
