@@ -339,7 +339,7 @@ impl Pure {
         let _ngp = (self.run_depth.load(Ordering::Relaxed) == 0).then(|| crate::ngp::Scope::new(self.ngp_base));
         let _run = PureRunGuard::new(&self.run_depth);
         self.entered.set(self.entered.get() + 1);
-        regs.stack = self.mem.u32s(regs.esp + 4);
+        self.mem.u32s_into(regs.esp + 4, &mut regs.stack);
         if WATCHED.contains(&addr) {
             self.captures.watch(&self.mem, addr, &regs, self.keep_tyre_particles);
         }

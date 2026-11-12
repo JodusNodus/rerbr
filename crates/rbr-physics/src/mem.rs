@@ -341,6 +341,14 @@ impl Mem {
         std::array::from_fn(|k| self.u32(at + 4 * k as u32))
     }
 
+    /// [`Mem::u32s`] into `out`.
+    #[inline]
+    pub fn u32s_into<const N: usize>(&self, at: u32, out: &mut [u32; N]) {
+        if !self.pages_for(at, 4 * N).is_some_and(|pages| pages.words_into(at, out)) {
+            *out = self.u32s(at);
+        }
+    }
+
     /// `N` consecutive words from `at` when the pages hold them all, read at once.
     #[inline]
     fn paged_u32s<const N: usize>(&self, at: u32) -> Option<[u32; N]> {

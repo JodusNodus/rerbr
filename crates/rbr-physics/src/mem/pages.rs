@@ -216,6 +216,21 @@ impl Pages {
         self.read(at, bytes.as_flattened_mut()).then(|| bytes.map(u32::from_le_bytes))
     }
 
+    /// [`Pages::words`] into `out`: false, with `out` unchanged, when they are not aligned in one page or the page is
+    /// unmapped.
+    #[inline]
+    pub fn words_into<const N: usize>(&self, at: u32, out: &mut [u32; N]) -> bool {
+        let o = (at % PAGE) as usize;
+        if !at.is_multiple_of(4) || o + 4 * N > PAGE as usize || !self.mapped(at) {
+            return false;
+        }
+        (0..N).for_each(|k| exe_reads::read(at + 4 * k as u32));
+        for (word, cell) in out.iter_mut().zip(self.cells::<N>(at)) {
+            *word = cell.load(Ordering::Relaxed);
+        }
+        true
+    }
+
     /// Writes the `N` little-endian words from `at` when they are aligned in one page; false (nothing written)
     /// otherwise.
     #[inline]
