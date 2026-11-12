@@ -209,12 +209,14 @@ impl CarSensitivity {
 /// change a setting. NGP's force is `1 - 0.975^(|T| 100 / S)` with `S` the car's `ForceFeedbackSensitivity_NGP`
 /// times the percentage / 100; [`load::torque_ratio`] reads `x = |T| 100 / S_car` back from the force, so a car's
 /// histogram of `x` ([`load::Load`]) gives the force at any percentage: how often the wheel maxes out, and the
-/// percentage that puts the player's usual cornering at half force ([`load::suggested`]).
+/// percentage that puts the player's usual cornering at [`load::TARGET`] of the force ([`load::suggested`]).
 pub mod load {
     /// NGP's curve's base.
     const BASE: f32 = 0.975;
-    /// The force the suggestion puts the player's usual cornering (the 90th percentile) at.
-    pub const TARGET: f32 = 0.5;
+    /// The force the suggestion puts the player's usual cornering (the 90th percentile) at: the median of where the
+    /// user's own settings put it over 22 car and surface loads (0.63; `notes/ngp.md` "Force feedback"). At 0.5 the
+    /// suggestion was above the user's setting in 19 of them.
+    pub const TARGET: f32 = 0.65;
     /// A force past this is the wheel maxed out.
     pub const MAXED: f32 = 0.95;
     /// The histogram's bin width in `x`, and its bins: `x` 0 to 400, then one for more.
@@ -253,7 +255,7 @@ pub mod load {
         percent(p) / 100.0 * (-f).ln_1p() / BASE.ln()
     }
 
-    /// The percentage that puts the ratio `x` at [`TARGET`]: `100 x ln(0.975) / ln(1 - TARGET)` (≈ 3.653 x).
+    /// The percentage that puts the ratio `x` at [`TARGET`]: `100 x ln(0.975) / ln(1 - TARGET)` (≈ 2.412 x).
     pub fn percent_for(x: f32) -> f32 {
         100.0 * x * BASE.ln() / (1.0 - TARGET).ln()
     }
@@ -351,8 +353,8 @@ pub mod load {
     pub const OFTEN: f32 = 0.05;
     /// Below this times the suggested percentage the player's usual cornering sits high in the wheel's range; above
     /// [`HIGH`] times it, the cornering uses little of the range. Between them the usual cornering (the load's 90th
-    /// percentile) takes 0.39-0.63 of the wheel's force, `1 - 0.5^(1/r)` at `r` times the suggestion, so a player near
-    /// the suggestion is left alone: the suggestion's half force is a rule of thumb, not a target.
+    /// percentile) takes 0.53-0.78 of the wheel's force, `1 - 0.35^(1/r)` at `r` times the suggestion, so a player near
+    /// the suggestion is left alone: the suggestion's force is a rule of thumb, not a target.
     pub const LOW: f32 = 0.7;
     pub const HIGH: f32 = 1.4;
 
@@ -390,7 +392,7 @@ pub mod load {
         }
     }
 
-    /// The percentage that puts the player's usual cornering in `load` (its 90th percentile) at half force, to the
+    /// The percentage that puts the player's usual cornering in `load` (its 90th percentile) at [`TARGET`], to the
     /// nearest 5 within `range`: a hint, never applied.
     pub fn suggested(load: &Load, range: std::ops::RangeInclusive<i32>) -> Option<i32> {
         let p = percent_for(load.percentile90()?);
@@ -968,15 +970,19 @@ mod tests {
         // x 142.5 maxes out (> 0.95) at 100 % (0.97), not at 200 % (0.83); x 42.5 at neither.
         assert_eq!((l.maxed_out(100), l.maxed_out(200)), (Some(0.2), Some(0.0)));
         assert_eq!(Load::default().maxed_out(100), None);
-        // The 90th percentile is the second bin's middle: the suggestion puts it at half force, to 5 %.
+        // The 90th percentile is the second bin's middle: the suggestion puts it at 0.65 of the force, to 5 %.
         assert_eq!(l.percentile90(), Some(142.5));
         let p = load::suggested(&l, SENSITIVITY_RANGE).unwrap();
-        assert_eq!(p, 520.min(*SENSITIVITY_RANGE.end()));
-        assert!((load::force(142.5, (load::percent_for(142.5)) as i32) - 0.5).abs() < 2e-3);
-        assert!((load::percent_for(1.0) - 3.6532).abs() < 1e-3);
+        assert_eq!(p, 345);
+        assert!((load::force(142.5, (load::percent_for(142.5)) as i32) - load::TARGET).abs() < 2e-3);
+        assert!((load::percent_for(1.0) - 2.4116).abs() < 1e-3);
+        // A heavier car's reaches the range's end.
+        let mut heavy = Load::default();
+        heavy.add(300.0, 30.0);
+        assert_eq!(load::suggested(&heavy, SENSITIVITY_RANGE), Some(*SENSITIVITY_RANGE.end()));
         let mut small = Load::default();
         small.add(22.0, 10.0);
-        assert_eq!(load::suggested(&small, SENSITIVITY_RANGE), Some(80));
+        assert_eq!(load::suggested(&small, SENSITIVITY_RANGE), Some(55));
         assert_eq!(load::suggested(&Load::default(), SENSITIVITY_RANGE), None);
     }
 
@@ -987,14 +993,14 @@ mod tests {
         l.add(40.0, 15.0);
         assert_eq!(load::advice(&l, 100, SENSITIVITY_RANGE), Advice::DriveMore(15.0));
         l.add(40.0, 15.0);
-        // The p90 is x 42.5: suggested 155 %. 0.7 and 1.4 times it are 108.5 and 217.
-        assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(155));
-        assert_eq!(load::advice(&l, 105, SENSITIVITY_RANGE), Advice::High(0.0, 155), "high, rarely maxed out");
-        assert_eq!(load::advice(&l, 110, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 215, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 220, SENSITIVITY_RANGE), Advice::Lower(155));
+        // The p90 is x 42.5: suggested 100 %. 0.7 and 1.4 times it are 70 and 140.
+        assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(100));
+        assert_eq!(load::advice(&l, 65, SENSITIVITY_RANGE), Advice::High(0.0, 100), "high, rarely maxed out");
+        assert_eq!(load::advice(&l, 70, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 140, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 145, SENSITIVITY_RANGE), Advice::Lower(100));
         // x 42.5 maxes out at 30 %: raise, whatever else.
-        assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 155));
+        assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 100));
         // 5 % maxed out (x 397.5 at 200 %) is often; just under is not.
         let mut edge = l.clone();
         edge.tenths[79] = 300.0 * load::OFTEN / (1.0 - load::OFTEN) * 1.001;

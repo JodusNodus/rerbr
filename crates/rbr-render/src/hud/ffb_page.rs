@@ -396,7 +396,7 @@ mod tests {
         assert_eq!(p.smoothing, *SMOOTHING_RANGE.end());
     }
 
-    /// A page on tarmac at `value` over a load of `seconds` at x 42.5 (suggested 155 %).
+    /// A page on tarmac at `value` over a load of `seconds` at x 42.5 (suggested 100 %).
     fn page(value: i32, seconds: f32) -> FfbPage {
         let mut session = Session::load(None, Some("rsf-81".into()), &Options::default(), [100; 3]);
         let mut stored = Load::default();
@@ -410,18 +410,18 @@ mod tests {
         assert_eq!(status(&page(100, 12.5)), "Drive a bit more on tarmac to see your steering load (12/20 s)");
         assert_eq!(
             status(&page(30, 30.0)),
-            "The wheel maxes out often (100 % of your driving): raise Sensitivity to about 155 %"
+            "The wheel maxes out often (100 % of your driving): raise Sensitivity to about 100 %"
         );
         assert_eq!(
-            status(&page(100, 30.0)),
-            "Your usual cornering sits high in the wheel's range (maxed out 0 %): raise Sensitivity to about 155 %"
+            status(&page(65, 30.0)),
+            "Your usual cornering sits high in the wheel's range (maxed out 0 %): raise Sensitivity to about 100 %"
         );
         assert_eq!(
-            status(&page(220, 30.0)),
-            "Your cornering uses little of the wheel's range: lower Sensitivity to about 155 %, or raise Strength"
+            status(&page(145, 30.0)),
+            "Your cornering uses little of the wheel's range: lower Sensitivity to about 100 %, or raise Strength"
         );
         // Near the suggestion, a little below or above it, is good.
-        for value in [110, 155, 215] {
+        for value in [70, 100, 140] {
             assert_eq!(status(&page(value, 30.0)), "Good: your usual cornering sits mid-range (maxed out 0 %)");
         }
         // The graph reaches past where the wheel maxes out.
@@ -432,16 +432,16 @@ mod tests {
     fn use_suggested_is_one_select_away() {
         // Not with too little driving, nor at the suggestion already.
         assert!(!page(100, 12.5).rows().contains(&Row::UseSuggested));
-        assert!(!page(155, 30.0).rows().contains(&Row::UseSuggested));
-        let mut p = page(100, 30.0);
+        assert!(!page(100, 30.0).rows().contains(&Row::UseSuggested));
+        let mut p = page(155, 30.0);
         assert_eq!(
             p.rows(),
             [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Reset, Row::Done]
         );
         p.nav(Nav::Down);
-        assert_eq!((p.row(), label(&p, Row::UseSuggested)), (Row::UseSuggested, "Use suggested (155 %)".into()));
+        assert_eq!((p.row(), label(&p, Row::UseSuggested)), (Row::UseSuggested, "Use suggested (100 %)".into()));
         assert_eq!(p.nav(Nav::Select), Some(Moved::Changed));
-        assert_eq!((p.value, p.own, p.row()), (155, true, Row::Sensitivity));
+        assert_eq!((p.value, p.own, p.row()), (100, true, Row::Sensitivity));
         assert!(!p.rows().contains(&Row::UseSuggested));
         assert_eq!(
             help(&p),

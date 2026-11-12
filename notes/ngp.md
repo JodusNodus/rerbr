@@ -273,14 +273,17 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     scaled down to 600 s, so recent driving weighs more. Not split by physics profile (the brush's torque is about
     10 % lighter).
   - Shown (pause menu, Controls page): "maxed out" is the share with the force over 0.95 at the sensitivity shown;
-    "suggested" (a hint, set only by the player's "Use suggested") puts the 90th percentile at force 0.5 (`p = 100 x ln 0.975 / ln 0.5` ≈ 3.653 x, to 5 %, within 10-500 %). Check (autopilot,
+    "suggested" (a hint, set only by the player's "Use suggested") puts the 90th percentile at
+    force 0.65 (`load::TARGET`; `p = 100 x ln 0.975 / ln 0.35` ≈ 2.412 x, to 5 %, within 10-500 %; 0.5 and 3.653 x
+    before 2026-11-12). Check (autopilot,
     map 41 tarmac and RSF 104 gravel, 6 cars, 150000 steps, `stage_runs.py`): the p90 is 0.66-0.75 (tarmac) and
     0.70-0.84 (gravel) of the car's circle `x` at 0.5 g, within about ±10 % against the raw 4×.
-  - Against the user's own settings (2026-11-12, the 22 car and surface loads of 20 s or more in
-    `launcher-settings.ini`): they put the p90 at force 0.50-0.82 (median 0.63) with the wheel maxed out 0.4 % of
-    the time at most; the suggestion is above the setting in 19 of 22 (1.0-2.0 times it) and at the 500 % cap in 6.
-    Under 1 % maxed out is reached at 80-315 %, the p90 then at 0.81-0.90. Open: `TARGET` 0.65 (the suggestion
-    times 0.66) would match the user's median.
+  - Why 0.65 (user decision 2026-11-12, from the 22 car and surface loads of 20 s or more in
+    `launcher-settings.ini`): the user's own settings put the p90 at force 0.50-0.82 (median 0.63) with the wheel
+    maxed out 0.4 % of the time at most; at 0.5 the suggestion was above the setting in 19 of 22 (1.0-2.0 times it)
+    and at the 500 % cap in 6. Under 1 % maxed out is reached at 80-315 %, the p90 then at 0.81-0.90. At 0.65 it is
+    above the setting in 8 of 22 and at the cap in 1, the wheel maxed out 0.4 % at most at the suggestion; the
+    page's advice reads good for 18, lower for 3, raise for 1.
 - Smoothing (ours, 2026-11-12; `rbr_render::ffb::smooth`, `[ffb] smoothing`, 0-30 ms (user, 2026-11-12), default 0 = NGP's own, the
   levels sent unchanged): one pole on the magnitude in the wheel thread, by the thread's measured interval, before
   the dead zone; a pause drops it to 0 at once. Set on the launcher's Controls page and the pause menu's Force

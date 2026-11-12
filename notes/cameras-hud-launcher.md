@@ -192,7 +192,7 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   steering load), the car's stored load on the surface plus this drive's as bars (square-root heights), the
   maxed-out region (force > 95 %) shaded. Then one status line (`load::advice`, in order: under 20 s drive more;
   maxed out 5 % or more, raise to the suggestion; below 0.7× it, raise (the usual cornering sits high in the range);
-  above 1.4× it, lower or raise Strength; else good: the usual cornering at 0.39-0.63 of the force) and a
+  above 1.4× it, lower or raise Strength; else good: the usual cornering at 0.53-0.78 of the force) and a
   guide: set Strength once, then Sensitivity per car until the wheel rarely maxes out. Nothing changes without the
   player. `viewer --screenshot --pause-menu dde` draws it (no wheel needed).
 - Install findings are dated data, not code: RSF install (2026-10-29, 525 stage folders) resolves LuppisV3 on 511
