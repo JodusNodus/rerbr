@@ -42,6 +42,17 @@ const SCRAPE_SPEED: [f32; 2] = [1.0, 15.0];
 const SCRAPE_PITCH: [f32; 2] = [0.8, 1.2];
 const SCRAPE_RISE: f32 = 0.25;
 const SCRAPE_FALL: f32 = 0.05;
+/// Ours, the slide: with no wheel on the ground the body itself is sliding (on its roof or side). The contact then
+/// holds [`SLIDE_HOLD`] steps (the payload pauses for up to 0.2 s in a slide; the scrape fell by half in each), the
+/// scrape is [`SLIDE_GAIN`] times as loud and [`SLIDE_PITCH`] times its pitch (more of the body on the ground), and
+/// on loose ground the ground's own loop (`Loop::Slide`) plays at [`SLIDE_GROUND`] by the speed, pitched
+/// [`SLIDE_GROUND_PITCH`]. Measured on a roof slide from 110 to 70 km/h (Fiat 131, RSF 1075, in the car): the mix
+/// stayed at its driving level, the engine leading.
+const SLIDE_HOLD: u32 = 30;
+const SLIDE_GAIN: f32 = 2.0;
+const SLIDE_PITCH: f32 = 0.7;
+const SLIDE_GROUND: f32 = 2.0;
+const SLIDE_GROUND_PITCH: [f32; 2] = [0.7, 1.0];
 /// Below this the falling loop is silent.
 const SCRAPE_FLOOR: f32 = 0.001;
 
@@ -62,6 +73,8 @@ pub struct Impacts {
     hold: u32,
     run: u32,
     scrape: f32,
+    /// The ground loop's level in a slide ([`SLIDE_GROUND`]).
+    ground: f32,
 }
 
 impl Impacts {
@@ -70,8 +83,16 @@ impl Impacts {
     }
 
     /// The commands for a step's payload with the car at `speed` m/s; `rand` stands for the original's `rand()`
-    /// calls. The first payload seen is taken as the state before the drive.
-    pub fn step(&mut self, hit: &[u32; 20], speed: f32, inside: bool, mut rand: impl FnMut() -> u32) -> Vec<Command> {
+    /// calls. The first payload seen is taken as the state before the drive. `slide` is set while no wheel is on the
+    /// ground, to whether the ground the wheels last ran on is loose.
+    pub fn step(
+        &mut self,
+        hit: &[u32; 20],
+        speed: f32,
+        inside: bool,
+        slide: Option<bool>,
+        mut rand: impl FnMut() -> u32,
+    ) -> Vec<Command> {
         let emitted: [u32; 18] = std::array::from_fn(|i| hit[if i == 0 { 1 } else { i + 2 }]);
         let new = self.last.is_some_and(|last| last != emitted);
         self.last = Some(emitted);
@@ -93,7 +114,7 @@ impl Impacts {
             }
         }
         if new && ranged {
-            (self.hold, self.run) = (HOLD_STEPS, self.run + 1);
+            (self.hold, self.run) = (if slide.is_some() { SLIDE_HOLD } else { HOLD_STEPS }, self.run + 1);
         } else {
             self.hold = self.hold.saturating_sub(1);
             if self.hold == 0 {
@@ -101,16 +122,32 @@ impl Impacts {
             }
         }
         let pace = ((speed.abs() - SCRAPE_SPEED[0]) / (SCRAPE_SPEED[1] - SCRAPE_SPEED[0])).clamp(0.0, 1.0);
-        let strength = SCRAPE_GAIN * (power / FULL_POWER).min(1.0) * pace;
-        let target = if self.run > 1 { self.ranged_gain * strength } else { 0.0 };
-        let was = self.scrape;
-        self.scrape += (target - was) * if target > was { SCRAPE_RISE } else { SCRAPE_FALL };
-        if self.scrape < SCRAPE_FLOOR && target == 0.0 {
-            self.scrape = 0.0;
-        }
-        if self.scrape > 0.0 || was > 0.0 {
-            let pitch = SCRAPE_PITCH[0] + (SCRAPE_PITCH[1] - SCRAPE_PITCH[0]) * pace;
-            out.push(Command::Loop { voice: Loop::Scrape, gain: self.scrape, pitch });
+        let scraping = if self.run > 1 { self.ranged_gain * pace } else { 0.0 };
+        let (heavier, lower) = if slide.is_some() { (SLIDE_GAIN, SLIDE_PITCH) } else { (1.0, 1.0) };
+        let lerp = |[from, to]: [f32; 2]| from + (to - from) * pace;
+        let loops = [
+            (
+                Loop::Scrape,
+                &mut self.scrape,
+                SCRAPE_GAIN * heavier * (power / FULL_POWER).min(1.0),
+                lerp(SCRAPE_PITCH) * lower,
+            ),
+            (
+                Loop::Slide,
+                &mut self.ground,
+                if slide == Some(true) { SLIDE_GROUND } else { 0.0 },
+                lerp(SLIDE_GROUND_PITCH),
+            ),
+        ];
+        for (voice, level, strength, pitch) in loops {
+            let (was, target) = (*level, scraping * strength);
+            *level += (target - was) * if target > was { SCRAPE_RISE } else { SCRAPE_FALL };
+            if *level < SCRAPE_FLOOR && target == 0.0 {
+                *level = 0.0;
+            }
+            if *level > 0.0 || was > 0.0 {
+                out.push(Command::Loop { voice, gain: *level, pitch });
+            }
         }
         out
     }
@@ -147,31 +184,31 @@ mod tests {
     #[test]
     fn a_new_payload_plays_once_and_a_hard_one_screams_in_the_car() {
         let mut impacts = Impacts::new(1.0, 0.5, 20, 2);
-        assert!(impacts.step(&hit(900.0), 0.0, true, || 0).is_empty());
-        assert!(impacts.step(&hit(900.0), 0.0, true, || 0).is_empty());
+        assert!(impacts.step(&hit(900.0), 0.0, true, None, || 0).is_empty());
+        assert!(impacts.step(&hit(900.0), 0.0, true, None, || 0).is_empty());
         let mut functor_only = hit(900.0);
         functor_only[0] = 7;
         functor_only[2] = 3;
-        assert!(impacts.step(&functor_only, 0.0, true, || 0).is_empty());
-        let out = impacts.step(&hit(1000.0), 0.0, true, || 0);
+        assert!(impacts.step(&functor_only, 0.0, true, None, || 0).is_empty());
+        let out = impacts.step(&hit(1000.0), 0.0, true, None, || 0);
         assert_eq!(out, [Command::Shot { shot: Shot::Ranged(6), gain: 1.0 }]);
         // A light touch plays at its power's share of 1000, once the gap is over.
-        (0..GAP_STEPS).for_each(|_| assert!(impacts.step(&hit(1000.0), 0.0, true, || 0).is_empty()));
-        let out = impacts.step(&hit(250.0), 0.0, true, || 0);
+        (0..GAP_STEPS).for_each(|_| assert!(impacts.step(&hit(1000.0), 0.0, true, None, || 0).is_empty()));
+        let out = impacts.step(&hit(250.0), 0.0, true, None, || 0);
         assert_eq!(out, [Command::Shot { shot: Shot::Ranged(2), gain: 0.25 }]);
-        let out = impacts.step(&hit(9000.0), 0.0, true, || 1);
+        let out = impacts.step(&hit(9000.0), 0.0, true, None, || 1);
         assert_eq!(out[..2], [Command::StopSpeech, Command::Shot { shot: Shot::Scream(1), gain: 0.5 }]);
         // Outside the car no scream; within the gap and not 1.5 times harder, no ranged impact either.
-        assert!(impacts.step(&hit(9500.0), 0.0, false, || 0).is_empty());
+        assert!(impacts.step(&hit(9500.0), 0.0, false, None, || 0).is_empty());
     }
 
     #[test]
     fn a_scrape_plays_its_first_impact_the_harder_ones_and_the_loop() {
         let mut impacts = Impacts::new(1.0, 0.5, 20, 2);
-        impacts.step(&hit(0.0), 20.0, true, || 0);
+        impacts.step(&hit(0.0), 20.0, true, None, || 0);
         // A new payload every step for a second at 20 m/s: the first impact and the harder one, no others.
         let steps: Vec<Vec<Command>> = (0..143)
-            .map(|k| impacts.step(&hit(if k == 30 { 3000.0 } else { 1000.0 + k as f32 }), 20.0, true, || 0))
+            .map(|k| impacts.step(&hit(if k == 30 { 3000.0 } else { 1000.0 + k as f32 }), 20.0, true, None, || 0))
             .collect();
         let shot = |out: &Vec<Command>| out.iter().any(|c| matches!(c, Command::Shot { .. }));
         assert_eq!((0..143).filter(|&k| shot(&steps[k])).collect::<Vec<_>>(), [0, 30]);
@@ -185,13 +222,40 @@ mod tests {
         assert_eq!((level(&steps[0]), level(&steps[1])), (None, Some((0.5, 1.2))));
         assert!(level(&steps[142]).unwrap().0 > 1.99);
         // The contact over: the loop falls to nothing and the next touch is an impact again.
-        let after: Vec<Vec<Command>> = (0..200).map(|_| impacts.step(&hit(1142.0), 20.0, true, || 0)).collect();
+        let after: Vec<Vec<Command>> = (0..200).map(|_| impacts.step(&hit(1142.0), 20.0, true, None, || 0)).collect();
         assert_eq!((level(&after[0]).unwrap().0 > 1.8, level(&after[199])), (true, None));
         assert!(after.iter().all(|out| !shot(out)));
-        assert!(shot(&impacts.step(&hit(500.0), 20.0, true, || 0)));
+        assert!(shot(&impacts.step(&hit(500.0), 20.0, true, None, || 0)));
         // A car at rest against a wall does not scrape.
         let mut impacts = Impacts::new(1.0, 0.5, 20, 2);
-        impacts.step(&hit(0.0), 0.0, true, || 0);
-        assert!((0..50).all(|k| level(&impacts.step(&hit(900.0 + k as f32), 0.5, true, || 0)).is_none()));
+        impacts.step(&hit(0.0), 0.0, true, None, || 0);
+        assert!((0..50).all(|k| level(&impacts.step(&hit(900.0 + k as f32), 0.5, true, None, || 0)).is_none()));
+    }
+
+    #[test]
+    fn a_body_sliding_with_no_wheel_down_scrapes_heavier_and_on_loose_ground_plays_it() {
+        let level = |slide: Option<bool>, voice: Loop| {
+            let mut impacts = Impacts::new(1.0, 0.5, 20, 2);
+            impacts.step(&hit(0.0), 20.0, true, slide, || 0);
+            let out: Vec<Command> =
+                (0..143).flat_map(|k| impacts.step(&hit(700.0 + (k % 2) as f32), 20.0, true, slide, || 0)).collect();
+            let last = out.iter().rev().find_map(|c| match c {
+                Command::Loop { voice: v, gain, pitch } if *v == voice => Some((*gain, *pitch)),
+                _ => None,
+            });
+            // The payload pauses for 20 steps: on its wheels the contact ends, in a slide it holds.
+            let held = (0..20).all(|_| {
+                impacts.step(&hit(700.0), 20.0, true, slide, || 0);
+                impacts.run > 0
+            });
+            (last, held)
+        };
+        let (Some((wheels, pitch)), false) = level(None, Loop::Scrape) else { panic!() };
+        let (Some((roof, lower)), true) = level(Some(false), Loop::Scrape) else { panic!() };
+        assert!((roof / wheels - SLIDE_GAIN).abs() < 1e-3 && (lower / pitch - SLIDE_PITCH).abs() < 1e-6);
+        // The ground's loop only on loose ground.
+        assert_eq!(level(None, Loop::Slide).0, None);
+        assert_eq!(level(Some(false), Loop::Slide).0, None);
+        assert!(level(Some(true), Loop::Slide).0.is_some_and(|(gain, _)| (gain - SLIDE_GROUND).abs() < 1e-3));
     }
 }

@@ -186,7 +186,7 @@ impl Models {
             || rng.rand(),
         ));
         out.extend(self.verges.step(sound.speed, car_distance, STEP));
-        out.extend(self.impacts.step(&sound.hit, sound.speed, inside, || rng.rand()));
+        out.extend(self.impacts.step(&sound.hit, sound.speed, inside, self.tyres.slide(), || rng.rand()));
         let wheels = std::array::from_fn(|k| tyre::distance(&sound.tyres[k], scene.listener));
         let (suspension, mut calls) = self.suspension.step(sound, inside, wheels, STEP, || rng.rand());
         if frame {

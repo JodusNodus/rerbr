@@ -221,6 +221,14 @@ Mechanics in `impact.rs` (payload change rule, ranged set, scream).
   contact's point on the body ([0xc..]) but not what it touched, so the road and a bank scrape alike. The Ventoux
   replay's contacts are a low front corner for 50 ms at 30 m/s (the nose on a compression) and two longer ones;
   ranged impacts made 261 to 23 (not in code). Levels are set by measurement, not by ear.
+- Body slide (ours, 2026-11-12, on trial; user: a flipped car scraping along is not believable): with no wheel on
+  the ground (`Tyres::slide`) the contact holds 30 steps, the scrape is twice as loud at 0.7 of its pitch, and on
+  loose ground (the wheels' last surface not tarmac-first) the gravel skid loop plays under it (`Loop::Slide`, level
+  2 by the speed, pitch 0.7-1.0; `impact.rs` `SLIDE_*`). Fiat 131 on its roof from 110 to 70 km/h (RSF 1075, in the
+  car, the user's replay): before, the mix held its driving level (-12.2 to -14.6 dBFS over 0.28 s windows, the
+  engine leading, the scrape dipping when the payload paused); after -10.9 to -11.6 dBFS, centroid 430-730 to
+  570-770 Hz. No open recording of a heavy body dragged over a road was found (drum, sheet and tool drags of under
+  1 s only). Not judged by ear yet.
 
 ## Co-driver
 
