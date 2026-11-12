@@ -11,6 +11,7 @@ use crate::triple;
 use gilrs::ev::filter::Filter;
 use rbr_recording::pose::CarPose;
 use rbr_render::bindings::{self, Action};
+use rbr_render::hud::hud_page;
 use rbr_render::hud::pause::{self, Nav};
 use rbr_render::hud::results::{self as result_actions};
 use rbr_render::hud::school;
@@ -403,8 +404,13 @@ impl App {
         let readout =
             self.scene.playback.as_ref().filter(|_| self.scene.hud.show && demo_ride.is_none()).map(|playback| {
                 let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
-                let (live, shown, bindings) = (self.scene.live.as_ref(), self.shown, &self.bindings);
-                readout(playback, live, shown, bindings, self.scene.hud, fps)
+                let ghost = self.scene.ghost.as_ref().and_then(|ghost| ghost.gap());
+                let readout = readout(playback, self.scene.live.as_ref(), ghost, self.scene.hud, fps);
+                // The open HUD page shows every part filled in, where the page has them.
+                if let Some(page) = self.menu.as_ref().and_then(|menu| menu.hud()) {
+                    return hud_page::sample(hud_overlay::Readout { layout: page.layout, ..readout });
+                }
+                readout
             });
         if readout.is_some() || self.menu.is_some() || self.results.is_some() || demo_ride.is_some() {
             // Spanned, the HUD and the menus go on the centre screen.
@@ -412,7 +418,7 @@ impl App {
             let (gpu, menu) = (&running.gpu, &self.menu);
             running.overlay.draw_with(&gpu.device, &gpu.queue, &mut encoder, &view, (width, height), |ctx, hud| {
                 readout.iter().for_each(|r| hud_overlay::paint_readout(ctx, hud, r));
-                menu.iter().for_each(|m| pause::paint(ctx, m));
+                menu.iter().for_each(|m| pause::paint(ctx, hud, m));
                 self.results.iter().for_each(|m| result_actions::paint(ctx, m));
                 if let Some(ride) = demo_ride {
                     demo_hint(ctx, ride);

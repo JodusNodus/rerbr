@@ -319,6 +319,15 @@ impl ViewerLaunch {
         if let Some(list) = hud.parts.hidden() {
             args.extend(["--hud-hide".into(), list]);
         }
+        if let Some(list) = hud.parts.shown() {
+            args.extend(["--hud-show".into(), list]);
+        }
+        if hud.layout.scale != 100 {
+            args.extend(["--hud-scale".into(), hud.layout.scale.to_string()]);
+        }
+        if let Some(list) = hud.layout.list() {
+            args.extend(["--hud-layout".into(), list]);
+        }
         if let Some(path) = bindings {
             let path = path.display().to_string();
             args.extend(["--bindings".into(), path.clone(), "--cameras".into(), path]);
@@ -830,11 +839,13 @@ impl Form {
                 }
             }
             if self.child.is_none() {
-                // The pause menu's Camera and Force feedback pages may have changed them.
+                // The pause menu's Camera, HUD and Force feedback pages may have changed them.
                 let saved = crate::settings::read_settings(&self.paths.settings);
                 self.cockpit = saved.camera.cockpit;
                 self.fov = saved.fov.unwrap_or(self.fov);
                 self.chase_fov = saved.chase_fov.unwrap_or(self.chase_fov);
+                self.hud.parts = saved.hud_hide.unwrap_or(self.hud.parts);
+                self.hud.layout = saved.hud_layout.unwrap_or(self.hud.layout);
                 self.ffb_cars = saved.ffb_cars;
                 self.ffb_load = saved.ffb_load;
                 self.ffb.settings.strength = saved.ffb.settings.strength;
@@ -858,6 +869,7 @@ mod tests {
     use rbr_formats::data::Data;
     use rbr_gameplay::race_options::{DamageLevel, DriverAids};
     use rbr_gameplay::weather::Season;
+    use rbr_render::hud::layout::Layout;
     use rbr_render::hud::Parts;
     use rbr_render::shifter::Engagement;
     use std::path::PathBuf;
@@ -1103,7 +1115,8 @@ mod tests {
                 fps: true,
                 stack: 3,
                 dials: false,
-                parts: Parts::hiding("inputs,view").unwrap(),
+                parts: Parts::hiding("inputs,car").unwrap().with("trace", true).unwrap(),
+                layout: Layout { scale: 125, ..Layout::parse("dash:-40,0").unwrap() },
             },
             graphics: Quality::Low.graphics(false),
             wipers: Switch::Continuous,
@@ -1117,7 +1130,7 @@ mod tests {
         assert_eq!(
             args.join(" "),
             "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --chase-fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
-             --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hud-hide inputs,view --bindings /l/launcher-settings.ini \
+             --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hud-hide inputs,car --hud-show trace --hud-scale 125 --hud-layout dash:-40,0 --bindings /l/launcher-settings.ini \
              --cameras /l/launcher-settings.ini --enhance anisotropy,decals,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
              --stage track-54_O --car 6 --data /d --callout-distance 4 --marker-threshold 25 \
              --damage safe --auto-gears off --gear-guard on --neutral-lock off --clutch-help on --setup /l/setup-current.lsp"

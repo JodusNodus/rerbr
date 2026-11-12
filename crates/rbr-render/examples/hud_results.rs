@@ -49,8 +49,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     };
     let mut readout = Readout {
-        view: "chase",
-        view_keys: String::new(),
         time: 238.0,
         speed: 0.0,
         mph: false,
@@ -65,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         race: None,
         splits: Some(splits.clone()),
         state: HudView::default(),
-        parts: Default::default(),
+        ..Default::default()
     };
     for (name, mode, retired, failed, standing, show_hud, size) in [
         ("quick", 1, false, false, true, true, (1280, 720)),

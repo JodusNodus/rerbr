@@ -10,6 +10,7 @@ use rbr_render::damage::{self, Zones};
 use rbr_render::ffb;
 use rbr_render::ghost;
 use rbr_render::glass;
+use rbr_render::hud::layout::{Layout, SCALES};
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::pause::Nav;
 use rbr_render::hud::Parts;
@@ -157,7 +158,7 @@ pub struct Args {
     /// `--pause-menu MOVES`: the screenshot shows the pause menu, opened and then moved through `MOVES` (`u` up, `d`
     /// down, `l` left, `r` right, `e` select, `b` back; `-` none).
     pub pause_menu: Option<Vec<Nav>>,
-    /// `--no-hud`, `--mph`, `--fps`, `--pace-stack` and `--hud-hide`.
+    /// `--no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide` and `--hud-show`.
     pub hud: HudOptions,
     /// `--ghost`, `--save-ghost`, `--best-ghost` and `--ghost-weather`.
     pub ghost: Option<PathBuf>,
@@ -229,8 +230,12 @@ pub struct HudOptions {
     pub fps: bool,
     /// `--pace-stack N`: the pace stack's notes (`PN_STACK`, 0 to 8 here, 4 in the game; 0, its default, hides it).
     pub stack: u8,
-    /// `--hud-hide LIST`: the HUD's parts shown (`rbr_render::hud::Part`), all by default.
+    /// `--hud-hide LIST`, `--hud-show LIST`: the HUD's parts shown (`rbr_render::hud::Part`), all but the telemetry by
+    /// default.
     pub parts: Parts,
+    /// `--hud-layout PART:X,Y;...`, `--hud-scale PERCENT`: where the parts stand and how large
+    /// (`rbr_render::hud::layout`).
+    pub layout: Layout,
 }
 
 /// `--help`'s text.
@@ -252,7 +257,8 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --clock HH:MM  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
-              --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages,view
+              --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages  --hud-show tyres,trace
+              --hud-layout PART:X,Y;...  --hud-scale 50..200
   events:     --birdstrike  --rescue-at STEP  --seed N
   runs:       --screenshot PNG  --video FILE[.webp]  --video-fps N  --video-span FROM,TO  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|go+S|end+S
   -V, --version  print the version
@@ -330,7 +336,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
     let mut hdr = false;
     let mut title = None;
     let mut pause_menu = None;
-    let mut hud = HudOptions { show: true, mph: false, fps: false, stack: 0, parts: Parts::default() };
+    let mut hud =
+        HudOptions { show: true, mph: false, fps: false, stack: 0, parts: Parts::default(), layout: Layout::default() };
     let mut at_drive = None;
     let (mut car_gearbox, mut grind_sound, mut car_lock) = (None, None, None);
     let mut debug_view = DebugView::default();
@@ -621,7 +628,19 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
                     .filter(|n| *n <= STACK_MAX)
                     .ok_or(format!("--pace-stack {value}: 0 to {STACK_MAX}"))?;
             }
-            "--hud-hide" => hud.parts = Parts::hiding(&args.next().ok_or("--hud-hide needs a list of HUD parts")?)?,
+            "--hud-hide" | "--hud-show" => {
+                let list = args.next().ok_or(format!("{arg} needs a list of HUD parts"))?;
+                hud.parts = hud.parts.with(&list, arg == "--hud-show")?;
+            }
+            "--hud-layout" => {
+                let scale = hud.layout.scale;
+                hud.layout = Layout { scale, ..Layout::parse(&args.next().ok_or("--hud-layout needs PART:X,Y;...")?)? };
+            }
+            "--hud-scale" => {
+                let value = args.next().ok_or("--hud-scale needs a percentage")?;
+                let wrong = || format!("--hud-scale {value}: {} to {} (percent)", SCALES.start(), SCALES.end());
+                hud.layout.scale = value.parse().ok().filter(|s| SCALES.contains(s)).ok_or_else(wrong)?;
+            }
             "--at-drive" => at_drive = Some(PathBuf::from(args.next().ok_or("--at-drive needs a recording")?)),
             "--at" => {
                 let value = args.next().ok_or("--at needs a step counter")?;

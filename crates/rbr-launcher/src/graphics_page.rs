@@ -3,6 +3,7 @@
 use egui::{Color32, ComboBox, DragValue};
 use rbr_render::camera_prefs;
 use rbr_render::coords;
+use rbr_render::hud::layout::Layout;
 use rbr_render::hud::model::STACK_MAX;
 use rbr_render::hud::{Part, Parts};
 use rbr_render::mirrors::Rate;
@@ -275,7 +276,7 @@ fn cap_label(fps: u32) -> String {
     }
 }
 
-/// The HUD's options (`viewer --no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide`), and the
+/// The HUD's options (`viewer --no-hud`, `--mph`, `--fps`, `--pace-stack`, `--hud-hide`, `--hud-show`), and the
 /// cockpit's working dials (`--no-dials`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HudChoice {
@@ -286,26 +287,38 @@ pub struct HudChoice {
     pub stack: u8,
     /// The working dials of the RSF cars with RBRHUD gauges in the install (on by default).
     pub dials: bool,
-    /// The HUD's parts shown (all by default).
+    /// The HUD's parts shown (all but the telemetry by default).
     pub parts: Parts,
+    /// Where they stand and how large (`--hud-layout`, `--hud-scale`), set on the pause menu's HUD page while
+    /// driving and passed on from the file.
+    pub layout: Layout,
 }
 
-/// Each HUD part's label and hover tip, by [`Part::ALL`].
-const PART_LABELS: [(&str, &str); Part::ALL.len()] = [
-    ("Stage clock", "The race time and its penalties"),
-    ("Stage progress", "The progress bar with the splits, the distance driven and the distance to go"),
-    ("Pace note", "The symbol of each call at the top"),
-    ("Split times", "The time and difference as each split is passed"),
-    ("Gear, speed, revs", "The rev dial with its shift light, gear, speed, revs, water and turbo"),
-    ("Pedals, steering", "The pedal arcs inside the dial and the steering under it"),
-    ("Car state", "The lit warning lamps and the damaged parts at the bottom left, shown only when there are any"),
-    ("Messages", "The stand-still and car-problem messages"),
-    ("Camera name", "The view's name at the top right"),
+/// Each HUD part's hover tip, by [`Part::ALL`].
+const PART_TIPS: [&str; Part::ALL.len()] = [
+    "The race time and its penalties",
+    "The progress bar with the splits, the distance driven and the distance to go",
+    "The symbol of each call at the top",
+    "The time and difference as each split is passed, and the running gap to the ghost",
+    "The rev dial, which flashes at the shift point, with the gear, speed, revs, water and turbo",
+    "The pedal arcs inside the dial and the steering under it",
+    "The lit warning lamps and the damaged parts at the bottom left, shown only when there are any",
+    "The stand-still and car-problem messages",
+    "Each tyre's temperature and wear beside the dial: green at its best, blue too cold for full grip, red too hot",
+    "A running chart of the pedals and the steering over the last 10 seconds",
 ];
 
 impl Default for HudChoice {
     fn default() -> Self {
-        HudChoice { show: true, mph: false, fps: false, stack: 0, dials: true, parts: Parts::default() }
+        HudChoice {
+            show: true,
+            mph: false,
+            fps: false,
+            stack: 0,
+            dials: true,
+            parts: Parts::default(),
+            layout: Layout::default(),
+        }
     }
 }
 
@@ -492,13 +505,14 @@ impl Form {
             ui.label("HUD parts").on_hover_text(tip);
             ui.add_enabled_ui(self.hud.show, |ui| {
                 ui.vertical(|ui| {
-                    for (row, labels) in self.hud.parts.0.chunks_mut(3).zip(PART_LABELS.chunks(3)) {
+                    let parts: Vec<_> = Part::ALL.into_iter().zip(PART_TIPS).collect();
+                    for (row, parts) in self.hud.parts.0.chunks_mut(3).zip(parts.chunks(3)) {
                         ui.horizontal(|ui| {
-                            for (shown, (label, tip)) in row.iter_mut().zip(labels) {
+                            for (shown, (part, tip)) in row.iter_mut().zip(parts) {
                                 let cell = egui::Layout::left_to_right(egui::Align::Center);
                                 ui.allocate_ui_with_layout(egui::vec2(140.0, 20.0), cell, |ui| {
                                     ui.set_min_width(140.0);
-                                    ui.checkbox(shown, *label).on_hover_text(*tip);
+                                    ui.checkbox(shown, part.label()).on_hover_text(*tip);
                                 });
                             }
                         });

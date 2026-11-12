@@ -227,8 +227,13 @@ impl Session {
     /// Writes a field of view the Camera page set, radians, as the launcher's `key` (`fov` or `chase_fov`) in whole
     /// degrees, the rest of the file kept.
     pub fn save_fov(&self, key: &str, fov: f32) {
-        let degrees = fov.to_degrees().round().to_string();
-        self.write(|file| rbr_formats::ini::set_value(file, "launcher", key, &degrees));
+        self.save_setting(key, &fov.to_degrees().round().to_string());
+    }
+
+    /// Writes `value` as the launcher's `key`, the rest of the file kept (the pause menu's pages' settings that the
+    /// launcher passes on, as the HUD page's).
+    pub fn save_setting(&self, key: &str, value: &str) {
+        self.write(|file| rbr_formats::ini::set_value(file, "launcher", key, value));
     }
 
     fn write(&self, change: impl FnOnce(&str) -> String) {

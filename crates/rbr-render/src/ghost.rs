@@ -40,6 +40,10 @@
 //! recording ends at the finish line, whose step the live split record gives). `--ghost-weather` gives the weather
 //! words a written `.ghc` keeps (`rbr_gameplay::weather::Weather::ghost_words`).
 //!
+//! The gap to the ghost (ours, the HUD's; [`Session::gap`]): the drive's race time less the time the ghost was where
+//! the car is, on the nearest segment of the ghost's path ([`passed`]), so it runs all along the stage and not only
+//! at the splits.
+//!
 //! RSF ghosts (`.gch` files) are not supported: every race uses the game's own `.ghc` ghosts above.
 
 use crate::camera;
@@ -51,7 +55,7 @@ use crate::stage::{Address, DrawState, Image, Layer, Stage, StageTexture, Textur
 use glam::{Mat4, Vec3};
 use rbr_formats::data::Data;
 use rbr_formats::ghost::Weather;
-use rbr_formats::ghost::{Ghost, SavedGhost, Stream};
+use rbr_formats::ghost::{self as format, Ghost, SavedGhost, Stream};
 use rbr_formats::ini;
 use rbr_gameplay::ghost::{Best, Player, Pose, Recorder};
 use rbr_recording::clock::StepClock;
@@ -276,6 +280,8 @@ pub struct Session {
     /// The live drive's outside-assistance penalties: the step each was seen on and its seconds. The ghost's clock takes
     /// them as the game's does (`rbr_gameplay::ghost::Recorder::penalty`).
     penalties: Vec<(u32, f32)>,
+    /// The time behind the ghost at the frame last played ([`Session::gap`]).
+    gap: Option<f32>,
 }
 
 impl Session {
@@ -326,6 +332,7 @@ impl Session {
             finish: None,
             splits: None,
             penalties: Vec::new(),
+            gap: None,
         };
         if !options.live {
             let session = Session { best: None, ..session };
@@ -347,7 +354,16 @@ impl Session {
                 _ => race_time(sample, drive.step_clock()) + penalties,
             };
             car.apply(renderer, t, view_projection);
+            let root = glam::Quat::from_array(sample.car.orientation) * model_root(drive);
+            let passed = passed(&car.track.path, &mut car.track.near, Vec3::from(sample.car.position) + root);
+            self.gap = passed.filter(|_| t > 0.0).map(|passed| t - passed);
         }
+    }
+
+    /// The time the drive is behind the ghost (negative ahead of it) where the car was at the frame last played
+    /// ([`Session::apply`]), s; `None` without a ghost or off its path.
+    pub fn gap(&self) -> Option<f32> {
+        self.gap
     }
 
     /// Takes the live split record and the race clock's outside-assistance `penalties` so far (HUD2) of the frame whose
@@ -449,11 +465,23 @@ struct Part {
 pub struct Track {
     stream: Stream,
     player: Player,
+    /// Each sample's race time, s, and position (as `Player::advance` reads them), and the sample the car was last
+    /// nearest ([`passed`]).
+    path: Vec<(f32, Vec3)>,
+    near: usize,
 }
 
 impl Track {
     pub fn stream(stream: Stream) -> Track {
-        Track { player: Player::new(&stream), stream }
+        let mut at = Vec3::ZERO;
+        let place = |sample: &format::Sample| {
+            match sample {
+                format::Sample::Key(key) => at = Vec3::from(key.position),
+                format::Sample::Delta(delta) => at += Vec3::from(delta.offset.map(f32::from)) / format::DELTA_SCALE,
+            }
+            (sample.seconds(), at)
+        };
+        Track { player: Player::new(&stream), path: stream.samples.iter().map(place).collect(), near: 0, stream }
     }
 
     /// Plays to race time `t`, from the start again when `t` went back (`rewind`).
@@ -463,6 +491,39 @@ impl Track {
         }
         self.player.advance(t)
     }
+}
+
+/// A position further than this from the ghost's path has no time on it, m. Ours.
+const OFF_PATH: f32 = 30.0;
+/// The samples before and after the last nearest one looked at first. Ours: the recorder writes one each 1.95 m and
+/// every second frame, so this is some seconds of road either way.
+const BEHIND: usize = 64;
+const AHEAD: usize = 512;
+
+/// The race time at which `path` (each sample's time and position) passes `position`: on the segment nearest it,
+/// before or after the nearest sample. That one is looked for about `near` (the last one found, kept up), and along
+/// the whole path when none is near there or the nearest is the last looked at, which may have nearer ones past it (a
+/// first look, a restart, a recall, a long stand). Where the ghost stood still the time is the one it left at. `None`
+/// further than [`OFF_PATH`] from every sample.
+fn passed(path: &[(f32, Vec3)], near: &mut usize, position: Vec3) -> Option<f32> {
+    let nearest = |range: std::ops::Range<usize>| {
+        let squared = |i: usize| (i, path[i].1.distance_squared(position));
+        let on_path = |found: &(usize, f32)| found.1 <= OFF_PATH * OFF_PATH;
+        range.map(squared).filter(on_path).min_by(|a, b| a.1.total_cmp(&b.1).then(b.0.cmp(&a.0)))
+    };
+    let about = near.saturating_sub(BEHIND)..(*near + AHEAD).min(path.len());
+    let inside = |found: &(usize, f32)| found.0 + 1 < about.end || about.end == path.len();
+    let (i, _) = nearest(about.clone()).filter(inside).or_else(|| nearest(0..path.len()))?;
+    *near = i;
+    let on = |a: usize, b: usize| {
+        let ((from, start), (to, end)) = (path[a], path[b]);
+        let along = end - start;
+        let moved = along.length_squared();
+        let f = if moved > 0.0 { ((position - start).dot(along) / moved).clamp(0.0, 1.0) } else { 1.0 };
+        (position.distance_squared(start + along * f), from + (to - from) * f)
+    };
+    let segments = [i.checked_sub(1).map(|a| on(a, i)), (i + 1 < path.len()).then(|| on(i, i + 1))];
+    segments.into_iter().flatten().min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, t)| t)
 }
 
 /// The ghost car in a stage.
@@ -599,6 +660,24 @@ mod tests {
     }
 
     #[test]
+    fn the_ghost_passed_a_place_at_the_time_on_its_nearest_segment() {
+        // Standing at the start until 7 s, over more samples than are looked at first, then 10 m/s along x.
+        let mut path: Vec<(f32, Vec3)> = (0..=700).map(|i| (i as f32 / 100.0, Vec3::ZERO)).collect();
+        path.extend((1..=200).map(|i| (7.0 + i as f32 * 0.2, Vec3::new(i as f32 * 2.0, 0.0, 0.0))));
+        let close = |time: Option<f32>, to: f32| time.is_some_and(|t| (t - to).abs() < 1e-4);
+        // A first look from up the road (a screenshot's).
+        assert!(close(passed(&path, &mut 0, Vec3::new(21.0, 3.0, 0.0)), 9.1));
+        let mut near = 0;
+        assert_eq!(passed(&path, &mut near, Vec3::new(-1.0, 0.0, 0.0)), Some(7.0));
+        assert!(close(passed(&path, &mut near, Vec3::new(101.0, 3.0, 0.0)), 17.1) && near == 751, "{near}");
+        // Off the path there is no time, and a restart finds the start again.
+        assert_eq!(passed(&path, &mut near, Vec3::new(101.0, 40.0, 0.0)), None);
+        near = 850;
+        assert!(close(passed(&path, &mut near, Vec3::new(1.0, 0.0, 0.0)), 7.1));
+        assert_eq!(passed(&[], &mut 0, Vec3::ZERO), None);
+    }
+
+    #[test]
     fn a_finish_is_kept_until_a_restart() {
         let mut session = Session {
             school: false,
@@ -610,6 +689,7 @@ mod tests {
             finish: None,
             splits: None,
             penalties: Vec::new(),
+            gap: None,
         };
         let finished = Splits { finished: true, ..Splits::default() };
         session.observe(Some(&Splits::default()), 0.0, 100);
@@ -634,6 +714,7 @@ mod tests {
             finish: None,
             splits: None,
             penalties: Vec::new(),
+            gap: None,
         };
         for (step, total) in [(100, 0.0), (2100, 10.0), (2101, 10.0), (5000, 30.0)] {
             session.observe(None, total, step);

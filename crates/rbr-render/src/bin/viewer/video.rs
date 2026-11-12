@@ -157,11 +157,10 @@ pub fn render(
                 audio.step(audio_scene(scene, args, shown), pending, &rbr_render::sound::events(&events, helicopter));
                 audio.samples(periods)?;
             }
-            let readout = scene
-                .playback
-                .as_ref()
-                .filter(|_| scene.hud.show)
-                .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None));
+            let readout =
+                scene.playback.as_ref().filter(|_| scene.hud.show).map(|p| {
+                    readout(p, scene.live.as_ref(), scene.ghost.as_ref().and_then(|g| g.gap()), scene.hud, None)
+                });
             let results = scene.live.as_ref().and_then(|live| ResultsMenu::open(live.menu));
             rbr_render::perf_log::frame();
             let (_, pixels) = renderer.render_offscreen_with(size, view, sky, |encoder, target| {

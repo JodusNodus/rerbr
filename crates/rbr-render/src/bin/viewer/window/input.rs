@@ -6,6 +6,7 @@ use rbr_gameplay::pause_menu::{Item, Page};
 use rbr_render::bindings::Action;
 use rbr_render::hud::camera_page::{CameraPage, Fov};
 use rbr_render::hud::ffb_page::FfbPage;
+use rbr_render::hud::hud_page::HudPage;
 use rbr_render::hud::pause::{Nav, Outcome, PauseMenu};
 use rbr_render::live::{self, Controls, Live};
 use rbr_render::playback::{ChaseLook, Drive};
@@ -208,11 +209,14 @@ impl App {
         // The Force feedback page with the wheel's force on, once the live process said the car's surface.
         let ffb = (process.hud.ffb_surface.zip(self.wheel.as_ref()))
             .map(|(surface, _)| FfbPage::of(&self.scene.ffb, surface));
-        self.menu = Some(PauseMenu::open(
-            process.menu,
-            CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.cockpit(), fov),
-            ffb,
-        ));
+        self.menu = Some(
+            PauseMenu::open(
+                process.menu,
+                CameraPage::new(self.view, self.scene.cameras.nudges(), self.scene.cameras.cockpit(), fov),
+                ffb,
+            )
+            .with_hud(HudPage::new(self.scene.hud.parts, self.scene.hud.layout)),
+        );
         process.pause();
         self.pause_outputs(true);
         self.paused_at = Some(Instant::now());
@@ -224,6 +228,7 @@ impl App {
             None => return,
             Some(Outcome::Camera) => return self.camera_changed(),
             Some(Outcome::ForceFeedback) => return self.ffb_changed(),
+            Some(Outcome::Hud) => return self.hud_changed(),
             Some(Outcome::Chosen(item)) => item,
         };
         self.menu = None;
@@ -294,6 +299,51 @@ impl App {
         }
         if let Some(wheel) = &self.wheel {
             wheel.set_sensitivity(session.started[surface], session.now()[surface]);
+        }
+    }
+
+    /// On the HUD page the pointer takes the part under it (`pressed`), or lets go of the one it held, which keeps
+    /// its place; whether it holds one.
+    pub fn hud_hold(&mut self, pressed: bool) -> bool {
+        if !pressed {
+            if self.grab.take().is_some() {
+                self.hud_changed();
+            }
+            return false;
+        }
+        let (pointer, hud) = (self.results_pointer(), self.running.overlay.hud());
+        self.grab = match (self.menu.as_mut().and_then(PauseMenu::hud_mut), pointer) {
+            (Some(page), Some((screen, pointer))) => page.grab(hud, screen, pointer),
+            _ => None,
+        };
+        self.grab.is_some()
+    }
+
+    /// The held part follows the pointer.
+    pub fn hud_drag(&mut self) {
+        let (grab, pointer) = (self.grab, self.results_pointer());
+        let page = self.menu.as_mut().and_then(PauseMenu::hud_mut);
+        if let (Some(grab), Some(page), Some((screen, pointer))) = (grab, page, pointer) {
+            page.drag(&grab, screen, pointer);
+        }
+    }
+
+    /// Shows the parts, places and size the HUD page set, and writes them to the file as the launcher's keys, which
+    /// it passes the next drive.
+    fn hud_changed(&mut self) {
+        let Some(page) = self.menu.as_ref().and_then(PauseMenu::hud) else {
+            return;
+        };
+        let (hud, cameras) = (&mut self.scene.hud, &self.scene.cameras);
+        if page.parts != hud.parts {
+            hud.parts = page.parts;
+            cameras.save_setting("hud_hide", &page.parts.hidden().unwrap_or_default());
+            cameras.save_setting("hud_show", &page.parts.shown().unwrap_or_default());
+        }
+        if page.layout != hud.layout {
+            hud.layout = page.layout;
+            cameras.save_setting("hud_scale", &page.layout.scale.to_string());
+            cameras.save_setting("hud_layout", &page.layout.list().unwrap_or_default());
         }
     }
 

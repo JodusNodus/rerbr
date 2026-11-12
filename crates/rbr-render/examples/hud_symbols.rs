@@ -87,8 +87,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     ];
     for (name, race) in clocks {
         let readout = Readout {
-            view: "chase",
-            view_keys: String::new(),
             time: 0.0,
             speed: 0.0,
             mph: false,
@@ -103,7 +101,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             race: Some(race),
             splits: None,
             state: HudView::default(),
-            parts: Default::default(),
+            ..Default::default()
         };
         let pixels = render(&mut renderer, |encoder, view| {
             overlay.draw(&gpu.device, &gpu.queue, encoder, view, SIZE, &readout)

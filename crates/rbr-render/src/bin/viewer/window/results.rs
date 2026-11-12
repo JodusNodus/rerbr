@@ -39,7 +39,8 @@ impl App {
         }
     }
 
-    fn results_pointer(&self) -> Option<(Rect, Pos2)> {
+    /// The HUD's screen and the pointer on it, points.
+    pub fn results_pointer(&self) -> Option<(Rect, Pos2)> {
         let pointer = self.pointer?;
         let config = &self.running.config;
         let scale = config.height.max(1) as f32 / REFERENCE_HEIGHT;

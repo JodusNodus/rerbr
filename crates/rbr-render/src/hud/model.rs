@@ -287,6 +287,8 @@ pub struct HudView {
     /// The car's rev limit and its upshift point in the gear, rpm (SHF1), for the dial.
     pub rev_limit: Option<f32>,
     pub upshift: Option<f32>,
+    /// The tyres' temperatures (TYR1), wheels 0 to 3: front left, front right, rear left, rear right.
+    pub tyres: Option<[rbr_recording::tyre::Tyre; 4]>,
 }
 
 /// A note of the pace stack.

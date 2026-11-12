@@ -4,8 +4,9 @@
 //!   championship start, where the live boot's early jump start counts as the rally's first false start);
 //! - typed states over the stage: `result-page.png` (the quick rally's result page with a new stage record),
 //!   `retired.png` (end page 0x12), `helicopter.png` (the rescue helicopter flying) and
-//!   `false-start-warning-{2,3}.png` and `car-status.png` (engine, gearbox and body damage, a damper and a tyre gone,
-//!   two lamps lit).
+//!   `false-start-warning-{2,3}.png`, `car-status.png` (engine, gearbox and body damage, a damper and a tyre gone,
+//!   two lamps lit) and `telemetry.png` (the tyres and the input trace, with the gap to a ghost, the
+//!   frame rate and the rim lit at the upshift point).
 //!
 //! Run from the repository root with `RBR_DATA`, `RBR_PATCH` and `RBR_NGP_PHYSICS` set, after `cargo build --release -p rbr-standalone`.
 
@@ -21,7 +22,7 @@ use rbr_recording::{pose, Frames};
 use rbr_render::camera::FreeFly;
 use rbr_render::coords::FOV_DEGREES;
 use rbr_render::hud::model::{CarStatus, HudView, Lamp};
-use rbr_render::hud::{stock, Overlay, Readout};
+use rbr_render::hud::{hud_page, stock, Overlay, Parts, Readout};
 use rbr_render::live::{Controls, Live, RaceHud, SELECT_GEAR};
 use rbr_render::renderer::{self, Renderer};
 use rbr_render::stage::{self, Selection};
@@ -110,8 +111,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Typed states.
     let base = Readout {
-        view: "chase",
-        view_keys: String::new(),
         time: 0.0,
         speed: 0.0,
         mph: false,
@@ -126,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         race: Some(RaceHud { time: 182.4, countdown: -180.0, penalties: 0.0, running: true, jump_start: false }),
         splits: None,
         state: HudView::default(),
-        parts: Default::default(),
+        ..Default::default()
     };
     let split = |time, reference| Split { time: Some(time), reference: Some(reference) };
     let finished = Splits {
@@ -158,7 +157,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let car = CarStatus { systems: [3, 0, 1, 0, 0, 2], suspension: [0, 4, 0, 0], tyres: [0, 0, 2, 0] };
     let lamps = Some([Lamp::On, Lamp::Off, Lamp::Flashing, Lamp::Off, Lamp::Off]);
     let state = HudView { car: Some(car), lamps, flash_on: true, water: Some(124.0), ..HudView::default() };
-    shoot(&Readout { state, ..base }, None, &out.join("car-status.png"))?;
+    shoot(&Readout { state, ..base.clone() }, None, &out.join("car-status.png"))?;
+    // The telemetry parts, over the HUD page's sample, at the upshift point.
+    let parts = Parts::default().with("tyres,trace", true)?;
+    let readout = hud_page::sample(Readout { parts, speed: 31.0, rpm: Some(6800.0), fps: Some(144.0), ..base });
+    shoot(&readout, None, &out.join("telemetry.png"))?;
     Ok(())
 }
 
@@ -188,8 +191,6 @@ fn drive(live: &mut Live, controls: &Controls) -> Result<Vec<u8>, Box<dyn Error>
 fn readout(live: &Live, controls: &Controls) -> Readout {
     let hud = live.hud;
     Readout {
-        view: "chase",
-        view_keys: String::new(),
         time: 0.0,
         speed: hud.speed,
         mph: false,
@@ -204,7 +205,7 @@ fn readout(live: &Live, controls: &Controls) -> Readout {
         race: hud.race,
         splits: live.splits.clone(),
         state: live.hud_view(),
-        parts: Default::default(),
+        ..Default::default()
     }
 }
 
