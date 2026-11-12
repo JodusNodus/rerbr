@@ -137,10 +137,6 @@ pub trait Host {
     /// emulator runs the original fan-out through the signal manager; the pure host keeps the typed payload for the
     /// game, which reads it instead of the manager's words.
     fn emit_damper(&self, _strut: u32, _signal: rbr_physics::spring_damper::DamperSignal) {}
-    /// A steered wheel's add to the car's steering torque sum (the wheel step's `AddADC`), before it: `read` gives
-    /// what it is made of. Ours, read-only; only the pure host keeps it, when asked to
-    /// ([`pure::Pure::keep_steer_torques`]).
-    fn steer_torque(&self, _read: &dyn Fn() -> rbr_physics::wheel::layout::SteerTorque) {}
 }
 
 /// For a call at `sp` whose callee is known to do nothing more than the caller does itself (a getter, a walk of equal

@@ -175,10 +175,6 @@ pub struct Live<'a> {
     boot_now: f64,
     /// What follows a championship stage (`set_rally_next`): its end page's choice and text.
     rally_next: RallyNext,
-    /// The steering torque's breakdown (`--ffb-breakdown`).
-    steer_log: Option<crate::steer_log::SteerLog>,
-    /// The wheel's force with the aligning part weighted (`--ffb-aligning`).
-    aligning: Option<crate::steer_log::Aligning>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -344,28 +340,6 @@ impl<'a> Live<'a> {
         self.saves = Some(saves);
     }
 
-    /// Writes the steering torque's breakdown to `log` from here on (`--ffb-breakdown`).
-    pub fn set_steer_log(&mut self, log: crate::steer_log::SteerLog) {
-        self.playback.pure.keep_steer_torques = true;
-        self.steer_log = Some(log);
-    }
-
-    /// The wheel's force with the tyres' aligning part weighted by `weight` from here on (`--ffb-aligning`).
-    pub fn set_aligning(&mut self, weight: f32) {
-        self.playback.pure.keep_steer_torques = true;
-        self.aligning = Some(crate::steer_log::Aligning::new(weight));
-    }
-
-    /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
-    /// NGP's, or with `--ffb-aligning` the weighted one.
-    pub fn wheel_force(&self) -> f32 {
-        let mem = &self.playback.pure.mem;
-        match &self.aligning {
-            Some(aligning) => aligning.force(mem),
-            None => rbr_physics::car_body::steering_ffb::force(mem, mem.u32(CAR_PTR)),
-        }
-    }
-
     /// The start clock's time of day at the stage's start, s after midnight (`rbr_gameplay::weather::start_clock`); each
     /// frame adds its time, and [`Live::restart`] restores the start's.
     pub fn set_start_clock(&mut self, seconds: f32) {
@@ -455,15 +429,6 @@ impl<'a> Live<'a> {
         .map_err(|e| self.stop_text(e.as_ref(), runs))?;
         self.pending.tyre_max = physics.tyre_max;
         self.time_of_day = self.time_of_day.map(|t| t + seconds as f32);
-        if self.playback.pure.keep_steer_torques {
-            let torques = self.playback.pure.take_steer_torques();
-            if let Some(log) = &mut self.steer_log {
-                log.frame(&self.playback.pure, self.start + self.answered, &torques);
-            }
-            if let Some(aligning) = &mut self.aligning {
-                aligning.frame(&self.playback.pure.mem, &torques);
-            }
-        }
         if events.substeps.is_empty() && events.tick_state == State::Countdown {
             self.waited += 1;
             // The start board's clock runs during the start orbit.

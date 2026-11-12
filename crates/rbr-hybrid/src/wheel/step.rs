@@ -152,7 +152,7 @@ pub fn wheel_step(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     // aligned `ebp`, which is the entry's `esp - 4`).
     let frame = ((r.esp - 4) & !0xF) - 0x290;
     let dt = f32::from_bits(r.stack[0]);
-    let mut calls = Step { mem: ctx.mem.clone(), host: ctx.host, wheel: r.ecx, frame };
+    let mut calls = Step { mem: ctx.mem.clone(), host: ctx.host, wheel: r.ecx };
     let slip = crate::ngp::step_slip(ctx)?;
     layout::wheel_step(&mut ctx.mem, &mut calls, r.ecx, dt, frame, slip);
     Ok(Return::void(0, 4))
@@ -164,8 +164,6 @@ struct Step<'a> {
     host: &'a dyn Host,
     /// The wheel, in `esi` through the body.
     wheel: u32,
-    /// The body's frame.
-    frame: u32,
 }
 
 impl Step<'_> {
@@ -262,7 +260,6 @@ impl layout::StepCalls for Step<'_> {
     }
 
     fn add_adc(&mut self, car: u32, v: f32, sp: u32) {
-        self.host.steer_torque(&|| layout::steer_torque(&self.mem, self.wheel, self.frame, v));
         self.on(sp, 0x4E6660, car, &[v.to_bits()]);
     }
 

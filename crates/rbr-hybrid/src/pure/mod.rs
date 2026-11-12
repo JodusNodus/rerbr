@@ -166,9 +166,6 @@ pub struct Pure {
     bound: &'static [&'static crate::Binding],
     /// Whether the tyre-particle payloads are kept (the live viewer's particles; off in every check).
     pub keep_tyre_particles: bool,
-    /// Whether the steered wheels' adds to the steering torque sum are kept ([`Pure::take_steer_torques`]; ours, for
-    /// `rbr-standalone --ffb-breakdown`, off otherwise).
-    pub keep_steer_torques: bool,
     /// The watched emits' kept payloads and counts ([`Watch`]).
     captures: Watch,
     /// NGP.dll's base in this image, 0 without NGP: the runs see it through [`crate::ngp::Scope`].
@@ -220,7 +217,6 @@ impl Pure {
             leaf_slots: bound().iter().map(|b| LEAVES.contains(&b.addr)).collect(),
             bound: bound(),
             keep_tyre_particles: false,
-            keep_steer_torques: false,
             captures: Watch::default(),
             ngp_base: 0,
         }
@@ -307,12 +303,6 @@ impl Pure {
     /// The damper-signal payloads emitted since the last call, in emit order: the strut and its payload.
     pub fn take_damper_signals(&self) -> Vec<(u32, rbr_physics::spring_damper::DamperSignal)> {
         self.captures.take_damper_signals()
-    }
-
-    /// The steered wheels' adds to the steering torque sum since the last call (with [`Pure::keep_steer_torques`]), in
-    /// step order.
-    pub fn take_steer_torques(&self) -> Vec<rbr_physics::wheel::layout::SteerTorque> {
-        self.captures.take_steer_torques()
     }
 
     /// The code of the `CSigOutsideAssistance` emitted since the last call, if any.
@@ -741,12 +731,6 @@ impl Host for Pure {
         self.captures.push_damper(strut, signal);
     }
 
-    fn steer_torque(&self, read: &dyn Fn() -> rbr_physics::wheel::layout::SteerTorque) {
-        if self.keep_steer_torques {
-            self.captures.push_steer_torque(read());
-        }
-    }
-
     fn call_slot_word(&self) -> Option<u32> {
         Some(CALL_RET)
     }
@@ -798,10 +782,6 @@ impl Host for Direct {
 
     fn emit_damper(&self, strut: u32, signal: rbr_physics::spring_damper::DamperSignal) {
         self.0.emit_damper(strut, signal);
-    }
-
-    fn steer_torque(&self, read: &dyn Fn() -> rbr_physics::wheel::layout::SteerTorque) {
-        self.0.steer_torque(read);
     }
 
     fn ran_direct(&self) {
