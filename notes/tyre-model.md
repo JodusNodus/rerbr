@@ -2068,9 +2068,30 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.6-0.9 g of lateral 3.5° (3-7) / 2° (2-2), none past 45°; 0.9-1.1 g with 0.6-0.9 g 7° (4-28), 0 of 5 / 35° (3-88), 3
   of 7; 1.1 g up with 0.3-0.6 g 9° (4-18), 0 of 17 and 8 wide / 34° (6-59), 2 of 6. So to 0.7 g of braking on gravel and
   0.9 g on tarmac both tyres' cars keep the crews' attitude; above, the real cars stay at 3-10° where NGP's tyre keeps
-  7-15° and runs wide and the brush turns 34-56° and spins in a third to nine tenths of the runs: the open point of the
-  item above falls on NGP's side. Not like for like: a pad run holds its pedal to a standstill, a crew modulates; the
-  user's own drives hold under 20 such windows.
+  7-15° and runs wide and the brush turns 34-56° and spins in a third to nine tenths of the runs: which read as the open
+  point of the item above falling on NGP's side. It does not: a pad run holds its pedal to a standstill and locks its
+  wheels, the crews' wheels in these windows turn at a slip of 0.02-0.13 (the item below); the user's own drives hold
+  under 20 such windows.
+- The wheels' slip in those windows (2026-11-12; the crews: the speed channel over the path's speed over a coasting
+  0.95, the 2 s mean, as "Gravel's braking against slip on seven rallies" reads it; the pads: the four wheels' mean over
+  a coasting 0.943, the first 2 s on the pedal; scratch). The crews braking in a turn with the throttle shut, p10 / p50
+  / p90: Finland 2021 at 0.5-0.7 g and 0.3-0.6 g of lateral 0.02 / 0.10 / 0.21, at 0.7-0.9 g 0.05 / 0.12 / 0.23, at 0.9
+  g up 0.06 / 0.10 / 0.28; Sardegna 2021 0.01 / 0.11 / 0.27 and 0.08 / 0.13 / 0.23; España 2021 from 0.5 g up -0.03 to
+  -0.01 / 0.01-0.04 / 0.05-0.11 in every cell (a slide's cosine reads as slip, 0.06 at 20°: upper bounds). The pads on
+  gravel from 0.6-0.7 g, NGP's tyre / loose-v1, the slip and the largest sideslip: at 0.45 of the pedal 0.10 / 0.09 and
+  6° / 8°, at 0.6 0.17 / 0.18 and 9° / 11°, at 0.75 0.42 / 0.45 and 10° / 28°, at 0.9 0.69 / 0.71 and 12° / 34° (the
+  inside wheels locked from 0.75). All 144 gravel runs by the slip: to 0.25 (0.3-0.6 of the pedal) 5-12° / 6-20° and
+  none past 45° on either, at 0.25-0.6 5 of 17 / 6 of 18 past 45°, over 0.6 18° and 0 of 27 / 46° and 15 of 28. Tarmac
+  from 0.8-1.0 g: at 0.6 of the pedal 0.19 / 0.04 and 6° / 5°, at 0.75 0.51 / 0.71 and 6° / 15°, at 0.9 0.81 / 0.87 and
+  8° / 24° (in the 100 m run from 1.0 g the brush's four wheels lock by 0.75 s). So at the slip the crews brake at
+  (under 0.3 on gravel, 0.1 on tarmac) both tyres' cars keep the crews' attitude, and the brush's larger turn is a car
+  on locked wheels, which no crew's window holds: the telemetry does not choose between the tyres there. The tyre data
+  do. At 30 % of slip the measured force lies along the sliding velocity ("Combined slip against a measured road tyre")
+  and a locked tyre on gravel gives 0.72 sin α (Coutermarsh, 0.15 at 12°); at 12° and 3.5 kN the side force over the
+  load at 0.5 of slip / locked is loose-v1's 0.31 / 0.18 and the brush's 0.37 / 0.18 against NGP's tyre's 0.46 / 0.33 on
+  gravel and 0.75 / 0.57 on tarmac, 1.5-3 times the sliding velocity's share. NGP's car stays pointed on locked wheels
+  by a side force no locked tyre has. The brush is not changed. The user's seven drives: 4-18 braking windows a band,
+  the wheels' mean slip p50 0.01-0.09, no window past 45° but one.
 - Tarmac's cornering by speed (2026-11-12; the crews: the accelerometer's lateral g, 0.5 s means with under 0.3 g along
   the car, over 0.5 g, by the speed channel, 240-20000 samples a band; the game: `handling.py --only ramp --speed`,
   pad-37, i20 Coupe WRC 2020). The crews' p95 at 60-80 / 100-120 / 140-160 / 160-180 km/h: España 2021 1.54 / 1.49 /
