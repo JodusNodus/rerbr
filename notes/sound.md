@@ -195,6 +195,13 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   its density to the brush loop, two wheels full (`Verge::brush`, `BRUSH_WHEELS`; no hits). Kormoran I (RSF 347,
   the user's drive, first wheel): rough 8.5 % of the steps, grass 0.7 %, bendable tree 0.2 % (`--log`'s surface
   column, not in code). No audio render: `rbr-sound` has no verge, it needs the viewer. Not judged by ear yet.
+- Verge in the car (ours, 2026-11-12, on trial; user: never heard it): the grass loop has 85 % of its energy above
+  4 kHz and the brush 60 %, so through the cabin's 1 kHz filter the swish lay 21 to 29 dB under the mix (Kuohu,
+  BTB 1075, Fiat 131, the user's drive: on grass in 31 % of the half-seconds). In the car both now take the stones'
+  2.5 kHz shell filter at 2.5 times the level (`mixer` `VERGE_GAIN`): the swish 16.5 dB under the mix at the
+  median, 12 at the 90th percentile, 7.7 at most; the mix up 0.7 dB at most. Outside unchanged. `rbr-sound --grass`
+  renders the swish from the sound record's own surfaces (the viewer takes them from the particles). Not judged by
+  ear yet.
 - What the stages give the verge (2026-11-12, `rbr-render` example `verge_survey`: the ground's surface every 5 m
   along the driveline at 4, 6 and 9 m to each side, and the `.trk`'s bush and bendable-tree placements within 8 m;
   one variant a map). 479 of the 501 installed classic maps read (19 `.col` encrypted): grass is 20 % or more of

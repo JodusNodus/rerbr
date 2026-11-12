@@ -4,7 +4,7 @@
 //! prints each one-shot kind's made and refused requests under the sound limit (`rbr_sound::mixer::SOUND_LIMIT`).
 //!
 //! Usage: rbr-sound (--recording X | --replay RRP) [--stage NAME] --out WAV [--seconds S] [--camera inside|chase|trackside]
-//!        [--no-codriver] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--poses CSV] [--roadside CSV] [--car N]
+//!        [--no-codriver] [--grass] [--volume V] [--volumes E,C,F,T] [--standalone PATH] [--log CSV] [--from S] [--events CSV] [--poses CSV] [--roadside CSV] [--car N]
 //!        --ngp-physics FILE [--rsf-car ID|PACK [--no-fmod] | --car-pack DIR --car-model PATH [--car-bank PATH] [--car-key KEY]] [--solo LAYER]
 //!        [--codriver-mod DIR [--codriver-voice V] [--codriver-style S] [--codriver-ranges R] [--pacenotes FILE]]
 //!
@@ -79,6 +79,8 @@ struct Args {
     seconds: f32,
     camera: Camera,
     codriver: bool,
+    /// `--grass`: the grass swish from the sound record's own surfaces (the viewer takes them from the particles).
+    grass: bool,
     volume: f32,
     standalone: PathBuf,
     log: Option<PathBuf>,
@@ -139,6 +141,7 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
                 }
             }
             "--no-codriver" => args.codriver = false,
+            "--grass" => args.grass = true,
             "--log" => args.log = Some(PathBuf::from(value()?)),
             "--events" => args.events = Some(PathBuf::from(value()?)),
             "--poses" => args.poses = Some(PathBuf::from(value()?)),
@@ -503,6 +506,28 @@ struct Drive {
     stage: String,
 }
 
+/// Each wheel's share on grass from the sound record's tyre blocks (surface, second surface and its share, contact;
+/// `rbr_sound::tyre`), rough ground at half as `rbr_render::verge::grass` counts it.
+fn wheel_grass(inputs: &Inputs) -> [f32; 4] {
+    use rbr_formats::lsp_keys::{Class, KEYS};
+    let share = |id: u32| match id {
+        0x81 | 0x82 | 0x89 | 0x8a => 0.5,
+        _ => f32::from(u8::from(KEYS.iter().any(|k| {
+            k.class == Class::MaterialManager
+                && k.offset == id
+                && k.key.trim_start_matches("US2_").trim_start_matches("BR2_").starts_with("Grass_")
+        }))),
+    };
+    inputs.sound.tyres.map(|t| {
+        let blend = f32::from_bits(t[0x16]).clamp(0.0, 1.0);
+        if t[0x17] == 0 {
+            0.0
+        } else {
+            (1.0 - blend) * share(t[0x14]) + blend * share(t[0x15])
+        }
+    })
+}
+
 /// A replay's drive: its own stepping command (the viewer arguments after `--live`) run back to back, the car
 /// its `--car` or the pack car's slot, its pack flags taken into `pack_car` (the FMOD bank). The weather is dry
 /// and the sirens are left out.
@@ -659,6 +684,11 @@ fn render(args: &Args, data: &Data, drive: Drive) -> Result<(), String> {
             if let Some(inputs) = &inputs {
                 if answered == 0 {
                     eprintln!("rbr-sound: NGP's sound words {:?}", inputs.ngp);
+                }
+                if args.grass {
+                    models
+                        .verges
+                        .set(Some(rbr_sound::verge::Verge { grass: wheel_grass(inputs), ..Default::default() }));
                 }
                 let commands = models.step(inputs, &scene);
                 mixer.apply(&commands);
