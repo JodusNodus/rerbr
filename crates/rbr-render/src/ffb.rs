@@ -4,6 +4,7 @@
 //! effect with the latest level whether or not it changed, which is what RSF's `SetParameters(DIEP_START)` gives at
 //! the wheel's evdev device under Proton (`harness/ffb_trace.sh`); under NGP it applies the dead zone there against the
 //! latest steering. SDL's open sets the device's gain to 100 % and its autocentre off, as Proton's SDL bus does.
+//! Ours: the thread can smooth the level first ([`smooth`], `[ffb] smoothing`; off by default, NGP's own).
 //!
 //! A positive magnitude turns the wheel left (SDL's level on `SDL_HAPTIC_STEERING_AXIS`, measured on a Logitech
 //! G923 under Linux): the force opposes the steering, so it centres the wheel. `inverse` flips it for a wheel that
@@ -15,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rbr_gameplay::ffb::{self, Settings, MAX_MAGNITUDE};
 use sdl3_sys::error::SDL_GetError;
@@ -40,6 +41,8 @@ pub struct Options {
     pub rotation: Option<u16>,
     /// The rotation is the car's own lock ([`crate::wheel_rotation::car_degrees`]), up to [`Options::rotation`].
     pub rotation_per_car: bool,
+    /// The smoothing's time constant, ms ([`smooth`]); 0 sends NGP's force as it is.
+    pub smoothing: i32,
 }
 
 impl Default for Options {
@@ -51,6 +54,7 @@ impl Default for Options {
             sensitivity: [100; 3],
             rotation: None,
             rotation_per_car: false,
+            smoothing: 0,
         }
     }
 }
@@ -79,6 +83,10 @@ impl Options {
         out.rotation =
             section.get("rotation").and_then(|v| v.parse().ok()).filter(|v| crate::wheel_rotation::DEGREES.contains(v));
         out.rotation_per_car = flag("rotation_per_car", false);
+        out.smoothing = section
+            .get("smoothing")
+            .and_then(|v| v.parse().ok())
+            .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
         out
     }
 
@@ -94,7 +102,7 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\n",
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -107,12 +115,26 @@ impl Options {
             self.sensitivity[2],
             self.rotation.map_or(String::new(), |d| d.to_string()),
             u8::from(self.rotation_per_car),
+            self.smoothing,
         )
     }
 }
 
 /// The sensitivities' range, percent, in the launcher and the pause menu (community cars go up to 372).
 pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
+
+/// The smoothing's range, ms, in the launcher and the pause menu.
+pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=30;
+
+/// The smoothed level `dt` seconds after `was` with NGP's at `target` (ours): one pole with time constant `ms`,
+/// which the force then trails by about `ms`; 0 gives `target`. NGP's force carries bursts of 10 to 20 Hz, about
+/// 0.1 of full force, under a smooth steering input (`notes/ngp.md` "Force feedback"); 15 ms leaves 0.59 of them.
+pub fn smooth(was: f32, target: f32, dt: f32, ms: i32) -> f32 {
+    if ms <= 0 {
+        return target;
+    }
+    was + (target - was) * (1.0 - (-1000.0 * dt / ms as f32).exp())
+}
 
 /// Each car's own NGP sensitivities, in place of [`Options::sensitivity`]: the `[ffb_cars]` section of the launcher's
 /// settings file, by `crate::camera_prefs::car_key`, which the pause menu's Force feedback page
@@ -187,12 +209,14 @@ impl CarSensitivity {
 /// change a setting. NGP's force is `1 - 0.975^(|T| 100 / S)` with `S` the car's `ForceFeedbackSensitivity_NGP`
 /// times the percentage / 100; [`load::torque_ratio`] reads `x = |T| 100 / S_car` back from the force, so a car's
 /// histogram of `x` ([`load::Load`]) gives the force at any percentage: how often the wheel maxes out, and the
-/// percentage that puts the player's usual cornering at half force ([`load::suggested`]).
+/// percentage that puts the player's usual cornering at [`load::TARGET`] of the force ([`load::suggested`]).
 pub mod load {
     /// NGP's curve's base.
     const BASE: f32 = 0.975;
-    /// The force the suggestion puts the player's usual cornering (the 90th percentile) at.
-    pub const TARGET: f32 = 0.5;
+    /// The force the suggestion puts the player's usual cornering (the 90th percentile) at: the median of where the
+    /// user's own settings put it over 22 car and surface loads (0.63; `notes/ngp.md` "Force feedback"). At 0.5 the
+    /// suggestion was above the user's setting in 19 of them.
+    pub const TARGET: f32 = 0.65;
     /// A force past this is the wheel maxed out.
     pub const MAXED: f32 = 0.95;
     /// The histogram's bin width in `x`, and its bins: `x` 0 to 400, then one for more.
@@ -231,7 +255,7 @@ pub mod load {
         percent(p) / 100.0 * (-f).ln_1p() / BASE.ln()
     }
 
-    /// The percentage that puts the ratio `x` at [`TARGET`]: `100 x ln(0.975) / ln(1 - TARGET)` (≈ 3.653 x).
+    /// The percentage that puts the ratio `x` at [`TARGET`]: `100 x ln(0.975) / ln(1 - TARGET)` (≈ 2.412 x).
     pub fn percent_for(x: f32) -> f32 {
         100.0 * x * BASE.ln() / (1.0 - TARGET).ln()
     }
@@ -329,8 +353,8 @@ pub mod load {
     pub const OFTEN: f32 = 0.05;
     /// Below this times the suggested percentage the player's usual cornering sits high in the wheel's range; above
     /// [`HIGH`] times it, the cornering uses little of the range. Between them the usual cornering (the load's 90th
-    /// percentile) takes 0.39-0.63 of the wheel's force, `1 - 0.5^(1/r)` at `r` times the suggestion, so a player near
-    /// the suggestion is left alone: the suggestion's half force is a rule of thumb, not a target.
+    /// percentile) takes 0.53-0.78 of the wheel's force, `1 - 0.35^(1/r)` at `r` times the suggestion, so a player near
+    /// the suggestion is left alone: the suggestion's force is a rule of thumb, not a target.
     pub const LOW: f32 = 0.7;
     pub const HIGH: f32 = 1.4;
 
@@ -368,7 +392,7 @@ pub mod load {
         }
     }
 
-    /// The percentage that puts the player's usual cornering in `load` (its 90th percentile) at half force, to the
+    /// The percentage that puts the player's usual cornering in `load` (its 90th percentile) at [`TARGET`], to the
     /// nearest 5 within `range`: a hint, never applied.
     pub fn suggested(load: &Load, range: std::ops::RangeInclusive<i32>) -> Option<i32> {
         let p = percent_for(load.percentile90()?);
@@ -454,6 +478,8 @@ pub struct Session {
     pub started: [i32; 3],
     /// The wheel's strength, 0 to 1 (`Settings::strength`).
     pub strength: f32,
+    /// [`Options::smoothing`].
+    pub smoothing: i32,
     /// This drive's surface and load, from its first kept frame.
     drive: Option<(usize, Load)>,
 }
@@ -471,6 +497,7 @@ impl Session {
             global: options.sensitivity,
             started,
             strength: options.settings.strength,
+            smoothing: options.smoothing,
             drive: None,
         }
     }
@@ -511,6 +538,13 @@ impl Session {
         self.strength = strength.clamp(0.0, 1.0);
         let value = self.strength.to_string();
         self.write(|file| rbr_formats::ini::set_value(file, "ffb", "strength", &value));
+    }
+
+    /// Sets the smoothing (ms, [`SMOOTHING_RANGE`]) and writes it to the file's `[ffb]`.
+    pub fn set_smoothing(&mut self, ms: i32) {
+        self.smoothing = ms.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
+        let value = self.smoothing.to_string();
+        self.write(|file| rbr_formats::ini::set_value(file, "ffb", "smoothing", &value));
     }
 
     /// One frame of the drive on `surface` (FFB1's), `force` NGP's: sampled when `kept` (a live NGP drive, racing,
@@ -610,12 +644,18 @@ struct Shared {
     now: AtomicI32,
     /// `Settings::strength`'s bits, which the pause menu changes while driving.
     strength: AtomicU32,
+    /// [`Options::smoothing`], which the pause menu changes too.
+    smoothing: AtomicI32,
 }
 
 impl Wheel {
     /// Opens the device and starts its thread, or says why it cannot.
     pub fn open(options: Options) -> Result<Wheel, String> {
-        let shared = Arc::new(Shared { strength: options.settings.strength.to_bits().into(), ..Shared::default() });
+        let shared = Arc::new(Shared {
+            strength: options.settings.strength.to_bits().into(),
+            smoothing: options.smoothing.into(),
+            ..Shared::default()
+        });
         let (tx, rx) = mpsc::channel();
         let thread = {
             let (shared, options) = (shared.clone(), options.clone());
@@ -646,6 +686,11 @@ impl Wheel {
     /// The wheel's strength (0 to 1, `Settings::strength`) from the next step on.
     pub fn set_strength(&self, strength: f32) {
         self.shared.strength.store(strength.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+    }
+
+    /// The smoothing ([`Options::smoothing`], ms) from the thread's next update on.
+    pub fn set_smoothing(&self, ms: i32) {
+        self.shared.smoothing.store(ms, Ordering::Relaxed);
     }
 
     /// The force at sensitivity `now` rather than `was`, NGP's car's, on the drive's surface ([`reshape`]).
@@ -720,12 +765,19 @@ fn run(shared: &Shared, options: &Options, ready: &mpsc::Sender<Result<String, S
         }
         let _ = ready.send(Ok(name));
         let period = Duration::from_secs_f64(1.0 / f64::from(options.rate.clamp(1, 1000)));
+        // The smoothed magnitude and when it was taken; a pause drops it to 0 at once.
+        let (mut smoothed, mut then) = (0.0, Instant::now());
         while !shared.stop.load(Ordering::Relaxed) {
             let steering = f32::from_bits(shared.steering.load(Ordering::Relaxed));
+            let dt = then.elapsed().as_secs_f32();
+            then = Instant::now();
             let m = if shared.paused.load(Ordering::Relaxed) {
+                smoothed = 0.0;
                 0
             } else {
-                ffb::dead_zone(shared.magnitude.load(Ordering::Relaxed), steering, &options.settings)
+                let target = shared.magnitude.load(Ordering::Relaxed) as f32;
+                smoothed = smooth(smoothed, target, dt, shared.smoothing.load(Ordering::Relaxed));
+                ffb::dead_zone(smoothed.round() as i32, steering, &options.settings)
             };
             effect.constant.level = level(m);
             SDL_UpdateHapticEffect(haptic, id, &effect);
@@ -778,7 +830,7 @@ unsafe fn open_device(part: Option<&str>) -> Result<(*mut SDL_Haptic, String), S
 #[cfg(test)]
 mod tests {
     use super::load::{self, Load};
-    use super::{level, reshape, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
+    use super::{level, reshape, smooth, CarSensitivity, Loads, Options, Session, SENSITIVITY_RANGE};
 
     #[test]
     fn options_round_trip_and_default() {
@@ -788,6 +840,7 @@ mod tests {
             sensitivity: [80, 100, 120],
             rotation: Some(540),
             rotation_per_car: true,
+            smoothing: 15,
             ..Options::default()
         };
         o.settings.strength = 0.6;
@@ -796,6 +849,7 @@ mod tests {
         assert_eq!(Options::parse(&o.to_text()), o);
         assert_eq!(Options::parse("[controls]\nbrake = KeyB\n"), Options::default());
         assert_eq!(Options::parse("[ffb]\nstrength = 3\nrate = 0\n").settings.strength, 1.0);
+        assert_eq!(Options::parse("[ffb]\nsmoothing = 900\n").smoothing, 30);
         assert_eq!(
             (o.rotation_for(Some(479)), o.rotation_for(Some(565)), o.rotation_for(None)),
             (Some(479), Some(540), Some(540))
@@ -916,15 +970,19 @@ mod tests {
         // x 142.5 maxes out (> 0.95) at 100 % (0.97), not at 200 % (0.83); x 42.5 at neither.
         assert_eq!((l.maxed_out(100), l.maxed_out(200)), (Some(0.2), Some(0.0)));
         assert_eq!(Load::default().maxed_out(100), None);
-        // The 90th percentile is the second bin's middle: the suggestion puts it at half force, to 5 %.
+        // The 90th percentile is the second bin's middle: the suggestion puts it at 0.65 of the force, to 5 %.
         assert_eq!(l.percentile90(), Some(142.5));
         let p = load::suggested(&l, SENSITIVITY_RANGE).unwrap();
-        assert_eq!(p, 520.min(*SENSITIVITY_RANGE.end()));
-        assert!((load::force(142.5, (load::percent_for(142.5)) as i32) - 0.5).abs() < 2e-3);
-        assert!((load::percent_for(1.0) - 3.6532).abs() < 1e-3);
+        assert_eq!(p, 345);
+        assert!((load::force(142.5, (load::percent_for(142.5)) as i32) - load::TARGET).abs() < 2e-3);
+        assert!((load::percent_for(1.0) - 2.4116).abs() < 1e-3);
+        // A heavier car's reaches the range's end.
+        let mut heavy = Load::default();
+        heavy.add(300.0, 30.0);
+        assert_eq!(load::suggested(&heavy, SENSITIVITY_RANGE), Some(*SENSITIVITY_RANGE.end()));
         let mut small = Load::default();
         small.add(22.0, 10.0);
-        assert_eq!(load::suggested(&small, SENSITIVITY_RANGE), Some(80));
+        assert_eq!(load::suggested(&small, SENSITIVITY_RANGE), Some(55));
         assert_eq!(load::suggested(&Load::default(), SENSITIVITY_RANGE), None);
     }
 
@@ -935,14 +993,14 @@ mod tests {
         l.add(40.0, 15.0);
         assert_eq!(load::advice(&l, 100, SENSITIVITY_RANGE), Advice::DriveMore(15.0));
         l.add(40.0, 15.0);
-        // The p90 is x 42.5: suggested 155 %. 0.7 and 1.4 times it are 108.5 and 217.
-        assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(155));
-        assert_eq!(load::advice(&l, 105, SENSITIVITY_RANGE), Advice::High(0.0, 155), "high, rarely maxed out");
-        assert_eq!(load::advice(&l, 110, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 215, SENSITIVITY_RANGE), Advice::Good(0.0));
-        assert_eq!(load::advice(&l, 220, SENSITIVITY_RANGE), Advice::Lower(155));
+        // The p90 is x 42.5: suggested 100 %. 0.7 and 1.4 times it are 70 and 140.
+        assert_eq!(load::suggested(&l, SENSITIVITY_RANGE), Some(100));
+        assert_eq!(load::advice(&l, 65, SENSITIVITY_RANGE), Advice::High(0.0, 100), "high, rarely maxed out");
+        assert_eq!(load::advice(&l, 70, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 140, SENSITIVITY_RANGE), Advice::Good(0.0));
+        assert_eq!(load::advice(&l, 145, SENSITIVITY_RANGE), Advice::Lower(100));
         // x 42.5 maxes out at 30 %: raise, whatever else.
-        assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 155));
+        assert_eq!(load::advice(&l, 30, SENSITIVITY_RANGE), Advice::Raise(1.0, 100));
         // 5 % maxed out (x 397.5 at 200 %) is often; just under is not.
         let mut edge = l.clone();
         edge.tenths[79] = 300.0 * load::OFTEN / (1.0 - load::OFTEN) * 1.001;
@@ -1019,7 +1077,40 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert_eq!(Options::parse(&text).settings.strength, 0.35);
         assert!(text.contains("[camera]\nview = chase\n") && text.contains("rsf-7 snow = 10"), "{text}");
+        // The smoothing too.
+        session.set_smoothing(15);
+        let options = Options::parse(&std::fs::read_to_string(&path).unwrap());
+        assert_eq!((options.smoothing, options.settings.strength), (15, 0.35));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn smoothing_trails_a_step_by_its_time_constant_and_off_is_ngps_own() {
+        assert_eq!(smooth(-250.0, 4000.0, 0.001, 0), 4000.0);
+        // A step of 10000 at 1 kHz with 15 ms: 63 % after 15 ms, there after 150 ms, never past it.
+        let mut m = 0.0;
+        let after: Vec<f32> = (0..150)
+            .map(|_| {
+                let was = m;
+                m = smooth(m, 10_000.0, 0.001, 15);
+                was
+            })
+            .collect();
+        assert!((after[15] - 6321.0).abs() < 1.0, "{}", after[15]);
+        assert!(after.windows(2).all(|w| w[0] <= w[1]) && m > 9999.0 && m <= 10_000.0, "{m}");
+        // The same after one long update as after many short ones.
+        assert!((smooth(0.0, 10_000.0, 0.015, 15) - after[15]).abs() < 1.0);
+        // 15 Hz at 1000 either way comes out at 0.57 of it; 1 Hz at more than 0.99.
+        let swing = |hz: f32| {
+            let mut m = 0.0;
+            let out = (0..2000).map(|k| {
+                m = smooth(m, 1000.0 * (std::f32::consts::TAU * hz * k as f32 / 1000.0).sin(), 0.001, 15);
+                m
+            });
+            out.skip(1000).fold(0.0, f32::max)
+        };
+        assert!(swing(15.0) < 580.0 && swing(15.0) > 560.0, "{}", swing(15.0));
+        assert!(swing(1.0) > 990.0, "{}", swing(1.0));
     }
 
     #[test]

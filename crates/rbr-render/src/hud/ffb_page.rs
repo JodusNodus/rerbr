@@ -1,17 +1,18 @@
 //! The pause menu's Force feedback page, ours (`crate::hud::pause`): a panel at the bottom of the screen over the
 //! paused view (`crate::ffb::Session`). Its rows: this car's NGP sensitivity on the drive's surface, the wheel's
-//! strength (every car's), "Use suggested" when there is a suggestion other than the sensitivity, Reset ("Use the global
-//! sensitivity": the car's own dropped) and Done; a line under them says what the selected one does. Under them
-//! a graph of NGP's curve at the sensitivity shown over the player's steering load with this car on this surface
+//! strength and smoothing (every car's), "Use suggested" when there is a suggestion other than the sensitivity, Reset
+//! ("Use the global sensitivity": the car's own dropped) and Done; a line under them says what the selected one does.
+//! Under them a graph of NGP's curve at the sensitivity shown over the player's steering load with this car on this surface
 //! (`crate::ffb::load`), the region where the wheel maxes out shaded, and one line of advice
 //! (`load::advice`). Up and Down pick a row, Left and Right change the value by [`STEP`]; the select acts on Use
 //! suggested, Reset and Done, and the back returns to the menu's first page. A change takes effect on the paused
-//! drive (`crate::ffb::reshape`, `Wheel::set_strength`) and is kept; nothing changes without the player.
+//! drive (`crate::ffb::reshape`, `Wheel::set_strength`, `Wheel::set_smoothing`) and is kept; nothing changes without
+//! the player.
 
 use super::camera_page::Moved;
 use super::pause::Nav;
 use crate::ffb::load::{self, Advice, Load};
-use crate::ffb::{Session, SENSITIVITY_RANGE, SURFACES};
+use crate::ffb::{Session, SENSITIVITY_RANGE, SMOOTHING_RANGE, SURFACES};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, Vec2};
 use std::ops::RangeInclusive;
 
@@ -36,6 +37,7 @@ const STRENGTH: RangeInclusive<i32> = 0..=100;
 pub enum Row {
     Sensitivity,
     Strength,
+    Smoothing,
     /// Sets the sensitivity to the suggestion.
     UseSuggested,
     Reset,
@@ -52,21 +54,25 @@ pub struct FfbPage {
     global: i32,
     /// The wheel's strength, percent.
     pub strength: i32,
+    /// The smoothing, ms (`crate::ffb::smooth`).
+    pub smoothing: i32,
     load: Load,
     row: Row,
 }
 
 impl FfbPage {
-    /// A page at full strength with no load tracked.
+    /// A page at full strength with no smoothing and no load tracked.
     pub fn new(surface: usize, value: i32, own: bool, global: i32) -> FfbPage {
-        FfbPage { surface, value, own, global, strength: 100, load: Load::default(), row: Row::Sensitivity }
+        let (load, row) = (Load::default(), Row::Sensitivity);
+        FfbPage { surface, value, own, global, strength: 100, smoothing: 0, load, row }
     }
 
     /// The page for the drive's car on `surface` (FFB1's: 0 gravel, 1 tarmac, 2 snow).
     pub fn of(session: &Session, surface: u32) -> FfbPage {
         let surface = surface.min(2) as usize;
         let page = FfbPage::new(surface, session.now()[surface], session.own(), session.global[surface]);
-        FfbPage { strength: (session.strength * 100.0).round() as i32, load: session.load_on(surface), ..page }
+        let strength = (session.strength * 100.0).round() as i32;
+        FfbPage { strength, smoothing: session.smoothing, load: session.load_on(surface), ..page }
     }
 
     /// The selected row.
@@ -82,7 +88,7 @@ impl FfbPage {
     /// The rows shown: Use suggested only with a suggestion other than the sensitivity.
     fn rows(&self) -> Vec<Row> {
         let suggest = self.suggested().is_some_and(|p| p != self.value);
-        [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Reset, Row::Done]
+        [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Reset, Row::Done]
             .into_iter()
             .filter(|&r| r != Row::UseSuggested || suggest)
             .collect()
@@ -123,6 +129,14 @@ impl FfbPage {
                 self.strength = value;
                 return Some(Moved::Changed);
             }
+            (Nav::Left | Nav::Right, Row::Smoothing) => {
+                let value = (self.smoothing + by).clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
+                if value == self.smoothing {
+                    return None;
+                }
+                self.smoothing = value;
+                return Some(Moved::Changed);
+            }
             _ => {}
         }
         None
@@ -137,6 +151,7 @@ fn label(page: &FfbPage, row: Row) -> String {
     match row {
         Row::Sensitivity => format!("Sensitivity, {}", surface(page)),
         Row::Strength => "Strength".into(),
+        Row::Smoothing => "Smoothing".into(),
         Row::UseSuggested => match page.suggested().unwrap_or(page.value) {
             p if p >= *SENSITIVITY_RANGE.end() => format!("Use suggested ({p} %, the most)"),
             p => format!("Use suggested ({p} %)"),
@@ -150,6 +165,8 @@ fn value(page: &FfbPage, row: Row) -> String {
     match row {
         Row::Sensitivity => format!("{} %{}", page.value, if page.own { "" } else { " (global)" }),
         Row::Strength => format!("{} %", page.strength),
+        Row::Smoothing if page.smoothing == 0 => "off".into(),
+        Row::Smoothing => format!("{} ms", page.smoothing),
         Row::UseSuggested | Row::Reset | Row::Done => String::new(),
     }
 }
@@ -161,11 +178,16 @@ fn help(page: &FfbPage) -> String {
                              more detail. Lower: heavier, maxes out sooner."
             .into(),
         Row::Strength => "How heavy the wheel feels, for every car.".into(),
+        Row::Smoothing => SMOOTHING_HELP.into(),
         Row::UseSuggested => "Sets Sensitivity to the suggestion. You can change it again.".into(),
         Row::Reset => "Drops this car's own sensitivity: it takes the global one.".into(),
         Row::Done => "Back to the menu.".into(),
     }
 }
+
+/// What the smoothing does, here and on the launcher's Controls page.
+pub const SMOOTHING_HELP: &str = "Takes the rattle out of the wheel, for every car. Higher: quieter, and the force \
+                                  follows the car that many ms later. Off: NGP's force as it is.";
 
 /// The advice at the sensitivity shown (`load::advice`).
 fn status(page: &FfbPage) -> String {
@@ -330,6 +352,7 @@ mod tests {
         // Reset: every car's again, once.
         p.nav(Nav::Down);
         p.nav(Nav::Down);
+        p.nav(Nav::Down);
         assert_eq!(p.nav(Nav::Select), Some(Moved::Changed));
         assert_eq!((p.value, p.own), (280, false));
         assert_eq!(p.nav(Nav::Select), None);
@@ -358,7 +381,22 @@ mod tests {
         assert_eq!(p.strength, 0);
     }
 
-    /// A page on tarmac at `value` over a load of `seconds` at x 42.5 (suggested 155 %).
+    #[test]
+    fn the_smoothing_steps_from_off_to_its_most() {
+        let mut p = FfbPage::new(0, 280, false, 280);
+        p.nav(Nav::Down);
+        p.nav(Nav::Down);
+        assert_eq!((p.row(), value(&p, Row::Smoothing)), (Row::Smoothing, "off".into()));
+        assert_eq!(p.nav(Nav::Left), None);
+        assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
+        assert_eq!((p.smoothing, value(&p, Row::Smoothing), p.strength, p.own), (5, "5 ms".into(), 100, false));
+        for _ in 0..30 {
+            p.nav(Nav::Right);
+        }
+        assert_eq!(p.smoothing, *SMOOTHING_RANGE.end());
+    }
+
+    /// A page on tarmac at `value` over a load of `seconds` at x 42.5 (suggested 100 %).
     fn page(value: i32, seconds: f32) -> FfbPage {
         let mut session = Session::load(None, Some("rsf-81".into()), &Options::default(), [100; 3]);
         let mut stored = Load::default();
@@ -372,18 +410,18 @@ mod tests {
         assert_eq!(status(&page(100, 12.5)), "Drive a bit more on tarmac to see your steering load (12/20 s)");
         assert_eq!(
             status(&page(30, 30.0)),
-            "The wheel maxes out often (100 % of your driving): raise Sensitivity to about 155 %"
+            "The wheel maxes out often (100 % of your driving): raise Sensitivity to about 100 %"
         );
         assert_eq!(
-            status(&page(100, 30.0)),
-            "Your usual cornering sits high in the wheel's range (maxed out 0 %): raise Sensitivity to about 155 %"
+            status(&page(65, 30.0)),
+            "Your usual cornering sits high in the wheel's range (maxed out 0 %): raise Sensitivity to about 100 %"
         );
         assert_eq!(
-            status(&page(220, 30.0)),
-            "Your cornering uses little of the wheel's range: lower Sensitivity to about 155 %, or raise Strength"
+            status(&page(145, 30.0)),
+            "Your cornering uses little of the wheel's range: lower Sensitivity to about 100 %, or raise Strength"
         );
         // Near the suggestion, a little below or above it, is good.
-        for value in [110, 155, 215] {
+        for value in [70, 100, 140] {
             assert_eq!(status(&page(value, 30.0)), "Good: your usual cornering sits mid-range (maxed out 0 %)");
         }
         // The graph reaches past where the wheel maxes out.
@@ -394,13 +432,16 @@ mod tests {
     fn use_suggested_is_one_select_away() {
         // Not with too little driving, nor at the suggestion already.
         assert!(!page(100, 12.5).rows().contains(&Row::UseSuggested));
-        assert!(!page(155, 30.0).rows().contains(&Row::UseSuggested));
-        let mut p = page(100, 30.0);
-        assert_eq!(p.rows(), [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Reset, Row::Done]);
+        assert!(!page(100, 30.0).rows().contains(&Row::UseSuggested));
+        let mut p = page(155, 30.0);
+        assert_eq!(
+            p.rows(),
+            [Row::Sensitivity, Row::UseSuggested, Row::Strength, Row::Smoothing, Row::Reset, Row::Done]
+        );
         p.nav(Nav::Down);
-        assert_eq!((p.row(), label(&p, Row::UseSuggested)), (Row::UseSuggested, "Use suggested (155 %)".into()));
+        assert_eq!((p.row(), label(&p, Row::UseSuggested)), (Row::UseSuggested, "Use suggested (100 %)".into()));
         assert_eq!(p.nav(Nav::Select), Some(Moved::Changed));
-        assert_eq!((p.value, p.own, p.row()), (155, true, Row::Sensitivity));
+        assert_eq!((p.value, p.own, p.row()), (100, true, Row::Sensitivity));
         assert!(!p.rows().contains(&Row::UseSuggested));
         assert_eq!(
             help(&p),
