@@ -295,6 +295,12 @@ pub struct Tyres {
 }
 
 impl Tyres {
+    /// Ours (`crate::impact`'s slide): `None` with a wheel on the ground, else whether the ground the wheels last ran
+    /// on is loose (fewer than two on a tarmac-first surface).
+    pub fn slide(&self) -> Option<bool> {
+        (!self.contact.contains(&true)).then(|| self.tarmac.iter().filter(|&&t| t).count() < 2)
+    }
+
     pub fn new(gain: f32, offroad_gain: f32, grus_samples: usize, road_surfaces: Vec<u32>) -> Tyres {
         Tyres { gain, offroad_gain, grus_count_samples: grus_samples, road_surfaces, ..Tyres::default() }
     }

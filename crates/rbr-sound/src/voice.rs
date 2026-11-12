@@ -31,6 +31,8 @@ pub enum Loop {
     Brush,
     /// Ours (`crate::impact`): the body scraping along the road or a bank (`data::CarBank::scrape`).
     Scrape,
+    /// Ours (`crate::impact`): loose ground under a body sliding on it with no wheel down (the gravel skid loop).
+    Slide,
 }
 
 /// The one-shots.
