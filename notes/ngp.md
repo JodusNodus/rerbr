@@ -284,7 +284,7 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     and at the 500 % cap in 6. Under 1 % maxed out is reached at 80-315 %, the p90 then at 0.81-0.90. At 0.65 it is
     above the setting in 8 of 22 and at the cap in 1, the wheel maxed out 0.4 % at most at the suggestion; the
     page's advice reads good for 18, lower for 3, raise for 1.
-- Smoothing (ours, 2026-11-12; `rbr_render::ffb::smooth`, `[ffb] smoothing`, 0-30 ms (user, 2026-11-12), default 0 = NGP's own, the
+- Smoothing (ours, 2026-11-12; `rbr_render::ffb::smooth`, `[ffb] smoothing`, 0-10 ms (user, 2026-11-12), default 0 = NGP's own, the
   levels sent unchanged): one pole on the magnitude in the wheel thread, by the thread's measured interval, before
   the dead zone; a pause drops it to 0 at once. Set on the launcher's Controls page and the pause menu's Force
   feedback page (live, `Wheel::set_smoothing`), for every car.

@@ -124,7 +124,7 @@ impl Options {
 pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
 
 /// The smoothing's range, ms, in the launcher and the pause menu.
-pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=30;
+pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=10;
 
 /// The smoothed level `dt` seconds after `was` with NGP's at `target` (ours): one pole with time constant `ms`,
 /// which the force then trails by about `ms`; 0 gives `target`. NGP's force carries bursts of 10 to 20 Hz, about
@@ -840,7 +840,7 @@ mod tests {
             sensitivity: [80, 100, 120],
             rotation: Some(540),
             rotation_per_car: true,
-            smoothing: 15,
+            smoothing: 8,
             ..Options::default()
         };
         o.settings.strength = 0.6;
@@ -849,7 +849,7 @@ mod tests {
         assert_eq!(Options::parse(&o.to_text()), o);
         assert_eq!(Options::parse("[controls]\nbrake = KeyB\n"), Options::default());
         assert_eq!(Options::parse("[ffb]\nstrength = 3\nrate = 0\n").settings.strength, 1.0);
-        assert_eq!(Options::parse("[ffb]\nsmoothing = 900\n").smoothing, 30);
+        assert_eq!(Options::parse("[ffb]\nsmoothing = 900\n").smoothing, 10);
         assert_eq!(
             (o.rotation_for(Some(479)), o.rotation_for(Some(565)), o.rotation_for(None)),
             (Some(479), Some(540), Some(540))
@@ -1078,9 +1078,9 @@ mod tests {
         assert_eq!(Options::parse(&text).settings.strength, 0.35);
         assert!(text.contains("[camera]\nview = chase\n") && text.contains("rsf-7 snow = 10"), "{text}");
         // The smoothing too.
-        session.set_smoothing(15);
+        session.set_smoothing(8);
         let options = Options::parse(&std::fs::read_to_string(&path).unwrap());
-        assert_eq!((options.smoothing, options.settings.strength), (15, 0.35));
+        assert_eq!((options.smoothing, options.settings.strength), (8, 0.35));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

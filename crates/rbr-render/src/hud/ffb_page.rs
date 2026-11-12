@@ -4,8 +4,9 @@
 //! ("Use the global sensitivity": the car's own dropped) and Done; a line under them says what the selected one does.
 //! Under them a graph of NGP's curve at the sensitivity shown over the player's steering load with this car on this surface
 //! (`crate::ffb::load`), the region where the wheel maxes out shaded, and one line of advice
-//! (`load::advice`). Up and Down pick a row, Left and Right change the value by [`STEP`]; the select acts on Use
-//! suggested, Reset and Done, and the back returns to the menu's first page. A change takes effect on the paused
+//! (`load::advice`). Up and Down pick a row, Left and Right change the value by [`STEP`] (the smoothing by
+//! [`SMOOTHING_STEP`]); the select acts on Use suggested, Reset and Done, and the back returns to the menu's first
+//! page. A change takes effect on the paused
 //! drive (`crate::ffb::reshape`, `Wheel::set_strength`, `Wheel::set_smoothing`) and is kept; nothing changes without
 //! the player.
 
@@ -29,6 +30,8 @@ const GRAPH: f32 = 110.0;
 
 /// One step of the sensitivity and the strength, percent.
 pub const STEP: i32 = 5;
+/// One step of the smoothing, ms.
+pub const SMOOTHING_STEP: i32 = 2;
 /// The strength's range, percent.
 const STRENGTH: RangeInclusive<i32> = 0..=100;
 
@@ -130,7 +133,8 @@ impl FfbPage {
                 return Some(Moved::Changed);
             }
             (Nav::Left | Nav::Right, Row::Smoothing) => {
-                let value = (self.smoothing + by).clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
+                let value = (self.smoothing + by.signum() * SMOOTHING_STEP)
+                    .clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
                 if value == self.smoothing {
                     return None;
                 }
@@ -389,7 +393,7 @@ mod tests {
         assert_eq!((p.row(), value(&p, Row::Smoothing)), (Row::Smoothing, "off".into()));
         assert_eq!(p.nav(Nav::Left), None);
         assert_eq!(p.nav(Nav::Right), Some(Moved::Changed));
-        assert_eq!((p.smoothing, value(&p, Row::Smoothing), p.strength, p.own), (5, "5 ms".into(), 100, false));
+        assert_eq!((p.smoothing, value(&p, Row::Smoothing), p.strength, p.own), (2, "2 ms".into(), 100, false));
         for _ in 0..30 {
             p.nav(Nav::Right);
         }
