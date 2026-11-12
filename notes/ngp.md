@@ -296,17 +296,19 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.73, 6.5; 15 ms 0.59, 3.7; 20 ms 0.49, 2.9; 30 ms 0.36, 2.0. Below 3 Hz the rms stays within
     1 % (0.4286 to 0.4267); the force trails by about the value. Two poles at the same lag did no better. Not tried
     on a wheel.
-- Curve share (ours, 2026-11-12, user: "how much we follow the ngp curve"; `rbr_render::ffb::shape`, `[ffb] curve`,
-  0-100 %, default 100 = NGP's own, the force sent unchanged): the wheel's force is that share of NGP's curve and
-  the rest of a line in the steering torque, `0.65 x / x(0.65, p)` from the curve inverted, equal to the curve at
-  force 0.65 (`load::TARGET`) and held at 1 from 1.54 times that torque, where the curve gives 0.80. Set on the
-  launcher's Controls page and the pause menu's Force feedback page (live, `Wheel::set_curve`), for every car.
+- Linearity (ours, 2026-11-12, user: default NGP's curve, the player can straighten it; `rbr_render::ffb::shape`,
+  `[ffb] linearity`, 0-100 %, default 0 = off, NGP's force sent unchanged): the wheel's force is that share of a
+  line in the steering torque and the rest of NGP's curve. The line is `0.65 x / x(0.65, p)` from the curve
+  inverted, equal to the curve at force 0.65 (`load::TARGET`) and held at 1 from 1.54 times that torque, where the
+  curve gives 0.80. Set on the launcher's Controls page and the pause menu's Force feedback page (live,
+  `Wheel::set_linearity`), for every car.
   - Why: the curve flattens what the steering loses towards the limit of grip (a quarter less torque from force
     0.65 is 16 % less force, from 0.82 12 %, from 0.95 6 %); the line keeps it whole, is lighter on small loads and
     reaches full force sooner.
-  - The sensitivity still sets the level and its suggestion is the same (both meet at 0.65); the page's graph,
-    "maxed out" and advice follow the share (`load::shaped`, `load::maxed_from`). The HUD's force and the stored
-    load stay NGP's. Not tried on a wheel.
+  - The sensitivity still sets the level (both meet at 0.65). The page's graph, "maxed out" and advice follow the
+    linearity (`load::shaped`, `load::maxed_from`), and the suggestion (`load::suggested`) is the p90 at 0.65 raised
+    by 5 until the wheel maxes out under 5 % at it, so "raise to X" never names a percentage that still maxes out
+    often. The HUD's force and the stored load stay NGP's. Not tried on a wheel.
 - Trials (ours, 2026-11-12; `rerbr --ffb-aligning W`, `rerbr --ffb-breakdown DIR`, for the session, never saved, not
   on any page):
   - `--ffb-aligning W` (`rbr-standalone --ffb-aligning`, with `--live`, 0-5, 1 = NGP's; `steer_log::Aligning`): the
