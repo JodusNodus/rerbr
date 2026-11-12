@@ -2052,6 +2052,43 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
   0.3-0.7 (not read per wheel). Open: which of the two is the real car's (no channel gives the wheels' slip in a turn or
   the steering). loose-v1's side force at those slips is 0.51-0.97 of NGP's, its force along the slip ("Gravel's
   braking against slip on seven rallies").
+- Braking in a turn with the throttle shut, the crews against the pads (2026-11-12; the item above's windows with the
+  pedals: the brake on over 0.6 of the 2 s, the throttle over 20 in under a tenth of its samples; scratch. The pads:
+  `brake_turn.py` on material 49 as above and on pad-37 from 0.8 / 1.0 / 1.15 / 1.25 g, 72 runs a tyre, each by the
+  deceleration and lateral g of its first 0.5 s on the pedal, its largest true sideslip to 30 km/h; NGP's tyre / the
+  brush). Sideslip p50 / p75 / p90 of the crews' windows, an estimate that spreads ± 7° on tarmac: Finland 2021 at
+  0.5-0.7 g of braking and 0.3-0.6 g of lateral 13 / 21 / 27° (n 113), 0.7-0.9 g 10 / 15 / 23° (53), 0.9 g up 8 / 12 /
+  16° (23), whole g 0.90 / 1.00 (p50 / p90) at 0.7-0.9; España 2021 at 0.7-0.9 g and 0.6-0.9 g of lateral 3 / 14 / 19°
+  (147), 0.9 g up 3 / 9 / 16° (36), Deutschland 2019 -1 / 11 / 17° (34) and Croatia 2021 1 / 11 / 20° (29) at 0.7-0.9, 8
+  windows each at 0.9 up; at 0.9 g up and 0.3-0.6 g of lateral 7 / 15 / 24°, 7 / 11 / 17° and 5 / 7 / 16° (131, 52, 34).
+  With the throttle held under the brake the crews' sideslip is the same or larger (Finland 0.7-0.9 g: 14 / 27 / 34°),
+  the pedals of a wanted slide. The pads, gravel: 0.5-0.7 g and 0.3-0.6 g of lateral 6° (5-12) / 13° (6-18), none past
+  45°; 0.7-0.9 g 15° (7-32), 0 of 26 past 45° and 14 over 2 m wide / 42° (8-69), 9 of 22; 0.9 g up 14° (12-37), 0 of 7 /
+  56° (37-78), 6 of 7; by the crews' windows 0.7 g up reads 17 / 21 / 26° and 21 / 25 / 28°. Tarmac: 0.7-0.9 g with
+  0.6-0.9 g of lateral 3.5° (3-7) / 2° (2-2), none past 45°; 0.9-1.1 g with 0.6-0.9 g 7° (4-28), 0 of 5 / 35° (3-88), 3
+  of 7; 1.1 g up with 0.3-0.6 g 9° (4-18), 0 of 17 and 8 wide / 34° (6-59), 2 of 6. So to 0.7 g of braking on gravel and
+  0.9 g on tarmac both tyres' cars keep the crews' attitude; above, the real cars stay at 3-10° where NGP's tyre keeps
+  7-15° and runs wide and the brush turns 34-56° and spins in a third to nine tenths of the runs: the open point of the
+  item above falls on NGP's side. Not like for like: a pad run holds its pedal to a standstill, a crew modulates; the
+  user's own drives hold under 20 such windows.
+- Tarmac's cornering by speed (2026-11-12; the crews: the accelerometer's lateral g, 0.5 s means with under 0.3 g along
+  the car, over 0.5 g, by the speed channel, 240-20000 samples a band; the game: `handling.py --only ramp --speed`,
+  pad-37, i20 Coupe WRC 2020). The crews' p95 at 60-80 / 100-120 / 140-160 / 160-180 km/h: España 2021 1.54 / 1.49 /
+  1.45 / 1.42 (p99 1.72 / 1.71 / 1.65 / 1.63), Catalunya 2019 1.48 / 1.44 / 1.37 / 1.36, Corsica 2019 1.42 / 1.38 / 1.34
+  / 1.30, Deutschland 2019 1.31 / 1.35 / 1.36 / 1.31, Croatia 2021 1.25 / 1.34 / 1.31 / 1.30: 0.92-1.05 of the 60-80
+  band at 140-160, per driver 0.83-1.10 (140-180 over 60-100). The ramp steer's peak at 60 / 90 / 120 / 150 / 175 km/h:
+  experimental-brush 1.16 / 1.20 / 1.29 / 1.36 / 1.42 (1.22 times), ngp on the file's aero 1.17 / 1.28 / 1.38 / 1.49 /
+  1.58 (1.35 times). A band's quantile is what the crews use, a lower bound of the limit, so the rise is not ruled out,
+  but no tarmac rally shows it, and España's 1.5 g at 190 km/h on RSF 476's road is its level at every speed, not its
+  downforce. Not changed.
+- The brake pedal on tarmac (2026-11-12; `handling.py --only brake`, pad-37, i20 Coupe WRC 2020, experimental-brush; the
+  user's replays of the same day). Straight from 80 / 150 km/h: 0.92 / 0.98 g at 0.5 of the pedal, 1.07 / 1.13 at 0.6,
+  1.24 / 1.30 at 0.7, 1.32 / 1.46 at 0.8, then the wheels lock: 1.03 / 1.17 at 0.9 and 1.01 / 1.00 at full (gravel,
+  material 49: 0.70 g at 0.6, 0.85 at 0.8, 0.89 at full, no fall). The user's pedal where it holds within 0.05 for 0.7 s
+  reads the same (RSF 1976965: 0.92 g at 0.5, 1.20 at 0.6, 20 windows), and it reaches 1.00, so neither a curve nor the
+  pedal's travel is in the way; the braking events' peak pedal is p50 / p90 0.56 / 0.65 on RSF 476 (max 0.73), 0.55 /
+  0.66 on 1976965, 0.63 / 0.75 on RSF 524: the car's best stop lies 0.15-0.25 of the pedal further, 0.1 short of the
+  lock.
 - Lateral g at the apexes, tarmac and gravel by one reading (2026-11-10; scratch: the path's speed minima, 3 m/s under
   the speed 3 s either side, lateral g = speed × course rate over ± 0.5 s; p50 / p75 / p90 at 60-80 km/h apexes,
   151-2116 apexes each). Tarmac: España 2021 1.26 / 1.39 / 1.49, Catalunya 2019's tarmac days 1.25 / 1.35 / 1.43
