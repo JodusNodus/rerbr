@@ -20,6 +20,7 @@ use rbr_gameplay::race_options::DriverAids;
 use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
+use rbr_render::hud::ffb_page::SMOOTHING_HELP;
 use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
 
@@ -56,8 +57,9 @@ const SHIFTER: [(Action, &str); 9] = [
 /// How often the joysticks are looked for again while nothing is being set (a wheel plugged in).
 const RESCAN: Duration = Duration::from_secs(2);
 
-/// The force feedback: on or off, the strength, the direction and NGP's sensitivity per surface. The strength is
-/// written to the settings file at once, as the pause menu's Force feedback page does while driving.
+/// The force feedback: on or off, the strength, the direction, the smoothing and NGP's sensitivity per surface. The
+/// strength and the smoothing are written to the settings file at once, as the pause menu's Force feedback page does
+/// while driving.
 fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut ffb.settings.enabled, "on");
@@ -65,9 +67,21 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
             let strength =
                 ui.add(DragValue::new(&mut ffb.settings.strength).range(0.0..=1.0).speed(0.01).prefix("strength "));
             if strength.on_hover_text(STRENGTH_HELP).changed() && !read_only {
-                write_strength(settings, ffb.settings.strength);
+                write_ffb(settings, "strength", &ffb.settings.strength.to_string());
             }
             ui.checkbox(&mut ffb.settings.inverse, "inverse");
+            // "off" at 0, else the milliseconds; typed in with or without the unit.
+            let smoothing = DragValue::new(&mut ffb.smoothing)
+                .range(ffb::SMOOTHING_RANGE)
+                .prefix("smoothing ")
+                .custom_formatter(|ms, _| if ms == 0.0 { "off".into() } else { format!("{ms} ms") })
+                .custom_parser(|text| match text.trim().trim_end_matches("ms").trim() {
+                    "off" => Some(0.0),
+                    ms => ms.parse().ok(),
+                });
+            if ui.add(smoothing).on_hover_text(SMOOTHING_HELP).changed() && !read_only {
+                write_ffb(settings, "smoothing", &ffb.smoothing.to_string());
+            }
         });
     });
     ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
@@ -82,10 +96,10 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
     });
 }
 
-/// Writes the strength into the settings file's `[ffb]`, the rest of the file kept.
-fn write_strength(settings: &Path, strength: f32) {
+/// Writes `key` (the strength, the smoothing) into the settings file's `[ffb]`, the rest of the file kept.
+fn write_ffb(settings: &Path, key: &str, value: &str) {
     let file = std::fs::read_to_string(settings).unwrap_or_default();
-    let text = rbr_formats::ini::set_value(&file, "ffb", "strength", &strength.to_string());
+    let text = rbr_formats::ini::set_value(&file, "ffb", key, value);
     if let Err(e) = std::fs::write(settings, text) {
         eprintln!("launcher: {}: {e}", settings.display());
     }

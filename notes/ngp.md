@@ -276,6 +276,18 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     "suggested" (a hint, set only by the player's "Use suggested") puts the 90th percentile at force 0.5 (`p = 100 x ln 0.975 / ln 0.5` ≈ 3.653 x, to 5 %, within 10-500 %). Check (autopilot,
     map 41 tarmac and RSF 104 gravel, 6 cars, 150000 steps, `stage_runs.py`): the p90 is 0.66-0.75 (tarmac) and
     0.70-0.84 (gravel) of the car's circle `x` at 0.5 g, within about ±10 % against the raw 4×.
+- Smoothing (ours, 2026-11-12; `rbr_render::ffb::smooth`, `[ffb] smoothing`, 0-40 ms, default 0 = NGP's own, the
+  levels sent unchanged): one pole on the magnitude in the wheel thread, by the thread's measured interval, before
+  the dead zone; a pause drops it to 0 at once. Set on the launcher's Controls page and the pause menu's Force
+  feedback page (live, `Wheel::set_smoothing`), for every car.
+  - Why: NGP's force carries bursts of 10-20 Hz at about ±0.1-0.15 of full force under a smooth steering input
+    (drive2/5, Focus WRC 06 on snow, S 280, above 5 m/s, 720 Hz trace: rms 0.044 at 8-30 Hz and 0.053 at 3-8 Hz
+    against 0.43 below 3 Hz; 12.6 reversals/s over 0.05). RSF sent the same values (`rsf_compare` ffb, exact), so it
+    is NGP's.
+  - Effect on that trace (thread at 1.08 ms; 8-30 Hz rms over NGP's, reversals/s over 0.05): 5 ms 0.90, 8.8; 10 ms
+    0.73, 6.5; 15 ms 0.59, 3.7; 20 ms 0.49, 2.9; 30 ms 0.36, 2.0; 40 ms 0.28, 1.7. Below 3 Hz the rms stays within
+    1 % (0.4286 to 0.4254); the force trails by about the value. Two poles at the same lag did no better. Not tried
+    on a wheel.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only
