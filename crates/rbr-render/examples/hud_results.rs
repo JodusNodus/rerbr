@@ -49,8 +49,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         ..Default::default()
     };
     let mut readout = Readout {
-        view: "chase",
-        view_keys: String::new(),
         time: 238.0,
         speed: 0.0,
         mph: false,

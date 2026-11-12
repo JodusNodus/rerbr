@@ -3,7 +3,6 @@
 use crate::args::HudOptions;
 use crate::scene::Scene;
 use glam::{Mat4, Vec3};
-use rbr_render::bindings::{Action, Bindings};
 use rbr_render::camera::{FreeFly, Lens};
 use rbr_render::characters::incar::Crew;
 use rbr_render::characters::scripted::Event;
@@ -105,28 +104,24 @@ pub fn step_characters(
 }
 
 /// The HUD's values for the frame shown: the live process's gear, engine speed and speed when there is one (the
-/// recordings have the speed only), and the controls fed to the frame's step; `bindings` name the camera keys.
+/// recordings have the speed only), and the controls fed to the frame's step; `ghost` is the time behind the ghost
+/// (`ghost::Session::gap`), shown while the race runs.
 pub fn readout(
     playback: &Playback,
     live: Option<&Live>,
-    view: Shown,
-    bindings: &Bindings,
+    ghost: Option<f32>,
     hud: HudOptions,
     fps: Option<f32>,
 ) -> Readout {
-    let label = |action| bindings.get(action).label();
     let sample = playback.sample();
     let [throttle, brake, handbrake, clutch, steering, ..] = sample.control;
     let options = hud;
     let hud = live.map(|l| l.hud);
     let trace = options.parts.shows(Part::Trace).then(|| telemetry::trace(playback.recent(telemetry::TRACE_SECONDS)));
-    let g_force = options.parts.shows(Part::Gforce).then(|| {
-        let (from, first) = playback.recent(telemetry::G_SECONDS).next()?;
-        telemetry::g_force(&first.car, &sample.car, playback.time() - from)
-    });
+    let splits = live.and_then(|l| l.splits.clone());
+    let racing =
+        hud.and_then(|h| h.race).is_none_or(|race| race.running) && !splits.as_ref().is_some_and(|s| s.finished);
     Readout {
-        view: view.name(),
-        view_keys: label(Action::Camera),
         time: playback.time(),
         speed: hud.map_or(sample.car.speed(), |h| h.speed),
         mph: options.mph,
@@ -139,10 +134,10 @@ pub fn readout(
         clutch,
         steering,
         race: hud.and_then(|h| h.race),
-        splits: live.and_then(|l| l.splits.clone()),
+        ghost_gap: ghost.filter(|_| racing),
+        splits,
         state: live.map(Live::hud_view).unwrap_or_default(),
         trace: trace.unwrap_or_default(),
-        g_force: g_force.flatten(),
         parts: options.parts,
         layout: options.layout,
     }

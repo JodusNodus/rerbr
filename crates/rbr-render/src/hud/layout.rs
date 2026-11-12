@@ -43,9 +43,8 @@ impl Part {
             Part::Clock | Part::Splits => Align2::LEFT_TOP,
             Part::Progress | Part::Pace => Align2::CENTER_TOP,
             Part::Messages => Align2::CENTER_CENTER,
-            Part::View => Align2::RIGHT_TOP,
             Part::Car | Part::Trace => Align2::LEFT_BOTTOM,
-            Part::Dash | Part::Inputs | Part::Tyres | Part::Gforce => Align2::RIGHT_BOTTOM,
+            Part::Dash | Part::Inputs | Part::Tyres => Align2::RIGHT_BOTTOM,
         }
     }
 }
@@ -58,6 +57,9 @@ impl Layout {
             let wrong = || format!("HUD layout {item}: PART:X,Y");
             let (name, offset) = item.split_once(':').ok_or_else(wrong)?;
             let (x, y) = offset.split_once(',').ok_or_else(wrong)?;
+            if Part::RETIRED.contains(&name) {
+                continue;
+            }
             let part = movable().find(|p| p.name() == name).ok_or(format!("no movable HUD part {name}"))?;
             layout.offsets[part as usize] =
                 [x.trim().parse().map_err(|_| wrong())?, y.trim().parse().map_err(|_| wrong())?];
@@ -66,12 +68,20 @@ impl Layout {
     }
 
     /// The moved parts as [`Layout::parse`] reads them, or `None` when every part is in its place.
-    pub fn moved(&self) -> Option<String> {
+    pub fn list(&self) -> Option<String> {
         let items: Vec<String> = movable()
             .filter(|p| self.offsets[*p as usize] != [0; 2])
             .map(|p| format!("{}:{},{}", p.name(), self.offsets[p as usize][0], self.offsets[p as usize][1]))
             .collect();
         (!items.is_empty()).then(|| items.join(";"))
+    }
+
+    /// The layout with `part`, drawn at `bounds`, moved by `by` and kept on `screen`.
+    pub fn moved(mut self, part: Part, bounds: Rect, by: Vec2, screen: Rect) -> Layout {
+        let by = by + inside(bounds.translate(by), screen);
+        let [x, y] = &mut self.offsets[part as usize];
+        (*x, *y) = (*x + by.x.round() as i16, *y + by.y.round() as i16);
+        self
     }
 
     /// Where the look's `bounds` of `part` on `screen` go: scaled about the part's pivot, moved by its offset, and
@@ -112,10 +122,12 @@ mod tests {
     #[test]
     fn a_layout_round_trips_through_its_list() {
         assert_eq!(Layout::parse(""), Ok(Layout::default()));
-        assert_eq!(Layout::default().moved(), None);
+        assert_eq!(Layout::default().list(), None);
         let layout = Layout::parse("dash:-40,0;clock:12,-3").unwrap();
         assert_eq!(layout.offsets[Part::Dash as usize], [-40, 0]);
-        assert_eq!(layout.moved().as_deref(), Some("clock:12,-3;dash:-40,0"));
+        assert_eq!(layout.list().as_deref(), Some("clock:12,-3;dash:-40,0"));
+        // A part the HUD had names nothing.
+        assert_eq!(Layout::parse("g:5,5;dash:-40,0;clock:12,-3"), Ok(layout));
         assert!(Layout::parse("inputs:1,1").is_err() && Layout::parse("dash:1").is_err());
     }
 
@@ -132,5 +144,8 @@ mod tests {
         layout.offsets[Part::Dash as usize] = [-100, 500];
         let placed = layout.place(Part::Dash, dial, screen) * dial;
         assert_eq!((placed.min.x, placed.max.y), (772.0, 720.0));
+        // Dragged 100 left and 50 down, it goes the 20 down the screen has.
+        let dragged = Layout::default().moved(Part::Dash, dial, Vec2::new(-100.0, 50.0), screen);
+        assert_eq!(dragged.offsets[Part::Dash as usize], [-100, 20]);
     }
 }

@@ -1,9 +1,8 @@
 //! The telemetry cards along the bottom, each only when its part is shown (`crate::hud::telemetry`), clear of the
-//! chase view's car in the middle: from the dial leftwards the tyres' temperatures as the car from above and the
-//! g-force as a dot in a 2 g circle (it goes where the car accelerates: up on the throttle, down on the brakes, to the
-//! side it turns to), and at the bottom left the trace of the pedals and the steering, the newest at the right. Ours.
+//! chase view's car in the middle: beside the dial the tyres' temperatures, with the tread worn under each, as the car
+//! from above, and at the bottom left the trace of the pedals and the steering, the newest at the right. Ours.
 
-use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Stroke, Vec2};
+use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 
 use super::dial::{BRAKE, CLUTCH, HANDBRAKE, THROTTLE};
 use super::{caption, DIM, MARGIN, PANEL, RADIUS, TEXT};
@@ -17,8 +16,6 @@ const GAP: f32 = 8.0;
 const TOP: f32 = 20.0;
 const TRACE_WIDTH: f32 = 300.0;
 const TYRES_WIDTH: f32 = 92.0;
-/// The g-force at the circle's rim.
-const G_RIM: f32 = 2.0;
 /// A tyre at its best temperature, too cold and too hot.
 const BEST: Color32 = Color32::from_rgb(60, 170, 90);
 const COLD: Color32 = Color32::from_rgb(60, 120, 220);
@@ -33,15 +30,12 @@ fn card(painter: &Painter, screen: Rect, right: f32, width: f32, name: &str) -> 
     Rect::from_min_max(rect.min + Vec2::new(8.0, TOP), rect.max - Vec2::splat(8.0))
 }
 
-/// The right edge of the first card, left of `dial`, the left edge of what stands at the bottom right.
-fn beside(screen: Rect, dial: f32) -> f32 {
-    dial.min(screen.max.x - MARGIN + GAP) - GAP
-}
-
-/// The tyres' card beside `dial` ([`Part::Tyres`]); the left edge of what now stands at the bottom right.
-pub fn tyres(painter: &Painter, screen: Rect, dial: f32, r: &Readout) -> f32 {
-    let Some(tyres) = r.state.tyres.filter(|_| r.parts.shows(Part::Tyres)) else { return dial };
-    let inner = card(painter, screen, beside(screen, dial), TYRES_WIDTH, "tyres °C");
+/// The tyres' card ([`Part::Tyres`]) left of `dial`, the left edge of what stands at the bottom right.
+pub fn tyres(painter: &Painter, screen: Rect, dial: f32, r: &Readout) {
+    let Some(tyres) = r.state.tyres.filter(|_| r.parts.shows(Part::Tyres)) else { return };
+    let right = dial.min(screen.max.x - MARGIN + GAP) - GAP;
+    let inner = card(painter, screen, right, TYRES_WIDTH, "tyres °C");
+    let small = Color32::from_white_alpha(190);
     let size = (inner.size() - Vec2::splat(4.0)) / 2.0;
     for (w, tyre) in tyres.iter().enumerate() {
         let at = inner.min + Vec2::new((w % 2) as f32, (w / 2) as f32) * (size + Vec2::splat(4.0));
@@ -52,27 +46,11 @@ pub fn tyres(painter: &Painter, screen: Rect, dial: f32, r: &Readout) -> f32 {
         };
         let to = if view.heat < 0.0 { COLD } else { HOT };
         painter.rect_filled(tile, 3.0, BEST.lerp_to_gamma(to, view.heat.abs()));
-        let text = format!("{:.0}", view.celsius);
-        painter.text(tile.center(), Align2::CENTER_CENTER, text, FontId::proportional(14.0), TEXT);
+        let (at, text) = (tile.center() - Vec2::new(0.0, 5.0), format!("{:.0}", view.celsius));
+        painter.text(at, Align2::CENTER_CENTER, text, FontId::proportional(14.0), TEXT);
+        let (at, text) = (tile.center() + Vec2::new(0.0, 9.0), format!("{:.1}%", view.worn));
+        painter.text(at, Align2::CENTER_CENTER, text, FontId::proportional(9.0), small);
     }
-    inner.min.x - 8.0
-}
-
-/// The g-force's card beside `dial` ([`Part::Gforce`]).
-pub fn g_force(painter: &Painter, screen: Rect, dial: f32, r: &Readout) {
-    let Some([side, forward]) = r.g_force.filter(|_| r.parts.shows(Part::Gforce)) else { return };
-    let inner = card(painter, screen, beside(screen, dial), HEIGHT, "g-force");
-    let (centre, radius) = (inner.center(), inner.height() / 2.0);
-    let ring = Stroke::new(1.0, Color32::from_white_alpha(45));
-    painter.circle_stroke(centre, radius, ring);
-    painter.circle_stroke(centre, radius / G_RIM, ring);
-    painter.line_segment([centre - Vec2::new(radius, 0.0), centre + Vec2::new(radius, 0.0)], ring);
-    painter.line_segment([centre - Vec2::new(0.0, radius), centre + Vec2::new(0.0, radius)], ring);
-    let g = Vec2::new(side, -forward);
-    let dot = centre + g / g.length().max(G_RIM) * radius;
-    painter.circle_filled(dot, 4.0, TEXT);
-    let at = Pos2::new(inner.max.x, inner.min.y - 14.0);
-    painter.text(at, Align2::RIGHT_TOP, format!("{:.1}", g.length()), FontId::proportional(11.0), TEXT);
 }
 
 /// The trace's card at the bottom left ([`Part::Trace`]); the bottom of what is left of the screen's left side.

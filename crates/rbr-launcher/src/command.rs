@@ -325,7 +325,7 @@ impl ViewerLaunch {
         if hud.layout.scale != 100 {
             args.extend(["--hud-scale".into(), hud.layout.scale.to_string()]);
         }
-        if let Some(list) = hud.layout.moved() {
+        if let Some(list) = hud.layout.list() {
             args.extend(["--hud-layout".into(), list]);
         }
         if let Some(path) = bindings {
@@ -1115,7 +1115,7 @@ mod tests {
                 fps: true,
                 stack: 3,
                 dials: false,
-                parts: Parts::hiding("inputs,view").unwrap().with("trace", true).unwrap(),
+                parts: Parts::hiding("inputs,car").unwrap().with("trace", true).unwrap(),
                 layout: Layout { scale: 125, ..Layout::parse("dash:-40,0").unwrap() },
             },
             graphics: Quality::Low.graphics(false),
@@ -1130,7 +1130,7 @@ mod tests {
         assert_eq!(
             args.join(" "),
             "track-54_O --car COROLLA --weather wet --size 1280x720 --fov 65 --chase-fov 65 --volume 0.5 --volumes 0.5,1,1.5,2 --no-codriver \
-             --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hud-hide inputs,view --hud-show trace --hud-scale 125 --hud-layout dash:-40,0 --bindings /l/launcher-settings.ini \
+             --no-hud --mph --wipers continuous --fps --pace-stack 3 --no-dials --hud-hide inputs,car --hud-show trace --hud-scale 125 --hud-layout dash:-40,0 --bindings /l/launcher-settings.ini \
              --cameras /l/launcher-settings.ini --enhance anisotropy,decals,water --live /b/rbr-standalone --live --boot --weather 2 --wear worn --tyre 5 \
              --stage track-54_O --car 6 --data /d --callout-distance 4 --marker-threshold 25 \
              --damage safe --auto-gears off --gear-guard on --neutral-lock off --clutch-help on --setup /l/setup-current.lsp"

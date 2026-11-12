@@ -67,7 +67,7 @@ pub enum Part {
     Progress,
     /// The pace-note symbol of each call.
     Pace,
-    /// A passed split's time and difference.
+    /// A passed split's time and difference, and the gap to the ghost.
     Splits,
     /// The rev dial, gear, speed, engine speed, water temperature and turbo pressure.
     Dash,
@@ -77,18 +77,16 @@ pub enum Part {
     Car,
     /// The stand-still and car-problem messages.
     Messages,
-    /// The camera view's name.
-    View,
-    /// The tyres' temperatures (`telemetry`; live drives).
+    /// The tyres' temperatures and wear (`telemetry`; live drives).
     Tyres,
     /// The trace of the pedals and the steering over the last seconds.
     Trace,
-    /// The car's acceleration in g.
-    Gforce,
 }
 
 impl Part {
-    pub const ALL: [Part; 12] = [
+    /// The names of parts the HUD had (the camera's name, the g-force): kept settings that name one still load.
+    pub const RETIRED: [&str; 2] = ["view", "g"];
+    pub const ALL: [Part; 10] = [
         Part::Clock,
         Part::Progress,
         Part::Pace,
@@ -97,10 +95,8 @@ impl Part {
         Part::Inputs,
         Part::Car,
         Part::Messages,
-        Part::View,
         Part::Tyres,
         Part::Trace,
-        Part::Gforce,
     ];
 
     /// The part's name in `--hud-hide` and `--hud-show`.
@@ -114,10 +110,8 @@ impl Part {
             Part::Inputs => "inputs",
             Part::Car => "car",
             Part::Messages => "messages",
-            Part::View => "view",
             Part::Tyres => "tyres",
             Part::Trace => "trace",
-            Part::Gforce => "g",
         }
     }
 
@@ -132,16 +126,14 @@ impl Part {
             Part::Inputs => "Pedals, steering",
             Part::Car => "Car state",
             Part::Messages => "Messages",
-            Part::View => "Camera name",
-            Part::Tyres => "Tyre temperatures",
+            Part::Tyres => "Tyres",
             Part::Trace => "Input trace",
-            Part::Gforce => "G-force",
         }
     }
 
     /// Whether the part shows unless hidden: every part but the telemetry.
     pub const fn by_default(self) -> bool {
-        !matches!(self, Part::Tyres | Part::Trace | Part::Gforce)
+        !matches!(self, Part::Tyres | Part::Trace)
     }
 }
 
@@ -165,9 +157,10 @@ impl Parts {
         Parts::default().with(list, false)
     }
 
-    /// These parts with those `list` names, comma-separated, shown (`--hud-show`) or hidden (`--hud-hide`).
+    /// These parts with those `list` names, comma-separated, shown (`--hud-show`) or hidden (`--hud-hide`); a
+    /// [`Part::RETIRED`] name names nothing.
     pub fn with(mut self, list: &str, shown: bool) -> Result<Parts, String> {
-        for name in list.split(',').filter(|n| !n.is_empty()) {
+        for name in list.split(',').filter(|n| !n.is_empty() && !Part::RETIRED.contains(n)) {
             let part = Part::ALL.into_iter().find(|p| p.name() == name).ok_or(format!("no HUD part {name}"))?;
             self.0[part as usize] = shown;
         }
@@ -194,10 +187,6 @@ impl Parts {
 /// What the HUD shows.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Readout {
-    /// The camera view's name.
-    pub view: &'static str,
-    /// The binding that changes it (`C`), or empty.
-    pub view_keys: String,
     /// Drive time at the shown frame, seconds: shown only without a race clock (playback).
     pub time: f64,
     /// The car's speed, m/s.
@@ -220,12 +209,13 @@ pub struct Readout {
     pub race: Option<RaceHud>,
     /// The live process's split record, when it sends one (`splits`).
     pub splits: Option<Splits>,
+    /// The time behind the ghost (negative ahead of it) where the car is on the road, s (`crate::ghost`); `None`
+    /// without a ghost near.
+    pub ghost_gap: Option<f32>,
     /// The live HUD's state (`model`); empty in playback.
     pub state: HudView,
-    /// The controls over the last seconds, oldest first, and the car's acceleration to the right and forward, g
-    /// (`telemetry`); empty and `None` while their parts are hidden.
+    /// The controls over the last seconds, oldest first (`telemetry`); empty while the part is hidden.
     pub trace: Vec<telemetry::TracePoint>,
-    pub g_force: Option<[f32; 2]>,
     /// The parts shown, and where and how large.
     pub parts: Parts,
     pub layout: layout::Layout,
@@ -335,6 +325,11 @@ impl Overlay {
         }
     }
 
+    /// The HUD's look, for where it drew its parts ([`Hud::bounds`]).
+    pub fn hud(&self) -> &dyn Hud {
+        &*self.hud
+    }
+
     /// Lays the HUD out in the part `region` of the targets (x, y, width and height in pixels: a spanned triple
     /// display's centre screen, `crate::triple`), `None` all of them.
     pub fn set_region(&mut self, region: Option<[u32; 4]>) {
@@ -431,12 +426,13 @@ mod tests {
         assert!(!parts.shows(Part::Clock) && !parts.shows(Part::Inputs) && parts.shows(Part::Dash));
         assert_eq!(parts.hidden().as_deref(), Some("clock,inputs"));
         assert!(Parts::hiding("speedo").is_err());
+        assert_eq!(Parts::hiding("view,g"), Ok(Parts::default()));
         // The telemetry parts are off unless shown, and listed only then.
         assert!(!Parts::default().shows(Part::Tyres) && Parts::default().shown().is_none());
-        let parts = parts.with("tyres,g", true).unwrap();
-        assert!(parts.shows(Part::Tyres) && parts.shows(Part::Gforce) && !parts.shows(Part::Trace));
-        assert_eq!((parts.hidden().as_deref(), parts.shown().as_deref()), (Some("clock,inputs"), Some("tyres,g")));
-        assert_eq!(parts.with("g", false).unwrap().shown().as_deref(), Some("tyres"));
+        let parts = parts.with("tyres,trace", true).unwrap();
+        assert!(parts.shows(Part::Tyres) && parts.shows(Part::Trace));
+        assert_eq!((parts.hidden().as_deref(), parts.shown().as_deref()), (Some("clock,inputs"), Some("tyres,trace")));
+        assert_eq!(parts.with("trace", false).unwrap().shown().as_deref(), Some("tyres"));
     }
 
     #[test]

@@ -296,6 +296,32 @@ impl App {
         }
     }
 
+    /// On the HUD page the pointer takes the part under it (`pressed`), or lets go of the one it held, which keeps
+    /// its place; whether it holds one.
+    pub fn hud_hold(&mut self, pressed: bool) -> bool {
+        if !pressed {
+            if self.grab.take().is_some() {
+                self.hud_changed();
+            }
+            return false;
+        }
+        let (pointer, hud) = (self.results_pointer(), self.running.overlay.hud());
+        self.grab = match (self.menu.as_mut().and_then(PauseMenu::hud_mut), pointer) {
+            (Some(page), Some((screen, pointer))) => page.grab(hud, screen, pointer),
+            _ => None,
+        };
+        self.grab.is_some()
+    }
+
+    /// The held part follows the pointer.
+    pub fn hud_drag(&mut self) {
+        let (grab, pointer) = (self.grab, self.results_pointer());
+        let page = self.menu.as_mut().and_then(PauseMenu::hud_mut);
+        if let (Some(grab), Some(page), Some((screen, pointer))) = (grab, page, pointer) {
+            page.drag(&grab, screen, pointer);
+        }
+    }
+
     /// Shows the parts, places and size the HUD page set, and writes them to the file as the launcher's keys, which
     /// it passes the next drive.
     fn hud_changed(&mut self) {
@@ -311,7 +337,7 @@ impl App {
         if page.layout != hud.layout {
             hud.layout = page.layout;
             cameras.save_setting("hud_scale", &page.layout.scale.to_string());
-            cameras.save_setting("hud_layout", &page.layout.moved().unwrap_or_default());
+            cameras.save_setting("hud_layout", &page.layout.list().unwrap_or_default());
         }
     }
 

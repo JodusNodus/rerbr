@@ -203,7 +203,7 @@ pub fn screenshot(scene: &mut Scene, args: &Args, data: &Data, path: &Path) -> R
             .playback
             .as_ref()
             .filter(|_| scene.hud.show && demo_ride.is_none())
-            .map(|p| readout(p, scene.live.as_ref(), shown, &args.bindings, scene.hud, None))
+            .map(|p| readout(p, scene.live.as_ref(), scene.ghost.as_ref().and_then(|g| g.gap()), scene.hud, None))
             .map(|r| if sampled.is_some() { hud_page::sample(r) } else { r });
         let mut overlay = Overlay::with_hud(&gpu.device, format, Box::new(Stock::new(data)));
         // The probes show a first frame's sky and shadows (as the window's load draws them).

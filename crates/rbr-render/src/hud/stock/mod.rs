@@ -1,9 +1,10 @@
 //! Our HUD's look (decision 2026-10-17: modern and simple, with every feature of the original; the layout after EA
-//! WRC): the clock at the top left with a passed split under it and the stage's progress across the top (`top`,
-//! `splits`), the view and frame rate at the top right, the pace note, result panels and the race's calls in the
-//! middle (`centre`, `splits`, `countdown`), the dial at the bottom right (`dial`), the car's status at the bottom left
-//! (`car_status`) and the telemetry the player asked for beside the dial and under the status (`telemetry`). Shapes
-//! and the default font, not the minidash or digidash art; the pace notes are the game's sprites (`pace`).
+//! WRC): the clock at the top left with the gap to the ghost and a passed split under it and the stage's progress
+//! across the top (`top`, `splits`), the frame rate at the top right, the pace note, result panels and the race's
+//! calls in the middle (`centre`, `splits`, `countdown`), the dial at the bottom right (`dial`), the car's status at
+//! the bottom left (`car_status`) and the telemetry the player asked for beside the dial and under the status
+//! (`telemetry`). Shapes and the default font, not the minidash or digidash art; the pace notes are the game's sprites
+//! (`pace`).
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 
@@ -58,25 +59,24 @@ impl Hud for Stock {
             bounds[part as usize] = placed(painter, screen, &r.layout, part, paint);
         };
 
-        // Top right: the rendered frames per second, when the viewer measures them, and the view. Ours.
-        part(Part::View, &mut || {
-            let mut at = Pos2::new(screen.max.x - MARGIN, screen.min.y + MARGIN);
-            if let Some(fps) = r.fps {
-                painter.text(at, Align2::RIGHT_TOP, format!("{fps:.0} fps"), FontId::proportional(12.0), DIM);
-                at.y += 16.0;
-            }
-            if r.parts.shows(Part::View) {
-                let keys = if r.view_keys.is_empty() { String::new() } else { format!(" · {}", r.view_keys) };
-                painter.text(at, Align2::RIGHT_TOP, format!("{} view{keys}", r.view), FontId::proportional(12.0), DIM);
-            }
-        });
+        // Top right: the rendered frames per second, when the viewer measures them. Ours.
+        if let Some(fps) = r.fps {
+            let at = Pos2::new(screen.max.x - MARGIN, screen.min.y + MARGIN + 10.0);
+            top::value(painter, at, Align2::RIGHT_CENTER, format!("{fps:.0}"), "fps");
+        }
 
         let school = r.state.school.is_some();
         let page = r.splits.as_ref().filter(|record| splits::has_page(record, school));
         part(Part::Clock, &mut || {
-            let under_clock = top::clock(painter, screen, r);
-            if let Some(record) = r.splits.as_ref().filter(|_| page.is_none() && r.parts.shows(Part::Splits)) {
-                splits::passed(painter, Pos2::new(screen.min.x + MARGIN, under_clock), record);
+            let mut at = Pos2::new(screen.min.x + MARGIN, top::clock(painter, screen, r));
+            if !r.parts.shows(Part::Splits) {
+                return;
+            }
+            if let Some(gap) = r.ghost_gap {
+                at.y = splits::ghost_gap(painter, at, gap);
+            }
+            if let Some(record) = r.splits.as_ref().filter(|_| page.is_none()) {
+                splits::passed(painter, at, record);
             }
         });
         if let Some(record) = page {
@@ -94,11 +94,9 @@ impl Hud for Stock {
         centre::calls(painter, screen, r, sprites);
         // The telemetry's cards stand beside the dial and the car's status over the trace before the layout moves
         // them, whichever of them show.
-        let mut right = screen.max.x;
-        part(Part::Dash, &mut || right = dial::paint(painter, screen, r));
-        let dial = right;
-        part(Part::Tyres, &mut || right = telemetry::tyres(painter, screen, dial, r));
-        part(Part::Gforce, &mut || telemetry::g_force(painter, screen, right, r));
+        let mut dial = screen.max.x;
+        part(Part::Dash, &mut || dial = dial::paint(painter, screen, r));
+        part(Part::Tyres, &mut || telemetry::tyres(painter, screen, dial, r));
         let mut bottom = screen.max.y;
         part(Part::Trace, &mut || bottom = telemetry::trace(painter, screen, r));
         part(Part::Car, &mut || {

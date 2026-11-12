@@ -552,7 +552,7 @@ impl Settings {
             ("hud_hide", self.hud_hide.and_then(|p| p.hidden())),
             ("hud_show", self.hud_hide.and_then(|p| p.shown())),
             ("hud_scale", self.hud_layout.filter(|l| l.scale != 100).map(|l| l.scale.to_string())),
-            ("hud_layout", self.hud_layout.and_then(|l| l.moved())),
+            ("hud_layout", self.hud_layout.and_then(|l| l.list())),
             ("callout_distance", self.callout_distance.map(|v| v.to_string())),
             ("marker_threshold", self.marker_threshold.map(|v| v.to_string())),
             ("damage", choice(self.damage)),
@@ -1175,9 +1175,9 @@ mod tests {
         assert_eq!(Settings::parse("[launcher]\nhud_hide = \n").hud_hide, Some(Parts::default()));
         assert!(!Settings::parse("[launcher]\nhud_hide = \n").to_text().contains("hud_hide"));
         // The telemetry parts are kept as their own list.
-        let shown = Settings::parse("[launcher]\nhud_hide = car\nhud_show = tyres,g\n");
-        assert_eq!(shown.hud_hide, Parts::hiding("car").and_then(|p| p.with("tyres,g", true)).ok());
-        assert!(shown.to_text().contains("hud_hide = car\nhud_show = tyres,g\n"), "{}", shown.to_text());
+        let shown = Settings::parse("[launcher]\nhud_hide = car\nhud_show = tyres,trace\n");
+        assert_eq!(shown.hud_hide, Parts::hiding("car").and_then(|p| p.with("tyres,trace", true)).ok());
+        assert!(shown.to_text().contains("hud_hide = car\nhud_show = tyres,trace\n"), "{}", shown.to_text());
         // The layout is the moved parts and the scale off 100 %.
         let moved = Settings::parse("[launcher]\nhud_scale = 125\nhud_layout = dash:-40,0\n");
         assert_eq!(moved.hud_layout, Layout::parse("dash:-40,0").map(|l| Layout { scale: 125, ..l }).ok());

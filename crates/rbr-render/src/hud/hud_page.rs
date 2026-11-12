@@ -1,9 +1,9 @@
 //! The pause menu's HUD page, ours (`crate::hud::pause`): a panel in the middle of the screen over the paused view,
 //! which sets the HUD's size, which parts show and where each stands ([`Layout`], [`Parts`]). Its rows: the size, the
-//! part picked, whether it shows, its place across and down from where the look puts it, then Reset (every part back
-//! in its place at 100 %; what shows stays) and Done. While the page is open the HUD shows [`sample`], with something
-//! in every part, and the picked part is outlined. Up and Down pick a row, Left and Right change it; the select acts
-//! on Reset and Done, and the back returns to the menu's first page.
+//! part picked, whether it shows, then Reset (every part back in its place at 100 %; what shows stays) and Done. While
+//! the page is open the HUD shows [`sample`], with something in every part, and the picked part is outlined; the
+//! pointer picks a part and drags it to its place ([`HudPage::grab`], [`HudPage::drag`]). Up and Down pick a row, Left
+//! and Right change it; the select acts on Reset and Done, and the back returns to the menu's first page.
 
 use egui::{Align2, Color32, FontId, Pos2, Rect, Vec2};
 use rbr_recording::splits::{Split, Splits};
@@ -24,11 +24,8 @@ const SELECTED: Color32 = Color32::from_rgb(200, 60, 40);
 const PICKED: Color32 = Color32::from_rgb(255, 196, 0);
 const WIDTH: f32 = 380.0;
 const ROW: f32 = 26.0;
-/// One move of the size, percent, and of a part, points.
+/// One move of the size, percent.
 const SCALE_STEP: i16 = 5;
-const STEP: i16 = 10;
-/// The farthest a part goes from its place, points: across any screen.
-const REACH: [i16; 2] = [2600, 720];
 
 /// A row of the page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,13 +33,20 @@ pub enum Row {
     Size,
     Part,
     Shown,
-    Across,
-    Down,
     Reset,
     Done,
 }
 
-const ROWS: [Row; 7] = [Row::Size, Row::Part, Row::Shown, Row::Across, Row::Down, Row::Reset, Row::Done];
+const ROWS: [Row; 5] = [Row::Size, Row::Part, Row::Shown, Row::Reset, Row::Done];
+
+/// A part held by the pointer: the part, where the pointer took it, and its bounds and the layout then.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Grab {
+    part: Part,
+    from: Pos2,
+    bounds: Rect,
+    layout: Layout,
+}
 
 /// The page: the parts shown, the layout, the part picked and the selected row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +71,19 @@ impl HudPage {
         Part::ALL[self.part]
     }
 
+    /// Picks the part `hud` drew under `pointer` and holds it; `None` on the page's panel or off every part.
+    pub fn grab(&mut self, hud: &dyn Hud, screen: Rect, pointer: Pos2) -> Option<Grab> {
+        let held = |part: &Part| part.carrier() == *part && hud.bounds(*part).is_some_and(|b| b.contains(pointer));
+        let part = Part::ALL.into_iter().find(held).filter(|_| !panel(screen).contains(pointer))?;
+        self.part = part as usize;
+        Some(Grab { part, from: pointer, bounds: hud.bounds(part)?, layout: self.layout })
+    }
+
+    /// Moves the held part with the `pointer`, kept on `screen`.
+    pub fn drag(&mut self, grab: &Grab, screen: Rect, pointer: Pos2) {
+        self.layout = grab.layout.moved(grab.part, grab.bounds, pointer - grab.from, screen);
+    }
+
     /// Takes one move.
     pub fn nav(&mut self, nav: Nav) -> Option<Moved> {
         let n = ROWS.len();
@@ -88,11 +105,6 @@ impl HudPage {
                 let n = Part::ALL.len();
                 self.part = (self.part + if nav == Nav::Right { 1 } else { n - 1 }) % n;
             }
-            (Nav::Left | Nav::Right, row @ (Row::Across | Row::Down)) => {
-                let axis = usize::from(row == Row::Down);
-                let at = &mut self.layout.offsets[self.part().carrier() as usize][axis];
-                *at = (*at + sign * STEP).clamp(-REACH[axis], REACH[axis]);
-            }
             _ => {}
         }
         // Moving between rows and parts changes nothing to show or keep.
@@ -103,22 +115,21 @@ impl HudPage {
 
 /// The text of `row`'s value.
 fn value(page: &HudPage, row: Row) -> String {
-    let [x, y] = page.layout.offsets[page.part().carrier() as usize];
-    let signed = |v: i16| format!("{v:+}").replace('-', "\u{2212}").replace("+0", "0");
     match row {
         Row::Size => format!("{} %", page.layout.scale),
         Row::Part => page.part().label().into(),
         Row::Shown => if page.parts.shows(page.part()) { "On" } else { "Off" }.into(),
-        Row::Across => signed(x),
-        Row::Down => signed(y),
         Row::Reset | Row::Done => String::new(),
     }
 }
 
-/// `base` with something in every part, for the open page: a note called, a split just passed, a message, a damaged
-/// car, warm and cold tyres, a trace.
+/// `base` with something in every part, for the open page: a note called, a split just passed, a gap to a ghost, a
+/// message, a damaged car, warm and cold tyres, a trace.
 pub fn sample(base: Readout) -> Readout {
-    let tyre = |celsius: f32, grip| Tyre { surface: celsius + 273.15, tread: celsius + 273.15, grip, optimum: 348.15 };
+    let tyre = |celsius: f32, grip| {
+        let kelvin = celsius + 273.15;
+        Tyre { surface: kelvin, tread: kelvin, grip, optimum: 348.15, wear: 0.006 }
+    };
     let trace = (0..300).map(|i| {
         let t = i as f32 / 30.0;
         let pedal = (t * 1.3).sin();
@@ -152,8 +163,8 @@ pub fn sample(base: Readout) -> Readout {
             ..Splits::default()
         }),
         state,
+        ghost_gap: Some(-0.42),
         trace: trace.collect(),
-        g_force: Some([0.7, -0.4]),
         ..base
     }
 }
@@ -166,8 +177,7 @@ pub fn paint(ctx: &egui::Context, hud: &dyn Hud, page: &HudPage) {
     if let Some(bounds) = hud.bounds(page.part().carrier()) {
         painter.rect_stroke(bounds.expand(3.0), 4.0, (2.0, PICKED), egui::StrokeKind::Outside);
     }
-    let size = Vec2::new(WIDTH, 62.0 + ROW * ROWS.len() as f32);
-    let panel = Rect::from_center_size(screen.center(), size);
+    let panel = panel(screen);
     painter.rect_filled(panel, 8.0, PANEL);
     let mut at = Pos2::new(panel.min.x + 20.0, panel.min.y + 10.0);
     painter.text(Pos2::new(panel.center().x, at.y), Align2::CENTER_TOP, "HUD", FontId::proportional(18.0), TEXT);
@@ -183,8 +193,6 @@ pub fn paint(ctx: &egui::Context, hud: &dyn Hud, page: &HudPage) {
             Row::Size => "Size",
             Row::Part => "Part",
             Row::Shown => "Shown",
-            Row::Across => "Across",
-            Row::Down => "Down",
             Row::Reset => "Reset",
             Row::Done => "Done",
         };
@@ -196,13 +204,16 @@ pub fn paint(ctx: &egui::Context, hud: &dyn Hud, page: &HudPage) {
         }
         at.y += ROW;
     }
-    painter.text(
-        Pos2::new(panel.center().x, panel.max.y - 8.0),
-        Align2::CENTER_BOTTOM,
-        "Up/Down choose    Left/Right change    Esc back",
-        FontId::proportional(12.0),
-        HINT,
-    );
+    let hints = ["Drag a part to move it", "Up/Down choose    Left/Right change    Esc back"];
+    for (hint, up) in hints.into_iter().zip([24.0, 8.0]) {
+        let at = Pos2::new(panel.center().x, panel.max.y - up);
+        painter.text(at, Align2::CENTER_BOTTOM, hint, FontId::proportional(12.0), HINT);
+    }
+}
+
+/// The page's panel in the middle of `screen`.
+fn panel(screen: Rect) -> Rect {
+    Rect::from_center_size(screen.center(), Vec2::new(WIDTH, 78.0 + ROW * ROWS.len() as f32))
 }
 
 #[cfg(test)]
@@ -216,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn the_rows_size_pick_show_and_move_a_part() {
+    fn the_rows_size_pick_and_show_a_part() {
         let mut page = HudPage::new(Parts::default(), Layout::default());
         assert_eq!(page.nav(Nav::Left), Some(Moved::Changed));
         assert_eq!((page.layout.scale, value(&page, Row::Size)), (95, "95 %".to_owned()));
@@ -225,33 +236,41 @@ mod tests {
         // Left from the first part wraps to the last, which is off until shown.
         to(&mut page, Row::Part);
         assert_eq!(page.nav(Nav::Left), Some(Moved::Changed));
-        assert_eq!((page.part(), value(&page, Row::Shown)), (Part::Gforce, "Off".to_owned()));
+        assert_eq!((page.part(), value(&page, Row::Shown)), (Part::Trace, "Off".to_owned()));
         to(&mut page, Row::Shown);
         page.nav(Nav::Select);
-        assert!(page.parts.shows(Part::Gforce));
-        to(&mut page, Row::Across);
-        page.nav(Nav::Left);
-        to(&mut page, Row::Down);
-        page.nav(Nav::Right);
-        assert_eq!(page.layout.offsets[Part::Gforce as usize], [-10, 10]);
-        assert_eq!((value(&page, Row::Across), value(&page, Row::Down)), ("\u{2212}10".to_owned(), "+10".to_owned()));
+        assert!(page.parts.shows(Part::Trace));
+        page.layout.offsets[Part::Trace as usize] = [-10, 10];
         // Reset puts every part back at 100 % and leaves what shows; Done and the back leave.
         to(&mut page, Row::Reset);
         assert_eq!(page.nav(Nav::Select), Some(Moved::Changed));
-        assert!(page.layout == Layout::default() && page.parts.shows(Part::Gforce));
+        assert!(page.layout == Layout::default() && page.parts.shows(Part::Trace));
         assert_eq!(page.nav(Nav::Select), None);
         assert_eq!(page.nav(Nav::Back), Some(Moved::Left));
     }
 
-    #[test]
-    fn the_pedals_move_with_the_dial() {
-        let mut page = HudPage::new(Parts::default(), Layout::default());
-        to(&mut page, Row::Part);
-        while page.part() != Part::Inputs {
-            page.nav(Nav::Right);
+    /// A look that drew the dial only.
+    struct Drawn(Rect);
+
+    impl Hud for Drawn {
+        fn paint(&mut self, _: &egui::Context, _: &Readout) {}
+
+        fn bounds(&self, part: Part) -> Option<Rect> {
+            (part == Part::Dash).then_some(self.0)
         }
-        to(&mut page, Row::Down);
-        page.nav(Nav::Left);
-        assert_eq!(page.layout.offsets[Part::Dash as usize], [0, -10]);
+    }
+
+    #[test]
+    fn the_pointer_picks_the_part_under_it_and_drags_it() {
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 720.0));
+        let hud = Drawn(Rect::from_min_max(Pos2::new(1076.0, 516.0), Pos2::new(1260.0, 700.0)));
+        let mut page = HudPage::new(Parts::default(), Layout::default());
+        assert_eq!(page.grab(&hud, screen, Pos2::new(100.0, 100.0)), None);
+        // Not through the page's panel.
+        assert_eq!(page.grab(&Drawn(screen), screen, screen.center()), None);
+        let grab = page.grab(&hud, screen, Pos2::new(1100.0, 600.0)).unwrap();
+        assert_eq!(page.part(), Part::Dash);
+        page.drag(&grab, screen, Pos2::new(1000.0, 590.0));
+        assert_eq!(page.layout.offsets[Part::Dash as usize], [-100, -10]);
     }
 }

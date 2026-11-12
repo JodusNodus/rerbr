@@ -57,27 +57,40 @@ Model and rules in `rbr_render::hud::model`, sprites in `hud::pace`, layout in `
 - The game's 3D notes (`AID_MARKER`) are not drawn (dropped 2026-10-27).
 - The minidash and digidash art is not drawn (not in code).
 - Telemetry parts (ours, 2026-11-12; `hud::telemetry`, drawn by `hud::stock::telemetry`), off unless shown: `viewer
-  --hud-show tyres,trace,g`, the launcher's HUD parts, kept as `[launcher] hud_show` beside `hud_hide`.
+  --hud-show tyres,trace`, the launcher's HUD parts, kept as `[launcher] hud_show` beside `hud_hide`.
   - `tyres` (live drives): each tyre's 0.6 surface + 0.4 tread temperature, the tyre step's weights, green at full
     grip, towards blue below and red above the tyre's best `RubMyFct` temperature as its temperature grip falls to
-    0.85. From TYR1 (`rbr_recording::tyre`), which `rbr-standalone` reads from the tyre frames after the step.
-    Corolla, gravel, track-54_E: 56 °C at the start line. Not tried under `experimental-brush`.
-  - `trace`: the pedals and the steering over the last 10 s, at the bottom left (the car's status moves over it).
-  - `g`: the velocity's change over 0.15 s with gravity taken out, in the car's frame, as a dot in a 2 g circle (up on
-    the throttle, right in a right-hander). The car's right is body -X: lateral g follows the steering's side and
-    braking reads negative on `drive-arctic-snow.bin`.
-  - `trace` and `g` are read from the drive's frames, so a recorded drive and a replay have them too.
+    0.85, with the tread worn under it (the mean of its eight sectors' wear, percent). From TYR1
+    (`rbr_recording::tyre`), which `rbr-standalone` reads from the tyre frames after the step. Corolla, gravel,
+    track-54_E: 56 °C at the start line, 0.3 % worn by the launch and still 24 s in. Not tried under
+    `experimental-brush`.
+  - `trace`: the pedals and the steering over the last 10 s, at the bottom left (the car's status moves over it), from
+    the drive's frames, so a recorded drive and a replay have it too.
+  - A g-force part was dropped the day it was added (user decision 2026-11-12: not useful); `g` in a kept `hud_show`
+    or `hud_layout` names nothing (`Part::RETIRED`).
 - Layout and size (ours, 2026-11-12; `hud::layout`): each movable part (its own `Part::carrier`: clock with the passed
-  split, progress, pace note, dial with its pedals, car state, messages, camera name, tyres, trace, g-force) has an
+  split and the ghost gap, progress, pace note, dial with its pedals, car state, messages, tyres, trace) has an
   offset in points of the 720-point screen from where the look puts it, and the HUD a scale of 50 to 200 %; a part
   scales about the corner or edge it stands at (`Part::pivot`) and is kept on the screen. `viewer --hud-layout
   PART:X,Y;...`, `--hud-scale PERCENT`; `[launcher] hud_layout`, `hud_scale`. `Stock` draws a part, then moves and
   scales its shapes (`placed`); with no layout the frame is unchanged (RMSE 0 against the capture before). The race's
-  calls and pages and the pace stack neither move nor scale.
+  calls and pages, the pace stack and the frame rate neither move nor scale.
+- The clock is its name over 28-point digits with one 22-point row under it for each penalty, the ghost gap and a
+  passed split (number, time, difference): 96 points high with both rows, 196 before (user request 2026-11-12).
+- Ghost gap (ours, 2026-11-12; `ghost::passed`, `Session::gap`): with a ghost, a row under the clock has the drive's
+  race time less the time the ghost was where the car is, on the nearest segment of the ghost's samples (looked for
+  about the last one found, then along the whole path). Shown with `splits`, from the go to the finish, within 30 m of
+  the ghost's path. Autopilot against `drive-tanner-corolla.bin`'s ghost on track-54_E: +1.87 s at 12.6 s, the ghost
+  about 28 m up the road at 53 km/h.
+- The dial's rim flashes amber at 6 Hz and the gear is lit from the upshift point (SHF1's for the gear, else 5500
+  rpm), in place of the lamp dot over the dial (ours, 2026-11-12). The frame rate (`--fps`) is a pill at the top
+  right like the distances'. The camera's name is not shown (`Part::View` dropped 2026-11-12, retired like `g`).
 - The pause menu's HUD page (`hud::hud_page`, after Camera; user decision 2026-11-12: set while driving, not in the
-  launcher): Size, Part (all twelve), Shown, Across, Down (10 points a move; the split times move with the clock, the
-  pedals with the dial), Reset (places and size; what shows stays) and Done. While it is open the HUD shows a sample
-  with something in every part and the picked part outlined. Each change is written at once to `[launcher] hud_hide`,
+  launcher): Size, Part (all ten), Shown, Reset (places and size; what shows stays) and Done. The pointer picks the
+  part under it and drags it to its place, kept on the screen (user decision 2026-11-12, in place of Across and Down
+  rows; the split times move with the clock, the pedals with the dial; not tried with a mouse in a window, only
+  `hud_page`'s tests). While it is open the HUD shows a sample with something in every part and the picked part
+  outlined. Each change, and a drag when the button is let go, is written at once to `[launcher] hud_hide`,
   `hud_show`, `hud_scale` and `hud_layout`; the launcher rereads them when the viewer exits and passes them on, and
   has no control of its own for the layout or the size. `viewer --screenshot --pause-menu dde` draws it.
 

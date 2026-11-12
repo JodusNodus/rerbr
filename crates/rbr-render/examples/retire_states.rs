@@ -155,8 +155,6 @@ fn spawn(extra: &[&str]) -> Result<Live, Box<dyn Error>> {
 fn readout(live: &Live, controls: &Controls) -> Readout {
     let hud = live.hud;
     Readout {
-        view: "chase",
-        view_keys: String::new(),
         time: 0.0,
         speed: hud.speed,
         mph: false,

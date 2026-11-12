@@ -257,7 +257,7 @@ pub const USAGE: &str = "usage: RBR_DATA=<install> [RBR_PATCH=<patch>] viewer [S
               --clock HH:MM  --no-relight
   sound, HUD: --no-sound  --no-roadside  --volume V  --volumes E,C,F,T  --no-codriver  --no-hud  --mph  --fps
               --codriver-mod DIR  --codriver-voice NAME  --codriver-style FILE  --codriver-ranges FILE  --pacenotes FILE
-              --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages,view  --hud-show tyres,trace,g
+              --pace-stack N  --hud-hide clock,progress,pace,splits,dash,inputs,car,messages  --hud-show tyres,trace
               --hud-layout PART:X,Y;...  --hud-scale 50..200
   events:     --birdstrike  --rescue-at STEP  --seed N
   runs:       --screenshot PNG  --video FILE[.webp]  --video-fps N  --video-span FROM,TO  --frames N  --profile  --perf-log DIR  --sequence N  --sequence-step N  --time S  --quit-after S|go+S|end+S

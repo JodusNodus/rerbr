@@ -469,7 +469,7 @@ impl Playback {
     }
 
     /// The frames that ended within `seconds` before the current one's end, and the current one, each with the drive
-    /// time at its end (the HUD's trace and g-force, `crate::hud::telemetry`).
+    /// time at its end (the HUD's trace, `crate::hud::telemetry`).
     pub fn recent(&self, seconds: f64) -> impl Iterator<Item = (f64, &Sample)> + '_ {
         let (ends, last) = (&self.drive.ends, self.index());
         let first = ends[..last].partition_point(|&end| end < ends[last] - seconds);

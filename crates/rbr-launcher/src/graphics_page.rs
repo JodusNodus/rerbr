@@ -299,15 +299,13 @@ const PART_TIPS: [&str; Part::ALL.len()] = [
     "The race time and its penalties",
     "The progress bar with the splits, the distance driven and the distance to go",
     "The symbol of each call at the top",
-    "The time and difference as each split is passed",
-    "The rev dial with its shift light, gear, speed, revs, water and turbo",
+    "The time and difference as each split is passed, and the running gap to the ghost",
+    "The rev dial, which flashes at the shift point, with the gear, speed, revs, water and turbo",
     "The pedal arcs inside the dial and the steering under it",
     "The lit warning lamps and the damaged parts at the bottom left, shown only when there are any",
     "The stand-still and car-problem messages",
-    "The view's name at the top right",
-    "Each tyre's temperature beside the dial: green at its best, blue while too cold for full grip, red once too hot",
+    "Each tyre's temperature and wear beside the dial: green at its best, blue too cold for full grip, red too hot",
     "A running chart of the pedals and the steering over the last 10 seconds",
-    "The car's acceleration as a dot in a 2 g circle: up on the throttle, down on the brakes",
 ];
 
 impl Default for HudChoice {

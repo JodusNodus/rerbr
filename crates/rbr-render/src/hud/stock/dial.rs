@@ -1,11 +1,12 @@
-//! The bottom right dial: the engine speed round the rim, red past the rev limit, with the shift light over it; the
+//! The bottom right dial: the engine speed round the rim, red past the rev limit, the rim and the gear flashing at
+//! the upshift point; the
 //! pedals inside it (brake and clutch up the left, throttle and handbrake up the right); the speed, gear and engine
 //! speed in the middle with the water temperature and the turbo pressure beside the gear, and the steering under
 //! them. The rim and the readouts show with [`Part::Dash`], the pedals and steering with [`Part::Inputs`].
 
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
 
-use super::{caption, digits, DIM, LAMP_ON, MARGIN, TEXT};
+use super::{caption, digits, ACCENT, DIM, LAMP_ON, MARGIN, TEXT};
 use crate::hud::{Part, Readout};
 
 /// The rev limit the dial takes without the car's (SHF1). Ours.
@@ -13,6 +14,8 @@ const REV_LIMIT: f32 = 8500.0;
 /// The digidash's shift light comes on at this engine speed (`E57DashData::UpdateFull`, 5500 rpm for every car); the
 /// dial's takes the car's upshift point for the gear when SHF1 has one.
 const SHIFT_RPM: f32 = 5500.0;
+/// The flashes a second at the upshift point. Ours.
+const FLASH_HZ: f64 = 6.0;
 /// The rim's radius, points. Ours.
 const DIAL: f32 = 80.0;
 /// The pedals' colours, on the arcs and the trace: clutch, brake, throttle, handbrake.
@@ -42,7 +45,8 @@ pub fn paint(painter: &Painter, screen: Rect, r: &Readout) -> f32 {
     centre.x - DIAL - 12.0
 }
 
-/// The rev arc, the shift light, and the speed, gear, engine speed, water and turbo.
+/// The rev arc, and the speed, gear, engine speed, water and turbo. From the upshift point the whole rim flashes and
+/// the gear is lit (ours: the digidash has a lamp).
 fn readouts(painter: &Painter, centre: Pos2, r: &Readout) {
     let (top, red) = rev_scale(r.state.rev_limit);
     let rpm = (r.rpm.unwrap_or(0.0) / top).clamp(0.0, 1.0);
@@ -51,15 +55,17 @@ fn readouts(painter: &Painter, centre: Pos2, r: &Readout) {
     stroke_arc(painter, centre, DIAL, (0.0, rpm.min(red)), 6.0, TEXT);
     stroke_arc(painter, centre, DIAL, (red, rpm.max(red)), 6.0, LAMP_ON);
     let shift = r.rpm.is_some_and(|rpm| rpm >= r.state.upshift.unwrap_or(SHIFT_RPM));
-    let lamp = centre - Vec2::new(0.0, DIAL + 10.0);
-    painter.circle_filled(lamp, 3.5, if shift { LAMP_ON } else { Color32::from_white_alpha(50) });
+    if shift && (r.time * 2.0 * FLASH_HZ) as i64 % 2 == 0 {
+        stroke_arc(painter, centre, DIAL, (0.0, 1.0), 6.0, ACCENT);
+    }
 
     let (speed, unit) = r.speed_in_unit();
     let at = centre - Vec2::new(0.0, 46.0);
     digits(painter, at, Align2::CENTER_CENTER, &format!("{speed:.0}"), FontId::proportional(20.0), TEXT);
     caption(painter, at + Vec2::new(0.0, 10.0), Align2::CENTER_TOP, unit);
     let (gear, font) = (r.gear.as_deref().unwrap_or("-"), FontId::proportional(52.0));
-    digits(painter, centre + Vec2::new(0.0, 4.0), Align2::CENTER_CENTER, gear, font, TEXT);
+    let lit = if shift { ACCENT } else { TEXT };
+    digits(painter, centre + Vec2::new(0.0, 4.0), Align2::CENTER_CENTER, gear, font, lit);
     let revs = r.rpm.map_or("-".to_owned(), |rpm| format!("{:.0}", rpm.max(0.0)));
     let at = centre + Vec2::new(0.0, 40.0);
     digits(painter, at, Align2::CENTER_CENTER, &revs, FontId::proportional(15.0), TEXT);

@@ -404,11 +404,11 @@ impl App {
         let readout =
             self.scene.playback.as_ref().filter(|_| self.scene.hud.show && demo_ride.is_none()).map(|playback| {
                 let fps = if self.scene.hud.fps { self.meter.update(dt) } else { None };
-                let (live, shown, bindings) = (self.scene.live.as_ref(), self.shown, &self.bindings);
-                let readout = readout(playback, live, shown, bindings, self.scene.hud, fps);
-                // The open HUD page shows every part filled in.
-                if self.menu.as_ref().is_some_and(|menu| menu.hud().is_some()) {
-                    return hud_page::sample(readout);
+                let ghost = self.scene.ghost.as_ref().and_then(|ghost| ghost.gap());
+                let readout = readout(playback, self.scene.live.as_ref(), ghost, self.scene.hud, fps);
+                // The open HUD page shows every part filled in, where the page has them.
+                if let Some(page) = self.menu.as_ref().and_then(|menu| menu.hud()) {
+                    return hud_page::sample(hud_overlay::Readout { layout: page.layout, ..readout });
                 }
                 readout
             });

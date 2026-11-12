@@ -87,8 +87,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     ];
     for (name, race) in clocks {
         let readout = Readout {
-            view: "chase",
-            view_keys: String::new(),
             time: 0.0,
             speed: 0.0,
             mph: false,

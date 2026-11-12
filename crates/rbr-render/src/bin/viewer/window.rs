@@ -22,6 +22,7 @@ use rbr_formats::data::Data;
 use rbr_render::bindings::{Action, Bindings};
 use rbr_render::camera::FreeFly;
 use rbr_render::ffb;
+use rbr_render::hud::hud_page::Grab;
 use rbr_render::hud::pause::{Nav, PauseMenu};
 use rbr_render::hud::results::ResultsMenu;
 use rbr_render::hud::Overlay;
@@ -161,6 +162,8 @@ pub struct App {
     /// Whether the left mouse button is held (mouse look).
     looking: bool,
     pointer: Option<PhysicalPosition<f64>>,
+    /// The part of the HUD the pointer holds on the pause menu's HUD page.
+    grab: Option<Grab>,
     /// The chase camera's turn around the car (`--drive`, `--live`): left drag turns, the wheel zooms, V resets.
     look: ChaseLook,
     last_frame: Instant,
@@ -271,6 +274,7 @@ impl App {
             held: HashSet::new(),
             looking: false,
             pointer: None,
+            grab: None,
             look: ChaseLook::default(),
             last_frame: Instant::now(),
             started: Instant::now(),
@@ -426,6 +430,7 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.pointer = Some(position);
                 self.results_hover();
+                self.hud_drag();
             }
             WindowEvent::CursorLeft { .. } => self.pointer = None,
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } if self.results.is_some() => {
@@ -434,7 +439,8 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
-                self.looking = state == ElementState::Pressed && !self.accept_message()
+                let pressed = state == ElementState::Pressed;
+                self.looking = !self.hud_hold(pressed) && pressed && !self.accept_message();
             }
             WindowEvent::MouseWheel { delta, .. } if self.scene.playback.is_some() => {
                 let lines = match delta {

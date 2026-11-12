@@ -265,8 +265,8 @@ pub fn hub_offsets(mem: &Mem) -> [f32; 4] {
     })
 }
 
-/// Each wheel's tyre temperatures for the HUD (TYR1), read from the tyre's frame after the step; zeros for a wheel or
-/// tyre not yet built.
+/// Each wheel's tyre temperatures and wear for the HUD (TYR1), read from the tyre's frame after the step; zeros for a
+/// wheel or tyre not yet built.
 pub fn tyre_temperatures(mem: &Mem) -> [Tyre; 4] {
     let car = mem.u32(CAR_PTR);
     let read = |at: u32| mem.try_read(at, 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
@@ -284,6 +284,7 @@ pub fn tyre_temperatures(mem: &Mem) -> [Tyre; 4] {
                 tread: state.tread_temperature,
                 grip: frame.scratch.temperature_grip,
                 optimum: best.and_then(|i| axis.at(i)).unwrap_or(0.0),
+                wear: frame.scratch.wear.iter().sum::<f32>() / frame.scratch.wear.len() as f32,
             }
         })
     })

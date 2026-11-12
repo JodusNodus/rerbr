@@ -1,13 +1,14 @@
-//! The split panels (`crate::hud::splits`): under the clock a passed split's time and difference; under the pace
+//! The split panels (`crate::hud::splits`): under the clock a row for the gap to the ghost (ours) and one for a passed
+//! split's time and difference; under the pace
 //! note, once the finish is passed, the stage result (the time with its penalties, the finish against its reference,
 //! each split, and with `--saves` the stage record and the personal best); once the race is over the result page
 //! (`CQRResultUI::Vf40` 0x5c3b10: the rows `STAGERECORD`, `PERSONALBEST` and the player's, each with split 1, split 2
 //! and the time), and a retired race's end page. The layout is ours.
 
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
-use rbr_recording::splits::{Split, Splits, Standing, Verdict};
+use rbr_recording::splits::{Splits, Standing, Verdict};
 
-use super::top::CLOCK_WIDTH;
+use super::top;
 use super::ACCENT;
 use crate::hud::splits::{self, difference, end_page_title, signed, verdict_text};
 use crate::hud::time_label;
@@ -50,36 +51,20 @@ pub fn page(painter: &Painter, screen: Rect, record: &Splits, page: Option<u32>)
     }
 }
 
-/// Draws the split `record` has just passed, when there is one, its top left at `at` (under the clock).
-pub fn passed(painter: &Painter, at: Pos2, record: &Splits) {
-    if let Some((number, split)) = splits::flash(record) {
-        flash_panel(painter, at, number, split);
-    }
+/// Draws the time behind the ghost (`gap`, negative ahead of it) as a row under the clock, its top left at `at`; the
+/// top of the space under it.
+pub fn ghost_gap(painter: &Painter, at: Pos2, gap: f32) -> f32 {
+    top::row(painter, at, "ghost", &[(signed(gap), colour(gap))])
 }
 
-/// The split as it is passed, its top left at `at`: its number, its time and the difference.
-fn flash_panel(painter: &Painter, at: Pos2, number: usize, split: Split) {
-    let panel = Rect::from_min_size(
-        at,
-        Vec2::new(CLOCK_WIDTH, 2.0 * PAD + 16.0 + 32.0 + if split.reference.is_some() { ROW } else { 0.0 }),
-    );
-    super::panel(painter, panel, difference(&split).map_or(DIM, colour), 1.0);
-    let mut at = panel.min + Vec2::splat(PAD);
-    painter.text(at, Align2::LEFT_TOP, format!("split {number}"), FontId::proportional(13.0), DIM);
-    at.y += 16.0;
-    let time = split.time.map_or("-".to_owned(), |t| time_label(f64::from(t)));
-    painter.text(at, Align2::LEFT_TOP, time, FontId::monospace(26.0), TEXT);
-    let right = Pos2::new(panel.max.x - PAD, at.y + 6.0);
-    match difference(&split) {
-        Some(diff) => {
-            painter.text(right, Align2::RIGHT_TOP, format!("{} s", signed(diff)), FontId::monospace(22.0), colour(diff))
-        }
-        None => painter.text(right, Align2::RIGHT_TOP, "no reference", FontId::proportional(13.0), DIM),
-    };
-    if let Some(reference) = split.reference {
-        at.y += 32.0;
-        let line = format!("record {}", time_label(f64::from(reference)));
-        painter.text(at, Align2::LEFT_TOP, line, FontId::proportional(13.0), DIM);
+/// Draws the split `record` has just passed, when there is one, as a row with its top left at `at` (under the clock):
+/// its number, its time and the difference.
+pub fn passed(painter: &Painter, at: Pos2, record: &Splits) {
+    if let Some((number, split)) = splits::flash(record) {
+        let time = (split.time.map_or("-".to_owned(), |t| time_label(f64::from(t))), TEXT);
+        let difference = difference(&split).map(|d| (signed(d), colour(d)));
+        let texts: Vec<_> = difference.into_iter().chain([time]).collect();
+        top::row(painter, at, &format!("split {number}"), &texts);
     }
 }
 

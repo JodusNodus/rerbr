@@ -132,6 +132,10 @@ impl PauseMenu {
         (self.on == Some(Entry::Hud)).then_some(&self.hud)
     }
 
+    pub fn hud_mut(&mut self) -> Option<&mut HudPage> {
+        (self.on == Some(Entry::Hud)).then_some(&mut self.hud)
+    }
+
     /// The Camera page while it is open.
     pub fn camera(&self) -> Option<&CameraPage> {
         (self.on == Some(Entry::Camera)).then_some(&self.camera)
