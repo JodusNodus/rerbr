@@ -182,10 +182,8 @@ mod tests {
         let k = unit([0.3, -0.5, 0.8]).unwrap();
         let (s, c) = 0.7f64.sin_cos();
         // Rodrigues: each basis vector turned about `k`.
-        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]].map(|e| {
-            let turned = add_scaled(add_scaled(e.map(|x| x * c), cross(k, e), s), k, dot(k, e) * (1.0 - c));
-            turned
-        })
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+            .map(|e| add_scaled(add_scaled(e.map(|x| x * c), cross(k, e), s), k, dot(k, e) * (1.0 - c)))
     }
 
     fn turn(m: &[V; 3], v: V) -> V {
