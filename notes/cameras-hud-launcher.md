@@ -201,10 +201,25 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   a diff map one line) each with its way back, and an area's heading takes all of it back (`values.rs`, a `Field` table
   per car: spec, range, the wheel's pair). Per-wheel areas edit an axle's two wheels together while they agree (a
   difference always shows both). Diagrams per area (`charts.rs`): spring coil-overs and their front share, the dampers'
-  force over wheel speed, camber from the front, brake and anti-roll balance bars, the diff maps' lock curves dragged by
-  the game's steps. Hints under each value are general rules of thumb, except the handbrake release and left-foot
-  threshold, which say what `rbr_physics::vcu::locks` does. `--screenshot` also writes `setup-changed-<n>.png` with some
-  values stepped.
+  force over wheel speed, each wheel's lean from the front, brake and anti-roll balance bars, the diff maps' lock curves
+  dragged by the game's steps. Hints under each value are general rules of thumb, except the handbrake release and
+  left-foot threshold, which say what `rbr_physics::vcu::locks` does. `--screenshot` also writes
+  `setup-changed-<n>.png` with some values stepped.
+- The setup page's hints against the physics (2026-11-12; the code, and the i20 on the pads with one value changed,
+  `notes/tyre-model.md` "Setup's reach"). Camber: the value is the axle's tilt on its strut and runs against the camber
+  (a degree more of it leans the top 0.96-1.16° further in; the i20, Fiesta Rally2, quattro A2, Escort Mk II and the
+  slot cars 0 and 5 alike), so the hint says so and the diagram draws each wheel's lean against the compared setup's
+  upright outline: the camber itself needs the strut's lean at the ride height, which the launcher does not have.
+  Pressure: NGP's factor scales the tyre's stiffness, and 1.8-2.6 bar move the limits 1.1 % at most, so the hint no longer
+  promises grip on loose ground. Ride height: +10 mm of spring length or platform lift the car about 10 mm, the helper's
+  length 0.4 mm per mm (closed at rest: its rate at 5 or 20 N/mm gives one height), and the helper's two hints are
+  apart. Brakes: 55-70 % of front share move the i20's slide under braking by under 1° while its centre diff locks under
+  braking, which the hint adds. Roll bars: the hints hold on the steady circle (sideslip at the limit 13.1° to 10.7°
+  with the front bar doubled, 13.5° with the rear's) and turn round under braking in the turn (33° and 15° against 24°),
+  so they say "in a steady corner". The fast bump takes over past its speed and never at 0, the helper works under its
+  closing force, the centre opens at the handbrake's release (`spring_damper::step`, `vcu::locks`). Not checked: the
+  diffs' "less turn-in" (mixed under braking), the response claims, the top mount (the i20's front: 0.17° more camber a
+  slot).
 - Car keys (2026-11-07): a pack car's key (camera nudges, `[ffb_cars]`, `--car-key`, championship entries) is
   `catalog::pack_key`, `pack-` and its pack folder's letters and digits without RSF's `_ngp<N>`, so RSF's and the
   added copy of a car are one key (all 102 of gvrc.de's list match RSF's packs this way). Before, it was
