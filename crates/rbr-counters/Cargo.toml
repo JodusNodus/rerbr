@@ -5,5 +5,5 @@ edition = "2021"
 description = "Work counts for measuring: the thread's retired instructions and cycles, and the process's allocations"
 license = "GPL-3.0-or-later"
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc = "0.2"
