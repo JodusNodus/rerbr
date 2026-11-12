@@ -214,7 +214,7 @@ impl Model for Brush {
             weight: 1.0,
             lateral_force: fy as f32,
             longitudinal_force: fx as f32,
-            pneumatic_trail: steady.trail as f32,
+            pneumatic_trail: (steady.trail * brush::trail_rolling_share(e.vx)) as f32,
             phase: steady.psi.min(2.0) as f32,
             soil_lateral: (1.0 + (loose::gravel_soil_share(f64::from(x.lateral_velocity)) - 1.0) * gravel) as f32,
             temperatures: temperatures.map(|n| [n.surface as f32, n.bulk as f32]),
@@ -560,6 +560,31 @@ mod tests {
         assert!((slide / upright - 1.0).abs() < 0.002, "{slide} {upright}");
         // At rest the camber builds no deflection.
         assert_eq!(settled(ForceInput { inclination_sin: incl, ..rolling(0.0, 0.0) }), 0.0);
+    }
+
+    #[test]
+    fn the_trail_fades_out_as_the_wheel_stops_rolling() {
+        let trail = |x: ForceInput| {
+            let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
+            b.forces(wheel().tyre, &x).unwrap().pneumatic_trail
+        };
+        // A car at rest rocking on its carcass: the contact creeps sideways and to and fro.
+        let rocking = |vlong: f32| {
+            let spin = -vlong / 0.3;
+            trail(ForceInput { lateral_velocity: 0.01, longitudinal_velocity: vlong, spin, ..rolling(0.0, 0.0) })
+        };
+        let whole = rocking(brush::V_MIN as f32);
+        assert!(whole > 0.005, "{whole}");
+        assert_eq!(rocking(0.0), 0.0);
+        for vlong in [0.006, -0.006] {
+            assert!((rocking(vlong) / whole - 0.012).abs() < 1e-4, "{vlong} {}", rocking(vlong));
+        }
+        // Rolling, the trail is the steady brush's whole, forwards and backwards.
+        assert_eq!(brush::trail_rolling_share(0.25), 0.5);
+        for vx in [brush::V_MIN, -brush::V_MIN, 20.0, -20.0] {
+            assert_eq!(brush::trail_rolling_share(vx), 1.0);
+        }
+        assert!(trail(rolling(20.0, 0.02)) > 0.005);
     }
 
     #[test]

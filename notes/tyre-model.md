@@ -339,6 +339,13 @@ Against NGP and the targets on the Fiesta Rally2 (`compare` summary; brush-v0 in
   brush has no bore torque, so it adds what the brush lacks rather than fighting it (the (1 - w) scaling is gone): every
   stop time within 0.01 s, reversal share within 0.01, rock-back within 10 mm, four-car finishes within 0.04 s
   (2026-11-07).
+- Trail at rest (2026-11-12, ours): the brush's trail times `|v_long| / 0.5 m/s`, at most 1
+  (`brush::trail_rolling_share`, `V_MIN`). `solve_forces` gives the trail's torque the sign of the longitudinal
+  velocity and at w = 1 no longer scales it by NGP's sliding weight (0 at rest), so a car rocking on its carcass at
+  rest flipped it: BMW M3 E30 GrpA at the start line (user's replay, steering 0), each front wheel ±19 N·m at 6.3 Hz
+  (770-960 N lateral, trail 16-20 mm, ±6 mm/s), the wheel's force ±0.14 at 280 %; with the fade -0.003 to 0.001
+  (NGP's tyre: 0.002 to 0.003). Fourteen times the carcass damping below 2 m/s left it at ±0.14. A fade by speed, not
+  by rolled distance: a tyre rolling steadily below 0.5 m/s has less than its trail.
 - Scope: hard surfaces (no soil) at every speed, down to standstill, weight 1 (2026-11-07, user). On soil loose-v1
   (2026-11-08, [Loose surfaces: loose-v1](#loose-surfaces-loose-v1)).
 - Grip: NGP's static friction (surface, wet or dry, times the temperature grip) times the inclination's table scale

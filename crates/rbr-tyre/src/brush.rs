@@ -67,6 +67,13 @@ pub const M_TRAIL: f64 = 0.35;
 pub fn trail_half_length(half_length: f64, fz: f64, fz0: f64) -> f64 {
     half_length * libm::pow(fz / fz0, M_TRAIL)
 }
+
+/// The trail's share at the contact point's longitudinal speed `vx`, m/s: none at rest, whole from [`V_MIN`], linear
+/// between (ours). A tyre that does not roll has no pneumatic trail, and the game gives the trail's torque the sign
+/// of `vx`, which a car rocking on its carcass at rest flips.
+pub fn trail_rolling_share(vx: f64) -> f64 {
+    (vx.abs() / V_MIN).min(1.0)
+}
 /// The friction curve against sliding speed: the generalised Stribeck curve mu_C + (mu_S - mu_C) exp(-(Vs /
 /// V_S)^STRIBECK_EXP) (Olsson, Astrom, Canudas de Wit, Gafvert & Lischinsky, "Friction models and friction
 /// compensation", European Journal of Control 4, 1998) times Burckhardt's speed factor exp(-SPEED_DECAY Vs)
