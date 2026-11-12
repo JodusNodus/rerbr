@@ -333,8 +333,8 @@ impl Form {
         if !running && self.readiness().is_none() && self.controls.offer(&self.bindings) {
             self.page = Page::Controls;
         }
-        // While the viewer runs the window wakes only for its exit and the gamepad events taken while it is driven
-        // with one (`POLL`): the car turntable stands still and the Controls page's bars are not live.
+        // While the viewer runs the window wakes only for its exit (`POLL`): the car turntable stands still and the
+        // Controls page's bars are not live.
         self.previews.still = running;
         if self.controls.capturing() {
             ctx.request_repaint();

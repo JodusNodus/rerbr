@@ -149,15 +149,25 @@ sources). Start runs the viewer with `rbr-standalone --live --boot` as child pro
   start. The system clipboard is egui-winit's `clipboard` feature (smithay-clipboard on Wayland, arboard elsewhere;
   arboard brings the `image` crate, egui-winit asks for its image support); before 2026-11-03 paste from other
   programs did not work.
-- Idle and while the viewer runs (2026-11-05): the joysticks are looked for every 2 s in one gilrs context
-  (`Joysticks::rescan`); a new context each time leaked a `gilrs` thread and its HID manager on macOS (gilrs-core
-  0.6.8 never stops it; 27 to 79 threads in 4 min). While the viewer runs the launcher draws only at 4 Hz (`POLL`:
-  its exit, the gamepad events queued meanwhile), with no rescan and the car turntable still; otherwise the Drive
+- Idle and while the viewer runs (2026-11-05): the joysticks are looked for every 2 s in one context
+  (`Joysticks::rescan`: their ids, and they are opened again only when those changed). While the viewer runs the
+  launcher draws only at 4 Hz (`POLL`: its exit), with no rescan and the car turntable still; otherwise the Drive
   page's turntable redraws at 10 Hz (one turn in 6 s; 20 Hz cost about 6% of a core).
-- Joysticks on macOS (2026-11-05, from gilrs-core 0.6.8's code, not tried with a wheel): a new context lists no
-  pad until its connection events are read, so `imp::Context::new` reads them until 100 ms pass without one (500 ms
-  at most); before, the viewer opened no bound device there. The viewer looks for a bound joystick missing at the
-  open every second and opens everything again in the same context when it shows up (`Input::find_missing`).
+- Joysticks off Linux (2026-11-12, issue #6; not run on macOS or Windows, the library type-checks for Windows): SDL3's
+  joysticks (`devices::sdl`, `rbr_render::sdl`) in place of gilrs-core, whose macOS layer found no DualSense on macOS
+  27, wired or over Bluetooth (cause not found; it drops a device without a word when a property read fails). The
+  axes and buttons are SDL's, in its order, the hats left out as on Linux; polled, SDL's events off. Bindings saved
+  on macOS or Windows before name gilrs's axes and buttons and are set again. On Linux the same code reads what
+  evdev reads: the devices' ids, the axis and button counts, the buttons and every moved axis's value (the ignored
+  test `sdl_reads_what_evdev_reads`: a G923, a T500 RS shifter, a uinput Xbox 360 pad; an axis not moved since the
+  open reads SDL's 0 there, and SDL names the pads it knows itself). macOS: SDL's IOKit driver hears of devices
+  plugged in on the thread that first started its joysticks, so the viewer opens the menus' gamepads on the main
+  thread before the wheel and the input thread. The viewer looks for a bound joystick missing at the open every
+  second and opens everything again in the same context when it shows up (`Input::find_missing`).
+- The menus' gamepad (`rbr_render::gamepads`, 2026-11-12): SDL3's gamepads on every platform in place of gilrs: the
+  d-pad, South and East of each, polled once a frame (18 µs on Linux), a held d-pad repeating after 400 ms every
+  80 ms (a uinput pad: Down at the press and again from 400 ms, Select and Back once a press). A wheel SDL has no
+  gamepad mapping for moves nothing.
 - Update check (`update.rs`, 2026-11-05): one request at the window's start to the GitHub releases API (published
   releases only; `release.yml` makes drafts), the highest `v*` tag above `CARGO_PKG_VERSION` (semver order) shown as
   a link to its page at the status bar's right. No download, no setting; a failed check shows nothing.

@@ -9,7 +9,6 @@ use super::camera_page::{self, CameraPage, Moved};
 use super::ffb_page::{self, FfbPage};
 use super::hud_page::{self, HudPage};
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Vec2};
-use gilrs::Button;
 use rbr_gameplay::flow::Mode;
 use rbr_gameplay::pause_menu::{self, Item, MenuState};
 use rbr_recording::menu::Menu as Record;
@@ -49,19 +48,6 @@ impl Nav {
             KeyCode::ArrowRight | KeyCode::KeyD => Some(Nav::Right),
             KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => Some(Nav::Select),
             KeyCode::Backspace => Some(Nav::Back),
-            _ => None,
-        }
-    }
-
-    /// A gamepad button's move: the d-pad, South (A, cross) and East (B, circle); Start is the pause binding's.
-    pub fn of_button(button: Button) -> Option<Nav> {
-        match button {
-            Button::DPadUp => Some(Nav::Up),
-            Button::DPadDown => Some(Nav::Down),
-            Button::DPadLeft => Some(Nav::Left),
-            Button::DPadRight => Some(Nav::Right),
-            Button::South => Some(Nav::Select),
-            Button::East => Some(Nav::Back),
             _ => None,
         }
     }

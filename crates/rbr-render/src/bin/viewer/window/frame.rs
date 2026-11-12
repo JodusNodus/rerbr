@@ -8,7 +8,6 @@ use crate::draw::{
 use crate::scene::take_damage;
 use crate::shown::{self, Feedback};
 use crate::triple;
-use gilrs::ev::filter::Filter;
 use rbr_recording::pose::CarPose;
 use rbr_render::bindings::{self, Action};
 use rbr_render::hud::hud_page;
@@ -25,7 +24,7 @@ use rbr_render::views::Shown;
 use std::time::{Duration, Instant};
 use winit::keyboard::KeyCode;
 
-use super::{App, DemoPlay, FAST_FACTOR, HIDDEN_FRAME, MAX_FRAME_SECONDS, PAD_REPEAT, WALK_SPEED, ZOOM_RATE};
+use super::{App, DemoPlay, FAST_FACTOR, HIDDEN_FRAME, MAX_FRAME_SECONDS, WALK_SPEED, ZOOM_RATE};
 
 impl App {
     /// Whether the lesson stands on the brief (the SCH1 record's brief state, the countdown waiting for the
@@ -134,19 +133,8 @@ impl App {
         let dt = (now - self.last_frame).as_secs_f32().min(MAX_FRAME_SECONDS);
         self.last_frame = now;
         span.next("input");
-        if let Some(gilrs) = &mut self.gilrs {
-            let mut navs = Vec::new();
-            while let Some(event) = gilrs.next_event().filter_ev(&PAD_REPEAT, gilrs) {
-                match event.event {
-                    gilrs::EventType::ButtonPressed(button, _) => navs.extend(Nav::of_button(button)),
-                    // A held d-pad repeats its move, as a held key does (the filter's events are not in the state).
-                    gilrs::EventType::ButtonRepeated(button, _) => {
-                        gilrs.update(&event);
-                        navs.extend(Nav::of_button(button).filter(|nav| !matches!(nav, Nav::Select | Nav::Back)));
-                    }
-                    _ => {}
-                }
-            }
+        if let Some(gamepads) = &mut self.gamepads {
+            let navs = gamepads.poll(now);
             if self.menu.is_some() {
                 navs.into_iter().for_each(|nav| self.menu_nav(nav));
             } else if self.results.is_some() {

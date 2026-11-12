@@ -186,7 +186,7 @@ the layer a run-time subclass of its class whose `nextDrawable` keeps it). Ours,
 
 - acquire the surface's texture (the loop's wait: a free image, the refresh under fifo; `desired_maximum_frame_latency`
   2, `window.rs`);
-- gilrs events (the pause menu's navigation) and the input thread's last poll (`window/feed.rs`): the input read;
+- the gamepads' poll (the pause menu's navigation) and the input thread's last poll (`window/feed.rs`): the input read;
 - `Live::pump`: the payloads due at 7 ms per period (at 60 fps 2-3 a frame, all with this read), then up to 6 ms
   waiting for their answers (one frame of 5-6 NGP steps: p50 1.5 ms, p95 2.2 ms with the pipes), so the frame draws
   the step of the input it read;

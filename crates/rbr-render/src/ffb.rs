@@ -807,7 +807,7 @@ impl Drop for Wheel {
     }
 }
 
-fn sdl_error() -> String {
+pub(crate) fn sdl_error() -> String {
     // SAFETY: SDL_GetError returns a valid C string owned by SDL.
     unsafe { CStr::from_ptr(SDL_GetError()).to_string_lossy().into_owned() }
 }
