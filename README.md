@@ -66,8 +66,6 @@ automatic recovery (H calls for help), TrackIR, EAX and Prologic.
 - **RSF-encrypted stages** are not decrypted; they stay in the list, marked unavailable.
 - **BTB stages** (`RX_CONTENT/Tracks` folders of a RallySimFans install) are drawn without bump or specular maps. Each is a stage of its
   own, with its own records and ghosts; its weathers are retail map 41's (Mont Blanc).
-- **Force feedback** uses the first device it finds; set `device =` in the `[ffb]` section of
-  `launcher-settings.ini` to pick another.
 
 ## Install
 
