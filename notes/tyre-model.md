@@ -2744,6 +2744,21 @@ saved rank pages are read below.
     not say which tyre's answer past the limit is the real one.
   - Wet over dry on the user's own passes (the Alpine, apexes cornered at 1 g up when dry, speed squared): 0.82 /
     0.79 / 0.73 at 87 / 110 / 168 km/h (n 8 / 8 / 7).
+- The user's La Mussara drive against the crews (2026-11-12; RSF 476, i20 Coupe WRC 2020, experimental-brush, the replay
+  all frames equal; España 2021 SS1 and SS4, 12 passes of 7 crews, their GPS fitted on the drive's path, gap median 4.6
+  m, p90 12 m, and each sample at the driveline distance of its nearest path point; speeds from the GPS chord over 1 s;
+  scratch). Driveline 450 to 6845 m: the crews 182.8 (Evans) to 195.1 s, the user 229.9 s with two contacts (570 and
+  1650 m, sideslip 3-6° before them) and a handbrake hairpin, no spin on the tyres, sideslip to 14° elsewhere. On the 90
+  % of the road away from those: 180.4 s against the passes' 158.8-170.0 (median 162.4, +11 %). By the crews' phase
+  (their median pedals): where they are flat out 3.0 km, +9.9 s (+13 %), the user flat out on 71 % of it against 95 %;
+  where they brake 2.0 km, +3.3 s (+5 %); part throttle 0.75 km, +4.8 s. Apex speed over the crews' median: 0.95-0.97
+  under 100 km/h (9 apexes), 0.89 at 100-140 (6), 0.76 over 140 (5), where the user's path lateral is 0.73-1.14 g and
+  the crews' body g 1.10-1.50 at 156-190 km/h. The car's own limit: `corner_limit.py` on the driveline, the 7 corners
+  with a limit where the crews' body g is 1.0 or more, body g 1.22 against 1.15 (1.01 of theirs corner by corner), the
+  speed 0.94 of their slowest pass; the pad's circles 1.35 g at 133 km/h (r 100) and 1.36 g at 186 km/h flat out without
+  letting go (r 200). Braking, the 16 longest: 0.81 g, 0.5 s peak 1.04 (the crews' p90 1.37-1.43, the car's threshold
+  1.33-1.40). So at 40-100 km/h the driver and the car are at the crews' level, and the rest of the gap is the driver's
+  margin in fast corners and on the brake; the fast corners' limit on the stage is not measured (every level held).
 
   Open: the brush's brake in turn under a driver (the lab's case: "Brake in turn, Fiesta Rally2, traced"; gravel's
   under the pursuit's steering is "Braking in a turn under a steering driver"). After these drives the user found
