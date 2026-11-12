@@ -163,6 +163,12 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   car the cabin low-pass. The bottoming thud under the splash was dropped: the recordings carry the impact.
   Autopilot drive on wet 54O, Corolla (`/tmp/water-sound/r6/`, not kept): the right-side puddle +2 to +4 dB on the
   chase mix, +1 in the car; the wet gravel hiss 10-13 dB under the tyres; without water, output identical.
+- Tarmac skid loop (ours, 2026-11-12, on trial): `TIRE::SURFACES SkidTarmac` is a 0.98 s loop at a constant level
+  (50 ms envelope std 0.18 dB, a 1335 Hz tone, -7.9 dBFS RMS); in its place six seconds of a real car's squeal
+  (embedded, CC0, `CREDITS.md`: 930-1100 Hz with its octave coming and going, envelope std 1.3 dB, -12 dBFS RMS, so
+  4 dB lower). The trigger, level and pitch rules are 1.02's; gravel and snow keep theirs. No open recording of a
+  low sideways scrub without a squeal on top was found. Stones tried and dropped the same day (user: keep the
+  retail `IMPACT::GRUS`; pebbles on a metal box, branch `sound/stones`). Not judged by ear yet.
 - Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).
 - Verge (ours, 2026-11-05, `verge.rs`): 1.02 has no grass, bush or branch sounds. The renderer's `rbr_render::verge`
@@ -195,7 +201,9 @@ Mechanics in `suspension.rs` (squeaks, knocks, bottoming, damage call 7, frame f
   one a wheel per 9 frames unless 1.5 times harder; the frame keeps its hardest bump. The
   user's replay (Alpine A110 RGT, Mont Ventoux BTB, 330 s, in the car; `rbr-sound --replay`): 1979 new bump words,
   median 0.037, a tenth above 0.13; commanded ranged impacts 852 to 34, knocks 272 at a median gain of 0.07, 7 at
-  full (not in code). The recorded drives never touch the stops (62 drives, 39 min: no bump word changes).
+  full (not in code). The recorded drives never touch the stops (62 drives, 39 min: no bump word changes). A knock
+  takes a place at the sound limit as the ranged impacts do (the newest one-shot stops): on gravel the stones held
+  the limit and 50 of 139 knocks were refused (the Hassi replay, Lancer Evo II, 305 s; none now, not in code).
 
 ## Impacts
 

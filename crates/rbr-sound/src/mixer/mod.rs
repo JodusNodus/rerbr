@@ -832,10 +832,11 @@ impl Mixer {
 
     /// Whether the original's mixer makes a one-shot now ([`SOUND_LIMIT`]), tallied by kind. A sound it makes takes
     /// a place even when silent. The ranged impacts and the `GO` (flag 0x400: 0x4b2f5f, 0x4ba5ea) are always made:
-    /// `Vf48` (0x4cf98f) stops the newest sound without flag 0x80 or 0x10, here the newest one-shot.
+    /// `Vf48` (0x4cf98f) stops the newest sound without flag 0x80 or 0x10, here the newest one-shot. Ours: the bump
+    /// stops' knocks too, which a shower of stones otherwise crowds out (the Hassi replay: 50 of 139 refused).
     fn make(&mut self, shot: Shot) -> bool {
         let full = self.sounds >= SOUND_LIMIT;
-        let steals = matches!(shot, Shot::Ranged(_) | Shot::Go);
+        let steals = matches!(shot, Shot::Ranged(_) | Shot::Go | Shot::Bottoming(_));
         if full && steals {
             if let Some(mut stolen) = self.playing.pop() {
                 stolen.stop(self.rate);

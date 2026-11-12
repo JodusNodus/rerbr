@@ -2,7 +2,7 @@
 
 Recordings embedded in `rbr-sound` (`data.rs`, `include_bytes!`) for the water sounds (`tyre::Water`), the
 windscreen's wipers, splats and in-car rain (`data::GlassBank`), the verge (`verge.rs`), the bump stops' knocks
-(`suspension.rs`) and the body's scrape (`impact.rs`). Every other
+(`suspension.rs`), the body's scrape (`impact.rs`) and the tyres' squeal on tarmac (`tyre.rs`). Every other
 sound comes from the player's own `audio.dat`. All files are mono 16-bit PCM WAV at 44100 Hz, made from the
 Freesound HQ previews (128 kbit/s MP3; the originals need a login).
 
@@ -20,3 +20,4 @@ Freesound HQ previews (128 kbit/s MP3; the originals need a login).
 | `branch1.wav` to `branch4.wav` | [Hitting Tall Grass.wav](https://freesound.org/people/worthahep88/sounds/319208/) (1, 2), [Talll Grass Hits 2.wav](https://freesound.org/people/worthahep88/sounds/319215/) (3, 4) | worthahep88 | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Branches slapping the body (`verge.rs`): a stick hitting tall dry grass, the four strongest hits (0.26 s and 5.16 s; 0.40 s and 13.03 s), 0.45 s each, 80 Hz high-pass, 5 ms fade in, 200 ms fade out, the loudest 0.3 s at -18 dBFS RMS, peaks soft-limited (under 1 % of samples). |
 | `thud1.wav` to `thud8.wav` | [Bashing, Car Interior, Singles, A.wav](https://freesound.org/people/InspectorJ/sounds/273515/) | InspectorJ (www.jshaw.co.uk) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | The bump stops' knocks (`suspension.rs`), soft to hard: the bashes on a car's interior at 4.41 and 9.11 s (soft), 6.14 and 7.19 s (middle), 0.22, 1.18, 2.10 and 3.25 s (hard), each from 10 ms before to 120 ms after, mixed to mono, 35 Hz high-pass, 3 ms fade in, 100 ms fade out, peak at -1 dBFS. |
 | `scrape.wav` | [Metal Tool Drag1.aif](https://freesound.org/people/timgormly/sounds/170962/) | timgormly | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | The body scraping the road (`impact.rs`): a metal tool dragged over a concrete floor, 2.15-4.15 s, the steadiest stretch, mixed to mono, 60 Hz high-pass, the level flattened (100 ms RMS), looped with a 100 ms crossfade, -14 dBFS RMS, peaks soft-limited (0.05 % of samples). |
+| `skid_tarmac.wav` | [Chrysler LHS tire squeal 04 (04-25-2009).wav](https://freesound.org/people/audible-edge/sounds/71739/) | audible-edge | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | The tyres' skid loop on tarmac (`tyre.rs`): a 1996 Chrysler LHS circling the microphone with its tyres squealing, 3.0-9.0 s, 150 Hz high-pass, the level flattened (250 ms RMS), -12 dBFS RMS, peaks soft-limited (1.8 % of samples); the mixer makes the seam. |

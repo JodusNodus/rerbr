@@ -41,6 +41,9 @@ const THUDS: [&[u8]; 8] = [
     include_bytes!("../sounds/thud8.wav"),
 ];
 const SCRAPE: &[u8] = include_bytes!("../sounds/scrape.wav");
+/// Ours: a tyre squealing on tarmac (`sounds/CREDITS.md`), six seconds in place of `TIRE::SURFACES SkidTarmac`'s
+/// one ([`CarBank::surfaces`]).
+const SKID_TARMAC: &[u8] = include_bytes!("../sounds/skid_tarmac.wav");
 const GRASS: &[u8] = include_bytes!("../sounds/grass.wav");
 const BRUSH: &[u8] = include_bytes!("../sounds/brush.wav");
 const BRANCHES: [&[u8]; 4] = [
@@ -301,7 +304,8 @@ pub struct CarBank {
     pub turbo: Wave,
     pub blow_off: Wave,
     pub gear_changes: Vec<Wave>,
-    /// The tyre loops by material (gravel, tarmac, snow), normal then skid (`TIRE::SURFACES`).
+    /// The tyre loops by material (gravel, tarmac, snow), normal then skid (`TIRE::SURFACES`; tarmac's skid ours,
+    /// [`SKID_TARMAC`]).
     pub surfaces: [[Wave; 2]; 3],
     /// `CAR::OTHER Offroad1-7`.
     pub offroad: Vec<Wave>,
@@ -458,6 +462,7 @@ impl CarBank {
         let surface = |name: &str| -> Result<[Wave; 2], String> {
             Ok([wave("TIRE::SURFACES", &format!("Normal{name}"))?, wave("TIRE::SURFACES", &format!("Skid{name}"))?])
         };
+        let [tarmac, _] = surface("Tarmac")?;
         let frontend = dat.ini("Audio\\Frontend.ini")?;
         let ingame = dat.ini("Audio\\Ingame.ini")?;
         let volume = |name| sound_def(&ingame, name).volume;
@@ -499,7 +504,7 @@ impl CarBank {
             gear_changes: (1..=3)
                 .map(|k| wave("CAR::TRANSMISSION", &format!("GearChange{k}")))
                 .collect::<Result<_, _>>()?,
-            surfaces: [surface("Gravel")?, surface("Tarmac")?, surface("Snow")?],
+            surfaces: [surface("Gravel")?, [tarmac, Wave::decode(SKID_TARMAC)?], surface("Snow")?],
             offroad: (1..=7).map(|k| wave("CAR::OTHER", &format!("Offroad{k}"))).collect::<Result<_, _>>()?,
             rumble: wave("CAR::RUMBLE", "Rumble")?,
             wetness: wave("TIRE::SURFACES", "SkidWater")?,
