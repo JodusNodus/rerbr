@@ -7,6 +7,9 @@
 //! faces of the glass class (the retail cars' mirrors, the BMW M3 E30's `i_body_tukor`). Connected faces make one
 //! mirror when they lie on one plane ([`FLAT`]) facing the driver (toward the car's back); the rest keep the cube's
 //! reflection.
+//!
+//! The image is not reflected across the glass as modelled but as its driver would set it ([`Glass::aim`]): the
+//! models' glass points anywhere (the game drew a texture on it), most at the car's own flank or the verge.
 
 use crate::car::cabin::Mirror;
 use crate::damage::MeshDamage;
@@ -75,11 +78,34 @@ pub struct Glass {
     /// Two axes in the plane and the glass's half size along them: its outline's box.
     pub axes: [Vec3; 2],
     pub half: Vec2,
+    /// Its faces' area, square metres.
+    pub area: f32,
+    /// The normal its image is reflected across, about `centre` ([`Glass::aim`]): the glass as its driver set it.
+    pub aimed: Vec3,
 }
 
+/// Where the driver's line to a door mirror's centre goes off it, as set (ours): outward of straight back by the
+/// glass's half width as the eye sees it, less [`FLANK`] of it, so that the car's flank fills the inner edge; and
+/// down by [`DOWN`] of its half height, the horizon above the middle.
+const FLANK: f32 = 0.25;
+const DOWN: f32 = 0.3;
+/// The centre mirror's line runs straight back, this far down, radians: through the rear window from under the roof.
+const CENTRE_DOWN: f32 = 0.035;
+
 impl Glass {
-    fn area(&self) -> f32 {
-        4.0 * self.half.x * self.half.y
+    /// Sets the mirror for the driver's `eye` (model space), as a driver does: [`Glass::aimed`] is the normal that
+    /// sends the eye's line to the glass's centre back along the car ([`FLANK`], [`DOWN`], [`CENTRE_DOWN`]).
+    pub fn aim(&mut self, eye: Vec3) {
+        let to = self.centre - eye;
+        let (seen, distance) = (to.normalize_or_zero(), to.length().max(1e-3));
+        // The glass's half size as the eye sees it, radians.
+        let across = |axis: Vec3, half: f32| (axis.reject_from_normalized(seen).length() * half / distance).atan();
+        let (yaw, pitch) = match self.kind {
+            Kind::Side => ((1.0 - FLANK) * across(self.axes[0], self.half.x), DOWN * across(self.axes[1], self.half.y)),
+            Kind::Centre => (0.0, CENTRE_DOWN),
+        };
+        let out = Vec3::new(self.centre.x.signum() * yaw.sin() * pitch.cos(), -pitch.sin(), yaw.cos() * pitch.cos());
+        self.aimed = (out - seen).normalize_or(self.normal);
     }
 
     /// The outline's four corners, in model space.
@@ -96,6 +122,9 @@ pub struct Unfitted {
     pub triangles: usize,
     /// The farthest a vertex lies off the faces' mean plane, metres.
     pub off_plane: f32,
+    /// The faces' centroid and their box's size across and up their mean plane, metres.
+    pub centre: Vec3,
+    pub size: Vec2,
 }
 
 /// What [`find`] found.
@@ -106,14 +135,18 @@ pub struct Found {
 }
 
 /// The farthest a vertex of a mirror's glass may lie off its plane: its own size times this, at least
-/// [`FLAT_LEAST`] (ours: a slightly domed door mirror still reads right reflected in its mean plane).
-const FLAT: f32 = 0.04;
+/// [`FLAT_LEAST`] (ours: a domed glass shows a flat mirror's image, sampled where it lies on screen; at 0.04 the
+/// Peugeot 208 R2's centre glass, 9 mm off over 22 cm, and the Fiesta Rally3's right one, 19 mm, kept the cube).
+const FLAT: f32 = 0.1;
 const FLAT_LEAST: f32 = 0.003;
 /// Neighbouring faces are one pane when their normals are within this cosine and the plane holds them within
 /// [`FLAT_LEAST`].
 const SAME_PLANE: f32 = 0.985;
 /// Glass narrower than this is not a mirror (a bevel, a rim), metres.
 const SMALLEST: f32 = 0.03;
+/// A mirror's faces fill this much of their outline's box at least: a rim around the glass (the 911 GT3 RS (2010)
+/// RGT's, on the glass's plane and larger than it) and a lone triangle do not.
+const FILL: f32 = 0.55;
 /// The eye's line reflected off a mirror's glass runs back along the car (`+z`) at least this much: the glass shows
 /// what lies behind, not the roof or the dash.
 const BACKWARD: f32 = 0.5;
@@ -165,7 +198,7 @@ pub fn find(interior: &[Mesh], damage: &[MeshDamage], eye: Vec3) -> Found {
             match fit(mesh, &pane, eye) {
                 Ok(Some(glass)) if mirror => panes.push(in_mesh(glass, k)),
                 Ok(Some(glass)) if hangs(&glass, eye) => hanging.push(in_mesh(glass, k)),
-                Err(off_plane) if mirror => found.unfitted.push(Unfitted { mesh: k, triangles: pane.len(), off_plane }),
+                Err(unfitted) if mirror => found.unfitted.push(Unfitted { mesh: k, ..unfitted }),
                 _ => {}
             }
         }
@@ -181,7 +214,7 @@ pub fn find(interior: &[Mesh], damage: &[MeshDamage], eye: Vec3) -> Found {
         .collect();
     let place = |m: &Glass| (m.kind, m.centre.x > 0.0 || m.kind == Kind::Centre);
     let seen = |m: &Glass| seen(&walls, eye, m);
-    panes.sort_by(|a, b| b.area().total_cmp(&a.area()));
+    panes.sort_by(|a, b| b.area.total_cmp(&a.area));
     for pane in panes.into_iter().filter(seen) {
         let taken = found.mirrors.iter().any(|m| place(m) == place(&pane));
         match found.mirrors.iter_mut().find(|m| m.centre.distance(pane.centre) < ONE_MIRROR) {
@@ -197,9 +230,10 @@ pub fn find(interior: &[Mesh], damage: &[MeshDamage], eye: Vec3) -> Found {
         }
     }
     if !found.mirrors.iter().any(|m| m.kind == Kind::Centre) {
-        let largest = hanging.into_iter().filter(seen).max_by(|a, b| a.area().total_cmp(&b.area()));
+        let largest = hanging.into_iter().filter(seen).max_by(|a, b| a.area.total_cmp(&b.area));
         found.mirrors.extend(largest);
     }
+    found.mirrors.iter_mut().for_each(|mirror| mirror.aim(eye));
     found
 }
 
@@ -307,8 +341,8 @@ fn planes<T: Copy + Ord>(mesh: &Mesh, triangles: &[(usize, T)]) -> Vec<Vec<(usiz
 
 /// The mirror `triangles` of `mesh` make, seen from `eye`: `Ok(None)` when they are no mirror (too small, turned
 /// away, not reflecting what lies behind), `Err` with how far they lie off one plane when they are not flat
-/// ([`FLAT`]).
-fn fit(mesh: &Mesh, triangles: &[usize], eye: Vec3) -> Result<Option<Glass>, f32> {
+/// ([`FLAT`]; its `mesh` is the caller's to set).
+fn fit(mesh: &Mesh, triangles: &[usize], eye: Vec3) -> Result<Option<Glass>, Unfitted> {
     let (mut area_normal, mut centroid, mut area) = (Vec3::ZERO, Vec3::ZERO, 0.0);
     for &t in triangles {
         let [a, b, c] = corners(mesh, t);
@@ -339,7 +373,9 @@ fn fit(mesh: &Mesh, triangles: &[usize], eye: Vec3) -> Result<Option<Glass>, f32
     });
     let size = high - low;
     let ahead = eye.z - centroid.z;
+    let area = area * 0.5;
     if size.min_element() < SMALLEST
+        || area < FILL * size.x * size.y
         || size.max_element() > LARGEST
         || !(AHEAD[0]..=AHEAD[1]).contains(&ahead)
         || centroid.y < eye.y - BELOW
@@ -348,7 +384,7 @@ fn fit(mesh: &Mesh, triangles: &[usize], eye: Vec3) -> Result<Option<Glass>, f32
     }
     let off_plane = points.iter().map(|&p| (p - centroid).dot(normal).abs()).fold(0.0, f32::max);
     if off_plane > (FLAT * size.max_element()).max(FLAT_LEAST) {
-        return Err(off_plane);
+        return Err(Unfitted { mesh: 0, triangles: triangles.len(), off_plane, centre: centroid, size });
     }
     let middle = (low + high) * 0.5;
     let centre = centroid + u * middle.x + v * middle.y;
@@ -360,6 +396,8 @@ fn fit(mesh: &Mesh, triangles: &[usize], eye: Vec3) -> Result<Option<Glass>, f32
         normal,
         axes: [u, v],
         half: size * 0.5,
+        area,
+        aimed: normal,
     }))
 }
 
@@ -410,21 +448,29 @@ pub fn add(stage: &mut Stage, interior: &mut [Mesh], damage: &mut [MeshDamage], 
     found
 }
 
-/// A mirror's glass this frame, in stage space: its outline's corners, its normal toward the eye, and whether it is a
-/// door mirror (it sees the car's exterior; the centre mirror the cabin).
+/// A mirror's glass this frame, in stage space: its outline's corners, the normal toward the eye its image is
+/// reflected across (about the corners' middle), how far before that plane the image starts, metres, and whether it is
+/// a door mirror (it sees the car's exterior; the centre mirror the cabin).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Placed {
     pub corners: [Vec3; 4],
     pub normal: Vec3,
+    pub past: f32,
     pub side: bool,
 }
+
+/// A mirror's housing stands this far before its glass at most, metres (ours): with the glass's own reach before the
+/// plane it is aimed in, left out of its image.
+const RIM: f32 = 0.03;
 
 impl Glass {
     /// The glass placed by the car body's model space to stage space `body`.
     pub fn placed(&self, body: Mat4) -> Placed {
+        let reach = self.corners().map(|c| (c - self.centre).dot(self.aimed)).into_iter().fold(0.0, f32::max);
         Placed {
             corners: self.corners().map(|c| body.transform_point3(c)),
-            normal: body.transform_vector3(self.normal).normalize_or_zero(),
+            normal: body.transform_vector3(self.aimed).normalize_or_zero(),
+            past: NEAR_PAST + reach + RIM,
             side: self.kind == Kind::Side,
         }
     }
@@ -463,7 +509,7 @@ pub struct View {
 
 /// The share past the glass's plane the reflected view starts at, metres: the glass itself and what lies on it are
 /// left out (ours).
-const NEAR_PAST: f32 = 0.01;
+pub const NEAR_PAST: f32 = 0.01;
 /// The largest mirror image, pixels.
 pub const MOST: (u32, u32) = (1024, 512);
 /// Mirror textures go in steps of this, pixels, so that a moving head does not make new ones every frame.
@@ -476,7 +522,7 @@ pub const DENSEST: u32 = 1440;
 /// `sky_view_projection`) drawn at `screen` pixels: `None` when the glass is behind the eye, turned away, or off
 /// screen.
 pub fn view(view_projection: Mat4, sky_view_projection: Mat4, screen: (u32, u32), placed: &Placed) -> Option<View> {
-    let Placed { corners, normal, .. } = *placed;
+    let Placed { corners, normal, past: near, .. } = *placed;
     let eye = crate::camera::eye(view_projection);
     let centre = corners.iter().sum::<Vec3>() / 4.0;
     if normal.dot(eye - centre) <= 0.0 {
@@ -517,7 +563,7 @@ pub fn view(view_projection: Mat4, sky_view_projection: Mat4, screen: (u32, u32)
     // The near plane on the glass (reversed depth: clip z <= w): z = w - k (plane . p) in the reflected stage, where
     // the plane is positive past the glass. k at most the least view depth per metre over the box, so that the far
     // side (z >= 0) lies beyond everything the view draws.
-    let past = plane(centre - normal * NEAR_PAST, -normal);
+    let past = plane(centre - normal * near, -normal);
     // The least cosine to the view's axis over the box's corners, unprojected.
     let (inverse, forward) = (view_projection.inverse(), view_projection.row(3).truncate().normalize());
     let k = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)]
