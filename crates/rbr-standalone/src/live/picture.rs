@@ -194,8 +194,6 @@ impl Picture {
             zones: std::array::from_fn(|zone| {
                 f32::from_bits(mem.u32(handler + damage::HANDLER_ZONES + 4 * zone as u32))
             }),
-            code: mem.u32(handler + damage::HANDLER_EVENT_CODE),
-            index: mem.u32(handler + damage::HANDLER_EVENT_INDEX),
         };
         Self {
             body: pure::frame_bytes(mem),

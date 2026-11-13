@@ -383,7 +383,7 @@ fn load_scene<'scope, 'env>(
                         for &(code, index) in &args.cracks {
                             loaded.on_damage(code, index);
                         }
-                        if let Some(process) = &live {
+                        if let Some(process) = &mut live {
                             for (frame, poses, doors) in &detaching {
                                 loaded.step(frame - loaded.index() as isize);
                                 loaded.set_door_angles(doors);
@@ -900,11 +900,13 @@ fn report_load(stage: &Stage) {
     }
 }
 
-/// Dents and cracks the car as the live process's last damage record says, hangs its attached doors by their
-/// hinge angles, and places its detached parts.
-pub fn take_damage(playback: &mut Playback, process: &Live) {
+/// Dents the car as the live process's last damage record says, cracks it by the damage emits since, hangs its
+/// attached doors by their hinge angles, and places its detached parts.
+pub fn take_damage(playback: &mut Playback, process: &mut Live) {
     playback.set_damage(&process.damage.zones);
-    playback.on_damage(process.damage.code, process.damage.index);
+    for hit in process.take_impacts() {
+        playback.on_damage(hit.code, hit.index);
+    }
     playback.set_door_angles(&process.doors);
     playback.set_detached(&process.detached);
 }

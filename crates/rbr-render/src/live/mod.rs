@@ -38,7 +38,7 @@ pub use rbr_recording::gearbox::{Gearbox, GBX1};
 pub use rbr_recording::hud::RaceHud;
 use rbr_recording::input::{Input, CELL_AXIS, CELL_BUTTON};
 pub use rbr_recording::menu::Menu;
-use rbr_recording::particles::{Event as ParticleEvent, TyreParticles};
+use rbr_recording::particles::{CarDamage, Event as ParticleEvent, TyreParticles};
 pub use rbr_recording::realtime::Step;
 use rbr_recording::realtime::{Logged, Message, INPUT, LOG_MAGIC, PAUSE, RESTART, RESUME};
 use rbr_recording::shift::ShiftPoints;
@@ -210,6 +210,8 @@ pub struct Live {
     events: Vec<Vec<ParticleEvent>>,
     /// The sound records of the frames that came back, in step order, until [`Live::take_sounds`].
     sounds: Vec<Inputs>,
+    /// The `CSigCarDamage` emits of the frames that came back, in step order, until [`Live::take_impacts`].
+    impacts: Vec<CarDamage>,
     /// Whether the school flow moved since the school speech was taken, and the ids `Trigger` queued since
     /// ([`Live::take_school_speech`]).
     school_stop: bool,
@@ -298,6 +300,7 @@ impl Live {
             tyres: Vec::new(),
             events: Vec::new(),
             sounds: Vec::new(),
+            impacts: Vec::new(),
             rescue_called: false,
             clock: StepClock::default(),
             hub_offsets: [0.0; WHEELS],
@@ -407,6 +410,11 @@ impl Live {
         std::mem::take(&mut self.sounds)
     }
 
+    /// The `CSigCarDamage` emits since the last call, in step order (the window cracks).
+    pub fn take_impacts(&mut self) -> Vec<CarDamage> {
+        std::mem::take(&mut self.impacts)
+    }
+
     /// Whether the school flow moved since the last call (brief -> driving -> ended, or a restart) and the ids
     /// `Trigger` queued since, in order.
     pub fn take_school_speech(&mut self) -> (bool, Vec<u32>) {
@@ -434,11 +442,18 @@ impl Live {
         if let Some(control) = answer.control {
             frame[HEADER_BYTES..HEADER_BYTES + 20].copy_from_slice(&control[..20]);
         }
+        self.impacts.extend(answer.events.iter().filter_map(|event| match *event {
+            ParticleEvent::CarDamage(hit) => Some(hit),
+            _ => None,
+        }));
         self.tyres.push(answer.tyres);
         self.events.push(answer.events);
-        // The sound models step a period at a time (ours: a longer frame's last records, again for each period).
-        for _ in 0..periods {
-            self.sounds.extend(answer.sound.iter().cloned());
+        // The sound models step a period at a time (ours: a longer frame's last records, again for each period, its
+        // events with the first).
+        if let Some(sound) = &answer.sound {
+            let again = sound.again();
+            self.sounds.push(sound.clone());
+            self.sounds.extend((1..periods).map(|_| again.clone()));
         }
         self.hud = answer.hud;
         self.damage = answer.damage;
@@ -583,6 +598,7 @@ impl Live {
         self.tyres.clear();
         self.events.clear();
         self.sounds.clear();
+        self.impacts.clear();
         self.rescue_called = false;
         self.interactive_poses.clear();
         self.hud_model = self.hud_model.fresh();

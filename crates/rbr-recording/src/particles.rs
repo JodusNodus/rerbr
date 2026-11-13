@@ -134,12 +134,28 @@ pub const ENGINE_NOISE: u32 = 4;
 pub const EXHAUST: u32 = 5;
 pub const LIGHTS: u32 = 6;
 
+/// A `CSigCarDamage` emit: the damage handler's record (+0x3e60) as `E36DamageOps::Slot1` sends it. The handler
+/// keeps the record after the emit, and its functors rewrite the code and the index on calls that emit nothing, so
+/// only the emit says an impact happened.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CarDamage {
+    /// The best functor's result (+0): 3 cracks the windscreen, 4 a side or the rear window.
+    pub code: u32,
+    /// The state (+4; `EmitDebris` runs for 1 to 3, the impact sounds play the ranged set for them).
+    pub kind: u32,
+    /// The best functor's index (+8): which window.
+    pub index: u32,
+    /// The impact's force (+0x10).
+    pub force: f32,
+    /// Where it hit (+0x20, world, z up).
+    pub at: [f32; 3],
+}
+
 /// One particle signal of a step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Event {
-    /// `CSigCarDamage`: its kind (+4; `EmitDebris` runs for 1 to 3), the impact's force (+0x10) and where it hit
-    /// (+0x20, world, z up).
-    CarDamage { kind: u32, force: f32, at: [f32; 3] },
+    /// `CSigCarDamage`.
+    CarDamage(CarDamage),
     /// The damping event (a bush or other soft object the car goes through): the penetration (+0), the material id
     /// (+4), the contact point (+0x20) and the vector `E82D_Fed::Emit` launches along (+0x30).
     Damping { penetration: f32, material: u32, at: [f32; 3], push: [f32; 3] },
@@ -163,7 +179,13 @@ impl Event {
         let word = |at: usize| word_at(payload, at);
         let vec3 = |at: usize| [float(at), float(at + 4), float(at + 8)];
         match kind {
-            CAR_DAMAGE => Some(Event::CarDamage { kind: word(4), force: float(0x10), at: vec3(0x20) }),
+            CAR_DAMAGE => Some(Event::CarDamage(CarDamage {
+                code: word(0),
+                kind: word(4),
+                index: word(8),
+                force: float(0x10),
+                at: vec3(0x20),
+            })),
             DAMPING => {
                 Some(Event::Damping { penetration: float(0), material: word(4), at: vec3(0x20), push: vec3(0x30) })
             }
@@ -232,7 +254,9 @@ mod tests {
     #[test]
     fn events_round_trip() {
         let mut damage = [0u8; EVENT_PAYLOAD_BYTES];
+        damage[0] = 4;
         damage[4] = 2;
+        damage[8] = 3;
         damage[0x10..0x14].copy_from_slice(&20000.0f32.to_le_bytes());
         damage[0x24..0x28].copy_from_slice(&5.0f32.to_le_bytes());
         let mut noise = [0u8; EVENT_PAYLOAD_BYTES];
@@ -243,7 +267,7 @@ mod tests {
         assert_eq!(
             events,
             [
-                Event::CarDamage { kind: 2, force: 20000.0, at: [0.0, 5.0, 0.0] },
+                Event::CarDamage(CarDamage { code: 4, kind: 2, index: 3, force: 20000.0, at: [0.0, 5.0, 0.0] }),
                 Event::EngineNoise { misfire: 0.0, steam: 0.5 }
             ]
         );
