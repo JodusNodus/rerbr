@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the player's download into dist/ (docs/development.md, "Packaging"):
 #   macOS: ReRBR.app (the launcher, the viewer and rbr-standalone), ad-hoc signed, in ReRBR-<version>-macos.dmg;
-#   Linux: ReRBR-<version>-<arch>.AppImage;
+#   Linux: ReRBR-<version>-<arch>.AppImage, with the xkbcommon libraries of the system it is built on;
 #   Windows (Git Bash, MSVC): ReRBR-<version>-windows-x86_64.zip, the three .exe files and Microsoft's DXC
 #   (dxcompiler.dll and its licences) in a ReRBR folder.
 # All link SDL3 in, built from source (needs cmake), so nothing else needs installing.
@@ -111,13 +111,24 @@ fetch() {
 linux() {
     local arch
     arch=$(uname -m)
+    # The programs find the AppImage's libraries (below) beside them. DT_RPATH, not DT_RUNPATH, so that it also
+    # resolves what those libraries need.
+    export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib"
     build
     local appdir=$dist/ReRBR.AppDir
     rm -rf "$appdir"
-    mkdir -p "$appdir/usr/bin"
+    mkdir -p "$appdir/usr/bin" "$appdir/usr/lib"
     for bin in "${bins[@]}"; do
         cp "$target/play/$bin" "$appdir/usr/bin/"
     done
+    # winit loads libxkbcommon-x11 by name on X11 and panics without it, and a bare system has none (the AppImage
+    # catalog's test, Ubuntu 22.04). With it go libxkbcommon, built from the same source, and the libxcb-xkb it
+    # needs, and their licences. Every other library is the system's.
+    local lib
+    for lib in libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb-xkb.so.1; do
+        cp -L "$(cc -print-file-name="$lib")" "$appdir/usr/lib/"
+    done
+    cp "$root/scripts/packaging/libxkbcommon-LICENSE" "$root/scripts/packaging/libxcb-COPYING" "$appdir/usr/lib/"
     ln -s usr/bin/rerbr "$appdir/AppRun"
     cp "$root/scripts/packaging/icon.png" "$appdir/rerbr.png"
     ln -s rerbr.png "$appdir/.DirIcon"
