@@ -240,9 +240,9 @@ pub(super) fn set_a1c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     Ok(Return::void(0, 12))
 }
 
-/// thiscall: `Damp66D0`, the two damper cells.
+/// thiscall: `Damp66D0`, the two anti-roll bars' force cells.
 pub(super) fn update_roll_bars(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    car::damper::update_roll_bars(&mut ctx.mem, r.ecx);
+    car::roll_bars::update_roll_bars(&mut ctx.mem, r.ecx);
     Ok(Return::void(0, 0))
 }
 

@@ -6,8 +6,8 @@
 //! port's. The order is the original's.
 
 use super::accessors::set_cell;
-use super::damper;
 use super::layout::{self, Real};
+use super::roll_bars;
 use crate::car_body::store::CarStore;
 use crate::mem::Mem;
 
@@ -58,7 +58,7 @@ pub fn step_controls<S: CarStore>(calls: &mut impl ControlsCalls<S>, mem: &mut S
     calls.scratch_step(mem, car, dt);
     calls.drive_step(mem, car, dt);
     calls.entity_step(mem, car, dt);
-    damper::update_roll_bars(mem, car);
+    roll_bars::update_roll_bars(mem, car);
     calls.update_ffb_torque(mem, car);
     if mem.snapshot_on(car) {
         calls.snapshot(mem, car);
