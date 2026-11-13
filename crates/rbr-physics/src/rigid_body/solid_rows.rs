@@ -84,9 +84,7 @@ pub fn solid_response<S: RigidStore>(
 ) -> u32 {
     let body = store.body(this);
     let value = response::response(&body, store.row(point), host);
-    store.set_f32(output, value.x);
-    store.set_f32(output + 4, value.y);
-    store.set_f32(output + 8, value.z);
+    store.store_row3(output, value);
     output
 }
 
