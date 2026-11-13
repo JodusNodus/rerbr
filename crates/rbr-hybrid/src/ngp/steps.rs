@@ -252,7 +252,7 @@ pub(crate) fn step_wrapper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
         return Err(Decline::Unsupported("NGP's settings object is not made yet"));
     }
     let def = m.u32(r.ecx + 0x10);
-    let saved: Vec<u32> = (0x204..0x284).step_by(4).map(|o| m.u32(def + o)).collect();
+    let saved: [u32; 0x20] = m.u32s(def + 0x204);
     let p = r.stack[4];
     let k = step_wrapper::speed_factor(m.f32(r.ecx + 0x360));
     let percent = SurfaceHeatPercent {

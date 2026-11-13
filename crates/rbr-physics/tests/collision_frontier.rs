@@ -108,7 +108,7 @@ fn grid_ops_declines_one_point_before_any_change() {
 #[test]
 fn bounds_and_half_extent_follow_minps_maxps() {
     let nan = f32::NAN;
-    let (lo, hi) = point_bounds(&[v(nan, 1.0, 0.0, 0.0), v(2.0, nan, -0.0, 0.0)]);
+    let (lo, hi) = point_bounds([v(nan, 1.0, 0.0, 0.0), v(2.0, nan, -0.0, 0.0)]);
     // An unordered lane takes the later point's value, as minps and maxps take their second operand.
     assert_eq!((lo.x, hi.x), (2.0, 2.0));
     assert!(lo.y.is_nan() && hi.y.is_nan());

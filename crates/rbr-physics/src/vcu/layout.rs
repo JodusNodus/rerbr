@@ -782,13 +782,18 @@ pub fn step<S: VcuStore>(
     let def = mem.def(scratch.def);
     let mut state = mem.state(scratch.state);
     let mut out = mem.outputs(drive);
-    let mut sends = Vec::new();
+    // The step sends at most ten: seven, and a lock on each of the three channels.
+    let mut sends = [None; 10];
+    let mut sent = 0;
     let port = if gear { super::step::step } else { super::step::step_basic };
-    port(input, &scratch, &def, &mut state, &mut gears, &mut out, &mut |s| sends.push(s));
+    port(input, &scratch, &def, &mut state, &mut gears, &mut out, &mut |s| {
+        sends[sent] = Some(s);
+        sent += 1;
+    });
     mem.store_state(scratch.state, &state);
     mem.store_gearbox(gears_at, &gears);
     mem.store_outputs(drive, &out);
-    for send in sends {
+    for send in sends.into_iter().flatten() {
         match send {
             Send::EnginePedal(v) => calls.set_engine_pedal(scratch.engine, v),
             Send::CutFlags(flags) => {
