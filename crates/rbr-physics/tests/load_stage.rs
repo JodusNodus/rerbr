@@ -43,7 +43,7 @@ use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout as physics;
 use rbr_physics::physics_core::layout::construct::Heap;
 use rbr_physics::stage::layout::{self as stage, StageHost};
-use rbr_physics::stage::Stuff;
+use rbr_physics::stage::Placement;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 mod common;
@@ -245,8 +245,8 @@ impl StageHost for Host {
         self.handles += 1;
         Some(self.keys.get(&self.stuffs).copied().unwrap_or(0))
     }
-    fn stuff(&mut self, mem: &mut Mem, stuff: &Stuff) {
-        stage::place(mem, self, stuff).expect("the placement's calls are ported");
+    fn emit_placement(&mut self, mem: &mut Mem, placement: &Placement) {
+        stage::place(mem, self, placement).expect("the placement's calls are ported");
         self.stuffs += 1;
     }
     fn scratch(&mut self, mem: &mut Mem, size: u32) -> u32 {

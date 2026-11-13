@@ -2,13 +2,13 @@
 //! sync and the frame walk.
 
 use super::files::{NoParent, StageHost};
-use super::meshes::{store_stuff, STUFF_SIZE};
+use super::meshes::{store_placement, PLACEMENT_SIZE};
 use super::{WALL, WALL_ROOT};
 use crate::collision::layout::body_hosts::BodyResetHost;
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::StateHost;
 use crate::collision::layout::{cell_grid_ctor, state_unka44, sync_grid, CtorHost, GridSyncHost};
-use crate::entities::frame::{entity_hook, EntityFrame, Form, Hook, Owner};
+use crate::entities::frame::{entity_hook, Form, Hook, Owner};
 use crate::entities::layout::{construct_entity, node_of, EntityArgs};
 use crate::entities::store::EntityStore;
 use crate::entities::transform::copy_blocks_and_walk_one_two;
@@ -27,7 +27,7 @@ use crate::rigid_body::layout::{
     solid_wake, Body, PlaceHost, RestHost,
 };
 use crate::rigid_body::rotation::{self, MulHost};
-use crate::stage::Stuff;
+use crate::stage::Placement;
 
 /// The cell grid object (`CCellGrid`, 0x14 bytes).
 const GRID_SIZE: u32 = 0x14;
@@ -56,24 +56,26 @@ impl<H: StageHost> GridBuildHost for Calls<'_, H> {
 /// the state and put to sleep (`CSolid::E43Vf94`; a placement with flag 1 is woken, `CSolid::E43Vf90`). The objects'
 /// virtual calls are answered for `CSolid` only; another class, a parent, a dynamic placement or a listener of the body
 /// event that is not ported is `Err`.
-pub fn place(mem: &mut Mem, host: &mut impl StageHost, stuff: &Stuff) -> Result<(), HostUnavailable> {
-    let at = host.scratch(mem, STUFF_SIZE);
-    store_stuff(mem, at, stuff);
+pub fn place(mem: &mut Mem, host: &mut impl StageHost, placement: &Placement) -> Result<(), HostUnavailable> {
+    let at = host.scratch(mem, PLACEMENT_SIZE);
+    store_placement(mem, at, placement);
     physics::notify_stuff(mem, &mut Calls(host), at)
 }
 
-/// The virtual slots the placements' objects are checked for, with the function each must hold: `CSolid::CDef::Vf50`
-/// (0x52d640) on the definition; on the object `CSolid::Vf44`, `CSolid::Vf40`, the frame slot 0x30 (`node_of`), the
-/// filing slots (`solid_filing`), `CSolid::E43Vf90` with `CSolid::S18` (0x529dc0), and `CSolid::E43Vf94`;
-/// `CBase::Unk44` (`ret`) on its state (`+0x38`); `CSolid::E43Vf9C` (0x52ac80, `scale_add_rows`), the owner's hook One.
-const DEF_VF50: (u32, u32) = (0x50, 0x0052_D640);
-const SOLID_VF44: (u32, u32) = (0x44, 0x0052_C700);
-const SOLID_VF40: (u32, u32) = (0x40, 0x0052_B6D0);
+/// The virtual slots the placements' objects are checked for, with the function each must hold: the new solid
+/// (`CSolid::CDef::Vf50`, 0x52d640) on the definition; on the object the place (`CSolid::Vf44`), the refresh
+/// (`CSolid::Vf40`), the frame slot 0x30 (`node_of`), the filing slots (`solid_filing`), the wake (`CSolid::E43Vf90`)
+/// with its window start (`CSolid::S18`, 0x529dc0, named by use: its port ends in `emit::window_start`), and the sleep
+/// (`CSolid::E43Vf94`); an empty function (`CBase::Unk44`, `ret`) in its state's (`+0x38`) slot 0x44; the owner's hook
+/// One (`CSolid::E43Vf9C`, 0x52ac80, `scale_add_rows`).
+const SOLID_DEF_NEW: (u32, u32) = (0x50, 0x0052_D640);
+const SOLID_PLACE: (u32, u32) = (0x44, 0x0052_C700);
+const SOLID_REFRESH: (u32, u32) = (0x40, 0x0052_B6D0);
 const NODE_OF: (u32, u32) = (0x30, 0x0051_9C00);
-const SOLID_VF90: (u32, u32) = (0x90, 0x0052_BF30);
-const SOLID_S18: (u32, u32) = (0x48, 0x0052_9DC0);
-const SOLID_VF94: (u32, u32) = (0x94, 0x0052_C130);
-const BASE_UNK44: (u32, u32) = (0x44, 0x0052_F480);
+const SOLID_WAKE: (u32, u32) = (0x90, 0x0052_BF30);
+const SOLID_WINDOW_START: (u32, u32) = (0x48, 0x0052_9DC0);
+const SOLID_SLEEP: (u32, u32) = (0x94, 0x0052_C130);
+const STATE_EMPTY_SLOT: (u32, u32) = (0x44, 0x0052_F480);
 const SOLID_HOOK_ONE: (u32, u32) = (0x9C, 0x0052_AC80);
 /// `CEntityFrame::Vf04` (0x519530), the first of the six frame hooks (slots 1 to 6, 0x30 bytes apart).
 pub(crate) const FRAME_HOOKS: u32 = 0x0051_9530;
@@ -106,12 +108,12 @@ impl<H: StageHost> AllocHost for Calls<'_, H> {
 impl<H: StageHost> NotifyHost for Calls<'_, H> {
     /// A stage object has no parent; its definition must be a `CSolid::CDef`.
     fn def_new(&mut self, mem: &mut Mem, def: u32, a: u32, b: u32) -> Result<u32, HostUnavailable> {
-        check(b == 0 && holds(mem, def, DEF_VF50))?;
+        check(b == 0 && holds(mem, def, SOLID_DEF_NEW))?;
         cdef_new_solid(mem, def, a, b, self)
     }
 
     fn place(&mut self, mem: &mut Mem, object: u32, stuff: u32) -> Result<(), HostUnavailable> {
-        check(holds(mem, object, SOLID_VF44))?;
+        check(holds(mem, object, SOLID_PLACE))?;
         place_solid(mem, self, object, stuff)
     }
 
@@ -120,12 +122,12 @@ impl<H: StageHost> NotifyHost for Calls<'_, H> {
     }
 
     fn wake(&mut self, mem: &mut Mem, object: u32) -> Result<(), HostUnavailable> {
-        check(holds(mem, object, SOLID_VF90))?;
+        check(holds(mem, object, SOLID_WAKE))?;
         solid_wake(mem, self, object)
     }
 
     fn sleep(&mut self, mem: &mut Mem, object: u32) -> Result<(), HostUnavailable> {
-        check(holds(mem, object, SOLID_VF94))?;
+        check(holds(mem, object, SOLID_SLEEP))?;
         solid_sleep(mem, self, object)
     }
 }
@@ -167,7 +169,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
     /// `CEntity::Vf40` (0x51a4b0): the state's slot 0x44 (`CBase::Unk44`, nothing) and the walk of the children (a placed
     /// solid has none).
     fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
-        check(holds(mem, this, SOLID_VF40))?;
+        check(holds(mem, this, SOLID_REFRESH))?;
         let mut deferred = Deferred::default();
         refresh_and_reset(mem, this, &mut deferred)?;
         let (Some(state), Some(body)) = (deferred.state, deferred.body) else {
@@ -182,7 +184,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
             sync_grid(&mut walk, mem, grid, a, low, high, scratch);
             check(!walk.failed)?;
         }
-        check(holds(mem, body + ENTITY_STATE, BASE_UNK44))?;
+        check(holds(mem, body + ENTITY_STATE, STATE_EMPTY_SLOT))?;
         check(mem.u32(body + FIRST_CHILD) == 0)
     }
 }
@@ -257,7 +259,7 @@ struct FrameWalk<'m> {
 
 impl Walk for FrameWalk<'_> {
     fn node(&self, at: u32) -> Node {
-        Node { child: self.mem.u32(at + 4), depth: self.mem.u32(at + 8) }
+        EntityStore::load_node(self.mem, at)
     }
 
     fn hook(&mut self, at: u32, hook: Hook, a: u32, b: u32) {
@@ -266,8 +268,7 @@ impl Walk for FrameWalk<'_> {
             self.failed = true;
             return;
         }
-        let frame =
-            EntityFrame { parent: self.mem.u32(at + 4), depth: self.mem.u32(at + 8), owner: self.mem.u32(at + 0xC) };
+        let frame = EntityStore::load_entity_frame(self.mem, at);
         entity_hook(&frame, hook, a, b, self);
     }
 
@@ -309,7 +310,7 @@ impl Owner for FrameWalk<'_> {
 impl<H> RestHost for Calls<'_, H> {
     /// `CSolid::S18` (0x529dc0): the walk of the children (a placed solid has none), then `emit::window_start`.
     fn slot18(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
-        check(holds(mem, this, SOLID_S18) && mem.u32(this + FIRST_CHILD) == 0)?;
+        check(holds(mem, this, SOLID_WINDOW_START) && mem.u32(this + FIRST_CHILD) == 0)?;
         let mut body = Body::load(mem, this);
         window_start(&mut body);
         body.store(mem, this);

@@ -8,7 +8,7 @@ use super::hold::{hold, HoldInput};
 use super::layout::{scaled_sum, Frame};
 use crate::fpu::round_x87;
 use crate::math::vec::Vec4;
-use crate::math::{abs_asm, sign};
+use crate::math::{abs_by_subtraction, sign};
 
 /// The lower clamp of the lateral force's damping factor.
 const MIN_DAMPING: f32 = 0.6;
@@ -75,7 +75,7 @@ pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4, model_weight: f32) 
     // The damping runs unless the sticking weight is an equal, ordered zero.
     if sticking != 0.0 {
         if sign(lateral_force) == sign(lateral_velocity) {
-            let a = abs_asm(f.scratch.spin_slip);
+            let a = abs_by_subtraction(f.scratch.spin_slip);
             let v = a * a * DAMPING_SLOPE + 1.0;
             let v = if MIN_DAMPING > v {
                 MIN_DAMPING
@@ -87,7 +87,7 @@ pub fn solve_forces(f: &mut Frame, dt: f32, torque_in: Vec4, model_weight: f32) 
             lateral_force *= toward_model(v * sticking + sliding);
         }
         if sign(torsion_torque) != sign(f.scratch.spin_slip) {
-            let a = abs_asm(f.scratch.spin_slip);
+            let a = abs_by_subtraction(f.scratch.spin_slip);
             let d = -1.0 - a * LONGITUDINAL_SLOPE;
             let r = 1.0 / d;
             let y = 1.0 - (r + 1.0);

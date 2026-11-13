@@ -7,7 +7,7 @@
 //! - the `.mat` image and the material table (`entities::material_table::MaterialTable`);
 //! - the `.trk` file: the drive line (kind 0x14 records as drive-line entries) and the collision meshes
 //!   (kind 0x16): a descriptor per mesh, the collision grid of each static one
-//!   ([`crate::collision::layout::collision_mesh_factory`]), and the placements ([`Stuff`]), which the physics turns
+//!   ([`crate::collision::layout::collision_mesh_factory`]), and the placements ([`Placement`]), which the physics turns
 //!   into objects;
 //! - the placements' objects: per placement an object of the registry entry its object type names, placed (pose,
 //!   extent, grid cell, collision grid, rotation and bounds), filed with the physics state and put to sleep.
@@ -23,7 +23,7 @@ use crate::engine_driveline::drive_line::DriveLinePoint;
 use crate::math::vec::Vec4;
 use crate::physics_core::detect::Xy;
 
-/// The `.col` root object's header, as the relocation's mode-3 path reads it: offsets in the image.
+/// The `.col` root object's header, as the relocation reads it: offsets in the image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColRoot {
     /// The root tree, which becomes the collision system's tree root.
@@ -35,46 +35,11 @@ pub struct ColRoot {
     pub water: MeshList,
 }
 
-/// A run of 0x40-byte mesh records: their count and offset in the image.
+/// A run of water-mesh records (four corners each): their count and offset in the image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MeshList {
     pub count: u32,
     pub at: u32,
-}
-
-/// Bytes per water-mesh record: four corners of four floats.
-pub const MESH_RECORD: u32 = 0x40;
-
-fn word(image: &[u8], at: u32) -> u32 {
-    let at = at as usize;
-    u32::from_le_bytes(image[at..at + 4].try_into().unwrap())
-}
-
-/// The root object's header, from the file header.
-pub fn col_root(image: &[u8]) -> ColRoot {
-    let root = word(image, 4);
-    let field = |off| word(image, root + off);
-    let def = field(0x14);
-    ColRoot {
-        tree: root + field(0x10),
-        wall_def: (def != 0).then_some(root + def),
-        wet: MeshList { count: field(0x18), at: root + field(0x1c) },
-        water: MeshList { count: field(0x20), at: root + field(0x24) },
-    }
-}
-
-/// The vertex slots a relocated image's objects took: the root, then the cells in table order, each with vertices
-/// holding its slot. Each gives `(slot, offset of its vertices)`, which the collision system's slot table keeps.
-pub fn vertex_slots(image: &[u8]) -> Vec<(u32, u32)> {
-    let (count, table) = (word(image, 8), word(image, 0xc));
-    std::iter::once(word(image, 4))
-        .chain((0..count).map(|i| word(image, table + 4 * i)))
-        .filter(|&object| word(image, object + 8) != 0)
-        .map(|object| {
-            let slot = u16::from_le_bytes([image[object as usize + 2], image[object as usize + 3]]);
-            (u32::from(slot), object + word(image, object + 0xc))
-        })
-        .collect()
 }
 
 /// The water mesh's corner bounds: the lanewise bounds of the record's four corners (the min and max over corners
@@ -99,37 +64,12 @@ pub fn wall_corners([cx, cy, hx, hy]: [f32; 4]) -> [Xy; 2] {
 }
 
 /// One run of the chosen `.mat` entry as the material loader hands it on: the low bytes of its width and height
-/// words and the offset of its 256 cell bytes in the image.
+/// words and the offset of its 256 cell bytes in the image ([`layout`] reads them).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MaterialMap {
     pub width: u8,
     pub height: u8,
     pub cells: u32,
-}
-
-/// On a `.mat` image: the runs of the first entry whose name holds both `wear` and `wetness` (the `wear` and
-/// `wetness` words), or `None` when no entry does (then nothing is emitted). Each entry is a NUL-terminated name,
-/// a run count and 0x108-byte runs (width word, height word, cells).
-pub fn select_maps(image: &[u8], wear: &[u8], wetness: &[u8]) -> Option<Vec<MaterialMap>> {
-    let contains = |name: &[u8], word: &[u8]| name.windows(word.len()).any(|w| w == word);
-    let mut at = 4;
-    for _ in 0..word(image, 0) {
-        let len = image[at as usize..].iter().position(|&b| b == 0).unwrap() as u32;
-        let name = &image[at as usize..(at + len) as usize];
-        let runs = word(image, at + len + 1);
-        at += len + 5;
-        let maps: Vec<_> = (0..runs)
-            .map(|j| {
-                let run = at + j * 0x108;
-                MaterialMap { width: image[run as usize], height: image[run as usize + 4], cells: run + 8 }
-            })
-            .collect();
-        at += runs * 0x108;
-        if contains(name, wear) && contains(name, wetness) {
-            return Some(maps);
-        }
-    }
-    None
 }
 
 fn vec4(v: trk::Vec3) -> Vec4 {
@@ -150,10 +90,9 @@ pub fn drive_line_entries(data: &trk::DriveLineData) -> Vec<DriveLinePoint> {
         .collect()
 }
 
-/// A placement as the mesh loader emits it (0x50 bytes; the words not named here are 0). Its receiver makes the
-/// object.
+/// A placement as the mesh loader emits it (what is not named here is 0). Its receiver makes the object.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Stuff {
+pub struct Placement {
     /// The position, values and extent.
     pub position: Vec4,
     pub values: [f32; 4],
@@ -169,8 +108,8 @@ pub struct Stuff {
 }
 
 /// The placement `object` of `mesh`, with `collision` as its id or descriptor and no handle yet.
-pub fn stuff(mesh: &trk::CollisionMesh, object: &trk::CollisionObject, collision: u32) -> Stuff {
-    Stuff {
+pub fn placement(mesh: &trk::CollisionMesh, object: &trk::CollisionObject, collision: u32) -> Placement {
+    Placement {
         position: vec4(object.position),
         values: object.values,
         extent: vec4(object.extent),
@@ -207,20 +146,5 @@ mod tests {
     fn wall_corners_span_the_root_box() {
         let [low, high] = wall_corners([100.0, 50.0, 20.0, 10.0]);
         assert_eq!((low.x, low.y, high.x, high.y), (80.0, 40.0, 120.0, 60.0));
-    }
-
-    #[test]
-    fn select_maps_takes_the_first_match() {
-        let mut image = 2u32.to_le_bytes().to_vec();
-        for (name, width) in [(&b"x dry new\0"[..], 7u8), (b"x damp new\0", 16)] {
-            image.extend_from_slice(name);
-            image.extend_from_slice(&1u32.to_le_bytes());
-            image.extend_from_slice(&u32::from(width).to_le_bytes());
-            image.extend_from_slice(&16u32.to_le_bytes());
-            image.extend_from_slice(&[0; 256]);
-        }
-        let maps = select_maps(&image, b"new", b"damp").unwrap();
-        assert_eq!(maps, [MaterialMap { width: 16, height: 16, cells: 4 + 10 + 4 + 264 + 11 + 4 + 8 }]);
-        assert_eq!(select_maps(&image, b"worn", b"dry"), None);
     }
 }

@@ -7,6 +7,9 @@ const PERIOD: u32 = 0x14;
 const RING: u32 = 0x18;
 const COUNTER_2D: u32 = 0x40;
 const COUNTER_1D: u32 = 0x44;
+/// The ring's words: the sample count and the cursor (the base is at +0).
+const RING_COUNT: u32 = 4;
+const RING_CURSOR: u32 = 8;
 
 /// `CGraph1D::Push(value)` (0x494cf0, thiscall, `ret 4`) on `graph`: the value's word goes to the ring on every
 /// `period`-th push. Returns eax (the counter's quotient, or the ring after a sample); `None` where the original faults
@@ -29,16 +32,16 @@ fn push(mem: &mut Mem, graph: u32, counter_at: u32, words: &[u32]) -> Option<u32
         return Some(quotient);
     }
     let ring = mem.u32(graph + RING);
-    let cursor = mem.u32(ring + 8);
+    let cursor = mem.u32(ring + RING_CURSOR);
     for (k, word) in words.iter().enumerate() {
         mem.set_u32(cursor.wrapping_add(4 * k as u32), *word);
     }
     let stride = 4 * words.len() as u32;
-    let next = mem.u32(ring + 8).wrapping_add(stride);
-    mem.set_u32(ring + 8, next);
+    let next = mem.u32(ring + RING_CURSOR).wrapping_add(stride);
+    mem.set_u32(ring + RING_CURSOR, next);
     let base = mem.u32(ring);
-    if super::wraps(next, base, mem.u32(ring + 4), stride) {
-        mem.set_u32(ring + 8, base);
+    if super::wraps(next, base, mem.u32(ring + RING_COUNT), stride) {
+        mem.set_u32(ring + RING_CURSOR, base);
     }
     Some(ring)
 }

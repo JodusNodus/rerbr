@@ -1013,7 +1013,7 @@ fn passenger_shake_matches() {
     eprintln!("E45_P3210: {} calls match", shakes.len());
 }
 
-/// `E45PSmalls::M3360` (0x523360): the time decode of the double argument (its `_ftol2` is `math::ftol::ftol2`).
+/// `E45PSmalls::M3360` (0x523360): the time decode of the double argument (its `_ftol2` is `math::ftol::trunc_i64`).
 #[test]
 fn decode_time_matches() {
     let _pc24 = Precision::Pc24.scope();
@@ -1022,7 +1022,7 @@ fn decode_time_matches() {
         "E45PSmalls::M3360",
         |_, _, _| Vec::new(),
         |call| {
-            // The CRT's `_ftol2` is a pure call now (`math::ftol::ftol2`), so the record's call to it is not expected.
+            // The CRT's `_ftol2` is a pure call now (`math::ftol::trunc_i64`), so the record's call to it is not expected.
             port_pairs(call).into_iter().filter(|(addr, _)| *addr != CRT_FTOL).collect()
         },
         |mem, call, _| {

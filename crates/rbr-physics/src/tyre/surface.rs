@@ -1,6 +1,6 @@
 //! The tyre type's friction on the surface classes, by wetness and tread wear.
 
-use crate::math::abs_asm;
+use crate::math::abs_by_subtraction;
 
 /// What the surface friction reads, for two surface classes `first` and `second`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,8 +30,8 @@ pub struct SurfaceFriction {
 /// The friction of each class: its base friction plus the wet slope times the distance of its wetness from the
 /// design wetness, scaled by its wear factor, which the sector's wear moves from 1 to the class's factor.
 pub fn surface_friction(b: &SurfaceInput) -> SurfaceFriction {
-    let a = abs_asm(b.design_wetness - b.wetness_first);
-    let c = abs_asm(b.design_wetness - b.wetness_second);
+    let a = abs_by_subtraction(b.design_wetness - b.wetness_first);
+    let c = abs_by_subtraction(b.design_wetness - b.wetness_second);
     let first = b.wet_slope_first * a + b.base_first;
     let second = b.wet_slope_second * c + b.base_second;
     SurfaceFriction {

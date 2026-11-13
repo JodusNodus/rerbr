@@ -1,11 +1,11 @@
 //! The game's logger: it takes a channel, level, format and arguments, and hands them to a sink. The retail game
 //! logs: the console flag is clear, and the channel and level pick a sink. The sink every channel 6 and 7 the physics
 //! logs on writes the text with the C formatter into a static buffer, copies it to a new block, hands that to the
-//! debug output and frees it; sink 1 writes to the log file when one is open; sink 0 is none. [`format`] is the
+//! debug output and frees it; sink 1 writes to the log file when one is open; sink 0 is none. [`format()`] is the
 //! C formatter on the conversions the log formats use.
 
+mod float_digits;
 pub mod layout;
-mod ld12;
 
 pub use layout::{log, LogHost, BUFFER};
 
@@ -214,9 +214,9 @@ impl Spec {
     }
 }
 
-/// The float-to-digits conversion (with 17 digits, [`ld12::digits`]): the sign, the significant digits without trailing
-/// zeros and the decimal point's place (`decpt`: digits before it). Zero is `"0"` at 0, without a sign (`-0.0` too);
-/// the others are the CRT's `1#INF`, `1#QNAN`, `1#SNAN` and `1#IND` (the default NaN, sign set) at 1.
+/// The float-to-digits conversion (with 17 digits, [`float_digits::digits`]): the sign, the significant digits without
+/// trailing zeros and the decimal point's place (`decpt`: digits before it). Zero is `"0"` at 0, without a sign (`-0.0`
+/// too); the others are the CRT's `1#INF`, `1#QNAN`, `1#SNAN` and `1#IND` (the default NaN, sign set) at 1.
 fn digits(v: f64) -> (bool, Vec<u8>, i32) {
     let negative = v.is_sign_negative();
     if v.is_infinite() {
@@ -235,7 +235,7 @@ fn digits(v: f64) -> (bool, Vec<u8>, i32) {
     if v == 0.0 {
         return (false, b"0".to_vec(), 0);
     }
-    let (mantissa, decpt) = ld12::digits(v);
+    let (mantissa, decpt) = float_digits::digits(v);
     (negative, mantissa, decpt)
 }
 

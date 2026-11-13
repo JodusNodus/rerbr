@@ -7,7 +7,7 @@ use super::engine_calls::rpm_above_40;
 use crate::engine_driveline::mat4;
 use crate::engine_driveline::store::EngineStore;
 use crate::fpu;
-use crate::math::ftol::ftol2;
+use crate::math::ftol::trunc_i64;
 use crate::math::le_or_unordered;
 use crate::math::vec::Vec4;
 use crate::ntweak::set_dirty;
@@ -48,7 +48,7 @@ pub fn sample_big<S: EngineStore>(mem: &S, this: u32, pos: u32, x: f32) -> f32 {
     let va = if ix < n { drive_line::clamp_mix(mem, this, x) } else { Vec4::load(mem, q_at(n - 1)) };
     let d = Vec4 { x: va.x - ps[0], y: va.y - ps[1], z: va.z - ps[2], w: 0.0 };
     let h = (d.length3() - 6.0) * 0.5;
-    let k = match ftol2(h as f64) as i32 {
+    let k = match trunc_i64(h as f64) as i32 {
         k if k > 0 => k,
         _ => 1,
     };

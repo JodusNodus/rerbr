@@ -1,6 +1,6 @@
 //! The 1.02 exe's data words a run reads before anything writes them, for refreshing the embedded copy
 //! (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`). Only with the `exe-reads` feature; otherwise every function
-//! is empty. The pages report each word access ([`read`], [`write`]) between [`start`] and the end of the process.
+//! is empty. The pages report each word access (`read`, `write`) between [`start`] and the end of the process.
 
 /// The exe's `.rdata` and `.data`: the addresses tracked.
 #[cfg(feature = "exe-reads")]

@@ -937,4 +937,4 @@ addr,module,rust_item,test,status
 0x606090,entities/layout/e90.rs,entities::layout::e90::add_pin,entities_vectors::e90_seg_add_helpers_match_direct_records,checked
 0x6060b0,entities/layout/e90.rs,entities::layout::e90::add_bend,entities_vectors::e90_seg_add_helpers_match_direct_records,checked
 0x627235,entities/layout/e90.rs,entities::layout::e90::d3dx_vec3_normalize,entities_vectors::e90_seg_init_and_pool_inits_match_direct_records,checked
-0x70c2c4,math/ftol.rs,math::ftol::ftol2,ftol::ftol2_truncates_like_the_crt,unit
+0x70c2c4,math/ftol.rs,math::ftol::trunc_i64,ftol::trunc_i64_truncates_like_the_crt,unit
