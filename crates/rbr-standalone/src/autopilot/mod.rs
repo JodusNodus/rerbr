@@ -557,6 +557,8 @@ pub struct Measure {
     /// `--circle-past T` (`PAST_WIDE`).
     pub circle_past: Option<f32>,
     pub trace_speed: Option<std::path::PathBuf>,
+    /// `--trace-wheels`: the trace adds the front wheels' tyre columns.
+    pub trace_wheels: bool,
     /// `--tyre-probe FILE`: read-only dumps of each wheel's tyre frame (research tooling).
     pub tyre_probe: Option<std::path::PathBuf>,
     /// `--tyre-probe-every N`: the probe's interval in steps.

@@ -98,6 +98,24 @@ impl ReplayTrace {
     }
 }
 
+/// The front wheels' columns (FL FR, each [`WHEEL_HEADER`]'s) after the step: `--trace-wheels` on the autopilot's
+/// trace.
+pub fn front_wheels(mem: &Mem) -> String {
+    let bytes = pure::frame_bytes(mem);
+    (0..2)
+        .map(|k| {
+            let block = &bytes[CAR_BYTES + k * WHEEL_BYTES..CAR_BYTES + (k + 1) * WHEEL_BYTES];
+            let axle = pose::wheel_pose(block).map_or([f32::NAN; 3], |w| w.axle);
+            wheel(mem, mem.u32(mem.u32(CAR_PTR) + WHEELS + 4 * k as u32), axle)
+        })
+        .collect()
+}
+
+/// The `--trace-wheels` header columns ([`front_wheels`]).
+pub fn front_wheels_header() -> String {
+    ["fl", "fr"].map(|w| WHEEL_HEADER.split(' ').map(|c| format!(" {w}_{c}")).collect::<String>()).concat()
+}
+
 /// A wheel's columns ([`WHEEL_HEADER`]).
 fn wheel(mem: &Mem, wheel: u32, axle: [f32; 3]) -> String {
     let s = mem.load_frame(wheel + TYRE_SCRATCH).scratch;

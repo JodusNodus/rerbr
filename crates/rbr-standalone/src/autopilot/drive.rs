@@ -270,7 +270,8 @@ pub fn drive(
         Some(path) => {
             let mut file =
                 std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?);
-            writeln!(file, "{TRACE_HEADER}{PAST_HEADER}").map_err(|e| format!("{}: {e}", path.display()))?;
+            let wheels = if measure.trace_wheels { crate::replay_trace::front_wheels_header() } else { String::new() };
+            writeln!(file, "{TRACE_HEADER}{PAST_HEADER}{wheels}").map_err(|e| format!("{}: {e}", path.display()))?;
             Some((file, path.display().to_string(), live.step_clock().step, None))
         }
         None => None,
@@ -356,7 +357,8 @@ pub fn drive(
             )
             .map_err(|e| format!("{path}: {e}"))?;
             let (yaw, beta) = yaw_and_sideslip(&sense.pose);
-            writeln!(trace, " {:.4} {yaw:.5} {beta:.5}", driver.past_since().unwrap_or(-1.0))
+            let wheels = if measure.trace_wheels { crate::replay_trace::front_wheels(mem) } else { String::new() };
+            writeln!(trace, " {:.4} {yaw:.5} {beta:.5}{wheels}", driver.past_since().unwrap_or(-1.0))
                 .map_err(|e| format!("{path}: {e}"))?;
         }
         let speed = sense.pose.speed();
