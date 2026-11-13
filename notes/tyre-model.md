@@ -3307,10 +3307,17 @@ Since then:
   shape). With the thin film at half the loss (2026-11-11; the 16 wet and damp rows re-run, 14 PASS before and after):
   `-trl-wet-peak-100-over-32` 0.911 → 0.951 (0.76-1), `-trl-wet-locked-100-over-32` 0.680 → 0.711 (0.56-0.81),
   `-wet-speed-loss` 0.979 → 0.989 (0.97-1).
+- Hard-surface Kx (2026-11-13, `tyre/kx-closer`; `brush::HARD_KX_OVER_KY` = 1.1 × `KX_OVER_KY`, loose-v1 keeps 1.4):
+  `tarmac-kx-per-fz` 26.6 → 28.2, `-kx-over-ky` 1.16 → 1.23, `-peak-kappa` 0.09 → 0.08 (the band's floor),
+  `-brake-in-turn-a2-three-quarters` 0.906 → 0.934, `-kx-load-exponent` 1.098 → 1.087; 103/128 before and after,
+  snow bit-equal, gravel only `-over-tarmac-braking-100` 0.670 → 0.671. Why: the A2RL slick's Kx/Fz ≥ 29-36, and AC
+  EVO's tyres (a sim's values, not data; GT4 Clubsport, MX-5 Cup, A110 S, Nordschleife shared-memory logs) Kx/Ky 1.3-1.4
+  at Kx/Fz 39-46. 1.2 × gives 29.5 / 1.29 but four MISS: peak κ 0.07, a2-three-quarters 0.963, kx-load-exponent 1.077,
+  `-trl-wet-locked-over-peak-100` 0.489.
 
 It reproduces the tables above: gravel 345 ngp locked 0.628 g from 50 km/h, the 345 circle 0.571 g (brush 0.664); NGP
 gravel peak μ_y 0.828 (13.75° on the 0.25° grid against the sweep's 13.5°, a flat top), μ_y(30°)/peak 0.956, μ_x(κ
-1)/peak 0.82; tarmac brush peak κ 0.09, Fy(κ 0.25)/Fy(0) 0.226/0.292 at 2°/4°, Kx/Fz 26.8.
+1)/peak 0.82; tarmac brush peak κ 0.08, Fy(κ 0.25)/Fy(0) 0.225/0.290 at 2°/4°, Kx/Fz 28.2 (26.8 before 2026-11-13).
 
 Tarmac, ngp / experimental-brush against the band (`tarmac-*`):
 

@@ -20,7 +20,7 @@ const SPEED: f64 = 15.0;
 const NOMINAL_LOAD: usize = 3;
 
 /// The brush's calibration for `w`: NGP's peak forces and its cornering slope over 0 to 2° times
-/// [`CORNERING_OVER_NGP`], the longitudinal stiffness [`crate::brush::KX_OVER_KY`] times the cornering one (so 1.3
+/// [`CORNERING_OVER_NGP`], the longitudinal stiffness [`crate::brush::HARD_KX_OVER_KY`] times the cornering one (so 1.3
 /// times that of NGP's slope as well), its friction solved for NGP's longitudinal peak, and the lateral Coulomb level
 /// solved for the slide grip ([`slide_grip`]: `tuning`'s, else [`SLIDE_GRIP_MODEL`]). `tuning`'s stiffness multiplies
 /// the slope; the peaks are solved again with each.
@@ -269,8 +269,8 @@ pub(crate) mod tests {
         let (sxy, sxx) = alphas.fold((0.0, 0.0), |(sxy, sxx), a| (sxy + a * lateral(a), sxx + a * a));
         let slope = CORNERING_OVER_NGP * t.fit_lat;
         assert!((sxy / sxx / slope - 1.0).abs() < 0.01, "slope {} target {slope}", sxy / sxx);
-        // The longitudinal stiffness is KX_OVER_KY times the stiffer cornering one, at NGP's longitudinal peak.
-        assert_eq!(cal.cx0, crate::brush::KX_OVER_KY * cal.cy0);
+        // The longitudinal stiffness is HARD_KX_OVER_KY times the stiffer cornering one, at NGP's longitudinal peak.
+        assert_eq!(cal.cx0, crate::brush::HARD_KX_OVER_KY * cal.cy0);
         let longitudinal = |kappa: f64| {
             let x = EvalInput { vy: 0.0, vx: -SPEED, spin: (1.0 + kappa) * SPEED, ..input(0.0) };
             eval(&x, &cal).fx.abs()
