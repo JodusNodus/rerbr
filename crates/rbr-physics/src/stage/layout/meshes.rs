@@ -4,6 +4,7 @@
 use rbr_formats::trk;
 
 use super::files::{NoParent, StageHost};
+use super::images::MESH_RECORD;
 use super::{MESH_COUNT, MESH_SLOTS};
 use crate::collision::layout::{alloc_collision_id, collision_mesh_factory, lookup_twin, move_to_cell, unlink, Vec4};
 use crate::entities::layout::{construct_entity, EntityArgs};
@@ -11,7 +12,7 @@ use crate::mem::Mem;
 use crate::physics_core::layout::Filing;
 use crate::physics_core::layout::{self as physics, setup};
 use crate::rigid_body::layout::HALF;
-use crate::stage::{self, Stuff, MESH_RECORD};
+use crate::stage::{self, Stuff};
 
 /// `CCollisionMeshOpen` (vtable 0x7395e4) and `CCollisionMeshWater` (0xc0 bytes, vtable 0x73974c): the bounds, the
 /// cell link (next, previous, owner), the self word, the record and the four words after it.

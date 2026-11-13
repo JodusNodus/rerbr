@@ -4,6 +4,7 @@ use crate::mem::Mem;
 
 mod fence;
 mod files;
+mod images;
 mod meshes;
 mod placement;
 mod queries;

@@ -3,6 +3,7 @@
 
 use rbr_formats::{col, trk};
 
+use super::images;
 use super::meshes::{add_meshes, clear_meshes, load_collision_meshes, reg_wall, WALL_FILING};
 use super::placement::Calls;
 use super::{
@@ -85,11 +86,11 @@ pub fn load_col(mem: &mut Mem, host: &mut impl StageHost, image: u32, file: &[u8
     let mut bytes = file.to_vec();
     col::relocate(&mut bytes, image)?;
     mem.map(image, &bytes);
-    for (slot, vertices) in stage::vertex_slots(&bytes) {
+    for (slot, vertices) in images::vertex_slots(&bytes) {
         mem.set_u32(system + SLOTS + 4 * slot, image + vertices);
         mem.set_u32(system + CURSOR, (slot + 1) & (SLOT_COUNT - 1));
     }
-    let root = stage::col_root(&bytes);
+    let root = images::col_root(&bytes);
     if let Some(def) = root.wall_def {
         set_wall(mem, host, physics::wall_manager(mem), image + def);
     }
@@ -160,7 +161,7 @@ pub fn load_materials(mem: &mut Mem, track_state: u32, image: u32, file: &[u8], 
     if file.len() <= 4 {
         return;
     }
-    if let Some(maps) = stage::select_maps(file, wear, wetness) {
+    if let Some(maps) = images::select_maps(file, wear, wetness) {
         build_material_table(mem, MATERIAL_TABLE, image, &maps);
     }
 }
