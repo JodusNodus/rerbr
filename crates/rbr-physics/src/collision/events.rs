@@ -2,6 +2,7 @@
 
 use super::contact_solver;
 use super::layout::event_pool::partner_slot;
+use super::layout::{self, EventQueryFrame};
 use super::store::{CollisionStore, Side};
 use crate::math::vec::{Vec3, Vec4};
 use crate::mem::Mem;
@@ -40,13 +41,13 @@ pub fn query_event_bodies<S: CollisionStore>(
     store: &mut S,
     event: u32,
     [a, b, c, d, e]: [u32; 5],
-    esp: u32,
+    sp: u32,
 ) -> u32 {
-    let frame = (esp - 4) & !0xf;
+    let frame = layout::event_query_frame(sp);
     store.set_u32(d, 0);
     store.set_u32(e, 0);
-    query_body(host, store, event, Side::Body, [a, b, c, d, e], frame);
-    query_body(host, store, event, Side::Partner, [a, b, c, d, e], frame)
+    query_body(host, store, event, Side::Body, [a, b, c, d, e], &frame);
+    query_body(host, store, event, Side::Partner, [a, b, c, d, e], &frame)
 }
 
 /// One body of [`query_event_bodies`]: the walks of `a` and `b` into temporaries, the transform, then the body's
@@ -57,19 +58,19 @@ fn query_body<S: CollisionStore>(
     event: u32,
     side: Side,
     [a, b, c, d, e]: [u32; 5],
-    frame: u32,
+    frame: &EventQueryFrame,
 ) -> u32 {
-    let (ta, tb, tc) = (frame - 0x20, frame - 0x30, frame - 0x10);
+    let (ta, tb, tc) = (frame.walk_a, frame.walk_b, frame.composed);
     for (walk, out) in [(a, ta), (b, tb)] {
         let body = side_body(store, event, side);
-        let r = host.transform(frame - 0x48, store.vtable_slot(body, SLOT_TRANSFORM), body);
-        host.pair_walk(frame - 0x50, event, walk, r, out);
+        let r = host.transform(frame.transform_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+        host.pair_walk(frame.walk_sp, event, walk, r, out);
     }
     let body = side_body(store, event, side);
-    let r = host.transform(frame - 0x48, store.vtable_slot(body, SLOT_TRANSFORM), body);
-    host.compose(frame - 0x50, event, store.event_point(event), r, tc);
+    let r = host.transform(frame.transform_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    host.compose(frame.walk_sp, event, store.event_point(event), r, tc);
     let body = side_body(store, event, side);
-    host.dot_products(frame - 0x5c, store.vtable_slot(body, SLOT_DOT_PRODUCTS), body, [tc, ta, tb, c, d, e])
+    host.dot_products(frame.query_sp, store.vtable_slot(body, SLOT_DOT_PRODUCTS), body, [tc, ta, tb, c, d, e])
 }
 
 /// Applies the event's impulse to its bodies, unless the event's suppression flags are set (returning the flags word
@@ -80,30 +81,30 @@ pub fn apply_event_impulse<S: CollisionStore>(
     store: &mut S,
     event: u32,
     [a, b, c, d]: [u32; 4],
-    esp: u32,
+    sp: u32,
 ) -> u32 {
     let flags = store.event_flags(event);
     if flags & 0x6000 != 0 {
         return flags;
     }
-    let frame = (esp - 4) & !0xf;
+    let frame = layout::event_impulse_frame(sp);
     let body_a = store.event_body(event);
     if body_a != 0 {
         let ids = store.event_ids(event);
         let (id, word) = partner_slot(ids.second[0], ids.second[1], ids.first[0], ids.first[1]);
         let args = [store.event_point(event), c, id, word, store.event_materials_at(event, Side::Partner), a, b, d];
-        host.impulse(frame - 0x54, store.vtable_slot(body_a, SLOT_IMPULSE), body_a, args);
+        host.impulse(frame.impulse_sp, store.vtable_slot(body_a, SLOT_IMPULSE), body_a, args);
     }
     let body_b = store.event_partner(event);
     if body_b == 0 {
         return 0;
     }
-    let (ta, tb) = (frame - 0x20, frame - 0x10);
+    let (ta, tb) = (frame.negated_d, frame.negated_c);
     scaled(store, d, ta, -1.0);
     let [id, word] = store.event_ids(event).first;
     scaled(store, c, tb, -1.0);
     let args = [store.event_point(event), tb, id, word, store.event_materials_at(event, Side::Body), a, b, ta];
-    host.impulse(frame - 0x54, store.vtable_slot(body_b, SLOT_IMPULSE), body_b, args)
+    host.impulse(frame.impulse_sp, store.vtable_slot(body_b, SLOT_IMPULSE), body_b, args)
 }
 
 /// Stores the input vector scaled by `scale` at `output`.
@@ -124,11 +125,11 @@ pub fn relative_point_velocity<S: CollisionStore>(
     store: &mut S,
     event: u32,
     out: u32,
-    esp: u32,
+    sp: u32,
 ) -> u32 {
-    let frame = ((esp - 4) & !0xf) - 0x30;
-    let body = side_velocity(host, store, event, Side::Body, frame + 0x10, frame - 0xc);
-    let partner = side_velocity(host, store, event, Side::Partner, frame + 0x20, frame - 0xc);
+    let frame = layout::point_velocity_frame(sp);
+    let body = side_velocity(host, store, event, Side::Body, frame.body, frame.velocity_sp);
+    let partner = side_velocity(host, store, event, Side::Partner, frame.partner, frame.velocity_sp);
     store.store_vec3(out, contact_solver::relative_velocity(body, partner));
     out
 }
@@ -159,18 +160,18 @@ pub fn init_full<S: CollisionStore>(
     store: &mut S,
     event: u32,
     [kind, body, point_a, point_b, payload, tag]: [u32; 6],
-    esp: u32,
+    sp: u32,
 ) -> u32 {
-    let sp = ((esp - 4) & !0xf) - 0x90;
+    let call_sp = layout::init_event_sp(sp);
     store.init_event(event, kind, body, tag, payload);
 
     let (compose_out, walk_out) = store.event_contact_outputs(event);
     let body = store.event_body(event);
-    let frame = host.transform(sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
-    host.compose(sp, frame, point_a, event, compose_out);
+    let frame = host.transform(call_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    host.compose(call_sp, frame, point_a, event, compose_out);
     let body = store.event_body(event);
-    let frame = host.transform(sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
-    host.pair_walk(sp, frame, point_b, event, walk_out);
+    let frame = host.transform(call_sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    host.pair_walk(call_sp, frame, point_b, event, walk_out);
     store.count_event();
     event
 }
@@ -280,26 +281,15 @@ pub fn make_event<S: CollisionStore>(
     event
 }
 
-/// The builder frame aligned from the entry frame pointer: the payload the initializer copies starts after the
-/// header words, and its last word is never written.
-pub fn make_event_frame(esp: u32) -> u32 {
-    ((esp - 4) & !0xf) - 0x60
-}
-
-/// The payload's address within the builder frame `s`.
-pub fn make_event_payload(s: u32) -> u32 {
-    s + 0x10
-}
-
 /// Builds the event through [`make_event`], reading the payload's last word from the builder frame.
 pub fn make_event_at<S: CollisionStore>(
     host: &mut impl MakeEventHost<S>,
     store: &mut S,
     words: [u32; 9],
-    esp: u32,
+    sp: u32,
 ) -> u32 {
     let [kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2] = words;
     let args = MakeEventArgs { kind, vector_a, p3, body_a, body_b, aux_a, aux_b, vector_b, z2 };
-    let stack_tail = store.u32(make_event_payload(make_event_frame(esp)) + 0x3c);
+    let stack_tail = store.u32(layout::make_event_tail(sp));
     make_event(store, args, stack_tail, host)
 }

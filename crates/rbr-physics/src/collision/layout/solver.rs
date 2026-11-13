@@ -45,3 +45,53 @@ pub fn ctor_solver(mem: &mut Mem, solver: u32, def: u32) -> u32 {
     mem.set_u32(solver + SOLVER_OFFSET_COUNT, 0);
     solver
 }
+
+/// The contact row's frame (`contact_rows`, entered at `sp`): the composed point, and the compose's entry stack
+/// pointer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContactRowFrame {
+    pub composed: u32,
+    pub compose_sp: u32,
+}
+
+pub fn contact_row_frame(sp: u32) -> ContactRowFrame {
+    let base = super::aligned(sp) - 0x80;
+    ContactRowFrame { composed: base + 0x60, compose_sp: base - 16 }
+}
+
+/// The event impulse's frame (`solve_event`, entered at `sp`): its vectors (the normal, the relative velocity, the
+/// slip direction, the slip velocity and the impulse), the responses' floats and the word the first response writes
+/// but nothing reads, and the entry stack pointers of the relative velocity, the responses and the impulse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SolveEventFrame {
+    pub normal: u32,
+    pub velocity: u32,
+    pub direction: u32,
+    pub slip: u32,
+    pub impulse: u32,
+    pub response: u32,
+    pub along: u32,
+    pub across: u32,
+    pub unused: u32,
+    pub velocity_sp: u32,
+    pub response_sp: u32,
+    pub impulse_sp: u32,
+}
+
+pub fn solve_event_frame(sp: u32) -> SolveEventFrame {
+    let base = super::aligned(sp) - 0x90;
+    SolveEventFrame {
+        normal: base + 0x40,
+        velocity: base + 0x50,
+        direction: base + 0x60,
+        slip: base + 0x70,
+        impulse: base + 0x80,
+        response: base + 0x18,
+        along: base + 0x20,
+        across: base + 0x1c,
+        unused: base + 0x24,
+        velocity_sp: base - 8,
+        response_sp: base - 24,
+        impulse_sp: base - 20,
+    }
+}

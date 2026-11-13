@@ -50,6 +50,9 @@ pub use events::{
     apply_event_impulse, init_full, make_event_at, make_event_frame, make_event_payload, prefill_pool,
     query_event_bodies, relative_point_velocity, store_payload, EventBodyHost, EVENT_SIZE,
 };
+pub(in crate::collision) use events::{
+    event_impulse_frame, event_query_frame, init_event_sp, make_event_tail, point_velocity_frame, EventQueryFrame,
+};
 pub use grid_edges::{
     copy_grid, edge_edge_bounds, edge_edge_face, edge_edge_face_count, edge_edge_face_is_valid, edge_edge_hit_word,
     edge_edge_sample_bytes, edge_edge_sample_dimensions, edge_edge_sample_indices, edge_edge_vertex_samples,
@@ -64,12 +67,18 @@ pub use mesh_query::{
     world_axes_overlap, SystemFrame,
 };
 pub use solver::ctor_solver;
+pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
 pub use vec_ops::{
     min_max_a, scaled, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross, vec3_cross_dot,
     vec3_dot, vec3_normalize, vec3_scale, vec3_sub, vec3_sub_dot, vec4_copy_from, vec4_normalize, vec4_sub_stale,
     Vec4Pair,
 };
 pub use walls::{brake_wall_vf_f0, query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
+
+/// The 16-aligned frame base of a function entered at `sp` (`push ebp; mov ebp, esp; and esp, -0x10`).
+fn aligned(sp: u32) -> u32 {
+    (sp - 4) & !0xf
+}
 
 /// The shared four-lane vector (`math::vec::Vec4`), used for body bounds and temporary collision data.
 pub use crate::math::vec::Vec4;
