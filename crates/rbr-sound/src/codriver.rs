@@ -122,8 +122,8 @@ const COUNTDOWN: [(f32, u32); 4] = [(3.0, 3), (2.0, 2), (1.0, 1), (0.0, 0)];
 const COUNTDOWN_END: f32 = -2.0;
 
 /// The damage calls' senders: the battery at or below 6 (0x731b0c) sends 1, no brakes 4, water above 120 (0x731b08)
-/// 5; the broken gearbox (the drivetrain's word 4 times `1 / (2 pi) * 0.5`) and the damage handler's speech ring
-/// send 8.
+/// 5; the broken gearbox (the drivetrain's word 4 times `1 / (2 pi) * 0.5`) sends 8, and each `CSigCarDamageSpeech`
+/// of the step sends its code (`RingStore`'s 8, the broken gear actuator; the ring's other steps send nothing).
 const BATTERY_FLAT: f32 = 6.0;
 const WATER_HOT: f32 = 120.0;
 const INV_TAU: f32 = 0.159_154_94;
@@ -137,8 +137,6 @@ pub struct CoDriver {
     countdown_seen: Option<f32>,
     /// The damage calls already made (`CCarSound +0x4c`; never reset in a drive).
     latch: u32,
-    /// The speech ring index last seen.
-    ring: Option<u32>,
     /// A replay: no damage calls (`E19IsState2`).
     pub replay: bool,
     /// The co-driver switch is off (option `+0x3e8 & 4`, inferred): no pace notes. The countdown and the damage
@@ -180,10 +178,7 @@ impl CoDriver {
         if f32::from_bits(sound.drivetrain[4]) * INV_TAU * 0.5 != 0.0 {
             calls.push(8);
         }
-        if self.ring.is_some_and(|ring| ring != sound.speech_ring) {
-            calls.push(8);
-        }
-        self.ring = Some(sound.speech_ring);
+        calls.extend((0..32).filter(|code| sound.speech & 1 << code != 0));
         for code in calls {
             out.extend(self.damage_call(code));
         }
@@ -284,8 +279,9 @@ mod tests {
         let mut sound = Sound { battery: 12.0, brakes: 1, water: 130.0, ..Sound::default() };
         assert_eq!(c.step(&sound, &[], None), [Command::Speech(Speech::Damage(5))]);
         assert!(c.step(&sound, &[], None).is_empty());
-        sound.speech_ring = 1;
+        sound.speech = 1 << 8;
         assert_eq!(c.step(&sound, &[], None), [Command::Speech(Speech::Damage(8))]);
+        assert!(c.step(&sound, &[], None).is_empty());
         let mut replay = CoDriver { replay: true, ..CoDriver::default() };
         assert!(replay.step(&sound, &[], None).is_empty());
     }
