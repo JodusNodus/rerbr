@@ -1,47 +1,21 @@
 //! The NTweak walk over a [`TweakStore`]: the group's effects worked out before anything is written (`super` describes
-//! the walk, `layout` applies the plan on game memory).
+//! the walk, `layout` applies the plan on game memory and holds the readers' entries and the tweak words' offsets).
 
 use rbr_formats::lsp::Node;
 use rbr_formats::lsp_keys::{Class, KeyInfo};
 use rbr_formats::lsp_keys_ngp::ngp_key_info;
 
+use super::layout::{
+    BASE_PARSE, BIT_FIELD_PARSE, INNER_GROUP_DEFINE, INNER_GROUP_LINK, INNER_GROUP_SKIP, INTEGER_PARSE, ITEM_BLOCK,
+    NGP_TABLE, NGP_TABLE_VTABLE, REAL_PARSE, UNSIGNED_PARSE, VALUE, VECTOR4_PARSE, VECTOR_PARSE, VECTOR_VALUE,
+};
 use super::store::TweakStore;
 use super::{atof, atoi, get_quoted, is_float, is_integer, set_bit, Unsupported};
 
 use crate::physics_core::layout::{construct as physics, flags, material};
 
-/// The members' reader entries, by which the walk tells them apart.
-pub const REAL_PARSE: u32 = 0x52f770;
-pub const UNSIGNED_PARSE: u32 = 0x52f840;
-pub const INTEGER_PARSE: u32 = 0x52fab0;
-pub const VECTOR_PARSE: u32 = 0x52fb20;
-pub const VECTOR4_PARSE: u32 = 0x52fbe0;
-pub const BIT_FIELD_PARSE: u32 = 0x52f930;
-/// The base parse itself: a member object with keys of its own.
-pub const BASE_PARSE: u32 = 0x52f0c0;
-/// Under NGP, the brake-wear table of the drive's definition: NGP's copy of the unsigned's table with its own reader,
-/// which NGP's constructor makes and puts on the unsigned. The walk tells the reader by the table itself.
-pub const NGP_TABLE_VTABLE: u32 = 0x1017_6518;
-/// The 30 floats NGP's reader takes after the unsigned, into the words from the member's table start (past the 1.02
-/// keys, which no 1.02 key reads): three rows of ten.
-pub(crate) const NGP_TABLE: u32 = 0x10;
+/// The floats NGP's reader takes after the unsigned: three rows of ten.
 pub(crate) const NGP_TABLE_LEN: usize = 30;
-/// The objects' inner-group entries, which take the walk's inner groups: the base's skips each item; the entity
-/// definitions' links the group's name; the definition manager's makes or finds the definition the item names and walks
-/// the item on it.
-pub(crate) const INNER_GROUP_SKIP: u32 = 0x52fe80;
-pub(crate) const INNER_GROUP_LINK: u32 = 0x5198b0;
-pub(crate) const INNER_GROUP_DEFINE: u32 = 0x501ef0;
-/// The token-heap block each item of an inner group is copied into.
-pub(crate) const ITEM_BLOCK: u32 = 0x20;
-/// An entity definition's links: their count, then the registry indices.
-pub(crate) const LINK_COUNT: u32 = 0x18;
-pub(crate) const LINKS: u32 = 0x1c;
-
-/// A tweak value's payload, after its base header (table, name, dirty flag); a vector's is 16-byte aligned. A
-/// bit-field's mask is its value.
-pub(crate) const VALUE: u32 = 0x0c;
-pub(crate) const VECTOR_VALUE: u32 = 0x10;
 
 /// The bit-field classes by table: their names and bit counts.
 pub(crate) const BIT_FIELDS: [(u32, u32, u32); 4] = [
