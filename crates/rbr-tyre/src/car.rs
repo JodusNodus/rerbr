@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn gravel_and_snow_hold_the_soil_force_past_their_sideways_speed() {
         let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
-        // 40 m/s at 30°: 20 m/s sideways, twice GRAVEL_SOIL_SPEED and SNOW_SOIL_SPEED.
+        // 40 m/s at 30°: 20 m/s sideways, twice GRAVEL_SOIL_SPEED, past SNOW_SOIL_SPEED.
         let x = rolling(40.0, 30f32.to_radians());
         let mut share = |soil_thickness: f32, class: u32, x: ForceInput| {
             let x = ForceInput { soil_thickness, surface_classes: [class; 2], ..x };
@@ -302,7 +302,7 @@ mod tests {
         };
         assert!((share(0.015, loose::GRAVEL_CLASS, x) - 0.25).abs() < 1e-6);
         assert_eq!(share(0.015, loose::GRAVEL_CLASS, rolling(24.0, 0.1)), 1.0);
-        assert!((share(0.015, loose::SNOW_CLASS, x) - 0.25).abs() < 1e-6);
+        assert!((share(0.015, loose::SNOW_CLASS, x) - (loose::SNOW_SOIL_SPEED / 20.0).powi(2) as f32).abs() < 1e-6);
         assert_eq!(share(0.015, crate::tuning::ICE_CLASS, x), 1.0);
         assert_eq!(share(0.0, loose::GRAVEL_CLASS, x), 1.0);
     }
