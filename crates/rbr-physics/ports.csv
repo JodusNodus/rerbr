@@ -129,7 +129,7 @@ addr,module,rust_item,test,status
 0x4e65f0,car_body/layout/car.rs,car_body::layout::car::steer_target_rate,car_body_vectors::accessors_match_original_calls,checked
 0x4e6660,car_body/accessors.rs,car_body::accessors::add_steer_torque,car_body_vectors::dirty_setters_match_original_calls,checked
 0x4e66a0,car_body/accessors.rs,car_body::accessors::set_cell,car_body_vectors::dirty_setters_match_original_calls,checked
-0x4e66d0,car_body/damper.rs,car_body::damper::update_roll_bars,car_body_vectors::damp_66d0_matches_original_calls,checked
+0x4e66d0,car_body/roll_bars.rs,car_body::roll_bars::update_roll_bars,car_body_vectors::damp_66d0_matches_original_calls,checked
 0x4e6730,car_body/accessors.rs,car_body::accessors::signed_force,car_body_vectors::accessors_match_original_calls,checked
 0x4e6770,car_body/layout/car.rs,car_body::layout::car::forward_speed,pure_car_support::get_15f8_reads_the_float_at_plus_15f8,unit
 0x4e67f0,car_body/layout/car.rs,car_body::layout::car::sort_key,pure_car_support::get_30_reads_the_word_at_plus_30,checked

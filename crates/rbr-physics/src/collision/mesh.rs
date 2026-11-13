@@ -84,14 +84,15 @@ pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u
     while let Some(node) = pending.pop() {
         let tree = store.tree_node(node);
         if tree.faces() != 0 {
-            store.set_u32(out + 4 + 4 * leaves, node);
+            store.store_list_record(out, leaves + 1, node);
             leaves += 1;
             continue;
         }
         if tree.link == 0 {
             continue;
         }
-        let (center, extent) = *query_box.get_or_insert_with(|| (store.vec3(query), store.vec3(query + 12)));
+        let (center, extent) =
+            *query_box.get_or_insert_with(|| (store.vec3(query), store.vec3(store.query_box_half(query))));
         for (child, word) in store.child_pair(tree.link) {
             if word & 0x20_0000 == 0 && overlap::world_axes_overlap(store.sat_box(child), center, extent) {
                 pending.push(child);
@@ -107,10 +108,11 @@ pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u
 pub fn query_box_faces<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32, out: u32, tmp: u32) -> u32 {
     let lst = if out == 0 { store.own_list(this) } else { out };
     store.set_u32(lst, 0);
+    let half_at = store.query_box_half(tmp);
     for k in 0..3 {
         let (centre, half) = (store.f32(a + 4 * k), store.f32(b + 4 * k));
         store.set_f32(tmp + 4 * k, centre);
-        store.set_f32(tmp + 12 + 4 * k, half);
+        store.set_f32(half_at + 4 * k, half);
     }
     let root = store.tree_root(this);
     node_walk(store, tmp, root, lst);
@@ -425,10 +427,11 @@ pub fn segment_query<S: CollisionStore>(
 pub fn seg_test<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32, out: u32, query: u32) -> u32 {
     let out = if out == 0 { store.own_list(this) } else { out };
     store.set_u32(out, 0);
+    let half_at = store.query_box_half(query);
     for lane in 0..3 {
         let (centre, half) = (store.u32(a + 4 * lane), store.u32(b + 4 * lane));
         store.set_u32(query + 4 * lane, centre);
-        store.set_u32(query + 12 + 4 * lane, half);
+        store.set_u32(half_at + 4 * lane, half);
     }
     let root = store.tree_root(this);
     node_walk(store, query, root, out);
@@ -440,7 +443,7 @@ pub fn segment_test<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32,
     let segment = overlap::segment_box(store.vec3(a), store.vec3(b));
     let out = if out == 0 { store.own_list(this) } else { out };
     store.store_vec3(query, segment.center);
-    store.store_vec3(query + 12, segment.half_extent);
+    store.store_vec3(store.query_box_half(query), segment.half_extent);
     store.set_u32(out, 0);
     let root = store.tree_root(this);
     node_walk(store, query, root, out);

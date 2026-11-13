@@ -14,7 +14,6 @@ use rbr_physics::car_body::body::{self, BodyCalls};
 use rbr_physics::car_body::control::{self, ControlCalls};
 use rbr_physics::car_body::controls::{self, ControlsCalls};
 use rbr_physics::car_body::damage::{self, MaterialNameCalls, ResetDamageCalls};
-use rbr_physics::car_body::damper;
 use rbr_physics::car_body::drag::{self, DragCalls};
 use rbr_physics::car_body::edge::{self, EdgeCalls};
 use rbr_physics::car_body::emit::{self, Receive};
@@ -27,6 +26,7 @@ use rbr_physics::car_body::links::{self, LinkRef, Links, ListRef};
 use rbr_physics::car_body::probe::{self, ProbeCalls, Sample};
 use rbr_physics::car_body::publish::{self, PublishCalls};
 use rbr_physics::car_body::retire::{self, RetireCheckCalls};
+use rbr_physics::car_body::roll_bars;
 use rbr_physics::car_body::sensors::{self, SensorCalls};
 use rbr_physics::car_body::setup::{self, SetupCalls};
 use rbr_physics::car_body::steering_ffb;
@@ -602,7 +602,7 @@ fn damp_66d0_matches_original_calls() {
     for call in &calls {
         let mut mem = map_windows(call);
         let car = call.args[0];
-        damper::update_roll_bars(&mut mem, car);
+        roll_bars::update_roll_bars(&mut mem, car);
         let dirtied: Vec<u32> = call.inner.iter().map(|c| c.args[0]).collect();
         assert_eq!(
             dirtied,

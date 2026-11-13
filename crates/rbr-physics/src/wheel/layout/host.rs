@@ -20,7 +20,7 @@ pub trait ConstructCalls {
 
 /// `E51Wheel::M3D1C0` (0x53d1c0, thiscall, `ret 8`): allocates the wheel's 0x1420-byte sub-object and constructs it from
 /// the two arguments. A failed allocation returns 0 and constructs nothing; otherwise the constructor's result. The
-/// original's SEH frame restores FS:[0] on both paths and leaves nothing else, so the port has no part for it.
+/// original's SEH frame restores `FS:[0]` on both paths and leaves nothing else, so the port has no part for it.
 pub fn construct(host: &mut impl ConstructCalls, outer: u32, a: u32, b: u32) -> u32 {
     let obj = host.allocate(SUB_OBJECT_SIZE);
     if obj == 0 {

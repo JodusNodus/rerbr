@@ -624,6 +624,14 @@ impl CollisionStore for Mem {
         self.u32(list + 4 * index)
     }
 
+    fn store_list_record(&mut self, list: u32, index: u32, record: u32) {
+        self.set_u32(list + 4 * index, record);
+    }
+
+    fn query_box_half(&self, query: u32) -> u32 {
+        query + 12
+    }
+
     fn mesh_table(&self, owner: u32, index: u32) -> u32 {
         self.u32(owner + 0xc + 4 * index)
     }
@@ -785,6 +793,11 @@ impl CollisionStore for Mem {
 
     fn manager_wall(&self, manager: u32) -> u32 {
         self.u32(manager + 4)
+    }
+
+    fn store_probe_point(&mut self, at: u32, [x, y]: [u32; 2]) {
+        self.set_u32(at, x);
+        self.set_u32(at + 4, y);
     }
 
     fn wall_mesh(&self, wall: u32) -> u32 {

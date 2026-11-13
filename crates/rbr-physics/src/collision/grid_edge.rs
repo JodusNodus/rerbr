@@ -5,7 +5,7 @@
 use super::cells;
 use super::edge_pair::{self as pair, PairGrid};
 use super::face_sweep::{self, Bounds, Face, FaceGrid, FaceHit};
-use super::layout::grid_hosts::GridOpsHost;
+use super::layout::{self, grid_hosts::GridOpsHost};
 use super::store::CollisionStore;
 use crate::math::vec::Vec3;
 
@@ -144,9 +144,10 @@ pub fn copy_grid<S: CollisionStore>(
     b: u32,
     entry: u32,
 ) -> Option<u32> {
+    let frame = layout::copy_grid_frame(entry);
     if src == 0 {
         if this != 0 {
-            host.ray_seeds(entry - 0x14, this);
+            host.ray_seeds(frame.seeds_sp, this);
         }
         return Some(this);
     }
@@ -159,9 +160,9 @@ pub fn copy_grid<S: CollisionStore>(
     }
     let (points, other) = store.grid_blocks(this);
     let n = u32::from(store.grid_edge_count(this));
-    host.copy_blocks_one_two(entry - 0x28, a, points, b, points, n);
+    host.copy_blocks_one_two(frame.copy_sp, a, points, b, points, n);
     let n = u32::from(store.grid_edge_count(this));
-    host.copy_blocks_three_four(entry - 0x28, a, other, b, other, n);
+    host.copy_blocks_three_four(frame.copy_sp, a, other, b, other, n);
     let n = u32::from(store.grid_edge_count(this));
     let (lo, hi) = cells::point_bounds((0..n).map(|k| store.vec4(points + 16 * k)));
     let half = cells::half_extent(lo, hi, store.grid_half_scale(this));

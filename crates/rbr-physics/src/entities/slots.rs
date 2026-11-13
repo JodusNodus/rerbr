@@ -2,6 +2,7 @@
 //! is in `layout`; the dispatch is here. The entity's small sequences over the store ([`EntityStore`]) are here too.
 
 use super::hinge_detach;
+use super::layout;
 use super::store::EntityStore;
 use crate::math::vec::Vec4;
 
@@ -65,7 +66,7 @@ pub fn clear_car_bodies<S: EntityStore>(
     calls: &mut impl ClearBodiesCalls,
 ) {
     for i in 0..4 {
-        if store.car_body_slot(car, i) == body && calls.detach_body(frame - 0x10, body) != 0 {
+        if store.car_body_slot(car, i) == body && calls.detach_body(layout::clear_bodies_detach_sp(frame), body) != 0 {
             store.store_car_body_slot(car, i, 0);
         }
     }

@@ -1,6 +1,7 @@
 //! The collision entry: the sphere and box tests and the cell walk that collects contacts, generic over the store.
 
-use super::layout::{self, e36_collect::collect_frame};
+use super::layout;
+use super::layout::e36_collect::{collect_frame, COMPOSE, PAIR_WALK};
 use super::obb::{self, ObbFrame};
 use super::store::CollisionStore;
 use crate::mem::Mem;
@@ -52,6 +53,10 @@ pub trait CollectHost<S = Mem> {
     fn length(&mut self, mem: &S, sp: u32, vector: u32) -> f32;
 }
 
+/// The body's virtual slots: the receiver of its transforms, and its collision pointer.
+const SLOT_TRANSFORM: u32 = 0x30;
+const SLOT_COLLISION: u32 = 0x118;
+
 fn transform<S: CollisionStore>(
     store: &mut S,
     owner: u32,
@@ -62,14 +67,14 @@ fn transform<S: CollisionStore>(
     sp: u32,
     host: &mut impl CollectHost<S>,
 ) {
-    let target = store.vtable_slot(owner, 12 * 4);
+    let target = store.vtable_slot(owner, SLOT_TRANSFORM);
     // Both calls share one argument block: the first call leaves the pushed words on the stack for the second.
     let receiver = host.virtual_call(store, sp, target, &[owner, a, matrix, c]);
     host.transform(store, sp, finish, receiver, a, matrix, c);
 }
 
 fn collision_pointer<S: CollisionStore>(store: &mut S, owner: u32, sp: u32, host: &mut impl CollectHost<S>) -> u32 {
-    let target = store.vtable_slot(owner, 70 * 4);
+    let target = store.vtable_slot(owner, SLOT_COLLISION);
     host.virtual_call(store, sp, target, &[owner])
 }
 
@@ -101,9 +106,9 @@ pub fn collect<S: CollisionStore>(
         return 0;
     }
 
-    transform(store, body, entry.centre_in, matrix, entry.centre_out, 0x51B4C0, f.transform_sp, host);
+    transform(store, body, entry.centre_in, matrix, entry.centre_out, COMPOSE, f.transform_sp, host);
     for axis in 0..3 {
-        transform(store, body, entry.axes_in[axis], matrix, entry.axes_out[axis], 0x51B560, f.transform_sp, host);
+        transform(store, body, entry.axes_in[axis], matrix, entry.axes_out[axis], PAIR_WALK, f.transform_sp, host);
     }
 
     let centre = store.entry_centre(object);
@@ -126,16 +131,16 @@ pub fn collect<S: CollisionStore>(
                 let hit = store.collision_shape(collision);
                 if hit != 0 {
                     let contact = if !store.collision_is_sphere(collision) {
-                        transform(store, owner, hit, matrix, box_at, 0x51B4C0, f.transform_sp, host);
+                        transform(store, owner, hit, matrix, box_at, COMPOSE, f.transform_sp, host);
                         let scaled = store.shape_axis(hit, 0).scale(store.shape_extent(hit, 0));
                         store.store_vec4(scaled_x, scaled);
-                        transform(store, owner, scaled_x, matrix, axis_x, 0x51B560, f.transform_sp, host);
+                        transform(store, owner, scaled_x, matrix, axis_x, PAIR_WALK, f.transform_sp, host);
                         let scaled = store.shape_axis(hit, 1).scale(store.shape_extent(hit, 1));
                         store.store_vec4(scaled_y, scaled);
-                        transform(store, owner, scaled_y, matrix, axis_y, 0x51B560, f.transform_sp, host);
+                        transform(store, owner, scaled_y, matrix, axis_y, PAIR_WALK, f.transform_sp, host);
                         let scaled = store.shape_axis(hit, 2).scale(store.shape_extent(hit, 2));
                         store.store_vec4(scaled_z, scaled);
-                        transform(store, owner, scaled_z, matrix, axis_z, 0x51B560, f.transform_sp, host);
+                        transform(store, owner, scaled_z, matrix, axis_z, PAIR_WALK, f.transform_sp, host);
                         let lengths = [
                             host.length(store, f.length_sp, axis_x),
                             host.length(store, f.length_sp, axis_y),
@@ -151,7 +156,7 @@ pub fn collect<S: CollisionStore>(
                         }
                         obb_test(store, object, box_at, count_out) != 0
                     } else {
-                        transform(store, owner, hit, matrix, sphere_at, 0x51B4C0, f.transform_sp, host);
+                        transform(store, owner, hit, matrix, sphere_at, COMPOSE, f.transform_sp, host);
                         let radius = store.shape_extent(hit, 0);
                         store.set_f32(layout::sphere_input_radius(sphere_at), radius);
                         sphere_box(store, object, sphere_at, count_out) != 0

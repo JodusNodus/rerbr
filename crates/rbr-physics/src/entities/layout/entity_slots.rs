@@ -60,3 +60,8 @@ pub struct DummySpanFrame {
 pub fn dummy_span_frame(frame: u32) -> DummySpanFrame {
     DummySpanFrame { origin_a: frame + 0x1c, origin_b: frame + 0xc, fetch_sp: frame - 0x10, hit_sp: frame - 0x8 }
 }
+
+/// The entry stack pointer of `CCar::Clear480`'s detach calls (`clear_car_bodies`, entered at `frame`).
+pub fn clear_bodies_detach_sp(frame: u32) -> u32 {
+    frame - 0x10
+}

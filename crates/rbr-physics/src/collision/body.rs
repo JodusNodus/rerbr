@@ -70,8 +70,8 @@ pub fn clear_grid<S: CollisionStore>(
     }
 }
 
-/// Fetches both corners (host, into `scratch` and `scratch + 16`), then tests them against the body's bounds.
-/// Returns the flag.
+/// Fetches both corners (host, into the scratch at `scratch`), then tests them against the body's bounds. Returns the
+/// flag.
 pub fn aabb_pretest<S: CollisionStore>(
     host: &mut impl CornerHost,
     store: &mut S,
@@ -80,11 +80,12 @@ pub fn aabb_pretest<S: CollisionStore>(
     second: u32,
     scratch: u32,
 ) -> u32 {
+    let [first_at, second_at] = body_host::pretest_corners(scratch);
     let worker = store.frame_root();
-    host.fetch_x(first, scratch, worker);
-    host.fetch_x(second, scratch + 16, worker);
+    host.fetch_x(first, first_at, worker);
+    host.fetch_x(second, second_at, worker);
     let (lower, upper) = store.body_bounds(body);
-    let first = store.vec4(scratch);
-    let second = store.vec4(scratch + 16);
+    let first = store.vec4(first_at);
+    let second = store.vec4(second_at);
     u32::from(overlap::corners_overlap_bounds(lower, upper, first, second))
 }

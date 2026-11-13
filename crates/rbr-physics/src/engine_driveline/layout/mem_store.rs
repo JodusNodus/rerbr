@@ -77,7 +77,7 @@ impl EngineStore for Mem {
         DriveObjects { def: self.u32(drive + DRIVE_DEF_PTR), state: self.u32(drive + DRIVE_STATE_PTR) }
     }
 
-    /// The row at `at` (see [`curve_row_at`]).
+    /// The row at `at` (see [`curve_row_at`](super::curve_row_at)).
     fn load_curve_row(&self, at: u32) -> CurveRow {
         CurveRow {
             breaks: std::array::from_fn(|k| self.u32(at + 0xC + 0x10 * k as u32)),
