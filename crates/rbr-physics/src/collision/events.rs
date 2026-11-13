@@ -265,7 +265,7 @@ pub fn make_event<S: CollisionStore>(
     host: &mut impl MakeEventHost<S>,
 ) -> u32 {
     let data = payload(store, args, stack_tail, host);
-    let event = host.alloc_event(0xf0);
+    let event = host.alloc_event(layout::EVENT_SIZE);
     if event == 0 {
         return 0;
     }
