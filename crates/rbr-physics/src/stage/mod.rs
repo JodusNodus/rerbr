@@ -2,11 +2,13 @@
 //! `notes/rust-plan.md` milestone L):
 //! - the `.col` image, read whole and relocated in place (the relocation itself is
 //!   `rbr_formats::col::relocate`), the collision system's vertex slots and tree root, the brake wall its root
-//!   names, the cell grid (`physics_core::detect::build_cell_grid`) and the root's water meshes;
+//!   names, the cell grid ([`crate::physics_core::layout::detect_calls::build_cell_grid`]) and the root's water
+//!   meshes;
 //! - the `.mat` image and the material table (`entities::material_table::MaterialTable`);
 //! - the `.trk` file: the drive line (kind 0x14 records as drive-line entries) and the collision meshes
-//!   (kind 0x16): a descriptor per mesh, the collision grid of each static one (`collision::col_grid`),
-//!   and the placements ([`Stuff`]), which the physics turns into objects;
+//!   (kind 0x16): a descriptor per mesh, the collision grid of each static one
+//!   ([`crate::collision::layout::collision_mesh_factory`]), and the placements ([`Stuff`]), which the physics turns
+//!   into objects;
 //! - the placements' objects: per placement an object of the registry entry its object type names, placed (pose,
 //!   extent, grid cell, collision grid, rotation and bounds), filed with the physics state and put to sleep.
 //!

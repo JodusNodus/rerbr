@@ -1,6 +1,7 @@
-//! NGP's blend of the tyre block's two material tags, in SSE. Unlike 1.02's (`wheel::layout::tag_blend`), the sine
-//! terms take the same weights as the lerps (1.02 weighs the first material's sines by `w` and the second's by
-//! `1 - w`, and its lerps the other way), and the sines are the C runtime's `sin` in f64 rounded to f32
+//! NGP's blend of the tyre block's two material tags, in SSE. Unlike 1.02's (`wheel::layout::tag_blend` (git
+//! e5824ccc), removed with 1.02's physics), the sine terms take the same weights as the lerps (1.02 weighs the first
+//! material's sines by `w` and the second's by `1 - w`, and its lerps the other way), and the sines are the C runtime's
+//! `sin` in f64 rounded to f32
 //! ([`layout::tag_blend`](super::layout::tag_blend) also remaps a second tag of 254 to the first and skips the blend
 //! without the physics definition).
 

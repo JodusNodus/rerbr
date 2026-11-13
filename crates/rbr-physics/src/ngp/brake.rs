@@ -3,8 +3,9 @@
 //! scales it with the disc's rolling speed, multiplies by the clamp force and the effective radius, and steps the
 //! disc's two temperatures (the friction layer and the core, microkelvin words) with conduction between them,
 //! convection to the air (still air plus forced, as the tyre's) and radiation. 1.02's version
-//! (`engine_driveline::drive_curve::wheel_curve_term`) only moves the row's counters. The fields are NGP's `Brake*_NGP`
-//! keys (`data/ngp-lsp-keys.md`); the inputs are named by use. All SSE, in doubles where the original uses them.
+//! (`engine_driveline::drive_curve::wheel_curve_term` (git e5824ccc), removed with 1.02's physics) only moves the row's
+//! counters. The fields are NGP's `Brake*_NGP` keys (`data/ngp-lsp-keys.md`); the inputs are named by use. All SSE, in
+//! doubles where the original uses them.
 
 /// A wheel's brake definition.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

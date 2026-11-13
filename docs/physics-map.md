@@ -54,7 +54,7 @@ one loop.
       (`car_body::retire::check_retire`).
    4. Child walk, right after each body's integrate. For the car, `car_body::controls::step_controls`, in order:
       steering slew and rack; the VCU (`vcu::step::step`); the drive (step 5); the wheels (step 6); the anti-roll
-      bars (`car_body::damper::update_roll_bars`); the force-feedback torque (`car_body::layout::update_ffb_torque`).
+      bars (`car_body::roll_bars::update_roll_bars`); the force-feedback torque (`car_body::layout::update_ffb_torque`).
 5. **Engine and driveline**, `engine_driveline::layout::step1e0`, in order: the engine step through NGP's wrapper
    (wear and death in `ngp::engine`, air from `ngp::atmosphere::atmosphere`, the engine sim
    `engine_driveline::layout::engine_step`, NGP's torque `ngp::engine::torque`); the starter
@@ -97,7 +97,7 @@ next step's body pass (derived from the call order, not traced word by word).
 | Tyre on surface, wetness, inclination | `tyre/surface.rs`, `tyre/soil.rs`, `ngp/inclination.rs` | `tyre::surface::surface_friction`, `tyre::soil::soil_drag`, `ngp::inclination::grip_scale` |
 | Suspension geometry | `wheel/refresh.rs`, `wheel/axes.rs` | `wheel::layout::refresh` |
 | Spring, bump stop, damper | `spring_damper/mod.rs`, `spring_damper/suspension.rs`, `ngp/spring.rs` | `spring_damper::step`, `spring_damper::suspension::Suspension`, `ngp::spring::bump_stop`, `ngp::spring::latch` |
-| Anti-roll bars | `car_body/damper.rs` | `car_body::damper::update_roll_bars` |
+| Anti-roll bars | `car_body/roll_bars.rs` | `car_body::roll_bars::update_roll_bars` |
 | Engine torque | `engine_driveline/engine.rs`, `engine_driveline/layout/engine_sim.rs`, `ngp/engine.rs` | `engine_driveline::engine::torque_curve`, `engine_driveline::layout::engine_step`, `ngp::engine::torque` |
 | Starter | `ngp/starter.rs` | `ngp::starter::starter` |
 | Clutch | `engine_driveline/drive_worker.rs`, `ngp/drive.rs`, `vcu/clutch.rs` | `engine_driveline::drive_worker::clutch_torque`, `ngp::drive::clutch_state`, `vcu::clutch::launch_clutch` |

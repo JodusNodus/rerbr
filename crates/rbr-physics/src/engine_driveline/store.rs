@@ -20,7 +20,7 @@ pub trait EngineStore: SpringStore {
     fn store_drive_state(&mut self, at: u32, value: &DriveState);
     fn store_commanded_gear(&mut self, at: u32, value: &DriveState);
     fn drive_objects(&self, drive: u32) -> DriveObjects;
-    /// The row at `at` (see [`curve_row_at`]).
+    /// The row at `at` (see [`curve_row_at`](super::layout::curve_row_at)).
     fn load_curve_row(&self, at: u32) -> CurveRow;
     fn load_curve_tables(&self, def: u32) -> CurveTables;
     fn load_curve_state(&self, at: u32) -> CurveState;

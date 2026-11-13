@@ -104,7 +104,7 @@ pub struct WheelSetup {
 }
 
 /// The setup objects of `CCompleteCarSetup` at `complete` the car copies: its `Car`, `Drive` and `VehicleControlUnit`
-/// setups and the wheels' (in [`POSITIONS`] order).
+/// setups and the wheels' (in [`crate::load::POSITIONS`] order).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Setups {
     pub car: u32,
