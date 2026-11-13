@@ -86,8 +86,9 @@ const IN_CAR_WEIGHT: vec2<u32> = vec2<u32>(5u, 1u);
 const CABIN_STOPS: f32 = 2.5;
 // The cabin's lift tapers off over what is this share of `KEY` at the outside's exposure (ours, 2026-11-13): the sun on
 // a cabin face is the outside's light, and lifted in full it burnt black door cards and dashes white (911 GT3 RS 2007,
-// a door card of black texels 244 of 255; 206 tapered, 138 at the outside's exposure).
-const CABIN_TAPER: f32 = 0.25;
+// a door card of black texels 244 of 255; 203 tapered, 138 at the outside's exposure). 0.1: the user's pick of 0.25,
+// 0.1 and the lift off.
+const CABIN_TAPER: f32 = 0.1;
 // The exposure, as Unreal's and BeamNG's auto exposure: the metered light, back in luminance (over the pre-exposure),
 // as EV100 (ISO 100, the calibration constant `CALIBRATION`), held within `EV100_RANGE`, is exposed to `KEY`, middle
 // grey in GT7's frame buffer units (`gt7`), shifted by the exposure compensation curve (`compensation`). The curve is
