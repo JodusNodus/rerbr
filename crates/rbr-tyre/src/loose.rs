@@ -44,11 +44,12 @@
 //!   locked tyre's berm, and a berm that grows from the full slide holds the wheels off lock at the Fiesta's full-pedal
 //!   brake torque (note, "Loose surfaces: loose-v1"). Driving
 //!   slip builds no berm here: the data are braked, and the motion resistance of a spinning tyre's sinkage is not.
-//! - Snow (surface class [`SNOW_CLASS`], by its share in the blend): no berm ([`SNOW_PLOUGH`] in place of PLOUGH).
+//! - Snow (surface class [`SNOW_CLASS`], by its share in the blend): a small berm ([`SNOW_PLOUGH`] in place of PLOUGH).
 //!   Ichihara & Mizoguchi (HRB SR 115, 1969-70, Fig. 3, fig ±0.02): studded snow tyres on normal compacted snow at 20
 //!   km/h hold 0.36-0.42 at 15-20 % slip, peak 0.42-0.445 at 40-60 % and lock at 0.40-0.43: locked over the 15-20 %
 //!   slip 1.02-1.08, over the peak 0.95-0.97 ("small" differences, their text); snow tyres 0.74-0.95 of the 20 % value.
-//!   NHTSA's berm is graded gravel; compacted snow shears off rather than heaping. A rally tyre on snow is studded.
+//!   NHTSA's berm is graded gravel; compacted snow shears off rather than heaping, a rally road's snow heaps a little
+//!   (the crews' braking rises towards lock). A rally tyre on snow is studded.
 //! - Combined: the berm acts against the sliding velocity, with the friction (Svendenius's collinear slide), so a
 //!   locked tyre's side force is PLOUGH μ sin α, linear in the slip angle and below free rolling at every angle
 //!   (Coutermarsh, Fig. 16, fig ±0.02: 0.72 sin α against a free rolling 0.55, 1.31 sin α of it; here 1.3 sin α).
@@ -66,14 +67,16 @@ use crate::brush::{self, Calibration, EvalInput, EvalOutput, KX_OVER_KY, M_CX, M
 
 /// The braking force of a locked tyre over its free rolling peak on loose surfaces (NHTSA: 1.25 laden, 1.30 light).
 pub const PLOUGH: f64 = 1.3;
-/// The braking force of a locked tyre over its level on snow (surface class [`SNOW_CLASS`]): the level, no berm. On
-/// hard packed snow a locked tyre holds 0.93-1.00 of its peak: VTI's trailer (BV12, 30 km/h) 0.93-0.94 (Baliga &
-/// Hiregoudar, Chalmers MSc 2018:16, Figs 6.2-6.3, fig ±0.01), 0.93 and 1.00 (Hjort et al., AVEC'24, Fig. 2b, fig
-/// ±0.01); studded snow tyres 0.95-0.97 (Ichihara & Mizoguchi, HRB SR 115, Fig. 3, fig ±0.02). The 2017-21 World Rally
-/// Cars' braking is level from 32-50 to 50-80 % of wheel slip on four snow rallies (0.91-1.01 of it). 1.05 before
-/// was SR 115's locked over its 15-20 % slip value (1.02-1.08), on the one patch, at its level by 13 % slip; the two
-/// stages ([`SNOW_HELD_LEVEL`]) hold 0.93-0.98 of the level at 15-20 % (4 kN), so that ratio is theirs without a berm.
-pub const SNOW_PLOUGH: f64 = 1.0;
+/// The braking force of a locked tyre over its level on snow (surface class [`SNOW_CLASS`]): a small berm. The 2017-21
+/// World Rally Cars on four snow rallies (Arctic 2021, Sweden 2017-19; 1 s windows braking straight) at one car speed
+/// brake at 0.62 / 0.62 / 0.70, 0.68 / 0.72 / 0.77 and 0.75 / 0.74 / 0.80 g at 32-50 / 50-65 / 65-80 % of wheel slip
+/// over 60-90 / 90-120 / 120-165 km/h (9-24 windows at 65-80 %): level to 65 %, then 7-13 % up towards lock (soft
+/// gravel, Safari, Sardinia, Estonia, gains past 50 %; Finland's and Wales' harder gravel about level). On hard packed
+/// snow a locked tyre holds 0.93-1.00 of its peak: VTI's trailer (BV12, 30 km/h) 0.93-0.94 (Baliga & Hiregoudar,
+/// Chalmers MSc 2018:16, Figs 6.2-6.3, fig ±0.01), 0.93 and 1.00 (Hjort et al., AVEC'24, Fig. 2b, fig ±0.01); studded
+/// snow tyres 0.95-0.97 (Ichihara & Mizoguchi, HRB SR 115, Fig. 3, fig ±0.02). 1.05 (user 2026-11-13): part of the
+/// rise towards lock, the locked car over its ABS car 1.16 in the scorecard's 1.00-1.18 (1.10 gives 1.21).
+pub const SNOW_PLOUGH: f64 = 1.05;
 /// The loose layer's depth the published locked stops were measured on, m (NHTSA: 5 cm of crushed limestone).
 pub const BERM_DEPTH: f64 = 0.05;
 /// The share of the berm a gravel layer of `depth` (m) builds: linear to the whole at [`BERM_DEPTH`] (see the module).

@@ -136,9 +136,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   above them at most, then 1.02 of that after driving the snow pad by hand and 1.05 after RSF 615 by hand), along the
   wheel 0.001 less per km/h under 145 km/h (the crews' braking rises with speed), the values ours on the 2017-21 World
   Rally Cars' snow telemetry; snow's force
-  along the wheel in two stages and no berm, ours on VTI's trailer curves of packed snow and the crews' braking by
-  slip; driving 0.85 of its braking level, ours on the Arctic's crews' thrust; [tyre-model.md](tyre-model.md)); in
-  development, not released
+  along the wheel in two stages and a small berm towards lock (1.05), ours on VTI's trailer curves of packed snow and
+  the crews' braking by slip; driving 0.85 of its braking level, ours on the Arctic's crews' thrust;
+  [tyre-model.md](tyre-model.md)); in development, not released
   (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's Settings page does not offer
   it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
