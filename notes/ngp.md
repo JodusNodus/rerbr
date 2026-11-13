@@ -330,16 +330,16 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.76-1.15 of the cars' mean on tarmac (16 loads, cv 10 %; 0.52-1.78, cv 34 %, without it) and 0.83-1.18 on
     gravel (8 loads, cv 11 %; 48 % without); tarmac's scale is 1.4 times gravel's. The 4WD cars' drive torque
     through the scrub radius is not in it (up to 23 % of the sum on the circle).
-- The force from the tyres (ours, 2026-11-13; `rbr-standalone --ffb-tyres MM`, `tyre_ffb.rs`; the launcher's
-  Settings > Experimental "Force feedback: From the tyres", `[ffb] tyres`, passes 25 mm, and the viewer maps it as a
-  line when its live command has `--ffb-tyres`; records are kept): AC EVO's way in place of NGP's torque sum and
-  filter. The user drove it 2026-11-13 and preferred it to NGP's. The player's page: `docs/force-feedback.md`. Its `finalFF` (shared memory,
-  GT4, MX-5 ND2, A110 S) fits `a Mz + b Fy` of the front tyres with `b / a` 36-45 mm, linear, no lag, clipped 1-5 %
-  of the time. Ours: each front tyre on the ground gives `sgn(v_long) (pneumatic trail + MM) F_lat` about the
-  contact normal (the tyre step's sign, right for the mirrored right-hand frame), its world vertical part, times
-  `|inv_arm inv_rack|` and `|SteeringRackRatio|` (the Alpine A110 RGT pack has both negative), through NGP's curve,
-  so the sensitivity, linearity (100 % is AC's line) and steering load apply. Read after the step, never written;
-  `--trace-wheels` adds `tyres` (at 25 mm) and `aligning` (at 0).
+- The force from the tyres (ours, 2026-11-13; `rbr-standalone --ffb-tyres MM`, `tyre_ffb.rs`; the launcher's Settings
+  > Experimental "Force feedback: From the tyres", `[ffb] tyres`, passes 25 mm, and the viewer maps it as a line when
+  its live command has `--ffb-tyres`; records are kept): AC EVO's way in place of NGP's torque sum and filter. The
+  user drove it 2026-11-13 and preferred it to NGP's. The player's page: `docs/force-feedback.md`. Its `finalFF`
+  (shared memory, GT4, MX-5 ND2, A110 S) fits `a Mz + b Fy` of the front tyres with `b / a` 36-45 mm, linear, no lag,
+  clipped 1-5 % of the time. Ours: each front tyre on the ground gives `sgn(v_long) (pneumatic trail + MM) F_lat`
+  about the contact normal (the tyre step's sign, right for the mirrored right-hand frame), its world vertical part,
+  times `|inv_arm inv_rack|` and `|SteeringRackRatio|` (the Alpine A110 RGT pack has both negative), through NGP's
+  curve, so the sensitivity, linearity (100 % is AC's line) and steering load apply. Read after the step, never
+  written; `--trace-wheels` adds `tyres` (at 25 mm) and `aligning` (at 0).
   - Shape (r40 circle on pad-tarmac, autopilot, torque over its peak by front slip angle; AC EVO's: peak 4-6°,
     1° 0.31-0.40, 10° 0.68-0.89, aligning share at small slip 0.40-0.45): at 25 mm the peak is 4-6° for the
     Fiesta Rally2 and the A110 RGT under the NGP and brush tyres (NGP's own torque: 6° and 10° under the NGP tyre),
