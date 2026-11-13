@@ -1,7 +1,7 @@
 //! Bit-exact ports of Richard Burns Rally 1.02 physics functions.
 //!
-//! See `notes/physics.md` "x87 and float rules" for the x87 precision model. `tests/vectors.rs` replays
-//! the captured calls of each port against the original.
+//! See `notes/physics.md` "x87 and float rules" for the x87 precision model. The vector tests (one or more per
+//! module in `tests/`, run by `scripts/rust-vectors.sh`) replay the captured calls of each port against the original.
 
 // The ports follow the asm's comparisons, so a NaN takes the same branch as in the original: `!(a > b)` is not
 // `a <= b`, and `f32::clamp` would change NaN results. Constants keep the exe's exact bit patterns, and some ports
