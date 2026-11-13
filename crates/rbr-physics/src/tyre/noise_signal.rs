@@ -4,7 +4,7 @@
 //! The copies move raw dwords. The comparisons are `x > y`, so a NaN takes the other branch.
 
 use super::layout::{sig, Frame};
-use crate::math::abs_asm;
+use crate::math::abs_by_subtraction;
 use crate::math::vec::Vec4;
 
 /// The scale and offset of the largest slip phase, the constant the block carries, and the kilo of the force sum.
@@ -30,14 +30,14 @@ pub fn fill_noise_signal(f: &mut Frame, contact_velocity: Vec4, debug_words: [u3
     let max_phase = if s.lateral_phase > s.longitudinal_phase { s.lateral_phase } else { s.longitudinal_phase };
     let sum = (s.soil_flow_opposed + s.soil_flow_aligned) + s.lateral_soil_flow;
     let compression_rate = (setup.tread_depth + setup.carcass_radius - s.hub_height - st.penetration_depth) / divisor;
-    let slip_diff = abs_asm(s.contact_velocity[1] - s.long_slip_velocity);
+    let slip_diff = abs_by_subtraction(s.contact_velocity[1] - s.long_slip_velocity);
     let mut signal = s.signal;
     let signal_max = f32::from_bits(signal[sig::MAX]);
 
     put_raw_vec(&mut signal, sig::CONTACT_POINT, s.contact_point);
     put_raw_vec(&mut signal, sig::CONTACT_VELOCITY, contact_velocity);
     signal[sig::SPIN] = s.spin.to_bits();
-    signal[sig::SPIN_SLIP] = abs_asm(s.spin_slip).to_bits();
+    signal[sig::SPIN_SLIP] = abs_by_subtraction(s.spin_slip).to_bits();
     signal[sig::SPEED] = s.speed.to_bits();
     signal[sig::DEBUG_ID] = setup.debug_id;
     signal[sig::SCALED_MAX] = (max_phase * PHASE_SCALE + PHASE_OFFSET).to_bits();

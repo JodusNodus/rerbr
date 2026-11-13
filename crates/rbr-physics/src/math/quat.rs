@@ -37,7 +37,7 @@ pub fn normalize(q: Quat) -> Quat {
 
 /// The unit quaternion of `m`. The branch on the trace `t` (above 0) takes the three off-diagonal
 /// differences; otherwise the largest diagonal `i` is used, with `j = i + 1` and `k = j + 1` (mod 3). NaN takes the
-/// diagonal branch, as the below-or-equal compare (`jbe`) does. The root's argument is an x87 chain: under NGP (53 bits)
+/// diagonal branch, as the original's below-or-equal compare does ([`super::le_or_unordered`]). The root's argument is an x87 chain: under NGP (53 bits)
 /// it and the root round once, at the store of `s`.
 pub fn to_quat(m: &Mat3) -> Quat {
     let t = (m[0][0] + m[2][2]) + m[1][1];
@@ -68,7 +68,7 @@ pub fn to_quat(m: &Mat3) -> Quat {
             ((d(i) - (d(k) + d(j))) + 1.0).sqrt() as f32
         }
     };
-    // The asm divides only when s is not zero (`fucomip` with the zero, a NaN divides): else it keeps s.
+    // The original divides only when s is not zero (an unordered compare, so a NaN divides): else it keeps s.
     let inv = if s != 0.0 { 0.5 / s } else { s };
     let mut out = [0.0f32; 4];
     out[i] = s * 0.5;

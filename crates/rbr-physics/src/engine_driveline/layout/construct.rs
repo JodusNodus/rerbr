@@ -3,7 +3,7 @@
 use super::drive_calls::clear_lanes;
 use super::worker::{CLUTCH_MATRIX_AT, STEP_MATRIX_AT, STEP_VEC_AT};
 use crate::car_body::layout::FLOW_OBJECT;
-use crate::math::ftol::ftol2;
+use crate::math::ftol::trunc_i64;
 use crate::mem::Mem;
 use crate::ntweak::layout::NGP_TABLE_VTABLE;
 use crate::ntweak::{construct_base, set_dirty};
@@ -259,7 +259,7 @@ pub fn construct_drive_def(mem: &mut Mem, this: u32) {
     }
     let [a, b] = DRIVE_LAST_FROM.map(|at| mem.u32(this + at + 0xC));
     let difference = f64::from(a.wrapping_sub(b));
-    let cut = ftol2(difference * f64::from(DRIVE_LAST_SCALE)) as u32;
+    let cut = trunc_i64(difference * f64::from(DRIVE_LAST_SCALE)) as u32;
     set_default(mem, this + DRIVE_LAST, a.wrapping_sub(cut));
 }
 

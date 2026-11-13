@@ -1,7 +1,6 @@
-//! The shared vector types of the physics ports: `Vec3` (three lanes) and `Vec4` (four lanes, `w` last).
-//! Four modules grew their own copies (`physics_core::math`, `rigid_body::layout`, `car_body::vec3`,
-//! `tyre::hold`); this is the one copy. Raw memory stays in each module's `layout.rs`: the load/store
-//! helpers there build these structs, they are not here.
+//! The shared vector types of the physics ports: `Vec3` (three lanes) and `Vec4` (four lanes, `w` last). The other
+//! modules re-export these (`physics_core::math`, `rigid_body::layout`, `collision::layout`). Their loads and stores
+//! from game memory (`Vec3::load`, `Vec4::store`, ...) are in `mem`, not here.
 
 use std::ops::{Add, Sub};
 
@@ -60,18 +59,18 @@ impl Sub for Vec4 {
 }
 
 impl Vec3 {
-    /// The length of the three lanes, `sqrt((x*x + y*y) + z*z)`. Every copy summed in this order.
+    /// The length of the three lanes, `sqrt((x*x + y*y) + z*z)`, summed in that order.
     pub fn length3(self) -> f32 {
         ((self.x * self.x + self.y * self.y) + self.z * self.z).sqrt()
     }
 
-    /// Each lane times `s`. The copies multiplied in both orders (`v * s`, `s * v`); an f32 multiply commutes,
-    /// so the shared copy uses `v * s`.
+    /// Each lane times `s`. The original multiplies in either order (`v * s`, `s * v`); an f32 multiply commutes,
+    /// so one form serves both.
     pub fn scale(self, s: f32) -> Vec3 {
         Vec3 { x: self.x * s, y: self.y * s, z: self.z * s }
     }
 
-    /// `a x b`. Each lane as the copies compute it (`a.y*b.z - a.z*b.y`, ...).
+    /// `a x b`. Each lane as the original computes it (`a.y*b.z - a.z*b.y`, ...).
     pub fn cross3(self, b: Vec3) -> Vec3 {
         Vec3 { x: self.y * b.z - self.z * b.y, y: self.z * b.x - self.x * b.z, z: self.x * b.y - self.y * b.x }
     }
@@ -128,7 +127,7 @@ impl Vec4 {
         Vec3 { x: self.x, y: self.y, z: self.z }
     }
 
-    /// The length of the three first lanes, summed as `((x*x + y*y) + z*z)`. Every copy summed in this order.
+    /// The length of the three first lanes, summed as `((x*x + y*y) + z*z)`.
     pub fn length3(self) -> f32 {
         ((self.x * self.x + self.y * self.y) + self.z * self.z).sqrt()
     }

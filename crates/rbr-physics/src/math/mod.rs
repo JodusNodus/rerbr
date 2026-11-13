@@ -1,7 +1,8 @@
 //! Pure math the physics ports share: the reference CPU's `rsqrtss` (`rsqrt`) and `rcpss` (`rcp`), its scalar SSE
-//! operations (`sse`), the CRT float-to-int (`ftol`), the quaternion product and normalise (`quat`), and the
-//! absolute value, compare and sign forms (`abs_asm`, `le_or_unordered`, `sign`). They follow the operation order;
-//! `notes/physics.md` "x87 and float rules" has the x87 and SSE model.
+//! operations (`sse`), the CRT float-to-int (`ftol`), the x87 sine and cosine (`trig`), the vector types (`vec`), the
+//! quaternion product, normalise and matrix conversions (`quat`), the sorted-table segment search (`table`), and the
+//! absolute value, compare and sign forms (`abs_by_subtraction`, `le_or_unordered`, `sign`). They follow the
+//! operation order; `notes/physics.md` "x87 and float rules" has the x87 and SSE model.
 
 pub mod ftol;
 pub mod quat;
@@ -15,8 +16,9 @@ pub mod vec;
 /// A 3x3 matrix, `m[row][col]`. It reads as the nine words `v[3 * row + col]`.
 pub type Mat3 = [[f32; 3]; 3];
 
-/// `|v|` formed as: `v` when `v > 0`, else `0 - v` (so a NaN takes `0 - v`).
-pub fn abs_asm(v: f32) -> f32 {
+/// `|v|` formed by a compare and a subtraction: `v` when `v > 0`, else `0 - v`. So `-0.0` gives `+0.0` and a NaN takes
+/// `0 - v`, unlike `f32::abs`, which clears the sign bit.
+pub fn abs_by_subtraction(v: f32) -> f32 {
     if v > 0.0 {
         v
     } else {

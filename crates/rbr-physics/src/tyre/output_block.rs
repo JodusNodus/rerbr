@@ -4,7 +4,7 @@
 //! The compares are `a > b`, so a NaN takes the other branch, and the raw dwords are copied as they are.
 
 use super::layout::{scaled_sum, Frame};
-use crate::math::abs_asm;
+use crate::math::abs_by_subtraction;
 use crate::math::vec::Vec4;
 
 /// The share of the normal axis in the motion vector, and the half factors of the patch's edges.
@@ -83,7 +83,8 @@ pub fn write_output_block(f: &mut Frame) -> OutputBlock {
     // scale is not an ordered zero.
     let mut slip_area = s.speed * 0.0;
     if s.slip_area_scale != 0.0 {
-        let sum = s.patch_length * abs_asm(lateral_velocity) + abs_asm(longitudinal_velocity) * tread_width;
+        let sum = s.patch_length * abs_by_subtraction(lateral_velocity)
+            + abs_by_subtraction(longitudinal_velocity) * tread_width;
         slip_area = sum * s.slip_area_scale;
     }
     f.scratch.contact_point_copy = point;
