@@ -263,8 +263,10 @@ artifacts only.
 - macOS: `ReRBR-<version>-macos.dmg` with `ReRBR.app`, for Apple silicon and macOS 11 or later. It is ad-hoc signed,
   not notarised.
 - Linux: `ReRBR-<version>-<arch>.AppImage` (needs the ALSA and udev headers, and libxkbcommon-x11, which it bundles
-  with libxkbcommon and libxcb-xkb, their licences beside them: winit needs it on X11 and a bare system has none).
-  Build it on an old distribution to keep the glibc floor low, for example:
+  with libxkbcommon and libxcb-xkb, their licences beside them: winit needs it on X11 and a bare system has none.
+  `scripts/packaging/AppRun` takes the bundled three only where the system has no libxkbcommon-x11, since an old
+  libxkbcommon gives up a newer system's Compose file). Build it on an old distribution to keep the glibc floor low,
+  for example:
 
   ```sh
   docker run --rm -v "$PWD":/src -w /src -e CARGO_TARGET_DIR=/target rust:1-bookworm bash -c \

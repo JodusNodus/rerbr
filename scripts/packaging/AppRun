@@ -1,0 +1,9 @@
+#!/bin/sh
+# The AppImage's start: the launcher, with the bundled xkb libraries (usr/lib) only where the system has no
+# libxkbcommon-x11, which winit needs on X11. They are the build system's, older than a current system's own: such a
+# libxkbcommon does not know the newer keysyms of the system's Compose files and gives the file up after ten of them.
+here=$(dirname "$(readlink -f "$0")")
+if ! PATH="$PATH:/usr/sbin:/sbin" ldconfig -p 2>/dev/null | grep -q 'libxkbcommon-x11\.so\.0'; then
+    export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+exec "$here/usr/bin/rerbr" "$@"
