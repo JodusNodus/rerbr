@@ -102,7 +102,8 @@ On Windows the launcher and the viewer open no console window. Started from Expl
 
 ## Code map
 
-One Cargo workspace, each crate in `crates/<name>/`.
+One Cargo workspace, each crate in `crates/<name>/`. What one physics step does and where each part of the car's
+physics lives: [physics-map.md](physics-map.md).
 
 | Crate | What | Note |
 | --- | --- | --- |

@@ -2,7 +2,8 @@
 
 Bit-exact ports of the 1.02 physics functions, plus NGP 7.4.778's own (precision: `src/fpu.rs`). Behaviour, precision
 and porting rules: [notes/physics.md](../../notes/physics.md). Vector store and hybrid check:
-[notes/verification.md](../../notes/verification.md).
+[notes/verification.md](../../notes/verification.md). The step in physics terms and where each quantity lives:
+[docs/physics-map.md](../../docs/physics-map.md).
 
 ## Code style
 
