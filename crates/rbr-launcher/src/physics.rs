@@ -22,8 +22,11 @@ pub enum PhysicsProfile {
     NgpBrush,
 }
 
-/// Where the experimental physics is explained.
-const PAGE: &str = "https://github.com/JodusNodus/rerbr/blob/main/docs/experimental-physics.md";
+/// Where each experimental switch is explained.
+const DOCS: &str = "https://github.com/JodusNodus/rerbr/blob/main/docs/";
+const ENGINE_PAGE: &str = "experimental-physics.md";
+const TYRE_PAGE: &str = "tyre-model.md";
+const FFB_PAGE: &str = "force-feedback.md";
 
 /// What the experimental physics leaves unsaved, shown beside the choice while it is picked.
 pub const NO_RECORDS: &str = "Experimental: no records, ghosts or championship results are saved.";
@@ -93,9 +96,9 @@ impl Choice for PhysicsProfile {
 }
 
 /// The Settings page's Experimental section: a switch each for the experimental engine (with its aero and
-/// drivetrain), the brush tyre and the force feedback from the tyres (`tyres`, `[ffb] tyres`); the link to the
-/// explanation, the session's `rerbr --physics` when it overrides the switches, and while the experimental physics
-/// drives what it leaves unsaved.
+/// drivetrain), the brush tyre and the force feedback from the tyres (`tyres`, `[ffb] tyres`), each with a link to its
+/// page; the session's `rerbr --physics` when it overrides the switches, and while the experimental physics drives
+/// what it leaves unsaved.
 pub fn experimental_section(
     ui: &mut Ui,
     physics: &mut PhysicsProfile,
@@ -105,16 +108,9 @@ pub fn experimental_section(
     section(ui, "Experimental");
     fields(ui, "experimental", |ui| {
         let (mut engine, mut tyre) = physics.parts();
-        ui.label("Physics");
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut engine, "Engine").on_hover_text(ENGINE_HELP);
-            ui.checkbox(&mut tyre, "Tyre (in development)").on_hover_text(TYRE_HELP);
-            if ui.link("What is this?").on_hover_text(PAGE).clicked() {
-                crate::crash::open(PAGE.as_ref());
-            }
-        });
+        switch(ui, "Engine", &mut engine, "ReRBR's engine model, aero and drivetrain", ENGINE_HELP, ENGINE_PAGE);
+        switch(ui, "Tyre", &mut tyre, "ReRBR's brush tyre (in development)", TYRE_HELP, TYRE_PAGE);
         *physics = PhysicsProfile::of_parts(engine, tyre);
-        ui.end_row();
         if let Some(session) = session {
             ui.label("");
             ui.weak(format!("This session: {} (rerbr --physics {})", session.label(), session.name()));
@@ -125,10 +121,21 @@ pub fn experimental_section(
             ui.weak(NO_RECORDS);
             ui.end_row();
         }
-        ui.label("Force feedback");
-        ui.checkbox(tyres, "From the tyres").on_hover_text(FFB_HELP);
-        ui.end_row();
+        switch(ui, "Force feedback", tyres, "From the tyres", FFB_HELP, FFB_PAGE);
     });
+}
+
+/// A row of the section: `label`, the switch `on` with its `text` and `help`, and the link to `page`.
+fn switch(ui: &mut Ui, label: &str, on: &mut bool, text: &str, help: &str, page: &str) {
+    ui.label(label);
+    ui.horizontal(|ui| {
+        ui.checkbox(on, text).on_hover_text(help);
+        let url = format!("{DOCS}{page}");
+        if ui.link("What is this?").on_hover_text(&url).clicked() {
+            crate::crash::open(url.as_ref());
+        }
+    });
+    ui.end_row();
 }
 
 const ENGINE_HELP: &str = "ReRBR's engine model, aero and four-wheel-drive drivetrain loss, in place of NGP 7's.";

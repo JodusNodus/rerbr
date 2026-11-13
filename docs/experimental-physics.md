@@ -7,7 +7,8 @@ wings that make a car's downforce and halves that downforce. A four-wheel-drive 
 the drivetrain, where its file says 12 (see [Aero and drivetrain loss](#aero-and-drivetrain-loss)). The clutch,
 gearbox, differentials, tyres and damage stay NGP's. "Tyre" switches on the brush tyre model in development, with or
 without the engine: see [ReRBR experimental tyre model](tyre-model.md). "Force feedback: From the tyres" builds the
-wheel's force from the front tyres instead of NGP's steering torque; it changes no physics.
+wheel's force from the front tyres instead of NGP's steering torque and changes no physics: see
+[Force feedback from the tyres](force-feedback.md).
 
 While they are experimental, a run with the engine or the tyre saves no records, ghosts or championship results. Its replays carry the choice
 and play back with it.

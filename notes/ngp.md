@@ -333,7 +333,7 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
 - The force from the tyres (ours, 2026-11-13; `rbr-standalone --ffb-tyres MM`, `tyre_ffb.rs`; the launcher's
   Settings > Experimental "Force feedback: From the tyres", `[ffb] tyres`, passes 25 mm, and the viewer maps it as a
   line when its live command has `--ffb-tyres`; records are kept): AC EVO's way in place of NGP's torque sum and
-  filter. The user drove it 2026-11-13 and preferred it to NGP's. Its `finalFF` (shared memory,
+  filter. The user drove it 2026-11-13 and preferred it to NGP's. The player's page: `docs/force-feedback.md`. Its `finalFF` (shared memory,
   GT4, MX-5 ND2, A110 S) fits `a Mz + b Fy` of the front tyres with `b / a` 36-45 mm, linear, no lag, clipped 1-5 %
   of the time. Ours: each front tyre on the ground gives `sgn(v_long) (pneumatic trail + MM) F_lat` about the
   contact normal (the tyre step's sign, right for the mirrored right-hand frame), its world vertical part, times

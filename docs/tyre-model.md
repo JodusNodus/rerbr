@@ -1,9 +1,8 @@
 # ReRBR experimental tyre model
 
-A tyre model is in development and not released: the launcher's Settings page does not offer it, and `--physics
-experimental-brush` runs it on top of [ReRBR experimental physics](experimental-physics.md), with its engine model,
-aero and drivetrain loss (`scripts/launcher.sh --physics experimental-brush`, or `rerbr --physics experimental-brush`,
-starts the launcher with it for that session; nothing saves it).
+A tyre model is in development: the launcher's Settings > Experimental "Tyre" switch runs it, on NGP 7's physics or
+on top of [ReRBR experimental physics](experimental-physics.md) with the "Engine" switch (`--physics ngp-brush` and
+`--physics experimental-brush`). Its gravel grip is set with the experimental physics' aero.
 
 It is a brush model, the textbook physical tyre (Pacejka, *Tyre and Vehicle Dynamics*): the tread is a row of bristles
 that stick to the road at the front of the contact patch and slide at the rear. It takes the place of NGP's model of the
