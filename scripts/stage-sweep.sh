@@ -34,7 +34,7 @@ while getopts "s:w:c:n:j:o:h" opt; do
     j) jobs=$OPTARG ;;
     o) out=$OPTARG ;;
     *)
-        sed -n '2,14p' "$0"
+        sed -n '2,15p' "$0"
         exit 2
         ;;
     esac
