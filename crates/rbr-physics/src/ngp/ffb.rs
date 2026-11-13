@@ -15,19 +15,14 @@ pub fn curve(torque: f32, muted: bool, sensitivity: f32) -> f32 {
     super::sign(torque) as f32 * (1.0 - p)
 }
 
-/// The index of the ini's percentages (gravel, tarmac, snow) NGP takes for the car's surface word (`def + 0x44c0`,
-/// [`surface`]): 1 tarmac, 2 snow, else gravel.
+/// The index of the ini's percentages (gravel, tarmac, snow) NGP takes for the car's surface word
+/// ([`super::layout::car_init::surface`]): 1 tarmac, 2 snow, else gravel.
 pub fn surface_index(surface: u32) -> usize {
     match surface {
         1 => 1,
         2 => 2,
         _ => 0,
     }
-}
-
-/// The car's surface word (`def + 0x44c0`) that NGP's car init takes the sensitivity percentage by ([`sensitivity`]).
-pub fn surface(mem: &crate::mem::Mem, car: u32) -> u32 {
-    mem.u32(mem.u32(car + 0x34) + 0x44c0)
 }
 
 /// The sensitivity `S` after the ini's percentage for the car's surface (`percent`: gravel, tarmac, snow; `surface`
