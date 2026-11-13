@@ -115,7 +115,7 @@ pub use telemetry::Telemetry;
 pub use realtime::{serve_frames, serve_realtime, serve_replay, Pace};
 
 use picture::{
-    callouts, damper_frame, last_per_wheel, pace_callouts, particle_events, race_hud, split_record, with_fires, Picture,
+    callouts, damper_frame, last_per_wheel, pace_callouts, particle_events, race_hud, split_record, with_emits, Picture,
 };
 
 /// The snapshot's stepping: the gameplay loop and the pure physics, one substep per payload.
@@ -545,7 +545,8 @@ impl<'a> Live<'a> {
             &self.detach,
             dampers,
         );
-        self.last.sound = with_fires(&self.last.sound, self.playback.pure.take_engine_fires(), pending.tyre_max);
+        let pure = &self.playback.pure;
+        self.last.sound = with_emits(&self.last.sound, pure.take_engine_fires(), pure.take_speech(), pending.tyre_max);
         self.last.pace = pacenote::to_bytes(&callouts(&pending.marker_events, self.game.markers()));
         self.last.events = particle_events(&self.playback.pure);
         let signals = self.playback.pure.take_hud_signals();

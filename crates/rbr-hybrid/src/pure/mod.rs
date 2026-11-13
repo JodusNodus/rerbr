@@ -270,6 +270,11 @@ impl Pure {
         self.captures.take_engine_fires()
     }
 
+    /// The `CSigCarDamageSpeech` codes emitted since the last call, a bit per code (`1 << code`).
+    pub fn take_speech(&self) -> u32 {
+        self.captures.take_speech()
+    }
+
     /// The run's memory for an in-process restart: the pages overlay and the allocator heap's bookkeeping (its
     /// bytes live in the pages in an untracked run). Restoring writes the pages back onto themselves, so the
     /// snapshot's pages stay valid; the heap's shared pages follow.

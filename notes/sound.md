@@ -254,6 +254,11 @@ Mechanics in `impact.rs` (payload change rule, ranged set, scream).
 
 Mechanics in `codriver.rs` (phrase, queue, damage calls, countdown). Word ids: `rbr_gameplay::markers`.
 
+- Damage call 8 (`gearbox_broke`) comes from the step's `CSigCarDamageSpeech` emits (SND1 `speech`, a bit per code,
+  counted by the pure watch at 0x4ae0d0), not the handler's speech ring: about 24 damage functors step the ring
+  (`E35Ring`, rbr-recomp `RBR_E35_DamageB.cpp`), only `RingStore` (the gear actuator, `+0x3a90` cleared) emits.
+  Before 2026-11-13 any first damage said "gearbox broke" while the HUD showed the gearbox fine.
+
 ## Custom co-driver
 
 Mechanics in `custom_codriver.rs` (window, spoken call, sticky rules, preview in `preview.rs`, HUD integration);

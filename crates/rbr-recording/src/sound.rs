@@ -15,7 +15,7 @@
 //!                     [9] speed, [0xc..] position, [0x10..] velocity, [0x14] surface id, [0x17] contact
 //! u32 hit[20]         the damage handler's CSigCarDamage payload (handler +0x3e60; CCar +0x9f4 is the handler): [1]
 //!                     state, [4] impact power, [8..] and [0xc..] the two vectors. It stays until the next impact
-//! u32 speech_ring     the handler's speech ring index (+0x3e58), stepped by each CSigCarDamageSpeech of RingStore
+//! u32 speech          the step's CSigCarDamageSpeech codes, a bit per code (`1 << code`), filled in by the writer
 //! f32 battery         CarSensorData +0x30: the E39 block's scale (CCar +0x620, +0x8c) times 12
 //! u32 brakes          CarSensorData +0x2c as the count it is made from (the E39 block's +0x80)
 //! f32 water           CarSensorData +0x14: CEngine::SimE970 (0x50e970), filled in by the writer
@@ -68,9 +68,6 @@ pub const CAR_SPEED: u32 = 0x15fc;
 pub const CAR_WHEELS: u32 = 0x470;
 pub const WHEEL_TYRE_SCRATCH: u32 = 0xf00;
 pub const WHEEL_TYRE_NOISE: u32 = WHEEL_TYRE_SCRATCH + 0x420;
-/// The damage handler's ([`crate::damage::CAR_DAMAGE_HANDLER`]) speech ring index; its `CSigCarDamage` payload is at
-/// [`crate::damage::HANDLER_EVENT_CODE`].
-pub const HANDLER_SPEECH_RING: u32 = 0x3e58;
 /// A wheel's +0xec4: the strut's `CSpringDamper`, whose +0x1c is the damper signal; +0x5cc: the strut velocity.
 pub const WHEEL_STRUT: u32 = 0xec4;
 pub const WHEEL_DAMPER_SIGNAL: u32 = WHEEL_STRUT + 0x1c;
@@ -125,7 +122,7 @@ pub struct Sound {
     pub speed: f32,
     pub tyres: [[u32; TYRE_WORDS]; 4],
     pub hit: [u32; HIT_WORDS],
-    pub speech_ring: u32,
+    pub speech: u32,
     pub battery: f32,
     pub brakes: u32,
     pub water: f32,
@@ -178,7 +175,7 @@ impl Sound {
             speed: f32::from_bits(u32_at(car + CAR_SPEED)),
             tyres,
             hit: std::array::from_fn(|i| u32_at(handler + HANDLER_EVENT_CODE + 4 * i as u32)),
-            speech_ring: u32_at(handler + HANDLER_SPEECH_RING),
+            speech: 0,
             battery: f32::from_bits(u32_at(block + 0x8c)) * BATTERY_SCALE,
             brakes: u32_at(block + 0x80),
             water: 0.0,
@@ -196,7 +193,7 @@ impl Sound {
             .chain([self.speed.to_bits()])
             .chain(self.tyres.iter().flatten().copied())
             .chain(self.hit.iter().copied())
-            .chain([self.speech_ring, self.battery.to_bits(), self.brakes, self.water.to_bits()])
+            .chain([self.speech, self.battery.to_bits(), self.brakes, self.water.to_bits()])
             .chain(self.dampers.iter().flatten().copied())
             .chain(self.strut_velocity.map(f32::to_bits))
             .chain([self.fires])
@@ -223,7 +220,7 @@ impl Sound {
             speed: f32::from_bits(word(ENGINE_WORDS + DRIVETRAIN_WORDS)),
             tyres: std::array::from_fn(|k| std::array::from_fn(|i| word(tyres + TYRE_WORDS * k + i))),
             hit: std::array::from_fn(|i| word(hit + i)),
-            speech_ring: word(tail),
+            speech: word(tail),
             battery: f32::from_bits(word(tail + 1)),
             brakes: word(tail + 2),
             water: f32::from_bits(word(tail + 3)),
@@ -447,6 +444,7 @@ mod tests {
         sound.dampers[2][2] = 0.5f32.to_bits();
         sound.strut_velocity[1] = -0.25;
         sound.fires = 1;
+        sound.speech = 1 << 8;
         let bytes = sound.to_bytes();
         assert_eq!(bytes.len(), SND1_BYTES);
         assert_eq!(Sound::from_bytes(&bytes), Some(sound));
