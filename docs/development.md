@@ -124,7 +124,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 
 | Path | What |
 | --- | --- |
-| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `stage-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
+| `scripts/` | `rust-check.sh`, `gate.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `stage-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
 | `harness/` | records and replays the original game for the physics checks ([README](../harness/README.md)) |
 | `data/` | test data hashes and file lists, the reference shot list, generator inputs |
 | `docs/` | this guide, the install guide, the reference shots and clips |
@@ -155,7 +155,8 @@ scripts/rust-check.sh
 
 It runs `cargo fmt --check`, clippy with `-D warnings`, the tests and the physics vectors for the crates the change
 touches and the crates that depend on them, then prints PASS or FAIL. `RUST_CHECK_ALL=1` checks every crate.
-`RUST_CHECK_VECTORS=none` skips the vectors, as does an unset `RBR_VECTOR_STORE`.
+`RUST_CHECK_VECTORS=none` skips the vectors, as does an unset `RBR_VECTOR_STORE`. It uses half the CPUs
+(`RUST_CHECK_JOBS` sets the cargo jobs) and runs the test binaries side by side.
 
 CI (`.github/workflows/ci.yml`) runs fmt, clippy and the tests on macOS, Ubuntu and Windows, and on macOS (arm64) the
 published recordings and vectors as well. The retail files are not published, so CI skips the tests that need them;
@@ -169,8 +170,8 @@ Some changes need more:
 | renderer, HUD, cameras, launcher | before and after captures (`viewer --screenshot`, `rerbr --screenshot DIR`); for the renderer the [reference shots](#reference-shots) |
 | sound | a short audio render |
 | a file format | a test that parses every retail file it covers |
-| `rbr-standalone` or `rbr-hybrid` | `.venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR` gives physics PASS 84084/84084 and exit status 0 (release `rbr-standalone` and `rsf-settings`; `RBR_NGP_PHYSICS` and `RBR_RSF` set) |
-| physics | the hybrid check and vectors ([Physics changes](#physics-changes)) |
+| `rbr-standalone` or `rbr-hybrid` | `scripts/gate.sh` prints PASS: it builds the release binaries and runs `harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics`, physics PASS 84084/84084 and exit status 0 (`RBR_NGP_PHYSICS` and `RBR_RSF` set) |
+| physics | `scripts/gate.sh --hybrid` (the drive and the hybrid check side by side, about a minute after the build) and the vectors ([Physics changes](#physics-changes)); `--perf BASE_BIN` adds the step's cost against another build |
 
 ## Physics changes
 
