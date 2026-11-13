@@ -279,7 +279,9 @@ pack layout in `rbr_formats::pacenote`.
 
 ## Countdown
 
-Mechanics in `codriver.rs` (HUD codes, `CSoundFX`, late-join skip). No finish sound.
+Mechanics in `codriver.rs` (HUD codes, `CSoundFX`, late-join skip). No finish sound. A restart (`Player::restart`,
+from the viewer's `restart_live`) clears the said numbers and the damage-call latch, the mod's fired notes and the
+doors (ours: the player outlives the drive).
 
 ## School speech
 

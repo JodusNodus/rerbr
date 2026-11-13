@@ -224,6 +224,17 @@ impl Models {
         out
     }
 
+    /// A new drive of the stage (a restart): the co-driver's countdown, damage calls and notes start over, the
+    /// doors are back on, and the listener's jump to the start is no Doppler shift.
+    pub fn restart(&mut self) {
+        self.codriver.restart();
+        if let Some(custom) = &mut self.custom {
+            custom.reset();
+        }
+        self.car.doors_off = [false; 2];
+        self.listener = None;
+    }
+
     /// The commands for the scripted events of a step (the helicopter, bird strikes, the rescue call).
     pub fn events(&mut self, events: &Events, scene: &Scene) -> Vec<Command> {
         self.scripted.step(&Scene { listener_velocity: self.listener_velocity, ..*scene }, events)
@@ -361,6 +372,11 @@ impl Player {
         self.swap(prepared, Mixer::swap_school);
         self.school_loaded = true;
         Ok(())
+    }
+
+    /// A new drive of the stage (a restart, [`Models::restart`]).
+    pub fn restart(&mut self) {
+        self.models.restart();
     }
 
     /// The scripted events since the last call (`rbr_render::characters`).

@@ -123,6 +123,9 @@ impl App {
             Ok(drive) => {
                 playback.reset(drive);
                 self.running.renderer.reset_history();
+                if let Some(sound) = &mut self.sound {
+                    sound.restart();
+                }
                 if self.results.take().is_some() {
                     // The stage result paused them.
                     self.pause_outputs(false);
