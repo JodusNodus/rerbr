@@ -123,11 +123,12 @@ linux() {
     done
     # winit loads libxkbcommon-x11 by name on X11 and panics without it, and a bare system has none (the AppImage
     # catalog's test, Ubuntu 22.04). With it go libxkbcommon, built from the same source, and the libxcb-xkb it
-    # needs. Every other library is the system's.
+    # needs, and their licences. Every other library is the system's.
     local lib
     for lib in libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb-xkb.so.1; do
         cp -L "$(cc -print-file-name="$lib")" "$appdir/usr/lib/"
     done
+    cp "$root/scripts/packaging/libxkbcommon-LICENSE" "$root/scripts/packaging/libxcb-COPYING" "$appdir/usr/lib/"
     ln -s usr/bin/rerbr "$appdir/AppRun"
     cp "$root/scripts/packaging/icon.png" "$appdir/rerbr.png"
     ln -s rerbr.png "$appdir/.DirIcon"
