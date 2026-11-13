@@ -5,8 +5,8 @@
 //! and [`SNOW_SOIL_SPEED`] ([`gravel_soil_share`], [`snow_soil_share`]).
 //!
 //! - Level: NGP's, on gravel times [`gravel_depth_level`], along the wheel times [`GRAVEL_LONGITUDINAL`] and across it
-//!   times [`GRAVEL_LATERAL`], on snow times [`SNOW_LONGITUDINAL`] and [`SNOW_LATERAL`]. The free
-//!   rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
+//!   times [`GRAVEL_LATERAL`], on snow times [`SNOW_LONGITUDINAL`] (less [`snow_speed_fall`]) and [`SNOW_LATERAL`].
+//!   The free rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
 //!   Damp gravel takes NGP's dry level back ([`gravel_damp_level`]); wet keeps NGP's.
@@ -274,7 +274,8 @@ pub fn gravel_soil_share(v_lat: f64) -> f64 {
 /// most), 4 % under at the top, the car gaining less with speed than they do (0.75: 0.90 / 0.82 / 0.76 / 0.72; 0.78:
 /// 0.93 / 0.85 / 0.79 / 0.75). This is 1.02 of 0.73 (user 2026-11-13, after driving the pad by hand: "pretty
 /// slippy"), then 1.05 of that (the user's, after RSF 615 by hand at it and at 1.05), as [`SNOW_LATERAL`]: 0.93 / 0.85
-/// / 0.79 / 0.74, 1 to 10 % over the crews (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
+/// / 0.79 / 0.74, 1 to 10 % over the crews; with [`snow_speed_fall`] 0.92 / 0.82 / 0.74 / 0.68, 0 to 4 % over them
+/// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
 pub const SNOW_LONGITUDINAL: f64 = 0.782;
 
 /// Snow's level across the wheel over NGP's, on the snow share of the soil: 5 % at most over the whole g the same cars
@@ -304,6 +305,25 @@ pub fn snow_soil_share(v_lat: f64) -> f64 {
     } else {
         1.0
     }
+}
+
+/// The speed, km/h, from which snow's level along the wheel is whole ([`snow_speed_fall`]).
+pub const SNOW_FULL_SPEED: f64 = 145.0;
+/// The share of snow's level along the wheel lost per km/h under [`SNOW_FULL_SPEED`] ([`snow_speed_fall`]).
+pub const SNOW_SPEED_FALL: f64 = 0.001;
+
+/// The share of snow's level along the wheel (braking and driving) lost at the wheel's speed along it `v_long`, m/s:
+/// [`SNOW_SPEED_FALL`] per km/h under [`SNOW_FULL_SPEED`], none from it (0.09 at 55 km/h). The crews' tyre force
+/// braking straight at 22 % of slip or more rises with speed (the Arctic's 2021 0.69 / 0.72 / 0.80 over 70-100 /
+/// 100-130 / 130-160 km/h, Sweden's 2017-19 0.63-0.71 / 0.70-0.77 / 0.72-0.80, Finland's gravel 0.84 / 1.03 from 100),
+/// inside one braking event too (Sweden's 76: 0.93 of the faster half's from 108 to 91 km/h, the Arctic's 11: 0.91),
+/// where their whole g in a slide does not (0.82 / 0.84 at 60-100 / 100-160 km/h); downforce would need about 30 % of
+/// the weight at 108 km/h. The i20 Coupe WRC 2020 on RSF 531's material (117) then brakes at κ 0.3 with 0.92 / 0.82 /
+/// 0.74 / 0.68 g over 160-130 / 130-100 / 100-70 / 70-40 km/h (the crews 0.92 / 0.79-0.82 / 0.73 / 0.67), pushes 0.58
+/// g in wheelspin (0.56-0.57) and starts from 10 to 50 m in 2.39 s (2.36); slides on the throttle 0.77 / 0.90 g (0.80
+/// / 0.90 without it). Ours: a fit to the crews (user 2026-11-13), no mechanism in the papers read.
+pub fn snow_speed_fall(v_long: f64) -> f64 {
+    SNOW_SPEED_FALL * (SNOW_FULL_SPEED - v_long.abs() * 3.6).max(0.0)
 }
 
 /// Snow's level along the wheel when the slip drives, over its level braking ([`SNOW_LONGITUDINAL`]), on the snow
@@ -385,6 +405,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
         ly * grip * (1.0 + (GRAVEL_LATERAL - 1.0) * share + (SNOW_LATERAL - 1.0) * snow),
         lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share + (SNOW_LONGITUDINAL - 1.0) * snow),
     );
+    let mu_x = mu_x * (1.0 - snow_speed_fall(x.vx) * snow);
     let mu_x = if driving_slip(vsx, x.vx, vr) > 0.0 { mu_x * (1.0 + (SNOW_DRIVING - 1.0) * snow) } else { mu_x };
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if snow > 0.0 && share < 1.0 {
@@ -744,8 +765,10 @@ pub(crate) mod tests {
             let x = EvalInput { spin: 0.0, surf_static: 0.9, surf_kinetic: 0.9, ..cal_input(&c.cal, 15.0, 0.0) };
             eval(&x, &c, 0.0, snow, 0.0).fx / (0.84 * 0.9 * 4000.0)
         };
-        assert!((locked(1.0) - SNOW_PLOUGH * SNOW_LONGITUDINAL).abs() < 1e-9);
-        assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0 * (1.0 + SNOW_LONGITUDINAL) / 2.0).abs() < 1e-9);
+        let fall = snow_speed_fall(15.0);
+        assert!((locked(1.0) - SNOW_PLOUGH * SNOW_LONGITUDINAL * (1.0 - fall)).abs() < 1e-9);
+        let half = (PLOUGH + SNOW_PLOUGH) / 2.0 * (1.0 + SNOW_LONGITUDINAL) / 2.0 * (1.0 - fall / 2.0);
+        assert!((locked(0.5) - half).abs() < 1e-9);
         assert!((locked(0.0) - PLOUGH).abs() < 1e-9);
     }
 
@@ -795,7 +818,22 @@ pub(crate) mod tests {
         };
         assert!((side(1.0) / side(0.0) - SNOW_LATERAL).abs() < 1e-9);
         assert!((side(0.5) / side(0.0) - (1.0 + SNOW_LATERAL) / 2.0).abs() < 1e-9);
-        assert!((brake(1.0) / brake(0.0) - SNOW_LONGITUDINAL).abs() < 1e-9);
+        assert!((brake(1.0) / brake(0.0) - SNOW_LONGITUDINAL * (1.0 - snow_speed_fall(15.0))).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snow_s_level_along_the_wheel_falls_under_its_full_speed() {
+        assert_eq!(snow_speed_fall(SNOW_FULL_SPEED / 3.6), 0.0);
+        assert_eq!(snow_speed_fall(-60.0), 0.0);
+        assert!((snow_speed_fall(-55.0 / 3.6) - 0.09).abs() < 1e-12);
+        let c = loose();
+        let brake = |v: f64, snow: f64| {
+            let x = EvalInput { vx: -v, vy: 0.0, spin: 0.5 * v / 0.3, radius: 0.3, ..cal_input(&c.cal, v, 0.0) };
+            eval(&x, &c, 0.0, snow, 0.013).fx.abs()
+        };
+        // Over the other soils' at the same speed: whole from SNOW_FULL_SPEED, less the fall under it.
+        let ratio = |v: f64| brake(v, 1.0) / brake(v, 0.0) / SNOW_LONGITUDINAL;
+        assert!((ratio(45.0) - 1.0).abs() < 1e-9 && (ratio(15.0) - (1.0 - snow_speed_fall(15.0))).abs() < 1e-9);
     }
 
     #[test]
