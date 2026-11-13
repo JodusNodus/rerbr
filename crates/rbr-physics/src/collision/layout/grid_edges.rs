@@ -73,6 +73,18 @@ pub fn store_edge_edge_sample_bytes(mem: &mut Mem, grid: u32, bytes: [u8; 2]) {
     mem.map(grid + 0x688, &bytes);
 }
 
+/// `E37GridOps::M6610`'s calls (`copy_grid`, entered at `entry`): the entry stack pointers of the ray seeding and of
+/// the two block copies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CopyGridFrame {
+    pub seeds_sp: u32,
+    pub copy_sp: u32,
+}
+
+pub fn copy_grid_frame(entry: u32) -> CopyGridFrame {
+    CopyGridFrame { seeds_sp: entry - 0x14, copy_sp: entry - 0x28 }
+}
+
 pub use crate::collision::grid_edge::{
     copy_grid, edge_normal, edge_pair, grid_add_edge, grid_row_walk, store_edge_edge_hit, vec_set_gap,
 };

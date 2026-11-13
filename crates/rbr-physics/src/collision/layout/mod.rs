@@ -54,6 +54,7 @@ pub use events::{
 pub(in crate::collision) use events::{
     event_impulse_frame, event_query_frame, init_event_sp, make_event_tail, point_velocity_frame, EventQueryFrame,
 };
+pub(in crate::collision) use grid_edges::copy_grid_frame;
 pub use grid_edges::{
     copy_grid, edge_edge_bounds, edge_edge_face, edge_edge_face_count, edge_edge_face_is_valid, edge_edge_hit_word,
     edge_edge_sample_bytes, edge_edge_sample_dimensions, edge_edge_sample_indices, edge_edge_vertex_samples,
