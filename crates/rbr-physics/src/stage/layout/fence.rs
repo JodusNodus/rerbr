@@ -27,8 +27,8 @@ const GROUP_TYPE: u32 = 0x2C;
 const GROUP_POST_TYPE: u32 = 0x30;
 const GROUP_MATERIAL: u32 = 0x34;
 const GROUP_RAIL_MATERIAL: u32 = 0x38;
-const GROUP_MEM: u32 = 0x3C;
-const GROUP_SEGS: u32 = 0x40;
+const GROUP_SPAN_BLOCK: u32 = 0x3C;
+const GROUP_SPAN_POOL: u32 = 0x40;
 /// `NStickSystem::CDummyObject` (0xb4, vtable 0x74f64c): a `CEntity`, its neighbours (`+0x64` next, `+0x68` previous),
 /// position, flags (4), span and post segments, cell link (`+0x84`, its item `+0x90`), box centre and half extents (x,
 /// z, y as the file has them), colour word, group.
@@ -119,8 +119,8 @@ fn construct_pool(mem: &mut Mem, at: u32) {
 fn construct_group(mem: &mut Mem, at: u32) {
     construct_pool(mem, at);
     mem.set_u32(at + GROUP_FLAGS, 0);
-    mem.set_u32(at + GROUP_MEM, 0);
-    construct_pool(mem, at + GROUP_SEGS);
+    mem.set_u32(at + GROUP_SPAN_BLOCK, 0);
+    construct_pool(mem, at + GROUP_SPAN_POOL);
 }
 
 /// `CDummyObject::CDummyObject` (0x600c30): a root `CEntity(0, 0, 0, 0)`, no neighbours or segments, flags 4, its
