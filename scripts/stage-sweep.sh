@@ -10,7 +10,7 @@
 # IDS: comma-separated stage ids (default every stage folder under $RBR_RSF/Maps). WEATHERS: comma-separated
 # `--weather` values (default 0). CARS: comma-separated `--car` slots, `rsf:ID` RSF cars (`--rsf-car ID`) or RSF pack folders (default 5). STEPS: the step limit
 # (default 1000000, about 23 minutes of driving). Resumable: a drive with a log in DIR is not run again. Uses
-# target/release/rbr-standalone (built if missing) and dev.env's RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS. Results go to
+# $RBR_STANDALONE, else target/release/rbr-standalone (built if missing), and dev.env's RBR_DATA, RBR_RSF and RBR_NGP_PHYSICS. Results go to
 # DIR/sweep.tsv (default a temporary folder), logs without the autopilot's progress lines to DIR/logs/.
 set -euo pipefail
 
@@ -43,7 +43,7 @@ done
 out=${out:-$(mktemp -d -t stage-sweep.XXXXXX)}
 mkdir -p "$out/logs"
 
-bin=$root/target/release/rbr-standalone
+bin=${RBR_STANDALONE:-$root/target/release/rbr-standalone}
 [[ -x $bin ]] || cargo build --release -q -p rbr-standalone --bin rbr-standalone --manifest-path "$root/Cargo.toml"
 
 if [[ -z $ids ]]; then
