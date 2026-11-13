@@ -269,11 +269,12 @@ pub fn gravel_soil_share(v_lat: f64) -> f64 {
 /// over 160-130 / 130-100 / 100-70 / 70-40 km/h at NGP's level, where the 2017-21 World Rally Cars of Arctic Rally
 /// Finland 2021, the grippiest of the four snow rallies of 2017-21 (Sweden 2017-18 read 6-7 % under it, 2019 level with
 /// it; 2020 ran on frozen gravel), give 0.92 / 0.79-0.82 / 0.73 / 0.67 (their tyres' force with the wheels 22 % or more
-/// under the car, plus the drag of 1.74 m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). With this
+/// under the car, plus the drag of 1.74 m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). At 0.73
 /// 0.88 / 0.80 / 0.74 / 0.70: 5 % over them at most (user 2026-11-13: closer to the Arctic's stages, 5 % above at
 /// most), 4 % under at the top, the car gaining less with speed than they do (0.75: 0.90 / 0.82 / 0.76 / 0.72; 0.78:
-/// 0.93 / 0.85 / 0.79 / 0.75; `notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
-pub const SNOW_LONGITUDINAL: f64 = 0.73;
+/// 0.93 / 0.85 / 0.79 / 0.75). This is 1.02 of 0.73, as [`SNOW_LATERAL`] (user 2026-11-13, after driving the pad by
+/// hand: "pretty slippy"): 0.89 / 0.81 / 0.75 / 0.71 (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
+pub const SNOW_LONGITUDINAL: f64 = 0.745;
 
 /// Snow's level across the wheel over NGP's, on the snow share of the soil: 5 % at most over the whole g the same cars
 /// hold in a slide in the Arctic (user 2026-11-13, as [`SNOW_LONGITUDINAL`]), 0.82 g from 15 deg of sideslip at 60-100
@@ -282,8 +283,9 @@ pub const SNOW_LONGITUDINAL: f64 = 0.73;
 /// 0.80 / 0.87, 0.80 / 0.88, 0.83 / 0.90, 0.87 / 0.95 at 0.70, 0.75, 0.80, 0.82, 0.85, 0.90 with [`SNOW_SOIL_SPEED`].
 /// Corner by corner on RSF 531 against Aittajarvi's two passes the car at 0.80 / 0.85 / 0.90 holds 0.81-0.87 /
 /// 0.84-0.90 / 0.88-0.94 of the crews' g in the corners that turn 30 deg or more, gravel's 0.92 by the same reading
-/// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
-pub const SNOW_LATERAL: f64 = 0.82;
+/// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)"). This is 1.02 of 0.82, as [`SNOW_LONGITUDINAL`]: slides
+/// 0.77 / 0.87 g.
+pub const SNOW_LATERAL: f64 = 0.836;
 
 /// The sideways speed of the contact point above which NGP's soil lateral force stops growing on snow, m/s
 /// ([`snow_soil_share`]), gravel's ([`GRAVEL_SOIL_SPEED`]): with the whole force the i20 at 0.75 of NGP's level on both

@@ -132,8 +132,9 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   standstill, loose-v1 on soil, NGP's grip level (gravel's 0.9 of it along the wheel and 1.10 sideways, falling with
   the loose layer's depth, with NGP's soil force held from 10 m/s of sideways speed, and a wet road's loss with speed
   half the drums': user 2026-11-11, the 1.10 the user's of 2026-11-12, the 10 m/s ours on the user's drives; snow's
-  0.73 of it along the wheel and 0.82 sideways with the same hold: user 2026-11-13 (closer to the Arctic's stages, 5 %
-  above them at most), the values ours on the 2017-21 World Rally Cars' snow telemetry, not driven yet; snow's force
+  0.745 of it along the wheel and 0.836 sideways with the same hold: user 2026-11-13 (closer to the Arctic's stages, 5 %
+  above them at most, then 1.02 of that after driving the snow pad by hand), the values ours on the 2017-21 World Rally
+  Cars' snow telemetry; snow's force
   along the wheel in two stages and no berm, ours on VTI's trailer curves of packed snow and the crews' braking by
   slip; driving 0.85 of its braking level, ours on the Arctic's crews' thrust; [tyre-model.md](tyre-model.md)); in
   development, not released
