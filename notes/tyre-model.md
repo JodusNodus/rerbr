@@ -2376,6 +2376,15 @@ items named below), run again on Finland 2021 as the gravel reference (it gives 
   of their slowest speed. So a controller that stays 8-12 % under the crews on gravel matches them on NGP's snow; at
   0.82 snow stands 5-11 % under gravel's place by this reading and at 0.90 on it, where the slides put it 6-13 % over
   the crews' accelerometers: the two readings of the real cars are 8 % apart, and the levels taken follow the slides.
+- The same reading on this build (2026-11-13, levels from 0.5: from 0.7 the brush held none of some corners, which left
+  them out and raised its figures), only the corners where the crews' median is 0.65 g or more and both tyres have a
+  limit: Aittajärvi SS9 / SS10 (n 8 turning 30° or more) loose-v1 0.88 / 0.85 of the crews' slowest speed at 0.81 /
+  0.85 of their body g, NGP's tyre 1.00 / 1.00 at 1.04 / 1.14, the brush at 0.87 of NGP's speed: by speed on gravel's
+  place (0.83), by body g 4-8 % under it. Torsby (RSF 422 against Sweden 2018's SS19, nine drives, the paths 3.8 m
+  apart, p90 10.5 m; SS8's GPS does not fit): n 6, loose-v1 0.93 of their slowest speed at 1.14 of their body g, NGP's
+  tyre 1.02 at 1.40, the brush at 0.92 of NGP's; the crews there at 0.72 g in the slow corners, under their g-g p95
+  (0.79-0.87): a slower day or the throttle out of the corner, which the reading leaves out. RSF 615 against
+  Kaihuavaara's SS4 / SS7 (seven drives each): 5.7 / 5.2 m apart (p90 16.6 / 15.2 m), the best fit of the Arctic's two.
 - Snow's shape along the wheel (2026-11-13; `loose::SNOW_HELD_LEVEL` 0.40, `SNOW_HELD_STIFFNESS` 0.14, `SNOW_PLOUGH`
   1.0). VTI's trailer (BV12) braking road winter tyres to lock on hard packed snow at 30 km/h (fig ±0.01): 0.80 of the
   peak at 10 % slip, 0.95 at 20 %, the peak at 40-50 %, locked 0.93-0.94 (Nordic and European; Baliga & Hiregoudar,
