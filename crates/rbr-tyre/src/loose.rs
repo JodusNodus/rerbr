@@ -320,18 +320,20 @@ pub fn snow_soil_share(v_lat: f64) -> f64 {
 }
 
 /// Snow's level along the wheel when the slip drives, over its level braking ([`SNOW_LONGITUDINAL`]), on the snow
-/// share. The Arctic's crews of 2021 push 0.55-0.60 g in wheelspin at 45-70 km/h (flat from 15 to 80 % of spin) and
-/// brake at 0.65 g saturated at 60-80 km/h, a lighter pedal than the tyres' limit ([`SNOW_LONGITUDINAL`]); Sweden's of
-/// 2017-19 0.51-0.60 against 0.66-0.71 with the pedal at 90 % or more at 70-100 km/h; Finland's gravel 0.63-0.66
-/// against 0.69. In slides from 15° of sideslip the Arctic's hold 0.79 / 0.75 g accelerating and 0.83
-/// / 0.88 braking at 60-100 / 100-160 km/h (accelerometers). The mechanism (Nakajima, J. Terramechanics 40, 2003, Eqs
-/// 1-4): the snow compressed at the patch's leading edge adds to the braking force and acts against the driving one;
-/// against it one drum (Gießler, KIT 2012, Bild 4-50: unstudded tyres on hard snow, traction 1.12-1.34 of braking). At
-/// 0.78 the i20 Coupe WRC 2020 on RSF 531's material pushes 0.58 g at 22-80 % of spin and starts from 10 to 50 m in
-/// 2.37 s (the crews 0.56-0.57 and 2.36; 0.63 g and 2.27 s at 0.85). Ours: the value, on the Arctic's crews' thrust
-/// (the user's target, 2026-11-13: 5 % over them at most), flat with the spin, and the same in a slide (the friction
-/// ellipse takes it).
-pub const SNOW_DRIVING: f64 = 0.78;
+/// share. The 2017-21 World Rally Cars' standing starts (path speed from GPS positions, plus the grade and the drag)
+/// gain 45-70 km/h at 0.60 g on the Arctic and 0.59 / 0.54 / 0.62 in Sweden 2017 / 2018 / 2019, where they brake with
+/// the pedal at 90 % or more at 0.72 / 0.66 (Arctic, Sweden 2018; 32-50 % of slip, 60-90 km/h): 0.82-0.83. On gravel
+/// the same give 0.93-0.96 (Finland 2021 0.70 over 0.73, Estonia 0.69 over 0.74), as the car's on gravel (0.77 over
+/// 0.81 on pad 49), so the shortfall is snow's. In slides from 15° of sideslip the Arctic's hold 0.79 / 0.75 g
+/// accelerating and 0.83 / 0.88 braking at 60-100 / 100-160 km/h (accelerometers). The mechanism (Nakajima, J.
+/// Terramechanics 40, 2003, Eqs 1-4): the snow compressed at the patch's leading edge adds to the braking force and
+/// acts against the driving one; against it one drum (Gießler, KIT 2012, Bild 4-50: unstudded tyres on hard snow,
+/// traction 1.12-1.34 of braking). At 0.85 the i20 Coupe WRC 2020 on RSF 531's material (117) gains 45-70 km/h at 0.62
+/// g over 0.77 braking (0.81), starts from 10 to 50 m in 2.27 s (the Arctic's 2.36) and holds 0.79 / 0.88 g at 15-30°
+/// of sideslip at 60-100 / 100-160 km/h past the limit (the crews 0.82 / 0.84); on Sweden's (101) 0.59 g. At 0.78 0.57
+/// g, 2.37 s, 0.75 / 0.86 g. Ours: the value, on the crews' ratio (the user's target, 2026-11-13: 5 % over the Arctic's
+/// at most), flat with the spin, and the same in a slide (the friction ellipse takes it).
+pub const SNOW_DRIVING: f64 = 0.85;
 
 /// The share of snow's level the snow held in the tread carries. Along the wheel snow builds its force in two stages,
 /// the tread on the snow and the held snow shearing on the road's, softer: VTI's trailer (BV12) on hard packed snow at

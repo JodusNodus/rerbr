@@ -129,18 +129,17 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   aero"). NGP 7 stays the default and bit-exact. While experimental, a run with it saves no records, ghosts or
   championship results; its replays carry the choice. It replaces the input-side throttle model, which is not merged.
   The tyre model (`rbr-tyre`): brush-v1 in place of NGP's model of the contact patch on hard surfaces down to
-  standstill, loose-v1 on soil, NGP's grip level (gravel's 0.9 of it along the wheel and 1.10 sideways, falling with
-  the loose layer's depth, with NGP's soil force held from 10 m/s of sideways speed, and a wet road's loss with speed
-  half the drums': user 2026-11-11, the 1.10 the user's of 2026-11-12, the 10 m/s ours on the user's drives; snow's
-  0.782 of it along the wheel and 0.878 sideways: user 2026-11-13 (closer to the Arctic's stages, 5 % above them at
-  most, then 1.02 of that after driving the snow pad by hand and 1.05 after RSF 615 by hand), the values ours on the
-  2017-21 World Rally Cars' snow telemetry, NGP's soil force on snow held from 6 m/s (ours, 2026-11-14: the fast
-  slides within 5 % of the crews); snow's force
-  along the wheel in two stages and no berm, ours on VTI's trailer curves of packed snow and
-  the crews' braking by slip; driving 0.78 of its braking level, ours on the Arctic's crews' thrust;
-  [tyre-model.md](tyre-model.md)); in development, not released
-  (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's Settings page does not offer
-  it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
+  standstill, loose-v1 on soil, NGP's grip level (gravel's 0.9 of it along the wheel and 1.10 sideways, falling with the
+  loose layer's depth, with NGP's soil force held from 10 m/s of sideways speed, and a wet road's loss with speed half
+  the drums': user 2026-11-11, the 1.10 the user's of 2026-11-12, the 10 m/s ours on the user's drives; snow's 0.782 of
+  it along the wheel and 0.878 sideways: user 2026-11-13 (closer to the Arctic's stages, 5 % above them at most, then
+  1.02 of that after driving the snow pad by hand and 1.05 after RSF 615 by hand), the values ours on the 2017-21 World
+  Rally Cars' snow telemetry, NGP's soil force on snow held from 6 m/s (ours, 2026-11-14: the fast slides within 5 % of
+  the crews); snow's force along the wheel in two stages and no berm, ours on VTI's trailer curves of packed snow and
+  the crews' braking by slip; driving 0.85 of its braking level: user 2026-11-14, on the crews' standing starts (thrust
+  over braking 0.82-0.83 on snow, 0.93-0.96 on gravel, the car's gravel at its crews'); [tyre-model.md](tyre-model.md));
+  in development, not released (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's
+  Settings page does not offer it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
 - 2026-11-03 (user): ReRBR needs no 1.02 patch: the 1.02 exe's data words it reads are committed, generated
   (`rbr_formats::exe_data`, `scripts/gen-exe-data.py`, [physics.md](physics.md#standalone-dispatch)); the patch's
   `audio.ini` amps and its one script change are built in. The disc setup asks for the disc and NGP only.
