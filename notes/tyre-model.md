@@ -2437,7 +2437,11 @@ items named below), run again on Finland 2021 as the gravel reference (it gives 
   0.27 at 0.25 cm to 0.39 at 10 cm (their Fig. 14, ploughing), not NGP's packed stage materials. Pacejka's factors on
   snow (Braghin, Cheli & Sabbioni, VSD 44(7) 2006, Figs 7, 17, fig ±0.03; road tyres, Nokian's van at 25 km/h): μx 0.34
   and μy 0.40 of dry, the stiffnesses with them (Kx/μx and Ky/μy within 2 % of dry), lateral rising to a plateau
-  (λCy 0.42); weak against the trailer's direct curves (the factors on fixed coefficients, a rig confound).
+  (λCy 0.42); weak against the trailer's direct curves (the factors on fixed coefficients, a rig confound). Driving on
+  compacted snow (Surkutwar, VT PhD 2025, Fig. 5.13 measured, fig ±0.005; SRTT, ASTM F1805, 5.2 kN, 8 km/h): 0.27 /
+  0.32 / 0.34 / 0.363 at 6 / 10 / 20 / 26-30 %, 1.13 from 10 % (brush 1.18 from 10 to 40 %, braking); their FE blank
+  rib stays at 0.26-0.27 over 6-30 % where the siped tread rises (simulation): the rise comes from snow in the tread,
+  Kusachov's two-stage mechanism (Lic 2016 §4.4, the same model fitting Mz from the force fits).
 - Not read, to obtain: Kusachov et al., Tire Sci. Technol. 47(2) 2019, doi 10.2346/tire.18.460404 (the two-brush
   model's fits per tyre); Strandberg 1998 (66 drivers, studded tyres, ABS on and off on snow and ice); Lee & Huang, J.
   Terramechanics 55 2014, doi 10.1016/j.jterra.2014.05.002 (natural snow, combined slip, depth); Giessler et al.,
