@@ -173,6 +173,10 @@ pub trait CollisionStore: Raw {
     fn grid_status_flag(&self, grid: u32) -> u8;
     /// The address of the grid's edge vector `index`.
     fn grid_edge(&self, grid: u32, index: u32) -> u32;
+    /// The addresses of the grid's box corners, low and high.
+    fn grid_corners(&self, grid: u32) -> (u32, u32);
+    /// The address of the grid's centre.
+    fn grid_centre(&self, grid: u32) -> u32;
     /// The six bytes of the grid's edge record `index`: the two vertices and the sample indices.
     fn grid_pair(&self, grid: u32, index: u32) -> [u8; 6];
     /// The body's grid flag bytes, read and cleared.

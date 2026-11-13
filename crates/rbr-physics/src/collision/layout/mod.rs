@@ -1,6 +1,6 @@
 //! The collision subsystem's game memory: typed views of its objects, the original's calls and their sequencing.
 
-mod body_contacts;
+pub(in crate::collision) mod body_contacts;
 pub mod body_hosts;
 pub mod body_slots;
 mod cbody;

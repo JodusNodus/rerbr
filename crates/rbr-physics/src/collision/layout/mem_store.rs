@@ -490,6 +490,14 @@ impl CollisionStore for Mem {
         ColGrid::new(grid).edge(index)
     }
 
+    fn grid_corners(&self, grid: u32) -> (u32, u32) {
+        (grid, grid + 0x10)
+    }
+
+    fn grid_centre(&self, grid: u32) -> u32 {
+        grid + 0x20
+    }
+
     fn grid_pair(&self, grid: u32, index: u32) -> [u8; 6] {
         ColGrid::new(grid).pair(self, index as usize)
     }
