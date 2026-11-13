@@ -2385,6 +2385,12 @@ items named below), run again on Finland 2021 as the gravel reference (it gives 
   tyre 1.02 at 1.40, the brush at 0.92 of NGP's; the crews there at 0.72 g in the slow corners, under their g-g p95
   (0.79-0.87): a slower day or the throttle out of the corner, which the reading leaves out. RSF 615 against
   Kaihuavaara's SS4 / SS7 (seven drives each): 5.7 / 5.2 m apart (p90 16.6 / 15.2 m), the best fit of the Arctic's two.
+- The user's first drive of RSF 615 by hand (2026-11-13; main a2dd4807's `experimental-brush`, so snow at NGP's level,
+  not these levels; i20, 17.6 of 19.96 km in 565 s, 2 recoveries; `replay_gg.py --bin replay`): g-g p95 |lat| 0.88 /
+  0.86 / 0.93 / 0.89 g at 30-60 / 60-90 / 90-120 / 120-150 km/h (the crews 0.84 / 0.89 / 0.91 / 0.96); in the 35-37
+  corners where the crews' median is 0.65 g or more the slowest speed 0.89 / 0.90 of their median (SS4 / SS7; p25-p75
+  0.82-0.97), as on Hassi's gravel (0.88-0.89): on a car with 1.3 times their grip, not at its limit (circles
+  0.94-1.02).
 - Snow's shape along the wheel (2026-11-13; `loose::SNOW_HELD_LEVEL` 0.40, `SNOW_HELD_STIFFNESS` 0.14, `SNOW_PLOUGH`
   1.0). VTI's trailer (BV12) braking road winter tyres to lock on hard packed snow at 30 km/h (fig ±0.01): 0.80 of the
   peak at 10 % slip, 0.95 at 20 %, the peak at 40-50 %, locked 0.93-0.94 (Nordic and European; Baliga & Hiregoudar,
