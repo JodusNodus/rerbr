@@ -185,6 +185,11 @@ impl CoDriver {
         out
     }
 
+    /// A new drive of the stage (a restart): the countdown, the damage calls and the note phrasing start over.
+    pub fn restart(&mut self) {
+        *self = CoDriver { replay: self.replay, muted: self.muted, ..CoDriver::default() };
+    }
+
     /// The damage calls of other senders: the suspension's broken damper (7) and the engine fire (6).
     pub fn damage_calls(&mut self, codes: &[u32]) -> Vec<Command> {
         codes.iter().filter_map(|&code| self.damage_call(code)).collect()
@@ -271,6 +276,23 @@ mod tests {
         let mut late = CoDriver::default();
         let said: Vec<_> = (0..300).flat_map(|k| late.step(&sound, &[], Some(1.5 - k as f32 * 0.01))).collect();
         assert_eq!(said, [Command::Speech(Speech::Number(1)), Command::Shot { shot: Shot::Go, gain: 1.0 }]);
+    }
+
+    #[test]
+    fn a_restart_counts_down_and_calls_the_damage_again() {
+        let mut c = CoDriver { muted: true, ..CoDriver::default() };
+        let mut sound = Sound { battery: 12.0, brakes: 1, ..Sound::default() };
+        let drive = |c: &mut CoDriver, sound: &Sound| -> Vec<_> {
+            (0..900).flat_map(|k| c.step(sound, &[], Some(7.0 - k as f32 * 0.01))).collect()
+        };
+        assert_eq!(drive(&mut c, &sound).len(), 4);
+        sound.speech = 1 << 8;
+        assert_eq!(drive(&mut c, &sound), [Command::Speech(Speech::Damage(8))]);
+        c.restart();
+        assert!(c.muted);
+        let said = drive(&mut c, &sound);
+        assert_eq!(said.len(), 5, "{said:?}");
+        assert!(said.contains(&Command::Speech(Speech::Damage(8))));
     }
 
     #[test]
