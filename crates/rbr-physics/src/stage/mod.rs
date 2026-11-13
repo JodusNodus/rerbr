@@ -7,7 +7,7 @@
 //! - the `.mat` image and the material table (`entities::material_table::MaterialTable`);
 //! - the `.trk` file: the drive line (kind 0x14 records as drive-line entries) and the collision meshes
 //!   (kind 0x16): a descriptor per mesh, the collision grid of each static one
-//!   ([`crate::collision::layout::collision_mesh_factory`]), and the placements ([`Stuff`]), which the physics turns
+//!   ([`crate::collision::layout::collision_mesh_factory`]), and the placements ([`Placement`]), which the physics turns
 //!   into objects;
 //! - the placements' objects: per placement an object of the registry entry its object type names, placed (pose,
 //!   extent, grid cell, collision grid, rotation and bounds), filed with the physics state and put to sleep.
@@ -90,10 +90,9 @@ pub fn drive_line_entries(data: &trk::DriveLineData) -> Vec<DriveLinePoint> {
         .collect()
 }
 
-/// A placement as the mesh loader emits it (0x50 bytes; the words not named here are 0). Its receiver makes the
-/// object.
+/// A placement as the mesh loader emits it (what is not named here is 0). Its receiver makes the object.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Stuff {
+pub struct Placement {
     /// The position, values and extent.
     pub position: Vec4,
     pub values: [f32; 4],
@@ -109,8 +108,8 @@ pub struct Stuff {
 }
 
 /// The placement `object` of `mesh`, with `collision` as its id or descriptor and no handle yet.
-pub fn stuff(mesh: &trk::CollisionMesh, object: &trk::CollisionObject, collision: u32) -> Stuff {
-    Stuff {
+pub fn placement(mesh: &trk::CollisionMesh, object: &trk::CollisionObject, collision: u32) -> Placement {
+    Placement {
         position: vec4(object.position),
         values: object.values,
         extent: vec4(object.extent),

@@ -16,7 +16,7 @@ use rbr_physics::physics_core::layout::construct::{Heap, ScratchHost};
 use rbr_physics::physics_core::layout::physics_object::PhysicsHost;
 use rbr_physics::physics_core::layout::prof_calls::{EnterHost, ProfHost};
 use rbr_physics::stage::layout::{self as stage, StageHost};
-use rbr_physics::stage::Stuff;
+use rbr_physics::stage::Placement;
 
 use super::{CARD_SIZE, SCRATCH, SCRATCH_SIZE, SIGNALS};
 
@@ -215,8 +215,8 @@ impl StageHost for StageCalls {
         self.keyed += usize::from(handle.is_some());
         handle
     }
-    fn stuff(&mut self, mem: &mut Mem, stuff: &Stuff) {
-        if stage::place(mem, self, stuff).is_err() {
+    fn emit_placement(&mut self, mem: &mut Mem, placement: &Placement) {
+        if stage::place(mem, self, placement).is_err() {
             self.failed.get_or_insert(self.stuffs);
         }
         self.stuffs += 1;

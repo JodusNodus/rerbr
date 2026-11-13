@@ -19,7 +19,7 @@ use crate::entities::material_table::{MaterialEntry, MaterialTable};
 use crate::mem::Mem;
 use crate::physics_core::layout as physics;
 use crate::physics_core::layout::construct::Heap;
-use crate::stage::{self, MaterialMap, Stuff};
+use crate::stage::{self, MaterialMap, Placement};
 
 /// The track state's `.mat` image (`CPC_TrackState+0x148`).
 const MAT_IMAGE: u32 = 0x148;
@@ -41,7 +41,7 @@ pub trait StageHost: Heap + AllocHost {
     fn interactive_handle(&mut self, id: u32) -> Option<u32>;
     /// The `CSigStuff` emit (signal `+0x4730`) of a placement; its receiver is `CPhysics::E46_Notify67d0` (0x5267d0,
     /// [`place`](super::placement::place)).
-    fn stuff(&mut self, mem: &mut Mem, stuff: &Stuff);
+    fn emit_placement(&mut self, mem: &mut Mem, placement: &Placement);
     /// Free memory of `size` bytes for the original's temporaries: a placement's `CSigStuff` (a heap block the emitter
     /// deletes after the emit) and `CColGrid::SyncGrid`'s vertices (its stack).
     fn scratch(&mut self, mem: &mut Mem, size: u32) -> u32;

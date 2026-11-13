@@ -2,7 +2,7 @@
 //! sync and the frame walk.
 
 use super::files::{NoParent, StageHost};
-use super::meshes::{store_stuff, STUFF_SIZE};
+use super::meshes::{store_placement, PLACEMENT_SIZE};
 use super::{WALL, WALL_ROOT};
 use crate::collision::layout::body_hosts::BodyResetHost;
 use crate::collision::layout::grid_hosts::AllocHost;
@@ -27,7 +27,7 @@ use crate::rigid_body::layout::{
     solid_wake, Body, PlaceHost, RestHost,
 };
 use crate::rigid_body::rotation::{self, MulHost};
-use crate::stage::Stuff;
+use crate::stage::Placement;
 
 /// The cell grid object (`CCellGrid`, 0x14 bytes).
 const GRID_SIZE: u32 = 0x14;
@@ -56,9 +56,9 @@ impl<H: StageHost> GridBuildHost for Calls<'_, H> {
 /// the state and put to sleep (`CSolid::E43Vf94`; a placement with flag 1 is woken, `CSolid::E43Vf90`). The objects'
 /// virtual calls are answered for `CSolid` only; another class, a parent, a dynamic placement or a listener of the body
 /// event that is not ported is `Err`.
-pub fn place(mem: &mut Mem, host: &mut impl StageHost, stuff: &Stuff) -> Result<(), HostUnavailable> {
-    let at = host.scratch(mem, STUFF_SIZE);
-    store_stuff(mem, at, stuff);
+pub fn place(mem: &mut Mem, host: &mut impl StageHost, placement: &Placement) -> Result<(), HostUnavailable> {
+    let at = host.scratch(mem, PLACEMENT_SIZE);
+    store_placement(mem, at, placement);
     physics::notify_stuff(mem, &mut Calls(host), at)
 }
 

@@ -12,7 +12,7 @@ use crate::mem::Mem;
 use crate::physics_core::layout::Filing;
 use crate::physics_core::layout::{self as physics, setup};
 use crate::rigid_body::layout::HALF;
-use crate::stage::{self, Stuff};
+use crate::stage::{self, Placement};
 
 /// `CCollisionMeshOpen` (vtable 0x7395e4) and `CCollisionMeshWater` (0xc0 bytes, vtable 0x73974c): the bounds, the
 /// cell link (next, previous, owner), the self word, the record and the four words after it.
@@ -186,14 +186,14 @@ pub fn load_collision_meshes(mem: &mut Mem, host: &mut impl StageHost, data: &tr
         }
         let collision = if mesh.is_static() { id } else { desc };
         for object in &mesh.objects {
-            let mut stuff = stage::stuff(mesh, object, collision);
+            let mut placement = stage::placement(mesh, object, collision);
             if stage::wants_handle(mesh) {
-                stuff.handle = host.interactive_handle(object.interactive_id).unwrap_or(0);
+                placement.handle = host.interactive_handle(object.interactive_id).unwrap_or(0);
             }
             if mesh.is_static() {
-                host.stuff(mem, &stuff);
+                host.emit_placement(mem, &placement);
             } else {
-                dynamic.push(stuff);
+                dynamic.push(placement);
             }
         }
         if mesh.is_static() {
@@ -201,27 +201,27 @@ pub fn load_collision_meshes(mem: &mut Mem, host: &mut impl StageHost, data: &tr
         }
         host.push_mesh(mem, desc);
     }
-    for mut stuff in dynamic {
-        stuff.values = [0.0, 0.0, 0.0, mem.f32(ONE)];
-        host.stuff(mem, &stuff);
+    for mut placement in dynamic {
+        placement.values = [0.0, 0.0, 0.0, mem.f32(ONE)];
+        host.emit_placement(mem, &placement);
     }
 }
 
 /// A placement (`CSigStuff`, 0x50 bytes, zeroed when made): the position, the values (the orientation), the extent, the
 /// collision id or descriptor, the object type, the handle and the flags. `E46_Notify67d0` keeps the object at `+0x3c`.
-pub(super) const STUFF_SIZE: u32 = 0x50;
+pub(super) const PLACEMENT_SIZE: u32 = 0x50;
 
-pub(super) fn store_stuff(mem: &mut Mem, at: u32, stuff: &Stuff) {
-    mem.map(at, &[0; STUFF_SIZE as usize]);
-    stuff.position.store(mem, at);
-    for (i, value) in (0..).zip(stuff.values) {
+pub(super) fn store_placement(mem: &mut Mem, at: u32, placement: &Placement) {
+    mem.map(at, &[0; PLACEMENT_SIZE as usize]);
+    placement.position.store(mem, at);
+    for (i, value) in (0..).zip(placement.values) {
         mem.set_f32(at + 0x10 + 4 * i, value);
     }
-    stuff.extent.store(mem, at + 0x20);
-    mem.set_u32(at + 0x34, stuff.collision);
-    mem.set_u32(at + 0x38, stuff.object_type);
-    mem.set_u32(at + 0x40, stuff.handle);
-    mem.set_u32(at + 0x44, stuff.flags);
+    placement.extent.store(mem, at + 0x20);
+    mem.set_u32(at + 0x34, placement.collision);
+    mem.set_u32(at + 0x38, placement.object_type);
+    mem.set_u32(at + 0x40, placement.handle);
+    mem.set_u32(at + 0x44, placement.flags);
 }
 
 /// `LoadCollisionMeshes`'s shape record: a box (`min` at +0, `max` at +0x10, then the identity rows the exe's 1.0
