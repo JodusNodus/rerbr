@@ -31,10 +31,10 @@ pub mod car_grids;
 pub mod layout;
 
 pub use layout::{
-    construct_complete_setup, construct_setup_options, copy_car_setups, copy_setups, drive_options, emit_car_meshes,
-    enter_tic_sample, fire_collision_mesh, new_body, new_car, new_physics_def, new_replay_stand_in, new_wheel,
-    options_file, physics_file, select_drive_options, select_top_mounts, select_tyre_type, set_driver_aids, setup_file,
-    setups, store_statics, tyre_type, BodyKind, Setups, WheelSetup,
+    construct_complete_setup, construct_setup_options, copy_car_setups, copy_setups, drive_options,
+    emit_animation_object_mesh, emit_car_meshes, enter_frame_sample, new_body, new_car, new_physics_def,
+    new_replay_stand_in, new_wheel, options_file, physics_file, select_drive_options, select_top_mounts,
+    select_tyre_type, set_driver_aids, setup_file, setups, store_statics, tyre_type, BodyKind, Setups, WheelSetup,
 };
 
 /// The player's driver aids, from the game's options (`AutoGears`, `GearGuard`, `NeutralLock`, `ClutchHelp`;

@@ -63,17 +63,17 @@ impl<H: Heap + entities::exclusion::Heap> PartFactory for Factories<'_, H> {
 /// `CBody::Vf40`'s state reset, run by the placement after `Vf16Helper` (as `stage::layout` does): the helper's two
 /// calls are deferred; its matrix multiply is `E46Mat::Mul`'s, as the stage's.
 #[derive(Default)]
-struct DeferredVf40 {
+struct DeferredStateReset {
     state: Option<u32>,
 }
 
-impl rigid_body::rotation::MulHost for DeferredVf40 {
+impl rigid_body::rotation::MulHost for DeferredStateReset {
     fn mul(&mut self, m: [f32; 9], b: [f32; 9]) -> Result<[f32; 9], rigid_body::host::HostUnavailable> {
         Ok(rigid_body::rotation::mul_rows(m, b))
     }
 }
 
-impl BodyResetHost for DeferredVf40 {
+impl BodyResetHost for DeferredStateReset {
     fn reset_state(&mut self, state: u32) -> u32 {
         self.state = Some(state);
         0
@@ -192,10 +192,11 @@ impl GridSyncHost for CarGridSync {
 
 /// A collision grid's point count (`+0x68d`): `SyncGrid`'s vertex buffer holds that many vectors.
 const GRID_POINT_COUNT: u32 = 0x68D;
-/// The parts' `Vf44` slot functions: `CSolid::Vf44` (0x52c700, the solids) and `CBody::Vf44` (0x4e1140, the car body).
-const SOLID_VF44: u32 = 0x0052_C700;
-const BODY_VF44: u32 = 0x004E_1140;
-const SLOT_VF44: u32 = 0x44;
+/// The parts' place slot (`Vf44`) and its functions: `CSolid::Vf44` (0x52c700, the solids) and `CBody::Vf44`
+/// (0x4e1140, the car body).
+const PLACE_SLOT: u32 = 0x44;
+const SOLID_PLACE: u32 = 0x0052_C700;
+const BODY_PLACE: u32 = 0x004E_1140;
 /// The parts' wake and sleep slots and `CSolid`'s (`E43Vf90` 0x52bf30, `E43Vf94` 0x52c130); other classes are entities.
 const SLOT_WAKE: (u32, u32) = (0x90, 0x0052_BF30);
 const SLOT_SLEEP: (u32, u32) = (0x94, 0x0052_C130);
@@ -235,7 +236,7 @@ impl<F, H: entities::exclusion::Heap> AllocHost for CarParts<'_, F, H> {
 
 impl<F, H: entities::exclusion::Heap> rigid_body::layout::PlaceHost for CarParts<'_, F, H> {
     fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
-        let mut deferred = DeferredVf40::default();
+        let mut deferred = DeferredStateReset::default();
         rigid_body::layout::refresh_and_reset(mem, this, &mut deferred)?;
         let state = deferred.state.expect("CBody::Vf40 calls its state");
         let mut state_calls = StateCalls::default();
@@ -308,9 +309,9 @@ impl<F: PartFactory, H: entities::exclusion::Heap> NotifyHost for CarParts<'_, F
     }
 
     fn place(&mut self, mem: &mut Mem, object: u32, stuff: u32) -> Result<(), rigid_body::host::HostUnavailable> {
-        match mem.u32(mem.u32(object) + SLOT_VF44) {
-            SOLID_VF44 => rigid_body::layout::place_solid(mem, self, object, stuff),
-            BODY_VF44 => {
+        match mem.u32(mem.u32(object) + PLACE_SLOT) {
+            SOLID_PLACE => rigid_body::layout::place_solid(mem, self, object, stuff),
+            BODY_PLACE => {
                 let grid = collision::layout::select_table(mem, stuff);
                 Body::new(object).set_grid(mem, grid);
                 // `CBody::Vf44` calls `CEntity::Vf44`: its `CBase::Unk44` is empty, and a new body has no children.

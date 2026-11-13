@@ -591,7 +591,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
     physics::set_cdef_global(&mut mem, def);
     physics::set_physics_global(&mut mem, physics_at);
     physics::store_frequency(&mut mem, race.frequency);
-    load::enter_tic_sample(&mut mem, &mut Profiler);
+    load::enter_frame_sample(&mut mem, &mut Profiler);
     load::store_statics(&mut mem);
     let system = mem.u32(stage::COLLISION_SYSTEM);
     stage::collision_system_ctor(&mut mem, system);
@@ -704,7 +704,7 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
         mem.map(hh_base + at, &[name.as_bytes(), &[0]].concat());
     }
     load::emit_car_meshes(&mut mem, &mut heap.clone(), hh_base, &meshes);
-    load::fire_collision_mesh(&mut mem, SCRATCH);
+    load::emit_animation_object_mesh(&mut mem, SCRATCH);
     built.push(("car collision meshes", meshes.len() as u64 + 1));
 
     // The car's placements (`E46_Notify67d0` on each `CSigStuff` the car loader emits).

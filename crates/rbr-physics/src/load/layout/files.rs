@@ -68,8 +68,8 @@ fn def_class(factory: &str) -> Option<Class> {
     }
 }
 
-/// A tweak object's vtable slot 17 (`Unk44`), which the walk runs after its group.
-const SLOT_17: u32 = 0x44;
+/// A tweak object's after-parse slot, which the walk runs after its group: vtable slot 17 (`Unk44`).
+const AFTER_PARSE_SLOT: u32 = 0x44;
 
 /// The walk's calls with the definition registry answered from `registry`.
 struct Linked<'a, H> {
@@ -82,9 +82,9 @@ impl<H: ApplyHost + Heap> ApplyHost for Linked<'_, H> {
         self.host.alloc_name(mem, len)
     }
 
-    /// The car body definition's slot 17 is ported; the others go to the host.
+    /// The car body definition's after-parse slot is ported; the others go to the host.
     fn after_parse(&mut self, mem: &mut Mem, this: u32) {
-        match mem.u32(mem.u32(this) + SLOT_17) {
+        match mem.u32(mem.u32(this) + AFTER_PARSE_SLOT) {
             car_body::layout::BODY_DEF_AFTER_PARSE => car_body::layout::body_def_after_parse(mem, this),
             _ => self.host.after_parse(mem, this),
         }

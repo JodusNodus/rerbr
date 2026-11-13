@@ -186,7 +186,7 @@ fn build(snap0: &Mem, exe: &pe::Image, keeper: TimeKeeper, fill: u8) -> Mem {
     assert!(host.blocks.is_empty(), "blocks left: {:x?}", host.blocks);
     layout::set_physics_global(&mut mem, made);
     layout::store_frequency(&mut mem, FREQUENCY);
-    load::enter_tic_sample(&mut mem, &mut Profiler);
+    load::enter_frame_sample(&mut mem, &mut Profiler);
     load::store_statics(&mut mem);
     let system = mem.u32(stage::COLLISION_SYSTEM);
     mem.map(system, &vec![fill; stage::SYSTEM_SIZE as usize]);
