@@ -37,12 +37,12 @@ pub fn store_statics(mem: &mut Mem) {
 
 /// A `CSigCollisionMesh` (0x34 bytes): `collision::layout::load_mesh_desc` has the fields.
 const MESH_DESC_SIZE: u32 = 0x34;
-/// `E02FireCollisionMesh`'s mesh: grid 9, a sphere (flag 0x10000) named `"animationobject"` (0x72afbc) with the shape
-/// record `MESH_PARAMS` and material 200.
-const FIRE_MESH_ID: u32 = 9;
-const FIRE_MESH_FLAGS: u32 = 0x1_0000;
-const FIRE_MESH_NAME: u32 = 0x0072_afbc;
-const FIRE_MESH_MATERIAL: u8 = 200;
+/// The animation objects' mesh `E02FireCollisionMesh` emits: grid 9, a sphere (flag 0x10000) named `"animationobject"`
+/// (0x72afbc) with the shape record `MESH_PARAMS` and material 200.
+const ANIMATION_MESH_ID: u32 = 9;
+const ANIMATION_MESH_FLAGS: u32 = 0x1_0000;
+const ANIMATION_MESH_NAME: u32 = 0x0072_afbc;
+const ANIMATION_MESH_MATERIAL: u8 = 200;
 
 /// The car meshes' names in HedgeHog3D's image, by grid id (1-8), with their offsets: the body's is
 /// `"MrCarCollision"`, a part's its collision body's (`car_grids::PARTS`).
@@ -108,26 +108,26 @@ fn put(mem: &mut Mem, host: &mut impl Heap, bytes: &[u8]) -> u32 {
     at
 }
 
-/// `E02FireCollisionMesh` (0x440980)'s emit to `E37SigFactory720`: grid 9 from its descriptor, a stack temporary the
-/// caller places at `desc`.
-pub fn fire_collision_mesh(mem: &mut Mem, desc: u32) {
+/// The animation objects' collision mesh emitted to the collision mesh factory, as `E02FireCollisionMesh` (0x440980)
+/// emits it to `E37SigFactory720`: grid 9 from its descriptor, a stack temporary the caller places at `desc`.
+pub fn emit_animation_object_mesh(mem: &mut Mem, desc: u32) {
     mem.map(desc, &[0; MESH_DESC_SIZE as usize]);
-    mem.set_u32(desc, FIRE_MESH_ID);
-    mem.set_u32(desc + 4, FIRE_MESH_FLAGS);
-    mem.set_u32(desc + 8, FIRE_MESH_NAME);
+    mem.set_u32(desc, ANIMATION_MESH_ID);
+    mem.set_u32(desc + 4, ANIMATION_MESH_FLAGS);
+    mem.set_u32(desc + 8, ANIMATION_MESH_NAME);
     mem.set_u32(desc + 0x2c, MESH_PARAMS);
-    mem.set_u8(desc + 0x30, FIRE_MESH_MATERIAL);
+    mem.set_u8(desc + 0x30, ANIMATION_MESH_MATERIAL);
     collision::layout::collision_mesh_factory(mem, desc);
 }
 
-/// `CApplication::Tic`'s profiler sample (0x7eacc0) and its name (0x72eff4).
-const TIC_SAMPLE: u32 = 0x007e_acc0;
-const TIC_NAME: u32 = 0x0072_eff4;
+/// The frame's profiler sample, `CApplication::Tic`'s (0x7eacc0), and its name (0x72eff4).
+const FRAME_SAMPLE: u32 = 0x007e_acc0;
+const FRAME_SAMPLE_NAME: u32 = 0x0072_eff4;
 
 /// The profiler's queue as the frame's `CApplication::Tic` (0x4804f0) leaves it before it calls the physics: its sample
 /// entered (`E46ProfChan::Enter`, the sample alone in the queue).
-pub fn enter_tic_sample(mem: &mut Mem, host: &mut impl EnterHost) {
-    physics_core::layout::prof_enter(host, mem, TIC_SAMPLE, TIC_NAME);
+pub fn enter_frame_sample(mem: &mut Mem, host: &mut impl EnterHost) {
+    physics_core::layout::prof_enter(host, mem, FRAME_SAMPLE, FRAME_SAMPLE_NAME);
 }
 
 /// The replay manager's global (`g_e19Ptr893634`) and its state word, which `E19IsState2` (0x499900) tests for 2 under

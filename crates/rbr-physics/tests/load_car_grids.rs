@@ -1,7 +1,7 @@
 //! The car's collision grids built from the retail files, as the load builds them, against the game's, for every car:
 //! the car loader's meshes from the collision bodies of its `.sgc` (`load::car_grids::car_meshes`), emitted with their
 //! blocks to `E37SigFactory720`, which builds grids 1-8 (`load::emit_car_meshes`), and grid 9 from
-//! `E02FireCollisionMesh` (`load::fire_collision_mesh`). Then `CCar::UpdateA720` moves the hinged bodies' grids (2-5)
+//! `E02FireCollisionMesh` (`load::emit_animation_object_mesh`). Then `CCar::UpdateA720` moves the hinged bodies' grids (2-5)
 //! by their `vecHingePoint_BF` (`Physics/<car>/common.lsp`, the hinged body of the same name as the collision body;
 //! `CHingedRigidBody::SimEFE0` -> `E37GridOps::AddEdge`).
 //!
@@ -220,7 +220,7 @@ fn build(data: &Data, run: &Run, fill: u8, game_garbage: bool) -> Mem {
     let descs = load::emit_car_meshes(&mut mem, &mut heap, run.hh, &meshes);
     assert!(heap.blocks.is_empty(), "{}: blocks left", run.label);
     assert_eq!(descs, run.descs.values().map(|d| d.0).collect::<Vec<_>>());
-    load::fire_collision_mesh(&mut mem, SCRATCH);
+    load::emit_animation_object_mesh(&mut mem, SCRATCH);
 
     // As emitted: the vertices at UpdateA720's entry.
     for id in GRIDS {
