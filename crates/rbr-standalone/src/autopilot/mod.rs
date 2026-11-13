@@ -178,9 +178,13 @@ const ROLLED: f32 = 0.5;
 /// of a steep bank, and at full lock the left wheels climbed it until the car fell on its side at 6 m/s.
 const TIP: f32 = 0.26;
 /// An upshift waits while the engine speed is over `SLIP` times the gear's lowest engine speed per m/s (learnt above
-/// `RATIO_SPEED` m/s under throttle without brake, `RATIO_SETTLE` steps after a shift: the clutch is in, and the wheels
-/// can only turn faster than the road).
+/// `RATIO_SPEED` m/s under throttle without brake, `RATIO_SETTLE` steps after a shift, with every wheel's rim speed
+/// within `ROLLING` of the car's: the clutch is in and the wheels roll with the road). Without the rim test a slide
+/// taught too low a ratio, the body outrunning the scrubbing wheels: the DS3 R1 on RSF 113 learnt 34.9 rad/s per m/s
+/// for second (its ratio 55) in a slide at 460 m, read wheelspin at every speed after it and drove the rest of the
+/// stage in second on the limiter.
 const SLIP: f32 = 1.4;
+const ROLLING: f32 = 0.05;
 const RATIO_SPEED: f32 = 3.0;
 const RATIO_SETTLE: u32 = 70;
 /// `--circle`'s target speed (m/s): it starts here and rises at `CIRCLE_RAMP` (m/s per s), so the car settles onto
@@ -1373,8 +1377,10 @@ impl<'a> Driver<'a> {
                 // NGP's clutch help opens the clutch below about 100 rad/s even under a light throttle (`notes/ngp.md`,
                 // "Controls under NGP"), so a run of NGP's steps learns only above the downshift speed.
                 let engaged = self.per == 1 || sense.engine > SHIFT_DOWN;
+                let rolling = sense.wheels.iter().all(|&w| (w - speed).abs() < ROLLING * speed);
                 if self.pulling
                     && engaged
+                    && rolling
                     && speed > RATIO_SPEED
                     && sense.gear >= FIRST
                     && step >= self.shifted + self.steps(RATIO_SETTLE)
