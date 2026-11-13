@@ -2,12 +2,13 @@
 //! tree, the segment and ray casts, and the face query, generic over the store.
 
 use super::layout::solver_hosts::{CellQueryHost, RayHost, SampleHost};
+use super::layout::{store_point_triangle, store_ray_triangle_result, sweep_scratch, SweepScratch, SystemFrame};
 use super::mesh_hit::{
     self, channel_sum, face_samples, face_vertex, face_word, nibble_sum, CHANNEL_SCALE, FACE_BYTES, NIBBLE_SCALE,
 };
 use super::overlap::{self};
 use super::store::{CollisionStore, RayHit, SurfaceRecord};
-use super::triangle::{self, PointTriangle, RayTriangleResult, SegmentTriangle};
+use super::triangle::{self, RayTriangleResult};
 use crate::math::vec::Vec3;
 
 /// Resets a ray-casting object for a new query: clears its seed bytes and words, then its two cached vectors
@@ -163,7 +164,7 @@ pub fn segment_sweep<S: CollisionStore>(
 ) {
     let start = store.vec3(start_at);
     let direction = store.vec3(end_at) - start;
-    let (lo, hi, cells) = (scratch, scratch + 0x10, scratch + 0x20);
+    let SweepScratch { lo, hi, cells } = sweep_scratch(scratch);
     let widen = |sign: f32| Vec3 {
         x: start.x + sign * SWEEP_MARGIN,
         y: start.y + sign * SWEEP_MARGIN,
@@ -265,7 +266,7 @@ pub fn mesh_ray_query<S: CollisionStore>(
             continue;
         }
         for face_index in 0..node.faces() {
-            let face = node.link + 0x12 * face_index;
+            let face = store.tree_face(node.link, face_index);
             let bytes = store.face_bytes(face);
             let vertex = |slot: usize| store.mesh_vertex(base, face_vertex(&bytes, slot));
             let hit = triangle::ray_triangle(start, direction, vertex(0), vertex(1), vertex(2));
@@ -346,7 +347,7 @@ pub fn mesh_ray_worklist<S: CollisionStore>(
             continue;
         }
         for face in 0..faces {
-            let at = tree.link + 0x12 * face;
+            let at = store.tree_face(tree.link, face);
             let bytes = store.face_bytes(at);
             let vertex = |slot: usize| store.mesh_vertex(table, face_vertex(&bytes, slot));
             let hit = triangle::ray_triangle(
@@ -365,21 +366,6 @@ pub fn mesh_ray_worklist<S: CollisionStore>(
             }
         }
     }
-}
-
-/// The scratch frame the segment query threads through its calls: the origin and direction it casts, the hit record,
-/// and the frame pointer the lookups resume from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SystemFrame {
-    pub origin: u32,
-    pub direction: u32,
-    pub hit: u32,
-    pub sample_sp: u32,
-}
-
-pub fn system_frame(esp: u32) -> SystemFrame {
-    let base = esp - 0x4c;
-    SystemFrame { origin: base + 0x14, direction: base + 0x8, hit: base + 0x20, sample_sp: base - 0x18 }
 }
 
 /// The collision system's segment query from the point at `origin_at` to the point at `end_at`: casts the mesh ray
@@ -434,40 +420,6 @@ pub fn segment_query<S: CollisionStore>(
     1
 }
 
-/// Stores the ray/triangle result's fields: the normal, `distance`, `u` and `v`. A miss leaves the fields it never
-/// reached untouched.
-pub fn store_ray_triangle_result<S: CollisionStore>(store: &mut S, at: u32, result: &RayTriangleResult) {
-    if let Some(normal) = result.normal {
-        store.store_vec3(at + 12, normal);
-    }
-    if let Some(distance) = result.distance {
-        store.set_f32(at + 32, distance);
-    }
-    if let Some(u) = result.u {
-        store.set_f32(at + 36, u);
-    }
-    if let Some(v) = result.v {
-        store.set_f32(at + 40, v);
-    }
-}
-
-/// Stores the segment/triangle record's fields: the normal, `t`, `u` and `v`. A miss leaves the fields it never
-/// reached untouched.
-pub fn store_segment_triangle<S: CollisionStore>(store: &mut S, at: u32, result: &SegmentTriangle) {
-    if let Some(normal) = result.normal {
-        store.store_vec3(at, normal);
-    }
-    if let Some(t) = result.t {
-        store.set_f32(at + 0x14, t);
-    }
-    if let Some(u) = result.u {
-        store.set_f32(at + 0x18, u);
-    }
-    if let Some(v) = result.v {
-        store.set_f32(at + 0x1c, v);
-    }
-}
-
 /// Builds the query box (the centre `a`, then the half extents `b`, six floats at `query`), walks the tree and
 /// returns whether the walk found anything. A null `out` selects the object's own list.
 pub fn seg_test<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32, out: u32, query: u32) -> u32 {
@@ -493,21 +445,6 @@ pub fn segment_test<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32,
     let root = store.tree_root(this);
     node_walk(store, query, root, out);
     (store.u32(out) != 0) as u32
-}
-
-/// Stores the point/triangle result's fields: the normal, `t` and `u`, and on a hit 1.0 and the foot.
-pub fn store_point_triangle<S: CollisionStore>(store: &mut S, at: u32, result: &PointTriangle) {
-    store.store_vec3(at + 0xc, result.normal);
-    if let Some(t) = result.t {
-        store.set_f32(at + 0x24, t);
-    }
-    if let Some(u) = result.u {
-        store.set_f32(at + 0x28, u);
-    }
-    if let Some(foot) = result.foot {
-        store.set_f32(at + 0x20, ONE);
-        store.store_vec3(at, foot);
-    }
 }
 
 /// `triangle::point_triangle` of the point and the face's vertices, stored to `out`. Returns 1 on a hit.
@@ -553,7 +490,7 @@ pub fn face_query<S: CollisionStore>(
             continue;
         }
         for face_index in 0..node.faces() {
-            let face = node.link + 0x12 * face_index;
+            let face = store.tree_face(node.link, face_index);
             let bytes = store.face_bytes(face);
             let vertex = |slot: usize| store.mesh_vertex(base, face_vertex(&bytes, slot));
             let result = triangle::point_triangle(point, vertex(0), vertex(1), vertex(2));

@@ -632,6 +632,10 @@ impl CollisionStore for Mem {
         Vec3::load(self, table + 12 * u32::from(slot))
     }
 
+    fn tree_face(&self, link: u32, index: u32) -> u32 {
+        link + 0x12 * index
+    }
+
     fn face_bytes(&self, at: u32) -> [u8; 0x12] {
         // The six words that hold the face, when the pages hold them: a face starts at any byte.
         if let Some(words) = self.paged_u32s::<6>(at & !3) {

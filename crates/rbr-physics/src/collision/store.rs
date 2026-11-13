@@ -221,6 +221,8 @@ pub trait CollisionStore: Raw {
     fn tree_node(&self, node: u32) -> TreeNode;
     /// The two children a node's link names: each one's address and flag word.
     fn child_pair(&self, link: u32) -> [(u32, u32); 2];
+    /// The address of face `index` of a leaf whose link is `link`.
+    fn tree_face(&self, link: u32, index: u32) -> u32;
     /// The tree root of a collider or system.
     fn tree_root(&self, owner: u32) -> u32;
     /// The collider's own list of records, used when the caller gives none.

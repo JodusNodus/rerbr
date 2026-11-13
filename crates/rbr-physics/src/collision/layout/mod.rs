@@ -66,6 +66,7 @@ pub use mesh_query::{
     store_point_triangle, store_ray_triangle_result, store_segment_triangle, store_zero_mesh_scratch, system_frame,
     world_axes_overlap, SystemFrame,
 };
+pub(in crate::collision) use mesh_query::{sweep_scratch, SweepScratch};
 pub use solver::ctor_solver;
 pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
 pub use vec_ops::{
