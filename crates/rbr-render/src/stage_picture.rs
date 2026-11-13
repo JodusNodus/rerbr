@@ -76,12 +76,7 @@ pub fn of_stage(data: &Data, stage: &str) -> Option<Pixels> {
 /// `<id>_*` picture in the folder; `rsfdata/images/stage_images/<id>.png` of the install whose
 /// `RX_CONTENT/Tracks/` holds it), else its `track.ini` `splashscreen`, else the folder's first `.jpg` or `.png`.
 pub fn btb_picture(folder: &Path, id: Option<u32>) -> Option<Pixels> {
-    let mut names: Vec<String> = std::fs::read_dir(folder)
-        .ok()?
-        .filter_map(|e| e.ok()?.file_name().into_string().ok())
-        .filter(|n| [".jpg", ".png"].iter().any(|ext| n.to_ascii_lowercase().ends_with(ext)))
-        .collect();
-    names.sort();
+    let names = own_pictures(folder);
     let leading = |n: &String| n.split_once('_').and_then(|(digits, _)| digits.parse().ok());
     let rsf = id.or_else(|| names.iter().find_map(leading)).and_then(|id| rsf_screenshot(folder.parent()?, id));
     let splash = rbr_btb::track::Track::open(folder).ok().and_then(|t| t.info.splashscreen);
@@ -91,6 +86,18 @@ pub fn btb_picture(folder: &Path, id: Option<u32>) -> Option<Pixels> {
         Some((width as usize, height as usize, rgba))
     };
     rsf.or_else(|| splash.iter().chain(&names).find_map(|name| file(name))).map(|picture| retail_shape(&picture))
+}
+
+/// The `.jpg` and `.png` names of a BTB track folder, sorted.
+fn own_pictures(folder: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(folder)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok()?.file_name().into_string().ok())
+        .filter(|n| [".jpg", ".png"].iter().any(|ext| n.to_ascii_lowercase().ends_with(ext)))
+        .collect();
+    names.sort();
+    names
 }
 
 /// The menu bank's stage pictures, the bank and its decoded pages read once.
@@ -228,18 +235,33 @@ mod tests {
         assert_eq!((width, height), (208, 100));
     }
 
-    /// Every BTB folder of `RBR_RSF` shows a picture (RSF's, its splash screen or another of its pictures).
+    /// The BTB folders of `RBR_RSF` under the ids the launcher lists them by: one holding a picture shows a picture
+    /// (RSF's, its splash screen or another of its own); one without shows RSF's or none (the launcher draws its
+    /// driveline).
     #[test]
-    fn btb_stages_show_a_picture() {
+    fn btb_stages_show_their_pictures() {
         let Some(root) = std::env::var_os("RBR_RSF").map(std::path::PathBuf::from) else {
             eprintln!("skipping: RBR_RSF not set");
             return;
         };
+        let ids: HashMap<_, _> = rbr_btb::ids::match_ids(&root).0.into_iter().map(|(f, id, _)| (f, id)).collect();
         let tracks = rbr_btb::track::scan(&root);
+        let (mut shown, mut bare) = (0, 0);
         for track in tracks.iter().flatten() {
-            let (width, height, rgba) = btb_picture(&track.folder, None).unwrap_or_else(|| panic!("{}", track.name));
-            assert!(width > 0 && rgba.len() == width * height * 4, "{}", track.name);
+            match btb_picture(&track.folder, ids.get(&track.folder).copied()) {
+                Some((width, height, rgba)) => {
+                    assert!(width > 0 && rgba.len() == width * height * 4, "{}", track.name);
+                    assert!((width as f32 / height as f32 - ASPECT).abs() < 0.02, "{}: {width} × {height}", track.name);
+                    shown += 1;
+                }
+                None => {
+                    assert!(own_pictures(&track.folder).is_empty(), "{}", track.name);
+                    bare += 1;
+                }
+            }
         }
+        eprintln!("{shown} BTB folders show a picture, {bare} have none");
+        assert!(shown > 0 || tracks.is_empty());
     }
 
     /// RSF's stage pictures (`RBR_RSF`): every PNG reads, in the retail shape (a few are JPEGs named `.png`; those
