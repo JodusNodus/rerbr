@@ -166,9 +166,19 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
 - Tarmac skid loop (ours, 2026-11-12, on trial): `TIRE::SURFACES SkidTarmac` is a 0.98 s loop at a constant level
   (50 ms envelope std 0.18 dB, a 1335 Hz tone, -7.9 dBFS RMS); in its place six seconds of a real car's squeal
   (embedded, CC0, `CREDITS.md`: 930-1100 Hz with its octave coming and going, envelope std 1.3 dB, -12 dBFS RMS, so
-  4 dB lower). The trigger, level and pitch rules are 1.02's; gravel and snow keep theirs. No open recording of a
-  low sideways scrub without a squeal on top was found. Stones tried and dropped the same day (user: keep the
-  retail `IMPACT::GRUS`; pebbles on a metal box, branch `sound/stones`). Not judged by ear yet.
+  4 dB lower). Gravel and snow keep theirs. No open recording of a low sideways scrub without a squeal on top was
+  found. Stones tried and dropped the same day (user: keep the retail `IMPACT::GRUS`; pebbles on a metal box, branch
+  `sound/stones`). Not judged by ear yet.
+- Skid fade and squeal (ours, 2026-11-13, on trial; `tyre::SKID_FADE`, `SQUEAL_*`): 1.02 swaps a wheel's rolling
+  loops for the skid loops once the grip word (`0.75 * slip phase + 0.5`, NGP's phase 1 at the friction peak, 2
+  sliding) passes the threshold (1 under NGP: two thirds of the way to the peak). Ours fades the skid loops in from
+  half way to the peak (0.875) to the peak (1.25). On tarmac the rolling loop plays on and the squeal's volume is the
+  sliding power, normal force times (contact speed + spin slip * 0.315 m), full at 150 kW, times `(1 - wet)²` with
+  the renderer's water; past the peak its pitch falls to 0.9 at a full slide. Loose rolling loops give way to their
+  skid loops at 1.02's level. RSF 1654149 replay (in the car, tyres alone, `/tmp/squeal/`, not kept): past two thirds
+  of the peak 13 % of the time; power while squealing median 55 kW, 90th percentile 185; loaded wheels near the peak
+  +2 to +3 dB, light sliding wheels quieter, the layer +0.4 dB overall. Gravel (RSF 367) +0.2 dB median. Not
+  driven by the soil flow (word 2, which follows the phase on gravel): snow's is unmeasured.
 - Lancer leaving the road at 69.9 s, in the
   car: -22 to -17 dB over 200 ms now (evidence for the gain law, not in code).
 - Verge (ours, 2026-11-05, `verge.rs`): 1.02 has no grass, bush or branch sounds. The renderer's `rbr_render::verge`
