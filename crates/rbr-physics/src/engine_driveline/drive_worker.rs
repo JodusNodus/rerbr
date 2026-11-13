@@ -8,7 +8,7 @@ use super::drive_leaf::{
 };
 use super::engine::next_random;
 use super::layout::{DriveWorker, GearWork, RatioRing};
-use crate::math::{abs_asm, le_or_unordered};
+use crate::math::{abs_by_subtraction, le_or_unordered};
 use crate::ngp;
 
 /// The calls the gear-change signal makes outside the port.
@@ -135,7 +135,7 @@ pub fn gear_trim(w: &mut DriveWorker, g: &GearWork, host: &mut impl GearHost, dt
         return;
     }
     let speed_error = gear_speed_error(w, g) as f32;
-    let speed_gap = abs_asm(speed_error);
+    let speed_gap = abs_by_subtraction(speed_error);
     let trim = w.state.trim;
     let rate = trim * trim * speed_gap * 0.025;
     let rate = if rate < 0.3 {
@@ -180,7 +180,7 @@ pub fn clutch_torque(
     let ratio = g.band.ratio;
     if ratio != 0.0 && w.state.gear_flag.value != 0 && w.state.sign_word == 0 {
         if w.state.trigger == 0 {
-            if le_or_unordered(abs_asm(a), b) {
+            if le_or_unordered(abs_by_subtraction(a), b) {
                 if !gear_band_guard(w, g, host, a) {
                     w.state.drive.engine_speed = w.state.drive.drive_speed_key * c;
                     out = Some(a);
@@ -197,7 +197,7 @@ pub fn clutch_torque(
             let locked_speed = w.state.drive.drive_speed_key * c;
             let slip_torque = (w.def.slip_gain_b + w.def.slip_gain_a) * (locked_speed - w.state.drive.engine_speed);
             let residual = a - slip_torque / d;
-            if le_or_unordered(abs_asm(residual), b) {
+            if le_or_unordered(abs_by_subtraction(residual), b) {
                 w.state.drive.engine_speed = locked_speed;
                 out = Some(residual);
             } else {
@@ -310,7 +310,7 @@ pub fn wheel_worker(
                 let li = w.def.axles[g].active_index as usize;
                 if w.state.lane_active[li] == 1 {
                     let v = w.this.loc[li];
-                    if abs_asm(v) > w.state.terms[g].scale {
+                    if abs_by_subtraction(v) > w.state.terms[g].scale {
                         w.state.terms[g].sign = sign(v);
                         again = true;
                     }
@@ -398,7 +398,7 @@ pub fn free_wheel_step(w: &mut DriveWorker, i: usize, dt: f32) {
     let offset = w.this.wheel_offset[i];
     let latch = block.prev_gate.value;
     if latch == 0 {
-        if abs_asm(offset) > block.latch_bound {
+        if abs_by_subtraction(offset) > block.latch_bound {
             w.state.blocks[i].prev_gate.set(sign(offset));
             w.state.set_slip(i, 0.0);
         }
@@ -465,7 +465,7 @@ pub fn pair_worker(w: &mut DriveWorker, dt: f32) {
             let solved = [i0 * e0 + i1 * e1, i2 * e0 + i3 * e1];
             w.this.pair_loc = solved;
             let gi = w.def.axles[1].active_index as usize;
-            if w.state.lane_active[gi] != 1 || !(abs_asm(w.this.loc[gi]) > w.state.terms[1].scale) {
+            if w.state.lane_active[gi] != 1 || !(abs_by_subtraction(w.this.loc[gi]) > w.state.terms[1].scale) {
                 break solved;
             }
             w.state.terms[1].sign = sign(w.this.loc[gi]);

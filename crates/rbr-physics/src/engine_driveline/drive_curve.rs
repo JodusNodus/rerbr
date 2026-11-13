@@ -5,8 +5,8 @@
 
 use super::layout::{CurveRow, CurveState, CurveTables};
 use crate::fpu::round_x87;
-use crate::math::abs_asm;
-use crate::math::ftol::ftol2;
+use crate::math::abs_by_subtraction;
+use crate::math::ftol::trunc_i64;
 
 /// The scale [`count_down`] applies to the value.
 const COUNT_SCALE: f32 = -99999997952.0;
@@ -27,7 +27,7 @@ pub fn unsigned_table_lerp(table: &[f32], a: i32, b: i32, c: i32, n: i32) -> f64
     let x87 = round_x87;
     let span = x87(unsigned(a.wrapping_sub(b)) * unsigned(n));
     let t = x87(span / unsigned(c.wrapping_sub(b)));
-    let i = ftol2(t) as u32 as i32;
+    let i = trunc_i64(t) as u32 as i32;
     let u = x87(t - unsigned(i));
     let i = i as usize;
     let low = x87(x87(1.0 - u) * f64::from(table[i]));
@@ -58,9 +58,9 @@ pub fn count_down(
         tables.c[9]
     };
     let x = row.rate * dt;
-    let w = abs_asm(state.slope);
+    let w = abs_by_subtraction(state.slope);
     // The x87 chain, in this order, truncated.
-    let k = ftol2(
+    let k = trunc_i64(
         [block_gain, s, 0.5, row.gain, x, v, COUNT_SCALE]
             .iter()
             .fold(f64::from(w), |p, &m| round_x87(p * f64::from(m))),

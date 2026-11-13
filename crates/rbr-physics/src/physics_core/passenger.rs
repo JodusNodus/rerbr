@@ -2,7 +2,7 @@
 //! decoding of a time of day. The objects and the calls around them are in `layout`.
 
 use super::math::Vec4;
-use crate::math::ftol::ftol2;
+use crate::math::ftol::trunc_i64;
 
 /// One lane of the passenger's spring (named by use): `rate` and `offset` are the lane's two state words, which relax
 /// towards `rate_target` and `offset_target`.
@@ -53,7 +53,7 @@ const SECS_PER_MINUTE: u32 = 60;
 /// The sign of `time` (s), and its magnitude split into days, hours, minutes and, with the fraction, seconds.
 pub fn decode_time(time: f64) -> ClockTime {
     let (sign, magnitude) = if 0.0 <= time { (1, time) } else { (-1i32, -time) };
-    let whole = ftol2(magnitude) as u32;
+    let whole = trunc_i64(magnitude) as u32;
     let fraction = (magnitude - whole as f64) as f32;
     let day_rest = whole % SECS_PER_DAY;
     let hour_rest = day_rest % SECS_PER_HOUR;

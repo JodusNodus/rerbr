@@ -13,7 +13,7 @@ const PAGE: u32 = 0x1000;
 /// is a load or a store at the address with no table walk, and an aligned word access one. The words are
 /// little-endian. The step runs on one thread: a byte write is a load and a store of its word, not an atomic update. A
 /// clone shares the pages. The 4 GiB mapping is only reserved: on Unix without swap, on Windows with each page committed
-/// on its first write ([`Map`]).
+/// on its first write (`Map`).
 #[derive(Clone)]
 pub struct Pages {
     flat: Arc<Flat>,
@@ -291,7 +291,6 @@ impl Pages {
     }
 
     /// Writes the snapshot's pages back and unmaps the pages mapped since it (their words stay, unread).
-    /// The snapshot's pages, restored onto themselves.
     pub fn restore(&self, snapshot: &Snapshot) {
         let mut k = 0;
         for p in 0..PAGES {

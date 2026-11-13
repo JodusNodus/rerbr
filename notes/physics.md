@@ -77,9 +77,10 @@ scopes switch to 53 bits and restore. Under NGP the race runs at PC=53 (0x27f), 
 - `rsqrtss`/`rcpss` are 12-bit table approximations: `math::rsqrt`, `math::rcp` (tables measured on the reference CPU).
 - Comparisons copy the asm's branch sense so NaN goes the same way: `!(a > b)` is not `a <= b`; `comiss` + `jbe`
   is taken when unordered (`math::le_or_unordered`). No `f32::clamp`, `min`, `max` on values that can be NaN.
-  `math::abs_asm`, `math::sign` copy the asm forms.
+  `math::abs_by_subtraction`, `math::sign` copy the asm forms.
 - Float to int: never `as`. `fpu::trunc_i32` (`cvttss2si`), `fpu::round_i32` (`cvtss2si`, `fistp`) give
-  `INT_INDEFINITE` (`i32::MIN`) for NaN and out of range; `math::ftol` is `_ftol2` (0x70c2c4, low word of the int64).
+  `INT_INDEFINITE` (`i32::MIN`) for NaN and out of range; `math::ftol::trunc_i64` is `_ftol2` (0x70c2c4, low word of
+  the int64).
 - Constants keep the exe's bit patterns (some pools differ from the literal, e.g. 0x3d4cccd0 for 0.05). A punned
   word (float bits in an int) stays `u32`; build floats with `f32::from_bits`.
 - Default NaN sign: an arm64 host makes `0x7fc00000` where the original wrote `0xffc00000`. Tests accept "NaN for
