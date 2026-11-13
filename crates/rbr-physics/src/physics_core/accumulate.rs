@@ -30,7 +30,7 @@ pub fn accumulate_forces<S: CoreStore>(store: &mut S, host: &mut impl AccumHost,
 
 /// The point-velocity write on the body at `this`: the first three lanes of `out` are the velocity
 /// term of the point at `point` (`math::point_velocity`); its fourth lane is not written.
-pub fn offset_540<S: CoreStore>(store: &mut S, this: u32, point: u32, out: u32) {
+pub fn point_velocity_at<S: CoreStore>(store: &mut S, this: u32, point: u32, out: u32) {
     let v = point_velocity(&store.body_motion(this), Vec4::load(store, point));
     for (k, lane) in v.into_iter().enumerate() {
         store.set_f32(out + 4 * k as u32, lane);

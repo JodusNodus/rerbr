@@ -613,6 +613,6 @@ pub fn dmg_d300(_mem: &mut Mem, _this: u32, _args: [u32; 4]) -> u32 {
 }
 
 /// `NPhysics::E35_Zero2F0` (0x4ed2f0): ignores the handler and stack words and returns zero.
-pub fn zero2f0(_mem: &mut Mem, _this: u32, _args: [u32; 4]) -> u32 {
-    functors::zero2f0()
+pub fn second_zero(_mem: &mut Mem, _this: u32, _args: [u32; 4]) -> u32 {
+    functors::second_zero()
 }

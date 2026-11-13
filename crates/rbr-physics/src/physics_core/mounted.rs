@@ -1,9 +1,9 @@
 //! The mounted body's velocity pull and position step, over the physics core's store. The calls into the
 //! host run through the layout's frames, whose words the walks use.
 
-use super::accumulate::offset_540;
+use super::accumulate::point_velocity_at;
 use super::layout::mounted_calls::{PullFrame, StepFrame};
-use super::layout::{MountedVf64Host, MountedVf6cHost};
+use super::layout::{MountedPullHost, MountedStepHost};
 use super::math::{mounted_step, mounted_velocity, Vec3, Vec4};
 use super::store::CoreStore;
 
@@ -12,16 +12,16 @@ use super::store::CoreStore;
 /// between the body and its mount point. Then the mount-point velocity (`math::mounted_velocity`). A body without an
 /// owner runs the solid body's pull. Returns the velocity's address, None before any call when the CDef's origin is the
 /// null sentinel.
-pub fn mounted_vf64<S: CoreStore>(
+pub fn mounted_pull<S: CoreStore>(
     store: &mut S,
-    host: &mut impl MountedVf64Host,
+    host: &mut impl MountedPullHost,
     this: u32,
     frame: u32,
 ) -> Option<u32> {
     let frame = PullFrame::new(frame);
     let owner = store.mounted_owner(this);
     if owner == 0 {
-        return Some(host.solid_vf64(frame.solid_sp(), this));
+        return Some(host.solid_pull(frame.solid_sp(), this));
     }
     let base = store.origin_base();
     if base == 0 {
@@ -29,7 +29,7 @@ pub fn mounted_vf64<S: CoreStore>(
     }
     let mount = store.mount_point_at(store.mounted_car(this));
     host.world_compose(frame.compose_sp(), owner, mount, frame.composed());
-    offset_540(store, owner, frame.composed(), frame.term());
+    point_velocity_at(store, owner, frame.composed(), frame.term());
     store.copy_origin(base, frame.origin());
     let origin = Vec4::load(store, frame.origin());
     let term = Vec4::load(store, frame.term());
@@ -48,16 +48,16 @@ pub fn mounted_vf64<S: CoreStore>(
 /// The mounted body's position step on the body at `this`, through the layout's step frame. A body without an owner
 /// runs the solid body's step. Else the velocity and the position step (`math::mounted_step`), and the payloads are
 /// built in the frame: on the first step only, the body event, then the state.
-pub fn mounted_vf6c<S: CoreStore>(
+pub fn mounted_position_step<S: CoreStore>(
     store: &mut S,
-    host: &mut impl MountedVf6cHost,
+    host: &mut impl MountedStepHost,
     this: u32,
     dt: f32,
     frame: u32,
 ) -> u32 {
     let frame = StepFrame::new(frame);
     if store.mounted_owner(this) == 0 {
-        return host.solid_vf6c(frame.solid_sp(), this, dt);
+        return host.solid_position_step(frame.solid_sp(), this, dt);
     }
     let mount = store.mount_point(store.mounted_car(this));
     let step =

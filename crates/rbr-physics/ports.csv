@@ -193,7 +193,7 @@ addr,module,rust_item,test,status
 0x4ec0d0,car_body/damage.rs,car_body::damage::drivable,car_body_vectors::test_3b20_matches_original_calls,checked
 0x4ec140,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::impact_scale,car_body_functor_vectors::impact_scale_matches_original_calls,checked
 0x4ec1e0,car_body/damage.rs,car_body::damage::reset_damage,car_body_vectors::reset_damage_matches_original_calls,checked
-0x4ec440,car_body/damage.rs,car_body::damage::vf14x,car_body_vectors::vf14x_matches_original_calls,checked
+0x4ec440,car_body/damage.rs,car_body::damage::material_name,car_body_vectors::vf14x_matches_original_calls,checked
 0x4ec470,car_body/damage.rs,car_body::damage::copy_from,car_body_vectors::copy_from_matches_original_calls,checked
 0x4ec560,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::apply_functors,car_body_impact_vectors::apply_functors_matches_original_calls,checked
 0x4ec660,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::gearbox_wear,car_body_functor_vectors::dmg_660_matches_original_calls,checked
@@ -220,7 +220,7 @@ addr,module,rust_item,test,status
 0x4ed0f0,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::fail_water_pump,car_body_functor_vectors::dmg_d0f0_matches_original_calls,checked
 0x4ed160,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::grow_intercooler_wear,car_body_functor_vectors::dmg_d160_matches_original_calls,checked
 0x4ed200,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::set_body_state,car_body_functor_vectors::dmg_d200_matches_original_calls,checked
-0x4ed2f0,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::zero2f0,car_body_functor_vectors::zero2f0_matches_original_calls,checked
+0x4ed2f0,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::second_zero,car_body_functor_vectors::zero2f0_matches_original_calls,checked
 0x4ed300,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::dmg_d300,car_body_functor_vectors::dmg_d300_matches_original_calls,checked
 0x4ed370,car_body/layout/damage_ctor.rs,car_body::layout::damage_ctor::init_damage_handler_tables,load_defs::damage_ops_tables_match_lcb1_load_dump,checked
 0x4edee0,car_body/layout/damage_handler.rs,car_body::layout::damage_handler::zone_scaled,car_body_impact_vectors::zone_scaled_matches_original_calls,checked
@@ -646,7 +646,7 @@ addr,module,rust_item,test,status
 0x521b50,physics_core/layout/mounted_ctor.rs,physics_core::layout::mounted_ctor::new_def,physics_core_vectors::mounted_new_def_matches,checked
 0x521c30,physics_core/layout/mounted_body.rs,physics_core::layout::mounted_body::construct_body,physics_core_vectors::mounted_body_ctor_matches,checked
 0x521d20,physics_core/layout/mounted_body.rs,physics_core::layout::mounted_body::new_body,physics_core_vectors::mounted_body_vf50_matches,checked
-0x521d90,physics_core/mounted.rs,physics_core::mounted::mounted_vf6c,physics_core_vectors::mounted_vf6c_matches,checked
+0x521d90,physics_core/mounted.rs,physics_core::mounted::mounted_position_step,physics_core_vectors::mounted_vf6c_matches,checked
 0x522100,entities/layout/detach.rs,entities::layout::detach::step_big,entities_vectors::step_big_matches_direct_records,checked
 0x522450,physics_core/layout/passenger_ctor.rs,physics_core::layout::passenger_ctor::construct_def,physics_core_vectors::passenger_def_ctor_matches,checked
 0x5224a0,physics_core/layout/passenger_ctor.rs,physics_core::layout::passenger_ctor::demote_def,physics_core_vectors::passenger_def_demote_matches,checked
@@ -708,7 +708,7 @@ addr,module,rust_item,test,status
 0x529250,physics_core/accumulate.rs,physics_core::accumulate::accumulate_forces,exact_batch::accum_250_walks_the_gravity_and_scales_it_into_the_force,checked
 0x529340,rigid_body/force.rs,rigid_body::force::accumulate_force,rigid_body_vectors::accumulate_force_matches_original_calls,checked
 0x5293e0,physics_core/layout/vectors.rs,physics_core::layout::vectors::cache_1ec,physics_core_vectors::solid_getters_match,checked
-0x529540,physics_core/accumulate.rs,physics_core::accumulate::offset_540,physics_core_vectors::offset_540_matches,checked
+0x529540,physics_core/accumulate.rs,physics_core::accumulate::point_velocity_at,physics_core_vectors::offset_540_matches,checked
 0x529640,rigid_body/solid_rows.rs,rigid_body::solid_rows::clamp_velocity_along,rigid_body_vectors::impulse640_matches_original_calls,checked
 0x5297d0,rigid_body/solid_rows.rs,rigid_body::solid_rows::solid_inverse_mass,rigid_body_vectors::inverse_mass_matches_original_calls,checked
 0x529840,rigid_body/layout/solid_ctor.rs,rigid_body::layout::solid_ctor::solid_def_ctor,rigid_body_vectors::cdef_ctor_matches_original_calls,checked

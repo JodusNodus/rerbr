@@ -233,7 +233,7 @@ pub(super) fn accumulate_forces(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decli
 /// thiscall `(point*, out*)`, `ret 8`: `E46_Offset540`, the velocity term of a point on the body.
 pub(super) fn offset_540(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [point, out, ..] = r.stack;
-    layout::offset_540(&mut ctx.mem, r.ecx, point, out);
+    layout::point_velocity_at(&mut ctx.mem, r.ecx, point, out);
     // eax: the last cross product's output, the original's local at its aligned frame - 0x20.
     Ok(Return::void(aligned_frame(r.esp) - 0x20, 8))
 }

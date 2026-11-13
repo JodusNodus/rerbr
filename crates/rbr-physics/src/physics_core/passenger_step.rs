@@ -25,8 +25,8 @@ pub fn passenger_step<S: CoreStore>(
 /// Returns what the pull leaves, the host's second vector.
 pub fn passenger_pull<S: CoreStore>(store: &mut S, this: u32, dt: f32) -> u32 {
     let host = store.passenger_host(this);
-    let (h40, h90) = store.host_pull_vectors(host);
-    let (h40_next, h90_next) = passenger::pull_to_rest(h40, h90, store.passenger_velocity(this), dt);
-    store.store_host_pull_vectors(host, h40_next, h90_next);
+    let (rate, offset) = store.host_pull_vectors(host);
+    let (rate_next, offset_next) = passenger::pull_to_rest(rate, offset, store.passenger_velocity(this), dt);
+    store.store_host_pull_vectors(host, rate_next, offset_next);
     store.host_pull_at(host)
 }
