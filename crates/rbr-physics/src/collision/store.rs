@@ -231,6 +231,9 @@ pub trait CollisionStore: Raw {
     fn own_list(&self, owner: u32) -> u32;
     fn list_len(&self, list: u32) -> u32;
     fn list_record(&self, list: u32, index: u32) -> u32;
+    fn store_list_record(&mut self, list: u32, index: u32, record: u32);
+    /// The address of a query box's half extents (its centre is at the box's address).
+    fn query_box_half(&self, query: u32) -> u32;
     /// The vertex table `index` of a collider or system.
     fn mesh_table(&self, owner: u32, index: u32) -> u32;
     /// The vertex in slot `slot` of a vertex table.
