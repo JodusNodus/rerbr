@@ -18,8 +18,8 @@
 use rbr_physics::tyre::patch_forces::{patch_forces, PatchForces, PatchInput};
 use rbr_physics::tyre::surface::{surface_friction, SurfaceInput};
 use rbr_tyre_lab::brush::{
-    self, Calibration, EvalInput, EvalOutput, FILM_MAX, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X, N_MU_Y,
-    SPEED_DECAY, STRIBECK_EXP, V_MIN, V_S,
+    self, Calibration, EvalInput, EvalOutput, FILM_MAX, HARD_KX_OVER_KY, KX_OVER_KY, MU_C_OVER_S, M_CX, M_CY, N_MU_X,
+    N_MU_Y, SPEED_DECAY, STRIBECK_EXP, V_MIN, V_S,
 };
 use rbr_tyre_lab::calibrate::{calibrate, CalPoint, CalTargets};
 use rbr_tyre_lab::ngp::{blend_at, patch_input, LoadBlend};
@@ -319,7 +319,7 @@ fn main() {
     };
     let cal = calibrate(&targets, &point);
     println!(
-        "calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N (x {KX_OVER_KY}), mu_s/mu_k lateral {:.4}/{:.4}, longitudinal {:.4}/{:.4} (ratio {:.3})",
+        "calibrated: Cy0 {:.1} N/rad, Cx0 {:.1} N (x {HARD_KX_OVER_KY}), mu_s/mu_k lateral {:.4}/{:.4}, longitudinal {:.4}/{:.4} (ratio {:.3})",
         cal.cy0,
         cal.cx0,
         cal.mu_ys,
@@ -910,7 +910,7 @@ and NGP's sweep (no NGP-derived numbers in committed code).\n\n",
     ));
     md.push_str(&format!(
         "Calibrated to NGP's lateral peak and slope and longitudinal peak: Cy0 {:.1} N/rad; Cx0 {:.1} N \
-({KX_OVER_KY} Cy0, published); mu_s/mu_k lateral {:.4}/{:.4}, longitudinal {:.4}/{:.4} (Coulomb/static \
+({HARD_KX_OVER_KY} Cy0, the published {KX_OVER_KY} times 1.1); mu_s/mu_k lateral {:.4}/{:.4}, longitudinal {:.4}/{:.4} (Coulomb/static \
 {:.3}, published).\n\n",
         cal.cy0, cal.cx0, cal.mu_ys, cal.mu_yk, cal.mu_xs, cal.mu_xk, MU_C_OVER_S,
     ));

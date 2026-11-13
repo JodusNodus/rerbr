@@ -47,8 +47,15 @@ pub const M_CY: f64 = 0.6;
 /// sets' 1.31 and 1.08 (brush theory, C = 2 c_p a^2 with a^2 ~ Fz, gives 1).
 pub const M_CX: f64 = 1.2;
 /// Longitudinal over cornering stiffness at the nominal load: mean of the
-/// sets' 1.62 and 1.15.
+/// sets' 1.62 and 1.15. loose-v1 (gravel, snow) takes it as is; the hard-surface brush takes [`HARD_KX_OVER_KY`].
 pub const KX_OVER_KY: f64 = 1.4;
+/// The hard-surface brush's (tarmac, ice) longitudinal over cornering stiffness, 1.1 times [`KX_OVER_KY`]
+/// (2026-11-13): with 1.4 the scorecard's probe measured Kx/Ky 1.16 at 4 kN, the band's bottom (1.15-1.62), and
+/// Kx/Fz 26.6; with 1.1 times it 1.23 and 28.2. Racing tyres point higher: the A2RL slick's Kx/Fz is at least 29-36,
+/// and AC EVO's tyres (a sim's values, not data: GT4 Clubsport, MX-5 Cup, A110 S on the Nordschleife) give Kx/Ky
+/// 1.3-1.4 at Kx/Fz 39-46. The braking peak's slip bounds it: 1.1 puts it at κ 0.08, the band's floor; 1.2 gives
+/// 0.07 (and Kx/Fz 29.5, Kx/Ky 1.29).
+pub const HARD_KX_OVER_KY: f64 = 1.1 * KX_OVER_KY;
 /// Load exponent of the lateral peak force, Fy ~ Fz^N_MU_Y: ~0.87 from the
 /// Goodyear load sweep.
 pub const N_MU_Y: f64 = 0.87;
@@ -252,7 +259,7 @@ pub fn stiffness_at(fz: f64, tb: f64, d: f64, pf: f64, c0: f64, m: f64, cal: &Ca
 }
 
 /// The brush's slip stiffnesses over NGP's: the calibration ([`crate::fit::calibration`]) takes NGP's peaks and 1.3
-/// times its cornering slope over 0 to 2°, the longitudinal stiffness [`KX_OVER_KY`] times the cornering one, so 1.3
+/// times its cornering slope over 0 to 2°, the longitudinal stiffness [`HARD_KX_OVER_KY`] times the cornering one, so 1.3
 /// times that of NGP's slope too (Kx/Ky 1.23 at 4 kN, as before the factor; the R888R's longitudinal peak near
 /// κ 0.08-0.10). NGP's
 /// Cα/Fz is 17.6 per rad at 4 kN with its peak at 9.5° (the scorecard's band 5.6-8.5°); a semi-slick at NGP's grip

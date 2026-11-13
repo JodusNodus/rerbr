@@ -5,11 +5,11 @@
 //! caller ([`crate::fit`] in the game, the lab's `examples/compare.rs` on a
 //! probe dump) feeds plain values — NGP's swept peak force per axis and
 //! fitted cornering slope — plus the nominal operating point; the solve itself
-//! only evaluates the brush model. The longitudinal stiffness (`KX_OVER_KY`)
+//! only evaluates the brush model. The longitudinal stiffness (`HARD_KX_OVER_KY`)
 //! and the Coulomb over static ratio (`MU_C_OVER_S`) are published values, not
 //! solved.
 
-use crate::brush::{eval, Calibration, EvalInput, KX_OVER_KY, MU_C_OVER_S};
+use crate::brush::{eval, Calibration, EvalInput, HARD_KX_OVER_KY, MU_C_OVER_S};
 
 /// The nominal operating point every factor is normalised to: the tread
 /// temperature, tread remaining, pressure and NGP's stiffness factor at it,
@@ -45,7 +45,7 @@ fn trial_cal(cy0: f64, mu_ys: f64, mu_xs: f64, c_y: f64, t: &CalTargets, p: &Cal
     Calibration {
         fz0: t.fz0,
         cy0,
-        cx0: KX_OVER_KY * cy0,
+        cx0: HARD_KX_OVER_KY * cy0,
         mu_ys,
         mu_yk: c_y * mu_ys,
         mu_xs,
@@ -223,7 +223,7 @@ mod tests {
             k += 0.01;
         }
         assert!((peak / t.peak_lon - 1.0).abs() < 0.01, "peak {peak}");
-        assert_eq!(cal.cx0, KX_OVER_KY * cal.cy0);
+        assert_eq!(cal.cx0, HARD_KX_OVER_KY * cal.cy0);
         assert_eq!(cal.mu_yk, MU_C_OVER_S * cal.mu_ys);
         assert_eq!(cal.mu_xk, MU_C_OVER_S * cal.mu_xs);
     }
