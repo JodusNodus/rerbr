@@ -419,11 +419,12 @@ pub(super) fn model_turbo(sound: &mut Sound, model: &rbr_engine::Telemetry) {
     }
 }
 
-/// The SND1 payload `sound` with the step's `CSigEngineFire` emits and the frame's tyre block word 1.
-pub fn with_fires(sound: &[u8], fires: u32, tyre_max: TyreMax) -> Vec<u8> {
+/// The SND1 payload `sound` with the step's `CSigEngineFire` emits and `CSigCarDamageSpeech` codes, and the frame's
+/// tyre block word 1.
+pub fn with_emits(sound: &[u8], fires: u32, speech: u32, tyre_max: TyreMax) -> Vec<u8> {
     match Sound::from_bytes(sound) {
         Some(sound) => {
-            let mut sound = Sound { fires, ..sound };
+            let mut sound = Sound { fires, speech, ..sound };
             tyre_max.apply(&mut sound);
             sound.to_bytes()
         }

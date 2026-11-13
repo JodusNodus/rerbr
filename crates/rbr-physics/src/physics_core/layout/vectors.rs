@@ -124,4 +124,4 @@ pub fn mat_scale_rows(mem: &mut Mem, this: u32, dst: u32, n: u32) {
     set_vec4s(mem, dst, &rows);
 }
 
-pub use crate::physics_core::accumulate::{accumulate_forces, offset_540};
+pub use crate::physics_core::accumulate::{accumulate_forces, point_velocity_at};

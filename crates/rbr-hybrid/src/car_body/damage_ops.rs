@@ -123,7 +123,7 @@ pub(super) fn set_body_state(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline>
 }
 
 pub(super) fn zero2f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    damage_functor(ctx, r, layout::zero2f0)
+    damage_functor(ctx, r, layout::second_zero)
 }
 
 pub(super) fn dmg_d300(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {

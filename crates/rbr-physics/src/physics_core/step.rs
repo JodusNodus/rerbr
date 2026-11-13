@@ -100,7 +100,7 @@ pub fn step_forward<S: CoreStore>(
             host.entity_20(stack.loop_arg(), target, node, base)
         });
 
-        stack.seed_work5500(store, base, this);
+        stack.seed_integrate(store, base, this);
         step_bodies(store, host, this, base);
 
         let state = store.physics_state(this);
@@ -165,7 +165,7 @@ pub fn step_forward<S: CoreStore>(
 
     let player = store.player_car();
     if player != 0 {
-        host.drive_set4510(stack.drive_set4510(), store.player_drive(player));
+        host.reset_drive_part(stack.reset_drive_part(), store.player_drive(player));
     }
     store.count_step_call();
     stack.seed_exit(store);

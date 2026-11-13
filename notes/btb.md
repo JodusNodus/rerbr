@@ -288,7 +288,7 @@ Evidence: the reverse-engineering report of `rbr_rx.dll` (Q2). Code: `rbr_btb::s
   textures upscaled the bakes took 10 to 22 s before (2026-11-03). The first load of a stage also upscales its textures
   once (`upscale`, cached).
 - Pictures: `stage_picture::btb_picture`, RSF's `rsfdata/images/stage_images/<id>.png` for the stage's id, else
-  `track.ini` `splashscreen`, else the folder's first `.jpg`/`.png` (every one of the 72 folders shows one); the
+  `track.ini` `splashscreen`, else the folder's first `.jpg`/`.png` (76 of the install's 159 folders show one; the 83 without, of the 87 added 2026-11-12, hold no picture); the
   launcher's preview, else `driveline.ini` from above; the viewer's loading screen.
 - Open: no tangent-space bump or specular; `MultiplyAdd` terrain looks flat; the `CollisionModel=2` meshes are not drawn
   specially; the semantics of `LODOut` for large tiles (centre or box) is ours.

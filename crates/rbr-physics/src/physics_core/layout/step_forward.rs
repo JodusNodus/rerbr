@@ -77,7 +77,7 @@ impl StepStack {
         self.below(0x44)
     }
 
-    pub fn drive_set4510(self) -> u32 {
+    pub fn reset_drive_part(self) -> u32 {
         self.below(0x2c)
     }
 
@@ -139,7 +139,7 @@ impl StepStack {
     }
 
     /// `Work5500`'s frame: its return address, the step time it is given, and the registers it saves.
-    pub(crate) fn seed_work5500(self, store: &mut impl Raw, base: f32, physics: u32) {
+    pub(crate) fn seed_integrate(self, store: &mut impl Raw, base: f32, physics: u32) {
         let work = self.work_entry();
         store.set_u32(work, 0x0052_74cf);
         store.set_u32(work + 4, base.to_bits());

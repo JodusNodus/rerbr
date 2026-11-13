@@ -178,7 +178,7 @@ impl core_physics::StepHost for PhysicsStepCalls<'_> {
         self.host.call_at(entry_sp, 0x499e90, receiver, &[]);
     }
 
-    fn drive_set4510(&mut self, entry_sp: u32, drive: u32) {
+    fn reset_drive_part(&mut self, entry_sp: u32, drive: u32) {
         self.host.call_at(entry_sp, 0x504510, drive, &[]);
     }
 }

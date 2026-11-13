@@ -39,6 +39,11 @@ pub const PARTICLE_EVENT_BYTES: usize = 0x40;
 /// [`Watch::take_engine_fires`] counts for the host (the sound's fire). It is [`PARTICLE_EMITS`]' last row.
 const ENGINE_FIRE_EMIT: u32 = PARTICLE_EMITS[2].0;
 const ENGINE_FIRE_SIGNAL: u32 = PARTICLE_EMITS[2].1;
+/// `CMultiSignal1<CSigCarDamageSpeech>::Emit` (0x4ae0d0) on its signal (`[0x893600] + 0xcf48`), whose codes
+/// [`Watch::take_speech`] gives the host (the co-driver's damage calls). In the step only `E36DamageOps::RingStore`
+/// emits it, with 8 (the broken gear actuator); the ring's other steps send nothing.
+const SPEECH_EMIT: u32 = 0x4ae0d0;
+const SPEECH_SIGNAL: u32 = 0xcf48;
 
 /// `CMultiSignal1<CSigCarBrakeWallPenetration>::Emit` (0x4e4490) on its signal (`[0x893600] + 0xa780`), whose
 /// payload's flags word (+0x18) [`Watch::take_wall_emits`] gives the host: the rally school's `Checkpoint`
@@ -52,7 +57,7 @@ const EMITTING_WALL: u32 = 4;
 const CROSSED: u32 = 2;
 
 /// The emits [`Watch::watch`] keeps a payload or a count of.
-pub(crate) const WATCHED: [u32; 10] = [
+pub(crate) const WATCHED: [u32; 11] = [
     OUTSIDE_ASSISTANCE_EMIT,
     TYRE_PARTICLES_EMIT,
     PARTICLE_EMITS[0].0,
@@ -63,6 +68,7 @@ pub(crate) const WATCHED: [u32; 10] = [
     STAND_STILL_EMIT,
     CAR_PROBLEM_EMIT,
     BRAKE_WALL_EMIT,
+    SPEECH_EMIT,
 ];
 
 /// The watched emits' kept payloads and counts, taken by the host after each step.
@@ -90,6 +96,9 @@ pub(crate) struct Watch {
     wall_crossed: Cell<bool>,
     /// The `CSigEngineFire` emits since the host last took them.
     engine_fires: Cell<u32>,
+    /// The `CSigCarDamageSpeech` codes emitted since the host last took them, a bit per code (`1 << (code & 0x1f)`,
+    /// as `CCarSound::OnSpeech` 0x4ab940 latches them).
+    speech: Cell<u32>,
     /// The damper-signal payloads `CSpringDamper::ResetOutputs` emitted since the host last took them: the strut
     /// and the payload the reset handed to the signal manager.
     damper_signals: RefCell<Vec<(u32, DamperSignal)>>,
@@ -121,6 +130,9 @@ impl Watch {
         }
         if addr == ENGINE_FIRE_EMIT && regs.ecx == mem.u32(SIGNALS).wrapping_add(ENGINE_FIRE_SIGNAL) {
             self.engine_fires.set(self.engine_fires.get() + 1);
+        }
+        if addr == SPEECH_EMIT && regs.ecx == mem.u32(SIGNALS).wrapping_add(SPEECH_SIGNAL) {
+            self.speech.set(self.speech.get() | 1 << (mem.u32(regs.stack[0]) & 0x1f));
         }
         if addr == RETIRE_EMIT {
             self.retire.set(Some(mem.u32(regs.stack[0])));
@@ -170,6 +182,11 @@ impl Watch {
     /// The `CSigEngineFire` emits since the last call.
     pub(crate) fn take_engine_fires(&self) -> u32 {
         self.engine_fires.take()
+    }
+
+    /// The `CSigCarDamageSpeech` codes emitted since the last call, a bit per code.
+    pub(crate) fn take_speech(&self) -> u32 {
+        self.speech.take()
     }
 
     /// The damper-signal payloads emitted since the last call, in emit order: the strut and its payload.

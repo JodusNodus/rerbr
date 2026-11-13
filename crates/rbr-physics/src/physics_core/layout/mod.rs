@@ -49,7 +49,7 @@ pub use lists::{
     set_mounted_state, set_signal_guard, set_word, signal_count_at, signal_guard, signal_overflow, signal_slot,
     table_word, unlink_a, unlink_item, vtable_target, word,
 };
-pub use mounted_calls::{mounted_vf64, mounted_vf6c, MountedVf64Host, MountedVf6cHost};
+pub use mounted_calls::{mounted_position_step, mounted_pull, MountedPullHost, MountedStepHost};
 pub use notify::{
     entf_create, entity_rel, entity_vf00, entity_vf158, notify_stuff, EntityVf158Host, Filer, Filing, FilingHost,
     NotifyHost, REGISTRY,
@@ -68,6 +68,6 @@ pub use step_forward::{
 };
 pub use vectors::{
     accumulate_forces, cache_1dc, cache_1ec, floats, force_accum, force_scale, inverse_mass, mat, mat_mul,
-    mat_scale_rows, offset_540, set_force_accum, set_table_index, set_vec3s, set_vec4s, table_index_hint, vec3s, vec4s,
-    vec_add, AccumHost,
+    mat_scale_rows, point_velocity_at, set_force_accum, set_table_index, set_vec3s, set_vec4s, table_index_hint, vec3s,
+    vec4s, vec_add, AccumHost,
 };

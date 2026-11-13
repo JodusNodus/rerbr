@@ -1312,6 +1312,17 @@ that writes depth (the Clio Rally3's `CarPlastic` side windows) and the rear-vie
 seen in them takes the cabin's exposure (about 1.5 stops over on the Clio); the forest shots' door cards stay dark (5
 to 7 stops under the road, which their light is).
 
+The cabin's lift tapered (2026-11-13, `CABIN_TAPER`, user's pick of 0.25, 0.1 and the lift off): the lift took the sun
+on cabin faces, the outside's own light, 2.5 stops over the outside (no reference shot had the sun in the cabin), so
+the 911 GT3 RS 2007's door card burnt white from black texels (244 of 255; 138 at the outside's exposure, the plain
+diffuse class, `Kf` 0). The lift is now `x + (g - 1) k x / (k + x)` of the outside's exposure, `k` 0.1 of `KEY`, `x`
+the darker of the pixel and the glare chain's luminance about it, so the dials' white figures keep their dark face's
+lift. That frame at 13:00: door top 197 to 123, sunlit dash 141 to 86, headliner 26 to 22 (lift off: 101, 52, 4).
+Ten cockpit reference shots: days 6.5 to 9.5 % RMSE (bright cabin faces down, the GC8's white dash most), nights 0.02
+to 2.2 %; the outside's exposure and outside views unchanged. Tried: the lift at 1.5 stops (the shade darker as much,
+headliner 13, the door card 228), the taper by the pixel alone (the dials' figures lost a stop), `k` 0.25 (days 4.2
+to 6.9 %), the lift off (days 11 to 16 %, the dials near unreadable).
+
 Cabin depth (user's pick of five looks, 2026-11-01, `cabin_day_lit`): the sky share came out near zero on most faces,
 so the bounce, the same on every face, lit nearly all of the cabin and it read flat. Three causes, three changes. The
 bake took the exterior set's own low-detail cabin (Escort Mk II `e_internal`, i20 WRC 2020 `e_tablero`, `e_jaula`;
@@ -1615,7 +1626,12 @@ against 79 s, 833 MB at 8192, its livery text as sharp but the smallest line.
 Load-time upscaling (`upscale.rs`, ours): `viewer --upscale-textures DIR` (the launcher's "Textures: upscaled",
 `upscale_textures`; DIR `<player folder>/Upscaler`, filled by the launcher's "Download upscaler…") upscales the
 car's and the stage's textures with Real-ESRGAN General WDN v3 4x (halved for 2048 sources, 4096 at most),
-after the car's dials are made, cached by the source file's SHA-256. Model choice (10 tried): WDN v3 (~4.4 s for a
+after the car's dials are made, cached by the source file's SHA-256 as the DDS file in gzip (`.dds.gz`, 2026-11-13:
+0.41 of the size over 120 files, a 4K Fiat 131 cockpit's 68 textures 1.2 GB to 523 MB, its shot byte-identical; a
+plain `.dds` of an older build is packed when a load reads it, and all of them by the launcher while no viewer runs,
+at its start and after each drive, over half the threads: 400 files, 3.3 to 1.5 GB in about 1 s; `work-*` folders and
+part files over a day old are removed). The Graphics page shows the cache's size with "Clear…" (user, 2026-11-13: no
+eviction by age). Model choice (10 tried): WDN v3 (~4.4 s for a
 1024 livery) crisper on lettering than UltraSharp and Nomos8kSC (both ~14 s) with the grain kept; animevideov3 and
 digital-art flatten grain, digital-art and x4plus invent letters. ACCENT 7 textures 17.2 s first, 0.2 s cached;
 stage objects ~25 s first; the ground's atlases 8 to 14 s more. Cached, a stage loads in under 1 s more. The
@@ -1638,7 +1654,7 @@ as before (the M3 E30 cockpit, rain and snow ones vary run to run with either bu
 In a frame at least 1800 high (`--size` times the render scale) the in-car view's textures go to 8192, not 4096
 (`upscale::INTERIOR_MAX`, user's call 2026-11-01): at 4K the Fiat 131 Grp4's 4096 dash is about 0.8 texels a pixel,
 at 8192 its gauges and dash fabric are sharp; its 4096 pack base is upscaled 2x (4x, halved). Cached in a folder per
-largest side; about 90 MB of disk per texture, a gauge cockpit's `RGBA8` target about 350 MB of GPU memory. The Fiat's
+largest side; up to 90 MB per texture unpacked, a gauge cockpit's `RGBA8` target about 350 MB of GPU memory. The Fiat's
 first 4K load 128 s (five 8192 interior textures).
 The stage's backdrop textures (those only the sky layer draws, not the clouds) are upscaled too, to 8192 at any frame
 size (`upscale::BACKDROP_MAX`, user's call 2026-11-01): the panorama strips span a whole turn (462 Odry's 4096x512,

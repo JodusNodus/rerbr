@@ -824,6 +824,7 @@ impl Form {
 
     /// Notes the viewer's exit.
     pub fn poll(&mut self) {
+        self.upscaler_cache_tick();
         let replay = self.replays.job.is_some();
         if let Some(child) = &mut self.child {
             match child.try_wait() {

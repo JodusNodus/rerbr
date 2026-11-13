@@ -554,6 +554,8 @@ struct Form {
     upscaler: bool,
     /// "Download upscaler…" ([`upscaler`]).
     upscaler_download: upscaler::Download,
+    /// The upscaled textures' folder: its packing, its size and "Clear…" ([`upscaler`]).
+    upscaler_cache: upscaler::Cache,
     /// How the driving window presents its frames (`viewer --present`).
     present: rbr_render::present::Present,
     /// The driving window's frames a second at most (`viewer --max-fps`; 0: none), one of

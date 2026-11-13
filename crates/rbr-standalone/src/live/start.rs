@@ -197,6 +197,7 @@ impl<'a> Live<'a> {
         playback.pure.take_tyre_particles();
         playback.pure.take_particle_events();
         playback.pure.take_engine_fires();
+        playback.pure.take_speech();
         playback.pure.take_damper_signals();
         let initial = playback.pure.snapshot();
         let initial_game = game.clone();
@@ -255,6 +256,7 @@ impl<'a> Live<'a> {
         self.playback.pure.take_tyre_terms();
         self.playback.pure.take_particle_events();
         self.playback.pure.take_engine_fires();
+        self.playback.pure.take_speech();
         self.playback.pure.take_damper_signals();
         self.now = self.boot_now;
         self.answered = 0;

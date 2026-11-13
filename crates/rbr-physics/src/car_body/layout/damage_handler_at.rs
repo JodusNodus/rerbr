@@ -28,8 +28,8 @@ pub struct Member {
     pub count: u32,
 }
 
-pub const STATE_INIT_C70: u32 = 0x502C70;
-pub const ENGINE_RESET_SUB78: u32 = 0x50C370;
+pub const STATE_INIT: u32 = 0x502C70;
+pub const ENGINE_RESET: u32 = 0x50C370;
 pub const WHEEL_ZERO: u32 = 0x53B050;
 pub const VALUE8_CLEAR: u32 = 0x5317F0;
 pub const VALUE_CLEAR: u32 = 0x52D960;

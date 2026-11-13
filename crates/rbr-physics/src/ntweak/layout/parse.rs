@@ -11,8 +11,8 @@ use rbr_formats::lsp_keys::Class;
 use super::c_string;
 use crate::mem::Mem;
 use crate::ntweak::plan::{
-    lookup, member_at, BASE_PARSE, BIT_FIELDS, BIT_FIELD_PARSE, INTEGER_PARSE, ITEM_BLOCK, NGP_TABLE, NGP_TABLE_LEN,
-    NGP_TABLE_VTABLE, REAL_PARSE, UNK14_SKIP, UNSIGNED_PARSE, VALUE, VECTOR4_PARSE, VECTOR_PARSE, VECTOR_VALUE,
+    lookup, member_at, BASE_PARSE, BIT_FIELDS, BIT_FIELD_PARSE, INNER_GROUP_SKIP, INTEGER_PARSE, ITEM_BLOCK, NGP_TABLE,
+    NGP_TABLE_LEN, NGP_TABLE_VTABLE, REAL_PARSE, UNSIGNED_PARSE, VALUE, VECTOR4_PARSE, VECTOR_PARSE, VECTOR_VALUE,
 };
 use crate::ntweak::tokens::{self, is_group, quoted, Tokens};
 use crate::ntweak::{atof, atoi, is_float, is_integer, set_bit, Unsupported};
@@ -286,7 +286,7 @@ fn inner_group(
         text.push(0);
         mem.map(block, &text);
         match mem.u32(mem.u32(this) + 0x14) {
-            UNK14_SKIP => mem.set_u32(cursor + 4, at + 4),
+            INNER_GROUP_SKIP => mem.set_u32(cursor + 4, at + 4),
             _ => {
                 host.unk14(mem, this, name, block, cursor);
                 assert_ne!(mem.u32(cursor + 4), at, "an Unk14 that leaves the item: the original loops forever");

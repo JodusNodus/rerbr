@@ -3,11 +3,15 @@
 //! Real-ESRGAN's v0.2.5.0 release for this platform, and Real-ESRGAN's General WDN v3 model (BSD-3) in ncnn form from
 //! Upscayl's custom models at a fixed commit. Each download is checked against its SHA-256 before anything is kept;
 //! the files are written only once all have downloaded, and the cache beside them is left as it is.
+//!
+//! The cache of upscaled textures there (`upscale::CACHE`) is looked after while no viewer runs ([`Cache`]): the plain
+//! files a build before 2026-11-13 left are packed, at the launcher's start and after each drive, and the Graphics
+//! page shows its size with "Clear…".
 
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use sha2::{Digest, Sha256};
 
@@ -128,10 +132,116 @@ pub struct Download {
     status: Option<Result<String, String>>,
 }
 
+/// The upscaled textures' folder: the job that packs it and measures it, or clears it, its size, and "Clear…"'s
+/// confirmation.
+#[derive(Default)]
+pub struct Cache {
+    job: Option<Job<u64>>,
+    /// The folder's size in bytes as the last job left it: none while the viewer, which adds to it, runs.
+    size: Option<u64>,
+    confirm: bool,
+}
+
+impl Cache {
+    /// Each frame: packs and measures `cache` when its size is not known, and stops that while the viewer runs.
+    pub fn tick(&mut self, cache: &Path, running: bool) {
+        if let Some(job) = &mut self.job {
+            if running {
+                job.cancel.store(true, Ordering::Relaxed);
+            }
+            if let Some(result) = job.result() {
+                (self.job, self.size) = (None, result.ok());
+            }
+        }
+        if running {
+            (self.size, self.confirm) = (None, false);
+        } else if self.size.is_none() && self.job.is_none() {
+            let cache = cache.to_path_buf();
+            self.job = Some(Job::start(move |report, cancel| pack(&cache, report, cancel)));
+        }
+    }
+}
+
+/// Packs `cache`'s plain files (`upscale::pack`) over half the machine's threads, which leaves the launcher its
+/// frames, and returns the cache's size in bytes. A file that fails stays for the next run.
+fn pack(cache: &Path, report: Report<'_>, cancel: &AtomicBool) -> Result<u64, Fail> {
+    upscale::tidy(cache);
+    let plain = upscale::plain_files(cache);
+    let total = plain.iter().map(|(_, size)| size).sum();
+    let (next, done) = (AtomicUsize::new(0), AtomicU64::new(0));
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get() / 2).max(1);
+    std::thread::scope(|scope| {
+        for _ in 0..threads {
+            scope.spawn(|| {
+                while !cancel.load(Ordering::Relaxed) {
+                    let Some((path, size)) = plain.get(next.fetch_add(1, Ordering::Relaxed)) else { break };
+                    let _ = upscale::pack(path);
+                    let done = done.fetch_add(*size, Ordering::Relaxed) + size;
+                    report(&Progress { step: "Packing the texture cache", done, total });
+                }
+            });
+        }
+    });
+    match cancel.load(Ordering::Relaxed) {
+        true => Err("cancelled".into()),
+        false => Ok(upscale::cache_size(cache)),
+    }
+}
+
+/// A size in bytes as shown: `1.5 GB`, under 1 GB `340 MB`.
+fn size_text(bytes: u64) -> String {
+    match bytes >> 20 {
+        mb if mb >= 1024 => format!("{:.1} GB", mb as f64 / 1024.0),
+        mb => format!("{mb} MB"),
+    }
+}
+
 impl Form {
     /// The upscaler's folder in the player's folder.
     pub fn upscaler_dir(&self) -> std::path::PathBuf {
         self.here().join(upscale::DIR)
+    }
+
+    /// Each frame: looks after the upscaled textures' folder ([`Cache::tick`]); not when nothing is written.
+    pub fn upscaler_cache_tick(&mut self) {
+        if !self.read_only {
+            self.upscaler_cache.tick(&self.upscaler_dir().join(upscale::CACHE), self.child.is_some());
+        }
+    }
+
+    /// Beside "upscaled": the packing's progress, else the upscaled textures' size and "Clear…" with its
+    /// confirmation.
+    pub fn upscaler_cache_ui(&mut self, ui: &mut egui::Ui) {
+        let dir = self.upscaler_dir().join(upscale::CACHE);
+        let cache = &mut self.upscaler_cache;
+        if let Some(job) = &cache.job {
+            let progress = job.progress.lock().unwrap().clone();
+            if progress.total > 0 {
+                ui.spinner();
+                ui.weak(progress.line());
+            }
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+            return;
+        }
+        let Some(size) = cache.size.filter(|&size| size > 0).map(size_text) else { return };
+        if !cache.confirm {
+            ui.weak(format!("{size} kept"));
+            let tip = "Deletes the upscaled textures kept for the cars and stages driven so far. The first drive with \
+                       each car and on each stage makes them again";
+            cache.confirm = ui.button("Clear…").on_hover_text(tip).clicked();
+            return;
+        }
+        ui.label(format!("Delete {size}?"));
+        if ui.button("Delete").clicked() {
+            (cache.confirm, cache.size) = (false, None);
+            cache.job = Some(Job::start(move |_, _| match fs::remove_dir_all(&dir) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", dir.display())),
+                _ => Ok(0),
+            }));
+        }
+        if ui.button("Cancel").clicked() {
+            cache.confirm = false;
+        }
     }
 
     /// "Download upscaler…", its confirmation, progress and result line, while the upscaler is not there.
@@ -183,6 +293,32 @@ impl Form {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cache_is_packed_and_measured_while_no_viewer_runs() {
+        let cache = crate::test_dir("upscaler-cache");
+        let folder = cache.join("model-4096");
+        fs::create_dir_all(&folder).unwrap();
+        let texture = upscale::encode(rbr_formats::dds::Format::Dxt1, 64, 64, vec![128; 64 * 64 * 4]);
+        fs::write(folder.join("a.dds"), &texture).unwrap();
+        let mut state = Cache::default();
+        let wait = |state: &mut Cache, running| {
+            state.tick(&cache, running);
+            while state.job.is_some() {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                state.tick(&cache, running);
+            }
+        };
+        // A running viewer: nothing is started.
+        wait(&mut state, true);
+        assert!(state.size.is_none() && folder.join("a.dds").exists());
+        wait(&mut state, false);
+        let packed = fs::metadata(folder.join("a.dds.gz")).unwrap().len();
+        assert!(!folder.join("a.dds").exists() && packed < texture.len() as u64);
+        assert_eq!(state.size, Some(packed));
+        assert_eq!((size_text(340 << 20), size_text(1536 << 20)), ("340 MB".into(), "1.5 GB".into()));
+        fs::remove_dir_all(&cache).unwrap();
+    }
 
     /// Downloads the real upscaler (network, about 50 MB): `cargo test -p rbr-launcher upscaler -- --ignored`.
     #[test]

@@ -4,7 +4,9 @@
 //! format with a full mip chain. A texture the dials draw on (`Image::Dial`, the cockpit of a car with a gauge pack)
 //! has its base upscaled from its art's size: RBRHUD's bases larger than the car's own texture are smooth resizes of
 //! it. The results are kept in a cache folder per largest side by the source file's SHA-256, so a texture is upscaled
-//! once, whichever car or stage shows it, and again only when its file changes.
+//! once, whichever car or stage shows it, and again only when its file changes. A cache file is the DDS file in gzip
+//! (`.dds.gz`): the block data packs to about 0.41 of its size. The plain `.dds` files of builds before that are
+//! packed by the launcher ([`plain_files`], [`pack`]), or by the load that reads one first.
 //!
 //! The upscaler's folder (the launcher's `<player folder>/Upscaler`, which its "Download upscaler…" fills) holds the
 //! binary, its `models` and the `cache`. `RBR_UPSCALER`, else `upscaler/` beside the running program, names another
@@ -19,9 +21,10 @@ use rbr_formats::dds::{self, Format};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter};
+use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 /// The upscaling model, 4x: Real-ESRGAN's general WDN v3 (BSD-3), a compact network. On liveries, signs and the
@@ -45,6 +48,8 @@ pub const INTERIOR_HEIGHT: u32 = 1800;
 pub const MIN: u32 = 32;
 /// The player's folder's subfolder the launcher keeps the upscaler in.
 pub const DIR: &str = "Upscaler";
+/// The upscaler's folder's subfolder with the upscaled textures.
+pub const CACHE: &str = "cache";
 /// The binary's file name.
 pub const BINARY: &str = if cfg!(windows) { "realesrgan-ncnn-vulkan.exe" } else { "realesrgan-ncnn-vulkan" };
 
@@ -129,13 +134,14 @@ pub fn apply(
         .collect();
     let digests = in_parallel(&wanted, |&(_, bytes, _, _)| Sha256::digest(bytes));
     for ((key, bytes, side, max), digest) in wanted.into_iter().zip(digests) {
-        let path = cache.join(format!("{MODEL}-{max}")).join(format!("{digest:x}.dds"));
-        if !path.is_file() {
+        let path = cache.join(format!("{MODEL}-{max}")).join(format!("{digest:x}.dds.gz"));
+        if !path.is_file() && !path.with_extension("").is_file() {
             missing.insert(path.clone(), (bytes, side, max));
         }
         planned.push((key, path));
     }
     if !missing.is_empty() {
+        tidy(cache);
         let work = cache.join(format!("work-{}", std::process::id()));
         if let Err(e) = make(upscaler, missing.into_iter().collect(), &work, progress) {
             eprintln!("upscale: {e}");
@@ -143,7 +149,7 @@ pub fn apply(
         let _ = std::fs::remove_dir_all(&work);
     }
     let mut replaced = 0;
-    let read = in_parallel(&planned, |(_, path)| std::fs::read(path).ok().filter(|bytes| dds::parse(bytes).is_ok()));
+    let read = in_parallel(&planned, |(_, path)| read_cached(path).filter(|bytes| dds::parse(bytes).is_ok()));
     for ((key, _), bytes) in planned.into_iter().zip(read) {
         let Some(bytes) = bytes else { continue };
         if let Some(texture) = textures.get_mut(&key) {
@@ -272,9 +278,86 @@ fn finish(bytes: &[u8], side: u32, max: u32, upscaled: &Path, out: &Path) -> Res
     if let Some(folder) = out.parent() {
         std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     }
-    let part = out.with_extension("part");
-    std::fs::write(&part, encode(dds.format, width, height, rgba)).map_err(|e| e.to_string())?;
-    std::fs::rename(&part, out).map_err(|e| e.to_string())
+    write_cached(out, &encode(dds.format, width, height, rgba)).map_err(|e| e.to_string())
+}
+
+/// Writes the DDS file `bytes` as the cache file `path`, in gzip. Written whole, then renamed, so a stopped load
+/// leaves no part file in its place; the part file is this write's own, since two textures of one load, or two loads,
+/// can write the same cache file at once.
+fn write_cached(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    static WRITES: AtomicUsize = AtomicUsize::new(0);
+    let write = WRITES.fetch_add(1, Ordering::Relaxed);
+    let part = path.with_extension(format!("part-{}-{write}", std::process::id()));
+    let mut gz = flate2::write::GzEncoder::new(File::create(&part)?, flate2::Compression::default());
+    gz.write_all(bytes)?;
+    gz.finish()?;
+    std::fs::rename(&part, path)
+}
+
+/// The DDS file of the cache file `path`. A plain `.dds` beside it (the cache up to 2026-11-13) is read in its place
+/// and packed into it.
+fn read_cached(path: &Path) -> Option<Vec<u8>> {
+    let plain = path.with_extension("");
+    if let Ok(bytes) = std::fs::read(&plain) {
+        if dds::parse(&bytes).is_ok() {
+            let _ = pack_bytes(&plain, &bytes);
+        }
+        return Some(bytes);
+    }
+    let mut bytes = Vec::new();
+    flate2::read::GzDecoder::new(std::fs::read(path).ok()?.as_slice()).read_to_end(&mut bytes).ok()?;
+    Some(bytes)
+}
+
+/// Writes the plain cache file `plain`'s `bytes` as the cache file beside it and removes it.
+fn pack_bytes(plain: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_cached(&plain.with_extension("dds.gz"), bytes)?;
+    std::fs::remove_file(plain)
+}
+
+/// Packs the plain cache file `plain` into the cache file beside it. One that does not read as a DDS file is only
+/// removed, so its texture is made again.
+pub fn pack(plain: &Path) -> std::io::Result<()> {
+    let bytes = std::fs::read(plain)?;
+    match dds::parse(&bytes) {
+        Ok(_) => pack_bytes(plain, &bytes),
+        Err(_) => std::fs::remove_file(plain),
+    }
+}
+
+/// The files in `cache`'s folders (one per model and largest side), each with its size.
+fn cache_files(cache: &Path) -> impl Iterator<Item = (PathBuf, u64)> {
+    let entries = |dir: &Path| std::fs::read_dir(dir).into_iter().flatten().flatten();
+    entries(cache)
+        .flat_map(move |folder| entries(&folder.path()))
+        .filter_map(|file| Some((file.path(), file.metadata().ok().filter(|m| m.is_file())?.len())))
+}
+
+/// `cache`'s plain `.dds` files (the cache up to 2026-11-13), each with its size.
+pub fn plain_files(cache: &Path) -> Vec<(PathBuf, u64)> {
+    cache_files(cache).filter(|(path, _)| path.extension().is_some_and(|e| e == "dds")).collect()
+}
+
+/// The size of `cache`'s files in bytes.
+pub fn cache_size(cache: &Path) -> u64 {
+    cache_files(cache).map(|(_, size)| size).sum()
+}
+
+/// Removes what stopped loads and stopped packing left in `cache` over a day ago: `work-*` folders and part files.
+pub fn tidy(cache: &Path) {
+    let old = |path: &Path| {
+        let modified = std::fs::metadata(path).and_then(|m| m.modified());
+        modified.is_ok_and(|at| at.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(24 * 60 * 60)))
+    };
+    for folder in std::fs::read_dir(cache).into_iter().flatten().flatten() {
+        if folder.file_name().to_string_lossy().starts_with("work-") && old(&folder.path()) {
+            let _ = std::fs::remove_dir_all(folder.path());
+        }
+    }
+    let part = |path: &Path| path.extension().is_some_and(|e| e.to_string_lossy().starts_with("part"));
+    for (path, _) in cache_files(cache).filter(|(path, _)| part(path) && old(path)) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// The block format a `.dds` file's `format` is encoded in.
@@ -472,6 +555,36 @@ mod tests {
         let levels = dds.levels();
         assert_eq!((dds.mip_count, levels.last().map(|l| (l.width, l.height))), (7, Some((1, 1))));
         assert!(levels[..4].iter().zip(&stored).all(|(level, old)| level.data == old.as_slice()));
+    }
+
+    #[test]
+    fn a_cache_file_reads_back_and_a_plain_one_is_packed() {
+        let cache = std::env::temp_dir().join(format!("rerbr-upscale-cache-{}", std::process::id()));
+        let dir = cache.join("model-4096");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (path, bytes) = (dir.join("a.dds.gz"), file(64));
+        write_cached(&path, &bytes).unwrap();
+        assert_eq!(read_cached(&path), Some(bytes.clone()));
+        assert!(std::fs::metadata(&path).unwrap().len() < bytes.len() as u64);
+        // A plain file is packed by the load that reads it.
+        let (plain, packed) = (dir.join("b.dds"), dir.join("b.dds.gz"));
+        std::fs::write(&plain, &bytes).unwrap();
+        assert_eq!(read_cached(&packed), Some(bytes.clone()));
+        assert!(!plain.exists());
+        assert_eq!(read_cached(&packed), Some(bytes.clone()));
+        // Or by `pack`, which removes one that is no DDS file.
+        let (plain, broken) = (dir.join("c.dds"), dir.join("d.dds"));
+        std::fs::write(&plain, &bytes).unwrap();
+        std::fs::write(&broken, b"no texture").unwrap();
+        let mut found = plain_files(&cache);
+        found.sort();
+        assert_eq!(found, [(plain.clone(), bytes.len() as u64), (broken.clone(), 10)]);
+        plain_files(&cache).iter().for_each(|(path, _)| pack(path).unwrap());
+        assert_eq!(read_cached(&dir.join("c.dds.gz")), Some(bytes));
+        assert!(plain_files(&cache).is_empty() && !dir.join("d.dds.gz").exists());
+        let packed = std::fs::metadata(&path).unwrap().len();
+        assert_eq!(cache_size(&cache), 3 * packed);
+        std::fs::remove_dir_all(&cache).unwrap();
     }
 
     #[test]
