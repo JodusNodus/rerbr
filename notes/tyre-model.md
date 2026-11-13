@@ -2245,9 +2245,10 @@ Research (2026-11-08); raw files outside the repository, derived figures per dri
 
 ## Real stage telemetry (WRC, snow)
 
-Research and a prototype (2026-11-13, branch `tyre/snow-data`; the levels are ours, not driven by hand, the user's
-to decide). Raw files outside the repository; per drive, one stage a rally, in `data/rally-telemetry-snow.csv`
-(`rally_gg.py stats`). Every reading is gravel's ([Real stage telemetry (WRC, gravel)](#real-stage-telemetry-wrc-gravel):
+Research and snow's levels (2026-11-13, branch `tyre/snow-data`; the user's direction of that day: closer to the real
+cars, at their upper end, a tad more forgiving, gravel and tarmac untouched; the values ours, not driven by hand yet).
+Raw files outside the repository; per drive, one stage a rally, in `data/rally-telemetry-snow.csv` (`rally_gg.py
+stats`). Every reading is gravel's ([Real stage telemetry (WRC, gravel)](#real-stage-telemetry-wrc-gravel):
 `rally_wot.py`, the items named below), run again on Finland 2021 as the gravel reference (it gives that section's
 figures).
 
@@ -2322,61 +2323,65 @@ figures).
 
   | Reading | Arctic 2021 | ngp, 117 | experimental, 117 | brush at NGP's level, 117 | brush with the levels below, 117; 101 |
   | --- | --- | --- | --- | --- | --- |
-  | Braking at κ 0.3 over 160-130 / 130-100 / 100-70 / 70-40 km/h, g | 0.92 / 0.79-0.82 / 0.73 / 0.67 | 1.15 / 1.07 / 1.00 / 0.94 | 1.13 / 1.04 / 0.98 / 0.94 | 1.16 / 1.07 / 1.00 / 0.96 | 0.90 / 0.82 / 0.76 / 0.72; 0.86 / 0.78 / 0.72 / 0.68 |
-  | Full pedal, same bands, g | - | 1.17 / 0.98 / 0.87 / 0.82 | 1.11 / 0.92 / 0.85 / 0.81 | 1.17 / 1.09 / 1.05 / 1.01 | 0.92 / 0.86 / 0.80 / 0.75; 0.88 / 0.81 / 0.75 / 0.71 |
-  | Start, 10 to 50 m, s | 2.36 (Sweden 2017-19 2.21-2.56) | 2.00 | 2.00 | 1.96 | 2.14; 2.19 |
-  | Thrust at 22-50 % of wheelspin, 45-70 km/h, g | 0.56-0.57 | 0.93-0.96 | 0.92-0.93 | 0.96-0.97 | 0.72; 0.68 |
-  | Circles of 65 / 100 / 200 m, the body's g (`corner_limit.py circle`) | cornering windows 0.74-0.77 (path) | 0.99 / 1.04 / 1.22 | 0.94 / 0.96 / 1.06 | 0.94 / 0.96 / 1.02 | 0.80 / 0.82 / 0.87; 0.76 / 0.79 / 0.84 |
-  | Whole g in a slide from 15°, p90, 60-100 / 100-160 km/h | 0.82 / 0.84 (path 0.85 / 0.88) | 1.06 / 1.16 | 1.04 / 1.12 | 1.08 / 1.14 | 0.83 / 0.90; 0.80 / 0.88 |
+  | Braking at κ 0.3 over 160-130 / 130-100 / 100-70 / 70-40 km/h, g | 0.92 / 0.79-0.82 / 0.73 / 0.67 | 1.15 / 1.07 / 1.00 / 0.94 | 1.13 / 1.04 / 0.98 / 0.94 | 1.16 / 1.07 / 1.00 / 0.96 | 0.93 / 0.85 / 0.79 / 0.75; 0.89 / 0.81 / 0.75 / 0.71 |
+  | Full pedal, same bands, g | - | 1.17 / 0.98 / 0.87 / 0.82 | 1.11 / 0.92 / 0.85 / 0.81 | 1.17 / 1.09 / 1.05 / 1.01 | 0.95 / 0.89 / 0.83 / 0.78; 0.91 / 0.84 / 0.78 / 0.74 |
+  | Start, 10 to 50 m, s | 2.36 (Sweden 2017-19 2.21-2.56) | 2.00 | 2.00 | 1.96 | 2.11; 2.17 |
+  | Thrust at 22-50 % of wheelspin, 45-70 km/h, g | 0.56-0.57 | 0.93-0.96 | 0.92-0.93 | 0.96-0.97 | 0.75; 0.71 |
+  | Circles of 65 / 100 / 200 m, the body's g (`corner_limit.py circle`) | cornering windows 0.74-0.77 (path) | 0.99 / 1.04 / 1.22 | 0.94 / 0.96 / 1.06 | 0.94 / 0.96 / 1.02 | 0.84 / 0.86 / 0.92; 0.80 / 0.83 / 0.89 |
+  | Whole g in a slide from 15°, p90, 60-100 / 100-160 km/h | 0.82 / 0.84 (path 0.85 / 0.88) | 1.06 / 1.16 | 1.04 / 1.12 | 1.08 / 1.14 | 0.87 / 0.95; 0.84 / 0.92 |
 
   So the game's snow is 1.3 times the Arctic's on the brakes and in slides and 1.6 times in thrust under all three
   profiles. Sideslip from 0.42 to 0.72 g: NGP's tyre 2.0-2.3°, the brush at NGP's level 3.1-3.3°, at 0.75-0.80 of it
   sideways 4.6-5.2° (the crews 3.8-4.2°). With the levels below, 101 against Sweden read alike (saturated force plus the
-  drag: 2017 0.89 / 0.76 / 0.66 / 0.60, 2018 0.89 / 0.77 / 0.66 / 0.57, 2019 0.91 / 0.81 / 0.71 / 0.63): 0.95-0.97 of
-  them over 160-130 km/h and 1.08-1.19 over 70-40. The crews' tyre force grows 20 % from 70 to 145 km/h on snow (30 % on
-  Finland's gravel), the car's 9 % (10 % on pad-49): the profiles' aero, as on gravel ("The files' downforce against
+  drag: 2017 0.89 / 0.76 / 0.66 / 0.60, 2018 0.89 / 0.77 / 0.66 / 0.57, 2019 0.91 / 0.81 / 0.71 / 0.63): 0.98-1.00 of
+  them over 160-130 km/h and 1.13-1.25 over 70-40. The crews' tyre force grows 20 % from 70 to 145 km/h on snow (30 % on
+  Finland's gravel), the car's 8 % (10 % on pad-49): the profiles' aero, as on gravel ("The files' downforce against
   these"), so one level sits over the crews at low speed and under them at high speed.
-- Snow's level by axis (prototype, ours; `loose::SNOW_LONGITUDINAL` 0.75, `SNOW_LATERAL` 0.85, `SNOW_SOIL_SPEED` 10 m/s,
+- Snow's level by axis (`loose::SNOW_LONGITUDINAL` 0.78, `SNOW_LATERAL` 0.90, `SNOW_SOIL_SPEED` 10 m/s,
   `loose::snow_soil_share`; on the snow share of the soil under loose-v1, as gravel's: `--tyre-tuning snow=F` multiplies
-  on top; ngp and `experimental` run NGP's tyre and keep its snow, their traces and gravel's under the brush are
-  byte-identical to before). The level alone is not enough: at 0.75 on both axes with NGP's soil force as it is the
-  braking fits (0.90 / 0.82 / 0.76 / 0.72 g; the start 2.14 s) and the slides still read 0.91 / 0.96 g, the soil force
-  (∝ the sideways speed squared) carrying them, so it is held from 10 m/s as gravel's (from 6 m/s at 0.75 the slides
-  fall to 0.74 at both speeds). Sideways with the hold, level 0.70 / 0.75 / 0.80 / 0.85: circles of 65 / 100 / 200 m
-  0.66 / 0.68 / 0.74, 0.71 / 0.73 / 0.79, 0.75 / 0.77 / 0.83 and 0.80 / 0.82 / 0.87 g; slides 0.74 / 0.78, 0.77 / 0.82,
-  0.80 / 0.87 and 0.83 / 0.90. 0.80 puts the slides on the Arctic's accelerometers either side (0.82 / 0.84) and the
-  circles just over its cornering windows; 0.85 puts the slides on its path's reading (0.85 / 0.88) and the car near
-  where gravel's stands against the crews corner by corner (next item); taken: 0.85, the range 0.80-0.90 the user's.
-  Against Finland's gravel the crews' snow reads 0.84 (slides), 0.85 (lateral p90), 0.89 (windows), 0.9-0.95 (corner
-  peaks, Aittajärvi against Hassi, weak), the car's on the pads 0.84-0.90 at 0.85 (117 against 49). Sweden's stages take
-  their step from NGP's materials (101-103 under 117-119). `SNOW_PLOUGH` stays 1.05.
-- Corner by corner on Aittajärvi (`corner_limit.py`, RSF 531, i20 Coupe WRC 2020, 14 levels, the reading and the
-  limit from below as gravel's "Cornering against the crews, corner by corner"; the crews: SS9's and SS10's six drives
-  each, `--real-floor 0.65`). Weak next to Hassi: the stage lies 9 m (median; p90 35 m) off the crews' GPS path (Hassi
-  2.0 / 3.4 m), 44 corners, 23 with a limit. The crews' body g where their median is 0.65 or more: 0.92 / 0.86 (SS9)
-  and 0.85 / 0.98 (SS10) taken at 90-120 / over 120 km/h (n 7-17), Hassi's 0.97 on gravel; above their slides' p90
-  (snowbanks and ruts are in a corner's peak). In the 8 corners turning 30° or more the car holds, of the crews' body g
-  and of their slowest speed in the corner: NGP's tyre 1.03 / 1.15 (SS9 / SS10; p25-p75 0.97-1.17) at 0.98-1.00;
-  loose-v1 at 0.80 sideways 0.81 / 0.87 at 0.86; at 0.85 0.84 / 0.90 (0.78-0.94) at 0.87-0.88. Gravel by the same
-  reading: NGP's tyre 0.88, loose-v1 0.92 (at 1.06 sideways, 1.10 since) at 0.83 of their slowest speed. So a
-  controller that stays 8-12 % under the crews on gravel matches them on NGP's snow, and at 0.85 snow stands 2-8 % under
-  gravel's place.
-- Scorecard, snow rows (brush, before → after; ngp 14/19 as before): 17/19 → 17/19. `snow-peak-mu-y` 0.842 → 0.716,
-  `snow-peak-mu-x` 0.863 → 0.647, `snow-peak-slip-angle` 14.75 → 12.75°, `snow-car-threshold-decel-50` 0.919 → 0.692 g,
-  `snow-car-locked-decel-50` 0.951 → 0.722 g, `snow-car-braking-rally2` (context, Rally2 inferred 0.68 g) 0.875 → 0.680;
-  `snow-car-lateral-rally2` 0.858 (MISS, over 0.69-0.85) → 0.724 PASS (0.684 at 0.80 sideways: the Fiesta Rally2 on
-  101's r40 circle against Sweden's stage times through Finland's ratio, inferred); `snow-peak-kappa` 0.25 → 0.18
-  (MISS, 0.26 up: the same stiffness reaches a lower level sooner); `snow-car-locked-over-abs-80` 1.100 → 1.171 (MISS,
-  1-1.12; at 50 km/h 1.058 → 1.080: the soil's own drag is a larger share of a lower level, inferred).
-- Open after it: by hand on RSF 531 / 615 / 422 (nobody has driven it); the thrust (0.72 g against the crews' 0.57, the
-  start 2.14 s against 2.36: real thrust is 0.87 of braking on snow and gravel, the model's is equal; open on gravel
+  on top; ngp and `experimental` run NGP's tyre and keep its snow). Untouched, byte-identical traces before and after:
+  gravel (pad-49) and tarmac (pad-37) under the brush, 24 runs each, and snow (pad-117) under ngp and `experimental`,
+  48. The level alone is not enough: at 0.75 on both axes with NGP's soil force as it is the braking fits (0.90 / 0.82 /
+  0.76 / 0.72 g; the start 2.14 s) and the slides still read 0.91 / 0.96 g, the soil force (∝ the sideways speed
+  squared) carrying them, so it is held from 10 m/s as gravel's (from 6 m/s at 0.75 the slides fall to 0.74 at both
+  speeds). Sideways with the hold, level 0.70 / 0.75 / 0.80 / 0.85 / 0.90: circles of 65 / 100 / 200 m 0.66 / 0.68 /
+  0.74, 0.71 / 0.73 / 0.79, 0.75 / 0.77 / 0.83, 0.80 / 0.82 / 0.87 and 0.84 / 0.86 / 0.92 g; slides 0.74 / 0.78, 0.77 /
+  0.82, 0.80 / 0.87, 0.83 / 0.90 and 0.87 / 0.95. The crews' own level: along the wheel 0.75 (the Arctic's braking
+  within 4 % at 130-70 km/h); sideways 0.80 by the slides on their accelerometers (0.82 / 0.84), 0.85 by the slides on
+  their path (0.85 / 0.88), about 0.89 by gravel's place against the crews corner by corner (next item). Taken, on the
+  user's direction: 0.78 and 0.90, the upper end of each. The car is then over the Arctic's crews by 1 / 4-8 / 8 / 12 %
+  on the brakes over 160-130 / 130-100 / 100-70 / 70-40 km/h and by 2-6 % / 8-13 % in slides at 60-100 / 100-160 km/h
+  (path and accelerometers), and more over Sweden's. Against Finland's gravel the crews' snow reads 0.84 (slides), 0.85
+  (lateral p90), 0.89 (windows), 0.9-0.95 (corner peaks, Aittajärvi against Hassi, weak), the car's on the pads
+  0.88-0.95 (117 against 49). Sweden's stages take their step from NGP's materials (101-103 under 117-119).
+  `SNOW_PLOUGH` stays 1.05.
+- Corner by corner on Aittajärvi (`corner_limit.py`, RSF 531, i20 Coupe WRC 2020, 14 levels, the reading and the limit
+  from below as gravel's "Cornering against the crews, corner by corner"; the crews: SS9's and SS10's six drives each,
+  `--real-floor 0.65`). Weak next to Hassi: the stage lies 9 m (median; p90 35 m) off the crews' GPS path (Hassi 2.0 /
+  3.4 m), 44 corners, 23-26 with a limit. The crews' body g where their median is 0.65 or more: 0.92 / 0.86 (SS9) and
+  0.85 / 0.98 (SS10) taken at 90-120 / over 120 km/h (n 7-17), Hassi's 0.97 on gravel; above their slides' p90
+  (snowbanks and ruts are in a corner's peak). In the 8-10 corners turning 30° or more the car holds, of the crews' body
+  g and of their slowest speed in the corner: NGP's tyre 1.03 / 1.15 (SS9 / SS10; p25-p75 0.97-1.17) at 0.98-1.00;
+  loose-v1 at 0.80 sideways 0.81 / 0.87 at 0.86; at 0.85 0.84 / 0.90 (0.78-0.94) at 0.87-0.88; at 0.90 (and 0.78 along
+  the wheel) 0.88 / 0.94 (0.78-0.97) at 0.89. Gravel by the same reading: NGP's tyre 0.88, loose-v1 0.92 (at 1.06
+  sideways, 1.10 since) at 0.83 of their slowest speed. So a controller that stays 8-12 % under the crews on gravel
+  matches them on NGP's snow, and at 0.90 snow stands at gravel's place.
+- Scorecard, snow rows (brush, before → after; ngp 14/19 as before): 17/19 → 17/19. `snow-peak-mu-y` 0.842 → 0.758,
+  `snow-peak-mu-x` 0.863 → 0.673, `snow-peak-slip-angle` 14.75 → 13.5°, `snow-car-threshold-decel-50` 0.919 → 0.720 g,
+  `snow-car-locked-decel-50` 0.951 → 0.751 g, `snow-car-braking-rally2` (context, Rally2 inferred 0.68 g) 0.875 → 0.702;
+  `snow-car-lateral-rally2` 0.858 (MISS, over 0.69-0.85) → 0.777 PASS (0.684 / 0.724 at 0.80 / 0.85 sideways: the Fiesta
+  Rally2 on 101's r40 circle against Sweden's stage times through Finland's ratio, inferred); `snow-peak-kappa` 0.25 →
+  0.18 (MISS, 0.26 up: the same stiffness reaches a lower level sooner); `snow-car-locked-over-abs-80` 1.100 → 1.153
+  (MISS, 1-1.12; at 50 km/h 1.058 → 1.068: the soil's own drag is a larger share of a lower level, inferred).
+- Open after it: by hand on RSF 531 / 615 / 422 (nobody has driven it); the thrust (0.75 g against the crews' 0.57, the
+  start 2.11 s against 2.36: real thrust is 0.87 of braking on snow and gravel, the model's is equal; open on gravel
   too); the rise with slip (the crews reach 0.83 of the level at 10-15 % and the level from 22-32 %, the brush 0.96 at
   11 %; a lower stiffness along the wheel on snow would also answer `snow-peak-kappa`, against `snow-long-c0x`'s 9-14.4
-  of road winter tyres, now 10.3); the berm (the crews' level is flat to 80 % of slip; `SNOW_PLOUGH` 1.0 would take
-  `snow-car-locked-over-abs-80` to about 1.12, estimated); the gain with speed (above); Sweden corner by corner (RSF 422
+  of road winter tyres, now 10.4); the berm (the crews' level is flat to 80 % of slip; `SNOW_PLOUGH` 1.0 would take
+  `snow-car-locked-over-abs-80` to about 1.10, estimated); the gain with speed (above); Sweden corner by corner (RSF 422
   against 2018's Torsby, not run); the stage times on snow, 5-12 % faster than the crews' at NGP's level ([Stage
   times](#stage-times-real-against-rsf-and-the-game)), not rerun; `experimental` (NGP's tyre) keeps snow at 1.3 times
-  the crews'.
+  the crews'; the levels' values after the user's drive.
 
 ## Loose levels: rally data against the game (2026-11-08)
 
@@ -3583,8 +3588,9 @@ stays the untuned brush's. The table's model column is the brush before the mode
   0.77-0.88 (its sliding-speed fall, fitted on tarmac, applies on ice too); rally studs (no data).
 - Loose levels (2026-11-08, [Loose levels](#loose-levels-rally-data-against-the-game-2026-11-08)): gravel's is 0.9 of
   NGP's along the wheel, 1.06 sideways and falls with the layer's depth (2026-11-11, "Gravel's level by axis and by
-  depth", "Gravel's sideways level"); snow's is 0.75 of NGP's along the wheel and 0.85 sideways with the soil force held
-  from 10 m/s (2026-11-13, a prototype, ours, not driven by hand, the user's to decide: [Real stage telemetry (WRC, snow)](#real-stage-telemetry-wrc-snow)); snow's berm is 1.05; a driven fall on gravel stays a
+  depth", "Gravel's sideways level"); snow's is 0.78 of NGP's along the wheel and 0.90 sideways with the soil force held
+  from 10 m/s (2026-11-13, the user's direction, the values ours, not driven by hand yet: [Real stage telemetry (WRC,
+  snow)](#real-stage-telemetry-wrc-snow)); snow's berm is 1.05; a driven fall on gravel stays a
   drive-test switch (`RERBR_TEST_GRAVEL_SPIN`: the real starts give no verdict and no open gravel curve reaches full
   spin); the RWD launch on 116 is NGP's (velocity clear under 0.046 g from rest, free-wheel latch drag 0.086 Fz under 2
   m/s; not the tyre). Wet gravel's locked/ABS 1.89 and circle 0.63 are the test's fixed K, the berm's full lock and the
@@ -3612,7 +3618,7 @@ stays the untuned brush's. The table's model column is the brush before the mode
   level and the whole berm the locked braking is 0.89-0.98 g, above the road cars' 0.47-0.66 g (a lower bound for a
   rally tyre) and inside the 0.8-1.0 g inferred for a WRC car; the tyre's lateral peak 0.83 is above CW's ≲ 0.67 for a
   WRC tyre while the car's 0.663 g is inside CW's 0.6-0.7 g. Gravel's level is lowered since (2026-11-11) and snow's
-  (2026-11-13, a prototype for the user's decision). Also open: the berm's
+  (2026-11-13, the upper end of the WRC cars' snow, on the user's direction). Also open: the berm's
   shape against slip (unpublished), an ABS's own μ-slip on gravel (the scorecard's ABS is ours, K 0.15 from free
   rolling), a spinning tyre's sinkage resistance, and snow's shape (the level rests on the WRC cars since 2026-11-13; the rise with
   slip, the thrust and the berm are open, [Real stage telemetry (WRC, snow)](#real-stage-telemetry-wrc-snow)).
