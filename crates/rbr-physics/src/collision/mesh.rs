@@ -72,13 +72,14 @@ impl Pending {
 /// Writes the leaves under `root` whose boxes overlap the query box at `query` (centre, then half extents) to
 /// `out`, after the leaf count. A leaf is a node that holds faces; a branch node pushes the children whose flag
 /// word is clear and whose boxes overlap the query; the last pushed is walked first. The walk reads only the tree and
-/// the query, so each leaf is written as it is found, and the count last.
+/// the query, so the query is read once, at the first branch, and each leaf is written as it is found, the count last.
 pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u32) {
     let mut pending = Pending::new();
     if root != 0 {
         pending.push(root);
     }
     let mut leaves = 0;
+    let mut query_box = None;
     while let Some(node) = pending.pop() {
         let tree = store.tree_node(node);
         if tree.faces() != 0 {
@@ -89,8 +90,9 @@ pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u
         if tree.link == 0 {
             continue;
         }
+        let (center, extent) = *query_box.get_or_insert_with(|| (store.vec3(query), store.vec3(query + 12)));
         for (child, word) in store.child_pair(tree.link) {
-            if word & 0x20_0000 == 0 && world_axes_overlap(store, child, query, query + 12) != 0 {
+            if word & 0x20_0000 == 0 && overlap::world_axes_overlap(store.sat_box(child), center, extent) {
                 pending.push(child);
             }
         }
