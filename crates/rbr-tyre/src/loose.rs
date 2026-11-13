@@ -33,7 +33,7 @@
 //!   rad): the stiffness is solved for it under the flat friction ([`calibrate`]).
 //! - Snow along the wheel builds its force in two stages ([`SNOW_HELD_LEVEL`]): the tread on the snow, and the snow
 //!   held in the tread shearing on the road's, softer. Two patches side by side, each with its share of the load, so
-//!   the side force alone stays the one patch's.
+//!   the side force alone stays the one patch's. Driving, its level along the wheel is [`SNOW_DRIVING`] of braking's.
 //! - Longitudinal: past the free rolling peak the braking force keeps rising, to [`PLOUGH`] times the peak at lock: the
 //!   material builds up ahead of a locked tyre (a berm) and stops it harder than rolling (NHTSA DOT HS 808 875 /
 //!   SAE 1999-01-1287, 9 cars, 56 km/h, 5 cm crushed limestone: locked over ABS decel 1.25 laden, 1.30 light, per car
@@ -303,6 +303,18 @@ pub fn snow_soil_share(v_lat: f64) -> f64 {
     }
 }
 
+/// Snow's level along the wheel when the slip drives, over its level braking ([`SNOW_LONGITUDINAL`]), on the snow
+/// share. The Arctic's crews of 2021 push 0.55-0.60 g in wheelspin at 45-70 km/h (flat from 15 to 80 % of spin) and
+/// brake at 0.65 g saturated at 60-80 km/h: 0.87; Sweden's of 2017-19 0.51-0.60 against 0.55-0.61, about 1; Finland's
+/// gravel 0.63-0.66 against 0.69. In slides from 15° of sideslip the Arctic's hold 0.79 / 0.75 g accelerating and 0.83
+/// / 0.88 braking at 60-100 / 100-160 km/h (accelerometers). The mechanism (Nakajima, J. Terramechanics 40, 2003, Eqs
+/// 1-4): the snow compressed at the patch's leading edge adds to the braking force and acts against the driving one;
+/// against it one drum (Gießler, KIT 2012, Bild 4-50: unstudded tyres on hard snow, traction 1.12-1.34 of braking). At
+/// 0.85 the i20 Coupe WRC 2020 on RSF 531's material pushes 0.59 g at 22-80 % of spin (0.70 at the braking level) and
+/// starts from 10 to 50 m in 2.34 s (2.19; the crews 2.36). Ours: the value, on the Arctic's crews (the user's target,
+/// 2026-11-13: 5 % over them at most), flat with the spin, and the same in a slide (the friction ellipse takes it).
+pub const SNOW_DRIVING: f64 = 0.85;
+
 /// The share of snow's level the snow held in the tread carries. Along the wheel snow builds its force in two stages,
 /// the tread on the snow and the held snow shearing on the road's, softer: VTI's trailer (BV12) on hard packed snow at
 /// 30 km/h, a Nordic winter tyre's braking fitted as two brushes (Baliga & Hiregoudar, Chalmers MSc 2018:16, Tables
@@ -370,6 +382,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
         ly * grip * (1.0 + (GRAVEL_LATERAL - 1.0) * share + (SNOW_LATERAL - 1.0) * snow),
         lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share + (SNOW_LONGITUDINAL - 1.0) * snow),
     );
+    let mu_x = if driving_slip(vsx, x.vx, vr) > 0.0 { mu_x * (1.0 + (SNOW_DRIVING - 1.0) * snow) } else { mu_x };
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
     if snow > 0.0 && share < 1.0 {
         // Snow's two stages along the wheel: two patches side by side, the tread's and the held snow's, each with its
@@ -749,6 +762,19 @@ pub(crate) mod tests {
         let alpha = 4.0f64.to_radians();
         let (two, one) = (at(0.0, alpha, 1.0, 1.0), at(0.0, alpha, 0.0, SNOW_LATERAL));
         assert!((two.fy / one.fy - 1.0).abs() < 1e-12 && (two.mz / one.mz - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn snow_drives_at_its_share_of_the_braking_level() {
+        let c = loose();
+        // Both slides whole (the held snow's patch too) and short of the berm: the force is the level along the wheel.
+        let at = |spin_over_v: f64, snow: f64| {
+            let free = cal_input(&c.cal, 15.0, 0.0);
+            eval(&EvalInput { spin: spin_over_v * free.spin, ..free }, &c, 0.0, snow, 0.0).fx.abs()
+        };
+        let ratio = |snow: f64| at(2.0, snow) / at(0.5, snow);
+        assert!((ratio(1.0) - SNOW_DRIVING).abs() < 1e-9, "{}", ratio(1.0));
+        assert!((ratio(0.5) - (1.0 + SNOW_DRIVING) / 2.0).abs() < 1e-9 && (ratio(0.0) - 1.0).abs() < 1e-9);
     }
 
     #[test]
