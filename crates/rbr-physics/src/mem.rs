@@ -137,9 +137,10 @@ impl Mem {
         Self::of(Storage::Backend(backend))
     }
 
-    /// Memory kept in `pages`.
+    /// Memory kept in `pages`. Its empty hole is at the top of the address space, so [`outside`]'s first test passes
+    /// for every access but one that ends at the top (which goes to the pages too, as the holder).
     pub fn with_pages(pages: Pages) -> Self {
-        Self::of(Storage::Paged { pages, hole: (0, 0), backend: None })
+        Self::of(Storage::Paged { pages, hole: (u32::MAX, u32::MAX), backend: None })
     }
 
     /// Memory kept by `backend`, whose bytes outside `hole` are those of `pages`: the accesses outside `hole` go to
