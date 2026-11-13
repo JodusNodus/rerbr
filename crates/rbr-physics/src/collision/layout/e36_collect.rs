@@ -37,6 +37,11 @@ pub fn nop() {}
 
 pub use crate::collision::entry::{collect, CollectHost};
 
+/// The collect's transforms through the receiver the body's slot 12 answers: the compose (`ComposeA`, 0x51b4c0) for
+/// the entry's centre and the shapes' positions, and the pair walk (`E43PairWalk::MB560`, 0x51b560) for the axes.
+pub const COMPOSE: u32 = 0x51B4C0;
+pub const PAIR_WALK: u32 = 0x51B560;
+
 /// The collect's frame words at `frame`: the cell query's lo and hi corners and its cells, the box and sphere test
 /// inputs, and in the box's trailing words the three transformed axes and the scaled vectors (x, y, z); and the entry
 /// stack pointers of the transforms, the cell query, the collision pointer and the lengths.
