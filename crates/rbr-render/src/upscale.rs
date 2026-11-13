@@ -23,6 +23,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 /// The upscaling model, 4x: Real-ESRGAN's general WDN v3 (BSD-3), a compact network. On liveries, signs and the
@@ -278,9 +279,12 @@ fn finish(bytes: &[u8], side: u32, max: u32, upscaled: &Path, out: &Path) -> Res
 }
 
 /// Writes the DDS file `bytes` as the cache file `path`, in gzip. Written whole, then renamed, so a stopped load
-/// leaves no part file in its place.
+/// leaves no part file in its place; the part file is this write's own, since two textures of one load, or two loads,
+/// can write the same cache file at once.
 fn write_cached(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let part = path.with_extension("part");
+    static WRITES: AtomicUsize = AtomicUsize::new(0);
+    let write = WRITES.fetch_add(1, Ordering::Relaxed);
+    let part = path.with_extension(format!("part-{}-{write}", std::process::id()));
     let mut gz = flate2::write::GzEncoder::new(File::create(&part)?, flate2::Compression::default());
     gz.write_all(bytes)?;
     gz.finish()?;

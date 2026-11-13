@@ -1615,7 +1615,9 @@ against 79 s, 833 MB at 8192, its livery text as sharp but the smallest line.
 Load-time upscaling (`upscale.rs`, ours): `viewer --upscale-textures DIR` (the launcher's "Textures: upscaled",
 `upscale_textures`; DIR `<player folder>/Upscaler`, filled by the launcher's "Download upscaler…") upscales the
 car's and the stage's textures with Real-ESRGAN General WDN v3 4x (halved for 2048 sources, 4096 at most),
-after the car's dials are made, cached by the source file's SHA-256. Model choice (10 tried): WDN v3 (~4.4 s for a
+after the car's dials are made, cached by the source file's SHA-256 as the DDS file in gzip (`.dds.gz`, 2026-11-13:
+0.41 of the size over 120 files, a 4K Fiat 131 cockpit's 68 textures 1.2 GB to 523 MB, its shot byte-identical; a
+plain `.dds` of an older build is packed when a load reads it; `work-*` folders over a day old are removed). Model choice (10 tried): WDN v3 (~4.4 s for a
 1024 livery) crisper on lettering than UltraSharp and Nomos8kSC (both ~14 s) with the grain kept; animevideov3 and
 digital-art flatten grain, digital-art and x4plus invent letters. ACCENT 7 textures 17.2 s first, 0.2 s cached;
 stage objects ~25 s first; the ground's atlases 8 to 14 s more. Cached, a stage loads in under 1 s more. The
@@ -1638,7 +1640,7 @@ as before (the M3 E30 cockpit, rain and snow ones vary run to run with either bu
 In a frame at least 1800 high (`--size` times the render scale) the in-car view's textures go to 8192, not 4096
 (`upscale::INTERIOR_MAX`, user's call 2026-11-01): at 4K the Fiat 131 Grp4's 4096 dash is about 0.8 texels a pixel,
 at 8192 its gauges and dash fabric are sharp; its 4096 pack base is upscaled 2x (4x, halved). Cached in a folder per
-largest side; about 90 MB of disk per texture, a gauge cockpit's `RGBA8` target about 350 MB of GPU memory. The Fiat's
+largest side; up to 90 MB per texture unpacked, a gauge cockpit's `RGBA8` target about 350 MB of GPU memory. The Fiat's
 first 4K load 128 s (five 8192 interior textures).
 The stage's backdrop textures (those only the sky layer draws, not the clouds) are upscaled too, to 8192 at any frame
 size (`upscale::BACKDROP_MAX`, user's call 2026-11-01): the panorama strips span a whole turn (462 Odry's 4096x512,
