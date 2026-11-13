@@ -140,7 +140,6 @@ impl Form {
                 ui.colored_label(WARN, reason);
             }
         }
-        crate::tyre_tuning::active_note(ui, self.drive_physics(), &self.tyre_tuning);
         ui.add_space(8.0);
         let blocker = self.blocker();
         ui.horizontal(|ui| {

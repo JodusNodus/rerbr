@@ -756,7 +756,6 @@ impl Form {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
         args.extend(self.drive_physics().args(car));
-        args.extend(crate::tyre_tuning::args(self.drive_physics(), &self.tyre_tuning));
         if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
             args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
         }
@@ -1536,7 +1535,7 @@ mod tests {
         let here = crate::test_dir("command-physics");
         // `rerbr --physics` drives over the saved choice for the session; the saved choice stays.
         let brush = Some(PhysicsProfile::ExperimentalBrush);
-        // The brush tyre's tuning goes with it alone.
+        // An older file's `tyre_tuning` is not read: no drive is tuned.
         let tuned = "physics = ngp\ntyre_tuning = gravel=0.9,response=1.5\n";
         for (line, session, wanted) in [
             ("", None, None),
@@ -1554,7 +1553,6 @@ mod tests {
             let mut form = load(&start, Settings::parse(&text)).unwrap();
             form.read_only = true;
             assert_eq!(form.physics == PhysicsProfile::Ngp, !line.starts_with("physics = experimental\n"), "{text}");
-            let tuning = (line == tuned).then(|| "gravel=0.9,response=1.5".to_owned());
             let quick = form.start_args(&mut CrtRand::srand(1234)).unwrap();
             // Only NGP's runs race for the best ghost (`--best-ghost` writes a new best).
             assert_eq!(quick.contains(&"--best-ghost".to_owned()), wanted.is_none(), "{text}: {quick:?}");
@@ -1579,7 +1577,7 @@ mod tests {
                 assert_eq!(value(&args[live..], "--car-group"), group, "{text}: {args:?}");
                 assert_eq!(value(&args[live..], "--car-year"), year, "{text}: {args:?}");
                 assert!(!args[..live].contains(&"--physics".to_owned()), "{args:?}");
-                assert_eq!(value(&args[live..], "--tyre-tuning"), tuning, "{text}: {args:?}");
+                assert!(!args.contains(&"--tyre-tuning".to_owned()), "{text}: {args:?}");
             }
         }
         std::fs::remove_dir_all(&here).unwrap();

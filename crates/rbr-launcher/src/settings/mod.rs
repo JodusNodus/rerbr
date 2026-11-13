@@ -191,8 +191,6 @@ pub struct Settings {
     pub head_gasket: Option<i32>,
     /// The physics (`rbr-standalone --physics`); none for NGP 7's.
     pub physics: Option<PhysicsProfile>,
-    /// The brush tyre's experimental tuning (`crate::tyre_tuning`), when off the model's.
-    pub tyre_tuning: Option<rbr_tyre::Tuning>,
     pub bindings: Bindings,
     pub ffb: ffb::Options,
     /// Each car's own force-feedback sensitivity (`[ffb_cars]`, `rbr_render::ffb::CarSensitivity`): the viewer owns
@@ -506,7 +504,6 @@ impl Settings {
             ngp_dll: launcher.get("ngp_dll"),
             head_gasket: launcher.number("head_gasket").filter(|v| *v >= 1),
             physics: launcher.choice("physics"),
-            tyre_tuning: launcher.get("tyre_tuning").and_then(|v| rbr_tyre::Tuning::parse(&v).ok()),
             bindings: Bindings::parse(text),
             ffb: ffb::Options::parse(text),
             ffb_cars: ffb::CarSensitivity::parse(text),
@@ -584,7 +581,6 @@ impl Settings {
             ("ngp_dll", self.ngp_dll.clone()),
             ("head_gasket", self.head_gasket.map(|v| v.to_string())),
             ("physics", choice(self.physics)),
-            ("tyre_tuning", self.tyre_tuning.map(|t| t.to_string())),
             ("render_scale", self.render_scale.map(|v| v.to_string())),
             ("wet_roads", choice(self.wet_roads)),
             ("detail", choice(self.detail)),
@@ -729,7 +725,6 @@ mod tests {
             ngp_dll: Some("/games/ngp/Plugins/NGP.dll".into()),
             head_gasket: Some(10),
             physics: Some(PhysicsProfile::Experimental),
-            tyre_tuning: Some(rbr_tyre::Tuning { slide_grip: Some(0.8), snow: 1.15, ..rbr_tyre::Tuning::MODEL }),
             bindings: Bindings { input_rate: 500, ..Default::default() },
             ffb: ffb::Options { rate: 500, ..Default::default() },
             ffb_cars: ffb::CarSensitivity {
@@ -985,7 +980,6 @@ mod tests {
                 "ngp_dll = /games/ngp/Plugins/NGP.dll\n",
                 "head_gasket = 10\n",
                 "physics = experimental\n",
-                "tyre_tuning = slide-grip=0.8,snow=1.15\n",
                 "render_scale = 75\n",
                 "wet_roads = low\n",
                 "detail = ultra\n",

@@ -180,12 +180,10 @@ impl Form {
                 };
                 let options = RaceOptions { weather: Preset::Random, damage, ..self.options };
                 let chosen = std::mem::replace(&mut self.tyre, TyreChoice::Fixed(tyre));
-                // A championship stage or trial runs the brush tyre untuned.
-                let tuning = std::mem::take(&mut self.tyre_tuning);
                 if let Some(args) = self.launch_args(stage, options, weather, extra, clock_args(Some(minutes))) {
                     self.spawn(args);
                 }
-                (self.tyre, self.tyre_tuning) = (chosen, tuning);
+                self.tyre = chosen;
             }
             Err(e) => self.status = e,
         }
