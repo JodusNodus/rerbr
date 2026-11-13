@@ -3,7 +3,7 @@
 //! small tyre calls (the tail getters, the noise signal).
 
 use crate::math::vec::Vec4;
-use crate::mem::Mem;
+use crate::mem::{Block, Mem};
 
 use super::{
     ContactAxes, ContactFrame, Indentation, DEF, DEF_CARCASS_RADIUS, DEF_CARCASS_STIFFNESS_LATERAL,
@@ -186,20 +186,22 @@ impl TyreStore for Mem {
     fn load_frame(&self, this: u32) -> Frame {
         let state = self.u32(this + STATE);
         let def = self.u32(this + DEF);
-        let record = self.u32(this + 0x410);
-        let wear = self.u32(this + 0x414);
-        let f = |off: u32| self.f32(this + off);
+        // The scratch words 0x160..0x510, the state words 0x0C..0x138 and the setup words 0x1C..0x314, each read at once.
+        let s = Block::<{ (0x510 - 0x160) / 4 }>::read(self, this + 0x160);
+        let record = s.u32(this + 0x410);
+        let wear = s.u32(this + 0x414);
+        let f = |off: u32| s.f32(this + off);
         let scratch = Scratch {
-            contact_point: Vec4::load(self, this + 0x160),
+            contact_point: s.vec4(this + 0x160),
             contact_frame: ContactFrame {
-                lateral: Vec4::load(self, this + SLIP_MATRIX),
-                rolling: Vec4::load(self, this + SLIP_MATRIX + 0x10),
-                normal: Vec4::load(self, this + SLIP_MATRIX + 0x20),
+                lateral: s.vec4(this + SLIP_MATRIX),
+                rolling: s.vec4(this + SLIP_MATRIX + 0x10),
+                normal: s.vec4(this + SLIP_MATRIX + 0x20),
             },
-            material: self.load_material(this + 0x1A0),
-            static_friction_dirty: self.u32(this + 0x1E4),
+            material: std::array::from_fn(|i| s.u32(this + 0x1A0 + 4 * WORDS[i])),
+            static_friction_dirty: s.u32(this + 0x1E4),
             static_friction: f(0x1E8),
-            kinetic_friction_dirty: self.u32(this + 0x1F4),
+            kinetic_friction_dirty: s.u32(this + 0x1F4),
             kinetic_friction: f(0x1F8),
             static_friction_soil: f(0x208),
             kinetic_friction_soil: f(0x218),
@@ -217,7 +219,7 @@ impl TyreStore for Mem {
             tread_force: f(0x31C),
             total_force_ratio: f(0x324),
             tread_force_share: f(0x328),
-            indentation: Indentation::from_words(self.f32s(this + 0x32C)),
+            indentation: Indentation::from_words(s.f32s(this + 0x32C)),
             soil_drag: f(0x348),
             lateral_soil_force: f(0x34C),
             longitudinal_soil_force: f(0x350),
@@ -226,7 +228,7 @@ impl TyreStore for Mem {
             soil_flow_opposed: f(0x35C),
             speed: f(SPEED),
             speed_sq: f(SPEED_SQ),
-            contact_velocity: self.f32s(this + SLIP_X),
+            contact_velocity: s.f32s(this + SLIP_X),
             long_slip_velocity: f(LONG_CONTACT_VEL),
             spin: f(SPIN),
             spin_slip: f(SLIP_RATIO_TERM),
@@ -246,7 +248,7 @@ impl TyreStore for Mem {
             stiffness_factor: f(0x3B4),
             pneumatic_trail: f(0x3B8),
             tread_remaining: f(0x3BC),
-            sector: self.u32(this + 0x3C0),
+            sector: s.u32(this + 0x3C0),
             wet_term: f(0x3C4),
             rolling_torque: f(0x3C8),
             extra_force: f(0x3CC),
@@ -266,18 +268,18 @@ impl TyreStore for Mem {
             abrasion_rate: f(0x404),
             contact_angle: self.f32(record + 0x5AC),
             wear: self.f32s(wear),
-            signal: std::array::from_fn(|k| self.u32(this + 0x420 + 4 * k as u32)),
-            in_contact: self.u32(this + 0x480),
-            sector_copy: self.u32(this + 0x484),
-            contact_point_copy: Vec4::load(self, this + 0x490),
-            motion_copy: Vec4::load(self, this + 0x4A0),
-            soil_flow_copy: self.u32(this + 0x4B0),
-            long_slip_velocity_copy: self.u32(this + 0x4B4),
-            longitudinal_velocity_copy: self.u32(this + 0x4B8),
+            signal: std::array::from_fn(|k| s.u32(this + 0x420 + 4 * k as u32)),
+            in_contact: s.u32(this + 0x480),
+            sector_copy: s.u32(this + 0x484),
+            contact_point_copy: s.vec4(this + 0x490),
+            motion_copy: s.vec4(this + 0x4A0),
+            soil_flow_copy: s.u32(this + 0x4B0),
+            long_slip_velocity_copy: s.u32(this + 0x4B4),
+            longitudinal_velocity_copy: s.u32(this + 0x4B8),
             temperature_grip: f(0x4BC),
             lateral_friction_force: f(0x4C0),
             longitudinal_friction_force: f(0x4C4),
-            debug_words: std::array::from_fn(|k| self.u32(this + 0x4C8 + 4 * k as u32)),
+            debug_words: std::array::from_fn(|k| s.u32(this + 0x4C8 + 4 * k as u32)),
             surface_heat_loss: f(0x4E0),
             frictional_power: f(0x4E4),
             wet_damping: f(0x4EC),
@@ -286,16 +288,18 @@ impl TyreStore for Mem {
             smoothed_drag_weight: f(0x508),
             smoothed_furrow_ratio: f(0x50C),
         };
-        let st = |off: u32| self.f32(state + off);
-        let entry = |k: u32, word: u32| self.f32(state + 0xD0 + 12 * k + 4 * word);
+        let t = Block::<{ (0x138 - 0x0C) / 4 }>::read(self, state + 0x0C);
+        let st = |off: u32| t.f32(state + off);
+        let entry = |k: u32, word: u32| t.f32(state + 0xD0 + 12 * k + 4 * word);
+        let segment = |at: u32| Segment { lo: t.u32(at), hi: t.u32(at + 4), frac: t.f32(at + 8) };
         let surface_temperature = std::array::from_fn(|k| entry(k as u32, 0));
         // The entries' second and third words in order; the last third word is the tread temperature.
         let sector_spare = std::array::from_fn(|i| entry(i as u32 / 2, 1 + i as u32 % 2));
         let state_words = StateWords {
-            active: self.u32(state + 0x0C),
-            started_dirty: self.u32(state + 0x28),
-            started: self.u32(state + 0x2C),
-            last_point: Vec4::load(self, state + 0x30),
+            active: t.u32(state + 0x0C),
+            started_dirty: t.u32(state + 0x28),
+            started: t.u32(state + 0x2C),
+            last_point: t.vec4(state + 0x30),
             lateral_deflection: st(0x40),
             torsion_angle: st(0x44),
             penetration_depth: st(0x48),
@@ -303,56 +307,62 @@ impl TyreStore for Mem {
             vertical_stiffness: st(0x50),
             tread_elasticity: st(0x54),
             tread_coverage: st(STATE_LERP_WEIGHT),
-            grip_clamped: self.u32(state + 0x5C),
+            grip_clamped: t.u32(state + 0x5C),
             air_pressure: st(0x68),
-            tread_engaged: self.u32(state + 0x70),
-            carcass_engaged: self.u32(state + 0x74),
-            hold_direction: Vec4::load(self, state + 0x80),
-            pressure_segment: self.load_segment(state + 0x90),
-            load_segment: self.load_segment(state + 0x9C),
-            surface_temperature_segment: self.load_segment(state + 0xA8),
-            tread_temperature_segment: self.load_segment(state + 0xB4),
-            contact_pressure_segment: self.load_segment(state + 0xC0),
+            tread_engaged: t.u32(state + 0x70),
+            carcass_engaged: t.u32(state + 0x74),
+            hold_direction: t.vec4(state + 0x80),
+            pressure_segment: segment(state + 0x90),
+            load_segment: segment(state + 0x9C),
+            surface_temperature_segment: segment(state + 0xA8),
+            tread_temperature_segment: segment(state + 0xB4),
+            contact_pressure_segment: segment(state + 0xC0),
             surface_temperature,
             sector_spare,
             tread_temperature: entry(7, 2),
             carcass_temperature: st(0x130),
-            sector: self.u32(state + 0x134),
+            sector: t.u32(state + 0x134),
+        };
+        let d = Block::<{ (0x314 - DEF_DEBUG_ID as usize) / 4 }>::read(self, def + DEF_DEBUG_ID);
+        let table = |at: u32, len: usize| Table {
+            below: d.f32(at - 4),
+            len,
+            entries: std::array::from_fn(|k| if k < len { d.f32(at + 4 * k as u32) } else { 0.0 }),
         };
         let setup = Setup {
-            debug_id: self.u32(def + DEF_DEBUG_ID),
-            pressure_ratio: self.f32(def + 0x2C),
-            reference_friction: self.f32(def + DEF_REFERENCE_FRICTION),
-            carcass_stiffness_lateral: self.f32(def + DEF_CARCASS_STIFFNESS_LATERAL),
-            carcass_stiffness_torsional: self.f32(def + DEF_CARCASS_STIFFNESS_TORSIONAL),
-            carcass_radius: self.f32(def + DEF_CARCASS_RADIUS),
-            tread_depth: self.f32(def + DEF_TREAD_DEPTH),
-            carcass_thickness: self.f32(def + 0x9C),
-            tread_width: self.f32(def + DEF_TREAD_WIDTH),
-            tread_coverage: self.f32(def + DEF_TREAD_COVERAGE),
-            carcass_width: self.f32(def + DEF_CARCASS_WIDTH),
-            sidewall_height: self.f32(def + 0xEC),
-            wet_wear_factor: self.f32(def + 0x310),
-            inclination_heat_scale: self.f32(def + 0x10C),
-            surface_capacity: self.f32s(def + 0x110),
-            tread_capacity: self.f32s(def + 0x11C),
-            carcass_capacity: self.f32s(def + 0x128),
-            tread_conductivity: self.f32(def + 0x118),
-            carcass_conductivity: self.f32(def + 0x124),
-            pressure_axis: self.read_table(def + 0x134, 4),
-            stiffness_factor_by_pressure: self.read_table(def + 0x144, 4),
-            contact_pressure_axis: self.read_table(def + 0x154, 6),
-            contact_conductance: self.read_table(def + 0x16C, 6),
-            temperature_axis: self.read_table(def + 0x184, 8),
-            rubber_friction_by_temperature: self.read_table(def + 0x1A4, 8),
-            rubber_wear_by_temperature: self.read_table(def + 0x1C4, 8),
-            load_axis: self.read_table(def + 0x1E4, 8),
-            cornering_stiffness_by_load: self.read_table(def + 0x204, 8),
-            traction_stiffness_by_load: self.read_table(def + 0x224, 8),
-            cornering_friction_by_load: self.read_table(def + 0x244, 8),
-            traction_friction_by_load: self.read_table(def + 0x264, 8),
-            cornering_peak_slip_by_load: self.read_table(def + 0x284, 8),
-            traction_peak_slip_by_load: self.read_table(def + 0x2A4, 8),
+            debug_id: d.u32(def + DEF_DEBUG_ID),
+            pressure_ratio: d.f32(def + 0x2C),
+            reference_friction: d.f32(def + DEF_REFERENCE_FRICTION),
+            carcass_stiffness_lateral: d.f32(def + DEF_CARCASS_STIFFNESS_LATERAL),
+            carcass_stiffness_torsional: d.f32(def + DEF_CARCASS_STIFFNESS_TORSIONAL),
+            carcass_radius: d.f32(def + DEF_CARCASS_RADIUS),
+            tread_depth: d.f32(def + DEF_TREAD_DEPTH),
+            carcass_thickness: d.f32(def + 0x9C),
+            tread_width: d.f32(def + DEF_TREAD_WIDTH),
+            tread_coverage: d.f32(def + DEF_TREAD_COVERAGE),
+            carcass_width: d.f32(def + DEF_CARCASS_WIDTH),
+            sidewall_height: d.f32(def + 0xEC),
+            wet_wear_factor: d.f32(def + 0x310),
+            inclination_heat_scale: d.f32(def + 0x10C),
+            surface_capacity: d.f32s(def + 0x110),
+            tread_capacity: d.f32s(def + 0x11C),
+            carcass_capacity: d.f32s(def + 0x128),
+            tread_conductivity: d.f32(def + 0x118),
+            carcass_conductivity: d.f32(def + 0x124),
+            pressure_axis: table(def + 0x134, 4),
+            stiffness_factor_by_pressure: table(def + 0x144, 4),
+            contact_pressure_axis: table(def + 0x154, 6),
+            contact_conductance: table(def + 0x16C, 6),
+            temperature_axis: table(def + 0x184, 8),
+            rubber_friction_by_temperature: table(def + 0x1A4, 8),
+            rubber_wear_by_temperature: table(def + 0x1C4, 8),
+            load_axis: table(def + 0x1E4, 8),
+            cornering_stiffness_by_load: table(def + 0x204, 8),
+            traction_stiffness_by_load: table(def + 0x224, 8),
+            cornering_friction_by_load: table(def + 0x244, 8),
+            traction_friction_by_load: table(def + 0x264, 8),
+            cornering_peak_slip_by_load: table(def + 0x284, 8),
+            traction_peak_slip_by_load: table(def + 0x2A4, 8),
         };
         Frame { scratch, state: state_words, setup }
     }

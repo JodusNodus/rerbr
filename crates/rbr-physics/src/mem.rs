@@ -433,6 +433,40 @@ impl Mem {
     }
 }
 
+/// `N` words read at once from `base` ([`Mem::u32s`]), then read by address inside them as [`Mem::u32`] would.
+pub struct Block<const N: usize> {
+    base: u32,
+    words: [u32; N],
+}
+
+impl<const N: usize> Block<N> {
+    #[inline]
+    pub fn read(mem: &Mem, base: u32) -> Self {
+        Self { base, words: mem.u32s(base) }
+    }
+
+    #[inline]
+    pub fn u32(&self, at: u32) -> u32 {
+        self.words[((at - self.base) / 4) as usize]
+    }
+
+    #[inline]
+    pub fn f32(&self, at: u32) -> f32 {
+        f32::from_bits(self.u32(at))
+    }
+
+    #[inline]
+    pub fn f32s<const M: usize>(&self, at: u32) -> [f32; M] {
+        std::array::from_fn(|k| self.f32(at + 4 * k as u32))
+    }
+
+    #[inline]
+    pub fn vec4(&self, at: u32) -> Vec4 {
+        let [x, y, z, w] = self.f32s(at);
+        Vec4 { x, y, z, w }
+    }
+}
+
 /// A vector as the game stores it: consecutive f32 lanes from `at`.
 impl Vec3 {
     #[inline]
