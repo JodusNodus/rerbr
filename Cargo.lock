@@ -2369,6 +2369,7 @@ dependencies = [
  "bytemuck",
  "egui",
  "egui-wgpu",
+ "flate2",
  "futures-executor",
  "glam",
  "hound",
