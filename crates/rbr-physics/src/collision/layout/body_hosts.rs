@@ -6,6 +6,11 @@ pub trait CornerHost {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32;
 }
 
+/// Where `CBody::VfCC` (`aabb_pretest`) fetches its two corners in the scratch at `scratch`: the first, then the second.
+pub(in crate::collision) fn pretest_corners(scratch: u32) -> [u32; 2] {
+    [scratch, scratch + 0x10]
+}
+
 /// Calls outside CBody::Vf40 (0x4e1120): its E33 state reset and E43 base walk. The host owns the memory it touches.
 pub trait BodyResetHost {
     /// `CBody::CState::Unk44` (0x4e33e0) on the state at `state`.
