@@ -783,6 +783,10 @@ impl CollisionStore for Mem {
         wall + WALL_LEAVES
     }
 
+    fn manager_wall(&self, manager: u32) -> u32 {
+        self.u32(manager + 4)
+    }
+
     fn wall_mesh(&self, wall: u32) -> u32 {
         self.u32(wall + WALL_MESH)
     }

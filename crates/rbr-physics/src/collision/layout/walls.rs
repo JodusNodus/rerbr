@@ -46,3 +46,44 @@ pub fn brake_wall_vf_f0(host: &mut impl WallSegmentHost, mem: &mut Mem, this: u3
     }
     1
 }
+
+/// `CBrakeWall::QueryBox`'s frame (`query_wall_box`, entered at `sp`): the fetched corner and the queried box, and the
+/// entry stack pointers of the frame lookup, the fetches and the box query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WallBoxFrame {
+    pub corner: u32,
+    pub bounds: u32,
+    pub frame_sp: u32,
+    pub fetch_sp: u32,
+    pub query_sp: u32,
+}
+
+pub fn wall_box_frame(sp: u32) -> WallBoxFrame {
+    let base = super::aligned(sp) - 0x30;
+    WallBoxFrame {
+        corner: base + 0x20,
+        bounds: base + 0x10,
+        frame_sp: base - 4,
+        fetch_sp: base - 0xc,
+        query_sp: base - 0xc,
+    }
+}
+
+/// The segment test's frame (`wall_segment_hit`, entered at `sp`): the two fetched ends, and the fetches' entry stack
+/// pointer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WallEndsFrame {
+    pub first: u32,
+    pub second: u32,
+    pub fetch_sp: u32,
+}
+
+pub fn wall_ends_frame(sp: u32) -> WallEndsFrame {
+    let base = super::aligned(sp) - 0x80;
+    WallEndsFrame { first: base + 0x60, second: base + 0x70, fetch_sp: base - 0xc }
+}
+
+/// The raycast's leaf list in the probe's caller's frame, below the probe's point buffer `tmp`.
+pub fn probe_hits(tmp: u32) -> u32 {
+    tmp - 0x1a0
+}

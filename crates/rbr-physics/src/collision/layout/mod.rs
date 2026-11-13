@@ -45,6 +45,7 @@ pub use col_grids::{
     alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, load_col_grid, load_mesh_desc, sample_a,
     sample_b, select_table, store_col_grid, store_samples, sync_grid, ColGrid, GridSyncHost,
 };
+pub(in crate::collision) use e36_box::{obb_input_extents, sphere_input_radius};
 pub use e36_box::{shape_axis, shape_extent, E36Box, E36Contact};
 pub use events::{
     apply_event_impulse, init_full, make_event_at, make_event_frame, make_event_payload, prefill_pool,
@@ -75,6 +76,7 @@ pub use vec_ops::{
     Vec4Pair,
 };
 pub use walls::{brake_wall_vf_f0, query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
+pub(in crate::collision) use walls::{probe_hits, wall_box_frame, wall_ends_frame};
 
 /// The 16-aligned frame base of a function entered at `sp` (`push ebp; mov ebp, esp; and esp, -0x10`).
 fn aligned(sp: u32) -> u32 {

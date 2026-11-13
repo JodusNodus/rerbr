@@ -203,6 +203,8 @@ pub trait CollisionStore: Raw {
     /// The collector the box query fills (the wall's leaf list).
     fn wall_leaves(&self, wall: u32) -> u32;
     fn wall_mesh(&self, wall: u32) -> u32;
+    /// The wall manager's wall (0 without one).
+    fn manager_wall(&self, manager: u32) -> u32;
     /// The four vertices of segment record `index`.
     fn wall_segment(&self, mesh: u32, index: u32) -> [[f32; 2]; 4];
     /// A leaf's segment count, and the index word of its segment `j`.

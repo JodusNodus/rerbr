@@ -2,6 +2,7 @@
 //! `brake_wall`; the hosts are in `layout/wall_tree.rs`.
 
 use super::brake_wall::{self, segment_hit, SegmentHit};
+use super::layout;
 use super::layout::wall_tree::{RaycastCalls, WallEndsHost, WallQueryHost};
 use super::store::CollisionStore;
 
@@ -111,15 +112,14 @@ pub fn query_wall_box<S: CollisionStore>(
     this: u32,
     a: u32,
     b: u32,
-    entry: u32,
+    sp: u32,
 ) -> u32 {
-    let frame_at = ((entry - 4) & !0xf) - 0x30;
-    let corner_at = frame_at + 0x20;
-    let bounds_at = frame_at + 0x10;
+    let f = layout::wall_box_frame(sp);
+    let (corner_at, bounds_at) = (f.corner, f.bounds);
     let mut corners = [[0.0; 2]; 2];
     for (corner, matrix) in corners.iter_mut().zip([a, b]) {
-        let frame = host.frame(frame_at - 4, this);
-        host.fetch_x(frame_at - 0xc, matrix, corner_at, frame);
+        let frame = host.frame(f.frame_sp, this);
+        host.fetch_x(f.fetch_sp, matrix, corner_at, frame);
         *corner = [store.f32(corner_at), store.f32(corner_at + 4)];
     }
     let bounds = brake_wall::corners_box(corners[0], corners[1]);
@@ -130,7 +130,7 @@ pub fn query_wall_box<S: CollisionStore>(
         return 0;
     }
     let collector = store.wall_leaves(this);
-    u32::from(host.query_box(frame_at - 0xc, this, bounds_at, collector) != 0)
+    u32::from(host.query_box(f.query_sp, this, bounds_at, collector) != 0)
 }
 
 /// The first leaf segment (in the query's order) whose record the point is inside of: the index word and the hit.
@@ -188,15 +188,15 @@ pub fn wall_segment_hit<S: CollisionStore>(
     store: &mut S,
     this: u32,
     [a, b, _c, out, flag]: [u32; 5],
-    entry: u32,
+    sp: u32,
 ) -> u32 {
     if out == 0 || flag == 0 {
         return 0;
     }
-    let frame = ((entry - 4) & !0xf) - 0x80;
-    let (first, second) = (frame + 0x60, frame + 0x70);
-    host.fetch_x(frame - 0xc, a, first, store.frame_root());
-    host.fetch_x(frame - 0xc, b, second, store.frame_root());
+    let frame = layout::wall_ends_frame(sp);
+    let (first, second) = (frame.first, frame.second);
+    host.fetch_x(frame.fetch_sp, a, first, store.frame_root());
+    host.fetch_x(frame.fetch_sp, b, second, store.frame_root());
     let point = |at: u32| [store.f32(at), store.f32(at + 4), store.f32(at + 8)];
     let (p0, p1) = (point(first), point(second));
     let Some(d) = brake_wall::sweep(p0, p1) else {
@@ -233,11 +233,11 @@ pub fn wall_probe<S: CollisionStore>(
     tmp: u32,
 ) -> u32 {
     let (x, y) = (store.u32(point), store.u32(point + 4));
-    let wall = store.u32(manager + 4);
+    let wall = store.manager_wall(manager);
     store.set_u32(tmp, x);
     store.set_u32(tmp + 4, y);
     if wall == 0 {
         return 0;
     }
-    wall_raycast(calls, store, wall, tmp, out, tmp - 0x1a0)
+    wall_raycast(calls, store, wall, tmp, out, layout::probe_hits(tmp))
 }
