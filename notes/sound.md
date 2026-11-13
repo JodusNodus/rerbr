@@ -169,7 +169,15 @@ Mechanics in `tyre.rs` (loops, rumble, gravel hits, rattles, software path, low-
   4 dB lower). Gravel and snow keep theirs. No open recording of a low sideways scrub without a squeal on top was
   found. Stones tried and dropped the same day (user: keep the retail `IMPACT::GRUS`; pebbles on a metal box, branch
   `sound/stones`). Not judged by ear yet.
-- Skid fade and squeal (ours, 2026-11-13, on trial; `tyre::SKID_FADE`, `SQUEAL_*`): 1.02 swaps a wheel's rolling
+- Surface shares (ours, 2026-11-13): `M7ea0` plays a surface's two voices both at the first material's share, so a
+  one-material surface doubles its loop and a mixed one loses it: snow stages run on mixed surfaces (RSF 615: 117,
+  snow 0.375 and gravel 0.625, 74 % of the wheel steps; 103, snow 0.875, 23 %), gravel and tarmac stages on
+  one-material ones (99 % on RSF 367 and 1654149). The snow tyre layer sat 6-7 dB under gravel's and tarmac's
+  (median -24.5 against -18.5 dBFS, tyres alone, at 25-35 m/s). Ours: each voice at its own share, the mixer's
+  `TYRE_TRIM` doubled, so one-material surfaces keep their level exactly and a mixed surface's two loops the same
+  power: snow +7 dB (now -18), gravel and tarmac median 0.0 dB (the loops' phase moves after a mixed patch). The
+  retail snow rolling loop is a low rumble (centroid 200 Hz, 72 % under 250 Hz, 4 dB under gravel's A-weighted at
+  the same RMS); the open recordings of cars on snow found (Freesound CC0) are street passes with the engine on top. `tyre::SKID_FADE`, `SQUEAL_*`): 1.02 swaps a wheel's rolling
   loops for the skid loops once the grip word (`0.75 * slip phase + 0.5`, NGP's phase 1 at the friction peak, 2
   sliding) passes the threshold (1 under NGP: two thirds of the way to the peak). Ours fades the skid loops in from
   half way to the peak (0.875) to the peak (1.25). On tarmac the rolling loop plays on and the squeal's volume is the

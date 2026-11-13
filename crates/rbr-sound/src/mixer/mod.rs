@@ -79,9 +79,12 @@ pub(crate) const GAIN_TIME: f32 = 0.01;
 const SURFACE_RMS: f32 = 0.251 * FULL_SCALE;
 /// The tyre loops' gain is the model's to this power (ours): the level model triples a wheel's gain from tarmac to
 /// gravel (+9 dB at once on the Lancer drive leaving the road); the curve halves that in dB, and [`TYRE_TRIM`] (-5 dB)
-/// puts the tarmac roll back about where it was and full gravel under the engine instead of 5 dB over it.
+/// puts the tarmac roll back about where it was and full gravel under the engine instead of 5 dB over it. The 2: a
+/// surface's two voices play at their own shares (`tyre::Tyres::step`), where 1.02 plays both at the first's and so
+/// doubles a one-material surface's loop; the 2 keeps that level exactly, and a mixed surface's two loops come to the
+/// same power.
 const TYRE_CURVE: f32 = 0.5;
-const TYRE_TRIM: f32 = 0.56;
+const TYRE_TRIM: f32 = 2.0 * 0.56;
 /// The share of the way to a new tyre pitch one step's command moves ([`TYRE_TIME`] over 7 ms steps).
 const TYRE_PITCH_STEP: f32 = 0.07;
 /// Time constant of the tyre loops' and the rumble's gain moves and of the tyre pitch, seconds (ours): a change of
