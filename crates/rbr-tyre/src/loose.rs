@@ -28,10 +28,9 @@
 //!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
 //!   [`GRAVEL_CLASS`], `Gravel_*`), by their share in the wheel's material blend ([`class_share`]).
 //! - Shape, snow and the other soils: the brush's patch with a flat friction: the brush's peak is the level times Fz
-//!   exactly. Packed
-//!   snow rises faster (Coutermarsh Fig. 8: 90 % by 7-9°; α0 3.6° at a slope NGP's level doubles) and the brush at
-//!   NGP's slope gives it (α90 9°). The cornering slope stays NGP's (about twice that road tyre's 3-5 per rad): the
-//!   stiffness is solved for it under the flat friction ([`calibrate`]).
+//!   exactly. Packed snow rises faster (Coutermarsh Fig. 8: 90 % by 7-9°; α0 3.6° at a slope NGP's level doubles) and
+//!   the brush at NGP's slope gives it (α90 9°). The cornering slope stays NGP's (about twice that road tyre's 3-5 per
+//!   rad): the stiffness is solved for it under the flat friction ([`calibrate`]).
 //! - Longitudinal: past the free rolling peak the braking force keeps rising, to [`PLOUGH`] times the peak at lock: the
 //!   material builds up ahead of a locked tyre (a berm) and stops it harder than rolling (NHTSA DOT HS 808 875 /
 //!   SAE 1999-01-1287, 9 cars, 56 km/h, 5 cm crushed limestone: locked over ABS decel 1.25 laden, 1.30 light, per car
@@ -258,12 +257,12 @@ pub fn gravel_soil_share(v_lat: f64) -> f64 {
     }
 }
 
-/// Snow's level along the wheel over NGP's, on the snow share of the soil ([`class_share`]). On the material of
-/// RSF 531 Aittajarvi (117, SnowOnIce_Shallow) the i20 Coupe WRC 2020 brakes at a slip of 0.3 with 1.07 / 1.00 / 0.96 g
-/// over 130-100 / 100-70 / 70-40 km/h at NGP's level, where the 2017-21 World Rally Cars of Arctic Rally Finland 2021,
-/// the grippiest of the four snow rallies of 2017-21 (Sweden 2017-18 read 6-7 % under it, 2019 level with it; 2020 ran
-/// on frozen gravel), give 0.79-0.82 / 0.73 / 0.67 (their tyres' force with the wheels 22 % or more under the car, plus the drag of 1.74
-/// m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). With this 0.82 / 0.76 / 0.72
+/// Snow's level along the wheel over NGP's, on the snow share of the soil ([`class_share`]). On the material of RSF 531
+/// Aittajarvi (117, SnowOnIce_Shallow) the i20 Coupe WRC 2020 brakes at a slip of 0.3 with 1.07 / 1.00 / 0.96 g over
+/// 130-100 / 100-70 / 70-40 km/h at NGP's level, where the 2017-21 World Rally Cars of Arctic Rally Finland 2021, the
+/// grippiest of the four snow rallies of 2017-21 (Sweden 2017-18 read 6-7 % under it, 2019 level with it; 2020 ran on
+/// frozen gravel), give 0.79-0.82 / 0.73 / 0.67 (their tyres' force with the wheels 22 % or more under the car, plus
+/// the drag of 1.74 m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). With this 0.82 / 0.76 / 0.72
 /// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
 pub const SNOW_LONGITUDINAL: f64 = 0.75;
 
@@ -277,9 +276,9 @@ pub const SNOW_LONGITUDINAL: f64 = 0.75;
 pub const SNOW_LATERAL: f64 = 0.85;
 
 /// The sideways speed of the contact point above which NGP's soil lateral force stops growing on snow, m/s
-/// ([`snow_soil_share`]), gravel's ([`GRAVEL_SOIL_SPEED`]): with the whole force the i20 at 0.75 of NGP's level on
-/// both axes still held 0.91 / 0.96 g in a slide, and the real cars' whole g does not rise with the sideslip (the
-/// Arctic's accelerometers 0.81 / 0.82 / 0.80 / 0.86 from 5 / 15 / 20 / 30 deg at 60-100 km/h). From 6 m/s, at 0.75 across the
+/// ([`snow_soil_share`]), gravel's ([`GRAVEL_SOIL_SPEED`]): with the whole force the i20 at 0.75 of NGP's level on both
+/// axes still held 0.91 / 0.96 g in a slide, and the real cars' whole g does not rise with the sideslip (the Arctic's
+/// accelerometers 0.81 / 0.82 / 0.80 / 0.86 from 5 / 15 / 20 / 30 deg at 60-100 km/h). From 6 m/s, at 0.75 across the
 /// wheel, 0.74.
 pub const SNOW_SOIL_SPEED: f64 = 10.0;
 
@@ -323,8 +322,9 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_de
 
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
 /// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]) at the loose layer's
-/// `depth` (m); the rest takes the brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is
-/// [`PLOUGH`], on the gravel share times [`gravel_berm`]. `mu` is the directional friction including the berm (the force's limit).
+/// `depth` (m); the rest takes the brush's. `snow` is the share at snow's levels ([`SNOW_LONGITUDINAL`],
+/// [`SNOW_LATERAL`]) whose berm is [`SNOW_PLOUGH`]; the rest's is [`PLOUGH`], on the gravel share times
+/// [`gravel_berm`]. `mu` is the directional friction including the berm (the force's limit).
 pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);
