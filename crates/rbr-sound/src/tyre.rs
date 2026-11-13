@@ -4,7 +4,9 @@
 //!
 //! Each wheel has two surface voices playing the `TIRE::SURFACES` loops of the surface's two materials (gravel,
 //! tarmac or snow; the skid loop of each above a grip maximum of 1.25), at one pitch from the surface table. A level
-//! from the slip, the tyre factor and the speed sets their volume, split between the two by the table's share.
+//! from the slip, the tyre factor and the speed sets their volume, split between the two by the table's share. Ours:
+//! the skid loops fade in instead ([`SKID_FADE`]), the tarmac one (the squeal) over the rolling loop by the sliding
+//! power ([`SQUEAL_POWER`]), the loose ones in place of theirs at 1.02's level.
 //! The third and fourth voices of a wheel are the rumble under the car (`M6750` 0x4d6750, in the car only, off a
 //! surface whose first material is tarmac) and the wetness (`TIRE::SURFACES SkidWater` at the `CSigTireParticles`
 //! splash that `M6560` 0x4d6560 keeps). Per frame, `M7330` (0x4d7330) plays the gravel hits (`IMPACT::GRUS`) off
@@ -41,8 +43,8 @@ const SECOND_SURFACE: usize = 0x15;
 const SECOND_SHARE: usize = 0x16;
 const CONTACT: usize = 0x17;
 
-/// A grip maximum above this plays the skid loops; at 2 (0x72ad94) its share of the level is full, and from here it
-/// rises by 4/3 (0x737488) per unit. Below it the share is 0.5 on a surface whose first material is tarmac (0x795e18)
+/// A grip maximum above this plays the skid loops in 1.02 (ours: [`SKID_FADE`]); at 2 (0x72ad94) its share of the
+/// level is full, and from here it rises by 4/3 (0x737488) per unit. Below it the share is 0.5 on a surface whose first material is tarmac (0x795e18)
 /// and 0 on the others. NGP's patch of `M5fd0` (0x4d6197, 0x4d62a2) reads the threshold from NGP.dll (`10173478` on a
 /// tarmac-first surface, `1017347c` on the others) instead of the exe's 1.25 (0x7344d8): NGP's settings
 /// `tarmacSkidSoundThreshold` and `skidSoundThreshold` in percent (10 to 200), whose default 100 is 1 (both 1 in every
@@ -51,6 +53,19 @@ const SKID: f32 = 1.0;
 const SKID_FULL: f32 = 2.0;
 const SKID_RISE: f32 = 1.333_333_4;
 const TARMAC_REST: f32 = 0.5;
+/// Ours (`notes/sound.md` "Tyres and surfaces"): the skid loops fade in with the grip word, `0.75 * phase + 0.5`
+/// (`rbr_physics::tyre::noise_signal`; NGP's slip phase, 1 at the friction peak, 2 sliding), from half way to the
+/// peak to the peak, instead of 1.02's switch at [`SKID`] (two thirds of the way), as more of the contact patch slides.
+const SKID_FADE: [f32; 2] = [0.875, 1.25];
+/// Ours: the squeal's volume is the power the sliding rubber dissipates, the normal force (word 5, N) times a slide
+/// speed: the contact's speed (word 9; near the peak the lateral slide is a share of it, folded in here) plus the spin
+/// slip (word 8, rad/s) times a nominal radius. Full at [`SQUEAL_POWER`] W, the 90th percentile while squealing on an
+/// NGP tarmac drive (RSF 1654149, median a third of it). The mixer takes the square root, so the squeal's level in dB
+/// follows the power's. The rolling loop plays on under it.
+const SQUEAL_POWER: f32 = 150_000.0;
+const SQUEAL_RADIUS: f32 = 0.315;
+/// Ours: past the peak the squeal's pitch falls to this factor at a full slide, the rougher scrub of the whole patch.
+const SQUEAL_SLIDE_PITCH: f32 = 0.9;
 /// The tyre factor's share: full above 5000 (0x731054), else times 0.0002 (0x73748c).
 const FACTOR_FULL: f32 = 5000.0;
 const FACTOR_SCALE: f32 = 0.0002;
@@ -191,10 +206,19 @@ pub(crate) fn distance(sig: &[u32; 24], at: [f32; 3]) -> f32 {
 /// One wheel's surface voices for a step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WheelSound {
-    /// The two materials and their volumes (before the tyre gain).
+    /// The two materials and their rolling loops' volumes (before the tyre gain): 1.02's level below the skid
+    /// threshold, whatever the grip word.
     pub materials: [(Material, f32); 2],
-    pub skid: bool,
+    /// The skid loops' share, 0 to 1 ([`SKID_FADE`]; 1.02 switches to them above [`SKID`]).
+    pub skid: f32,
+    /// A loose material's skid loop at full share: 1.02's level with its skid share, at the first voice's volume. The
+    /// loose rolling loops give way to it.
+    pub skid_level: f32,
+    /// The tarmac skid loop's (the squeal's) at full share, over the tarmac rolling loop ([`SQUEAL_POWER`]).
+    pub squeal: f32,
     pub pitch: f32,
+    /// The squeal's pitch factor, lower as the patch slides past the peak ([`SQUEAL_SLIDE_PITCH`]).
+    pub squeal_pitch: f32,
     /// The surface is not one of the road surfaces (`E31_5fa0` gives 1).
     pub off_road: bool,
     /// The surface's first material is tarmac (`+0x278`: no rumble, no gravel hits).
@@ -225,25 +249,31 @@ pub fn wheel(sig: &[u32; 24], road_surfaces: &[u32]) -> Option<WheelSound> {
     let first = material(row[1]);
     let grip = f(GRIP_MAX);
     let factor = if f(FACTOR) > FACTOR_FULL { 1.0 } else { f(FACTOR) * FACTOR_SCALE };
+    let rest = if first == Material::Tarmac { TARMAC_REST } else { 0.0 };
     let skid_share = if grip >= SKID_FULL {
         1.0
     } else if grip >= SKID {
         (grip - SKID) * SKID_RISE
-    } else if first == Material::Tarmac {
-        TARMAC_REST
     } else {
-        0.0
+        rest
     };
     let slip = f(SLIP_RATIO);
     let slip_share = if slip > SLIP_FULL { 1.0 } else { slip * SLIP_SCALE };
     let speed = (f(SPEED) * SPEED_SCALE + slip * SLIP_SPEED_SCALE).min(1.0);
-    let level = ((slip_share + skid_share + factor) * LEVEL_SCALE * speed) as i32 as u32;
-    let x = level.min(LEVEL_CAP) as f32 * LEVEL_TO_VOLUME;
+    let volume = |skid_share: f32| {
+        let level = ((slip_share + skid_share + factor) * LEVEL_SCALE * speed) as i32 as u32;
+        level.min(LEVEL_CAP) as f32 * LEVEL_TO_VOLUME
+    };
+    let x = volume(rest);
     let share = row[4] as f32 * FIXED;
+    let power = f(FACTOR) * (f(SPEED) + SQUEAL_RADIUS * slip);
     Some(WheelSound {
         materials: [(first, (1.0 - share) * x), (material(row[2]), share * x)],
-        skid: grip > SKID,
+        skid: if grip.is_nan() { 0.0 } else { smoothstep(SKID_FADE, grip) },
+        skid_level: (1.0 - share) * volume(skid_share),
+        squeal: (1.0 - share) * (power / SQUEAL_POWER).clamp(0.0, 1.0),
         pitch: row[3] as f32 * FIXED,
+        squeal_pitch: 1.0 - (1.0 - SQUEAL_SLIDE_PITCH) * smoothstep([SKID_FADE[1], SKID_FULL], grip),
         off_road: !road_surfaces.contains(&surface),
         tarmac: first == Material::Tarmac,
         grus_frames: if first == Material::Tarmac {
@@ -358,16 +388,36 @@ impl Tyres {
                 self.wet[k] = if self.splash[k] > 0.0 { self.splash[k].min(1.0) } else { 0.0 };
             }
             // M7ea0 mixes both voices at the first's volume (0x4d80e8, 0x4d81b1): on a surface of one material the
-            // second voice doubles the first, the same loop from the same place.
-            for slot in 0..2 {
-                let (material, gain, skid, pitch) = match sound {
-                    Some(s) => {
-                        let rolling = if inside && !s.skid { roll_pitch(f32::from_bits(sig[SPEED])) } else { 1.0 };
-                        (s.materials[slot].0, s.materials[0].1 * self.gain, s.skid, s.pitch * rolling)
+            // second voice doubles the first, the same loop from the same place. Ours: each voice's rolling loop
+            // and, sharing it out, its skid loop (slots 2 and 3, only while they sound).
+            let wheel = k as u8;
+            match sound {
+                None => out.extend((0..2).map(|slot| Command::Tyre {
+                    wheel,
+                    slot,
+                    material: Material::Gravel,
+                    skid: false,
+                    gain: 0.0,
+                    pitch: 1.0,
+                })),
+                Some(s) => {
+                    let rolling = if inside { roll_pitch(f32::from_bits(sig[SPEED])) } else { 1.0 };
+                    // Ours: the squeal dies on a wet road, as water stops the rubber's stick-slip.
+                    let dry = self.water.map_or(1.0, |w| (1.0 - w[k].wet.clamp(0.0, 1.0)).powi(2));
+                    for (slot, (material, _)) in s.materials.into_iter().enumerate() {
+                        let (roll, skid, pitch) = if material == Material::Tarmac {
+                            (s.materials[0].1, s.skid * s.squeal * dry, s.pitch * s.squeal_pitch)
+                        } else {
+                            (s.materials[0].1 * (1.0 - s.skid), s.skid * s.skid_level, s.pitch)
+                        };
+                        let (slot, gain) = (slot as u8, roll * self.gain);
+                        out.push(Command::Tyre { wheel, slot, material, skid: false, gain, pitch: s.pitch * rolling });
+                        if skid > 0.0 {
+                            let (slot, gain) = (slot + 2, skid * self.gain);
+                            out.push(Command::Tyre { wheel, slot, material, skid: true, gain, pitch });
+                        }
                     }
-                    None => (Material::Gravel, 0.0, false, 1.0),
-                };
-                out.push(Command::Tyre { wheel: k as u8, slot: slot as u8, material, skid, gain, pitch });
+                }
             }
             let [wetness, hiss] = self.water(k, sig, sound.is_some(), frames, listener, &mut out);
             for (voice, (gain, pitch)) in [(WheelLoop::Wetness, wetness), (WheelLoop::Hiss, hiss)] {
@@ -506,25 +556,96 @@ mod tests {
     #[test]
     fn rolling_on_gravel_is_the_level_from_slip_factor_and_speed() {
         // Surface 1: gravel, pitch 73728 / 65536, a road surface.
-        let s = wheel(&block(1, 1.0, 2500.0, 4.0, 30.0)).unwrap();
+        let s = wheel(&block(1, 0.8, 2500.0, 4.0, 30.0)).unwrap();
         // slip 4 * 0.025 = 0.1, skid 0, factor 0.5; speed term min(1.5 + 0.4, 1) = 1; level 1200 -> 0.3.
         assert_eq!(s.materials[0].0, Material::Gravel);
         assert!((s.materials[0].1 - 0.3).abs() < 1e-6);
         assert_eq!(s.materials[1].1, 0.0);
-        assert!(!s.skid);
+        assert_eq!((s.skid, s.skid_level), (0.0, s.materials[0].1));
         assert_eq!(s.pitch, 1.125);
         assert!(!s.off_road);
     }
 
     #[test]
-    fn skidding_switches_the_loop_and_caps_the_level() {
+    fn the_skid_loops_fade_in_up_to_the_peak_at_a_capped_level() {
         let s = wheel(&block(1, 3.0, 9000.0, 80.0, 50.0)).unwrap();
-        assert!(s.skid);
-        // (1 + 1 + 1) * 2000 = 6000, capped at 4000.
-        assert_eq!(s.materials[0].1, 1.0);
+        assert_eq!(s.skid, 1.0);
+        // (1 + 1 + 1) * 2000 = 6000, capped at 4000; the rolling level without the skid share (1 + 0 + 1) * 2000.
+        assert_eq!((s.skid_level, s.materials[0].1), (1.0, 1.0));
         // Between 1 and 2 the skid share rises by 4/3 per unit.
         let s = wheel(&block(1, 1.375, 0.0, 0.0, 20.0)).unwrap();
-        assert!((s.materials[0].1 - 0.5 * 2000.0 * 1.0 / 4000.0).abs() < 1e-3);
+        assert!((s.skid_level - 0.5 * 2000.0 * 1.0 / 4000.0).abs() < 1e-3);
+        assert_eq!(s.materials[0].1, 0.0);
+        // From half way to the peak (grip word 0.875) to the peak (1.25), smoothly; a NaN does not skid.
+        let fade = |grip: f32| wheel(&block(1, grip, 0.0, 0.0, 20.0)).unwrap().skid;
+        assert_eq!([0.5, 0.875, 1.0625, 1.25, 2.0, f32::NAN].map(fade), [0.0, 0.0, 0.5, 1.0, 1.0, 0.0]);
+    }
+
+    /// The first tarmac surface of one material.
+    fn tarmac() -> u32 {
+        (0..256).find(|&id| surface_row(id)[1] == 1 && surface_row(id)[2] == 1 && surface_row(id)[4] == 0).unwrap()
+    }
+
+    /// Wheel 0's tyre commands as (slot, material, skid, gain, pitch).
+    fn wheel_tyres(out: &[Command]) -> Vec<(u8, Material, bool, f32, f32)> {
+        out.iter()
+            .filter_map(|c| match *c {
+                Command::Tyre { wheel: 0, slot, material, skid, gain, pitch } => {
+                    Some((slot, material, skid, gain, pitch))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_squeal_follows_the_sliding_power_over_the_rolling_loop_and_dies_on_a_wet_road() {
+        let pitch = surface_row(tarmac())[3] as f32 * FIXED;
+        // 2500 N at 30 m/s and 0.315 m times 20 rad/s of spin slip: 91 kW of 150.
+        let s = wheel(&block(tarmac(), 2.0, 2500.0, 20.0, 30.0)).unwrap();
+        assert!((s.squeal - 2500.0 * (30.0 + 0.315 * 20.0) / 150_000.0).abs() < 1e-6);
+        assert!((s.squeal_pitch - 0.9).abs() < 1e-6);
+        // Full at 150 kW; at the peak the pitch is the table's.
+        let s = wheel(&block(tarmac(), 1.25, 6000.0, 0.0, 30.0)).unwrap();
+        assert_eq!((s.skid, s.squeal, s.squeal_pitch), (1.0, 1.0, 1.0));
+        // The tarmac rolling loops play on at their level below the threshold.
+        assert_eq!(s.materials, wheel(&block(tarmac(), 0.8, 6000.0, 0.0, 30.0)).unwrap().materials);
+        let step = |water: Option<f32>| {
+            let mut tyres = Tyres::new(1.0, 1.0, 0, vec![]);
+            tyres.set_water(water.map(|wet| [Water { wet, ..Water::default() }; 4]));
+            wheel_tyres(&tyres.step(
+                &[block(tarmac(), 1.25, 6000.0, 0.0, 30.0); 4],
+                &[None; 4],
+                30.0,
+                0.01,
+                false,
+                (0.0, [0.0; 3]),
+                || 0,
+            ))
+        };
+        let roll = s.materials[0].1;
+        let (t, r) = (Material::Tarmac, |slot| (slot, Material::Tarmac, false, roll, pitch));
+        assert_eq!(step(None), [r(0), (2, t, true, 1.0, pitch), r(1), (3, t, true, 1.0, pitch)]);
+        assert_eq!(step(Some(0.5)), [r(0), (2, t, true, 0.25, pitch), r(1), (3, t, true, 0.25, pitch)]);
+        assert_eq!(step(Some(1.0)), [r(0), r(1)]);
+    }
+
+    #[test]
+    fn loose_rolling_loops_give_way_to_the_skid_loops() {
+        let s = wheel(&block(1, 1.0625, 2500.0, 4.0, 30.0)).unwrap();
+        let mut tyres = Tyres::new(1.0, 1.0, 0, vec![]);
+        let out =
+            tyres.step(&[block(1, 1.0625, 2500.0, 4.0, 30.0); 4], &[None; 4], 30.0, 0.01, false, (0.0, [0.0; 3]), || 0);
+        let (g, half) = (Material::Gravel, |x: f32| 0.5 * x);
+        assert_eq!(
+            wheel_tyres(&out),
+            [
+                (0, g, false, half(s.materials[0].1), 1.125),
+                (2, g, true, half(s.skid_level), 1.125),
+                (1, g, false, half(s.materials[0].1), 1.125),
+                (3, g, true, half(s.skid_level), 1.125),
+            ]
+        );
     }
 
     /// The table's rows as the hand copy that preceded `exe_data` held them (spot checks).
@@ -541,7 +662,7 @@ mod tests {
         let s = wheel(&block(101, 1.0, 0.0, 0.0, 20.0)).unwrap();
         assert_eq!((s.materials[0].0, s.materials[1].0), (Material::Snow, Material::Gravel));
         let tarmac = (0..256).find(|&id| surface_row(id)[1] == 1 && surface_row(id)[4] == 0).unwrap();
-        let t = wheel(&block(tarmac, 0.9, 0.0, 0.0, 20.0)).unwrap();
+        let t = wheel(&block(tarmac, 0.8, 0.0, 0.0, 20.0)).unwrap();
         assert_eq!(t.materials[0].0, Material::Tarmac);
         // skid share 0.5 at rest on tarmac: 0.5 * 2000 * 1 / 4000.
         assert!((t.materials[0].1 + t.materials[1].1 - 0.25).abs() < 1e-6);
@@ -552,7 +673,7 @@ mod tests {
         assert_eq!([0.0, 10.0, 20.0].map(roll_pitch), [1.0; 3]);
         assert!((roll_pitch(35.0) - 1.1).abs() < 1e-6);
         assert_eq!([50.0, 80.0].map(roll_pitch), [1.2; 2]);
-        let tyre = |speed: f32, grip: f32, inside: bool| {
+        let tyre = |speed: f32, grip: f32, inside: bool, slot: u8| {
             let mut tyres = Tyres::new(1.0, 1.0, 0, vec![1, 33, 101]);
             let out = tyres.step(
                 &[block(1, grip, 2500.0, 4.0, speed); 4],
@@ -565,23 +686,24 @@ mod tests {
             );
             out.into_iter()
                 .find_map(|c| match c {
-                    Command::Tyre { wheel: 0, slot: 0, gain, pitch, .. } => Some((gain, pitch)),
+                    Command::Tyre { wheel: 0, slot: s, gain, pitch, .. } if s == slot => Some((gain, pitch)),
                     _ => None,
                 })
                 .unwrap()
         };
-        let (slow, fast) = (tyre(20.0, 1.0, true), tyre(50.0, 1.0, true));
+        let (slow, fast) = (tyre(20.0, 0.8, true, 0), tyre(50.0, 0.8, true, 0));
         assert_eq!((slow.0, slow.1), (fast.0, 1.125));
         assert!((fast.1 - 1.125 * 1.2).abs() < 1e-6);
-        // Outside the car and on the skid loops: the table's pitch.
-        assert_eq!(tyre(50.0, 1.0, false).1, 1.125);
-        assert_eq!(tyre(50.0, 3.0, true).1, 1.125);
+        // Outside the car and on the skid loops: the table's pitch; the rolling loops rise while skidding.
+        assert_eq!(tyre(50.0, 0.8, false, 0).1, 1.125);
+        assert_eq!(tyre(50.0, 3.0, true, 2).1, 1.125);
+        assert!((tyre(50.0, 1.0, true, 0).1 - 1.125 * 1.2).abs() < 1e-6);
     }
 
     #[test]
     fn both_surface_voices_play_at_the_first_voices_volume() {
         let mut tyres = Tyres::new(1.0, 1.0, 0, vec![1, 33, 101]);
-        let sig = block(101, 1.0, 0.0, 0.0, 20.0);
+        let sig = block(101, 0.8, 0.0, 0.0, 20.0);
         let first = wheel(&sig).unwrap().materials[0].1;
         let out = tyres.step(&[sig; 4], &[None; 4], 20.0, 1.0 / 60.0, false, (0.0, [0.0; 3]), || 0);
         let gains: Vec<(u8, Material, f32)> = out
@@ -601,8 +723,8 @@ mod tests {
         (sig[SECOND_SURFACE], sig[SECOND_SHARE]) = (101, 0.6f32.to_bits());
         let s = wheel(&sig).unwrap();
         assert_eq!(s.materials[0].0, Material::Snow);
-        // A grip maximum of 1.1 skids above the threshold of 1.
-        assert!(s.skid);
+        // A grip maximum of 1.1 is past the fade's start.
+        assert!(s.skid > 0.0);
         sig[SECOND_SHARE] = 0.5f32.to_bits();
         assert_eq!(wheel(&sig).unwrap().materials[0].0, Material::Gravel);
         // Surface 33 is a road surface, 72 is not.
