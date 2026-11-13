@@ -1,6 +1,6 @@
 //! `CBody`'s grid calls and the grid bounds sync, generic over the store.
 
-use super::layout::body_hosts::{self as body_host, ClearGridHost, VfCcHost};
+use super::layout::body_hosts::{self as body_host, ClearGridHost, CornerHost};
 use super::overlap;
 use super::store::CollisionStore;
 
@@ -73,7 +73,7 @@ pub fn clear_grid<S: CollisionStore>(
 /// Fetches both corners (host, into `scratch` and `scratch + 16`), then tests them against the body's bounds.
 /// Returns the flag.
 pub fn aabb_pretest<S: CollisionStore>(
-    host: &mut impl VfCcHost,
+    host: &mut impl CornerHost,
     store: &mut S,
     body: u32,
     first: u32,

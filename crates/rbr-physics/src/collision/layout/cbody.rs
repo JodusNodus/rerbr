@@ -3,7 +3,7 @@
 
 use crate::mem::Mem;
 
-use super::body_hosts::{Vf40Host, Vf44Host};
+use super::body_hosts::{BodyResetHost, GridSelectHost};
 use super::body_slots;
 use super::state::{
     StateHost, BODY_SCRATCH_VTABLE, BODY_STATE_VTABLE, CREAL_NAME, CREAL_VTABLE, CSTATE_OWNER_OFFSET,
@@ -62,9 +62,9 @@ impl Body {
 
 /// CBody::Vf40 (0x4e1120) (name ours): the E33 state reset on the body's state, then CEntity's base walk. Both are host
 /// calls.
-pub fn reset_state_and_base(host: &mut impl Vf40Host, body: u32) -> u32 {
-    let _ = host.state_unka44(Body::new(body).state());
-    host.entity_vf40(body)
+pub fn reset_state_and_base(host: &mut impl BodyResetHost, body: u32) -> u32 {
+    let _ = host.reset_state(Body::new(body).state());
+    host.reset_entity(body)
 }
 
 /// CBody::CState::Unk44 (0x4e33e0): reset the xyz sentinels in both vectors at `state + 0x10` and `state + 0x20`, then
@@ -133,10 +133,10 @@ pub use crate::collision::body::{aabb_pretest, body_grid_active, body_has_grid, 
 
 /// CBody::Vf44 (0x4e1140) (name ours): selects the grid (host), stores it at +0x64, then runs CEntity's slot-17
 /// implementation (host).
-pub fn select_grid(host: &mut impl Vf44Host, mem: &mut Mem, body: u32, object: u32) -> u32 {
+pub fn select_grid(host: &mut impl GridSelectHost, mem: &mut Mem, body: u32, object: u32) -> u32 {
     let grid = host.select_table(object);
     Body::new(body).set_grid(mem, grid);
-    host.entity_vf44(body, object)
+    host.select_entity_grid(body, object)
 }
 
 /// The frame of CBody::VfD8 (`body_slots::record_edge_hits`) below its entry stack pointer `esp`, 16-byte aligned: the

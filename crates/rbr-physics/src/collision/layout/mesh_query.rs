@@ -10,9 +10,10 @@ use crate::collision::overlap::SatBox;
 use crate::collision::triangle::MeshHit;
 
 pub use crate::collision::mesh::{
-    box_sat_overlap, face_query, mesh_ray_query, mesh_ray_worklist, mesh_test, node_walk, point_triangle, ray_clear,
-    ray_seeds, ray_triangle, seg_test, seg_test170, segment_sweep, segment_test, store_point_triangle,
-    store_ray_triangle_result, store_segment_triangle, system_frame, system_vf00, world_axes_overlap, SystemFrame,
+    box_sat_overlap, face_query, mesh_ray_query, mesh_ray_worklist, mesh_test, node_walk, point_triangle,
+    query_box_faces, ray_clear, ray_seeds, ray_triangle, seg_test, segment_query, segment_sweep, segment_test,
+    store_point_triangle, store_ray_triangle_result, store_segment_triangle, system_frame, world_axes_overlap,
+    SystemFrame,
 };
 
 /// Loads a separating-axis box: the centre at +0 and the half extents at +12.

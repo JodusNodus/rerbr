@@ -2,7 +2,7 @@
 //! `E46_Notify67d0`'s calls on the car.
 
 use super::instance::{body_event_listened, new_body, new_car, new_wheel, BodyKind};
-use crate::collision::layout::body_hosts::Vf40Host;
+use crate::collision::layout::body_hosts::BodyResetHost;
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::StateHost;
 use crate::collision::layout::{Body, GridSyncHost};
@@ -73,13 +73,13 @@ impl rigid_body::rotation::MulHost for DeferredVf40 {
     }
 }
 
-impl Vf40Host for DeferredVf40 {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl BodyResetHost for DeferredVf40 {
+    fn reset_state(&mut self, state: u32) -> u32 {
         self.state = Some(state);
         0
     }
 
-    fn entity_vf40(&mut self, _: u32) -> u32 {
+    fn reset_entity(&mut self, _: u32) -> u32 {
         0
     }
 }

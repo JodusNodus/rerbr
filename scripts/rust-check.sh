@@ -1,9 +1,11 @@
 #!/bin/bash
 # The Rust checks a report or merge needs, in one run: fmt --check, then clippy -D warnings, the tests and the vector
 # targets against the record store (scripts/rust-vectors.sh) for the crates this change touches and the crates that
-# depend on them. Niced, -j 4. Prints one line per check and a final PASS/FAIL; the full output of a
-# failing check is in /tmp/rust-check-<pid>-<name>.txt (per run, so parallel runs by several workers don't overwrite
-# each other).
+# depend on them. Niced, RUST_CHECK_JOBS cargo jobs (default half the CPUs, at least 4). The test step builds the test
+# targets (--tests: the lib, bins and tests, no examples, which clippy --all-targets checks; the workspace has no doc
+# tests) and runs the binaries side by side, each in its package's directory as cargo test does. Prints one line per
+# check and a final PASS/FAIL; the full output of a failing check is in /tmp/rust-check-<pid>-<name>.txt (per run, so
+# parallel runs by several workers don't overwrite each other).
 # The change is HEAD against its merge base with integration/handoff, or main when there is no integration branch (on
 # that branch itself: against HEAD^1, the merge's first parent), or against RUST_CHECK_BASE. A change to Cargo.toml or Cargo.lock checks every crate.
 # The vector step runs the store modules of the changed rbr-physics module dirs (every module when other rbr-physics
@@ -19,19 +21,45 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 source scripts/dev-env.sh
 fail=0
+renice -n 10 $$ >/dev/null # every check niced
+cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)
+jobs=${RUST_CHECK_JOBS:-$((cpus / 2 > 4 ? cpus / 2 : 4))}
 
 store=${RBR_VECTOR_STORE:-}
 
 check() {
     local name=$1
     shift
-    if nice -n 10 "$@" > "/tmp/rust-check-$$-$name.txt" 2>&1; then
+    if "$@" > "/tmp/rust-check-$$-$name.txt" 2>&1; then
         echo "$name: ok"
         rm -f "/tmp/rust-check-$$-$name.txt"
     else
         echo "$name: FAIL (/tmp/rust-check-$$-$name.txt)"
         fail=1
     fi
+}
+
+# tests CRATES...: the test binaries built once, then run $jobs at a time (cargo test runs them one by one), each in
+# its package's directory; the outputs in build order. A failing build or binary fails the step.
+tests() {
+    local dir status=0
+    dir=$(mktemp -d /tmp/rust-check-$$-tests-XXXXXX) || return 1
+    cargo test -j "$jobs" "$@" --tests --no-run -q --message-format=json-render-diagnostics \
+        >"$dir/build.json" || { rm -rf "$dir"; return 1; }
+    # "<n> <package dir> <binary>" NUL-separated, from the test artifacts cargo built.
+    python3 -I -c '
+import json, os, sys
+n = 0
+for line in open(sys.argv[1]):
+    m = json.loads(line)
+    if m.get("reason") == "compiler-artifact" and m["profile"]["test"] and m.get("executable"):
+        sys.stdout.write("%d\0%s\0%s\0" % (n, os.path.dirname(m["manifest_path"]), m["executable"]))
+        n += 1
+' "$dir/build.json" | xargs -0 -n 3 -P "$jobs" sh -c 'cd "$2" && "$3" -q >"$0/$1.txt" 2>&1 ||
+        { echo "$3: exit $?" >>"$0/$1.txt"; exit 1; }' "$dir" || status=1
+    for out in $(ls "$dir" | grep -E '^[0-9]+\.txt$' | sort -n); do cat "$dir/$out"; done
+    rm -rf "$dir"
+    return $status
 }
 
 if [ -z "${RUST_CHECK_BASE:-}" ]; then
@@ -100,11 +128,11 @@ unset_vars=$(for v in RBR_DATA RBR_PATCH RBR_RECORDINGS RBR_NGP_PHYSICS RBR_NGP 
 echo "scope: ${crates[*]:-no crates} against $(git rev-parse --short "$base"); vectors: ${vectors:-all}"
 check fmt cargo fmt --all --check
 if [ ${#crates[@]} -gt 0 ]; then
-    check clippy cargo clippy -j 4 "${crates[@]}" --all-targets -q -- -D warnings
-    check test cargo test -j 4 "${crates[@]}" -q
+    check clippy cargo clippy -j "$jobs" "${crates[@]}" --all-targets -q -- -D warnings
+    check test tests "${crates[@]}"
 fi
 input_sessions() {
-    cargo build -j 4 --release -q -p rbr-render --bin input_check || return 1
+    cargo build -j "$jobs" --release -q -p rbr-render --bin input_check || return 1
     local session status
     for session in "$RBR_RECORDINGS"/rsf/*/; do
         target/release/input_check "$session"
@@ -113,7 +141,7 @@ input_sessions() {
     done
 }
 if [ -d "${RBR_RECORDINGS:-}/rsf" ] && { [ "$all" = 1 ] || [[ " ${crates[*]} " == *" rbr-render "* ]]; }; then
-    export -f input_sessions
+    export -f input_sessions; export jobs
     check input_check bash -c input_sessions
 fi
 if [ "$vectors" != none ]; then

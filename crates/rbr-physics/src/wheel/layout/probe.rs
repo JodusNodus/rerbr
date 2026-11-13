@@ -89,7 +89,7 @@ pub trait GroundCalls {
     /// `CWheel::Unk96e0` (0x5396e0) on the wheel (name ours).
     fn table_lerp_pair(&mut self, wheel: u32);
     /// `E39_SegTest170` (0x4ff170) on `object` with the segment's start and test vector, and a null output.
-    fn seg_test170(&mut self, object: u32, a: u32, b: u32);
+    fn query_box_faces(&mut self, object: u32, a: u32, b: u32);
     /// The eight rays' constructor iterator (`eh vector constructor iterator`, 0x70c408) over `blocks`.
     fn ray_blocks_init(&mut self, blocks: u32);
     /// The eight rays' destructor iterator (0x70c4da) over `blocks`.
@@ -185,7 +185,7 @@ pub fn ground_probe<S: WheelStore>(
     for k in 0..3 {
         mem.set_f32(fv + 4 * k, tuning.wheel.fill);
     }
-    calls.seg_test170(object, pf, fv);
+    calls.query_box_faces(object, pf, fv);
     calls.ray_blocks_init(blocks);
     calls.kernel5bd0(world, pf, fv, list);
 

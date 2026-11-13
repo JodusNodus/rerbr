@@ -81,7 +81,7 @@ impl layout::GroundCalls for Ground<'_> {
         self.call(UNK96E0, wheel, &[]);
     }
 
-    fn seg_test170(&mut self, object: u32, a: u32, b: u32) {
+    fn query_box_faces(&mut self, object: u32, a: u32, b: u32) {
         self.call(0x4FF170, object, &[a, b, 0]);
     }
 

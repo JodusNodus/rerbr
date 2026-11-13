@@ -9,7 +9,7 @@ use rbr_physics::collision::cells::{half_extent, point_bounds};
 use rbr_physics::collision::contact_solver::earlier_fraction;
 use rbr_physics::collision::layout;
 use rbr_physics::collision::layout::grid_hosts::GridOpsHost;
-use rbr_physics::collision::layout::wall_tree::WallVfCcHost;
+use rbr_physics::collision::layout::wall_tree::WallQueryHost;
 use rbr_physics::math::vec::Vec4;
 use rbr_physics::mem::Mem;
 
@@ -61,7 +61,7 @@ fn grid_ops_copies_the_source_and_bounds_its_points() {
     let points = [v(1.0, -2.0, 3.0, 0.0), v(-1.0, 4.0, 5.0, 2.0), v(0.0, 0.0, -3.0, 1.0)];
     let mut mem = grids(&points);
     let mut host = Ops::default();
-    let eax = layout::grid_ops_m6610(&mut host, &mut mem, GRID, SRC, 0xa, 0xb, ENTRY);
+    let eax = layout::copy_grid(&mut host, &mut mem, GRID, SRC, 0xa, 0xb, ENTRY);
     assert_eq!(eax, Some(GRID));
     assert_eq!(
         host.0,
@@ -81,7 +81,7 @@ fn grid_ops_copies_the_source_and_bounds_its_points() {
 fn grid_ops_without_points_only_copies() {
     let mut mem = grids(&[]);
     let mut host = Ops::default();
-    assert_eq!(layout::grid_ops_m6610(&mut host, &mut mem, GRID, SRC, 0xa, 0xb, ENTRY), Some(GRID));
+    assert_eq!(layout::copy_grid(&mut host, &mut mem, GRID, SRC, 0xa, 0xb, ENTRY), Some(GRID));
     assert!(host.0.is_empty());
     assert_eq!(mem.f32(GRID + 0x3c), 6.0);
 }
@@ -90,9 +90,9 @@ fn grid_ops_without_points_only_copies() {
 fn grid_ops_without_a_source_seeds_the_rays() {
     let mut mem = grids(&[]);
     let mut host = Ops::default();
-    assert_eq!(layout::grid_ops_m6610(&mut host, &mut mem, GRID, 0, 0xa, 0xb, ENTRY), Some(GRID));
+    assert_eq!(layout::copy_grid(&mut host, &mut mem, GRID, 0, 0xa, 0xb, ENTRY), Some(GRID));
     assert_eq!(host.0, vec![("seeds", ENTRY - 0x14, vec![GRID])]);
-    assert_eq!(layout::grid_ops_m6610(&mut host, &mut mem, 0, 0, 0xa, 0xb, ENTRY), Some(0));
+    assert_eq!(layout::copy_grid(&mut host, &mut mem, 0, 0, 0xa, 0xb, ENTRY), Some(0));
     assert_eq!(host.0.len(), 1);
 }
 
@@ -100,7 +100,7 @@ fn grid_ops_without_a_source_seeds_the_rays() {
 fn grid_ops_declines_one_point_before_any_change() {
     let mut mem = grids(&[v(1.0, 1.0, 1.0, 1.0)]);
     let mut host = Ops::default();
-    assert_eq!(layout::grid_ops_m6610(&mut host, &mut mem, GRID, SRC, 0xa, 0xb, ENTRY), None);
+    assert_eq!(layout::copy_grid(&mut host, &mut mem, GRID, SRC, 0xa, 0xb, ENTRY), None);
     assert!(host.0.is_empty());
     assert_eq!(mem.u8(GRID + 0x68d), 0);
 }
@@ -126,7 +126,7 @@ struct Wall {
     log: Log,
 }
 
-impl WallVfCcHost for Wall {
+impl WallQueryHost for Wall {
     fn frame(&mut self, sp: u32, wall: u32) -> u32 {
         self.log.push(("30", sp, vec![wall]));
         0xf
@@ -143,11 +143,11 @@ impl WallVfCcHost for Wall {
     }
 }
 
-fn wall_vf_cc(corners: Vec<[f32; 2]>, hits: u32) -> (u32, Log, [f32; 4]) {
+fn query_wall_box(corners: Vec<[f32; 2]>, hits: u32) -> (u32, Log, [f32; 4]) {
     let mut mem = common::shared_mem();
     block(&mut mem, ENTRY - 0x100, 0x110);
     let mut host = Wall { mem: mem.clone(), corners, hits, log: Vec::new() };
-    let eax = layout::wall_vf_cc(&mut host, &mut mem, GRID, 0xa, 0xb, ENTRY);
+    let eax = layout::query_wall_box(&mut host, &mut mem, GRID, 0xa, 0xb, ENTRY);
     let frame = ((ENTRY - 4) & !0xf) - 0x30;
     let bounds = [0, 4, 8, 0xc].map(|k| mem.f32(frame + 0x10 + k));
     (eax, host.log, bounds)
@@ -156,7 +156,7 @@ fn wall_vf_cc(corners: Vec<[f32; 2]>, hits: u32) -> (u32, Log, [f32; 4]) {
 #[test]
 fn wall_vf_cc_queries_the_corners_box() {
     let frame = ((ENTRY - 4) & !0xf) - 0x30;
-    let (eax, log, bounds) = wall_vf_cc(vec![[1.0, 2.0], [5.0, -2.0]], 7);
+    let (eax, log, bounds) = query_wall_box(vec![[1.0, 2.0], [5.0, -2.0]], 7);
     assert_eq!(eax, 1);
     assert_eq!(bounds, [3.0, 0.0, 2.0, -2.0]);
     assert_eq!(
@@ -169,15 +169,15 @@ fn wall_vf_cc_queries_the_corners_box() {
             ("query", frame - 0xc, vec![GRID, frame + 0x10, GRID + 0x7c]),
         ]
     );
-    assert_eq!(wall_vf_cc(vec![[1.0, 2.0], [5.0, -2.0]], 0).0, 0);
+    assert_eq!(query_wall_box(vec![[1.0, 2.0], [5.0, -2.0]], 0).0, 0);
 }
 
 #[test]
 fn wall_vf_cc_does_not_query_a_wide_box() {
-    let (eax, log, _) = wall_vf_cc(vec![[0.0, 0.0], [20.5, 0.0]], 7);
+    let (eax, log, _) = query_wall_box(vec![[0.0, 0.0], [20.5, 0.0]], 7);
     assert_eq!(eax, 0);
     assert_eq!(log.len(), 4);
-    let (eax, log, _) = wall_vf_cc(vec![[0.0, 0.0], [0.0, -30.0]], 7);
+    let (eax, log, _) = query_wall_box(vec![[0.0, 0.0], [0.0, -30.0]], 7);
     assert_eq!((eax, log.len()), (1, 5));
     assert!(!box_too_wide(f32::NAN, 10.0));
     assert!(box_too_wide(10.000001, 0.0));

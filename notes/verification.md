@@ -151,7 +151,8 @@ snapshots and viewer playback. Last standalone results (2026-10-20): tanner-coro
 | arctic-snow | 13 (`track-13_O`), 6 | snow |
 | `v1-*` … `v4-*`, `v7-*` | every car and main-rally map | playback-made; mostly 3,000-step snapshot runs, V7 from the boot |
 
-Standalone check for `rbr-standalone` and `rbr-hybrid` changes:
+Standalone check for `rbr-standalone` and `rbr-hybrid` changes (`scripts/gate.sh` builds and runs it; `--hybrid`
+adds the hybrid merge gate below, one process per snapshot, `--perf BASE_BIN` the step's cost):
 
 ```sh
 .venv/bin/python -I -B harness/rsf_compare.py $RBR_RECORDINGS/rsf/drive2 --attempt 5 --sections physics --out DIR
@@ -189,7 +190,10 @@ The local CPU must give the reference CPU's x87 results: an i9-13900HX matches a
 published cache (test-data v3, 2026-11-01).
 
 Merge gate: all bindings over the nine tanner-corolla snapshots and snapH.snap-1295, and over tanner-damage's contact
-snapshots, 30 steps, every "run B vs run A" line equal (`*[0-9].bin` leaves out the `-after` dumps):
+snapshots, 30 steps, every "run B vs run A" line equal (`*[0-9].bin` leaves out the `-after` dumps). These are 1.02
+snapshots, so the ports holding NGP's behaviour decline and the original runs them (20 on vcu-cov.snap-2000, among
+them `StepForward`, `CSpringDamper::Step` and the tyre's): those are checked by the standalone drive alone (a
+damper-velocity change: standalone 7/84084, hybrid 13 of 13 equal; `heat_flow`, bound on both: 0/84084 and 0 of 13):
 
 ```sh
 cargo build --release -p rbr-hybrid

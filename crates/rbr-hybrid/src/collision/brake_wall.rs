@@ -1,6 +1,8 @@
 //! The brake walls (`CBrakeWall`, `E34WallVf`): queries, raycasts and the penetration emit.
 
-use rbr_physics::collision::layout::wall_tree::{self as wall, RaycastCalls, VfE8Host, VfF0Host, WallVfCcHost};
+use rbr_physics::collision::layout::wall_tree::{
+    self as wall, RaycastCalls, WallEndsHost, WallQueryHost, WallSegmentHost,
+};
 use rbr_physics::collision::layout::{self};
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::signal_emit;
@@ -68,7 +70,7 @@ struct WallCorners<'a> {
     host: &'a dyn Host,
 }
 
-impl WallVfCcHost for WallCorners<'_> {
+impl WallQueryHost for WallCorners<'_> {
     fn frame(&mut self, sp: u32, wall: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(wall) + 0x30);
         self.host.call_at(sp, target, wall, &[]).eax
@@ -91,8 +93,8 @@ struct WallSlotE8<'a> {
     host: &'a dyn Host,
 }
 
-impl VfF0Host for WallSlotE8<'_> {
-    fn vf_e8(&mut self, sp: u32, wall: u32, a: u32, b: u32, out: u32) -> u32 {
+impl WallSegmentHost for WallSlotE8<'_> {
+    fn segment_hit(&mut self, sp: u32, wall: u32, a: u32, b: u32, out: u32) -> u32 {
         let target = self.mem.u32(self.mem.u32(wall) + 0xe8);
         self.host.call_at(sp, target, wall, &[a, b, 0, out, 1]).eax
     }
@@ -107,7 +109,7 @@ pub(super) fn brake_wall_vf_f0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
     Ok(Return::void(eax, 0x20))
 }
 
-impl VfE8Host for Callees<'_> {
+impl WallEndsHost for Callees<'_> {
     fn fetch_x(&mut self, sp: u32, matrix: u32, out: u32, worker: u32) {
         self.0.call_at(sp, FETCH_X, matrix, &[out, worker]);
     }
@@ -117,7 +119,7 @@ impl VfE8Host for Callees<'_> {
 pub(super) fn brake_wall_vf_e8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut args = [0; 5];
     args.copy_from_slice(&r.stack[..5]);
-    let eax = layout::brake_wall_vf_e8(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, args, r.esp);
+    let eax = layout::wall_segment_hit(&mut Callees(ctx.host), &mut ctx.mem, r.ecx, args, r.esp);
     Ok(Return::void(eax, 0x14))
 }
 
@@ -126,7 +128,7 @@ pub(super) fn brake_wall_vf_e8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Declin
 pub(super) fn wall_vf_cc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, ..] = r.stack;
     let mut calls = WallCorners { mem: ctx.mem.clone(), host: ctx.host };
-    let eax = layout::wall_vf_cc(&mut calls, &mut ctx.mem, r.ecx, a, b, r.esp);
+    let eax = layout::query_wall_box(&mut calls, &mut ctx.mem, r.ecx, a, b, r.esp);
     Ok(Return::void(eax, 8))
 }
 

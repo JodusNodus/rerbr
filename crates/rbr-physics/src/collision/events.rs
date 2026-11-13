@@ -10,20 +10,20 @@ use crate::mem::Mem;
 /// that call; `target` is the body's virtual slot. Every call returns its result.
 pub trait EventBodyHost {
     /// The body's own pointer in the entity tree.
-    fn vf30(&mut self, sp: u32, target: u32, body: u32) -> u32;
+    fn transform(&mut self, sp: u32, target: u32, body: u32) -> u32;
     /// The pair walk: combines `a` and `b` into the pair result at `out`.
-    fn mb560(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32);
+    fn pair_walk(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32);
     /// Composes `point` with `body`'s frame into `out`.
     fn compose(&mut self, sp: u32, frame: u32, point: u32, body: u32, out: u32);
     /// The body's six-word query over the composed frames and arguments.
-    fn vf138x(&mut self, sp: u32, target: u32, body: u32, args: [u32; 6]) -> u32;
+    fn dot_products(&mut self, sp: u32, target: u32, body: u32, args: [u32; 6]) -> u32;
     /// The body's eight-word impulse query.
-    fn vf128x(&mut self, sp: u32, target: u32, body: u32, args: [u32; 8]) -> u32;
+    fn impulse(&mut self, sp: u32, target: u32, body: u32, args: [u32; 8]) -> u32;
 }
 
-const VF30: u32 = 0x30;
-const VF128X: u32 = 0x128;
-const VF138X: u32 = 0x138;
+const SLOT_TRANSFORM: u32 = 0x30;
+const SLOT_IMPULSE: u32 = 0x128;
+const SLOT_DOT_PRODUCTS: u32 = 0x138;
 const SLOT_POINT_VELOCITY: u32 = 0x140;
 
 fn side_body<S: CollisionStore>(store: &S, event: u32, side: Side) -> u32 {
@@ -62,14 +62,14 @@ fn query_body<S: CollisionStore>(
     let (ta, tb, tc) = (frame - 0x20, frame - 0x30, frame - 0x10);
     for (walk, out) in [(a, ta), (b, tb)] {
         let body = side_body(store, event, side);
-        let r = host.vf30(frame - 0x48, store.vtable_slot(body, VF30), body);
-        host.mb560(frame - 0x50, event, walk, r, out);
+        let r = host.transform(frame - 0x48, store.vtable_slot(body, SLOT_TRANSFORM), body);
+        host.pair_walk(frame - 0x50, event, walk, r, out);
     }
     let body = side_body(store, event, side);
-    let r = host.vf30(frame - 0x48, store.vtable_slot(body, VF30), body);
+    let r = host.transform(frame - 0x48, store.vtable_slot(body, SLOT_TRANSFORM), body);
     host.compose(frame - 0x50, event, store.event_point(event), r, tc);
     let body = side_body(store, event, side);
-    host.vf138x(frame - 0x5c, store.vtable_slot(body, VF138X), body, [tc, ta, tb, c, d, e])
+    host.dot_products(frame - 0x5c, store.vtable_slot(body, SLOT_DOT_PRODUCTS), body, [tc, ta, tb, c, d, e])
 }
 
 /// Applies the event's impulse to its bodies, unless the event's suppression flags are set (returning the flags word
@@ -92,7 +92,7 @@ pub fn apply_event_impulse<S: CollisionStore>(
         let ids = store.event_ids(event);
         let (id, word) = partner_slot(ids.second[0], ids.second[1], ids.first[0], ids.first[1]);
         let args = [store.event_point(event), c, id, word, store.event_materials_at(event, Side::Partner), a, b, d];
-        host.vf128x(frame - 0x54, store.vtable_slot(body_a, VF128X), body_a, args);
+        host.impulse(frame - 0x54, store.vtable_slot(body_a, SLOT_IMPULSE), body_a, args);
     }
     let body_b = store.event_partner(event);
     if body_b == 0 {
@@ -103,7 +103,7 @@ pub fn apply_event_impulse<S: CollisionStore>(
     let [id, word] = store.event_ids(event).first;
     scaled(store, c, tb, -1.0);
     let args = [store.event_point(event), tb, id, word, store.event_materials_at(event, Side::Body), a, b, ta];
-    host.vf128x(frame - 0x54, store.vtable_slot(body_b, VF128X), body_b, args)
+    host.impulse(frame - 0x54, store.vtable_slot(body_b, SLOT_IMPULSE), body_b, args)
 }
 
 /// Stores the input vector scaled by `scale` at `output`.
@@ -164,13 +164,13 @@ pub fn init_full<S: CollisionStore>(
     let sp = ((esp - 4) & !0xf) - 0x90;
     store.init_event(event, kind, body, tag, payload);
 
-    let (compose_out, mb560_out) = store.event_contact_outputs(event);
+    let (compose_out, walk_out) = store.event_contact_outputs(event);
     let body = store.event_body(event);
-    let frame = host.vf30(sp, store.vtable_slot(body, VF30), body);
+    let frame = host.transform(sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
     host.compose(sp, frame, point_a, event, compose_out);
     let body = store.event_body(event);
-    let frame = host.vf30(sp, store.vtable_slot(body, VF30), body);
-    host.mb560(sp, frame, point_b, event, mb560_out);
+    let frame = host.transform(sp, store.vtable_slot(body, SLOT_TRANSFORM), body);
+    host.pair_walk(sp, frame, point_b, event, walk_out);
     store.count_event();
     event
 }

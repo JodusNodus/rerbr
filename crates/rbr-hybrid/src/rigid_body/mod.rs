@@ -191,12 +191,12 @@ impl MulHost for Callees<'_> {
     }
 }
 
-impl rbr_physics::collision::layout::body_hosts::Vf40Host for Callees<'_> {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl rbr_physics::collision::layout::body_hosts::BodyResetHost for Callees<'_> {
+    fn reset_state(&mut self, state: u32) -> u32 {
         self.host.call(CSTATE_UNKA44, state, &[]).eax
     }
 
-    fn entity_vf40(&mut self, body: u32) -> u32 {
+    fn reset_entity(&mut self, body: u32) -> u32 {
         self.host.call(NAME_WALK, body, &[]).eax
     }
 }

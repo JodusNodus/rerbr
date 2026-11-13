@@ -1,6 +1,6 @@
 //! `CBody`'s own slots and links: the grid, the corners (`VfCC`), `Vf40`, the bounds and the filtered notify.
 
-use rbr_physics::collision::layout::body_hosts::{ClearGridHost, Vf40Host, VfCcHost};
+use rbr_physics::collision::layout::body_hosts::{BodyResetHost, ClearGridHost, CornerHost};
 use rbr_physics::collision::layout::links::{self, NotifyFilteredHost};
 use rbr_physics::collision::layout::state::StateHost;
 use rbr_physics::collision::layout::{self, Body, Vec4};
@@ -91,7 +91,7 @@ impl ClearGridHost for BodyCallees<'_> {
     }
 }
 
-impl VfCcHost for BodyCallees<'_> {
+impl CornerHost for BodyCallees<'_> {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32 {
         self.0.call(FETCH_X, matrix, &[out, worker]).eax
     }
@@ -160,7 +160,7 @@ struct DirectVfCcCalls<'a> {
     direct: bool,
 }
 
-impl VfCcHost for DirectVfCcCalls<'_> {
+impl CornerHost for DirectVfCcCalls<'_> {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32 {
         let sp = (self.esp - 0x1000) & !0xf;
         match crate::entities::fetch_x_direct(self.host, &mut self.mem, sp, matrix, out, worker) {
@@ -180,12 +180,12 @@ pub(crate) struct Vf40Callees<'a> {
     pub(crate) sp: u32,
 }
 
-impl Vf40Host for Vf40Callees<'_> {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl BodyResetHost for Vf40Callees<'_> {
+    fn reset_state(&mut self, state: u32) -> u32 {
         self.host.call_at(self.sp - 8, CSTATE_UNKA44, state, &[]).eax
     }
 
-    fn entity_vf40(&mut self, body: u32) -> u32 {
+    fn reset_entity(&mut self, body: u32) -> u32 {
         self.host.call_at(self.sp, NAME_WALK, body, &[]).eax
     }
 }

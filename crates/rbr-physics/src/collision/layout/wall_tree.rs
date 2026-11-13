@@ -57,7 +57,7 @@ pub fn add_count(mem: &mut Mem, wall: u32, node: u32, delta: u32) {
 /// The calls `E34WallVf::VfCC` (0x4e42f0) makes, each at its callee's entry stack pointer `sp`: the wall's slot 12
 /// (`Vf30`, its frame), `E33Mat34::FetchX` (0x51b6c0, thiscall on a corner with `(out, frame)`) and
 /// `CBrakeWall::QueryBox` (0x4e3f10, thiscall on the wall with `(bounds, collector)`).
-pub trait WallVfCcHost {
+pub trait WallQueryHost {
     fn frame(&mut self, sp: u32, wall: u32) -> u32;
     fn fetch_x(&mut self, sp: u32, corner: u32, out: u32, frame: u32);
     fn query_box(&mut self, sp: u32, wall: u32, bounds: u32, collector: u32) -> u32;
@@ -65,8 +65,8 @@ pub trait WallVfCcHost {
 
 /// The call `CBrakeWall::VfF0` (0x4e3970) makes at its callee's entry stack pointer `sp`: the wall's slot 0xe8 (`VfE8`)
 /// with `(a, b, 0, out, 1)`, which fills the four vectors at `out` on a hit (eax non-zero).
-pub trait VfF0Host {
-    fn vf_e8(&mut self, sp: u32, wall: u32, a: u32, b: u32, out: u32) -> u32;
+pub trait WallSegmentHost {
+    fn segment_hit(&mut self, sp: u32, wall: u32, a: u32, b: u32, out: u32) -> u32;
 }
 
 /// The original's call out of `E34WallVf::Raycast` (0x4e4570): the penetration signal's emit (0x4e4490, thiscall on
@@ -79,6 +79,6 @@ pub trait RaycastCalls {
 
 /// The calls `CBrakeWall::VfE8` (0x4e3a10) makes at its callee's entry stack pointer `sp`: `E33Mat34::FetchX`
 /// (0x51b6c0) on each end point's matrix, into `out`, with the identity worker.
-pub trait VfE8Host {
+pub trait WallEndsHost {
     fn fetch_x(&mut self, sp: u32, matrix: u32, out: u32, worker: u32);
 }
