@@ -1,5 +1,6 @@
 //! The dummy object (a fence post): the box it reports, the span test against a segment, and its presence answer.
 
+use super::layout;
 use super::store::EntityStore;
 use crate::fpu::round24;
 use crate::math::vec::Vec3;
@@ -72,15 +73,16 @@ pub fn dummy_span_test<S: EntityStore>(
     calls: &mut impl DummyCalls,
 ) {
     let identity = store.identity();
-    let (origin_a, origin_b) = (frame + 0x1c, frame + 0xc);
-    calls.fetch_x(frame - 0x10, a, origin_a, identity);
-    calls.fetch_x(frame - 0x10, b, origin_b, identity);
+    let frame = layout::dummy_span_frame(frame);
+    let (origin_a, origin_b) = (frame.origin_a, frame.origin_b);
+    calls.fetch_x(frame.fetch_sp, a, origin_a, identity);
+    calls.fetch_x(frame.fetch_sp, b, origin_b, identity);
     let (c, d) = span(Vec3::load(store, origin_a), Vec3::load(store, origin_b));
     let (center, half) = store.dummy_extents(this);
     if !overlaps(center, half, c, d) {
         return;
     }
-    calls.group_on_hit(frame - 0x8, store.dummy_group(this));
+    calls.group_on_hit(frame.hit_sp, store.dummy_group(this));
     let span_segment = store.dummy_span(this);
     if span_segment != 0 {
         store.mark_segment_hit(span_segment);

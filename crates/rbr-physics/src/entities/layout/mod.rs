@@ -49,7 +49,7 @@ pub use e90::{
     init_e90_pin_pool, init_e90_ptr_tab, init_e90_seg_pool, E90BuildCalls, E90PoolCalls, E90SegInitCalls,
     E90SegPoolCalls, E90SegmentCalls,
 };
-pub use entity_slots::{load_excluder, vf_cc, vf_d0, zero_hook};
+pub use entity_slots::{dummy_span_frame, load_excluder, vf_cc, vf_d0, zero_hook, DummySpanFrame};
 pub use frames::{construct_entity_frame, construct_frame, ROOT_IDENTITY};
 pub use functor::{call_stored, Calls as FunctorCalls, TAIL40};
 pub use hinge_state::{

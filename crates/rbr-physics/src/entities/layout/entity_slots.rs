@@ -46,3 +46,17 @@ impl Members for SetInMem<'_> {
         (1..=self.count).any(|i| self.mem.u32(self.set + 4 * i) == entity)
     }
 }
+
+/// `CDummyObject::VfCC`'s words at its frame base `frame`: the two fetched origins, and the entry stack pointers of the
+/// fetches and the group's hit handler.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DummySpanFrame {
+    pub origin_a: u32,
+    pub origin_b: u32,
+    pub fetch_sp: u32,
+    pub hit_sp: u32,
+}
+
+pub fn dummy_span_frame(frame: u32) -> DummySpanFrame {
+    DummySpanFrame { origin_a: frame + 0x1c, origin_b: frame + 0xc, fetch_sp: frame - 0x10, hit_sp: frame - 0x8 }
+}
