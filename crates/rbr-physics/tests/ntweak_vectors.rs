@@ -59,7 +59,7 @@ impl ntweak::ParseHost for Calls {
         self.calls.push(format!("delete {at:#x}"));
     }
 
-    fn unk14(&mut self, _: &mut rbr_physics::mem::Mem, _: u32, _: u32, _: u32, _: u32) {
+    fn inner_group_item(&mut self, _: &mut rbr_physics::mem::Mem, _: u32, _: u32, _: u32, _: u32) {
         unreachable!("the object's slot 5 is CBase's")
     }
 

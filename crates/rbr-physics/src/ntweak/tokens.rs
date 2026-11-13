@@ -88,7 +88,7 @@ pub fn tokenize(text: &[u8]) -> Result<Tokens, Unsupported> {
         };
     }
     if out.starts.len() >= TABLE_WORDS {
-        return Err(Unsupported("a token table past its 0x1000 words (the original traps at int3)"));
+        return Err(Unsupported("a token table past its 0x1000 words (the original traps)"));
     }
     Ok(out)
 }
@@ -116,7 +116,7 @@ pub fn stack_alloc(used: u32, cap: u32, size: u32, align: u32) -> Result<(u32, u
     let off = used.wrapping_add(align).wrapping_sub(1) & !align.wrapping_sub(1);
     let end = off.wrapping_add(size);
     if end >= cap {
-        return Err(Unsupported("the stack heap is full (the original logs, then traps at int3)"));
+        return Err(Unsupported("the stack heap is full (the original logs, then traps)"));
     }
     Ok((off, end))
 }

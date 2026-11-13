@@ -8,16 +8,15 @@
 
 use rbr_formats::lsp_keys::Class;
 
-use super::c_string;
 use super::{
-    BASE_PARSE, BIT_FIELD_PARSE, INNER_GROUP_SKIP, INTEGER_PARSE, ITEM_BLOCK, NGP_TABLE, NGP_TABLE_VTABLE, REAL_PARSE,
-    UNSIGNED_PARSE, VALUE, VECTOR4_PARSE, VECTOR_PARSE, VECTOR_VALUE,
+    float_word, member_at, BASE_PARSE, BIT_FIELD_PARSE, INNER_GROUP_SKIP, INTEGER_PARSE, ITEM_BLOCK, NAME, NGP_TABLE,
+    NGP_TABLE_VTABLE, REAL_PARSE, UNSIGNED_PARSE, VALUE, VECTOR4_PARSE, VECTOR_PARSE, VECTOR_VALUE,
 };
 use crate::mem::Mem;
-use crate::ntweak::plan::{lookup, member_at, BIT_FIELDS, NGP_TABLE_LEN};
+use crate::ntweak::plan::{lookup, NGP_TABLE_LEN};
+use crate::ntweak::store::TweakStore;
 use crate::ntweak::tokens::{self, is_group, quoted, Tokens};
 use crate::ntweak::{atof, atoi, is_float, is_integer, set_bit, Unsupported};
-use crate::physics_core::layout::flags;
 
 /// `g_tokenHeap`, the word holding the token heap's record (base, used, capacity), and `g_emptyTokens`, the table an
 /// empty text gets.
@@ -34,9 +33,9 @@ pub trait ParseHost {
     fn alloc(&mut self, mem: &mut Mem, size: u32) -> u32;
     /// `operator delete(at)` on a table.
     fn free(&mut self, mem: &mut Mem, at: u32);
-    /// The object's slot 5 (`Unk14`), when it is not `CBase`'s, on an inner group's item: `(name, block, cursor)`,
-    /// the group's name (or 0), the item's token-heap block and the inner group's cursor.
-    fn unk14(&mut self, mem: &mut Mem, this: u32, name: u32, block: u32, cursor: u32);
+    /// The object's inner-group entry, slot 5 (`Unk14`), when it is not `CBase`'s, on an inner group's item: `(name,
+    /// block, cursor)`, the group's name (or 0), the item's token-heap block and the inner group's cursor.
+    fn inner_group_item(&mut self, mem: &mut Mem, this: u32, name: u32, block: u32, cursor: u32);
     /// A member object's slot 2 (`CBase::Parse`) with the group's cursor at its token.
     fn member_parse(&mut self, mem: &mut Mem, member: u32, cursor: u32);
     /// The object's slot 17 (`Unk44`), after its tokens.
@@ -127,7 +126,7 @@ pub fn stack_alloc(mem: &mut Mem, size: u32, heap: u32, align: u32) -> Result<u3
 /// One step of the group's walk, each taking its tokens from the cursor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Step {
-    /// The leading quoted string: a copy on the token heap, which `+0x04` points at.
+    /// The leading quoted string: a copy on the token heap, which the object's name word points at.
     Name(Vec<u8>),
     /// A number, or a token no key names.
     Skip,
@@ -148,7 +147,7 @@ fn floats(toks: &[&str], i: usize, n: usize, at: u32) -> Vec<(u32, u32)> {
         .take(n)
         .take_while(|t| is_float(t))
         .enumerate()
-        .map(|(k, t)| (at + 4 * k as u32, atof(t).to_bits()))
+        .map(|(k, t)| (float_word(at, k), atof(t).to_bits()))
         .collect()
 }
 
@@ -168,11 +167,9 @@ fn current(mem: &Mem, steps: &[Step], at: u32) -> u32 {
 
 /// `CBitField::Parse` (0x52f930) on the bit-field at `member`: the `+name` and `-name` tokens from `i` on.
 fn bit_field(mem: &Mem, steps: &[Step], member: u32, toks: &[&str], i: usize) -> Result<Step, Unsupported> {
-    let vtable = mem.u32(member);
-    let Some(&(_, table, count)) = BIT_FIELDS.iter().find(|(v, _, _)| *v == vtable) else {
+    let Some(names) = mem.bit_names(mem.vtable(member)) else {
         return Err(Unsupported("a bit-field of a class not ported"));
     };
-    let names: Vec<String> = (0..count).map(|k| c_string(mem, flags::bit_name(mem, table, k))).collect();
     let taken = toks[i..].iter().take_while(|t| t.starts_with(['+', '-'])).count();
     let at = member + VALUE;
     let mask = toks[i..i + taken].iter().fold(current(mem, steps, at), |mask, t| set_bit(mask, &names, t));
@@ -185,13 +182,13 @@ fn read_member(mem: &Mem, steps: &[Step], member: u32, toks: &[&str], i: usize) 
         let taken = stores.len();
         Step::Key(stores, taken)
     };
-    if mem.u32(member) == NGP_TABLE_VTABLE {
+    if mem.vtable(member) == NGP_TABLE_VTABLE {
         // NGP's reader: `CUnsigned::Parse`, then up to 30 floats.
         let mut out = integer(toks, i, member + VALUE);
         out.extend(floats(toks, i + out.len(), NGP_TABLE_LEN, member + NGP_TABLE));
         return Ok(stores(out));
     }
-    Ok(match mem.u32(mem.u32(member) + 8) {
+    Ok(match mem.reader(mem.vtable(member)) {
         REAL_PARSE => stores(floats(toks, i, 1, member + VALUE)),
         VECTOR_PARSE => stores(floats(toks, i, 3, member + VECTOR_VALUE)),
         VECTOR4_PARSE => stores(floats(toks, i, 4, member + VECTOR_VALUE)),
@@ -286,11 +283,15 @@ fn inner_group(
         let mut text = quoted(&c_bytes(mem, item), ITEM_BLOCK).to_vec();
         text.push(0);
         mem.map(block, &text);
-        match mem.u32(mem.u32(this) + 0x14) {
+        match mem.inner_group_entry(this) {
             INNER_GROUP_SKIP => mem.set_u32(cursor + 4, at + 4),
             _ => {
-                host.unk14(mem, this, name, block, cursor);
-                assert_ne!(mem.u32(cursor + 4), at, "an Unk14 that leaves the item: the original loops forever");
+                host.inner_group_item(mem, this, name, block, cursor);
+                assert_ne!(
+                    mem.u32(cursor + 4),
+                    at,
+                    "an inner-group entry that leaves the item: the original loops forever"
+                );
             }
         }
     }
@@ -335,7 +336,7 @@ pub fn parse(
             Step::Name(name) => {
                 let block = stack_alloc(mem, name.len() as u32 + 1, heap, HEAP_ALIGN)?;
                 mem.map(block, &[name.as_slice(), &[0]].concat());
-                mem.set_u32(this + 4, block);
+                mem.set_u32(this + NAME, block);
                 i += 1;
             }
             Step::Skip => i += 1,

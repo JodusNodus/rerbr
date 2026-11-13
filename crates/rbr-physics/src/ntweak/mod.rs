@@ -13,7 +13,7 @@
 //!   the item leaves it for the walk. A key with nothing after it ends the walk. The material manager's keys name its
 //!   materials by tag;
 //! - a group (not a member's) goes to the object's inner-group entry once per item after its leading quoted name, each
-//!   item's quoted name ([`get_quoted`]) first copied to a token-heap block: an entity definition's appends the
+//!   item's quoted name ([`quoted_name`]) first copied to a token-heap block: an entity definition's appends the
 //!   registry index of the group's name to its links, such as `prime.lsp`'s
 //!   `("CAR_WHEEL_LF" ("CAR_WHEEL_LF"))` in the car's group; the definition manager's
 //!   takes the group's name as a factory and each item as a definition, which the host makes or finds and walks the
@@ -61,10 +61,10 @@ pub fn atof(t: &str) -> f32 {
 
 /// The quoted name of an item: the quoted string it starts with, inside its opening parentheses, cut to `len - 1`
 /// bytes; empty for anything else.
-pub fn get_quoted(item: &lsp::Node, len: u32) -> String {
+pub fn quoted_name(item: &lsp::Node, len: u32) -> String {
     match item {
         lsp::Node::Quoted(s) => s.chars().take(len as usize - 1).collect(),
-        lsp::Node::List(items) => items.first().map_or(String::new(), |i| get_quoted(i, len)),
+        lsp::Node::List(items) => items.first().map_or(String::new(), |i| quoted_name(i, len)),
         lsp::Node::Atom(_) => String::new(),
     }
 }
@@ -105,11 +105,11 @@ mod tests {
     }
 
     #[test]
-    fn get_quoted_takes_the_leading_name() {
+    fn quoted_name_takes_the_leading_name() {
         let file = lsp::parse("((\"GROUND\" Width 1) x \"0123456789abcdef0123456789abcdefXX\")").unwrap();
         let lsp::Node::List(items) = &file[0] else { unreachable!() };
-        assert_eq!(get_quoted(&items[0], 0x20), "GROUND");
-        assert_eq!(get_quoted(&items[1], 0x20), "");
-        assert_eq!(get_quoted(&items[2], 0x20).len(), 31);
+        assert_eq!(quoted_name(&items[0], 0x20), "GROUND");
+        assert_eq!(quoted_name(&items[1], 0x20), "");
+        assert_eq!(quoted_name(&items[2], 0x20).len(), 31);
     }
 }

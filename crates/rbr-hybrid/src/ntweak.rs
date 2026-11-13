@@ -113,7 +113,7 @@ impl ParseHost for Original<'_> {
         self.host.call_at(self.base - 0x38, CRT_DELETE, 0, &[at]);
     }
 
-    fn unk14(&mut self, mem: &mut Mem, this: u32, name: u32, block: u32, cursor: u32) {
+    fn inner_group_item(&mut self, mem: &mut Mem, this: u32, name: u32, block: u32, cursor: u32) {
         let slot = mem.u32(mem.u32(this) + SLOT_UNK14);
         self.host.call_at(self.base - 0x40, slot, this, &[name, block, cursor]);
     }

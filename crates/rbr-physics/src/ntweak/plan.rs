@@ -6,24 +6,15 @@ use rbr_formats::lsp_keys::{Class, KeyInfo};
 use rbr_formats::lsp_keys_ngp::ngp_key_info;
 
 use super::layout::{
-    BASE_PARSE, BIT_FIELD_PARSE, INNER_GROUP_DEFINE, INNER_GROUP_LINK, INNER_GROUP_SKIP, INTEGER_PARSE, ITEM_BLOCK,
-    NGP_TABLE, NGP_TABLE_VTABLE, REAL_PARSE, UNSIGNED_PARSE, VALUE, VECTOR4_PARSE, VECTOR_PARSE, VECTOR_VALUE,
+    float_word, member_at, BASE_PARSE, BIT_FIELD_PARSE, INNER_GROUP_DEFINE, INNER_GROUP_LINK, INNER_GROUP_SKIP,
+    INTEGER_PARSE, ITEM_BLOCK, NGP_TABLE, NGP_TABLE_VTABLE, REAL_PARSE, UNSIGNED_PARSE, VALUE, VECTOR4_PARSE,
+    VECTOR_PARSE, VECTOR_VALUE,
 };
 use super::store::TweakStore;
-use super::{atof, atoi, get_quoted, is_float, is_integer, set_bit, Unsupported};
-
-use crate::physics_core::layout::{construct as physics, flags, material};
+use super::{atof, atoi, is_float, is_integer, quoted_name, set_bit, Unsupported};
 
 /// The floats NGP's reader takes after the unsigned: three rows of ten.
 pub(crate) const NGP_TABLE_LEN: usize = 30;
-
-/// The bit-field classes by table: their names and bit counts.
-pub(crate) const BIT_FIELDS: [(u32, u32, u32); 4] = [
-    (physics::FLAGS_VTABLE, flags::CDEF_NAMES, flags::CDEF_BITS),
-    (physics::DBG_FLAGS_VTABLE, flags::DBG_NAMES, flags::DBG_BITS),
-    (physics::LOG_FLAGS_VTABLE, flags::LOG_NAMES, flags::LOG_BITS),
-    (material::FLAGS_VTABLE, flags::MATERIAL_NAMES, flags::MATERIAL_BITS),
-];
 
 fn atom(item: Option<&Node>) -> Option<&str> {
     match item {
@@ -39,7 +30,7 @@ pub(super) enum Action<'a> {
     Name(u32, String),
     /// A member's value word (address, value).
     Store(u32, u32),
-    /// A token-heap block for an inner group's item, holding what `get_quoted` takes from the item.
+    /// A token-heap block for an inner group's item, holding what `quoted_name` takes from the item.
     Item(String),
     /// The registry index of the name, appended to the object's links when the registry has the name.
     Link(u32, String),
@@ -56,7 +47,7 @@ fn floats(items: &[Node], i: usize, n: usize, at: u32, out: &mut Vec<Action>) ->
     let taken = (0..n)
         .map_while(|k| atom(items.get(i + k)).filter(|v| is_float(v)))
         .enumerate()
-        .map(|(k, v)| Action::Store(at + 4 * k as u32, atof(v).to_bits()));
+        .map(|(k, v)| Action::Store(float_word(at, k), atof(v).to_bits()));
     let before = out.len();
     out.extend(taken);
     i + out.len() - before
@@ -96,11 +87,9 @@ fn bit_field<S: TweakStore>(
     i: usize,
     out: &mut Vec<Action>,
 ) -> Result<usize, Unsupported> {
-    let vtable = store.vtable(member);
-    let Some(&(_, table, count)) = BIT_FIELDS.iter().find(|(v, _, _)| *v == vtable) else {
+    let Some(names) = store.bit_names(store.vtable(member)) else {
         return Err(Unsupported("a bit-field of a class not ported"));
     };
-    let names = store.bit_names(table, count);
     let at = member + VALUE;
     let mut mask = current(store, out, at);
     let mut next = i;
@@ -117,15 +106,6 @@ fn bit_field<S: TweakStore>(
 /// The key record of `key` in `class` from NGP's tables (its renamed and appended keys, `notes/ngp.md` "Load path").
 pub(super) fn lookup(class: Class, key: &str) -> Option<KeyInfo> {
     ngp_key_info(class, key)
-}
-
-/// The member a key names in the object at `this`: at its offset, or in the material manager the material of its tag
-/// (the manager's key words are `88 * tag + 3`; the key tables hold the tag).
-pub(super) fn member_at(this: u32, info: &KeyInfo) -> u32 {
-    match info.class {
-        Class::MaterialManager => material::entry(this, info.offset),
-        _ => this + info.offset,
-    }
 }
 
 /// One step of the walk at item `i`: the item to go on at, or `None` when the walk ends.
@@ -196,7 +176,7 @@ fn inner_group<'a, S: TweakStore>(
     }
     let entry = store.inner_group_entry(this);
     for item in items {
-        let quoted = get_quoted(item, ITEM_BLOCK);
+        let quoted = quoted_name(item, ITEM_BLOCK);
         out.push(Action::Item(quoted.clone()));
         match (entry, item) {
             (INNER_GROUP_SKIP, _) => {}

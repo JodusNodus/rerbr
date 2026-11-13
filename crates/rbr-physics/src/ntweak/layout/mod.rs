@@ -2,7 +2,7 @@
 //! `plan` works it out).
 
 use rbr_formats::lsp::Node;
-use rbr_formats::lsp_keys::Class;
+use rbr_formats::lsp_keys::{Class, KeyInfo};
 
 use super::plan::Action;
 use super::store::TweakStore;
@@ -10,7 +10,7 @@ use super::Unsupported;
 
 use crate::math::vec::clear_vec4;
 use crate::mem::Mem;
-use crate::physics_core::layout::flags;
+use crate::physics_core::layout::{construct as physics, flags, material};
 
 mod parse;
 
@@ -49,6 +49,37 @@ pub(crate) const LINKS: u32 = 0x1c;
 /// bit-field's mask is its value.
 pub(crate) const VALUE: u32 = 0x0c;
 pub(crate) const VECTOR_VALUE: u32 = 0x10;
+/// The name word of a tweak header or object, at +4: the name it points at.
+const NAME: u32 = 0x04;
+/// The dirty flag of a tweak header, at +8.
+const DIRTY: u32 = 0x08;
+
+/// The dispatch-table slots the walk reads: slot 2 (+8), the parse entry, and slot 5 (+0x14, `Unk14`), the inner-group
+/// entry.
+const PARSE_SLOT: u32 = 0x08;
+const INNER_GROUP_SLOT: u32 = 0x14;
+
+/// The bit-field classes by table: their bit names' table and bit count.
+const BIT_FIELDS: [(u32, u32, u32); 4] = [
+    (physics::FLAGS_VTABLE, flags::DEF_FLAG_NAMES, flags::DEF_FLAG_BITS),
+    (physics::DBG_FLAGS_VTABLE, flags::DBG_NAMES, flags::DBG_BITS),
+    (physics::LOG_FLAGS_VTABLE, flags::LOG_NAMES, flags::LOG_BITS),
+    (material::FLAGS_VTABLE, flags::MATERIAL_NAMES, flags::MATERIAL_BITS),
+];
+
+/// The member a key names in the object at `this`: at its offset, or in the material manager the material of its tag
+/// (the manager's key words are `88 * tag + 3`; the key tables hold the tag).
+pub(crate) fn member_at(this: u32, info: &KeyInfo) -> u32 {
+    match info.class {
+        Class::MaterialManager => material::entry(this, info.offset),
+        _ => this + info.offset,
+    }
+}
+
+/// The `k`th float word of a value at `at`.
+pub(crate) fn float_word(at: u32, k: usize) -> u32 {
+    at + 4 * k as u32
+}
 
 /// The calls the walk makes outside the object.
 pub trait ApplyHost {
@@ -72,7 +103,7 @@ pub trait ApplyHost {
 }
 
 /// The NUL-terminated string at `at`.
-pub(super) fn c_string(mem: &Mem, at: u32) -> String {
+fn c_string(mem: &Mem, at: u32) -> String {
     let mut out = Vec::new();
     while let Some(c) = Some(mem.u8(at + out.len() as u32)).filter(|&c| c != 0) {
         out.push(c);
@@ -93,16 +124,17 @@ impl TweakStore for Mem {
 
     #[inline]
     fn reader(&self, vtable: u32) -> u32 {
-        self.u32(vtable + 8)
+        self.u32(vtable + PARSE_SLOT)
     }
 
     #[inline]
     fn inner_group_entry(&self, object: u32) -> u32 {
-        self.u32(self.u32(object) + 0x14)
+        self.u32(self.u32(object) + INNER_GROUP_SLOT)
     }
 
-    fn bit_names(&self, table: u32, count: u32) -> Vec<String> {
-        (0..count).map(|k| c_string(self, flags::bit_name(self, table, k))).collect()
+    fn bit_names(&self, vtable: u32) -> Option<Vec<String>> {
+        let &(_, table, count) = BIT_FIELDS.iter().find(|(v, _, _)| *v == vtable)?;
+        Some((0..count).map(|k| c_string(self, flags::bit_name(self, table, k))).collect())
     }
 
     #[inline]
@@ -128,7 +160,7 @@ impl Plan<'_> {
                 Action::Name(this, name) => {
                     let at = host.alloc_name(mem, name.len() as u32 + 1);
                     write_string(mem, at, &name);
-                    mem.set_u32(this + 4, at);
+                    mem.set_u32(this + NAME, at);
                 }
                 Action::Store(at, value) => mem.set_u32(at, value),
                 Action::Item(text) => {
@@ -167,9 +199,6 @@ pub(crate) const VECTOR_NAME: u32 = 0x0074_0638;
 /// `NTweak::CReal`'s vtable (0x73b644) at +0, and its name word (0x740528) at +4.
 pub const REAL_VTABLE: u32 = 0x0073_B644;
 pub const REAL_NAME: u32 = 0x0074_0528;
-/// The dirty flag of a tweak header, at +8.
-const DIRTY: u32 = 0x08;
-
 /// `NTweak::CBase::SetDirty` (0x52f450): sets the dirty flag of the tweak at `at` to 1.
 pub fn set_dirty<S: TweakStore>(store: &mut S, at: u32) {
     store.store_dirty(at, 1);
@@ -187,7 +216,7 @@ pub const UNSIGNED_NAME: u32 = 0x0074_0580;
 /// `NTweak::CBase::CBase(name)` (0x52f090) on the header at `at`: the base vtable, the name, and the dirty flag 0.
 pub fn construct_base(mem: &mut Mem, at: u32, name: u32) {
     mem.set_u32(at, BASE_VTABLE);
-    mem.set_u32(at + 4, name);
+    mem.set_u32(at + NAME, name);
     mem.set_u32(at + DIRTY, 0);
 }
 
@@ -195,7 +224,7 @@ pub fn construct_base(mem: &mut Mem, at: u32, name: u32) {
 /// lane (`1.0`, at +0x1c).
 pub fn construct_vector4(mem: &mut Mem, at: u32) {
     mem.set_u32(at, VECTOR4_VTABLE);
-    mem.set_u32(at + 4, VECTOR4_NAME);
+    mem.set_u32(at + NAME, VECTOR4_NAME);
     mem.set_u32(at + DIRTY, 0);
     mem.set_f32(at + 0x10, 0.0);
     mem.set_f32(at + 0x14, 0.0);
@@ -206,7 +235,7 @@ pub fn construct_vector4(mem: &mut Mem, at: u32) {
 /// `NTweak::CUnsigned::CUnsigned` (0x52fec0) on the tweak at `at`: the header, and the value 0 at +0xc.
 pub fn construct_unsigned(mem: &mut Mem, at: u32) {
     mem.set_u32(at, UNSIGNED_VTABLE);
-    mem.set_u32(at + 4, UNSIGNED_NAME);
+    mem.set_u32(at + NAME, UNSIGNED_NAME);
     mem.set_u32(at + DIRTY, 0);
     mem.set_u32(at + VALUE, 0);
 }
@@ -218,7 +247,7 @@ const INTEGER_NAME: u32 = 0x0074_05E0;
 /// `NTweak::CInteger::CInteger` (0x52ff20) on the tweak at `at`: the header, and the value 0 at +0xc.
 pub fn construct_integer(mem: &mut Mem, at: u32) {
     mem.set_u32(at, INTEGER_VTABLE);
-    mem.set_u32(at + 4, INTEGER_NAME);
+    mem.set_u32(at + NAME, INTEGER_NAME);
     mem.set_u32(at + DIRTY, 0);
     mem.set_u32(at + VALUE, 0);
 }
@@ -226,7 +255,7 @@ pub fn construct_integer(mem: &mut Mem, at: u32) {
 /// `NTweak::CReal::CReal` (0x52fea0) on the tweak at `at`: the header, and the value 0.0.
 pub fn construct_real(mem: &mut Mem, at: u32) {
     mem.set_u32(at, REAL_VTABLE);
-    mem.set_u32(at + 4, REAL_NAME);
+    mem.set_u32(at + NAME, REAL_NAME);
     mem.set_u32(at + DIRTY, 0);
     mem.set_f32(at + VALUE, 0.0);
 }
@@ -234,7 +263,7 @@ pub fn construct_real(mem: &mut Mem, at: u32) {
 /// `NTweak::CVector::CVector` (0x52ff80) on the tweak at `at`: the header, and the zero vector at +0x10.
 pub fn construct_vector(mem: &mut Mem, at: u32) {
     mem.set_u32(at, VECTOR_VTABLE);
-    mem.set_u32(at + 4, VECTOR_NAME);
+    mem.set_u32(at + NAME, VECTOR_NAME);
     mem.set_u32(at + DIRTY, 0);
     let zero = clear_vec4();
     mem.set_f32(at + 0x10, zero.x);
@@ -251,14 +280,13 @@ pub fn name_or_null(mem: &Mem, base: u32) -> u32 {
     if base == 0 {
         NULL_NAME
     } else {
-        mem.u32(base + 4)
+        mem.u32(base + NAME)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics_core::layout::construct as physics;
     use rbr_formats::lsp;
 
     const THIS: u32 = 0x1000;
@@ -402,10 +430,10 @@ mod tests {
         const NAMES: u32 = 0x5000;
         let mut mem = Mem::new();
         mem.map(PHYS, &[0; 0x16160]);
-        mem.map(flags::CDEF_NAMES, &[0; 0x50]);
+        mem.map(flags::DEF_FLAG_NAMES, &[0; 0x50]);
         mem.map(NAMES, b"FACE_COLL\0EDGE_COLL\0\0");
-        for k in 0..flags::CDEF_BITS {
-            mem.set_u32(flags::CDEF_NAMES + 4 * k, NAMES + [0, 10, 20][k.min(2) as usize]);
+        for k in 0..flags::DEF_FLAG_BITS {
+            mem.set_u32(flags::DEF_FLAG_NAMES + 4 * k, NAMES + [0, 10, 20][k.min(2) as usize]);
         }
         mem.set_u32(PHYS + 0x160c0, physics::FLAGS_VTABLE);
         mem.map(physics::FLAGS_VTABLE, &[0; 0x20]);

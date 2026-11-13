@@ -12,8 +12,8 @@ pub trait TweakStore: Raw {
     fn reader(&self, vtable: u32) -> u32;
     /// The object's inner-group entry, which takes the walk's inner groups.
     fn inner_group_entry(&self, object: u32) -> u32;
-    /// The names of a bit-field class's bits (over its table).
-    fn bit_names(&self, table: u32, count: u32) -> Vec<String>;
+    /// The names of the bits of the bit-field class whose dispatch table is `vtable`, or `None` for a class not ported.
+    fn bit_names(&self, vtable: u32) -> Option<Vec<String>>;
     /// The dirty flag of the tweak header at `at`.
     fn store_dirty(&mut self, at: u32, value: u32);
 }
