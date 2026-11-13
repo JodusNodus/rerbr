@@ -49,7 +49,7 @@ pub fn advance_contact_bodies_remainder<S: CoreStore>(
     }
 }
 
-/// The CDef flag that counts the solver's hits.
+/// The physics definition's flag that counts the solver's hits.
 const COUNT_HITS_FLAG: u32 = 0x20000;
 
 /// The collide work on the physics at `this`. The pass counter and the hit counts restart; while the window is above

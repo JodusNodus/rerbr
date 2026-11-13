@@ -124,7 +124,7 @@ pub trait CarStore: Raw {
     fn wheel(&self, car: u32, i: u32) -> Option<u32>;
     /// The wheel's attach flags: the bits the attach tests.
     fn attach_flags(&self, wheel: u32) -> u32;
-    /// The wheel's setup (`CDef`); its slot indices say where the wheel enters the car's lists.
+    /// The wheel's setup; its slot indices say where the wheel enters the car's lists.
     fn wheel_def(&self, wheel: u32) -> u32;
     /// The index in the car's hinged list that the wheel's setup gives.
     fn hinged_index(&self, wheel: u32) -> u32;

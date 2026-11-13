@@ -1,4 +1,4 @@
-//! The ground entity (`CGround`): the flags that report the ground present, the contact the box probe reports, and the
+//! The ground entity: the flags that report the ground present, the contact the box probe reports, and the
 //! calls the probe and the replacement of the ground singleton make. The classes' constants and the construction are
 //! layout (`layout::classes`, `layout::construct_ground_def`, `layout::ground_make`).
 

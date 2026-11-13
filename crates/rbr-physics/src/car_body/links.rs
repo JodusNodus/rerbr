@@ -3,7 +3,7 @@
 //! those addresses, and `Links` is the store the ports read and write through (`layout.rs` implements it on the
 //! memory). The writes happen in the original's order.
 
-/// The address of a link object (`CBodyLink`, 12 bytes). Never null: a free link has no owner, not a null link.
+/// The address of a body link (12 bytes). Never null: a free link has no owner, not a null link.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LinkRef(u32);
 

@@ -1,4 +1,4 @@
-//! `CBody`'s grid calls and the grid bounds sync, generic over the store.
+//! The collision body's grid calls and the grid bounds sync, generic over the store.
 
 use super::layout::body_hosts::{self as body_host, ClearGridHost, CornerHost};
 use super::overlap;

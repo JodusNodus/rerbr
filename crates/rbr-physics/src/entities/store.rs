@@ -46,7 +46,7 @@ pub enum SlotLookup {
 
 /// The hinged body.
 pub trait HingeStore: Raw {
-    // The hinged body (`CHingedRigidBody`), at `this`.
+    // The hinged body, at `this`.
     /// The link pointer and the definition pointer.
     fn hinge_link(&self, this: u32) -> u32;
     fn hinge_definition(&self, this: u32) -> u32;

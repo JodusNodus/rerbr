@@ -44,8 +44,8 @@ pub struct ForceInput {
     /// the car (negative camber), whose thrust then points inwards (NGP's sliding model takes `0.1` of it off the
     /// lateral slip).
     pub inclination_sin: f32,
-    /// The surface classes of the two materials the wheel's surface blends (each material's `+0x148`, the index of the
-    /// tyre type's per-class base friction: 1 gravel, 3 snow) and the second one's weight, 0 to 1. NGP's step does not
+    /// The surface classes of the two materials the wheel's surface blends (each material's own, the index of the tyre
+    /// type's per-class base friction: 1 gravel, 3 snow) and the second one's weight, 0 to 1. NGP's step does not
     /// read them: [`input`] leaves them unknown ([`UNKNOWN_CLASS`]), the host fills them in.
     pub surface_classes: [u32; 2],
     pub surface_blend: f32,
