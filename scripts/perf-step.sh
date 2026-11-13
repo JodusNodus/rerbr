@@ -3,7 +3,7 @@
 # $RBR_RECORDINGS/rsf, the command harness/rsf_compare.py builds for it, STEPS steps, default 13000) with A and B in
 # turn, RUNS times each (default 3), and prints per build the fewest instructions per step over its runs (other load
 # on the machine only ever adds to them), the median cycles and stepping time, and the allocations per step, then B
-# against A. The instruction counts need macOS (rbr-counters); cycles and time move with the machine's load,
+# against A. The instruction counts need macOS or Linux (rbr-counters); cycles and time move with the machine's load,
 # instructions and allocations hardly.
 # Build A from the base first, e.g. `cargo build --release -p rbr-standalone` in its checkout, and copy the binary.
 # The boot's flags come from one rsf_compare run (physics only, --keep-work) with A; ATTEMPT picks another attempt of
@@ -11,6 +11,7 @@
 # RBR_NGP_PHYSICS, RBR_RSF and the release rsf-settings.
 # Usage: scripts/perf-step.sh A_BIN B_BIN [RUNS]
 set -euo pipefail
+export LC_ALL=C # printf's %f reads the timing line's decimal point
 source "$(dirname "${BASH_SOURCE[0]}")/dev-env.sh"
 a=${1:?usage: scripts/perf-step.sh A_BIN B_BIN [RUNS]}
 b=${2:?usage: scripts/perf-step.sh A_BIN B_BIN [RUNS]}
@@ -47,7 +48,7 @@ run() {
         grep ': timing: ') || { echo "$2: no timing line" >&2; exit 1; }
     local counts='; stepping ([0-9]+) instructions, ([0-9]+) cycles, ([0-9]+) allocations \(([0-9]+) bytes\)'
     line=$(sed -nE "s/.*stepping ([0-9.]+) s .*$counts.*/\\1 \\2 \\3 \\4 \\5/p" <<<"$line")
-    [ -n "$line" ] || { echo "$2: no counts in the timing line (macOS only)" >&2; exit 1; }
+    [ -n "$line" ] || { echo "$2: no counts in the timing line (macOS or Linux)" >&2; exit 1; }
     echo "$line" >>"$out/$1"
 }
 

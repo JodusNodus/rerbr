@@ -17,7 +17,8 @@ pub use crate::collision::mesh::{
 
 /// Loads a separating-axis box: the centre at +0 and the half extents at +12.
 pub fn load_sat_box(mem: &Mem, at: u32) -> SatBox {
-    SatBox { center: Vec3::load(mem, at), half_extent: Vec3::load(mem, at + 12) }
+    let [x, y, z, hx, hy, hz] = mem.f32s(at);
+    SatBox { center: Vec3 { x, y, z }, half_extent: Vec3 { x: hx, y: hy, z: hz } }
 }
 
 /// Loads the two tags and the weight that E38_004FB720 picks from. The table is at +0xac, or at +0x80 when bit 0x800 of

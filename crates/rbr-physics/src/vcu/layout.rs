@@ -5,7 +5,7 @@
 
 use super::store::VcuStore;
 use crate::mem::Mem;
-use crate::store::Real;
+use crate::store::{Raw, Real};
 
 /// Knots in a pedal map and in a speed map (the VCU always passes 11).
 pub const KNOTS: usize = 11;
@@ -164,18 +164,18 @@ pub struct Def {
     pub left_foot_brake_threshold: f32,
     /// Number of gears (`NumberOfGears`).
     pub gear_count: u32,
-    pub centre_throttle_lock: Vec<Knot>,
-    pub centre_brake_lock: Vec<Knot>,
-    pub centre_speed_lock: Vec<SpeedKnot>,
-    pub lf_centre_throttle_lock: Vec<Knot>,
-    pub lf_centre_brake_lock: Vec<Knot>,
-    pub lf_centre_speed_lock: Vec<SpeedKnot>,
-    pub front_throttle_lock: Vec<Knot>,
-    pub front_brake_lock: Vec<Knot>,
-    pub front_speed_lock: Vec<SpeedKnot>,
-    pub rear_throttle_lock: Vec<Knot>,
-    pub rear_brake_lock: Vec<Knot>,
-    pub rear_speed_lock: Vec<SpeedKnot>,
+    pub centre_throttle_lock: [Knot; KNOTS],
+    pub centre_brake_lock: [Knot; KNOTS],
+    pub centre_speed_lock: [SpeedKnot; KNOTS],
+    pub lf_centre_throttle_lock: [Knot; KNOTS],
+    pub lf_centre_brake_lock: [Knot; KNOTS],
+    pub lf_centre_speed_lock: [SpeedKnot; KNOTS],
+    pub front_throttle_lock: [Knot; KNOTS],
+    pub front_brake_lock: [Knot; KNOTS],
+    pub front_speed_lock: [SpeedKnot; KNOTS],
+    pub rear_throttle_lock: [Knot; KNOTS],
+    pub rear_brake_lock: [Knot; KNOTS],
+    pub rear_speed_lock: [SpeedKnot; KNOTS],
 }
 
 /// Three consecutive words of a knot record, the ones CopyDef moves. In a pedal map's record they sit at
@@ -606,13 +606,7 @@ pub fn lookup_pair_table<S: VcuStore>(mem: &S, table: u32, x: f32, n: u32) -> f6
 
 /// `CScratchSim::LockMax (t1, t2, t3, f)`, st0: the largest of the throttle, brake and speed maps.
 pub fn lock_max<S: VcuStore>(mem: &S, this: u32, t: [u32; 3], f: f32) -> f32 {
-    super::locks::lock_max(
-        mem.pedals(this),
-        &mem.pedal_map(t[0], KNOTS),
-        &mem.pedal_map(t[1], KNOTS),
-        &mem.speed_map(t[2], KNOTS),
-        f,
-    )
+    super::locks::lock_max(mem.pedals(this), &pedal_map(mem, t[0]), &pedal_map(mem, t[1]), &speed_map(mem, t[2]), f)
 }
 
 /// `CScratchSim::DiffLocks`: the three diff locks, sent to the drive's `Set4570`; eax is the last send's.
@@ -788,13 +782,18 @@ pub fn step<S: VcuStore>(
     let def = mem.def(scratch.def);
     let mut state = mem.state(scratch.state);
     let mut out = mem.outputs(drive);
-    let mut sends = Vec::new();
+    // The step sends at most ten: seven, and a lock on each of the three channels.
+    let mut sends = [None; 10];
+    let mut sent = 0;
     let port = if gear { super::step::step } else { super::step::step_basic };
-    port(input, &scratch, &def, &mut state, &mut gears, &mut out, &mut |s| sends.push(s));
+    port(input, &scratch, &def, &mut state, &mut gears, &mut out, &mut |s| {
+        sends[sent] = Some(s);
+        sent += 1;
+    });
     mem.store_state(scratch.state, &state);
     mem.store_gearbox(gears_at, &gears);
     mem.store_outputs(drive, &out);
-    for send in sends {
+    for send in sends.into_iter().flatten() {
         match send {
             Send::EnginePedal(v) => calls.set_engine_pedal(scratch.engine, v),
             Send::CutFlags(flags) => {
@@ -809,18 +808,36 @@ pub fn step<S: VcuStore>(
     scratch.state
 }
 
+/// Knot `k` of the speed map at `at`.
+fn speed_knot<S: Raw + ?Sized>(mem: &S, at: u32, k: u32) -> SpeedKnot {
+    SpeedKnot { key: mem.f32(at + 0x20 * k + 0x0c), value: mem.f32(at + 0x20 * k + 0x1c) }
+}
+
+/// Knot `k` of the pedal map at `at`.
+fn pedal_knot<S: Raw + ?Sized>(mem: &S, at: u32, k: u32) -> Knot {
+    Knot { value: mem.f32(at + 0x10 * k + 0x0c) }
+}
+
+/// The [`KNOTS`] records of the speed map at `at`.
+fn speed_map<S: Raw + ?Sized>(mem: &S, at: u32) -> [SpeedKnot; KNOTS] {
+    std::array::from_fn(|k| speed_knot(mem, at, k as u32))
+}
+
+/// The [`KNOTS`] knots of the pedal map at `at`.
+fn pedal_map<S: Raw + ?Sized>(mem: &S, at: u32) -> [Knot; KNOTS] {
+    std::array::from_fn(|k| pedal_knot(mem, at, k as u32))
+}
+
 /// The Mem store: the bodies are the layout's reads and writes.
 impl VcuStore for Mem {
     /// Reads a speed map of `n` records at `at`.
     fn speed_map(&self, at: u32, n: usize) -> Vec<SpeedKnot> {
-        (0..n as u32)
-            .map(|k| SpeedKnot { key: self.f32(at + 0x20 * k + 0x0c), value: self.f32(at + 0x20 * k + 0x1c) })
-            .collect()
+        (0..n as u32).map(|k| speed_knot(self, at, k)).collect()
     }
 
     /// Reads a pedal map of `n` knots at `at`.
     fn pedal_map(&self, at: u32, n: usize) -> Vec<Knot> {
-        (0..n as u32).map(|k| Knot { value: self.f32(at + 0x10 * k + 0x0c) }).collect()
+        (0..n as u32).map(|k| pedal_knot(self, at, k)).collect()
     }
 
     /// Reads the setup at `at`. The memory must cover the whole object (0xcac bytes).
@@ -836,18 +853,18 @@ impl VcuStore for Mem {
             centre_diff_handbrake_release: f(CENTRE_DIFF_HANDBRAKE_RELEASE),
             left_foot_brake_threshold: f(LEFT_FOOT_BRAKE_THRESHOLD),
             gear_count: self.u32(at + 0x654),
-            centre_throttle_lock: self.pedal_map(at + CENTRE_THROTTLE_LOCK, KNOTS),
-            centre_brake_lock: self.pedal_map(at + CENTRE_BRAKE_LOCK, KNOTS),
-            centre_speed_lock: self.speed_map(at + CENTRE_SPEED_LOCK, KNOTS),
-            lf_centre_throttle_lock: self.pedal_map(at + LF_CENTRE_THROTTLE_LOCK, KNOTS),
-            lf_centre_brake_lock: self.pedal_map(at + LF_CENTRE_BRAKE_LOCK, KNOTS),
-            lf_centre_speed_lock: self.speed_map(at + LF_CENTRE_SPEED_LOCK, KNOTS),
-            front_throttle_lock: self.pedal_map(at + FRONT_THROTTLE_LOCK, KNOTS),
-            front_brake_lock: self.pedal_map(at + FRONT_BRAKE_LOCK, KNOTS),
-            front_speed_lock: self.speed_map(at + FRONT_SPEED_LOCK, KNOTS),
-            rear_throttle_lock: self.pedal_map(at + REAR_THROTTLE_LOCK, KNOTS),
-            rear_brake_lock: self.pedal_map(at + REAR_BRAKE_LOCK, KNOTS),
-            rear_speed_lock: self.speed_map(at + REAR_SPEED_LOCK, KNOTS),
+            centre_throttle_lock: pedal_map(self, at + CENTRE_THROTTLE_LOCK),
+            centre_brake_lock: pedal_map(self, at + CENTRE_BRAKE_LOCK),
+            centre_speed_lock: speed_map(self, at + CENTRE_SPEED_LOCK),
+            lf_centre_throttle_lock: pedal_map(self, at + LF_CENTRE_THROTTLE_LOCK),
+            lf_centre_brake_lock: pedal_map(self, at + LF_CENTRE_BRAKE_LOCK),
+            lf_centre_speed_lock: speed_map(self, at + LF_CENTRE_SPEED_LOCK),
+            front_throttle_lock: pedal_map(self, at + FRONT_THROTTLE_LOCK),
+            front_brake_lock: pedal_map(self, at + FRONT_BRAKE_LOCK),
+            front_speed_lock: speed_map(self, at + FRONT_SPEED_LOCK),
+            rear_throttle_lock: pedal_map(self, at + REAR_THROTTLE_LOCK),
+            rear_brake_lock: pedal_map(self, at + REAR_BRAKE_LOCK),
+            rear_speed_lock: speed_map(self, at + REAR_SPEED_LOCK),
         }
     }
 

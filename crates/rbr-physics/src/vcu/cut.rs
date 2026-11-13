@@ -30,7 +30,7 @@ pub fn check_slip(vcu_enabled: u32, drive_slip_flag: u32, x: f32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::super::layout::{Knot, SpeedKnot};
+    use super::super::layout::{Knot, SpeedKnot, KNOTS};
     use super::*;
 
     fn def(rpm_limit: f32) -> Def {
@@ -44,18 +44,18 @@ mod tests {
             centre_diff_handbrake_release: 0.0,
             left_foot_brake_threshold: 0.0,
             gear_count: 0,
-            centre_throttle_lock: Vec::<Knot>::new(),
-            centre_brake_lock: Vec::<Knot>::new(),
-            centre_speed_lock: Vec::<SpeedKnot>::new(),
-            lf_centre_throttle_lock: Vec::<Knot>::new(),
-            lf_centre_brake_lock: Vec::<Knot>::new(),
-            lf_centre_speed_lock: Vec::<SpeedKnot>::new(),
-            front_throttle_lock: Vec::<Knot>::new(),
-            front_brake_lock: Vec::<Knot>::new(),
-            front_speed_lock: Vec::<SpeedKnot>::new(),
-            rear_throttle_lock: Vec::<Knot>::new(),
-            rear_brake_lock: Vec::<Knot>::new(),
-            rear_speed_lock: Vec::<SpeedKnot>::new(),
+            centre_throttle_lock: [Knot::default(); KNOTS],
+            centre_brake_lock: [Knot::default(); KNOTS],
+            centre_speed_lock: [SpeedKnot::default(); KNOTS],
+            lf_centre_throttle_lock: [Knot::default(); KNOTS],
+            lf_centre_brake_lock: [Knot::default(); KNOTS],
+            lf_centre_speed_lock: [SpeedKnot::default(); KNOTS],
+            front_throttle_lock: [Knot::default(); KNOTS],
+            front_brake_lock: [Knot::default(); KNOTS],
+            front_speed_lock: [SpeedKnot::default(); KNOTS],
+            rear_throttle_lock: [Knot::default(); KNOTS],
+            rear_brake_lock: [Knot::default(); KNOTS],
+            rear_speed_lock: [SpeedKnot::default(); KNOTS],
         }
     }
 

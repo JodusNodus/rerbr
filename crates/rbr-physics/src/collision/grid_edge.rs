@@ -7,7 +7,7 @@ use super::edge_pair::{self as pair, PairGrid};
 use super::face_sweep::{self, Bounds, Face, FaceGrid, FaceHit};
 use super::layout::grid_hosts::GridOpsHost;
 use super::store::CollisionStore;
-use crate::math::vec::{Vec3, Vec4};
+use crate::math::vec::Vec3;
 
 /// The reads a sweep makes of a grid, each asked at the sweep's branch point.
 struct GridReads<'a, S: CollisionStore> {
@@ -163,8 +163,7 @@ pub fn grid_ops_m6610<S: CollisionStore>(
     let n = u32::from(store.grid_edge_count(this));
     host.copy_blocks_three_four(entry - 0x28, a, other, b, other, n);
     let n = u32::from(store.grid_edge_count(this));
-    let points: Vec<Vec4> = (0..n).map(|k| store.vec4(points + 16 * k)).collect();
-    let (lo, hi) = cells::point_bounds(&points);
+    let (lo, hi) = cells::point_bounds((0..n).map(|k| store.vec4(points + 16 * k)));
     let half = cells::half_extent(lo, hi, store.grid_half_scale(this));
     store.store_grid_bounds(this, lo, hi, lo.lerp(hi, 0.5), half);
     Some(this)

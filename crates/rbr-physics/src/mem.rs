@@ -137,9 +137,10 @@ impl Mem {
         Self::of(Storage::Backend(backend))
     }
 
-    /// Memory kept in `pages`.
+    /// Memory kept in `pages`. Its empty hole is at the top of the address space, so [`outside`]'s first test passes
+    /// for every access but one that ends at the top (which goes to the pages too, as the holder).
     pub fn with_pages(pages: Pages) -> Self {
-        Self::of(Storage::Paged { pages, hole: (0, 0), backend: None })
+        Self::of(Storage::Paged { pages, hole: (u32::MAX, u32::MAX), backend: None })
     }
 
     /// Memory kept by `backend`, whose bytes outside `hole` are those of `pages`: the accesses outside `hole` go to
@@ -341,9 +342,17 @@ impl Mem {
         std::array::from_fn(|k| self.u32(at + 4 * k as u32))
     }
 
+    /// [`Mem::u32s`] into `out`.
+    #[inline]
+    pub fn u32s_into<const N: usize>(&self, at: u32, out: &mut [u32; N]) {
+        if !self.pages_for(at, 4 * N).is_some_and(|pages| pages.words_into(at, out)) {
+            *out = self.u32s(at);
+        }
+    }
+
     /// `N` consecutive words from `at` when the pages hold them all, read at once.
     #[inline]
-    fn paged_u32s<const N: usize>(&self, at: u32) -> Option<[u32; N]> {
+    pub fn paged_u32s<const N: usize>(&self, at: u32) -> Option<[u32; N]> {
         self.pages_for(at, 4 * N)?.words(at)
     }
 
@@ -422,6 +431,40 @@ impl Mem {
             }
         }
         (0..len as u32).map(|i| self.u8(at + i)).collect()
+    }
+}
+
+/// `N` words read at once from `base` ([`Mem::u32s`]), then read by address inside them as [`Mem::u32`] would.
+pub struct Block<const N: usize> {
+    base: u32,
+    words: [u32; N],
+}
+
+impl<const N: usize> Block<N> {
+    #[inline]
+    pub fn read(mem: &Mem, base: u32) -> Self {
+        Self { base, words: mem.u32s(base) }
+    }
+
+    #[inline]
+    pub fn u32(&self, at: u32) -> u32 {
+        self.words[((at - self.base) / 4) as usize]
+    }
+
+    #[inline]
+    pub fn f32(&self, at: u32) -> f32 {
+        f32::from_bits(self.u32(at))
+    }
+
+    #[inline]
+    pub fn f32s<const M: usize>(&self, at: u32) -> [f32; M] {
+        std::array::from_fn(|k| self.f32(at + 4 * k as u32))
+    }
+
+    #[inline]
+    pub fn vec4(&self, at: u32) -> Vec4 {
+        let [x, y, z, w] = self.f32s(at);
+        Vec4 { x, y, z, w }
     }
 }
 

@@ -5,9 +5,10 @@ use crate::fpu;
 use crate::math::vec::Vec4;
 
 /// The lanewise bounds of a grid's points: `minps` and `maxps` folded from the first point.
-pub fn point_bounds(points: &[Vec4]) -> (Vec4, Vec4) {
-    let first = points[0];
-    points[1..].iter().fold((first, first), |(lo, hi), &p| (lo.min_lanes(p), hi.max_lanes(p)))
+pub fn point_bounds(points: impl IntoIterator<Item = Vec4>) -> (Vec4, Vec4) {
+    let mut points = points.into_iter();
+    let first = points.next().expect("a point");
+    points.fold((first, first), |(lo, hi), p| (lo.min_lanes(p), hi.max_lanes(p)))
 }
 
 /// The grid's half extent from its bounds: `(hi - lo) * 0.5` on three lanes. The original subtracts lane by lane into
