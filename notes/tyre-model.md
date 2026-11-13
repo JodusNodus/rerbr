@@ -2418,7 +2418,8 @@ items named below), run again on Finland 2021 as the gravel reference (it gives 
   tyre at 0.93-1.00 of its peak (VTI's trailer, SR 115). 1.05 at lock from `BERM_FROM` 0.8, as gravel's: on the pads
   (i20, 117; 101) locked 0.95 / 0.87 / 0.78 / 0.71 g over 160-130 / 130-100 / 100-70 / 70-40 km/h (0.93 / 0.83 / 0.74
   / 0.68 before; 101 0.91 / 0.82 / 0.74 / 0.68, was 0.89 / 0.79 / 0.71 / 0.64), 120 m from 160 km/h (125), threshold
-  braking to 72 % of slip unchanged, at 90 % 2-3 % more. Ours: the value (part of the crews' rise, under the
+  braking to 72 % of slip unchanged, at 90 % 2-3 % more; the autopilot on RSF 531 (i20, Fiesta WRC, Rally2) 947.6 /
+  947.5 / 950.7 s against 955.5 / 948.4 / 949.4 without it. Ours: the value (part of the crews' rise, under the
   scorecard's locked over ABS top: 1.10 reads 1.21 against 1.18) and the start shared with gravel.
 - Corner by corner on Aittajärvi (`corner_limit.py`, RSF 531, i20 Coupe WRC 2020, 14 levels, the reading and the limit
   from below as gravel's "Cornering against the crews, corner by corner"; the crews: SS9's and SS10's six drives each,
