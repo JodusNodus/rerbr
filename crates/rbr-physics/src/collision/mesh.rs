@@ -36,16 +36,54 @@ pub fn box_sat_overlap<S: CollisionStore>(store: &S, this: u32, other_center: u3
     u32::from(overlap::box_sat_overlap(store.sat_box(this), store.vec3(other_center), store.vec3(other_extent)))
 }
 
+/// A tree walk's pending nodes, the last pushed popped first: the first [`Pending::INLINE`] in place, the rest on the
+/// heap.
+struct Pending {
+    inline: [u32; Pending::INLINE],
+    len: usize,
+    more: Vec<u32>,
+}
+
+impl Pending {
+    const INLINE: usize = 64;
+
+    fn new() -> Self {
+        Pending { inline: [0; Pending::INLINE], len: 0, more: Vec::new() }
+    }
+
+    fn push(&mut self, node: u32) {
+        match self.inline.get_mut(self.len) {
+            Some(slot) => {
+                *slot = node;
+                self.len += 1;
+            }
+            None => self.more.push(node),
+        }
+    }
+
+    fn pop(&mut self) -> Option<u32> {
+        self.more.pop().or_else(|| {
+            self.len = self.len.checked_sub(1)?;
+            Some(self.inline[self.len])
+        })
+    }
+}
+
 /// Writes the leaves under `root` whose boxes overlap the query box at `query` (centre, then half extents) to
 /// `out`, after the leaf count. A leaf is a node that holds faces; a branch node pushes the children whose flag
-/// word is clear and whose boxes overlap the query; the last pushed is walked first.
+/// word is clear and whose boxes overlap the query; the last pushed is walked first. The walk reads only the tree and
+/// the query, so each leaf is written as it is found, and the count last.
 pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u32) {
-    let mut pending = if root == 0 { Vec::new() } else { vec![root] };
-    let mut leaves = Vec::new();
+    let mut pending = Pending::new();
+    if root != 0 {
+        pending.push(root);
+    }
+    let mut leaves = 0;
     while let Some(node) = pending.pop() {
         let tree = store.tree_node(node);
         if tree.faces() != 0 {
-            leaves.push(node);
+            store.set_u32(out + 4 + 4 * leaves, node);
+            leaves += 1;
             continue;
         }
         if tree.link == 0 {
@@ -57,10 +95,7 @@ pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u
             }
         }
     }
-    store.set_u32(out, leaves.len() as u32);
-    for (index, leaf) in leaves.iter().enumerate() {
-        store.set_u32(out + 4 + 4 * index as u32, *leaf);
-    }
+    store.set_u32(out, leaves);
 }
 
 /// Builds the query box from the centre `a` and the half extents `b` in the scratch `tmp`, and walks the object's
@@ -287,7 +322,8 @@ pub fn mesh_ray_worklist<S: CollisionStore>(
     out: u32,
 ) {
     let half = store.vec3(direction_at).scale(0.5);
-    let mut pending = vec![root];
+    let mut pending = Pending::new();
+    pending.push(root);
     while let Some(node) = pending.pop() {
         let tree = store.tree_node(node);
         let faces = tree.faces();
