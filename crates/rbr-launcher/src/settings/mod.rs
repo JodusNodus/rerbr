@@ -208,6 +208,23 @@ pub struct Settings {
     pub gearboxes: Gearboxes,
     /// The setup each car drives with on each surface (`[setup]`).
     pub setups: SetupChoices,
+    /// NGP's UDP telemetry to `ADDR:PORT` (`[telemetry]`, `udp = 127.0.0.1:6776`; `rbr-standalone --telemetry-udp`);
+    /// none sends nothing. Set on the Settings page or in the file.
+    pub telemetry_udp: Option<String>,
+}
+
+const TELEMETRY: &str = "telemetry";
+
+/// `[telemetry]`'s `udp`.
+fn parse_telemetry(sections: &[ini::Section]) -> Option<String> {
+    udp_address(sections.iter().find(|s| s.name == TELEMETRY)?.get("udp")?).map(str::to_owned)
+}
+
+/// A telemetry address, trimmed: a host and a port after its last `:`; none for anything else.
+pub fn udp_address(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let (host, port) = value.rsplit_once(':')?;
+    (!host.is_empty() && port.parse::<u16>().is_ok()).then_some(value)
 }
 
 /// Each car's gearbox for the advanced H-shifter, the Drive page's choice by car name (`<car> = synchro|dog`,
@@ -502,6 +519,7 @@ impl Settings {
             },
             gearboxes: Gearboxes::parse(&sections),
             setups: SetupChoices::parse(&sections),
+            telemetry_udp: parse_telemetry(&sections),
         }
     }
 
@@ -611,6 +629,9 @@ impl Settings {
         out.push_str(&self.camera.to_text());
         out.push_str(&self.gearboxes.to_text());
         out.push_str(&self.setups.to_text());
+        if let Some(to) = &self.telemetry_udp {
+            out.push_str(&format!("\n[{TELEMETRY}]\nudp = {to}\n"));
+        }
         out
     }
 }
@@ -724,6 +745,7 @@ mod tests {
                 ("Skoda Fabia R5".into(), "gravel".into(), "fast".into()),
                 ("XSARA".into(), "tarmac".into(), "dry grip".into()),
             ]),
+            telemetry_udp: Some("192.168.1.20:6776".into()),
         }
     }
 
@@ -762,10 +784,17 @@ mod tests {
                 "\n[ffb_cars]\nCOROLLA = 120,120,130\nrsf-24 = 90,100,110\n\n[ffb_load]\nrsf-24 tarmac = 0,12,340\n\n\
                  [camera]\nview = bonnet\n\
                  rsf-24 chase = 0 0.5 -1\n\n[gearbox]\nFord Escort Mk II = dog\n\n\
-                 [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n"
+                 [setup]\ngravel Skoda Fabia R5 = fast\ntarmac XSARA = dry grip\n\n[telemetry]\nudp = 192.168.1.20:6776\n"
             ),
             "{text}"
         );
+        assert_eq!(Settings::parse(&text), settings);
+        // An address without a port, or with a bad one, sends nothing.
+        for bad in ["", "127.0.0.1", "127.0.0.1:port", ":6776", "127.0.0.1:70000"] {
+            assert_eq!(Settings::parse(&format!("[telemetry]\nudp = {bad}\n")).telemetry_udp, None, "{bad}");
+        }
+        // The Settings page's field, trimmed.
+        assert_eq!(udp_address(" rig.local:20777 "), Some("rig.local:20777"));
         // An older `[ffb] sensitivity_car<id>` reads as `rsf-<id>`, losing to the section's own entry.
         assert_eq!(
             Settings::parse("[ffb]\nsensitivity_car24 = 1,2,3\n[ffb_cars]\nrsf-24 = 90,100,110\n").ffb_cars.cars,
@@ -1071,7 +1100,10 @@ mod tests {
                 "\n",
                 "[setup]\n",
                 "gravel Skoda Fabia R5 = fast\n",
-                "tarmac XSARA = dry grip\n"
+                "tarmac XSARA = dry grip\n",
+                "\n",
+                "[telemetry]\n",
+                "udp = 192.168.1.20:6776\n",
             )
         );
     }

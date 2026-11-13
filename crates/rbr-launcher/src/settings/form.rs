@@ -174,6 +174,7 @@ impl Form {
             // Filled by `list_cars`.
             car_browser: Default::default(),
             gearboxes: settings.gearboxes.clone(),
+            telemetry_udp: settings.telemetry_udp.clone().unwrap_or_default(),
             // Filled by `list_maps`.
             stage_browser: Default::default(),
             replays: Default::default(),
@@ -404,6 +405,7 @@ impl Form {
             camera: viewer.camera,
             gearboxes: self.gearboxes.clone(),
             setups: self.setup.choices.clone(),
+            telemetry_udp: super::udp_address(&self.telemetry_udp).map(str::to_owned),
         };
         std::fs::write(&self.paths.settings, settings.to_text())
             .map_err(|e| eprintln!("launcher: {}: {e}", self.paths.settings.display()))

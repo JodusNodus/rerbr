@@ -1061,3 +1061,51 @@ fn the_experimental_physics_idles_revs_to_the_limiter_and_launches() {
         }
     });
 }
+
+/// `--telemetry-udp`: an autopilot drive's packets on a local socket, one per driving frame, carry the frame records'
+/// gear, engine speed, race clock and car position, and count the driving steps. The speed is the driven wheels', in
+/// km/h: with the autopilot's wheelspin it runs above the car's, and at the median near it.
+#[test]
+fn telemetry_packets_follow_the_frames_they_are_sent_after() {
+    use rbr_recording::hud::Hud;
+    quick_race(|data, stage, race| {
+        let mut live = Live::boot(data, "track-11_O", &race, stage, MarkerSettings::default(), false).unwrap();
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        socket.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        live.set_telemetry(Telemetry::open(socket.local_addr().unwrap()).unwrap());
+        let mut pilot = crate::autopilot::Pilot::new("autopilot", stage, &live).unwrap();
+        let neutral = payload(&QuantizedControl::default().car_control(), 0);
+        let (mut last, mut bytes, mut ratios) = (None::<Vec<u8>>, [0; 1024], Vec::new());
+        let f32_at = |b: &[u8], at: usize| f32::from_le_bytes(b[at..at + 4].try_into().unwrap());
+        let u32_at = |b: &[u8], at: usize| u32::from_le_bytes(b[at..at + 4].try_into().unwrap());
+        for frame in 0..12_000 {
+            let control = pilot.payload(&live, last.as_deref()).unwrap_or(neutral);
+            let answer = live.answer(&control).unwrap();
+            assert!(!live.stopped(), "the drive stopped");
+            let n = socket.recv(&mut bytes).unwrap();
+            assert_eq!(n, 664, "frame {frame}: the packet's length");
+            let packet = &bytes[..n];
+            assert_eq!(u32_at(packet, 0), frame + 1, "frame {frame}: the step count");
+            let car = pose::car_pose(&answer[HEADER_BYTES + CONTROL_BYTES..][..CAR_BYTES]).unwrap();
+            let hud = Hud::read(&mut &answer[FRAME_BYTES..]).unwrap();
+            assert_eq!([64, 68, 72].map(|at| f32_at(packet, at)), car.position, "frame {frame}: the position");
+            assert_eq!(u32_at(packet, 44), hud.gear, "frame {frame}: the gear");
+            assert_eq!(f32_at(packet, 136), hud.engine_speed * telemetry::RPM, "frame {frame}: the rpm");
+            assert_eq!(f32_at(packet, 12), hud.race.unwrap().time, "frame {frame}: the race time");
+            let kmh = hud.speed * 3.6;
+            if kmh > 30.0 {
+                ratios.push(f32_at(packet, 60) / kmh);
+            }
+            last = Some(answer);
+        }
+        ratios.sort_by(f32::total_cmp);
+        let median = ratios.get(ratios.len() / 2).copied().unwrap_or(0.0);
+        eprintln!("{} frames above 30 km/h, the wheels' speed over the car's {median:.3} at the median", ratios.len());
+        assert!(ratios.len() > 1000 && (0.95..1.3).contains(&median), "{} frames, median {median}", ratios.len());
+        // A restart counts from the stage's start again.
+        live.restart();
+        live.answer(&neutral).unwrap();
+        socket.recv(&mut bytes).unwrap();
+        assert_eq!(u32_at(&bytes, 0), 1, "the step count after a restart");
+    });
+}

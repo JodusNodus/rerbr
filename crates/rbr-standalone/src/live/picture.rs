@@ -48,7 +48,7 @@ use crate::stage::StageData;
 /// `CDrive::Get4530`) and the engine speed from the engine state (`CCar` +0x690, then +8; its +0x188,
 /// `CEngine::GetState188`). The drive state's +0x45c, which `harness/live.py`'s `hud` reads, is the drive's engine
 /// speed the VCU reads (`CDrive::Get4520`); it agrees within a rad/s at idle.
-const CAR_DRIVE: u32 = 0x4b0;
+pub(super) const CAR_DRIVE: u32 = 0x4b0;
 /// The VCU definition (`CCar` +0x850) and its `Gear<N>Upshift`, `Gear<N>Downshift` and `RPMLimit` values
 /// (`rbr_physics::vcu::layout`).
 const CAR_VCU_DEF: u32 = 0x850;
@@ -56,15 +56,15 @@ const VCU_UPSHIFT: u32 = 0x18;
 const VCU_DOWNSHIFT: u32 = 0x28;
 const VCU_GEAR_STRIDE: u32 = 0x20;
 const VCU_RPM_LIMIT: u32 = 0x188;
-const DRIVE_STATE: u32 = 0x8;
+pub(super) const DRIVE_STATE: u32 = 0x8;
 const STATE_GEAR: u32 = 0x54c;
-const STATE_ENGINE_SPEED: u32 = 0x188;
+pub(super) const STATE_ENGINE_SPEED: u32 = 0x188;
 /// `CCar` +0x838: the light system (`CCarLightSystem`, `notes/renderer.md` "Lights").
 const CAR_LIGHTS: u32 = 0x838;
 const CAR_SPEED: u32 = 0x15fc;
 /// `CCar` +0x17c: the parameter `E12_SampleX` (0x475ea0) turns into the driveline distance; `CEngine` +0x48: its
 /// option block.
-const CAR_DRIVELINE_PARAMETER: u32 = 0x17c;
+pub(super) const CAR_DRIVELINE_PARAMETER: u32 = 0x17c;
 const ENGINE_OPTIONS: u32 = 0x48;
 const INTERACTIVE_HANDLE_BASE: u32 = 0x9c40;
 /// `CHingedRigidBody::SimFD00` and `CMountedRigidBody::StepBig` clear a detached body's parent (`BODY_PARENT`,

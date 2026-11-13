@@ -229,6 +229,7 @@ impl<'a> Live<'a> {
             school_state: None,
             saves: None,
             rally_next: RallyNext::default(),
+            telemetry: None,
             initial,
             initial_game,
             boot_now: 0.0,
@@ -265,6 +266,9 @@ impl<'a> Live<'a> {
         self.school_verdict = None;
         self.school_state = None;
         self.last = Self::first_picture(&self.playback, &self.game, self.stage, &self.detach);
+        if let Some(telemetry) = self.telemetry.as_mut() {
+            telemetry.restart();
+        }
     }
 }
 

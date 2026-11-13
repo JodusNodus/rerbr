@@ -7,11 +7,11 @@ use egui::Color32;
 
 use crate::disc_install::DiscSetup;
 use crate::pages::{fields, section, Page, GOOD, NGP_WHY, NO_NGP, WARN};
-use crate::{catalog, controls_page, install, job, Form};
+use crate::{catalog, controls_page, install, job, settings, Form};
 
 impl Form {
     /// What the player needs to drive, a row each with its next step beside it: the game folder, NGP, the cars and the
-    /// wheel; below them the co-driver, the advanced fields (NGP's DLL, the paths that override the folder's parts) and
+    /// wheel; below them the co-driver, the physics, the UDP telemetry, the advanced fields (NGP's DLL, the paths that override the folder's parts) and
     /// the version.
     pub fn settings_page(&mut self, ui: &mut egui::Ui) {
         let running = self.child.is_some();
@@ -126,6 +126,24 @@ impl Form {
         // The physics every drive runs.
         crate::physics::physics_section(ui, &mut self.physics, self.session_physics);
         crate::tyre_tuning::tuning_section(ui, self.drive_physics(), &mut self.tyre_tuning);
+
+        // NGP's UDP telemetry, for dashboards and motion rigs.
+        section(ui, "Telemetry");
+        fields(ui, "telemetry", |ui| {
+            ui.label("UDP address");
+            ui.horizontal(|ui| {
+                let edit = egui::TextEdit::singleline(&mut self.telemetry_udp).hint_text("127.0.0.1:6776");
+                ui.add(edit.desired_width(220.0));
+                match settings::udp_address(&self.telemetry_udp) {
+                    Some(to) => _ = ui.weak(format!("Each drive sends NGP's telemetry packet to {to}")),
+                    None if self.telemetry_udp.trim().is_empty() => {
+                        _ = ui.weak("Off: an address (NGP's default is 127.0.0.1:6776) sends NGP's telemetry packet")
+                    }
+                    None => _ = ui.colored_label(WARN, "Not sent: give an address and a port, ADDR:PORT"),
+                }
+            });
+            ui.end_row();
+        });
 
         ui.add_space(6.0);
         egui::CollapsingHeader::new("Advanced").show(ui, |ui| {

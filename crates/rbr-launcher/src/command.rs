@@ -757,6 +757,9 @@ impl Form {
         }
         args.extend(self.drive_physics().args(car));
         args.extend(crate::tyre_tuning::args(self.drive_physics(), &self.tyre_tuning));
+        if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
+            args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
+        }
         Some(args)
     }
 
@@ -909,7 +912,7 @@ mod tests {
     /// Saved settings and the viewer command Start runs for them (`testdata/commands.txt`): the pages may move,
     /// the command stays. Needs `RBR_DATA`, `RBR_PATCH`, `RBR_NGP_PHYSICS` and `RBR_RSF` (unsaved, the last two are
     /// the defaults); `{ngp}` and `{rsf}` are theirs. `RBR_LAUNCHER_BLESS=1` writes the file.
-    const COMMAND_CASES: [(&str, &str); 11] = [
+    const COMMAND_CASES: [(&str, &str); 12] = [
         ("defaults", ""),
         (
             "everything changed",
@@ -958,6 +961,10 @@ mod tests {
             "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\nhead_gasket = 10\n[ffb]\n\
              sensitivity_gravel = 70\nsensitivity_snow = 130\n[ffb_cars]\nrsf-24 = 80,90,100\n\
              [ffb_load]\nrsf-24 gravel = 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6000\n",
+        ),
+        (
+            "UDP telemetry",
+            "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n[telemetry]\nudp = 127.0.0.1:6776\n",
         ),
     ];
 

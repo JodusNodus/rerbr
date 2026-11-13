@@ -96,6 +96,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile; `viewer --replay FILE --screenshot PNG --at N` draws the Nth answer headless (the replay runs `--replay-pace free`, not lockstep's `--frames -`) |
 | Original replays (`.rpl`), replay cameras and filters | out | - |
 | Ghost car (1.02; RSF ghosts not supported) | done | best-ghost store; original run: a ghost with a penalty |
+| NGP UDP telemetry (`--telemetry-udp`, [ngp.md](ngp.md#udp-telemetry)) | done | NGP's own packets not captured for a field-by-field compare; per frame after the step (NGP: per substep before it); no mph |
 
 ## Input
 
