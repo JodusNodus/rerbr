@@ -3,6 +3,7 @@
 use super::contact::{self, ContactHost};
 use super::host::HostUnavailable;
 use super::impulse;
+use super::layout;
 use super::store::RigidStore;
 use super::vote::{self, ContactVoteHost};
 use crate::mem::Mem;
@@ -87,21 +88,22 @@ pub fn impulse_tail<S: RigidStore>(
     calls: &mut impl ImpulseTailCalls<S>,
 ) {
     let point = args[0];
-    let out = frame + 0x70;
+    let frame = layout::impulse_tail_frame(frame);
+    let out = frame.composed;
     if store.hook(this) != 0 {
-        let pose = calls.pose(store, frame - 8, this, out);
-        calls.compose_a(store, frame - 0x10, point, pose, out);
+        let pose = calls.pose(store, frame.pose_sp, this, out);
+        calls.compose_a(store, frame.compose_sp, point, pose, out);
         let pair = args[4];
         let pair = store.hook_pair(pair);
         let word = if impulse::hook_takes_first(pair.third, pair.half) { pair.first } else { pair.second };
         let hook = store.hook(this);
         let hook_args = [args[2], args[3], word, args[5], args[6], out, point, args[7]];
-        calls.hook(store, frame - 0x24, hook, hook_args);
+        calls.hook(store, frame.hook_sp, hook, hook_args);
     }
     if core_layout::cdef_debug_flags(store.mem()) & RING_BIT != 0 && store.ring_tail(this) != 0 {
-        calls.compose_a(store, frame - 0x10, point, this, out);
+        calls.compose_a(store, frame.compose_sp, point, this, out);
         let ring = store.ring_tail(this);
-        calls.ring_append(store, frame - 0x14, ring, [out, 0, 1.0f32.to_bits(), 0]);
+        calls.ring_append(store, frame.ring_sp, ring, [out, 0, 1.0f32.to_bits(), 0]);
     }
 }
 
