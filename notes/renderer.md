@@ -665,7 +665,7 @@ swaps the `Predicate = on/off` parts and restarts the flare fade.
 
 ## Damage visuals
 
-`damage.rs`, `damage_parts.rs`, `dirt.rs`, `crack_decal.rs`. Inputs: `DMG1` live, `--damage`/`--crack` by hand.
+`damage.rs`, `damage_parts.rs`, `dirt.rs`, `crack_decal.rs`. Inputs: `DMG1`'s zones and PEV1's `CSigCarDamage` emits (the cracks) live, `--damage`/`--crack` by hand.
 
 - Deformation (`damage.rs`, bit for bit with the original, `tests/damage_data.rs`): per subtype-3 panel over the 64
   zone lists; normals kept; vertex alpha is the scrape amount. Interior panels without a morph follow their twin

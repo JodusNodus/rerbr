@@ -685,8 +685,9 @@ fn render(args: &Args, data: &Data, drive: Drive) -> Result<(), String> {
                 scene.roadside = roadside.get(&answered).map(|r| heard(*r, pose.forward(), scene.right));
             }
         }
-        for _ in 0..periods {
-            if let Some(inputs) = &inputs {
+        let again = inputs.as_ref().map(Inputs::again);
+        for period in 0..periods {
+            if let Some(inputs) = if period == 0 { &inputs } else { &again } {
                 if answered == 0 {
                     eprintln!("rbr-sound: NGP's sound words {:?}", inputs.ngp);
                 }

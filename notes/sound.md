@@ -227,13 +227,20 @@ Mechanics in `suspension.rs` (squeaks, knocks, bottoming, damage call 7, frame f
 
 ## Impacts
 
-Mechanics in `impact.rs` (payload change rule, ranged set, scream).
+Mechanics in `impact.rs` (the step's strongest emit, ranged set, scream).
+
+- Input (2026-11-13): the step's `CSigCarDamage` emits (PEV1, `Inputs::impacts`), not a change of the handler's
+  record, which stays after the emit and whose code and tag the functors rewrite without one. A frame of several
+  substeps plays its strongest emit; the scrape follows the last emit's power between emits. A longer answer's other
+  periods carry no events (`Inputs::again`: no impacts, callouts, fires or speech codes). Equal output to the payload
+  rule on drive-rcv-help-corolla-34, drive-tanner-damage and RSF drive2 attempt 5, none of which has an impact
+  under NGP; a crash is not A/B'd yet.
 
 - A scrape changes the payload every step: Lancer 75-90 s, 371 impacts to 22 (evidence for the spacing rule, not in
   code).
 - Level (ours, 2026-11-12): a ranged impact plays at `power / 1000`, full from there (1.02: full from 100); the
   sample follows the power as before. A body scrape holds about 765 (the Ventoux replay, not in code).
-- Scrape (ours, 2026-11-12): a contact whose payload keeps changing (held 4 steps past the last change) scrapes
+- Scrape (ours, 2026-11-12): a contact that keeps emitting (held 4 steps past the last emit) scrapes
   from its second step: a loop of metal dragged over concrete (embedded, CC BY, `CREDITS.md`; no open recording on
   tarmac or gravel was found) at `2 * power / 1000` over 1-15 m/s, pitch 0.8-1.2, up in 30 ms and down in 150, at
   the impacts' distance gain and in the car through the stones' 2.5 kHz shell filter. During the contact only an

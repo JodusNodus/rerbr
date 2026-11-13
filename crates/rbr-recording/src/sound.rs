@@ -13,8 +13,6 @@
 //! u32 tyres[4][24]    each wheel's CSigTyreNoise block (the tyre scratch's +0x420, wheel +0xf00 + 0x420; CCar +0x470
 //!                     holds the wheels): [0] wheel, [4] scaled grip maximum, [5] tyre factor, [8] |slip ratio|,
 //!                     [9] speed, [0xc..] position, [0x10..] velocity, [0x14] surface id, [0x17] contact
-//! u32 hit[20]         the damage handler's CSigCarDamage payload (handler +0x3e60; CCar +0x9f4 is the handler): [1]
-//!                     state, [4] impact power, [8..] and [0xc..] the two vectors. It stays until the next impact
 //! u32 speech          the step's CSigCarDamageSpeech codes, a bit per code (`1 << code`), filled in by the writer
 //! f32 battery         CarSensorData +0x30: the E39 block's scale (CCar +0x620, +0x8c) times 12
 //! u32 brakes          CarSensorData +0x2c as the count it is made from (the E39 block's +0x80)
@@ -34,7 +32,6 @@
 //! maximum since the start, the bump the last hit. The tyre block's word 1 is the frame's own: the writer folds each
 //! step's `FillOutputs` term ([`TyreMax`]) from the finish's 0, as the frame the game emits it after has it.
 
-use crate::damage::{CAR_DAMAGE_HANDLER, HANDLER_EVENT_CODE};
 use crate::word;
 
 /// The tag.
@@ -49,13 +46,10 @@ pub const MODEL_ANTI_LAG: f32 = 2.0;
 pub const DRIVETRAIN_WORDS: usize = 14;
 /// Tyre-noise block words, per wheel.
 pub const TYRE_WORDS: usize = 24;
-/// `CSigCarDamage` payload words.
-pub const HIT_WORDS: usize = 20;
 /// Damper payload words.
 pub const DAMPER_WORDS: usize = 5;
 /// The payload's size.
-pub const SND1_BYTES: usize =
-    4 * (ENGINE_WORDS + DRIVETRAIN_WORDS + 1 + 4 * TYRE_WORDS + HIT_WORDS + 4 + 4 * DAMPER_WORDS + 4 + 1);
+pub const SND1_BYTES: usize = 4 * (ENGINE_WORDS + DRIVETRAIN_WORDS + 1 + 4 * TYRE_WORDS + 4 + 4 * DAMPER_WORDS + 4 + 1);
 
 /// `CCar` +0x690: the engine; its +8 the state, whose +0x2c is the EngineNoise payload.
 pub const CAR_ENGINE: u32 = 0x690;
@@ -121,7 +115,6 @@ pub struct Sound {
     pub drivetrain: [u32; DRIVETRAIN_WORDS],
     pub speed: f32,
     pub tyres: [[u32; TYRE_WORDS]; 4],
-    pub hit: [u32; HIT_WORDS],
     pub speech: u32,
     pub battery: f32,
     pub brakes: u32,
@@ -167,14 +160,12 @@ impl Sound {
         let tyres = wheels.map(|wheel| words(&u32_at, wheel, WHEEL_TYRE_NOISE));
         let dampers = wheels.map(|wheel| words(&u32_at, wheel, WHEEL_DAMPER_SIGNAL));
         let strut_velocity = wheels.map(|wheel| f32::from_bits(words::<1>(&u32_at, wheel, WHEEL_STRUT_VELOCITY)[0]));
-        let handler = u32_at(car + CAR_DAMAGE_HANDLER);
         let block = u32_at(car + CAR_SENSOR_BLOCK);
         Sound {
             engine,
             drivetrain,
             speed: f32::from_bits(u32_at(car + CAR_SPEED)),
             tyres,
-            hit: std::array::from_fn(|i| u32_at(handler + HANDLER_EVENT_CODE + 4 * i as u32)),
             speech: 0,
             battery: f32::from_bits(u32_at(block + 0x8c)) * BATTERY_SCALE,
             brakes: u32_at(block + 0x80),
@@ -192,7 +183,6 @@ impl Sound {
             .copied()
             .chain([self.speed.to_bits()])
             .chain(self.tyres.iter().flatten().copied())
-            .chain(self.hit.iter().copied())
             .chain([self.speech, self.battery.to_bits(), self.brakes, self.water.to_bits()])
             .chain(self.dampers.iter().flatten().copied())
             .chain(self.strut_velocity.map(f32::to_bits))
@@ -210,8 +200,7 @@ impl Sound {
         }
         let word = |i: usize| word(bytes, i);
         let tyres = ENGINE_WORDS + DRIVETRAIN_WORDS + 1;
-        let hit = tyres + 4 * TYRE_WORDS;
-        let tail = hit + HIT_WORDS;
+        let tail = tyres + 4 * TYRE_WORDS;
         let dampers = tail + 4;
         let end = dampers + 4 * DAMPER_WORDS;
         Some(Sound {
@@ -219,7 +208,6 @@ impl Sound {
             drivetrain: std::array::from_fn(|i| word(ENGINE_WORDS + i)),
             speed: f32::from_bits(word(ENGINE_WORDS + DRIVETRAIN_WORDS)),
             tyres: std::array::from_fn(|k| std::array::from_fn(|i| word(tyres + TYRE_WORDS * k + i))),
-            hit: std::array::from_fn(|i| word(hit + i)),
             speech: word(tail),
             battery: f32::from_bits(word(tail + 1)),
             brakes: word(tail + 2),
@@ -361,7 +349,9 @@ impl FmodBlock {
 }
 
 /// What the sound takes from one live answer: the SND1 record, the PCN1 callouts, HUD2's countdown, the PTC1
-/// splash, the DET1 doors, the FMB1 record, DSH1's driveline distance and, under NGP, the NSD1 record.
+/// splash, the PEV1 impacts, the DET1 doors, the FMB1 record, DSH1's driveline distance and, under NGP, the NSD1
+/// record. The callouts, the impacts and SND1's fires and speech codes are the answer's events, the rest its state
+/// ([`Inputs::again`]).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Inputs {
     pub sound: Sound,
@@ -373,6 +363,8 @@ pub struct Inputs {
     /// Each wheel's last `CSigTireParticles` splash level of the step (+0x98, what `CTireSnd::M6560` 0x4d6560
     /// keeps), when the step emitted one.
     pub splash: [Option<f32>; 4],
+    /// The `CSigCarDamage` emits of the answer's steps, in order.
+    pub impacts: Vec<crate::particles::CarDamage>,
     /// The left and right door are in the DET1 record: detached and awake. `CHingedRigidBody::SimFB40` (0x51fb40)
     /// emits each step whether its body is still on the car (`+0x650`, cleared on the detach), which the sound
     /// keeps (`CCarSound::SetPair` 0x4ac220); DET1 leaves out a part once it sleeps, so the sound latches it.
@@ -398,6 +390,15 @@ impl Inputs {
                 *s = Some(tyre.splash);
             }
         }
+        let impacts = payload(crate::particles::PEV1)
+            .and_then(|p| crate::particles::read_events(p).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|event| match event {
+                crate::particles::Event::CarDamage(hit) => Some(hit),
+                _ => None,
+            })
+            .collect();
         let mut doors_off = [false; 2];
         for part in payload(crate::detach::DET1).and_then(|p| crate::detach::parse(p).ok()).unwrap_or_default() {
             if let Some(door) = doors_off.get_mut(part.part as usize) {
@@ -410,11 +411,23 @@ impl Inputs {
             countdown: hud.race.map(|race| race.countdown),
             race_time: hud.race.map(|race| race.time),
             splash,
+            impacts,
             doors_off,
             ngp: payload(NSD1).and_then(NgpSound::from_bytes)?,
             block: payload(FMB1).and_then(FmodBlock::from_bytes),
             driveline: payload(crate::dash::DSH1).and_then(crate::dash::Dash::from_bytes).and_then(|d| d.distance),
         })
+    }
+
+    /// The inputs for another period of the same answer (a frame longer than one period is stepped once a period):
+    /// its state without its events, which the first period took.
+    pub fn again(&self) -> Inputs {
+        Inputs {
+            sound: Sound { fires: 0, speech: 0, ..self.sound },
+            callouts: Vec::new(),
+            impacts: Vec::new(),
+            ..self.clone()
+        }
     }
 }
 
@@ -435,12 +448,30 @@ mod tests {
     }
 
     #[test]
+    fn an_answer_s_impacts_are_its_damage_emits_and_another_period_has_no_events() {
+        let mut hit = [0u8; crate::particles::EVENT_PAYLOAD_BYTES];
+        hit[0x10..0x14].copy_from_slice(&900f32.to_le_bytes());
+        let pev1 = crate::particles::events_record(&[(crate::particles::CAR_DAMAGE, hit)]);
+        let sound = Sound { fires: 1, speech: 1 << 8, ..Sound::default() };
+        let records = vec![
+            (SND1, sound.to_bytes()),
+            (NSD1, NgpSound::default().to_bytes()),
+            (crate::particles::PEV1, pev1[8..].to_vec()),
+        ];
+        let inputs = Inputs::from_records(&records, &crate::hud::Hud::default()).unwrap();
+        assert_eq!(inputs.impacts.iter().map(|h| h.force).collect::<Vec<_>>(), [900.0]);
+        let again = inputs.again();
+        assert!(again.impacts.is_empty() && again.callouts.is_empty());
+        assert_eq!((again.sound.fires, again.sound.speech), (0, 0));
+        assert_eq!(Inputs { sound, impacts: inputs.impacts.clone(), ..again }, inputs, "the state is kept");
+    }
+
+    #[test]
     fn records_round_trip() {
         let mut sound = Sound { speed: 12.5, water: 90.0, ..Sound::default() };
         sound.engine[0] = 300f32.to_bits();
         sound.drivetrain[13] = 7;
         sound.tyres[3][TYRE_CONTACT] = 1;
-        sound.hit[4] = 900f32.to_bits();
         sound.dampers[2][2] = 0.5f32.to_bits();
         sound.strut_velocity[1] = -0.25;
         sound.fires = 1;
@@ -472,8 +503,6 @@ mod tests {
             0x25fc => 20.0f32.to_bits(),
             0x1478 => 0xb000,
             0xc37c => 1,
-            0x19f4 => 0xc000,
-            0xfe70 => 900f32.to_bits(),
             0x1620 => 0xd000,
             0xd08c => 0.5f32.to_bits(),
             // The drive's link block is the same 0xd000: wheel 1's shaft is whole (its word 1), so its speed stays
@@ -503,7 +532,6 @@ mod tests {
         assert_eq!((sound.drivetrain_f32(10), sound.drivetrain_f32(11)), (30.0, 5.0));
         assert_eq!(sound.speed, 20.0);
         assert_eq!((sound.tyres[2][TYRE_CONTACT], sound.tyres[0][TYRE_CONTACT]), (1, 0));
-        assert_eq!(f32::from_bits(sound.hit[4]), 900.0);
         assert_eq!(sound.battery, 6.0);
     }
 }

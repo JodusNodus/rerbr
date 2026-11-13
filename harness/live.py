@@ -8,8 +8,8 @@ Usage: .venv/bin/python -I -B harness/live.py SNAPSHOT [--original]
   stdin: 32-byte control payloads, the recordings' layout (notes/gameplay.md): throttle, brake, handbrake,
   clutch, steering (f32), flags (bit 0 gear up, bit 1 gear down), gear, aux. stdout: one FRM1 frame per payload
   (crates/rbr-recording), its pre and post counting from the snapshot's step, each followed by a 16-byte HUD record
-  (`hud`: gear, engine speed, car speed) and a DMG1 record (`damage`: the damage zones and the last damage event,
-  rbr_recording::damage) for the viewer. The first payload drives the snapshot's own call, whose control the game
+  (`hud`: gear, engine speed, car speed) and a DMG1 record (`damage`: the damage zones, rbr_recording::damage) for
+  the viewer. The first payload drives the snapshot's own call, whose control the game
   had already emitted: its bytes are not used.
 
   x87 results missing from replay.py's cache are not fetched: fsin/fcos are modelled (rust_step.py) and the other
@@ -81,15 +81,13 @@ def hud(m):
 
 DMG_MAGIC = 0x31474D44  # 'DMG1'
 CAR_DAMAGE_HANDLER = 0x9F4  # CCarDamageHandler pointer (notes/renderer.md "Damage visuals")
-HANDLER_ZONES, HANDLER_EVENT_CODE, HANDLER_EVENT_INDEX = 0x3808, 0x3E60, 0x3E68  # 64 zone floats; CSigCarDamage record
+HANDLER_ZONES = 0x3808  # 64 zone floats
 
 
 def damage(m):
-    """The 268-byte damage record after the HUD record: DMG1, the 64 zone values, the last damage event's code and
-    functor index."""
+    """The 260-byte damage record after the HUD record: DMG1 and the 64 zone values."""
     handler = struct.unpack("<I", m.read(struct.unpack("<I", m.read(replay.CAR_PTR, 4))[0] + CAR_DAMAGE_HANDLER, 4))[0]
-    return (struct.pack("<I", DMG_MAGIC) + m.read(handler + HANDLER_ZONES, 256) + m.read(handler + HANDLER_EVENT_CODE, 4)
-            + m.read(handler + HANDLER_EVENT_INDEX, 4))
+    return struct.pack("<I", DMG_MAGIC) + m.read(handler + HANDLER_ZONES, 256)
 
 
 def report(steps, unverified):

@@ -35,7 +35,7 @@ use std::sync::Arc;
 use glam::{Mat4, Vec3};
 use rbr_formats::data::Data;
 use rbr_formats::{col, dat, ini, mat, pss, rbz, rsf, stage_files};
-use rbr_recording::particles::{self as records, Event, TyreParticles};
+use rbr_recording::particles::{self as records, CarDamage, Event, TyreParticles};
 
 use crate::dirt::{self, Spray, Thrown};
 use crate::live::Live;
@@ -507,7 +507,7 @@ impl Particles {
     /// One of the car's particle events.
     fn event(&mut self, event: Event, pose: &car::Pose) {
         match event {
-            Event::CarDamage { kind, force, at } => {
+            Event::CarDamage(CarDamage { kind, force, at, .. }) => {
                 let at = Vec3::from(at);
                 let floor = self.ground.as_ref().and_then(|g| g.below(at.to_array())).map_or(at.z - 0.5, |h| h.z);
                 self.car.damage(&mut self.sim, kind, force, at, pose, floor);
@@ -528,7 +528,7 @@ impl Particles {
         let Some(previous) = previous else { return Vec::new() };
         let (before, after) = (Vec3::from(previous.car.velocity), Vec3::from(sample.car.velocity));
         car::impact_from_speeds(Vec3::from(sample.car.position), before, after)
-            .map(|(force, at)| Event::CarDamage { kind: 2, force, at: at.to_array() })
+            .map(|(force, at)| Event::CarDamage(CarDamage { code: 0, kind: 2, index: 0, force, at: at.to_array() }))
             .into_iter()
             .collect()
     }

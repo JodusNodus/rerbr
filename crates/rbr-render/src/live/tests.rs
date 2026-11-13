@@ -111,7 +111,7 @@ fn live_frames_take_live_py_s_hud1_and_the_standalone_s_hud2() {
     let race = RaceHud { time: 16.5, countdown: -3.0, penalties: 10.0, running: true, jump_start: false };
     let hud1 = hud::Hud { gear: 2, engine_speed: 300.0, speed: 12.0, race: None };
     let hud2 = hud::Hud { race: Some(race), ..hud1 };
-    let mut damage = Damage { code: 4, index: 4, ..Damage::default() };
+    let mut damage = Damage::default();
     damage.zones[3] = 0.5;
     let orbit = Camera { mode: camera::MODE_START_ORBIT, angle: 2.5 };
     let ngp_clock = StepClock { step: 1.0 / 720.0, settle: 1520 };
