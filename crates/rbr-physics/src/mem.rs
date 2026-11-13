@@ -36,6 +36,7 @@ pub trait Backend: Send + Sync + UnwindSafe + RefUnwindSafe {
     }
 }
 
+/// The game memory: its bytes, by address, in the storage the constructor chose (see the module doc).
 #[derive(Clone, Default)]
 pub struct Mem {
     storage: Storage,
@@ -137,7 +138,7 @@ impl Mem {
         Self::of(Storage::Backend(backend))
     }
 
-    /// Memory kept in `pages`. Its empty hole is at the top of the address space, so [`outside`]'s first test passes
+    /// Memory kept in `pages`. Its empty hole is at the top of the address space, so `outside`'s first test passes
     /// for every access but one that ends at the top (which goes to the pages too, as the holder).
     pub fn with_pages(pages: Pages) -> Self {
         Self::of(Storage::Paged { pages, hole: (u32::MAX, u32::MAX), backend: None })
