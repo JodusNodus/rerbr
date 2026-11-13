@@ -45,7 +45,8 @@ pub fn publish_state<S: CarStore>(calls: &mut impl PublishCalls<S>, mem: &mut S,
         calls.call(mem, callee::COMPOSE_BODY_INTO_WORLD, car, &[at(local::ZERO), at(local::POSITION)]);
         for i in 0..4 {
             let wheel = mem.wheel_pointers(car)[i as usize];
-            let (a, b) = (at(local::WHEEL_A + 0x10 * i), at(local::WHEEL_B + 0x10 * i));
+            let (a, b) = local::wheel(i);
+            let (a, b) = (at(a), at(b));
             calls.call(mem, callee::WHEEL_UPDATE, wheel, &[a, b]);
         }
         calls.emit(

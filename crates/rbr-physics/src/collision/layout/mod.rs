@@ -1,6 +1,6 @@
 //! The collision subsystem's game memory: typed views of its objects, the original's calls and their sequencing.
 
-mod body_contacts;
+pub(in crate::collision) mod body_contacts;
 pub mod body_hosts;
 pub mod body_slots;
 mod cbody;
@@ -45,10 +45,14 @@ pub use col_grids::{
     alloc_collision_id, build_col_grid, col_grid_at, collision_mesh_factory, load_col_grid, load_mesh_desc, sample_a,
     sample_b, select_table, store_col_grid, store_samples, sync_grid, ColGrid, GridSyncHost,
 };
+pub(in crate::collision) use e36_box::{obb_input_extents, sphere_input_radius};
 pub use e36_box::{shape_axis, shape_extent, E36Box, E36Contact};
 pub use events::{
     apply_event_impulse, init_full, make_event_at, make_event_frame, make_event_payload, prefill_pool,
     query_event_bodies, relative_point_velocity, store_payload, EventBodyHost, EVENT_SIZE,
+};
+pub(in crate::collision) use events::{
+    event_impulse_frame, event_query_frame, init_event_sp, make_event_tail, point_velocity_frame, EventQueryFrame,
 };
 pub use grid_edges::{
     copy_grid, edge_edge_bounds, edge_edge_face, edge_edge_face_count, edge_edge_face_is_valid, edge_edge_hit_word,
@@ -63,13 +67,21 @@ pub use mesh_query::{
     store_point_triangle, store_ray_triangle_result, store_segment_triangle, store_zero_mesh_scratch, system_frame,
     world_axes_overlap, SystemFrame,
 };
+pub(in crate::collision) use mesh_query::{sweep_scratch, SweepScratch};
 pub use solver::ctor_solver;
+pub(in crate::collision) use solver::{contact_row_frame, solve_event_frame};
 pub use vec_ops::{
     min_max_a, scaled, vec16_max, vec16_min, vec3_add, vec3_add_stale, vec3_add_sub, vec3_cross, vec3_cross_dot,
     vec3_dot, vec3_normalize, vec3_scale, vec3_sub, vec3_sub_dot, vec4_copy_from, vec4_normalize, vec4_sub_stale,
     Vec4Pair,
 };
 pub use walls::{brake_wall_vf_f0, query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
+pub(in crate::collision) use walls::{probe_hits, wall_box_frame, wall_ends_frame};
+
+/// The 16-aligned frame base of a function entered at `sp` (`push ebp; mov ebp, esp; and esp, -0x10`).
+fn aligned(sp: u32) -> u32 {
+    (sp - 4) & !0xf
+}
 
 /// The shared four-lane vector (`math::vec::Vec4`), used for body bounds and temporary collision data.
 pub use crate::math::vec::Vec4;

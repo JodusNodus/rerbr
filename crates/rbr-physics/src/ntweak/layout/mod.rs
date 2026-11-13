@@ -4,7 +4,7 @@
 use rbr_formats::lsp::Node;
 use rbr_formats::lsp_keys::Class;
 
-use super::plan::{Action, ITEM_BLOCK, LINKS, LINK_COUNT, VALUE};
+use super::plan::Action;
 use super::store::TweakStore;
 use super::Unsupported;
 
@@ -16,10 +16,39 @@ mod parse;
 
 pub use parse::{parse, stack_alloc, tokenize, Frame, ParseHost, EMPTY_TOKENS, TOKEN_HEAP};
 
-pub use super::plan::{
-    plan, Plan, BASE_PARSE, BIT_FIELD_PARSE, INTEGER_PARSE, NGP_TABLE_VTABLE, REAL_PARSE, UNSIGNED_PARSE,
-    VECTOR4_PARSE, VECTOR_PARSE,
-};
+pub use super::plan::{plan, Plan};
+
+/// The members' reader entries, by which the walk tells them apart.
+pub const REAL_PARSE: u32 = 0x52f770;
+pub const UNSIGNED_PARSE: u32 = 0x52f840;
+pub const INTEGER_PARSE: u32 = 0x52fab0;
+pub const VECTOR_PARSE: u32 = 0x52fb20;
+pub const VECTOR4_PARSE: u32 = 0x52fbe0;
+pub const BIT_FIELD_PARSE: u32 = 0x52f930;
+/// The base parse itself: a member object with keys of its own.
+pub const BASE_PARSE: u32 = 0x52f0c0;
+/// Under NGP, the brake-wear table of the drive's definition: NGP's copy of the unsigned's table with its own reader,
+/// which NGP's constructor makes and puts on the unsigned. The walk tells the reader by the table itself.
+pub const NGP_TABLE_VTABLE: u32 = 0x1017_6518;
+/// The words from the member's table start that NGP's reader's floats go to (past the 1.02 keys, which no 1.02 key
+/// reads).
+pub(crate) const NGP_TABLE: u32 = 0x10;
+/// The objects' inner-group entries, which take the walk's inner groups: the base's skips each item; the entity
+/// definitions' links the group's name; the definition manager's makes or finds the definition the item names and walks
+/// the item on it.
+pub(crate) const INNER_GROUP_SKIP: u32 = 0x52fe80;
+pub(crate) const INNER_GROUP_LINK: u32 = 0x5198b0;
+pub(crate) const INNER_GROUP_DEFINE: u32 = 0x501ef0;
+/// The token-heap block each item of an inner group is copied into.
+pub(crate) const ITEM_BLOCK: u32 = 0x20;
+/// An entity definition's links: their count, then the registry indices.
+pub(crate) const LINK_COUNT: u32 = 0x18;
+pub(crate) const LINKS: u32 = 0x1c;
+
+/// A tweak value's payload, after its base header (table, name, dirty flag); a vector's is 16-byte aligned. A
+/// bit-field's mask is its value.
+pub(crate) const VALUE: u32 = 0x0c;
+pub(crate) const VECTOR_VALUE: u32 = 0x10;
 
 /// The calls the walk makes outside the object.
 pub trait ApplyHost {
@@ -229,7 +258,6 @@ pub fn name_or_null(mem: &Mem, base: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ntweak::plan::{INNER_GROUP_DEFINE, INNER_GROUP_LINK};
     use crate::physics_core::layout::construct as physics;
     use rbr_formats::lsp;
 

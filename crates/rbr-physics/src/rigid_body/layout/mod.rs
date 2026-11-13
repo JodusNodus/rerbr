@@ -24,7 +24,9 @@ pub use crate::rigid_body::solid_window::{
     solid_window_start,
 };
 pub(crate) use contacts::HALF;
-pub use contacts::{contact_record, contact_records, load_contact, store_event, CONTACT_LIST};
+pub use contacts::{
+    contact_record, contact_records, impulse_tail_frame, load_contact, store_event, ImpulseTailFrame, CONTACT_LIST,
+};
 pub use rest::{solid_filing, solid_sleep, solid_vf158, solid_wake, store_body_event, RestHost, VerySoftHost};
 pub use scratch_state::{
     clear_vec, entity_vf20_jump, scratch_reset_after_entity, store_scratch_base_init, store_scratch_reset, CELL_LINK,

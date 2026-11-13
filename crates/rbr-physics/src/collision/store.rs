@@ -173,6 +173,10 @@ pub trait CollisionStore: Raw {
     fn grid_status_flag(&self, grid: u32) -> u8;
     /// The address of the grid's edge vector `index`.
     fn grid_edge(&self, grid: u32, index: u32) -> u32;
+    /// The addresses of the grid's box corners, low and high.
+    fn grid_corners(&self, grid: u32) -> (u32, u32);
+    /// The address of the grid's centre.
+    fn grid_centre(&self, grid: u32) -> u32;
     /// The six bytes of the grid's edge record `index`: the two vertices and the sample indices.
     fn grid_pair(&self, grid: u32, index: u32) -> [u8; 6];
     /// The body's grid flag bytes, read and cleared.
@@ -199,6 +203,8 @@ pub trait CollisionStore: Raw {
     /// The collector the box query fills (the wall's leaf list).
     fn wall_leaves(&self, wall: u32) -> u32;
     fn wall_mesh(&self, wall: u32) -> u32;
+    /// The wall manager's wall (0 without one).
+    fn manager_wall(&self, manager: u32) -> u32;
     /// The four vertices of segment record `index`.
     fn wall_segment(&self, mesh: u32, index: u32) -> [[f32; 2]; 4];
     /// A leaf's segment count, and the index word of its segment `j`.
@@ -217,6 +223,8 @@ pub trait CollisionStore: Raw {
     fn tree_node(&self, node: u32) -> TreeNode;
     /// The two children a node's link names: each one's address and flag word.
     fn child_pair(&self, link: u32) -> [(u32, u32); 2];
+    /// The address of face `index` of a leaf whose link is `link`.
+    fn tree_face(&self, link: u32, index: u32) -> u32;
     /// The tree root of a collider or system.
     fn tree_root(&self, owner: u32) -> u32;
     /// The collider's own list of records, used when the caller gives none.

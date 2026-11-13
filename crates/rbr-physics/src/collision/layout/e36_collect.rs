@@ -36,3 +36,38 @@ pub fn collide_init(mem: &mut Mem, object: u32) -> u32 {
 pub fn nop() {}
 
 pub use crate::collision::entry::{collect, CollectHost};
+
+/// The collect's frame words at `frame`: the cell query's lo and hi corners and its cells, the box and sphere test
+/// inputs, and in the box's trailing words the three transformed axes and the scaled vectors (x, y, z); and the entry
+/// stack pointers of the transforms, the cell query, the collision pointer and the lengths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CollectFrame {
+    pub cells: u32,
+    pub lo: u32,
+    pub hi: u32,
+    pub box_input: u32,
+    pub sphere_input: u32,
+    pub axes: [u32; 3],
+    pub scaled: [u32; 3],
+    pub transform_sp: u32,
+    pub query_sp: u32,
+    pub pointer_sp: u32,
+    pub length_sp: u32,
+}
+
+pub fn collect_frame(frame: u32) -> CollectFrame {
+    let box_input = frame.wrapping_add(0x50);
+    CollectFrame {
+        cells: frame.wrapping_add(0x40),
+        lo: frame.wrapping_add(0x28),
+        hi: frame.wrapping_add(0x34),
+        box_input,
+        sphere_input: frame.wrapping_add(0xA0),
+        axes: [box_input + 0x20, box_input + 0x30, box_input + 0x40],
+        scaled: [box_input + 0x80, box_input + 0x70, box_input + 0x90],
+        transform_sp: frame.wrapping_sub(16),
+        query_sp: frame.wrapping_sub(16),
+        pointer_sp: frame.wrapping_sub(4),
+        length_sp: frame.wrapping_sub(4),
+    }
+}

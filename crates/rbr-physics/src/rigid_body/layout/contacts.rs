@@ -90,3 +90,24 @@ pub(super) fn store_ring_cursor(mem: &mut Mem, ring: u32, index: u32, count: u32
     mem.set_u32(ring + RING_INDEX, index);
     mem.set_u32(ring + RING_COUNT, count);
 }
+
+/// The impulse tail's words in the impulse's frame at `frame` (`CSolid::E43Vf128`'s): the composed point both composes
+/// write, and the entry stack pointers of the pose, the composes, the hook and the ring append.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImpulseTailFrame {
+    pub composed: u32,
+    pub pose_sp: u32,
+    pub compose_sp: u32,
+    pub hook_sp: u32,
+    pub ring_sp: u32,
+}
+
+pub fn impulse_tail_frame(frame: u32) -> ImpulseTailFrame {
+    ImpulseTailFrame {
+        composed: frame + 0x70,
+        pose_sp: frame - 8,
+        compose_sp: frame - 0x10,
+        hook_sp: frame - 0x24,
+        ring_sp: frame - 0x14,
+    }
+}

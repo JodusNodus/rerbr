@@ -8,10 +8,10 @@ use super::math::{mounted_step, mounted_velocity, Vec3, Vec4};
 use super::store::CoreStore;
 
 /// The mounted body's velocity pull on the body at `this`, through the layout's pull frame: the mount point composed
-/// into the owner's frame, its velocity term less the CDef's origin, the origin's copy, the walk's output and the gap
-/// between the body and its mount point. Then the mount-point velocity (`math::mounted_velocity`). A body without an
-/// owner runs the solid body's pull. Returns the velocity's address, None before any call when the CDef's origin is the
-/// null sentinel.
+/// into the owner's frame, its velocity term less the physics definition's origin, the origin's copy, the walk's output
+/// and the gap between the body and its mount point. Then the mount-point velocity (`math::mounted_velocity`). A body
+/// without an owner runs the solid body's pull. Returns the velocity's address, None before any call when the
+/// definition's origin is the null sentinel.
 pub fn mounted_pull<S: CoreStore>(
     store: &mut S,
     host: &mut impl MountedPullHost,

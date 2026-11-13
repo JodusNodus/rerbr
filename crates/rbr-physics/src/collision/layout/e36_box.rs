@@ -102,3 +102,13 @@ pub fn shape_axis(mem: &Mem, shape: u32, axis: usize) -> Vec4 {
 pub fn shape_extent(mem: &Mem, shape: u32, axis: usize) -> f32 {
     mem.f32(shape + 0x10 + axis as u32 * 4)
 }
+
+/// The half extents of the box test's input at `at` (its second vector; the collector stores them there).
+pub fn obb_input_extents(at: u32) -> u32 {
+    at + 0x10
+}
+
+/// The radius of the sphere test's input at `at`, after its centre.
+pub fn sphere_input_radius(at: u32) -> u32 {
+    at + 0x10
+}

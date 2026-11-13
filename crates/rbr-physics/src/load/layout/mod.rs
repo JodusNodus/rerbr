@@ -18,5 +18,5 @@ pub use instance::{new_body, new_car, new_wheel, BodyKind};
 pub use parts::{CarParts, Factories, PartFactory};
 pub use statics::{
     construct_signal_manager, emit_car_meshes, enter_tic_sample, fire_collision_mesh, new_replay_stand_in,
-    store_registry, store_statics, REPLAY_STAND_IN_SIZE, SIGNAL_COUNT, SIGNAL_SIZE,
+    store_registry, store_statics, CAR_MESH_NAMES, REPLAY_STAND_IN_SIZE, SIGNAL_COUNT, SIGNAL_SIZE,
 };

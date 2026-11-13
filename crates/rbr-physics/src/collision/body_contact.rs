@@ -1,43 +1,9 @@
 //! The body-against-entity contacts: the point, edge and pair walks over the grids, generic over the store.
 
 use super::grid_contact::{self as collide_big, ContactKind};
+use super::layout::body_contacts::{grid_walk_frame, pair_walk_frame, GridWalkFrame, PairWalkFrame};
 use super::layout::collide_hosts::{GridContactHost, PairContactHost};
 use super::store::CollisionStore;
-
-/// The scratch frame of the point/edge walk, addressed from its base `s`.
-struct GridWalkFrame {
-    s: u32,
-}
-
-impl GridWalkFrame {
-    const MATERIAL: u32 = 0x1c;
-    const HIT: u32 = 0x20;
-    const DIR: u32 = 0x30;
-    const NORMAL: u32 = 0x40;
-    const DESC_A: u32 = 0x5c;
-    const U: u32 = 0x64;
-    const T: u32 = 0x6c;
-    /// The point walk's second descriptor and the point contact's midpoint.
-    const DESC_B: u32 = 0x70;
-    const FROM: u32 = 0x80;
-    /// The edge contact's midpoint.
-    const EDGE_MID: u32 = 0x90;
-    const HIT2: u32 = 0xa0;
-    const BACK: u32 = 0xb0;
-    const AT: u32 = 0xc0;
-    const PROBE: u32 = 0xd0;
-    const NORMAL2: u32 = 0xe0;
-    const HIT_SPAN: u32 = 0xf0;
-    const EDGE_SPAN: u32 = 0x100;
-    /// This body's grid in the other entity's frame.
-    const GRID: u32 = 0x110;
-    /// The other entity's grid in its own frame.
-    const OTHER_GRID: u32 = 0x7c0;
-
-    fn at(&self, offset: u32) -> u32 {
-        self.s + offset
-    }
-}
 
 const WORLD_POINT_CONTACTS: u32 = 4;
 const WORLD_EDGE_CONTACTS: u32 = 8;
@@ -57,38 +23,38 @@ pub fn grid_contacts<S: CollisionStore>(
     matrix: u32,
     other: u32,
     list: u32,
-    esp: u32,
+    sp: u32,
 ) -> u32 {
-    let f = GridWalkFrame { s: ((esp - 4) & !0xf) - 0xe90 };
+    let f = grid_walk_frame(sp);
     let grid = f.at(GridWalkFrame::GRID);
-    host.ray_seeds(f.s - 4, grid);
+    host.ray_seeds(f.call_sp(1), grid);
     if (store.entity_flags(other) as i8) < 0 {
-        let eax = host.collide_init(f.s - 0x10, other, this, list);
-        host.ray_clear(f.s - 4, grid);
+        let eax = host.collide_init(f.call_sp(4), other, this, list);
+        host.ray_clear(f.call_sp(1), grid);
         return eax;
     }
-    if host.grid_active(f.s - 4, other) == 0 {
-        host.ray_clear(f.s - 4, grid);
+    if host.grid_active(f.call_sp(1), other) == 0 {
+        host.ray_clear(f.call_sp(1), grid);
         return 0;
     }
-    let transform = host.transform(f.s - 4, other);
-    host.fetch_y(f.s - 0xc, matrix, grid, transform);
-    copy_vec4(store, f.at(GridWalkFrame::FROM), grid + 0x20);
+    let transform = host.transform(f.call_sp(1), other);
+    host.fetch_y(f.call_sp(3), matrix, grid, transform);
+    copy_vec4(store, f.at(GridWalkFrame::FROM), store.grid_centre(grid));
     if store.world_flags() & WORLD_POINT_CONTACTS != 0
-        && (store.entity_flags(other) & ENTITY_SLOT_QUERY != 0 || host.grid(f.s - 4, other) == 0)
+        && (store.entity_flags(other) & ENTITY_SLOT_QUERY != 0 || host.grid(f.call_sp(1), other) == 0)
     {
         let result = slot_contacts(host, store, &f, this, other, list);
-        host.ray_clear(f.s - 4, grid);
+        host.ray_clear(f.call_sp(1), grid);
         return result;
     }
     // The pushes interleave with the calls: the first transform is the grid copy's last argument.
     let other_grid = f.at(GridWalkFrame::OTHER_GRID);
-    let last = host.transform(f.s - 4, other);
-    let middle = host.transform(f.s - 8, other);
-    let src = host.grid(f.s - 0xc, other);
-    host.grid_copy(f.s - 0x10, other_grid, src, middle, last);
-    copy_vec4(store, f.at(GridWalkFrame::BACK), other_grid + 0x20);
-    let away = host.active(f.s - 4, other) != 0 || host.active(f.s - 4, this) == 0;
+    let last = host.transform(f.call_sp(1), other);
+    let middle = host.transform(f.call_sp(2), other);
+    let src = host.grid(f.call_sp(3), other);
+    host.grid_copy(f.call_sp(4), other_grid, src, middle, last);
+    copy_vec4(store, f.at(GridWalkFrame::BACK), store.grid_centre(other_grid));
+    let away = host.active(f.call_sp(1), other) != 0 || host.active(f.call_sp(1), this) == 0;
     let mut result = 0;
     if store.world_flags() & WORLD_POINT_CONTACTS != 0 {
         let n = u32::from(store.grid_edge_count(grid));
@@ -96,8 +62,8 @@ pub fn grid_contacts<S: CollisionStore>(
             result |= point_contact(host, store, &f, this, other, list, i, away);
         }
         if result != 0 {
-            host.ray_clear(f.s - 4, other_grid);
-            host.ray_clear(f.s - 4, grid);
+            host.ray_clear(f.call_sp(1), other_grid);
+            host.ray_clear(f.call_sp(1), grid);
             return result;
         }
     }
@@ -106,8 +72,8 @@ pub fn grid_contacts<S: CollisionStore>(
             || store.grid_edge_count(other_grid) == 0
             || store.grid_edge_count(grid) == 0
         {
-            host.ray_clear(f.s - 4, other_grid);
-            host.ray_clear(f.s - 4, grid);
+            host.ray_clear(f.call_sp(1), other_grid);
+            host.ray_clear(f.call_sp(1), grid);
             return 0;
         }
         let m = u32::from(store.grid_pair_count(grid));
@@ -115,8 +81,8 @@ pub fn grid_contacts<S: CollisionStore>(
             result |= edge_contact(host, store, &f, this, other, list, i, away);
         }
     }
-    host.ray_clear(f.s - 4, other_grid);
-    host.ray_clear(f.s - 4, grid);
+    host.ray_clear(f.call_sp(1), other_grid);
+    host.ray_clear(f.call_sp(1), grid);
     result
 }
 
@@ -132,13 +98,13 @@ fn slot_contacts<S: CollisionStore>(
 ) -> u32 {
     let grid = f.at(GridWalkFrame::GRID);
     let (desc_a, desc_b) = (f.at(GridWalkFrame::DESC_A), f.at(GridWalkFrame::DESC_B));
-    let transform = host.transform(f.s - 4, other);
-    host.combine(f.s - 0xc, desc_a, f.at(GridWalkFrame::FROM), transform);
+    let transform = host.transform(f.call_sp(1), other);
+    host.combine(f.call_sp(3), desc_a, f.at(GridWalkFrame::FROM), transform);
     let n = u32::from(store.grid_edge_count(grid));
     let mut result = 0;
     for i in 0..n {
-        let transform = host.transform(f.s - 4, other);
-        host.combine_twin(f.s - 0xc, desc_b, store.grid_edge(grid, i), transform);
+        let transform = host.transform(f.call_sp(1), other);
+        host.combine_twin(f.call_sp(3), desc_b, store.grid_edge(grid, i), transform);
         let material = f.at(GridWalkFrame::MATERIAL);
         let args = [
             desc_a,
@@ -150,15 +116,15 @@ fn slot_contacts<S: CollisionStore>(
             material,
             material,
         ];
-        if host.contact_query(f.s - 0x24, other, args) == 0 {
+        if host.contact_query(f.call_sp(9), other, args) == 0 {
             continue;
         }
-        let transform = host.transform(f.s - 4, this);
-        host.fetch_x(f.s - 0xc, desc_b, f.at(GridWalkFrame::AT), transform);
+        let transform = host.transform(f.call_sp(1), this);
+        host.fetch_x(f.call_sp(3), desc_b, f.at(GridWalkFrame::AT), transform);
         let event = make_event(host, f, ContactKind::Point, this, other, f.at(GridWalkFrame::AT));
         let (first, second) = store.event_sample_slots(event);
-        host.sample_b(f.s - 0x10, f.at(GridWalkFrame::GRID), i, first, second);
-        host.append(f.s - 8, list, event);
+        host.sample_b(f.call_sp(4), f.at(GridWalkFrame::GRID), i, first, second);
+        host.append(f.call_sp(2), list, event);
         result = 1;
     }
     result
@@ -192,14 +158,14 @@ fn point_contact<S: CollisionStore>(
     } else {
         point
     };
-    let this_transform = host.transform(f.s - 8, this);
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_a(f.s - 0x10, transform, at, this_transform, f.at(GridWalkFrame::AT));
+    let this_transform = host.transform(f.call_sp(2), this);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_a(f.call_sp(4), transform, at, this_transform, f.at(GridWalkFrame::AT));
     to_world(host, store, f, other);
     let event = make_event(host, f, ContactKind::Point, this, other, f.at(GridWalkFrame::AT));
     let (first, second) = store.event_sample_slots(event);
-    host.sample_b(f.s - 0x10, f.at(GridWalkFrame::GRID), i, first, second);
-    host.append(f.s - 8, list, event);
+    host.sample_b(f.call_sp(4), f.at(GridWalkFrame::GRID), i, first, second);
+    host.append(f.call_sp(2), list, event);
     1
 }
 
@@ -226,24 +192,24 @@ fn edge_contact<S: CollisionStore>(
     {
         return 0;
     }
-    let span = host.sub(f.s - 0xc, end, f.at(GridWalkFrame::EDGE_SPAN), start);
+    let span = host.sub(f.call_sp(3), end, f.at(GridWalkFrame::EDGE_SPAN), start);
     let edge_length = store.vec3(span).length3();
-    let span = host.sub(f.s - 0xc, f.at(GridWalkFrame::HIT), f.at(GridWalkFrame::HIT_SPAN), start);
+    let span = host.sub(f.call_sp(3), f.at(GridWalkFrame::HIT), f.at(GridWalkFrame::HIT_SPAN), start);
     let hit_length = store.vec3(span).length3();
     let ratio = collide_big::edge_ratio(edge_length, hit_length);
-    let transform = host.transform(f.s - 0x10, other);
+    let transform = host.transform(f.call_sp(4), other);
     let hit = f.at(GridWalkFrame::HIT);
-    host.compose_a(f.s - 0x10, transform, hit, store.frame_root(), hit);
-    let this_transform = host.transform(f.s - 8, this);
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_a(f.s - 0x10, transform, mid, this_transform, mid);
+    host.compose_a(f.call_sp(4), transform, hit, store.frame_root(), hit);
+    let this_transform = host.transform(f.call_sp(2), this);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_a(f.call_sp(4), transform, mid, this_transform, mid);
     let normal = f.at(GridWalkFrame::NORMAL);
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_b(f.s - 0x10, transform, normal, store.frame_root(), normal);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_b(f.call_sp(4), transform, normal, store.frame_root(), normal);
     let event = make_event(host, f, ContactKind::Edge, this, other, mid);
     let (first, second) = store.event_sample_slots(event);
-    host.sample_a(f.s - 0x14, f.at(GridWalkFrame::GRID), i, ratio, first, second);
-    host.append(f.s - 8, list, event);
+    host.sample_a(f.call_sp(5), f.at(GridWalkFrame::GRID), i, ratio, first, second);
+    host.append(f.call_sp(2), list, event);
     1
 }
 
@@ -258,7 +224,7 @@ fn edge_test(
     normal: u32,
 ) -> u32 {
     host.edge_edge(
-        f.s - 0x1c,
+        f.call_sp(7),
         f.at(GridWalkFrame::OTHER_GRID),
         from,
         to,
@@ -287,25 +253,25 @@ fn probe<S: CollisionStore>(
     let back = store.vec3(f.at(GridWalkFrame::BACK));
     let from = store.vec3(f.at(GridWalkFrame::FROM));
     store.store_vec3(dir, collide_big::probe_direction(centre, back, from, away, kind));
-    host.normalize(f.s - 4, dir);
-    let probe = host.add(f.s - 0x20, mid, f.at(GridWalkFrame::PROBE), dir);
+    host.normalize(f.call_sp(1), dir);
+    let probe = host.add(f.call_sp(8), mid, f.at(GridWalkFrame::PROBE), dir);
     if edge_test(host, f, probe, mid, GridWalkFrame::HIT, t, GridWalkFrame::NORMAL) == 0 {
         return false;
     }
     let dir = store.vec3(dir);
     let normal = f.at(GridWalkFrame::NORMAL);
     store.store_vec3(normal, dir);
-    store.set_f32(normal + 12, collide_big::plane_offset(dir, store.vec3(hit)));
+    store.set_f32(f.at(GridWalkFrame::PLANE_OFFSET), collide_big::plane_offset(dir, store.vec3(hit)));
     true
 }
 
 /// A point contact's hit and normal through the other entity's transform into the world.
 fn to_world<S: CollisionStore>(host: &mut impl GridContactHost, store: &mut S, f: &GridWalkFrame, other: u32) {
     let (hit, normal) = (f.at(GridWalkFrame::HIT), f.at(GridWalkFrame::NORMAL));
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_a(f.s - 0x10, transform, hit, store.frame_root(), hit);
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_b(f.s - 0x10, transform, normal, store.frame_root(), normal);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_a(f.call_sp(4), transform, hit, store.frame_root(), hit);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_b(f.call_sp(4), transform, normal, store.frame_root(), normal);
 }
 
 fn make_event(
@@ -317,38 +283,7 @@ fn make_event(
     at: u32,
 ) -> u32 {
     let (hit, normal) = (f.at(GridWalkFrame::HIT), f.at(GridWalkFrame::NORMAL));
-    host.make_event(f.s - 0x28, kind, hit, this, other, at, normal)
-}
-
-/// The scratch frame of the pair walk, addressed from its base `s`.
-struct PairWalkFrame {
-    s: u32,
-}
-
-impl PairWalkFrame {
-    const SIZE: u32 = 0x14e0;
-    /// The pair test's `t` and the word after it, which the test reads but does not write.
-    const T: u32 = 0x14;
-    const SCRATCH: u32 = 0x18;
-    /// The overlap box: its corners, centre and half extent.
-    const HI: u32 = 0x20;
-    const LO: u32 = 0x30;
-    const CENTRE: u32 = 0x40;
-    const HIT: u32 = 0x50;
-    const HALF: u32 = 0x60;
-    const NORMAL: u32 = 0x70;
-    /// The two fetched grids' boxes, joined.
-    const UNION_LO: u32 = 0x80;
-    const UNION_HI: u32 = 0x90;
-    const AT: u32 = 0xa0;
-    /// This body's grid fetched through `b` and through `a`, and the other entity's copied grid.
-    const GRID_B: u32 = 0xb0;
-    const GRID_A: u32 = 0x760;
-    const OTHER_GRID: u32 = 0xe10;
-
-    fn at(&self, offset: u32) -> u32 {
-        self.s + offset
-    }
+    host.make_event(f.call_sp(10), kind, hit, this, other, at, normal)
 }
 
 /// Contacts of the body `this` against the entity `other`: this body's grid is fetched twice (through `a` and
@@ -363,27 +298,27 @@ pub fn pair_contacts<S: CollisionStore>(
     b: u32,
     other: u32,
     list: u32,
-    esp: u32,
+    sp: u32,
 ) -> u32 {
-    let f = PairWalkFrame { s: ((esp - 4) & !0xf) - PairWalkFrame::SIZE };
+    let f = pair_walk_frame(sp);
     let (grid_a, grid_b) = (f.at(PairWalkFrame::GRID_A), f.at(PairWalkFrame::GRID_B));
-    host.ray_seeds(f.s - 4, grid_a);
-    host.ray_seeds(f.s - 4, grid_b);
-    let src = host.grid(f.s - 4, other);
-    let transform = host.second_transform(f.s - 4, other);
-    host.fetch_y(f.s - 0xc, a, grid_a, transform);
-    let transform = host.transform(f.s - 4, other);
-    host.fetch_y(f.s - 0xc, b, grid_b, transform);
+    host.ray_seeds(f.call_sp(1), grid_a);
+    host.ray_seeds(f.call_sp(1), grid_b);
+    let src = host.grid(f.call_sp(1), other);
+    let transform = host.second_transform(f.call_sp(1), other);
+    host.fetch_y(f.call_sp(3), a, grid_a, transform);
+    let transform = host.transform(f.call_sp(1), other);
+    host.fetch_y(f.call_sp(3), b, grid_b, transform);
     if store.body_grid(this) == 0 || src == 0 || store.grid_edge_count(src) == 0 || store.grid_edge_count(grid_a) == 0 {
-        host.ray_clear(f.s - 4, grid_b);
-        host.ray_clear(f.s - 4, grid_a);
+        host.ray_clear(f.call_sp(1), grid_b);
+        host.ray_clear(f.call_sp(1), grid_a);
         return 0;
     }
     // The pushes interleave with the calls: the first transform is the grid copy's last argument.
     let other_grid = f.at(PairWalkFrame::OTHER_GRID);
-    let last = host.transform(f.s - 4, other);
-    let middle = host.transform(f.s - 8, other);
-    host.grid_copy(f.s - 0x10, other_grid, src, middle, last);
+    let last = host.transform(f.call_sp(1), other);
+    let middle = host.transform(f.call_sp(2), other);
+    host.grid_copy(f.call_sp(4), other_grid, src, middle, last);
     overlap_box(store, &f);
     let grid = store.body_grid(this);
     let pairs = store.grid_pair_count(grid);
@@ -391,30 +326,31 @@ pub fn pair_contacts<S: CollisionStore>(
     for i in 0..u32::from(pairs) {
         result |= pair_contact(host, store, &f, this, other, list, i);
     }
-    host.ray_clear(f.s - 4, other_grid);
-    host.ray_clear(f.s - 4, grid_b);
-    host.ray_clear(f.s - 4, grid_a);
+    host.ray_clear(f.call_sp(1), other_grid);
+    host.ray_clear(f.call_sp(1), grid_b);
+    host.ray_clear(f.call_sp(1), grid_a);
     result
 }
 
 /// The overlap box: the join of the two fetched grids' boxes, met with the other grid's box, to the frame's
 /// corners, centre and half extent.
 fn overlap_box<S: CollisionStore>(store: &mut S, f: &PairWalkFrame) {
-    let (a, b) = (f.at(PairWalkFrame::GRID_A), f.at(PairWalkFrame::GRID_B));
-    let other = f.at(PairWalkFrame::OTHER_GRID);
-    let union_lo = store.vec4(a).min_lanes(store.vec4(b));
+    let (a_lo, a_hi) = store.grid_corners(f.at(PairWalkFrame::GRID_A));
+    let (b_lo, b_hi) = store.grid_corners(f.at(PairWalkFrame::GRID_B));
+    let (other_lo, other_hi) = store.grid_corners(f.at(PairWalkFrame::OTHER_GRID));
+    let union_lo = store.vec4(a_lo).min_lanes(store.vec4(b_lo));
     store.store_vec4(f.at(PairWalkFrame::UNION_LO), union_lo);
-    let union_hi = store.vec4(a + 0x10).max_lanes(store.vec4(b + 0x10));
+    let union_hi = store.vec4(a_hi).max_lanes(store.vec4(b_hi));
     store.store_vec4(f.at(PairWalkFrame::UNION_HI), union_hi);
-    let lo = store.vec4(other).max_lanes(union_lo);
+    let lo = store.vec4(other_lo).max_lanes(union_lo);
     store.store_vec4(f.at(PairWalkFrame::LO), lo);
-    let hi = store.vec4(other + 0x10).min_lanes(union_hi);
+    let hi = store.vec4(other_hi).min_lanes(union_hi);
     store.store_vec4(f.at(PairWalkFrame::HI), hi);
     let (centre, half) = collide_big::overlap_centre_half(
         lo,
         hi,
-        store.f32(f.at(PairWalkFrame::CENTRE) + 12),
-        store.f32(f.at(PairWalkFrame::HALF) + 12),
+        store.f32(f.at(PairWalkFrame::CENTRE_W)),
+        store.f32(f.at(PairWalkFrame::HALF_W)),
     );
     store.store_vec4(f.at(PairWalkFrame::CENTRE), centre);
     store.store_vec4(f.at(PairWalkFrame::HALF), half);
@@ -458,22 +394,22 @@ fn pair_contact<S: CollisionStore>(
         other_grid,
         0,
     ];
-    if host.edge_pair(f.s - 0x2c, other_grid, args) == 0 {
+    if host.edge_pair(f.call_sp(11), other_grid, args) == 0 {
         return 0;
     }
     let identity = store.frame_root();
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_a(f.s - 0x10, transform, hit, identity, hit);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_a(f.call_sp(4), transform, hit, identity, hit);
     let identity = store.frame_root();
-    let transform = host.transform(f.s - 0x10, other);
-    host.compose_b(f.s - 0x10, transform, normal, identity, normal);
-    let this_transform = host.transform(f.s - 8, this);
-    host.compose_a(f.s - 0x10, store.frame_root(), hit, this_transform, at);
+    let transform = host.transform(f.call_sp(4), other);
+    host.compose_b(f.call_sp(4), transform, normal, identity, normal);
+    let this_transform = host.transform(f.call_sp(2), this);
+    host.compose_a(f.call_sp(4), store.frame_root(), hit, this_transform, at);
     let t = store.u32(f.at(PairWalkFrame::T));
-    let event = host.pair_event(f.s - 0x28, hit, t, this, other, at, normal);
+    let event = host.pair_event(f.call_sp(10), hit, t, this, other, at, normal);
     let (flag_low, flag_high) = store.take_body_grid_flags(this);
     store.store_event_samples(event, flag_high, flag_low);
-    host.append(f.s - 8, list, event);
+    host.append(f.call_sp(2), list, event);
     1
 }
 

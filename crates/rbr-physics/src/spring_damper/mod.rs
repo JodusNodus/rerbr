@@ -20,7 +20,7 @@ const CURVE_LINEAR: f32 = f32::from_bits(0x3fa4_9249);
 const CURVE_RECIPROCAL: f32 = f32::from_bits(0x3e92_4925);
 const MIN_BUMP_DAMPING: f32 = 400.0;
 
-/// A named CReal value plus its two bookkeeping words. layout owns the offsets.
+/// A named real tweak's value plus its two bookkeeping words. layout owns the offsets.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct RealValue {
     pub label: u32,

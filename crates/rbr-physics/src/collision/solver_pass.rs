@@ -5,6 +5,7 @@
 
 use super::contact_solver::{self, Correction, SolverContact};
 use super::layout::solver_hosts::{ImpulseHost, SolverHost};
+use super::layout::{contact_row_frame, solve_event_frame};
 use super::store::{CollisionStore, Side};
 use crate::math::vec::Vec4;
 
@@ -239,7 +240,7 @@ pub fn contact_rows<S: CollisionStore>(
     body: u32,
     event: u32,
     side: u32,
-    esp: u32,
+    sp: u32,
 ) -> u32 {
     let mut rows = store.body_contact_rows(body);
     if rows == 0 {
@@ -253,10 +254,10 @@ pub fn contact_rows<S: CollisionStore>(
     }
     let (tag, material) = store.event_material(event);
     let mut row = contact_solver::contact_row(store.row_event(event), material, tag, side);
-    let frame = ((esp - 4) & !0xf) - 0x80;
+    let frame = contact_row_frame(sp);
     let other = store.event_other_point(event, side);
-    host.compose(frame - 16, store.frame_root(), other, body, frame + 0x60);
-    row.composed = store.vec4(frame + 0x60);
+    host.compose(frame.compose_sp, store.frame_root(), other, body, frame.composed);
+    row.composed = store.vec4(frame.composed);
     let count = store.contact_row_count(rows);
     if count >= BODY_CONTACT_ROWS {
         return 0;
@@ -279,12 +280,12 @@ pub fn apply_offsets<S: CollisionStore>(store: &mut S, row: u32) {
 
 /// The impulse of one event. An event due for an impulse gets the normal impulse and, when it slips, friction; the
 /// impulse is then applied. Returns the impulse magnitude (0 when not due).
-pub fn solve_event<S: CollisionStore>(host: &mut impl ImpulseHost, store: &mut S, event: u32, esp: u32) -> f32 {
-    let frame = ((esp - 4) & !0xf) - 0x90;
+pub fn solve_event<S: CollisionStore>(host: &mut impl ImpulseHost, store: &mut S, event: u32, sp: u32) -> f32 {
+    let frame = solve_event_frame(sp);
     let (normal_at, velocity_at, direction_at, slip_at, impulse_at) =
-        (frame + 0x40, frame + 0x50, frame + 0x60, frame + 0x70, frame + 0x80);
-    let (response_at, along_at, across_at, unused_at) = (frame + 0x18, frame + 0x20, frame + 0x1c, frame + 0x24);
-    host.relative_velocity(frame - 8, event, velocity_at);
+        (frame.normal, frame.velocity, frame.direction, frame.slip, frame.impulse);
+    let (response_at, along_at, across_at, unused_at) = (frame.response, frame.along, frame.across, frame.unused);
+    host.relative_velocity(frame.velocity_sp, event, velocity_at);
     let velocity = store.vec4(velocity_at);
     let normal = store.event_normal(event);
     let speed = contact_solver::approach_speed(velocity, normal);
@@ -299,12 +300,12 @@ pub fn solve_event<S: CollisionStore>(host: &mut impl ImpulseHost, store: &mut S
     store.store_vec4(normal_at, normal);
     store.store_vec4(direction_at, slip.direction.unwrap_or_default());
     let slips = u32::from(slip.direction.is_some());
-    host.response(frame - 24, event, normal_at, direction_at, slips, response_at, unused_at);
+    host.response(frame.response_sp, event, normal_at, direction_at, slips, response_at, unused_at);
     let impulse = contact_solver::normal_impulse(material, k, store.f32(response_at), speed);
     let scaled = store.vec4(normal_at).scale(impulse);
     store.store_vec4(impulse_at, scaled);
     if slips != 0 {
-        host.response(frame - 24, event, direction_at, normal_at, slips, along_at, across_at);
+        host.response(frame.response_sp, event, direction_at, normal_at, slips, along_at, across_at);
         let vector = contact_solver::friction_impulse(
             store.vec4(impulse_at),
             store.vec4(direction_at),
@@ -317,6 +318,6 @@ pub fn solve_event<S: CollisionStore>(host: &mut impl ImpulseHost, store: &mut S
         store.store_vec4(impulse_at, vector);
     }
     store.store_vec4(slip_at, slip.velocity);
-    host.apply_impulse(frame - 20, event, impulse, slip.speed, impulse_at, slip_at);
+    host.apply_impulse(frame.impulse_sp, event, impulse, slip.speed, impulse_at, slip_at);
     impulse
 }

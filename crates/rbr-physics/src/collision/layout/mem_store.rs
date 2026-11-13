@@ -490,6 +490,14 @@ impl CollisionStore for Mem {
         ColGrid::new(grid).edge(index)
     }
 
+    fn grid_corners(&self, grid: u32) -> (u32, u32) {
+        (grid, grid + 0x10)
+    }
+
+    fn grid_centre(&self, grid: u32) -> u32 {
+        grid + 0x20
+    }
+
     fn grid_pair(&self, grid: u32, index: u32) -> [u8; 6] {
         ColGrid::new(grid).pair(self, index as usize)
     }
@@ -622,6 +630,10 @@ impl CollisionStore for Mem {
 
     fn mesh_vertex(&self, table: u32, slot: u16) -> Vec3 {
         Vec3::load(self, table + 12 * u32::from(slot))
+    }
+
+    fn tree_face(&self, link: u32, index: u32) -> u32 {
+        link + 0x12 * index
     }
 
     fn face_bytes(&self, at: u32) -> [u8; 0x12] {
@@ -769,6 +781,10 @@ impl CollisionStore for Mem {
 
     fn wall_leaves(&self, wall: u32) -> u32 {
         wall + WALL_LEAVES
+    }
+
+    fn manager_wall(&self, manager: u32) -> u32 {
+        self.u32(manager + 4)
     }
 
     fn wall_mesh(&self, wall: u32) -> u32 {

@@ -4,10 +4,10 @@ use super::layout::AccumHost;
 use super::math::{gravity_force, point_velocity, Vec4};
 use super::store::CoreStore;
 
-/// Accumulates the forces on the body at `body`: the hook when the log flag 0x4000 is set (of the
-/// CDef's word or the physics object's), the base, and, when the body's inverse mass is not 0, the gravity walked through
-/// the body and scaled into the force. `temp` is the scratch the walk writes (the gravity copy, then the
-/// walk's output). Returns None before any call when the gravity pointer is the null sentinel.
+/// Accumulates the forces on the body at `body`: the hook when the log flag 0x4000 is set (of the physics definition's
+/// word or the physics object's), the base, and, when the body's inverse mass is not 0, the gravity walked through the
+/// body and scaled into the force. `temp` is the scratch the walk writes (the gravity copy, then the walk's output).
+/// Returns None before any call when the gravity pointer is the null sentinel.
 pub fn accumulate_forces<S: CoreStore>(store: &mut S, host: &mut impl AccumHost, body: u32, temp: u32) -> Option<()> {
     store.gravity_point()?;
     if store.accumulate_hook() {

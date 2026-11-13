@@ -136,6 +136,15 @@ fn percent(mem: &Mem, at: u32) -> f32 {
     mem.u32(at) as f32 / 100.0
 }
 
+/// The car's surface word, in its definition.
+const SURFACE: u32 = 0x44c0;
+
+/// The car's surface word, by which the per-car init takes the force-feedback sensitivity percentage
+/// ([`ffb::sensitivity`]).
+pub fn surface(mem: &Mem, car: u32) -> u32 {
+    mem.u32(mem.u32(car + DEF) + SURFACE)
+}
+
 /// `0x100b7ea0`: the car's factor, 0.000714 over its definition's `+0x16c` (`InverseMass`), 1 without one. x87 at
 /// 53 bits, rounded to a float.
 pub fn ratio(mem: &Mem, car: u32) -> f32 {
@@ -212,7 +221,7 @@ pub fn init(mem: &mut Mem, data: Data, c: Car, tables: &Tables) {
     data.set(mem, 0x1017_1310, r * 800.0);
     data.set(mem, 0x1017_1314, r * 4000.0);
     let s = mem.f32(def + 0x44a0);
-    let sensitivity = ffb::sensitivity(s, mem.u32(def + 0x44c0), c.ffb_sensitivity);
+    let sensitivity = ffb::sensitivity(s, mem.u32(def + SURFACE), c.ffb_sensitivity);
     if sensitivity.to_bits() != s.to_bits() {
         mem.set_f32(def + 0x44a0, sensitivity);
     }
