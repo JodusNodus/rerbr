@@ -258,24 +258,25 @@ pub fn gravel_soil_share(v_lat: f64) -> f64 {
 }
 
 /// Snow's level along the wheel over NGP's, on the snow share of the soil ([`class_share`]). On the material of RSF 531
-/// Aittajarvi (117, SnowOnIce_Shallow) the i20 Coupe WRC 2020 brakes at a slip of 0.3 with 1.07 / 1.00 / 0.96 g over
-/// 130-100 / 100-70 / 70-40 km/h at NGP's level, where the 2017-21 World Rally Cars of Arctic Rally Finland 2021, the
-/// grippiest of the four snow rallies of 2017-21 (Sweden 2017-18 read 6-7 % under it, 2019 level with it; 2020 ran on
-/// frozen gravel), give 0.79-0.82 / 0.73 / 0.67 (their tyres' force with the wheels 22 % or more under the car, plus
-/// the drag of 1.74 m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). 0.75 puts the car on them (0.82
-/// / 0.76 / 0.72); this is their upper end, a little over (0.85 / 0.79 / 0.75; user 2026-11-13: closer to the real
-/// cars, a tad more forgiving; `notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
-pub const SNOW_LONGITUDINAL: f64 = 0.78;
+/// Aittajarvi (117, SnowOnIce_Shallow) the i20 Coupe WRC 2020 brakes at a slip of 0.3 with 1.16 / 1.07 / 1.00 / 0.96 g
+/// over 160-130 / 130-100 / 100-70 / 70-40 km/h at NGP's level, where the 2017-21 World Rally Cars of Arctic Rally
+/// Finland 2021, the grippiest of the four snow rallies of 2017-21 (Sweden 2017-18 read 6-7 % under it, 2019 level with
+/// it; 2020 ran on frozen gravel), give 0.92 / 0.79-0.82 / 0.73 / 0.67 (their tyres' force with the wheels 22 % or more
+/// under the car, plus the drag of 1.74 m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). With this
+/// 0.88 / 0.80 / 0.74 / 0.70: 5 % over them at most (user 2026-11-13: closer to the Arctic's stages, 5 % above at
+/// most), 4 % under at the top, the car gaining less with speed than they do (0.75: 0.90 / 0.82 / 0.76 / 0.72; 0.78:
+/// 0.93 / 0.85 / 0.79 / 0.75; `notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
+pub const SNOW_LONGITUDINAL: f64 = 0.73;
 
-/// Snow's level across the wheel over NGP's, on the snow share of the soil, the upper end of two readings of the same
-/// cars in the Arctic (user 2026-11-13, as [`SNOW_LONGITUDINAL`]). The whole g they hold in a slide: 0.82 g from 15 deg
-/// of sideslip at 60-100 km/h and 0.84 at 100-160 on their accelerometers (0.85 / 0.88 along their path; Finland's
-/// gravel 0.97 / 1.01), where the i20 held past the limit on material 117's circles gives 1.08 / 1.14 at NGP's level
-/// and 0.74 / 0.78, 0.77 / 0.82, 0.80 / 0.87, 0.83 / 0.90, 0.87 / 0.95 at 0.70, 0.75, 0.80, 0.85, 0.90 with
-/// [`SNOW_SOIL_SPEED`]. And corner by corner on RSF 531 against Aittajarvi's two passes, where the car at 0.80 holds
-/// 0.81-0.87 of the crews' g in the corners that turn 30 deg or more and at 0.85 0.84-0.90, under gravel's 0.92 by the
-/// same reading (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
-pub const SNOW_LATERAL: f64 = 0.90;
+/// Snow's level across the wheel over NGP's, on the snow share of the soil: 5 % at most over the whole g the same cars
+/// hold in a slide in the Arctic (user 2026-11-13, as [`SNOW_LONGITUDINAL`]), 0.82 g from 15 deg of sideslip at 60-100
+/// km/h and 0.84 at 100-160 on their accelerometers (0.85 / 0.88 along their path; Finland's gravel 0.97 / 1.01). The
+/// i20 held past the limit on material 117's circles gives 1.08 / 1.14 at NGP's level and 0.74 / 0.78, 0.77 / 0.82,
+/// 0.80 / 0.87, 0.80 / 0.88, 0.83 / 0.90, 0.87 / 0.95 at 0.70, 0.75, 0.80, 0.82, 0.85, 0.90 with [`SNOW_SOIL_SPEED`].
+/// Corner by corner on RSF 531 against Aittajarvi's two passes the car at 0.80 / 0.85 / 0.90 holds 0.81-0.87 /
+/// 0.84-0.90 / 0.88-0.94 of the crews' g in the corners that turn 30 deg or more, gravel's 0.92 by the same reading
+/// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
+pub const SNOW_LATERAL: f64 = 0.82;
 
 /// The sideways speed of the contact point above which NGP's soil lateral force stops growing on snow, m/s
 /// ([`snow_soil_share`]), gravel's ([`GRAVEL_SOIL_SPEED`]): with the whole force the i20 at 0.75 of NGP's level on both
