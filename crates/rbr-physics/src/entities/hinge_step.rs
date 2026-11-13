@@ -57,7 +57,7 @@ pub fn limit_update_at<S: HingeStore>(store: &mut S, this: u32, calls: &mut impl
 /// The hinge advance on `this` with the step `dt`. `sig` is the state payload's slot in the frame; the payload's
 /// padding words are not written. Returns the link's flag pointer for a settled body, the integrate's for a body
 /// with no owner car, else the emit's.
-pub fn sim_f950_at<S: HingeStore>(
+pub fn hinge_advance_at<S: HingeStore>(
     store: &mut S,
     this: u32,
     dt: f32,
@@ -86,12 +86,12 @@ pub fn sim_f950_at<S: HingeStore>(
 }
 
 /// The slip term at `this`, through `calls` (its walks and copy).
-pub fn sim_cff0_at<S: HingeStore>(store: &S, this: u32, base: u32, calls: &mut impl SlipCalls) -> f32 {
+pub fn slip_term_at<S: HingeStore>(store: &S, this: u32, base: u32, calls: &mut impl SlipCalls) -> f32 {
     hinge_slip::slip_torque(calls, &store.slip_input(this), &slip_frame(base))
 }
 
 /// The pivot and the settle value at `this`, through `calls`, stored in the body. Returns the settle value.
-pub fn sim_e1d0_at<S: HingeStore>(store: &mut S, this: u32, base: u32, calls: &mut impl PivotCalls) -> u32 {
+pub fn pivot_at<S: HingeStore>(store: &mut S, this: u32, base: u32, calls: &mut impl PivotCalls) -> u32 {
     let input = store.pivot_input(this);
     let pivot = hinge_pivot::pivot_terms(calls, &input, &pivot_frame(base, this));
     store.store_pivot(this, &pivot);
@@ -99,13 +99,13 @@ pub fn sim_e1d0_at<S: HingeStore>(store: &mut S, this: u32, base: u32, calls: &m
 }
 
 /// The frame's products at `this`, through `calls`. Returns the position.
-pub fn sim_d160_at<S: HingeStore>(store: &S, this: u32, calls: &mut impl PoseCalls) -> u32 {
-    hinge_pose::update_pose(calls, &store.d160_frame(this));
+pub fn pose_at<S: HingeStore>(store: &S, this: u32, calls: &mut impl PoseCalls) -> u32 {
+    hinge_pose::update_pose(calls, &store.pose_handles(this));
     position_at(this)
 }
 
 /// The hinge solve at `this`, through `calls`. A solved value is stored.
-pub fn sim_ead0_at<S: HingeStore>(store: &mut S, this: u32, base: u32, calls: &mut impl SolveCalls) -> Outcome {
+pub fn hinge_solve_at<S: HingeStore>(store: &mut S, this: u32, base: u32, calls: &mut impl SolveCalls) -> Outcome {
     let outcome = hinge_solve::hinge_solve(calls, this, &solve_frame(base));
     if let Outcome::Solved(value) = outcome {
         store.store_solved(this, value);

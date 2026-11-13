@@ -358,7 +358,7 @@ impl HingeStore for Mem {
         }
     }
 
-    fn car_state_c00(&self, state: u32) -> f32 {
+    fn car_slip_word(&self, state: u32) -> f32 {
         self.f32(state + CAR_STATE_C00)
     }
 
@@ -452,7 +452,7 @@ impl HingeStore for Mem {
 
     /// The inputs of `CHingedRigidBody::SimDB40` (0x51db40) at `this`, or `None` when its guard fails: the debug flag is
     /// clear, or there is no owner car. The asm tests the flag first, then the car.
-    fn db40_input(&self, this: u32) -> Option<FrameWalkInput> {
+    fn frame_walk_input(&self, this: u32) -> Option<FrameWalkInput> {
         let physics = self.u32(car_body::layout::WORLD);
         let flags = self.u32(self.u32(physics + PHYSICS_DEF) + DBG_FLAGS);
         let car = self.u32(this + HINGE_OWNER);
@@ -474,7 +474,7 @@ impl HingeStore for Mem {
     }
 
     /// The inputs of `CHingedRigidBody::SimD860` (0x51d860) at `this`.
-    fn d860_input(&self, this: u32) -> OffsetInput {
+    fn offset_input(&self, this: u32) -> OffsetInput {
         let def = self.u32(this + HINGE_DEF);
         OffsetInput {
             identity: self.u32(IDENTITY_GLOBAL),
@@ -486,7 +486,7 @@ impl HingeStore for Mem {
     }
 
     /// The body and definition words `SimEFE0` reads or writes (`RefreshState`), as the body is in memory now.
-    fn efe0_state(&self, this: u32) -> RefreshState {
+    fn hinge_refresh_state(&self, this: u32) -> RefreshState {
         let def = self.u32(this + HINGE_DEF);
         let link_address = self.u32(this + HINGE_LINK);
         RefreshState {
@@ -515,7 +515,7 @@ impl HingeStore for Mem {
 
     /// Writes the words `SimEFE0` changes: the flag, the CBase and its counter, the angle block, the limit words and the
     /// copies.
-    fn store_efe0_state(&mut self, this: u32, state: &RefreshState) {
+    fn store_hinge_refresh_state(&mut self, this: u32, state: &RefreshState) {
         self.set_u32(state.link_address, state.link_flag);
         set_words(self, this + HINGE_CBASE + 8, &[state.dirty]);
         set_words(self, this + HINGE_CBASE_COUNTER, &[state.dirty_counter]);
@@ -528,8 +528,8 @@ impl HingeStore for Mem {
     }
 
     /// The addresses `SimEFE0` passes to its calls: the definition's blocks (the `VfE070` pointers, `BodyCompose`'s `a` and
-    /// output) and the body's car. `d860_out` is the caller's scratch vector for `SimD860`.
-    fn efe0_frame(&self, this: u32, d860_out: u32) -> RefreshHandles {
+    /// output) and the body's car. `offset_result` is the caller's scratch vector for `SimD860`.
+    fn refresh_handles(&self, this: u32, offset_result: u32) -> RefreshHandles {
         let def = self.u32(this + HINGE_DEF);
         RefreshHandles {
             body: this,
@@ -538,12 +538,12 @@ impl HingeStore for Mem {
             second_axes: [def + DEF_CONTEXT, def + 0x380, def + 0x3A0, def + DEF_VECTOR, def + 0x44C, def + 0x428],
             compose_input: def + DEF_POSE,
             compose_output: def + DEF_ANCHOR,
-            offset_out: d860_out,
+            offset_out: offset_result,
         }
     }
 
     /// The addresses `SimD160` passes to its calls.
-    fn d160_frame(&self, this: u32) -> PoseHandles {
+    fn pose_handles(&self, this: u32) -> PoseHandles {
         let def = self.u32(this + HINGE_DEF);
         PoseHandles {
             car: self.u32(this + HINGE_OWNER),
@@ -559,7 +559,7 @@ impl HingeStore for Mem {
     }
 
     /// The definition's frame words, and the body's block and position, as they are in memory now (`SimD160`'s reads).
-    fn d160_words(&self, this: u32) -> PoseState {
+    fn pose_state(&self, this: u32) -> PoseState {
         let def = self.u32(this + HINGE_DEF);
         PoseState {
             definition: PoseDefinition {
@@ -579,7 +579,7 @@ impl HingeStore for Mem {
 
     /// Writes the body's products and its position (`SimD160`'s stores). `hinge_rotation` is not written: the port does not
     /// change it.
-    fn store_d160_words(&mut self, this: u32, state: &PoseState) {
+    fn store_pose_state(&mut self, this: u32, state: &PoseState) {
         set_mat3(self, this + HINGE_QUAT_MATRIX, &state.body.orientation_matrix);
         set_mat3(self, this + HINGE_MATRIX, &state.body.frame_matrix);
         for (i, value) in state.position.iter().enumerate() {

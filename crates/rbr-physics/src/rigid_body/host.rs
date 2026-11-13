@@ -28,13 +28,13 @@ pub trait StateHost {
 }
 
 /// The entity's scratch tail call, whose effects are the host's.
-pub trait Vf54Host {
+pub trait EntityScratchTailHost {
     fn entity_scratch_tail(&mut self) -> Result<(), HostUnavailable>;
 }
 
 /// The entity walk on the body.
-pub trait Vf20Host {
-    fn entity_walk_s20(&mut self, body: u32, arg: u32) -> u32;
+pub trait EntityWalkHost {
+    fn walk_entity(&mut self, body: u32, arg: u32) -> u32;
 }
 
 pub use super::layout::SolidCtorHost;

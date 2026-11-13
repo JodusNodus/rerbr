@@ -13,7 +13,7 @@ const SCALE: f32 = 0.6;
 
 /// The dot: `a` and `b` are vectors (their first three lanes), `c` is three floats, `scale` is the def's vector (its
 /// first three lanes). Returns the single-precision result.
-pub fn dot60(a: Vec4, b: Vec4, c: [f32; 3], scale: Vec4) -> f32 {
+pub fn response_dot(a: Vec4, b: Vec4, c: [f32; 3], scale: Vec4) -> f32 {
     let o1 = a.cross3(b);
     let t = Vec4 { x: scale.x * o1.x, y: scale.y * o1.y, z: scale.z * o1.z, w: scale.w * o1.w };
     let o2 = t.cross3(a);
@@ -23,7 +23,7 @@ pub fn dot60(a: Vec4, b: Vec4, c: [f32; 3], scale: Vec4) -> f32 {
 
 /// What the response combine reads: the vectors `a`, `b` and `c` (the first three lanes), the def's `scale` and its
 /// float `k`.
-pub struct Dot138 {
+pub struct ResponseInput {
     pub a: Vec4,
     pub b: Vec4,
     pub c: Vec4,
@@ -32,7 +32,7 @@ pub struct Dot138 {
 }
 
 /// The dot at NGP's 53-bit precision control: the dot and its scale round to doubles, and the result stays one.
-fn dot60_53(a: Vec4, b: Vec4, c: [f32; 3], scale: Vec4) -> f64 {
+fn response_dot_pc53(a: Vec4, b: Vec4, c: [f32; 3], scale: Vec4) -> f64 {
     let o1 = a.cross3(b);
     let t = Vec4 { x: scale.x * o1.x, y: scale.y * o1.y, z: scale.z * o1.z, w: scale.w * o1.w };
     let o2 = t.cross3(a);
@@ -42,17 +42,18 @@ fn dot60_53(a: Vec4, b: Vec4, c: [f32; 3], scale: Vec4) -> f64 {
 
 /// The response combine with `dp` (its int argument) and the two floats at `f` and `e`. Returns the new `(f, e)`. The
 /// `f` part runs only when `dp != 0`. Under NGP the sums take the dot's double and round once, at the store.
-pub fn e43vf138(input: &Dot138, dp: u32, f: f32, e: f32) -> (f32, f32) {
+pub fn response_combine(input: &ResponseInput, dp: u32, f: f32, e: f32) -> (f32, f32) {
     let b = [input.b.x, input.b.y, input.b.z];
     match precision() {
         Precision::Pc24 => {
-            let f = if dp != 0 { dot60(input.a, input.c, b, input.scale) + f } else { f };
-            let dot = dot60(input.a, input.b, b, input.scale);
+            let f = if dp != 0 { response_dot(input.a, input.c, b, input.scale) + f } else { f };
+            let dot = response_dot(input.a, input.b, b, input.scale);
             (f, (dot + e) + input.k)
         }
         Precision::Pc53 => {
-            let f = if dp != 0 { (dot60_53(input.a, input.c, b, input.scale) + f64::from(f)) as f32 } else { f };
-            let dot = dot60_53(input.a, input.b, b, input.scale);
+            let f =
+                if dp != 0 { (response_dot_pc53(input.a, input.c, b, input.scale) + f64::from(f)) as f32 } else { f };
+            let dot = response_dot_pc53(input.a, input.b, b, input.scale);
             (f, ((dot + f64::from(e)) + f64::from(input.k)) as f32)
         }
     }

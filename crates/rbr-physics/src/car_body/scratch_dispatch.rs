@@ -1,9 +1,9 @@
 //! The dispatch to the car's scratch sim at the end of the car's step reset.
 
-use crate::rigid_body::host::Vf54Host;
+use crate::rigid_body::host::EntityScratchTailHost;
 
 /// The call into the scratch sim's second method, after the scratch block has been reset.
-pub trait ScratchDispatchCalls: Vf54Host {
+pub trait ScratchDispatchCalls: EntityScratchTailHost {
     fn scratch_slot1(&mut self, scratch: u32) -> u32;
 }
 

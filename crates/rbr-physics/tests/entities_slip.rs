@@ -44,7 +44,7 @@ impl SlipCalls for Answers<'_> {
     }
 
     fn car_speed(&self, state: u32) -> f32 {
-        self.mem.car_state_c00(state)
+        self.mem.car_slip_word(state)
     }
 }
 

@@ -3,7 +3,7 @@ use rbr_physics::car_body::{layout, scratch_dispatch};
 use rbr_physics::collision::face_sweep::{self, Bounds, Face, FaceGrid};
 use rbr_physics::math::vec::{Vec3, Vec4};
 use rbr_physics::mem::Mem;
-use rbr_physics::rigid_body::host::{HostUnavailable, Vf54Host};
+use rbr_physics::rigid_body::host::{EntityScratchTailHost, HostUnavailable};
 
 #[test]
 fn get_30_reads_the_word_at_plus_30() {
@@ -36,7 +36,7 @@ struct Vf54Calls {
     events: Vec<&'static str>,
 }
 
-impl Vf54Host for Vf54Calls {
+impl EntityScratchTailHost for Vf54Calls {
     fn entity_scratch_tail(&mut self) -> Result<(), HostUnavailable> {
         self.events.push("entity");
         Ok(())

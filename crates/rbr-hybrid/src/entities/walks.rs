@@ -93,12 +93,12 @@ impl GatedCalls for Walk<'_> {
     fn call(&mut self, child: u32, call: ChildCall) {
         let (slot, arg) = match call {
             ChildCall::Substep(p) => (0x20, Some(p)),
-            ChildCall::Unnamed1 => (0x28, None),
+            ChildCall::UnknownPass => (0x28, None),
             ChildCall::Init => (0x48, None),
             ChildCall::CarHook(p) => (0x58, Some(p)),
             ChildCall::Force => (0x5c, None),
             ChildCall::Torque => (0x64, None),
-            ChildCall::Unnamed2(p) => (0x68, Some(p)),
+            ChildCall::UnknownArgPass(p) => (0x68, Some(p)),
             ChildCall::Integrate(p) => (0x6c, Some(p)),
         };
         self.host.call_at(

@@ -158,7 +158,7 @@ fn old_frame_and_vf120_target() {
     let mut mem = Mem::new();
     mem.set_u32(0x1000, 0x2000);
     mem.set_u32(0x211c, 0x004e_1200);
-    assert_eq!(mem.vf120_target(0x1000), 0x004e_1200);
+    assert_eq!(mem.query_slot_target(0x1000), 0x004e_1200);
 }
 
 /// `CPlainUnaryFunction::Vf04x` and `Vf00x` (0x51a120, 0x51a130) and the tail callback (0x5194a0), against a
@@ -602,7 +602,7 @@ impl GatedCalls for Walks<'_> {
     fn call(&mut self, child: u32, call: ChildCall) {
         let rec = self.take();
         let args = match call {
-            ChildCall::Substep(p) | ChildCall::CarHook(p) | ChildCall::Unnamed2(p) | ChildCall::Integrate(p) => {
+            ChildCall::Substep(p) | ChildCall::CarHook(p) | ChildCall::UnknownArgPass(p) | ChildCall::Integrate(p) => {
                 vec![child, p]
             }
             _ => vec![child],
@@ -661,12 +661,12 @@ fn gated_walks_match_original_calls() {
     type Gated = fn(u32) -> ChildCall;
     let walks: [(u32, &str, Gated); 7] = [
         (0x51A3A0, "CEntity::E43Vf20", ChildCall::Substep),
-        (0x51A3E0, "CEntity::E43Vf28", |_| ChildCall::Unnamed1),
+        (0x51A3E0, "CEntity::E43Vf28", |_| ChildCall::UnknownPass),
         (0x51A440, "CEntity::E43Vf48", |_| ChildCall::Init),
         (0x51A250, "CEntity::E43Vf58", ChildCall::CarHook),
         (0x51A290, "CEntity::E43Vf5C", |_| ChildCall::Force),
         (0x51A2C0, "CEntity::E43Vf64", |_| ChildCall::Torque),
-        (0x51A2F0, "CEntity::E43Vf68", ChildCall::Unnamed2),
+        (0x51A2F0, "CEntity::E43Vf68", ChildCall::UnknownArgPass),
     ];
     for (addr, name, call) in walks {
         replay_walk(addr, name, |w, a| {
@@ -1211,7 +1211,7 @@ fn limit_update_copies_the_window_and_moves_the_residual() {
     assert_eq!(flags.0, vec![1]);
 }
 
-/// `sim_f950_at` (0x51f950): a moving body keeps the advanced rate and angle, makes its calls in the original's order and
+/// `hinge_advance_at` (0x51f950): a moving body keeps the advanced rate and angle, makes its calls in the original's order and
 /// writes the state payload; a settled body (its link's flag set) and a body with no owner car make one call or none.
 /// Reached by the drive (no records): the rust_step check covers the original.
 #[test]
@@ -1266,7 +1266,7 @@ fn sim_f950_runs_the_calls_in_order_and_writes_the_payload() {
         mem.set_f32(this + 0x1c0 + 4 * k, 9.0);
     }
     let mut log = Log::default();
-    let eax = layout::sim_f950_at(&mut mem, this, 0.25, sig, &mut log);
+    let eax = layout::hinge_advance_at(&mut mem, this, 0.25, sig, &mut log);
     assert_eq!(eax, 0x55);
     assert_eq!(mem.f32(this + 0x40c), 1.125);
     assert_eq!(mem.f32(this + 0x3fc), 1.125 * 0.25 + 3.0);
@@ -1290,13 +1290,13 @@ fn sim_f950_runs_the_calls_in_order_and_writes_the_payload() {
 
     mem.set_u32(link, 1);
     let mut log = Log::default();
-    assert_eq!(layout::sim_f950_at(&mut mem, this, 0.25, sig, &mut log), link);
+    assert_eq!(layout::hinge_advance_at(&mut mem, this, 0.25, sig, &mut log), link);
     assert!(log.0.is_empty());
 
     mem.set_u32(link, 0);
     mem.set_u32(this + 0x3d0, 0);
     let mut log = Log::default();
-    assert_eq!(layout::sim_f950_at(&mut mem, this, 0.25, sig, &mut log), 7);
+    assert_eq!(layout::hinge_advance_at(&mut mem, this, 0.25, sig, &mut log), 7);
     assert_eq!(log.0, ["integrate 0x1000 0.25"]);
 }
 
@@ -1666,8 +1666,8 @@ struct Clear480Recorded<'a> {
     mem: Mem,
     next: usize,
 }
-impl layout::Clear480Calls for Clear480Recorded<'_> {
-    fn sim_fd00(&mut self, _sp: u32, body: u32) -> u32 {
+impl layout::ClearBodiesCalls for Clear480Recorded<'_> {
+    fn detach_body(&mut self, _sp: u32, body: u32) -> u32 {
         while self.inner.get(self.next).map(|c| c.addr) != Some(0x51fd00) {
             let nested = self.inner.get(self.next).expect("Clear480 nested SimFD00 record");
             assert!(
@@ -2003,7 +2003,7 @@ impl layout::FD00Calls for InOrder<'_> {
         self.take(mem, Some(0x4e41a0), &[link]);
     }
 
-    fn init_bd0(&mut self, mem: &mut Mem, _: u32, body: u32) {
+    fn init_walker_marks(&mut self, mem: &mut Mem, _: u32, body: u32) {
         self.take(mem, Some(0x519bd0), &[body]);
     }
 
@@ -2114,7 +2114,7 @@ fn sim_da60_matches_direct_records() {
 fn detach_leaves_match_direct_records() {
     use rbr_physics::physics_core::layout as core;
     replay_eax(VAR, 0x529e60, "CSolid::E43ClearAcc", true, |mem, a| mem.clear_accumulators(a[0]));
-    replay_eax(VAR, 0x519bd0, "CEntity::E43_InitBD0", true, |mem, a| layout::init_bd0(mem, a[0]));
+    replay_eax(VAR, 0x519bd0, "CEntity::E43_InitBD0", true, |mem, a| layout::init_walker_marks(mem, a[0]));
     replay_eax(VAR, 0x4e6af0, "E34LinkList10::PushItem", true, |mem, a| {
         core::push_item(mem, a[0], a[1]);
         a[1]

@@ -14,13 +14,14 @@ pub use crate::rigid_body::solid_contacts::{
     contact_vote, contact_worker, impulse_tail, ring_append, ContactOut, ImpulseTailCalls,
 };
 pub use crate::rigid_body::solid_rows::{
-    clamp_velocity_along, def_flag, e43vf138, fold_body_rows, fold_body_rows_reordered, fold_quat_body_rows_c4,
-    fold_quat_body_rows_c8, point_velocity, quat_body_rows_b8, quat_diff_body_rows, quat_plus_body_rows,
-    quat_transform_body_rows, scale_add_rows, solid_e43vfa0, solid_inverse_mass, solid_response, transform_body_rows,
-    transform_body_rows3,
+    body_fold_rows_by_columns, body_fold_rows_by_rows, body_rotate_rows, clamp_velocity_along, def_flag,
+    fold_body_rows, fold_body_rows_reordered, point_velocity, quat_diff_body_rows, quat_plus_body_rows,
+    quat_transform_body_rows, response_combine_at, rows_to_body, scale_add_rows, solid_inverse_mass, solid_response,
+    transform_body_rows, transform_body_rows3,
 };
 pub use crate::rigid_body::solid_window::{
-    refresh_state_rotation, scratch_accumulate, solid_advance_rest, solid_back_step, solid_window_start, vf16_helper,
+    refresh_and_reset, refresh_state_rotation, scratch_accumulate, solid_advance_rest, solid_back_step,
+    solid_window_start,
 };
 pub(crate) use contacts::HALF;
 pub use contacts::{contact_record, contact_records, load_contact, store_event, CONTACT_LIST};
