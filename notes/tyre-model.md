@@ -2391,6 +2391,10 @@ items named below), run again on Finland 2021 as the gravel reference (it gives 
   corners where the crews' median is 0.65 g or more the slowest speed 0.89 / 0.90 of their median (SS4 / SS7; p25-p75
   0.82-0.97), as on Hassi's gravel (0.88-0.89): on a car with 1.3 times their grip, not at its limit (circles
   0.94-1.02).
+- The user on pad-117 by hand, these levels (2026-11-13, i20, 105 s; `replay_gg.py`, all frames equal): tyres 0.97-0.99
+  of their peak in the hardest 5 %; starts 10 to 50 m 2.35 s twice (the crews 2.36); braking at slip 0.29 0.80 g over
+  130-100 km/h (the crews 0.79-0.82); steady cornering by the path 0.70 / 0.73 / 0.77 / 0.85 g max at 60-90 / 90-120 /
+  120-150 / 150+ km/h (the circles 0.75-0.81, the crews' windows 0.74-0.77). No locked stop driven.
 - Snow's shape along the wheel (2026-11-13; `loose::SNOW_HELD_LEVEL` 0.40, `SNOW_HELD_STIFFNESS` 0.14, `SNOW_PLOUGH`
   1.0). VTI's trailer (BV12) braking road winter tyres to lock on hard packed snow at 30 km/h (fig ±0.01): 0.80 of the
   peak at 10 % slip, 0.95 at 20 %, the peak at 40-50 %, locked 0.93-0.94 (Nordic and European; Baliga & Hiregoudar,
