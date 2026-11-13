@@ -87,6 +87,9 @@ pub struct Args {
     pub race: Option<autopilot::race::Limits>,
     /// `--trace-speed FILE` (with `--autopilot`): each step's time, speed, pedals, gear, position and wheel speeds.
     pub trace_speed: Option<PathBuf>,
+    /// `--trace-wheels` (with `--trace-speed`): each line adds the front wheels' tyre columns, as `--replay-trace`'s
+    /// (research tooling, read-only).
+    pub trace_wheels: bool,
     /// `--tyre-probe FILE` (with `--autopilot` or `--replay-trace`): read-only dumps of each wheel's tyre frame
     /// (research tooling).
     pub tyre_probe: Option<PathBuf>,
@@ -152,6 +155,9 @@ pub struct Args {
     pub pack_car: car_pack::Flags,
     /// `--ffb-sensitivity G,T,S`: NGP's force-feedback sensitivity percentages (`boot::Race::ffb_sensitivity`).
     pub ffb_sensitivity: Option<[i32; 3]>,
+    /// `--ffb-tyres MM` (with `--live`, a trial): the wheel's force from the front tyres with a mechanical trail of
+    /// `MM` mm, in place of NGP's steering torque (`tyre_ffb.rs`); held in m.
+    pub ffb_tyres: Option<f32>,
     /// `--head-gasket-durability N`: NGP's `headGasketDurability` (`boot::Race::head_gasket_durability`).
     pub head_gasket_durability: Option<i32>,
     /// `--manoeuvre KIND,KMH,AMP[,EXTRA]` (with `--autopilot --boot` on a pad stage): a handling manoeuvre, open loop
@@ -229,10 +235,10 @@ pub const USAGE: &str = "usage: rbr-standalone --recording X --stage NAME --snap
        --physics ngp|experimental|experimental-brush: NGP 7's physics (the default), ReRBR experimental physics built on NGP 7 (its engine model in place of NGP's torque formula, its aero and its four-wheel-drive drivetrain loss), or it with the brush tyre in development (in place of NGP's sliding model), on live, replayed, autopilot and headless runs, not with --twin (no effect without NGP) [--car-group NAME] [--car-year N] (the car's, over the RSF install's) [--tyre-tuning KEY=VALUE,... (experimental-brush: slide-grip 0.70-0.95, tarmac, gravel, snow, ice 0.70-1.30, stiffness 0.70-1.30, response 0.5-2.0)] [--aero ngp|wings|downforce|yaw or sums joined by + (with an experimental profile, whose own is wings+downforce; ngp: the car file's downforce and drag; wings: the drag of the downforce devices on top of the file's; downforce: half the file's downforce; yaw: the front downforce and the drag with the car's sideslip)]; experimental writes no records (--saves compares only)
        OPTIONS (with --boot): [--damage off|safe|reduced|realistic] [--auto-gears on|off] [--gear-guard on|off] [--neutral-lock on|off] [--clutch-help on|off] [--championship rookie|professional|champion [--championship-damage off|safe|reduced|realistic] [--championship-false-starts N]]
        a rally school lesson (with --boot): --school 0-16 (its map's stage unless --stage names it; the lesson's tyre; car 5 with the lesson's setup, or --car/--rsf-car/--car-pack with its own)
-       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
+       rbr-standalone --autopilot OUT (--recording X --snapshot Y | --boot [--car N] [WEATHER]) --stage NAME [--steps N] [--top-speed M/S] [--aim X,Y[,COAST]] [--flat-out [--drive-slip K (the start holds wheel slip K; with --clutch-help off by the clutch off the line)]] [--brake-from M/S [--brake-pedal P | --brake-slip K | --brake-abs K] [--brake-hold S] [--brake-declutch (with --clutch-help off)] [--brake-throttle T]] [--circle X,Y,R [--circle-ramp RATE] [--circle-past T]] [--plan LAT,BRAKE (the speed plan's m/s²)] [--speed-zone FROM,TO,SPEED (m of driveline held at SPEED m/s whatever its curves; may repeat)] [--race LAT,BRAKE,SLIP (race driving at the car's m/s² and braking slip)] [--manoeuvre KIND,KMH,AMP[,EXTRA] (on a pad stage, a handling manoeuvre: open loop, or catch, a slide a driver with reaction time EXTRA s recovers)] [--trace-speed FILE [--trace-wheels]] [--tyre-probe FILE [--tyre-probe-every N]] [--tyre-image FILE [--tyre-image-step N]] [--data DIR]
        --stage pad-tarmac|pad-gravel|pad-snow|pad-ID (a generated flat pad of one material) behaves as --stage <prepared> --btb 41 --surface <the pad's>; an explicit --surface still wins
        --stage NAME can be --stage-dir FOLDER or --rsf-stage ID [--rsf-root DIR] (a RallySimFans stage)
-       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)]
+       with --live: [--frames-out FILE | --frames FILE|- | --replay-out FILE | --replay FILE [--replay-pace clock|free] [--replay-trace FILE] [--replay-tyre STEP:MODEL]] [--pilot autopilot|RECORDING] [--saves DIR] [--profile NAME] [--dispatch direct|pure] [--start-time H:MM] [--telemetry-udp ADDR:PORT (NGP's UDP telemetry, none during --replay)] [--ffb-tyres MM (a trial: the wheel's force from the front tyres' aligning moment and lateral force with a mechanical trail of MM mm, 0 to 100, as AC EVO's; tyre_ffb.rs)]
        a championship stage (with --boot): [--rally-next stage|service|end] [--damage-in FILE] [--damage-out FILE] [--result-out FILE]
        -V, --version prints the version
        -h, --help prints this text";
@@ -263,10 +269,11 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             println!("rbr-standalone {}", env!("CARGO_PKG_VERSION"));
             std::process::exit(0);
         }
-        if flag == "--live" || flag == "--boot" || flag == "--flat-out" {
+        if flag == "--live" || flag == "--boot" || flag == "--flat-out" || flag == "--trace-wheels" {
             args.live |= flag == "--live";
             args.boot |= flag == "--boot";
             args.flat_out |= flag == "--flat-out";
+            args.trace_wheels |= flag == "--trace-wheels";
             continue;
         }
         if flag == "--brake-declutch" {
@@ -386,6 +393,10 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
             "--physics" => {
                 let names = Profile::ALL.map(|p| p.name).join(", ");
                 args.physics = Profile::named(&value).ok_or(format!("--physics {value}: one of {names}"))?
+            }
+            "--ffb-tyres" => {
+                let mm = value.parse::<f32>().ok().filter(|mm| (0.0..=100.0).contains(mm));
+                args.ffb_tyres = Some(mm.ok_or(format!("--ffb-tyres {value}: a trail in mm, 0 to 100"))? / 1000.0)
             }
             "--ffb-sensitivity" => {
                 args.ffb_sensitivity =
@@ -586,6 +597,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     if args.telemetry_udp.is_some() && !args.live {
         return Err("--telemetry-udp needs --live".into());
     }
+    if args.ffb_tyres.is_some() && !args.live {
+        return Err("--ffb-tyres needs --live".into());
+    }
     if (args.frames_out.is_some() || args.frames.is_some()) && !args.live {
         return Err("--frames-out and --frames need --live".into());
     }
@@ -610,6 +624,9 @@ fn parse(mut it: impl Iterator<Item = String>) -> Result<Args, String> {
     }
     if (args.flat_out || args.trace_speed.is_some() || args.tyre_image.is_some()) && args.autopilot.is_none() {
         return Err("--flat-out, --trace-speed and --tyre-image need --autopilot".into());
+    }
+    if args.trace_wheels && args.trace_speed.is_none() {
+        return Err("--trace-wheels needs --trace-speed".into());
     }
     if args.tyre_probe.is_some() && args.autopilot.is_none() && args.replay_trace.is_none() {
         return Err("--tyre-probe needs --autopilot or --replay-trace".into());

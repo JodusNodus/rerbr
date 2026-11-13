@@ -179,6 +179,9 @@ pub struct Live<'a> {
     rally_next: RallyNext,
     /// NGP's UDP telemetry (`--telemetry-udp`): a packet after each driving frame.
     telemetry: Option<Telemetry>,
+    /// `--ffb-tyres`: the mechanical trail (m) of the wheel's force from the front tyres (`tyre_ffb`), in place of
+    /// NGP's.
+    ffb_tyres: Option<f32>,
 }
 
 /// What follows a championship stage (`--rally-next`): the end page of a finish in a car that can't drive is 0x18
@@ -342,6 +345,21 @@ impl<'a> Live<'a> {
             None => saves.set_new_filter(Grid::loaded(&install_filter_ini()).without_wheel_fade().to_profile()),
         }
         self.saves = Some(saves);
+    }
+
+    /// The wheel's force from the front tyres with the mechanical trail `trail` (m) from here on (`--ffb-tyres`).
+    pub fn set_ffb_tyres(&mut self, trail: f32) {
+        self.ffb_tyres = Some(trail);
+    }
+
+    /// The force the wheel gets for the car's state, in [-1, 1] before the player's settings and the racing gate:
+    /// NGP's, or with `--ffb-tyres` the front tyres' (`tyre_ffb::force`).
+    pub fn wheel_force(&self) -> f32 {
+        let mem = &self.playback.pure.mem;
+        match self.ffb_tyres {
+            Some(trail) => crate::tyre_ffb::force(mem, trail),
+            None => rbr_physics::car_body::steering_ffb::force(mem, mem.u32(CAR_PTR)),
+        }
     }
 
     /// The start clock's time of day at the stage's start, s after midnight (`rbr_gameplay::weather::start_clock`); each
@@ -553,6 +571,11 @@ impl<'a> Live<'a> {
         let pace = pace_callouts(&pending.marker_events);
         self.last.flow = self.flow_record(&pending.flow);
         self.last.dash = self.dash(signals, &pace);
+        if self.ffb_tyres.is_some() {
+            if let Ok(steering) = rbr_recording::ffb::Steering::from_payload(&self.last.steering) {
+                self.last.steering = rbr_recording::ffb::Steering { force: self.wheel_force(), ..steering }.to_bytes();
+            }
+        }
     }
 }
 

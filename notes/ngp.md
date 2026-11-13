@@ -330,6 +330,21 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.76-1.15 of the cars' mean on tarmac (16 loads, cv 10 %; 0.52-1.78, cv 34 %, without it) and 0.83-1.18 on
     gravel (8 loads, cv 11 %; 48 % without); tarmac's scale is 1.4 times gravel's. The 4WD cars' drive torque
     through the scrub radius is not in it (up to 23 % of the sum on the circle).
+- The force from the tyres (ours, 2026-11-13, a trial; `rbr-standalone --ffb-tyres MM`, `rerbr --ffb-tyres MM` for
+  the session, `tyre_ffb.rs`): AC EVO's way in place of NGP's torque sum and filter. Its `finalFF` (shared memory,
+  GT4, MX-5 ND2, A110 S) fits `a Mz + b Fy` of the front tyres with `b / a` 36-45 mm, linear, no lag, clipped 1-5 %
+  of the time. Ours: each front tyre on the ground gives `sgn(v_long) (pneumatic trail + MM) F_lat` about the
+  contact normal (the tyre step's sign, right for the mirrored right-hand frame), its world vertical part, times
+  `|inv_arm inv_rack|` and `|SteeringRackRatio|` (the Alpine A110 RGT pack has both negative), through NGP's curve,
+  so the sensitivity, linearity (100 % is AC's line) and steering load apply. Read after the step, never written;
+  `--trace-wheels` adds `tyres` (at 25 mm) and `aligning` (at 0).
+  - Shape (r40 circle on pad-tarmac, autopilot, torque over its peak by front slip angle; AC EVO's: peak 4-6°,
+    1° 0.31-0.40, 10° 0.68-0.89, aligning share at small slip 0.40-0.45): at 25 mm the peak is 4-6° for the
+    Fiesta Rally2 and the A110 RGT under the NGP and brush tyres (NGP's own torque: 6° and 10° under the NGP tyre),
+    1° 0.47-0.57, 10° 0.69-0.86, the share 0.41-0.47. At 40 mm (AC's fit) the share is 0.30-0.35 and 10° 0.79-0.92:
+    our pneumatic trail is shorter than AC's, so less mechanical trail gives its shape.
+  - Level against NGP's torque (median above 8 m/s): at 25 mm 0.73 of it for the Fiesta, 1.12-1.16 for the A110
+    (its caster trail is short); the per-car sensitivity takes it up. Not tried on a wheel.
 
 NGP 7.5.779's device calls (RSS1 EFF1 of drive1/2; ours in `rbr_render::ffb::Wheel`): the exe's `CreateFFB`
 (`DIEFF_CARTESIAN | DIEFF_OBJECTIDS`, axes `0x1000002`, `0x1000102`, gain 10000, infinite); NGP's thread only
