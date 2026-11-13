@@ -412,7 +412,7 @@ NGP patches ~120 1.02 sound sites; `rbr-sound` ports the audible ones (per-car w
 
 ## UDP telemetry
 
-`rbr-standalone --live --telemetry-udp ADDR:PORT` (off by default; the launcher's `[telemetry] udp`) sends NGP's
+`rbr-standalone --live --telemetry-udp ADDR:PORT` (off by default; the launcher's Settings page) sends NGP's
 packet (`crates/rbr-standalone/src/live/telemetry.rs`): 664 bytes, packed little endian, the SDK's `TelemetryData`
 (`Plugins/NGP/sdk`, not committed); the RR tyre's segment 8 wear at 660, wheel blocks at 152/280/408/536. Sources
 from NGP.dll 7.4.778 in Ghidra (fill `FUN_100cce60`); every field is exe memory, none NGP's own:

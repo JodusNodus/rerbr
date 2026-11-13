@@ -757,8 +757,8 @@ impl Form {
         }
         args.extend(self.drive_physics().args(car));
         args.extend(crate::tyre_tuning::args(self.drive_physics(), &self.tyre_tuning));
-        if let Some(to) = &self.telemetry_udp {
-            args.extend(["--telemetry-udp".to_owned(), to.clone()]);
+        if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
+            args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
         }
         Some(args)
     }

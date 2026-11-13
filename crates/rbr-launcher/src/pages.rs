@@ -368,6 +368,7 @@ impl Form {
             self.start_time,
         );
         let old_paths = self.ngp_physics.clone();
+        let old_telemetry = self.telemetry_udp.clone();
         let old_head_gasket = (self.head_gasket, self.physics, self.tyre_tuning);
         let old_car_picks = self.gearboxes.clone();
         let old_folder = self.install_folder.clone();
@@ -523,6 +524,7 @@ impl Form {
             || old_setup != self.setup.choices
             || old_ghost != self.ghost
             || old_paths != self.ngp_physics.clone()
+            || old_telemetry != self.telemetry_udp
             || old_head_gasket != (self.head_gasket, self.physics, self.tyre_tuning)
             || old_car_picks != self.gearboxes
             || old_graphics

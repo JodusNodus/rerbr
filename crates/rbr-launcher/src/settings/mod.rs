@@ -209,17 +209,22 @@ pub struct Settings {
     /// The setup each car drives with on each surface (`[setup]`).
     pub setups: SetupChoices,
     /// NGP's UDP telemetry to `ADDR:PORT` (`[telemetry]`, `udp = 127.0.0.1:6776`; `rbr-standalone --telemetry-udp`);
-    /// none sends nothing. Set in the file only.
+    /// none sends nothing. Set on the Settings page or in the file.
     pub telemetry_udp: Option<String>,
 }
 
 const TELEMETRY: &str = "telemetry";
 
-/// `[telemetry]`'s `udp`: an address and a port after its last `:`.
+/// `[telemetry]`'s `udp`.
 fn parse_telemetry(sections: &[ini::Section]) -> Option<String> {
-    let value = sections.iter().find(|s| s.name == TELEMETRY)?.get("udp")?.trim();
+    udp_address(sections.iter().find(|s| s.name == TELEMETRY)?.get("udp")?).map(str::to_owned)
+}
+
+/// A telemetry address, trimmed: a host and a port after its last `:`; none for anything else.
+pub fn udp_address(value: &str) -> Option<&str> {
+    let value = value.trim();
     let (host, port) = value.rsplit_once(':')?;
-    (!host.is_empty() && port.parse::<u16>().is_ok()).then(|| value.to_owned())
+    (!host.is_empty() && port.parse::<u16>().is_ok()).then_some(value)
 }
 
 /// Each car's gearbox for the advanced H-shifter, the Drive page's choice by car name (`<car> = synchro|dog`,
@@ -785,9 +790,11 @@ mod tests {
         );
         assert_eq!(Settings::parse(&text), settings);
         // An address without a port, or with a bad one, sends nothing.
-        for bad in ["127.0.0.1", "127.0.0.1:port", ":6776", "127.0.0.1:70000"] {
+        for bad in ["", "127.0.0.1", "127.0.0.1:port", ":6776", "127.0.0.1:70000"] {
             assert_eq!(Settings::parse(&format!("[telemetry]\nudp = {bad}\n")).telemetry_udp, None, "{bad}");
         }
+        // The Settings page's field, trimmed.
+        assert_eq!(udp_address(" rig.local:20777 "), Some("rig.local:20777"));
         // An older `[ffb] sensitivity_car<id>` reads as `rsf-<id>`, losing to the section's own entry.
         assert_eq!(
             Settings::parse("[ffb]\nsensitivity_car24 = 1,2,3\n[ffb_cars]\nrsf-24 = 90,100,110\n").ffb_cars.cars,
