@@ -205,6 +205,8 @@ pub trait CollisionStore: Raw {
     fn wall_mesh(&self, wall: u32) -> u32;
     /// The wall manager's wall (0 without one).
     fn manager_wall(&self, manager: u32) -> u32;
+    /// The probe's point buffer at `at`: the point's x and y words.
+    fn store_probe_point(&mut self, at: u32, xy: [u32; 2]);
     /// The four vertices of segment record `index`.
     fn wall_segment(&self, mesh: u32, index: u32) -> [[f32; 2]; 4];
     /// A leaf's segment count, and the index word of its segment `j`.

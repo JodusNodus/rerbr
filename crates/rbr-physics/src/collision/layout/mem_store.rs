@@ -795,6 +795,11 @@ impl CollisionStore for Mem {
         self.u32(manager + 4)
     }
 
+    fn store_probe_point(&mut self, at: u32, [x, y]: [u32; 2]) {
+        self.set_u32(at, x);
+        self.set_u32(at + 4, y);
+    }
+
     fn wall_mesh(&self, wall: u32) -> u32 {
         self.u32(wall + WALL_MESH)
     }
