@@ -121,9 +121,9 @@ pub fn axle_pair_stages(w: &mut DriveWorker) {
 
     let f = w.state.terms[2].value + w.state.terms[1].value;
     w.state.terms[0].term = f;
-    let s34 = w.state.terms[2].value;
-    let s20 = w.state.terms[1].value;
-    let c = ((w.def.axles[2].direction as f32) * s34 + (w.def.axles[1].direction as f32) * s20)
+    let term2 = w.state.terms[2].value;
+    let term1 = w.state.terms[1].value;
+    let c = ((w.def.axles[2].direction as f32) * term2 + (w.def.axles[1].direction as f32) * term1)
         * (w.def.torque_scale * 0.5);
     w.state.terms[0].value = c;
     w.state.terms[0].sign = sign(f);

@@ -11,7 +11,7 @@ pub trait TweakStore: Raw {
     /// The parse entry of `table`, by which the walk tells the members apart.
     fn reader(&self, vtable: u32) -> u32;
     /// The object's inner-group entry, which takes the walk's inner groups.
-    fn unk14(&self, object: u32) -> u32;
+    fn inner_group_entry(&self, object: u32) -> u32;
     /// The names of a bit-field class's bits (over its table).
     fn bit_names(&self, table: u32, count: u32) -> Vec<String>;
     /// The dirty flag of the tweak header at `at`.

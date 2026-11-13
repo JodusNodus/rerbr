@@ -29,9 +29,9 @@ pub(crate) const NGP_TABLE_LEN: usize = 30;
 /// The objects' inner-group entries, which take the walk's inner groups: the base's skips each item; the entity
 /// definitions' links the group's name; the definition manager's makes or finds the definition the item names and walks
 /// the item on it.
-pub(crate) const UNK14_SKIP: u32 = 0x52fe80;
-pub(crate) const UNK14_LINK: u32 = 0x5198b0;
-pub(crate) const UNK14_DEFINE: u32 = 0x501ef0;
+pub(crate) const INNER_GROUP_SKIP: u32 = 0x52fe80;
+pub(crate) const INNER_GROUP_LINK: u32 = 0x5198b0;
+pub(crate) const INNER_GROUP_DEFINE: u32 = 0x501ef0;
 /// The token-heap block each item of an inner group is copied into.
 pub(crate) const ITEM_BLOCK: u32 = 0x20;
 /// An entity definition's links: their count, then the registry indices.
@@ -220,16 +220,16 @@ fn inner_group<'a, S: TweakStore>(
     if items.is_empty() {
         return Err(Unsupported("an inner group of one item"));
     }
-    let unk14 = store.unk14(this);
+    let entry = store.inner_group_entry(this);
     for item in items {
         let quoted = get_quoted(item, ITEM_BLOCK);
         out.push(Action::Item(quoted.clone()));
-        match (unk14, item) {
-            (UNK14_SKIP, _) => {}
-            (UNK14_LINK, _) => out.push(Action::Link(this, name.clone())),
-            (UNK14_DEFINE, Node::List(def)) => out.push(Action::Define(name, quoted, def)),
-            (UNK14_DEFINE, _) => return Err(Unsupported("a definition that is not a group")),
-            _ => return Err(Unsupported("an inner group of an object with its own Unk14")),
+        match (entry, item) {
+            (INNER_GROUP_SKIP, _) => {}
+            (INNER_GROUP_LINK, _) => out.push(Action::Link(this, name.clone())),
+            (INNER_GROUP_DEFINE, Node::List(def)) => out.push(Action::Define(name, quoted, def)),
+            (INNER_GROUP_DEFINE, _) => return Err(Unsupported("a definition that is not a group")),
+            _ => return Err(Unsupported("an inner group of an object with its own inner-group entry")),
         }
     }
     Ok(())

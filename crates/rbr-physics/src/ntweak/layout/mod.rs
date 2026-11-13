@@ -68,7 +68,7 @@ impl TweakStore for Mem {
     }
 
     #[inline]
-    fn unk14(&self, object: u32) -> u32 {
+    fn inner_group_entry(&self, object: u32) -> u32 {
         self.u32(self.u32(object) + 0x14)
     }
 
@@ -229,7 +229,7 @@ pub fn name_or_null(mem: &Mem, base: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ntweak::plan::{UNK14_DEFINE, UNK14_LINK};
+    use crate::ntweak::plan::{INNER_GROUP_DEFINE, INNER_GROUP_LINK};
     use crate::physics_core::layout::construct as physics;
     use rbr_formats::lsp;
 
@@ -331,7 +331,7 @@ mod tests {
         mem.map(DEF, &[0; 0x100]);
         mem.map(VTABLE, &[0; 0x20]);
         mem.set_u32(DEF, VTABLE);
-        mem.set_u32(VTABLE + 0x14, UNK14_LINK);
+        mem.set_u32(VTABLE + 0x14, INNER_GROUP_LINK);
         let mut host = Host::default();
         let items = group(
             "(\"CAR_ROOT\" (\"CAR_WHEEL_LF\" (\"CAR_WHEEL_LF\")) NULL_PPTOKEN (\"CAR_X\" (\"CAR_X\") (\"CAR_X\")))",
@@ -397,7 +397,7 @@ mod tests {
         mem.map(MANAGER, &[0; 0x10]);
         mem.map(VTABLE, &[0; 0x20]);
         mem.set_u32(MANAGER, VTABLE);
-        mem.set_u32(VTABLE + 0x14, UNK14_DEFINE);
+        mem.set_u32(VTABLE + 0x14, INNER_GROUP_DEFINE);
         let mut host = Host::default();
         let items = group("((\"Solid\" (\"GROUND\")) NULL_PPTOKEN (\"Ground\" (\"GROUND\" Width 3)))");
         apply(&mut mem, &mut host, MANAGER, Class::DefManager, &items).unwrap();

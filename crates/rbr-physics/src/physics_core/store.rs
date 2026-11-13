@@ -75,7 +75,7 @@ pub trait CoreStore: Raw {
     fn host_pull_at(&self, host: u32) -> u32;
     /// The host's two vectors the pull changes.
     fn host_pull_vectors(&self, host: u32) -> (Vec4, Vec4);
-    fn store_host_pull_vectors(&mut self, host: u32, h40: Vec4, h90: Vec4);
+    fn store_host_pull_vectors(&mut self, host: u32, rate: Vec4, offset: Vec4);
 
     // The mounted body.
     /// The state word of a body's enable flag.

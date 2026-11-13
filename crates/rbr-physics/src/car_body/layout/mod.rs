@@ -52,7 +52,7 @@ pub use damage_handler::{
     apply_functors, cap_word, clear_head_gasket, clear_triple, clear_windshield, damage_rand, damage_slot1, dmg_7b0,
     dmg_820, dmg_930, dmg_9a0, dmg_aa0, dmg_b20, dmg_bb0, dmg_cc30, dmg_d020, dmg_d300, drain_word, engine_gate,
     fail_brake_disc, fail_hub, fail_steering_rod, fail_suspension_arm, fail_water_pump, gearbox_wear,
-    grow_cooling_wear, grow_intercooler_wear, grow_zone, impact_scale, ring_store, set_body_state, zero2f0,
+    grow_cooling_wear, grow_intercooler_wear, grow_zone, impact_scale, ring_store, second_zero, set_body_state,
     zone_scaled, DamageHitCalls, ImpactCalls,
 };
 pub use offsets::{
