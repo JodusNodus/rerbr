@@ -124,7 +124,7 @@ One Cargo workspace, each crate in `crates/<name>/`.
 
 | Path | What |
 | --- | --- |
-| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
+| `scripts/` | `rust-check.sh`, `fetch-test-data.sh`, `launcher.sh`, `render-shots.py`, `bench.py`, `school-sweep.sh`, `stage-sweep.sh`, `package.sh`, generators of Rust tables (`gen-*.py`), NGP tools |
 | `harness/` | records and replays the original game for the physics checks ([README](../harness/README.md)) |
 | `data/` | test data hashes and file lists, the reference shot list, generator inputs |
 | `docs/` | this guide, the install guide, the reference shots and clips |
@@ -242,6 +242,15 @@ results. The scene's choice and a baseline are in [renderer.md](../notes/rendere
 or RSF pack folders, `-j` jobs) and prints each drive's verdict, race end and why the drive stopped, in about a
 minute. It checks the school's wiring end to end: every lesson should end by its box, its finish, the school or a
 retire. It does not check the judging; the autopilot fails most timed lessons, and it gets stuck in lessons 1 and 8.
+
+## Stage sweep
+
+`scripts/stage-sweep.sh` drives every stage folder of the RSF install (`RBR_RSF`) headless with the autopilot (`-s`
+stages, `-w` weathers, `-c` car slots, `rsf:ID` RSF cars or pack folders, `-n` step limit, `-j` jobs, `-o` folder;
+`RBR_STANDALONE` names another binary) and writes a row a drive to `sweep.tsv`: whether the stage loads, how far the
+car got, how the drive and the race ended, the worst distance off and height under the driveline, NaN lines and the
+error. It is resumable (a drive with a log is skipped) and opens no input device. A stuck or off-road drive is mostly
+the autopilot's (hairpins, props); results: [verification.md](../notes/verification.md#stage-sweep).
 
 ## Packaging
 

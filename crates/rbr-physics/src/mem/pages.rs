@@ -126,6 +126,14 @@ impl Pages {
         self.cell(at)
     }
 
+    /// The `N` words from the aligned `at`, which lie in one page.
+    #[inline]
+    fn cells<const N: usize>(&self, at: u32) -> &[AtomicU32; N] {
+        debug_assert!(at.is_multiple_of(4) && (at % PAGE) as usize + 4 * N <= PAGE as usize);
+        // SAFETY: the words are consecutive in the mapping, and `at / 4 + N` is at most `WORDS` (one page).
+        unsafe { &*self.words.add((at / 4) as usize).cast::<[AtomicU32; N]>() }
+    }
+
     /// The word holding byte `at`.
     #[inline]
     fn cell(&self, at: u32) -> &AtomicU32 {
@@ -200,10 +208,27 @@ impl Pages {
             if !self.mapped(at) {
                 return None;
             }
-            return Some(std::array::from_fn(|k| self.read_cell(at + 4 * k as u32).load(Ordering::Relaxed)));
+            (0..N).for_each(|k| exe_reads::read(at + 4 * k as u32));
+            let cells = self.cells::<N>(at);
+            return Some(std::array::from_fn(|k| cells[k].load(Ordering::Relaxed)));
         }
         let mut bytes = [[0; 4]; N];
         self.read(at, bytes.as_flattened_mut()).then(|| bytes.map(u32::from_le_bytes))
+    }
+
+    /// [`Pages::words`] into `out`: false, with `out` unchanged, when they are not aligned in one page or the page is
+    /// unmapped.
+    #[inline]
+    pub fn words_into<const N: usize>(&self, at: u32, out: &mut [u32; N]) -> bool {
+        let o = (at % PAGE) as usize;
+        if !at.is_multiple_of(4) || o + 4 * N > PAGE as usize || !self.mapped(at) {
+            return false;
+        }
+        (0..N).for_each(|k| exe_reads::read(at + 4 * k as u32));
+        for (word, cell) in out.iter_mut().zip(self.cells::<N>(at)) {
+            *word = cell.load(Ordering::Relaxed);
+        }
+        true
     }
 
     /// Writes the `N` little-endian words from `at` when they are aligned in one page; false (nothing written)
@@ -215,8 +240,9 @@ impl Pages {
             return false;
         }
         self.touch(at);
-        for (k, word) in words.into_iter().enumerate() {
-            self.write_cell(at + 4 * k as u32).store(word, Ordering::Relaxed);
+        (0..N).for_each(|k| exe_reads::write(at + 4 * k as u32));
+        for (cell, word) in self.cells::<N>(at).iter().zip(words) {
+            cell.store(word, Ordering::Relaxed);
         }
         true
     }

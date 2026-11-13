@@ -43,7 +43,7 @@ pub(super) fn emit(pure: &Pure, regs: Regs, slot: u32, control: u32) {
     let at = pure.mem.u32(SIGNALS) + EMIT_OFFSET;
     let entry = Regs { ecx: at, esp: slot, ..regs };
     let car = pure.mem.u32(CAR_PTR);
-    pure.with_frame(EMIT, entry, || pure.host().call(UPDATE_SEED, car, &[control]));
+    pure.with_frame(EMIT, &entry, || pure.host().call(UPDATE_SEED, car, &[control]));
 }
 
 /// The return address of the driver's `StepForward` call (`replay.py`'s `SENTINEL`).
@@ -118,7 +118,7 @@ impl Playback {
         let entry = Regs { esp: self.slot, ..self.regs };
         let scratch = (self.slot - 0x100) & !0xf;
         let (car, frame) = (mem.u32(CAR_PTR), mem.u32(FRAME));
-        self.pure.with_frame(STEP_FORWARD, entry, || {
+        self.pure.with_frame(STEP_FORWARD, &entry, || {
             self.pure.host().call(MB560, frame, &[car + 0x220, car, scratch]);
         });
         mem.f32s(scratch)

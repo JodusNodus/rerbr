@@ -1,7 +1,9 @@
 //! Work counts for measuring the step and the frame: the calling thread's retired instructions and CPU cycles, and the
 //! process's allocations. Unlike wall time, the instruction and allocation counts stay the same when other programs
-//! load the machine or the work lands on an efficiency core. Instructions and cycles are macOS only (no root needed)
-//! and 0 elsewhere; they include the kernel's work for the thread, so other load only ever adds a little. Allocations
+//! load the machine or the work lands on an efficiency core. Instructions and cycles are read on macOS (including the
+//! kernel's work for the thread, so other load only ever adds a little) and on Linux (user space only, which
+//! `perf_event_paranoid` 2 allows without root), no root needed either way, and 0 elsewhere or when the counters can't
+//! be opened. Allocations
 //! count every thread's, when the binary installs [`Counting`]:
 //! `#[global_allocator] static ALLOCATOR: rbr_counters::Counting = rbr_counters::Counting;`.
 
@@ -78,7 +80,93 @@ fn cpu() -> Option<[u64; 2]> {
     (unsafe { self_counts(1, counts.as_mut_ptr(), size_of_val(&counts)) } == 0).then_some(counts)
 }
 
-#[cfg(not(target_os = "macos"))]
+/// The calling thread's retired instructions and cycles in user space: `perf_event_open` counters opened on first use
+/// and kept for the thread. On a hybrid CPU each core type has its own PMU (`cpu_core`, `cpu_atom`), and a thread's
+/// counts are the sum over them.
+#[cfg(target_os = "linux")]
+fn cpu() -> Option<[u64; 2]> {
+    thread_local! {
+        static COUNTERS: Option<Vec<[std::os::fd::OwnedFd; 2]>> = linux::open();
+    }
+    COUNTERS.with(|counters| {
+        let mut sum = [0u64; 2];
+        for pair in counters.as_ref()? {
+            for (total, fd) in sum.iter_mut().zip(pair) {
+                *total += linux::read(fd)?;
+            }
+        }
+        Some(sum)
+    })
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+
+    /// `perf_event_attr` up to `config1`, its first published size (`PERF_ATTR_SIZE_VER0`, 64 bytes).
+    #[repr(C)]
+    struct Attr {
+        kind: u32,
+        size: u32,
+        config: u64,
+        sample_period: u64,
+        sample_type: u64,
+        read_format: u64,
+        flags: u64,
+        wakeup_events: u32,
+        bp_type: u32,
+        config1: u64,
+    }
+
+    const EXCLUDE_KERNEL: u64 = 1 << 5;
+    const EXCLUDE_HV: u64 = 1 << 6;
+    const PERF_FLAG_FD_CLOEXEC: libc::c_ulong = 8;
+    const INSTRUCTIONS: u64 = 1;
+    const CYCLES: u64 = 0;
+
+    /// One (instructions, cycles) pair per core type's PMU, or the generic hardware pair on a CPU of one type.
+    pub(super) fn open() -> Option<Vec<[OwnedFd; 2]>> {
+        let hybrid: Vec<u64> = ["cpu_core", "cpu_atom"]
+            .iter()
+            .filter_map(|pmu| std::fs::read_to_string(format!("/sys/bus/event_source/devices/{pmu}/type")).ok())
+            .filter_map(|kind| kind.trim().parse().ok())
+            .collect();
+        // The PMU in the config's high word selects the core type of a generic hardware event (`PERF_PMU_TYPE_SHIFT`).
+        let pmus = if hybrid.is_empty() { vec![0] } else { hybrid };
+        pmus.iter().map(|pmu| Some([event(pmu << 32 | INSTRUCTIONS)?, event(pmu << 32 | CYCLES)?])).collect()
+    }
+
+    fn event(config: u64) -> Option<OwnedFd> {
+        let attr = Attr {
+            kind: 0, // PERF_TYPE_HARDWARE
+            size: size_of::<Attr>() as u32,
+            config,
+            sample_period: 0,
+            sample_type: 0,
+            read_format: 0,
+            flags: EXCLUDE_KERNEL | EXCLUDE_HV,
+            wakeup_events: 0,
+            bp_type: 0,
+            config1: 0,
+        };
+        // SAFETY: `attr` is a `perf_event_attr` of the size it gives; pid 0 and cpu -1 count the calling thread on any
+        // CPU, with no group.
+        let fd =
+            unsafe { libc::syscall(libc::SYS_perf_event_open, &attr as *const Attr, 0, -1, -1, PERF_FLAG_FD_CLOEXEC) };
+        // SAFETY: a non-negative return is a new file descriptor this call owns.
+        (fd >= 0).then(|| unsafe { OwnedFd::from_raw_fd(fd as i32) })
+    }
+
+    /// The counter's value: with `read_format` 0 the read gives one u64.
+    pub(super) fn read(fd: &OwnedFd) -> Option<u64> {
+        let mut value = 0u64;
+        // SAFETY: reads at most 8 bytes into `value`.
+        let n = unsafe { libc::read(fd.as_raw_fd(), (&mut value as *mut u64).cast(), 8) };
+        (n == 8).then_some(value)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn cpu() -> Option<[u64; 2]> {
     None
 }
@@ -132,8 +220,8 @@ mod tests {
         assert!(sum > 0 && kept.len() == 4096);
         // The test threads allocate too, so at least this one.
         assert!(counts.allocations >= 1 && counts.allocated >= 4096, "{counts:?}");
-        // macOS reads them, except in a VM without the counters (CI), where both are 0.
-        if cfg!(target_os = "macos") && (counts.instructions, counts.cycles) != (0, 0) {
+        // macOS and Linux read them, except in a VM without the counters (CI), where both are 0.
+        if (counts.instructions, counts.cycles) != (0, 0) {
             assert!(counts.instructions > 1_000_000 && counts.cycles > 0, "{counts:?}");
         }
     }

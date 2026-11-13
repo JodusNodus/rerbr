@@ -303,6 +303,28 @@ bindings (the `.acm` imported) drive2 gives the same numbers. drive1, ngp-pair1,
 DLV1 sessions on cachy (ffb-e5/e6, ffbtrace-e2e1..e4): deliveries all equal (e2e2 37455 of 37455); their calls take the
 playback's controls, not the wheel's (CTL1 word 4, steering, differs: e2e2 19183 of 30363).
 
+## Stage sweep
+
+`scripts/stage-sweep.sh` (docs/development.md). Full-install sweep 2026-11-13 (`c6710f37`, car 5 unless named, NGP
+physics, 2M-step limit, 443 stage folders of the RSF install):
+
+- Load: 417 stages load; the 26 that do not are RSF-encrypted (`.lbs`, or 432's textures in 431's archive). No
+  panic, no NaN, no car through the ground on any drive (the lowest, 10.3 m under the driveline, is 641 wet sliding
+  down the bank 20 m off the road at 3.7 m/s).
+- Weather 0 / 1 / 2: 349 / 352 / 346 finish, 59 / 55 / 63 stuck, 9 / 10 / 8 off the road. Weather 0 and a dry
+  weather-2 row on another variant drive the same steps (the variants share the road); weather 1 (normal wear) changes
+  the drive on a third of the stages, a wet row on all.
+- Cars: the 42 installed RSF cars (`rsf:ID`; `cars.json` lists 60 more, not installed) finish 141 (tarmac,
+  209-232 s), 113 (gravel, 139-154 s) and 162 (snow, 153-167 s).
+- The stuck and off-road drives are the autopilot's: of weather 0's 68, 22 in hairpins under 5 m/s, 5 rolled, 36
+  over 2 m off the driveline at speed, 5 on the road at speed. Those 5: 620 at 460 m (every car) hits a 1.4 m `.col` wall corner
+  standing 1 m into a village street at (-172.5, 566.5), 19 g; 571, 641, 456 stop at different points with cars 2, 4
+  and 6; 346 finishes with them. The autopilot steers around the `.trk` heavy props only, not `.col` walls.
+- Stages with a `.lb2` get stuck twice as often (10 of 32 against 58 of 385); the `.lb2` holds only render chunks
+  (geometry, object lanes, visibility) and the `.lbs` the interactive objects and start, so physics misses nothing.
+- Fixed on the way: the autopilot learnt a gear's ratio in slides (the DS3 R1 drove RSF 113 in second on the limiter,
+  185 s, now 153 s; `ROLLING`, autopilot `mod.rs`); on weather 0, 343 finished before it.
+
 ## Rust checks
 
 `scripts/rust-check.sh` runs fmt, clippy, tests and vector targets for crates changed since the merge base with
@@ -313,12 +335,21 @@ playback's controls, not the wheel's (CTL1 word 4, steering, differs: e2e2 19183
 
 Compare instructions and allocations (`rbr-counters`), not wall time. `rbr-standalone --boot` prints them per step,
 `viewer --frames N` per frame with the GPU idle, `scripts/perf-step.sh A B` compares two builds' step over alternating
-runs. Instructions and cycles are per thread and macOS only (`thread_selfcounts`, no root).
+runs. Instructions and cycles are per thread, no root: macOS `thread_selfcounts`, Linux `perf_event_open` (user space,
+summed over a hybrid CPU's PMUs; needs `perf_event_paranoid` at most 2). Elsewhere they read 0.
 
 - Boot drive (tanner Corolla under 1.02, 13000 steps, M3 Pro; `scripts/perf-step.sh` now measures drive2 attempt 5):
   2.34 M instructions, 190 allocations (14 KB) per step. Cores busy raises stepping time 60-80 %, instructions under
   0.1 %; the lowest of 3 runs is the figure, since load only adds. An oversubscribed machine still adds up to 0.15 %,
   and an edit outside the step moved it 0.2-0.3 % (likely code layout and inlining), so under 0.5 % is no change.
+- drive2 attempt 5 (13000 steps, i9-13900HX, Linux), `perf/step` (2026-11): the fact-check dispatch with the tracked
+  allocator (what `perf-step.sh` measures) 2.53 M instructions, 84 allocations (12.7 KB) per step before, 2.18 M and 27
+  (9.2 KB) after; the direct dispatch with the untracked allocator (the live drive's; `Pure::direct` and
+  `boot_playback(.., false)` in a local build) 2.33 M before, 1.92 M after. Both pass drive2 physics 84084/84084. The
+  instruction count is not linear in the code: an extra arm in `Mem::pages_for` stopped `Mem::u32` inlining and cost the
+  fact-check 9 %. Cycles moved 30-40 % between runs on a loaded machine, so only instructions count there. Most of the
+  27 allocations left are the engine's two-level blend tables, loaded as nested vectors on each damper step; then the
+  car body's scatter points, the edge pairs and gameplay's substep list.
 - Viewer, track-54_E start view, 1280x720, `--no-sound`: 4.16 M instructions (0.5 % spread), 462 allocations per frame.
 - GPU: `scripts/perf-gpu.py VIEWER_ARGS --frames N` gives GPU ms per pass per frame from Metal System Trace (viewer's
   work only). The GPU clock moves it 30 % between runs (states Minimum to Medium in one run), so it ranks passes; for

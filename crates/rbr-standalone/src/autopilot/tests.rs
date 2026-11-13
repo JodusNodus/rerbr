@@ -587,6 +587,35 @@ fn under_ngp_braking_on_a_dragged_engine_holds_neutral_until_the_brake_comes_off
     assert!(none(ngp(80.0).with_flat_out(true).with_brake_from(10.0), &dragged));
 }
 
+/// Under NGP the gear's ratio is learnt only while the wheels roll with the car: a slide (the rims slower than the body)
+/// teaches nothing, so it reads no wheelspin afterwards and the upshift comes on the rev point.
+#[test]
+fn under_ngp_a_slide_teaches_no_gear_ratio() {
+    let track: Vec<_> = (0..40).map(|i| record(10.0 * i as f32, 10.0 * i as f32)).collect();
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let sense = |engine: f32, rim: f32| Sense {
+        pose: CarPose { position: [5.0, 0.0, 0.0], orientation: [0.0, 0.0, half, half], velocity: [10.0, 0.0, 0.0] },
+        parameter: 0.5,
+        gear: FIRST + 1,
+        engine,
+        held: false,
+        wheels: [rim; 4],
+        geared: engine,
+    };
+    let mut d = driver(&track, 30.0).with_step(1.0 / 720.0).with_limit(7000.0);
+    let second = FIRST as usize + 1;
+    for k in 0..400 {
+        d.control(10_000 + k, &sense(400.0, 7.0), false);
+    }
+    assert!(d.pulling);
+    assert_eq!(d.ratio[second], f32::INFINITY);
+    for k in 400..800 {
+        d.control(10_000 + k, &sense(550.0, 10.0), false);
+    }
+    assert_eq!(d.ratio[second], 55.0);
+    assert_eq!(d.control(11_000, &sense(700.0, 10.0), false).flags, 0x01);
+}
+
 /// Under NGP a stalled engine is restarted: brake, neutral, the ignition held `CRANK_HOLD` of every `CRANK_CYCLE`
 /// steps, until the engine runs; a stuck count does not build meanwhile. After the finish it stays off.
 #[test]

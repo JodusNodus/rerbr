@@ -625,6 +625,15 @@ impl CollisionStore for Mem {
     }
 
     fn face_bytes(&self, at: u32) -> [u8; 0x12] {
+        // The six words that hold the face, when the pages hold them: a face starts at any byte.
+        if let Some(words) = self.paged_u32s::<6>(at & !3) {
+            let words = words.map(u32::to_le_bytes);
+            return std::array::from_fn(|i| words.as_flattened()[(at % 4) as usize + i]);
+        }
+        let mut bytes = [0; 0x12];
+        if self.try_read_into(at, &mut bytes) {
+            return bytes;
+        }
         std::array::from_fn(|i| self.u8(at + i as u32))
     }
 

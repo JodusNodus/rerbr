@@ -82,13 +82,13 @@ mod tests {
     use crate::fpu::Precision;
 
     /// Uniform maps all at `value` (the lookup of a flat map is that value).
-    fn uniform(value: f32) -> Vec<Knot> {
-        vec![Knot { value }; KNOTS]
+    fn uniform(value: f32) -> [Knot; KNOTS] {
+        [Knot { value }; KNOTS]
     }
 
     /// Speed maps at `value`, keys `k`.
-    fn speed(value: f32) -> Vec<SpeedKnot> {
-        (0..KNOTS).map(|k| SpeedKnot { key: k as f32, value }).collect()
+    fn speed(value: f32) -> [SpeedKnot; KNOTS] {
+        std::array::from_fn(|k| SpeedKnot { key: k as f32, value })
     }
 
     /// A setup with the normal centre maps at 0.25, left-foot centre maps at 0.75 and front and rear

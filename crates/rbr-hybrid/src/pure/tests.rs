@@ -89,7 +89,7 @@ fn host(keep_going: bool) -> Pure {
 /// Calls `addr` from a frame of `StepForward` with its entry at 0x11ff0.
 fn call(pure: &Pure, addr: u32, ecx: u32, args: &[u32]) -> Called {
     let regs = Regs { eax: 0x77, esp: 0x11ff0, ..Regs::default() };
-    pure.with_frame(STEP_FORWARD, regs, || pure.call(addr, ecx, args))
+    pure.with_frame(STEP_FORWARD, &regs, || pure.call(addr, ecx, args))
 }
 
 fn stop_of(pure: &Pure, addr: u32, ecx: u32) -> Stop {

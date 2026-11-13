@@ -38,7 +38,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | G Retire and end pages | done | original run: a championship retire and a wrecked finish, a stop in the finish zone, a full replay buffer (945 s) |
 | G Physics clock and frame scheduling | done | - |
 | G Stage and car load | done | map 68 (a home base map, not listed by the launcher) has table row 267 but is in neither `nice_w.ini` nor `bad_w.ini`, so the original's good and bad weather stop at the int3; ours gives it row 267 (dry crisp clear, `68M_crisp_clear`) for all three weathers (`Season::unlisted`) |
-| G Community stages | partial | full-install sweep; textures from other variants; encrypted stages not read |
+| G Community stages | partial | textures from other variants; encrypted stages not read; full-install sweep done ([verification.md](verification.md#stage-sweep)), no original run |
 | G BTB stages (`RX_CONTENT`, experimental) | partial | bump, specular and multiply-add drawing; own number, records, ghosts and map 41's weather rows (converted stages: damp and wet surfaces, shared col corners); no original run ([btb.md](btb.md)) |
 | G Community cars (NGP car packs) | partial | option folders |
 | G Load settle, start states, the go | done | original run: the go's frame count, a championship start (confirm, 2 s) |
@@ -113,7 +113,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
    golden, a retire, a record-beating drive.
 2. Extend the NGP gate matrix ([verification.md](verification.md#drives-and-the-gate-matrix)) to whole stages for
    every car and surface class, with damage and collisions.
-3. Community stages and cars: the full-install sweep, the FMOD leftovers, encrypted stages.
+3. Community stages and cars: the FMOD leftovers, encrypted stages.
 4. Presentation leftovers: particle edges, door detach, windscreen cracks, game captures to compare.
 
 ## Decisions
