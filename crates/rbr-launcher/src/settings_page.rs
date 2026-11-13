@@ -125,7 +125,6 @@ impl Form {
 
         // The physics every drive runs.
         crate::physics::physics_section(ui, &mut self.physics, self.session_physics);
-        crate::tyre_tuning::tuning_section(ui, self.drive_physics(), &mut self.tyre_tuning);
 
         // NGP's UDP telemetry, for dashboards and motion rigs.
         section(ui, "Telemetry");

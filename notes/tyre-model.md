@@ -3152,7 +3152,7 @@ are unchanged and left (Open).
 ## Experimental tuning
 
 Controls a driver sets per drive to feel the brush (`rbr_tyre::Tuning`, `rbr-standalone --tyre-tuning KEY=VALUE,...`,
-experimental-brush only, refused under the other physics; the launcher's Settings > Experimental tuning). At the model's
+experimental-brush only, refused under the other physics; no longer in the launcher, 2026-11-13). At the model's
 values every force is the untuned brush's, bit for bit (factors exact at 1, the slide grip unset): main's and the
 branch's autopilot traces cmp equal on RSF 562, 524, map 85's flat gravel circle and an RSF 568 brake test, ngp and
 experimental-brush (2026-11-09). The replay's header keeps the values (`replay_gg.py` prints them): a tuned drive
