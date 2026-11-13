@@ -204,11 +204,8 @@ them (rsfdata/, Maps/<id>-<name>/, Cars/).
                             patch files)
   --viewer PATH             the viewer (default: next to the launcher)
   --standalone PATH         rbr-standalone (default: next to the launcher)
-  --physics NAME            drive ngp, experimental or experimental-brush (the brush tyre in development, not offered
-                            on the Settings page) for this session, over the Settings page's choice; never saved
-  --ffb-tyres MM            trial, this session: the wheel's force from the front tyres' aligning moment and lateral
-                            force with a mechanical trail of MM mm (0 to 100; 25 matches AC EVO's shape), in place of
-                            NGP's steering torque; the sensitivity and linearity apply as to NGP's (100 %: a line)
+  --physics NAME            drive ngp, experimental, experimental-brush or ngp-brush for this session, over the
+                            Settings page's experimental switches; never saved
   --list                    print the startable maps and cars, the unavailable maps and cars, and what the install lacks, and exit
   --command                 print the viewer command Start runs with the saved selection (RBR_DATA= and RBR_PATCH=,
                             the program, one argument a line), and exit
@@ -393,8 +390,6 @@ struct Start {
     patch: Option<PathBuf>,
     /// `--physics NAME`: the session's physics over the saved choice (unsaved).
     physics: Option<physics::PhysicsProfile>,
-    /// `--ffb-tyres MM`: the session's force-feedback trial, as given (`rbr-standalone --ffb-tyres`; unsaved).
-    ffb_tyres: Option<String>,
 }
 
 /// The start, `--list`, `--command`, `--screenshot` and `--screenshot-damage`.
@@ -411,7 +406,6 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
     let mut screenshot = None;
     let mut rally_damage = None;
     let mut physics = None;
-    let mut ffb_tyres = None;
     while let Some(flag) = args.next() {
         if flag == "--help" || flag == "-h" {
             println!("{USAGE}");
@@ -434,18 +428,11 @@ fn parse_args(mut args: impl Iterator<Item = String>, here: &Path, home: &Path) 
                 let wrong = || format!("--physics {name}: ngp, experimental or experimental-brush");
                 physics = Some(physics::PhysicsProfile::from_flag(&name).ok_or_else(wrong)?);
             }
-            "--ffb-tyres" => {
-                let mm = value.to_string_lossy().into_owned();
-                if !mm.parse::<f32>().is_ok_and(|v| (0.0..=100.0).contains(&v)) {
-                    return Err("--ffb-tyres: a trail in mm, 0 to 100".into());
-                }
-                ffb_tyres = Some(mm);
-            }
             _ => return Err(format!("unknown argument {flag}\n{USAGE}")),
         }
     }
     let settings = home.join(SETTINGS_FILE);
-    let start = Start { viewer, standalone, settings, data, patch: env("RBR_PATCH"), physics, ffb_tyres };
+    let start = Start { viewer, standalone, settings, data, patch: env("RBR_PATCH"), physics };
     Ok((start, list, command, screenshot, rally_damage))
 }
 
@@ -636,8 +623,6 @@ struct Form {
     physics: physics::PhysicsProfile,
     /// `rerbr --physics`: the session's physics over the saved one (never saved).
     session_physics: Option<physics::PhysicsProfile>,
-    /// `rerbr --ffb-tyres MM`: the session's force-feedback trial (never saved).
-    ffb_tyres: Option<String>,
     controls: ControlsPage,
     /// Never writes the settings file (`--command`, `--screenshot`).
     read_only: bool,

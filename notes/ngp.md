@@ -296,12 +296,12 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.73, 6.5; 15 ms 0.59, 3.7; 20 ms 0.49, 2.9; 30 ms 0.36, 2.0. Below 3 Hz the rms stays within
     1 % (0.4286 to 0.4267); the force trails by about the value. Two poles at the same lag did no better. Not tried
     on a wheel.
-- Linearity (ours, 2026-11-12, user: default NGP's curve, the player can straighten it; `rbr_render::ffb::shape`,
-  `[ffb] linearity`, 0-100 %, default 0 = off, NGP's force sent unchanged): the wheel's force is that share of a
-  line in the steering torque and the rest of NGP's curve. The line is `0.65 x / x(0.65, p)` from the curve
-  inverted, equal to the curve at force 0.65 (`load::TARGET`) and held at 1 from 1.54 times that torque, where the
-  curve gives 0.80. Set on the launcher's Controls page and the pause menu's Force feedback page (live,
-  `Wheel::set_linearity`), for every car.
+- Linearity (ours, 2026-11-12; `rbr_render::ffb::shape`): the wheel's force is that share of a line in the steering
+  torque and the rest of NGP's curve. The line is `0.65 x / x(0.65, p)` from the curve inverted, equal to the curve
+  at force 0.65 (`load::TARGET`) and held at 1 from 1.54 times that torque, where the curve gives 0.80. Since
+  2026-11-13 (user: two models, NGP's without a linearity control or the force from the tyres mapped straight) it is
+  no setting: 0 with NGP's force, 100 with the force from the tyres (`Options::linearity`; an older `[ffb] linearity`
+  is ignored).
   - Why: the curve flattens what the steering loses towards the limit of grip (a quarter less torque from force
     0.65 is 16 % less force, from 0.82 12 %, from 0.95 6 %); the line keeps it whole, is lighter on small loads and
     reaches full force sooner.
@@ -330,8 +330,10 @@ NGP keeps the torque and gate and changes the curve and output (`ngp::ffb::curve
     0.76-1.15 of the cars' mean on tarmac (16 loads, cv 10 %; 0.52-1.78, cv 34 %, without it) and 0.83-1.18 on
     gravel (8 loads, cv 11 %; 48 % without); tarmac's scale is 1.4 times gravel's. The 4WD cars' drive torque
     through the scrub radius is not in it (up to 23 % of the sum on the circle).
-- The force from the tyres (ours, 2026-11-13, a trial; `rbr-standalone --ffb-tyres MM`, `rerbr --ffb-tyres MM` for
-  the session, `tyre_ffb.rs`): AC EVO's way in place of NGP's torque sum and filter. Its `finalFF` (shared memory,
+- The force from the tyres (ours, 2026-11-13; `rbr-standalone --ffb-tyres MM`, `tyre_ffb.rs`; the launcher's
+  Settings > Experimental "Force feedback: From the tyres", `[ffb] tyres`, passes 25 mm, and the viewer maps it as a
+  line when its live command has `--ffb-tyres`; records are kept): AC EVO's way in place of NGP's torque sum and
+  filter. The user drove it 2026-11-13 and preferred it to NGP's. Its `finalFF` (shared memory,
   GT4, MX-5 ND2, A110 S) fits `a Mz + b Fy` of the front tyres with `b / a` 36-45 mm, linear, no lag, clipped 1-5 %
   of the time. Ours: each front tyre on the ground gives `sgn(v_long) (pneumatic trail + MM) F_lat` about the
   contact normal (the tyre step's sign, right for the mirrored right-hand frame), its world vertical part, times

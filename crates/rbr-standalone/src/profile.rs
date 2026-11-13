@@ -39,13 +39,17 @@ impl Profile {
         aero: "wings+downforce",
         drive_loss: Some(17),
     };
-    /// The experimental physics with the brush tyre: in development, not released. Only `--physics
-    /// experimental-brush` reaches it; the launcher does not offer it. Gravel's level is fitted with the profile's
-    /// aero (`notes/tyre-model.md`, "Gravel's level by axis and by depth").
+    /// The experimental physics with the brush tyre, in development (the launcher's Settings > Experimental, both
+    /// switches). Gravel's level is fitted with the profile's aero (`notes/tyre-model.md`, "Gravel's level by axis and
+    /// by depth").
     pub const EXPERIMENTAL_BRUSH: Profile =
         Profile { name: "experimental-brush", tyre: "brush", ..Profile::EXPERIMENTAL };
+    /// NGP 7's physics with the brush tyre (the launcher's experimental tyre alone): NGP's engine, aero and
+    /// drivetrain, so gravel's level is not the one fitted with the experimental aero.
+    pub const NGP_BRUSH: Profile = Profile { name: "ngp-brush", tyre: "brush", ..Profile::NGP };
     /// The profiles `--physics` takes.
-    pub const ALL: [Profile; 3] = [Profile::NGP, Profile::EXPERIMENTAL, Profile::EXPERIMENTAL_BRUSH];
+    pub const ALL: [Profile; 4] =
+        [Profile::NGP, Profile::EXPERIMENTAL, Profile::EXPERIMENTAL_BRUSH, Profile::NGP_BRUSH];
 
     /// The profile `name` names.
     pub fn named(name: &str) -> Option<Profile> {
@@ -82,6 +86,9 @@ mod tests {
         assert_eq!(brush, Profile { name: brush.name, tyre: brush.tyre, ..experimental }, "the tyre alone differs");
         assert!(rbr_hybrid::ngp::AERO_NAMES.contains(&experimental.aero) && experimental.aero != "ngp");
         assert_eq!((Profile::NGP.drive_loss, experimental.drive_loss), (None, Some(17)));
+        let ngp_brush = Profile::named("ngp-brush").unwrap();
+        assert!(!ngp_brush.is_ngp());
+        assert_eq!(ngp_brush, Profile { name: ngp_brush.name, tyre: brush.tyre, ..Profile::NGP }, "the tyre alone");
         assert_eq!(Profile::named("realistic"), None);
     }
 }

@@ -1076,7 +1076,7 @@ mod tests {
                 "rotation = \n",
                 "rotation_per_car = 0\n",
                 "smoothing = 0\n",
-                "linearity = 0\n",
+                "tyres = 0\n",
                 "\n",
                 "[ffb_cars]\n",
                 "COROLLA = 120,120,130\n",

@@ -739,6 +739,8 @@ pub fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String
         }
         stage => stage,
     };
+    // The force from the tyres is the stepping process's (`rbr-standalone --ffb-tyres`): the wheel maps it as a line.
+    ffb_options.tyres = live.as_ref().is_some_and(|c: &Vec<String>| c.iter().any(|a| a == "--ffb-tyres"));
     Ok(Args {
         stage,
         stage_place,

@@ -123,8 +123,8 @@ impl Form {
         // The co-driver: a general choice, the same for every stage.
         self.codriver_section(ui);
 
-        // The physics every drive runs.
-        crate::physics::physics_section(ui, &mut self.physics, self.session_physics);
+        // The experimental physics and force feedback every drive runs.
+        crate::physics::experimental_section(ui, &mut self.physics, self.session_physics, &mut self.ffb.tyres);
 
         // NGP's UDP telemetry, for dashboards and motion rigs.
         section(ui, "Telemetry");

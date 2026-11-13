@@ -256,8 +256,8 @@ impl App {
         }
     }
 
-    /// Keeps what the Force feedback page set: the strength, the smoothing, the linearity, and the car's
-    /// sensitivity (or drops the car's own), and writes them to the file; the wheel takes the first three at once and
+    /// Keeps what the Force feedback page set: the strength, the smoothing, and the car's sensitivity (or drops the
+    /// car's own), and writes them to the file; the wheel takes the first two at once and
     /// the sensitivity with the next frame ([`Self::ffb_frame`]).
     fn ffb_changed(&mut self) {
         let Some(page) = self.menu.as_ref().and_then(PauseMenu::ffb) else {
@@ -276,12 +276,6 @@ impl App {
             session.set_smoothing(page.smoothing);
             if let Some(wheel) = &self.wheel {
                 wheel.set_smoothing(page.smoothing);
-            }
-        }
-        if page.linearity != session.linearity {
-            session.set_linearity(page.linearity);
-            if let Some(wheel) = &self.wheel {
-                wheel.set_linearity(page.linearity);
             }
         }
         if (page.own, page.value) != (session.own(), session.now()[surface]) {

@@ -20,7 +20,7 @@ use rbr_gameplay::race_options::DriverAids;
 use rbr_render::bindings::{self, Action, Bindings, Device, PadInput};
 use rbr_render::devices::{values, Joysticks};
 use rbr_render::ffb;
-use rbr_render::hud::ffb_page::{LINEARITY_HELP, SMOOTHING_HELP};
+use rbr_render::hud::ffb_page::SMOOTHING_HELP;
 use rbr_render::wheel_rotation::{self, Wheel};
 use winit::keyboard::KeyCode;
 
@@ -57,8 +57,8 @@ const SHIFTER: [(Action, &str); 9] = [
 /// How often the joysticks are looked for again while nothing is being set (a wheel plugged in).
 const RESCAN: Duration = Duration::from_secs(2);
 
-/// The force feedback: on or off, the strength, the direction, the smoothing, the linearity and NGP's sensitivity per
-/// surface. The strength, the smoothing and the linearity are written to the settings file at once, as the pause
+/// The force feedback: on or off, the strength, the direction, the smoothing and NGP's sensitivity per surface. The
+/// strength and the smoothing are written to the settings file at once, as the pause
 /// menu's Force feedback page does while driving.
 fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool) {
     ui.horizontal(|ui| {
@@ -82,17 +82,6 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
             if ui.add(smoothing).on_hover_text(SMOOTHING_HELP).changed() && !read_only {
                 write_ffb(settings, "smoothing", &ffb.smoothing.to_string());
             }
-            let linearity = DragValue::new(&mut ffb.linearity)
-                .range(ffb::LINEARITY_RANGE)
-                .prefix("linearity ")
-                .custom_formatter(|percent, _| if percent == 0.0 { "off".into() } else { format!("{percent} %") })
-                .custom_parser(|text| match text.trim().trim_end_matches('%').trim() {
-                    "off" => Some(0.0),
-                    percent => percent.parse().ok(),
-                });
-            if ui.add(linearity).on_hover_text(LINEARITY_HELP).changed() && !read_only {
-                write_ffb(settings, "linearity", &ffb.linearity.to_string());
-            }
         });
     });
     ui.label(RichText::new(STRENGTH_HELP).color(Color32::GRAY));
@@ -107,7 +96,7 @@ fn ffb_ui(ui: &mut Ui, ffb: &mut ffb::Options, settings: &Path, read_only: bool)
     });
 }
 
-/// Writes `key` (the strength, the smoothing, the linearity) into the settings file's `[ffb]`, the rest of the file kept.
+/// Writes `key` (the strength, the smoothing) into the settings file's `[ffb]`, the rest of the file kept.
 fn write_ffb(settings: &Path, key: &str, value: &str) {
     let file = std::fs::read_to_string(settings).unwrap_or_default();
     let text = rbr_formats::ini::set_value(&file, "ffb", key, value);
@@ -515,7 +504,7 @@ impl ControlsPage {
                     heading(ui, "Force feedback");
                     ffb_ui(ui, ffb, settings, read_only);
                     self.ffb_device_ui(ui, ffb);
-                    let (global, linearity) = (ffb.sensitivity, ffb.linearity);
+                    let (global, linearity) = (ffb.sensitivity, ffb.linearity());
                     let on = ffb.settings.enabled;
                     let status = &mut self.ffb_status;
                     ffb_cars_ui(

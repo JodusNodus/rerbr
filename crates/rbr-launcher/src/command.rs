@@ -23,6 +23,10 @@ use crate::graphics_page::{Graphics, HudChoice, WetRoads, ALWAYS_ON};
 use crate::settings::{clock_text, wetness_name, Clouds, Fog, Precipitation};
 use crate::{pages::Choice, time_of_day, Form};
 
+/// The mechanical trail of the force from the tyres, mm (`rbr-standalone --ffb-tyres`; its `tyre_ffb::SUGGESTED_TRAIL`,
+/// the one that gives AC EVO's torque by front slip angle).
+const TYRES_TRAIL_MM: &str = "25";
+
 /// The viewer's `--clock` arguments for a start time, none for the stage's own light.
 pub fn clock_args(start: Option<u32>) -> Vec<String> {
     start.map_or_else(Vec::new, |minutes| vec!["--clock".into(), clock_text(minutes)])
@@ -756,8 +760,8 @@ impl Form {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
         args.extend(self.drive_physics().args(car));
-        if let Some(mm) = &self.ffb_tyres {
-            args.extend(["--ffb-tyres".to_owned(), mm.clone()]);
+        if self.ffb.tyres {
+            args.extend(["--ffb-tyres".to_owned(), TYRES_TRAIL_MM.to_owned()]);
         }
         if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
             args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
@@ -889,7 +893,6 @@ mod tests {
             data,
             patch,
             physics: None,
-            ffb_tyres: None,
         }
     }
 
@@ -1588,24 +1591,23 @@ mod tests {
         std::fs::remove_dir_all(&here).unwrap();
     }
 
-    /// `rerbr --ffb-tyres` reaches `rbr-standalone` (after `--live`) for the session; without it the command has none.
+    /// The force feedback from the tyres reaches `rbr-standalone` (after `--live`) with its trail; off, the command
+    /// has none.
     #[test]
-    fn the_ffb_trial_reaches_the_standalone() {
+    fn the_tyres_force_reaches_the_standalone() {
         let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
             return;
         };
         let here = crate::test_dir("command-ffb-tyres");
         let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
-        for trial in [None, Some("25".to_owned())] {
-            let start = Start {
-                ffb_tyres: trial.clone(),
-                ..start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)))
-            };
+        let start = start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)));
+        for (tyres, trail) in [(false, None), (true, Some("25".to_owned()))] {
             let mut form = load(&start, Settings::parse(text)).unwrap();
             form.read_only = true;
+            form.ffb.tyres = tyres;
             let args = launch(&mut form);
             let live = args.iter().position(|a| a == "--live").unwrap();
-            assert_eq!(value(&args[live..], "--ffb-tyres"), trial, "{args:?}");
+            assert_eq!(value(&args[live..], "--ffb-tyres"), trail, "{args:?}");
             assert_eq!(value(&args[..live], "--ffb-tyres"), None, "{args:?}");
         }
     }

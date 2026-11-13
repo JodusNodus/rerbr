@@ -692,7 +692,6 @@ mod tests {
                 data: Some(PathBuf::from(&data)),
                 patch: Some(PathBuf::from(&patch)),
                 physics: None,
-                ffb_tyres: None,
             };
             // The community content comes from the game folder in use.
             let text = format!("[launcher]\nngp_physics = {archive}\n");

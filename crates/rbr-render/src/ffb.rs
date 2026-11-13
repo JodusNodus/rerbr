@@ -43,9 +43,9 @@ pub struct Options {
     pub rotation_per_car: bool,
     /// The smoothing's time constant, ms ([`smooth`]); 0 sends NGP's force as it is.
     pub smoothing: i32,
-    /// How linear the force is in the steering torque, percent ([`shape`]): 0 sends NGP's force as it is, 100 a
-    /// straight line.
-    pub linearity: i32,
+    /// The force from the tyres (the launcher's Settings > Experimental; `rbr-standalone --ffb-tyres`): a straight
+    /// line in the steering torque ([`Options::linearity`]); without it NGP's force as it is.
+    pub tyres: bool,
 }
 
 impl Default for Options {
@@ -58,7 +58,7 @@ impl Default for Options {
             rotation: None,
             rotation_per_car: false,
             smoothing: 0,
-            linearity: 0,
+            tyres: false,
         }
     }
 }
@@ -91,11 +91,18 @@ impl Options {
             .get("smoothing")
             .and_then(|v| v.parse().ok())
             .map_or(0, |v: i32| v.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end()));
-        out.linearity = section
-            .get("linearity")
-            .and_then(|v| v.parse().ok())
-            .map_or(0, |v: i32| v.clamp(*LINEARITY_RANGE.start(), *LINEARITY_RANGE.end()));
+        out.tyres = flag("tyres", false);
         out
+    }
+
+    /// How linear the force is in the steering torque, percent ([`shape`]): 100 with the force from the tyres, as AC
+    /// EVO maps its own (`notes/ngp.md` "Force feedback"), else 0, NGP's curve.
+    pub fn linearity(&self) -> i32 {
+        if self.tyres {
+            100
+        } else {
+            0
+        }
     }
 
     /// The rotation a drive takes, `car` the car's own lock if known.
@@ -110,7 +117,7 @@ impl Options {
         format!(
             "[ffb]\nenabled = {}\nstrength = {}\ninverse = {}\ndead_zone = {}\n\
              dead_zone_threshold = {}\nrate = {}\ndevice = {}\nsensitivity_gravel = {}\nsensitivity_tarmac = {}\n\
-             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\nlinearity = {}\n",
+             sensitivity_snow = {}\nrotation = {}\nrotation_per_car = {}\nsmoothing = {}\ntyres = {}\n",
             u8::from(s.enabled),
             s.strength,
             u8::from(s.inverse),
@@ -124,7 +131,7 @@ impl Options {
             self.rotation.map_or(String::new(), |d| d.to_string()),
             u8::from(self.rotation_per_car),
             self.smoothing,
-            self.linearity,
+            u8::from(self.tyres),
         )
     }
 }
@@ -134,9 +141,6 @@ pub const SENSITIVITY_RANGE: std::ops::RangeInclusive<i32> = 10..=500;
 
 /// The smoothing's range, ms, in the launcher and the pause menu.
 pub const SMOOTHING_RANGE: std::ops::RangeInclusive<i32> = 0..=10;
-
-/// [`Options::linearity`]'s range, percent, in the launcher and the pause menu.
-pub const LINEARITY_RANGE: std::ops::RangeInclusive<i32> = 0..=100;
 
 /// The smoothed level `dt` seconds after `was` with NGP's at `target` (ours): one pole with time constant `ms`,
 /// which the force then trails by about `ms`; 0 gives `target`. NGP's force carries bursts of 10 to 20 Hz, about
@@ -550,7 +554,7 @@ impl Session {
             started,
             strength: options.settings.strength,
             smoothing: options.smoothing,
-            linearity: options.linearity,
+            linearity: options.linearity(),
             drive: None,
         }
     }
@@ -598,13 +602,6 @@ impl Session {
         self.smoothing = ms.clamp(*SMOOTHING_RANGE.start(), *SMOOTHING_RANGE.end());
         let value = self.smoothing.to_string();
         self.write(|file| rbr_formats::ini::set_value(file, "ffb", "smoothing", &value));
-    }
-
-    /// Sets how linear the force is (percent, [`LINEARITY_RANGE`]) and writes it to the file's `[ffb]`.
-    pub fn set_linearity(&mut self, linearity: i32) {
-        self.linearity = linearity.clamp(*LINEARITY_RANGE.start(), *LINEARITY_RANGE.end());
-        let value = self.linearity.to_string();
-        self.write(|file| rbr_formats::ini::set_value(file, "ffb", "linearity", &value));
     }
 
     /// One frame of the drive on `surface` (FFB1's), `force` NGP's: sampled when `kept` (a live NGP drive, racing,
@@ -702,6 +699,8 @@ pub fn shape(force: f32, was: i32, now: i32, linearity: i32) -> f32 {
 pub struct Wheel {
     shared: Arc<Shared>,
     settings: Settings,
+    /// [`Options::linearity`].
+    linearity: i32,
     thread: Option<JoinHandle<()>>,
     /// The device's name.
     pub name: String,
@@ -722,8 +721,6 @@ struct Shared {
     strength: AtomicU32,
     /// [`Options::smoothing`], which the pause menu changes too.
     smoothing: AtomicI32,
-    /// [`Options::linearity`], likewise.
-    linearity: AtomicI32,
 }
 
 impl Wheel {
@@ -732,7 +729,6 @@ impl Wheel {
         let shared = Arc::new(Shared {
             strength: options.settings.strength.to_bits().into(),
             smoothing: options.smoothing.into(),
-            linearity: options.linearity.into(),
             ..Shared::default()
         });
         let (tx, rx) = mpsc::channel();
@@ -744,7 +740,13 @@ impl Wheel {
                 .map_err(|e| e.to_string())?
         };
         match rx.recv() {
-            Ok(Ok(name)) => Ok(Wheel { shared, settings: options.settings, thread: Some(thread), name }),
+            Ok(Ok(name)) => Ok(Wheel {
+                shared,
+                settings: options.settings,
+                linearity: options.linearity(),
+                thread: Some(thread),
+                name,
+            }),
             Ok(Err(e)) => {
                 let _ = thread.join();
                 Err(e)
@@ -759,7 +761,7 @@ impl Wheel {
         let (was, now) = (self.shared.was.load(Ordering::Relaxed), self.shared.now.load(Ordering::Relaxed));
         let settings =
             Settings { strength: f32::from_bits(self.shared.strength.load(Ordering::Relaxed)), ..self.settings };
-        let force = shape(force, was, now, self.shared.linearity.load(Ordering::Relaxed));
+        let force = shape(force, was, now, self.linearity);
         self.set_magnitude(ffb::magnitude(force, &settings), steering);
     }
 
@@ -771,11 +773,6 @@ impl Wheel {
     /// The smoothing ([`Options::smoothing`], ms) from the thread's next update on.
     pub fn set_smoothing(&self, ms: i32) {
         self.shared.smoothing.store(ms, Ordering::Relaxed);
-    }
-
-    /// How linear the force is ([`Options::linearity`], percent) from the next step on.
-    pub fn set_linearity(&self, linearity: i32) {
-        self.shared.linearity.store(linearity, Ordering::Relaxed);
     }
 
     /// The force at sensitivity `now` rather than `was`, NGP's car's, on the drive's surface ([`reshape`]).

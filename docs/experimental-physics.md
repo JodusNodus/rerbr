@@ -1,14 +1,15 @@
 # ReRBR experimental physics
 
-ReRBR runs NGP 7's physics bit for bit by default. The launcher's Settings > Physics row (or `--physics experimental`)
-offers a second choice, "ReRBR experimental (built on NGP 7)": NGP 7 with some of its systems replaced by ours. Today
-it replaces three. A mean-value engine model takes the place of NGP's torque formula. The aero adds the drag of the
+ReRBR runs NGP 7's physics bit for bit by default. The launcher's Settings > Experimental section switches ours on
+part by part. "Engine" (or `--physics experimental`) is NGP 7 with some of its systems replaced by ours. Today it
+replaces three. A mean-value engine model takes the place of NGP's torque formula. The aero adds the drag of the
 wings that make a car's downforce and halves that downforce. A four-wheel-drive car loses 17 % of its drive torque in
 the drivetrain, where its file says 12 (see [Aero and drivetrain loss](#aero-and-drivetrain-loss)). The clutch,
-gearbox, differentials, tyres and damage stay NGP's. A tyre model is in development and not part of it: see
-[ReRBR experimental tyre model](tyre-model.md).
+gearbox, differentials, tyres and damage stay NGP's. "Tyre" switches on the brush tyre model in development, with or
+without the engine: see [ReRBR experimental tyre model](tyre-model.md). "Force feedback: From the tyres" builds the
+wheel's force from the front tyres instead of NGP's steering torque; it changes no physics.
 
-While it is experimental, a run with it saves no records, ghosts or championship results. Its replays carry the choice
+While they are experimental, a run with the engine or the tyre saves no records, ghosts or championship results. Its replays carry the choice
 and play back with it.
 
 This page explains what NGP's formula does, what our engine model does in its place, the evidence behind each part,

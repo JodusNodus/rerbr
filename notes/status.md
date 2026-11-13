@@ -119,7 +119,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 ## Decisions
 
 - 2026-11-07 (user): an opt-in experimental physics, "ReRBR experimental (built on NGP 7)" (ours; the launcher's
-  Settings > Physics, `--physics experimental`): NGP 7's physics with some systems replaced by ours, one crate and one
+  Settings > Experimental, `--physics experimental`): NGP 7's physics with some systems replaced by ours, one crate and one
   seam each. The first is the engine model (`rbr-engine`): a mean-value engine from each car's data in place of NGP's
   torque formula, in NGP's engine wrapper only ([engine-model.md](engine-model.md); explained in
   [docs/experimental-physics.md](../docs/experimental-physics.md), which the launcher links). Since 2026-11-11 (user)

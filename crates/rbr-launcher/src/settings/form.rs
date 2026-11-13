@@ -66,7 +66,7 @@ pub fn load(start: &Start, mut settings: Settings) -> Result<Form, String> {
     let startable = catalog.startable_maps(&season);
     eprintln!("launcher: {} cars, {}/{} maps startable", catalog.cars.len(), startable.len(), catalog.maps.len());
     let form = Form::new(catalog, &settings, paths, data, season, folder);
-    Ok(Form { session_physics: start.physics, ffb_tyres: start.ffb_tyres.clone(), ..form })
+    Ok(Form { session_physics: start.physics, ..form })
 }
 
 /// The FFB sensitivities and camera nudges saved under a pack car's earlier key (`Catalog::renamed`) go to its key
@@ -290,7 +290,6 @@ impl Form {
             head_gasket: settings.head_gasket.unwrap_or(1),
             physics: settings.physics.unwrap_or_default(),
             session_physics: None,
-            ffb_tyres: None,
             controls: ControlsPage::new(),
             read_only: false,
         };
@@ -391,12 +390,11 @@ impl Form {
             head_gasket: Some(self.head_gasket),
             physics: Some(self.physics),
             bindings: self.bindings.clone(),
-            // The strength, the smoothing and the linearity too: the pause menu sets them while driving, the Controls
-            // page writes them at once.
+            // The strength and the smoothing too: the pause menu sets them while driving, the Controls page writes
+            // them at once.
             ffb: rbr_render::ffb::Options {
                 settings: rbr_gameplay::ffb::Settings { strength: viewer.ffb.settings.strength, ..self.ffb.settings },
                 smoothing: viewer.ffb.smoothing,
-                linearity: viewer.ffb.linearity,
                 ..self.ffb.clone()
             },
             // The viewer owns these: carried over from the file as it is now, earlier car keys moved.
@@ -493,15 +491,16 @@ mod tests {
         let viewer = rbr_render::ffb::Loads::parse("[ffb_load]\nrsf-24 tarmac = 0,12,340\n");
         let file = rbr_formats::ini::set_value(&viewer.replace_in(&text), "ffb", "strength", "0.35");
         let file = rbr_formats::ini::set_value(&file, "ffb", "smoothing", "8");
-        let file = rbr_formats::ini::set_value(&file, "ffb", "linearity", "40");
         std::fs::write(&settings, file).unwrap();
         form.ffb.settings.strength = 0.8;
         form.ffb.sensitivity = [280, 250, 280];
+        form.ffb.tyres = true;
         form.ffb_load = Default::default();
         assert!(form.save());
         let saved = read_settings(&settings);
         assert_eq!((saved.ffb.settings.strength, saved.ffb.sensitivity), (0.35, [280, 250, 280]));
-        assert_eq!((saved.ffb.smoothing, saved.ffb.linearity), (8, 40));
+        // The force from the tyres is the launcher's own (Settings > Experimental).
+        assert_eq!((saved.ffb.smoothing, saved.ffb.tyres), (8, true));
         assert_eq!(saved.ffb_load, viewer);
         // A car's earlier key is written as its key now: the viewer reads the file.
         form.catalog.renamed = vec![("rsf-24".into(), "pack-evo".into())];
