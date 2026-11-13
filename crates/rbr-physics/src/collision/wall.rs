@@ -2,7 +2,7 @@
 //! `brake_wall`; the hosts are in `layout/wall_tree.rs`.
 
 use super::brake_wall::{self, segment_hit, SegmentHit};
-use super::layout::wall_tree::{RaycastCalls, VfE8Host, WallVfCcHost};
+use super::layout::wall_tree::{RaycastCalls, WallEndsHost, WallQueryHost};
 use super::store::CollisionStore;
 
 /// The query shape: a point, or a box (its centre and half extents).
@@ -105,8 +105,8 @@ pub fn query_xy_box<S: CollisionStore>(store: &S, wall: u32, point: u32) -> u32 
 /// Queries the wall with the corners' x/y box: each corner is fetched through the host frame, and the box of
 /// their `x` and `y` is queried against the wall's leaves unless it is too wide. Returns 1 when the query found
 /// any.
-pub fn wall_vf_cc<S: CollisionStore>(
-    host: &mut impl WallVfCcHost,
+pub fn query_wall_box<S: CollisionStore>(
+    host: &mut impl WallQueryHost,
     store: &mut S,
     this: u32,
     a: u32,
@@ -183,8 +183,8 @@ pub fn wall_raycast<S: CollisionStore>(
 /// against each edge of the wall's leaf segments, in order, until one hits. A crossing within an edge sets the
 /// latch; unless the index word's bit 14 is set it is the hit: `out` gets the point, the normal (`z` = 0), the offset,
 /// `t` and the wall. Returns 1 on a hit, else 0.
-pub fn brake_wall_vf_e8<S: CollisionStore>(
-    host: &mut impl VfE8Host,
+pub fn wall_segment_hit<S: CollisionStore>(
+    host: &mut impl WallEndsHost,
     store: &mut S,
     this: u32,
     [a, b, _c, out, flag]: [u32; 5],

@@ -74,5 +74,5 @@ pub fn store_edge_edge_sample_bytes(mem: &mut Mem, grid: u32, bytes: [u8; 2]) {
 }
 
 pub use crate::collision::grid_edge::{
-    edge_normal, edge_pair, grid_add_edge, grid_ops_m6610, store_edge_edge_hit, vec_set_gap, walk_5ff0,
+    copy_grid, edge_normal, edge_pair, grid_add_edge, grid_row_walk, store_edge_edge_hit, vec_set_gap,
 };

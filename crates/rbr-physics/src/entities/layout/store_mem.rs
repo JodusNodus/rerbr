@@ -123,7 +123,7 @@ impl EntityStore for Mem {
         Transform { matrix: self.u32(at), node: self.u32(at + 4) }
     }
 
-    fn vf120_target(&self, entity: u32) -> u32 {
+    fn query_slot_target(&self, entity: u32) -> u32 {
         self.u32(self.u32(entity) + 0x11c)
     }
 

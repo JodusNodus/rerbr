@@ -36,7 +36,7 @@ pub(super) fn inverse_mass(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// Its eax is `e`: the last load before the pops is `mov eax, [esp+0x20]` (0x52b9d0), the fifth stack word.
 pub(crate) fn e43vf138(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, c, dp, e, f, ..] = r.stack;
-    layout::e43vf138(&mut ctx.mem, r.ecx, [a, b, c, dp, e, f]);
+    layout::response_combine_at(&mut ctx.mem, r.ecx, [a, b, c, dp, e, f]);
     Ok(Return::void(e, 0x18))
 }
 
@@ -115,7 +115,7 @@ pub(super) fn ring_append(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// thiscall `(rows, count)`: subtract the current position, then transform the rows by the current matrix.
 pub(super) fn e43vfa0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    Ok(Return::void(layout::solid_e43vfa0(&mut ctx.mem, r.ecx, rows, count), 8))
+    Ok(Return::void(layout::rows_to_body(&mut ctx.mem, r.ecx, rows, count), 8))
 }
 
 /// thiscall `(dir*, penetration, unused, mu)`: the brake-wall impulse's four-lane accumulation.
@@ -258,7 +258,7 @@ pub(super) fn quat_transform_rows(ctx: &mut Ctx, r: &Regs) -> Result<Return, Dec
 /// thiscall `(rows, count)`: the alternate quaternion row order (`CSolid::E43VfB8`).
 pub(super) fn quat_rows_b8(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [rows, count, ..] = r.stack;
-    layout::quat_body_rows_b8(&mut ctx.mem, r.ecx, rows, count);
+    layout::body_rotate_rows(&mut ctx.mem, r.ecx, rows, count);
     Ok(Return::void(rows, 8))
 }
 

@@ -96,7 +96,7 @@ pub(crate) const ENTITY_VF120: u32 = 0x519db0;
 
 pub(super) fn vf120_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [lo, hi, ..] = r.stack;
-    let target = ctx.mem.vf120_target(r.ecx);
+    let target = ctx.mem.query_slot_target(r.ecx);
     let eax = ctx.host.call_at(r.esp, target, r.ecx, &[lo, hi]).eax;
     Ok(Return::void(eax, 8))
 }
@@ -290,7 +290,7 @@ pub(super) fn clear_acc_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 
 /// thiscall, no stack arguments: `CEntity::E43_InitBD0` (0x519bd0), the walker marks.
 pub(super) fn init_bd0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    Ok(Return::void(layout::init_bd0(&mut ctx.mem, r.ecx), 0))
+    Ok(Return::void(layout::init_walker_marks(&mut ctx.mem, r.ecx), 0))
 }
 
 /// thiscall `(value)`: `CEntity::E43_ExclA060` (0x51a060).

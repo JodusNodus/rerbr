@@ -15,8 +15,8 @@ use rbr_physics::car_body::store::CarStore;
 
 struct Clear480Host<'a>(&'a dyn Host);
 
-impl rbr_physics::entities::layout::Clear480Calls for Clear480Host<'_> {
-    fn sim_fd00(&mut self, sp: u32, body: u32) -> u32 {
+impl rbr_physics::entities::layout::ClearBodiesCalls for Clear480Host<'_> {
+    fn detach_body(&mut self, sp: u32, body: u32) -> u32 {
         self.0.call_at(sp, 0x51fd00, body, &[]).eax
     }
 }

@@ -219,6 +219,7 @@ impl Windscreen {
         crate::mirrors::Placed {
             corners: [corner(lo.x, lo.y), corner(hi.x, lo.y), corner(hi.x, hi.y), corner(lo.x, hi.y)],
             normal: -to_stage.transform_vector3(self.axes[2]).normalize(),
+            past: crate::mirrors::NEAR_PAST,
             side: false,
         }
     }

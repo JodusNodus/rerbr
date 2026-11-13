@@ -33,8 +33,10 @@ struct ViewUniform {
     scale: [f32; 4],
 }
 
-/// The image a mirror's layer holds: the view it was drawn with, its size, the car body's model space to stage
-/// space then, and the layer's draws before it (its jitter's phase).
+/// The image a mirror's layer holds: stage space to where its glass samples it, its size, the car body's model space
+/// to stage space then, and the layer's draws before it (its jitter's phase). A mirror's glass samples the image where
+/// it lies on screen itself (the view it was drawn with before the reflection: the glass is not in the plane it is
+/// aimed in, `mirrors::Glass::aim`); the windscreen's pane where its point lies in the view as drawn.
 #[derive(Debug, Clone, Copy)]
 struct Held {
     view_projection: Mat4,
@@ -216,8 +218,8 @@ impl Renderer {
             let rain = self.effects.as_ref().filter(|effects| effects.precipitating()).zip(target.effects.as_ref());
             let attachments = [&target.resolved_view, &target.depth];
             self.draw_scene(&mut encoder, attachments, view.view_projection, pass, [rain.is_some(); 2]);
+            let reflect = mirrors::reflection(placed.corners.iter().sum::<glam::Vec3>() / 4.0, placed.normal);
             if let Some((effects, group)) = rain {
-                let reflect = mirrors::reflection(placed.corners.iter().sum::<glam::Vec3>() / 4.0, placed.normal);
                 effects.write_mirror(&self.queue, view.view_projection, reflect, view.size);
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("mirror rain"),
@@ -256,7 +258,8 @@ impl Renderer {
                 commands()
             });
             self.queue.submit(before.into_iter().chain([done]));
-            held[k] = Some(Held { view_projection: view.view_projection, size: view.size, body, draws });
+            let sampled = if k == WINDSCREEN { view.view_projection } else { view.view_projection * reflect };
+            held[k] = Some(Held { view_projection: sampled, size: view.size, body, draws });
             drawn = true;
         }
         if let Some(t) = t {

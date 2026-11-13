@@ -90,6 +90,70 @@ fn a_door_mirror_and_a_hanging_centre_one_are_found() {
     assert_eq!(door.faces.len(), 2);
 }
 
+/// Where the eye's line to `glass`'s centre goes off it as aimed.
+fn shown(glass: &Glass, eye: Vec3) -> Vec3 {
+    let seen = (glass.centre - eye).normalize();
+    seen - 2.0 * seen.dot(glass.aimed) * glass.aimed
+}
+
+#[test]
+fn mirrors_are_set_for_the_driver() {
+    // The door glass faces straight back and the centre one is turned to the passenger: as modelled the eye would
+    // see the verge in the one and the door in the other.
+    let turned = Vec3::new(-0.15, 0.0, 1.0).normalize();
+    let centre =
+        mesh(&rectangle(Vec3::new(0.0, 1.1, -1.4), Vec3::Y.cross(turned) * 0.1, Vec3::Y * 0.03), turned, false);
+    let found = find(&[door_glass(), centre], &[named(Some(Mirror::Glass)), named(None)], EYE);
+    let [door, centre] = &found.mirrors[..] else { panic!("{found:?}") };
+    assert!(door.normal.distance(Vec3::Z) < 1e-5 && centre.normal.distance(turned) < 1e-5);
+    // The door mirror shows what lies behind, a little outward (the flank at its inner edge) and below the horizon.
+    let out = shown(door, EYE);
+    assert!(out.z > 0.995 && (0.0..0.08).contains(&out.x) && (-0.03..0.0).contains(&out.y), "{out}");
+    // The centre one straight back, down through the rear window.
+    let out = shown(centre, EYE);
+    assert!(out.x.abs() < 1e-5 && (out.y + CENTRE_DOWN.sin()).abs() < 1e-5 && out.z > 0.99, "{out}");
+    // A seat moved sets them anew; the glass on the car's right looks out to the right.
+    let mut right = Glass { centre: door.centre * Vec3::new(-1.0, 1.0, 1.0), ..door.clone() };
+    right.aim(EYE + Vec3::new(0.1, 0.05, 0.1));
+    let out = shown(&right, EYE + Vec3::new(0.1, 0.05, 0.1));
+    assert!(out.z > 0.995 && (-0.08..0.0).contains(&out.x), "{out}");
+    // Its image starts before the plane it is aimed in by the glass's reach before it and the housing's rim.
+    let placed = door.placed(Mat4::IDENTITY);
+    assert!(placed.normal.distance(door.aimed) < 1e-6);
+    assert!(placed.past > NEAR_PAST + RIM && placed.past < NEAR_PAST + RIM + 0.06, "{}", placed.past);
+}
+
+#[test]
+fn a_rim_or_a_lone_triangle_is_no_mirror() {
+    // The glass's rim, 5 mm before it and wider: eight faces about its outline, flat, filling little of their box.
+    let (centre, n) = (Vec3::new(0.8, 0.8, -1.7), Vec3::Z * 0.005);
+    let corner = |k: usize, r: f32| {
+        centre
+            + n
+            + Vec3::new([-1.0, 1.0, 1.0, -1.0][k % 4], [-1.0, -1.0, 1.0, 1.0][k % 4], 0.0)
+                * Vec3::new(0.06, 0.07, 0.0)
+                * r
+    };
+    let rim: Vec<[Vec3; 3]> = (0..4)
+        .flat_map(|k| {
+            [
+                [corner(k, 1.0), corner(k + 1, 1.0), corner(k + 1, 1.15)],
+                [corner(k, 1.0), corner(k + 1, 1.15), corner(k, 1.15)],
+            ]
+        })
+        .collect();
+    let interior = [mesh(&rim, Vec3::Z, false), door_glass()];
+    let found = find(&interior, &[named(Some(Mirror::Glass)), named(Some(Mirror::Glass))], EYE);
+    let [glass] = &found.mirrors[..] else { panic!("{found:?}") };
+    assert!(found.unfitted.is_empty());
+    assert!(
+        glass.faces.iter().all(|&(k, _)| k == 1) && (glass.half - Vec2::new(0.06, 0.07)).abs().max_element() < 1e-5
+    );
+    assert!((glass.area - 0.12 * 0.14).abs() < 1e-6);
+    let lone = [rectangle(centre, Vec3::X * 0.06, Vec3::Y * 0.07)[0]];
+    assert!(find(&[mesh(&lone, Vec3::Z, false)], &[named(Some(Mirror::Glass))], EYE).mirrors.is_empty());
+}
+
 #[test]
 fn a_mirror_behind_a_wall_or_facing_forward_is_none() {
     // An opaque panel between the eye and the glass hides it (the glass class's faces would not: the windows).
@@ -105,23 +169,32 @@ fn a_mirror_behind_a_wall_or_facing_forward_is_none() {
 }
 
 #[test]
-fn a_domed_glass_keeps_the_cube() {
-    // Eight strips 2 cm wide, each turned 5 degrees from the last: one pane, 14 mm deep.
-    let edge = |i: usize| {
-        let angle = (i as f32 - 4.0) * 5f32.to_radians();
-        Vec3::new(0.8, 0.8, -1.7) + Vec3::new(angle.sin(), 0.0, -angle.cos()) * 0.23 + Vec3::Z * 0.23
+fn a_domed_glass_is_a_mirror_and_a_bowl_keeps_the_cube() {
+    // Strips 2 cm wide, each turned 5 degrees from the last: one pane.
+    let domed = |strips: usize| {
+        let edge = |i: usize| {
+            let angle = (i as f32 - strips as f32 / 2.0) * 5f32.to_radians();
+            Vec3::new(0.8, 0.8, -1.7) + Vec3::new(angle.sin(), 0.0, -angle.cos()) * 0.23 + Vec3::Z * 0.23
+        };
+        let triangles: Vec<[Vec3; 3]> = (0..strips)
+            .flat_map(|i| {
+                let (a, b, up) = (edge(i), edge(i + 1), Vec3::Y * 0.05);
+                [[a - up, b - up, b + up], [a - up, b + up, a + up]]
+            })
+            .collect();
+        find(&[mesh(&triangles, Vec3::Z, false)], &[named(Some(Mirror::Glass))], EYE)
     };
-    let triangles: Vec<[Vec3; 3]> = (0..8)
-        .flat_map(|i| {
-            let (a, b, up) = (edge(i), edge(i + 1), Vec3::Y * 0.05);
-            [[a - up, b - up, b + up], [a - up, b + up, a + up]]
-        })
-        .collect();
-    let found = find(&[mesh(&triangles, Vec3::Z, false)], &[named(Some(Mirror::Glass))], EYE);
+    // Eight of them, 14 mm deep over 16 cm: a mirror, its outline the dome's.
+    let found = domed(8);
+    assert!(found.unfitted.is_empty() && found.mirrors.len() == 1, "{found:?}");
+    assert_eq!(found.mirrors[0].faces.len(), 16);
+    assert!((found.mirrors[0].half.x - 0.23 * 20f32.to_radians().sin()).abs() < 1e-4);
+    // Sixteen, 54 mm deep over 30 cm: not flat.
+    let found = domed(16);
     assert!(found.mirrors.is_empty());
     assert_eq!(found.unfitted.len(), 1);
-    assert_eq!(found.unfitted[0].triangles, 16);
-    assert!(found.unfitted[0].off_plane > 0.006, "{:?}", found.unfitted);
+    assert_eq!(found.unfitted[0].triangles, 32);
+    assert!(found.unfitted[0].off_plane > 0.03 && found.unfitted[0].size.x > 0.29, "{:?}", found.unfitted);
 }
 
 #[test]
@@ -137,6 +210,8 @@ fn marks_copy_the_shared_corners() {
         normal: Vec3::Z,
         axes: [Vec3::X, Vec3::Y],
         half: Vec2::ONE,
+        area: 4.0,
+        aimed: Vec3::Z,
     };
     let found = Found { mirrors: vec![glass.clone(), Glass { faces: vec![(0, 3)], ..glass }], unfitted: Vec::new() };
     let mut damage = [MeshDamage::default()];
@@ -171,7 +246,7 @@ fn a_view_reflects_the_scene_into_the_glass_box() {
     let (u, v) = (normal.cross(Vec3::Y).normalize() * 0.1, Vec3::Y * 0.05);
     let centre = Vec3::new(0.3, 0.0, 1.0);
     let corners = [centre - u - v, centre + u - v, centre + u + v, centre - u + v];
-    let placed = Placed { corners, normal, side: true };
+    let placed = Placed { corners, normal, past: NEAR_PAST, side: true };
     let view = view(main, sky, screen, &placed).expect("the glass is in view");
     assert!(view.size.0.is_multiple_of(STEP) && view.size.1.is_multiple_of(STEP));
     assert!(view.size.0 <= MOST.0 && view.size.1 <= MOST.1);
@@ -203,7 +278,8 @@ fn a_view_reflects_the_scene_into_the_glass_box() {
     // Turned away or behind the eye, no view.
     assert!(super::view(main, sky, screen, &Placed { normal: -normal, ..placed }).is_none());
     let behind = corners.map(|c| c * Vec3::new(1.0, 1.0, -1.0));
-    assert!(super::view(main, sky, screen, &Placed { corners: behind, normal: -normal, side: true }).is_none());
+    assert!(super::view(main, sky, screen, &Placed { corners: behind, normal: -normal, past: NEAR_PAST, side: true })
+        .is_none());
 }
 
 /// Each retail car's mirrors face the driver and back along the car, at least two and one a door's (as

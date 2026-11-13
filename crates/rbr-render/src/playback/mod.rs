@@ -286,6 +286,11 @@ impl Playback {
         self.mirrors = mirrors;
     }
 
+    /// Sets the mirrors for the driver's `eye`, in the car's model space (`crate::mirrors::Glass::aim`).
+    pub fn aim_mirrors(&mut self, eye: Vec3) {
+        self.mirrors.iter_mut().for_each(|glass| glass.aim(eye));
+    }
+
     /// The stage indices of the car's meshes, outside and inside ([`Renderer::set_car`]).
     pub fn car_meshes(&self) -> Vec<usize> {
         self.parts.iter().map(|part| part.stage).collect()

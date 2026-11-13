@@ -2,7 +2,7 @@
 //! `E46_Notify67d0`'s calls on the car.
 
 use super::instance::{body_event_listened, new_body, new_car, new_wheel, BodyKind};
-use crate::collision::layout::body_hosts::Vf40Host;
+use crate::collision::layout::body_hosts::BodyResetHost;
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::StateHost;
 use crate::collision::layout::{Body, GridSyncHost};
@@ -73,13 +73,13 @@ impl rigid_body::rotation::MulHost for DeferredVf40 {
     }
 }
 
-impl Vf40Host for DeferredVf40 {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl BodyResetHost for DeferredVf40 {
+    fn reset_state(&mut self, state: u32) -> u32 {
         self.state = Some(state);
         0
     }
 
-    fn entity_vf40(&mut self, _: u32) -> u32 {
+    fn reset_entity(&mut self, _: u32) -> u32 {
         0
     }
 }
@@ -236,7 +236,7 @@ impl<F, H: entities::exclusion::Heap> AllocHost for CarParts<'_, F, H> {
 impl<F, H: entities::exclusion::Heap> rigid_body::layout::PlaceHost for CarParts<'_, F, H> {
     fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), rigid_body::host::HostUnavailable> {
         let mut deferred = DeferredVf40::default();
-        rigid_body::layout::vf16_helper(mem, this, &mut deferred)?;
+        rigid_body::layout::refresh_and_reset(mem, this, &mut deferred)?;
         let state = deferred.state.expect("CBody::Vf40 calls its state");
         let mut state_calls = StateCalls::default();
         collision::layout::state_unka44(&mut state_calls, mem, state);

@@ -4,7 +4,7 @@
 
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::construct::Heap;
-use rbr_physics::rigid_body::host::{HostUnavailable, Vf20Host};
+use rbr_physics::rigid_body::host::{EntityWalkHost, HostUnavailable};
 use rbr_physics::rigid_body::rotation::MulHost;
 
 use crate::{Binding, Decline, Host};
@@ -162,8 +162,8 @@ impl Heap for Original<'_> {
     }
 }
 
-impl Vf20Host for Original<'_> {
-    fn entity_walk_s20(&mut self, body: u32, arg: u32) -> u32 {
+impl EntityWalkHost for Original<'_> {
+    fn walk_entity(&mut self, body: u32, arg: u32) -> u32 {
         self.0.call(VF20, body, &[arg]).eax
     }
 }
@@ -191,12 +191,12 @@ impl MulHost for Callees<'_> {
     }
 }
 
-impl rbr_physics::collision::layout::body_hosts::Vf40Host for Callees<'_> {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl rbr_physics::collision::layout::body_hosts::BodyResetHost for Callees<'_> {
+    fn reset_state(&mut self, state: u32) -> u32 {
         self.host.call(CSTATE_UNKA44, state, &[]).eax
     }
 
-    fn entity_vf40(&mut self, body: u32) -> u32 {
+    fn reset_entity(&mut self, body: u32) -> u32 {
         self.host.call(NAME_WALK, body, &[]).eax
     }
 }

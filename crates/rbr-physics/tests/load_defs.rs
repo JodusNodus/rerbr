@@ -39,7 +39,7 @@
 //! - the bytes code not built here writes: the wheel definitions' `+0x880..+0x900`, the mount points in the car's frame
 //!   that `E51Wheel::M3A8A0` (0x53a8a0) writes from the car body (`M3D030`, the car's update); the hinged definitions'
 //!   `+0x310..+0x340` and `+0x3d0..+0x470`, the frames `SimEFE0` writes there (`VfE070` and `BodyCompose` outputs,
-//!   `entities::layout::efe0_frame`; `+0x320` is the hinge point less the car's centre of gravity), and the mounted
+//!   `entities::layout::refresh_handles`; `+0x320` is the hinge point less the car's centre of gravity), and the mounted
 //!   definitions' `+0x220..+0x22c`, the base point in the car body's frame that `E45_M1980` (0x521980,
 //!   `physics_core::layout::mounted_pose`) has `CCar::BodyCompose` (0x4e6a30) write. `CCar::UpdateMrr` (0x4e9c70) runs both
 //!   for each hinged and mounted body: the car instance's (step 4). And the physics definition's three bit-fields'

@@ -91,7 +91,7 @@ fn sim_db40_matches_original_calls() {
         let mem = map_windows(call);
         let this = call.args[0];
         let mut answers = Answers { mem, inner: &call.inner, next: 0 };
-        match answers.mem.db40_input(this) {
+        match answers.mem.frame_walk_input(this) {
             Some(input) => {
                 taken += 1;
                 hinge_frame_walks::walk_hinge_frames(&mut answers, &input);

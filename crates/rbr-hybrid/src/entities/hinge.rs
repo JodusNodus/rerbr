@@ -70,7 +70,7 @@ pub(super) fn sim_f950_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let dt = f32::from_bits(r.stack[0]);
     let frame = aligned_frame(r.esp);
     let mut calls = F950Host { host: ctx.host, frame };
-    let eax = layout::sim_f950_at(&mut ctx.mem, r.ecx, dt, frame - 0x30, &mut calls);
+    let eax = layout::hinge_advance_at(&mut ctx.mem, r.ecx, dt, frame - 0x30, &mut calls);
     Ok(Return::void(eax, 4))
 }
 
@@ -157,7 +157,7 @@ impl SlipCalls for SlipHost<'_> {
     }
 
     fn car_speed(&self, state: u32) -> f32 {
-        self.mem.car_state_c00(state)
+        self.mem.car_slip_word(state)
     }
 }
 
@@ -165,7 +165,7 @@ impl SlipCalls for SlipHost<'_> {
 pub(super) fn sim_cff0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = SlipHost { mem: ctx.mem.clone(), host: ctx.host, frame };
-    let term = layout::sim_cff0_at(&ctx.mem, r.ecx, frame, &mut calls);
+    let term = layout::slip_term_at(&ctx.mem, r.ecx, frame, &mut calls);
     Ok(Return::float(term as f64, 0))
 }
 
@@ -197,7 +197,7 @@ impl PivotCalls for PivotHost<'_> {
 pub(super) fn sim_e1d0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = PivotHost { mem: ctx.mem.clone(), host: ctx.host, frame };
-    let eax = layout::sim_e1d0_at(&mut ctx.mem, r.ecx, frame, &mut calls);
+    let eax = layout::pivot_at(&mut ctx.mem, r.ecx, frame, &mut calls);
     Ok(Return::void(eax, 0))
 }
 
@@ -212,11 +212,11 @@ struct D160Host<'a> {
 
 impl PoseCalls for D160Host<'_> {
     fn load(&self) -> PoseState {
-        self.mem.d160_words(self.this)
+        self.mem.pose_state(self.this)
     }
 
     fn store(&mut self, state: &PoseState) {
-        self.mem.store_d160_words(self.this, state);
+        self.mem.store_pose_state(self.this, state);
     }
 
     fn car_transform(&mut self, car: u32, pose: u32, out: u32) {
@@ -239,7 +239,7 @@ impl PoseCalls for D160Host<'_> {
 /// thiscall: `CHingedRigidBody::SimD160` (0x51d160), the hinge's frame update. Pops nothing.
 pub(super) fn sim_d160_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = D160Host { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp), this: r.ecx };
-    let eax = layout::sim_d160_at(&ctx.mem, r.ecx, &mut calls);
+    let eax = layout::pose_at(&ctx.mem, r.ecx, &mut calls);
     Ok(Return::void(eax, 0))
 }
 
@@ -299,7 +299,7 @@ impl SolveCalls for SolveHost<'_> {
 pub(super) fn sim_ead0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = SolveHost { mem: ctx.mem.clone(), host: ctx.host, frame, voted: false };
-    let eax = match layout::sim_ead0_at(&mut ctx.mem, r.ecx, frame, &mut calls) {
+    let eax = match layout::hinge_solve_at(&mut ctx.mem, r.ecx, frame, &mut calls) {
         Outcome::Linked => ctx.mem.hinge_link(r.ecx),
         Outcome::Unowned { result } => result,
         Outcome::Solved(_) if calls.voted => ctx.mem.hinge_definition(r.ecx),
@@ -326,11 +326,11 @@ const EFE0_EDGE: u32 = 0x10;
 
 impl RefreshCalls for EfeHost<'_> {
     fn load(&self) -> RefreshState {
-        self.mem.efe0_state(self.this)
+        self.mem.hinge_refresh_state(self.this)
     }
 
     fn store(&mut self, state: &RefreshState) {
-        self.mem.store_efe0_state(self.this, state);
+        self.mem.store_hinge_refresh_state(self.this, state);
     }
 
     fn wake_body(&mut self, this: u32) {
@@ -502,7 +502,7 @@ impl layout::FD00Calls for DetachHost<'_> {
         self.0.call_at(sp, 0x4e41a0, link, &[]);
     }
 
-    fn init_bd0(&mut self, _: &mut Mem, sp: u32, body: u32) {
+    fn init_walker_marks(&mut self, _: &mut Mem, sp: u32, body: u32) {
         self.0.call_at(sp, INIT_BD0, body, &[]);
     }
 
@@ -563,7 +563,7 @@ pub(super) fn sim_da60_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn sim_efe0_run(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let frame = aligned_frame(r.esp);
     let mut calls = EfeHost { mem: ctx.mem.clone(), host: ctx.host, frame, this: r.ecx };
-    let at = ctx.mem.efe0_frame(r.ecx, frame - EFE0_D860_OUT);
+    let at = ctx.mem.refresh_handles(r.ecx, frame - EFE0_D860_OUT);
     hinge_refresh::refresh_hinge(&mut calls, &at);
     Ok(Return::void(0, 0))
 }
@@ -612,7 +612,7 @@ impl rbr_physics::entities::hinge_offset::OffsetCalls for D860Host<'_> {
 
 /// thiscall `(out)`, `ret 4`: `CHingedRigidBody::SimD860` (0x51d860), its vector into `out`; returns `out`.
 pub(super) fn hinge_sim_d860(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
-    let input = ctx.mem.d860_input(r.ecx);
+    let input = ctx.mem.offset_input(r.ecx);
     let mut calls = D860Host { mem: ctx.mem.clone(), host: ctx.host, frame: aligned_frame(r.esp) };
     let v = rbr_physics::entities::hinge_offset::hinge_offset(&mut calls, &input);
     for (k, x) in v.into_iter().enumerate() {

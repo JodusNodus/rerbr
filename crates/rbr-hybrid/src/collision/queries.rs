@@ -110,12 +110,12 @@ pub(super) fn grid_ray(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 }
 
 /// thiscall `(origin, end, out)`, ret 0xc: `CCollisionSystem::Vf00` (0x4fe810), the segment query on the system
-/// (`layout::system_vf00`); eax is 1 on a hit.
+/// (`layout::segment_query`); eax is 1 on a hit.
 pub(super) fn system_vf00(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [origin, end, out, ..] = r.stack;
     let frame = layout::system_frame(r.esp);
     let mut calls = SystemCallsAt { host: ctx.host, frame };
-    let eax = layout::system_vf00(&mut calls, &mut ctx.mem, r.ecx, origin, end, out, frame);
+    let eax = layout::segment_query(&mut calls, &mut ctx.mem, r.ecx, origin, end, out, frame);
     Ok(Return::void(eax, 0xc))
 }
 
@@ -306,7 +306,7 @@ pub(super) fn grid_add_edge(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> 
 /// with one point (the asm's bounds loop would not end) and no grid with a source.
 pub(super) fn grid_ops_m6610(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [src, a, b, ..] = r.stack;
-    let eax = layout::grid_ops_m6610(&mut GridOps(ctx.host), &mut ctx.mem, r.ecx, src, a, b, r.esp)
+    let eax = layout::copy_grid(&mut GridOps(ctx.host), &mut ctx.mem, r.ecx, src, a, b, r.esp)
         .ok_or(Decline::Unsupported("a grid with one point, or none with a source"))?;
     Ok(Return::void(eax, 12))
 }

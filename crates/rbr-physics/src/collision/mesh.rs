@@ -103,7 +103,7 @@ pub fn node_walk<S: CollisionStore>(store: &mut S, query: u32, root: u32, out: u
 /// Builds the query box from the centre `a` and the half extents `b` in the scratch `tmp`, and walks the object's
 /// face tree over it with [`node_walk`]. The matches go to `out`, or to the object's own list when `out` is 0.
 /// Returns 1 when the list has records, else 0.
-pub fn seg_test170<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32, out: u32, tmp: u32) -> u32 {
+pub fn query_box_faces<S: CollisionStore>(store: &mut S, this: u32, a: u32, b: u32, out: u32, tmp: u32) -> u32 {
     let lst = if out == 0 { store.own_list(this) } else { out };
     store.set_u32(lst, 0);
     for k in 0..3 {
@@ -385,7 +385,7 @@ pub fn system_frame(esp: u32) -> SystemFrame {
 /// The collision system's segment query from the point at `origin_at` to the point at `end_at`: casts the mesh ray
 /// on the root ([`mesh_ray_worklist`]), then on a hit (`t` at most 1) writes the surface record to `out` (see
 /// [`mesh_hit::segment_record`]). Returns 1 on a hit, else 0; a miss writes nothing but the frame.
-pub fn system_vf00<S: CollisionStore>(
+pub fn segment_query<S: CollisionStore>(
     host: &mut impl SampleHost,
     store: &mut S,
     system: u32,

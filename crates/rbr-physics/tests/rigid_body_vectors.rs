@@ -7,7 +7,7 @@ mod common;
 use common::{
     check_window_list, check_windows, load, map_window_list, map_windows, parse, shared_windows, Call, Inner, Window,
 };
-use rbr_physics::collision::layout::body_hosts::Vf40Host;
+use rbr_physics::collision::layout::body_hosts::BodyResetHost;
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::quat::{from_quat, mul, normalize, Quat};
 use rbr_physics::mem::Mem;
@@ -16,22 +16,23 @@ use rbr_physics::physics_core::layout::Filing;
 use rbr_physics::physics_core::layout::FilingHost;
 use rbr_physics::rigid_body::contact::{contact_step, ContactHost, Impulse, Input, SampleHook};
 use rbr_physics::rigid_body::contact_list::{contact_list_step, Event, ListHost, Record};
-use rbr_physics::rigid_body::dot::{dot60, e43vf138, Dot138};
+use rbr_physics::rigid_body::dot::{response_combine, response_dot, ResponseInput};
 use rbr_physics::rigid_body::emit::{emit_body_event, BodyEvent, EmitHost, SLEEP};
 use rbr_physics::rigid_body::force::{accumulate_force, force_pass, ForceHost};
 use rbr_physics::rigid_body::host::{BodyCalls, CellHost, HostUnavailable, StateHost};
-use rbr_physics::rigid_body::host::{SolidCtorHost, Vf20Host, Vf54Host};
+use rbr_physics::rigid_body::host::{EntityScratchTailHost, EntityWalkHost, SolidCtorHost};
 use rbr_physics::rigid_body::impulse::{impulse, ImpulseHost};
 use rbr_physics::rigid_body::integrate::{integrate, IntegrateHost, StateSignal};
 use rbr_physics::rigid_body::layout::{
-    cdef_new_solid, construct_state, contact_vote, entity_vf20_jump, load_contact, new_def, refresh_state_rotation,
-    scale_add_rows, scratch_reset_after_entity, solid_def_ctor, solid_filing, solid_sleep, vf16_helper, RestHost,
+    body_fold_rows_by_columns, body_fold_rows_by_rows, body_rotate_rows, clamp_velocity_along, def_flag,
+    fold_body_rows, fold_body_rows_reordered, point_velocity, quat_diff_body_rows, quat_plus_body_rows,
+    quat_transform_body_rows, rows_to_body, solid_inverse_mass, store_scratch_base_init, store_scratch_reset,
+    transform_body_rows, transform_body_rows3, Body, Def, ParentFrame, Vec4,
 };
 use rbr_physics::rigid_body::layout::{
-    clamp_velocity_along, def_flag, fold_body_rows, fold_body_rows_reordered, fold_quat_body_rows_c4,
-    fold_quat_body_rows_c8, point_velocity, quat_body_rows_b8, quat_diff_body_rows, quat_plus_body_rows,
-    quat_transform_body_rows, solid_e43vfa0, solid_inverse_mass, store_scratch_base_init, store_scratch_reset,
-    transform_body_rows, transform_body_rows3, Body, Def, ParentFrame, Vec4,
+    cdef_new_solid, construct_state, contact_vote, entity_vf20_jump, load_contact, new_def, refresh_and_reset,
+    refresh_state_rotation, scale_add_rows, scratch_reset_after_entity, solid_def_ctor, solid_filing, solid_sleep,
+    RestHost,
 };
 use rbr_physics::rigid_body::layout::{impulse_tail, ring_append, ImpulseTailCalls};
 use rbr_physics::rigid_body::pose::{pose_step, PoseHost};
@@ -60,7 +61,7 @@ const EMIT: u32 = 0x52BE70;
 /// The body's slot 28 (`S28`, the force apply) and slot 29 (`S29`, the torque apply) in BigB's dumps.
 const APPLY_FORCE: u32 = 0x529340;
 const APPLY_TORQUE: u32 = 0x529EA0;
-/// `CSolid::Dot60` (0x52a500, x87) and `CSolid::E43Vf138` (slot 78, 0x52b990): the dot pair `dot::e43vf138` ports.
+/// `CSolid::Dot60` (0x52a500, x87) and `CSolid::E43Vf138` (slot 78, 0x52b990): the dot pair `dot::response_combine` ports.
 const DOT60: u32 = 0x52A500;
 const E43_VF138: u32 = 0x52B990;
 const STEP77: u32 = 0x529D30;
@@ -1082,7 +1083,7 @@ fn f32_at(windows: &[Window], k: usize) -> f32 {
 
 /// One Dot60 call (top-level or inside E43Vf138): windows 0..2 are `a`, `b` and `c`, window 3 the def's vector.
 fn check_dot60(windows: &[Window], st0: u64, name: &str) {
-    let got = dot60(vec3_at(windows, 0), vec3_at(windows, 1), floats3(&windows[2].before), vec3_at(windows, 3));
+    let got = response_dot(vec3_at(windows, 0), vec3_at(windows, 1), floats3(&windows[2].before), vec3_at(windows, 3));
     assert_eq!(f64::from(got).to_bits(), st0, "{name}: Dot60 result");
 }
 
@@ -1123,9 +1124,14 @@ fn e43vf138_matches_original_calls() {
         let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"));
         for call in parse(&text).into_iter().filter(|c| c.addr == E43_VF138) {
             let w = &call.windows;
-            let input =
-                Dot138 { a: vec3_at(w, 0), b: vec3_at(w, 1), c: vec3_at(w, 2), scale: vec3_at(w, 5), k: f32_at(w, 6) };
-            let (f, e) = e43vf138(&input, call.args[4], f32_at(w, 4), f32_at(w, 3));
+            let input = ResponseInput {
+                a: vec3_at(w, 0),
+                b: vec3_at(w, 1),
+                c: vec3_at(w, 2),
+                scale: vec3_at(w, 5),
+                k: f32_at(w, 6),
+            };
+            let (f, e) = response_combine(&input, call.args[4], f32_at(w, 4), f32_at(w, 3));
             let mut mem = map_window_list(w);
             mem.set_f32(w[4].at, f);
             mem.set_f32(w[3].at, e);
@@ -1705,7 +1711,7 @@ fn transform_rows3_matches_original_calls() {
 fn subtract_origin_and_transform_rows_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VAR, E43_VFA0, "CSolid::E43VfA0", |call, mem| {
-        solid_e43vfa0(mem, call.args[0], call.args[1], call.args[2]);
+        rows_to_body(mem, call.args[0], call.args[1], call.args[2]);
     });
 }
 
@@ -1753,7 +1759,7 @@ fn quat_transform_rows_matches_original_calls() {
 fn quat_rows_b8_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VAR, E43_VFB8, "CSolid::E43VfB8", |call, mem| {
-        quat_body_rows_b8(mem, call.args[0], call.args[1], call.args[2]);
+        body_rotate_rows(mem, call.args[0], call.args[1], call.args[2]);
     });
 }
 
@@ -1761,7 +1767,7 @@ fn quat_rows_b8_matches_original_calls() {
 fn quat_fold_rows_c4_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VAR, E43_VFC4, "CSolid::E43VfC4", |call, mem| {
-        fold_quat_body_rows_c4(mem, call.args[0], call.args[1], call.args[2]);
+        body_fold_rows_by_columns(mem, call.args[0], call.args[1], call.args[2]);
     });
 }
 
@@ -1769,7 +1775,7 @@ fn quat_fold_rows_c4_matches_original_calls() {
 fn quat_fold_rows_c8_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     common::replay(VAR, E43_VFC8, "CSolid::E43VfC8", |call, mem| {
-        fold_quat_body_rows_c8(mem, call.args[0], call.args[1], call.args[2]);
+        body_fold_rows_by_rows(mem, call.args[0], call.args[1], call.args[2]);
     });
 }
 
@@ -1834,7 +1840,7 @@ fn refresh_state_rotation_matches_original_calls() {
 #[derive(Default)]
 struct EntityCount(usize);
 
-impl Vf54Host for EntityCount {
+impl EntityScratchTailHost for EntityCount {
     fn entity_scratch_tail(&mut self) -> Result<(), HostUnavailable> {
         self.0 += 1;
         Ok(())
@@ -1888,15 +1894,15 @@ impl MulHost for Vf16Replay<'_> {
     }
 }
 
-impl Vf40Host for Vf16Replay<'_> {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl BodyResetHost for Vf16Replay<'_> {
+    fn reset_state(&mut self, state: u32) -> u32 {
         let call = self.unk44.take().expect("the original made no CBody::CState::Unk44 call");
         assert_eq!(call.args, [state], "CBody::CState::Unk44: arguments");
         replay_windows(&mut self.mem, &call.windows, "CBody::CState::Unk44");
         call.eax
     }
 
-    fn entity_vf40(&mut self, body: u32) -> u32 {
+    fn reset_entity(&mut self, body: u32) -> u32 {
         assert_eq!(self.walk.args, [body], "CEntity::Vf40: arguments");
         replay_windows(&mut self.mem, &self.walk.windows, "CEntity::Vf40");
         self.walk.eax
@@ -1922,7 +1928,7 @@ fn vf16_helper_matches_original_calls() {
             walk,
         };
         products += host.products.len();
-        let ret = vf16_helper(&mut mem, call.args[0], &mut host).expect("E47_Vf16Helper: a host is not called");
+        let ret = refresh_and_reset(&mut mem, call.args[0], &mut host).expect("E47_Vf16Helper: a host is not called");
         assert!(host.products.is_empty(), "E47_Vf16Helper call {}: fewer product calls", call.index);
         assert_eq!(ret, call.eax, "E47_Vf16Helper call {}: returns the walk's result", call.index);
         check_windows(call, &mem, "E47_Vf16Helper");
@@ -1934,8 +1940,8 @@ fn vf16_helper_matches_original_calls() {
 #[derive(Default)]
 struct WalkRecord(Vec<(u32, u32)>);
 
-impl Vf20Host for WalkRecord {
-    fn entity_walk_s20(&mut self, body: u32, arg: u32) -> u32 {
+impl EntityWalkHost for WalkRecord {
+    fn walk_entity(&mut self, body: u32, arg: u32) -> u32 {
         self.0.push((body, arg));
         0x0051_A3A0
     }

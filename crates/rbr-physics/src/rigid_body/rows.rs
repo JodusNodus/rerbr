@@ -109,15 +109,15 @@ pub fn quat_diff_rows(q: Quat, offset: Vec4, rows: &mut [Vec4]) {
 }
 
 /// The shared transpose sums: `x' = (m2 z + m1 y) + m0 x`, `y' = (m5 z + m4 y) + m3 x`, `z' = (m8 z + m7 y) + m6 x`.
-fn rotate_b8(m: &[f32; 10], x: f32, y: f32, z: f32) -> [f32; 3] {
+fn row_sums(m: &[f32; 10], x: f32, y: f32, z: f32) -> [f32; 3] {
     [(m[2] * z + m[1] * y) + m[0] * x, (m[5] * z + m[4] * y) + m[3] * x, (m[8] * z + m[7] * y) + m[6] * x]
 }
 
-/// The rotation of `q` rebuilt for each row (`rotate_b8`); the fourth lane is left as it was.
-pub fn quat_rows_b8(q: Quat, rows: &mut [Vec4]) {
+/// The rotation of `q` rebuilt for each row (`row_sums`); the fourth lane is left as it was.
+pub fn rotate_rows(q: Quat, rows: &mut [Vec4]) {
     let m = quat_words(q);
     for row in rows {
-        let [x, y, z] = rotate_b8(&m, row.x, row.y, row.z);
+        let [x, y, z] = row_sums(&m, row.x, row.y, row.z);
         row.x = x;
         row.y = y;
         row.z = z;
@@ -144,7 +144,7 @@ pub fn transform_matrix_row(matrix: &[f32; 9], row: &mut Vec4) {
 /// With the matrix built once, `x' = (m0 x + m3 y) + m6 z`, `y' = (m1 x + m4 y) + m7 z`, `z' = (m2 x + m5 y) + m8 z`
 /// (the matrix's columns, packed), and the fourth lane is `0 - ((offset.x x + offset.y y + offset.z z) - w)` with the
 /// old row.
-pub fn quat_fold_rows_c4(m: &[f32; 10], offset: Vec4, rows: &mut [Vec4]) {
+pub fn fold_rows_by_columns(m: &[f32; 10], offset: Vec4, rows: &mut [Vec4]) {
     for row in rows {
         let (x, y, z) = (row.x, row.y, row.z);
         row.x = (m[0] * x + m[3] * y) + m[6] * z;
@@ -154,12 +154,12 @@ pub fn quat_fold_rows_c4(m: &[f32; 10], offset: Vec4, rows: &mut [Vec4]) {
     }
 }
 
-/// As `quat_fold_rows_c4` with the `rotate_b8` sums, and the fourth lane is
+/// As `fold_rows_by_columns` with the `row_sums` sums, and the fourth lane is
 /// `0 - ((0 - w) - ((offset.x x + offset.y y) + offset.z z))` with the old row.
-pub fn quat_fold_rows_c8(m: &[f32; 10], offset: Vec4, rows: &mut [Vec4]) {
+pub fn fold_rows_by_rows(m: &[f32; 10], offset: Vec4, rows: &mut [Vec4]) {
     for row in rows {
         let (x, y, z) = (row.x, row.y, row.z);
-        let [nx, ny, nz] = rotate_b8(m, x, y, z);
+        let [nx, ny, nz] = row_sums(m, x, y, z);
         row.x = nx;
         row.y = ny;
         row.z = nz;

@@ -5,13 +5,13 @@
 //! The port makes the calls through the traits below; the caller answers them (the game, or the vector test).
 
 /// The child call of a gated walk: the pass, and its argument where the pass takes one. The names give the step pass the walk
-/// belongs to (`notes/physics.md`); `Unnamed1` and `Unnamed2` are not known.
+/// belongs to (`notes/physics.md`); `UnknownPass` and `UnknownArgPass` are not known.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChildCall {
     /// The child walk of the step's substep pass.
     Substep(u32),
     /// Unknown meaning.
-    Unnamed1,
+    UnknownPass,
     /// The first-step init and the post-slice pass. Working name.
     Init,
     /// The car hook pass.
@@ -21,7 +21,7 @@ pub enum ChildCall {
     /// The body torque pass.
     Torque,
     /// Unknown meaning.
-    Unnamed2(u32),
+    UnknownArgPass(u32),
     /// The integrator pass.
     Integrate(u32),
 }

@@ -3,7 +3,7 @@
 
 use super::solid_ctor::SOLID_SCRATCH;
 use crate::mem::Mem;
-use crate::rigid_body::host::{HostUnavailable, Vf20Host, Vf54Host};
+use crate::rigid_body::host::{EntityScratchTailHost, EntityWalkHost, HostUnavailable};
 
 /// The scratch block (`CSolid+0x280`, `E47SolidScratch`, 0x150 bytes). `E47SolidScratch::Vf04` clears these vectors
 /// (block-relative offsets, 16 bytes each; `0x20` is the four words `m_zero20`) and these words, and leaves the rest.
@@ -49,7 +49,11 @@ pub const CELL_LINK: u32 = 0x160;
 
 /// `E47_Vf54Helper` (0x52b6b0) (name ours): the entity call first, then the scratch block's reset (the helper
 /// tail-jumps to the scratch's slot 1, `Vf04`). `this` is the body; its scratch block is at +0x280.
-pub fn scratch_reset_after_entity(mem: &mut Mem, this: u32, host: &mut impl Vf54Host) -> Result<(), HostUnavailable> {
+pub fn scratch_reset_after_entity(
+    mem: &mut Mem,
+    this: u32,
+    host: &mut impl EntityScratchTailHost,
+) -> Result<(), HostUnavailable> {
     host.entity_scratch_tail()?;
     store_scratch_reset(mem, this + SOLID_SCRATCH);
     Ok(())
@@ -57,6 +61,6 @@ pub fn scratch_reset_after_entity(mem: &mut Mem, this: u32, host: &mut impl Vf54
 
 /// `CSolid::E43Vf20` (0x529200), the slot-8 entry: a bare jump to the entity walk `CEntity::E43Vf20` (0x51a3a0) with
 /// the same stack argument. Returns the walk's result.
-pub fn entity_vf20_jump(body: u32, arg: u32, host: &mut impl Vf20Host) -> u32 {
-    host.entity_walk_s20(body, arg)
+pub fn entity_vf20_jump(body: u32, arg: u32, host: &mut impl EntityWalkHost) -> u32 {
+    host.walk_entity(body, arg)
 }
