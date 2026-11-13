@@ -24,7 +24,7 @@ const SETUP_DROP_GEAR: u32 = 0x3AC;
 const TWEAK_VALUE: u32 = 0xC;
 
 /// `E53SetupRows::Normalize` (0x546f70) on the drive options at `options`: each of the first 32 gear rows gets its
-/// ratio ([`drive::gear_ratio`]), marked dirty.
+/// ratio ([`crate::engine_driveline::drive::gear_ratio`]), marked dirty.
 pub fn normalize_gear_rows(mem: &mut Mem, options: u32) {
     for k in 0..NORMALIZED_ROWS {
         let row = options + OPTIONS_ROWS + k * ROW;

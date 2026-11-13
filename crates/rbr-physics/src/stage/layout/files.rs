@@ -39,7 +39,7 @@ pub trait StageHost: Heap + AllocHost {
     /// "Error getting interactive object handle" (the handle is then left 0).
     fn interactive_handle(&mut self, id: u32) -> Option<u32>;
     /// The `CSigStuff` emit (signal `+0x4730`) of a placement; its receiver is `CPhysics::E46_Notify67d0` (0x5267d0,
-    /// [`place`]).
+    /// [`place`](super::placement::place)).
     fn stuff(&mut self, mem: &mut Mem, stuff: &Stuff);
     /// Free memory of `size` bytes for the original's temporaries: a placement's `CSigStuff` (a heap block the emitter
     /// deletes after the emit) and `CColGrid::SyncGrid`'s vertices (its stack).
@@ -144,8 +144,8 @@ pub fn construct_wall(mem: &mut Mem, at: u32, def: u32) {
     mem.set_u32(at + WALL_MESH, 0);
 }
 
-/// `E45_MD60` (0x523d60, `physics_core::physics_core::layout::detect_calls::build_cell_grid`): with no cell grid yet, a new one over the brake
-/// wall's box, or over the default area when there is no wall.
+/// `E45_MD60` (0x523d60, `physics_core::layout::detect_calls::build_cell_grid`): with no cell grid yet, a new one over
+/// the brake wall's box, or over the default area when there is no wall.
 pub fn build_cell_grid(mem: &mut Mem, host: &mut impl StageHost) {
     physics::detect_calls::build_cell_grid(mem, &mut Calls(host));
 }
