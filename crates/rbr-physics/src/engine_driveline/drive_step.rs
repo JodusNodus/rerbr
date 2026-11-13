@@ -16,10 +16,12 @@ pub trait DriveStepHost: GearHost + MatInverseHost + MatVecHost + FreeWheelHost 
     fn car_forwarder(&mut self, car: u32, dt: f32, speed: f32) -> f64;
     /// NGP's starter (`ngp::starter`): its speed term for `dt`.
     fn ngp_speed_term(&mut self, dt: f32) -> f32;
-    /// NGP's curve term (not ported): its value for the curve state, the def's block, the def, the drive's input
-    /// (the first four arguments) and `dt`.
+    /// NGP's curve term, the wheel's brake ([`crate::ngp::brake`]): its value for the curve state, the def's block,
+    /// the def, the drive's input (the first four arguments) and `dt`.
     fn ngp_curve_term(&mut self, args: [u32; 4], dt: f32) -> f32;
-    /// NGP's wheel worker (its shift logic, then [`wheel_worker`]; not ported).
+    /// NGP's wheel worker: the downforce ([`crate::ngp::downforce`]), the drive gain's loss and the diffs' lock
+    /// torques ([`crate::ngp::diff`]), then NGP's axle worker ([`crate::ngp::axle`], drive types 4 and 5) or
+    /// [`wheel_worker`](super::drive_worker::wheel_worker).
     fn ngp_wheel_worker(&mut self, dt: f32);
 }
 
