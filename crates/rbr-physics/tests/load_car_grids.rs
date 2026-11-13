@@ -191,8 +191,7 @@ fn build(data: &Data, run: &Run, fill: u8, game_garbage: bool) -> Mem {
     mem.map(PHYSICS_GLOBAL, &1u32.to_le_bytes());
     mem.map(SCRATCH, &[0; 0x100]);
     // HedgeHog3D's names.
-    for &(name, id, at) in &car_grids::PARTS {
-        let name = if id == 1 { "MrCarCollision" } else { name };
+    for (name, at) in load::layout::CAR_MESH_NAMES {
         mem.map(run.hh + at, &[name.as_bytes(), &[0]].concat());
     }
 

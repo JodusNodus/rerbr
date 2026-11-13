@@ -697,10 +697,10 @@ pub fn build(data: &Data, stage_name: &str, app_state: u32, race: &Race) -> Resu
         })
         .collect();
     let meshes = car_grids::car_meshes(&bodies).ok_or(format!("{model}: no car meshes"))?;
-    let (low, high) = car_grids::PARTS.iter().fold((u32::MAX, 0), |(lo, hi), part| (lo.min(part.2), hi.max(part.2)));
+    let names = load_layout::CAR_MESH_NAMES;
+    let (low, high) = names.iter().fold((u32::MAX, 0), |(lo, hi), &(_, at)| (lo.min(at), hi.max(at)));
     let hh_base = heap.take(high - low + 0x20) - low;
-    for &(name, id, at) in &car_grids::PARTS {
-        let name = if id == 1 { "MrCarCollision" } else { name };
+    for (name, at) in names {
         mem.map(hh_base + at, &[name.as_bytes(), &[0]].concat());
     }
     load::emit_car_meshes(&mut mem, &mut heap.clone(), hh_base, &meshes);

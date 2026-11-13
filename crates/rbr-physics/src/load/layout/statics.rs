@@ -44,10 +44,23 @@ const FIRE_MESH_FLAGS: u32 = 0x1_0000;
 const FIRE_MESH_NAME: u32 = 0x0072_afbc;
 const FIRE_MESH_MATERIAL: u8 = 200;
 
+/// The car meshes' names in HedgeHog3D's image, by grid id (1-8), with their offsets: the body's is
+/// `"MrCarCollision"`, a part's its collision body's (`car_grids::PARTS`).
+pub const CAR_MESH_NAMES: [(&str, u32); 8] = [
+    ("MrCarCollision", 0x1a_ca74),
+    ("c_e_door_l", 0x1a_fe40),
+    ("c_e_door_r", 0x1a_fe34),
+    ("c_e_bonnet", 0x1a_fe28),
+    ("c_e_exhaust", 0x1a_fe1c),
+    ("c_e_bumper_f", 0x1a_fe0c),
+    ("c_e_bumper_b", 0x1a_fdfc),
+    ("c_e_wing", 0x1a_fdf0),
+];
+
 /// The car loader's meshes (0x1001ecc0, `car_grids::car_meshes`), each emitted to `E37SigFactory720`, which builds its
 /// collision grid. HedgeHog3D is at `hh_base`. The heap gives, in this order: the body's maps (the file's first, then
 /// its second; the file loader's), then per mesh its descriptor, vertices (16 bytes each, `w` not written), faces (7
-/// bytes each) and the body's samples. Returns the descriptors.
+/// bytes each) and the body's samples. The names are [`CAR_MESH_NAMES`]. Returns the descriptors.
 pub fn emit_car_meshes(mem: &mut Mem, host: &mut impl Heap, hh_base: u32, meshes: &[CarMesh]) -> Vec<u32> {
     let maps: Vec<[u32; 2]> = meshes
         .iter()
@@ -68,7 +81,7 @@ pub fn emit_car_meshes(mem: &mut Mem, host: &mut impl Heap, hh_base: u32, meshes
         }
         let faces = put(mem, host, m.faces.as_flattened());
         mem.set_u32(desc, m.id);
-        mem.set_u32(desc + 8, hh_base + m.name);
+        mem.set_u32(desc + 8, hh_base + CAR_MESH_NAMES[m.id as usize - 1].1);
         mem.map(desc + 0xc, &(m.vertices.len() as u16).to_le_bytes());
         mem.map(desc + 0xe, &(m.faces.len() as u16).to_le_bytes());
         mem.set_u32(desc + 0x10, vertices);
