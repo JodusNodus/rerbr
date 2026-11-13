@@ -78,7 +78,7 @@ fn sim_d860_matches_original_calls() {
         let mem = map_windows(call);
         let this = call.args[0];
         let out = call.args[1];
-        let input = mem.d860_input(this);
+        let input = mem.offset_input(this);
         let mut answers = Answers { mem, inner: &call.inner, next: 0 };
         let result = hinge_offset::hinge_offset(&mut answers, &input);
         assert_eq!(answers.next, call.inner.len(), "call {}: the port's calls", call.index);

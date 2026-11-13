@@ -23,8 +23,8 @@ use crate::physics_core::layout::{self as physics, FilingHost, NotifyHost};
 use crate::rigid_body::emit::{window_start, BodyEvent};
 use crate::rigid_body::host::{HostUnavailable, SolidCtorHost};
 use crate::rigid_body::layout::{
-    cdef_new_solid, construct_solid, place_solid, scale_add_rows, solid_filing, solid_sleep, solid_wake, vf16_helper,
-    Body, PlaceHost, RestHost,
+    cdef_new_solid, construct_solid, place_solid, refresh_and_reset, scale_add_rows, solid_filing, solid_sleep,
+    solid_wake, Body, PlaceHost, RestHost,
 };
 use crate::rigid_body::rotation::{self, MulHost};
 use crate::stage::Stuff;
@@ -161,7 +161,7 @@ impl<H> CtorHost for Calls<'_, H> {
 }
 
 impl<H: StageHost> PlaceHost for Calls<'_, H> {
-    /// `CSolid::Vf40` (0x52b6d0, `vf16_helper`): `CBody::Vf40`'s two calls end it, and nothing reads what they write
+    /// `CSolid::Vf40` (0x52b6d0, `refresh_and_reset`): `CBody::Vf40`'s two calls end it, and nothing reads what they write
     /// before them, so `Deferred` keeps them and they are made here after it, in its order: `CBody::CState::Unk44`
     /// (`state_unka44`, with its last call, `CColGrid::SyncGrid` on the body's grid, made after it the same way), then
     /// `CEntity::Vf40` (0x51a4b0): the state's slot 0x44 (`CBase::Unk44`, nothing) and the walk of the children (a placed
@@ -169,7 +169,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
     fn vf40(&mut self, mem: &mut Mem, this: u32) -> Result<(), HostUnavailable> {
         check(holds(mem, this, SOLID_VF40))?;
         let mut deferred = Deferred::default();
-        vf16_helper(mem, this, &mut deferred)?;
+        refresh_and_reset(mem, this, &mut deferred)?;
         let (Some(state), Some(body)) = (deferred.state, deferred.body) else {
             return Err(HostUnavailable);
         };
@@ -190,7 +190,7 @@ impl<H: StageHost> PlaceHost for Calls<'_, H> {
 /// A collision grid's edge-vector count (`+0x68d`, the vectors from `+0x40`).
 const GRID_EDGES: u32 = 0x68D;
 
-/// The calls `vf16_helper` and `state_unka44` end with, kept to be made after them: `CBody::Vf40`'s state and body, and
+/// The calls `refresh_and_reset` and `state_unka44` end with, kept to be made after them: `CBody::Vf40`'s state and body, and
 /// `SyncGrid`'s grid and arguments.
 #[derive(Default)]
 struct Deferred {

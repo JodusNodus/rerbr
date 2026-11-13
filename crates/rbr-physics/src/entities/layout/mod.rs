@@ -23,11 +23,11 @@ pub use crate::entities::exclusion::{
 pub use crate::entities::frame::{entity_hook_at, old_hook_at};
 pub use crate::entities::ground::box_probe;
 pub use crate::entities::hinge_step::{
-    hinge_limit_residual, hinge_limit_sum, hinge_rotation, limit_update_at, sim_cff0_at, sim_d160_at, sim_e1d0_at,
-    sim_ead0_at, sim_f950_at,
+    hinge_advance_at, hinge_limit_residual, hinge_limit_sum, hinge_rotation, hinge_solve_at, limit_update_at, pivot_at,
+    pose_at, slip_term_at,
 };
 pub use crate::entities::material_table::{sample_indexed, Indexed};
-pub use crate::entities::slots::{clear_car_bodies, componentwise_mul, init_bd0, Clear480Calls};
+pub use crate::entities::slots::{clear_car_bodies, componentwise_mul, init_walker_marks, ClearBodiesCalls};
 pub use classes::{
     TweakKind, BASE_VTABLE, ENTITY_DEF_VTABLE, GROUND_DEF_NAME, GROUND_DEF_SIZE, GROUND_DEF_VTABLE, GROUND_OPTIONS,
     GROUND_SINGLETON, GROUND_SIZE, GROUND_TWEAK_DICT, GROUND_TWEAK_MEMBERS, GROUND_VTABLE, HINGED_DEF_NAME,

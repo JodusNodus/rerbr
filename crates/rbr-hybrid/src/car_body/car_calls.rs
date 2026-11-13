@@ -191,7 +191,7 @@ pub(super) struct CarVf54<'a> {
     pub(super) car: u32,
 }
 
-impl rbr_physics::rigid_body::host::Vf54Host for CarVf54<'_> {
+impl rbr_physics::rigid_body::host::EntityScratchTailHost for CarVf54<'_> {
     fn entity_scratch_tail(&mut self) -> Result<(), rbr_physics::rigid_body::host::HostUnavailable> {
         let entity = self.car + 0x5c;
         let target = self.mem.u32(self.mem.u32(entity) + 4);

@@ -133,7 +133,7 @@ pub trait FD00Calls {
     /// `E34Link10::UnlinkA` (0x4e41a0) on the body's entity link.
     fn unlink(&mut self, mem: &mut Mem, sp: u32, link: u32);
     /// `CEntity::E43_InitBD0` (0x519bd0).
-    fn init_bd0(&mut self, mem: &mut Mem, sp: u32, body: u32);
+    fn init_walker_marks(&mut self, mem: &mut Mem, sp: u32, body: u32);
     /// `CCellGrid::LookupTwin` (0x4e03b0) at the position's x and y words: returns the cell.
     fn lookup_twin(&mut self, mem: &mut Mem, sp: u32, grid: u32, x: u32, y: u32) -> u32;
     /// The cell move (0x4faeb0, cdecl).
@@ -233,7 +233,7 @@ fn detach_tail(mem: &mut Mem, this: u32, frame: u32, event: u32, sig: u32, calls
     mem.set_u32(this + BODY_PARENT, 0);
     mem.set_u32(this + HINGE_OWNER, 0);
     calls.slot(mem, frame - 4, this, FD00_SLOT_90);
-    calls.init_bd0(mem, frame - 4, this);
+    calls.init_walker_marks(mem, frame - 4, this);
     let (x, y) = (mem.u32(this + BODY_POSITION), mem.u32(this + BODY_POSITION + 4));
     let grid = mem.u32(CELL_GRID_GLOBAL);
     let cell = calls.lookup_twin(mem, frame - 0xc, grid, x, y);

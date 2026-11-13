@@ -40,7 +40,7 @@ pub fn dispatch_by_flags(calls: &mut impl FlagDispatch, args: [u32; 5]) -> u32 {
 
 /// Initialises the entity's walker marks at `this`: both get the walker and the walker's
 /// count plus one. Returns the second serial.
-pub fn init_bd0<S: EntityStore>(store: &mut S, this: u32) -> u32 {
+pub fn init_walker_marks<S: EntityStore>(store: &mut S, this: u32) -> u32 {
     let mut serial = 0;
     for mark in 0..2 {
         let walker = store.identity();
@@ -52,8 +52,8 @@ pub fn init_bd0<S: EntityStore>(store: &mut S, this: u32) -> u32 {
 }
 
 /// The calls that clear the car's bodies.
-pub trait Clear480Calls {
-    fn sim_fd00(&mut self, sp: u32, body: u32) -> u32;
+pub trait ClearBodiesCalls {
+    fn detach_body(&mut self, sp: u32, body: u32) -> u32;
 }
 
 /// Checks all four tags and clears a matching slot only when the body's settle check returns nonzero.
@@ -62,10 +62,10 @@ pub fn clear_car_bodies<S: EntityStore>(
     car: u32,
     body: u32,
     frame: u32,
-    calls: &mut impl Clear480Calls,
+    calls: &mut impl ClearBodiesCalls,
 ) {
     for i in 0..4 {
-        if store.car_body_slot(car, i) == body && calls.sim_fd00(frame - 0x10, body) != 0 {
+        if store.car_body_slot(car, i) == body && calls.detach_body(frame - 0x10, body) != 0 {
             store.store_car_body_slot(car, i, 0);
         }
     }

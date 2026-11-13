@@ -56,7 +56,7 @@ pub fn refresh_state_rotation<S: RigidStore>(
 }
 
 /// Refreshes the state matrix twice, then the body's base reset. Returns that call's result.
-pub fn vf16_helper<S: RigidStore>(
+pub fn refresh_and_reset<S: RigidStore>(
     store: &mut S,
     this: u32,
     host: &mut (impl MulHost + BodyResetHost),

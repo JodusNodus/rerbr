@@ -196,10 +196,14 @@ impl Session {
         self.prefs.cockpit
     }
 
-    /// Puts the car's nudges on its fixed views and its chase, and the cockpit's choices on the in-car view.
+    /// Puts the car's nudges on its fixed views and its chase, and the cockpit's choices on the in-car view; the
+    /// mirrors are set for the seat as nudged.
     pub fn apply(&self, mounts: &mut Mounts, playback: &mut Playback) {
         let nudges = self.nudges();
         mounts.nudges = nudges;
+        if let Some(seat) = mounts.of(CarView::Cockpit) {
+            playback.aim_mirrors(seat.eye);
+        }
         playback.set_chase_settings(Settings::default().nudged(nudges[CarView::Chase.index()].shift));
         playback.set_cockpit(self.cockpit());
     }

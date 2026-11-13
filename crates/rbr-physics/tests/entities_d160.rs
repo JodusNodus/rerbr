@@ -61,11 +61,11 @@ impl<'a> Answers<'a> {
 
 impl PoseCalls for Answers<'_> {
     fn load(&self) -> PoseState {
-        self.mem.d160_words(self.this)
+        self.mem.pose_state(self.this)
     }
 
     fn store(&mut self, state: &PoseState) {
-        self.mem.store_d160_words(self.this, state);
+        self.mem.store_pose_state(self.this, state);
     }
 
     fn car_transform(&mut self, car: u32, pose: u32, out: u32) {
@@ -99,7 +99,7 @@ fn sim_d160_matches_original_calls() {
     for call in &calls {
         let mem = map_windows(call);
         let this = call.args[0];
-        let frame = mem.d160_frame(this);
+        let frame = mem.pose_handles(this);
         let mut answers = Answers { mem, this, inner: &call.inner, next: 0 };
         hinge_pose::update_pose(&mut answers, &frame);
         assert_eq!(answers.next, call.inner.len(), "call {}: the port's calls", call.index);

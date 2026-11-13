@@ -1,7 +1,7 @@
 //! The body's row and point calls over the store: the row transforms and folds, the inverse mass, the point
 //! velocity, the response and the velocity clamp.
 
-use super::dot::{self, Dot138};
+use super::dot::{self, ResponseInput};
 use super::response::ResponseHost;
 use super::rows::RowFrame;
 use super::store::RigidStore;
@@ -22,7 +22,7 @@ pub fn transform_body_rows3<S: RigidStore>(store: &mut S, this: u32, rows: u32, 
 /// Subtracts the body's position from every row, then transforms its first three lanes by the body's matrix. The
 /// origin is read once and all four lanes change; the matrix is read anew for each row and lane 3 keeps the
 /// subtracted value.
-pub fn solid_e43vfa0<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) -> u32 {
+pub fn rows_to_body<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) -> u32 {
     let origin = store.position(this);
     for k in 0..count {
         let at = rows + 16 * k;
@@ -60,16 +60,16 @@ pub fn def_flag(store: &impl RigidStore, this: u32) -> bool {
 
 /// `args` are the addresses `a`, `b`, `c` (vectors), `dp` (the int), `e` and `f` (the floats, written back). The
 /// definition's scale and `k`.
-pub fn e43vf138<S: RigidStore>(store: &mut S, this: u32, [a, b, c, dp, e, f]: [u32; 6]) {
+pub fn response_combine_at<S: RigidStore>(store: &mut S, this: u32, [a, b, c, dp, e, f]: [u32; 6]) {
     let def = store.definition(this);
-    let input = Dot138 {
+    let input = ResponseInput {
         a: store.row(a),
         b: store.row(b),
         c: store.row(c),
         scale: def.local_inverse_inertia,
         k: def.inverse_mass,
     };
-    let (f_out, e_out) = dot::e43vf138(&input, dp, store.f32(f), store.f32(e));
+    let (f_out, e_out) = dot::response_combine(&input, dp, store.f32(f), store.f32(e));
     store.set_f32(f, f_out);
     store.set_f32(e, e_out);
 }
@@ -146,18 +146,18 @@ fn update_body_quat_rows<S: RigidStore>(
 }
 
 /// The quaternion's matrix rebuilt for each row.
-pub fn quat_body_rows_b8<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
-    update_body_quat_rows(store, this, rows, count, |q, _, rows| rows::quat_rows_b8(q, rows));
+pub fn body_rotate_rows<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
+    update_body_quat_rows(store, this, rows, count, |q, _, rows| rows::rotate_rows(q, rows));
 }
 
 /// The matrix built once before the loop, the offset read for each row.
-pub fn fold_quat_body_rows_c4<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
-    update_body_rows_once(store, this, rows, count, rows::quat_fold_rows_c4);
+pub fn body_fold_rows_by_columns<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
+    update_body_rows_once(store, this, rows, count, rows::fold_rows_by_columns);
 }
 
-/// As `fold_quat_body_rows_c4`, with the other sums.
-pub fn fold_quat_body_rows_c8<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
-    update_body_rows_once(store, this, rows, count, rows::quat_fold_rows_c8);
+/// As `body_fold_rows_by_columns`, with the other sums.
+pub fn body_fold_rows_by_rows<S: RigidStore>(store: &mut S, this: u32, rows: u32, count: u32) {
+    update_body_rows_once(store, this, rows, count, rows::fold_rows_by_rows);
 }
 
 /// The matrix of the start orientation is built once; the offset and each row are read per row.

@@ -70,7 +70,7 @@ pub trait HingeStore: Raw {
 
     fn slip_input(&self, this: u32) -> SlipInput;
     /// The car state's word the slip term reads (`state` is the state object, from `slip_input`).
-    fn car_state_c00(&self, state: u32) -> f32;
+    fn car_slip_word(&self, state: u32) -> f32;
     fn pivot_input(&self, this: u32) -> PivotInput;
     fn store_pivot(&mut self, this: u32, pivot: &Pivot);
     /// The definition's settle vector when its gate is set, else 0.
@@ -79,14 +79,14 @@ pub trait HingeStore: Raw {
     fn solve_entry_terms(&self, this: u32) -> EntryTerms;
     fn solve_terms(&self, this: u32) -> SolveTerms;
     fn store_solved(&mut self, this: u32, value: f32);
-    fn db40_input(&self, this: u32) -> Option<FrameWalkInput>;
-    fn d860_input(&self, this: u32) -> OffsetInput;
-    fn efe0_state(&self, this: u32) -> RefreshState;
-    fn store_efe0_state(&mut self, this: u32, state: &RefreshState);
-    fn efe0_frame(&self, this: u32, d860_out: u32) -> RefreshHandles;
-    fn d160_frame(&self, this: u32) -> PoseHandles;
-    fn d160_words(&self, this: u32) -> PoseState;
-    fn store_d160_words(&mut self, this: u32, state: &PoseState);
+    fn frame_walk_input(&self, this: u32) -> Option<FrameWalkInput>;
+    fn offset_input(&self, this: u32) -> OffsetInput;
+    fn hinge_refresh_state(&self, this: u32) -> RefreshState;
+    fn store_hinge_refresh_state(&mut self, this: u32, state: &RefreshState);
+    fn refresh_handles(&self, this: u32, offset_result: u32) -> RefreshHandles;
+    fn pose_handles(&self, this: u32) -> PoseHandles;
+    fn pose_state(&self, this: u32) -> PoseState;
+    fn store_pose_state(&mut self, this: u32, state: &PoseState);
 
     /// The end stops' inputs, and the stores of the window taken and of the reflected rate.
     fn limit_inputs(&self, this: u32) -> Limits;
@@ -136,7 +136,7 @@ pub trait EntityStore: HingeStore {
     fn load_entity_frame(&self, at: u32) -> EntityFrame;
     fn load_transform(&self, at: u32) -> Transform;
     /// The entity's query slot target.
-    fn vf120_target(&self, entity: u32) -> u32;
+    fn query_slot_target(&self, entity: u32) -> u32;
     fn material_slot(&self, table: u32, index: u8) -> SlotLookup;
 
     /// The flags object and its flag byte.

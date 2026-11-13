@@ -90,7 +90,7 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
 | Rain and snow particles | done | - |
 | Windscreen, wipers | partial | crack normal map, camera dirt |
 | Night mode, render enhancements | done (ours) | - |
-| Cockpit mirrors | done (ours) | the Fiesta Rally2: none found; images not anti-aliased |
+| Cockpit mirrors | done (ours) | set for the driver's eye, not as modelled; the Fiesta Rally2: none found; images not anti-aliased |
 | In-car and chase cameras | done | mode 3 ground probe; chase capture |
 | Start orbit, helicam, seat shake | done | - |
 | ReRBR replays (`.rrp`), history and video export | done (ours) | playback re-simulates logged frames; requires the drive's build, install, setup and profile; `viewer --replay FILE --screenshot PNG --at N` draws the Nth answer headless (the replay runs `--replay-pace free`, not lockstep's `--frames -`) |

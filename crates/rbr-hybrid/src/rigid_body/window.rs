@@ -3,7 +3,7 @@
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{self as core_layout, Filing};
 use rbr_physics::rigid_body::emit::BodyEvent;
-use rbr_physics::rigid_body::host::{CellHost, HostUnavailable, StateHost, Vf54Host};
+use rbr_physics::rigid_body::host::{CellHost, EntityScratchTailHost, HostUnavailable, StateHost};
 use rbr_physics::rigid_body::layout::{self, Body};
 
 use super::pose::register_cell_at;
@@ -173,7 +173,7 @@ struct EntityVf54<'a> {
     sp: u32,
 }
 
-impl Vf54Host for EntityVf54<'_> {
+impl EntityScratchTailHost for EntityVf54<'_> {
     fn entity_scratch_tail(&mut self) -> Result<(), HostUnavailable> {
         let object = self.this + 0x5c;
         let slot1 = layout::vtable_target(&self.mem, object, 4);
@@ -205,7 +205,7 @@ pub(super) fn vf16_helper(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// The result is the eax the original returns.
 pub(crate) fn vf16(ctx: &mut Ctx, body: u32, scratch: u32) -> Result<u32, HostUnavailable> {
     let mut callees = Callees { mem: ctx.mem.clone(), host: ctx.host, scratch };
-    layout::vf16_helper(&mut ctx.mem, body, &mut callees)
+    layout::refresh_and_reset(&mut ctx.mem, body, &mut callees)
 }
 
 /// `E47SolidState::Vf17x` (0x529a50) on the state, as the port runs it (its `Mul` as in `vf16`).
