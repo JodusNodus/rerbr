@@ -303,6 +303,28 @@ bindings (the `.acm` imported) drive2 gives the same numbers. drive1, ngp-pair1,
 DLV1 sessions on cachy (ffb-e5/e6, ffbtrace-e2e1..e4): deliveries all equal (e2e2 37455 of 37455); their calls take the
 playback's controls, not the wheel's (CTL1 word 4, steering, differs: e2e2 19183 of 30363).
 
+## Stage sweep
+
+`scripts/stage-sweep.sh` (docs/development.md). Full-install sweep 2026-11-13 (`c6710f37`, car 5 unless named, NGP
+physics, 2M-step limit, 443 stage folders of the RSF install):
+
+- Load: 417 stages load; the 26 that do not are RSF-encrypted (`.lbs`, or 432's textures in 431's archive). No
+  panic, no NaN, no car through the ground on any drive (the lowest, 10.3 m under the driveline, is 641 wet sliding
+  down the bank 20 m off the road at 3.7 m/s).
+- Weather 0 / 1 / 2: 349 / 352 / 346 finish, 59 / 55 / 63 stuck, 9 / 10 / 8 off the road. Weather 0 and a dry
+  weather-2 row on another variant drive the same steps (the variants share the road); weather 1 (normal wear) changes
+  the drive on a third of the stages, a wet row on all.
+- Cars: the 42 installed RSF cars (`rsf:ID`; `cars.json` lists 60 more, not installed) finish 141 (tarmac,
+  209-232 s), 113 (gravel, 139-154 s) and 162 (snow, 153-167 s).
+- The stuck and off-road drives are the autopilot's: of weather 0's 68, 22 in hairpins under 5 m/s, 5 rolled, 36
+  over 2 m off the driveline at speed, 5 on the road at speed. Those 5: 620 at 460 m (every car) hits a 1.4 m `.col` wall corner
+  standing 1 m into a village street at (-172.5, 566.5), 19 g; 571, 641, 456 stop at different points with cars 2, 4
+  and 6; 346 finishes with them. The autopilot steers around the `.trk` heavy props only, not `.col` walls.
+- Stages with a `.lb2` get stuck twice as often (10 of 32 against 58 of 385); the `.lb2` holds only render chunks
+  (geometry, object lanes, visibility) and the `.lbs` the interactive objects and start, so physics misses nothing.
+- Fixed on the way: the autopilot learnt a gear's ratio in slides (the DS3 R1 drove RSF 113 in second on the limiter,
+  185 s, now 153 s; `ROLLING`, autopilot `mod.rs`); on weather 0, 343 finished before it.
+
 ## Rust checks
 
 `scripts/rust-check.sh` runs fmt, clippy, tests and vector targets for crates changed since the merge base with
