@@ -267,11 +267,14 @@ pub fn gravel_soil_share(v_lat: f64) -> f64 {
 /// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
 pub const SNOW_LONGITUDINAL: f64 = 0.75;
 
-/// Snow's level across the wheel over NGP's, on the snow share of the soil: the whole g the same cars hold in a slide
-/// in the Arctic, 0.82 g from 15 deg of sideslip at 60-100 km/h and 0.84 at 100-160 on their accelerometers (0.85 /
-/// 0.88 along their path; Finland's gravel 0.97 / 1.01). The i20 held past the limit on material 117's circles: 1.08 /
-/// 1.14 at NGP's level, 0.80 / 0.87 with this and [`SNOW_SOIL_SPEED`] (0.77 / 0.82 at 0.75, 0.74 / 0.78 at 0.70).
-pub const SNOW_LATERAL: f64 = 0.80;
+/// Snow's level across the wheel over NGP's, on the snow share of the soil, between two readings of the same cars in
+/// the Arctic. The whole g they hold in a slide: 0.82 g from 15 deg of sideslip at 60-100 km/h and 0.84 at 100-160 on
+/// their accelerometers (0.85 / 0.88 along their path; Finland's gravel 0.97 / 1.01), where the i20 held past the limit
+/// on material 117's circles gives 1.08 / 1.14 at NGP's level and 0.74 / 0.78, 0.77 / 0.82, 0.80 / 0.87, 0.83 / 0.90 at
+/// 0.70, 0.75, 0.80, 0.85 with [`SNOW_SOIL_SPEED`]. And corner by corner on RSF 531 against Aittajarvi's two passes,
+/// where the car at 0.80 holds 0.81-0.87 of the crews' g in the corners that turn 30 deg or more, under gravel's 0.92
+/// by the same reading (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
+pub const SNOW_LATERAL: f64 = 0.85;
 
 /// The sideways speed of the contact point above which NGP's soil lateral force stops growing on snow, m/s
 /// ([`snow_soil_share`]), gravel's ([`GRAVEL_SOIL_SPEED`]): with the whole force the i20 at 0.75 of NGP's level on
