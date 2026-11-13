@@ -61,7 +61,7 @@ pub fn contact_vote<S: RigidStore>(
     Ok(u32::from(v.hit))
 }
 
-/// The bit of the CDef debug word that lets the impulse tail append to a ring tail.
+/// The bit of the physics definition's debug word that lets the impulse tail append to a ring tail.
 const RING_BIT: u32 = 0x0100_0000;
 
 /// The impulse tail's callees, at their frame pointers.

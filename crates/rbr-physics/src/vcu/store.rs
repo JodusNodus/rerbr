@@ -15,7 +15,7 @@ pub trait VcuStore: Raw {
     fn def(&self, at: u32) -> Def;
     /// Reads the maps of the setup at `setup`.
     fn knot_maps(&self, setup: u32) -> KnotMaps;
-    /// Writes the maps into the CDef at `def`.
+    /// Writes the maps into the setup at `def`.
     fn store_knot_maps(&mut self, def: u32, value: &KnotMaps);
     fn setup_flags(&self, setup: u32) -> SetupFlags;
     fn state(&self, at: u32) -> State;

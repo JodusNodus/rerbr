@@ -6,19 +6,19 @@ use crate::physics_core::math::{BodyMotion, Vec4};
 use crate::store::Raw;
 
 pub trait CoreStore: Raw {
-    // The physics object (`CPhysics`) at `this`, and its CDef.
-    /// The CDef's step flags (the global physics object's): bit 0x10 collide window, 0x20 penetration pass.
+    // The physics object at `this`, and its definition.
+    /// The definition's step flags (the global physics object's): bit 0x10 collide window, 0x20 penetration pass.
     fn step_flags(&self) -> u32;
-    /// The CDef flags the contact loop reads (through the other physics global).
+    /// The definition's flags the contact loop reads (through the other physics global).
     fn collide_flags(&self) -> u32;
-    /// The gravity the passenger's walk starts from (three floats in the CDef), or None for the sentinel pointer.
+    /// The gravity the passenger's walk starts from (three floats in the definition), or None for the sentinel pointer.
     fn gravity_point(&self) -> Option<[f32; 3]>;
-    /// The base step time (the CDef's), s.
+    /// The base step time (the definition's), s.
     fn step_interval(&self, this: u32) -> f32;
     fn single_step_pending(&self, this: u32) -> u32;
     fn single_step_delay(&self, this: u32) -> u32;
     fn set_single_step_delay(&mut self, this: u32, value: u32);
-    /// The state (`CState`) of the physics object (its owner of the body lists).
+    /// The state of the physics object (its owner of the body lists).
     fn physics_state(&self, this: u32) -> u32;
     fn set_contact_hit(&mut self, this: u32, hits: u32);
     /// The solver, in the physics object's scratch.
@@ -124,9 +124,9 @@ pub trait CoreStore: Raw {
     /// The pose of the mount on the car.
     fn mount_point(&self, car: u32) -> Vec4;
     fn mount_point_at(&self, car: u32) -> u32;
-    /// The CDef's origin base address (null only for the sentinel CDef).
+    /// The definition's origin base address (null only for the sentinel definition).
     fn origin_base(&self) -> u32;
-    /// Copies the CDef's origin vector to `to`.
+    /// Copies the definition's origin vector to `to`.
     fn copy_origin(&mut self, base: u32, to: u32);
     fn mounted_key(&self, body: u32) -> u32;
     fn mounted_event_sent(&self, body: u32) -> u32;
@@ -138,13 +138,13 @@ pub trait CoreStore: Raw {
     fn body_motion(&self, body: u32) -> BodyMotion;
 
     // The force accumulation.
-    /// Whether the accumulate's hook runs: the log flag 0x4000 in the CDef's word or the physics object's.
+    /// Whether the accumulate's hook runs: the log flag 0x4000 in the definition's word or the physics object's.
     fn accumulate_hook(&self) -> bool;
     /// The inverse mass of the body's object.
     fn inverse_mass(&self, body: u32) -> f32;
     /// The address of the walk's output in the accumulate's locals (`temp`: the gravity copy, then the output).
     fn accumulate_out(&self, temp: u32) -> u32;
-    /// Copies the gravity vector (the CDef's) to `to`, as four words.
+    /// Copies the gravity vector (the definition's) to `to`, as four words.
     fn copy_gravity(&mut self, to: u32);
 
     /// Copies the 16 bytes of the vector at `from` to `to` (as four words, so the bits are kept).
