@@ -133,11 +133,10 @@ rbr-recomp `notes/progress/systems.md`; history up to the split: rbr-recomp `LOG
   the loose layer's depth, with NGP's soil force held from 10 m/s of sideways speed, and a wet road's loss with speed
   half the drums': user 2026-11-11, the 1.10 the user's of 2026-11-12, the 10 m/s ours on the user's drives; snow's
   0.782 of it along the wheel and 0.878 sideways with the same hold: user 2026-11-13 (closer to the Arctic's stages, 5 %
-  above them at most, then 1.02 of that after driving the snow pad by hand and 1.05 after RSF 615 by hand), along the
-  wheel 0.001 less per km/h under 145 km/h (the crews' braking rises with speed), the values ours on the 2017-21 World
-  Rally Cars' snow telemetry; snow's force
-  along the wheel in two stages and a small berm towards lock (1.05), ours on VTI's trailer curves of packed snow and
-  the crews' braking by slip; driving 0.85 of its braking level, ours on the Arctic's crews' thrust;
+  above them at most, then 1.02 of that after driving the snow pad by hand and 1.05 after RSF 615 by hand), the values
+  ours on the 2017-21 World Rally Cars' snow telemetry; snow's force
+  along the wheel in two stages and a small berm towards lock (1.02), ours on VTI's trailer curves of packed snow and
+  the crews' braking by slip; driving 0.78 of its braking level, ours on the Arctic's crews' thrust;
   [tyre-model.md](tyre-model.md)); in development, not released
   (user 2026-11-07): only the hidden `--physics experimental-brush` runs it; the launcher's Settings page does not offer
   it, `scripts/launcher.sh --physics experimental-brush` drives it for a session (unsaved).
