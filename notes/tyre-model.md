@@ -2441,10 +2441,13 @@ items named below), run again on Finland 2021 as the gravel reference (it gives 
   compacted snow (Surkutwar, VT PhD 2025, Fig. 5.13 measured, fig ±0.005; SRTT, ASTM F1805, 5.2 kN, 8 km/h): 0.27 /
   0.32 / 0.34 / 0.363 at 6 / 10 / 20 / 26-30 %, 1.13 from 10 % (brush 1.18 from 10 to 40 %, braking); their FE blank
   rib stays at 0.26-0.27 over 6-30 % where the siped tread rises (simulation): the rise comes from snow in the tread,
-  Kusachov's two-stage mechanism (Lic 2016 §4.4, the same model fitting Mz from the force fits).
+  Kusachov's two-stage mechanism (Lic 2016 §4.4, the same model fitting Mz from the force fits). Deep fresh snow in
+  combined slip (Lee & Huang, J. Terramechanics 55 2014, Figs 7-8, 12, fig ±0.03; a road car with ABS on an S-curve,
+  Fairbanks, 18 cm natural snow, 16 cm sinkage): the front tyre's side force 0.22-0.25 of its load at 8-11° with light
+  braking, as Parker's 13-15 cm fresh snow (0.21); their rigid-wheel model with one friction cap (0.41-0.46) on the
+  resultant shear covers every lateral point (one friction in combined slip, as Bruzelius); not the stages' packed snow.
 - Not read, to obtain: Kusachov et al., Tire Sci. Technol. 47(2) 2019, doi 10.2346/tire.18.460404 (the two-brush
-  model's fits per tyre); Strandberg 1998 (66 drivers, studded tyres, ABS on and off on snow and ice); Lee & Huang, J.
-  Terramechanics 55 2014, doi 10.1016/j.jterra.2014.05.002 (natural snow, combined slip, depth); Giessler et al.,
+  model's fits per tyre); Strandberg 1998 (66 drivers, studded tyres, ABS on and off on snow and ice); Giessler et al.,
   VDI-Berichte 2014 2007 (side force against snow hardness); Hiroki, JSAE Journal 46(6) 1992 (side force on snow
   against speed); Gnadler et al., ATZ 107(3) 2005 in German (the curves; the English edition has none).
 - Rally stud over road stud (context for the level, which rests on the crews): one lap-time comparison, Pirelli
