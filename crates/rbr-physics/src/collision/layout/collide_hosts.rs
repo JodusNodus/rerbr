@@ -1,10 +1,10 @@
-//! The host calls of the body-contact walks (`body_vf_d0`, `body_vf_dc`).
+//! The host calls of the body-contact walks (`grid_contacts`, `pair_contacts`).
 
 use crate::collision::grid_contact::ContactKind;
 
 /// Calls out of CBody::VfD0 (0x4e1eb0), each entered at `sp` as the original's. The vectors they take and write are
 /// in VfD0's frame; the slot calls are on the entity's vtable.
-pub trait VfD0Host {
+pub trait GridContactHost {
     /// `E38RaySeeds` (0x4f6550) on a grid in the frame.
     fn ray_seeds(&mut self, sp: u32, grid: u32);
     /// `E38RayClear` (0x4f6740) on a grid in the frame.
@@ -18,10 +18,10 @@ pub trait VfD0Host {
     /// Slot 0x118 (`CBody::Vf118` for a body), thiscall on an entity: its grid.
     fn grid(&mut self, sp: u32, entity: u32) -> u32;
     /// Slot 0x80 (`E43Vf80`), thiscall on an entity: eax.
-    fn vf80(&mut self, sp: u32, entity: u32) -> u32;
+    fn active(&mut self, sp: u32, entity: u32) -> u32;
     /// Slot 0xf0, thiscall on the other entity with `(desc_a, desc_b, hit, u, normal, t, material, material)`: eax,
     /// non-zero for a contact.
-    fn vf_f0(&mut self, sp: u32, entity: u32, args: [u32; 8]) -> u32;
+    fn contact_query(&mut self, sp: u32, entity: u32, args: [u32; 8]) -> u32;
     /// Slot 1 (`Append`), thiscall on the event list with the event.
     fn append(&mut self, sp: u32, list: u32, event: u32);
     /// `E33Mat34::FetchY` (0x51b780), thiscall on `matrix` with `(out, transform)`.
@@ -68,9 +68,9 @@ pub trait VfD0Host {
 }
 
 /// The calls CBody::VfDC (0x4e2850) makes beyond VfD0's, each entered at `sp` as the original's.
-pub trait VfDcHost: VfD0Host {
+pub trait PairContactHost: GridContactHost {
     /// Slot 0x34 (`Vf34`), thiscall on an entity: its second transform.
-    fn vf34(&mut self, sp: u32, entity: u32) -> u32;
+    fn second_transform(&mut self, sp: u32, entity: u32) -> u32;
     /// `E37GridOps::EdgePair` (0x4f8560), thiscall on the frame's grid with ten words (two edges' ends, the hit, t, the
     /// normal, a scratch word, the grid again and 0): eax, non-zero for a hit.
     fn edge_pair(&mut self, sp: u32, grid: u32, args: [u32; 10]) -> u32;

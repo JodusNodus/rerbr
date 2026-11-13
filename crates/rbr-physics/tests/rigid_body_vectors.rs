@@ -7,7 +7,7 @@ mod common;
 use common::{
     check_window_list, check_windows, load, map_window_list, map_windows, parse, shared_windows, Call, Inner, Window,
 };
-use rbr_physics::collision::layout::body_hosts::Vf40Host;
+use rbr_physics::collision::layout::body_hosts::BodyResetHost;
 use rbr_physics::fpu::Precision;
 use rbr_physics::math::quat::{from_quat, mul, normalize, Quat};
 use rbr_physics::mem::Mem;
@@ -1888,15 +1888,15 @@ impl MulHost for Vf16Replay<'_> {
     }
 }
 
-impl Vf40Host for Vf16Replay<'_> {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl BodyResetHost for Vf16Replay<'_> {
+    fn reset_state(&mut self, state: u32) -> u32 {
         let call = self.unk44.take().expect("the original made no CBody::CState::Unk44 call");
         assert_eq!(call.args, [state], "CBody::CState::Unk44: arguments");
         replay_windows(&mut self.mem, &call.windows, "CBody::CState::Unk44");
         call.eax
     }
 
-    fn entity_vf40(&mut self, body: u32) -> u32 {
+    fn reset_entity(&mut self, body: u32) -> u32 {
         assert_eq!(self.walk.args, [body], "CEntity::Vf40: arguments");
         replay_windows(&mut self.mem, &self.walk.windows, "CEntity::Vf40");
         self.walk.eax

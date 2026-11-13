@@ -2,7 +2,7 @@
 
 use rbr_physics::collision::grid_contact::ContactKind;
 use rbr_physics::collision::layout::body_slots::{self, D8Calls, E8Calls, F4Calls};
-use rbr_physics::collision::layout::collide_hosts::{VfD0Host, VfDcHost};
+use rbr_physics::collision::layout::collide_hosts::{GridContactHost, PairContactHost};
 use rbr_physics::collision::layout::{self, Body};
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::ZERO_VEC4;
@@ -126,7 +126,7 @@ impl VfD0Calls<'_> {
     }
 }
 
-impl VfD0Host for VfD0Calls<'_> {
+impl GridContactHost for VfD0Calls<'_> {
     fn ray_seeds(&mut self, sp: u32, grid: u32) {
         self.host.call_at(sp, RAY_SEEDS, grid, &[]);
     }
@@ -151,11 +151,11 @@ impl VfD0Host for VfD0Calls<'_> {
         self.slot(sp, entity, 0x118, &[])
     }
 
-    fn vf80(&mut self, sp: u32, entity: u32) -> u32 {
+    fn active(&mut self, sp: u32, entity: u32) -> u32 {
         self.slot(sp, entity, 0x80, &[])
     }
 
-    fn vf_f0(&mut self, sp: u32, entity: u32, args: [u32; 8]) -> u32 {
+    fn contact_query(&mut self, sp: u32, entity: u32, args: [u32; 8]) -> u32 {
         self.slot(sp, entity, 0xf0, &args)
     }
 
@@ -233,8 +233,8 @@ impl VfD0Host for VfD0Calls<'_> {
     }
 }
 
-impl VfDcHost for VfD0Calls<'_> {
-    fn vf34(&mut self, sp: u32, entity: u32) -> u32 {
+impl PairContactHost for VfD0Calls<'_> {
+    fn second_transform(&mut self, sp: u32, entity: u32) -> u32 {
         self.slot(sp, entity, 0x34, &[])
     }
 
@@ -253,7 +253,7 @@ impl VfDcHost for VfD0Calls<'_> {
 pub(super) fn body_vf_dc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [a, b, other, _, list, ..] = r.stack;
     let mut calls = VfD0Calls { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::body_vf_dc(&mut calls, &mut ctx.mem, r.ecx, a, b, other, list, r.esp);
+    let eax = layout::pair_contacts(&mut calls, &mut ctx.mem, r.ecx, a, b, other, list, r.esp);
     Ok(Return::void(eax, 0x14))
 }
 
@@ -262,7 +262,7 @@ pub(super) fn body_vf_dc(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 pub(super) fn body_vf_d0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [matrix, other, list, ..] = r.stack;
     let mut calls = VfD0Calls { host: ctx.host, mem: ctx.mem.clone() };
-    let eax = layout::body_vf_d0(&mut calls, &mut ctx.mem, r.ecx, matrix, other, list, r.esp);
+    let eax = layout::grid_contacts(&mut calls, &mut ctx.mem, r.ecx, matrix, other, list, r.esp);
     Ok(Return::void(eax, 12))
 }
 

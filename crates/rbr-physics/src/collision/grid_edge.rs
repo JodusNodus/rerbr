@@ -135,7 +135,7 @@ pub fn store_edge_edge_hit<S: CollisionStore>(
 /// Copies the source grid into `this` and moves its points through the transform `a` against `b`, rebinding them.
 /// With no source the grid's rays are seeded. Returns `this`. `None` (nothing changed) for no grid with a source,
 /// or a single point.
-pub fn grid_ops_m6610<S: CollisionStore>(
+pub fn copy_grid<S: CollisionStore>(
     host: &mut impl GridOpsHost,
     store: &mut S,
     this: u32,
@@ -191,15 +191,15 @@ pub fn vec_set_gap<S: CollisionStore>(store: &S, this: u32, p2: u32, p3: u32, p4
 pub fn edge_normal<S: CollisionStore>(store: &mut S, grid: u32, index: u32, p3: u32, p4: u32, out: u32) -> f32 {
     let normal = {
         let view = GridReads { store: &*store, grid };
-        let [e484, e485] = view.row(index);
-        pair::row_frame_normal(view.vertex(e485), view.vertex(e484), store.vec3(p3), store.vec3(p4))
+        let [row_from, row_to] = view.row(index);
+        pair::row_frame_normal(view.vertex(row_to), view.vertex(row_from), store.vec3(p3), store.vec3(p4))
     };
     store.store_vec4(out, normal);
     1.0
 }
 
 /// The walk's `t` (2.0 for a miss). `p8` and `p9` are written once the first gate passes, `p7` on a hit.
-pub fn walk_5ff0<S: CollisionStore>(
+pub fn grid_row_walk<S: CollisionStore>(
     store: &mut S,
     grid: u32,
     index: u32,
@@ -207,10 +207,10 @@ pub fn walk_5ff0<S: CollisionStore>(
 ) -> f32 {
     let walk = {
         let view = GridReads { store: &*store, grid };
-        let [e484, e485] = view.row(index);
+        let [row_from, row_to] = view.row(index);
         pair::row_walk(
-            view.vertex(e484),
-            view.vertex(e485),
+            view.vertex(row_from),
+            view.vertex(row_to),
             store.vec4(p3),
             store.vec4(p4),
             store.vec4(p5),

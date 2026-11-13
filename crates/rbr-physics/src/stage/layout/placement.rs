@@ -4,7 +4,7 @@
 use super::files::{NoParent, StageHost};
 use super::meshes::{store_stuff, STUFF_SIZE};
 use super::{WALL, WALL_ROOT};
-use crate::collision::layout::body_hosts::Vf40Host;
+use crate::collision::layout::body_hosts::BodyResetHost;
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::StateHost;
 use crate::collision::layout::{cell_grid_ctor, state_unka44, sync_grid, CtorHost, GridSyncHost};
@@ -207,13 +207,13 @@ impl MulHost for Deferred {
     }
 }
 
-impl Vf40Host for Deferred {
-    fn state_unka44(&mut self, state: u32) -> u32 {
+impl BodyResetHost for Deferred {
+    fn reset_state(&mut self, state: u32) -> u32 {
         self.state = Some(state);
         0
     }
 
-    fn entity_vf40(&mut self, body: u32) -> u32 {
+    fn reset_entity(&mut self, body: u32) -> u32 {
         self.body = Some(body);
         0
     }

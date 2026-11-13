@@ -350,7 +350,7 @@ fn walk_5ff0_matches_original_calls() {
     let _pc24 = Precision::Pc24.scope();
     replay_st0_writes(E37_WALK_5FF0, "E37GridOps::Walk5FF0", |mem, args| {
         let words: [u32; 7] = args[2..9].try_into().expect("Walk5FF0 has eight stack words");
-        layout::walk_5ff0(mem, args[0], args[1], words)
+        layout::grid_row_walk(mem, args[0], args[1], words)
     });
 }
 
@@ -719,7 +719,7 @@ impl<'a> BodyVf44ReplayHost<'a> {
     }
 }
 
-impl layout::body_hosts::VfCcHost for BodyVfccReplayHost<'_> {
+impl layout::body_hosts::CornerHost for BodyVfccReplayHost<'_> {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32 {
         let call =
             self.inner.get(self.next).unwrap_or_else(|| panic!("unexpected E33Mat34::FetchX call {}", self.next));
@@ -915,8 +915,8 @@ impl layout::CtorHost for BodyCtorReplayHost<'_> {
     }
 }
 
-impl layout::body_hosts::Vf40Host for BodyVf40ReplayHost<'_> {
-    fn state_unka44(&mut self, state_ptr: u32) -> u32 {
+impl layout::body_hosts::BodyResetHost for BodyVf40ReplayHost<'_> {
+    fn reset_state(&mut self, state_ptr: u32) -> u32 {
         let call = self.take(BODY_STATE_UNKA44, &[state_ptr], "CBody::CState::Unk44");
         for window in &call.windows {
             assert_eq!(
@@ -932,7 +932,7 @@ impl layout::body_hosts::Vf40Host for BodyVf40ReplayHost<'_> {
         call.eax
     }
 
-    fn entity_vf40(&mut self, body_ptr: u32) -> u32 {
+    fn reset_entity(&mut self, body_ptr: u32) -> u32 {
         let call = self.take(0x51a4b0, &[body_ptr], "CEntity::Vf40");
         for window in &call.windows {
             assert_eq!(self.mem.read(window.at, window.len), window.before, "CEntity::Vf40 input at {:#x}", window.at);
@@ -944,7 +944,7 @@ impl layout::body_hosts::Vf40Host for BodyVf40ReplayHost<'_> {
     }
 }
 
-impl layout::body_hosts::Vf44Host for BodyVf44ReplayHost<'_> {
+impl layout::body_hosts::GridSelectHost for BodyVf44ReplayHost<'_> {
     fn select_table(&mut self, object: u32) -> u32 {
         let call = self.take(E36_SELECT_TABLE, &[object], "E36SelectTable");
         let mut input = Mem::new();
@@ -959,7 +959,7 @@ impl layout::body_hosts::Vf44Host for BodyVf44ReplayHost<'_> {
         selected
     }
 
-    fn entity_vf44(&mut self, body: u32, object: u32) -> u32 {
+    fn select_entity_grid(&mut self, body: u32, object: u32) -> u32 {
         let call = self.take(ENTITY_VF44, &[body, object], "CEntity::Vf44");
         for window in &call.windows {
             assert_eq!(self.mem.read(window.at, window.len), window.before, "CEntity::Vf44 input at {:#x}", window.at);
@@ -2965,7 +2965,11 @@ fn seg_test170_walks_the_segment_box() {
         mem.map(root, &node_bytes([0.0; 3], [1.0; 3], 0, child));
         mem.map(this, &[0; 0x1020]);
         mem.set_u32(this + 8, root);
-        assert_eq!(layout::seg_test170(&mut mem, this, a, b, 0, tmp), expected, "SegTest170 for the centre {centre:?}");
+        assert_eq!(
+            layout::query_box_faces(&mut mem, this, a, b, 0, tmp),
+            expected,
+            "SegTest170 for the centre {centre:?}"
+        );
         assert_eq!(mem.u32(this + 0x1014), expected, "the grid's list count");
     }
 }
@@ -3331,7 +3335,7 @@ impl VfD0ReplayHost<'_> {
     }
 }
 
-impl layout::collide_hosts::VfD0Host for VfD0ReplayHost<'_> {
+impl layout::collide_hosts::GridContactHost for VfD0ReplayHost<'_> {
     fn ray_seeds(&mut self, _: u32, grid: u32) {
         self.take(Some(0x4f6550), &[grid], 1);
     }
@@ -3356,11 +3360,11 @@ impl layout::collide_hosts::VfD0Host for VfD0ReplayHost<'_> {
         self.take(None, &[entity], 0)
     }
 
-    fn vf80(&mut self, _: u32, entity: u32) -> u32 {
+    fn active(&mut self, _: u32, entity: u32) -> u32 {
         self.take(None, &[entity], 0)
     }
 
-    fn vf_f0(&mut self, _: u32, entity: u32, args: [u32; 8]) -> u32 {
+    fn contact_query(&mut self, _: u32, entity: u32, args: [u32; 8]) -> u32 {
         let mut words = vec![entity];
         words.extend(args);
         self.take(None, &words, 5)
@@ -3468,7 +3472,7 @@ fn body_vf_d0_matches_original_calls() {
         let mut host =
             VfD0ReplayHost { inner: &call.inner, next: 0, mem: mem.clone(), frame, size: 0xe90, events: Vec::new() };
         let [this, matrix, other, list] = call.args[..] else { panic!("VfD0 call {} args", call.index) };
-        let eax = layout::body_vf_d0(&mut host, &mut mem, this, matrix, other, list, frame + 0xe94);
+        let eax = layout::grid_contacts(&mut host, &mut mem, this, matrix, other, list, frame + 0xe94);
         assert_eq!(eax, call.eax, "VfD0 call {} eax", call.index);
         assert_eq!(host.next, call.inner.len(), "VfD0 call {} calls", call.index);
         events += call.inner.iter().filter(|inner| inner.addr == 0x4e0d00).count();
@@ -3476,8 +3480,8 @@ fn body_vf_d0_matches_original_calls() {
     eprintln!("CBody::VfD0: {} calls match, {events} events", calls.len());
 }
 
-impl layout::collide_hosts::VfDcHost for VfD0ReplayHost<'_> {
-    fn vf34(&mut self, _: u32, entity: u32) -> u32 {
+impl layout::collide_hosts::PairContactHost for VfD0ReplayHost<'_> {
+    fn second_transform(&mut self, _: u32, entity: u32) -> u32 {
         self.take(None, &[entity], 0)
     }
 
@@ -3515,7 +3519,7 @@ fn body_vf_dc_matches_original_calls() {
         let mut host =
             VfD0ReplayHost { inner: &call.inner, next: 0, mem: mem.clone(), frame, size: 0x14e0, events: Vec::new() };
         let [this, a, b, other, _, list] = call.args[..] else { panic!("VfDC call {} args", call.index) };
-        let eax = layout::body_vf_dc(&mut host, &mut mem, this, a, b, other, list, frame + 0x14e4);
+        let eax = layout::pair_contacts(&mut host, &mut mem, this, a, b, other, list, frame + 0x14e4);
         assert_eq!(eax, call.eax, "VfDC call {} eax", call.index);
         assert_eq!(host.next, call.inner.len(), "VfDC call {} calls", call.index);
         if call.windows.len() == 4 {
@@ -3604,21 +3608,21 @@ struct BodyRecorder {
 }
 
 impl layout::EventBodyHost for BodyRecorder {
-    fn vf30(&mut self, sp: u32, _target: u32, body: u32) -> u32 {
+    fn transform(&mut self, sp: u32, _target: u32, body: u32) -> u32 {
         self.calls.push(("vf30", sp));
         body
     }
-    fn mb560(&mut self, sp: u32, _event: u32, _a: u32, _b: u32, _c: u32) {
+    fn pair_walk(&mut self, sp: u32, _event: u32, _a: u32, _b: u32, _c: u32) {
         self.calls.push(("mb560", sp));
     }
     fn compose(&mut self, sp: u32, _frame: u32, _point: u32, _body: u32, _out: u32) {
         self.calls.push(("compose", sp));
     }
-    fn vf138x(&mut self, sp: u32, _target: u32, _body: u32, _args: [u32; 6]) -> u32 {
+    fn dot_products(&mut self, sp: u32, _target: u32, _body: u32, _args: [u32; 6]) -> u32 {
         self.calls.push(("vf138x", sp));
         7
     }
-    fn vf128x(&mut self, sp: u32, _target: u32, _body: u32, _args: [u32; 8]) -> u32 {
+    fn impulse(&mut self, sp: u32, _target: u32, _body: u32, _args: [u32; 8]) -> u32 {
         self.calls.push(("vf128x", sp));
         7
     }
@@ -3803,7 +3807,7 @@ fn system_vf00_matches_original_calls() {
             .unwrap_or_else(|| panic!("Vf00 call {}: no mesh ray", call.index));
         let frame = layout::system_frame(mesh.args[2] + 0x44);
         let mut host = SystemReplayHost { inner: &call.inner, next: 0, lookups: 0 };
-        let eax = layout::system_vf00(&mut host, &mut mem, system, origin, end, out, frame);
+        let eax = layout::segment_query(&mut host, &mut mem, system, origin, end, out, frame);
         assert_eq!(eax, call.eax, "Vf00 call {} EAX", call.index);
         hits += eax;
         let lookups = call.inner.iter().filter(|inner| inner.addr == SAMPLE_LOOKUP).count();

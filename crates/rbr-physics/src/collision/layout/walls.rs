@@ -6,10 +6,10 @@
 use crate::mem::Mem;
 
 use super::vec_ops::vec4_copy_from;
-use super::wall_tree::VfF0Host;
+use super::wall_tree::WallSegmentHost;
 use crate::math::vec::Vec4;
 
-pub use crate::collision::wall::{brake_wall_vf_e8, wall_probe, wall_raycast, wall_vf_cc};
+pub use crate::collision::wall::{query_wall_box, wall_probe, wall_raycast, wall_segment_hit};
 
 /// The wall's fields that `E34WallVf::Raycast` reads and writes: the latch word (+0x214) and the segment vertex table
 /// (+0x218).
@@ -28,12 +28,12 @@ pub(super) const WALL_LEAVES: u32 = 0x7c;
 /// esp. In the original's `and esp, -0x10` frame `CE36SubBlock::Init` clears the block at +0x2c, then `VfE8` fills the
 /// four vectors at +0xc. On a hit: `CopyFrom` of the first vector to `c`, the frame word at +8 points at the second,
 /// which goes to `e`; the fourth's `y` goes to `d`, and `f`, `g` and `h` get 0. Returns 1 on a hit, else 0 (eax).
-pub fn brake_wall_vf_f0(host: &mut impl VfF0Host, mem: &mut Mem, this: u32, args: [u32; 8], entry: u32) -> u32 {
+pub fn brake_wall_vf_f0(host: &mut impl WallSegmentHost, mem: &mut Mem, this: u32, args: [u32; 8], entry: u32) -> u32 {
     let [a, b, c, d, e, f, g, h] = args;
     let frame = ((entry - 4) & !0xf) - 0x4c;
     let out = frame + 0xc;
     crate::car_body::light::sub_block_init(mem, frame + 0x2c);
-    if host.vf_e8(frame - 0x1c, this, a, b, out) == 0 {
+    if host.segment_hit(frame - 0x1c, this, a, b, out) == 0 {
         return 0;
     }
     vec4_copy_from(mem, c, out);

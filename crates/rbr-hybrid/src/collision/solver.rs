@@ -166,11 +166,11 @@ const E37_QUERY_4390: u32 = 0x4f4390;
 const E37_EMIT_4DC0: u32 = 0x4f4dc0;
 
 impl EventBodyHost for Callees<'_> {
-    fn vf30(&mut self, sp: u32, target: u32, body: u32) -> u32 {
+    fn transform(&mut self, sp: u32, target: u32, body: u32) -> u32 {
         self.0.call_at(sp, target, body, &[]).eax
     }
 
-    fn mb560(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32) {
+    fn pair_walk(&mut self, sp: u32, event: u32, a: u32, b: u32, c: u32) {
         self.0.call_at(sp, MB560, event, &[a, b, c]);
     }
 
@@ -178,11 +178,11 @@ impl EventBodyHost for Callees<'_> {
         self.0.call_at(sp, COPY16_WALK, frame, &[point, body, out]);
     }
 
-    fn vf138x(&mut self, sp: u32, target: u32, body: u32, args: [u32; 6]) -> u32 {
+    fn dot_products(&mut self, sp: u32, target: u32, body: u32, args: [u32; 6]) -> u32 {
         self.0.call_at(sp, target, body, &args).eax
     }
 
-    fn vf128x(&mut self, sp: u32, target: u32, body: u32, args: [u32; 8]) -> u32 {
+    fn impulse(&mut self, sp: u32, target: u32, body: u32, args: [u32; 8]) -> u32 {
         self.0.call_at(sp, target, body, &args).eax
     }
 }

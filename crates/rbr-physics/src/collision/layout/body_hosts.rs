@@ -2,25 +2,25 @@
 
 /// Calls outside CBody::VfCC (0x4e1230): `E33Mat34::FetchX` (0x51b6c0) on a corner matrix, which writes the corner to
 /// `out` (the caller's frame) and returns `out`. The worker is the identity object.
-pub trait VfCcHost {
+pub trait CornerHost {
     fn fetch_x(&mut self, matrix: u32, out: u32, worker: u32) -> u32;
 }
 
 /// Calls outside CBody::Vf40 (0x4e1120): its E33 state reset and E43 base walk. The host owns the memory it touches.
-pub trait Vf40Host {
+pub trait BodyResetHost {
     /// `CBody::CState::Unk44` (0x4e33e0) on the state at `state`.
-    fn state_unka44(&mut self, state: u32) -> u32;
+    fn reset_state(&mut self, state: u32) -> u32;
     /// `CEntity::Vf40` (0x51a4b0) on the body.
-    fn entity_vf40(&mut self, body: u32) -> u32;
+    fn reset_entity(&mut self, body: u32) -> u32;
 }
 
 /// Calls outside CBody::Vf44 (0x4e1140): grid selection (E36SelectTable) and the base entity walk. The host owns the
 /// memory it touches.
-pub trait Vf44Host {
+pub trait GridSelectHost {
     /// `E36SelectTable` (0x4f5ca0) on the object: the grid it selects.
     fn select_table(&mut self, object: u32) -> u32;
     /// `CEntity::Vf44` (0x51a4b0, slot 17) on the body and its object.
-    fn entity_vf44(&mut self, body: u32, object: u32) -> u32;
+    fn select_entity_grid(&mut self, body: u32, object: u32) -> u32;
 }
 
 /// Calls outside CBody::ClearGrid (0x4e11a0): E38's grid-bound synchronization.

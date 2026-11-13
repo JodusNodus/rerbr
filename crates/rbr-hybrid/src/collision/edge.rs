@@ -32,7 +32,7 @@ pub(super) fn edge_normal(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
 /// st0.
 pub(super) fn walk_5ff0(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let [index, p3, p4, p5, p6, p7, p8, p9, ..] = r.stack;
-    let t = layout::walk_5ff0(&mut ctx.mem, r.ecx, index, [p3, p4, p5, p6, p7, p8, p9]);
+    let t = layout::grid_row_walk(&mut ctx.mem, r.ecx, index, [p3, p4, p5, p6, p7, p8, p9]);
     Ok(Return::float(f64::from(t), 0x20))
 }
 

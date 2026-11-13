@@ -90,8 +90,8 @@ addr,module,rust_item,test,status
 0x4e11f0,collision/layout/cbody.rs,collision::layout::cbody::grid,collision_vectors::body_grid_queries_match_original_calls,checked
 0x4e1200,collision/layout/cbody.rs,collision::layout::cbody::bounds,collision_vectors::body_bounds_copy_matches_original_calls,checked
 0x4e1230,collision/body.rs,collision::body::aabb_pretest,collision_vectors::body_vfcc_matches_original_calls,checked
-0x4e1eb0,collision/body_contact.rs,collision::body_contact::body_vf_d0,collision_vectors::body_vf_d0_matches_original_calls,checked
-0x4e2850,collision/body_contact.rs,collision::body_contact::body_vf_dc,collision_vectors::body_vf_dc_matches_original_calls,checked
+0x4e1eb0,collision/body_contact.rs,collision::body_contact::grid_contacts,collision_vectors::body_vf_d0_matches_original_calls,checked
+0x4e2850,collision/body_contact.rs,collision::body_contact::pair_contacts,collision_vectors::body_vf_dc_matches_original_calls,checked
 0x4e2e90,collision/layout/body_slots.rs,collision::layout::body_slots::box_edge_hit,collision_body_slots::vf_f4_fetches_both_boxes_then_composes_on_a_hit,unit
 0x4e2f50,collision/layout/body_slots.rs,collision::layout::body_slots::grid_hit,collision_body_slots::vf_e8_calls_the_slot_then_copies_the_grid_flags_on_a_hit,unit
 0x4e3070,collision/layout/body_slots.rs,collision::layout::body_slots::record_edge_hits,collision_body_slots::vf_d8_records_a_hit_with_its_event_and_returns_one,unit
@@ -102,13 +102,13 @@ addr,module,rust_item,test,status
 0x4e3860,collision/layout/wall_tree.rs,collision::layout::wall_tree::is_active,collision_vectors::brake_wall_queries_match_original_calls,checked
 0x4e3870,collision/layout/wall_tree.rs,collision::layout::wall_tree::copy_root_bounds,collision_vectors::brake_wall_queries_match_original_calls,checked
 0x4e3970,collision/layout/walls.rs,collision::layout::walls::brake_wall_vf_f0,entities_vectors::brake_wall_vf_f0_matches_original_calls,checked
-0x4e3a10,collision/wall.rs,collision::wall::brake_wall_vf_e8,entities_vectors::brake_wall_vf_e8_matches_original_calls,checked
+0x4e3a10,collision/wall.rs,collision::wall::wall_segment_hit,entities_vectors::brake_wall_vf_e8_matches_original_calls,checked
 0x4e3dc0,collision/wall.rs,collision::wall::query_point,collision_vectors::brake_wall_quadtree_queries_match_original_calls,checked
 0x4e3f10,collision/layout/wall_tree.rs,collision::layout::wall_tree::query_box,collision_vectors::brake_wall_quadtree_queries_match_original_calls,checked
 0x4e4070,collision/wall.rs,collision::wall::query_xy_box,collision_vectors::brake_wall_vf15c_matches_original_calls,checked
 0x4e41a0,physics_core/layout/lists.rs,physics_core::layout::lists::unlink_a,entities_vectors::detach_leaves_match_direct_records,checked
 0x4e4220,stage/layout/files.rs,stage::layout::files::construct_wall,load_stage::stage_world_matches_the_game,checked
-0x4e42f0,collision/wall.rs,collision::wall::wall_vf_cc,collision_frontier::wall_vf_cc_queries_the_corners_box,checked
+0x4e42f0,collision/wall.rs,collision::wall::query_wall_box,collision_frontier::wall_vf_cc_queries_the_corners_box,checked
 0x4e4400,stage/layout/files.rs,stage::layout::files::set_wall,load_stage::stage_world_matches_the_game,checked
 0x4e4490,physics_core/emit.rs,physics_core::emit::emit,car_body_vectors::vf6cx_matches_original_calls,checked
 0x4e4570,collision/wall.rs,collision::wall::wall_raycast,exact_batch::wall_raycast_answers_the_first_segment_the_point_is_inside_of,unit
@@ -243,9 +243,9 @@ addr,module,rust_item,test,status
 0x4f2c40,collision/layout/e36_collect.rs,collision::layout::e36_collect::flag_bit2,collision_vectors::e36_accessors_and_init_match_original_calls,checked
 0x4f2c50,collision/layout/e36_collect.rs,collision::layout::e36_collect::collide_init,collision_vectors::e36_accessors_and_init_match_original_calls,checked
 0x4f2cd0,collision/layout/e36_collect.rs,collision::layout::e36_collect::nop,collision_vectors::e36_nop_matches_original_calls,checked
-0x4f2ce0,collision/e36.rs,collision::e36::sphere_box,collision_vectors::e36_sphere_box_matches_original_calls,checked
-0x4f3030,collision/e36.rs,collision::e36::obb_test,collision_vectors::e36_obb_test_matches_original_calls,checked
-0x4f3950,collision/e36.rs,collision::e36::collect,collision_vectors::e36_collect_matches_original_calls,checked
+0x4f2ce0,collision/entry.rs,collision::entry::sphere_box,collision_vectors::e36_sphere_box_matches_original_calls,checked
+0x4f3030,collision/entry.rs,collision::entry::obb_test,collision_vectors::e36_obb_test_matches_original_calls,checked
+0x4f3950,collision/entry.rs,collision::entry::collect,collision_vectors::e36_collect_matches_original_calls,checked
 0x4f3d20,car_body/tweak.rs,car_body::tweak::load_binary,car_body_vectors::load_binary_matches_original_calls,checked
 0x4f3d40,car_body/helpers.rs,car_body::helpers::cross_normalized,car_body_vectors::cross_norm_matches_original_calls,checked
 0x4f3e80,car_body/light.rs,car_body::light::sub_block_init,car_body_vectors::sub_block_init_matches_original_calls,checked
@@ -331,7 +331,7 @@ addr,module,rust_item,test,status
 0x4f5ff0,collision/edge_pair.rs,collision::edge_pair::row_walk,collision_vectors::walk_5ff0_matches_original_calls,checked
 0x4f6550,collision/mesh.rs,collision::mesh::ray_seeds,collision_vectors::ray_object_matches_original_calls,checked
 0x4f65b0,collision/grid_edge.rs,collision::grid_edge::grid_add_edge,collision_vectors::grid_add_edge_matches_original_calls,checked
-0x4f6610,collision/grid_edge.rs,collision::grid_edge::grid_ops_m6610,collision_frontier::grid_ops_copies_the_source_and_bounds_its_points,checked
+0x4f6610,collision/grid_edge.rs,collision::grid_edge::copy_grid,collision_frontier::grid_ops_copies_the_source_and_bounds_its_points,checked
 0x4f6740,collision/mesh.rs,collision::mesh::ray_clear,collision_vectors::ray_object_matches_original_calls,checked
 0x4f6770,entities/layout/walk_nodes.rs,entities::layout::walk_nodes::copy_grid,entities_vectors::fetch_y_matches_original_calls,checked
 0x4f7090,collision/body.rs,collision::body::sync_grid,load_stage::stage_world_matches_the_game,checked
@@ -395,7 +395,7 @@ addr,module,rust_item,test,status
 0x4fdff0,stage/layout/files.rs,stage::layout::files::load_col,load_stage::stage_world_matches_the_game,partial
 0x4fe2d0,collision/mesh.rs,collision::mesh::point_triangle,collision_vectors::point_triangle_matches_original_calls,checked
 0x4fe570,stage/layout/files.rs,stage::layout::files::load_col,load_stage::stage_world_matches_the_game,checked
-0x4fe810,collision/mesh.rs,collision::mesh::system_vf00,collision_vectors::system_vf00_matches_original_calls,checked
+0x4fe810,collision/mesh.rs,collision::mesh::segment_query,collision_vectors::system_vf00_matches_original_calls,checked
 0x4febc0,collision/mesh.rs,collision::mesh::face_query,collision_vectors::face_query_matches_original_calls,checked
 0x4ff070,collision/mesh.rs,collision::mesh::segment_test,collision_vectors::segment_test_matches_original_calls,checked
 0x4ff170,collision/mesh.rs,collision::mesh::seg_test,exact_batch::seg_test_builds_the_query_and_defaults_the_output,checked

@@ -882,8 +882,8 @@ struct SlotE8Answers<'a> {
     next: usize,
 }
 
-impl rbr_physics::collision::layout::wall_tree::VfF0Host for SlotE8Answers<'_> {
-    fn vf_e8(&mut self, _sp: u32, wall: u32, a: u32, b: u32, out: u32) -> u32 {
+impl rbr_physics::collision::layout::wall_tree::WallSegmentHost for SlotE8Answers<'_> {
+    fn segment_hit(&mut self, _sp: u32, wall: u32, a: u32, b: u32, out: u32) -> u32 {
         let rec = &self.inner[self.next];
         self.next += 1;
         assert_eq!(rec.args, vec![wall, a, b, 0, out, 1], "VfE8 args");
@@ -901,7 +901,7 @@ struct FetchXAnswers<'a> {
     next: usize,
 }
 
-impl rbr_physics::collision::layout::wall_tree::VfE8Host for FetchXAnswers<'_> {
+impl rbr_physics::collision::layout::wall_tree::WallEndsHost for FetchXAnswers<'_> {
     fn fetch_x(&mut self, _sp: u32, matrix: u32, out: u32, worker: u32) {
         let rec = &self.inner[self.next];
         self.next += 1;
@@ -931,7 +931,7 @@ fn brake_wall_vf_e8_matches_original_calls() {
         let mut answers = FetchXAnswers { mem: mem.clone(), inner: &call.inner, next: 0 };
         let mut args = [0; 5];
         args.copy_from_slice(&call.args[1..6]);
-        let eax = rbr_physics::collision::layout::brake_wall_vf_e8(&mut answers, &mut mem, call.args[0], args, entry);
+        let eax = rbr_physics::collision::layout::wall_segment_hit(&mut answers, &mut mem, call.args[0], args, entry);
         assert_eq!(eax, call.eax, "{name} call {}: eax", call.index);
         assert_eq!(answers.next, call.inner.len(), "{name} call {}: calls", call.index);
         check_windows(call, &mem, name);

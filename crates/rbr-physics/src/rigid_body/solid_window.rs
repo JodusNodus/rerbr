@@ -7,7 +7,7 @@ use super::scratch::{FlushHost, FLUSH_BIT};
 use super::store::RigidStore;
 use super::{emit, window};
 use crate::collision;
-use crate::collision::layout::body_hosts::Vf40Host;
+use crate::collision::layout::body_hosts::BodyResetHost;
 
 /// The window start on the body at `this`, after its children's walk: `emit::window_start`.
 pub fn solid_window_start<S: RigidStore>(store: &mut S, this: u32) {
@@ -59,7 +59,7 @@ pub fn refresh_state_rotation<S: RigidStore>(
 pub fn vf16_helper<S: RigidStore>(
     store: &mut S,
     this: u32,
-    host: &mut (impl MulHost + Vf40Host),
+    host: &mut (impl MulHost + BodyResetHost),
 ) -> Result<u32, HostUnavailable> {
     let state = store.state_at(this);
     refresh_state_rotation(store, state, host)?;

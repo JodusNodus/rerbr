@@ -35,4 +35,4 @@ pub fn collide_init(mem: &mut Mem, object: u32) -> u32 {
 /// E36Nop (0x4f2cd0): empty collision callback barrier.
 pub fn nop() {}
 
-pub use crate::collision::e36::{collect, CollectHost};
+pub use crate::collision::entry::{collect, CollectHost};
