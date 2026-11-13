@@ -19,7 +19,8 @@ use rbr_formats::sgc::Collision;
 /// A 4x4 matrix as the loader's math stores it: row-major, row vectors (`p' = p * M`), the translation in row 3.
 pub type Mat4 = [[f32; 4]; 4];
 
-type Lanes = [f32; 4];
+/// A row, or any four lanes combined lane by lane with the SSE scalar rules (`crate::math::sse`).
+type Row = [f32; 4];
 
 /// The collision bodies the loader emits, in its order: the body's grid id is fixed (1), with the name
 /// `"MrCarCollision"`; the others come from the loader's table (name, id), whose names are the bodies'.
@@ -170,191 +171,107 @@ pub fn world_matrix(world: [[f32; 4]; 3]) -> Mat4 {
     m
 }
 
-fn lanes2(f: impl Fn(f32, f32) -> f32, a: Lanes, b: Lanes) -> Lanes {
+fn lanes(f: impl Fn(f32, f32) -> f32, a: Row, b: Row) -> Row {
     [f(a[0], b[0]), f(a[1], b[1]), f(a[2], b[2]), f(a[3], b[3])]
 }
 
-fn mulps(a: Lanes, b: Lanes) -> Lanes {
-    lanes2(mul, a, b)
+fn mul4(a: Row, b: Row) -> Row {
+    lanes(mul, a, b)
 }
 
-fn addps(a: Lanes, b: Lanes) -> Lanes {
-    lanes2(add, a, b)
+fn add4(a: Row, b: Row) -> Row {
+    lanes(add, a, b)
 }
 
-fn subps(a: Lanes, b: Lanes) -> Lanes {
-    lanes2(sub, a, b)
+fn sub4(a: Row, b: Row) -> Row {
+    lanes(sub, a, b)
 }
 
-fn splat(v: f32) -> Lanes {
+fn splat(v: f32) -> Row {
     [v; 4]
 }
 
-/// `shufps imm, src, dst`: two lanes of `dst`, then two of `src`.
-fn shufps(dst: Lanes, src: Lanes, imm: u8) -> Lanes {
-    let at = |k: u8| usize::from((imm >> (2 * k)) & 3);
-    [dst[at(0)], dst[at(1)], src[at(2)], src[at(3)]]
+/// Lanes 1, 0, 3, 2.
+fn swap_pairs(v: Row) -> Row {
+    [v[1], v[0], v[3], v[2]]
+}
+
+/// Lanes 2, 3, 0, 1.
+fn swap_halves(v: Row) -> Row {
+    [v[2], v[3], v[0], v[1]]
 }
 
 /// The SSE matrix product, `a * b`: each row of `a` broadcast against `b`'s rows, summed `(0 + 1) + (2 + 3)`
 /// in rows 0 and 3 and `((0 + 1) + 2) + 3` in rows 1 and 2.
 pub fn mat_mul(a: &Mat4, b: &Mat4) -> Mat4 {
-    let p = |i: usize, k: usize| mulps(splat(a[i][k]), b[k]);
+    let p = |i: usize, k: usize| mul4(splat(a[i][k]), b[k]);
     [
-        addps(addps(p(0, 0), p(0, 1)), addps(p(0, 2), p(0, 3))),
-        addps(addps(addps(p(1, 0), p(1, 1)), p(1, 2)), p(1, 3)),
-        addps(addps(addps(p(2, 0), p(2, 1)), p(2, 2)), p(2, 3)),
-        addps(addps(p(3, 0), p(3, 1)), addps(p(3, 2), p(3, 3))),
+        add4(add4(p(0, 0), p(0, 1)), add4(p(0, 2), p(0, 3))),
+        add4(add4(add4(p(1, 0), p(1, 1)), p(1, 2)), p(1, 3)),
+        add4(add4(add4(p(2, 0), p(2, 1)), p(2, 2)), p(2, 3)),
+        add4(add4(p(3, 0), p(3, 1)), add4(p(3, 2), p(3, 3))),
     ]
 }
 
-/// The SSE 4x4 inverse (Intel's Cramer's-rule code), one operation at a time: the cofactors, the determinant, and
-/// `1/det` from `rcpss` with one Newton step. `None` when the determinant is zero (then the output is left
-/// unwritten).
+/// The inverse by Cramer's rule, as Intel's SSE code computes it (AP-928): the adjugate's rows from products of the
+/// columns' lane pairs, the determinant from the first, and `1/det` from `rcp` with one Newton step. `None` when the
+/// determinant is zero or NaN (then the output is left unwritten).
+///
+/// Every operation is lane-wise in the code's order and operand order; the steps only move lanes.
 pub fn inverse(m: &Mat4) -> Option<Mat4> {
-    let f = m.as_flattened();
-    let pair = |lo: usize, hi: usize| [f[lo], f[lo + 1], f[hi], f[hi + 1]];
-    let (mut x1, mut x2, mut x3, mut x4) = (pair(0, 4), pair(2, 6), pair(8, 12), pair(10, 14));
-    let (mut x5, mut x6, mut x7);
-    x5 = x2;
-    x5 = shufps(x5, x4, 0x88);
-    x4 = shufps(x4, x2, 0xdd);
-    x2 = x4;
-    x2 = mulps(x2, x5);
-    x2 = shufps(x2, x2, 0xb1);
-    x6 = x2;
-    x6 = shufps(x6, x6, 0x4e);
-    x7 = x3;
-    x3 = shufps(x3, x1, 0xdd);
-    x1 = shufps(x1, x7, 0x88);
-    x7 = x3;
-    x3 = mulps(x3, x6);
-    x6 = mulps(x6, x1);
-    let td0 = x6;
-    x6 = x7;
-    x7 = mulps(x7, x2);
-    x2 = mulps(x2, x1);
-    x3 = subps(x3, x7);
-    x7 = x6;
-    x7 = mulps(x7, x5);
-    x5 = shufps(x5, x5, 0x4e);
-    x7 = shufps(x7, x7, 0xb1);
-    let tc0 = x2;
-    x2 = x4;
-    x2 = mulps(x2, x7);
-    x2 = addps(x2, x3);
-    x3 = x7;
-    x7 = shufps(x7, x7, 0x4e);
-    x3 = mulps(x3, x1);
-    let tb0 = x3;
-    x3 = x4;
-    x3 = mulps(x3, x7);
-    x7 = mulps(x7, x1);
-    x2 = subps(x2, x3);
-    x3 = x6;
-    x3 = shufps(x3, x3, 0x4e);
-    x3 = mulps(x3, x4);
-    x3 = shufps(x3, x3, 0xb1);
-    let ta0 = x7;
-    x7 = x5;
-    x5 = mulps(x5, x3);
-    x5 = addps(x5, x2);
-    x2 = x3;
-    x3 = shufps(x3, x3, 0x4e);
-    x2 = mulps(x2, x1);
-    let t90 = x4;
-    x4 = x7;
-    x7 = mulps(x7, x3);
-    x3 = mulps(x3, x1);
-    x5 = subps(x5, x7);
-    x3 = subps(x3, x2);
-    x2 = x1;
-    x1 = mulps(x1, x5);
-    x3 = shufps(x3, x3, 0x4e);
-    x7 = x1;
-    x1 = shufps(x1, x1, 0x4e);
-    let te0 = x5;
-    x1 = addps(x1, x7);
-    x5 = x1;
-    x1 = shufps(x1, x1, 0xb1);
-    x1[0] = add(x1[0], x5[0]);
-    x5 = x6;
-    x5 = mulps(x5, x2);
-    x5 = shufps(x5, x5, 0xb1);
-    x7 = x5;
-    x5 = shufps(x5, x5, 0x4e);
-    let t80 = x4;
-    x4 = t90;
-    let t70 = x6;
-    x6 = x4;
-    x6 = mulps(x6, x7);
-    x6 = addps(x6, x3);
-    x3 = x4;
-    x3 = mulps(x3, x5);
-    x3 = subps(x3, x6);
-    x6 = x4;
-    x6 = mulps(x6, x2);
-    x6 = shufps(x6, x6, 0xb1);
-    let t60 = x5;
-    x5 = t70;
-    let t50 = x7;
-    x7 = x6;
-    x7 = mulps(x7, x5);
-    x7 = addps(x7, x3);
-    x3 = x6;
-    x3 = shufps(x3, x3, 0x4e);
-    let t40 = x4;
-    x4 = x5;
-    x5 = mulps(x5, x3);
-    let t30 = x4;
-    x4 = x6;
-    x6 = x7;
-    x6 = subps(x6, x5);
-    x5 = td0;
-    x7 = tc0;
-    x5 = subps(x5, x7);
-    x5 = shufps(x5, x5, 0x4e);
-    x7 = t80;
-    x4 = mulps(x4, x7);
-    x3 = mulps(x3, x7);
-    x5 = subps(x5, x4);
-    x2 = mulps(x2, x7);
-    x3 = addps(x3, x5);
-    x2 = shufps(x2, x2, 0xb1);
-    x4 = x2;
-    x4 = shufps(x4, x4, 0x4e);
-    x5 = t40;
-    let t20 = x6;
-    x6 = x5;
-    x5 = mulps(x5, x2);
-    x6 = mulps(x6, x4);
-    x5 = addps(x5, x3);
-    x3 = x4;
-    x4 = x5;
-    x4 = subps(x4, x6);
-    x5 = ta0;
-    x6 = tb0;
-    x5 = subps(x5, x6);
-    x5 = shufps(x5, x5, 0x4e);
-    x6 = t50;
-    x6 = mulps(x6, x7);
-    x6 = subps(x6, x5);
-    x5 = t60;
-    x7 = mulps(x7, x5);
-    x6 = subps(x6, x7);
-    x5 = t30;
-    x2 = mulps(x2, x5);
-    x5 = mulps(x5, x3);
-    x6 = subps(x6, x2);
-    x2 = x5;
-    x2 = addps(x2, x6);
-    let det = x1[0];
+    let column = |c: usize| [m[0][c], m[1][c], m[2][c], m[3][c]];
+    // The columns, 1 and 3 with their halves swapped; column 2 is also used with them swapped.
+    let col0 = column(0);
+    let col1 = swap_halves(column(1));
+    let col2 = column(2);
+    let col3 = swap_halves(column(3));
+    let col2_swapped = swap_halves(col2);
+
+    // Two columns' lane products with their lanes swapped in pairs, and again with the halves swapped: the terms of
+    // the 2x2 determinants of those columns.
+    let products = |a: Row, b: Row| {
+        let p = swap_pairs(mul4(a, b));
+        (p, swap_halves(p))
+    };
+    let (p23, p23_swapped) = products(col3, col2);
+    let (p12, p12_swapped) = products(col1, col2);
+    let (p13, p13_swapped) = products(swap_halves(col1), col3);
+    let (p01, p01_swapped) = products(col1, col0);
+    let (p03, p03_swapped) = products(col3, col0);
+    let (p02, p02_swapped) = products(col0, col2_swapped);
+
+    let adj0 = sub4(mul4(col1, p23_swapped), mul4(col1, p23));
+    let adj0 = sub4(add4(mul4(col3, p12), adj0), mul4(col3, p12_swapped));
+    let adj0 = sub4(add4(mul4(col2_swapped, p13), adj0), mul4(col2_swapped, p13_swapped));
+
+    let adj1 = swap_halves(sub4(mul4(p23_swapped, col0), mul4(p23, col0)));
+    let adj1 = sub4(adj1, mul4(p03, col2_swapped));
+    let adj1 = add4(mul4(p03_swapped, col2_swapped), adj1);
+    let adj1 = add4(mul4(col3, p02), adj1);
+    let adj1 = sub4(adj1, mul4(col3, p02_swapped));
+
+    let adj2 = swap_halves(sub4(mul4(p13_swapped, col0), mul4(p13, col0)));
+    let adj2 = add4(mul4(col3, p01), adj2);
+    let adj2 = sub4(mul4(col3, p01_swapped), adj2);
+    let adj2 = add4(mul4(p03, col1), adj2);
+    let adj2 = sub4(adj2, mul4(col1, p03_swapped));
+
+    let adj3 = swap_halves(sub4(mul4(p12_swapped, col0), mul4(p12, col0)));
+    let adj3 = sub4(mul4(p01, col2_swapped), adj3);
+    let adj3 = sub4(adj3, mul4(col2_swapped, p01_swapped));
+    let adj3 = sub4(adj3, mul4(p02, col1));
+    let adj3 = add4(mul4(col1, p02_swapped), adj3);
+
+    // The first column against the adjugate's first row, summed `(3 + 1) + (2 + 0)`.
+    let terms = mul4(col0, adj0);
+    let sums = add4(swap_halves(terms), terms);
+    let det = add(sums[1], sums[0]);
     if det == 0.0 || det.is_nan() {
         return None;
     }
     let r = rcp(det);
-    let inv = splat(sub(add(r, r), mul(det, mul(r, r))));
-    Some([mulps(te0, inv), mulps(x4, inv), mulps(t20, inv), mulps(inv, x2)])
+    let inv_det = splat(sub(add(r, r), mul(det, mul(r, r))));
+    Some([mul4(adj0, inv_det), mul4(adj1, inv_det), mul4(adj2, inv_det), mul4(inv_det, adj3)])
 }
 
 /// The composed transform: `inverse(R2) * S * R2 * R1 * T`, the rotations from the quaternions, `S` the
@@ -372,9 +289,9 @@ pub fn compose(t: &HhTransform) -> Option<Mat4> {
 /// The SSE point transform: `(v0 * M0 + v1 * M1) + (v2 * M2 + M3)`, then divided by its `w` through
 /// `rcpps` and one Newton step. Returns x, y, z.
 pub fn transform_point(v: [f32; 3], m: &Mat4) -> [f32; 3] {
-    let hi = addps(mulps(m[2], splat(v[2])), m[3]);
-    let mid = mulps(m[1], splat(v[1]));
-    let out = addps(addps(mulps(m[0], splat(v[0])), mid), hi);
+    let hi = add4(mul4(m[2], splat(v[2])), m[3]);
+    let mid = mul4(m[1], splat(v[1]));
+    let out = add4(add4(mul4(m[0], splat(v[0])), mid), hi);
     let r = rcp(out[3]);
     let inv = sub(add(r, r), mul(mul(r, out[3]), r));
     [mul(out[0], inv), mul(out[1], inv), mul(out[2], inv)]
