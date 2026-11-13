@@ -22,18 +22,17 @@ pub type Mat4 = [[f32; 4]; 4];
 /// A row, or any four lanes combined lane by lane with the SSE scalar rules (`crate::math::sse`).
 type Row = [f32; 4];
 
-/// The collision bodies the loader emits, in its order: the body's grid id is fixed (1), with the name
-/// `"MrCarCollision"`; the others come from the loader's table (name, id), whose names are the bodies'.
-/// Each with its name's offset in the loader's image.
-pub const PARTS: [(&str, u32, u32); 8] = [
-    ("c_e_body", 1, 0x1a_ca74),
-    ("c_e_door_l", 2, 0x1a_fe40),
-    ("c_e_door_r", 3, 0x1a_fe34),
-    ("c_e_bonnet", 4, 0x1a_fe28),
-    ("c_e_exhaust", 5, 0x1a_fe1c),
-    ("c_e_bumper_f", 6, 0x1a_fe0c),
-    ("c_e_bumper_b", 7, 0x1a_fdfc),
-    ("c_e_wing", 8, 0x1a_fdf0),
+/// The collision bodies the loader emits, in its order, with their grid ids: the body's is fixed (1), the others come
+/// from the loader's table.
+pub const PARTS: [(&str, u32); 8] = [
+    ("c_e_body", 1),
+    ("c_e_door_l", 2),
+    ("c_e_door_r", 3),
+    ("c_e_bonnet", 4),
+    ("c_e_exhaust", 5),
+    ("c_e_bumper_f", 6),
+    ("c_e_bumper_b", 7),
+    ("c_e_wing", 8),
 ];
 
 /// A sampled-surface map of the body: its size `m` (the file's int, as a `u16`) and its `m * m` bytes, if the file has
@@ -48,8 +47,6 @@ pub struct SampleMap {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CarMesh {
     pub id: u32,
-    /// The name's offset in the loader's image.
-    pub name: u32,
     pub vertices: Vec<[f32; 3]>,
     /// Three vertex indices, 0, then three sample indices. Only the body's are written: a part's bytes 4-6 are
     /// uninitialised memory there, 0 here.
@@ -75,7 +72,7 @@ fn ftol_byte(v: f32) -> u8 {
 /// when a body's transform has no inverse.
 pub fn car_meshes(bodies: &[Collision]) -> Option<Vec<CarMesh>> {
     let mut meshes = Vec::new();
-    for &(name, id, name_at) in &PARTS {
+    for &(name, id) in &PARTS {
         let Some(body) = bodies.iter().find(|b| b.node.name == name) else {
             break;
         };
@@ -98,7 +95,6 @@ pub fn car_meshes(bodies: &[Collision]) -> Option<Vec<CarMesh>> {
         };
         meshes.push(CarMesh {
             id,
-            name: name_at,
             vertices: grid_vertices(body)?,
             faces,
             samples: sampled.then(|| body.samples.iter().map(|s| s.map(|x| ftol_byte(mul(x, 255.0)))).collect()),
@@ -217,7 +213,7 @@ pub fn mat_mul(a: &Mat4, b: &Mat4) -> Mat4 {
 /// columns' lane pairs, the determinant from the first, and `1/det` from `rcp` with one Newton step. `None` when the
 /// determinant is zero or NaN (then the output is left unwritten).
 ///
-/// Every operation is lane-wise in the code's order and operand order; the steps only move lanes.
+/// Every operation is lane-wise in the code's order and operand order; the swaps only move lanes.
 pub fn inverse(m: &Mat4) -> Option<Mat4> {
     let column = |c: usize| [m[0][c], m[1][c], m[2][c], m[3][c]];
     // The columns, 1 and 3 with their halves swapped; column 2 is also used with them swapped.
