@@ -94,6 +94,11 @@ pub mod publish {
         /// Wheel `i`'s two vectors.
         pub const WHEEL_A: u32 = 0x100;
         pub const WHEEL_B: u32 = 0x140;
+
+        /// Wheel `i`'s two vectors' offsets (16 bytes apart per wheel).
+        pub const fn wheel(i: u32) -> (u32, u32) {
+            (WHEEL_A + 0x10 * i, WHEEL_B + 0x10 * i)
+        }
     }
 }
 
