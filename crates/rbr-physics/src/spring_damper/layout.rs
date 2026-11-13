@@ -6,7 +6,7 @@ use super::{
     HeatCapacity, RealValue, Relaxation, SetupValues, State, UpdateTerms, WeightedValue,
 };
 use crate::mem::Mem;
-use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE as REAL_LABEL, UNSIGNED_NAME, UNSIGNED_VTABLE};
+use crate::ntweak::layout::{REAL_NAME, REAL_VTABLE, UNSIGNED_NAME, UNSIGNED_VTABLE};
 use crate::store::Real;
 
 const DEFINITION_VTABLE: u32 = 0x0074_0124; // 0x52d750
@@ -50,12 +50,13 @@ crate::object! {
         owner @ 0x18: u32,
         last_deflection @ 0x1c: Real,
         unsigned_header @ 0x2c: [u32; 3],
-        unknown_value @ 0x38: u32,
+        unsigned_tweak @ 0x38: u32,
     }
 }
 
-const DEFINITION_BASE: u32 = ControllerObj::definition.at;
-const DEFINITION_STATE: u32 = ControllerObj::state.at;
+const DEFINITION_POINTER: u32 = ControllerObj::definition.at;
+const STATE_POINTER: u32 = ControllerObj::state.at;
+const SCRATCH_VTABLE_WORD: u32 = ControllerObj::scratch_vtable.at;
 const FADE_POINTER: u32 = ControllerObj::fade.at;
 const MODE: u32 = ControllerObj::mode.at;
 const HIGH_SPEED_HOLD: u32 = ControllerObj::high_speed_hold.at;
@@ -103,9 +104,15 @@ const STATE_DAMP_REBOUND_EFF: u32 = StateObj::damp_rebound_eff.at;
 const STATE_HS_DAMP_BUMP_EFF: u32 = StateObj::hs_damp_bump_eff.at;
 const STATE_OWNER: u32 = StateObj::owner.at;
 const STATE_LAST_DEFLECTION: u32 = StateObj::last_deflection.at;
-const STATE_UNKNOWN: u32 = StateObj::unknown_value.at;
+const STATE_UNSIGNED_HEADER: u32 = StateObj::unsigned_header.at;
+/// The state's unsigned tweak value (`CState`'s CUnsigned at +0x2c, its value at +0xc; key not found).
+const STATE_UNSIGNED_TWEAK: u32 = StateObj::unsigned_tweak.at;
 
-/// Reads a CReal body. The vtable word is left to the constructor and is not copied by setup apply.
+/// The owner wheel's index (`wheel+0xeb4`, `wheel::layout::WHEEL_INDEX`), the damper signal's owner id.
+const OWNER_WHEEL_INDEX: u32 = 0xeb4;
+
+/// Reads a CReal body: its vtable (+0), dirty (+8) and value (+0xc) words. The name word (+4) is left to the
+/// constructor and is not copied by setup apply.
 fn real_value(mem: &Mem, at: u32) -> RealValue {
     RealValue { label: mem.u32(at), dirty: mem.u32(at + 8), value: mem.f32(at + 12) }
 }
@@ -155,7 +162,7 @@ pub fn construct_definition(mem: &mut Mem, at: u32) -> u32 {
 }
 
 fn write_real(mem: &mut Mem, at: u32, value: RealValue, dirty: u32) {
-    mem.set_u32(at, REAL_LABEL);
+    mem.set_u32(at, REAL_VTABLE);
     mem.set_u32(at + 4, REAL_NAME);
     mem.set_u32(at + 8, dirty);
     mem.set_f32(at + 12, value.value);
@@ -198,10 +205,10 @@ pub fn construct_state(mem: &mut Mem, at: u32, owner: u32) -> u32 {
     mem.set_f32(at + STATE_HS_DAMP_BUMP_EFF, 0.0);
     mem.set_u32(at + STATE_OWNER, owner);
     write_real(mem, at + STATE_LAST_DEFLECTION, RealValue::default(), 0);
-    mem.set_u32(at + 0x2c, UNSIGNED_VTABLE);
-    mem.set_u32(at + 0x30, UNSIGNED_NAME);
-    mem.set_u32(at + 0x34, 0);
-    mem.set_u32(at + STATE_UNKNOWN, 0);
+    mem.set_u32(at + STATE_UNSIGNED_HEADER, UNSIGNED_VTABLE);
+    mem.set_u32(at + STATE_UNSIGNED_HEADER + 4, UNSIGNED_NAME);
+    mem.set_u32(at + STATE_UNSIGNED_HEADER + 8, 0);
+    mem.set_u32(at + STATE_UNSIGNED_TWEAK, 0);
     at
 }
 
@@ -303,9 +310,9 @@ pub fn reset_outputs<S: SpringStore>(mem: &mut S, controller_at: u32) -> DamperS
 /// CSpringDamper::CSpringDamper initializes its pointers, scratch header, and counters. 0x52df20.
 pub fn construct_controller(mem: &mut Mem, at: u32, definition: u32, state: u32) -> u32 {
     mem.set_u32(at, CONTROLLER_VTABLE);
-    mem.set_u32(at + DEFINITION_BASE, definition);
-    mem.set_u32(at + DEFINITION_STATE, state);
-    mem.set_u32(at + 0x0c, SCRATCH_VTABLE);
+    mem.set_u32(at + DEFINITION_POINTER, definition);
+    mem.set_u32(at + STATE_POINTER, state);
+    mem.set_u32(at + SCRATCH_VTABLE_WORD, SCRATCH_VTABLE);
     mem.set_u32(at + FADE_POINTER, 0);
     mem.set_u32(at + MODE, 0);
     mem.set_u32(at + HIGH_SPEED_HOLD, 0);
@@ -407,11 +414,11 @@ pub fn force<S: SpringStore>(mem: &mut S, state_at: u32, input: f32, divisor: f3
 /// The Mem store: the bodies are the layout's reads and writes.
 impl SpringStore for Mem {
     fn definition_at(&self, controller: u32) -> u32 {
-        self.u32(controller + DEFINITION_BASE)
+        self.u32(controller + DEFINITION_POINTER)
     }
 
     fn state_at(&self, controller: u32) -> u32 {
-        self.u32(controller + DEFINITION_STATE)
+        self.u32(controller + STATE_POINTER)
     }
 
     fn fade_at(&self, controller: u32) -> u32 {
@@ -476,7 +483,7 @@ impl SpringStore for Mem {
             hs_damp_bump_eff: self.f32(at + STATE_HS_DAMP_BUMP_EFF),
             owner: self.u32(at + STATE_OWNER),
             last_deflection: real_value(self, at + STATE_LAST_DEFLECTION),
-            unknown_value: self.u32(at + STATE_UNKNOWN),
+            unsigned_tweak: self.u32(at + STATE_UNSIGNED_TWEAK),
         }
     }
 
@@ -492,7 +499,7 @@ impl SpringStore for Mem {
 
     fn owner_id(&self, state_at: u32) -> u32 {
         let owner = self.u32(state_at + STATE_OWNER);
-        self.u32(owner + 0xeb4)
+        self.u32(owner + OWNER_WHEEL_INDEX)
     }
 
     fn controller(&self, at: u32) -> Controller {

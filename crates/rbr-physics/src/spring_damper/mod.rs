@@ -10,14 +10,16 @@ use crate::fpu::{round24, round_x87};
 use crate::math::le_or_unordered;
 use std::cmp::Ordering;
 
-const ONE: f32 = f32::from_bits(0x3f80_0000);
-const MERGE_THRESHOLD: f32 = f32::from_bits(0x3586_37bd);
-const RELAX_FLOOR: f32 = f32::from_bits(0x3727_c5ac);
+const ONE: f32 = 1.0;
+const MERGE_THRESHOLD: f32 = 1e-6;
+const RELAX_FLOOR: f32 = 1e-5;
 /// Kelvin offset of the Celsius scale: 273.15 K.
-const KELVIN_OFFSET: f32 = f32::from_bits(0x4388_9333);
-const OUTPUT_SCALE: f32 = f32::from_bits(0x47c3_5000);
-const CURVE_LINEAR: f32 = f32::from_bits(0x3fa4_9249);
-const CURVE_RECIPROCAL: f32 = f32::from_bits(0x3e92_4925);
+const KELVIN_OFFSET: f32 = 273.15;
+const OUTPUT_SCALE: f32 = 100_000.0;
+/// The f32 nearest 9/7.
+const CURVE_LINEAR: f32 = 1.285_714_3;
+/// The f32 nearest 2/7.
+const CURVE_RECIPROCAL: f32 = 0.285_714_3;
 const MIN_BUMP_DAMPING: f32 = 400.0;
 
 /// A named real tweak's value plus its two bookkeeping words. layout owns the offsets.
@@ -28,8 +30,9 @@ pub struct RealValue {
     pub value: f32,
 }
 
-/// Spring-damper definition values read by the per-wheel update. Each name is
-/// taken from notes/physics.md "Spring-damper"; inferred names remain marked there.
+/// Spring-damper definition values read by the per-wheel update. The names follow the definition's tweak keys
+/// (`SpringStiffness`, `DampingBump`, ...); `helper_min_length` has no key of its own and is named after the setup
+/// key it is copied from (`HelperSpringMinLength`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Definition {
     pub debug_id: u32,
@@ -81,7 +84,9 @@ pub struct State {
     pub hs_damp_bump_eff: f32,
     pub owner: u32,
     pub last_deflection: RealValue,
-    pub unknown_value: u32,
+    /// The value of the state's unsigned tweak (its last member). Its key and any reader are not found; named by
+    /// its type.
+    pub unsigned_tweak: u32,
 }
 
 /// Two values used by the fade accumulator.
@@ -101,7 +106,7 @@ pub struct DamperSignal {
     pub valid: i32,
 }
 
-/// Mutable per-wheel controller state used by Step and ResetOutputs.
+/// Mutable per-wheel controller state used by the step and the signal reset.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Controller {
     pub mode: i32,
@@ -109,7 +114,7 @@ pub struct Controller {
     pub signal: DamperSignal,
 }
 
-/// Strut position, coordinate, and velocity passed to Step.
+/// Strut position, coordinate, and velocity passed to the step.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct StepInput {
     pub travel: f32,
@@ -117,7 +122,7 @@ pub struct StepInput {
     pub velocity: f32,
 }
 
-/// The three output values written by Step.
+/// The three output values the step writes.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct StepOutput {
     pub spring_stop_force: f32,

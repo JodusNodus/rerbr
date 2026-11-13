@@ -179,7 +179,7 @@ fn reset_outputs_matches() {
 }
 
 #[test]
-fn damper_step1_matches() {
+fn heat_flow_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e350, |call, _| {
         ReturnValue::St0(spring_damper::heat_flow(f(call.args[0]), f(call.args[1]), f(call.args[2]), f(call.args[3])))
@@ -187,7 +187,7 @@ fn damper_step1_matches() {
 }
 
 #[test]
-fn damper_step2_matches() {
+fn conduction_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e370, |call, _| {
         ReturnValue::St0(spring_damper::conduction(f(call.args[0]), f(call.args[1]), f(call.args[2])))
@@ -195,13 +195,13 @@ fn damper_step2_matches() {
 }
 
 #[test]
-fn damper_bias_sub_matches() {
+fn kelvin_to_celsius_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e390, |call, _| ReturnValue::St0(spring_damper::kelvin_to_celsius(f(call.args[0]))));
 }
 
 #[test]
-fn damper_accumulate_a_matches() {
+fn accumulate_heat_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e3a0, |call, mem| {
         layout::accumulate_heat(mem, call.args[0], f(call.args[1]), call.args[2]);
@@ -210,7 +210,7 @@ fn damper_accumulate_a_matches() {
 }
 
 #[test]
-fn damper_accumulate_b_matches() {
+fn accumulate_heat_scaled_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e3d0, |call, mem| {
         layout::accumulate_heat_scaled(mem, call.args[0], f(call.args[1]), call.args[2]);
@@ -234,7 +234,7 @@ fn damper_merge_matches() {
 }
 
 #[test]
-fn damper_update_a_matches() {
+fn solve_response_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e4c0, |call, mem| {
         layout::solve_response(mem, call.args[0], f(call.args[1]));
@@ -243,7 +243,7 @@ fn damper_update_a_matches() {
 }
 
 #[test]
-fn damper_update_b_matches() {
+fn solve_scale_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e4f0, |call, mem| {
         layout::solve_scale(mem, call.args[0], f(call.args[1]));
@@ -252,7 +252,7 @@ fn damper_update_b_matches() {
 }
 
 #[test]
-fn damper_update_c_matches() {
+fn solve_numerator_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay(0x52e530, |call, mem| {
         layout::solve_numerator(mem, call.args[0], f(call.args[1]));

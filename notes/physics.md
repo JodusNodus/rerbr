@@ -229,7 +229,7 @@ twice; `F[0xC5]*0.1` rounds before `*F[0xFC]`.
 
 ## Spring-damper
 
-`src/spring_damper/` (lifecycle in `suspension.rs`, kernels in the model docs, `Mem` edge in `layout/`; damper
+`src/spring_damper/` (lifecycle in `suspension.rs`, kernels in the model docs, `Mem` edge in `layout.rs`; damper
 events via `Host::emit_damper`). `CSpringDamper`'s fade pointer `+0x10` is read without a check; its writer is not
 found.
 
