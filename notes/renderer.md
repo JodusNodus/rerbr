@@ -1014,6 +1014,11 @@ not ported.
   unchanged and the Clio changes only in the gap; a few dim lines stay at the dash's edge. Tried and dropped: sloping
   it back under the dash at 45 degrees (lit grey facets, a larger gap). Outside views byte-identical.
   Cars without `i_window_f` (the M3 E30) have no glass at all.
+- The panes' cells are placed corner by corner (2026-11-13, `glass::drawn::placed_cell`): each corner is a stage point
+  of its own and the others' offsets from the low one are taken there. Placed by offsets turned on their own, a
+  neighbour's corner landed up to a float's step beside this one's (0.25 mm some km from the stage's origin), the cells
+  crossing or parting by part of a pixel: lines of dots along the cells' edges, plain over a bright view (the door
+  mirror through the side window; M3 E36 on stage 44, with and without `--mirrors`, single pixels without TAA).
 
 ## Skid marks
 
@@ -1382,10 +1387,27 @@ launcher "Mirrors" (default every frame). Off: no passes, the frame byte-identic
 - Found at load from the cockpit eye (`Mounts`, `mirrors/mod.rs`): the `*mirrorglass*` parts (else the `*mirror*`
   housings' faces) and the opaque glass-class faces (retail cars), in panes of welded, coplanar faces. A pane is a
   mirror when the eye's line reflects back along the car, it is 3-45 cm, 0.2-1.5 m ahead, at most 45 cm below the
-  eye, flat to 4 % of its size, and the eye sees it past opaque non-glass faces; one per side and one centre. No
-  named centre mirror (community cars): the largest opaque pane hanging there. Not flat: the cube as before.
-- Survey (`examples/mirror_survey.rs`): the retail cars 2 door mirrors each, Lancer Evo VII 1 door + centre, Impreza
-  2000 2 + centre; the 42 community samples 1-3 each but the Fiesta Rally2 (none); curved glass in 12 keeps the cube.
+  eye, flat to 10 % of its size, its faces fill 55 % of their box, and the eye sees it past opaque non-glass faces;
+  the largest by its faces' area, one per side and one centre. No named centre mirror (community cars): the largest
+  opaque pane hanging there. Not flat: the cube as before.
+- Set for the driver (2026-11-13, `Glass::aim`, user's call: the mirrors of the M3 E36 and the 911 GT3 RS 2007 and 2010
+  showed only the car): the image is reflected across the plane through the glass's centre that sends the cockpit
+  eye's line back along the car, not across the glass as modelled. A door mirror's line goes outward by 0.75 of the
+  glass's half width as the eye sees it and down by 0.3 of its half height (the flank at the inner edge, the horizon
+  above the middle); the centre one straight back, 2 degrees down. Set at load and again when the seat is nudged
+  (`camera_prefs::Session::apply`). The glass samples the image where it lies on screen (the view before the
+  reflection), and the image starts 3 cm plus the glass's reach before the plane (its housing left out).
+  As modelled (99 added packs, 50 RSF and retail, 235 door mirrors): 52 showed only the car, 98 looked over 15 degrees
+  outward, lines from 45 degrees inward to 57 outward and 51 down to 14 up; set, all 1 to 5 degrees outward, median
+  9 % of the glass the car's own, one over 60 % (Celica ST185, right).
+- Ranked by box area the rim about the glass won over it on the 911 GT3 RS 2010 (54 cm2 in a 23 x 16 cm box against
+  the glass's 275; the glass kept the cube), and the M3 E36's and 911 GT3 RS 2007's mirrors were a larger pane than
+  their glass. At 4 % the Peugeot 208 R2's centre glass (9 mm off over 22 cm) lost to its rim and the Fiesta Rally3,
+  Rally4 and R2 2019 had no centre mirror; the 911 GT3 RS 2007's centre mirror was a lone triangle and the Yaris WRC
+  2018's four faces 39 cm wide turned 45 degrees (both dropped). 303 mirrors over the 149, 301 before; 10 cars with
+  none, as before.
+- Survey (`examples/mirror_survey.rs`, also by a model's `.sgc` path): the retail cars 2 door mirrors each, Lancer Evo
+  VII 1 door + centre, Impreza 2000 2 + centre; each with where its line goes and the car's share of its glass.
 - View: `crop * VP * R`, R the reflection across the glass, crop the glass's screen box with x flipped, z row for an
   oblique near plane 1 cm past the glass. Image about 1:1 with the glass, 32 px steps, at most 1024 x 512. Rates take
   turns between mirrors.

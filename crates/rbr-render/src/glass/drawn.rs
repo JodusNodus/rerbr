@@ -332,16 +332,26 @@ impl Drawn {
         // The panes themselves seen from inside, over all that lies on them: their inner face's reflection and loss
         // are nearer the eye than the water on the outer one.
         if outside.is_none() && effects {
-            let out = |v: [f32; 3]| to_stage.transform_vector3(Vec3::from(v));
-            drops.extend(self.panes.iter().flat_map(|(cells, _)| cells).map(|c| gpu::Drop {
-                centre: to_stage.transform_point3(Vec3::from(c.centre)).to_array(),
-                axis_u: out(c.axis_u).to_array(),
-                axis_v: out(c.axis_v).to_array(),
-                far: out(c.far).to_array(),
-                normal: out([c.normal[0], c.normal[1], c.normal[2]]).normalize().extend(0.0).to_array(),
-                ..*c
-            }));
+            drops.extend(self.panes.iter().flat_map(|(cells, _)| cells).map(|cell| placed_cell(cell, to_stage)));
         }
+    }
+}
+
+/// A pane cell (`pane_cells`, model space) in stage space by `to_stage`. Each corner is placed as its own point and
+/// the others' offsets from the low one are taken there: far from the stage's origin a float is a quarter of a
+/// millimetre, and a neighbour's corner placed by its own offset landed up to that beside this one's, the cells
+/// crossing or parting by part of a pixel (lines of dots over a bright view, the door mirror's).
+fn placed_cell(cell: &gpu::Drop, to_stage: Mat4) -> gpu::Drop {
+    let corner = |offset: [f32; 3]| to_stage.transform_point3(Vec3::from(cell.centre) + Vec3::from(offset));
+    let low = corner([0.0; 3]);
+    let [x, y, z, _] = cell.normal;
+    gpu::Drop {
+        centre: low.to_array(),
+        axis_u: (corner(cell.axis_u) - low).to_array(),
+        axis_v: (corner(cell.axis_v) - low).to_array(),
+        far: (corner(cell.far) - low).to_array(),
+        normal: to_stage.transform_vector3(Vec3::new(x, y, z)).normalize().extend(0.0).to_array(),
+        ..*cell
     }
 }
 
@@ -562,6 +572,49 @@ fn falling(p: Option<Precipitation>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pane_cells_meet_at_their_corners_far_from_the_origin() {
+        // A curved pane's grid of corners 2 cm apart, on a car turned and 3 km out on the stage.
+        let corner = |i: usize, j: usize| {
+            let (x, y) = (i as f32 * 0.02 - 0.61, j as f32 * 0.02 + 0.83);
+            Vec3::new(x, y, -1.37 + 0.3 * x * x + 0.11 * y)
+        };
+        let cell = |i: usize, j: usize| {
+            let low = corner(i, j);
+            let offset = |i, j| (corner(i, j) - low).to_array();
+            gpu::Drop {
+                centre: low.to_array(),
+                axis_u: offset(i + 1, j),
+                axis_v: offset(i, j + 1),
+                far: offset(i + 1, j + 1),
+                normal: [0.0, 0.0, 1.0, 0.0],
+                ..bytemuck::Zeroable::zeroed()
+            }
+        };
+        let to_stage = Mat4::from_translation(Vec3::new(1873.3, 212.7, -2950.1)) * Mat4::from_rotation_y(0.7);
+        // The corners as `glass.wgsl`'s `vs_main` places them: the low one, and it plus each offset.
+        let corners = |i: usize, j: usize| {
+            let c = placed_cell(&cell(i, j), to_stage);
+            let low = Vec3::from(c.centre);
+            [low, low + Vec3::from(c.axis_u), low + Vec3::from(c.axis_v), low + Vec3::from(c.far)]
+        };
+        // Each offset turned on its own misses the neighbour's corner on some cells.
+        let turned = |i: usize, j: usize| {
+            let c = cell(i, j);
+            to_stage.transform_point3(Vec3::from(c.centre)) + to_stage.transform_vector3(Vec3::from(c.axis_u))
+        };
+        assert!((0..60).any(|i| turned(i, 0) != corners(i + 1, 0)[0]));
+        for i in 0..60 {
+            for j in 0..20 {
+                let [_, right, up, far] = corners(i, j);
+                assert_eq!(right, corners(i + 1, j)[0], "{i} {j}");
+                assert_eq!(up, corners(i, j + 1)[0], "{i} {j}");
+                assert_eq!(far, corners(i + 1, j + 1)[0], "{i} {j}");
+                assert_eq!(far, corners(i + 1, j)[2], "{i} {j}");
+            }
+        }
+    }
 
     #[test]
     fn the_water_feels_the_car_brake_but_not_a_restart() {
