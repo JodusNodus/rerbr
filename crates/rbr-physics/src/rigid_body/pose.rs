@@ -2,7 +2,7 @@
 //! the position moves along the linear velocity (`p <- p + v*a`), and the body is registered in its cell (root
 //! bodies) or its position goes to the parent frame (child bodies). A contact sample is taken when the step flags
 //! have bit 3 set. The calls into other code go through `PoseHost`, in order; their effects on the body are the body
-//! fields the host can't see (see the README).
+//! fields the host can't see (`rigid_body/README.md` (git 9c28c0b8), "Host calls").
 
 use super::host::{CellHost, HostUnavailable};
 use super::layout::{Body, ParentFrame, Vec4, CELL_LINK};
@@ -64,7 +64,7 @@ pub fn pose_step(
             next
         }
         Some(frame) if frame.updates_child => host.to_parent_frame(next),
-        // The original reads an uninitialised stack word here (unverified; see the README).
+        // The original reads an uninitialised stack word here (unverified; `rigid_body/README.md` (git 9c28c0b8)).
         Some(_) => next,
     };
     if body.body_flags & 8 != 0 {
