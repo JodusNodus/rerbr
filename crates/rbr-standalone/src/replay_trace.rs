@@ -108,12 +108,18 @@ pub fn front_wheels(mem: &Mem) -> String {
             let axle = pose::wheel_pose(block).map_or([f32::NAN; 3], |w| w.axle);
             wheel(mem, mem.u32(mem.u32(CAR_PTR) + WHEELS + 4 * k as u32), axle)
         })
+        .chain(
+            [crate::tyre_ffb::SUGGESTED_TRAIL, 0.0].map(|trail| format!(" {:.2}", crate::tyre_ffb::torque(mem, trail))),
+        )
         .collect()
 }
 
-/// The `--trace-wheels` header columns ([`front_wheels`]).
+/// The `--trace-wheels` header columns ([`front_wheels`]): the front wheels', then the steering torque rebuilt from
+/// them (`tyre_ffb::torque`): `tyres` at `tyre_ffb::SUGGESTED_TRAIL`, `aligning` with no mechanical trail (the
+/// tyres' aligning moments alone).
 pub fn front_wheels_header() -> String {
     ["fl", "fr"].map(|w| WHEEL_HEADER.split(' ').map(|c| format!(" {w}_{c}")).collect::<String>()).concat()
+        + " tyres aligning"
 }
 
 /// A wheel's columns ([`WHEEL_HEADER`]).

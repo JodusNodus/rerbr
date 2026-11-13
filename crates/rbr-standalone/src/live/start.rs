@@ -231,6 +231,7 @@ impl<'a> Live<'a> {
             saves: None,
             rally_next: RallyNext::default(),
             telemetry: None,
+            ffb_tyres: None,
             initial,
             initial_game,
             boot_now: 0.0,

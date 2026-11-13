@@ -145,6 +145,7 @@ mod replay_trace;
 mod saves;
 mod stage;
 mod twin;
+mod tyre_ffb;
 mod tyre_probe;
 
 fn main() -> ExitCode {
@@ -244,6 +245,9 @@ fn live(args: &Args, data: &Data, race: Option<&boot::Race>, stage: &StageData) 
         };
         live.set_direct(args.direct);
         live.set_physics(args.physics, race::engine_car(args, race, stage.car))?;
+        if let Some(trail) = args.ffb_tyres {
+            live.set_ffb_tyres(trail);
+        }
         if let Some(dir) = &args.saves {
             let saves = stage.saves(dir, args.profile.as_deref())?;
             live.set_saves(if args.keeps_records() { saves } else { saves.dry() });

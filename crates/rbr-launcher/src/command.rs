@@ -756,6 +756,9 @@ impl Form {
             args.extend(["--head-gasket-durability".to_owned(), self.head_gasket.to_string()]);
         }
         args.extend(self.drive_physics().args(car));
+        if let Some(mm) = &self.ffb_tyres {
+            args.extend(["--ffb-tyres".to_owned(), mm.clone()]);
+        }
         if let Some(to) = crate::settings::udp_address(&self.telemetry_udp) {
             args.extend(["--telemetry-udp".to_owned(), to.to_owned()]);
         }
@@ -886,6 +889,7 @@ mod tests {
             data,
             patch,
             physics: None,
+            ffb_tyres: None,
         }
     }
 
@@ -1582,6 +1586,28 @@ mod tests {
             }
         }
         std::fs::remove_dir_all(&here).unwrap();
+    }
+
+    /// `rerbr --ffb-tyres` reaches `rbr-standalone` (after `--live`) for the session; without it the command has none.
+    #[test]
+    fn the_ffb_trial_reaches_the_standalone() {
+        let (Some(data), Some(patch), Some(_)) = (env("RBR_DATA"), env("RBR_PATCH"), env("RBR_RSF")) else {
+            return;
+        };
+        let here = crate::test_dir("command-ffb-tyres");
+        let text = "[launcher]\ncar = Mitsubishi Lancer Evo IX N4\nmap = 54\n";
+        for trial in [None, Some("25".to_owned())] {
+            let start = Start {
+                ffb_tyres: trial.clone(),
+                ..start(here.join(SETTINGS_FILE), Some(PathBuf::from(&data)), Some(PathBuf::from(&patch)))
+            };
+            let mut form = load(&start, Settings::parse(text)).unwrap();
+            form.read_only = true;
+            let args = launch(&mut form);
+            let live = args.iter().position(|a| a == "--live").unwrap();
+            assert_eq!(value(&args[live..], "--ffb-tyres"), trial, "{args:?}");
+            assert_eq!(value(&args[..live], "--ffb-tyres"), None, "{args:?}");
+        }
     }
 
     /// With the experimental physics a championship stage does not start, and says why (no results would be saved);
