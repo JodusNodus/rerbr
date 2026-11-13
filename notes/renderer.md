@@ -1617,7 +1617,10 @@ Load-time upscaling (`upscale.rs`, ours): `viewer --upscale-textures DIR` (the l
 car's and the stage's textures with Real-ESRGAN General WDN v3 4x (halved for 2048 sources, 4096 at most),
 after the car's dials are made, cached by the source file's SHA-256 as the DDS file in gzip (`.dds.gz`, 2026-11-13:
 0.41 of the size over 120 files, a 4K Fiat 131 cockpit's 68 textures 1.2 GB to 523 MB, its shot byte-identical; a
-plain `.dds` of an older build is packed when a load reads it; `work-*` folders over a day old are removed). Model choice (10 tried): WDN v3 (~4.4 s for a
+plain `.dds` of an older build is packed when a load reads it, and all of them by the launcher while no viewer runs,
+at its start and after each drive, over half the threads: 400 files, 3.3 to 1.5 GB in about 1 s; `work-*` folders and
+part files over a day old are removed). The Graphics page shows the cache's size with "Clear…" (user, 2026-11-13: no
+eviction by age). Model choice (10 tried): WDN v3 (~4.4 s for a
 1024 livery) crisper on lettering than UltraSharp and Nomos8kSC (both ~14 s) with the grain kept; animevideov3 and
 digital-art flatten grain, digital-art and x4plus invent letters. ACCENT 7 textures 17.2 s first, 0.2 s cached;
 stage objects ~25 s first; the ground's atlases 8 to 14 s more. Cached, a stage loads in under 1 s more. The

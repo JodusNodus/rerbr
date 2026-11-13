@@ -385,7 +385,10 @@ impl Form {
             };
             ui.label("Textures").on_hover_text(tip);
             if self.upscaler {
-                ui.checkbox(&mut self.upscale_textures, "upscaled").on_hover_text(tip);
+                ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut self.upscale_textures, "upscaled").on_hover_text(tip);
+                    self.upscaler_cache_ui(ui);
+                });
             } else if crate::upscaler::available() {
                 ui.vertical(|ui| self.upscaler_download_ui(ui));
             } else {

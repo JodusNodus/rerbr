@@ -140,7 +140,7 @@ pub fn load(args: &Args, data: &Data, progress: &mut dyn FnMut(Step)) -> Result<
                     _ => stage_textures.get(&key).copied(),
                 };
                 let mut told = |done, total| progress(Step::Upscale { done, total });
-                let cache = dir.join("cache");
+                let cache = dir.join(upscale::CACHE);
                 let replaced = upscale::apply(&mut scene.stage.textures, pick, &upscaler, &cache, &mut told);
                 eprintln!("upscale: {replaced} car and stage textures upscaled ({})", upscale::MODEL);
             }

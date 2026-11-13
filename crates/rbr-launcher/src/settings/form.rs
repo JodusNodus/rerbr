@@ -251,6 +251,7 @@ impl Form {
             upscale_textures: settings.upscale_textures.unwrap_or(false),
             upscaler: rbr_render::upscale::Upscaler::find(&home.join(rbr_render::upscale::DIR)).is_some(),
             upscaler_download: Default::default(),
+            upscaler_cache: Default::default(),
             present: settings.present.map_or_else(Present::default, Present::offered),
             max_fps: settings.max_fps.unwrap_or(0),
             fullscreen: settings.fullscreen.unwrap_or(true),
