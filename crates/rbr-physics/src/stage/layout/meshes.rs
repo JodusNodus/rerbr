@@ -26,8 +26,12 @@ const SELF: u32 = 0x9C;
 const RECORD: u32 = 0xA0;
 const LEVEL: u32 = 0xB0;
 
-/// An entity's parent (`CEntity+0x44`).
+/// An entity's parent (`CEntity+0x44`), and its link in the physics state's list (`+0x10`: next, previous, the list),
+/// whose count is the list's `+8`.
 const PARENT: u32 = 0x44;
+const ENTITY_LINK: u32 = 0x10;
+const ENTITY_LIST: u32 = 0x18;
+const LIST_COUNT: u32 = 0x8;
 
 /// A collision-mesh descriptor (`CSigCollisionMesh`): the id, flags, name, vertex and face counts and arrays, the
 /// shape record and the material byte.
@@ -52,10 +56,10 @@ pub fn clear_meshes(mem: &mut Mem, host: &mut impl StageHost, array: u32) {
         if mesh == 0 {
             continue;
         }
-        let list = mem.u32(mesh + 0x18);
+        let list = mem.u32(mesh + ENTITY_LIST);
         if list != 0 {
-            mem.set_u32(list + 8, mem.u32(list + 8).wrapping_sub(1));
-            unlink(mem, mesh + 0x10);
+            mem.set_u32(list + LIST_COUNT, mem.u32(list + LIST_COUNT).wrapping_sub(1));
+            unlink(mem, mesh + ENTITY_LINK);
         }
         let mesh = mem.u32(array + 4 * i);
         if mesh != 0 {
@@ -121,7 +125,7 @@ pub fn attach_water(mem: &mut Mem, host: &mut impl StageHost, water: u32) {
     let (x, y) = stage::water_centre(Vec4::load(mem, water + LOW), Vec4::load(mem, water + HIGH), mem.f32(HALF));
     let cell = lookup_twin(host, mem, physics::cell_grid(mem), x, y);
     move_to_cell(mem, water + LINK, cell);
-    reg_wall(mem, water, WATER_FILING);
+    file_with_state(mem, water, WATER_FILING);
     if mem.u32(water + PARENT) == 0 {
         let physics = physics::physics(mem);
         setup::wall_rel(mem, &mut physics::Filer(WATER_FILING), physics, water);
@@ -133,10 +137,11 @@ pub fn attach_water(mem: &mut Mem, host: &mut impl StageHost, water: u32) {
 pub(super) const WALL_FILING: Filing = (false, false, true);
 const WATER_FILING: Filing = (false, false, false);
 
-/// `CPhysics::RegWall` (0x526470) on `[0x1659b70]`: `CState::RegWall` on its state.
-pub(super) fn reg_wall(mem: &mut Mem, entity: u32, (s8c, s80, s88): Filing) {
+/// `CPhysics::RegWall` (0x526470) on `[0x1659b70]`: `CState::RegWall` on its state, which files `entity` in the list
+/// `filing` picks.
+pub(super) fn file_with_state(mem: &mut Mem, entity: u32, filing: Filing) {
     let state = physics::state_of(mem, physics::physics(mem));
-    physics::push_item(mem, physics::entity_list(state, s8c, s80, s88), entity);
+    physics::push_item(mem, physics::entity_list(state, filing.0, filing.1, filing.2), entity);
 }
 
 /// `CPC_TrackLoaderDaemon::LoadCollisionMeshes` (0x46e300): per mesh a zeroed descriptor with the mesh's name (a copy,
@@ -210,18 +215,24 @@ pub fn load_collision_meshes(mem: &mut Mem, host: &mut impl StageHost, data: &tr
 /// A placement (`CSigStuff`, 0x50 bytes, zeroed when made): the position, the values (the orientation), the extent, the
 /// collision id or descriptor, the object type, the handle and the flags. `E46_Notify67d0` keeps the object at `+0x3c`.
 pub(super) const PLACEMENT_SIZE: u32 = 0x50;
+const PLACEMENT_VALUES: u32 = 0x10;
+const PLACEMENT_EXTENT: u32 = 0x20;
+const PLACEMENT_COLLISION: u32 = 0x34;
+const PLACEMENT_OBJECT_TYPE: u32 = 0x38;
+const PLACEMENT_HANDLE: u32 = 0x40;
+const PLACEMENT_FLAGS: u32 = 0x44;
 
 pub(super) fn store_placement(mem: &mut Mem, at: u32, placement: &Placement) {
     mem.map(at, &[0; PLACEMENT_SIZE as usize]);
     placement.position.store(mem, at);
     for (i, value) in (0..).zip(placement.values) {
-        mem.set_f32(at + 0x10 + 4 * i, value);
+        mem.set_f32(at + PLACEMENT_VALUES + 4 * i, value);
     }
-    placement.extent.store(mem, at + 0x20);
-    mem.set_u32(at + 0x34, placement.collision);
-    mem.set_u32(at + 0x38, placement.object_type);
-    mem.set_u32(at + 0x40, placement.handle);
-    mem.set_u32(at + 0x44, placement.flags);
+    placement.extent.store(mem, at + PLACEMENT_EXTENT);
+    mem.set_u32(at + PLACEMENT_COLLISION, placement.collision);
+    mem.set_u32(at + PLACEMENT_OBJECT_TYPE, placement.object_type);
+    mem.set_u32(at + PLACEMENT_HANDLE, placement.handle);
+    mem.set_u32(at + PLACEMENT_FLAGS, placement.flags);
 }
 
 /// `LoadCollisionMeshes`'s shape record: a box (`min` at +0, `max` at +0x10, then the identity rows the exe's 1.0

@@ -4,7 +4,7 @@
 use rbr_formats::{col, trk};
 
 use super::images;
-use super::meshes::{add_meshes, clear_meshes, load_collision_meshes, reg_wall, WALL_FILING};
+use super::meshes::{add_meshes, clear_meshes, file_with_state, load_collision_meshes, WALL_FILING};
 use super::placement::Calls;
 use super::{
     COLLISION_SYSTEM, CURSOR, DRIVE_LINE, IMAGE, MATERIAL_TABLE, MESH_ARRAY, SLOTS, SLOT_COUNT, TREE, WALL, WALL_MESH,
@@ -23,6 +23,10 @@ use crate::stage::{self, MaterialMap, Placement};
 
 /// The track state's `.mat` image (`CPC_TrackState+0x148`).
 const MAT_IMAGE: u32 = 0x148;
+/// A brake-wall definition: its point count, and the offsets from it of its point block and its tree's root node.
+const DEF_POINTS: u32 = 0x4;
+const DEF_POINT_BLOCK: u32 = 0x8;
+const DEF_TREE: u32 = 0xC;
 
 /// The calls the stage load makes outside this module. Allocations go to the heap (`Heap` for objects and arrays,
 /// `AllocHost` for the cell grid's blocks).
@@ -109,7 +113,7 @@ pub fn load_col(mem: &mut Mem, host: &mut impl StageHost, image: u32, file: &[u8
 /// `CBrakeWallManager::SetWall` (0x4e4400) on `manager` with the definition at `def`: when the definition has points,
 /// the old wall is deleted and a new one built, kept and filed with the physics state.
 pub fn set_wall(mem: &mut Mem, host: &mut impl StageHost, manager: u32, def: u32) {
-    if mem.u32(def + 4) == 0 {
+    if mem.u32(def + DEF_POINTS) == 0 {
         return;
     }
     let old = mem.u32(manager + WALL);
@@ -122,7 +126,7 @@ pub fn set_wall(mem: &mut Mem, host: &mut impl StageHost, manager: u32, def: u32
         construct_wall(mem, at, def);
     }
     mem.set_u32(manager + WALL, at);
-    reg_wall(mem, at, WALL_FILING);
+    file_with_state(mem, at, WALL_FILING);
 }
 
 /// `E34WallVf::E34WallVf(def)` (0x4e4220) at `at`: the entity (options 0x40), the point count and block, and the root
@@ -134,9 +138,9 @@ pub fn construct_wall(mem: &mut Mem, at: u32, def: u32) {
     mem.set_u32(at + WALL_ROOT + 0x10, 0);
     mem.set_u32(at + WALL_ROOT + 0x14, 0);
     mem.set_u32(at + WALL_MESH_COUNT, 0);
-    mem.set_u32(at + WALL_POINTS, mem.u32(def + 4));
-    mem.set_u32(at + WALL_POINT_BLOCK, def.wrapping_add(mem.u32(def + 8)));
-    let node = def.wrapping_add(mem.u32(def + 0xc));
+    mem.set_u32(at + WALL_POINTS, mem.u32(def + DEF_POINTS));
+    mem.set_u32(at + WALL_POINT_BLOCK, def.wrapping_add(mem.u32(def + DEF_POINT_BLOCK)));
+    let node = def.wrapping_add(mem.u32(def + DEF_TREE));
     wall::add_count(mem, at, node, node);
     for i in 0..6 {
         mem.set_u32(at + WALL_ROOT + 4 * i, mem.u32(node + 4 * i));
