@@ -352,7 +352,7 @@ impl Mem {
 
     /// `N` consecutive words from `at` when the pages hold them all, read at once.
     #[inline]
-    fn paged_u32s<const N: usize>(&self, at: u32) -> Option<[u32; N]> {
+    pub fn paged_u32s<const N: usize>(&self, at: u32) -> Option<[u32; N]> {
         self.pages_for(at, 4 * N)?.words(at)
     }
 
