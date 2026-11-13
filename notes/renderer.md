@@ -1312,6 +1312,17 @@ that writes depth (the Clio Rally3's `CarPlastic` side windows) and the rear-vie
 seen in them takes the cabin's exposure (about 1.5 stops over on the Clio); the forest shots' door cards stay dark (5
 to 7 stops under the road, which their light is).
 
+The cabin's lift tapered (2026-11-13, `CABIN_TAPER`, user's pick of 0.25, 0.1 and the lift off): the lift took the sun
+on cabin faces, the outside's own light, 2.5 stops over the outside (no reference shot had the sun in the cabin), so
+the 911 GT3 RS 2007's door card burnt white from black texels (244 of 255; 138 at the outside's exposure, the plain
+diffuse class, `Kf` 0). The lift is now `x + (g - 1) k x / (k + x)` of the outside's exposure, `k` 0.1 of `KEY`, `x`
+the darker of the pixel and the glare chain's luminance about it, so the dials' white figures keep their dark face's
+lift. That frame at 13:00: door top 197 to 123, sunlit dash 141 to 86, headliner 26 to 22 (lift off: 101, 52, 4).
+Ten cockpit reference shots: days 6.5 to 9.5 % RMSE (bright cabin faces down, the GC8's white dash most), nights 0.02
+to 2.2 %; the outside's exposure and outside views unchanged. Tried: the lift at 1.5 stops (the shade darker as much,
+headliner 13, the door card 228), the taper by the pixel alone (the dials' figures lost a stop), `k` 0.25 (days 4.2
+to 6.9 %), the lift off (days 11 to 16 %, the dials near unreadable).
+
 Cabin depth (user's pick of five looks, 2026-11-01, `cabin_day_lit`): the sky share came out near zero on most faces,
 so the bounce, the same on every face, lit nearly all of the cabin and it read flat. Three causes, three changes. The
 bake took the exterior set's own low-detail cabin (Escort Mk II `e_internal`, i20 WRC 2020 `e_tablero`, `e_jaula`;
