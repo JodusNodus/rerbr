@@ -5,10 +5,11 @@
 use crate::mem::Mem;
 use crate::physics_core::layout;
 
-/// `CPhysics::CDef::CFlags`: 0x14 bits (`GetBitName` 0x523b90, `GetBitDetail` 0x523ba0, `GetBitCount` 0x523bb0).
-pub const CDEF_NAMES: u32 = 0x007c_bc10;
-pub const CDEF_DETAILS: u32 = 0x007c_bc60;
-pub const CDEF_BITS: u32 = 0x14;
+/// The physics definition's flags (`CPhysics::CDef::CFlags`): 0x14 bits (`GetBitName` 0x523b90, `GetBitDetail`
+/// 0x523ba0, `GetBitCount` 0x523bb0).
+pub const DEF_FLAG_NAMES: u32 = 0x007c_bc10;
+pub const DEF_FLAG_DETAILS: u32 = 0x007c_bc60;
+pub const DEF_FLAG_BITS: u32 = 0x14;
 
 /// `CPhysics::CDef::CDbgFlags`: 0x1b bits (0x523bc0, 0x523bd0, 0x523be0).
 pub const DBG_NAMES: u32 = 0x007c_bcb0;
@@ -25,13 +26,15 @@ pub const LOG_BITS: u32 = 0x14;
 pub const MATERIAL_NAMES: u32 = 0x007c_af18;
 pub const MATERIAL_BITS: u32 = 4;
 
-/// `CPhysics::CDef::Unk20` and `Unk1C` (0x523b10, 0x523b20) return the address of this global (its meaning is not
-/// known: named after its address, ours).
-pub const CDEF_UNK_165AA90: u32 = 0x0165_aa90;
-/// `CMountedRigidBody::CDef::Unk20` and `Unk1C` (0x521550, 0x521560) return this global (ours, by address).
-pub const MOUNTED_DEF_UNK_1659B20: u32 = 0x0165_9b20;
-/// `CMaterialManager::Unk20` and `Unk1C` (0x5208d0, 0x5208e0) return this global (ours, by address).
-pub const MATERIAL_MANAGER_UNK_1659AD8: u32 = 0x0165_9ad8;
+/// The physics definition's tweak-key dictionary (0x165aa90), which `CPhysics::CDef::Unk20` and `Unk1C` (0x523b10,
+/// 0x523b20) return: `data/physics-lsp-fields.md` lists it as the dict of the class's key table.
+pub const PHYSICS_DEF_DICT: u32 = 0x0165_aa90;
+/// The mounted body definition's tweak-key dictionary (0x1659b20), which `CMountedRigidBody::CDef::Unk20` and `Unk1C`
+/// (0x521550, 0x521560) return.
+pub const MOUNTED_DEF_DICT: u32 = 0x0165_9b20;
+/// The material manager's tweak-key dictionary (0x1659ad8), which `CMaterialManager::Unk20` and `Unk1C` (0x5208d0,
+/// 0x5208e0) return.
+pub const MATERIAL_MANAGER_DICT: u32 = 0x0165_9ad8;
 
 /// `GetBitName(index)` of the flag class whose names are at `names`.
 pub fn bit_name(mem: &Mem, names: u32, index: u32) -> u32 {

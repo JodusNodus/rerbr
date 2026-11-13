@@ -1051,7 +1051,7 @@ fn replay_value(addr: u32, name: &str, port: impl Fn(&Mem, &Call) -> u32) {
 #[test]
 fn flag_names_match() {
     let _pc24 = Precision::Pc24.scope();
-    replay_value(0x523B90, "CDef::CFlags::GetBitName", |mem, c| flags::bit_name(mem, flags::CDEF_NAMES, c.args[1]));
+    replay_value(0x523B90, "CDef::CFlags::GetBitName", |mem, c| flags::bit_name(mem, flags::DEF_FLAG_NAMES, c.args[1]));
     replay_value(0x523BC0, "CDef::CDbgFlags::GetBitName", |mem, c| flags::bit_name(mem, flags::DBG_NAMES, c.args[1]));
     replay_value(0x523BF0, "CDef::CLogFlags::GetBitName", |mem, c| flags::bit_name(mem, flags::LOG_NAMES, c.args[1]));
     replay_value(0x520840, "CMaterial::CFlags::GetBitName", |mem, c| {
@@ -1063,7 +1063,7 @@ fn flag_names_match() {
 fn flag_details_match() {
     let _pc24 = Precision::Pc24.scope();
     replay_value(0x523BA0, "CDef::CFlags::GetBitDetail", |mem, c| {
-        flags::bit_detail(mem, flags::CDEF_DETAILS, c.args[1])
+        flags::bit_detail(mem, flags::DEF_FLAG_DETAILS, c.args[1])
     });
     replay_value(0x523BD0, "CDef::CDbgFlags::GetBitDetail", |mem, c| {
         flags::bit_detail(mem, flags::DBG_DETAILS, c.args[1])
@@ -1076,7 +1076,7 @@ fn flag_details_match() {
 #[test]
 fn flag_counts_match() {
     let _pc24 = Precision::Pc24.scope();
-    replay_value(0x523BB0, "CDef::CFlags::GetBitCount", |_, _| flags::CDEF_BITS);
+    replay_value(0x523BB0, "CDef::CFlags::GetBitCount", |_, _| flags::DEF_FLAG_BITS);
     replay_value(0x523BE0, "CDef::CDbgFlags::GetBitCount", |_, _| flags::DBG_BITS);
     replay_value(0x523C10, "CDef::CLogFlags::GetBitCount", |_, _| flags::LOG_BITS);
     replay_value(0x520860, "CMaterial::CFlags::GetBitCount", |_, _| flags::MATERIAL_BITS);
@@ -1087,10 +1087,10 @@ fn unk_globals_match() {
     let _pc24 = Precision::Pc24.scope();
     // The drive reaches Unk20 of each class and Unk1C of CDef (0x523b20); 0x521560 and 0x5208e0 are not reached.
     for addr in [0x523B10, 0x523B20] {
-        replay_value(addr, "CDef::Unk", |_, _| flags::CDEF_UNK_165AA90);
+        replay_value(addr, "CDef::Unk", |_, _| flags::PHYSICS_DEF_DICT);
     }
-    replay_value(0x521550, "CMountedRigidBody::CDef::Unk", |_, _| flags::MOUNTED_DEF_UNK_1659B20);
-    replay_value(0x5208D0, "CMaterialManager::Unk", |_, _| flags::MATERIAL_MANAGER_UNK_1659AD8);
+    replay_value(0x521550, "CMountedRigidBody::CDef::Unk", |_, _| flags::MOUNTED_DEF_DICT);
+    replay_value(0x5208D0, "CMaterialManager::Unk", |_, _| flags::MATERIAL_MANAGER_DICT);
 }
 
 #[test]
