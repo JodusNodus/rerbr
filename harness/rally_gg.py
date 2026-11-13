@@ -119,7 +119,7 @@ def load_telemetry(path, gps=False):
                              float(r["accx"]) / 100.0, *((float(r["lon"]), float(r["lat"])) if gps else ())))
             except (ValueError, KeyError):
                 continue
-    rows = sorted(r for r in rows if r[0] > 0)
+    rows = sorted(r for r in rows if r[0] > 1e9)  # some files carry rows stamped 0 or 5 s
     t0 = rows[0][0]
     return [(r[0] - t0, *r[1:]) for r in rows]
 
@@ -221,7 +221,10 @@ def lagged(rows, tau):
 def stats(path, speed_lag=0.0):
     kind = "trace" if path.endswith(".trace") else "telemetry"
     out = {"file": os.path.basename(path), "kind": kind}
-    out.update(summary(load_trace(path) if kind == "trace" else load_telemetry(path), kind, speed_lag))
+    figures = summary(load_trace(path) if kind == "trace" else load_telemetry(path), kind, speed_lag)
+    if figures is None:
+        return None
+    out.update(figures)
     checks = unit_checks(load_telemetry(path, gps=True)) if kind == "telemetry" else (float("nan"),) * 3
     out.update(zip(("long_slope", "lat_slope", "gps_lat_p90"), checks))
     return out
@@ -234,6 +237,8 @@ def summary(rows, kind, speed_lag=0.0):
     if kind == "trace":
         rows = lagged(rows, speed_lag)
     moving = [r for r in rows if r[1] > MOVING]
+    if not moving:
+        return None
     events = braking_events(rows, BRAKE_ON[kind])
     longest = sorted(events, key=lambda e: e["dur"], reverse=True)[:LONGEST]
     lat1 = [abs(w[3]) for w in windows(moving, 1.0) if w[0] > MOVING]
@@ -272,7 +277,7 @@ def main():
     args = parser.parse_args()
     if args.mode == "run":
         return run_all(args)
-    results = [stats(f, args.speed_lag) for f in args.files]
+    results = [o for o in (stats(f, args.speed_lag) for f in args.files) if o]  # a file with no drive in it: none
     print("file | kind | moving s | v mean/max km/h | brake events | decel speed all/16 longest | acc mean 16 | "
           "peak 0.5 s med 16 | lat 1 s p50/p90/p99 | long/lat channel slope | GPS lat p90")
     for o in results:

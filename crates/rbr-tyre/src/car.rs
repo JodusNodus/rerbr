@@ -1,7 +1,7 @@
 //! The brush (brush-v1, [`crate::brush`]) on a car's wheels, the tyre model the game steps. It takes the contact
 //! patch's forces at every speed, down to standstill (weight 1): on a hard surface the brush's, on soil (gravel, snow)
-//! the loose-surface tyre's (loose-v1, [`crate::loose`]), with NGP's soil lateral force on top (on gravel held at its
-//! value at a sideways speed, [`loose::gravel_soil_share`]).
+//! the loose-surface tyre's (loose-v1, [`crate::loose`]), with NGP's soil lateral force on top (on gravel and snow
+//! held at its value at a sideways speed, [`loose::gravel_soil_share`], [`loose::snow_soil_share`]).
 //! At rest the slips take the brush's rolling-speed floor and the carcass deflections hold (Rill's transport speed);
 //! NGP's torsional stiffness, a tenth below 10 m/s, only carries the force through the seam. NGP sets the grip: its
 //! static friction (surface, wetness, temperature grip) scales the brush's friction levels, solved per wheel against
@@ -160,8 +160,8 @@ impl Model for Brush {
         };
         let gravel =
             if soil { loose::class_share(x.surface_classes, x.surface_blend, loose::GRAVEL_CLASS) } else { 0.0 };
+        let snow = if soil { loose::class_share(x.surface_classes, x.surface_blend, loose::SNOW_CLASS) } else { 0.0 };
         let steady = if soil {
-            let snow = loose::class_share(x.surface_classes, x.surface_blend, loose::SNOW_CLASS);
             loose::eval(&e, &t.loose, gravel, snow, f64::from(x.soil_thickness))
         } else {
             let cy0 = brush::low_mu_slip_stiffness(grip, t.cal.cy0, t.ngp.0);
@@ -216,7 +216,10 @@ impl Model for Brush {
             longitudinal_force: fx as f32,
             pneumatic_trail: (steady.trail * brush::trail_rolling_share(e.vx)) as f32,
             phase: steady.psi.min(2.0) as f32,
-            soil_lateral: (1.0 + (loose::gravel_soil_share(f64::from(x.lateral_velocity)) - 1.0) * gravel) as f32,
+            soil_lateral: (1.0
+                + (loose::gravel_soil_share(f64::from(x.lateral_velocity)) - 1.0) * gravel
+                + (loose::snow_soil_share(f64::from(x.lateral_velocity)) - 1.0) * snow)
+                as f32,
             temperatures: temperatures.map(|n| [n.surface as f32, n.bulk as f32]),
         })
     }
@@ -289,9 +292,9 @@ mod tests {
     }
 
     #[test]
-    fn only_gravel_holds_the_soil_force_past_its_sideways_speed() {
+    fn gravel_and_snow_hold_the_soil_force_past_their_sideways_speed() {
         let mut b = Brush::new(&[wheel()], &Tuning::default()).unwrap();
-        // 40 m/s at 30°: 20 m/s sideways, twice GRAVEL_SOIL_SPEED.
+        // 40 m/s at 30°: 20 m/s sideways, twice GRAVEL_SOIL_SPEED and SNOW_SOIL_SPEED.
         let x = rolling(40.0, 30f32.to_radians());
         let mut share = |soil_thickness: f32, class: u32, x: ForceInput| {
             let x = ForceInput { soil_thickness, surface_classes: [class; 2], ..x };
@@ -299,7 +302,8 @@ mod tests {
         };
         assert!((share(0.015, loose::GRAVEL_CLASS, x) - 0.25).abs() < 1e-6);
         assert_eq!(share(0.015, loose::GRAVEL_CLASS, rolling(24.0, 0.1)), 1.0);
-        assert_eq!(share(0.015, loose::SNOW_CLASS, x), 1.0);
+        assert!((share(0.015, loose::SNOW_CLASS, x) - 0.25).abs() < 1e-6);
+        assert_eq!(share(0.015, crate::tuning::ICE_CLASS, x), 1.0);
         assert_eq!(share(0.0, loose::GRAVEL_CLASS, x), 1.0);
     }
 

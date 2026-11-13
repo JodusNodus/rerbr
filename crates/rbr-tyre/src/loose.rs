@@ -1,11 +1,11 @@
 //! Loose surfaces, loose-v1 (ours, experimental): the brush's patch ([`brush::patch`]) on soil (gravel and snow), with
 //! a flat friction and a ploughing berm in place of the hard surface's friction against sliding speed. The game takes
 //! it on soil wheels under the brush ([`crate::car`], `--physics experimental-brush` only); NGP's soil lateral force
-//! stays on top (`rbr_physics::tyre::model::apply`), on gravel held at its value at [`GRAVEL_SOIL_SPEED`]
-//! ([`gravel_soil_share`]).
+//! stays on top (`rbr_physics::tyre::model::apply`), on gravel and snow held at its value at [`GRAVEL_SOIL_SPEED`]
+//! and [`SNOW_SOIL_SPEED`] ([`gravel_soil_share`], [`snow_soil_share`]).
 //!
 //! - Level: NGP's, on gravel times [`gravel_depth_level`], along the wheel times [`GRAVEL_LONGITUDINAL`] and across it
-//!   times [`GRAVEL_LATERAL`]. The free
+//!   times [`GRAVEL_LATERAL`], on snow times [`SNOW_LONGITUDINAL`] and [`SNOW_LATERAL`]. The free
 //!   rolling peaks μ_y and μ_x at each load of the wheel's axis are NGP's own, swept from its
 //!   tables on a unit surface ([`crate::fit::loose`]), interpolated over the load and scaled by NGP's grip (static
 //!   friction times the temperature grip). With a flat friction the brush's peak is μ Fz exactly, so no solve is needed.
@@ -27,10 +27,13 @@
 //!   takes the same law with the brush's Cx/Cy ([`KX_OVER_KY`]) at the axes' levels, so the braking force keeps
 //!   rising past NGP's peak slip (peak κ 0.58 on the 0-0.8 grid). Only NGP's gravel materials (surface class
 //!   [`GRAVEL_CLASS`], `Gravel_*`), by their share in the wheel's material blend ([`class_share`]).
-//! - Shape, snow and the other soils: the brush's patch with a flat friction: the brush's peak is μ Fz exactly. Packed
-//!   snow rises faster (Coutermarsh Fig. 8: 90 % by 7-9°; α0 3.6° at a slope NGP's level doubles) and the brush at
-//!   NGP's slope gives it (α90 9°). The cornering slope stays NGP's (about twice that road tyre's 3-5 per rad): the
-//!   stiffness is solved for it under the flat friction ([`calibrate`]).
+//! - Shape, snow and the other soils: the brush's patch with a flat friction: the brush's peak is the level times Fz
+//!   exactly. Packed snow rises faster (Coutermarsh Fig. 8: 90 % by 7-9°; α0 3.6° at a slope NGP's level doubles) and
+//!   the brush at NGP's slope gives it (α90 9°). The cornering slope stays NGP's (about twice that road tyre's 3-5 per
+//!   rad): the stiffness is solved for it under the flat friction ([`calibrate`]).
+//! - Snow along the wheel builds its force in two stages ([`SNOW_HELD_LEVEL`]): the tread on the snow, and the snow
+//!   held in the tread shearing on the road's, softer. Two patches side by side, each with its share of the load, so
+//!   the side force alone stays the one patch's. Driving, its level along the wheel is [`SNOW_DRIVING`] of braking's.
 //! - Longitudinal: past the free rolling peak the braking force keeps rising, to [`PLOUGH`] times the peak at lock: the
 //!   material builds up ahead of a locked tyre (a berm) and stops it harder than rolling (NHTSA DOT HS 808 875 /
 //!   SAE 1999-01-1287, 9 cars, 56 km/h, 5 cm crushed limestone: locked over ABS decel 1.25 laden, 1.30 light, per car
@@ -41,7 +44,7 @@
 //!   locked tyre's berm, and a berm that grows from the full slide holds the wheels off lock at the Fiesta's full-pedal
 //!   brake torque (note, "Loose surfaces: loose-v1"). Driving
 //!   slip builds no berm here: the data are braked, and the motion resistance of a spinning tyre's sinkage is not.
-//! - Snow (surface class [`SNOW_CLASS`], by its share in the blend): the berm is [`SNOW_PLOUGH`] in place of PLOUGH.
+//! - Snow (surface class [`SNOW_CLASS`], by its share in the blend): no berm ([`SNOW_PLOUGH`] in place of PLOUGH).
 //!   Ichihara & Mizoguchi (HRB SR 115, 1969-70, Fig. 3, fig ±0.02): studded snow tyres on normal compacted snow at 20
 //!   km/h hold 0.36-0.42 at 15-20 % slip, peak 0.42-0.445 at 40-60 % and lock at 0.40-0.43: locked over the 15-20 %
 //!   slip 1.02-1.08, over the peak 0.95-0.97 ("small" differences, their text); snow tyres 0.74-0.95 of the 20 % value.
@@ -63,10 +66,14 @@ use crate::brush::{self, Calibration, EvalInput, EvalOutput, KX_OVER_KY, M_CX, M
 
 /// The braking force of a locked tyre over its free rolling peak on loose surfaces (NHTSA: 1.25 laden, 1.30 light).
 pub const PLOUGH: f64 = 1.3;
-/// The braking force of a locked tyre over its free rolling peak on snow (surface class [`SNOW_CLASS`]): studded snow
-/// tyres on compacted snow lock at 1.02-1.08 of their force at 15-20 % slip (Ichihara & Mizoguchi, HRB SR 115, Fig. 3,
-/// fig ±0.02), the middle taken.
-pub const SNOW_PLOUGH: f64 = 1.05;
+/// The braking force of a locked tyre over its level on snow (surface class [`SNOW_CLASS`]): the level, no berm. On
+/// hard packed snow a locked tyre holds 0.93-1.00 of its peak: VTI's trailer (BV12, 30 km/h) 0.93-0.94 (Baliga &
+/// Hiregoudar, Chalmers MSc 2018:16, Figs 6.2-6.3, fig ±0.01), 0.93 and 1.00 (Hjort et al., AVEC'24, Fig. 2b, fig
+/// ±0.01); studded snow tyres 0.95-0.97 (Ichihara & Mizoguchi, HRB SR 115, Fig. 3, fig ±0.02). The 2017-21 World Rally
+/// Cars' braking is level from 32-50 to 50-80 % of wheel slip on four snow rallies (0.91-1.01 of it). 1.05 before
+/// was SR 115's locked over its 15-20 % slip value (1.02-1.08), on the one patch, at its level by 13 % slip; the two
+/// stages ([`SNOW_HELD_LEVEL`]) hold 0.93-0.98 of the level at 15-20 % (4 kN), so that ratio is theirs without a berm.
+pub const SNOW_PLOUGH: f64 = 1.0;
 /// The loose layer's depth the published locked stops were measured on, m (NHTSA: 5 cm of crushed limestone).
 pub const BERM_DEPTH: f64 = 0.05;
 /// The share of the berm a gravel layer of `depth` (m) builds: linear to the whole at [`BERM_DEPTH`] (see the module).
@@ -257,6 +264,77 @@ pub fn gravel_soil_share(v_lat: f64) -> f64 {
     }
 }
 
+/// Snow's level along the wheel over NGP's, on the snow share of the soil ([`class_share`]). On the material of RSF 531
+/// Aittajarvi (117, SnowOnIce_Shallow) the i20 Coupe WRC 2020 brakes at a slip of 0.3 with 1.16 / 1.07 / 1.00 / 0.96 g
+/// over 160-130 / 130-100 / 100-70 / 70-40 km/h at NGP's level, where the 2017-21 World Rally Cars of Arctic Rally
+/// Finland 2021, the grippiest of the four snow rallies of 2017-21 (Sweden 2017-18 read 6-7 % under it, 2019 level with
+/// it; 2020 ran on frozen gravel), give 0.92 / 0.79-0.82 / 0.73 / 0.67 (their tyres' force with the wheels 22 % or more
+/// under the car, plus the drag of 1.74 m2; the accelerometers at 22-50 % of slip 0.80-0.82 g at 115 km/h). At 0.73
+/// 0.88 / 0.80 / 0.74 / 0.70: 5 % over them at most (user 2026-11-13: closer to the Arctic's stages, 5 % above at
+/// most), 4 % under at the top, the car gaining less with speed than they do (0.75: 0.90 / 0.82 / 0.76 / 0.72; 0.78:
+/// 0.93 / 0.85 / 0.79 / 0.75). This is 1.02 of 0.73, as [`SNOW_LATERAL`] (user 2026-11-13, after driving the pad by
+/// hand: "pretty slippy"): 0.89 / 0.81 / 0.75 / 0.71 (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)").
+pub const SNOW_LONGITUDINAL: f64 = 0.745;
+
+/// Snow's level across the wheel over NGP's, on the snow share of the soil: 5 % at most over the whole g the same cars
+/// hold in a slide in the Arctic (user 2026-11-13, as [`SNOW_LONGITUDINAL`]), 0.82 g from 15 deg of sideslip at 60-100
+/// km/h and 0.84 at 100-160 on their accelerometers (0.85 / 0.88 along their path; Finland's gravel 0.97 / 1.01). The
+/// i20 held past the limit on material 117's circles gives 1.08 / 1.14 at NGP's level and 0.74 / 0.78, 0.77 / 0.82,
+/// 0.80 / 0.87, 0.80 / 0.88, 0.83 / 0.90, 0.87 / 0.95 at 0.70, 0.75, 0.80, 0.82, 0.85, 0.90 with [`SNOW_SOIL_SPEED`].
+/// Corner by corner on RSF 531 against Aittajarvi's two passes the car at 0.80 / 0.85 / 0.90 holds 0.81-0.87 /
+/// 0.84-0.90 / 0.88-0.94 of the crews' g in the corners that turn 30 deg or more, gravel's 0.92 by the same reading
+/// (`notes/tyre-model.md`, "Real stage telemetry (WRC, snow)"). This is 1.02 of 0.82, as [`SNOW_LONGITUDINAL`]: slides
+/// 0.77 / 0.87 g.
+pub const SNOW_LATERAL: f64 = 0.836;
+
+/// The sideways speed of the contact point above which NGP's soil lateral force stops growing on snow, m/s
+/// ([`snow_soil_share`]), gravel's ([`GRAVEL_SOIL_SPEED`]): with the whole force the i20 at 0.75 of NGP's level on both
+/// axes still held 0.91 / 0.96 g in a slide, and the real cars' whole g does not rise with the sideslip (the Arctic's
+/// accelerometers 0.81 / 0.82 / 0.80 / 0.86 from 5 / 15 / 20 / 30 deg at 60-100 km/h). From 6 m/s, at 0.75 across the
+/// wheel, 0.74.
+pub const SNOW_SOIL_SPEED: f64 = 10.0;
+
+/// The share of NGP's soil lateral force snow keeps at the contact point's sideways speed `v_lat` (m/s): the whole to
+/// [`SNOW_SOIL_SPEED`], its value there above, as [`gravel_soil_share`].
+pub fn snow_soil_share(v_lat: f64) -> f64 {
+    let v = v_lat.abs();
+    if v > SNOW_SOIL_SPEED {
+        (SNOW_SOIL_SPEED / v).powi(2)
+    } else {
+        1.0
+    }
+}
+
+/// Snow's level along the wheel when the slip drives, over its level braking ([`SNOW_LONGITUDINAL`]), on the snow
+/// share. The Arctic's crews of 2021 push 0.55-0.60 g in wheelspin at 45-70 km/h (flat from 15 to 80 % of spin) and
+/// brake at 0.65 g saturated at 60-80 km/h: 0.87; Sweden's of 2017-19 0.51-0.60 against 0.55-0.61, about 1; Finland's
+/// gravel 0.63-0.66 against 0.69. In slides from 15° of sideslip the Arctic's hold 0.79 / 0.75 g accelerating and 0.83
+/// / 0.88 braking at 60-100 / 100-160 km/h (accelerometers). The mechanism (Nakajima, J. Terramechanics 40, 2003, Eqs
+/// 1-4): the snow compressed at the patch's leading edge adds to the braking force and acts against the driving one;
+/// against it one drum (Gießler, KIT 2012, Bild 4-50: unstudded tyres on hard snow, traction 1.12-1.34 of braking). At
+/// 0.85 the i20 Coupe WRC 2020 on RSF 531's material pushes 0.59 g at 22-80 % of spin (0.70 at the braking level) and
+/// starts from 10 to 50 m in 2.34 s (2.19; the crews 2.36). Ours: the value, on the Arctic's crews (the user's target,
+/// 2026-11-13: 5 % over them at most), flat with the spin, and the same in a slide (the friction ellipse takes it).
+pub const SNOW_DRIVING: f64 = 0.85;
+
+/// The share of snow's level the snow held in the tread carries. Along the wheel snow builds its force in two stages,
+/// the tread on the snow and the held snow shearing on the road's, softer: VTI's trailer (BV12) on hard packed snow at
+/// 30 km/h, a Nordic winter tyre's braking fitted as two brushes (Baliga & Hiregoudar, Chalmers MSc 2018:16, Tables
+/// 5.1-5.2: friction 0.3105 + 0.2103, stiffness over the load 9.28 + 1.46; a European one 0.3095 + 0.185, 12.61 +
+/// 1.29). Measured there (Figs 6.2-6.3, fig ±0.01): 0.80 of the peak at 10 % slip, 0.95 at 20 %, the peak at 40-50 %;
+/// the same trailer elsewhere 0.84 / 0.97 of the 30 % value (Albinsson et al., AVEC'16, Fig. 7) and peaks at 28-31 %
+/// (Hjort et al., AVEC'24, Fig. 2b); a driven tyre at 8 km/h 0.81-0.86 of its maximum at 12 % (Shoop, CRREL 93-9,
+/// Table 3). The one patch held 0.99 at 10 % and peaked at 13 % (4 kN, 15 m/s); the two 0.85 and 29 %. The i20 Coupe
+/// WRC 2020 on RSF 531's material (117), its wheels 5 / 11 / 16 / 26 / 47 % under it near 115 km/h, brakes at 0.48 /
+/// 0.67 / 0.73 / 0.80 / 0.80 g (the one patch 0.51 / 0.77 / 0.80 / 0.80 / 0.80), where the Arctic's crews of 2021
+/// read 0.53 / 0.61 / 0.68 / 0.74 / 0.80 / 0.82 over 3-6 / 6-10 / 10-15 / 15-22 / 22-32 / 32-50 %. Sideways one stage:
+/// the same thesis fits two there as well (8.20 + 0.97), and its measured curve (Figs 6.5-6.6: 90 % of the value at
+/// 11° by 6°) is the one patch's at NGP's slope (90 % by 7.5°, the peak at 12°). Ours: the Nordic tyre's shares on a
+/// studded rally tyre (road studs read as studless on snow there, Hjort), the same driving as braking.
+pub const SNOW_HELD_LEVEL: f64 = 0.40;
+/// The held snow's share of the longitudinal slip stiffness: the Nordic tyre's 1.46 of 10.74 ([`SNOW_HELD_LEVEL`]).
+pub const SNOW_HELD_STIFFNESS: f64 = 0.14;
+
 /// NGP's surface class of its gravel materials (`Gravel_*`, ids 1-51; snow is 3, grass 5, rock 4, rough 0).
 pub const GRAVEL_CLASS: u32 = 1;
 /// NGP's surface class of its snow materials (SnowOnGravel/SnowOnIce 101-103, 117-119, snowwalls).
@@ -286,8 +364,9 @@ pub fn shear(fz: f64, mu: f64, mu_x: f64, mu_y: f64, sx: f64, sy: f64, alpha0_de
 
 /// The steady loose-surface tyre (see the module): the brush's patch at NGP's levels times the grip, plus the berm.
 /// `gravel` is the share of the soil under the patch that takes gravel's shear law ([`shear`]) at the loose layer's
-/// `depth` (m); the rest takes the brush's. `snow` is the share whose berm is [`SNOW_PLOUGH`]; the rest's is
-/// [`PLOUGH`], on the gravel share times [`gravel_berm`]. `mu` is the directional friction including the berm (the force's limit).
+/// `depth` (m); the rest takes the brush's. `snow` is the share at snow's levels ([`SNOW_LONGITUDINAL`],
+/// [`SNOW_LATERAL`]) whose berm is [`SNOW_PLOUGH`]; the rest's is [`PLOUGH`], on the gravel share times
+/// [`gravel_berm`]. `mu` is the directional friction including the berm (the force's limit).
 pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> EvalOutput {
     let (vsx, vsy, vr) = brush::slip_velocities(x);
     let (sx, sy) = (vsx / vr, vsy / vr);
@@ -300,9 +379,28 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
         * (x.temp_grip / cal.temp_grip_cal)
         * gravel_damp_level(x.wetness, gravel)
         * (1.0 + (gravel_depth_level(depth) - 1.0) * share);
-    let (mu_y, mu_x) =
-        (ly * grip * (1.0 + (GRAVEL_LATERAL - 1.0) * share), lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share));
+    let snow = snow.clamp(0.0, 1.0);
+    let (mu_y, mu_x) = (
+        ly * grip * (1.0 + (GRAVEL_LATERAL - 1.0) * share + (SNOW_LATERAL - 1.0) * snow),
+        lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share + (SNOW_LONGITUDINAL - 1.0) * snow),
+    );
+    let mu_x = if driving_slip(vsx, x.vx, vr) > 0.0 { mu_x * (1.0 + (SNOW_DRIVING - 1.0) * snow) } else { mu_x };
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
+    if snow > 0.0 && share < 1.0 {
+        // Snow's two stages along the wheel: two patches side by side, the tread's and the held snow's, each with its
+        // share of the load, so of the level and of the cornering stiffness (the side force alone is the one patch's).
+        // By snow's share of the soil gravel's shear law leaves, which takes its own share below.
+        let part = |w: f64, k: f64| brush::patch(w * x.fz, x.half_length, k * cx, w * cy, mu_x, mu_y, sx, sy);
+        let tread = part(1.0 - SNOW_HELD_LEVEL, 1.0 - SNOW_HELD_STIFFNESS);
+        let held = part(SNOW_HELD_LEVEL, SNOW_HELD_STIFFNESS);
+        let w = (snow / (1.0 - share)).min(1.0);
+        out.kx += (tread.kx + held.kx - out.kx) * w;
+        out.ky += (tread.ky + held.ky - out.ky) * w;
+        out.mz += (tread.mz + held.mz - out.mz) * w;
+        out.fx = -out.kx * sx;
+        out.fy = -out.ky * sy;
+        out.trail = if out.fy != 0.0 { -out.mz / out.fy } else { 0.0 };
+    }
     if gravel > 0.0 {
         let k = shear(x.fz, out.mu, mu_x, mu_y, sx, sy, gravel_alpha0_deg(depth, x.wetness), c.shear_stiffness);
         out.kx += (k - out.kx) * gravel;
@@ -330,7 +428,7 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
     let start = (full / (1.0 + full)).max(BERM_FROM);
     let b = braking_slip(vsx, x.vx);
     let t = if start < 1.0 { ((b - start) / (1.0 - start)).clamp(0.0, 1.0) } else { 0.0 };
-    let plough = PLOUGH + (SNOW_PLOUGH - PLOUGH) * snow.clamp(0.0, 1.0);
+    let plough = PLOUGH + (SNOW_PLOUGH - PLOUGH) * snow;
     let berm = (plough - 1.0) * (1.0 + (gravel_berm(depth) - 1.0) * share) * t * t * (3.0 - 2.0 * t);
     if berm > 0.0 && s_abs > 0.0 {
         let per_s = berm * out.mu * x.fz / s_abs;
@@ -540,8 +638,8 @@ pub(crate) mod tests {
         assert_eq!(gravel_depth_level(GRAVEL_FIRM_DEPTH), 1.0);
         assert!((gravel_depth_level(0.0225) - (1.0 + GRAVEL_LOOSE_LEVEL) / 2.0).abs() < 1e-12);
         assert_eq!(gravel_depth_level(0.04), GRAVEL_LOOSE_LEVEL);
-        // The levels reached at a large slip angle and at a large braking slip short of the berm, firm and loose; snow
-        // and the other soils (no gravel share) keep NGP's.
+        // The levels reached at a large slip angle and at a large braking slip short of the berm, firm and loose, over
+        // the other soils' (no gravel share: NGP's).
         let c = loose();
         let side = |depth: f64, g: f64| {
             let x = EvalInput { vx: 0.0, vy: 15.0, spin: 0.0, radius: 0.3, ..cal_input(&c.cal, 15.0, 0.0) };
@@ -645,17 +743,68 @@ pub(crate) mod tests {
             let x = EvalInput { spin: 0.0, surf_static: 0.9, surf_kinetic: 0.9, ..cal_input(&c.cal, 15.0, 0.0) };
             eval(&x, &c, 0.0, snow, 0.0).fx / (0.84 * 0.9 * 4000.0)
         };
-        assert!((locked(1.0) - SNOW_PLOUGH).abs() < 1e-9);
-        assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0).abs() < 1e-9);
+        assert!((locked(1.0) - SNOW_PLOUGH * SNOW_LONGITUDINAL).abs() < 1e-9);
+        assert!((locked(0.5) - (PLOUGH + SNOW_PLOUGH) / 2.0 * (1.0 + SNOW_LONGITUDINAL) / 2.0).abs() < 1e-9);
         assert!((locked(0.0) - PLOUGH).abs() < 1e-9);
     }
 
     #[test]
-    fn the_soil_force_stops_growing_at_gravel_s_sideways_speed() {
+    fn snow_builds_its_force_along_the_wheel_in_two_stages_and_sideways_in_one() {
+        let c = loose();
+        let at = |kappa: f64, alpha: f64, snow: f64, surf: f64| {
+            let free = cal_input(&c.cal, 15.0, alpha);
+            let x = EvalInput { spin: (1.0 - kappa) * free.spin, surf_static: surf, ..free };
+            eval(&x, &c, 0.0, snow, 0.0)
+        };
+        // The slip stiffness at no slip is the one patch's; the force at 10 % of braking slip is not.
+        assert!((at(1e-6, 0.0, 1.0, 1.0).kx / at(1e-6, 0.0, 0.0, 1.0).kx - 1.0).abs() < 1e-4);
+        let rise = |snow: f64| at(0.1, 0.0, snow, 1.0).fx / at(0.4, 0.0, snow, 1.0).fx;
+        assert!((0.80..0.88).contains(&rise(1.0)) && rise(0.0) > 0.9, "{} {}", rise(1.0), rise(0.0));
+        // Sideways alone it is the one patch at snow's level.
+        let alpha = 4.0f64.to_radians();
+        let (two, one) = (at(0.0, alpha, 1.0, 1.0), at(0.0, alpha, 0.0, SNOW_LATERAL));
+        assert!((two.fy / one.fy - 1.0).abs() < 1e-12 && (two.mz / one.mz - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn snow_drives_at_its_share_of_the_braking_level() {
+        let c = loose();
+        // Both slides whole (the held snow's patch too) and short of the berm: the force is the level along the wheel.
+        let at = |spin_over_v: f64, snow: f64| {
+            let free = cal_input(&c.cal, 15.0, 0.0);
+            eval(&EvalInput { spin: spin_over_v * free.spin, ..free }, &c, 0.0, snow, 0.0).fx.abs()
+        };
+        let ratio = |snow: f64| at(2.0, snow) / at(0.5, snow);
+        assert!((ratio(1.0) - SNOW_DRIVING).abs() < 1e-9, "{}", ratio(1.0));
+        assert!((ratio(0.5) - (1.0 + SNOW_DRIVING) / 2.0).abs() < 1e-9 && (ratio(0.0) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn snow_takes_its_own_level_on_each_axis_by_its_share() {
+        // The levels reached sliding sideways and at a braking slip short of the berm, over the other soils' (NGP's).
+        let c = loose();
+        let side = |snow: f64| {
+            let x = EvalInput { vx: 0.0, vy: 15.0, spin: 0.0, radius: 0.3, ..cal_input(&c.cal, 15.0, 0.0) };
+            eval(&x, &c, 0.0, snow, 0.013).fy.abs()
+        };
+        let brake = |snow: f64| {
+            let x =
+                EvalInput { vx: -15.0, vy: 0.0, spin: 0.5 * 15.0 / 0.3, radius: 0.3, ..cal_input(&c.cal, 15.0, 0.0) };
+            eval(&x, &c, 0.0, snow, 0.013).fx.abs()
+        };
+        assert!((side(1.0) / side(0.0) - SNOW_LATERAL).abs() < 1e-9);
+        assert!((side(0.5) / side(0.0) - (1.0 + SNOW_LATERAL) / 2.0).abs() < 1e-9);
+        assert!((brake(1.0) / brake(0.0) - SNOW_LONGITUDINAL).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_soil_force_stops_growing_at_gravel_s_and_snow_s_sideways_speed() {
         assert_eq!((gravel_soil_share(0.0), gravel_soil_share(-GRAVEL_SOIL_SPEED)), (1.0, 1.0));
+        assert_eq!((snow_soil_share(0.0), snow_soil_share(-SNOW_SOIL_SPEED)), (1.0, 1.0));
         // v² times the share is level above it.
         for v in [12.0, -14.0, 25.0] {
             assert!((v * v * gravel_soil_share(v) - GRAVEL_SOIL_SPEED.powi(2)).abs() < 1e-9, "{v}");
+            assert!((v * v * snow_soil_share(v) - SNOW_SOIL_SPEED.powi(2)).abs() < 1e-9, "{v}");
         }
     }
 

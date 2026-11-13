@@ -1,0 +1,56 @@
+source,stage,driver,car,moving_s,v_mean_kmh,v_max_kmh,brake_events,brake_g_speed_16,brake_g_acc_16,brake_peak_g_16,lat_p50,lat_p90,lat_p99,long_slope,lat_slope,gps_lat_p90,gg30_lat,gg30_decel,gg60_lat,gg60_decel,gg90_lat,gg90_decel,gg120_lat,gg120_decel,gg150_lat,gg150_decel
+telemetry,Arctic Rally Finland 2021 SS9 Aittajärvi 1 (22.47 km),Evans,Toyota Yaris WRC,431,132,203,62,0.62,0.57,1.03,0.23,0.84,1.11,0.48,0.90,0.86,0.80,0.72,0.87,1.12,0.96,1.24,1.02,0.95,0.97,0.59
+telemetry,Arctic Rally Finland 2021 SS9 Aittajärvi 1 (22.47 km),Katsuta,Toyota Yaris WRC,437,133,201,52,0.62,0.63,0.94,0.22,0.75,1.05,0.61,0.85,0.83,0.90,0.48,0.92,0.93,0.85,1.05,1.05,1.14,0.85,0.72
+telemetry,Arctic Rally Finland 2021 SS9 Aittajärvi 1 (22.47 km),Loubet,Hyundai i20 Coupe WRC,466,129,196,50,0.70,0.62,0.99,0.21,0.74,1.02,0.44,0.85,0.84,0.93,0.91,0.85,1.19,0.93,1.03,0.96,1.00,0.83,0.65
+telemetry,Arctic Rally Finland 2021 SS9 Aittajärvi 1 (22.47 km),Neuville,Hyundai i20 Coupe WRC,405,129,196,56,0.73,0.57,0.96,0.17,0.80,1.06,0.43,0.88,0.84,0.83,0.80,0.91,1.00,0.96,1.02,1.00,1.00,0.87,0.56
+telemetry,Arctic Rally Finland 2021 SS9 Aittajärvi 1 (22.47 km),Suninen,Ford Fiesta WRC,457,130,202,66,0.52,0.47,0.86,0.25,0.74,1.04,0.57,0.87,0.81,0.80,0.72,0.95,0.91,0.96,0.97,0.96,0.90,0.87,0.73
+telemetry,Arctic Rally Finland 2021 SS9 Aittajärvi 1 (22.47 km),Tänak,Hyundai i20 Coupe WRC,443,130,199,67,0.52,0.45,0.85,0.23,0.80,1.08,0.63,0.87,0.86,0.93,0.57,0.99,0.85,0.97,1.06,0.96,0.88,0.91,0.75
+telemetry,Arctic Rally Finland 2021 SS10 Aittajärvi 2 (22.47 km),Katsuta,Toyota Yaris WRC,442,133,201,50,0.75,0.66,1.07,0.24,0.78,1.03,0.56,0.86,0.85,0.78,0.77,0.77,0.96,0.99,1.04,1.00,0.95,0.96,0.54
+telemetry,Arctic Rally Finland 2021 SS10 Aittajärvi 2 (22.47 km),Loubet,Hyundai i20 Coupe WRC,493,124,196,47,0.80,0.66,1.19,0.22,0.71,0.97,0.43,0.81,0.79,0.93,1.17,0.86,1.12,0.90,1.07,0.90,0.89,0.70,0.43
+telemetry,Arctic Rally Finland 2021 SS10 Aittajärvi 2 (22.47 km),Neuville,Hyundai i20 Coupe WRC,408,131,198,59,0.85,0.63,1.05,0.20,0.76,0.99,0.39,0.83,0.87,0.81,0.73,0.91,1.04,0.90,0.99,0.92,1.02,0.89,0.52
+telemetry,Arctic Rally Finland 2021 SS10 Aittajärvi 2 (22.47 km),Ogier,Toyota Yaris WRC,450,133,201,50,0.81,0.70,1.17,0.25,0.80,1.10,0.59,0.89,0.85,0.94,0.88,0.96,1.08,0.91,1.22,1.00,1.02,0.98,0.61
+telemetry,Arctic Rally Finland 2021 SS10 Aittajärvi 2 (22.47 km),Suninen,Ford Fiesta WRC,461,130,201,57,0.53,0.47,0.97,0.23,0.75,0.95,0.59,0.85,0.80,0.88,0.61,0.83,0.90,0.88,0.99,0.98,1.01,0.83,0.62
+telemetry,Arctic Rally Finland 2021 SS10 Aittajärvi 2 (22.47 km),Tänak,Hyundai i20 Coupe WRC,450,132,199,64,0.60,0.42,0.89,0.23,0.79,1.05,0.62,0.86,0.86,1.02,0.49,1.02,0.90,1.02,0.99,0.93,1.00,0.93,0.55
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Evans,Ford Fiesta WRC,635,135,202,67,0.38,0.41,0.91,0.23,0.65,0.94,0.50,0.73,0.78,0.67,0.84,0.81,1.06,0.87,1.02,0.87,0.97,0.77,0.40
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Latvala,Toyota Yaris WRC,594,133,206,65,0.54,0.62,1.05,0.21,0.67,0.93,0.39,0.85,0.76,0.73,1.18,0.84,1.06,0.84,1.01,0.88,0.98,0.79,0.38
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Meeke,Citroen C3 WRC,638,132,196,74,0.38,0.34,0.93,0.24,0.69,1.03,0.47,0.82,0.79,0.70,0.70,0.85,1.02,0.84,1.03,0.91,0.78,0.87,0.91
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Neuville,Hyundai i20 Coupe WRC,587,133,192,62,0.66,0.63,0.91,0.19,0.67,0.89,0.57,0.81,0.77,0.71,0.89,0.86,1.01,0.84,0.93,0.77,0.93,0.82,0.54
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Ogier,Ford Fiesta WRC,610,137,200,50,0.44,0.58,1.00,0.25,0.68,0.91,0.52,0.82,0.76,0.80,0.85,0.86,0.92,0.86,1.02,0.86,0.83,0.77,0.45
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Østberg,Ford Fiesta WRC,633,133,199,62,0.54,0.57,0.94,0.22,0.68,0.96,0.49,0.78,0.76,0.73,0.77,0.85,0.99,0.92,0.96,0.86,0.94,0.77,0.54
+telemetry,Rally Sweden 2017 SS9 Knon 1 (31.60 km),Tänak,Ford Fiesta WRC,604,135,200,60,0.55,0.53,0.88,0.18,0.70,1.02,0.56,0.76,0.82,0.66,0.78,0.88,0.89,0.92,0.98,0.89,0.96,0.81,0.46
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Breen,Citroen C3 WRC,544,116,195,67,0.40,0.37,0.96,0.34,0.78,1.07,0.50,0.82,0.84,0.89,0.91,1.09,0.87,1.04,0.98,0.96,0.77,0.98,0.58
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Evans,Ford Fiesta WRC,448,120,198,56,0.46,0.37,0.71,0.33,0.72,0.94,0.40,0.82,0.85,0.77,0.83,0.85,0.89,0.86,0.88,0.87,0.66,0.88,0.39
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Latvala,Toyota Yaris WRC,476,118,205,57,0.32,0.32,0.77,0.33,0.70,1.00,0.31,0.82,0.83,0.77,1.06,0.89,1.11,0.86,0.93,0.87,0.99,0.78,0.57
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Meeke,Citroen C3 WRC,498,111,289,63,0.40,0.30,0.67,0.27,0.69,0.94,0.46,0.79,0.82,0.63,0.59,0.88,0.80,0.87,0.77,0.89,0.68,0.77,0.52
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Mikkelsen,Hyundai i20 Coupe WRC,413,118,194,44,0.64,0.48,0.77,0.29,0.71,0.94,0.38,0.78,0.88,0.91,0.78,0.88,0.84,0.89,0.73,0.85,0.65,0.75,0.50
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Neuville,Hyundai i20 Coupe WRC,394,116,193,52,0.64,0.50,0.73,0.26,0.70,0.91,0.47,0.83,0.83,0.66,0.87,0.87,0.88,0.88,0.94,0.80,0.63,0.78,0.51
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Østberg,Citroen C3 WRC,484,117,210,60,0.55,0.39,0.70,0.29,0.71,0.99,0.34,0.75,0.87,0.75,0.83,0.89,0.90,0.95,0.91,0.87,0.54,0.83,0.65
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Paddon,Hyundai i20 Coupe WRC,426,116,194,47,0.57,0.53,0.79,0.27,0.67,0.90,0.43,0.74,0.85,0.68,0.62,0.77,0.86,0.80,0.93,0.85,0.76,0.81,0.36
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Suninen,Ford Fiesta WRC,489,116,199,60,0.50,0.46,0.77,0.27,0.70,0.97,0.44,0.78,0.82,0.58,0.79,0.83,0.82,0.88,0.91,0.79,0.81,0.85,0.39
+telemetry,Rally Sweden 2018 SS2 Hof-Finnskog 1 (21.26 km),Tänak,Toyota Yaris WRC,407,122,208,47,0.42,0.38,0.73,0.32,0.77,0.98,0.51,0.84,0.86,0.85,0.71,1.02,0.83,0.93,1.02,0.90,0.55,0.90,0.47
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Evans,Ford Fiesta WRC,521,117,202,53,0.52,0.48,0.78,0.31,0.78,1.05,0.58,0.81,0.91,0.80,0.69,0.84,0.91,0.99,0.91,0.96,0.84,1.00,0.47
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Lappi,Citroen C3 WRC,482,121,195,57,0.56,0.37,0.79,0.34,0.80,1.17,0.41,0.82,0.93,0.81,0.90,1.06,0.87,1.03,0.86,1.04,0.68,0.96,0.37
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Latvala,Toyota Yaris WRC,397,127,208,55,0.50,0.46,0.77,0.37,0.79,1.03,0.47,0.82,0.92,0.80,0.88,0.93,1.00,0.94,0.99,0.94,0.70,0.94,0.58
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Loeb,Hyundai i20 Coupe WRC,458,122,195,52,0.60,0.59,0.83,0.34,0.77,1.01,0.65,0.84,0.87,0.87,0.79,0.97,0.87,0.92,0.91,0.94,0.91,0.87,0.52
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Meeke,Toyota Yaris WRC,422,123,204,60,0.39,0.33,0.77,0.28,0.78,1.00,0.69,0.85,0.89,0.76,0.40,0.99,0.76,0.95,0.94,0.96,0.93,0.91,0.42
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Mikkelsen,Hyundai i20 Coupe WRC,422,125,196,53,0.90,0.53,0.83,0.36,0.77,1.02,0.38,0.79,0.96,0.91,0.77,0.99,1.05,0.93,0.91,0.96,0.79,0.83,0.35
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Neuville,Hyundai i20 Coupe WRC,428,122,195,52,0.74,0.55,0.90,0.34,0.81,1.04,0.54,0.84,0.88,0.68,0.74,0.91,0.97,0.97,0.88,0.93,0.96,0.91,0.27
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Ogier,Citroen C3 WRC,482,119,191,49,0.67,0.52,0.79,0.36,0.84,1.05,0.67,0.85,0.87,0.82,0.66,1.04,0.88,1.09,0.99,1.06,0.93,0.93,0.58
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Suninen,Ford Fiesta WRC,477,124,201,59,0.55,0.57,0.93,0.35,0.82,1.12,0.56,0.80,0.94,0.76,0.77,0.99,0.99,1.02,1.01,1.05,0.86,0.95,0.41
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Tidemand,Ford Fiesta WRC,475,120,198,38,0.73,0.61,0.88,0.30,0.75,0.96,0.56,0.78,0.86,0.71,0.73,0.92,0.81,0.88,0.93,0.83,0.78,0.76,0.50
+telemetry,Rally Sweden 2019 SS2 Hof-Finnskog 1 (21.26 km),Tuohino,Ford Fiesta WRC,460,115,196,57,0.50,0.48,0.83,0.26,0.68,0.92,0.46,0.78,0.80,0.59,0.70,0.85,0.88,0.86,0.84,0.81,0.73,0.76,0.46
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Breen,Hyundai i20 Coupe WRC,451,126,193,66,0.44,0.35,0.78,0.36,0.78,1.07,0.56,0.81,0.93,0.86,0.65,0.97,0.90,0.89,0.93,0.97,0.89,1.01,0.40
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Evans,Toyota Yaris WRC,473,129,198,52,0.49,0.58,1.00,0.38,0.87,1.23,0.61,0.87,0.94,0.88,0.65,0.98,0.97,1.02,1.14,1.07,1.19,1.06,0.54
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Katsuta,Toyota Yaris WRC,397,130,198,48,0.59,0.62,0.92,0.38,0.78,1.11,0.64,0.85,0.88,1.04,0.82,1.02,1.13,0.93,0.99,0.96,0.93,0.83,0.50
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Lappi,Ford Fiesta WRC,458,130,198,48,0.40,0.42,0.84,0.37,0.84,1.14,0.60,0.83,0.93,0.94,0.87,1.06,0.97,1.06,0.90,1.06,0.97,1.04,0.44
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Latvala,Toyota Yaris WRC,400,129,197,64,0.56,0.58,0.97,0.34,0.79,1.16,0.51,0.81,0.93,0.91,0.59,0.96,1.06,0.98,0.98,0.98,1.13,0.88,0.53
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Neuville,Hyundai i20 Coupe WRC,443,128,191,54,0.51,0.46,0.87,0.34,0.80,1.13,0.56,0.79,0.95,0.88,0.76,0.89,0.88,0.99,0.97,1.00,0.82,0.94,0.45
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Rovanperä,Toyota Yaris WRC,440,132,197,44,0.76,0.68,1.08,0.36,0.86,1.09,0.56,0.84,0.95,0.84,0.84,1.01,1.10,1.01,1.05,1.00,0.94,1.05,0.61
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Suninen,Ford Fiesta WRC,454,131,199,54,0.51,0.45,0.95,0.35,0.85,1.15,0.61,0.82,0.93,1.05,0.70,0.95,0.93,1.01,1.04,1.15,0.87,0.93,0.46
+telemetry,Rally Sweden 2020 SS2 Hof-Finnskog 1 (21.26 km),Tänak,Hyundai i20 Coupe WRC,429,130,196,44,0.59,0.53,0.86,0.35,0.83,1.05,0.65,0.85,0.93,0.86,0.52,0.93,0.88,1.00,0.97,1.02,1.03,0.92,0.36
+ReRBR,RSF 531 Aittajarvi (22.46 km),autopilot ngp,Ford_Fiesta_Rally2_ngp7,922,88,108,91,0.43,0.45,0.50,0.13,0.29,0.36,,,,0.42,0.62,0.33,0.50,0.26,0.46,,,,
+ReRBR,RSF 531 Aittajarvi (22.46 km),autopilot ngp,Ford_Fiesta_WRC_2019_ngp6,913,88,108,100,0.42,0.43,0.47,0.13,0.29,0.37,,,,0.40,0.57,0.34,0.50,0.27,0.45,,,,
+ReRBR,RSF 531 Aittajarvi (22.46 km),autopilot ngp,Hyundai_i20_Coupe_WRC_2020_ngp6,913,88,108,100,0.42,0.44,0.48,0.13,0.29,0.37,,,,0.39,0.57,0.34,0.49,0.26,0.45,,,,
+ReRBR,RSF 531 Aittajarvi (22.46 km),autopilot experimental-brush,Ford_Fiesta_Rally2_ngp7,917,88,109,104,0.42,0.44,0.49,0.13,0.31,0.38,,,,0.42,0.69,0.35,0.50,0.27,0.44,,,,
+ReRBR,RSF 531 Aittajarvi (22.46 km),autopilot experimental-brush,Ford_Fiesta_WRC_2019_ngp6,913,88,110,107,0.41,0.42,0.48,0.13,0.30,0.38,,,,0.42,0.65,0.36,0.49,0.28,0.44,,,,
+ReRBR,RSF 531 Aittajarvi (22.46 km),autopilot experimental-brush,Hyundai_i20_Coupe_WRC_2020_ngp6,914,88,110,111,0.41,0.42,0.49,0.13,0.30,0.40,,,,0.42,0.67,0.36,0.50,0.28,0.44,,,,
