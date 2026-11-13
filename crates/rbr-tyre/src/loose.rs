@@ -371,15 +371,17 @@ pub fn eval(x: &EvalInput, c: &Loose, gravel: f64, snow: f64, depth: f64) -> Eva
         lx * grip * (1.0 + (GRAVEL_LONGITUDINAL - 1.0) * share + (SNOW_LONGITUDINAL - 1.0) * snow),
     );
     let mut out = brush::patch(x.fz, x.half_length, cx, cy, mu_x, mu_y, sx, sy);
-    if snow > 0.0 {
+    if snow > 0.0 && share < 1.0 {
         // Snow's two stages along the wheel: two patches side by side, the tread's and the held snow's, each with its
         // share of the load, so of the level and of the cornering stiffness (the side force alone is the one patch's).
+        // By snow's share of the soil gravel's shear law leaves, which takes its own share below.
         let part = |w: f64, k: f64| brush::patch(w * x.fz, x.half_length, k * cx, w * cy, mu_x, mu_y, sx, sy);
         let tread = part(1.0 - SNOW_HELD_LEVEL, 1.0 - SNOW_HELD_STIFFNESS);
         let held = part(SNOW_HELD_LEVEL, SNOW_HELD_STIFFNESS);
-        out.kx += (tread.kx + held.kx - out.kx) * snow;
-        out.ky += (tread.ky + held.ky - out.ky) * snow;
-        out.mz += (tread.mz + held.mz - out.mz) * snow;
+        let w = (snow / (1.0 - share)).min(1.0);
+        out.kx += (tread.kx + held.kx - out.kx) * w;
+        out.ky += (tread.ky + held.ky - out.ky) * w;
+        out.mz += (tread.mz + held.mz - out.mz) * w;
         out.fx = -out.kx * sx;
         out.fy = -out.ky * sy;
         out.trail = if out.fy != 0.0 { -out.mz / out.fy } else { 0.0 };
