@@ -84,7 +84,7 @@ pub trait StepHost<S = Mem>: NodeHost<S> {
     fn solver_pass(&mut self, entry_sp: u32, solver: u32);
     fn solver_post(&mut self, entry_sp: u32, target: u32, solver: u32);
     fn telemetry_90(&mut self, entry_sp: u32, receiver: u32);
-    fn drive_set4510(&mut self, entry_sp: u32, drive: u32);
+    fn reset_drive_part(&mut self, entry_sp: u32, drive: u32);
 }
 
 /// The front of a `CPhysics` at `this` built on `def` (see `PhysicsFront`).

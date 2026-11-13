@@ -118,7 +118,7 @@ pub fn zero() -> u32 {
 }
 
 /// Zero: ignores its arguments and returns zero.
-pub fn zero2f0() -> u32 {
+pub fn second_zero() -> u32 {
     0
 }
 

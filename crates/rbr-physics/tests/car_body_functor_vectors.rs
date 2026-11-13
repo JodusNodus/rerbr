@@ -158,7 +158,7 @@ fn dmg_d160_matches_original_calls() {
 
 #[test]
 fn zero2f0_matches_original_calls() {
-    check_functor(0x4ED2F0, "NPhysics::E35_Zero2F0", layout::zero2f0);
+    check_functor(0x4ED2F0, "NPhysics::E35_Zero2F0", layout::second_zero);
 }
 
 const SLOT1: u32 = 0x4F12A0;

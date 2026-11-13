@@ -50,8 +50,8 @@ pub fn reset_damage<S: CarStore>(calls: &mut impl ResetDamageCalls<S>, mem: &mut
         }
         mem.set_f32(handler + at::FLOATS_AT + 4 * z, 0.0);
     }
-    calls.call(mem, at::STATE_INIT_C70, handler + at::STATE_AT);
-    calls.call(mem, at::ENGINE_RESET_SUB78, handler + at::ENGINE_AT);
+    calls.call(mem, at::STATE_INIT, handler + at::STATE_AT);
+    calls.call(mem, at::ENGINE_RESET, handler + at::ENGINE_AT);
     light::block_reset(mem, handler + at::LIGHT_BLOCK_AT);
     for k in 0..4 {
         for member in &at::WHEEL_GROUP {
@@ -79,20 +79,20 @@ pub fn reset_damage<S: CarStore>(calls: &mut impl ResetDamageCalls<S>, mem: &mut
 }
 
 /// The calls `material_name` makes out of the handler: the material lookup (the test answers it from the records).
-pub trait Vf14xCalls {
+pub trait MaterialNameCalls {
     /// The address of the material's entry in the manager's material table.
-    fn tag_520940(&mut self, table: u32, id: u32) -> u32;
+    fn material_entry(&mut self, table: u32, id: u32) -> u32;
 }
 
 /// The name of the material the handler's inner id selects: when the world's manager has the material-names flag, the
 /// entry's name, or the default string for a null entry. When the flag is clear, returns the manager pointer (the
 /// original's value).
-pub fn vf14x<S: CarStore>(calls: &mut impl Vf14xCalls, mem: &S, handler: u32) -> u32 {
+pub fn material_name<S: CarStore>(calls: &mut impl MaterialNameCalls, mem: &S, handler: u32) -> u32 {
     let manager = mem.u32(mem.u32(WORLD) + at::WORLD_MANAGER_AT);
     if mem.u32(manager + at::MANAGER_FLAGS_AT) & at::MANAGER_MATERIAL_NAMES == 0 {
         return manager;
     }
-    let tag = calls.tag_520940(manager + at::MATERIAL_TABLE_AT, mem.u32(handler + at::MATERIAL_ID_AT));
+    let tag = calls.material_entry(manager + at::MATERIAL_TABLE_AT, mem.u32(handler + at::MATERIAL_ID_AT));
     if tag == 0 {
         NULL_NAME
     } else {

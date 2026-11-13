@@ -2,7 +2,7 @@
 
 use rbr_physics::mem::Mem;
 use rbr_physics::physics_core::layout::{self, mounted, mounted_pose};
-use rbr_physics::physics_core::layout::{MountedVf64Host, MountedVf6cHost};
+use rbr_physics::physics_core::layout::{MountedPullHost, MountedStepHost};
 
 use super::{BODY_EVENT_EMIT, E43VF64, E43VF6C, MB560, STATE_EMIT, WALKER, WORLD_COMPOSE};
 use crate::collision::E01_VEC4_COPY_FROM;
@@ -16,8 +16,8 @@ struct MountedCalls<'a> {
     host: &'a dyn Host,
 }
 
-impl MountedVf64Host for MountedCalls<'_> {
-    fn solid_vf64(&mut self, sp: u32, body: u32) -> u32 {
+impl MountedPullHost for MountedCalls<'_> {
+    fn solid_pull(&mut self, sp: u32, body: u32) -> u32 {
         self.host.call_at(sp, E43VF64, body, &[]).eax
     }
 
@@ -31,18 +31,18 @@ impl MountedVf64Host for MountedCalls<'_> {
     }
 }
 
-/// thiscall `()`: `CMountedRigidBody::Vf64`, the mounted body's pull towards its mount point (`layout::mounted_vf64`).
+/// thiscall `()`: `CMountedRigidBody::Vf64`, the mounted body's pull towards its mount point (`layout::mounted_pull`).
 /// The original's frame is `((esp - 4) & !0xf) - 0x70`. A null CDef origin declines before any call.
 pub(super) fn mounted_vf64(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = MountedCalls { mem: ctx.mem.clone(), host: ctx.host };
     let frame = aligned_frame(r.esp) - 0x70;
-    let eax = layout::mounted_vf64(&mut ctx.mem, &mut calls, r.ecx, frame)
+    let eax = layout::mounted_pull(&mut ctx.mem, &mut calls, r.ecx, frame)
         .ok_or(Decline::Unsupported("the CDef's origin is the null sentinel"))?;
     Ok(Return::void(eax, 0))
 }
 
-impl MountedVf6cHost for MountedCalls<'_> {
-    fn solid_vf6c(&mut self, sp: u32, body: u32, dt: f32) -> u32 {
+impl MountedStepHost for MountedCalls<'_> {
+    fn solid_position_step(&mut self, sp: u32, body: u32, dt: f32) -> u32 {
         self.host.call_at(sp, E43VF6C, body, &[dt.to_bits()]).eax
     }
 
@@ -55,13 +55,13 @@ impl MountedVf6cHost for MountedCalls<'_> {
     }
 }
 
-/// thiscall `(dt)`, `ret 4`: `CMountedRigidBody::Vf6c`, the mounted body's step (`layout::mounted_vf6c`). The original's
+/// thiscall `(dt)`, `ret 4`: `CMountedRigidBody::Vf6c`, the mounted body's step (`layout::mounted_position_step`). The original's
 /// frame is `((esp - 4) & !0xf) - 0xa0`.
 pub(super) fn mounted_vf6c(ctx: &mut Ctx, r: &Regs) -> Result<Return, Decline> {
     let mut calls = MountedCalls { mem: ctx.mem.clone(), host: ctx.host };
     let frame = aligned_frame(r.esp) - 0xa0;
     let dt = f32::from_bits(r.stack[0]);
-    let eax = layout::mounted_vf6c(&mut ctx.mem, &mut calls, r.ecx, dt, frame);
+    let eax = layout::mounted_position_step(&mut ctx.mem, &mut calls, r.ecx, dt, frame);
     Ok(Return::void(eax, 4))
 }
 

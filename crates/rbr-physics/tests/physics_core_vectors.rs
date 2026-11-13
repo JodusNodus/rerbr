@@ -168,7 +168,7 @@ fn vec4_add_matches() {
 fn offset_540_matches() {
     let _pc24 = Precision::Pc24.scope();
     replay_eax(VAR, 0x529540, "E46_Offset540", false, |mem, a| {
-        layout::offset_540(mem, a[0], a[1], a[2]);
+        layout::point_velocity_at(mem, a[0], a[1], a[2]);
         0
     });
 }
@@ -199,9 +199,9 @@ impl Vf6cReplay<'_> {
     }
 }
 
-impl layout::MountedVf6cHost for Vf6cReplay<'_> {
+impl layout::MountedStepHost for Vf6cReplay<'_> {
     /// `E43Vf6C`'s record is the last: the records before it are its own inner calls (they return first).
-    fn solid_vf6c(&mut self, _: u32, body: u32, dt: f32) -> u32 {
+    fn solid_position_step(&mut self, _: u32, body: u32, dt: f32) -> u32 {
         let call = self.inner.last().expect("Vf6c: no E43Vf6C record");
         assert_eq!((call.addr, &call.args[..]), (0x52cc30, &[body, dt.to_bits()][..]));
         self.mem.map(call.windows[0].at, &call.windows[0].after);
@@ -233,7 +233,7 @@ fn mounted_vf6c_matches() {
         let frame = call.inner.last().map_or(0, |state| state.args[1].wrapping_sub(0x20));
         let mut host = Vf6cReplay { mem: mem.clone(), index: call.index, inner: &call.inner, next: 0 };
         let dt = f32::from_bits(call.args[1]);
-        let eax = layout::mounted_vf6c(&mut mem, &mut host, call.args[0], dt, frame);
+        let eax = layout::mounted_position_step(&mut mem, &mut host, call.args[0], dt, frame);
         assert_eq!(host.next, call.inner.len(), "Vf6c call {}: emits", call.index);
         assert_eq!(eax, call.eax, "Vf6c call {}: eax", call.index);
         check_windows(call, &mem, "CMountedRigidBody::Vf6c");

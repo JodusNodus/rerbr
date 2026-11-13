@@ -13,7 +13,7 @@ use rbr_physics::car_body::assist::{AssistCalls, RetireCalls};
 use rbr_physics::car_body::body::{self, BodyCalls};
 use rbr_physics::car_body::control::{self, ControlCalls};
 use rbr_physics::car_body::controls::{self, ControlsCalls};
-use rbr_physics::car_body::damage::{self, ResetDamageCalls, Vf14xCalls};
+use rbr_physics::car_body::damage::{self, MaterialNameCalls, ResetDamageCalls};
 use rbr_physics::car_body::damper;
 use rbr_physics::car_body::drag::{self, DragCalls};
 use rbr_physics::car_body::edge::{self, EdgeCalls};
@@ -2334,8 +2334,8 @@ struct RecordedVf14x<'a> {
     call: &'a Call,
 }
 
-impl Vf14xCalls for RecordedVf14x<'_> {
-    fn tag_520940(&mut self, this: u32, id: u32) -> u32 {
+impl MaterialNameCalls for RecordedVf14x<'_> {
+    fn material_entry(&mut self, this: u32, id: u32) -> u32 {
         let inner = self
             .call
             .inner
@@ -2369,7 +2369,7 @@ fn vf14x_matches_original_calls() {
             let tag = call.inner[0].eax;
             mem.set_u32(tag + 4, call.eax);
         }
-        let ours = damage::vf14x(&mut RecordedVf14x { call }, &mem, call.args[0]);
+        let ours = damage::material_name(&mut RecordedVf14x { call }, &mem, call.args[0]);
         assert_eq!(ours, call.eax, "Vf14x call {}: eax", call.index);
         check_windows(call, &mem, "CCarDamageHandler::Vf14x");
     }
