@@ -81,25 +81,6 @@ pub(crate) fn holds_solid_word(host: &dyn Host, at: u32) -> bool {
     held_solids(host).is_some_and(|s| s.read(at).is_some())
 }
 
-/// Lowers the `n` words from `at` that a held solid names into the image (through memory without poison: the words are
-/// the solid's), for a hosted callee that reads them at their address and writes none of them. Nothing when no solid
-/// is held.
-pub(crate) fn lower_solid_words(host: &dyn Host, mem: &Mem, at: u32, n: u32) {
-    let typed = host.typed();
-    let Some(solids) = typed.as_deref().and_then(|t| t.solids.as_ref()) else {
-        return;
-    };
-    #[cfg(feature = "poison")]
-    let mut image = mem.unpoisoned();
-    #[cfg(not(feature = "poison"))]
-    let mut image = mem.clone();
-    for at in (0..n).map(|k| at + 4 * k) {
-        if let Some(word) = solids.read(at) {
-            image.set_u32(at, word);
-        }
-    }
-}
-
 pub const NEW_DEF: u32 = 0x52b8b0;
 pub const VF20_JUMP: u32 = 0x529200;
 pub const VF16_HELPER: u32 = 0x52b6d0;

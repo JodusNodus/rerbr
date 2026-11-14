@@ -169,11 +169,9 @@ impl engine::CarWalkHost for Sim8890Calls<'_> {
         self.host.call(slot12, car, &[]).eax
     }
 
-    /// `a` is the car's velocity (`Sim8E20`'s radiator airflow): a held solid's is lowered into the image for the walk,
-    /// which only reads it.
+    /// `a` is the car's velocity (`Sim8E20`'s radiator airflow): `MB560` copies it on the solids' store.
     fn transform_point(&mut self, a: u32, b: u32) -> [f32; 4] {
         let c = self.scratch;
-        crate::rigid_body::lower_solid_words(self.host, &self.mem, a, 4);
         self.host.call(MB560, self.mem.u32(WALKER), &[a, b, c]);
         self.mem.f32s(c)
     }
