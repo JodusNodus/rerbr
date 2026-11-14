@@ -1,11 +1,11 @@
 //! The body's pose step: the orientation turns by the angular velocity over `a` (`q <- normalize((w*a/2, 1) * q)`),
 //! the position moves along the linear velocity (`p <- p + v*a`), and the body is registered in its cell (root
-//! bodies) or its position goes to the parent frame (child bodies). A contact sample is taken when the step flags
-//! have bit 3 set. The calls into other code go through `PoseHost`, in order; their effects on the body are the body
-//! fields the host can't see (`rigid_body/README.md` (git 9c28c0b8), "Host calls").
+//! bodies) or its position goes to the parent frame (child bodies). A contact sample is taken when the body flags
+//! have [`CONTACT_LIST_FLAG`]. The calls into other code go through `PoseHost`, in order; their effects on the body are
+//! the body fields the host can't see (`rigid_body/README.md` (git 9c28c0b8), "Host calls").
 
 use super::host::{CellHost, HostUnavailable};
-use super::layout::{Body, ParentFrame, Vec4, CELL_LINK};
+use super::layout::{Body, ParentFrame, Vec4, CELL_LINK, CONTACT_LIST_FLAG};
 use crate::math::quat::{mul, normalize, Quat};
 
 /// The calls the pose step makes outside the body: the parent transform, the cell registration (`CellHost`) and the
@@ -14,7 +14,7 @@ pub trait PoseHost: CellHost {
     /// Child bodies: the position in the parent frame. The result is used only by the contact sample.
     fn to_parent_frame(&mut self, local: Vec4) -> Vec4;
     /// The drive-line sample at `at` with the body's current sample: returns the new sample.
-    fn sample_big(&mut self, at: Vec4, value: f32) -> f32;
+    fn drive_line_sample(&mut self, at: Vec4, value: f32) -> f32;
 }
 
 /// One pose step of `a` seconds. `update_position` and `update_orientation` are the caller's flags (`b`, `c`).
@@ -67,8 +67,8 @@ pub fn pose_step(
         // The original reads an uninitialised stack word here (unverified; `rigid_body/README.md` (git 9c28c0b8)).
         Some(_) => next,
     };
-    if body.body_flags & 8 != 0 {
-        body.sampled = host.sample_big(at, body.sampled);
+    if body.body_flags & CONTACT_LIST_FLAG != 0 {
+        body.sampled = host.drive_line_sample(at, body.sampled);
         body.sampled_dirty = 1;
     }
     body.position = next;

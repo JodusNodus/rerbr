@@ -67,18 +67,18 @@ pub fn refresh_and_reset<S: RigidStore>(
     Ok(collision::layout::reset_state_and_base(host, this))
 }
 
-/// The scratch accumulator gets `pp * scale` added; then the flush runs when `gate` has its bit. The same sum as
+/// The scratch accumulator gets `delta * scale` added; then the flush runs when `gate` has its bit. The same sum as
 /// `scratch::accumulate`, on the store.
 pub fn scratch_accumulate<S: RigidStore>(
     store: &mut S,
     this: u32,
-    pp: u32,
+    delta: u32,
     gate: u32,
     host: &mut impl FlushHost,
 ) -> Result<(), HostUnavailable> {
     let scale = store.scratch_scale(this);
     let scratch = store.scratch_accum(this);
-    let sum = scratch.add_scaled(store.row(pp), scale);
+    let sum = scratch.add_scaled(store.row(delta), scale);
     store.store_scratch_accum(this, sum);
     if gate & FLUSH_BIT != 0 {
         host.flush()?;

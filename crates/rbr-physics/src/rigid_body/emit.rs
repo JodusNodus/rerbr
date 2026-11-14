@@ -36,9 +36,9 @@ pub fn event(body: &Body, kind: u32) -> BodyEvent {
 
 /// The calls the wake makes outside the body.
 pub trait EmitHost {
-    /// The body's walk on `body` (its children's walk, then the window start). It leaves the pose and the owner as
-    /// they are, so the event reads them before or after it alike.
-    fn slot18(&mut self, body: &mut Body);
+    /// The body's window start on `body`: its children's walk, then [`window_start`]. It leaves the pose and the owner
+    /// as they are, so the event reads them before or after it alike.
+    fn start_window(&mut self, body: &mut Body);
     /// The host's notify on the body. The call checks the parent itself and notifies only when the body has none.
     fn entity_notify(&mut self);
     /// The body's event.
@@ -55,7 +55,7 @@ pub trait EmitHost {
 /// One wake on the body (the layout's wake is the same on memory).
 pub fn emit_body_event(body: &mut Body, host: &mut impl EmitHost) -> Result<(), HostUnavailable> {
     super::sleep::wake_up(body);
-    host.slot18(body);
+    host.start_window(body);
     host.entity_notify();
     host.emit(&event(body, WAKE))
 }

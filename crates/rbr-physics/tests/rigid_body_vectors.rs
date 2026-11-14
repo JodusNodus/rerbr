@@ -296,7 +296,7 @@ impl PoseHost for Replay<'_> {
         Vec4::default()
     }
 
-    fn sample_big(&mut self, _at: Vec4, value: f32) -> f32 {
+    fn drive_line_sample(&mut self, _at: Vec4, value: f32) -> f32 {
         let sample = self.take(SAMPLE_BIG);
         assert_eq!(sample.args[2], value.to_bits(), "SampleBig argument");
         f64::from_bits(sample.st0_bits) as f32
@@ -1128,8 +1128,8 @@ fn e43vf138_matches_original_calls() {
                 a: vec3_at(w, 0),
                 b: vec3_at(w, 1),
                 c: vec3_at(w, 2),
-                scale: vec3_at(w, 5),
-                k: f32_at(w, 6),
+                inverse_inertia: vec3_at(w, 5),
+                inverse_mass: f32_at(w, 6),
             };
             let (f, e) = response_combine(&input, call.args[4], f32_at(w, 4), f32_at(w, 3));
             let mut mem = map_window_list(w);
@@ -1180,11 +1180,11 @@ fn step77_matches_original_calls() {
         let pos = vec4_of(&mem.read(this + 0x140, 16));
         let rec = call.inner.iter().find(|r| r.addr == VOTE).expect("Step77 made no vote");
         let out = probe_ground(pos, mem.f32(b_at), &mut VoteReplay(rec)).expect("the replay host answers the vote");
-        assert_eq!(out.ret as u32, call.eax, "Step77 call {}: eax", call.index);
-        mem.set_u32(a, out.a);
-        mem.set_f32(b_at, out.b);
+        assert_eq!(out.result as u32, call.eax, "Step77 call {}: eax", call.index);
+        mem.set_u32(a, out.index);
+        mem.set_f32(b_at, out.drop);
         check_windows(call, &mem, "Step77");
-        if out.ret != 0 {
+        if out.result != 0 {
             voted += 1;
         } else {
             passed += 1;
@@ -1230,14 +1230,14 @@ fn vf85_matches_original_calls() {
 /// Replays `E43Vf90`'s host: counts the slot-18 call and the notify, and keeps the event.
 #[derive(Default)]
 struct EmitReplay {
-    slot18: usize,
+    start_window: usize,
     notified: usize,
     emitted: Option<BodyEvent>,
 }
 
 impl EmitHost for EmitReplay {
-    fn slot18(&mut self, _body: &mut Body) {
-        self.slot18 += 1;
+    fn start_window(&mut self, _body: &mut Body) {
+        self.start_window += 1;
     }
 
     fn entity_notify(&mut self) {
@@ -1275,7 +1275,7 @@ fn emit_body_event_matches_original_calls() {
         let mut host = EmitReplay::default();
         emit_body_event(&mut body, &mut host).expect("E43Vf90: the replay answers every call");
         body.store(&mut mem, this);
-        assert_eq!(host.slot18, 1, "E43Vf90 call {}: slot 18", call.index);
+        assert_eq!(host.start_window, 1, "E43Vf90 call {}: slot 18", call.index);
         assert_eq!(
             host.notified,
             call.inner.iter().filter(|r| r.addr == ENTITY_NOTIFY && r.args.first() == Some(&this)).count(),
@@ -1499,7 +1499,7 @@ impl ImpulseTailCalls for TailReplay<'_> {
     }
 
     /// The walker (ecx) is the binding's: the recorded one.
-    fn compose_a(&mut self, mem: &mut Mem, _: u32, point: u32, matrix: u32, out: u32) {
+    fn compose(&mut self, mem: &mut Mem, _: u32, point: u32, matrix: u32, out: u32) {
         let walker = self.inner.get(self.next).map_or(0, |r| r.args[0]);
         self.take(mem, Some(0x51b4c0), &[walker, point, matrix, out]);
     }

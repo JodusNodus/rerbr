@@ -54,7 +54,8 @@ pub const FORCE_ACCUM: u32 = 0x370;
 /// The force input `Vf25x` scales by the inverse mass into a linear acceleration.
 pub const LINEAR_ACCEL: u32 = 0x380;
 
-/// `CEntity` members the body inherits (rbr-recomp `notes/physics/entities.md` 2b): the flags byte and the parent frame pointer.
+/// `CEntity` members the body inherits (rbr-recomp `notes/physics/entities.md` 2b): the flags byte and the parent frame
+/// pointer.
 pub const ENTITY_FLAGS: u32 = 0x60;
 pub const PARENT: u32 = 0x44;
 
@@ -83,9 +84,11 @@ pub const DEF_LINEAR_SLEEP_VELOCITY: u32 = 0x1cc;
 pub const DEF_ANGULAR_SLEEP_VELOCITY: u32 = 0x1dc;
 pub const DEF_VERY_SOFT: u32 = 0x1ec;
 
-/// Bit 0x8 of the body flags: the integrator clears the slow velocities, the pose step takes the contact sample, and the
-/// force pass runs `BigB`.
-pub const BODY_FLAG_8: u8 = 0x8;
+/// Bit 0x8 of the body flags (`+0x60`, bit 3; named by use, the meaning beyond these uses is open): the force pass runs
+/// the contact list step (`BigB`), which retires kind-200 records on such a body; the integrator clears the slow
+/// velocities; the pose step takes the drive-line sample; the contact worker's sample hook runs (with a hook); and the
+/// placement wants a hook (`place_solid`).
+pub const CONTACT_LIST_FLAG: u8 = 0x8;
 
 /// A `E09Vec4`: four floats. The body's vectors keep the fourth word (`w`) in the object. The type is the shared
 /// `crate::math::vec::Vec4`, re-exported so the body's views keep their paths.

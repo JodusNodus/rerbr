@@ -55,7 +55,7 @@ impl PoseHost for Pose<'_> {
         Vec4::load(&self.mem, out_at)
     }
 
-    fn sample_big(&mut self, at: Vec4, value: f32) -> f32 {
+    fn drive_line_sample(&mut self, at: Vec4, value: f32) -> f32 {
         let at_ptr = self.scratch + 0x50;
         at.store(&mut self.mem, at_ptr);
         let drive = self.mem.u32(DRIVE);

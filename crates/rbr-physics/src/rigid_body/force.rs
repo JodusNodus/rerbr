@@ -7,7 +7,7 @@
 
 use super::contact_list::{contact_list_step, ListHost};
 use super::host::HostUnavailable;
-use super::layout::{Body, Def, Vec4, BODY_FLAG_8};
+use super::layout::{Body, Def, Vec4, CONTACT_LIST_FLAG};
 use super::scratch::{FlushHost, FLUSH_BIT};
 
 /// The calls the force pass makes outside the body, beyond the contact list step's (which includes the body's
@@ -31,7 +31,7 @@ pub fn force_pass(body: &mut Body, def: &Def, host: &mut impl ForceHost) -> Resu
         host.apply_torque(torque)?;
         *body = host.reread();
     }
-    if body.body_flags & BODY_FLAG_8 != 0 {
+    if body.body_flags & CONTACT_LIST_FLAG != 0 {
         contact_list_step(body, host)?;
         *body = host.reread();
     }
@@ -42,15 +42,15 @@ pub fn force_pass(body: &mut Body, def: &Def, host: &mut impl ForceHost) -> Resu
     Ok(())
 }
 
-/// Adds `pp * scratch_scale` to the force, lane by lane, then runs the flush when the gate has `FLUSH_BIT` (the same
+/// Adds `delta * scratch_scale` to the force, lane by lane, then runs the flush when the gate has `FLUSH_BIT` (the same
 /// gate and call as the scratch accumulator). The sum adds `v*k` to the old lane.
 pub fn accumulate_force(
     body: &mut Body,
-    pp: Vec4,
+    delta: Vec4,
     gate: u32,
     host: &mut impl FlushHost,
 ) -> Result<(), HostUnavailable> {
-    body.force = body.force.add_scaled(pp, body.scratch_scale);
+    body.force = body.force.add_scaled(delta, body.scratch_scale);
     if gate & FLUSH_BIT != 0 {
         host.flush()?;
     }

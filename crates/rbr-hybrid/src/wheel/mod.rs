@@ -541,7 +541,7 @@ impl SolidCtorHost for WheelCtor<'_> {
 }
 
 impl EmitHost for WheelCtor<'_> {
-    fn slot18(&mut self, _: &mut Body) {
+    fn start_window(&mut self, _: &mut Body) {
         unreachable!("the wheel's wake is CSolid::E43Vf90's")
     }
 

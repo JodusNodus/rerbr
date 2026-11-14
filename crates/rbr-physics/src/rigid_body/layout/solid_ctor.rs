@@ -2,7 +2,7 @@
 
 use super::contacts::{HOOK, RING_TAIL};
 use super::scratch_state::{clear_vec, store_scratch_base_init, CELL_LINK, STATE_VTABLE};
-use super::{BODY_FLAG_8, ENTITY_FLAGS, FORCE_ACCUM, ORIENTATION, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE};
+use super::{CONTACT_LIST_FLAG, ENTITY_FLAGS, FORCE_ACCUM, ORIENTATION, POSITION, SCRATCH_ACCUM, SCRATCH_SCALE};
 use crate::collision::layout::grid_hosts::AllocHost;
 use crate::collision::layout::state::body_def_ctor;
 use crate::collision::layout::{Body, CtorHost};
@@ -187,7 +187,7 @@ pub fn place_solid(mem: &mut Mem, host: &mut impl PlaceHost, this: u32, stuff: u
     }
     mem.set_u32(this + HOOK_SET, 0);
     let hook = mem.u32(stuff + STUFF_HOOK);
-    if mem.u8(this + ENTITY_FLAGS) & BODY_FLAG_8 != 0 && hook == 0 {
+    if mem.u8(this + ENTITY_FLAGS) & CONTACT_LIST_FLAG != 0 && hook == 0 {
         return Err(HostUnavailable);
     }
     mem.set_u32(this + HOOK, hook);
